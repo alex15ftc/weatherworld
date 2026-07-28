@@ -1,8 +1,4 @@
 import { clamp } from '../scenarios/math.js?v=2.25.1';
-import { HISTORICAL_ANALOG_CATALOG } from '../analogs/generatedHistoricalAnalogCatalog.js';
-import { calibrateIntensityScore, leaveOneOutCalibration } from '../analogs/AnalogCalibration.js';
-
-const HISTORICAL_CALIBRATION=HISTORICAL_ANALOG_CATALOG.length>=3?leaveOneOutCalibration(HISTORICAL_ANALOG_CATALOG):null;
 
 export function buildAnalogEnsemble(config, day='day1', memberCount=30) {
   const leadFactor = day === 'day3' ? 1 : day === 'day2' ? 0.72 : 0.46;
@@ -21,9 +17,10 @@ export function buildAnalogEnsemble(config, day='day1', memberCount=30) {
     const forcing = clamp((config.intensity ?? .6)*.62 + (analog.frontalCoherence ?? .7)*.38 + (residualPattern.forcingTiming??0)*.45 + perturb()*.16*leadFactor, 0, 1);
     const discrete = clamp((analog.discreteBias ?? .55) + (residualPattern.discreteBias??0)*.55 + perturb()*.20*leadFactor*historicalSpread, 0, 1);
     const recovery = clamp(moisture*.44 + clearing*.42 + (1-cap)*.14, 0, 1);
-    const rawHistoricalScore=(analog.historicalIntensityScore??50)+(residual?.intensityResidual??0);
-    const historicalOutcome=clamp(calibrateIntensityScore(rawHistoricalScore,HISTORICAL_CALIBRATION)/100,0,1);
-    const realization = clamp((forcing*.40 + recovery*.34 + discrete*.16 + (1-cap)*.10)*.86+historicalOutcome*.14, 0, 1);
+    // 2.34.0: Forecast realization is derived only from atmospheric members.
+    // Historical event intensity and report outcomes are verification labels and
+    // must never affect an issuance-time forecast.
+    const realization = clamp(forcing*.40 + recovery*.34 + discrete*.16 + (1-cap)*.10, 0, 1);
     members.push({ moisture, clearing, cap, forcing, discrete, recovery, realization, historicalAnalogId:residual?.analogId??null });
   }
   const mean = key => members.reduce((sum,m)=>sum+m[key],0)/members.length;
@@ -40,7 +37,8 @@ export function buildAnalogEnsemble(config, day='day1', memberCount=30) {
     analogMembers: analog.members ?? [], historicalAnalogs: analog.historicalAnalogs ?? [],
     analogSource: analog.analogSource ?? 'synthetic-archetype-fallback', confidence: Math.round(confidence*100),
     historicalInfluence: analog.historicalInfluence ?? 0,
-    calibration: HISTORICAL_CALIBRATION?{method:'leave-one-event-out-linear',sampleCount:HISTORICAL_CALIBRATION.sampleCount,rmse:HISTORICAL_CALIBRATION.rmse,rmseByBand:HISTORICAL_CALIBRATION.rmseByBand,brierByThreshold:HISTORICAL_CALIBRATION.brierByThreshold,brierByHazard:HISTORICAL_CALIBRATION.brierByHazard}:null,
+    calibration: null,
+    causality: { selectionMode:'forecast-atmosphere-only', outcomeLabelsUsed:false },
     agreement: confidence >= .75 ? 'High' : confidence >= .52 ? 'Moderate' : 'Low',
     means: { moistureReturn:mean('moisture'), clearing:mean('clearing'), capPersistence:mean('cap'), forcing:mean('forcing'), discreteBias:mean('discrete'), realization:mean('realization') },
     members,

@@ -87,3 +87,13 @@ run.
 - Put measurement results and optimization experiments in `PERFORMANCE.md`.
 - Keep milestone notes short and link to tests that protect the behavior.
 - Document units on every public field and distinguish signed CIN from CIN magnitude.
+
+## Historical SPC acquisition
+
+Run a bounded archive request with:
+
+```bash
+npm run fetch:spc-outlooks -- --start 2024-05-20 --end 2024-05-22 --days day1,day2,day3
+```
+
+Use `--dry-run` to enumerate matching issuance pages without downloading linked products. Raw products default to `data/spc/downloads/`, which is intentionally ignored by Git. Never commit `.part` files, raw archive ZIPs, or credentials.

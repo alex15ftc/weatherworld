@@ -1,6 +1,6 @@
 {
   "name": "fake-plains-weather-simulator",
-  "version": "2.32.6",
+  "version": "2.34.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -99,11 +99,22 @@
     "fetch:noaa-events": "node scripts/fetch-noaa-storm-events.mjs",
     "select:analog-days": "node scripts/select-noaa-candidate-days.mjs",
     "select:priority-analogs": "node scripts/select-analog-priority-batches.mjs",
-    "derive:era5": "C:\\Users\\alex1\\AppData\\Local\\Programs\\Python\\Python312\\python.exe scripts/derive-era5-analog-summaries.py",
+    "derive:era5": "python scripts/derive-era5-analog-summaries.py",
     "merge:noaa-events": "node scripts/merge-noaa-storm-events.mjs",
-    "build:analogs": "node scripts/build-historical-analog-catalog.mjs",
     "test:calibration-aggregation": "node tests/setup-calibration-aggregation-2.33.4.mjs",
     "test:2.32.6": "node tests/projected-storm-corridor-2.32.6.mjs && node tests/overlay-toggle-rendering-2.32.6.mjs",
-    "test:regression-2.32.6": "npm run test:regression-2.32.5 && npm run test:2.32.6"
+    "test:regression-2.32.6": "npm run test:regression-2.32.5 && npm run test:2.32.6",
+    "test:2.33.0": "node tests/structural-realism-2.33.0.mjs && node tests/setup-physical-analogs-2.33.0.mjs && node tests/system-derived-boundaries-2.33.0.mjs",
+    "test:2.33.1": "node tests/live-surface-wind-and-12z-projection-2.33.1.mjs",
+    "test:2.33.2": "node tests/hazard-specific-corridors-2.33.2.mjs",
+    "test:2.33.3": "node tests/hazard-motion-models-2.33.3.mjs",
+    "test:2.33.4": "node tests/setup-calibration-aggregation-2.33.4.mjs",
+    "test:2.33.5": "node tests/boundary-relative-risk-placement-2.33.5.mjs",
+    "test:2.34.0": "node tests/historical-data-architecture-2.34.0.mjs",
+    "test:current": "npm run test:2.34.0 && npm run test:2.34.1 && npm run test:live-wind-12z && npm run test:hazard-corridors && npm run test:hazard-motion && npm run test:calibration-aggregation && npm run test:boundary-placement",
+    "test:regression-2.34.0": "npm run test:regression-2.32.6 && npm run test:2.33.0 && npm run test:current",
+    "fetch:spc-outlooks": "node scripts/fetch-spc-outlooks.mjs",
+    "test:2.34.1": "node tests/spc-outlook-acquisition-2.34.1.mjs",
+    "test:regression-2.34.1": "npm run test:regression-2.34.0 && npm run test:2.34.1"
   }
 }

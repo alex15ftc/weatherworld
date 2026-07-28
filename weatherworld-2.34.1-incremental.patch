@@ -1,0 +1,552 @@
+diff --git a/MILESTONE-2.34.1.md b/MILESTONE-2.34.1.md
+new file mode 100644
+index 0000000..b9bb2f3
+--- /dev/null
++++ b/MILESTONE-2.34.1.md
+@@ -0,0 +1,46 @@
++# Milestone 2.34.1 — SPC Outlook Acquisition
++
++## Purpose
++
++Build a reproducible, resumable acquisition layer for historical Storm Prediction Center convective outlook products. This milestone preserves original products and acquisition metadata; polygon interpretation is intentionally deferred to 2.34.2.
++
++## Added
++
++- Official SPC yearly archive enumeration for Day 1, Day 2, and Day 3 outlooks.
++- Date-range and forecast-day filtering.
++- Resumable original-artifact downloads with atomic `.part` writes.
++- SHA-256 checksums and byte counts for every preserved artifact.
++- Issuance and valid-time extraction from archived outlook pages.
++- Product manifests with source URLs, local paths, status, and pipeline version.
++- Duplicate issuance detection.
++- Missing date/product reporting.
++- A dry-run mode for auditing an archive request without downloading products.
++
++## Boundaries
++
++- No outlook polygons are parsed or normalized in this milestone.
++- No SPC forecast is allowed to influence scenario realization or historical forecast selection.
++- Raw downloaded products remain under `data/spc/downloads/` and are excluded from Git.
++- Manifests may be copied into a tracked metadata directory when a stable historical batch is approved.
++
++## Command
++
++```bash
++npm run fetch:spc-outlooks -- --start 2024-05-20 --end 2024-05-22 --days day1,day2,day3
++```
++
++Useful options:
++
++```text
++--output <directory>
++--manifest <file>
++--overwrite
++--dry-run
++```
++
++## Verification
++
++```bash
++npm run test:2.34.1
++npm run test:current
++```
+diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md
+index 4911cdf..04dbd7d 100644
+--- a/docs/DEVELOPMENT.md
++++ b/docs/DEVELOPMENT.md
+@@ -87,3 +87,13 @@ run.
+ - Put measurement results and optimization experiments in `PERFORMANCE.md`.
+ - Keep milestone notes short and link to tests that protect the behavior.
+ - Document units on every public field and distinguish signed CIN from CIN magnitude.
++
++## Historical SPC acquisition
++
++Run a bounded archive request with:
++
++```bash
++npm run fetch:spc-outlooks -- --start 2024-05-20 --end 2024-05-22 --days day1,day2,day3
++```
++
++Use `--dry-run` to enumerate matching issuance pages without downloading linked products. Raw products default to `data/spc/downloads/`, which is intentionally ignored by Git. Never commit `.part` files, raw archive ZIPs, or credentials.
+diff --git a/docs/HISTORICAL_DATA.md b/docs/HISTORICAL_DATA.md
+index bddcdbb..e0c5545 100644
+--- a/docs/HISTORICAL_DATA.md
++++ b/docs/HISTORICAL_DATA.md
+@@ -28,3 +28,15 @@ Raw ERA5, NOAA and SPC archives are not committed to Git. Git tracks download sc
+ 
+ ## Temporal coverage
+ Important cases should eventually use at least three-hourly data from the previous day through the following day so that moisture return, cap evolution, forcing and nocturnal transitions are represented.
++
++## SPC outlook acquisition (2.34.1)
++
++Historical SPC outlook acquisition is handled by `scripts/fetch-spc-outlooks.mjs` and the pure archive helpers in `js/historical/spc/SPCOutlookArchive.js`.
++
++The acquisition layer enumerates the official yearly SPC web archive, filters issuance pages by date and forecast day, and preserves each original linked artifact. Every artifact record includes its source URL, local relative path, byte length, download/cache status, and SHA-256 checksum. The manifest also stores issuance and valid timestamps recovered from the original product page.
++
++Downloads are resumable. Existing files are checksummed and recorded as cached unless `--overwrite` is supplied. New downloads are written to a `.part` file and atomically renamed only after the response completes. This prevents an interrupted request from masquerading as a complete product.
++
++The acquisition layer does not interpret risk geometry. Shapefile, KML, text, and HTML products remain original source artifacts until the policy-aware parser introduced in 2.34.2 creates normalized hazard products.
++
++The SPC archive describes itself as informational and potentially incomplete. Missing entries are therefore retained explicitly in the manifest rather than silently treated as null outlooks. The archive is available on the SPC site from January 23, 2003 onward.
+diff --git a/docs/ROADMAP.md b/docs/ROADMAP.md
+index c3f033f..210d1bf 100644
+--- a/docs/ROADMAP.md
++++ b/docs/ROADMAP.md
+@@ -2,7 +2,7 @@
+ 
+ **Status:** Source of truth  
+ **Baseline:** 2.33.5  
+-**Current milestone:** 2.34.0 — Historical SPC Outlook Foundation
++**Current milestone:** 2.34.1 — SPC Outlook Acquisition
+ 
+ This document is the authoritative roadmap for historical outlook, reanalysis, verification, forecast calibration, and later storm-realization work. Milestone documents describe completed implementation details; this roadmap defines intended sequencing and scope.
+ 
+@@ -26,10 +26,11 @@ This document is the authoritative roadmap for historical outlook, reanalysis, v
+ - Add no-outcome-leakage and timestamp-alignment tests.
+ - Establish a migration path for consolidating the duplicate analog engines.
+ 
+-### 2.34.1 — SPC outlook acquisition
++### 2.34.1 — SPC outlook acquisition — Complete
+ 
+-- Add resumable archive download, product manifests, checksums, duplicate detection, and missing-product reporting.
+-- Preserve original source files and their issued/valid timestamps.
++- Added resumable archive download, product manifests, SHA-256 checksums, duplicate detection, and missing-product reporting.
++- Preserves original source files, source URLs, issued timestamps, and valid timestamps.
++- Added archive request dry runs and atomic partial-file replacement.
+ 
+ ### 2.34.2 — SPC product parsing
+ 
+diff --git a/js/historical/spc/SPCOutlookArchive.js b/js/historical/spc/SPCOutlookArchive.js
+new file mode 100644
+index 0000000..ad4ea1d
+--- /dev/null
++++ b/js/historical/spc/SPCOutlookArchive.js
+@@ -0,0 +1,181 @@
++export const SPC_ARCHIVE_BASE_URL = 'https://www.spc.noaa.gov/products/outlook/archive';
++export const SPC_ACQUISITION_VERSION = '2.34.1';
++export const SPC_FORECAST_DAYS = Object.freeze(['day1', 'day2', 'day3']);
++
++const ARCHIVE_FILE_RE = /day([123])otlk_(\d{8})_(\d{4})\.html/gi;
++const VALID_RE = /\bValid\s+(\d{6})Z\s*-\s*(\d{6})Z\b/i;
++const LINK_RE = /\bhref\s*=\s*["']([^"']+)["']/gi;
++
++export function buildSpcArchiveYearUrl(year, baseUrl = SPC_ARCHIVE_BASE_URL) {
++  const normalizedYear = normalizeYear(year);
++  return `${stripTrailingSlash(baseUrl)}/${normalizedYear}/`;
++}
++
++export function parseSpcArchiveListing(html, { year, baseUrl = SPC_ARCHIVE_BASE_URL } = {}) {
++  const normalizedYear = normalizeYear(year);
++  const found = [];
++  const seen = new Set();
++  for (const match of String(html ?? '').matchAll(ARCHIVE_FILE_RE)) {
++    const forecastDay = `day${match[1]}`;
++    const issueDate = match[2];
++    const cycle = match[3];
++    const fileName = `day${match[1]}otlk_${issueDate}_${cycle}.html`;
++    const identity = `${forecastDay}:${issueDate}:${cycle}`;
++    if (seen.has(identity)) continue;
++    seen.add(identity);
++    found.push(Object.freeze({
++      identity,
++      forecastDay,
++      issueDate,
++      cycle,
++      year: normalizedYear,
++      fileName,
++      url: new URL(fileName, buildSpcArchiveYearUrl(normalizedYear, baseUrl)).href
++    }));
++  }
++  return Object.freeze(found.sort(compareArchiveEntries));
++}
++
++export function extractSpcArtifactLinks(html, pageUrl) {
++  const accepted = [];
++  const seen = new Set();
++  for (const match of String(html ?? '').matchAll(LINK_RE)) {
++    let url;
++    try { url = new URL(decodeHtml(match[1]), pageUrl); } catch { continue; }
++    if (!/^https?:$/i.test(url.protocol)) continue;
++    const fileName = url.pathname.split('/').filter(Boolean).at(-1) ?? '';
++    const type = classifyArtifact(fileName, url.pathname);
++    if (!type || seen.has(url.href)) continue;
++    seen.add(url.href);
++    accepted.push(Object.freeze({ type, fileName: safeFileName(fileName || `${type}.dat`), url: url.href }));
++  }
++  return Object.freeze(accepted);
++}
++
++export function extractSpcProductMetadata(html, archiveEntry) {
++  const text = htmlToText(html);
++  const validMatch = text.match(VALID_RE);
++  const issuedAt = issuanceIso(archiveEntry.issueDate, archiveEntry.cycle);
++  let validStart = null;
++  let validEnd = null;
++  if (validMatch) {
++    validStart = resolveDayHourMinute(validMatch[1], issuedAt);
++    validEnd = resolveDayHourMinute(validMatch[2], validStart ?? issuedAt, { mustFollow: validStart });
++  }
++  const productCode = text.match(/\bSPC\s+AC\s+(\d{6})\b/i)?.[1] ?? null;
++  return Object.freeze({
++    issuedAt,
++    validStart,
++    validEnd,
++    productCode,
++    forecastDay: archiveEntry.forecastDay,
++    issueDate: archiveEntry.issueDate,
++    cycle: archiveEntry.cycle
++  });
++}
++
++export function createSpcAcquisitionManifest({ requested, products = [], missing = [], duplicates = [], generatedAt = new Date().toISOString() }) {
++  return Object.freeze({
++    schemaVersion: SPC_ACQUISITION_VERSION,
++    source: Object.freeze({
++      agency: 'NOAA/NWS Storm Prediction Center',
++      archiveBaseUrl: SPC_ARCHIVE_BASE_URL,
++      informationalArchiveNotice: true
++    }),
++    requested: deepFreeze({ ...requested }),
++    generatedAt: new Date(generatedAt).toISOString(),
++    summary: Object.freeze({
++      productCount: products.length,
++      artifactCount: products.reduce((sum, product) => sum + (product.artifacts?.length ?? 0), 0),
++      missingCount: missing.length,
++      duplicateCount: duplicates.length
++    }),
++    products: deepFreeze(products),
++    missing: deepFreeze(missing),
++    duplicates: deepFreeze(duplicates)
++  });
++}
++
++export function findDuplicateSpcProducts(products = []) {
++  const byIdentity = new Map();
++  for (const product of products) {
++    const identity = product.identity ?? `${product.forecastDay}:${product.issueDate}:${product.cycle}`;
++    const rows = byIdentity.get(identity) ?? [];
++    rows.push(product);
++    byIdentity.set(identity, rows);
++  }
++  return Object.freeze([...byIdentity.entries()]
++    .filter(([, rows]) => rows.length > 1)
++    .map(([identity, rows]) => Object.freeze({
++      identity,
++      count: rows.length,
++      sourceUrls: Object.freeze(rows.map(row => row.sourceUrl ?? row.url ?? null))
++    })));
++}
++
++export function listMissingRequestedDates(entries, { startDate, endDate, forecastDays = SPC_FORECAST_DAYS }) {
++  const present = new Set(entries.map(entry => `${entry.forecastDay}:${entry.issueDate}`));
++  const missing = [];
++  for (const date of dateRange(startDate, endDate)) {
++    const compact = date.replaceAll('-', '');
++    for (const forecastDay of forecastDays) {
++      if (!present.has(`${forecastDay}:${compact}`)) missing.push(Object.freeze({ forecastDay, issueDate: compact, reason: 'no-archive-entry' }));
++    }
++  }
++  return Object.freeze(missing);
++}
++
++export function normalizeDateInput(value, path = 'date') {
++  const text = String(value ?? '').trim();
++  const match = text.match(/^(\d{4})-?(\d{2})-?(\d{2})$/);
++  if (!match) throw new TypeError(`${path} must be YYYY-MM-DD or YYYYMMDD`);
++  const iso = `${match[1]}-${match[2]}-${match[3]}`;
++  const date = new Date(`${iso}T00:00:00Z`);
++  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== iso) throw new RangeError(`${path} is not a valid calendar date`);
++  return iso;
++}
++
++function classifyArtifact(fileName, pathname) {
++  const lower = `${fileName} ${pathname}`.toLowerCase();
++  if (/\.zip(?:$|\?)/.test(lower) || /-shp\b/.test(lower)) return 'shapefile';
++  if (/\.kml(?:$|\?)/.test(lower)) return 'kml';
++  if (/\.txt(?:$|\?)/.test(lower) || /ptsd[y3]/.test(lower)) return 'text';
++  if (/\.html?(?:$|\?)/.test(lower)) return 'html';
++  return null;
++}
++function issuanceIso(issueDate, cycle) {
++  const normalizedDate = normalizeDateInput(issueDate, 'issueDate');
++  const hour = Number(cycle.slice(0, 2));
++  const minute = Number(cycle.slice(2, 4));
++  if (hour > 23 || minute > 59) throw new RangeError('cycle must be HHMM');
++  return `${normalizedDate}T${cycle.slice(0, 2)}:${cycle.slice(2, 4)}:00.000Z`;
++}
++function resolveDayHourMinute(ddhhmm, referenceIso, { mustFollow = null } = {}) {
++  const reference = new Date(referenceIso);
++  const day = Number(ddhhmm.slice(0, 2));
++  const hour = Number(ddhhmm.slice(2, 4));
++  const minute = Number(ddhhmm.slice(4, 6));
++  const candidates = [-1, 0, 1].map(monthOffset => new Date(Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth() + monthOffset, day, hour, minute)));
++  const floor = mustFollow ? new Date(mustFollow).getTime() : -Infinity;
++  const viable = candidates.filter(candidate => candidate.getTime() >= floor).sort((a, b) => Math.abs(a - reference) - Math.abs(b - reference));
++  return (viable[0] ?? candidates.sort((a, b) => Math.abs(a - reference) - Math.abs(b - reference))[0]).toISOString();
++}
++function htmlToText(html) { return decodeHtml(String(html ?? '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')); }
++function decodeHtml(value) { return String(value).replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'").replace(/&lt;/gi, '<').replace(/&gt;/gi, '>'); }
++function safeFileName(value) { return String(value).replace(/[^A-Za-z0-9._-]/g, '_'); }
++function stripTrailingSlash(value) { return String(value).replace(/\/+$/, ''); }
++function normalizeYear(year) { const number = Number(year); if (!Number.isInteger(number) || number < 2003 || number > 2200) throw new RangeError('year must be an integer from 2003 through 2200'); return number; }
++function compareArchiveEntries(a, b) { return a.issueDate.localeCompare(b.issueDate) || a.forecastDay.localeCompare(b.forecastDay) || a.cycle.localeCompare(b.cycle); }
++function dateRange(start, end) {
++  const first = new Date(`${normalizeDateInput(start, 'startDate')}T00:00:00Z`);
++  const last = new Date(`${normalizeDateInput(end, 'endDate')}T00:00:00Z`);
++  if (last < first) throw new RangeError('endDate must not precede startDate');
++  const values = [];
++  for (let date = first; date <= last; date = new Date(date.getTime() + 86400000)) values.push(date.toISOString().slice(0, 10));
++  return values;
++}
++function deepFreeze(value) {
++  if (value == null || typeof value !== 'object' || Object.isFrozen(value)) return value;
++  if (Array.isArray(value)) value.forEach(deepFreeze); else Object.values(value).forEach(deepFreeze);
++  return Object.freeze(value);
++}
+diff --git a/package.json b/package.json
+index 7d7f2de..2896307 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "fake-plains-weather-simulator",
+-  "version": "2.34.0",
++  "version": "2.34.1",
+   "private": true,
+   "type": "module",
+   "scripts": {
+@@ -111,7 +111,10 @@
+     "test:2.33.4": "node tests/setup-calibration-aggregation-2.33.4.mjs",
+     "test:2.33.5": "node tests/boundary-relative-risk-placement-2.33.5.mjs",
+     "test:2.34.0": "node tests/historical-data-architecture-2.34.0.mjs",
+-    "test:current": "npm run test:2.33.1 && npm run test:2.33.2 && npm run test:2.33.3 && npm run test:2.33.4 && npm run test:2.33.5 && npm run test:2.34.0",
+-    "test:regression-2.34.0": "npm run test:regression-2.32.6 && npm run test:2.33.0 && npm run test:current"
++    "test:current": "npm run test:2.34.0 && npm run test:2.34.1 && npm run test:live-wind-12z && npm run test:hazard-corridors && npm run test:hazard-motion && npm run test:calibration-aggregation && npm run test:boundary-placement",
++    "test:regression-2.34.0": "npm run test:regression-2.32.6 && npm run test:2.33.0 && npm run test:current",
++    "fetch:spc-outlooks": "node scripts/fetch-spc-outlooks.mjs",
++    "test:2.34.1": "node tests/spc-outlook-acquisition-2.34.1.mjs",
++    "test:regression-2.34.1": "npm run test:regression-2.34.0 && npm run test:2.34.1"
+   }
+ }
+diff --git a/scripts/fetch-spc-outlooks.mjs b/scripts/fetch-spc-outlooks.mjs
+new file mode 100644
+index 0000000..59fcfc0
+--- /dev/null
++++ b/scripts/fetch-spc-outlooks.mjs
+@@ -0,0 +1,137 @@
++import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
++import path from 'node:path';
++import { createHash } from 'node:crypto';
++import {
++  SPC_ARCHIVE_BASE_URL,
++  SPC_FORECAST_DAYS,
++  buildSpcArchiveYearUrl,
++  createSpcAcquisitionManifest,
++  extractSpcArtifactLinks,
++  extractSpcProductMetadata,
++  findDuplicateSpcProducts,
++  listMissingRequestedDates,
++  normalizeDateInput,
++  parseSpcArchiveListing
++} from '../js/historical/spc/SPCOutlookArchive.js';
++
++const args = parseArgs(process.argv.slice(2));
++const startDate = normalizeDateInput(args.start, '--start');
++const endDate = normalizeDateInput(args.end ?? args.start, '--end');
++const forecastDays = normalizeForecastDays(args.days);
++const outputDirectory = path.resolve(args.output ?? 'data/spc/downloads');
++const manifestPath = path.resolve(args.manifest ?? path.join(outputDirectory, 'manifest.json'));
++const overwrite = Boolean(args.overwrite);
++const dryRun = Boolean(args['dry-run']);
++
++await mkdir(outputDirectory, { recursive: true });
++const years = yearRange(startDate, endDate);
++const archiveEntries = [];
++for (const year of years) {
++  const listingUrl = buildSpcArchiveYearUrl(year);
++  const listing = await fetchText(listingUrl);
++  archiveEntries.push(...parseSpcArchiveListing(listing, { year }).filter(entry =>
++    forecastDays.includes(entry.forecastDay) && withinDateRange(entry.issueDate, startDate, endDate)
++  ));
++}
++
++const products = [];
++for (const entry of archiveEntries) {
++  const productDirectory = path.join(outputDirectory, entry.issueDate, `${entry.forecastDay}-${entry.cycle}`);
++  const pagePath = path.join(productDirectory, entry.fileName);
++  const pageArtifact = dryRun
++    ? { type: 'html', fileName: entry.fileName, sourceUrl: entry.url, localPath: relative(outputDirectory, pagePath), status: 'planned', byteLength: null, sha256: null }
++    : await downloadArtifact(entry.url, pagePath, { overwrite });
++  let html = '';
++  if (!dryRun) html = await readFile(pagePath, 'utf8');
++  const linked = dryRun ? [] : extractSpcArtifactLinks(html, entry.url).filter(artifact => artifact.url !== entry.url);
++  const artifacts = [pageArtifact];
++  for (const artifact of linked) {
++    const target = path.join(productDirectory, artifact.fileName);
++    artifacts.push(await downloadArtifact(artifact.url, target, { overwrite, type: artifact.type }));
++  }
++  const metadata = dryRun ? { issuedAt: isoFromEntry(entry), validStart: null, validEnd: null, productCode: null } : extractSpcProductMetadata(html, entry);
++  products.push({
++    identity: entry.identity,
++    forecastDay: entry.forecastDay,
++    issueDate: entry.issueDate,
++    cycle: entry.cycle,
++    issuedAt: metadata.issuedAt,
++    validStart: metadata.validStart,
++    validEnd: metadata.validEnd,
++    productCode: metadata.productCode,
++    sourceUrl: entry.url,
++    artifacts
++  });
++  console.log(`${dryRun ? 'Planned' : 'Archived'} ${entry.identity} (${artifacts.length} artifact${artifacts.length === 1 ? '' : 's'})`);
++}
++
++const missing = listMissingRequestedDates(archiveEntries, { startDate, endDate, forecastDays });
++const duplicates = findDuplicateSpcProducts(products);
++const manifest = createSpcAcquisitionManifest({
++  requested: { startDate, endDate, forecastDays, outputDirectory: relative(process.cwd(), outputDirectory), dryRun },
++  products,
++  missing,
++  duplicates,
++  generatedAt: new Date().toISOString()
++});
++if (!dryRun) await atomicWrite(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
++console.log(`Products: ${manifest.summary.productCount}; artifacts: ${manifest.summary.artifactCount}; missing date/products: ${manifest.summary.missingCount}; duplicates: ${manifest.summary.duplicateCount}`);
++if (!dryRun) console.log(`Manifest: ${manifestPath}`);
++
++async function downloadArtifact(url, target, { overwrite: replace = false, type = null } = {}) {
++  await mkdir(path.dirname(target), { recursive: true });
++  if (!replace && await exists(target)) {
++    const bytes = await readFile(target);
++    return artifactRecord(url, target, bytes, 'cached', type);
++  }
++  const response = await fetch(url, { headers: { 'user-agent': 'WeatherWorld historical outlook acquisition/2.34.1' } });
++  if (!response.ok) throw new Error(`SPC download failed (${response.status}) for ${url}`);
++  const bytes = Buffer.from(await response.arrayBuffer());
++  const temporary = `${target}.part`;
++  await writeFile(temporary, bytes);
++  await rename(temporary, target);
++  return artifactRecord(url, target, bytes, 'downloaded', type);
++}
++function artifactRecord(url, target, bytes, status, type = null) {
++  return {
++    type: type ?? inferType(target),
++    fileName: path.basename(target),
++    sourceUrl: url,
++    localPath: relative(outputDirectory, target),
++    status,
++    byteLength: bytes.byteLength,
++    sha256: createHash('sha256').update(bytes).digest('hex')
++  };
++}
++function inferType(target) {
++  const lower = target.toLowerCase();
++  if (lower.endsWith('.zip')) return 'shapefile';
++  if (lower.endsWith('.kml')) return 'kml';
++  if (lower.endsWith('.txt')) return 'text';
++  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
++  return 'other';
++}
++function parseArgs(tokens) {
++  const result = {};
++  for (let index = 0; index < tokens.length; index++) {
++    const token = tokens[index];
++    if (!token.startsWith('--')) throw new TypeError(`Unexpected argument: ${token}`);
++    const key = token.slice(2);
++    if (['overwrite', 'dry-run'].includes(key)) result[key] = true;
++    else result[key] = tokens[++index];
++  }
++  if (!result.start) throw new TypeError('Usage: node scripts/fetch-spc-outlooks.mjs --start YYYY-MM-DD [--end YYYY-MM-DD] [--days day1,day2,day3] [--output directory] [--manifest file] [--overwrite] [--dry-run]');
++  return result;
++}
++function normalizeForecastDays(value) {
++  const days = value ? value.split(',').map(item => item.trim().toLowerCase()).filter(Boolean) : [...SPC_FORECAST_DAYS];
++  for (const day of days) if (!SPC_FORECAST_DAYS.includes(day)) throw new TypeError(`Unsupported forecast day: ${day}`);
++  return [...new Set(days)];
++}
++function yearRange(start, end) { const values = []; for (let year = Number(start.slice(0, 4)); year <= Number(end.slice(0, 4)); year++) values.push(year); return values; }
++function withinDateRange(compact, start, end) { const dashed = `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`; return dashed >= start && dashed <= end; }
++function isoFromEntry(entry) { return `${entry.issueDate.slice(0, 4)}-${entry.issueDate.slice(4, 6)}-${entry.issueDate.slice(6, 8)}T${entry.cycle.slice(0, 2)}:${entry.cycle.slice(2, 4)}:00.000Z`; }
++function relative(base, target) { return path.relative(base, target).replaceAll(path.sep, '/'); }
++async function fetchText(url) { const response = await fetch(url, { headers: { 'user-agent': 'WeatherWorld historical outlook acquisition/2.34.1' } }); if (!response.ok) throw new Error(`HTTP ${response.status}: ${url}`); return response.text(); }
++async function exists(target) { try { await access(target); return true; } catch { return false; } }
++async function atomicWrite(target, content) { await mkdir(path.dirname(target), { recursive: true }); const temporary = `${target}.part`; await writeFile(temporary, content); await rename(temporary, target); }
+diff --git a/tests/spc-outlook-acquisition-2.34.1.mjs b/tests/spc-outlook-acquisition-2.34.1.mjs
+new file mode 100644
+index 0000000..12088dc
+--- /dev/null
++++ b/tests/spc-outlook-acquisition-2.34.1.mjs
+@@ -0,0 +1,73 @@
++import assert from 'node:assert/strict';
++import {
++  buildSpcArchiveYearUrl,
++  createSpcAcquisitionManifest,
++  extractSpcArtifactLinks,
++  extractSpcProductMetadata,
++  findDuplicateSpcProducts,
++  listMissingRequestedDates,
++  parseSpcArchiveListing
++} from '../js/historical/spc/SPCOutlookArchive.js';
++
++const listing = `
++<a href="day1otlk_20240520_1300.html">Day 1</a>
++<a href="day1otlk_20240520_1300.html">duplicate link</a>
++<a href="day2otlk_20240520_1730.html">Day 2</a>
++<a href="day3otlk_20240521_0730.html">Day 3</a>`;
++const entries = parseSpcArchiveListing(listing, { year: 2024 });
++assert.equal(entries.length, 3, 'duplicate index links should collapse to one issuance');
++assert.equal(entries[0].identity, 'day1:20240520:1300');
++assert.equal(entries[0].url, `${buildSpcArchiveYearUrl(2024)}day1otlk_20240520_1300.html`);
++
++const page = `
++<html><body>
++<a href="day1otlk_20240520_1300-shp.zip">shapefile</a>
++<a href="KWNSPTSDY1_202405201300.txt">text</a>
++<a href="day1otlk_20240520_1300.kml">kml</a>
++<a href="javascript:void(0)">ignore</a>
++<pre>
++SPC AC 201245
++Day 1 Convective Outlook
++Valid 201300Z - 211200Z
++</pre>
++</body></html>`;
++const artifacts = extractSpcArtifactLinks(page, entries[0].url);
++assert.deepEqual(artifacts.map(item => item.type).sort(), ['kml', 'shapefile', 'text']);
++assert.ok(artifacts.every(item => item.url.startsWith('https://www.spc.noaa.gov/products/outlook/archive/2024/')));
++
++const metadata = extractSpcProductMetadata(page, entries[0]);
++assert.equal(metadata.issuedAt, '2024-05-20T13:00:00.000Z');
++assert.equal(metadata.validStart, '2024-05-20T13:00:00.000Z');
++assert.equal(metadata.validEnd, '2024-05-21T12:00:00.000Z');
++assert.equal(metadata.productCode, '201245');
++
++const missing = listMissingRequestedDates(entries, { startDate: '2024-05-20', endDate: '2024-05-21', forecastDays: ['day1', 'day2'] });
++assert.deepEqual(missing, [
++  { forecastDay: 'day1', issueDate: '20240521', reason: 'no-archive-entry' },
++  { forecastDay: 'day2', issueDate: '20240521', reason: 'no-archive-entry' }
++]);
++const duplicateRows = [
++  { ...entries[0], sourceUrl: 'https://example.test/a' },
++  { ...entries[0], sourceUrl: 'https://example.test/b' }
++];
++const duplicates = findDuplicateSpcProducts(duplicateRows);
++assert.equal(duplicates.length, 1);
++assert.equal(duplicates[0].count, 2);
++
++const manifest = createSpcAcquisitionManifest({
++  requested: { startDate: '2024-05-20', endDate: '2024-05-21', forecastDays: ['day1', 'day2'] },
++  products: [{ ...entries[0], issuedAt: metadata.issuedAt, validStart: metadata.validStart, validEnd: metadata.validEnd, artifacts: [
++    { type: 'html', sha256: 'a'.repeat(64), byteLength: 10 },
++    { type: 'text', sha256: 'b'.repeat(64), byteLength: 20 }
++  ] }],
++  missing,
++  duplicates,
++  generatedAt: '2024-05-22T00:00:00Z'
++});
++assert.equal(manifest.schemaVersion, '2.34.1');
++assert.equal(manifest.summary.productCount, 1);
++assert.equal(manifest.summary.artifactCount, 2);
++assert.equal(manifest.summary.missingCount, 2);
++assert.ok(Object.isFrozen(manifest.products));
++
++console.log('2.34.1 SPC outlook acquisition checks passed');
