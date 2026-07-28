@@ -1,6 +1,6 @@
 {
   "name": "fake-plains-weather-simulator",
-  "version": "2.34.2.2",
+  "version": "2.34.5.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -122,6 +122,22 @@
     "test:2.34.2.1": "node tests/spc-fetch-performance-2.34.2.1.mjs",
     "test:regression-2.34.2.1": "npm run test:regression-2.34.2 && npm run test:2.34.2.1",
     "test:2.34.2.2": "node tests/spc-targeted-discovery-2.34.2.2.mjs",
-    "test:regression-2.34.2.2": "npm run test:regression-2.34.2.1 && npm run test:2.34.2.2"
+    "test:regression-2.34.2.2": "npm run test:regression-2.34.2.1 && npm run test:2.34.2.2",
+    "test:2.34.3": "node tests/spc-polygon-rasterization-2.34.3.mjs",
+    "build:spc-dataset": "node scripts/build-spc-historical-dataset.mjs",
+    "test:2.34.4": "node tests/historical-outlook-dataset-2.34.4.mjs",
+    "test:regression-2.34.4": "npm run test:regression-2.34.3 && npm run test:2.34.4",
+    "historical:rasterize": "node scripts/historical-pipeline.mjs --stage rasterize",
+    "historical:cases": "node scripts/historical-pipeline.mjs --stage cases",
+    "historical:catalog": "node scripts/historical-pipeline.mjs --stage catalog",
+    "historical:build": "node scripts/historical-pipeline.mjs --stage build",
+    "historical:migrate": "node scripts/historical-pipeline.mjs --stage build --migrate",
+    "test:2.34.5": "node tests/historical-archive-pipeline-2.34.5.mjs",
+    "test:regression-2.34.5": "npm run test:regression-2.34.4 && npm run test:2.34.5",
+    "test:2.34.5.1": "node tests/spc-unified-categorical-2.34.5.1.mjs",
+    "test:regression-2.34.5.1": "npm run test:regression-2.34.5 && npm run test:2.34.5.1"
+  },
+  "dependencies": {
+    "shpjs": "^6.2.0"
   }
 }

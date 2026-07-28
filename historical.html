@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Historical Outlook Viewer · Weather World</title>
+  <link rel="stylesheet" href="css/historical.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><strong>Historical Outlook Viewer</strong><span>Weather World research tools</span></div>
+    <nav><a href="index.html">Fictional world</a><a aria-current="page" href="historical.html">Historical archive</a></nav>
+  </header>
+  <main>
+    <section class="notice"><strong>Coordinate-space separation:</strong> this page displays real-world historical SPC reference data. It is not the fictional Weather World map and is never aligned to fictional grid cells by row or column.</section>
+    <section class="controls">
+      <label>Historical case<select id="caseSelect"><option>Loading catalog…</option></select></label>
+      <label>Hazard layer<select id="hazardSelect"><option value="categorical">Categorical</option><option value="tornado">Tornado</option><option value="wind">Wind</option><option value="hail">Hail</option><option value="significantTornado">Significant tornado</option><option value="significantWind">Significant wind</option><option value="significantHail">Significant hail</option><option value="coverage">Coverage fraction</option></select></label>
+      <label class="check"><input id="gridToggle" type="checkbox" checked> Cell outlines</label>
+      <label>Opacity<input id="opacity" type="range" min="20" max="100" value="88"></label>
+    </section>
+    <section class="stats" id="stats"></section>
+    <section class="workspace">
+      <div class="canvas-wrap"><canvas id="outlookCanvas" width="1000" height="620" aria-label="Rasterized historical SPC outlook"></canvas><div id="status">Loading historical dataset…</div></div>
+      <aside id="inspector"><h2>Cell inspector</h2><p>Click a populated raster cell to inspect its hazards, coverage, coordinates, and source contour IDs.</p></aside>
+    </section>
+  </main>
+  <script type="module" src="js/pages/historicalOutlookPage.js"></script>
+</body>
+</html>

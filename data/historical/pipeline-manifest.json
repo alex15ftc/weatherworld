@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "2.34.5",
+  "generatedAt": "2026-07-28T20:24:58.849Z",
+  "stage": "build",
+  "sourceRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\spc\\downloads\\normalized",
+  "paths": {
+    "root": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical",
+    "rawSpc": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc",
+    "normalizedSpc": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
+    "rasterizedSpc": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\rasterized\\spc",
+    "cases": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\cases",
+    "catalog": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\catalog",
+    "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\pipeline-manifest.json",
+    "legacyDataset": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\spc-cases"
+  },
+  "counters": {
+    "scanned": 5,
+    "rasterized": 5,
+    "rasterSkipped": 0,
+    "casesBuilt": 5,
+    "casesSkipped": 0,
+    "failures": []
+  }
+}

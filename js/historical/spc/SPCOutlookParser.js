@@ -318,6 +318,7 @@ function enrichPolygon(polygon, polygonIndex) {
     bbox,
     areaKm2: round(Math.max(0, outerAreaKm2 - holesAreaKm2)),
     areaCells10km: round(Math.max(0, outerAreaKm2 - holesAreaKm2) / 100),
+    estimatedGridCells: Math.round(Math.max(0, outerAreaKm2 - holesAreaKm2) / 100),
     validation: { valid: true, closed: true, selfIntersections: 0 }
   });
 }
