@@ -9,6 +9,7 @@ data/cache/
 data/era5/
 data/noaa/
 data/spc/downloads/
+data/authority-checkpoint.json
 
 *.patch
 *.csv
