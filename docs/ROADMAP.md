@@ -2,7 +2,7 @@
 
 **Status:** Source of truth  
 **Baseline:** 2.33.5  
-**Current milestone:** 2.34.1 — SPC Outlook Acquisition
+**Current milestone:** 2.34.2 — SPC Product Parsing
 
 This document is the authoritative roadmap for historical outlook, reanalysis, verification, forecast calibration, and later storm-realization work. Milestone documents describe completed implementation details; this roadmap defines intended sequencing and scope.
 
@@ -32,10 +32,10 @@ This document is the authoritative roadmap for historical outlook, reanalysis, v
 - Preserves original source files, source URLs, issued timestamps, and valid timestamps.
 - Added archive request dry runs and atomic partial-file replacement.
 
-### 2.34.2 — SPC product parsing
+### 2.34.2 — SPC product parsing — Complete
 
-- Parse categorical, tornado, hail, wind, and significant-severe polygons.
-- Preserve original products and create policy-era-aware normalized products.
+- Parses categorical, tornado, hail, wind, and significant-severe polygons from KML and legacy LAT...LON products.
+- Preserves original products, source provenance, structured warnings, and policy-era-aware normalized products.
 
 ### 2.34.3 — Outlook rasterization
 

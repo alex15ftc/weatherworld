@@ -40,3 +40,11 @@ Downloads are resumable. Existing files are checksummed and recorded as cached u
 The acquisition layer does not interpret risk geometry. Shapefile, KML, text, and HTML products remain original source artifacts until the policy-aware parser introduced in 2.34.2 creates normalized hazard products.
 
 The SPC archive describes itself as informational and potentially incomplete. Missing entries are therefore retained explicitly in the manifest rather than silently treated as null outlooks. The archive is available on the SPC site from January 23, 2003 onward.
+
+## SPC product parsing (2.34.2)
+
+`js/historical/spc/SPCOutlookParser.js` converts preserved SPC KML and legacy `LAT...LON` text artifacts into a common polygon contract. It handles categorical, tornado, wind, hail, and hazard-specific significant-severe contours while retaining source labels and provenance.
+
+Parsing and normalization remain separate operations. Parsed products describe what was found in the source artifact, including structured warnings. Normalized products group those contours by hazard and attach the applicable SPC policy era. The original acquisition record remains unchanged beside the parsed and normalized representations.
+
+Malformed, unclassified, or duplicate contours are reported rather than silently interpreted. Rasterization to the simulator grid is intentionally deferred to 2.34.3.
