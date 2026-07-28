@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { Storm } from '../js/storms/Storm.js?v=2.20.0';
+import { createStormInternalField, evolveStormInternalField, sampleStormField, serializeStormInternalField, hydrateStormInternalField } from '../js/storms/StormInternalField.js?v=2.20.0';
+const storm=new Storm({id:'TEST',xKm:250,yKm:250,velocityEastKph:45,velocityNorthKph:20,sourceCell:{x:25,y:25},createdHourUtc:18,modeHint:'discrete supercell'});
+storm.ageHours=2; storm.intensity=.9; storm.organization=.9; storm.coldPoolStrength=.55; storm.lifecycleState='mature'; storm.orientationDeg=45;
+const env={cape:3200,bulkShear:52,srh:310,dewpoint:68,lcl:750,forcing:.72,effectiveInflow:.88,readiness:.9};
+createStormInternalField(storm,env,42);
+for(let i=0;i<18;i++) evolveStormInternalField(storm,env,1/12);
+assert.equal(storm.internalField.width,32);
+assert.ok(storm.internalField.maxUpdraft>.2,'updraft field should derive from buoyancy/inflow');
+assert.ok(storm.internalField.maxHail>.05,'hail field should derive from updraft/shear');
+assert.ok(storm.internalField.maxVorticity>.05,'rotation should derive from SRH/shear');
+const packed=serializeStormInternalField(storm.internalField); assert.equal(packed.encoding,'u8-base64'); assert.equal(hydrateStormInternalField(packed).rain.length,1024);
+assert.ok(sampleStormField(storm.internalField,-8,-2,'updraft')>=0);
+console.log('Storm internal fields passed', {updraft:storm.internalField.maxUpdraft,hail:storm.internalField.maxHail,vorticity:storm.internalField.maxVorticity,debris:storm.internalField.maxDebris});

@@ -1,0 +1,142 @@
+{
+  "seeds": [
+    2,
+    3,
+    69
+  ],
+  "hours": 24,
+  "stormsCreated": 35,
+  "tornadoes": 0,
+  "rows": [
+    {
+      "seed": 2,
+      "setupType": "high_plains_upslope",
+      "narrative": "giant_hail",
+      "topology": [],
+      "event": {
+        "stormsCreated": 0,
+        "initiations": 0,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 0,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 12,
+        "peakConvectiveHourByDay": {
+          "day1": 12,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": null,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0,
+        "dominantModes": []
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 58.8743724,
+        "forecastRisk": "SLGT",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    },
+    {
+      "seed": 3,
+      "setupType": "northwest_flow",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 0,
+        "initiations": 0,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 0,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 12,
+        "peakConvectiveHourByDay": {
+          "day1": 12,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": null,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0,
+        "dominantModes": []
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.9997664,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    },
+    {
+      "seed": 69,
+      "setupType": "elevated_mcs",
+      "narrative": "progressive_mcs",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 35,
+        "initiations": 35,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 19,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 15,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 22.5,
+        "peakConvectiveHourByDay": {
+          "day1": 22.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 22,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.3614415992692411,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 104
+          },
+          {
+            "mode": "MCS",
+            "count": 91
+          },
+          {
+            "mode": "multicell",
+            "count": 55
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 53.686089466666665,
+        "forecastRisk": "SLGT",
+        "observedRisk": "ENH"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 27.3 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling.",
+        "Convective-initiation forecasts cover too much area relative to realized initiation."
+      ]
+    }
+  ]
+}

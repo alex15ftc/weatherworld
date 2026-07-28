@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { SIMULATION_CONFIG, CELL_SIZE_MILES, CELL_SIZE_KM } from '../js/simulationConfig.js';
+import { Atmosphere } from '../js/atmosphere.js';
+assert.equal(CELL_SIZE_MILES,10);
+assert.ok(Math.abs(CELL_SIZE_KM-16.09344)<1e-9);
+const world=new Atmosphere(50,50);
+assert.equal(world.domainWidthMiles,500);
+assert.equal(world.domainHeightMiles,500);
+assert.ok(Math.abs(world.domainWidthKm-804.672)<1e-6);
+const runtime=await import('../server/WeatherAuthorityRuntime.js');
+const source=await import('node:fs').then(fs=>fs.readFileSync(new URL('../server/WeatherAuthorityRuntime.js',import.meta.url),'utf8'));
+assert.match(source,/case 'vtp': return cell\.derived\?\.vtp \?\? 0/);
+const tileSource=await import('node:fs').then(fs=>fs.readFileSync(new URL('../server/tiles/ProductTileRenderer.js',import.meta.url),'utf8'));
+assert.match(tileSource,/vtp:\{min:0,max:5/);
+console.log('10-mile geometry and VTP live-layer regression: ok');

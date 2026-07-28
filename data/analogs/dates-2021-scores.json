@@ -1,0 +1,50 @@
+[
+  {
+    "date": "2021-12-10",
+    "score": 64.18,
+    "band": "major",
+    "reportCount": 212,
+    "counts": {
+      "tornado": 71,
+      "significantTornado": 36,
+      "violentTornado": 8,
+      "hail": 25,
+      "significantHail": 1,
+      "wind": 116,
+      "destructiveWind": 1
+    },
+    "components": {
+      "significantTornado": 0.950212931632136,
+      "violentTornado": 0.8646647167633873,
+      "significantHail": 0.028167124967018897,
+      "destructiveWind": 0.018017526141772544,
+      "spatialCoverage": 0.8009536749696808,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 1
+  },
+  {
+    "date": "2021-12-15",
+    "score": 60.5,
+    "band": "major",
+    "reportCount": 785,
+    "counts": {
+      "tornado": 167,
+      "significantTornado": 39,
+      "violentTornado": 0,
+      "hail": 28,
+      "significantHail": 4,
+      "wind": 590,
+      "destructiveWind": 24
+    },
+    "components": {
+      "significantTornado": 0.961225792168278,
+      "violentTornado": 0,
+      "significantHail": 0.10799693854690562,
+      "destructiveWind": 0.35361736503667873,
+      "spatialCoverage": 0.9823849727392704,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 1
+  }
+]

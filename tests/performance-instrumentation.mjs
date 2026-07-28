@@ -1,0 +1,10 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+const read=p=>fs.readFileSync(new URL(`../${p}`,import.meta.url),"utf8");
+const server=read("server/index.js"), client=read("js/api/WeatherProductClient.js"), dashboard=read("performance.html");
+assert.match(server,/\/api\/performance/);
+assert.match(server,/server-timing/);
+assert.match(client,/profiler\.request/);
+assert.match(dashboard,/Performance diagnostics/);
+assert.ok(fs.existsSync(new URL("../js/performance/PerformanceProfiler.js",import.meta.url)));
+console.log("performance instrumentation regression passed");

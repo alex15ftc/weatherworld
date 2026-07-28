@@ -1,0 +1,408 @@
+{
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    9,
+    20,
+    69
+  ],
+  "hours": 24,
+  "stormsCreated": 167,
+  "tornadoes": 13,
+  "rows": [
+    {
+      "seed": 1,
+      "setupType": "warm_front_wave",
+      "narrative": "classic_tornado_outbreak",
+      "topology": [
+        "cold",
+        "warm"
+      ],
+      "event": {
+        "stormsCreated": 12,
+        "initiations": 12,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 10,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 7,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 23.5,
+        "peakConvectiveHourByDay": {
+          "day1": 23.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 23,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.4854219367767531,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 116
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 57.21358826666667,
+        "forecastRisk": "SLGT",
+        "observedRisk": "SLGT"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 16.5 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    },
+    {
+      "seed": 2,
+      "setupType": "high_plains_upslope",
+      "narrative": "giant_hail",
+      "topology": [],
+      "event": {
+        "stormsCreated": 1,
+        "initiations": 1,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 1,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 1,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 22,
+        "peakConvectiveHourByDay": {
+          "day1": 22,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 21,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.3667969524907511,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 10
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.52936426666666,
+        "forecastRisk": "MRGN",
+        "observedRisk": "SLGT"
+      },
+      "recommendations": [
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    },
+    {
+      "seed": 3,
+      "setupType": "northwest_flow",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 0,
+        "initiations": 0,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 0,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 12,
+        "peakConvectiveHourByDay": {
+          "day1": 12,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": null,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0,
+        "dominantModes": []
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.9996304,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    },
+    {
+      "seed": 4,
+      "setupType": "progressive_cold_front",
+      "narrative": "derecho",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 9,
+        "initiations": 9,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 3,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 3,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 22,
+        "peakConvectiveHourByDay": {
+          "day1": 22,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 12,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.25904688252455216,
+        "dominantModes": [
+          {
+            "mode": "elevated convection",
+            "count": 30
+          },
+          {
+            "mode": "MCS",
+            "count": 15
+          },
+          {
+            "mode": "discrete supercell",
+            "count": 7
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 57.559492266666666,
+        "forecastRisk": "SLGT",
+        "observedRisk": "SLGT"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 6.4 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    },
+    {
+      "seed": 5,
+      "setupType": "dryline_cyclone",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold",
+        "warm",
+        "dryline"
+      ],
+      "event": {
+        "stormsCreated": 30,
+        "initiations": 30,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 20,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 15,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 21.5,
+        "peakConvectiveHourByDay": {
+          "day1": 21.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 20,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.4839286485203922,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 297
+          },
+          {
+            "mode": "multicell",
+            "count": 8
+          },
+          {
+            "mode": "elevated convection",
+            "count": 2
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 51.829497866666664,
+        "forecastRisk": "ENH",
+        "observedRisk": "ENH"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 39.1 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    },
+    {
+      "seed": 9,
+      "setupType": "shortwave_ejection",
+      "narrative": "loaded_gun",
+      "topology": [
+        "cold",
+        "warm"
+      ],
+      "event": {
+        "stormsCreated": 42,
+        "initiations": 39,
+        "totalTornadoes": 13,
+        "maximumConcurrentStorms": 24,
+        "maximumConcurrentTornadoes": 4,
+        "maximumConcurrentSevereHailStorms": 22,
+        "maximumConcurrentSevereWindStorms": 6,
+        "peakConvectiveHourUtc": 23,
+        "peakConvectiveHourByDay": {
+          "day1": 23,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 19,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.7097027331801102,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 426
+          },
+          {
+            "mode": "multicell",
+            "count": 30
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 30.04348094416438,
+        "forecastRisk": "SLGT",
+        "observedRisk": "HIGH"
+      },
+      "recommendations": [
+        "Tornado probabilities are underforecast on average by 13.5 percentage points.",
+        "Tornado detection is weak; inspect hazard thresholds and storm-environment coupling.",
+        "Hail probabilities are underforecast on average by 60.5 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling.",
+        "Wind probabilities are underforecast on average by 15.1 percentage points.",
+        "Wind detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    },
+    {
+      "seed": 20,
+      "setupType": "lee_cyclogenesis",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold",
+        "warm",
+        "dryline"
+      ],
+      "event": {
+        "stormsCreated": 25,
+        "initiations": 25,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 20,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 8,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 23.5,
+        "peakConvectiveHourByDay": {
+          "day1": 23.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 20,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.4830697622885554,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 213
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 55.472001866666666,
+        "forecastRisk": "ENH",
+        "observedRisk": "ENH"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 19.5 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    },
+    {
+      "seed": 69,
+      "setupType": "elevated_mcs",
+      "narrative": "progressive_mcs",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 48,
+        "initiations": 48,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 24,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 18,
+        "maximumConcurrentSevereWindStorms": 12,
+        "peakConvectiveHourUtc": 20.5,
+        "peakConvectiveHourByDay": {
+          "day1": 20.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 20,
+          "day2": 36,
+          "day3": null
+        },
+        "peakStormIntensity": 0.36635145292601784,
+        "dominantModes": [
+          {
+            "mode": "MCS",
+            "count": 265
+          },
+          {
+            "mode": "multicell",
+            "count": 43
+          },
+          {
+            "mode": "discrete supercell",
+            "count": 30
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 52.3170184,
+        "forecastRisk": "SLGT",
+        "observedRisk": "MDT"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 27.6 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling.",
+        "Wind probabilities are underforecast on average by 23.1 percentage points.",
+        "Wind detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    }
+  ]
+}

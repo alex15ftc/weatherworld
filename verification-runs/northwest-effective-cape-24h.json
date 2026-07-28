@@ -1,0 +1,59 @@
+{
+  "seeds": [
+    3
+  ],
+  "hours": 24,
+  "stormsCreated": 24,
+  "tornadoes": 0,
+  "rows": [
+    {
+      "seed": 3,
+      "setupType": "northwest_flow",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 24,
+        "initiations": 24,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 11,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 4,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 22,
+        "peakConvectiveHourByDay": {
+          "day1": 22,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 21,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.2120981381842287,
+        "dominantModes": [
+          {
+            "mode": "elevated convection",
+            "count": 76
+          },
+          {
+            "mode": "discrete supercell",
+            "count": 27
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 58.867652799999995,
+        "forecastRisk": "MRGN",
+        "observedRisk": "SLGT"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 10.7 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    }
+  ]
+}

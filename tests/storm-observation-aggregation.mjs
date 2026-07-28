@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { Atmosphere } from '../js/atmosphere.js?v=2.17.0';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js?v=2.17.0';
+import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js?v=2.17.0';
+import { createRadarSnapshot } from '../js/radar/RadarRenderer.js?v=2.17.0';
+const world=new Atmosphere(20,20);initializeEvolution(world,generateScenario(world,161600));
+world.storms=[{id:'S-EDGE',active:true,previousPositionKm:{x:50,y:50},positionKm:{x:80,y:60},velocityKph:{east:60,north:-20},lifecycleState:'mature',intensity:.8,organization:.8,updraftStrength:.8,rotationStrength:.6,orientationDeg:20,mode:'discrete supercell',radar:{radiusXKm:25,radiusYKm:16,maxReflectivityDbz:70},hazards:{tornadoProbability:.5,hailProbability:.5,windProbability:.4},eventTags:['supercell']}];
+world.validHourUtc+=.5;const {publishStormObservations}=await import('../js/storms/StormObservationLayer.js?v=2.17.0');publishStormObservations(world,.5);
+assert.ok(world.stormObservationLayer.reports.length>=25,'one-minute reports should be emitted through a 30-minute atmospheric step');
+assert.ok(Object.keys(world.stormObservationLayer.shards).length>=1);
+assert.ok(world.stormObservationLayer.radarFrames.length>=2,'five-minute radar frames should be aggregated');
+const snap=createRadarSnapshot(world);assert.ok(snap.storms.some(s=>s.id==='S-EDGE'));assert.ok(snap.stormObservationMeta.sequence>0);
+console.log('storm observation aggregation passed');

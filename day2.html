@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Day 2 Outlook · Fake Plains Weather</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body data-page="day2">
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a class="perf-link" href="./performance.html">Performance</a><span id="authorityModeBadge" class="authority-mode-badge" title="The page automatically uses the Node authority when available">Authority: auto</span></nav>
+  <aside class="panel controls">
+    <div>
+      <p class="eyebrow">Atmospheric sandbox</p>
+      <h1>Fake Plains Weather Simulator</h1>
+      <p class="muted">Run a perpetual, accelerated weather world with live analysis and predictive Day 1–3 outlooks.</p>
+    </div>
+
+    <div class="analysis-card">
+      <span>Diagnosed outlook</span>
+      <strong id="diagnosedRisk">—</strong>
+      <small id="diagnosedDescription">Generated from the seed's atmosphere.</small>
+      <div class="analysis-divider"></div>
+      <div class="analysis-row"><span>Primary hazard</span><b id="primaryHazard">—</b></div>
+      <div class="analysis-row"><span>Storm mode</span><b id="stormMode">—</b></div>
+      <div class="analysis-copy">
+        <span>Supporting factors</span>
+        <ul id="analysisReasons"><li>Generate a scenario to analyze it.</li></ul>
+      </div>
+      <div class="analysis-copy">
+        <span>Limiting factors</span>
+        <ul id="analysisLimitations"><li>None analyzed yet.</li></ul>
+      </div>
+    </div>
+
+    <div class="analysis-card forecast-discussion-card">
+      <span>Synoptic pattern</span>
+      <strong id="synopticPattern">—</strong>
+      <small id="synopticStage">Pattern diagnosis initializing…</small>
+      <div class="analysis-divider"></div>
+      <div class="analysis-row"><span>Analog ensemble</span><b id="analogConfidence">—</b></div>
+      <div class="analysis-copy">
+        <span>Outlook discussion</span>
+        <p id="outlookDiscussion" class="outlook-discussion">Generate a scenario to create the forecast discussion.</p>
+      </div>
+    </div>
+
+    <label>
+      Outlook product
+      <select id="outlookDay">
+        <option value="day1">Day 1 · updates every 6 simulated hours</option>
+        <option value="day2">Day 2 · updates every 12 simulated hours</option>
+        <option value="day3">Day 3 · updates every 24 simulated hours</option>
+      </select>
+      <small id="outlookIssueLabel" class="muted">Predictive outlook cycle initializing…</small>
+    </label>
+
+    <label>
+      Display layer
+      <select id="layer">
+        <option value="risk">Categorical outlook</option>
+        <option value="tornadoRisk">Tornado probability</option>
+        <option value="windRisk">Wind probability</option>
+        <option value="hailRisk">Hail probability</option>
+      </select>
+    </label>
+
+    <div class="row two">
+      <label>Columns<input id="gridWidth" type="number" value="50" readonly aria-readonly="true" /></label>
+      <label>Rows<input id="gridHeight" type="number" value="50" readonly aria-readonly="true" /></label>
+    </div>
+    <small id="domainSize" class="muted">500 × 500 km · 2,500 cells · fixed authoritative grid</small>
+
+    <label>
+      Seed
+      <div class="row seed-row">
+        <input id="seed" type="number" value="20270503" />
+        <button id="randomSeed" type="button" class="secondary">Random</button>
+      </div>
+    </label>
+
+    <div class="button-stack">
+      <button id="generate" type="button">Generate 12Z atmosphere</button>
+      <div class="row two"><button id="stepTime" type="button" class="secondary">Advance +30 min</button><button id="playTime" type="button" class="secondary">Fast preview</button></div>
+      <button id="liveMode" type="button" class="secondary">Start live world clock</button>
+      <small id="liveStatus" class="muted">Paused · live cadence: 2 real minutes = 30 simulated minutes · 96 real minutes per day</small>
+      <label>Simulation time<input id="simulationTime" type="range" min="12" max="84" step="0.5" value="12" /><small id="timeLabel">12Z Day 1</small><small class="muted">Atmosphere evolves every 30 simulated minutes. Day 1/2/3 products update on 6/12/24-hour cycles.</small></label>
+      <button id="toggleFeatures" type="button" class="secondary active">Hide boundaries</button>
+      <button id="toggleRegions" type="button" class="secondary active">Hide regions</button>
+      <button id="toggleRegionLabels" type="button" class="secondary active">Hide region labels</button>
+      <button id="toggleGrid" type="button" class="secondary active">Hide 10 mi grid</button>
+      <button id="toggleSmoothing" type="button" class="secondary active">Use straight geometry</button>
+    </div>
+
+    <div class="legend-card">
+      <div class="legend-title"><span id="legendLabel">Surface temperature</span><span id="legendUnits">°F</span></div>
+      <div id="legendGradient" class="legend-gradient"></div>
+      <div class="legend-scale"><span id="legendMin"></span><span id="legendMax"></span></div>
+    </div>
+
+    <div class="boundary-key">
+      <strong>Map symbols</strong>
+      <span><i class="cold"></i> Cold front · triangles</span>
+      <span><i class="warm"></i> Warm front · semicircles</span>
+      <span><i class="dry"></i> Dryline · scallops</span>
+      <span>H/L pressure centers · troughs · shortwaves · jet axes</span>
+      <span><i class="risk-line"></i> Outlook contour</span>
+      <span>Dashed region borders · toggleable labels</span>
+    </div>
+  </aside>
+
+  <main class="viewer-shell">
+    <header class="map-header">
+      <div>
+        <strong id="mapTitle">Seeded synthetic analysis</strong>
+        <span id="mapSubtitle">Valid 12Z · 10 mi grid · evolving atmosphere</span>
+      </div>
+      <div id="summary" class="summary"></div>
+    </header>
+    <div id="viewer" class="viewer">
+      <div id="mapStage" class="map-stage">
+        <canvas id="mapCanvas" tabindex="0" role="grid" aria-label="Synthetic weather grid. Move over a cell to highlight it, then click to open its sounding."></canvas>
+      </div>
+      <div id="tooltip" class="tooltip hidden"></div>
+    </div>
+  </main>
+
+  <aside class="panel inspector">
+    <p id="inspectorEyebrow" class="eyebrow">Grid-cell analysis</p>
+    <h2 id="cellTitle">No cell selected</h2>
+    <div id="cellInfo" class="cell-info muted">Click a cell to open its sounding and atmospheric profile.</div>
+    <button id="openSounding" type="button" class="secondary" disabled>Open sounding</button><button id="clearStormSelection" type="button" class="secondary hidden">Return to cell inspector</button>
+  </aside>
+
+  <div id="soundingModal" class="sounding-modal hidden" role="dialog" aria-modal="true" aria-labelledby="soundingTitle">
+    <div class="sounding-window">
+      <header><div><p class="eyebrow">Vertical profile</p><h2 id="soundingTitle">Cell sounding</h2><small id="soundingSubtitle" class="muted"></small></div><button id="closeSounding" type="button" class="secondary close-button">Close</button></header>
+      <div id="soundingMetrics" class="sounding-metrics"></div>
+      <div class="sounding-plots sounding-primary-plots"><section><h3>Skew-T log-P</h3><canvas id="skewTCanvas" width="720" height="720"></canvas></section><section><h3>Hodograph</h3><canvas id="hodoCanvas" width="560" height="560"></canvas><div id="forcingDetails" class="forcing-details"></div></section></div>
+      <section id="effectiveLayerStpPanel" class="effective-stp-panel effective-stp-secondary" aria-label="Effective Layer STP with CIN box plots"></section>
+      <details open><summary>Pressure-level data</summary><div class="profile-table-wrap"><table class="profile-table"><thead><tr><th>Pressure</th><th>Height</th><th>Temp</th><th>Dewpoint</th><th>RH</th><th>Wind</th></tr></thead><tbody id="profileTableBody"></tbody></table></div></details>
+    </div>
+  </div>
+  <script type="module" src="./js/pageBootstrap.js?v=2.32.6"></script>
+</body>
+</html>

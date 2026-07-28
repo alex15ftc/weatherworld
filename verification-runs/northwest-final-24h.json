@@ -1,0 +1,89 @@
+{
+  "seeds": [
+    3,
+    26
+  ],
+  "hours": 24,
+  "stormsCreated": 0,
+  "tornadoes": 0,
+  "rows": [
+    {
+      "seed": 3,
+      "setupType": "northwest_flow",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 0,
+        "initiations": 0,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 0,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 12,
+        "peakConvectiveHourByDay": {
+          "day1": 12,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": null,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0,
+        "dominantModes": []
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.99970880000001,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    },
+    {
+      "seed": 26,
+      "setupType": "northwest_flow",
+      "narrative": "hp_supercell",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 0,
+        "initiations": 0,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 0,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 12,
+        "peakConvectiveHourByDay": {
+          "day1": 12,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": null,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0,
+        "dominantModes": []
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.999481599999996,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    }
+  ]
+}

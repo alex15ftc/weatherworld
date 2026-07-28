@@ -1,0 +1,460 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-27T19:48:15.534Z",
+  "overall": {
+    "seeds": 4,
+    "forecastRiskFrequency": {
+      "TSTM": 0,
+      "MRGN": 1,
+      "SLGT": 1,
+      "ENH": 2,
+      "MDT": 0,
+      "HIGH": 0
+    },
+    "observedRiskFrequency": {
+      "TSTM": 1,
+      "MRGN": 0,
+      "SLGT": 2,
+      "ENH": 0,
+      "MDT": 0,
+      "HIGH": 1
+    },
+    "meanScore": 50.183632593430765,
+    "meanTimingErrorHours": 1.25,
+    "meanAbsoluteTimingErrorHours": 3,
+    "tornadoCases": 1,
+    "tornadoTrackCapture": {
+      "pct2": 0.6440292509241442,
+      "pct5": 0
+    },
+    "tornadoCoreDisplacementMiles": 196.468827043885,
+    "tornadoCoreSignedDisplacementMiles": {
+      "east": 0,
+      "south": -190
+    },
+    "hazards": {
+      "tornado": {
+        "bias": -0.019749999999999903,
+        "pod": 0,
+        "far": 0,
+        "csi": 0,
+        "forecastAreaFraction": 0.49739999999999995
+      },
+      "hail": {
+        "bias": -0.09066500000000018,
+        "pod": 0.044585987261146494,
+        "far": 0.4393939393939394,
+        "csi": 0.028629856850715747,
+        "forecastAreaFraction": 0.0392
+      },
+      "wind": {
+        "bias": -0.038094999999999976,
+        "pod": 0,
+        "far": 0,
+        "csi": 0,
+        "forecastAreaFraction": 0
+      }
+    }
+  },
+  "bySetup": {
+    "dryline_cyclone": {
+      "seeds": 1,
+      "forecastRiskFrequency": {
+        "TSTM": 0,
+        "MRGN": 0,
+        "SLGT": 0,
+        "ENH": 1,
+        "MDT": 0,
+        "HIGH": 0
+      },
+      "observedRiskFrequency": {
+        "TSTM": 0,
+        "MRGN": 0,
+        "SLGT": 0,
+        "ENH": 0,
+        "MDT": 0,
+        "HIGH": 1
+      },
+      "meanScore": 30.803686878699192,
+      "meanTimingErrorHours": -1,
+      "meanAbsoluteTimingErrorHours": 1,
+      "tornadoCases": 1,
+      "tornadoTrackCapture": {
+        "pct2": 0.6440292509241442,
+        "pct5": 0
+      },
+      "tornadoCoreDisplacementMiles": 196.468827043885,
+      "tornadoCoreSignedDisplacementMiles": {
+        "east": 0,
+        "south": -190
+      },
+      "hazards": {
+        "tornado": {
+          "bias": -0.12281199999999948,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.6168
+        },
+        "hail": {
+          "bias": -0.14858000000000016,
+          "pod": 0,
+          "far": 1,
+          "csi": 0,
+          "forecastAreaFraction": 0.0644
+        },
+        "wind": {
+          "bias": -0.1496,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    },
+    "elevated_mcs": {
+      "seeds": 1,
+      "forecastRiskFrequency": {
+        "TSTM": 0,
+        "MRGN": 1,
+        "SLGT": 0,
+        "ENH": 0,
+        "MDT": 0,
+        "HIGH": 0
+      },
+      "observedRiskFrequency": {
+        "TSTM": 0,
+        "MRGN": 0,
+        "SLGT": 1,
+        "ENH": 0,
+        "MDT": 0,
+        "HIGH": 0
+      },
+      "meanScore": 57.5703244,
+      "meanTimingErrorHours": -1.5,
+      "meanAbsoluteTimingErrorHours": 1.5,
+      "tornadoCases": 0,
+      "tornadoTrackCapture": {
+        "pct2": null,
+        "pct5": null
+      },
+      "tornadoCoreDisplacementMiles": null,
+      "tornadoCoreSignedDisplacementMiles": {
+        "east": null,
+        "south": null
+      },
+      "hazards": {
+        "tornado": {
+          "bias": 0.008127999999999863,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.4064
+        },
+        "hail": {
+          "bias": -0.13429999999999992,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        },
+        "wind": {
+          "bias": -0.0168,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    },
+    "progressive_cold_front": {
+      "seeds": 1,
+      "forecastRiskFrequency": {
+        "TSTM": 0,
+        "MRGN": 0,
+        "SLGT": 1,
+        "ENH": 0,
+        "MDT": 0,
+        "HIGH": 0
+      },
+      "observedRiskFrequency": {
+        "TSTM": 1,
+        "MRGN": 0,
+        "SLGT": 0,
+        "ENH": 0,
+        "MDT": 0,
+        "HIGH": 0
+      },
+      "meanScore": 57.21895906666666,
+      "meanTimingErrorHours": 8.5,
+      "meanAbsoluteTimingErrorHours": 8.5,
+      "tornadoCases": 0,
+      "tornadoTrackCapture": {
+        "pct2": null,
+        "pct5": null
+      },
+      "tornadoCoreDisplacementMiles": null,
+      "tornadoCoreSignedDisplacementMiles": {
+        "east": null,
+        "south": null
+      },
+      "hazards": {
+        "tornado": {
+          "bias": 0.012148000000000016,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.3656
+        },
+        "hail": {
+          "bias": 0.007000000000000045,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        },
+        "wind": {
+          "bias": 0.0027199999999999937,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    },
+    "shortwave_ejection": {
+      "seeds": 1,
+      "forecastRiskFrequency": {
+        "TSTM": 0,
+        "MRGN": 0,
+        "SLGT": 0,
+        "ENH": 1,
+        "MDT": 0,
+        "HIGH": 0
+      },
+      "observedRiskFrequency": {
+        "TSTM": 0,
+        "MRGN": 0,
+        "SLGT": 1,
+        "ENH": 0,
+        "MDT": 0,
+        "HIGH": 0
+      },
+      "meanScore": 55.1415600283572,
+      "meanTimingErrorHours": -1,
+      "meanAbsoluteTimingErrorHours": 1,
+      "tornadoCases": 0,
+      "tornadoTrackCapture": {
+        "pct2": null,
+        "pct5": null
+      },
+      "tornadoCoreDisplacementMiles": null,
+      "tornadoCoreSignedDisplacementMiles": {
+        "east": null,
+        "south": null
+      },
+      "hazards": {
+        "tornado": {
+          "bias": 0.023535999999999987,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.6008
+        },
+        "hail": {
+          "bias": -0.08678000000000068,
+          "pod": 0.17834394904458598,
+          "far": 0.7575757575757576,
+          "csi": 0.11451942740286299,
+          "forecastAreaFraction": 0.0924
+        },
+        "wind": {
+          "bias": 0.011300000000000107,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed": 82949777,
+      "setupType": "dryline_cyclone",
+      "narrative": "loaded_gun",
+      "forecastRisk": "ENH",
+      "observedRisk": "HIGH",
+      "score": 30.803686878699192,
+      "timingErrorHours": -1,
+      "tornadoes": 31,
+      "tornadoTrackCapture2": 0.6440292509241442,
+      "tornadoTrackCapture5": 0,
+      "tornadoCoreDisplacementMiles": 196.468827043885,
+      "tornadoCoreSignedDisplacementMiles": {
+        "east": 0,
+        "south": -190
+      },
+      "hazards": {
+        "tornado": {
+          "bias": -0.12281199999999948,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.6168
+        },
+        "hail": {
+          "bias": -0.14858000000000016,
+          "pod": 0,
+          "far": 1,
+          "csi": 0,
+          "forecastAreaFraction": 0.0644
+        },
+        "wind": {
+          "bias": -0.1496,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    },
+    {
+      "seed": 82949781,
+      "setupType": "progressive_cold_front",
+      "narrative": "qlcs",
+      "forecastRisk": "SLGT",
+      "observedRisk": "TSTM",
+      "score": 57.21895906666666,
+      "timingErrorHours": 8.5,
+      "tornadoes": 0,
+      "tornadoTrackCapture2": null,
+      "tornadoTrackCapture5": null,
+      "tornadoCoreDisplacementMiles": null,
+      "tornadoCoreSignedDisplacementMiles": null,
+      "hazards": {
+        "tornado": {
+          "bias": 0.012148000000000016,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.3656
+        },
+        "hail": {
+          "bias": 0.007000000000000045,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        },
+        "wind": {
+          "bias": 0.0027199999999999937,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    },
+    {
+      "seed": 82949782,
+      "setupType": "shortwave_ejection",
+      "narrative": "qlcs",
+      "forecastRisk": "ENH",
+      "observedRisk": "SLGT",
+      "score": 55.1415600283572,
+      "timingErrorHours": -1,
+      "tornadoes": 0,
+      "tornadoTrackCapture2": null,
+      "tornadoTrackCapture5": null,
+      "tornadoCoreDisplacementMiles": null,
+      "tornadoCoreSignedDisplacementMiles": null,
+      "hazards": {
+        "tornado": {
+          "bias": 0.023535999999999987,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.6008
+        },
+        "hail": {
+          "bias": -0.08678000000000068,
+          "pod": 0.17834394904458598,
+          "far": 0.7575757575757576,
+          "csi": 0.11451942740286299,
+          "forecastAreaFraction": 0.0924
+        },
+        "wind": {
+          "bias": 0.011300000000000107,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    },
+    {
+      "seed": 82949784,
+      "setupType": "elevated_mcs",
+      "narrative": "progressive_mcs",
+      "forecastRisk": "MRGN",
+      "observedRisk": "SLGT",
+      "score": 57.5703244,
+      "timingErrorHours": -1.5,
+      "tornadoes": 0,
+      "tornadoTrackCapture2": null,
+      "tornadoTrackCapture5": null,
+      "tornadoCoreDisplacementMiles": null,
+      "tornadoCoreSignedDisplacementMiles": null,
+      "hazards": {
+        "tornado": {
+          "bias": 0.008127999999999863,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0.4064
+        },
+        "hail": {
+          "bias": -0.13429999999999992,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        },
+        "wind": {
+          "bias": -0.0168,
+          "pod": 0,
+          "far": 0,
+          "csi": 0,
+          "forecastAreaFraction": 0
+        }
+      }
+    }
+  ],
+  "run": {
+    "perSetup": 1,
+    "hours": 24,
+    "stepHours": 2,
+    "startSeed": 82949777,
+    "activeSetups": [
+      "dryline_cyclone",
+      "progressive_cold_front",
+      "shortwave_ejection",
+      "elevated_mcs"
+    ],
+    "selected": {
+      "dryline_cyclone": [
+        82949777
+      ],
+      "progressive_cold_front": [
+        82949781
+      ],
+      "shortwave_ejection": [
+        82949782
+      ],
+      "elevated_mcs": [
+        82949784
+      ]
+    }
+  }
+}

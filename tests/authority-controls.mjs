@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { WeatherAuthorityRuntime } from '../server/WeatherAuthorityRuntime.js';
+const runtime = new WeatherAuthorityRuntime({ seed: 11111111, checkpointPath: '/tmp/wx-authority-controls.json' });
+assert.equal(runtime.metadata().seed, 11111111);
+assert.equal(runtime.metadata().validHourUtc, 12);
+const initialRevision = runtime.revision;
+runtime.advance(.5);
+assert.equal(runtime.metadata().validHourUtc, 12.5);
+assert.ok(runtime.revision > initialRevision);
+runtime.reset(22222222);
+assert.equal(runtime.metadata().seed, 22222222);
+assert.equal(runtime.metadata().validHourUtc, 12);
+runtime.seek(13);
+assert.equal(runtime.metadata().validHourUtc, 13);
+runtime.setAutoAdvance(false);
+assert.equal(runtime.metadata().autoAdvance, false);
+console.log('Authority control regression passed.');

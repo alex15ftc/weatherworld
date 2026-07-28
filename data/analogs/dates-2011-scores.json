@@ -1,0 +1,50 @@
+[
+  {
+    "date": "2011-04-27",
+    "score": 73.15,
+    "band": "major",
+    "reportCount": 911,
+    "counts": {
+      "tornado": 329,
+      "significantTornado": 136,
+      "violentTornado": 34,
+      "hail": 195,
+      "significantHail": 20,
+      "wind": 387,
+      "destructiveWind": 10
+    },
+    "components": {
+      "significantTornado": 0.9999880327084439,
+      "violentTornado": 0.9997965316309894,
+      "significantHail": 0.4352818779922407,
+      "destructiveWind": 0.1662470819248194,
+      "spatialCoverage": 0.9304512615053373,
+      "temporalConcentration": 0.5174847106790027
+    },
+    "reportingEraWeight": 1
+  },
+  {
+    "date": "2011-05-24",
+    "score": 72.08,
+    "band": "major",
+    "reportCount": 643,
+    "counts": {
+      "tornado": 64,
+      "significantTornado": 23,
+      "violentTornado": 5,
+      "hail": 272,
+      "significantHail": 45,
+      "wind": 307,
+      "destructiveWind": 4
+    },
+    "components": {
+      "significantTornado": 0.8529035326070232,
+      "violentTornado": 0.7134952031398099,
+      "significantHail": 0.7235469533704357,
+      "destructiveWind": 0.07014560790003455,
+      "spatialCoverage": 0.9674965701225725,
+      "temporalConcentration": 0.9375694290157743
+    },
+    "reportingEraWeight": 1
+  }
+]

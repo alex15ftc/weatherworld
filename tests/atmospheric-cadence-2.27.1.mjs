@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import { Atmosphere } from '../js/atmosphere.js';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
+import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
+
+const world = new Atmosphere(20, 20);
+const config = generateScenario(world, 63869760);
+initializeEvolution(world, config);
+advanceAtmosphere(world, 0.5, { advanceStorms: false });
+assert.equal(world.evolution.performance.phaseRuns.fastDiagnostics, 1);
+assert.equal(world.evolution.performance.phaseSkips.mediumAnalysis, 1);
+assert.equal(world.evolution.performance.phaseSkips.slowAnalysis, 1);
+advanceAtmosphere(world, 0.5, { advanceStorms: false });
+assert.equal(world.evolution.performance.phaseRuns.mediumAnalysis, 1);
+assert.equal(world.evolution.performance.phaseSkips.slowAnalysis, 2);
+advanceAtmosphere(world, 2, { advanceStorms: false });
+assert.equal(world.evolution.performance.phaseRuns.slowAnalysis, 1);
+assert.equal(world.evolution.performance.totalSteps, 6);
+for (const row of world.cells) for (const cell of row) assert.equal(cell.terrain._slopeCached, true);
+console.log('2.27.1 atmospheric cadence and terrain cache checks passed');

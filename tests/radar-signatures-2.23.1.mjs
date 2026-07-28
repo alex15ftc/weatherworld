@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { rasterizeRadarValues } from '../js/radar/RadarRenderer.js';
+const size=1024;
+const snapshot={domainWidthKm:500,domainHeightKm:500,radarNetwork:{networkId:'T',scanNumber:1,stations:[{id:'KTEST',xKm:100,yKm:100,status:'online',productRangesKm:{reflectivity:600,velocity:600,correlationCoefficient:600},rangeKm:600,blockedSectors:[]}]},storms:[{id:'S',positionKm:{x:250,y:250},velocityKph:{east:45,north:10},intensity:1,organization:1,rotationStrength:1,mesocycloneStrength:1,orientationDeg:30,mode:'supercell',hazards:{hailProbability:.8,tornadoProbability:.6},tornado:{active:true}}]};
+const z=rasterizeRadarValues(snapshot,'reflectivity','composite');
+const v=rasterizeRadarValues(snapshot,'velocity','composite');
+const cc=rasterizeRadarValues(snapshot,'correlationCoefficient','composite');
+const finite=a=>[...a].filter(Number.isFinite);
+const zv=finite(z.values),vv=finite(v.values),cv=finite(cc.values);
+assert.ok(zv.length>3000,'storm should occupy thousands of radar pixels');
+assert.ok(Math.max(...zv)>68,'hail core should exceed 68 dBZ');
+assert.ok(Math.min(...vv)<-15 && Math.max(...vv)>35,'velocity should contain a genuine inbound/outbound couplet');
+assert.ok(Math.min(...cv)<.72,'active tornado should create a visible low-CC debris signature');
+assert.ok(cv.length>0 && cv.length<cc.values.length*.15,'CC should only paint meteorological echo, not the whole domain');
+console.log('radar signatures 2.23.1 passed');

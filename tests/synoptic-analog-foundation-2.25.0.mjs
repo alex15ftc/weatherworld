@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { chooseAnalogBlend } from '../js/scenarios/AnalogPatternLibrary.js';
+import { createSynopticPattern, sampleSynopticPattern } from '../js/scenarios/synopticPattern.js';
+let i=0; const random=()=>((i++*37)%101)/101;
+const analog=chooseAnalogBlend(random,'dryline_cyclone');
+assert.equal(analog.family,'dryline_cyclone');
+assert.ok(analog.frontalCoherence>0.5);
+const pattern=createSynopticPattern(random,'dryline_cyclone',0.75,{lowX:.38,lowY:.28});
+pattern.analogGuidance=analog; pattern.coherence=.85;
+const morning=sampleSynopticPattern(pattern,.62,.66,0);
+const afternoon=sampleSynopticPattern(pattern,.62,.66,10);
+assert.ok(afternoon.lifecycle.moistureReturnPhase>morning.lifecycle.moistureReturnPhase);
+assert.ok(afternoon.lifecycle.ejectionPhase>morning.lifecycle.ejectionPhase);
+assert.equal(afternoon.analogGuidance.family,'dryline_cyclone');
+console.log('2.25.0 synoptic analog foundation passed');

@@ -1,0 +1,50 @@
+[
+  {
+    "date": "2013-08-01",
+    "score": 27.99,
+    "band": "organized",
+    "reportCount": 222,
+    "counts": {
+      "tornado": 3,
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "hail": 114,
+      "significantHail": 4,
+      "wind": 105,
+      "destructiveWind": 6
+    },
+    "components": {
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "significantHail": 0.10799693854690562,
+      "destructiveWind": 0.10335109974342449,
+      "spatialCoverage": 0.9882036557664385,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 1
+  },
+  {
+    "date": "2013-08-03",
+    "score": 27.89,
+    "band": "organized",
+    "reportCount": 111,
+    "counts": {
+      "tornado": 8,
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "hail": 61,
+      "significantHail": 8,
+      "wind": 42,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "significantHail": 0.20433053835830717,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.9882048316437476,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 1
+  }
+]

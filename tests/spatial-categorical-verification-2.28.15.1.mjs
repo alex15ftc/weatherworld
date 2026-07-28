@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { buildSpatialCategoricalDiagnostics } from '../js/verification/ForecastVerificationEngine.js';
+const grid=[{risk:'MDT'},{risk:'SLGT'},{risk:'ENH'},{risk:'TSTM'}];
+const z=()=>new Uint8Array(4); const truth={risk:['MDT','MDT','ENH','TSTM'],tornadoExact:z(),hailExact:z(),windExact:z(),tornadoSig:z(),hailSig:z(),windSig:z()};
+truth.tornadoExact[1]=1; truth.tornadoSig[1]=1;
+const d=buildSpatialCategoricalDiagnostics(grid,truth);
+assert.equal(d.hazardPlacement.tornado.forecastRiskDistribution.SLGT,1);
+assert.equal(d.byObservedCategory.MDT.adequateCoverage,.5);
+assert.equal(d.significantHazardPlacement.atLeastEnhancedFraction,0);
+console.log('2.28.15.1 spatial categorical verification regression passed');

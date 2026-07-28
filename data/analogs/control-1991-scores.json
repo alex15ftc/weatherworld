@@ -1,0 +1,50 @@
+[
+  {
+    "date": "1991-06-19",
+    "score": 27.92,
+    "band": "organized",
+    "reportCount": 59,
+    "counts": {
+      "tornado": 6,
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "hail": 37,
+      "significantHail": 5,
+      "wind": 16,
+      "destructiveWind": 1
+    },
+    "components": {
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "significantHail": 0.17996864234530596,
+      "destructiveWind": 0.024936347258839642,
+      "spatialCoverage": 0.9900571529830202,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1991-05-04",
+    "score": 27.64,
+    "band": "organized",
+    "reportCount": 259,
+    "counts": {
+      "tornado": 12,
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "hail": 125,
+      "significantHail": 6,
+      "wind": 122,
+      "destructiveWind": 3
+    },
+    "components": {
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "significantHail": 0.21187237225468902,
+      "destructiveWind": 0.07295908348740654,
+      "spatialCoverage": 0.9035680433252901,
+      "temporalConcentration": 0.9817981246552676
+    },
+    "reportingEraWeight": 0.72
+  }
+]

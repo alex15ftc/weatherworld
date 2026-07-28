@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { Atmosphere } from '../js/atmosphere.js';
+import { initializeCoupledAtmosphere, advanceCoupledAtmosphere, projectStormInfluence } from '../js/coupling/CoupledAtmosphereEngine.js';
+
+const world = new Atmosphere(5, 5);
+world.validHourUtc = 18;
+world.storms = [{ active: true, intensity: 0.9, positionKm: { x: 2.5 * world.cellSizeKm, y: 2.5 * world.cellSizeKm }, radar: { radiusXKm: 35 } }];
+initializeCoupledAtmosphere(world);
+projectStormInfluence(world);
+const center = world.getCell(2, 2);
+center.features.stormProcessedAir = 0.8;
+center.features.stormOutflowConvergence = 0.7;
+const beforeTemp = center.surface.temperature;
+advanceCoupledAtmosphere(world, 1);
+assert.equal(world.cellSizeMiles, 10);
+assert.ok(Math.abs(world.cellSizeKm - 16.09344) < 1e-6);
+assert.ok(center.memory.cloudCover > 0.2);
+assert.ok(center.memory.processedAir > 0.4);
+assert.ok(center.features.residualOutflow > 0.2);
+assert.ok(center.surface.temperature < beforeTemp);
+
+center.features.stormProcessedAir = 0;
+center.features.stormOutflowConvergence = 0;
+world.storms = [];
+projectStormInfluence(world);
+const retained = center.memory.processedAir;
+advanceCoupledAtmosphere(world, 1);
+assert.ok(center.memory.processedAir > 0, 'processed air should persist');
+assert.ok(center.memory.processedAir < retained, 'processed air should recover gradually');
+console.log('coupled atmospheric memory: ok');

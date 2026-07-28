@@ -1,0 +1,103 @@
+{
+  "seeds": [
+    3,
+    26
+  ],
+  "hours": 24,
+  "stormsCreated": 173,
+  "tornadoes": 0,
+  "rows": [
+    {
+      "seed": 3,
+      "setupType": "northwest_flow",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 121,
+        "initiations": 121,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 21,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 21.5,
+        "peakConvectiveHourByDay": {
+          "day1": 21.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 21,
+          "day2": 36,
+          "day3": null
+        },
+        "peakStormIntensity": 0.1720902803480872,
+        "dominantModes": [
+          {
+            "mode": "elevated convection",
+            "count": 380
+          },
+          {
+            "mode": "discrete supercell",
+            "count": 101
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.99970880000001,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    },
+    {
+      "seed": 26,
+      "setupType": "northwest_flow",
+      "narrative": "hp_supercell",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 52,
+        "initiations": 52,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 13,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 25,
+        "peakConvectiveHourByDay": {
+          "day1": 25,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 21,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.09273393053880766,
+        "dominantModes": [
+          {
+            "mode": "elevated convection",
+            "count": 208
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.999481599999996,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    }
+  ]
+}

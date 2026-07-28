@@ -1,0 +1,314 @@
+[
+  {
+    "date": "1974-04-03",
+    "score": 78.14,
+    "band": "major",
+    "reportCount": 385,
+    "counts": {
+      "tornado": 239,
+      "significantTornado": 201,
+      "violentTornado": 98,
+      "hail": 92,
+      "significantHail": 27,
+      "wind": 54,
+      "destructiveWind": 1
+    },
+    "components": {
+      "significantTornado": 0.9999999999211827,
+      "violentTornado": 0.9999999999999983,
+      "significantHail": 0.6574811449069544,
+      "destructiveWind": 0.024936347258839642,
+      "spatialCoverage": 0.8604399994432674,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-06-08",
+    "score": 65.17,
+    "band": "major",
+    "reportCount": 98,
+    "counts": {
+      "tornado": 45,
+      "significantTornado": 28,
+      "violentTornado": 6,
+      "hail": 18,
+      "significantHail": 1,
+      "wind": 35,
+      "destructiveWind": 1
+    },
+    "components": {
+      "significantTornado": 0.9608651044517785,
+      "violentTornado": 0.875485528555877,
+      "significantHail": 0.038905499907501584,
+      "destructiveWind": 0.024936347258839642,
+      "spatialCoverage": 0.9394467564100217,
+      "temporalConcentration": 0.8163265306122449
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-04-21",
+    "score": 55.15,
+    "band": "significant",
+    "reportCount": 41,
+    "counts": {
+      "tornado": 17,
+      "significantTornado": 11,
+      "violentTornado": 2,
+      "hail": 19,
+      "significantHail": 5,
+      "wind": 5,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.7200510875926951,
+      "violentTornado": 0.5006482114007238,
+      "significantHail": 0.17996864234530596,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.8894895014017605,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-04-13",
+    "score": 48.82,
+    "band": "significant",
+    "reportCount": 45,
+    "counts": {
+      "tornado": 14,
+      "significantTornado": 12,
+      "violentTornado": 0,
+      "hail": 14,
+      "significantHail": 4,
+      "wind": 17,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.7506477912227039,
+      "violentTornado": 0,
+      "significantHail": 0.14677343635222972,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.939683160931543,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-04-01",
+    "score": 48.33,
+    "band": "significant",
+    "reportCount": 126,
+    "counts": {
+      "tornado": 19,
+      "significantTornado": 12,
+      "violentTornado": 0,
+      "hail": 43,
+      "significantHail": 4,
+      "wind": 64,
+      "destructiveWind": 1
+    },
+    "components": {
+      "significantTornado": 0.7506477912227039,
+      "violentTornado": 0,
+      "significantHail": 0.14677343635222972,
+      "destructiveWind": 0.024936347258839642,
+      "spatialCoverage": 0.8822762314617374,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-04-20",
+    "score": 48.1,
+    "band": "significant",
+    "reportCount": 73,
+    "counts": {
+      "tornado": 22,
+      "significantTornado": 13,
+      "violentTornado": 0,
+      "hail": 30,
+      "significantHail": 4,
+      "wind": 21,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.7779004623113017,
+      "violentTornado": 0,
+      "significantHail": 0.14677343635222972,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.8375287927460078,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-04-14",
+    "score": 42.5,
+    "band": "significant",
+    "reportCount": 191,
+    "counts": {
+      "tornado": 5,
+      "significantTornado": 5,
+      "violentTornado": 0,
+      "hail": 32,
+      "significantHail": 5,
+      "wind": 154,
+      "destructiveWind": 6
+    },
+    "components": {
+      "significantTornado": 0.4393753686302292,
+      "violentTornado": 0,
+      "significantHail": 0.17996864234530596,
+      "destructiveWind": 0.14059513911149069,
+      "spatialCoverage": 0.9674057165937107,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-05-13",
+    "score": 42.42,
+    "band": "significant",
+    "reportCount": 87,
+    "counts": {
+      "tornado": 14,
+      "significantTornado": 8,
+      "violentTornado": 0,
+      "hail": 44,
+      "significantHail": 7,
+      "wind": 29,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.6038355697179345,
+      "violentTornado": 0,
+      "significantHail": 0.24253487160303355,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.7207994707152364,
+      "temporalConcentration": 0.9852216748768473
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-05-30",
+    "score": 41.63,
+    "band": "significant",
+    "reportCount": 97,
+    "counts": {
+      "tornado": 12,
+      "significantTornado": 6,
+      "violentTornado": 0,
+      "hail": 43,
+      "significantHail": 4,
+      "wind": 42,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.5006482114007238,
+      "violentTornado": 0,
+      "significantHail": 0.14677343635222972,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.9602921284083992,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-03-20",
+    "score": 41.37,
+    "band": "significant",
+    "reportCount": 30,
+    "counts": {
+      "tornado": 12,
+      "significantTornado": 10,
+      "violentTornado": 0,
+      "hail": 2,
+      "significantHail": 0,
+      "wind": 16,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.6857000227015086,
+      "violentTornado": 0,
+      "significantHail": 0,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.7197261759661009,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-10-28",
+    "score": 41.34,
+    "band": "significant",
+    "reportCount": 16,
+    "counts": {
+      "tornado": 13,
+      "significantTornado": 11,
+      "violentTornado": 0,
+      "hail": 1,
+      "significantHail": 0,
+      "wind": 2,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.7200510875926951,
+      "violentTornado": 0,
+      "significantHail": 0,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.6493689912309684,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-06-07",
+    "score": 40.68,
+    "band": "significant",
+    "reportCount": 41,
+    "counts": {
+      "tornado": 17,
+      "significantTornado": 6,
+      "violentTornado": 0,
+      "hail": 11,
+      "significantHail": 2,
+      "wind": 13,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.5006482114007238,
+      "violentTornado": 0,
+      "significantHail": 0.07629736189195047,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.9678585733030017,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  },
+  {
+    "date": "1974-04-04",
+    "score": 40.53,
+    "band": "significant",
+    "reportCount": 65,
+    "counts": {
+      "tornado": 23,
+      "significantTornado": 8,
+      "violentTornado": 0,
+      "hail": 10,
+      "significantHail": 0,
+      "wind": 32,
+      "destructiveWind": 0
+    },
+    "components": {
+      "significantTornado": 0.6038355697179345,
+      "violentTornado": 0,
+      "significantHail": 0,
+      "destructiveWind": 0,
+      "spatialCoverage": 0.8277523947593917,
+      "temporalConcentration": 1
+    },
+    "reportingEraWeight": 0.72
+  }
+]

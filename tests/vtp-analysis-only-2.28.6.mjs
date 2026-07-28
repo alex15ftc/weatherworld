@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { diagnoseViolentTornadoParameter } from '../js/sounding.js';
+const tornadoSource=fs.readFileSync(new URL('../js/storms/TornadoEngine.js',import.meta.url),'utf8');
+assert.doesNotMatch(tornadoSource,/vtpSupport/);
+assert.doesNotMatch(tornadoSource,/else if \(vtp\s*</);
+assert.doesNotMatch(tornadoSource,/\+\s*vtp\s*\*/);
+assert.match(tornadoSource,/VTP is an analysis-only diagnostic/);
+const strong=diagnoseViolentTornadoParameter({stp:6,rawStp:8,synopticSupport:.9,cape:3500,srh:450,shear:65,lcl:700,cin:20,criticalAngle:100});
+assert.ok(strong>2 && strong<=5,`strong VTP should use meaningful 0-5 display scale, got ${strong}`);
+const zero=diagnoseViolentTornadoParameter({stp:0,rawStp:0,synopticSupport:1,cape:4000,srh:500,shear:70,lcl:600,cin:10,criticalAngle:100});
+assert.equal(zero,0);
+console.log('VTP analysis-only 2.28.6 passed');

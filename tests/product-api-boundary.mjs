@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { WeatherAuthorityRuntime } from '../server/WeatherAuthorityRuntime.js';
+const runtime = new WeatherAuthorityRuntime({ seed: 20270503, checkpointPath: '/tmp/weather-authority-test.json' });
+const health = runtime.metadata();
+assert.equal(health.ok, true);
+assert.match(health.version, /^\d+\.\d+\.\d+(?:\.\d+)?$/);
+const manifest = runtime.mapManifest();
+assert.ok(Array.isArray(manifest.overlays?.boundaries));
+assert.equal(manifest.overlays?.regions?.cells?.length, manifest.height);
+assert.ok((manifest.overlays?.regions?.labels?.length ?? 0) > 0);
+const field = runtime.liveField('temperature');
+assert.equal(field.width * field.height * 4, Buffer.from(field.values, 'base64').length);
+const state = runtime.authorityState();
+assert.ok(state.atmosphere?.cells?.length);
+assert.ok(state.forecastProducts);
+console.log('Product API boundary and Node authority runtime passed.');

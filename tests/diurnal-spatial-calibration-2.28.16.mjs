@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { Atmosphere } from '../js/atmosphere.js';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
+import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
+import { buildSpatialPlacementDiagnostics } from '../js/verification/ForecastVerificationEngine.js';
+const world=new Atmosphere(20,20); const config=generateScenario(world,51274079); initializeEvolution(world,config);
+advanceAtmosphere(world,1);
+let positive=0, eligible=0; world.forEachCell(c=>{const e=c.environmentDiagnostics?.energyBudget||{}; if((e.solarHeatingFph||0)>0) positive++; if((e.recoveryEligibility||0)>0) eligible++;});
+assert.ok(positive>0,'solar heating should begin after sunrise'); assert.ok(eligible>0,'recovery eligibility should be diagnosed');
+const n=100, grid=Array.from({length:n},()=>({risk:'SLGT',categories:{tornado:'SLGT'},tornadoProbability:.05,tornadoCig:1})); grid[55].risk='MDT'; grid[55].categories.tornado='MDT';
+const z=()=>new Uint8Array(n); const truth={tornadoExact:z(),hailExact:z(),windExact:z(),risk:Array(n).fill('TSTM'),observedProbability:{tornado:new Float64Array(n),hail:new Float64Array(n),wind:new Float64Array(n)},observedCig:{tornado:z(),hail:z(),wind:z()}}; truth.tornadoExact[0]=1; truth.risk[0]='MDT'; truth.observedProbability.tornado[0]=30;
+const d=buildSpatialPlacementDiagnostics({grid},truth); assert.equal(d.hazards.tornado.eventCellCount,1); assert.ok(d.hazards.tornado.medianEventToAdequateRiskDistanceMiles>0);
+console.log('2.28.16 diurnal/spatial calibration regression passed');

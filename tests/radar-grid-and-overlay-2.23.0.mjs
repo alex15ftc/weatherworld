@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { Atmosphere } from '../js/atmosphere.js?v=2.23.1';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js?v=2.23.1';
+import { initializeEvolution } from '../js/evolution.js?v=2.23.1';
+import { createRadarSnapshot, rasterizeRadarValues } from '../js/radar/RadarRenderer.js?v=2.23.1';
+const world=new Atmosphere(50,50);initializeEvolution(world,generateScenario(world,2300));
+const snapshot=createRadarSnapshot(world),frame=rasterizeRadarValues(snapshot,'reflectivity','composite');
+assert.equal(snapshot.radarGrid.width,1024);assert.equal(snapshot.radarGrid.height,1024);assert.equal(frame.size,1024);
+const live=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');assert.match(live,/id="toggleStormOverlay"/);
+for(const page of ['day1.html','day2.html','day3.html'])assert.doesNotMatch(fs.readFileSync(new URL(`../${page}`,import.meta.url),'utf8'),/toggleStormOverlay/);
+const remote=fs.readFileSync(new URL('../js/remoteProductPage.js',import.meta.url),'utf8');assert.match(remote,/scope==='live' && stormOverlayVisible/);assert.match(remote,/if\(scope==='live'\)\{refreshStorms/);
+console.log('2.23.1 radar grid and overlay separation passed');

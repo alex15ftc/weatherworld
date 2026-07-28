@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { Atmosphere } from '../js/atmosphere.js';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
+import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
+const world=new Atmosphere(50,50); initializeEvolution(world,generateScenario(world,34235150));
+const warm=[]; world.forEachCell(c=>{if(c.features?.warmSector)warm.push(c)});
+assert.ok(warm.length>0);
+assert.ok(warm.some(c=>Number(c.derived?.dcape)>0),'DCAPE must be populated');
+assert.ok(warm.some(c=>Number(c.derived?.lapseRate700500)>0),'lapse rate must be populated');
+advanceAtmosphere(world,.5,{advanceStorms:false});
+assert.ok(warm.some(c=>Object.keys(c.environmentDiagnostics?.energyBudget??{}).length>5),'live energy budget must persist');
+assert.ok(warm.some(c=>Math.abs(Number(c.environmentDiagnostics?.energyBudget?.netTemperatureTendencyFph)||0)>.01),'temperature tendency must be nonzero');
+console.log('2.28.15.1 environmental calibration regression passed');

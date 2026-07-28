@@ -1,0 +1,15 @@
+import { WeatherProductClient } from '../api/WeatherProductClient.js?v=2.20.13';
+import { profiler } from './PerformanceProfiler.js?v=2.20.13';
+const client=new WeatherProductClient();
+const $=s=>document.querySelector(s);
+const local=JSON.parse(sessionStorage.getItem('weather:lastProfile')||'null');
+let server={loading:true};
+render();
+profiler.interactive({mode:'performance-dashboard'});
+client.getPerformance().then(value=>{server=value;render();}).catch(error=>{server={error:error.message};render();});
+function render(){const profile=window.opener?.__WEATHER_PROFILE__||window.__WEATHER_PROFILE__||local;$('#clientProfile').innerHTML=profile?clientHtml(profile):'<p>No page profile is available yet. Open another product page first.</p>';$('#serverProfile').innerHTML=serverHtml(server);}
+function clientHtml(p){const spans=[...(p.spans||[])].filter(s=>s.durationMs!=null).sort((a,b)=>b.durationMs-a.durationMs);const resources=[...(p.resources||[])].slice(0,15);return `<h2>${p.page} startup</h2><div class="metric-grid"><b>Elapsed</b><span>${fmt(p.elapsedMs)}</span><b>Interactive</b><span>${eventTime(p,'page:interactive')}</span><b>DOMContentLoaded</b><span>${fmt(p.navigation?.domContentLoadedMs)}</span><b>Long tasks</b><span>${p.longTasks?.length||0}</span></div><h3>Application spans</h3>${table(spans.map(s=>[s.name,fmt(s.durationMs),s.detail?.ok===false?'failed':'']))}<h3>Slow resources</h3>${table(resources.map(r=>[r.name,fmt(r.durationMs),bytes(r.transferSize)]))}<h3>API requests</h3>${table((p.requests||[]).map(r=>[r.path,fmt(r.totalMs),`${r.status||''} ${bytes(r.transferBytes)}`]))}`;}
+function serverHtml(s){if(s?.loading)return '<p>Loading server metrics…</p>';if(!s||s.error)return `<p>${s?.error||'Unavailable'}</p>`;return `<h2>Authority process</h2><div class="metric-grid"><b>Uptime</b><span>${s.uptimeSeconds}s</span><b>Requests</b><span>${s.totals.requests}</span><b>Cache hits</b><span>${s.totals.cacheHits}</span><b>Cache misses</b><span>${s.totals.cacheMisses}</span></div><h3>Endpoints</h3>${table(Object.entries(s.endpoints).sort((a,b)=>b[1].maxMs-a[1].maxMs).map(([k,v])=>[k,`${v.count} calls`,`${v.averageMs.toFixed(2)} ms avg / ${v.maxMs.toFixed(2)} max`]))}<h3>Recent requests</h3>${table(s.recent.map(r=>[r.path,fmt(r.totalMs),`${bytes(r.rawBytes)} raw · ${bytes(r.sentBytes)} sent`]))}`;}
+function table(rows){return `<table class="perf-table"><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;}
+function fmt(v){return Number.isFinite(v)?`${v.toFixed(1)} ms`:'—';}function bytes(v){if(!v)return'0 B';return v>1048576?`${(v/1048576).toFixed(2)} MB`:v>1024?`${(v/1024).toFixed(1)} KB`:`${v} B`;}function eventTime(p,n){return fmt(p.events?.find(e=>e.name===n)?.atMs);}
+$('#refresh').addEventListener('click',()=>location.reload());$('#download').addEventListener('click',()=>{const data={client:window.opener?.__WEATHER_PROFILE__||local,server};const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`weather-performance-${Date.now()}.json`;a.click();});

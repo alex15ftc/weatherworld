@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { Atmosphere } from '../js/atmosphere.js';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
+import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
+import { buildAtmosphericEnvironmentSample } from '../js/verification/ForecastVerificationEngine.js';
+const world=new Atmosphere(20,20);
+const config=generateScenario(world,34235150);
+initializeEvolution(world,config);
+const s12=buildAtmosphericEnvironmentSample(world,12);
+advanceAtmosphere(world,6);
+const s18=buildAtmosphericEnvironmentSample(world,18);
+assert.ok(s12.warmSectorSummary.maximum.surfaceTemperatureF < 85,'12Z warm-sector maximum should not be fully afternoon-heated');
+assert.ok(s18.warmSectorSummary.mean.netTemperatureTendencyFph !== 0,'live temperature tendency must be exported');
+assert.ok(s18.representativeSamples.some(s=>Object.keys(s.energyBudget||{}).length>0),'representative samples must contain live energy budgets');
+assert.ok(s18.domainSummary.maximum.dcape > 0,'DCAPE must be diagnosed');
+assert.ok(s18.domainSummary.maximum.stp <= 15.01,'STP calibration cap');
+console.log('environment calibration 2.28.15.1: ok');

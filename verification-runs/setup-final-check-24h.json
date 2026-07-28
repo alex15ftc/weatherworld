@@ -1,0 +1,99 @@
+{
+  "seeds": [
+    26,
+    69
+  ],
+  "hours": 24,
+  "stormsCreated": 2,
+  "tornadoes": 0,
+  "rows": [
+    {
+      "seed": 26,
+      "setupType": "northwest_flow",
+      "narrative": "hp_supercell",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 0,
+        "initiations": 0,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 0,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 12,
+        "peakConvectiveHourByDay": {
+          "day1": 12,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": null,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0,
+        "dominantModes": []
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.999481599999996,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    },
+    {
+      "seed": 69,
+      "setupType": "elevated_mcs",
+      "narrative": "progressive_mcs",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 2,
+        "initiations": 2,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 1,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 1,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 32.5,
+        "peakConvectiveHourByDay": {
+          "day1": 32.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 30,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.2700035773290164,
+        "dominantModes": [
+          {
+            "mode": "MCS",
+            "count": 6
+          },
+          {
+            "mode": "elevated convection",
+            "count": 4
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 55.99082573333334,
+        "forecastRisk": "SLGT",
+        "observedRisk": "MRGN"
+      },
+      "recommendations": [
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling.",
+        "Convective-initiation forecasts cover too much area relative to realized initiation."
+      ]
+    }
+  ]
+}

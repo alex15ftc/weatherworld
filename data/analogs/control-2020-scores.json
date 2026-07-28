@@ -1,0 +1,50 @@
+[
+  {
+    "date": "2020-07-12",
+    "score": 27.85,
+    "band": "organized",
+    "reportCount": 229,
+    "counts": {
+      "tornado": 1,
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "hail": 62,
+      "significantHail": 8,
+      "wind": 166,
+      "destructiveWind": 5
+    },
+    "components": {
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "significantHail": 0.20433053835830717,
+      "destructiveWind": 0.0868992837177377,
+      "spatialCoverage": 0.9915017474804746,
+      "temporalConcentration": 0.860885839051778
+    },
+    "reportingEraWeight": 1
+  },
+  {
+    "date": "2020-07-19",
+    "score": 27.79,
+    "band": "organized",
+    "reportCount": 395,
+    "counts": {
+      "tornado": 1,
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "hail": 54,
+      "significantHail": 9,
+      "wind": 340,
+      "destructiveWind": 1
+    },
+    "components": {
+      "significantTornado": 0,
+      "violentTornado": 0,
+      "significantHail": 0.22674225951680937,
+      "destructiveWind": 0.018017526141772544,
+      "spatialCoverage": 0.9860258774676726,
+      "temporalConcentration": 0.9330922242314648
+    },
+    "reportingEraWeight": 1
+  }
+]

@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { WeatherAuthorityRuntime } from '../server/WeatherAuthorityRuntime.js';
+const runtime=new WeatherAuthorityRuntime({checkpointPath:'/tmp/weather-2.20.1-test.json'});
+const live=runtime.liveField('cape');
+const outlook=runtime.outlookField('day1','risk');
+const scan=runtime.radarScan('reflectivity','composite');
+assert.equal(live.encoding,'f32-base64');
+assert.equal(outlook.encoding,'f32-base64');
+assert.equal(scan.encoding,'u8-base64');
+assert.ok(Buffer.from(scan.values,'base64').length===scan.size*scan.size);
+for(const page of ['index.html','day1.html','day2.html','day3.html']) assert.match(fs.readFileSync(new URL(`../${page}`,import.meta.url),'utf8'),/pageBootstrap\.js/);
+assert.doesNotMatch(fs.readFileSync(new URL('../js/remoteProductPage.js',import.meta.url),'utf8'),/getAuthorityState/);
+console.log('thin product clients passed');

@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { buildOutlookDiscussion } from '../js/forecast/OutlookDiscussionEngine.js';
+const css=fs.readFileSync(new URL('../css/styles.css',import.meta.url),'utf8');
+assert.match(css,/body\[data-page\^="day"\] \.map-stage[\s\S]*aspect-ratio:1 \/ 1/);
+const cells=Array.from({length:4},()=>({surface:{dewpoint:66},levels:{850:{windSpeed:35},500:{windSpeed:55},250:{windSpeed:105}},derived:{cape:2200,cin:45,srh:240,bulkShear:48,lcl:900,stp:3.4,vtp:1.2},dynamics:{forcingScore:.72,initiationPotential:.61},features:{synopticLifecycle:{ejectionPhase:.8},synopticCoherence:.8}}));
+const grid=Array.from({length:4},(_,i)=>({risk:i===0?'MDT':'ENH',tornadoProbability:i===0?15:10,hailProbability:30,windProbability:30,tornadoCig:2,hailCig:1,windCig:1,peakHourUtc:22,peakCoverage:.62,peakInitiation:.58,hazardOverlapScore:1-i*.1,conditionalTornadoIntensity:.7,conditionalHailIntensity:.65,conditionalWindIntensity:.6}));
+const world={width:2,height:2,validHourUtc:12,getCell:(x,y)=>cells[y*2+x],forEachCell:fn=>cells.forEach(fn),outlookCycle:{products:{day1:{overallRisk:'MDT',issuedHourUtc:12,validStartHour:12,validEndHour:36,peakForecastHourUtc:22,grid}}}};
+const config={seed:1,setupType:'dryline_cyclone',stormMode:'discrete supercells',primaryHazard:'tornadoes',intensity:.8,synopticPattern:{coherence:.8},analogGuidance:{moistureReturn:.8,clearing:.75,frontalCoherence:.8,capPersistence:.4,discreteBias:.75}};
+const d=buildOutlookDiscussion(world,config,'day1');
+for(const expected of ['15% tornado','2200 J/kg CAPE','STP 3.4','VTP 1.2','850 mb','peak'])assert.ok(d.discussion.includes(expected),expected);
+assert.ok(d.discussion.split('\n\n').length>=3);
+console.log('2.25.4 outlook layout and data-rich discussion regression passed');

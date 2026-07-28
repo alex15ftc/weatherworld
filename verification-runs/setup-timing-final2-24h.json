@@ -1,0 +1,152 @@
+{
+  "seeds": [
+    2,
+    3,
+    69
+  ],
+  "hours": 24,
+  "stormsCreated": 51,
+  "tornadoes": 0,
+  "rows": [
+    {
+      "seed": 2,
+      "setupType": "high_plains_upslope",
+      "narrative": "giant_hail",
+      "topology": [],
+      "event": {
+        "stormsCreated": 26,
+        "initiations": 26,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 9,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 6,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 23.5,
+        "peakConvectiveHourByDay": {
+          "day1": 23.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 21,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.4046122219984339,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 77
+          },
+          {
+            "mode": "elevated convection",
+            "count": 52
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 57.830372399999995,
+        "forecastRisk": "SLGT",
+        "observedRisk": "ENH"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 8.6 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling."
+      ]
+    },
+    {
+      "seed": 3,
+      "setupType": "northwest_flow",
+      "narrative": "giant_hail",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 0,
+        "initiations": 0,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 0,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 0,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 12,
+        "peakConvectiveHourByDay": {
+          "day1": 12,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": null,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0,
+        "dominantModes": []
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 59.99970880000001,
+        "forecastRisk": "MRGN",
+        "observedRisk": "TSTM"
+      },
+      "recommendations": [
+        "No dominant calibration failure was detected in this seed; expand to a multi-seed sample before tuning."
+      ]
+    },
+    {
+      "seed": 69,
+      "setupType": "elevated_mcs",
+      "narrative": "progressive_mcs",
+      "topology": [
+        "cold"
+      ],
+      "event": {
+        "stormsCreated": 25,
+        "initiations": 25,
+        "totalTornadoes": 0,
+        "maximumConcurrentStorms": 13,
+        "maximumConcurrentTornadoes": 0,
+        "maximumConcurrentSevereHailStorms": 10,
+        "maximumConcurrentSevereWindStorms": 0,
+        "peakConvectiveHourUtc": 22.5,
+        "peakConvectiveHourByDay": {
+          "day1": 22.5,
+          "day2": 36,
+          "day3": null
+        },
+        "peakInitiationHourByDay": {
+          "day1": 19,
+          "day2": null,
+          "day3": null
+        },
+        "peakStormIntensity": 0.36154316734213715,
+        "dominantModes": [
+          {
+            "mode": "discrete supercell",
+            "count": 87
+          },
+          {
+            "mode": "MCS",
+            "count": 71
+          },
+          {
+            "mode": "multicell",
+            "count": 24
+          }
+        ]
+      },
+      "forecast": {
+        "products": 1,
+        "meanScore": 54.338889466666664,
+        "forecastRisk": "SLGT",
+        "observedRisk": "ENH"
+      },
+      "recommendations": [
+        "Hail probabilities are underforecast on average by 25.5 percentage points.",
+        "Hail detection is weak; inspect hazard thresholds and storm-environment coupling.",
+        "Convective-initiation forecasts cover too much area relative to realized initiation."
+      ]
+    }
+  ]
+}

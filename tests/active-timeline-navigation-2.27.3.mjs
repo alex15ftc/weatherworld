@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const main = fs.readFileSync(new URL('../js/main.js', import.meta.url), 'utf8');
+const worker = fs.readFileSync(new URL('../js/worker/timelinePrecompute.worker.js', import.meta.url), 'utf8');
+assert.match(main, /startActiveTimeline\(\{ seed, startHourUtc: baseHour \}\)/);
+assert.match(main, /activeTimelineFrameCache/);
+assert.match(main, /prefetchTimelineWindow/);
+assert.match(main, /if \(dimensionsChanged\) renderer\.resize\(\)/);
+assert.match(main, /if \(dimensionsChanged\) renderer\.resize\(\);/);
+assert.match(main, /schedulePersistWorldState\(\)/);
+assert.doesNotMatch(worker, /function frameByOffset\(value\) \{\s*ensureReady\(\)/);
+console.log('2.27.3 active timeline navigation regression passed.');

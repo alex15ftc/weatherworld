@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "verifierVersion": "2.28.4",
+  "seed": 72776780,
+  "simulation": {
+    "startHourUtc": 12,
+    "endHourUtc": 12,
+    "hours": null,
+    "stepHours": 0.5,
+    "width": 50,
+    "height": 50,
+    "cellSizeMiles": 10
+  },
+  "event": {
+    "stormsCreated": 0,
+    "initiations": 0,
+    "totalTornadoes": 0,
+    "maximumConcurrentStorms": 0,
+    "maximumConcurrentTornadoes": 0,
+    "maximumConcurrentSevereHailStorms": 0,
+    "maximumConcurrentSevereWindStorms": 0,
+    "peakConvectiveHourUtc": 12,
+    "peakStormIntensity": 0,
+    "dominantModes": []
+  },
+  "forecast": {
+    "productsScored": 0,
+    "productsSkipped": 3,
+    "byDay": {
+      "day1": {
+        "count": 0,
+        "meanScore": null,
+        "best": null,
+        "latest": null
+      },
+      "day2": {
+        "count": 0,
+        "meanScore": null,
+        "best": null,
+        "latest": null
+      },
+      "day3": {
+        "count": 0,
+        "meanScore": null,
+        "best": null,
+        "latest": null
+      }
+    },
+    "calibration": {
+      "tornado": {
+        "meanBrier": 0,
+        "meanPOD": 0,
+        "meanFAR": 0,
+        "meanCSI": 0,
+        "forecastBias": 0
+      },
+      "hail": {
+        "meanBrier": 0,
+        "meanPOD": 0,
+        "meanFAR": 0,
+        "meanCSI": 0,
+        "forecastBias": 0
+      },
+      "wind": {
+        "meanBrier": 0,
+        "meanPOD": 0,
+        "meanFAR": 0,
+        "meanCSI": 0,
+        "forecastBias": 0
+      }
+    }
+  },
+  "performance": {
+    "initializationMs": 2593.71733,
+    "simulationMs": -0.46301900000025853,
+    "truthCaptureMs": 0.4669850000000224,
+    "scoringMs": 0.5516619999998511,
+    "totalMs": 2622.470593,
+    "simulatedHoursPerSecond": null,
+    "truthFrames": 1
+  },
+  "products": [],
+  "incompleteProducts": [
+    {
+      "cycleId": "day1-s1-i2-r0-seed-na",
+      "key": "day1",
+      "issuedHourUtc": 12,
+      "validStartHour": 12,
+      "validEndHour": 36,
+      "status": "UNVERIFIED_INCOMPLETE_TRUTH_WINDOW"
+    },
+    {
+      "cycleId": "day2-s1-i1-r0-seed-na",
+      "key": "day2",
+      "issuedHourUtc": 12,
+      "validStartHour": 36,
+      "validEndHour": 60,
+      "status": "UNVERIFIED_INCOMPLETE_TRUTH_WINDOW"
+    },
+    {
+      "cycleId": "day3-s1-i0-r0-seed-na",
+      "key": "day3",
+      "issuedHourUtc": 12,
+      "validStartHour": 60,
+      "validEndHour": 84,
+      "status": "UNVERIFIED_INCOMPLETE_TRUTH_WINDOW"
+    }
+  ],
+  "recommendations": [
+    "Tornado detection is weak; inspect hazard thresholds and storm-environment coupling.",
+    "Hail detection is weak; inspect hazard thresholds and storm-environment coupling.",
+    "Wind detection is weak; inspect hazard thresholds and storm-environment coupling."
+  ]
+}
