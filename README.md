@@ -1,11 +1,14 @@
 
 ﻿# Fake Plains Weather Simulator
 
+**Current version: 2.34.0.** The authoritative development plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+
 A deterministic severe-weather simulation for a fictional Plains domain. It evolves
 an authoritative atmosphere, mesoscale boundaries, persistent storms, tornado/hail/wind
 hazards, Day 1–3 outlooks, soundings, map tiles, and forecast verification.
 
-Current release: **2.32.5 — Tornado-Track and Bullseye Verification**
+Current release: **2.34.0 — Historical SPC Outlook Foundation**
 
 ## Start here
 
@@ -100,6 +103,7 @@ Verification exports now include a top-level `atmosphericEnvironmentSamples` arr
 
 # Fake Plains Weather Simulator
 
+
 ## Milestone 2.28.9 — Universal Synoptic Narratives
 
 - Added 13 universal atmosphere narratives, with tornado-oriented localized and conditional setups favored.
@@ -153,6 +157,8 @@ Convective guidance now separates broad environmental potential from actual init
 ## Milestone 2.27.0 — Performance foundation
 
 Verification reports now include phase timings and simulated-hours-per-second. Run `npm run benchmark:seed -- <seed> <hours> <runs>` for repeatable local benchmarks. Storm interactions use spatial buckets, atmosphere snapshots reuse typed-array buffers, and incomplete forecast truth windows are excluded from scores. Weather calibration is intentionally unchanged in this release.
+
+# Fake Plains Weather Simulator
 
 # Fake Plains Weather Simulator — Milestone 2.24.0
 
@@ -223,6 +229,8 @@ Key API metadata fields: `stormValidHourUtc`, `atmosphereValidHourUtc`, `stormCa
 - Added drag-distance suppression so scrolling does not open a sounding.
 - Added pointer-cancel handling and robust canvas-coordinate bounds checks.
 - Added cache-busting version updates so browsers do not retain the broken 2.10.4.2 interaction module.
+
+# Fake Plains Weather Simulator
 
 # Fake Plains Weather Simulator — Milestone 2.10.2
 
