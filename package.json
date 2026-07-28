@@ -1,6 +1,6 @@
 {
   "name": "fake-plains-weather-simulator",
-  "version": "2.34.2",
+  "version": "2.34.2.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -111,13 +111,17 @@
     "test:2.33.4": "node tests/setup-calibration-aggregation-2.33.4.mjs",
     "test:2.33.5": "node tests/boundary-relative-risk-placement-2.33.5.mjs",
     "test:2.34.0": "node tests/historical-data-architecture-2.34.0.mjs",
-    "test:current": "npm run test:2.34.0 && npm run test:2.34.1 && npm run test:2.34.2 && npm run test:live-wind-12z && npm run test:hazard-corridors && npm run test:hazard-motion && npm run test:calibration-aggregation && npm run test:boundary-placement",
+    "test:current": "npm run test:2.34.0 && npm run test:2.34.1 && npm run test:2.34.2 && npm run test:2.34.2.1 && npm run test:2.34.2.2 && npm run test:live-wind-12z && npm run test:hazard-corridors && npm run test:hazard-motion && npm run test:calibration-aggregation && npm run test:boundary-placement",
     "test:regression-2.34.0": "npm run test:regression-2.32.6 && npm run test:2.33.0 && npm run test:current",
     "fetch:spc-outlooks": "node scripts/fetch-spc-outlooks.mjs",
     "test:2.34.1": "node tests/spc-outlook-acquisition-2.34.1.mjs",
     "test:regression-2.34.1": "npm run test:regression-2.34.0 && npm run test:2.34.1",
     "parse:spc-outlooks": "node scripts/parse-spc-outlooks.mjs",
     "test:2.34.2": "node tests/spc-outlook-parsing-2.34.2.mjs",
-    "test:regression-2.34.2": "npm run test:regression-2.34.1 && npm run test:2.34.2"
+    "test:regression-2.34.2": "npm run test:regression-2.34.1 && npm run test:2.34.2",
+    "test:2.34.2.1": "node tests/spc-fetch-performance-2.34.2.1.mjs",
+    "test:regression-2.34.2.1": "npm run test:regression-2.34.2 && npm run test:2.34.2.1",
+    "test:2.34.2.2": "node tests/spc-targeted-discovery-2.34.2.2.mjs",
+    "test:regression-2.34.2.2": "npm run test:regression-2.34.2.1 && npm run test:2.34.2.2"
   }
 }

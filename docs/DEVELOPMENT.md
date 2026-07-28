@@ -97,3 +97,8 @@ npm run fetch:spc-outlooks -- --start 2024-05-20 --end 2024-05-22 --days day1,da
 ```
 
 Use `--dry-run` to enumerate matching issuance pages without downloading linked products. Raw products default to `data/spc/downloads/`, which is intentionally ignored by Git. Never commit `.part` files, raw archive ZIPs, or credentials.
+
+
+## 2.34.2.2 targeted SPC acquisition
+
+`fetch:spc-outlooks` now uses date-targeted product discovery by default, avoiding slow annual archive listings. Use `--discovery annual` only for completeness audits or broad archive reconciliation.

@@ -1,0 +1,466 @@
+diff --git a/MILESTONE-2.34.3.md b/MILESTONE-2.34.3.md
+new file mode 100644
+index 0000000..6b89d64
+--- /dev/null
++++ b/MILESTONE-2.34.3.md
+@@ -0,0 +1,20 @@
++# Weather World 2.34.3 — SPC Polygon Rasterization
++
++This milestone converts normalized historical SPC outlook polygons into a north-up geographic grid suitable for rendering, verification, and later projection into Weather World's synthetic domain.
++
++## Included
++
++- Configurable 10 km geographic grid generation using a local equirectangular projection.
++- Deterministic polygon-to-cell rasterization with configurable sub-cell edge sampling.
++- Sparse output by default, with optional full-grid emission.
++- Per-cell categorical, tornado, wind, hail, and significant-hazard values.
++- Per-cell contour provenance and coverage fractions.
++- Per-contour touched-cell and covered-cell-equivalent diagnostics.
++- `estimatedGridCells` polygon metadata, folded in from the planned parser cleanup.
++
++## Coordinate convention
++
++- Columns increase eastward.
++- Rows increase southward.
++- Cell `(0, 0)` is the northwest cell.
++- The raster grid is geographic and independent from the current fixed synthetic 50×50 simulation domain.
+diff --git a/js/historical/spc/SPCOutlookParser.js b/js/historical/spc/SPCOutlookParser.js
+index 5105a39..d884eea 100644
+--- a/js/historical/spc/SPCOutlookParser.js
++++ b/js/historical/spc/SPCOutlookParser.js
+@@ -318,6 +318,7 @@ function enrichPolygon(polygon, polygonIndex) {
+     bbox,
+     areaKm2: round(Math.max(0, outerAreaKm2 - holesAreaKm2)),
+     areaCells10km: round(Math.max(0, outerAreaKm2 - holesAreaKm2) / 100),
++    estimatedGridCells: Math.round(Math.max(0, outerAreaKm2 - holesAreaKm2) / 100),
+     validation: { valid: true, closed: true, selfIntersections: 0 }
+   });
+ }
+diff --git a/js/historical/spc/SPCOutlookRasterizer.js b/js/historical/spc/SPCOutlookRasterizer.js
+new file mode 100644
+index 0000000..213fd3d
+--- /dev/null
++++ b/js/historical/spc/SPCOutlookRasterizer.js
+@@ -0,0 +1,325 @@
++export const SPC_RASTERIZER_VERSION = '2.34.3';
++
++export const DEFAULT_SPC_CELL_SIZE_KM = 10;
++export const DEFAULT_COVERAGE_SAMPLES = 4;
++
++const KM_PER_DEGREE_LATITUDE = 111.32;
++const CATEGORY_RANK = Object.freeze({ TSTM: 1, MRGL: 2, SLGT: 3, ENH: 4, MDT: 5, HIGH: 6 });
++const RASTER_HAZARDS = Object.freeze([
++  'categorical', 'tornado', 'wind', 'hail',
++  'significantTornado', 'significantWind', 'significantHail'
++]);
++
++/**
++ * Build a north-up geographic grid using a local equirectangular projection.
++ * Rows increase southward; columns increase eastward.
++ */
++export function createSpcGeographicGrid({
++  minLon,
++  maxLon,
++  minLat,
++  maxLat,
++  cellSizeKm = DEFAULT_SPC_CELL_SIZE_KM,
++  referenceLat = (Number(minLat) + Number(maxLat)) / 2,
++  paddingCells = 0
++} = {}) {
++  validateBounds({ minLon, maxLon, minLat, maxLat });
++  if (!(Number(cellSizeKm) > 0)) throw new RangeError('cellSizeKm must be greater than zero');
++  if (!Number.isInteger(paddingCells) || paddingCells < 0) throw new RangeError('paddingCells must be a non-negative integer');
++
++  const kmPerDegreeLon = longitudeScale(referenceLat);
++  const paddedMinLon = Number(minLon) - paddingCells * cellSizeKm / kmPerDegreeLon;
++  const paddedMaxLon = Number(maxLon) + paddingCells * cellSizeKm / kmPerDegreeLon;
++  const paddedMinLat = Number(minLat) - paddingCells * cellSizeKm / KM_PER_DEGREE_LATITUDE;
++  const paddedMaxLat = Number(maxLat) + paddingCells * cellSizeKm / KM_PER_DEGREE_LATITUDE;
++  const width = Math.max(1, Math.ceil((paddedMaxLon - paddedMinLon) * kmPerDegreeLon / cellSizeKm));
++  const height = Math.max(1, Math.ceil((paddedMaxLat - paddedMinLat) * KM_PER_DEGREE_LATITUDE / cellSizeKm));
++
++  return deepFreeze({
++    projection: 'local-equirectangular',
++    orientation: 'north-up',
++    rowDirection: 'south',
++    columnDirection: 'east',
++    cellSizeKm: Number(cellSizeKm),
++    width,
++    height,
++    referenceLat: Number(referenceLat),
++    kmPerDegreeLat: KM_PER_DEGREE_LATITUDE,
++    kmPerDegreeLon,
++    bounds: {
++      minLon: paddedMinLon,
++      maxLon: paddedMinLon + width * cellSizeKm / kmPerDegreeLon,
++      minLat: paddedMaxLat - height * cellSizeKm / KM_PER_DEGREE_LATITUDE,
++      maxLat: paddedMaxLat
++    }
++  });
++}
++
++export function createSpcGridForOutlook(normalizedProduct, options = {}) {
++  const bounds = collectOutlookBounds(normalizedProduct);
++  if (!bounds) throw new TypeError('The SPC outlook contains no polygon geometry');
++  return createSpcGeographicGrid({ ...bounds, cellSizeKm: options.cellSizeKm ?? DEFAULT_SPC_CELL_SIZE_KM, paddingCells: options.paddingCells ?? 1 });
++}
++
++/**
++ * Rasterize a normalized SPC outlook into sparse geographic grid cells.
++ * coverageFraction uses deterministic sub-cell sampling for edge cells.
++ */
++export function rasterizeSpcOutlook(normalizedProduct, {
++  grid = null,
++  cellSizeKm = DEFAULT_SPC_CELL_SIZE_KM,
++  paddingCells = 1,
++  coverageSamples = DEFAULT_COVERAGE_SAMPLES,
++  minimumCoverage = 0,
++  includeEmptyCells = false
++} = {}) {
++  if (!normalizedProduct?.hazards) throw new TypeError('normalizedProduct.hazards is required');
++  if (!Number.isInteger(coverageSamples) || coverageSamples < 1 || coverageSamples > 16) {
++    throw new RangeError('coverageSamples must be an integer from 1 through 16');
++  }
++  if (!(minimumCoverage >= 0 && minimumCoverage <= 1)) throw new RangeError('minimumCoverage must be between 0 and 1');
++
++  const gridSpec = validateGrid(grid ?? createSpcGridForOutlook(normalizedProduct, { cellSizeKm, paddingCells }));
++  const cells = new Map();
++  const contourSummaries = [];
++
++  for (const hazardType of RASTER_HAZARDS) {
++    for (const contour of normalizedProduct.hazards[hazardType] ?? []) {
++      let touchedCells = 0;
++      let coveredCellEquivalents = 0;
++      for (const polygon of contour.polygons ?? []) {
++        const range = polygonCellRange(polygon.bbox ?? calculateRingBounds(polygon.outer), gridSpec);
++        for (let y = range.minY; y <= range.maxY; y += 1) {
++          for (let x = range.minX; x <= range.maxX; x += 1) {
++            const coverageFraction = estimateCellCoverage(polygon, x, y, gridSpec, coverageSamples);
++            if (coverageFraction <= minimumCoverage) continue;
++            const cell = getOrCreateCell(cells, x, y, gridSpec);
++            applyContour(cell, contour, coverageFraction);
++            touchedCells += 1;
++            coveredCellEquivalents += coverageFraction;
++          }
++        }
++      }
++      contourSummaries.push(deepFreeze({
++        contourId: contour.id,
++        hazardType: contour.hazardType,
++        value: contour.value,
++        significant: Boolean(contour.significant),
++        touchedCells,
++        coveredCellEquivalents: round(coveredCellEquivalents),
++        estimatedGridCells: (contour.polygons ?? []).reduce((sum, polygon) => sum + Number(polygon.estimatedGridCells ?? 0), 0)
++      }));
++    }
++  }
++
++  if (includeEmptyCells) {
++    for (let y = 0; y < gridSpec.height; y += 1) {
++      for (let x = 0; x < gridSpec.width; x += 1) getOrCreateCell(cells, x, y, gridSpec);
++    }
++  }
++
++  const orderedCells = [...cells.values()]
++    .sort((a, b) => a.y - b.y || a.x - b.x)
++    .map(finalizeCell);
++  const totalCellCount = gridSpec.width * gridSpec.height;
++
++  return deepFreeze({
++    schemaVersion: SPC_RASTERIZER_VERSION,
++    rasterizerVersion: SPC_RASTERIZER_VERSION,
++    sourceSchemaVersion: normalizedProduct.schemaVersion ?? null,
++    forecastDay: normalizedProduct.forecastDay ?? null,
++    issuedAt: normalizedProduct.issuedAt ?? null,
++    validStart: normalizedProduct.validStart ?? null,
++    validEnd: normalizedProduct.validEnd ?? null,
++    grid: gridSpec,
++    cells: orderedCells,
++    contours: contourSummaries,
++    diagnostics: {
++      contourCount: contourSummaries.length,
++      populatedCellCount: orderedCells.filter(cell => cell.contourIds.length > 0).length,
++      emittedCellCount: orderedCells.length,
++      totalCellCount,
++      coverageSamples,
++      minimumCoverage
++    }
++  });
++}
++
++export function cellBoundsFromGrid(x, y, grid) {
++  const spec = validateGrid(grid);
++  validateCellIndex(x, y, spec);
++  const west = spec.bounds.minLon + x * spec.cellSizeKm / spec.kmPerDegreeLon;
++  const east = spec.bounds.minLon + (x + 1) * spec.cellSizeKm / spec.kmPerDegreeLon;
++  const north = spec.bounds.maxLat - y * spec.cellSizeKm / spec.kmPerDegreeLat;
++  const south = spec.bounds.maxLat - (y + 1) * spec.cellSizeKm / spec.kmPerDegreeLat;
++  return { minLon: west, maxLon: east, minLat: south, maxLat: north };
++}
++
++function collectOutlookBounds(product) {
++  let result = null;
++  for (const hazardType of RASTER_HAZARDS) {
++    for (const contour of product?.hazards?.[hazardType] ?? []) {
++      for (const polygon of contour.polygons ?? []) {
++        const bbox = polygon.bbox ?? calculateRingBounds(polygon.outer);
++        if (!bbox) continue;
++        result = result ? {
++          minLon: Math.min(result.minLon, bbox.minLon), maxLon: Math.max(result.maxLon, bbox.maxLon),
++          minLat: Math.min(result.minLat, bbox.minLat), maxLat: Math.max(result.maxLat, bbox.maxLat)
++        } : { ...bbox };
++      }
++    }
++  }
++  return result;
++}
++
++function polygonCellRange(bbox, grid) {
++  const westKm = (bbox.minLon - grid.bounds.minLon) * grid.kmPerDegreeLon;
++  const eastKm = (bbox.maxLon - grid.bounds.minLon) * grid.kmPerDegreeLon;
++  const northKm = (grid.bounds.maxLat - bbox.maxLat) * grid.kmPerDegreeLat;
++  const southKm = (grid.bounds.maxLat - bbox.minLat) * grid.kmPerDegreeLat;
++  return {
++    minX: clamp(Math.floor(westKm / grid.cellSizeKm), 0, grid.width - 1),
++    maxX: clamp(Math.floor(eastKm / grid.cellSizeKm), 0, grid.width - 1),
++    minY: clamp(Math.floor(northKm / grid.cellSizeKm), 0, grid.height - 1),
++    maxY: clamp(Math.floor(southKm / grid.cellSizeKm), 0, grid.height - 1)
++  };
++}
++
++function estimateCellCoverage(polygon, x, y, grid, samples) {
++  const bounds = cellBoundsFromGrid(x, y, grid);
++  const corners = [
++    [bounds.minLon, bounds.minLat], [bounds.minLon, bounds.maxLat],
++    [bounds.maxLon, bounds.minLat], [bounds.maxLon, bounds.maxLat]
++  ];
++  if (corners.every(point => pointInPolygon(point, polygon))) return 1;
++
++  let inside = 0;
++  const total = samples * samples;
++  for (let sy = 0; sy < samples; sy += 1) {
++    const lat = bounds.maxLat - (sy + 0.5) / samples * (bounds.maxLat - bounds.minLat);
++    for (let sx = 0; sx < samples; sx += 1) {
++      const lon = bounds.minLon + (sx + 0.5) / samples * (bounds.maxLon - bounds.minLon);
++      if (pointInPolygon([lon, lat], polygon)) inside += 1;
++    }
++  }
++  return inside / total;
++}
++
++function pointInPolygon(point, polygon) {
++  if (!pointInRing(point, polygon.outer)) return false;
++  return !(polygon.holes ?? []).some(hole => pointInRing(point, hole));
++}
++
++function pointInRing([x, y], ring = []) {
++  let inside = false;
++  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
++    const [xi, yi] = ring[i];
++    const [xj, yj] = ring[j];
++    const intersects = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || Number.EPSILON) + xi);
++    if (intersects) inside = !inside;
++  }
++  return inside;
++}
++
++function getOrCreateCell(cells, x, y, grid) {
++  const key = `${x}:${y}`;
++  let cell = cells.get(key);
++  if (cell) return cell;
++  const bounds = cellBoundsFromGrid(x, y, grid);
++  cell = {
++    id: `SPC_${String(y).padStart(4, '0')}_${String(x).padStart(4, '0')}`,
++    x,
++    y,
++    center: { lon: (bounds.minLon + bounds.maxLon) / 2, lat: (bounds.minLat + bounds.maxLat) / 2 },
++    bounds,
++    hazards: {},
++    contourIds: new Set()
++  };
++  cells.set(key, cell);
++  return cell;
++}
++
++function applyContour(cell, contour, coverageFraction) {
++  const type = contour.hazardType;
++  const existing = cell.hazards[type];
++  const value = contour.value;
++  const incomingRank = type === 'categorical' ? (CATEGORY_RANK[value] ?? 0) : (typeof value === 'number' ? value : 1);
++  const existingRank = existing ? (type === 'categorical' ? (CATEGORY_RANK[existing.value] ?? 0) : (typeof existing.value === 'number' ? existing.value : 1)) : -1;
++
++  if (!existing || incomingRank > existingRank) {
++    cell.hazards[type] = {
++      value,
++      significant: Boolean(contour.significant),
++      coverageFraction,
++      contourIds: new Set([contour.id])
++    };
++  } else if (incomingRank === existingRank) {
++    existing.coverageFraction = Math.max(existing.coverageFraction, coverageFraction);
++    existing.significant ||= Boolean(contour.significant);
++    existing.contourIds.add(contour.id);
++  }
++  cell.contourIds.add(contour.id);
++}
++
++function finalizeCell(cell) {
++  const hazards = {};
++  for (const [type, hazard] of Object.entries(cell.hazards)) {
++    hazards[type] = {
++      value: hazard.value,
++      significant: hazard.significant,
++      coverageFraction: round(hazard.coverageFraction),
++      contourIds: [...hazard.contourIds].sort()
++    };
++  }
++  return deepFreeze({
++    id: cell.id,
++    x: cell.x,
++    y: cell.y,
++    center: { lon: round(cell.center.lon), lat: round(cell.center.lat) },
++    bounds: Object.fromEntries(Object.entries(cell.bounds).map(([key, value]) => [key, round(value)])),
++    hazards,
++    contourIds: [...cell.contourIds].sort()
++  });
++}
++
++function validateGrid(grid) {
++  if (!grid || !Number.isInteger(grid.width) || !Number.isInteger(grid.height) || grid.width < 1 || grid.height < 1) {
++    throw new TypeError('A valid grid with positive integer width and height is required');
++  }
++  if (!(grid.cellSizeKm > 0) || !(grid.kmPerDegreeLat > 0) || !(grid.kmPerDegreeLon > 0)) throw new TypeError('Grid distance metadata is invalid');
++  validateBounds(grid.bounds);
++  return grid;
++}
++
++function validateBounds({ minLon, maxLon, minLat, maxLat } = {}) {
++  if (![minLon, maxLon, minLat, maxLat].every(Number.isFinite)) throw new TypeError('Finite geographic bounds are required');
++  if (!(minLon < maxLon) || !(minLat < maxLat)) throw new RangeError('Geographic bounds must have positive width and height');
++}
++
++function validateCellIndex(x, y, grid) {
++  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
++    throw new RangeError(`Cell index ${x},${y} lies outside the grid`);
++  }
++}
++
++function calculateRingBounds(ring = []) {
++  if (!ring.length) return null;
++  const lon = ring.map(point => point[0]);
++  const lat = ring.map(point => point[1]);
++  return { minLon: Math.min(...lon), maxLon: Math.max(...lon), minLat: Math.min(...lat), maxLat: Math.max(...lat) };
++}
++
++function longitudeScale(latitude) {
++  const value = KM_PER_DEGREE_LATITUDE * Math.cos(Number(latitude) * Math.PI / 180);
++  if (!(value > 0.001)) throw new RangeError('referenceLat is too close to a pole for local equirectangular rasterization');
++  return value;
++}
++
++function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
++function round(value) { return Number(Number(value).toFixed(6)); }
++function deepFreeze(value) {
++  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
++  Object.freeze(value);
++  for (const child of Object.values(value)) deepFreeze(child);
++  return value;
++}
+diff --git a/package.json b/package.json
+index f5ffd80..1247754 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "fake-plains-weather-simulator",
+-  "version": "2.34.2",
++  "version": "2.34.3",
+   "private": true,
+   "type": "module",
+   "scripts": {
+@@ -118,6 +118,8 @@
+     "test:regression-2.34.1": "npm run test:regression-2.34.0 && npm run test:2.34.1",
+     "parse:spc-outlooks": "node scripts/parse-spc-outlooks.mjs",
+     "test:2.34.2": "node tests/spc-outlook-parsing-2.34.2.mjs",
+-    "test:regression-2.34.2": "npm run test:regression-2.34.1 && npm run test:2.34.2"
++    "test:regression-2.34.2": "npm run test:regression-2.34.1 && npm run test:2.34.2",
++    "test:2.34.3": "node tests/spc-polygon-rasterization-2.34.3.mjs",
++    "test:regression-2.34.3": "npm run test:regression-2.34.2 && node tests/spc-compact-outline-2.34.2.4.mjs && node tests/spc-geometry-optimization-2.34.2.5.mjs && node tests/spc-parser-cleanup-2.34.2.6.mjs && npm run test:2.34.3"
+   }
+ }
+diff --git a/tests/spc-polygon-rasterization-2.34.3.mjs b/tests/spc-polygon-rasterization-2.34.3.mjs
+new file mode 100644
+index 0000000..1a31a0e
+--- /dev/null
++++ b/tests/spc-polygon-rasterization-2.34.3.mjs
+@@ -0,0 +1,69 @@
++import assert from 'node:assert/strict';
++import { parseSpcLatLonText, normalizeSpcOutlook } from '../js/historical/spc/SPCOutlookParser.js';
++import {
++  SPC_RASTERIZER_VERSION,
++  createSpcGeographicGrid,
++  rasterizeSpcOutlook,
++  cellBoundsFromGrid
++} from '../js/historical/spc/SPCOutlookRasterizer.js';
++
++assert.equal(SPC_RASTERIZER_VERSION, '2.34.3');
++
++const source = `
++PROBABILISTIC OUTLOOK POINTS DAY 1
++... TORNADO ...
++0.10 35009700 35009800 36009800 36009700 35009700
++SIGN 35209780 35209720 35809720 35809780 35209780
++&&
++CATEGORICAL OUTLOOK POINTS DAY 1
++... CATEGORICAL ...
++MRGL 34509820 34509680 36209680 36209820 34509820
++SLGT 35009790 35009710 36009710 36009790 35009790
++&&
++`;
++
++const parsed = parseSpcLatLonText(source, {
++  forecastDay: 'day1',
++  issuedAt: '2024-05-06T16:30:00.000Z',
++  validStart: '2024-05-06T16:30:00.000Z',
++  validEnd: '2024-05-07T12:00:00.000Z'
++});
++const normalized = normalizeSpcOutlook(parsed);
++const tornadoPolygon = normalized.hazards.tornado[0].polygons[0];
++assert.equal(tornadoPolygon.estimatedGridCells, Math.round(tornadoPolygon.areaKm2 / 100));
++
++const grid = createSpcGeographicGrid({
++  minLon: -98.25,
++  maxLon: -96.75,
++  minLat: 34.75,
++  maxLat: 36.25,
++  cellSizeKm: 10
++});
++assert.equal(grid.cellSizeKm, 10);
++assert.ok(grid.width > 10 && grid.height > 10);
++assert.equal(grid.rowDirection, 'south');
++const northwest = cellBoundsFromGrid(0, 0, grid);
++assert.equal(northwest.maxLat, grid.bounds.maxLat);
++
++const raster = rasterizeSpcOutlook(normalized, { grid, coverageSamples: 4 });
++assert.equal(raster.schemaVersion, '2.34.3');
++assert.equal(raster.forecastDay, 'day1');
++assert.equal(raster.diagnostics.contourCount, 4);
++assert.ok(raster.diagnostics.populatedCellCount > 0);
++assert.ok(raster.cells.every(cell => cell.contourIds.length > 0));
++assert.ok(raster.cells.every(cell => Object.values(cell.hazards).every(hazard => hazard.coverageFraction > 0 && hazard.coverageFraction <= 1)));
++
++const tornadoCells = raster.cells.filter(cell => cell.hazards.tornado?.value === 0.10);
++assert.ok(tornadoCells.length > 0);
++assert.ok(tornadoCells.some(cell => cell.hazards.significantTornado?.significant === true));
++assert.ok(tornadoCells.every(cell => cell.hazards.categorical?.value === 'SLGT' || cell.hazards.categorical?.value === 'MRGL'));
++assert.ok(raster.cells.some(cell => cell.hazards.categorical?.value === 'SLGT'));
++assert.ok(raster.cells.some(cell => cell.hazards.categorical?.value === 'MRGL'));
++assert.ok(raster.contours.every(summary => Number.isFinite(summary.coveredCellEquivalents)));
++
++const complete = rasterizeSpcOutlook(normalized, { grid, coverageSamples: 1, includeEmptyCells: true });
++assert.equal(complete.cells.length, grid.width * grid.height);
++assert.equal(complete.diagnostics.totalCellCount, grid.width * grid.height);
++assert.ok(complete.cells.some(cell => cell.contourIds.length === 0));
++
++console.log('2.34.3 SPC polygon rasterization: passed');

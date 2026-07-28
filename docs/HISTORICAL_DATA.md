@@ -48,3 +48,8 @@ The SPC archive describes itself as informational and potentially incomplete. Mi
 Parsing and normalization remain separate operations. Parsed products describe what was found in the source artifact, including structured warnings. Normalized products group those contours by hazard and attach the applicable SPC policy era. The original acquisition record remains unchanged beside the parsed and normalized representations.
 
 Malformed, unclassified, or duplicate contours are reported rather than silently interpreted. Rasterization to the simulator grid is intentionally deferred to 2.34.3.
+
+
+## 2.34.2.2 targeted SPC acquisition
+
+`fetch:spc-outlooks` now uses date-targeted product discovery by default, avoiding slow annual archive listings. Use `--discovery annual` only for completeness audits or broad archive reconciliation.

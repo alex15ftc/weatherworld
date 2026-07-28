@@ -882,3 +882,8 @@ Predictive outlooks now consume hazard, initiation, coverage, and CIG diagnostic
 - Outlook synthesis test: passed.
 - Full legacy test suite was started but did not complete within the available execution window during the storm-engine test.
 - Full 24-hour seed verification runs should be rerun locally for seeds 51566832, 54960592, 67397432, and 72776780.
+
+
+## 2.34.2.2 targeted SPC acquisition
+
+`fetch:spc-outlooks` now uses date-targeted product discovery by default, avoiding slow annual archive listings. Use `--discovery annual` only for completeness audits or broad archive reconciliation.

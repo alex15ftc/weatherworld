@@ -109,3 +109,8 @@ A historical feature is not complete until it proves all of the following:
 3. Issued and valid timestamps are explicit.
 4. Outcome labels are inaccessible to forecast predictors.
 5. Generated outlooks can be independently verified against both SPC forecasts and observed outcomes.
+
+
+## 2.34.2.2 targeted SPC acquisition
+
+`fetch:spc-outlooks` now uses date-targeted product discovery by default, avoiding slow annual archive listings. Use `--discovery annual` only for completeness audits or broad archive reconciliation.

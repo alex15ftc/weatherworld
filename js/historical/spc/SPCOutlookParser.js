@@ -1,4 +1,4 @@
-export const SPC_PARSER_VERSION = '2.34.2';
+export const SPC_PARSER_VERSION = '2.34.2.6';
 
 export const SPC_HAZARD_TYPES = Object.freeze([
   'categorical', 'tornado', 'wind', 'hail',
@@ -59,7 +59,17 @@ export function parseSpcKml(kml, options = {}) {
 }
 
 export function parseSpcLatLonText(text, options = {}) {
-  const lines = String(text ?? '').replace(/\r/g, '').split('\n');
+  const sourceText = String(text ?? '').replace(/\r/g, '');
+  const compact = parseCompactSpcOutline(sourceText, options);
+  if (compact.detected) {
+    return createParsedProduct({
+      format: 'spc-outline-text', forecastDay: options.forecastDay,
+      issuedAt: options.issuedAt, validStart: options.validStart, validEnd: options.validEnd,
+      source: options.source, contours: compact.contours, warnings: compact.warnings
+    });
+  }
+
+  const lines = sourceText.split('\n');
   const warnings = [];
   const contours = [];
   let activeLabel = options.label ?? null;
@@ -85,7 +95,7 @@ export function parseSpcLatLonText(text, options = {}) {
     }
     index = cursor - 1;
 
-    const classification = classifyContour({ name: activeLabel, hazardType: activeHazard, ...options });
+    const classification = classifyContour({ ...options, name: activeLabel, hazardType: activeHazard });
     if (!classification) {
       warnings.push(issue('unclassified-latlon', 'LAT...LON block could not be classified', { line: index + 1, label: activeLabel, hazardType: activeHazard }));
       continue;
@@ -104,6 +114,67 @@ export function parseSpcLatLonText(text, options = {}) {
     issuedAt: options.issuedAt, validStart: options.validStart, validEnd: options.validEnd,
     source: options.source, contours, warnings
   });
+}
+
+function parseCompactSpcOutline(text, options) {
+  const contours = [];
+  const warnings = [];
+  let detected = false;
+  const sectionPattern = /(?:PROBABILISTIC OUTLOOK POINTS DAY \d+\s*)?\.\.\.\s*(TORNADO|HAIL|WIND)\s*\.\.\.([\s\S]*?)(?=&&)/gi;
+  for (const match of text.matchAll(sectionPattern)) {
+    detected = true;
+    parseOutlineSection(match[2], match[1].toLowerCase(), contours, warnings, options);
+  }
+  const categoricalPattern = /CATEGORICAL OUTLOOK POINTS DAY \d+\s*\.\.\.\s*CATEGORICAL\s*\.\.\.([\s\S]*?)(?=&&)/gi;
+  for (const match of text.matchAll(categoricalPattern)) {
+    detected = true;
+    parseOutlineSection(match[1], 'categorical', contours, warnings, options);
+  }
+  return { detected, contours, warnings };
+}
+
+function parseOutlineSection(sectionText, hazardType, contours, warnings, options) {
+  const tokens = String(sectionText).trim().split(/\s+/).filter(Boolean);
+  let activeLabel = null;
+  let activeCoordinates = [];
+  let activePolygons = [];
+  let sourceIndex = contours.length;
+
+  const flushRing = () => {
+    if (!activeCoordinates.length) return;
+    const normalized = normalizeRing(activeCoordinates.map(parseLatLonToken).filter(Boolean));
+    if (normalized) activePolygons.push({ outer: normalized, holes: [] });
+    else warnings.push(issue('discarded-outline-fragment', 'Discarded an SPC outline fragment that did not contain at least three valid coordinates', { hazardType, label: activeLabel, tokenCount: activeCoordinates.length }, 'info'));
+    activeCoordinates = [];
+  };
+  const flushContour = () => {
+    if (!activeLabel) return;
+    flushRing();
+    const classification = classifyContour({ ...options, name: activeLabel, hazardType });
+    if (!classification) warnings.push(issue('unclassified-outline', 'SPC outline contour could not be classified', { hazardType, label: activeLabel }));
+    else if (activePolygons.length) contours.push(createContour({ ...classification, polygons: activePolygons, sourceLabel: activeLabel, sourceIndex: sourceIndex++ }));
+    activeLabel = null;
+    activePolygons = [];
+  };
+
+  for (const token of tokens) {
+    const upper = token.toUpperCase();
+    if (isOutlineLabel(upper, hazardType)) {
+      flushContour();
+      activeLabel = upper;
+    } else if (token === '99999999') {
+      flushRing();
+    } else if (/^\d{8}$/.test(token)) {
+      if (!activeLabel) warnings.push(issue('orphan-outline-coordinate', 'Coordinate appeared before an SPC outline label', { hazardType, token }));
+      else activeCoordinates.push(token);
+    }
+  }
+  flushContour();
+}
+
+function isOutlineLabel(token, hazardType) {
+  if (hazardType === 'categorical') return CATEGORY_ALIASES[token] != null;
+  return token === 'SIGN' || token === 'SIG' || PROBABILITY_ALIASES[token] != null;
 }
 
 export function mergeParsedSpcProducts(products, metadata = {}) {
@@ -135,7 +206,8 @@ export function normalizeSpcOutlook(parsed, { policyEra = inferSpcPolicyEra(pars
     hazards,
     diagnostics: {
       contourCount: parsed?.contours?.length ?? 0,
-      warningCount: parsed?.warnings?.length ?? 0,
+      warningCount: (parsed?.warnings ?? []).filter(entry => entry?.severity !== 'info').length,
+      infoCount: (parsed?.warnings ?? []).filter(entry => entry?.severity === 'info').length,
       warnings: parsed?.warnings ?? []
     }
   });
@@ -196,22 +268,125 @@ function parseLatLonToken(token) {
   return validCoordinate(lon, lat) ? [lon, lat] : null;
 }
 
-function normalizeRing(points) {
+function normalizeRing(points, { clockwise = false } = {}) {
   if (!Array.isArray(points) || points.length < 3) return null;
-  const ring = points.map(([lon, lat]) => Object.freeze([round(lon), round(lat)]));
-  const [firstLon, firstLat] = ring[0];
-  const [lastLon, lastLat] = ring.at(-1);
-  if (firstLon !== lastLon || firstLat !== lastLat) ring.push(Object.freeze([firstLon, firstLat]));
-  return ring.length >= 4 ? Object.freeze(ring) : null;
+  const cleaned = [];
+  for (const point of points) {
+    if (!Array.isArray(point) || point.length < 2) continue;
+    const candidate = [round(point[0]), round(point[1])];
+    if (!validCoordinate(candidate[0], candidate[1])) continue;
+    const previous = cleaned.at(-1);
+    if (!previous || previous[0] !== candidate[0] || previous[1] !== candidate[1]) cleaned.push(candidate);
+  }
+  if (cleaned.length > 1 && coordinatesEqual(cleaned[0], cleaned.at(-1))) cleaned.pop();
+  if (new Set(cleaned.map(point => point.join(','))).size < 3) return null;
+  cleaned.push([...cleaned[0]]);
+  if (ringSelfIntersects(cleaned)) return null;
+  const isClockwise = signedRingArea(cleaned) < 0;
+  if (isClockwise !== clockwise) cleaned.reverse();
+  return Object.freeze(cleaned.map(point => Object.freeze(point)));
 }
 
 function createContour({ hazardType, value, significant, polygons, sourceLabel, sourceIndex }) {
-  return deepFreeze({ hazardType, value, significant: Boolean(significant), polygons, sourceLabel, sourceIndex });
+  return { hazardType, value, significant: Boolean(significant), polygons, sourceLabel, sourceIndex };
 }
 
 function createParsedProduct({ format, forecastDay, issuedAt, validStart, validEnd, source, contours, warnings }) {
-  return deepFreeze({ schemaVersion: SPC_PARSER_VERSION, format, forecastDay: forecastDay ?? null, issuedAt: issuedAt ?? null, validStart: validStart ?? null, validEnd: validEnd ?? null, source: source ?? null, contours, warnings });
+  const occurrence = new Map();
+  const enrichedContours = (contours ?? []).map((contour, index) => {
+    const valueToken = formatContourValueToken(contour.value);
+    const key = `${contour.hazardType}:${valueToken}`;
+    const sequence = (occurrence.get(key) ?? 0) + 1;
+    occurrence.set(key, sequence);
+    const id = createStableContourId({ forecastDay, issuedAt, hazardType: contour.hazardType, valueToken, sequence });
+    const polygons = (contour.polygons ?? []).map((polygon, polygonIndex) => enrichPolygon(polygon, polygonIndex));
+    return deepFreeze({ ...contour, id, sourceIndex: contour.sourceIndex ?? index, polygons });
+  });
+  return deepFreeze({ schemaVersion: SPC_PARSER_VERSION, format, forecastDay: forecastDay ?? null, issuedAt: issuedAt ?? null, validStart: validStart ?? null, validEnd: validEnd ?? null, source: source ?? null, contours: enrichedContours, warnings });
 }
+
+function enrichPolygon(polygon, polygonIndex) {
+  const outer = normalizeRing(polygon?.outer, { clockwise: false });
+  if (!outer) throw new TypeError(`Invalid SPC polygon outer ring at index ${polygonIndex}`);
+  const holes = (polygon?.holes ?? []).map(hole => normalizeRing(hole, { clockwise: true })).filter(Boolean);
+  const bbox = calculateBoundingBox(outer);
+  const outerAreaKm2 = sphericalRingAreaKm2(outer);
+  const holesAreaKm2 = holes.reduce((sum, hole) => sum + sphericalRingAreaKm2(hole), 0);
+  return deepFreeze({
+    outer,
+    holes,
+    bbox,
+    areaKm2: round(Math.max(0, outerAreaKm2 - holesAreaKm2)),
+    areaCells10km: round(Math.max(0, outerAreaKm2 - holesAreaKm2) / 100),
+    validation: { valid: true, closed: true, selfIntersections: 0 }
+  });
+}
+
+function formatContourValueToken(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(Math.round(value * 100)).padStart(2, '0');
+  }
+  return String(value ?? 'NA').replace(/[^A-Za-z0-9]+/g, '').toUpperCase() || 'NA';
+}
+
+function createStableContourId({ forecastDay, issuedAt, hazardType, valueToken, sequence }) {
+  const day = String(forecastDay ?? 'day').replace(/[^A-Za-z0-9]+/g, '').toUpperCase();
+  const stamp = String(issuedAt ?? 'unknown').replace(/[-:TZ.]/g, '').slice(0, 12) || 'UNKNOWN';
+  const hazard = String(hazardType ?? 'unknown').replace(/[^A-Za-z0-9]+/g, '').toUpperCase();
+  return `${day}_${stamp}_${hazard}_${valueToken}_${String(sequence).padStart(2, '0')}`;
+}
+
+function calculateBoundingBox(ring) {
+  const longitudes = ring.map(point => point[0]);
+  const latitudes = ring.map(point => point[1]);
+  return deepFreeze({
+    minLon: Math.min(...longitudes), maxLon: Math.max(...longitudes),
+    minLat: Math.min(...latitudes), maxLat: Math.max(...latitudes)
+  });
+}
+
+function sphericalRingAreaKm2(ring) {
+  const radiusKm = 6371.0088;
+  let sum = 0;
+  for (let index = 0; index < ring.length - 1; index += 1) {
+    const [lon1, lat1] = ring[index].map(toRadians);
+    const [lon2, lat2] = ring[index + 1].map(toRadians);
+    sum += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  return Math.abs(sum) * radiusKm * radiusKm / 2;
+}
+
+function signedRingArea(ring) {
+  let area = 0;
+  for (let index = 0; index < ring.length - 1; index += 1) {
+    area += ring[index][0] * ring[index + 1][1] - ring[index + 1][0] * ring[index][1];
+  }
+  return area / 2;
+}
+
+function ringSelfIntersects(ring) {
+  const segmentCount = ring.length - 1;
+  for (let a = 0; a < segmentCount; a += 1) {
+    for (let b = a + 1; b < segmentCount; b += 1) {
+      if (Math.abs(a - b) <= 1 || (a === 0 && b === segmentCount - 1)) continue;
+      if (segmentsIntersect(ring[a], ring[a + 1], ring[b], ring[b + 1])) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsIntersect(a, b, c, d) {
+  const orientation = (p, q, r) => Math.sign((q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1]));
+  const o1 = orientation(a, b, c);
+  const o2 = orientation(a, b, d);
+  const o3 = orientation(c, d, a);
+  const o4 = orientation(c, d, b);
+  return o1 !== o2 && o3 !== o4;
+}
+
+function coordinatesEqual(a, b) { return a?.[0] === b?.[0] && a?.[1] === b?.[1]; }
+function toRadians(value) { return value * Math.PI / 180; }
+
 
 function deduplicateContours(contours, warnings) {
   const seen = new Set();
@@ -255,7 +430,7 @@ function extractBlocks(text, tag) { return [...String(text).matchAll(new RegExp(
 function firstTagText(text, tag) { return String(text).match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))?.[1] ?? null; }
 function decodeXml(value) { return String(value).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'"); }
 function validCoordinate(lon, lat) { return Number.isFinite(lon) && Number.isFinite(lat) && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90; }
-function issue(code, message, details) { return deepFreeze({ code, message, details }); }
+function issue(code, message, details = {}, severity = 'warning') { return deepFreeze({ code, message, severity, details }); }
 function sortContours(contours) { return [...contours].sort((a, b) => contourRank(a.value) - contourRank(b.value)); }
 function contourRank(value) { return typeof value === 'number' ? value : ['TSTM', 'MRGL', 'SLGT', 'ENH', 'MDT', 'HIGH', 'SIGN'].indexOf(value); }
 function firstDefined(items, key) { return items.map(item => item?.[key]).find(value => value != null) ?? null; }
