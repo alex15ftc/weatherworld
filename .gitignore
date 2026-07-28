@@ -10,6 +10,7 @@ data/era5/
 data/noaa/
 data/spc/downloads/
 
+*.patch
 *.csv
 *.grib
 *.grib2
