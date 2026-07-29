@@ -1,0 +1,229 @@
+{
+  "schemaVersion": "2.34.5.3.1",
+  "generatedAt": "2026-07-29T00:22:38.928Z",
+  "root": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical",
+  "requestedDates": [
+    "2011-04-27",
+    "2011-05-24",
+    "2013-05-19",
+    "2013-11-17",
+    "2020-04-12",
+    "2020-08-10",
+    "2021-05-25",
+    "2021-12-10",
+    "2024-05-06"
+  ],
+  "forecastDays": [
+    "day1"
+  ],
+  "force": false,
+  "failureMode": "continue-and-summarize",
+  "concurrency": {
+    "downloads": 4,
+    "normalization": 4,
+    "pipeline": 4
+  },
+  "reports": [
+    {
+      "date": "2011-04-27",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110427",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110427\\manifest.json",
+      "fetch": {
+        "code": 1,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2011-04-27 --end 2011-04-27 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110427 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110427\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 392,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20110427:0100\n[discovery 2/?] Found day1:20110427:1300\n[discovery 3/?] Found day1:20110427:1200\n[discovery 4/?] Found day1:20110427:1630\n[discovery 5/?] Found day1:20110427:2000\n[1/5] Archived day1:20110427:1200 (3 artifacts)\n",
+        "stderr": "file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:20\r\n      const error = new Error(`HTTP ${response.status}: ${url}`);\r\n                    ^\r\n\r\nError: HTTP 404: https://www.spc.noaa.gov/products/outlook/archive/2011/pwo_20110427172612.html\r\n    at fetchWithRetry (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:20:21)\r\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\r\n    at async downloadArtifact (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:135:26)\r\n    at async run (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:46:24)\r\n    at async Promise.all (index 1)\r\n    at async mapWithConcurrency (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:49:3)\r\n    at async archiveProduct (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:92:27)\r\n    at async file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:71:19\r\n    at async run (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:46:24)\r\n    at async Promise.all (index 2) {\r\n  status: 404\r\n}\r\n\r\nNode.js v22.17.1\r\n"
+      },
+      "normalize": {
+        "code": 1,
+        "skipped": true,
+        "reason": "manifest unavailable"
+      }
+    },
+    {
+      "date": "2011-05-24",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110524",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110524\\manifest.json",
+      "fetch": {
+        "code": 1,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2011-05-24 --end 2011-05-24 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110524 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20110524\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 410,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20110524:0100\n[discovery 2/?] Found day1:20110524:1200\n[discovery 3/?] Found day1:20110524:1300\n[discovery 4/?] Found day1:20110524:1630\n[discovery 5/?] Found day1:20110524:2000\n",
+        "stderr": "file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:20\r\n      const error = new Error(`HTTP ${response.status}: ${url}`);\r\n                    ^\r\n\r\nError: HTTP 404: https://www.spc.noaa.gov/products/outlook/archive/2011/pwo_20110524091916.html\r\n    at fetchWithRetry (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:20:21)\r\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\r\n    at async downloadArtifact (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:135:26)\r\n    at async run (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:46:24)\r\n    at async Promise.all (index 1)\r\n    at async mapWithConcurrency (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:49:3)\r\n    at async archiveProduct (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:92:27)\r\n    at async file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:71:19\r\n    at async run (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:46:24)\r\n    at async Promise.all (index 2) {\r\n  status: 404\r\n}\r\n\r\nNode.js v22.17.1\r\n"
+      },
+      "normalize": {
+        "code": 1,
+        "skipped": true,
+        "reason": "manifest unavailable"
+      }
+    },
+    {
+      "date": "2013-05-19",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20130519",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20130519\\manifest.json",
+      "fetch": {
+        "code": 1,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2013-05-19 --end 2013-05-19 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20130519 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20130519\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 431,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20130519:0100\n[discovery 2/?] Found day1:20130519:1200\n[discovery 3/?] Found day1:20130519:1300\n[discovery 4/?] Found day1:20130519:2000\n[discovery 5/?] Found day1:20130519:1630\n[1/5] Archived day1:20130519:1200 (3 artifacts)\n[2/5] Archived day1:20130519:0100 (3 artifacts)\n",
+        "stderr": "file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:20\r\n      const error = new Error(`HTTP ${response.status}: ${url}`);\r\n                    ^\r\n\r\nError: HTTP 404: https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519080406.html\r\n    at fetchWithRetry (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:20:21)\r\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\r\n    at async downloadArtifact (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:135:26)\r\n    at async run (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:46:24)\r\n    at async Promise.all (index 1)\r\n    at async mapWithConcurrency (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:49:3)\r\n    at async archiveProduct (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:92:27)\r\n    at async file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/scripts/fetch-spc-outlooks.mjs:71:19\r\n    at async run (file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/historical/spc/SPCFetchClient.js:46:24)\r\n    at async Promise.all (index 2) {\r\n  status: 404\r\n}\r\n\r\nNode.js v22.17.1\r\n"
+      },
+      "normalize": {
+        "code": 1,
+        "skipped": true,
+        "reason": "manifest unavailable"
+      }
+    },
+    {
+      "date": "2013-11-17",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20131117",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20131117\\manifest.json",
+      "fetch": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2013-11-17 --end 2013-11-17 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20131117 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20131117\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 368,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20131117:0100\n[discovery 2/?] Found day1:20131117:1300\n[discovery 3/?] Found day1:20131117:1200\n[discovery 4/?] Found day1:20131117:2000\n[discovery 5/?] Found day1:20131117:1630\n[1/5] Archived day1:20131117:0100 (4 artifacts)\n[2/5] Archived day1:20131117:1200 (4 artifacts)\n[3/5] Archived day1:20131117:2000 (5 artifacts)\n[4/5] Archived day1:20131117:1300 (5 artifacts)\n[5/5] Archived day1:20131117:1630 (5 artifacts)\nProducts: 5; artifacts: 23; missing date/products: 0; duplicates: 0\nManifest: C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20131117\\manifest.json\n",
+        "stderr": ""
+      },
+      "normalize": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/parse-spc-outlooks.mjs --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20131117\\manifest.json --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
+        "elapsedMs": 296,
+        "stdout": "Parsed 5 SPC products; 0 failures.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "date": "2020-04-12",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200412",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200412\\manifest.json",
+      "fetch": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2020-04-12 --end 2020-04-12 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200412 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200412\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 259,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20200412:0100\n[discovery 2/?] Found day1:20200412:1200\n[discovery 3/?] Found day1:20200412:1300\n[discovery 4/?] Found day1:20200412:2000\n[discovery 5/?] Found day1:20200412:1630\n[1/5] Archived day1:20200412:0100 (4 artifacts)\n[2/5] Archived day1:20200412:1200 (4 artifacts)\n[3/5] Archived day1:20200412:1300 (4 artifacts)\n[4/5] Archived day1:20200412:2000 (4 artifacts)\n[5/5] Archived day1:20200412:1630 (4 artifacts)\nProducts: 5; artifacts: 20; missing date/products: 0; duplicates: 0\nManifest: C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200412\\manifest.json\n",
+        "stderr": ""
+      },
+      "normalize": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/parse-spc-outlooks.mjs --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200412\\manifest.json --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
+        "elapsedMs": 130,
+        "stdout": "Parsed 5 SPC products; 0 failures.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "date": "2020-08-10",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200810",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200810\\manifest.json",
+      "fetch": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2020-08-10 --end 2020-08-10 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200810 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200810\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 416,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20200810:1200\n[discovery 2/?] Found day1:20200810:0100\n[discovery 3/?] Found day1:20200810:1300\n[discovery 4/?] Found day1:20200810:2000\n[discovery 5/?] Found day1:20200810:1630\n[1/5] Archived day1:20200810:1200 (4 artifacts)\n[2/5] Archived day1:20200810:0100 (4 artifacts)\n[3/5] Archived day1:20200810:2000 (4 artifacts)\n[4/5] Archived day1:20200810:1300 (4 artifacts)\n[5/5] Archived day1:20200810:1630 (4 artifacts)\nProducts: 5; artifacts: 20; missing date/products: 0; duplicates: 0\nManifest: C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200810\\manifest.json\n",
+        "stderr": ""
+      },
+      "normalize": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/parse-spc-outlooks.mjs --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20200810\\manifest.json --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
+        "elapsedMs": 118,
+        "stdout": "Parsed 5 SPC products; 0 failures.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "date": "2021-05-25",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20210525",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20210525\\manifest.json",
+      "fetch": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2021-05-25 --end 2021-05-25 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20210525 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20210525\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 443,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20210525:1300\n[discovery 2/?] Found day1:20210525:1200\n[discovery 3/?] Found day1:20210525:2000\n[discovery 4/?] Found day1:20210525:0100\n[discovery 5/?] Found day1:20210525:1630\n[1/5] Archived day1:20210525:1300 (4 artifacts)\n[2/5] Archived day1:20210525:2000 (4 artifacts)\n[3/5] Archived day1:20210525:1200 (4 artifacts)\n[4/5] Archived day1:20210525:0100 (4 artifacts)\n[5/5] Archived day1:20210525:1630 (4 artifacts)\nProducts: 5; artifacts: 20; missing date/products: 0; duplicates: 0\nManifest: C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20210525\\manifest.json\n",
+        "stderr": ""
+      },
+      "normalize": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/parse-spc-outlooks.mjs --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20210525\\manifest.json --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
+        "elapsedMs": 121,
+        "stdout": "Parsed 5 SPC products; 0 failures.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "date": "2021-12-10",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20211210",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20211210\\manifest.json",
+      "fetch": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2021-12-10 --end 2021-12-10 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20211210 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20211210\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 254,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20211210:1200\n[discovery 2/?] Found day1:20211210:0100\n[discovery 3/?] Found day1:20211210:1300\n[discovery 4/?] Found day1:20211210:2000\n[discovery 5/?] Found day1:20211210:1630\n[1/5] Archived day1:20211210:1200 (4 artifacts)\n[2/5] Archived day1:20211210:0100 (4 artifacts)\n[3/5] Archived day1:20211210:2000 (4 artifacts)\n[4/5] Archived day1:20211210:1300 (4 artifacts)\n[5/5] Archived day1:20211210:1630 (4 artifacts)\nProducts: 5; artifacts: 20; missing date/products: 0; duplicates: 0\nManifest: C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20211210\\manifest.json\n",
+        "stderr": ""
+      },
+      "normalize": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/parse-spc-outlooks.mjs --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20211210\\manifest.json --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
+        "elapsedMs": 112,
+        "stdout": "Parsed 5 SPC products; 0 failures.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "date": "2024-05-06",
+      "rawRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20240506",
+      "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20240506\\manifest.json",
+      "fetch": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/fetch-spc-outlooks.mjs --start 2024-05-06 --end 2024-05-06 --days day1 --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20240506 --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20240506\\manifest.json --concurrency 4 --retries 4 --timeout-ms 30000",
+        "elapsedMs": 291,
+        "stdout": "Targeted discovery: probing 6 likely SPC product URLs instead of scanning annual indexes.\n[discovery 1/?] Found day1:20240506:1200\n[discovery 2/?] Found day1:20240506:0100\n[discovery 3/?] Found day1:20240506:1300\n[discovery 4/?] Found day1:20240506:2000\n[discovery 5/?] Found day1:20240506:1630\n[1/5] Archived day1:20240506:1300 (4 artifacts)\n[2/5] Archived day1:20240506:0100 (4 artifacts)\n[3/5] Archived day1:20240506:1200 (4 artifacts)\n[4/5] Archived day1:20240506:2000 (4 artifacts)\n[5/5] Archived day1:20240506:1630 (4 artifacts)\nProducts: 5; artifacts: 20; missing date/products: 0; duplicates: 0\nManifest: C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20240506\\manifest.json\n",
+        "stderr": ""
+      },
+      "normalize": {
+        "code": 0,
+        "command": "C:\\Program Files\\nodejs\\node.exe scripts/parse-spc-outlooks.mjs --manifest C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20240506\\manifest.json --output C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
+        "elapsedMs": 118,
+        "stdout": "Parsed 5 SPC products; 0 failures.\n",
+        "stderr": ""
+      }
+    }
+  ],
+  "build": {
+    "code": 0,
+    "command": "C:\\Program Files\\nodejs\\node.exe scripts/historical-pipeline.mjs --stage build --root C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical --input C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc --concurrency 4 --progress",
+    "elapsedMs": 271391
+  },
+  "failures": [
+    {
+      "stage": "acquisition",
+      "date": "2011-04-27",
+      "code": 1,
+      "reason": "SPC acquisition failed"
+    },
+    {
+      "stage": "acquisition",
+      "date": "2011-05-24",
+      "code": 1,
+      "reason": "SPC acquisition failed"
+    },
+    {
+      "stage": "acquisition",
+      "date": "2013-05-19",
+      "code": 1,
+      "reason": "SPC acquisition failed"
+    }
+  ],
+  "counts": {
+    "requestedDates": 9,
+    "acquisitionSucceeded": 6,
+    "acquisitionFailed": 3,
+    "normalizationSucceeded": 6,
+    "normalizationFailedOrSkipped": 3,
+    "totalFailures": 3
+  },
+  "elapsedMs": 272625,
+  "elapsedSeconds": 272.63,
+  "success": false
+}

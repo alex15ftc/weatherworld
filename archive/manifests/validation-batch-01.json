@@ -1,0 +1,16 @@
+{
+  "name": "SPC validation batch 01",
+  "description": "Diverse Day 1 events used to validate categorical and hazard geometry before archive-wide ingestion.",
+  "dates": [
+    "2011-04-27",
+    "2011-05-24",
+    "2013-05-19",
+    "2013-11-17",
+    "2020-04-12",
+    "2020-08-10",
+    "2021-05-25",
+    "2021-12-10",
+    "2024-05-06"
+  ],
+  "days": ["day1"]
+}

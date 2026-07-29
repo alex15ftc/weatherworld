@@ -2,7 +2,7 @@ import path from 'node:path';
 import { access, mkdir, readdir, readFile, stat, writeFile, copyFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 
-export const HISTORICAL_PIPELINE_VERSION = '2.34.5';
+export const HISTORICAL_PIPELINE_VERSION = '2.34.5.3';
 export const DEFAULT_HISTORICAL_ROOT = 'data/historical';
 export const NORMALIZED_SPC_CANDIDATES = Object.freeze([
   'data/historical/normalized/spc',
@@ -21,13 +21,13 @@ export function historicalPaths(root = DEFAULT_HISTORICAL_ROOT) {
     cases: path.join(base, 'cases'),
     catalog: path.join(base, 'catalog'),
     manifest: path.join(base, 'pipeline-manifest.json'),
-    legacyDataset: path.join(base, 'spc-cases')
+    populationReport: path.join(base, 'population-report.json')
   });
 }
 
 export async function ensureHistoricalLayout(root = DEFAULT_HISTORICAL_ROOT) {
   const paths = historicalPaths(root);
-  await Promise.all([paths.rawSpc, paths.normalizedSpc, paths.rasterizedSpc, paths.cases, paths.catalog, path.join(paths.legacyDataset, 'cases')].map(dir => mkdir(dir, { recursive: true })));
+  await Promise.all([paths.rawSpc, paths.normalizedSpc, paths.rasterizedSpc, paths.cases, paths.catalog].map(dir => mkdir(dir, { recursive: true })));
   return paths;
 }
 

@@ -32,16 +32,15 @@ const layout = await ensureHistoricalLayout(path.join(temp, 'data', 'historical'
 assert.ok(layout.rasterizedSpc.endsWith(path.join('rasterized', 'spc')));
 
 const raster = rasterizeSpcOutlook(normalizedProduct, { coverageSamples: 2 });
-assert.equal(raster.diagnostics.skippedPolygonCount, 1);
-assert.equal(raster.diagnostics.skippedPolygons[0].reason, 'ambiguous-open-tstm-contour');
+assert.equal(raster.diagnostics.skippedPolygonCount, 0);
 assert.ok(raster.cells.some(cell => cell.hazards.categorical?.value === 'MRGL'));
-assert.equal(raster.cells.some(cell => cell.hazards.categorical?.value === 'TSTM'), false, 'ambiguous chord-closed TSTM must not paint the inverted side');
+assert.ok(raster.cells.some(cell => cell.hazards.categorical?.value === 'TSTM'), '2.34.5.1 routes TSTM through the unified categorical field');
 
 const run = spawnSync(process.execPath, [path.resolve('scripts/historical-pipeline.mjs'), '--stage', 'build', '--root', path.join(temp, 'data', 'historical')], { cwd: temp, encoding: 'utf8' });
 assert.equal(run.status, 0, run.stderr || run.stdout);
 const catalog = JSON.parse(await readFile(path.join(temp, 'data', 'historical', 'catalog', 'cases.json'), 'utf8'));
 assert.equal(catalog.summary.caseCount, 1);
 const manifest = JSON.parse(await readFile(path.join(temp, 'data', 'historical', 'pipeline-manifest.json'), 'utf8'));
-assert.equal(manifest.schemaVersion, '2.34.5');
+assert.equal(manifest.schemaVersion, '2.34.5.2');
 assert.equal(manifest.counters.failures.length, 0);
 console.log('Historical archive pipeline 2.34.5 checks passed');

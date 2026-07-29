@@ -1,18 +1,543 @@
 {
-  "pipelineVersion": "2.34.5",
-  "schemaVersion": "2.34.4",
+  "pipelineVersion": "2.34.5.3",
+  "schemaVersion": "2.34.5.2",
   "coordinateSpace": "historical-geographic",
-  "generatedAt": "2026-07-28T20:24:57.505Z",
+  "generatedAt": "2026-07-29T00:23:21.326Z",
   "summary": {
-    "caseCount": 5,
+    "caseCount": 30,
     "byForecastDay": {
-      "day1": 5
+      "day1": 30
     },
     "byCompleteness": {
-      "outlook-only": 5
+      "outlook-only": 30
     }
   },
   "cases": [
+    {
+      "caseId": "20131117-day1-0100",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "0100",
+      "issuedAt": "2013-11-17T01:00:00.000Z",
+      "validStart": "2013-11-17T01:00:00.000Z",
+      "validEnd": "2013-11-17T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 7,
+      "populatedCellCount": 8035,
+      "gridWidth": 127,
+      "gridHeight": 114,
+      "fileName": "20131117-day1-0100.json"
+    },
+    {
+      "caseId": "20131117-day1-1200",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "1200",
+      "issuedAt": "2013-11-17T12:00:00.000Z",
+      "validStart": "2013-11-17T12:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 15,
+      "populatedCellCount": 21092,
+      "gridWidth": 200,
+      "gridHeight": 196,
+      "fileName": "20131117-day1-1200.json"
+    },
+    {
+      "caseId": "20131117-day1-1300",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "1300",
+      "issuedAt": "2013-11-17T13:00:00.000Z",
+      "validStart": "2013-11-17T13:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 16,
+      "populatedCellCount": 22364,
+      "gridWidth": 211,
+      "gridHeight": 196,
+      "fileName": "20131117-day1-1300.json"
+    },
+    {
+      "caseId": "20131117-day1-1630",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "1630",
+      "issuedAt": "2013-11-17T16:30:00.000Z",
+      "validStart": "2013-11-17T16:30:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 18,
+      "populatedCellCount": 22326,
+      "gridWidth": 211,
+      "gridHeight": 196,
+      "fileName": "20131117-day1-1630.json"
+    },
+    {
+      "caseId": "20131117-day1-2000",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "2000",
+      "issuedAt": "2013-11-17T20:00:00.000Z",
+      "validStart": "2013-11-17T20:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 23,
+      "populatedCellCount": 17806,
+      "gridWidth": 210,
+      "gridHeight": 200,
+      "fileName": "20131117-day1-2000.json"
+    },
+    {
+      "caseId": "20200412-day1-0100",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200412",
+      "cycle": "0100",
+      "issuedAt": "2020-04-12T01:00:00.000Z",
+      "validStart": "2020-04-12T01:00:00.000Z",
+      "validEnd": "2020-04-12T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 18,
+      "populatedCellCount": 27310,
+      "gridWidth": 311,
+      "gridHeight": 217,
+      "fileName": "20200412-day1-0100.json"
+    },
+    {
+      "caseId": "20200412-day1-1200",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200412",
+      "cycle": "1200",
+      "issuedAt": "2020-04-12T12:00:00.000Z",
+      "validStart": "2020-04-12T12:00:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 20,
+      "populatedCellCount": 38279,
+      "gridWidth": 389,
+      "gridHeight": 209,
+      "fileName": "20200412-day1-1200.json"
+    },
+    {
+      "caseId": "20200412-day1-1300",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200412",
+      "cycle": "1300",
+      "issuedAt": "2020-04-12T13:00:00.000Z",
+      "validStart": "2020-04-12T13:00:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 20,
+      "populatedCellCount": 37866,
+      "gridWidth": 389,
+      "gridHeight": 209,
+      "fileName": "20200412-day1-1300.json"
+    },
+    {
+      "caseId": "20200412-day1-1630",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200412",
+      "cycle": "1630",
+      "issuedAt": "2020-04-12T16:30:00.000Z",
+      "validStart": "2020-04-12T16:30:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 22,
+      "populatedCellCount": 36753,
+      "gridWidth": 429,
+      "gridHeight": 212,
+      "fileName": "20200412-day1-1630.json"
+    },
+    {
+      "caseId": "20200412-day1-2000",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200412",
+      "cycle": "2000",
+      "issuedAt": "2020-04-12T20:00:00.000Z",
+      "validStart": "2020-04-12T20:00:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 22,
+      "populatedCellCount": 33548,
+      "gridWidth": 429,
+      "gridHeight": 212,
+      "fileName": "20200412-day1-2000.json"
+    },
+    {
+      "caseId": "20200810-day1-0100",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "0100",
+      "issuedAt": "2020-08-10T01:00:00.000Z",
+      "validStart": "2020-08-10T01:00:00.000Z",
+      "validEnd": "2020-08-10T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 7,
+      "populatedCellCount": 34209,
+      "gridWidth": 326,
+      "gridHeight": 275,
+      "fileName": "20200810-day1-0100.json"
+    },
+    {
+      "caseId": "20200810-day1-1200",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "1200",
+      "issuedAt": "2020-08-10T12:00:00.000Z",
+      "validStart": "2020-08-10T12:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 6,
+      "populatedCellCount": 51213,
+      "gridWidth": 491,
+      "gridHeight": 262,
+      "fileName": "20200810-day1-1200.json"
+    },
+    {
+      "caseId": "20200810-day1-1300",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "1300",
+      "issuedAt": "2020-08-10T13:00:00.000Z",
+      "validStart": "2020-08-10T13:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 9,
+      "populatedCellCount": 51213,
+      "gridWidth": 491,
+      "gridHeight": 262,
+      "fileName": "20200810-day1-1300.json"
+    },
+    {
+      "caseId": "20200810-day1-1630",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "1630",
+      "issuedAt": "2020-08-10T16:30:00.000Z",
+      "validStart": "2020-08-10T16:30:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 15,
+      "populatedCellCount": 50695,
+      "gridWidth": 491,
+      "gridHeight": 262,
+      "fileName": "20200810-day1-1630.json"
+    },
+    {
+      "caseId": "20200810-day1-2000",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "2000",
+      "issuedAt": "2020-08-10T20:00:00.000Z",
+      "validStart": "2020-08-10T20:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 15,
+      "populatedCellCount": 49530,
+      "gridWidth": 491,
+      "gridHeight": 262,
+      "fileName": "20200810-day1-2000.json"
+    },
+    {
+      "caseId": "20210525-day1-0100",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20210525",
+      "cycle": "0100",
+      "issuedAt": "2021-05-25T01:00:00.000Z",
+      "validStart": "2021-05-25T01:00:00.000Z",
+      "validEnd": "2021-05-25T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 11,
+      "populatedCellCount": 32003,
+      "gridWidth": 429,
+      "gridHeight": 240,
+      "fileName": "20210525-day1-0100.json"
+    },
+    {
+      "caseId": "20210525-day1-1200",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20210525",
+      "cycle": "1200",
+      "issuedAt": "2021-05-25T12:00:00.000Z",
+      "validStart": "2021-05-25T12:00:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 8,
+      "populatedCellCount": 42296,
+      "gridWidth": 476,
+      "gridHeight": 261,
+      "fileName": "20210525-day1-1200.json"
+    },
+    {
+      "caseId": "20210525-day1-1300",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20210525",
+      "cycle": "1300",
+      "issuedAt": "2021-05-25T13:00:00.000Z",
+      "validStart": "2021-05-25T13:00:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 12,
+      "populatedCellCount": 42296,
+      "gridWidth": 476,
+      "gridHeight": 261,
+      "fileName": "20210525-day1-1300.json"
+    },
+    {
+      "caseId": "20210525-day1-1630",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20210525",
+      "cycle": "1630",
+      "issuedAt": "2021-05-25T16:30:00.000Z",
+      "validStart": "2021-05-25T16:30:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 12,
+      "populatedCellCount": 41672,
+      "gridWidth": 476,
+      "gridHeight": 261,
+      "fileName": "20210525-day1-1630.json"
+    },
+    {
+      "caseId": "20210525-day1-2000",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20210525",
+      "cycle": "2000",
+      "issuedAt": "2021-05-25T20:00:00.000Z",
+      "validStart": "2021-05-25T20:00:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 12,
+      "populatedCellCount": 41672,
+      "gridWidth": 476,
+      "gridHeight": 261,
+      "fileName": "20210525-day1-2000.json"
+    },
+    {
+      "caseId": "20211210-day1-0100",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20211210",
+      "cycle": "0100",
+      "issuedAt": "2021-12-10T01:00:00.000Z",
+      "validStart": "2021-12-10T01:00:00.000Z",
+      "validEnd": "2021-12-10T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 1,
+      "populatedCellCount": 2898,
+      "gridWidth": 60,
+      "gridHeight": 74,
+      "fileName": "20211210-day1-0100.json"
+    },
+    {
+      "caseId": "20211210-day1-1200",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20211210",
+      "cycle": "1200",
+      "issuedAt": "2021-12-10T12:00:00.000Z",
+      "validStart": "2021-12-10T12:00:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 14,
+      "populatedCellCount": 22578,
+      "gridWidth": 194,
+      "gridHeight": 206,
+      "fileName": "20211210-day1-1200.json"
+    },
+    {
+      "caseId": "20211210-day1-1300",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20211210",
+      "cycle": "1300",
+      "issuedAt": "2021-12-10T13:00:00.000Z",
+      "validStart": "2021-12-10T13:00:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 14,
+      "populatedCellCount": 21753,
+      "gridWidth": 204,
+      "gridHeight": 203,
+      "fileName": "20211210-day1-1300.json"
+    },
+    {
+      "caseId": "20211210-day1-1630",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20211210",
+      "cycle": "1630",
+      "issuedAt": "2021-12-10T16:30:00.000Z",
+      "validStart": "2021-12-10T16:30:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 16,
+      "populatedCellCount": 21753,
+      "gridWidth": 204,
+      "gridHeight": 203,
+      "fileName": "20211210-day1-1630.json"
+    },
+    {
+      "caseId": "20211210-day1-2000",
+      "coordinateSpace": "historical-geographic",
+      "forecastDay": "day1",
+      "issueDate": "20211210",
+      "cycle": "2000",
+      "issuedAt": "2021-12-10T20:00:00.000Z",
+      "validStart": "2021-12-11T01:00:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "completeness": "outlook-only",
+      "available": {
+        "outlook": true,
+        "atmosphere": false,
+        "observations": false
+      },
+      "contourCount": 16,
+      "populatedCellCount": 22130,
+      "gridWidth": 204,
+      "gridHeight": 203,
+      "fileName": "20211210-day1-2000.json"
+    },
     {
       "caseId": "20240506-day1-0100",
       "coordinateSpace": "historical-geographic",

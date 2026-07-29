@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "2.34.1",
+  "source": {
+    "agency": "NOAA/NWS Storm Prediction Center",
+    "archiveBaseUrl": "https://www.spc.noaa.gov/products/outlook/archive",
+    "informationalArchiveNotice": true
+  },
+  "requested": {
+    "startDate": "2011-04-27",
+    "endDate": "2011-04-27",
+    "forecastDays": [
+      "day1"
+    ],
+    "outputDirectory": "data/historical/raw/spc/20110427",
+    "dryRun": false,
+    "concurrency": 4,
+    "retries": 4,
+    "timeoutMs": 30000,
+    "maxProducts": null,
+    "discoveryMode": "targeted"
+  },
+  "generatedAt": "2026-07-29T00:18:06.628Z",
+  "summary": {
+    "productCount": 1,
+    "artifactCount": 3,
+    "missingCount": 0,
+    "duplicateCount": 0
+  },
+  "products": [
+    {
+      "identity": "day1:20110427:1200",
+      "forecastDay": "day1",
+      "issueDate": "20110427",
+      "cycle": "1200",
+      "issuedAt": "2011-04-27T12:00:00.000Z",
+      "validStart": "2011-04-27T12:00:00.000Z",
+      "validEnd": "2011-04-28T12:00:00.000Z",
+      "productCode": "270610",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/day1otlk_20110427_1200.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20110427_1200.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/day1otlk_20110427_1200.html",
+          "localPath": "20110427/day1-1200/day1otlk_20110427_1200.html",
+          "status": "cached",
+          "byteLength": 8667,
+          "sha256": "4ad45eacf39670ca524b8e3f7ce9b9ea2315fe37f4f26043929a77c16679472b"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20110427/day1-1200/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201104271200.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/KWNSPTSDY1_201104271200.txt",
+          "localPath": "20110427/day1-1200/KWNSPTSDY1_201104271200.txt",
+          "status": "cached",
+          "byteLength": 5434,
+          "sha256": "45bbe3044f70a8b695f48680e4240c4b7e1e896f6627e583113f8264c2f51a2a"
+        }
+      ]
+    }
+  ],
+  "missing": [],
+  "duplicates": [],
+  "acquisition": {
+    "partial": true,
+    "completed": 1,
+    "selected": 5,
+    "discoveryFailures": []
+  }
+}

@@ -10,7 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
 const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED });
 const ADVANCE_POLL_MS = 10_000;
-const HISTORICAL_DATASET_ROOT = path.resolve(process.env.HISTORICAL_DATASET_ROOT ?? path.join(ROOT, 'data', 'historical', 'spc-cases'));
+const HISTORICAL_DATASET_ROOT = path.resolve(process.env.HISTORICAL_DATASET_ROOT ?? path.join(ROOT, 'data', 'historical'));
 const HISTORICAL_CASE_ID_RE = /^[A-Za-z0-9._-]+$/;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
@@ -42,7 +42,7 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   if (url.pathname.startsWith('/api/radar/')) return sendJson(req, res, 410, { error: 'Radar is archived in milestone 2.25.0' }, { cacheable:false, trace });
   if (url.pathname === '/api/performance') return sendJson(req,res,200,performanceSnapshot(),{cacheable:false,trace});
-  if (url.pathname === '/api/historical/outlooks/catalog') return serveHistoricalJson(req, res, path.join(HISTORICAL_DATASET_ROOT, 'catalog.json'), trace);
+  if (url.pathname === '/api/historical/outlooks/catalog') return serveHistoricalJson(req, res, path.join(HISTORICAL_DATASET_ROOT, 'catalog', 'cases.json'), trace);
   const historicalCase = url.pathname.match(/^\/api\/historical\/outlooks\/cases\/([^/]+)$/);
   if (historicalCase) {
     const caseId = decodeURIComponent(historicalCase[1]);
@@ -63,7 +63,7 @@ function serveHistoricalJson(req, res, filename, trace) {
   const resolved = path.resolve(filename);
   const relative = path.relative(HISTORICAL_DATASET_ROOT, resolved);
   if (relative.startsWith('..') || path.isAbsolute(relative)) return sendJson(req, res, 400, { error: 'Invalid historical dataset path' }, { cacheable: false, trace });
-  if (!fs.existsSync(resolved)) return sendJson(req, res, 404, { error: 'Historical dataset not built', hint: 'Run npm run build:spc-dataset -- --input <normalized-directory>' }, { cacheable: false, trace });
+  if (!fs.existsSync(resolved)) return sendJson(req, res, 404, { error: 'Historical dataset not built', hint: 'Run npm run historical:build or npm run historical:populate' }, { cacheable: false, trace });
   try { return sendJson(req, res, 200, JSON.parse(fs.readFileSync(resolved, 'utf8')), { trace }); }
   catch (error) { return sendJson(req, res, 500, { error: `Historical dataset read failed: ${error.message}` }, { cacheable: false, trace }); }
 }

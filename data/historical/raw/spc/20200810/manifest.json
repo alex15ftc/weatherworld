@@ -1,0 +1,284 @@
+{
+  "schemaVersion": "2.34.1",
+  "source": {
+    "agency": "NOAA/NWS Storm Prediction Center",
+    "archiveBaseUrl": "https://www.spc.noaa.gov/products/outlook/archive",
+    "informationalArchiveNotice": true
+  },
+  "requested": {
+    "startDate": "2020-08-10",
+    "endDate": "2020-08-10",
+    "forecastDays": [
+      "day1"
+    ],
+    "outputDirectory": "data/historical/raw/spc/20200810",
+    "dryRun": false,
+    "concurrency": 4,
+    "retries": 4,
+    "timeoutMs": 30000,
+    "maxProducts": null,
+    "discoveryMode": "targeted"
+  },
+  "generatedAt": "2026-07-29T00:18:07.106Z",
+  "summary": {
+    "productCount": 5,
+    "artifactCount": 20,
+    "missingCount": 0,
+    "duplicateCount": 0
+  },
+  "products": [
+    {
+      "identity": "day1:20200810:0100",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "0100",
+      "issuedAt": "2020-08-10T01:00:00.000Z",
+      "validStart": "2020-08-10T01:00:00.000Z",
+      "validEnd": "2020-08-10T12:00:00.000Z",
+      "productCode": "100052",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_0100.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20200810_0100.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_0100.html",
+          "localPath": "20200810/day1-0100/day1otlk_20200810_0100.html",
+          "status": "cached",
+          "byteLength": 13537,
+          "sha256": "092b379443a60b25b95895557a9a393c4554a252a249b0ae4266f7de39fbabd4"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20200810_0100-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_0100-shp.zip",
+          "localPath": "20200810/day1-0100/day1otlk_20200810_0100-shp.zip",
+          "status": "cached",
+          "byteLength": 11528,
+          "sha256": "585afffe8b9bda0ad2fc654c65c29e751219ec75fb456f97d3faeb67df20b705"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20200810/day1-0100/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_202008100100.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/KWNSPTSDY1_202008100100.txt",
+          "localPath": "20200810/day1-0100/KWNSPTSDY1_202008100100.txt",
+          "status": "cached",
+          "byteLength": 2908,
+          "sha256": "d41e931e8e356b9c26f9350f8b04a8ea3c9993b0c3dc59e721ca4348a4435c05"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20200810:1200",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "1200",
+      "issuedAt": "2020-08-10T12:00:00.000Z",
+      "validStart": "2020-08-10T12:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "productCode": "100529",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1200.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20200810_1200.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1200.html",
+          "localPath": "20200810/day1-1200/day1otlk_20200810_1200.html",
+          "status": "cached",
+          "byteLength": 13636,
+          "sha256": "9cbbd1ee11574b380a719ea2eb8fd3ea1e157a1a9e56581c19db7d26dce226a6"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20200810_1200-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1200-shp.zip",
+          "localPath": "20200810/day1-1200/day1otlk_20200810_1200-shp.zip",
+          "status": "cached",
+          "byteLength": 12302,
+          "sha256": "548b2e29147897758c6b2f68314c33f07108cecc5df04c1ff529748cddeede93"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20200810/day1-1200/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_202008101200.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/KWNSPTSDY1_202008101200.txt",
+          "localPath": "20200810/day1-1200/KWNSPTSDY1_202008101200.txt",
+          "status": "cached",
+          "byteLength": 3632,
+          "sha256": "6e85eb0ec22f454f6fe3177535330937347e998c498092ef48d695c93a99a2ae"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20200810:1300",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "1300",
+      "issuedAt": "2020-08-10T13:00:00.000Z",
+      "validStart": "2020-08-10T13:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "productCode": "101216",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1300.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20200810_1300.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1300.html",
+          "localPath": "20200810/day1-1300/day1otlk_20200810_1300.html",
+          "status": "cached",
+          "byteLength": 14726,
+          "sha256": "763d51eaf9b0c1e64d1e6ec1b1c5efdc8230ceb8a6da9c7c4aed4c68d3615003"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20200810_1300-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1300-shp.zip",
+          "localPath": "20200810/day1-1300/day1otlk_20200810_1300-shp.zip",
+          "status": "cached",
+          "byteLength": 13001,
+          "sha256": "0faabd893f1baa61a45b85434066bc305d947cd5aa9254687943c550f5b9549e"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20200810/day1-1300/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_202008101300.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/KWNSPTSDY1_202008101300.txt",
+          "localPath": "20200810/day1-1300/KWNSPTSDY1_202008101300.txt",
+          "status": "cached",
+          "byteLength": 4274,
+          "sha256": "2420bd720a1ac2cae4b62305dca49651f2fdd79e90fa91ed2ea4ebbd77be2079"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20200810:1630",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "1630",
+      "issuedAt": "2020-08-10T16:30:00.000Z",
+      "validStart": "2020-08-10T16:30:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "productCode": "101557",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1630.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20200810_1630.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1630.html",
+          "localPath": "20200810/day1-1630/day1otlk_20200810_1630.html",
+          "status": "cached",
+          "byteLength": 17632,
+          "sha256": "092df322c44cd45b5e482b0ccd05166dcb63e69b154c14c96a227f833f1e576d"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20200810_1630-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_1630-shp.zip",
+          "localPath": "20200810/day1-1630/day1otlk_20200810_1630-shp.zip",
+          "status": "cached",
+          "byteLength": 14925,
+          "sha256": "283a9817adae4473f81b60b2de4c663104250580c6a9e663ca80b10beb9a07bb"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20200810/day1-1630/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_202008101630.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/KWNSPTSDY1_202008101630.txt",
+          "localPath": "20200810/day1-1630/KWNSPTSDY1_202008101630.txt",
+          "status": "cached",
+          "byteLength": 6092,
+          "sha256": "608bd71aa7dbc55bc73279720c52bcccb52bc5f058213519852e35c3dc07371c"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20200810:2000",
+      "forecastDay": "day1",
+      "issueDate": "20200810",
+      "cycle": "2000",
+      "issuedAt": "2020-08-10T20:00:00.000Z",
+      "validStart": "2020-08-10T20:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "productCode": "101938",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_2000.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20200810_2000.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_2000.html",
+          "localPath": "20200810/day1-2000/day1otlk_20200810_2000.html",
+          "status": "cached",
+          "byteLength": 18480,
+          "sha256": "3465f788472eca130a8c90fdda3f1b7a63db0930431f12059210d5f2c1e76a19"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20200810_2000-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/day1otlk_20200810_2000-shp.zip",
+          "localPath": "20200810/day1-2000/day1otlk_20200810_2000-shp.zip",
+          "status": "cached",
+          "byteLength": 14963,
+          "sha256": "a37f44651ede354564604065b00e25916e856f4521a4047c7202c84389f02cb0"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20200810/day1-2000/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_202008102000.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2020/KWNSPTSDY1_202008102000.txt",
+          "localPath": "20200810/day1-2000/KWNSPTSDY1_202008102000.txt",
+          "status": "cached",
+          "byteLength": 6215,
+          "sha256": "5b84f577794641f52f89bbbe14c1707a1ed6517858ba90fd796e818dff9aea6c"
+        }
+      ]
+    }
+  ],
+  "missing": [],
+  "duplicates": [],
+  "acquisition": {
+    "partial": false,
+    "completed": 5,
+    "selected": 5,
+    "discoveryFailures": []
+  }
+}

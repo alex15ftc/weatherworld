@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "2.34.2",
+  "sourceManifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc\\20131117\\manifest.json",
+  "products": [
+    {
+      "identity": "day1:20131117:0100",
+      "fileName": "day1_20131117_0100.json",
+      "contourCount": 7,
+      "warningCount": 2
+    },
+    {
+      "identity": "day1:20131117:1200",
+      "fileName": "day1_20131117_1200.json",
+      "contourCount": 15,
+      "warningCount": 4
+    },
+    {
+      "identity": "day1:20131117:1300",
+      "fileName": "day1_20131117_1300.json",
+      "contourCount": 16,
+      "warningCount": 5
+    },
+    {
+      "identity": "day1:20131117:1630",
+      "fileName": "day1_20131117_1630.json",
+      "contourCount": 18,
+      "warningCount": 6
+    },
+    {
+      "identity": "day1:20131117:2000",
+      "fileName": "day1_20131117_2000.json",
+      "contourCount": 23,
+      "warningCount": 6
+    }
+  ],
+  "failures": []
+}

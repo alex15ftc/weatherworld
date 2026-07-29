@@ -1,0 +1,311 @@
+{
+  "schemaVersion": "2.34.1",
+  "source": {
+    "agency": "NOAA/NWS Storm Prediction Center",
+    "archiveBaseUrl": "https://www.spc.noaa.gov/products/outlook/archive",
+    "informationalArchiveNotice": true
+  },
+  "requested": {
+    "startDate": "2013-11-17",
+    "endDate": "2013-11-17",
+    "forecastDays": [
+      "day1"
+    ],
+    "outputDirectory": "data/historical/raw/spc/20131117",
+    "dryRun": false,
+    "concurrency": 4,
+    "retries": 4,
+    "timeoutMs": 30000,
+    "maxProducts": null,
+    "discoveryMode": "targeted"
+  },
+  "generatedAt": "2026-07-29T00:18:06.680Z",
+  "summary": {
+    "productCount": 5,
+    "artifactCount": 23,
+    "missingCount": 0,
+    "duplicateCount": 0
+  },
+  "products": [
+    {
+      "identity": "day1:20131117:0100",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "0100",
+      "issuedAt": "2013-11-17T01:00:00.000Z",
+      "validStart": "2013-11-17T01:00:00.000Z",
+      "validEnd": "2013-11-17T12:00:00.000Z",
+      "productCode": "170110",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_0100.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20131117_0100.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_0100.html",
+          "localPath": "20131117/day1-0100/day1otlk_20131117_0100.html",
+          "status": "cached",
+          "byteLength": 9041,
+          "sha256": "4ae6938c3878ca6ced7272b790dd4885eeacb4f6c2505095882a2c4641d59eda"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20131117_0100-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_0100-shp.zip",
+          "localPath": "20131117/day1-0100/day1otlk_20131117_0100-shp.zip",
+          "status": "cached",
+          "byteLength": 36083,
+          "sha256": "5b02eb13491b7eafa25970959c7149c42674763676c7f970fd5a9ee38cbe69c0"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20131117/day1-0100/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201311170100.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201311170100.txt",
+          "localPath": "20131117/day1-0100/KWNSPTSDY1_201311170100.txt",
+          "status": "cached",
+          "byteLength": 2329,
+          "sha256": "81f451ea147431988cd46e61fc4c3759b27535a85025b052829457949a7877a3"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20131117:1200",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "1200",
+      "issuedAt": "2013-11-17T12:00:00.000Z",
+      "validStart": "2013-11-17T12:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "productCode": "170552",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1200.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20131117_1200.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1200.html",
+          "localPath": "20131117/day1-1200/day1otlk_20131117_1200.html",
+          "status": "cached",
+          "byteLength": 10800,
+          "sha256": "8d0c100ae50a42483a0ca2ea81ba82437b1242fb5b0bcc53615de80b498bad5e"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20131117_1200-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1200-shp.zip",
+          "localPath": "20131117/day1-1200/day1otlk_20131117_1200-shp.zip",
+          "status": "cached",
+          "byteLength": 76911,
+          "sha256": "e6f6a43ba7a927359dfd8efa575f3bb93f0627b79377da39d64b76b79d5b8ea3"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20131117/day1-1200/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201311171200.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201311171200.txt",
+          "localPath": "20131117/day1-1200/KWNSPTSDY1_201311171200.txt",
+          "status": "cached",
+          "byteLength": 4500,
+          "sha256": "b9027f170bc9e705daf9b2067ee464f597c5250bf87ae39d88996b3bfa2d70c8"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20131117:1300",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "1300",
+      "issuedAt": "2013-11-17T13:00:00.000Z",
+      "validStart": "2013-11-17T13:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "productCode": "171259",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1300.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20131117_1300.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1300.html",
+          "localPath": "20131117/day1-1300/day1otlk_20131117_1300.html",
+          "status": "cached",
+          "byteLength": 12363,
+          "sha256": "9a1e3b592156581a9eaf4c845e500f76723db8e2331064a57fdbd14fd3dae5a2"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20131117_1300-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1300-shp.zip",
+          "localPath": "20131117/day1-1300/day1otlk_20131117_1300-shp.zip",
+          "status": "cached",
+          "byteLength": 80136,
+          "sha256": "ed0019ae67110ab3522687e3e176912c10f307a93f4d48068e629d3bb43942fa"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20131117/day1-1300/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "html",
+          "fileName": "pwo_201311170851.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_201311170851.html",
+          "localPath": "20131117/day1-1300/pwo_201311170851.html",
+          "status": "cached",
+          "byteLength": 20531,
+          "sha256": "1713c33d9298b5cf1ef2258e4557c0b8d9feb1c5d467076d4544a61285778d49"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201311171300.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201311171300.txt",
+          "localPath": "20131117/day1-1300/KWNSPTSDY1_201311171300.txt",
+          "status": "cached",
+          "byteLength": 5019,
+          "sha256": "279bfc16239cb5d13e5a9cf237388b6bddd56f4e9379609e0213663e2847e014"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20131117:1630",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "1630",
+      "issuedAt": "2013-11-17T16:30:00.000Z",
+      "validStart": "2013-11-17T16:30:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "productCode": "171629",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1630.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20131117_1630.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1630.html",
+          "localPath": "20131117/day1-1630/day1otlk_20131117_1630.html",
+          "status": "cached",
+          "byteLength": 12373,
+          "sha256": "70ce34eaa877cd4d82b33454ff60847375e8edeeb58b01a229231000aec6e525"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20131117_1630-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_1630-shp.zip",
+          "localPath": "20131117/day1-1630/day1otlk_20131117_1630-shp.zip",
+          "status": "cached",
+          "byteLength": 80583,
+          "sha256": "85cf7984b4053a2acf567eaf9258a6f88a8b36b1e4dbe677e58ddc422404bf01"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20131117/day1-1630/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "html",
+          "fileName": "pwo_201311171207.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_201311171207.html",
+          "localPath": "20131117/day1-1630/pwo_201311171207.html",
+          "status": "cached",
+          "byteLength": 20490,
+          "sha256": "4e1ea9cae8c8d4e5ea4af3217217600725a2f5fd1dbc99d66b7a655fc6796869"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201311171630.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201311171630.txt",
+          "localPath": "20131117/day1-1630/KWNSPTSDY1_201311171630.txt",
+          "status": "cached",
+          "byteLength": 5072,
+          "sha256": "e62cb04d1a11ac6cd02ff10919a99721044e1b2a5d1a1c033e2d75e01707c467"
+        }
+      ]
+    },
+    {
+      "identity": "day1:20131117:2000",
+      "forecastDay": "day1",
+      "issueDate": "20131117",
+      "cycle": "2000",
+      "issuedAt": "2013-11-17T20:00:00.000Z",
+      "validStart": "2013-11-17T20:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "productCode": "172002",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_2000.html",
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20131117_2000.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_2000.html",
+          "localPath": "20131117/day1-2000/day1otlk_20131117_2000.html",
+          "status": "cached",
+          "byteLength": 13923,
+          "sha256": "ab7a3e0b35ca53b4e620204d38eb9a02e780eb84877dfeb8f8fb4ba0a5d7a58f"
+        },
+        {
+          "type": "shapefile",
+          "fileName": "day1otlk_20131117_2000-shp.zip",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20131117_2000-shp.zip",
+          "localPath": "20131117/day1-2000/day1otlk_20131117_2000-shp.zip",
+          "status": "cached",
+          "byteLength": 72536,
+          "sha256": "a63edb43bff69e92acef4dbc2604b3dbfa6d68957918b941dd7c22df5a33cf3d"
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20131117/day1-2000/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+        },
+        {
+          "type": "html",
+          "fileName": "pwo_201311171641.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_201311171641.html",
+          "localPath": "20131117/day1-2000/pwo_201311171641.html",
+          "status": "cached",
+          "byteLength": 19646,
+          "sha256": "106d77bd671eee3acfef10726ec518096b50514b2335a7502c217f29b56afd66"
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201311172000.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201311172000.txt",
+          "localPath": "20131117/day1-2000/KWNSPTSDY1_201311172000.txt",
+          "status": "cached",
+          "byteLength": 4761,
+          "sha256": "6bd5ede0088c54b15ed3f6a3d4e1a80fcf5fb5563becdc8ff182da1914ac4164"
+        }
+      ]
+    }
+  ],
+  "missing": [],
+  "duplicates": [],
+  "acquisition": {
+    "partial": false,
+    "completed": 5,
+    "selected": 5,
+    "discoveryFailures": []
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "fake-plains-weather-simulator",
-  "version": "2.34.5.1",
+  "version": "2.34.5.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -135,7 +135,12 @@
     "test:2.34.5": "node tests/historical-archive-pipeline-2.34.5.mjs",
     "test:regression-2.34.5": "npm run test:regression-2.34.4 && npm run test:2.34.5",
     "test:2.34.5.1": "node tests/spc-unified-categorical-2.34.5.1.mjs",
-    "test:regression-2.34.5.1": "npm run test:regression-2.34.5 && npm run test:2.34.5.1"
+    "test:regression-2.34.5.1": "npm run test:regression-2.34.5 && npm run test:2.34.5.1",
+    "historical:populate": "node scripts/populate-historical-archive.mjs",
+    "test:2.34.5.2": "node tests/historical-archive-population-2.34.5.2.mjs",
+    "test:regression-2.34.5.2": "npm run test:regression-2.34.5.1 && npm run test:2.34.5.2",
+    "test:2.34.5.3": "node tests/historical-population-performance-2.34.5.3.mjs",
+    "test:regression-2.34.5.3": "npm run test:regression-2.34.5.2 && npm run test:2.34.5.3"
   },
   "dependencies": {
     "shpjs": "^6.2.0"

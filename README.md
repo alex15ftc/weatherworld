@@ -1,14 +1,14 @@
 
 ﻿# Fake Plains Weather Simulator
 
-**Current version: 2.34.0.** The authoritative development plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Current version: 2.34.5.2.** The authoritative development plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 
 A deterministic severe-weather simulation for a fictional Plains domain. It evolves
 an authoritative atmosphere, mesoscale boundaries, persistent storms, tornado/hail/wind
 hazards, Day 1–3 outlooks, soundings, map tiles, and forecast verification.
 
-Current release: **2.34.0 — Historical SPC Outlook Foundation**
+Current release: **2.34.5.2 — Canonical Historical Archive Population**
 
 ## Start here
 
@@ -51,10 +51,11 @@ The full regression suite is intentionally much slower than the primary test sui
 
 ## Documentation
 
+- [Historical archive](docs/HISTORICAL_ARCHIVE.md) — canonical paths, population workflow, and validation
 - [Architecture](docs/ARCHITECTURE.md) — authorities, data flow, clocks, and major modules
 - [Development](docs/DEVELOPMENT.md) — setup, validation tiers, and change workflow
 - [Performance](docs/PERFORMANCE.md) — baseline, profiling method, budgets, and optimization roadmap
-- [Current milestone](MILESTONE-2.32.6.md) — storm-corridor-centered outlook cores
+- [Current milestone](MILESTONE-2.34.5.2.md) — canonical historical archive population
 - [2.32.0 milestone](MILESTONE-2.32.0.md) — severe-pattern climatology and all-scenario physical lifecycle contracts
 - [2.31.0 milestone](MILESTONE-2.31.0.md) — lifecycle-aware outlooks and storm-population calibration
 - [2.29.0 milestone](MILESTONE-2.29.0.md) — authoritative profile diagnostics and cap evolution

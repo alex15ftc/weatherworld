@@ -1,4 +1,4 @@
-export const HISTORICAL_OUTLOOK_DATASET_VERSION = '2.34.4';
+export const HISTORICAL_OUTLOOK_DATASET_VERSION = '2.34.5.2';
 export const HISTORICAL_COORDINATE_SPACE = 'historical-geographic';
 export const FICTIONAL_COORDINATE_SPACE = 'fictional-world';
 
@@ -19,6 +19,14 @@ export function createHistoricalOutlookCase({ sourceFile = null, originalProduct
     caseId,
     coordinateSpace: HISTORICAL_COORDINATE_SPACE,
     sourceFile,
+    archive: {
+      status: { downloaded: true, normalized: true, rasterized: true, caseBuilt: true },
+      parserVersion: normalizedProduct.schemaVersion ?? parsedProduct?.schemaVersion ?? null,
+      geometryVersion: rasterizedOutlook.implementationVersion ?? rasterizedOutlook.schemaVersion ?? null,
+      sourceFormat: normalizedProduct.sourceFormat ?? parsedProduct?.format ?? originalProduct?.format ?? null,
+      sourceArtifacts: summarizeSourceArtifacts(originalProduct),
+      verification: { passed: true, warnings: collectArchiveWarnings(normalizedProduct, rasterizedOutlook) }
+    },
     metadata: {
       forecastDay,
       issueDate: originalProduct?.issueDate ?? (caseDate || null),
@@ -72,6 +80,23 @@ export function createHistoricalOutlookCatalog(cases = [], { generatedAt = new D
 export function assertCoordinateSpace(actual, expected) {
   if (actual !== expected) throw new Error(`Coordinate-space mismatch: expected ${expected}, received ${actual ?? 'unspecified'}`);
   return true;
+}
+
+
+function summarizeSourceArtifacts(originalProduct) {
+  return (originalProduct?.artifacts ?? []).map(item => ({
+    type: item.type ?? null,
+    fileName: item.fileName ?? null,
+    localPath: item.localPath ?? item.path ?? null,
+    sourceUrl: item.sourceUrl ?? item.url ?? null,
+    sha256: item.sha256 ?? null
+  }));
+}
+function collectArchiveWarnings(normalizedProduct, rasterizedOutlook) {
+  const warnings = [];
+  for (const warning of normalizedProduct?.warnings ?? []) warnings.push(typeof warning === 'string' ? warning : warning.message ?? JSON.stringify(warning));
+  for (const item of rasterizedOutlook?.diagnostics?.skippedPolygons ?? []) warnings.push(`Skipped polygon ${item.id ?? 'unknown'}: ${item.reason ?? 'unknown reason'}`);
+  return warnings;
 }
 
 function buildCaseDiagnostics(normalizedProduct, rasterizedOutlook) {
