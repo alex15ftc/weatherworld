@@ -49,7 +49,7 @@
     ]
   },
   "parsedProduct": {
-    "schemaVersion": "2.34.5.1",
+    "schemaVersion": "2.35.2",
     "format": "spc-shapefile",
     "forecastDay": "day1",
     "issuedAt": "2024-05-06T20:00:00.000Z",

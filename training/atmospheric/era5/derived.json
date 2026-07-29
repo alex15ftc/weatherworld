@@ -1,0 +1,927 @@
+{
+  "1974-03-20": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.3222,
+    "troughTilt": 0.0799,
+    "lowLevelJetStrength": 0.1384,
+    "moistureQuality": 0.9532,
+    "capStrength": 0.6238,
+    "forcingTiming": 0.5615,
+    "discreteBias": 0.7642,
+    "environment": {
+      "shear01Ms": 8.58,
+      "shear06Ms": 34.68,
+      "srhProxyM2s2": 110.9,
+      "lclM": 535.3,
+      "cinJkg": 109.2,
+      "moistureTransportProxy": 194.9,
+      "pressureFall6hMb": 2.23
+    },
+    "diagnostics": {
+      "heightRange500m": 575.6,
+      "llj95Ms": 14.8,
+      "cape95Jkg": 1389.8,
+      "deepShear90Ms": 31.8
+    }
+  },
+  "1974-04-01": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.1278,
+    "troughTilt": 0.037,
+    "lowLevelJetStrength": 0.592,
+    "moistureQuality": 0.9464,
+    "capStrength": 0.7155,
+    "forcingTiming": 0.5789,
+    "discreteBias": 0.7569,
+    "environment": {
+      "shear01Ms": 11.57,
+      "shear06Ms": 33.0,
+      "srhProxyM2s2": 159.0,
+      "lclM": 695.3,
+      "cinJkg": 125.2,
+      "moistureTransportProxy": 335.4,
+      "pressureFall6hMb": 4.59
+    },
+    "diagnostics": {
+      "heightRange500m": 439.5,
+      "llj95Ms": 23.8,
+      "cape95Jkg": 1927.9,
+      "deepShear90Ms": 29.0
+    }
+  },
+  "1974-04-03": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0953,
+    "troughTilt": 0.6934,
+    "lowLevelJetStrength": 0.6824,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5934,
+    "forcingTiming": 0.6929,
+    "discreteBias": 0.709,
+    "environment": {
+      "shear01Ms": 11.64,
+      "shear06Ms": 30.77,
+      "srhProxyM2s2": 144.4,
+      "lclM": 565.1,
+      "cinJkg": 103.9,
+      "moistureTransportProxy": 379.3,
+      "pressureFall6hMb": 4.08
+    },
+    "diagnostics": {
+      "heightRange500m": 416.7,
+      "llj95Ms": 25.6,
+      "cape95Jkg": 2281.7,
+      "deepShear90Ms": 27.1
+    }
+  },
+  "1974-04-04": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.1176,
+    "troughTilt": -0.3391,
+    "lowLevelJetStrength": 0.6352,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5376,
+    "forcingTiming": 0.581,
+    "discreteBias": 0.756,
+    "environment": {
+      "shear01Ms": 10.74,
+      "shear06Ms": 37.0,
+      "srhProxyM2s2": 159.8,
+      "lclM": 640.5,
+      "cinJkg": 94.1,
+      "moistureTransportProxy": 288.6,
+      "pressureFall6hMb": 0.49
+    },
+    "diagnostics": {
+      "heightRange500m": 432.3,
+      "llj95Ms": 24.7,
+      "cape95Jkg": 2234.1,
+      "deepShear90Ms": 33.2
+    }
+  },
+  "1974-04-13": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0596,
+    "troughTilt": 0.7299,
+    "lowLevelJetStrength": 0.3615,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5728,
+    "forcingTiming": 0.3142,
+    "discreteBias": 0.734,
+    "environment": {
+      "shear01Ms": 8.54,
+      "shear06Ms": 24.04,
+      "srhProxyM2s2": 78.2,
+      "lclM": 420.4,
+      "cinJkg": 100.2,
+      "moistureTransportProxy": 228.1,
+      "pressureFall6hMb": 1.02
+    },
+    "diagnostics": {
+      "heightRange500m": 391.7,
+      "llj95Ms": 19.2,
+      "cape95Jkg": 1622.9,
+      "deepShear90Ms": 21.1
+    }
+  },
+  "1974-04-14": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0676,
+    "troughTilt": 0.2527,
+    "lowLevelJetStrength": 0.4532,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5828,
+    "forcingTiming": 1.0,
+    "discreteBias": 0.58,
+    "environment": {
+      "shear01Ms": 9.49,
+      "shear06Ms": 30.39,
+      "srhProxyM2s2": 103.5,
+      "lclM": 547.8,
+      "cinJkg": 102.0,
+      "moistureTransportProxy": 240.0,
+      "pressureFall6hMb": 3.58
+    },
+    "diagnostics": {
+      "heightRange500m": 397.3,
+      "llj95Ms": 21.1,
+      "cape95Jkg": 1599.2,
+      "deepShear90Ms": 29.1
+    }
+  },
+  "1974-04-20": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.6457,
+    "lowLevelJetStrength": 0.6419,
+    "moistureQuality": 0.7937,
+    "capStrength": 0.7636,
+    "forcingTiming": 0.5216,
+    "discreteBias": 0.6463,
+    "environment": {
+      "shear01Ms": 10.95,
+      "shear06Ms": 22.42,
+      "srhProxyM2s2": 118.7,
+      "lclM": 769.8,
+      "cinJkg": 133.6,
+      "moistureTransportProxy": 275.8,
+      "pressureFall6hMb": 2.98
+    },
+    "diagnostics": {
+      "heightRange500m": 279.3,
+      "llj95Ms": 24.8,
+      "cape95Jkg": 717.9,
+      "deepShear90Ms": 21.1
+    }
+  },
+  "1974-04-21": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0191,
+    "troughTilt": -0.0631,
+    "lowLevelJetStrength": 0.6969,
+    "moistureQuality": 0.9183,
+    "capStrength": 0.6768,
+    "forcingTiming": 0.8433,
+    "discreteBias": 0.5509,
+    "environment": {
+      "shear01Ms": 10.29,
+      "shear06Ms": 24.88,
+      "srhProxyM2s2": 92.0,
+      "lclM": 662.6,
+      "cinJkg": 118.4,
+      "moistureTransportProxy": 309.1,
+      "pressureFall6hMb": 3.79
+    },
+    "diagnostics": {
+      "heightRange500m": 363.4,
+      "llj95Ms": 25.9,
+      "cape95Jkg": 1150.0,
+      "deepShear90Ms": 22.2
+    }
+  },
+  "1974-05-13": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0805,
+    "troughTilt": 0.1365,
+    "lowLevelJetStrength": 0.5896,
+    "moistureQuality": 0.9518,
+    "capStrength": 0.7017,
+    "forcingTiming": 0.6865,
+    "discreteBias": 0.7117,
+    "environment": {
+      "shear01Ms": 11.37,
+      "shear06Ms": 30.36,
+      "srhProxyM2s2": 173.7,
+      "lclM": 934.3,
+      "cinJkg": 122.8,
+      "moistureTransportProxy": 271.5,
+      "pressureFall6hMb": 5.45
+    },
+    "diagnostics": {
+      "heightRange500m": 406.3,
+      "llj95Ms": 23.8,
+      "cape95Jkg": 1848.4,
+      "deepShear90Ms": 29.3
+    }
+  },
+  "1974-05-30": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.1525,
+    "lowLevelJetStrength": 0.1615,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6536,
+    "forcingTiming": 0.4298,
+    "discreteBias": 0.8195,
+    "environment": {
+      "shear01Ms": 7.57,
+      "shear06Ms": 27.22,
+      "srhProxyM2s2": 89.2,
+      "lclM": 664.7,
+      "cinJkg": 114.4,
+      "moistureTransportProxy": 267.0,
+      "pressureFall6hMb": 2.39
+    },
+    "diagnostics": {
+      "heightRange500m": 306.8,
+      "llj95Ms": 15.2,
+      "cape95Jkg": 2188.2,
+      "deepShear90Ms": 25.7
+    }
+  },
+  "1974-06-07": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.2253,
+    "lowLevelJetStrength": 0.4269,
+    "moistureQuality": 1.0,
+    "capStrength": 0.4813,
+    "forcingTiming": 0.5141,
+    "discreteBias": 0.6805,
+    "environment": {
+      "shear01Ms": 7.76,
+      "shear06Ms": 23.54,
+      "srhProxyM2s2": 65.7,
+      "lclM": 513.6,
+      "cinJkg": 84.2,
+      "moistureTransportProxy": 372.4,
+      "pressureFall6hMb": 3.18
+    },
+    "diagnostics": {
+      "heightRange500m": 328.7,
+      "llj95Ms": 20.5,
+      "cape95Jkg": 3507.4,
+      "deepShear90Ms": 22.0
+    }
+  },
+  "1974-06-08": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.9,
+    "lowLevelJetStrength": 0.3864,
+    "moistureQuality": 1.0,
+    "capStrength": 0.4146,
+    "forcingTiming": 0.385,
+    "discreteBias": 0.8383,
+    "environment": {
+      "shear01Ms": 7.67,
+      "shear06Ms": 27.22,
+      "srhProxyM2s2": 91.6,
+      "lclM": 439.8,
+      "cinJkg": 72.6,
+      "moistureTransportProxy": 365.9,
+      "pressureFall6hMb": 2.29
+    },
+    "diagnostics": {
+      "heightRange500m": 291.4,
+      "llj95Ms": 19.7,
+      "cape95Jkg": 3170.9,
+      "deepShear90Ms": 25.4
+    }
+  },
+  "1974-10-28": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.5805,
+    "lowLevelJetStrength": 0.1775,
+    "moistureQuality": 0.8783,
+    "capStrength": 0.6407,
+    "forcingTiming": 0.407,
+    "discreteBias": 0.5309,
+    "environment": {
+      "shear01Ms": 6.34,
+      "shear06Ms": 18.31,
+      "srhProxyM2s2": 44.0,
+      "lclM": 589.8,
+      "cinJkg": 112.1,
+      "moistureTransportProxy": 197.7,
+      "pressureFall6hMb": 2.9
+    },
+    "diagnostics": {
+      "heightRange500m": 216.1,
+      "llj95Ms": 15.6,
+      "cape95Jkg": 806.1,
+      "deepShear90Ms": 16.3
+    }
+  },
+  "1991-03-27": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.261,
+    "troughTilt": 0.1429,
+    "lowLevelJetStrength": 0.7624,
+    "moistureQuality": 0.9338,
+    "capStrength": 0.7159,
+    "forcingTiming": 1.0,
+    "discreteBias": 0.58,
+    "environment": {
+      "shear01Ms": 11.11,
+      "shear06Ms": 33.3,
+      "srhProxyM2s2": 157.7,
+      "lclM": 559.9,
+      "cinJkg": 125.3,
+      "moistureTransportProxy": 398.7,
+      "pressureFall6hMb": 5.07
+    },
+    "diagnostics": {
+      "heightRange500m": 532.7,
+      "llj95Ms": 27.2,
+      "cape95Jkg": 1133.5,
+      "deepShear90Ms": 31.0
+    }
+  },
+  "1991-04-26": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0693,
+    "troughTilt": 0.7161,
+    "lowLevelJetStrength": 0.4055,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5042,
+    "forcingTiming": 0.7338,
+    "discreteBias": 0.6023,
+    "environment": {
+      "shear01Ms": 10.11,
+      "shear06Ms": 24.83,
+      "srhProxyM2s2": 110.2,
+      "lclM": 636.0,
+      "cinJkg": 88.2,
+      "moistureTransportProxy": 275.3,
+      "pressureFall6hMb": 3.21
+    },
+    "diagnostics": {
+      "heightRange500m": 398.5,
+      "llj95Ms": 20.1,
+      "cape95Jkg": 3449.1,
+      "deepShear90Ms": 22.4
+    }
+  },
+  "1991-05-04": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0082,
+    "troughTilt": 0.7414,
+    "lowLevelJetStrength": 0.1511,
+    "moistureQuality": 1.0,
+    "capStrength": 0.4918,
+    "forcingTiming": 0.332,
+    "discreteBias": 0.7854,
+    "environment": {
+      "shear01Ms": 10.97,
+      "shear06Ms": 24.23,
+      "srhProxyM2s2": 141.8,
+      "lclM": 392.7,
+      "cinJkg": 659.9,
+      "moistureTransportProxy": 200.2,
+      "pressureFall6hMb": 0.92
+    },
+    "diagnostics": {
+      "heightRange500m": 355.8,
+      "llj95Ms": 15.0,
+      "cape95Jkg": 2757.5,
+      "deepShear90Ms": 22.8
+    }
+  },
+  "1991-06-19": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.138,
+    "lowLevelJetStrength": 0.0,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6211,
+    "forcingTiming": 0.2195,
+    "discreteBias": 0.749,
+    "environment": {
+      "shear01Ms": 7.52,
+      "shear06Ms": 21.62,
+      "srhProxyM2s2": 62.9,
+      "lclM": 919.4,
+      "cinJkg": 732.9,
+      "moistureTransportProxy": 144.9,
+      "pressureFall6hMb": 2.2
+    },
+    "diagnostics": {
+      "heightRange500m": 190.7,
+      "llj95Ms": 11.8,
+      "cape95Jkg": 2379.7,
+      "deepShear90Ms": 20.3
+    }
+  },
+  "1999-01-21": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.1018,
+    "troughTilt": 0.2182,
+    "lowLevelJetStrength": 0.387,
+    "moistureQuality": 0.8489,
+    "capStrength": 0.7295,
+    "forcingTiming": 0.7748,
+    "discreteBias": 0.5369,
+    "environment": {
+      "shear01Ms": 8.93,
+      "shear06Ms": 25.62,
+      "srhProxyM2s2": 82.9,
+      "lclM": 302.5,
+      "cinJkg": 127.7,
+      "moistureTransportProxy": 271.7,
+      "pressureFall6hMb": 3.93
+    },
+    "diagnostics": {
+      "heightRange500m": 421.3,
+      "llj95Ms": 19.7,
+      "cape95Jkg": 1173.5,
+      "deepShear90Ms": 21.0
+    }
+  },
+  "1999-05-03": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0053,
+    "troughTilt": 0.5709,
+    "lowLevelJetStrength": 0.3959,
+    "moistureQuality": 0.8958,
+    "capStrength": 0.5776,
+    "forcingTiming": 0.6811,
+    "discreteBias": 0.5708,
+    "environment": {
+      "shear01Ms": 8.43,
+      "shear06Ms": 23.75,
+      "srhProxyM2s2": 72.0,
+      "lclM": 891.9,
+      "cinJkg": 101.1,
+      "moistureTransportProxy": 211.5,
+      "pressureFall6hMb": 4.2
+    },
+    "diagnostics": {
+      "heightRange500m": 353.7,
+      "llj95Ms": 19.9,
+      "cape95Jkg": 1871.5,
+      "deepShear90Ms": 20.8
+    }
+  },
+  "1999-06-26": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.2306,
+    "lowLevelJetStrength": 0.3602,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6133,
+    "forcingTiming": 0.3455,
+    "discreteBias": 0.7543,
+    "environment": {
+      "shear01Ms": 11.75,
+      "shear06Ms": 24.18,
+      "srhProxyM2s2": 109.6,
+      "lclM": 636.8,
+      "cinJkg": 625.3,
+      "moistureTransportProxy": 298.7,
+      "pressureFall6hMb": 1.69
+    },
+    "diagnostics": {
+      "heightRange500m": 229.7,
+      "llj95Ms": 19.2,
+      "cape95Jkg": 2286.1,
+      "deepShear90Ms": 22.1
+    }
+  },
+  "1999-10-13": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0195,
+    "troughTilt": -0.2448,
+    "lowLevelJetStrength": 0.2623,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6366,
+    "forcingTiming": 0.9116,
+    "discreteBias": 0.6171,
+    "environment": {
+      "shear01Ms": 10.44,
+      "shear06Ms": 30.17,
+      "srhProxyM2s2": 143.4,
+      "lclM": 706.1,
+      "cinJkg": 473.3,
+      "moistureTransportProxy": 160.5,
+      "pressureFall6hMb": 3.92
+    },
+    "diagnostics": {
+      "heightRange500m": 363.7,
+      "llj95Ms": 17.2,
+      "cape95Jkg": 1193.0,
+      "deepShear90Ms": 28.1
+    }
+  },
+  "2011-04-21": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.1263,
+    "troughTilt": 0.0348,
+    "lowLevelJetStrength": 0.2417,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5739,
+    "forcingTiming": 0.3376,
+    "discreteBias": 0.8582,
+    "environment": {
+      "shear01Ms": 11.77,
+      "shear06Ms": 30.31,
+      "srhProxyM2s2": 209.7,
+      "lclM": 625.0,
+      "cinJkg": 799.8,
+      "moistureTransportProxy": 193.2,
+      "pressureFall6hMb": 4.9
+    },
+    "diagnostics": {
+      "heightRange500m": 438.4,
+      "llj95Ms": 16.8,
+      "cape95Jkg": 2603.5,
+      "deepShear90Ms": 31.4
+    }
+  },
+  "2011-04-27": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0491,
+    "troughTilt": 0.991,
+    "lowLevelJetStrength": 0.5645,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6175,
+    "forcingTiming": 0.4157,
+    "discreteBias": 0.8254,
+    "environment": {
+      "shear01Ms": 10.1,
+      "shear06Ms": 31.25,
+      "srhProxyM2s2": 133.5,
+      "lclM": 524.5,
+      "cinJkg": 108.1,
+      "moistureTransportProxy": 398.2,
+      "pressureFall6hMb": 2.66
+    },
+    "diagnostics": {
+      "heightRange500m": 384.4,
+      "llj95Ms": 23.3,
+      "cape95Jkg": 1930.6,
+      "deepShear90Ms": 27.0
+    }
+  },
+  "2011-05-24": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.6367,
+    "lowLevelJetStrength": 0.2233,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6208,
+    "forcingTiming": 0.5465,
+    "discreteBias": 0.6594,
+    "environment": {
+      "shear01Ms": 8.13,
+      "shear06Ms": 23.88,
+      "srhProxyM2s2": 77.7,
+      "lclM": 522.3,
+      "cinJkg": 108.6,
+      "moistureTransportProxy": 267.2,
+      "pressureFall6hMb": 2.23
+    },
+    "diagnostics": {
+      "heightRange500m": 273.8,
+      "llj95Ms": 16.5,
+      "cape95Jkg": 2052.8,
+      "deepShear90Ms": 21.7
+    }
+  },
+  "2011-07-22": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.1109,
+    "lowLevelJetStrength": 0.1108,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5494,
+    "forcingTiming": 0.1679,
+    "discreteBias": 0.6938,
+    "environment": {
+      "shear01Ms": 9.51,
+      "shear06Ms": 21.05,
+      "srhProxyM2s2": 68.2,
+      "lclM": 941.3,
+      "cinJkg": 644.3,
+      "moistureTransportProxy": 216.1,
+      "pressureFall6hMb": 1.94
+    },
+    "diagnostics": {
+      "heightRange500m": 183.6,
+      "llj95Ms": 14.2,
+      "cape95Jkg": 2376.4,
+      "deepShear90Ms": 18.1
+    }
+  },
+  "2013-05-19": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.9937,
+    "lowLevelJetStrength": 0.3741,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5811,
+    "forcingTiming": 0.6107,
+    "discreteBias": 0.5268,
+    "environment": {
+      "shear01Ms": 8.83,
+      "shear06Ms": 20.04,
+      "srhProxyM2s2": 73.6,
+      "lclM": 562.7,
+      "cinJkg": 101.7,
+      "moistureTransportProxy": 288.8,
+      "pressureFall6hMb": 2.77
+    },
+    "diagnostics": {
+      "heightRange500m": 234.2,
+      "llj95Ms": 19.5,
+      "cape95Jkg": 3064.7,
+      "deepShear90Ms": 18.6
+    }
+  },
+  "2013-08-01": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": -0.3464,
+    "lowLevelJetStrength": 0.0,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5689,
+    "forcingTiming": 0.2804,
+    "discreteBias": 0.6648,
+    "environment": {
+      "shear01Ms": 7.67,
+      "shear06Ms": 21.28,
+      "srhProxyM2s2": 58.1,
+      "lclM": 771.9,
+      "cinJkg": 720.6,
+      "moistureTransportProxy": 149.6,
+      "pressureFall6hMb": 2.5
+    },
+    "diagnostics": {
+      "heightRange500m": 280.2,
+      "llj95Ms": 11.6,
+      "cape95Jkg": 1856.7,
+      "deepShear90Ms": 18.6
+    }
+  },
+  "2013-08-03": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0,
+    "troughTilt": -0.2138,
+    "lowLevelJetStrength": 0.0167,
+    "moistureQuality": 1.0,
+    "capStrength": 0.5474,
+    "forcingTiming": 0.1364,
+    "discreteBias": 0.8633,
+    "environment": {
+      "shear01Ms": 7.63,
+      "shear06Ms": 22.78,
+      "srhProxyM2s2": 73.6,
+      "lclM": 721.1,
+      "cinJkg": 693.5,
+      "moistureTransportProxy": 175.6,
+      "pressureFall6hMb": 0.67
+    },
+    "diagnostics": {
+      "heightRange500m": 236.4,
+      "llj95Ms": 12.3,
+      "cape95Jkg": 1823.2,
+      "deepShear90Ms": 22.7
+    }
+  },
+  "2013-11-17": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.3009,
+    "troughTilt": 0.1306,
+    "lowLevelJetStrength": 0.7805,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6357,
+    "forcingTiming": 0.7135,
+    "discreteBias": 0.7003,
+    "environment": {
+      "shear01Ms": 11.31,
+      "shear06Ms": 28.81,
+      "srhProxyM2s2": 101.6,
+      "lclM": 339.4,
+      "cinJkg": 111.2,
+      "moistureTransportProxy": 374.4,
+      "pressureFall6hMb": 3.78
+    },
+    "diagnostics": {
+      "heightRange500m": 560.6,
+      "llj95Ms": 27.6,
+      "cape95Jkg": 922.5,
+      "deepShear90Ms": 25.3
+    }
+  },
+  "2020-04-12": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.2281,
+    "troughTilt": 0.1807,
+    "lowLevelJetStrength": 0.5515,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6299,
+    "forcingTiming": 0.6893,
+    "discreteBias": 0.7105,
+    "environment": {
+      "shear01Ms": 10.32,
+      "shear06Ms": 32.87,
+      "srhProxyM2s2": 146.0,
+      "lclM": 645.2,
+      "cinJkg": 110.2,
+      "moistureTransportProxy": 348.6,
+      "pressureFall6hMb": 4.17
+    },
+    "diagnostics": {
+      "heightRange500m": 509.7,
+      "llj95Ms": 23.0,
+      "cape95Jkg": 2031.5,
+      "deepShear90Ms": 32.4
+    }
+  },
+  "2020-04-13": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.3812,
+    "troughTilt": -0.0274,
+    "lowLevelJetStrength": 0.5404,
+    "moistureQuality": 0.9886,
+    "capStrength": 0.5974,
+    "forcingTiming": 1.0,
+    "discreteBias": 0.58,
+    "environment": {
+      "shear01Ms": 9.18,
+      "shear06Ms": 35.45,
+      "srhProxyM2s2": 163.7,
+      "lclM": 752.9,
+      "cinJkg": 104.5,
+      "moistureTransportProxy": 216.6,
+      "pressureFall6hMb": 3.24
+    },
+    "diagnostics": {
+      "heightRange500m": 616.8,
+      "llj95Ms": 22.8,
+      "cape95Jkg": 1403.2,
+      "deepShear90Ms": 36.0
+    }
+  },
+  "2020-07-12": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": -0.5922,
+    "lowLevelJetStrength": 0.0,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6038,
+    "forcingTiming": 0.3336,
+    "discreteBias": 0.6828,
+    "environment": {
+      "shear01Ms": 8.13,
+      "shear06Ms": 20.02,
+      "srhProxyM2s2": 81.2,
+      "lclM": 1022.2,
+      "cinJkg": 831.8,
+      "moistureTransportProxy": 183.3,
+      "pressureFall6hMb": 4.04
+    },
+    "diagnostics": {
+      "heightRange500m": 234.0,
+      "llj95Ms": 11.9,
+      "cape95Jkg": 3231.5,
+      "deepShear90Ms": 19.8
+    }
+  },
+  "2020-07-19": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": -0.0098,
+    "lowLevelJetStrength": 0.2804,
+    "moistureQuality": 1.0,
+    "capStrength": 0.4935,
+    "forcingTiming": 0.5363,
+    "discreteBias": 0.5693,
+    "environment": {
+      "shear01Ms": 11.36,
+      "shear06Ms": 21.2,
+      "srhProxyM2s2": 97.2,
+      "lclM": 810.5,
+      "cinJkg": 762.0,
+      "moistureTransportProxy": 283.5,
+      "pressureFall6hMb": 2.23
+    },
+    "diagnostics": {
+      "heightRange500m": 234.8,
+      "llj95Ms": 17.6,
+      "cape95Jkg": 3202.1,
+      "deepShear90Ms": 19.0
+    }
+  },
+  "2021-05-25": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.0,
+    "troughTilt": 0.1982,
+    "lowLevelJetStrength": 0.357,
+    "moistureQuality": 1.0,
+    "capStrength": 0.6144,
+    "forcingTiming": 0.5585,
+    "discreteBias": 0.4841,
+    "environment": {
+      "shear01Ms": 12.3,
+      "shear06Ms": 19.95,
+      "srhProxyM2s2": 92.1,
+      "lclM": 797.1,
+      "cinJkg": 662.4,
+      "moistureTransportProxy": 255.5,
+      "pressureFall6hMb": 2.24
+    },
+    "diagnostics": {
+      "heightRange500m": 321.8,
+      "llj95Ms": 19.1,
+      "cape95Jkg": 1806.2,
+      "deepShear90Ms": 16.8
+    }
+  },
+  "2021-05-29": {
+    "family": "dryline_cyclone",
+    "troughAmplitude": 0.0,
+    "troughTilt": -0.6214,
+    "lowLevelJetStrength": 0.0786,
+    "moistureQuality": 1.0,
+    "capStrength": 0.7093,
+    "forcingTiming": 0.3446,
+    "discreteBias": 0.7225,
+    "environment": {
+      "shear01Ms": 8.89,
+      "shear06Ms": 20.01,
+      "srhProxyM2s2": 95.5,
+      "lclM": 753.0,
+      "cinJkg": 717.8,
+      "moistureTransportProxy": 134.5,
+      "pressureFall6hMb": 2.29
+    },
+    "diagnostics": {
+      "heightRange500m": 247.6,
+      "llj95Ms": 13.6,
+      "cape95Jkg": 1547.0,
+      "deepShear90Ms": 21.1
+    }
+  },
+  "2021-12-10": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.3631,
+    "troughTilt": 0.276,
+    "lowLevelJetStrength": 0.4538,
+    "moistureQuality": 1.0,
+    "capStrength": 0.515,
+    "forcingTiming": 0.7467,
+    "discreteBias": 0.6864,
+    "environment": {
+      "shear01Ms": 10.31,
+      "shear06Ms": 33.13,
+      "srhProxyM2s2": 137.1,
+      "lclM": 477.1,
+      "cinJkg": 90.1,
+      "moistureTransportProxy": 283.6,
+      "pressureFall6hMb": 3.67
+    },
+    "diagnostics": {
+      "heightRange500m": 604.1,
+      "llj95Ms": 21.1,
+      "cape95Jkg": 1479.8,
+      "deepShear90Ms": 31.3
+    }
+  },
+  "2021-12-15": {
+    "family": "lee_cyclogenesis",
+    "troughAmplitude": 0.1515,
+    "troughTilt": 0.9406,
+    "lowLevelJetStrength": 0.7161,
+    "moistureQuality": 0.9137,
+    "capStrength": 0.7706,
+    "forcingTiming": 1.0,
+    "discreteBias": 0.58,
+    "environment": {
+      "shear01Ms": 12.1,
+      "shear06Ms": 28.94,
+      "srhProxyM2s2": 107.0,
+      "lclM": 472.3,
+      "cinJkg": 134.9,
+      "moistureTransportProxy": 321.6,
+      "pressureFall6hMb": 7.09
+    },
+    "diagnostics": {
+      "heightRange500m": 456.0,
+      "llj95Ms": 26.3,
+      "cape95Jkg": 460.1,
+      "deepShear90Ms": 28.1
+    }
+  }
+}

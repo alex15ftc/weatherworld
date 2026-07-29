@@ -2,8 +2,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { parseSpcKml, parseSpcLatLonText, mergeParsedSpcProducts, normalizeSpcOutlook } from '../js/historical/spc/SPCOutlookParser.js';
-import { parseSpcShapefileZip } from '../js/historical/spc/SPCShapefileParser.js';
+import { parseSpcKml, parseSpcLatLonText, mergeParsedSpcProducts, normalizeSpcOutlook } from '../js/training/spc/SPCOutlookParser.js';
+import { parseSpcShapefileZip } from '../js/training/spc/SPCShapefileParser.js';
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.manifest) fail('Usage: node scripts/parse-spc-outlooks.mjs --manifest <manifest.json> [--output <directory>]');

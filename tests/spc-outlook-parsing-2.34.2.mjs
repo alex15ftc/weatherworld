@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { inferSpcPolicyEra, mergeParsedSpcProducts, normalizeSpcOutlook, parseSpcKml, parseSpcLatLonText } from '../js/historical/spc/SPCOutlookParser.js';
+import { inferSpcPolicyEra, mergeParsedSpcProducts, normalizeSpcOutlook, parseSpcKml, parseSpcLatLonText } from '../js/training/spc/SPCOutlookParser.js';
 
 const categoricalKml = `<?xml version="1.0"?><kml><Document>
 <Placemark><name>SLGT</name><Polygon><outerBoundaryIs><LinearRing><coordinates>-101,32 -95,32 -95,38 -101,38 -101,32</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>

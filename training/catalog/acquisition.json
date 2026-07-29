@@ -1,0 +1,413 @@
+{
+  "schemaVersion": "2.36.1",
+  "generatedAt": "2026-07-29T02:40:50.369Z",
+  "cases": {
+    "2011-04-27": {
+      "eventDate": "2011-04-27",
+      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.584Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "warning",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    },
+    "2011-05-24": {
+      "eventDate": "2011-05-24",
+      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "warning",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    },
+    "2013-05-19": {
+      "eventDate": "2013-05-19",
+      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "warning",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    },
+    "2013-11-17": {
+      "eventDate": "2013-11-17",
+      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "warning",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    },
+    "2020-04-12": {
+      "eventDate": "2020-04-12",
+      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "warning",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    },
+    "2020-08-10": {
+      "eventDate": "2020-08-10",
+      "updatedAt": "2026-07-29T02:38:51.406Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-29T02:38:41.758Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:41.758Z",
+        "message": "python exited with code 1",
+        "files": [
+          "atmospheric\\era5\\records\\2020-08-10.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:51.406Z",
+        "message": "Downloading/caching NOAA Storm Events year and extracting case.",
+        "files": [
+          "atmospheric\\noaa\\records\\2020-08-10.json"
+        ],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 4,
+      "errors": [
+        {
+          "stage": "era5Raw",
+          "at": "2026-07-29T02:02:29.092Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Extracted",
+          "at": "2026-07-29T02:02:29.092Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Raw",
+          "at": "2026-07-29T02:11:57.667Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Extracted",
+          "at": "2026-07-29T02:11:57.667Z",
+          "message": "python exited with code 1"
+        }
+      ]
+    },
+    "2021-05-25": {
+      "eventDate": "2021-05-25",
+      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "warning",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    },
+    "2021-12-10": {
+      "eventDate": "2021-12-10",
+      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "warning",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    },
+    "2024-05-06": {
+      "eventDate": "2024-05-06",
+      "updatedAt": "2026-07-29T02:40:50.368Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-29T02:40:31.179Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:40:31.179Z",
+        "message": null,
+        "files": [
+          "atmospheric\\era5\\records\\2024-05-06.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-29T02:40:50.368Z",
+        "message": "Downloading/caching NOAA Storm Events year and extracting case.",
+        "files": [
+          "atmospheric\\noaa\\records\\2024-05-06.json"
+        ],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": []
+    }
+  }
+}

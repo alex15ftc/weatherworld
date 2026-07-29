@@ -1,0 +1,4320 @@
+{
+  "originalProduct": {
+    "identity": "day1:20110427:1300",
+    "forecastDay": "day1",
+    "issueDate": "20110427",
+    "cycle": "1300",
+    "issuedAt": "2011-04-27T13:00:00.000Z",
+    "validStart": "2011-04-27T13:00:00.000Z",
+    "validEnd": "2011-04-28T12:00:00.000Z",
+    "productCode": "271255",
+    "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/day1otlk_20110427_1300.html",
+    "status": "successful_with_warnings",
+    "warnings": [
+      {
+        "code": "OPTIONAL_ARTIFACT_UNAVAILABLE",
+        "artifactType": "html",
+        "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/pwo_20110427092343.html",
+        "httpStatus": 404,
+        "message": "optional html artifact unavailable (HTTP 404): pwo_20110427092343.html"
+      }
+    ],
+    "artifacts": [
+      {
+        "type": "html",
+        "fileName": "day1otlk_20110427_1300.html",
+        "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/day1otlk_20110427_1300.html",
+        "localPath": "20110427/day1-1300/day1otlk_20110427_1300.html",
+        "status": "cached",
+        "byteLength": 9104,
+        "sha256": "9859c022834dbbb8f26d48ef447d39c8e2ef49fbd7b95cfda2a2dd3c721e1573",
+        "required": true
+      },
+      {
+        "type": "html",
+        "fileName": "SPC_probotlk_info.html",
+        "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+        "localPath": "20110427/day1-1300/SPC_probotlk_info.html",
+        "status": "cached",
+        "byteLength": 36352,
+        "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+        "required": false
+      },
+      {
+        "type": "html",
+        "fileName": "pwo_20110427092343.html",
+        "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/pwo_20110427092343.html",
+        "localPath": "20110427/day1-1300/pwo_20110427092343.html",
+        "status": "unavailable",
+        "required": false,
+        "httpStatus": 404,
+        "byteLength": null,
+        "sha256": null,
+        "error": {
+          "name": "Error",
+          "message": "HTTP 404: https://www.spc.noaa.gov/products/outlook/archive/2011/pwo_20110427092343.html",
+          "status": 404,
+          "code": null
+        }
+      },
+      {
+        "type": "text",
+        "fileName": "KWNSPTSDY1_201104271300.txt",
+        "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2011/KWNSPTSDY1_201104271300.txt",
+        "localPath": "20110427/day1-1300/KWNSPTSDY1_201104271300.txt",
+        "status": "cached",
+        "byteLength": 5615,
+        "sha256": "51ff45eee496c89d1939170ca73e04fe65486d001aeb230e4cc49d896d975ff5",
+        "required": false
+      }
+    ]
+  },
+  "parsedProduct": {
+    "schemaVersion": "2.34.2.6",
+    "format": "spc-outline-text",
+    "forecastDay": "day1",
+    "issuedAt": "2011-04-27T13:00:00.000Z",
+    "validStart": "2011-04-27T13:00:00.000Z",
+    "validEnd": "2011-04-28T12:00:00.000Z",
+    "source": [
+      {
+        "localPath": "20110427/day1-1300/KWNSPTSDY1_201104271300.txt"
+      }
+    ],
+    "contours": [
+      {
+        "hazardType": "tornado",
+        "value": 0.02,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -90.9,
+                28.56
+              ],
+              [
+                -81.62,
+                43.92
+              ],
+              [
+                -84.18,
+                41.62
+              ],
+              [
+                -88.13,
+                38.52
+              ],
+              [
+                -90.68,
+                37.36
+              ],
+              [
+                -93.6,
+                36.1
+              ],
+              [
+                -94.16,
+                35.32
+              ],
+              [
+                -94.16,
+                34.29
+              ],
+              [
+                -93.47,
+                33.43
+              ],
+              [
+                -91.74,
+                32.86
+              ],
+              [
+                -91.59,
+                32.55
+              ],
+              [
+                -91.64,
+                32.26
+              ],
+              [
+                -91.85,
+                31.39
+              ],
+              [
+                -91.63,
+                29.9
+              ],
+              [
+                -90.9,
+                28.56
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -94.16,
+              "maxLon": -81.62,
+              "minLat": 28.56,
+              "maxLat": 43.92
+            },
+            "areaKm2": 525196.830828,
+            "areaCells10km": 5251.968308,
+            "estimatedGridCells": 5252,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.02",
+        "sourceIndex": 0,
+        "id": "DAY1_201104271300_TORNADO_02_01"
+      },
+      {
+        "hazardType": "tornado",
+        "value": 0.05,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -88.52,
+                29.34
+              ],
+              [
+                -80.76,
+                43.02
+              ],
+              [
+                -82.19,
+                41.83
+              ],
+              [
+                -84.81,
+                40.14
+              ],
+              [
+                -87.98,
+                38.23
+              ],
+              [
+                -91.23,
+                36.72
+              ],
+              [
+                -92.44,
+                35.46
+              ],
+              [
+                -92.69,
+                34.55
+              ],
+              [
+                -92.03,
+                33.62
+              ],
+              [
+                -91.31,
+                32.92
+              ],
+              [
+                -91.13,
+                32.42
+              ],
+              [
+                -91.45,
+                31.2
+              ],
+              [
+                -91.38,
+                30.12
+              ],
+              [
+                -89.99,
+                29.35
+              ],
+              [
+                -88.52,
+                29.34
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -92.69,
+              "maxLon": -80.76,
+              "minLat": 29.34,
+              "maxLat": 43.02
+            },
+            "areaKm2": 589118.83298,
+            "areaCells10km": 5891.18833,
+            "estimatedGridCells": 5891,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.05",
+        "sourceIndex": 1,
+        "id": "DAY1_201104271300_TORNADO_05_01"
+      },
+      {
+        "hazardType": "tornado",
+        "value": 0.1,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -82.63,
+                34.24
+              ],
+              [
+                -81.73,
+                35.42
+              ],
+              [
+                -81.59,
+                37.02
+              ],
+              [
+                -81.79,
+                39.23
+              ],
+              [
+                -83.48,
+                39.41
+              ],
+              [
+                -88.11,
+                37.33
+              ],
+              [
+                -90.14,
+                36.36
+              ],
+              [
+                -91.99,
+                35.31
+              ],
+              [
+                -92.15,
+                34.53
+              ],
+              [
+                -91.48,
+                33.69
+              ],
+              [
+                -90.88,
+                33.15
+              ],
+              [
+                -90.73,
+                32.55
+              ],
+              [
+                -90.67,
+                31.61
+              ],
+              [
+                -89.96,
+                31.04
+              ],
+              [
+                -88.91,
+                30.71
+              ],
+              [
+                -87.55,
+                30.93
+              ],
+              [
+                -86.14,
+                31.39
+              ],
+              [
+                -84.92,
+                32.28
+              ],
+              [
+                -83.56,
+                33.59
+              ],
+              [
+                -82.63,
+                34.24
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -92.15,
+              "maxLon": -81.59,
+              "minLat": 30.71,
+              "maxLat": 39.41
+            },
+            "areaKm2": 572095.840858,
+            "areaCells10km": 5720.958409,
+            "estimatedGridCells": 5721,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.10",
+        "sourceIndex": 2,
+        "id": "DAY1_201104271300_TORNADO_10_01"
+      },
+      {
+        "hazardType": "tornado",
+        "value": 0.15,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -82.92,
+                37.59
+              ],
+              [
+                -84.21,
+                37.51
+              ],
+              [
+                -85.31,
+                36.7
+              ],
+              [
+                -86.37,
+                36.27
+              ],
+              [
+                -88.03,
+                35.53
+              ],
+              [
+                -89.87,
+                34.44
+              ],
+              [
+                -90.55,
+                33.21
+              ],
+              [
+                -90.44,
+                31.85
+              ],
+              [
+                -89.04,
+                31.15
+              ],
+              [
+                -87.38,
+                31.32
+              ],
+              [
+                -86.48,
+                31.84
+              ],
+              [
+                -85.13,
+                32.71
+              ],
+              [
+                -84.33,
+                33.74
+              ],
+              [
+                -82.75,
+                36.13
+              ],
+              [
+                -82.92,
+                37.59
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -90.55,
+              "maxLon": -82.75,
+              "minLat": 31.15,
+              "maxLat": 37.59
+            },
+            "areaKm2": 285023.186748,
+            "areaCells10km": 2850.231867,
+            "estimatedGridCells": 2850,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.15",
+        "sourceIndex": 3,
+        "id": "DAY1_201104271300_TORNADO_15_01"
+      },
+      {
+        "hazardType": "tornado",
+        "value": 0.3,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -84.57,
+                35.64
+              ],
+              [
+                -85.25,
+                35.65
+              ],
+              [
+                -87.93,
+                34.96
+              ],
+              [
+                -89.33,
+                34.04
+              ],
+              [
+                -89.63,
+                33.36
+              ],
+              [
+                -89.42,
+                32.61
+              ],
+              [
+                -88.8,
+                32.34
+              ],
+              [
+                -87.23,
+                32.32
+              ],
+              [
+                -85.72,
+                33.42
+              ],
+              [
+                -84.92,
+                34.23
+              ],
+              [
+                -84.42,
+                35.02
+              ],
+              [
+                -84.57,
+                35.64
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -89.63,
+              "maxLon": -84.42,
+              "minLat": 32.32,
+              "maxLat": 35.65
+            },
+            "areaKm2": 110147.335291,
+            "areaCells10km": 1101.473353,
+            "estimatedGridCells": 1101,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.30",
+        "sourceIndex": 4,
+        "id": "DAY1_201104271300_TORNADO_30_01"
+      },
+      {
+        "hazardType": "significantTornado",
+        "value": "SIGN",
+        "significant": true,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -85.38,
+                36.7
+              ],
+              [
+                -88.07,
+                35.47
+              ],
+              [
+                -89.94,
+                34.43
+              ],
+              [
+                -90.57,
+                33.18
+              ],
+              [
+                -90.47,
+                31.9
+              ],
+              [
+                -89.02,
+                31.15
+              ],
+              [
+                -87.38,
+                31.32
+              ],
+              [
+                -86.5,
+                31.84
+              ],
+              [
+                -85.13,
+                32.71
+              ],
+              [
+                -84.31,
+                33.73
+              ],
+              [
+                -83.48,
+                35.07
+              ],
+              [
+                -82.73,
+                36.17
+              ],
+              [
+                -82.94,
+                37.6
+              ],
+              [
+                -84.23,
+                37.46
+              ],
+              [
+                -85.38,
+                36.7
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -90.57,
+              "maxLon": -82.73,
+              "minLat": 31.15,
+              "maxLat": 37.6
+            },
+            "areaKm2": 284484.298456,
+            "areaCells10km": 2844.842985,
+            "estimatedGridCells": 2845,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "SIGN",
+        "sourceIndex": 5,
+        "id": "DAY1_201104271300_SIGNIFICANTTORNADO_SIGN_01"
+      },
+      {
+        "hazardType": "hail",
+        "value": 0.05,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -90.7,
+                28.26
+              ],
+              [
+                -82.06,
+                43.3
+              ],
+              [
+                -84.53,
+                41.31
+              ],
+              [
+                -88.09,
+                38.57
+              ],
+              [
+                -90.82,
+                37.32
+              ],
+              [
+                -93.68,
+                36.09
+              ],
+              [
+                -94.13,
+                35.3
+              ],
+              [
+                -94.25,
+                34.3
+              ],
+              [
+                -94.25,
+                33.49
+              ],
+              [
+                -94.04,
+                32.73
+              ],
+              [
+                -92.35,
+                31.84
+              ],
+              [
+                -91.89,
+                31.35
+              ],
+              [
+                -91.68,
+                30.02
+              ],
+              [
+                -90.7,
+                28.26
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -94.25,
+              "maxLon": -82.06,
+              "minLat": 28.26,
+              "maxLat": 43.3
+            },
+            "areaKm2": 577501.05057,
+            "areaCells10km": 5775.010506,
+            "estimatedGridCells": 5775,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          },
+          {
+            "outer": [
+              [
+                -79.7,
+                31.9
+              ],
+              [
+                -81.01,
+                31.89
+              ],
+              [
+                -81.94,
+                31.39
+              ],
+              [
+                -83.05,
+                30.48
+              ],
+              [
+                -83.58,
+                28.59
+              ],
+              [
+                -79.7,
+                31.9
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -83.58,
+              "maxLon": -79.7,
+              "minLat": 28.59,
+              "maxLat": 31.9
+            },
+            "areaKm2": 41302.728086,
+            "areaCells10km": 413.027281,
+            "estimatedGridCells": 413,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.05",
+        "sourceIndex": 6,
+        "id": "DAY1_201104271300_HAIL_05_01"
+      },
+      {
+        "hazardType": "hail",
+        "value": 0.15,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -88.75,
+                29.3
+              ],
+              [
+                -78.77,
+                43.94
+              ],
+              [
+                -81.99,
+                41.93
+              ],
+              [
+                -84.65,
+                40.2
+              ],
+              [
+                -87.88,
+                38.27
+              ],
+              [
+                -91.15,
+                36.77
+              ],
+              [
+                -93.59,
+                35.85
+              ],
+              [
+                -94,
+                35.2
+              ],
+              [
+                -93.98,
+                34.31
+              ],
+              [
+                -93.29,
+                33.63
+              ],
+              [
+                -91.31,
+                32.97
+              ],
+              [
+                -91.13,
+                32.42
+              ],
+              [
+                -91.46,
+                31.48
+              ],
+              [
+                -91.42,
+                30.15
+              ],
+              [
+                -89.97,
+                29.37
+              ],
+              [
+                -88.75,
+                29.3
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -94,
+              "maxLon": -78.77,
+              "minLat": 29.3,
+              "maxLat": 43.94
+            },
+            "areaKm2": 714261.859497,
+            "areaCells10km": 7142.618595,
+            "estimatedGridCells": 7143,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.15",
+        "sourceIndex": 7,
+        "id": "DAY1_201104271300_HAIL_15_01"
+      },
+      {
+        "hazardType": "hail",
+        "value": 0.3,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -87.35,
+                31.31
+              ],
+              [
+                -86.2,
+                31.98
+              ],
+              [
+                -83.76,
+                33.62
+              ],
+              [
+                -82.02,
+                34.56
+              ],
+              [
+                -81.14,
+                35.71
+              ],
+              [
+                -80.99,
+                36.5
+              ],
+              [
+                -81.48,
+                36.9
+              ],
+              [
+                -82.97,
+                37.58
+              ],
+              [
+                -84.22,
+                37.49
+              ],
+              [
+                -86.47,
+                36.16
+              ],
+              [
+                -88.01,
+                35.56
+              ],
+              [
+                -89.9,
+                34.44
+              ],
+              [
+                -90.56,
+                33.25
+              ],
+              [
+                -90.47,
+                31.89
+              ],
+              [
+                -89.11,
+                31.18
+              ],
+              [
+                -87.35,
+                31.31
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -90.56,
+              "maxLon": -80.99,
+              "minLat": 31.18,
+              "maxLat": 37.58
+            },
+            "areaKm2": 347554.095095,
+            "areaCells10km": 3475.540951,
+            "estimatedGridCells": 3476,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.30",
+        "sourceIndex": 8,
+        "id": "DAY1_201104271300_HAIL_30_01"
+      },
+      {
+        "hazardType": "hail",
+        "value": 0.45,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -85.76,
+                33.33
+              ],
+              [
+                -84.86,
+                34.29
+              ],
+              [
+                -84.97,
+                34.76
+              ],
+              [
+                -85.39,
+                35.13
+              ],
+              [
+                -86.4,
+                35.34
+              ],
+              [
+                -87.78,
+                35.02
+              ],
+              [
+                -89.33,
+                34.11
+              ],
+              [
+                -89.54,
+                33.31
+              ],
+              [
+                -89.44,
+                32.66
+              ],
+              [
+                -88.87,
+                32.35
+              ],
+              [
+                -87.26,
+                32.35
+              ],
+              [
+                -85.76,
+                33.33
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -89.54,
+              "maxLon": -84.86,
+              "minLat": 32.35,
+              "maxLat": 35.34
+            },
+            "areaKm2": 99293.11215,
+            "areaCells10km": 992.931122,
+            "estimatedGridCells": 993,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.45",
+        "sourceIndex": 9,
+        "id": "DAY1_201104271300_HAIL_45_01"
+      },
+      {
+        "hazardType": "significantHail",
+        "value": "SIGN",
+        "significant": true,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -87.72,
+                30.89
+              ],
+              [
+                -85.07,
+                32.79
+              ],
+              [
+                -84.14,
+                34.65
+              ],
+              [
+                -84.18,
+                35.24
+              ],
+              [
+                -84.93,
+                35.84
+              ],
+              [
+                -86.36,
+                36.22
+              ],
+              [
+                -87.95,
+                35.61
+              ],
+              [
+                -89.89,
+                34.5
+              ],
+              [
+                -90.56,
+                33.27
+              ],
+              [
+                -90.46,
+                31.52
+              ],
+              [
+                -89.92,
+                31.13
+              ],
+              [
+                -89.07,
+                30.77
+              ],
+              [
+                -87.72,
+                30.89
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -90.56,
+              "maxLon": -84.14,
+              "minLat": 30.77,
+              "maxLat": 36.22
+            },
+            "areaKm2": 243020.741799,
+            "areaCells10km": 2430.207418,
+            "estimatedGridCells": 2430,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "SIGN",
+        "sourceIndex": 10,
+        "id": "DAY1_201104271300_SIGNIFICANTHAIL_SIGN_01"
+      },
+      {
+        "hazardType": "wind",
+        "value": 0.05,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -75.37,
+                36.83
+              ],
+              [
+                -76.56,
+                35.28
+              ],
+              [
+                -78.04,
+                33.17
+              ],
+              [
+                -75.37,
+                36.83
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -78.04,
+              "maxLon": -75.37,
+              "minLat": 33.17,
+              "maxLat": 36.83
+            },
+            "areaKm2": 1369.042596,
+            "areaCells10km": 13.690426,
+            "estimatedGridCells": 14,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.05",
+        "sourceIndex": 11,
+        "id": "DAY1_201104271300_WIND_05_01"
+      },
+      {
+        "hazardType": "wind",
+        "value": 0.05,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -90.99,
+                28.75
+              ],
+              [
+                -81.69,
+                43.85
+              ],
+              [
+                -83.17,
+                42.46
+              ],
+              [
+                -86.28,
+                39.97
+              ],
+              [
+                -88.12,
+                38.56
+              ],
+              [
+                -90.77,
+                37.35
+              ],
+              [
+                -93.68,
+                36.06
+              ],
+              [
+                -94.14,
+                35.27
+              ],
+              [
+                -94.26,
+                33.47
+              ],
+              [
+                -94.04,
+                32.7
+              ],
+              [
+                -93.13,
+                32.27
+              ],
+              [
+                -92.34,
+                31.82
+              ],
+              [
+                -91.9,
+                31.39
+              ],
+              [
+                -91.69,
+                30.1
+              ],
+              [
+                -90.99,
+                28.75
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -94.26,
+              "maxLon": -81.69,
+              "minLat": 28.75,
+              "maxLat": 43.85
+            },
+            "areaKm2": 540116.441517,
+            "areaCells10km": 5401.164415,
+            "estimatedGridCells": 5401,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.05",
+        "sourceIndex": 12,
+        "id": "DAY1_201104271300_WIND_05_02"
+      },
+      {
+        "hazardType": "wind",
+        "value": 0.05,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -80.22,
+                31.93
+              ],
+              [
+                -81.08,
+                31.86
+              ],
+              [
+                -81.89,
+                31.42
+              ],
+              [
+                -83.09,
+                30.45
+              ],
+              [
+                -83.55,
+                28.68
+              ],
+              [
+                -80.22,
+                31.93
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -83.55,
+              "maxLon": -80.22,
+              "minLat": 28.68,
+              "maxLat": 31.93
+            },
+            "areaKm2": 30778.321614,
+            "areaCells10km": 307.783216,
+            "estimatedGridCells": 308,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.05",
+        "sourceIndex": 13,
+        "id": "DAY1_201104271300_WIND_05_03"
+      },
+      {
+        "hazardType": "wind",
+        "value": 0.15,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -88.71,
+                29.29
+              ],
+              [
+                -80.92,
+                42.68
+              ],
+              [
+                -84.49,
+                40.33
+              ],
+              [
+                -87.94,
+                38.24
+              ],
+              [
+                -91.36,
+                36.72
+              ],
+              [
+                -93.61,
+                35.85
+              ],
+              [
+                -93.97,
+                35.21
+              ],
+              [
+                -94.02,
+                34.38
+              ],
+              [
+                -93.25,
+                33.61
+              ],
+              [
+                -91.31,
+                32.96
+              ],
+              [
+                -91.12,
+                32.41
+              ],
+              [
+                -91.29,
+                31.82
+              ],
+              [
+                -91.48,
+                31.11
+              ],
+              [
+                -91.42,
+                30.15
+              ],
+              [
+                -90.02,
+                29.39
+              ],
+              [
+                -88.71,
+                29.29
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -94.02,
+              "maxLon": -80.92,
+              "minLat": 29.29,
+              "maxLat": 42.68
+            },
+            "areaKm2": 621779.327369,
+            "areaCells10km": 6217.793274,
+            "estimatedGridCells": 6218,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.15",
+        "sourceIndex": 14,
+        "id": "DAY1_201104271300_WIND_15_01"
+      },
+      {
+        "hazardType": "wind",
+        "value": 0.3,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -82.49,
+                33.41
+              ],
+              [
+                -81,
+                34.36
+              ],
+              [
+                -80.02,
+                35.27
+              ],
+              [
+                -78.96,
+                36.29
+              ],
+              [
+                -77.77,
+                37.7
+              ],
+              [
+                -77.07,
+                38.62
+              ],
+              [
+                -77.02,
+                39.55
+              ],
+              [
+                -77.42,
+                39.73
+              ],
+              [
+                -78.19,
+                39.45
+              ],
+              [
+                -79.07,
+                39.19
+              ],
+              [
+                -79.46,
+                39.88
+              ],
+              [
+                -78.77,
+                40.92
+              ],
+              [
+                -77.9,
+                41.84
+              ],
+              [
+                -77.32,
+                42.3
+              ],
+              [
+                -77.06,
+                42.73
+              ],
+              [
+                -77.08,
+                43.32
+              ],
+              [
+                -77.78,
+                43.43
+              ],
+              [
+                -78.78,
+                43.09
+              ],
+              [
+                -79.58,
+                42.48
+              ],
+              [
+                -81.64,
+                41.08
+              ],
+              [
+                -82.87,
+                39.92
+              ],
+              [
+                -83.42,
+                39.44
+              ],
+              [
+                -90.29,
+                36.28
+              ],
+              [
+                -91.97,
+                35.32
+              ],
+              [
+                -92.15,
+                34.51
+              ],
+              [
+                -91.53,
+                33.75
+              ],
+              [
+                -90.9,
+                33.15
+              ],
+              [
+                -90.68,
+                32.56
+              ],
+              [
+                -90.43,
+                31.87
+              ],
+              [
+                -89.03,
+                31.15
+              ],
+              [
+                -87.43,
+                31.29
+              ],
+              [
+                -85.09,
+                31.77
+              ],
+              [
+                -82.49,
+                33.41
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -92.15,
+              "maxLon": -77.02,
+              "minLat": 31.15,
+              "maxLat": 43.43
+            },
+            "areaKm2": 841909.947471,
+            "areaCells10km": 8419.099475,
+            "estimatedGridCells": 8419,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.30",
+        "sourceIndex": 15,
+        "id": "DAY1_201104271300_WIND_30_01"
+      },
+      {
+        "hazardType": "wind",
+        "value": 0.45,
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -88.55,
+                35.19
+              ],
+              [
+                -89.87,
+                34.44
+              ],
+              [
+                -90.46,
+                33.26
+              ],
+              [
+                -88.84,
+                32.29
+              ],
+              [
+                -87.23,
+                32.31
+              ],
+              [
+                -85.11,
+                32.73
+              ],
+              [
+                -82.5,
+                34.33
+              ],
+              [
+                -81.79,
+                35.33
+              ],
+              [
+                -81.6,
+                37.01
+              ],
+              [
+                -82.6,
+                38.51
+              ],
+              [
+                -83.57,
+                38.71
+              ],
+              [
+                -85.31,
+                36.69
+              ],
+              [
+                -88.55,
+                35.19
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -90.46,
+              "maxLon": -81.6,
+              "minLat": 32.29,
+              "maxLat": 38.71
+            },
+            "areaKm2": 304002.579531,
+            "areaCells10km": 3040.025795,
+            "estimatedGridCells": 3040,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "0.45",
+        "sourceIndex": 16,
+        "id": "DAY1_201104271300_WIND_45_01"
+      },
+      {
+        "hazardType": "significantWind",
+        "value": "SIGN",
+        "significant": true,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -85.11,
+                32.71
+              ],
+              [
+                -82.57,
+                34.29
+              ],
+              [
+                -81.78,
+                35.31
+              ],
+              [
+                -81.59,
+                37.03
+              ],
+              [
+                -82.62,
+                38.49
+              ],
+              [
+                -83.62,
+                38.71
+              ],
+              [
+                -85.37,
+                36.66
+              ],
+              [
+                -88.69,
+                35.15
+              ],
+              [
+                -89.9,
+                34.41
+              ],
+              [
+                -90.43,
+                33.25
+              ],
+              [
+                -88.88,
+                32.32
+              ],
+              [
+                -87.19,
+                32.31
+              ],
+              [
+                -85.11,
+                32.71
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -90.43,
+              "maxLon": -81.59,
+              "minLat": 32.31,
+              "maxLat": 38.71
+            },
+            "areaKm2": 305276.079701,
+            "areaCells10km": 3052.760797,
+            "estimatedGridCells": 3053,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "SIGN",
+        "sourceIndex": 17,
+        "id": "DAY1_201104271300_SIGNIFICANTWIND_SIGN_01"
+      },
+      {
+        "hazardType": "categorical",
+        "value": "HIGH",
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -84.61,
+                35.65
+              ],
+              [
+                -85.34,
+                35.66
+              ],
+              [
+                -86.08,
+                35.47
+              ],
+              [
+                -87.97,
+                34.95
+              ],
+              [
+                -89.27,
+                34.06
+              ],
+              [
+                -89.61,
+                33.39
+              ],
+              [
+                -89.44,
+                32.6
+              ],
+              [
+                -88.77,
+                32.3
+              ],
+              [
+                -87.25,
+                32.32
+              ],
+              [
+                -85.91,
+                33.3
+              ],
+              [
+                -85.03,
+                34.16
+              ],
+              [
+                -84.41,
+                35.08
+              ],
+              [
+                -84.61,
+                35.65
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -89.61,
+              "maxLon": -84.41,
+              "minLat": 32.3,
+              "maxLat": 35.66
+            },
+            "areaKm2": 109896.405182,
+            "areaCells10km": 1098.964052,
+            "estimatedGridCells": 1099,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "HIGH",
+        "sourceIndex": 18,
+        "id": "DAY1_201104271300_CATEGORICAL_HIGH_01"
+      },
+      {
+        "hazardType": "categorical",
+        "value": "MDT",
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -81.57,
+                37.02
+              ],
+              [
+                -82.58,
+                38.5
+              ],
+              [
+                -83.57,
+                38.71
+              ],
+              [
+                -85.39,
+                36.65
+              ],
+              [
+                -88.22,
+                35.37
+              ],
+              [
+                -89.92,
+                34.43
+              ],
+              [
+                -90.48,
+                33.26
+              ],
+              [
+                -90.36,
+                31.8
+              ],
+              [
+                -88.97,
+                31.14
+              ],
+              [
+                -87.39,
+                31.29
+              ],
+              [
+                -86.18,
+                31.94
+              ],
+              [
+                -85.02,
+                32.77
+              ],
+              [
+                -84.11,
+                33.38
+              ],
+              [
+                -82.54,
+                34.3
+              ],
+              [
+                -81.79,
+                35.33
+              ],
+              [
+                -81.57,
+                37.02
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -90.48,
+              "maxLon": -81.57,
+              "minLat": 31.14,
+              "maxLat": 38.71
+            },
+            "areaKm2": 356828.763205,
+            "areaCells10km": 3568.287632,
+            "estimatedGridCells": 3568,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "MDT",
+        "sourceIndex": 19,
+        "id": "DAY1_201104271300_CATEGORICAL_MDT_01"
+      },
+      {
+        "hazardType": "categorical",
+        "value": "SLGT",
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -88.51,
+                29.28
+              ],
+              [
+                -81.88,
+                41.93
+              ],
+              [
+                -82.94,
+                41.34
+              ],
+              [
+                -84.95,
+                40
+              ],
+              [
+                -88.21,
+                37.95
+              ],
+              [
+                -91.2,
+                36.56
+              ],
+              [
+                -93.52,
+                35.89
+              ],
+              [
+                -94.03,
+                35.19
+              ],
+              [
+                -94,
+                34.37
+              ],
+              [
+                -93.24,
+                33.58
+              ],
+              [
+                -91.43,
+                33.02
+              ],
+              [
+                -91.14,
+                32.49
+              ],
+              [
+                -91.46,
+                31.13
+              ],
+              [
+                -91.38,
+                30.13
+              ],
+              [
+                -89.97,
+                29.37
+              ],
+              [
+                -88.51,
+                29.28
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -94.03,
+              "maxLon": -81.88,
+              "minLat": 29.28,
+              "maxLat": 41.93
+            },
+            "areaKm2": 585071.497389,
+            "areaCells10km": 5850.714974,
+            "estimatedGridCells": 5851,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "SLGT",
+        "sourceIndex": 20,
+        "id": "DAY1_201104271300_CATEGORICAL_SLGT_01"
+      },
+      {
+        "hazardType": "categorical",
+        "value": "TSTM",
+        "significant": false,
+        "polygons": [
+          {
+            "outer": [
+              [
+                -92.57,
+                29.01
+              ],
+              [
+                -82.47,
+                45.49
+              ],
+              [
+                -85.93,
+                41.58
+              ],
+              [
+                -90.26,
+                38.38
+              ],
+              [
+                -94.89,
+                37.47
+              ],
+              [
+                -96.87,
+                36.87
+              ],
+              [
+                -97.8,
+                35.49
+              ],
+              [
+                -96.8,
+                33.85
+              ],
+              [
+                -95.03,
+                33.25
+              ],
+              [
+                -94.4,
+                32.26
+              ],
+              [
+                -92.94,
+                31.43
+              ],
+              [
+                -92.57,
+                29.01
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -97.8,
+              "maxLon": -82.47,
+              "minLat": 29.01,
+              "maxLat": 45.49
+            },
+            "areaKm2": 608576.353469,
+            "areaCells10km": 6085.763535,
+            "estimatedGridCells": 6086,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          },
+          {
+            "outer": [
+              [
+                -98.29,
+                49.17
+              ],
+              [
+                -110.03,
+                49.17
+              ],
+              [
+                -106.21,
+                47.06
+              ],
+              [
+                -105.54,
+                45.54
+              ],
+              [
+                -103.25,
+                43.96
+              ],
+              [
+                -99.86,
+                42.36
+              ],
+              [
+                -97.5,
+                42.71
+              ],
+              [
+                -96.4,
+                43.62
+              ],
+              [
+                -97.28,
+                46.4
+              ],
+              [
+                -98.29,
+                49.17
+              ]
+            ],
+            "holes": [],
+            "bbox": {
+              "minLon": -110.03,
+              "maxLon": -96.4,
+              "minLat": 42.36,
+              "maxLat": 49.17
+            },
+            "areaKm2": 458109.549105,
+            "areaCells10km": 4581.095491,
+            "estimatedGridCells": 4581,
+            "validation": {
+              "valid": true,
+              "closed": true,
+              "selfIntersections": 0
+            }
+          }
+        ],
+        "sourceLabel": "TSTM",
+        "sourceIndex": 21,
+        "id": "DAY1_201104271300_CATEGORICAL_TSTM_01"
+      }
+    ],
+    "warnings": [
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "tornado",
+          "label": "0.02",
+          "tokenCount": 10
+        }
+      },
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "tornado",
+          "label": "0.05",
+          "tokenCount": 12
+        }
+      },
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "hail",
+          "label": "0.05",
+          "tokenCount": 7
+        }
+      },
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "hail",
+          "label": "0.15",
+          "tokenCount": 6
+        }
+      },
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "wind",
+          "label": "0.05",
+          "tokenCount": 6
+        }
+      },
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "wind",
+          "label": "0.15",
+          "tokenCount": 10
+        }
+      },
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "categorical",
+          "label": "SLGT",
+          "tokenCount": 15
+        }
+      },
+      {
+        "code": "discarded-outline-fragment",
+        "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+        "severity": "info",
+        "details": {
+          "hazardType": "categorical",
+          "label": "TSTM",
+          "tokenCount": 6
+        }
+      }
+    ]
+  },
+  "normalizedProduct": {
+    "schemaVersion": "2.34.2.6",
+    "policyEra": "2006-2014",
+    "forecastDay": "day1",
+    "issuedAt": "2011-04-27T13:00:00.000Z",
+    "validStart": "2011-04-27T13:00:00.000Z",
+    "validEnd": "2011-04-28T12:00:00.000Z",
+    "hazards": {
+      "categorical": [
+        {
+          "hazardType": "categorical",
+          "value": "TSTM",
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -92.57,
+                  29.01
+                ],
+                [
+                  -82.47,
+                  45.49
+                ],
+                [
+                  -85.93,
+                  41.58
+                ],
+                [
+                  -90.26,
+                  38.38
+                ],
+                [
+                  -94.89,
+                  37.47
+                ],
+                [
+                  -96.87,
+                  36.87
+                ],
+                [
+                  -97.8,
+                  35.49
+                ],
+                [
+                  -96.8,
+                  33.85
+                ],
+                [
+                  -95.03,
+                  33.25
+                ],
+                [
+                  -94.4,
+                  32.26
+                ],
+                [
+                  -92.94,
+                  31.43
+                ],
+                [
+                  -92.57,
+                  29.01
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -97.8,
+                "maxLon": -82.47,
+                "minLat": 29.01,
+                "maxLat": 45.49
+              },
+              "areaKm2": 608576.353469,
+              "areaCells10km": 6085.763535,
+              "estimatedGridCells": 6086,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            },
+            {
+              "outer": [
+                [
+                  -98.29,
+                  49.17
+                ],
+                [
+                  -110.03,
+                  49.17
+                ],
+                [
+                  -106.21,
+                  47.06
+                ],
+                [
+                  -105.54,
+                  45.54
+                ],
+                [
+                  -103.25,
+                  43.96
+                ],
+                [
+                  -99.86,
+                  42.36
+                ],
+                [
+                  -97.5,
+                  42.71
+                ],
+                [
+                  -96.4,
+                  43.62
+                ],
+                [
+                  -97.28,
+                  46.4
+                ],
+                [
+                  -98.29,
+                  49.17
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -110.03,
+                "maxLon": -96.4,
+                "minLat": 42.36,
+                "maxLat": 49.17
+              },
+              "areaKm2": 458109.549105,
+              "areaCells10km": 4581.095491,
+              "estimatedGridCells": 4581,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "TSTM",
+          "sourceIndex": 21,
+          "id": "DAY1_201104271300_CATEGORICAL_TSTM_01"
+        },
+        {
+          "hazardType": "categorical",
+          "value": "SLGT",
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -88.51,
+                  29.28
+                ],
+                [
+                  -81.88,
+                  41.93
+                ],
+                [
+                  -82.94,
+                  41.34
+                ],
+                [
+                  -84.95,
+                  40
+                ],
+                [
+                  -88.21,
+                  37.95
+                ],
+                [
+                  -91.2,
+                  36.56
+                ],
+                [
+                  -93.52,
+                  35.89
+                ],
+                [
+                  -94.03,
+                  35.19
+                ],
+                [
+                  -94,
+                  34.37
+                ],
+                [
+                  -93.24,
+                  33.58
+                ],
+                [
+                  -91.43,
+                  33.02
+                ],
+                [
+                  -91.14,
+                  32.49
+                ],
+                [
+                  -91.46,
+                  31.13
+                ],
+                [
+                  -91.38,
+                  30.13
+                ],
+                [
+                  -89.97,
+                  29.37
+                ],
+                [
+                  -88.51,
+                  29.28
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -94.03,
+                "maxLon": -81.88,
+                "minLat": 29.28,
+                "maxLat": 41.93
+              },
+              "areaKm2": 585071.497389,
+              "areaCells10km": 5850.714974,
+              "estimatedGridCells": 5851,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "SLGT",
+          "sourceIndex": 20,
+          "id": "DAY1_201104271300_CATEGORICAL_SLGT_01"
+        },
+        {
+          "hazardType": "categorical",
+          "value": "MDT",
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -81.57,
+                  37.02
+                ],
+                [
+                  -82.58,
+                  38.5
+                ],
+                [
+                  -83.57,
+                  38.71
+                ],
+                [
+                  -85.39,
+                  36.65
+                ],
+                [
+                  -88.22,
+                  35.37
+                ],
+                [
+                  -89.92,
+                  34.43
+                ],
+                [
+                  -90.48,
+                  33.26
+                ],
+                [
+                  -90.36,
+                  31.8
+                ],
+                [
+                  -88.97,
+                  31.14
+                ],
+                [
+                  -87.39,
+                  31.29
+                ],
+                [
+                  -86.18,
+                  31.94
+                ],
+                [
+                  -85.02,
+                  32.77
+                ],
+                [
+                  -84.11,
+                  33.38
+                ],
+                [
+                  -82.54,
+                  34.3
+                ],
+                [
+                  -81.79,
+                  35.33
+                ],
+                [
+                  -81.57,
+                  37.02
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -90.48,
+                "maxLon": -81.57,
+                "minLat": 31.14,
+                "maxLat": 38.71
+              },
+              "areaKm2": 356828.763205,
+              "areaCells10km": 3568.287632,
+              "estimatedGridCells": 3568,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "MDT",
+          "sourceIndex": 19,
+          "id": "DAY1_201104271300_CATEGORICAL_MDT_01"
+        },
+        {
+          "hazardType": "categorical",
+          "value": "HIGH",
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -84.61,
+                  35.65
+                ],
+                [
+                  -85.34,
+                  35.66
+                ],
+                [
+                  -86.08,
+                  35.47
+                ],
+                [
+                  -87.97,
+                  34.95
+                ],
+                [
+                  -89.27,
+                  34.06
+                ],
+                [
+                  -89.61,
+                  33.39
+                ],
+                [
+                  -89.44,
+                  32.6
+                ],
+                [
+                  -88.77,
+                  32.3
+                ],
+                [
+                  -87.25,
+                  32.32
+                ],
+                [
+                  -85.91,
+                  33.3
+                ],
+                [
+                  -85.03,
+                  34.16
+                ],
+                [
+                  -84.41,
+                  35.08
+                ],
+                [
+                  -84.61,
+                  35.65
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -89.61,
+                "maxLon": -84.41,
+                "minLat": 32.3,
+                "maxLat": 35.66
+              },
+              "areaKm2": 109896.405182,
+              "areaCells10km": 1098.964052,
+              "estimatedGridCells": 1099,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "HIGH",
+          "sourceIndex": 18,
+          "id": "DAY1_201104271300_CATEGORICAL_HIGH_01"
+        }
+      ],
+      "tornado": [
+        {
+          "hazardType": "tornado",
+          "value": 0.02,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -90.9,
+                  28.56
+                ],
+                [
+                  -81.62,
+                  43.92
+                ],
+                [
+                  -84.18,
+                  41.62
+                ],
+                [
+                  -88.13,
+                  38.52
+                ],
+                [
+                  -90.68,
+                  37.36
+                ],
+                [
+                  -93.6,
+                  36.1
+                ],
+                [
+                  -94.16,
+                  35.32
+                ],
+                [
+                  -94.16,
+                  34.29
+                ],
+                [
+                  -93.47,
+                  33.43
+                ],
+                [
+                  -91.74,
+                  32.86
+                ],
+                [
+                  -91.59,
+                  32.55
+                ],
+                [
+                  -91.64,
+                  32.26
+                ],
+                [
+                  -91.85,
+                  31.39
+                ],
+                [
+                  -91.63,
+                  29.9
+                ],
+                [
+                  -90.9,
+                  28.56
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -94.16,
+                "maxLon": -81.62,
+                "minLat": 28.56,
+                "maxLat": 43.92
+              },
+              "areaKm2": 525196.830828,
+              "areaCells10km": 5251.968308,
+              "estimatedGridCells": 5252,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.02",
+          "sourceIndex": 0,
+          "id": "DAY1_201104271300_TORNADO_02_01"
+        },
+        {
+          "hazardType": "tornado",
+          "value": 0.05,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -88.52,
+                  29.34
+                ],
+                [
+                  -80.76,
+                  43.02
+                ],
+                [
+                  -82.19,
+                  41.83
+                ],
+                [
+                  -84.81,
+                  40.14
+                ],
+                [
+                  -87.98,
+                  38.23
+                ],
+                [
+                  -91.23,
+                  36.72
+                ],
+                [
+                  -92.44,
+                  35.46
+                ],
+                [
+                  -92.69,
+                  34.55
+                ],
+                [
+                  -92.03,
+                  33.62
+                ],
+                [
+                  -91.31,
+                  32.92
+                ],
+                [
+                  -91.13,
+                  32.42
+                ],
+                [
+                  -91.45,
+                  31.2
+                ],
+                [
+                  -91.38,
+                  30.12
+                ],
+                [
+                  -89.99,
+                  29.35
+                ],
+                [
+                  -88.52,
+                  29.34
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -92.69,
+                "maxLon": -80.76,
+                "minLat": 29.34,
+                "maxLat": 43.02
+              },
+              "areaKm2": 589118.83298,
+              "areaCells10km": 5891.18833,
+              "estimatedGridCells": 5891,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.05",
+          "sourceIndex": 1,
+          "id": "DAY1_201104271300_TORNADO_05_01"
+        },
+        {
+          "hazardType": "tornado",
+          "value": 0.1,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -82.63,
+                  34.24
+                ],
+                [
+                  -81.73,
+                  35.42
+                ],
+                [
+                  -81.59,
+                  37.02
+                ],
+                [
+                  -81.79,
+                  39.23
+                ],
+                [
+                  -83.48,
+                  39.41
+                ],
+                [
+                  -88.11,
+                  37.33
+                ],
+                [
+                  -90.14,
+                  36.36
+                ],
+                [
+                  -91.99,
+                  35.31
+                ],
+                [
+                  -92.15,
+                  34.53
+                ],
+                [
+                  -91.48,
+                  33.69
+                ],
+                [
+                  -90.88,
+                  33.15
+                ],
+                [
+                  -90.73,
+                  32.55
+                ],
+                [
+                  -90.67,
+                  31.61
+                ],
+                [
+                  -89.96,
+                  31.04
+                ],
+                [
+                  -88.91,
+                  30.71
+                ],
+                [
+                  -87.55,
+                  30.93
+                ],
+                [
+                  -86.14,
+                  31.39
+                ],
+                [
+                  -84.92,
+                  32.28
+                ],
+                [
+                  -83.56,
+                  33.59
+                ],
+                [
+                  -82.63,
+                  34.24
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -92.15,
+                "maxLon": -81.59,
+                "minLat": 30.71,
+                "maxLat": 39.41
+              },
+              "areaKm2": 572095.840858,
+              "areaCells10km": 5720.958409,
+              "estimatedGridCells": 5721,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.10",
+          "sourceIndex": 2,
+          "id": "DAY1_201104271300_TORNADO_10_01"
+        },
+        {
+          "hazardType": "tornado",
+          "value": 0.15,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -82.92,
+                  37.59
+                ],
+                [
+                  -84.21,
+                  37.51
+                ],
+                [
+                  -85.31,
+                  36.7
+                ],
+                [
+                  -86.37,
+                  36.27
+                ],
+                [
+                  -88.03,
+                  35.53
+                ],
+                [
+                  -89.87,
+                  34.44
+                ],
+                [
+                  -90.55,
+                  33.21
+                ],
+                [
+                  -90.44,
+                  31.85
+                ],
+                [
+                  -89.04,
+                  31.15
+                ],
+                [
+                  -87.38,
+                  31.32
+                ],
+                [
+                  -86.48,
+                  31.84
+                ],
+                [
+                  -85.13,
+                  32.71
+                ],
+                [
+                  -84.33,
+                  33.74
+                ],
+                [
+                  -82.75,
+                  36.13
+                ],
+                [
+                  -82.92,
+                  37.59
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -90.55,
+                "maxLon": -82.75,
+                "minLat": 31.15,
+                "maxLat": 37.59
+              },
+              "areaKm2": 285023.186748,
+              "areaCells10km": 2850.231867,
+              "estimatedGridCells": 2850,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.15",
+          "sourceIndex": 3,
+          "id": "DAY1_201104271300_TORNADO_15_01"
+        },
+        {
+          "hazardType": "tornado",
+          "value": 0.3,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -84.57,
+                  35.64
+                ],
+                [
+                  -85.25,
+                  35.65
+                ],
+                [
+                  -87.93,
+                  34.96
+                ],
+                [
+                  -89.33,
+                  34.04
+                ],
+                [
+                  -89.63,
+                  33.36
+                ],
+                [
+                  -89.42,
+                  32.61
+                ],
+                [
+                  -88.8,
+                  32.34
+                ],
+                [
+                  -87.23,
+                  32.32
+                ],
+                [
+                  -85.72,
+                  33.42
+                ],
+                [
+                  -84.92,
+                  34.23
+                ],
+                [
+                  -84.42,
+                  35.02
+                ],
+                [
+                  -84.57,
+                  35.64
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -89.63,
+                "maxLon": -84.42,
+                "minLat": 32.32,
+                "maxLat": 35.65
+              },
+              "areaKm2": 110147.335291,
+              "areaCells10km": 1101.473353,
+              "estimatedGridCells": 1101,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.30",
+          "sourceIndex": 4,
+          "id": "DAY1_201104271300_TORNADO_30_01"
+        }
+      ],
+      "wind": [
+        {
+          "hazardType": "wind",
+          "value": 0.05,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -75.37,
+                  36.83
+                ],
+                [
+                  -76.56,
+                  35.28
+                ],
+                [
+                  -78.04,
+                  33.17
+                ],
+                [
+                  -75.37,
+                  36.83
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -78.04,
+                "maxLon": -75.37,
+                "minLat": 33.17,
+                "maxLat": 36.83
+              },
+              "areaKm2": 1369.042596,
+              "areaCells10km": 13.690426,
+              "estimatedGridCells": 14,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.05",
+          "sourceIndex": 11,
+          "id": "DAY1_201104271300_WIND_05_01"
+        },
+        {
+          "hazardType": "wind",
+          "value": 0.05,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -90.99,
+                  28.75
+                ],
+                [
+                  -81.69,
+                  43.85
+                ],
+                [
+                  -83.17,
+                  42.46
+                ],
+                [
+                  -86.28,
+                  39.97
+                ],
+                [
+                  -88.12,
+                  38.56
+                ],
+                [
+                  -90.77,
+                  37.35
+                ],
+                [
+                  -93.68,
+                  36.06
+                ],
+                [
+                  -94.14,
+                  35.27
+                ],
+                [
+                  -94.26,
+                  33.47
+                ],
+                [
+                  -94.04,
+                  32.7
+                ],
+                [
+                  -93.13,
+                  32.27
+                ],
+                [
+                  -92.34,
+                  31.82
+                ],
+                [
+                  -91.9,
+                  31.39
+                ],
+                [
+                  -91.69,
+                  30.1
+                ],
+                [
+                  -90.99,
+                  28.75
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -94.26,
+                "maxLon": -81.69,
+                "minLat": 28.75,
+                "maxLat": 43.85
+              },
+              "areaKm2": 540116.441517,
+              "areaCells10km": 5401.164415,
+              "estimatedGridCells": 5401,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.05",
+          "sourceIndex": 12,
+          "id": "DAY1_201104271300_WIND_05_02"
+        },
+        {
+          "hazardType": "wind",
+          "value": 0.05,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -80.22,
+                  31.93
+                ],
+                [
+                  -81.08,
+                  31.86
+                ],
+                [
+                  -81.89,
+                  31.42
+                ],
+                [
+                  -83.09,
+                  30.45
+                ],
+                [
+                  -83.55,
+                  28.68
+                ],
+                [
+                  -80.22,
+                  31.93
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -83.55,
+                "maxLon": -80.22,
+                "minLat": 28.68,
+                "maxLat": 31.93
+              },
+              "areaKm2": 30778.321614,
+              "areaCells10km": 307.783216,
+              "estimatedGridCells": 308,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.05",
+          "sourceIndex": 13,
+          "id": "DAY1_201104271300_WIND_05_03"
+        },
+        {
+          "hazardType": "wind",
+          "value": 0.15,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -88.71,
+                  29.29
+                ],
+                [
+                  -80.92,
+                  42.68
+                ],
+                [
+                  -84.49,
+                  40.33
+                ],
+                [
+                  -87.94,
+                  38.24
+                ],
+                [
+                  -91.36,
+                  36.72
+                ],
+                [
+                  -93.61,
+                  35.85
+                ],
+                [
+                  -93.97,
+                  35.21
+                ],
+                [
+                  -94.02,
+                  34.38
+                ],
+                [
+                  -93.25,
+                  33.61
+                ],
+                [
+                  -91.31,
+                  32.96
+                ],
+                [
+                  -91.12,
+                  32.41
+                ],
+                [
+                  -91.29,
+                  31.82
+                ],
+                [
+                  -91.48,
+                  31.11
+                ],
+                [
+                  -91.42,
+                  30.15
+                ],
+                [
+                  -90.02,
+                  29.39
+                ],
+                [
+                  -88.71,
+                  29.29
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -94.02,
+                "maxLon": -80.92,
+                "minLat": 29.29,
+                "maxLat": 42.68
+              },
+              "areaKm2": 621779.327369,
+              "areaCells10km": 6217.793274,
+              "estimatedGridCells": 6218,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.15",
+          "sourceIndex": 14,
+          "id": "DAY1_201104271300_WIND_15_01"
+        },
+        {
+          "hazardType": "wind",
+          "value": 0.3,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -82.49,
+                  33.41
+                ],
+                [
+                  -81,
+                  34.36
+                ],
+                [
+                  -80.02,
+                  35.27
+                ],
+                [
+                  -78.96,
+                  36.29
+                ],
+                [
+                  -77.77,
+                  37.7
+                ],
+                [
+                  -77.07,
+                  38.62
+                ],
+                [
+                  -77.02,
+                  39.55
+                ],
+                [
+                  -77.42,
+                  39.73
+                ],
+                [
+                  -78.19,
+                  39.45
+                ],
+                [
+                  -79.07,
+                  39.19
+                ],
+                [
+                  -79.46,
+                  39.88
+                ],
+                [
+                  -78.77,
+                  40.92
+                ],
+                [
+                  -77.9,
+                  41.84
+                ],
+                [
+                  -77.32,
+                  42.3
+                ],
+                [
+                  -77.06,
+                  42.73
+                ],
+                [
+                  -77.08,
+                  43.32
+                ],
+                [
+                  -77.78,
+                  43.43
+                ],
+                [
+                  -78.78,
+                  43.09
+                ],
+                [
+                  -79.58,
+                  42.48
+                ],
+                [
+                  -81.64,
+                  41.08
+                ],
+                [
+                  -82.87,
+                  39.92
+                ],
+                [
+                  -83.42,
+                  39.44
+                ],
+                [
+                  -90.29,
+                  36.28
+                ],
+                [
+                  -91.97,
+                  35.32
+                ],
+                [
+                  -92.15,
+                  34.51
+                ],
+                [
+                  -91.53,
+                  33.75
+                ],
+                [
+                  -90.9,
+                  33.15
+                ],
+                [
+                  -90.68,
+                  32.56
+                ],
+                [
+                  -90.43,
+                  31.87
+                ],
+                [
+                  -89.03,
+                  31.15
+                ],
+                [
+                  -87.43,
+                  31.29
+                ],
+                [
+                  -85.09,
+                  31.77
+                ],
+                [
+                  -82.49,
+                  33.41
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -92.15,
+                "maxLon": -77.02,
+                "minLat": 31.15,
+                "maxLat": 43.43
+              },
+              "areaKm2": 841909.947471,
+              "areaCells10km": 8419.099475,
+              "estimatedGridCells": 8419,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.30",
+          "sourceIndex": 15,
+          "id": "DAY1_201104271300_WIND_30_01"
+        },
+        {
+          "hazardType": "wind",
+          "value": 0.45,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -88.55,
+                  35.19
+                ],
+                [
+                  -89.87,
+                  34.44
+                ],
+                [
+                  -90.46,
+                  33.26
+                ],
+                [
+                  -88.84,
+                  32.29
+                ],
+                [
+                  -87.23,
+                  32.31
+                ],
+                [
+                  -85.11,
+                  32.73
+                ],
+                [
+                  -82.5,
+                  34.33
+                ],
+                [
+                  -81.79,
+                  35.33
+                ],
+                [
+                  -81.6,
+                  37.01
+                ],
+                [
+                  -82.6,
+                  38.51
+                ],
+                [
+                  -83.57,
+                  38.71
+                ],
+                [
+                  -85.31,
+                  36.69
+                ],
+                [
+                  -88.55,
+                  35.19
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -90.46,
+                "maxLon": -81.6,
+                "minLat": 32.29,
+                "maxLat": 38.71
+              },
+              "areaKm2": 304002.579531,
+              "areaCells10km": 3040.025795,
+              "estimatedGridCells": 3040,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.45",
+          "sourceIndex": 16,
+          "id": "DAY1_201104271300_WIND_45_01"
+        }
+      ],
+      "hail": [
+        {
+          "hazardType": "hail",
+          "value": 0.05,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -90.7,
+                  28.26
+                ],
+                [
+                  -82.06,
+                  43.3
+                ],
+                [
+                  -84.53,
+                  41.31
+                ],
+                [
+                  -88.09,
+                  38.57
+                ],
+                [
+                  -90.82,
+                  37.32
+                ],
+                [
+                  -93.68,
+                  36.09
+                ],
+                [
+                  -94.13,
+                  35.3
+                ],
+                [
+                  -94.25,
+                  34.3
+                ],
+                [
+                  -94.25,
+                  33.49
+                ],
+                [
+                  -94.04,
+                  32.73
+                ],
+                [
+                  -92.35,
+                  31.84
+                ],
+                [
+                  -91.89,
+                  31.35
+                ],
+                [
+                  -91.68,
+                  30.02
+                ],
+                [
+                  -90.7,
+                  28.26
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -94.25,
+                "maxLon": -82.06,
+                "minLat": 28.26,
+                "maxLat": 43.3
+              },
+              "areaKm2": 577501.05057,
+              "areaCells10km": 5775.010506,
+              "estimatedGridCells": 5775,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            },
+            {
+              "outer": [
+                [
+                  -79.7,
+                  31.9
+                ],
+                [
+                  -81.01,
+                  31.89
+                ],
+                [
+                  -81.94,
+                  31.39
+                ],
+                [
+                  -83.05,
+                  30.48
+                ],
+                [
+                  -83.58,
+                  28.59
+                ],
+                [
+                  -79.7,
+                  31.9
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -83.58,
+                "maxLon": -79.7,
+                "minLat": 28.59,
+                "maxLat": 31.9
+              },
+              "areaKm2": 41302.728086,
+              "areaCells10km": 413.027281,
+              "estimatedGridCells": 413,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.05",
+          "sourceIndex": 6,
+          "id": "DAY1_201104271300_HAIL_05_01"
+        },
+        {
+          "hazardType": "hail",
+          "value": 0.15,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -88.75,
+                  29.3
+                ],
+                [
+                  -78.77,
+                  43.94
+                ],
+                [
+                  -81.99,
+                  41.93
+                ],
+                [
+                  -84.65,
+                  40.2
+                ],
+                [
+                  -87.88,
+                  38.27
+                ],
+                [
+                  -91.15,
+                  36.77
+                ],
+                [
+                  -93.59,
+                  35.85
+                ],
+                [
+                  -94,
+                  35.2
+                ],
+                [
+                  -93.98,
+                  34.31
+                ],
+                [
+                  -93.29,
+                  33.63
+                ],
+                [
+                  -91.31,
+                  32.97
+                ],
+                [
+                  -91.13,
+                  32.42
+                ],
+                [
+                  -91.46,
+                  31.48
+                ],
+                [
+                  -91.42,
+                  30.15
+                ],
+                [
+                  -89.97,
+                  29.37
+                ],
+                [
+                  -88.75,
+                  29.3
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -94,
+                "maxLon": -78.77,
+                "minLat": 29.3,
+                "maxLat": 43.94
+              },
+              "areaKm2": 714261.859497,
+              "areaCells10km": 7142.618595,
+              "estimatedGridCells": 7143,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.15",
+          "sourceIndex": 7,
+          "id": "DAY1_201104271300_HAIL_15_01"
+        },
+        {
+          "hazardType": "hail",
+          "value": 0.3,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -87.35,
+                  31.31
+                ],
+                [
+                  -86.2,
+                  31.98
+                ],
+                [
+                  -83.76,
+                  33.62
+                ],
+                [
+                  -82.02,
+                  34.56
+                ],
+                [
+                  -81.14,
+                  35.71
+                ],
+                [
+                  -80.99,
+                  36.5
+                ],
+                [
+                  -81.48,
+                  36.9
+                ],
+                [
+                  -82.97,
+                  37.58
+                ],
+                [
+                  -84.22,
+                  37.49
+                ],
+                [
+                  -86.47,
+                  36.16
+                ],
+                [
+                  -88.01,
+                  35.56
+                ],
+                [
+                  -89.9,
+                  34.44
+                ],
+                [
+                  -90.56,
+                  33.25
+                ],
+                [
+                  -90.47,
+                  31.89
+                ],
+                [
+                  -89.11,
+                  31.18
+                ],
+                [
+                  -87.35,
+                  31.31
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -90.56,
+                "maxLon": -80.99,
+                "minLat": 31.18,
+                "maxLat": 37.58
+              },
+              "areaKm2": 347554.095095,
+              "areaCells10km": 3475.540951,
+              "estimatedGridCells": 3476,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.30",
+          "sourceIndex": 8,
+          "id": "DAY1_201104271300_HAIL_30_01"
+        },
+        {
+          "hazardType": "hail",
+          "value": 0.45,
+          "significant": false,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -85.76,
+                  33.33
+                ],
+                [
+                  -84.86,
+                  34.29
+                ],
+                [
+                  -84.97,
+                  34.76
+                ],
+                [
+                  -85.39,
+                  35.13
+                ],
+                [
+                  -86.4,
+                  35.34
+                ],
+                [
+                  -87.78,
+                  35.02
+                ],
+                [
+                  -89.33,
+                  34.11
+                ],
+                [
+                  -89.54,
+                  33.31
+                ],
+                [
+                  -89.44,
+                  32.66
+                ],
+                [
+                  -88.87,
+                  32.35
+                ],
+                [
+                  -87.26,
+                  32.35
+                ],
+                [
+                  -85.76,
+                  33.33
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -89.54,
+                "maxLon": -84.86,
+                "minLat": 32.35,
+                "maxLat": 35.34
+              },
+              "areaKm2": 99293.11215,
+              "areaCells10km": 992.931122,
+              "estimatedGridCells": 993,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "0.45",
+          "sourceIndex": 9,
+          "id": "DAY1_201104271300_HAIL_45_01"
+        }
+      ],
+      "significantTornado": [
+        {
+          "hazardType": "significantTornado",
+          "value": "SIGN",
+          "significant": true,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -85.38,
+                  36.7
+                ],
+                [
+                  -88.07,
+                  35.47
+                ],
+                [
+                  -89.94,
+                  34.43
+                ],
+                [
+                  -90.57,
+                  33.18
+                ],
+                [
+                  -90.47,
+                  31.9
+                ],
+                [
+                  -89.02,
+                  31.15
+                ],
+                [
+                  -87.38,
+                  31.32
+                ],
+                [
+                  -86.5,
+                  31.84
+                ],
+                [
+                  -85.13,
+                  32.71
+                ],
+                [
+                  -84.31,
+                  33.73
+                ],
+                [
+                  -83.48,
+                  35.07
+                ],
+                [
+                  -82.73,
+                  36.17
+                ],
+                [
+                  -82.94,
+                  37.6
+                ],
+                [
+                  -84.23,
+                  37.46
+                ],
+                [
+                  -85.38,
+                  36.7
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -90.57,
+                "maxLon": -82.73,
+                "minLat": 31.15,
+                "maxLat": 37.6
+              },
+              "areaKm2": 284484.298456,
+              "areaCells10km": 2844.842985,
+              "estimatedGridCells": 2845,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "SIGN",
+          "sourceIndex": 5,
+          "id": "DAY1_201104271300_SIGNIFICANTTORNADO_SIGN_01"
+        }
+      ],
+      "significantWind": [
+        {
+          "hazardType": "significantWind",
+          "value": "SIGN",
+          "significant": true,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -85.11,
+                  32.71
+                ],
+                [
+                  -82.57,
+                  34.29
+                ],
+                [
+                  -81.78,
+                  35.31
+                ],
+                [
+                  -81.59,
+                  37.03
+                ],
+                [
+                  -82.62,
+                  38.49
+                ],
+                [
+                  -83.62,
+                  38.71
+                ],
+                [
+                  -85.37,
+                  36.66
+                ],
+                [
+                  -88.69,
+                  35.15
+                ],
+                [
+                  -89.9,
+                  34.41
+                ],
+                [
+                  -90.43,
+                  33.25
+                ],
+                [
+                  -88.88,
+                  32.32
+                ],
+                [
+                  -87.19,
+                  32.31
+                ],
+                [
+                  -85.11,
+                  32.71
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -90.43,
+                "maxLon": -81.59,
+                "minLat": 32.31,
+                "maxLat": 38.71
+              },
+              "areaKm2": 305276.079701,
+              "areaCells10km": 3052.760797,
+              "estimatedGridCells": 3053,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "SIGN",
+          "sourceIndex": 17,
+          "id": "DAY1_201104271300_SIGNIFICANTWIND_SIGN_01"
+        }
+      ],
+      "significantHail": [
+        {
+          "hazardType": "significantHail",
+          "value": "SIGN",
+          "significant": true,
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -87.72,
+                  30.89
+                ],
+                [
+                  -85.07,
+                  32.79
+                ],
+                [
+                  -84.14,
+                  34.65
+                ],
+                [
+                  -84.18,
+                  35.24
+                ],
+                [
+                  -84.93,
+                  35.84
+                ],
+                [
+                  -86.36,
+                  36.22
+                ],
+                [
+                  -87.95,
+                  35.61
+                ],
+                [
+                  -89.89,
+                  34.5
+                ],
+                [
+                  -90.56,
+                  33.27
+                ],
+                [
+                  -90.46,
+                  31.52
+                ],
+                [
+                  -89.92,
+                  31.13
+                ],
+                [
+                  -89.07,
+                  30.77
+                ],
+                [
+                  -87.72,
+                  30.89
+                ]
+              ],
+              "holes": [],
+              "bbox": {
+                "minLon": -90.56,
+                "maxLon": -84.14,
+                "minLat": 30.77,
+                "maxLat": 36.22
+              },
+              "areaKm2": 243020.741799,
+              "areaCells10km": 2430.207418,
+              "estimatedGridCells": 2430,
+              "validation": {
+                "valid": true,
+                "closed": true,
+                "selfIntersections": 0
+              }
+            }
+          ],
+          "sourceLabel": "SIGN",
+          "sourceIndex": 10,
+          "id": "DAY1_201104271300_SIGNIFICANTHAIL_SIGN_01"
+        }
+      ]
+    },
+    "diagnostics": {
+      "contourCount": 22,
+      "warningCount": 0,
+      "infoCount": 8,
+      "warnings": [
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "tornado",
+            "label": "0.02",
+            "tokenCount": 10
+          }
+        },
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "tornado",
+            "label": "0.05",
+            "tokenCount": 12
+          }
+        },
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "hail",
+            "label": "0.05",
+            "tokenCount": 7
+          }
+        },
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "hail",
+            "label": "0.15",
+            "tokenCount": 6
+          }
+        },
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "wind",
+            "label": "0.05",
+            "tokenCount": 6
+          }
+        },
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "wind",
+            "label": "0.15",
+            "tokenCount": 10
+          }
+        },
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "categorical",
+            "label": "SLGT",
+            "tokenCount": 15
+          }
+        },
+        {
+          "code": "discarded-outline-fragment",
+          "message": "Discarded an SPC outline fragment that did not contain at least three valid coordinates",
+          "severity": "info",
+          "details": {
+            "hazardType": "categorical",
+            "label": "TSTM",
+            "tokenCount": 6
+          }
+        }
+      ]
+    }
+  }
+}

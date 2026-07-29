@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { fetchWithRetry, mapWithConcurrency } from '../js/historical/spc/SPCFetchClient.js';
+import { fetchWithRetry, mapWithConcurrency } from '../js/training/spc/SPCFetchClient.js';
 
 let attempts = 0;
 const response = await fetchWithRetry('https://example.test/archive/', {

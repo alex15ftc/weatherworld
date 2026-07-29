@@ -2,7 +2,7 @@ import path from 'node:path';
 import { access, mkdir, readdir, readFile, stat, writeFile, copyFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 
-export const HISTORICAL_PIPELINE_VERSION = '2.34.5.3';
+export const HISTORICAL_PIPELINE_VERSION = '2.35.0';
 export const DEFAULT_HISTORICAL_ROOT = 'data/historical';
 export const NORMALIZED_SPC_CANDIDATES = Object.freeze([
   'data/historical/normalized/spc',
@@ -17,9 +17,9 @@ export function historicalPaths(root = DEFAULT_HISTORICAL_ROOT) {
     root: base,
     rawSpc: path.join(base, 'raw', 'spc'),
     normalizedSpc: path.join(base, 'normalized', 'spc'),
-    rasterizedSpc: path.join(base, 'rasterized', 'spc'),
-    cases: path.join(base, 'cases'),
+    validationSpc: path.join(base, 'validation', 'spc'),
     catalog: path.join(base, 'catalog'),
+    trainingCatalog: path.join(base, 'catalog', 'training-corpus.json'),
     manifest: path.join(base, 'pipeline-manifest.json'),
     populationReport: path.join(base, 'population-report.json')
   });
@@ -27,7 +27,7 @@ export function historicalPaths(root = DEFAULT_HISTORICAL_ROOT) {
 
 export async function ensureHistoricalLayout(root = DEFAULT_HISTORICAL_ROOT) {
   const paths = historicalPaths(root);
-  await Promise.all([paths.rawSpc, paths.normalizedSpc, paths.rasterizedSpc, paths.cases, paths.catalog].map(dir => mkdir(dir, { recursive: true })));
+  await Promise.all([paths.rawSpc, paths.normalizedSpc, paths.validationSpc, paths.catalog].map(dir => mkdir(dir, { recursive: true })));
   return paths;
 }
 

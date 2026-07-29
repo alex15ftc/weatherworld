@@ -49,7 +49,7 @@
     ]
   },
   "parsedProduct": {
-    "schemaVersion": "2.34.5.1",
+    "schemaVersion": "2.35.2",
     "format": "spc-shapefile",
     "forecastDay": "day1",
     "issuedAt": "2021-12-10T16:30:00.000Z",
@@ -1442,6 +1442,37 @@
         "id": "DAY1_202112101630_HAIL_15_01"
       },
       {
+        "hazardType": "significantHail",
+        "value": "SIGN",
+        "significant": true,
+        "sourceLabel": "SIGN",
+        "polygons": [
+          {
+            "outer": [
+              [
+                -70.1968466993496,
+                39.50669223331905
+              ],
+              [
+                -70.17781101130299,
+                39.46862085722576
+              ],
+              [
+                -70.19684669934962,
+                39.48765654527239
+              ],
+              [
+                -70.1968466993496,
+                39.50669223331905
+              ]
+            ],
+            "holes": []
+          }
+        ],
+        "sourceIndex": 7,
+        "id": "DAY1_202112101630_SIGNIFICANTHAIL_SIGN_01"
+      },
+      {
         "hazardType": "significantTornado",
         "value": "SIGN",
         "significant": true,
@@ -1513,8 +1544,39 @@
             "holes": []
           }
         ],
-        "sourceIndex": 7,
+        "sourceIndex": 8,
         "id": "DAY1_202112101630_SIGNIFICANTTORNADO_SIGN_01"
+      },
+      {
+        "hazardType": "significantWind",
+        "value": "SIGN",
+        "significant": true,
+        "sourceLabel": "SIGN",
+        "polygons": [
+          {
+            "outer": [
+              [
+                -70.1968466993496,
+                39.50669223331905
+              ],
+              [
+                -70.17781101130299,
+                39.46862085722576
+              ],
+              [
+                -70.19684669934962,
+                39.48765654527239
+              ],
+              [
+                -70.1968466993496,
+                39.50669223331905
+              ]
+            ],
+            "holes": []
+          }
+        ],
+        "sourceIndex": 9,
+        "id": "DAY1_202112101630_SIGNIFICANTWIND_SIGN_01"
       },
       {
         "hazardType": "tornado",
@@ -1727,7 +1789,7 @@
             ]
           }
         ],
-        "sourceIndex": 8,
+        "sourceIndex": 10,
         "id": "DAY1_202112101630_TORNADO_02_01"
       },
       {
@@ -1901,7 +1963,7 @@
             ]
           }
         ],
-        "sourceIndex": 9,
+        "sourceIndex": 11,
         "id": "DAY1_202112101630_TORNADO_05_01"
       },
       {
@@ -2023,7 +2085,7 @@
             ]
           }
         ],
-        "sourceIndex": 10,
+        "sourceIndex": 12,
         "id": "DAY1_202112101630_TORNADO_10_01"
       },
       {
@@ -2078,7 +2140,7 @@
             "holes": []
           }
         ],
-        "sourceIndex": 11,
+        "sourceIndex": 13,
         "id": "DAY1_202112101630_TORNADO_15_01"
       },
       {
@@ -2153,7 +2215,7 @@
             "holes": []
           }
         ],
-        "sourceIndex": 12,
+        "sourceIndex": 14,
         "id": "DAY1_202112101630_SIGNIFICANTTORNADO_SIGN_02"
       },
       {
@@ -2443,7 +2505,7 @@
             ]
           }
         ],
-        "sourceIndex": 13,
+        "sourceIndex": 15,
         "id": "DAY1_202112101630_WIND_05_01"
       },
       {
@@ -2613,7 +2675,7 @@
             ]
           }
         ],
-        "sourceIndex": 14,
+        "sourceIndex": 16,
         "id": "DAY1_202112101630_WIND_15_01"
       },
       {
@@ -2688,34 +2750,11 @@
             "holes": []
           }
         ],
-        "sourceIndex": 15,
+        "sourceIndex": 17,
         "id": "DAY1_202112101630_WIND_30_01"
       }
     ],
-    "warnings": [
-      {
-        "code": "unclassified-shapefile-feature",
-        "message": "SPC shapefile feature could not be classified",
-        "severity": "info",
-        "details": {
-          "fileName": "day1otlk_20211210_1630_sighail",
-          "properties": {
-            "DN": 0
-          }
-        }
-      },
-      {
-        "code": "unclassified-shapefile-feature",
-        "message": "SPC shapefile feature could not be classified",
-        "severity": "info",
-        "details": {
-          "fileName": "day1otlk_20211210_1630_sigwind",
-          "properties": {
-            "DN": 0
-          }
-        }
-      }
-    ]
+    "warnings": []
   },
   "normalizedProduct": {
     "schemaVersion": "2.34.2.6",
@@ -4096,7 +4135,7 @@
               ]
             }
           ],
-          "sourceIndex": 8,
+          "sourceIndex": 10,
           "id": "DAY1_202112101630_TORNADO_02_01"
         },
         {
@@ -4270,7 +4309,7 @@
               ]
             }
           ],
-          "sourceIndex": 9,
+          "sourceIndex": 11,
           "id": "DAY1_202112101630_TORNADO_05_01"
         },
         {
@@ -4392,7 +4431,7 @@
               ]
             }
           ],
-          "sourceIndex": 10,
+          "sourceIndex": 12,
           "id": "DAY1_202112101630_TORNADO_10_01"
         },
         {
@@ -4447,7 +4486,7 @@
               "holes": []
             }
           ],
-          "sourceIndex": 11,
+          "sourceIndex": 13,
           "id": "DAY1_202112101630_TORNADO_15_01"
         }
       ],
@@ -4739,7 +4778,7 @@
               ]
             }
           ],
-          "sourceIndex": 13,
+          "sourceIndex": 15,
           "id": "DAY1_202112101630_WIND_05_01"
         },
         {
@@ -4909,7 +4948,7 @@
               ]
             }
           ],
-          "sourceIndex": 14,
+          "sourceIndex": 16,
           "id": "DAY1_202112101630_WIND_15_01"
         },
         {
@@ -4984,7 +5023,7 @@
               "holes": []
             }
           ],
-          "sourceIndex": 15,
+          "sourceIndex": 17,
           "id": "DAY1_202112101630_WIND_30_01"
         }
       ],
@@ -5288,7 +5327,7 @@
               "holes": []
             }
           ],
-          "sourceIndex": 7,
+          "sourceIndex": 8,
           "id": "DAY1_202112101630_SIGNIFICANTTORNADO_SIGN_01"
         },
         {
@@ -5363,41 +5402,82 @@
               "holes": []
             }
           ],
-          "sourceIndex": 12,
+          "sourceIndex": 14,
           "id": "DAY1_202112101630_SIGNIFICANTTORNADO_SIGN_02"
         }
       ],
-      "significantWind": [],
-      "significantHail": []
-    },
-    "diagnostics": {
-      "contourCount": 16,
-      "warningCount": 0,
-      "infoCount": 2,
-      "warnings": [
+      "significantWind": [
         {
-          "code": "unclassified-shapefile-feature",
-          "message": "SPC shapefile feature could not be classified",
-          "severity": "info",
-          "details": {
-            "fileName": "day1otlk_20211210_1630_sighail",
-            "properties": {
-              "DN": 0
+          "hazardType": "significantWind",
+          "value": "SIGN",
+          "significant": true,
+          "sourceLabel": "SIGN",
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -70.1968466993496,
+                  39.50669223331905
+                ],
+                [
+                  -70.17781101130299,
+                  39.46862085722576
+                ],
+                [
+                  -70.19684669934962,
+                  39.48765654527239
+                ],
+                [
+                  -70.1968466993496,
+                  39.50669223331905
+                ]
+              ],
+              "holes": []
             }
-          }
-        },
+          ],
+          "sourceIndex": 9,
+          "id": "DAY1_202112101630_SIGNIFICANTWIND_SIGN_01"
+        }
+      ],
+      "significantHail": [
         {
-          "code": "unclassified-shapefile-feature",
-          "message": "SPC shapefile feature could not be classified",
-          "severity": "info",
-          "details": {
-            "fileName": "day1otlk_20211210_1630_sigwind",
-            "properties": {
-              "DN": 0
+          "hazardType": "significantHail",
+          "value": "SIGN",
+          "significant": true,
+          "sourceLabel": "SIGN",
+          "polygons": [
+            {
+              "outer": [
+                [
+                  -70.1968466993496,
+                  39.50669223331905
+                ],
+                [
+                  -70.17781101130299,
+                  39.46862085722576
+                ],
+                [
+                  -70.19684669934962,
+                  39.48765654527239
+                ],
+                [
+                  -70.1968466993496,
+                  39.50669223331905
+                ]
+              ],
+              "holes": []
             }
-          }
+          ],
+          "sourceIndex": 7,
+          "id": "DAY1_202112101630_SIGNIFICANTHAIL_SIGN_01"
         }
       ]
+    },
+    "diagnostics": {
+      "contourCount": 18,
+      "warningCount": 0,
+      "infoCount": 0,
+      "warnings": []
     }
   }
 }

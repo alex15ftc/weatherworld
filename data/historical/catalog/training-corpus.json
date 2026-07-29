@@ -1,0 +1,2947 @@
+{
+  "pipelineVersion": "2.35.0",
+  "schemaVersion": "2.35.2",
+  "purpose": "backend-training-corpus",
+  "generatedAt": "2026-07-29T01:09:06.351Z",
+  "summary": {
+    "recordCount": 45,
+    "eventDateCount": 9,
+    "validCount": 45,
+    "invalidCount": 0,
+    "warningCount": 5
+  },
+  "records": [
+    {
+      "recordId": "20110427-day1-0100",
+      "eventDate": "2011-04-27",
+      "sourceFile": "day1_20110427_0100.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2011-04-27T01:00:00.000Z",
+      "validStart": "2011-04-27T01:00:00.000Z",
+      "validEnd": "2011-04-27T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 7,
+      "contourCount": 25,
+      "polygonCount": 26,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45,
+          0.6
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.6,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -104.34,
+        "maxLon": -66.67,
+        "minLat": 27.69,
+        "maxLat": 49.89
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110427-day1-1200",
+      "eventDate": "2011-04-27",
+      "sourceFile": "day1_20110427_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2011-04-27T12:00:00.000Z",
+      "validStart": "2011-04-27T12:00:00.000Z",
+      "validEnd": "2011-04-28T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 7,
+      "contourCount": 23,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -110.01,
+        "maxLon": -75.37,
+        "minLat": 28.4,
+        "maxLat": 49.36
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110427-day1-1300",
+      "eventDate": "2011-04-27",
+      "sourceFile": "day1_20110427_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2011-04-27T13:00:00.000Z",
+      "validStart": "2011-04-27T13:00:00.000Z",
+      "validEnd": "2011-04-28T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 7,
+      "contourCount": 22,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -110.03,
+        "maxLon": -75.37,
+        "minLat": 28.26,
+        "maxLat": 49.17
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110427-day1-1630",
+      "eventDate": "2011-04-27",
+      "sourceFile": "day1_20110427_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2011-04-27T16:30:00.000Z",
+      "validStart": "2011-04-27T16:30:00.000Z",
+      "validEnd": "2011-04-28T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 7,
+      "contourCount": 21,
+      "polygonCount": 25,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.45,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -108.39,
+        "maxLon": -75.37,
+        "minLat": 28.56,
+        "maxLat": 49.34
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110427-day1-2000",
+      "eventDate": "2011-04-27",
+      "sourceFile": "day1_20110427_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2011-04-27T20:00:00.000Z",
+      "validStart": "2011-04-27T20:00:00.000Z",
+      "validEnd": "2011-04-28T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 7,
+      "contourCount": 21,
+      "polygonCount": 25,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.45,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -108.39,
+        "maxLon": -75.37,
+        "minLat": 28.56,
+        "maxLat": 49.34
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110524-day1-0100",
+      "eventDate": "2011-05-24",
+      "sourceFile": "day1_20110524_0100.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2011-05-24T01:00:00.000Z",
+      "validStart": "2011-05-24T01:00:00.000Z",
+      "validEnd": "2011-05-24T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 5,
+      "contourCount": 16,
+      "polygonCount": 19,
+      "hazardLevels": {
+        "categorical": [
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.05,
+        "wind": 0.3,
+        "hail": 0.3,
+        "significantTornado": null,
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -122.63,
+        "maxLon": -73.33,
+        "minLat": 32.07,
+        "maxLat": 49.61
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110524-day1-1200",
+      "eventDate": "2011-05-24",
+      "sourceFile": "day1_20110524_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2011-05-24T12:00:00.000Z",
+      "validStart": "2011-05-24T12:00:00.000Z",
+      "validEnd": "2011-05-25T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 18,
+      "polygonCount": 19,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.3,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -102.87,
+        "maxLon": -67.82,
+        "minLat": 26.21,
+        "maxLat": 46.09
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110524-day1-1300",
+      "eventDate": "2011-05-24",
+      "sourceFile": "day1_20110524_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2011-05-24T13:00:00.000Z",
+      "validStart": "2011-05-24T13:00:00.000Z",
+      "validEnd": "2011-05-25T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 20,
+      "polygonCount": 21,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -102.87,
+        "maxLon": -67.82,
+        "minLat": 26.21,
+        "maxLat": 46.09
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110524-day1-1630",
+      "eventDate": "2011-05-24",
+      "sourceFile": "day1_20110524_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2011-05-24T16:30:00.000Z",
+      "validStart": "2011-05-24T16:30:00.000Z",
+      "validEnd": "2011-05-25T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 22,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45,
+          0.6
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.45,
+        "wind": 0.45,
+        "hail": 0.6,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -115.07,
+        "maxLon": -67.82,
+        "minLat": 27.81,
+        "maxLat": 47.58
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20110524-day1-2000",
+      "eventDate": "2011-05-24",
+      "sourceFile": "day1_20110524_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2011-05-24T20:00:00.000Z",
+      "validStart": "2011-05-24T20:40:00.000Z",
+      "validEnd": "2011-05-25T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 22,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45,
+          0.6
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.45,
+        "wind": 0.45,
+        "hail": 0.6,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -115.07,
+        "maxLon": -67.82,
+        "minLat": 28.14,
+        "maxLat": 47.58
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20130519-day1-0100",
+      "eventDate": "2013-05-19",
+      "sourceFile": "day1_20130519_0100.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2013-05-19T01:00:00.000Z",
+      "validStart": "2013-05-19T01:00:00.000Z",
+      "validEnd": "2013-05-19T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 16,
+      "polygonCount": 17,
+      "hazardLevels": {
+        "categorical": [
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.1,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -106.76,
+        "maxLon": -74.83,
+        "minLat": 27.4,
+        "maxLat": 48.32
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20130519-day1-1200",
+      "eventDate": "2013-05-19",
+      "sourceFile": "day1_20130519_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2013-05-19T12:00:00.000Z",
+      "validStart": "2013-05-19T12:00:00.000Z",
+      "validEnd": "2013-05-20T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 18,
+      "polygonCount": 20,
+      "hazardLevels": {
+        "categorical": [
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.1,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -107.88,
+        "maxLon": -74.1,
+        "minLat": 28.2,
+        "maxLat": 49.44
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20130519-day1-1300",
+      "eventDate": "2013-05-19",
+      "sourceFile": "day1_20130519_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2013-05-19T13:00:00.000Z",
+      "validStart": "2013-05-19T13:00:00.000Z",
+      "validEnd": "2013-05-20T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 17,
+      "polygonCount": 18,
+      "hazardLevels": {
+        "categorical": [
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -107.09,
+        "maxLon": -81.91,
+        "minLat": 27.48,
+        "maxLat": 49.38
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20130519-day1-1630",
+      "eventDate": "2013-05-19",
+      "sourceFile": "day1_20130519_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2013-05-19T16:30:00.000Z",
+      "validStart": "2013-05-19T16:30:00.000Z",
+      "validEnd": "2013-05-20T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 19,
+      "polygonCount": 20,
+      "hazardLevels": {
+        "categorical": [
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -120.6,
+        "maxLon": -79.81,
+        "minLat": 26.82,
+        "maxLat": 49.48
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20130519-day1-2000",
+      "eventDate": "2013-05-19",
+      "sourceFile": "day1_20130519_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2013-05-19T20:00:00.000Z",
+      "validStart": "2013-05-19T20:00:00.000Z",
+      "validEnd": "2013-05-20T12:00:00.000Z",
+      "sourceFormat": "spc-outline-text",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 19,
+      "polygonCount": 20,
+      "hazardLevels": {
+        "categorical": [
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -120.6,
+        "maxLon": -79.81,
+        "minLat": 26.82,
+        "maxLat": 49.48
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20131117-day1-0100",
+      "eventDate": "2013-11-17",
+      "sourceFile": "day1_20131117_0100.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2013-11-17T01:00:00.000Z",
+      "validStart": "2013-11-17T01:00:00.000Z",
+      "validEnd": "2013-11-17T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2006-2014",
+      "hazardCount": 4,
+      "contourCount": 9,
+      "polygonCount": 9,
+      "hazardLevels": {
+        "categorical": [
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [],
+        "significantWind": [],
+        "significantHail": []
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.05,
+        "wind": 0.15,
+        "hail": 0.15,
+        "significantTornado": null,
+        "significantWind": null,
+        "significantHail": null
+      },
+      "bounds": {
+        "minLon": -96.92011816142963,
+        "maxLon": -79.7115789618235,
+        "minLat": 30.361110415265006,
+        "maxLat": 48.10810095829909
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20131117-day1-1200",
+      "eventDate": "2013-11-17",
+      "sourceFile": "day1_20131117_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2013-11-17T12:00:00.000Z",
+      "validStart": "2013-11-17T12:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 19,
+      "polygonCount": 19,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": []
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": null
+      },
+      "bounds": {
+        "minLon": -100.26738217299456,
+        "maxLon": -69.40185080361081,
+        "minLat": 25.81596613553575,
+        "maxLat": 46.97334173248355
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20131117-day1-1300",
+      "eventDate": "2013-11-17",
+      "sourceFile": "day1_20131117_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2013-11-17T13:00:00.000Z",
+      "validStart": "2013-11-17T13:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 21,
+      "polygonCount": 21,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": []
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.3,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": null
+      },
+      "bounds": {
+        "minLon": -96.82497345482723,
+        "maxLon": -69.40185080361081,
+        "minLat": 27.78837785752756,
+        "maxLat": 47.36897340780468
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20131117-day1-1630",
+      "eventDate": "2013-11-17",
+      "sourceFile": "day1_20131117_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2013-11-17T16:30:00.000Z",
+      "validStart": "2013-11-17T16:30:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 24,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": []
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.3,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": null
+      },
+      "bounds": {
+        "minLon": -97.63012943845523,
+        "maxLon": -69.40185080361081,
+        "minLat": 27.151712104093605,
+        "maxLat": 47.36897340780468
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20131117-day1-2000",
+      "eventDate": "2013-11-17",
+      "sourceFile": "day1_20131117_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2013-11-17T20:00:00.000Z",
+      "validStart": "2013-11-17T20:00:00.000Z",
+      "validEnd": "2013-11-18T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2006-2014",
+      "hazardCount": 6,
+      "contourCount": 29,
+      "polygonCount": 29,
+      "hazardLevels": {
+        "categorical": [
+          "HIGH",
+          "MDT",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45,
+          0.6
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": []
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.6,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": null
+      },
+      "bounds": {
+        "minLon": -96.00698864377999,
+        "maxLon": -69.40185080361081,
+        "minLat": 27.151712104093605,
+        "maxLat": 46.463778265906406
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200412-day1-0100",
+      "eventDate": "2020-04-12",
+      "sourceFile": "day1_20200412_0100.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2020-04-12T01:00:00.000Z",
+      "validStart": "2020-04-12T01:00:00.000Z",
+      "validEnd": "2020-04-12T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 18,
+      "polygonCount": 21,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "ENH",
+        "tornado": 0.1,
+        "wind": 0.15,
+        "hail": 0.3,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -113.14,
+        "maxLon": -79.78678518518518,
+        "minLat": 24.169,
+        "maxLat": 43.47
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200412-day1-1200",
+      "eventDate": "2020-04-12",
+      "sourceFile": "day1_20200412_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2020-04-12T12:00:00.000Z",
+      "validStart": "2020-04-12T12:00:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 6,
+      "contourCount": 20,
+      "polygonCount": 22,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.45,
+        "hail": 0.3,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -115.93999999999998,
+        "maxLon": -73.03192925704785,
+        "minLat": 26.70344012231546,
+        "maxLat": 45.25
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200412-day1-1300",
+      "eventDate": "2020-04-12",
+      "sourceFile": "day1_20200412_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2020-04-12T13:00:00.000Z",
+      "validStart": "2020-04-12T13:00:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 6,
+      "contourCount": 20,
+      "polygonCount": 22,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.45,
+        "hail": 0.3,
+        "significantTornado": "SIGN",
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -115.93999999999998,
+        "maxLon": -73.03192925704785,
+        "minLat": 26.70344012231546,
+        "maxLat": 45.25
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200412-day1-1630",
+      "eventDate": "2020-04-12",
+      "sourceFile": "day1_20200412_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2020-04-12T16:30:00.000Z",
+      "validStart": "2020-04-12T16:30:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 22,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.45,
+        "hail": 0.3,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.09,
+        "maxLon": -74.06071940971133,
+        "minLat": 26.05,
+        "maxLat": 44.89
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200412-day1-2000",
+      "eventDate": "2020-04-12",
+      "sourceFile": "day1_20200412_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2020-04-12T20:00:00.000Z",
+      "validStart": "2020-04-12T20:00:00.000Z",
+      "validEnd": "2020-04-13T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 22,
+      "polygonCount": 27,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.45,
+        "hail": 0.3,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.09,
+        "maxLon": -74.06071940971133,
+        "minLat": 26.05,
+        "maxLat": 44.87
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200810-day1-0100",
+      "eventDate": "2020-08-10",
+      "sourceFile": "day1_20200810_0100.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2020-08-10T01:00:00.000Z",
+      "validStart": "2020-08-10T01:00:00.000Z",
+      "validEnd": "2020-08-10T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 10,
+      "polygonCount": 11,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.02,
+        "wind": 0.15,
+        "hail": 0.05,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -111.23399070999784,
+        "maxLon": -70.17781101130299,
+        "minLat": 24.169,
+        "maxLat": 48.639
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200810-day1-1200",
+      "eventDate": "2020-08-10",
+      "sourceFile": "day1_20200810_1200.json",
+      "status": "valid_with_warnings",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2020-08-10T12:00:00.000Z",
+      "validStart": "2020-08-10T12:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 6,
+      "contourCount": 9,
+      "polygonCount": 12,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": null,
+        "wind": 0.15,
+        "hail": 0.05,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.03,
+        "maxLon": -66.86,
+        "minLat": 24.169,
+        "maxLat": 47.478
+      },
+      "warningCount": 1,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200810-day1-1300",
+      "eventDate": "2020-08-10",
+      "sourceFile": "day1_20200810_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2020-08-10T13:00:00.000Z",
+      "validStart": "2020-08-10T13:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 12,
+      "polygonCount": 14,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "ENH",
+        "tornado": 0.02,
+        "wind": 0.3,
+        "hail": 0.05,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.03,
+        "maxLon": -66.86,
+        "minLat": 24.169,
+        "maxLat": 47.478
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200810-day1-1630",
+      "eventDate": "2020-08-10",
+      "sourceFile": "day1_20200810_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2020-08-10T16:30:00.000Z",
+      "validStart": "2020-08-10T16:30:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 17,
+      "polygonCount": 19,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.05,
+        "wind": 0.45,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.03,
+        "maxLon": -66.86,
+        "minLat": 24.169,
+        "maxLat": 47.478
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20200810-day1-2000",
+      "eventDate": "2020-08-10",
+      "sourceFile": "day1_20200810_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2020-08-10T20:00:00.000Z",
+      "validStart": "2020-08-10T20:00:00.000Z",
+      "validEnd": "2020-08-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 17,
+      "polygonCount": 19,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.05,
+        "wind": 0.45,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.03,
+        "maxLon": -66.86,
+        "minLat": 24.169,
+        "maxLat": 47.478
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20210525-day1-0100",
+      "eventDate": "2021-05-25",
+      "sourceFile": "day1_20210525_0100.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2021-05-25T01:00:00.000Z",
+      "validStart": "2021-05-25T01:00:00.000Z",
+      "validEnd": "2021-05-25T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 5,
+      "contourCount": 11,
+      "polygonCount": 16,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [],
+        "significantWind": [],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.05,
+        "wind": 0.15,
+        "hail": 0.15,
+        "significantTornado": null,
+        "significantWind": null,
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -124.03,
+        "maxLon": -75.12,
+        "minLat": 27.70936541947478,
+        "maxLat": 49.004000000000005
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20210525-day1-1200",
+      "eventDate": "2021-05-25",
+      "sourceFile": "day1_20210525_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2021-05-25T12:00:00.000Z",
+      "validStart": "2021-05-25T12:00:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 4,
+      "contourCount": 8,
+      "polygonCount": 18,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [],
+        "significantWind": [],
+        "significantHail": []
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.02,
+        "wind": 0.15,
+        "hail": 0.15,
+        "significantTornado": null,
+        "significantWind": null,
+        "significantHail": null
+      },
+      "bounds": {
+        "minLon": -121.28770855460847,
+        "maxLon": -67.7438446316766,
+        "minLat": 25.819,
+        "maxLat": 49.01500000000001
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20210525-day1-1300",
+      "eventDate": "2021-05-25",
+      "sourceFile": "day1_20210525_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2021-05-25T13:00:00.000Z",
+      "validStart": "2021-05-25T13:00:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 6,
+      "contourCount": 12,
+      "polygonCount": 21,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.02,
+        "wind": 0.15,
+        "hail": 0.15,
+        "significantTornado": null,
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.28770855460847,
+        "maxLon": -67.7438446316766,
+        "minLat": 25.819,
+        "maxLat": 49.01500000000001
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20210525-day1-1630",
+      "eventDate": "2021-05-25",
+      "sourceFile": "day1_20210525_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2021-05-25T16:30:00.000Z",
+      "validStart": "2021-05-25T16:30:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 6,
+      "contourCount": 12,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.02,
+        "wind": 0.15,
+        "hail": 0.15,
+        "significantTornado": null,
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.28770855460847,
+        "maxLon": -67.7425044711237,
+        "minLat": 25.819,
+        "maxLat": 49.01500000000001
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20210525-day1-2000",
+      "eventDate": "2021-05-25",
+      "sourceFile": "day1_20210525_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2021-05-25T20:00:00.000Z",
+      "validStart": "2021-05-25T20:00:00.000Z",
+      "validEnd": "2021-05-26T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 6,
+      "contourCount": 12,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02
+        ],
+        "wind": [
+          0.05,
+          0.15
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "SLGT",
+        "tornado": 0.02,
+        "wind": 0.15,
+        "hail": 0.15,
+        "significantTornado": null,
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.28770855460847,
+        "maxLon": -67.7425044711237,
+        "minLat": 25.819,
+        "maxLat": 49.01500000000001
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20211210-day1-0100",
+      "eventDate": "2021-12-10",
+      "sourceFile": "day1_20211210_0100.json",
+      "status": "valid_with_warnings",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2021-12-10T01:00:00.000Z",
+      "validStart": "2021-12-10T01:00:00.000Z",
+      "validEnd": "2021-12-10T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 4,
+      "contourCount": 4,
+      "polygonCount": 4,
+      "hazardLevels": {
+        "categorical": [
+          "TSTM"
+        ],
+        "tornado": [],
+        "wind": [],
+        "hail": [],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "TSTM",
+        "tornado": null,
+        "wind": null,
+        "hail": null,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -90.4612311781776,
+        "maxLon": -70.17781101130299,
+        "minLat": 28.577,
+        "maxLat": 39.50669223331905
+      },
+      "warningCount": 3,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20211210-day1-1200",
+      "eventDate": "2021-12-10",
+      "sourceFile": "day1_20211210_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2021-12-10T12:00:00.000Z",
+      "validStart": "2021-12-10T12:00:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 16,
+      "polygonCount": 16,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "ENH",
+        "tornado": 0.1,
+        "wind": 0.3,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -98.08000000000001,
+        "maxLon": -70.17781101130299,
+        "minLat": 26.764271313941823,
+        "maxLat": 45.06
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20211210-day1-1300",
+      "eventDate": "2021-12-10",
+      "sourceFile": "day1_20211210_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2021-12-10T13:00:00.000Z",
+      "validStart": "2021-12-10T13:00:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 16,
+      "polygonCount": 17,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "ENH",
+        "tornado": 0.1,
+        "wind": 0.3,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -97.79,
+        "maxLon": -70.17781101130299,
+        "minLat": 27.18985036543146,
+        "maxLat": 45.217511631740855
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20211210-day1-1630",
+      "eventDate": "2021-12-10",
+      "sourceFile": "day1_20211210_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2021-12-10T16:30:00.000Z",
+      "validStart": "2021-12-10T16:30:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 18,
+      "polygonCount": 19,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.3,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -97.79,
+        "maxLon": -70.17781101130299,
+        "minLat": 27.18985036543146,
+        "maxLat": 45.217511631740855
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20211210-day1-2000",
+      "eventDate": "2021-12-10",
+      "sourceFile": "day1_20211210_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2021-12-10T20:00:00.000Z",
+      "validStart": "2021-12-11T01:00:00.000Z",
+      "validEnd": "2021-12-11T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 18,
+      "polygonCount": 19,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.3,
+        "hail": 0.15,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -97.79,
+        "maxLon": -70.17781101130299,
+        "minLat": 27.18985036543146,
+        "maxLat": 45.217511631740855
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20240506-day1-0100",
+      "eventDate": "2024-05-06",
+      "sourceFile": "day1_20240506_0100.json",
+      "status": "valid_with_warnings",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "0100",
+      "issuedAt": "2024-05-06T01:00:00.000Z",
+      "validStart": "2024-05-06T01:00:00.000Z",
+      "validEnd": "2024-05-06T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 6,
+      "contourCount": 7,
+      "polygonCount": 12,
+      "hazardLevels": {
+        "categorical": [
+          "MRGL",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02
+        ],
+        "wind": [
+          0.05
+        ],
+        "hail": [],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MRGL",
+        "tornado": 0.02,
+        "wind": 0.05,
+        "hail": null,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -117.72,
+        "maxLon": -70.17781101130299,
+        "minLat": 26.449297834919186,
+        "maxLat": 49.227
+      },
+      "warningCount": 1,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20240506-day1-1200",
+      "eventDate": "2024-05-06",
+      "sourceFile": "day1_20240506_1200.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1200",
+      "issuedAt": "2024-05-06T12:00:00.000Z",
+      "validStart": "2024-05-06T12:00:00.000Z",
+      "validEnd": "2024-05-07T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 22,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "MDT",
+        "tornado": 0.15,
+        "wind": 0.3,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -121.85000000000001,
+        "maxLon": -72.125585070286,
+        "minLat": 27.783214103235604,
+        "maxLat": 49.20166119548459
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20240506-day1-1300",
+      "eventDate": "2024-05-06",
+      "sourceFile": "day1_20240506_1300.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1300",
+      "issuedAt": "2024-05-06T13:00:00.000Z",
+      "validStart": "2024-05-06T13:00:00.000Z",
+      "validEnd": "2024-05-07T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 24,
+      "polygonCount": 24,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "HIGH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.3,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -125.022,
+        "maxLon": -69.443,
+        "minLat": 28.01,
+        "maxLat": 49.303
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20240506-day1-1630",
+      "eventDate": "2024-05-06",
+      "sourceFile": "day1_20240506_1630.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "1630",
+      "issuedAt": "2024-05-06T16:30:00.000Z",
+      "validStart": "2024-05-06T16:30:00.000Z",
+      "validEnd": "2024-05-07T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 25,
+      "polygonCount": 27,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "HIGH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -125.022,
+        "maxLon": -69.443,
+        "minLat": 25.34,
+        "maxLat": 49.303
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    },
+    {
+      "recordId": "20240506-day1-2000",
+      "eventDate": "2024-05-06",
+      "sourceFile": "day1_20240506_2000.json",
+      "status": "valid",
+      "valid": true,
+      "forecastDay": "day1",
+      "cycle": "2000",
+      "issuedAt": "2024-05-06T20:00:00.000Z",
+      "validStart": "2024-05-06T20:00:00.000Z",
+      "validEnd": "2024-05-07T12:00:00.000Z",
+      "sourceFormat": "spc-shapefile",
+      "policyEra": "2015-present",
+      "hazardCount": 7,
+      "contourCount": 25,
+      "polygonCount": 27,
+      "hazardLevels": {
+        "categorical": [
+          "ENH",
+          "HIGH",
+          "MDT",
+          "MRGL",
+          "SLGT",
+          "TSTM"
+        ],
+        "tornado": [
+          0.02,
+          0.05,
+          0.1,
+          0.15,
+          0.3
+        ],
+        "wind": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "hail": [
+          0.05,
+          0.15,
+          0.3,
+          0.45
+        ],
+        "significantTornado": [
+          "SIGN"
+        ],
+        "significantWind": [
+          "SIGN"
+        ],
+        "significantHail": [
+          "SIGN"
+        ]
+      },
+      "hazardMaxima": {
+        "categorical": "HIGH",
+        "tornado": 0.3,
+        "wind": 0.45,
+        "hail": 0.45,
+        "significantTornado": "SIGN",
+        "significantWind": "SIGN",
+        "significantHail": "SIGN"
+      },
+      "bounds": {
+        "minLon": -125.022,
+        "maxLon": -69.443,
+        "minLat": 25.34,
+        "maxLat": 49.303
+      },
+      "warningCount": 0,
+      "errorCount": 0
+    }
+  ],
+  "failures": []
+}

@@ -30,7 +30,7 @@ const jobs = dates.map(date => {
   return { date, rawRoot, manifest: path.join(rawRoot, 'manifest.json'), fetch: null, normalize: null };
 });
 
-console.log('Historical population 2.34.5.3.1');
+console.log('Historical training population 2.35.0');
 console.log(`Dates: ${dates.length}; products: ${forecastDays.join(', ')}`);
 console.log(`Concurrency: downloads=${downloadConcurrency}, normalization=${normalizeConcurrency}, pipeline=${pipelineConcurrency}`);
 console.log(`Failure mode: ${args.failFast ? 'fail-fast' : 'continue and summarize'}`);
@@ -75,18 +75,18 @@ await runPool(normalizable, normalizeConcurrency, async job => {
 });
 printStageSummary('Normalization', jobs.map(job => ({ key: job.date, result: job.normalize })));
 
-console.log('\nStage 3/3 — incrementally rasterizing and building cases');
+console.log('\nStage 3/3 — validating normalized training records');
 const build = await runNode([
   args.pipelineScript ?? 'scripts/historical-pipeline.mjs', '--stage', 'build', '--root', root,
   '--input', path.join(root, 'normalized', 'spc'), '--concurrency', String(pipelineConcurrency),
-  '--progress'
+  '--progress', '--write-reports'
 ], { quiet: false });
 if (build.code !== 0) printChildFailure('Historical pipeline', 'archive build', build);
 
 const failures = collectFailures(jobs, build);
 const elapsedMs = Date.now() - startedAt;
 const summary = {
-  schemaVersion: '2.34.5.3.1',
+  schemaVersion: '2.35.0',
   generatedAt: new Date().toISOString(),
   root,
   requestedDates: dates,
@@ -171,7 +171,7 @@ function collectFailures(items, build) {
       failures.push({ stage: 'normalization', date: job.date, code: job.normalize?.code ?? 1, reason: job.normalize?.reason ?? 'SPC normalization failed' });
     }
   }
-  if (build?.code !== 0) failures.push({ stage: 'pipeline', date: null, code: build?.code ?? 1, reason: 'Historical raster/case/catalog build failed' });
+  if (build?.code !== 0) failures.push({ stage: 'pipeline', date: null, code: build?.code ?? 1, reason: 'Historical training-corpus validation failed' });
   return failures;
 }
 
@@ -196,6 +196,14 @@ function formatDuration(ms) {
 }
 
 async function resolveDates(options) {
+  if (options.retryFailed) {
+    const reportPath = path.join(path.resolve(options.root ?? 'data/historical'), 'population-report.json');
+    const report = JSON.parse(await readFile(reportPath, 'utf8'));
+    const failedDates = (report.failures ?? []).map(item => item.date).filter(Boolean);
+    if (!failedDates.length) throw new TypeError(`No failed dates were found in ${reportPath}`);
+    if (!options.days && report.forecastDays) options.days = Array.isArray(report.forecastDays) ? report.forecastDays.join(',') : report.forecastDays;
+    return uniqueSorted(failedDates.map(normalizeDate));
+  }
   if (options.manifest) {
     const payload = JSON.parse(await readFile(path.resolve(options.manifest), 'utf8'));
     const values = payload.dates ?? payload.requestedDates;
@@ -214,12 +222,13 @@ async function resolveDates(options) {
 }
 
 function parseArgs(tokens) {
-  const out = { force: false, failFast: false, quietChildren: true };
+  const out = { force: false, failFast: false, quietChildren: true, retryFailed: false };
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (!token.startsWith('--')) throw new TypeError(`Unexpected argument: ${token}`);
     const key = token.slice(2);
     if (key === 'force') out.force = true;
+    else if (key === 'retry-failed') out.retryFailed = true;
     else if (key === 'fail-fast') out.failFast = true;
     else if (key === 'continue-on-error') out.failFast = false;
     else if (key === 'verbose-children') out.quietChildren = false;

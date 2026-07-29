@@ -21,3 +21,27 @@ data/authority-checkpoint.json
 
 .DS_Store
 Thumbs.db
+
+# Historical training corpus caches and generated products
+data/historical/raw/
+data/historical/validation/
+data/historical/rasterized/
+data/historical/cases/
+data/historical/spc-cases/
+data/historical/population-report.json
+data/historical/pipeline-manifest.json
+verification-runs/
+data/analogs/merged-storm-events.csv
+
+# 2.36.0 training corpus: only compact derived records belong in Git
+training/validation/
+training/catalog/manifest.json
+training/catalog/progress.json
+training/catalog/statistics.json
+training/catalog/population-report.json
+training/cache/
+*.grib
+*.grib2
+*.nc
+*.netcdf
+*.zip.part

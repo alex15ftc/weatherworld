@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseSpcLatLonText, normalizeSpcOutlook, SPC_PARSER_VERSION } from '../js/historical/spc/SPCOutlookParser.js';
+import { parseSpcLatLonText, normalizeSpcOutlook, SPC_PARSER_VERSION } from '../js/training/spc/SPCOutlookParser.js';
 
 const fixture = `PROBABILISTIC OUTLOOK POINTS DAY 1
 ... TORNADO ...

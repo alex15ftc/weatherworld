@@ -1,26 +1,26 @@
 {
-  "schemaVersion": "2.34.5.3",
-  "generatedAt": "2026-07-29T00:23:21.335Z",
-  "stage": "build",
+  "schemaVersion": "2.35.0",
+  "generatedAt": "2026-07-29T01:09:06.354Z",
+  "stage": "validate",
+  "purpose": "backend-training-corpus",
   "sourceRoot": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
   "paths": {
     "root": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical",
     "rawSpc": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\raw\\spc",
     "normalizedSpc": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\normalized\\spc",
-    "rasterizedSpc": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\rasterized\\spc",
-    "cases": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\cases",
+    "validationSpc": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\validation\\spc",
     "catalog": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\catalog",
+    "trainingCatalog": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\catalog\\training-corpus.json",
     "manifest": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\pipeline-manifest.json",
     "populationReport": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\data\\historical\\population-report.json"
   },
   "concurrency": 4,
-  "elapsedMs": 11624,
+  "elapsedMs": 121,
   "counters": {
-    "scanned": 30,
-    "rasterized": 0,
-    "rasterSkipped": 30,
-    "casesBuilt": 0,
-    "casesSkipped": 30,
+    "scanned": 45,
+    "valid": 42,
+    "validWithWarnings": 3,
+    "invalid": 0,
     "failures": []
   }
 }

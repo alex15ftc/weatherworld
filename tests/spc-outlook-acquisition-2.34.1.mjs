@@ -7,7 +7,7 @@ import {
   findDuplicateSpcProducts,
   listMissingRequestedDates,
   parseSpcArchiveListing
-} from '../js/historical/spc/SPCOutlookArchive.js';
+} from '../js/training/spc/SPCOutlookArchive.js';
 
 const listing = `
 <a href="day1otlk_20240520_1300.html">Day 1</a>

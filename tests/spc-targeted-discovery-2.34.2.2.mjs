@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildTargetedArchiveCandidates, discoverTargetedArchiveEntries } from '../js/historical/spc/SPCArchiveDiscovery.js';
+import { buildTargetedArchiveCandidates, discoverTargetedArchiveEntries } from '../js/training/spc/SPCArchiveDiscovery.js';
 
 const candidates = buildTargetedArchiveCandidates({
   startDate: '2024-05-06',

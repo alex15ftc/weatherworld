@@ -11,9 +11,9 @@ import {
   listMissingRequestedDates,
   normalizeDateInput,
   parseSpcArchiveListing
-} from '../js/historical/spc/SPCOutlookArchive.js';
-import { fetchWithRetry, mapWithConcurrency } from '../js/historical/spc/SPCFetchClient.js';
-import { buildTargetedArchiveCandidates, discoverTargetedArchiveEntries } from '../js/historical/spc/SPCArchiveDiscovery.js';
+} from '../js/training/spc/SPCOutlookArchive.js';
+import { fetchWithRetry, mapWithConcurrency } from '../js/training/spc/SPCFetchClient.js';
+import { buildTargetedArchiveCandidates, discoverTargetedArchiveEntries } from '../js/training/spc/SPCArchiveDiscovery.js';
 
 const args = parseArgs(process.argv.slice(2));
 const startDate = normalizeDateInput(args.start, '--start');
@@ -66,19 +66,36 @@ if (discoveryMode === 'targeted') {
 const selectedEntries = archiveEntries.slice(0, maxProducts);
 
 const products = [];
+const failedProducts = [];
 let completed = 0;
 await mapWithConcurrency(selectedEntries, concurrency, async entry => {
-  const product = await archiveProduct(entry);
-  products.push(product);
-  completed += 1;
-  console.log(`[${completed}/${selectedEntries.length}] ${dryRun ? 'Planned' : 'Archived'} ${entry.identity} (${product.artifacts.length} artifact${product.artifacts.length === 1 ? '' : 's'})`);
+  try {
+    const product = await archiveProduct(entry);
+    products.push(product);
+    completed += 1;
+    const warningCount = product.warnings?.length ?? 0;
+    console.log(`[${completed}/${selectedEntries.length}] ${dryRun ? 'Planned' : 'Archived'} ${entry.identity} (${product.artifacts.length} artifact${product.artifacts.length === 1 ? '' : 's'}${warningCount ? `, ${warningCount} warning${warningCount === 1 ? '' : 's'}` : ''})`);
+    for (const warning of product.warnings ?? []) console.warn(`  warning: ${warning.message}`);
+  } catch (error) {
+    completed += 1;
+    failedProducts.push({
+      identity: entry.identity,
+      forecastDay: entry.forecastDay,
+      issueDate: entry.issueDate,
+      cycle: entry.cycle,
+      sourceUrl: entry.url,
+      status: 'failed',
+      error: serializeError(error)
+    });
+    console.warn(`[${completed}/${selectedEntries.length}] Failed ${entry.identity}: ${error.message}`);
+  }
   if (!dryRun) await queueManifestWrite({ partial: completed < selectedEntries.length });
-  return product;
 });
 
 const manifest = await queueManifestWrite({ partial: false });
-console.log(`Products: ${manifest.summary.productCount}; artifacts: ${manifest.summary.artifactCount}; missing date/products: ${manifest.summary.missingCount}; duplicates: ${manifest.summary.duplicateCount}`);
+console.log(`Products: ${manifest.summary.productCount}; artifacts: ${manifest.summary.artifactCount}; warnings: ${manifest.acquisition.warningCount}; failed products: ${manifest.acquisition.failedProducts.length}; missing date/products: ${manifest.summary.missingCount}; duplicates: ${manifest.summary.duplicateCount}`);
 if (!dryRun) console.log(`Manifest: ${manifestPath}`);
+if (products.length === 0 && selectedEntries.length > 0) process.exitCode = 1;
 
 async function archiveProduct(entry) {
   const productDirectory = path.join(outputDirectory, entry.issueDate, `${entry.forecastDay}-${entry.cycle}`);
@@ -89,9 +106,44 @@ async function archiveProduct(entry) {
   let html = prefetchedPages.get(entry.identity) ?? '';
   if (!dryRun && !html) html = await readFile(pagePath, 'utf8');
   const linked = dryRun ? [] : extractSpcArtifactLinks(html, entry.url).filter(artifact => artifact.url !== entry.url);
-  const linkedArtifacts = await mapWithConcurrency(linked, Math.min(concurrency, 3), artifact =>
-    downloadArtifact(artifact.url, path.join(productDirectory, artifact.fileName), { overwrite, type: artifact.type })
-  );
+  const artifactResults = await mapWithConcurrency(linked, Math.min(concurrency, 3), async artifact => {
+    const required = isRequiredArtifact(artifact);
+    try {
+      const record = await downloadArtifact(artifact.url, path.join(productDirectory, artifact.fileName), { overwrite, type: artifact.type });
+      return { record: { ...record, required }, warning: null };
+    } catch (error) {
+      const unavailable = {
+        type: artifact.type,
+        fileName: artifact.fileName,
+        sourceUrl: artifact.url,
+        localPath: relative(outputDirectory, path.join(productDirectory, artifact.fileName)),
+        status: 'unavailable',
+        required,
+        httpStatus: error?.status ?? null,
+        byteLength: null,
+        sha256: null,
+        error: serializeError(error)
+      };
+      if (required) {
+        const failure = new Error(`Required ${artifact.type} artifact unavailable for ${entry.identity}: ${error.message}`);
+        failure.cause = error;
+        failure.artifact = unavailable;
+        throw failure;
+      }
+      return {
+        record: unavailable,
+        warning: {
+          code: 'OPTIONAL_ARTIFACT_UNAVAILABLE',
+          artifactType: artifact.type,
+          sourceUrl: artifact.url,
+          httpStatus: error?.status ?? null,
+          message: `optional ${artifact.type} artifact unavailable${error?.status ? ` (HTTP ${error.status})` : ''}: ${artifact.fileName}`
+        }
+      };
+    }
+  });
+  const linkedArtifacts = artifactResults.map(result => result.record);
+  const warnings = artifactResults.map(result => result.warning).filter(Boolean);
   const metadata = dryRun
     ? { issuedAt: isoFromEntry(entry), validStart: null, validEnd: null, productCode: null }
     : extractSpcProductMetadata(html, entry);
@@ -105,7 +157,9 @@ async function archiveProduct(entry) {
     validEnd: metadata.validEnd,
     productCode: metadata.productCode,
     sourceUrl: entry.url,
-    artifacts: [pageArtifact, ...linkedArtifacts]
+    status: warnings.length ? 'successful_with_warnings' : 'successful',
+    warnings,
+    artifacts: [{ ...pageArtifact, required: true }, ...linkedArtifacts]
   };
 }
 
@@ -179,9 +233,24 @@ async function writeManifest({ partial }) {
     duplicates,
     generatedAt: new Date().toISOString()
   });
-  const enriched = { ...result, acquisition: { partial, completed: sortedProducts.length, selected: selectedEntries.length, discoveryFailures } };
+  const warningCount = sortedProducts.reduce((sum, product) => sum + (product.warnings?.length ?? 0), 0);
+  const enriched = { ...result, acquisition: { partial, completed, succeeded: sortedProducts.length, selected: selectedEntries.length, warningCount, failedProducts: [...failedProducts].sort((a, b) => a.identity.localeCompare(b.identity)), discoveryFailures } };
   if (!dryRun) await atomicWrite(manifestPath, `${JSON.stringify(enriched, null, 2)}\n`);
   return enriched;
+}
+
+
+function isRequiredArtifact(artifact) {
+  return artifact?.type === 'shapefile' || artifact?.type === 'kml';
+}
+
+function serializeError(error) {
+  return {
+    name: error?.name ?? 'Error',
+    message: error?.message ?? String(error),
+    status: error?.status ?? error?.cause?.status ?? null,
+    code: error?.code ?? error?.cause?.code ?? null
+  };
 }
 
 function artifactRecord(url, target, bytes, status, type = null) {

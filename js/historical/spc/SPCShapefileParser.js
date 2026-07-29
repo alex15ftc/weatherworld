@@ -3,6 +3,7 @@ import { normalizeSpcOutlook } from './SPCOutlookParser.js';
 
 const CATEGORY = Object.freeze({ TSTM:'TSTM', MRGL:'MRGL', SLGT:'SLGT', ENH:'ENH', MDT:'MDT', HIGH:'HIGH' });
 const PROBABILITIES = new Set([0.02,0.05,0.10,0.15,0.30,0.45,0.60]);
+const CATEGORY_DN = new Map([[2,'TSTM'],[3,'MRGL'],[4,'SLGT'],[5,'ENH'],[6,'MDT'],[8,'HIGH']]);
 
 /** Parse an official SPC zipped shapefile into the same normalized outlook schema. */
 export async function parseSpcShapefileZip(buffer, options = {}) {
@@ -30,7 +31,7 @@ export async function parseSpcShapefileZip(buffer, options = {}) {
   }
 
   const parsedProduct = {
-    schemaVersion: '2.34.5.1',
+    schemaVersion: '2.35.2',
     format: 'spc-shapefile',
     forecastDay: options.forecastDay ?? null,
     issuedAt: options.issuedAt ?? null,
@@ -47,7 +48,8 @@ function classifyFeature(feature, fileName, options) {
   const props = feature?.properties ?? {};
   const values = Object.values(props).filter(value => value != null).map(value => String(value).trim());
   const combined = `${fileName} ${values.join(' ')}`.toUpperCase();
-  const hazardType = inferHazard(fileName, combined, options.hazardType);
+  const layer = inferLayer(fileName, options.hazardType);
+  const hazardType = layer.hazardType ?? inferHazardFromContent(combined);
 
   for (const token of Object.keys(CATEGORY)) {
     if (new RegExp(`(?:^|[^A-Z])${token}(?:$|[^A-Z])`).test(combined)) {
@@ -55,25 +57,51 @@ function classifyFeature(feature, fileName, options) {
     }
   }
 
-  const significant = /\b(SIGN|SIG|SIGNIFICANT)\b/.test(combined);
-  if (significant && hazardType && hazardType !== 'categorical') {
+  if (hazardType === 'categorical') {
+    const category = extractCategoricalDn(props);
+    if (category) return { hazardType: 'categorical', value: category, significant: false, sourceLabel: category };
+    return null;
+  }
+
+  const featureSignificant = layer.significant || values.some(value => /^(SIGN|SIG|SIGNIFICANT)$/i.test(value)) || /SIGNIFICANT\s+(TORNADO|WIND|HAIL)/i.test(combined);
+  if (featureSignificant && hazardType) {
     return { hazardType: `significant${capitalize(hazardType)}`, value: 'SIGN', significant: true, sourceLabel: 'SIGN' };
   }
 
   const probability = extractProbability(values, props);
-  if (probability != null && hazardType && hazardType !== 'categorical') {
+  if (probability != null && hazardType) {
     return { hazardType, value: probability, significant: false, sourceLabel: String(probability) };
   }
   return null;
 }
 
-function inferHazard(fileName, combined, explicit) {
-  if (explicit) return explicit;
-  const text = `${fileName} ${combined}`.toLowerCase();
-  if (/torn|_tor\b|prob_t/.test(text)) return 'tornado';
+function inferLayer(fileName, explicit) {
+  if (explicit) return { hazardType: explicit, significant: /^significant/i.test(explicit) };
+  const base = String(fileName).toLowerCase().replace(/\.(shp|dbf|shx|prj)$/,'');
+  if (/(?:^|[_-])sigtorn$/.test(base)) return { hazardType: 'tornado', significant: true };
+  if (/(?:^|[_-])sigwind$/.test(base)) return { hazardType: 'wind', significant: true };
+  if (/(?:^|[_-])sighail$/.test(base)) return { hazardType: 'hail', significant: true };
+  if (/(?:^|[_-])torn$/.test(base)) return { hazardType: 'tornado', significant: false };
+  if (/(?:^|[_-])wind$/.test(base)) return { hazardType: 'wind', significant: false };
+  if (/(?:^|[_-])hail$/.test(base)) return { hazardType: 'hail', significant: false };
+  if (/(?:^|[_-])cat$/.test(base)) return { hazardType: 'categorical', significant: false };
+  return { hazardType: null, significant: false };
+}
+
+function inferHazardFromContent(combined) {
+  const text = combined.toLowerCase();
+  if (/torn|prob_t/.test(text)) return 'tornado';
   if (/hail|prob_h/.test(text)) return 'hail';
   if (/wind|prob_w/.test(text)) return 'wind';
-  if (/cat|categor|otlk/.test(text)) return 'categorical';
+  if (/cat|categor/.test(text)) return 'categorical';
+  return null;
+}
+
+function extractCategoricalDn(props) {
+  for (const key of ['DN','D_N','VALUE','RISK']) {
+    const number = Number(props[key]);
+    if (Number.isFinite(number) && CATEGORY_DN.has(number)) return CATEGORY_DN.get(number);
+  }
   return null;
 }
 

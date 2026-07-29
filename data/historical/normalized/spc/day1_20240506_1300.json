@@ -49,7 +49,7 @@
     ]
   },
   "parsedProduct": {
-    "schemaVersion": "2.34.5.1",
+    "schemaVersion": "2.35.2",
     "format": "spc-shapefile",
     "forecastDay": "day1",
     "issuedAt": "2024-05-06T13:00:00.000Z",
@@ -1702,6 +1702,77 @@
         "id": "DAY1_202405061300_CATEGORICAL_HIGH_01"
       },
       {
+        "hazardType": "significantHail",
+        "value": "SIGN",
+        "significant": true,
+        "sourceLabel": "SIGN",
+        "polygons": [
+          {
+            "outer": [
+              [
+                -99.65,
+                33.37
+              ],
+              [
+                -100.49,
+                34.43
+              ],
+              [
+                -100.9,
+                39.38
+              ],
+              [
+                -100.83,
+                40.73
+              ],
+              [
+                -99.38,
+                41.05
+              ],
+              [
+                -98.22,
+                41.080000000000005
+              ],
+              [
+                -97.07,
+                40.98
+              ],
+              [
+                -96.51,
+                40.37
+              ],
+              [
+                -95.72,
+                37.45
+              ],
+              [
+                -96.23,
+                34.83
+              ],
+              [
+                -96.93,
+                33.05
+              ],
+              [
+                -98.34,
+                32.99
+              ],
+              [
+                -99.05,
+                33.03
+              ],
+              [
+                -99.65,
+                33.37
+              ]
+            ],
+            "holes": []
+          }
+        ],
+        "sourceIndex": 6,
+        "id": "DAY1_202405061300_SIGNIFICANTHAIL_SIGN_01"
+      },
+      {
         "hazardType": "hail",
         "value": 0.05,
         "significant": false,
@@ -1940,7 +2011,7 @@
             ]
           }
         ],
-        "sourceIndex": 6,
+        "sourceIndex": 7,
         "id": "DAY1_202405061300_HAIL_05_01"
       },
       {
@@ -2102,7 +2173,7 @@
             ]
           }
         ],
-        "sourceIndex": 7,
+        "sourceIndex": 8,
         "id": "DAY1_202405061300_HAIL_15_01"
       },
       {
@@ -2232,7 +2303,7 @@
             ]
           }
         ],
-        "sourceIndex": 8,
+        "sourceIndex": 9,
         "id": "DAY1_202405061300_HAIL_30_01"
       },
       {
@@ -2295,79 +2366,8 @@
             "holes": []
           }
         ],
-        "sourceIndex": 9,
-        "id": "DAY1_202405061300_HAIL_45_01"
-      },
-      {
-        "hazardType": "significantHail",
-        "value": "SIGN",
-        "significant": true,
-        "sourceLabel": "SIGN",
-        "polygons": [
-          {
-            "outer": [
-              [
-                -99.65,
-                33.37
-              ],
-              [
-                -100.49,
-                34.43
-              ],
-              [
-                -100.9,
-                39.38
-              ],
-              [
-                -100.83,
-                40.73
-              ],
-              [
-                -99.38,
-                41.05
-              ],
-              [
-                -98.22,
-                41.080000000000005
-              ],
-              [
-                -97.07,
-                40.98
-              ],
-              [
-                -96.51,
-                40.37
-              ],
-              [
-                -95.72,
-                37.45
-              ],
-              [
-                -96.23,
-                34.83
-              ],
-              [
-                -96.93,
-                33.05
-              ],
-              [
-                -98.34,
-                32.99
-              ],
-              [
-                -99.05,
-                33.03
-              ],
-              [
-                -99.65,
-                33.37
-              ]
-            ],
-            "holes": []
-          }
-        ],
         "sourceIndex": 10,
-        "id": "DAY1_202405061300_SIGNIFICANTHAIL_SIGN_01"
+        "id": "DAY1_202405061300_HAIL_45_01"
       },
       {
         "hazardType": "significantHail",
@@ -7235,7 +7235,7 @@
               ]
             }
           ],
-          "sourceIndex": 6,
+          "sourceIndex": 7,
           "id": "DAY1_202405061300_HAIL_05_01"
         },
         {
@@ -7397,7 +7397,7 @@
               ]
             }
           ],
-          "sourceIndex": 7,
+          "sourceIndex": 8,
           "id": "DAY1_202405061300_HAIL_15_01"
         },
         {
@@ -7527,7 +7527,7 @@
               ]
             }
           ],
-          "sourceIndex": 8,
+          "sourceIndex": 9,
           "id": "DAY1_202405061300_HAIL_30_01"
         },
         {
@@ -7590,7 +7590,7 @@
               "holes": []
             }
           ],
-          "sourceIndex": 9,
+          "sourceIndex": 10,
           "id": "DAY1_202405061300_HAIL_45_01"
         }
       ],
@@ -8007,7 +8007,7 @@
               "holes": []
             }
           ],
-          "sourceIndex": 10,
+          "sourceIndex": 6,
           "id": "DAY1_202405061300_SIGNIFICANTHAIL_SIGN_01"
         },
         {

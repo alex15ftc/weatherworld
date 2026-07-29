@@ -19,10 +19,10 @@
     "maxProducts": null,
     "discoveryMode": "targeted"
   },
-  "generatedAt": "2026-07-29T00:18:06.700Z",
+  "generatedAt": "2026-07-29T00:53:25.649Z",
   "summary": {
-    "productCount": 2,
-    "artifactCount": 6,
+    "productCount": 5,
+    "artifactCount": 18,
     "missingCount": 0,
     "duplicateCount": 0
   },
@@ -37,6 +37,8 @@
       "validEnd": "2013-05-19T12:00:00.000Z",
       "productCode": "190100",
       "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_0100.html",
+      "status": "successful",
+      "warnings": [],
       "artifacts": [
         {
           "type": "html",
@@ -45,7 +47,8 @@
           "localPath": "20130519/day1-0100/day1otlk_20130519_0100.html",
           "status": "cached",
           "byteLength": 8288,
-          "sha256": "73baf5ca3afbca4c5e2dda9df1c5b942b120a2673d2523124f3c0bdaf50cdafe"
+          "sha256": "73baf5ca3afbca4c5e2dda9df1c5b942b120a2673d2523124f3c0bdaf50cdafe",
+          "required": true
         },
         {
           "type": "html",
@@ -54,16 +57,18 @@
           "localPath": "20130519/day1-0100/SPC_probotlk_info.html",
           "status": "cached",
           "byteLength": 36352,
-          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
         },
         {
           "type": "text",
           "fileName": "KWNSPTSDY1_201305190100.txt",
           "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201305190100.txt",
           "localPath": "20130519/day1-0100/KWNSPTSDY1_201305190100.txt",
-          "status": "downloaded",
+          "status": "cached",
           "byteLength": 4824,
-          "sha256": "80827c9c3c008bfe170d747d897fdc5f461039c7f57282148fae7bca51b86d70"
+          "sha256": "80827c9c3c008bfe170d747d897fdc5f461039c7f57282148fae7bca51b86d70",
+          "required": false
         }
       ]
     },
@@ -77,6 +82,8 @@
       "validEnd": "2013-05-20T12:00:00.000Z",
       "productCode": "190601",
       "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_1200.html",
+      "status": "successful",
+      "warnings": [],
       "artifacts": [
         {
           "type": "html",
@@ -85,7 +92,8 @@
           "localPath": "20130519/day1-1200/day1otlk_20130519_1200.html",
           "status": "cached",
           "byteLength": 10128,
-          "sha256": "f608ce09584fde5adc94d607fb53923db8aa37c6c20df4e5d9339ab5a1faf854"
+          "sha256": "f608ce09584fde5adc94d607fb53923db8aa37c6c20df4e5d9339ab5a1faf854",
+          "required": true
         },
         {
           "type": "html",
@@ -94,7 +102,8 @@
           "localPath": "20130519/day1-1200/SPC_probotlk_info.html",
           "status": "cached",
           "byteLength": 36352,
-          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
         },
         {
           "type": "text",
@@ -103,7 +112,218 @@
           "localPath": "20130519/day1-1200/KWNSPTSDY1_201305191200.txt",
           "status": "cached",
           "byteLength": 4521,
-          "sha256": "8918dc986fd56601b440dcbaf02ce5344f619b7ea32cff104197d5f040de55e6"
+          "sha256": "8918dc986fd56601b440dcbaf02ce5344f619b7ea32cff104197d5f040de55e6",
+          "required": false
+        }
+      ]
+    },
+    {
+      "identity": "day1:20130519:1300",
+      "forecastDay": "day1",
+      "issueDate": "20130519",
+      "cycle": "1300",
+      "issuedAt": "2013-05-19T13:00:00.000Z",
+      "validStart": "2013-05-19T13:00:00.000Z",
+      "validEnd": "2013-05-20T12:00:00.000Z",
+      "productCode": "191233",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_1300.html",
+      "status": "successful_with_warnings",
+      "warnings": [
+        {
+          "code": "OPTIONAL_ARTIFACT_UNAVAILABLE",
+          "artifactType": "html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519080406.html",
+          "httpStatus": 404,
+          "message": "optional html artifact unavailable (HTTP 404): pwo_20130519080406.html"
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20130519_1300.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_1300.html",
+          "localPath": "20130519/day1-1300/day1otlk_20130519_1300.html",
+          "status": "cached",
+          "byteLength": 10275,
+          "sha256": "6bef608fab805904aaf1364446a9ff6d12f3857e487fc479318cea31e9455e82",
+          "required": true
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20130519/day1-1300/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
+        },
+        {
+          "type": "html",
+          "fileName": "pwo_20130519080406.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519080406.html",
+          "localPath": "20130519/day1-1300/pwo_20130519080406.html",
+          "status": "unavailable",
+          "required": false,
+          "httpStatus": 404,
+          "byteLength": null,
+          "sha256": null,
+          "error": {
+            "name": "Error",
+            "message": "HTTP 404: https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519080406.html",
+            "status": 404,
+            "code": null
+          }
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201305191300.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201305191300.txt",
+          "localPath": "20130519/day1-1300/KWNSPTSDY1_201305191300.txt",
+          "status": "cached",
+          "byteLength": 4579,
+          "sha256": "ceaabee43b9a5a907bc7cbaf96b9e66e2a6a1121643c68bbdf20e1f4b9982d22",
+          "required": false
+        }
+      ]
+    },
+    {
+      "identity": "day1:20130519:1630",
+      "forecastDay": "day1",
+      "issueDate": "20130519",
+      "cycle": "1630",
+      "issuedAt": "2013-05-19T16:30:00.000Z",
+      "validStart": "2013-05-19T16:30:00.000Z",
+      "validEnd": "2013-05-20T12:00:00.000Z",
+      "productCode": "191615",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_1630.html",
+      "status": "successful_with_warnings",
+      "warnings": [
+        {
+          "code": "OPTIONAL_ARTIFACT_UNAVAILABLE",
+          "artifactType": "html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519080406.html",
+          "httpStatus": 404,
+          "message": "optional html artifact unavailable (HTTP 404): pwo_20130519080406.html"
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20130519_1630.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_1630.html",
+          "localPath": "20130519/day1-1630/day1otlk_20130519_1630.html",
+          "status": "cached",
+          "byteLength": 11486,
+          "sha256": "93383a70fe4d214c96ab826c28018a40fcbd74f0b4b9ae91e61902edde6ee55f",
+          "required": true
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20130519/day1-1630/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
+        },
+        {
+          "type": "html",
+          "fileName": "pwo_20130519080406.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519080406.html",
+          "localPath": "20130519/day1-1630/pwo_20130519080406.html",
+          "status": "unavailable",
+          "required": false,
+          "httpStatus": 404,
+          "byteLength": null,
+          "sha256": null,
+          "error": {
+            "name": "Error",
+            "message": "HTTP 404: https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519080406.html",
+            "status": 404,
+            "code": null
+          }
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201305191630.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201305191630.txt",
+          "localPath": "20130519/day1-1630/KWNSPTSDY1_201305191630.txt",
+          "status": "cached",
+          "byteLength": 5192,
+          "sha256": "075f41fbcce0906f5df47890beed5c79f11ee4826fbd55c8e5d635cf2d2bba22",
+          "required": false
+        }
+      ]
+    },
+    {
+      "identity": "day1:20130519:2000",
+      "forecastDay": "day1",
+      "issueDate": "20130519",
+      "cycle": "2000",
+      "issuedAt": "2013-05-19T20:00:00.000Z",
+      "validStart": "2013-05-19T20:00:00.000Z",
+      "validEnd": "2013-05-20T12:00:00.000Z",
+      "productCode": "191940",
+      "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_2000.html",
+      "status": "successful_with_warnings",
+      "warnings": [
+        {
+          "code": "OPTIONAL_ARTIFACT_UNAVAILABLE",
+          "artifactType": "html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519162755.html",
+          "httpStatus": 404,
+          "message": "optional html artifact unavailable (HTTP 404): pwo_20130519162755.html"
+        }
+      ],
+      "artifacts": [
+        {
+          "type": "html",
+          "fileName": "day1otlk_20130519_2000.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/day1otlk_20130519_2000.html",
+          "localPath": "20130519/day1-2000/day1otlk_20130519_2000.html",
+          "status": "cached",
+          "byteLength": 12826,
+          "sha256": "7056155721718b20364b90b22ece15f1025bd5035e89829d8ef4cb1b4dc5797f",
+          "required": true
+        },
+        {
+          "type": "html",
+          "fileName": "SPC_probotlk_info.html",
+          "sourceUrl": "https://www.spc.noaa.gov/misc/SPC_probotlk_info.html",
+          "localPath": "20130519/day1-2000/SPC_probotlk_info.html",
+          "status": "cached",
+          "byteLength": 36352,
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
+        },
+        {
+          "type": "html",
+          "fileName": "pwo_20130519162755.html",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519162755.html",
+          "localPath": "20130519/day1-2000/pwo_20130519162755.html",
+          "status": "unavailable",
+          "required": false,
+          "httpStatus": 404,
+          "byteLength": null,
+          "sha256": null,
+          "error": {
+            "name": "Error",
+            "message": "HTTP 404: https://www.spc.noaa.gov/products/outlook/archive/2013/pwo_20130519162755.html",
+            "status": 404,
+            "code": null
+          }
+        },
+        {
+          "type": "text",
+          "fileName": "KWNSPTSDY1_201305192000.txt",
+          "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2013/KWNSPTSDY1_201305192000.txt",
+          "localPath": "20130519/day1-2000/KWNSPTSDY1_201305192000.txt",
+          "status": "cached",
+          "byteLength": 5329,
+          "sha256": "2da720d707ed85fa6e1350d1d3ed6f4ed527f80acd0101ab14aafa41a13a4dca",
+          "required": false
         }
       ]
     }
@@ -111,9 +331,12 @@
   "missing": [],
   "duplicates": [],
   "acquisition": {
-    "partial": true,
-    "completed": 2,
+    "partial": false,
+    "completed": 5,
+    "succeeded": 5,
     "selected": 5,
+    "warningCount": 3,
+    "failedProducts": [],
     "discoveryFailures": []
   }
 }

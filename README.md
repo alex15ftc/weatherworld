@@ -888,3 +888,7 @@ Predictive outlooks now consume hazard, initiation, coverage, and CIG diagnostic
 ## 2.34.2.2 targeted SPC acquisition
 
 `fetch:spc-outlooks` now uses date-targeted product discovery by default, avoiding slow annual archive listings. Use `--discovery annual` only for completeness audits or broad archive reconciliation.
+
+## 2.36.1 atmospheric acquisition
+
+Use `npm run training:acquire -- --missing-only --dry-run` to inspect missing ERA5/NOAA work, then remove `--dry-run` to execute it. See `MILESTONE-2.36.1.md` for prerequisites and cache behavior.

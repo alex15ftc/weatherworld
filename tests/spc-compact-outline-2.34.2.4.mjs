@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseSpcLatLonText, normalizeSpcOutlook } from '../js/historical/spc/SPCOutlookParser.js';
+import { parseSpcLatLonText, normalizeSpcOutlook } from '../js/training/spc/SPCOutlookParser.js';
 
 // Representative excerpts copied from the official 2024-05-06 1630 UTC
 // KWNSPTSDY1 compact outline product. This format does not use LAT...LON.

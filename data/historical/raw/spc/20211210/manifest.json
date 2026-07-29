@@ -19,7 +19,7 @@
     "maxProducts": null,
     "discoveryMode": "targeted"
   },
-  "generatedAt": "2026-07-29T00:18:06.981Z",
+  "generatedAt": "2026-07-29T00:53:27.698Z",
   "summary": {
     "productCount": 5,
     "artifactCount": 20,
@@ -37,6 +37,8 @@
       "validEnd": "2021-12-10T12:00:00.000Z",
       "productCode": "100030",
       "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2021/day1otlk_20211210_0100.html",
+      "status": "successful",
+      "warnings": [],
       "artifacts": [
         {
           "type": "html",
@@ -45,7 +47,8 @@
           "localPath": "20211210/day1-0100/day1otlk_20211210_0100.html",
           "status": "cached",
           "byteLength": 10474,
-          "sha256": "fe6db867c5b6771b05260a0ec6622720d77b54722a24f1f7c89a31d7b520b1eb"
+          "sha256": "fe6db867c5b6771b05260a0ec6622720d77b54722a24f1f7c89a31d7b520b1eb",
+          "required": true
         },
         {
           "type": "shapefile",
@@ -54,7 +57,8 @@
           "localPath": "20211210/day1-0100/day1otlk_20211210_0100-shp.zip",
           "status": "cached",
           "byteLength": 8139,
-          "sha256": "36d2f0a0413214e4b093b5a406e5f4a21a52039f0e7cb80b3592b1e2b4215024"
+          "sha256": "36d2f0a0413214e4b093b5a406e5f4a21a52039f0e7cb80b3592b1e2b4215024",
+          "required": true
         },
         {
           "type": "html",
@@ -63,7 +67,8 @@
           "localPath": "20211210/day1-0100/SPC_probotlk_info.html",
           "status": "cached",
           "byteLength": 36352,
-          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
         },
         {
           "type": "text",
@@ -72,7 +77,8 @@
           "localPath": "20211210/day1-0100/KWNSPTSDY1_202112100100.txt",
           "status": "cached",
           "byteLength": 524,
-          "sha256": "edc5bfb7bef0a11584c6fb8fd119e58ac13c780dbb8820f915d1224deba8c0d5"
+          "sha256": "edc5bfb7bef0a11584c6fb8fd119e58ac13c780dbb8820f915d1224deba8c0d5",
+          "required": false
         }
       ]
     },
@@ -86,6 +92,8 @@
       "validEnd": "2021-12-11T12:00:00.000Z",
       "productCode": "100535",
       "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2021/day1otlk_20211210_1200.html",
+      "status": "successful",
+      "warnings": [],
       "artifacts": [
         {
           "type": "html",
@@ -94,7 +102,8 @@
           "localPath": "20211210/day1-1200/day1otlk_20211210_1200.html",
           "status": "cached",
           "byteLength": 18153,
-          "sha256": "7a85e505010754d4c5be56a728e7ffd0d4028d0dcadc4d94f9e16d2ebbd0a030"
+          "sha256": "7a85e505010754d4c5be56a728e7ffd0d4028d0dcadc4d94f9e16d2ebbd0a030",
+          "required": true
         },
         {
           "type": "shapefile",
@@ -103,7 +112,8 @@
           "localPath": "20211210/day1-1200/day1otlk_20211210_1200-shp.zip",
           "status": "cached",
           "byteLength": 12239,
-          "sha256": "5018a1dfe6a59b8067d33be5e57feb935c2a6bcda858f5511b04688bdeb0cf9a"
+          "sha256": "5018a1dfe6a59b8067d33be5e57feb935c2a6bcda858f5511b04688bdeb0cf9a",
+          "required": true
         },
         {
           "type": "html",
@@ -112,7 +122,8 @@
           "localPath": "20211210/day1-1200/SPC_probotlk_info.html",
           "status": "cached",
           "byteLength": 36352,
-          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
         },
         {
           "type": "text",
@@ -121,7 +132,8 @@
           "localPath": "20211210/day1-1200/KWNSPTSDY1_202112101200.txt",
           "status": "cached",
           "byteLength": 4145,
-          "sha256": "6c3dfa9556da8366610491d837924c3399b9d54131c9169c07645e9ea24672de"
+          "sha256": "6c3dfa9556da8366610491d837924c3399b9d54131c9169c07645e9ea24672de",
+          "required": false
         }
       ]
     },
@@ -135,6 +147,8 @@
       "validEnd": "2021-12-11T12:00:00.000Z",
       "productCode": "101303",
       "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2021/day1otlk_20211210_1300.html",
+      "status": "successful",
+      "warnings": [],
       "artifacts": [
         {
           "type": "html",
@@ -143,7 +157,8 @@
           "localPath": "20211210/day1-1300/day1otlk_20211210_1300.html",
           "status": "cached",
           "byteLength": 20622,
-          "sha256": "f470cfd98e97d52f9042c9bcecb592a21dc47ecb0f524279d837846c9bb69f2b"
+          "sha256": "f470cfd98e97d52f9042c9bcecb592a21dc47ecb0f524279d837846c9bb69f2b",
+          "required": true
         },
         {
           "type": "shapefile",
@@ -152,7 +167,8 @@
           "localPath": "20211210/day1-1300/day1otlk_20211210_1300-shp.zip",
           "status": "cached",
           "byteLength": 12501,
-          "sha256": "3a25d0088d97984199239db081234650a29d7b73cc1c1060e4dd80788857d679"
+          "sha256": "3a25d0088d97984199239db081234650a29d7b73cc1c1060e4dd80788857d679",
+          "required": true
         },
         {
           "type": "html",
@@ -161,7 +177,8 @@
           "localPath": "20211210/day1-1300/SPC_probotlk_info.html",
           "status": "cached",
           "byteLength": 36352,
-          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
         },
         {
           "type": "text",
@@ -170,7 +187,8 @@
           "localPath": "20211210/day1-1300/KWNSPTSDY1_202112101300.txt",
           "status": "cached",
           "byteLength": 4444,
-          "sha256": "ad35cc086ed5599675d9fefdb5cda437fa99035721f03b0147b5941a1769517d"
+          "sha256": "ad35cc086ed5599675d9fefdb5cda437fa99035721f03b0147b5941a1769517d",
+          "required": false
         }
       ]
     },
@@ -184,6 +202,8 @@
       "validEnd": "2021-12-11T12:00:00.000Z",
       "productCode": "101618",
       "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2021/day1otlk_20211210_1630.html",
+      "status": "successful",
+      "warnings": [],
       "artifacts": [
         {
           "type": "html",
@@ -192,7 +212,8 @@
           "localPath": "20211210/day1-1630/day1otlk_20211210_1630.html",
           "status": "cached",
           "byteLength": 18333,
-          "sha256": "e1bf95b88a7a07ff2456fba4d6cbaee2c9de201e15fe3ccf693b95195aff71a6"
+          "sha256": "e1bf95b88a7a07ff2456fba4d6cbaee2c9de201e15fe3ccf693b95195aff71a6",
+          "required": true
         },
         {
           "type": "shapefile",
@@ -201,7 +222,8 @@
           "localPath": "20211210/day1-1630/day1otlk_20211210_1630-shp.zip",
           "status": "cached",
           "byteLength": 12926,
-          "sha256": "233b62639596e86ffaa7b645dd815465d1173d772d61840485292bed5da9ab48"
+          "sha256": "233b62639596e86ffaa7b645dd815465d1173d772d61840485292bed5da9ab48",
+          "required": true
         },
         {
           "type": "html",
@@ -210,7 +232,8 @@
           "localPath": "20211210/day1-1630/SPC_probotlk_info.html",
           "status": "cached",
           "byteLength": 36352,
-          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
         },
         {
           "type": "text",
@@ -219,7 +242,8 @@
           "localPath": "20211210/day1-1630/KWNSPTSDY1_202112101630.txt",
           "status": "cached",
           "byteLength": 4981,
-          "sha256": "17445ec962637ac720a76e4a835f82b324fb4f598c50b2b9cc3c4bbe14943339"
+          "sha256": "17445ec962637ac720a76e4a835f82b324fb4f598c50b2b9cc3c4bbe14943339",
+          "required": false
         }
       ]
     },
@@ -233,6 +257,8 @@
       "validEnd": "2021-12-11T12:00:00.000Z",
       "productCode": "102308",
       "sourceUrl": "https://www.spc.noaa.gov/products/outlook/archive/2021/day1otlk_20211210_2000.html",
+      "status": "successful",
+      "warnings": [],
       "artifacts": [
         {
           "type": "html",
@@ -241,7 +267,8 @@
           "localPath": "20211210/day1-2000/day1otlk_20211210_2000.html",
           "status": "cached",
           "byteLength": 19705,
-          "sha256": "e49a219ba10e6b66aee1e32d5d79d8de123eb143500db8f35a20ef2d1fbe04f3"
+          "sha256": "e49a219ba10e6b66aee1e32d5d79d8de123eb143500db8f35a20ef2d1fbe04f3",
+          "required": true
         },
         {
           "type": "shapefile",
@@ -250,7 +277,8 @@
           "localPath": "20211210/day1-2000/day1otlk_20211210_2000-shp.zip",
           "status": "cached",
           "byteLength": 12959,
-          "sha256": "b1d4c799db83e8e914643061973179846a0519b62273dad94aeb22dd766f5138"
+          "sha256": "b1d4c799db83e8e914643061973179846a0519b62273dad94aeb22dd766f5138",
+          "required": true
         },
         {
           "type": "html",
@@ -259,7 +287,8 @@
           "localPath": "20211210/day1-2000/SPC_probotlk_info.html",
           "status": "cached",
           "byteLength": 36352,
-          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94"
+          "sha256": "c5abff65b17b36485643cf209fc2346e754f715e7346c5f49ed357d84d13bf94",
+          "required": false
         },
         {
           "type": "text",
@@ -268,7 +297,8 @@
           "localPath": "20211210/day1-2000/KWNSPTSDY1_202112102000.txt",
           "status": "cached",
           "byteLength": 5030,
-          "sha256": "47e74d8d3fdfff827b3bab9f7d6eeae357295529eecb7e7f06b4b0072cb143bc"
+          "sha256": "47e74d8d3fdfff827b3bab9f7d6eeae357295529eecb7e7f06b4b0072cb143bc",
+          "required": false
         }
       ]
     }
@@ -278,7 +308,10 @@
   "acquisition": {
     "partial": false,
     "completed": 5,
+    "succeeded": 5,
     "selected": 5,
+    "warningCount": 0,
+    "failedProducts": [],
     "discoveryFailures": []
   }
 }

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "2.36.1",
+  "trainingRoot": "training",
+  "cacheRoot": "${WEATHERWORLD_TRAINING_CACHE:-~/WeatherWorldTrainingCache}",
+  "rawFilesStoredInRepository": false,
+  "description": "Set WEATHERWORLD_TRAINING_CACHE to override the external raw-download cache."
+}

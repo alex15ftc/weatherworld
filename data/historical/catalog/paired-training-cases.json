@@ -1,0 +1,5344 @@
+{
+  "schemaVersion": "2.35.2",
+  "purpose": "paired-backend-training-cases",
+  "generatedAt": "2026-07-29T01:09:17.485Z",
+  "summary": {
+    "caseCount": 39,
+    "completeCount": 7,
+    "partialCount": 32,
+    "spcCaseCount": 9,
+    "era5CaseCount": 37,
+    "noaaCaseCount": 37
+  },
+  "cases": [
+    {
+      "caseId": "training-1974-03-20",
+      "eventDate": "1974-03-20",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0.3222,
+        "troughTilt": 0.0799,
+        "lowLevelJetStrength": 0.1384,
+        "moistureQuality": 0.9532,
+        "capStrength": 0.6238,
+        "forcingTiming": 0.5615,
+        "discreteBias": 0.7642,
+        "environment": {
+          "shear01Ms": 8.58,
+          "shear06Ms": 34.68,
+          "srhProxyM2s2": 110.9,
+          "lclM": 535.3,
+          "cinJkg": 109.2,
+          "moistureTransportProxy": 194.9,
+          "pressureFall6hMb": 2.23
+        },
+        "diagnostics": {
+          "heightRange500m": 575.6,
+          "llj95Ms": 14.8,
+          "cape95Jkg": 1389.8,
+          "deepShear90Ms": 31.8
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 41.37,
+          "band": "significant",
+          "reportCount": 30,
+          "counts": {
+            "tornado": 12,
+            "significantTornado": 10,
+            "violentTornado": 0,
+            "hail": 2,
+            "significantHail": 0,
+            "wind": 16,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.6857000227015086,
+            "violentTornado": 0,
+            "significantHail": 0,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.7197261759661009,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 12,
+          "significantTornado": 10,
+          "violentTornado": 0,
+          "hail": 2,
+          "significantHail": 0,
+          "wind": 16,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-04-01",
+      "eventDate": "1974-04-01",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0.1278,
+        "troughTilt": 0.037,
+        "lowLevelJetStrength": 0.592,
+        "moistureQuality": 0.9464,
+        "capStrength": 0.7155,
+        "forcingTiming": 0.5789,
+        "discreteBias": 0.7569,
+        "environment": {
+          "shear01Ms": 11.57,
+          "shear06Ms": 33,
+          "srhProxyM2s2": 159,
+          "lclM": 695.3,
+          "cinJkg": 125.2,
+          "moistureTransportProxy": 335.4,
+          "pressureFall6hMb": 4.59
+        },
+        "diagnostics": {
+          "heightRange500m": 439.5,
+          "llj95Ms": 23.8,
+          "cape95Jkg": 1927.9,
+          "deepShear90Ms": 29
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 48.33,
+          "band": "significant",
+          "reportCount": 126,
+          "counts": {
+            "tornado": 19,
+            "significantTornado": 12,
+            "violentTornado": 0,
+            "hail": 43,
+            "significantHail": 4,
+            "wind": 64,
+            "destructiveWind": 1
+          },
+          "components": {
+            "significantTornado": 0.7506477912227039,
+            "violentTornado": 0,
+            "significantHail": 0.14677343635222972,
+            "destructiveWind": 0.024936347258839642,
+            "spatialCoverage": 0.8822762314617374,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 19,
+          "significantTornado": 12,
+          "violentTornado": 0,
+          "hail": 43,
+          "significantHail": 4,
+          "wind": 64,
+          "destructiveWind": 1
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-04-03",
+      "eventDate": "1974-04-03",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.0953,
+        "troughTilt": 0.6934,
+        "lowLevelJetStrength": 0.6824,
+        "moistureQuality": 1,
+        "capStrength": 0.5934,
+        "forcingTiming": 0.6929,
+        "discreteBias": 0.709,
+        "environment": {
+          "shear01Ms": 11.64,
+          "shear06Ms": 30.77,
+          "srhProxyM2s2": 144.4,
+          "lclM": 565.1,
+          "cinJkg": 103.9,
+          "moistureTransportProxy": 379.3,
+          "pressureFall6hMb": 4.08
+        },
+        "diagnostics": {
+          "heightRange500m": 416.7,
+          "llj95Ms": 25.6,
+          "cape95Jkg": 2281.7,
+          "deepShear90Ms": 27.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 78.14,
+          "band": "major",
+          "reportCount": 385,
+          "counts": {
+            "tornado": 239,
+            "significantTornado": 201,
+            "violentTornado": 98,
+            "hail": 92,
+            "significantHail": 27,
+            "wind": 54,
+            "destructiveWind": 1
+          },
+          "components": {
+            "significantTornado": 0.9999999999211827,
+            "violentTornado": 0.9999999999999983,
+            "significantHail": 0.6574811449069544,
+            "destructiveWind": 0.024936347258839642,
+            "spatialCoverage": 0.8604399994432674,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 239,
+          "significantTornado": 201,
+          "violentTornado": 98,
+          "hail": 92,
+          "significantHail": 27,
+          "wind": 54,
+          "destructiveWind": 1
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-04-04",
+      "eventDate": "1974-04-04",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0.1176,
+        "troughTilt": -0.3391,
+        "lowLevelJetStrength": 0.6352,
+        "moistureQuality": 1,
+        "capStrength": 0.5376,
+        "forcingTiming": 0.581,
+        "discreteBias": 0.756,
+        "environment": {
+          "shear01Ms": 10.74,
+          "shear06Ms": 37,
+          "srhProxyM2s2": 159.8,
+          "lclM": 640.5,
+          "cinJkg": 94.1,
+          "moistureTransportProxy": 288.6,
+          "pressureFall6hMb": 0.49
+        },
+        "diagnostics": {
+          "heightRange500m": 432.3,
+          "llj95Ms": 24.7,
+          "cape95Jkg": 2234.1,
+          "deepShear90Ms": 33.2
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 40.53,
+          "band": "significant",
+          "reportCount": 65,
+          "counts": {
+            "tornado": 23,
+            "significantTornado": 8,
+            "violentTornado": 0,
+            "hail": 10,
+            "significantHail": 0,
+            "wind": 32,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.6038355697179345,
+            "violentTornado": 0,
+            "significantHail": 0,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.8277523947593917,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 23,
+          "significantTornado": 8,
+          "violentTornado": 0,
+          "hail": 10,
+          "significantHail": 0,
+          "wind": 32,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-04-13",
+      "eventDate": "1974-04-13",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0.0596,
+        "troughTilt": 0.7299,
+        "lowLevelJetStrength": 0.3615,
+        "moistureQuality": 1,
+        "capStrength": 0.5728,
+        "forcingTiming": 0.3142,
+        "discreteBias": 0.734,
+        "environment": {
+          "shear01Ms": 8.54,
+          "shear06Ms": 24.04,
+          "srhProxyM2s2": 78.2,
+          "lclM": 420.4,
+          "cinJkg": 100.2,
+          "moistureTransportProxy": 228.1,
+          "pressureFall6hMb": 1.02
+        },
+        "diagnostics": {
+          "heightRange500m": 391.7,
+          "llj95Ms": 19.2,
+          "cape95Jkg": 1622.9,
+          "deepShear90Ms": 21.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 48.82,
+          "band": "significant",
+          "reportCount": 45,
+          "counts": {
+            "tornado": 14,
+            "significantTornado": 12,
+            "violentTornado": 0,
+            "hail": 14,
+            "significantHail": 4,
+            "wind": 17,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.7506477912227039,
+            "violentTornado": 0,
+            "significantHail": 0.14677343635222972,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.939683160931543,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 14,
+          "significantTornado": 12,
+          "violentTornado": 0,
+          "hail": 14,
+          "significantHail": 4,
+          "wind": 17,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-04-14",
+      "eventDate": "1974-04-14",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.0676,
+        "troughTilt": 0.2527,
+        "lowLevelJetStrength": 0.4532,
+        "moistureQuality": 1,
+        "capStrength": 0.5828,
+        "forcingTiming": 1,
+        "discreteBias": 0.58,
+        "environment": {
+          "shear01Ms": 9.49,
+          "shear06Ms": 30.39,
+          "srhProxyM2s2": 103.5,
+          "lclM": 547.8,
+          "cinJkg": 102,
+          "moistureTransportProxy": 240,
+          "pressureFall6hMb": 3.58
+        },
+        "diagnostics": {
+          "heightRange500m": 397.3,
+          "llj95Ms": 21.1,
+          "cape95Jkg": 1599.2,
+          "deepShear90Ms": 29.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 42.5,
+          "band": "significant",
+          "reportCount": 191,
+          "counts": {
+            "tornado": 5,
+            "significantTornado": 5,
+            "violentTornado": 0,
+            "hail": 32,
+            "significantHail": 5,
+            "wind": 154,
+            "destructiveWind": 6
+          },
+          "components": {
+            "significantTornado": 0.4393753686302292,
+            "violentTornado": 0,
+            "significantHail": 0.17996864234530596,
+            "destructiveWind": 0.14059513911149069,
+            "spatialCoverage": 0.9674057165937107,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 5,
+          "significantTornado": 5,
+          "violentTornado": 0,
+          "hail": 32,
+          "significantHail": 5,
+          "wind": 154,
+          "destructiveWind": 6
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-04-20",
+      "eventDate": "1974-04-20",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": 0.6457,
+        "lowLevelJetStrength": 0.6419,
+        "moistureQuality": 0.7937,
+        "capStrength": 0.7636,
+        "forcingTiming": 0.5216,
+        "discreteBias": 0.6463,
+        "environment": {
+          "shear01Ms": 10.95,
+          "shear06Ms": 22.42,
+          "srhProxyM2s2": 118.7,
+          "lclM": 769.8,
+          "cinJkg": 133.6,
+          "moistureTransportProxy": 275.8,
+          "pressureFall6hMb": 2.98
+        },
+        "diagnostics": {
+          "heightRange500m": 279.3,
+          "llj95Ms": 24.8,
+          "cape95Jkg": 717.9,
+          "deepShear90Ms": 21.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 48.1,
+          "band": "significant",
+          "reportCount": 73,
+          "counts": {
+            "tornado": 22,
+            "significantTornado": 13,
+            "violentTornado": 0,
+            "hail": 30,
+            "significantHail": 4,
+            "wind": 21,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.7779004623113017,
+            "violentTornado": 0,
+            "significantHail": 0.14677343635222972,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.8375287927460078,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 22,
+          "significantTornado": 13,
+          "violentTornado": 0,
+          "hail": 30,
+          "significantHail": 4,
+          "wind": 21,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-04-21",
+      "eventDate": "1974-04-21",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.0191,
+        "troughTilt": -0.0631,
+        "lowLevelJetStrength": 0.6969,
+        "moistureQuality": 0.9183,
+        "capStrength": 0.6768,
+        "forcingTiming": 0.8433,
+        "discreteBias": 0.5509,
+        "environment": {
+          "shear01Ms": 10.29,
+          "shear06Ms": 24.88,
+          "srhProxyM2s2": 92,
+          "lclM": 662.6,
+          "cinJkg": 118.4,
+          "moistureTransportProxy": 309.1,
+          "pressureFall6hMb": 3.79
+        },
+        "diagnostics": {
+          "heightRange500m": 363.4,
+          "llj95Ms": 25.9,
+          "cape95Jkg": 1150,
+          "deepShear90Ms": 22.2
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 55.15,
+          "band": "significant",
+          "reportCount": 41,
+          "counts": {
+            "tornado": 17,
+            "significantTornado": 11,
+            "violentTornado": 2,
+            "hail": 19,
+            "significantHail": 5,
+            "wind": 5,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.7200510875926951,
+            "violentTornado": 0.5006482114007238,
+            "significantHail": 0.17996864234530596,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.8894895014017605,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 17,
+          "significantTornado": 11,
+          "violentTornado": 2,
+          "hail": 19,
+          "significantHail": 5,
+          "wind": 5,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-05-13",
+      "eventDate": "1974-05-13",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.0805,
+        "troughTilt": 0.1365,
+        "lowLevelJetStrength": 0.5896,
+        "moistureQuality": 0.9518,
+        "capStrength": 0.7017,
+        "forcingTiming": 0.6865,
+        "discreteBias": 0.7117,
+        "environment": {
+          "shear01Ms": 11.37,
+          "shear06Ms": 30.36,
+          "srhProxyM2s2": 173.7,
+          "lclM": 934.3,
+          "cinJkg": 122.8,
+          "moistureTransportProxy": 271.5,
+          "pressureFall6hMb": 5.45
+        },
+        "diagnostics": {
+          "heightRange500m": 406.3,
+          "llj95Ms": 23.8,
+          "cape95Jkg": 1848.4,
+          "deepShear90Ms": 29.3
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 42.42,
+          "band": "significant",
+          "reportCount": 87,
+          "counts": {
+            "tornado": 14,
+            "significantTornado": 8,
+            "violentTornado": 0,
+            "hail": 44,
+            "significantHail": 7,
+            "wind": 29,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.6038355697179345,
+            "violentTornado": 0,
+            "significantHail": 0.24253487160303355,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.7207994707152364,
+            "temporalConcentration": 0.9852216748768473
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 14,
+          "significantTornado": 8,
+          "violentTornado": 0,
+          "hail": 44,
+          "significantHail": 7,
+          "wind": 29,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-05-30",
+      "eventDate": "1974-05-30",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0,
+        "troughTilt": 0.1525,
+        "lowLevelJetStrength": 0.1615,
+        "moistureQuality": 1,
+        "capStrength": 0.6536,
+        "forcingTiming": 0.4298,
+        "discreteBias": 0.8195,
+        "environment": {
+          "shear01Ms": 7.57,
+          "shear06Ms": 27.22,
+          "srhProxyM2s2": 89.2,
+          "lclM": 664.7,
+          "cinJkg": 114.4,
+          "moistureTransportProxy": 267,
+          "pressureFall6hMb": 2.39
+        },
+        "diagnostics": {
+          "heightRange500m": 306.8,
+          "llj95Ms": 15.2,
+          "cape95Jkg": 2188.2,
+          "deepShear90Ms": 25.7
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 41.63,
+          "band": "significant",
+          "reportCount": 97,
+          "counts": {
+            "tornado": 12,
+            "significantTornado": 6,
+            "violentTornado": 0,
+            "hail": 43,
+            "significantHail": 4,
+            "wind": 42,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.5006482114007238,
+            "violentTornado": 0,
+            "significantHail": 0.14677343635222972,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9602921284083992,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 12,
+          "significantTornado": 6,
+          "violentTornado": 0,
+          "hail": 43,
+          "significantHail": 4,
+          "wind": 42,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-06-07",
+      "eventDate": "1974-06-07",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": 0.2253,
+        "lowLevelJetStrength": 0.4269,
+        "moistureQuality": 1,
+        "capStrength": 0.4813,
+        "forcingTiming": 0.5141,
+        "discreteBias": 0.6805,
+        "environment": {
+          "shear01Ms": 7.76,
+          "shear06Ms": 23.54,
+          "srhProxyM2s2": 65.7,
+          "lclM": 513.6,
+          "cinJkg": 84.2,
+          "moistureTransportProxy": 372.4,
+          "pressureFall6hMb": 3.18
+        },
+        "diagnostics": {
+          "heightRange500m": 328.7,
+          "llj95Ms": 20.5,
+          "cape95Jkg": 3507.4,
+          "deepShear90Ms": 22
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 40.68,
+          "band": "significant",
+          "reportCount": 41,
+          "counts": {
+            "tornado": 17,
+            "significantTornado": 6,
+            "violentTornado": 0,
+            "hail": 11,
+            "significantHail": 2,
+            "wind": 13,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.5006482114007238,
+            "violentTornado": 0,
+            "significantHail": 0.07629736189195047,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9678585733030017,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 17,
+          "significantTornado": 6,
+          "violentTornado": 0,
+          "hail": 11,
+          "significantHail": 2,
+          "wind": 13,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-06-08",
+      "eventDate": "1974-06-08",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0,
+        "troughTilt": 0.9,
+        "lowLevelJetStrength": 0.3864,
+        "moistureQuality": 1,
+        "capStrength": 0.4146,
+        "forcingTiming": 0.385,
+        "discreteBias": 0.8383,
+        "environment": {
+          "shear01Ms": 7.67,
+          "shear06Ms": 27.22,
+          "srhProxyM2s2": 91.6,
+          "lclM": 439.8,
+          "cinJkg": 72.6,
+          "moistureTransportProxy": 365.9,
+          "pressureFall6hMb": 2.29
+        },
+        "diagnostics": {
+          "heightRange500m": 291.4,
+          "llj95Ms": 19.7,
+          "cape95Jkg": 3170.9,
+          "deepShear90Ms": 25.4
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 65.17,
+          "band": "major",
+          "reportCount": 98,
+          "counts": {
+            "tornado": 45,
+            "significantTornado": 28,
+            "violentTornado": 6,
+            "hail": 18,
+            "significantHail": 1,
+            "wind": 35,
+            "destructiveWind": 1
+          },
+          "components": {
+            "significantTornado": 0.9608651044517785,
+            "violentTornado": 0.875485528555877,
+            "significantHail": 0.038905499907501584,
+            "destructiveWind": 0.024936347258839642,
+            "spatialCoverage": 0.9394467564100217,
+            "temporalConcentration": 0.8163265306122449
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 45,
+          "significantTornado": 28,
+          "violentTornado": 6,
+          "hail": 18,
+          "significantHail": 1,
+          "wind": 35,
+          "destructiveWind": 1
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1974-10-28",
+      "eventDate": "1974-10-28",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": 0.5805,
+        "lowLevelJetStrength": 0.1775,
+        "moistureQuality": 0.8783,
+        "capStrength": 0.6407,
+        "forcingTiming": 0.407,
+        "discreteBias": 0.5309,
+        "environment": {
+          "shear01Ms": 6.34,
+          "shear06Ms": 18.31,
+          "srhProxyM2s2": 44,
+          "lclM": 589.8,
+          "cinJkg": 112.1,
+          "moistureTransportProxy": 197.7,
+          "pressureFall6hMb": 2.9
+        },
+        "diagnostics": {
+          "heightRange500m": 216.1,
+          "llj95Ms": 15.6,
+          "cape95Jkg": 806.1,
+          "deepShear90Ms": 16.3
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 41.34,
+          "band": "significant",
+          "reportCount": 16,
+          "counts": {
+            "tornado": 13,
+            "significantTornado": 11,
+            "violentTornado": 0,
+            "hail": 1,
+            "significantHail": 0,
+            "wind": 2,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.7200510875926951,
+            "violentTornado": 0,
+            "significantHail": 0,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.6493689912309684,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 13,
+          "significantTornado": 11,
+          "violentTornado": 0,
+          "hail": 1,
+          "significantHail": 0,
+          "wind": 2,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1991-03-27",
+      "eventDate": "1991-03-27",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.261,
+        "troughTilt": 0.1429,
+        "lowLevelJetStrength": 0.7624,
+        "moistureQuality": 0.9338,
+        "capStrength": 0.7159,
+        "forcingTiming": 1,
+        "discreteBias": 0.58,
+        "environment": {
+          "shear01Ms": 11.11,
+          "shear06Ms": 33.3,
+          "srhProxyM2s2": 157.7,
+          "lclM": 559.9,
+          "cinJkg": 125.3,
+          "moistureTransportProxy": 398.7,
+          "pressureFall6hMb": 5.07
+        },
+        "diagnostics": {
+          "heightRange500m": 532.7,
+          "llj95Ms": 27.2,
+          "cape95Jkg": 1133.5,
+          "deepShear90Ms": 31
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 59.55,
+          "band": "significant",
+          "reportCount": 329,
+          "counts": {
+            "tornado": 40,
+            "significantTornado": 22,
+            "violentTornado": 0,
+            "hail": 99,
+            "significantHail": 14,
+            "wind": 190,
+            "destructiveWind": 2
+          },
+          "components": {
+            "significantTornado": 0.9216286064419671,
+            "violentTornado": 0,
+            "significantHail": 0.42624657926256726,
+            "destructiveWind": 0.04925087310306597,
+            "spatialCoverage": 0.9845769620905906,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 40,
+          "significantTornado": 22,
+          "violentTornado": 0,
+          "hail": 99,
+          "significantHail": 14,
+          "wind": 190,
+          "destructiveWind": 2
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1991-04-26",
+      "eventDate": "1991-04-26",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.0693,
+        "troughTilt": 0.7161,
+        "lowLevelJetStrength": 0.4055,
+        "moistureQuality": 1,
+        "capStrength": 0.5042,
+        "forcingTiming": 0.7338,
+        "discreteBias": 0.6023,
+        "environment": {
+          "shear01Ms": 10.11,
+          "shear06Ms": 24.83,
+          "srhProxyM2s2": 110.2,
+          "lclM": 636,
+          "cinJkg": 88.2,
+          "moistureTransportProxy": 275.3,
+          "pressureFall6hMb": 3.21
+        },
+        "diagnostics": {
+          "heightRange500m": 398.5,
+          "llj95Ms": 20.1,
+          "cape95Jkg": 3449.1,
+          "deepShear90Ms": 22.4
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 77.19,
+          "band": "major",
+          "reportCount": 327,
+          "counts": {
+            "tornado": 70,
+            "significantTornado": 42,
+            "violentTornado": 9,
+            "hail": 204,
+            "significantHail": 28,
+            "wind": 53,
+            "destructiveWind": 2
+          },
+          "components": {
+            "significantTornado": 0.9922581229751534,
+            "violentTornado": 0.9560630663765926,
+            "significantHail": 0.6708070121920944,
+            "destructiveWind": 0.04925087310306597,
+            "spatialCoverage": 0.9031880002507036,
+            "temporalConcentration": 0.8737439930100481
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 70,
+          "significantTornado": 42,
+          "violentTornado": 9,
+          "hail": 204,
+          "significantHail": 28,
+          "wind": 53,
+          "destructiveWind": 2
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1991-05-04",
+      "eventDate": "1991-05-04",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0.0082,
+        "troughTilt": 0.7414,
+        "lowLevelJetStrength": 0.1511,
+        "moistureQuality": 1,
+        "capStrength": 0.4918,
+        "forcingTiming": 0.332,
+        "discreteBias": 0.7854,
+        "environment": {
+          "shear01Ms": 10.97,
+          "shear06Ms": 24.23,
+          "srhProxyM2s2": 141.8,
+          "lclM": 392.7,
+          "cinJkg": 659.9,
+          "moistureTransportProxy": 200.2,
+          "pressureFall6hMb": 0.92
+        },
+        "diagnostics": {
+          "heightRange500m": 355.8,
+          "llj95Ms": 15,
+          "cape95Jkg": 2757.5,
+          "deepShear90Ms": 22.8
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.64,
+          "band": "organized",
+          "reportCount": 259,
+          "counts": {
+            "tornado": 12,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 125,
+            "significantHail": 6,
+            "wind": 122,
+            "destructiveWind": 3
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.21187237225468902,
+            "destructiveWind": 0.07295908348740654,
+            "spatialCoverage": 0.9035680433252901,
+            "temporalConcentration": 0.9817981246552676
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 12,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 125,
+          "significantHail": 6,
+          "wind": 122,
+          "destructiveWind": 3
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1991-06-19",
+      "eventDate": "1991-06-19",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0,
+        "troughTilt": 0.138,
+        "lowLevelJetStrength": 0,
+        "moistureQuality": 1,
+        "capStrength": 0.6211,
+        "forcingTiming": 0.2195,
+        "discreteBias": 0.749,
+        "environment": {
+          "shear01Ms": 7.52,
+          "shear06Ms": 21.62,
+          "srhProxyM2s2": 62.9,
+          "lclM": 919.4,
+          "cinJkg": 732.9,
+          "moistureTransportProxy": 144.9,
+          "pressureFall6hMb": 2.2
+        },
+        "diagnostics": {
+          "heightRange500m": 190.7,
+          "llj95Ms": 11.8,
+          "cape95Jkg": 2379.7,
+          "deepShear90Ms": 20.3
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.92,
+          "band": "organized",
+          "reportCount": 59,
+          "counts": {
+            "tornado": 6,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 37,
+            "significantHail": 5,
+            "wind": 16,
+            "destructiveWind": 1
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.17996864234530596,
+            "destructiveWind": 0.024936347258839642,
+            "spatialCoverage": 0.9900571529830202,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.72
+        },
+        "outcomes": {
+          "tornado": 6,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 37,
+          "significantHail": 5,
+          "wind": 16,
+          "destructiveWind": 1
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1999-01-21",
+      "eventDate": "1999-01-21",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.1018,
+        "troughTilt": 0.2182,
+        "lowLevelJetStrength": 0.387,
+        "moistureQuality": 0.8489,
+        "capStrength": 0.7295,
+        "forcingTiming": 0.7748,
+        "discreteBias": 0.5369,
+        "environment": {
+          "shear01Ms": 8.93,
+          "shear06Ms": 25.62,
+          "srhProxyM2s2": 82.9,
+          "lclM": 302.5,
+          "cinJkg": 127.7,
+          "moistureTransportProxy": 271.7,
+          "pressureFall6hMb": 3.93
+        },
+        "diagnostics": {
+          "heightRange500m": 421.3,
+          "llj95Ms": 19.7,
+          "cape95Jkg": 1173.5,
+          "deepShear90Ms": 21
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 62.15,
+          "band": "major",
+          "reportCount": 358,
+          "counts": {
+            "tornado": 117,
+            "significantTornado": 31,
+            "violentTornado": 1,
+            "hail": 214,
+            "significantHail": 21,
+            "wind": 27,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.9469014713738075,
+            "violentTornado": 0.247301785514629,
+            "significantHail": 0.4943032925625275,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.8747023068986177,
+            "temporalConcentration": 0.9497206703910615
+          },
+          "reportingEraWeight": 0.88
+        },
+        "outcomes": {
+          "tornado": 117,
+          "significantTornado": 31,
+          "violentTornado": 1,
+          "hail": 214,
+          "significantHail": 21,
+          "wind": 27,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1999-05-03",
+      "eventDate": "1999-05-03",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.0053,
+        "troughTilt": 0.5709,
+        "lowLevelJetStrength": 0.3959,
+        "moistureQuality": 0.8958,
+        "capStrength": 0.5776,
+        "forcingTiming": 0.6811,
+        "discreteBias": 0.5708,
+        "environment": {
+          "shear01Ms": 8.43,
+          "shear06Ms": 23.75,
+          "srhProxyM2s2": 72,
+          "lclM": 891.9,
+          "cinJkg": 101.1,
+          "moistureTransportProxy": 211.5,
+          "pressureFall6hMb": 4.2
+        },
+        "diagnostics": {
+          "heightRange500m": 353.7,
+          "llj95Ms": 19.9,
+          "cape95Jkg": 1871.5,
+          "deepShear90Ms": 20.8
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 71.35,
+          "band": "major",
+          "reportCount": 271,
+          "counts": {
+            "tornado": 93,
+            "significantTornado": 26,
+            "violentTornado": 7,
+            "hail": 135,
+            "significantHail": 18,
+            "wind": 43,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.9147460826130527,
+            "violentTornado": 0.8631180445509524,
+            "significantHail": 0.44256846168407094,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9549793947946171,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.88
+        },
+        "outcomes": {
+          "tornado": 93,
+          "significantTornado": 26,
+          "violentTornado": 7,
+          "hail": 135,
+          "significantHail": 18,
+          "wind": 43,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1999-06-26",
+      "eventDate": "1999-06-26",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0,
+        "troughTilt": 0.2306,
+        "lowLevelJetStrength": 0.3602,
+        "moistureQuality": 1,
+        "capStrength": 0.6133,
+        "forcingTiming": 0.3455,
+        "discreteBias": 0.7543,
+        "environment": {
+          "shear01Ms": 11.75,
+          "shear06Ms": 24.18,
+          "srhProxyM2s2": 109.6,
+          "lclM": 636.8,
+          "cinJkg": 625.3,
+          "moistureTransportProxy": 298.7,
+          "pressureFall6hMb": 1.69
+        },
+        "diagnostics": {
+          "heightRange500m": 229.7,
+          "llj95Ms": 19.2,
+          "cape95Jkg": 2286.1,
+          "deepShear90Ms": 22.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.92,
+          "band": "organized",
+          "reportCount": 87,
+          "counts": {
+            "tornado": 11,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 56,
+            "significantHail": 7,
+            "wind": 20,
+            "destructiveWind": 1
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.20329653010653836,
+            "destructiveWind": 0.020449177742558944,
+            "spatialCoverage": 0.9709417239118568,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.88
+        },
+        "outcomes": {
+          "tornado": 11,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 56,
+          "significantHail": 7,
+          "wind": 20,
+          "destructiveWind": 1
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-1999-10-13",
+      "eventDate": "1999-10-13",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.0195,
+        "troughTilt": -0.2448,
+        "lowLevelJetStrength": 0.2623,
+        "moistureQuality": 1,
+        "capStrength": 0.6366,
+        "forcingTiming": 0.9116,
+        "discreteBias": 0.6171,
+        "environment": {
+          "shear01Ms": 10.44,
+          "shear06Ms": 30.17,
+          "srhProxyM2s2": 143.4,
+          "lclM": 706.1,
+          "cinJkg": 473.3,
+          "moistureTransportProxy": 160.5,
+          "pressureFall6hMb": 3.92
+        },
+        "diagnostics": {
+          "heightRange500m": 363.7,
+          "llj95Ms": 17.2,
+          "cape95Jkg": 1193,
+          "deepShear90Ms": 28.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.71,
+          "band": "organized",
+          "reportCount": 172,
+          "counts": {
+            "tornado": 4,
+            "significantTornado": 1,
+            "violentTornado": 0,
+            "hail": 38,
+            "significantHail": 0,
+            "wind": 130,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.09035145621899132,
+            "violentTornado": 0,
+            "significantHail": 0,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9999934424409624,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 0.88
+        },
+        "outcomes": {
+          "tornado": 4,
+          "significantTornado": 1,
+          "violentTornado": 0,
+          "hail": 38,
+          "significantHail": 0,
+          "wind": 130,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2011-04-21",
+      "eventDate": "2011-04-21",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0.1263,
+        "troughTilt": 0.0348,
+        "lowLevelJetStrength": 0.2417,
+        "moistureQuality": 1,
+        "capStrength": 0.5739,
+        "forcingTiming": 0.3376,
+        "discreteBias": 0.8582,
+        "environment": {
+          "shear01Ms": 11.77,
+          "shear06Ms": 30.31,
+          "srhProxyM2s2": 209.7,
+          "lclM": 625,
+          "cinJkg": 799.8,
+          "moistureTransportProxy": 193.2,
+          "pressureFall6hMb": 4.9
+        },
+        "diagnostics": {
+          "heightRange500m": 438.4,
+          "llj95Ms": 16.8,
+          "cape95Jkg": 2603.5,
+          "deepShear90Ms": 31.4
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.78,
+          "band": "organized",
+          "reportCount": 114,
+          "counts": {
+            "tornado": 5,
+            "significantTornado": 1,
+            "violentTornado": 0,
+            "hail": 81,
+            "significantHail": 4,
+            "wind": 28,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.07995558537067671,
+            "violentTornado": 0,
+            "significantHail": 0.10799693854690562,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9825468115577416,
+            "temporalConcentration": 0.9022556390977444
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 5,
+          "significantTornado": 1,
+          "violentTornado": 0,
+          "hail": 81,
+          "significantHail": 4,
+          "wind": 28,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2011-04-27",
+      "eventDate": "2011-04-27",
+      "status": "complete",
+      "completeness": {
+        "spc": true,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20110427-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2011-04-27T01:00:00.000Z",
+            "validStart": "2011-04-27T01:00:00.000Z",
+            "validEnd": "2011-04-27T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45,
+                0.6
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.6,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110427_0100.json"
+          },
+          {
+            "recordId": "20110427-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2011-04-27T12:00:00.000Z",
+            "validStart": "2011-04-27T12:00:00.000Z",
+            "validEnd": "2011-04-28T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110427_1200.json"
+          },
+          {
+            "recordId": "20110427-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2011-04-27T13:00:00.000Z",
+            "validStart": "2011-04-27T13:00:00.000Z",
+            "validEnd": "2011-04-28T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110427_1300.json"
+          },
+          {
+            "recordId": "20110427-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2011-04-27T16:30:00.000Z",
+            "validStart": "2011-04-27T16:30:00.000Z",
+            "validEnd": "2011-04-28T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.45,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110427_1630.json"
+          },
+          {
+            "recordId": "20110427-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2011-04-27T20:00:00.000Z",
+            "validStart": "2011-04-27T20:00:00.000Z",
+            "validEnd": "2011-04-28T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.45,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110427_2000.json"
+          }
+        ]
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0.0491,
+        "troughTilt": 0.991,
+        "lowLevelJetStrength": 0.5645,
+        "moistureQuality": 1,
+        "capStrength": 0.6175,
+        "forcingTiming": 0.4157,
+        "discreteBias": 0.8254,
+        "environment": {
+          "shear01Ms": 10.1,
+          "shear06Ms": 31.25,
+          "srhProxyM2s2": 133.5,
+          "lclM": 524.5,
+          "cinJkg": 108.1,
+          "moistureTransportProxy": 398.2,
+          "pressureFall6hMb": 2.66
+        },
+        "diagnostics": {
+          "heightRange500m": 384.4,
+          "llj95Ms": 23.3,
+          "cape95Jkg": 1930.6,
+          "deepShear90Ms": 27
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 73.15,
+          "band": "major",
+          "reportCount": 911,
+          "counts": {
+            "tornado": 329,
+            "significantTornado": 136,
+            "violentTornado": 34,
+            "hail": 195,
+            "significantHail": 20,
+            "wind": 387,
+            "destructiveWind": 10
+          },
+          "components": {
+            "significantTornado": 0.9999880327084439,
+            "violentTornado": 0.9997965316309894,
+            "significantHail": 0.4352818779922407,
+            "destructiveWind": 0.1662470819248194,
+            "spatialCoverage": 0.9304512615053373,
+            "temporalConcentration": 0.5174847106790027
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 329,
+          "significantTornado": 136,
+          "violentTornado": 34,
+          "hail": 195,
+          "significantHail": 20,
+          "wind": 387,
+          "destructiveWind": 10
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2011-05-24",
+      "eventDate": "2011-05-24",
+      "status": "complete",
+      "completeness": {
+        "spc": true,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20110524-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2011-05-24T01:00:00.000Z",
+            "validStart": "2011-05-24T01:00:00.000Z",
+            "validEnd": "2011-05-24T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.05,
+              "wind": 0.3,
+              "hail": 0.3,
+              "significantTornado": null,
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110524_0100.json"
+          },
+          {
+            "recordId": "20110524-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2011-05-24T12:00:00.000Z",
+            "validStart": "2011-05-24T12:00:00.000Z",
+            "validEnd": "2011-05-25T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.3,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110524_1200.json"
+          },
+          {
+            "recordId": "20110524-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2011-05-24T13:00:00.000Z",
+            "validStart": "2011-05-24T13:00:00.000Z",
+            "validEnd": "2011-05-25T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110524_1300.json"
+          },
+          {
+            "recordId": "20110524-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2011-05-24T16:30:00.000Z",
+            "validStart": "2011-05-24T16:30:00.000Z",
+            "validEnd": "2011-05-25T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45,
+                0.6
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.45,
+              "wind": 0.45,
+              "hail": 0.6,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110524_1630.json"
+          },
+          {
+            "recordId": "20110524-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2011-05-24T20:00:00.000Z",
+            "validStart": "2011-05-24T20:40:00.000Z",
+            "validEnd": "2011-05-25T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45,
+                0.6
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.45,
+              "wind": 0.45,
+              "hail": 0.6,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20110524_2000.json"
+          }
+        ]
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": 0.6367,
+        "lowLevelJetStrength": 0.2233,
+        "moistureQuality": 1,
+        "capStrength": 0.6208,
+        "forcingTiming": 0.5465,
+        "discreteBias": 0.6594,
+        "environment": {
+          "shear01Ms": 8.13,
+          "shear06Ms": 23.88,
+          "srhProxyM2s2": 77.7,
+          "lclM": 522.3,
+          "cinJkg": 108.6,
+          "moistureTransportProxy": 267.2,
+          "pressureFall6hMb": 2.23
+        },
+        "diagnostics": {
+          "heightRange500m": 273.8,
+          "llj95Ms": 16.5,
+          "cape95Jkg": 2052.8,
+          "deepShear90Ms": 21.7
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 72.08,
+          "band": "major",
+          "reportCount": 643,
+          "counts": {
+            "tornado": 64,
+            "significantTornado": 23,
+            "violentTornado": 5,
+            "hail": 272,
+            "significantHail": 45,
+            "wind": 307,
+            "destructiveWind": 4
+          },
+          "components": {
+            "significantTornado": 0.8529035326070232,
+            "violentTornado": 0.7134952031398099,
+            "significantHail": 0.7235469533704357,
+            "destructiveWind": 0.07014560790003455,
+            "spatialCoverage": 0.9674965701225725,
+            "temporalConcentration": 0.9375694290157743
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 64,
+          "significantTornado": 23,
+          "violentTornado": 5,
+          "hail": 272,
+          "significantHail": 45,
+          "wind": 307,
+          "destructiveWind": 4
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2011-07-22",
+      "eventDate": "2011-07-22",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": 0.1109,
+        "lowLevelJetStrength": 0.1108,
+        "moistureQuality": 1,
+        "capStrength": 0.5494,
+        "forcingTiming": 0.1679,
+        "discreteBias": 0.6938,
+        "environment": {
+          "shear01Ms": 9.51,
+          "shear06Ms": 21.05,
+          "srhProxyM2s2": 68.2,
+          "lclM": 941.3,
+          "cinJkg": 644.3,
+          "moistureTransportProxy": 216.1,
+          "pressureFall6hMb": 1.94
+        },
+        "diagnostics": {
+          "heightRange500m": 183.6,
+          "llj95Ms": 14.2,
+          "cape95Jkg": 2376.4,
+          "deepShear90Ms": 18.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.89,
+          "band": "organized",
+          "reportCount": 348,
+          "counts": {
+            "tornado": 5,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 93,
+            "significantHail": 7,
+            "wind": 250,
+            "destructiveWind": 3
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.18126924692201818,
+            "destructiveWind": 0.05308453373251132,
+            "spatialCoverage": 0.9955891495294458,
+            "temporalConcentration": 0.9441707717569787
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 5,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 93,
+          "significantHail": 7,
+          "wind": 250,
+          "destructiveWind": 3
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2013-05-19",
+      "eventDate": "2013-05-19",
+      "status": "complete",
+      "completeness": {
+        "spc": true,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20130519-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2013-05-19T01:00:00.000Z",
+            "validStart": "2013-05-19T01:00:00.000Z",
+            "validEnd": "2013-05-19T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.1,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20130519_0100.json"
+          },
+          {
+            "recordId": "20130519-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2013-05-19T12:00:00.000Z",
+            "validStart": "2013-05-19T12:00:00.000Z",
+            "validEnd": "2013-05-20T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.1,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20130519_1200.json"
+          },
+          {
+            "recordId": "20130519-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2013-05-19T13:00:00.000Z",
+            "validStart": "2013-05-19T13:00:00.000Z",
+            "validEnd": "2013-05-20T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20130519_1300.json"
+          },
+          {
+            "recordId": "20130519-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2013-05-19T16:30:00.000Z",
+            "validStart": "2013-05-19T16:30:00.000Z",
+            "validEnd": "2013-05-20T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20130519_1630.json"
+          },
+          {
+            "recordId": "20130519-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2013-05-19T20:00:00.000Z",
+            "validStart": "2013-05-19T20:00:00.000Z",
+            "validEnd": "2013-05-20T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20130519_2000.json"
+          }
+        ]
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": 0.9937,
+        "lowLevelJetStrength": 0.3741,
+        "moistureQuality": 1,
+        "capStrength": 0.5811,
+        "forcingTiming": 0.6107,
+        "discreteBias": 0.5268,
+        "environment": {
+          "shear01Ms": 8.83,
+          "shear06Ms": 20.04,
+          "srhProxyM2s2": 73.6,
+          "lclM": 562.7,
+          "cinJkg": 101.7,
+          "moistureTransportProxy": 288.8,
+          "pressureFall6hMb": 2.77
+        },
+        "diagnostics": {
+          "heightRange500m": 234.2,
+          "llj95Ms": 19.5,
+          "cape95Jkg": 3064.7,
+          "deepShear90Ms": 18.6
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 46.73,
+          "band": "significant",
+          "reportCount": 590,
+          "counts": {
+            "tornado": 34,
+            "significantTornado": 7,
+            "violentTornado": 1,
+            "hail": 243,
+            "significantHail": 17,
+            "wind": 313,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0.4419648542299529,
+            "violentTornado": 0.22119921692859512,
+            "significantHail": 0.38474242991946783,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9585973236350019,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 34,
+          "significantTornado": 7,
+          "violentTornado": 1,
+          "hail": 243,
+          "significantHail": 17,
+          "wind": 313,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2013-08-01",
+      "eventDate": "2013-08-01",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": -0.3464,
+        "lowLevelJetStrength": 0,
+        "moistureQuality": 1,
+        "capStrength": 0.5689,
+        "forcingTiming": 0.2804,
+        "discreteBias": 0.6648,
+        "environment": {
+          "shear01Ms": 7.67,
+          "shear06Ms": 21.28,
+          "srhProxyM2s2": 58.1,
+          "lclM": 771.9,
+          "cinJkg": 720.6,
+          "moistureTransportProxy": 149.6,
+          "pressureFall6hMb": 2.5
+        },
+        "diagnostics": {
+          "heightRange500m": 280.2,
+          "llj95Ms": 11.6,
+          "cape95Jkg": 1856.7,
+          "deepShear90Ms": 18.6
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.99,
+          "band": "organized",
+          "reportCount": 222,
+          "counts": {
+            "tornado": 3,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 114,
+            "significantHail": 4,
+            "wind": 105,
+            "destructiveWind": 6
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.10799693854690562,
+            "destructiveWind": 0.10335109974342449,
+            "spatialCoverage": 0.9882036557664385,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 3,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 114,
+          "significantHail": 4,
+          "wind": 105,
+          "destructiveWind": 6
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2013-08-03",
+      "eventDate": "2013-08-03",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0,
+        "troughTilt": -0.2138,
+        "lowLevelJetStrength": 0.0167,
+        "moistureQuality": 1,
+        "capStrength": 0.5474,
+        "forcingTiming": 0.1364,
+        "discreteBias": 0.8633,
+        "environment": {
+          "shear01Ms": 7.63,
+          "shear06Ms": 22.78,
+          "srhProxyM2s2": 73.6,
+          "lclM": 721.1,
+          "cinJkg": 693.5,
+          "moistureTransportProxy": 175.6,
+          "pressureFall6hMb": 0.67
+        },
+        "diagnostics": {
+          "heightRange500m": 236.4,
+          "llj95Ms": 12.3,
+          "cape95Jkg": 1823.2,
+          "deepShear90Ms": 22.7
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.89,
+          "band": "organized",
+          "reportCount": 111,
+          "counts": {
+            "tornado": 8,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 61,
+            "significantHail": 8,
+            "wind": 42,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.20433053835830717,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9882048316437476,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 8,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 61,
+          "significantHail": 8,
+          "wind": 42,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2013-11-17",
+      "eventDate": "2013-11-17",
+      "status": "complete",
+      "completeness": {
+        "spc": true,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20131117-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2013-11-17T01:00:00.000Z",
+            "validStart": "2013-11-17T01:00:00.000Z",
+            "validEnd": "2013-11-17T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [],
+              "significantWind": [],
+              "significantHail": []
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.05,
+              "wind": 0.15,
+              "hail": 0.15,
+              "significantTornado": null,
+              "significantWind": null,
+              "significantHail": null
+            },
+            "sourceFile": "day1_20131117_0100.json"
+          },
+          {
+            "recordId": "20131117-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2013-11-17T12:00:00.000Z",
+            "validStart": "2013-11-17T12:00:00.000Z",
+            "validEnd": "2013-11-18T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": []
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": null
+            },
+            "sourceFile": "day1_20131117_1200.json"
+          },
+          {
+            "recordId": "20131117-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2013-11-17T13:00:00.000Z",
+            "validStart": "2013-11-17T13:00:00.000Z",
+            "validEnd": "2013-11-18T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": []
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.3,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": null
+            },
+            "sourceFile": "day1_20131117_1300.json"
+          },
+          {
+            "recordId": "20131117-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2013-11-17T16:30:00.000Z",
+            "validStart": "2013-11-17T16:30:00.000Z",
+            "validEnd": "2013-11-18T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": []
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.3,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": null
+            },
+            "sourceFile": "day1_20131117_1630.json"
+          },
+          {
+            "recordId": "20131117-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2013-11-17T20:00:00.000Z",
+            "validStart": "2013-11-17T20:00:00.000Z",
+            "validEnd": "2013-11-18T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "HIGH",
+                "MDT",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45,
+                0.6
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": []
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.6,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": null
+            },
+            "sourceFile": "day1_20131117_2000.json"
+          }
+        ]
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.3009,
+        "troughTilt": 0.1306,
+        "lowLevelJetStrength": 0.7805,
+        "moistureQuality": 1,
+        "capStrength": 0.6357,
+        "forcingTiming": 0.7135,
+        "discreteBias": 0.7003,
+        "environment": {
+          "shear01Ms": 11.31,
+          "shear06Ms": 28.81,
+          "srhProxyM2s2": 101.6,
+          "lclM": 339.4,
+          "cinJkg": 111.2,
+          "moistureTransportProxy": 374.4,
+          "pressureFall6hMb": 3.78
+        },
+        "diagnostics": {
+          "heightRange500m": 560.6,
+          "llj95Ms": 27.6,
+          "cape95Jkg": 922.5,
+          "deepShear90Ms": 25.3
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 60.66,
+          "band": "major",
+          "reportCount": 596,
+          "counts": {
+            "tornado": 111,
+            "significantTornado": 52,
+            "violentTornado": 2,
+            "hail": 62,
+            "significantHail": 5,
+            "wind": 423,
+            "destructiveWind": 3
+          },
+          "components": {
+            "significantTornado": 0.986876271263059,
+            "violentTornado": 0.3934693402873666,
+            "significantHail": 0.1331221002498184,
+            "destructiveWind": 0.05308453373251132,
+            "spatialCoverage": 0.848485847713857,
+            "temporalConcentration": 0.9635666347075743
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 111,
+          "significantTornado": 52,
+          "violentTornado": 2,
+          "hail": 62,
+          "significantHail": 5,
+          "wind": 423,
+          "destructiveWind": 3
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2020-04-12",
+      "eventDate": "2020-04-12",
+      "status": "complete",
+      "completeness": {
+        "spc": true,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20200412-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2020-04-12T01:00:00.000Z",
+            "validStart": "2020-04-12T01:00:00.000Z",
+            "validEnd": "2020-04-12T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "ENH",
+              "tornado": 0.1,
+              "wind": 0.15,
+              "hail": 0.3,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200412_0100.json"
+          },
+          {
+            "recordId": "20200412-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2020-04-12T12:00:00.000Z",
+            "validStart": "2020-04-12T12:00:00.000Z",
+            "validEnd": "2020-04-13T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.45,
+              "hail": 0.3,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200412_1200.json"
+          },
+          {
+            "recordId": "20200412-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2020-04-12T13:00:00.000Z",
+            "validStart": "2020-04-12T13:00:00.000Z",
+            "validEnd": "2020-04-13T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.45,
+              "hail": 0.3,
+              "significantTornado": "SIGN",
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200412_1300.json"
+          },
+          {
+            "recordId": "20200412-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2020-04-12T16:30:00.000Z",
+            "validStart": "2020-04-12T16:30:00.000Z",
+            "validEnd": "2020-04-13T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.45,
+              "hail": 0.3,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200412_1630.json"
+          },
+          {
+            "recordId": "20200412-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2020-04-12T20:00:00.000Z",
+            "validStart": "2020-04-12T20:00:00.000Z",
+            "validEnd": "2020-04-13T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.45,
+              "hail": 0.3,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200412_2000.json"
+          }
+        ]
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.2281,
+        "troughTilt": 0.1807,
+        "lowLevelJetStrength": 0.5515,
+        "moistureQuality": 1,
+        "capStrength": 0.6299,
+        "forcingTiming": 0.6893,
+        "discreteBias": 0.7105,
+        "environment": {
+          "shear01Ms": 10.32,
+          "shear06Ms": 32.87,
+          "srhProxyM2s2": 146,
+          "lclM": 645.2,
+          "cinJkg": 110.2,
+          "moistureTransportProxy": 348.6,
+          "pressureFall6hMb": 4.17
+        },
+        "diagnostics": {
+          "heightRange500m": 509.7,
+          "llj95Ms": 23,
+          "cape95Jkg": 2031.5,
+          "deepShear90Ms": 32.4
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 63.03,
+          "band": "major",
+          "reportCount": 485,
+          "counts": {
+            "tornado": 102,
+            "significantTornado": 27,
+            "violentTornado": 5,
+            "hail": 65,
+            "significantHail": 2,
+            "wind": 318,
+            "destructiveWind": 5
+          },
+          "components": {
+            "significantTornado": 0.8946007754381357,
+            "violentTornado": 0.7134952031398099,
+            "significantHail": 0.05554086300513017,
+            "destructiveWind": 0.0868992837177377,
+            "spatialCoverage": 0.979655952238288,
+            "temporalConcentration": 0.865979381443299
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 102,
+          "significantTornado": 27,
+          "violentTornado": 5,
+          "hail": 65,
+          "significantHail": 2,
+          "wind": 318,
+          "destructiveWind": 5
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2020-04-13",
+      "eventDate": "2020-04-13",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.3812,
+        "troughTilt": -0.0274,
+        "lowLevelJetStrength": 0.5404,
+        "moistureQuality": 0.9886,
+        "capStrength": 0.5974,
+        "forcingTiming": 1,
+        "discreteBias": 0.58,
+        "environment": {
+          "shear01Ms": 9.18,
+          "shear06Ms": 35.45,
+          "srhProxyM2s2": 163.7,
+          "lclM": 752.9,
+          "cinJkg": 104.5,
+          "moistureTransportProxy": 216.6,
+          "pressureFall6hMb": 3.24
+        },
+        "diagnostics": {
+          "heightRange500m": 616.8,
+          "llj95Ms": 22.8,
+          "cape95Jkg": 1403.2,
+          "deepShear90Ms": 36
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 48.92,
+          "band": "significant",
+          "reportCount": 670,
+          "counts": {
+            "tornado": 87,
+            "significantTornado": 17,
+            "violentTornado": 1,
+            "hail": 4,
+            "significantHail": 0,
+            "wind": 579,
+            "destructiveWind": 5
+          },
+          "components": {
+            "significantTornado": 0.7574789253643512,
+            "violentTornado": 0.22119921692859512,
+            "significantHail": 0,
+            "destructiveWind": 0.0868992837177377,
+            "spatialCoverage": 0.8921843200769369,
+            "temporalConcentration": 0.8187633262260129
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 87,
+          "significantTornado": 17,
+          "violentTornado": 1,
+          "hail": 4,
+          "significantHail": 0,
+          "wind": 579,
+          "destructiveWind": 5
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2020-07-12",
+      "eventDate": "2020-07-12",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": -0.5922,
+        "lowLevelJetStrength": 0,
+        "moistureQuality": 1,
+        "capStrength": 0.6038,
+        "forcingTiming": 0.3336,
+        "discreteBias": 0.6828,
+        "environment": {
+          "shear01Ms": 8.13,
+          "shear06Ms": 20.02,
+          "srhProxyM2s2": 81.2,
+          "lclM": 1022.2,
+          "cinJkg": 831.8,
+          "moistureTransportProxy": 183.3,
+          "pressureFall6hMb": 4.04
+        },
+        "diagnostics": {
+          "heightRange500m": 234,
+          "llj95Ms": 11.9,
+          "cape95Jkg": 3231.5,
+          "deepShear90Ms": 19.8
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.85,
+          "band": "organized",
+          "reportCount": 229,
+          "counts": {
+            "tornado": 1,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 62,
+            "significantHail": 8,
+            "wind": 166,
+            "destructiveWind": 5
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.20433053835830717,
+            "destructiveWind": 0.0868992837177377,
+            "spatialCoverage": 0.9915017474804746,
+            "temporalConcentration": 0.860885839051778
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 1,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 62,
+          "significantHail": 8,
+          "wind": 166,
+          "destructiveWind": 5
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2020-07-19",
+      "eventDate": "2020-07-19",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": -0.0098,
+        "lowLevelJetStrength": 0.2804,
+        "moistureQuality": 1,
+        "capStrength": 0.4935,
+        "forcingTiming": 0.5363,
+        "discreteBias": 0.5693,
+        "environment": {
+          "shear01Ms": 11.36,
+          "shear06Ms": 21.2,
+          "srhProxyM2s2": 97.2,
+          "lclM": 810.5,
+          "cinJkg": 762,
+          "moistureTransportProxy": 283.5,
+          "pressureFall6hMb": 2.23
+        },
+        "diagnostics": {
+          "heightRange500m": 234.8,
+          "llj95Ms": 17.6,
+          "cape95Jkg": 3202.1,
+          "deepShear90Ms": 19
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.79,
+          "band": "organized",
+          "reportCount": 395,
+          "counts": {
+            "tornado": 1,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 54,
+            "significantHail": 9,
+            "wind": 340,
+            "destructiveWind": 1
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.22674225951680937,
+            "destructiveWind": 0.018017526141772544,
+            "spatialCoverage": 0.9860258774676726,
+            "temporalConcentration": 0.9330922242314648
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 1,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 54,
+          "significantHail": 9,
+          "wind": 340,
+          "destructiveWind": 1
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2020-08-10",
+      "eventDate": "2020-08-10",
+      "status": "partial",
+      "completeness": {
+        "spc": true,
+        "era5": false,
+        "noaa": false
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20200810-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2020-08-10T01:00:00.000Z",
+            "validStart": "2020-08-10T01:00:00.000Z",
+            "validEnd": "2020-08-10T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.02,
+              "wind": 0.15,
+              "hail": 0.05,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200810_0100.json"
+          },
+          {
+            "recordId": "20200810-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2020-08-10T12:00:00.000Z",
+            "validStart": "2020-08-10T12:00:00.000Z",
+            "validEnd": "2020-08-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": null,
+              "wind": 0.15,
+              "hail": 0.05,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200810_1200.json"
+          },
+          {
+            "recordId": "20200810-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2020-08-10T13:00:00.000Z",
+            "validStart": "2020-08-10T13:00:00.000Z",
+            "validEnd": "2020-08-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "ENH",
+              "tornado": 0.02,
+              "wind": 0.3,
+              "hail": 0.05,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200810_1300.json"
+          },
+          {
+            "recordId": "20200810-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2020-08-10T16:30:00.000Z",
+            "validStart": "2020-08-10T16:30:00.000Z",
+            "validEnd": "2020-08-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.05,
+              "wind": 0.45,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200810_1630.json"
+          },
+          {
+            "recordId": "20200810-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2020-08-10T20:00:00.000Z",
+            "validStart": "2020-08-10T20:00:00.000Z",
+            "validEnd": "2020-08-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.05,
+              "wind": 0.45,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20200810_2000.json"
+          }
+        ]
+      },
+      "atmosphere": null,
+      "outcomes": null,
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": null,
+        "noaa": null
+      }
+    },
+    {
+      "caseId": "training-2021-05-25",
+      "eventDate": "2021-05-25",
+      "status": "complete",
+      "completeness": {
+        "spc": true,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20210525-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2021-05-25T01:00:00.000Z",
+            "validStart": "2021-05-25T01:00:00.000Z",
+            "validEnd": "2021-05-25T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [],
+              "significantWind": [],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.05,
+              "wind": 0.15,
+              "hail": 0.15,
+              "significantTornado": null,
+              "significantWind": null,
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20210525_0100.json"
+          },
+          {
+            "recordId": "20210525-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2021-05-25T12:00:00.000Z",
+            "validStart": "2021-05-25T12:00:00.000Z",
+            "validEnd": "2021-05-26T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [],
+              "significantWind": [],
+              "significantHail": []
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.02,
+              "wind": 0.15,
+              "hail": 0.15,
+              "significantTornado": null,
+              "significantWind": null,
+              "significantHail": null
+            },
+            "sourceFile": "day1_20210525_1200.json"
+          },
+          {
+            "recordId": "20210525-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2021-05-25T13:00:00.000Z",
+            "validStart": "2021-05-25T13:00:00.000Z",
+            "validEnd": "2021-05-26T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.02,
+              "wind": 0.15,
+              "hail": 0.15,
+              "significantTornado": null,
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20210525_1300.json"
+          },
+          {
+            "recordId": "20210525-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2021-05-25T16:30:00.000Z",
+            "validStart": "2021-05-25T16:30:00.000Z",
+            "validEnd": "2021-05-26T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.02,
+              "wind": 0.15,
+              "hail": 0.15,
+              "significantTornado": null,
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20210525_1630.json"
+          },
+          {
+            "recordId": "20210525-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2021-05-25T20:00:00.000Z",
+            "validStart": "2021-05-25T20:00:00.000Z",
+            "validEnd": "2021-05-26T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02
+              ],
+              "wind": [
+                0.05,
+                0.15
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "SLGT",
+              "tornado": 0.02,
+              "wind": 0.15,
+              "hail": 0.15,
+              "significantTornado": null,
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20210525_2000.json"
+          }
+        ]
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0,
+        "troughTilt": 0.1982,
+        "lowLevelJetStrength": 0.357,
+        "moistureQuality": 1,
+        "capStrength": 0.6144,
+        "forcingTiming": 0.5585,
+        "discreteBias": 0.4841,
+        "environment": {
+          "shear01Ms": 12.3,
+          "shear06Ms": 19.95,
+          "srhProxyM2s2": 92.1,
+          "lclM": 797.1,
+          "cinJkg": 662.4,
+          "moistureTransportProxy": 255.5,
+          "pressureFall6hMb": 2.24
+        },
+        "diagnostics": {
+          "heightRange500m": 321.8,
+          "llj95Ms": 19.1,
+          "cape95Jkg": 1806.2,
+          "deepShear90Ms": 16.8
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.92,
+          "band": "organized",
+          "reportCount": 117,
+          "counts": {
+            "tornado": 0,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 39,
+            "significantHail": 9,
+            "wind": 78,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.22674225951680937,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9676263553707878,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 0,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 39,
+          "significantHail": 9,
+          "wind": 78,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2021-05-29",
+      "eventDate": "2021-05-29",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "dryline_cyclone",
+        "troughAmplitude": 0,
+        "troughTilt": -0.6214,
+        "lowLevelJetStrength": 0.0786,
+        "moistureQuality": 1,
+        "capStrength": 0.7093,
+        "forcingTiming": 0.3446,
+        "discreteBias": 0.7225,
+        "environment": {
+          "shear01Ms": 8.89,
+          "shear06Ms": 20.01,
+          "srhProxyM2s2": 95.5,
+          "lclM": 753,
+          "cinJkg": 717.8,
+          "moistureTransportProxy": 134.5,
+          "pressureFall6hMb": 2.29
+        },
+        "diagnostics": {
+          "heightRange500m": 247.6,
+          "llj95Ms": 13.6,
+          "cape95Jkg": 1547,
+          "deepShear90Ms": 21.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 27.63,
+          "band": "organized",
+          "reportCount": 68,
+          "counts": {
+            "tornado": 2,
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "hail": 47,
+            "significantHail": 8,
+            "wind": 19,
+            "destructiveWind": 0
+          },
+          "components": {
+            "significantTornado": 0,
+            "violentTornado": 0,
+            "significantHail": 0.20433053835830717,
+            "destructiveWind": 0,
+            "spatialCoverage": 0.9712785295613183,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 2,
+          "significantTornado": 0,
+          "violentTornado": 0,
+          "hail": 47,
+          "significantHail": 8,
+          "wind": 19,
+          "destructiveWind": 0
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2021-12-10",
+      "eventDate": "2021-12-10",
+      "status": "complete",
+      "completeness": {
+        "spc": true,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20211210-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2021-12-10T01:00:00.000Z",
+            "validStart": "2021-12-10T01:00:00.000Z",
+            "validEnd": "2021-12-10T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "TSTM"
+              ],
+              "tornado": [],
+              "wind": [],
+              "hail": [],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "TSTM",
+              "tornado": null,
+              "wind": null,
+              "hail": null,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20211210_0100.json"
+          },
+          {
+            "recordId": "20211210-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2021-12-10T12:00:00.000Z",
+            "validStart": "2021-12-10T12:00:00.000Z",
+            "validEnd": "2021-12-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "ENH",
+              "tornado": 0.1,
+              "wind": 0.3,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20211210_1200.json"
+          },
+          {
+            "recordId": "20211210-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2021-12-10T13:00:00.000Z",
+            "validStart": "2021-12-10T13:00:00.000Z",
+            "validEnd": "2021-12-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "ENH",
+              "tornado": 0.1,
+              "wind": 0.3,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20211210_1300.json"
+          },
+          {
+            "recordId": "20211210-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2021-12-10T16:30:00.000Z",
+            "validStart": "2021-12-10T16:30:00.000Z",
+            "validEnd": "2021-12-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.3,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20211210_1630.json"
+          },
+          {
+            "recordId": "20211210-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2021-12-10T20:00:00.000Z",
+            "validStart": "2021-12-11T01:00:00.000Z",
+            "validEnd": "2021-12-11T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.3,
+              "hail": 0.15,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20211210_2000.json"
+          }
+        ]
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.3631,
+        "troughTilt": 0.276,
+        "lowLevelJetStrength": 0.4538,
+        "moistureQuality": 1,
+        "capStrength": 0.515,
+        "forcingTiming": 0.7467,
+        "discreteBias": 0.6864,
+        "environment": {
+          "shear01Ms": 10.31,
+          "shear06Ms": 33.13,
+          "srhProxyM2s2": 137.1,
+          "lclM": 477.1,
+          "cinJkg": 90.1,
+          "moistureTransportProxy": 283.6,
+          "pressureFall6hMb": 3.67
+        },
+        "diagnostics": {
+          "heightRange500m": 604.1,
+          "llj95Ms": 21.1,
+          "cape95Jkg": 1479.8,
+          "deepShear90Ms": 31.3
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 64.18,
+          "band": "major",
+          "reportCount": 212,
+          "counts": {
+            "tornado": 71,
+            "significantTornado": 36,
+            "violentTornado": 8,
+            "hail": 25,
+            "significantHail": 1,
+            "wind": 116,
+            "destructiveWind": 1
+          },
+          "components": {
+            "significantTornado": 0.950212931632136,
+            "violentTornado": 0.8646647167633873,
+            "significantHail": 0.028167124967018897,
+            "destructiveWind": 0.018017526141772544,
+            "spatialCoverage": 0.8009536749696808,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 71,
+          "significantTornado": 36,
+          "violentTornado": 8,
+          "hail": 25,
+          "significantHail": 1,
+          "wind": 116,
+          "destructiveWind": 1
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2021-12-15",
+      "eventDate": "2021-12-15",
+      "status": "partial",
+      "completeness": {
+        "spc": false,
+        "era5": true,
+        "noaa": true
+      },
+      "spc": {
+        "discoveredIssuanceCount": 0,
+        "issuanceCount": 0,
+        "rejectedIssuanceCount": 0,
+        "issuances": []
+      },
+      "atmosphere": {
+        "family": "lee_cyclogenesis",
+        "troughAmplitude": 0.1515,
+        "troughTilt": 0.9406,
+        "lowLevelJetStrength": 0.7161,
+        "moistureQuality": 0.9137,
+        "capStrength": 0.7706,
+        "forcingTiming": 1,
+        "discreteBias": 0.58,
+        "environment": {
+          "shear01Ms": 12.1,
+          "shear06Ms": 28.94,
+          "srhProxyM2s2": 107,
+          "lclM": 472.3,
+          "cinJkg": 134.9,
+          "moistureTransportProxy": 321.6,
+          "pressureFall6hMb": 7.09
+        },
+        "diagnostics": {
+          "heightRange500m": 456,
+          "llj95Ms": 26.3,
+          "cape95Jkg": 460.1,
+          "deepShear90Ms": 28.1
+        }
+      },
+      "outcomes": {
+        "intensity": {
+          "score": 60.5,
+          "band": "major",
+          "reportCount": 785,
+          "counts": {
+            "tornado": 167,
+            "significantTornado": 39,
+            "violentTornado": 0,
+            "hail": 28,
+            "significantHail": 4,
+            "wind": 590,
+            "destructiveWind": 24
+          },
+          "components": {
+            "significantTornado": 0.961225792168278,
+            "violentTornado": 0,
+            "significantHail": 0.10799693854690562,
+            "destructiveWind": 0.35361736503667873,
+            "spatialCoverage": 0.9823849727392704,
+            "temporalConcentration": 1
+          },
+          "reportingEraWeight": 1
+        },
+        "outcomes": {
+          "tornado": 167,
+          "significantTornado": 39,
+          "violentTornado": 0,
+          "hail": 28,
+          "significantHail": 4,
+          "wind": 590,
+          "destructiveWind": 24
+        },
+        "provenance": {
+          "reports": "NOAA NCEI Storm Events",
+          "environment": "ERA5-derived summary"
+        }
+      },
+      "provenance": {
+        "spc": null,
+        "era5": "ERA5-derived summary",
+        "noaa": "NOAA NCEI Storm Events analog catalog"
+      }
+    },
+    {
+      "caseId": "training-2024-05-06",
+      "eventDate": "2024-05-06",
+      "status": "partial",
+      "completeness": {
+        "spc": true,
+        "era5": false,
+        "noaa": false
+      },
+      "spc": {
+        "discoveredIssuanceCount": 5,
+        "issuanceCount": 5,
+        "rejectedIssuanceCount": 0,
+        "issuances": [
+          {
+            "recordId": "20240506-day1-0100",
+            "cycle": "0100",
+            "issuedAt": "2024-05-06T01:00:00.000Z",
+            "validStart": "2024-05-06T01:00:00.000Z",
+            "validEnd": "2024-05-06T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "MRGL",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02
+              ],
+              "wind": [
+                0.05
+              ],
+              "hail": [],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MRGL",
+              "tornado": 0.02,
+              "wind": 0.05,
+              "hail": null,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20240506_0100.json"
+          },
+          {
+            "recordId": "20240506-day1-1200",
+            "cycle": "1200",
+            "issuedAt": "2024-05-06T12:00:00.000Z",
+            "validStart": "2024-05-06T12:00:00.000Z",
+            "validEnd": "2024-05-07T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "MDT",
+              "tornado": 0.15,
+              "wind": 0.3,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20240506_1200.json"
+          },
+          {
+            "recordId": "20240506-day1-1300",
+            "cycle": "1300",
+            "issuedAt": "2024-05-06T13:00:00.000Z",
+            "validStart": "2024-05-06T13:00:00.000Z",
+            "validEnd": "2024-05-07T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "HIGH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.3,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20240506_1300.json"
+          },
+          {
+            "recordId": "20240506-day1-1630",
+            "cycle": "1630",
+            "issuedAt": "2024-05-06T16:30:00.000Z",
+            "validStart": "2024-05-06T16:30:00.000Z",
+            "validEnd": "2024-05-07T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "HIGH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20240506_1630.json"
+          },
+          {
+            "recordId": "20240506-day1-2000",
+            "cycle": "2000",
+            "issuedAt": "2024-05-06T20:00:00.000Z",
+            "validStart": "2024-05-06T20:00:00.000Z",
+            "validEnd": "2024-05-07T12:00:00.000Z",
+            "hazardLevels": {
+              "categorical": [
+                "ENH",
+                "HIGH",
+                "MDT",
+                "MRGL",
+                "SLGT",
+                "TSTM"
+              ],
+              "tornado": [
+                0.02,
+                0.05,
+                0.1,
+                0.15,
+                0.3
+              ],
+              "wind": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "hail": [
+                0.05,
+                0.15,
+                0.3,
+                0.45
+              ],
+              "significantTornado": [
+                "SIGN"
+              ],
+              "significantWind": [
+                "SIGN"
+              ],
+              "significantHail": [
+                "SIGN"
+              ]
+            },
+            "hazardMaxima": {
+              "categorical": "HIGH",
+              "tornado": 0.3,
+              "wind": 0.45,
+              "hail": 0.45,
+              "significantTornado": "SIGN",
+              "significantWind": "SIGN",
+              "significantHail": "SIGN"
+            },
+            "sourceFile": "day1_20240506_2000.json"
+          }
+        ]
+      },
+      "atmosphere": null,
+      "outcomes": null,
+      "provenance": {
+        "spc": "normalized SPC outlook corpus",
+        "era5": null,
+        "noaa": null
+      }
+    }
+  ]
+}
