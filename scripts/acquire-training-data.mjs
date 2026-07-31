@@ -2,8 +2,10 @@
 import process from 'node:process';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { pairTrainingCorpus } from './pair-training-corpus.mjs';
+import { validateTrainingCorpus } from './training-corpus.mjs';
 import { readFile } from 'node:fs/promises';
-import { ensureTrainingLayout, readJsonIfExists, writeCorpusStatus } from '../js/training/TrainingCorpusManager.js';
+import { ensureTrainingLayout, readDateRecordMap, readJsonIfExists, writeCorpusStatus } from '../js/training/TrainingCorpusManager.js';
 import {
   createCaseAcquisition,
   loadAcquisitionCatalog,
@@ -45,7 +47,10 @@ for (const task of tasks) {
   } catch (error) {
     const key = task.source === 'era5' ? 'era5Raw' : 'noaa';
     setStage(record, key, 'failed', { message: error.message });
-    if (task.source === 'era5') setStage(record, 'era5Extracted', 'failed', { message: error.message });
+    if (task.source === 'era5') {
+      setStage(record, 'era5Extracted', 'failed', { message: error.message });
+      setStage(record, 'era5Spatial', 'failed', { message: error.message });
+    }
     console.error(`${task.date} ${task.source} failed: ${error.message}`);
     if (!args.continueOnError) {
       await saveAcquisitionCatalog(paths.acquisition, catalog);
@@ -56,21 +61,46 @@ for (const task of tasks) {
   await saveAcquisitionCatalog(paths.acquisition, catalog);
 }
 await writeCorpusStatus(paths);
-console.log(JSON.stringify(summarizeAcquisition(catalog), null, 2));
+
+console.log('Running automatic corpus pairing...');
+const pairingResult = await pairTrainingCorpus({ root: paths.root, cacheRoot: paths.cacheRoot });
+
+console.log('Running corpus validation...');
+const validationResult = await validateTrainingCorpus({ root: paths.root, cacheRoot: paths.cacheRoot });
+console.log(JSON.stringify({
+  valid: validationResult.valid,
+  eventDates: validationResult.eventDates,
+  completeDates: validationResult.completeDates,
+  issues: validationResult.issues
+}, null, 2));
+
+const acquisitionSummary = summarizeAcquisition(catalog);
+acquisitionSummary.paired = pairingResult.paired.summary.completeCount;
+console.log(JSON.stringify(acquisitionSummary, null, 2));
 
 async function runEra5(date, record, paths, args) {
   setStage(record, 'era5Raw', 'downloading', { message: 'Requesting ERA5 pressure and single-level fields.' });
+  setStage(record, 'era5Spatial', 'extracting', { message: 'Building standardized spatial tensor.' });
   await saveAcquisitionCatalog(paths.acquisition, catalog);
   const command = args.python ?? process.env.PYTHON ?? 'python';
   const scriptArgs = [
     'scripts/acquire-era5-training.py', '--dates', date,
     '--cache-root', paths.cacheEra5Raw,
-    '--output-root', paths.era5Records
+    '--output-root', paths.era5Records,
+    '--spatial-root', paths.cacheEra5Spatial,
+    '--manifest-root', paths.era5SpatialManifests
   ];
   if (args.keepRaw) scriptArgs.push('--keep-raw');
   await run(command, scriptArgs);
   setStage(record, 'era5Raw', 'downloaded', { message: 'ERA5 raw fields cached.' });
-  setStage(record, 'era5Extracted', 'complete', { files: [path.relative(paths.root, path.join(paths.era5Records, `${date}.json`))] });
+  setStage(record, 'era5Extracted', 'complete', { files: [
+    path.relative(paths.root, path.join(paths.era5Records, `${date}.json`)),
+    path.relative(paths.root, path.join(paths.era5SpatialManifests, `${date}.json`))
+  ], message: 'Compact ERA5 summary complete.' });
+  setStage(record, 'era5Spatial', 'complete', {
+    files: [path.relative(paths.root, path.join(paths.era5SpatialManifests, `${date}.json`))],
+    message: 'Standardized spatial ERA5 tensor complete.'
+  });
 }
 
 async function runNoaa(date, record, paths) {
@@ -87,17 +117,20 @@ async function runNoaa(date, record, paths) {
 async function hydrateKnownStages(catalog, dates, paths) {
   const spc = await readJsonIfExists(paths.casesCatalog, { records: [] });
   const spcDates = new Set((spc.records ?? []).map(item => item.eventDate));
-  const era5 = await readJsonIfExists(paths.era5Derived, {});
+  const era5 = { ...(await readJsonIfExists(paths.era5Derived, {})), ...(await readDateRecordMap(paths.era5Records)) };
+  const noaaRecords = await readDateRecordMap(paths.noaaRecords);
   const noaa = await readJsonIfExists(paths.noaaOutcomes, { records: [] });
-  const noaaDates = new Set((noaa.records ?? []).map(item => item.eventDate));
+  const noaaDates = new Set([...(noaa.records ?? []).map(item => item.eventDate), ...Object.keys(noaaRecords)]);
   for (const date of dates) {
     const record = catalog.cases[date] ?? createCaseAcquisition(date);
     catalog.cases[date] = record;
     if (spcDates.has(date)) setStage(record, 'spc', 'complete', { message: 'Validated SPC target present.' });
+    const spatialManifest = await readJsonIfExists(path.join(paths.era5SpatialManifests, `${date}.json`), null);
     if (era5[date]) {
       setStage(record, 'era5Raw', record.era5Raw.status === 'missing' ? 'warning' : record.era5Raw.status, { message: 'Legacy compact ERA5 summary present; raw cache not verified.' });
       setStage(record, 'era5Extracted', 'complete', { message: 'Compact ERA5 summary present.' });
     }
+    if (spatialManifest) setStage(record, 'era5Spatial', 'complete', { message: 'Spatial ERA5 manifest present.' });
     if (noaaDates.has(date)) setStage(record, 'noaa', 'complete', { message: 'NOAA outcome record present.' });
   }
 }
@@ -134,3 +167,4 @@ function parseArgs(values) {
   for (const date of out.dates) if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new TypeError(`Invalid date: ${date}`);
   return out;
 }
+

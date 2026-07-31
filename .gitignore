@@ -45,3 +45,10 @@ training/cache/
 *.nc
 *.netcdf
 *.zip.part
+
+# 2.37.0 spatial tensors remain in the external cache
+training/atmospheric/era5/spatial/*.npz
+*.npz
+
+# Generated atmosphere-first seed records
+training/generated-seeds/

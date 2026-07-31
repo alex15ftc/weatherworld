@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2.36.1.2",
+  "schemaVersion": "2.37.0",
   "eventDate": "2020-08-10",
   "source": "ERA5",
   "validTimes": [
@@ -402,12 +402,30 @@
     "pressureMeanPa": 101395.2136,
     "diagnosticCompleteness": 1.0
   },
+  "spatialRecord": {
+    "manifest": "atmospheric/era5/spatial/2020-08-10.json",
+    "cacheRelativePath": "era5/spatial/2020-08-10/atmosphere.npz",
+    "sha256": "5c7317c1c13807873c2b3dc0fe1642cb32b079cfcac4fc26f28f7d4945ed9aae",
+    "grid": {
+      "projection": "latitude-longitude",
+      "rows": 100,
+      "cols": 100,
+      "north": 52.0,
+      "south": 22.0,
+      "west": -115.0,
+      "east": -80.0,
+      "nominalCellKm": 10,
+      "sourceResolutionNote": "ERA5 is interpolated to the simulator grid; this does not create new 10 km-scale information."
+    },
+    "timeCount": 8,
+    "channelCount": 55
+  },
   "provenance": {
     "dataset": "reanalysis-era5",
-    "acquiredAt": "2026-07-29T02:38:41.609399+00:00",
+    "acquiredAt": "2026-07-30T20:51:13.972557+00:00",
     "pressureFileSha256": "0d456b218fac30c831a81ec11cacc4064c4da2a29f59fa8892cd1cde3f3450e7",
     "surfaceFileSha256": "477529b32fd2cd7dbe83cad58c22d869b1c0f89dc0771c5a87934fe267bc3315",
-    "extractorVersion": "2.36.1.2",
-    "decoder": "cfgrib-surface-dataset-index"
+    "extractorVersion": "2.37.0",
+    "decoder": "cfgrib-spatial-tensor-and-summary"
   }
 }

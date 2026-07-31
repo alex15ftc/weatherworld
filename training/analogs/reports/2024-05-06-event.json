@@ -1,0 +1,941 @@
+{
+  "schemaVersion": "2.40.0",
+  "generatedAt": "2026-07-31T04:55:26.309Z",
+  "query": {
+    "eventDate": "2024-05-06",
+    "pattern": "Warm-front or strongly curved-hodograph regime",
+    "role": "event"
+  },
+  "candidateCount": 38,
+  "resultCount": 5,
+  "confidence": {
+    "level": "LOW",
+    "score": 0.6194305797328636,
+    "novelty": 0.3270425219461399,
+    "bestSimilarity": 0.6729574780538601,
+    "bestSecondSeparation": 0.03161114892472172
+  },
+  "results": [
+    {
+      "rank": 1,
+      "eventDate": "1991-04-26",
+      "similarity": 0.6729574780538601,
+      "atmosphericSimilarity": 0.6729574780538601,
+      "qualityScore": 1,
+      "corpusRoles": [
+        "event"
+      ],
+      "pattern": "High-instability weak-forcing regime",
+      "metrics": {
+        "weightedDistance": 0.7477938772275728,
+        "euclideanSimilarity": 0.57214984731852,
+        "cosineSimilarity": 0.7542966756686715,
+        "mahalanobisSimilarity": 0.7560877475051195
+      },
+      "groupSimilarities": {
+        "spatial": 0.45711777905522616,
+        "spatialDirect": 0.5328456459092044,
+        "synoptic": 0.7613141816604959,
+        "thermodynamics": 0.5235533660994035,
+        "windProfile": 0.6512613021585737
+      },
+      "groupDiagnostics": {
+        "spatial": {
+          "similarity": 0.45711777905522616,
+          "rootMeanSquaredDifference": 1.1876200091512654,
+          "meanAbsoluteDifference": 0.7997969470364091,
+          "featureCount": 9
+        },
+        "spatialDirect": {
+          "similarity": 0.5328456459092044,
+          "rootMeanSquaredDifference": 0.8767160953219044,
+          "meanAbsoluteDifference": 0.6038416609180638,
+          "featureCount": 27
+        },
+        "synoptic": {
+          "similarity": 0.7613141816604959,
+          "rootMeanSquaredDifference": 0.3135181559588295,
+          "meanAbsoluteDifference": 0.2927262487817652,
+          "featureCount": 7
+        },
+        "thermodynamics": {
+          "similarity": 0.5235533660994035,
+          "rootMeanSquaredDifference": 0.9100249654590832,
+          "meanAbsoluteDifference": 0.7843838877503182,
+          "featureCount": 11
+        },
+        "windProfile": {
+          "similarity": 0.6512613021585737,
+          "rootMeanSquaredDifference": 0.535481989618528,
+          "meanAbsoluteDifference": 0.4325544870327307,
+          "featureCount": 8
+        }
+      },
+      "explanation": {
+        "strongestMatches": [
+          {
+            "feature": "spatialDirect.jetCoreP90Ms",
+            "group": "spatialDirect",
+            "query": -0.3687593449306047,
+            "candidate": -0.3581759463722701,
+            "difference": -0.010583398558334567,
+            "absoluteDifference": 0.010583398558334567,
+            "weightedSquaredDifference": 4.978147779758141e-7
+          },
+          {
+            "feature": "windProfile.wind500MeanMs",
+            "group": "windProfile",
+            "query": 0.05807729771609266,
+            "candidate": 0.10108665685251048,
+            "difference": -0.04300935913641782,
+            "absoluteDifference": 0.04300935913641782,
+            "weightedSquaredDifference": 0.00006936768649970126
+          },
+          {
+            "feature": "spatialDirect.forcingCentroidX",
+            "group": "spatialDirect",
+            "query": 0.011485172498208478,
+            "candidate": 0.06496973346116537,
+            "difference": -0.053484560962956895,
+            "absoluteDifference": 0.053484560962956895,
+            "weightedSquaredDifference": 0.00001271377005066779
+          },
+          {
+            "feature": "spatialDirect.capeLargestRegionFraction",
+            "group": "spatialDirect",
+            "query": 0.6768482879574307,
+            "candidate": 0.7605777419859211,
+            "difference": -0.08372945402849041,
+            "absoluteDifference": 0.08372945402849041,
+            "weightedSquaredDifference": 0.000031158317652929285
+          },
+          {
+            "feature": "spatialDirect.jetAxisOrientationDeg",
+            "group": "spatialDirect",
+            "query": -1.3315053972636086,
+            "candidate": -1.426351013757393,
+            "difference": 0.09484561649378431,
+            "absoluteDifference": 0.09484561649378431,
+            "weightedSquaredDifference": 0.000039980848747048934
+          },
+          {
+            "feature": "spatialDirect.tcwvGradientMeanKgM2Cell",
+            "group": "spatialDirect",
+            "query": -0.052446998236538374,
+            "candidate": 0.05515607726406906,
+            "difference": -0.10760307550060744,
+            "absoluteDifference": 0.10760307550060744,
+            "weightedSquaredDifference": 0.00005145965269861966
+          }
+        ],
+        "largestDifferences": [
+          {
+            "feature": "spatial.capeCoverage2000Proxy",
+            "group": "spatial",
+            "query": -0.42159432381957596,
+            "candidate": 2.546110212851833,
+            "difference": -2.967704536671409,
+            "absoluteDifference": 2.967704536671409,
+            "weightedSquaredDifference": 0.07828684637315611
+          },
+          {
+            "feature": "thermodynamics.capeP90Jkg",
+            "group": "thermodynamics",
+            "query": 0.2227675616560177,
+            "candidate": 1.7180979652943675,
+            "difference": -1.49533040363835,
+            "absoluteDifference": 1.49533040363835,
+            "weightedSquaredDifference": 0.060982173164869924
+          },
+          {
+            "feature": "thermodynamics.capeMaxJkg",
+            "group": "thermodynamics",
+            "query": 0.1640920148796567,
+            "candidate": 1.6526741082706184,
+            "difference": -1.4885820933909617,
+            "absoluteDifference": 1.4885820933909617,
+            "weightedSquaredDifference": 0.06043299951175139
+          },
+          {
+            "feature": "thermodynamics.midLevelLapseProxyK",
+            "group": "thermodynamics",
+            "query": -0.14432103954549547,
+            "candidate": 1.2087034810748059,
+            "difference": -1.3530245206203013,
+            "absoluteDifference": 1.3530245206203013,
+            "weightedSquaredDifference": 0.04992750963817626
+          },
+          {
+            "feature": "windProfile.turning850To500Deg",
+            "group": "windProfile",
+            "query": 1.6655836463330653,
+            "candidate": 0.6340259560259599,
+            "difference": 1.0315576903071055,
+            "absoluteDifference": 1.0315576903071055,
+            "weightedSquaredDifference": 0.03990417256618988
+          },
+          {
+            "feature": "spatialDirect.jetAxisElongation",
+            "group": "spatialDirect",
+            "query": -3.2729489475643834,
+            "candidate": -0.3394256856022285,
+            "difference": -2.9335232619621547,
+            "absoluteDifference": 2.9335232619621547,
+            "weightedSquaredDifference": 0.03824692768210258
+          }
+        ]
+      },
+      "labels": {
+        "outcomes": {
+          "reportCount": 327,
+          "tornadoReports": 70,
+          "significantTornadoReports": 42,
+          "violentTornadoReports": 9,
+          "hailReports": 204,
+          "significantHailReports": 28,
+          "windReports": 53,
+          "destructiveWindReports": 2
+        },
+        "forecast": null
+      }
+    },
+    {
+      "rank": 2,
+      "eventDate": "2011-05-24",
+      "similarity": 0.6413463291291384,
+      "atmosphericSimilarity": 0.6413463291291384,
+      "qualityScore": 1,
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "pattern": "High-instability weak-forcing regime",
+      "metrics": {
+        "weightedDistance": 0.7670728884570645,
+        "euclideanSimilarity": 0.5659076128281041,
+        "cosineSimilarity": 0.6294670096008816,
+        "mahalanobisSimilarity": 0.7451271469609007
+      },
+      "groupSimilarities": {
+        "spatial": 0.5960402338029557,
+        "spatialDirect": 0.4480766404722712,
+        "synoptic": 0.5097721138040533,
+        "thermodynamics": 0.6875792517523907,
+        "windProfile": 0.6099401109482189
+      },
+      "groupDiagnostics": {
+        "spatial": {
+          "similarity": 0.5960402338029557,
+          "rootMeanSquaredDifference": 0.6777390908993386,
+          "meanAbsoluteDifference": 0.41785312208069825,
+          "featureCount": 9
+        },
+        "spatialDirect": {
+          "similarity": 0.4480766404722712,
+          "rootMeanSquaredDifference": 1.2317610642366976,
+          "meanAbsoluteDifference": 0.8645575302150141,
+          "featureCount": 27
+        },
+        "synoptic": {
+          "similarity": 0.5097721138040533,
+          "rootMeanSquaredDifference": 0.961660853783738,
+          "meanAbsoluteDifference": 0.7867697980076761,
+          "featureCount": 7
+        },
+        "thermodynamics": {
+          "similarity": 0.6875792517523907,
+          "rootMeanSquaredDifference": 0.4543778007427681,
+          "meanAbsoluteDifference": 0.33710814345065343,
+          "featureCount": 11
+        },
+        "windProfile": {
+          "similarity": 0.6099401109482189,
+          "rootMeanSquaredDifference": 0.6395052269072619,
+          "meanAbsoluteDifference": 0.511239819106782,
+          "featureCount": 8
+        }
+      },
+      "explanation": {
+        "strongestMatches": [
+          {
+            "feature": "spatial.capeCoverage2000Proxy",
+            "group": "spatial",
+            "query": -0.42159432381957596,
+            "candidate": -0.42159432381957596,
+            "difference": 0,
+            "absoluteDifference": 0,
+            "weightedSquaredDifference": 0
+          },
+          {
+            "feature": "spatialDirect.capeLargestRegionFraction",
+            "group": "spatialDirect",
+            "query": 0.6768482879574307,
+            "candidate": 0.6761198723775128,
+            "difference": 0.0007284155799178738,
+            "absoluteDifference": 0.0007284155799178738,
+            "weightedSquaredDifference": 2.3581744758537436e-9
+          },
+          {
+            "feature": "spatial.moistureGradientProxy",
+            "group": "spatial",
+            "query": -0.09017452334540287,
+            "candidate": -0.07944630626635174,
+            "difference": -0.010728217079051125,
+            "absoluteDifference": 0.010728217079051125,
+            "weightedSquaredDifference": 0.0000010230634817355045
+          },
+          {
+            "feature": "spatial.instabilityGradientProxy",
+            "group": "spatial",
+            "query": 0.2227675616560176,
+            "candidate": 0.23432577413939815,
+            "difference": -0.011558212483380542,
+            "absoluteDifference": 0.011558212483380542,
+            "weightedSquaredDifference": 0.000001187486896097545
+          },
+          {
+            "feature": "thermodynamics.capeP90Jkg",
+            "group": "thermodynamics",
+            "query": 0.2227675616560177,
+            "candidate": 0.23432577413939834,
+            "difference": -0.011558212483380653,
+            "absoluteDifference": 0.011558212483380653,
+            "weightedSquaredDifference": 0.0000036434257039357193
+          },
+          {
+            "feature": "spatial.capeCoverage1000Proxy",
+            "group": "spatial",
+            "query": 0.41552027678523357,
+            "candidate": 0.42925123877663934,
+            "difference": -0.013730961991405777,
+            "absoluteDifference": 0.013730961991405777,
+            "weightedSquaredDifference": 0.0000016759050418616007
+          }
+        ],
+        "largestDifferences": [
+          {
+            "feature": "windProfile.wind850MeanMs",
+            "group": "windProfile",
+            "query": 0.48516752995852536,
+            "candidate": -0.8999844208261275,
+            "difference": 1.3851519507846528,
+            "absoluteDifference": 1.3851519507846528,
+            "weightedSquaredDifference": 0.07194922225359485
+          },
+          {
+            "feature": "spatialDirect.jetAxisElongation",
+            "group": "spatialDirect",
+            "query": -3.2729489475643834,
+            "candidate": 0.5491468843075301,
+            "difference": -3.8220958318719136,
+            "absoluteDifference": 3.8220958318719136,
+            "weightedSquaredDifference": 0.06492629576894514
+          },
+          {
+            "feature": "synoptic.moistureTransportProxy",
+            "group": "synoptic",
+            "query": 0.7464337589934273,
+            "candidate": -0.6935936349327086,
+            "difference": 1.4400273939261359,
+            "absoluteDifference": 1.4400273939261359,
+            "weightedSquaredDifference": 0.059247968435934245
+          },
+          {
+            "feature": "synoptic.pressureRangePa",
+            "group": "synoptic",
+            "query": 0.686628847260349,
+            "candidate": -0.7100099224405476,
+            "difference": 1.3966387697008966,
+            "absoluteDifference": 1.3966387697008966,
+            "weightedSquaredDifference": 0.0557314243723324
+          },
+          {
+            "feature": "synoptic.pressureP10Pa",
+            "group": "synoptic",
+            "query": -1.197823626129067,
+            "candidate": 0.14711291379937627,
+            "difference": -1.3449365399284432,
+            "absoluteDifference": 1.3449365399284432,
+            "weightedSquaredDifference": 0.051681551326705516
+          },
+          {
+            "feature": "spatialDirect.moistureAxisOrientationDeg",
+            "group": "spatialDirect",
+            "query": -1.69803067291616,
+            "candidate": 0.9101031969079351,
+            "difference": -2.608133869824095,
+            "absoluteDifference": 2.608133869824095,
+            "weightedSquaredDifference": 0.030232721257438266
+          }
+        ]
+      },
+      "labels": {
+        "outcomes": {
+          "reportCount": 643,
+          "tornadoReports": 64,
+          "significantTornadoReports": 23,
+          "violentTornadoReports": 5,
+          "hailReports": 272,
+          "significantHailReports": 45,
+          "windReports": 307,
+          "destructiveWindReports": 4
+        },
+        "forecast": {
+          "categoricalMaximum": "HIGH",
+          "tornadoMaximum": 0.45,
+          "windMaximum": 0.45,
+          "hailMaximum": 0.6
+        }
+      }
+    },
+    {
+      "rank": 3,
+      "eventDate": "1999-05-03",
+      "similarity": 0.6397717445256657,
+      "atmosphericSimilarity": 0.6397717445256657,
+      "qualityScore": 1,
+      "corpusRoles": [
+        "event"
+      ],
+      "pattern": "High-instability weak-forcing regime",
+      "metrics": {
+        "weightedDistance": 0.8315337534049397,
+        "euclideanSimilarity": 0.5459904837357954,
+        "cosineSimilarity": 0.7318917432948309,
+        "mahalanobisSimilarity": 0.7077076519588329
+      },
+      "groupSimilarities": {
+        "spatial": 0.44081592299254635,
+        "spatialDirect": 0.47408131666300596,
+        "synoptic": 0.6752511221277575,
+        "thermodynamics": 0.5069430675566124,
+        "windProfile": 0.6526296129186584
+      },
+      "groupDiagnostics": {
+        "spatial": {
+          "similarity": 0.44081592299254635,
+          "rootMeanSquaredDifference": 1.2685205951984377,
+          "meanAbsoluteDifference": 1.0868173671657615,
+          "featureCount": 9
+        },
+        "spatialDirect": {
+          "similarity": 0.47408131666300596,
+          "rootMeanSquaredDifference": 1.1093427748616298,
+          "meanAbsoluteDifference": 0.7970866702182464,
+          "featureCount": 27
+        },
+        "synoptic": {
+          "similarity": 0.6752511221277575,
+          "rootMeanSquaredDifference": 0.48093052677785864,
+          "meanAbsoluteDifference": 0.4075042638804453,
+          "featureCount": 7
+        },
+        "thermodynamics": {
+          "similarity": 0.5069430675566124,
+          "rootMeanSquaredDifference": 0.9726080974335957,
+          "meanAbsoluteDifference": 0.6666816248671753,
+          "featureCount": 11
+        },
+        "windProfile": {
+          "similarity": 0.6526296129186584,
+          "rootMeanSquaredDifference": 0.5322626804012902,
+          "meanAbsoluteDifference": 0.457294732914578,
+          "featureCount": 8
+        }
+      },
+      "explanation": {
+        "strongestMatches": [
+          {
+            "feature": "spatial.capeCoverage2000Proxy",
+            "group": "spatial",
+            "query": -0.42159432381957596,
+            "candidate": -0.42159432381957596,
+            "difference": 0,
+            "absoluteDifference": 0,
+            "weightedSquaredDifference": 0
+          },
+          {
+            "feature": "spatialDirect.peakTimeFraction",
+            "group": "spatialDirect",
+            "query": 1.0272327031149309,
+            "candidate": 1.0272327031149309,
+            "difference": 0,
+            "absoluteDifference": 0,
+            "weightedSquaredDifference": 0
+          },
+          {
+            "feature": "spatialDirect.capeLargestRegionFraction",
+            "group": "spatialDirect",
+            "query": 0.6768482879574307,
+            "candidate": 0.7062460815368007,
+            "difference": -0.029397793579370002,
+            "absoluteDifference": 0.029397793579370002,
+            "weightedSquaredDifference": 0.0000038410234103788805
+          },
+          {
+            "feature": "synoptic.height500RangeM2s2",
+            "group": "synoptic",
+            "query": 0.016747281006645527,
+            "candidate": 0.04873216981281123,
+            "difference": -0.0319848888061657,
+            "absoluteDifference": 0.0319848888061657,
+            "weightedSquaredDifference": 0.00002922951748407954
+          },
+          {
+            "feature": "spatialDirect.moistureCentroidY",
+            "group": "spatialDirect",
+            "query": 0.02503822045337624,
+            "candidate": 0.058547066209509384,
+            "difference": -0.033508845756133145,
+            "absoluteDifference": 0.033508845756133145,
+            "weightedSquaredDifference": 0.0000049904121951480995
+          },
+          {
+            "feature": "spatialDirect.jetCoreP90Ms",
+            "group": "spatialDirect",
+            "query": -0.3687593449306047,
+            "candidate": -0.33217543197190524,
+            "difference": -0.03658391295869945,
+            "absoluteDifference": 0.03658391295869945,
+            "weightedSquaredDifference": 0.000005948367499420878
+          }
+        ],
+        "largestDifferences": [
+          {
+            "feature": "thermodynamics.dewpointP90K",
+            "group": "thermodynamics",
+            "query": 0.4524325332150037,
+            "candidate": -2.2876404642542827,
+            "difference": 2.7400729974692863,
+            "absoluteDifference": 2.7400729974692863,
+            "weightedSquaredDifference": 0.2047636372216451
+          },
+          {
+            "feature": "spatial.forcingInstabilityOverlapProxy",
+            "group": "spatial",
+            "query": 1.3167647485860694,
+            "candidate": -0.8353896563910844,
+            "difference": 2.152154404977154,
+            "absoluteDifference": 2.152154404977154,
+            "weightedSquaredDifference": 0.041171276292111716
+          },
+          {
+            "feature": "spatialDirect.jetAxisElongation",
+            "group": "spatialDirect",
+            "query": -3.2729489475643834,
+            "candidate": -0.23139953813603492,
+            "difference": -3.0415494094283484,
+            "absoluteDifference": 3.0415494094283484,
+            "weightedSquaredDifference": 0.04111565693330638
+          },
+          {
+            "feature": "spatial.precipitableWaterGradientProxy",
+            "group": "spatial",
+            "query": 0.4077321753313517,
+            "candidate": -1.565472797655044,
+            "difference": 1.9732049729863956,
+            "absoluteDifference": 1.9732049729863956,
+            "weightedSquaredDifference": 0.03460922547038438
+          },
+          {
+            "feature": "windProfile.turning850To500Deg",
+            "group": "windProfile",
+            "query": 1.6655836463330653,
+            "candidate": 0.709033316644923,
+            "difference": 0.9565503296881424,
+            "absoluteDifference": 0.9565503296881424,
+            "weightedSquaredDifference": 0.03431206999599352
+          },
+          {
+            "feature": "spatialDirect.capeCorridorElongation",
+            "group": "spatialDirect",
+            "query": -1.669336681330165,
+            "candidate": 0.8104905791737365,
+            "difference": -2.4798272605039013,
+            "absoluteDifference": 2.4798272605039013,
+            "weightedSquaredDifference": 0.027331303297503485
+          }
+        ]
+      },
+      "labels": {
+        "outcomes": {
+          "reportCount": 271,
+          "tornadoReports": 93,
+          "significantTornadoReports": 26,
+          "violentTornadoReports": 7,
+          "hailReports": 135,
+          "significantHailReports": 18,
+          "windReports": 43,
+          "destructiveWindReports": 0
+        },
+        "forecast": null
+      }
+    },
+    {
+      "rank": 4,
+      "eventDate": "1991-05-04",
+      "similarity": 0.6358321521645649,
+      "atmosphericSimilarity": 0.6358321521645649,
+      "qualityScore": 1,
+      "corpusRoles": [
+        "event"
+      ],
+      "pattern": "Warm-front or strongly curved-hodograph regime",
+      "metrics": {
+        "weightedDistance": 0.815027512561661,
+        "euclideanSimilarity": 0.550955835698952,
+        "cosineSimilarity": 0.6840767139213073,
+        "mahalanobisSimilarity": 0.717390523759357
+      },
+      "groupSimilarities": {
+        "spatial": 0.681460746343506,
+        "spatialDirect": 0.5384561474434896,
+        "synoptic": 0.4298663412873144,
+        "thermodynamics": 0.6349765398868653,
+        "windProfile": 0.6253621859275145
+      },
+      "groupDiagnostics": {
+        "spatial": {
+          "similarity": 0.681460746343506,
+          "rootMeanSquaredDifference": 0.46743595337760957,
+          "meanAbsoluteDifference": 0.38290595031344754,
+          "featureCount": 9
+        },
+        "spatialDirect": {
+          "similarity": 0.5384561474434896,
+          "rootMeanSquaredDifference": 0.8571614508402452,
+          "meanAbsoluteDifference": 0.5654830609501844,
+          "featureCount": 27
+        },
+        "synoptic": {
+          "similarity": 0.4298663412873144,
+          "rootMeanSquaredDifference": 1.3263044903802303,
+          "meanAbsoluteDifference": 1.0515416129919235,
+          "featureCount": 7
+        },
+        "thermodynamics": {
+          "similarity": 0.6349765398868653,
+          "rootMeanSquaredDifference": 0.574861332952823,
+          "meanAbsoluteDifference": 0.4769017106010617,
+          "featureCount": 11
+        },
+        "windProfile": {
+          "similarity": 0.6253621859275145,
+          "rootMeanSquaredDifference": 0.5990733410221092,
+          "meanAbsoluteDifference": 0.3645384805825592,
+          "featureCount": 8
+        }
+      },
+      "explanation": {
+        "strongestMatches": [
+          {
+            "feature": "spatial.capeCoverage2000Proxy",
+            "group": "spatial",
+            "query": -0.42159432381957596,
+            "candidate": -0.42159432381957596,
+            "difference": 0,
+            "absoluteDifference": 0,
+            "weightedSquaredDifference": 0
+          },
+          {
+            "feature": "spatialDirect.peakTimeFraction",
+            "group": "spatialDirect",
+            "query": 1.0272327031149309,
+            "candidate": 1.0272327031149309,
+            "difference": 0,
+            "absoluteDifference": 0,
+            "weightedSquaredDifference": 0
+          },
+          {
+            "feature": "windProfile.wind250MeanMs",
+            "group": "windProfile",
+            "query": -0.07761520122993457,
+            "candidate": -0.08555567016837667,
+            "difference": 0.007940468938442108,
+            "absoluteDifference": 0.007940468938442108,
+            "weightedSquaredDifference": 0.0000023644142610886476
+          },
+          {
+            "feature": "spatialDirect.capeLargestRegionFraction",
+            "group": "spatialDirect",
+            "query": 0.6768482879574307,
+            "candidate": 0.6615018562727771,
+            "difference": 0.01534643168465355,
+            "absoluteDifference": 0.01534643168465355,
+            "weightedSquaredDifference": 0.000001046724290896615
+          },
+          {
+            "feature": "spatialDirect.forcingCentroidX",
+            "group": "spatialDirect",
+            "query": 0.011485172498208478,
+            "candidate": -0.018360383204424676,
+            "difference": 0.029845555702633156,
+            "absoluteDifference": 0.029845555702633156,
+            "weightedSquaredDifference": 0.000003958920867551015
+          },
+          {
+            "feature": "thermodynamics.cinP90Jkg",
+            "group": "thermodynamics",
+            "query": 0.05818766934057694,
+            "candidate": 0.027895732336801055,
+            "difference": 0.030291937003775884,
+            "absoluteDifference": 0.030291937003775884,
+            "weightedSquaredDifference": 0.000025025494021110727
+          }
+        ],
+        "largestDifferences": [
+          {
+            "feature": "synoptic.pressureP10Pa",
+            "group": "synoptic",
+            "query": -1.197823626129067,
+            "candidate": 0.9108629858947394,
+            "difference": -2.1086866120238064,
+            "absoluteDifference": 2.1086866120238064,
+            "weightedSquaredDifference": 0.12704454936366968
+          },
+          {
+            "feature": "synoptic.moistureTransportProxy",
+            "group": "synoptic",
+            "query": 0.7464337589934273,
+            "candidate": -1.2031684933591271,
+            "difference": 1.9496022523525545,
+            "absoluteDifference": 1.9496022523525545,
+            "weightedSquaredDifference": 0.1085985412108044
+          },
+          {
+            "feature": "synoptic.meanSeaLevelPressurePa",
+            "group": "synoptic",
+            "query": -0.68266808175956,
+            "candidate": 1.1543518604477658,
+            "difference": -1.8370199422073257,
+            "absoluteDifference": 1.8370199422073257,
+            "weightedSquaredDifference": 0.09641835051621162
+          },
+          {
+            "feature": "windProfile.wind850MeanMs",
+            "group": "windProfile",
+            "query": 0.48516752995852536,
+            "candidate": -1.101906424393711,
+            "difference": 1.5870739543522363,
+            "absoluteDifference": 1.5870739543522363,
+            "weightedSquaredDifference": 0.09445514012187166
+          },
+          {
+            "feature": "thermodynamics.lowLevelLapseProxyK",
+            "group": "thermodynamics",
+            "query": 0.4163474316909835,
+            "candidate": -0.7692163151310816,
+            "difference": 1.185563746822065,
+            "absoluteDifference": 1.185563746822065,
+            "weightedSquaredDifference": 0.03833349266669382
+          },
+          {
+            "feature": "spatialDirect.jetAxisElongation",
+            "group": "spatialDirect",
+            "query": -3.2729489475643834,
+            "candidate": -0.8286435836287707,
+            "difference": -2.4443053639356127,
+            "absoluteDifference": 2.4443053639356127,
+            "weightedSquaredDifference": 0.02655390538739737
+          }
+        ]
+      },
+      "labels": {
+        "outcomes": {
+          "reportCount": 259,
+          "tornadoReports": 12,
+          "significantTornadoReports": 0,
+          "violentTornadoReports": 0,
+          "hailReports": 125,
+          "significantHailReports": 6,
+          "windReports": 122,
+          "destructiveWindReports": 3
+        },
+        "forecast": null
+      }
+    },
+    {
+      "rank": 5,
+      "eventDate": "1974-06-08",
+      "similarity": 0.6275792283507889,
+      "atmosphericSimilarity": 0.6275792283507889,
+      "qualityScore": 1,
+      "corpusRoles": [
+        "event"
+      ],
+      "pattern": "High-instability weak-forcing regime",
+      "metrics": {
+        "weightedDistance": 0.864877783547402,
+        "euclideanSimilarity": 0.5362281693858689,
+        "cosineSimilarity": 0.7274313400781834,
+        "mahalanobisSimilarity": 0.6879722403186037
+      },
+      "groupSimilarities": {
+        "spatial": 0.4453246841290029,
+        "spatialDirect": 0.4694525797349205,
+        "synoptic": 0.656644486488771,
+        "thermodynamics": 0.5547701250913107,
+        "windProfile": 0.5371610751143474
+      },
+      "groupDiagnostics": {
+        "spatial": {
+          "similarity": 0.4453246841290029,
+          "rootMeanSquaredDifference": 1.2455525948575472,
+          "meanAbsoluteDifference": 0.9306854628359438,
+          "featureCount": 9
+        },
+        "spatialDirect": {
+          "similarity": 0.4694525797349205,
+          "rootMeanSquaredDifference": 1.1301406002809837,
+          "meanAbsoluteDifference": 0.7804186243723044,
+          "featureCount": 27
+        },
+        "synoptic": {
+          "similarity": 0.656644486488771,
+          "rootMeanSquaredDifference": 0.5228940782663533,
+          "meanAbsoluteDifference": 0.4544902712900253,
+          "featureCount": 7
+        },
+        "thermodynamics": {
+          "similarity": 0.5547701250913107,
+          "rootMeanSquaredDifference": 0.8025483975645011,
+          "meanAbsoluteDifference": 0.6788608527299812,
+          "featureCount": 11
+        },
+        "windProfile": {
+          "similarity": 0.5371610751143474,
+          "rootMeanSquaredDifference": 0.8616389874994691,
+          "meanAbsoluteDifference": 0.7493476726794784,
+          "featureCount": 8
+        }
+      },
+      "explanation": {
+        "strongestMatches": [
+          {
+            "feature": "spatialDirect.peakTimeFraction",
+            "group": "spatialDirect",
+            "query": 1.0272327031149309,
+            "candidate": 1.0272327031149309,
+            "difference": 0,
+            "absoluteDifference": 0,
+            "weightedSquaredDifference": 0
+          },
+          {
+            "feature": "spatialDirect.jetCoreP90Ms",
+            "group": "spatialDirect",
+            "query": -0.3687593449306047,
+            "candidate": -0.35947011930757367,
+            "difference": -0.009289225623031028,
+            "absoluteDifference": 0.009289225623031028,
+            "weightedSquaredDifference": 3.8350983411367193e-7
+          },
+          {
+            "feature": "spatialDirect.moistureTransportOverlapDirect",
+            "group": "spatialDirect",
+            "query": 0.3962419878345178,
+            "candidate": 0.3641438406986469,
+            "difference": 0.03209814713587089,
+            "absoluteDifference": 0.03209814713587089,
+            "weightedSquaredDifference": 0.000004579071331360074
+          },
+          {
+            "feature": "thermodynamics.lowLevelLapseProxyK",
+            "group": "thermodynamics",
+            "query": 0.4163474316909835,
+            "candidate": 0.3617695990325887,
+            "difference": 0.054577832658394776,
+            "absoluteDifference": 0.054577832658394776,
+            "weightedSquaredDifference": 0.00008123835866421118
+          },
+          {
+            "feature": "spatialDirect.dewpointGradientP90KCell",
+            "group": "spatialDirect",
+            "query": 0.012661769595103775,
+            "candidate": 0.07538466635662207,
+            "difference": -0.0627228967615183,
+            "absoluteDifference": 0.0627228967615183,
+            "weightedSquaredDifference": 0.000017485163458471476
+          },
+          {
+            "feature": "windProfile.wind850MeanMs",
+            "group": "windProfile",
+            "query": 0.48516752995852536,
+            "candidate": 0.3929843748380881,
+            "difference": 0.09218315512043723,
+            "absoluteDifference": 0.09218315512043723,
+            "weightedSquaredDifference": 0.00031866502829844723
+          }
+        ],
+        "largestDifferences": [
+          {
+            "feature": "spatial.capeCoverage2000Proxy",
+            "group": "spatial",
+            "query": -0.42159432381957596,
+            "candidate": 2.557362454540882,
+            "difference": -2.978956778360458,
+            "absoluteDifference": 2.978956778360458,
+            "weightedSquaredDifference": 0.07888163099857529
+          },
+          {
+            "feature": "windProfile.shear850To500Ms",
+            "group": "windProfile",
+            "query": 0.49698739595368413,
+            "candidate": -0.7910609206230936,
+            "difference": 1.2880483165767778,
+            "absoluteDifference": 1.2880483165767778,
+            "weightedSquaredDifference": 0.062215067468860165
+          },
+          {
+            "feature": "thermodynamics.capeP90Jkg",
+            "group": "thermodynamics",
+            "query": 0.2227675616560177,
+            "candidate": 1.7225434316341293,
+            "difference": -1.4997758699781116,
+            "absoluteDifference": 1.4997758699781116,
+            "weightedSquaredDifference": 0.061345299822780044
+          },
+          {
+            "feature": "spatialDirect.jetAxisElongation",
+            "group": "spatialDirect",
+            "query": -3.2729489475643834,
+            "candidate": 0.39378157208550973,
+            "difference": -3.666730519649893,
+            "absoluteDifference": 3.666730519649893,
+            "weightedSquaredDifference": 0.05975516757214211
+          },
+          {
+            "feature": "windProfile.shear500To250Ms",
+            "group": "windProfile",
+            "query": -0.28969159879833306,
+            "candidate": -1.5406138870977322,
+            "difference": 1.250922288299399,
+            "absoluteDifference": 1.250922288299399,
+            "weightedSquaredDifference": 0.058680246426157684
+          },
+          {
+            "feature": "thermodynamics.capeMeanJkg",
+            "group": "thermodynamics",
+            "query": 0.006535152470853153,
+            "candidate": 1.2933270868371813,
+            "difference": -1.286791934366328,
+            "absoluteDifference": 1.286791934366328,
+            "weightedSquaredDifference": 0.04515909497318826
+          }
+        ]
+      },
+      "labels": {
+        "outcomes": {
+          "reportCount": 98,
+          "tornadoReports": 45,
+          "significantTornadoReports": 28,
+          "violentTornadoReports": 6,
+          "hailReports": 18,
+          "significantHailReports": 1,
+          "windReports": 35,
+          "destructiveWindReports": 1
+        },
+        "forecast": null
+      }
+    }
+  ]
+}

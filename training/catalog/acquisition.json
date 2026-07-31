@@ -1,246 +1,348 @@
 {
-  "schemaVersion": "2.36.1",
-  "generatedAt": "2026-07-29T02:40:50.369Z",
+  "schemaVersion": "2.37.0",
+  "generatedAt": "2026-07-30T20:51:38.461Z",
   "cases": {
     "2011-04-27": {
       "eventDate": "2011-04-27",
-      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "updatedAt": "2026-07-30T19:24:36.171Z",
       "spc": {
         "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.584Z",
-        "message": "Validated SPC target present.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Raw": {
-        "status": "warning",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Extracted": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Compact ERA5 summary present.",
-        "files": [],
-        "checksum": null
-      },
-      "noaa": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "NOAA outcome record present.",
-        "files": [],
-        "checksum": null
-      },
-      "paired": {
-        "status": "missing",
-        "updatedAt": null,
-        "message": null,
-        "files": [],
-        "checksum": null
-      },
-      "eligibleForTraining": true,
-      "attempts": 0,
-      "errors": []
-    },
-    "2011-05-24": {
-      "eventDate": "2011-05-24",
-      "updatedAt": "2026-07-29T02:38:37.585Z",
-      "spc": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Validated SPC target present.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Raw": {
-        "status": "warning",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Extracted": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Compact ERA5 summary present.",
-        "files": [],
-        "checksum": null
-      },
-      "noaa": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "NOAA outcome record present.",
-        "files": [],
-        "checksum": null
-      },
-      "paired": {
-        "status": "missing",
-        "updatedAt": null,
-        "message": null,
-        "files": [],
-        "checksum": null
-      },
-      "eligibleForTraining": true,
-      "attempts": 0,
-      "errors": []
-    },
-    "2013-05-19": {
-      "eventDate": "2013-05-19",
-      "updatedAt": "2026-07-29T02:38:37.585Z",
-      "spc": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Validated SPC target present.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Raw": {
-        "status": "warning",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Extracted": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Compact ERA5 summary present.",
-        "files": [],
-        "checksum": null
-      },
-      "noaa": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "NOAA outcome record present.",
-        "files": [],
-        "checksum": null
-      },
-      "paired": {
-        "status": "missing",
-        "updatedAt": null,
-        "message": null,
-        "files": [],
-        "checksum": null
-      },
-      "eligibleForTraining": true,
-      "attempts": 0,
-      "errors": []
-    },
-    "2013-11-17": {
-      "eventDate": "2013-11-17",
-      "updatedAt": "2026-07-29T02:38:37.585Z",
-      "spc": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Validated SPC target present.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Raw": {
-        "status": "warning",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Extracted": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Compact ERA5 summary present.",
-        "files": [],
-        "checksum": null
-      },
-      "noaa": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "NOAA outcome record present.",
-        "files": [],
-        "checksum": null
-      },
-      "paired": {
-        "status": "missing",
-        "updatedAt": null,
-        "message": null,
-        "files": [],
-        "checksum": null
-      },
-      "eligibleForTraining": true,
-      "attempts": 0,
-      "errors": []
-    },
-    "2020-04-12": {
-      "eventDate": "2020-04-12",
-      "updatedAt": "2026-07-29T02:38:37.585Z",
-      "spc": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Validated SPC target present.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Raw": {
-        "status": "warning",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Extracted": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Compact ERA5 summary present.",
-        "files": [],
-        "checksum": null
-      },
-      "noaa": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "NOAA outcome record present.",
-        "files": [],
-        "checksum": null
-      },
-      "paired": {
-        "status": "missing",
-        "updatedAt": null,
-        "message": null,
-        "files": [],
-        "checksum": null
-      },
-      "eligibleForTraining": true,
-      "attempts": 0,
-      "errors": []
-    },
-    "2020-08-10": {
-      "eventDate": "2020-08-10",
-      "updatedAt": "2026-07-29T02:38:51.406Z",
-      "spc": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "updatedAt": "2026-07-30T19:24:36.170Z",
         "message": "Validated SPC target present.",
         "files": [],
         "checksum": null
       },
       "era5Raw": {
         "status": "downloaded",
-        "updatedAt": "2026-07-29T02:38:41.758Z",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [
+          "atmospheric\\era5\\records\\2011-04-27.json",
+          "atmospheric\\era5\\spatial\\2011-04-27.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 8,
+      "errors": [
+        {
+          "stage": "era5Raw",
+          "at": "2026-07-29T15:18:11.682Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Extracted",
+          "at": "2026-07-29T15:18:11.682Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Spatial",
+          "at": "2026-07-29T15:18:11.682Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Raw",
+          "at": "2026-07-29T15:36:41.476Z",
+          "message": "Legacy compact ERA5 summary present; raw cache not verified."
+        },
+        {
+          "stage": "era5Raw",
+          "at": "2026-07-29T15:36:45.415Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Extracted",
+          "at": "2026-07-29T15:36:45.415Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Spatial",
+          "at": "2026-07-29T15:36:45.415Z",
+          "message": "python exited with code 1"
+        },
+        {
+          "stage": "era5Raw",
+          "at": "2026-07-29T15:42:08.473Z",
+          "message": "Legacy compact ERA5 summary present; raw cache not verified."
+        }
+      ],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Spatial ERA5 manifest present.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2011-04-27.json"
+        ],
+        "checksum": null
+      }
+    },
+    "2011-05-24": {
+      "eventDate": "2011-05-24",
+      "updatedAt": "2026-07-30T19:24:36.171Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [
+          "atmospheric\\era5\\records\\2011-05-24.json",
+          "atmospheric\\era5\\spatial\\2011-05-24.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": [],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Spatial ERA5 manifest present.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2011-05-24.json"
+        ],
+        "checksum": null
+      }
+    },
+    "2013-05-19": {
+      "eventDate": "2013-05-19",
+      "updatedAt": "2026-07-30T19:24:36.171Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [
+          "atmospheric\\era5\\records\\2013-05-19.json",
+          "atmospheric\\era5\\spatial\\2013-05-19.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": [],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Spatial ERA5 manifest present.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2013-05-19.json"
+        ],
+        "checksum": null
+      }
+    },
+    "2013-11-17": {
+      "eventDate": "2013-11-17",
+      "updatedAt": "2026-07-30T19:24:36.172Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.171Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [
+          "atmospheric\\era5\\records\\2013-11-17.json",
+          "atmospheric\\era5\\spatial\\2013-11-17.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": [],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Spatial ERA5 manifest present.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2013-11-17.json"
+        ],
+        "checksum": null
+      }
+    },
+    "2020-04-12": {
+      "eventDate": "2020-04-12",
+      "updatedAt": "2026-07-30T19:24:36.172Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [
+          "atmospheric\\era5\\records\\2020-04-12.json",
+          "atmospheric\\era5\\spatial\\2020-04-12.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": [],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Spatial ERA5 manifest present.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2020-04-12.json"
+        ],
+        "checksum": null
+      }
+    },
+    "2020-08-10": {
+      "eventDate": "2020-08-10",
+      "updatedAt": "2026-07-30T20:51:22.789Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:51:07.578Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:51:14.103Z",
         "message": "ERA5 raw fields cached.",
         "files": [],
         "checksum": null
       },
       "era5Extracted": {
         "status": "complete",
-        "updatedAt": "2026-07-29T02:38:41.758Z",
-        "message": "python exited with code 1",
+        "updatedAt": "2026-07-30T20:51:14.103Z",
+        "message": "Compact ERA5 summary complete.",
         "files": [
-          "atmospheric\\era5\\records\\2020-08-10.json"
+          "atmospheric\\era5\\records\\2020-08-10.json",
+          "atmospheric\\era5\\spatial\\2020-08-10.json"
         ],
         "checksum": null
       },
       "noaa": {
         "status": "complete",
-        "updatedAt": "2026-07-29T02:38:51.406Z",
+        "updatedAt": "2026-07-30T20:51:22.789Z",
         "message": "Downloading/caching NOAA Storm Events year and extracting case.",
         "files": [
           "atmospheric\\noaa\\records\\2020-08-10.json"
@@ -277,121 +379,155 @@
           "at": "2026-07-29T02:11:57.667Z",
           "message": "python exited with code 1"
         }
-      ]
+      ],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:51:14.103Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2020-08-10.json"
+        ],
+        "checksum": null
+      }
     },
     "2021-05-25": {
       "eventDate": "2021-05-25",
-      "updatedAt": "2026-07-29T02:38:37.585Z",
+      "updatedAt": "2026-07-30T19:24:36.172Z",
       "spc": {
         "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Validated SPC target present.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Raw": {
-        "status": "warning",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Extracted": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Compact ERA5 summary present.",
-        "files": [],
-        "checksum": null
-      },
-      "noaa": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "NOAA outcome record present.",
-        "files": [],
-        "checksum": null
-      },
-      "paired": {
-        "status": "missing",
-        "updatedAt": null,
-        "message": null,
-        "files": [],
-        "checksum": null
-      },
-      "eligibleForTraining": true,
-      "attempts": 0,
-      "errors": []
-    },
-    "2021-12-10": {
-      "eventDate": "2021-12-10",
-      "updatedAt": "2026-07-29T02:38:37.585Z",
-      "spc": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Validated SPC target present.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Raw": {
-        "status": "warning",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
-        "files": [],
-        "checksum": null
-      },
-      "era5Extracted": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "Compact ERA5 summary present.",
-        "files": [],
-        "checksum": null
-      },
-      "noaa": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
-        "message": "NOAA outcome record present.",
-        "files": [],
-        "checksum": null
-      },
-      "paired": {
-        "status": "missing",
-        "updatedAt": null,
-        "message": null,
-        "files": [],
-        "checksum": null
-      },
-      "eligibleForTraining": true,
-      "attempts": 0,
-      "errors": []
-    },
-    "2024-05-06": {
-      "eventDate": "2024-05-06",
-      "updatedAt": "2026-07-29T02:40:50.368Z",
-      "spc": {
-        "status": "complete",
-        "updatedAt": "2026-07-29T02:38:37.585Z",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
         "message": "Validated SPC target present.",
         "files": [],
         "checksum": null
       },
       "era5Raw": {
         "status": "downloaded",
-        "updatedAt": "2026-07-29T02:40:31.179Z",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [
+          "atmospheric\\era5\\records\\2021-05-25.json",
+          "atmospheric\\era5\\spatial\\2021-05-25.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": [],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Spatial ERA5 manifest present.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2021-05-25.json"
+        ],
+        "checksum": null
+      }
+    },
+    "2021-12-10": {
+      "eventDate": "2021-12-10",
+      "updatedAt": "2026-07-30T19:24:36.172Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Legacy compact ERA5 summary present; raw cache not verified.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Compact ERA5 summary present.",
+        "files": [
+          "atmospheric\\era5\\records\\2021-12-10.json",
+          "atmospheric\\era5\\spatial\\2021-12-10.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": [],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:24:36.172Z",
+        "message": "Spatial ERA5 manifest present.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2021-12-10.json"
+        ],
+        "checksum": null
+      }
+    },
+    "2024-05-06": {
+      "eventDate": "2024-05-06",
+      "updatedAt": "2026-07-30T20:51:38.461Z",
+      "spc": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:51:07.579Z",
+        "message": "Validated SPC target present.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:51:29.314Z",
         "message": "ERA5 raw fields cached.",
         "files": [],
         "checksum": null
       },
       "era5Extracted": {
         "status": "complete",
-        "updatedAt": "2026-07-29T02:40:31.179Z",
-        "message": null,
+        "updatedAt": "2026-07-30T20:51:29.314Z",
+        "message": "Compact ERA5 summary complete.",
         "files": [
-          "atmospheric\\era5\\records\\2024-05-06.json"
+          "atmospheric\\era5\\records\\2024-05-06.json",
+          "atmospheric\\era5\\spatial\\2024-05-06.json"
         ],
         "checksum": null
       },
       "noaa": {
         "status": "complete",
-        "updatedAt": "2026-07-29T02:40:50.368Z",
+        "updatedAt": "2026-07-30T20:51:38.461Z",
         "message": "Downloading/caching NOAA Storm Events year and extracting case.",
         "files": [
           "atmospheric\\noaa\\records\\2024-05-06.json"
@@ -406,6 +542,1635 @@
         "checksum": null
       },
       "eligibleForTraining": true,
+      "attempts": 0,
+      "errors": [],
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:51:29.314Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2024-05-06.json"
+        ],
+        "checksum": null
+      }
+    },
+    "1974-03-20": {
+      "eventDate": "1974-03-20",
+      "updatedAt": "2026-07-30T19:37:00.111Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:37:00.110Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:37:00.111Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-03-20.json",
+          "atmospheric\\era5\\spatial\\1974-03-20.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:37:00.111Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-03-20.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.301Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-04-01": {
+      "eventDate": "1974-04-01",
+      "updatedAt": "2026-07-30T19:38:22.869Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:38:22.869Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:38:22.869Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-04-01.json",
+          "atmospheric\\era5\\spatial\\1974-04-01.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:38:22.869Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-04-01.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.301Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-04-03": {
+      "eventDate": "1974-04-03",
+      "updatedAt": "2026-07-30T19:40:07.698Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:40:07.698Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:40:07.698Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-04-03.json",
+          "atmospheric\\era5\\spatial\\1974-04-03.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:40:07.698Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-04-03.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.301Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-04-04": {
+      "eventDate": "1974-04-04",
+      "updatedAt": "2026-07-30T19:41:25.898Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:41:25.898Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:41:25.898Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-04-04.json",
+          "atmospheric\\era5\\spatial\\1974-04-04.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:41:25.898Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-04-04.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.301Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-04-13": {
+      "eventDate": "1974-04-13",
+      "updatedAt": "2026-07-30T19:43:28.397Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:43:28.397Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:43:28.397Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-04-13.json",
+          "atmospheric\\era5\\spatial\\1974-04-13.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:43:28.397Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-04-13.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.301Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-04-14": {
+      "eventDate": "1974-04-14",
+      "updatedAt": "2026-07-30T19:44:48.675Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:44:48.675Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:44:48.675Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-04-14.json",
+          "atmospheric\\era5\\spatial\\1974-04-14.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:44:48.675Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-04-14.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.301Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-04-20": {
+      "eventDate": "1974-04-20",
+      "updatedAt": "2026-07-30T19:46:54.417Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:46:54.417Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:46:54.417Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-04-20.json",
+          "atmospheric\\era5\\spatial\\1974-04-20.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:46:54.417Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-04-20.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.301Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-04-21": {
+      "eventDate": "1974-04-21",
+      "updatedAt": "2026-07-30T19:48:33.341Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:48:33.341Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:48:33.341Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-04-21.json",
+          "atmospheric\\era5\\spatial\\1974-04-21.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:48:33.341Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-04-21.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-05-13": {
+      "eventDate": "1974-05-13",
+      "updatedAt": "2026-07-30T19:50:14.160Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:50:14.160Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:50:14.160Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-05-13.json",
+          "atmospheric\\era5\\spatial\\1974-05-13.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:50:14.160Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-05-13.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-05-30": {
+      "eventDate": "1974-05-30",
+      "updatedAt": "2026-07-30T19:52:35.564Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:52:35.564Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:52:35.564Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-05-30.json",
+          "atmospheric\\era5\\spatial\\1974-05-30.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:52:35.564Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-05-30.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-06-07": {
+      "eventDate": "1974-06-07",
+      "updatedAt": "2026-07-30T19:54:30.375Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:54:30.375Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:54:30.375Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-06-07.json",
+          "atmospheric\\era5\\spatial\\1974-06-07.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:54:30.375Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-06-07.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-06-08": {
+      "eventDate": "1974-06-08",
+      "updatedAt": "2026-07-30T19:55:58.821Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:55:58.821Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:55:58.821Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-06-08.json",
+          "atmospheric\\era5\\spatial\\1974-06-08.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:55:58.821Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-06-08.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1974-10-28": {
+      "eventDate": "1974-10-28",
+      "updatedAt": "2026-07-30T19:57:25.715Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:57:25.715Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:57:25.715Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1974-10-28.json",
+          "atmospheric\\era5\\spatial\\1974-10-28.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:57:25.715Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1974-10-28.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1991-03-27": {
+      "eventDate": "1991-03-27",
+      "updatedAt": "2026-07-30T19:59:24.346Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T19:59:24.346Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:59:24.346Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1991-03-27.json",
+          "atmospheric\\era5\\spatial\\1991-03-27.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:59:24.346Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1991-03-27.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1991-04-26": {
+      "eventDate": "1991-04-26",
+      "updatedAt": "2026-07-30T20:01:24.264Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:01:24.264Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:01:24.264Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1991-04-26.json",
+          "atmospheric\\era5\\spatial\\1991-04-26.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:01:24.264Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1991-04-26.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1991-05-04": {
+      "eventDate": "1991-05-04",
+      "updatedAt": "2026-07-30T20:03:45.188Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:03:45.188Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:03:45.188Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1991-05-04.json",
+          "atmospheric\\era5\\spatial\\1991-05-04.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:03:45.188Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1991-05-04.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1991-06-19": {
+      "eventDate": "1991-06-19",
+      "updatedAt": "2026-07-30T20:05:13.036Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:05:13.036Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:05:13.036Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1991-06-19.json",
+          "atmospheric\\era5\\spatial\\1991-06-19.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:05:13.036Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1991-06-19.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1999-01-21": {
+      "eventDate": "1999-01-21",
+      "updatedAt": "2026-07-30T20:07:15.423Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:07:15.423Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:07:15.423Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1999-01-21.json",
+          "atmospheric\\era5\\spatial\\1999-01-21.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:07:15.423Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1999-01-21.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.302Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1999-05-03": {
+      "eventDate": "1999-05-03",
+      "updatedAt": "2026-07-30T20:08:55.734Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:08:55.734Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:08:55.734Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1999-05-03.json",
+          "atmospheric\\era5\\spatial\\1999-05-03.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:08:55.734Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1999-05-03.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1999-06-26": {
+      "eventDate": "1999-06-26",
+      "updatedAt": "2026-07-30T20:10:38.517Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:10:38.517Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:10:38.517Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1999-06-26.json",
+          "atmospheric\\era5\\spatial\\1999-06-26.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:10:38.517Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1999-06-26.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "1999-10-13": {
+      "eventDate": "1999-10-13",
+      "updatedAt": "2026-07-30T20:12:48.210Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:12:48.210Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:12:48.210Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\1999-10-13.json",
+          "atmospheric\\era5\\spatial\\1999-10-13.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:12:48.210Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\1999-10-13.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2011-04-21": {
+      "eventDate": "2011-04-21",
+      "updatedAt": "2026-07-30T20:14:28.917Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:14:28.916Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:14:28.917Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2011-04-21.json",
+          "atmospheric\\era5\\spatial\\2011-04-21.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:14:28.917Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2011-04-21.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2011-07-22": {
+      "eventDate": "2011-07-22",
+      "updatedAt": "2026-07-30T20:17:53.771Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:17:53.771Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:17:53.771Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2011-07-22.json",
+          "atmospheric\\era5\\spatial\\2011-07-22.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:17:53.771Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2011-07-22.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2013-08-01": {
+      "eventDate": "2013-08-01",
+      "updatedAt": "2026-07-30T20:19:31.224Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:19:31.224Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:19:31.224Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2013-08-01.json",
+          "atmospheric\\era5\\spatial\\2013-08-01.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:19:31.224Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2013-08-01.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2013-08-03": {
+      "eventDate": "2013-08-03",
+      "updatedAt": "2026-07-30T20:21:31.267Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:21:31.267Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:21:31.267Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2013-08-03.json",
+          "atmospheric\\era5\\spatial\\2013-08-03.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:21:31.267Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2013-08-03.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2020-04-13": {
+      "eventDate": "2020-04-13",
+      "updatedAt": "2026-07-30T20:22:59.411Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:22:59.411Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:22:59.411Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2020-04-13.json",
+          "atmospheric\\era5\\spatial\\2020-04-13.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:22:59.411Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2020-04-13.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2020-07-12": {
+      "eventDate": "2020-07-12",
+      "updatedAt": "2026-07-30T20:24:38.661Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:24:38.661Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:24:38.661Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2020-07-12.json",
+          "atmospheric\\era5\\spatial\\2020-07-12.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:24:38.661Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2020-07-12.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2020-07-19": {
+      "eventDate": "2020-07-19",
+      "updatedAt": "2026-07-30T20:25:58.756Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:25:58.756Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:25:58.756Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2020-07-19.json",
+          "atmospheric\\era5\\spatial\\2020-07-19.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:25:58.756Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2020-07-19.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2021-05-29": {
+      "eventDate": "2021-05-29",
+      "updatedAt": "2026-07-30T20:27:54.889Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:27:54.889Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:27:54.889Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2021-05-29.json",
+          "atmospheric\\era5\\spatial\\2021-05-29.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:27:54.889Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2021-05-29.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
+      "attempts": 0,
+      "errors": []
+    },
+    "2021-12-15": {
+      "eventDate": "2021-12-15",
+      "updatedAt": "2026-07-30T20:29:24.678Z",
+      "spc": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "era5Raw": {
+        "status": "downloaded",
+        "updatedAt": "2026-07-30T20:29:24.678Z",
+        "message": "ERA5 raw fields cached.",
+        "files": [],
+        "checksum": null
+      },
+      "era5Extracted": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:29:24.678Z",
+        "message": "Compact ERA5 summary complete.",
+        "files": [
+          "atmospheric\\era5\\records\\2021-12-15.json",
+          "atmospheric\\era5\\spatial\\2021-12-15.json"
+        ],
+        "checksum": null
+      },
+      "era5Spatial": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T20:29:24.678Z",
+        "message": "Standardized spatial ERA5 tensor complete.",
+        "files": [
+          "atmospheric\\era5\\spatial\\2021-12-15.json"
+        ],
+        "checksum": null
+      },
+      "noaa": {
+        "status": "complete",
+        "updatedAt": "2026-07-30T19:35:18.303Z",
+        "message": "NOAA outcome record present.",
+        "files": [],
+        "checksum": null
+      },
+      "paired": {
+        "status": "missing",
+        "updatedAt": null,
+        "message": null,
+        "files": [],
+        "checksum": null
+      },
+      "eligibleForTraining": false,
       "attempts": 0,
       "errors": []
     }

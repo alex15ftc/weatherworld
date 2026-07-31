@@ -1,0 +1,410 @@
+{
+  "schemaVersion": "2.39.1",
+  "generatedAt": "2026-07-31T03:58:48.724Z",
+  "recordCount": 39,
+  "featureCount": 65,
+  "eventRecordCount": 39,
+  "forecastRecordCount": 9,
+  "directSpatialRecordCount": 39,
+  "records": [
+    {
+      "eventDate": "1974-03-20",
+      "path": "features/records/1974-03-20.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "9f5fab0c7e425a4c7ef1423f02c4e4706508a16734e29f9ea2e18f17fdf77a6d"
+    },
+    {
+      "eventDate": "1974-04-01",
+      "path": "features/records/1974-04-01.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "a7fde79beec711cb060739d16e294556296cd20a5ca7097e01523a00d04d1616"
+    },
+    {
+      "eventDate": "1974-04-03",
+      "path": "features/records/1974-04-03.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "eb709340aa81b2d6c2b574762f45a339d1d02f708d615e126e55b4fb25ca39a3"
+    },
+    {
+      "eventDate": "1974-04-04",
+      "path": "features/records/1974-04-04.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "6c0a60210ddea648a07b8846ff492a848e035cb7d38d9b03e635821ad4b769c5"
+    },
+    {
+      "eventDate": "1974-04-13",
+      "path": "features/records/1974-04-13.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "b777f88c0047092977266e7fc5a78e6b4b54bab185945b04354aa26bc0a9a735"
+    },
+    {
+      "eventDate": "1974-04-14",
+      "path": "features/records/1974-04-14.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "70f72440a0f471c3433f8801e5ad7c795fcf26c9b982f36a2adf327015878c83"
+    },
+    {
+      "eventDate": "1974-04-20",
+      "path": "features/records/1974-04-20.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "5c54f07846541525ef1798689341c258e8a4d4f3363226da79e83e7f0f3813ce"
+    },
+    {
+      "eventDate": "1974-04-21",
+      "path": "features/records/1974-04-21.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "1ba9c578b1d2ffed05c0355d6360d2ec806a455253919ec44890f5dddc8150e2"
+    },
+    {
+      "eventDate": "1974-05-13",
+      "path": "features/records/1974-05-13.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "16f32f71fa077e91d487964a837ecc5b4dffd09b78e19d8f6c25fcc9c5a50293"
+    },
+    {
+      "eventDate": "1974-05-30",
+      "path": "features/records/1974-05-30.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "2ff41c5e22e482a01fb599b439926da234f9d1dbcdca93e2fd8523b25be52edc"
+    },
+    {
+      "eventDate": "1974-06-07",
+      "path": "features/records/1974-06-07.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "815d9b4df6a334c71353995c2ad2e4b24691433a3dce248121f7386e1ab30490"
+    },
+    {
+      "eventDate": "1974-06-08",
+      "path": "features/records/1974-06-08.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "d4d9d2786f0441698157456196aee6657f5fe45e2f44672bc046440f81cdccb7"
+    },
+    {
+      "eventDate": "1974-10-28",
+      "path": "features/records/1974-10-28.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "40dbe348479f0fde16ce240b7aff1fbd42b74bf6f0a03ebc59654fcff6b516ac"
+    },
+    {
+      "eventDate": "1991-03-27",
+      "path": "features/records/1991-03-27.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "5365953f0c04a0766cf61e9bd4955add796282e2a6e8c4d13d92ce91a7fdc221"
+    },
+    {
+      "eventDate": "1991-04-26",
+      "path": "features/records/1991-04-26.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "b1f5e12feecb45f785483565baf5ac85a58989632904b962f0a320a42b6273ee"
+    },
+    {
+      "eventDate": "1991-05-04",
+      "path": "features/records/1991-05-04.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "21e19966d65d19b15eab21f8ad740f8c5939b41407080a1ffee9601bee1b7bd9"
+    },
+    {
+      "eventDate": "1991-06-19",
+      "path": "features/records/1991-06-19.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "ed66c8bac4b75eb4af1c43a4dffd9a206c6d4b142f9eec5b8f188c2a4f2052a6"
+    },
+    {
+      "eventDate": "1999-01-21",
+      "path": "features/records/1999-01-21.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "941eb403530c840d0e2eba6f5df23736f6e56da92281ffec833c2deb363c51bc"
+    },
+    {
+      "eventDate": "1999-05-03",
+      "path": "features/records/1999-05-03.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "0b7fd95fed908f4c579bb2ebfd216774a6a116f609253ac1ef18930b07758aef"
+    },
+    {
+      "eventDate": "1999-06-26",
+      "path": "features/records/1999-06-26.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "117bf5b1011de420e31d44107b1ee61f954b9817b9a491dd25859e0fc381bab0"
+    },
+    {
+      "eventDate": "1999-10-13",
+      "path": "features/records/1999-10-13.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "c4b632d57c75a677903b37b772e35f0451b3edd11bb9c11ea7339d9435c383ff"
+    },
+    {
+      "eventDate": "2011-04-21",
+      "path": "features/records/2011-04-21.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "2ba05357f816022e34fa347ae75a7e0544534790838895dd463d5294e370181b"
+    },
+    {
+      "eventDate": "2011-04-27",
+      "path": "features/records/2011-04-27.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "b90d7b5a499e148249a9942ecae8ce3720f3c94bdf0dcaccd71eecffe2af44fa"
+    },
+    {
+      "eventDate": "2011-05-24",
+      "path": "features/records/2011-05-24.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "d735fe4fa253bb14d9c256cc0694e19da217f672fa278a8a810eba0003cc4a80"
+    },
+    {
+      "eventDate": "2011-07-22",
+      "path": "features/records/2011-07-22.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "c2df55fd322aee031a85a3e60a25f16866399a551280a7960984d4a81996ddf8"
+    },
+    {
+      "eventDate": "2013-05-19",
+      "path": "features/records/2013-05-19.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "bb75406731f548d8daf2b678817ca28578b5ba2f5736fe01350af1332090711e"
+    },
+    {
+      "eventDate": "2013-08-01",
+      "path": "features/records/2013-08-01.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "35c7d17edbb485720b2861e39d12317495ea4841f1f1c5824aed5f7ff12909c0"
+    },
+    {
+      "eventDate": "2013-08-03",
+      "path": "features/records/2013-08-03.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "f67089ccb1281748272796e2e125c803d136a4b6a1d957e9ee3a1898f59a2205"
+    },
+    {
+      "eventDate": "2013-11-17",
+      "path": "features/records/2013-11-17.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "113d069fbd7f6f13e0734a68a2f6d338bdc7d0ceb61cf92d4bac769092e0cf27"
+    },
+    {
+      "eventDate": "2020-04-12",
+      "path": "features/records/2020-04-12.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "960f1473c96ae09d143a992b296bf49656fe1118e4333161e969878db757f836"
+    },
+    {
+      "eventDate": "2020-04-13",
+      "path": "features/records/2020-04-13.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "01b8c174979d4971ce4b5dd47dcf1d781eb6b24753ba2815d9aa6697b031bd37"
+    },
+    {
+      "eventDate": "2020-07-12",
+      "path": "features/records/2020-07-12.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "15fa78d37daf92889efba6850433e18813687114005f77c5a1406708b54b3fcf"
+    },
+    {
+      "eventDate": "2020-07-19",
+      "path": "features/records/2020-07-19.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "bf9b746b429ebf054a287d827b902c9d9af58c3c9c3594811eba8bc4fc30282f"
+    },
+    {
+      "eventDate": "2020-08-10",
+      "path": "features/records/2020-08-10.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "c9dc5e6caea39643b14a8014391f36036dd6c17c71cd0775de37c9e6641e62b6"
+    },
+    {
+      "eventDate": "2021-05-25",
+      "path": "features/records/2021-05-25.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "6225e86a8037c9c479f65a68b06e59a8535144a68608ce61f01a58e52b0a1ce4"
+    },
+    {
+      "eventDate": "2021-05-29",
+      "path": "features/records/2021-05-29.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "f8a1254cd410d54fae2db6aa6aec46beb14df287750139fa01f1c5911762814a"
+    },
+    {
+      "eventDate": "2021-12-10",
+      "path": "features/records/2021-12-10.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "dfd9ec80a55cde781c5ece80b36012cfc6fa8f9d5887d76eb3869d98151464cc"
+    },
+    {
+      "eventDate": "2021-12-15",
+      "path": "features/records/2021-12-15.json",
+      "corpusRoles": [
+        "event"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "6fd708a5b4e406c4ffb9af3d409ac71be4a4cd504c421973c776aa32520e6ff3"
+    },
+    {
+      "eventDate": "2024-05-06",
+      "path": "features/records/2024-05-06.json",
+      "corpusRoles": [
+        "event",
+        "forecast"
+      ],
+      "featureCount": 65,
+      "qualityScore": 1,
+      "sourceFingerprint": "a3604994f1ae22fbaac7e1a9549f68c272d6bd0cfdcf88cea266815fac7308bb"
+    }
+  ]
+}

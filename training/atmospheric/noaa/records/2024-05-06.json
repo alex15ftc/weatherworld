@@ -10335,6 +10335,6 @@
   "provenance": {
     "bulkFile": "StormEvents_details-ftp_v1.0_d2024_c20260728.csv.gz",
     "bulkFileSha256": "2070b83eccab041b36360ab73645b9a249c3eefc5b92b5b3fc0cbba4d9fcc09c",
-    "extractedAt": "2026-07-29T02:40:50.030Z"
+    "extractedAt": "2026-07-30T20:51:38.283Z"
   }
 }

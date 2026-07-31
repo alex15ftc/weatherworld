@@ -1,0 +1,199 @@
+{
+  "schemaVersion": "2.39.1",
+  "eventDate": "1974-04-13",
+  "corpusRoles": [
+    "event"
+  ],
+  "inputs": {
+    "raw": {
+      "thermodynamics": {
+        "capeMaxJkg": 4354.375,
+        "capeMeanJkg": 230.9357,
+        "capeP90Jkg": 1008.75,
+        "cinMeanJkg": 260.0782,
+        "cinP90Jkg": 676.5313,
+        "dewpointMeanK": 277.9863,
+        "dewpointP90K": 294.7643,
+        "temperatureMeanK": 285.512,
+        "precipitableWaterMeanKgM2": 15.2296,
+        "lowLevelLapseProxyK": 7.295599999999979,
+        "midLevelLapseProxyK": 16.99819999999997
+      },
+      "windProfile": {
+        "wind850MeanMs": 3.389677226521723,
+        "wind500MeanMs": 11.595574729180093,
+        "wind250MeanMs": 23.96184455441609,
+        "wind250P90Ms": 47.64208862004267,
+        "shear850To500Ms": 8.455768516226069,
+        "shear500To250Ms": 12.4784004475734,
+        "turning850To500Deg": 18.73053015215381,
+        "turning850To250Deg": 12.99099519584131
+      },
+      "synoptic": {
+        "meanSeaLevelPressurePa": 101226.833,
+        "pressureP10Pa": 100434.6875,
+        "pressureRangePa": 1680.6000000000058,
+        "height500MeanM2s2": 55352.5081,
+        "height500RangeM2s2": 3610.670999999995,
+        "jetStrengthMs": 47.64208862004267,
+        "moistureTransportProxy": 15.253547519347752
+      },
+      "spatial": {
+        "capeCoverage1000Proxy": 0.008674101610904586,
+        "capeCoverage2000Proxy": 0,
+        "instabilityGradientProxy": 1.00875,
+        "moistureGradientProxy": 30.80759999999998,
+        "pressureGradientProxy": 16.806000000000058,
+        "precipitableWaterGradientProxy": 28.738799999999998,
+        "moistureCorridorStrengthProxy": 0.10356090436571487,
+        "forcingInstabilityOverlapProxy": 0.029265136378345134,
+        "boundarySharpnessProxy": 2.3658100000000015,
+        "spatialTensorAvailable": 1
+      },
+      "spatialDirect": {
+        "peakTimeIndex": 6,
+        "peakTimeFraction": 0.8571428571428571,
+        "capeCentroidX": 0.6510606818831561,
+        "capeCentroidY": 0.8036416743016743,
+        "capeCorridorOrientationDeg": 153.81936101818823,
+        "capeCorridorElongation": 0.5497110098879106,
+        "capeCoverage1000Direct": 0.1352,
+        "capeCoverage2000Direct": 0.0191,
+        "capeLargestRegionFraction": 0.9874260355029586,
+        "moistureCentroidX": 0.7260336457908217,
+        "moistureCentroidY": 0.8134247625280262,
+        "moistureAxisOrientationDeg": 166.1426541794266,
+        "moistureAxisElongation": 0.4406206069719343,
+        "jetCentroidX": 0.5831698117673938,
+        "jetCentroidY": 0.4541484144189004,
+        "jetAxisOrientationDeg": 163.16358572339942,
+        "jetAxisElongation": 0.8283544944095723,
+        "jetCoreP90Ms": 47.9272631097911,
+        "forcingCentroidX": 0.6801072295372963,
+        "forcingCentroidY": 0.7549642497873028,
+        "forcingInstabilityOverlapDirect": 0.15247547401172412,
+        "moistureTransportOverlapDirect": 0.21264604270606288,
+        "dewpointGradientMeanKCell": 1.0029368568752124,
+        "dewpointGradientP90KCell": 2.22885253139354,
+        "pressureGradientMeanPaCell": 48.23467053193762,
+        "pressureGradientP90PaCell": 90.18843082176194,
+        "tcwvGradientMeanKgM2Cell": 0.8054861029501433,
+        "tcwvGradientP90KgM2Cell": 1.6849111074280323,
+        "spatialTensorRead": 1
+      }
+    },
+    "normalized": {
+      "thermodynamics": {
+        "capeMaxJkg": -0.35435755828510634,
+        "capeMeanJkg": -0.6867394240462131,
+        "capeP90Jkg": -0.5836400323767694,
+        "cinMeanJkg": -0.6199295484518528,
+        "cinP90Jkg": -0.1374385640667321,
+        "dewpointMeanK": -0.7172436131777273,
+        "dewpointP90K": -0.2657409173482786,
+        "temperatureMeanK": -0.6660447609731054,
+        "precipitableWaterMeanKgM2": -0.7771845339225811,
+        "lowLevelLapseProxyK": -0.22032232487155667,
+        "midLevelLapseProxyK": -0.11642606384305473
+      },
+      "windProfile": {
+        "wind850MeanMs": -0.3271338202831299,
+        "wind500MeanMs": -0.09753558387145463,
+        "wind250MeanMs": 0.22467609054458368,
+        "wind250P90Ms": 0.1382863115930952,
+        "shear850To500Ms": -0.22074189749838588,
+        "shear500To250Ms": 0.6177949258051271,
+        "turning850To500Deg": -0.8841383810790351,
+        "turning850To250Deg": -1.2109014709413397
+      },
+      "synoptic": {
+        "meanSeaLevelPressurePa": 0.19013008488881514,
+        "pressureP10Pa": 0.17629740384614037,
+        "pressureRangePa": 0.24439239026935294,
+        "height500MeanM2s2": -0.7227782301044359,
+        "height500RangeM2s2": 0.13713234263867968,
+        "jetStrengthMs": 0.1382863115930952,
+        "moistureTransportProxy": -0.6765251105110816
+      },
+      "spatial": {
+        "capeCoverage1000Proxy": -1.0885494840289756,
+        "capeCoverage2000Proxy": -0.42159432381957596,
+        "instabilityGradientProxy": -0.5836400323767695,
+        "moistureGradientProxy": 0.7633147464985734,
+        "pressureGradientProxy": 0.24439239026935347,
+        "precipitableWaterGradientProxy": -0.1458634393927908,
+        "moistureCorridorStrengthProxy": -0.8088207065251559,
+        "forcingInstabilityOverlapProxy": -0.5816514403522399,
+        "boundarySharpnessProxy": 0.5355469837217552,
+        "spatialTensorAvailable": 0
+      },
+      "spatialDirect": {
+        "peakTimeIndex": 0.6818699839642217,
+        "peakTimeFraction": 0.6818699839642212,
+        "capeCentroidX": 0.6435729302102247,
+        "capeCentroidY": 0.700793112981244,
+        "capeCorridorOrientationDeg": 1.3104215375653712,
+        "capeCorridorElongation": -0.1679282398365866,
+        "capeCoverage1000Direct": -0.4567623309583223,
+        "capeCoverage2000Direct": -0.8627143410838578,
+        "capeLargestRegionFraction": 0.6832663074982241,
+        "moistureCentroidX": 1.408398158227334,
+        "moistureCentroidY": 0.2653049233260789,
+        "moistureAxisOrientationDeg": 0.7291457741148004,
+        "moistureAxisElongation": -0.22107632292492888,
+        "jetCentroidX": 0.8071834484465359,
+        "jetCentroidY": 0.23133487754260912,
+        "jetAxisOrientationDeg": 0.8950766516331767,
+        "jetAxisElongation": 0.10969318243938297,
+        "jetCoreP90Ms": 0.3545621069301021,
+        "forcingCentroidX": 0.9238572710999157,
+        "forcingCentroidY": 0.827427744230289,
+        "forcingInstabilityOverlapDirect": -0.09217381095531352,
+        "moistureTransportOverlapDirect": 0.02815283032100539,
+        "dewpointGradientMeanKCell": 0.3322413851596748,
+        "dewpointGradientP90KCell": 0.7739239572523616,
+        "pressureGradientMeanPaCell": -0.4524218152526124,
+        "pressureGradientP90PaCell": -0.7065228536799663,
+        "tcwvGradientMeanKgM2Cell": -1.3108309837174363,
+        "tcwvGradientP90KgM2Cell": -1.3963899366581425,
+        "spatialTensorRead": 0
+      }
+    }
+  },
+  "labels": {
+    "outcomes": {
+      "reportCount": 45,
+      "tornadoReports": 14,
+      "significantTornadoReports": 12,
+      "violentTornadoReports": 0,
+      "hailReports": 14,
+      "significantHailReports": 4,
+      "windReports": 17,
+      "destructiveWindReports": 0
+    },
+    "forecast": null
+  },
+  "quality": {
+    "score": 1,
+    "atmosphereComplete": true,
+    "spatialComplete": true,
+    "outcomesComplete": true,
+    "forecastTargetsAvailable": false,
+    "checks": {
+      "era5Record": true,
+      "spatialManifest": true,
+      "diagnosticCompleteness": 1,
+      "noaaOutcomes": true,
+      "forecastTargets": false
+    },
+    "directSpatialComplete": true,
+    "directSpatialReason": null
+  },
+  "provenance": {
+    "era5Record": "atmospheric/era5/records/1974-04-13.json",
+    "noaaRecord": "atmospheric/noaa/records/1974-04-13.json",
+    "pairedRecord": "paired/cases.json",
+    "sourceFingerprint": "b777f88c0047092977266e7fc5a78e6b4b54bab185945b04354aa26bc0a9a735"
+  },
+  "featureCount": 65
+}

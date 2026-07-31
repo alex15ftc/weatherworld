@@ -3,7 +3,7 @@ import os from 'node:os';
 import { access, mkdir, readdir, readFile, stat, writeFile, copyFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 
-export const TRAINING_CORPUS_VERSION = '2.36.1';
+export const TRAINING_CORPUS_VERSION = '2.38.1';
 export const DEFAULT_TRAINING_ROOT = 'training';
 
 export function resolveCacheRoot(explicit = null) {
@@ -35,12 +35,14 @@ export function trainingPaths(root = DEFAULT_TRAINING_ROOT, cacheRoot = null) {
     manifest: path.join(base, 'catalog', 'manifest.json'),
     acquisition: path.join(base, 'catalog', 'acquisition.json'),
     era5Records: path.join(base, 'atmospheric', 'era5', 'records'),
+    era5SpatialManifests: path.join(base, 'atmospheric', 'era5', 'spatial'),
     noaaRecords: path.join(base, 'atmospheric', 'noaa', 'records'),
     cacheRoot: cache,
     cacheSpc: path.join(cache, 'spc'),
     cacheEra5: path.join(cache, 'era5'),
     cacheEra5Raw: path.join(cache, 'era5', 'raw'),
     cacheEra5Partial: path.join(cache, 'era5', 'partial'),
+    cacheEra5Spatial: path.join(cache, 'era5', 'spatial'),
     cacheNoaa: path.join(cache, 'noaa'),
     cacheNoaaBulk: path.join(cache, 'noaa', 'bulk'),
     cacheTmp: path.join(cache, 'tmp')
@@ -49,9 +51,9 @@ export function trainingPaths(root = DEFAULT_TRAINING_ROOT, cacheRoot = null) {
 
 export async function ensureTrainingLayout(root = DEFAULT_TRAINING_ROOT, cacheRoot = null, { createExternalCache = false } = {}) {
   const paths = trainingPaths(root, cacheRoot);
-  const repositoryDirs = [paths.catalog, paths.spcTargets, paths.era5, paths.era5Records, paths.noaa, paths.noaaRecords, paths.paired, paths.spcValidation];
+  const repositoryDirs = [paths.catalog, paths.spcTargets, paths.era5, paths.era5Records, paths.era5SpatialManifests, paths.noaa, paths.noaaRecords, paths.paired, paths.spcValidation];
   await Promise.all(repositoryDirs.map(dir => mkdir(dir, { recursive: true })));
-  if (createExternalCache) await Promise.all([paths.cacheSpc, paths.cacheEra5, paths.cacheEra5Raw, paths.cacheEra5Partial, paths.cacheNoaa, paths.cacheNoaaBulk, paths.cacheTmp].map(dir => mkdir(dir, { recursive: true })));
+  if (createExternalCache) await Promise.all([paths.cacheSpc, paths.cacheEra5, paths.cacheEra5Raw, paths.cacheEra5Partial, paths.cacheEra5Spatial, paths.cacheNoaa, paths.cacheNoaaBulk, paths.cacheTmp].map(dir => mkdir(dir, { recursive: true })));
   return paths;
 }
 
@@ -93,13 +95,56 @@ export async function readJsonIfExists(filePath, fallback = null) {
   try { return JSON.parse(await readFile(filePath, 'utf8')); } catch (error) { if (error?.code === 'ENOENT') return fallback; throw error; }
 }
 
+
+export async function readDateRecordMap(directory) {
+  const files = (await listJsonFilesRecursive(directory)).filter(file => /^\d{4}-\d{2}-\d{2}\.json$/.test(path.basename(file)));
+  const entries = await Promise.all(files.map(async file => {
+    const record = await readJsonIfExists(file, null);
+    const eventDate = record?.eventDate ?? path.basename(file, '.json');
+    return eventDate && record ? [eventDate, record] : null;
+  }));
+  return Object.fromEntries(entries.filter(Boolean));
+}
+
+export async function readNoaaRecordCatalog(directory) {
+  const byDate = await readDateRecordMap(directory);
+  return {
+    schemaVersion: TRAINING_CORPUS_VERSION,
+    records: Object.values(byDate).map(record => ({
+      analogId: `us-${record.eventDate}`,
+      eventDate: record.eventDate,
+      season: seasonForDate(record.eventDate),
+      intensity: {
+        score: null,
+        band: null,
+        reportCount: record.reportCount ?? record.reports?.length ?? 0,
+        counts: record.counts ?? {}
+      },
+      outcomes: record.counts ?? {},
+      reports: record.reports ?? [],
+      provenance: record.provenance ?? { reports: record.source ?? 'NOAA NCEI Storm Events' }
+    })).sort((a, b) => a.eventDate.localeCompare(b.eventDate))
+  };
+}
+
+function seasonForDate(eventDate) {
+  const month = Number(String(eventDate).slice(5, 7));
+  return month <= 2 || month === 12 ? 'winter' : month <= 5 ? 'spring' : month <= 8 ? 'summer' : 'fall';
+}
+
 export async function buildCorpusProgress(paths, { generatedAt = new Date().toISOString() } = {}) {
-  const [spcCatalog, paired, era5, noaa] = await Promise.all([
+  const [spcCatalog, paired, era5Aggregate, noaaAggregate, era5Records, noaaRecordCatalog, spatialFiles] = await Promise.all([
     readJsonIfExists(paths.casesCatalog, { records: [] }),
     readJsonIfExists(paths.pairedCases, { cases: [] }),
     readJsonIfExists(paths.era5Derived, {}),
-    readJsonIfExists(paths.noaaOutcomes, { records: [] })
+    readJsonIfExists(paths.noaaOutcomes, { records: [] }),
+    readDateRecordMap(paths.era5Records),
+    readNoaaRecordCatalog(paths.noaaRecords),
+    listJsonFilesRecursive(paths.era5SpatialManifests)
   ]);
+  const era5 = { ...era5Aggregate, ...era5Records };
+  const noaaByDate = new Map([...(noaaAggregate.records ?? []), ...(noaaRecordCatalog.records ?? [])].map(record => [record.eventDate, record]));
+  const noaa = { ...noaaAggregate, records: [...noaaByDate.values()].sort((a, b) => a.eventDate.localeCompare(b.eventDate)) };
   const allDates = new Set([
     ...(spcCatalog.records ?? []).map(record => record.eventDate),
     ...Object.keys(era5 ?? {}),
@@ -115,6 +160,7 @@ export async function buildCorpusProgress(paths, { generatedAt = new Date().toIS
       spcIssuances: (spcCatalog.records ?? []).length,
       spcDates: new Set((spcCatalog.records ?? []).map(record => record.eventDate).filter(Boolean)).size,
       era5Dates: Object.keys(era5 ?? {}).length,
+      era5SpatialDates: spatialFiles.length,
       noaaDates: (noaa.records ?? []).length,
       pairedDates: cases.length,
       completeDates: cases.filter(item => item.status === 'complete').length
@@ -122,6 +168,7 @@ export async function buildCorpusProgress(paths, { generatedAt = new Date().toIS
     stages: {
       spcTargets: stageSummary(new Set((spcCatalog.records ?? []).map(record => record.eventDate).filter(Boolean)).size, allDates.size),
       era5Atmosphere: stageSummary(Object.keys(era5 ?? {}).length, allDates.size),
+      era5Spatial: stageSummary(spatialFiles.length, allDates.size),
       noaaOutcomes: stageSummary((noaa.records ?? []).length, allDates.size),
       paired: stageSummary(cases.filter(item => item.status === 'complete').length, allDates.size)
     }

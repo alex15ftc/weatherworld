@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { compareFeatureVectors } from '../scripts/training-analogs.mjs';
+const q={thermodynamics:{cape:1,cin:.2},windProfile:{shear:1}};
+const c={thermodynamics:{cape:1.1,cin:2},windProfile:{shear:1.05}};
+const r=compareFeatureVectors(q,c,{explainCount:3});
+assert.equal(r.positiveContributors.length,3);
+assert.equal(r.negativeContributors[0].feature,'thermodynamics.cin');
+assert.ok(r.positiveContributors.every(x=>Number.isFinite(x.supportContribution)));
+assert.ok(r.negativeContributors.every(x=>Number.isFinite(x.penaltyContribution)));
+console.log('2.41.0.3 analog contribution diagnostics PASS');

@@ -1,0 +1,128 @@
+--- a/scripts/acquire-era5-training.py
++++ b/scripts/acquire-era5-training.py
+@@ -303,25 +303,117 @@
+ 
+ 
+ def sample_data_array(arr: Any, target_lat: Any, target_lon: Any, *, np: Any) -> tuple[Any, list[str]]:
++    """Interpolate one ERA5 field and normalize it to ``time/y/x``.
++
++    cfgrib may expose ERA5 single-level fields with two temporal dimensions,
++    commonly ``time`` and ``step``. In that case the interpolated field has a
++    shape such as ``(time, step, latitude, longitude)``. Resolve those leading
++    dimensions through ``valid_time``, then sort and de-duplicate the resulting
++    timeline rather than rejecting the four-dimensional array.
++    """
+     lat_name, lon_name = find_horizontal_coordinates(arr)
+     sampled = arr.interp({lat_name: target_lat, lon_name: target_lon}, method="linear")
++
++    # Keep horizontal dimensions last so all preceding axes can be normalized
++    # into one temporal axis consistently.
++    leading_dims = [dim for dim in sampled.dims if dim not in {lat_name, lon_name}]
++    sampled = sampled.transpose(*leading_dims, lat_name, lon_name)
+     values = np.asarray(sampled.values, dtype=np.float32)
+     horizontal = (len(target_lat), len(target_lon))
+     if values.shape[-2:] != horizontal:
+-        raise Era5DecodeError(f"Unexpected spatial shape {values.shape}; expected ending {horizontal}")
++        raise Era5DecodeError(
++            f"Unexpected spatial shape for {arr.name!r}: dims={sampled.dims}, "
++            f"shape={values.shape}; expected ending {horizontal}"
++        )
++
+     if values.ndim == 2:
+         values = values[np.newaxis, ...]
+-    elif values.ndim != 3:
+-        raise Era5DecodeError(f"Expected time/y/x field, received shape {values.shape}")
++        raw_times = None
++    else:
++        temporal_shape = values.shape[:-2]
++        values = values.reshape((-1, *horizontal))
++        raw_times = resolve_valid_times(sampled, temporal_shape, np=np)
++
++    times: list[str] = []
++    if raw_times is not None:
++        if len(raw_times) != values.shape[0]:
++            raise Era5DecodeError(
++                f"Temporal coordinate mismatch for {arr.name!r}: "
++                f"{len(raw_times)} timestamps for shape {values.shape}"
++            )
++        values, times = normalize_valid_time_axis(values, raw_times, np=np)
++
+     if not np.all(np.isfinite(values)):
+-        raise Era5DecodeError("Interpolated spatial field contains non-finite values")
+-    times = []
+-    if "time" in sampled.coords:
+-        raw = np.asarray(sampled["time"].values).reshape(-1)
+-        times = [np.datetime_as_string(value, unit="s") + "Z" for value in raw]
++        raise Era5DecodeError(f"Interpolated spatial field {arr.name!r} contains non-finite values")
+     return values, times
+ 
+ 
++def resolve_valid_times(sampled: Any, temporal_shape: tuple[int, ...], *, np: Any) -> Any | None:
++    """Return one valid timestamp for each flattened temporal element."""
++    if not temporal_shape:
++        return None
++
++    if "valid_time" in sampled.coords:
++        valid = np.asarray(sampled["valid_time"].values)
++        try:
++            return np.broadcast_to(valid, temporal_shape).reshape(-1)
++        except ValueError as exc:
++            raise Era5DecodeError(
++                f"valid_time shape {valid.shape} cannot describe temporal shape {temporal_shape}"
++            ) from exc
++
++    if "time" not in sampled.coords:
++        return None
++
++    time = np.asarray(sampled["time"].values)
++    if "step" in sampled.coords:
++        step = np.asarray(sampled["step"].values)
++        try:
++            time_grid = np.broadcast_to(time.reshape(time.shape + (1,) * step.ndim), temporal_shape)
++            step_grid = np.broadcast_to(step.reshape((1,) * time.ndim + step.shape), temporal_shape)
++            return (time_grid + step_grid).reshape(-1)
++        except (TypeError, ValueError):
++            pass
++
++    try:
++        return np.broadcast_to(time, temporal_shape).reshape(-1)
++    except ValueError:
++        if time.size == int(np.prod(temporal_shape)):
++            return time.reshape(-1)
++        return None
++
++
++def normalize_valid_time_axis(values: Any, raw_times: Any, *, np: Any) -> tuple[Any, list[str]]:
++    """Sort and de-duplicate temporal slices, retaining requested UTC hours."""
++    timestamps = np.asarray(raw_times).astype("datetime64[s]").reshape(-1)
++    if np.any(np.isnat(timestamps)):
++        raise Era5DecodeError("ERA5 field contains invalid valid_time coordinates")
++
++    order = np.argsort(timestamps, kind="stable")
++    timestamps = timestamps[order]
++    values = values[order]
++    unique_times, unique_indices = np.unique(timestamps, return_index=True)
++    values = values[unique_indices]
++
++    requested_hours = set(TIMES)
++    selected_indices = []
++    for index, value in enumerate(unique_times):
++        text = np.datetime_as_string(value, unit="m")
++        if text[-5:] in requested_hours:
++            selected_indices.append(index)
++
++    # Normal ERA5 acquisition requests eight standard three-hourly valid times.
++    # Preserve all unique times for partial/synthetic inputs so errors remain
++    # diagnosable, but constrain complete records to the intended eight slices.
++    if len(selected_indices) >= len(TIMES):
++        selected_indices = selected_indices[:len(TIMES)]
++        unique_times = unique_times[selected_indices]
++        values = values[selected_indices]
++
++    formatted = [np.datetime_as_string(value, unit="s") + "Z" for value in unique_times]
++    return values, formatted
++
++
+ def add_derived_spatial_channels(arrays: dict[str, Any], units: dict[str, str | None], *, np: Any) -> None:
+     u10, v10 = arrays["surface__u10"], arrays["surface__v10"]
+     arrays["derived__wind10_speed"] = np.hypot(u10, v10).astype(np.float32)

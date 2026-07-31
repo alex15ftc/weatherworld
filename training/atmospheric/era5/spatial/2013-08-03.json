@@ -1,0 +1,596 @@
+{
+  "schemaVersion": "2.37.0",
+  "eventDate": "2013-08-03",
+  "kind": "weatherworld-spatial-era5-case",
+  "storage": {
+    "format": "npz",
+    "externalCacheRelativePath": "era5/spatial/2013-08-03/atmosphere.npz",
+    "sha256": "9ca2d13e0b49ad3bf2dd6b5c8b212e3513e8d8921df358cb456f1857e9b9897c",
+    "bytes": 14705117
+  },
+  "grid": {
+    "projection": "latitude-longitude",
+    "rows": 100,
+    "cols": 100,
+    "north": 52.0,
+    "south": 22.0,
+    "west": -115.0,
+    "east": -80.0,
+    "nominalCellKm": 10,
+    "sourceResolutionNote": "ERA5 is interpolated to the simulator grid; this does not create new 10 km-scale information."
+  },
+  "time": {
+    "count": 8,
+    "validTimes": [
+      "2013-08-03T00:00:00Z",
+      "2013-08-03T03:00:00Z",
+      "2013-08-03T06:00:00Z",
+      "2013-08-03T09:00:00Z",
+      "2013-08-03T12:00:00Z",
+      "2013-08-03T15:00:00Z",
+      "2013-08-03T18:00:00Z",
+      "2013-08-03T21:00:00Z"
+    ]
+  },
+  "channels": [
+    {
+      "name": "surface__u10",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "surface__v10",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "surface__d2m",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "surface__t2m",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "surface__msl",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "Pa"
+    },
+    {
+      "name": "surface__sp",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "Pa"
+    },
+    {
+      "name": "surface__cape",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "J kg**-1"
+    },
+    {
+      "name": "surface__cin",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "J kg**-1"
+    },
+    {
+      "name": "surface__tcwv",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg m**-2"
+    },
+    {
+      "name": "level_1000__z",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m**2 s**-2"
+    },
+    {
+      "name": "level_1000__r",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "%"
+    },
+    {
+      "name": "level_1000__q",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg kg**-1"
+    },
+    {
+      "name": "level_1000__t",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "level_1000__u",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_1000__v",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_925__z",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m**2 s**-2"
+    },
+    {
+      "name": "level_925__r",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "%"
+    },
+    {
+      "name": "level_925__q",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg kg**-1"
+    },
+    {
+      "name": "level_925__t",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "level_925__u",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_925__v",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_850__z",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m**2 s**-2"
+    },
+    {
+      "name": "level_850__r",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "%"
+    },
+    {
+      "name": "level_850__q",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg kg**-1"
+    },
+    {
+      "name": "level_850__t",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "level_850__u",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_850__v",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_700__z",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m**2 s**-2"
+    },
+    {
+      "name": "level_700__r",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "%"
+    },
+    {
+      "name": "level_700__q",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg kg**-1"
+    },
+    {
+      "name": "level_700__t",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "level_700__u",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_700__v",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_500__z",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m**2 s**-2"
+    },
+    {
+      "name": "level_500__r",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "%"
+    },
+    {
+      "name": "level_500__q",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg kg**-1"
+    },
+    {
+      "name": "level_500__t",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "level_500__u",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_500__v",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_300__z",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m**2 s**-2"
+    },
+    {
+      "name": "level_300__r",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "%"
+    },
+    {
+      "name": "level_300__q",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg kg**-1"
+    },
+    {
+      "name": "level_300__t",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "level_300__u",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_300__v",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_250__z",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m**2 s**-2"
+    },
+    {
+      "name": "level_250__r",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "%"
+    },
+    {
+      "name": "level_250__q",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "kg kg**-1"
+    },
+    {
+      "name": "level_250__t",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "level_250__u",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "level_250__v",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "derived__wind10_speed",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "derived__dewpoint_depression",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K"
+    },
+    {
+      "name": "derived__bulk_shear_1000_500",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "m s**-1"
+    },
+    {
+      "name": "derived__lapse_rate_850_500",
+      "shape": [
+        8,
+        100,
+        100
+      ],
+      "dtype": "float32",
+      "units": "K km**-1"
+    }
+  ],
+  "coordinates": {
+    "latitude": "latitude",
+    "longitude": "longitude"
+  },
+  "provenance": {
+    "pressureFileSha256": "ca2a6b0b9ebbfbdcb2ca76a939d05bdcc150e1f9fff2306cc0e33820617f01b4",
+    "surfaceFileSha256": "9be1702147559d5dee3603071de233bb4091c42da40dc47ec32326a9f200317f",
+    "extractorVersion": "2.37.0"
+  }
+}

@@ -3,7 +3,7 @@ import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 
-export const ACQUISITION_SCHEMA_VERSION = '2.36.1';
+export const ACQUISITION_SCHEMA_VERSION = '2.37.0';
 export const ACQUISITION_STATES = Object.freeze([
   'missing', 'queued', 'downloading', 'downloaded', 'extracting', 'complete', 'warning', 'failed'
 ]);
@@ -15,6 +15,7 @@ export function createCaseAcquisition(date, previous = {}) {
     spc: normalizeStage(previous.spc, 'missing'),
     era5Raw: normalizeStage(previous.era5Raw, 'missing'),
     era5Extracted: normalizeStage(previous.era5Extracted, 'missing'),
+    era5Spatial: normalizeStage(previous.era5Spatial, 'missing'),
     noaa: normalizeStage(previous.noaa, 'missing'),
     paired: normalizeStage(previous.paired, 'missing'),
     eligibleForTraining: Boolean(previous.eligibleForTraining),
@@ -44,9 +45,16 @@ export function setStage(record, key, status, details = {}) {
     record.attempts = Number(record.attempts ?? 0) + 1;
     if (details.message) record.errors = [...(record.errors ?? []), { stage: key, at: now, message: details.message }].slice(-20);
   }
-  record.eligibleForTraining = ['complete', 'warning'].includes(record.spc.status)
-    && record.era5Extracted.status === 'complete'
-    && record.noaa.status === 'complete';
+  record.spc ??= { status: 'missing' };
+  record.era5Extracted ??= { status: 'missing' };
+  record.era5Spatial ??= { status: 'missing' };
+  record.noaa ??= { status: 'missing' };
+
+  record.eligibleForTraining =
+  ['complete', 'warning'].includes(record.spc.status)
+  && record.era5Extracted.status === 'complete'
+  && record.era5Spatial.status === 'complete'
+  && record.noaa.status === 'complete';
   return record;
 }
 
@@ -55,7 +63,9 @@ export function planAcquisition({ dates, cases = {}, missingOnly = false, includ
   for (const date of [...new Set(dates)].sort()) {
     const item = createCaseAcquisition(date, cases[date]);
     if (include.includes('era5')) {
-      const shouldQueue = !missingOnly || !['complete', 'downloading', 'extracting'].includes(item.era5Extracted.status);
+      const shouldQueue = !missingOnly
+        || !['complete', 'downloading', 'extracting'].includes(item.era5Extracted.status)
+        || !['complete', 'downloading', 'extracting'].includes(item.era5Spatial.status);
       if (shouldQueue) tasks.push({ date, source: 'era5', action: item.era5Raw.status === 'downloaded' ? 'extract' : 'download-and-extract' });
     }
     if (include.includes('noaa')) {
@@ -103,6 +113,7 @@ export function summarizeAcquisition(catalog) {
     spc: count('spc'),
     era5Raw: countAvailable('era5Raw'),
     era5Extracted: count('era5Extracted'),
+    era5Spatial: count('era5Spatial'),
     noaa: count('noaa'),
     paired: count('paired'),
     ready: records.filter(record => record.eligibleForTraining).length,

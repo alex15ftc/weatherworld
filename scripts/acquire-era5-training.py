@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -60,13 +61,20 @@ def main() -> None:
     parser.add_argument("--dates", required=True, help="Comma-separated YYYY-MM-DD dates")
     parser.add_argument("--cache-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument("--spatial-root", required=True, help="External cache for compressed spatial tensors")
+    parser.add_argument("--manifest-root", required=True, help="Repository path for compact spatial manifests")
+    parser.add_argument("--grid-rows", type=int, default=100)
+    parser.add_argument("--grid-cols", type=int, default=100)
     parser.add_argument("--keep-raw", action="store_true")
     args = parser.parse_args()
 
     dates = sorted(set(item.strip() for item in args.dates.split(",") if item.strip()))
     cache_root, output_root = Path(args.cache_root), Path(args.output_root)
+    spatial_root, manifest_root = Path(args.spatial_root), Path(args.manifest_root)
     cache_root.mkdir(parents=True, exist_ok=True)
     output_root.mkdir(parents=True, exist_ok=True)
+    spatial_root.mkdir(parents=True, exist_ok=True)
+    manifest_root.mkdir(parents=True, exist_ok=True)
     ensure_cds_configured()
 
     import cdsapi  # type: ignore
@@ -94,7 +102,10 @@ def main() -> None:
                 "time": TIMES, "area": AREA, "data_format": "grib"
             }, str(surface))
 
-        record = extract_record(date, pressure, surface)
+        record = extract_record(
+            date, pressure, surface, spatial_root, manifest_root,
+            grid_rows=args.grid_rows, grid_cols=args.grid_cols,
+        )
         output_path = output_root / f"{date}.json"
         output_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
@@ -112,13 +123,21 @@ def ensure_cds_configured() -> None:
         raise RuntimeError("CDS credentials not found. Configure ~/.cdsapirc or CDSAPI_KEY.")
 
 
-def extract_record(date: str, pressure: Path, surface: Path) -> dict[str, Any]:
+def extract_record(
+    date: str, pressure: Path, surface: Path, spatial_root: Path, manifest_root: Path,
+    *, grid_rows: int = 100, grid_cols: int = 100,
+) -> dict[str, Any]:
     try:
         import numpy as np  # type: ignore
         import xarray as xr  # type: ignore
         import cfgrib  # type: ignore
     except ImportError as exc:
         raise RuntimeError("ERA5 extraction requires xarray, cfgrib, eccodes, and numpy") from exc
+
+    spatial_manifest = extract_spatial_case(
+        date, pressure, surface, spatial_root, manifest_root, np=np, xr=xr, cfgrib=cfgrib,
+        grid_rows=grid_rows, grid_cols=grid_cols,
+    )
 
     print(f"Decoding ERA5 pressure-level fields for {date}...")
     levels, pressure_missing = decode_pressure_fields(xr, np, pressure)
@@ -132,7 +151,7 @@ def extract_record(date: str, pressure: Path, surface: Path) -> dict[str, Any]:
         )
 
     return {
-        "schemaVersion": "2.36.1.2",
+        "schemaVersion": "2.37.0",
         "eventDate": date,
         "source": "ERA5",
         "validTimes": TIMES,
@@ -140,16 +159,325 @@ def extract_record(date: str, pressure: Path, surface: Path) -> dict[str, Any]:
         "surface": surface_values,
         "levels": levels,
         "derived": derive_diagnostics(surface_values, levels),
+        "spatialRecord": spatial_manifest,
         "provenance": {
             "dataset": "reanalysis-era5",
             "acquiredAt": datetime.now(timezone.utc).isoformat(),
             "pressureFileSha256": sha256(pressure),
             "surfaceFileSha256": sha256(surface),
-            "extractorVersion": "2.36.1.2",
-            "decoder": "cfgrib-surface-dataset-index"
+            "extractorVersion": "2.37.0",
+            "decoder": "cfgrib-spatial-tensor-and-summary"
         }
     }
 
+
+
+def extract_spatial_case(
+    date: str, pressure_path: Path, surface_path: Path, spatial_root: Path, manifest_root: Path,
+    *, np: Any, xr: Any, cfgrib: Any, grid_rows: int, grid_cols: int,
+) -> dict[str, Any]:
+    """Preserve the atmosphere as a deterministic time/channel/grid tensor.
+
+    Large NPZ tensors remain in the external training cache. A compact, portable
+    manifest is written into the repository and referenced by the summary record.
+    """
+    if grid_rows < 2 or grid_cols < 2:
+        raise ValueError("Spatial grid dimensions must both be at least 2")
+
+    print(f"Building {grid_rows}x{grid_cols} spatial ERA5 tensor for {date}...")
+    surface_sets = cfgrib.open_datasets(str(surface_path), backend_kwargs={"indexpath": "", "errors": "raise"})
+    pressure_sets: list[Any] = []
+    try:
+        surface_index = index_dataset_variables(surface_sets)
+        pressure_index: dict[str, Any] = {}
+        for short_name in PRESSURE_FIELDS.values():
+            ds = open_grib_field(xr, pressure_path, {"typeOfLevel": "isobaricInhPa", "shortName": short_name})
+            pressure_sets.append(ds)
+            pressure_index[short_name] = ds[select_data_variable(ds, short_name)]
+
+        coordinate_source = next(iter(surface_index.values()))
+        lat_name, lon_name = find_horizontal_coordinates(coordinate_source)
+        source_lat = np.asarray(coordinate_source[lat_name].values, dtype=float)
+        source_lon = np.asarray(coordinate_source[lon_name].values, dtype=float)
+        # Keep interpolation coordinates in float64. Casting the extrema to float32
+        # can move the edge coordinates just outside the native ERA5 domain and
+        # cause xarray/scipy to emit NaNs along the outer grid row or column.
+        target_lat = np.linspace(float(np.max(source_lat)), float(np.min(source_lat)), grid_rows, dtype=np.float64)
+        target_lon = np.linspace(float(np.min(source_lon)), float(np.max(source_lon)), grid_cols, dtype=np.float64)
+
+        arrays: dict[str, Any] = {"latitude": target_lat, "longitude": target_lon}
+        channel_units: dict[str, str | None] = {}
+        valid_times: list[str] | None = None
+
+        for name in SURFACE_FIELDS.values():
+            arr = surface_index.get(name)
+            if arr is None:
+                raise Era5DecodeError(f"Spatial extraction missing surface variable {name}")
+            sampled, times = sample_data_array(arr, target_lat, target_lon, np=np)
+            arrays[f"surface__{name}"] = sampled.astype(np.float32)
+            channel_units[f"surface__{name}"] = arr.attrs.get("units")
+            valid_times = valid_times or times
+
+        for level in PRESSURE_LEVELS:
+            for name, arr in pressure_index.items():
+                level_coord = find_level_coordinate(arr)
+                selected = arr.sel({level_coord: int(level)})
+                sampled, times = sample_data_array(selected, target_lat, target_lon, np=np)
+                arrays[f"level_{level}__{name}"] = sampled.astype(np.float32)
+                channel_units[f"level_{level}__{name}"] = arr.attrs.get("units")
+                valid_times = valid_times or times
+
+        add_derived_spatial_channels(arrays, channel_units, np=np)
+        time_count = int(next(value for key, value in arrays.items() if key not in {"latitude", "longitude"}).shape[0])
+        if valid_times is None or len(valid_times) != time_count:
+            valid_times = [f"{date}T{clock}:00Z" for clock in TIMES[:time_count]]
+
+        case_dir = spatial_root / date
+        case_dir.mkdir(parents=True, exist_ok=True)
+        tensor_path = case_dir / "atmosphere.npz"
+        atomic_savez(np, tensor_path, arrays)
+        checksum = sha256(tensor_path)
+        manifest = {
+            "schemaVersion": "2.37.0",
+            "eventDate": date,
+            "kind": "weatherworld-spatial-era5-case",
+            "storage": {
+                "format": "npz",
+                "externalCacheRelativePath": f"era5/spatial/{date}/atmosphere.npz",
+                "sha256": checksum,
+                "bytes": tensor_path.stat().st_size,
+            },
+            "grid": {
+                "projection": "latitude-longitude",
+                "rows": grid_rows, "cols": grid_cols,
+                "north": float(target_lat[0]), "south": float(target_lat[-1]),
+                "west": float(target_lon[0]), "east": float(target_lon[-1]),
+                "nominalCellKm": 10,
+                "sourceResolutionNote": "ERA5 is interpolated to the simulator grid; this does not create new 10 km-scale information.",
+            },
+            "time": {"count": time_count, "validTimes": valid_times},
+            "channels": [
+                {"name": key, "shape": list(value.shape), "dtype": str(value.dtype), "units": channel_units.get(key)}
+                for key, value in arrays.items() if key not in {"latitude", "longitude"}
+            ],
+            "coordinates": {"latitude": "latitude", "longitude": "longitude"},
+            "provenance": {
+                "pressureFileSha256": sha256(pressure_path),
+                "surfaceFileSha256": sha256(surface_path),
+                "extractorVersion": "2.37.0",
+            },
+        }
+        manifest_path = manifest_root / f"{date}.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        print(f"  Spatial tensor complete: {tensor_path}")
+        return {
+            "manifest": f"atmospheric/era5/spatial/{date}.json",
+            "cacheRelativePath": manifest["storage"]["externalCacheRelativePath"],
+            "sha256": checksum,
+            "grid": manifest["grid"],
+            "timeCount": time_count,
+            "channelCount": len(manifest["channels"]),
+        }
+    finally:
+        for ds in [*surface_sets, *pressure_sets]:
+            try:
+                ds.close()
+            except Exception:
+                pass
+
+
+def index_dataset_variables(datasets: list[Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for ds in datasets:
+        for name in ds.data_vars:
+            if name in out:
+                raise Era5DecodeError(f"Duplicate cfgrib variable {name}")
+            out[name] = ds[name]
+    return out
+
+
+def find_horizontal_coordinates(arr: Any) -> tuple[str, str]:
+    lat = next((name for name in ("latitude", "lat") if name in arr.coords), None)
+    lon = next((name for name in ("longitude", "lon") if name in arr.coords), None)
+    if not lat or not lon:
+        raise Era5DecodeError("Field has no recognized latitude/longitude coordinates")
+    return lat, lon
+
+
+def sample_data_array(arr: Any, target_lat: Any, target_lon: Any, *, np: Any) -> tuple[Any, list[str]]:
+    """Interpolate one ERA5 field and normalize it to ``time/y/x``.
+
+    cfgrib may expose ERA5 single-level fields with two temporal dimensions,
+    commonly ``time`` and ``step``. In that case the interpolated field has a
+    shape such as ``(time, step, latitude, longitude)``. Resolve those leading
+    dimensions through ``valid_time``, then sort and de-duplicate the resulting
+    timeline rather than rejecting the four-dimensional array.
+    """
+    lat_name, lon_name = find_horizontal_coordinates(arr)
+
+    # ECMWF CIN is only evaluated where a level of free convection exists, so
+    # decoded CIN fields can legitimately contain missing values elsewhere.
+    # Store those undefined/no-LFC points as zero inhibition before spatial
+    # interpolation; CAPE remains a separate channel and prevents zero-CIN,
+    # zero-CAPE points from being interpreted as an initiation signal.
+    interpolation_source = arr
+    if str(arr.name).lower() == "cin":
+        interpolation_source = arr.fillna(0.0)
+
+    sampled = interpolation_source.interp(
+        {lat_name: target_lat, lon_name: target_lon},
+        method="linear",
+        kwargs={"fill_value": "extrapolate"},
+    )
+
+    # A nearest-neighbour pass repairs isolated interpolation holes without
+    # replacing valid linearly interpolated values. This is primarily an edge
+    # safeguard for coordinates that differ by tiny floating-point amounts.
+    if bool(sampled.isnull().any()):
+        nearest = interpolation_source.interp(
+            {lat_name: target_lat, lon_name: target_lon},
+            method="nearest",
+            kwargs={"fill_value": "extrapolate"},
+        )
+        sampled = sampled.where(sampled.notnull(), nearest)
+
+    # Keep horizontal dimensions last so all preceding axes can be normalized
+    # into one temporal axis consistently.
+    leading_dims = [dim for dim in sampled.dims if dim not in {lat_name, lon_name}]
+    sampled = sampled.transpose(*leading_dims, lat_name, lon_name)
+    values = np.asarray(sampled.values, dtype=np.float32)
+    horizontal = (len(target_lat), len(target_lon))
+    if values.shape[-2:] != horizontal:
+        raise Era5DecodeError(
+            f"Unexpected spatial shape for {arr.name!r}: dims={sampled.dims}, "
+            f"shape={values.shape}; expected ending {horizontal}"
+        )
+
+    if values.ndim == 2:
+        values = values[np.newaxis, ...]
+        raw_times = None
+    else:
+        temporal_shape = values.shape[:-2]
+        values = values.reshape((-1, *horizontal))
+        raw_times = resolve_valid_times(sampled, temporal_shape, np=np)
+
+    times: list[str] = []
+    if raw_times is not None:
+        if len(raw_times) != values.shape[0]:
+            raise Era5DecodeError(
+                f"Temporal coordinate mismatch for {arr.name!r}: "
+                f"{len(raw_times)} timestamps for shape {values.shape}"
+            )
+        values, times = normalize_valid_time_axis(values, raw_times, np=np)
+
+    if not np.all(np.isfinite(values)):
+        missing_count = int(np.size(values) - np.count_nonzero(np.isfinite(values)))
+        missing_fraction = missing_count / int(np.size(values))
+        raise Era5DecodeError(
+            f"Interpolated spatial field {arr.name!r} contains {missing_count} "
+            f"non-finite values ({missing_fraction:.3%}) after linear and nearest repair"
+        )
+    return values, times
+
+
+def resolve_valid_times(sampled: Any, temporal_shape: tuple[int, ...], *, np: Any) -> Any | None:
+    """Return one valid timestamp for each flattened temporal element."""
+    if not temporal_shape:
+        return None
+
+    if "valid_time" in sampled.coords:
+        valid = np.asarray(sampled["valid_time"].values)
+        try:
+            return np.broadcast_to(valid, temporal_shape).reshape(-1)
+        except ValueError as exc:
+            raise Era5DecodeError(
+                f"valid_time shape {valid.shape} cannot describe temporal shape {temporal_shape}"
+            ) from exc
+
+    if "time" not in sampled.coords:
+        return None
+
+    time = np.asarray(sampled["time"].values)
+    if "step" in sampled.coords:
+        step = np.asarray(sampled["step"].values)
+        try:
+            time_grid = np.broadcast_to(time.reshape(time.shape + (1,) * step.ndim), temporal_shape)
+            step_grid = np.broadcast_to(step.reshape((1,) * time.ndim + step.shape), temporal_shape)
+            return (time_grid + step_grid).reshape(-1)
+        except (TypeError, ValueError):
+            pass
+
+    try:
+        return np.broadcast_to(time, temporal_shape).reshape(-1)
+    except ValueError:
+        if time.size == int(np.prod(temporal_shape)):
+            return time.reshape(-1)
+        return None
+
+
+def normalize_valid_time_axis(values: Any, raw_times: Any, *, np: Any) -> tuple[Any, list[str]]:
+    """Sort and de-duplicate temporal slices, retaining requested UTC hours."""
+    timestamps = np.asarray(raw_times).astype("datetime64[s]").reshape(-1)
+    if np.any(np.isnat(timestamps)):
+        raise Era5DecodeError("ERA5 field contains invalid valid_time coordinates")
+
+    order = np.argsort(timestamps, kind="stable")
+    timestamps = timestamps[order]
+    values = values[order]
+    unique_times, unique_indices = np.unique(timestamps, return_index=True)
+    values = values[unique_indices]
+
+    requested_hours = set(TIMES)
+    selected_indices = []
+    for index, value in enumerate(unique_times):
+        text = np.datetime_as_string(value, unit="m")
+        if text[-5:] in requested_hours:
+            selected_indices.append(index)
+
+    # Normal ERA5 acquisition requests eight standard three-hourly valid times.
+    # Preserve all unique times for partial/synthetic inputs so errors remain
+    # diagnosable, but constrain complete records to the intended eight slices.
+    if len(selected_indices) >= len(TIMES):
+        selected_indices = selected_indices[:len(TIMES)]
+        unique_times = unique_times[selected_indices]
+        values = values[selected_indices]
+
+    formatted = [np.datetime_as_string(value, unit="s") + "Z" for value in unique_times]
+    return values, formatted
+
+
+def add_derived_spatial_channels(arrays: dict[str, Any], units: dict[str, str | None], *, np: Any) -> None:
+    u10, v10 = arrays["surface__u10"], arrays["surface__v10"]
+    arrays["derived__wind10_speed"] = np.hypot(u10, v10).astype(np.float32)
+    units["derived__wind10_speed"] = "m s**-1"
+    arrays["derived__dewpoint_depression"] = (arrays["surface__t2m"] - arrays["surface__d2m"]).astype(np.float32)
+    units["derived__dewpoint_depression"] = "K"
+    arrays["derived__bulk_shear_1000_500"] = np.hypot(
+        arrays["level_500__u"] - arrays["level_1000__u"],
+        arrays["level_500__v"] - arrays["level_1000__v"],
+    ).astype(np.float32)
+    units["derived__bulk_shear_1000_500"] = "m s**-1"
+    g = 9.80665
+    dz = (arrays["level_500__z"] - arrays["level_850__z"]) / g
+    dt = arrays["level_850__t"] - arrays["level_500__t"]
+    safe_dz = np.where(np.abs(dz) < 1.0, np.nan, dz)
+    lapse = (dt / safe_dz * 1000.0).astype(np.float32)
+    if not np.all(np.isfinite(lapse)):
+        raise Era5DecodeError("Derived 850-500 hPa lapse-rate field is non-finite")
+    arrays["derived__lapse_rate_850_500"] = lapse
+    units["derived__lapse_rate_850_500"] = "K km**-1"
+
+
+def atomic_savez(np: Any, destination: Path, arrays: dict[str, Any]) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=destination.parent, suffix=".npz", delete=False) as handle:
+        temp_path = Path(handle.name)
+    try:
+        np.savez_compressed(temp_path, **arrays)
+        temp_path.replace(destination)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 def decode_pressure_fields(xr: Any, np: Any, path: Path) -> tuple[dict[str, dict[str, Any]], list[str]]:
     levels: dict[str, dict[str, Any]] = {level: {} for level in PRESSURE_LEVELS}

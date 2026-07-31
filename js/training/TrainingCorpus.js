@@ -1,4 +1,4 @@
-export const TRAINING_CORPUS_SCHEMA_VERSION = '2.36.0';
+export const TRAINING_CORPUS_SCHEMA_VERSION = '2.38.0';
 export const HISTORICAL_TRAINING_CORPUS_VERSION = TRAINING_CORPUS_SCHEMA_VERSION;
 
 const ABSOLUTE_LON_RANGE = [-180, 180];
@@ -170,11 +170,51 @@ export function pairTrainingCorpus({ spcCatalog, era5ByDate = {}, noaaCatalog = 
     const hasSpc = spc.length > 0;
     const hasEra5 = Boolean(era5);
     const hasNoaa = Boolean(noaa);
-    const status = hasSpc && hasEra5 && hasNoaa ? 'complete' : (hasSpc || hasEra5 || hasNoaa) ? 'partial' : 'empty';
+
+    // Two complementary corpora are maintained from the same case manifest:
+    // forecast: atmosphere -> official SPC target -> observed outcome
+    // event:    atmosphere -> observed outcome (SPC is not required)
+    const eventComplete = hasEra5 && hasNoaa;
+    const forecastEligible = hasSpc;
+    const forecastComplete = hasSpc && hasEra5 && hasNoaa;
+    const usable = eventComplete || forecastComplete;
+    const status = usable ? 'usable' : (hasSpc || hasEra5 || hasNoaa) ? 'partial' : 'empty';
+    const eventMissing = [
+      ...(!hasEra5 ? ['era5Atmosphere'] : []),
+      ...(!hasNoaa ? ['noaaOutcomes'] : [])
+    ];
+    const forecastMissing = [
+      ...(!hasSpc ? ['spcTargets'] : []),
+      ...(!hasEra5 ? ['era5Atmosphere'] : []),
+      ...(!hasNoaa ? ['noaaOutcomes'] : [])
+    ];
+    const availableCore = Number(hasEra5) + Number(hasNoaa);
+    const eventQuality = Math.round((availableCore / 2) * 100);
+    const forecastQuality = Math.round(((Number(hasSpc) + availableCore) / 3) * 100);
+
     return {
       caseId: `training-${eventDate}`,
       eventDate,
       status,
+      usable,
+      corpusMembership: {
+        event: {
+          eligible: hasEra5 || hasNoaa,
+          complete: eventComplete,
+          quality: eventQuality,
+          missing: eventMissing
+        },
+        forecast: {
+          eligible: forecastEligible,
+          complete: forecastComplete,
+          quality: forecastQuality,
+          missing: forecastMissing
+        }
+      },
+      // Backward-compatible fields. Missing now reflects the event corpus,
+      // because SPC targets are not a requirement for historical event training.
+      quality: eventComplete ? eventQuality : forecastQuality,
+      missing: eventMissing,
       completeness: { spc: hasSpc, era5: hasEra5, noaa: hasNoaa },
       spc: {
         discoveredIssuanceCount: allSpc.length,
@@ -202,12 +242,19 @@ export function pairTrainingCorpus({ spcCatalog, era5ByDate = {}, noaaCatalog = 
   });
   return {
     schemaVersion: HISTORICAL_TRAINING_CORPUS_VERSION,
-    purpose: 'paired-backend-training-cases',
+    purpose: 'dual forecast-and-event training corpus',
     generatedAt: new Date(generatedAt).toISOString(),
     summary: {
       caseCount: cases.length,
-      completeCount: cases.filter(item => item.status === 'complete').length,
-      partialCount: cases.filter(item => item.status === 'partial').length,
+      usableCount: cases.filter(item => item.usable).length,
+      partialCount: cases.filter(item => !item.usable && item.status === 'partial').length,
+      eventCompleteCount: cases.filter(item => item.corpusMembership.event.complete).length,
+      forecastEligibleCount: cases.filter(item => item.corpusMembership.forecast.eligible).length,
+      forecastCompleteCount: cases.filter(item => item.corpusMembership.forecast.complete).length,
+      dualCompleteCount: cases.filter(item => item.corpusMembership.event.complete && item.corpusMembership.forecast.complete).length,
+      unavailableCount: cases.filter(item => !item.usable).length,
+      // Backward compatibility for existing status consumers.
+      completeCount: cases.filter(item => item.corpusMembership.forecast.complete).length,
       spcCaseCount: cases.filter(item => item.completeness.spc).length,
       era5CaseCount: cases.filter(item => item.completeness.era5).length,
       noaaCaseCount: cases.filter(item => item.completeness.noaa).length

@@ -892,3 +892,7 @@ Predictive outlooks now consume hazard, initiation, coverage, and CIG diagnostic
 ## 2.36.1 atmospheric acquisition
 
 Use `npm run training:acquire -- --missing-only --dry-run` to inspect missing ERA5/NOAA work, then remove `--dry-run` to execute it. See `MILESTONE-2.36.1.md` for prerequisites and cache behavior.
+
+## 2.37.0 spatial training corpus
+
+ERA5 acquisition now preserves eight 3-hour atmospheric snapshots as compressed 100×100 spatial tensors in the external training cache while retaining compact repository manifests. Run `npm run training:resume` to build missing spatial cases, `npm run training:spatial-status` for manifest coverage, and `npm run training:validate-spatial` to verify cached tensors. See `MILESTONE-2.37.0.md` for the storage boundary and initial derived channels.

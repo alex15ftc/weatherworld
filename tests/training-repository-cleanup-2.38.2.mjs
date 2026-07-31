@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import { mkdtemp, mkdir, writeFile, access } from 'node:fs/promises';
+import { cleanTrainingRepository } from '../scripts/clean-training-repository.mjs';
+import { ensureTrainingLayout } from '../js/training/TrainingCorpusManager.js';
+
+const root = await mkdtemp(path.join(os.tmpdir(), 'ww-clean-'));
+const trainingRoot = path.join(root, 'training');
+const cacheRoot = path.join(root, 'cache');
+const paths = await ensureTrainingLayout(trainingRoot, cacheRoot, { createExternalCache: true });
+await writeFile(path.join(paths.era5Records, 'sample.json'), '{"ok":true}\n');
+await writeFile(path.join(paths.era5Records, 'sample (1).json'), '{"ok":true}\n');
+await mkdir(path.join(trainingRoot, '__pycache__'), { recursive: true });
+await writeFile(path.join(trainingRoot, '__pycache__', 'x.pyc'), 'junk');
+const report = await cleanTrainingRepository(paths, {});
+assert.equal(report.duplicateCandidates.length, 1);
+await assert.rejects(access(path.join(paths.era5Records, 'sample (1).json')));
+await access(path.join(paths.era5Records, 'sample.json'));
+console.log('2.38.2 training repository cleanup regression passed.');
