@@ -1,0 +1,145 @@
+
+=== Reliability: forecast probability level vs observed frequency (within 25 mi) ===
+day1 tornado 2%: obs 10% (n=36140) | 5%: obs 17% (n=4842) | 10%: obs 28% (n=3513) | 15%: obs 54% (n=738)
+day1 hail    5%: obs 27% (n=13551) | 15%: obs 60% (n=2531)
+day1 wind    5%: obs 22% (n=4757) | 15%: obs 69% (n=1084)
+day2 tornado 2%: obs 0% (n=414) | 5%: obs 0% (n=52)
+day2 hail    5%: obs 6% (n=2301) | 15%: obs 10% (n=547)
+
+=== Per day / hazard summary (mean over verified products) ===
+day1 tornado n=72 BSS 0.02 | area bias 1.47 | obs missed by lowest contour 0.67 | centroid err 87 mi | products w/ forecast but no event 28/62 | events with no forecast 1/35
+day1 hail    n=72 BSS -0.06 | area bias 1.49 | obs missed by lowest contour 0.73 | centroid err 107 mi | products w/ forecast but no event 3/60 | events with no forecast 11/68
+day1 wind    n=72 BSS -0.01 | area bias 1.06 | obs missed by lowest contour 0.78 | centroid err 85 mi | products w/ forecast but no event 2/24 | events with no forecast 18/40
+day2 tornado n=32 BSS -0.01 | area bias 0.00 | obs missed by lowest contour 1.00 | centroid err - | products w/ forecast but no event 1/1 | events with no forecast 6/6
+day2 hail    n=32 BSS -0.04 | area bias 1.34 | obs missed by lowest contour 0.93 | centroid err 130 mi | products w/ forecast but no event 1/11 | events with no forecast 18/28
+day2 wind    n=32 BSS -0.01 | area bias 0.00 | obs missed by lowest contour 1.00 | centroid err - | products w/ forecast but no event 0/0 | events with no forecast 10/10
+day3 tornado n=16 BSS   -   | area bias   -   | obs missed by lowest contour   -   | centroid err - | products w/ forecast but no event 0/0 | events with no forecast 0/0
+day3 hail    n=16 BSS -0.02 | area bias 0.00 | obs missed by lowest contour 1.00 | centroid err - | products w/ forecast but no event 0/0 | events with no forecast 12/12
+day3 wind    n=16 BSS   -   | area bias   -   | obs missed by lowest contour   -   | centroid err - | products w/ forecast but no event 0/0 | events with no forecast 0/0
+
+=== Categorical: forecast overall risk vs observed (counts) ===
+day1 n=72 exact 25 within-one 51 over 36 under 11 | ENH->ENH:9 SLGT->SLGT:9 SLGT->MRGN:9 ENH->MRGN:7 ENH->TSTM:7 ENH->SLGT:6 MDT->ENH:4 MDT->MDT:4 ENH->MDT:3 MRGN->MRGN:3 SLGT->ENH:2 ENH->HIGH:2 SLGT->TSTM:2 MRGN->SLGT:1 MDT->SLGT:1 SLGT->HIGH:1 MDT->HIGH:1 TSTM->SLGT:1
+day2 n=32 exact 7 within-one 23 over 8 under 17 | TSTM->MRGN:9 TSTM->SLGT:5 TSTM->TSTM:5 SLGT->MRGN:4 TSTM->ENH:2 ENH->ENH:2 ENH->SLGT:2 ENH->MRGN:1 SLGT->TSTM:1 MRGN->SLGT:1
+day3 n=16 exact 6 within-one 10 over 0 under 10 | TSTM->SLGT:6 TSTM->TSTM:6 TSTM->MRGN:4
+
+=== Products ===
+1 day1 issued 12Z valid 12-36 fc ENH obs ENH | T max 10% fc 231 obs 432 hit 77 ce 97 | H max 5% fc 40 obs 479 hit 10 ce 114 | W max 0% fc 0 obs 336 hit 0 ce -
+1 day2 issued 12Z valid 36-60 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 103 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+1 day3 issued 12Z valid 60-84 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 107 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+1 day1 issued 18Z valid 18-42 fc MDT obs ENH | T max 15% fc 522 obs 415 hit 287 ce 29 | H max 15% fc 804 obs 456 hit 394 ce 45 | W max 15% fc 634 obs 329 hit 265 ce 48
+1 day1 issued 24Z valid 24-48 fc MDT obs ENH | T max 15% fc 237 obs 128 hit 46 ce 3 | H max 15% fc 319 obs 219 hit 89 ce 29 | W max 5% fc 138 obs 138 hit 17 ce 105
+1 day2 issued 24Z valid 36-60 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 103 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+1 day3 issued 24Z valid 60-84 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 107 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+1 day1 issued 30Z valid 30-54 fc SLGT obs SLGT | T max 5% fc 89 obs 0 hit 0 ce - | H max 5% fc 41 obs 127 hit 9 ce 107 | W max 0% fc 0 obs 0 hit 0 ce -
+1 day1 issued 36Z valid 36-60 fc SLGT obs MRGN | T max 5% fc 39 obs 0 hit 0 ce - | H max 5% fc 101 obs 103 hit 0 ce 250 | W max 0% fc 0 obs 0 hit 0 ce -
+1 day2 issued 36Z valid 60-84 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 107 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+1 day1 issued 42Z valid 42-66 fc SLGT obs MRGN | T max 5% fc 78 obs 0 hit 0 ce - | H max 5% fc 240 obs 67 hit 2 ce 244 | W max 0% fc 0 obs 0 hit 0 ce -
+1 day1 issued 48Z valid 48-72 fc ENH obs MRGN | T max 10% fc 119 obs 0 hit 0 ce - | H max 5% fc 248 obs 153 hit 28 ce 205 | W max 0% fc 0 obs 0 hit 0 ce -
+1 day2 issued 48Z valid 60-84 fc SLGT obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 96 obs 107 hit 2 ce 51 | W max 0% fc 0 obs 0 hit 0 ce -
+1 day1 issued 54Z valid 54-78 fc ENH obs MRGN | T max 10% fc 263 obs 0 hit 0 ce - | H max 15% fc 333 obs 107 hit 57 ce 45 | W max 0% fc 0 obs 0 hit 0 ce -
+1 day1 issued 60Z valid 60-84 fc SLGT obs MRGN | T max 5% fc 46 obs 0 hit 0 ce - | H max 5% fc 138 obs 107 hit 5 ce 221 | W max 0% fc 0 obs 0 hit 0 ce -
+11 day1 issued 12Z valid 12-36 fc ENH obs MDT | T max 10% fc 195 obs 206 hit 25 ce 123 | H max 15% fc 165 obs 460 hit 103 ce 142 | W max 0% fc 0 obs 339 hit 0 ce -
+11 day2 issued 12Z valid 36-60 fc TSTM obs ENH | T max 0% fc 0 obs 123 hit 0 ce - | H max 0% fc 0 obs 364 hit 0 ce - | W max 0% fc 0 obs 163 hit 0 ce -
+11 day3 issued 12Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 96 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+11 day1 issued 18Z valid 18-42 fc MDT obs MDT | T max 15% fc 280 obs 228 hit 80 ce 130 | H max 15% fc 513 obs 516 hit 247 ce 141 | W max 5% fc 194 obs 340 hit 69 ce 130
+11 day1 issued 24Z valid 24-48 fc ENH obs ENH | T max 10% fc 121 obs 223 hit 65 ce 51 | H max 15% fc 406 obs 471 hit 116 ce 137 | W max 15% fc 371 obs 344 hit 154 ce 86
+11 day2 issued 24Z valid 36-60 fc ENH obs ENH | T max 0% fc 0 obs 123 hit 0 ce - | H max 15% fc 275 obs 364 hit 0 ce 233 | W max 0% fc 0 obs 163 hit 0 ce -
+11 day3 issued 24Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 96 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+11 day1 issued 30Z valid 30-54 fc SLGT obs ENH | T max 5% fc 24 obs 211 hit 18 ce 95 | H max 5% fc 70 obs 416 hit 61 ce 71 | W max 0% fc 0 obs 247 hit 0 ce -
+11 day1 issued 36Z valid 36-60 fc MDT obs ENH | T max 15% fc 176 obs 123 hit 80 ce 50 | H max 15% fc 286 obs 364 hit 227 ce 45 | W max 15% fc 197 obs 163 hit 104 ce 19
+11 day2 issued 36Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 96 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+11 day1 issued 42Z valid 42-66 fc ENH obs SLGT | T max 10% fc 182 obs 30 hit 30 ce 55 | H max 15% fc 267 obs 252 hit 188 ce 32 | W max 15% fc 220 obs 81 hit 81 ce 9
+11 day1 issued 48Z valid 48-72 fc ENH obs SLGT | T max 2% fc 0 obs 0 hit 0 ce - | H max 15% fc 420 obs 220 hit 0 ce 185 | W max 0% fc 0 obs 0 hit 0 ce -
+11 day2 issued 48Z valid 60-84 fc ENH obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 15% fc 855 obs 96 hit 0 ce 244 | W max 0% fc 0 obs 0 hit 0 ce -
+11 day1 issued 54Z valid 54-78 fc MRGN obs SLGT | T max 2% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 112 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+11 day1 issued 60Z valid 60-84 fc SLGT obs SLGT | T max 5% fc 20 obs 0 hit 0 ce - | H max 5% fc 36 obs 96 hit 27 ce 16 | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 12Z valid 12-36 fc ENH obs ENH | T max 10% fc 117 obs 287 hit 38 ce 77 | H max 0% fc 0 obs 511 hit 0 ce - | W max 0% fc 0 obs 243 hit 0 ce -
+23 day2 issued 12Z valid 36-60 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 86 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+23 day3 issued 12Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 21 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 18Z valid 18-42 fc ENH obs ENH | T max 10% fc 151 obs 287 hit 45 ce 42 | H max 15% fc 556 obs 470 hit 265 ce 44 | W max 15% fc 373 obs 223 hit 88 ce 36
+23 day1 issued 24Z valid 24-48 fc ENH obs ENH | T max 10% fc 198 obs 156 hit 64 ce 72 | H max 15% fc 464 obs 327 hit 129 ce 82 | W max 15% fc 264 obs 165 hit 12 ce 133
+23 day2 issued 24Z valid 36-60 fc SLGT obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 185 obs 86 hit 0 ce 146 | W max 0% fc 0 obs 0 hit 0 ce -
+23 day3 issued 24Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 21 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 30Z valid 30-54 fc MDT obs SLGT | T max 15% fc 213 obs 26 hit 26 ce 37 | H max 15% fc 292 obs 147 hit 110 ce 49 | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 36Z valid 36-60 fc MRGN obs MRGN | T max 2% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 86 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+23 day2 issued 36Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 21 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 42Z valid 42-66 fc ENH obs TSTM | T max 10% fc 243 obs 0 hit 0 ce - | H max 5% fc 187 obs 42 hit 28 ce 77 | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 48Z valid 48-72 fc ENH obs TSTM | T max 10% fc 179 obs 0 hit 0 ce - | H max 15% fc 257 obs 42 hit 36 ce 29 | W max 0% fc 0 obs 0 hit 0 ce -
+23 day2 issued 48Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 21 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 54Z valid 54-78 fc ENH obs TSTM | T max 10% fc 144 obs 0 hit 0 ce - | H max 5% fc 82 obs 21 hit 3 ce 145 | W max 0% fc 0 obs 0 hit 0 ce -
+23 day1 issued 60Z valid 60-84 fc ENH obs TSTM | T max 10% fc 134 obs 0 hit 0 ce - | H max 0% fc 0 obs 21 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+42 day1 issued 12Z valid 12-36 fc ENH obs MDT | T max 10% fc 139 obs 335 hit 44 ce 59 | H max 5% fc 80 obs 581 hit 24 ce 94 | W max 5% fc 8 obs 270 hit 0 ce 156
+42 day2 issued 12Z valid 36-60 fc ENH obs MRGN | T max 5% fc 52 obs 0 hit 0 ce - | H max 15% fc 314 obs 162 hit 67 ce 91 | W max 0% fc 0 obs 21 hit 0 ce -
+42 day3 issued 12Z valid 60-84 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 56 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+42 day1 issued 18Z valid 18-42 fc MDT obs MDT | T max 15% fc 405 obs 290 hit 192 ce 72 | H max 15% fc 956 obs 565 hit 440 ce 20 | W max 15% fc 597 obs 229 hit 172 ce 26
+42 day1 issued 24Z valid 24-48 fc ENH obs SLGT | T max 10% fc 82 obs 0 hit 0 ce - | H max 15% fc 237 obs 246 hit 99 ce 71 | W max 5% fc 92 obs 35 hit 0 ce 169
+42 day2 issued 24Z valid 36-60 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 162 hit 0 ce - | W max 0% fc 0 obs 21 hit 0 ce -
+42 day3 issued 24Z valid 60-84 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 56 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+42 day1 issued 30Z valid 30-54 fc SLGT obs MRGN | T max 5% fc 15 obs 0 hit 0 ce - | H max 5% fc 30 obs 204 hit 15 ce 80 | W max 5% fc 9 obs 35 hit 0 ce 161
+42 day1 issued 36Z valid 36-60 fc ENH obs MRGN | T max 10% fc 56 obs 0 hit 0 ce - | H max 5% fc 82 obs 162 hit 54 ce 51 | W max 5% fc 82 obs 21 hit 21 ce 80
+42 day2 issued 36Z valid 60-84 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 56 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+42 day1 issued 42Z valid 42-66 fc SLGT obs MRGN | T max 5% fc 66 obs 0 hit 0 ce - | H max 5% fc 227 obs 62 hit 62 ce 16 | W max 5% fc 18 obs 0 hit 0 ce -
+42 day1 issued 48Z valid 48-72 fc SLGT obs MRGN | T max 5% fc 81 obs 0 hit 0 ce - | H max 5% fc 285 obs 56 hit 0 ce 100 | W max 0% fc 0 obs 0 hit 0 ce -
+42 day2 issued 48Z valid 60-84 fc SLGT obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 51 obs 56 hit 0 ce 96 | W max 0% fc 0 obs 0 hit 0 ce -
+42 day1 issued 54Z valid 54-78 fc SLGT obs MRGN | T max 5% fc 36 obs 0 hit 0 ce - | H max 5% fc 21 obs 56 hit 0 ce 215 | W max 0% fc 0 obs 0 hit 0 ce -
+42 day1 issued 60Z valid 60-84 fc ENH obs MRGN | T max 10% fc 144 obs 0 hit 0 ce - | H max 15% fc 295 obs 56 hit 0 ce 106 | W max 0% fc 0 obs 0 hit 0 ce -
+99 day1 issued 12Z valid 12-36 fc SLGT obs HIGH | T max 5% fc 8 obs 725 hit 0 ce 153 | H max 0% fc 0 obs 1119 hit 0 ce - | W max 0% fc 0 obs 735 hit 0 ce -
+99 day2 issued 12Z valid 36-60 fc TSTM obs ENH | T max 0% fc 0 obs 59 hit 0 ce - | H max 0% fc 0 obs 303 hit 0 ce - | W max 0% fc 0 obs 200 hit 0 ce -
+99 day3 issued 12Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 20 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+99 day1 issued 18Z valid 18-42 fc MDT obs HIGH | T max 15% fc 246 obs 718 hit 162 ce 63 | H max 15% fc 756 obs 1097 hit 568 ce 82 | W max 0% fc 0 obs 753 hit 0 ce -
+99 day1 issued 24Z valid 24-48 fc ENH obs HIGH | T max 10% fc 377 obs 353 hit 224 ce 21 | H max 15% fc 607 obs 597 hit 399 ce 30 | W max 15% fc 511 obs 371 hit 232 ce 47
+99 day2 issued 24Z valid 36-60 fc ENH obs ENH | T max 0% fc 0 obs 59 hit 0 ce - | H max 15% fc 178 obs 303 hit 79 ce 36 | W max 0% fc 0 obs 200 hit 0 ce -
+99 day3 issued 24Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 20 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+99 day1 issued 30Z valid 30-54 fc ENH obs ENH | T max 10% fc 80 obs 116 hit 29 ce 42 | H max 15% fc 152 obs 355 hit 59 ce 11 | W max 0% fc 0 obs 200 hit 0 ce -
+99 day1 issued 36Z valid 36-60 fc SLGT obs ENH | T max 5% fc 34 obs 59 hit 0 ce 92 | H max 5% fc 25 obs 303 hit 21 ce 122 | W max 0% fc 0 obs 200 hit 0 ce -
+99 day2 issued 36Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 20 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+99 day1 issued 42Z valid 42-66 fc ENH obs SLGT | T max 10% fc 59 obs 21 hit 0 ce 151 | H max 15% fc 147 obs 264 hit 85 ce 66 | W max 15% fc 75 obs 164 hit 53 ce 73
+99 day1 issued 48Z valid 48-72 fc SLGT obs SLGT | T max 5% fc 49 obs 21 hit 0 ce 125 | H max 5% fc 86 obs 118 hit 31 ce 124 | W max 5% fc 59 obs 49 hit 33 ce 26
+99 day2 issued 48Z valid 60-84 fc ENH obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 15% fc 622 obs 20 hit 20 ce 143 | W max 0% fc 0 obs 0 hit 0 ce -
+99 day1 issued 54Z valid 54-78 fc ENH obs SLGT | T max 5% fc 106 obs 21 hit 0 ce 287 | H max 15% fc 180 obs 74 hit 32 ce 205 | W max 0% fc 0 obs 0 hit 0 ce -
+99 day1 issued 60Z valid 60-84 fc SLGT obs SLGT | T max 5% fc 34 obs 0 hit 0 ce - | H max 5% fc 71 obs 20 hit 0 ce 319 | W max 0% fc 0 obs 0 hit 0 ce -
+2011 day1 issued 12Z valid 12-36 fc ENH obs MDT | T max 10% fc 146 obs 192 hit 43 ce 61 | H max 5% fc 54 obs 380 hit 9 ce 56 | W max 0% fc 0 obs 75 hit 0 ce -
+2011 day2 issued 12Z valid 36-60 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 77 hit 0 ce - | W max 0% fc 0 obs 21 hit 0 ce -
+2011 day3 issued 12Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2011 day1 issued 18Z valid 18-42 fc MDT obs MDT | T max 15% fc 147 obs 179 hit 68 ce 107 | H max 15% fc 529 obs 368 hit 115 ce 133 | W max 0% fc 0 obs 75 hit 0 ce -
+2011 day1 issued 24Z valid 24-48 fc MDT obs ENH | T max 15% fc 158 obs 80 hit 43 ce 87 | H max 15% fc 386 obs 186 hit 69 ce 123 | W max 15% fc 195 obs 21 hit 0 ce 112
+2011 day2 issued 24Z valid 36-60 fc SLGT obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 109 obs 77 hit 27 ce 66 | W max 0% fc 0 obs 21 hit 0 ce -
+2011 day3 issued 24Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2011 day1 issued 30Z valid 30-54 fc SLGT obs MRGN | T max 5% fc 9 obs 0 hit 0 ce - | H max 5% fc 357 obs 133 hit 1 ce 254 | W max 0% fc 0 obs 21 hit 0 ce -
+2011 day1 issued 36Z valid 36-60 fc ENH obs MRGN | T max 10% fc 143 obs 0 hit 0 ce - | H max 5% fc 25 obs 77 hit 0 ce 122 | W max 0% fc 0 obs 21 hit 0 ce -
+2011 day2 issued 36Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2011 day1 issued 42Z valid 42-66 fc ENH obs MRGN | T max 10% fc 218 obs 0 hit 0 ce - | H max 15% fc 242 obs 66 hit 40 ce 18 | W max 0% fc 0 obs 21 hit 0 ce -
+2011 day1 issued 48Z valid 48-72 fc SLGT obs MRGN | T max 5% fc 57 obs 0 hit 0 ce - | H max 5% fc 90 obs 40 hit 0 ce 104 | W max 5% fc 19 obs 21 hit 0 ce 127
+2011 day2 issued 48Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2011 day1 issued 54Z valid 54-78 fc ENH obs TSTM | T max 10% fc 176 obs 0 hit 0 ce - | H max 0% fc 0 obs 21 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2011 day1 issued 60Z valid 60-84 fc SLGT obs TSTM | T max 2% fc 0 obs 0 hit 0 ce - | H max 5% fc 164 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day1 issued 12Z valid 12-36 fc ENH obs ENH | T max 10% fc 68 obs 478 hit 26 ce 133 | H max 0% fc 0 obs 707 hit 0 ce - | W max 0% fc 0 obs 440 hit 0 ce -
+2013 day2 issued 12Z valid 36-60 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 51 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day3 issued 12Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day1 issued 18Z valid 18-42 fc ENH obs ENH | T max 10% fc 122 obs 478 hit 65 ce 108 | H max 15% fc 394 obs 644 hit 245 ce 78 | W max 15% fc 367 obs 440 hit 192 ce 75
+2013 day1 issued 24Z valid 24-48 fc ENH obs ENH | T max 10% fc 161 obs 116 hit 88 ce 36 | H max 15% fc 289 obs 229 hit 102 ce 22 | W max 15% fc 208 obs 86 hit 33 ce 88
+2013 day2 issued 24Z valid 36-60 fc TSTM obs MRGN | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 51 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day3 issued 24Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day1 issued 30Z valid 30-54 fc MRGN obs MRGN | T max 2% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 72 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day1 issued 36Z valid 36-60 fc MRGN obs MRGN | T max 2% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 51 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day2 issued 36Z valid 60-84 fc TSTM obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day1 issued 42Z valid 42-66 fc ENH obs MRGN | T max 10% fc 263 obs 0 hit 0 ce - | H max 15% fc 432 obs 51 hit 48 ce 83 | W max 5% fc 145 obs 0 hit 0 ce -
+2013 day1 issued 48Z valid 48-72 fc ENH obs TSTM | T max 10% fc 112 obs 0 hit 0 ce - | H max 15% fc 243 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day2 issued 48Z valid 60-84 fc SLGT obs TSTM | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 159 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day1 issued 54Z valid 54-78 fc ENH obs TSTM | T max 10% fc 111 obs 0 hit 0 ce - | H max 15% fc 112 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+2013 day1 issued 60Z valid 60-84 fc SLGT obs TSTM | T max 5% fc 55 obs 0 hit 0 ce - | H max 0% fc 0 obs 0 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+20240506 day1 issued 12Z valid 12-36 fc ENH obs HIGH | T max 10% fc 255 obs 465 hit 86 ce 113 | H max 5% fc 89 obs 702 hit 29 ce 175 | W max 0% fc 0 obs 500 hit 0 ce -
+20240506 day2 issued 12Z valid 36-60 fc TSTM obs SLGT | T max 0% fc 0 obs 47 hit 0 ce - | H max 0% fc 0 obs 129 hit 0 ce - | W max 0% fc 0 obs 60 hit 0 ce -
+20240506 day3 issued 12Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 60 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+20240506 day1 issued 18Z valid 18-42 fc MDT obs MDT | T max 15% fc 748 obs 194 hit 193 ce 25 | H max 15% fc 962 obs 422 hit 353 ce 65 | W max 15% fc 964 obs 270 hit 270 ce 39
+20240506 day1 issued 24Z valid 24-48 fc SLGT obs SLGT | T max 5% fc 14 obs 77 hit 0 ce 115 | H max 5% fc 622 obs 178 hit 78 ce 73 | W max 5% fc 101 obs 81 hit 0 ce 133
+20240506 day2 issued 24Z valid 36-60 fc TSTM obs SLGT | T max 0% fc 0 obs 47 hit 0 ce - | H max 0% fc 0 obs 129 hit 0 ce - | W max 0% fc 0 obs 60 hit 0 ce -
+20240506 day3 issued 24Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 60 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+20240506 day1 issued 30Z valid 30-54 fc SLGT obs SLGT | T max 5% fc 16 obs 47 hit 0 ce 206 | H max 0% fc 0 obs 129 hit 0 ce - | W max 0% fc 0 obs 60 hit 0 ce -
+20240506 day1 issued 36Z valid 36-60 fc TSTM obs SLGT | T max 0% fc 0 obs 47 hit 0 ce - | H max 0% fc 0 obs 129 hit 0 ce - | W max 0% fc 0 obs 60 hit 0 ce -
+20240506 day2 issued 36Z valid 60-84 fc TSTM obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 0% fc 0 obs 60 hit 0 ce - | W max 0% fc 0 obs 0 hit 0 ce -
+20240506 day1 issued 42Z valid 42-66 fc ENH obs SLGT | T max 10% fc 96 obs 47 hit 37 ce 31 | H max 15% fc 526 obs 118 hit 108 ce 59 | W max 0% fc 0 obs 60 hit 0 ce -
+20240506 day1 issued 48Z valid 48-72 fc SLGT obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 27 obs 60 hit 0 ce 189 | W max 0% fc 0 obs 0 hit 0 ce -
+20240506 day2 issued 48Z valid 60-84 fc MRGN obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 4 obs 60 hit 0 ce 198 | W max 0% fc 0 obs 0 hit 0 ce -
+20240506 day1 issued 54Z valid 54-78 fc SLGT obs SLGT | T max 0% fc 0 obs 0 hit 0 ce - | H max 5% fc 14 obs 60 hit 0 ce 182 | W max 0% fc 0 obs 0 hit 0 ce -
+20240506 day1 issued 60Z valid 60-84 fc SLGT obs SLGT | T max 2% fc 0 obs 0 hit 0 ce - | H max 5% fc 23 obs 60 hit 0 ce 170 | W max 0% fc 0 obs 0 hit 0 ce -

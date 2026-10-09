@@ -1,4 +1,5 @@
 import { clamp } from '../scenarios/math.js?v=2.20.1';
+import { effectivePatternHours } from '../scenarios/ActivePattern.js';
 
 // Diagnoses mesoscale boundaries from the current evolving fields. Values are
 // normalized to 100 km so thresholds remain physically meaningful on the 10-mile grid.
@@ -97,7 +98,7 @@ function calculateBoundaryDiagnostics(world, previous, x, y) {
       // with warmer air equatorward. A trailing cold front generally has a
       // stronger east/west component with warmer air ahead.
       const pattern = world.evolution?.config?.synopticPattern;
-      const elapsed = Number(world.evolution?.elapsedHours) || 0;
+      const elapsed = effectivePatternHours(pattern?.activeSequence, Number(world.evolution?.elapsedHours) || 0);
       const currentLowX = pattern ? pattern.lowX + pattern.motionXPerHour * elapsed * 0.92 : 0;
       const currentLowY = pattern ? pattern.lowY + pattern.motionYPerHour * elapsed * 0.75 : 0;
       const tripleY = currentLowY + (Number(pattern?.warmFrontOffset) || 0);

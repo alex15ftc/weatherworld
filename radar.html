@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Radar · Fake Plains Weather</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body data-page="radar">
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="radar" class="active" href="./radar.html">Radar</a><a class="perf-link" href="./performance.html">Performance</a><span id="authorityModeBadge" class="authority-mode-badge">Authority: Node</span></nav>
+  <aside class="panel controls">
+    <div>
+      <p class="eyebrow">Doppler radar network</p>
+      <h1>Radar</h1>
+      <p class="muted">Simulated WSR-88D-style volume scans. Echoes come from the storms themselves, so beam height, range and site choice matter.</p>
+    </div>
+
+    <label>Radar site<select id="radarSite"></select></label>
+
+    <div class="radar-field">
+      <span class="radar-field-label">Product</span>
+      <div id="radarProducts" class="radar-segmented" role="group" aria-label="Radar product"></div>
+    </div>
+
+    <label>Elevation angle<select id="radarTilt"></select><small id="tiltHint" class="muted"></small></label>
+
+    <div class="button-stack">
+      <div class="row two"><button id="radarLoop" type="button" class="secondary">Play loop</button><button id="radarLatest" type="button" class="secondary">Latest scan</button></div>
+      <button id="radarSmooth" type="button" class="secondary">Smoothing off</button>
+      <button id="radarRings" type="button" class="secondary active">Range rings on</button>
+      <button id="radarBorders" type="button" class="secondary active">Region borders on</button>
+    </div>
+
+    <div class="legend-card">
+      <div class="legend-title"><span id="radarLegendLabel">Base reflectivity</span><span id="radarLegendUnits">dBZ</span></div>
+      <canvas id="radarLegend" class="radar-legend" width="480" height="14"></canvas>
+      <div id="radarLegendTicks" class="radar-legend-ticks"></div>
+    </div>
+
+    <small id="radarStatus" class="muted">Connecting to the weather authority…</small>
+  </aside>
+
+  <main class="viewer-shell">
+    <header class="map-header">
+      <div>
+        <strong id="radarTitle">Radar</strong>
+        <span id="radarSubtitle">Waiting for the first volume scan</span>
+      </div>
+      <div id="radarFrameLabel" class="summary"></div>
+    </header>
+    <div id="radarViewer" class="viewer radar-viewer">
+      <canvas id="radarGl" class="radar-layer"></canvas>
+      <canvas id="radarOverlay" class="radar-layer radar-overlay" tabindex="0" aria-label="Radar display. Drag to pan, scroll to zoom."></canvas>
+      <div id="radarReadout" class="radar-readout hidden"></div>
+    </div>
+  </main>
+  <script type="module" src="./js/radar/RadarViewer.js?v=3"></script>
+</body>
+</html>

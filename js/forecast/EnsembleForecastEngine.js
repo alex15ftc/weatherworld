@@ -6,6 +6,15 @@ import { applyRegionalOutlookTopology } from './RegionalOutlookTopologyEngine.js
 const HAZARDS = ['tornado','hail','wind'];
 const THRESHOLDS = { tornado:0.012, hail:0.025, wind:0.025 };
 const CORE_SUPPORT = { tornado:0.46, hail:0.50, wind:0.48 };
+// Hard limits on published probabilities. The ensemble used to be capped at 0.88x the
+// deterministic grid's maximum, so a 0% dawn diagnosis locked a hazard at 0% all day.
+const HAZARD_CAP = { tornado:60, hail:90, wind:90 };
+// Weight on the environment-based (pre-ensemble) probability. It was a 2.5% background on
+// Day 1, which discarded the afternoon projection whenever few storms were projected.
+const ENVIRONMENT_WEIGHT = { day1:0.70, day2:0.60, day3:0.50 };
+// Weight on each cell's own peak-time hazard potential. Day 2-3 projections are far less
+// certain; at Day 1 weights their hail areas were 7-10x too large (30% areas verified ~0%).
+const LOCAL_POTENTIAL_WEIGHT = { day1:0.70, day2:0.35, day3:0.25 };
 
 export function applyEnsembleForecast(grid, width, height, {
   key='day1', cellSizeKm=10, seed=0, issueHour=0, members=null
@@ -13,6 +22,11 @@ export function applyEnsembleForecast(grid, width, height, {
   const memberCount = members ?? (key==='day1' ? 8 : key==='day2' ? 12 : 16);
   const memberProducts=[];
   const maxPublished=Object.fromEntries(HAZARDS.map(h=>[h,Math.max(0,...grid.map(c=>Number(c[`${h}Probability`])||0))]));
+  // Severity normalization needs a non-zero reference even when the deterministic grid is empty.
+  const severityReference=Object.fromEntries(HAZARDS.map(h=>[h,Math.max(maxPublished[h],h==='tornado'?15:30)]));
+  const environmentTier=Object.fromEntries(HAZARDS.map(h=>[h,grid.map(c=>publishedTier(Math.max(
+    (Number(c[`${h}Probability`])||0)*(ENVIRONMENT_WEIGHT[key]??0.6),
+    (Number(c.localHazardPotential?.[h])||0)*(LOCAL_POTENTIAL_WEIGHT[key]??0.3)),h))]));
   const clusters=new Map();
 
   for(let m=0;m<memberCount;m++){
@@ -59,10 +73,9 @@ export function applyEnsembleForecast(grid, width, height, {
       const localConcentration=neighborhoodConcentration(i,width,height,memberProducts,hazard,weights,totalWeight);
       const clusterSupport=dominantClusterSupport(i,memberProducts,hazard,weights,totalWeight);
       const occurrence=clamp(weightedFrequency*(0.72+0.28*localConcentration),0,1);
-      const conditional=conditionalSeverity(meanSupport,maxPublished[hazard],hazard);
-      const calibratedPct=calibrateIssuedProbability({hazard,occurrence,conditional,concentration:localConcentration,clusterSupport,ceiling:maxPublished[hazard],key});
-      const background=(Number(grid[i][`${hazard}Probability`])||0)*(key==='day1'?0.025:0.05);
-      grid[i][`${hazard}Probability`]=probabilityToPublished(Math.max(calibratedPct,background),hazard,{occurrence,concentration:localConcentration,clusterSupport});
+      const conditional=conditionalSeverity(meanSupport,severityReference[hazard],hazard);
+      const calibratedPct=calibrateIssuedProbability({hazard,occurrence,conditional,concentration:localConcentration,clusterSupport,ceiling:HAZARD_CAP[hazard],key});
+      grid[i][`${hazard}Probability`]=probabilityToPublished(calibratedPct,hazard,{occurrence,concentration:localConcentration,clusterSupport});
       grid[i].ensembleForecast ??={};
       grid[i].ensembleForecast[hazard]={
         memberFrequency:rawFrequency,
@@ -93,6 +106,14 @@ export function applyEnsembleForecast(grid, width, height, {
   const outlookAssimilation = assimilateOutlookFromStormHistories(grid, width, height, memberProducts, { key, cellSizeKm, maximumPublished: maxPublished });
   const forecastConfidence = applyForecastConfidence(grid, width, height, memberProducts, { key });
   const regionalTopology = applyRegionalOutlookTopology(grid, width, height, { key });
+  // The environment-based projection stands where the storm-swath members were sparse
+  // (typical of a 12Z issuance before initiation). It was a 2.5% background before, and the
+  // median-filter topology above erased compact environment areas, so dawn outlooks
+  // routinely published 0% hail and wind. Applied after topology so it cannot be removed.
+  for(const hazard of HAZARDS){
+    const field=`${hazard}Probability`;
+    for(let i=0;i<grid.length;i++) if(environmentTier[hazard][i]>(Number(grid[i][field])||0)) grid[i][field]=environmentTier[hazard][i];
+  }
 
   return {
     version:'2.66.0', engineVersion:'2.66.0', method:'confidence-weighted-storm-history-assimilation',
@@ -118,6 +139,7 @@ function conditionalSeverity(meanSupport,ceiling,hazard){
   const floor=hazard==='tornado'?0.12:0.16;
   return clamp(floor+normalized*(1-floor),0,1);
 }
+function publishedTier(value,hazard){const levels=hazard==='tornado'?[0,2,5,10,15,30,45,60]:[0,5,15,30,45,60,75,90];let r=0;for(const l of levels)if(value>=l)r=l;return r;}
 function probabilityToPublished(value,hazard,ctx={}){
   const levels=hazard==='tornado'?[0,2,5,10,15,30,45,60]:[0,5,15,30,45,60,75,90];
   let r=0;

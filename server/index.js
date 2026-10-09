@@ -38,7 +38,20 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
-  if (url.pathname.startsWith('/api/radar/')) return sendJson(req, res, 410, { error: 'Radar is archived in milestone 2.25.0' }, { cacheable:false, trace });
+  if (url.pathname === '/api/radar/catalog') return sendJson(req, res, 200, runtime.radarCatalog(), { trace });
+  if (url.pathname === '/api/radar/scan') {
+    const product = url.searchParams.get('product') ?? 'reflectivity';
+    const scan = runtime.radarScan(url.searchParams.get('site'), Number(url.searchParams.get('tilt') ?? 0.5));
+    if (!scan || !scan.products[product]) return sendJson(req, res, 404, { error: 'Unknown radar site or product' }, { cacheable: false, trace });
+    const meta = { site: scan.siteId, tilt: scan.tiltDeg, product, validHourUtc: scan.validHourUtc, revision: scan.revision, stormMotion: scan.stormMotion, buildMs: +scan.buildMs.toFixed(1) };
+    return sendGzipBinary(req, res, scan.products[product], { 'x-radar-meta': JSON.stringify(meta) }, trace);
+  }
+  if (url.pathname === '/api/radar/mosaic') {
+    const mosaic = runtime.radarMosaic();
+    const meta = { product: 'reflectivity', width: mosaic.width, height: mosaic.height, resKm: mosaic.resKm, tilt: mosaic.tiltDeg, validHourUtc: mosaic.validHourUtc, revision: mosaic.revision, buildMs: +mosaic.buildMs.toFixed(1) };
+    return sendGzipBinary(req, res, mosaic.bytes, { 'x-radar-meta': JSON.stringify(meta) }, trace);
+  }
+  if (url.pathname.startsWith('/api/radar/')) return sendJson(req, res, 404, { error: 'Unknown radar endpoint' }, { cacheable:false, trace });
   if (url.pathname === '/api/performance') return sendJson(req,res,200,performanceSnapshot(),{cacheable:false,trace});
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
@@ -75,6 +88,24 @@ function sendBinary(req,res,status,body,contentType,{trace=null}={}){
   if(req.headers['if-none-match']===etag){const totalMs=trace?finishRequest(trace,{status:304,rawBytes:0,sentBytes:0,cacheHit:true}):0;res.writeHead(304,{etag,'cache-control':'public, max-age=31536000, immutable','server-timing':`total;dur=${totalMs.toFixed(2)}`});return res.end();}
   const totalMs=trace?finishRequest(trace,{status,rawBytes:body.length,sentBytes:body.length}):0;
   res.writeHead(status,{'content-type':contentType,'content-length':body.length,etag,'cache-control':'public, max-age=31536000, immutable','server-timing':`total;dur=${totalMs.toFixed(2)}`});res.end(body);
+}
+
+// Radar scans are mostly empty gates, so they compress well; the per-revision cache key is
+// in the metadata, and the client always asks for the current revision.
+function sendGzipBinary(req, res, bytes, extraHeaders, trace) {
+  const raw = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headers = { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', ...extraHeaders };
+  if (!/\bgzip\b/.test(req.headers['accept-encoding'] ?? '')) {
+    finishRequest(trace, { status: 200, rawBytes: raw.length, sentBytes: raw.length });
+    res.writeHead(200, { ...headers, 'content-length': raw.length });
+    return res.end(raw);
+  }
+  zlib.gzip(raw, { level: 4 }, (error, body) => {
+    if (error) { res.writeHead(500); return res.end(); }
+    finishRequest(trace, { status: 200, rawBytes: raw.length, sentBytes: body.length, compressed: true });
+    res.writeHead(200, { ...headers, 'content-encoding': 'gzip', 'content-length': body.length });
+    res.end(body);
+  });
 }
 
 function sendJson(req, res, status, value, { cacheable = true, trace = null } = {}) {

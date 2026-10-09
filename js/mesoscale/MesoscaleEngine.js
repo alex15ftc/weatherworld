@@ -1,6 +1,7 @@
 import { Boundary } from './Boundary.js?v=2.20.1';
 import { clamp } from '../scenarios/math.js?v=2.20.1';
 import { constrainBoundaryMotion } from '../scenarios/SynopticCoherence.js?v=2.20.1';
+import { effectivePatternHours } from '../scenarios/ActivePattern.js';
 
 const TYPES = ['cold', 'warm', 'dryline'];
 
@@ -127,7 +128,7 @@ function currentCycloneAnchorKm(world) {
   const config = world.evolution?.config ?? world.scenarioMetadata;
   const pattern = config?.synopticPattern;
   if (!pattern) return null;
-  const elapsed = Number(world.evolution?.elapsedHours) || 0;
+  const elapsed = effectivePatternHours(pattern.activeSequence, Number(world.evolution?.elapsedHours) || 0);
   const patternPoint = {
     x: pattern.lowX + pattern.motionXPerHour * elapsed * 0.92,
     y: pattern.lowY + pattern.motionYPerHour * elapsed * 0.75

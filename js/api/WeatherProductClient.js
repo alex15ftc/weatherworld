@@ -33,9 +33,26 @@ export class WeatherProductClient {
   async getLiveStorms() { const value = await this.#json(`/api/live/storms?_=${Date.now()}`, { cacheable: false }); return Array.isArray(value) ? value : (value?.storms ?? []); }
   async getCell(row, column, { day = 'day1', revision = '', authority = '' } = {}) { return this.#json(`/api/live/cell?row=${row}&column=${column}&day=${encodeURIComponent(day)}&revision=${encodeURIComponent(revision)}&authority=${encodeURIComponent(authority)}`, { cacheable: false, timeoutMs: 2500 }); }
   async getSounding(row, column, { day = 'day1', revision = '', authority = '' } = {}) { return this.#json(`/api/live/sounding?row=${row}&column=${column}&day=${encodeURIComponent(day)}&revision=${encodeURIComponent(revision)}&authority=${encodeURIComponent(authority)}`, { cacheable: false, timeoutMs: 5000 }); }
-  async getRadarSnapshot() { return this.#json('/api/radar/snapshot', { cacheable: true }); }
-  async getRadarScan(product = 'reflectivity', station = 'composite') { return this.#json(`/api/radar/scan?product=${encodeURIComponent(product)}&station=${encodeURIComponent(station)}`, { cacheable: true, timeoutMs: 15000 }); }
-  async getRadarStations() { return this.#json('/api/radar/stations', { cacheable: true }); }
+  async getRadarCatalog() { return this.#json(`/api/radar/catalog?_=${Date.now()}`, { cacheable: false }); }
+  // Returns { meta, bytes } where bytes is one Uint8 value per gate (radial-major).
+  async getRadarScan(site, tilt, product = 'reflectivity') {
+    return this.#binary(`/api/radar/scan?site=${encodeURIComponent(site)}&tilt=${encodeURIComponent(tilt)}&product=${encodeURIComponent(product)}`);
+  }
+  // Network reflectivity mosaic: { meta: { width, height, resKm, ... }, bytes } (row-major).
+  async getRadarMosaic() { return this.#binary('/api/radar/mosaic'); }
+
+  async #binary(path) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    const started = performance.now();
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, { signal: controller.signal, cache: 'no-store' });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      profiler.request({ path, status: response.status, totalMs: performance.now() - started, transferBytes: Number(response.headers.get('content-length')) || 0 });
+      return { meta: JSON.parse(response.headers.get('x-radar-meta') ?? '{}'), bytes };
+    } finally { clearTimeout(timer); profiler.publish(); }
+  }
   async getOutlook(day) { return this.#json(`/api/outlooks/${encodeURIComponent(day)}`, { cacheable: true }); }
   async getOutlookField(day, product = 'risk') { return this.#json(`/api/outlooks/${encodeURIComponent(day)}/field?product=${encodeURIComponent(product)}`, { cacheable: true }); }
   async getPerformance() { return this.#json('/api/performance', { cacheable: false }); }

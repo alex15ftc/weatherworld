@@ -85,6 +85,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     const sustainedFavorableRealization = supercell && tornado.favorableMinutes >= 60 && tornado.genesisPotential >= genesisThreshold * 0.94 && mesoscaleQuality >= 0.50;
     if (canTornado && tornado.genesisPotential >= genesisThreshold && tornado.favorableMinutes >= (supercell ? (fastPath ? 8 : delayedPath ? 25 : 15) : 25) && (trigger < perTickChance || sustainedFavorableRealization)) {
       beginTornado(world, storm, tornado);
+      drawTornadoCharacter(world, storm, tornado, physicalTornadoSupport, supercell);
     } else if (canTornado && tornado.genesisPotential >= genesisThreshold * 0.82 && tornado.favorableMinutes >= 10) tornado.state = 'developing';
     else if (tornado.state !== 'ended') tornado.state = 'none';
   }
@@ -115,7 +116,10 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     const stormIntensitySupport = clamp((storm.rotationStrength ?? 0) * 0.38 + mesocyclone * 0.24 + storm.updraftStrength * 0.18 + storm.organization * 0.12 + stretch * 0.08, 0, 1.2);
     const durationSupport = clamp((tornado.groundTimeMinutes - 5) / 35, 0, 1);
     const intensityCore = clamp(violentEnvironment * 0.58 + stormIntensitySupport * 0.34 + mesoscaleQuality * 0.08, 0, 1.25);
-    let targetWind = 68 + intensityCore * 132 + durationSupport * violentEnvironment * 24;
+    // Most tornadoes are weak even in strong environments; the environment raises the
+    // ceiling and the odds, and the per-tornado strength draw decides where this one lands.
+    const strength = Number.isFinite(tornado.strengthDraw) ? tornado.strengthDraw : 0.5;
+    let targetWind = 65 + intensityCore * 135 * Math.pow(strength, 2.2) + durationSupport * violentEnvironment * 24 * strength;
     // The intensity ceiling uses the same coupled hierarchy shown to the user.
     const significantSupport = clamp(
       srh * 0.27 + shear * 0.17 + lowLcl * 0.18 + instability * 0.10 + inflow * 0.10 +
@@ -153,7 +157,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     torExtreme.maxEfRating = efRating(torExtreme.maxWindMph);
     torExtreme.cycles = Math.max(torExtreme.cycles ?? 0, tornado.cycleCount ?? 0);
     const persistence = tornado.genesisPotential * 0.62 + mesoscaleQuality * 0.22 + (supercell ? 0.10 : qlcs ? 0.02 : 0) + prefrontal * 0.03 + tornadicEnvironment * 0.03;
-    const maxGroundMinutes = supercell ? Math.round(35 + prefrontal * 45 + tornadicEnvironment * 35 + mesoscaleQuality * 35) : 25;
+    const maxGroundMinutes = Number.isFinite(tornado.lifetimeMinutes) ? tornado.lifetimeMinutes : (supercell ? Math.round(35 + prefrontal * 45 + tornadicEnvironment * 35 + mesoscaleQuality * 35) : 25);
     if (persistence < 0.43 || storm.lifecycleState === 'dissipating' || tornado.groundTimeMinutes >= maxGroundMinutes) {
       tornado.state = 'lifting';
       if (persistence < 0.34 || tornado.groundTimeMinutes >= maxGroundMinutes + 5) endTornado(world, storm, tornado);
@@ -165,6 +169,20 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   }
 
   return tornado;
+}
+
+// Lifetime and strength percentiles drawn once per tornado. Observed climatology: median
+// path a few miles and under ~10 min, ~80% EF0-EF1; long-track/violent tornadoes are rare
+// and need strong environments. The previous fixed formulas made nearly every tornado an
+// EF3 lasting 90-150 minutes over 50-80 miles.
+function drawTornadoCharacter(world, storm, tornado, environmentSupport, supercell) {
+  const seed = `${world.evolution?.config?.seed ?? 1}|${storm.id}|cycle${tornado.cycleCount}`;
+  const lifeDraw = deterministicUnit(seed + '|life'), strengthDraw = deterministicUnit(seed + '|strength');
+  const env = clamp(environmentSupport, 0, 1);
+  // Heavy-tailed lifetime: typically 3-15 min; strong environments stretch the tail to ~90 min.
+  const lifetime = 3 + 12 * lifeDraw + (supercell ? 75 * Math.pow(lifeDraw, 6) * (0.25 + 0.75 * env) : 0);
+  tornado.lifetimeMinutes = Math.round(clamp(lifetime, 3, supercell ? 95 : 20));
+  tornado.strengthDraw = clamp(strengthDraw * (0.55 + 0.45 * env) + 0.2 * Math.pow(strengthDraw, 4) * env, 0, 1);
 }
 
 function beginTornado(world, storm, tornado) {
@@ -188,7 +206,9 @@ function endTornado(world, storm, tornado) {
     if (storm.tornadoHistory.length > 8) storm.tornadoHistory.shift();
   }
   tornado.state = 'ended'; tornado.onGround = false; tornado.endedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
-  tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null; tornado.genesisCooldownMinutes = 25;
+  // Cyclic supercells produce a new tornado roughly every 40-80 minutes, not every 25.
+  const cooldownDraw = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|cooldown${tornado.cycleCount}`);
+  tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null; tornado.genesisCooldownMinutes = Math.round(40 + 40 * cooldownDraw);
 }
 
 function tornadoPosition(storm) {

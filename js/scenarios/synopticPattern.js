@@ -1,4 +1,5 @@
 import { clamp, gaussian, lerp, smoothstep } from './math.js?v=2.20.1';
+import { effectivePatternHours, dayCharacterFactors, waveAt } from './ActivePattern.js';
 
 const SETUP_PROFILES = {
   dryline_cyclone: { troughAmp: 22, wavelength: 0.68, speedX: 0.010, speedY: -0.002, moisture: 1.0, coldPush: 0.72, dryline: 1.0 },
@@ -56,16 +57,24 @@ export function createSynopticPattern(random, setupName, intensity, anchors = {}
   };
 }
 
-export function sampleSynopticPattern(pattern, nx, ny, elapsedHours = 0) {
+// elapsedHours is real time since initialization. With an active multi-day sequence the
+// pattern's position follows effectivePatternHours (daily ejection + overnight reload);
+// callers that already pass effective time set timeIsEffective.
+export function sampleSynopticPattern(pattern, nx, ny, elapsedHours = 0, timeIsEffective = false, realElapsedHours = null) {
+  const sequence = pattern.activeSequence;
+  const t = sequence && !timeIsEffective ? effectivePatternHours(sequence, elapsedHours) : elapsedHours;
+  const real = timeIsEffective ? (realElapsedHours ?? elapsedHours) : elapsedHours;
+  const day = dayCharacterFactors(sequence, real);
+  const hoursIntoWave = sequence ? waveAt(sequence, real).hoursIntoDay : t;
   const cycleHour = ((12 + elapsedHours) % 24 + 24) % 24;
-  const maturity = clamp(elapsedHours / 30, 0, 1);
+  const maturity = clamp(t / 30, 0, 1);
   const analog = pattern.analogGuidance ?? {};
   const moistureReturnPhase = clamp((elapsedHours - 3) / 18, 0, 1) * (0.72 + 0.28 * (analog.moistureReturn ?? 0.75));
-  const ejectionPhase = clamp((elapsedHours - 6) / 20, 0, 1);
-  const clearingPhase = clamp((elapsedHours - 4) / 12, 0, 1) * (analog.clearing ?? 0.72);
+  const ejectionPhase = sequence ? clamp((hoursIntoWave - 2) / 10, 0, 1) : clamp((elapsedHours - 6) / 20, 0, 1);
+  const clearingPhase = clamp(((sequence ? hoursIntoWave : elapsedHours) - 4) / 12, 0, 1) * (analog.clearing ?? 0.72);
   const nocturnalLlJ = Math.exp(-0.5 * Math.pow(Math.min(Math.abs(cycleHour-4),24-Math.abs(cycleHour-4))/4.2,2));
-  const shiftX = pattern.motionXPerHour * elapsedHours;
-  const shiftY = pattern.motionYPerHour * elapsedHours;
+  const shiftX = pattern.motionXPerHour * t;
+  const shiftY = pattern.motionYPerHour * t;
   const troughX = pattern.troughX + shiftX;
   const troughY = pattern.troughY + shiftY;
   const lowX = pattern.lowX + shiftX * 0.92;
@@ -97,23 +106,23 @@ export function sampleSynopticPattern(pattern, nx, ny, elapsedHours = 0) {
 
   const lowCore = gaussian(nx - lowX, ny - lowY, 0.25);
   const highCore = gaussian(nx - highX, ny - highY, 0.38);
-  const upperSupport = clamp((0.50 * shortwaveCore + 0.35 * troughCore + 0.32 * jetCore) * (0.70 + 0.30 * ejectionPhase), 0, 1.3);
+  const upperSupport = clamp((0.50 * shortwaveCore + 0.35 * troughCore + 0.32 * jetCore) * (0.70 + 0.30 * ejectionPhase) * (0.65 + 0.35 * day.strength), 0, 1.3);
   const seaLevelPressureHpa = 1018
-    - pattern.lowDepthHpa * lowCore * (0.76 + 0.35 * upperSupport)
+    - pattern.lowDepthHpa * lowCore * (0.76 + 0.35 * upperSupport) * (0.7 + 0.3 * day.strength)
     + pattern.highStrengthHpa * highCore;
 
-  const tripleY = lowY + pattern.warmFrontOffset - elapsedHours * 0.00045;
+  const tripleY = lowY + pattern.warmFrontOffset - t * 0.00045;
   const southOfTriple = clamp((ny - tripleY) / 0.18, 0, 1);
   const warmFrontY = tripleY + 0.22 * (nx - lowX)
     + 0.018 * Math.sin((nx - lowX) * Math.PI * 2);
   // The air-mass boundaries share an underlying junction near the cyclone,
   // then separate naturally: the cold front trails southwest while the
   // dryline extends south and develops its westward bulge.
-  const coldFrontX = lowX + pattern.coldPush * elapsedHours * 0.0015
+  const coldFrontX = lowX + pattern.coldPush * day.coldPush * t * 0.0015
     - pattern.coldFrontSlope * (ny - tripleY)
     + southOfTriple * 0.020 * Math.sin((ny - tripleY) * Math.PI * 2 + pattern.phase * 0.7);
   const drylineX = lowX + southOfTriple * (
-    pattern.drylineOffset + elapsedHours * 0.00055
+    pattern.drylineOffset + t * 0.00055
     + 0.035 * Math.sin((ny - tripleY) * Math.PI * 2 + pattern.phase * 1.2)
   );
 
@@ -129,7 +138,7 @@ export function sampleSynopticPattern(pattern, nx, ny, elapsedHours = 0) {
   const eastOfDryline = smoothstep(drylineX - 0.040, drylineX + 0.040, nx);
   const drylineActive = topology.includes('dryline') && pattern.drylineFactor > 0.2;
   const effectiveEastOfDryline = drylineActive
-    ? lerp(1, eastOfDryline, pattern.drylineFactor * trailingBoundaryActivation)
+    ? lerp(1, eastOfDryline, clamp(pattern.drylineFactor * day.dryline, 0, 1) * trailingBoundaryActivation)
     : 1;
 
   const warmSector = southOfWarmFront * aheadOfColdFront * effectiveEastOfDryline;
@@ -153,6 +162,13 @@ export function sampleSynopticPattern(pattern, nx, ny, elapsedHours = 0) {
     lifecycle: { maturity, moistureReturnPhase, ejectionPhase, clearingPhase, nocturnalLlJ },
     coherence: pattern.coherence ?? 0.7, analogGuidance: analog
   };
+}
+
+// Pattern moisture shifts the air mass dewpoint additively (~14 F per unit). It was
+// previously multiplied into degrees Fahrenheit, which dried a 66 F Gulf air mass to 59 F
+// at factor 0.9 and to 47 F at 0.72.
+export function patternDewpointF(airMass, pattern) {
+  return airMass.dewpointF + ((Number(pattern?.moistureFactor) || 1) - 1) * 14;
 }
 
 export function airMassThermodynamics(type, ny, intensity = 0.6) {

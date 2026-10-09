@@ -2,6 +2,7 @@ import { reconcileSynopticState } from './DynamicSynopticReconciliation.js?v=2.6
 import { applyBoundaryAirMassDynamics } from './BoundaryAirMassEngine.js?v=2.67.0';
 import { clamp } from '../scenarios/math.js?v=2.20.1';
 import { sampleSynopticPattern } from '../scenarios/synopticPattern.js?v=2.20.1';
+import { effectivePatternHours, effectivePatternRate, activeLifecycle, waveAt } from '../scenarios/ActivePattern.js';
 
 export function initializeSynopticObjects(world, config = world.evolution?.config ?? world.scenarioMetadata) {
   world.synopticObjects = buildSynopticObjects(world, config, 0, null, 0);
@@ -33,13 +34,15 @@ function buildSynopticObjects(world, config, elapsedHours, previous = null, dtHo
 
   const interaction = diagnoseObjectInteraction(world, pattern, elapsedHours, previous);
   const phase = lifecyclePhase(elapsedHours, pattern, interaction);
-  const phaseFactor = lifecycleStrengthFactor(phase, elapsedHours);
+  const phaseFactor = lifecycleStrengthFactor(phase, elapsedHours, pattern);
   const adjustedElapsed = elapsedHours + interaction.timingOffsetHours;
   const lowSample = sampleSynopticPattern(pattern, pattern.lowX, pattern.lowY, adjustedElapsed);
   const motionScale = clamp(0.78 + interaction.shortwaveCoupling * 0.22 - interaction.occlusionDrag * 0.18, 0.62, 1.15);
+  const patternHours = effectivePatternHours(pattern.activeSequence, adjustedElapsed);
+  const motionRate = effectivePatternRate(pattern.activeSequence, adjustedElapsed);
   const lowPoint = toWorldKm(world, config,
-    pattern.lowX + pattern.motionXPerHour * adjustedElapsed * 0.92 * motionScale,
-    pattern.lowY + pattern.motionYPerHour * adjustedElapsed * 0.75 * motionScale);
+    pattern.lowX + pattern.motionXPerHour * patternHours * 0.92 * motionScale,
+    pattern.lowY + pattern.motionYPerHour * patternHours * 0.75 * motionScale);
 
   let fronts = [];
   const topology = Array.isArray(pattern.boundaryTopology) ? pattern.boundaryTopology : ['cold','warm'];
@@ -57,14 +60,21 @@ function buildSynopticObjects(world, config, elapsedHours, previous = null, dtHo
   const recharge = dtHours > 0
     ? dtHours * clamp(rechargeContext.rechargeRate, 0, 0.62)
     : 0;
-  const remaining = clamp((previousBudget?.remaining ?? baseCapacity) + recharge, 0, baseCapacity);
+  let remaining = clamp((previousBudget?.remaining ?? baseCapacity) + recharge, 0, baseCapacity);
+  // Each day's wave in an active sequence brings fresh moisture and forcing: refill the
+  // budget when a new wave begins (otherwise Day 1 left ~1 storm per 8 h for Days 2-3).
+  const waveIndex = pattern.activeSequence ? waveAt(pattern.activeSequence, elapsedHours).index : 0;
+  if (pattern.activeSequence && previousBudget && previousBudget.waveIndex !== waveIndex) {
+    const day = pattern.activeSequence.days[waveIndex];
+    remaining = Math.max(remaining, baseCapacity * clamp(0.6 + 0.4 * day.strength, 0.6, 1));
+  }
 
   const pressureAdjustment = -interaction.shortwaveCoupling * 2.2 + interaction.occlusionDrag * 1.4;
   const surfaceLow = {
     id: 'SFC-LOW-001', type: 'surface-low', positionKm: alignment.surfaceLowPositionKm ?? lowPoint,
     pressureHpa: lowSample.seaLevelPressureHpa + pressureAdjustment,
     intensity,
-    velocityKph: scaleVelocity(velocityFromPattern(world, config, pattern, 0.92, 0.75), motionScale),
+    velocityKph: scaleVelocity(velocityFromPattern(world, config, pattern, 0.92, 0.75), motionScale * motionRate),
     lifecyclePhase: phase,
     lifecycleProgress: lifecycleProgress(elapsedHours),
     ageHours: (previous?.surfaceLow?.ageHours ?? 0) + dtHours,
@@ -96,8 +106,11 @@ function buildSynopticObjects(world, config, elapsedHours, previous = null, dtHo
       recharged: (previousBudget?.recharged ?? 0) + recharge,
       rechargeRate: rechargeContext.rechargeRate,
       rechargeContext,
-      segmentUsage: { ...(previousBudget?.segmentUsage ?? {}) },
-      lastUpdatedHour: elapsedHours
+      // Per-segment initiation usage decays (6 h half-life). It used to persist for the whole
+      // system, so Day 1 exhausted every boundary segment and later days got ~2 storms.
+      segmentUsage: decaySegmentUsage(previousBudget?.segmentUsage, dtHours),
+      lastUpdatedHour: elapsedHours,
+      waveIndex
     }
   };
 }
@@ -107,26 +120,28 @@ function makeFront(world, config, pattern, elapsedHours, type, phase, interactio
   const n = 25;
   const phaseMotion = phase === 'developing' ? 0.82 : phase === 'mature' ? 1 : phase === 'occluding' ? 0.74 : 0.52;
   const interactionMotion = clamp(0.85 + interaction.shortwaveCoupling * 0.18 - interaction.occlusionDrag * 0.24, 0.55, 1.12);
-  const t = elapsedHours * phaseMotion * interactionMotion;
+  // Effective pattern time (daily ejection + overnight reload with an active sequence).
+  const t = effectivePatternHours(pattern.activeSequence, elapsedHours) * phaseMotion * interactionMotion;
+  const motionRate = effectivePatternRate(pattern.activeSequence, elapsedHours);
   for (let i=0;i<n;i++) {
     let nx, ny;
     if (type === 'warm') {
       nx = clamp((pattern.lowX + pattern.motionXPerHour * t * 0.92) + (i/(n-1))*0.65, 0, 1);
-      ny = sampleSynopticPattern(pattern, nx, 0.5, t).warmFrontY;
+      ny = sampleSynopticPattern(pattern, nx, 0.5, t, true, elapsedHours).warmFrontY;
     } else {
       ny = clamp((pattern.lowY + pattern.motionYPerHour * t * 0.75) + (i/(n-1))*0.75, 0, 1);
-      const sample = sampleSynopticPattern(pattern, 0.5, ny, t);
+      const sample = sampleSynopticPattern(pattern, 0.5, ny, t, true, elapsedHours);
       nx = type === 'cold' ? sample.coldFrontX : sample.drylineX;
     }
     pointsKm.push(toWorldKm(world, config, nx, ny));
   }
   const id = type === 'cold' ? 'OBJ-COLD-001' : type === 'warm' ? 'OBJ-WARM-001' : 'OBJ-DRYLINE-001';
-  const phaseStrength = lifecycleStrengthFactor(phase, elapsedHours);
+  const phaseStrength = lifecycleStrengthFactor(phase, elapsedHours, pattern);
   return {
     id, type, pointsKm, authoritative:true,
     strength: clamp((0.44 + pattern.intensity * 0.38 + (type === 'dryline' ? pattern.drylineFactor * 0.12 : 0)) * phaseStrength, 0, 1),
     widthKm: type === 'dryline' ? 24 : 32,
-    velocityKph: scaleVelocity(velocityFromPattern(world, config, pattern, type === 'warm' ? 0.72 : 1, type === 'warm' ? 0.45 : 1), phaseMotion * interactionMotion),
+    velocityKph: scaleVelocity(velocityFromPattern(world, config, pattern, type === 'warm' ? 0.72 : 1, type === 'warm' ? 0.45 : 1), phaseMotion * interactionMotion * motionRate),
     lifecyclePhase:phase,
     lifecycleProgress:lifecycleProgress(elapsedHours),
     segmentBudget: type === 'dryline' ? 4 : 3,
@@ -524,7 +539,9 @@ function diagnoseObjectInteraction(world, pattern, elapsedHours, previous) {
   const sample = sampleSynopticPattern(pattern, pattern.lowX, pattern.lowY, elapsedHours);
   const shortwaveCoupling = clamp(sample.shortwaveCore * (0.55 + sample.jetCore * 0.35), 0, 1);
   const priorPhase = previous?.surfaceLow?.lifecyclePhase;
-  const occlusionDrag = clamp((priorPhase === 'occluding' ? 0.55 : priorPhase === 'decaying' ? 0.9 : 0) + elapsedHours / 96, 0, 1);
+  // With an active sequence each day's wave occludes on its own clock rather than the system's age.
+  const occlusionClock = pattern.activeSequence ? waveAt(pattern.activeSequence, elapsedHours).hoursIntoDay : elapsedHours;
+  const occlusionDrag = clamp((priorPhase === 'occluding' ? 0.55 : priorPhase === 'decaying' ? 0.9 : 0) + occlusionClock / 96, 0, 1);
   return {
     shortwaveCoupling,
     jetCoupling:clamp(sample.jetCore,0,1),
@@ -574,6 +591,12 @@ function sampleTriplePointSupport(world,xKm,yKm){
 }
 
 function lifecyclePhase(h, pattern={}, interaction={}) {
+  if (pattern.activeSequence) {
+    // Daily waves: develop toward each evening peak, occlude overnight, never 'decaying' mid-sequence.
+    const lc = activeLifecycle(pattern.activeSequence, h), wave = waveAt(pattern.activeSequence, h);
+    if (wave.final && wave.hoursIntoDay > 30) return 'decaying';
+    return lc.pulse > 0.6 * wave.day.strength ? 'mature' : wave.hoursIntoDay < wave.day.peakHour ? 'developing' : 'occluding';
+  }
   const intensityShift = clamp((Number(pattern.intensity)||0.5)-0.5,-0.3,0.3)*8;
   const shortwaveShift = (interaction.shortwaveCoupling ?? 0.5) * 3;
   const developingEnd = 7 - shortwaveShift;
@@ -581,8 +604,15 @@ function lifecyclePhase(h, pattern={}, interaction={}) {
   const occludingEnd = 47 + intensityShift;
   return h < developingEnd ? 'developing' : h < matureEnd ? 'mature' : h < occludingEnd ? 'occluding' : 'decaying';
 }
+function decaySegmentUsage(usage = {}, dtHours = 0) {
+  const factor = Math.pow(0.5, Math.max(0, dtHours) / 6);
+  const out = {};
+  for (const [key, value] of Object.entries(usage)) { const v = (Number(value) || 0) * factor; if (v >= 0.05) out[key] = v; }
+  return out;
+}
 function lifecycleProgress(h){ return clamp(h/60,0,1); }
-function lifecycleStrengthFactor(phase,h){
+function lifecycleStrengthFactor(phase,h,pattern=null){
+  if(pattern?.activeSequence) return clamp(0.6+0.4*activeLifecycle(pattern.activeSequence,h).pulse,0.6,1);
   if(phase==='developing') return clamp(0.68+h/18,0.68,1);
   if(phase==='mature') return 1;
   if(phase==='occluding') return clamp(1-(h-26)/70,0.66,1);

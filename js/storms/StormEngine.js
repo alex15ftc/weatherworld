@@ -1,7 +1,7 @@
 import { Storm } from './Storm.js?v=2.20.1';
 import { findInitiationCandidates } from './InitiationEngine.js?v=2.20.1';
 import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampling.js?v=2.20.1';
-import { diagnosePreferredMode, shouldSplitStorm, shouldBecomeQlcs, shouldBecomeMcs, shouldUpscaleIntoLine } from './StormModeEngine.js?v=2.20.1';
+import { diagnosePreferredMode, currentModeContract, shouldSplitStorm, shouldBecomeQlcs, shouldBecomeMcs, shouldUpscaleIntoLine } from './StormModeEngine.js?v=2.20.1';
 import { clamp } from '../scenarios/math.js?v=2.20.1';
 import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js?v=2.22.0';
 import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js?v=2.22.0';
@@ -45,7 +45,7 @@ export function advanceStormEngine(world, dtHours = 1, { initiate = true, applyF
 }
 
 function createStorm(world, candidate, environment, modeHint = null, parentId = null, offset = {x:0,y:0}) {
-  const preferred = modeHint ?? diagnosePreferredMode(environment, world.setupForecast?.key, world.evolution?.config?.patternLifecycle, world.evolution?.elapsedHours ?? 0).mode;
+  const preferred = modeHint ?? diagnosePreferredMode(environment, world.setupForecast?.key, currentModeContract(world).contract, currentModeContract(world).elapsedHours).mode;
   const motion = diagnoseStormMotion(environment, preferred);
   const storm = new Storm({
     id: `S${String(world.stormEngine.nextId++).padStart(4, '0')}`,
@@ -136,7 +136,7 @@ function updateStorm(world, storm, dtHours) {
   if (!storm.active) return;
   storm.previousPositionKm = { ...storm.positionKm };
   const environment = sampleEffectiveInflowEnvironment(world, storm);
-  const preferred = diagnosePreferredMode(environment, world.setupForecast?.key, world.evolution?.config?.patternLifecycle, world.evolution?.elapsedHours ?? 0);
+  const preferred = diagnosePreferredMode(environment, world.setupForecast?.key, currentModeContract(world).contract, currentModeContract(world).elapsedHours);
   const discreteProtection = (environment.prefrontalSupercellSupport ?? 0) >= 0.44 || (environment.tornadicEnvironmentSupport ?? 0) >= 0.55;
   const protectedSupercell = storm.mode.includes('supercell') && discreteProtection && storm.ageHours < 5.5;
   if (!storm.mode.includes('left-moving') && storm.lifecycleState !== 'tower' && !protectedSupercell && preferred.confidence > storm.modeConfidence + 0.10 && storm.modeAgeHours > 0.55) {
@@ -153,6 +153,20 @@ function updateStorm(world, storm, dtHours) {
     if (storm.trackPoints.length > 240) storm.trackPoints.splice(0, storm.trackPoints.length-240);
   }
   storm.ageHours += dtHours; storm.modeAgeHours += dtHours; storm.environment = environment;
+
+  // Supercells need surface-based instability and deep shear. After 30 min without them a
+  // supercell becomes elevated convection (if elevated CAPE remains) or a decaying multicell
+  // instead of keeping the label in stable or weakly sheared air.
+  if (storm.mode.includes('supercell')) {
+    const surfaceCape = Number(environment.surfaceCape ?? environment.cape) || 0;
+    const unsupported = surfaceCape < 300 || (Number(environment.cin) || 0) > 250 || (Number(environment.bulkShear) || 0) < 25;
+    storm.unsupportedSupercellHours = unsupported ? (storm.unsupportedSupercellHours ?? 0) + dtHours : Math.max(0, (storm.unsupportedSupercellHours ?? 0) - dtHours);
+    if (storm.unsupportedSupercellHours >= 0.5) {
+      storm.mode = (Number(environment.mostUnstableCape) || 0) >= 500 && (Number(environment.bulkShear) || 0) >= 25 ? 'elevated convection' : 'multicell';
+      storm.modeAgeHours = 0;
+      storm.unsupportedSupercellHours = 0;
+    }
+  }
 
   const physics = diagnoseStormRealizationPhysics(environment, storm);
   storm.physics = physics;
@@ -173,7 +187,8 @@ function updateStorm(world, storm, dtHours) {
   const response = targetIntensity > storm.intensity ? 0.52 : 0.23;
   storm.intensity += (targetIntensity - storm.intensity) * clamp(response * dtHours * 2, 0, 1);
   const targetOrganization = clamp(physics.organizationProbability * 0.58 + shearSupport * 0.16 + physics.balanceSupport * 0.10 + preferred.confidence * 0.08 + (environment.prefrontalSupercellSupport ?? 0) * 0.08, 0, 1);
-  storm.organization += (targetOrganization - storm.organization) * clamp(0.34 * dtHours, 0, 1);
+  // Strongly sheared environments organize updrafts within ~1 h (supercell maturation).
+  storm.organization += (targetOrganization - storm.organization) * clamp((0.34 + 0.5 * shearSupport) * dtHours, 0, 1);
   storm.updraftStrength = clamp(physics.realizedUpdraft * (0.55 + storm.intensity * 0.45), 0, 1);
   storm.rotationTendency = physics.verticalVorticityTendency;
   storm.updraftHelicity = { lowLevel: physics.lowlevelUH, midlevel: physics.midlevelUH };
@@ -389,7 +404,10 @@ function updateMesocyclone(storm, environment, dtHours) {
   const synoptic = clamp((environment.synopticAscent ?? 0) * 0.55 + (environment.synopticCoherence ?? 1) * 0.25 + (environment.moisturePooling ?? environment.mesoscale?.moisturePooling ?? 0) * 0.20, 0, 1);
   const modeFactor = supercell ? 1 : qlcs ? 0.56 : 0.20;
   const structure = clamp(storm.organization * 0.34 + storm.updraftStrength * 0.30 + storm.intensity * 0.20 + storm.inflowQuality * 0.16, 0, 1.15);
-  const target = clamp(modeFactor * structure * (0.08 + 0.20 * srh + 0.14 * shear + 0.13 * lowLcl + 0.12 * inflow + 0.08 * warmSector + 0.08 * prefrontal + 0.06 * tornadic + 0.11 * synoptic), 0, 1.25);
+  // The rotational environment sets the mesocyclone; storm structure modulates it. The former
+  // product of two sub-unity terms capped mesocyclones near 0.25 even with 300 m2/s2 SRH.
+  const rotationalEnvironment = clamp(0.08 + 0.20 * srh + 0.14 * shear + 0.13 * lowLcl + 0.12 * inflow + 0.08 * warmSector + 0.08 * prefrontal + 0.06 * tornadic + 0.11 * synoptic, 0, 1.25);
+  const target = clamp(modeFactor * rotationalEnvironment * (0.45 + 0.75 * structure), 0, 1.25);
   storm.mesocycloneStrength ??= 0;
   const response = target > storm.mesocycloneStrength ? (supercell ? 1.9 : 1.1) : 0.42;
   storm.mesocycloneStrength += (target - storm.mesocycloneStrength) * clamp(dtHours * response, 0, 1);
@@ -420,6 +438,8 @@ function diagnoseObservedStorm(storm, environment) {
   const lapseRate = Number(environment.lapseRate700500 ?? environment.midLevelLapseRate ?? 6.5);
   const hailGrowth = clamp((field?.maxHail ?? 0) * 0.44 + storm.updraftStrength * 0.30 + clamp((environment.cape ?? 0) / 4000, 0, 1.2) * 0.16 + clamp((lapseRate - 5.8) / 2.4, 0, 1) * 0.10, 0, 1.2);
   const hailSizeInches = hailProbability < 0.12 ? 0 : clamp(0.35 + hailGrowth * 3.65, 0.35, 4.5);
+  // Current hail size (hazardExtremes keeps only the lifetime maximum); used by verification.
+  storm.currentHailSizeInches = hailSizeInches;
   storm.hazardExtremes ??= { tornado:{maxWindMph:0,maxEfRating:null,maxWidthYards:0,maxPathLengthKm:0,cycles:0}, wind:{maxSustainedMph:0,maxGustMph:0}, hail:{maxSizeInches:0} };
   storm.hazardExtremes.wind.maxSustainedMph = Math.max(storm.hazardExtremes.wind.maxSustainedMph ?? 0, sustainedMph);
   storm.hazardExtremes.wind.maxGustMph = Math.max(storm.hazardExtremes.wind.maxGustMph ?? 0, gustMph);

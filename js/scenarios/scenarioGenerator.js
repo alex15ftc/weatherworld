@@ -1,13 +1,24 @@
 import { GAMEPLAY_NARRATIVE_WEIGHTS, STORY_MODIFIER_WEIGHTS, ATMOSPHERIC_ENVELOPE_WEIGHTS, SYNOPTIC_SETUP_WEIGHTS } from './config.js?v=2.20.1';
 import { clamp, gaussian, lerp, meteorologicalDirection, mulberry32, smoothstep } from './math.js?v=2.20.1';
-import { airMassThermodynamics, createSynopticPattern, sampleSynopticPattern } from './synopticPattern.js?v=2.20.1';
+import { airMassThermodynamics, createSynopticPattern, sampleSynopticPattern, patternDewpointF } from './synopticPattern.js?v=2.20.1';
 import { PRESSURE_LEVELS_HPA } from '../constants.js?v=2.20.1';
 import { chooseAnalogBlend } from './AnalogPatternLibrary.js?v=2.28.8';
+import { createActiveSequence } from './ActivePattern.js';
+
+// Activity level for generated systems: 'active' (default) gives severe weather on all three
+// days; 'normal' keeps the original single-peak system; 'outbreak' strengthens every day.
+const DEFAULT_ACTIVITY = globalThis.process?.env?.WEATHER_ACTIVITY ?? 'active';
 
 export function generateScenario(world, seedValue, analogOptions = {}) {
   const seed = normalizeSeed(seedValue);
   const random = mulberry32(seed);
   const config = createSeedConfiguration(random, analogOptions);
+  // A separate stream keeps every other seeded parameter unchanged by the sequence draws.
+  const activeSequence = createActiveSequence(mulberry32((seed ^ 0x5eed5) >>> 0), { activity: analogOptions.activity ?? DEFAULT_ACTIVITY, setupName: config.setupType, intensity: config.intensity });
+  config.activeSequence = activeSequence;
+  config.activityLevel = activeSequence?.activity ?? 'normal';
+  if (config.synopticPattern) config.synopticPattern.activeSequence = activeSequence;
+  if (config.scenarioEvolution) config.scenarioEvolution.activeSequence = activeSequence;
   // Preserve the seed narrative for the authoritative outlook builder.
   world.scenarioMetadata = { seed, ...config };
 
@@ -75,7 +86,7 @@ export function generateScenario(world, seedValue, analogOptions = {}) {
     // Air masses provide coherent thermodynamic source regions; mesoscale
     // sectors then refine them instead of inventing each cell independently.
     cell.surface.temperature = lerp(cell.surface.temperature, airMass.temperatureF, 0.38);
-    cell.surface.dewpoint = lerp(cell.surface.dewpoint, airMass.dewpointF * config.synopticPattern.moistureFactor, 0.42);
+    cell.surface.dewpoint = lerp(cell.surface.dewpoint, patternDewpointF(airMass, config.synopticPattern), 0.42);
     if (synoptic.airMass === 'upslope') cell.surface.dewpoint += 3.5 * synoptic.troughCore;
     cell.surface.dewpoint = Math.min(cell.surface.dewpoint, cell.surface.temperature - 1);
 
@@ -89,8 +100,11 @@ export function generateScenario(world, seedValue, analogOptions = {}) {
       : initialLocalHour <= 15.5 ? smoothstep(6, 15.5, initialLocalHour)
       : 1 - smoothstep(15.5, 20.5, initialLocalHour);
     const unrealizedWarmSector = warmSector * (1 - initialHeatingRealization);
-    cell.surface.temperature -= unrealizedWarmSector * (12.0 + 4.0 * config.intensity);
-    cell.surface.dewpoint -= unrealizedWarmSector * (1.4 + 1.1 * (1 - moistureAxis));
+    // Dawn in a Gulf warm sector is ~12-16 F below the afternoon high under low cloud; the
+    // former 12-16 F here plus the evolution's morning adjustment chilled 12Z warm sectors
+    // to ~50 F beneath a 19 C 850 mb layer, and the dewpoint cap then dried them out.
+    cell.surface.temperature -= unrealizedWarmSector * (8.0 + 3.0 * config.intensity);
+    cell.surface.dewpoint -= unrealizedWarmSector * (0.6 + 0.8 * (1 - moistureAxis));
     cell.surface.dewpoint = Math.min(cell.surface.dewpoint, cell.surface.temperature - 1);
 
     const dist = Math.max(0.04, Math.hypot(dxLow, dyLow));
@@ -140,13 +154,13 @@ export function generateScenario(world, seedValue, analogOptions = {}) {
     cell.levels[500] = {
       temperature: config.temp500Base - config.coldPoolStrength * troughCore - 4 * lowInfluence,
       windDirection: config.dir500Base + 22 * nx - config.negativeTilt * 14 * troughCore - config.shortwaveTurn * shortwaveCore,
-      windSpeed: clamp(lerp(27 + config.jet500 * jetCore + 13 * config.intensity + config.shortwaveWindBoost * shortwaveCore, synoptic.jet500Kt, 0.58), 22, 115),
+      windSpeed: clamp(lerp(27 + config.jet500 * jetCore + 13 * config.intensity + config.shortwaveWindBoost * shortwaveCore, synoptic.jet500Kt, 0.58), 22, 85),
       heightDm: synoptic.height500Dm
     };
     cell.levels[250] = {
       temperature: -47,
       windDirection: config.dir250Base + 15 * nx - config.negativeTilt * 7 * troughCore - config.shortwaveTurn * 0.45 * shortwaveCore,
-      windSpeed: clamp(lerp(48 + config.jet250 * jetCore + 16 * config.intensity + config.shortwaveWindBoost * 0.75 * shortwaveCore, synoptic.jet250Kt, 0.64), 40, 190),
+      windSpeed: clamp(lerp(48 + config.jet250 * jetCore + 16 * config.intensity + config.shortwaveWindBoost * 0.75 * shortwaveCore, synoptic.jet250Kt, 0.64), 40, 150),
       heightDm: 1035 + (synoptic.height500Dm - 570) * 0.72
     };
 
@@ -429,7 +443,7 @@ function createSeedConfiguration(random, analogOptions = {}) {
     troughX: clamp(lowX - lerp(0.02, 0.16, random()), 0.15, 0.5), troughY: clamp(lowY + lerp(0.02, 0.18, random()), 0.18, 0.55), troughRadius: lerp(0.22, 0.38, random()), negativeTilt,
     jet250: lerp(46, 124, intensity) * lerp(0.88, 1.08, random()) * modifier.shear, jet500: lerp(24, 70, intensity) * lerp(0.88, 1.08, random()) * modifier.shear, llj850: lerp(12, 48, intensity) * lerp(0.86, 1.10, random()) * narrative.moisture,
     dir850Base: lerp(165, 205, random()), dir850Slope: lerp(8, 28, random()), dir700Base: lerp(205, 230, random()), dir500Base: lerp(225, 250, random()), dir250Base: lerp(242, 267, random()),
-    temp700Base: lerp(-4, 4, random()), emlStrength: lerp(6, 15, random()), emlWarmSector: lerp(2, 8, random()), temp500Base: lerp(-12, -20, intensity), coldPoolStrength: lerp(2, 10, intensity),
+    temp700Base: lerp(-4, 4, random()), emlStrength: lerp(6, 15, random()), emlWarmSector: lerp(1, 5, random()), temp500Base: lerp(-10, -17, intensity), coldPoolStrength: lerp(2, 7, intensity),
     forcing: lerp(0.16, 0.86, intensity) * lerp(0.86, 1.10, random()) * narrative.forcing * modifier.forcing, capePotential: lerp(1500, 4100, intensity) * lerp(0.86, 1.10, random()) * narrative.moisture, capBase: lerp(105, 190, random()) * narrative.cap * modifier.cap,
     drylineActive: setup.name === 'dryline_cyclone' || setup.name === 'lee_cyclogenesis' || (setup.name === 'shortwave_ejection' && random() < 0.45),
     leeTroughActive: setup.name === 'lee_cyclogenesis'

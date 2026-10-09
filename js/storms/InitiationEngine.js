@@ -166,7 +166,9 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
       if (!isBroadLocalMaximum(world, x, y, probability)) continue;
 
       const score = clamp(
-        probability * 0.34 + convectivePotential * 0.06 + capFailureProbability * 0.10 + forcingConfidence * 0.10 + releaseProbability * 0.08 + mesoscaleFocus * 0.08 + readiness * 0.05 + trigger * 0.04 + corridor * 0.05 + openSector * 0.03 + trackSupport * 0.02 + prefrontal * 0.03 + tornadicSupport * 0.01 + timingSupport * 0.01,
+        // Favor candidates whose inflow stays in the open warm sector (dryline / prefrontal
+        // storms) over boundary cells whose storms quickly cross into cool, stable air.
+        probability * 0.30 + convectivePotential * 0.06 + capFailureProbability * 0.09 + forcingConfidence * 0.09 + releaseProbability * 0.07 + mesoscaleFocus * 0.07 + readiness * 0.05 + trigger * 0.04 + corridor * 0.04 + openSector * 0.09 + trackSupport * 0.03 + prefrontal * 0.07 + tornadicSupport * 0.04 + timingSupport * 0.01,
         0,
         1
       );

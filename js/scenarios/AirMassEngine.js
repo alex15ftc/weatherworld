@@ -1,4 +1,9 @@
 import { clamp, gaussian, lerp } from './math.js?v=2.20.1';
+import { effectivePatternHours, waveAt } from './ActivePattern.js';
+
+// Peak 700 mb warming under the EML core. 3.8 C stacked on the generator's warm-sector
+// boost produced 13-15 C caps that suppressed nearly all surface-based convection.
+const EML_700_WARMING_C = 2.6;
 
 export function initializeAirMassEngine(world, pattern) {
   world.airMassEngine = {
@@ -26,11 +31,27 @@ export function initializeAirMassEngine(world, pattern) {
 export function advanceAirMassEngine(world, pattern, dtHours = 1) {
   if (!world.airMassEngine) initializeAirMassEngine(world, pattern);
   const eml = world.airMassEngine.eml;
-  eml.centerX += eml.transportEastPerHour * dtHours;
-  eml.centerY -= eml.transportNorthPerHour * dtHours;
   eml.ageHours += dtHours;
   const stormCoverage = Math.min(1, (world.storms?.length ?? 0) / 20);
-  eml.strength = clamp(eml.strength - dtHours * (0.004 + stormCoverage * 0.012), 0.12, 1);
+  const sequence = pattern?.activeSequence;
+  if (sequence) {
+    // Active sequence: the plume follows the pattern's daily ejection/reload, and fresh
+    // plateau air re-establishes it overnight under the southwesterly flow.
+    eml.originX ??= eml.centerX - eml.transportEastPerHour * (eml.ageHours - dtHours);
+    eml.originY ??= eml.centerY + eml.transportNorthPerHour * (eml.ageHours - dtHours);
+    const hours = effectivePatternHours(sequence, Number(world.evolution?.elapsedHours) || eml.ageHours);
+    eml.centerX = eml.originX + eml.transportEastPerHour * hours;
+    eml.centerY = eml.originY - eml.transportNorthPerHour * hours;
+    const night = waveAt(sequence, Number(world.evolution?.elapsedHours) || 0).hoursIntoDay >= 16;
+    eml.baseStrength ??= eml.strength;
+    eml.strength = night
+      ? clamp(eml.strength + (eml.baseStrength - eml.strength) * dtHours * 0.15, 0.12, 1)
+      : clamp(eml.strength - dtHours * (0.004 + stormCoverage * 0.012), 0.12, 1);
+  } else {
+    eml.centerX += eml.transportEastPerHour * dtHours;
+    eml.centerY -= eml.transportNorthPerHour * dtHours;
+    eml.strength = clamp(eml.strength - dtHours * (0.004 + stormCoverage * 0.012), 0.12, 1);
+  }
   projectAirMassAndEml(world, pattern, dtHours);
   projectAuthoritativeAirMassFractions(world);
 }
@@ -55,10 +76,18 @@ export function projectAirMassAndEml(world, pattern, dtHours = 0) {
     cell.features.emlDepthHpa = eml.baseHpa - eml.topHpa;
     cell.features.airMassOrigin = airMassOrigin(cell.features.airMass);
     cell.features.airMassModification = clamp((eml.ageHours / 30) + warmMoistOverlap * 0.15, 0, 1);
-    if (influence > 0.02) {
+    // The EML warms 700 mb and cools 500 mb relative to the air mass's own profile. Relax
+    // toward that target; adding the increment every step warmed 700 mb without bound.
+    const l700 = cell.levels[700], l500 = cell.levels[500];
+    l700.emlFreeTemperature ??= l700.temperature;
+    l500.emlFreeTemperature ??= l500.temperature;
+    if (influence > 0.02 || cell.features.emlApplied) {
       const adjustment = dtHours > 0 ? Math.min(1, dtHours * 0.35) : 1;
-      cell.levels[700].temperature += influence * 3.8 * adjustment;
-      cell.levels[500].temperature -= influence * 1.8 * adjustment;
+      l700.temperature += (l700.emlFreeTemperature + influence * EML_700_WARMING_C - l700.temperature) * adjustment;
+      l500.temperature += (l500.emlFreeTemperature - influence * 1.8 - l500.temperature) * adjustment;
+      cell.features.emlApplied = influence > 0.02;
+    }
+    if (influence > 0.02) {
       cell.features.midlevelLapseRateCkm = lerp(6.2, 8.9, influence);
       cell.features.capStrength = clamp(influence * (0.62 + warmMoistOverlap * 0.38), 0, 1);
     } else {

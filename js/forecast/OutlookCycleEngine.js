@@ -1,5 +1,7 @@
 import { applyEnsembleForecast } from './EnsembleForecastEngine.js';
 import { applyFinalCategoricalTopology } from './RegionalOutlookTopologyEngine.js';
+import { applyOutlookCalibration, categoryCalibrationEnabled, calibrateCategory } from './OutlookCalibration.js';
+import { activeLifecycle } from '../scenarios/ActivePattern.js';
 import { categoryFromHazard, categoryFromDay3TotalSevere, publishedCigForHazard } from '../diagnostics/riskDiagnosis.js?v=2.28.12';
 import { diagnoseOutlookRealizationChain } from '../storms/StormRealizationPhysics.js?v=2.28.14.1';
 const SPECS = {
@@ -71,12 +73,14 @@ function issue(world, key, spec, { mode = 'full' } = {}) {
     const forecast = projectCellWindow(world, x, y, validStart, validEnd, spec, upcomingWeight, priorGuidance?.grid?.[index] ?? null, compact ? compactTrajectoryHours(validStart, validEnd) : null);
     grid.push(forecast);
   }
+  if (!compact) attachLocalHazardPotential(world, grid, validStart, validEnd);
   const configuredMembers = world.runtime?.profile?.forecastMembers?.[key] ?? null;
   const ensembleForecast = compact
     ? createCompactTrajectoryForecast(grid, world.width, world.height, { key, issueHour: world.validHourUtc, sampleHours: compactTrajectoryHours(validStart, validEnd) })
     : applyEnsembleForecast(grid, world.width, world.height, { key, cellSizeKm: world.cellSizeKm ?? 10, seed: sourceSeed, issueHour: world.validHourUtc, members: configuredMembers });
   if (!compact) {
     relocateHazardGuidanceCores(grid, world.width, world.height);
+    applyStormMotionSwaths(grid, world, key);
     applyTrajectoryUncertaintyEnvelopes(grid, world.width, world.height, key);
     applyTwentyFiveMileHazardRule(grid, world.width, world.height, world.cellSizeMiles ?? 10);
     pruneUnsupportedHazardFootprints(grid, world.width, world.height, key);
@@ -94,9 +98,22 @@ function issue(world, key, spec, { mode = 'full' } = {}) {
     enforceHazardProbabilityNesting(grid, world.width, world.height);
     validateAndRepairHazardProducts(grid, key);
   }
+  // Remap tiers to verified frequencies after all shape repairs; categories then follow
+  // from the calibrated probabilities.
+  const calibration = applyOutlookCalibration(grid, key);
+  if (calibration.applied) { enforceHazardProbabilityNesting(grid, world.width, world.height); for (const forecast of grid) recomputeForecastRisk(forecast, key); }
   const synthesis = synthesizeCategoricalOutlook(grid, world.width, world.height, key);
+  synthesis.calibration = calibration;
   const finalCategoricalTopology = applyFinalCategoricalTopology(grid, world.width, world.height, { key });
   synthesis.finalCategoricalTopology = finalCategoricalTopology;
+  if (categoryCalibrationEnabled()) {
+    let recategorized = 0;
+    for (const forecast of grid) {
+      const calibrated = calibrateCategory(key, forecast.risk);
+      if (calibrated !== forecast.risk) { forecast.uncalibratedRisk = forecast.risk; forecast.risk = calibrated; recategorized++; }
+    }
+    synthesis.categoryCalibration = { applied: true, cellsChanged: recategorized };
+  }
   synthesis.finalCounts = Object.fromEntries(RISKS.map(r => [r, 0]));
   for (const forecast of grid) synthesis.finalCounts[forecast.risk]++;
   grid.forEach((forecast, i) => {
@@ -545,6 +562,11 @@ export function coupleTrajectoryEnvironment(sourceEnvironment, targetEnvironment
 }
 
 function projectEventLifecycle(profile = {}, elapsed = 0, lead = 0) {
+  // Share the simulation's multi-day lifecycle so Day 2-3 outlooks anticipate each new wave.
+  if (profile?.activeSequence) {
+    const now = activeLifecycle(profile.activeSequence, elapsed), future = activeLifecycle(profile.activeSequence, elapsed + lead);
+    return { ratio: clamp(future.maturity / Math.max(0.08, now.maturity), 0.45, 2.2), stage: future.stage };
+  }
   const peak = Number(profile?.peakHour ?? 18);
   const develop = Math.max(3, Number(profile?.developmentHours ?? 12));
   const decay = Math.max(6, Number(profile?.decayHours ?? 20));
@@ -571,7 +593,12 @@ function diagnoseConditionalHazards(cell, env) {
   const hailOrganization = clamp(0.34 + 0.42 * chain.organization + 0.24 * ramp(chain.realizedUpdraftMs, 16, 44), 0, 1);
   const hailConditional = clamp(hailOrganization * (0.48 * ramp(chain.realizedUpdraftMs, 16, 50) + 0.30 * ramp(env.shear, 24, 55) + 0.22 * discrete), 0, 1);
   const windOrganization = clamp(0.30 + 0.30 * chain.organization + 0.24 * Math.max(chain.linear, linear) + 0.16 * chain.balanceSupport, 0, 1);
-  const windConditional = clamp(windOrganization * (0.36 * ramp(chain.coldPoolSpeedMs, 4, 18) + 0.24 * Math.max(chain.linear, linear) + 0.24 * ramp(chain.realizedUpdraftMs, 12, 42) + 0.16 * ramp(cell.derived?.dcape ?? cell.derived?.diagnostics?.dcape ?? 0, 300, 1100)), 0, 1);
+  // Vigorous updrafts of any mode produce severe gusts (wet microbursts, RFD surges); the
+  // cold-pool/linear path alone left wind near 0% for discrete-storm days, while ~half of
+  // Day 1 products verified severe wind with no wind forecast.
+  const windConditional = clamp(Math.max(
+    windOrganization * (0.36 * ramp(chain.coldPoolSpeedMs, 4, 18) + 0.24 * Math.max(chain.linear, linear) + 0.24 * ramp(chain.realizedUpdraftMs, 12, 42) + 0.16 * ramp(cell.derived?.dcape ?? cell.derived?.diagnostics?.dcape ?? 0, 300, 1100)),
+    0.55 * ramp(chain.realizedUpdraftMs, 12, 36)), 0, 1);
   return { tornado:tornadoConditional, hail:hailConditional, wind:windConditional, chain };
 }
 
@@ -1127,6 +1154,67 @@ export function relocateHazardGuidanceCores(grid, width = null, height = null) {
   for(const forecast of grid)recomputeForecastRisk(forecast);
 }
 
+// Each cell's own peak-time hazard potential: the projected afternoon/evening environment
+// coupled with itself ("if storms form here"). The per-cell projection couples with the
+// upstream trajectory cell, which at 12Z often has little initiation, so dawn outlooks had
+// hail in a single cell. The ensemble uses this as part of its environment floor.
+function attachLocalHazardPotential(world, grid, validStart, validEnd) {
+  const dayStart = operationalDayStart(validStart);
+  const hours = [];
+  for (let d = dayStart; d <= validEnd; d += 24) for (const offset of [8, 11, 14]) { const h = d + offset; if (h >= validStart && h <= validEnd) hours.push(h); }
+  if (!hours.length) return;
+  const context = { issuedHourUtc: world.validHourUtc, elapsedHours: Number(world.evolution?.elapsedHours) || 0, config: world.evolution?.config ?? world.config ?? {} };
+  for (let i = 0; i < grid.length; i++) {
+    const cell = world.getCell(i % world.width, Math.floor(i / world.width));
+    const best = { tornado: 0, hail: 0, wind: 0 };
+    for (const hour of hours) {
+      const env = projectEnvironmentAtHour(cell, hour, context);
+      const hazards = projectHazardsFromEnvironment(cell, coupleTrajectoryEnvironment(env, env));
+      for (const k of Object.keys(best)) best[k] = Math.max(best[k], hazards[k]);
+    }
+    grid[i].localHazardPotential = best;
+  }
+}
+
+// Storms form in the outlook's environment cores and then travel 100-300 miles downstream,
+// mostly after 00Z. Carry each hazard probability along the expected storm motion (85% of
+// the 850-500 mb mean wind) for a typical organized-storm lifetime, tapering by up to 40%.
+// Before this, 67-78% of observed Day 1 events fell outside even the lowest contour.
+const SWATH_HOURS = { day1: 3, day2: 3.5, day3: 3.5 };
+const SWATH_TAPER = 0.4;
+export function applyStormMotionSwaths(grid, world, key = 'day1') {
+  const w = world.width, h = world.height, hours = SWATH_HOURS[key] ?? 3;
+  const motion = grid.map((_, i) => {
+    const cell = world.getCell(i % w, Math.floor(i / w));
+    const vec = level => { const d = (Number(level?.windDirection) || 0) * Math.PI / 180, s = Number(level?.windSpeed) || 0; return { east: -Math.sin(d) * s, north: -Math.cos(d) * s }; };
+    const a = vec(cell?.levels?.[850]), b = vec(cell?.levels?.[500]);
+    const toCellsPerHour = 0.85 * 1.852 / world.cellSizeKm;
+    return { dx: (0.42 * a.east + 0.58 * b.east) * toCellsPerHour, dy: -(0.42 * a.north + 0.58 * b.north) * toCellsPerHour };
+  });
+  for (const hazard of ['tornado', 'hail', 'wind']) {
+    const field = `${hazard}Probability`, levels = hazard === 'tornado' ? [0, 2, 5, 10, 15, 30, 45, 60] : [0, 5, 15, 30, 45, 60, 75, 90];
+    const tier = v => { let r = 0; for (const l of levels) if (v >= l) r = l; return r; };
+    const source = grid.map(cell => Number(cell[field]) || 0);
+    for (let i = 0; i < source.length; i++) {
+      if (source[i] <= 0) continue;
+      const { dx, dy } = motion[i], length = Math.hypot(dx, dy) * hours;
+      if (length < 0.5) continue;
+      const steps = Math.ceil(length / 0.5);
+      for (let k = 1; k <= steps; k++) {
+        const f = k / steps;
+        const x = Math.round(i % w + dx * hours * f), y = Math.round(Math.floor(i / w) + dy * hours * f);
+        if (x < 0 || y < 0 || x >= w || y >= h) break;
+        const j = y * w + x, value = tier(source[i] * (1 - SWATH_TAPER * f));
+        if (value > (Number(grid[j][field]) || 0)) {
+          grid[j][field] = value;
+          (grid[j].stormMotionSwath ??= {})[hazard] = true;
+        }
+      }
+    }
+  }
+  for (const cell of grid) recomputeForecastRisk(cell, key);
+}
+
 export function applyTrajectoryUncertaintyEnvelopes(grid,w,h,key='day1'){
   const levels={
     tornado:[0,2,5,10,15,30,45,60],
@@ -1207,6 +1295,9 @@ function pruneUnsupportedHazardFootprints(grid,w,h,key='day1') {
       const field = `${hazard}Probability`;
       const value = Number(cell[field]) || 0;
       if (value <= 0) continue;
+      // Downstream swath cells are where storms that formed upstream arrive; low local
+      // initiation support is expected there and is not a reason to remove the hazard.
+      if (cell.stormMotionSwath?.[hazard]) continue;
       if (support < minimumSupport && value <= lowTier[hazard]) cell[field] = 0;
       else if (support < minimumSupport * 1.45 && value >= nextTier[hazard]) cell[field] = lowTier[hazard];
     }

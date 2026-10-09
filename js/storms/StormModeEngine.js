@@ -1,5 +1,6 @@
 import { clamp } from '../scenarios/math.js?v=2.20.1';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js?v=2.28.14';
+import { dayModeContract } from '../scenarios/ActivePattern.js';
 
 export function diagnosePreferredMode(environment, setupKey = '', lifecycle = null, elapsedHours = 0) {
   const physics = diagnoseStormRealizationPhysics(environment);
@@ -10,8 +11,8 @@ export function diagnosePreferredMode(environment, setupKey = '', lifecycle = nu
   const scores = {
     'pulse storm': physics.initiationProbability * (1 - shear) * (0.42 + 0.58 * buoyancy),
     'multicell': physics.initiationProbability * buoyancy * (0.34 + 0.38 * shear + 0.28 * physics.balanceSupport),
-    'isolated discrete': physics.supercellProbability * (0.44 + 0.22 * clamp(environment.discreteFraction ?? 0.5,0,1)),
-    'semi-discrete': physics.supercellProbability * physics.initiationProbability * (0.42 + 0.28 * forcing),
+    'isolated supercell': physics.supercellProbability * (0.44 + 0.22 * clamp(environment.discreteFraction ?? 0.5,0,1)),
+    'semi-discrete supercell': physics.supercellProbability * physics.initiationProbability * (0.42 + 0.28 * forcing),
     'discrete supercell cluster': physics.supercellProbability * clamp(environment.stormCoverage ?? 0.35,0,1) * (0.34 + 0.26 * forcing),
     'mixed supercell cluster': physics.supercellProbability * physics.linearProbability * (0.32 + 0.32 * forcing),
     'discrete supercell': physics.supercellProbability * (0.70 + 0.30 * clamp(environment.discreteFraction ?? 0.5, 0, 1)),
@@ -22,10 +23,10 @@ export function diagnosePreferredMode(environment, setupKey = '', lifecycle = nu
   };
   if (setupKey === 'elevated_mcs') scores.MCS += 0.18 * physics.initiationProbability;
   if (setupKey === 'progressive_cold_front') scores['linear segment'] += 0.14 * physics.linearProbability;
-  if (['dryline_cyclone','lee_cyclogenesis','warm_front_wave'].includes(setupKey)) { scores['discrete supercell'] += 0.08 * physics.supercellProbability; scores['semi-discrete'] += 0.07 * physics.supercellProbability; scores['discrete supercell cluster'] += 0.05 * physics.supercellProbability; }
+  if (['dryline_cyclone','lee_cyclogenesis','warm_front_wave'].includes(setupKey)) { scores['discrete supercell'] += 0.08 * physics.supercellProbability; scores['semi-discrete supercell'] += 0.07 * physics.supercellProbability; scores['discrete supercell cluster'] += 0.05 * physics.supercellProbability; }
   const lifecycleMode = modeForLifecycle(lifecycle, elapsedHours);
   if (lifecycleMode === 'discrete') scores['discrete supercell'] += 0.24 * Math.max(physics.supercellProbability, physics.initiationProbability);
-  if (lifecycleMode === 'multicell' || lifecycleMode === 'mixed') { scores.multicell += 0.11 * physics.initiationProbability; scores['semi-discrete'] += 0.10 * physics.initiationProbability; scores['mixed supercell cluster'] += 0.10 * physics.initiationProbability; }
+  if (lifecycleMode === 'multicell' || lifecycleMode === 'mixed') { scores.multicell += 0.11 * physics.initiationProbability; scores['semi-discrete supercell'] += 0.10 * physics.initiationProbability; scores['mixed supercell cluster'] += 0.10 * physics.initiationProbability; }
   if (lifecycleMode === 'linear' || lifecycleMode === 'mixed') scores['linear segment'] += 0.24 * physics.linearProbability;
   if (lifecycleMode === 'QLCS') scores['linear segment'] += 0.32 * physics.linearProbability;
   if (lifecycleMode === 'MCS') scores.MCS += 0.34 * Math.max(physics.linearProbability, physics.initiationProbability);
@@ -36,6 +37,17 @@ export function diagnosePreferredMode(environment, setupKey = '', lifecycle = nu
   }
   const [mode, score] = Object.entries(scores).sort((a,b) => b[1]-a[1])[0];
   return { mode, confidence: clamp(score, 0, 1), scores, physics, lifecycleMode };
+}
+
+// Mode contract and hours into it for the current day. Active sequences give each day its own
+// contract (a cold-front day goes mixed -> linear -> QLCS); otherwise the scenario's single one.
+export function currentModeContract(world) {
+  const base = world.evolution?.config?.patternLifecycle ?? null;
+  const elapsed = Number(world.evolution?.elapsedHours) || 0;
+  const sequence = world.evolution?.config?.activeSequence;
+  if (!sequence) return { contract: base, elapsedHours: elapsed };
+  const wave = dayModeContract(sequence, elapsed);
+  return { contract: { ...(base ?? {}), modeTransitionHours: 6, lateTransitionHours: 10, initialMode: wave.modes[0], preferredMatureMode: wave.modes[1], lateMode: wave.modes[2] }, elapsedHours: wave.hoursIntoWave };
 }
 
 export function modeForLifecycle(contract = null, elapsedHours = 0) {
@@ -49,7 +61,7 @@ export function modeForLifecycle(contract = null, elapsedHours = 0) {
 
 export function shouldSplitStorm(storm, environment) {
   return !storm.hasSplit && storm.ageHours >= 0.9 && storm.ageHours <= 3.2 &&
-    ['discrete supercell','isolated discrete','semi-discrete'].includes(storm.mode) && storm.organization >= 0.52 &&
+    ['discrete supercell','isolated supercell','semi-discrete supercell'].includes(storm.mode) && storm.organization >= 0.52 &&
     environment.bulkShear >= 38 && environment.cape >= 850;
 }
 
@@ -73,7 +85,8 @@ export function shouldUpscaleIntoLine(storm, neighbors, environment) {
   if (storm.mode.includes('supercell') && discreteProtection && storm.ageHours < 5.5) return false;
   const matureEnough = storm.ageHours >= (discreteProtection ? 5.0 : 3.5);
   const longLived = storm.ageHours >= 5.5;
-  const coldPoolReady = storm.coldPoolStrength >= 0.34;
+  // Strong linear forcing (e.g. along a cold front) organizes lines before cold pools mature.
+  const coldPoolReady = storm.coldPoolStrength >= (environment.linearFraction >= 0.45 ? 0.10 : 0.34);
   const organizedCorridor = environment.linearFraction >= 0.42 || environment.forcing >= 0.48;
   const interacting = neighbors >= 1;
   // Long-lived storms increasingly favor upscale growth, but isolated discrete

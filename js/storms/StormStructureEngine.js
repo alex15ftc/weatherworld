@@ -40,7 +40,9 @@ function buildStructure(storm, env, prior, seed, dtHours=0) {
     features.push(lobe('hailCore', -.04*size.x, .02*size.y, size.x*.12, size.y*.15, hailStrength, 6, {rain:.24,ice:.44,graupel:.68,hail:.9*hailStrength,vertical:updraft*.75}));
     features.push(lobe('rearFlank', -.34*size.x, .10*size.y, size.x*.31, size.y*.34, .3+.42*cold, 22, {rain:.5,graupel:.16,downdraft:cold}));
     features.push({type:'hookArc', centerXKm:-size.x*.29, centerYKm:size.y*.22, radiusKm:size.x*.34, thicknessKm:Math.max(2,size.x*.075), startDeg:120, endDeg:330, intensity:hookStrength, rain:.68, graupel:.25, age:phase});
-    features.push(lobe('inflowNotch', -.02*size.x, -.18*size.y, size.x*.25, size.y*.28, clamp(.45+.4*org,0,1), -18, {subtractRain:.75,inflow:org}));
+    // Local frame: +x downstream along storm motion, +y to the right of motion. The
+    // inflow notch sits on the right flank between the forward flank and the hook.
+    features.push(lobe('inflowNotch', -.02*size.x, .18*size.y, size.x*.25, size.y*.28, clamp(.45+.4*org,0,1), 18, {subtractRain:.75,inflow:org}));
   } else if (linear || mcs) {
     features.push({type:'convectiveLine', centerXKm:-size.x*.12, centerYKm:0, lengthKm:size.y*1.65, widthKm:Math.max(5,size.x*.17), bowKm:size.x*.24, intensity:.52+.42*lineStrength, rain:.82, graupel:.34*hailStrength, hail:.18*hailStrength});
     features.push(lobe('rearStratiform', size.x*.42, 0, size.x*(mcs?.85:.63), size.y*.78, .35+.45*precipEff, 0, {rain:.58,ice:.28}));

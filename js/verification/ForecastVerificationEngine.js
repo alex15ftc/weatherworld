@@ -365,8 +365,10 @@ export function captureTruth(world, frames, seenStormIds, initiations, stormReco
     const gust = Number(storm.surfaceWind?.gustMph ?? 0);
     const tornadoTruthPoints = collectTornadoTruthPoints(storm, previousHourUtc, world.validHourUtc);
     const tornadoOnGround = Boolean(storm.tornado?.onGround);
-    const hailSize = Number(storm.hazardExtremes?.hail?.maxSizeInches ?? hazards.hailSizeInches ?? 0);
-    const peakGust = Math.max(gust, Number(storm.hazardExtremes?.wind?.maxGustMph ?? 0));
+    // Report what the storm produces now. Lifetime maxima marked every later position along a
+    // storm's track (including while dissipating) as a severe report, inflating observed areas.
+    const hailSize = Number(storm.currentHailSizeInches ?? hazards.hailSizeInches ?? 0);
+    const peakGust = gust;
     const hailOccurred = hailSize >= 1;
     const windOccurred = peakGust >= 58;
     if (intensity >= 0.22) frame.storm[idx] = 1;
@@ -879,10 +881,15 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
     const y = clamp(Number(initiation.y) || 0, 0, height - 1);
     spread(result.initiation, y * width + x, width, height, radius);
   }
+  // Observed probability uses SPC's "practically perfect" method (reports on an 80 km grid,
+  // Gaussian-smoothed with sigma = 120 km), the standard reference for verifying categorical
+  // outlooks. The former measure (fraction of cells within 25 mi containing an event) gave
+  // 15-25% along a single track and nothing a few cells away.
+  const cellKm = cellMiles * 1.609344;
   result.observedProbability = {
-    tornado: localOccurrenceProbability(result.tornadoExact, width, height, radius, [2,5,10,15,30,45,60]),
-    hail: localOccurrenceProbability(result.hailExact, width, height, radius, [5,15,30,45,60]),
-    wind: localOccurrenceProbability(result.windExact, width, height, radius, [5,15,30,45,60,75,90])
+    tornado: practicallyPerfectProbability(result.tornadoExact, width, height, cellKm, [2,5,10,15,30,45,60]),
+    hail: practicallyPerfectProbability(result.hailExact, width, height, cellKm, [5,15,30,45,60]),
+    wind: practicallyPerfectProbability(result.windExact, width, height, cellKm, [5,15,30,45,60,75,90])
   };
   result.observedCig = {
     tornado: deriveObservedCig(result.tornadoSig, result.tornadoExtreme, result.tornadoViolent, 3),
@@ -894,6 +901,30 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
     result.risk[i] = categories.reduce((best, risk) => RISK_ORDER.indexOf(risk) > RISK_ORDER.indexOf(best) ? risk : best, 'TSTM');
   }
   return result;
+}
+
+const PP_GRID_KM = 80, PP_SIGMA_KM = 120;
+export function practicallyPerfectProbability(exact, width, height, cellKm, levels) {
+  const box = Math.max(1, Math.round(PP_GRID_KM / cellKm));
+  const boxes = new Map();
+  for (let i = 0; i < exact.length; i++) if (exact[i]) {
+    const bx = Math.floor((i % width) / box), by = Math.floor(Math.floor(i / width) / box);
+    boxes.set(`${bx},${by}`, { x: (bx + 0.5) * box * cellKm, y: (by + 0.5) * box * cellKm });
+  }
+  const out = new Uint8Array(exact.length);
+  if (!boxes.size) return out;
+  const weight = (PP_GRID_KM * PP_GRID_KM) / (2 * Math.PI * PP_SIGMA_KM * PP_SIGMA_KM);
+  const centers = [...boxes.values()];
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const px = (x + 0.5) * cellKm, py = (y + 0.5) * cellKm;
+    let p = 0;
+    for (const c of centers) p += weight * Math.exp(-((px - c.x) ** 2 + (py - c.y) ** 2) / (2 * PP_SIGMA_KM * PP_SIGMA_KM));
+    const pct = 100 * Math.min(1, p);
+    let discrete = 0;
+    for (const level of levels) if (pct >= level) discrete = level;
+    out[y * width + x] = discrete;
+  }
+  return out;
 }
 
 function localOccurrenceProbability(exact, width, height, radius, levels) {

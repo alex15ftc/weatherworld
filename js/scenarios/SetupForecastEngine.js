@@ -1,4 +1,5 @@
 import { clamp, gaussian } from './math.js?v=2.20.1';
+import { dayModeContract } from './ActivePattern.js';
 
 const SETUP_PROFILES = {
   dryline_cyclone: { name:'Classic dryline supercells', coverage:0.62, discrete:0.78, linear:0.24, capUncertainty:0.20, preferred:['dryline','triple'] },
@@ -41,7 +42,10 @@ function projectSetupForecast(world) {
   // heating, not around 12Z. A broad 21.5Z peak preserves some earlier CI while
   // strongly favoring the 20-23Z window requested for Plains chase gameplay.
   const lateAfternoonPeak = Math.exp(-0.5 * Math.pow(circularHourDistance(hour, 22) / 2.8, 2));
-  const heatingRamp = smoothstepHour(hour, 14, 21);
+  // Heating builds 14-21Z, holds through the 00Z (local evening) peak and fades by 04Z.
+  // smoothstepHour(hour, 14, 21) alone wrapped from 1 back to 0 at 00Z, cutting heating,
+  // cap erosion and surface-based CI timing at the height of the storm window.
+  const heatingRamp = hour < 12 ? 1 - smoothstepHour(hour, 0, 4) : smoothstepHour(hour, 14, 21);
   const eveningDecay = hour >= 0 && hour < 7 ? clamp(1 - hour / 7, 0, 1) : 1;
   // Surface-based parcels should generally remain capped at 12Z and cook through
   // the afternoon. The resulting CI factor is intentionally small before 16Z,
@@ -181,8 +185,11 @@ function projectSetupForecast(world) {
     const tornadicBase = clamp(0.28 * lowLevelRotation + 0.20 * lowLcl + 0.18 * shear + 0.15 * instability + 0.11 * effectiveInflow + 0.08 * openSector, 0, 1.15);
     const tornadicEnvironment = clamp(tornadicBase * (0.58 + 0.42 * instability) * (0.58 + 0.42 * lowLcl), 0, 1.15);
     const prefrontalSupercellSupport = clamp(openSector * (0.28 + 0.24 * effectiveInflow + 0.18 * lowLevelRotation + 0.14 * shear + 0.10 * lowLcl + 0.06 * upper) * (1 - 0.28 * Math.max(0, forcing - 0.72)), 0, 1);
-    const discreteFraction = clamp(profile.discrete * lifecycle.discreteMultiplier * (0.61 + 0.25 * shear + 0.14 * prefrontalSupercellSupport) * (1 - 0.20 * Math.max(0, forcing - 0.68)), 0.03, 0.97);
-    const linearFraction = clamp(profile.linear * lifecycle.linearMultiplier * (0.60 + 0.34 * forcing) * (0.72 + 0.28 * stormCoverage) * (1 - 0.32 * prefrontalSupercellSupport), 0.03, 0.97);
+    // Cold-front days of an active sequence: frontal forcing organizes storms into lines
+    // regardless of the scenario's (usually supercell-leaning) base mode mix.
+    const frontal = lifecycle.frontalLinear ?? 0;
+    const discreteFraction = clamp(profile.discrete * (1 - 0.45 * frontal) * lifecycle.discreteMultiplier * (0.61 + 0.25 * shear + 0.14 * prefrontalSupercellSupport) * (1 - 0.20 * Math.max(0, forcing - 0.68)), 0.03, 0.97);
+    const linearFraction = clamp(lerp(profile.linear, Math.max(profile.linear, 0.85), frontal) * lifecycle.linearMultiplier * (0.60 + 0.34 * forcing) * (0.72 + 0.28 * stormCoverage) * (1 - 0.32 * prefrontalSupercellSupport), 0.03, 0.97);
 
     const torIntensity = clamp(0.31 * clamp((cell.derived?.srh ?? 0) / 300, 0, 1.2) + 0.24 * clamp((cell.derived?.stp ?? 0) / 6, 0, 1.2) + 0.18 * clamp((1800 - lclAgl) / 1100, 0, 1) + 0.17 * shear + 0.10 * discreteFraction, 0, 1.2);
     const hailIntensity = clamp(0.34 * clamp((cell.derived?.cape ?? 0) / 3500, 0, 1.2) + 0.27 * shear + 0.24 * clamp(((cell.thermodynamics?.lapseRates?.mb700_500 ?? cell.derived?.lapseRate700500 ?? 6.5) - 6) / 2.5, 0, 1.2) + 0.15 * discreteFraction, 0, 1.2);
@@ -215,7 +222,7 @@ function projectSetupForecast(world) {
       initiationCorridor: corridor,
       openWarmSectorSupport: openSector,
       prefrontalSupercellSupport,
-      tornadicEnvironmentSupport: tornadicEnvironment,
+      tornadicEnvironmentSupport: clamp(tornadicEnvironment, 0, 1),
       projectedStormTrackSupport: clamp(Math.max(corridor, initiationProbability * (0.54 + 0.30 * effectiveInflow + 0.16 * prefrontalSupercellSupport)), 0, 1),
       surfaceHeating,
       capErosion,
@@ -230,8 +237,13 @@ function projectSetupForecast(world) {
 }
 
 function lifecycleState(world) {
-  const contract = world.evolution?.config?.patternLifecycle ?? world.scenarioMetadata?.patternLifecycle ?? {};
-  const elapsed = Math.max(0, Number(world.evolution?.elapsedHours) || 0);
+  const baseContract = world.evolution?.config?.patternLifecycle ?? world.scenarioMetadata?.patternLifecycle ?? {};
+  const sequence = world.evolution?.config?.activeSequence;
+  // With an active multi-day sequence, each day's wave runs its own mode contract (e.g. a
+  // cold-front day trends linear) instead of Day 1's late mode persisting forever.
+  const wave = sequence ? dayModeContract(sequence, Number(world.evolution?.elapsedHours) || 0) : null;
+  const contract = wave ? { ...baseContract, initiationDelayHours: Math.min(Number(baseContract.initiationDelayHours) || 0, 4), initialMode: wave.modes[0], preferredMatureMode: wave.modes[1], lateMode: wave.modes[2] } : baseContract;
+  const elapsed = Math.max(0, wave ? wave.hoursIntoWave : Number(world.evolution?.elapsedHours) || 0);
   const delay = Math.max(0, Number(contract.initiationDelayHours) || 0);
   const transition = Math.max(delay + 0.5, Number(contract.modeTransitionHours) || 6);
   const late = Math.max(transition + 1, Number(contract.lateTransitionHours) || transition + 5);
@@ -242,14 +254,25 @@ function lifecycleState(world) {
   const coverageMultiplier = lerp(lerp(coverage[0] ?? 1, coverage[1] ?? 1, matureBlend), coverage[2] ?? .8, lateBlend);
   const modes = [contract.initialMode, contract.preferredMatureMode, contract.lateMode];
   const mode = lateBlend > .5 ? modes[2] : matureBlend > .5 ? modes[1] : modes[0];
-  const linearMode = ['linear','QLCS','MCS','mixed'].includes(mode);
-  const discreteMode = ['discrete','mixed'].includes(mode);
+  const multipliersFor = m => {
+    const linearMode = ['linear','QLCS','MCS','mixed'].includes(m);
+    const discreteMode = ['discrete','mixed'].includes(m);
+    return {
+      discrete: discreteMode ? 1.14 : linearMode ? .70 : m === 'capped' || m === 'stable' ? .45 : .88,
+      linear: linearMode ? 1.20 : discreteMode ? .68 : m === 'stable' ? .40 : .92
+    };
+  };
+  // Blend the mode multipliers through each transition; switching at blend 0.5 made the
+  // forecast discrete fraction jump ~80% of its range within one hour.
+  const [a, b, c] = modes.map(multipliersFor);
+  const blendMultiplier = key => lerp(lerp(a[key], b[key], matureBlend), c[key], lateBlend);
   return {
     stage: lateBlend > .5 ? 'late' : matureBlend > .5 ? 'mature' : elapsed < delay ? 'waiting' : 'initiating',
     releaseMultiplier,
     coverageMultiplier,
-    discreteMultiplier: discreteMode ? 1.14 : linearMode ? .70 : mode === 'capped' || mode === 'stable' ? .45 : .88,
-    linearMultiplier: linearMode ? 1.20 : discreteMode ? .68 : mode === 'stable' ? .40 : .92
+    discreteMultiplier: blendMultiplier('discrete'),
+    linearMultiplier: blendMultiplier('linear'),
+    frontalLinear: wave?.character === 'cold-front' ? smoothstep(elapsed, 3, 9) : 0
   };
 }
 

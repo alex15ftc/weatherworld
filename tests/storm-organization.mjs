@@ -3,7 +3,9 @@ import { Atmosphere } from '../js/atmosphere.js?v=2.17.0.3';
 import { generateScenario } from '../js/scenarios/scenarioGenerator.js?v=2.17.0.3';
 import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js?v=2.17.0.3';
 
-const knownModes = new Set(['developing convection','pulse storm','multicell','discrete supercell','left-moving supercell','linear segment','QLCS','MCS','elevated convection']);
+import { KNOWN_STORM_MODES } from '../js/storms/StormModes.js';
+// Use the canonical mode list; a hand-copied list went stale when modes were added.
+const knownModes = new Set(KNOWN_STORM_MODES);
 let created = 0, organized = 0, feedbackWorlds = 0;
 // The 2.32 climatology rebalance changed the deterministic narratives attached
 // to the original 1-6 fixture. This window retains a representative mix with

@@ -20,6 +20,7 @@
     "test:system-boundaries": "node tests/system-derived-boundaries-2.33.0.mjs",
     "test:setups": "node tests/setup-risk-semantics.mjs",
     "test:world": "node tests/world-framework.mjs",
+    "test:radar": "node tests/radar-simulator.mjs && node tests/thin-product-clients.mjs",
     "test:organization": "node tests/storm-organization.mjs",
     "test:risk-upscale": "node tests/risk-upscale-regression.mjs",
     "test:ui-startup": "node tests/ui-startup-regression.mjs",

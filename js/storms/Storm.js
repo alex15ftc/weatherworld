@@ -1,6 +1,6 @@
 export const STORM_STATES = Object.freeze(['tower', 'developing', 'organizing', 'mature', 'cyclic', 'weakening', 'dissipating']);
 export const STORM_MODES = Object.freeze([
-  'pulse storm', 'multicell', 'isolated discrete', 'semi-discrete', 'discrete supercell',
+  'pulse storm', 'multicell', 'isolated supercell', 'semi-discrete supercell', 'discrete supercell',
   'discrete supercell cluster', 'mixed supercell cluster', 'left-moving supercell',
   'broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS', 'elevated convection'
 ]);

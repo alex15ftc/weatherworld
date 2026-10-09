@@ -3,7 +3,7 @@ import { clamp } from './scenarios/math.js?v=2.20.1';
 import { diagnoseBoundaries } from './diagnostics/boundaryDiagnosis.js?v=2.20.1';
 import { diagnoseForcing } from './diagnostics/forcingDiagnosis.js?v=2.20.1';
 import { updateCellDiagnostics, updateLightweightStpDiagnostics as updateCellLightweightStpDiagnostics } from './sounding.js?v=2.69.1';
-import { sampleSynopticPattern, airMassThermodynamics } from './scenarios/synopticPattern.js?v=2.20.1';
+import { sampleSynopticPattern, airMassThermodynamics, patternDewpointF } from './scenarios/synopticPattern.js?v=2.20.1';
 import { analyzeMapFeatures } from './analysis/mapAnalysis.js?v=2.20.1';
 import { INITIAL_VALID_HOUR_UTC, OUTLOOK_INTERVAL_HOURS, PRESSURE_LEVELS_HPA } from './constants.js?v=2.20.1';
 import { initializeStormEngine, advanceStormEngine, applyStormFeedback } from './storms/StormEngine.js?v=2.22.0';
@@ -20,6 +20,14 @@ import { initializeSynopticObjects, advanceSynopticObjects } from './synoptic/Sy
 import { resolveRuntimeProfile } from './runtime/RuntimeProfile.js';
 import { initializeMeteorologicalIntegrity, runMeteorologicalIntegrity } from './atmosphere/MeteorologicalIntegrityEngine.js?v=2.70.0';
 import { initializeAnalogScenarioEngine, runAnalogScenarioEngine } from './scenarios/AnalogScenarioEngine.js?v=2.71.0';
+import { applyBoundaryLayer, nocturnalCoolingFph } from './atmosphere/BoundaryLayerClosure.js';
+import { advanceUpperAirTemperature } from './atmosphere/UpperAirTransport.js';
+import { activeLifecycle } from './scenarios/ActivePattern.js';
+
+// Strong spring troughs top out near 85 kt at 500 mb and ~150 kt at 250 mb; higher
+// values pushed 0-6 km bulk shear past 140 kt.
+const MAX_500_WIND_KT = 85;
+const MAX_250_WIND_KT = 150;
 
 
 export function initializeEvolution(world, config, { profile = 'gameplay' } = {}) {
@@ -45,6 +53,8 @@ export function initializeEvolution(world, config, { profile = 'gameplay' } = {}
 
   applyInitialMorningPhaseAdjustment(world, INITIAL_VALID_HOUR_UTC);
   applyDiurnalAdjustment(world, INITIAL_VALID_HOUR_UTC);
+  // Settle generator winds into the boundary layer before anything is diagnosed.
+  applyBoundaryLayer(world, 2);
   enforcePhysicalConstraints(world);
   // Initial derived fields already come from the authoritative generation formulas.
   diagnoseBoundaries(world);
@@ -94,9 +104,11 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
     runEvolutionPhase(world, 'transport', () => {
       advectAndEvolve(world, previous, stepHours);
       applySynopticCoupling(world, stepHours);
+      advanceUpperAirTemperature(world, stepHours);
       advanceAirMassEngine(world, world.evolution.config.synopticPattern, stepHours);
       applyTerrainForcing(world, stepHours);
       applyDiurnalAdjustment(world, world.validHourUtc, stepHours);
+      applyBoundaryLayer(world, stepHours);
       enforcePhysicalConstraints(world);
     });
 
@@ -267,8 +279,8 @@ function applySynopticCoupling(world, dtHours = 1) {
       ? cell.levels[500].heightDm * 0.78 + synoptic.height500Dm * 0.22
       : synoptic.height500Dm;
     cell.levels[250].heightDm = 1035 + (cell.levels[500].heightDm - 570) * 0.72;
-    cell.levels[500].windSpeed = clamp(cell.levels[500].windSpeed * (1 - 0.18*lifecycle.kinematic) + synoptic.jet500Kt * (0.18*lifecycle.kinematic), 18, 120);
-    cell.levels[250].windSpeed = clamp(cell.levels[250].windSpeed * (1 - 0.20*lifecycle.kinematic) + synoptic.jet250Kt * (0.20*lifecycle.kinematic), 35, 195);
+    cell.levels[500].windSpeed = clamp(cell.levels[500].windSpeed * (1 - 0.18*lifecycle.kinematic) + synoptic.jet500Kt * (0.18*lifecycle.kinematic), 18, MAX_500_WIND_KT);
+    cell.levels[250].windSpeed = clamp(cell.levels[250].windSpeed * (1 - 0.20*lifecycle.kinematic) + synoptic.jet250Kt * (0.20*lifecycle.kinematic), 35, MAX_250_WIND_KT);
 
     const sourceStrength = (synoptic.airMass === 'mT' ? 0.055 : 0.035) * lifecycle.moisture;
     const significantEnvelope = ['significant_regional','extreme_regional'].includes(config.atmosphericEnvelope);
@@ -276,8 +288,8 @@ function applySynopticCoupling(world, dtHours = 1) {
       - Number(config.northMoistureLoss ?? 7) * (1 - ny)
       - (1 - lifecycle.moisture) * 3.5;
     const dewpointTarget = significantEnvelope && synoptic.airMass === 'mT'
-      ? Math.max(airMass.dewpointF * pattern.moistureFactor, analogMoistureTarget)
-      : airMass.dewpointF * pattern.moistureFactor;
+      ? Math.max(patternDewpointF(airMass, pattern), analogMoistureTarget)
+      : patternDewpointF(airMass, pattern);
     cell.surface.temperature += (airMass.temperatureF - cell.surface.temperature) * sourceStrength;
     cell.surface.dewpoint += (dewpointTarget - cell.surface.dewpoint) * sourceStrength;
     if (significantEnvelope && synoptic.airMass === 'mT') {
@@ -289,6 +301,7 @@ function applySynopticCoupling(world, dtHours = 1) {
     }
 
     cell.features.airMass = synoptic.airMass;
+    cell.features.airMassTemperatureF = airMass.temperatureF;
     // Sector membership is diagnostic geometry, not a transported tracer.
     // Rebuild it from the same evolving synoptic frame that controls the low
     // and fronts so instability cannot remain in a stale, displaced sector.
@@ -325,6 +338,8 @@ function displayToPatternCoordinates(x, y, config = {}) {
 }
 
 function scenarioLifecycle(profile = {}, elapsed = 0) {
+  // Active multi-day sequences pulse once per day instead of peaking once and decaying.
+  if (profile?.activeSequence) return activeLifecycle(profile.activeSequence, elapsed);
   const peak = Number(profile.peakHour ?? 24);
   const develop = Math.max(3, Number(profile.developmentHours ?? 16));
   const decay = Math.max(6, Number(profile.decayHours ?? 20));
@@ -399,7 +414,9 @@ export function applyDiurnalAdjustment(world, absoluteHour, dtHours = 1) {
     const preConvectiveRecovery = solar > 0.02 ? recoveryEligibility : 0;
 
     const solarHeatingFph = solar * (1.20 + 0.42 * preConvectiveRecovery) * soilFactor;
-    const radiativeCoolingFph = solar < 0.02 ? 0.30 : 0.08 * (1 - solar);
+    // Night cooling relaxes toward a dewpoint-limited floor (BoundaryLayerClosure); the
+    // former constant 0.30 F/h let surface temperatures climb ~10-20 F per day.
+    const radiativeCoolingFph = Math.max(solar < 0.02 ? 0.30 : 0.08 * (1 - solar), nocturnalCoolingFph(cell, solar));
     const recoveryHeatingFph = 0.30 * preConvectiveRecovery;
     const temperatureTendencyFph = solarHeatingFph + recoveryHeatingFph - radiativeCoolingFph;
     cell.surface.temperature += temperatureTendencyFph * dtHours - elevationCoolingF * 0.012;
@@ -450,7 +467,8 @@ function applyInitialMorningPhaseAdjustment(world, absoluteHour) {
     const warmSector=cell.features?.warmSector?1:clamp(Number(cell.forecast?.openWarmSectorSupport)||0,0,1);
     if(warmSector<0.35) return;
     const moisture=clamp(((Number(cell.surface?.dewpoint)||45)-50)/25,0,1);
-    const suppression=(2.8+3.2*warmSector+1.2*moisture)*morningFraction;
+    // Small residual dawn cooling on top of the generator's warm-sector morning offset.
+    const suppression=(0.8+1.4*warmSector+0.6*moisture)*morningFraction;
     cell.surface.temperature-=suppression;
     cell.surface.dewpoint-=Math.min(1.6,suppression*0.18);
   });

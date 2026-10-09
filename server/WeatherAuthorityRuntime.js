@@ -9,6 +9,8 @@ import { SIMULATION_CONFIG } from '../js/simulationConfig.js';
 import { buildSounding } from '../js/sounding.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, decodeU8Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
+import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
+import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 20270503;
 const SIM_HOURS_PER_REAL_MINUTE = 0.25;
@@ -16,6 +18,9 @@ const STORM_CADENCE_HOURS = 1 / 12;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const RISK_CODES = { TSTM: 0, MRGN: 1, SLGT: 2, ENH: 3, MDT: 4, HIGH: 5 };
 const TILE_STYLE_REVISION = 'spc-probability-v6';
+// Each generated system is a 3-day sequence; the authority then starts the next system so a
+// live game never runs on a decayed, departed pattern.
+const SYSTEM_HOURS = 72;
 
 export class WeatherAuthorityRuntime {
   constructor({ seed = DEFAULT_SEED, checkpointPath = path.resolve('data/authority-checkpoint.json') } = {}) {
@@ -35,6 +40,22 @@ export class WeatherAuthorityRuntime {
     this.productCache = new Map();
     this.performance = { cacheHits: 0, cacheMisses: 0, productBuilds: {} };
     this.autoAdvance = true;
+    this.systemNumber = 1;
+  }
+
+  // Deterministic follow-on seed so a given starting seed always produces the same campaign.
+  nextSystemSeed() {
+    let h = (Math.imul(this.seed ^ 0x9e3779b9, 2654435761) + this.systemNumber * 0x85ebca6b) >>> 0;
+    h = (h ^ (h >>> 15)) >>> 0; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h = (h ^ (h >>> 12)) >>> 0;
+    return h % 100000000;
+  }
+
+  maybeStartNextSystem() {
+    if ((Number(this.atmosphere.evolution?.elapsedHours) || 0) < SYSTEM_HOURS) return false;
+    const next = this.nextSystemSeed();
+    this.systemNumber += 1;
+    this.reset(next);
+    return true;
   }
 
 
@@ -57,6 +78,7 @@ export class WeatherAuthorityRuntime {
     const amount = Math.max(0, Math.min(72, Number(hours) || 0));
     if (amount <= 0) return this.metadata();
     advanceAtmosphere(this.atmosphere, amount);
+    if (this.maybeStartNextSystem()) return this.metadata();
     this.lastAdvancedAt = Date.now();
     this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision += 1;
@@ -103,6 +125,7 @@ export class WeatherAuthorityRuntime {
       changed = true;
     }
     if (!changed) return false;
+    if (this.maybeStartNextSystem()) return true;
     this.revision += 1;
     this.invalidateProducts();
     this.persistCheckpoint();
@@ -111,7 +134,8 @@ export class WeatherAuthorityRuntime {
 
   metadata() {
     return {
-      ok: true, version: '2.28.14.1', revision: this.revision, seed: this.seed, authorityInstance: this.authorityInstance, tileStyleRevision: TILE_STYLE_REVISION,
+      ok: true, version: '2.28.14.1', revision: this.revision, seed: this.seed, systemNumber: this.systemNumber,
+      activityLevel: this.config?.activityLevel ?? 'normal', activeSequence: this.config?.activeSequence ?? null, authorityInstance: this.authorityInstance, tileStyleRevision: TILE_STYLE_REVISION,
       validHourUtc: this.atmosphere.validHourUtc, width: this.atmosphere.width, height: this.atmosphere.height,
       cellSizeMiles: this.atmosphere.cellSizeMiles, cellSizeKm: this.atmosphere.cellSizeKm,
       domainWidthMiles: this.atmosphere.domainWidthMiles, domainHeightMiles: this.atmosphere.domainHeightMiles,
@@ -165,7 +189,7 @@ export class WeatherAuthorityRuntime {
   authorityState() {
     return {
       revision: this.revision, seed: this.seed, currentSeed: this.seed,
-      validHourUtc: this.atmosphere.validHourUtc, systemStartHour: SIMULATION_CONFIG.startHourUtc, systemNumber: 1,
+      validHourUtc: this.atmosphere.validHourUtc, systemStartHour: SIMULATION_CONFIG.startHourUtc, systemNumber: this.systemNumber,
       authorityRealTimestamp: this.lastAdvancedAt,
       atmosphere: this.serializeAtmosphere(), radarSnapshot: null,
       forecastProducts: this.atmosphere.outlookCycle?.products ?? {}
@@ -311,31 +335,30 @@ export class WeatherAuthorityRuntime {
     }, { day, product, kind: 'conditional-intensity-tier', validHourUtc: this.atmosphere.validHourUtc }));
   }
 
-  getRadarSnapshot() {
-    const stormHour = this.atmosphere.stormEngine?.validHourUtc ?? this.atmosphere.validHourUtc;
-    const scanHour = Math.floor(stormHour * 12) / 12;
-    if (!this.radarCache || this.radarCacheHour !== scanHour) {
-      this.radarCache = createRadarSnapshot(this.atmosphere);
-      this.radarCacheHour = scanHour;
-    }
-    return this.radarCache;
+  radarCatalog() {
+    return this.cached('radar:catalog', () => ({
+      revision: this.revision,
+      validHourUtc: this.atmosphere.stormEngine?.validHourUtc ?? this.atmosphere.validHourUtc,
+      domainWidthKm: this.atmosphere.domainWidthKm, domainHeightKm: this.atmosphere.domainHeightKm,
+      sites: createRadarSites(this.atmosphere), tilts: RADAR_TILTS_DEG, products: RADAR_PRODUCT_KEYS,
+      radials: RADAR_RADIALS, gates: RADAR_GATES, gateKm: RADAR_GATE_KM, beamwidthDeg: RADAR_BEAMWIDTH_DEG
+    }));
   }
 
-  radarStations() { return this.atmosphere.radarNetwork?.stations ?? []; }
+  radarScene() { return this.cached('radar:scene', () => buildRadarScene(this.atmosphere)); }
 
-  radarScan(product = 'reflectivity', station = 'composite') {
-    return this.cached(`radar:${product}:${station}`, () => {
-      const snapshot = this.getRadarSnapshot();
-      const frame = rasterizeRadarValues(snapshot, product, station);
-      const quantized = quantizeRadar(frame.values, product);
-      return {
-        product, station, revision: this.revision, validHourUtc: snapshot.validHourUtc,
-        size: frame.size, encoding: 'u8-base64', values: Buffer.from(quantized.values.buffer).toString('base64'),
-        valueMin: quantized.min, valueMax: quantized.max,
-        domainWidthKm: snapshot.domainWidthKm, domainHeightKm: snapshot.domainHeightKm,
-        radarNetwork: snapshot.radarNetwork,
-        storms: (snapshot.storms ?? []).map(({ internalField, ...storm }) => storm)
-      };
+  // Lowest-tilt reflectivity from every site combined on a 1 km grid.
+  radarMosaic() {
+    return this.cached('radar:mosaic', () => ({ ...buildRadarMosaic(this.radarScene(), this.radarCatalog().sites), revision: this.revision }));
+  }
+
+  // One tilt of one site; all products are simulated together and cached per revision.
+  radarScan(siteId, tiltDeg) {
+    const site = this.radarCatalog().sites.find(s => s.id === siteId);
+    if (!site) return null;
+    const tilt = RADAR_TILTS_DEG.reduce((a, b) => (Math.abs(b - tiltDeg) < Math.abs(a - tiltDeg) ? b : a));
+    return this.cached(`radar:scan:${site.id}:${tilt}`, () => {
+      return { ...scanRadarTilt(this.radarScene(), site, tilt), revision: this.revision };
     });
   }
 
@@ -346,10 +369,6 @@ export class WeatherAuthorityRuntime {
     const key = `tile:${scope}:${day}:${product}:${station}:${zoom}:${tx}:${ty}`;
     return this.cachedAsync(key, async () => {
       if (scope === 'radar') return null;
-      if (false) {
-        const scan = this.radarScan(product, station);
-        return await renderTile({ values: decodeU8Base64(scan.values), width: scan.size, height: scan.size, product, z: zoom, x: tx, y: ty, valueMin: scan.valueMin, valueMax: scan.valueMax });
-      }
       const grid = scope === 'outlook' ? this.outlookField(day, product) : this.liveField(product);
       const hatch = scope === 'outlook' ? this.outlookHatchField(day, product) : null;
       return await renderTile({ values: decodeF32Base64(grid.values), width: grid.width, height: grid.height, product, z: zoom, x: tx, y: ty, hatchValues: hatch ? decodeF32Base64(hatch.values) : null });
