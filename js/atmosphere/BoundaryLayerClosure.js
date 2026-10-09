@@ -12,10 +12,6 @@ const KAPPA = 0.2857;
 const C_TO_K = 273.15;
 const DEG_TO_RAD = Math.PI / 180;
 const MAX_MIDLEVEL_LAPSE = 9.3; // K/km
-const MAX_SURFACE_BACKING = 75;  // degrees, surface relative to 850 mb
-const MAX_SURFACE_VEERING = 30;
-const MAX_LOW_LEVEL_SHEAR_KT = 50;
-const MAX_850_WIND_KT = 65;
 const LLJ_BOOST = 0.35;       // peak nocturnal 850 mb acceleration in the warm sector
 
 export function applyBoundaryLayer(world, dtHours = 0.5) {
@@ -70,33 +66,26 @@ export function applyBoundaryLayer(world, dtHours = 0.5) {
     l850.baseWindSpeed = jetBase + (l850.windSpeed / (1 + LLJ_BOOST * (l850.jetFactor ?? 0)) - jetBase) * clamp(dtHours * 0.25, 0, 1);
     const jetTarget = jetPhase * warm * southerly;
     l850.jetFactor = (l850.jetFactor ?? 0) + (jetTarget - (l850.jetFactor ?? 0)) * relax;
-    // Strong Plains low-level jets are southerly; easterly 850 mb flow (upslope, north of warm
-    // fronts) is much weaker. Cap shrinks from 65 kt (S/W) to ~30 kt (due E).
-    const eastness = Math.max(0, Math.sin((Number(l850.windDirection) || 180) * DEG_TO_RAD));
-    l850.windSpeed = clamp(l850.baseWindSpeed * (1 + LLJ_BOOST * l850.jetFactor), 5, MAX_850_WIND_KT - 35 * eastness * eastness);
+    l850.windSpeed = Math.max(3, l850.baseWindSpeed * (1 + LLJ_BOOST * l850.jetFactor));
 
     // --- 2. Surface wind follows the boundary layer -------------------------------
     const roughness = clamp(Number(cell.terrain?.roughness) || 0.12, 0.02, 0.5);
-    const fraction = (0.32 + 0.26 * mixing) * (1 - 0.6 * (roughness - 0.12));
-    const pressureBoost = clamp(Number(cell.dynamics?.lowProximity) || 0, 0, 1) * 6;
-    const target = clamp(fraction * l850.windSpeed + 3 + pressureBoost, 4, 34);
-    const speed = Number(cell.surface.wind.speed) || target;
-    cell.surface.wind.speed = speed + (target - speed) * relax;
-
-    // Friction backs the surface wind relative to 850 mb, typically 20-60 degrees; beyond
-    // ~75 degrees only occurs in tight warm-front/low circulations. Generator and coupling
-    // passes produced ~100 degrees (easterly surface under southerly jets): 1,000+ m2/s2 SRH.
-    const backing = angleDiff(l850.windDirection, cell.surface.wind.direction);
-    if (backing > MAX_SURFACE_BACKING) cell.surface.wind.direction = normalizeDeg(cell.surface.wind.direction + (backing - MAX_SURFACE_BACKING) * relax);
-    else if (backing < -MAX_SURFACE_VEERING) cell.surface.wind.direction = normalizeDeg(cell.surface.wind.direction + (backing + MAX_SURFACE_VEERING) * relax);
-
-    // Surface-to-850 mb shear above ~50 kt (about 0-1.5 km) is beyond observed extremes; turn
-    // the surface wind toward the 850 mb direction until the shear vector is back in range.
-    for (let i = 0; i < 6 && lowLevelShearKt(cell.surface.wind, l850) > MAX_LOW_LEVEL_SHEAR_KT; i++) {
-      const b = angleDiff(l850.windDirection, cell.surface.wind.direction);
-      if (Math.abs(b) < 15) break;
-      cell.surface.wind.direction = normalizeDeg(cell.surface.wind.direction + b * 0.25);
-    }
+    // Surface wind is ~30% of the 850 mb wind under a stable night-time layer and ~42% with
+    // full afternoon mixing (850 mb is near the top of the boundary layer).
+    const fraction = (0.30 + 0.12 * mixing) * (1 - 0.6 * (roughness - 0.12));
+    const targetSpeed = clamp(fraction * l850.windSpeed + 3, 4, 34);
+    // Friction backs the surface wind from the 850 mb wind near the top of the boundary layer
+    // (Ekman turning): ~30 degrees by day, ~42 degrees in the stable night-time layer. The
+    // isallobaric wind (toward falling pressure) adds to it.
+    const ekmanBacking = 30 + 12 * (1 - mixing);
+    const targetDir = normalizeDeg(l850.windDirection - ekmanBacking) * DEG_TO_RAD;
+    const isallobaric = cell.dynamics?.isallobaricWindKt ?? { e: 0, n: 0 };
+    const goalE = -targetSpeed * Math.sin(targetDir) + 0.5 * isallobaric.e, goalN = -targetSpeed * Math.cos(targetDir) + 0.5 * isallobaric.n;
+    const currentDir = (Number(cell.surface.wind.direction) || 0) * DEG_TO_RAD, currentSpeed = Number(cell.surface.wind.speed) || targetSpeed;
+    const e = -currentSpeed * Math.sin(currentDir) + (goalE + currentSpeed * Math.sin(currentDir)) * relax;
+    const n = -currentSpeed * Math.cos(currentDir) + (goalN + currentSpeed * Math.cos(currentDir)) * relax;
+    cell.surface.wind.speed = Math.max(2, Math.hypot(e, n));
+    cell.surface.wind.direction = normalizeDeg(Math.atan2(-e, -n) / DEG_TO_RAD);
   });
 
   world.boundaryLayer = { version: '2.73.0', localHour, mixing, jetPhase, mixedCellFraction: mixedCells / (world.width * world.height), capBreakFraction: capBreaks / (world.width * world.height) };
@@ -122,11 +111,6 @@ function nocturnalJetPhase(localHour) {
   return Math.sin(Math.PI * (h - 19) / 14) ** 1.5;
 }
 
-function lowLevelShearKt(sfc, l850) {
-  const a = (Number(sfc.direction) || 0) * DEG_TO_RAD, b = (Number(l850.windDirection) || 0) * DEG_TO_RAD;
-  const su = -Math.sin(a) * sfc.speed, sv = -Math.cos(a) * sfc.speed, u = -Math.sin(b) * l850.windSpeed, v = -Math.cos(b) * l850.windSpeed;
-  return Math.hypot(u - su, v - sv);
-}
 function angleDiff(a, b) { return ((a - b + 540) % 360) - 180; }
 function normalizeDeg(d) { return ((d % 360) + 360) % 360; }
 function theta(tK, p) { return tK * (1000 / p) ** KAPPA; }

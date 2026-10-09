@@ -119,6 +119,7 @@ export function diagnoseForcing(world, previous = null) {
     );
 
     cell.dynamics = {
+      ...cell.dynamics,
       surfaceConvergenceS1: convergence,
       moistureFluxConvergence,
       frontogenesis,

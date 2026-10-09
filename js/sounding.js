@@ -209,9 +209,10 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
  const moistureDepth = clamp((surfaceTd+5)/28,0,1);
  const capStrength = clamp((cell.levels[700].temperature + 2) / 14,0,1);
  const t850=cell.levels[850].temperature + capStrength*1.2;
- const td850=Math.min(t850,surfaceTd-(3+7*(1-moistureDepth)));
+ // Stored moisture aloft when the state carries it; otherwise inferred from the surface.
+ const td850=Math.min(t850,Number.isFinite(cell.levels[850].dewpoint)?cell.levels[850].dewpoint:surfaceTd-(3+7*(1-moistureDepth)));
  const t700=cell.levels[700].temperature;
- const td700=Math.min(t700,t700-(5+14*(1-moistureDepth)));
+ const td700=Math.min(t700,Number.isFinite(cell.levels[700].dewpoint)?cell.levels[700].dewpoint:t700-(5+14*(1-moistureDepth)));
  const t500=cell.levels[500].temperature;
  const t250=cell.levels[250].temperature;
  const anchors=[

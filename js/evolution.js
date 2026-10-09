@@ -3,7 +3,7 @@ import { clamp } from './scenarios/math.js';
 import { diagnoseBoundaries } from './diagnostics/boundaryDiagnosis.js';
 import { diagnoseForcing } from './diagnostics/forcingDiagnosis.js';
 import { updateCellDiagnostics } from './sounding.js';
-import { sampleSynopticPattern, samplePatternWinds } from './scenarios/synopticPattern.js';
+import { sampleSynopticPattern, samplePatternWinds, cyclonicGradientWindKt } from './scenarios/synopticPattern.js';
 import { airMassSurfaceState } from './scenarios/scenarioGenerator.js';
 import { analyzeMapFeatures } from './analysis/mapAnalysis.js';
 import { INITIAL_VALID_HOUR_UTC, OUTLOOK_INTERVAL_HOURS, PRESSURE_LEVELS_HPA } from './constants.js';
@@ -22,12 +22,9 @@ import { resolveRuntimeProfile } from './runtime/RuntimeProfile.js';
 import { initializeMeteorologicalIntegrity, runMeteorologicalIntegrity } from './atmosphere/MeteorologicalIntegrityEngine.js';
 import { applyBoundaryLayer, nocturnalCoolingFph } from './atmosphere/BoundaryLayerClosure.js';
 import { advanceUpperAirTemperature } from './atmosphere/UpperAirTransport.js';
-import { activeLifecycle } from './scenarios/ActivePattern.js';
 
 // Strong spring troughs top out near 85 kt at 500 mb and ~150 kt at 250 mb; higher
 // values pushed 0-6 km bulk shear past 140 kt.
-const MAX_500_WIND_KT = 85;
-const MAX_250_WIND_KT = 150;
 
 
 export function initializeEvolution(world, config, { profile = 'gameplay' } = {}) {
@@ -237,6 +234,8 @@ function advectAndEvolve(world, previous, dtHours = 1) {
       cell.levels[level].temperature = local.levels[level].temperature * 0.86 + src.levels[level].temperature * 0.14;
       cell.levels[level].windSpeed = clamp(local.levels[level].windSpeed * 0.84 + src.levels[level].windSpeed * 0.16, 5, 190);
       cell.levels[level].windDirection = blendDirection(local.levels[level].windDirection, src.levels[level].windDirection, 0.16);
+      const localTd = local.levels[level].dewpoint, srcTd = src.levels[level].dewpoint;
+      if (Number.isFinite(localTd)) cell.levels[level].dewpoint = Number.isFinite(srcTd) ? localTd * 0.86 + srcTd * 0.14 : localTd;
     }
 
     // Atmospheric feature metadata may advect, but permanent geography may not.
@@ -247,56 +246,160 @@ function advectAndEvolve(world, previous, dtHours = 1) {
 }
 
 
+// Large-scale forcing from the evolving synoptic state (SynopticDynamics): the model's
+// pressure, 500/250 mb heights and upper winds relax toward the balanced pattern; 850 mb winds
+// respond to the model's own (smoothed) pressure gradient plus thermal wind and the synoptic
+// low-level jet; and each air mass resupplies its moisture (Gulf moisture in tropical air).
+const PRESSURE_RELAX_HOURS = 3;
+const UPPER_RELAX_HOURS = 3;
+const LOW_LEVEL_RELAX_HOURS = 2;
+const MOISTURE_SOURCE_PER_HOUR = { mT: 0.10, other: 0.07 };
+const POST_FRONTAL_TEMPERATURE_PER_HOUR = 0.04;
+const MID_LEVEL_RELAX_HOURS = 12;
+const MOIST_LEVELS_HPA = [850, 700];
+const RHO = 1.15, CORIOLIS = 1e-4, MS_TO_KT = 1.943844;
+
 function applySynopticCoupling(world, dtHours = 1) {
-  const pattern = world.evolution?.config?.synopticPattern;
-  if (!pattern) return;
+  const config = world.evolution?.config;
+  const pattern = config?.synopticPattern;
+  if (!pattern || !(dtHours > 0)) return;
   const elapsed = world.evolution.elapsedHours;
+  const rotation = Number(config.patternRotationDegrees) || 0;
+  const upperRate = clamp(dtHours / UPPER_RELAX_HOURS, 0, 1);
+  const pressureRate = clamp(dtHours / PRESSURE_RELAX_HOURS, 0, 1);
+  const lowLevelRate = clamp(dtHours / LOW_LEVEL_RELAX_HOURS, 0, 1);
+  const samples = [];
   world.forEachCell((cell, x, y) => {
-    const displayNx = x / Math.max(1, world.width - 1);
-    const displayNy = y / Math.max(1, world.height - 1);
-    const patternPoint = displayToPatternCoordinates(displayNx, displayNy, world.evolution?.config);
-    const nx = patternPoint.x;
-    const ny = patternPoint.y;
-    const synoptic = { ...sampleSynopticPattern(pattern, nx, ny, elapsed), ...samplePatternWinds(pattern, nx, ny, elapsed) };
-    const lifecycle = scenarioLifecycle(world.evolution?.config?.scenarioEvolution, elapsed);
-    // Air-mass source term toward the narrative's air masses (same function as initialization).
-    const scenarioConfig = world.evolution?.config ?? {};
-    const airMass = scenarioConfig.ingredients ? airMassSurfaceState(scenarioConfig, synoptic, nx, ny) : null;
-    const config = world.evolution?.config ?? {};
+    const point = displayToPatternCoordinates(x / Math.max(1, world.width - 1), y / Math.max(1, world.height - 1), config);
+    const synoptic = { ...sampleSynopticPattern(pattern, point.x, point.y, elapsed), ...samplePatternWinds(pattern, point.x, point.y) };
+    samples[y * world.width + x] = synoptic;
 
-    // Large-scale pressure tendencies are tied to the translating upper wave.
-    // Advection retains mesoscale detail while this weak nudge prevents the
-    // surface low, fronts and 500-mb pattern from drifting apart.
-    const pressureNudge = (0.10 + synoptic.upperSupport * 0.08) * lifecycle.forcing * dtHours;
-    cell.surface.seaLevelPressure += (synoptic.seaLevelPressureHpa - cell.surface.seaLevelPressure) * pressureNudge;
+    cell.surface.seaLevelPressure += (synoptic.seaLevelPressureHpa - cell.surface.seaLevelPressure) * pressureRate;
     cell.surface.pressure = stationPressure(cell.surface.seaLevelPressure, cell.terrain.elevationM);
-
     cell.levels[500].heightDm = Number.isFinite(cell.levels[500].heightDm)
-      ? cell.levels[500].heightDm * 0.78 + synoptic.height500Dm * 0.22
+      ? cell.levels[500].heightDm + (synoptic.height500Dm - cell.levels[500].heightDm) * upperRate
       : synoptic.height500Dm;
     cell.levels[250].heightDm = 1035 + (cell.levels[500].heightDm - 570) * 0.72;
-    cell.levels[500].windSpeed = clamp(cell.levels[500].windSpeed * (1 - 0.18*lifecycle.kinematic) + synoptic.jet500Kt * (0.18*lifecycle.kinematic), 18, MAX_500_WIND_KT);
-    cell.levels[250].windSpeed = clamp(cell.levels[250].windSpeed * (1 - 0.20*lifecycle.kinematic) + synoptic.jet250Kt * (0.20*lifecycle.kinematic), 35, MAX_250_WIND_KT);
+    relaxWind(cell.levels[500], rotateToDisplay({ e: synoptic.u500Kt, n: synoptic.v500Kt }, rotation), upperRate);
+    relaxWind(cell.levels[250], rotateToDisplay({ e: synoptic.u250Kt, n: synoptic.v250Kt }, rotation), upperRate);
 
-    const sourceStrength = (synoptic.airMass === 'mT' ? 0.055 : 0.035) * lifecycle.moisture;
-    // Moisture source only: surface temperature follows the boundary layer and air aloft.
-    if (airMass) cell.surface.dewpoint += (airMass.dewpointF - cell.surface.dewpoint) * sourceStrength;
-
+    const airMass = config.ingredients ? airMassSurfaceState(config, synoptic, point.x, point.y) : null;
+    if (airMass) {
+      const moistureRate = (synoptic.airMass === 'mT' ? MOISTURE_SOURCE_PER_HOUR.mT : MOISTURE_SOURCE_PER_HOUR.other) * dtHours;
+      cell.surface.dewpoint += (airMass.dewpointF - cell.surface.dewpoint) * clamp(moistureRate, 0, 1);
+      // Cold air advection behind fronts (not resolved by the damped transport step).
+      const coolAir = clamp(synoptic.postFrontal + synoptic.coolSector, 0, 1);
+      cell.surface.temperature += (airMass.meanTemperatureF - cell.surface.temperature) * clamp(POST_FRONTAL_TEMPERATURE_PER_HOUR * coolAir * dtHours, 0, 1);
+      // Mid-level air masses (EML cap, trough cold core) are advected in and resupplied.
+      const midRate = clamp(dtHours / MID_LEVEL_RELAX_HOURS, 0, 1);
+      cell.levels[700].temperature += (airMass.t700C - cell.levels[700].temperature) * midRate;
+      cell.levels[500].temperature += (airMass.t500C - cell.levels[500].temperature) * midRate;
+      // Moisture aloft: the moist layer's depth is part of each air mass.
+      if (Number.isFinite(cell.levels[850].dewpoint)) cell.levels[850].dewpoint += (airMass.td850C - cell.levels[850].dewpoint) * clamp(moistureRate, 0, 1);
+      if (Number.isFinite(cell.levels[700].dewpoint)) cell.levels[700].dewpoint += (airMass.td700C - cell.levels[700].dewpoint) * midRate;
+      cell.features.airMassTemperatureF = airMass.meanTemperatureF;
+      cell.features.airMass850C = airMass.t850C;
+    }
     cell.features.airMass = synoptic.airMass;
-    if (airMass) { cell.features.airMassTemperatureF = airMass.meanTemperatureF; cell.features.airMass850C = airMass.t850C; }
-    // Sector membership is diagnostic geometry, not a transported tracer.
-    // Rebuild it from the same evolving synoptic frame that controls the low
-    // and fronts so instability cannot remain in a stale, displaced sector.
     cell.features.warmSector = synoptic.warmSector > 0.42;
-    cell.features.synopticAscent = synoptic.upperSupport * lifecycle.forcing;
-    cell.features.scenarioMaturity = lifecycle.maturity;
-    cell.features.scenarioStage = lifecycle.stage;
+    cell.features.synopticAscent = synoptic.upperSupport;
     cell.features.upperTrough = synoptic.troughCore > 0.48;
     cell.features.shortwaveTrough = synoptic.shortwaveCore > 0.52;
     cell.features.jetStreak = synoptic.jetCore > 0.56;
     cell.features.synopticLifecycle = synoptic.lifecycle;
   });
+
+  // 850 mb wind: geostrophic from the model's smoothed pressure field, plus 25% of the
+  // thermal wind toward 500 mb and the synoptic low-level jet downstream of the low.
+  diagnoseIsallobaricWind(world, dtHours);
+
+  // Balance the synoptic-scale pressure field (two 5x5 passes, ~45 km): frontal-scale and
+  // storm-scale pressure features are not in geostrophic balance.
+  const pressure = smoothedField(world, cell => cell.surface.seaLevelPressure, 2, 2);
+  const metres = world.cellSizeKm * 1000;
+  const llj = lowLevelJetCenter(config, pattern);
+  world.forEachCell((cell, x, y) => {
+    const at = (i, j) => pressure[clampIndex(j, world.height) * world.width + clampIndex(i, world.width)];
+    const dpdx = (at(x + 1, y) - at(x - 1, y)) * 100 / (2 * metres);
+    const dpdNorth = (at(x, y - 1) - at(x, y + 1)) * 100 / (2 * metres);
+    const point = displayToPatternCoordinates(x / Math.max(1, world.width - 1), y / Math.max(1, world.height - 1), config);
+    const vg = cyclonicGradientWindKt({ e: -dpdNorth / (RHO * CORIOLIS) * MS_TO_KT, n: dpdx / (RHO * CORIOLIS) * MS_TO_KT }, Math.hypot(point.x - pattern.lowX, point.y - pattern.lowY) * pattern.domainKm);
+    const w500 = windComponents(cell.levels[500]);
+    const synoptic = samples[y * world.width + x];
+    const base = { e: 0.95 * vg.e + 0.25 * (w500.e - vg.e), n: 0.95 * vg.n + 0.25 * (w500.n - vg.n) };
+    const jetCore = Math.exp(-((point.x - llj.x) ** 2 + (point.y - llj.y) ** 2) / (0.32 * 0.32)) * synoptic.southOfWarmFront * synoptic.aheadOfColdFront;
+    const baseSpeed = Math.hypot(base.e, base.n) || 1;
+    const jet = 0.5 * (Number(pattern.lljKt) || 0) * jetCore;
+    relaxWind(cell.levels[850], { e: base.e + jet * base.e / baseSpeed, n: base.n + jet * base.n / baseSpeed }, lowLevelRate);
+  });
 }
+
+// Isallobaric wind: boundary-layer air accelerates toward falling pressure, so surface winds
+// back ahead of an approaching or deepening low (and blow out of rising pressure behind it).
+// V = -(1/(rho f^2)) grad(dp/dt), from the smoothed model pressure tendency.
+const ISALLOBARIC_LIMIT_KT = 20; // numerical safeguard against abrupt pressure jumps
+function diagnoseIsallobaricWind(world, dtHours) {
+  const w = world.width, h = world.height;
+  const tendency = smoothedField(world, cell => {
+    const previous = Number(cell.dynamics?.previousSeaLevelPressure);
+    return Number.isFinite(previous) ? (cell.surface.seaLevelPressure - previous) / dtHours : 0;
+  }, 2, 2);
+  const metres = world.cellSizeKm * 1000;
+  world.forEachCell((cell, x, y) => {
+    const at = (i, j) => tendency[clampIndex(j, h) * w + clampIndex(i, w)] * 100 / 3600; // Pa/s
+    const dTdx = (at(x + 1, y) - at(x - 1, y)) / (2 * metres);
+    const dTdNorth = (at(x, y - 1) - at(x, y + 1)) / (2 * metres);
+    const k = MS_TO_KT / (RHO * CORIOLIS * CORIOLIS);
+    let e = -k * dTdx, n = -k * dTdNorth;
+    const speed = Math.hypot(e, n);
+    if (speed > ISALLOBARIC_LIMIT_KT) { e *= ISALLOBARIC_LIMIT_KT / speed; n *= ISALLOBARIC_LIMIT_KT / speed; }
+    cell.dynamics ??= {};
+    cell.dynamics.isallobaricWindKt = { e, n };
+    cell.dynamics.pressureTendencyHpaPerHour = tendency[y * w + x];
+    cell.dynamics.previousSeaLevelPressure = cell.surface.seaLevelPressure;
+  });
+}
+
+// The synoptic low-level jet sits south-southeast of the surface low and moves with it.
+function lowLevelJetCenter(config, pattern) {
+  return { x: pattern.lowX + (Number(config.lljOffsetX) || 0.2), y: pattern.lowY + (Number(config.lljOffsetY) || 0.3) };
+}
+
+function relaxWind(level, target, rate) {
+  const current = windComponents(level);
+  const e = current.e + (target.e - current.e) * rate, n = current.n + (target.n - current.n) * rate;
+  level.windSpeed = Math.hypot(e, n);
+  level.windDirection = ((Math.atan2(-e, -n) * 180 / Math.PI) % 360 + 360) % 360;
+}
+
+function windComponents(level) {
+  const speed = Number(level?.windSpeed) || 0, dir = (Number(level?.windDirection) || 0) * Math.PI / 180;
+  return { e: -speed * Math.sin(dir), n: -speed * Math.cos(dir) };
+}
+
+// The display frame is the pattern frame rotated counterclockwise by patternRotationDegrees.
+function rotateToDisplay(w, degrees) {
+  const r = degrees * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  return { e: w.e * c - w.n * s, n: w.e * s + w.n * c };
+}
+
+function smoothedField(world, get, radius = 1, passes = 1) {
+  const w = world.width, h = world.height;
+  let field = new Float64Array(w * h);
+  world.forEachCell((cell, x, y) => { field[y * w + x] = get(cell); });
+  for (let pass = 0; pass < passes; pass++) {
+    const out = new Float64Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let sum = 0, n = 0;
+      for (let j = -radius; j <= radius; j++) for (let i = -radius; i <= radius; i++) { sum += field[clampIndex(y + j, h) * w + clampIndex(x + i, w)]; n++; }
+      out[y * w + x] = sum / n;
+    }
+    field = out;
+  }
+  return field;
+}
+
+function clampIndex(i, n) { return i < 0 ? 0 : i >= n ? n - 1 : i; }
 
 function displayToPatternCoordinates(x, y, config = {}) {
   let px = x;
@@ -317,22 +420,6 @@ function displayToPatternCoordinates(x, y, config = {}) {
     py = 0.5 + dx * sin + dy * cos;
   }
   return { x: px, y: py };
-}
-
-function scenarioLifecycle(profile = {}, elapsed = 0) {
-  // Active multi-day sequences pulse once per day instead of peaking once and decaying.
-  if (profile?.activeSequence) return activeLifecycle(profile.activeSequence, elapsed);
-  const peak = Number(profile.peakHour ?? 24);
-  const develop = Math.max(3, Number(profile.developmentHours ?? 16));
-  const decay = Math.max(6, Number(profile.decayHours ?? 20));
-  const initial = clamp(Number(profile.initialMaturity ?? 0.35), 0.08, 0.75);
-  const rising = elapsed <= peak ? initial + (1-initial)*smoothstepValue(Math.max(0, peak-develop), peak, elapsed) : 1-smoothstepValue(peak, peak+decay, elapsed)*0.48;
-  const realization = clamp(Number(profile.realization ?? 0.8), 0.2, 1);
-  const moistureLag = Number(profile.moistureLagHours ?? 4);
-  const forcingLag = Number(profile.forcingLagHours ?? 2);
-  const moisture = clamp(initial*0.7 + smoothstepValue(Math.max(0, peak-develop+moistureLag), peak+moistureLag, elapsed)*(1-initial*0.7), 0.12, 1);
-  const forcing = clamp(initial*0.55 + smoothstepValue(Math.max(0, peak-develop+forcingLag), peak+forcingLag, elapsed)*(1-initial*0.55), 0.10, 1);
-  return { stage: elapsed < peak-develop*0.35 ? 'incipient' : elapsed < peak ? 'deepening' : elapsed < peak+decay*0.35 ? 'mature' : 'decaying', maturity: clamp(rising*realization,0.08,1), moisture, forcing, kinematic: clamp(0.35+0.65*rising,0.2,1), realization, peakHour:peak };
 }
 
 function applyTerrainForcing(world, dtHours = 1) {
@@ -391,8 +478,7 @@ export function applyDiurnalAdjustment(world, absoluteHour, dtHours = 1) {
     const coldPool = clamp(Number(cell.memory?.coldPoolMemory ?? cell.features?.coldPoolInfluence) || 0, 0, 1);
     const cloudCover = clamp(Number(cell.memory?.cloudCover ?? cell.features?.cloudCover) || 0, 0, 1);
     const activeStormInfluence = clamp(Number(cell.memory?.activeStormInfluence ?? cell.features?.activeStormInfluence) || 0, 0, 1);
-    const lifecycleRecovery = Number(world.evolution?.config?.patternLifecycle?.recoveryMultiplier) || 1;
-    const recoveryEligibility = clamp((0.35 + 0.65 * warmSector) * Math.max(0.18, solar) * (1 - processedAir) * (1 - coldPool) * (1 - activeStormInfluence) * (1 - 0.55 * cloudCover) * lifecycleRecovery, 0, 1);
+    const recoveryEligibility = clamp((0.35 + 0.65 * warmSector) * Math.max(0.18, solar) * (1 - processedAir) * (1 - coldPool) * (1 - activeStormInfluence) * (1 - 0.55 * cloudCover), 0, 1);
     const preConvectiveRecovery = solar > 0.02 ? recoveryEligibility : 0;
 
     // Daytime heating drives the surface toward the mixed-layer temperature: 850 mb air
@@ -447,7 +533,6 @@ export function applyDiurnalAdjustment(world, absoluteHour, dtHours = 1) {
   });
 }
 
-function smoothstepValue(a,b,value){const t=clamp((value-a)/Math.max(1e-6,b-a),0,1);return t*t*(3-2*t);}
 
 function createEvolutionPerformanceState() {
   return {
@@ -495,6 +580,7 @@ function enforcePhysicalConstraints(world) {
     cell.surface.dewpoint = Math.min(cell.surface.temperature, cell.surface.dewpoint);
     cell.surface.seaLevelPressure = clamp(cell.surface.seaLevelPressure, 930, 1065);
     cell.surface.pressure = stationPressure(cell.surface.seaLevelPressure, cell.terrain.elevationM);
+    for (const level of MOIST_LEVELS_HPA) if (Number.isFinite(cell.levels[level].dewpoint)) cell.levels[level].dewpoint = Math.min(cell.levels[level].dewpoint, cell.levels[level].temperature);
     for (const level of [850,700,500,250]) {
       const data=cell.levels[level];
       data.windSpeed=clamp(data.windSpeed,0,200);
@@ -521,6 +607,7 @@ function createSnapshotBuffer(world) {
     levelTemperature: {},
     levelWindSpeed: {},
     levelWindDirection: {},
+    levelDewpoint: {},
     features: new Array(count)
   };
   for (const level of PRESSURE_LEVELS_HPA) {
@@ -528,6 +615,8 @@ function createSnapshotBuffer(world) {
     buffer.levelWindSpeed[level] ??= new Float32Array(count);
     buffer.levelWindDirection[level] ??= new Float32Array(count);
   }
+  buffer.levelDewpoint ??= {};
+  for (const level of MOIST_LEVELS_HPA) buffer.levelDewpoint[level] ??= new Float32Array(count);
   if (world.evolution) world.evolution.snapshotBuffer = buffer;
   world.forEachCell((cell, x, y) => {
     const index = y * world.width + x;
@@ -541,6 +630,7 @@ function createSnapshotBuffer(world) {
       buffer.levelWindSpeed[level][index] = cell.levels[level].windSpeed;
       buffer.levelWindDirection[level][index] = cell.levels[level].windDirection;
     }
+    for (const level of MOIST_LEVELS_HPA) buffer.levelDewpoint[level][index] = Number.isFinite(cell.levels[level].dewpoint) ? cell.levels[level].dewpoint : NaN;
     buffer.features[index] = cell.features;
   });
   return buffer;
@@ -556,7 +646,8 @@ function readSnapshot(buffer, index) {
     levels: Object.fromEntries(PRESSURE_LEVELS_HPA.map(level => [level, {
       temperature: buffer.levelTemperature[level][index],
       windSpeed: buffer.levelWindSpeed[level][index],
-      windDirection: buffer.levelWindDirection[level][index]
+      windDirection: buffer.levelWindDirection[level][index],
+      dewpoint: buffer.levelDewpoint?.[level]?.[index]
     }])),
     features: buffer.features[index]
   };
@@ -585,7 +676,8 @@ function sampleSnapshot(grid, x, y, width, height) {
     levels: Object.fromEntries(PRESSURE_LEVELS_HPA.map(level => [level, {
       temperature: bilerp(grid.levelTemperature[level][a], grid.levelTemperature[level][b], grid.levelTemperature[level][c], grid.levelTemperature[level][d], tx, ty),
       windSpeed: bilerp(grid.levelWindSpeed[level][a], grid.levelWindSpeed[level][b], grid.levelWindSpeed[level][c], grid.levelWindSpeed[level][d], tx, ty),
-      windDirection: blendDirection(blendDirection(grid.levelWindDirection[level][a], grid.levelWindDirection[level][b], tx), blendDirection(grid.levelWindDirection[level][c], grid.levelWindDirection[level][d], tx), ty)
+      windDirection: blendDirection(blendDirection(grid.levelWindDirection[level][a], grid.levelWindDirection[level][b], tx), blendDirection(grid.levelWindDirection[level][c], grid.levelWindDirection[level][d], tx), ty),
+      dewpoint: grid.levelDewpoint?.[level] ? bilerp(grid.levelDewpoint[level][a], grid.levelDewpoint[level][b], grid.levelDewpoint[level][c], grid.levelDewpoint[level][d], tx, ty) : NaN
     }])),
     features: tx + ty < 1 ? grid.features[a] : grid.features[d]
   };

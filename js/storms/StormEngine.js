@@ -95,8 +95,8 @@ function initiateStorms(world) {
   world.stormEngine.dailyInitiations ??= {};
   const dayIndex = Math.floor(initiationSlot / 24);
   const dayKey = String(dayIndex);
-  const significant = ['classic_tornado_outbreak','mixed_mode','hp_supercell','derecho','qlcs'].includes(world.evolution?.config?.scenarioEvolution?.narrative);
-  const dailyBudget = significant ? 36 : 24;
+  const significant = true; // every narrative is a severe setup
+  const dailyBudget = 36;
   let usedToday = Number(world.stormEngine.dailyInitiations[dayKey]) || 0;
   if (usedToday >= dailyBudget) return;
 

@@ -72,18 +72,14 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   tornado.favorableMinutes = favorableNow ? Math.min(180, (tornado.favorableMinutes ?? 0) + dtMinutes) : Math.max(0, (tornado.favorableMinutes ?? 0) - dtMinutes * 1.4);
   tornado.unfavorableMinutes = favorableNow ? 0 : Math.min(180, (tornado.unfavorableMinutes ?? 0) + dtMinutes);
   const canTornado = storm.ageHours >= (supercell ? 0.45 : 0.75) && storm.intensity >= (supercell ? 0.34 : 0.46) && storm.organization >= (supercell ? 0.42 : 0.58) && mesocyclone >= (supercell ? 0.28 : 0.38) && tornado.genesisCooldownMinutes <= 0;
-  const scenario = world.evolution?.config?.scenarioEvolution ?? {};
-  const fastPath = Boolean(scenario.fastTornadogenesis) && storm.ageHours <= 1.5 && mesocyclone >= 0.42 && boundary >= 0.38;
-  const delayedPath = Boolean(scenario.delayedTornadogenesis) && storm.ageHours >= 1.1 && tornado.favorableMinutes >= 25 && mesoscaleQuality >= 0.55;
-  tornado.pathway = fastPath ? 'fast' : delayedPath ? 'delayed' : 'standard';
-  const pathwayAdjustment = fastPath ? 0.035 : delayedPath ? 0.025 : 0;
-  const genesisThreshold = supercell ? clamp(0.37 - physicalTornadoSupport * 0.055 - synopticSupport * 0.015 - pathwayAdjustment, 0.27, 0.37) : qlcs ? 0.50 : 0.82;
+  tornado.pathway = 'standard';
+  const genesisThreshold = supercell ? clamp(0.37 - physicalTornadoSupport * 0.055 - synopticSupport * 0.015, 0.27, 0.37) : qlcs ? 0.50 : 0.82;
 
   if (!tornado.onGround && (tornado.state === 'none' || tornado.state === 'developing' || tornado.state === 'ended')) {
     const opportunity = clamp((tornado.favorableMinutes ?? 0) / 45, 0, 1);
     const perTickChance = clamp((tornado.genesisPotential - genesisThreshold + 0.08) * opportunity * mesoscaleQuality * (supercell ? 0.22 : 0.12), 0, supercell ? 0.16 : 0.08);
     const sustainedFavorableRealization = supercell && tornado.favorableMinutes >= 60 && tornado.genesisPotential >= genesisThreshold * 0.94 && mesoscaleQuality >= 0.50;
-    if (canTornado && tornado.genesisPotential >= genesisThreshold && tornado.favorableMinutes >= (supercell ? (fastPath ? 8 : delayedPath ? 25 : 15) : 25) && (trigger < perTickChance || sustainedFavorableRealization)) {
+    if (canTornado && tornado.genesisPotential >= genesisThreshold && tornado.favorableMinutes >= (supercell ? 15 : 25) && (trigger < perTickChance || sustainedFavorableRealization)) {
       beginTornado(world, storm, tornado);
       drawTornadoCharacter(world, storm, tornado, physicalTornadoSupport, supercell);
     } else if (canTornado && tornado.genesisPotential >= genesisThreshold * 0.82 && tornado.favorableMinutes >= 10) tornado.state = 'developing';

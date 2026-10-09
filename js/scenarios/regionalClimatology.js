@@ -9,27 +9,6 @@ export const REGIONS = [
 
 const BY_ID = new Map(REGIONS.map(region => [region.id, region]));
 
-export function assignRegions(world) {
-  const westBreak = 0.34;
-  const eastBreak = 0.68;
-  world.forEachCell((cell, x, y) => {
-    const nx = x / Math.max(1, world.width - 1);
-    const ny = y / Math.max(1, world.height - 1);
-    const north = ny < 0.5 + 0.035 * Math.sin(nx * Math.PI * 2);
-    const band = nx < westBreak + 0.025 * Math.sin(ny * Math.PI * 2)
-      ? 'HIGH'
-      : nx < eastBreak + 0.025 * Math.cos(ny * Math.PI * 2) ? 'CENTRAL' : 'LOW';
-    const id = band === 'HIGH'
-      ? (north ? 'NW_HIGH_PLAINS' : 'SW_HIGH_PLAINS')
-      : band === 'CENTRAL'
-        ? (north ? 'N_CENTRAL_PLAINS' : 'S_CENTRAL_PLAINS')
-        : (north ? 'NE_LOW_PLAINS' : 'SE_LOW_PLAINS');
-    cell.region = { ...BY_ID.get(id) };
-    cell.features.regionId = id;
-  });
-  world.regions = REGIONS.map(region => ({ ...region, centroid: regionCentroid(world, region.id) }));
-}
-
 function regionCentroid(world, id) {
   let xSum = 0, ySum = 0, count = 0;
   world.forEachCell((cell, x, y) => {

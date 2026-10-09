@@ -5,13 +5,9 @@
 // profiles: temperature/dewpoint/wind at the surface, 850, 700, 500 and 250 mb. Severe
 // indices (CAPE, CIN, SRH, shear, STP) are never written here; soundings derive them.
 import { NARRATIVES, SETUPS, FLOW_REGIMES } from './narratives.js';
-import { clamp, gaussian, lerp, mulberry32, smoothstep } from './math.js';
-import { createSynopticPattern, sampleSynopticPattern, samplePatternWinds } from './synopticPattern.js';
-import { createActiveSequence } from './ActivePattern.js';
+import { clamp, gaussian, lerp, mulberry32 } from './math.js';
+import { createSynopticPattern, sampleSynopticPattern, samplePatternWinds, cyclonicGradientWindKt } from './synopticPattern.js';
 
-// Activity level for generated systems: 'active' (default) gives severe weather on all three
-// days; 'normal' keeps a single-peak system; 'outbreak' strengthens every day.
-const DEFAULT_ACTIVITY = globalThis.process?.env?.WEATHER_ACTIVITY ?? 'active';
 const RHO = 1.15, CORIOLIS = 1e-4, MS_TO_KT = 1.943844, DEG = Math.PI / 180;
 
 export function generateScenario(world, seedValue, options = {}) {
@@ -19,12 +15,6 @@ export function generateScenario(world, seedValue, options = {}) {
   const random = mulberry32(seed);
   const domainKm = world.width * (Number(world.cellSizeKm) || 16.09);
   const config = createSeedConfiguration(random, { ...options, domainKm });
-  // A separate stream keeps every other seeded parameter unchanged by the sequence draws.
-  const activeSequence = createActiveSequence(mulberry32((seed ^ 0x5eed5) >>> 0), { activity: options.activity ?? DEFAULT_ACTIVITY, setupName: config.setupType, intensity: config.intensity });
-  config.activeSequence = activeSequence;
-  config.activityLevel = activeSequence?.activity ?? 'normal';
-  config.synopticPattern.activeSequence = activeSequence;
-  config.scenarioEvolution.activeSequence = activeSequence;
   world.scenarioMetadata = { seed, ...config };
   initializeAtmosphere(world, config, seed);
   detectBoundaries(world);
@@ -72,12 +62,12 @@ function createSeedConfiguration(random, { domainKm, narrative: forcedNarrative 
     gulfDewpoint: ingredients.gulfDewpointF,
     northMoistureLoss: lerp(12, 4, ingredients.moistureDepth),
     moistureAxisX: lerp(0.55, 0.78, random()), moistureAxisY: lerp(0.5, 0.75, random()),
-    moistureAxisBoost: lerp(1, 4, ingredients.moistureDepth),
-    lljX: clamp(synopticPattern.lowX + lerp(0.12, 0.3, random()), 0.2, 0.95),
-    lljY: clamp(synopticPattern.lowY + lerp(0.22, 0.4, random()), 0.35, 0.95),
+    moistureAxisBoost: lerp(0.5, 2.5, ingredients.moistureDepth),
+    // The synoptic low-level jet sits south-southeast of the surface low and moves with it.
+    lljOffsetX: lerp(0.12, 0.3, random()),
+    lljOffsetY: lerp(0.22, 0.4, random()),
     temp500Base: ingredients.cap700C - ingredients.lapse700500 * 2.7,
     noisePhase: random() * 1000,
-    scenarioEvolution: buildScenarioEvolution(narrative.name, setupType, intensity, random),
     patternLifecycle: buildPatternLifecycle(setupType, narrative.name, intensity)
   };
 }
@@ -108,19 +98,18 @@ function initializeAtmosphere(world, config, seed) {
     // 700 mb (warmest over its dry source region), the narrative's 700-500 mb lapse rate and
     // the trough's cold core aloft.
     const t850 = air.t850C;
-    const t700 = warm * ing.cap700C + dry * (ing.cap700C + 3) + cold * (ing.cap700C - 8);
-    const t500 = t700 - ing.lapse700500 * 2.7 - 3 * s.troughCore - 2 * s.shortwaveCore;
+    const t700 = air.t700C, t500 = air.t500C;
     const t250 = -46 - 3 * s.troughCore;
 
     // Winds. Upper levels are geostrophic from the 500 mb heights (with the jet streak);
     // low levels come from the sea-level pressure gradient, friction and the low-level jet.
-    const vg = surfaceGeostrophicKt(pattern, nx, ny);
+    const vg = cyclonicGradientWindKt(surfaceGeostrophicKt(pattern, nx, ny), Math.hypot(nx - pattern.lowX, ny - pattern.lowY) * pattern.domainKm);
     const surfaceWind = rotateEN({ e: vg.e * 0.62, n: vg.n * 0.62 }, 25); // friction: backed toward low pressure
-    const lljCore = gaussian(nx - config.lljX, ny - config.lljY, 0.32) * s.southOfWarmFront * s.aheadOfColdFront;
+    const lljCore = gaussian(nx - (pattern.lowX + config.lljOffsetX), ny - (pattern.lowY + config.lljOffsetY), 0.32) * s.southOfWarmFront * s.aheadOfColdFront;
     const thermal = { e: 0.25 * (s.u500Kt - vg.e), n: 0.25 * (s.v500Kt - vg.n) };
     const base850 = { e: vg.e * 0.95 + thermal.e, n: vg.n * 0.95 + thermal.n };
     const base850Speed = Math.hypot(base850.e, base850.n) || 1;
-    const jet = 0.75 * pattern.lljKt * lljCore;
+    const jet = 0.5 * pattern.lljKt * lljCore;
     const w850 = { e: base850.e + jet * base850.e / base850Speed, n: base850.n + jet * base850.n / base850Speed };
     const w500 = { e: s.u500Kt, n: s.v500Kt }, w250 = { e: s.u250Kt, n: s.v250Kt };
     const w700 = { e: 0.6 * w500.e + 0.4 * w850.e, n: 0.6 * w500.n + 0.4 * w850.n };
@@ -128,8 +117,8 @@ function initializeAtmosphere(world, config, seed) {
     const sfc = rotateEN(surfaceWind, rotation);
     cell.surface.wind.speed = Math.hypot(sfc.e, sfc.n);
     cell.surface.wind.direction = fromDirection(sfc.e, sfc.n);
-    cell.levels[850] = { temperature: t850 }; set(cell.levels[850], w850);
-    cell.levels[700] = { temperature: t700 }; set(cell.levels[700], w700);
+    cell.levels[850] = { temperature: t850, dewpoint: air.td850C }; set(cell.levels[850], w850);
+    cell.levels[700] = { temperature: t700, dewpoint: air.td700C }; set(cell.levels[700], w700);
     cell.levels[500] = { temperature: t500, heightDm: s.height500Dm }; set(cell.levels[500], w500);
     cell.levels[250] = { temperature: t250, heightDm: 1035 + (s.height500Dm - 570) * 0.72 }; set(cell.levels[250], w250);
 
@@ -172,12 +161,22 @@ export function airMassSurfaceState(config, s, nx, ny) {
   // west of the moist axis; it is not uniform.
   const warm850 = ing.t850C + 3 * (ny - 0.6) + 1.5 * (1 - moistureAxis) + 1.2 * (smoothNoise(0x850, nx * 4 + 3.1, ny * 4) - 0.5);
   const t850C = warm * warm850 + dry * (warm850 + 4) + cold * lerp(2, 9, ny);
-  return { afternoonTemperatureF, dewpointF, diurnalRangeF, meanTemperatureF: afternoonTemperatureF - diurnalRangeF / 2, t850C, moistureAxis };
+  // 700 mb: the elevated mixed layer (cap), warmest over its dry source region; 500 mb from
+  // the narrative's lapse rate and the trough's cold core aloft.
+  const t700C = warm * ing.cap700C + dry * (ing.cap700C + 3) + cold * (ing.cap700C - 8);
+  const t500C = t700C - ing.lapse700500 * 2.7 - 3 * (s.troughCore ?? 0) - 2 * (s.shortwaveCore ?? 0);
+  // Moisture aloft: deep in the Gulf air (depth from the narrative), very dry in the elevated
+  // mixed layer and the continental air behind the dryline.
+  const depth = ing.moistureDepth;
+  const td850C = Math.min(t850C, warm * (t850C - (4 + 8 * (1 - depth))) + dry * (t850C - 20) + cold * (t850C - 6));
+  const td700C = Math.min(t700C, warm * (t700C - (8 + 14 * (1 - depth))) + dry * (t700C - 24) + cold * (t700C - 8));
+  return { afternoonTemperatureF, dewpointF, diurnalRangeF, meanTemperatureF: afternoonTemperatureF - diurnalRangeF / 2, t850C, t700C, t500C, td850C, td700C, moistureAxis };
 }
 
 // Geostrophic wind (kt, east/north in the pattern frame) from the sea-level pressure field.
 function surfaceGeostrophicKt(pattern, nx, ny) {
-  const h = 0.01, metres = h * (pattern.domainKm ?? 805) * 1000;
+  // Synoptic-scale gradient (~65 km either side); frontal-scale flow is not geostrophic.
+  const h = 0.04, metres = h * (pattern.domainKm ?? 805) * 1000;
   const p = (x, y) => sampleSynopticPattern(pattern, x, y, 0).seaLevelPressureHpa * 100;
   const dpdx = (p(nx + h, ny) - p(nx - h, ny)) / (2 * metres);
   const dpdNorth = (p(nx, ny - h) - p(nx, ny + h)) / (2 * metres);
@@ -194,20 +193,6 @@ function rotateEN(w, degrees) {
 
 function fromDirection(east, north) {
   return ((Math.atan2(-east, -north) / DEG) % 360 + 360) % 360;
-}
-
-function buildScenarioEvolution(narrative, setup, intensity, random) {
-  const fastEligible = ['classic_tornado_outbreak', 'mixed_mode', 'hp_supercell', 'derecho', 'qlcs'].includes(narrative);
-  const fast = narrative === 'classic_tornado_outbreak' || (fastEligible && random() < 0.58);
-  const peakHour = setup === 'high_plains_upslope' ? lerp(8, 14, random()) : setup === 'northwest_flow' ? lerp(7, 13, random()) : fast ? lerp(8, 18, random()) : lerp(18, 34, random());
-  const developmentHours = setup === 'high_plains_upslope' || setup === 'northwest_flow' ? lerp(5, 9, random()) : fast ? lerp(6, 13, random()) : lerp(11, 22, random());
-  return {
-    stage: 'developing', peakHour, developmentHours, decayHours: lerp(14, 28, random()),
-    realization: clamp((0.34 + intensity * 0.52) * lerp(0.78, 1.04, random()), 0.25, 1),
-    initialMaturity: clamp(1 - developmentHours / 34, 0.12, 0.62),
-    moistureLagHours: lerp(1, 7, random()), forcingLagHours: setup === 'shortwave_ejection' ? lerp(2, 8, random()) : lerp(0, 5, random()),
-    fastTornadogenesis: fast, delayedTornadogenesis: random() < 0.28, narrative
-  };
 }
 
 function buildPatternLifecycle(setup, narrative, intensity) {

@@ -4,8 +4,8 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
   const candidates = [];
   const setup = world.setupForecast?.profile ?? { coverage: 0.55 };
   const setupKey = world.setupForecast?.key ?? world.evolution?.config?.setupType ?? '';
-  const evolution = world.evolution?.config?.scenarioEvolution ?? {};
-  const significantEvent = ['classic_tornado_outbreak','mixed_mode','hp_supercell','derecho','qlcs'].includes(evolution.narrative);
+  // Every narrative is a severe setup; storm capacity is the higher (significant) one.
+  const significantEvent = true;
   const activeStorms = existingStorms.reduce((count, storm) => count + (storm.active === false ? 0 : 1), 0);
   const activeCapacity = activeStormCapacity(setup.coverage, significantEvent);
   const remainingCapacity = Math.max(0, activeCapacity - activeStorms);
@@ -21,10 +21,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
   // unrealistic conveyor belt rather than organized clusters/supercells.
   if (setupKey === 'northwest_flow' && (cycleHour < 18 || cycleHour > 23.5)) return candidates;
   const elapsed = Number(world.evolution?.elapsedHours) || 0;
-  const developmentStart = Math.max(0, Number(evolution.peakHour ?? 18) - Number(evolution.developmentHours ?? 12));
-  const eventRelease = significantEvent
-    ? clamp((elapsed - developmentStart) / Math.max(3, Number(evolution.developmentHours ?? 12) * 0.65), 0, 1)
-    : 1;
+
 
   for (let y = 1; y < world.height - 1; y++) {
     for (let x = 1; x < world.width - 1; x++) {
@@ -62,7 +59,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
       const elevatedTimeGate = setupKey === 'elevated_mcs'
         ? 0.015 + 0.985 * Math.exp(-0.5 * Math.pow(elevatedHourDistance / 2.5, 2))
         : 1;
-      const baseProbability = ungatedProbability * (0.18 + 0.82 * eventRelease) * elevatedTimeGate;
+      const baseProbability = ungatedProbability * elevatedTimeGate;
       const rawConvectivePotential = cell.forecast?.convectivePotential ?? cell.dynamics?.convectiveReadiness ?? 0;
       const convectivePotential = setupKey === 'northwest_flow'
         ? Math.max(rawConvectivePotential, clamp(
@@ -183,7 +180,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
       const xKm = (x + 0.5) * world.cellSizeKm;
       const yKm = (y + 0.5) * world.cellSizeKm;
       if (nearestDistanceKm(existingStorms, xKm, yKm) < spacingFor(world, cell, { existing: true })) continue;
-      candidates.push({ x, y, xKm, yKm, score, probability, effectiveInitiationSignal, corridorId, corridorStrength, boundaryType, processedAir: clamp(cell.features?.stormProcessedAir ?? 0, 0, 1), secondaryOutflow: outflowSupport >= 0.35, primaryTrigger:{ boundaryId, boundaryType, influence:namedBoundaryInfluence, secondary:namedInfluences.slice(1,3) }, forcingComponents: { boundaryConvergence: cell.features?.boundaryConvergence ?? 0, explicitBoundaryInfluence: cell.features?.explicitBoundaryInfluence ?? 0, mesoscaleFocus, trigger, synopticAscent: cell.features?.synopticAscent ?? 0, outflowSupport }, convectivePotential, capFailureProbability, forcingConfidence, releaseProbability, corridor, mesoscaleFocus, openSector, trackSupport, prefrontal, tornadicSupport, surfaceTiming, capErosion, nocturnalElevated, nightStability, timingSupport, physicalRelease, eventRelease, hourUtc, airMassSector, persistenceSlots: consecutive });
+      candidates.push({ x, y, xKm, yKm, score, probability, effectiveInitiationSignal, corridorId, corridorStrength, boundaryType, processedAir: clamp(cell.features?.stormProcessedAir ?? 0, 0, 1), secondaryOutflow: outflowSupport >= 0.35, primaryTrigger:{ boundaryId, boundaryType, influence:namedBoundaryInfluence, secondary:namedInfluences.slice(1,3) }, forcingComponents: { boundaryConvergence: cell.features?.boundaryConvergence ?? 0, explicitBoundaryInfluence: cell.features?.explicitBoundaryInfluence ?? 0, mesoscaleFocus, trigger, synopticAscent: cell.features?.synopticAscent ?? 0, outflowSupport }, convectivePotential, capFailureProbability, forcingConfidence, releaseProbability, corridor, mesoscaleFocus, openSector, trackSupport, prefrontal, tornadicSupport, surfaceTiming, capErosion, nocturnalElevated, nightStability, timingSupport, physicalRelease, hourUtc, airMassSector, persistenceSlots: consecutive });
     }
   }
 

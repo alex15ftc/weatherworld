@@ -8,7 +8,7 @@ import { initializeEvolution, advanceAtmosphere, advanceStormLayer } from '../js
 import { SIMULATION_CONFIG } from '../js/simulationConfig.js';
 import { buildSounding } from '../js/sounding.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
-import { renderTile, decodeF32Base64, decodeU8Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
+import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
@@ -135,7 +135,7 @@ export class WeatherAuthorityRuntime {
   metadata() {
     return {
       ok: true, version: '2.28.14.1', revision: this.revision, seed: this.seed, systemNumber: this.systemNumber,
-      activityLevel: this.config?.activityLevel ?? 'normal', activeSequence: this.config?.activeSequence ?? null, authorityInstance: this.authorityInstance, tileStyleRevision: TILE_STYLE_REVISION,
+      flowRegime: this.config?.flowRegime ?? null, authorityInstance: this.authorityInstance, tileStyleRevision: TILE_STYLE_REVISION,
       validHourUtc: this.atmosphere.validHourUtc, width: this.atmosphere.width, height: this.atmosphere.height,
       cellSizeMiles: this.atmosphere.cellSizeMiles, cellSizeKm: this.atmosphere.cellSizeKm,
       domainWidthMiles: this.atmosphere.domainWidthMiles, domainHeightMiles: this.atmosphere.domainHeightMiles,

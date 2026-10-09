@@ -1,6 +1,5 @@
 import { clamp } from '../scenarios/math.js';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
-import { dayModeContract } from '../scenarios/ActivePattern.js';
 
 export function diagnosePreferredMode(environment, setupKey = '', lifecycle = null, elapsedHours = 0) {
   const physics = diagnoseStormRealizationPhysics(environment);
@@ -39,15 +38,10 @@ export function diagnosePreferredMode(environment, setupKey = '', lifecycle = nu
   return { mode, confidence: clamp(score, 0, 1), scores, physics, lifecycleMode };
 }
 
-// Mode contract and hours into it for the current day. Active sequences give each day its own
-// contract (a cold-front day goes mixed -> linear -> QLCS); otherwise the scenario's single one.
+// Mode contract and hours into it, on each day's own clock (hours since 12Z).
 export function currentModeContract(world) {
-  const base = world.evolution?.config?.patternLifecycle ?? null;
   const elapsed = Number(world.evolution?.elapsedHours) || 0;
-  const sequence = world.evolution?.config?.activeSequence;
-  if (!sequence) return { contract: base, elapsedHours: elapsed };
-  const wave = dayModeContract(sequence, elapsed);
-  return { contract: { ...(base ?? {}), modeTransitionHours: 6, lateTransitionHours: 10, initialMode: wave.modes[0], preferredMatureMode: wave.modes[1], lateMode: wave.modes[2] }, elapsedHours: wave.hoursIntoWave };
+  return { contract: world.evolution?.config?.patternLifecycle ?? null, elapsedHours: ((elapsed % 24) + 24) % 24 };
 }
 
 export function modeForLifecycle(contract = null, elapsedHours = 0) {

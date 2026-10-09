@@ -1,5 +1,4 @@
 import { clamp, gaussian } from './math.js';
-import { dayModeContract } from './ActivePattern.js';
 
 const SETUP_PROFILES = {
   dryline_cyclone: { name:'Classic dryline supercells', coverage:0.62, discrete:0.78, linear:0.24, capUncertainty:0.20, preferred:['dryline','triple'] },
@@ -187,7 +186,8 @@ function projectSetupForecast(world) {
     const prefrontalSupercellSupport = clamp(openSector * (0.28 + 0.24 * effectiveInflow + 0.18 * lowLevelRotation + 0.14 * shear + 0.10 * lowLcl + 0.06 * upper) * (1 - 0.28 * Math.max(0, forcing - 0.72)), 0, 1);
     // Cold-front days of an active sequence: frontal forcing organizes storms into lines
     // regardless of the scenario's (usually supercell-leaning) base mode mix.
-    const frontal = lifecycle.frontalLinear ?? 0;
+    // Frontal forcing organizes storms into lines along the cold front.
+    const frontal = clamp(Number(cell.features?.coldFrontInfluence) || 0, 0, 1);
     const discreteFraction = clamp(profile.discrete * (1 - 0.45 * frontal) * lifecycle.discreteMultiplier * (0.61 + 0.25 * shear + 0.14 * prefrontalSupercellSupport) * (1 - 0.20 * Math.max(0, forcing - 0.68)), 0.03, 0.97);
     const linearFraction = clamp(lerp(profile.linear, Math.max(profile.linear, 0.85), frontal) * lifecycle.linearMultiplier * (0.60 + 0.34 * forcing) * (0.72 + 0.28 * stormCoverage) * (1 - 0.32 * prefrontalSupercellSupport), 0.03, 0.97);
 
@@ -237,13 +237,10 @@ function projectSetupForecast(world) {
 }
 
 function lifecycleState(world) {
-  const baseContract = world.evolution?.config?.patternLifecycle ?? world.scenarioMetadata?.patternLifecycle ?? {};
-  const sequence = world.evolution?.config?.activeSequence;
-  // With an active multi-day sequence, each day's wave runs its own mode contract (e.g. a
-  // cold-front day trends linear) instead of Day 1's late mode persisting forever.
-  const wave = sequence ? dayModeContract(sequence, Number(world.evolution?.elapsedHours) || 0) : null;
-  const contract = wave ? { ...baseContract, initiationDelayHours: Math.min(Number(baseContract.initiationDelayHours) || 0, 4), initialMode: wave.modes[0], preferredMatureMode: wave.modes[1], lateMode: wave.modes[2] } : baseContract;
-  const elapsed = Math.max(0, wave ? wave.hoursIntoWave : Number(world.evolution?.elapsedHours) || 0);
+  const contract = world.evolution?.config?.patternLifecycle ?? world.scenarioMetadata?.patternLifecycle ?? {};
+  // The contract runs on each day's own clock (hours since 12Z) until storm modes come from
+  // the environment alone.
+  const elapsed = (((Number(world.evolution?.elapsedHours) || 0) % 24) + 24) % 24;
   const delay = Math.max(0, Number(contract.initiationDelayHours) || 0);
   const transition = Math.max(delay + 0.5, Number(contract.modeTransitionHours) || 6);
   const late = Math.max(transition + 1, Number(contract.lateTransitionHours) || transition + 5);
@@ -271,8 +268,7 @@ function lifecycleState(world) {
     releaseMultiplier,
     coverageMultiplier,
     discreteMultiplier: blendMultiplier('discrete'),
-    linearMultiplier: blendMultiplier('linear'),
-    frontalLinear: wave?.character === 'cold-front' ? smoothstep(elapsed, 3, 9) : 0
+    linearMultiplier: blendMultiplier('linear')
   };
 }
 

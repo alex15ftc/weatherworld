@@ -44,7 +44,7 @@ export const SETUPS = {
 export const NARRATIVES = [
   { name: 'classic_tornado_outbreak', label: 'Classic tornado outbreak', weight: 0.16, intensity: [0.78, 1.0],
     setups: ['shortwave_ejection', 'dryline_cyclone', 'warm_front_wave'],
-    gulfDewpointF: [67, 73], moistureDepth: [0.75, 1], t850C: [16, 20], cap700C: [6, 9], lapse700500: [7.3, 8.4],
+    gulfDewpointF: [66, 71], moistureDepth: [0.75, 1], t850C: [16, 20], cap700C: [6, 9], lapse700500: [7.0, 8.0],
     flow500Kt: [34, 48], jetPeakKt: [55, 90], lljKt: [40, 58], troughDm: [7, 12], lowDepthHpa: [16, 26], tilt: [0.55, 1] },
   { name: 'isolated_supercells', label: 'Isolated tornadic supercells', weight: 0.16, intensity: [0.55, 0.8],
     setups: ['dryline_cyclone', 'lee_cyclogenesis', 'warm_front_wave', 'high_plains_upslope'],
@@ -56,7 +56,7 @@ export const NARRATIVES = [
     flow500Kt: [30, 44], jetPeakKt: [45, 75], lljKt: [35, 52], troughDm: [5, 10], lowDepthHpa: [10, 20], tilt: [0.35, 0.85] },
   { name: 'hp_supercell', label: 'HP supercell day', weight: 0.11, intensity: [0.6, 0.85],
     setups: ['dryline_cyclone', 'shortwave_ejection', 'warm_front_wave'],
-    gulfDewpointF: [68, 74], moistureDepth: [0.8, 1], t850C: [16, 20], cap700C: [5, 8], lapse700500: [6.8, 7.6],
+    gulfDewpointF: [67, 72], moistureDepth: [0.8, 1], t850C: [16, 20], cap700C: [5, 8], lapse700500: [6.6, 7.4],
     flow500Kt: [30, 42], jetPeakKt: [40, 65], lljKt: [38, 55], troughDm: [5, 9], lowDepthHpa: [10, 18], tilt: [0.3, 0.8] },
   { name: 'giant_hail', label: 'Giant-hail supercell day', weight: 0.10, intensity: [0.55, 0.85],
     setups: ['dryline_cyclone', 'lee_cyclogenesis', 'northwest_flow', 'high_plains_upslope'],

@@ -1,6 +1,6 @@
 // Per-day severe-weather activity over a 3-day system: storms initiated, tornadoes, peak
 // simultaneous storms, mode mix (storm-hours), peak CAPE and warm-sector coverage for each 12Z-12Z day.
-//   WEATHER_ACTIVITY=active|normal|outbreak node scripts/daily-activity-audit.mjs [seed ...]
+//   node scripts/daily-activity-audit.mjs [seed ...]
 import { Atmosphere } from '../js/atmosphere.js';
 import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
 import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
@@ -29,8 +29,8 @@ for (const seed of seeds) {
     d.peakActive = Math.max(d.peakActive, active);
     d.warmFracMax = Math.max(d.warmFracMax, warm / n);
   }
-  const seq = config.activeSequence;
-  console.log(`seed ${seed} (${config.setupType}, activity ${config.activityLevel}${seq ? ': ' + seq.days.map(x => `${x.character}${x.reload ? '(reload)' : ''} ${x.strength.toFixed(2)}`).join(' / ') : ''})`);
+  const events = (config.synopticPattern.dynamics?.events ?? []).map(e => `${e.type} +${Math.round(e.hour)}h`).join(', ');
+  console.log(`seed ${seed} (${config.narrative} / ${config.setupType} / ${config.flowRegime} flow) synoptic events: ${events || 'none'}`);
   days.forEach((d, i) => {
     totals[i].storms += d.created.size; totals[i].tornadoes += d.tornadoes.size; if (d.created.size < 3) totals[i].quietSeeds++;
     const modes = Object.entries(d.modes).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k}:${v}`).join(', ');

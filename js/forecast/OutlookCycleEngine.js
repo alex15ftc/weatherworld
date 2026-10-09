@@ -1,7 +1,6 @@
 import { applyEnsembleForecast } from './EnsembleForecastEngine.js';
 import { applyFinalCategoricalTopology } from './RegionalOutlookTopologyEngine.js';
 import { applyOutlookCalibration, categoryCalibrationEnabled, calibrateCategory } from './OutlookCalibration.js';
-import { activeLifecycle } from '../scenarios/ActivePattern.js';
 import { categoryFromHazard, categoryFromDay3TotalSevere, publishedCigForHazard } from '../diagnostics/riskDiagnosis.js';
 import { diagnoseOutlookRealizationChain } from '../storms/StormRealizationPhysics.js';
 const SPECS = {
@@ -468,7 +467,7 @@ export function projectEnvironmentAtHour(cell, absoluteHour, context = {}) {
   const budget = diag.energyBudget ?? cell.environmentDiagnostics?.energyBudget ?? {};
   const budgetMoistureChange = (Number(budget.netDewpointTendencyFph) || 0) * Math.min(lead, 6) * 0.5;
   const moistureChange = 3.2 * moistureTransport * warmSector * heating - 2.0 * heating * (1 - moistureTransport) + budgetMoistureChange;
-  const lifecycle = projectEventLifecycle(context.config?.scenarioEvolution, Number(context.elapsedHours) || 0, lead);
+  const lifecycle = projectEventLifecycle();
   const currentCape = Number(d.cape) || 0;
   const dewpoint = (Number(cell.surface?.dewpoint) || 0) + moistureChange;
   const lapseRate = Number(cell.thermodynamics?.lapseRates?.mb700_500 ?? d.lapseRate700500 ?? d.sounding?.lapseRate700500) || 6.5;
@@ -561,23 +560,10 @@ export function coupleTrajectoryEnvironment(sourceEnvironment, targetEnvironment
   };
 }
 
-function projectEventLifecycle(profile = {}, elapsed = 0, lead = 0) {
-  // Share the simulation's multi-day lifecycle so Day 2-3 outlooks anticipate each new wave.
-  if (profile?.activeSequence) {
-    const now = activeLifecycle(profile.activeSequence, elapsed), future = activeLifecycle(profile.activeSequence, elapsed + lead);
-    return { ratio: clamp(future.maturity / Math.max(0.08, now.maturity), 0.45, 2.2), stage: future.stage };
-  }
-  const peak = Number(profile?.peakHour ?? 18);
-  const develop = Math.max(3, Number(profile?.developmentHours ?? 12));
-  const decay = Math.max(6, Number(profile?.decayHours ?? 20));
-  const initial = clamp(Number(profile?.initialMaturity ?? 0.35), 0.08, 0.75);
-  const value = time => time <= peak
-    ? initial + (1 - initial) * smoothstep(Math.max(0, peak - develop), peak, time)
-    : 1 - smoothstep(peak, peak + decay, time) * 0.48;
-  const current = Math.max(0.08, value(elapsed));
-  const future = Math.max(0.08, value(elapsed + lead));
-  const stage = elapsed + lead < peak ? 'developing' : elapsed + lead < peak + decay * 0.35 ? 'mature' : 'decaying';
-  return { ratio: clamp(future / current, 0.45, 1.45), stage };
+// The synoptic evolution is simulated, not scripted, so projected environments carry no
+// lifecycle multiplier (the ensemble outlook in phase 5 replaces this projection).
+function projectEventLifecycle() {
+  return { ratio: 1, stage: 'mature' };
 }
 
 function diagnoseConditionalHazards(cell, env) {
