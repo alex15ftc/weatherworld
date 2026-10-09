@@ -19,22 +19,3 @@ export const STORM_MODES = Object.freeze({
 export const KNOWN_STORM_MODES = Object.freeze(Object.values(STORM_MODES));
 const KNOWN_MODE_SET = new Set(KNOWN_STORM_MODES);
 
-export function isKnownStormMode(mode) {
-  return KNOWN_MODE_SET.has(mode);
-}
-
-export function isDiscreteStormMode(mode) {
-  return mode === STORM_MODES.ISOLATED_DISCRETE ||
-    mode === STORM_MODES.SEMI_DISCRETE ||
-    mode === STORM_MODES.DISCRETE_SUPERCELL ||
-    mode === STORM_MODES.DISCRETE_SUPERCELL_CLUSTER ||
-    mode === STORM_MODES.LEFT_MOVING_SUPERCELL;
-}
-
-export function isLinearStormMode(mode) {
-  return mode === STORM_MODES.BROKEN_LINE ||
-    mode === STORM_MODES.LINEAR_SEGMENT ||
-    mode === STORM_MODES.QLCS ||
-    mode === STORM_MODES.QLCS_EMBEDDED_SUPERCELLS ||
-    mode === STORM_MODES.MCS;
-}

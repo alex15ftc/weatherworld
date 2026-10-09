@@ -1,20 +1,19 @@
 import { Storm } from './Storm.js';
 import { findInitiationCandidates } from './InitiationEngine.js';
 import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampling.js';
-import { diagnosePreferredMode, currentModeContract, shouldSplitStorm, shouldBecomeQlcs, shouldBecomeMcs, shouldUpscaleIntoLine } from './StormModeEngine.js';
+import { diagnosePreferredMode, shouldSplitStorm, shouldBecomeQlcs, shouldBecomeMcs, shouldUpscaleIntoLine } from './StormModeEngine.js';
 import { clamp } from '../scenarios/math.js';
 import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js';
 import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js';
 import { initializeStormStructure, evolveStormStructure } from './StormStructureEngine.js';
 import { initializeStormCoupling, sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStormColdPool, advanceStormOutflows } from './StormEnvironmentCoupling.js';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
-import { diagnoseSynopticInitiationBudget, consumeSynopticInitiationBudget } from '../synoptic/SynopticObjectEngine.js';
 import { updateConvectiveOrganization } from './ConvectiveOrganizationEngine.js';
 import { initializeStormTrackIntelligence, updateStormTrackIntelligence, updateStormHazardSwaths } from './StormTrackIntelligence.js';
 
 export function initializeStormEngine(world) {
   world.storms = [];
-  world.stormEngine = { schemaVersion: 5, cadenceMinutes: 5, validHourUtc: world.validHourUtc, revision: 0, nextId: 1, totalCreated: 0, totalSplits: 0, totalMergers: 0, totalTornadoes: 0, activeTornadoes: 0, lastInitiationHourUtc: null, feedbackApplied: false, archiveRetentionHours: 3, maxArchiveEntries: 120, calibrationVersion: '2.66.0-convective-organization', corridorCooldowns: {}, dailyInitiations: {} };
+  world.stormEngine = { schemaVersion: 5, cadenceMinutes: 5, validHourUtc: world.validHourUtc, revision: 0, nextId: 1, totalCreated: 0, totalSplits: 0, totalMergers: 0, totalTornadoes: 0, activeTornadoes: 0, lastInitiationHourUtc: null, feedbackApplied: false, archiveRetentionHours: 3, maxArchiveEntries: 120, calibrationVersion: '2.66.0-convective-organization', dailyInitiations: {} };
   world.stormArchive = [];
   world.stormHistory = [];
   initializeStormCoupling(world);
@@ -45,7 +44,7 @@ export function advanceStormEngine(world, dtHours = 1, { initiate = true, applyF
 }
 
 function createStorm(world, candidate, environment, modeHint = null, parentId = null, offset = {x:0,y:0}) {
-  const preferred = modeHint ?? diagnosePreferredMode(environment, world.setupForecast?.key, currentModeContract(world).contract, currentModeContract(world).elapsedHours).mode;
+  const preferred = modeHint ?? diagnosePreferredMode(environment).mode;
   const motion = diagnoseStormMotion(environment, preferred);
   const storm = new Storm({
     id: `S${String(world.stormEngine.nextId++).padStart(4, '0')}`,
@@ -86,57 +85,26 @@ function initializeStormDiagnostics(storm, environment) {
   storm.peakUpdraftStrength = storm.updraftStrength;
 }
 
+// New storms come from parcel-physics initiation every half hour (see InitiationEngine).
 function initiateStorms(world) {
   const stormHour = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   const initiationSlot = Math.floor(stormHour * 2) / 2;
   if (world.stormEngine.lastInitiationHourUtc === initiationSlot) return;
   world.stormEngine.lastInitiationHourUtc = initiationSlot;
-  world.stormEngine.corridorCooldowns ??= {};
-  world.stormEngine.dailyInitiations ??= {};
-  const dayIndex = Math.floor(initiationSlot / 24);
-  const dayKey = String(dayIndex);
-  const significant = true; // every narrative is a severe setup
-  const dailyBudget = 36;
-  let usedToday = Number(world.stormEngine.dailyInitiations[dayKey]) || 0;
-  if (usedToday >= dailyBudget) return;
-
-  const perCorridorThisSlot = new Map();
-  for (const candidate of findInitiationCandidates(world, world.storms, initiationSlot)) {
-    if (usedToday >= dailyBudget) break;
-    const corridorKey = candidate.corridorId ?? `cell-band-${Math.floor(candidate.x / 4)}-${Math.floor(candidate.y / 4)}`;
-    const cooldownUntil = Number(world.stormEngine.corridorCooldowns[corridorKey]) || -Infinity;
-    if (initiationSlot < cooldownUntil) continue;
-    const corridorCount = perCorridorThisSlot.get(corridorKey) ?? 0;
-    const perSlotLimit = candidate.corridorStrength >= 0.72 && significant ? 2 : 1;
-    if (corridorCount >= perSlotLimit) continue;
-
-    const budgetDiagnosis = diagnoseSynopticInitiationBudget(world, corridorKey, candidate);
-    if (!budgetDiagnosis.allowed) continue;
+  for (const candidate of findInitiationCandidates(world, world.storms, initiationSlot, 0.5)) {
     const environment = sampleStormEnvironment(world, candidate.xKm, candidate.yKm);
-    const jitter = deterministicJitter(world.evolution?.config?.seed ?? 'seed', initiationSlot, candidate.x, candidate.y);
-    const storm = createStorm(world, candidate, environment, null, null, jitter);
-    storm.initiationCorridorId = corridorKey;
+    const storm = createStorm(world, candidate, environment, candidate.elevated ? 'elevated convection' : null);
+    storm.initiationCorridorId = candidate.corridorId;
     storm.initiationBoundaryType = candidate.boundaryType ?? null;
     storm.initiationForcing = candidate.forcingComponents ?? null;
-    storm.initiationBudget = { ...budgetDiagnosis };
-    consumeSynopticInitiationBudget(world, budgetDiagnosis);
-    perCorridorThisSlot.set(corridorKey, corridorCount + 1);
-    usedToday += 1;
-    world.stormEngine.dailyInitiations[dayKey] = usedToday;
-    const cooldownHours = candidate.secondaryOutflow ? 0.5 : clamp(1.0 + (1 - candidate.corridorStrength) * 1.5, 1.0, 2.5);
-    world.stormEngine.corridorCooldowns[corridorKey] = initiationSlot + cooldownHours;
   }
-
-  // Prevent unbounded state growth in long-running worlds.
-  for (const key of Object.keys(world.stormEngine.dailyInitiations)) if (Number(key) < dayIndex - 3) delete world.stormEngine.dailyInitiations[key];
-  for (const [key, until] of Object.entries(world.stormEngine.corridorCooldowns)) if (Number(until) < initiationSlot - 12) delete world.stormEngine.corridorCooldowns[key];
 }
 
 function updateStorm(world, storm, dtHours) {
   if (!storm.active) return;
   storm.previousPositionKm = { ...storm.positionKm };
   const environment = sampleEffectiveInflowEnvironment(world, storm);
-  const preferred = diagnosePreferredMode(environment, world.setupForecast?.key, currentModeContract(world).contract, currentModeContract(world).elapsedHours);
+  const preferred = diagnosePreferredMode(environment);
   const discreteProtection = (environment.prefrontalSupercellSupport ?? 0) >= 0.44 || (environment.tornadicEnvironmentSupport ?? 0) >= 0.55;
   const protectedSupercell = storm.mode.includes('supercell') && discreteProtection && storm.ageHours < 5.5;
   if (!storm.mode.includes('left-moving') && storm.lifecycleState !== 'tower' && !protectedSupercell && preferred.confidence > storm.modeConfidence + 0.10 && storm.modeAgeHours > 0.55) {
@@ -153,6 +121,15 @@ function updateStorm(world, storm, dtHours) {
     if (storm.trackPoints.length > 240) storm.trackPoints.splice(0, storm.trackPoints.length-240);
   }
   storm.ageHours += dtHours; storm.modeAgeHours += dtHours; storm.environment = environment;
+  // Fuel: an existing updraft can force surface-based parcels through moderate inhibition
+  // (~150 J/kg); otherwise it can feed on an elevated parcel that is essentially uncapped.
+  // Without either the storm has no buoyant inflow and collapses.
+  const surfaceFuel = (Number(environment.cin) || 0) <= 150 ? Number(environment.cape) || 0 : 0;
+  const elevatedFuel = (Number(environment.mostUnstableCin) || 0) <= 60 ? 0.85 * (Number(environment.mostUnstableCape) || 0) : 0;
+  storm.fuelCape = Math.max(surfaceFuel, elevatedFuel);
+  storm.elevatedFeed = elevatedFuel > surfaceFuel;
+  const feedEnvironment = storm.elevatedFeed ? { ...environment, cape: elevatedFuel, cin: Number(environment.mostUnstableCin) || 0 } : environment;
+  const starving = storm.fuelCape < 150;
 
   // Supercells need surface-based instability and deep shear. After 30 min without them a
   // supercell becomes elevated convection (if elevated CAPE remains) or a decaying multicell
@@ -168,7 +145,7 @@ function updateStorm(world, storm, dtHours) {
     }
   }
 
-  const physics = diagnoseStormRealizationPhysics(environment, storm);
+  const physics = diagnoseStormRealizationPhysics(feedEnvironment, storm);
   storm.physics = physics;
   const buoyancy = clamp(physics.realizedUpdraft, 0, 1.25);
   const capPenalty = clamp(1 - physics.inhibitionEfficiency, 0, 1);
@@ -183,8 +160,8 @@ function updateStorm(world, storm, dtHours) {
   const boundaryStrength = clamp(storm.boundaryInteraction?.strength ?? 0, 0, 1);
   storm.interactions.outflowBoundaryBoost += (boundaryStrength - storm.interactions.outflowBoundaryBoost) * clamp(dtHours * 1.1, 0, 1);
   let modeBoost = storm.mode.includes('supercell') ? 0.10 * shearSupport + 0.12 * (environment.prefrontalSupercellSupport ?? 0) : storm.mode === 'MCS' ? 0.08 * environment.forcing : 0;
-  const targetIntensity = clamp((environment.readiness * 0.30 + buoyancy * 0.42 + physics.initiationProbability * 0.18 + modeBoost - capPenalty * 0.20) * storm.inflowQuality, 0, 1);
-  const response = targetIntensity > storm.intensity ? 0.52 : 0.23;
+  const targetIntensity = starving ? 0 : clamp((environment.readiness * 0.30 + buoyancy * 0.42 + physics.initiationProbability * 0.18 + modeBoost - capPenalty * 0.20) * storm.inflowQuality, 0, 1);
+  const response = starving ? 0.75 : targetIntensity > storm.intensity ? 0.52 : 0.23;
   storm.intensity += (targetIntensity - storm.intensity) * clamp(response * dtHours * 2, 0, 1);
   const targetOrganization = clamp(physics.organizationProbability * 0.58 + shearSupport * 0.16 + physics.balanceSupport * 0.10 + preferred.confidence * 0.08 + (environment.prefrontalSupercellSupport ?? 0) * 0.08, 0, 1);
   // Strongly sheared environments organize updrafts within ~1 h (supercell maturation).
@@ -193,9 +170,7 @@ function updateStorm(world, storm, dtHours) {
   storm.rotationTendency = physics.verticalVorticityTendency;
   storm.updraftHelicity = { lowLevel: physics.lowlevelUH, midlevel: physics.midlevelUH };
   const supercellColdPoolReduction = storm.mode.includes('supercell') ? 0.22 * (environment.prefrontalSupercellSupport ?? 0) : 0;
-  const lifecycle = world.evolution?.config?.patternLifecycle ?? {};
-  const coldPoolMultiplier = Number(lifecycle.coldPoolMultiplier) || 1;
-  const coldPoolTarget = clamp(storm.intensity * (0.31 + environment.linearFraction * 0.34 + clamp((environment.lcl - 900)/1500,0,1)*0.24 - supercellColdPoolReduction) * coldPoolMultiplier, 0, 1);
+  const coldPoolTarget = clamp(storm.intensity * (0.31 + environment.linearFraction * 0.34 + clamp((environment.lcl - 900)/1500,0,1)*0.24 - supercellColdPoolReduction), 0, 1);
   storm.coldPoolStrength += (coldPoolTarget - storm.coldPoolStrength) * clamp(0.22 * dtHours, 0, 1);
   storm.coldPoolRadiusKm = clamp(5 + storm.ageHours * 5 + storm.coldPoolStrength * 24, 5, 52);
   updateStormColdPool(world, storm, environment, dtHours);
@@ -216,7 +191,7 @@ function updateStorm(world, storm, dtHours) {
   storm.peakUpdraftStrength = Math.max(storm.peakUpdraftStrength ?? 0, storm.updraftStrength ?? 0);
     storm.peakColdPoolStrength = Math.max(storm.peakColdPoolStrength ?? 0, storm.coldPoolStrength ?? 0);
 
-  const outside = storm.positionKm.x < -30 || storm.positionKm.y < -30 || storm.positionKm.x > world.domainWidthKm + 30 || storm.positionKm.y > world.domainHeightKm + 30;
+  const outside = storm.positionKm.x < -10 || storm.positionKm.y < -10 || storm.positionKm.x > world.domainWidthKm + 10 || storm.positionKm.y > world.domainHeightKm + 10;
   if (outside) { storm.active = false; storm.dissipationReason = 'left-domain'; }
   else if (storm.ageHours > 1.7 && storm.intensity < 0.07) { storm.active = false; storm.dissipationReason = 'environmental-decay'; }
   else if (storm.ageHours > maxAgeForMode(storm.mode)) { storm.active = false; storm.dissipationReason = 'maximum-lifecycle'; }
@@ -312,9 +287,15 @@ function nearbyStorms(index, storm, radiusKm) {
   return result;
 }
 
+// Peak 500 mb warming rate under a full-strength convective updraft footprint.
+const CONVECTIVE_HEATING_C_PER_HOUR = 1.2;
+
 export function applyStormFeedback(world, dtHours) {
   const size = world.width * world.height;
   const temp = new Float32Array(size), dew = new Float32Array(size), stabilization = new Float32Array(size), convergence = new Float32Array(size);
+  // Convective heating aloft (latent heat released in updrafts) and moisture consumed from the
+  // inflow layer: widespread convection stabilises its own surroundings.
+  const midHeating = new Float32Array(size), inflowDrying = new Float32Array(size);
   for (const storm of world.storms) {
     if (!storm.active || storm.intensity < 0.14) continue;
     const structuralRadiusKm = clamp(10 + storm.intensity * 28 + (storm.coldPoolStrength ?? 0) * 24, 10, 58);
@@ -331,6 +312,8 @@ export function applyStormFeedback(world, dtHours) {
       const processed=weight*storm.intensity*dtHours*areaExposure;
       temp[index]-=processed*(0.38+storm.coldPoolStrength*1.0); dew[index]-=processed*(0.08+storm.coldPoolStrength*0.18);
       stabilization[index]=Math.max(stabilization[index],processed*0.34);
+      midHeating[index]+=weight*storm.intensity*(storm.updraftStrength??storm.intensity)*dtHours*CONVECTIVE_HEATING_C_PER_HOUR;
+      inflowDrying[index]+=processed*0.6;
       const ring=Math.exp(-Math.pow((dist-radiusKm*0.78)/Math.max(2,radiusKm*0.14),2));
       convergence[index]=Math.max(convergence[index],ring*storm.coldPoolStrength*storm.intensity);
     }
@@ -351,6 +334,8 @@ export function applyStormFeedback(world, dtHours) {
   world.forEachCell((cell,x,y)=>{ const i=y*world.width+x;
     if (!temp[i]&&!dew[i]&&!stabilization[i]&&!convergence[i]) { cell.features.stormProcessedAir=0; cell.features.stormOutflowConvergence=0; return; }
     applied=true; cell.surface.temperature+=temp[i]; cell.surface.dewpoint+=dew[i];
+    if (midHeating[i]) { cell.levels[500].temperature+=midHeating[i]; cell.levels[700].temperature+=0.4*midHeating[i]; }
+    if (inflowDrying[i] && Number.isFinite(cell.levels[850].dewpoint)) cell.levels[850].dewpoint-=inflowDrying[i];
     cell.features.stormProcessedAir=clamp(stabilization[i],0,1); cell.features.stormOutflowConvergence=clamp(convergence[i],0,1);
   });
   world.stormEngine.feedbackApplied=applied;
@@ -557,5 +542,3 @@ function archiveEndedStorms(world) {
   world.stormArchive = world.stormArchive.filter(item => now - (item.endedHourUtc ?? now) <= retention).slice(-maxEntries);
 }
 
-function deterministicJitter(seed,hour,x,y){ const base=`${seed}|${hour}|${x}|${y}`; return {x:(hashUnit(base+'|x')-.5)*7,y:(hashUnit(base+'|y')-.5)*7}; }
-function hashUnit(text){ let h=1779033703^text.length; for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),3432918353); h=h<<13|h>>>19; h=Math.imul(h^h>>>16,2246822507); h=Math.imul(h^h>>>13,3266489909); return ((h^h>>>16)>>>0)/4294967296; }

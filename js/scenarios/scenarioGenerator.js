@@ -7,6 +7,7 @@
 import { NARRATIVES, SETUPS, FLOW_REGIMES } from './narratives.js';
 import { clamp, gaussian, lerp, mulberry32 } from './math.js';
 import { createSynopticPattern, sampleSynopticPattern, samplePatternWinds, cyclonicGradientWindKt } from './synopticPattern.js';
+import { mixingRatio, dewpointFromMixingRatio } from '../atmosphere/BoundaryLayerClosure.js';
 
 const RHO = 1.15, CORIOLIS = 1e-4, MS_TO_KT = 1.943844, DEG = Math.PI / 180;
 
@@ -168,8 +169,11 @@ export function airMassSurfaceState(config, s, nx, ny) {
   // Moisture aloft: deep in the Gulf air (depth from the narrative), very dry in the elevated
   // mixed layer and the continental air behind the dryline.
   const depth = ing.moistureDepth;
-  const td850C = Math.min(t850C, warm * (t850C - (4 + 8 * (1 - depth))) + dry * (t850C - 20) + cold * (t850C - 6));
-  const td700C = Math.min(t700C, warm * (t700C - (8 + 14 * (1 - depth))) + dry * (t700C - 24) + cold * (t700C - 8));
+  // In the Gulf air the moist layer is well mixed: 850 mb keeps most of the surface mixing
+  // ratio when the moist layer is deep, less when it is shallow.
+  const moist850 = dewpointFromMixingRatio(mixingRatio((dewpointF - 32) * 5 / 9, 960) * (0.6 + 0.4 * depth), 850);
+  const td850C = Math.min(t850C - 1.5, warm * moist850 + dry * (t850C - 20) + cold * (t850C - 6));
+  const td700C = Math.min(t700C, warm * (t700C - (14 + 10 * (1 - depth))) + dry * (t700C - 26) + cold * (t700C - 8));
   return { afternoonTemperatureF, dewpointF, diurnalRangeF, meanTemperatureF: afternoonTemperatureF - diurnalRangeF / 2, t850C, t700C, t500C, td850C, td700C, moistureAxis };
 }
 

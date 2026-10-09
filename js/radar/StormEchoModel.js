@@ -22,7 +22,7 @@ export function buildStormEchoModel(storm) {
   const notch = new Float32Array(size * size).fill(1);
 
   const character = stormCharacter(storm, structure);
-  for (const feature of structure.features.map(f => varyFeature(f, character, structure))) {
+  for (const feature of structure.features.map(f => varyFeature(f, character))) {
     if (feature.type === 'hookArc') stampHook(feature, fields, size, half);
     else if (feature.type === 'convectiveLine') { stampLine(feature, fields, size, half); carveTransitionZone(feature, notch, size, half); }
     else stampLobe(feature, fields, notch, size, half);
@@ -97,13 +97,13 @@ export function echoGradient(model, name, dx, dy, out) {
 // --- Per-storm variety -----------------------------------------------------------------
 // regime: -1 low-precipitation .. 0 classic .. +1 high-precipitation supercell, from cloud-base
 // height (a low LCL means moist boundary-layer air), moisture pooling and the structure's
-// precipitation efficiency (relative to its typical 0.2-0.5 range), plus a per-storm draw.
+// precipitation efficiency (typically ~0.4-0.8), plus a per-storm draw.
 function stormCharacter(storm, structure) {
   const random = mulberry32(hashString(String(storm.id ?? storm.name ?? 'storm')));
   const env = storm.environment ?? {};
-  const precipEff = Number(structure.precipitationEfficiency) || 0.35;
+  const precipEff = Number(structure.precipitationEfficiency) || 0.6;
   const lcl = Number(env.lcl) || 1250, pooling = Number(env.moisturePooling);
-  const regime = clamp(0.9 * (1250 - lcl) / 450 + 1.2 * (precipEff - 0.33) + (Number.isFinite(pooling) ? 0.4 * (pooling - 0.5) : 0) + (random() - 0.5) * 0.8, -1, 1);
+  const regime = clamp(0.9 * (1250 - lcl) / 450 + 1.2 * (precipEff - 0.6) + (Number.isFinite(pooling) ? 0.4 * (pooling - 0.5) : 0) + (random() - 0.5) * 0.8, -1, 1);
   // Trailing stratiform rain takes hours to build behind a new line.
   const lineMaturity = clamp(0.3 + 0.7 * (Number(storm.modeAgeHours) || 0) / 3, 0.3, 1);
   return { random, regime, lineMaturity, seed: hashString(`${storm.id ?? 'storm'}|texture`) };
@@ -111,7 +111,7 @@ function stormCharacter(storm, structure) {
 
 // Clone a structural feature with the storm's regime and a deterministic per-feature jitter
 // (storm.structure is shared simulation state and must not be mutated).
-function varyFeature(feature, character, structure) {
+function varyFeature(feature, character) {
   const f = { ...feature }, r = character.random, hp = Math.max(0, character.regime), lp = Math.max(0, -character.regime);
   const j = () => r() - 0.5;
   if (f.type === 'hookArc') {
@@ -147,14 +147,9 @@ function varyFeature(feature, character, structure) {
       f.rain = (f.rain ?? 0) * (1 + 1.1 * hp - 0.75 * lp); f.radiusXKm *= 1 + 0.3 * hp; break;
     case 'hailCore': // LP storms show a compact, exposed hail core
       f.hail = (f.hail ?? 0) * (1 + 0.3 * lp - 0.15 * hp); f.rain = (f.rain ?? 0) * (1 - 0.4 * lp); break;
-    case 'rearStratiform': case 'rearInflowJet': {
-      // The structure engine places these downstream (+a) of the line; stratiform rain and
-      // the rear-inflow jet trail the leading convective line, so mirror them behind it.
-      const line = structure.features.find(x => x.type === 'convectiveLine');
-      if (line) { const offset = Math.abs(feature.centerXKm - line.centerXKm); f.centerXKm = line.centerXKm - offset - 0.15 * f.radiusXKm * Math.abs(j()); }
-      if (f.type === 'rearStratiform') { f.radiusXKm *= character.lineMaturity; f.radiusYKm *= 0.6 + 0.4 * character.lineMaturity; f.intensity *= 0.6 + 0.4 * character.lineMaturity; }
+    case 'rearStratiform': // trailing stratiform rain takes hours to build behind a new line
+      f.radiusXKm *= character.lineMaturity; f.radiusYKm *= 0.6 + 0.4 * character.lineMaturity; f.intensity *= 0.6 + 0.4 * character.lineMaturity;
       break;
-    }
   }
   return f;
 }

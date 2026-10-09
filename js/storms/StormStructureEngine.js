@@ -45,8 +45,9 @@ function buildStructure(storm, env, prior, seed, dtHours=0) {
     features.push(lobe('inflowNotch', -.02*size.x, .18*size.y, size.x*.25, size.y*.28, clamp(.45+.4*org,0,1), 18, {subtractRain:.75,inflow:org}));
   } else if (linear || mcs) {
     features.push({type:'convectiveLine', centerXKm:-size.x*.12, centerYKm:0, lengthKm:size.y*1.65, widthKm:Math.max(5,size.x*.17), bowKm:size.x*.24, intensity:.52+.42*lineStrength, rain:.82, graupel:.34*hailStrength, hail:.18*hailStrength});
-    features.push(lobe('rearStratiform', size.x*.42, 0, size.x*(mcs?.85:.63), size.y*.78, .35+.45*precipEff, 0, {rain:.58,ice:.28}));
-    features.push(lobe('rearInflowJet', size.x*.14, 0, size.x*.46, size.y*.30, lineStrength, 0, {rearInflow:lineStrength,downdraft:cold}));
+    // Trailing stratiform rain and the rear-inflow jet lie behind (upstream of) the leading line.
+    features.push(lobe('rearStratiform', -size.x*.66, 0, size.x*(mcs?.85:.63), size.y*.78, .35+.45*precipEff, 0, {rain:.58,ice:.28}));
+    features.push(lobe('rearInflowJet', -size.x*.38, 0, size.x*.46, size.y*.30, lineStrength, 0, {rearInflow:lineStrength,downdraft:cold}));
     const count = Math.max(2, Math.min(7, 2+Math.round(org*4)));
     for(let i=0;i<count;i++){
       const fy=((i+.5)/count-.5)*size.y*1.45;

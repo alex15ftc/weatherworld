@@ -42,7 +42,7 @@ function buildSynopticObjects(world, config, previous = null, dtHours = 0) {
     type, pointsKm: frontPoints(world, config, pattern, type), authoritative: true,
     strength: frontStrength(type), widthKm: type === 'dryline' ? 24 : 32,
     velocityKph: displayVelocityKph(world, config, velocity),
-    lifecyclePhase: phase, segmentBudget: type === 'dryline' ? 4 : 3, parentId: 'SFC-LOW-001'
+    lifecyclePhase: phase, parentId: 'SFC-LOW-001'
   });
   // Each boundary reports its own (cross-boundary) motion, not the low's travel along it.
   if (topology.includes('warm')) fronts.push(front('warm', { x: 0, y: Number(dyn.warmFrontSpeed) || 0 }));
@@ -56,7 +56,6 @@ function buildSynopticObjects(world, config, previous = null, dtHours = 0) {
     intensity: depthFraction, velocityKph: lowVelocity, deepeningHpaPerHour: deepening,
     lifecyclePhase: phase, ageHours: (previous?.surfaceLow?.ageHours ?? 0) + dtHours
   };
-  const previousBudget = previous?.convectiveBudget;
   return {
     version: 3, authoritative: true, elapsedHours,
     surfaceLow, fronts,
@@ -69,12 +68,7 @@ function buildSynopticObjects(world, config, previous = null, dtHours = 0) {
     lifecycle: { phase },
     events: (dyn.events ?? []).slice(-12),
     environmentalTendencies: { pressureDeepeningHpaPerHour: deepening, lifecyclePhase: phase },
-    convectiveMemory: diagnoseConvectiveMemory(world),
-    // Initiation bookkeeping only (storms are limited by their environment, not a budget).
-    convectiveBudget: {
-      remaining: Infinity, consumed: previousBudget?.consumed ?? 0,
-      segmentUsage: decaySegmentUsage(previousBudget?.segmentUsage, dtHours), lastUpdatedHour: elapsedHours
-    }
+    convectiveMemory: diagnoseConvectiveMemory(world)
   };
 }
 
@@ -154,29 +148,6 @@ function projectBoundaryInfluences(objects, cell, x, y) {
   cell.features.synopticBoundaryInfluences = influences;
   cell.features.primaryBoundaryInfluence = best;
   if (primary && best > .12) { cell.features.primaryBoundaryId = primary.id; cell.features.primaryBoundaryType = primary.type; cell.features.explicitBoundaryInfluence = Math.max(Number(cell.features.explicitBoundaryInfluence) || 0, best); }
-}
-
-export function diagnoseSynopticInitiationBudget(world, corridorId) {
-  const objects = world.synopticObjects;
-  const boundaryMatch = /^boundary:(OBJ-[^:]+):segment:(\d+)/.exec(String(corridorId ?? ''));
-  const segmentKey = boundaryMatch ? `${boundaryMatch[1]}:segment:${boundaryMatch[2]}` : `generic:${corridorId ?? 'unknown'}`;
-  const front = boundaryMatch ? objects?.fronts?.find(item => item.id === boundaryMatch[1]) : null;
-  return { allowed: true, cost: 0, segmentKey, segmentUsed: Number(objects?.convectiveBudget?.segmentUsage?.[segmentKey]) || 0, parentId: front?.parentId ?? objects?.surfaceLow?.id ?? null };
-}
-
-export function consumeSynopticInitiationBudget(world, diagnosis) {
-  const budget = world.synopticObjects?.convectiveBudget;
-  if (!budget || !diagnosis?.segmentKey) return;
-  budget.consumed = (budget.consumed ?? 0) + 1;
-  budget.segmentUsage ??= {};
-  budget.segmentUsage[diagnosis.segmentKey] = (budget.segmentUsage[diagnosis.segmentKey] ?? 0) + 1;
-}
-
-function decaySegmentUsage(usage = {}, dtHours = 0) {
-  const factor = Math.pow(0.5, Math.max(0, dtHours) / 6);
-  const out = {};
-  for (const [key, value] of Object.entries(usage)) { const v = (Number(value) || 0) * factor; if (v >= 0.05) out[key] = v; }
-  return out;
 }
 
 function diagnoseConvectiveMemory(world) {

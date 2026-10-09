@@ -207,8 +207,7 @@ export function drawHodograph(canvas, sounding){
 
 function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
  const moistureDepth = clamp((surfaceTd+5)/28,0,1);
- const capStrength = clamp((cell.levels[700].temperature + 2) / 14,0,1);
- const t850=cell.levels[850].temperature + capStrength*1.2;
+ const t850=cell.levels[850].temperature;
  // Stored moisture aloft when the state carries it; otherwise inferred from the surface.
  const td850=Math.min(t850,Number.isFinite(cell.levels[850].dewpoint)?cell.levels[850].dewpoint:surfaceTd-(3+7*(1-moistureDepth)));
  const t700=cell.levels[700].temperature;
@@ -223,6 +222,18 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
   {p:250,t:t250,td:Math.min(t250,t250-28),dir:cell.levels[250].windDirection,spd:cell.levels[250].windSpeed},
   {p:100,t:-56,td:-76,dir:(cell.levels[250].windDirection+10)%360,spd:Math.max(55,cell.levels[250].windSpeed*.75)}
  ];
+ // Elevated mixed layer: its base is a warm, dry inversion near 780 mb above the moist layer,
+ // with a near dry-adiabatic lapse rate up to 700 mb. Interpolating straight from 850 to 700 mb
+ // would miss the inversion that caps both surface parcels and the moist air below it.
+ const eml=clamp(Number(cell.features?.emlInfluence)||0,0,1);
+ if(eml>0.05&&surfaceP>800){
+  const f=Math.log(850/780)/Math.log(850/700);
+  const linear=t850+(t700-t850)*f, base=t700+6.2; // ~8.5 C/km through the ~0.73 km 780-700 mb layer
+  const t780=linear+Math.max(0,base-linear)*eml;
+  const w850=uvFromDirSpeed(cell.levels[850].windDirection,cell.levels[850].windSpeed), w700=uvFromDirSpeed(cell.levels[700].windDirection,cell.levels[700].windSpeed);
+  const u=w850.u+(w700.u-w850.u)*f, v=w850.v+(w700.v-w850.v)*f;
+  anchors.push({p:780,t:t780,td:Math.min(td850,t780-(6+14*eml)),dir:(Math.atan2(-u,-v)*180/Math.PI+360)%360,spd:Math.hypot(u,v)});
+ }
  return anchors.filter(a=>a.isSurface||a.p<surfaceP).sort((a,b)=>b.p-a.p);
 }
 

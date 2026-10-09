@@ -14,6 +14,7 @@
     "audit:outlooks": "node scripts/outlook-audit.mjs",
     "audit:fields": "node scripts/field-integrity-scan.mjs",
     "calibrate:fit": "node scripts/fit-outlook-calibration.mjs",
-    "inspect:setups": "node scripts/setup-inspect.mjs"
+    "inspect:setups": "node scripts/setup-inspect.mjs",
+    "audit:storms": "node scripts/storm-behavior-audit.mjs"
   }
 }

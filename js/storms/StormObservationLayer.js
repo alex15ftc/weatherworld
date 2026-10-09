@@ -84,12 +84,6 @@ export function publishStormObservations(world, dtHours = 0) {
   return layer;
 }
 
-export function getAggregatedStormTruth(world) {
-  const layer = world.stormObservationLayer;
-  if (!layer) return [];
-  return Object.values(layer.latestByStormId).map(cloneReport);
-}
-
 function cloneReport(report) {
   return {
     ...report,

@@ -46,6 +46,12 @@ export function applyBoundaryLayer(world, dtHours = 0.5) {
         cell.surface.temperature = kToF(fromTheta(thM, ps));
         l850.temperature = fromTheta(thM, 850) - C_TO_K;
         thS = thM;
+        // The same turbulent mixing homogenises moisture: equal-mass mean mixing ratio.
+        if (Number.isFinite(l850.dewpoint)) {
+          const wM = (mixingRatio((cell.surface.dewpoint - 32) * 5 / 9, ps) + mixingRatio(l850.dewpoint, 850)) / 2;
+          cell.surface.dewpoint = Math.min(cell.surface.temperature, dewpointFromMixingRatio(wM, ps) * 9 / 5 + 32);
+          l850.dewpoint = Math.min(l850.temperature, dewpointFromMixingRatio(wM, 850));
+        }
       }
     }
 
@@ -111,6 +117,9 @@ function nocturnalJetPhase(localHour) {
   return Math.sin(Math.PI * (h - 19) / 14) ** 1.5;
 }
 
+// Mixing ratio (kg/kg) from dewpoint (C) and pressure (hPa), and its inverse.
+export function mixingRatio(tdC, p) { const e = 6.112 * Math.exp(17.67 * tdC / (tdC + 243.5)); return 0.622 * e / Math.max(1, p - e); }
+export function dewpointFromMixingRatio(w, p) { const e = Math.max(1e-3, w * p / (0.622 + w)); const l = Math.log(e / 6.112); return 243.5 * l / (17.67 - l); }
 function angleDiff(a, b) { return ((a - b + 540) % 360) - 180; }
 function normalizeDeg(d) { return ((d % 360) + 360) % 360; }
 function theta(tK, p) { return tK * (1000 / p) ** KAPPA; }

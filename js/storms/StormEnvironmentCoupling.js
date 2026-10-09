@@ -8,11 +8,17 @@ export function initializeStormCoupling(world) {
   world.stormEngine.totalBoundaryInteractions ??= 0;
 }
 
+// The air a storm ingests: sampled upstream of it along the storm-relative low-level inflow,
+// beyond its own rain-cooled outflow (sampling at the storm itself measured its cold pool).
 export function sampleEffectiveInflowEnvironment(world, storm) {
-  const speed = Math.hypot(storm.velocityKph.east, storm.velocityKph.north);
-  const ux = speed > 0.1 ? storm.velocityKph.east / speed : 1;
-  const uy = speed > 0.1 ? -storm.velocityKph.north / speed : 0;
-  const offsets = [0, 10, 22, 36], weights = [0.15, 0.30, 0.35, 0.20];
+  const here = sampleStormEnvironment(world, storm.positionKm.x, storm.positionKm.y);
+  const lowLevel = { e: 0.5 * (here.surfaceWind.eastKt + here.wind850.eastKt) * 1.852, n: 0.5 * (here.surfaceWind.northKt + here.wind850.northKt) * 1.852 };
+  const relative = { e: lowLevel.e - storm.velocityKph.east, n: lowLevel.n - storm.velocityKph.north };
+  const speed = Math.hypot(relative.e, relative.n);
+  // Inflow arrives from where the storm-relative wind comes from (screen frame: y south).
+  const ux = speed > 0.1 ? -relative.e / speed : 1;
+  const uy = speed > 0.1 ? relative.n / speed : 0;
+  const offsets = [10, 25, 40], weights = [0.3, 0.4, 0.3];
   const samples = offsets.map(d => sampleStormEnvironment(world, storm.positionKm.x + ux*d, storm.positionKm.y + uy*d));
   const blend = key => samples.reduce((sum, env, i) => sum + (env[key] ?? 0) * weights[i], 0);
   const vectorBlend = key => ({

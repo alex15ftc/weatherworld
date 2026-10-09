@@ -1,57 +1,43 @@
 import { clamp } from '../scenarios/math.js';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
 
-export function diagnosePreferredMode(environment, setupKey = '', lifecycle = null, elapsedHours = 0) {
+// Storm mode from the environment alone, using the standard operational discriminators:
+//   - buoyancy available to the storm (no buoyancy, no organized updraft);
+//   - deep-layer (0-6 km) shear: <~25 kt pulse/multicell, >~40 kt supports supercells;
+//   - the supercell composite parameter (SCP: CAPE x helicity x shear);
+//   - line tendency: deep shear along a forcing boundary and crowded storms (environmentSampling);
+//   - crowding decides isolated / discrete / clustered supercells;
+//   - elevated: the surface parcel is capped while a parcel aloft is unstable and free.
+export function diagnosePreferredMode(environment) {
   const physics = diagnoseStormRealizationPhysics(environment);
-  const shear = clamp((environment.bulkShear - 15) / 40, 0, 1);
-  const buoyancy = clamp(physics.realizedUpdraft, 0, 1);
-  const forcing = clamp(environment.forcing, 0, 1);
-  const elevated = environment.lcl > 1700 && environment.cin > 70;
+  const cape = Number(environment.cape) || 0, cin = Number(environment.cin) || 0;
+  const shearKt = Number(environment.bulkShear) || 0, srh = Number(environment.srh) || 0;
+  const scp = Number.isFinite(environment.scp) && environment.scp > 0 ? environment.scp : (cape / 1000) * (srh / 50) * clamp(shearKt * 0.514 / 20, 0, 1.5);
+  const linear = clamp(Number(environment.linearFraction) || 0, 0, 1);
+  const coverage = clamp(Number(environment.stormCoverage) || 0, 0, 1);
+  const buoyant = ramp(cape, 150, 1000) * (1 - ramp(cin, 150, 300));
+  const muAloft = (environment.mostUnstableCape ?? 0) > (environment.surfaceBasedCape ?? cape) + 50;
+  const elevated = muAloft && cin > 100 && (environment.mostUnstableCape ?? 0) > 500 && (environment.mostUnstableCin ?? 0) < 60;
+
+  const weakShear = 1 - ramp(shearKt, 18, 32);
+  const supercell = buoyant * ramp(shearKt, 28, 45) * ramp(scp, 0.5, 4);
+  const lineOrganized = buoyant * linear * (1 - weakShear);
   const scores = {
-    'pulse storm': physics.initiationProbability * (1 - shear) * (0.42 + 0.58 * buoyancy),
-    'multicell': physics.initiationProbability * buoyancy * (0.34 + 0.38 * shear + 0.28 * physics.balanceSupport),
-    'isolated supercell': physics.supercellProbability * (0.44 + 0.22 * clamp(environment.discreteFraction ?? 0.5,0,1)),
-    'semi-discrete supercell': physics.supercellProbability * physics.initiationProbability * (0.42 + 0.28 * forcing),
-    'discrete supercell cluster': physics.supercellProbability * clamp(environment.stormCoverage ?? 0.35,0,1) * (0.34 + 0.26 * forcing),
-    'mixed supercell cluster': physics.supercellProbability * physics.linearProbability * (0.32 + 0.32 * forcing),
-    'discrete supercell': physics.supercellProbability * (0.70 + 0.30 * clamp(environment.discreteFraction ?? 0.5, 0, 1)),
-    'broken line': physics.linearProbability * physics.initiationProbability * (0.38 + 0.30 * forcing),
-    'linear segment': physics.linearProbability * (0.62 + 0.38 * clamp(environment.linearFraction ?? 0.5, 0, 1)),
-    'elevated convection': elevated ? physics.initiationProbability * (0.48 + 0.35 * forcing) : 0.03,
-    'MCS': physics.linearProbability * clamp(environment.stormCoverage ?? 0, 0, 1) * forcing * 0.78
+    'elevated convection': elevated ? 0.6 + 0.4 * ramp(environment.mostUnstableCape ?? 0, 500, 2000) : 0,
+    'pulse storm': buoyant * weakShear,
+    'multicell': buoyant * (1 - weakShear) * 0.45,
+    'broken line': lineOrganized * (1 - supercell) * 0.9,
+    'isolated supercell': supercell * (1 - linear) * (1 - ramp(coverage, 0.1, 0.35)),
+    'discrete supercell': supercell * (1 - linear) * ramp(coverage, 0.1, 0.35) * (1 - ramp(coverage, 0.45, 0.8)),
+    'discrete supercell cluster': supercell * (1 - linear) * ramp(coverage, 0.45, 0.8),
+    'mixed supercell cluster': supercell * linear
   };
-  if (setupKey === 'elevated_mcs') scores.MCS += 0.18 * physics.initiationProbability;
-  if (setupKey === 'progressive_cold_front') scores['linear segment'] += 0.14 * physics.linearProbability;
-  if (['dryline_cyclone','lee_cyclogenesis','warm_front_wave'].includes(setupKey)) { scores['discrete supercell'] += 0.08 * physics.supercellProbability; scores['semi-discrete supercell'] += 0.07 * physics.supercellProbability; scores['discrete supercell cluster'] += 0.05 * physics.supercellProbability; }
-  const lifecycleMode = modeForLifecycle(lifecycle, elapsedHours);
-  if (lifecycleMode === 'discrete') scores['discrete supercell'] += 0.24 * Math.max(physics.supercellProbability, physics.initiationProbability);
-  if (lifecycleMode === 'multicell' || lifecycleMode === 'mixed') { scores.multicell += 0.11 * physics.initiationProbability; scores['semi-discrete supercell'] += 0.10 * physics.initiationProbability; scores['mixed supercell cluster'] += 0.10 * physics.initiationProbability; }
-  if (lifecycleMode === 'linear' || lifecycleMode === 'mixed') scores['linear segment'] += 0.24 * physics.linearProbability;
-  if (lifecycleMode === 'QLCS') scores['linear segment'] += 0.32 * physics.linearProbability;
-  if (lifecycleMode === 'MCS') scores.MCS += 0.34 * Math.max(physics.linearProbability, physics.initiationProbability);
-  if (lifecycleMode === 'elevated') scores['elevated convection'] += 0.28 * physics.initiationProbability;
-  if (lifecycleMode === 'pulse') scores['pulse storm'] += 0.24 * physics.initiationProbability;
-  if (['capped','conditional','stable','decay'].includes(lifecycleMode)) {
-    for (const key of Object.keys(scores)) scores[key] *= lifecycleMode === 'stable' ? 0.35 : 0.62;
-  }
-  const [mode, score] = Object.entries(scores).sort((a,b) => b[1]-a[1])[0];
-  return { mode, confidence: clamp(score, 0, 1), scores, physics, lifecycleMode };
+  const ranked = Object.entries(scores).sort((x, y) => y[1] - x[1]);
+  const [mode, score] = ranked[0];
+  return { mode, confidence: clamp(score - 0.5 * (ranked[1]?.[1] ?? 0) + 0.25, 0, 1), scores, physics, scp };
 }
 
-// Mode contract and hours into it, on each day's own clock (hours since 12Z).
-export function currentModeContract(world) {
-  const elapsed = Number(world.evolution?.elapsedHours) || 0;
-  return { contract: world.evolution?.config?.patternLifecycle ?? null, elapsedHours: ((elapsed % 24) + 24) % 24 };
-}
-
-export function modeForLifecycle(contract = null, elapsedHours = 0) {
-  if (!contract) return null;
-  const transition = Number(contract.modeTransitionHours) || 6;
-  const late = Number(contract.lateTransitionHours) || transition + 5;
-  if (elapsedHours >= late) return contract.lateMode ?? contract.preferredMatureMode ?? contract.initialMode;
-  if (elapsedHours >= transition) return contract.preferredMatureMode ?? contract.initialMode;
-  return contract.initialMode ?? contract.preferredMatureMode ?? null;
-}
+function ramp(value, start, end) { return clamp((value - start) / (end - start), 0, 1); }
 
 export function shouldSplitStorm(storm, environment) {
   return !storm.hasSplit && storm.ageHours >= 0.9 && storm.ageHours <= 3.2 &&

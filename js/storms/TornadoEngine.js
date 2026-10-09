@@ -17,6 +17,8 @@ export function initializeTornadoState(storm) {
   return storm.tornado;
 }
 
+const TORNADO_FAVOURABLE_HOURS = 1.5;
+
 export function updateTornadoState(world, storm, environment, dtHours) {
   const tornado = storm.tornado ?? initializeTornadoState(storm);
   const dtMinutes = dtHours * 60;
@@ -76,10 +78,17 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   const genesisThreshold = supercell ? clamp(0.37 - physicalTornadoSupport * 0.055 - synopticSupport * 0.015, 0.27, 0.37) : qlcs ? 0.50 : 0.82;
 
   if (!tornado.onGround && (tornado.state === 'none' || tornado.state === 'developing' || tornado.state === 'ended')) {
-    const opportunity = clamp((tornado.favorableMinutes ?? 0) / 45, 0, 1);
-    const perTickChance = clamp((tornado.genesisPotential - genesisThreshold + 0.08) * opportunity * mesoscaleQuality * (supercell ? 0.22 : 0.12), 0, supercell ? 0.16 : 0.08);
-    const sustainedFavorableRealization = supercell && tornado.favorableMinutes >= 60 && tornado.genesisPotential >= genesisThreshold * 0.94 && mesoscaleQuality >= 0.50;
-    if (canTornado && tornado.genesisPotential >= genesisThreshold && tornado.favorableMinutes >= (supercell ? 15 : 25) && (trigger < perTickChance || sustainedFavorableRealization)) {
+    // Genesis is a hazard rate while the storm is mature and favourable, calibrated so that
+    // over ~1.5 favourable hours (a typical mature window) the chance a supercell becomes tornadic follows observed STP
+    // climatology: 65% x (1 - e^(-STP/4)), i.e. ~14% at STP 1, ~26% at 2, ~41% at 4, ~56% at 8.
+    // The STP here is rebuilt from the raw ingredients (CAPE, SRH, shear, LCL, CIN); the
+    // displayed STP field stays analysis-only.
+    const ingredientStp = Math.max(0, diagnosedRawStp / 0.55);
+    const climatological = supercell ? 0.65 * (1 - Math.exp(-ingredientStp / 4))
+      : qlcs ? 0.25 * (1 - Math.exp(-ingredientStp / 3)) : 0.02;
+    const hazardPerHour = -Math.log(1 - clamp(climatological, 0, 0.95)) / TORNADO_FAVOURABLE_HOURS;
+    const perTickChance = (1 - Math.exp(-hazardPerHour * dtHours)) * clamp(mesoscaleQuality / 0.6, 0.4, 1.2);
+    if (canTornado && tornado.genesisPotential >= genesisThreshold && tornado.favorableMinutes >= (supercell ? 15 : 25) && trigger < perTickChance) {
       beginTornado(world, storm, tornado);
       drawTornadoCharacter(world, storm, tornado, physicalTornadoSupport, supercell);
     } else if (canTornado && tornado.genesisPotential >= genesisThreshold * 0.82 && tornado.favorableMinutes >= 10) tornado.state = 'developing';

@@ -60,7 +60,7 @@ export const NARRATIVES = [
     flow500Kt: [30, 42], jetPeakKt: [40, 65], lljKt: [38, 55], troughDm: [5, 9], lowDepthHpa: [10, 18], tilt: [0.3, 0.8] },
   { name: 'giant_hail', label: 'Giant-hail supercell day', weight: 0.10, intensity: [0.55, 0.85],
     setups: ['dryline_cyclone', 'lee_cyclogenesis', 'northwest_flow', 'high_plains_upslope'],
-    gulfDewpointF: [61, 67], moistureDepth: [0.45, 0.75], t850C: [16, 21], cap700C: [9, 12], lapse700500: [8.4, 9.2],
+    gulfDewpointF: [61, 67], moistureDepth: [0.45, 0.75], t850C: [16, 21], cap700C: [7.5, 10.5], lapse700500: [8.4, 9.2],
     flow500Kt: [32, 46], jetPeakKt: [40, 70], lljKt: [25, 40], troughDm: [4, 8], lowDepthHpa: [6, 14], tilt: [0.1, 0.6] },
   { name: 'mixed_mode', label: 'Mixed-mode severe evolution', weight: 0.11, intensity: [0.6, 0.88],
     setups: ['shortwave_ejection', 'progressive_cold_front', 'warm_front_wave'],
