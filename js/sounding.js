@@ -310,12 +310,17 @@ function buildParcelFromState(profile,source){
  const tlclK=lclTemperatureK(source.t,source.td), theta=(source.t+273.15)*Math.pow(1000/source.p,RD/CP);
  const pLcl=source.p*Math.pow(tlclK/(source.t+273.15),CP/RD);
  const w0=mixingRatioFromDewpoint(source.td,source.p);
- let previous={p:source.p,t:source.t};
+ let previous={p:source.p,t:source.t}, adiabat;
  return profile.map((r,i)=>{
    if(i<(source.index||0)) return {p:r.p,heightM:r.heightM,t:r.t,td:r.td};
    let t,td;
    if(r.p>=pLcl){t=theta*Math.pow(r.p/1000,RD/CP)-273.15;const e=w0*r.p/(EPS+w0);td=Math.min(t,dewpointFromVaporPressure(e));}
-   else {if(previous.p>pLcl)previous={p:pLcl,t:tlclK-273.15};t=moistLift(previous.t,previous.p,r.p);td=t;}
+   else {
+     if(adiabat===undefined)adiabat=pseudoAdiabatThroughPoint(tlclK-273.15,pLcl);
+     if(adiabat!==null)t=pseudoAdiabatTemperature(adiabat,r.p);
+     else {if(previous.p>pLcl)previous={p:pLcl,t:tlclK-273.15};t=moistLift(previous.t,previous.p,r.p);}
+     td=t;
+   }
    previous={p:r.p,t};return {p:r.p,heightM:r.heightM,t,td};
  });
 }
@@ -412,7 +417,46 @@ function vectorDirection(vector){
  return Math.round((toward+180+360)%360)%360;
 }
 
-function moistLift(tC,p1,p2){let t=tC+273.15,p=p1;const steps=Math.max(1,Math.ceil(Math.abs(p1-p2)/5)),dp=(p2-p1)/steps;for(let i=0;i<steps;i++){const next=p+dp,pm=.5*(p+next),ws=saturationMixingRatio(t-273.15,pm),lv=2.5e6-2360*(t-273.15);const gamma=(RD*t/pm)*(1+lv*ws/(RD*t))/(CP+lv*lv*ws*EPS/(RD*t*t));t+=gamma*(next-p);p=next}return t-273.15;}
+function moistLift(tC,p1,p2){let t=tC+273.15,p=p1;const steps=Math.max(1,Math.ceil(Math.abs(p1-p2)/5)),dp=(p2-p1)/steps;for(let i=0;i<steps;i++){const next=p+dp,pm=.5*(p+next);t+=moistLapseRate(t,pm)*(next-p);p=next}return t-273.15;}
+function moistLapseRate(tK,p){const ws=saturationMixingRatio(tK-273.15,p),lv=2.5e6-2360*(tK-273.15);return(RD*tK/p)*(1+lv*ws/(RD*tK))/(CP+lv*lv*ws*EPS/(RD*tK*tK));}
+
+// Pseudo-adiabat lookup table: saturated-ascent temperature indexed by the curve's
+// 1000-hPa temperature (wet-bulb potential temperature) and pressure. Lifting every
+// parcel by numeric integration dominated simulation time; built once, then each
+// parcel level is a bilinear lookup. Integrated with 1-hPa midpoint steps.
+const PA_P_BOTTOM=1000, PA_P_TOP=100, PA_ROWS=PA_P_BOTTOM-PA_P_TOP+1;
+const PA_THETA_MIN=-50, PA_THETA_STEP=0.25, PA_COLS=Math.round((45-PA_THETA_MIN)/PA_THETA_STEP)+1;
+let pseudoAdiabatTable=null;
+function buildPseudoAdiabatTable(){
+ const table=new Float64Array(PA_COLS*PA_ROWS);
+ for(let c=0;c<PA_COLS;c++){
+   let t=PA_THETA_MIN+c*PA_THETA_STEP+273.15;
+   table[c*PA_ROWS]=t-273.15;
+   for(let r=1;r<PA_ROWS;r++){
+     const p=PA_P_BOTTOM-(r-1),half=t+moistLapseRate(t,p)*-.5;
+     t-=moistLapseRate(half,p-.5);
+     table[c*PA_ROWS+r]=t-273.15;
+   }
+ }
+ return table;
+}
+function pseudoAdiabatAt(column,row){
+ const c0=Math.min(PA_COLS-2,Math.floor(column)),fc=column-c0,r0=Math.min(PA_ROWS-2,Math.floor(row)),fr=row-r0,T=pseudoAdiabatTable;
+ const a=T[c0*PA_ROWS+r0],b=T[c0*PA_ROWS+r0+1],c=T[(c0+1)*PA_ROWS+r0],d=T[(c0+1)*PA_ROWS+r0+1];
+ return (a+(b-a)*fr)*(1-fc)+(c+(d-c)*fr)*fc;
+}
+// Fractional table column of the pseudo-adiabat through (tC, p), or null if outside the table.
+function pseudoAdiabatThroughPoint(tC,p){
+ if(!(p<=PA_P_BOTTOM&&p>=PA_P_TOP))return null;
+ pseudoAdiabatTable??=buildPseudoAdiabatTable();
+ const row=PA_P_BOTTOM-p;
+ let lo=0,hi=PA_COLS-1;
+ if(!(tC>=pseudoAdiabatAt(lo,row)&&tC<=pseudoAdiabatAt(hi,row)))return null;
+ while(hi-lo>1){const mid=(lo+hi)>>1;if(pseudoAdiabatAt(mid,row)<=tC)lo=mid;else hi=mid;}
+ const tLo=pseudoAdiabatAt(lo,row),tHi=pseudoAdiabatAt(hi,row);
+ return lo+(tHi>tLo?(tC-tLo)/(tHi-tLo):0);
+}
+function pseudoAdiabatTemperature(column,p){return pseudoAdiabatAt(column,Math.max(0,Math.min(PA_ROWS-1,PA_P_BOTTOM-p)));}
 function lclTemperatureK(tC,tdC){const t=tC+273.15,td=tdC+273.15;return 1/(1/(td-56)+Math.log(t/td)/800)+56;}
 function saturationVaporPressure(tC){return 6.112*Math.exp(17.67*tC/(tC+243.5));}
 function saturationMixingRatio(tC,p){const e=Math.min(p*.99,saturationVaporPressure(tC));return EPS*e/(p-e);}

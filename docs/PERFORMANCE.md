@@ -85,10 +85,31 @@ Output equivalence: `npm run fingerprint` hashes are identical before and after 
 63869760 and 20240506 (cells, storms, outlook products and archive, mesoscale, synoptic
 objects, and the per-step timeline).
 
-Remaining profile: sounding diagnostics (~45%, dominated by `moistLift` for the
-most-unstable parcel search) and outlook issuance (~20%). Note that the verification
-profile rebuilds every sounding each step (`feedbackThermodynamics`), so this benchmark
-overweights sounding cost relative to the gameplay runtime.
+The verification profile rebuilds every sounding each step (`feedbackThermodynamics`),
+so this benchmark overweights sounding cost relative to the gameplay runtime.
+
+### 2026-10-08: pseudo-adiabat lookup table (intentional output change)
+
+Sounding diagnostics were ~45% of runtime, dominated by `moistLift` numerically
+integrating every lifted parcel (about 14 per cell for SB/ML/MU). Saturated ascent now
+reads a pseudo-adiabat table built once (wet-bulb potential temperature -50..45 °C at
+0.25 °C × 100..1000 hPa at 1 hPa, ~2.4 MB, midpoint-integrated). Parcels outside the
+table fall back to `moistLift`.
+
+This changes seeded output on purpose. Against a 0.01-hPa RK4 reference, the old 5-hPa
+Euler lift ran 0.30–0.48 K warm aloft; the table is within 0.0002 K. Across five seeds and
+three times (37,500 soundings), CAPE fell by a mean ~1.9% (max 111 J/kg on a 7,600 J/kg
+sounding); CIN changed by a mean 0.3 J/kg; lifted index by 0.08 K. Rare larger jumps occur
+only where a threshold flips (most-unstable parcel selection, EL near an inversion).
+
+| Metric | Before | After |
+| --- | ---: | ---: |
+| Median (3 runs) | 10.68 s | 7.78 s |
+| Median throughput | 0.56 sim hr/s | 0.77 sim hr/s |
+
+All test suites give the same pass/fail results as before the change.
+
+Remaining profile: garbage collection (~17%) and outlook issuance; sounding work is ~15%.
 
 ## Measurement protocol
 
