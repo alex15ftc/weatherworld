@@ -1,6 +1,6 @@
-import { Boundary } from './Boundary.js?v=2.20.1';
-import { clamp } from '../scenarios/math.js?v=2.20.1';
-import { constrainBoundaryMotion } from '../scenarios/SynopticCoherence.js?v=2.20.1';
+import { Boundary } from './Boundary.js';
+import { clamp } from '../scenarios/math.js';
+import { constrainBoundaryMotion } from '../scenarios/SynopticCoherence.js';
 import { effectivePatternHours } from '../scenarios/ActivePattern.js';
 
 const TYPES = ['cold', 'warm', 'dryline'];

@@ -1,4 +1,4 @@
-import { hydrateStormInternalField, isStormInternalFieldValid, serializeStormInternalField } from '../storms/StormInternalField.js?v=2.20.1';
+import { hydrateStormInternalField, isStormInternalFieldValid, serializeStormInternalField } from '../storms/StormInternalField.js';
 const STORAGE_KEY = 'fake-plains-weather-world-v7';
 const LEGACY_STORAGE_KEYS = ['fake-plains-weather-world-v6', 'fake-plains-weather-world-v5', 'fake-plains-weather-world-v4', 'fake-plains-weather-world-v3', 'fake-plains-weather-world-v2'];
 const STAGING_KEY = `${STORAGE_KEY}:staging`;

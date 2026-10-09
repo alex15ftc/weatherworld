@@ -1,5 +1,5 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
-import { sampleStormEnvironment, diagnoseStormMotion } from './environmentSampling.js?v=2.25.2';
+import { clamp } from '../scenarios/math.js';
+import { sampleStormEnvironment, diagnoseStormMotion } from './environmentSampling.js';
 
 export function initializeStormCoupling(world) {
   world.stormOutflows ??= [];

@@ -1,4 +1,4 @@
-import { profiler } from './performance/PerformanceProfiler.js?v=2.20.14';
+import { profiler } from './performance/PerformanceProfiler.js';
 
 const badge = document.querySelector('#authorityModeBadge');
 profiler.mark('bootstrap:scheduled');
@@ -12,11 +12,11 @@ if (location.protocol === 'file:') {
   location.replace(target);
 } else if (new URLSearchParams(location.search).get('local') === '1') {
   if (badge) badge.textContent = 'Authority: explicit local mode';
-  import('./main.js?v=2.32.6').catch(showFatal);
+  import('./main.js').catch(showFatal);
 } else {
   if (badge) badge.textContent = 'Authority: Node · tiled viewer';
   // No preliminary health round-trip and no automatic heavy local fallback.
-  import('./remoteProductPage.js?v=2.32.6').catch(showFatal);
+  import('./remoteProductPage.js').catch(showFatal);
 }
 
 function showFatal(error) {

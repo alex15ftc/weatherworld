@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
+import { clamp } from '../scenarios/math.js';
 
 export const STORM_FIELD_SIZE = 32;
 export const STORM_FIELD_RESOLUTION_KM = 2.5;

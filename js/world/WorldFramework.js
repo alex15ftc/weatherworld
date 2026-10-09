@@ -1,4 +1,4 @@
-import { REGIONS } from '../scenarios/regionalClimatology.js?v=2.20.1';
+import { REGIONS } from '../scenarios/regionalClimatology.js';
 
 const REGION_BY_ID = new Map(REGIONS.map(region => [region.id, region]));
 

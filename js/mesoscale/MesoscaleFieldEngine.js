@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
+import { clamp } from '../scenarios/math.js';
 
 const KNOT_TO_MS = 0.514444;
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { diagnoseStormRealizationPhysics, diagnoseOutlookRealizationChain } from '../js/storms/StormRealizationPhysics.js?v=2.28.14';
-import { diagnosePreferredMode } from '../js/storms/StormModeEngine.js?v=2.28.14';
+import { diagnoseStormRealizationPhysics, diagnoseOutlookRealizationChain } from '../js/storms/StormRealizationPhysics.js';
+import { diagnosePreferredMode } from '../js/storms/StormModeEngine.js';
 
 const weak = diagnoseStormRealizationPhysics({cape:250,cin:190,bulkShear:45,srh:250,lcl:1800,forcing:0.12,stormCoverage:0.2,discreteFraction:0.8});
 const strong = diagnoseStormRealizationPhysics({cape:2600,cin:25,bulkShear:48,srh:260,lcl:850,forcing:0.65,stormCoverage:0.55,discreteFraction:0.75,boundaryInfluence:0.45});

@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.22.0';
+import { clamp } from '../scenarios/math.js';
 
 const MPH_PER_KPH = 0.621371;
 const TORNADO_STATES = Object.freeze(['none', 'developing', 'on-ground', 'lifting', 'ended']);

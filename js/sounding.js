@@ -1,4 +1,4 @@
-import { boundaryAwareStpFactor } from './synoptic/BoundaryAirMassEngine.js?v=2.69.1';
+import { boundaryAwareStpFactor } from './synoptic/BoundaryAirMassEngine.js';
 const LEVELS = [1000,975,950,925,900,875,850,825,800,775,750,725,700,675,650,625,600,575,550,525,500,475,450,425,400,375,350,325,300,275,250,225,200,175,150,125,100];
 const RD=287.05, RV=461.5, CP=1004, G=9.80665, EPS=RD/RV, KNOT_TO_MS=.514444;
 

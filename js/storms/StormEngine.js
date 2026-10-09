@@ -1,16 +1,16 @@
-import { Storm } from './Storm.js?v=2.20.1';
-import { findInitiationCandidates } from './InitiationEngine.js?v=2.20.1';
-import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampling.js?v=2.20.1';
-import { diagnosePreferredMode, currentModeContract, shouldSplitStorm, shouldBecomeQlcs, shouldBecomeMcs, shouldUpscaleIntoLine } from './StormModeEngine.js?v=2.20.1';
-import { clamp } from '../scenarios/math.js?v=2.20.1';
-import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js?v=2.22.0';
-import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js?v=2.22.0';
-import { initializeStormStructure, evolveStormStructure } from './StormStructureEngine.js?v=2.24.0';
-import { initializeStormCoupling, sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStormColdPool, advanceStormOutflows } from './StormEnvironmentCoupling.js?v=2.25.2';
-import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js?v=2.28.14';
-import { diagnoseSynopticInitiationBudget, consumeSynopticInitiationBudget } from '../synoptic/SynopticObjectEngine.js?v=2.56.0';
+import { Storm } from './Storm.js';
+import { findInitiationCandidates } from './InitiationEngine.js';
+import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampling.js';
+import { diagnosePreferredMode, currentModeContract, shouldSplitStorm, shouldBecomeQlcs, shouldBecomeMcs, shouldUpscaleIntoLine } from './StormModeEngine.js';
+import { clamp } from '../scenarios/math.js';
+import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js';
+import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js';
+import { initializeStormStructure, evolveStormStructure } from './StormStructureEngine.js';
+import { initializeStormCoupling, sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStormColdPool, advanceStormOutflows } from './StormEnvironmentCoupling.js';
+import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
+import { diagnoseSynopticInitiationBudget, consumeSynopticInitiationBudget } from '../synoptic/SynopticObjectEngine.js';
 import { updateConvectiveOrganization } from './ConvectiveOrganizationEngine.js';
-import { initializeStormTrackIntelligence, updateStormTrackIntelligence, updateStormHazardSwaths } from './StormTrackIntelligence.js?v=2.60.0';
+import { initializeStormTrackIntelligence, updateStormTrackIntelligence, updateStormHazardSwaths } from './StormTrackIntelligence.js';
 
 export function initializeStormEngine(world) {
   world.storms = [];

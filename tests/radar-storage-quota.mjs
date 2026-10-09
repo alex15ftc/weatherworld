@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { WorldStateStore, WORLD_STATE_STORAGE_KEY } from '../js/world/WorldStateStore.js?v=2.20.0';
-import { createStormInternalField, evolveStormInternalField, serializeStormInternalField } from '../js/storms/StormInternalField.js?v=2.20.0';
+import { WorldStateStore, WORLD_STATE_STORAGE_KEY } from '../js/world/WorldStateStore.js';
+import { createStormInternalField, evolveStormInternalField, serializeStormInternalField } from '../js/storms/StormInternalField.js';
 class QuotaStorage {
   constructor(limit=1_500_000){this.limit=limit;this.map=new Map();}
   getItem(k){return this.map.get(k)??null;}

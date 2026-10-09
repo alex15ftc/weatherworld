@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { Atmosphere } from '../js/atmosphere.js';
 import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
 import { initializeEvolution } from '../js/evolution.js';
-import { diagnoseSynopticInitiationBudget, consumeSynopticInitiationBudget } from '../js/synoptic/SynopticObjectEngine.js?v=2.50.0';
+import { diagnoseSynopticInitiationBudget, consumeSynopticInitiationBudget } from '../js/synoptic/SynopticObjectEngine.js';
 
 const world = new Atmosphere(50,50);
 const config = generateScenario(world, 'dynamic-synoptic-test-250');

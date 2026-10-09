@@ -1,6 +1,6 @@
-import { profiler } from './performance/PerformanceProfiler.js?v=2.20.14';
-import { WeatherProductClient } from './api/WeatherProductClient.js?v=2.20.14';
-import { TileViewport } from './map/TileViewport.js?v=2.20.14';
+import { profiler } from './performance/PerformanceProfiler.js';
+import { WeatherProductClient } from './api/WeatherProductClient.js';
+import { TileViewport } from './map/TileViewport.js';
 
 const client=new WeatherProductClient();
 const mode=document.body.dataset.page||'live';
@@ -162,7 +162,7 @@ async function renderSounding(s,cell){
   renderEffectiveLayerStpPlot(p,outlook);
   document.querySelector('#forcingDetails').innerHTML=detailDefinitions(surface,forcing,terrain,context.features,outlook).map(([label,value])=>`<div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('');
   document.querySelector('#profileTableBody').innerHTML=(s.profile??[]).map(r=>`<tr><td>${formatNumber(r.p,0,'hPa')}</td><td>${formatNumber(r.heightM,0,'m MSL')}</td><td>${formatNumber(r.t,1,'°C')}</td><td>${formatNumber(r.td,1,'°C')}</td><td>${formatNumber(r.rh,0,'%')}</td><td>${formatWind(r.dir,r.spd)}</td></tr>`).join('');
-  const drawings=await import('./sounding.js?v=2.20.14');drawings.drawSounding(document.querySelector('#skewTCanvas'),s);drawings.drawHodograph(document.querySelector('#hodoCanvas'),s);
+  const drawings=await import('./sounding.js');drawings.drawSounding(document.querySelector('#skewTCanvas'),s);drawings.drawHodograph(document.querySelector('#hodoCanvas'),s);
 }
 function metricDefinitions(p){return[
   ['SBCAPE',formatNumber(p.sbcape,0,'J kg⁻¹')],['MLCAPE',formatNumber(p.mlcape,0,'J kg⁻¹')],['MUCAPE',formatNumber(p.mucape,0,'J kg⁻¹')],

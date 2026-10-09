@@ -1,8 +1,8 @@
-import { GAMEPLAY_NARRATIVE_WEIGHTS, STORY_MODIFIER_WEIGHTS, ATMOSPHERIC_ENVELOPE_WEIGHTS, SYNOPTIC_SETUP_WEIGHTS } from './config.js?v=2.20.1';
-import { clamp, gaussian, lerp, meteorologicalDirection, mulberry32, smoothstep } from './math.js?v=2.20.1';
-import { airMassThermodynamics, createSynopticPattern, sampleSynopticPattern, patternDewpointF } from './synopticPattern.js?v=2.20.1';
-import { PRESSURE_LEVELS_HPA } from '../constants.js?v=2.20.1';
-import { chooseAnalogBlend } from './AnalogPatternLibrary.js?v=2.28.8';
+import { GAMEPLAY_NARRATIVE_WEIGHTS, STORY_MODIFIER_WEIGHTS, ATMOSPHERIC_ENVELOPE_WEIGHTS, SYNOPTIC_SETUP_WEIGHTS } from './config.js';
+import { clamp, gaussian, lerp, meteorologicalDirection, mulberry32, smoothstep } from './math.js';
+import { airMassThermodynamics, createSynopticPattern, sampleSynopticPattern, patternDewpointF } from './synopticPattern.js';
+import { PRESSURE_LEVELS_HPA } from '../constants.js';
+import { chooseAnalogBlend } from './AnalogPatternLibrary.js';
 import { createActiveSequence } from './ActivePattern.js';
 
 // Activity level for generated systems: 'active' (default) gives severe weather on all three

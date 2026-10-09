@@ -1,5 +1,5 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
-import { createSharedStormState, evolveSharedStormState, snapshotSharedStormState, SHARED_STORM_KERNEL_VERSION } from './SharedStormEvolutionKernel.js?v=2.62.0';
+import { clamp } from '../scenarios/math.js';
+import { createSharedStormState, evolveSharedStormState, snapshotSharedStormState, SHARED_STORM_KERNEL_VERSION } from './SharedStormEvolutionKernel.js';
 
 export function initializeStormTrackIntelligence(storm) {
   storm.trackIntelligence ??= {

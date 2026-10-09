@@ -1,4 +1,4 @@
-import { profiler } from '../performance/PerformanceProfiler.js?v=2.20.14';
+import { profiler } from '../performance/PerformanceProfiler.js';
 
 export class TileViewport {
   constructor(canvas,{onClick=null,onHover=null,onViewChange=null,classicGrid=false,sourceZoom=2}={}){

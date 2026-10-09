@@ -1,4 +1,4 @@
-import { clamp, gaussian } from './math.js?v=2.20.1';
+import { clamp, gaussian } from './math.js';
 import { dayModeContract } from './ActivePattern.js';
 
 const SETUP_PROFILES = {

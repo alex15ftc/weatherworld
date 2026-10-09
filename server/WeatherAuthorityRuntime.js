@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { buildOutlookDiscussion } from '../js/forecast/OutlookDiscussionEngine.js?v=2.25.1';
+import { buildOutlookDiscussion } from '../js/forecast/OutlookDiscussionEngine.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { Atmosphere } from '../js/atmosphere.js';

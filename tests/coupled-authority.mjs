@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { Atmosphere } from '../js/atmosphere.js?v=2.17.0.1';
-import { generateScenario } from '../js/scenarios/scenarioGenerator.js?v=2.17.0.1';
-import { initializeEvolution } from '../js/evolution.js?v=2.17.0.1';
-import { projectBoundaryInfluence } from '../js/mesoscale/MesoscaleEngine.js?v=2.17.0.1';
-import { diagnoseBoundaries } from '../js/diagnostics/boundaryDiagnosis.js?v=2.17.0.1';
-import { applyStormFeedback } from '../js/storms/StormEngine.js?v=2.17.0.1';
+import { Atmosphere } from '../js/atmosphere.js';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
+import { initializeEvolution } from '../js/evolution.js';
+import { projectBoundaryInfluence } from '../js/mesoscale/MesoscaleEngine.js';
+import { diagnoseBoundaries } from '../js/diagnostics/boundaryDiagnosis.js';
+import { applyStormFeedback } from '../js/storms/StormEngine.js';
 
 const world = new Atmosphere(50, 50);
 // Seed 5 is a mature dryline cyclone with authoritative surface boundaries.

@@ -1,4 +1,4 @@
-import { createSharedStormState, evolveSharedStormState, snapshotSharedStormState, SHARED_STORM_KERNEL_VERSION } from '../storms/SharedStormEvolutionKernel.js?v=2.62.0';
+import { createSharedStormState, evolveSharedStormState, snapshotSharedStormState, SHARED_STORM_KERNEL_VERSION } from '../storms/SharedStormEvolutionKernel.js';
 const HAZARDS = ['tornado','hail','wind'];
 
 export function buildForecastStormProjection(grid, width, height, {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { Atmosphere } from '../js/atmosphere.js?v=2.17.0.1';
-import { generateScenario } from '../js/scenarios/scenarioGenerator.js?v=2.17.0.1';
-import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js?v=2.17.0.1';
+import { Atmosphere } from '../js/atmosphere.js';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
+import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
 
 let worldsWithStorms = 0;
 let totalStorms = 0;

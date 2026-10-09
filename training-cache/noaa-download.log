@@ -1,8 +1,0 @@
-{
-  "dryRun": false,
-  "root": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache",
-  "dates": 36,
-  "stations": 10,
-  "files": 118,
-  "manifestPath": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\manifests\\noaa-training-acquisition.json"
-}

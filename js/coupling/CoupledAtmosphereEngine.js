@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.21.4';
+import { clamp } from '../scenarios/math.js';
 
 const EPSILON = 0.025;
 const MAX_IDLE_HOURS = 18;

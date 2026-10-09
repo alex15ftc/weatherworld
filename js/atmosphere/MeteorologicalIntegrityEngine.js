@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
+import { clamp } from '../scenarios/math.js';
 const VERSION='2.70.0';
 
 export function initializeMeteorologicalIntegrity(world){

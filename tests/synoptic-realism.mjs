@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { Atmosphere } from '../js/atmosphere.js?v=2.17.0.3';
-import { generateScenario } from '../js/scenarios/scenarioGenerator.js?v=2.17.0.3';
-import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js?v=2.17.0.3';
+import { Atmosphere } from '../js/atmosphere.js';
+import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
+import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
 
 let emlWorlds = 0;
 const seedCount = 8;

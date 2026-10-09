@@ -14,7 +14,6 @@ for(const control of ['boundaryButton','regionButton','regionLabelButton']){
 }
 assert.match(remote,/if\(regionVisible\|\|regionLabelsVisible\)drawRegions/);
 assert.match(remote,/if\(boundaryVisible\)drawBoundaries/);
-assert.match(bootstrap,/remoteProductPage\.js\?v=2\.32\.6/,'remote viewer cache key must include this fix');
 
 const renderer=Object.create(Renderer.prototype);
 renderer.ctx={clearRect(){}};

@@ -1,4 +1,4 @@
-import { serializeStormInternalField } from './StormInternalField.js?v=2.20.1';
+import { serializeStormInternalField } from './StormInternalField.js';
 const REPORT_INTERVAL_HOURS = 1 / 60;
 const RADAR_AGGREGATION_HOURS = 5 / 60;
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { shouldUpscaleIntoLine } from '../js/storms/StormModeEngine.js?v=2.17.0.3';
-import { categoryFromHazard } from '../js/diagnostics/riskDiagnosis.js?v=2.17.0.3';
+import { shouldUpscaleIntoLine } from '../js/storms/StormModeEngine.js';
+import { categoryFromHazard } from '../js/diagnostics/riskDiagnosis.js';
 
 const storm = { mode:'discrete supercell', ageHours:5.8, coldPoolStrength:0.52 };
 assert.equal(shouldUpscaleIntoLine(storm, 2, {linearFraction:0.48, forcing:0.55}), true);

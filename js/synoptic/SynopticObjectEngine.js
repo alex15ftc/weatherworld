@@ -1,7 +1,7 @@
-import { reconcileSynopticState } from './DynamicSynopticReconciliation.js?v=2.64.0';
-import { applyBoundaryAirMassDynamics } from './BoundaryAirMassEngine.js?v=2.67.0';
-import { clamp } from '../scenarios/math.js?v=2.20.1';
-import { sampleSynopticPattern } from '../scenarios/synopticPattern.js?v=2.20.1';
+import { reconcileSynopticState } from './DynamicSynopticReconciliation.js';
+import { applyBoundaryAirMassDynamics } from './BoundaryAirMassEngine.js';
+import { clamp } from '../scenarios/math.js';
+import { sampleSynopticPattern } from '../scenarios/synopticPattern.js';
 import { effectivePatternHours, effectivePatternRate, activeLifecycle, waveAt } from '../scenarios/ActivePattern.js';
 
 export function initializeSynopticObjects(world, config = world.evolution?.config ?? world.scenarioMetadata) {

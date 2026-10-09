@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { Storm } from '../js/storms/Storm.js?v=2.20.0';
-import { createStormInternalField, evolveStormInternalField, sampleStormField, serializeStormInternalField, hydrateStormInternalField } from '../js/storms/StormInternalField.js?v=2.20.0';
+import { Storm } from '../js/storms/Storm.js';
+import { createStormInternalField, evolveStormInternalField, sampleStormField, serializeStormInternalField, hydrateStormInternalField } from '../js/storms/StormInternalField.js';
 const storm=new Storm({id:'TEST',xKm:250,yKm:250,velocityEastKph:45,velocityNorthKph:20,sourceCell:{x:25,y:25},createdHourUtc:18,modeHint:'discrete supercell'});
 storm.ageHours=2; storm.intensity=.9; storm.organization=.9; storm.coldPoolStrength=.55; storm.lifecycleState='mature'; storm.orientationDeg=45;
 const env={cape:3200,bulkShear:52,srh:310,dewpoint:68,lcl:750,forcing:.72,effectiveInflow:.88,readiness:.9};

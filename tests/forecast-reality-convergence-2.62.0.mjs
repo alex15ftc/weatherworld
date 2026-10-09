@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { createSharedStormState, evolveSharedStormState, SHARED_STORM_KERNEL_VERSION } from '../js/storms/SharedStormEvolutionKernel.js?v=2.62.0';
-import { buildForecastStormProjection } from '../js/forecast/ForecastStormProjectionEngine.js?v=2.62.0';
+import { createSharedStormState, evolveSharedStormState, SHARED_STORM_KERNEL_VERSION } from '../js/storms/SharedStormEvolutionKernel.js';
+import { buildForecastStormProjection } from '../js/forecast/ForecastStormProjectionEngine.js';
 
 const state=createSharedStormState({mode:'discrete supercell',motion:{east:2,north:1},remainingLifetimeHours:4});
 const next=evolveSharedStormState(state,{cape:2600,bulkShear:48,forcing:.45,openWarmSectorSupport:.8,discreteFraction:.75,boundaryStrength:.6,boundaryPropagation:{east:.4,north:.1}},1,{mode:'forecast'});

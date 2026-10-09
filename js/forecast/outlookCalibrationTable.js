@@ -61,5 +61,31 @@ export const OUTLOOK_CALIBRATION_TABLE = {
         "5": 30
       }
     }
+  },
+  "categoriesFittedFrom": {
+    "seeds": [
+      1,
+      11,
+      23,
+      42,
+      99,
+      2011,
+      2013,
+      20240506
+    ],
+    "hours": 72,
+    "minProductsPerCategory": 4
+  },
+  "categories": {
+    "day1": {
+      "HIGH": "MDT"
+    },
+    "day2": {
+      "ENH": "MDT",
+      "HIGH": "MDT"
+    },
+    "day3": {
+      "ENH": "MDT"
+    }
   }
 };

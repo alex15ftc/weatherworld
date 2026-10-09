@@ -2,8 +2,8 @@ import { applyEnsembleForecast } from './EnsembleForecastEngine.js';
 import { applyFinalCategoricalTopology } from './RegionalOutlookTopologyEngine.js';
 import { applyOutlookCalibration, categoryCalibrationEnabled, calibrateCategory } from './OutlookCalibration.js';
 import { activeLifecycle } from '../scenarios/ActivePattern.js';
-import { categoryFromHazard, categoryFromDay3TotalSevere, publishedCigForHazard } from '../diagnostics/riskDiagnosis.js?v=2.28.12';
-import { diagnoseOutlookRealizationChain } from '../storms/StormRealizationPhysics.js?v=2.28.14.1';
+import { categoryFromHazard, categoryFromDay3TotalSevere, publishedCigForHazard } from '../diagnostics/riskDiagnosis.js';
+import { diagnoseOutlookRealizationChain } from '../storms/StormRealizationPhysics.js';
 const SPECS = {
   day1: { label: 'Day 1', dayOffset: 0, cadence: 6, radius: 1, confidence: 0.96 },
   day2: { label: 'Day 2', dayOffset: 1, cadence: 12, radius: 2, confidence: 0.86 },

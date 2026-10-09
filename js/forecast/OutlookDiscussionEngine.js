@@ -1,4 +1,4 @@
-import { buildAnalogEnsemble } from './AnalogEnsembleEngine.js?v=2.28.8';
+import { buildAnalogEnsemble } from './AnalogEnsembleEngine.js';
 
 const PATTERN_LABELS = {
   dryline_cyclone:'Classic Dryline Cyclone', progressive_cold_front:'Progressive Cold Front',

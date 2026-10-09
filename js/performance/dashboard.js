@@ -1,5 +1,5 @@
-import { WeatherProductClient } from '../api/WeatherProductClient.js?v=2.20.13';
-import { profiler } from './PerformanceProfiler.js?v=2.20.13';
+import { WeatherProductClient } from '../api/WeatherProductClient.js';
+import { profiler } from './PerformanceProfiler.js';
 const client=new WeatherProductClient();
 const $=s=>document.querySelector(s);
 const local=JSON.parse(sessionStorage.getItem('weather:lastProfile')||'null');

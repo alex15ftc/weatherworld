@@ -1,5 +1,5 @@
-import { RISK_LABELS, RISK_ORDER } from '../scenarios/config.js?v=2.20.1';
-import { clamp } from '../scenarios/math.js?v=2.20.1';
+import { RISK_LABELS, RISK_ORDER } from '../scenarios/config.js';
+import { clamp } from '../scenarios/math.js';
 
 const RISK_INDEX = Object.fromEntries(RISK_ORDER.map((risk, index) => [risk, index]));
 

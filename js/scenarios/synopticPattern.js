@@ -1,4 +1,4 @@
-import { clamp, gaussian, lerp, smoothstep } from './math.js?v=2.20.1';
+import { clamp, gaussian, lerp, smoothstep } from './math.js';
 import { effectivePatternHours, dayCharacterFactors, waveAt } from './ActivePattern.js';
 
 const SETUP_PROFILES = {

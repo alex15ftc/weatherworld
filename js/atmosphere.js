@@ -1,5 +1,5 @@
-import { Cell } from './cell.js?v=2.20.1';
-import { SIMULATION_CONFIG } from './simulationConfig.js?v=2.20.1';
+import { Cell } from './cell.js';
+import { SIMULATION_CONFIG } from './simulationConfig.js';
 
 export class Atmosphere {
   constructor(width, height) {

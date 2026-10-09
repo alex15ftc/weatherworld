@@ -1,4 +1,4 @@
-import { clamp } from './scenarios/math.js?v=2.20.1';
+import { clamp } from './scenarios/math.js';
 
 const RISK_ORDER = ['TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 const RISK_COLORS = { TSTM: '#c1e9c1', MRGN: '#66a366', SLGT: '#ffe066', ENH: '#ffa366', MDT: '#e06666', HIGH: '#ee99ee' };

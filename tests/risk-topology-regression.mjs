@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { fillEnclosedLowerAreas } from '../js/diagnostics/riskDiagnosis.js?v=2.17.0';
+import { fillEnclosedLowerAreas } from '../js/diagnostics/riskDiagnosis.js';
 
 // A closed rank-3 ring around rank 2 must fill the center to rank 3.
 const closed = new Uint8Array([

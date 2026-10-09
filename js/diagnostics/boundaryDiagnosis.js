@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
+import { clamp } from '../scenarios/math.js';
 import { effectivePatternHours } from '../scenarios/ActivePattern.js';
 
 // Diagnoses mesoscale boundaries from the current evolving fields. Values are

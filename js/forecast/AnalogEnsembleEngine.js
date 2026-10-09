@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.25.1';
+import { clamp } from '../scenarios/math.js';
 
 export function buildAnalogEnsemble(config, day='day1', memberCount=30) {
   const leadFactor = day === 'day3' ? 1 : day === 'day2' ? 0.72 : 0.46;

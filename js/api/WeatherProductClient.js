@@ -1,4 +1,4 @@
-import { profiler } from '../performance/PerformanceProfiler.js?v=2.20.13';
+import { profiler } from '../performance/PerformanceProfiler.js';
 const DEFAULT_TIMEOUT_MS = 8000;
 
 export class WeatherProductClient {

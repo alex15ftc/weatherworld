@@ -1,5 +1,5 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
-import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js?v=2.28.14';
+import { clamp } from '../scenarios/math.js';
+import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
 import { dayModeContract } from '../scenarios/ActivePattern.js';
 
 export function diagnosePreferredMode(environment, setupKey = '', lifecycle = null, elapsedHours = 0) {

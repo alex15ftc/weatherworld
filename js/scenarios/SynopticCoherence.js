@@ -1,4 +1,4 @@
-import { clamp } from './math.js?v=2.20.1';
+import { clamp } from './math.js';
 
 export function diagnoseSynopticCoherence(world) {
   const boundaries = world.mesoscale?.boundaries ?? [];

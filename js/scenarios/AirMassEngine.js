@@ -1,4 +1,4 @@
-import { clamp, gaussian, lerp } from './math.js?v=2.20.1';
+import { clamp, gaussian, lerp } from './math.js';
 import { effectivePatternHours, waveAt } from './ActivePattern.js';
 
 // Peak 700 mb warming under the EML core. 3.8 C stacked on the generator's warm-sector

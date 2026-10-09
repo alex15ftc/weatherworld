@@ -1,7 +1,7 @@
 // Radar page: polls the authority for new volume scans, renders polar scan bytes (single
 // site) or the Cartesian network mosaic with a WebGL fragment shader (→ screen + colour
 // table), and draws map overlays in 2D.
-import { WeatherProductClient } from '../api/WeatherProductClient.js?v=2.20.13';
+import { WeatherProductClient } from '../api/WeatherProductClient.js';
 import { RADAR_PRODUCTS, decodeRadarValue, radarColorTable, beamHeightKm } from './RadarFormat.js';
 
 const POLL_MS = 4000;

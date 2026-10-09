@@ -1,4 +1,4 @@
-import { clamp } from '../scenarios/math.js?v=2.20.1';
+import { clamp } from '../scenarios/math.js';
 
 export function sampleStormEnvironment(world, xKm, yKm) {
   const gx = clamp(xKm / world.cellSizeKm - 0.5, 0, world.width - 1);
