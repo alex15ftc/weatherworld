@@ -26,6 +26,8 @@ export function advanceUpperAirTemperature(world, dtHours = 0.5) {
   // them so fronts aloft keep a realistic 50-100 km width instead of 8 C cell-to-cell jumps.
   const rawTarget = new Float32Array(w * h).fill(NaN);
   world.forEachCell((cell, x, y) => {
+    const airMass850 = Number(cell.features?.airMass850C);
+    if (Number.isFinite(airMass850)) { rawTarget[y * w + x] = airMass850; return; }
     const airMassF = Number(cell.features?.airMassTemperatureF);
     if (!Number.isFinite(airMassF)) return;
     const elevKm = (Number(cell.terrain?.elevationM) || 0) / 1000;

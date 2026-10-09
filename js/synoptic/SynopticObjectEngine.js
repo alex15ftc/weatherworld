@@ -195,11 +195,6 @@ function applyKinematicAtmosphericSolver(world, dtHours = 1) {
     cell.features.frontogenesis = t.frontogenesis;
     cell.features.jetDivergence = t.jetDivergence;
     cell.features.boundaryConvergence = clamp((Number(cell.features.boundaryConvergence)||0) * 0.72 + Math.max(0,t.convergence) * 0.28, 0, 1);
-    if (cell.derived) {
-      const thermalMoisture = clamp((cell.surface.temperature - cell.surface.dewpoint) / 35, 0, 1);
-      cell.derived.cin = clamp((Number(cell.derived.cin)||0) * (0.94 + thermalMoisture * 0.08) - Math.max(0,t.verticalVelocity) * 7 * dtHours, 0, 700);
-      cell.derived.cape = clamp((Number(cell.derived.cape)||0) + (cell.surface.dewpoint - t.moisture) * 18 - Math.max(0,-t.verticalVelocity) * 15, 0, 9000);
-    }
   });
   const after = diagnoseKinematicBalance(world);
   objects.kinematicDynamics = {

@@ -42,11 +42,15 @@ for (const seed of seeds) {
       if (cell.features?.warmSector) { warm++; warmCape += cell.derived.cape ?? 0; }
     });
     const [modeT850, modeCount] = [...t850Values].sort((a, b) => b[1] - a[1])[0];
+    // Tornadoes from each storm's history (an hourly on-ground sample misses most of them).
+    for (const storm of [...(world.storms ?? []), ...(world.stormArchive ?? [])]) {
+      for (const t of storm.tornadoHistory ?? []) tornadoes.add(`${storm.id}|${t.cycle ?? t.startedHourUtc}`);
+      if (storm.tornado?.onGround) tornadoes.add(`${storm.id}|${storm.tornado.cycleCount}`);
+    }
     for (const storm of world.storms ?? []) {
       if (storm.active === false) continue;
       stormIds.add(storm.id);
       modes[storm.mode] = (modes[storm.mode] ?? 0) + 1;
-      if (storm.tornado?.onGround) tornadoes.add(storm.id);
       stormSamples++;
       const env = storm.environment ?? {};
       if (/supercell/.test(storm.mode) && ['mature', 'cyclic', 'organizing'].includes(storm.lifecycleState) && ((env.cape ?? 0) < 250 || (env.bulkShear ?? 0) < 25)) mismatched++;

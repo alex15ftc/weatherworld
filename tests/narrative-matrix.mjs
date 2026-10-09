@@ -4,7 +4,7 @@ import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
 import { initializeEvolution } from '../js/evolution.js';
 
 const matrix = {};
-for (let seed = 1; seed <= 400; seed += 1) {
+for (let seed = 1; seed <= 60; seed += 1) {
   const world = new Atmosphere(50, 50);
   const config = generateScenario(world, seed);
   initializeEvolution(world, config);

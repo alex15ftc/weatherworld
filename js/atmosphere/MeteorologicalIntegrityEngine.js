@@ -27,10 +27,9 @@ function validateCells(world,c,e,w,fix){
   world.forEachCell((cell,x,y)=>{
     const parcel=parcelValidity(cell); cell.surfaceParcelValidity=parcel;
     c.parcel[0]++; if(parcel.score>=.25||(cell.derived?.stp??0)<1)c.parcel[1]++;
-    const stp=Math.max(0,Number(cell.derived?.stp)||0), raw=Math.max(stp,Number(cell.derived?.rawStp??cell.derived?.stpRaw)||stp);
+    const stp=Math.max(0,Number(cell.derived?.stp)||0);
     if(stp>=1&&parcel.score<.25){
       const code=boundaryStpCode(cell); e.push({code,cellId:cell.id,x,y,stp,parcelScore:parcel.score,limitingFactors:parcel.limitingFactors});
-      const next=Math.min(stp,raw*parcel.score); if(next<stp){cell.derived.stp=next;fix.push({code:'EFFECTIVE_STP_CONSTRAINED',cellId:cell.id,before:stp,after:next});}
     }
     const fresh=freshness(cell); c.freshness[0]++; if(fresh.valid)c.freshness[1]++; else {cell.diagnosticCacheInvalidated=true;cell.diagnosticInvalidationReasons=fresh.reasons;w.push({code:'CACHED_THERMODYNAMICS_STALE',cellId:cell.id,reasons:fresh.reasons});}
     const init=initiationCompatibility(cell,parcel); cell.meteorologicalIntegrity={version:VERSION,parcelScore:parcel.score,initiationCompatible:init.compatible,initiationReasons:init.reasons,diagnosticsFresh:fresh.valid};

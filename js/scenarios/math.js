@@ -16,8 +16,3 @@ export function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
-export function meteorologicalDirection(u, v) {
-  const toward = Math.atan2(u, -v) * 180 / Math.PI;
-  return (toward + 180 + 360) % 360;
-}

@@ -133,46 +133,6 @@ function validateSynopticImpossibilities(world,objects,before){
   return {version:VERSION,flags,counts:{highStpBehindDryline,warmBehindCold,moistBehindDryline},boundaryPairs:pairs,passed:flags.length===0};
 }
 
-export function boundaryAwareStpFactor(cell){
-  const fractions=cell.airMassFractions??{};
-  const authority=cell.airMassAuthority??{};
-  const hasFractionalAuthority=Boolean(cell.airMassAuthority||cell.airMassFractions);
-  if(!hasFractionalAuthority){
-    // Backward-compatible fallback for synthetic tests and legacy states. Live
-    // 2.69+ worlds always provide fractional authority before soundings run.
-    const sector=cell.airMass?.sector;
-    if(sector==='post-cold-front')return .12;
-    if(sector==='cool-sector')return .35;
-    if(sector==='dry-sector'||(cell.features?.boundaryRelative?.type==='dryline'&&cell.features?.boundaryRelative?.side==='behind')){
-      const depression=Math.max(0,Number(cell.surface?.temperature)-Number(cell.surface?.dewpoint));
-      return clamp(1-depression/38,.08,.28);
-    }
-    return 1;
-  }
-  const warm=clamp(Number(authority.warmMoistFraction??fractions.maritimeTropical)||0,0,1);
-  const dry=clamp(Number(authority.dryFraction??fractions.dryMixed)||0,0,1);
-  const cold=clamp(Number(authority.coldFraction)||((Number(fractions.continentalPolar)||0)+(Number(fractions.coolStable)||0)),0,1);
-  const outflow=clamp(Number(fractions.outflowModified)||0,0,1);
-  const temperature=Number(cell.surface?.temperature)||60;
-  const dewpoint=Number(cell.surface?.dewpoint)||45;
-  const depression=Math.max(0,temperature-dewpoint);
-  const moistureSupport=clamp((dewpoint-42)/25,0,1);
-  const parcelMoistureDepth=clamp(1-depression/34,0,1);
-  const rel=cell.features?.boundaryRelative;
-  const distance=Math.abs(Number(rel?.signedDistanceKm??rel?.distanceKm)||999);
-  const proximity=clamp(1-distance/80,0,1);
-
-  // Continuous air-mass validity replaces categorical 1.00 -> 0.12 jumps.
-  // Fractions and parcel properties carry most of the authority; boundary
-  // position only adds a bounded local correction near the interface.
-  let factor=.10 + .58*warm + .18*moistureSupport + .14*parcelMoistureDepth
-    - .22*dry - .30*cold - .12*outflow;
-  if(rel?.type==='dryline'&&rel.side==='behind')factor-=.16*proximity;
-  if(rel?.type==='cold'&&rel.side==='behind')factor-=.20*proximity;
-  if(rel?.type==='warm'&&rel.side==='ahead')factor-=.10*proximity;
-  return clamp(factor,.06,1);
-}
-
 function orientNormal(world,front,p,n){
   const a=sampleCell(world,{x:p.x+n.x*25,y:p.y+n.y*25}),b=sampleCell(world,{x:p.x-n.x*25,y:p.y-n.y*25});
   if(front.type==='dryline'&&a.dewpoint<b.dewpoint)return{x:-n.x,y:-n.y};

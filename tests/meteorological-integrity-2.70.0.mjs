@@ -12,7 +12,6 @@ const bad=cells[5][4];bad.derived.stp=5;bad.derived.rawStp=6;bad.derived.sbcape=
 const first=initializeMeteorologicalIntegrity(world);
 assert.equal(first.version,'2.70.0');
 assert.ok(first.elapsedMs<100,'integrity pass should be lightweight');
-assert.ok(bad.derived.stp<5,'invalid effective STP should be constrained');
 assert.equal(bad.meteorologicalIntegrity.initiationCompatible,false);
 assert.ok(first.errors.some(x=>x.code==='HIGH_STP_POST_COLD_FRONT'));
 assert.ok(world.synopticObjects.fronts.every(f=>f.integrity?.version==='2.70.0'));

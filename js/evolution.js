@@ -2,8 +2,9 @@ import { diagnoseCellEnvironment, diagnoseEventRisk } from './diagnostics/riskDi
 import { clamp } from './scenarios/math.js';
 import { diagnoseBoundaries } from './diagnostics/boundaryDiagnosis.js';
 import { diagnoseForcing } from './diagnostics/forcingDiagnosis.js';
-import { updateCellDiagnostics, updateLightweightStpDiagnostics as updateCellLightweightStpDiagnostics } from './sounding.js';
-import { sampleSynopticPattern, airMassThermodynamics, patternDewpointF } from './scenarios/synopticPattern.js';
+import { updateCellDiagnostics } from './sounding.js';
+import { sampleSynopticPattern, samplePatternWinds } from './scenarios/synopticPattern.js';
+import { airMassSurfaceState } from './scenarios/scenarioGenerator.js';
 import { analyzeMapFeatures } from './analysis/mapAnalysis.js';
 import { INITIAL_VALID_HOUR_UTC, OUTLOOK_INTERVAL_HOURS, PRESSURE_LEVELS_HPA } from './constants.js';
 import { initializeStormEngine, advanceStormEngine, applyStormFeedback } from './storms/StormEngine.js';
@@ -19,7 +20,6 @@ import { initializeCoupledAtmosphere, advanceCoupledAtmosphere, projectStormInfl
 import { initializeSynopticObjects, advanceSynopticObjects } from './synoptic/SynopticObjectEngine.js';
 import { resolveRuntimeProfile } from './runtime/RuntimeProfile.js';
 import { initializeMeteorologicalIntegrity, runMeteorologicalIntegrity } from './atmosphere/MeteorologicalIntegrityEngine.js';
-import { initializeAnalogScenarioEngine, runAnalogScenarioEngine } from './scenarios/AnalogScenarioEngine.js';
 import { applyBoundaryLayer, nocturnalCoolingFph } from './atmosphere/BoundaryLayerClosure.js';
 import { advanceUpperAirTemperature } from './atmosphere/UpperAirTransport.js';
 import { activeLifecycle } from './scenarios/ActivePattern.js';
@@ -51,12 +51,12 @@ export function initializeEvolution(world, config, { profile = 'gameplay' } = {}
     cell.surface.pressure = stationPressure(cell.surface.seaLevelPressure, cell.terrain.elevationM);
   });
 
-  applyInitialMorningPhaseAdjustment(world, INITIAL_VALID_HOUR_UTC);
   applyDiurnalAdjustment(world, INITIAL_VALID_HOUR_UTC);
   // Settle generator winds into the boundary layer before anything is diagnosed.
   applyBoundaryLayer(world, 2);
   enforcePhysicalConstraints(world);
-  // Initial derived fields already come from the authoritative generation formulas.
+  // Severe indices come only from soundings of the generated profiles.
+  updateSoundingDiagnostics(world);
   diagnoseBoundaries(world);
   initializeSynopticObjects(world, config);
   initializeMesoscaleEngine(world);
@@ -64,7 +64,6 @@ export function initializeEvolution(world, config, { profile = 'gameplay' } = {}
   initializeAirMassEngine(world, config.synopticPattern);
   updateSoundingDiagnostics(world);
   initializeMeteorologicalIntegrity(world);
-  initializeAnalogScenarioEngine(world);
   projectBoundaryInfluence(world, 0);
   projectBoundaryMetadata(world);
   diagnoseForcing(world);
@@ -132,12 +131,7 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
       projectBoundaryInfluence(world, stepHours);
     }
 
-    // 2.69.1: keep the displayed effective STP synchronized with current
-    // air-mass fractions and boundary side every gameplay step. This is a
-    // lightweight validity refresh and does not rebuild full soundings.
-    runEvolutionPhase(world, 'lightweightStp', () => updateLightweightStpDiagnostics(world, stepHours));
     runEvolutionPhase(world, 'meteorologicalIntegrity', () => runMeteorologicalIntegrity(world));
-    runEvolutionPhase(world, 'analogScenario', () => runAnalogScenarioEngine(world));
 
     if (isCadenceDue(world, 'medium', world.evolution.cadence?.mediumHours ?? 1)) {
       runEvolutionPhase(world, 'mediumAnalysis', () => {
@@ -263,9 +257,11 @@ function applySynopticCoupling(world, dtHours = 1) {
     const patternPoint = displayToPatternCoordinates(displayNx, displayNy, world.evolution?.config);
     const nx = patternPoint.x;
     const ny = patternPoint.y;
-    const synoptic = sampleSynopticPattern(pattern, nx, ny, elapsed);
+    const synoptic = { ...sampleSynopticPattern(pattern, nx, ny, elapsed), ...samplePatternWinds(pattern, nx, ny, elapsed) };
     const lifecycle = scenarioLifecycle(world.evolution?.config?.scenarioEvolution, elapsed);
-    const airMass = airMassThermodynamics(synoptic.airMass, ny, pattern.intensity);
+    // Air-mass source term toward the narrative's air masses (same function as initialization).
+    const scenarioConfig = world.evolution?.config ?? {};
+    const airMass = scenarioConfig.ingredients ? airMassSurfaceState(scenarioConfig, synoptic, nx, ny) : null;
     const config = world.evolution?.config ?? {};
 
     // Large-scale pressure tendencies are tied to the translating upper wave.
@@ -283,25 +279,11 @@ function applySynopticCoupling(world, dtHours = 1) {
     cell.levels[250].windSpeed = clamp(cell.levels[250].windSpeed * (1 - 0.20*lifecycle.kinematic) + synoptic.jet250Kt * (0.20*lifecycle.kinematic), 35, MAX_250_WIND_KT);
 
     const sourceStrength = (synoptic.airMass === 'mT' ? 0.055 : 0.035) * lifecycle.moisture;
-    const significantEnvelope = ['significant_regional','extreme_regional'].includes(config.atmosphericEnvelope);
-    const analogMoistureTarget = Number(config.gulfDewpoint)
-      - Number(config.northMoistureLoss ?? 7) * (1 - ny)
-      - (1 - lifecycle.moisture) * 3.5;
-    const dewpointTarget = significantEnvelope && synoptic.airMass === 'mT'
-      ? Math.max(patternDewpointF(airMass, pattern), analogMoistureTarget)
-      : patternDewpointF(airMass, pattern);
-    cell.surface.temperature += (airMass.temperatureF - cell.surface.temperature) * sourceStrength;
-    cell.surface.dewpoint += (dewpointTarget - cell.surface.dewpoint) * sourceStrength;
-    if (significantEnvelope && synoptic.airMass === 'mT') {
-      const coolingTarget = Number(config.temp500Base);
-      if (Number.isFinite(coolingTarget) && cell.levels[500].temperature > coolingTarget) {
-        const coolingWeight = (0.008 + 0.020 * synoptic.upperSupport) * lifecycle.forcing * dtHours;
-        cell.levels[500].temperature += (coolingTarget - cell.levels[500].temperature) * coolingWeight;
-      }
-    }
+    // Moisture source only: surface temperature follows the boundary layer and air aloft.
+    if (airMass) cell.surface.dewpoint += (airMass.dewpointF - cell.surface.dewpoint) * sourceStrength;
 
     cell.features.airMass = synoptic.airMass;
-    cell.features.airMassTemperatureF = airMass.temperatureF;
+    if (airMass) { cell.features.airMassTemperatureF = airMass.meanTemperatureF; cell.features.airMass850C = airMass.t850C; }
     // Sector membership is diagnostic geometry, not a transported tracer.
     // Rebuild it from the same evolving synoptic frame that controls the low
     // and fronts so instability cannot remain in a stale, displaced sector.
@@ -413,11 +395,18 @@ export function applyDiurnalAdjustment(world, absoluteHour, dtHours = 1) {
     const recoveryEligibility = clamp((0.35 + 0.65 * warmSector) * Math.max(0.18, solar) * (1 - processedAir) * (1 - coldPool) * (1 - activeStormInfluence) * (1 - 0.55 * cloudCover) * lifecycleRecovery, 0, 1);
     const preConvectiveRecovery = solar > 0.02 ? recoveryEligibility : 0;
 
-    const solarHeatingFph = solar * (1.20 + 0.42 * preConvectiveRecovery) * soilFactor;
+    // Daytime heating drives the surface toward the mixed-layer temperature: 850 mb air
+    // brought dry-adiabatically to the ground plus a shallow superadiabatic surface layer.
+    // Afternoon highs therefore follow the air mass aloft (and terrain height) instead of
+    // a fixed heating rate.
+    const t850 = Number(cell.levels?.[850]?.temperature);
+    const mixedLayerF = Number.isFinite(t850) ? (t850 + 0.0098 * Math.max(0, 1457 - cell.terrain.elevationM) + 1.5) * 9 / 5 + 32 : cell.surface.temperature;
+    const shading = (1 - 0.6 * cloudCover) * (1 - 0.6 * Math.max(coldPool, activeStormInfluence)) * (1 - 0.4 * processedAir);
+    const solarHeatingFph = solar * clamp((mixedLayerF - cell.surface.temperature) / 3, 0, 4) * shading * soilFactor;
     // Night cooling relaxes toward a dewpoint-limited floor (BoundaryLayerClosure); the
     // former constant 0.30 F/h let surface temperatures climb ~10-20 F per day.
     const radiativeCoolingFph = Math.max(solar < 0.02 ? 0.30 : 0.08 * (1 - solar), nocturnalCoolingFph(cell, solar));
-    const recoveryHeatingFph = 0.30 * preConvectiveRecovery;
+    const recoveryHeatingFph = 0;
     const temperatureTendencyFph = solarHeatingFph + recoveryHeatingFph - radiativeCoolingFph;
     cell.surface.temperature += temperatureTendencyFph * dtHours - elevationCoolingF * 0.012;
 
@@ -455,22 +444,6 @@ export function applyDiurnalAdjustment(world, absoluteHour, dtHours = 1) {
     diagnostics.energyBudget = energyBudget;
     cell.environmentDiagnostics ??= {};
     cell.environmentDiagnostics.energyBudget = energyBudget;
-  });
-}
-
-function applyInitialMorningPhaseAdjustment(world, absoluteHour) {
-  const utcHour=((absoluteHour%24)+24)%24;
-  const localHour=((utcHour-6)%24+24)%24;
-  if(localHour>9.5) return;
-  const morningFraction=clamp((9.5-localHour)/3.5,0,1);
-  world.forEachCell(cell=>{
-    const warmSector=cell.features?.warmSector?1:clamp(Number(cell.forecast?.openWarmSectorSupport)||0,0,1);
-    if(warmSector<0.35) return;
-    const moisture=clamp(((Number(cell.surface?.dewpoint)||45)-50)/25,0,1);
-    // Small residual dawn cooling on top of the generator's warm-sector morning offset.
-    const suppression=(0.8+1.4*warmSector+0.6*moisture)*morningFraction;
-    cell.surface.temperature-=suppression;
-    cell.surface.dewpoint-=Math.min(1.6,suppression*0.18);
   });
 }
 
@@ -515,23 +488,6 @@ function nowMs() {
 
 function updateSoundingDiagnostics(world) {
   world.forEachCell(cell => updateCellDiagnostics(cell));
-}
-
-function updateLightweightStpDiagnostics(world, dtHours = 0.5) {
-  let refreshed=0, discontinuities=0;
-  const examples=[];
-  world.forEachCell(cell => {
-    const result=updateCellLightweightStpDiagnostics(cell,dtHours);
-    if(!result)return;
-    refreshed++;
-    if(result.discontinuity){
-      discontinuities++;
-      if(examples.length<12)examples.push({cellId:cell.id,previousStp:result.previousStp,newStp:cell.derived?.stp,rawChangeFraction:result.rawChangeFraction,displayedChangeFraction:result.displayedChangeFraction,boundary:result.boundaryKey});
-    }
-  });
-  world.stpContinuity={version:'2.69.1',validHourUtc:world.validHourUtc,refreshedCells:refreshed,discontinuities,examples};
-  world.stpContinuityHistory=[...(world.stpContinuityHistory??[]).slice(-47),world.stpContinuity];
-  return world.stpContinuity;
 }
 
 function enforcePhysicalConstraints(world) {
