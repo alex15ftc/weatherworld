@@ -6,6 +6,7 @@
   "scripts": {
     "test": "npm run test:imports && npm run test:storms && npm run test:organization && npm run test:boundaries && npm run test:coupling && npm run test:synoptic && npm run test:structural && npm run test:setup-analogs && npm run test:system-boundaries && npm run test:world",
     "test:imports": "node tests/imports.mjs",
+    "fingerprint": "node scripts/state-fingerprint.mjs",
     "test:smoke": "node tests/smoke.mjs",
     "test:2.65.0": "node tests/forecast-confidence-engine-2.65.0.mjs",
     "test:regression-2.65.0": "npm run test:2.65.0 && node tests/outlook-assimilation-engine-2.63.0.mjs && node tests/dynamic-synoptic-reconciliation-2.64.0.mjs",

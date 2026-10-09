@@ -15,10 +15,12 @@ export function buildSounding(cell) {
     row.rh = relativeHumidity(row.t,row.td);
   });
 
-  const surfaceResult = parcelDiagnosticsForSource(profile, 0, cell.terrain.elevationM);
+  // Environment virtual temperature is identical for every parcel lifted through this profile.
+  const envTv = Float64Array.from(profile, r => virtualTemperatureK(r.t, r.td, r.p));
+  const surfaceResult = parcelDiagnosticsForSource(profile, 0, cell.terrain.elevationM, envTv);
   const mixedSource = mixedLayerSource(profile, 100);
-  const mixedResult = parcelDiagnosticsForState(profile, mixedSource, cell.terrain.elevationM);
-  const muResult = mostUnstableParcel(profile, cell.terrain.elevationM, 300);
+  const mixedResult = parcelDiagnosticsForState(profile, mixedSource, cell.terrain.elevationM, envTv);
+  const muResult = mostUnstableParcel(profile, cell.terrain.elevationM, 300, envTv, surfaceResult);
   const stormMotion = bunkers(profile,cell.terrain.elevationM);
   const kinematics = diagnoseKinematics(profile,stormMotion,cell.terrain.elevationM);
   const pw = precipitableWater(profile);
@@ -278,9 +280,9 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
  return anchors.filter(a=>a.isSurface||a.p<surfaceP).sort((a,b)=>b.p-a.p);
 }
 
-function parcelDiagnosticsForSource(profile,index,elevation){
+function parcelDiagnosticsForSource(profile,index,elevation,envTv){
  const src=profile[index];
- return parcelDiagnosticsForState(profile,{p:src.p,t:src.t,td:src.td,index},elevation);
+ return parcelDiagnosticsForState(profile,{p:src.p,t:src.t,td:src.td,index},elevation,envTv);
 }
 function mixedLayerSource(profile,depthHpa){
  const surfaceP=profile[0].p, rows=profile.filter(r=>r.p>=surfaceP-depthHpa);
@@ -291,16 +293,18 @@ function mixedLayerSource(profile,depthHpa){
  const e=w*surfaceP/(EPS+w),td=dewpointFromVaporPressure(e);
  return {p:surfaceP,t,td,index:0};
 }
-function mostUnstableParcel(profile,elevation,depthHpa){
+function mostUnstableParcel(profile,elevation,depthHpa,envTv,surfaceResult=null){
  const surfaceP=profile[0].p;let best=null;
- profile.forEach((r,i)=>{if(r.p<surfaceP-depthHpa)return;const result=parcelDiagnosticsForState(profile,{p:r.p,t:r.t,td:r.td,index:i},elevation);if(!best||result.thermo.cape>best.thermo.cape)best=result});
- return best||parcelDiagnosticsForSource(profile,0,elevation);
+ // The level-0 candidate is exactly the surface parcel; reuse it when already lifted.
+ profile.forEach((r,i)=>{if(r.p<surfaceP-depthHpa)return;const result=i===0&&surfaceResult?surfaceResult:parcelDiagnosticsForState(profile,{p:r.p,t:r.t,td:r.td,index:i},elevation,envTv);if(!best||result.thermo.cape>best.thermo.cape)best=result});
+ return best||surfaceResult||parcelDiagnosticsForSource(profile,0,elevation,envTv);
 }
-function parcelDiagnosticsForState(profile,source,elevation){
+function parcelDiagnosticsForState(profile,source,elevation,envTv=null){
  const parcel=buildParcelFromState(profile,source);
- const env=profile.slice(source.index||0);
- const aligned=parcel.slice(source.index||0);
- return {parcel,thermo:diagnoseParcel(env,aligned,elevation,source)};
+ const start=source.index||0;
+ const env=profile.slice(start);
+ const aligned=parcel.slice(start);
+ return {parcel,thermo:diagnoseParcel(env,aligned,elevation,source,envTv?envTv.subarray(start):null)};
 }
 function buildParcelFromState(profile,source){
  const tlclK=lclTemperatureK(source.t,source.td), theta=(source.t+273.15)*Math.pow(1000/source.p,RD/CP);
@@ -315,14 +319,18 @@ function buildParcelFromState(profile,source){
    previous={p:r.p,t};return {p:r.p,heightM:r.heightM,t,td};
  });
 }
-function diagnoseParcel(env,parcel,elevation,source){
+function diagnoseParcel(env,parcel,elevation,source,envTv=null){
  const tlcl=lclTemperatureK(source.t,source.td), pLcl=source.p*Math.pow(tlcl/(source.t+273.15),CP/RD);
  const lclM=heightAtPressure(env,pLcl);
  let cape=0,cin=0,lfcM=NaN,elM=NaN,positive=false;
+ // Each level's virtual temperature feeds two adjacent layers; carry it forward.
+ let tvEnvB=env.length?(envTv?envTv[0]:virtualTemperatureK(env[0].t,env[0].td,env[0].p)):0;
+ let tvParB=env.length?virtualTemperatureK(parcel[0].t,parcel[0].td,env[0].p):0;
  for(let i=0;i<env.length-1;i++){
-   const a=env[i],b=env[i+1],pa=parcel[i],pb=parcel[i+1];
-   const tvEnvA=virtualTemperatureK(a.t,a.td,a.p),tvEnvB=virtualTemperatureK(b.t,b.td,b.p);
-   const tvParA=virtualTemperatureK(pa.t,pa.td,a.p),tvParB=virtualTemperatureK(pb.t,pb.td,b.p);
+   const a=env[i],b=env[i+1],pb=parcel[i+1];
+   const tvEnvA=tvEnvB,tvParA=tvParB;
+   tvEnvB=envTv?envTv[i+1]:virtualTemperatureK(b.t,b.td,b.p);
+   tvParB=virtualTemperatureK(pb.t,pb.td,b.p);
    const buoyA=G*(tvParA-tvEnvA)/tvEnvA,buoyB=G*(tvParB-tvEnvB)/tvEnvB;
    const dz=Math.max(0,b.heightM-a.heightM),area=.5*(buoyA+buoyB)*dz,midH=.5*(a.heightM+b.heightM);
    if(midH>=lclM&&area>0){cape+=area;if(!positive){lfcM=midH;positive=true}}

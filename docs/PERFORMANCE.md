@@ -63,6 +63,33 @@ outlook phases for the next profiling pass.
 The 2.30.0 evolving-event changes retain the optimized performance profile. The same
 six-hour, three-run benchmark produced a 10.09-second median (0.59 simulated hr/s).
 
+### 2026-10-08: ensemble member cloning regression
+
+By 2.71.0 the reference benchmark had regressed to ~24 s (0.25 sim hr/s). A CPU profile
+attributed ~50% of runtime to `structuredClone` inside `applyEnsembleForecast`: every
+ensemble member (8/12/16 for Day 1/2/3) deep-cloned all 2,500 forecast cells twice, once
+for the member grid and again in `perturbGrid` only to read four scalar fields. Members
+now use shallow cell copies (the projection only reads cells; perturbation only writes
+top-level scalars), and `perturbGrid` snapshots just the shifted fields into typed arrays.
+
+Parcel diagnostics now compute environment virtual temperature once per sounding,
+carry adjacent-level virtual temperatures forward, and reuse the surface parcel as the
+level-0 most-unstable candidate.
+
+| Metric | Before | After |
+| --- | ---: | ---: |
+| Median (3 runs) | ~24.4 s | 10.68 s |
+| Median throughput | 0.25 sim hr/s | 0.56 sim hr/s |
+
+Output equivalence: `npm run fingerprint` hashes are identical before and after for seeds
+63869760 and 20240506 (cells, storms, outlook products and archive, mesoscale, synoptic
+objects, and the per-step timeline).
+
+Remaining profile: sounding diagnostics (~45%, dominated by `moistLift` for the
+most-unstable parcel search) and outlook issuance (~20%). Note that the verification
+profile rebuilds every sounding each step (`feedbackThermodynamics`), so this benchmark
+overweights sounding cost relative to the gameplay runtime.
+
 ## Measurement protocol
 
 1. Pin the Node version and record it with `node --version`.

@@ -18,7 +18,10 @@ export function applyEnsembleForecast(grid, width, height, {
   for(let m=0;m<memberCount;m++){
     const rng=mulberry32(hashSeed(seed,issueHour,key,m,'2.59.0'));
     const perturbation=buildPerturbation(rng,key,m);
-    const memberGrid=grid.map(cell=>structuredClone(cell));
+    // Members only overwrite top-level scalars (perturbGrid) and the projection only
+    // reads cells, so a shallow copy isolates them. Deep-cloning 2,500 forecast cells
+    // per member was ~half of total simulation time.
+    const memberGrid=grid.map(cell=>({...cell}));
     perturbGrid(memberGrid,width,height,perturbation);
     const projection=buildForecastStormProjection(memberGrid,width,height,{key,cellSizeKm,memberPerturbation:perturbation});
     const clusterKey=clusterLabel(projection,perturbation);
@@ -160,13 +163,15 @@ function weightedCentroid(points,weights){let sx=0,sy=0,w=0;for(let i=0;i<points
 function distance(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
 function effectiveSampleSize(weights){const s=weights.reduce((a,b)=>a+b,0),q=weights.reduce((a,b)=>a+b*b,0);return q?s*s/q:0;}
 
+const SHIFTED_FIELDS=['peakInitiation','projectedStormOccupancy','hazardOverlapScore','boundaryRelativePlacement'];
 function perturbGrid(grid,width,height,p){
-  const shifted=grid.map(c=>structuredClone(c));
+  // Snapshot only the shifted fields' pre-perturbation values (NaN = not finite).
+  const shifted=SHIFTED_FIELDS.map(field=>Float64Array.from(grid,c=>Number(c[field])));
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const sx=Math.max(0,Math.min(width-1,Math.round(x-p.objectDx)));
     const sy=Math.max(0,Math.min(height-1,Math.round(y-p.objectDy)));
-    const src=shifted[sy*width+sx]; const cell=grid[y*width+x];
-    for(const field of ['peakInitiation','projectedStormOccupancy','hazardOverlapScore','boundaryRelativePlacement']) if(Number.isFinite(Number(src[field]))) cell[field]=Number(src[field]);
+    const src=sy*width+sx; const cell=grid[y*width+x];
+    for(let f=0;f<SHIFTED_FIELDS.length;f++){ const v=shifted[f][src]; if(Number.isFinite(v)) cell[SHIFTED_FIELDS[f]]=v; }
     cell.peakInitiation=clamp((Number(cell.peakInitiation)||0)*p.initiationFactor+p.initiationBias,0,1);
     cell.projectedStormOccupancy=clamp((Number(cell.projectedStormOccupancy)||0)*p.occupancyFactor,0,1);
     cell.conditionalTornadoIntensity=clamp((Number(cell.conditionalTornadoIntensity)||0)*p.tornadoFactor,0,1.2);
