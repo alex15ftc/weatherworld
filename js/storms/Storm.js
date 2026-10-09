@@ -1,7 +1,8 @@
 export const STORM_STATES = Object.freeze(['tower', 'developing', 'organizing', 'mature', 'cyclic', 'weakening', 'dissipating']);
 export const STORM_MODES = Object.freeze([
-  'pulse storm', 'multicell', 'discrete supercell', 'left-moving supercell',
-  'linear segment', 'QLCS', 'MCS', 'elevated convection'
+  'pulse storm', 'multicell', 'isolated discrete', 'semi-discrete', 'discrete supercell',
+  'discrete supercell cluster', 'mixed supercell cluster', 'left-moving supercell',
+  'broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS', 'elevated convection'
 ]);
 
 export class Storm {
@@ -31,7 +32,7 @@ export class Storm {
     this.mode = modeHint ?? 'developing convection';
     this.modeConfidence = 0.2;
     this.modeAgeHours = 0;
-    this.sourceCell = { x: sourceCell.x, y: sourceCell.y };
+    this.sourceCell = { ...sourceCell, x: sourceCell.x, y: sourceCell.y };
     this.environment = {};
     this.active = true;
     this.parentId = parentId;
@@ -67,6 +68,9 @@ export class Storm {
     this.dissipationReason = null;
     this.internalField = null;
     this.structure = null;
+    this.trackIntelligence = null;
+    this.convectiveOrganization = { score: 0, clusterId: null, clusterSize: 1, nearestNeighborKm: null, coldPoolOverlap: 0, alignment: 0, state: 'isolated' };
+    this.organizationHistory = [];
   }
 
   toSnapshot() {

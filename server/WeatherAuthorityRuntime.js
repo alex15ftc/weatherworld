@@ -180,7 +180,7 @@ export class WeatherAuthorityRuntime {
       storms: (a.storms ?? []).map(persistentStormSnapshot),
       stormArchive: (a.stormArchive ?? []).slice(-120),
       stormOutflows: (a.stormOutflows ?? []).slice(-160),
-      stormEngine: a.stormEngine, mesoscale: a.mesoscale, airMassEngine: a.airMassEngine,
+      stormEngine: a.stormEngine, mesoscale: a.mesoscale, synopticObjects: a.synopticObjects, airMassEngine: a.airMassEngine,
       regions: a.regions, synopticCoherence: a.synopticCoherence, setupForecast: a.setupForecast,
       outlookCycle: a.outlookCycle, upcomingSystemForecast: a.upcomingSystemForecast, radarNetwork: a.radarNetwork,
       config: this.config

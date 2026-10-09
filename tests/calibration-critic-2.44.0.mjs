@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+import { critiqueVerification, aggregateCritiques } from '../js/verification/CalibrationCritic.js';
+const report={event:{initiations:3,totalTornadoes:1},forecast:{byDay:{day1:{latest:{forecastOverallRisk:'SLGT'}}}},atmosphericEnvironmentSamples:[{hourUtc:18,domainSummary:{percentile90:{cape:1800,bulkShear:42,srh:160,stp:2,forcing:.7},maximum:{initiationProbability:.6}},warmSectorSummary:{mean:{cin:-50,surfaceDewpointF:65},fractionOfDomain:.4}},{hourUtc:0,domainSummary:{percentile90:{cape:2400,bulkShear:48,srh:220,stp:3,forcing:.8},maximum:{initiationProbability:.75}},warmSectorSummary:{mean:{cin:-10,surfaceDewpointF:67},fractionOfDomain:.5}}]};
+const c=critiqueVerification(report,{environment:{peakCape:[1500,3500],peakStp:[1,5]}});assert.ok(c.environmentScore>=.9&&c.environmentScore<=1);assert.equal(c.flags.length,0);assert.equal(c.diagnostics.peakCape,2400);
+const bad=critiqueVerification({...report,event:{initiations:2,totalTornadoes:0},atmosphericEnvironmentSamples:[{hourUtc:18,domainSummary:{percentile90:{cape:500,bulkShear:10,srh:20,stp:.1,forcing:.1},maximum:{initiationProbability:.05}},warmSectorSummary:{mean:{cin:-250,surfaceDewpointF:50},fractionOfDomain:.1}}]},{});assert.ok(bad.flags.some(x=>x.code==='INITIATION_WITHOUT_SIGNAL'));
+const agg=aggregateCritiques([{score:1,risk:{label:'SLGT'},critic:c},{score:.5,risk:{label:'NONE'},critic:bad}]);assert.equal(agg.members,2);assert.equal(agg.riskDistribution.SLGT.count,1);
+console.log('2.44.0 calibration critic regression: PASS');

@@ -29,7 +29,17 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
   for (let y = 1; y < world.height - 1; y++) {
     for (let x = 1; x < world.width - 1; x++) {
       const cell = world.getCell(x, y);
+      if (cell.meteorologicalIntegrity?.initiationCompatible === false) continue;
       const rawProbability = cell.forecast?.initiationProbability ?? cell.dynamics?.initiationPotential ?? 0;
+      const airMassSector = cell.airMass?.sector ?? cell.features?.airMassSector ?? cell.features?.airMass ?? 'ambient';
+      const surfaceBasedAirMass = !['dry-sector','post-cold-front','cool-sector','outflow'].includes(airMassSector);
+      const elevatedSupportEarly = Number(cell.forecast?.nocturnalElevatedSupport) || 0;
+      const explicitBoundaryEarly = Math.max(Number(cell.features?.explicitBoundaryInfluence) || 0, Number(cell.features?.boundaryConvergence) || 0);
+      const synopticLiftEarly = Number(cell.features?.synopticAscent) || 0;
+      // 2.68.0: reject obviously incompatible surface parcels before the expensive
+      // candidate calculation. Elevated convection may still form when explicitly supported.
+      if (!surfaceBasedAirMass && elevatedSupportEarly < 0.42) continue;
+      if (rawProbability < 0.015 && explicitBoundaryEarly < 0.18 && synopticLiftEarly < 0.36) continue;
       const terrainLift = clamp((cell.dynamics?.terrainLiftMs ?? 0) / 0.05, 0, 1);
       const upslopeSignal = setupKey === 'high_plains_upslope'
         ? terrainLift * (0.55 + 0.45 * Math.max(
@@ -52,7 +62,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
       const elevatedTimeGate = setupKey === 'elevated_mcs'
         ? 0.015 + 0.985 * Math.exp(-0.5 * Math.pow(elevatedHourDistance / 2.5, 2))
         : 1;
-      const probability = ungatedProbability * (0.18 + 0.82 * eventRelease) * elevatedTimeGate;
+      const baseProbability = ungatedProbability * (0.18 + 0.82 * eventRelease) * elevatedTimeGate;
       const rawConvectivePotential = cell.forecast?.convectivePotential ?? cell.dynamics?.convectiveReadiness ?? 0;
       const convectivePotential = setupKey === 'northwest_flow'
         ? Math.max(rawConvectivePotential, clamp(
@@ -63,7 +73,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
         : rawConvectivePotential;
       const capFailureProbability = cell.forecast?.capFailureProbability ?? 0;
       const forcingConfidence = cell.forecast?.forcingConfidence ?? 0;
-      const releaseProbability = cell.forecast?.releaseProbability ?? probability;
+      const releaseProbability = cell.forecast?.releaseProbability ?? baseProbability;
       const rawReadiness = cell.dynamics?.convectiveReadiness ?? 0;
       const readiness = setupKey === 'northwest_flow'
         ? Math.max(rawReadiness, clamp(
@@ -94,6 +104,49 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
         0.14 * (cell.features?.synopticAscent ?? 0) + 0.10 * mesoscaleFocus +
         0.08 * openSector, 0, 1);
       const timingSupport = Math.max(0.18 + 0.82 * physicalRelease, nocturnalElevated * 0.82);
+      // 2.47.0: use one shared signal for both published CI guidance and storm
+      // realization. Previously the storm engine could use strong boundary or
+      // forcing pathways while the reported initiation probability stayed near
+      // zero, creating INITIATION_WITHOUT_SIGNAL contradictions.
+      // 2.48.0: represent mesoscale lift as a coherent corridor object.
+      // Boundary identity is inherited from the authoritative mesoscale object;
+      // cells without an explicit object are grouped into broad forcing bands so
+      // neighboring maxima do not behave as unrelated storm sources.
+      const namedInfluences = Object.values(cell.features?.synopticBoundaryInfluences ?? {}).sort((a,b)=>(b.influence??0)-(a.influence??0));
+      const namedPrimary = namedInfluences[0] ?? null;
+      const boundaryType = namedPrimary?.influence >= 0.12 ? Object.keys(cell.features?.synopticBoundaryInfluences ?? {}).find(key => cell.features.synopticBoundaryInfluences[key] === namedPrimary) : (cell.features?.primaryBoundaryType ?? null);
+      const boundaryId = namedPrimary?.influence >= 0.12 ? namedPrimary.id : (cell.features?.primaryBoundaryId ?? null);
+      const namedBoundaryInfluence = clamp(namedPrimary?.influence ?? 0,0,1);
+      const outflowSupport = clamp(cell.memory?.coldPool ?? cell.features?.outflowBoundaryInfluence ?? 0, 0, 1);
+      const corridorStrength = clamp(
+        0.34 * (cell.features?.boundaryConvergence ?? 0) +
+        0.16 * (cell.features?.explicitBoundaryInfluence ?? 0) + 0.12 * namedBoundaryInfluence +
+        0.18 * mesoscaleFocus + 0.12 * trigger +
+        0.08 * (cell.features?.synopticAscent ?? 0) + 0.06 * outflowSupport,
+        0,
+        1
+      );
+      const segmentIndex = boundaryId ? Math.max(0, Math.min(5, Math.floor((boundaryType === 'warm' ? x : y) / Math.max(1, (boundaryType === 'warm' ? world.width : world.height) / 6)))) : null;
+      const corridorId = boundaryId && namedBoundaryInfluence >= 0.12
+        ? `boundary:${boundaryId}:segment:${segmentIndex}`
+        : outflowSupport >= 0.35
+          ? `outflow:${Math.floor(x / 5)}:${Math.floor(y / 5)}`
+          : `forcing:${Math.floor(x / 7)}:${Math.floor(y / 7)}`;
+      const boundaryLift = clamp(
+        0.20 * corridor + 0.12 * namedBoundaryInfluence + 0.20 * mesoscaleFocus + 0.14 * trigger + 0.30 * corridorStrength +
+        0.12 * (cell.features?.synopticAscent ?? 0) + 0.10 * openSector,
+        0,
+        1
+      );
+      const effectiveInitiationSignal = clamp(1 -
+        (1 - baseProbability) *
+        (1 - 0.72 * boundaryLift) *
+        (1 - 0.48 * capFailureProbability) *
+        (1 - 0.34 * forcedSignal), 0, 1);
+      const probability = effectiveInitiationSignal;
+      cell.forecast ??= {};
+      cell.forecast.effectiveInitiationSignal = effectiveInitiationSignal;
+      cell.forecast.initiationProbability = Math.max(Number(cell.forecast.initiationProbability) || 0, effectiveInitiationSignal);
 
       // Staged gating: convection must be possible, but no longer requires all
       // ingredients to independently exceed high thresholds.
@@ -107,6 +160,9 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
       if (physicalRelease < 0.12 && nocturnalElevated < 0.18 && !exceptionalForcedInitiation) continue;
       if ((cell.forecast?.capBreakProbability ?? cell.forecast?.capFailureProbability ?? 0) < 0.015 && nocturnalElevated < 0.30 && !exceptionalForcedInitiation) continue;
       if (trigger < 0.16 && corridor < 0.24 && mesoscaleFocus < 0.30 && openSector < 0.42 && prefrontal < 0.38) continue;
+      const coherentSource = boundaryId || outflowSupport >= 0.35 || corridorStrength >= 0.30 || (trigger >= 0.58 && (cell.features?.synopticAscent ?? 0) >= 0.45);
+      if (!coherentSource) continue;
+      if (!surfaceBasedAirMass && nocturnalElevated < 0.42) continue;
       if (!isBroadLocalMaximum(world, x, y, probability)) continue;
 
       const score = clamp(
@@ -114,22 +170,36 @@ export function findInitiationCandidates(world, existingStorms, hourUtc) {
         0,
         1
       );
+      const persistenceKey = `${x},${y}`;
+      world.stormEngine ??= {};
+      const persistence = world.stormEngine.initiationPersistence ??= new Map();
+      const priorPersistence = persistence.get(persistenceKey) ?? { slots: 0, lastHour: -Infinity };
+      const consecutive = Math.abs((priorPersistence.lastHour ?? -Infinity) - (hourUtc - 0.5)) < 0.01 ? priorPersistence.slots + 1 : 1;
+      persistence.set(persistenceKey, { slots: consecutive, lastHour: hourUtc });
+      const immediateRelease = probability >= 0.32 && corridorStrength >= 0.48;
+      if (consecutive < 2 && !immediateRelease) continue;
       const xKm = (x + 0.5) * world.cellSizeKm;
       const yKm = (y + 0.5) * world.cellSizeKm;
-      if (nearestDistanceKm(existingStorms, xKm, yKm) < spacingFor(cell)) continue;
-      candidates.push({ x, y, xKm, yKm, score, probability, convectivePotential, capFailureProbability, forcingConfidence, releaseProbability, corridor, mesoscaleFocus, openSector, trackSupport, prefrontal, tornadicSupport, surfaceTiming, capErosion, nocturnalElevated, nightStability, timingSupport, physicalRelease, eventRelease, hourUtc });
+      if (nearestDistanceKm(existingStorms, xKm, yKm) < spacingFor(world, cell, { existing: true })) continue;
+      candidates.push({ x, y, xKm, yKm, score, probability, effectiveInitiationSignal, corridorId, corridorStrength, boundaryType, processedAir: clamp(cell.features?.stormProcessedAir ?? 0, 0, 1), secondaryOutflow: outflowSupport >= 0.35, primaryTrigger:{ boundaryId, boundaryType, influence:namedBoundaryInfluence, secondary:namedInfluences.slice(1,3) }, forcingComponents: { boundaryConvergence: cell.features?.boundaryConvergence ?? 0, explicitBoundaryInfluence: cell.features?.explicitBoundaryInfluence ?? 0, mesoscaleFocus, trigger, synopticAscent: cell.features?.synopticAscent ?? 0, outflowSupport }, convectivePotential, capFailureProbability, forcingConfidence, releaseProbability, corridor, mesoscaleFocus, openSector, trackSupport, prefrontal, tornadicSupport, surfaceTiming, capErosion, nocturnalElevated, nightStability, timingSupport, physicalRelease, eventRelease, hourUtc, airMassSector, persistenceSlots: consecutive });
     }
   }
 
   candidates.sort((a, b) => b.score - a.score);
   const accepted = [];
   const peakTiming = candidates.reduce((max, candidate) => Math.max(max, candidate.timingSupport ?? 0), 0);
-  const setupLimit = setupKey === 'northwest_flow' ? 3 : 14;
-  const maxNewStorms = Math.min(remainingCapacity, Math.max(1, Math.min(setupLimit, Math.round((1 + setup.coverage * 11) * (0.18 + 0.82 * peakTiming)))));
+  const setupLimit = setupKey === 'northwest_flow' ? 3 : (significantEvent ? 10 : 7);
+  const peakSignal = candidates.reduce((max, candidate) => Math.max(max, candidate.effectiveInitiationSignal ?? candidate.probability ?? 0), 0);
+  const maxNewStorms = Math.min(remainingCapacity, Math.max(0, Math.min(setupLimit,
+    Math.round((1 + setup.coverage * 8) * peakSignal * (0.35 + 0.65 * peakTiming)))));
   if (maxNewStorms <= 0) return accepted;
 
+  const persistence = world.stormEngine?.initiationPersistence;
+  if (persistence instanceof Map && persistence.size > world.width * world.height * 0.5) {
+    for (const [key, value] of persistence) if ((value.lastHour ?? -Infinity) < hourUtc - 2) persistence.delete(key);
+  }
   for (const candidate of candidates) {
-    if (accepted.some(other => Math.hypot(other.xKm - candidate.xKm, other.yKm - candidate.yKm) < acceptedSpacing(candidate))) continue;
+    if (accepted.some(other => Math.hypot(other.xKm - candidate.xKm, other.yKm - candidate.yKm) < acceptedSpacing(world, candidate, other))) continue;
     if (deterministicUnit(world.evolution?.config?.seed ?? 'seed', hourUtc, candidate.x, candidate.y) > formationChance(candidate)) continue;
     accepted.push(candidate);
     if (accepted.length >= maxNewStorms) break;
@@ -150,15 +220,33 @@ function isBroadLocalMaximum(world, x, y, value) {
   return greater <= 1;
 }
 
-function spacingFor(cell) {
-  const cin = cell.derived.cin ?? 0;
-  const coverage = cell.forecast?.stormCoverage ?? 0.5;
-  const linear = cell.forecast?.linearFraction ?? 0.4;
-  return clamp(34 + cin * 0.08 - coverage * 16 - linear * 5, 18, 48);
+// 2.52.0: spacing is expressed relative to the 10 km grid and the expected
+// storm mode, not as one synoptic-scale exclusion radius. A cell covers 100
+// km², so multiple storms can legitimately occupy neighboring cells while
+// still representing distinct updrafts or members of a cluster.
+export function spacingFor(world, cell, { existing = false } = {}) {
+  const cellKm = Math.max(1, Number(world?.cellSizeKm) || 10);
+  const cin = Math.max(0, Number(cell.derived?.cinMagnitude ?? cell.derived?.cin) || 0);
+  const coverage = clamp(Number(cell.forecast?.stormCoverage) || 0.5, 0, 1);
+  const discrete = clamp(Number(cell.forecast?.discreteFraction) || 0, 0, 1);
+  const linear = clamp(Number(cell.forecast?.linearFraction) || 0, 0, 1);
+  const corridor = clamp(Math.max(cell.forecast?.initiationCorridor ?? 0, cell.mesoscaleFields?.convergenceCorridor ?? 0), 0, 1);
+  const processed = clamp(Number(cell.features?.stormProcessedAir) || 0, 0, 1);
+  const baseCells = 1.15 + discrete * 0.85 - linear * 0.32 - coverage * 0.30 - corridor * 0.22;
+  const capAdjustmentCells = clamp(cin / 240, 0, 0.65);
+  const processedAdjustmentCells = processed * 0.45;
+  const existingBufferCells = existing ? 0.20 : 0;
+  return clamp((baseCells + capAdjustmentCells + processedAdjustmentCells + existingBufferCells) * cellKm, cellKm * 0.9, cellKm * 2.8);
 }
 
-function acceptedSpacing(candidate) {
-  return clamp(30 - candidate.corridor * 8, 20, 30);
+export function acceptedSpacing(world, candidate, other) {
+  const cellKm = Math.max(1, Number(world?.cellSizeKm) || 10);
+  const corridorSupport = clamp(Math.max(candidate.corridor ?? 0, candidate.corridorStrength ?? 0), 0, 1);
+  const sameCorridor = candidate.corridorId && candidate.corridorId === other.corridorId;
+  const clustered = candidate.secondaryOutflow || sameCorridor && corridorSupport >= 0.58;
+  const baseCells = clustered ? 0.95 : 1.35;
+  const corridorReduction = corridorSupport * (clustered ? 0.20 : 0.28);
+  return clamp((baseCells - corridorReduction) * cellKm, cellKm * 0.75, cellKm * 1.65);
 }
 
 function nearestDistanceKm(storms, xKm, yKm) {
@@ -168,7 +256,7 @@ function nearestDistanceKm(storms, xKm, yKm) {
 }
 
 function formationChance(candidate) {
-  const base = 0.01 + candidate.probability * 0.56 + candidate.score * 0.20 + (candidate.forcingConfidence ?? 0) * 0.08 + (candidate.capFailureProbability ?? 0) * 0.06 + candidate.corridor * 0.03 + (candidate.prefrontal ?? 0) * 0.04;
+  const base = 0.004 + candidate.probability * 0.70 + candidate.score * 0.12 + (candidate.forcingConfidence ?? 0) * 0.08 + (candidate.capFailureProbability ?? 0) * 0.06 + candidate.corridor * 0.03 + (candidate.prefrontal ?? 0) * 0.04;
   const surfaceChance = base * (candidate.surfaceTiming ?? 0.5) * (0.22 + 0.78 * (candidate.capErosion ?? 0.5));
   const elevatedChance = base * (candidate.nocturnalElevated ?? 0) * 0.74;
   const stabilityPenalty = 1 - (candidate.nightStability ?? 0) * 0.48 * (1 - (candidate.nocturnalElevated ?? 0));

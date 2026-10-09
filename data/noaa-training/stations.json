@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "2.81.0",
+  "stations": [
+    {"id":"USM00072357","name":"Norman, OK","region":"southern-plains"},
+    {"id":"USM00072451","name":"Dodge City, KS","region":"central-plains"},
+    {"id":"USM00072456","name":"Topeka, KS","region":"central-plains"},
+    {"id":"USM00072249","name":"Fort Worth, TX","region":"southern-plains"},
+    {"id":"USM00072340","name":"Little Rock, AR","region":"dixie-transition"},
+    {"id":"USM00072235","name":"Jackson, MS","region":"dixie"},
+    {"id":"USM00072327","name":"Nashville, TN","region":"dixie"},
+    {"id":"USM00072248","name":"Shreveport, LA","region":"arklatex"},
+    {"id":"USM00072230","name":"Birmingham, AL","region":"dixie"},
+    {"id":"USM00072440","name":"Springfield, MO","region":"ozarks"}
+  ]
+}

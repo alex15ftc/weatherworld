@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "weights": {
+    "environment": 0.2,
+    "evolution": 0.15,
+    "initiation": 0.15,
+    "stormMode": 0.1,
+    "hazards": 0.15,
+    "spatial": 0.2,
+    "outlookCategory": 0.05
+  },
+  "notes": "Spatial placement is explicitly weighted. Outlook category remains low-weight because it is derived from atmosphere, realized hazards, and their location."
+}

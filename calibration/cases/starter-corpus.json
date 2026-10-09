@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "starter-v1",
+  "description": "Small synthetic benchmark used to establish the calibration workflow before curated historical cases are added.",
+  "cases": [
+    {
+      "schemaVersion": 1,
+      "caseId": "baseline-null-01",
+      "description": "Benign/null baseline; protects against systematic severe overforecasting.",
+      "split": "calibration",
+      "classification": {
+        "regime": "benign",
+        "severity": "null",
+        "primaryHazard": "none",
+        "tags": [
+          "null",
+          "negative-control"
+        ]
+      },
+      "simulation": {
+        "seed": 63869760,
+        "hours": 6,
+        "members": 3
+      },
+      "targets": {
+        "riskRange": [
+          0,
+          1
+        ],
+        "initiationRange": [
+          0,
+          2
+        ],
+        "tornadoRange": [
+          0,
+          0
+        ],
+        "dominantModes": [],
+        "environment": {
+          "peakCape": [
+            0,
+            1200
+          ],
+          "peakStp": [
+            0,
+            1.2
+          ],
+          "peakInitiationProbability": [
+            0,
+            0.45
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "caseId": "ordinary-severe-01",
+      "description": "Ordinary severe baseline without an outbreak requirement.",
+      "split": "calibration",
+      "classification": {
+        "regime": "central-plains",
+        "severity": "slight",
+        "primaryHazard": "mixed",
+        "tags": [
+          "ordinary-severe"
+        ]
+      },
+      "simulation": {
+        "seed": 27510433,
+        "hours": 18,
+        "members": 5
+      },
+      "targets": {
+        "riskRange": [
+          2,
+          3
+        ],
+        "initiationRange": [
+          1,
+          20
+        ],
+        "tornadoRange": [
+          0,
+          3
+        ],
+        "dominantModes": [
+          "SUPERCELL",
+          "MULTICELL",
+          "QLCS"
+        ],
+        "environment": {
+          "peakCape": [
+            500,
+            4500
+          ],
+          "peakShear": [
+            20,
+            80
+          ],
+          "peakInitiationProbability": [
+            0.15,
+            1
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "caseId": "capped-bust-01",
+      "description": "High conditional potential but limited realized convection.",
+      "split": "validation",
+      "classification": {
+        "regime": "dryline-eml",
+        "severity": "marginal",
+        "primaryHazard": "mixed",
+        "tags": [
+          "cap",
+          "bust",
+          "failed-initiation"
+        ]
+      },
+      "simulation": {
+        "seed": 81490217,
+        "hours": 18,
+        "members": 5
+      },
+      "targets": {
+        "riskRange": [
+          1,
+          2
+        ],
+        "initiationRange": [
+          0,
+          4
+        ],
+        "tornadoRange": [
+          0,
+          1
+        ],
+        "dominantModes": [
+          "SUPERCELL"
+        ],
+        "environment": {
+          "peakCape": [
+            300,
+            4500
+          ],
+          "peakInitiationProbability": [
+            0.05,
+            0.65
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "caseId": "high-end-holdout-01",
+      "description": "High-end event reserved to detect regression without tuning directly to it.",
+      "split": "holdout",
+      "classification": {
+        "regime": "amplified-trough",
+        "severity": "moderate",
+        "primaryHazard": "tornado",
+        "tags": [
+          "high-end",
+          "tornado"
+        ]
+      },
+      "simulation": {
+        "seed": 49276105,
+        "hours": 24,
+        "members": 7
+      },
+      "targets": {
+        "riskRange": [
+          4,
+          5
+        ],
+        "initiationRange": [
+          3,
+          40
+        ],
+        "tornadoRange": [
+          1,
+          15
+        ],
+        "dominantModes": [
+          "SUPERCELL",
+          "QLCS"
+        ],
+        "environment": {
+          "peakCape": [
+            800,
+            6000
+          ],
+          "peakShear": [
+            30,
+            100
+          ],
+          "peakSrh": [
+            75,
+            700
+          ],
+          "peakStp": [
+            0.5,
+            15
+          ]
+        }
+      }
+    }
+  ]
+}

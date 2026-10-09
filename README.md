@@ -1,14 +1,15 @@
+# WeatherWorld 2.69.1
 
-﻿# Fake Plains Weather Simulator
-
-**Current version: 2.34.5.2.** The authoritative development plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Current release:** Diurnal STP Continuity and Air-Mass Consistency  
+**Source of truth:** [`docs/ROADMAP.md`](docs/ROADMAP.md)  
+**Milestone details:** [`docs/milestones/MILESTONE-2.69.1.md`](docs/milestones/MILESTONE-2.69.1.md)
 
 
 A deterministic severe-weather simulation for a fictional Plains domain. It evolves
 an authoritative atmosphere, mesoscale boundaries, persistent storms, tornado/hail/wind
 hazards, Day 1–3 outlooks, soundings, map tiles, and forecast verification.
 
-Current release: **2.34.5.2 — Canonical Historical Archive Population**
+Current release: **2.69.1 — Diurnal STP Continuity and Air-Mass Consistency**
 
 ## Start here
 
@@ -55,11 +56,11 @@ The full regression suite is intentionally much slower than the primary test sui
 - [Architecture](docs/ARCHITECTURE.md) — authorities, data flow, clocks, and major modules
 - [Development](docs/DEVELOPMENT.md) — setup, validation tiers, and change workflow
 - [Performance](docs/PERFORMANCE.md) — baseline, profiling method, budgets, and optimization roadmap
-- [Current milestone](MILESTONE-2.34.5.2.md) — canonical historical archive population
-- [2.32.0 milestone](MILESTONE-2.32.0.md) — severe-pattern climatology and all-scenario physical lifecycle contracts
-- [2.31.0 milestone](MILESTONE-2.31.0.md) — lifecycle-aware outlooks and storm-population calibration
-- [2.29.0 milestone](MILESTONE-2.29.0.md) — authoritative profile diagnostics and cap evolution
-- [2.30.0 milestone](MILESTONE-2.30.0.md) — strengthening analog environments and corrected STP
+- [Current milestone](docs/milestones/MILESTONE-2.34.5.2.md) — canonical historical archive population
+- [2.32.0 milestone](docs/milestones/MILESTONE-2.32.0.md) — severe-pattern climatology and all-scenario physical lifecycle contracts
+- [2.31.0 milestone](docs/milestones/MILESTONE-2.31.0.md) — lifecycle-aware outlooks and storm-population calibration
+- [2.29.0 milestone](docs/milestones/MILESTONE-2.29.0.md) — authoritative profile diagnostics and cap evolution
+- [2.30.0 milestone](docs/milestones/MILESTONE-2.30.0.md) — strengthening analog environments and corrected STP
 
 ## Core model
 
@@ -145,15 +146,15 @@ Run the existing import, synoptic analog, outlook discussion, forecast cycle, an
 
 ## Current milestone: 2.28.5
 
-Tornado forecast diagnostics and calibration now include 2/5/10/15/30% threshold verification, exact-track versus neighborhood truth reporting, measured tornado-corridor broadening, and spatial support requirements for Moderate/High categorical risk. See `MILESTONE-2.28.4.md`.
+Tornado forecast diagnostics and calibration now include 2/5/10/15/30% threshold verification, exact-track versus neighborhood truth reporting, measured tornado-corridor broadening, and spatial support requirements for Moderate/High categorical risk. See `docs/milestones/MILESTONE-2.28.4.md`.
 
 ## Milestone 2.28.1 — Storm Realization & Hazard Transition
 
-Active, organized storms now carry evolving organization, persistence, and hazard confidence. Short-range outlooks project those realized storms forward so mature convection can increase tornado, hail, and wind probabilities without loosening the 2.28.0 initiation gates. See `MILESTONE-2.28.1.md`.
+Active, organized storms now carry evolving organization, persistence, and hazard confidence. Short-range outlooks project those realized storms forward so mature convection can increase tornado, hail, and wind probabilities without loosening the 2.28.0 initiation gates. See `docs/milestones/MILESTONE-2.28.1.md`.
 
 ## Milestone 2.28.0 — CI Probability Rewrite
 
-Convective guidance now separates broad environmental potential from actual initiation probability. Cap-failure probability and forcing confidence gate storm occurrence, reducing false CI coverage on capped null days while retaining focused boundary initiation in strongly forced setups. See `MILESTONE-2.28.0.md`.
+Convective guidance now separates broad environmental potential from actual initiation probability. Cap-failure probability and forcing confidence gate storm occurrence, reducing false CI coverage on capped null days while retaining focused boundary initiation in strongly forced setups. See `docs/milestones/MILESTONE-2.28.0.md`.
 
 ## Milestone 2.27.0 — Performance foundation
 
@@ -891,8 +892,12 @@ Predictive outlooks now consume hazard, initiation, coverage, and CIG diagnostic
 
 ## 2.36.1 atmospheric acquisition
 
-Use `npm run training:acquire -- --missing-only --dry-run` to inspect missing ERA5/NOAA work, then remove `--dry-run` to execute it. See `MILESTONE-2.36.1.md` for prerequisites and cache behavior.
+Use `npm run training:acquire -- --missing-only --dry-run` to inspect missing ERA5/NOAA work, then remove `--dry-run` to execute it. See `docs/milestones/MILESTONE-2.36.1.md` for prerequisites and cache behavior.
 
 ## 2.37.0 spatial training corpus
 
-ERA5 acquisition now preserves eight 3-hour atmospheric snapshots as compressed 100×100 spatial tensors in the external training cache while retaining compact repository manifests. Run `npm run training:resume` to build missing spatial cases, `npm run training:spatial-status` for manifest coverage, and `npm run training:validate-spatial` to verify cached tensors. See `MILESTONE-2.37.0.md` for the storage boundary and initial derived channels.
+ERA5 acquisition now preserves eight 3-hour atmospheric snapshots as compressed 100×100 spatial tensors in the external training cache while retaining compact repository manifests. Run `npm run training:resume` to build missing spatial cases, `npm run training:spatial-status` for manifest coverage, and `npm run training:validate-spatial` to verify cached tensors. See `docs/milestones/MILESTONE-2.37.0.md` for the storage boundary and initial derived channels.
+
+## 2.71.0 Meteorological integrity
+
+Gameplay now runs a strategic invariant pass after lightweight STP updates and before storm initiation. See `MILESTONE-2.70.0.md` and `world.meteorologicalIntegrity`.

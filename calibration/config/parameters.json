@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "status": "baseline",
+  "parameters": {
+    "capErosion": {
+      "solarHeatingWeight": 0.38,
+      "forcingWeight": 0.27,
+      "moistureWeight": 0.12,
+      "mixingPenalty": 0.18
+    },
+    "initiation": {
+      "convergenceWeight": 0.31,
+      "cinPenalty": 0.42,
+      "shortwaveWeight": 0.19
+    },
+    "realization": {
+      "conditionalSeverityWeight": 0.45,
+      "initiationProbabilityWeight": 0.55
+    }
+  }
+}

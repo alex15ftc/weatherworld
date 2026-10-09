@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const engine=fs.readFileSync(new URL('../js/synoptic/DynamicSynopticReconciliation.js',import.meta.url),'utf8');
+const synoptic=fs.readFileSync(new URL('../js/synoptic/SynopticObjectEngine.js',import.meta.url),'utf8');
+const verification=fs.readFileSync(new URL('../js/verification/ForecastVerificationEngine.js',import.meta.url),'utf8');
+assert.match(engine,/reconcileSynopticState/);
+assert.match(engine,/totalErrorBefore/);
+assert.match(engine,/totalErrorAfter/);
+assert.match(engine,/rebuildPressureAndWind/);
+assert.match(engine,/rebuildWarmSector/);
+assert.match(engine,/enforceTopology/);
+assert.match(engine,/reconciliationHistory/);
+assert.match(synoptic,/reconcileSynopticState\(world, dtHours\)/);
+assert.match(verification,/reconciliationHistory/);
+console.log('2.64.0 dynamic synoptic reconciliation: PASS');

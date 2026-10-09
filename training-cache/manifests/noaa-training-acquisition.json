@@ -1,0 +1,1935 @@
+{
+  "schemaVersion": "2.81.0",
+  "provider": "NOAA NCEI",
+  "createdAt": "2026-08-05T14:26:37.609Z",
+  "dates": [
+    "1982-04-02",
+    "1984-03-28",
+    "1985-05-31",
+    "1990-03-13",
+    "1990-08-28",
+    "1991-03-27",
+    "1991-04-26",
+    "1991-05-04",
+    "1991-06-19",
+    "1992-11-21",
+    "1994-03-27",
+    "1995-05-18",
+    "1997-05-27",
+    "1998-04-08",
+    "1998-05-30",
+    "1999-01-21",
+    "1999-05-03",
+    "1999-06-26",
+    "1999-10-13",
+    "2002-11-10",
+    "2003-05-04",
+    "2003-05-08",
+    "2004-05-30",
+    "2007-05-04",
+    "2008-02-05",
+    "2008-05-23",
+    "2010-05-10",
+    "2010-05-24",
+    "2011-04-21",
+    "2011-04-27",
+    "2011-05-24",
+    "2011-07-22",
+    "2013-05-19",
+    "2013-08-01",
+    "2013-08-03",
+    "2013-11-17"
+  ],
+  "files": [
+    {
+      "kind": "igra",
+      "stationId": "USM00072357",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072357-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072357-data.txt.zip",
+      "status": "cached",
+      "bytes": 80598450,
+      "sha256": "37d02beaea563eb65c7733c458828ef5899dbbd530ad3557957eadc24997caf3"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072451",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072451-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072451-data.txt.zip",
+      "status": "cached",
+      "bytes": 90043638,
+      "sha256": "0c04af8c504c2187c53f8e423e8374c3786f83718aebf9fa662a0d67abc6a22f"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072456",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072456-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072456-data.txt.zip",
+      "status": "cached",
+      "bytes": 97264520,
+      "sha256": "e0a8b1a1495a807f46a059f155394a64dc374a4e3d9b0f303ac2352e480237e9"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072249",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072249-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072249-data.txt.zip",
+      "status": "cached",
+      "bytes": 84485811,
+      "sha256": "3af641c7138732faf675959fb4ae82adf76069ddf1b0af1f3ee3be3771884d8a"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072340",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072340-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072340-data.txt.zip",
+      "status": "cached",
+      "bytes": 96205383,
+      "sha256": "1905b916837ed777541fc66d0feedfc5bde2429edf7e081a38b9401bbe717655"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072235",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072235-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072235-data.txt.zip",
+      "status": "cached",
+      "bytes": 99970441,
+      "sha256": "966cc06d7645235afebdb4c7f158b7b20a2ca65fc5c85d4c4b706b3dad1480cb"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072327",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072327-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072327-data.txt.zip",
+      "status": "cached",
+      "bytes": 97241087,
+      "sha256": "f28c390c44fd029dd9658aefe8ad0467041c02b82d9d1729030ddb568b07d493"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072248",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072248-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072248-data.txt.zip",
+      "status": "cached",
+      "bytes": 86161412,
+      "sha256": "c4fc799b10e53f959f745fdf1b5743e73a56c420265c306dbc929df2bf232892"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072230",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072230-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072230-data.txt.zip",
+      "status": "cached",
+      "bytes": 79574486,
+      "sha256": "f6e29fe2a937076c061707718e6c3335f219f566fca019cfee2f9251e08abdae"
+    },
+    {
+      "kind": "igra",
+      "stationId": "USM00072440",
+      "url": "https://www.ncei.noaa.gov/pub/data/igra/data/data-por/USM00072440-data.txt.zip",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\igra\\USM00072440-data.txt.zip",
+      "status": "cached",
+      "bytes": 78885942,
+      "sha256": "6e5f3da85a5e7e9e91ec83701b70b40ddbeaa74993858e470baa77734437f9ae"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1982-04-02",
+      "validTime": "1982-04-02T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198204/19820402/narr-a_221_19820402_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198204\\19820402\\narr-a_221_19820402_1200_000.grb",
+      "status": "cached",
+      "bytes": 56748650,
+      "sha256": "9cc1861d961154840c84d1c609f7b0325eb6ef37b6208d9ae158ba539fd4b9f6"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1982-04-02",
+      "validTime": "1982-04-02T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198204/19820402/narr-a_221_19820402_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198204\\19820402\\narr-a_221_19820402_1800_000.grb",
+      "status": "cached",
+      "bytes": 56351318,
+      "sha256": "4a5757584f0e1edf4d52f981cb3968687db37b0a59d425aa268fe0f643c04d50"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1982-04-02",
+      "validTime": "1982-04-03T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198204/19820403/narr-a_221_19820403_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198204\\19820403\\narr-a_221_19820403_0000_000.grb",
+      "status": "cached",
+      "bytes": 56369662,
+      "sha256": "f361eab83b58462b185ad0d7e6d5bced0b1301cfc5e99e4e8f847957d4875ea3"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1982-04-02",
+      "validTime": "1982-04-03T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198204/19820403/narr-a_221_19820403_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198204\\19820403\\narr-a_221_19820403_0600_000.grb",
+      "status": "cached",
+      "bytes": 56566814,
+      "sha256": "d50595b0890d2fc7776d12e91ef007fdf0d5e0a996a62787124d57f39c063d09"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1982-04-02",
+      "validTime": "1982-04-03T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198204/19820403/narr-a_221_19820403_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198204\\19820403\\narr-a_221_19820403_1200_000.grb",
+      "status": "cached",
+      "bytes": 56709866,
+      "sha256": "166d309fb5796cb2f65819acca8d50caba831b6d538ac7ad2bbf27c6ba4c239c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1984-03-28",
+      "validTime": "1984-03-28T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198403/19840328/narr-a_221_19840328_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198403\\19840328\\narr-a_221_19840328_1200_000.grb",
+      "status": "cached",
+      "bytes": 56451142,
+      "sha256": "2288007595f880708f6d78ce7307cd1503b83e5ddad62bdfb5b6c4dbbd47925c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1984-03-28",
+      "validTime": "1984-03-28T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198403/19840328/narr-a_221_19840328_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198403\\19840328\\narr-a_221_19840328_1800_000.grb",
+      "status": "cached",
+      "bytes": 57017590,
+      "sha256": "b681dadc34ea9043682aad0fb1bb81f7d48273addee4cf5a7f0d57c17b13fa7f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1984-03-28",
+      "validTime": "1984-03-29T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198403/19840329/narr-a_221_19840329_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198403\\19840329\\narr-a_221_19840329_0000_000.grb",
+      "status": "cached",
+      "bytes": 56523454,
+      "sha256": "0ae4561c6d31e7697463227d67e196b9706ce50ca8063008d4a90b80c8bd4deb"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1984-03-28",
+      "validTime": "1984-03-29T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198403/19840329/narr-a_221_19840329_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198403\\19840329\\narr-a_221_19840329_0600_000.grb",
+      "status": "cached",
+      "bytes": 56264172,
+      "sha256": "25f258060cf2b7a5180e940e276809b467b9b79094971120b0baa0d544db5c7e"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1984-03-28",
+      "validTime": "1984-03-29T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198403/19840329/narr-a_221_19840329_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198403\\19840329\\narr-a_221_19840329_1200_000.grb",
+      "status": "cached",
+      "bytes": 56489810,
+      "sha256": "25c57d5826df8f902b9a0cd8fe973e14823475a5087ad66ea806754437e2b423"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1985-05-31",
+      "validTime": "1985-05-31T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198505/19850531/narr-a_221_19850531_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198505\\19850531\\narr-a_221_19850531_1200_000.grb",
+      "status": "cached",
+      "bytes": 56015750,
+      "sha256": "6383c96d7b3c4b63e13793d5cb423e1918b951bebcdb571b28d7487e745d81e4"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1985-05-31",
+      "validTime": "1985-05-31T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198505/19850531/narr-a_221_19850531_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198505\\19850531\\narr-a_221_19850531_1800_000.grb",
+      "status": "cached",
+      "bytes": 56296802,
+      "sha256": "4d4cd835f7241cc5531c9f7f8022120eb2814be161eaec5a9e1caabe2fdb4e1b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1985-05-31",
+      "validTime": "1985-06-01T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198506/19850601/narr-a_221_19850601_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198506\\19850601\\narr-a_221_19850601_0000_000.grb",
+      "status": "cached",
+      "bytes": 55923488,
+      "sha256": "ae61ed0a271cfeeb5cabcb9eeedd9218a28f197f3c71eddfa4d4d5daecbb9113"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1985-05-31",
+      "validTime": "1985-06-01T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198506/19850601/narr-a_221_19850601_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198506\\19850601\\narr-a_221_19850601_0600_000.grb",
+      "status": "cached",
+      "bytes": 56030498,
+      "sha256": "6016c766eac4bd5a46856df2ec225046e1906cda1b22f2fce7bd50dc7445320b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1985-05-31",
+      "validTime": "1985-06-01T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/198506/19850601/narr-a_221_19850601_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\198506\\19850601\\narr-a_221_19850601_1200_000.grb",
+      "status": "cached",
+      "bytes": 56196004,
+      "sha256": "129966d8d4ef0c88bf05ba19d5d666eaba758e900d84700c9ec4140bf4b02260"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-03-13",
+      "validTime": "1990-03-13T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199003/19900313/narr-a_221_19900313_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199003\\19900313\\narr-a_221_19900313_1200_000.grb",
+      "status": "cached",
+      "bytes": 56653352,
+      "sha256": "5416d3ce074583f801951818151a4cbeccdf113b7a74318ddbcd2238fb5cb3ee"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-03-13",
+      "validTime": "1990-03-13T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199003/19900313/narr-a_221_19900313_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199003\\19900313\\narr-a_221_19900313_1800_000.grb",
+      "status": "cached",
+      "bytes": 56616740,
+      "sha256": "fe42c21c78e58d8d6f09c3b689a1bb0ff8d368d8318193fd4d1ec8d66323c622"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-03-13",
+      "validTime": "1990-03-14T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199003/19900314/narr-a_221_19900314_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199003\\19900314\\narr-a_221_19900314_0000_000.grb",
+      "status": "cached",
+      "bytes": 56561832,
+      "sha256": "eca93d1988f513097456e36af47de660266fe04fc7c1ad40d9aeeba51797b303"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-03-13",
+      "validTime": "1990-03-14T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199003/19900314/narr-a_221_19900314_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199003\\19900314\\narr-a_221_19900314_0600_000.grb",
+      "status": "cached",
+      "bytes": 56558278,
+      "sha256": "568f73167a0ddae2bc572ae9fcb00cf61bfe88b3cd7b87c920f22f53164bb19c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-03-13",
+      "validTime": "1990-03-14T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199003/19900314/narr-a_221_19900314_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199003\\19900314\\narr-a_221_19900314_1200_000.grb",
+      "status": "cached",
+      "bytes": 56655472,
+      "sha256": "f53f3371c95b353c3c9e7f42552bbeb601f53b1c08a8cf84941c5e64bb0265f9"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-08-28",
+      "validTime": "1990-08-28T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199008/19900828/narr-a_221_19900828_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199008\\19900828\\narr-a_221_19900828_1200_000.grb",
+      "status": "cached",
+      "bytes": 55817294,
+      "sha256": "ccc50bef18a626531fc282f5f5472be46f319869fab8905e6a067cabcfde9b94"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-08-28",
+      "validTime": "1990-08-28T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199008/19900828/narr-a_221_19900828_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199008\\19900828\\narr-a_221_19900828_1800_000.grb",
+      "status": "cached",
+      "bytes": 55844130,
+      "sha256": "c8395adb689dfc6d15abbd404924bcfb58f966a44e544a16be66fccbdf3ed4ad"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-08-28",
+      "validTime": "1990-08-29T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199008/19900829/narr-a_221_19900829_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199008\\19900829\\narr-a_221_19900829_0000_000.grb",
+      "status": "cached",
+      "bytes": 56055038,
+      "sha256": "3839765162b4d611a5ef45e7a4983a7889202805ed668470eeb50e4a0aba62a3"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-08-28",
+      "validTime": "1990-08-29T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199008/19900829/narr-a_221_19900829_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199008\\19900829\\narr-a_221_19900829_0600_000.grb",
+      "status": "cached",
+      "bytes": 55721280,
+      "sha256": "5f4f6c6f1725a6e94bc25ab5cb9eb4cb4298b0cb2dfc12cf97b32b783d4f6504"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1990-08-28",
+      "validTime": "1990-08-29T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199008/19900829/narr-a_221_19900829_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199008\\19900829\\narr-a_221_19900829_1200_000.grb",
+      "status": "cached",
+      "bytes": 55981884,
+      "sha256": "0fef66a3ab26427827678caa7d9917c05a62276ebc94d17a52231924f4b4f37b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-03-27",
+      "validTime": "1991-03-27T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199103/19910327/narr-a_221_19910327_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199103\\19910327\\narr-a_221_19910327_1200_000.grb",
+      "status": "cached",
+      "bytes": 56726286,
+      "sha256": "ef6db6ad59e9719b94c51f1db09ccb91df1dd86118f78e8063a4cc757af9f807"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-03-27",
+      "validTime": "1991-03-27T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199103/19910327/narr-a_221_19910327_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199103\\19910327\\narr-a_221_19910327_1800_000.grb",
+      "status": "cached",
+      "bytes": 56899652,
+      "sha256": "090985a2bf2614797aefdc00b1d9594d5810230197aa9a73d20747f3b0963d42"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-03-27",
+      "validTime": "1991-03-28T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199103/19910328/narr-a_221_19910328_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199103\\19910328\\narr-a_221_19910328_0000_000.grb",
+      "status": "cached",
+      "bytes": 56826880,
+      "sha256": "27ab0af81518d7c66c35f42dceeb03f6570e68fd30602af266580b2f933c66e5"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-03-27",
+      "validTime": "1991-03-28T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199103/19910328/narr-a_221_19910328_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199103\\19910328\\narr-a_221_19910328_0600_000.grb",
+      "status": "cached",
+      "bytes": 56387226,
+      "sha256": "a9e64ed903f164150af12e7c692a91cdc5115ec40a846e0c34f64d9a0300f380"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-03-27",
+      "validTime": "1991-03-28T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199103/19910328/narr-a_221_19910328_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199103\\19910328\\narr-a_221_19910328_1200_000.grb",
+      "status": "cached",
+      "bytes": 56891190,
+      "sha256": "7ce1f89edd6eb4e1c1c7baac44f9407fee366359f0e5349aec728e02a8e46e2a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-04-26",
+      "validTime": "1991-04-26T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199104/19910426/narr-a_221_19910426_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199104\\19910426\\narr-a_221_19910426_1200_000.grb",
+      "status": "cached",
+      "bytes": 56881152,
+      "sha256": "878706066db180e3c42d5bc8af1946a4865750e4680dc4b8d65aa88f5ff72dc8"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-04-26",
+      "validTime": "1991-04-26T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199104/19910426/narr-a_221_19910426_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199104\\19910426\\narr-a_221_19910426_1800_000.grb",
+      "status": "cached",
+      "bytes": 56329248,
+      "sha256": "8c6119d53548314526da1f5b0031b9e17ccea8897101180e5f87c038dfcf9157"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-04-26",
+      "validTime": "1991-04-27T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199104/19910427/narr-a_221_19910427_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199104\\19910427\\narr-a_221_19910427_0000_000.grb",
+      "status": "cached",
+      "bytes": 56270680,
+      "sha256": "ea8ed463a3cfa3c857a5955fb391bacb8c795c73e82b6449b94d3a9574e52377"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-04-26",
+      "validTime": "1991-04-27T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199104/19910427/narr-a_221_19910427_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199104\\19910427\\narr-a_221_19910427_0600_000.grb",
+      "status": "cached",
+      "bytes": 56468406,
+      "sha256": "96a0af724f8b1613d0fd05d2efac55b3b4655d5ec600d6625418632c257f342c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-04-26",
+      "validTime": "1991-04-27T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199104/19910427/narr-a_221_19910427_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199104\\19910427\\narr-a_221_19910427_1200_000.grb",
+      "status": "cached",
+      "bytes": 56558552,
+      "sha256": "eca6eb026274d02bfc6a28b39b76bc9a93b25bdf25133f56eab27f3eba559d59"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-05-04",
+      "validTime": "1991-05-04T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199105/19910504/narr-a_221_19910504_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199105\\19910504\\narr-a_221_19910504_1200_000.grb",
+      "status": "cached",
+      "bytes": 56913382,
+      "sha256": "f83879f60541862863948a79348154011e50f51fa95644a6e13457a15f2f3e81"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-05-04",
+      "validTime": "1991-05-04T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199105/19910504/narr-a_221_19910504_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199105\\19910504\\narr-a_221_19910504_1800_000.grb",
+      "status": "cached",
+      "bytes": 56601698,
+      "sha256": "fec9c3dbc240682417a6eadd0c3aa5074cad216d8871069162ce22b6cbe0fc2d"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-05-04",
+      "validTime": "1991-05-05T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199105/19910505/narr-a_221_19910505_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199105\\19910505\\narr-a_221_19910505_0000_000.grb",
+      "status": "cached",
+      "bytes": 56543250,
+      "sha256": "d6fec668ef1c46b160cb05829abe307e92d96b31e06fc9339817471f5d1b5dd8"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-05-04",
+      "validTime": "1991-05-05T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199105/19910505/narr-a_221_19910505_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199105\\19910505\\narr-a_221_19910505_0600_000.grb",
+      "status": "cached",
+      "bytes": 56188344,
+      "sha256": "7c54688c021e69d6c212299d6f2222bb6fff4cd3457a9348f245761c5abb0de1"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-05-04",
+      "validTime": "1991-05-05T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199105/19910505/narr-a_221_19910505_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199105\\19910505\\narr-a_221_19910505_1200_000.grb",
+      "status": "cached",
+      "bytes": 56736736,
+      "sha256": "355b65018c170b720b45e7a9650b8d76f2235a558cc8660dfcd6c79f40be8c8b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-06-19",
+      "validTime": "1991-06-19T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199106/19910619/narr-a_221_19910619_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199106\\19910619\\narr-a_221_19910619_1200_000.grb",
+      "status": "cached",
+      "bytes": 56267492,
+      "sha256": "9cf8747941affc50de25cd9e149bf38d81172f13c6c6747b0368fc390592bfbf"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-06-19",
+      "validTime": "1991-06-19T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199106/19910619/narr-a_221_19910619_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199106\\19910619\\narr-a_221_19910619_1800_000.grb",
+      "status": "cached",
+      "bytes": 55876262,
+      "sha256": "f9c08bd5841bf99955d7bef97826d48fe83854bb4fe5ae7f0b6150b004823eb8"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-06-19",
+      "validTime": "1991-06-20T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199106/19910620/narr-a_221_19910620_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199106\\19910620\\narr-a_221_19910620_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 55870062,
+      "sha256": "8d1f5b201880c05f2e09fdfaffb9ce0211ed355ba2fd54c821990c5aade11208"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-06-19",
+      "validTime": "1991-06-20T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199106/19910620/narr-a_221_19910620_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199106\\19910620\\narr-a_221_19910620_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55890332,
+      "sha256": "0fd85db749a37bb41fb9176e80d603812b0caa60be4e91198a074124a9298594"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1991-06-19",
+      "validTime": "1991-06-20T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199106/19910620/narr-a_221_19910620_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199106\\19910620\\narr-a_221_19910620_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56273222,
+      "sha256": "291f7a83c0d108ec8ec772ae4a406b27b89eb29ecb1ada85b76e0b58ab077a73"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1992-11-21",
+      "validTime": "1992-11-21T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199211/19921121/narr-a_221_19921121_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199211\\19921121\\narr-a_221_19921121_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56618518,
+      "sha256": "960b52234da159849a43899d11a8c192a19c6410f75a8dd44321093aabe7c104"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1992-11-21",
+      "validTime": "1992-11-21T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199211/19921121/narr-a_221_19921121_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199211\\19921121\\narr-a_221_19921121_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56742988,
+      "sha256": "204b0a4520fd9204149055b8eb2f12eb59e6e3fb0246a8a6484cd3034979ab7a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1992-11-21",
+      "validTime": "1992-11-22T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199211/19921122/narr-a_221_19921122_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199211\\19921122\\narr-a_221_19921122_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56875002,
+      "sha256": "697e5a06a99e7101d194bcfd9e9bf1dd6958f3a7d8267ad148284a27db76bf42"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1992-11-21",
+      "validTime": "1992-11-22T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199211/19921122/narr-a_221_19921122_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199211\\19921122\\narr-a_221_19921122_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56077124,
+      "sha256": "3bab4a066d4b2bfc75794d9675a4cc852516fd7db18ca2ffe33109b5f6371f63"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1992-11-21",
+      "validTime": "1992-11-22T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199211/19921122/narr-a_221_19921122_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199211\\19921122\\narr-a_221_19921122_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56381258,
+      "sha256": "a0c931415a3ba3baf7a8c10c1b1c4bc2dd9deb0cd3627c52f88669f92e119951"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1994-03-27",
+      "validTime": "1994-03-27T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199403/19940327/narr-a_221_19940327_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199403\\19940327\\narr-a_221_19940327_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56945614,
+      "sha256": "92bce38ab231c70f09d84e0a4b00f1c6349976199e682d30af2a224c6e048c2c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1994-03-27",
+      "validTime": "1994-03-27T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199403/19940327/narr-a_221_19940327_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199403\\19940327\\narr-a_221_19940327_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56948986,
+      "sha256": "d1cd43407fe68e391de4b4d8dd046319c8bb734275afcef2b34730fe8495d430"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1994-03-27",
+      "validTime": "1994-03-28T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199403/19940328/narr-a_221_19940328_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199403\\19940328\\narr-a_221_19940328_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56679730,
+      "sha256": "4bc0679eb5bac2bec209fd8b50e551d95e184242317cee30be2343a969911149"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1994-03-27",
+      "validTime": "1994-03-28T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199403/19940328/narr-a_221_19940328_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199403\\19940328\\narr-a_221_19940328_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56501024,
+      "sha256": "f097f6dc34976f1ffec288701e10ee12fef3cc12634fd9f60313a357210e4394"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1994-03-27",
+      "validTime": "1994-03-28T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199403/19940328/narr-a_221_19940328_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199403\\19940328\\narr-a_221_19940328_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56490692,
+      "sha256": "9564885e255f2e341c57250beef815b5483c7ddbcdd5e371fb7a6f6f88074026"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1995-05-18",
+      "validTime": "1995-05-18T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199505/19950518/narr-a_221_19950518_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199505\\19950518\\narr-a_221_19950518_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56240798,
+      "sha256": "a1736982d3d482a784d2e7aba8c2a6815bb3ef1f9920d2e996eb6ee91bb240fd"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1995-05-18",
+      "validTime": "1995-05-18T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199505/19950518/narr-a_221_19950518_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199505\\19950518\\narr-a_221_19950518_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 55915042,
+      "sha256": "64d9f63c95517fcd954525a4241dce820cb4b48dca03076130ebee860c85a32a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1995-05-18",
+      "validTime": "1995-05-19T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199505/19950519/narr-a_221_19950519_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199505\\19950519\\narr-a_221_19950519_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56241914,
+      "sha256": "0f3497dfa5039d0796df5809553eea2efe54ceefb21f9c3f80cff43110d69a66"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1995-05-18",
+      "validTime": "1995-05-19T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199505/19950519/narr-a_221_19950519_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199505\\19950519\\narr-a_221_19950519_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56196484,
+      "sha256": "f686ecfac28a4bac1bda905dd5fbe243aa3eb891af77b64ddac7ad0f1a9bf9c6"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1995-05-18",
+      "validTime": "1995-05-19T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199505/19950519/narr-a_221_19950519_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199505\\19950519\\narr-a_221_19950519_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56356422,
+      "sha256": "51e6253303d7f47fd074c49be6ca86ae332cb24c315ba56565d58d53a56aa97e"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1997-05-27",
+      "validTime": "1997-05-27T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199705/19970527/narr-a_221_19970527_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199705\\19970527\\narr-a_221_19970527_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56005182,
+      "sha256": "92f582772e40f936cfc2fc5f22ba83782c107b557b10f496270267ec7cb14a6f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1997-05-27",
+      "validTime": "1997-05-27T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199705/19970527/narr-a_221_19970527_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199705\\19970527\\narr-a_221_19970527_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56121818,
+      "sha256": "b62e7584353dafc2fab94d997a4752b6a0a3d61416a5d4201866587cdd373567"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1997-05-27",
+      "validTime": "1997-05-28T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199705/19970528/narr-a_221_19970528_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199705\\19970528\\narr-a_221_19970528_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56265298,
+      "sha256": "aca827bd4e6fd8300b07602a0550b638cf4de4320077adc633133cf38f25cdab"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1997-05-27",
+      "validTime": "1997-05-28T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199705/19970528/narr-a_221_19970528_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199705\\19970528\\narr-a_221_19970528_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56069324,
+      "sha256": "5338372a3768e8c432778d6eb63966c152eca802ae29cd32fbf008498c2533c3"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1997-05-27",
+      "validTime": "1997-05-28T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199705/19970528/narr-a_221_19970528_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199705\\19970528\\narr-a_221_19970528_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55732596,
+      "sha256": "fc89aedfad2820a038dce48c6e47deee86f3ee91613d7738dca6a25bdc88f042"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-04-08",
+      "validTime": "1998-04-08T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199804/19980408/narr-a_221_19980408_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199804\\19980408\\narr-a_221_19980408_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56667142,
+      "sha256": "e92d6291728dd5ccdec7620751e242bdd6e46b4852f2af7d838b7586ba06a29e"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-04-08",
+      "validTime": "1998-04-08T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199804/19980408/narr-a_221_19980408_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199804\\19980408\\narr-a_221_19980408_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56551840,
+      "sha256": "941392a9038ff9c98ad0529d42dca438a365df6620b309e1be7636af9f76ef65"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-04-08",
+      "validTime": "1998-04-09T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199804/19980409/narr-a_221_19980409_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199804\\19980409\\narr-a_221_19980409_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56513094,
+      "sha256": "75541142d6f22b43dd8d752a91f29b8d09ee99dc0cc8ce8f3c30d7d7165196cb"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-04-08",
+      "validTime": "1998-04-09T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199804/19980409/narr-a_221_19980409_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199804\\19980409\\narr-a_221_19980409_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56595448,
+      "sha256": "800562840c9dbd0bf16e124ac63e23f94a67d27934852bb22f8f0290ef5c2127"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-04-08",
+      "validTime": "1998-04-09T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199804/19980409/narr-a_221_19980409_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199804\\19980409\\narr-a_221_19980409_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56607150,
+      "sha256": "4739a76050fc2d4292419ae06033b5511ca13483ddbd4ce9c746de4bb07e1042"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-05-30",
+      "validTime": "1998-05-30T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199805/19980530/narr-a_221_19980530_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199805\\19980530\\narr-a_221_19980530_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56160730,
+      "sha256": "4135ec4a8cfc5d595807bdf065c8cca9bb0dfbc7917ae311aec82826a27bfe62"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-05-30",
+      "validTime": "1998-05-30T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199805/19980530/narr-a_221_19980530_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199805\\19980530\\narr-a_221_19980530_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 55697182,
+      "sha256": "456e75b2b1aeaeece05293d8b82778fd4358c7420311717b045fda05957ce00a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-05-30",
+      "validTime": "1998-05-31T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199805/19980531/narr-a_221_19980531_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199805\\19980531\\narr-a_221_19980531_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56267726,
+      "sha256": "da9da3263629eb09c10bba6afe6704141cf62eba6d20a758b77fec450abcb38e"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-05-30",
+      "validTime": "1998-05-31T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199805/19980531/narr-a_221_19980531_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199805\\19980531\\narr-a_221_19980531_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56197372,
+      "sha256": "598bf3eb0d1f4d2480ad65b6e99c5d496577bf64fff823240902e2fb5994c7e3"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1998-05-30",
+      "validTime": "1998-05-31T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199805/19980531/narr-a_221_19980531_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199805\\19980531\\narr-a_221_19980531_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56340262,
+      "sha256": "cd46778c670075424540a4388ffe80f8229aad3260d9cb2059b2bfbcff868a66"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-01-21",
+      "validTime": "1999-01-21T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199901/19990121/narr-a_221_19990121_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199901\\19990121\\narr-a_221_19990121_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56423742,
+      "sha256": "461025eaf26b065b68c913d5b311c6bb9d222dd0cff91906f7fd50399d6d220f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-01-21",
+      "validTime": "1999-01-21T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199901/19990121/narr-a_221_19990121_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199901\\19990121\\narr-a_221_19990121_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56276422,
+      "sha256": "e103a07f95eab02d404b6229dca689597c0f904bab69d55f24ce1ae76cf5a4fd"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-01-21",
+      "validTime": "1999-01-22T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199901/19990122/narr-a_221_19990122_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199901\\19990122\\narr-a_221_19990122_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56386092,
+      "sha256": "f6cf8f8b343f2f683d8a394dc23e61700449072c029fcdedee1d1f9dc2ed002d"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-01-21",
+      "validTime": "1999-01-22T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199901/19990122/narr-a_221_19990122_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199901\\19990122\\narr-a_221_19990122_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56436822,
+      "sha256": "1f37492086d0628ee0fec2d59cfab13eaae660b96cfba25eaad2bc578a76a40a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-01-21",
+      "validTime": "1999-01-22T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199901/19990122/narr-a_221_19990122_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199901\\19990122\\narr-a_221_19990122_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56645086,
+      "sha256": "ac3d47f19c894e1bb4b847daad08b9180612c3a715e674c9db54a6ab150fb424"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-05-03",
+      "validTime": "1999-05-03T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199905/19990503/narr-a_221_19990503_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199905\\19990503\\narr-a_221_19990503_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56195554,
+      "sha256": "771676891751c059a086327dbded5e594f701b5515954c99615bdb0bc2ecf59b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-05-03",
+      "validTime": "1999-05-03T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199905/19990503/narr-a_221_19990503_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199905\\19990503\\narr-a_221_19990503_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56109104,
+      "sha256": "d67922f48679092ecde0f81f6a909f6bfb87c49148ccfb4eeb3beee2c216b62e"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-05-03",
+      "validTime": "1999-05-04T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199905/19990504/narr-a_221_19990504_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199905\\19990504\\narr-a_221_19990504_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56147112,
+      "sha256": "0183907de88fcfc45fb7e8451e84f8c7786c3670a85469844d8007a124fef51e"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-05-03",
+      "validTime": "1999-05-04T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199905/19990504/narr-a_221_19990504_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199905\\19990504\\narr-a_221_19990504_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55871980,
+      "sha256": "16abf642448ca2cb7789ead08520263d8b1bc2eb17b2593e5dd9399f8deea7b6"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-05-03",
+      "validTime": "1999-05-04T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199905/19990504/narr-a_221_19990504_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199905\\19990504\\narr-a_221_19990504_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56167042,
+      "sha256": "daa48444ebac2f872163426967c45bdcd94a2aad18b129c34c243c1336183ada"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-06-26",
+      "validTime": "1999-06-26T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199906/19990626/narr-a_221_19990626_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199906\\19990626\\narr-a_221_19990626_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56135308,
+      "sha256": "79f8ae62430286a3cf71d534448cc0fe5b6b956bccb732635cad06ea9cda687f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-06-26",
+      "validTime": "1999-06-26T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199906/19990626/narr-a_221_19990626_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199906\\19990626\\narr-a_221_19990626_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56158084,
+      "sha256": "87505940fec07841bed049889abc7619447351c29fea5402e8807b472d5a713c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-06-26",
+      "validTime": "1999-06-27T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199906/19990627/narr-a_221_19990627_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199906\\19990627\\narr-a_221_19990627_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56020660,
+      "sha256": "b469748cb80c74b787439ebddf596ee08b5541f4d7b0f779aa30ed10fc496b92"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-06-26",
+      "validTime": "1999-06-27T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199906/19990627/narr-a_221_19990627_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199906\\19990627\\narr-a_221_19990627_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56222424,
+      "sha256": "e5f28081916cf3e022e338d4ebe7cc338f80d6f629736ece3d2884ae9944ebcb"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-06-26",
+      "validTime": "1999-06-27T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199906/19990627/narr-a_221_19990627_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199906\\19990627\\narr-a_221_19990627_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56121742,
+      "sha256": "e9b3f02c7083cf1564411a0ed83fb605270688da1f93f94fb3f346330796a4a1"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-10-13",
+      "validTime": "1999-10-13T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199910/19991013/narr-a_221_19991013_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199910\\19991013\\narr-a_221_19991013_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56562430,
+      "sha256": "4e88d624524ce01bf8022334f781096c8c1240a780826e015bfff562f726e5e6"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-10-13",
+      "validTime": "1999-10-13T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199910/19991013/narr-a_221_19991013_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199910\\19991013\\narr-a_221_19991013_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56245236,
+      "sha256": "a921a93e94a7eb7f84e1a009784f44ffad5ef009be98b53f54a4e43f62bd2353"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-10-13",
+      "validTime": "1999-10-14T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199910/19991014/narr-a_221_19991014_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199910\\19991014\\narr-a_221_19991014_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56060370,
+      "sha256": "14f445ed411393181debb854df2e598de4f5cf65bbd02fc9b917bf657ed48c6f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-10-13",
+      "validTime": "1999-10-14T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199910/19991014/narr-a_221_19991014_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199910\\19991014\\narr-a_221_19991014_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56170102,
+      "sha256": "ba1935ef5857319e71846ea41b2dc4869644c2348d39fdabc1a788236c617d58"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "1999-10-13",
+      "validTime": "1999-10-14T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/199910/19991014/narr-a_221_19991014_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\199910\\19991014\\narr-a_221_19991014_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56389772,
+      "sha256": "6f0b315f9a0cdc663e98a70ca722c54ad35ce4f7ee995aece527542e7c4fad6c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2002-11-10",
+      "validTime": "2002-11-10T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200211/20021110/narr-a_221_20021110_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200211\\20021110\\narr-a_221_20021110_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56851214,
+      "sha256": "1433cce24eda7617c8ebeee3803715d9f6f1d3cffe93b1523e984ecd1f73989d"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2002-11-10",
+      "validTime": "2002-11-10T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200211/20021110/narr-a_221_20021110_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200211\\20021110\\narr-a_221_20021110_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56695786,
+      "sha256": "c75984998bedd66730e431e9efea8763992bbcc671c36490a642b086ecf02043"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2002-11-10",
+      "validTime": "2002-11-11T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200211/20021111/narr-a_221_20021111_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200211\\20021111\\narr-a_221_20021111_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 57113972,
+      "sha256": "a79021e460e479431d83f8f57440613bbf90f28cabbef2746c4a703403006abc"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2002-11-10",
+      "validTime": "2002-11-11T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200211/20021111/narr-a_221_20021111_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200211\\20021111\\narr-a_221_20021111_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56440370,
+      "sha256": "106f766592eed8d13cd615d16730dfe203e6b12d4142a0093e58d2e8d3cbb653"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2002-11-10",
+      "validTime": "2002-11-11T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200211/20021111/narr-a_221_20021111_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200211\\20021111\\narr-a_221_20021111_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56355632,
+      "sha256": "707350ec7eec6ebea88af4a103f555575b45c8f98770d4e218ea584c0b8e16e2"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-04",
+      "validTime": "2003-05-04T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030504/narr-a_221_20030504_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030504\\narr-a_221_20030504_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56807992,
+      "sha256": "c17cae415da96869603392c009dd217bd416146897e151fdc6d073f0a7e0c5ad"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-04",
+      "validTime": "2003-05-04T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030504/narr-a_221_20030504_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030504\\narr-a_221_20030504_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56297960,
+      "sha256": "a328088b77d63707f408642b17cbbe405600b8bbc65d7041d3864951257daff6"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-04",
+      "validTime": "2003-05-05T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030505/narr-a_221_20030505_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030505\\narr-a_221_20030505_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56703312,
+      "sha256": "19f99867655c77e4edfd7bde251ad14518933704d99f7b96bec716fc87c240cb"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-04",
+      "validTime": "2003-05-05T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030505/narr-a_221_20030505_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030505\\narr-a_221_20030505_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56576482,
+      "sha256": "8522cbec460c3272549591facb1921c5b83935de0acb8ddbe902c776a3743719"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-04",
+      "validTime": "2003-05-05T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030505/narr-a_221_20030505_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030505\\narr-a_221_20030505_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56783504,
+      "sha256": "742e70095d18f457b5f72f031dcb318e86cf4fc46222e66426341d4e69737654"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-08",
+      "validTime": "2003-05-08T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030508/narr-a_221_20030508_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030508\\narr-a_221_20030508_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56535522,
+      "sha256": "a60a3b2a2e2c0ae8e211f1b938c8b596c1938a412846f3e30c87277058371286"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-08",
+      "validTime": "2003-05-08T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030508/narr-a_221_20030508_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030508\\narr-a_221_20030508_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56407092,
+      "sha256": "6e4252d8471991f679aca11f54428b60e7e1d05ee929f8092c4b949b3affc49a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-08",
+      "validTime": "2003-05-09T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030509/narr-a_221_20030509_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030509\\narr-a_221_20030509_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56423764,
+      "sha256": "95d6db177c6033d7337bc0b04beb4d2d5e37a2296ceac6ff12bd2ae0b612cb81"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-08",
+      "validTime": "2003-05-09T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030509/narr-a_221_20030509_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030509\\narr-a_221_20030509_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56134886,
+      "sha256": "e9ba19cb6fcecb018b1ae7e394c7f8f79b38960e2063c344fa74309ab6390c7e"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2003-05-08",
+      "validTime": "2003-05-09T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200305/20030509/narr-a_221_20030509_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200305\\20030509\\narr-a_221_20030509_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56369076,
+      "sha256": "965dbe4bd6813294b6091c561427d72978d9e7b0e6bee75010d2cfc8add28b18"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2004-05-30",
+      "validTime": "2004-05-30T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200405/20040530/narr-a_221_20040530_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200405\\20040530\\narr-a_221_20040530_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56180342,
+      "sha256": "a81f9bd72e398ba1aa1d5bd62f58b0024ff0b57ec91b3281e51f82085f7063ca"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2004-05-30",
+      "validTime": "2004-05-30T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200405/20040530/narr-a_221_20040530_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200405\\20040530\\narr-a_221_20040530_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56366720,
+      "sha256": "664f2818532b9dae7120b619183603efc491558a41b24865b7832b0c38462b9b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2004-05-30",
+      "validTime": "2004-05-31T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200405/20040531/narr-a_221_20040531_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200405\\20040531\\narr-a_221_20040531_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56498582,
+      "sha256": "35227c15d67fc011c973da61064f078c156f4a4033a5d0d9755d8a081b15862d"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2004-05-30",
+      "validTime": "2004-05-31T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200405/20040531/narr-a_221_20040531_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200405\\20040531\\narr-a_221_20040531_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56043784,
+      "sha256": "7b79cd9951ff2f6dbe7a6436a8f21cff1f778c4b9719e64a71bef902cd14c9c2"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2004-05-30",
+      "validTime": "2004-05-31T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200405/20040531/narr-a_221_20040531_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200405\\20040531\\narr-a_221_20040531_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56017510,
+      "sha256": "2882042afc43abeef7540f8872dd7fbc5c3e78ac7a65c4042f3d282d6d479609"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2007-05-04",
+      "validTime": "2007-05-04T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200705/20070504/narr-a_221_20070504_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200705\\20070504\\narr-a_221_20070504_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56528376,
+      "sha256": "567a5bedf3726c06fd9047195efec526028c982e7f7e670d0aa7e21a76f6b2f3"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2007-05-04",
+      "validTime": "2007-05-04T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200705/20070504/narr-a_221_20070504_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200705\\20070504\\narr-a_221_20070504_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56477886,
+      "sha256": "59c71a7ba960127a6c01269f82d08eabf5d0575e00ededbbd0d79fb01c4ff00a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2007-05-04",
+      "validTime": "2007-05-05T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200705/20070505/narr-a_221_20070505_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200705\\20070505\\narr-a_221_20070505_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56369432,
+      "sha256": "bddda534ae7cc1be6585ab68f4b7d1965e825974aa1ee09eb266c1777d67eddc"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2007-05-04",
+      "validTime": "2007-05-05T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200705/20070505/narr-a_221_20070505_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200705\\20070505\\narr-a_221_20070505_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56135722,
+      "sha256": "d3c0d34e195877baacf58f7138db72d1796fbd5a8c84f52bc5df14773e12c1a8"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2007-05-04",
+      "validTime": "2007-05-05T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200705/20070505/narr-a_221_20070505_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200705\\20070505\\narr-a_221_20070505_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56561700,
+      "sha256": "fa530c768b19ae86ce1c9ed5ff73f7e436a49a1652bcabcd014335a9739b0a35"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-02-05",
+      "validTime": "2008-02-05T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200802/20080205/narr-a_221_20080205_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200802\\20080205\\narr-a_221_20080205_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56673404,
+      "sha256": "f359316200fa55a45d35e58973f8804e885fd79b64f17d4b521fbeb261c2149b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-02-05",
+      "validTime": "2008-02-05T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200802/20080205/narr-a_221_20080205_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200802\\20080205\\narr-a_221_20080205_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56830414,
+      "sha256": "4d683f7d5fbec998b917aacd5d400c7334cf1141910dd5164e2cdefa2a81b1ee"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-02-05",
+      "validTime": "2008-02-06T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200802/20080206/narr-a_221_20080206_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200802\\20080206\\narr-a_221_20080206_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 57111608,
+      "sha256": "04a8600de502f6faeba0e109dc608517e20ca910a2aa5f317467818edab8189f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-02-05",
+      "validTime": "2008-02-06T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200802/20080206/narr-a_221_20080206_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200802\\20080206\\narr-a_221_20080206_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56466370,
+      "sha256": "f29f2c9a48d5207acb361cc65dbb79e485a1da1278058850d32f14a680d7ea54"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-02-05",
+      "validTime": "2008-02-06T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200802/20080206/narr-a_221_20080206_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200802\\20080206\\narr-a_221_20080206_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56697692,
+      "sha256": "1218a52b66e93a5399547c7384fd38d681b9f84655d2101eed393321f05dd101"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-05-23",
+      "validTime": "2008-05-23T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200805/20080523/narr-a_221_20080523_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200805\\20080523\\narr-a_221_20080523_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56474920,
+      "sha256": "550eaee3d23b85e8b1ea21c60b2d70553a90cc9a4b9f2a7f2ad4084deef24078"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-05-23",
+      "validTime": "2008-05-23T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200805/20080523/narr-a_221_20080523_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200805\\20080523\\narr-a_221_20080523_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56342844,
+      "sha256": "b966a10ec63152b2333cabf327cad3ae9ce0bdcbe7a28d27424de36dcd1f36fb"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-05-23",
+      "validTime": "2008-05-24T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200805/20080524/narr-a_221_20080524_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200805\\20080524\\narr-a_221_20080524_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56560550,
+      "sha256": "84b2fb241c2f2d698e9ded954bf9d637f0a2eee05ea61bd17b8640d3193502b6"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-05-23",
+      "validTime": "2008-05-24T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200805/20080524/narr-a_221_20080524_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200805\\20080524\\narr-a_221_20080524_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55971078,
+      "sha256": "9007019ad8ee22034ad0ea689a0ce982c5e9b2652790fba967a0bf4528a75c1c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2008-05-23",
+      "validTime": "2008-05-24T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/200805/20080524/narr-a_221_20080524_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\200805\\20080524\\narr-a_221_20080524_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56092950,
+      "sha256": "8307dcca96fb44dff079c753b2fe706d96e3fb43f6c9c562ef2452989a2d5fdf"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-10",
+      "validTime": "2010-05-10T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100510/narr-a_221_20100510_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100510\\narr-a_221_20100510_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56004994,
+      "sha256": "2239f0fe572c3fd67caf7e8ba379af1924e86aa3650a67fcfe15bf3aac3ee613"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-10",
+      "validTime": "2010-05-10T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100510/narr-a_221_20100510_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100510\\narr-a_221_20100510_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 55908232,
+      "sha256": "4bd0302059be3d24ae97eb036cf430de99165a2aa323f9651feb12696444c899"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-10",
+      "validTime": "2010-05-11T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100511/narr-a_221_20100511_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100511\\narr-a_221_20100511_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56067870,
+      "sha256": "96bcdc131a1ac8fed1d8a3e3351dbd491635ba6cbf56ae4788a37e938cd21968"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-10",
+      "validTime": "2010-05-11T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100511/narr-a_221_20100511_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100511\\narr-a_221_20100511_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55800602,
+      "sha256": "c61de6ba1540fa2c78babc6fd007bf84fd4666a82920852cb4eca857f0092c9a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-10",
+      "validTime": "2010-05-11T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100511/narr-a_221_20100511_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100511\\narr-a_221_20100511_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56006760,
+      "sha256": "9be7dd38068d4f2b22e82aadd3c7172d86c4abc2712643e05e623c95de1a156d"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-24",
+      "validTime": "2010-05-24T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100524/narr-a_221_20100524_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100524\\narr-a_221_20100524_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55916472,
+      "sha256": "ae3cb88a2a6e194e36f0f27f3d6eb85a147a1c6cf53f22e3138f61840fc34905"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-24",
+      "validTime": "2010-05-24T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100524/narr-a_221_20100524_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100524\\narr-a_221_20100524_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56098766,
+      "sha256": "ce24b9e3696d3bf64a00d8f337395c3fe1f3824a245b3f47e1d5af175402ffa5"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-24",
+      "validTime": "2010-05-25T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100525/narr-a_221_20100525_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100525\\narr-a_221_20100525_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56237384,
+      "sha256": "7548740e37923f179c31754ea8aa9127f6c72e28bc105eb6d97632071c1f6920"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-24",
+      "validTime": "2010-05-25T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100525/narr-a_221_20100525_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100525\\narr-a_221_20100525_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56226002,
+      "sha256": "f761993cdc7e131ba9af725f17e5d1e162a3fa6dc038a2800905ea3c0218e965"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2010-05-24",
+      "validTime": "2010-05-25T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201005/20100525/narr-a_221_20100525_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201005\\20100525\\narr-a_221_20100525_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55977176,
+      "sha256": "56b47e4bcdaca45085aae8344d62b3f70eb3e714a5176877357ee46f525aa73b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-21",
+      "validTime": "2011-04-21T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110421/narr-a_221_20110421_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110421\\narr-a_221_20110421_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56218312,
+      "sha256": "0094886734e1d66dbe9f2a7f49ee0b6d78fb3360be9798d8a1a90bb3a73ddc60"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-21",
+      "validTime": "2011-04-21T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110421/narr-a_221_20110421_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110421\\narr-a_221_20110421_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56399072,
+      "sha256": "8cc9f44e1045c945852e1f6bf12b4e7ea4aa158e82c84a37fe89fb28c9080dec"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-21",
+      "validTime": "2011-04-22T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110422/narr-a_221_20110422_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110422\\narr-a_221_20110422_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56116456,
+      "sha256": "50410c51d899a2b87647083b28addab1c20b2316475b2cfb622d1b84ed2bd302"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-21",
+      "validTime": "2011-04-22T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110422/narr-a_221_20110422_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110422\\narr-a_221_20110422_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56204404,
+      "sha256": "0cb101d08870b0811035d026a6a4a824ee4505437e1ad0fef19583c706db0c6a"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-21",
+      "validTime": "2011-04-22T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110422/narr-a_221_20110422_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110422\\narr-a_221_20110422_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55923986,
+      "sha256": "1705f5a2aea99ed983fe9f931b7c939c7f5d7d0d0edf614a6fcad2462fe1af20"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-27",
+      "validTime": "2011-04-27T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110427/narr-a_221_20110427_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110427\\narr-a_221_20110427_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55875026,
+      "sha256": "f6321ce1a5812d3d45c3e6ae654daf0eb41210b903aacb265cea69d244c58f63"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-27",
+      "validTime": "2011-04-27T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110427/narr-a_221_20110427_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110427\\narr-a_221_20110427_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56248020,
+      "sha256": "0a5e6a21ab3b0dc54c331515b984083664f6b92ac8ab19af601f26ce431423c6"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-27",
+      "validTime": "2011-04-28T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110428/narr-a_221_20110428_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110428\\narr-a_221_20110428_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56370606,
+      "sha256": "25ef58088edec73ebce18e6bbb7df61d91630e3287ee92f74a3e5d4ceec5f534"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-27",
+      "validTime": "2011-04-28T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110428/narr-a_221_20110428_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110428\\narr-a_221_20110428_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56096888,
+      "sha256": "ded623ab219a8dcd6b8fe2ff254adaaf82cafb8d29fce51a3f02a14ba34d9fa9"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-04-27",
+      "validTime": "2011-04-28T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201104/20110428/narr-a_221_20110428_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201104\\20110428\\narr-a_221_20110428_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56379238,
+      "sha256": "2c26474157a4686b2c18aab51efe71998be200131e30ce9de4e26efb584cce50"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-05-24",
+      "validTime": "2011-05-24T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201105/20110524/narr-a_221_20110524_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201105\\20110524\\narr-a_221_20110524_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55985124,
+      "sha256": "016a5220548b778aa7e337b16a941e3fa9d118186b1ca917c262f70eafa392a2"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-05-24",
+      "validTime": "2011-05-24T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201105/20110524/narr-a_221_20110524_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201105\\20110524\\narr-a_221_20110524_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 55690980,
+      "sha256": "31f3fb280189b6934bd824cd9c89553a7fe20a64f79af93a54f05030397e49ba"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-05-24",
+      "validTime": "2011-05-25T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201105/20110525/narr-a_221_20110525_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201105\\20110525\\narr-a_221_20110525_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56115298,
+      "sha256": "1c2ece7c2608247c1d901b58f8a5505b5eb02754307907ae4a85b84234ebe959"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-05-24",
+      "validTime": "2011-05-25T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201105/20110525/narr-a_221_20110525_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201105\\20110525\\narr-a_221_20110525_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55834172,
+      "sha256": "04be00f6a11ed7add15a9712eba60dbc02d7d7cf0212e27bd3998b8c1f43e102"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-05-24",
+      "validTime": "2011-05-25T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201105/20110525/narr-a_221_20110525_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201105\\20110525\\narr-a_221_20110525_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55803048,
+      "sha256": "7474f981e72f1406f47753e9278c4d49a7d7d1436ad1001e2d02eef2c67a153c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-07-22",
+      "validTime": "2011-07-22T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201107/20110722/narr-a_221_20110722_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201107\\20110722\\narr-a_221_20110722_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55799612,
+      "sha256": "db2a76e12cf9ea11606429945d49109decc0e26f5ff634d553479ecffd5dab24"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-07-22",
+      "validTime": "2011-07-22T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201107/20110722/narr-a_221_20110722_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201107\\20110722\\narr-a_221_20110722_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 55649888,
+      "sha256": "b9e3d0a37dae06ab677b1c021f51d5643e14d9878e6535447da1695fab49674f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-07-22",
+      "validTime": "2011-07-23T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201107/20110723/narr-a_221_20110723_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201107\\20110723\\narr-a_221_20110723_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 55638914,
+      "sha256": "f6851a9c4f606b453c6ccc96f202dbb86354450b07c61708b17fe3e46aed8eb4"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-07-22",
+      "validTime": "2011-07-23T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201107/20110723/narr-a_221_20110723_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201107\\20110723\\narr-a_221_20110723_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55881890,
+      "sha256": "8aa452caf606e8d421b9e19d25d518309b135e6c25da5af40c89c137ac9cd1c3"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2011-07-22",
+      "validTime": "2011-07-23T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201107/20110723/narr-a_221_20110723_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201107\\20110723\\narr-a_221_20110723_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55627770,
+      "sha256": "060e44468683856b24895823eb96349f4c3673f94b9eec19e3afb39ea57631f3"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-05-19",
+      "validTime": "2013-05-19T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201305/20130519/narr-a_221_20130519_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201305\\20130519\\narr-a_221_20130519_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56337286,
+      "sha256": "56112369e2b772931c801594420690d1b77912af1e3321571573dfc6ce619e19"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-05-19",
+      "validTime": "2013-05-19T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201305/20130519/narr-a_221_20130519_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201305\\20130519\\narr-a_221_20130519_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56359822,
+      "sha256": "d760b3477cce93a61c3c71efb9eaa6f7bfa6571c9fcdef3c8bdc21dc04038134"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-05-19",
+      "validTime": "2013-05-20T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201305/20130520/narr-a_221_20130520_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201305\\20130520\\narr-a_221_20130520_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56575678,
+      "sha256": "87ff8768db1182894ba788381795306a4bc55ee96693179faec58811cd598ebe"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-05-19",
+      "validTime": "2013-05-20T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201305/20130520/narr-a_221_20130520_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201305\\20130520\\narr-a_221_20130520_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56085386,
+      "sha256": "a3e01fb4505adf6c509730aa1e3124cc58bc6531a630d5f5d3be76ceab62881b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-05-19",
+      "validTime": "2013-05-20T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201305/20130520/narr-a_221_20130520_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201305\\20130520\\narr-a_221_20130520_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56332268,
+      "sha256": "aadb4bf5e3598b4d16055d4c16d949c2ad001737eb5b36fecea87eb1bbb88a3f"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-01",
+      "validTime": "2013-08-01T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130801/narr-a_221_20130801_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130801\\narr-a_221_20130801_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56092540,
+      "sha256": "a84ee2b1bdc3363c9d109695c6f7cbb4a547aed24a1a933978cee50b2d55fb3b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-01",
+      "validTime": "2013-08-01T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130801/narr-a_221_20130801_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130801\\narr-a_221_20130801_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 55651474,
+      "sha256": "11a98b9c55fa5a1d0892479bb6b5ed8c2faa62ea7af58727c8523c9c762719db"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-01",
+      "validTime": "2013-08-02T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130802/narr-a_221_20130802_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130802\\narr-a_221_20130802_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 55629586,
+      "sha256": "2e94af7713282409190ce42027a6a37afe3373a737bbb555b9d58bb52eba4b38"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-01",
+      "validTime": "2013-08-02T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130802/narr-a_221_20130802_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130802\\narr-a_221_20130802_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55877932,
+      "sha256": "15491cfdbf6cdf6c9418c84c3acc4eff9582559bae00dcc6c089d2ba87d54779"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-01",
+      "validTime": "2013-08-02T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130802/narr-a_221_20130802_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130802\\narr-a_221_20130802_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55732460,
+      "sha256": "0cc49905a755eb6ba7c3b5246a7f0f27d07235c93d479a94746b4940d9693c6c"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-03",
+      "validTime": "2013-08-03T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130803/narr-a_221_20130803_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130803\\narr-a_221_20130803_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55919222,
+      "sha256": "f70e0446e79c6104b45f5f6ec7a40772384fc33781875026759f9181666c9de4"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-03",
+      "validTime": "2013-08-03T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130803/narr-a_221_20130803_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130803\\narr-a_221_20130803_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 55725290,
+      "sha256": "4daacfd6567df8c81dd9698e96f107e6361265d213a7493f0b614acc4bda82b4"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-03",
+      "validTime": "2013-08-04T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130804/narr-a_221_20130804_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130804\\narr-a_221_20130804_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 55614426,
+      "sha256": "8ac66175e3b17613d068f9a7610a25570a7c9cf3c5c8246ab78c37d4c6f09b1b"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-03",
+      "validTime": "2013-08-04T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130804/narr-a_221_20130804_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130804\\narr-a_221_20130804_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 55919320,
+      "sha256": "46b1b745c2aa281b77efd4b8393107a2aa5712c4b3ed10cea4fc7a6f5e6992b0"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-08-03",
+      "validTime": "2013-08-04T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201308/20130804/narr-a_221_20130804_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201308\\20130804\\narr-a_221_20130804_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 55956012,
+      "sha256": "a11e2f71220dbce27cfd0594e0cc37f2ef467bf1b85784d5a51dfb0a6a0d8e60"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-11-17",
+      "validTime": "2013-11-17T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201311/20131117/narr-a_221_20131117_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201311\\20131117\\narr-a_221_20131117_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56179674,
+      "sha256": "f751ba008bd40893fa3e627672efd6fa6c5ae34f6b3bddcbb12a05741a2f4f56"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-11-17",
+      "validTime": "2013-11-17T18",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201311/20131117/narr-a_221_20131117_1800_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201311\\20131117\\narr-a_221_20131117_1800_000.grb",
+      "status": "downloaded",
+      "bytes": 56177232,
+      "sha256": "cfebf493b4ea1111f5c346f82bf98b299a84c3a4a85014adf790b73ccaa26466"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-11-17",
+      "validTime": "2013-11-18T00",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201311/20131118/narr-a_221_20131118_0000_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201311\\20131118\\narr-a_221_20131118_0000_000.grb",
+      "status": "downloaded",
+      "bytes": 56190284,
+      "sha256": "d26e517de6f8d6e4641366bfefacdf0280ee23f80964993c33699668c4bd5ae9"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-11-17",
+      "validTime": "2013-11-18T06",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201311/20131118/narr-a_221_20131118_0600_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201311\\20131118\\narr-a_221_20131118_0600_000.grb",
+      "status": "downloaded",
+      "bytes": 56157712,
+      "sha256": "1770183eeb937bab7b57049e634e417385e072fa432103677e299b1a76b939b7"
+    },
+    {
+      "kind": "narr",
+      "eventDate": "2013-11-17",
+      "validTime": "2013-11-18T12",
+      "url": "https://www.ncei.noaa.gov/thredds/fileServer/model-narr-a-files/201311/20131118/narr-a_221_20131118_1200_000.grb",
+      "path": "C:\\Users\\alex1\\Documents\\VSCodeProjects\\weatherworld\\training-cache\\narr\\201311\\20131118\\narr-a_221_20131118_1200_000.grb",
+      "status": "downloaded",
+      "bytes": 56401236,
+      "sha256": "6383ee47fc8a2645d69e541328b3cc4474a045e3305e48357dffbbfb75c01a81"
+    }
+  ]
+}

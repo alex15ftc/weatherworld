@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const synoptic=fs.readFileSync(new URL('../js/synoptic/SynopticObjectEngine.js',import.meta.url),'utf8');
+const sampling=fs.readFileSync(new URL('../js/storms/environmentSampling.js',import.meta.url),'utf8');
+assert.match(synoptic,/applyKinematicAtmosphericSolver/);
+assert.match(synoptic,/diagnosePressureGradient/);
+assert.match(synoptic,/solveKinematicWind/);
+assert.match(synoptic,/advectScalar/);
+assert.match(synoptic,/diagnoseMassConvergence/);
+assert.match(synoptic,/verticalVelocity/);
+assert.match(synoptic,/atmosphericHealth/);
+assert.match(sampling,/kinematicConvergence/);
+assert.match(sampling,/frontogenesis/);
+console.log('2.56.0 kinematic atmospheric solver regression: PASS');

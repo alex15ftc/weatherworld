@@ -38,7 +38,7 @@ export function updateCoupledStormMotion(world, storm, environment, dtHours) {
 }
 
 export function updateStormColdPool(world, storm, environment, dtHours) {
-  const linear = ['linear segment','QLCS','MCS'].includes(storm.mode);
+  const linear = ['broken line','linear segment','QLCS with embedded supercells','QLCS','MCS'].includes(storm.mode);
   const dryness = clamp(((environment.lcl ?? 1000)-750)/1700,0,1);
   const targetDeficitF = clamp(1.2 + 8.5*storm.intensity*(0.65 + 0.35*dryness), 0.5, 12);
   storm.coldPoolTemperatureDeficitF ??= 0; storm.coldPoolPressureRiseHpa ??= 0;

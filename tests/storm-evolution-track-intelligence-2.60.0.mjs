@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { Storm } from '../js/storms/Storm.js';
+import { initializeStormTrackIntelligence, updateStormTrackIntelligence, updateStormHazardSwaths } from '../js/storms/StormTrackIntelligence.js';
+
+const storm = new Storm({ id:'S2600', xKm:100, yKm:100, velocityEastKph:40, velocityNorthKph:10, sourceCell:{x:10,y:10}, createdHourUtc:12, modeHint:'discrete supercell' });
+storm.organization=.72; storm.inflowQuality=.8; storm.modeConfidence=.75; storm.mesocycloneStrength=.65; storm.mesocycloneCycle={phase:.25,cyclesCompleted:1};
+storm.boundaryInteraction={strength:.7,type:'warm',id:'OBJ-WARM-001',propagation:{east:8,north:2}};
+storm.hazards={tornadoProbability:.35,hailProbability:.5,windProbability:.15}; storm.tornado={probability:.4};
+const world={stormEngine:{validHourUtc:18},validHourUtc:18};
+const before={...storm.velocityKph};
+initializeStormTrackIntelligence(storm);
+updateStormTrackIntelligence(world,storm,{cape:2600,warmSector:.8,projectedStormTrackSupport:.7},1/12);
+updateStormHazardSwaths(world,storm);
+assert.equal(storm.trackIntelligence.version,'2.60.0');
+assert.equal(storm.trackIntelligence.preferredBoundaryType,'warm');
+assert.ok(storm.trackIntelligence.confidence>0);
+assert.ok(storm.velocityKph.east!==before.east || storm.velocityKph.north!==before.north);
+assert.ok(storm.trackIntelligence.trackCorridor.radius90Km>storm.trackIntelligence.trackCorridor.radius50Km);
+assert.equal(storm.trackIntelligence.swaths.tornado.length,1);
+assert.equal(storm.trackIntelligence.swaths.hail.length,1);
+assert.equal(storm.trackIntelligence.swaths.wind.length,1);
+console.log('2.60.0 storm evolution and track intelligence regression: PASS');

@@ -91,13 +91,12 @@ function generate({ persist = true, seed = Number(ui.seed.value), baseHour = SIM
   upcomingSystem = null;
   persistedUpcomingSeed = null;
   atmosphere.upcomingSystemForecast = null;
-  initializeEvolution(atmosphere, currentConfig);
+  initializeEvolution(atmosphere, currentConfig, { profile: 'gameplay' });
   systemStartHour = baseHour;
   systemNumber = systemIndex;
   atmosphere.validHourUtc = baseHour;
   if (atmosphere.evolution) atmosphere.evolution.elapsedHours = 0;
   setForecastContext();
-  updatePredictiveOutlooks(atmosphere, { force: true });
   currentConfig = { ...currentConfig, ...atmosphere.evolution.outlookAnalysis };
   hourlyStateCache = new Map();
   cacheCurrentState();
@@ -175,7 +174,10 @@ async function restorePrecomputedFrame(targetHour) {
   if (!activeTimelineClient || !activeTimelineDescriptor) return false;
   const offset = targetHour - systemStartHour;
   if (offset < -1e-6 || offset > SYSTEM_CYCLE_HOURS + 1e-6) return false;
-  const frameIndex = Math.round(offset / 0.5);
+  const timelineStep = Number(activeTimelineDescriptor?.stepHours) || 1;
+  const exactIndex = offset / timelineStep;
+  if (Math.abs(exactIndex - Math.round(exactIndex)) > 1e-6) return false;
+  const frameIndex = Math.round(exactIndex);
   const cached = activeTimelineFrameCache.get(frameIndex);
   if (cached) {
     applyTimelineFrame(cached);
@@ -211,6 +213,7 @@ function applyTimelineFrame(state) {
   atmosphere.stormEngine = state.stormEngine;
   atmosphere.stormOutflows = state.stormOutflows ?? [];
   atmosphere.mesoscale = state.mesoscale;
+  atmosphere.synopticObjects = state.synopticObjects ?? null;
   atmosphere.airMassEngine = state.airMassEngine;
   atmosphere.regions = state.regions ?? [];
   atmosphere.synopticCoherence = state.synopticCoherence;
@@ -248,20 +251,20 @@ function startActiveTimeline({ seed, startHourUtc }) {
   const generation = ++activeTimelineGeneration;
   activeTimelineClient?.close();
   activeTimelineClient = new TimelinePrecomputeClient();
-  activeTimelineDescriptor = { seed, startHourUtc, hours: SYSTEM_CYCLE_HOURS, stepHours: 0.5, status: 'generating', completedHours: 0 };
+  activeTimelineDescriptor = { seed, startHourUtc, hours: SYSTEM_CYCLE_HOURS, stepHours: 1, status: 'generating', completedHours: 0 };
   activeTimelineFrameCache = new Map();
   activeTimelinePrefetching = new Set();
   activeTimelineClient.onProgress(progress => {
     if (generation !== activeTimelineGeneration) return;
     activeTimelineDescriptor = progress;
-    const currentIndex = Math.max(0, Math.round((atmosphere.validHourUtc - systemStartHour) / 0.5));
+    const currentIndex = Math.max(0, Math.round((atmosphere.validHourUtc - systemStartHour) / (Number(activeTimelineDescriptor?.stepHours) || 1)));
     prefetchTimelineWindow(currentIndex);
   });
-  activeTimelineClient.start({ seed, startHourUtc, hours: SYSTEM_CYCLE_HOURS, stepHours: 0.5 })
+  activeTimelineClient.start({ seed, startHourUtc, hours: SYSTEM_CYCLE_HOURS, stepHours: 1 })
     .then(status => {
       if (generation !== activeTimelineGeneration) return;
       activeTimelineDescriptor = status;
-      prefetchTimelineWindow(Math.max(0, Math.round((atmosphere.validHourUtc - systemStartHour) / 0.5)));
+      prefetchTimelineWindow(Math.max(0, Math.round((atmosphere.validHourUtc - systemStartHour) / (Number(activeTimelineDescriptor?.stepHours) || 1))));
     })
     .catch(error => {
       if (generation !== activeTimelineGeneration) return;
@@ -273,13 +276,13 @@ function startActiveTimeline({ seed, startHourUtc }) {
 function prefetchTimelineWindow(centerIndex) {
   if (!activeTimelineClient || !activeTimelineDescriptor || activeTimelineDescriptor.status === 'error') return;
   const availableSteps = activeTimelineDescriptor.status === 'ready'
-    ? Math.round(SYSTEM_CYCLE_HOURS / 0.5)
-    : Math.floor(Number(activeTimelineDescriptor.completedHours ?? 0) / 0.5);
+    ? Math.round(SYSTEM_CYCLE_HOURS / (Number(activeTimelineDescriptor.stepHours) || 1))
+    : Math.floor(Number(activeTimelineDescriptor.completedHours ?? 0) / (Number(activeTimelineDescriptor.stepHours) || 1));
   const end = Math.min(availableSteps, centerIndex + TIMELINE_CACHE_RADIUS_STEPS);
   for (let index = Math.max(0, centerIndex - 2); index <= end; index += 1) {
     if (activeTimelineFrameCache.has(index) || activeTimelinePrefetching.has(index)) continue;
     activeTimelinePrefetching.add(index);
-    activeTimelineClient.getFrame(index * 0.5).then(frame => {
+    activeTimelineClient.getFrame(index * (Number(activeTimelineDescriptor.stepHours) || 1)).then(frame => {
       rememberTimelineFrame(index, frame);
     }).catch(() => {}).finally(() => activeTimelinePrefetching.delete(index));
   }
@@ -288,7 +291,7 @@ function prefetchTimelineWindow(centerIndex) {
 function rememberTimelineFrame(index, frame) {
   activeTimelineFrameCache.set(index, frame);
   while (activeTimelineFrameCache.size > TIMELINE_CACHE_MAX_FRAMES) {
-    const current = Math.round((atmosphere.validHourUtc - systemStartHour) / 0.5);
+    const current = Math.round((atmosphere.validHourUtc - systemStartHour) / (Number(activeTimelineDescriptor?.stepHours) || 1));
     const oldest = [...activeTimelineFrameCache.keys()].sort((a, b) => Math.abs(b - current) - Math.abs(a - current))[0];
     activeTimelineFrameCache.delete(oldest);
   }
@@ -323,7 +326,7 @@ function cacheCurrentState({ forceCheckpoint = false } = {}) {
     validHourUtc: hour,
     cells: structuredClone(atmosphere.cells), evolution: structuredClone(atmosphere.evolution),
     analysis: structuredClone(atmosphere.analysis ?? null), storms: structuredClone(atmosphere.storms ?? []),
-    stormEngine: structuredClone(atmosphere.stormEngine ?? null), stormOutflows: structuredClone(atmosphere.stormOutflows ?? []), mesoscale: structuredClone(atmosphere.mesoscale ?? null),
+    stormEngine: structuredClone(atmosphere.stormEngine ?? null), stormOutflows: structuredClone(atmosphere.stormOutflows ?? []), mesoscale: structuredClone(atmosphere.mesoscale ?? null), synopticObjects: structuredClone(atmosphere.synopticObjects ?? null),
     airMassEngine: structuredClone(atmosphere.airMassEngine ?? null), regions: structuredClone(atmosphere.regions ?? []),
     synopticCoherence: structuredClone(atmosphere.synopticCoherence ?? null), setupForecast: structuredClone(atmosphere.setupForecast ?? null),
     outlookCycle: structuredClone(atmosphere.outlookCycle ?? null), upcomingSystemForecast: structuredClone(atmosphere.upcomingSystemForecast ?? null),
@@ -344,6 +347,7 @@ function restoreCachedState(hour) {
   atmosphere.stormEngine = state.stormEngine ?? null;
   atmosphere.stormOutflows = state.stormOutflows ?? [];
   atmosphere.mesoscale = state.mesoscale ?? null;
+  atmosphere.synopticObjects = state.synopticObjects ?? null;
   atmosphere.airMassEngine = state.airMassEngine ?? null;
   atmosphere.regions = state.regions ?? [];
   atmosphere.synopticCoherence = state.synopticCoherence ?? null;
@@ -367,6 +371,7 @@ function detachCachedStateForMutation() {
   atmosphere.storms = structuredClone(atmosphere.storms ?? []);
   atmosphere.stormEngine = structuredClone(atmosphere.stormEngine ?? null);
   atmosphere.mesoscale = structuredClone(atmosphere.mesoscale ?? null);
+  atmosphere.synopticObjects = structuredClone(atmosphere.synopticObjects ?? null);
   atmosphere.airMassEngine = structuredClone(atmosphere.airMassEngine ?? null);
   atmosphere.regions = structuredClone(atmosphere.regions ?? []);
   atmosphere.synopticCoherence = structuredClone(atmosphere.synopticCoherence ?? null);
@@ -656,18 +661,18 @@ async function prepareUpcomingSystem() {
   // authoritative 72-hour timeline continues in the worker.
   const preview = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
   const previewConfig = generateScenario(preview, nextSeed);
-  initializeEvolution(preview, previewConfig);
+  initializeEvolution(preview, previewConfig, { profile: 'gameplay' });
   atmosphere.upcomingSystemForecast = {
     seed: nextSeed, handoffHour, width: preview.width, height: preview.height,
     cells: structuredClone(preview.cells), narrativeLabel: previewConfig.narrativeLabel ?? previewConfig.regime,
     primaryHazard: previewConfig.primaryHazard, stormMode: previewConfig.stormMode,
     precomputeStatus: 'generating', precomputeProgress: 0
   };
-  updatePredictiveOutlooks(atmosphere, { force: true });
+  updatePredictiveOutlooks(atmosphere, { force: true, days: ['day1'] });
   persistWorldState();
 
   try {
-    const timeline = await upcomingTimelineClient.start({ seed: nextSeed, startHourUtc: handoffHour, hours: SYSTEM_CYCLE_HOURS, stepHours: 0.5 });
+    const timeline = await upcomingTimelineClient.start({ seed: nextSeed, startHourUtc: handoffHour, hours: SYSTEM_CYCLE_HOURS, stepHours: 1 });
     if (!upcomingSystem || upcomingSystem.seed !== nextSeed) return;
     upcomingSystem.timeline = timeline;
     upcomingSystem.status = timeline.status;
@@ -910,6 +915,7 @@ function persistSessionSnapshot(force = false) {
       stormEngine: atmosphere.stormEngine ?? null,
       stormOutflows: atmosphere.stormOutflows ?? [],
       mesoscale: atmosphere.mesoscale ?? null,
+      synopticObjects: atmosphere.synopticObjects ?? null,
       airMassEngine: atmosphere.airMassEngine ?? null,
       regions: atmosphere.regions ?? [],
       synopticCoherence: atmosphere.synopticCoherence ?? null,
@@ -938,7 +944,7 @@ function restoreSessionSnapshot(saved) {
     atmosphere.cells=state.cells; atmosphere.validHourUtc=state.validHourUtc;
     atmosphere.evolution=state.evolution; atmosphere.analysis=state.analysis; atmosphere.storms=state.storms??[];
     for (const storm of atmosphere.storms) if (storm.internalField) storm.internalField = hydrateStormInternalField(storm.internalField);
-    atmosphere.stormEngine=state.stormEngine; atmosphere.stormOutflows=state.stormOutflows??[]; atmosphere.mesoscale=state.mesoscale; atmosphere.airMassEngine=state.airMassEngine;
+    atmosphere.stormEngine=state.stormEngine; atmosphere.stormOutflows=state.stormOutflows??[]; atmosphere.mesoscale=state.mesoscale; atmosphere.synopticObjects=state.synopticObjects??null; atmosphere.airMassEngine=state.airMassEngine;
     atmosphere.regions=state.regions??[]; atmosphere.synopticCoherence=state.synopticCoherence; atmosphere.setupForecast=state.setupForecast;
     atmosphere.outlookCycle=state.outlookCycle; atmosphere.upcomingSystemForecast=state.upcomingSystemForecast; atmosphere.radarNetwork=state.radarNetwork;
     currentConfig=state.config??currentConfig; renderer.atmosphere=atmosphere; renderer.resize(); hourlyStateCache=new Map(); renderer.setStateKey(`${scenarioRevision}:${atmosphere.validHourUtc}`);
@@ -966,6 +972,7 @@ function hydrateRemoteAuthorityState(remote) {
   atmosphere.stormEngine = state.stormEngine;
   atmosphere.stormOutflows = state.stormOutflows ?? [];
   atmosphere.mesoscale = state.mesoscale;
+  atmosphere.synopticObjects = state.synopticObjects ?? null;
   atmosphere.airMassEngine = state.airMassEngine;
   atmosphere.regions = state.regions ?? [];
   atmosphere.synopticCoherence = state.synopticCoherence;

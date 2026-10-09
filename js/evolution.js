@@ -2,7 +2,7 @@ import { diagnoseCellEnvironment, diagnoseEventRisk } from './diagnostics/riskDi
 import { clamp } from './scenarios/math.js?v=2.20.1';
 import { diagnoseBoundaries } from './diagnostics/boundaryDiagnosis.js?v=2.20.1';
 import { diagnoseForcing } from './diagnostics/forcingDiagnosis.js?v=2.20.1';
-import { updateCellDiagnostics } from './sounding.js?v=2.20.1';
+import { updateCellDiagnostics, updateLightweightStpDiagnostics as updateCellLightweightStpDiagnostics } from './sounding.js?v=2.69.1';
 import { sampleSynopticPattern, airMassThermodynamics } from './scenarios/synopticPattern.js?v=2.20.1';
 import { analyzeMapFeatures } from './analysis/mapAnalysis.js?v=2.20.1';
 import { INITIAL_VALID_HOUR_UTC, OUTLOOK_INTERVAL_HOURS, PRESSURE_LEVELS_HPA } from './constants.js?v=2.20.1';
@@ -16,9 +16,15 @@ import { initializeSetupForecast, updateSetupForecast } from './scenarios/SetupF
 import { initializeOutlookCycle, updatePredictiveOutlooks } from './forecast/OutlookCycleEngine.js?v=2.20.1';
 import { initializeStormObservationLayer, publishStormObservations } from './storms/StormObservationLayer.js?v=2.20.1';
 import { initializeCoupledAtmosphere, advanceCoupledAtmosphere, projectStormInfluence } from './coupling/CoupledAtmosphereEngine.js?v=2.21.4';
+import { initializeSynopticObjects, advanceSynopticObjects } from './synoptic/SynopticObjectEngine.js?v=2.52.0';
+import { resolveRuntimeProfile } from './runtime/RuntimeProfile.js';
+import { initializeMeteorologicalIntegrity, runMeteorologicalIntegrity } from './atmosphere/MeteorologicalIntegrityEngine.js?v=2.70.0';
+import { initializeAnalogScenarioEngine, runAnalogScenarioEngine } from './scenarios/AnalogScenarioEngine.js?v=2.71.0';
 
 
-export function initializeEvolution(world, config) {
+export function initializeEvolution(world, config, { profile = 'gameplay' } = {}) {
+  const runtimeProfile = resolveRuntimeProfile(profile);
+  world.runtime = { profile: runtimeProfile, initializedAtMs: nowMs(), phaseMs: {}, phaseRuns: {}, deferred: {} };
   world.validHourUtc = INITIAL_VALID_HOUR_UTC;
   world.evolution = {
     config,
@@ -26,7 +32,7 @@ export function initializeEvolution(world, config) {
     outlookValidHourUtc: INITIAL_VALID_HOUR_UTC,
     outlookAnalysis: null,
     performance: createEvolutionPerformanceState(),
-    cadence: { mediumHours: 1, slowHours: 3 }
+    cadence: { mediumHours: runtimeProfile.mediumAnalysisHours, slowHours: runtimeProfile.slowAnalysisHours, thermodynamicsHours: runtimeProfile.fullThermodynamicsCadenceHours, mesoscaleHours: runtimeProfile.mesoscaleCadenceHours, coupledHours: runtimeProfile.coupledCadenceHours }
   };
 
   // 2.13.2 establishes immutable world geography before the atmosphere begins.
@@ -42,10 +48,13 @@ export function initializeEvolution(world, config) {
   enforcePhysicalConstraints(world);
   // Initial derived fields already come from the authoritative generation formulas.
   diagnoseBoundaries(world);
+  initializeSynopticObjects(world, config);
   initializeMesoscaleEngine(world);
   initializeCoupledAtmosphere(world);
   initializeAirMassEngine(world, config.synopticPattern);
   updateSoundingDiagnostics(world);
+  initializeMeteorologicalIntegrity(world);
+  initializeAnalogScenarioEngine(world);
   projectBoundaryInfluence(world, 0);
   projectBoundaryMetadata(world);
   diagnoseForcing(world);
@@ -58,7 +67,7 @@ export function initializeEvolution(world, config) {
   initializeStormEngine(world);
   advanceStormEngine(world, 0);
   initializeStormObservationLayer(world);
-  initializeOutlookCycle(world);
+  initializeOutlookCycle(world, { initialDays: runtimeProfile.initialOutlookDays });
 
   // Store the exact initialized/displayed category as the only initial
   // authoritative outlook. Tests use this snapshot to catch future pipeline
@@ -72,8 +81,9 @@ export function initializeEvolution(world, config) {
 
 export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {}) {
   const requested = Math.max(0, Number(hours) || 0);
-  const stepHours = 0.5;
-  const steps = Math.round(requested / stepHours);
+  const configuredStep = Number(world.runtime?.profile?.atmosphereStepHours) || 0.5;
+  const stepHours = Math.min(configuredStep, requested || configuredStep);
+  const steps = Math.max(1, Math.round(requested / stepHours));
 
   for (let step = 0; step < steps; step++) {
     const stepStarted = nowMs();
@@ -91,16 +101,31 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
     });
 
     runEvolutionPhase(world, 'fastDiagnostics', () => {
-      runEvolutionPhase(world, 'thermodynamics', () => updateSoundingDiagnostics(world));
+      const thermoDue = isCadenceDue(world, 'thermodynamics', world.evolution.cadence?.thermodynamicsHours ?? 1);
+      if (thermoDue) runEvolutionPhase(world, 'thermodynamics', () => updateSoundingDiagnostics(world));
+      else markEvolutionPhaseSkipped(world, 'thermodynamics');
       runEvolutionPhase(world, 'boundaryDiagnosis', () => diagnoseBoundaries(world, previous));
     });
-    runEvolutionPhase(world, 'mesoscale', () => {
-      advanceMesoscaleEngine(world, stepHours);
+    if (isCadenceDue(world, 'mesoscale', world.evolution.cadence?.mesoscaleHours ?? 1)) {
+      runEvolutionPhase(world, 'mesoscale', () => {
+        advanceSynopticObjects(world, stepHours);
+        advanceMesoscaleEngine(world, stepHours);
+        projectBoundaryInfluence(world, stepHours);
+        enforcePhysicalConstraints(world);
+        diagnoseForcing(world, previous);
+        updateMesoscaleFields(world, stepHours);
+      });
+    } else {
+      markEvolutionPhaseSkipped(world, 'mesoscale');
       projectBoundaryInfluence(world, stepHours);
-      enforcePhysicalConstraints(world);
-      diagnoseForcing(world, previous);
-      updateMesoscaleFields(world, stepHours);
-    });
+    }
+
+    // 2.69.1: keep the displayed effective STP synchronized with current
+    // air-mass fractions and boundary side every gameplay step. This is a
+    // lightweight validity refresh and does not rebuild full soundings.
+    runEvolutionPhase(world, 'lightweightStp', () => updateLightweightStpDiagnostics(world, stepHours));
+    runEvolutionPhase(world, 'meteorologicalIntegrity', () => runMeteorologicalIntegrity(world));
+    runEvolutionPhase(world, 'analogScenario', () => runAnalogScenarioEngine(world));
 
     if (isCadenceDue(world, 'medium', world.evolution.cadence?.mediumHours ?? 1)) {
       runEvolutionPhase(world, 'mediumAnalysis', () => {
@@ -121,11 +146,13 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
     } else {
       runEvolutionPhase(world, 'storms', () => applyStormFeedback(world, stepHours));
     }
-    runEvolutionPhase(world, 'coupling', () => {
-      projectStormInfluence(world);
-      advanceCoupledAtmosphere(world, stepHours);
-    });
-    if (world.stormEngine?.feedbackApplied) {
+    if (isCadenceDue(world, 'coupling', world.evolution.cadence?.coupledHours ?? 1)) {
+      runEvolutionPhase(world, 'coupling', () => {
+        projectStormInfluence(world);
+        advanceCoupledAtmosphere(world, stepHours);
+      });
+    } else markEvolutionPhaseSkipped(world, 'coupling');
+    if (world.stormEngine?.feedbackApplied && world.runtime?.profile?.verification) {
       runEvolutionPhase(world, 'feedbackDiagnostics', () => {
         enforcePhysicalConstraints(world);
         runEvolutionPhase(world, 'feedbackThermodynamics', () => updateSoundingDiagnostics(world));
@@ -142,7 +169,7 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
       world.forEachCell(cell => diagnoseCellEnvironment(cell));
       updateOutlook(world);
     }
-    runEvolutionPhase(world, 'predictiveOutlooks', () => updatePredictiveOutlooks(world));
+    runEvolutionPhase(world, 'predictiveOutlooks', () => updatePredictiveOutlooks(world, { days: world.runtime?.profile?.verification ? null : ['day1'] }));
     const perf = world.evolution.performance ?? (world.evolution.performance = createEvolutionPerformanceState());
     perf.totalSteps += 1;
     perf.lastStepMs = nowMs() - stepStarted;
@@ -470,6 +497,23 @@ function nowMs() {
 
 function updateSoundingDiagnostics(world) {
   world.forEachCell(cell => updateCellDiagnostics(cell));
+}
+
+function updateLightweightStpDiagnostics(world, dtHours = 0.5) {
+  let refreshed=0, discontinuities=0;
+  const examples=[];
+  world.forEachCell(cell => {
+    const result=updateCellLightweightStpDiagnostics(cell,dtHours);
+    if(!result)return;
+    refreshed++;
+    if(result.discontinuity){
+      discontinuities++;
+      if(examples.length<12)examples.push({cellId:cell.id,previousStp:result.previousStp,newStp:cell.derived?.stp,rawChangeFraction:result.rawChangeFraction,displayedChangeFraction:result.displayedChangeFraction,boundary:result.boundaryKey});
+    }
+  });
+  world.stpContinuity={version:'2.69.1',validHourUtc:world.validHourUtc,refreshedCells:refreshed,discontinuities,examples};
+  world.stpContinuityHistory=[...(world.stpContinuityHistory??[]).slice(-47),world.stpContinuity];
+  return world.stpContinuity;
 }
 
 function enforcePhysicalConstraints(world) {

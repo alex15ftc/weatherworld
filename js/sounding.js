@@ -1,3 +1,4 @@
+import { boundaryAwareStpFactor } from './synoptic/BoundaryAirMassEngine.js?v=2.69.1';
 const LEVELS = [1000,975,950,925,900,875,850,825,800,775,750,725,700,675,650,625,600,575,550,525,500,475,450,425,400,375,350,325,300,275,250,225,200,175,150,125,100];
 const RD=287.05, RV=461.5, CP=1004, G=9.80665, EPS=RD/RV, KNOT_TO_MS=.514444;
 
@@ -35,7 +36,9 @@ export function buildSounding(cell) {
   const synopticSupport=diagnoseSynopticTornadoSupport(cell);
   // Simulator STP includes the background pattern's ability to maintain the
   // local ingredient overlap, but never lets synoptic support manufacture STP.
-  const stp=clamp(rawStp*(0.70+0.30*synopticSupport),0,15);
+  const targetAirMassFactor=boundaryAwareStpFactor(cell);
+  const airMassFactor=continuousAirMassFactor(cell,targetAirMassFactor,{initial:!Number.isFinite(cell.derived?.stpComponents?.airMassFactor)});
+  const stp=clamp(rawStp*(0.70+0.30*synopticSupport)*airMassFactor,0,15);
   const vtp=diagnoseViolentTornadoParameter({stp,rawStp,synopticSupport,cape:mixedResult.thermo.cape,srh:kinematics.srh01,shear:kinematics.shear06,lcl:mixedResult.thermo.lclM,cin:Math.abs(mixedResult.thermo.cin),criticalAngle:kinematics.criticalAngle});
   const scp=clamp((muResult.thermo.cape/1000)*(kinematics.srh03/100)*clamp(kinematics.shear06/40,0,1.5),0,35);
   const lapseRate01km=layerLapseRateByHeight(profile,cell.terrain.elevationM,0,1000);
@@ -54,7 +57,7 @@ export function buildSounding(cell) {
     srh01:kinematics.srh01, srh03:kinematics.srh03,
     meanWind:kinematics.meanWind, criticalAngle:kinematics.criticalAngle,
     stp, rawStp, vtp, synopticSupport, scp, stormMotion, effectiveLayer:mixedResult.thermo.effectiveLayer,
-    stpComponents:{capeTerm,srhTerm,shearTerm,lclTerm,cinTerm,rawStp,synopticAdjustment:(0.70+0.30*synopticSupport),adjustedStp:stp,lclAglM:mixedLclAgl,surfaceRooted}
+    stpComponents:{capeTerm,srhTerm,shearTerm,lclTerm,cinTerm,rawStp,fullRawStp:rawStp,synopticAdjustment:(0.70+0.30*synopticSupport),airMassFactor,targetAirMassFactor,parcelSupportBaseline:clamp((Number(cell.surface?.dewpoint)-42)/24,0,1)*clamp(1-(Number(cell.surface?.temperature)-Number(cell.surface?.dewpoint))/36,0,1),adjustedStp:stp,lclAglM:mixedLclAgl,surfaceRooted}
   };
   return { profile, parcel:mixedResult.parcel, params };
 }
@@ -101,6 +104,55 @@ export function updateCellDiagnostics(cell) {
   return sounding;
 }
 
+
+export function updateLightweightStpDiagnostics(cell, dtHours = 0.5) {
+  cell.derived ??= {};
+  const components=cell.derived.stpComponents??cell.thermodynamics?.stpComponents;
+  if(!components||!Number.isFinite(Number(components.rawStp)))return null;
+  const target=boundaryAwareStpFactor(cell);
+  const previousFactor=Number(components.airMassFactor);
+  const state=cell.derived.stpContinuity??{};
+  const rel=cell.features?.boundaryRelative;
+  const boundaryKey=rel?`${rel.frontId??''}:${rel.type??''}:${rel.side??''}`:'none';
+  const crossed=Boolean(state.boundaryKey&&state.boundaryKey!==boundaryKey);
+  const maxDelta=clamp((crossed ? .24 : .10)*(Math.max(.25,Number(dtHours)||.5)/.5),.05,.32);
+  const factor=Number.isFinite(previousFactor)?moveToward(previousFactor,target,maxDelta):target;
+
+  // Keep the expensive parcel/kinematic solution cached, but let current
+  // surface moisture and fractional air-mass authority update its validity.
+  const dewpoint=Number(cell.surface?.dewpoint)||45;
+  const temperature=Number(cell.surface?.temperature)||60;
+  const currentParcelSupport=clamp((dewpoint-42)/24,0,1)*clamp(1-(temperature-dewpoint)/36,0,1);
+  const baselineParcelSupport=clamp(Number(components.parcelSupportBaseline??state.baselineParcelSupport??currentParcelSupport),0,1);
+  const parcelRatio=clamp(1+.32*(currentParcelSupport-baselineParcelSupport),.78,1.16);
+  const fullRawStp=clamp(Number(components.fullRawStp??components.rawStp),0,15);
+  const rawStp=clamp(fullRawStp*parcelRatio,0,15);
+  const synopticAdjustment=clamp(Number(components.synopticAdjustment)||1,.55,1.05);
+  const stp=clamp(rawStp*synopticAdjustment*factor,0,15);
+  const oldStp=Number(cell.derived.stp)||0;
+  const rawChange=Math.abs(rawStp-fullRawStp)/Math.max(.5,fullRawStp);
+  const displayedChange=Math.abs(stp-oldStp)/Math.max(.5,oldStp);
+  const discontinuity=oldStp>=1&&displayedChange>.65&&rawChange<.2&&!crossed;
+
+  cell.derived.rawStp=rawStp;
+  cell.derived.stp=stp;
+  cell.derived.stpComponents={...components,rawStp,fullRawStp,parcelSupportBaseline:baselineParcelSupport,airMassFactor:factor,targetAirMassFactor:target,adjustedStp:stp,lightweightRefresh:true};
+  if(cell.thermodynamics?.stpComponents)cell.thermodynamics.stpComponents={...cell.derived.stpComponents};
+  if(cell.derived.sounding?.stpComponents)cell.derived.sounding.stpComponents={...cell.derived.stpComponents};
+  cell.derived.stpContinuity={boundaryKey,parcelSupport:currentParcelSupport,baselineParcelSupport,previousStp:oldStp,rawChangeFraction:rawChange,displayedChangeFraction:displayedChange,discontinuity,updatedAtHourUtc:cell.validHourUtc??null};
+  return cell.derived.stpContinuity;
+}
+
+function continuousAirMassFactor(cell,target,{initial=false}={}){
+  if(initial)return target;
+  const previous=Number(cell.derived?.stpComponents?.airMassFactor);
+  if(!Number.isFinite(previous))return target;
+  const priorKey=cell.derived?.stpContinuity?.boundaryKey;
+  const rel=cell.features?.boundaryRelative;
+  const key=rel?`${rel.frontId??''}:${rel.type??''}:${rel.side??''}`:'none';
+  return moveToward(previous,target,(priorKey&&priorKey!==key) ? .30 : .20);
+}
+function moveToward(value,target,maxDelta){return value+clamp(target-value,-Math.abs(maxDelta),Math.abs(maxDelta));}
 
 
 

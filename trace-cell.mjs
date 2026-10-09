@@ -1,0 +1,4 @@
+import { Atmosphere } from './js/atmosphere.js';import {generateScenario} from './js/scenarios/scenarioGenerator.js';import{initializeEvolution,advanceAtmosphere}from'./js/evolution.js';import{SIMULATION_CONFIG}from'./js/simulationConfig.js';
+const w=new Atmosphere(SIMULATION_CONFIG.fixedColumns,SIMULATION_CONFIG.fixedRows);initializeEvolution(w,generateScenario(w,80444615),{profile:'gameplay'});const c=w.getCell(17,23);
+function s(){let p=c.derived.stpComponents; return {h:w.validHourUtc,stp:c.derived.stp,raw:p.rawStp,cape:c.derived.cape,srh:c.derived.srh,cin:c.derived.cin,lcl:c.derived.lclAgl,t:c.surface.temperature,td:c.surface.dewpoint,t850:c.levels[850].temperature,t700:c.levels[700].temperature,t500:c.levels[500].temperature,air:c.airMassAuthority?.dominant,b:p.airMassFactor};}
+console.log(s());for(let i=0;i<6;i++){advanceAtmosphere(w,.5);console.log(s())}

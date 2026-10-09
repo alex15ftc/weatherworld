@@ -9,18 +9,23 @@ export function diagnosePreferredMode(environment, setupKey = '', lifecycle = nu
   const elevated = environment.lcl > 1700 && environment.cin > 70;
   const scores = {
     'pulse storm': physics.initiationProbability * (1 - shear) * (0.42 + 0.58 * buoyancy),
-    'multicell': physics.initiationProbability * buoyancy * (0.38 + 0.42 * shear + 0.20 * physics.balanceSupport),
+    'multicell': physics.initiationProbability * buoyancy * (0.34 + 0.38 * shear + 0.28 * physics.balanceSupport),
+    'isolated discrete': physics.supercellProbability * (0.44 + 0.22 * clamp(environment.discreteFraction ?? 0.5,0,1)),
+    'semi-discrete': physics.supercellProbability * physics.initiationProbability * (0.42 + 0.28 * forcing),
+    'discrete supercell cluster': physics.supercellProbability * clamp(environment.stormCoverage ?? 0.35,0,1) * (0.34 + 0.26 * forcing),
+    'mixed supercell cluster': physics.supercellProbability * physics.linearProbability * (0.32 + 0.32 * forcing),
     'discrete supercell': physics.supercellProbability * (0.70 + 0.30 * clamp(environment.discreteFraction ?? 0.5, 0, 1)),
+    'broken line': physics.linearProbability * physics.initiationProbability * (0.38 + 0.30 * forcing),
     'linear segment': physics.linearProbability * (0.62 + 0.38 * clamp(environment.linearFraction ?? 0.5, 0, 1)),
     'elevated convection': elevated ? physics.initiationProbability * (0.48 + 0.35 * forcing) : 0.03,
     'MCS': physics.linearProbability * clamp(environment.stormCoverage ?? 0, 0, 1) * forcing * 0.78
   };
   if (setupKey === 'elevated_mcs') scores.MCS += 0.18 * physics.initiationProbability;
   if (setupKey === 'progressive_cold_front') scores['linear segment'] += 0.14 * physics.linearProbability;
-  if (['dryline_cyclone','lee_cyclogenesis','warm_front_wave'].includes(setupKey)) scores['discrete supercell'] += 0.12 * physics.supercellProbability;
+  if (['dryline_cyclone','lee_cyclogenesis','warm_front_wave'].includes(setupKey)) { scores['discrete supercell'] += 0.08 * physics.supercellProbability; scores['semi-discrete'] += 0.07 * physics.supercellProbability; scores['discrete supercell cluster'] += 0.05 * physics.supercellProbability; }
   const lifecycleMode = modeForLifecycle(lifecycle, elapsedHours);
   if (lifecycleMode === 'discrete') scores['discrete supercell'] += 0.24 * Math.max(physics.supercellProbability, physics.initiationProbability);
-  if (lifecycleMode === 'multicell' || lifecycleMode === 'mixed') scores.multicell += 0.18 * physics.initiationProbability;
+  if (lifecycleMode === 'multicell' || lifecycleMode === 'mixed') { scores.multicell += 0.11 * physics.initiationProbability; scores['semi-discrete'] += 0.10 * physics.initiationProbability; scores['mixed supercell cluster'] += 0.10 * physics.initiationProbability; }
   if (lifecycleMode === 'linear' || lifecycleMode === 'mixed') scores['linear segment'] += 0.24 * physics.linearProbability;
   if (lifecycleMode === 'QLCS') scores['linear segment'] += 0.32 * physics.linearProbability;
   if (lifecycleMode === 'MCS') scores.MCS += 0.34 * Math.max(physics.linearProbability, physics.initiationProbability);
@@ -44,7 +49,7 @@ export function modeForLifecycle(contract = null, elapsedHours = 0) {
 
 export function shouldSplitStorm(storm, environment) {
   return !storm.hasSplit && storm.ageHours >= 0.9 && storm.ageHours <= 3.2 &&
-    storm.mode === 'discrete supercell' && storm.organization >= 0.52 &&
+    ['discrete supercell','isolated discrete','semi-discrete'].includes(storm.mode) && storm.organization >= 0.52 &&
     environment.bulkShear >= 38 && environment.cape >= 850;
 }
 
@@ -63,7 +68,7 @@ export function shouldBecomeMcs(storm, neighbors, environment) {
 }
 
 export function shouldUpscaleIntoLine(storm, neighbors, environment) {
-  if (storm.mode === 'MCS' || storm.mode === 'QLCS' || storm.mode === 'left-moving supercell') return false;
+  if (storm.mode === 'MCS' || storm.mode === 'QLCS' || storm.mode === 'QLCS with embedded supercells' || storm.mode === 'left-moving supercell') return false;
   const discreteProtection = (environment.prefrontalSupercellSupport ?? 0) >= 0.48 || (environment.tornadicEnvironmentSupport ?? 0) >= 0.58;
   if (storm.mode.includes('supercell') && discreteProtection && storm.ageHours < 5.5) return false;
   const matureEnough = storm.ageHours >= (discreteProtection ? 5.0 : 3.5);

@@ -8,25 +8,32 @@ import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js?v
 import { initializeStormStructure, evolveStormStructure } from './StormStructureEngine.js?v=2.24.0';
 import { initializeStormCoupling, sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStormColdPool, advanceStormOutflows } from './StormEnvironmentCoupling.js?v=2.25.2';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js?v=2.28.14';
+import { diagnoseSynopticInitiationBudget, consumeSynopticInitiationBudget } from '../synoptic/SynopticObjectEngine.js?v=2.56.0';
+import { updateConvectiveOrganization } from './ConvectiveOrganizationEngine.js';
+import { initializeStormTrackIntelligence, updateStormTrackIntelligence, updateStormHazardSwaths } from './StormTrackIntelligence.js?v=2.60.0';
 
 export function initializeStormEngine(world) {
   world.storms = [];
-  world.stormEngine = { schemaVersion: 4, cadenceMinutes: 5, validHourUtc: world.validHourUtc, revision: 0, nextId: 1, totalCreated: 0, totalSplits: 0, totalMergers: 0, totalTornadoes: 0, activeTornadoes: 0, lastInitiationHourUtc: null, feedbackApplied: false, archiveRetentionHours: 3, maxArchiveEntries: 120, calibrationVersion: '2.28.14-storm-realization-physics' };
+  world.stormEngine = { schemaVersion: 5, cadenceMinutes: 5, validHourUtc: world.validHourUtc, revision: 0, nextId: 1, totalCreated: 0, totalSplits: 0, totalMergers: 0, totalTornadoes: 0, activeTornadoes: 0, lastInitiationHourUtc: null, feedbackApplied: false, archiveRetentionHours: 3, maxArchiveEntries: 120, calibrationVersion: '2.66.0-convective-organization', corridorCooldowns: {}, dailyInitiations: {} };
   world.stormArchive = [];
+  world.stormHistory = [];
   initializeStormCoupling(world);
 }
 
 export function advanceStormEngine(world, dtHours = 1, { initiate = true, applyFeedback = true } = {}) {
   if (!world.stormEngine) initializeStormEngine(world);
   world.stormEngine.validHourUtc = Number(((world.stormEngine.validHourUtc ?? world.validHourUtc) + Math.max(0, dtHours)).toFixed(6));
-  const substeps = Math.max(1, Math.ceil(dtHours * 12));
+  const substepsPerHour = Number(world.runtime?.profile?.stormSubstepsPerHour) || 12;
+  const substeps = Math.max(1, Math.ceil(dtHours * substepsPerHour));
   const substepHours = dtHours / substeps;
   for (let step = 0; step < substeps; step++) {
     const spatialIndex = buildStormSpatialIndex(world.storms);
     updateInteractionSuppression(world, spatialIndex);
     for (const storm of world.storms) updateStorm(world, storm, substepHours);
     handleSplits(world);
-    handleMergersAndOrganization(world, buildStormSpatialIndex(world.storms));
+    const organizationIndex = buildStormSpatialIndex(world.storms);
+    updateConvectiveOrganization(world, organizationIndex);
+    handleMergersAndOrganization(world, organizationIndex);
   }
   advanceStormOutflows(world, dtHours);
   archiveEndedStorms(world);
@@ -51,6 +58,7 @@ function createStorm(world, candidate, environment, modeHint = null, parentId = 
   createStormInternalField(storm, environment, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   initializeStormStructure(storm, environment, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   initializeStormDiagnostics(storm, environment);
+  initializeStormTrackIntelligence(storm);
   world.storms.push(storm); world.stormEngine.totalCreated += 1;
   return storm;
 }
@@ -64,7 +72,7 @@ function initializeStormDiagnostics(storm, environment) {
   const initiation = clamp(environment.initiation ?? 0, 0, 1);
   const capPenalty = clamp((environment.cin ?? 0) / 180, 0, 1);
   const supercell = storm.mode.includes('supercell');
-  const linear = ['linear segment', 'QLCS', 'MCS'].includes(storm.mode);
+  const linear = ['broken line','linear segment','QLCS with embedded supercells','QLCS','MCS'].includes(storm.mode);
   const modeSupport = supercell ? shearSupport * 0.11 : linear ? forcing * 0.08 : 0;
 
   storm.intensity = clamp(0.08 + readiness * 0.20 + buoyancy * 0.08 + initiation * 0.05 + modeSupport - capPenalty * 0.04, 0.08, 0.38);
@@ -83,11 +91,45 @@ function initiateStorms(world) {
   const initiationSlot = Math.floor(stormHour * 2) / 2;
   if (world.stormEngine.lastInitiationHourUtc === initiationSlot) return;
   world.stormEngine.lastInitiationHourUtc = initiationSlot;
+  world.stormEngine.corridorCooldowns ??= {};
+  world.stormEngine.dailyInitiations ??= {};
+  const dayIndex = Math.floor(initiationSlot / 24);
+  const dayKey = String(dayIndex);
+  const significant = ['classic_tornado_outbreak','mixed_mode','hp_supercell','derecho','qlcs'].includes(world.evolution?.config?.scenarioEvolution?.narrative);
+  const dailyBudget = significant ? 36 : 24;
+  let usedToday = Number(world.stormEngine.dailyInitiations[dayKey]) || 0;
+  if (usedToday >= dailyBudget) return;
+
+  const perCorridorThisSlot = new Map();
   for (const candidate of findInitiationCandidates(world, world.storms, initiationSlot)) {
+    if (usedToday >= dailyBudget) break;
+    const corridorKey = candidate.corridorId ?? `cell-band-${Math.floor(candidate.x / 4)}-${Math.floor(candidate.y / 4)}`;
+    const cooldownUntil = Number(world.stormEngine.corridorCooldowns[corridorKey]) || -Infinity;
+    if (initiationSlot < cooldownUntil) continue;
+    const corridorCount = perCorridorThisSlot.get(corridorKey) ?? 0;
+    const perSlotLimit = candidate.corridorStrength >= 0.72 && significant ? 2 : 1;
+    if (corridorCount >= perSlotLimit) continue;
+
+    const budgetDiagnosis = diagnoseSynopticInitiationBudget(world, corridorKey, candidate);
+    if (!budgetDiagnosis.allowed) continue;
     const environment = sampleStormEnvironment(world, candidate.xKm, candidate.yKm);
     const jitter = deterministicJitter(world.evolution?.config?.seed ?? 'seed', initiationSlot, candidate.x, candidate.y);
-    createStorm(world, candidate, environment, null, null, jitter);
+    const storm = createStorm(world, candidate, environment, null, null, jitter);
+    storm.initiationCorridorId = corridorKey;
+    storm.initiationBoundaryType = candidate.boundaryType ?? null;
+    storm.initiationForcing = candidate.forcingComponents ?? null;
+    storm.initiationBudget = { ...budgetDiagnosis };
+    consumeSynopticInitiationBudget(world, budgetDiagnosis);
+    perCorridorThisSlot.set(corridorKey, corridorCount + 1);
+    usedToday += 1;
+    world.stormEngine.dailyInitiations[dayKey] = usedToday;
+    const cooldownHours = candidate.secondaryOutflow ? 0.5 : clamp(1.0 + (1 - candidate.corridorStrength) * 1.5, 1.0, 2.5);
+    world.stormEngine.corridorCooldowns[corridorKey] = initiationSlot + cooldownHours;
   }
+
+  // Prevent unbounded state growth in long-running worlds.
+  for (const key of Object.keys(world.stormEngine.dailyInitiations)) if (Number(key) < dayIndex - 3) delete world.stormEngine.dailyInitiations[key];
+  for (const [key, until] of Object.entries(world.stormEngine.corridorCooldowns)) if (Number(until) < initiationSlot - 12) delete world.stormEngine.corridorCooldowns[key];
 }
 
 function updateStorm(world, storm, dtHours) {
@@ -101,6 +143,7 @@ function updateStorm(world, storm, dtHours) {
     storm.mode = preferred.mode; storm.modeConfidence = preferred.confidence; storm.modeAgeHours = 0;
   }
   updateCoupledStormMotion(world, storm, environment, dtHours);
+  updateStormTrackIntelligence(world, storm, environment, dtHours);
   const dx = storm.velocityKph.east * dtHours, dy = -storm.velocityKph.north * dtHours;
   storm.positionKm.x += dx; storm.positionKm.y += dy; storm.trackKm += Math.hypot(dx,dy);
   storm.trackPoints ??= [{ ...storm.previousPositionKm, hourUtc: (world.stormEngine?.validHourUtc ?? world.validHourUtc) - dtHours }];
@@ -147,6 +190,7 @@ function updateStorm(world, storm, dtHours) {
   evolveStormInternalField(storm, environment, dtHours);
   evolveStormStructure(storm, environment, dtHours, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   diagnoseObservedStorm(storm, environment);
+  updateStormHazardSwaths(world, storm);
   const wasOnGround = Boolean(storm.tornado?.onGround);
   updateTornadoState(world, storm, environment, dtHours);
   if (!wasOnGround && storm.tornado?.onGround) world.stormEngine.totalTornadoes = (world.stormEngine.totalTornadoes ?? 0) + 1;
@@ -182,7 +226,8 @@ function handleMergersAndOrganization(world, spatialIndex) {
   const active = spatialIndex.active;
   for (const storm of active) {
     const neighbors = nearbyStorms(spatialIndex, storm, 90).filter(other => other !== storm && distance(storm, other) < interactionRadius(storm, other));
-    if (shouldBecomeMcs(storm, neighbors.length, storm.environment)) storm.mode = 'MCS';
+    if (storm.convectiveOrganization?.state === 'qlcs') storm.mode = 'QLCS';
+    else if (shouldBecomeMcs(storm, neighbors.length, storm.environment)) storm.mode = 'MCS';
     else if (shouldBecomeQlcs(storm, neighbors.length, storm.environment)) storm.mode = 'QLCS';
     else if (shouldUpscaleIntoLine(storm, neighbors.length, storm.environment)) {
       storm.mode = 'linear segment';
@@ -257,14 +302,18 @@ export function applyStormFeedback(world, dtHours) {
   const temp = new Float32Array(size), dew = new Float32Array(size), stabilization = new Float32Array(size), convergence = new Float32Array(size);
   for (const storm of world.storms) {
     if (!storm.active || storm.intensity < 0.14) continue;
-    const radiusKm = Number.isFinite(storm.coldPoolRadiusKm) ? storm.coldPoolRadiusKm : clamp(8 + storm.intensity * 24 + (storm.coldPoolStrength ?? 0) * 18, 8, 52);
+    const structuralRadiusKm = clamp(10 + storm.intensity * 28 + (storm.coldPoolStrength ?? 0) * 24, 10, 58);
+    const radiusKm = Math.max(Number.isFinite(storm.coldPoolRadiusKm) ? storm.coldPoolRadiusKm * 1.45 : 0, structuralRadiusKm);
     const radiusCells = Math.max(1, Math.ceil(radiusKm / world.cellSizeKm));
     const cx = storm.positionKm.x / world.cellSizeKm - 0.5, cy = storm.positionKm.y / world.cellSizeKm - 0.5;
     for (let y=Math.max(0,Math.floor(cy-radiusCells)); y<=Math.min(world.height-1,Math.ceil(cy+radiusCells)); y++) for (let x=Math.max(0,Math.floor(cx-radiusCells)); x<=Math.min(world.width-1,Math.ceil(cx+radiusCells)); x++) {
       const dx=(x+0.5)*world.cellSizeKm-storm.positionKm.x, dy=(y+0.5)*world.cellSizeKm-storm.positionKm.y, dist=Math.hypot(dx,dy);
       if (dist>radiusKm) continue;
       const weight=Math.exp(-Math.pow(dist/Math.max(1,radiusKm*0.62),2)), index=y*world.width+x;
-      const processed=weight*storm.intensity*dtHours;
+      const cellAreaKm2 = Math.max(1, world.cellSizeKm * world.cellSizeKm);
+      const footprintAreaKm2 = Math.PI * radiusKm * radiusKm;
+      const areaExposure = clamp(footprintAreaKm2 / (cellAreaKm2 * 7.5), 0.32, 1);
+      const processed=weight*storm.intensity*dtHours*areaExposure;
       temp[index]-=processed*(0.38+storm.coldPoolStrength*1.0); dew[index]-=processed*(0.08+storm.coldPoolStrength*0.18);
       stabilization[index]=Math.max(stabilization[index],processed*0.34);
       const ring=Math.exp(-Math.pow((dist-radiusKm*0.78)/Math.max(2,radiusKm*0.14),2));
@@ -299,7 +348,7 @@ function updateStormConfidence(storm, environment, dtHours) {
   const c = storm.confidence;
   const mature = storm.lifecycleState === 'mature' ? 1 : storm.lifecycleState === 'organizing' ? 0.72 : storm.lifecycleState === 'developing' ? 0.34 : 0.12;
   const supercell = storm.mode?.includes('supercell');
-  const linear = ['linear segment', 'QLCS', 'MCS'].includes(storm.mode);
+  const linear = ['broken line','linear segment','QLCS with embedded supercells','QLCS','MCS'].includes(storm.mode);
   const inflow = clamp(storm.inflowQuality ?? 0, 0, 1);
   const structural = clamp((storm.organization ?? 0) * 0.34 + (storm.intensity ?? 0) * 0.28 + (storm.updraftStrength ?? 0) * 0.22 + inflow * 0.16, 0, 1);
   const ageSupport = clamp((storm.ageHours ?? 0) / 1.5, 0, 1);
@@ -329,7 +378,7 @@ function updateStormConfidence(storm, environment, dtHours) {
 
 function updateMesocyclone(storm, environment, dtHours) {
   const supercell = storm.mode?.includes('supercell');
-  const qlcs = storm.mode === 'QLCS' || storm.mode === 'linear segment';
+  const qlcs = ['broken line','linear segment','QLCS with embedded supercells','QLCS'].includes(storm.mode);
   const srh = clamp(((environment.srh ?? 0) - 60) / 300, 0, 1.2);
   const shear = clamp(((environment.bulkShear ?? 0) - 20) / 42, 0, 1.15);
   const lowLcl = clamp((1750 - (environment.lcl ?? 1800)) / 1100, 0, 1);
@@ -349,7 +398,7 @@ function updateMesocyclone(storm, environment, dtHours) {
 
 function diagnoseObservedStorm(storm, environment) {
   const supercell = storm.mode.includes('supercell');
-  const linear = ['linear segment','QLCS','MCS'].includes(storm.mode);
+  const linear = ['broken line','linear segment','QLCS with embedded supercells','QLCS','MCS'].includes(storm.mode);
   const field = storm.internalField;
   storm.rotationStrength = clamp(Math.max((field?.maxVorticity ?? 0) * .8, (storm.mesocycloneStrength ?? 0) * .92), 0, 1);
   storm.orientationDeg = Math.atan2(storm.velocityKph.east, -storm.velocityKph.north) * 180 / Math.PI;
@@ -456,7 +505,7 @@ function archiveEndedStorms(world) {
   for (const storm of world.storms ?? []) {
     if (storm.active || storm.archived) continue;
     storm.archived = true;
-    world.stormArchive.push({
+    const archivedRecord = {
       id: storm.id, parentId: storm.parentId ?? null, children: [...(storm.children ?? [])],
       mergedStormIds: [...(storm.mergedStormIds ?? [])], mode: storm.mode,
       createdHourUtc: storm.createdHourUtc, endedHourUtc: now, ageHours: storm.ageHours,
@@ -472,9 +521,16 @@ function archiveEndedStorms(world) {
       tornado: structuredClone(storm.tornado ?? {}),
       maxGustMph: Math.max(storm.hazardExtremes?.wind?.maxGustMph ?? 0, storm.surfaceWind?.maxGustMph ?? 0),
       trackPoints: (storm.trackPoints ?? []).slice(-240),
+      trackIntelligence: structuredClone(storm.trackIntelligence ?? null),
+      mesocycloneCycle: structuredClone(storm.mesocycloneCycle ?? null),
+      modeHistory: structuredClone(storm.modeHistory ?? []),
+      interactionHistory: structuredClone(storm.trackIntelligence?.interactionHistory ?? []),
       tornadoHistory: (storm.tornadoHistory ?? []).slice(-8),
       dissipationReason: storm.dissipationReason ?? 'inactive'
-    });
+    };
+    world.stormArchive.push(archivedRecord);
+    world.stormHistory ??= [];
+    if (!world.stormHistory.some(item => item.id === archivedRecord.id)) world.stormHistory.push(structuredClone(archivedRecord));
   }
   const retention = Math.max(0.5, world.stormEngine?.archiveRetentionHours ?? 3);
   const maxEntries = Math.max(20, world.stormEngine?.maxArchiveEntries ?? 120);

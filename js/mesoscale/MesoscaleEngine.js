@@ -8,16 +8,17 @@ export function initializeMesoscaleEngine(world) {
   const boundaries = [];
   let nextId = 1;
   for (const type of TYPES) {
-    const pointsKm = legacyPrimaryPolyline(world, type);
+    const objectFront = world.synopticObjects?.fronts?.find(front => front.type === type);
+    const pointsKm = objectFront?.pointsKm?.length >= 2 ? objectFront.pointsKm : legacyPrimaryPolyline(world, type);
     if (pointsKm.length < 2) continue;
     const environment = meanPolylineEnvironment(world, pointsKm);
     boundaries.push(new Boundary({
-      id: `B${String(nextId++).padStart(3, '0')}`,
+      id: objectFront?.id ?? `B${String(nextId++).padStart(3, '0')}`,
       type,
       pointsKm,
       velocityKph: boundaryVelocity(type, environment),
-      strength: clamp(environment.boundaryStrength, 0.45, 1),
-      widthKm: type === 'dryline' ? 24 : 32
+      strength: objectFront ? objectFront.strength : clamp(environment.boundaryStrength, 0.45, 1),
+      widthKm: objectFront?.widthKm ?? (type === 'dryline' ? 24 : 32)
     }));
   }
   const cycloneAnchorKm = currentCycloneAnchorKm(world);
@@ -39,7 +40,8 @@ export function advanceMesoscaleEngine(world, dtHours = 1) {
   const previousByType = new Map(world.mesoscale.boundaries.map(boundary => [boundary.type, boundary]));
   const diagnosed = [];
   for (const type of TYPES) {
-    const pointsKm = legacyPrimaryPolyline(world, type);
+    const objectFront = world.synopticObjects?.fronts?.find(front => front.type === type);
+    const pointsKm = objectFront?.pointsKm?.length >= 2 ? objectFront.pointsKm : legacyPrimaryPolyline(world, type);
     if (pointsKm.length < 2) continue;
     const environment = meanPolylineEnvironment(world, pointsKm);
     const previous = previousByType.get(type);
@@ -47,12 +49,12 @@ export function advanceMesoscaleEngine(world, dtHours = 1) {
       id: previous?.id ?? `B${String(world.mesoscale.nextId++).padStart(3, '0')}`,
       type,
       pointsKm,
-      velocityKph: boundaryVelocity(type, environment),
-      strength: clamp(environment.boundaryStrength, 0.16, 1),
-      widthKm: type === 'dryline' ? 24 : 32,
+      velocityKph: objectFront?.velocityKph ?? boundaryVelocity(type, environment),
+      strength: objectFront ? objectFront.strength : clamp(environment.boundaryStrength, 0.16, 1),
+      widthKm: objectFront?.widthKm ?? (type === 'dryline' ? 24 : 32),
       ageHours: (previous?.ageHours ?? 0) + dtHours
     });
-    constrainBoundaryMotion(boundary, world);
+    if (!objectFront) constrainBoundaryMotion(boundary, world);
     diagnosed.push(boundary);
   }
   world.mesoscale.boundaries = diagnosed;
@@ -216,7 +218,9 @@ export function projectBoundaryMetadata(world) {
     type: boundary.type,
     strength: boundary.strength,
     velocityKph: { ...boundary.velocityKph },
-    pointsKm: boundary.pointsKm.map(point => ({ ...point }))
+    pointsKm: boundary.pointsKm.map(point => ({ ...point })),
+    authoritative: Boolean(world.synopticObjects?.fronts?.some(front => front.id === boundary.id || front.type === boundary.type)),
+    lifecyclePhase: world.synopticObjects?.fronts?.find(front => front.type === boundary.type)?.lifecyclePhase ?? null
   }));
 }
 

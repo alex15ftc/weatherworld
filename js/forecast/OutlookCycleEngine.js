@@ -1,3 +1,5 @@
+import { applyEnsembleForecast } from './EnsembleForecastEngine.js';
+import { applyFinalCategoricalTopology } from './RegionalOutlookTopologyEngine.js';
 import { categoryFromHazard, categoryFromDay3TotalSevere, publishedCigForHazard } from '../diagnostics/riskDiagnosis.js?v=2.28.12';
 import { diagnoseOutlookRealizationChain } from '../storms/StormRealizationPhysics.js?v=2.28.14.1';
 const SPECS = {
@@ -11,28 +13,41 @@ const SPECS = {
 const CONVECTIVE_DAY_START_UTC = 12;
 const RISKS = ['TSTM','MRGN','SLGT','ENH','MDT','HIGH'];
 
-export function initializeOutlookCycle(world) {
-  world.outlookCycle = { version: 3, physicsVersion: '2.28.14.3', products: {}, selectedDay: 'day1', nextIssueHour: {}, updateLog: [], archive: { day1: [], day2: [], day3: [] } };
+export function initializeOutlookCycle(world, { initialDays = null } = {}) {
+  world.outlookCycle = { version: 4, physicsVersion: '2.69.0', products: {}, selectedDay: 'day1', nextIssueHour: {}, updateLog: [], archive: { day1: [], day2: [], day3: [] } };
   for (const [key, spec] of Object.entries(SPECS)) world.outlookCycle.nextIssueHour[key] = nextIssue(world.validHourUtc, spec.cadence);
-  updatePredictiveOutlooks(world, { force: true });
+  const days = initialDays ?? world.runtime?.profile?.initialOutlookDays ?? Object.keys(SPECS);
+  updatePredictiveOutlooks(world, { force: true, days, mode: world.runtime?.profile?.startupOutlookMode ?? 'full' });
 }
 
-export function updatePredictiveOutlooks(world, { force = false } = {}) {
-  if (!world.outlookCycle) initializeOutlookCycle(world);
+export function updatePredictiveOutlooks(world, { force = false, days = null, mode = 'full' } = {}) {
+  if (!world.outlookCycle) initializeOutlookCycle(world, { initialDays: days });
+  const allowed = days ? new Set(days) : null;
   for (const [key, spec] of Object.entries(SPECS)) {
+    if (allowed && !allowed.has(key)) continue;
     if (!force && world.validHourUtc + 1e-6 < world.outlookCycle.nextIssueHour[key]) continue;
-    issue(world, key, spec);
+    issue(world, key, spec, { mode: key === 'day1' ? mode : 'full' });
     world.outlookCycle.nextIssueHour[key] = nextIssue(world.validHourUtc + 0.001, spec.cadence);
   }
 }
 
 export function getOutlookSpec(key) { return SPECS[key] ?? SPECS.day1; }
 
-function issue(world, key, spec) {
+function issue(world, key, spec, { mode = 'full' } = {}) {
   const sourceRevision = Math.max(0, Number(world.forecastContext?.worldRevision ?? world.stateRevision) || 0);
   const sourceSystemNumber = Math.max(1, Number(world.forecastContext?.systemNumber) || 1);
   const sourceSeed = Number(world.forecastContext?.currentSeed ?? world.seed ?? world.config?.seed);
   const upcomingSeed = Number.isFinite(Number(world.upcomingSystemForecast?.seed)) ? Number(world.upcomingSystemForecast.seed) : null;
+  const readiness = diagnoseIssuanceReadiness(world, key);
+  world.outlookCycle.readiness ??= {};
+  world.outlookCycle.readiness[key] = readiness;
+  if (!readiness.ready) {
+    world.runtime ??= {};
+    world.runtime.deferred ??= {};
+    world.runtime.deferred[`${key}Outlook`] = { reason: 'forecast-inputs-not-ready', missing: readiness.missing, requestedHourUtc: world.validHourUtc };
+    return null;
+  }
+  const compact = mode === 'compact' && key === 'day1';
   const issueSlot = Math.floor((world.validHourUtc + 1e-6) / spec.cadence);
   const cycleId = `${key}-s${sourceSystemNumber}-i${issueSlot}-r${sourceRevision}-${seedTag(sourceSeed)}${upcomingSeed !== null ? `-${seedTag(upcomingSeed)}` : ''}`;
   const grid = [];
@@ -53,20 +68,37 @@ function issue(world, key, spec) {
   const priorGuidance = findPriorGuidance(world, key, validStart, validEnd);
   for (let y = 0; y < world.height; y++) for (let x = 0; x < world.width; x++) {
     const index = y * world.width + x;
-    const forecast = projectCellWindow(world, x, y, validStart, validEnd, spec, upcomingWeight, priorGuidance?.grid?.[index] ?? null);
+    const forecast = projectCellWindow(world, x, y, validStart, validEnd, spec, upcomingWeight, priorGuidance?.grid?.[index] ?? null, compact ? compactTrajectoryHours(validStart, validEnd) : null);
     grid.push(forecast);
   }
-  relocateHazardGuidanceCores(grid, world.width, world.height);
-  applyTrajectoryUncertaintyEnvelopes(grid, world.width, world.height, key);
-  applyTwentyFiveMileHazardRule(grid, world.width, world.height, world.cellSizeMiles ?? 10);
-  smoothHazardProbabilities(grid, world.width, world.height, key === 'day1' ? 1 : 2);
-  regionalizeHazardGuidance(grid, world.width, world.height, key);
-  enforceHazardProbabilityNesting(grid, world.width, world.height);
-  enforceForecastCigSpatialCoherence(grid, world.width, world.height);
-  validateAndRepairHazardProducts(grid, key);
-  enforceCategoricalContourNesting(grid, world.width, world.height, key);
-  validateAndRepairHazardProducts(grid, key);
+  const configuredMembers = world.runtime?.profile?.forecastMembers?.[key] ?? null;
+  const ensembleForecast = compact
+    ? createCompactTrajectoryForecast(grid, world.width, world.height, { key, issueHour: world.validHourUtc, sampleHours: compactTrajectoryHours(validStart, validEnd) })
+    : applyEnsembleForecast(grid, world.width, world.height, { key, cellSizeKm: world.cellSizeKm ?? 10, seed: sourceSeed, issueHour: world.validHourUtc, members: configuredMembers });
+  if (!compact) {
+    relocateHazardGuidanceCores(grid, world.width, world.height);
+    applyTrajectoryUncertaintyEnvelopes(grid, world.width, world.height, key);
+    applyTwentyFiveMileHazardRule(grid, world.width, world.height, world.cellSizeMiles ?? 10);
+    pruneUnsupportedHazardFootprints(grid, world.width, world.height, key);
+    smoothHazardProbabilities(grid, world.width, world.height, key === 'day1' ? 1 : 2);
+    regionalizeHazardGuidance(grid, world.width, world.height, key);
+    enforceHazardProbabilityNesting(grid, world.width, world.height);
+    enforceForecastCigSpatialCoherence(grid, world.width, world.height);
+    validateAndRepairHazardProducts(grid, key);
+    enforceCategoricalContourNesting(grid, world.width, world.height, key);
+    validateAndRepairHazardProducts(grid, key);
+  } else {
+    // Startup products retain physically meaningful projected probabilities but
+    // avoid the expensive full-ensemble relocation/smoothing chain. The final
+    // categorical topology still guarantees coherent issued regions.
+    enforceHazardProbabilityNesting(grid, world.width, world.height);
+    validateAndRepairHazardProducts(grid, key);
+  }
   const synthesis = synthesizeCategoricalOutlook(grid, world.width, world.height, key);
+  const finalCategoricalTopology = applyFinalCategoricalTopology(grid, world.width, world.height, { key });
+  synthesis.finalCategoricalTopology = finalCategoricalTopology;
+  synthesis.finalCounts = Object.fromEntries(RISKS.map(r => [r, 0]));
+  for (const forecast of grid) synthesis.finalCounts[forecast.risk]++;
   grid.forEach((forecast, i) => {
     counts[forecast.risk]++;
     if (RISKS.indexOf(forecast.risk) > RISKS.indexOf(overallRisk)) overallRisk = forecast.risk;
@@ -82,28 +114,29 @@ function issue(world, key, spec) {
     if (history.length > 24) history.shift();
   }
   world.outlookCycle.products[key] = {
-    productSchemaVersion: 4, cycleId, key, label: spec.label, issuedHourUtc: world.validHourUtc,
+    productSchemaVersion: 5, cycleId, key, label: spec.label, issuedHourUtc: world.validHourUtc,
     validStartHour: validStart,
     validEndHour: validEnd,
-    cadenceHours: spec.cadence, overallRisk, counts, synthesis,
+    cadenceHours: spec.cadence, overallRisk, counts, synthesis, issuanceMode: compact ? 'compact-trajectory' : 'full-ensemble', readiness,
     upcomingSystemWeight: Math.round(upcomingWeight * 100),
     sourceSystem: upcomingWeight >= 0.5 ? 'upcoming' : upcomingWeight > 0 ? 'transition' : 'current',
     currentSeed: Number.isFinite(sourceSeed) ? sourceSeed : null,
     upcomingSeed, sourceWorldRevision: sourceRevision, sourceSystemNumber,
     generatedFrom: { currentSeed: Number.isFinite(sourceSeed) ? sourceSeed : null, upcomingSeed, worldRevision: sourceRevision, systemNumber: sourceSystemNumber },
     forecastLeadHours: lead,
+    ensembleForecast: { version: ensembleForecast.version, method: ensembleForecast.method, memberCount: ensembleForecast.memberCount, clusters: ensembleForecast.clusters, diagnostics: ensembleForecast.diagnostics, outlookAssimilation: ensembleForecast.outlookAssimilation, forecastConfidence: ensembleForecast.forecastConfidence, regionalTopology: { ...ensembleForecast.regionalTopology, finalCategoricalTopology }, forecastStorms: ensembleForecast.forecastStorms },
     peakForecastHourUtc: world.validHourUtc + lead,
     // Store the issued field so later Day-1 cycles can compare against the prior
     // Day-2/3 forecast for the same valid period rather than forgetting it.
-    grid: grid.map(f => ({ risk:f.risk, categories:f.categories, tornadoProbability:f.tornadoProbability, tornadoCig:f.tornadoCig, hailProbability:f.hailProbability, hailCig:f.hailCig, windProbability:f.windProbability, windCig:f.windCig, peakHourUtc:f.peakHourUtc, hazardOverlapScore:f.hazardOverlapScore, peakCoverage:f.peakCoverage, peakInitiation:f.peakInitiation, conditionalTornadoIntensity:f.conditionalTornadoIntensity, conditionalHailIntensity:f.conditionalHailIntensity, conditionalWindIntensity:f.conditionalWindIntensity, projectedStormOccupancy:f.projectedStormOccupancy, hazardCorridors:f.hazardCorridors, boundaryRelativePlacement:f.boundaryRelativePlacement, forecastInitiationHourUtc:f.forecastInitiationHourUtc, corridorRelocation:f.corridorRelocation, cigDiagnostics:f.cigDiagnostics, periodIntegration:f.periodIntegration, regionalization:f.regionalization, day3TotalSevere:f.day3TotalSevere, activeStormSignal:f.activeStormSignal, leadTimeConfidence:f.leadTimeConfidence, trajectory:f.trajectory, projectedEnvironment:f.projectedEnvironment, provenance:f.provenance })),
+    grid: grid.map(f => ({ risk:f.risk, rawRisk:f.rawRisk, issuedRisk:f.issuedRisk, categoricalTopology:f.categoricalTopology, categories:f.categories, tornadoProbability:f.tornadoProbability, tornadoCig:f.tornadoCig, hailProbability:f.hailProbability, hailCig:f.hailCig, windProbability:f.windProbability, windCig:f.windCig, peakHourUtc:f.peakHourUtc, hazardOverlapScore:f.hazardOverlapScore, peakCoverage:f.peakCoverage, peakInitiation:f.peakInitiation, conditionalTornadoIntensity:f.conditionalTornadoIntensity, conditionalHailIntensity:f.conditionalHailIntensity, conditionalWindIntensity:f.conditionalWindIntensity, projectedStormOccupancy:f.projectedStormOccupancy, hazardCorridors:f.hazardCorridors, boundaryRelativePlacement:f.boundaryRelativePlacement, forecastInitiationHourUtc:f.forecastInitiationHourUtc, corridorRelocation:f.corridorRelocation, cigDiagnostics:f.cigDiagnostics, periodIntegration:f.periodIntegration, regionalization:f.regionalization, day3TotalSevere:f.day3TotalSevere, activeStormSignal:f.activeStormSignal, leadTimeConfidence:f.leadTimeConfidence, trajectory:f.trajectory, projectedEnvironment:f.projectedEnvironment, forecastStormProjection:f.forecastStormProjection, ensembleForecast:f.ensembleForecast, forecastConfidence:f.forecastConfidence, outlookAssimilation:f.outlookAssimilation, provenance:f.provenance })),
     frozen: true
   };
   world.outlookCycle.updateLog.push({ cycleId, key, issuedHourUtc: world.validHourUtc, overallRisk, sourceWorldRevision: sourceRevision, sourceSystemNumber });
   if (world.outlookCycle.updateLog.length > 36) world.outlookCycle.updateLog.shift();
 }
 
-function projectCellWindow(world, x, y, validStart, validEnd, spec, upcomingWeight = 0, prior = null) {
-  const sampleHours = forecastSampleHours(validStart, validEnd);
+function projectCellWindow(world, x, y, validStart, validEnd, spec, upcomingWeight = 0, prior = null, sampleHoursOverride = null) {
+  const sampleHours = sampleHoursOverride ?? forecastSampleHours(validStart, validEnd);
   const candidates = [];
   let best = null;
   for (const absoluteHour of sampleHours) {
@@ -398,8 +431,13 @@ export function projectEnvironmentAtHour(cell, absoluteHour, context = {}) {
   // while the system forecast already diagnoses an open prefrontal inflow
   // corridor. Use that continuous, atmosphere-derived support when estimating
   // what the air mass can realize later in the valid period.
+  const airMassAuthority = cell.airMassAuthority ?? {};
+  const warmMoistFraction = clamp(Number(airMassAuthority.warmMoistFraction ?? cell.airMassFractions?.maritimeTropical) || 0, 0, 1);
+  const dryFraction = clamp(Number(airMassAuthority.dryFraction ?? cell.airMassFractions?.dryMixed) || 0, 0, 1);
+  const coldFraction = clamp(Number(airMassAuthority.coldFraction) || 0, 0, 1);
   const warmSector = Math.max(
     cell.features?.warmSector ? 1 : 0,
+    warmMoistFraction,
     clamp(Number(fc.openWarmSectorSupport) || 0, 0, 1),
     clamp(Number(fc.prefrontalSupercellSupport) || 0, 0, 1) * 0.82
   );
@@ -430,13 +468,14 @@ export function projectEnvironmentAtHour(cell, absoluteHour, context = {}) {
   // toward the instability reservoir diagnosed from the underlying air mass.
   // This projection is consumed only by the outlook and never mutates the cell.
   const diurnalCape = currentCape + heatingDelta * 900 + moistureChange * 70 - cloudPenalty * 650;
-  const cape = Math.max(0, Math.max(diurnalCape, attainableCape) * lifecycle.ratio);
+  const surfaceParcelValidity = clamp(warmMoistFraction + 0.45 * warmSector - 0.72 * dryFraction - 0.82 * coldFraction, 0.08, 1);
+  const cape = Math.max(0, Math.max(diurnalCape, attainableCape) * lifecycle.ratio * (0.45 + 0.55 * surfaceParcelValidity));
   const cin = Math.max(0, cap - capErosion * 105 + cloudPenalty * 35 + Math.max(0, 1 - lifecycle.ratio) * 90);
   const srh = Math.max(0, (Number(d.srh) || 0) * (localHour >= 19 || localHour <= 6 ? 1.12 : 0.94));
   const shear = Math.max(0, Number(d.bulkShear) || 0);
   const lcl = Math.max(350, (Number(d.lclAgl ?? d.lcl) || 1900) - moistureChange * 55 + heating * 120);
   const capBreakProbability=clamp(Math.max(baseBreakProbability*(0.65+0.35*timingBoost),1-ramp(cin,15,190))* (1-cloudPenalty*0.35),0,1);
-  const physicalInitiation = capBreakProbability * (0.20 + 0.80 * (Number(diag.forcing) || 0)) * (1 - cloudPenalty * 0.55);
+  const physicalInitiation = capBreakProbability * (0.20 + 0.80 * (Number(diag.forcing) || 0)) * (1 - cloudPenalty * 0.55) * (0.35 + 0.65 * Math.max(surfaceParcelValidity, Number(fc.elevatedConvectionSupport)||0));
   const initiationProbability = clamp(lerp(Number(fc.initiationProbability) || 0, physicalInitiation, clamp(lead / 6, 0, 1)), 0, 1);
   const severeEnvironment = clamp(0.34 * ramp(cape, 700, 2800) + 0.24 * ramp(shear, 28, 55) + 0.22 * ramp(srh, 80, 320) + 0.20 * (1 - ramp(cin, 60, 180)), 0, 1);
   const trendSignal = lifecycle.ratio - 1 + heatingDelta * 0.35;
@@ -445,7 +484,7 @@ export function projectEnvironmentAtHour(cell, absoluteHour, context = {}) {
     Number(fc.stormCoverage) || 0,
     convectivePotential * initiationProbability * (0.38 + 0.62 * heating) * (0.72 + 0.28 * lifecycle.ratio)
   ), 0, 1);
-  const projected = { absoluteHour, leadHours:lead, localHour, heating, moistureTransport, moistureChange, cape, attainableCape, cin, cinSigned:-cin, srh, shear, lcl, capErosion, capBreakProbability, expectedCapBreakHourUtc:Number.isFinite(expectedBreak)?expectedBreak:null, initiationProbability, projectedStormCoverage, severeEnvironment, lifecycleRatio:lifecycle.ratio, lifecycleStage:lifecycle.stage, trend: trendSignal > 0.08 ? 'strengthening' : trendSignal < -0.08 ? 'weakening' : 'steady' };
+  const projected = { absoluteHour, leadHours:lead, localHour, heating, moistureTransport, moistureChange, cape, attainableCape, surfaceParcelValidity, airMassAuthority:{warmMoistFraction,dryFraction,coldFraction}, cin, cinSigned:-cin, srh, shear, lcl, capErosion, capBreakProbability, expectedCapBreakHourUtc:Number.isFinite(expectedBreak)?expectedBreak:null, initiationProbability, projectedStormCoverage, severeEnvironment, lifecycleRatio:lifecycle.ratio, lifecycleStage:lifecycle.stage, trend: trendSignal > 0.08 ? 'strengthening' : trendSignal < -0.08 ? 'weakening' : 'steady' };
   const chain = diagnoseOutlookRealizationChain(cell, projected);
   chain.analyzedCoverage = chain.coverage;
   chain.coverage = projectedStormCoverage;
@@ -560,11 +599,12 @@ export function tornadoGenesisCorridorSupport(world,cell){
   const warmFront=clamp(Number(features.warmFrontInfluence)||0,0,1);
   const dryline=clamp(Number(features.drylineInfluence)||0,0,1);
   const boundary=clamp(Number(features.explicitBoundaryInfluence)||0,0,1);
-  const triplePoint=world?.mesoscale?.topology?.triplePointKm;
+  const triplePoint=world?.synopticObjects?.triplePoint ?? world?.mesoscale?.topology?.triplePointKm;
   let tripleSupport=0;
   if(triplePoint&&Number.isFinite(cell.x)&&Number.isFinite(cell.y)){
     const x=(cell.x+.5)*world.cellSizeKm,y=(cell.y+.5)*world.cellSizeKm;
-    tripleSupport=Math.exp(-.5*Math.pow(Math.hypot(x-triplePoint.x,y-triplePoint.y)/70,2));
+    const confidence=clamp(Number(triplePoint.confidence) || 0.5,0,1);
+    tripleSupport=Math.exp(-.5*Math.pow(Math.hypot(x-triplePoint.x,y-triplePoint.y)/(55+35*(1-confidence)),2))*confidence;
   }
   const boundaryIntersection=Math.max(intersection,Math.sqrt(warmFront*dryline),tripleSupport);
   return clamp(
@@ -874,6 +914,44 @@ function morningSignal(cell, hour, lead) {
 
 
 
+
+function diagnoseIssuanceReadiness(world, key) {
+  const missing = [];
+  let diagnosticCells = 0, forecastCells = 0, thermodynamicCells = 0;
+  world.forEachCell(cell => {
+    if (Number.isFinite(Number(cell.derived?.cape)) && Number.isFinite(Number(cell.derived?.bulkShear))) diagnosticCells++;
+    if (cell.forecast && Number.isFinite(Number(cell.forecast.initiationProbability))) forecastCells++;
+    if (cell.thermodynamics?.cin || Number.isFinite(Number(cell.derived?.cin))) thermodynamicCells++;
+  });
+  const total = Math.max(1, world.width * world.height);
+  if (diagnosticCells / total < 0.9) missing.push('derived-environment');
+  if (forecastCells / total < 0.75) missing.push('forecast-corridors');
+  if (thermodynamicCells / total < 0.75) missing.push('thermodynamics');
+  return { version: '2.69.0', key, ready: missing.length === 0, missing, diagnosticFraction: diagnosticCells/total, forecastFraction: forecastCells/total, thermodynamicFraction: thermodynamicCells/total };
+}
+
+function compactTrajectoryHours(validStart, validEnd) {
+  const anchors = [0, 3, 6, 9, 12, 15].map(offset => validStart + offset).filter(hour => hour <= validEnd + 1e-6);
+  if (!anchors.length) anchors.push(validStart);
+  return anchors;
+}
+
+function createCompactTrajectoryForecast(grid, width, height, { key, issueHour, sampleHours }) {
+  const diagnostics = { compact: true, sampleHours, severeSupportCells: 0, maximumPotentialRisk: 'TSTM' };
+  for (const cell of grid) {
+    if ((cell.tornadoProbability||0) >= 2 || (cell.hailProbability||0) >= 5 || (cell.windProbability||0) >= 5) diagnostics.severeSupportCells++;
+    if (RISKS.indexOf(cell.risk) > RISKS.indexOf(diagnostics.maximumPotentialRisk)) diagnostics.maximumPotentialRisk = cell.risk;
+    cell.ensembleForecast = { method: 'compact-air-mass-trajectory', memberFrequency: 1, weightedMemberFrequency: 1, region: 'trajectory' };
+    cell.forecastConfidence ??= { method: 'compact-trajectory', overallConfidence: clamp(Number(cell.leadTimeConfidence)||0.72,0.35,1), issuedProbability: Math.max(cell.tornadoProbability||0,cell.hailProbability||0,cell.windProbability||0) };
+  }
+  return {
+    version: '2.69.0', method: 'compact-six-checkpoint-air-mass-trajectory', memberCount: 1, clusters: [], diagnostics,
+    outlookAssimilation: { version:'2.69.0', method:'compact-trajectory', sampleHours },
+    forecastConfidence: { version:'2.69.0', method:'compact-trajectory-readiness', calibration:'startup-provisional' },
+    regionalTopology: { version:'2.66.2', compact:true }, forecastStorms: []
+  };
+}
+
 function operationalDayStart(hour) {
   return Math.floor((hour - CONVECTIVE_DAY_START_UTC) / 24) * 24 + CONVECTIVE_DAY_START_UTC;
 }
@@ -1063,7 +1141,7 @@ export function applyTrajectoryUncertaintyEnvelopes(grid,w,h,key='day1'){
       const x=i%w,y=Math.floor(i/w);
       const trajectory=grid[i].hazardCorridors?.[hazard]?.trajectory;
       const rawRadius=Number(trajectory?.uncertaintyRadiusCells)||1;
-      const radius=clamp(Math.ceil(rawRadius*(key==='day1'?.62:.82)),1,key==='day1'?3:4);
+      const radius=clamp(Math.ceil(rawRadius*(key==='day1'?.48:.68)),1,key==='day1'?2:3);
       const tierIndex=levels[hazard].indexOf(source[i]);
       for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){
         const distance=Math.hypot(dx,dy);if(distance>radius)continue;
@@ -1106,6 +1184,36 @@ function applyTwentyFiveMileHazardRule(grid,w,h,cellSizeMiles=10){
     target.provenance={...(target.provenance??{}),hazardProbabilityBasis:'within-25-miles',hazardRadiusMiles:25,hazardRadiusCells:radiusCells};
   }
   for(const forecast of grid)recomputeForecastRisk(forecast);
+}
+
+
+function pruneUnsupportedHazardFootprints(grid,w,h,key='day1') {
+  const lowTier = { tornado: 2, hail: 5, wind: 5 };
+  const nextTier = { tornado: 5, hail: 15, wind: 15 };
+  for (const cell of grid) {
+    const env = cell.projectedEnvironment ?? {};
+    const initiation = clamp(Number(cell.peakInitiation ?? env.initiationProbability) || 0, 0, 1);
+    const occupancy = clamp(Number(cell.projectedStormOccupancy) || 0, 0, 1);
+    const corridor = clamp(Math.max(
+      Number(cell.hazardOverlapScore) || 0,
+      Number(cell.boundaryRelativePlacement?.score) || 0,
+      Number(cell.hazardCorridors?.tornado?.support) || 0,
+      Number(cell.hazardCorridors?.hail?.support) || 0,
+      Number(cell.hazardCorridors?.wind?.support) || 0
+    ), 0, 1);
+    const support = clamp(0.46 * initiation + 0.34 * occupancy + 0.20 * corridor, 0, 1);
+    const minimumSupport = key === 'day1' ? 0.105 : key === 'day2' ? 0.085 : 0.07;
+    for (const hazard of ['tornado','hail','wind']) {
+      const field = `${hazard}Probability`;
+      const value = Number(cell[field]) || 0;
+      if (value <= 0) continue;
+      if (support < minimumSupport && value <= lowTier[hazard]) cell[field] = 0;
+      else if (support < minimumSupport * 1.45 && value >= nextTier[hazard]) cell[field] = lowTier[hazard];
+    }
+    cell.regionalization ??= {};
+    cell.regionalization.footprintSupport = { support, minimumSupport, method: 'initiation-occupancy-corridor-gate' };
+  }
+  for (const cell of grid) recomputeForecastRisk(cell,key);
 }
 
 function smoothHazardProbabilities(grid,w,h,passes){
@@ -1167,7 +1275,7 @@ function regionalizeHazardGuidance(grid,w,h,key='day1'){
     for(let hi=cfg.levels.length-1;hi>=2;hi--){
       const source=cfg.levels[hi];
       for(let lo=hi-1;lo>=1;lo--){
-        const target=cfg.levels[lo],radius=hi-lo,sources=[];
+        const target=cfg.levels[lo],radius=Math.min(2,Math.max(1,Math.ceil((hi-lo)*0.55))),sources=[];
         for(let i=0;i<vals.length;i++)if(vals[i]>=source)sources.push(i);
         for(const i of sources){const sx=i%w,sy=Math.floor(i/w);for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){if(dx*dx+dy*dy>radius*radius)continue;const x=sx+dx,y=sy+dy;if(x>=0&&y>=0&&x<w&&y<h){const ti=y*w+x;vals[ti]=Math.max(vals[ti],target);}}}
       }
@@ -1186,9 +1294,9 @@ function regionalizeHazardGuidance(grid,w,h,key='day1'){
 // intentionally left open because a risk region may continue beyond the domain.
 function enforceHazardProbabilityNesting(grid,w,h){
   const configs={
-    tornado:{levels:[0,2,5,10,15,30,45,60],radii:{60:1,45:1,30:1,15:2,10:2,5:3}},
-    hail:{levels:[0,5,15,30,45,60],radii:{60:1,45:1,30:2,15:3}},
-    wind:{levels:[0,5,15,30,45,60,75,90],radii:{90:1,75:1,60:1,45:2,30:2,15:3}}
+    tornado:{levels:[0,2,5,10,15,30,45,60],radii:{60:1,45:1,30:1,15:1,10:1,5:2}},
+    hail:{levels:[0,5,15,30,45,60],radii:{60:1,45:1,30:1,15:2}},
+    wind:{levels:[0,5,15,30,45,60,75,90],radii:{90:1,75:1,60:1,45:1,30:1,15:2}}
   };
   for(const [hazard,cfg] of Object.entries(configs)){
     const field=`${hazard}Probability`,levels=cfg.levels;

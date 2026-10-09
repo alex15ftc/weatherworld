@@ -5,9 +5,10 @@ const MAX_IDLE_HOURS = 18;
 
 export function initializeCoupledAtmosphere(world) {
   world.coupledAtmosphere = {
-    version: '2.22.12',
+    version: '2.52.0',
     mode: 'sparse-active-cells',
-    cellScaleMiles: 10,
+    cellScaleKm: world.cellSizeKm,
+    cellAreaKm2: world.cellSizeKm * world.cellSizeKm,
     lastUpdateHourUtc: world.validHourUtc,
     integratedStormHours: 0,
     activeFeedbackCells: 0,
@@ -52,12 +53,12 @@ export function advanceCoupledAtmosphere(world, dtHours = 1) {
 
     memory.precip = relax(memory.precip, currentPrecip, currentPrecip > memory.precip ? 0.72 : 0.15 + 0.10 * daytimeVentilation, dtHours);
     memory.coldPool = relax(memory.coldPool, Math.max(stormProcessed, outflow * 0.82), stormProcessed > memory.coldPool ? 0.68 : 0.11 + 0.10 * daytimeVentilation, dtHours);
-    memory.processed = relax(memory.processed, stormProcessed, stormProcessed > memory.processed ? 0.75 : 0.10 + 0.13 * daytimeVentilation + 0.06 * recoverySupport, dtHours);
+    memory.processed = relax(memory.processed, Math.max(stormProcessed, nearbyStorm * 0.42), stormProcessed > memory.processed ? 0.82 : 0.055 + 0.075 * daytimeVentilation + 0.035 * recoverySupport, dtHours);
     memory.boundary = relax(memory.boundary, outflow, outflow > memory.boundary ? 0.62 : 0.10 + 0.04 * daytimeVentilation, dtHours);
     memory.stormMax = Math.max(nearbyStorm, memory.stormMax * Math.pow(0.88, dtHours));
 
     const humidCloud = clamp((cell.surface.dewpoint - 48) / 24, 0, 1) * clamp((cell.derived.cape ?? 0) / 2200, 0, 1);
-    const targetCloud = clamp(humidCloud * 0.24 + Math.max(memory.precip, memory.stormMax * 0.9) * 0.82, 0, 1);
+    const targetCloud = clamp(humidCloud * 0.24 + Math.max(memory.precip, memory.stormMax * 0.9, memory.processed * 0.48) * 0.86, 0, 1);
     memory.cloud = relax(memory.cloud, targetCloud, targetCloud > memory.cloud ? 0.62 : 0.13, dtHours);
 
     const wetting = memory.precip * 0.18 * dtHours;
@@ -74,7 +75,7 @@ export function advanceCoupledAtmosphere(world, dtHours = 1) {
     // damage the local environment, but they no longer erase an entire subsequent
     // forecast period when the parent system remains supportive.
     const recovery = clamp(0.34 + recoverySupport * 0.46 + daylight * 0.15
-      - memory.processed * 0.46 - memory.coldPool * 0.16
+      - memory.processed * 0.62 - memory.coldPool * 0.24
       + memory.wetness * daylight * 0.18, 0.22, 1);
     if (daylight > 0.35 && recoverySupport > 0.58) {
       cell.surface.temperature += (0.12 + recoverySupport * 0.16) * daylight * dtHours;
@@ -133,7 +134,7 @@ function exposeMemory(cell, m, recovery, stormProcessed, outflow) {
   cell.features.nocturnalStability = m.stability;
   cell.features.recoveryFactor = recovery;
   cell.features.residualOutflow = m.boundary;
-  cell.features.stormProcessedAir = Math.max(stormProcessed, m.processed * 0.78);
+  cell.features.stormProcessedAir = Math.max(stormProcessed, m.processed * 0.92);
   cell.features.stormOutflowConvergence = Math.max(outflow, m.boundary * 0.64);
 }
 function clearExposedMemory(cell) {

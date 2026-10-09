@@ -61,6 +61,7 @@ export function sampleStormEnvironment(world, xKm, yKm) {
       stretchingPotential: mean(cell => cell.mesoscaleFields?.stretchingPotential ?? 0),
       boundaryLayerDepthM: mean(cell => cell.mesoscaleFields?.boundaryLayerDepthM ?? 1000)
     },
+    kinematicConvergence: mean(cell => cell.dynamics?.kinematicConvergence ?? 0), verticalVelocity: mean(cell => cell.dynamics?.verticalVelocity ?? 0), frontogenesis: mean(cell => cell.features?.frontogenesis ?? 0), jetDivergence: mean(cell => cell.features?.jetDivergence ?? 0),
     surfaceWind: wind('surface'), wind850: wind(850), wind500: wind(500)
   };
 }
@@ -78,13 +79,15 @@ export function diagnoseStormMotion(environment, mode = 'developing convection')
   const devEast = sign * shearNorth / shearMagnitude * deviationKt;
   const devNorth = sign * -shearEast / shearMagnitude * deviationKt;
   let east = meanEast + devEast, north = meanNorth + devNorth;
-  if (mode === 'MCS' || mode === 'QLCS' || mode === 'linear segment') {
+  if (['broken line','linear segment','QLCS with embedded supercells','QLCS','MCS'].includes(mode)) {
     const coldPoolPush = 3 + 7 * clamp(environment.linearFraction, 0, 1);
     east += shearEast / shearMagnitude * coldPoolPush;
     north += shearNorth / shearMagnitude * coldPoolPush;
   }
   east = east * KT_TO_KPH + (environment.coldPoolPropagation?.east ?? 0) * (mode === 'MCS' || mode === 'QLCS' ? 0.55 : 0.18);
   north = north * KT_TO_KPH + (environment.coldPoolPropagation?.north ?? 0) * (mode === 'MCS' || mode === 'QLCS' ? 0.55 : 0.18);
+  const propagationBoost = clamp((environment.verticalVelocity ?? 0) * 0.45 + (environment.frontogenesis ?? 0) * 0.35 + (environment.kinematicConvergence ?? 0) * 0.20, -0.2, 0.8);
+  east *= 1 + propagationBoost * 0.12; north *= 1 + propagationBoost * 0.12;
   east += environment.boundaryPropagation?.east ?? 0;
   north += environment.boundaryPropagation?.north ?? 0;
   return { east, north };

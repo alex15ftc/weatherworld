@@ -24,7 +24,7 @@ export function runSeedVerification(seed, { hours = 72, stepHours = 0.5, neighbo
   config.seed = numericSeed;
   world.seed = numericSeed;
   world.config = config;
-  initializeEvolution(world, config);
+  initializeEvolution(world, config, { profile: 'calibration' });
   // Verification samples authoritative storm objects directly. Disable the one-minute
   // observation fan-out so long batch runs do not allocate millions of transient reports.
   timings.initializationMs = performance.now() - phaseStarted;
@@ -74,8 +74,21 @@ export function runSeedVerification(seed, { hours = 72, stepHours = 0.5, neighbo
   const radiusCells = Number.isFinite(neighborhoodCells) ? neighborhoodCells : neighborhoodMiles / Math.max(0.1, world.cellSizeMiles);
   const products = completeProducts.map(p => scoreProduct(p, truthFrames, initiations, world, radiusCells));
   const byDay = Object.fromEntries(['day1','day2','day3'].map(day => [day, summarizeDay(products.filter(p => p.key === day))]));
-  const event = summarizeEvent(world, truthFrames, initiations);
+  const latestIssuedByDay = Object.fromEntries(['day1','day2','day3'].map(day => {
+    const rows = allIssuedProducts.filter(product => product.key === day).sort((a,b)=>a.issuedHourUtc-b.issuedHourUtc);
+    const latest = rows.at(-1);
+    return [day, latest ? {
+      cycleId: latest.cycleId,
+      issuedHourUtc: latest.issuedHourUtc,
+      validStartHour: latest.validStartHour,
+      validEndHour: latest.validEndHour,
+      forecastOverallRisk: latest.overallRisk ?? 'NONE',
+      verificationStatus: completeProducts.includes(latest) ? 'VERIFIED' : 'INCOMPLETE_TRUTH_WINDOW'
+    } : null];
+  }));
   finalizeStormRecords(stormRecords, world);
+  const event = summarizeEvent(world, truthFrames, initiations);
+  event.stormTrackVerification = verifyForecastStormTracks(allIssuedProducts, world.stormHistory ?? world.stormArchive ?? []);
   const calibration = summarizeCalibration(products);
   timings.scoringMs = performance.now() - phaseStarted;
   const totalMs = performance.now() - runStarted;
@@ -94,7 +107,7 @@ export function runSeedVerification(seed, { hours = 72, stepHours = 0.5, neighbo
     event,
     atmosphericEnvironmentSamples,
     storms: [...stormRecords.values()].sort((a,b)=>b.maxIntensity-a.maxIntensity),
-    forecast: { productsScored: products.length, productsSkipped: incompleteProducts.length, byDay, calibration },
+    forecast: { productsScored: products.length, productsSkipped: incompleteProducts.length, byDay, latestIssuedByDay, calibration },
     performance: { ...timings, totalMs, simulatedHoursPerSecond: totalMs > 0 ? hours / (totalMs / 1000) : 0, truthFrames: truthFrames.length },
     products,
     incompleteProducts,
@@ -257,7 +270,7 @@ function sampleEnvironmentCell(cell, x, y, cellSizeKm = 10) {
     realizedUpdraftMs: Number(realization.realizedUpdraftMs ?? diagnostics.realizedUpdraftMs) || 0,
     coldPoolSpeedMs: Number(realization.coldPoolSpeedMs ?? diagnostics.coldPoolSpeedMs) || 0,
     stormCoverage: Number(forecast.stormCoverage) || 0,
-    warmSectorSupport: cell?.features?.warmSector ? 1 : clamp(Number(forecast.openWarmSectorSupport) || 0, 0, 1),
+    warmSectorSupport: clamp(Math.max(Number(cell?.features?.synopticWarmSectorFraction) || 0, cell?.features?.warmSector ? 1 : 0, Number(forecast.openWarmSectorSupport) || 0), 0, 1),
     broaderSevereAirMass: clamp(Number(energyBudget.broaderSevereAirMass ?? forecast.openWarmSectorSupport) || 0, 0, 1),
     energyBudget: { ...energyBudget },
     netTemperatureTendencyFph: Number(energyBudget.netTemperatureTendencyFph) || 0,
@@ -462,6 +475,7 @@ function scoreProduct(product, frames, initiations, world, radius) {
   const ciScore = binaryScores(forecastCi.map(v => clamp(v,0,1)), truth.initiation, 0.35);
   const observedOverall = riskTruth.reduce((best, risk) => RISK_ORDER.indexOf(risk) > RISK_ORDER.indexOf(best) ? risk : best, 'TSTM');
   const spatialCategorical = buildSpatialCategoricalDiagnostics(product.grid, truth);
+  const spatialFieldVerification = buildSpatialFieldVerification(product, truth);
   const trackPlacement = buildTornadoTrackPlacementDiagnostics(product, validFrames, world);
   const magnitudeScore = magnitudeProductScore(hazardScores, intensityScores, ciScore, withinOne / product.grid.length);
   const placementScore = trackPlacement.placementScore;
@@ -473,6 +487,7 @@ function scoreProduct(product, frames, initiations, world, radius) {
     forecastOverallRisk: product.overallRisk, observedOverallRisk: observedOverall,
     categorical: { exactAccuracy: exact / product.grid.length, withinOneAccuracy: withinOne / product.grid.length, overforecastFraction: over / product.grid.length, underforecastFraction: under / product.grid.length, spatial: spatialCategorical },
     spatialPlacement: { ...buildSpatialPlacementDiagnostics(product, truth), tornadoTracks: trackPlacement },
+    spatialVerification: spatialFieldVerification,
     hazards: hazardScores, intensity: intensityScores, initiation: ciScore,
     forecastReasoning: product.forecastReasoning ?? null,
     decisionTree: product.decisionTree ?? null,
@@ -485,6 +500,130 @@ function scoreProduct(product, frames, initiations, world, radius) {
   };
 }
 
+
+
+function binaryMask(values, predicate) {
+  return values.map((value, index) => predicate(value, index) ? 1 : 0);
+}
+
+function maskMetrics(forecastMask, observedMask, width, cellMiles) {
+  let intersection = 0, union = 0, forecastCount = 0, observedCount = 0;
+  let fx = 0, fy = 0, ox = 0, oy = 0;
+  for (let i = 0; i < forecastMask.length; i++) {
+    const f = Boolean(forecastMask[i]);
+    const o = Boolean(observedMask[i]);
+    if (f) { forecastCount++; fx += i % width; fy += Math.floor(i / width); }
+    if (o) { observedCount++; ox += i % width; oy += Math.floor(i / width); }
+    if (f && o) intersection++;
+    if (f || o) union++;
+  }
+  const forecastCentroid = forecastCount ? { x: fx / forecastCount, y: fy / forecastCount } : null;
+  const observedCentroid = observedCount ? { x: ox / observedCount, y: oy / observedCount } : null;
+  const centroidErrorMiles = forecastCentroid && observedCentroid
+    ? Math.hypot(forecastCentroid.x - observedCentroid.x, forecastCentroid.y - observedCentroid.y) * cellMiles
+    : null;
+  return {
+    forecastCells: forecastCount,
+    observedCells: observedCount,
+    intersectionCells: intersection,
+    unionCells: union,
+    iou: union ? intersection / union : 1,
+    probabilityOfDetection: observedCount ? intersection / observedCount : (forecastCount ? 0 : 1),
+    falseAlarmRatio: forecastCount ? (forecastCount - intersection) / forecastCount : 0,
+    areaRatio: observedCount ? forecastCount / observedCount : (forecastCount ? null : 1),
+    forecastCentroid,
+    observedCentroid,
+    centroidErrorMiles
+  };
+}
+
+function fieldError(forecast, observed, scale = 1) {
+  let absolute = 0, squared = 0;
+  for (let i = 0; i < forecast.length; i++) {
+    const error = (Number(forecast[i]) || 0) - (Number(observed[i]) || 0);
+    absolute += Math.abs(error);
+    squared += error * error;
+  }
+  const count = Math.max(1, forecast.length);
+  return { mae: absolute / count / scale, rmse: Math.sqrt(squared / count) / scale };
+}
+
+export function buildSpatialFieldVerification(product, truth) {
+  const width = truth.width;
+  const cellMiles = truth.cellMiles;
+  const forecastRiskRanks = product.grid.map(cell => Math.max(0, RISK_ORDER.indexOf(cell.risk ?? 'TSTM')));
+  const observedRiskRanks = truth.risk.map(risk => Math.max(0, RISK_ORDER.indexOf(risk)));
+  const categoricalContours = {};
+  for (let rank = 1; rank < RISK_ORDER.length; rank++) {
+    const label = RISK_ORDER[rank];
+    categoricalContours[`atLeast${label}`] = maskMetrics(
+      binaryMask(forecastRiskRanks, value => value >= rank),
+      binaryMask(observedRiskRanks, value => value >= rank),
+      width,
+      cellMiles
+    );
+  }
+
+  const hazards = {};
+  const hazardThresholds = { tornado: [0.02, 0.05, 0.10, 0.15, 0.30], hail: [0.05, 0.15, 0.30], wind: [0.05, 0.15, 0.30] };
+  for (const hazard of HAZARDS) {
+    const forecast = product.grid.map(cell => normalizeProbability(cell[`${hazard}Probability`]));
+    const observed = Array.from(truth.observedProbability[hazard], value => normalizeProbability(value));
+    const contours = {};
+    for (const threshold of hazardThresholds[hazard]) {
+      contours[probabilityLabel(threshold)] = maskMetrics(
+        binaryMask(forecast, value => value >= threshold),
+        binaryMask(observed, value => value >= threshold),
+        width,
+        cellMiles
+      );
+    }
+    hazards[hazard] = { fieldError: fieldError(forecast, observed), contours };
+  }
+
+  const forecastInitiation = product.grid.map(cell => clamp(Number(cell.peakInitiation ?? 0), 0, 1));
+  const observedInitiation = Array.from(truth.initiation, value => value ? 1 : 0);
+  const initiation = {
+    fieldError: fieldError(forecastInitiation, observedInitiation),
+    contour: maskMetrics(
+      binaryMask(forecastInitiation, value => value >= 0.35),
+      observedInitiation,
+      width,
+      cellMiles
+    )
+  };
+
+  const scoredIou = [
+    categoricalContours.atLeastSLGT?.iou,
+    categoricalContours.atLeastENH?.iou,
+    hazards.tornado.contours['2pct'].iou,
+    hazards.hail.contours['5pct'].iou,
+    hazards.wind.contours['5pct'].iou,
+    initiation.contour.iou
+  ].filter(Number.isFinite);
+  const overlapScore = scoredIou.length ? mean(scoredIou) : 1;
+  const displacements = [
+    categoricalContours.atLeastSLGT?.centroidErrorMiles,
+    categoricalContours.atLeastENH?.centroidErrorMiles,
+    hazards.tornado.contours['2pct'].centroidErrorMiles,
+    hazards.hail.contours['5pct'].centroidErrorMiles,
+    hazards.wind.contours['5pct'].centroidErrorMiles,
+    initiation.contour.centroidErrorMiles
+  ].filter(Number.isFinite);
+  const meanCentroidErrorMiles = displacements.length ? mean(displacements) : null;
+  const displacementScore = meanCentroidErrorMiles == null ? 1 : clamp(1 - meanCentroidErrorMiles / 150, 0, 1);
+  return {
+    categoricalContours,
+    hazards,
+    initiation,
+    summary: {
+      overlapScore,
+      displacementScore,
+      meanCentroidErrorMiles,
+      spatialScore: overlapScore * 0.7 + displacementScore * 0.3
+    }
+  };
+}
 
 export function buildSpatialPlacementDiagnostics(product, truth) {
   const overall = eventPlacementForMask(product, truth, 'overall');
@@ -876,10 +1015,91 @@ function summarizeEvent(world, frames, initiations) {
     const bins = new Map(); for (const i of rows) { const h = Math.floor(Number(i.hourUtc ?? i.createdHourUtc)); bins.set(h,(bins.get(h)||0)+1); }
     initiationPeakByDay[`day${day}`] = bins.size ? [...bins].sort((a,b)=>b[1]-a[1])[0][0] : null;
   }
+  const corridorCounts = {};
+  const boundaryTypeCounts = {};
+  for (const initiation of initiations) {
+    const corridorId = initiation.sourceCell?.corridorId ?? 'unclassified';
+    const boundaryType = initiation.sourceCell?.boundaryType ?? 'none';
+    corridorCounts[corridorId] = (corridorCounts[corridorId] ?? 0) + 1;
+    boundaryTypeCounts[boundaryType] = (boundaryTypeCounts[boundaryType] ?? 0) + 1;
+  }
+  const uniqueCorridors = Object.keys(corridorCounts).filter(key => key !== 'unclassified').length;
+  const boundaryRootedInitiations = initiations.filter(i => i.sourceCell?.boundaryType || String(i.sourceCell?.corridorId ?? '').startsWith('boundary:')).length;
   return { stormsCreated:world.stormEngine?.totalCreated??initiations.length, initiations:initiations.length, totalTornadoes:world.stormEngine?.totalTornadoes??0,
     maximumConcurrentStorms:maxActive, maximumConcurrentTornadoes:maxTornado, maximumConcurrentSevereHailStorms:maxHail, maximumConcurrentSevereWindStorms:maxWind,
     peakConvectiveHourUtc:peak?.hourUtc??null, peakConvectiveHourByDay:peakByDay, peakInitiationHourByDay:initiationPeakByDay,
-    peakStormIntensity:peak?.maxIntensity??0, dominantModes:Object.entries(modeTotals).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([mode,count])=>({mode,count})) };
+    peakStormIntensity:peak?.maxIntensity??0, dominantModes:Object.entries(modeTotals).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([mode,count])=>({mode,count})),
+    convectiveOrganization: world.stormEngine?.convectiveOrganization ?? {version:'2.66.0',clusterCount:0,largestCluster:0,meanClusterSize:0,states:{}},
+    stormTrackIntelligence: summarizeStormTrackIntelligence(world.storms ?? [], world.stormHistory ?? world.stormArchive ?? []),
+    initiationCorridors:{ uniqueCorridors, corridorCounts, boundaryTypeCounts, boundaryRootedInitiations, boundaryRootedFraction:initiations.length?boundaryRootedInitiations/initiations.length:0 }, synopticBudget: world.synopticObjects?.convectiveBudget ? { ...world.synopticObjects.convectiveBudget, segmentUsage:{...world.synopticObjects.convectiveBudget.segmentUsage} } : null, synopticObjects: world.synopticObjects ? { surfaceLow:world.synopticObjects.surfaceLow, triplePoint:world.synopticObjects.triplePoint, warmSectorCoverage:world.synopticObjects.warmSectorCoverage, meanWarmSectorDewpointF:world.synopticObjects.meanWarmSectorDewpointF, interaction:world.synopticObjects.interaction, environmentalTendencies:world.synopticObjects.environmentalTendencies, convectiveMemory:world.synopticObjects.convectiveMemory, alignment:world.synopticObjects.alignment, objectConfidence:world.synopticObjects.objectConfidence, atmosphericConsistency:world.synopticObjects.atmosphericConsistency, constraintCorrections:world.synopticObjects.constraintCorrections, coupledDynamics:world.synopticObjects.coupledDynamics, kinematicDynamics:world.synopticObjects.kinematicDynamics, reconciliation:world.synopticObjects.reconciliation, reconciliationHistory:world.synopticObjects.reconciliationHistory, fronts:world.synopticObjects.fronts?.map(f=>({id:f.id,type:f.type,strength:f.strength,confidence:f.confidence,lifecyclePhase:f.lifecyclePhase,lifecycleProgress:f.lifecycleProgress,velocityKph:f.velocityKph})) } : null };
+}
+
+
+function summarizeStormTrackIntelligence(activeStorms, archivedStorms) {
+  const storms = [...activeStorms, ...archivedStorms].filter(storm => storm?.trackIntelligence);
+  if (!storms.length) return { version:'2.60.1', stormCount:0, meanTrackConfidence:null, meanBoundaryFollowingStrength:null, boundaryInteractions:0, mesocycloneCycles:0, swathPoints:{tornado:0,hail:0,wind:0} };
+  const mean = values => values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : 0;
+  return {
+    version:'2.60.1',
+    stormCount:storms.length,
+    meanTrackConfidence:mean(storms.map(storm=>Number(storm.trackIntelligence?.confidence)||0)),
+    meanBoundaryFollowingStrength:mean(storms.map(storm=>Number(storm.trackIntelligence?.boundaryFollowingStrength)||0)),
+    boundaryInteractions:storms.reduce((sum,storm)=>sum+(storm.trackIntelligence?.interactionHistory?.length??0),0),
+    mesocycloneCycles:storms.reduce((sum,storm)=>sum+(storm.mesocycloneCycle?.cyclesCompleted??0),0),
+    mergers:storms.reduce((sum,storm)=>sum+(storm.mergeCount??0),0),
+    splits:storms.filter(storm=>storm.hasSplit).length,
+    swathPoints:{
+      tornado:storms.reduce((sum,storm)=>sum+(storm.trackIntelligence?.swaths?.tornado?.length??0),0),
+      hail:storms.reduce((sum,storm)=>sum+(storm.trackIntelligence?.swaths?.hail?.length??0),0),
+      wind:storms.reduce((sum,storm)=>sum+(storm.trackIntelligence?.swaths?.wind?.length??0),0)
+    }
+  };
+}
+
+function verifyForecastStormTracks(products, realizedStorms) {
+  const latest = [...products].filter(p=>p?.key==='day1'&&p?.ensembleForecast?.forecastStorms?.length).sort((a,b)=>(a.issuedHourUtc??0)-(b.issuedHourUtc??0))[0] ?? [...products].filter(p=>p?.ensembleForecast?.forecastStorms?.length).sort((a,b)=>(a.issuedHourUtc??0)-(b.issuedHourUtc??0))[0];
+  const forecastStorms = latest?.ensembleForecast?.forecastStorms ?? [];
+  const realized = realizedStorms.filter(s=>(s.trackPoints?.length??0)>1 || (s.trackIntelligence?.centerline?.length??0)>1);
+  const used=new Set(), matches=[];
+  for(const f of forecastStorms){
+    const ft=f.track??[]; if(!ft.length)continue; const fi=ft[0];
+    let best=null;
+    for(const r of realized){if(used.has(r.id))continue; const rt=r.trackPoints??r.trackIntelligence?.centerline??[]; if(!rt.length)continue;
+      const ri=normalizeRealizedTrackPoint(rt[0]); const init=Math.hypot((fi.x??0)-(ri.x??0),(fi.y??0)-(ri.y??0));
+      const modePenalty=String(f.mode??'').includes(String(r.mode??''))?0:2;
+      const cost=init+modePenalty; if(!best||cost<best.cost)best={r,rt,cost,init};
+    }
+    if(!best||best.cost>24)continue; used.add(best.r.id);
+    const n=Math.min(ft.length,best.rt.length); let se=0,inside50=0,inside90=0;
+    for(let i=0;i<n;i++){const a=normalizeForecastTrackPoint(ft[Math.round(i*(ft.length-1)/Math.max(1,n-1))]), b=normalizeRealizedTrackPoint(best.rt[Math.round(i*(best.rt.length-1)/Math.max(1,n-1))]); const e=Math.hypot((a.x??0)-b.x,(a.y??0)-b.y);se+=e*e;if(e<=Number(f.corridor50RadiusCells??2))inside50++;if(e<=Number(f.corridor90RadiusCells??5))inside90++;}
+    const forecastStates=f.stateHistory??[]; const realizedStates=best.r.trackIntelligence?.stateHistory??[]; const stateN=Math.min(forecastStates.length,realizedStates.length); const divergenceTimeline=[]; let firstDivergenceHour=null;
+    for(let i=0;i<stateN;i++){const fs=forecastStates[Math.round(i*(forecastStates.length-1)/Math.max(1,stateN-1))], rs=realizedStates[Math.round(i*(realizedStates.length-1)/Math.max(1,stateN-1))]; const fp=normalizeForecastTrackPoint(fs.position??{}), rp=normalizeRealizedTrackPoint(rs.position??{}); const positionErrorKm=Math.hypot(fp.x-rp.x,fp.y-rp.y)*10; const directionErrorDegrees=angleDifferenceDegrees(fs.motion,rs.motion); const stateRow={hourOffset:Number(fs.hourUtc??fs.hourOffset??i),positionErrorKm,directionErrorDegrees,speedErrorKph:Math.abs(Math.hypot(fs.motion?.east??0,fs.motion?.north??0)-Math.hypot(rs.motion?.east??0,rs.motion?.north??0)),modeAgreement:String(fs.mode)===String(rs.mode),intensityError:Math.abs((fs.intensity??0)-(rs.intensity??0)),organizationError:Math.abs((fs.organization??0)-(rs.organization??0)),inflowQualityError:Math.abs((fs.inflowQuality??0)-(rs.inflowQuality??0)),coldPoolStrengthError:Math.abs((fs.coldPoolStrength??0)-(rs.coldPoolStrength??0)),boundaryAgreement:(fs.boundaryType??null)===(rs.boundaryType??null)}; divergenceTimeline.push(stateRow); if(firstDivergenceHour==null&&positionErrorKm>75)firstDivergenceHour=stateRow.hourOffset;}
+    matches.push({forecastId:f.id,realizedId:best.r.id,kernelVersion:f.kernelVersion??null,initiationErrorCells:best.init,trackRmseCells:n?Math.sqrt(se/n):null,corridor50Coverage:n?inside50/n:null,corridor90Coverage:n?inside90/n:null,lifetimeErrorHours:Number(f.lifetimeHours??0)-Number(best.r.ageHours??0),firstDivergenceHour,divergenceTimeline,modeAgreement:stateN?divergenceTimeline.filter(x=>x.modeAgreement).length/stateN:null,boundaryAgreement:stateN?divergenceTimeline.filter(x=>x.boundaryAgreement).length/stateN:null,meanColdPoolError:stateN?divergenceTimeline.reduce((a,x)=>a+x.coldPoolStrengthError,0)/stateN:null});
+  }
+  const avg=(k)=>{const v=matches.map(x=>x[k]).filter(Number.isFinite);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null};
+  const allForecastPoints=forecastStorms.flatMap(storm=>(storm.track??[]).map(normalizeForecastTrackPoint)).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  const allRealizedPoints=realized.flatMap(storm=>(storm.trackPoints??storm.trackIntelligence?.centerline??[]).map(normalizeRealizedTrackPoint)).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));
+  const centroid=(points)=>points.length?{x:points.reduce((sum,p)=>sum+p.x,0)/points.length,y:points.reduce((sum,p)=>sum+p.y,0)/points.length}:null;
+  return {version:'2.62.0',sharedKernelVersion:'2.62.0',forecastStorms:forecastStorms.length,realizedStorms:realized.length,matchedStorms:matches.length,unmatchedForecastStorms:Math.max(0,forecastStorms.length-matches.length),unmatchedRealizedStorms:Math.max(0,realized.length-matches.length),forecastCentroid:centroid(allForecastPoints),realizedCentroid:centroid(allRealizedPoints),forecastTrackPoints:allForecastPoints.length,realizedTrackPoints:allRealizedPoints.length,meanInitiationErrorKm:avg('initiationErrorCells')==null?null:avg('initiationErrorCells')*10,meanTrackRmseKm:avg('trackRmseCells')==null?null:avg('trackRmseCells')*10,meanLifetimeErrorHours:avg('lifetimeErrorHours'),modeAgreement:avg('modeAgreement'),boundaryAgreement:avg('boundaryAgreement'),meanColdPoolError:avg('meanColdPoolError'),meanFirstDivergenceHour:avg('firstDivergenceHour'),corridor50Coverage:avg('corridor50Coverage'),corridor90Coverage:avg('corridor90Coverage'),telemetryIntegrity:{stormsCreated:realizedStorms.length,trackedStorms:realized.length,complete:realizedStorms.length===0||realized.length>0},matches:matches.slice(0,80)};
+}
+function angleDifferenceDegrees(a={},b={}){
+  const aa=Math.atan2(Number(a.north)||0,Number(a.east)||0)*180/Math.PI;
+  const bb=Math.atan2(Number(b.north)||0,Number(b.east)||0)*180/Math.PI;
+  let d=Math.abs(aa-bb)%360; if(d>180)d=360-d; return d;
+}
+
+function normalizeForecastTrackPoint(p){
+  if(Number.isFinite(Number(p?.x))&&Number.isFinite(Number(p?.y)))return{x:Number(p.x),y:Number(p.y)};
+  if(Number.isFinite(Number(p?.xKm))&&Number.isFinite(Number(p?.yKm)))return{x:Number(p.xKm)/10,y:Number(p.yKm)/10};
+  if(Number.isFinite(Number(p?.positionKm?.x))&&Number.isFinite(Number(p?.positionKm?.y)))return{x:Number(p.positionKm.x)/10,y:Number(p.positionKm.y)/10};
+  return{x:0,y:0};
+}
+function normalizeRealizedTrackPoint(p){
+  if(Number.isFinite(Number(p?.xKm))&&Number.isFinite(Number(p?.yKm)))return{x:Number(p.xKm)/10,y:Number(p.yKm)/10};
+  if(Number.isFinite(Number(p?.positionKm?.x))&&Number.isFinite(Number(p?.positionKm?.y)))return{x:Number(p.positionKm.x)/10,y:Number(p.positionKm.y)/10};
+  // Realized StormEngine and StormTrackIntelligence histories store x/y in kilometers.
+  if(Number.isFinite(Number(p?.x))&&Number.isFinite(Number(p?.y)))return{x:Number(p.x)/10,y:Number(p.y)/10};
+  return{x:0,y:0};
 }
 
 function summarizeCalibration(products) {

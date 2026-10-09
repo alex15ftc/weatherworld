@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const synoptic=fs.readFileSync(new URL('../js/synoptic/SynopticObjectEngine.js',import.meta.url),'utf8');
+const initiation=fs.readFileSync(new URL('../js/storms/InitiationEngine.js',import.meta.url),'utf8');
+const critic=fs.readFileSync(new URL('../js/verification/CalibrationCritic.js',import.meta.url),'utf8');
+assert.match(synoptic,/alignSynopticObjectsToGrid/);
+assert.match(synoptic,/synopticBoundaryInfluences/);
+assert.match(synoptic,/prior - 0\.24/);
+assert.match(initiation,/primaryTrigger/);
+assert.match(critic,/WARM_SECTOR_DISCONTINUITY/);
+assert.match(critic,/OBJECT_FIELD_DESYNCHRONIZATION/);
+console.log('2.53.0 spatial forecast and object alignment regression: PASS');

@@ -52,3 +52,33 @@ training/atmospheric/era5/spatial/*.npz
 
 # Generated atmosphere-first seed records
 training/generated-seeds/
+
+# Local archive runtime state
+training/archive/*.sqlite-wal
+training/archive/*.sqlite-shm
+training/archive/downloads/
+training/archive/work/
+
+# Generated historical build products (rebuild from archive/cache)
+data/historical/cases/
+data/historical/rasterized/
+data/historical/spc-cases/
+verification-runs/
+
+# Entire optional training workspace is generated locally
+training/analogs/
+training/archive/
+training/atmospheric/
+training/cache/
+training/catalog/
+training/features/
+training/generated-grids/
+training/generated-seeds/
+training/paired/
+training/targets/
+training/validation/
+training/ready.json
+
+# Calibration outputs
+calibration/reports/*
+!calibration/reports/.gitkeep

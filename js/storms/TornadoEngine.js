@@ -21,7 +21,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   const tornado = storm.tornado ?? initializeTornadoState(storm);
   const dtMinutes = dtHours * 60;
   const supercell = storm.mode?.includes('supercell');
-  const qlcs = storm.mode === 'QLCS' || storm.mode === 'linear segment';
+  const qlcs = ['broken line','linear segment','QLCS with embedded supercells','QLCS'].includes(storm.mode);
   const lowLcl = clamp((1500 - (environment.lcl ?? 1800)) / 850, 0, 1);
   const srh = clamp(((environment.srh ?? 0) - 80) / 260, 0, 1.15);
   const shear = clamp(((environment.bulkShear ?? 0) - 28) / 34, 0, 1.1);

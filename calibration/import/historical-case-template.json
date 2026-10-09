@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "caseId": "historical-yyyy-mm-dd",
+  "eventDate": "YYYY-MM-DD",
+  "sources": [
+    {
+      "type": "spc-outlook",
+      "uri": "source identifier",
+      "retrievedAt": "ISO timestamp"
+    }
+  ],
+  "classification": {
+    "regime": "",
+    "severity": "",
+    "primaryHazard": "",
+    "tags": []
+  },
+  "checkpoints": [
+    {
+      "validTime": "YYYY-MM-DDTHH:00:00Z",
+      "environment": {
+        "capeRange": [
+          0,
+          0
+        ],
+        "cinRange": [
+          0,
+          0
+        ],
+        "bulkShearRange": [
+          0,
+          0
+        ],
+        "srhRange": [
+          0,
+          0
+        ]
+      },
+      "observed": {
+        "initiation": false,
+        "stormModes": []
+      }
+    }
+  ],
+  "outlook": {
+    "categoricalMaximum": "",
+    "tornadoMaximumPercent": 0,
+    "hailMaximumPercent": 0,
+    "windMaximumPercent": 0
+  }
+}

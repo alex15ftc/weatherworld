@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { buildConsistencyAudit, aggregateConsistencyAudits } from '../js/verification/ConsistencyAuditFramework.js';
+const report={event:{stormsCreated:2,stormTrackIntelligence:{stormCount:2,boundaryInteractions:3,swathPoints:{tornado:2,hail:4,wind:1}},stormTrackVerification:{matchedStorms:1,forecastTrackPoints:6,realizedTrackPoints:5,forecastCentroid:{x:2,y:2},realizedCentroid:{x:3,y:2}},synopticObjects:{warmSectorCoverage:.6}}};
+const critic={diagnostics:{surfaceLowFieldErrorKm:80,meanFrontFieldErrorKm:75,meanFrontResidualErrorKm:70,atmosphericConsistency:.6,objectConfidence:.7},spatialProduct:{categoricalContours:{atLeastSLGT:{forecastCentroid:{x:4,y:4},observedCentroid:{x:6,y:4}}},initiation:{contour:{forecastCentroid:{x:1,y:1},centroidErrorMiles:20}}}};
+const a=buildConsistencyAudit(report,critic);
+assert.equal(a.version,'2.61.1');
+assert.equal(a.stormGenealogy.integrity,true);
+assert.equal(a.reconciliation.telemetryComplete,true);
+assert.equal(a.reconciliation.tracksMeasured,true);
+assert.deepEqual(a.stageCentroids.forecastTracks,{x:2,y:2});
+assert.deepEqual(a.stageCentroids.realizedTracks,{x:3,y:2});
+assert.equal(a.objectHealth.surfaceLow.fieldErrorKm,80);
+assert.equal(a.objectHealth.fronts.meanFieldErrorKm,75);
+assert.notEqual(a.regressionDiagnosis.primaryStage,'unresolved');
+assert.ok(a.corridorLineage.length>=4);
+assert.equal(aggregateConsistencyAudits([{consistencyAudit:a}]).members,1);
+console.log('2.61.1 atmospheric consistency audit completion: PASS');

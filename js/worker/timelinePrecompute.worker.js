@@ -6,7 +6,7 @@ import { updatePredictiveOutlooks } from '../forecast/OutlookCycleEngine.js';
 import { serializeStormInternalField } from '../storms/StormInternalField.js';
 
 const DEFAULT_HOURS = 72;
-const DEFAULT_STEP_HOURS = 0.5;
+const DEFAULT_STEP_HOURS = 1;
 let generationToken = 0;
 let timeline = emptyTimeline();
 
@@ -43,10 +43,10 @@ async function buildTimeline({ seed, startHourUtc, hours = DEFAULT_HOURS, stepHo
 
   const atmosphere = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
   const config = generateScenario(atmosphere, safeSeed);
-  initializeEvolution(atmosphere, config);
+  initializeEvolution(atmosphere, config, { profile: 'benchmark' });
   atmosphere.validHourUtc = safeStart;
   if (atmosphere.evolution) atmosphere.evolution.elapsedHours = 0;
-  updatePredictiveOutlooks(atmosphere, { force: true });
+  updatePredictiveOutlooks(atmosphere, { force: true, days: ['day1'] });
   timeline.config = structuredClone(config);
   timeline.frames.push(captureFrame(atmosphere, config, 0));
   publishProgress('initializing');
@@ -78,22 +78,43 @@ function captureFrame(atmosphere, config, hourOffset) {
     validHourUtc: atmosphere.validHourUtc,
     width: atmosphere.width,
     height: atmosphere.height,
-    cells: structuredClone(atmosphere.cells),
-    evolution: structuredClone(atmosphere.evolution),
+    cells: atmosphere.runtime?.profile?.captureCompactTimelineFrames ? captureCompactCells(atmosphere.cells) : structuredClone(atmosphere.cells),
+    evolution: compactEvolution(atmosphere.evolution),
     analysis: structuredClone(atmosphere.analysis ?? null),
     storms: (atmosphere.storms ?? []).map(storm => ({ ...structuredClone(storm), internalField: serializeStormInternalField(storm.internalField) })),
-    stormEngine: structuredClone(atmosphere.stormEngine ?? null),
+    stormEngine: compactStormEngine(atmosphere.stormEngine),
     stormOutflows: structuredClone(atmosphere.stormOutflows ?? []),
     mesoscale: structuredClone(atmosphere.mesoscale ?? null),
     airMassEngine: structuredClone(atmosphere.airMassEngine ?? null),
     regions: structuredClone(atmosphere.regions ?? []),
     synopticCoherence: structuredClone(atmosphere.synopticCoherence ?? null),
     setupForecast: structuredClone(atmosphere.setupForecast ?? null),
-    outlookCycle: structuredClone(atmosphere.outlookCycle ?? null),
+    outlookCycle: compactOutlookCycle(atmosphere.outlookCycle),
     upcomingSystemForecast: null,
     radarNetwork: structuredClone(atmosphere.radarNetwork ?? null),
     config: structuredClone(config)
   };
+}
+
+
+function captureCompactCells(rows) {
+  return rows.map(row => row.map(cell => structuredClone({
+    ...cell,
+    thermodynamics: cell.thermodynamics ? { ...cell.thermodynamics, profile: null, parcel: null } : cell.thermodynamics,
+    derived: cell.derived ? { ...cell.derived, sounding: null } : cell.derived
+  })));
+}
+function compactEvolution(evolution) {
+  if (!evolution) return null;
+  return structuredClone({ ...evolution, performance: evolution.performance ? { ...evolution.performance } : null });
+}
+function compactStormEngine(engine) {
+  if (!engine) return null;
+  return structuredClone({ ...engine, spatialIndex: null, candidateCache: null });
+}
+function compactOutlookCycle(cycle) {
+  if (!cycle) return null;
+  return structuredClone({ ...cycle, archive: { day1: [], day2: [], day3: [] }, updateLog: (cycle.updateLog ?? []).slice(-6) });
 }
 
 function frameByOffset(value) {

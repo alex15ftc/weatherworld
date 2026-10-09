@@ -20,6 +20,7 @@ export function initializeAirMassEngine(world, pattern) {
     }
   };
   projectAirMassAndEml(world, pattern, 0);
+  projectAuthoritativeAirMassFractions(world);
 }
 
 export function advanceAirMassEngine(world, pattern, dtHours = 1) {
@@ -31,6 +32,7 @@ export function advanceAirMassEngine(world, pattern, dtHours = 1) {
   const stormCoverage = Math.min(1, (world.storms?.length ?? 0) / 20);
   eml.strength = clamp(eml.strength - dtHours * (0.004 + stormCoverage * 0.012), 0.12, 1);
   projectAirMassAndEml(world, pattern, dtHours);
+  projectAuthoritativeAirMassFractions(world);
 }
 
 export function projectAirMassAndEml(world, pattern, dtHours = 0) {
@@ -68,4 +70,38 @@ export function projectAirMassAndEml(world, pattern, dtHours = 0) {
 
 function airMassOrigin(type) {
   return ({ mT: 'Gulf source', cT: 'Southwest desert source', cP: 'Northern continental source', mP: 'Cool maritime source', upslope: 'Modified High Plains', elevated: 'Elevated warm layer' })[type] ?? 'Modified continental source';
+}
+
+export function projectAuthoritativeAirMassFractions(world) {
+  world.forEachCell(cell => {
+    const sector = cell.airMass?.sector ?? 'ambient';
+    const dew = Number(cell.surface?.dewpoint) || 45;
+    const temp = Number(cell.surface?.temperature) || 60;
+    const moisture = clamp((dew - 38) / 32, 0, 1);
+    const warmth = clamp((temp - 42) / 48, 0, 1);
+    const fractions = {
+      maritimeTropical: moisture * warmth,
+      dryMixed: clamp((1 - moisture) * warmth, 0, 1),
+      continentalPolar: clamp((1 - warmth) * (1 - moisture * 0.35), 0, 1),
+      coolStable: clamp((1 - warmth) * moisture, 0, 1),
+      outflowModified: clamp(Number(cell.features?.stormProcessedAir ?? cell.memory?.processedAir) || 0, 0, 1)
+    };
+    if (sector === 'warm-moist-sector' || sector === 'warm-sector') fractions.maritimeTropical += 0.85;
+    if (sector === 'dry-sector') fractions.dryMixed += 1.15;
+    if (sector === 'post-cold-front') fractions.continentalPolar += 1.25;
+    if (sector === 'cool-sector') fractions.coolStable += 1.05;
+    const total = Object.values(fractions).reduce((sum, value) => sum + Math.max(0, value), 0) || 1;
+    for (const key of Object.keys(fractions)) fractions[key] = clamp(fractions[key] / total, 0, 1);
+    const dominant = Object.entries(fractions).sort((a,b) => b[1]-a[1])[0]?.[0] ?? 'modifiedContinental';
+    cell.airMassFractions = fractions;
+    cell.airMassAuthority = {
+      version: '2.69.0', dominant,
+      confidence: clamp(Math.max(...Object.values(fractions)), 0.2, 1),
+      warmMoistFraction: fractions.maritimeTropical,
+      dryFraction: fractions.dryMixed,
+      coldFraction: fractions.continentalPolar + fractions.coolStable,
+      boundaryDerived: true
+    };
+  });
+  return world;
 }

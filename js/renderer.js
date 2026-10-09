@@ -909,7 +909,7 @@ function interpolateHex(a, b, t) {
 function hexToRgb(hex) { const value = parseInt(hex.slice(1),16); return { r:value>>16, g:(value>>8)&255, b:value&255 }; }
 
 function abbreviateStormMode(mode) {
-  const labels = { 'pulse storm':'PULSE', 'multicell':'MULTI', 'discrete supercell':'RM', 'left-moving supercell':'LM', 'linear segment':'LINE', 'QLCS':'QLCS', 'MCS':'MCS', 'elevated convection':'ELEV' };
+  const labels = { 'pulse storm':'PULSE', 'multicell':'MULTI', 'isolated discrete':'ISO', 'semi-discrete':'SEMI', 'discrete supercell':'RM', 'discrete supercell cluster':'DSC', 'mixed supercell cluster':'MSC', 'left-moving supercell':'LM', 'broken line':'BRKN', 'linear segment':'LINE', 'QLCS with embedded supercells':'Q-SC', 'QLCS':'QLCS', 'MCS':'MCS', 'elevated convection':'ELEV' };
   return labels[mode] ?? 'CELL';
 }
 

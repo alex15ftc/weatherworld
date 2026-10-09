@@ -25,7 +25,7 @@ export function evolveStormInternalField(storm, environment = {}, dtHours = 1 / 
   const mesoMemory=clamp(storm.mesocycloneStrength??0,0,1.35);
   const rotation=clamp(Math.max(srh*shear*inflow*storm.organization, mesoMemory*0.82),0,1.3), cold=clamp(storm.coldPoolStrength??0,0,1);
   const mature=clamp((storm.ageHours-.25)/1.1,0,1), weakening=storm.lifecycleState==='weakening'||storm.lifecycleState==='dissipating';
-  const supercell=storm.mode?.includes('supercell'), linear=['linear segment','QLCS'].includes(storm.mode), mcs=storm.mode==='MCS';
+  const supercell=storm.mode?.includes('supercell'), linear=['broken line','linear segment','QLCS with embedded supercells','QLCS'].includes(storm.mode), mcs=storm.mode==='MCS';
   const lifecycleScale=storm.lifecycleState==='tower'?.32:storm.lifecycleState==='developing'?.58:storm.lifecycleState==='organizing'?.82:storm.lifecycleState==='mature'?1:storm.lifecycleState==='weakening'?.72:.38;
   const advectX=clamp((storm.velocityKph?.east??0)*dtHours/res,-2,2), advectY=clamp(-(storm.velocityKph?.north??0)*dtHours/res,-2,2);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){

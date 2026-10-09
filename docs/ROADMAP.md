@@ -1,10 +1,32 @@
 # Weather Simulator Development Roadmap
 
 **Status:** Source of truth  
-**Baseline:** 2.33.5  
-**Current milestone:** 2.34.2 — SPC Product Parsing
+**Baseline:** 2.67.0  
+**Current milestone:** 2.69.0 — Runtime Consolidation and Performance Reset
 
 This document is the authoritative roadmap for historical outlook, reanalysis, verification, forecast calibration, and later storm-realization work. Milestone documents describe completed implementation details; this roadmap defines intended sequencing and scope.
+
+
+## 2.68.x — Runtime Consolidation and Performance Reset
+
+### 2.68.0 — Complete
+
+- Separate gameplay, background precompute, and calibration runtime profiles.
+- Keep synchronous seed initialization lightweight and defer ensemble products.
+- Reduce duplicated full-grid thermodynamic and feedback passes in gameplay.
+- Use hourly background timeline frames instead of full half-hour precomputation.
+- Use smaller gameplay forecast ensembles while retaining calibration-grade member counts.
+- Compact timeline snapshots by excluding reconstructable sounding profiles and stale archives.
+- Require storm initiation to persist within a coherent, air-mass-valid forcing corridor.
+- Add runtime performance budgets and regression tests.
+
+### 2.68.1 — Planned follow-up
+
+- Profile and consolidate remaining atmospheric update ownership behind one runtime coordinator.
+- Add lazy exact soundings with short-lived cache entries.
+- Move Day 2/3 forecast issuance fully into scheduled worker jobs.
+- Add corridor spatial indexes for boundary and initiation queries.
+- Tune gameplay forecast-member counts against calibration skill and latency.
 
 ## Governing data contract
 
