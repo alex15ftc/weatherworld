@@ -104,8 +104,16 @@ function diagnoseKinematics(world, dtHours) {
     cell.features.jetDivergence = jetDivergence;
     const memory = dtHours > 0 ? 0.72 : 0;
     cell.features.boundaryConvergence = clamp((Number(cell.features.boundaryConvergence) || 0) * memory + Math.max(0, convergence) * (1 - memory), 0, 1);
+    // Lift from the surface winds themselves (0-1 from weak to strong frontal-scale
+    // convergence): strongest where the wind shift is sharpest and where boundaries meet.
+    const lift = clamp((convergence - CONVERGENCE_LIFT_RANGE[0]) / (CONVERGENCE_LIFT_RANGE[1] - CONVERGENCE_LIFT_RANGE[0]), 0, 1);
+    cell.features.convergenceLift = (Number(cell.features.convergenceLift) || 0) * memory + lift * (1 - memory);
   });
 }
+
+// Normalised surface convergence (see diagnoseMassConvergence) from negligible to strong:
+// about 2e-5 to 1.2e-4 per second.
+const CONVERGENCE_LIFT_RANGE = [0.005, 0.028];
 
 function diagnoseMassConvergence(world, x, y) {
   const east = windVector(world.getCell(x + 1, y)?.surface?.wind), west = windVector(world.getCell(x - 1, y)?.surface?.wind);

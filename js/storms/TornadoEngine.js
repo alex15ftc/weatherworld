@@ -123,25 +123,16 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     const intensityCore = clamp(violentEnvironment * 0.58 + stormIntensitySupport * 0.34 + mesoscaleQuality * 0.08, 0, 1.25);
     // Most tornadoes are weak even in strong environments; the environment raises the
     // ceiling and the odds, and the per-tornado strength draw decides where this one lands.
-    const strength = Number.isFinite(tornado.strengthDraw) ? tornado.strengthDraw : 0.5;
-    let targetWind = 65 + intensityCore * 135 * Math.pow(strength, 2.2) + durationSupport * violentEnvironment * 24 * strength;
-    // The intensity ceiling uses the same coupled hierarchy shown to the user.
-    const significantSupport = clamp(
-      srh * 0.27 + shear * 0.17 + lowLcl * 0.18 + instability * 0.10 + inflow * 0.10 +
-      physicalTornadoSupport * 0.20 + synopticSupport * 0.04 + stretch * 0.06 + mesoscaleQuality * 0.03 - inhibition * 0.10,
-      0, 1.2
-    );
-    let environmentWindCeiling = significantSupport < 0.30 ? 105 : significantSupport < 0.43 ? 120 : significantSupport < 0.56 ? 140 : significantSupport < 0.69 ? 165 : significantSupport < 0.82 ? 190 : 235;
-    // Low synoptic support alone is no longer a hard veto when the storm actually
-    // enters a strong STP environment. Conversely, zero-STP air cannot support
-    // a significant tornado regardless of broad synoptic ascent.
-    if (physicalTornadoSupport < 0.22) environmentWindCeiling = Math.min(environmentWindCeiling, 105);
-    else if (physicalTornadoSupport < 0.38) environmentWindCeiling = Math.min(environmentWindCeiling, 120);
-    if (synopticCoherence < 0.50) environmentWindCeiling = Math.min(environmentWindCeiling, 135);
-    if (lowLcl < 0.20 || srh < 0.22 || inflow < 0.42) environmentWindCeiling = Math.min(environmentWindCeiling, 120);
-    if (tornado.groundTimeMinutes < 15) environmentWindCeiling = Math.min(environmentWindCeiling, 135);
-    if (tornado.groundTimeMinutes < 30) environmentWindCeiling = Math.min(environmentWindCeiling, 165);
-    targetWind = clamp(targetWind, 65, environmentWindCeiling);
+    // Peak wind. Most tornadoes are weak in any environment; the ingredients (STP rebuilt from
+    // the storm's inflow) set the scale of the distribution, the mesocyclone modulates it, and
+    // this tornado's own draw is its quantile. No ceilings or vetoes: a stronger environment
+    // makes strong tornadoes more likely, continuously.
+    const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 0.999);
+    const ingredientStpNow = Math.max(0, diagnosedRawStp / 0.55);
+    const scaleMph = (INTENSITY.baseScaleMph + INTENSITY.stpScaleMph * (1 - Math.exp(-ingredientStpNow / 4))) * (0.85 + 0.3 * clamp(mesocyclone / 0.5, 0, 1));
+    const environmentWindCeiling = Math.min(235, 65 + scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail));
+    // A tornado needs time on the ground to reach its peak.
+    const targetWind = 65 + (environmentWindCeiling - 65) * clamp(tornado.groundTimeMinutes / INTENSITY.matureMinutes, 0.25, 1);
     tornado.windSpeedMph += (targetWind - tornado.windSpeedMph) * clamp(dtHours * 2.6, 0, 1);
     tornado.intensityEnvironment = violentEnvironment;
     tornado.synopticSupport = synopticSupport;
@@ -149,7 +140,8 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     tornado.rawStp = rawStpValue;
     tornado.vtp = vtp;
     tornado.environmentWindCeilingMph = environmentWindCeiling;
-    const targetWidth = clamp(35 + intensityCore * 760 + storm.coldPoolStrength * 120, 25, violentEnvironment > 0.85 ? 1600 : 900);
+    // Stronger tornadoes are wider (about 40 yd at EF0 to over half a mile for the violent ones).
+    const targetWidth = clamp(40 + (tornado.windSpeedMph - 65) * 9, 25, 1600);
     tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 2.1, 0, 1);
     tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.windSpeedMph);
     tornado.peakWidthYards = Math.max(tornado.peakWidthYards, tornado.widthYards);
@@ -187,6 +179,7 @@ function drawTornadoCharacter(world, storm, tornado, environmentSupport, superce
   // Heavy-tailed lifetime: typically 3-15 min; strong environments stretch the tail to ~90 min.
   const lifetime = 3 + 12 * lifeDraw + (supercell ? 75 * Math.pow(lifeDraw, 6) * (0.25 + 0.75 * env) : 0);
   tornado.lifetimeMinutes = Math.round(clamp(lifetime, 3, supercell ? 95 : 20));
+  tornado.strengthUniform = strengthDraw;
   tornado.strengthDraw = clamp(strengthDraw * (0.55 + 0.45 * env) + 0.2 * Math.pow(strengthDraw, 4) * env, 0, 1);
 }
 
@@ -222,6 +215,10 @@ function tornadoPosition(storm) {
   return { x: storm.positionKm.x + Math.cos(angle) * offset, y: storm.positionKm.y + Math.sin(angle) * offset };
 }
 function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0) * 180 / Math.PI + 360) % 360; }
+// Peak wind above 65 mph follows a stretched exponential whose scale grows with STP: roughly
+// one tornado in eight reaches EF2 in a marginal environment, nearly half in an extreme one.
+const INTENSITY = { baseScaleMph: 26, stpScaleMph: 28, tail: 0.75, matureMinutes: 12 };
+
 function efRating(mph) { return mph >= 200 ? 'EF5' : mph >= 166 ? 'EF4' : mph >= 136 ? 'EF3' : mph >= 111 ? 'EF2' : mph >= 86 ? 'EF1' : mph >= 65 ? 'EF0' : null; }
 function deterministicUnit(text) {
   let h=2166136261;

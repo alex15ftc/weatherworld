@@ -3,7 +3,7 @@ import { clamp } from '../scenarios/math.js';
 const KT_TO_KPH = 1.852;
 const BUNKERS_DEVIATION_KT = 14.6;   // 7.5 m/s
 const LINEAR_MODES = ['broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS'];
-const COLD_FRONT_LINE_FORCING = 0.6;
+const UNDERCUTTING_RANGE_F = [1.5, 6];
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 export function sampleStormEnvironment(world, xKm, yKm) {
@@ -32,7 +32,11 @@ export function sampleStormEnvironment(world, xKm, yKm) {
   };
   const surfaceWind = wind('surface'), wind850 = wind(850), wind500 = wind(500);
   const boundaryInfluence = mean(cell => cell.features?.explicitBoundaryInfluence ?? 0);
-  const organization = diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, boundaryInfluence);
+  // Temperature contrast across the storm's surroundings (deg F per cell): a dense air mass
+  // undercutting the warm air (cold front, outflow) forces a solid line; a dryline does not.
+  const temperatures = cells.map(cell => cell.surface.temperature);
+  const undercutting = ramp(Math.max(...temperatures) - Math.min(...temperatures), UNDERCUTTING_RANGE_F[0], UNDERCUTTING_RANGE_F[1]);
+  const organization = diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, boundaryInfluence, undercutting);
   const cape = mean(cell => cell.derived.cape), srh = mean(cell => cell.derived.srh), bulkShear = mean(cell => cell.derived.bulkShear);
   const lcl = mean(cell => cell.derived.lclAgl ?? Math.max(0, (cell.derived.lcl ?? 0) - (cell.terrain?.elevationM ?? 0)));
   const warmSector = mean(cell => cell.features?.warmSector ? 1 : 0);
@@ -86,7 +90,7 @@ export function sampleStormEnvironment(world, xKm, yKm) {
 // runs along it stay in the boundary's lift and merge into lines; shear across the boundary
 // carries updrafts away from it and keeps them discrete. Crowded storms interact and grow
 // upscale.
-function diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, boundaryInfluence) {
+function diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, boundaryInfluence, undercutting = 0) {
   const shear = { x: wind500.eastKt - surfaceWind.eastKt, y: -(wind500.northKt - surfaceWind.northKt) }; // screen frame (y south)
   const shearMagnitude = Math.hypot(shear.x, shear.y) || 1;
   let nearest = null;
@@ -96,7 +100,7 @@ function diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, bou
       const a = points[i - 1], b = points[i], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
       const t = clamp(((xKm - a.x) * dx + (yKm - a.y) * dy) / l2, 0, 1);
       const d = Math.hypot(xKm - (a.x + t * dx), yKm - (a.y + t * dy));
-      if (!nearest || d < nearest.d) nearest = { d, tx: dx / Math.sqrt(l2), ty: dy / Math.sqrt(l2), type: front.type };
+      if (!nearest || d < nearest.d) nearest = { d, tx: dx / Math.sqrt(l2), ty: dy / Math.sqrt(l2) };
     }
   }
   const boundaryParallel = nearest ? Math.abs((shear.x * nearest.tx + shear.y * nearest.ty) / shearMagnitude) : 0;
@@ -108,9 +112,8 @@ function diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, bou
     if (d > 1 && d < 75) neighbours++;
   }
   const coverage = clamp(neighbours / 4, 0, 1);
-  // A cold front undercuts the warm air along its whole length and forces a line whatever the
-  // shear angle; along a dryline or warm front the shear decides.
-  const alignment = nearest?.type === 'cold' ? Math.max(boundaryParallel ** 2, COLD_FRONT_LINE_FORCING) : boundaryParallel ** 2;
+  // Shear along the boundary organizes a line; so does a dense air mass undercutting it.
+  const alignment = Math.max(boundaryParallel ** 2, undercutting);
   const linear = clamp(0.1 + 0.7 * Math.max(nearBoundary, boundaryInfluence) * alignment + 0.25 * coverage, 0.05, 0.95);
   return { linear, discrete: clamp(1 - 0.85 * linear, 0.05, 0.95), coverage, boundaryParallel };
 }

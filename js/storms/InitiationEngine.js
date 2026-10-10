@@ -15,7 +15,6 @@ import { clamp } from '../scenarios/math.js';
 // CIN (J/kg) that each forcing source can overcome at full strength.
 const LIFT_ENERGY_J_KG = { boundary: 170, synoptic: 60, terrain: 90, outflow: 150, thermals: 30 };
 const MIN_CAPE_J_KG = 300;
-const UNFOCUSED_BOUNDARY_LIFT = 0.4;
 // Initiation rate per cell and hour where the lift exceeds the inhibition by NET_LIFT_SCALE.
 // The rate rises steeply with the surplus: a strongly forced, uncapped front fires along its
 // length within an hour or two, a capped dryline releases a few storms, and broad weak ascent
@@ -49,11 +48,9 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
 
       // Synoptic-scale ascent: 500 mb height falls ahead of the troughs and shortwaves.
       const synoptic = clamp(Number(cell.features?.synopticAscent) || 0, 0, 1);
-      // A boundary lifts hardest where the upper wave crosses it and where boundaries meet
-      // (triple point); elsewhere along its length the circulation is shallower.
-      const meeting = Object.values(cell.features?.synopticBoundaryInfluences ?? {}).filter(b => b.influence > 0.3).length >= 2;
-      const focus = clamp(synoptic + (meeting ? 0.5 : 0), 0, 1);
-      const boundary = clamp(Math.max(Number(cell.features?.boundaryConvergence) || 0, (Number(cell.features?.explicitBoundaryInfluence) || 0) * (UNFOCUSED_BOUNDARY_LIFT + (1 - UNFOCUSED_BOUNDARY_LIFT) * focus)), 0, 1);
+      // Boundary lift is the convergence of the surface winds (fronts, drylines, their
+      // intersections, storm outflow): nothing is prescribed along a boundary's length.
+      const boundary = clamp(Number(cell.features?.convergenceLift) || 0, 0, 1);
       const terrain = clamp((Number(cell.dynamics?.terrainLiftMs) || 0) / 0.05, 0, 1);
       const outflow = gustFrontLift(outflows, xKm, yKm);
       const surfaceLift = LIFT_ENERGY_J_KG.boundary * boundary + LIFT_ENERGY_J_KG.synoptic * synoptic
