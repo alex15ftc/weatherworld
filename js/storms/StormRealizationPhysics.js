@@ -76,39 +76,3 @@ export function diagnoseStormRealizationPhysics(environment, storm = null) {
   };
 }
 
-export function diagnoseOutlookRealizationChain(cell, projectedEnvironment) {
-  const fc = cell.forecast ?? {};
-  const env = {
-    cape: projectedEnvironment.cape,
-    cin: projectedEnvironment.cin,
-    srh: projectedEnvironment.srh,
-    bulkShear: projectedEnvironment.shear,
-    lcl: projectedEnvironment.lcl,
-    forcing: cell.derived?.diagnostics?.forcing ?? 0,
-    capErosion: projectedEnvironment.capErosion,
-    moisturePooling: projectedEnvironment.moistureTransport,
-    stormCoverage: fc.stormCoverage ?? 0,
-    discreteFraction: fc.discreteFraction ?? 0.5,
-    linearFraction: fc.linearFraction ?? 0.5,
-    boundaryInfluence: cell.derived?.diagnostics?.boundaryInfluence ?? 0,
-    processedAir: cell.derived?.diagnostics?.processedAir ?? 0
-  };
-  const p = diagnoseStormRealizationPhysics(env);
-  const environmentSuitability = clamp(0.36 * ramp(env.cape, 500, 2800) + 0.24 * ramp(env.bulkShear, 22, 52) + 0.18 * ramp(env.srh, 60, 280) + 0.12 * ramp(env.lcl, 2200, 700) + 0.10 * p.inflowEfficiency, 0, 1);
-  const initiation = clamp(Math.min(projectedEnvironment.initiationProbability ?? 0, 0.25 + 0.75 * p.initiationProbability), 0, 1);
-  const organization = clamp(p.organizationProbability, 0, 1);
-  const supercell = clamp(p.supercellProbability * (0.55 + 0.45 * (Number(fc.discreteFraction) || 0.5)), 0, 1);
-  const linear = clamp(p.linearProbability * (0.55 + 0.45 * (Number(fc.linearFraction) || 0.5)), 0, 1);
-  const coverage = clamp(Number(fc.stormCoverage) || 0, 0, 1);
-  const convectiveLambda = clamp(coverage * initiation * (0.75 + environmentSuitability * 1.35), 0, 4.0);
-  const organizedLambda = clamp(coverage * initiation * (0.35 + organization * 1.85), 0, 3.5);
-  const hailLambda = clamp(convectiveLambda * (0.42 + 0.58 * Math.max(organization, ramp(p.realizedUpdraftMs, 16, 45))), 0, 4.0);
-  const windLambda = clamp(convectiveLambda * (0.40 + 0.36 * Math.max(linear, p.balanceSupport) + 0.24 * ramp(p.coldPoolSpeedMs, 5, 18)), 0, 4.0);
-  const atLeastOneConvectiveStorm = 1 - Math.exp(-convectiveLambda);
-  const atLeastOneOrganizedStorm = 1 - Math.exp(-organizedLambda);
-  const atLeastOneHailStorm = 1 - Math.exp(-hailLambda);
-  const atLeastOneWindStorm = 1 - Math.exp(-windLambda);
-  return { ...p, environmentSuitability, initiation, organization, supercell, linear, coverage,
-    opportunityLambda: organizedLambda, convectiveLambda, organizedLambda, hailLambda, windLambda,
-    atLeastOneConvectiveStorm, atLeastOneOrganizedStorm, atLeastOneHailStorm, atLeastOneWindStorm };
-}

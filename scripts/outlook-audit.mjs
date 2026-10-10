@@ -1,129 +1,106 @@
-// Outlook audit: runs seeds, keeps every issued Day 1-3 probability grid, and verifies it
-// against simulated storm truth (event within 25 mi, as SPC defines outlook probabilities).
-// Reports reliability, area bias, Brier skill, misses, displacement and categorical skill.
-//   node scripts/outlook-audit.mjs [hours] [seed ...] > report.txt
-// Refit calibration: OUTLOOK_CALIBRATION=off OUTLOOK_AUDIT_JSON=rel.json node scripts/outlook-audit.mjs
-//                    then node scripts/fit-outlook-calibration.mjs rel.json
-import { Atmosphere } from '../js/atmosphere.js';
-import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
-import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
-import { SIMULATION_CONFIG } from '../js/simulationConfig.js';
-import { captureTruth, aggregateTruth } from '../js/verification/ForecastVerificationEngine.js';
+// Outlook audit: runs seeds (one worker thread each) with the outlook ensemble issued in-step,
+// keeps every Day 1-3 product and verifies it against the authoritative run's own severe
+// reports (event within 25 mi, as SPC verifies outlook probabilities). Periods beyond the
+// audited system (the next system's) are not issued here.
+//   node scripts/outlook-audit.mjs [hours] [seed ...]
+// Environment:
+//   OUTLOOK_MEMBERS (default 12), AUDIT_THREADS
+//   OUTLOOK_CALIBRATION=off       verify uncalibrated products
+//   OUTLOOK_AUDIT_INITIAL_ONLY=1  verify only the system-start issuance (minutes instead of hours)
+//   OUTLOOK_AUDIT_AMPLITUDE=x     scale the member perturbations (next-system outlooks use 1.1-2.1)
+//   OUTLOOK_AUDIT_JSON=path       write reliability histograms (scripts/fit-outlook-calibration.mjs)
+//   OUTLOOK_AUDIT_MEMBERS_DIR=dir save member events and truth per issuance so products can be
+//                                 rebuilt and re-verified offline (scripts/outlook-tune.mjs)
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
+import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+import { summarizeVerification, mergeHistograms } from '../js/verification/outlookVerification.js';
 
-const hours = Number(process.argv[2] ?? 72);
-const seeds = process.argv.length > 3 ? process.argv.slice(3).map(Number) : [1, 11, 23, 42, 99, 2011, 2013, 20240506];
-const HAZARDS = ['tornado', 'hail', 'wind'];
-const LEVELS = { tornado: [2, 5, 10, 15, 30, 45, 60], hail: [5, 15, 30, 45, 60], wind: [5, 15, 30, 45, 60, 75, 90] };
-const RISKS = ['TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
-const RADIUS_MILES = 25;
+if (isMainThread) await main(); else parentPort.postMessage(await auditSeed(workerData));
 
-// reliability[day][hazard][level] = { cells, hits }
-const reliability = {};
-const rows = [];
+async function main() {
+  const hours = Number(process.argv[2] ?? 72);
+  const seeds = process.argv.length > 3 ? process.argv.slice(3).map(Number) : [1, 11, 23, 42, 99, 2011, 2013, 20240506];
+  const threads = Math.max(1, Math.min(seeds.length, Number(process.env.AUDIT_THREADS) || os.cpus().length - 2));
+  const started = Date.now();
+  const results = [];
+  const queue = [...seeds];
+  await Promise.all(Array.from({ length: threads }, async () => {
+    while (queue.length) {
+      const seed = queue.shift();
+      const result = await new Promise((resolve, reject) => {
+        const worker = new Worker(new URL(import.meta.url), { workerData: { seed, hours }, resourceLimits: { maxOldGenerationSizeMb: 6144 } });
+        worker.once('message', resolve);
+        worker.once('error', reject);
+      });
+      process.stderr.write(`seed ${seed}: ${result.rows.length} products verified, ${result.storms} storms, ${result.tornadoes} tornadoes (${((Date.now() - started) / 60000).toFixed(1)} min)\n`);
+      results.push(result);
+    }
+  }));
+  const rows = results.flatMap(r => r.rows);
+  console.log(`\n=== Outlook audit: ${seeds.length} seeds × ${hours} h, ${rows.length} products, calibration ${process.env.OUTLOOK_CALIBRATION ?? 'on'} ===`);
+  for (const r of results.sort((a, b) => a.seed - b.seed)) console.log(`  seed ${r.seed} (${r.narrative}): ${r.storms} storms, ${r.tornadoes} tornadoes`);
+  summarizeVerification(rows);
+  if (process.env.OUTLOOK_AUDIT_JSON) {
+    const histograms = results.reduce((all, r) => mergeHistograms(all, r.histograms), {});
+    fs.writeFileSync(process.env.OUTLOOK_AUDIT_JSON, JSON.stringify({ seeds, hours, calibration: process.env.OUTLOOK_CALIBRATION ?? 'on', histograms }));
+  }
+  console.log('\n=== Products ===');
+  for (const r of rows) console.log(`${r.seed} ${r.key} issued ${r.issued}Z valid ${r.valid.join('-')} fc ${r.forecastRisk} obs ${r.observedRisk} | members tor ${r.members?.tornadoesPerMember?.median ?? '-'} (${r.members?.membersWithTornadoes ?? '-'} w/) | ` + Object.entries(r.hazards).filter(([h]) => h !== 'thunder').map(([h, x]) => `${h[0].toUpperCase()} max ${Math.round(x.maxProb * 100)}% fc ${x.forecastAreaCells} obs ${x.observedAreaCells} hit ${x.hitCells}`).join(' | '));
+}
 
-for (const seed of seeds) {
+async function auditSeed({ seed, hours }) {
+  const { Atmosphere } = await import('../js/atmosphere.js');
+  const { generateScenario } = await import('../js/scenarios/scenarioGenerator.js');
+  const { initializeEvolution, advanceAtmosphere } = await import('../js/evolution.js');
+  const { SIMULATION_CONFIG } = await import('../js/simulationConfig.js');
+  const { captureTruth, aggregateTruth, TRUTH_FIELDS } = await import('../js/verification/truth.js');
+  const { verifyProduct } = await import('../js/verification/outlookVerification.js');
+  const membersDir = process.env.OUTLOOK_AUDIT_MEMBERS_DIR;
   const world = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
   const config = generateScenario(world, seed);
-  config.seed = seed; world.seed = seed; world.config = config;
-  initializeEvolution(world, config, { profile: 'calibration' });
-  if (world.stormObservationLayer) { world.stormObservationLayer.nextReportHourUtc = 1e9; world.stormObservationLayer.lastReportHourUtc = 1e9; }
-  const issued = new Map(), frames = [], seen = new Set(), initiations = [], records = new Map();
+  initializeEvolution(world, config, { profile: { name: 'gameplay', outlookIssuance: 'sync', outlookMembers: Number(process.env.OUTLOOK_MEMBERS) || 12, keepMemberResults: Boolean(membersDir), outlookInitialOnly: process.env.OUTLOOK_AUDIT_INITIAL_ONLY === '1', outlookNextSystem: false, outlookAmplitude: Number(process.env.OUTLOOK_AUDIT_AMPLITUDE) || 1 } });
+  const issued = new Map(), frames = [], seen = new Set(), initiations = [], memberRuns = [];
   const capture = () => {
-    for (const p of Object.values(world.outlookCycle?.products ?? {})) {
-      if (issued.has(p.cycleId)) continue;
-      issued.set(p.cycleId, {
-        key: p.key, cycleId: p.cycleId, issuedHourUtc: p.issuedHourUtc, validStartHour: p.validStartHour, validEndHour: p.validEndHour, overallRisk: p.overallRisk,
-        prob: Object.fromEntries(HAZARDS.map(h => [h, Float32Array.from(p.grid, c => (Number(c[`${h}Probability`]) || 0) / 100)])),
-        risk: p.grid.map(c => c.risk)
-      });
-    }
+    for (const p of Object.values(world.outlookCycle?.products ?? {})) if (p.status === 'issued' && !issued.has(p.cycleId)) issued.set(p.cycleId, p);
+    for (const { request, results } of world.outlookCycle?.memberLog?.splice(0) ?? []) memberRuns.push({ request, results: results.map(compactMember) });
   };
   capture();
-  captureTruth(world, frames, seen, initiations, records);
+  captureTruth(world, frames, seen, initiations);
   for (let t = 0; t < hours - 1e-9; t += 0.5) {
     advanceAtmosphere(world, 0.5);
     capture();
-    captureTruth(world, frames, seen, initiations, records);
+    captureTruth(world, frames, seen, initiations);
   }
-  const radius = RADIUS_MILES / world.cellSizeMiles, w = world.width, h = world.height, n = w * h;
+  const dims = { width: world.width, height: world.height, cellSizeMiles: world.cellSizeMiles };
+  const radius = 25 / world.cellSizeMiles;
+  const truthFor = (start, end) => aggregateTruth(frames.filter(f => f.hourUtc > start + 1e-6 && f.hourUtc <= end + 1e-6), initiations.filter(r => r.hourUtc >= start && r.hourUtc < end), world.width, world.height, radius, world.cellSizeMiles);
+  const rows = [], histograms = {};
   for (const product of issued.values()) {
-    if (product.validEndHour > world.validHourUtc + 1e-6 || product.validStartHour < SIMULATION_CONFIG.startHourUtc - 1e-6) continue;
-    const valid = frames.filter(f => f.hourUtc + 1e-6 >= product.validStartHour && f.hourUtc < product.validEndHour - 1e-6);
-    const inits = initiations.filter(r => r.hourUtc + 1e-6 >= product.validStartHour && r.hourUtc < product.validEndHour - 1e-6);
-    const truth = aggregateTruth(valid, inits, w, h, radius, world.cellSizeMiles);
-    const row = { seed, key: product.key, issued: product.issuedHourUtc, valid: [product.validStartHour, product.validEndHour], forecastRisk: product.overallRisk, observedRisk: truth.risk.reduce((a, b) => (RISKS.indexOf(b) > RISKS.indexOf(a) ? b : a), 'TSTM'), hazards: {} };
-    for (const hazard of HAZARDS) {
-      const p = product.prob[hazard], o = truth[hazard], low = LEVELS[hazard][0] / 100;
-      let brier = 0, base = 0, fcArea = 0, obsArea = 0, hit = 0, missedObs = 0, fx = 0, fy = 0, fw = 0, ox = 0, oy = 0, ow = 0, maxP = 0;
-      for (let i = 0; i < n; i++) {
-        brier += (p[i] - o[i]) ** 2; base += o[i]; maxP = Math.max(maxP, p[i]);
-        if (p[i] >= low) { fcArea++; fx += (i % w) * p[i]; fy += Math.floor(i / w) * p[i]; fw += p[i]; if (o[i]) hit++; }
-        if (o[i]) { obsArea++; ox += i % w; oy += Math.floor(i / w); ow++; if (p[i] < low) missedObs++; }
-        const level = [...LEVELS[hazard]].reverse().find(l => p[i] >= l / 100 - 1e-6);
-        if (level) {
-          const bucket = ((reliability[product.key] ??= {})[hazard] ??= {})[level] ??= { cells: 0, hits: 0 };
-          bucket.cells++; bucket.hits += o[i];
-        }
-      }
-      const centroidErrorMiles = fw && ow ? Math.hypot(fx / fw - ox / ow, fy / fw - oy / ow) * world.cellSizeMiles : null;
-      row.hazards[hazard] = { brier: brier / n, baseRate: base / n, maxProb: maxP, forecastAreaCells: fcArea, observedAreaCells: obsArea, hitCells: hit, missedObservedFraction: obsArea ? missedObs / obsArea : null, areaBias: obsArea ? fcArea / obsArea : (fcArea ? Infinity : 1), centroidErrorMiles };
+    if (product.validEndHour > world.validHourUtc + 1e-6) continue;
+    rows.push({ seed, ...verifyProduct(product, truthFor(product.validStartHour, product.validEndHour), dims, histograms) });
+  }
+  if (membersDir) {
+    // Exact report cells per verified window, for offline re-verification.
+    const truth = {};
+    for (const run of memberRuns) for (const w of run.request.windows) {
+      const key = `${w.start}-${w.end}`;
+      if (truth[key] || w.end > world.validHourUtc + 1e-6) continue;
+      const frameSet = frames.filter(f => f.hourUtc > w.start + 1e-6 && f.hourUtc <= w.end + 1e-6);
+      truth[key] = Object.fromEntries(TRUTH_FIELDS.map(field => [field, indices(frameSet, field)]));
     }
-    rows.push(row);
+    fs.mkdirSync(membersDir, { recursive: true });
+    fs.writeFileSync(path.join(membersDir, `seed-${seed}.json`), JSON.stringify({ seed, narrative: config.narrative, width: world.width, height: world.height, cellSizeKm: world.cellSizeKm, cellSizeMiles: world.cellSizeMiles, finalHour: world.validHourUtc, runs: memberRuns, truth }));
   }
-  process.stderr.write(`seed ${seed}: ${[...issued.values()].length} products issued, ${rows.filter(r => r.seed === seed).length} verified, ${seen.size} storms\n`);
-}
+  return { seed, narrative: config.narrative, rows, histograms, storms: seen.size, tornadoes: world.stormEngine?.totalTornadoes ?? 0 };
 
-// --- Report ------------------------------------------------------------------
-const fmt = (v, d = 2) => (v == null || !Number.isFinite(v) ? '  -  ' : v.toFixed(d));
-console.log('\n=== Reliability: forecast probability level vs observed frequency (within 25 mi) ===');
-for (const day of ['day1', 'day2', 'day3']) for (const hazard of HAZARDS) {
-  const b = reliability[day]?.[hazard];
-  if (!b) continue;
-  console.log(`${day} ${hazard.padEnd(7)} ` + Object.entries(b).map(([lvl, { cells, hits }]) => `${lvl}%: obs ${(100 * hits / cells).toFixed(0)}% (n=${cells})`).join(' | '));
-}
-
-console.log('\n=== Per day / hazard summary (mean over verified products) ===');
-for (const day of ['day1', 'day2', 'day3']) {
-  const set = rows.filter(r => r.key === day);
-  if (!set.length) continue;
-  for (const hazard of HAZARDS) {
-    const hs = set.map(r => r.hazards[hazard]);
-    const clim = hs.reduce((a, x) => a + x.baseRate, 0) / hs.length;
-    const brier = hs.reduce((a, x) => a + x.brier, 0) / hs.length;
-    const brierRef = hs.reduce((a, x) => a + (clim * (1 - x.baseRate) ** 2 + (1 - clim) * x.baseRate ** 2 >= 0 ? x.baseRate * (1 - clim) ** 2 + (1 - x.baseRate) * clim ** 2 : 0), 0) / hs.length;
-    const withObs = hs.filter(x => x.observedAreaCells > 0);
-    const withFc = hs.filter(x => x.forecastAreaCells > 0);
-    const bias = withObs.length ? withObs.reduce((a, x) => a + Math.min(x.areaBias, 20), 0) / withObs.length : null;
-    const missed = withObs.length ? withObs.reduce((a, x) => a + x.missedObservedFraction, 0) / withObs.length : null;
-    const cent = hs.filter(x => x.centroidErrorMiles != null).map(x => x.centroidErrorMiles);
-    const falseAlarmProducts = hs.filter(x => x.forecastAreaCells > 0 && x.observedAreaCells === 0).length;
-    const missedProducts = hs.filter(x => x.forecastAreaCells === 0 && x.observedAreaCells > 0).length;
-    console.log(`${day} ${hazard.padEnd(7)} n=${hs.length} BSS ${fmt(1 - brier / brierRef)} | area bias ${fmt(bias)} | obs missed by lowest contour ${fmt(missed)} | centroid err ${cent.length ? Math.round(cent.reduce((a, b) => a + b, 0) / cent.length) + ' mi' : '-'} | products w/ forecast but no event ${falseAlarmProducts}/${withFc.length} | events with no forecast ${missedProducts}/${withObs.length}`);
+  function indices(frameSet, field) {
+    const out = new Set();
+    for (const f of frameSet) { const a = f[field]; for (let i = 0; i < a.length; i++) if (a[i]) out.add(i); }
+    return [...out];
+  }
+  function compactMember(m) {
+    return { index: m.index, windows: m.windows.map(w => ({ key: w.key, start: w.start, end: w.end, storms: w.storms, tornadoes: w.tornadoes, masks: Object.fromEntries(Object.entries(w.masks).map(([field, mask]) => [field, mask.reduce((list, v, i) => (v ? (list.push(i), list) : list), [])])) })) };
   }
 }
-
-console.log('\n=== Categorical: forecast overall risk vs observed (counts) ===');
-for (const day of ['day1', 'day2', 'day3']) {
-  const set = rows.filter(r => r.key === day);
-  if (!set.length) continue;
-  let over = 0, under = 0, exact = 0, within1 = 0;
-  const matrix = {};
-  for (const r of set) {
-    const d = RISKS.indexOf(r.forecastRisk) - RISKS.indexOf(r.observedRisk);
-    if (d > 0) over++; else if (d < 0) under++; else exact++;
-    if (Math.abs(d) <= 1) within1++;
-    const k = `${r.forecastRisk}->${r.observedRisk}`; matrix[k] = (matrix[k] ?? 0) + 1;
-  }
-  console.log(`${day} n=${set.length} exact ${exact} within-one ${within1} over ${over} under ${under} | ${Object.entries(matrix).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' ')}`);
-}
-
-// OUTLOOK_AUDIT_JSON=path writes the reliability tables for scripts/fit-outlook-calibration.mjs.
-if (process.env.OUTLOOK_AUDIT_JSON) {
-  const { writeFileSync } = await import('node:fs');
-    const categories = {};
-  for (const r of rows) ((categories[r.key] ??= {})[r.forecastRisk] ??= []).push(r.observedRisk);
-  writeFileSync(process.env.OUTLOOK_AUDIT_JSON, JSON.stringify({ seeds, hours, calibration: process.env.OUTLOOK_CALIBRATION ?? 'on', categoryCalibration: process.env.OUTLOOK_CATEGORY_CALIBRATION ?? 'on', reliability, categories }, null, 2));
-}
-
-console.log('\n=== Products ===');
-for (const r of rows) console.log(`${r.seed} ${r.key} issued ${r.issued}Z valid ${r.valid.join('-')} fc ${r.forecastRisk} obs ${r.observedRisk} | ` + HAZARDS.map(h => { const x = r.hazards[h]; return `${h[0].toUpperCase()} max ${Math.round(x.maxProb * 100)}% fc ${x.forecastAreaCells} obs ${x.observedAreaCells} hit ${x.hitCells} ce ${x.centroidErrorMiles == null ? '-' : Math.round(x.centroidErrorMiles)}`; }).join(' | '));

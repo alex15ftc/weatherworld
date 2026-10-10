@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { aggregateTruth, captureTruth, runSeedVerification } from '../js/verification/ForecastVerificationEngine.js';
+import { aggregateTruth, captureTruth } from '../js/verification/truth.js';
 
 const storm = {
   id: 'S1', active: true, intensity: 0.6, maxIntensity: 0.6,
@@ -19,8 +19,8 @@ const world = {
   width: 2, height: 1, cellSizeKm: 10, validHourUtc: 12,
   storms: [storm], stormEngine: { totalCreated: 1, totalTornadoes: 0 }
 };
-const frames = [], initiations = [], records = new Map();
-captureTruth(world, frames, new Set(), initiations, records);
+const frames = [], initiations = [];
+captureTruth(world, frames, new Set(), initiations);
 assert.equal(frames[0].hail[0], 0, 'hazard probability is not observed hail truth');
 assert.equal(frames[0].wind[0], 0, 'hazard probability is not observed wind truth');
 assert.equal(initiations.length, 1);
@@ -32,6 +32,4 @@ const movingFrames = [
 const truth = aggregateTruth(movingFrames, [{ x:0, y:0, hourUtc:12 }], 2, 1, 0, 10);
 assert.deepEqual([...truth.initiation], [1,0], 'storm movement must not create false initiation truth');
 
-assert.throws(() => runSeedVerification(1, { hours:-1 }), /hours/);
-assert.throws(() => runSeedVerification(1, { hours:1, stepHours:0 }), /stepHours/);
 console.log('2.32.4 verification truth regression passed');

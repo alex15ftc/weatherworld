@@ -3,6 +3,8 @@ import { clamp } from '../scenarios/math.js';
 const KT_TO_KPH = 1.852;
 const BUNKERS_DEVIATION_KT = 14.6;   // 7.5 m/s
 const LINEAR_MODES = ['broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS'];
+const COLD_FRONT_LINE_FORCING = 0.6;
+const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 export function sampleStormEnvironment(world, xKm, yKm) {
   const gx = clamp(xKm / world.cellSizeKm - 0.5, 0, world.width - 1);
@@ -31,27 +33,33 @@ export function sampleStormEnvironment(world, xKm, yKm) {
   const surfaceWind = wind('surface'), wind850 = wind(850), wind500 = wind(500);
   const boundaryInfluence = mean(cell => cell.features?.explicitBoundaryInfluence ?? 0);
   const organization = diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, boundaryInfluence);
+  const cape = mean(cell => cell.derived.cape), srh = mean(cell => cell.derived.srh), bulkShear = mean(cell => cell.derived.bulkShear);
+  const lcl = mean(cell => cell.derived.lclAgl ?? Math.max(0, (cell.derived.lcl ?? 0) - (cell.terrain?.elevationM ?? 0)));
+  const warmSector = mean(cell => cell.features?.warmSector ? 1 : 0);
+  // Ingredient diagnostics of the sampled air: a warm-sector environment favouring discrete
+  // supercells, and low-level shear with low cloud bases favouring tornadoes.
+  const supercellEnvironment = ramp(bulkShear, 30, 50) * ramp(cape, 500, 1500);
+  const tornadicEnvironment = ramp(srh, 100, 300) * ramp(1700 - lcl, 0, 800) * ramp(bulkShear, 25, 45);
   return {
-    cape: mean(cell => cell.derived.cape), surfaceCape: mean(cell => cell.derived.cape),
+    cape, surfaceCape: cape,
     mostUnstableCape: mean(cell => cell.derived?.sounding?.mucape ?? cell.derived.cape),
     mostUnstableCin: mean(cell => Math.abs(cell.derived?.sounding?.mucin ?? cell.derived.cin ?? 0)),
     surfaceBasedCape: mean(cell => cell.derived?.sounding?.sbcape ?? cell.derived.cape),
     dewpoint: mean(cell => cell.surface.dewpoint),
-    cin: mean(cell => cell.derived.cin), srh: mean(cell => cell.derived.srh),
+    cin: mean(cell => cell.derived.cin), srh,
     stp: mean(cell => cell.derived.stp ?? 0), rawStp: mean(cell => cell.derived.rawStp ?? cell.derived.stp ?? 0),
     vtp: mean(cell => cell.derived.vtp ?? 0), synopticTornadoSupport: mean(cell => cell.derived.synopticTornadoSupport ?? 0), scp: mean(cell => cell.derived.scp ?? 0),
-    bulkShear: mean(cell => cell.derived.bulkShear), lcl: mean(cell => cell.derived.lclAgl ?? Math.max(0, (cell.derived.lcl ?? 0) - (cell.terrain?.elevationM ?? 0))),
+    bulkShear, lcl,
+    lapseRate700500: mean(cell => cell.derived?.lapseRate700500 ?? 6.5),
     readiness: mean(cell => cell.dynamics?.convectiveReadiness ?? 0), trigger: mean(cell => cell.dynamics?.triggerStrength ?? 0),
     initiation: mean(cell => cell.dynamics?.initiationPotential ?? 0), forcing: mean(cell => cell.dynamics?.forcingScore ?? 0),
     // Storm organization from the environment itself: storm crowding and deep-layer shear
     // relative to the nearest boundary (shear along a forcing boundary organizes lines).
     stormCoverage: organization.coverage, linearFraction: organization.linear, discreteFraction: organization.discrete,
     boundaryParallelShear: organization.boundaryParallel,
-    warmSector: mean(cell => cell.features?.warmSector ? 1 : 0),
-    openWarmSectorSupport: mean(cell => cell.forecast?.openWarmSectorSupport ?? 0),
-    projectedStormTrackSupport: mean(cell => cell.forecast?.projectedStormTrackSupport ?? 0),
-    prefrontalSupercellSupport: mean(cell => cell.forecast?.prefrontalSupercellSupport ?? 0),
-    tornadicEnvironmentSupport: mean(cell => cell.forecast?.tornadicEnvironmentSupport ?? 0),
+    warmSector, openWarmSectorSupport: warmSector,
+    prefrontalSupercellSupport: warmSector * organization.discrete * supercellEnvironment,
+    tornadicEnvironmentSupport: tornadicEnvironment,
     synopticAscent: mean(cell => cell.features?.synopticAscent ?? 0),
     synopticCoherence: mean(cell => cell.features?.synopticCoherence ?? world.synopticCoherence?.score ?? 1),
     moisturePooling: mean(cell => cell.mesoscaleFields?.moisturePooling ?? 0),
@@ -88,7 +96,7 @@ function diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, bou
       const a = points[i - 1], b = points[i], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
       const t = clamp(((xKm - a.x) * dx + (yKm - a.y) * dy) / l2, 0, 1);
       const d = Math.hypot(xKm - (a.x + t * dx), yKm - (a.y + t * dy));
-      if (!nearest || d < nearest.d) nearest = { d, tx: dx / Math.sqrt(l2), ty: dy / Math.sqrt(l2) };
+      if (!nearest || d < nearest.d) nearest = { d, tx: dx / Math.sqrt(l2), ty: dy / Math.sqrt(l2), type: front.type };
     }
   }
   const boundaryParallel = nearest ? Math.abs((shear.x * nearest.tx + shear.y * nearest.ty) / shearMagnitude) : 0;
@@ -97,10 +105,13 @@ function diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, bou
   for (const storm of world.storms ?? []) {
     if (storm.active === false) continue;
     const d = Math.hypot(storm.positionKm.x - xKm, storm.positionKm.y - yKm);
-    if (d > 1 && d < 60) neighbours++;
+    if (d > 1 && d < 75) neighbours++;
   }
-  const coverage = clamp(neighbours / 5, 0, 1);
-  const linear = clamp(0.1 + 0.7 * Math.max(nearBoundary, boundaryInfluence) * boundaryParallel ** 2 + 0.25 * coverage, 0.05, 0.95);
+  const coverage = clamp(neighbours / 4, 0, 1);
+  // A cold front undercuts the warm air along its whole length and forces a line whatever the
+  // shear angle; along a dryline or warm front the shear decides.
+  const alignment = nearest?.type === 'cold' ? Math.max(boundaryParallel ** 2, COLD_FRONT_LINE_FORCING) : boundaryParallel ** 2;
+  const linear = clamp(0.1 + 0.7 * Math.max(nearBoundary, boundaryInfluence) * alignment + 0.25 * coverage, 0.05, 0.95);
   return { linear, discrete: clamp(1 - 0.85 * linear, 0.05, 0.95), coverage, boundaryParallel };
 }
 

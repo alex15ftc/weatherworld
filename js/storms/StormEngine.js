@@ -212,6 +212,12 @@ function handleSplits(world) {
   }
 }
 
+const LINEAR_MODES = ['broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS'];
+const LINE_JOIN_OVERLAP = 0.75, MAX_LINE_HALF_LENGTH_KM = 160;
+const isLinearMode = mode => LINEAR_MODES.includes(mode);
+// Half-length of a line along its axis (a single segment until it joins its neighbours).
+const lineHalfLengthKm = storm => storm.lineHalfLengthKm ?? storm.radar?.radiusXKm ?? 20;
+
 function handleMergersAndOrganization(world, spatialIndex) {
   const active = spatialIndex.active;
   for (const storm of active) {
@@ -232,7 +238,10 @@ function handleMergersAndOrganization(world, spatialIndex) {
     if (checked.has(pairKey)) continue;
     checked.add(pairKey);
     const d=distance(a,b);
-    if (d > Math.max(7, (a.coldPoolRadiusKm+b.coldPoolRadiusKm)*0.20)) continue;
+    // Neighbouring line segments whose ends overlap join into one longer line.
+    const joining = isLinearMode(a.mode) && isLinearMode(b.mode) && d <= (lineHalfLengthKm(a) + lineHalfLengthKm(b)) * LINE_JOIN_OVERLAP;
+    const joinedHalfLengthKm = joining ? clamp((lineHalfLengthKm(a) + lineHalfLengthKm(b) + d) / 2, 0, MAX_LINE_HALF_LENGTH_KM) : 0;
+    if (!joining && d > Math.max(7, (a.coldPoolRadiusKm+b.coldPoolRadiusKm)*0.20)) continue;
     if (a.mode.includes('supercell') && b.mode.includes('supercell') && d > 8) continue;
     const keeper = a.intensity >= b.intensity ? a : b, absorbed = keeper===a?b:a;
     const total = Math.max(0.1, keeper.intensity + absorbed.intensity);
@@ -242,6 +251,7 @@ function handleMergersAndOrganization(world, spatialIndex) {
     keeper.coldPoolStrength = Math.max(keeper.coldPoolStrength, absorbed.coldPoolStrength);
     keeper.organization = clamp((keeper.organization+absorbed.organization)*0.55,0,1);
     keeper.mergeCount += 1 + absorbed.mergeCount;
+    if (joining) keeper.lineHalfLengthKm = Math.max(joinedHalfLengthKm, keeper.lineHalfLengthKm ?? 0);
     keeper.mergedStormIds ??= []; keeper.mergedStormIds.push(absorbed.id, ...(absorbed.mergedStormIds ?? [])); keeper.mergedStormIds = [...new Set(keeper.mergedStormIds)].slice(-20);
     keeper.lastInteractionHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
     keeper.interactions ??= { mergerBoost: 0, inflowCompetition: 0, outflowBoundaryBoost: 0, lastType: null };
@@ -399,6 +409,12 @@ function updateMesocyclone(storm, environment, dtHours) {
   if (storm.lifecycleState === 'weakening' || storm.lifecycleState === 'dissipating') storm.mesocycloneStrength *= Math.max(0, 1 - dtHours * 0.65);
 }
 
+// Calibrated with scripts/coverage-audit.mjs (share of storm samples and of the domain with
+// severe hail and wind).
+const HAIL = { scale: 2.6, power: 1.6, nonRotating: 0.75, fullRotation: 0.4 };
+// A long, mature line (merged cold pools, rear inflow) adds to the gusts of a single cell.
+const GUST = { base: 18, intensity: 24, outflow: 330, line: 6, lineLength: 14 };
+
 function diagnoseObservedStorm(storm, environment) {
   const supercell = storm.mode.includes('supercell');
   const linear = ['broken line','linear segment','QLCS with embedded supercells','QLCS','MCS'].includes(storm.mode);
@@ -412,8 +428,12 @@ function diagnoseObservedStorm(storm, environment) {
   const hailProbability = clamp(Math.max((field?.maxHail ?? 0) * .82, hailEnvironment * (supercell ? .62 : .38)), 0, .95);
   const linearForcing = clamp(Number(environment.forcing) || 0, 0, 1);
   const windProbability = clamp(storm.coldPoolStrength * storm.intensity * (linear ? 1.34 : .72) * clamp(environment.bulkShear/32,0,1) + (linear ? linearForcing * .10 : 0), 0, .98);
-  const sustainedMph = clamp(22 + storm.intensity * (linear ? 43 : 38) + storm.coldPoolStrength * (linear ? 54 : 24) + (linear ? linearForcing * 8 : 0), 15, 110);
-  const gustMph = clamp(sustainedMph + (linear ? 10 : 8) + windProbability * (linear ? 48 : 42) + (field?.maxVorticity ?? 0) * 8, 20, 150);
+  // Outflow gusts: the cold pool (downdraft strength) carried forward by deep shear; severe
+  // (58 mph) gusts need a strong cold pool (the response steepens with it), so most
+  // storm-hours stay sub-severe.
+  const outflow = storm.coldPoolStrength * clamp((environment.bulkShear ?? 0) / 32, 0, 1);
+  const gustMph = clamp(GUST.base + storm.intensity * GUST.intensity + outflow ** 1.5 * GUST.outflow + (linear ? GUST.line + linearForcing * 4 + GUST.lineLength * Math.min(1, lineHalfLengthKm(storm) / 120) : 0) + (field?.maxVorticity ?? 0) * 8, 15, 130);
+  const sustainedMph = gustMph / 1.45;
   const maxSustainedMph = Math.max(storm.surfaceWind?.maxSustainedMph ?? 0, sustainedMph);
   const maxGustMph = Math.max(storm.surfaceWind?.maxGustMph ?? 0, gustMph);
   storm.surfaceWind = { sustainedMph, gustMph, maxSustainedMph, maxGustMph };
@@ -421,8 +441,11 @@ function diagnoseObservedStorm(storm, environment) {
   // Store physically diagnosed storm-scale extremes for inspection and verification.
   // Hail size is an outcome diagnostic, not a forecast probability multiplier.
   const lapseRate = Number(environment.lapseRate700500 ?? environment.midLevelLapseRate ?? 6.5);
-  const hailGrowth = clamp((field?.maxHail ?? 0) * 0.44 + storm.updraftStrength * 0.30 + clamp((environment.cape ?? 0) / 4000, 0, 1.2) * 0.16 + clamp((lapseRate - 5.8) / 2.4, 0, 1) * 0.10, 0, 1.2);
-  const hailSizeInches = hailProbability < 0.12 ? 0 : clamp(0.35 + hailGrowth * 3.65, 0.35, 4.5);
+  const hailGrowth = clamp((field?.maxHail ?? 0) * 0.22 + storm.updraftStrength * 0.28 + clamp((environment.cape ?? 0) / 4500, 0, 1.1) * 0.20 + clamp((lapseRate - 6.5) / 2.5, 0, 1) * 0.22 + clamp(((environment.bulkShear ?? 0) - 25) / 25, 0, 1) * 0.10, 0, 1.2);
+  // Size grows steeply with hail growth (updraft, instability, hail core) and needs a rotating
+  // updraft to reach the larger sizes: the typical supercell is near 1 in, 2 in+ is uncommon.
+  const rotation = HAIL.nonRotating + (1 - HAIL.nonRotating) * clamp((storm.mesocycloneStrength ?? 0) / HAIL.fullRotation, 0, 1);
+  const hailSizeInches = hailProbability < 0.12 ? 0 : clamp(HAIL.scale * hailGrowth ** HAIL.power * rotation, 0, 4.5);
   // Current hail size (hazardExtremes keeps only the lifetime maximum); used by verification.
   storm.currentHailSizeInches = hailSizeInches;
   storm.hazardExtremes ??= { tornado:{maxWindMph:0,maxEfRating:null,maxWidthYards:0,maxPathLengthKm:0,cycles:0}, wind:{maxSustainedMph:0,maxGustMph:0}, hail:{maxSizeInches:0} };
@@ -446,7 +469,7 @@ function diagnoseObservedStorm(storm, environment) {
   storm.hazards = { tornadoProbability: realizedTornado, hailProbability: realizedHail, windProbability: realizedWind };
   storm.radar = {
     maxReflectivityDbz: clamp(28 + storm.intensity * 42 + hailProbability * 9, 20, 78),
-    radiusXKm: clamp(8 + storm.intensity * (linear ? 38 : 22) + storm.mergeCount * 3, 8, 85),
+    radiusXKm: clamp(Math.max(8 + storm.intensity * (linear ? 38 : 22) + storm.mergeCount * 3, linear ? storm.lineHalfLengthKm ?? 0 : 0), 8, linear ? MAX_LINE_HALF_LENGTH_KM : 85),
     radiusYKm: clamp(7 + storm.intensity * (linear ? 16 : 14), 7, 42)
   };
   const tags = [];

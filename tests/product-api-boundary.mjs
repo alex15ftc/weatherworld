@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { WeatherAuthorityRuntime } from '../server/WeatherAuthorityRuntime.js';
-const runtime = new WeatherAuthorityRuntime({ seed: 20270503, checkpointPath: '/tmp/weather-authority-test.json' });
+const runtime = new WeatherAuthorityRuntime({ seed: 20270503 });
 const health = runtime.metadata();
 assert.equal(health.ok, true);
 assert.match(health.version, /^\d+\.\d+\.\d+(?:\.\d+)?$/);

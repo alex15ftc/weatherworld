@@ -1,4 +1,3 @@
-import { diagnoseCellEnvironment, diagnoseEventRisk } from './diagnostics/riskDiagnosis.js';
 import { clamp } from './scenarios/math.js';
 import { diagnoseBoundaries } from './diagnostics/boundaryDiagnosis.js';
 import { diagnoseForcing } from './diagnostics/forcingDiagnosis.js';
@@ -6,16 +5,14 @@ import { updateCellDiagnostics } from './sounding.js';
 import { sampleSynopticPattern, samplePatternWinds, cyclonicGradientWindKt } from './scenarios/synopticPattern.js';
 import { airMassSurfaceState } from './scenarios/scenarioGenerator.js';
 import { analyzeMapFeatures } from './analysis/mapAnalysis.js';
-import { INITIAL_VALID_HOUR_UTC, OUTLOOK_INTERVAL_HOURS, PRESSURE_LEVELS_HPA } from './constants.js';
+import { INITIAL_VALID_HOUR_UTC, PRESSURE_LEVELS_HPA } from './constants.js';
 import { initializeStormEngine, advanceStormEngine, applyStormFeedback } from './storms/StormEngine.js';
 import { initializeMesoscaleEngine, advanceMesoscaleEngine, projectBoundaryInfluence, projectBoundaryMetadata } from './mesoscale/MesoscaleEngine.js';
 import { updateMesoscaleFields } from './mesoscale/MesoscaleFieldEngine.js';
 import { initializeWorldFramework, preserveStaticFeatures } from './world/WorldFramework.js';
 import { initializeAirMassEngine, advanceAirMassEngine } from './scenarios/AirMassEngine.js';
 import { diagnoseSynopticCoherence } from './scenarios/SynopticCoherence.js';
-import { initializeSetupForecast, updateSetupForecast } from './scenarios/SetupForecastEngine.js';
-import { initializeOutlookCycle, updatePredictiveOutlooks } from './forecast/OutlookCycleEngine.js';
-import { initializeStormObservationLayer, publishStormObservations } from './storms/StormObservationLayer.js';
+import { initializeOutlookCycle, scheduleOutlookIssuance } from './forecast/EnsembleOutlookEngine.js';
 import { initializeCoupledAtmosphere, advanceCoupledAtmosphere, projectStormInfluence } from './coupling/CoupledAtmosphereEngine.js';
 import { initializeSynopticObjects, advanceSynopticObjects } from './synoptic/SynopticObjectEngine.js';
 import { resolveRuntimeProfile } from './runtime/RuntimeProfile.js';
@@ -34,8 +31,6 @@ export function initializeEvolution(world, config, { profile = 'gameplay' } = {}
   world.evolution = {
     config,
     elapsedHours: 0,
-    outlookValidHourUtc: INITIAL_VALID_HOUR_UTC,
-    outlookAnalysis: null,
     performance: createEvolutionPerformanceState(),
     cadence: { mediumHours: runtimeProfile.mediumAnalysisHours, slowHours: runtimeProfile.slowAnalysisHours, thermodynamicsHours: runtimeProfile.fullThermodynamicsCadenceHours, mesoscaleHours: runtimeProfile.mesoscaleCadenceHours, coupledHours: runtimeProfile.coupledCadenceHours }
   };
@@ -65,24 +60,12 @@ export function initializeEvolution(world, config, { profile = 'gameplay' } = {}
   projectBoundaryMetadata(world);
   diagnoseForcing(world);
   updateMesoscaleFields(world, 0);
-  initializeSetupForecast(world);
-  world.forEachCell(cell => diagnoseCellEnvironment(cell));
   analyzeMapFeatures(world);
   diagnoseSynopticCoherence(world);
-  updateOutlook(world);
   initializeStormEngine(world);
   advanceStormEngine(world, 0);
-  initializeStormObservationLayer(world);
-  initializeOutlookCycle(world, { initialDays: runtimeProfile.initialOutlookDays });
-
-  // Store the exact initialized/displayed category as the only initial
-  // authoritative outlook. Tests use this snapshot to catch future pipeline
-  // divergence.
-  world.initialAuthoritativeOutlook = {
-    validHourUtc: world.validHourUtc,
-    overallRisk: world.evolution.outlookAnalysis?.overallRisk ?? 'TSTM',
-    riskLabel: world.evolution.outlookAnalysis?.riskLabel ?? 'General Thunderstorms'
-  };
+  // Day 1-3 outlooks from an ensemble of the simulation (EnsembleOutlookEngine).
+  initializeOutlookCycle(world);
 }
 
 export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {}) {
@@ -131,10 +114,7 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
     runEvolutionPhase(world, 'meteorologicalIntegrity', () => runMeteorologicalIntegrity(world));
 
     if (isCadenceDue(world, 'medium', world.evolution.cadence?.mediumHours ?? 1)) {
-      runEvolutionPhase(world, 'mediumAnalysis', () => {
-        analyzeMapFeatures(world);
-        updateSetupForecast(world);
-      });
+      runEvolutionPhase(world, 'mediumAnalysis', () => analyzeMapFeatures(world));
     } else markEvolutionPhaseSkipped(world, 'mediumAnalysis');
 
     if (isCadenceDue(world, 'slow', world.evolution.cadence?.slowHours ?? 3)) {
@@ -144,7 +124,6 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
     if (advanceStorms) {
       runEvolutionPhase(world, 'storms', () => {
         advanceStormEngine(world, stepHours);
-        publishStormObservations(world, stepHours);
       });
     } else {
       runEvolutionPhase(world, 'storms', () => applyStormFeedback(world, stepHours));
@@ -163,22 +142,15 @@ export function advanceAtmosphere(world, hours = 1, { advanceStorms = true } = {
         diagnoseForcing(world, previous);
         updateMesoscaleFields(world, stepHours);
         analyzeMapFeatures(world);
-        updateSetupForecast(world);
       });
     }
     projectBoundaryMetadata(world);
 
-    if (isDay1OutlookCheckpoint(world.validHourUtc)) {
-      world.forEachCell(cell => diagnoseCellEnvironment(cell));
-      updateOutlook(world);
-    }
-    runEvolutionPhase(world, 'predictiveOutlooks', () => updatePredictiveOutlooks(world, { days: world.runtime?.profile?.verification ? null : ['day1'] }));
+    if (world.outlookCycle) runEvolutionPhase(world, 'outlooks', () => scheduleOutlookIssuance(world, world.validHourUtc - stepHours));
     const perf = world.evolution.performance ?? (world.evolution.performance = createEvolutionPerformanceState());
     perf.totalSteps += 1;
     perf.lastStepMs = nowMs() - stepStarted;
   }
-
-  return world.evolution.outlookAnalysis;
 }
 
 
@@ -190,18 +162,8 @@ export function advanceStormLayer(world, hours = 1 / 12, { applyFeedback = false
   const dtHours = requested / steps;
   for (let i = 0; i < steps; i++) {
     advanceStormEngine(world, dtHours, { applyFeedback, initiate });
-    publishStormObservations(world, dtHours);
   }
   return world.stormEngine;
-}
-
-export function isDay1OutlookCheckpoint(hourUtc) {
-  return Math.abs(hourUtc / OUTLOOK_INTERVAL_HOURS - Math.round(hourUtc / OUTLOOK_INTERVAL_HOURS)) < 1e-6;
-}
-
-function updateOutlook(world) {
-  world.evolution.outlookAnalysis = diagnoseEventRisk(world);
-  world.evolution.outlookValidHourUtc = world.validHourUtc;
 }
 
 function advectAndEvolve(world, previous, dtHours = 1) {
@@ -256,6 +218,11 @@ const LOW_LEVEL_RELAX_HOURS = 2;
 const MOISTURE_SOURCE_PER_HOUR = { mT: 0.10, other: 0.07 };
 const POST_FRONTAL_TEMPERATURE_PER_HOUR = 0.04;
 const MID_LEVEL_RELAX_HOURS = 12;
+const HEIGHT_TENDENCY_MEMORY_HOURS = 2;
+const CAP_ASCENT_C = 1.5, CAP_SUBSIDENCE_C = 0.5;
+// 500 mb height falls (dam per 12 h) from negligible to strong synoptic ascent.
+const HEIGHT_FALL_RANGE_DM = [0.5, 5];
+const ramp = (value, low, high) => clamp((value - low) / (high - low), 0, 1);
 const MOIST_LEVELS_HPA = [850, 700];
 const RHO = 1.15, CORIOLIS = 1e-4, MS_TO_KT = 1.943844;
 
@@ -280,6 +247,15 @@ function applySynopticCoupling(world, dtHours = 1) {
       ? cell.levels[500].heightDm + (synoptic.height500Dm - cell.levels[500].heightDm) * upperRate
       : synoptic.height500Dm;
     cell.levels[250].heightDm = 1035 + (cell.levels[500].heightDm - 570) * 0.72;
+    // 500 mb height tendency (dam per 12 h) of the moving pattern: falls ahead of a trough
+    // or shortwave mark the synoptic-scale ascent, rises behind it the subsidence.
+    const level500 = cell.levels[500];
+    if (Number.isFinite(level500.patternHeightDm) && dtHours > 0) {
+      const tendency = (synoptic.height500Dm - level500.patternHeightDm) / dtHours * 12;
+      const blend = 1 - Math.exp(-dtHours / HEIGHT_TENDENCY_MEMORY_HOURS);
+      level500.heightTendencyDm12h = Number.isFinite(level500.heightTendencyDm12h) ? level500.heightTendencyDm12h + (tendency - level500.heightTendencyDm12h) * blend : tendency;
+    }
+    level500.patternHeightDm = synoptic.height500Dm;
     relaxWind(cell.levels[500], rotateToDisplay({ e: synoptic.u500Kt, n: synoptic.v500Kt }, rotation), upperRate);
     relaxWind(cell.levels[250], rotateToDisplay({ e: synoptic.u250Kt, n: synoptic.v250Kt }, rotation), upperRate);
 
@@ -292,7 +268,9 @@ function applySynopticCoupling(world, dtHours = 1) {
       cell.surface.temperature += (airMass.meanTemperatureF - cell.surface.temperature) * clamp(POST_FRONTAL_TEMPERATURE_PER_HOUR * coolAir * dtHours, 0, 1);
       // Mid-level air masses (EML cap, trough cold core) are advected in and resupplied.
       const midRate = clamp(dtHours / MID_LEVEL_RELAX_HOURS, 0, 1);
-      cell.levels[700].temperature += (airMass.t700C - cell.levels[700].temperature) * midRate;
+      // Synoptic ascent lifts and cools the capping layer; subsidence behind the wave warms it.
+      const cap700C = airMass.t700C + CAP_SUBSIDENCE_C * (cell.features.synopticSubsidence ?? 0) - CAP_ASCENT_C * Math.min(1, cell.features.synopticAscent ?? 0);
+      cell.levels[700].temperature += (cap700C - cell.levels[700].temperature) * midRate;
       cell.levels[500].temperature += (airMass.t500C - cell.levels[500].temperature) * midRate;
       // Moisture aloft: the moist layer's depth is part of each air mass.
       if (Number.isFinite(cell.levels[850].dewpoint)) cell.levels[850].dewpoint += (airMass.td850C - cell.levels[850].dewpoint) * clamp(moistureRate, 0, 1);
@@ -302,7 +280,11 @@ function applySynopticCoupling(world, dtHours = 1) {
     }
     cell.features.airMass = synoptic.airMass;
     cell.features.warmSector = synoptic.warmSector > 0.42;
-    cell.features.synopticAscent = synoptic.upperSupport;
+    const heightChange = level500.heightTendencyDm12h;
+    if (Number.isFinite(heightChange)) {
+      cell.features.synopticAscent = clamp(ramp(-heightChange, HEIGHT_FALL_RANGE_DM[0], HEIGHT_FALL_RANGE_DM[1]) + 0.25 * synoptic.jetCore, 0, 1.3);
+      cell.features.synopticSubsidence = ramp(heightChange, HEIGHT_FALL_RANGE_DM[0], HEIGHT_FALL_RANGE_DM[1]);
+    } else cell.features.synopticAscent = synoptic.upperSupport;
     cell.features.upperTrough = synoptic.troughCore > 0.48;
     cell.features.shortwaveTrough = synoptic.shortwaveCore > 0.52;
     cell.features.jetStreak = synoptic.jetCore > 0.56;
@@ -472,7 +454,7 @@ export function applyDiurnalAdjustment(world, absoluteHour, dtHours = 1) {
     const elevationCoolingF = cell.terrain.elevationM * 0.0032;
     const soilFactor = 0.75 + (1 - (cell.terrain.soilMoisture ?? 0.45)) * 0.5;
     const strictWarmSector = cell.features?.warmSector ? 1 : 0;
-    const broaderSevereAirMass = clamp(Math.max(Number(cell.forecast?.openWarmSectorSupport) || 0, Number(cell.forecast?.moistureTransport) || 0, ((Number(cell.surface?.dewpoint)||45)-52)/18), 0, 1);
+    const broaderSevereAirMass = clamp(((Number(cell.surface?.dewpoint) || 45) - 52) / 18, 0, 1);
     const warmSector = Math.max(strictWarmSector, broaderSevereAirMass * 0.82);
     const processedAir = clamp(Number(cell.memory?.processedAir ?? cell.features?.stormProcessedAir) || 0, 0, 1);
     const coldPool = clamp(Number(cell.memory?.coldPoolMemory ?? cell.features?.coldPoolInfluence) || 0, 0, 1);
@@ -571,7 +553,7 @@ function nowMs() {
   return globalThis.performance?.now?.() ?? Date.now();
 }
 
-function updateSoundingDiagnostics(world) {
+export function updateSoundingDiagnostics(world) {
   world.forEachCell(cell => updateCellDiagnostics(cell));
 }
 

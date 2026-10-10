@@ -11,7 +11,7 @@ const totals = [0, 1, 2].map(() => ({ storms: 0, tornadoes: 0, quietSeeds: 0 }))
 for (const seed of seeds) {
   const world = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
   const config = generateScenario(world, seed);
-  initializeEvolution(world, config);
+  initializeEvolution(world, config, { profile: { name: 'gameplay', outlookIssuance: 'off' } });
   const days = [0, 1, 2].map(() => ({ created: new Set(), tornadoes: new Set(), peakActive: 0, modes: {}, peakCape: 0, warmFracMax: 0 }));
   for (let t = 0; t < 72; t += 1) {
     advanceAtmosphere(world, 1);

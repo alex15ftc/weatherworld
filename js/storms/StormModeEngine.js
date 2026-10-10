@@ -15,18 +15,22 @@ export function diagnosePreferredMode(environment) {
   const scp = Number.isFinite(environment.scp) && environment.scp > 0 ? environment.scp : (cape / 1000) * (srh / 50) * clamp(shearKt * 0.514 / 20, 0, 1.5);
   const linear = clamp(Number(environment.linearFraction) || 0, 0, 1);
   const coverage = clamp(Number(environment.stormCoverage) || 0, 0, 1);
-  const buoyant = ramp(cape, 150, 1000) * (1 - ramp(cin, 150, 300));
+  // Inhibition weakens organization but does not undo it: an established updraft keeps
+  // drawing on the instability through dynamic lifting.
+  const buoyant = ramp(cape, 150, 1000) * (1 - 0.6 * ramp(cin, 200, 400));
   const muAloft = (environment.mostUnstableCape ?? 0) > (environment.surfaceBasedCape ?? cape) + 50;
   const elevated = muAloft && cin > 100 && (environment.mostUnstableCape ?? 0) > 500 && (environment.mostUnstableCin ?? 0) < 60;
 
   const weakShear = 1 - ramp(shearKt, 18, 32);
-  const supercell = buoyant * ramp(shearKt, 28, 45) * ramp(scp, 0.5, 4);
-  const lineOrganized = buoyant * linear * (1 - weakShear);
+  const supercell = buoyant * ramp(shearKt, 25, 40) * ramp(scp, 0.5, 3);
+  const lineOrganized = buoyant * ramp(linear, 0.3, 0.7) * (1 - weakShear);
   const scores = {
     'elevated convection': elevated ? 0.6 + 0.4 * ramp(environment.mostUnstableCape ?? 0, 500, 2000) : 0,
     'pulse storm': buoyant * weakShear,
     'multicell': buoyant * (1 - weakShear) * 0.45,
-    'broken line': lineOrganized * (1 - supercell) * 0.9,
+    // Linear forcing (shear along a boundary) organizes a line even where the shear would
+    // support supercells; the supercell scores carry the complementary (1 - linear).
+    'broken line': lineOrganized * 0.9,
     'isolated supercell': supercell * (1 - linear) * (1 - ramp(coverage, 0.1, 0.35)),
     'discrete supercell': supercell * (1 - linear) * ramp(coverage, 0.1, 0.35) * (1 - ramp(coverage, 0.45, 0.8)),
     'discrete supercell cluster': supercell * (1 - linear) * ramp(coverage, 0.45, 0.8),
@@ -45,18 +49,19 @@ export function shouldSplitStorm(storm, environment) {
     environment.bulkShear >= 38 && environment.cape >= 850;
 }
 
+// Cold-pool thresholds below follow the range the cold-pool model produces (about 0-0.3).
 export function shouldBecomeQlcs(storm, neighbors, environment) {
   const discreteProtection = (environment.prefrontalSupercellSupport ?? 0) >= 0.48 || (environment.tornadicEnvironmentSupport ?? 0) >= 0.58;
   return (storm.mode === 'linear segment' || storm.mode === 'multicell') &&
     neighbors >= (discreteProtection ? 3 : 2) && storm.ageHours >= (discreteProtection ? 3.2 : 1.8) &&
-    storm.coldPoolStrength >= (discreteProtection ? 0.50 : 0.38) && environment.bulkShear >= 25;
+    storm.coldPoolStrength >= (discreteProtection ? 0.20 : 0.15) && environment.bulkShear >= 25;
 }
 
 export function shouldBecomeMcs(storm, neighbors, environment) {
   const discreteProtection = (environment.prefrontalSupercellSupport ?? 0) >= 0.48 || (environment.tornadicEnvironmentSupport ?? 0) >= 0.58;
   return (storm.mode === 'QLCS' || storm.mode === 'linear segment' || storm.mode === 'multicell') &&
     neighbors >= (discreteProtection ? 4 : 3) && storm.ageHours >= (discreteProtection ? 4.5 : 2.8) &&
-    storm.coldPoolStrength >= (discreteProtection ? 0.58 : 0.48) && environment.stormCoverage >= 0.55;
+    storm.coldPoolStrength >= (discreteProtection ? 0.23 : 0.19) && environment.stormCoverage >= 0.55;
 }
 
 export function shouldUpscaleIntoLine(storm, neighbors, environment) {
@@ -66,7 +71,7 @@ export function shouldUpscaleIntoLine(storm, neighbors, environment) {
   const matureEnough = storm.ageHours >= (discreteProtection ? 5.0 : 3.5);
   const longLived = storm.ageHours >= 5.5;
   // Strong linear forcing (e.g. along a cold front) organizes lines before cold pools mature.
-  const coldPoolReady = storm.coldPoolStrength >= (environment.linearFraction >= 0.45 ? 0.10 : 0.34);
+  const coldPoolReady = storm.coldPoolStrength >= (environment.linearFraction >= 0.45 ? 0.06 : 0.14);
   const organizedCorridor = environment.linearFraction >= 0.42 || environment.forcing >= 0.48;
   const interacting = neighbors >= 1;
   // Long-lived storms increasingly favor upscale growth, but isolated discrete

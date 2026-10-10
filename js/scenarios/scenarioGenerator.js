@@ -38,6 +38,9 @@ function createSeedConfiguration(random, { domainKm, narrative: forcedNarrative 
     flow500Kt: draw(narrative.flow500Kt), jetPeakKt: draw(narrative.jetPeakKt), lljKt: draw(narrative.lljKt),
     troughDm: draw(narrative.troughDm), lowDepthHpa: draw(narrative.lowDepthHpa), tilt: draw(narrative.tilt)
   };
+  // A severe setup has a cap the warm sector can break: the warmer and moister the boundary
+  // layer, the stronger the elevated mixed layer it can overcome with afternoon heating and lift.
+  ingredients.cap700C = Math.min(ingredients.cap700C, 4 + 0.5 * (ingredients.gulfDewpointF - 60) + 0.6 * (ingredients.t850C - 15));
   const troughX = lerp(regime.troughX[0], regime.troughX[1], random());
   const northwest = regimeName === 'northwest';
   const synopticPattern = createSynopticPattern(random, setupType, intensity, {
@@ -52,7 +55,15 @@ function createSeedConfiguration(random, { domainKm, narrative: forcedNarrative 
   });
   const boundaryTopology = setup.topology[Math.floor(random() * setup.topology.length)];
   synopticPattern.boundaryTopology = [...boundaryTopology];
+  // Size of the corridor where moisture, instability and a breakable cap overlap, as a rough
+  // share of the domain. Logarithmic in rarity: most systems have a narrow corridor (10-20%),
+  // a rare one approaches 40%.
+  const eventScale = 0.1 * 4 ** (random() ** 1.5);
+  const breadth = (eventScale - 0.1) / 0.3;
   return {
+    eventScale,
+    // Width of the moist axis, and how much drier and more capped the air is away from it.
+    moistureAxisSigma: lerp(0.14, 0.45, breadth), offAxisDryingF: lerp(4, 1, breadth), offAxisCapC: lerp(1.8, 0.5, breadth),
     synopticPattern,
     narrative: narrative.name, narrativeLabel: narrative.label,
     setupType, setupLabel: setup.label, flowRegime: regimeName,
@@ -149,8 +160,8 @@ function initializeAtmosphere(world, config, seed) {
 // evolution's air-mass source term so both describe the same air masses.
 export function airMassSurfaceState(config, s, nx, ny) {
   const warm = s.warmSector, dry = s.hotDry, cold = clamp(1 - warm - dry, 0, 1);
-  const moistureAxis = gaussian(nx - config.moistureAxisX, ny - config.moistureAxisY, 0.45);
-  const gulfTd = config.gulfDewpoint - config.northMoistureLoss * (1 - ny) + config.moistureAxisBoost * moistureAxis;
+  const moistureAxis = moistAxis(config, s, nx, ny);
+  const gulfTd = config.gulfDewpoint - config.northMoistureLoss * (1 - ny) + config.moistureAxisBoost * moistureAxis - (config.offAxisDryingF ?? 0) * (1 - moistureAxis);
   const warmT = lerp(78, 88, ny) + 3 * config.intensity, dryT = warmT + 9;
   const coldT = s.airMass === 'mP' ? lerp(50, 64, ny) : lerp(44, 60, ny);
   const dryTd = lerp(28, 44, ny), coldTd = s.airMass === 'upslope' ? lerp(48, 58, ny) : lerp(34, 50, ny);
@@ -164,7 +175,8 @@ export function airMassSurfaceState(config, s, nx, ny) {
   const t850C = warm * warm850 + dry * (warm850 + 4) + cold * lerp(2, 9, ny);
   // 700 mb: the elevated mixed layer (cap), warmest over its dry source region; 500 mb from
   // the narrative's lapse rate and the trough's cold core aloft.
-  const t700C = warm * ing.cap700C + dry * (ing.cap700C + 3) + cold * (ing.cap700C - 8);
+  // The elevated mixed layer caps the warm sector harder away from the moist axis.
+  const t700C = warm * (ing.cap700C + (config.offAxisCapC ?? 0) * (1 - moistureAxis)) + dry * (ing.cap700C + 3) + cold * (ing.cap700C - 8);
   const t500C = t700C - ing.lapse700500 * 2.7 - 3 * (s.troughCore ?? 0) - 2 * (s.shortwaveCore ?? 0);
   // Moisture aloft: deep in the Gulf air (depth from the narrative), very dry in the elevated
   // mixed layer and the continental air behind the dryline.
@@ -175,6 +187,18 @@ export function airMassSurfaceState(config, s, nx, ny) {
   const td850C = Math.min(t850C - 1.5, warm * moist850 + dry * (t850C - 20) + cold * (t850C - 6));
   const td700C = Math.min(t700C, warm * (t700C - (14 + 10 * (1 - depth))) + dry * (t700C - 26) + cold * (t700C - 8));
   return { afternoonTemperatureF, dewpointF, diurnalRangeF, meanTemperatureF: afternoonTemperatureF - diurnalRangeF / 2, t850C, t700C, t500C, td850C, td700C, moistureAxis };
+}
+
+// The moist axis: a tongue of the richest Gulf moisture lying just ahead of the dryline or
+// cold front (it moves with them), widest in the large events.
+function moistAxis(config, s, nx, ny) {
+  const sigma = config.moistureAxisSigma ?? 0.45;
+  const topology = config.synopticPattern?.boundaryTopology ?? [];
+  const edges = [topology.includes('cold') ? s.coldFrontX : null, s.drylineActive ? s.drylineX : null].filter(Number.isFinite);
+  if (!edges.length) return gaussian(nx - config.moistureAxisX, ny - config.moistureAxisY, sigma + 0.2);
+  const across = (nx - (Math.max(...edges) + 0.5 * sigma)) / sigma;
+  const along = (ny - config.moistureAxisY) / (sigma + 0.3);
+  return Math.exp(-across * across - along * along);
 }
 
 // Geostrophic wind (kt, east/north in the pattern frame) from the sea-level pressure field.

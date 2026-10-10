@@ -14,6 +14,10 @@ const DRYLINE_FACTOR = {
   warm_front_wave: 0.05, northwest_flow: 0, high_plains_upslope: 0
 };
 
+// Every system's shortwaves are deep enough to give real 500 mb height falls: a severe
+// setup always has a wave to force it, however subtle the large-scale trough.
+const MIN_SHORTWAVE_DM = 2.8;
+
 export function createSynopticPattern(random, setupName, intensity, s = {}) {
   const troughX = s.troughX ?? lerp(0.0, 0.25, random());
   const troughY = s.troughY ?? lerp(0.25, 0.5, random());
@@ -40,8 +44,8 @@ export function createSynopticPattern(random, setupName, intensity, s = {}) {
     highX: s.highX ?? lerp(0.85, 1.1, random()),
     highY: lerp(0.3, 0.7, random()),
     // Shortwaves riding through the trough; SynopticDynamics moves them and adds new ones.
-    shortwaves: [{ id: 1, x: lowX - upstream * fe, y: lowY + upstream * fn, dm: troughDm * lerp(0.3, 0.45, random()) }],
-    shortwaveDmRange: [troughDm * 0.28, troughDm * 0.5],
+    shortwaves: [{ id: 1, x: lowX - upstream * fe, y: lowY + upstream * fn, dm: Math.max(MIN_SHORTWAVE_DM, troughDm * lerp(0.3, 0.45, random())) }],
+    shortwaveDmRange: [Math.max(MIN_SHORTWAVE_DM, troughDm * 0.28), Math.max(MIN_SHORTWAVE_DM + 1.4, troughDm * 0.5)],
     jetPeakKt: s.jetPeakKt ?? 60,
     lljKt: s.lljKt ?? 40,
     lowX, lowY,
@@ -182,9 +186,11 @@ export function sampleSynopticPattern(pattern, nx, ny, elapsedHours = 0) {
   const topology = Array.isArray(pattern.boundaryTopology) ? pattern.boundaryTopology : ['cold', 'warm'];
   const warmFrontActivation = smoothstep(lowX - 0.02, lowX + 0.08, nx);
   const trailingBoundaryActivation = smoothstep(tripleY - 0.02, tripleY + 0.08, ny);
-  const southOfWarmFront = topology.includes('warm') ? lerp(1, smoothstep(warmFrontY - 0.055, warmFrontY + 0.055, ny), warmFrontActivation) : 1;
-  const aheadOfColdFront = topology.includes('cold') ? lerp(1, smoothstep(coldFrontX - 0.050, coldFrontX + 0.050, nx), trailingBoundaryActivation) : 1;
-  const eastOfDryline = smoothstep(drylineX - 0.040, drylineX + 0.040, nx);
+  // A front lies on the warm (moist) edge of its gradient zone: the warm-sector air mass reaches
+  // the boundary itself, so the lift along the boundary acts on the unstable air.
+  const southOfWarmFront = topology.includes('warm') ? lerp(1, smoothstep(warmFrontY - 0.105, warmFrontY - 0.005, ny), warmFrontActivation) : 1;
+  const aheadOfColdFront = topology.includes('cold') ? lerp(1, smoothstep(coldFrontX - 0.095, coldFrontX - 0.005, nx), trailingBoundaryActivation) : 1;
+  const eastOfDryline = smoothstep(drylineX - 0.075, drylineX - 0.005, nx);
   const drylineActive = topology.includes('dryline') && pattern.drylineFactor > 0.2;
   const effectiveEastOfDryline = drylineActive ? lerp(1, eastOfDryline, clamp(pattern.drylineFactor, 0, 1) * trailingBoundaryActivation) : 1;
 

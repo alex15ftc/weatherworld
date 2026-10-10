@@ -8,7 +8,9 @@ import { WeatherAuthorityRuntime } from './WeatherAuthorityRuntime.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
-const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED });
+// The authority resumes from its saved state unless WEATHER_SEED names a system to start
+// (WEATHER_PERSIST=off keeps nothing on disk; WEATHER_STATE_PATH moves the saved state).
+const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath: process.env.WEATHER_PERSIST === 'off' ? null : path.resolve(ROOT, process.env.WEATHER_STATE_PATH ?? 'data/cache/authority-state.bin') });
 const ADVANCE_POLL_MS = 10_000;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }

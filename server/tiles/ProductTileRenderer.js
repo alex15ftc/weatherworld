@@ -11,11 +11,16 @@ const NWS_PROBABILITY_COLORS={
   ],
   hail:[
     [5,'#c5a392'],[15,'#ffeb7f'],[30,'#ff7f7f'],[45,'#ff7fff'],[60,'#c895f6']
+  ],
+  // Day 3 total severe probability.
+  severe:[
+    [5,'#c5a392'],[15,'#ffeb7f'],[30,'#ff7f7f'],[45,'#ff7fff'],[60,'#c895f6']
   ]
 };
 const PALETTES={
- risk:{min:0,max:5,cat:true,stops:['#c1e9c1','#66a366','#ffe066','#ffa366','#e06666','#ee99ee']},
- tornadoRisk:{discrete:NWS_PROBABILITY_COLORS.tornado},hailRisk:{discrete:NWS_PROBABILITY_COLORS.hail},windRisk:{discrete:NWS_PROBABILITY_COLORS.wind},
+ // Categories: none (no thunder), TSTM, MRGL, SLGT, ENH, MDT, HIGH.
+ risk:{min:0,max:6,cat:true,stops:['#ffffff','#c1e9c1','#66a366','#ffe066','#ffa366','#e06666','#ee99ee']},
+ tornadoRisk:{discrete:NWS_PROBABILITY_COLORS.tornado},hailRisk:{discrete:NWS_PROBABILITY_COLORS.hail},windRisk:{discrete:NWS_PROBABILITY_COLORS.wind},severeRisk:{discrete:NWS_PROBABILITY_COLORS.severe},
  temperature:{min:35,max:105,stops:['#3d5ba9','#6aa6d9','#d5e9ec','#f4d35e','#ee964b','#c53b32']},dewpoint:{min:15,max:80,stops:['#7a4c2a','#b88a56','#d7cf91','#77b255','#287a3d','#073b24']},pressure:{min:988,max:1024,stops:['#6f2dbd','#3155a4','#47a6c6','#cce5df','#f4d35e','#ef8354']},cape:{min:0,max:6000,stops:['#25282c','#5d8f35','#e5d84a','#f08a35','#d83232','#8736a5']},cin:{min:0,max:200,stops:['#f4f4f4','#8bd3dd','#4d96d7','#5342a8','#24124d']},srh:{min:0,max:750,stops:['#26272a','#457b9d','#a8dadc','#f4a261','#e63946','#761f86']},bulkShear:{min:0,max:90,stops:['#292b2f','#3b82a0','#55b98f','#d6d645','#f28c28','#bd2b38']},stp:{min:0,max:12,stops:['#27282c','#4d7f4b','#e4d84c','#f29e3d','#812091']},vtp:{min:0,max:5,stops:['#27282c','#355c7d','#5b6fb5','#9b59b6','#e74c3c','#ff9f43']},forcing:{min:0,max:1,stops:['#20242a','#325d7d','#49a6a1','#d7cf5c','#e57b36','#b72e4c']},readiness:{min:0,max:100,stops:['#20242a','#355f8d','#55aa82','#ded85c','#ee8736','#c22c45']},trigger:{min:0,max:100,stops:['#20242a','#355f8d','#55aa82','#ded85c','#ee8736','#c22c45']},initiation:{min:0,max:100,stops:['#20242a','#355f8d','#55aa82','#ded85c','#ee8736','#c22c45']},verticalMotion:{min:0,max:1.25,stops:['#20242a','#385c86','#49a5b8','#8bc66e','#e4d257','#ec704d']},emlInfluence:{min:0,max:100,stops:['#20242a','#65523d','#9d7045','#d49a4a','#e8c56a','#f4e3a1']},lapseRate:{min:5,max:9.5,stops:['#315b7d','#5c9ca8','#b7c979','#e4c55f','#df7e3f','#b73232']},windSurface:{min:0,max:45,stops:['#20242a','#365f8d','#50a4b8','#94c96d','#e6d65d','#eb6f4b']},wind800:{min:0,max:75,stops:['#20242a','#365f8d','#50a4b8','#94c96d','#e6d65d','#eb6f4b']},wind500:{min:0,max:100,stops:['#20242a','#365f8d','#50a4b8','#94c96d','#e6d65d','#eb6f4b']},wind250:{min:0,max:170,stops:['#20242a','#365f8d','#50a4b8','#94c96d','#e6d65d','#eb6f4b']},
  reflectivity:{min:-10,max:82,stops:['#050a12','#143b73','#149155','#50cd37','#f5df28','#f5781e','#e12328','#cd37dc','#ffffff']},velocity:{min:-160,max:160,stops:['#10d76c','#056d36','#111820','#7a2028','#ff3845']},correlationCoefficient:{min:.48,max:1,stops:['#781478','#e12d41','#f59b1e','#f5e637','#50cd78','#46d2eb']}
 };
@@ -76,5 +81,6 @@ export const OUTLOOK_LEGENDS={
  risk:[['TSTM','#c1e9c1'],['MRGL','#66a366'],['SLGT','#ffe066'],['ENH','#ffa366'],['MDT','#e06666'],['HIGH','#ee99ee']],
  tornadoRisk:NWS_PROBABILITY_COLORS.tornado.map(([v,c])=>[`${v}%`,c]),
  windRisk:NWS_PROBABILITY_COLORS.wind.map(([v,c])=>[`${v}%`,c]),
- hailRisk:NWS_PROBABILITY_COLORS.hail.map(([v,c])=>[`${v}%`,c])
+ hailRisk:NWS_PROBABILITY_COLORS.hail.map(([v,c])=>[`${v}%`,c]),
+ severeRisk:NWS_PROBABILITY_COLORS.severe.map(([v,c])=>[`${v}%`,c])
 };

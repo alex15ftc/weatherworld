@@ -46,17 +46,19 @@ export function advanceSynopticState(world, dtHours) {
   const elapsed = Number(world.evolution?.elapsedHours) || 0;
   const perHour = kt => kt * 1.852 / (p.domainKm ?? 805); // kt -> pattern units per hour
   const f = flowVector(p);
+  // Ensemble members carry multipliers on these rates (model uncertainty); 1 otherwise.
+  const rate = key => Number(dyn.rates?.[key]) || 1;
 
   // Long-wave trough and downstream ridge drift slowly along the flow.
-  const drift = perHour(p.flow500Kt * TROUGH_PHASE_FRACTION) * dtHours;
+  const drift = perHour(p.flow500Kt * TROUGH_PHASE_FRACTION * rate('trough')) * dtHours;
   p.troughX += f.e * drift; p.troughY -= f.n * drift;
   p.highX += f.e * drift; p.highY -= f.n * drift;
 
   // Shortwaves ride the flow (steered by the wind without their own circulation).
   for (const sw of p.shortwaves) {
     const w = samplePatternWinds(p, sw.x, sw.y, { excludeShortwave: sw });
-    sw.x += perHour(w.u500Kt) * SHORTWAVE_STEERING * dtHours;
-    sw.y -= perHour(w.v500Kt) * SHORTWAVE_STEERING * dtHours;
+    sw.x += perHour(w.u500Kt) * SHORTWAVE_STEERING * rate('shortwave') * dtHours;
+    sw.y -= perHour(w.v500Kt) * SHORTWAVE_STEERING * rate('shortwave') * dtHours;
   }
   p.shortwaves = p.shortwaves.filter(sw => sw.x > -1.2 && sw.x < 2.0 && sw.y > -1.2 && sw.y < 2.0
     && ((sw.x - 0.5) * f.e - (sw.y - 0.5) * f.n) < 1.3);
@@ -79,8 +81,8 @@ export function advanceSynopticState(world, dtHours) {
   const h = 0.02;
   const gradX = (upperLevelSupport(p, p.lowX + h, p.lowY) - upperLevelSupport(p, p.lowX - h, p.lowY)) / (2 * h);
   const gradY = (upperLevelSupport(p, p.lowX, p.lowY + h) - upperLevelSupport(p, p.lowX, p.lowY - h)) / (2 * h);
-  let vx = perHour(steer.u500Kt) * LOW_STEERING + LOW_PROPAGATION * gradX;
-  let vy = -perHour(steer.v500Kt) * LOW_STEERING + LOW_PROPAGATION * gradY;
+  let vx = (perHour(steer.u500Kt) * LOW_STEERING + LOW_PROPAGATION * gradX) * rate('low');
+  let vy = (-perHour(steer.v500Kt) * LOW_STEERING + LOW_PROPAGATION * gradY) * rate('low');
   const speed = Math.hypot(vx, vy), maxSpeed = perHour(MAX_LOW_SPEED_KT);
   if (speed > maxSpeed) { vx *= maxSpeed / speed; vy *= maxSpeed / speed; }
   p.lowX += vx * dtHours; p.lowY += vy * dtHours;
@@ -88,11 +90,11 @@ export function advanceSynopticState(world, dtHours) {
   const support = upperLevelSupport(p, p.lowX, p.lowY);
   const targetDepth = p.maxLowDepthHpa * clamp(0.3 + support, 0.3, 1);
   const previousDepth = p.lowDepthHpa;
-  p.lowDepthHpa += (targetDepth - p.lowDepthHpa) * clamp(dtHours / DEEPENING_HOURS, 0, 1);
+  p.lowDepthHpa += (targetDepth - p.lowDepthHpa) * clamp(dtHours * rate('deepening') / DEEPENING_HOURS, 0, 1);
   dyn.deepeningHpaPerHour = (p.lowDepthHpa - previousDepth) / dtHours;
   maybeFormNewLow(p, dyn, elapsed, support);
 
-  advanceBoundaries(world, p, dyn, dtHours, perHour);
+  advanceBoundaries(world, p, dyn, dtHours, perHour, rate);
 }
 
 // A new lee low forms under the strongest upper support once the old low has lost its own
@@ -116,7 +118,7 @@ function maybeFormNewLow(p, dyn, elapsed, supportAtLow) {
   dyn.events.push({ hour: elapsed, type: 'lee-cyclogenesis', x: best.x, y: best.y });
 }
 
-function advanceBoundaries(world, p, dyn, dtHours, perHour) {
+function advanceBoundaries(world, p, dyn, dtHours, perHour, rate) {
   const geo = (x, y) => boundaryGeometry(p, x, y);
   const tripleY = geo(p.lowX, p.lowY).tripleY;
 
@@ -128,7 +130,7 @@ function advanceBoundaries(world, p, dyn, dtHours, perHour) {
   const slope = p.coldFrontSlope;
   const n = { x: 1 / Math.hypot(1, slope), y: slope / Math.hypot(1, slope) }; // toward the warm side (x east, y south)
   const coldNormalKt = behind.e * n.x - behind.n * n.y;
-  const coldSpeedKt = COLD_FRONT_FACTOR * Math.max(0.2 * Math.hypot(behind.e, behind.n), coldNormalKt);
+  const coldSpeedKt = COLD_FRONT_FACTOR * rate('coldFront') * Math.max(0.2 * Math.hypot(behind.e, behind.n), coldNormalKt);
   dyn.coldFrontSpeed = perHour(coldSpeedKt) / n.x;
   p.coldFrontOffset = clamp(p.coldFrontOffset + (dyn.coldFrontSpeed - dyn.lowVelocity.x) * dtHours, -0.3, 0.6);
 
@@ -138,7 +140,7 @@ function advanceBoundaries(world, p, dyn, dtHours, perHour) {
   const warmSide = lowLevelWindKt(p, warmX, warmY);
   const wn = { x: 0.22 / Math.hypot(1, 0.22), y: -1 / Math.hypot(1, 0.22) }; // toward the cool (north) side
   const warmNormalKt = warmSide.e * wn.x - warmSide.n * wn.y;
-  dyn.warmFrontSpeed = -perHour(WARM_FRONT_FACTOR * warmNormalKt) / Math.abs(wn.y); // change of y (south positive)
+  dyn.warmFrontSpeed = -perHour(WARM_FRONT_FACTOR * rate('warmFront') * warmNormalKt) / Math.abs(wn.y); // change of y (south positive)
   p.warmFrontOffset = clamp(p.warmFrontOffset + (dyn.warmFrontSpeed - dyn.lowVelocity.y) * dtHours, -0.15, 0.3);
 
   // Dryline: afternoon boundary-layer mixing pushes it east; at night the moist low levels
@@ -148,7 +150,7 @@ function advanceBoundaries(world, p, dyn, dtHours, perHour) {
   const night = localHour >= 20 || localHour < 8 ? 1 : 0;
   const dryY = tripleY + 0.3;
   const drySide = lowLevelWindKt(p, geo(p.lowX, dryY).drylineX - 0.08, dryY);
-  const drylineKmh = DRYLINE_MIXING_KMH * mixing - DRYLINE_RETREAT_KMH * night + 0.1 * Math.max(0, drySide.e) * 1.852;
+  const drylineKmh = (DRYLINE_MIXING_KMH * mixing - DRYLINE_RETREAT_KMH * night) * rate('dryline') + 0.1 * Math.max(0, drySide.e) * 1.852;
   dyn.drylineSpeed = drylineKmh / (p.domainKm ?? 805);
   p.drylineOffset = clamp(p.drylineOffset + (dyn.drylineSpeed - dyn.lowVelocity.x) * dtHours, -0.8, 0.45);
 }

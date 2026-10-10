@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { categoryFromHazard, categoryFromDay3TotalSevere } from '../js/diagnostics/riskDiagnosis.js';
+import { categoryFromHazard, categoryFromDay3TotalSevere } from '../js/forecast/spcOutlookRules.js';
 
 const tornado={
   2:['MRGN','MRGN','MRGN'],5:['SLGT','SLGT','SLGT'],10:['SLGT','ENH','ENH','ENH'],

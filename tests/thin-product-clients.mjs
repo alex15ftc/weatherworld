@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { WeatherAuthorityRuntime } from '../server/WeatherAuthorityRuntime.js';
-const runtime=new WeatherAuthorityRuntime({checkpointPath:'/tmp/weather-2.20.1-test.json'});
+const runtime=new WeatherAuthorityRuntime();
 const live=runtime.liveField('cape');
 const outlook=runtime.outlookField('day1','risk');
 const catalog=runtime.radarCatalog();

@@ -14,7 +14,7 @@ const all = { nn: [], seedMeans: [], spreads: [], initHours: new Array(24).fill(
 for (const seed of seeds) {
   const world = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
   const config = generateScenario(world, seed);
-  initializeEvolution(world, config);
+  initializeEvolution(world, config, { profile: { name: 'gameplay', outlookIssuance: 'off' } });
   const seen = new Set(), dirs = [];
   for (let h = 0; h < hours; h++) {
     advanceAtmosphere(world, 1);

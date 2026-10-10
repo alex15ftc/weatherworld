@@ -25,7 +25,9 @@ const controls={
 };
 Object.values(controls).filter(el=>el instanceof HTMLButtonElement||el instanceof HTMLInputElement).forEach(el=>{el.disabled=false;el.removeAttribute('title');});
 
-let manifest=null,storms=[],hoveredCell=null,selectedCell=loadSelection(),selectedStorm=null,gridVisible=true,boundaryVisible=true,regionVisible=true,regionLabelsVisible=true,stormOverlayVisible=false,soundingAbort=null,previewTimer=null,stormRefreshTimer=null,controlBusy=false,pendingControl=null,timeDebounce=null,loadSequence=0,lastRandomSeed=null;
+// SPC's Day 3 outlook carries a single total-severe probability instead of per-hazard maps.
+if(day==='day3'&&scope==='outlook'&&layer){for(const option of [...layer.options])if(['tornadoRisk','windRisk','hailRisk'].includes(option.value))option.remove();layer.add(new Option('Total severe probability','severeRisk'));}
+let manifest=null,storms=[],hoveredCell=null,selectedCell=loadSelection(),selectedStorm=null,gridVisible=true,boundaryVisible=true,isobarsVisible=false,windBarbsVisible=false,regionVisible=true,regionLabelsVisible=true,stormOverlayVisible=false,soundingAbort=null,previewTimer=null,stormRefreshTimer=null,controlBusy=false,pendingControl=null,timeDebounce=null,loadSequence=0,lastRandomSeed=null;
 const map=new TileViewport(canvas,{onClick:selectCell,onHover:hoverCell,classicGrid:true,sourceZoom:2});
 map.setOverlay(drawOverlay);
 
@@ -34,7 +36,9 @@ function drawOverlay(ctx,view){
   if(!manifest)return;ctx.save();
   if(gridVisible)drawGrid(ctx,view);
   if(regionVisible||regionLabelsVisible)drawRegions(ctx,view);
+  if(isobarsVisible)drawIsobars(ctx,view);
   if(boundaryVisible)drawBoundaries(ctx,view);
+  if(windBarbsVisible)drawWindBarbs(ctx,view);
   drawCellHighlight(ctx,view,hoveredCell,'rgba(255,255,255,.12)','rgba(255,255,255,.82)',1.25);
   if(!selectedStorm)drawCellHighlight(ctx,view,selectedCell,'rgba(255,205,64,.16)','#ffd24a',3);
   ctx.font=`700 ${Math.max(11,Math.round(11*(devicePixelRatio||1)))}px ui-monospace`;
@@ -43,15 +47,73 @@ function drawOverlay(ctx,view){
 }
 function drawBoundaries(ctx,view){
   const boundaries=manifest.overlays?.boundaries??[];
+  const project=point=>view.project(point.x/(manifest.domainWidthKm||1),point.y/(manifest.domainHeightKm||1));
+  const colors={cold:'#3d8bff',warm:'#ff4d5e',dryline:'#d98a2b',outflow:'#c9c9c9'};
   for(const boundary of boundaries){
     if((boundary.pointsKm?.length??0)<2)continue;
-    ctx.save();ctx.beginPath();
-    boundary.pointsKm.forEach((point,index)=>{const p=view.project(point.x/(manifest.domainWidthKm||1),point.y/(manifest.domainHeightKm||1));index?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);});
-    ctx.strokeStyle=boundary.type==='cold'?'#4ca3ff':boundary.type==='warm'?'#ff5f6d':'#e09b4c';
-    ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.setLineDash(boundary.type==='dryline'?[10,6]:[]);ctx.stroke();ctx.setLineDash([]);
-    const middle=boundary.pointsKm[Math.floor(boundary.pointsKm.length/2)],p=view.project(middle.x/(manifest.domainWidthKm||1),middle.y/(manifest.domainHeightKm||1));
-    ctx.font='800 11px ui-monospace';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.strokeText(boundary.id,p.x,p.y-4);ctx.fillStyle='#fff';ctx.fillText(boundary.id,p.x,p.y-4);ctx.restore();
+    const points=boundary.pointsKm.map(project),color=colors[boundary.type]??'#c9c9c9',side=boundary.symbolSide??1;
+    ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+    // Dark casing so the front reads over any field colour.
+    for(const [stroke,width] of [['rgba(0,0,0,.65)',5],[color,2.6]]){ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.stroke();}
+    // Standard symbols along the line: cold-front triangles, warm-front semicircles, dryline
+    // scallops, each on the side the server reports.
+    const spacing=boundary.type==='dryline'?20:34,size=boundary.type==='dryline'?5:7;
+    let carried=spacing/2;
+    for(let i=1;i<points.length;i++){
+      const a=points[i-1],b=points[i],length=Math.hypot(b.x-a.x,b.y-a.y);if(length<1e-6)continue;
+      const tx=(b.x-a.x)/length,ty=(b.y-a.y)/length,nx=ty*side,ny=-tx*side;
+      for(let d=carried;d<length;d+=spacing){
+        const x=a.x+tx*d,y=a.y+ty*d;ctx.beginPath();
+        if(boundary.type==='cold'){ctx.moveTo(x-tx*size,y-ty*size);ctx.lineTo(x+nx*size*1.5,y+ny*size*1.5);ctx.lineTo(x+tx*size,y+ty*size);ctx.closePath();ctx.fillStyle=color;ctx.fill();}
+        else{const start=Math.atan2(ty,tx);ctx.arc(x,y,size,start,start+Math.PI,side>0);if(boundary.type==='warm'){ctx.closePath();ctx.fillStyle=color;ctx.fill();}else{ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();}}
+      }
+      carried=(carried-length)%spacing;if(carried<0)carried+=spacing;
+    }
+    ctx.restore();
   }
+  drawPressureCentres(ctx,project);
+}
+function drawPressureCentres(ctx,project){
+  for(const centre of manifest.overlays?.pressureCentres??[]){
+    const p=project({x:centre.xKm,y:centre.yKm});
+    ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+    ctx.font='900 30px Georgia, serif';ctx.lineWidth=5;ctx.strokeStyle='rgba(0,0,0,.75)';ctx.strokeText(centre.type,p.x,p.y);ctx.fillStyle=centre.type==='L'?'#ff3b4b':'#3d8bff';ctx.fillText(centre.type,p.x,p.y);
+    ctx.font='700 11px ui-monospace';ctx.lineWidth=3;ctx.strokeText(String(centre.hPa),p.x,p.y+22);ctx.fillStyle='#fff';ctx.fillText(String(centre.hPa),p.x,p.y+22);ctx.restore();
+  }
+}
+function drawIsobars(ctx,view){
+  const project=(x,y)=>view.project(x/(manifest.domainWidthKm||1),y/(manifest.domainHeightKm||1));
+  ctx.save();ctx.lineCap='round';
+  for(const isobar of manifest.overlays?.isobars??[]){
+    const s=isobar.segments,major=isobar.hPa%4===0;
+    for(const [stroke,width] of [['rgba(0,0,0,.45)',major?3:2.2],['rgba(255,255,255,.9)',major?1.4:.8]]){
+      ctx.beginPath();for(let i=0;i<s.length;i+=4){const a=project(s[i],s[i+1]),b=project(s[i+2],s[i+3]);ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);}
+      ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.stroke();
+    }
+    // One label per isobar, a third of the way along its segment list.
+    if(major&&s.length>=8){const i=Math.floor(s.length/12)*4,p=project(s[i],s[i+1]);ctx.font='700 10px ui-monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.strokeText(String(isobar.hPa),p.x,p.y);ctx.fillStyle='#fff';ctx.fillText(String(isobar.hPa),p.x,p.y);}
+  }
+  ctx.restore();
+}
+// Standard wind barbs: the staff points into the wind; half barb 5 kt, full barb 10 kt,
+// pennant 50 kt; calm is a circle.
+function drawWindBarbs(ctx,view){
+  ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  for(const barb of manifest.overlays?.windBarbs??[]){
+    const p=view.project(barb.xKm/(manifest.domainWidthKm||1),barb.yKm/(manifest.domainHeightKm||1));
+    const draw=()=>{
+      if(barb.speedKt<3){ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.stroke();return;}
+      const angle=barb.fromDeg*Math.PI/180,ux=Math.sin(angle),uy=-Math.cos(angle),vx=-uy,vy=ux,staff=20;
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+ux*staff,p.y+uy*staff);
+      let remaining=Math.round(barb.speedKt/5)*5,at=staff;
+      for(;remaining>=50;remaining-=50,at-=5){const x=p.x+ux*at,y=p.y+uy*at;ctx.moveTo(x,y);ctx.lineTo(x-ux*2.5+vx*8,y-uy*2.5+vy*8);ctx.lineTo(x-ux*5,y-uy*5);}
+      for(;remaining>=10;remaining-=10,at-=3.5){const x=p.x+ux*at,y=p.y+uy*at;ctx.moveTo(x,y);ctx.lineTo(x+ux*3+vx*8,y+uy*3+vy*8);}
+      if(remaining>=5){if(at===staff)at-=3.5;const x=p.x+ux*at,y=p.y+uy*at;ctx.moveTo(x,y);ctx.lineTo(x+ux*1.5+vx*4,y+uy*1.5+vy*4);}
+      ctx.stroke();
+    };
+    ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=3.2;draw();ctx.strokeStyle='#fff';ctx.lineWidth=1.4;draw();
+  }
+  ctx.restore();
 }
 function drawRegions(ctx,view){
   const regions=manifest.overlays?.regions,cells=regions?.cells??[];
@@ -94,15 +156,34 @@ function drawGrid(ctx,view){
 }
 function drawCellHighlight(ctx,view,cell,fill,stroke,width){if(!cell)return;const a=view.project(cell.column/manifest.width,cell.row/manifest.height),b=view.project((cell.column+1)/manifest.width,(cell.row+1)/manifest.height);ctx.fillStyle=fill;ctx.fillRect(a.x,a.y,b.x-a.x,b.y-a.y);ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.strokeRect(a.x+.5,a.y+.5,b.x-a.x-1,b.y-a.y-1);}
 
+// Outlook pages: the ensemble publishes products some minutes after a system starts and at
+// each scheduled update, so the page watches for a newly issued product and reloads the map.
+let reloadKeepsView=false,outlookWatchTimer=null;
+const outlookKey=()=>{const s=manifest?.outlookStatus,p=s?.products?.[day];return `${manifest?.seed}|${p?.system??''}|${p?.status??'pending'}|${p?.issuedHourUtc??''}|${p?.validEndHour??''}|${s?.running||s?.queued?1:0}`;};
+function renderOutlookPending(){
+  const stage=document.querySelector('#mapStage');if(!stage||scope!=='outlook')return;
+  let el=document.querySelector('#outlookPending');
+  if(!el){el=document.createElement('div');el.id='outlookPending';el.style.cssText='position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none;';el.innerHTML='<div style="padding:14px 18px;border-radius:8px;background:rgba(9,14,20,.9);border:1px solid #506074;color:#e8eef5;font-size:14px;max-width:340px;text-align:center"></div>';stage.appendChild(el);}
+  const status=manifest?.outlookStatus,p=status?.products?.[day];
+  const text=p?.status==='issued'?'':p?.status==='beyond-system'?'This period is beyond the current weather system.':status?.enabled===false?'Outlooks are disabled on this server.':'Forecast ensemble running. The outlook appears here when it finishes.';
+  el.firstChild.textContent=text;el.style.display=text?'flex':'none';
+}
+async function watchOutlook(){
+  if(scope!=='outlook'||!manifest||document.hidden)return;
+  try{const next=await client.getMapManifest({scope:'outlook',product:layer.value,day});const before=outlookKey();const previous=manifest.outlookStatus;manifest.outlookStatus=next.outlookStatus;const changed=outlookKey()!==before||next.seed!==manifest.seed;manifest.outlookStatus=previous;if(changed){reloadKeepsView=next.seed===manifest.seed;await load();}}catch{}
+}
+
 async function load(){
   const sequence=++loadSequence;
-  const product=layer.value,outlookProduct=['risk','tornadoRisk','hailRisk','windRisk'].includes(product),actualScope=scope==='outlook'&&outlookProduct?'outlook':'live';
+  const product=layer.value,outlookProduct=['risk','tornadoRisk','hailRisk','windRisk','severeRisk'].includes(product),actualScope=scope==='outlook'&&outlookProduct?'outlook':'live';
   const span=profiler.begin('page:tile-manifest',{scope:actualScope,product});
   const nextManifest=await client.getMapManifest({scope:actualScope,product,day});
   if(sequence!==loadSequence||product!==layer.value){profiler.end(span,{stale:true});return;}
   const preparedTiles=await map.prepareManifest(nextManifest,{z:2});
   if(sequence!==loadSequence||product!==layer.value){profiler.end(span,{stale:true,stage:'tiles'});return;}
-  manifest=nextManifest;map.setManifest(manifest,{preserveView:false,preparedTiles});updateText();profiler.end(span,{storms:storms.length,atomicSwap:true});profiler.interactive({mode:'remote-classic-grid-product'});profiler.publish();
+  const keepView=reloadKeepsView;reloadKeepsView=false;
+  manifest=nextManifest;map.setManifest(manifest,{preserveView:keepView,preparedTiles});updateText();renderOutlookPending();profiler.end(span,{storms:storms.length,atomicSwap:true});profiler.interactive({mode:'remote-classic-grid-product'});profiler.publish();
+  if(scope==='outlook'&&!outlookWatchTimer)outlookWatchTimer=setInterval(watchOutlook,10000);
   if(scope==='live'){refreshStorms(sequence);if(!stormRefreshTimer)stormRefreshTimer=setInterval(()=>refreshStorms(),5000);}else{storms=[];selectedStorm=null;}
 }
 async function refreshStorms(sequence=null){
@@ -115,9 +196,10 @@ async function refreshStorms(sequence=null){
     if(manifest)updateText();
   }catch{}
 }
-function updateText(){syncControls();subtitle.textContent=`Valid ${formatHour(manifest.validHourUtc)} · ${manifest.cellSizeMiles ?? 10} mi clickable grid · full-domain view`;summary.innerHTML=[`${manifest.width} × ${manifest.height}`,scope==='live'?`${manifest.stormCount} storms`:'forecast-only','classic grid'].map(v=>`<span>${v}</span>`).join('');document.querySelector('#domainSize').textContent=`${manifest.domainWidthMiles ?? Math.round(manifest.domainWidthKm/1.609344)} × ${manifest.domainHeightMiles ?? Math.round(manifest.domainHeightKm/1.609344)} mi · ${(manifest.width*manifest.height).toLocaleString()} cells · high-resolution tiled field`;renderForecastDiagnosis();renderLegend();}
+function updateText(){syncControls();subtitle.textContent=`Valid ${formatHour(manifest.validHourUtc)} · ${manifest.cellSizeMiles ?? 10} mi clickable grid · full-domain view`;summary.innerHTML=[`${manifest.width} × ${manifest.height}`,scope==='live'?`${manifest.stormCount} storms`:'forecast-only','classic grid'].map(v=>`<span>${v}</span>`).join('');document.querySelector('#domainSize').textContent=`${manifest.domainWidthMiles ?? Math.round(manifest.domainWidthKm/1.609344)} × ${manifest.domainHeightMiles ?? Math.round(manifest.domainHeightKm/1.609344)} mi · ${(manifest.width*manifest.height).toLocaleString()} cells · high-resolution tiled field`;renderForecastDiagnosis();renderLegend();renderIssueLabel();}
+function renderIssueLabel(){const el=document.querySelector('#outlookIssueLabel');if(!el||scope!=='outlook')return;const status=manifest?.outlookStatus,p=status?.products?.[day];el.textContent=p?.status==='issued'?`Issued ${formatHourPrecise(p.issuedHourUtc)} · valid ${formatHour(p.validStartHour)}–${formatHour(p.validEndHour)}${p.system==='next'?' · next weather system':''}${status.running||status.queued?' · update running':''}`:p?.status==='beyond-system'?'Beyond the current weather system':status?.enabled===false?'Outlook ensemble disabled on this server':'Outlook ensemble running…';}
 
-function renderForecastDiagnosis(){const d=manifest?.forecastDiagnosis;if(!d)return;const set=(id,value)=>{const el=document.querySelector('#'+id);if(el)el.textContent=value;};set('synopticPattern',d.pattern??'—');set('synopticStage',d.stage??'—');set('analogConfidence',`${d.ensemble?.agreement??'—'} · ${d.confidence??'—'}% · ${d.ensemble?.memberCount??0} members`);set('outlookDiscussion',d.discussion??'');const list=(id,values,fallback)=>{const el=document.querySelector('#'+id);if(el)el.innerHTML=(values?.length?values:[fallback]).map(v=>`<li>${escapeHtml(v)}</li>`).join('');};list('analysisReasons',d.supportingFactors,'No strong supporting signal diagnosed.');list('analysisLimitations',d.limitingFactors,'No dominant limiting factor.');}
+function renderForecastDiagnosis(){const d=manifest?.forecastDiagnosis;if(!d)return;const set=(id,value)=>{const el=document.querySelector('#'+id);if(el)el.textContent=value;};set('synopticPattern',d.pattern??'—');set('synopticStage',d.stage??'—');set('analogConfidence',d.ensemble?.memberCount?`${d.ensemble.agreement} agreement · ${d.ensemble.memberCount} members`:'ensemble running');set('outlookDiscussion',d.discussion??'');const list=(id,values,fallback)=>{const el=document.querySelector('#'+id);if(el)el.innerHTML=(values?.length?values:[fallback]).map(v=>`<li>${escapeHtml(v)}</li>`).join('');};list('analysisReasons',d.supportingFactors,'No strong supporting signal diagnosed.');list('analysisLimitations',d.limitingFactors,'No dominant limiting factor.');}
 function renderLegend(){const label=document.querySelector('#legendLabel'),gradient=document.querySelector('#legendGradient'),scale=document.querySelector('.legend-scale'),units=document.querySelector('#legendUnits');if(label)label.textContent=layer.options[layer.selectedIndex]?.textContent??layer.value;if(!manifest?.legend||!gradient)return;gradient.style.background=`linear-gradient(90deg,${manifest.legend.map(([,color])=>color).join(',')})`;if(units)units.textContent=layer.value==='risk'?'SPC category':'probability';if(scale)scale.innerHTML=manifest.legend.map(([name,color])=>`<span class="legend-chip"><i style="background:${color}"></i>${name}</span>`).join('')+(manifest.hatchLegend?`<span class="legend-hatch">//// significant</span>`:'');}
 function hoverCell(point,event){hoveredCell=pointToCell(point);canvas.style.cursor=hoveredCell?'crosshair':'default';if(tooltip){if(!hoveredCell||!event)tooltip.classList.add('hidden');else{tooltip.textContent=`Cell (${hoveredCell.column}, ${hoveredCell.row}) · click for sounding`;tooltip.style.left=`${event.clientX+12}px`;tooltip.style.top=`${event.clientY+12}px`;tooltip.classList.remove('hidden');}}map.schedule();}
 function selectCell(point){const storm=(scope==='live'&&stormOverlayVisible)?nearestStorm(point):null;if(storm){selectStorm(storm);return;}const cell=pointToCell(point);if(!cell)return;selectedStorm=null;selectedCell=cell;saveSelection(cell);restoreCellInspector();map.schedule();openDetailedSounding(cell);}
@@ -178,7 +260,7 @@ function detailDefinitions(surface,forcing,terrain,features,outlook){const rows=
   ['Surface temperature',formatNumber(surface.temperatureF,1,'°F')],['Surface dewpoint',formatNumber(surface.dewpointF,1,'°F')],['Sea-level pressure',formatNumber(surface.pressureMb,1,'hPa')],['Surface wind',formatWind(surface.windDirectionDeg,surface.windSpeedKt)],
   ['Forcing score',formatNumber(forcing.forcingScore,2,'')],['Convective readiness',formatPercent(forcing.convectiveReadiness)],['Trigger strength',formatPercent(forcing.triggerStrength)],['Initiation potential',formatPercent(forcing.initiationPotential)],['Vertical motion',formatNumber(forcing.verticalVelocityMs,2,'m s⁻¹')],
   ['Terrain elevation',formatNumber(terrain.elevationM,0,'m MSL')],['Region',text(terrain.region)],['Air mass',text(features?.airMass)],['Boundary',features?.dryline?'Dryline':text(features?.front)]
-];if(outlook){rows.push(['Forecast risk',text(outlook.risk)],['Tornado probability',formatNumber(outlook.tornadoProbability,0,'%')],['Significant tornado area',outlook.significantTornado?'Yes':'No'],['Hail probability',formatNumber(outlook.hailProbability,0,'%')],['Wind probability',formatNumber(outlook.windProbability,0,'%')]);}return rows;}
+];if(outlook){rows.push(['Forecast risk',text(outlook.risk)]);if(outlook.severeProbability!==undefined)rows.push(['Total severe probability',formatNumber(outlook.severeProbability,0,'%')],['Severe CIG',formatNumber(outlook.severeCig,0,'')]);else rows.push(['Tornado probability',formatNumber(outlook.tornadoProbability,0,'%')],['Tornado CIG',formatNumber(outlook.tornadoCig,0,'')],['Hail probability',formatNumber(outlook.hailProbability,0,'%')],['Hail CIG',formatNumber(outlook.hailCig,0,'')],['Wind probability',formatNumber(outlook.windProbability,0,'%')],['Wind CIG',formatNumber(outlook.windCig,0,'')]);rows.push(['Thunder probability',formatNumber(outlook.thunderProbability,0,'%')]);}return rows;}
 function renderEffectiveLayerStpPlot(p,outlook){
   const panel=document.querySelector('#effectiveLayerStpPanel');
   if(!panel)return;
@@ -222,7 +304,8 @@ function loadSelection(){try{return JSON.parse(sessionStorage.getItem('wx-select
 function formatHour(h){const d=Math.floor(h/24)+1,z=((h%24)+24)%24;return`${String(Math.floor(z)).padStart(2,'0')}Z Day ${d}`;}
 layer.addEventListener('change',()=>load().catch(showError));
 gridButton?.addEventListener('click',()=>{gridVisible=!gridVisible;gridButton.classList.toggle('active',gridVisible);gridButton.textContent=gridVisible?'Hide 10 mi grid':'Show 10 mi grid';map.schedule();});
-boundaryButton?.addEventListener('click',()=>{boundaryVisible=!boundaryVisible;boundaryButton.classList.toggle('active',boundaryVisible);boundaryButton.textContent=boundaryVisible?'Hide boundaries':'Show boundaries';map.schedule();});
+for(const [id,get,set,label] of [['#toggleIsobars',()=>isobarsVisible,v=>{isobarsVisible=v;},'pressure contours'],['#toggleWindBarbs',()=>windBarbsVisible,v=>{windBarbsVisible=v;},'wind barbs']]){const button=document.querySelector(id);button?.addEventListener('click',()=>{set(!get());button.classList.toggle('active',get());button.textContent=`${get()?'Hide':'Show'} ${label}`;map.schedule();});}
+boundaryButton?.addEventListener('click',()=>{boundaryVisible=!boundaryVisible;boundaryButton.classList.toggle('active',boundaryVisible);boundaryButton.textContent=boundaryVisible?'Hide fronts and pressure centres':'Show fronts and pressure centres';map.schedule();});
 regionButton?.addEventListener('click',()=>{regionVisible=!regionVisible;regionButton.classList.toggle('active',regionVisible);regionButton.textContent=regionVisible?'Hide region borders':'Show region borders';map.schedule();});
 regionLabelButton?.addEventListener('click',()=>{regionLabelsVisible=!regionLabelsVisible;regionLabelButton.classList.toggle('active',regionLabelsVisible);regionLabelButton.textContent=regionLabelsVisible?'Hide region labels':'Show region labels';map.schedule();});
 stormOverlayButton?.addEventListener('click',()=>{stormOverlayVisible=!stormOverlayVisible;stormOverlayButton.classList.toggle('active',stormOverlayVisible);stormOverlayButton.textContent=stormOverlayVisible?'Hide storms and tracks':'Show storms and tracks';if(!stormOverlayVisible&&selectedStorm){selectedStorm=null;restoreCellInspector();}map.schedule();});

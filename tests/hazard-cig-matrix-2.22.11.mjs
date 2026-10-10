@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { categoryFromHazard } from '../js/diagnostics/riskDiagnosis.js';
+import { categoryFromHazard } from '../js/forecast/spcOutlookRules.js';
 
 // Exact probability × CIG categorical mappings from the supplied SPC matrix.
 assert.equal(categoryFromHazard('tornado', 2, 0), 'MRGN');

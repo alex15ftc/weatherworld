@@ -8,7 +8,8 @@ const files = readdirSync('tests').filter(f => f.endsWith('.mjs') && (!filters.l
 const failed = [];
 for (const file of files) {
   const started = Date.now();
-  const run = spawnSync(process.execPath, [`tests/${file}`], { encoding: 'utf8', timeout: 600_000 });
+  // Tests construct authorities without the outlook ensemble workers unless asked otherwise.
+  const run = spawnSync(process.execPath, [`tests/${file}`], { encoding: 'utf8', timeout: 600_000, env: { ...process.env, OUTLOOK_WORKERS: process.env.OUTLOOK_WORKERS ?? '0' } });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.status === 0) console.log(`pass  ${file} (${seconds}s)`);
   else {

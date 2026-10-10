@@ -16,7 +16,7 @@ const note = (key, value) => { (aggregate[key] ??= []).push(value); };
 for (const seed of seeds) {
   const world = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
   const config = generateScenario(world, seed);
-  initializeEvolution(world, config);
+  initializeEvolution(world, config, { profile: { name: 'gameplay', outlookIssuance: 'off' } });
   const domainKm = world.width * world.cellSizeKm;
   const rows = [];
   const stormIds = new Set(), modes = {}, tornadoes = new Set();
@@ -68,7 +68,7 @@ for (const seed of seeds) {
   const first = rows[0], peak = rows.reduce((a, b) => (b.capeMax > a.capeMax ? b : a));
   const sameHourNextDay = rows.find(r => Math.abs(r.hour - (first.hour + 24)) < 0.01);
   const summary = {
-    seed, setup: world.setupForecast?.key ?? config.setupType ?? config.narrativeLabel,
+    seed, setup: config.narrativeLabel ?? config.setupType,
     meanTDrift24h: sameHourNextDay ? +(sameHourNextDay.meanT - first.meanT).toFixed(1) : null,
     tMax: +Math.max(...rows.map(r => r.tMax)).toFixed(0), tdMax: +Math.max(...rows.map(r => r.tdMax)).toFixed(0),
     peakCape: Math.round(peak.capeMax), peakHour: peak.hour, peakStp: +Math.max(...rows.map(r => r.stpMax)).toFixed(1),

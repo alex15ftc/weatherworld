@@ -13,6 +13,7 @@
     "audit:daily": "node scripts/daily-activity-audit.mjs",
     "audit:outlooks": "node scripts/outlook-audit.mjs",
     "audit:fields": "node scripts/field-integrity-scan.mjs",
+    "tune:outlooks": "node scripts/outlook-tune.mjs",
     "calibrate:fit": "node scripts/fit-outlook-calibration.mjs",
     "inspect:setups": "node scripts/setup-inspect.mjs",
     "audit:storms": "node scripts/storm-behavior-audit.mjs"

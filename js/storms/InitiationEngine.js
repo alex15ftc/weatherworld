@@ -13,11 +13,20 @@
 import { clamp } from '../scenarios/math.js';
 
 // CIN (J/kg) that each forcing source can overcome at full strength.
-const LIFT_ENERGY_J_KG = { boundary: 170, synoptic: 60, terrain: 90, outflow: 150, thermals: 15 };
+const LIFT_ENERGY_J_KG = { boundary: 170, synoptic: 60, terrain: 90, outflow: 150, thermals: 30 };
 const MIN_CAPE_J_KG = 300;
-const INITIATION_RATE_PER_HOUR = 0.02;   // per cell, at full lift excess and buoyancy
-const SUPPRESSION_RADIUS_KM = 28;        // compensating subsidence around an updraft
+const UNFOCUSED_BOUNDARY_LIFT = 0.4;
+// Initiation rate per cell and hour where the lift exceeds the inhibition by NET_LIFT_SCALE.
+// The rate rises steeply with the surplus: a strongly forced, uncapped front fires along its
+// length within an hour or two, a capped dryline releases a few storms, and broad weak ascent
+// only the occasional one.
+const FORCED_RATE_PER_HOUR = 0.03;
+const NET_LIFT_SCALE_J_KG = 100;
+const SUPPRESSION_RADIUS_KM = 40;        // compensating subsidence around an updraft
 const SUPPRESSION_STRENGTH = 0.92;
+// Forced ascent along a strong boundary overcomes the subsidence between updrafts, so cells
+// there form closer together (and can grow into lines).
+const BOUNDARY_SPACING_REDUCTION = 0.75;
 const GUST_FRONT_WIDTH_KM = 14;
 const MAX_ACTIVE_STORMS = 70;     // computational limit, not a meteorological one
 
@@ -38,9 +47,13 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
       const xKm = (x + nextUnit(seed, hourUtc, x, y, 'x')) * world.cellSizeKm;
       const yKm = (y + nextUnit(seed, hourUtc, x, y, 'y')) * world.cellSizeKm;
 
-      const boundary = clamp(Math.max(Number(cell.features?.boundaryConvergence) || 0, Number(cell.features?.explicitBoundaryInfluence) || 0), 0, 1);
-      // Synoptic-scale ascent ahead of the shortwaves (upper-level support from the synoptic state).
+      // Synoptic-scale ascent: 500 mb height falls ahead of the troughs and shortwaves.
       const synoptic = clamp(Number(cell.features?.synopticAscent) || 0, 0, 1);
+      // A boundary lifts hardest where the upper wave crosses it and where boundaries meet
+      // (triple point); elsewhere along its length the circulation is shallower.
+      const meeting = Object.values(cell.features?.synopticBoundaryInfluences ?? {}).filter(b => b.influence > 0.3).length >= 2;
+      const focus = clamp(synoptic + (meeting ? 0.5 : 0), 0, 1);
+      const boundary = clamp(Math.max(Number(cell.features?.boundaryConvergence) || 0, (Number(cell.features?.explicitBoundaryInfluence) || 0) * (UNFOCUSED_BOUNDARY_LIFT + (1 - UNFOCUSED_BOUNDARY_LIFT) * focus)), 0, 1);
       const terrain = clamp((Number(cell.dynamics?.terrainLiftMs) || 0) / 0.05, 0, 1);
       const outflow = gustFrontLift(outflows, xKm, yKm);
       const surfaceLift = LIFT_ENERGY_J_KG.boundary * boundary + LIFT_ENERGY_J_KG.synoptic * synoptic
@@ -61,8 +74,10 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
 
       const buoyancy = clamp(((elevated ? muCape : mlCape) - MIN_CAPE_J_KG) / 1500, 0.15, 1);
       const processed = clamp(Number(cell.features?.stormProcessedAir) || 0, 0, 1);
-      const suppression = stormSuppression(active, xKm, yKm);
-      const rate = INITIATION_RATE_PER_HOUR * excess * buoyancy * (1 - 0.8 * processed) * (1 - suppression);
+      const spacingKm = SUPPRESSION_RADIUS_KM * (1 - BOUNDARY_SPACING_REDUCTION * boundary);
+      const suppression = stormSuppression(active, xKm, yKm, spacingKm);
+      const netLift = elevated ? elevatedLift - muCin : surfaceLift - mlCin;
+      const rate = FORCED_RATE_PER_HOUR * clamp(netLift / NET_LIFT_SCALE_J_KG, 0, 1.5) ** 2 * buoyancy * (1 - 0.8 * processed) * (1 - suppression);
       const probability = 1 - Math.exp(-rate * dtHours);
       if (nextUnit(seed, hourUtc, x, y, 'fire') > probability) continue;
 
@@ -71,7 +86,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
       const boundaryType = primary === 'boundary' ? (cell.features?.primaryBoundaryType ?? null) : primary === 'outflow' ? 'outflow' : null;
       const boundaryId = primary === 'boundary' ? (cell.features?.primaryBoundaryId ?? null) : null;
       candidates.push({
-        x, y, xKm, yKm, probability, elevated,
+        x, y, xKm, yKm, probability, elevated, spacingKm,
         cin: elevated ? muCin : mlCin, cape: elevated ? muCape : mlCape,
         liftEnergy: elevated ? elevatedLift : surfaceLift,
         boundaryType, corridorId: boundaryId ? `boundary:${boundaryId}` : `${primary}:${Math.floor(x / 5)}:${Math.floor(y / 5)}`,
@@ -86,7 +101,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
   const accepted = [];
   for (const candidate of candidates) {
     if (active.length + accepted.length >= MAX_ACTIVE_STORMS) break;
-    const suppression = stormSuppression(accepted.map(c => ({ positionKm: { x: c.xKm, y: c.yKm } })), candidate.xKm, candidate.yKm);
+    const suppression = stormSuppression(accepted.map(c => ({ positionKm: { x: c.xKm, y: c.yKm } })), candidate.xKm, candidate.yKm, candidate.spacingKm);
     if (nextUnit(seed, hourUtc, candidate.x, candidate.y, 'accept') < suppression) continue;
     accepted.push(candidate);
   }
@@ -94,11 +109,11 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
 }
 
 // Fraction of new-updraft formation suppressed by nearby storms.
-function stormSuppression(storms, xKm, yKm) {
+function stormSuppression(storms, xKm, yKm, radiusKm = SUPPRESSION_RADIUS_KM) {
   let open = 1;
   for (const storm of storms) {
     const d = Math.hypot(storm.positionKm.x - xKm, storm.positionKm.y - yKm);
-    if (d < 3 * SUPPRESSION_RADIUS_KM) open *= 1 - SUPPRESSION_STRENGTH * Math.exp(-((d / SUPPRESSION_RADIUS_KM) ** 2));
+    if (d < 3 * radiusKm) open *= 1 - SUPPRESSION_STRENGTH * Math.exp(-((d / radiusKm) ** 2));
   }
   return 1 - open;
 }

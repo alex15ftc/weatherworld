@@ -23,7 +23,7 @@ function summarize(world) {
 for (const seed of seeds) {
   const world = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
   const config = generateScenario(world, seed);
-  initializeEvolution(world, config);
+  initializeEvolution(world, config, { profile: { name: 'gameplay', outlookIssuance: 'off' } });
   const i = config.ingredients;
   console.log(`seed ${seed}: ${config.narrative} / ${config.setupType} / ${config.flowRegime} flow (from ${Math.round(config.synopticPattern.flowFromDeg)}°), intensity ${config.intensity.toFixed(2)}, topology ${config.boundaryTopology.join('+') || 'none'}`);
   console.log(`  ingredients: Td ${i.gulfDewpointF.toFixed(0)}F, 850 ${i.t850C.toFixed(0)}C, cap700 ${i.cap700C.toFixed(1)}C, lapse ${i.lapse700500.toFixed(1)}, flow500 ${i.flow500Kt.toFixed(0)}kt, jet +${i.jetPeakKt.toFixed(0)}kt, LLJ ${i.lljKt.toFixed(0)}kt, trough ${i.troughDm.toFixed(0)}dam, low ${i.lowDepthHpa.toFixed(0)}hPa`);

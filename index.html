@@ -37,7 +37,7 @@
       <strong id="synopticPattern">—</strong>
       <small id="synopticStage">Pattern diagnosis initializing…</small>
       <div class="analysis-divider"></div>
-      <div class="analysis-row"><span>Analog ensemble</span><b id="analogConfidence">—</b></div>
+      <div class="analysis-row"><span>Forecast ensemble</span><b id="analogConfidence">—</b></div>
       <div class="analysis-copy">
         <span>Outlook discussion</span>
         <p id="outlookDiscussion" class="outlook-discussion">Generate a scenario to create the forecast discussion.</p>
@@ -47,9 +47,9 @@
     <label>
       Outlook product
       <select id="outlookDay">
-        <option value="day1">Day 1 · updates every 6 simulated hours</option>
-        <option value="day2">Day 2 · updates every 12 simulated hours</option>
-        <option value="day3">Day 3 · updates every 24 simulated hours</option>
+        <option value="day1">Day 1 · issued 00Z, 06Z, 12Z, 18Z</option>
+        <option value="day2">Day 2 · issued 06Z and 18Z</option>
+        <option value="day3">Day 3 · issued 06Z</option>
       </select>
       <small id="outlookIssueLabel" class="muted">Predictive outlook cycle initializing…</small>
     </label>
@@ -109,7 +109,9 @@
       <button id="liveMode" type="button" class="secondary">Start live world clock</button>
       <small id="liveStatus" class="muted">Paused · live cadence: 2 real minutes = 30 simulated minutes · 96 real minutes per day</small>
       <label>Simulation time<input id="simulationTime" type="range" min="12" max="84" step="0.5" value="12" /><small id="timeLabel">12Z Day 1</small><small class="muted">Atmosphere evolves every 30 simulated minutes. Day 1/2/3 products update on 6/12/24-hour cycles.</small></label>
-      <button id="toggleFeatures" type="button" class="secondary active">Hide boundaries</button>
+      <button id="toggleFeatures" type="button" class="secondary active">Hide fronts and pressure centres</button>
+      <button id="toggleIsobars" type="button" class="secondary">Show pressure contours</button>
+      <button id="toggleWindBarbs" type="button" class="secondary">Show wind barbs</button>
       <button id="toggleRegions" type="button" class="secondary active">Hide regions</button>
       <button id="toggleRegionLabels" type="button" class="secondary active">Hide region labels</button>
       <button id="toggleGrid" type="button" class="secondary active">Hide 10 mi grid</button>

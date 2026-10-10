@@ -139,7 +139,7 @@ export function diagnoseSynopticTornadoSupport(cell) {
   const coherence=clamp(cell.features?.synopticCoherence ?? 0.75,0,1);
   const pooling=clamp(cell.mesoscaleFields?.moisturePooling ?? 0,0,1);
   const erosion=clamp(cell.mesoscaleFields?.capErosion ?? 0,0,1);
-  const warmSector=cell.features?.warmSector ? 1 : clamp(cell.forecast?.openWarmSectorSupport ?? 0,0,1);
+  const warmSector=cell.features?.warmSector ? 1 : 0;
   return clamp(ascent*.30+coherence*.20+pooling*.18+erosion*.16+warmSector*.16,0,1);
 }
 

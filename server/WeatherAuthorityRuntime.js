@@ -1,76 +1,157 @@
 import fs from 'node:fs';
 import { buildOutlookDiscussion } from '../js/forecast/OutlookDiscussionEngine.js';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
-import { Atmosphere } from '../js/atmosphere.js';
-import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
-import { initializeEvolution, advanceAtmosphere, advanceStormLayer } from '../js/evolution.js';
+import v8 from 'node:v8';
+import { fileURLToPath } from 'node:url';
+import { advanceAtmosphere, advanceStormLayer } from '../js/evolution.js';
+import { resolveRuntimeProfile } from '../js/runtime/RuntimeProfile.js';
+import { buildSystemWorld, nextSystemSeed } from '../js/world/systemBuilder.js';
+import { snapshotWorld, hydrateWorld } from '../js/world/worldSnapshot.js';
+import { serializeSnapshot } from './worldState.js';
 import { SIMULATION_CONFIG } from '../js/simulationConfig.js';
 import { buildSounding } from '../js/sounding.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
+import { buildOutlookProducts, publishOutlookProducts, initializeOutlookCycle, requestOutlookIssuance, memberSpecs, nextMemberSpecs, OUTLOOK_DAYS } from '../js/forecast/EnsembleOutlookEngine.js';
+import { SYSTEM_DURATION_HOURS } from '../js/constants.js';
+import { OutlookEnsemblePool } from './OutlookEnsemblePool.js';
+import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 20270503;
 const SIM_HOURS_PER_REAL_MINUTE = 0.25;
 const STORM_CADENCE_HOURS = 1 / 12;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
-const RISK_CODES = { TSTM: 0, MRGN: 1, SLGT: 2, ENH: 3, MDT: 4, HIGH: 5 };
+const RISK_CODES = { NONE: 0, TSTM: 1, MRGN: 2, SLGT: 3, ENH: 4, MDT: 5, HIGH: 6 };
 const TILE_STYLE_REVISION = 'spc-probability-v6';
 // Each generated system is a 3-day sequence; the authority then starts the next system so a
 // live game never runs on a decayed, departed pattern.
-const SYSTEM_HOURS = 72;
+const SYSTEM_HOURS = SYSTEM_DURATION_HOURS;
+const STATE_VERSION = 1;
+const MAX_CACHED_FORECASTS = 40;
+// Worker threads for outlook ensembles (OUTLOOK_WORKERS=0 disables issuing outlooks).
+const DEFAULT_OUTLOOK_WORKERS = Math.max(1, Math.min(4, os.cpus().length - 2));
 
 export class WeatherAuthorityRuntime {
-  constructor({ seed = DEFAULT_SEED, checkpointPath = path.resolve('data/authority-checkpoint.json') } = {}) {
-    this.seed = Number(seed) || DEFAULT_SEED;
+  // statePath: file the authority resumes from and saves to (null: nothing is persisted).
+  // An explicit seed always starts that system fresh.
+  constructor({ seed, statePath = null, outlookWorkers = process.env.OUTLOOK_WORKERS ?? DEFAULT_OUTLOOK_WORKERS } = {}) {
+    this.outlookWorkers = Math.max(0, Number(outlookWorkers) || 0);
+    this.outlookPool = null;
+    this.outlookJob = null;
     this.authorityInstance = crypto.randomBytes(8).toString('hex');
-    this.checkpointPath = checkpointPath;
+    this.statePath = statePath;
+    this.forecastCachePath = statePath ? path.join(path.dirname(statePath), 'outlooks') : null;
+    this.codeVersion = statePath ? sourceVersion() : 'unversioned';
+    this.savingState = null;
+    this.lastSavedHour = null;
     this.startedAt = Date.now();
     this.lastAdvancedAt = Date.now();
     this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision = 0;
-    this.atmosphere = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
-    this.config = generateScenario(this.atmosphere, this.seed);
-    initializeEvolution(this.atmosphere, this.config);
-    this.assertSpatialIntegrity();
     this.radarCache = null;
     this.radarCacheHour = null;
     this.productCache = new Map();
     this.performance = { cacheHits: 0, cacheMisses: 0, productBuilds: {} };
     this.autoAdvance = true;
     this.systemNumber = 1;
+    const explicitSeed = seed !== undefined && seed !== null && seed !== '';
+    if (explicitSeed || !this.restoreState()) this.adoptWorld(buildSystemWorld(Number(seed) || DEFAULT_SEED));
+    this.dispatchOutlooks();
   }
 
-  // Deterministic follow-on seed so a given starting seed always produces the same campaign.
-  nextSystemSeed() {
-    let h = (Math.imul(this.seed ^ 0x9e3779b9, 2654435761) + this.systemNumber * 0x85ebca6b) >>> 0;
-    h = (h ^ (h >>> 15)) >>> 0; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h = (h ^ (h >>> 12)) >>> 0;
-    return h % 100000000;
+  // Makes `world` the authoritative one. previousWorld: the system it follows (its outlooks
+  // for this system carry over); resumed: a saved world that keeps its issued outlooks.
+  adoptWorld(world, { previousWorld = null, resumed = false } = {}) {
+    const profile = resolveRuntimeProfile({ name: 'gameplay', outlookIssuance: this.outlookWorkers ? 'async' : 'off' });
+    // Outlook snapshots are serialized once into shared memory for the worker threads.
+    world.runtime = { profile, initializedAtMs: Date.now(), phaseMs: {}, phaseRuns: {}, deferred: {}, snapshot: serializeSnapshot };
+    this.atmosphere = world;
+    this.config = world.evolution.config;
+    this.seed = Number(this.config.seed);
+    this.assertSpatialIntegrity();
+    if (!resumed) initializeOutlookCycle(world, previousWorld);
+    else {
+      // Issuances that were queued or running when the server stopped are requested again.
+      const cycle = world.outlookCycle;
+      const missing = Object.keys(OUTLOOK_DAYS).filter(key => !cycle.products[key]);
+      for (const key of missing) delete cycle.lastIssuedHour[key];
+      if (missing.length) requestOutlookIssuance(world, missing);
+    }
   }
 
+  // Runs queued outlook issuances (one at a time) on the worker threads and publishes the
+  // products into the world that issued them. The weather never waits for this.
+  dispatchOutlooks() {
+    const world = this.atmosphere;
+    if (!this.outlookWorkers || this.outlookJob || !world.outlookCycle?.pending?.length) return;
+    const { snapshot, ...request } = world.outlookCycle.pending.shift();
+    this.outlookPool ??= new OutlookEnsemblePool(this.outlookWorkers);
+    const started = Date.now();
+    const current = request.windows.length ? this.outlookPool.runMembers({ snapshot }, memberSpecs(request)) : Promise.resolve([]);
+    this.outlookJob = Promise.all([current, this.nextSystemMembers(request)])
+      .then(([results, nextResults]) => {
+        if (this.atmosphere !== world) return;
+        publishOutlookProducts(world, buildOutlookProducts(world, request, results, nextResults));
+        world.outlookCycle.lastRunMs = Date.now() - started;
+        this.revision += 1;
+        this.invalidateProducts();
+        this.saveState();
+      })
+      .catch(error => console.warn('[outlooks] ensemble failed:', error.message))
+      .finally(() => { this.outlookJob = null; this.dispatchOutlooks(); });
+  }
+
+  // Members for the periods that belong to the next weather system. They start from that
+  // system's first hour, which depends only on its seed, so finished runs are kept on disk.
+  async nextSystemMembers(request) {
+    if (!request.next) return [];
+    const specs = nextMemberSpecs(request);
+    const key = crypto.createHash('sha1').update(JSON.stringify([this.codeVersion, request.next.seed, specs])).digest('hex').slice(0, 20);
+    const file = this.forecastCachePath ? path.join(this.forecastCachePath, `${request.next.seed}-${key}.bin`) : null;
+    if (file) {
+      try { return v8.deserialize(await fs.promises.readFile(file)); } catch { /* not cached */ }
+    }
+    const results = await this.outlookPool.runMembers({ seed: request.next.seed }, specs);
+    if (file) this.writeFile(file, v8.serialize(results)).then(() => this.pruneForecastCache()).catch(error => console.warn('[outlooks] cache skipped:', error.message));
+    return results;
+  }
+
+  async pruneForecastCache() {
+    const names = (await fs.promises.readdir(this.forecastCachePath)).filter(name => name.endsWith('.bin'));
+    if (names.length <= MAX_CACHED_FORECASTS) return;
+    const aged = await Promise.all(names.map(async name => ({ name, time: (await fs.promises.stat(path.join(this.forecastCachePath, name))).mtimeMs })));
+    for (const { name } of aged.sort((a, b) => a.time - b.time).slice(0, names.length - MAX_CACHED_FORECASTS)) await fs.promises.unlink(path.join(this.forecastCachePath, name));
+  }
+
+  close() { this.outlookPool?.close(); }
+
+  // The next system starts when this one ends. Its starting world depends only on its seed;
+  // building it takes about as long as one weather step, and the outlooks already issued
+  // for it are carried over.
   maybeStartNextSystem() {
     if ((Number(this.atmosphere.evolution?.elapsedHours) || 0) < SYSTEM_HOURS) return false;
-    const next = this.nextSystemSeed();
     this.systemNumber += 1;
-    this.reset(next);
+    this.startSystem(nextSystemSeed(this.seed), this.atmosphere);
     return true;
   }
 
-
-  reset(seed = this.seed) {
-    const parsed = Number(seed);
-    this.seed = Number.isFinite(parsed) ? Math.trunc(parsed) : DEFAULT_SEED;
-    this.atmosphere = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
-    this.config = generateScenario(this.atmosphere, this.seed);
-    initializeEvolution(this.atmosphere, this.config);
-    this.assertSpatialIntegrity();
+  startSystem(seed, previousWorld = null) {
+    this.adoptWorld(buildSystemWorld(seed), { previousWorld });
     this.lastAdvancedAt = Date.now();
     this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision += 1;
     this.invalidateProducts();
-    this.persistCheckpoint();
+    this.saveState();
+    this.dispatchOutlooks();
+  }
+
+  reset(seed = this.seed) {
+    const parsed = Number(seed);
+    this.startSystem(Number.isFinite(parsed) ? Math.trunc(parsed) : DEFAULT_SEED);
     return this.metadata();
   }
 
@@ -83,7 +164,8 @@ export class WeatherAuthorityRuntime {
     this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision += 1;
     this.invalidateProducts();
-    this.persistCheckpoint();
+    this.saveState();
+    this.dispatchOutlooks();
     return this.metadata();
   }
 
@@ -128,7 +210,9 @@ export class WeatherAuthorityRuntime {
     if (this.maybeStartNextSystem()) return true;
     this.revision += 1;
     this.invalidateProducts();
-    this.persistCheckpoint();
+    // Saved once per simulated hour (and whenever outlooks are published).
+    if (Math.floor(this.atmosphere.validHourUtc) !== this.lastSavedHour) this.saveState();
+    this.dispatchOutlooks();
     return true;
   }
 
@@ -145,7 +229,17 @@ export class WeatherAuthorityRuntime {
       stormCadenceMinutes: 5, atmosphereCadenceMinutes: 30, autoAdvance: this.autoAdvance,
       spatialIntegrity: this.spatialIntegrity(),
       uptimeSeconds: Math.round((Date.now() - this.startedAt) / 1000), tilePyramid: TILE_PYRAMID,
+      outlookStatus: this.outlookStatus(),
       forecastDiagnosis: buildOutlookDiscussion(this.atmosphere, this.config, 'day1')
+    };
+  }
+
+  outlookStatus() {
+    const cycle = this.atmosphere.outlookCycle;
+    return {
+      enabled: this.outlookWorkers > 0, running: Boolean(this.outlookJob), queued: cycle?.pending?.length ?? 0, lastRunMs: cycle?.lastRunMs ?? null,
+      nextSystemSeed: nextSystemSeed(this.seed),
+      products: Object.fromEntries(Object.entries(cycle?.products ?? {}).map(([key, p]) => [key, { status: p.status, issuedHourUtc: p.issuedHourUtc, validStartHour: p.validStartHour, validEndHour: p.validEndHour, overallRisk: p.overallRisk, system: p.system ?? 'current' }]))
     };
   }
 
@@ -205,8 +299,8 @@ export class WeatherAuthorityRuntime {
       stormArchive: (a.stormArchive ?? []).slice(-120),
       stormOutflows: (a.stormOutflows ?? []).slice(-160),
       stormEngine: a.stormEngine, mesoscale: a.mesoscale, synopticObjects: a.synopticObjects, airMassEngine: a.airMassEngine,
-      regions: a.regions, synopticCoherence: a.synopticCoherence, setupForecast: a.setupForecast,
-      outlookCycle: a.outlookCycle, upcomingSystemForecast: a.upcomingSystemForecast, radarNetwork: a.radarNetwork,
+      regions: a.regions, synopticCoherence: a.synopticCoherence,
+      outlookCycle: a.outlookCycle, radarNetwork: a.radarNetwork,
       config: this.config
     };
   }
@@ -305,7 +399,13 @@ export class WeatherAuthorityRuntime {
       };
     });
   }
-  outlook(day) { return this.atmosphere.outlookCycle?.products?.[day] ?? null; }
+  // Product header without the per-cell grid; fields and tiles carry the map data.
+  outlook(day) {
+    const product = this.atmosphere.outlookCycle?.products?.[day];
+    if (!product) return null;
+    const { grid, rawProbability, ...summary } = product;
+    return summary;
+  }
   outlookField(day, product = 'risk') {
     return this.cached(`outlook:${day}:${product}`, () => encodeGrid(this.atmosphere, cell => {
       const value = cell.predictiveOutlook?.[day] ?? {};
@@ -313,13 +413,14 @@ export class WeatherAuthorityRuntime {
       if (product === 'tornadoRisk') return value.tornadoProbability ?? 0;
       if (product === 'hailRisk') return value.hailProbability ?? 0;
       if (product === 'windRisk') return value.windProbability ?? 0;
+      if (product === 'severeRisk') return value.severeProbability ?? 0;
       return RISK_CODES[value.risk] ?? 0;
     }, { day, product, validHourUtc: this.atmosphere.validHourUtc, outlook: this.outlook(day) }));
   }
 
 
   outlookHatchField(day, product) {
-    const hazard = product === 'tornadoRisk' ? 'Tornado' : product === 'hailRisk' ? 'Hail' : product === 'windRisk' ? 'Wind' : null;
+    const hazard = product === 'tornadoRisk' ? 'Tornado' : product === 'hailRisk' ? 'Hail' : product === 'windRisk' ? 'Wind' : product === 'severeRisk' ? 'Severe' : null;
     if (!hazard) return null;
     return this.cached(`outlook-hatch:${day}:${product}`, () => encodeGrid(this.atmosphere, cell => {
       const probability = Number(cell.predictiveOutlook?.[day]?.[`${hazard.toLowerCase()}Probability`]) || 0;
@@ -330,7 +431,7 @@ export class WeatherAuthorityRuntime {
       const cig = Number(cell.predictiveOutlook?.[day]?.[key]) || 0;
       // Preserve the diagnosed CIG tier through the tile pipeline:
       // CIG1 = broken diagonal, CIG2 = solid diagonal, CIG3 = crossed solid.
-      const maxCig = hazard === 'Hail' ? 2 : 3;
+      const maxCig = hazard === 'Hail' || hazard === 'Severe' ? 2 : 3;
       return Math.max(0, Math.min(maxCig, Math.round(cig)));
     }, { day, product, kind: 'conditional-intensity-tier', validHourUtc: this.atmosphere.validHourUtc }));
   }
@@ -395,11 +496,13 @@ export class WeatherAuthorityRuntime {
     const framework=this.atmosphere.worldFramework;
     const regionIds=[...new Set(framework?.cells?.flatMap(row=>row.map(cell=>cell.regionId))??[])];
     const regionIndex=new Map(regionIds.map((id,index)=>[id,index]));
+    const boundaries=(this.atmosphere.mesoscale?.boundaries??[]).filter(boundary=>boundary.active!==false).map(boundary=>({
+      id:boundary.id,type:boundary.type,strength:boundary.strength,
+      pointsKm:(boundary.pointsKm??[]).map(point=>({x:point.x,y:point.y}))
+    }));
     return {
-      boundaries:(this.atmosphere.mesoscale?.boundaries??[]).filter(boundary=>boundary.active!==false).map(boundary=>({
-        id:boundary.id,type:boundary.type,strength:boundary.strength,
-        pointsKm:(boundary.pointsKm??[]).map(point=>({x:point.x,y:point.y}))
-      })),
+      // Fronts with their symbol side, isobars, pressure centres and wind barbs (per revision).
+      ...this.cached('analysisOverlays',()=>buildAnalysisOverlays(this.atmosphere,boundaries)),
       regions:{
         ids:regionIds,
         cells:framework?.cells?.map(row=>row.map(cell=>regionIndex.get(cell.regionId)??-1))??[],
@@ -408,14 +511,41 @@ export class WeatherAuthorityRuntime {
     };
   }
 
-  persistCheckpoint() {
-    try {
-      fs.mkdirSync(path.dirname(this.checkpointPath), { recursive: true });
-      const tmp = `${this.checkpointPath}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify({ revision: this.revision, seed: this.seed, validHourUtc: this.atmosphere.validHourUtc, savedAt: Date.now() }));
-      fs.renameSync(tmp, this.checkpointPath);
-    } catch (error) { console.warn('[authority] checkpoint skipped:', error.message); }
+  // Writes the whole authoritative state so a restart resumes this system at this hour. The
+  // copy is taken now; the file is written in the background.
+  saveState() {
+    if (!this.statePath) return;
+    this.lastSavedHour = Math.floor(this.atmosphere.validHourUtc);
+    if (this.savingState) { this.saveQueued = true; return; }
+    const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, systemNumber: this.systemNumber, revision: this.revision, world: snapshotWorld(this.atmosphere, { full: true }) });
+    this.savingState = this.writeFile(this.statePath, bytes)
+      .catch(error => console.warn('[authority] state not saved:', error.message))
+      .finally(() => { this.savingState = null; if (this.saveQueued) { this.saveQueued = false; this.saveState(); } });
   }
+
+  async writeFile(file, bytes) {
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.writeFile(`${file}.tmp`, bytes);
+    await fs.promises.rename(`${file}.tmp`, file);
+  }
+
+  // Resumes the saved system. A state written by different simulation code is not resumed.
+  restoreState() {
+    if (!this.statePath || !fs.existsSync(this.statePath)) return false;
+    try {
+      const state = v8.deserialize(fs.readFileSync(this.statePath));
+      if (state.version !== STATE_VERSION || state.code !== this.codeVersion) { console.log('[authority] saved state is from other code; starting a new system'); return false; }
+      this.systemNumber = state.systemNumber;
+      this.revision = state.revision;
+      this.adoptWorld(hydrateWorld(state.world, null), { resumed: true });
+      console.log(`[authority] resumed seed ${this.seed} at hour ${this.atmosphere.validHourUtc}`);
+      return true;
+    } catch (error) {
+      console.warn('[authority] saved state unreadable:', error.message);
+      return false;
+    }
+  }
+
 }
 
 
@@ -528,4 +658,21 @@ function quantizeRadar(values, product) {
       : 0;
   }
   return { values: output, min, max, noDataValue: 0 };
+}
+
+// Fingerprint of the simulation source: saved states and cached forecasts from other code are
+// not reused.
+function sourceVersion() {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const hash = crypto.createHash('sha1');
+  const visit = dir => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) visit(full);
+      else if (entry.name.endsWith('.js')) { const stat = fs.statSync(full); hash.update(`${full}|${stat.size}|${stat.mtimeMs}`); }
+    }
+  };
+  visit(path.join(root, 'js'));
+  visit(path.join(root, 'server'));
+  return hash.digest('hex').slice(0, 16);
 }

@@ -18,7 +18,7 @@ const stat = key => { let s = stats.get(key); if (!s) stats.set(key, s = { nonFi
 
 for (const seed of seeds) {
   const world = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
-  initializeEvolution(world, generateScenario(world, seed));
+  initializeEvolution(world, generateScenario(world, seed), { profile: { name: 'gameplay', outlookIssuance: 'off' } });
   let previousMeans = new Map();
   for (let t = 0; t <= hours; t += 1) {
     if (t > 0) advanceAtmosphere(world, 1);

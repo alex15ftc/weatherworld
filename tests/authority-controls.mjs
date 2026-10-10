@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { WeatherAuthorityRuntime } from '../server/WeatherAuthorityRuntime.js';
-const runtime = new WeatherAuthorityRuntime({ seed: 11111111, checkpointPath: '/tmp/wx-authority-controls.json' });
+const runtime = new WeatherAuthorityRuntime({ seed: 11111111 });
 assert.equal(runtime.metadata().seed, 11111111);
 assert.equal(runtime.metadata().validHourUtc, 12);
 const initialRevision = runtime.revision;
