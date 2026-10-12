@@ -5,18 +5,28 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WeatherAuthorityRuntime } from './WeatherAuthorityRuntime.js';
+import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
+import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
+
+// Set WEATHER_PRIORITY=normal to leave the process priority alone.
+avoidBackgroundThrottling();
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
-// The authority resumes from its saved state unless WEATHER_SEED names a system to start
-// (WEATHER_PERSIST=off keeps nothing on disk; WEATHER_STATE_PATH moves the saved state).
-const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath: process.env.WEATHER_PERSIST === 'off' ? null : path.resolve(ROOT, process.env.WEATHER_STATE_PATH ?? 'data/cache/authority-state.bin') });
+// The authority resumes from its saved state unless WEATHER_SEED names a world to start
+// (WEATHER_PERSIST=off keeps nothing on disk; WEATHER_STATE_PATH moves the saved state). A
+// fresh world spends about a minute letting the large-scale weather develop before the server
+// answers.
+const statePath = process.env.WEATHER_PERSIST === 'off' ? null : path.resolve(ROOT, process.env.WEATHER_STATE_PATH ?? 'data/cache/atmosphere-state.bin');
+if (process.env.WEATHER_SEED || !statePath || !fs.existsSync(statePath)) console.log('[weather-authority] starting a new world (about a minute)...');
+const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath });
+const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine });
 const ADVANCE_POLL_MS = 10_000;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
 function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace.started; perf.totals.requests++; const stat=perf.endpoints[trace.pathname]??={count:0,totalMs:0,maxMs:0}; stat.count++;stat.totalMs+=totalMs;stat.maxMs=Math.max(stat.maxMs,totalMs);perf.recent.unshift({path:trace.pathname,totalMs:+totalMs.toFixed(2),...detail,at:new Date().toISOString()});if(perf.recent.length>50)perf.recent.length=50; return totalMs; }
 function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds}; }
-setInterval(() => { runtime.advanceOnTimer(); }, ADVANCE_POLL_MS).unref();
+setInterval(() => { if (runtime.advanceOnTimer()) surface.capture(); }, ADVANCE_POLL_MS).unref();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -34,6 +44,9 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours);return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/seek' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.seek(body.validHourUtc);return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/clock' && req.method === 'POST') { const body=await readJsonBody(req); return sendJson(req,res,200,runtime.setAutoAdvance(body.enabled),{cacheable:false,trace}); }
+  if (url.pathname.startsWith('/api/atmosphere/') && surface.atmosphere !== runtime.engine) surface.attach(runtime.engine);
+  if (url.pathname === '/api/atmosphere/surface') return sendJson(req, res, 200, { ...surface.analysis(url.searchParams.get('frame')), clockRunning: runtime.autoAdvance }, { cacheable: false, trace });
+  if (url.pathname === '/api/atmosphere/parameter') { const field = surface.parameter(url.searchParams.get('key'), url.searchParams.get('frame')); return sendJson(req, res, field ? 200 : 404, field ?? { error: 'Unknown parameter' }, { cacheable: Boolean(field), trace }); }
   if (url.pathname === '/api/live/metadata') return sendJson(req, res, 200, runtime.metadata(), { trace });
   if (url.pathname === '/api/live/field') return sendJson(req, res, 200, runtime.liveField(url.searchParams.get('product') ?? 'temperature'), { trace });
   if (url.pathname === '/api/live/boundaries') return sendJson(req, res, 200, runtime.boundaries(), { trace });

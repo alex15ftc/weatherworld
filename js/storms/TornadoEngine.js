@@ -1,7 +1,7 @@
+import { rotatingShare, lineShare, outflowDominance } from './StormModeEngine.js';
 import { clamp } from '../scenarios/math.js';
 
 const MPH_PER_KPH = 0.621371;
-const TORNADO_STATES = Object.freeze(['none', 'developing', 'on-ground', 'lifting', 'ended']);
 
 export function initializeTornadoState(storm) {
   storm.tornado = {
@@ -11,184 +11,128 @@ export function initializeTornadoState(storm) {
     previousPositionKm: { ...storm.positionKm }, motionDirectionDeg: 0,
     forwardSpeedMph: 0, startedHourUtc: null, endedHourUtc: null,
     peakWindSpeedMph: 0, peakWidthYards: 0, cycleCount: 0, trackPoints: [],
-    favorableMinutes: 0, unfavorableMinutes: 0, lastGenesisHourUtc: null, genesisCooldownMinutes: 0, pathway: null
+    lastGenesisHourUtc: null
   };
   storm.tornadoHistory = [];
   return storm.tornado;
 }
 
-const TORNADO_FAVOURABLE_HOURS = 1.5;
+// A tornado cannot emerge from fields on a 10-mile grid, so this is a statistical model of
+// one, conditioned continuously on the storm and its inflow. There are no gates, vetoes or
+// cooldowns: every input moves the odds smoothly.
+//   - Whether one forms: a rate that rises with the storm's rotation and with the ingredients
+//     of its inflow (instability, low-level helicity, deep shear, cloud base, inhibition,
+//     combined as the significant tornado parameter), and falls where the storm is part of a
+//     line or its outflow undercuts the updraught. Over CHANCE_WINDOW_HOURS of a mature,
+//     fully rotating storm the chance is 65% x (1 - e^(-STP/4)): about 14% at STP 1, 26% at
+//     2, 41% at 4.
+//   - How long it lasts and how strong it gets: drawn once per tornado (nothing at this scale
+//     decides them), from distributions whose scale rises with the same ingredients.
+const CHANCE_WINDOW_HOURS = 2.5, FULL_CHANCE = 0.65, STP_SCALE = 4;
+// A storm is mature enough to produce one from about half an hour old and moderate strength.
+const MATURE_AGE_HOURS = [0.3, 0.9], MATURE_INTENSITY = [0.25, 0.5];
+const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 export function updateTornadoState(world, storm, environment, dtHours) {
   const tornado = storm.tornado ?? initializeTornadoState(storm);
   const dtMinutes = dtHours * 60;
-  const supercell = storm.mode?.includes('supercell');
-  const qlcs = ['broken line','linear segment','QLCS with embedded supercells','QLCS'].includes(storm.mode);
-  const lowLcl = clamp((1500 - (environment.lcl ?? 1800)) / 850, 0, 1);
-  const srh = clamp(((environment.srh ?? 0) - 80) / 260, 0, 1.15);
-  const shear = clamp(((environment.bulkShear ?? 0) - 28) / 34, 0, 1.1);
-  const instability = clamp(((environment.cape ?? 0) - 450) / 2300, 0, 1.1);
-  const inflow = clamp((environment.mesoscale?.effectiveInflow ?? environment.readiness ?? 0), 0, 1);
-  const stretch = clamp(environment.mesoscale?.stretchingPotential ?? 0, 0, 1);
-  const boundary = clamp((environment.boundaryInfluence ?? 0) * 0.45 + (environment.outflowConvergence ?? 0) * 0.25 + (environment.mesoscale?.boundaryAugmentation ?? 0) * 0.30, 0, 1);
-  const interactionQuality = clamp(environment.mesoscale?.interactionQuality ?? storm.interactionQuality ?? (1 - (storm.interactionSuppression ?? 0)), 0, 1);
-  const inflowContamination = clamp(environment.mesoscale?.processedAirFraction ?? storm.processedAirFraction ?? 0, 0, 1);
-  const cellCompetition = clamp(environment.mesoscale?.stormCompetition ?? storm.neighborCompetition ?? 0, 0, 1);
-  const modeFactor = supercell ? 1.18 : qlcs ? 0.78 : 0.26;
-  const mesocyclone = clamp(storm.mesocycloneStrength ?? storm.rotationStrength ?? 0, 0, 1.2);
-  const prefrontal = clamp(environment.prefrontalSupercellSupport ?? 0, 0, 1);
-  const tornadicEnvironment = clamp(environment.tornadicEnvironmentSupport ?? 0, 0, 1.15);
-  const synopticAscent = clamp(environment.synopticAscent ?? environment.mesoscale?.ascent ?? 0, 0, 1);
-  const synopticCoherence = clamp(environment.synopticCoherence ?? 1, 0, 1);
-  const moisturePooling = clamp(environment.moisturePooling ?? environment.mesoscale?.moisturePooling ?? 0, 0, 1);
-  const capErosion = clamp(environment.capErosion ?? environment.mesoscale?.capErosion ?? 0, 0, 1);
-  const stormStructure = clamp(Math.max(storm.rotationStrength ?? 0, mesocyclone * 0.92) * 0.34 + storm.organization * 0.22 + storm.updraftStrength * 0.20 + storm.inflowQuality * 0.14 + prefrontal * 0.06 + tornadicEnvironment * 0.04, 0, 1.2);
-  const coldPoolBalance = clamp(1 - Math.abs((storm.coldPoolStrength ?? 0) - 0.52) / 0.58, 0.15, 1);
-  const maturity = storm.lifecycleState === 'mature' || storm.lifecycleState === 'organizing' ? 1 : storm.lifecycleState === 'developing' ? 0.72 : 0.24;
-  const warmSector = clamp(environment.openWarmSectorSupport ?? environment.warmSector ?? 0, 0, 1);
-  const synopticSupport = clamp(environment.synopticTornadoSupport ?? (synopticAscent * 0.42 + synopticCoherence * 0.23 + moisturePooling * 0.20 + capErosion * 0.15), 0, 1);
-  const diagnosedRawStp = clamp(
-    (environment.cape ?? 0) / 1500 * ((environment.srh ?? 0) / 150) *
-    ((environment.bulkShear ?? 0) / 40) * clamp((2000 - (environment.lcl ?? 2000)) / 1000, 0, 1.5) *
-    clamp((150 - Math.abs(environment.cin ?? 50)) / 125, 0, 1.2) * 0.55,
+  const rotating = rotatingShare(storm), inLine = lineShare(storm), undercut = outflowDominance(storm, environment);
+  const mesocyclone = clamp(storm.mesocycloneStrength ?? 0, 0, 1.2);
+  // The significant tornado parameter of the storm's inflow, from its ingredients.
+  const ingredients = clamp(
+    (environment.cape ?? 0) / 1500 * ((environment.srh ?? 0) / 150) * ((environment.bulkShear ?? 0) / 40) *
+    clamp((2000 - (environment.lcl ?? 2000)) / 1000, 0, 1.5) * clamp((150 - Math.abs(environment.cin ?? 50)) / 125, 0, 1.2),
     0, 18
   );
-  const rawStpValue = clamp(environment.rawStp ?? environment.stp ?? diagnosedRawStp, 0, 18);
-  const stpValue = clamp(environment.stp ?? rawStpValue * (0.62 + 0.38 * synopticSupport), 0, 18);
-  // STP is analysis-only. Tornado physics uses the underlying ingredients.
-  const physicalTornadoSupport = clamp(srh * 0.30 + shear * 0.18 + lowLcl * 0.20 + instability * 0.10 + inflow * 0.12 + stretch * 0.10, 0, 1.2);
-  // VTP is an analysis-only diagnostic. It is sampled for display but must
-  // never influence tornado genesis, intensity, duration, or environmental ceilings.
-  const vtp = clamp(environment.vtp ?? 0, 0, 5);
-  const inhibition = clamp(((Math.abs(environment.cin ?? 0)) - 25) / 175, 0, 1);
-  const environmentSupport = clamp(0.02 + srh * 0.20 + shear * 0.11 + lowLcl * 0.14 + instability * 0.08 + inflow * 0.11 + stretch * 0.06 + boundary * 0.05 + warmSector * 0.04 + prefrontal * 0.07 + tornadicEnvironment * 0.05 + physicalTornadoSupport * 0.10 + synopticSupport * 0.05 - inhibition * 0.09, 0, 1.15);
-  const mesoscaleQuality = clamp(interactionQuality * 0.55 + coldPoolBalance * 0.25 + (1 - inflowContamination) * 0.14 + (1 - cellCompetition) * 0.06, 0, 1);
-  const genesisPotential = clamp(modeFactor * maturity * (stormStructure * 0.52 + environmentSupport * 0.48) * (0.48 + mesoscaleQuality * 0.52), 0, 1);
-  tornado.genesisPotential += (genesisPotential - tornado.genesisPotential) * clamp(dtHours * 3.2, 0, 1);
-  tornado.probability = clamp(tornado.genesisPotential * (supercell ? 1.15 : qlcs ? 0.76 : 0.28), 0, 0.98);
+  const mature = ramp(storm.ageHours, MATURE_AGE_HOURS[0], MATURE_AGE_HOURS[1]) * ramp(storm.intensity, MATURE_INTENSITY[0], MATURE_INTENSITY[1]);
+  const chance = FULL_CHANCE * (1 - Math.exp(-ingredients / STP_SCALE)) * rotating * (1 - 0.4 * inLine) * (1 - 0.6 * undercut) * mature;
+  const ratePerHour = -Math.log(1 - clamp(chance, 0, 0.95)) / CHANCE_WINDOW_HOURS;
+  tornado.genesisPotential = chance;
+  tornado.probability = chance;
+  tornado.rawStp = ingredients;
 
-  const tickIndex = Math.round(((world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0) + storm.ageHours) * 12);
-  const trigger = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|tor|${tickIndex}`);
-  tornado.genesisCooldownMinutes = Math.max(0, (tornado.genesisCooldownMinutes ?? 0) - dtMinutes);
-  const favorableNow = supercell && physicalTornadoSupport >= 0.18 && genesisPotential >= 0.36 && environmentSupport >= 0.40 && mesoscaleQuality >= 0.42 && mesocyclone >= 0.30 && (srh >= 0.18 || boundary >= 0.45) && inflow >= 0.38;
-  tornado.favorableMinutes = favorableNow ? Math.min(180, (tornado.favorableMinutes ?? 0) + dtMinutes) : Math.max(0, (tornado.favorableMinutes ?? 0) - dtMinutes * 1.4);
-  tornado.unfavorableMinutes = favorableNow ? 0 : Math.min(180, (tornado.unfavorableMinutes ?? 0) + dtMinutes);
-  const canTornado = storm.ageHours >= (supercell ? 0.45 : 0.75) && storm.intensity >= (supercell ? 0.34 : 0.46) && storm.organization >= (supercell ? 0.42 : 0.58) && mesocyclone >= (supercell ? 0.28 : 0.38) && tornado.genesisCooldownMinutes <= 0;
-  tornado.pathway = 'standard';
-  const genesisThreshold = supercell ? clamp(0.37 - physicalTornadoSupport * 0.055 - synopticSupport * 0.015, 0.27, 0.37) : qlcs ? 0.50 : 0.82;
-
-  if (!tornado.onGround && (tornado.state === 'none' || tornado.state === 'developing' || tornado.state === 'ended')) {
-    // Genesis is a hazard rate while the storm is mature and favourable, calibrated so that
-    // over ~1.5 favourable hours (a typical mature window) the chance a supercell becomes tornadic follows observed STP
-    // climatology: 65% x (1 - e^(-STP/4)), i.e. ~14% at STP 1, ~26% at 2, ~41% at 4, ~56% at 8.
-    // The STP here is rebuilt from the raw ingredients (CAPE, SRH, shear, LCL, CIN); the
-    // displayed STP field stays analysis-only.
-    const ingredientStp = Math.max(0, diagnosedRawStp / 0.55);
-    const climatological = supercell ? 0.65 * (1 - Math.exp(-ingredientStp / 4))
-      : qlcs ? 0.25 * (1 - Math.exp(-ingredientStp / 3)) : 0.02;
-    const hazardPerHour = -Math.log(1 - clamp(climatological, 0, 0.95)) / TORNADO_FAVOURABLE_HOURS;
-    const perTickChance = (1 - Math.exp(-hazardPerHour * dtHours)) * clamp(mesoscaleQuality / 0.6, 0.4, 1.2);
-    if (canTornado && tornado.genesisPotential >= genesisThreshold && tornado.favorableMinutes >= (supercell ? 15 : 25) && trigger < perTickChance) {
+  if (!tornado.onGround) {
+    const tick = Math.round(((world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0) + storm.ageHours) * 12);
+    const draw = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|tor|${tick}`);
+    if (draw < 1 - Math.exp(-ratePerHour * dtHours)) {
       beginTornado(world, storm, tornado);
-      drawTornadoCharacter(world, storm, tornado, physicalTornadoSupport, supercell);
-    } else if (canTornado && tornado.genesisPotential >= genesisThreshold * 0.82 && tornado.favorableMinutes >= 10) tornado.state = 'developing';
-    else if (tornado.state !== 'ended') tornado.state = 'none';
+      drawTornadoCharacter(world, storm, tornado, ingredients, rotating);
+    } else tornado.state = tornado.state === 'ended' ? 'ended' : 'none';
   }
 
   tornado.previousPositionKm = { ...tornado.positionKm };
   tornado.positionKm = tornadoPosition(storm);
-  const speedKph = Math.hypot(storm.velocityKph?.east ?? 0, storm.velocityKph?.north ?? 0);
-  tornado.forwardSpeedMph = speedKph * MPH_PER_KPH;
+  tornado.forwardSpeedMph = Math.hypot(storm.velocityKph?.east ?? 0, storm.velocityKph?.north ?? 0) * MPH_PER_KPH;
   tornado.motionDirectionDeg = motionDirection(storm.velocityKph);
+  if (!tornado.onGround) return tornado;
 
-  if (tornado.onGround) {
-    tornado.ageMinutes += dtMinutes;
-    tornado.groundTimeMinutes += dtMinutes;
-    tornado.pathLengthKm += Math.hypot(tornado.positionKm.x - tornado.previousPositionKm.x, tornado.positionKm.y - tornado.previousPositionKm.y);
-    if (!tornado.trackPoints) tornado.trackPoints = [];
-    tornado.trackPoints.push({ x: tornado.positionKm.x, y: tornado.positionKm.y, hourUtc: world.stormEngine?.validHourUtc ?? world.validHourUtc });
-    if (tornado.trackPoints.length > 96) tornado.trackPoints.shift();
-    // Tornado occurrence and tornado violence are deliberately separate.
-    // A modest environment can support a brief tornado, but EF3+ requires
-    // sustained overlap of the underlying ingredients and storm-scale structure.
-    // STP now represents the local ingredient overlap adjusted by pattern maintenance;
-    // VTP is intentionally excluded: intensity uses the underlying physical ingredients directly.
-    const violentEnvironment = clamp(
-      srh * 0.22 + shear * 0.14 + lowLcl * 0.15 + instability * 0.10 + inflow * 0.10 +
-      stretch * 0.05 + physicalTornadoSupport * 0.14 + synopticSupport * 0.05 + tornadicEnvironment * 0.04 + prefrontal * 0.03 +
-      interactionQuality * 0.04 - inhibition * 0.07, 0, 1.35
-    );
-    const stormIntensitySupport = clamp((storm.rotationStrength ?? 0) * 0.38 + mesocyclone * 0.24 + storm.updraftStrength * 0.18 + storm.organization * 0.12 + stretch * 0.08, 0, 1.2);
-    const durationSupport = clamp((tornado.groundTimeMinutes - 5) / 35, 0, 1);
-    const intensityCore = clamp(violentEnvironment * 0.58 + stormIntensitySupport * 0.34 + mesoscaleQuality * 0.08, 0, 1.25);
-    // Most tornadoes are weak even in strong environments; the environment raises the
-    // ceiling and the odds, and the per-tornado strength draw decides where this one lands.
-    // Peak wind. Most tornadoes are weak in any environment; the ingredients (STP rebuilt from
-    // the storm's inflow) set the scale of the distribution, the mesocyclone modulates it, and
-    // this tornado's own draw is its quantile. No ceilings or vetoes: a stronger environment
-    // makes strong tornadoes more likely, continuously.
-    const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 0.999);
-    const ingredientStpNow = Math.max(0, diagnosedRawStp / 0.55);
-    const scaleMph = (INTENSITY.baseScaleMph + INTENSITY.stpScaleMph * (1 - Math.exp(-ingredientStpNow / 4))) * (0.85 + 0.3 * clamp(mesocyclone / 0.5, 0, 1));
-    const environmentWindCeiling = Math.min(235, 65 + scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail));
-    // A tornado needs time on the ground to reach its peak.
-    const targetWind = 65 + (environmentWindCeiling - 65) * clamp(tornado.groundTimeMinutes / INTENSITY.matureMinutes, 0.25, 1);
-    tornado.windSpeedMph += (targetWind - tornado.windSpeedMph) * clamp(dtHours * 2.6, 0, 1);
-    tornado.intensityEnvironment = violentEnvironment;
-    tornado.synopticSupport = synopticSupport;
-    tornado.analysisStp = stpValue;
-    tornado.rawStp = rawStpValue;
-    tornado.vtp = vtp;
-    tornado.environmentWindCeilingMph = environmentWindCeiling;
-    // Stronger tornadoes are wider (about 40 yd at EF0 to over half a mile for the violent ones).
-    const targetWidth = clamp(40 + (tornado.windSpeedMph - 65) * 9, 25, 1600);
-    tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 2.1, 0, 1);
-    tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.windSpeedMph);
-    tornado.peakWidthYards = Math.max(tornado.peakWidthYards, tornado.widthYards);
-    tornado.estimatedEf = efRating(tornado.windSpeedMph);
-    storm.hazardExtremes ??= { tornado:{maxWindMph:0,maxEfRating:null,maxWidthYards:0,maxPathLengthKm:0,cycles:0}, wind:{maxSustainedMph:0,maxGustMph:0}, hail:{maxSizeInches:0} };
-    const torExtreme = storm.hazardExtremes.tornado;
-    torExtreme.maxWindMph = Math.max(torExtreme.maxWindMph ?? 0, tornado.windSpeedMph);
-    torExtreme.maxWidthYards = Math.max(torExtreme.maxWidthYards ?? 0, tornado.widthYards);
-    torExtreme.maxPathLengthKm = Math.max(torExtreme.maxPathLengthKm ?? 0, tornado.pathLengthKm);
-    torExtreme.maxEfRating = efRating(torExtreme.maxWindMph);
-    torExtreme.cycles = Math.max(torExtreme.cycles ?? 0, tornado.cycleCount ?? 0);
-    const persistence = tornado.genesisPotential * 0.62 + mesoscaleQuality * 0.22 + (supercell ? 0.10 : qlcs ? 0.02 : 0) + prefrontal * 0.03 + tornadicEnvironment * 0.03;
-    const maxGroundMinutes = Number.isFinite(tornado.lifetimeMinutes) ? tornado.lifetimeMinutes : (supercell ? Math.round(35 + prefrontal * 45 + tornadicEnvironment * 35 + mesoscaleQuality * 35) : 25);
-    if (persistence < 0.43 || storm.lifecycleState === 'dissipating' || tornado.groundTimeMinutes >= maxGroundMinutes) {
-      tornado.state = 'lifting';
-      if (persistence < 0.34 || tornado.groundTimeMinutes >= maxGroundMinutes + 5) endTornado(world, storm, tornado);
-    } else tornado.state = 'on-ground';
-  } else if (tornado.state === 'lifting') {
-    tornado.windSpeedMph *= Math.max(0, 1 - dtHours * 5);
-    tornado.widthYards *= Math.max(0, 1 - dtHours * 4);
-    if (tornado.windSpeedMph < 55) endTornado(world, storm, tornado);
-  }
+  tornado.ageMinutes += dtMinutes;
+  tornado.groundTimeMinutes += dtMinutes;
+  tornado.pathLengthKm += Math.hypot(tornado.positionKm.x - tornado.previousPositionKm.x, tornado.positionKm.y - tornado.previousPositionKm.y);
+  tornado.trackPoints ??= [];
+  tornado.trackPoints.push({ x: tornado.positionKm.x, y: tornado.positionKm.y, hourUtc: world.stormEngine?.validHourUtc ?? world.validHourUtc });
+  if (tornado.trackPoints.length > 96) tornado.trackPoints.shift();
 
+  // Peak wind: this tornado's draw is its quantile in a distribution whose scale the
+  // ingredients set and the mesocyclone modulates. It needs time on the ground to reach it.
+  const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 0.999);
+  const scaleMph = (INTENSITY.baseScaleMph + INTENSITY.stpScaleMph * (1 - Math.exp(-ingredients / STP_SCALE))) * (0.85 + 0.3 * clamp(mesocyclone / 0.5, 0, 1));
+  const ceilingMph = Math.min(235, 65 + scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail));
+  const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / INTENSITY.matureMinutes, 0.25, 1);
+  tornado.windSpeedMph += (targetWind - tornado.windSpeedMph) * clamp(dtHours * 6, 0, 1);
+  tornado.environmentWindCeilingMph = ceilingMph;
+  // Stronger tornadoes are wider: about 50 yd at EF0, 150 at EF1, 250 at EF2, 450 at EF3 and
+  // half a mile for the violent ones.
+  const targetWidth = clamp(30 + 1.3 * Math.max(0, tornado.windSpeedMph - 65) ** 1.25, 25, 1600);
+  tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 8, 0, 1);
+  tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.windSpeedMph);
+  tornado.peakWidthYards = Math.max(tornado.peakWidthYards, tornado.widthYards);
+  // What a damage survey would make of it so far (a rating never goes back down).
+  const exposure = (1 - Math.exp(-tornado.pathLengthKm / DAMAGE_RATING.pathScaleKm)) * (DAMAGE_RATING.luckFloor + (1 - DAMAGE_RATING.luckFloor) * clamp(Number.isFinite(tornado.damageDraw) ? tornado.damageDraw : 0.5, 0, 1));
+  const ratedNow = 65 + (tornado.peakWindSpeedMph - 65) * (DAMAGE_RATING.unexposedShare + (1 - DAMAGE_RATING.unexposedShare) * exposure);
+  tornado.ratedWindMph = Math.max(tornado.ratedWindMph ?? 0, ratedNow);
+  tornado.estimatedEf = efRating(tornado.ratedWindMph);
+  tornado.windEf = efRating(tornado.peakWindSpeedMph);
+  storm.hazardExtremes ??= { tornado: { maxWindMph: 0, maxEfRating: null, maxWidthYards: 0, maxPathLengthKm: 0, cycles: 0 }, wind: { maxSustainedMph: 0, maxGustMph: 0 }, hail: { maxSizeInches: 0 } };
+  const extreme = storm.hazardExtremes.tornado;
+  extreme.maxWindMph = Math.max(extreme.maxWindMph ?? 0, tornado.windSpeedMph);
+  extreme.maxWidthYards = Math.max(extreme.maxWidthYards ?? 0, tornado.widthYards);
+  extreme.maxPathLengthKm = Math.max(extreme.maxPathLengthKm ?? 0, tornado.pathLengthKm);
+  extreme.maxRatedWindMph = Math.max(extreme.maxRatedWindMph ?? 0, tornado.ratedWindMph);
+  extreme.maxEfRating = efRating(extreme.maxRatedWindMph);   // the damage rating, as reports and outlook verification use
+  extreme.maxWindEf = efRating(extreme.maxWindMph);
+  extreme.cycles = Math.max(extreme.cycles ?? 0, tornado.cycleCount ?? 0);
+
+  // It ends when its own time is up, or when the storm stops rotating or falls apart. It stays
+  // down through the step it formed in, so everything that looks at storms between steps sees
+  // it; one shorter than a step is cut back to its own time and path when it ends.
+  const lifetime = Number.isFinite(tornado.lifetimeMinutes) ? tornado.lifetimeMinutes : 10;
+  if (tornado.ageMinutes > dtMinutes + 1e-6 && (tornado.groundTimeMinutes >= lifetime || rotating <= 0 || storm.active === false)) {
+    if (tornado.groundTimeMinutes > lifetime) { tornado.pathLengthKm *= lifetime / tornado.groundTimeMinutes; tornado.groundTimeMinutes = lifetime; }
+    endTornado(world, storm, tornado);
+  } else tornado.state = 'on-ground';
   return tornado;
 }
 
-// Lifetime and strength percentiles drawn once per tornado. Observed climatology: median
-// path a few miles and under ~10 min, ~80% EF0-EF1; long-track/violent tornadoes are rare
-// and need strong environments. The previous fixed formulas made nearly every tornado an
-// EF3 lasting 90-150 minutes over 50-80 miles.
-function drawTornadoCharacter(world, storm, tornado, environmentSupport, supercell) {
+// Lifetime and strength quantile, drawn once per tornado. Half of all tornadoes last under
+// five minutes and one in ten over twenty; a rotating storm among strong ingredients can
+// keep one down for an hour.
+function drawTornadoCharacter(world, storm, tornado, ingredients, rotating) {
   const seed = `${world.evolution?.config?.seed ?? 1}|${storm.id}|cycle${tornado.cycleCount}`;
-  const lifeDraw = deterministicUnit(seed + '|life'), strengthDraw = deterministicUnit(seed + '|strength');
-  const env = clamp(environmentSupport, 0, 1);
-  // Heavy-tailed lifetime: typically 3-15 min; strong environments stretch the tail to ~90 min.
-  const lifetime = 3 + 12 * lifeDraw + (supercell ? 75 * Math.pow(lifeDraw, 6) * (0.25 + 0.75 * env) : 0);
-  tornado.lifetimeMinutes = Math.round(clamp(lifetime, 3, supercell ? 95 : 20));
-  tornado.strengthUniform = strengthDraw;
-  tornado.strengthDraw = clamp(strengthDraw * (0.55 + 0.45 * env) + 0.2 * Math.pow(strengthDraw, 4) * env, 0, 1);
+  const lifeDraw = deterministicUnit(seed + '|life'), support = 1 - Math.exp(-ingredients / STP_SCALE);
+  const lifetime = 1.5 + 7 * Math.pow(lifeDraw, 1.5) + rotating * 60 * Math.pow(lifeDraw, 7) * (0.25 + 0.75 * support);
+  tornado.lifetimeMinutes = Math.round(clamp(lifetime, 1.5, 10 + 60 * rotating) * 10) / 10;
+  tornado.strengthUniform = deterministicUnit(seed + '|strength');
+  tornado.damageDraw = deterministicUnit(seed + '|damage');
+  tornado.ratedWindMph = 0;
 }
 
 function beginTornado(world, storm, tornado) {
   tornado.state = 'on-ground'; tornado.onGround = true; tornado.ageMinutes = 0;
-  tornado.groundTimeMinutes = 0; tornado.pathLengthKm = 0; tornado.widthYards = 60;
+  tornado.groundTimeMinutes = 0; tornado.pathLengthKm = 0; tornado.widthYards = 35;
   tornado.windSpeedMph = 75; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.positionKm = tornadoPosition(storm);
-  tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc; tornado.genesisCooldownMinutes = 0;
+  tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
 }
 
 function endTornado(world, storm, tornado) {
@@ -199,25 +143,36 @@ function endTornado(world, storm, tornado) {
       endedHourUtc: world.stormEngine?.validHourUtc ?? world.validHourUtc,
       pathLengthKm: tornado.pathLengthKm, groundTimeMinutes: tornado.groundTimeMinutes,
       peakWindSpeedMph: tornado.peakWindSpeedMph, peakWidthYards: tornado.peakWidthYards,
-      estimatedEf: efRating(tornado.peakWindSpeedMph), trackPoints: (tornado.trackPoints ?? []).slice(-96)
+      // estimatedEf is the damage rating; windEf is what its peak wind would be rated on wind alone.
+      ratedWindMph: tornado.ratedWindMph ?? tornado.peakWindSpeedMph, estimatedEf: efRating(tornado.ratedWindMph ?? tornado.peakWindSpeedMph), windEf: efRating(tornado.peakWindSpeedMph),
+      trackPoints: (tornado.trackPoints ?? []).slice(-96)
     });
     if (storm.tornadoHistory.length > 8) storm.tornadoHistory.shift();
   }
   tornado.state = 'ended'; tornado.onGround = false; tornado.endedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
-  // Cyclic supercells produce a new tornado roughly every 40-80 minutes, not every 25.
-  const cooldownDraw = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|cooldown${tornado.cycleCount}`);
-  tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null; tornado.genesisCooldownMinutes = Math.round(40 + 40 * cooldownDraw);
+  tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null;
 }
 
 function tornadoPosition(storm) {
   const angle = (storm.orientationDeg ?? 0) * Math.PI / 180;
-  const offset = storm.mode?.includes('left-moving') ? 5 : -5;
+  const offset = storm.leftMover ? 5 : -5;
   return { x: storm.positionKm.x + Math.cos(angle) * offset, y: storm.positionKm.y + Math.sin(angle) * offset };
 }
 function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0) * 180 / Math.PI + 360) % 360; }
 // Peak wind above 65 mph follows a stretched exponential whose scale grows with STP: roughly
 // one tornado in eight reaches EF2 in a marginal environment, nearly half in an extreme one.
-const INTENSITY = { baseScaleMph: 26, stpScaleMph: 28, tail: 0.75, matureMinutes: 12 };
+// Peak wind = 65 mph + scale x (-ln(1 - quantile))^tail, the scale rising with the ingredients.
+// This is the wind the tornado really has. Its rating is a separate thing (see DAMAGE_RATING):
+// with a scale near 31 mph about a quarter of tornadoes have EF2 winds or stronger, while the
+// ratings come out as observed (about 64% EF0, 26% EF1, 8% EF2, 2% EF3, under 1% EF4+).
+const INTENSITY = { baseScaleMph: 24, stpScaleMph: 19, tail: 1.0, matureMinutes: 6 };
+// An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
+// tornado's path crosses nothing that can show its full strength, so the rating usually falls
+// short of the wind, more so for a short track. The rated wind is the wind above 65 mph times
+// a share that rises with the length of the path (more things hit) and with this tornado's
+// own luck in what it crossed: unexposedShare for a touch-down in open country, up to all of
+// it for a long track through something sturdy.
+const DAMAGE_RATING = { unexposedShare: 0.5, pathScaleKm: 6, luckFloor: 0.6 };
 
 function efRating(mph) { return mph >= 200 ? 'EF5' : mph >= 166 ? 'EF4' : mph >= 136 ? 'EF3' : mph >= 111 ? 'EF2' : mph >= 86 ? 'EF1' : mph >= 65 ? 'EF0' : null; }
 function deterministicUnit(text) {
@@ -226,4 +181,3 @@ function deterministicUnit(text) {
   h ^= h >>> 16; h = Math.imul(h, 0x7feb352d); h ^= h >>> 15; h = Math.imul(h, 0x846ca68b); h ^= h >>> 16;
   return (h>>>0)/4294967296;
 }
-export { TORNADO_STATES };

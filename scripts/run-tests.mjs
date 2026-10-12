@@ -1,7 +1,10 @@
 // Runs every tests/*.mjs file (or those matching the arguments) and summarizes pass/fail.
 //   node scripts/run-tests.mjs [filter ...]
+import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 import { readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+
+avoidBackgroundThrottling();
 
 const filters = process.argv.slice(2);
 const files = readdirSync('tests').filter(f => f.endsWith('.mjs') && (!filters.length || filters.some(x => f.includes(x)))).sort();
@@ -9,7 +12,7 @@ const failed = [];
 for (const file of files) {
   const started = Date.now();
   // Tests construct authorities without the outlook ensemble workers unless asked otherwise.
-  const run = spawnSync(process.execPath, [`tests/${file}`], { encoding: 'utf8', timeout: 600_000, env: { ...process.env, OUTLOOK_WORKERS: process.env.OUTLOOK_WORKERS ?? '0' } });
+  const run = spawnSync(process.execPath, ['--import', new URL('./priority-register.mjs', import.meta.url).href, `tests/${file}`], { encoding: 'utf8', timeout: 600_000, env: { ...process.env, OUTLOOK_WORKERS: process.env.OUTLOOK_WORKERS ?? '0' } });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.status === 0) console.log(`pass  ${file} (${seconds}s)`);
   else {

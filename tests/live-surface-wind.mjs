@@ -3,7 +3,7 @@ import { WeatherAuthorityRuntime } from '../server/WeatherAuthorityRuntime.js';
 
 const runtime = new WeatherAuthorityRuntime({
   seed: 20270503,
-  outlookWorkers: 0
+  spinUpDays: 4
 });
 const field = runtime.liveField('windSurface');
 assert.ok(field.max > 3, `surface-wind live field was blank (max=${field.max})`);

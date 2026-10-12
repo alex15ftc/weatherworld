@@ -6,16 +6,13 @@
   "scripts": {
     "start": "node server/index.js",
     "test": "node scripts/run-tests.mjs",
-    "test:radar": "node scripts/run-tests.mjs radar thin-product-clients",
-    "fingerprint": "node scripts/state-fingerprint.mjs",
-    "benchmark": "node scripts/benchmark-seed.mjs",
-    "audit:realism": "node scripts/realism-audit.mjs",
-    "audit:daily": "node scripts/daily-activity-audit.mjs",
-    "audit:outlooks": "node scripts/outlook-audit.mjs",
-    "audit:fields": "node scripts/field-integrity-scan.mjs",
-    "tune:outlooks": "node scripts/outlook-tune.mjs",
-    "calibrate:fit": "node scripts/fit-outlook-calibration.mjs",
-    "inspect:setups": "node scripts/setup-inspect.mjs",
-    "audit:storms": "node scripts/storm-behavior-audit.mjs"
+    "inspect:outer": "node scripts/qg-prototype.mjs",
+    "inspect:atmosphere": "node scripts/regional-prototype.mjs",
+    "inspect:fronts": "node scripts/boundary-prototype.mjs",
+    "inspect:storms": "node scripts/storm-prototype.mjs",
+    "inspect:environment": "node scripts/environment-report.mjs",
+    "inspect:activity": "node scripts/activity-report.mjs",
+    "inspect:tornado-days": "node scripts/tornado-day-report.mjs",
+    "inspect:players": "node scripts/player-report.mjs"
   }
 }

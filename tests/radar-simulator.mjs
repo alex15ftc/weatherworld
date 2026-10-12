@@ -1,13 +1,10 @@
-﻿// Radar simulator: echoes must come from storms, signatures must follow storm structure,
+// Radar simulator: echoes must come from storms, signatures must follow storm structure,
 // and scans must be deterministic. Pass --preview <dir> to write PNG previews.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { Atmosphere } from '../js/atmosphere.js';
-import { generateScenario } from '../js/scenarios/scenarioGenerator.js';
-import { initializeEvolution, advanceAtmosphere } from '../js/evolution.js';
-import { SIMULATION_CONFIG } from '../js/simulationConfig.js';
+import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { Storm } from '../js/storms/Storm.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
@@ -15,13 +12,12 @@ import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_PRODUCT_KEYS, decodeRa
 
 const previewIndex = process.argv.indexOf('--preview');
 const previewDir = previewIndex > 0 ? process.argv[previewIndex + 1] : null;
-// Seed 23 has warm-sector supercells developing by +9 h.
-const seed = Number(process.env.RADAR_TEST_SEED ?? 23);
-const hours = Number(process.env.RADAR_TEST_HOURS ?? 9);
+// The redesigned atmosphere a day and a half in, on the second evening, when storms are about.
+const seed = Number(process.env.RADAR_TEST_SEED ?? 2);
+const hours = Number(process.env.RADAR_TEST_HOURS ?? 35);
 
-const world = new Atmosphere(SIMULATION_CONFIG.fixedColumns, SIMULATION_CONFIG.fixedRows);
-initializeEvolution(world, generateScenario(world, seed));
-advanceAtmosphere(world, hours);
+const atmosphere = new AtmosphereWorld({ seed, spinUpDays: 10 }), world = atmosphere.world;
+atmosphere.advance(hours);
 const sites = createRadarSites(world);
 const nearestSite = (x, y) => sites.reduce((a, b) => (Math.hypot(b.xKm - x, b.yKm - y) < Math.hypot(a.xKm - x, a.yKm - y) ? b : a));
 

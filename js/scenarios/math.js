@@ -4,7 +4,6 @@ export const smoothstep = (edge0, edge1, x) => {
   const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
 };
-export const gaussian = (dx, dy, radius) => Math.exp(-(dx * dx + dy * dy) / (radius * radius));
 
 export function mulberry32(seed) {
   let state = seed >>> 0;

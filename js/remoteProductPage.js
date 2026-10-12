@@ -165,7 +165,7 @@ function renderOutlookPending(){
   let el=document.querySelector('#outlookPending');
   if(!el){el=document.createElement('div');el.id='outlookPending';el.style.cssText='position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none;';el.innerHTML='<div style="padding:14px 18px;border-radius:8px;background:rgba(9,14,20,.9);border:1px solid #506074;color:#e8eef5;font-size:14px;max-width:340px;text-align:center"></div>';stage.appendChild(el);}
   const status=manifest?.outlookStatus,p=status?.products?.[day];
-  const text=p?.status==='issued'?'':p?.status==='beyond-system'?'This period is beyond the current weather system.':status?.enabled===false?'Outlooks are disabled on this server.':'Forecast ensemble running. The outlook appears here when it finishes.';
+  const text=p?.status==='issued'?'':p?.status==='beyond-system'?'This period is beyond the current weather system.':status?.enabled===false?(status?.note??'Outlooks are disabled on this server.'):'Forecast ensemble running. The outlook appears here when it finishes.';
   el.firstChild.textContent=text;el.style.display=text?'flex':'none';
 }
 async function watchOutlook(){

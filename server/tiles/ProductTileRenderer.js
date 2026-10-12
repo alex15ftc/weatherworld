@@ -75,7 +75,6 @@ export async function renderTile({values,width,height,product,z,x,y,valueMin=nul
   return await encodeRgbaPng(TILE_SIZE,TILE_SIZE,rgba);
 }
 export function decodeF32Base64(encoded){const b=Buffer.from(encoded,'base64');const copy=Uint8Array.from(b);return new Float32Array(copy.buffer);}
-export function decodeU8Base64(encoded){return Buffer.from(encoded,'base64');}
 export const TILE_PYRAMID={tileSize:TILE_SIZE,minZoom:0,maxZoom:3};
 export const OUTLOOK_LEGENDS={
  risk:[['TSTM','#c1e9c1'],['MRGL','#66a366'],['SLGT','#ffe066'],['ENH','#ffa366'],['MDT','#e06666'],['HIGH','#ee99ee']],

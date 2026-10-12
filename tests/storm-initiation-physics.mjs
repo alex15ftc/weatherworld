@@ -5,11 +5,11 @@ import { findInitiationCandidates } from '../js/storms/InitiationEngine.js';
 function world(cellFor) {
   const width = 30, height = 30, cells = [];
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) cells.push(cellFor(x, y));
-  return { width, height, cellSizeKm: 16, getCell: (x, y) => cells[y * width + x], evolution: { config: { seed: 7 } }, stormOutflows: [] };
+  return { width, height, cellSizeKm: 16, getCell: (x, y) => cells[y * width + x], evolution: { config: { seed: 7 } } };
 }
 const cell = ({ mlcape = 2500, mlcin = 20, mucape = mlcape, mucin = mlcin, sbcape = mlcape, boundary = 0, synoptic = 0 }) => ({
   derived: { sounding: { mlcape, mlcin: -mlcin, mucape, mucin: -mucin, sbcape } },
-  features: { boundaryConvergence: boundary, explicitBoundaryInfluence: boundary, synopticAscent: synoptic, primaryBoundaryType: boundary ? 'dryline' : null, primaryBoundaryId: boundary ? 'OBJ-DRYLINE-001' : null },
+  features: { boundaryConvergence: boundary, convergenceLift: boundary, explicitBoundaryInfluence: boundary, synopticAscent: synoptic, primaryBoundaryType: boundary ? 'dryline' : null, primaryBoundaryId: boundary ? 'OBJ-DRYLINE-001' : null },
   dynamics: {}
 });
 const runSlots = (w, storms = [], slots = 16) => {

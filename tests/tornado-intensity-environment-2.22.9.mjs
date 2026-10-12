@@ -10,12 +10,18 @@ function makeStorm(id) {
 const world={validHourUtc:0,stormEngine:{validHourUtc:0},evolution:{config:{seed:42}}};
 const modest={stp:.45,lcl:1500,srh:125,bulkShear:38,cape:1350,readiness:.55,openWarmSectorSupport:.45,prefrontalSupercellSupport:.28,tornadicEnvironmentSupport:.25,synopticAscent:.25,synopticCoherence:.7,moisturePooling:.35,capErosion:.45,boundaryInfluence:.15,outflowConvergence:.05,mesoscale:{effectiveInflow:.58,stretchingPotential:.28,interactionQuality:.7,processedAirFraction:.1,stormCompetition:.15}};
 const strong={stp:6.5,lcl:850,srh:360,bulkShear:58,cape:2900,readiness:.9,openWarmSectorSupport:.9,prefrontalSupercellSupport:.88,tornadicEnvironmentSupport:.95,synopticAscent:.85,synopticCoherence:.9,moisturePooling:.85,capErosion:.85,boundaryInfluence:.45,outflowConvergence:.15,mesoscale:{effectiveInflow:.92,stretchingPotential:.82,interactionQuality:.92,processedAirFraction:.03,stormCompetition:.05}};
-const a=makeStorm('M');
-for(let i=0;i<12;i++){world.stormEngine.validHourUtc+=1/12; updateTornadoState(world,a,modest,1/12);}
-assert.ok(a.tornado.peakWindSpeedMph < 136, `modest environment reached EF3: ${a.tornado.peakWindSpeedMph}`);
-assert.ok((a.tornado.environmentWindCeilingMph??999)<=120);
-const b=makeStorm('S');
-for(let i=0;i<24;i++){world.stormEngine.validHourUtc+=1/12; updateTornadoState(world,b,strong,1/12); if(!b.tornado.onGround){b.tornado.onGround=true;b.tornado.state='on-ground';}}
-assert.ok((b.tornado.environmentWindCeilingMph??0)>=190);
-assert.ok(b.tornado.peakWindSpeedMph > a.tornado.peakWindSpeedMph);
-console.log('tornado intensity environment calibration: ok', {modest:a.tornado.peakWindSpeedMph,strong:b.tornado.peakWindSpeedMph});
+// The environment sets the scale of the peak-wind distribution; each tornado's own draw
+// (its quantile) decides where it lands. No ceilings: the relation is continuous.
+const run = (id, environment, quantile) => {
+  const storm = makeStorm(id);
+  storm.tornado.strengthUniform = quantile;
+  for (let i = 0; i < 24; i++) { world.stormEngine.validHourUtc += 1 / 12; updateTornadoState(world, storm, environment, 1 / 12); if (!storm.tornado.onGround) { storm.tornado.onGround = true; storm.tornado.state = 'on-ground'; } }
+  return storm.tornado.peakWindSpeedMph;
+};
+const typical = { modest: run('M50', modest, 0.5), strong: run('S50', strong, 0.5) };
+const rare = { modest: run('M95', modest, 0.95), strong: run('S95', strong, 0.95) };
+assert.ok(typical.modest < 111, `a typical tornado in a modest environment is weak (${typical.modest})`);
+assert.ok(typical.strong > typical.modest && rare.strong > rare.modest, 'a stronger environment raises the whole distribution');
+assert.ok(rare.strong >= 136, `a strong environment's upper tail reaches EF3 (${rare.strong})`);
+assert.ok(rare.modest > typical.modest, 'the draw matters in any environment');
+console.log('tornado intensity environment: ok', { typical, rare });

@@ -59,5 +59,23 @@ export class Cell {
       capStrength: 0,
       synopticCoherence: 1
     };
+
+    // Everything the engines attach to a cell later is declared here, in one fixed order, so
+    // that every cell keeps the same object layout (properties added to some cells only, or in
+    // different orders, give the JavaScript engine several layouts to handle).
+    this.environmentDiagnostics = null;
+    this.thermodynamics = null;
+    this.cap = null;
+    this.airMassFractions = null;
+    this.airMassAuthority = null;
+    this.surfaceParcelValidity = null;
+    this._integrityBoundaryKey = null;
+    this._integritySurface = null;
+    this.meteorologicalIntegrity = null;
+    this.mesoscaleFields = null;
+    this.memory = null;
+    this.diagnosticCacheInvalidated = false;
+    this.diagnosticInvalidationReasons = null;
+    this.predictiveOutlook = null;
   }
 }

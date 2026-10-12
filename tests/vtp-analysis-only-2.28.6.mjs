@@ -5,7 +5,8 @@ const tornadoSource=fs.readFileSync(new URL('../js/storms/TornadoEngine.js',impo
 assert.doesNotMatch(tornadoSource,/vtpSupport/);
 assert.doesNotMatch(tornadoSource,/else if \(vtp\s*</);
 assert.doesNotMatch(tornadoSource,/\+\s*vtp\s*\*/);
-assert.match(tornadoSource,/VTP is an analysis-only diagnostic/);
+// The violent tornado parameter is a display diagnostic: the tornado model does not read it at all.
+assert.doesNotMatch(tornadoSource,/vtp/i);
 const strong=diagnoseViolentTornadoParameter({stp:6,rawStp:8,synopticSupport:.9,cape:3500,srh:450,shear:65,lcl:700,cin:20,criticalAngle:100});
 assert.ok(strong>2 && strong<=5,`strong VTP should use meaningful 0-5 display scale, got ${strong}`);
 const zero=diagnoseViolentTornadoParameter({stp:0,rawStp:0,synopticSupport:1,cape:4000,srh:500,shear:70,lcl:600,cin:10,criticalAngle:100});

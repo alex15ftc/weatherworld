@@ -11,7 +11,7 @@ export function buildAnalysisOverlays(world, boundaries = []) {
   return {
     isobars: contours(pressure, width, height, cellSizeKm),
     pressureCentres: centres(pressure, width, height, cellSizeKm),
-    boundaries: boundaries.map(boundary => ({ ...boundary, symbolSide: symbolSide(world, boundary) })),
+    boundaries: boundaries.map(boundary => ({ ...boundary, symbolSide: boundary.symbolSide ?? symbolSide(world, boundary) })),
     windBarbs: barbs(world)
   };
 }

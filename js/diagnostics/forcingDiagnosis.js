@@ -18,9 +18,7 @@ export function diagnoseForcing(world, previous = null) {
     const sn = windComponents(n.surface.wind.direction, n.surface.wind.speed);
     const ss = windComponents(s.surface.wind.direction, s.surface.wind.speed);
     const divergence = (se.u - sw.u + ss.v - sn.v) / (2 * dx);
-    const objectBoundaryConvergence = (cell.features?.boundaryConvergence ?? 0) * 2.2e-4;
-    const stormOutflowConvergence = (cell.features?.stormOutflowConvergence ?? 0) * 2.8e-4;
-    const convergence = -divergence + objectBoundaryConvergence + stormOutflowConvergence;
+    const convergence = -divergence;
 
     // q is kg/kg. The flux divergence therefore has units kg kg^-1 s^-1.
     const qw = specificHumidity(w.surface.dewpoint, w.surface.pressure);
@@ -62,12 +60,7 @@ export function diagnoseForcing(world, previous = null) {
     // looking stronger than one coherent, focused lifting mechanism.
     const kinematic = .27 * convScore + .22 * mfcScore + .14 * frontScore + .11 * terrainScore + .16 * upperScore + .10 * pvaScore;
     const focusedLift = Math.max(convScore, mfcScore, frontScore, terrainScore, upperScore, pvaScore);
-    const synopticFeatureLift =
-      clamp((cell.features.synopticAscent ?? 0) * 0.16, 0, 0.18) +
-      (cell.features.shortwaveTrough ? 0.06 : 0) +
-      (cell.features.upperTrough ? 0.03 : 0) +
-      (cell.features.leeTrough ? 0.05 : 0) +
-      (cell.features.jetStreak ? 0.025 : 0);
+    const synopticFeatureLift = clamp((cell.features.synopticAscent ?? 0) * 0.16, 0, 0.18);
     const forcingScore = clamp(kinematic * (0.72 + 0.28 * focusedLift) + heating * 0.05 + synopticFeatureLift, 0, 1);
 
     // Estimate grid-scale ascent from boundary-layer mass convergence, terrain

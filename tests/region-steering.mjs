@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
+import { STEERING_DEFAULTS } from '../js/world/RegionSteering.js';
+
+// The region slides along the large-scale model toward the support wanted for the day. Only
+// where it reads that model moves: nothing on the map is shifted.
+const build = steering => new AtmosphereWorld({ seed: 4, spinUpDays: 6, storms: false, steering });
+
+// --- Left alone, the region stays where it starts.
+const fixed = build(false), fixedStart = fixed.regional.origin.x;
+fixed.advance(6);
+assert.equal(fixed.steering, null);
+assert.equal(fixed.regional.origin.x, fixedStart, 'a region that is not steered does not move');
+
+// --- Steered: a plan from the start, a slide no faster than the weather systems, and the
+// region where that slide puts it.
+const steered = build({}), regional = steered.regional, length = steered.model.lengthX;
+const first = steered.steering.plan;
+assert.ok(first, 'a plan is made when the world is built');
+assert.ok(Math.abs(first.slideMs) <= STEERING_DEFAULTS.systemSpeedMs + 1e-9, `the slide is within the systems' own speed (${first.slideMs} m/s)`);
+assert.ok(first.support >= 0 && first.support <= 1 && first.wanted >= STEERING_DEFAULTS.wantedLow && first.wanted <= STEERING_DEFAULTS.wantedHigh, 'support and the support wanted are in range');
+const start = regional.origin.x, moisture = Float64Array.from(regional.moisture);
+steered.advance(3);
+const moved = ((regional.origin.x - start) % length + length) % length, expected = ((first.slideMs * 3 * 3600) % length + length) % length;
+assert.ok(Math.abs(moved - expected) < 1, `after 3 hours the region has slid ${(first.slideMs * 3 * 3.6).toFixed(0)} km`);
+// The air on the map is carried by the wind as before, not shifted with the slide: a slide of
+// several cells would otherwise move the whole moisture pattern by that much.
+const change = moisture.reduce((sum, value, k) => sum + Math.abs(regional.moisture[k] - value), 0) / moisture.length;
+assert.ok(change < 1, `the moisture on the map changes only as the weather changes it (${change.toFixed(2)} g/kg in 3 hours)`);
+
+// --- A new plan each day at the planning hour, never faster than the limit.
+const plans = new Set([first.day]);
+for (let hour = 0; hour < 60; hour += 0.5) {
+  steered.advance(0.5);
+  const plan = steered.steering.plan;
+  plans.add(plan.day);
+  assert.ok(Math.abs(regional.slideMs) <= STEERING_DEFAULTS.systemSpeedMs + 1e-9);
+  assert.equal(plan.hourUtc % 24 === STEERING_DEFAULTS.planHourUtc || plan.day === first.day, true, 'later plans are made at the planning hour');
+  for (const row of steered.world.cells) for (const cell of row) assert.ok(Number.isFinite(cell.levels[500].heightTendencyDm12h ?? 0), 'height changes stay finite while sliding');
+}
+assert.ok(plans.size >= 3, `a plan for each day (${plans.size} in two and a half days)`);
+
+// --- The same seed slides the same way.
+const again = build({}); again.advance(3);
+assert.equal(again.regional.origin.x, (() => { const other = build({}); other.advance(3); return other.regional.origin.x; })());
+console.log(`region steering passed (${plans.size} plans; first slide ${first.slideMs} m/s for support ${first.support.toFixed(2)}, wanted ${first.wanted.toFixed(2)})`);

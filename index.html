@@ -3,171 +3,118 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Live Mesoanalysis · Fake Plains Weather</title>
+  <title>Mesoanalysis · Fake Plains Weather</title>
   <link rel="stylesheet" href="./css/styles.css" />
+  <style>
+    body { display: grid; grid-template-columns: 310px minmax(0, 1fr) 0; height: 100vh; overflow: hidden; }
+    body.with-sounding { grid-template-columns: 310px minmax(0, 1fr) 470px; }
+    .meso-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; }
+    .meso-side label { display: flex; align-items: center; justify-content: flex-start; gap: 8px; cursor: pointer; text-align: left; font-weight: 600; }
+    .meso-side label input { flex: none; width: auto; margin: 0; }
+    .meso-side select, .meso-side button { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+    .meso-side button { cursor: pointer; font-weight: 700; }
+    .meso-side button:hover { border-color: var(--accent); }
+    .meso-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
+    .meso-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
+    .meso-card strong { font-size: 19px; }
+    .meso-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .meso-styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .meso-styles button.on, .meso-row button.on { background: #2563eb; border-color: #2563eb; }
+    .meso-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+    .meso-list i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 8px; vertical-align: middle; }
+    #legendBar { width: 100%; height: 12px; border-radius: 3px; display: block; }
+    #legendTicks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+    .meso-map { position: relative; min-width: 0; min-height: 0; padding-top: 58px; }
+    #surfaceCanvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+    #surfaceTip { position: absolute; pointer-events: none; background: rgba(15, 23, 42, .95); border: 1px solid #374151; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; white-space: nowrap; display: none; z-index: 5; }
+    .meso-sounding { border-left: 1px solid var(--line); padding-top: 64px; display: none; flex-direction: column; gap: 10px; overflow: auto; }
+    body.with-sounding .meso-sounding { display: flex; }
+    .meso-sounding canvas { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #0b1119; }
+    .meso-table { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 3px 10px; font-size: 12.5px; }
+    .meso-table span { color: var(--muted); }
+    .meso-table b { text-align: right; }
+    .meso-key { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; color: var(--muted); }
+    .meso-key b { color: var(--text); }
+    @media (max-width: 900px) { body, body.with-sounding { grid-template-columns: 1fr; grid-template-rows: auto 70vh auto; height: auto; overflow: auto; } .meso-map { padding-top: 0; } }
+  </style>
 </head>
 <body data-page="live">
-<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="radar" href="./radar.html">Radar</a><a class="perf-link" href="./performance.html">Performance</a><span id="authorityModeBadge" class="authority-mode-badge" title="The page automatically uses the Node authority when available">Authority: auto</span></nav>
-  <aside class="panel controls">
-    <div>
-      <p class="eyebrow">Atmospheric sandbox</p>
-      <h1>Fake Plains Weather Simulator</h1>
-      <p class="muted">Operational-style live mesoanalysis. Forecast-only diagnostics remain available on the Day 1–3 pages.</p>
-    </div>
-
-    <div class="analysis-card">
-      <span>Diagnosed outlook</span>
-      <strong id="diagnosedRisk">—</strong>
-      <small id="diagnosedDescription">Generated from the seed's atmosphere.</small>
-      <div class="analysis-divider"></div>
-      <div class="analysis-row"><span>Primary hazard</span><b id="primaryHazard">—</b></div>
-      <div class="analysis-row"><span>Storm mode</span><b id="stormMode">—</b></div>
-      <div class="analysis-copy">
-        <span>Supporting factors</span>
-        <ul id="analysisReasons"><li>Generate a scenario to analyze it.</li></ul>
-      </div>
-      <div class="analysis-copy">
-        <span>Limiting factors</span>
-        <ul id="analysisLimitations"><li>None analyzed yet.</li></ul>
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" class="active" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="radar" href="./radar.html">Radar</a><a class="perf-link" href="./performance.html">Performance</a></nav>
+  <aside class="panel meso-side">
+    <div class="meso-card">
+      <span>Surface observations and mesoanalysis</span>
+      <strong id="surfaceTime">—</strong>
+      <small class="muted" id="surfaceStatus">Connecting…</small>
+      <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Analysis time" />
+      <div class="meso-row">
+        <button id="framePrev" title="Half an hour earlier">◀</button>
+        <button id="framePlay" title="Loop the last hours">Loop</button>
+        <button id="frameNext" title="Half an hour later">▶</button>
+        <button id="frameLatest" title="Follow the current time" class="on">Now</button>
       </div>
     </div>
-
-    <div class="analysis-card forecast-discussion-card">
-      <span>Synoptic pattern</span>
-      <strong id="synopticPattern">—</strong>
-      <small id="synopticStage">Pattern diagnosis initializing…</small>
-      <div class="analysis-divider"></div>
-      <div class="analysis-row"><span>Forecast ensemble</span><b id="analogConfidence">—</b></div>
-      <div class="analysis-copy">
-        <span>Outlook discussion</span>
-        <p id="outlookDiscussion" class="outlook-discussion">Generate a scenario to create the forecast discussion.</p>
+    <div class="meso-card">
+      <span>Overlay</span>
+      <select id="parameter" aria-label="Overlay field"><option value="">None (observations only)</option></select>
+      <div class="meso-styles">
+        <button data-style="both" class="on">Both</button>
+        <button data-style="shade">Shading</button>
+        <button data-style="contours">Contours</button>
       </div>
+      <canvas id="legendBar" width="260" height="12"></canvas>
+      <div id="legendTicks"></div>
+      <small class="muted" id="legendNote">Pick a field to lay over the map.</small>
     </div>
-
-    <label>
-      Outlook product
-      <select id="outlookDay">
-        <option value="day1">Day 1 · issued 00Z, 06Z, 12Z, 18Z</option>
-        <option value="day2">Day 2 · issued 06Z and 18Z</option>
-        <option value="day3">Day 3 · issued 06Z</option>
-      </select>
-      <small id="outlookIssueLabel" class="muted">Predictive outlook cycle initializing…</small>
-    </label>
-
-    <label>
-      Display layer
-      <select id="layer">
-        <optgroup label="Surface analysis">
-          <option value="temperature">Surface temperature</option>
-          <option value="dewpoint">Surface dewpoint</option>
-          <option value="pressure">Surface pressure</option>
-          <option value="windSurface">Surface wind</option>
-          <option value="airMass">Air mass</option>
-        </optgroup>
-        <optgroup label="Instability and inhibition">
-          <option value="cape">CAPE</option>
-          <option value="cin">CIN</option>
-          <option value="lapseRate">700–500 mb lapse rate</option>
-          <option value="emlInfluence">Elevated mixed layer influence</option>
-        </optgroup>
-        <optgroup label="Shear and severe parameters">
-          <option value="srh">0–1 km SRH</option>
-          <option value="bulkShear">0–6 km bulk shear</option>
-          <option value="stp">Significant tornado parameter</option>
-          <option value="vtp">Violent tornado parameter</option>
-          <option value="wind800">800 mb wind</option>
-          <option value="wind500">500 mb wind</option>
-          <option value="wind250">250 mb wind</option>
-        </optgroup>
-        <optgroup label="Ascent and initiation">
-          <option value="forcing">Forcing score</option>
-          <option value="verticalMotion">Diagnosed vertical motion</option>
-          <option value="readiness">Convective readiness</option>
-          <option value="trigger">Trigger strength</option>
-          <option value="initiation">Convective initiation potential</option>
-        </optgroup>
-      </select>
-    </label>
-
-    <div class="row two">
-      <label>Columns<input id="gridWidth" type="number" value="50" readonly aria-readonly="true" /></label>
-      <label>Rows<input id="gridHeight" type="number" value="50" readonly aria-readonly="true" /></label>
+    <div class="meso-card">
+      <span>Show</span>
+      <label><input type="checkbox" id="showStations" checked /> Station observations</label>
+      <label><input type="checkbox" id="showIsobars" checked /> Isobars and pressure centres</label>
+      <label><input type="checkbox" id="showFronts" checked /> Fronts, dryline, outflow boundaries</label>
+      <label><input type="checkbox" id="showStorms" checked /> Storms</label>
     </div>
-    <small id="domainSize" class="muted">500 × 500 km · 2,500 cells · fixed authoritative grid</small>
-
-    <label>
-      Seed
-      <div class="row seed-row">
-        <input id="seed" type="number" value="20270503" />
-        <button id="randomSeed" type="button" class="secondary">Random</button>
+    <div class="meso-card">
+      <span>Analysed lines</span>
+      <ul class="meso-list" id="surfaceLines"><li class="muted">None yet.</li></ul>
+    </div>
+    <div class="meso-card">
+      <span>Storms</span>
+      <div id="surfaceStorms" class="muted">None right now.</div>
+    </div>
+    <div class="meso-card">
+      <span>World</span>
+      <div class="meso-row" style="grid-template-columns: 1fr 1fr">
+        <button id="worldAdvance" title="Move the weather on by half an hour now">+30 min</button>
+        <button id="worldClock" title="Stop or restart the world's clock">Pause clock</button>
       </div>
-    </label>
-
-    <div class="button-stack">
-      <button id="generate" type="button">Generate 12Z atmosphere</button>
-      <div class="row two"><button id="stepTime" type="button" class="secondary">Advance +30 min</button><button id="playTime" type="button" class="secondary">Fast preview</button></div>
-      <button id="liveMode" type="button" class="secondary">Start live world clock</button>
-      <small id="liveStatus" class="muted">Paused · live cadence: 2 real minutes = 30 simulated minutes · 96 real minutes per day</small>
-      <label>Simulation time<input id="simulationTime" type="range" min="12" max="84" step="0.5" value="12" /><small id="timeLabel">12Z Day 1</small><small class="muted">Atmosphere evolves every 30 simulated minutes. Day 1/2/3 products update on 6/12/24-hour cycles.</small></label>
-      <button id="toggleFeatures" type="button" class="secondary active">Hide fronts and pressure centres</button>
-      <button id="toggleIsobars" type="button" class="secondary">Show pressure contours</button>
-      <button id="toggleWindBarbs" type="button" class="secondary">Show wind barbs</button>
-      <button id="toggleRegions" type="button" class="secondary active">Hide regions</button>
-      <button id="toggleRegionLabels" type="button" class="secondary active">Hide region labels</button>
-      <button id="toggleGrid" type="button" class="secondary active">Hide 10 mi grid</button>
-      <button id="toggleStormOverlay" type="button" class="secondary">Show storms and tracks</button>
-      <button id="toggleSmoothing" type="button" class="secondary active">Use straight geometry</button>
+      <button id="worldNew" title="Start a different world from another starting number">New world…</button>
+      <small class="muted" id="worldNote">A simulated day takes 96 minutes.</small>
     </div>
-
-    <div class="legend-card">
-      <div class="legend-title"><span id="legendLabel">Surface temperature</span><span id="legendUnits">°F</span></div>
-      <div id="legendGradient" class="legend-gradient"></div>
-      <div class="legend-scale"><span id="legendMin"></span><span id="legendMax"></span></div>
-    </div>
-
-    <div class="boundary-key">
-      <strong>Map symbols</strong>
-      <span><i class="cold"></i> Cold front · triangles</span>
-      <span><i class="warm"></i> Warm front · semicircles</span>
-      <span><i class="dry"></i> Dryline · scallops</span>
-      <span>H/L pressure centers · troughs · shortwaves · jet axes</span>
-      <span><i class="risk-line"></i> Outlook contour</span>
-      <span>Dashed region borders · toggleable labels</span>
+    <div class="meso-card">
+      <span>Reading a station</span>
+      <div class="meso-key">
+        <b style="color:#ff8a80">72</b><span>temperature (°F), upper left</span>
+        <b style="color:#69db7c">61</b><span>dewpoint (°F), lower left</span>
+        <b>132</b><span>sea-level pressure: tenths of a hPa, last three digits (132 = 1013.2)</span>
+        <b>barb</b><span>points to where the wind comes from; half barb 5 kt, full 10, flag 50</span>
+      </div>
+      <small class="muted">Click anywhere on the map for the sounding there.</small>
     </div>
   </aside>
-
-  <main class="viewer-shell">
-    <header class="map-header">
-      <div>
-        <strong id="mapTitle">Seeded synthetic analysis</strong>
-        <span id="mapSubtitle">Valid 12Z · 10 mi grid · evolving atmosphere</span>
-      </div>
-      <div id="summary" class="summary"></div>
-    </header>
-    <div id="viewer" class="viewer">
-      <div id="mapStage" class="map-stage">
-        <canvas id="mapCanvas" tabindex="0" role="grid" aria-label="Synthetic weather grid. Move over a cell to highlight it, then click to open its sounding."></canvas>
-      </div>
-      <div id="tooltip" class="tooltip hidden"></div>
-    </div>
+  <main class="meso-map">
+    <canvas id="surfaceCanvas"></canvas>
+    <div id="surfaceTip"></div>
   </main>
-
-  <aside class="panel inspector">
-    <p id="inspectorEyebrow" class="eyebrow">Grid-cell analysis</p>
-    <h2 id="cellTitle">No cell selected</h2>
-    <div id="cellInfo" class="cell-info muted">Click a cell to open its sounding and atmospheric profile.</div>
-    <button id="openSounding" type="button" class="secondary" disabled>Open sounding</button><button id="clearStormSelection" type="button" class="secondary hidden">Return to cell inspector</button>
-  </aside>
-
-  <div id="soundingModal" class="sounding-modal hidden" role="dialog" aria-modal="true" aria-labelledby="soundingTitle">
-    <div class="sounding-window">
-      <header><div><p class="eyebrow">Vertical profile</p><h2 id="soundingTitle">Cell sounding</h2><small id="soundingSubtitle" class="muted"></small></div><button id="closeSounding" type="button" class="secondary close-button">Close</button></header>
-      <div id="soundingMetrics" class="sounding-metrics"></div>
-      <div class="sounding-plots sounding-primary-plots"><section><h3>Skew-T log-P</h3><canvas id="skewTCanvas" width="720" height="720"></canvas></section><section><h3>Hodograph</h3><canvas id="hodoCanvas" width="560" height="560"></canvas><div id="forcingDetails" class="forcing-details"></div></section></div>
-      <section id="effectiveLayerStpPanel" class="effective-stp-panel effective-stp-secondary" aria-label="Effective Layer STP with CIN box plots"></section>
-      <details open><summary>Pressure-level data</summary><div class="profile-table-wrap"><table class="profile-table"><thead><tr><th>Pressure</th><th>Height</th><th>Temp</th><th>Dewpoint</th><th>RH</th><th>Wind</th></tr></thead><tbody id="profileTableBody"></tbody></table></div></details>
+  <aside class="panel meso-sounding">
+    <div class="meso-card">
+      <span>Sounding</span>
+      <strong id="soundingTitle">—</strong>
+      <small class="muted" id="soundingNote"></small>
+      <button id="soundingClose">Close</button>
     </div>
-  </div>
-  <script type="module" src="./js/pageBootstrap.js"></script>
+    <canvas id="skewTCanvas" width="640" height="620"></canvas>
+    <canvas id="hodoCanvas" width="640" height="420"></canvas>
+    <div class="meso-card"><span>Indices</span><div class="meso-table" id="soundingTable"></div></div>
+  </aside>
+  <script type="module" src="./js/pages/surfaceAnalysisPage.js"></script>
 </body>
 </html>

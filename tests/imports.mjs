@@ -1,12 +1,10 @@
-const modules = [
-  '../js/atmosphere.js', '../js/evolution.js', '../js/sounding.js',
-  '../js/diagnostics/boundaryDiagnosis.js', '../js/diagnostics/forcingDiagnosis.js', '../js/analysis/mapAnalysis.js',
-  '../js/scenarios/scenarioGenerator.js', '../js/scenarios/synopticPattern.js', '../js/scenarios/narratives.js',
-  '../js/scenarios/regionalClimatology.js', '../js/world/WorldFramework.js', '../js/scenarios/AirMassEngine.js', '../js/scenarios/SynopticCoherence.js',
-  '../js/storms/Storm.js', '../js/storms/StormEngine.js', '../js/storms/InitiationEngine.js',
-  '../js/storms/environmentSampling.js', '../js/mesoscale/Boundary.js', '../js/mesoscale/MesoscaleEngine.js',
-  '../js/forecast/EnsembleOutlookEngine.js', '../js/forecast/ensembleMember.js', '../js/forecast/spcOutlookRules.js',
-  '../js/forecast/OutlookDiscussionEngine.js', '../js/verification/truth.js', '../server/WeatherAuthorityRuntime.js'
-];
-for (const modulePath of modules) await import(modulePath);
+// Every module under js/ and server/ (the server's entry point aside) loads on its own.
+import { readdirSync } from 'node:fs';
+const walk = dir => readdirSync(new URL(dir, import.meta.url), { withFileTypes: true }).flatMap(entry => (entry.isDirectory() ? walk(`${dir}${entry.name}/`) : entry.name.endsWith('.js') ? [`${dir}${entry.name}`] : []));
+// Page scripts need a browser; the server's entry point starts listening.
+const skip = path => path.startsWith('../js/pages/') || path.startsWith('../js/map/') || path.startsWith('../js/api/') || path.startsWith('../js/radar/Radar') && /Page|Renderer|Client/.test(path) || /remoteProductPage|pageBootstrap|server\/index\.js/.test(path);
+const modules = [...walk('../js/'), ...walk('../server/')].filter(path => !skip(path));
+const failed = [];
+for (const modulePath of modules) { try { await import(modulePath); } catch (error) { if (!/document|window|navigator|HTMLElement|location is not defined/.test(error.message)) failed.push(`${modulePath}: ${error.message.split('\n')[0]}`); } }
+if (failed.length) throw new Error(`modules failed to load:\n${failed.join('\n')}`);
 console.log(`Imported ${modules.length} modules successfully.`);

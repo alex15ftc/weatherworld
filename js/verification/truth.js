@@ -36,7 +36,7 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
     // bows); a single cell at its position.
     for (const { index, share } of windFootprint(world, storm, idx, cellOf)) {
       const local = gust * share;
-      if (LINEAR_MODES.includes(storm.mode) && (Number(storm.intensity) || 0) >= 0.22) frame.storm[index] = 1;
+      if (isLine(storm) && (Number(storm.intensity) || 0) >= 0.22) frame.storm[index] = 1;
       if (local >= 58) frame.wind[index] = 1;
       if (local >= 75) frame.windSig[index] = 1;
       if (local >= 100) frame.windExtreme[index] = 1;
@@ -54,10 +54,12 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
 
 const LINEAR_MODES = ['broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS'];
 const LINE_END_GUST_SHARE = 0.8;
+// A storm is part of a line by its line organization (the name is a fallback for old records).
+const isLine = storm => Number.isFinite(storm.lineOrganization) ? storm.lineOrganization >= 0.5 : LINEAR_MODES.includes(storm.mode);
 
 // Cells along a line's axis (perpendicular to its motion), with the share of the peak gust.
 function windFootprint(world, storm, centreIndex, cellOf) {
-  const half = LINEAR_MODES.includes(storm.mode) ? Number(storm.lineHalfLengthKm ?? storm.radar?.radiusXKm) || 0 : 0;
+  const half = isLine(storm) ? Number(storm.lineHalfLengthKm ?? storm.radar?.radiusXKm) || 0 : 0;
   const speed = Math.hypot(storm.velocityKph?.east ?? 0, storm.velocityKph?.north ?? 0);
   if (half < world.cellSizeKm || !(speed > 1)) return [{ index: centreIndex, share: 1 }];
   // Screen frame: y grows southward, so north motion is -y.

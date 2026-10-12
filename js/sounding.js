@@ -43,7 +43,7 @@ export function buildSounding(cell) {
   const lapseRate03km=layerLapseRateByHeight(profile,cell.terrain.elevationM,0,3000);
   const lapseRate700500=layerLapseRate(profile,700,500);
   const lapseRate850500=layerLapseRate(profile,850,500);
-  const dcape=estimateDcape(profile, surfaceP, surfaceT, surfaceTd, pw, lapseRate700500);
+  const dcape=downdraughtCape(profile, surfaceP);
   const params={
     sbcape:surfaceResult.thermo.cape, mlcape:mixedResult.thermo.cape, mucape:muResult.thermo.cape,
     sbcin:surfaceResult.thermo.cin, mlcin:mixedResult.thermo.cin, mucin:muResult.thermo.cin,
@@ -94,10 +94,6 @@ export function updateCellDiagnostics(cell) {
   cell.derived.bulkShear=p.shear06; cell.derived.srh=p.srh01;
   cell.derived.stp=p.stp; cell.derived.rawStp=p.rawStp; cell.derived.stpComponents={...p.stpComponents};
   cell.derived.vtp=p.vtp; cell.derived.synopticTornadoSupport=p.synopticSupport; cell.derived.scp=p.scp;
-  const surfaceDepressionF=Math.max(0,cell.surface.temperature-cell.surface.dewpoint);
-  const lowLevelDryness=clamp(surfaceDepressionF/28,0,1.4);
-  const lapseSupport=clamp((Math.abs((cell.levels?.[700]?.temperature??8)-(cell.levels?.[500]?.temperature??-16))-18)/16,0,1.4);
-  cell.derived.dcape=clamp(180 + 520*lowLevelDryness + 360*lapseSupport + 0.06*p.mlcape,100,1600);
   cell.derived.sounding={sbcape:p.sbcape,mlcape:p.mlcape,mucape:p.mucape,sbcin:p.sbcin,mlcin:p.mlcin,mucin:p.mucin,lclM:p.lclM,lclAglM:cell.derived.lclAgl,lfcM:p.lfcM,elM:p.elM,shear01:p.shear01,shear03:p.shear03,shear06:p.shear06,srh01:p.srh01,srh03:p.srh03,lapseRate01km:p.lapseRate01km,lapseRate03km:p.lapseRate03km,lapseRate700500:p.lapseRate700500,lapseRate850500:p.lapseRate850500,stpComponents:{...p.stpComponents}};
   return sounding;
 }
@@ -123,15 +119,32 @@ function interpolateProfileAtPressure(profile,p){
   for(let i=0;i<profile.length-1;i++){const a=profile[i],b=profile[i+1];if(a.p>=p&&b.p<=p){const f=(a.p-p)/Math.max(1e-6,a.p-b.p);return {t:a.t+(b.t-a.t)*f,td:a.td+(b.td-a.td)*f,heightM:a.heightM+(b.heightM-a.heightM)*f};}}
   return profile.at(-1);
 }
-function estimateDcape(profile,surfaceP,surfaceT,surfaceTd,pw,lapse){
-  const mid=interpolateProfileAtPressure(profile,700);
-  const depression=Math.max(0,mid.t-mid.td);
-  const subcloud=Math.max(0,surfaceT-surfaceTd);
-  const dryAir=clamp(depression/24,0,1.4);
-  const lapseTerm=clamp((lapse-5.5)/3.5,0,1.4);
-  const subcloudTerm=clamp(subcloud/18,0,1.2);
-  const moisturePenalty=clamp((pw-1.75)/1.25,0,0.65);
-  return clamp(250+900*dryAir+700*lapseTerm+450*subcloudTerm-500*moisturePenalty,0,2200);
+// Downdraught CAPE (J/kg): the energy a downdraught can gain. The driest, coolest air aloft
+// (lowest equivalent potential temperature between 100 and 400 mb above the ground) is
+// cooled to its wet-bulb temperature by rain evaporating into it and sinks along the moist
+// adiabat to the ground; the energy is how much colder than its surroundings it stays on the
+// way down. Dry air above moist air gives large values; a moist column gives small ones.
+function downdraughtCape(profile, surfaceP) {
+  let source = -1, lowest = Infinity;
+  for (let i = 0; i < profile.length; i++) {
+    const row = profile[i];
+    if (row.p > surfaceP - 100 || row.p < surfaceP - 400) continue;
+    const tK = row.t + 273.15, w = mixingRatioFromDewpoint(row.td, row.p);
+    const thetaE = tK * Math.pow(1000 / row.p, RD / CP) * Math.exp(2.5e6 * w / (CP * tK));
+    if (thetaE < lowest) { lowest = thetaE; source = i; }
+  }
+  if (source < 0) return 0;
+  // Down from the source level by level (the profile runs from the ground up).
+  let parcelT = wetBulbApprox(profile[source].t, profile[source].rh), energy = 0;
+  let above = { p: profile[source].p, deficit: virtualTemperatureK(profile[source].t, profile[source].td, profile[source].p) - virtualTemperatureK(parcelT, parcelT, profile[source].p) };
+  for (let i = source - 1; i >= 0; i--) {
+    const row = profile[i];
+    parcelT = moistLift(parcelT, above.p, row.p);
+    const deficit = virtualTemperatureK(row.t, row.td, row.p) - virtualTemperatureK(parcelT, parcelT, row.p);
+    energy += RD * 0.5 * (deficit + above.deficit) * Math.log(row.p / above.p);
+    above = { p: row.p, deficit };
+  }
+  return Math.max(0, energy);
 }
 
 export function diagnoseSynopticTornadoSupport(cell) {
@@ -228,7 +241,9 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
  const eml=clamp(Number(cell.features?.emlInfluence)||0,0,1);
  if(eml>0.05&&surfaceP>800){
   const f=Math.log(850/780)/Math.log(850/700);
-  const linear=t850+(t700-t850)*f, base=t700+6.2; // ~8.5 C/km through the ~0.73 km 780-700 mb layer
+  // Warmth of the inversion base over 700 mb. The redesigned atmosphere supplies the value for
+  // a layer mixed all the way down from 700 mb; the older scenarios keep their fitted one.
+  const linear=t850+(t700-t850)*f, base=t700+(Number(cell.features?.emlBaseExcessC)||6.2);
   const t780=linear+Math.max(0,base-linear)*eml;
   const w850=uvFromDirSpeed(cell.levels[850].windDirection,cell.levels[850].windSpeed), w700=uvFromDirSpeed(cell.levels[700].windDirection,cell.levels[700].windSpeed);
   const u=w850.u+(w700.u-w850.u)*f, v=w850.v+(w700.v-w850.v)*f;

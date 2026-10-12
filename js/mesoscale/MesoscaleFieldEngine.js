@@ -10,8 +10,6 @@ const KNOT_TO_MS = 0.514444;
 export function updateMesoscaleFields(world, dtHours = 0.5) {
   const dxKm = world.cellSizeKm;
   const next = new Array(world.width * world.height);
-  const localHour = ((world.validHourUtc % 24) + 24) % 24;
-  const solar = Math.max(0, Math.sin((localHour - 6) / 12 * Math.PI));
 
   world.forEachCell((cell, x, y) => {
     const w = world.getCell(Math.max(0, x - 1), y) ?? cell;
@@ -37,13 +35,13 @@ export function updateMesoscaleFields(world, dtHours = 0.5) {
 
     const convergence = Math.max(0, cell.dynamics?.surfaceConvergenceS1 ?? 0);
     const moistureFlux = Math.max(0, cell.dynamics?.moistureFluxConvergence ?? 0);
-    const explicitBoundary = cell.features?.explicitBoundaryInfluence ?? 0;
-    const outflow = cell.features?.stormOutflowConvergence ?? 0;
+    // Converging surface winds (0-1), and how hard the ground is heating the air (0-1): both
+    // from the atmosphere's own fields.
+    const explicitBoundary = cell.features?.convergenceLift ?? 0, outflow = 0;
+    const solar = clamp(Number(cell.features?.surfaceHeating) || 0, 0, 1);
     const terrainLift = Math.max(0, cell.dynamics?.terrainLiftMs ?? 0);
     const upperSupport = clamp(
-      (cell.features?.synopticAscent ?? 0) * 0.60 +
-      (cell.features?.shortwaveTrough ? 0.18 : 0) +
-      (cell.features?.jetStreak ? 0.12 : 0),
+      (cell.features?.synopticAscent ?? 0) * 0.60,
       0, 1
     );
 
