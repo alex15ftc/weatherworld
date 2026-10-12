@@ -13,6 +13,7 @@
     "inspect:environment": "node scripts/environment-report.mjs",
     "inspect:activity": "node scripts/activity-report.mjs",
     "inspect:tornado-days": "node scripts/tornado-day-report.mjs",
-    "inspect:players": "node scripts/player-report.mjs"
+    "inspect:players": "node scripts/player-report.mjs",
+    "inspect:risk": "node scripts/risk-climate.mjs"
   }
 }
