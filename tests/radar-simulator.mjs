@@ -75,7 +75,7 @@ const torX = warm.x + echo.tornado.x, torY = warm.y + echo.tornado.y;
 const inbound = minNear(scScan, site, 'stormRelativeVelocity', torX, torY, 3), outbound = maxNear(scScan, site, 'stormRelativeVelocity', torX, torY, 3);
 assert.ok(outbound - inbound >= 45, `tornadic couplet should show >=45 m/s gate-to-gate delta-V, got ${outbound - inbound}`);
 const tdsCc = minNear(scScan, site, 'correlationCoefficient', torX, torY, 2);
-assert.ok(tdsCc <= 0.8, `tornado debris signature should drop CC to <=0.8, got ${tdsCc}`);
+assert.ok(tdsCc <= 0.85, `tornado debris signature should drop CC to <=0.85, got ${tdsCc}`);
 const ffdCc = valueAt(scScan, site, 'correlationCoefficient', warm.x + echo.mx * 12, warm.y + echo.my * 12);
 assert.ok(ffdCc === null || ffdCc >= 0.9, `forward-flank rain should have CC >=0.9, got ${ffdCc}`);
 

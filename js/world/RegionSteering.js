@@ -23,7 +23,7 @@ export const STEERING_DEFAULTS = Object.freeze({
   // trough: a wanted value below 0 lets its cold front sweep the region).
   windCapKt: 70, southerlyCapKt: 25,
   // The support wanted on a day is drawn evenly between these (the same for a given seed and day).
-  wantedLow: 0.1, wantedHigh: 0.45
+  wantedLow: 0.35, wantedHigh: 0.8
 });
 
 const KT = 1.943844;

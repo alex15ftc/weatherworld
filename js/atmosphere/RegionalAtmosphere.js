@@ -35,6 +35,11 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // part is set here. The thermal low over the hot plateau is not set: it follows from the
   // temperature of the low-level air, see thermalBalance.)
   leeTroughFlowHpa: 7, leeTroughColumn: 0.2, leeTroughWidthKm: 450, leeFlowMs: 15,
+  // The geography (the rise to the high ground, the lee trough, where dry, continental and
+  // Gulf air come from) is laid out over geographyColumns cells from its western edge; the map
+  // starts geographyOffset cells east of that edge. With 0 and null the map spans all of it.
+  // East of the geography the plains go on flat.
+  geographyColumns: 50, geographyOffset: 15,
   // Cells over which the pressure responds to low-level temperature contrasts, and how long
   // the day's heat stays in the air after sunset.
   thermalSmoothingCells: 8, residualHeatHours: 8,
@@ -120,7 +125,7 @@ export class RegionalAtmosphere {
     // Reference: the outer model's tropospheric temperature at the map centre, time-mean.
     this.referenceLayerK = model.params.f0 * model.meanThickness(centreY) / (RD * Math.log(3));
     this.world.forEachCell((cell, x, y) => {
-      const west = 1 - x / (this.nx - 1);
+      const west = 1 - this.eastShare(x);
       cell.terrain.elevationM = p.terrainEastM + (p.terrainWestM - p.terrainEastM) * west ** p.terrainShape;
       const k = y * this.nx + x, outer = this.outerAt(x, y);
       this.theta[k] = this.airMassTheta(outer, cell.terrain.elevationM);
@@ -183,7 +188,7 @@ export class RegionalAtmosphere {
     const p = this.params, width = p.leeTroughWidthKm * 1000;
     const cross = clamp(this.windAt(outer, 700).u / p.leeFlowMs, 0, 2.5);
     const depthHpa = p.leeTroughFlowHpa * cross;
-    const distance = (x - p.leeTroughColumn * (this.nx - 1)) * this.dx, shape = Math.exp(-((distance / width) ** 2));
+    const distance = (x + p.geographyOffset - p.leeTroughColumn * ((p.geographyColumns ?? this.nx) - 1)) * this.dx, shape = Math.exp(-((distance / width) ** 2));
     return { pressureHpa: -depthHpa * shape, wind: depthHpa * 100 * shape * 2 * distance / (width * width) / (1.2 * this.model.params.f0) };
   }
 
@@ -258,10 +263,13 @@ export class RegionalAtmosphere {
     }
   }
 
+  // How far east a column is across the geography (0 at its western edge, 1 at its eastern, and 1 beyond).
+  eastShare(x) { const p = this.params; return clamp((x + p.geographyOffset) / ((p.geographyColumns ?? this.nx) - 1), 0, 1); }
+
   // Moisture of the air entering the map: Gulf air along the south-eastern side, continental
   // air to the north, dry air off the high ground to the west.
   inflowMoisture(x, y) {
-    const p = this.params, east = x / (this.nx - 1), south = y / (this.ny - 1);
+    const p = this.params, east = this.eastShare(x), south = y / (this.ny - 1);
     const gulf = (0.45 + 0.55 * south) * ramp(east, 0.1, 0.4);
     return p.dryMixingRatio + (p.continentalMixingRatio - p.dryMixingRatio) * ramp(east, 0.05, 0.3) + (this.gulfSupply - p.continentalMixingRatio) * gulf;
   }

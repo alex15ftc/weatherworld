@@ -59,14 +59,19 @@ assert.ok(coolest > 1.5, `storms leave rain-cooled air behind them (${coolest.to
 // is found as an outflow boundary, and it warms back up once the storm is gone.
 world.storms = [];
 atmosphere.stormsEnabled = false;
+// Earlier storms' pools are cleared and the air given a step to show it, so that what follows
+// is this pool alone.
 atmosphere.regional.coldPool.fill(0);
+atmosphere.advance(0.5);
 atmosphere.regional.addColdPool(520, 400, 45, 6);
 // The wind carries the pool along, so it is looked for where it has got to: the cell that is
 // coldest against its air mass half an hour later, compared with a cell well clear of it.
 const cell = k => world.cells[Math.floor(k / world.width)][k % world.width];
 const before = { t: [], p: [] }; world.forEachCell(c => { before.t.push(c.surface.temperature); before.p.push(c.surface.seaLevelPressure); });
 atmosphere.advance(0.5);
-const pool = atmosphere.regional.coldPool, at = pool.indexOf(Math.max(...pool)), away = at + (at % world.width < world.width - 14 ? 12 : -12);
+// (Within 130 km of where it was put: storms that form meanwhile make pools of their own.)
+const pool = atmosphere.regional.coldPool, near = k => Math.hypot((k % world.width + 0.5) * world.cellSizeKm - 520, (Math.floor(k / world.width) + 0.5) * world.cellSizeKm - 400) <= 130;
+const at = pool.reduce((best, value, k) => (near(k) && value > pool[best] ? k : best), Math.floor(400 / world.cellSizeKm) * world.width + Math.floor(520 / world.cellSizeKm)), away = at + (at % world.width < world.width - 14 ? 12 : -12);
 assert.ok(pool[at] > 3, `the pool is still there half an hour on (${pool[at].toFixed(1)} K)`);
 assert.ok((cell(at).surface.temperature - before.t[at]) - (cell(away).surface.temperature - before.t[away]) < -5, 'the air in the pool is colder');
 assert.ok((cell(at).surface.seaLevelPressure - before.p[at]) - (cell(away).surface.seaLevelPressure - before.p[away]) > 0.5, 'and the pressure under it higher');

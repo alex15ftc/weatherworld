@@ -6,7 +6,8 @@ import { RegionalAtmosphere } from '../js/atmosphere/RegionalAtmosphere.js';
 // checks are on behaviour that must come out of the processes, whatever the weather that day.
 const model = new QuasiGeostrophicModel({ seed: 3, initialNoise: 4e-4 });
 model.advance(8 * 86400);
-const regional = new RegionalAtmosphere(model);
+// The whole geography, high ground included (the live map starts further east: see geographyOffset).
+const regional = new RegionalAtmosphere(model, { geographyOffset: 0 });
 const world = regional.world, nx = world.width, ny = world.height;
 const mean = values => values.reduce((a, b) => a + b, 0) / values.length;
 const column = (x, read) => { const out = []; for (let y = 8; y < ny - 8; y++) out.push(read(world.cells[y][x], y * nx + x)); return mean(out); };

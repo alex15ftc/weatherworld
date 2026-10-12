@@ -80,7 +80,7 @@ assert.equal(analyseBoundaries(world({ temperature: [74, 77] })).boundaries.leng
 {
   const model = new QuasiGeostrophicModel({ seed: 3, initialNoise: 4e-4 });
   model.advance(8 * 86400);
-  const regional = new RegionalAtmosphere(model, { diagnostics: false });
+  const regional = new RegionalAtmosphere(model, { diagnostics: false, geographyOffset: 0 });   // the whole geography, high ground included
   let found = 0, afternoons = 0;
   for (let step = 0; step < 4 * 48; step++) {
     regional.step();
