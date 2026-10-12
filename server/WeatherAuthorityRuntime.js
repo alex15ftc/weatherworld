@@ -8,8 +8,8 @@ import crypto from 'node:crypto';
 import v8 from 'node:v8';
 import { fileURLToPath } from 'node:url';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
-import { buildSounding } from '../js/sounding.js';
-import { diagnoseSoundingHazards } from '../js/storms/SoundingHazards.js';
+import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
+import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
@@ -298,10 +298,13 @@ export class WeatherAuthorityRuntime {
     return this.cached(`sounding:${day}:${r}:${c}`,()=>{
       const cell=this.atmosphere.cells?.[r]?.[c];
       if (!cell) return null;
+      const sounding=buildSounding(cell);
       return {
-        ...buildSounding(cell),
-        // What a storm in this air would do, from the storm engine's own functions.
-        hazards: diagnoseSoundingHazards(this.atmosphere, c, r),
+        ...sounding,
+        // The table values and possible hazard type a forecaster reads off the profile, and the
+        // storm motion the storm engine would give a storm here (for the hodograph).
+        display: diagnoseSoundingDisplay(sounding, cell.terrain.elevationM),
+        engineMotion: diagnoseEngineMotion(this.atmosphere, c, r),
         row:r,
         column:c,
         revision:this.revision,

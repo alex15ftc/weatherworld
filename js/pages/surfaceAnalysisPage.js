@@ -330,32 +330,29 @@ async function showSounding(at) {
     const p = sounding.params, surface = sounding.context?.surface ?? {}, round = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—');
     $('soundingTitle').textContent = `${Math.round(at.xKm / 1.609)} mi east, ${Math.round(at.yKm / 1.609)} mi south`;
     $('soundingNote').textContent = `${round(surface.temperatureF)}°F / ${round(surface.dewpointF)}°F at the ground · valid ${clock(sounding.validHourUtc)} UTC${data.latest ? '' : ' (soundings are always for the current time, not the frame shown)'}`;
-    const rows = [['CAPE, mixed layer', round(p.mlcape), 'J/kg'], ['Inhibition', round(Math.abs(p.mlcin)), 'J/kg'], ['CAPE, surface', round(p.sbcape), 'J/kg'], ['CAPE, most unstable', round(p.mucape), 'J/kg'],
-      ['Cloud base', round(p.lclAglM), 'm'], ['Lapse 700-500', round(p.lapseRate700500, 1), '°C/km'], ['Shear 0-6 km', round(p.shear06), 'kt'], ['Shear 0-1 km', round(p.shear01), 'kt'],
-      ['Helicity 0-1 km', round(p.srh01), ''], ['Helicity 0-3 km', round(p.srh03), ''], ['Sig. tornado', round(p.stp, 1), ''], ['Supercell comp.', round(p.scp, 1), ''],
-      ['Downdraught CAPE', round(p.dcape), 'J/kg'], ['Lapse 0-3 km', round(p.lapseRate03km, 1), '°C/km'], ['Lifted index', round(p.liftedIndex, 1), ''], ['Water in column', round(p.precipWater, 2), 'in'],
-      ['Shear 0-3 km', round(p.shear03), 'kt'], ['Critical angle', round(p.criticalAngle), '°']];
-    $('soundingTable').innerHTML = rows.map(([name, value, unit]) => `<span>${name}</span><b>${value} ${unit}</b>`).join('');
-    showHazards(sounding.hazards);
+    showSoundingTables(sounding);
   } catch { $('soundingTitle').textContent = 'Sounding not available'; }
 }
-// What a storm in this air would do (the server runs the storm engine's own functions on it).
-function showHazards(h) {
-  $('hazardCard').style.display = h ? '' : 'none';
-  if (!h) return;
-  const compass = deg => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8], pct = v => `${Math.round(100 * v)}%`;
-  const start = h.initiation, storm = h.storm, rows = [];
-  rows.push(['Storms starting', !start ? '—' : !start.canStart ? `held down: ${Math.round(start.liftJkg)} J/kg of lift against a cap of ${Math.round(start.capJkg)}` : `${start.readiness >= 0.5 ? 'likely' : start.readiness >= 0.15 ? 'possible' : 'only a few'}${start.elevated ? ', from air above the ground' : ''}`, start?.canStart ? (start.readiness >= 0.5 ? 2 : 1) : 0]);
-  if (storm.lasting) {
-    rows.push(['Storm', `${storm.type}, lasting ${storm.lifetimeHours ? `about ${storm.lifetimeHours.toFixed(1)} h` : `${storm.runHours} h or more`}, moving ${compass(storm.towardDeg)} at ${Math.round(storm.speedMph)} mph`, 0]);
-    rows.push(['Tornado', h.tornado.chance < 0.02 ? 'not expected' : `${pct(h.tornado.chance)} chance from one storm; ${pct(h.tornado.strongShare)} of them with EF2+ winds`, h.tornado.chance >= 0.3 ? 3 : h.tornado.chance >= 0.12 ? 2 : h.tornado.chance >= 0.04 ? 1 : 0]);
-    rows.push(['Hail', h.hail.maxInches < 0.25 ? 'little or none' : `up to ${h.hail.maxInches.toFixed(h.hail.maxInches < 1 ? 2 : 1)} in`, h.hail.maxInches >= 2 ? 3 : h.hail.maxInches >= 1 ? 2 : h.hail.maxInches >= 0.5 ? 1 : 0]);
-    rows.push(['Wind', `gusts to ${Math.round(h.wind.maxGustMph)} mph`, h.wind.maxGustMph >= 75 ? 3 : h.wind.maxGustMph >= 58 ? 2 : h.wind.maxGustMph >= 45 ? 1 : 0]);
-  }
-  if (h.limits?.length) rows.push(['Held back by', h.limits.join('; '), 0]);
-  $('hazardHeadline').textContent = h.headline;
-  $('hazardRows').innerHTML = rows.map(([name, text, level]) => `<span>${name}</span><b data-level="${level}">${text}</b>`).join('');
-  $('hazardNote').textContent = 'For one storm alone in this air, worked out with the same rules the storms follow. Lines and neighbouring storms change it.';
+// The tables beside a sounding, laid out as on a SHARPpy-style sounding: parcels, winds by
+// layer, moisture and lapse rates, the composite indices and the possible hazard type.
+const HAZARD_COLOURS = { 'PDS TOR': '#ff4dff', TOR: '#ff4d4d', 'MRGL TOR': '#ff8a8a', SVR: '#facc15', 'MRGL SVR': '#38bdf8', NONE: '#94a3b8' };
+function showSoundingTables(sounding) {
+  const p = sounding.params, d = sounding.display ?? {}, motion = sounding.engineMotion ?? { right: p.stormMotion.right, left: p.stormMotion.left, ordinary: p.meanWind };
+  const n = (v, digits = 0) => (Number.isFinite(Number(v)) ? Number(v).toFixed(digits) : '—');
+  const from = v => `${String(Math.round((Math.atan2(-v.u, -v.v) * 180 / Math.PI + 360) % 360) % 360).padStart(3, '0')}/${Math.round(Math.hypot(v.u, v.v))}`;
+  const parcel = (name, row) => `<tr><td>${name}</td><td>${n(row.cape)}</td><td>${n(row.cin)}</td><td>${n(row.lclAglM)}</td><td>${n(row.liftedIndex)}</td><td>${n(row.lfcAglM)}</td><td>${n(row.elAglM)}</td></tr>`;
+  const list = rows => `<dl>${rows.map(([name, value]) => `<dt>${name}</dt><dd>${value}</dd>`).join('')}</dl>`;
+  const hazard = d.hazardType ?? 'NONE';
+  $('soundingTables').innerHTML = `
+    <section class="wide"><table><tr><th>PCL</th><th>CAPE</th><th>CINH</th><th>LCL m</th><th>LI</th><th>LFC m</th><th>EL m</th></tr>
+      ${parcel('SFC', p.parcels.surface)}${parcel('ML', p.parcels.mixedLayer)}${parcel('MU', p.parcels.mostUnstable)}</table></section>
+    <section><table><tr><th>Layer</th><th>SRH</th><th>Shear kt</th></tr>
+      <tr><td>SFC-1 km</td><td>${n(p.srh01)}</td><td>${n(p.shear01)}</td></tr><tr><td>SFC-3 km</td><td>${n(p.srh03)}</td><td>${n(p.shear03)}</td></tr>
+      <tr><td>SFC-6 km</td><td></td><td>${n(p.shear06)}</td></tr><tr><td>SFC-8 km</td><td></td><td>${n(d.shear08)}</td></tr></table>
+      ${list([['Storm motion, right', `${from(motion.right)} kt`], ['Storm motion, left', `${from(motion.left)} kt`], ['Mean wind', `${from(motion.ordinary)} kt`], ['4-6 km storm-rel. wind', `${n(d.srw46)} kt`], ['Critical angle', `${n(p.criticalAngle)}°`]])}</section>
+    <section>${list([['PW', `${n(p.precipWater, 2)} in`], ['3CAPE', `${n(d.cape03)} J/kg`], ['DCAPE', `${n(p.dcape)} J/kg`], ['Lapse 0-3 km', `${n(p.lapseRate03km, 1)} C/km`], ['Lapse 3-6 km', `${n(d.lapse36, 1)} C/km`], ['Lapse 850-500', `${n(p.lapseRate850500, 1)} C/km`], ['Lapse 700-500', `${n(p.lapseRate700500, 1)} C/km`], ['Freezing level', `${n(d.freezingAglM)} m`], ['Wet-bulb zero', `${n(d.wetBulbZeroAglM)} m`], ['Mean RH low / mid', `${n(d.lowRh)} / ${n(d.midRh)} %`]])}</section>
+    <section class="wide">${list([['Supercell composite', n(p.scp, 1)], ['Sig. tornado', n(p.stp, 1)], ['Sig. hail', n(d.ship, 1)], ['Wind damage', n(d.windDamage, 1)]])}
+      <div class="snd-hazard"><small>Psbl haz. type</small><b style="color:${HAZARD_COLOURS[hazard] ?? HAZARD_COLOURS.NONE}">${hazard}</b></div></section>`;
 }
 
 canvas.addEventListener('click', event => { const at = pointer(event); if (at) showSounding(at); });

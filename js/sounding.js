@@ -44,7 +44,10 @@ export function buildSounding(cell) {
   const lapseRate700500=layerLapseRate(profile,700,500);
   const lapseRate850500=layerLapseRate(profile,850,500);
   const dcape=downdraughtCape(profile, surfaceP);
+  const t500=temperatureAtPressure(profile,500), muSource=profile[muResult.sourceIndex??0];
+  const parcelRow=result=>({cape:result.thermo.cape,cin:result.thermo.cin,lclAglM:result.thermo.lclM-cell.terrain.elevationM,lfcAglM:result.thermo.lfcM-cell.terrain.elevationM,elAglM:result.thermo.elM-cell.terrain.elevationM,liftedIndex:t500-parcelTemperatureAtPressure(result.parcel,500)});
   const params={
+    parcels:{surface:parcelRow(surfaceResult),mixedLayer:parcelRow(mixedResult),mostUnstable:parcelRow(muResult)}, muMixingRatioGkg:1000*mixingRatioFromDewpoint(muSource.td,muSource.p),
     sbcape:surfaceResult.thermo.cape, mlcape:mixedResult.thermo.cape, mucape:muResult.thermo.cape,
     sbcin:surfaceResult.thermo.cin, mlcin:mixedResult.thermo.cin, mucin:muResult.thermo.cin,
     lclM:mixedResult.thermo.lclM, lclAglM:mixedLclAgl, lfcM:mixedResult.thermo.lfcM, elM:mixedResult.thermo.elM,
@@ -58,8 +61,7 @@ export function buildSounding(cell) {
     stpComponents:{capeTerm,srhTerm,shearTerm,lclTerm,cinTerm,rawStp,fullRawStp:rawStp,synopticAdjustment:1,airMassFactor,targetAirMassFactor,parcelSupportBaseline:clamp((Number(cell.surface?.dewpoint)-42)/24,0,1)*clamp(1-(Number(cell.surface?.temperature)-Number(cell.surface?.dewpoint))/36,0,1),adjustedStp:stp,lclAglM:mixedLclAgl,surfaceRooted}
   };
   // parcel is the mixed-layer parcel; muParcel the most unstable one, from its own level up.
-  const muStart=Math.max(0,muResult.parcel.findIndex((row,i)=>row.t!==profile[i].t||row.td!==profile[i].td)-1);
-  return { profile, parcel:mixedResult.parcel, muParcel:muResult.parcel.slice(muStart), params };
+  return { profile, parcel:mixedResult.parcel, muParcel:muResult.parcel.slice(muResult.sourceIndex??0), params };
 }
 
 export function updateCellDiagnostics(cell) {
@@ -174,39 +176,53 @@ export function diagnoseViolentTornadoParameter({stp=0,rawStp=stp,synopticSuppor
   return clamp((raw/1.5)*5,0,5);
 }
 
+const SKEW_C=60;
+// Skew-T log-p in the layout forecasters know from SHARPpy-style soundings: temperature red,
+// dewpoint green, wet-bulb thin cyan, parcels dashed, the 0 and -20 C isotherms picked out,
+// heights above ground down the left, parcel levels on the right, wind barbs outside.
 export function drawSounding(canvas, sounding) {
-  const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height;
-  ctx.clearRect(0,0,w,h); ctx.fillStyle='#0b1119';ctx.fillRect(0,0,w,h);
-  const left=58,right=w-58,top=28,bottom=h-45;
-  const y=p=>bottom-(Math.log(1000)-Math.log(p))/(Math.log(1000)-Math.log(100))*(bottom-top);
-  // Skew-T log-p: isotherms are straight lines leaning right, SKEW_C degrees per tenfold fall in pressure.
-  const x=(t,p)=>left+((t+50)+SKEW_C*Math.log10(1000/p))/100*(right-left);
+  const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height, profile=sounding.profile, p=sounding.params;
+  ctx.clearRect(0,0,w,h); ctx.fillStyle='#05080d';ctx.fillRect(0,0,w,h);
+  const left=44,right=w-64,top=14,bottom=h-30;
+  const y=pr=>bottom-(Math.log(1000)-Math.log(pr))/(Math.log(1000)-Math.log(100))*(bottom-top);
+  // Isotherms are straight lines leaning right, SKEW_C degrees per tenfold fall in pressure.
+  const x=(t,pr)=>left+((t+50)+SKEW_C*Math.log10(1000/pr))/100*(right-left);
   ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
   drawDryAdiabats(ctx,x,y,top,bottom);
   drawMoistAdiabats(ctx,x,y,top,bottom);
   drawMixingRatio(ctx,x,y,top,bottom);
   drawCAPEAndCIN(ctx,sounding,x,y);
   drawIsotherms(ctx,x,y,top,bottom);
-  drawPressureLines(ctx,y,left,right);
-  drawProfile(ctx,sounding.profile,'t','#ff6464',2.7,x,y);
-  drawProfile(ctx,sounding.profile,'td','#50d06b',2.7,x,y);
-  if(sounding.muParcel?.length>1&&sounding.params.mucape>sounding.params.mlcape+100){ctx.setLineDash([6,5]);drawProfile(ctx,sounding.muParcel,'t','#ffb454',1.6,x,y);ctx.setLineDash([]);}
-  drawProfile(ctx,sounding.parcel,'t','#ffd65a',2.2,x,y);
+  ctx.save();ctx.strokeStyle='rgba(96,165,250,.8)';ctx.lineWidth=1.2;ctx.setLineDash([6,5]);
+  for(const t of [0,-20]){ctx.beginPath();ctx.moveTo(x(t,1000),y(1000));ctx.lineTo(x(t,100),y(100));ctx.stroke();}
   ctx.restore();
+  drawPressureLines(ctx,y,left,right);
+  drawProfile(ctx,profile.map(r=>({p:r.p,t:Math.min(r.t,Math.max(r.td,wetBulbApprox(r.t,r.rh)))})),'t','#22d3ee',1.1,x,y);
+  drawProfile(ctx,profile,'td','#3ddc64',2.6,x,y);
+  drawProfile(ctx,profile,'t','#ff4d4d',2.6,x,y);
+  ctx.setLineDash([6,5]);
+  if(sounding.muParcel?.length>1&&p.mucape>p.mlcape+100)drawProfile(ctx,sounding.muParcel,'t','#fbbf24',1.5,x,y);
+  drawProfile(ctx,sounding.parcel,'t','#f1f5f9',1.8,x,y);
+  ctx.setLineDash([]);
+  ctx.restore();
+  ctx.strokeStyle='#334155';ctx.lineWidth=1;ctx.strokeRect(left,top,right-left,bottom-top);
   // Wind at the ground and every 50 hPa, as barbs down the right-hand side.
-  sounding.profile.forEach((row,i)=>{if(i===0||(row.p%50===0&&row.p>=150&&sounding.profile[0].p-row.p>=20))drawBarb(ctx,right+30,y(row.p),row.dir,row.spd);});
+  profile.forEach((row,i)=>{if(i===0||(row.p%50===0&&row.p>=150&&profile[0].p-row.p>=20))drawBarb(ctx,right+34,y(row.p),row.dir,row.spd);});
 
   ctx.font='11px system-ui';ctx.textAlign='right';ctx.fillStyle='#9eacbb';
-  for(const p of [1000,900,800,700,600,500,400,300,250,200,150,100]) ctx.fillText(p,left-8,y(p)+4);
-  ctx.textAlign='center';for(let t=-50;t<=50;t+=10) ctx.fillText(`${t}`,x(t,1000),bottom+18);
-  ctx.textAlign='left';ctx.fillStyle='#ffd65a';ctx.fillText('Parcel',left,16);ctx.fillStyle='#ff6464';ctx.fillText('Temperature',right-160,16);ctx.fillStyle='#50d06b';ctx.fillText('Dewpoint',right-78,16);
-  ctx.fillStyle='#9eacbb';ctx.fillText('hPa',8,top+4);ctx.fillText('°C',right+17,bottom+18);
-  drawLevelMarker(ctx,'LCL',sounding.params.lclM,sounding.profile,y,left,right,'#a78bfa');
-  drawLevelMarker(ctx,'LFC',sounding.params.lfcM,sounding.profile,y,left,right,'#5eead4');
-  drawLevelMarker(ctx,'EL',sounding.params.elM,sounding.profile,y,left,right,'#fbbf24');
+  for(const pr of [1000,850,700,500,400,300,250,200,150,100]) ctx.fillText(pr,left-6,y(pr)+4);
+  ctx.textAlign='center';for(let t=-40;t<=40;t+=10) ctx.fillText(`${t}`,x(t,1000),bottom+15);
+  // Heights above the ground.
+  const ground=profile[0].heightM;
+  ctx.textAlign='left';ctx.font='10px system-ui';
+  for(const km of [1,3,6,9,12,15]){const pr=pressureAtHeight(profile,ground+km*1000);if(!Number.isFinite(pr)||pr<100)continue;ctx.strokeStyle='#f87171';ctx.fillStyle='#f87171';ctx.beginPath();ctx.moveTo(left,y(pr));ctx.lineTo(left+9,y(pr));ctx.stroke();ctx.fillText(`${km} km`,left+12,y(pr)+3);}
+  // Parcel levels (mixed-layer parcel).
+  const level=(label,heightM,color)=>{if(!Number.isFinite(heightM))return;const pr=pressureAtHeight(profile,heightM);if(!Number.isFinite(pr))return;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(right-26,y(pr));ctx.lineTo(right,y(pr));ctx.stroke();ctx.textAlign='right';ctx.fillText(label,right-30,y(pr)+3);};
+  level('LCL',p.lclM,'#4ade80');level('LFC',p.lfcM,'#facc15');level('EL',p.elM,'#c084fc');
+  ctx.textAlign='left';ctx.font='10px system-ui';
+  [['T','#ff4d4d'],['Td','#3ddc64'],['Tw','#22d3ee'],['parcel','#f1f5f9']].reduce((at,[text,color])=>{ctx.fillStyle=color;ctx.fillText(text,at,top+12);return at+ctx.measureText(text).width+10;},left+70);
 }
 
-const SKEW_C=60;
 // A wind barb: the staff points to where the wind comes from; a pennant is 50 kt, a full barb 10, a half barb 5.
 function drawBarb(ctx,bx,by,dir,spd){
  const d=dir*Math.PI/180,sx=Math.sin(d),sy=-Math.cos(d),px=Math.cos(d),py=Math.sin(d),length=22;
@@ -221,25 +237,54 @@ function drawBarb(ctx,bx,by,dir,spd){
  ctx.restore();
 }
 
+// Hodograph: the wind from the ground to 12 km as one curve, coloured by height, zoomed to the
+// curve itself. Rings are every 10 kt about calm. The shaded wedge is the air a right-moving
+// storm draws in through the lowest kilometre: its area is the 0-1 km helicity.
+const HODOGRAPH_BANDS=[[0,3000,'#ff4d4d','0-3 km'],[3000,6000,'#4ade80','3-6'],[6000,9000,'#facc15','6-9'],[9000,12000,'#22d3ee','9-12']];
 export function drawHodograph(canvas, sounding){
  // Storm motion as the storm engine computes it, where the server supplies it; the sounding's own otherwise.
- const engine=sounding.hazards?.motion;
- const motion=engine?{stormMotion:{right:engine.right,left:engine.left},meanWind:engine.ordinary}:sounding.params;
- const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height,cx=w/2,cy=h/2,scale=Math.min(w,h)/190;
- ctx.clearRect(0,0,w,h);ctx.fillStyle='#0b1119';ctx.fillRect(0,0,w,h);
- ctx.strokeStyle='#2d3948';ctx.fillStyle='#93a2b2';ctx.font='10px system-ui';
- for(const s of [20,40,60,80]){ctx.beginPath();ctx.arc(cx,cy,s*scale,0,Math.PI*2);ctx.stroke();ctx.fillText(`${s}`,cx+s*scale+3,cy-3)}
- ctx.beginPath();ctx.moveTo(cx,10);ctx.lineTo(cx,h-10);ctx.moveTo(10,cy);ctx.lineTo(w-10,cy);ctx.stroke();
- const rows=sounding.profile.filter(r=>agl(r,sounding.profile)<=12000).sort((a,b)=>a.heightM-b.heightM);
- const bands=[[0,1000,'#50d06b'],[1000,3000,'#60a5fa'],[3000,6000,'#c084fc'],[6000,9000,'#fb7185'],[9000,12001,'#fbbf24']];
- for(const [lo,hi,color] of bands){const seg=interpolatedLayer(rows,lo,hi,sounding.profile);if(seg.length<2)continue;ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();seg.forEach((r,i)=>{const px=cx+r.u*scale,py=cy-r.v*scale;i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke();}
- ctx.fillStyle='#fff';[0,1000,3000,6000,9000,12000].forEach(z=>{const r=nearestAgl(rows,z,sounding.profile);ctx.beginPath();ctx.arc(cx+r.u*scale,cy-r.v*scale,3,0,Math.PI*2);ctx.fill();ctx.fillText(`${z/1000}`,cx+r.u*scale+5,cy-r.v*scale-5)});
- drawVector(ctx,cx,cy,scale,motion.stormMotion.right,'RM','#ffd65a');
- drawVector(ctx,cx,cy,scale,motion.stormMotion.left,'LM','#f59e0b');
- drawVector(ctx,cx,cy,scale,motion.meanWind,'MW','#e5e7eb');
- drawMotionLegend(ctx, motion, 10, 14);
- drawOverallMotionBadge(ctx, motion.stormMotion.right, w-118, 14);
- ctx.fillStyle='#93a2b2';ctx.textAlign='left';ctx.fillText('kt',w-22,h-12);
+ const engine=sounding.engineMotion, p=sounding.params, profile=sounding.profile;
+ const motion=engine?{right:engine.right,left:engine.left,mean:engine.ordinary}:{right:p.stormMotion.right,left:p.stormMotion.left,mean:p.meanWind};
+ const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+ ctx.clearRect(0,0,w,h);ctx.fillStyle='#05080d';ctx.fillRect(0,0,w,h);
+ const ground=profile[0].heightM, top=Math.min(12000,profile.at(-1).heightM-ground), points=[];
+ for(let z=0;z<=top+1;z+=250){const wind=windAtAgl(profile,z,ground);points.push({z,u:wind.u,v:wind.v});}
+ // The view: everything drawn, with a margin, never zoomed in past a 70 kt span.
+ const shown=[...points,motion.right,motion.left,motion.mean], margin=14;
+ const uLow=Math.min(...shown.map(q=>q.u))-margin,uHigh=Math.max(...shown.map(q=>q.u))+margin,vLow=Math.min(...shown.map(q=>q.v))-margin,vHigh=Math.max(...shown.map(q=>q.v))+margin;
+ const frame={left:14,right:w-14,top:14,bottom:h-46};
+ const scale=Math.min((frame.right-frame.left)/Math.max(70,uHigh-uLow),(frame.bottom-frame.top)/Math.max(70,vHigh-vLow));
+ const X=u=>(frame.left+frame.right)/2+(u-(uLow+uHigh)/2)*scale, Y=v=>(frame.top+frame.bottom)/2-(v-(vLow+vHigh)/2)*scale;
+ ctx.save();ctx.beginPath();ctx.rect(frame.left,frame.top,frame.right-frame.left,frame.bottom-frame.top);ctx.clip();
+ // Rings and axes about calm; ring speeds are labelled toward the middle of the view.
+ const toward=Math.atan2((vLow+vHigh)/2,(uLow+uHigh)/2);
+ ctx.font='10px system-ui';ctx.textAlign='center';
+ for(let speed=10;speed<=220;speed+=10){
+  ctx.strokeStyle=speed%20?'#1b2634':'#2a384a';ctx.lineWidth=1;ctx.beginPath();ctx.arc(X(0),Y(0),speed*scale,0,Math.PI*2);ctx.stroke();
+  if(speed%20===0){ctx.fillStyle='#64748b';ctx.fillText(`${speed}`,X(speed*Math.cos(toward+0.5)),Y(speed*Math.sin(toward+0.5))+3);}
+ }
+ ctx.strokeStyle='#2a384a';ctx.beginPath();ctx.moveTo(X(0),frame.top);ctx.lineTo(X(0),frame.bottom);ctx.moveTo(frame.left,Y(0));ctx.lineTo(frame.right,Y(0));ctx.stroke();
+ // Inflow through the lowest kilometre, relative to the right-moving storm.
+ const lowest=points.filter(q=>q.z<=1000);
+ if(lowest.length>1){
+  ctx.fillStyle='rgba(34,211,238,.14)';ctx.beginPath();ctx.moveTo(X(motion.right.u),Y(motion.right.v));lowest.forEach(q=>ctx.lineTo(X(q.u),Y(q.v)));ctx.closePath();ctx.fill();
+  ctx.strokeStyle='rgba(34,211,238,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(X(lowest[0].u),Y(lowest[0].v));ctx.lineTo(X(motion.right.u),Y(motion.right.v));ctx.lineTo(X(lowest.at(-1).u),Y(lowest.at(-1).v));ctx.stroke();
+ }
+ ctx.lineWidth=3;ctx.lineJoin='round';ctx.lineCap='round';
+ for(const [low,high,color] of HODOGRAPH_BANDS){const part=points.filter(q=>q.z>=low&&q.z<=high);if(part.length<2)continue;ctx.strokeStyle=color;ctx.beginPath();part.forEach((q,i)=>(i?ctx.lineTo(X(q.u),Y(q.v)):ctx.moveTo(X(q.u),Y(q.v))));ctx.stroke();}
+ // A dot at each kilometre; the usual ones are numbered.
+ ctx.font='bold 11px system-ui';ctx.textAlign='left';
+ for(const q of points){if(q.z%1000)continue;const km=q.z/1000;ctx.fillStyle='#f8fafc';ctx.beginPath();ctx.arc(X(q.u),Y(q.v),[0,1,3,6,9,12].includes(km)?3.6:2,0,Math.PI*2);ctx.fill();if([0,1,3,6,9,12].includes(km))ctx.fillText(km?`${km}`:'SFC',X(q.u)+6,Y(q.v)-6);}
+ const marker=(vector,label,color,square)=>{const mx=X(vector.u),my=Y(vector.v);ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1.8;ctx.beginPath();if(square)ctx.rect(mx-5,my-5,10,10);else{ctx.arc(mx,my,6,0,Math.PI*2);ctx.moveTo(mx-3,my);ctx.lineTo(mx+3,my);ctx.moveTo(mx,my-3);ctx.lineTo(mx,my+3);}ctx.stroke();ctx.fillText(label,mx+9,my+4);};
+ marker(motion.right,'RM','#f8fafc');marker(motion.left,'LM','#94a3b8');marker(motion.mean,'MW','#c4b5fd',true);
+ ctx.restore();
+ ctx.strokeStyle='#334155';ctx.lineWidth=1;ctx.strokeRect(frame.left,frame.top,frame.right-frame.left,frame.bottom-frame.top);
+ // Legend and the numbers the curve stands for.
+ const from=vector=>`${String(vectorDirection(vector)).padStart(3,'0')}/${Math.round(Math.hypot(vector.u,vector.v))} kt`;
+ ctx.font='11px system-ui';ctx.textAlign='left';
+ HODOGRAPH_BANDS.reduce((at,[, , color,label])=>{ctx.fillStyle=color;ctx.fillText(label,at,h-28);return at+ctx.measureText(label).width+12;},frame.left);
+ ctx.fillStyle='#cbd5e1';ctx.textAlign='right';ctx.fillText(`RM ${from(motion.right)}   LM ${from(motion.left)}   MW ${from(motion.mean)}`,frame.right,h-28);
+ ctx.textAlign='left';ctx.fillStyle='#94a3b8';ctx.fillText(`Helicity 0-1 km ${Math.round(p.srh01)}  ·  0-3 km ${Math.round(p.srh03)} m²/s²  ·  critical angle ${Math.round(p.criticalAngle)}°  ·  rings every 10 kt`,frame.left,h-10);
 }
 
 function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
@@ -292,7 +337,7 @@ function mixedLayerSource(profile,depthHpa){
 function mostUnstableParcel(profile,elevation,depthHpa,envTv,surfaceResult=null){
  const surfaceP=profile[0].p;let best=null;
  // The level-0 candidate is exactly the surface parcel; reuse it when already lifted.
- profile.forEach((r,i)=>{if(r.p<surfaceP-depthHpa)return;const result=i===0&&surfaceResult?surfaceResult:parcelDiagnosticsForState(profile,{p:r.p,t:r.t,td:r.td,index:i},elevation,envTv);if(!best||result.thermo.cape>best.thermo.cape)best=result});
+ profile.forEach((r,i)=>{if(r.p<surfaceP-depthHpa)return;const result=i===0&&surfaceResult?surfaceResult:parcelDiagnosticsForState(profile,{p:r.p,t:r.t,td:r.td,index:i},elevation,envTv);if(!best||result.thermo.cape>best.thermo.cape){best=result;best.sourceIndex=i}});
  return best||surfaceResult||parcelDiagnosticsForSource(profile,0,elevation,envTv);
 }
 function parcelDiagnosticsForState(profile,source,elevation,envTv=null){
@@ -361,53 +406,6 @@ function drawIsotherms(ctx,x,y){ctx.strokeStyle='rgba(150,160,175,.2)';ctx.lineW
 function drawPressureLines(ctx,y,left,right){ctx.strokeStyle='#2d3948';ctx.lineWidth=1;for(const p of [1000,900,800,700,600,500,400,300,250,200,150,100]){ctx.beginPath();ctx.moveTo(left,y(p));ctx.lineTo(right,y(p));ctx.stroke();}}
 function drawCAPEAndCIN(ctx,s,x,y){for(let i=0;i<s.profile.length-1;i++){const e1=s.profile[i],e2=s.profile[i+1],p1=s.parcel[i],p2=s.parcel[i+1];const positive=(p1.t-e1.t+p2.t-e2.t)>0;ctx.fillStyle=positive?'rgba(239,68,68,.22)':'rgba(59,130,246,.18)';ctx.beginPath();ctx.moveTo(x(e1.t,e1.p),y(e1.p));ctx.lineTo(x(p1.t,p1.p),y(p1.p));ctx.lineTo(x(p2.t,p2.p),y(p2.p));ctx.lineTo(x(e2.t,e2.p),y(e2.p));ctx.closePath();ctx.fill();}}
 function drawProfile(ctx,rows,key,color,width,x,y){ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();rows.forEach((r,i)=>{const px=x(r[key],r.p),py=y(r.p);i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke();}
-function drawLevelMarker(ctx,label,height,profile,y,left,right,color){if(!Number.isFinite(height))return;const p=pressureAtHeight(profile,height);if(!Number.isFinite(p))return;ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(left,y(p));ctx.lineTo(right,y(p));ctx.stroke();ctx.setLineDash([]);ctx.font='10px system-ui';ctx.textAlign='right';ctx.fillText(label,right-3,y(p)-3);ctx.restore();}
-function drawVector(ctx,cx,cy,scale,v,label,color){
- ctx.save();
- ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1.5;
- ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+v.u*scale,cy-v.v*scale);ctx.stroke();
- ctx.beginPath();ctx.arc(cx+v.u*scale,cy-v.v*scale,5,0,Math.PI*2);ctx.fill();
- ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText(label,cx+v.u*scale+7,cy-v.v*scale);
- ctx.restore();
-}
-
-function drawOverallMotionBadge(ctx,vector,x,y){
- const speedKt=Math.hypot(vector.u,vector.v);
- const speedMph=Math.round(speedKt*1.15078);
- const direction=vectorDirection(vector);
- const toward=Math.atan2(vector.v,vector.u);
- const iconX=x+13, iconY=y+12;
- ctx.save();
- ctx.fillStyle='rgba(11,17,25,.86)';ctx.strokeStyle='#4b5b6d';ctx.lineWidth=1;
- ctx.beginPath();ctx.roundRect(x,y,108,42,7);ctx.fill();ctx.stroke();
- ctx.translate(iconX,iconY);ctx.rotate(-toward);
- ctx.strokeStyle='#ffd65a';ctx.fillStyle='#ffd65a';ctx.lineWidth=2;
- ctx.beginPath();ctx.moveTo(-8,0);ctx.lineTo(8,0);ctx.stroke();
- ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(2,-4);ctx.lineTo(2,4);ctx.closePath();ctx.fill();
- ctx.restore();
- ctx.save();ctx.font='10px system-ui';ctx.textAlign='left';
- ctx.fillStyle='#93a2b2';ctx.fillText('STORM MOTION',x+28,y+12);
- ctx.fillStyle='#ffd65a';ctx.font='bold 12px system-ui';
- ctx.fillText(`${String(direction).padStart(3,'0')}°  ${speedMph} mph`,x+28,y+29);
- ctx.restore();
-}
-
-function drawMotionLegend(ctx,params,x,y){
- const entries=[
-  ['RM',params.stormMotion.right,'#ffd65a'],
-  ['LM',params.stormMotion.left,'#f59e0b'],
-  ['MW',params.meanWind,'#e5e7eb']
- ];
- ctx.save();ctx.font='10px system-ui';ctx.textAlign='left';
- for(let i=0;i<entries.length;i++){
-  const [label,vector,color]=entries[i];
-  const speed=Math.round(Math.hypot(vector.u,vector.v));
-  const direction=vectorDirection(vector);
-  ctx.fillStyle=color;ctx.fillText(`${label} ${String(direction).padStart(3,'0')}° / ${speed} kt`,x,y+i*13);
- }
- ctx.restore();
-}
-
 function vectorDirection(vector){
  // The direction it comes from, as winds and storm motions are quoted.
  return Math.round((Math.atan2(-vector.u,-vector.v)*180/Math.PI+360)%360)%360;
@@ -483,3 +481,58 @@ function interpolatedLayer(rows,lo,hi,all){return rows.filter(r=>agl(r,all)>=lo&
 function uvFromDirSpeed(dir,spd){const r=dir*Math.PI/180;return{u:-Math.sin(r)*spd,v:-Math.cos(r)*spd}}
 function blendDir(a,b,t){const ar=a*Math.PI/180,br=b*Math.PI/180;return(Math.atan2((1-t)*Math.sin(ar)+t*Math.sin(br),(1-t)*Math.cos(ar)+t*Math.cos(br))*180/Math.PI+360)%360}
 function lerp(a,b,t){return a+(b-a)*t}function fToC(f){return(f-32)*5/9}function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+
+// --- For the sounding display only (computed when a sounding is asked for, not for every cell).
+// Positive area of a parcel below a height above the ground (J/kg).
+function capeBelow(profile,parcel,elevation,topAglM){
+ let total=0;
+ for(let i=0;i<profile.length-1;i++){
+  const a=profile[i],b=profile[i+1];if(a.heightM>=elevation+topAglM)break;
+  const tvA=virtualTemperatureK(a.t,a.td,a.p),tvB=virtualTemperatureK(b.t,b.td,b.p);
+  const buoyA=G*(virtualTemperatureK(parcel[i].t,parcel[i].td,a.p)-tvA)/tvA,buoyB=G*(virtualTemperatureK(parcel[i+1].t,parcel[i+1].td,b.p)-tvB)/tvB;
+  const area=.5*(buoyA+buoyB)*(Math.min(b.heightM,elevation+topAglM)-a.heightM);
+  if(area>0)total+=area;
+ }
+ return total;
+}
+
+// Extra numbers for the tables beside a sounding, and its possible hazard type: the label a
+// SHARPpy-style sounding carries (PDS TOR, TOR, MRGL TOR, SVR, MRGL SVR or NONE). The label is
+// read off the sounding's own indices by the decision ladder those soundings use; it is a
+// forecaster's shorthand for the profile, not a statement of what the simulation will do.
+// Where that ladder uses effective-layer quantities this uses the fixed-layer ones the
+// sounding has (the tornado parameter, and 0-3 km helicity for effective helicity).
+export function diagnoseSoundingDisplay(sounding,elevationM){
+ const profile=sounding.profile,p=sounding.params,surfaceP=profile[0].p;
+ const wind=z=>windAtAgl(profile,z,elevationM), mean=(low,high)=>meanWindLayer(profile,low,high,elevationM);
+ const w0=wind(0),w8=wind(8000),rm=p.stormMotion.right,mw46=mean(4000,6000),mw135=mean(1000,3500);
+ const shear08=Math.hypot(w8.u-w0.u,w8.v-w0.v), srw46=Math.hypot(mw46.u-rm.u,mw46.v-rm.v);
+ const humidity=(low,high)=>{const rows=profile.filter(r=>r.p<=surfaceP-low&&r.p>=surfaceP-high);return rows.length?rows.reduce((sum,r)=>sum+r.rh,0)/rows.length:0;};
+ const lowRh=humidity(0,150),midRh=humidity(150,350);
+ const cape03=capeBelow(profile,sounding.parcel,elevationM,3000);
+ const lapse36=layerLapseRateByHeight(profile,elevationM,3000,6000);
+ const freezingAglM=p.freezingM-elevationM, wetBulbZeroAglM=p.wetBulbZeroM-elevationM;
+ // Significant hail parameter.
+ let ship=p.mucape*clamp(p.muMixingRatioGkg??12,11,13.6)*p.lapseRate700500*-Math.min(temperatureAtPressure(profile,500),-5.5)*clamp(p.shear06*KNOT_TO_MS,7,27)/42000000;
+ if(p.mucape<1300)ship*=p.mucape/1300;
+ if(p.lapseRate700500<5.8)ship*=p.lapseRate700500/5.8;
+ if(Number.isFinite(freezingAglM)&&freezingAglM<2400)ship*=Math.max(0,freezingAglM)/2400;
+ // Wind damage parameter.
+ const windDamage=(p.mlcape/2000)*((p.lapseRate03km<7?0:p.lapseRate03km)/9)*(Math.hypot(mw135.u,mw135.v)*KNOT_TO_MS/15)*((50+Math.max(p.mlcin,-50))/40);
+
+ const stp=p.stp,scp=p.scp,mlcin=p.mlcin,mucin=p.mucin,lcl=p.lclAglM,lapse01=p.lapseRate01km;
+ // Surface-based inflow: a parcel from the ground with usable CAPE and not too much inhibition.
+ const surfaceBased=p.sbcape>=100&&p.sbcin>=-250;
+ let hazardType='NONE';
+ if(surfaceBased&&stp>=3&&p.srh01>=200&&p.srh03>=200&&srw46>=15&&shear08>45&&lcl<1000&&lapse01>=5&&mlcin>=-50)hazardType='PDS TOR';
+ else if(surfaceBased&&stp>=3&&mlcin>-125)hazardType='TOR';
+ else if(surfaceBased&&stp>=1&&(srw46>=15||shear08>=40)&&mlcin>=-50)hazardType='TOR';
+ else if(surfaceBased&&stp>=1&&(lowRh+midRh)/2>=60&&lapse01>=5&&mlcin>-50)hazardType='TOR';
+ else if(surfaceBased&&stp>=1&&mlcin>-150)hazardType='MRGL TOR';
+ else if(surfaceBased&&stp>=0.5&&p.srh01>=150&&mlcin>=-50)hazardType='MRGL TOR';
+ else if((stp>=1||scp>=4)&&mucin>=-50)hazardType='SVR';
+ else if(scp>=2&&(ship>=1||p.dcape>=750)&&mucin>=-50)hazardType='SVR';
+ else if(mucin>=-75&&(windDamage>=0.5||ship>=0.5||scp>=0.5))hazardType='MRGL SVR';
+ return {hazardType,ship,windDamage,cape03,lapse36,shear08,srw46,lowRh,midRh,freezingAglM,wetBulbZeroAglM,
+  meanWind06:p.meanWind, stormMotion:p.stormMotion};
+}

@@ -41,6 +41,14 @@ export function diagnoseSoundingHazards(world, x, y) {
   return outlook;
 }
 
+// Storm motion at a place as the storm engine computes it (kt, toward): rotating right- and
+// left-moving storms, and an ordinary one. This is what a hodograph should show.
+export function diagnoseEngineMotion(world, x, y) {
+  const environment = sampleStormEnvironment(world, (x + 0.5) * world.cellSizeKm, (y + 0.5) * world.cellSizeKm);
+  const motion = character => { const v = diagnoseStormMotion(environment, character); return { u: v.east / KPH_PER_KT, v: v.north / KPH_PER_KT }; };
+  return { right: motion({ rotating: 1 }), left: motion({ rotating: 1, leftMover: true }), ordinary: motion({ rotating: 0 }) };
+}
+
 // One storm, alone, in unchanging air: the storm engine's own step, in its own order.
 export function runLoneStorm(world, environment) {
   const first = diagnoseStormMotion(environment, { rotating: 0, linear: 0 });
