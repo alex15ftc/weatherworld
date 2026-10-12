@@ -653,6 +653,45 @@ defined for this world (stage 6), not for the atmosphere.
   them, which only show a notice.
 - `scripts/player-report.mjs` measures what a player finds; results are in `STATUS.md`.
 
+### Storm update, stage 1: budgets (2026-10-12)
+
+Storm strength, organization and life-cycle are no longer weighted scores and threshold
+labels. `js/storms/StormBudgets.js`: a storm carries an updraught (m/s), its rain (0-1) and its
+cold pool (0-1).
+
+- The updraught heads for what the inflow supports (parcel theory less entrainment and
+  inhibition), less the weight of rain, undercutting by its own outflow, and spoiled inflow.
+- Rain follows the updraught by about 25 minutes. Shear of 15 to 45 kt carries it clear of
+  the updraught; below that it falls back through it.
+- The cold pool follows the rain, stronger in dry air. Where it outruns the low-level shear
+  it cuts the inflow off. A rotating updraught resists 60% of that; a line resists it until
+  the cold pool is well over the shear.
+- A storm is over when its updraught falls below 4 m/s. The old rule that no storm could
+  end before 1.7 hours is gone.
+- Strength is the updraught over 50 m/s; hail takes the updraught directly (reference
+  raised from 55 to 62 m/s); gusts scale with the rain now falling, so a collapsing storm's
+  strongest gust comes as its core descends.
+- The phase name is a description of the budgets' trend; rotation no longer reads it.
+
+| 90 days, steered | Before | After |
+|---|---|---|
+| Storm lifetime in under 20 kt of shear / 30-55 kt (5 days, one seed) | 5.9 h / 3.5-4.4 h | 1.7 h / 3.8-4.3 h |
+| Peak strength, median (90th) | about 0.55 (0.70) | 0.85 (1.00) |
+| Quiet days | 3-6% | 4% |
+| Slight / Enhanced / Moderate / High | 12 / 36 / 27 / 20% | 10 / 20 / 43 / 20% |
+| Days with a tornado | 88-93% | 83-87% |
+| Days with 58 mph / 75 mph wind | 76% / 2% | 93% / 36% |
+| Days with 1 in / 2 in hail | 92% / 41% | 94% / 80% |
+| Largest hail of the day, median (90th) | 1.9 in (2.2) | 2.9 in (4.2) |
+| Strongest gust of the day, median (90th) | 63 mph (71) | 73 mph (83) |
+| Storms per day, median | about 100 | 93 |
+| Tornado time on the ground, median (90th) | 4 min (25) | 4 min (24) |
+
+Open after stage 1: hail is too large (the day's largest stone 2.9 in at the median; raising
+the reference to about 68 m/s would bring it near 2.3); ordinary storms in weak shear last
+1.7 hours where real ones last under an hour; no left-moving splits; tornado duration
+untouched (stage 2). Test: `tests/storm-budgets.mjs`.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

@@ -1,4 +1,4 @@
-import { rotatingShare, lineShare, outflowDominance } from './StormModeEngine.js';
+import { rotatingShare } from './StormModeEngine.js';
 import { clamp } from '../scenarios/math.js';
 
 const MPH_PER_KPH = 0.621371;
@@ -17,37 +17,48 @@ export function initializeTornadoState(storm) {
   return storm.tornado;
 }
 
-// A tornado cannot emerge from fields on a 10-mile grid, so this is a statistical model of
-// one, conditioned continuously on the storm and its inflow. There are no gates, vetoes or
-// cooldowns: every input moves the odds smoothly.
-//   - Whether one forms: a rate that rises with the storm's rotation and with the ingredients
-//     of its inflow (instability, low-level helicity, deep shear, cloud base, inhibition,
-//     combined as the significant tornado parameter), and falls where the storm is part of a
-//     line or its outflow undercuts the updraught. Over CHANCE_WINDOW_HOURS of a mature,
-//     fully rotating storm the chance is 65% x (1 - e^(-STP/4)): about 14% at STP 1, 26% at
-//     2, 41% at 4.
-//   - How long it lasts and how strong it gets: drawn once per tornado (nothing at this scale
-//     decides them), from distributions whose scale rises with the same ingredients.
-const CHANCE_WINDOW_HOURS = 2.5, FULL_CHANCE = 0.65, STP_SCALE = 4;
-// A storm is mature enough to produce one from about half an hour old and moderate strength.
-const MATURE_AGE_HOURS = [0.3, 0.9], MATURE_INTENSITY = [0.25, 0.5];
+// A tornado cannot emerge from fields on a 10-mile grid, so it is modelled on the storm, from
+// the storm's own low-level rotation (StormRotation.js). There are no gates, vetoes or
+// cooldowns: everything moves smoothly with the storm's state.
+//   - Whether one forms: a rate that rises with low-level rotation, from none at
+//     onsetRotation[0] to one every fullRatePerHour-th of an hour at onsetRotation[1].
+//     Low-level rotation takes time to build, so a tornado is seen coming; chance decides
+//     only the minute.
+//   - How long it lasts: as long as the storm holds its low-level rotation above
+//     sustainRotation. The storm's outflow wraps around a tornado and cuts it off in time
+//     (its occlusion), quickly where the outflow outruns the shear.
+//   - How strong it is: its wind follows the low-level rotation as it rises and falls. What
+//     sets one tornado apart from another under the same rotation cannot be resolved here,
+//     so each has its own draw (strengthUniform) within a spread the rotation scales.
+const TORNADO = { onsetRotation: [0.12, 0.5], fullRatePerHour: 4, power: 1.5, sustainRotation: 0.08, outlookHours: 0.5 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
-export function updateTornadoState(world, storm, environment, dtHours) {
-  const tornado = storm.tornado ?? initializeTornadoState(storm);
-  const dtMinutes = dtHours * 60;
-  const rotating = rotatingShare(storm), inLine = lineShare(storm), undercut = outflowDominance(storm, environment);
-  const mesocyclone = clamp(storm.mesocycloneStrength ?? 0, 0, 1.2);
-  // The significant tornado parameter of the storm's inflow, from its ingredients.
-  const ingredients = clamp(
+// The significant tornado parameter of the storm's inflow, kept for the maps and reports.
+export function tornadoIngredients(environment) {
+  return clamp(
     (environment.cape ?? 0) / 1500 * ((environment.srh ?? 0) / 150) * ((environment.bulkShear ?? 0) / 40) *
     clamp((2000 - (environment.lcl ?? 2000)) / 1000, 0, 1.5) * clamp((150 - Math.abs(environment.cin ?? 50)) / 125, 0, 1.2),
     0, 18
   );
-  const mature = ramp(storm.ageHours, MATURE_AGE_HOURS[0], MATURE_AGE_HOURS[1]) * ramp(storm.intensity, MATURE_INTENSITY[0], MATURE_INTENSITY[1]);
-  const chance = FULL_CHANCE * (1 - Math.exp(-ingredients / STP_SCALE)) * rotating * (1 - 0.4 * inLine) * (1 - 0.6 * undercut) * mature;
-  const ratePerHour = -Math.log(1 - clamp(chance, 0, 0.95)) / CHANCE_WINDOW_HOURS;
-  tornado.genesisPotential = chance;
+}
+// How close the storm's low-level rotation is to producing a tornado (0-1), and the rate that gives.
+export const tornadoImminence = storm => ramp(clamp(storm.lowRotation ?? 0, 0, 1.2), TORNADO.onsetRotation[0], TORNADO.onsetRotation[1]);
+export const tornadoRatePerHour = imminence => TORNADO.fullRatePerHour * Math.pow(imminence, TORNADO.power);
+// Scale (mph above 65) of the wind spread for a tornado under this low-level rotation, and the
+// share of tornadoes from that spread whose wind reaches a given speed.
+export const tornadoWindScaleMph = lowRotation => INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2);
+export const tornadoShareReaching = (scaleMph, mph) => Math.exp(-Math.pow(Math.max(0, mph - 65) / scaleMph, 1 / INTENSITY.tail));
+
+export function updateTornadoState(world, storm, environment, dtHours) {
+  const tornado = storm.tornado ?? initializeTornadoState(storm);
+  const dtMinutes = dtHours * 60;
+  const rotating = rotatingShare(storm), low = clamp(storm.lowRotation ?? 0, 0, 1.2);
+  const ingredients = tornadoIngredients(environment);
+  const imminence = tornadoImminence(storm);
+  const ratePerHour = tornadoRatePerHour(imminence);
+  // The chance of one in the next half hour, for the pages; imminence is the cue itself.
+  const chance = 1 - Math.exp(-ratePerHour * TORNADO.outlookHours);
+  tornado.genesisPotential = imminence;
   tornado.probability = chance;
   tornado.rawStp = ingredients;
 
@@ -56,7 +67,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     const draw = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|tor|${tick}`);
     if (draw < 1 - Math.exp(-ratePerHour * dtHours)) {
       beginTornado(world, storm, tornado);
-      drawTornadoCharacter(world, storm, tornado, ingredients, rotating);
+      drawTornadoCharacter(world, storm, tornado);
     } else tornado.state = tornado.state === 'ended' ? 'ended' : 'none';
   }
 
@@ -73,12 +84,12 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   tornado.trackPoints.push({ x: tornado.positionKm.x, y: tornado.positionKm.y, hourUtc: world.stormEngine?.validHourUtc ?? world.validHourUtc });
   if (tornado.trackPoints.length > 96) tornado.trackPoints.shift();
 
-  // Peak wind: this tornado's draw is its quantile in a distribution whose scale the
-  // ingredients set and the mesocyclone modulates. It needs time on the ground to reach it.
+  // Wind: this tornado's draw is its quantile in a spread whose scale the storm's underlying
+  // low-level rotation sets; the wind builds over its first minutes and falls as it occludes.
   const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 0.999);
-  const scaleMph = (INTENSITY.baseScaleMph + INTENSITY.stpScaleMph * (1 - Math.exp(-ingredients / STP_SCALE))) * (0.85 + 0.3 * clamp(mesocyclone / 0.5, 0, 1));
+  const scaleMph = tornadoWindScaleMph(storm.lowRotationFree ?? low);
   const ceilingMph = Math.min(235, 65 + scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail));
-  const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / INTENSITY.matureMinutes, 0.25, 1);
+  const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / INTENSITY.matureMinutes, 0.25, 1) * (1 - INTENSITY.occlusionLoss * clamp(storm.occlusion ?? 0, 0, 1));
   tornado.windSpeedMph += (targetWind - tornado.windSpeedMph) * clamp(dtHours * 6, 0, 1);
   tornado.environmentWindCeilingMph = ceilingMph;
   // Stronger tornadoes are wider: about 50 yd at EF0, 150 at EF1, 250 at EF2, 450 at EF3 and
@@ -103,25 +114,18 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   extreme.maxWindEf = efRating(extreme.maxWindMph);
   extreme.cycles = Math.max(extreme.cycles ?? 0, tornado.cycleCount ?? 0);
 
-  // It ends when its own time is up, or when the storm stops rotating or falls apart. It stays
-  // down through the step it formed in, so everything that looks at storms between steps sees
-  // it; one shorter than a step is cut back to its own time and path when it ends.
-  const lifetime = Number.isFinite(tornado.lifetimeMinutes) ? tornado.lifetimeMinutes : 10;
-  if (tornado.ageMinutes > dtMinutes + 1e-6 && (tornado.groundTimeMinutes >= lifetime || rotating <= 0 || storm.active === false)) {
-    if (tornado.groundTimeMinutes > lifetime) { tornado.pathLengthKm *= lifetime / tornado.groundTimeMinutes; tornado.groundTimeMinutes = lifetime; }
-    endTornado(world, storm, tornado);
-  } else tornado.state = 'on-ground';
+  // It ends when the storm no longer holds the low-level rotation for it, or falls apart. It
+  // stays down through the step it formed in, so everything that looks at storms between
+  // steps sees it.
+  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false)) endTornado(world, storm, tornado);
+  else tornado.state = 'on-ground';
   return tornado;
 }
 
-// Lifetime and strength quantile, drawn once per tornado. Half of all tornadoes last under
-// five minutes and one in ten over twenty; a rotating storm among strong ingredients can
-// keep one down for an hour.
-function drawTornadoCharacter(world, storm, tornado, ingredients, rotating) {
+// What cannot be resolved at this scale, drawn once per tornado: where it falls within the
+// spread of winds its storm's rotation allows, and how much there was in its path to damage.
+function drawTornadoCharacter(world, storm, tornado) {
   const seed = `${world.evolution?.config?.seed ?? 1}|${storm.id}|cycle${tornado.cycleCount}`;
-  const lifeDraw = deterministicUnit(seed + '|life'), support = 1 - Math.exp(-ingredients / STP_SCALE);
-  const lifetime = 1.5 + 7 * Math.pow(lifeDraw, 1.5) + rotating * 60 * Math.pow(lifeDraw, 7) * (0.25 + 0.75 * support);
-  tornado.lifetimeMinutes = Math.round(clamp(lifetime, 1.5, 10 + 60 * rotating) * 10) / 10;
   tornado.strengthUniform = deterministicUnit(seed + '|strength');
   tornado.damageDraw = deterministicUnit(seed + '|damage');
   tornado.ratedWindMph = 0;
@@ -159,13 +163,10 @@ function tornadoPosition(storm) {
   return { x: storm.positionKm.x + Math.cos(angle) * offset, y: storm.positionKm.y + Math.sin(angle) * offset };
 }
 function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0) * 180 / Math.PI + 360) % 360; }
-// Peak wind above 65 mph follows a stretched exponential whose scale grows with STP: roughly
-// one tornado in eight reaches EF2 in a marginal environment, nearly half in an extreme one.
-// Peak wind = 65 mph + scale x (-ln(1 - quantile))^tail, the scale rising with the ingredients.
-// This is the wind the tornado really has. Its rating is a separate thing (see DAMAGE_RATING):
-// with a scale near 31 mph about a quarter of tornadoes have EF2 winds or stronger, while the
-// ratings come out as observed (about 64% EF0, 26% EF1, 8% EF2, 2% EF3, under 1% EF4+).
-const INTENSITY = { baseScaleMph: 24, stpScaleMph: 19, tail: 1.0, matureMinutes: 6 };
+// Wind above 65 mph = scale x (-ln(1 - quantile))^tail, the scale rising with the storm's
+// low-level rotation (0-1.2). This is the wind the tornado really has; its rating is a
+// separate thing (see DAMAGE_RATING).
+const INTENSITY = { baseScaleMph: 26, rotationScaleMph: 65, tail: 1.0, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times

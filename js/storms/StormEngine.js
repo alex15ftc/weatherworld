@@ -2,6 +2,9 @@ import { Storm } from './Storm.js';
 import { findInitiationCandidates } from './InitiationEngine.js';
 import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampling.js';
 import { describeStormMode, shouldSplitStorm, rotatingShare, lineShare, lineOrganizationTarget } from './StormModeEngine.js';
+import { BUDGET, setUpdraught, startStormBudgets, stepStormBudgets, stormIsOver } from './StormBudgets.js';
+import { stepStormRotation } from './StormRotation.js';
+import { hailSizeInches as diagnoseHailSize, gustMph as diagnoseGust, stormFuel } from './StormHazards.js';
 import { clamp } from '../scenarios/math.js';
 import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js';
 import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js';
@@ -61,20 +64,8 @@ function createStorm(world, candidate, environment, modeHint = null, parentId = 
 
 
 function initializeStormDiagnostics(storm, environment) {
-  const buoyancy = clamp((environment.cape ?? 0) / 3200, 0, 1.25);
-  const shearSupport = clamp(((environment.bulkShear ?? 0) - 16) / 44, 0, 1);
-  const readiness = clamp(environment.readiness ?? 0, 0, 1);
-  const forcing = clamp(environment.forcing ?? 0, 0, 1);
-  const initiation = clamp(environment.initiation ?? 0, 0, 1);
-  const capPenalty = clamp((environment.cin ?? 0) / 180, 0, 1);
-  const linear = lineShare(storm);
-  const modeSupport = linear * forcing * 0.08;
-
-  storm.intensity = clamp(0.08 + readiness * 0.20 + buoyancy * 0.08 + initiation * 0.05 + modeSupport - capPenalty * 0.04, 0.08, 0.38);
-  storm.organization = clamp(0.08 + shearSupport * 0.25 + forcing * 0.08 + (storm.modeConfidence ?? 0) * 0.10, 0.08, 0.42);
-  storm.updraftStrength = clamp(storm.intensity * (0.68 + buoyancy * 0.30), 0.08, 0.48);
-  storm.coldPoolStrength = clamp(storm.intensity * (0.10 + 0.14 * linear), 0, 0.18);
-  storm.coldPoolRadiusKm = clamp(4 + storm.coldPoolStrength * 18, 4, 9);
+  startStormBudgets(storm);
+  storm.coldPoolRadiusKm = 4;
   diagnoseObservedStorm(storm, environment);
   storm.maxIntensity = storm.intensity;
   storm.peakRotationStrength = storm.rotationStrength ?? 0;
@@ -111,18 +102,11 @@ function updateStorm(world, storm, dtHours) {
   // Fuel: an existing updraft can force surface-based parcels through moderate inhibition
   // (~150 J/kg); otherwise it can feed on an elevated parcel that is essentially uncapped.
   // Without either the storm has no buoyant inflow and collapses.
-  const surfaceFuel = (Number(environment.cin) || 0) <= 150 ? Number(environment.cape) || 0 : 0;
-  const elevatedFuel = (Number(environment.mostUnstableCin) || 0) <= 60 ? 0.85 * (Number(environment.mostUnstableCape) || 0) : 0;
-  storm.fuelCape = Math.max(surfaceFuel, elevatedFuel);
-  storm.elevatedFeed = elevatedFuel > surfaceFuel;
-  const feedEnvironment = storm.elevatedFeed ? { ...environment, cape: elevatedFuel, cin: Number(environment.mostUnstableCin) || 0 } : environment;
-  const starving = storm.fuelCape < 150;
+  const { fuelCape, elevatedFeed, feedEnvironment, starving } = stormFuel(environment);
+  storm.fuelCape = fuelCape; storm.elevatedFeed = elevatedFeed;
 
   const physics = diagnoseStormRealizationPhysics(feedEnvironment, storm);
   storm.physics = physics;
-  const buoyancy = clamp(physics.realizedUpdraft, 0, 1.25);
-  const capPenalty = clamp(1 - physics.inhibitionEfficiency, 0, 1);
-  const shearSupport = clamp((environment.bulkShear - 16) / 44, 0, 1);
   // A rotating updraft draws its inflow from farther out and is less disturbed by worked-over
   // air and by its neighbours.
   const processedWeight = 0.55 - 0.25 * rotating;
@@ -132,25 +116,15 @@ function updateStorm(world, storm, dtHours) {
   storm.interactions ??= { mergerBoost: 0, inflowCompetition: 0, lastType: null };
   storm.interactions.inflowCompetition = clamp(storm.interactionSuppression ?? 0, 0, 1);
   storm.interactions.mergerBoost *= Math.max(0, 1 - dtHours * 0.7);
-  const modeBoost = rotating * 0.10 * shearSupport + lineShare(storm) * 0.08 * environment.forcing;
-  const targetIntensity = starving ? 0 : clamp((environment.readiness * 0.30 + buoyancy * 0.42 + physics.initiationProbability * 0.18 + modeBoost - capPenalty * 0.20) * storm.inflowQuality, 0, 1);
-  const response = starving ? 0.75 : targetIntensity > storm.intensity ? 0.52 : 0.23;
-  storm.intensity += (targetIntensity - storm.intensity) * clamp(response * dtHours * 2, 0, 1);
-  const targetOrganization = clamp(physics.organizationProbability * 0.58 + shearSupport * 0.16 + physics.balanceSupport * 0.10 + Math.max(rotating, lineShare(storm)) * 0.16, 0, 1);
-  // Strongly sheared environments organize updrafts within ~1 h (supercell maturation).
-  storm.organization += (targetOrganization - storm.organization) * clamp((0.34 + 0.5 * shearSupport) * dtHours, 0, 1);
-  storm.updraftStrength = clamp(physics.realizedUpdraft * (0.55 + storm.intensity * 0.45), 0, 1);
-  // Cold pool: rain evaporating into dry air below cloud; a line's merged outflow is deeper.
-  const downdraught = clamp((Number(environment.dcape) || 0) / COLD_POOL.strongDcape, 0, 1.2);
-  const coldPoolTarget = clamp(storm.intensity * (COLD_POOL.base + COLD_POOL.dryness * downdraught + COLD_POOL.line * lineShare(storm)), 0, 1);
-  storm.coldPoolStrength += (coldPoolTarget - storm.coldPoolStrength) * clamp(COLD_POOL.responsePerHour * dtHours, 0, 1);
+  // The storm's budgets: updraught, rain, and the cold pool the rain makes (StormBudgets.js).
+  stepStormBudgets(storm, environment, physics, dtHours, { starving });
   // Line organization follows the forcing and the cold pool's balance with the shear.
   storm.lineOrganization = lineShare(storm) + (lineOrganizationTarget(storm, environment) - lineShare(storm)) * clamp(LINE_RESPONSE_PER_HOUR * dtHours, 0, 1);
   storm.coldPoolRadiusKm = clamp(5 + storm.ageHours * 5 + storm.coldPoolStrength * 24, 5, 52);
   updateStormColdPool(world, storm, environment, dtHours);
-  updateLifecycleEvolution(storm, environment, targetIntensity, dtHours);
+  updateLifecycleEvolution(storm, environment, dtHours);
   updateStormConfidence(storm, environment, dtHours);
-  updateMesocyclone(storm, environment, dtHours);
+  stepStormRotation(storm, environment, dtHours);
   evolveStormInternalField(storm, environment, dtHours);
   evolveStormStructure(storm, environment, dtHours, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   diagnoseObservedStorm(storm, environment);
@@ -166,7 +140,7 @@ function updateStorm(world, storm, dtHours) {
 
   const outside = storm.positionKm.x < -10 || storm.positionKm.y < -10 || storm.positionKm.x > world.domainWidthKm + 10 || storm.positionKm.y > world.domainHeightKm + 10;
   if (outside) { storm.active = false; storm.dissipationReason = 'left-domain'; }
-  else if (storm.ageHours > 1.7 && storm.intensity < 0.07) { storm.active = false; storm.dissipationReason = 'environmental-decay'; }
+  else if (stormIsOver(storm)) { storm.active = false; storm.dissipationReason = 'environmental-decay'; }
 }
 
 function handleSplits(world) {
@@ -178,8 +152,8 @@ function handleSplits(world) {
     const offset = { x: -shear.y / mag * 6, y: shear.x / mag * 6 };
     const candidate = { x: storm.sourceCell.x, y: storm.sourceCell.y, xKm: storm.positionKm.x, yKm: storm.positionKm.y };
     const child = createStorm(world, candidate, storm.environment, 'left-moving supercell', storm.id, offset);
-    child.ageHours = 0.45; child.intensity = storm.intensity * 0.72; child.organization = storm.organization * 0.85;
-    child.mesocycloneStrength = (storm.mesocycloneStrength ?? 0) * 0.85;
+    child.ageHours = 0.45; setUpdraught(child, storm.updraughtMs * 0.72); child.precipitation = storm.precipitation * 0.5; child.organization = storm.organization * 0.85;
+    child.mesocycloneStrength = (storm.mesocycloneStrength ?? 0) * 0.85; child.lowRotation = 0; child.occlusion = 0;
     storm.children.push(child.id);
     world.stormEngine.totalSplits += 1;
   }
@@ -188,10 +162,6 @@ function handleSplits(world) {
 const LINE_JOIN_OVERLAP = 0.75, MAX_LINE_HALF_LENGTH_KM = 160;
 // A storm starts with part of the line organization its forcing implies and grows into the rest.
 const INITIAL_LINE_SHARE = 0.6, LINE_RESPONSE_PER_HOUR = 1;
-// Cold pool strength as a share of storm intensity, and how fast it builds.
-// Cold pool strength (0-1): every storm has some; it deepens with the energy available to its
-// downdraughts (dry air for the rain to evaporate into) and where storms share one in a line.
-const COLD_POOL = { base: 0.25, dryness: 0.45, strongDcape: 1200, line: 0.2, responsePerHour: 0.5 };
 const isLine = storm => lineShare(storm) >= 0.5;
 // Half-length of a line along its axis (a single segment until it joins its neighbours).
 const lineHalfLengthKm = storm => storm.lineHalfLengthKm ?? storm.radar?.radiusXKm ?? 20;
@@ -214,7 +184,7 @@ function handleMergersAndOrganization(world, spatialIndex) {
     const total = Math.max(0.1, keeper.intensity + absorbed.intensity);
     keeper.positionKm.x = (keeper.positionKm.x*keeper.intensity + absorbed.positionKm.x*absorbed.intensity)/total;
     keeper.positionKm.y = (keeper.positionKm.y*keeper.intensity + absorbed.positionKm.y*absorbed.intensity)/total;
-    keeper.intensity = Math.max(keeper.intensity, absorbed.intensity);
+    setUpdraught(keeper, Math.max(keeper.updraughtMs, absorbed.updraughtMs)); keeper.precipitation = Math.max(keeper.precipitation, absorbed.precipitation);
     keeper.coldPoolStrength = Math.max(keeper.coldPoolStrength, absorbed.coldPoolStrength);
     keeper.organization = clamp((keeper.organization+absorbed.organization)*0.55,0,1);
     keeper.lineOrganization = Math.max(lineShare(keeper), lineShare(absorbed));
@@ -331,40 +301,8 @@ function updateStormConfidence(storm, environment, dtHours) {
   }
 }
 
-function updateMesocyclone(storm, environment, dtHours) {
-  const srh = clamp(((environment.srh ?? 0) - 60) / 300, 0, 1.2);
-  const shear = clamp(((environment.bulkShear ?? 0) - 20) / 42, 0, 1.15);
-  const lowLcl = clamp((1750 - (environment.lcl ?? 1800)) / 1100, 0, 1);
-  const inflow = clamp(environment.mesoscale?.effectiveInflow ?? environment.readiness ?? 0, 0, 1);
-  const warmSector = clamp(environment.openWarmSectorSupport ?? environment.warmSector ?? 0, 0, 1);
-  const prefrontal = clamp(environment.prefrontalSupercellSupport ?? 0, 0, 1);
-  const tornadic = clamp(environment.tornadicEnvironmentSupport ?? 0, 0, 1.15);
-  const synoptic = clamp((environment.synopticAscent ?? 0) * 0.55 + (environment.moisturePooling ?? environment.mesoscale?.moisturePooling ?? 0) * 0.20, 0, 1);
-  // Updrafts embedded in a line share their inflow and rotate less than discrete ones.
-  const modeFactor = 1 - 0.45 * lineShare(storm);
-  const structure = clamp(storm.organization * 0.34 + storm.updraftStrength * 0.30 + storm.intensity * 0.20 + storm.inflowQuality * 0.16, 0, 1.15);
-  // The rotational environment sets the mesocyclone; storm structure modulates it. The former
-  // product of two sub-unity terms capped mesocyclones near 0.25 even with 300 m2/s2 SRH.
-  const rotationalEnvironment = clamp(0.20 * srh + 0.14 * shear + 0.13 * lowLcl + 0.12 * inflow + 0.08 * warmSector + 0.08 * prefrontal + 0.06 * tornadic + 0.11 * synoptic, 0, 1.25);
-  const target = clamp(modeFactor * rotationalEnvironment * (0.45 + 0.75 * structure), 0, 1.25);
-  storm.mesocycloneStrength ??= 0;
-  const response = target > storm.mesocycloneStrength ? 1.6 : 0.42;
-  storm.mesocycloneStrength += (target - storm.mesocycloneStrength) * clamp(dtHours * response, 0, 1);
-  if (storm.lifecycleState === 'weakening' || storm.lifecycleState === 'dissipating') storm.mesocycloneStrength *= Math.max(0, 1 - dtHours * 0.65);
-}
-
-// Hail. The largest stone an updraught can hold up grows steeply with its speed, so size goes
-// as a power of the updraught speed the storm realises (parcel theory less entrainment,
-// loading and inhibition, scaled by how mature the storm is). A rotating updraught keeps
-// stones in the growth zone longer; steep mid-level lapse rates put more of the buoyancy
-// there. Fitted on the redesigned atmosphere so that a typical mature storm is near half an
-// inch, about one mature storm-sample in ten reaches 2 in, and the strongest pass 3 in.
-const HAIL = { scaleInches: 2.3, referenceUpdraftMs: 55, power: 2.6, nonRotating: 0.5, fullRotation: 0.4, lapseRange: [6.5, 8.5], lapseGain: 0.3, largestInches: 5.5 };
-// Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
-// more as the storm matures), plus a share of the storm's own motion carried to the ground
-// (fast storms in strong flow are windier). Nothing is added for what kind of storm it is.
-const GUST = { downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.35 };
-const MPH_PER_MS = 2.23694;
+// The hail and gust formulas (and their HAIL and GUST settings) are in StormHazards.js, shared
+// with the sounding's hazard outlook.
 
 function diagnoseObservedStorm(storm, environment) {
   const rotating = rotatingShare(storm), linear = lineShare(storm);
@@ -378,9 +316,7 @@ function diagnoseObservedStorm(storm, environment) {
   const hailProbability = clamp(hailEnvironment * (.38 + .24 * rotating), 0, .95);
   const linearForcing = clamp(Number(environment.forcing) || 0, 0, 1);
   const windProbability = clamp(storm.coldPoolStrength * storm.intensity * (.72 + .62 * linear) * clamp(environment.bulkShear/32,0,1) + linear * linearForcing * .10, 0, .98);
-  const downdraughtMs = Math.sqrt(2 * Math.max(0, Number(environment.dcape) || 0)) * GUST.downdraughtShare * (1 - GUST.matureShare + GUST.matureShare * storm.intensity);
-  const motionMs = motionSpeedKph / 3.6 * GUST.motionShare;
-  const gustMph = clamp((downdraughtMs + motionMs) * MPH_PER_MS, 10, 130);
+  const gustMph = diagnoseGust(storm, environment, motionSpeedKph);
   const sustainedMph = gustMph / 1.45;
   const maxSustainedMph = Math.max(storm.surfaceWind?.maxSustainedMph ?? 0, sustainedMph);
   const maxGustMph = Math.max(storm.surfaceWind?.maxGustMph ?? 0, gustMph);
@@ -388,11 +324,7 @@ function diagnoseObservedStorm(storm, environment) {
 
   // Store physically diagnosed storm-scale extremes for inspection and verification.
   // Hail size is an outcome diagnostic, not a forecast probability multiplier.
-  const lapseRate = Number(environment.lapseRate700500 ?? environment.midLevelLapseRate ?? 6.5);
-  const updraughtMs = (storm.physics?.realizedUpdraftMs ?? storm.updraftStrength * 65) * (0.5 + 0.5 * storm.intensity);
-  const rotation = HAIL.nonRotating + (1 - HAIL.nonRotating) * clamp((storm.mesocycloneStrength ?? 0) / HAIL.fullRotation, 0, 1);
-  const lapse = 1 + HAIL.lapseGain * (clamp((lapseRate - HAIL.lapseRange[0]) / (HAIL.lapseRange[1] - HAIL.lapseRange[0]), 0, 1) - 0.35);
-  const hailSizeInches = clamp(HAIL.scaleInches * (updraughtMs / HAIL.referenceUpdraftMs) ** HAIL.power * rotation * lapse, 0, HAIL.largestInches);
+  const hailSizeInches = diagnoseHailSize(storm, environment);
   // Current hail size (hazardExtremes keeps only the lifetime maximum); used by verification.
   storm.currentHailSizeInches = hailSizeInches;
   storm.hazardExtremes ??= { tornado:{maxWindMph:0,maxEfRating:null,maxWidthYards:0,maxPathLengthKm:0,cycles:0}, wind:{maxSustainedMph:0,maxGustMph:0}, hail:{maxSizeInches:0} };
@@ -430,20 +362,20 @@ function diagnoseObservedStorm(storm, environment) {
   storm.eventTags = tags;
 }
 
-function updateLifecycleEvolution(storm, environment, target, dtHours) {
+function updateLifecycleEvolution(storm, environment, dtHours) {
   storm.lifecycle ??= { phase: 'tower', previousPhase: null, phaseAgeHours: 0, cycleNumber: 0, cyclePhase: 0, transitionCount: 0, peakPhase: 'tower' };
   storm.mesocycloneCycle ??= { phase: 0, strengthening: false, occlusion: 0, cyclesCompleted: 0 };
   const lc = storm.lifecycle;
   const supercell = rotatingShare(storm) >= 0.5;
   const mergerBoost = clamp(storm.interactions?.mergerBoost ?? 0, 0, 1);
-  let next = 'dissipating';
+  // A name for what the budgets are doing; nothing in the storm's behaviour reads it.
+  const trend = storm.updraughtTrend ?? 0;
+  let next = 'mature';
   if (storm.ageHours < 0.30) next = 'tower';
-  else if (storm.ageHours < 0.85 && storm.intensity < 0.50) next = 'developing';
-  else if (storm.organization > 0.56 && (target >= 0.26 || storm.intensity >= 0.34)) next = 'organizing';
-  else if (supercell && storm.ageHours > 1.4 && storm.organization > 0.58 && storm.inflowQuality > 0.42 && storm.intensity > 0.31) next = 'cyclic';
-  else if (storm.intensity >= 0.28 && (target >= 0.20 || storm.organization >= 0.42)) next = 'mature';
-  else if (supercell && storm.intensity >= 0.22 && storm.organization >= 0.42 && storm.inflowQuality >= 0.38) next = 'mature';
-  else if (storm.intensity >= 0.11) next = 'weakening';
+  else if (storm.intensity < 0.12) next = 'dissipating';
+  else if (trend < -0.2) next = 'weakening';
+  else if (trend > 0.2 && storm.intensity < 0.5) next = storm.organization > 0.5 ? 'organizing' : 'developing';
+  else if (supercell && storm.ageHours > 1.4 && storm.organization > 0.5) next = 'cyclic';
 
   if (next !== lc.phase) {
     lc.previousPhase = lc.phase; lc.phase = next; lc.phaseAgeHours = 0; lc.transitionCount += 1;
@@ -452,21 +384,12 @@ function updateLifecycleEvolution(storm, environment, target, dtHours) {
   } else lc.phaseAgeHours += dtHours;
   storm.lifecycleState = next;
 
-  if (next === 'cyclic') {
-    const periodHours = clamp(1.15 + (1 - storm.inflowQuality) * 0.9, 0.9, 2.2);
-    const oldPhase = lc.cyclePhase;
-    lc.cyclePhase = (lc.cyclePhase + dtHours / periodHours) % 1;
-    if (lc.cyclePhase < oldPhase) { lc.cycleNumber += 1; storm.mesocycloneCycle.cyclesCompleted += 1; }
-    const wave = (Math.sin(lc.cyclePhase * Math.PI * 2 - Math.PI / 2) + 1) / 2;
-    storm.mesocycloneCycle.phase = lc.cyclePhase;
-    storm.mesocycloneCycle.strengthening = wave > 0.55;
-    storm.mesocycloneCycle.occlusion = clamp((1 - wave) * 0.72 + mergerBoost * 0.18, 0, 1);
-  } else {
-    lc.cyclePhase = 0;
-    storm.mesocycloneCycle.phase = 0;
-    storm.mesocycloneCycle.strengthening = false;
-    storm.mesocycloneCycle.occlusion *= Math.max(0, 1 - dtHours * 0.8);
-  }
+  // The cycle shown on the radar is the storm's own occlusion (StormRotation.js).
+  const cycle = storm.mesocycloneCycle;
+  cycle.occlusion = clamp(Math.max(storm.occlusion ?? 0, mergerBoost * 0.18), 0, 1);
+  cycle.phase = cycle.occlusion; cycle.strengthening = (storm.lowRotationTrend ?? 0) > 0;
+  cycle.cyclesCompleted = storm.tornadoHistory?.length ?? 0;
+  lc.cycleNumber = cycle.cyclesCompleted; lc.cyclePhase = cycle.phase;
 }
 function distance(a,b){ return Math.hypot(a.positionKm.x-b.positionKm.x,a.positionKm.y-b.positionKm.y); }
 

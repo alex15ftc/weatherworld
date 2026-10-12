@@ -23,6 +23,7 @@ for (const product of ['temperature', 'dewpoint', 'cape']) assert.equal(runtime.
 assert.ok(Array.isArray(runtime.boundaries()), 'boundaries');
 assert.ok(Array.isArray(runtime.storms().storms), 'storms');
 assert.ok(runtime.cellSummary(25, 30).instability.cape >= 0 && runtime.sounding(25, 30).profile.length > 10, 'cell summary and sounding');
+{ const hazards = runtime.sounding(25, 30).hazards; assert.ok(typeof hazards.headline === 'string' && hazards.tornado.chance >= 0 && hazards.tornado.chance <= 1 && Number.isFinite(hazards.motion.right.u), 'the sounding carries a hazard outlook'); }
 assert.ok(runtime.mapManifest({}).overlays.isobars.length > 0, 'map overlays');
 assert.ok((await runtime.productTile({ scope: 'live', z: 1, x: 0, y: 0, product: 'temperature', day: 'day1' })).length > 100, 'tiles');
 const catalog = runtime.radarCatalog();

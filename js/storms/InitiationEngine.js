@@ -21,6 +21,8 @@ const MIN_CAPE_J_KG = 300;
 // only the occasional one.
 const FORCED_RATE_PER_HOUR = 0.012;
 const NET_LIFT_SCALE_J_KG = 100;
+// The fastest storms start anywhere (per cell and hour): lift well clear of the cap, ample CAPE.
+export const FULL_INITIATION_RATE_PER_HOUR = FORCED_RATE_PER_HOUR * 1.5;
 const SUPPRESSION_RADIUS_KM = 40;        // compensating subsidence around an updraft
 const SUPPRESSION_STRENGTH = 0.92;
 // Forced ascent along a strong boundary overcomes the subsidence between updrafts, so cells
@@ -38,41 +40,14 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
   for (let y = 1; y < world.height - 1; y++) {
     for (let x = 1; x < world.width - 1; x++) {
       const cell = world.getCell(x, y);
-      const sounding = cell.derived?.sounding;
-      if (!sounding) continue;
+      const start = diagnoseInitiation(cell);
+      if (!start?.canStart) continue;
+      const { synoptic, boundary, terrain, thermals, surfaceLift, elevatedLift, mlCape, mlCin, muCape, muCin, elevated } = start;
       const xKm = (x + nextUnit(seed, hourUtc, x, y, 'x')) * world.cellSizeKm;
       const yKm = (y + nextUnit(seed, hourUtc, x, y, 'y')) * world.cellSizeKm;
-
-      // Synoptic-scale ascent: 500 mb height falls ahead of the troughs and shortwaves.
-      const synoptic = clamp(Number(cell.features?.synopticAscent) || 0, 0, 1);
-      // Boundary lift is the convergence of the surface winds (fronts, drylines, their
-      // intersections, storm outflow): nothing is prescribed along a boundary's length.
-      const boundary = clamp(Number(cell.features?.convergenceLift) || 0, 0, 1);
-      const terrain = clamp((Number(cell.dynamics?.terrainLiftMs) || 0) / 0.05, 0, 1);
-      // Thermals: how hard the ground is heating the air here now (the boundary layer's own heating).
-      const thermals = clamp(Number(cell.features?.surfaceHeating) || 0, 0, 1);
-      const surfaceLift = LIFT_ENERGY_J_KG.boundary * boundary + LIFT_ENERGY_J_KG.synoptic * synoptic
-        + LIFT_ENERGY_J_KG.terrain * terrain + LIFT_ENERGY_J_KG.thermals * thermals;
-      // Elevated parcels are lifted mainly by overrunning of frontal zones, helped by
-      // synoptic ascent; broad weak ascent alone rarely releases them.
-      const elevatedLift = LIFT_ENERGY_J_KG.synoptic * synoptic * 0.8 + LIFT_ENERGY_J_KG.boundary * 0.6 * boundary;
-
-      const mlCape = Number(sounding.mlcape) || 0, mlCin = Math.abs(Number(sounding.mlcin) || 0);
-      const muCape = Number(sounding.mucape) || 0, muCin = Math.abs(Number(sounding.mucin) || 0);
-      // Elevated only when the most-unstable parcel originates above the surface layer.
-      const muAloft = muCape > (Number(sounding.sbcape) || 0) + 50;
-      const surfaceExcess = mlCape >= MIN_CAPE_J_KG ? (surfaceLift - mlCin) / Math.max(40, 0.5 * surfaceLift) : -1;
-      const elevatedExcess = muAloft && muCape >= MIN_CAPE_J_KG * 1.5 && mlCin > 75 ? (elevatedLift - muCin) / Math.max(40, 0.5 * elevatedLift) : -1;
-      const elevated = elevatedExcess > surfaceExcess;
-      const excess = clamp(Math.max(surfaceExcess, elevatedExcess), 0, 1);
-      if (excess <= 0) continue;
-
-      const buoyancy = clamp(((elevated ? muCape : mlCape) - MIN_CAPE_J_KG) / 1500, 0.15, 1);
-      const processed = clamp(Number(cell.features?.stormProcessedAir) || 0, 0, 1);
       const spacingKm = SUPPRESSION_RADIUS_KM * (1 - BOUNDARY_SPACING_REDUCTION * boundary);
       const suppression = stormSuppression(active, xKm, yKm, spacingKm);
-      const netLift = elevated ? elevatedLift - muCin : surfaceLift - mlCin;
-      const rate = FORCED_RATE_PER_HOUR * clamp(netLift / NET_LIFT_SCALE_J_KG, 0, 1.5) * buoyancy * (1 - 0.8 * processed) * (1 - suppression);
+      const rate = start.ratePerHour * (1 - suppression);
       const probability = 1 - Math.exp(-rate * dtHours);
       if (nextUnit(seed, hourUtc, x, y, 'fire') > probability) continue;
 
@@ -99,6 +74,42 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
     accepted.push(candidate);
   }
   return accepted;
+}
+
+// Whether the lift at a cell can carry a parcel through its inhibition, and how fast storms
+// start there with no other storm near (per cell and hour). Null where nothing can start.
+export function diagnoseInitiation(cell) {
+  const sounding = cell.derived?.sounding;
+  if (!sounding) return null;
+  // Synoptic-scale ascent: 500 mb height falls ahead of the troughs and shortwaves.
+  const synoptic = clamp(Number(cell.features?.synopticAscent) || 0, 0, 1);
+  // Boundary lift is the convergence of the surface winds (fronts, drylines, their
+  // intersections, storm outflow): nothing is prescribed along a boundary's length.
+  const boundary = clamp(Number(cell.features?.convergenceLift) || 0, 0, 1);
+  const terrain = clamp((Number(cell.dynamics?.terrainLiftMs) || 0) / 0.05, 0, 1);
+  // Thermals: how hard the ground is heating the air here now (the boundary layer's own heating).
+  const thermals = clamp(Number(cell.features?.surfaceHeating) || 0, 0, 1);
+  const surfaceLift = LIFT_ENERGY_J_KG.boundary * boundary + LIFT_ENERGY_J_KG.synoptic * synoptic
+    + LIFT_ENERGY_J_KG.terrain * terrain + LIFT_ENERGY_J_KG.thermals * thermals;
+  // Elevated parcels are lifted mainly by overrunning of frontal zones, helped by
+  // synoptic ascent; broad weak ascent alone rarely releases them.
+  const elevatedLift = LIFT_ENERGY_J_KG.synoptic * synoptic * 0.8 + LIFT_ENERGY_J_KG.boundary * 0.6 * boundary;
+
+  const mlCape = Number(sounding.mlcape) || 0, mlCin = Math.abs(Number(sounding.mlcin) || 0);
+  const muCape = Number(sounding.mucape) || 0, muCin = Math.abs(Number(sounding.mucin) || 0);
+  // Elevated only when the most-unstable parcel originates above the surface layer.
+  const muAloft = muCape > (Number(sounding.sbcape) || 0) + 50;
+  const surfaceExcess = mlCape >= MIN_CAPE_J_KG ? (surfaceLift - mlCin) / Math.max(40, 0.5 * surfaceLift) : -1;
+  const elevatedExcess = muAloft && muCape >= MIN_CAPE_J_KG * 1.5 && mlCin > 75 ? (elevatedLift - muCin) / Math.max(40, 0.5 * elevatedLift) : -1;
+  const elevated = elevatedExcess > surfaceExcess;
+  const excess = clamp(Math.max(surfaceExcess, elevatedExcess), 0, 1);
+  const base = { synoptic, boundary, terrain, thermals, surfaceLift, elevatedLift, mlCape, mlCin, muCape, muCin, elevated };
+  if (excess <= 0) return { ...base, canStart: false, netLift: Math.max(surfaceLift - mlCin, muAloft ? elevatedLift - muCin : -Infinity), ratePerHour: 0 };
+
+  const buoyancy = clamp(((elevated ? muCape : mlCape) - MIN_CAPE_J_KG) / 1500, 0.15, 1);
+  const processed = clamp(Number(cell.features?.stormProcessedAir) || 0, 0, 1);
+  const netLift = elevated ? elevatedLift - muCin : surfaceLift - mlCin;
+  return { ...base, canStart: true, netLift, ratePerHour: FORCED_RATE_PER_HOUR * clamp(netLift / NET_LIFT_SCALE_J_KG, 0, 1.5) * buoyancy * (1 - 0.8 * processed) };
 }
 
 // Fraction of new-updraft formation suppressed by nearby storms.

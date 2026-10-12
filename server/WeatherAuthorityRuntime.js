@@ -9,6 +9,7 @@ import v8 from 'node:v8';
 import { fileURLToPath } from 'node:url';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { buildSounding } from '../js/sounding.js';
+import { diagnoseSoundingHazards } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
@@ -299,6 +300,8 @@ export class WeatherAuthorityRuntime {
       if (!cell) return null;
       return {
         ...buildSounding(cell),
+        // What a storm in this air would do, from the storm engine's own functions.
+        hazards: diagnoseSoundingHazards(this.atmosphere, c, r),
         row:r,
         column:c,
         revision:this.revision,

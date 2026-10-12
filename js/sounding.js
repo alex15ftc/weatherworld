@@ -57,7 +57,9 @@ export function buildSounding(cell) {
     stp, rawStp, vtp, synopticSupport, scp, stormMotion, effectiveLayer:mixedResult.thermo.effectiveLayer,
     stpComponents:{capeTerm,srhTerm,shearTerm,lclTerm,cinTerm,rawStp,fullRawStp:rawStp,synopticAdjustment:1,airMassFactor,targetAirMassFactor,parcelSupportBaseline:clamp((Number(cell.surface?.dewpoint)-42)/24,0,1)*clamp(1-(Number(cell.surface?.temperature)-Number(cell.surface?.dewpoint))/36,0,1),adjustedStp:stp,lclAglM:mixedLclAgl,surfaceRooted}
   };
-  return { profile, parcel:mixedResult.parcel, params };
+  // parcel is the mixed-layer parcel; muParcel the most unstable one, from its own level up.
+  const muStart=Math.max(0,muResult.parcel.findIndex((row,i)=>row.t!==profile[i].t||row.td!==profile[i].td)-1);
+  return { profile, parcel:mixedResult.parcel, muParcel:muResult.parcel.slice(muStart), params };
 }
 
 export function updateCellDiagnostics(cell) {
@@ -177,7 +179,8 @@ export function drawSounding(canvas, sounding) {
   ctx.clearRect(0,0,w,h); ctx.fillStyle='#0b1119';ctx.fillRect(0,0,w,h);
   const left=58,right=w-58,top=28,bottom=h-45;
   const y=p=>bottom-(Math.log(1000)-Math.log(p))/(Math.log(1000)-Math.log(100))*(bottom-top);
-  const x=(t,p)=>left+((t+50)+0.035*(1000-p))/100*(right-left);
+  // Skew-T log-p: isotherms are straight lines leaning right, SKEW_C degrees per tenfold fall in pressure.
+  const x=(t,p)=>left+((t+50)+SKEW_C*Math.log10(1000/p))/100*(right-left);
   ctx.save();ctx.beginPath();ctx.rect(left,top,right-left,bottom-top);ctx.clip();
   drawDryAdiabats(ctx,x,y,top,bottom);
   drawMoistAdiabats(ctx,x,y,top,bottom);
@@ -187,8 +190,11 @@ export function drawSounding(canvas, sounding) {
   drawPressureLines(ctx,y,left,right);
   drawProfile(ctx,sounding.profile,'t','#ff6464',2.7,x,y);
   drawProfile(ctx,sounding.profile,'td','#50d06b',2.7,x,y);
+  if(sounding.muParcel?.length>1&&sounding.params.mucape>sounding.params.mlcape+100){ctx.setLineDash([6,5]);drawProfile(ctx,sounding.muParcel,'t','#ffb454',1.6,x,y);ctx.setLineDash([]);}
   drawProfile(ctx,sounding.parcel,'t','#ffd65a',2.2,x,y);
   ctx.restore();
+  // Wind at the ground and every 50 hPa, as barbs down the right-hand side.
+  sounding.profile.forEach((row,i)=>{if(i===0||(row.p%50===0&&row.p>=150&&sounding.profile[0].p-row.p>=20))drawBarb(ctx,right+30,y(row.p),row.dir,row.spd);});
 
   ctx.font='11px system-ui';ctx.textAlign='right';ctx.fillStyle='#9eacbb';
   for(const p of [1000,900,800,700,600,500,400,300,250,200,150,100]) ctx.fillText(p,left-8,y(p)+4);
@@ -200,7 +206,25 @@ export function drawSounding(canvas, sounding) {
   drawLevelMarker(ctx,'EL',sounding.params.elM,sounding.profile,y,left,right,'#fbbf24');
 }
 
+const SKEW_C=60;
+// A wind barb: the staff points to where the wind comes from; a pennant is 50 kt, a full barb 10, a half barb 5.
+function drawBarb(ctx,bx,by,dir,spd){
+ const d=dir*Math.PI/180,sx=Math.sin(d),sy=-Math.cos(d),px=Math.cos(d),py=Math.sin(d),length=22;
+ ctx.save();ctx.strokeStyle='#cbd5e1';ctx.fillStyle='#cbd5e1';ctx.lineWidth=1.3;
+ let kt=Math.round(spd/5)*5;
+ if(kt<5){ctx.beginPath();ctx.arc(bx,by,3,0,Math.PI*2);ctx.stroke();ctx.restore();return;}
+ ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx+sx*length,by+sy*length);ctx.stroke();
+ let at=length;
+ for(;kt>=50;kt-=50,at-=6){ctx.beginPath();ctx.moveTo(bx+sx*at,by+sy*at);ctx.lineTo(bx+sx*(at-2.5)+px*8,by+sy*(at-2.5)+py*8);ctx.lineTo(bx+sx*(at-5),by+sy*(at-5));ctx.closePath();ctx.fill();}
+ for(;kt>=10;kt-=10,at-=3.5){ctx.beginPath();ctx.moveTo(bx+sx*at,by+sy*at);ctx.lineTo(bx+sx*(at+2)+px*8,by+sy*(at+2)+py*8);ctx.stroke();}
+ if(kt>=5){if(at===length)at-=3.5;ctx.beginPath();ctx.moveTo(bx+sx*at,by+sy*at);ctx.lineTo(bx+sx*(at+1)+px*4,by+sy*(at+1)+py*4);ctx.stroke();}
+ ctx.restore();
+}
+
 export function drawHodograph(canvas, sounding){
+ // Storm motion as the storm engine computes it, where the server supplies it; the sounding's own otherwise.
+ const engine=sounding.hazards?.motion;
+ const motion=engine?{stormMotion:{right:engine.right,left:engine.left},meanWind:engine.ordinary}:sounding.params;
  const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height,cx=w/2,cy=h/2,scale=Math.min(w,h)/190;
  ctx.clearRect(0,0,w,h);ctx.fillStyle='#0b1119';ctx.fillRect(0,0,w,h);
  ctx.strokeStyle='#2d3948';ctx.fillStyle='#93a2b2';ctx.font='10px system-ui';
@@ -210,11 +234,11 @@ export function drawHodograph(canvas, sounding){
  const bands=[[0,1000,'#50d06b'],[1000,3000,'#60a5fa'],[3000,6000,'#c084fc'],[6000,9000,'#fb7185'],[9000,12001,'#fbbf24']];
  for(const [lo,hi,color] of bands){const seg=interpolatedLayer(rows,lo,hi,sounding.profile);if(seg.length<2)continue;ctx.strokeStyle=color;ctx.lineWidth=3;ctx.beginPath();seg.forEach((r,i)=>{const px=cx+r.u*scale,py=cy-r.v*scale;i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke();}
  ctx.fillStyle='#fff';[0,1000,3000,6000,9000,12000].forEach(z=>{const r=nearestAgl(rows,z,sounding.profile);ctx.beginPath();ctx.arc(cx+r.u*scale,cy-r.v*scale,3,0,Math.PI*2);ctx.fill();ctx.fillText(`${z/1000}`,cx+r.u*scale+5,cy-r.v*scale-5)});
- drawVector(ctx,cx,cy,scale,sounding.params.stormMotion.right,'RM','#ffd65a');
- drawVector(ctx,cx,cy,scale,sounding.params.stormMotion.left,'LM','#f59e0b');
- drawVector(ctx,cx,cy,scale,sounding.params.meanWind,'MW','#e5e7eb');
- drawMotionLegend(ctx, sounding.params, 10, 14);
- drawOverallMotionBadge(ctx, sounding.params.stormMotion.right, w-118, 14);
+ drawVector(ctx,cx,cy,scale,motion.stormMotion.right,'RM','#ffd65a');
+ drawVector(ctx,cx,cy,scale,motion.stormMotion.left,'LM','#f59e0b');
+ drawVector(ctx,cx,cy,scale,motion.meanWind,'MW','#e5e7eb');
+ drawMotionLegend(ctx, motion, 10, 14);
+ drawOverallMotionBadge(ctx, motion.stormMotion.right, w-118, 14);
  ctx.fillStyle='#93a2b2';ctx.textAlign='left';ctx.fillText('kt',w-22,h-12);
 }
 
@@ -385,8 +409,8 @@ function drawMotionLegend(ctx,params,x,y){
 }
 
 function vectorDirection(vector){
- const toward=Math.atan2(vector.u,-vector.v)*180/Math.PI;
- return Math.round((toward+180+360)%360)%360;
+ // The direction it comes from, as winds and storm motions are quoted.
+ return Math.round((Math.atan2(-vector.u,-vector.v)*180/Math.PI+360)%360)%360;
 }
 
 function moistLift(tC,p1,p2){let t=tC+273.15,p=p1;const steps=Math.max(1,Math.ceil(Math.abs(p1-p2)/5)),dp=(p2-p1)/steps;for(let i=0;i<steps;i++){const next=p+dp,pm=.5*(p+next);t+=moistLapseRate(t,pm)*(next-p);p=next}return t-273.15;}

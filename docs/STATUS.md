@@ -47,10 +47,10 @@ physics either. "Drawn" means random or template-made by design.
 | Updraught speed | parcel theory less entrainment, loading, inhibition | from the fields |
 | Hail size; gust speed | updraught speed; downdraught energy plus storm motion | from the fields |
 | Cold pool strength; line organization | storm strength x downdraught energy; cold pool against shear | from the fields |
-| Storm strength (intensity), organization | weighted scores relaxing toward a target | formula |
+| Storm strength, organization, how long a storm lasts | three linked budgets: updraught from the inflow, rain from the updraught, cold pool from the rain; shear keeps them apart or does not | from the fields |
 | Rotation (mesocyclone) | weighted score of helicity, shear, cloud base, inflow | formula |
 | Splits and mergers | threshold and distance rules | formula |
-| Life-cycle phase | thresholds on age and strength; scales the radar picture, and weakens rotation in the "weakening" phase | formula |
+| Life-cycle phase | a name for where the budgets are heading; scales the radar picture only | description |
 | Whether a tornado forms | a rate from rotation and the inflow's ingredients | statistical, from the fields |
 | How long a tornado lasts and how strong it gets | drawn once per tornado; the scale follows the ingredients | drawn |
 | Hazard "probabilities", confidence, event tags | display scores | formula (display only) |
@@ -63,9 +63,11 @@ can decide them. Nothing reads a storm's type name (tested by scrambling the nam
 
 What is not natural enough yet:
 
-- **Storm strength never passes 0.8** of full, which caps gusts.
-- **No 75 mph winds to speak of** (2% of days): downdraught energy stays below real
-  derecho values and there is no mechanism for a bowing line to bring fast air down.
+- **Rotation is still a weighted score**, and a tornado's duration is still drawn (storm
+  update, stage 2).
+- **No mechanism yet for a bowing line** to bring fast air down (stage 4).
+- **Hail runs large** since the budgets went in: the day's largest stone is 2.9 in at the
+  median. The hail fit needs one more adjustment.
 - **Fronts are weak**: 4-5 F across 60 miles (real 10-25), 11 mph, warm fronts rare.
 - **A storm crossing an old outflow boundary gets no boost** to its low-level shear.
 - **Low-level shear is high**: afternoon helicity is about double the real median.
@@ -127,7 +129,7 @@ What this means for the game:
 2. Getting players to the weather: place selection, travel, or a smaller map.
 3. Longer-lived tornadoes, or a slower clock, so that tornadoes can be chased.
 4. Storm size and shape for 3D objects in Roblox.
-5. Physical storm strength in place of the weighted score; wind from bowing lines.
+5. Storm update: stage 1 (budgets) done; stage 2 rotation and tornado lifetime from the storm's state; stage 3 shape; stage 4 interactions and bowing lines.
 6. Stronger fronts and real warm fronts.
 7. The Roblox region feed and hosting.
 8. Remove or replace the old outlook pages and tile routes (see `ARCHITECTURE.md`).

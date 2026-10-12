@@ -11,6 +11,10 @@ export class Storm {
     this.hazardMemory = { tornado: 0, hail: 0, wind: 0, decayHours: 1.25 };
     this.mesocycloneCycle = { phase: 0, strengthening: false, occlusion: 0, cyclesCompleted: 0 };
     this.interactions = { mergerBoost: 0, inflowCompetition: 0, lastType: null };
+    // Budgets: updraught speed (m/s), rain aloft and falling (0-1), and the share of it weighing on the updraught.
+    this.updraughtMs = 6; this.precipitation = 0; this.loading = 0; this.updraughtTrend = 1;
+    // Rotation near the ground (0-1.2) and how far the storm's outflow has wrapped around it (0-1).
+    this.lowRotation = 0; this.lowRotationFree = 0; this.occlusion = 0; this.lowRotationTrend = 0;
     this.intensity = 0.12;
     this.organization = 0.15;
     this.updraftStrength = 0.15;
