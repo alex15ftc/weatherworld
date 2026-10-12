@@ -3,6 +3,7 @@
 // the extreme/violent tiers used for conditional intensity groups. The same definitions serve
 // the authoritative verification and the forecast ensemble members.
 import { RISK_ORDER, HAZARDS, categoryFromHazard } from '../forecast/spcOutlookRules.js';
+import { WORLD_RISK_HAZARDS, worldCategory } from '../forecast/worldRiskCategories.js';
 
 export const TRUTH_FIELDS = ['storm', 'tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme'];
 
@@ -123,6 +124,11 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
     hail: observedCig(result.hailSig, result.hailExtreme, null, 2),
     wind: observedCig(result.windSig, result.windExtreme, null, 3)
   };
+  // This world's own categories (worldRiskCategories.js), from the same chances unrounded:
+  // result.chance[hazard][i] is the percent chance within 25 miles; result.worldRisk[i] the category.
+  result.chance = Object.fromEntries(WORLD_RISK_HAZARDS.map(hazard => [hazard, practicallyPerfectChance(result[`${hazard}Exact`], width, height, cellKm)]));
+  result.worldRisk = Array(n);
+  for (let i = 0; i < n; i++) result.worldRisk[i] = worldCategory(Object.fromEntries(WORLD_RISK_HAZARDS.map(hazard => [hazard, result.chance[hazard][i]])), { thunder: Boolean(result.storm[i]) });
   for (let i = 0; i < n; i++) {
     const severe = HAZARDS.filter(h => result.observedProbability[h][i] > 0).map(h => categoryFromHazard(h, result.observedProbability[h][i], result.observedCig[h][i]));
     result.risk[i] = severe.length ? severe.reduce((a, b) => (RISK_ORDER.indexOf(b) > RISK_ORDER.indexOf(a) ? b : a)) : result.storm[i] ? 'TSTM' : 'NONE';
@@ -132,6 +138,24 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
 
 // SPC's practically perfect forecast: reports on an 80 km grid, Gaussian-smoothed (sigma 120 km).
 const PP_GRID_KM = 80, PP_SIGMA_KM = 120;
+// The same chance unrounded (percent, 0-100) at every cell.
+export function practicallyPerfectChance(exact, width, height, cellKm) {
+  const box = Math.max(1, Math.round(PP_GRID_KM / cellKm)), boxes = new Map(), out = new Float32Array(exact.length);
+  for (let i = 0; i < exact.length; i++) if (exact[i]) {
+    const bx = Math.floor((i % width) / box), by = Math.floor(Math.floor(i / width) / box);
+    boxes.set(`${bx},${by}`, { x: (bx + 0.5) * box * cellKm, y: (by + 0.5) * box * cellKm });
+  }
+  if (!boxes.size) return out;
+  const weight = (PP_GRID_KM * PP_GRID_KM) / (2 * Math.PI * PP_SIGMA_KM * PP_SIGMA_KM), centers = [...boxes.values()];
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const px = (x + 0.5) * cellKm, py = (y + 0.5) * cellKm;
+    let p = 0;
+    for (const c of centers) p += weight * Math.exp(-((px - c.x) ** 2 + (py - c.y) ** 2) / (2 * PP_SIGMA_KM * PP_SIGMA_KM));
+    out[y * width + x] = 100 * Math.min(1, p);
+  }
+  return out;
+}
+
 export function practicallyPerfectProbability(exact, width, height, cellKm, levels) {
   const box = Math.max(1, Math.round(PP_GRID_KM / cellKm));
   const boxes = new Map();

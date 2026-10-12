@@ -2,6 +2,7 @@
 // the chance of each hazard gets on each day, and finds the thresholds that give the wanted
 // mix of days (docs/STATUS.md): the same way real categories are tied to the real climate.
 //   node scripts/risk-climate.mjs [days per seed] [--seeds 1,2,3,4,5,6,7,8] [--json file]
+//   node scripts/risk-climate.mjs --from file      refit from a saved run without running the world again
 // The chance is the practically perfect one used to verify outlooks: reports on an 80 km grid
 // smoothed over 120 km, read as the chance of the hazard within 25 miles of a point. A day
 // is 12Z to 12Z.
@@ -20,8 +21,10 @@ const FIELDS = ['tornado', 'tornadoSig', 'hail', 'hailSig', 'wind', 'windSig'];
 const CATEGORIES = ['MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 // Share of days that should reach each category or higher.
 const WANTED = { MRGN: 0.98, SLGT: 0.95, ENH: 0.65, MDT: 0.25, HIGH: 0.05 };
-// As in the real outlooks, hail alone does not make a High risk day.
-const TOP = { tornado: 'HIGH', tornadoSig: 'HIGH', wind: 'HIGH', windSig: 'HIGH', hail: 'MDT', hailSig: 'MDT' };
+// As in the real outlooks, hail alone does not make a High risk day. In this world 58 mph wind
+// is close to certain somewhere on most days, so it cannot tell the big days apart: beyond
+// Enhanced, wind counts through its 75 mph chance.
+const TOP = { tornado: 'HIGH', tornadoSig: 'HIGH', wind: 'ENH', windSig: 'HIGH', hail: 'MDT', hailSig: 'MDT' };
 const PP_GRID_KM = 80, PP_SIGMA_KM = 120;
 
 if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else await main();
@@ -58,12 +61,14 @@ async function worker(seed) {
 }
 
 async function main() {
-  const seeds = (flag('--seeds') ?? '1,2,3,4,5,6,7,8').split(',').map(Number), started = Date.now();
-  const results = await Promise.all(seeds.map(seed => new Promise((resolve, reject) => {
+  const saved = flag('--from') ? JSON.parse(fs.readFileSync(flag('--from'), 'utf8')) : null;
+  const seeds = saved ? saved.seeds : (flag('--seeds') ?? '1,2,3,4,5,6,7,8').split(',').map(Number), started = Date.now();
+  const results = saved ? [saved.daily] : await Promise.all(seeds.map(seed => new Promise((resolve, reject) => {
     const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed)]);
     child.once('message', resolve); child.once('error', reject); child.once('exit', code => { if (code) reject(new Error(`seed ${seed} exited with ${code}`)); });
   })));
   const all = results.flat();
+  if (saved) console.log(`(refitted from ${flag('--from')})`);
   console.log(`=== Risk climate: ${days} days x seeds ${seeds.join(', ')} = ${all.length} days (${((Date.now() - started) / 1000).toFixed(0)} s) ===`);
   const quantile = (values, q) => { const v = [...values].sort((a, b) => a - b); return v[Math.min(v.length - 1, Math.max(0, Math.floor(q * (v.length - 1))))]; };
   console.log('\n1. How high the chance of each hazard gets in a day (highest anywhere on the map, percent)');

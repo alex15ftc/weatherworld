@@ -54,7 +54,7 @@ async function worker(seed) {
       seed, day: day + 1, support: plan?.support ?? null, wanted: plan?.wanted ?? null, slideMs: plan?.slideMs ?? null, storms: seen.size, peak: record.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore,
       hailStorms: record.hailStorms.size, windStorms: record.windStorms.size, maxHail: record.maxHail, maxGust: record.maxGust, maxWindEf: record.maxWindEf,
       severe: any('hail') || any('wind') || any('tornado'), tornado: any('tornado'), sigTornado: any('tornadoSig'), sigHail: any('hailSig'), sigWind: any('windSig'),
-      category: ORDER[Math.max(...order)], slightArea: share('SLGT'), enhancedArea: share('ENH'), cape: record.cape, shear: record.shear, wind500: record.wind500
+      category: ORDER[Math.max(...order)], worldCategory: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))], worldSlightArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('SLGT')).length / n, worldEnhancedArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('ENH')).length / n, slightArea: share('SLGT'), enhancedArea: share('ENH'), cape: record.cape, shear: record.shear, wind500: record.wind500
     });
   }
   process.send(daily);
@@ -78,7 +78,9 @@ async function main() {
   console.log(`\nquiet days (no severe report anywhere): ${share(d => !d.severe)}  [about 5%] | longest run of quiet days: ${runs.length ? Math.max(...runs) : 0}  [1-2] | quiet runs of 2 or more: ${runs.filter(r => r >= 2).length}`);
   console.log(`days without any storm: ${share(d => d.storms === 0)}`);
   const mix = Object.fromEntries(ORDER.map(k => [k, all.filter(d => d.category === k).length]));
-  console.log(`strongest verified category of the day: ${ORDER.filter(k => mix[k]).map(k => `${k} ${Math.round(100 * mix[k] / all.length)}%`).join(', ')}  [aim: HIGH 5, MDT 20, ENH 40, SLGT 30, less 5]`);
+  console.log(`strongest category of the day by the real-world rules: ${ORDER.filter(k => mix[k]).map(k => `${k} ${Math.round(100 * mix[k] / all.length)}%`).join(', ')}  [aim: HIGH 5, MDT 20, ENH 40, SLGT 30, less 5]`);
+  const worldMix = Object.fromEntries(ORDER.map(k => [k, all.filter(d => d.worldCategory === k).length]));
+  console.log(`this world's categories (js/forecast/worldRiskCategories.js): ${ORDER.filter(k => worldMix[k]).map(k => `${k} ${Math.round(100 * worldMix[k] / all.length)}%`).join(', ')}  [aim: HIGH 5, MDT 20, ENH 40, SLGT 30, less 5] | share of the map at Slight or more: median ${(100 * pct(all.map(d => d.worldSlightArea), 0.5)).toFixed(0)}%, at Enhanced or more: ${(100 * pct(all.map(d => d.worldEnhancedArea), 0.5)).toFixed(0)}%`);
   console.log(`days with: 1 in hail ${share(d => d.hailStorms > 0)}, 58 mph wind ${share(d => d.windStorms > 0)}, a tornado ${share(d => d.tornado)}, 2 in hail ${share(d => d.sigHail)}, 75 mph wind ${share(d => d.sigWind)}, a tornado rated EF2+ ${share(d => d.sigTornado)}, a tornado with EF2+ winds ${share(d => d.maxWindEf >= 2)}`);
   console.log(`per day: storms median ${pct(all.map(d => d.storms), 0.5)} (90th ${pct(all.map(d => d.storms), 0.9)}, most ${pct(all.map(d => d.storms), 1)}) | tornadoes median ${pct(all.map(d => d.tornadoes), 0.5)} (90th ${pct(all.map(d => d.tornadoes), 0.9)}, most ${pct(all.map(d => d.tornadoes), 1)}) | largest hail median ${pct(all.map(d => d.maxHail), 0.5).toFixed(2)} in (90th ${pct(all.map(d => d.maxHail), 0.9).toFixed(2)}) | strongest gust median ${pct(all.map(d => d.maxGust), 0.5).toFixed(0)} mph (90th ${pct(all.map(d => d.maxGust), 0.9).toFixed(0)})`);
   console.log(`share of the map at Slight or more: median ${(100 * pct(all.map(d => d.slightArea), 0.5)).toFixed(0)}% (90th ${(100 * pct(all.map(d => d.slightArea), 0.9)).toFixed(0)}%) | at Enhanced or more: median ${(100 * pct(all.map(d => d.enhancedArea), 0.5)).toFixed(0)}% (90th ${(100 * pct(all.map(d => d.enhancedArea), 0.9)).toFixed(0)}%)`);
