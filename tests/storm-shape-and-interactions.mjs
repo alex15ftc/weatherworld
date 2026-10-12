@@ -50,7 +50,7 @@ const bowing = storm({ lineOrganization: 1, coldPoolStrength: 0.6 }), alone = st
 for (let step = 0; step < 36; step++) for (const s of [bowing, alone, shallow]) stepRearInflow(s, 1 / 12);
 assert.ok(bowing.rearInflow > 0.6 && alone.rearInflow === 0 && shallow.rearInflow === 0, `rear inflow builds behind a line with a deep cold pool (${bowing.rearInflow.toFixed(2)})`);
 const without = gustMph({ ...bowing, rearInflow: 0 }, air, 70), withIt = gustMph(bowing, air, 70);
-assert.ok(withIt > without + 15, `and brings the wind aloft to the ground (${withIt.toFixed(0)} against ${without.toFixed(0)} mph)`);
+assert.ok(withIt > without + 10, `and brings the wind aloft to the ground (${withIt.toFixed(0)} against ${without.toFixed(0)} mph)`);
 assert.ok(gustMph(bowing, { ...air, wind500: { eastKt: 20, northKt: 0 } }, 70) < withIt, 'less of it under a weaker wind aloft');
 
 // --- An outflow boundary in the inflow adds rotation near the ground.

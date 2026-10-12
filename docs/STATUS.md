@@ -49,13 +49,17 @@ physics either. "Drawn" means random or template-made by design.
 | Cold pool strength; line organization | storm strength x downdraught energy; cold pool against shear | from the fields |
 | Storm strength, organization, how long a storm lasts | three linked budgets: updraught from the inflow, rain from the updraught, cold pool from the rain; shear keeps them apart or does not | from the fields |
 | Rotation aloft and near the ground | the updraught tilting the shear; near the ground it needs helicity there, a low cloud base and outflow that does not outrun the storm | from the fields |
-| Splits and mergers | threshold and distance rules | formula |
+| Splits | a rotating storm in strong shear; the left-mover's share follows how the wind turns with height | from the fields, with thresholds |
+| Mergers | distance rule | formula |
+| Wind from a bowing line | a share of the wind aloft, where a line has a deep cold pool and heavy rain | from the storm's state and the fields |
+| Help from an outflow boundary | extra rotation near the ground where the inflow crosses the edge of older rain-cooled air | from the fields |
 | Life-cycle phase | a name for where the budgets are heading; scales the radar picture only | description |
 | Whether a tornado forms | a rate set by the storm's low-level rotation, which builds for minutes first; chance decides only the minute | statistical, from the storm's state |
 | How long a tornado lasts | until the storm's outflow wraps around it (occlusion), sooner under weak rotation or strong outflow | from the storm's state |
 | How strong a tornado gets | its wind follows the low-level rotation; each tornado has its own draw within that | part drawn |
 | Hazard "probabilities", confidence, event tags | display scores | formula (display only) |
-| Radar picture and storm shape | templates scaled by the storm's properties | drawn |
+| Storm shape (geometry) | from the storm's state and the wind through its depth | from the storm's state and the fields |
+| Radar picture | built from that state and geometry; the fine texture is drawn | part drawn |
 
 In short: the atmosphere is natural throughout. For storms, where they are, when, how they
 move and how big their hail and wind get are natural; how strong, organized and rotating a
@@ -64,7 +68,6 @@ can decide them. Nothing reads a storm's type name (tested by scrambling the nam
 
 What is not natural enough yet:
 
-- **No mechanism yet for a bowing line** to bring fast air down (stage 4).
 - **Tornado days are 80-82%**, down from about 90% before the storm update: a tornado now
   needs low-level rotation, which favours the evening (56% start between 6 pm and midnight).
 - **Fronts are weak**: 4-5 F across 60 miles (real 10-25), 11 mph, warm fronts rare.
@@ -128,7 +131,7 @@ What this means for the game:
 2. Getting players to the weather: place selection, travel, or a smaller map.
 3. Longer-lived tornadoes, or a slower clock, so that tornadoes can be chased.
 4. Storm size and shape for 3D objects in Roblox.
-5. Storm update: stages 1 (budgets) and 2 (rotation, tornado lifetime) done; stage 3 shape; stage 4 interactions and bowing lines.
+5. Storm update done (budgets, rotation and tornado lifetime, shape, interactions). Left over: 75 mph wind on about 70% of days may be more than wanted; ordinary storms in weak shear last too long; mergers are still a distance rule.
 6. Stronger fronts and real warm fronts.
 7. The Roblox region feed and hosting.
 8. Remove or replace the old outlook pages and tile routes (see `ARCHITECTURE.md`).

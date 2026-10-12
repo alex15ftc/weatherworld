@@ -737,6 +737,52 @@ below the 90% before the update; no tornado is shorter than 10 minutes (the stor
 minutes and a tornado stays down through the step it formed in); days with none have long
 gaps (12 gaps of a day or more in 90 days).
 
+### Storm update, stages 3 and 4: shape and interactions (2026-10-12)
+
+**Stage 3, shape.** `js/storms/StormGeometry.js` gives each storm a geometry from its state
+and the wind through its depth: updraught (place, width, speed, base, top), wall cloud (the
+lowering that low-level rotation makes), rain and hail cores (carried downwind by the wind
+aloft relative to the storm), rear flank wrap, gust front, anvil, line (share, length, bow)
+and tornado. The server publishes it with each storm, for the Roblox object.
+`StormStructureEngine.js` was rewritten to build the radar picture from that state and
+geometry with continuous shares of "rotating" and "line"; it no longer reads the storm's
+type name or phase, and neither do the echo model or the inner fields.
+
+**Stage 4, interactions.**
+
+- **Outflow boundaries.** Where a storm's inflow crosses the edge of older rain-cooled air
+  (the contrast in the regional layer's cold pools 25-40 km upstream of it), helicity is
+  added near the ground: up to 150 at a contrast of 6 K.
+- **Bowing lines.** Rear inflow (0-1) builds behind a line with a deep cold pool and heavy
+  rain; the gust gains 30% of the 500 mb wind times that, and the radar line bows with it.
+- **Splits.** A rotating storm on its own in 35 kt or more of shear splits once. The
+  left-mover takes a share that falls from all to none as helicity rises from 80 to 250, so
+  there is none on the usual tornado day. It rotates aloft, not near the ground. A bug was
+  fixed: the two members used to merge back in the same step, so no left-mover ever lived.
+
+Another agent moved the hail and gust formulas into `StormHazards.js` during this work (for
+a sounding hazard outlook that runs a lone storm through these same modules); the rear
+inflow was added there. That lone storm does not yet step the rear inflow.
+
+| 90 days, steered | After stage 2 | After stages 3 and 4 |
+|---|---|---|
+| Days with a tornado | 80-82% | 87-89% |
+| Days with EF2+ winds / EF4+ winds | 58% / 21% | 53-59% / 26% |
+| Tornadoes per day, median (90th) | 7 (36) | 7-8 (40) |
+| Tornado time on the ground, median (90th) | 15 (30) min | 15 (30) min |
+| Days with 75 mph wind | 37% | 69% |
+| Strongest gust of the day, median (90th) | 73 (83) mph | 83 (96) mph |
+| Largest hail of the day, median | 2.3 in | 2.4 in |
+| Storms per day, median | 92 | 111 |
+| Left-moving splits, share of rotating storms (8 days) | 0% | 6% |
+| Quiet days | 3% | 4% |
+| Slight / Enhanced / Moderate / High | 12 / 21 / 30 / 29% | 9 / 18 / 38 / 29% |
+| A 10-minute tornado within 60 miles of a place | 25% of days | 26% |
+
+The first setting of the rear-inflow share (45%) gave 75 mph wind on 71% of days and a
+strongest gust of 86 mph at the median; 30% was adopted and changed little (69%, 83 mph),
+so most of the gain is not sensitive to that share. Tests: `tests/storm-shape-and-interactions.mjs`.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

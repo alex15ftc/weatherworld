@@ -13,7 +13,7 @@ export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 68, po
 // Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
 // more the more rain is falling), plus a share of the storm's own motion carried to the ground
 // (fast storms in strong flow are windier). Nothing is added for what kind of storm it is.
-export const GUST = Object.freeze({ downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.35, rearInflowShare: 0.45, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
+export const GUST = Object.freeze({ downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.35, rearInflowShare: 0.3, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 const MPH_PER_MS = 2.23694;
 
 export function hailSizeInches(storm, environment) {

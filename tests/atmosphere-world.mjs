@@ -33,6 +33,7 @@ for (let step = 0; step < 3 * 48; step++) {
   for (const storm of world.storms) {
     if (seen.has(storm.id)) continue;
     seen.add(storm.id);
+    if (storm.parentId) continue;   // the left-moving member of a split: it came from its parent, not from the air
     const cell = world.cells[storm.sourceCell.y][storm.sourceCell.x];
     born.push({ utc: ((storm.createdHourUtc % 24) + 24) % 24, cape: storm.sourceCell.cape, x: storm.positionKm.x, y: storm.positionKm.y, dewpoint: cell.surface.dewpoint });
   }

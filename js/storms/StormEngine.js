@@ -174,6 +174,8 @@ function handleMergersAndOrganization(world, spatialIndex) {
   const checked = new Set();
   for (const a of active) for (const b of nearbyStorms(spatialIndex, a, 65)) {
     if (a === b || !a.active || !b.active) continue;
+    // The two members of a split move apart; they are not one storm again a moment later.
+    if (a.leftMover !== b.leftMover && (a.parentId === b.id || b.parentId === a.id)) continue;
     const pairKey = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
     if (checked.has(pairKey)) continue;
     checked.add(pairKey);

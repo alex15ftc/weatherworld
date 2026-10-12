@@ -48,7 +48,8 @@ Settings are in `REGIONAL_DEFAULTS`.
 | `StormModeEngine.js` | rotating and line shares; the type name (a description only) |
 | `StormRotation.js` | mid-level rotation, low-level rotation and occlusion, from the storm's state and its inflow |
 | `TornadoEngine.js` | the tornado: forms from low-level rotation, lasts while the storm holds it, wind follows it |
-| `StormStructureEngine.js`, `StormInternalField.js` | the storm's shape and inner fields, for the radar |
+| `StormGeometry.js` | where the storm's parts are (updraught, wall cloud, rain and hail cores, gust front, anvil, tornado): one description for the radar and the game's 3D object |
+| `StormStructureEngine.js`, `StormInternalField.js` | the radar's picture and inner fields, built from the storm's state and geometry |
 
 `AtmosphereWorld.prepare()` gives the storms what they read: soundings, convergence lift,
 ascent from 500 mb height falls, and the mesoscale diagnoses in
