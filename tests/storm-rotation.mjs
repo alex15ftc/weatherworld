@@ -34,7 +34,7 @@ const mean = values => values.reduce((a, b) => a + b, 0) / Math.max(1, values.le
 const strong = run(tornadic);
 assert.ok(strong.tornadoes.length >= 2, `a strong tornadic storm puts down tornadoes (${strong.tornadoes.length} in six hours)`);
 assert.ok(strong.firstCueAt !== null && strong.firstTornadoAt - strong.firstCueAt >= 2 * STEP - 1e-9, `the low-level rotation is there to be read before the first one (${Math.round((strong.firstTornadoAt - strong.firstCueAt) * 60)} minutes ahead)`);
-assert.ok(Math.min(...strong.lowAtOnset) >= 0.12, 'no tornado forms without low-level rotation under it');
+assert.ok(Math.min(...strong.lowAtOnset) >= 0.08, 'no tornado forms without low-level rotation under it');
 // It occludes, the tornado ends, and the storm builds another: cycles from its own state.
 assert.ok(strong.occlusionSeen > 0.3, `the storm's outflow wraps around its tornado (occlusion ${strong.occlusionSeen.toFixed(2)})`);
 for (let i = 1; i < strong.tornadoes.length; i++) assert.ok(strong.tornadoes[i].startedHourUtc >= strong.tornadoes[i - 1].endedHourUtc, 'one tornado at a time, each after the last has ended');
@@ -43,9 +43,9 @@ assert.ok(strong.tornadoes.every(t => t.groundTimeMinutes >= 5 && t.peakWindSpee
 // --- Air that cannot do it: no helicity and a high cloud base; cold outflow that outruns the
 // updraught; a storm fed from above the ground.
 const marginal = run({ ...tornadic, srh: 60, lcl: 1900 });
-assert.ok(marginal.peakLow < 0.12 && marginal.tornadoes.length === 0, `without helicity near the ground and a low cloud base there is no low-level rotation (${marginal.peakLow.toFixed(2)})`);
+assert.ok(marginal.peakLow < 0.08 && marginal.tornadoes.length === 0, `without helicity near the ground and a low cloud base there is no low-level rotation (${marginal.peakLow.toFixed(2)})`);
 const undercut = run({ ...tornadic, bulkShear: 30 }, { coldPool: 0.8 });
-assert.ok(undercut.peakLow < 0.12 && undercut.tornadoes.length === 0, `cold outflow that outruns the updraught kills it (${undercut.peakLow.toFixed(2)})`);
+assert.ok(undercut.peakLow < 0.08 && undercut.tornadoes.length === 0, `cold outflow that outruns the updraught kills it (${undercut.peakLow.toFixed(2)})`);
 const elevated = run(tornadic, { elevated: true });
 assert.equal(elevated.tornadoes.length, 0, 'a storm fed from above the ground has none');
 assert.ok(elevated.storm.mesocycloneStrength > 0.3, 'though it can rotate aloft');

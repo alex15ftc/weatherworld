@@ -44,9 +44,10 @@ Settings are in `REGIONAL_DEFAULTS`.
 | `StormEnvironmentCoupling.js` | the inflow a storm draws on, upstream of its own outflow |
 | `StormRealizationPhysics.js` | updraught speed from parcel theory less entrainment, loading and inhibition |
 | `StormBudgets.js` | the storm's three linked budgets: updraught, rain, cold pool; strength and organization follow from them |
-| `StormEngine.js` | each storm's step: budgets, rotation, hail, gusts, splits, mergers |
+| `StormEngine.js` | each storm's step: budgets, hail, gusts, splits, mergers |
 | `StormModeEngine.js` | rotating and line shares; the type name (a description only) |
-| `TornadoEngine.js` | a statistical tornado on the storm, from its rotation and its inflow's ingredients |
+| `StormRotation.js` | mid-level rotation, low-level rotation and occlusion, from the storm's state and its inflow |
+| `TornadoEngine.js` | the tornado: forms from low-level rotation, lasts while the storm holds it, wind follows it |
 | `StormStructureEngine.js`, `StormInternalField.js` | the storm's shape and inner fields, for the radar |
 
 `AtmosphereWorld.prepare()` gives the storms what they read: soundings, convergence lift,

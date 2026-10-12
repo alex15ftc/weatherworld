@@ -692,6 +692,51 @@ the reference to about 68 m/s would bring it near 2.3); ordinary storms in weak 
 1.7 hours where real ones last under an hour; no left-moving splits; tornado duration
 untouched (stage 2). Test: `tests/storm-budgets.mjs`.
 
+### Storm update, stage 2: rotation and the tornado (2026-10-12)
+
+`js/storms/StormRotation.js`, and `TornadoEngine.js` rewritten around it.
+
+- **Mid-level rotation**: the updraught x (shear through the depth and helicity of the
+  inflow) x how clear the updraught is of its rain, less along a line. Replaces the weighted
+  score.
+- **Low-level rotation**: the mid-level rotation x helicity near the ground x a low cloud
+  base x outflow that does not outrun the storm. None for a storm fed from above the ground.
+- **Tornado**: forms at a rate rising with low-level rotation (none below 0.08, one every 20
+  minutes at 0.5), so it is seen coming. It lasts until the storm's outflow wraps around it:
+  the occlusion takes up to 1.5 hours under strong rotation and balanced outflow, minutes
+  under weak rotation or outflow that outruns the shear. Then the occlusion clears and the
+  storm can build another. Its wind follows the storm's low-level rotation, with one draw
+  per tornado for what cannot be resolved.
+- Removed: the tornado parameter as the cause of tornadoes (kept as a map quantity), the
+  drawn lifetime, the sine-wave "cyclic" phase.
+- Hail reference raised to 68 m/s. The server publishes each storm's updraught, rain,
+  low-level rotation and occlusion.
+- Tests: `tests/storm-rotation.mjs` replaces three tests of the old tornado code (moved to
+  `phase8-old-tornado-tests`).
+
+| 90 days, steered | Before the storm update | After stage 1 | After stage 2 |
+|---|---|---|---|
+| Tornado time on the ground, median (90th, longest) | 4 (25, 62) min | 4 (24, 66) | 15 (30, 60) |
+| Tornadoes down 10 minutes or more | 25% | 28% | 99% |
+| Tornado path, median (90th) | 1.3 (12) miles | 1.5 (13) | 6.5 (19) |
+| Days with a tornado | 88-93% | 83-87% | 80-82% |
+| Days with EF2+ winds / EF4+ winds | 64% / 34% | 64% / 21% | 58% / 21% |
+| Tornadoes per day, median (90th) | 7 (35) | 5 (22) | 7 (36) |
+| Minutes of the day with a tornado down, median | 76 | 66 | 105 |
+| By peak wind, EF0 to EF4+ | 41 / 32 / 14 / 8 / 5% | 44 / 27 / 16 / 8 / 4% | 45 / 32 / 14 / 5 / 4% |
+| Starting between 6 pm and midnight local | 39% | 39% | 56% |
+| Largest hail of the day, median | 1.9 in | 2.9 in | 2.3 in |
+| Days with 75 mph wind | 2% | 36% | 37% |
+| Quiet days | 3-6% | 4% | 3% |
+| Slight / Enhanced / Moderate / High | 12 / 36 / 27 / 20% | 10 / 20 / 43 / 20% | 12 / 21 / 30 / 29% |
+| A tornado within 60 miles of a place, lasting 10 min or more | 13% of days | 10% | 25% |
+
+The first setting (no tornado below low-level rotation 0.12) gave 71% tornado days; the
+adopted one (0.08, and a rate that rises in proportion) gives 80-82%. Open: tornado days are
+below the 90% before the update; no tornado is shorter than 10 minutes (the storm step is 5
+minutes and a tornado stays down through the step it formed in); days with none have long
+gaps (12 gaps of a day or more in 90 days).
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

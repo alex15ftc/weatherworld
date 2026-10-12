@@ -30,7 +30,7 @@ export function initializeTornadoState(storm) {
 //   - How strong it is: its wind follows the low-level rotation as it rises and falls. What
 //     sets one tornado apart from another under the same rotation cannot be resolved here,
 //     so each has its own draw (strengthUniform) within a spread the rotation scales.
-const TORNADO = { onsetRotation: [0.12, 0.5], fullRatePerHour: 4, power: 1.5, sustainRotation: 0.08, outlookHours: 0.5 };
+const TORNADO = { onsetRotation: [0.08, 0.5], fullRatePerHour: 3, power: 1, sustainRotation: 0.055, outlookHours: 0.5 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
