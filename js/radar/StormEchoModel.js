@@ -13,7 +13,8 @@ export function buildStormEchoModel(storm) {
   const theta = (Number(structure.orientationDeg ?? storm.orientationDeg) || 0) * DEG;
   // Screen frame: x east, y south. Motion unit vector m and right-of-motion vector r.
   const mx = Math.sin(theta), my = Math.cos(theta), rx = -my, ry = mx;
-  const echoScale = clamp(Math.sqrt(lifecycleFactor(storm.lifecycleState)) * (0.55 + 0.45 * clamp(Number(storm.intensity) || 0, 0, 1)), 0.08, 0.95);
+  // How bright the echo is: how much rain the storm holds, and how strong it is.
+  const echoScale = clamp(Math.sqrt(clamp(0.1 + 1.1 * (Number(storm.precipitation) || 0), 0.1, 1)) * (0.55 + 0.45 * clamp(Number(storm.intensity) || 0, 0, 1)), 0.08, 0.95);
 
   const extent = Math.max(Number(structure.widthKm) || 40, Number(structure.heightKm) || 40);
   const half = clamp(extent * 0.8 + 10, 20, 120);
@@ -56,7 +57,7 @@ export function buildStormEchoModel(storm) {
     mesocyclone: {
       x: mesoOffset.x, y: mesoOffset.y,
       radiusKm: clamp(Number(meso.radiusKm) || 4, 1.5, 8),
-      vmaxMs: (6 + 30 * clamp(Number(meso.strength) || 0, 0, 1.25)) * Math.sqrt(lifecycleFactor(storm.lifecycleState))
+      vmaxMs: 6 + 30 * clamp(Number(meso.strength) || 0, 0, 1.25)
     },
     tornado: tornadoOnGround ? { x: tornadoOffset.x, y: tornadoOffset.y, radiusKm: tornadoWidthKm / 2, vmaxMs: clamp(tornadoWindMs * 0.85, 25, 135) } : null
   };
@@ -280,8 +281,5 @@ function stampLine(f, fields, size, half) {
   });
 }
 
-function lifecycleFactor(state) {
-  return state === 'tower' ? 0.3 : state === 'developing' ? 0.6 : state === 'organizing' ? 0.85 : state === 'weakening' ? 0.6 : state === 'dissipating' ? 0.28 : 1;
-}
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function clampInt(v, a, b) { return Math.max(a, Math.min(b, v)); }

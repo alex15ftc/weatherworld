@@ -21,6 +21,8 @@ export function sampleEffectiveInflowEnvironment(world, storm) {
   });
   const base = { ...samples[0] };
   for (const key of ['cape','cin','srh','stp','rawStp','vtp','synopticTornadoSupport','scp','bulkShear','lcl','readiness','trigger','initiation','forcing','stormCoverage','discreteFraction','linearFraction','warmSector','openWarmSectorSupport','prefrontalSupercellSupport','tornadicEnvironmentSupport','synopticAscent','synopticCoherence','moisturePooling','capErosion','boundaryInfluence','processedAir','outflowConvergence']) base[key] = blend(key);
+  // An outflow boundary lying in the inflow, beyond the storm's own rain-cooled air.
+  base.outflowContrastK = Math.max(samples[1].outflowContrastK ?? 0, samples[2].outflowContrastK ?? 0);
   base.surfaceWind = vectorBlend('surfaceWind'); base.wind850 = vectorBlend('wind850'); base.wind500 = vectorBlend('wind500');
   base.effectiveInflowSamples = offsets.length; base.effectiveInflowDistanceKm = offsets.at(-1);
   return base;

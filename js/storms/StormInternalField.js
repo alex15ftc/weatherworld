@@ -25,11 +25,12 @@ export function evolveStormInternalField(storm, environment = {}, dtHours = 1 / 
   const dtMin=dtHours*60, angle=(storm.orientationDeg??0)*Math.PI/180, ca=Math.cos(angle),sa=Math.sin(angle);
   const mesoMemory=clamp(storm.mesocycloneStrength??0,0,1.35);
   const rotation=clamp(Math.max(srh*shear*inflow*storm.organization, mesoMemory*0.82),0,1.3), cold=clamp(storm.coldPoolStrength??0,0,1);
-  const mature=clamp((storm.ageHours-.25)/1.1,0,1), weakening=storm.lifecycleState==='weakening'||storm.lifecycleState==='dissipating';
+  const mature=clamp((storm.ageHours-.25)/1.1,0,1), weakening=(storm.updraughtTrend??0)<-0.2;
   // Internal structure follows the storm's properties (rotation, line organization, size).
   const organizedLine=lineShare(storm)>=0.5, mcs=organizedLine&&(storm.lineHalfLengthKm??0)>=110&&(storm.ageHours??0)>=4;
   const supercell=rotatingShare(storm)>=0.5&&!organizedLine, linear=organizedLine&&!mcs;
-  const lifecycleScale=storm.lifecycleState==='tower'?.32:storm.lifecycleState==='developing'?.58:storm.lifecycleState==='organizing'?.82:storm.lifecycleState==='mature'?1:storm.lifecycleState==='weakening'?.72:.38;
+  // The inner fields scale with the updraught the storm has now.
+  const lifecycleScale=clamp(.3+.9*(storm.intensity??0),.3,1);
   const advectX=clamp((storm.velocityKph?.east??0)*dtHours/res,-2,2), advectY=clamp(-(storm.velocityKph?.north??0)*dtHours/res,-2,2);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const i=y*w+x, sx=x-advectX, sy=y-advectY;

@@ -15,6 +15,8 @@ export class Storm {
     this.updraughtMs = 6; this.precipitation = 0; this.loading = 0; this.updraughtTrend = 1;
     // Rotation near the ground (0-1.2) and how far the storm's outflow has wrapped around it (0-1).
     this.lowRotation = 0; this.lowRotationFree = 0; this.occlusion = 0; this.lowRotationTrend = 0;
+    // Help from an outflow boundary in the inflow (0-1); air driven down behind a line (0-1); where its parts are.
+    this.boundaryBoost = 0; this.rearInflow = 0; this.geometry = null;
     this.intensity = 0.12;
     this.organization = 0.15;
     this.updraftStrength = 0.15;

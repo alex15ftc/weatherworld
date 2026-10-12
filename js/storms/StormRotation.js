@@ -17,6 +17,12 @@ export const ROTATION = Object.freeze({
   fullUpdraughtMs: 40, shearKt: [20, 55], helicity: [50, 350], shearShare: 0.35, lineLoss: 0.45,
   spinUpHours: 0.4, spinDownHours: 0.7,
   lowHelicity: [50, 250], helicityFloor: 0.5, cloudBaseM: [2000, 800], outflowBalance: [1.0, 1.8],
+  // Helicity added near the ground where the inflow crosses the edge of older rain-cooled air
+  // (an outflow boundary), from none at boundaryContrastK[0] to all of it at boundaryContrastK[1].
+  boundaryHelicity: 150, boundaryContrastK: [1.5, 6],
+  // A left-moving split rotates the other way: it lives on shear that does not turn with
+  // height, and has no rotation near the ground to speak of.
+  leftHelicity: [80, 250], leftShare: 0.6,
   lowSpinUpHours: 0.3, lowSpinDownHours: 0.08,
   // Time for the outflow to wrap around a tornado: from balanced outflow to outflow that
   // outruns the shear, and shorter the weaker the rotation is (strong rotation means strong
@@ -31,7 +37,8 @@ const toward = (value, target, dtHours, upHours, downHours) => value + (target -
 export function stepStormRotation(storm, environment, dtHours) {
   const R = ROTATION, linear = lineShare(storm);
   const updraught = clamp((storm.updraughtMs ?? 0) / R.fullUpdraughtMs, 0, 1.2);
-  const tilting = R.shearShare * ramp(environment.bulkShear, R.shearKt[0], R.shearKt[1]) + (1 - R.shearShare) * ramp(environment.srh, R.helicity[0], R.helicity[1]);
+  const turning = storm.leftMover ? R.leftShare * (1 - ramp(environment.srh, R.leftHelicity[0], R.leftHelicity[1])) : ramp(environment.srh, R.helicity[0], R.helicity[1]);
+  const tilting = R.shearShare * ramp(environment.bulkShear, R.shearKt[0], R.shearKt[1]) + (1 - R.shearShare) * turning;
   const clear = 0.4 + 0.6 * clamp(storm.organization ?? 0, 0, 1);
   // Updraughts along a line share their inflow and rotate less than a storm on its own.
   const midTarget = updraught * tilting * clear * (1 - R.lineLoss * linear);
@@ -42,11 +49,12 @@ export function stepStormRotation(storm, environment, dtHours) {
   storm.occlusion = clamp((storm.occlusion ?? 0) + (storm.tornado?.onGround
     ? dtHours / (hold * (R.occlusionHours[0] + (R.occlusionHours[1] - R.occlusionHours[0]) * ramp(balance, R.occlusionBalance[0], R.occlusionBalance[1])))
     : -dtHours / R.recoveryHours), 0, 1);
-  const nearGround = R.helicityFloor + (1 - R.helicityFloor) * ramp(environment.srh, R.lowHelicity[0], R.lowHelicity[1]);
+  storm.boundaryBoost = ramp(environment.outflowContrastK, R.boundaryContrastK[0], R.boundaryContrastK[1]);
+  const nearGround = R.helicityFloor + (1 - R.helicityFloor) * ramp((Number(environment.srh) || 0) + R.boundaryHelicity * storm.boundaryBoost, R.lowHelicity[0], R.lowHelicity[1]);
   const cloudBase = ramp(R.cloudBaseM[0] - (Number(environment.lcl) || R.cloudBaseM[0]), 0, R.cloudBaseM[0] - R.cloudBaseM[1]);
   const outflow = 1 - ramp(balance, R.outflowBalance[0], R.outflowBalance[1]);
   // A storm feeding on air from above the ground has nothing near the ground to stretch.
-  const freeTarget = storm.elevatedFeed ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow, lowTarget = freeTarget * (1 - storm.occlusion);
+  const freeTarget = storm.elevatedFeed || storm.leftMover ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow, lowTarget = freeTarget * (1 - storm.occlusion);
   // What the low-level rotation would be were the storm not occluding: its underlying strength.
   storm.lowRotationFree = toward(storm.lowRotationFree ?? 0, freeTarget, dtHours, R.lowSpinUpHours, R.lowSpinDownHours);
   const before = storm.lowRotation ?? 0;

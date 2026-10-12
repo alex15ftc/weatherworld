@@ -63,9 +63,18 @@ export function describeStormMode(storm, environment = storm.environment ?? {}) 
   return (Number(environment.bulkShear) || 0) < 22 ? 'pulse storm' : 'multicell';
 }
 
-// A rotating, discrete storm in strong shear splits once into right- and left-moving members.
+// A rotating storm on its own in strong shear splits once into right- and left-moving members.
+// How much of it goes to the left-mover depends on how the wind turns with height: an even
+// split where the shear does not turn (little helicity), almost nothing where it turns
+// strongly clockwise, which is the usual tornado day.
+const SPLIT = { ageHours: [0.6, 3.2], shearKt: 35, capeJkg: 850, straightHelicity: [80, 250], leastShare: 0.25 };
 export function shouldSplitStorm(storm, environment) {
-  return !storm.hasSplit && !storm.leftMover && storm.ageHours >= 0.9 && storm.ageHours <= 3.2 &&
-    rotatingShare(storm) >= 0.5 && lineShare(storm) < 0.3 && storm.organization >= 0.52 &&
-    environment.bulkShear >= 38 && environment.cape >= 850;
+  return !storm.hasSplit && !storm.leftMover && storm.ageHours >= SPLIT.ageHours[0] && storm.ageHours <= SPLIT.ageHours[1] &&
+    rotatingShare(storm) >= 0.5 && lineShare(storm) < 0.3 &&
+    environment.bulkShear >= SPLIT.shearKt && environment.cape >= SPLIT.capeJkg;
+}
+// The left-mover's share of the parent (0-1); below leastShare it does not survive the split.
+export function leftSplitShare(environment) {
+  const share = 1 - ramp(environment.srh, SPLIT.straightHelicity[0], SPLIT.straightHelicity[1]);
+  return share >= SPLIT.leastShare ? share : 0;
 }

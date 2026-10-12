@@ -1,10 +1,10 @@
 import { Storm } from './Storm.js';
 import { findInitiationCandidates } from './InitiationEngine.js';
 import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampling.js';
-import { describeStormMode, shouldSplitStorm, rotatingShare, lineShare, lineOrganizationTarget } from './StormModeEngine.js';
+import { describeStormMode, shouldSplitStorm, leftSplitShare, rotatingShare, lineShare, lineOrganizationTarget } from './StormModeEngine.js';
 import { BUDGET, setUpdraught, startStormBudgets, stepStormBudgets, stormIsOver } from './StormBudgets.js';
 import { stepStormRotation } from './StormRotation.js';
-import { hailSizeInches as diagnoseHailSize, gustMph as diagnoseGust, stormFuel } from './StormHazards.js';
+import { hailSizeInches as diagnoseHailSize, gustMph as diagnoseGust, stormFuel, stepRearInflow } from './StormHazards.js';
 import { clamp } from '../scenarios/math.js';
 import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js';
 import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js';
@@ -118,6 +118,7 @@ function updateStorm(world, storm, dtHours) {
   storm.interactions.mergerBoost *= Math.max(0, 1 - dtHours * 0.7);
   // The storm's budgets: updraught, rain, and the cold pool the rain makes (StormBudgets.js).
   stepStormBudgets(storm, environment, physics, dtHours, { starving });
+  stepRearInflow(storm, dtHours);
   // Line organization follows the forcing and the cold pool's balance with the shear.
   storm.lineOrganization = lineShare(storm) + (lineOrganizationTarget(storm, environment) - lineShare(storm)) * clamp(LINE_RESPONSE_PER_HOUR * dtHours, 0, 1);
   storm.coldPoolRadiusKm = clamp(5 + storm.ageHours * 5 + storm.coldPoolStrength * 24, 5, 52);
@@ -147,12 +148,14 @@ function handleSplits(world) {
   for (const storm of [...world.storms]) {
     if (!storm.active || !shouldSplitStorm(storm, storm.environment)) continue;
     storm.hasSplit = true;
+    const leftShare = leftSplitShare(storm.environment);
+    if (!leftShare) continue;
     const shear = { x: storm.environment.wind500.eastKt - storm.environment.surfaceWind.eastKt, y: -(storm.environment.wind500.northKt - storm.environment.surfaceWind.northKt) };
     const mag = Math.hypot(shear.x, shear.y) || 1;
     const offset = { x: -shear.y / mag * 6, y: shear.x / mag * 6 };
     const candidate = { x: storm.sourceCell.x, y: storm.sourceCell.y, xKm: storm.positionKm.x, yKm: storm.positionKm.y };
     const child = createStorm(world, candidate, storm.environment, 'left-moving supercell', storm.id, offset);
-    child.ageHours = 0.45; setUpdraught(child, storm.updraughtMs * 0.72); child.precipitation = storm.precipitation * 0.5; child.organization = storm.organization * 0.85;
+    child.ageHours = 0.45; setUpdraught(child, storm.updraughtMs * (0.4 + 0.45 * leftShare)); child.precipitation = storm.precipitation * 0.5; child.organization = storm.organization * 0.85;
     child.mesocycloneStrength = (storm.mesocycloneStrength ?? 0) * 0.85; child.lowRotation = 0; child.occlusion = 0;
     storm.children.push(child.id);
     world.stormEngine.totalSplits += 1;

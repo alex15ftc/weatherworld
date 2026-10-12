@@ -13,7 +13,7 @@ export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 68, po
 // Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
 // more the more rain is falling), plus a share of the storm's own motion carried to the ground
 // (fast storms in strong flow are windier). Nothing is added for what kind of storm it is.
-export const GUST = Object.freeze({ downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.35 });
+export const GUST = Object.freeze({ downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.35, rearInflowShare: 0.45, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 const MPH_PER_MS = 2.23694;
 
 export function hailSizeInches(storm, environment) {
@@ -27,7 +27,19 @@ export function hailSizeInches(storm, environment) {
 export function gustMph(storm, environment, motionSpeedKph) {
   const downdraughtMs = Math.sqrt(2 * Math.max(0, Number(environment.dcape) || 0)) * GUST.downdraughtShare * (1 - GUST.matureShare + GUST.matureShare * clamp(storm.precipitation ?? 0, 0, 1));
   const motionMs = motionSpeedKph / 3.6 * GUST.motionShare;
-  return clamp((downdraughtMs + motionMs) * MPH_PER_MS, 10, 130);
+  // Behind a line with a strong cold pool, air from the middle levels is drawn down and
+  // forward: the wind up there reaches the ground, and the line bows out ahead of it.
+  const aloftMs = Math.hypot(environment.wind500?.eastKt ?? 0, environment.wind500?.northKt ?? 0) * 0.514444;
+  const rearInflowMs = GUST.rearInflowShare * clamp(storm.rearInflow ?? 0, 0, 1) * aloftMs;
+  return clamp((downdraughtMs + motionMs + rearInflowMs) * MPH_PER_MS, 10, 130);
+}
+
+// Rear inflow (0-1) builds behind a line as its cold pool deepens and its rain falls.
+export function stepRearInflow(storm, dtHours) {
+  const line = clamp(Number(storm.lineOrganization) || 0, 0, 1);
+  const target = line * clamp(((storm.coldPoolStrength ?? 0) - GUST.rearInflowColdPool[0]) / (GUST.rearInflowColdPool[1] - GUST.rearInflowColdPool[0]), 0, 1) * clamp(storm.precipitation ?? 0, 0, 1);
+  storm.rearInflow = (storm.rearInflow ?? 0) + (target - (storm.rearInflow ?? 0)) * clamp(dtHours / GUST.rearInflowHours, 0, 1);
+  return storm.rearInflow;
 }
 
 // Fuel: an existing updraft can force surface-based parcels through moderate inhibition

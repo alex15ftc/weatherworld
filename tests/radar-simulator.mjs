@@ -55,7 +55,10 @@ const site = sites.find(s => s.id === 'KCPL');
 const warm = warmestCellNear(world, site, 35, 60);
 const supercell = new Storm({ id: 'TEST-SC', xKm: warm.x, yKm: warm.y, velocityEastKph: 45, velocityNorthKph: 25, sourceCell: { x: 0, y: 0 }, createdHourUtc: world.validHourUtc });
 Object.assign(supercell, {
-  mode: 'discrete supercell', lifecycleState: 'mature', ageHours: 2.5, intensity: 0.85, organization: 0.9, updraftStrength: 0.9,
+  // The storm's state is what the radar draws: a strong updraught holding plenty of rain,
+  // rotating aloft and near the ground. (The name is only a label.)
+  mode: 'discrete supercell', ageHours: 2.5, intensity: 0.85, organization: 0.9, updraftStrength: 0.9,
+  updraughtMs: 45, precipitation: 0.9, lowRotation: 0.6, lowRotationFree: 0.7, occlusion: 0.2, currentHailSizeInches: 2.5,
   mesocycloneStrength: 1.05, rotationStrength: 1, coldPoolStrength: 0.35,
   orientationDeg: Math.atan2(45, -25) * 180 / Math.PI,
   tornado: { onGround: true, widthYards: 700, windSpeedMph: 165 }

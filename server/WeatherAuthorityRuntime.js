@@ -480,6 +480,11 @@ function publicStormSnapshot(storm) {
     intensity: storm.intensity, maxIntensity: storm.maxIntensity, organization: storm.organization,
     updraftStrength: storm.updraftStrength, peakUpdraftStrength: storm.peakUpdraftStrength ?? 0,
     rotationStrength: storm.rotationStrength ?? 0, peakRotationStrength: storm.peakRotationStrength ?? 0,
+    // The storm's own state, for anything that draws it: its budgets, the rotation near the
+    // ground that comes before a tornado, how far its outflow has wrapped around, the air
+    // driven down behind a line, and where its parts are.
+    updraughtMs: storm.updraughtMs ?? 0, precipitation: storm.precipitation ?? 0, lowRotation: storm.lowRotation ?? 0, occlusion: storm.occlusion ?? 0,
+    rearInflow: storm.rearInflow ?? 0, boundaryBoost: storm.boundaryBoost ?? 0, geometry: storm.geometry ?? null,
     coldPoolStrength: storm.coldPoolStrength ?? 0, coldPoolRadiusKm: storm.coldPoolRadiusKm ?? 0,
     inflowQuality: storm.inflowQuality ?? 0, mode: storm.mode, modeConfidence: storm.modeConfidence ?? 0,
     motion: storm.motion ?? {}, surfaceWind: storm.surfaceWind ?? {}, tornado,

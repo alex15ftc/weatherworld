@@ -38,6 +38,9 @@ export function sampleStormEnvironment(world, xKm, yKm) {
   // How strongly the surface winds converge here (0-1): the only way a front, a dryline or
   // an outflow edge is felt.
   const boundaryInfluence = mean(cell => cell.features?.convergenceLift ?? 0);
+  // How sharply rain-cooled air changes across this place (K between neighbouring cells): the
+  // edge of a cold pool. Air crossing it is turned about a horizontal axis along the edge.
+  const pools = cells.map(cell => Number(cell.features?.coldPoolK) || 0), outflowContrastK = Math.max(...pools) - Math.min(...pools);
   // Temperature contrast across the storm's surroundings (deg F per cell): a dense air mass
   // undercutting the warm air (cold front, outflow) forces a solid line; a dryline does not.
   const temperatures = cells.map(cell => cell.surface.temperature);
@@ -56,7 +59,7 @@ export function sampleStormEnvironment(world, xKm, yKm) {
     mostUnstableCin: mean(cell => Math.abs(cell.derived?.sounding?.mucin ?? cell.derived.cin ?? 0)),
     surfaceBasedCape: mean(cell => cell.derived?.sounding?.sbcape ?? cell.derived.cape),
     dewpoint: mean(cell => cell.surface.dewpoint),
-    cin: mean(cell => cell.derived.cin), srh,
+    cin: mean(cell => cell.derived.cin), srh, outflowContrastK,
     stp: mean(cell => cell.derived.stp ?? 0), rawStp: mean(cell => cell.derived.rawStp ?? cell.derived.stp ?? 0),
     vtp: mean(cell => cell.derived.vtp ?? 0), synopticTornadoSupport: mean(cell => cell.derived.synopticTornadoSupport ?? 0), scp: mean(cell => cell.derived.scp ?? 0),
     bulkShear, lcl,
