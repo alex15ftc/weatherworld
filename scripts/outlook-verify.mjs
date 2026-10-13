@@ -53,14 +53,14 @@ async function worker(seed) {
       if (!outlook) continue;
       const verified = outlook.hazards.includes('severe') ? verifiedAs.severe : verifiedAs.full;
       const reliability = Object.fromEntries(outlook.hazards.map(h => [h, LEVELS[h].map(() => ({ cells: 0, hits: 0 }))]));
-      const groups = Object.fromEntries(outlook.hazards.map(h => [h, [0, 1, 2, 3].map(() => ({ cells: 0, tier1: 0, tier2: 0, tier3: 0 }))]));
+      const groups = Object.fromEntries(outlook.hazards.map(h => [h, [0, 1, 2, 3].map(() => ({ cells: 0, hits: 0, tier1: 0, tier2: 0, tier3: 0 }))]));
       let sameCell = 0, withinOne = 0;
       for (let i = 0; i < n; i++) {
         for (const h of outlook.hazards) {
           // Reliability: cells by forecast contour, and whether the hazard came within 25 miles.
           const slot = reliability[h][LEVELS[h].indexOf(outlook.level[h][i])]; slot.cells++; if (near[h][i]) slot.hits++;
-          // Inside each intensity group: how often each tier came within 25 miles.
-          if (outlook.level[h][i] > 0) { const g = groups[h][outlook.cig[h][i]]; g.cells++; CIG_TIERS[h].forEach((field, k) => { if (near[field][i]) g[`tier${k + 1}`]++; }); }
+          // Inside each intensity group, at the places the hazard came within 25 miles: how often each tier did.
+          if (outlook.level[h][i] > 0) { const g = groups[h][outlook.cig[h][i]]; g.cells++; if (near[h][i]) { g.hits++; CIG_TIERS[h].forEach((field, k) => { if (near[field][i]) g[`tier${k + 1}`]++; }); } }
         }
         const f = ORDER.indexOf(outlook.category[i]), t = ORDER.indexOf(verified[i]);
         if (f === t) sameCell++; if (Math.abs(f - t) <= 1) withinOne++;
@@ -98,10 +98,10 @@ async function main() {
       const row = LEVELS[h].map((edge, k) => { const cells = all.reduce((a, d) => a + d.reliability[h][k].cells, 0), hits = all.reduce((a, d) => a + d.reliability[h][k].hits, 0); return `${edge ? edge + '%' : 'below'}: ${cells >= 200 ? Math.round(100 * hits / cells) + '%' : '-'}`; });
       console.log(`  ${h.padEnd(9)}${row.join('  ')}`);
     }
-    console.log('   Intensity groups (places inside a contour, by the group drawn there; share where each tier came within 25 miles)');
+    console.log('   Intensity groups (places inside a contour by the group drawn there; of those where the hazard came within 25 miles, the share where each tier did)');
     for (const h of hazards) for (let g = 0; g <= TIER_NAMES[h].length; g++) {
-      const cells = all.reduce((a, d) => a + d.groups[h][g].cells, 0); if (cells < 200) continue;
-      console.log(`  ${h.padEnd(9)}${(g ? 'CIG' + g : 'no group').padEnd(10)}${TIER_NAMES[h].map((name, k) => `${name} ${Math.round(100 * all.reduce((a, d) => a + d.groups[h][g][`tier${k + 1}`], 0) / cells)}%`).join('  ')}  (${Math.round(100 * cells / all.reduce((a, d) => a + [0, 1, 2, 3].reduce((b, q) => b + d.groups[h][q].cells, 0), 0))}% of the area inside a contour)`);
+      const cells = all.reduce((a, d) => a + d.groups[h][g].cells, 0); if (cells < 100) continue;
+      console.log(`  ${h.padEnd(9)}${(g ? 'CIG' + g : 'no group').padEnd(10)}${TIER_NAMES[h].map((name, k) => `${name} ${Math.round(100 * all.reduce((a, d) => a + d.groups[h][g][`tier${k + 1}`], 0) / Math.max(1, all.reduce((a, d) => a + d.groups[h][g].hits, 0)))}%`).join('  ')}  (${Math.round(100 * cells / all.reduce((a, d) => a + [0, 1, 2, 3].reduce((b, q) => b + d.groups[h][q].cells, 0), 0))}% of the area inside a contour)`);
     }
     console.log(`3. Tornadoes: the day's count fell inside the range of the runs on ${share(all, d => d.tornadoes >= d.forecastTornadoes.low && d.tornadoes <= d.forecastTornadoes.high)} of days`);
     console.log('  (range of the runs / what happened): ' + all.map(d => `${d.forecastTornadoes.low}-${d.forecastTornadoes.high}/${d.tornadoes}`).join('  '));

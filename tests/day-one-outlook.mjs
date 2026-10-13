@@ -58,7 +58,7 @@ assert.equal(o.day, 'day1'); assert.deepEqual(o.hazards, WORLD_HAZARDS); assert.
 const two = combineOutlook([0, 1, 2, 3].map(k => member(k, { tornadoAt: spot })), { day: 'day2', issuedHourUtc: 36, validFromHourUtc: 60, validToHourUtc: 84 });
 assert.deepEqual(two.hazards, WORLD_HAZARDS); assert.equal(two.highest, o.highest); assert.ok(two.discussion.startsWith('Day 2 Convective Outlook')); assert.match(two.discussion, /expected tomorrow/);
 const three = combineOutlook([0, 1, 2, 3].map(k => member(k, { tornadoAt: spot })), { day: 'day3', issuedHourUtc: 36, validFromHourUtc: 84, validToHourUtc: 108 });
-assert.deepEqual(three.hazards, ['severe']); assert.deepEqual(Object.keys(three.chance), ['severe']);
+assert.deepEqual(three.hazards, ['severe']); assert.ok(three.expected.tornadoes.high > three.expected.tornadoes.low, 'a few runs: the range is their least and their most'); assert.deepEqual(Object.keys(three.chance), ['severe']);
 assert.equal(three.level.severe[centre], 60); assert.equal(three.cig.severe[centre], 1); assert.equal(three.highest, 'MDT', 'a 60% area with CIG1 on Day 3 is Moderate');
 assert.ok(three.level.severe.every(v => v === 0 || PROBABILITY_LEVELS.severe.includes(v)));
 assert.ok(three.discussion.startsWith('Day 3 Convective Outlook')); assert.match(three.discussion, /SEVERE: Widespread severe thunderstorms are expected.*\(60% severe area, CIG1\)/); assert.doesNotMatch(three.discussion, /TORNADO:/);

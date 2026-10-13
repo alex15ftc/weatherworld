@@ -215,7 +215,8 @@ export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issu
     day, hazards, issuedHourUtc, validFromHourUtc, validToHourUtc, seed, members: count, width, height, cellMiles,
     chance, intensity, level, cig, thunder, category, highest, areas, top,
     expected: {
-      tornadoes: { low: quantile(sum('tornadoes'), 0.1), middle: quantile(sum('tornadoes'), 0.5), high: quantile(sum('tornadoes'), 0.9) },
+      // The range of the runs: with only a few of them, the least and the most.
+      tornadoes: { low: count < 5 ? Math.min(...sum('tornadoes')) : quantile(sum('tornadoes'), 0.1), middle: quantile(sum('tornadoes'), 0.5), high: count < 5 ? Math.max(...sum('tornadoes')) : quantile(sum('tornadoes'), 0.9) },
       storms: quantile(sum('storms'), 0.5), hailInches: quantile(sum('maxHailInches'), 0.5), gustMph: quantile(sum('maxGustMph'), 0.5), tornadoMph: quantile(sum('strongestTornadoMph'), 0.5),
       membersWithTornado: members.filter(m => m.tornadoes > 0).length
     },

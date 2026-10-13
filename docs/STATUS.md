@@ -173,11 +173,54 @@ whatever happens upstream, the chances stay high and the doubt shows in the numb
 storms and in the discussion. A quiet Day 3 can be forecast with a chance of severe
 weather, because most of what could arrive from upstream here is severe.
 
+**Verification** (`npm run inspect:outlook`; eight worlds, seven mornings each, the outlooks
+made as the server makes them; 56 Day 1, 48 Day 2 and 40 Day 3 outlooks):
+
+| | Day 1 | Day 2 | Day 3 |
+|---|---|---|---|
+| Highest category of the day right | 77% | 71% | 68% |
+| Within one category | 100% | 98% | 98% |
+| Forecast too high / too low | 11% / 13% | 10% / 19% | 10% / 23% |
+| Category right, place by place | 75% of the map | 58% | 48% |
+| Within one, place by place | 97% | 90% | 81% |
+| Forecast High / verified High | 9% / 7% | 4% / 6% | never / never (Day 3 stops at Moderate) |
+
+Share of the places inside each contour (up to the next) where it then happened within 25 miles:
+
+| | 2% | 5% | 10% | 15% | 30% | 45% | 60% | 75% | 90% |
+|---|---|---|---|---|---|---|---|---|---|
+| Day 1 tornado | 2% | 6% | 12% | 23% | 45% | 72% | 90% | | |
+| Day 2 tornado | 4% | 7% | 13% | 24% | 48% | 63% | 91% | | |
+| Day 1 wind | | 3% | | 15% | 46% | 77% | 93% | 99% | 100% |
+| Day 2 wind | | 6% | | 22% | 50% | 74% | 89% | 98% | 100% |
+| Day 1 hail | | 5% | | 17% | 47% | 72% | 89% | | |
+| Day 2 hail | | 7% | | 26% | 53% | 75% | 89% | | |
+| Day 3 any severe | | 16% | | 26% | 45% | 69% | 88% | | |
+
+Every contour holds at least what it says. The later days are right about the day's highest
+category nearly as often as Day 1 and much less often about where. Day 3's weak point is
+outside its contours: 13% of the places it left out had severe weather within 25 miles.
+**Intensity groups.** A group is a promise about how strong the weather is where it
+happens, so it is checked at the places the hazard came within 25 miles (Day 1 outlooks):
+
+| Group drawn | Tornado: EF2+ / EF3+ / EF4+ nearby | Wind: 75 / 85 / 96 mph | Hail: 2 in |
+|---|---|---|---|
+| none | 19% / 7% / 1% | 18% / 2% / 0% | 14% |
+| CIG1 | 35% / 13% / 2% | 65% / 32% / 5% | 49% |
+| CIG2 | too little drawn | 99% / 84% / 29% | never drawn |
+| CIG3 | 46% / 44% / 12% | never drawn | - |
+
+The groups mean what they say on Day 1; on Day 2 (four runs) the wind groups still do and
+the tornado groups do not. The upper groups are rare because strong weather is a small share
+of the weather here: of a day's reports, a median 10% of tornadoes are EF2+, 8% of gusts 75
+mph and 4% of hail 2 inches, and 3.5 inch hail does not occur. Tornadoes have lower bars
+for the upper groups (`CIG_SHARES.tornado`: 30%, 25%, 15%; all 30% gave CIG2 on 4% of days
+and CIG3 on none, though EF3+ tornadoes come on 29% of days and EF4+ on 12%). They cannot go
+much lower: a 30% tornado contour with CIG2 is a High risk in the centre's table, so 30/20/15
+gives 10% High days and 20/20/20 gives 13% (8% before, about 9% now). With the lower bars
+Day 2 forecast High on 10% of days against 6% verified.
+
 Not yet done:
-- The outlooks have not been verified since the categories moved to the centre's table (the
-  figures from before: highest category right on 63% of days and within one on all; places
-  inside the 15, 30, 45 and 60% tornado contours had a tornado within 25 miles 25, 42, 64
-  and 87% of the time).
 
 ## What a player would find
 

@@ -28,16 +28,23 @@ export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 // EF2+ is CIG1, 30% EF3+ is CIG2, 30% EF4+ is CIG3). One strong report among many weak ones
 // does not make a group. Each area inside a contour is judged as a whole (contourCig).
 export const CIG_SHARE = 0.3;
+// Tornadoes are the exception: the stronger tiers are a small part of them even on the worst
+// days (on a day with a 30% tornado contour, a median 6% of the tornado reports in it are
+// EF3+ and none EF4+), so at 30% the upper groups were all but never drawn. Their bars are
+// lower. They cannot be much lower: in the centre's table a 30% tornado contour with CIG2 is
+// a High risk, so every step down here makes High days commoner (see docs/STATUS.md).
+export const CIG_SHARES = Object.freeze({ tornado: [0.3, 0.25, 0.15], wind: [0.3, 0.3, 0.3], hail: [0.3, 0.3], severe: [0.3, 0.3] });
 // The fields of the verification's chances behind each hazard's tiers.
 export const CIG_TIERS = Object.freeze({
   tornado: ['tornadoSig', 'tornadoExtreme', 'tornadoViolent'], wind: ['windSig', 'windExtreme', 'windViolent'],
   hail: ['hailSig', 'hailExtreme'], severe: ['severeSig', 'severeExtreme']
 });
 // The intensity group from an amount of the hazard and the amounts of it reaching each tier.
+// `share`: one share for every tier, or one for each.
 export function conditionalCig(chance, tierChances, share = CIG_SHARE) {
   if (!(chance > 0)) return 0;
   let group = 0;
-  tierChances.forEach((tier, k) => { if (tier / chance >= share) group = k + 1; });
+  tierChances.forEach((tier, k) => { if (tier / chance >= (share[k] ?? share)) group = k + 1; });
   return group;
 }
 
@@ -46,7 +53,7 @@ export function conditionalCig(chance, tierChances, share = CIG_SHARE) {
 // inside. `chance` is the hazard's chance (percent) on the cells and draws the contours;
 // `amount` is how much of the hazard each cell has (1 where there was a report; for a
 // forecast, the share of the runs with one) and `tiers` how much reaching each tier.
-export function contourCig(hazard, chance, amount, tiers, width, height, share = CIG_SHARE) {
+export function contourCig(hazard, chance, amount, tiers, width, height, share = CIG_SHARES[hazard] ?? CIG_SHARE) {
   const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), stack = [];
   let pass = 0;
   for (const level of PROBABILITY_LEVELS[hazard]) {

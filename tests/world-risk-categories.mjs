@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { WORLD_RISK_ORDER, WORLD_HAZARDS, WORLD_MAX_CIG, WORLD_CATEGORY_TABLES, PROBABILITY_LEVELS, worldCategory, worldCategoryFromHazard, drawnCig, highestCigAt, leadingHazard, conditionalCig, contourCig, CIG_SHARE } from '../js/forecast/worldRiskCategories.js';
+import { WORLD_RISK_ORDER, WORLD_HAZARDS, WORLD_MAX_CIG, WORLD_CATEGORY_TABLES, PROBABILITY_LEVELS, worldCategory, worldCategoryFromHazard, drawnCig, highestCigAt, leadingHazard, conditionalCig, contourCig, CIG_SHARE, CIG_SHARES } from '../js/forecast/worldRiskCategories.js';
 import { CATEGORY_TABLES, categoryFromHazard } from '../js/forecast/spcOutlookRules.js';
 import { aggregateTruth, practicallyPerfectChance, TRUTH_FIELDS, CHANCE_FIELDS } from '../js/verification/truth.js';
 
@@ -47,7 +47,11 @@ const mixed = { tornado: { percent: 16, cig: 2 }, wind: { percent: 50, cig: 0 },
 assert.equal(worldCategory(mixed), 'MDT'); assert.equal(leadingHazard(mixed, 'MDT'), 'tornado'); assert.equal(leadingHazard(quiet, 'SLGT'), null);
 
 // --- Conditional intensity: a group needs its share of the severe weather to reach the tier.
-assert.equal(CIG_SHARE, 0.3);
+assert.equal(CIG_SHARE, 0.3); assert.deepEqual(CIG_SHARES.wind, [0.3, 0.3, 0.3]);
+// Tornadoes have lower bars for the upper groups, never rising with the tier.
+assert.ok(CIG_SHARES.tornado[0] >= CIG_SHARES.tornado[1] && CIG_SHARES.tornado[1] >= CIG_SHARES.tornado[2] && CIG_SHARES.tornado[2] > 0);
+assert.equal(conditionalCig(40, [20, 11, 2], CIG_SHARES.tornado), 2, 'a little over a quarter EF3+: CIG2 for tornadoes'); assert.equal(conditionalCig(40, [20, 11, 2]), 1, 'but not at the general 30%');
+assert.equal(conditionalCig(40, [13, 7, 6.5], CIG_SHARES.tornado), 3, 'a sixth violent: CIG3');
 assert.equal(conditionalCig(40, [20, 13, 2]), 2, 'half EF2+, a third EF3+: CIG2');
 assert.equal(conditionalCig(40, [11, 3, 1]), 0, 'a quarter EF2+: no group');
 assert.equal(conditionalCig(40, [12, 12, 12]), 3); assert.equal(conditionalCig(0, [0, 0, 0]), 0);
