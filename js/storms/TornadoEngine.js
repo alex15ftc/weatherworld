@@ -157,10 +157,10 @@ function endTornado(world, storm, tornado) {
   tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null;
 }
 
+// Under the storm's wall cloud (StormGeometry.js); at the storm's centre until its shape is first worked out.
 function tornadoPosition(storm) {
-  const angle = (storm.orientationDeg ?? 0) * Math.PI / 180;
-  const offset = storm.leftMover ? 5 : -5;
-  return { x: storm.positionKm.x + Math.cos(angle) * offset, y: storm.positionKm.y + Math.sin(angle) * offset };
+  const wall = storm.geometry?.wallCloud;
+  return wall ? { x: wall.xKm, y: wall.yKm } : { ...storm.positionKm };
 }
 function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0) * 180 / Math.PI + 360) % 360; }
 // Wind above 65 mph = scale x (-ln(1 - quantile))^tail, the scale rising with the storm's

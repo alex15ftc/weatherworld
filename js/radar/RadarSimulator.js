@@ -12,19 +12,37 @@ const STORM_BIN_KM = 20;
 const BOUNDARY_BIN_KM = 20;
 const DEG = Math.PI / 180;
 
-// A 3×3 network over the ~805 km domain: ~270 km spacing like the real WSR-88D network,
-// so storms between sites are sampled high above the ground (realistic coverage gaps).
+// Seven radars over the ~805 km domain, placed unevenly as real networks are. Two areas are
+// poorly covered: the far west-centre, where the nearest radars are 230 km and more away (a
+// strip along the edge has no radar at all), and the south-centre, which three radars reach
+// only with beams 3 km and more above the ground. About a fifth of the map has no view of
+// the lowest 3 km; storms there show their upper parts only.
 const SITE_LAYOUT = [
-  { id: 'KNWP', name: 'Northwest Plains', fx: 0.17, fy: 0.16 },
-  { id: 'KNCP', name: 'North Central Plains', fx: 0.51, fy: 0.17 },
-  { id: 'KNEP', name: 'Northeast Plains', fx: 0.84, fy: 0.15 },
-  { id: 'KWCP', name: 'West Central Plains', fx: 0.16, fy: 0.5 },
-  { id: 'KCPL', name: 'Central Plains', fx: 0.5, fy: 0.49 },
-  { id: 'KECP', name: 'East Central Plains', fx: 0.83, fy: 0.52 },
-  { id: 'KSWP', name: 'Southwest Plains', fx: 0.17, fy: 0.84 },
-  { id: 'KSCP', name: 'South Central Plains', fx: 0.49, fy: 0.83 },
-  { id: 'KSEP', name: 'Southeast Plains', fx: 0.85, fy: 0.85 }
+  { id: 'KNWP', name: 'Northwest Plains', fx: 0.14, fy: 0.20 },
+  { id: 'KNCP', name: 'North Central Plains', fx: 0.52, fy: 0.14 },
+  { id: 'KNEP', name: 'Northeast Plains', fx: 0.86, fy: 0.22 },
+  { id: 'KCPL', name: 'Central Plains', fx: 0.44, fy: 0.50 },
+  { id: 'KECP', name: 'East Central Plains', fx: 0.80, fy: 0.58 },
+  { id: 'KSWP', name: 'Southwest Plains', fx: 0.20, fy: 0.82 },
+  { id: 'KSEP', name: 'Southeast Plains', fx: 0.72, fy: 0.88 }
 ];
+
+// What a radar cannot do. Its beam is about a degree wide, so what one gate reports is an
+// average over a volume that grows with range: BEAM_OFFSETS are where that volume is sampled
+// (in units of 0.35 beamwidths, across and up) and with what weight. Every estimate also
+// carries measurement noise, more where the echo is weak.
+const BEAM_OFFSETS = [[-1, 0.25], [0, 0.5], [1, 0.25]], BEAM_CENTRE = [[0, 1]];
+// Across the beam a single-site scan gets the same three samples from its own neighbouring
+// radials: the outer samples lie this share of the way to the next radial.
+const ACROSS_SHARE = 0.35 * RADAR_BEAMWIDTH_DEG / (360 / RADAR_RADIALS);
+const NEIGHBOUR_WEIGHT = BEAM_OFFSETS[0][1] * Math.min(1, ACROSS_SHARE), OWN_WEIGHT = 1 - 2 * NEIGHBOUR_WEIGHT;
+// Per-gate sums of one scan before blending and noise (reused between scans).
+const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, envRadial: null };
+const NOISE = { dbz: 0.8, velocityMs: 0.9, correlation: 0.008, zdrDb: 0.18 };
+// A tornado's signature is as deep as the tornado is strong: the wind of a weak one is seen
+// only in the lowest kilometre and it lofts little; a violent one reaches several kilometres.
+const tornadoDepthM = windMs => clamp(800 + 36 * (windMs - 30), 700, 3500);
+const debrisTopM = windMs => clamp(900 + 60 * (windMs - 30), 800, 6000);
 
 export function createRadarSites(world) {
   const widthKm = world.width * world.cellSizeKm, heightKm = world.height * world.cellSizeKm;
@@ -92,6 +110,8 @@ export function buildRadarScene(world) {
       top: envSample(env, env.top, x, y) * (0.6 + 0.48 * updraft),
       freezing: envSample(env, env.freezing, x, y),
       seed: hashString(String(storm.id)),
+      // The echo model's vortex speed is 85% of the tornado's wind.
+      tornadoDepthM: tornadoDepthM((echo.tornado?.vmaxMs ?? 0) / 0.85), debrisTopM: debrisTopM((echo.tornado?.vmaxMs ?? 0) / 0.85),
       time: (Number(storm.ageHours) || 0) * 60 / 25,
       weight: clamp(Number(storm.intensity) || 0, 0, 1)
     });
@@ -130,17 +150,24 @@ export function scanRadarTilt(scene, site, tiltDeg) {
   const products = Object.fromEntries(RADAR_PRODUCT_KEYS.map(key => [key, new Uint8Array(total)]));
   const ref = products.reflectivity, vel = products.velocity, srv = products.stormRelativeVelocity;
   const cc = products.correlationCoefficient, zdr = products.differentialReflectivity;
-  const sample = { zh: 0, zv: 0, cc: 0 }, wind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
+  const sample = { zh: 0, zv: 0, cc: 0 }, wind = { u: 0, v: 0 }, stormWind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const cosTilt = Math.cos(tiltDeg * DEG);
   const siteHeightM = site.elevationM + RADAR_ANTENNA_HEIGHT_M;
   const su = scene.stormMotion.u, sv = scene.stormMotion.v;
+  // Noise differs from scan to scan and from product to product.
+  const noiseSalt = tiltDeg + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
   const gateGeometry = Array.from({ length: RADAR_GATES }, (_, g) => {
     const range = (g + 0.5) * RADAR_GATE_KM;
     return { range, ground: groundRangeKm(range, tiltDeg), heightM: beamHeightKm(range, tiltDeg) * 1000, spreadM: range * beamHalfWidth * 1000, minDbz: -32 + 20 * Math.log10(range) };
   });
 
+  for (const key of Object.keys(gateSums)) (gateSums[key] ??= new Float32Array(total)).fill(0);
+  const sumZh = gateSums.zh, sumZv = gateSums.zv, sumCc = gateSums.cc, sumStorm = gateSums.stormRadial, envRadial = gateSums.envRadial;
+
+  // 1. Each radial on its own: the beam's depth (three samples up through it), and what the
+  // echoes in it are doing. Velocity is weighted by how strongly each part reflects.
   for (let r = 0; r < RADAR_RADIALS; r++) {
     const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, sinAz = Math.sin(az), cosAz = Math.cos(az);
     for (let g = 0; g < RADAR_GATES; g++) {
@@ -153,29 +180,46 @@ export function scanRadarTilt(scene, site, tiltDeg) {
       clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
       clearAir.bioZ = centerAgl - geo.spreadM < clearAir.bl * 1.3
         ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
-      // Three samples across the vertical beam pattern (weights 1:2:1).
-      let zh = 0, zv = 0, ccw = 0;
-      for (let k = -1; k <= 1; k++) {
+      const inStorm = binAt(scene.stormBins, x, y) !== null;
+      let zh = 0, zv = 0, ccw = 0, stormRadial = 0;
+      for (const [k, wgt] of BEAM_OFFSETS) {
         const agl = centerAgl + k * geo.spreadM;
         if (agl < 0) continue;
         sampleVolume(scene, x, y, agl, sample, clearAir);
-        const wgt = k === 0 ? 0.5 : 0.25;
         zh += sample.zh * wgt; zv += sample.zv * wgt; ccw += sample.cc * wgt;
+        if (inStorm && sample.zh > 0) { stormWindAt(scene, x, y, agl, stormWind); stormRadial += sample.zh * wgt * (stormWind.u * sinAz + stormWind.v * cosAz); }
       }
       if (zh <= 0) continue;
       const index = r * RADAR_GATES + g;
-      const snr = 10 * Math.log10(zh) - geo.minDbz;
+      sumZh[index] = zh; sumZv[index] = zv; sumCc[index] = ccw; sumStorm[index] = stormRadial;
+      envWindAt(scene.env, x, y, centerAgl, wind);
+      envRadial[index] = wind.u * sinAz + wind.v * cosAz;
+    }
+  }
+
+  // 2. The beam's width: each gate takes in part of its neighbours on either side, a wider
+  // strip of the storm the farther out it is. Then the measurement's own noise.
+  for (let r = 0; r < RADAR_RADIALS; r++) {
+    const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, sinAz = Math.sin(az), cosAz = Math.cos(az);
+    const left = ((r + RADAR_RADIALS - 1) % RADAR_RADIALS) * RADAR_GATES, right = ((r + 1) % RADAR_RADIALS) * RADAR_GATES;
+    for (let g = 0; g < RADAR_GATES; g++) {
+      const index = r * RADAR_GATES + g, l = left + g, n = right + g;
+      const zh = OWN_WEIGHT * sumZh[index] + NEIGHBOUR_WEIGHT * (sumZh[l] + sumZh[n]);
+      if (zh <= 0) continue;
+      const snr = 10 * Math.log10(zh) - gateGeometry[g].minDbz;
       if (snr < 0) continue;
-      const noise = gateNoise(index, tiltDeg) * 2 - 1, lowSnr = Math.exp(-snr / 6);
-      const dbz = 10 * Math.log10(zh) + noise * 1.6 * lowSnr;
-      ref[index] = encodeRadarValue('reflectivity', dbz);
-      sampleWind(scene, x, y, centerAgl, wind);
-      const radial = (wind.u * sinAz + wind.v * cosAz) * cosTilt + noise * 1.2 * lowSnr;
+      const zv = OWN_WEIGHT * sumZv[index] + NEIGHBOUR_WEIGHT * (sumZv[l] + sumZv[n]), ccw = OWN_WEIGHT * sumCc[index] + NEIGHBOUR_WEIGHT * (sumCc[l] + sumCc[n]);
+      const stormRadial = OWN_WEIGHT * sumStorm[index] + NEIGHBOUR_WEIGHT * (sumStorm[l] + sumStorm[n]);
+      // The wind of the air itself varies little across a beam; where this radial saw nothing, its neighbours' is used.
+      const air = sumZh[index] > 0 ? envRadial[index] : sumZh[l] > 0 ? envRadial[l] : envRadial[n];
+      const lowSnr = Math.exp(-snr / 6);
+      const noise = gateNoise(index, noiseSalt) * 2 - 1, velocityNoise = gateNoise(index, noiseSalt + 0.003) * 2 - 1, polarNoise = gateNoise(index, noiseSalt + 0.006) * 2 - 1;
+      ref[index] = encodeRadarValue('reflectivity', 10 * Math.log10(zh) + noise * (NOISE.dbz + 1.6 * lowSnr));
+      const radial = (air + stormRadial / zh) * cosTilt + velocityNoise * (NOISE.velocityMs + 1.2 * lowSnr);
       vel[index] = encodeRadarValue('velocity', radial);
       srv[index] = encodeRadarValue('stormRelativeVelocity', radial - (su * sinAz + sv * cosAz) * cosTilt);
-      const rho = ccw / zh - Math.abs(noise) * 0.22 * lowSnr;
-      cc[index] = encodeRadarValue('correlationCoefficient', rho);
-      zdr[index] = encodeRadarValue('differentialReflectivity', 10 * Math.log10(zh / Math.max(1e-12, zv)) + noise * 0.9 * lowSnr);
+      cc[index] = encodeRadarValue('correlationCoefficient', ccw / zh - Math.abs(polarNoise) * (NOISE.correlation + 0.22 * lowSnr));
+      zdr[index] = encodeRadarValue('differentialReflectivity', 10 * Math.log10(zh / Math.max(1e-12, zv)) + polarNoise * (NOISE.zdrDb + 0.9 * lowSnr));
     }
   }
   return {
@@ -197,6 +241,7 @@ export function buildRadarMosaic(scene, sites) {
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const maxGround = groundRangeKm(RADAR_GATES * RADAR_GATE_KM, MOSAIC_TILT_DEG);
   const cosTilt = Math.cos(MOSAIC_TILT_DEG * DEG), beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
+  const noiseSalt = 77 + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
   const candidates = [];
   for (let j = 0; j < height; j++) for (let i = 0; i < width; i++) {
     const x = (i + 0.5) * MOSAIC_RES_KM, y = (j + 0.5) * MOSAIC_RES_KM;
@@ -212,24 +257,27 @@ export function buildRadarMosaic(scene, sites) {
     if (!candidates.length) continue;
     const terrain = envSample(scene.env, scene.env.terrain, x, y);
     clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
+    const inStorm = binAt(scene.stormBins, x, y) !== null;
     for (const { site, ground } of candidates) {
-      const range = ground / cosTilt, spread = range * beamHalfWidth * 1000;
+      const range = ground / cosTilt, spread = range * beamHalfWidth * 1000, spreadKm = spread / 1000;
       const agl = site.elevationM + RADAR_ANTENNA_HEIGHT_M + beamHeightKm(range, MOSAIC_TILT_DEG) * 1000 - terrain;
       if (agl < 0) continue;
       clearAir.bioZ = agl - spread < clearAir.bl * 1.3 ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
-      // Same 1:2:1 vertical beam pattern as the single-site scans.
+      // The same beam volume as the single-site scans (across the beam once it is wider than a cell).
+      const across = inStorm && spreadKm > 0.5 * MOSAIC_RES_KM ? BEAM_OFFSETS : BEAM_CENTRE;
+      const tx = -(y - site.yKm) / Math.max(ground, 1e-6), ty = (x - site.xKm) / Math.max(ground, 1e-6);
       let zh = 0;
-      for (let k = -1; k <= 1; k++) {
+      for (const [a, acrossWeight] of across) for (const [k, upWeight] of BEAM_OFFSETS) {
         const z = agl + k * spread;
         if (z < 0) continue;
-        sampleVolume(scene, x, y, z, sample, clearAir);
-        zh += sample.zh * (k === 0 ? 0.5 : 0.25);
+        sampleVolume(scene, x + a * spreadKm * tx, y + a * spreadKm * ty, z, sample, clearAir);
+        zh += sample.zh * acrossWeight * upWeight;
       }
       if (zh <= 0) continue;
       const snr = 10 * Math.log10(zh) - (-32 + 20 * Math.log10(Math.max(range, 0.5)));
       if (snr < 0) continue;
-      const noise = gateNoise(j * width + i, 77) * 2 - 1;
-      bytes[j * width + i] = encodeRadarValue('reflectivity', 10 * Math.log10(zh) + noise * 1.6 * Math.exp(-snr / 6));
+      const noise = gateNoise(j * width + i, noiseSalt) * 2 - 1;
+      bytes[j * width + i] = encodeRadarValue('reflectivity', 10 * Math.log10(zh) + noise * (NOISE.dbz + 1.6 * Math.exp(-snr / 6)));
       break;
     }
   }
@@ -263,7 +311,7 @@ function stormHydrometeors(s, lx, ly, z, out) {
   const { rain, graupel, hail, updraft, debris } = tmp;
   const localTop = top * (0.35 + 0.65 * clamp(updraft * 1.1 + rain * 0.5 + hail * 0.3, 0, 1));
   const cap = 1 - smoothstep(localTop * 0.82, localTop * 1.02, z);
-  const texture = 10 ** (0.42 * fbm(s.seed, lx / 6.5, ly / 6.5, s.time));
+  const texture = 10 ** (0.42 * fbm(s.seed, lx / 6.5, ly / 6.5, s.time) + 0.16 * fbm(s.seed + 31, lx / 1.3, ly / 1.3, s.time));
 
   // Precipitation: a bounded weak-echo vault beneath strong updrafts, with suspended
   // precipitation (overhang) above the melting level.
@@ -286,8 +334,8 @@ function stormHydrometeors(s, lx, ly, z, out) {
     const wet = 1 - smoothstep(fz - 300, fz + 700, z);
     addEcho(out, 6.3e6 * (hail * (1 - 0.15 * wet)) ** 2 * Math.sqrt(texture), 0.1 + 0.5 * wet, 0.92 - 0.06 * wet);
   }
-  if (debris > 0.03 && z < 3000) {
-    const lofting = debris * (1 - z / 3000);
+  if (debris > 0.03 && z < s.debrisTopM) {
+    const lofting = debris * (1 - z / s.debrisTopM);
     addEcho(out, 2.5e5 * lofting ** 1.5 * texture, (gateNoise(Math.floor((lx + 99) * 7) * 977 + Math.floor((ly + 99) * 7), s.seed) - 0.5) * 2, 0.3 + 0.3 * fbm(s.seed + 7, lx, ly, s.time) ** 2);
   }
   anvilEcho(s, lx, ly, z, out, texture);
@@ -316,12 +364,11 @@ function clearAirEchoes(scene, x, y, z, out, { bl, bioZ }) {
   addEcho(out, bioZ * depth, 5.5, 0.38);
 }
 
-// Environmental wind plus storm-scale perturbations: mesocyclone and tornado vortices,
-// outflow from downdrafts, the rear-inflow jet and divergence near storm top.
+// What storms add to the environmental wind: mesocyclone and tornado vortices, outflow from
+// downdrafts, the rear-inflow jet and divergence near storm top.
 const gradient = {};
-function sampleWind(scene, x, y, z, out) {
-  const env = scene.env;
-  envWindAt(env, x, y, z, out);
+function stormWindAt(scene, x, y, z, out) {
+  out.u = 0; out.v = 0;
   const bin = binAt(scene.stormBins, x, y);
   if (!bin) return;
   for (const s of bin) {
@@ -330,7 +377,7 @@ function sampleWind(scene, x, y, z, out) {
     // Mesocyclone: strongest at mid levels, present down to the ground in mature supercells.
     const mesoDepth = 0.55 + 0.45 * Math.exp(-(((z - 4500) / 2600) ** 2));
     addVortex(out, lx - e.mesocyclone.x, ly - e.mesocyclone.y, e.mesocyclone.radiusKm, e.mesocyclone.vmaxMs * mesoDepth * (z > s.top ? 0.2 : 1));
-    if (e.tornado && z < 3500) addVortex(out, lx - e.tornado.x, ly - e.tornado.y, e.tornado.radiusKm, e.tornado.vmaxMs * (1 - z / 3500 * 0.6));
+    if (e.tornado && z < s.tornadoDepthM) addVortex(out, lx - e.tornado.x, ly - e.tornado.y, e.tornado.radiusKm, e.tornado.vmaxMs * (1 - z / s.tornadoDepthM * 0.6));
     if (z < 1500) {
       // Outflow spreads away from downdraft cores (gust fronts, RFD surges).
       echoGradient(e, 'downdraft', lx, ly, gradient);

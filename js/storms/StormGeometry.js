@@ -22,6 +22,8 @@ const GEOMETRY = {
   rainOffsetKm: [3, 45], anvilHours: 3, anvilKm: [15, 300], anvilSpeedShare: 1.4,
   topM: [7000, 17500], topPerMs: 160
 };
+// Where the wall cloud is, in updraught radii: behind the updraught's centre and to its right.
+export const WALL_CLOUD = Object.freeze({ back: 0.3, right: 0.4 });
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 const bearing = (east, north) => (Math.atan2(east, north) * 180 / Math.PI + 360) % 360;
 
@@ -36,6 +38,8 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
   const downwind = relativeSpeed > 1 ? { east: relative.east / relativeSpeed, north: relative.north / relativeSpeed } : along;
   const place = (east, north) => ({ xKm: at.x + east, yKm: at.y - north });
   const radiusKm = 2.5 + 0.1 * updraughtMs + 1.5 * rotating;
+  // The rotation is on the right of the updraught, or on the left of a left-moving storm.
+  const side = storm.leftMover ? -1 : 1;
   const rainOffset = clamp(relativeSpeed * G.fallHours, G.rainOffsetKm[0], G.rainOffsetKm[1]) * (0.3 + 0.7 * clamp(storm.organization ?? 0, 0, 1));
   const rainCentre = { east: downwind.east * rainOffset, north: downwind.north * rainOffset };
   const hailInches = storm.currentHailSizeInches ?? 0;
@@ -43,8 +47,9 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
   const wallStrength = ramp(low, 0.04, 0.4);
   storm.geometry = {
     updraught: { ...place(0, 0), radiusKm, speedMs: updraughtMs, baseM: Number(environment.lcl) || 1200, topM: clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]), rotation: clamp(storm.mesocycloneStrength ?? 0, 0, 1.2) },
-    // Under the rear right of the updraught, where the inflow meets the wrapping outflow.
-    wallCloud: { ...place(right.east * 0.4 * radiusKm - along.east * 0.3 * radiusKm, right.north * 0.4 * radiusKm - along.north * 0.3 * radiusKm), strength: wallStrength, radiusKm: 1 + 3 * lowFree, loweringM: wallStrength > 0 ? 150 + 450 * wallStrength : 0, rotation: low },
+    // Under the rear right of the updraught, where the inflow meets the wrapping outflow. A
+    // tornado forms here (TornadoEngine), and the radar's hook and couplet are drawn here.
+    wallCloud: { ...place(side * right.east * WALL_CLOUD.right * radiusKm - along.east * WALL_CLOUD.back * radiusKm, side * right.north * WALL_CLOUD.right * radiusKm - along.north * WALL_CLOUD.back * radiusKm), strength: wallStrength, radiusKm: 1 + 3 * lowFree, loweringM: wallStrength > 0 ? 150 + 450 * wallStrength : 0, rotation: low },
     rain: { ...place(rainCentre.east, rainCentre.north), alongKm: 8 + 26 * rain + 10 * linear, acrossKm: 6 + 16 * rain, bearingDeg: bearing(downwind.east, downwind.north), intensity: rain },
     hail: { ...place(rainCentre.east * 0.3, rainCentre.north * 0.3), radiusKm: hailInches > 0.25 ? 1.5 + 1.6 * hailInches : 0, sizeInches: hailInches },
     rearFlank: { wrap: clamp(storm.occlusion ?? 0, 0, 1), strength: clamp((storm.coldPoolStrength ?? 0) * (0.4 + 0.6 * rotating), 0, 1) },

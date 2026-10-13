@@ -16,7 +16,7 @@ const ECHO_BYTE_20DBZ = 105; // reflectivity byte for 20 dBZ
 const $ = id => document.getElementById(id);
 const ui = {
   site: $('radarSite'), products: $('radarProducts'), tilt: $('radarTilt'), tiltHint: $('tiltHint'),
-  loop: $('radarLoop'), latest: $('radarLatest'), smooth: $('radarSmooth'), rings: $('radarRings'), borders: $('radarBorders'),
+  loop: $('radarLoop'), latest: $('radarLatest'), smooth: $('radarSmooth'), coverage: $('radarCoverage'), rings: $('radarRings'), borders: $('radarBorders'),
   legend: $('radarLegend'), legendLabel: $('radarLegendLabel'), legendUnits: $('radarLegendUnits'), legendTicks: $('radarLegendTicks'),
   status: $('radarStatus'), title: $('radarTitle'), subtitle: $('radarSubtitle'), frameLabel: $('radarFrameLabel'),
   viewer: $('radarViewer'), gl: $('radarGl'), overlay: $('radarOverlay'), readout: $('radarReadout')
@@ -26,7 +26,7 @@ const client = new WeatherProductClient();
 const state = {
   catalog: null, overlays: null, site: null, mosaic: true, tilt: 0.5, product: 'reflectivity',
   frames: new Map(), frameIndex: -1, looping: false, loopTimer: null,
-  revision: null, smooth: false, rings: true, borders: true,
+  revision: null, smooth: false, coverage: false, rings: true, borders: true,
   view: { centerX: 0, centerY: 0, kmPerPx: 1 }, pointer: null, fetching: false
 };
 
@@ -51,7 +51,7 @@ async function start() {
     + catalog.sites.map(s => `<option value="${s.id}">${s.id} · ${s.name}</option>`).join('');
   ui.tilt.innerHTML = catalog.tilts.map(t => `<option value="${t}">${t.toFixed(1)}°</option>`).join('');
   ui.products.innerHTML = catalog.products.map(p => `<button type="button" data-product="${p}" title="${RADAR_PRODUCTS[p].label}">${RADAR_PRODUCTS[p].short}</button>`).join('');
-  // URL parameters (?site=KCPL&product=velocity&tilt=0.9) override remembered preferences.
+  // URL parameters (?site=KCPL&product=velocity&tilt=0.9&coverage=1) override remembered preferences.
   const params = new URLSearchParams(location.search);
   const remembered = readPreferences();
   const saved = {
@@ -66,6 +66,8 @@ async function start() {
   state.product = !state.mosaic && catalog.products.includes(saved.product) ? saved.product : 'reflectivity';
   state.tilt = catalog.tilts.includes(saved.tilt) ? saved.tilt : catalog.tilts[0];
   ui.site.value = state.mosaic ? MOSAIC : state.site.id; ui.tilt.value = String(state.tilt);
+  // ?coverage=1 opens with the coverage shading on.
+  if (params.get('coverage') === '1') { state.coverage = true; toggleButton(ui.coverage, true, 'Coverage'); }
   bindControls();
   resize();
   centerOnSite();
@@ -163,6 +165,7 @@ function bindControls() {
   ui.loop.addEventListener('click', () => setLooping(!state.looping));
   ui.latest.addEventListener('click', () => { setLooping(false); showFrame(currentFrames().length - 1); });
   ui.smooth.addEventListener('click', () => { state.smooth = !state.smooth; toggleButton(ui.smooth, state.smooth, 'Smoothing'); draw(); });
+  ui.coverage.addEventListener('click', () => { state.coverage = !state.coverage; toggleButton(ui.coverage, state.coverage, 'Coverage'); draw(); });
   ui.rings.addEventListener('click', () => { state.rings = !state.rings; toggleButton(ui.rings, state.rings, 'Range rings'); draw(); });
   ui.borders.addEventListener('click', () => { state.borders = !state.borders; toggleButton(ui.borders, state.borders, 'Region borders'); draw(); });
   window.addEventListener('resize', () => { resize(); draw(); });
@@ -225,7 +228,7 @@ function setLooping(on) {
 function toggleButton(button, on, label) { button.classList.toggle('active', on); button.textContent = `${label} ${on ? 'on' : 'off'}`; }
 
 function updateTiltHint() {
-  if (state.mosaic) { ui.tiltHint.textContent = 'The mosaic shows each spot from its nearest radar at 0.5°. Double-click the map to open that radar.'; return; }
+  if (state.mosaic) { ui.tiltHint.textContent = 'The mosaic shows each spot from its nearest radar at 0.5°; far from a radar that beam is high and wide. Double-click the map to open that radar.'; return; }
   const heights = [50, 100, 150].map(r => `${r} km: ${Math.round(beamHeightKm(r / Math.cos(state.tilt * Math.PI / 180), state.tilt) * 3281).toLocaleString()} ft`);
   ui.tiltHint.textContent = `Beam height above the radar · ${heights.join(' · ')}`;
 }
@@ -389,6 +392,7 @@ function drawOverlay() {
   ctx.strokeStyle = 'rgba(148,163,184,.45)'; ctx.lineWidth = 1 * dpr;
   ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
 
+  if (state.coverage) drawCoverage(ctx, a, b);
   if (state.borders && state.overlays?.regions?.cells?.length) drawRegions(ctx);
 
   if (state.rings && !state.mosaic) {
@@ -409,6 +413,42 @@ function drawOverlay() {
     ctx.font = `600 ${(selected ? 12 : 10) * dpr}px system-ui`;
     ctx.lineWidth = 3 * dpr; ctx.strokeStyle = 'rgba(7,11,17,.9)'; ctx.strokeText(site.id, p.x + 8 * dpr, p.y + 4 * dpr);
     ctx.fillText(site.id, p.x + 8 * dpr, p.y + 4 * dpr);
+  }
+}
+
+// Coverage: how high above the ground the lowest beam of the nearest radar is. A radar sees a
+// storm's base only where its beam is low; far from every radar it sees the upper parts only,
+// and beyond their range nothing.
+const COVERAGE_BANDS = [[1, null, 'under 1 km'], [2, 'rgba(250,204,21,.13)', '1-2 km'], [3, 'rgba(251,146,60,.2)', '2-3 km'], [Infinity, 'rgba(248,113,113,.26)', 'over 3 km']];
+const NO_COVERAGE = 'rgba(100,116,139,.5)';
+let coverageImage = null;
+function coverageCanvas() {
+  const catalog = state.catalog, key = catalog.sites.map(site => `${site.id}:${site.xKm}:${site.yKm}`).join('|');
+  if (coverageImage?.key === key) return coverageImage.canvas;
+  const size = 220, canvas = document.createElement('canvas'), rangeKm = catalog.gates * catalog.gateKm;
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+    const x = (i + 0.5) / size * catalog.domainWidthKm, y = (j + 0.5) / size * catalog.domainHeightKm;
+    const ground = Math.min(...catalog.sites.map(site => Math.hypot(site.xKm - x, site.yKm - y)));
+    const colour = ground > rangeKm ? NO_COVERAGE : COVERAGE_BANDS.find(([limit]) => beamHeightKm(ground, 0.5) < limit)[1];
+    if (colour) { ctx.fillStyle = colour; ctx.fillRect(i, j, 1, 1); }
+  }
+  coverageImage = { key, canvas };
+  return canvas;
+}
+function drawCoverage(ctx, a, b) {
+  const dpr = state.dpr;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(coverageCanvas(), a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.font = `${11 * dpr}px system-ui`;
+  const entries = [...COVERAGE_BANDS.filter(([, colour]) => colour).map(([, colour, label]) => [colour, label]), [NO_COVERAGE, 'no radar']];
+  let x = 12 * dpr; const y = ui.overlay.height - 14 * dpr;
+  ctx.fillStyle = 'rgba(203,213,225,.75)'; ctx.fillText('Lowest beam above ground:', x, y); x += ctx.measureText('Lowest beam above ground:').width + 10 * dpr;
+  for (const [colour, label] of entries) {
+    ctx.fillStyle = 'rgba(7,11,17,.9)'; ctx.fillRect(x, y - 10 * dpr, 12 * dpr, 12 * dpr); ctx.fillStyle = colour; ctx.fillRect(x, y - 10 * dpr, 12 * dpr, 12 * dpr);
+    ctx.strokeStyle = 'rgba(148,163,184,.6)'; ctx.lineWidth = 1; ctx.strokeRect(x, y - 10 * dpr, 12 * dpr, 12 * dpr);
+    ctx.fillStyle = 'rgba(203,213,225,.75)'; ctx.fillText(label, x + 16 * dpr, y); x += ctx.measureText(label).width + 30 * dpr;
   }
 }
 
@@ -441,7 +481,7 @@ function updateReadout() {
     const value = inside ? decodeRadarValue('reflectivity', frame.bytes[j * frame.meta.width + i]) : null;
     const nearest = state.catalog.sites.reduce((a, b) => (Math.hypot(b.xKm - km.x, b.yKm - km.y) < Math.hypot(a.xKm - km.x, a.yKm - km.y) ? b : a));
     const ground = Math.hypot(nearest.xKm - km.x, nearest.yKm - km.y);
-    ui.readout.innerHTML = `<strong>${!inside ? 'Outside the network' : value === null ? 'No echo' : `${value.toFixed(1)} dBZ`}</strong><span>Nearest radar ${nearest.id} · ${ground.toFixed(0)} km</span><br><span>Beam ${Math.round(beamHeightKm(ground, 0.5) * 3281).toLocaleString()} ft above radar · double-click to open`;
+    ui.readout.innerHTML = `<strong>${!inside ? 'Outside the network' : ground > state.catalog.gates * state.catalog.gateKm ? 'No radar reaches here' : value === null ? 'No echo' : `${value.toFixed(1)} dBZ`}</strong><span>Nearest radar ${nearest.id} · ${ground.toFixed(0)} km</span><br><span>Beam ${Math.round(beamHeightKm(ground, 0.5) * 3281).toLocaleString()} ft above radar · double-click to open`;
     ui.readout.classList.remove('hidden');
     return;
   }

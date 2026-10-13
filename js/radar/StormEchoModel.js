@@ -3,7 +3,7 @@
 // debris, mesocyclone) into a storm-aligned hydrometeor raster plus analytic vortices that
 // the radar simulator samples. Frame: +a downstream along motion, +b right of motion.
 
-export const ECHO_RES_KM = 1;
+export const ECHO_RES_KM = 0.5;
 const ECHO_FIELDS = ['rain', 'graupel', 'hail', 'ice', 'updraft', 'downdraft', 'debris', 'rearInflow'];
 const DEG = Math.PI / 180;
 
@@ -17,7 +17,7 @@ export function buildStormEchoModel(storm) {
   const echoScale = clamp(Math.sqrt(clamp(0.1 + 1.1 * (Number(storm.precipitation) || 0), 0.1, 1)) * (0.55 + 0.45 * clamp(Number(storm.intensity) || 0, 0, 1)), 0.08, 0.95);
 
   const extent = Math.max(Number(structure.widthKm) || 40, Number(structure.heightKm) || 40);
-  const half = clamp(extent * 0.8 + 10, 20, 120);
+  const half = clamp(extent * 0.5 + 6, 14, 170);
   const size = Math.ceil(2 * half / ECHO_RES_KM) + 1;
   const fields = Object.fromEntries(ECHO_FIELDS.map(name => [name, new Float32Array(size * size)]));
   const notch = new Float32Array(size * size).fill(1);
@@ -178,12 +178,12 @@ function convectiveTexture(character, size, half, ageHours) {
   const s = character.seed;
   for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
     const a = i * ECHO_RES_KM - half, b = j * ECHO_RES_KM - half;
-    const n = 0.6 * valueNoise(s, (a + drift) / 6, b / 6) + 0.4 * valueNoise(s ^ 0x9e3779b9, (a - drift) / 2.8, (b + drift) / 2.8);
+    const n = 0.6 * valueNoise(s, (a + drift) / 4, b / 4) + 0.4 * valueNoise(s ^ 0x9e3779b9, (a - drift) / 1.8, (b + drift) / 1.8);
     // Radar is logarithmic: exp(2.4 (n - 0.5)) is roughly +/-5 dB, enough for visible cores.
     gain[j * size + i] = Math.exp(2.4 * (n - 0.5));
-    // Domain warp (up to ~3 km, 9 km scale) roughens echo edges.
-    warp[2 * (j * size + i)] = 6 * (valueNoise(s ^ 0x51ed27, a / 9, b / 9) - 0.5);
-    warp[2 * (j * size + i) + 1] = 6 * (valueNoise(s ^ 0x2545f491, a / 9, b / 9) - 0.5);
+    // Domain warp (up to ~1.2 km, 5 km scale) roughens echo edges without moving the hook off the rotation.
+    warp[2 * (j * size + i)] = 2.4 * (valueNoise(s ^ 0x51ed27, a / 5, b / 5) - 0.5);
+    warp[2 * (j * size + i) + 1] = 2.4 * (valueNoise(s ^ 0x2545f491, a / 5, b / 5) - 0.5);
   }
   const out = { gain, warp };
   if (TEXTURE_CACHE.size > 400) TEXTURE_CACHE.delete(TEXTURE_CACHE.keys().next().value);

@@ -1,13 +1,20 @@
 // The radar's picture of a storm, built from the storm's own state: how far it rotates and how
 // far it is part of a line (both continuous), how much rain it holds, its cold pool, and where
 // the wind through its depth carries its rain (StormGeometry.js). Nothing here reads what the
-// storm is called or which phase it is said to be in.
+// storm is called or which phase it is said to be in. Every size and place comes from the
+// storm's geometry, so the radar shows the same storm the 3D object is built from: a rain
+// core tens of kilometres long, an updraught a few kilometres across, and the hook, the
+// rotation and any tornado together under the wall cloud.
 // Local frame: +x downstream along the storm's motion, +y to the right of it.
 import { clamp } from '../scenarios/math.js';
 import { rotatingShare, lineShare } from './StormModeEngine.js';
-import { buildStormGeometry, rainOffsetInStormFrame } from './StormGeometry.js';
+import { buildStormGeometry, rainOffsetInStormFrame, WALL_CLOUD } from './StormGeometry.js';
 
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
+// How the radar's shapes follow the geometry: a rain core's radius as a share of the core's
+// length or width, how far downwind of the updraught its centre may lie (a share of its
+// length), the rotation's radius as a share of the updraught's, and the shortest line segment.
+const SHAPE = { rainRadiusShare: 0.32, rainCentreShare: 0.45, mesoShare: 0.4, minLineHalfKm: 15 };
 
 export function initializeStormStructure(storm, env, seed='storm') {
   storm.structure = buildStructure(storm, env, null, seed);
@@ -20,7 +27,7 @@ export function evolveStormStructure(storm, env, dtHours, seed='storm') {
 }
 
 function buildStructure(storm, env, prior, seed, dtHours=0) {
-  buildStormGeometry(storm, env);
+  const geometry = buildStormGeometry(storm, env);
   const rotating = rotatingShare(storm), linear = lineShare(storm);
   // How much of the picture is a rotating storm's, a line's, or a plain cell's.
   const asSupercell = ramp(rotating * (1 - linear), 0.15, 0.6), asLine = ramp(linear, 0.25, 0.7), asCell = clamp(1 - Math.max(asSupercell, asLine), 0, 1);
@@ -37,48 +44,60 @@ function buildStructure(storm, env, prior, seed, dtHours=0) {
   const precipEff = clamp(.12 + .85 * rain + ((env.dewpoint ?? 55) - 55) / 28 * .2 + .15 * asLine, .08, 1.2);
   const phase = occlusion;
   const orientationDeg = Number.isFinite(storm.orientationDeg) ? storm.orientationDeg : 0;
-  const size = {
-    x: clamp(asCell * (17 + 14 * intensity) + asSupercell * (22 + 18 * org + 10 * intensity) + asLine * (36 + 24 * org + 26 * system), 12, 95),
-    y: clamp(asCell * (15 + 12 * intensity) + asSupercell * (18 + 13 * org) + asLine * (48 + 35 * org + 18 * system), 11, 110)
-  };
+  // Sizes (km). A core's radius here is where its rain has fallen to about a third: the
+  // geometry's rain core length and width are the extent of its moderate and heavy rain.
+  const along = geometry.rain.alongKm, across = geometry.rain.acrossKm, U = geometry.updraught.radiusKm;
+  const rainRadius = { x: SHAPE.rainRadiusShare * along, y: SHAPE.rainRadiusShare * across };
+  const mesoRadius = clamp(SHAPE.mesoShare * U, 1.5, 4);
+  // The rotation's place: under the wall cloud, behind and to the right (left for a left-mover).
+  const side = storm.leftMover ? -1 : 1, rotation = { x: -WALL_CLOUD.back * U, y: side * WALL_CLOUD.right * U };
+  // A line: as long as the storm's share of the line, its leading rain several km deep.
+  const lineLength = 2 * Math.max(SHAPE.minLineHalfKm, geometry.line.halfLengthKm), lineWidth = 8 + 6 * clamp(precipEff, 0, 1);
+  const shieldDepth = 12 + 35 * system;
   const hookStrength = asSupercell * clamp(.3 * org + 1.6 * low + .3 * meso - .18 * cold, 0, 1.2);
   const lineStrength = asLine * clamp(org * .55 + cold * .58 + intensity * .25, 0, 1.2);
   const tornadoActive = Boolean(storm.tornado?.onGround);
   const tornadoIntensity = clamp(((storm.tornado?.windSpeedMph ?? 0) - 65) / 120, 0, 1.2);
-  // Where the wind carries the rain, kept within the storm's own extent.
-  const offset = rainOffsetInStormFrame(storm), reach = Math.hypot(offset.x, offset.y) || 1, limit = Math.min(1, size.x * .45 / reach);
-  const flank = { x: offset.x * limit, y: offset.y * limit };
+  // Where the wind carries the rain: the core starts at the updraught and lies downwind of it.
+  const offset = rainOffsetInStormFrame(storm), reach = Math.hypot(offset.x, offset.y) || 1, limit = Math.min(1, SHAPE.rainCentreShare * along / reach);
+  const flank = { x: offset.x * limit, y: offset.y * limit }, downwindDeg = Math.atan2(offset.y, offset.x) * 180 / Math.PI;
 
   const features = [];
   if (asSupercell > .05) {
-    features.push(lobe('forwardFlank', flank.x, flank.y, size.x*.72, size.y*.68, (.2+.75*precipEff)*asSupercell, 0, {rain:.86,ice:.2,graupel:.16}));
-    features.push(lobe('updraftCore', -size.x*.10, size.y*.03, size.x*.19, size.y*.23, (.6+.38*updraft)*asSupercell, -8, {rain:.18,ice:.55,graupel:.48,hail:.25*hail,vertical:updraft}));
-    features.push(lobe('hailCore', flank.x*.3-.04*size.x, flank.y*.3+.02*size.y, size.x*.12, size.y*.15, hail*asSupercell, 6, {rain:.24,ice:.44,graupel:.68,hail:.9*hail,vertical:updraft*.75}));
-    features.push(lobe('rearFlank', -.34*size.x, .10*size.y, size.x*.31, size.y*.34, (.3+.42*cold)*asSupercell, 22, {rain:.5,graupel:.16,downdraft:cold}));
-    // The hook wraps further round as the storm occludes.
-    features.push({type:'hookArc', centerXKm:-size.x*.29, centerYKm:size.y*.22, radiusKm:size.x*.34, thicknessKm:Math.max(2,size.x*.075), startDeg:120, endDeg:300+60*occlusion, intensity:hookStrength, rain:.68, graupel:.25, age:phase});
+    features.push(lobe('forwardFlank', flank.x, flank.y, rainRadius.x, rainRadius.y, (.2+.75*precipEff)*asSupercell, downwindDeg, {rain:.86,ice:.2,graupel:.16}));
+    // The updraught's core lies on the side away from the rotation, so the hook stands clear of it.
+    features.push(lobe('updraftCore', .1*U, -.25*U*side, .32*U, .36*U,(.6+.38*updraft)*asSupercell, -8, {rain:.18,ice:.55,graupel:.48,hail:.25*hail,vertical:updraft}));
+    features.push(lobe('hailCore', flank.x*.3+.1*U, flank.y*.3-.2*U*side, Math.max(1.5,.5*geometry.hail.radiusKm), Math.max(1.8,.6*geometry.hail.radiusKm),hail*asSupercell, 6, {rain:.24,ice:.44,graupel:.68,hail:.9*hail,vertical:updraft*.75}));
+    features.push(lobe('rearFlank', rotation.x-.55*U, rotation.y-.3*U*side, .4*U, .4*U,(.3+.42*cold)*asSupercell, 22, {rain:.5,graupel:.16,downdraft:cold}));
+    // The hook curls round the rotation, further round as the storm occludes.
+    features.push({type:'hookArc', centerXKm:rotation.x, centerYKm:rotation.y, radiusKm:1.2*mesoRadius, thicknessKm:Math.max(1.2,.35*mesoRadius), startDeg:120, endDeg:300+60*occlusion, intensity:hookStrength, rain:.68, graupel:.25, age:phase});
     // The inflow notch sits on the right flank between the forward flank and the hook.
-    features.push(lobe('inflowNotch', -.02*size.x, .18*size.y, size.x*.25, size.y*.28, clamp(.45+.4*org,0,1)*asSupercell, 18, {subtractRain:.75,inflow:org}));
+    features.push(lobe('inflowNotch', rotation.x+.75*U, rotation.y+.35*U*side, .6*U, .5*U,clamp(.45+.4*org,0,1)*asSupercell, 18, {subtractRain:.75,inflow:org}));
   }
   if (asLine > .05) {
     // The line bows forward where air from aloft is driven down behind it.
-    features.push({type:'convectiveLine', centerXKm:-size.x*.12, centerYKm:0, lengthKm:size.y*1.65, widthKm:Math.max(5,size.x*.17), bowKm:size.x*(.10+.5*rearInflow), intensity:(.3+.3*precipEff+.42*lineStrength)*asLine, rain:.82, graupel:.34*hail, hail:.18*hail});
+    features.push({type:'convectiveLine', centerXKm:-.25*lineWidth, centerYKm:0, lengthKm:lineLength, widthKm:lineWidth, bowKm:lineLength*(.04+.2*rearInflow), intensity:(.3+.3*precipEff+.42*lineStrength)*asLine, rain:.82, graupel:.34*hail, hail:.18*hail});
     // Trailing rain and the rear inflow lie behind (upstream of) the leading line.
-    features.push(lobe('rearStratiform', -size.x*.66, 0, size.x*(.63+.22*system), size.y*.78, (.1+.7*precipEff)*asLine, 0, {rain:.58,ice:.28}));
-    features.push(lobe('rearInflowJet', -size.x*.38, 0, size.x*.46, size.y*.30, Math.max(lineStrength*.5, rearInflow)*asLine, 0, {rearInflow:Math.max(lineStrength*.5, rearInflow),downdraft:cold}));
-    const count = Math.max(2, Math.min(7, 2+Math.round(org*4)));
+    features.push(lobe('rearStratiform', -(lineWidth+shieldDepth), 0, shieldDepth, .4*lineLength, (.1+.7*precipEff)*asLine, 0, {rain:.58,ice:.28}));
+    features.push(lobe('rearInflowJet', -(lineWidth+.6*shieldDepth), 0, .7*shieldDepth, .2*lineLength, Math.max(lineStrength*.5, rearInflow)*asLine, 0, {rearInflow:Math.max(lineStrength*.5, rearInflow),downdraft:cold}));
+    const count = Math.max(2, Math.min(7, Math.round(lineLength/14)));
     for(let i=0;i<count;i++){
-      const fy=((i+.5)/count-.5)*size.y*1.45;
-      features.push(lobe('embeddedCore', -size.x*.17 + Math.sin(i*1.7+hashUnit(`${seed}|wave`)*6)*size.x*.05, fy, size.x*.13, size.y*.12, clamp(.5+intensity*.38+hashUnit(`${seed}|core|${i}`)*.16,0,1.15)*asLine, 0, {rain:.8,graupel:.38,hail:.22*hail,vertical:updraft*.6}));
+      const fy=((i+.5)/count-.5)*lineLength*.9;
+      features.push(lobe('embeddedCore', -.3*lineWidth + Math.sin(i*1.7+hashUnit(`${seed}|wave`)*6)*lineWidth*.25, fy, .5*lineWidth, Math.max(3,lineLength/(count*2.6)), clamp(.5+intensity*.38+hashUnit(`${seed}|core|${i}`)*.16,0,1.15)*asLine, 0, {rain:.8,graupel:.38,hail:.22*hail,vertical:updraft*.6}));
     }
   }
-  if (asCell > .05) features.push(lobe('cellCore', flank.x*.4, flank.y*.4, size.x*.42, size.y*.45, (.2+.7*precipEff)*asCell, 0, {rain:.72,ice:.2,graupel:.22,hail:.15*hail,vertical:updraft*.6}));
-  if (tornadoActive) features.push(lobe('debris', -size.x*.33, size.y*.25, Math.max(1.2,size.x*.045), Math.max(1.2,size.y*.055), clamp(.35+.65*tornadoIntensity,0,1.2), 0, {debris:clamp(.5+.5*tornadoIntensity,0,1.2),rotation:1.2*tornadoIntensity}));
+  if (asCell > .05) features.push(lobe('cellCore', flank.x*.4, flank.y*.4, rainRadius.x, rainRadius.y, (.2+.7*precipEff)*asCell, downwindDeg, {rain:.72,ice:.2,graupel:.22,hail:.15*hail,vertical:updraft*.6}));
+  // Debris where the tornado is: under the wall cloud.
+  if (tornadoActive) features.push(lobe('debris', rotation.x, rotation.y, 1.2, 1.2, clamp(.35+.65*tornadoIntensity,0,1.2), 0, {debris:clamp(.5+.5*tornadoIntensity,0,1.2),rotation:1.2*tornadoIntensity}));
 
+  // How far the picture reaches from the storm's centre (km), for whatever draws it.
+  const reachKm = features.reduce((most, f) => Math.max(most, f.type === 'hookArc' ? Math.hypot(f.centerXKm, f.centerYKm) + f.radiusKm + 3 * f.thicknessKm
+    : f.type === 'convectiveLine' ? Math.max(.65 * f.lengthKm, Math.abs(f.centerXKm) + f.bowKm + 3 * f.widthKm)
+    : Math.max(Math.abs(f.centerXKm), Math.abs(f.centerYKm)) + 2 * Math.max(f.radiusXKm, f.radiusYKm)), 8);
   const target = {
-    schemaVersion:2, orientationDeg, widthKm:size.x*2, heightKm:size.y*2,
+    schemaVersion:3, orientationDeg, widthKm:2*reachKm, heightKm:2*reachKm,
     precipitationEfficiency:precipEff, hailGrowthPotential:hail, hookStrength, lineStrength,
-    mesocyclone:{strength:Math.max(meso, low),radiusKm:Math.max(3,size.x*.15),offsetXKm:-size.x*.27,offsetYKm:size.y*.20,occlusionPhase:phase},
+    mesocyclone:{strength:Math.max(meso, low),radiusKm:mesoRadius,offsetXKm:rotation.x,offsetYKm:rotation.y,occlusionPhase:phase},
     wind:{inflowStrength:clamp(org*.7+meso*.3,0,1.2),rearFlankStrength:clamp(cold*.75+meso*.2,0,1.2),rearInflowStrength:Math.max(lineStrength*.5, rearInflow)},
     features, updatedAgeHours:storm.ageHours ?? 0
   };

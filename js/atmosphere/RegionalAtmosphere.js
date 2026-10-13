@@ -122,11 +122,13 @@ export class RegionalAtmosphere {
     this.previousMid = null;
     // The region may slide east (+) or west along the outer model (m/s); see RegionSteering.
     this.slideMs = 0;
+    // Where the map sits along the geography now (cells east of its western edge), where it is
+    // heading, and how fast it may move (cells per hour). See RegionSteering.
+    this.geographyOffset = p.geographyOffset; this.geographyTarget = p.geographyOffset; this.geographyRate = 0; this.geographyVersion = 0;
     // Reference: the outer model's tropospheric temperature at the map centre, time-mean.
     this.referenceLayerK = model.params.f0 * model.meanThickness(centreY) / (RD * Math.log(3));
     this.world.forEachCell((cell, x, y) => {
-      const west = 1 - this.eastShare(x);
-      cell.terrain.elevationM = p.terrainEastM + (p.terrainWestM - p.terrainEastM) * west ** p.terrainShape;
+      cell.terrain.elevationM = this.terrainAt(x);
       const k = y * this.nx + x, outer = this.outerAt(x, y);
       this.theta[k] = this.airMassTheta(outer, cell.terrain.elevationM);
       this.moisture[k] = this.inflowMoisture(x, y);
@@ -188,7 +190,7 @@ export class RegionalAtmosphere {
     const p = this.params, width = p.leeTroughWidthKm * 1000;
     const cross = clamp(this.windAt(outer, 700).u / p.leeFlowMs, 0, 2.5);
     const depthHpa = p.leeTroughFlowHpa * cross;
-    const distance = (x + p.geographyOffset - p.leeTroughColumn * ((p.geographyColumns ?? this.nx) - 1)) * this.dx, shape = Math.exp(-((distance / width) ** 2));
+    const distance = (x + this.geographyOffset - p.leeTroughColumn * ((p.geographyColumns ?? this.nx) - 1)) * this.dx, shape = Math.exp(-((distance / width) ** 2));
     return { pressureHpa: -depthHpa * shape, wind: depthHpa * 100 * shape * 2 * distance / (width * width) / (1.2 * this.model.params.f0) };
   }
 
@@ -264,7 +266,19 @@ export class RegionalAtmosphere {
   }
 
   // How far east a column is across the geography (0 at its western edge, 1 at its eastern, and 1 beyond).
-  eastShare(x) { const p = this.params; return clamp((x + p.geographyOffset) / ((p.geographyColumns ?? this.nx) - 1), 0, 1); }
+  eastShare(x) { const p = this.params; return clamp((x + this.geographyOffset) / ((p.geographyColumns ?? this.nx) - 1), 0, 1); }
+  terrainAt(x) { const p = this.params; return p.terrainEastM + (p.terrainWestM - p.terrainEastM) * (1 - this.eastShare(x)) ** p.terrainShape; }
+  // Moves the map along the geography toward its target, at most geographyRate cells per hour.
+  // The air, the storms and their cold pools stay where they are on the map; the ground under
+  // them changes by a few miles an hour, and the dryline and the lee trough follow it.
+  driftGeography(dt) {
+    const gap = this.geographyTarget - this.geographyOffset;
+    if (!gap || !(this.geographyRate > 0)) return;
+    const move = Math.min(Math.abs(gap), this.geographyRate * dt / 3600);
+    this.geographyOffset += Math.sign(gap) * move;
+    this.world.forEachCell((cell, x) => { cell.terrain.elevationM = this.terrainAt(x); });
+    this.geographyVersion++;
+  }
 
   // Moisture of the air entering the map: Gulf air along the south-eastern side, continental
   // air to the north, dry air off the high ground to the west.
@@ -293,6 +307,7 @@ export class RegionalAtmosphere {
 
   step() {
     const p = this.params, dt = p.stepSeconds;
+    this.driftGeography(dt);
     if (this.slideMs) {
       // Slide first, then read the heights at the new place before the model moves on, so
       // that their change over the step is the passing weather and not the slide itself.

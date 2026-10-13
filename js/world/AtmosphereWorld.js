@@ -54,7 +54,8 @@ export class AtmosphereWorld {
     this.stormAir = { mid: new Float32Array(n), inflow: new Float32Array(n) };
     // Slope of the ground (m per km, toward the east and toward the south), for upslope lift.
     const elevation = (x, y) => world.cells[clamp(y, 0, world.height - 1)][clamp(x, 0, world.width - 1)].terrain.elevationM;
-    world.forEachCell((cell, x, y) => { cell.terrain.slopeX = (elevation(x + 1, y) - elevation(x - 1, y)) / (2 * world.cellSizeKm); cell.terrain.slopeY = (elevation(x, y + 1) - elevation(x, y - 1)) / (2 * world.cellSizeKm); });
+    this.updateSlopes = () => { world.forEachCell((cell, x, y) => { cell.terrain.slopeX = (elevation(x + 1, y) - elevation(x - 1, y)) / (2 * world.cellSizeKm); cell.terrain.slopeY = (elevation(x, y + 1) - elevation(x, y - 1)) / (2 * world.cellSizeKm); }); this.slopeVersion = this.regional.geographyVersion; };
+    this.updateSlopes();
     this.stormsEnabled = storms;
     this.boundaries = [];
     this.steering = steering ? new RegionSteering(this.regional, seed, steering) : null;
@@ -73,7 +74,7 @@ export class AtmosphereWorld {
     return {
       version: STATE_VERSION, seed: this.seed,
       model: { params: model.params, time: model.time, history: model.history, q1: model.q1, q2: model.q2, psi1: model.psi1, psi2: model.psi2 },
-      regional: { params: regional.params, hourUtc: regional.hourUtc, sunsetHour: regional.sunsetHour, midReference: regional.midReference, gulfSupply: regional.gulfSupply, originX: regional.origin.x, slideMs: regional.slideMs, arrays: arraysOf(regional) },
+      regional: { params: regional.params, hourUtc: regional.hourUtc, sunsetHour: regional.sunsetHour, midReference: regional.midReference, gulfSupply: regional.gulfSupply, originX: regional.origin.x, slideMs: regional.slideMs, geography: { offset: regional.geographyOffset, target: regional.geographyTarget, rate: regional.geographyRate }, arrays: arraysOf(regional) },
       steering: this.steering?.saveState() ?? null,
       heightFall: this.heightFall, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled,
       world: snapshotWorld(this.world, { full: true })
@@ -89,6 +90,7 @@ export class AtmosphereWorld {
     const restored = new AtmosphereWorld({ seed: state.seed, model, regional: state.regional.params, storms: false, steering: state.steering ? state.steering.params : false });
     const regional = restored.regional;
     regional.origin.x = state.regional.originX; regional.slideMs = state.regional.slideMs;
+    if (state.regional.geography) { regional.geographyOffset = state.regional.geography.offset; regional.geographyTarget = state.regional.geography.target; regional.geographyRate = state.regional.geography.rate; regional.geographyVersion++; }
     if (state.steering) restored.steering.restoreState(state.steering);
     for (const [key, values] of Object.entries(state.regional.arrays)) regional[key] = values;
     regional.hourUtc = state.regional.hourUtc; regional.sunsetHour = state.regional.sunsetHour; regional.midReference = state.regional.midReference; regional.gulfSupply = state.regional.gulfSupply;
@@ -106,6 +108,7 @@ export class AtmosphereWorld {
     const stepHours = this.regional.params.stepSeconds / 3600, steps = Math.max(1, Math.round(hours / stepHours));
     for (let step = 0; step < steps; step++) {
       this.regional.step();
+      if (this.regional.geographyVersion !== this.slopeVersion) this.updateSlopes();
       this.steering?.update();
       this.prepare(stepHours);
       if (this.stormsEnabled) this.withStormEffects(() => (advanceStorms ? advanceStormEngine(this.world, stepHours) : applyStormFeedback(this.world, stepHours)));

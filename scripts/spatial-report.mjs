@@ -59,6 +59,8 @@ async function worker(seed) {
     }
     for (let b = 0; b < BLOCKS * BLOCKS; b++) { hit.severe[b] = hit.tornado[b] || hit.hail[b] || hit.wind[b] ? 1 : 0; for (const kind of KINDS) blockDays[kind][b] += hit[kind][b]; }
     record.storms = seen.size; record.tornadoes = world.stormEngine.totalTornadoes - before; record.severeBlocks = hit.severe.reduce((a, b) => a + b, 0);
+    record.severe = [...hit.severe].join(''); record.tornado = [...hit.tornado].join('');
+    record.target = plan?.target ?? null;
     daily.push(record);
   }
   process.send({ seed, daily, blockDays: Object.fromEntries(KINDS.map(kind => [kind, [...blockDays[kind]]])), bands: Object.fromEntries(Object.entries(bands).map(([k, v]) => [k, typeof v === 'number' ? v : [...v]])) });
@@ -95,5 +97,19 @@ async function main() {
   console.log(`  ${'seed'.padEnd(6)}${'tornado days'.padStart(13)}${'tornadoes'.padStart(11)}${'storms'.padStart(8)}${'moist share'.padStart(13)}${'CAPE'.padStart(7)}${'shear kt'.padStart(10)}${'500 mb kt'.padStart(11)}${'helicity'.padStart(10)}${'support'.padStart(9)}${'wanted'.padStart(8)}${'slide m/s'.padStart(11)}${'blocks hit'.padStart(12)}`);
   const med = (rows, key) => { const v = rows.map(r => r[key]).filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : NaN; };
   for (const r of [...results].sort((a, b) => a.seed - b.seed)) { const d = r.daily; console.log(`  ${String(r.seed).padEnd(6)}${`${Math.round(100 * d.filter(x => x.tornadoes > 0).length / d.length)}%`.padStart(13)}${String(med(d, 'tornadoes')).padStart(11)}${String(med(d, 'storms')).padStart(8)}${`${Math.round(100 * med(d, 'moistShare'))}%`.padStart(13)}${med(d, 'cape').toFixed(0).padStart(7)}${med(d, 'shear').toFixed(0).padStart(10)}${med(d, 'aloft').toFixed(0).padStart(11)}${med(d, 'srh').toFixed(0).padStart(10)}${med(d, 'support').toFixed(2).padStart(9)}${med(d, 'wanted').toFixed(2).padStart(8)}${med(d, 'slideMs').toFixed(0).padStart(11)}${String(med(d, 'severeBlocks')).padStart(12)}`); }
+  // --- How different one day is from the next.
+  const quantile = (values, q) => { const v = values.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.floor(q * (v.length - 1))] : NaN; };
+  const alike = (a, b) => { let both = 0, either = 0; for (let i = 0; i < a.length; i++) { const x = a[i] === '1', y = b[i] === '1'; if (x && y) both++; if (x || y) either++; } return either ? both / either : NaN; };
+  const centre = bits => { let x = 0, y = 0, count = 0; for (let i = 0; i < bits.length; i++) if (bits[i] === '1') { x += i % BLOCKS + 0.5; y += Math.floor(i / BLOCKS) + 0.5; count++; } return count ? { x: x / count / BLOCKS, y: y / count / BLOCKS } : null; };
+  console.log('');
+  console.log('6. How different the days are (the footprint is the blocks with severe weather that day)');
+  for (const kind of ['severe', 'tornado']) {
+    const share = all.map(d => d[kind].split('1').length - 1), next = [], random = [], centres = all.map(d => centre(d[kind])).filter(Boolean);
+    for (const r of results) for (let i = 1; i < r.daily.length; i++) next.push(alike(r.daily[i - 1][kind], r.daily[i][kind]));
+    for (let i = 0; i < all.length; i++) random.push(alike(all[i][kind], all[(i * 37 + 11) % all.length][kind]));
+    const spreadOf = key => { const v = centres.map(c => c[key]), m = v.reduce((a, b) => a + b, 0) / v.length; return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length); };
+    const grid = sum(kind), mean = [...grid].reduce((a, b) => a + b, 0) / grid.length, near = [...grid].filter(v => Math.abs(v - mean) <= 0.25 * mean).length;
+    console.log(`  ${kind.padEnd(8)} share of the map covered on a day: 10th ${quantile(share, 0.1)}%, median ${quantile(share, 0.5)}%, 90th ${quantile(share, 0.9)}% | overlap with the day before: ${quantile(next, 0.5).toFixed(2)} (two unrelated days: ${quantile(random, 0.5).toFixed(2)}; 1 = the same blocks) | where its centre falls, spread across the map: west-east ${spreadOf('x').toFixed(2)}, north-south ${spreadOf('y').toFixed(2)} (0.29 = anywhere) | blocks within a quarter of the long-run average: ${near}%`);
+  }
   console.log(`  all: tornado days ${Math.round(100 * all.filter(d => d.tornadoes > 0).length / total)}% | days with no severe weather ${Math.round(100 * all.filter(d => !d.severeBlocks).length / total)}%`);
 }
