@@ -990,6 +990,17 @@ world's numbers (a fast transform there, or pruning most-unstable candidates).
 `OUTLOOK.spreadKm` / `spreadFor`: Gaussian spreading of a day's chances by how few runs it
 has. `scripts/outlook-verify.mjs` rewritten to verify all three days as the server makes them.
 
+### Tornadoes: fewer on the big days, and hatching that goes with the contours (2026-10-13)
+
+The user: the real outlooks do not give high tornado chances without hatching; and gave the
+tornado numbers the categories go with (Slight 0-3, Enhanced 3-8, Moderate 5-15+, High
+10-30+). Found: intensity groups are conditional and had been scored unconditionally
+(fixed in `outlook-verify.mjs`); and the big days had about twice those numbers, mostly weak.
+`TORNADO`: onsetRotation [0.08, 0.5] to [0, 0.5], power 1 to 2, fullRatePerHour 3 to 2.2.
+`CIG_SHARES.tornado` [0.15, 0.4, 0.25]. Five 160-day screens and four 320-day runs; the
+table is in STATUS.md. Every world's history is new from here: the earlier lists of High
+days no longer hold.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

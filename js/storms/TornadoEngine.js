@@ -35,7 +35,9 @@ export function initializeTornadoState(storm) {
 // the strongly rotating ones whose tornadoes are strong. So the days with many tornadoes are
 // the days with strong ones, as in the real record (with power 1 the big days got their
 // numbers from weak tornadoes: twice the tornadoes the real outlook categories go with, and
-// three 15% tornado areas in four with no strong tornadoes to speak of).
+// three 15% tornado areas in four with no strong tornadoes to speak of). The rise starts from
+// no rotation at all, so that the weakest storms still put one down now and then: with a
+// threshold of 0.04, one day in four had no tornado. Checked on 320 days (docs/STATUS.md).
 const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 2.2, power: 2, sustainRotation: 0.055, outlookHours: 0.5 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 

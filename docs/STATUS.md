@@ -210,15 +210,34 @@ happens, so it is checked at the places the hazard came within 25 miles (Day 1 o
 | CIG2 | too little drawn | 99% / 84% / 29% | never drawn |
 | CIG3 | 46% / 44% / 12% | never drawn | - |
 
-The groups mean what they say on Day 1; on Day 2 (four runs) the wind groups still do and
-the tornado groups do not. The upper groups are rare because strong weather is a small share
-of the weather here: of a day's reports, a median 10% of tornadoes are EF2+, 8% of gusts 75
-mph and 4% of hail 2 inches, and 3.5 inch hail does not occur. Tornadoes have lower bars
-for the upper groups (`CIG_SHARES.tornado`: 30%, 25%, 15%; all 30% gave CIG2 on 4% of days
-and CIG3 on none, though EF3+ tornadoes come on 29% of days and EF4+ on 12%). They cannot go
-much lower: a 30% tornado contour with CIG2 is a High risk in the centre's table, so 30/20/15
-gives 10% High days and 20/20/20 gives 13% (8% before, about 9% now). With the lower bars
-Day 2 forecast High on 10% of days against 6% verified.
+(Measured before the tornado change below; the outlooks have not been verified since.)
+
+**Tornado numbers and hatching (2026-10-13).** In the real outlooks a high tornado contour
+comes hatched: the days with many tornadoes are the days with strong ones. Here the big days
+got their numbers from weak tornadoes. Tornado production now rises as the square of a
+storm's low-level rotation (`TORNADO` in `TornadoEngine.js`: from no rotation, to 2.2 an
+hour at full), and a tornado area is hatched when 15% of its tornadoes are EF2+
+(`CIG_SHARES.tornado`: 15%, 40%, 25%). On 320 days:
+
+| | Before | Now | The user's guide |
+|---|---|---|---|
+| Days with a tornado | 83% | 81% | |
+| Tornadoes on a Slight day (middle half) | 0-1 | 0-1 | 0-3 |
+| Enhanced | 3-13 | 1-8 | 3-8 |
+| Moderate | 12-32 | 7-22 | 5-15+ |
+| High | 26-49 | 29-44 | 10-30+ |
+| 15% tornado contour reached / of those, hatched | 62% / 23% | 57% / 51% | |
+| 30% tornado contour reached / hatched | 38% / 32% | 32% / 62% | |
+| 60% tornado contour reached / hatched | 10% / 39% | 8% / 81% | |
+| Mix: below Slight / Slight / Enhanced / Moderate / High | 7 / 10 / 52 / 23 / 8 | 7 / 11 / 50 / 24 / 8 | |
+
+Tried: a starting threshold of 0.04 with 3 an hour (the numbers nearest the guide: Enhanced
+1-7, Moderate 6-21, but a tornado on only 76% of days); no threshold with 3 an hour (84% of
+days, but Moderate 8-26 and High 29-48, 11% High days). The upper tornado groups stay rare
+(CIG2 or CIG3 on about 2% of days) because a 30% tornado contour with CIG2 is a High risk in
+the centre's table. Wind and hail groups are as they were: wind CIG2 on about 1% of days,
+CIG3 never; hail CIG1 on 1-2% of days, CIG2 never. Seed 8 is still the quiet world (a tornado
+on 63% of its days).
 
 Not yet done:
 
