@@ -20,10 +20,13 @@
     #legend li { display: flex; align-items: center; gap: 8px; }
     #legend b { margin-left: auto; color: var(--muted); font-weight: 600; }
     #legend i { flex: none; display: inline-block; width: 22px; height: 13px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, .5); }
-    #legend i.hatch { background: repeating-linear-gradient(45deg, #1f2937 0 2px, #cbd5e1 2px 6px); }
-    #legend i.hatch.cross { background: repeating-linear-gradient(45deg, #1f2937 0 2px, transparent 2px 6px), repeating-linear-gradient(-45deg, #1f2937 0 2px, #cbd5e1 2px 6px); }
-    #facts { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; }
-    #facts span { color: var(--muted); } #facts b { text-align: right; }
+    #legend i.hatch { background-color: #cbd5e1; }
+    /* CIG1: broken lines falling to the lower left; CIG2: solid lines falling to the lower right; CIG3: crossed. */
+    #legend i.cig1 { background-image: repeating-linear-gradient(135deg, #111827 0 1.5px, transparent 1.5px 6px); -webkit-mask-image: repeating-linear-gradient(45deg, #000 0 5px, transparent 5px 8px); mask-image: repeating-linear-gradient(45deg, #000 0 5px, transparent 5px 8px); }
+    #legend i.cig2 { background-image: repeating-linear-gradient(45deg, #111827 0 1.5px, transparent 1.5px 6px); }
+    #legend i.cig3 { background-image: repeating-linear-gradient(45deg, #111827 0 1.5px, transparent 1.5px 6px), repeating-linear-gradient(135deg, #111827 0 1.5px, transparent 1.5px 6px); }
+    #summary { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; }
+    #summary span { color: var(--muted); } #summary b { text-align: right; }
     .outlook-map { position: relative; min-width: 0; min-height: 0; padding: 70px 12px 12px; display: flex; align-items: center; justify-content: center; }
     #outlookCanvas { display: block; border-radius: 6px; }
     .outlook-text { border-left: 1px solid var(--line); padding-top: 64px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
@@ -49,8 +52,8 @@
       <small id="legendNote"></small>
     </div>
     <div class="outlook-card">
-      <span>From the forecast runs</span>
-      <div id="facts"></div>
+      <span>Highest contour and intensity group</span>
+      <div id="summary"></div>
     </div>
   </aside>
   <main class="outlook-map"><canvas id="outlookCanvas"></canvas></main>

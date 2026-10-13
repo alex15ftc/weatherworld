@@ -3,9 +3,13 @@
 // the extreme/violent tiers used for conditional intensity groups. The same definitions serve
 // the authoritative verification and the forecast ensemble members.
 import { RISK_ORDER, HAZARDS, categoryFromHazard } from '../forecast/spcOutlookRules.js';
-import { WORLD_RISK_HAZARDS, worldCategory } from '../forecast/worldRiskCategories.js';
+import { worldCategory } from '../forecast/worldRiskCategories.js';
 
-export const TRUTH_FIELDS = ['storm', 'tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme'];
+export const TRUTH_FIELDS = ['storm', 'tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme', 'windViolent'];
+// The fields whose chance within 25 miles is worked out unrounded (result.chance): each hazard
+// and the tiers its intensity groups are defined by (EF2+, EF3+, EF4+; 2 in, 3.5 in hail;
+// 75, 85, 96 mph wind, which are the SPC's 65, 74 and 83 kt).
+export const CHANCE_FIELDS = ['tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme', 'windViolent'];
 
 // Appends one frame (cells where each hazard is occurring now) and records new storms.
 export function captureTruth(world, frames, seenStormIds = new Set(), initiations = []) {
@@ -40,7 +44,8 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
       if (isLine(storm) && (Number(storm.intensity) || 0) >= 0.22) frame.storm[index] = 1;
       if (local >= 58) frame.wind[index] = 1;
       if (local >= 75) frame.windSig[index] = 1;
-      if (local >= 100) frame.windExtreme[index] = 1;
+      if (local >= 85) frame.windExtreme[index] = 1;
+      if (local >= 96) frame.windViolent[index] = 1;
     }
     frame.activeStorms++;
     if (storm.tornado?.onGround) frame.tornadoes++;
@@ -109,6 +114,7 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
   for (const field of TRUTH_FIELDS) { result[field] = new Uint8Array(n); result[`${field}Exact`] = new Uint8Array(n); }
   const offsets = diskOffsets(radius);
   for (const frame of frames) for (const field of TRUTH_FIELDS) {
+    if (!frame[field]) continue;
     const src = frame[field], exact = result[`${field}Exact`], near = result[field];
     for (let i = 0; i < n; i++) if (src[i]) { exact[i] = 1; spread(near, i, width, height, offsets); }
   }
@@ -122,13 +128,14 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
   result.observedCig = {
     tornado: observedCig(result.tornadoSig, result.tornadoExtreme, result.tornadoViolent, 3),
     hail: observedCig(result.hailSig, result.hailExtreme, null, 2),
-    wind: observedCig(result.windSig, result.windExtreme, null, 3)
+    wind: observedCig(result.windSig, result.windExtreme, result.windViolent, 3)
   };
-  // This world's own categories (worldRiskCategories.js), from the same chances unrounded:
-  // result.chance[hazard][i] is the percent chance within 25 miles; result.worldRisk[i] the category.
-  result.chance = Object.fromEntries(WORLD_RISK_HAZARDS.map(hazard => [hazard, practicallyPerfectChance(result[`${hazard}Exact`], width, height, cellKm)]));
+  // The same chances unrounded (percent within 25 miles), for each hazard and each intensity tier.
+  result.chance = Object.fromEntries(CHANCE_FIELDS.map(field => [field, practicallyPerfectChance(result[`${field}Exact`], width, height, cellKm)]));
+  // This world's own categories (worldRiskCategories.js): the same contour levels and
+  // intensity groups as the real ones, read through this world's tables.
   result.worldRisk = Array(n);
-  for (let i = 0; i < n; i++) result.worldRisk[i] = worldCategory(Object.fromEntries(WORLD_RISK_HAZARDS.map(hazard => [hazard, result.chance[hazard][i]])), { thunder: Boolean(result.storm[i]) });
+  for (let i = 0; i < n; i++) result.worldRisk[i] = worldCategory(Object.fromEntries(HAZARDS.map(h => [h, { percent: result.observedProbability[h][i], cig: result.observedCig[h][i] }])), { thunder: Boolean(result.storm[i]) });
   for (let i = 0; i < n; i++) {
     const severe = HAZARDS.filter(h => result.observedProbability[h][i] > 0).map(h => categoryFromHazard(h, result.observedProbability[h][i], result.observedCig[h][i]));
     result.risk[i] = severe.length ? severe.reduce((a, b) => (RISK_ORDER.indexOf(b) > RISK_ORDER.indexOf(a) ? b : a)) : result.storm[i] ? 'TSTM' : 'NONE';

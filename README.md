@@ -10,7 +10,7 @@ miles covering a 500 x 500 mile region, all showing the same weather from this o
 
 ```
 npm start            # http://localhost:3000  (first start builds a world: about a minute)
-npm test             # 41 tests, about 7 minutes
+npm test             # 42 tests, about 8 minutes
 ```
 
 | Setting | Meaning |
