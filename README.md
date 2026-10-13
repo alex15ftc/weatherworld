@@ -28,7 +28,7 @@ The clock runs at 15 simulated minutes per real minute (a simulated day is 96 re
 | Page | What it shows |
 |---|---|
 | `/` (`index.html`) | Surface observations and mesoanalysis: station plots, isobars, fronts, the dryline, outflow boundaries, storms, 27 overlay fields, click soundings, 36 frames of history |
-| `/radar.html` | Simulated radar sites and mosaic |
+| `/radar.html` | Simulated radar sites and the composite mosaic |
 | `/day1.html`, `/day2.html`, `/day3.html` | Placeholders: outlooks are not issued yet |
 | `/performance.html` | Server timing |
 

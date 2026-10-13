@@ -92,7 +92,7 @@ physics either. "Drawn" means random or template-made by design.
 | How strong a tornado gets | its wind follows the low-level rotation; each tornado has its own draw within that | part drawn |
 | Hazard "probabilities", confidence, event tags | display scores | formula (display only) |
 | Storm shape (geometry) | from the storm's state and the wind through its depth | from the storm's state and the fields |
-| Radar picture | built from that state and geometry; the fine texture is drawn | part drawn |
+| Radar picture | where the wind through the storm carries the precipitation its updraughts make (`PrecipitationField.js`); how each updraught's output varies from minute to minute is drawn | from the storm's state and the fields; part drawn |
 
 In short: the atmosphere is natural throughout. For storms, where they are, when, how they
 move and how big their hail and wind get are natural; how strong, organized and rotating a

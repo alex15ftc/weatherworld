@@ -1,14 +1,18 @@
 // Simulated Doppler/dual-pol radar. Radar never creates weather: every echo is derived
-// from authoritative storm structure, the environmental grid, analysed boundaries and the
-// time of day. Output is a deterministic function of world state, site and tilt.
-import { buildStormEchoModel, sampleEchoInto, sampleEcho, echoGradient } from './StormEchoModel.js';
+// from where each storm's precipitation is (PrecipitationField.js: worked out from its
+// updraughts and the wind through its depth), the environmental grid, analysed boundaries
+// and the time of day. Output is a deterministic function of world state, site and tilt.
 import {
-  RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG, RADAR_ANTENNA_HEIGHT_M,
+  buildStormPrecipitation, samplePrecipitation, hasPrecipitation, sampleDebris, sampleHeaviness, heavinessGradient,
+  RAIN_REFLECTIVITY, HAIL_REFLECTIVITY, DEBRIS_REFLECTIVITY, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, MESOCYCLONE_LEAN_M, FRONT_TO_REAR_BASE_M, frontToRearShare
+} from './PrecipitationField.js';
+import {
+  RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, RADAR_BEAMWIDTH_DEG, RADAR_ANTENNA_HEIGHT_M,
   RADAR_PRODUCT_KEYS, beamHeightKm, groundRangeKm, encodeRadarValue
 } from './RadarFormat.js';
 
 const KT_TO_MS = 0.514444;
-const STORM_BIN_KM = 20;
+const STORM_BIN_KM = 10;
 const BOUNDARY_BIN_KM = 20;
 const DEG = Math.PI / 180;
 
@@ -39,10 +43,12 @@ const NEIGHBOUR_WEIGHT = BEAM_OFFSETS[0][1] * Math.min(1, ACROSS_SHARE), OWN_WEI
 // Per-gate sums of one scan before blending and noise (reused between scans).
 const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, envRadial: null };
 const NOISE = { dbz: 0.8, velocityMs: 0.9, correlation: 0.008, zdrDb: 0.18 };
-// A tornado's signature is as deep as the tornado is strong: the wind of a weak one is seen
-// only in the lowest kilometre and it lofts little; a violent one reaches several kilometres.
+// A tornado's wind is as deep as the tornado is strong: a weak one is seen only in the lowest
+// kilometre; a violent one reaches several kilometres.
 const tornadoDepthM = windMs => clamp(800 + 36 * (windMs - 30), 700, 3500);
-const debrisTopM = windMs => clamp(900 + 60 * (windMs - 30), 800, 6000);
+// Outflow near the ground and at the anvil (m/s per unit change of rain heaviness in a km), and
+// the rear-inflow jet behind a line at its strongest (m/s).
+const STORM_WINDS = { outflow: 110, anvil: 90, rearInflowMs: 24 };
 
 export function createRadarSites(world) {
   const widthKm = world.width * world.cellSizeKm, heightKm = world.height * world.cellSizeKm;
@@ -90,29 +96,23 @@ export function buildRadarScene(world) {
     env.blDepth[i] = clamp(Number(cell.mesoscaleFields?.boundaryLayerDepthM) || 1200, 300, 3000);
   });
 
-  const storms = [];
+  const storms = [], wind = { u: 0, v: 0 };
   for (const storm of world.storms ?? []) {
     if (storm.active === false) continue;
-    const echo = buildStormEchoModel(storm);
-    if (!echo) continue;
     const x = storm.positionKm.x, y = storm.positionKm.y;
     const motion = { u: (storm.velocityKph?.east ?? 0) / 3.6, v: (storm.velocityKph?.north ?? 0) / 3.6 };
-    const upperU = envSample(env, env.levelU[4], x, y), upperV = envSample(env, env.levelV[4], x, y);
-    // Anvil ice is carried downstream by the storm-relative upper flow (~30 min of travel).
-    let anvilX = (upperU - motion.u) * 1.8, anvilY = -(upperV - motion.v) * 1.8;
-    const anvilLength = Math.hypot(anvilX, anvilY);
-    if (anvilLength > 32) { anvilX *= 32 / anvilLength; anvilY *= 32 / anvilLength; }
     // Echo tops reach the equilibrium level (plus overshoot) in vigorous storms.
     const updraft = clamp(Math.max(Number(storm.updraftStrength) || 0, (Number(storm.intensity) || 0) * 1.3), 0, 1);
+    const top = envSample(env, env.top, x, y) * (0.6 + 0.48 * updraft), freezing = envSample(env, env.freezing, x, y);
+    // The wind through the storm's depth, relative to the storm: what carries its rain.
+    const su = new Float32Array(WIND_PROFILE_LEVELS), sv = new Float32Array(WIND_PROFILE_LEVELS);
+    for (let k = 0; k < WIND_PROFILE_LEVELS; k++) { envWindAt(env, x, y, k * WIND_PROFILE_STEP_M, wind); su[k] = wind.u - motion.u; sv[k] = wind.v - motion.v; }
+    const echo = buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv });
+    if (!echo) continue;
     storms.push({
-      x, y, echo, motion, anvilX, anvilY,
-      halfKm: echo.half * Math.SQRT2,
-      top: envSample(env, env.top, x, y) * (0.6 + 0.48 * updraft),
-      freezing: envSample(env, env.freezing, x, y),
+      x, y, echo, motion, top, freezing,
       seed: hashString(String(storm.id)),
-      // The echo model's vortex speed is 85% of the tornado's wind.
-      tornadoDepthM: tornadoDepthM((echo.tornado?.vmaxMs ?? 0) / 0.85), debrisTopM: debrisTopM((echo.tornado?.vmaxMs ?? 0) / 0.85),
-      time: (Number(storm.ageHours) || 0) * 60 / 25,
+      tornadoDepthM: tornadoDepthM(echo.tornado?.windMs ?? 0),
       weight: clamp(Number(storm.intensity) || 0, 0, 1)
     });
   }
@@ -120,9 +120,16 @@ export function buildRadarScene(world) {
   const boundaries = [];
   for (const boundary of world.mesoscale?.boundaries ?? []) {
     if (boundary.active === false) continue;
-    const points = boundary.pointsKm ?? [];
+    // The analysed line is a few straight pieces; the insects along it follow a smooth curve,
+    // thicker in some stretches than others and here and there too few to see.
+    const points = roundCorners(roundCorners(boundary.pointsKm ?? [])), seed = hashString(String(boundary.id ?? boundary.type));
     const dbz = boundaryFineLineDbz(boundary.type) + 4 * clamp(Number(boundary.strength) || 0.5, 0, 1);
-    for (let k = 0; k < points.length - 1; k++) boundaries.push({ ax: points[k].x, ay: points[k].y, bx: points[k + 1].x, by: points[k + 1].y, z: 10 ** (dbz / 10) });
+    let along = 0;
+    for (let k = 0; k < points.length - 1; k++) {
+      const a = points[k], b = points[k + 1], patchy = fbm(seed, along / 18, 0.5, 0);
+      along += Math.hypot(b.x - a.x, b.y - a.y);
+      boundaries.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, z: 10 ** ((dbz + 7 * patchy) / 10), widthKm: 1.2 * (1 + 0.4 * fbm(seed + 5, along / 30, 0.5, 0)) });
+    }
   }
 
   const domainWidthKm = w * cs, domainHeightKm = h * cs;
@@ -130,13 +137,10 @@ export function buildRadarScene(world) {
     validHourUtc: Number(world.stormEngine?.validHourUtc ?? world.validHourUtc),
     localHour: mod24(Number(world.stormEngine?.validHourUtc ?? world.validHourUtc) - 6),
     domainWidthKm, domainHeightKm, env, storms, boundaries,
-    stormBins: binItems(storms, STORM_BIN_KM, domainWidthKm, domainHeightKm, s => {
-      const r = s.halfKm + Math.hypot(s.anvilX, s.anvilY);
-      return [s.x - r, s.y - r, s.x + r, s.y + r];
-    }),
+    stormBins: binItems(storms, STORM_BIN_KM, domainWidthKm, domainHeightKm, s => [s.x + s.echo.minX, s.y + s.echo.minY, s.x + s.echo.maxX, s.y + s.echo.maxY]),
     boundaryBins: binItems(boundaries, BOUNDARY_BIN_KM, domainWidthKm, domainHeightKm, b =>
       [Math.min(b.ax, b.bx) - 4, Math.min(b.ay, b.by) - 4, Math.max(b.ax, b.bx) + 4, Math.max(b.ay, b.by) + 4]),
-    stormMotion: meanStormMotion(storms, env, domainWidthKm, domainHeightKm)
+    stormMotion: meanStormMotion(storms, env, domainWidthKm / 2, domainHeightKm / 2, Infinity)
   };
   return scene;
 }
@@ -155,7 +159,8 @@ export function scanRadarTilt(scene, site, tiltDeg) {
   const beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const cosTilt = Math.cos(tiltDeg * DEG);
   const siteHeightM = site.elevationM + RADAR_ANTENNA_HEIGHT_M;
-  const su = scene.stormMotion.u, sv = scene.stormMotion.v;
+  // Storm-relative velocity takes off the motion of the storms this radar can see.
+  const stormMotion = meanStormMotion(scene.storms, scene.env, site.xKm, site.yKm, RADAR_RANGE_KM), su = stormMotion.u, sv = stormMotion.v;
   // Noise differs from scan to scan and from product to product.
   const noiseSalt = tiltDeg + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
   const gateGeometry = Array.from({ length: RADAR_GATES }, (_, g) => {
@@ -223,24 +228,26 @@ export function scanRadarTilt(scene, site, tiltDeg) {
     }
   }
   return {
-    siteId: site.id, tiltDeg, validHourUtc: scene.validHourUtc, stormMotion: scene.stormMotion, products,
+    siteId: site.id, tiltDeg, validHourUtc: scene.validHourUtc, stormMotion, products,
     buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started
   };
 }
 
-// Network mosaic of lowest-tilt reflectivity on a Cartesian grid. Each cell uses the
-// nearest radar whose 0.5° beam samples it, falling back to the next radar when that beam
-// is blocked or sees nothing, as regional mosaics do. One byte per cell, row-major.
+// Network mosaic of composite reflectivity on a Cartesian grid: the strongest echo any tilt of
+// the nearest radar finds above each place, as national mosaics show. Where that radar sees
+// nothing (its beams blocked, or too high and too wide by then) the next radar is used. Far
+// from every radar the lowest beam is already kilometres up, so a storm there shows only its
+// upper parts. One byte per cell, row-major.
 export const MOSAIC_RES_KM = 1;
-export const MOSAIC_TILT_DEG = 0.5;
+const MOSAIC_CEILING_M = 19000;
 export function buildRadarMosaic(scene, sites) {
   const started = globalThis.performance?.now?.() ?? Date.now();
   const width = Math.ceil(scene.domainWidthKm / MOSAIC_RES_KM), height = Math.ceil(scene.domainHeightKm / MOSAIC_RES_KM);
   const bytes = new Uint8Array(width * height);
   const sample = { zh: 0, zv: 0, cc: 0 }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
-  const maxGround = groundRangeKm(RADAR_GATES * RADAR_GATE_KM, MOSAIC_TILT_DEG);
-  const cosTilt = Math.cos(MOSAIC_TILT_DEG * DEG), beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
+  const tilts = RADAR_TILTS_DEG.map(deg => ({ deg, cos: Math.cos(deg * DEG) }));
+  const maxGround = groundRangeKm(RADAR_RANGE_KM, tilts[0].deg), beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const noiseSalt = 77 + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
   const candidates = [];
   for (let j = 0; j < height; j++) for (let i = 0; i < width; i++) {
@@ -257,31 +264,43 @@ export function buildRadarMosaic(scene, sites) {
     if (!candidates.length) continue;
     const terrain = envSample(scene.env, scene.env.terrain, x, y);
     clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
-    const inStorm = binAt(scene.stormBins, x, y) !== null;
+    // Only where a storm stands is there anything for the higher tilts to find.
+    const bin = binAt(scene.stormBins, x, y);
+    let ceiling = 0;
+    if (bin) for (const s of bin) if (hasPrecipitation(s.echo, x - s.x, y - s.y)) ceiling = Math.max(ceiling, s.top * 1.15);
+    const stormBin = ceiling > 0;
     for (const { site, ground } of candidates) {
-      const range = ground / cosTilt, spread = range * beamHalfWidth * 1000, spreadKm = spread / 1000;
-      const agl = site.elevationM + RADAR_ANTENNA_HEIGHT_M + beamHeightKm(range, MOSAIC_TILT_DEG) * 1000 - terrain;
-      if (agl < 0) continue;
-      clearAir.bioZ = agl - spread < clearAir.bl * 1.3 ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
-      // The same beam volume as the single-site scans (across the beam once it is wider than a cell).
-      const across = inStorm && spreadKm > 0.5 * MOSAIC_RES_KM ? BEAM_OFFSETS : BEAM_CENTRE;
       const tx = -(y - site.yKm) / Math.max(ground, 1e-6), ty = (x - site.xKm) / Math.max(ground, 1e-6);
-      let zh = 0;
-      for (const [a, acrossWeight] of across) for (const [k, upWeight] of BEAM_OFFSETS) {
-        const z = agl + k * spread;
-        if (z < 0) continue;
-        sampleVolume(scene, x + a * spreadKm * tx, y + a * spreadKm * ty, z, sample, clearAir);
-        zh += sample.zh * acrossWeight * upWeight;
+      let most = 0, mostSnr = 0;
+      for (let t = 0; t < (stormBin ? tilts.length : 1); t++) {
+        const range = ground / tilts[t].cos;
+        if (range > RADAR_RANGE_KM) break;
+        const spread = range * beamHalfWidth * 1000, spreadKm = spread / 1000;
+        const agl = site.elevationM + RADAR_ANTENNA_HEIGHT_M + beamHeightKm(range, tilts[t].deg) * 1000 - terrain;
+        if (agl < 0) continue;
+        if (agl - spread > Math.min(MOSAIC_CEILING_M, Math.max(ceiling, clearAir.bl * 1.3))) break;
+        clearAir.bioZ = t === 0 && agl - spread < clearAir.bl * 1.3 ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
+        // The same beam volume as the single-site scans, once the beam is wider than a cell or deeper than a level of the storm.
+        const across = stormBin && spreadKm > MOSAIC_RES_KM ? BEAM_OFFSETS : BEAM_CENTRE, up = spread > 400 ? BEAM_OFFSETS : BEAM_CENTRE;
+        let zh = 0;
+        for (const [a, acrossWeight] of across) for (const [k, upWeight] of up) {
+          const z = agl + k * spread;
+          if (z < 0) continue;
+          sampleVolume(scene, x + a * spreadKm * tx, y + a * spreadKm * ty, z, sample, clearAir);
+          zh += sample.zh * acrossWeight * upWeight;
+        }
+        if (zh <= most) continue;
+        const snr = 10 * Math.log10(zh) - (-32 + 20 * Math.log10(Math.max(range, 0.5)));
+        if (snr < 0) continue;
+        most = zh; mostSnr = snr;
       }
-      if (zh <= 0) continue;
-      const snr = 10 * Math.log10(zh) - (-32 + 20 * Math.log10(Math.max(range, 0.5)));
-      if (snr < 0) continue;
+      if (most <= 0) continue;
       const noise = gateNoise(j * width + i, noiseSalt) * 2 - 1;
-      bytes[j * width + i] = encodeRadarValue('reflectivity', 10 * Math.log10(zh) + noise * (NOISE.dbz + 1.6 * Math.exp(-snr / 6)));
+      bytes[j * width + i] = encodeRadarValue('reflectivity', 10 * Math.log10(most) + noise * (NOISE.dbz + 1.6 * Math.exp(-mostSnr / 6)));
       break;
     }
   }
-  return { width, height, resKm: MOSAIC_RES_KM, tiltDeg: MOSAIC_TILT_DEG, validHourUtc: scene.validHourUtc, bytes, buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started };
+  return { width, height, resKm: MOSAIC_RES_KM, composite: true, validHourUtc: scene.validHourUtc, bytes, buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started };
 }
 
 // ---------------------------------------------------------------------------
@@ -300,55 +319,43 @@ function addEcho(out, zh, zdrDb, rho) {
   out.zh += zh; out.zv += zh / 10 ** (zdrDb / 10); out.cc += zh * rho;
 }
 
+// A storm's precipitation at one place, as a radar sees it: rain below the freezing level, ice
+// above (which reflects a fifth as well), a bright band where snow melts, hail, and debris.
 function stormHydrometeors(s, lx, ly, z, out) {
-  if (Math.abs(lx) > s.halfKm + Math.abs(s.anvilX) || Math.abs(ly) > s.halfKm + Math.abs(s.anvilY)) return;
-  const top = s.top, fz = s.freezing;
-  if (z > top * 1.12) return;
-  if (!sampleEchoInto(s.echo, lx, ly, tmp)) {
-    anvilEcho(s, lx, ly, z, out);
-    return;
-  }
-  const { rain, graupel, hail, updraft, debris } = tmp;
-  const localTop = top * (0.35 + 0.65 * clamp(updraft * 1.1 + rain * 0.5 + hail * 0.3, 0, 1));
-  const cap = 1 - smoothstep(localTop * 0.82, localTop * 1.02, z);
-  const texture = 10 ** (0.42 * fbm(s.seed, lx / 6.5, ly / 6.5, s.time) + 0.16 * fbm(s.seed + 31, lx / 1.3, ly / 1.3, s.time));
-
-  // Precipitation: a bounded weak-echo vault beneath strong updrafts, with suspended
-  // precipitation (overhang) above the melting level.
-  const vault = z < 0.4 * top ? smoothstep(0.45, 1.1, updraft) * (1 - z / (0.4 * top)) : 0;
-  const lofted = z > fz ? updraft * 0.7 * (1 - smoothstep(0.7 * top, top, z)) : 0;
-  const precip = Math.max((rain + 0.6 * graupel) * (1 - 0.85 * vault), lofted) * cap;
-  if (precip > 0.004) {
-    const base = 3.2e5 * precip ** 2.2 * texture;
-    // Melting layer: rain below, ice above, blended over ~1 km. Weak-updraft (stratiform)
-    // regions get a bright band where wet snow melts.
+  const e = s.echo, fz = s.freezing;
+  if (lx < e.minX || ly < e.minY || lx > e.maxX || ly > e.maxY) return;
+  if (samplePrecipitation(e, lx, ly, z, tmp)) {
     const frozen = smoothstep(fz - 300, fz + 700, z);
-    const above = Math.max(0, z - fz);
-    const zdrColumn = z > fz && above < 2600 * updraft ? smoothstep(0.35, 0.8, updraft) : 0;
-    const brightBand = (1 - smoothstep(0.15, 0.4, updraft)) * Math.exp(-(((z - fz + 150) / 350) ** 2));
-    const iceFactor = 0.2 * 10 ** (-0.12 * above / 1000) * (1 + 2 * zdrColumn);
-    if (frozen < 1) addEcho(out, base * (1 - frozen) * (1 + 2.5 * brightBand), clamp(0.3 + 2.6 * precip ** 0.8, 0.2, 4.2) + brightBand, 0.992 - 0.06 * brightBand);
-    if (frozen > 0) addEcho(out, base * frozen * iceFactor, 0.3 + 2.8 * zdrColumn, 0.985 - 0.02 * zdrColumn);
+    if (tmp.rain > 0) {
+      const zh = RAIN_REFLECTIVITY * tmp.rain;
+      // Large wet snowflakes just below the freezing level reflect like giant drops.
+      const melting = tmp.snow * Math.exp(-(((z - fz + 150) / 350) ** 2));
+      // Rain carried above the freezing level in a strong updraught: large drops among the ice.
+      const column = frozen > 0 ? liquidAloft(e, lx, ly, z - fz) : 0;
+      if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), clamp(0.8 * tmp.sizeMm - 0.5, 0.15, 4.5) + melting, 0.992 - 0.06 * melting);
+      if (frozen > 0) addEcho(out, zh * frozen * 0.2 * (1 + 2 * column), 0.3 + 2.8 * column, 0.985 - 0.02 * column);
+    }
+    if (tmp.hail > 0) {
+      const wet = 1 - frozen;
+      addEcho(out, HAIL_REFLECTIVITY * tmp.hail * (0.35 + 0.65 * wet), 0.1 + 0.5 * wet, 0.92 - 0.06 * wet);
+    }
   }
-  if (hail > 0.02 && z < localTop * 0.92) {
-    const wet = 1 - smoothstep(fz - 300, fz + 700, z);
-    addEcho(out, 6.3e6 * (hail * (1 - 0.15 * wet)) ** 2 * Math.sqrt(texture), 0.1 + 0.5 * wet, 0.92 - 0.06 * wet);
+  const debris = sampleDebris(e, lx, ly, z);
+  if (debris > 0) {
+    const cell = Math.floor((lx + 99) * 7) * 977 + Math.floor((ly + 99) * 7);
+    addEcho(out, DEBRIS_REFLECTIVITY * debris, (gateNoise(cell, s.seed) - 0.5) * 2, 0.25 + 0.35 * gateNoise(cell, s.seed + 0.5) ** 2);
   }
-  if (debris > 0.03 && z < s.debrisTopM) {
-    const lofting = debris * (1 - z / s.debrisTopM);
-    addEcho(out, 2.5e5 * lofting ** 1.5 * texture, (gateNoise(Math.floor((lx + 99) * 7) * 977 + Math.floor((ly + 99) * 7), s.seed) - 0.5) * 2, 0.3 + 0.3 * fbm(s.seed + 7, lx, ly, s.time) ** 2);
-  }
-  anvilEcho(s, lx, ly, z, out, texture);
 }
 
-function anvilEcho(s, lx, ly, z, out, texture = 1) {
-  const top = s.top, fz = s.freezing;
-  if (z < Math.max(fz, 0.45 * top) || z > top * 1.05) return;
-  const frac = clamp((z - 0.45 * top) / (0.45 * top), 0, 1);
-  // Anvil ice spreads downstream and broadens with height.
-  const ice = (sampleEcho(s.echo, 'ice', lx - s.anvilX * frac, ly - s.anvilY * frac) + 0.5 * sampleEcho(s.echo, 'updraft', lx - s.anvilX * frac, ly - s.anvilY * frac))
-    * (0.6 + 0.6 * frac) * (1 - smoothstep(top * 0.9, top * 1.05, z));
-  if (ice > 0.02) addEcho(out, 4e3 * ice * ice * texture, 0.35, 0.988);
+// How far a place above the freezing level is inside a strong updraught's column of lofted rain (0-1).
+function liquidAloft(e, lx, ly, aboveM) {
+  let most = 0;
+  for (const core of e.cores) {
+    if (aboveM > 2600 * core.w / 45) continue;
+    const dx = lx - core.x, dy = ly - core.y, r2 = (dx * dx + dy * dy) / (core.R * core.R);
+    if (r2 < 6) most = Math.max(most, smoothstep(0.35, 0.8, core.w / 45 * Math.exp(-r2)));
+  }
+  return most;
 }
 
 function clearAirEchoes(scene, x, y, z, out, { bl, bioZ }) {
@@ -359,13 +366,13 @@ function clearAirEchoes(scene, x, y, z, out, { bl, bioZ }) {
   const bin = binAt(scene.boundaryBins, x, y);
   if (bin) for (const b of bin) {
     const d = segmentDistance(x, y, b.ax, b.ay, b.bx, b.by);
-    if (d < 4) addEcho(out, b.z * Math.exp(-((d / 1.3) ** 2)) * depth, 4.5, 0.45);
+    if (d < 4) addEcho(out, b.z * Math.exp(-((d / b.widthKm) ** 2)) * depth, 4.5, 0.45);
   }
   addEcho(out, bioZ * depth, 5.5, 0.38);
 }
 
-// What storms add to the environmental wind: mesocyclone and tornado vortices, outflow from
-// downdrafts, the rear-inflow jet and divergence near storm top.
+// What storms add to the environmental wind: mesocyclone and tornado vortices, outflow away
+// from the heavy rain near the ground, the rear-inflow jet and the anvil's outflow near the top.
 const gradient = {};
 function stormWindAt(scene, x, y, z, out) {
   out.u = 0; out.v = 0;
@@ -373,36 +380,42 @@ function stormWindAt(scene, x, y, z, out) {
   if (!bin) return;
   for (const s of bin) {
     const lx = x - s.x, ly = y - s.y, e = s.echo;
-    if (Math.abs(lx) > s.halfKm || Math.abs(ly) > s.halfKm) continue;
+    if (lx < e.minX || ly < e.minY || lx > e.maxX || ly > e.maxY) continue;
     // Mesocyclone: strongest at mid levels, present down to the ground in mature supercells.
     const mesoDepth = 0.55 + 0.45 * Math.exp(-(((z - 4500) / 2600) ** 2));
-    addVortex(out, lx - e.mesocyclone.x, ly - e.mesocyclone.y, e.mesocyclone.radiusKm, e.mesocyclone.vmaxMs * mesoDepth * (z > s.top ? 0.2 : 1));
-    if (e.tornado && z < s.tornadoDepthM) addVortex(out, lx - e.tornado.x, ly - e.tornado.y, e.tornado.radiusKm, e.tornado.vmaxMs * (1 - z / s.tornadoDepthM * 0.6));
+    const lean = clamp(z / MESOCYCLONE_LEAN_M, 0, 1), meso = e.mesocyclone;
+    addVortex(out, lx - meso.x - (meso.aloftX - meso.x) * lean, ly - meso.y - (meso.aloftY - meso.y) * lean, meso.radiusKm, e.spin * e.mesocyclone.vmaxMs * mesoDepth * (z > s.top ? 0.2 : 1), true);
+    if (e.tornado && z < s.tornadoDepthM) addVortex(out, lx - e.tornado.x, ly - e.tornado.y, e.tornado.radiusKm, e.spin * e.tornado.vmaxMs * (1 - z / s.tornadoDepthM * 0.6));
     if (z < 1500) {
-      // Outflow spreads away from downdraft cores (gust fronts, RFD surges).
-      echoGradient(e, 'downdraft', lx, ly, gradient);
-      const k = 260 * (1 - z / 1500);
+      // Rain-cooled air spreads away from the heavy rain: gust fronts, and the surge behind a hook.
+      heavinessGradient(e, 'low', lx, ly, gradient);
+      const k = STORM_WINDS.outflow * e.coldPool * (1 - z / 1500);
       out.u += -k * gradient.x; out.v += k * gradient.y;
     } else if (z > 0.7 * s.top) {
-      echoGradient(e, 'updraft', lx, ly, gradient);
-      const k = 220 * clamp((z - 0.7 * s.top) / (0.3 * s.top), 0, 1);
+      heavinessGradient(e, 'aloft', lx, ly, gradient);
+      const k = STORM_WINDS.anvil * clamp((z - 0.7 * s.top) / (0.3 * s.top), 0, 1);
       out.u += -k * gradient.x; out.v += k * gradient.y;
     }
-    const rij = sampleEcho(e, 'rearInflow', lx, ly);
-    if (rij > 0.01 && z < 6000) {
-      // Rear-inflow jet: storm-relative flow toward the leading line, descending to the surface at the bow apex.
-      const profile = Math.exp(-(((z - 2500) / 1800) ** 2));
-      out.u += 24 * rij * profile * e.mx; out.v += -24 * rij * profile * e.my;
+    if (e.frontToRear > 0 && z > FRONT_TO_REAR_BASE_M && z < s.top) {
+      // A mature line's front-to-rear current, through the rain it carries rearward.
+      const current = e.frontToRear * frontToRearShare(z, s.top) * sampleHeaviness(e, 'middle', lx, ly);
+      out.u += -current * e.mx; out.v += current * e.my;
+    }
+    if (e.rearInflow > 0.01 && z < 6000) {
+      // Rear-inflow jet: air driven toward the leading line through the rain behind it, strongest about 2.5 km up.
+      const jet = e.rearInflow * sampleHeaviness(e, 'middle', lx, ly) * Math.exp(-(((z - 2500) / 1800) ** 2));
+      out.u += STORM_WINDS.rearInflowMs * jet * e.mx; out.v += -STORM_WINDS.rearInflowMs * jet * e.my;
     }
   }
 }
 
-// Cyclonic Rankine-like vortex; dx, dy in the screen frame (km).
-function addVortex(out, dx, dy, radiusKm, vmax) {
-  if (!(vmax > 0)) return;
+// Rankine-like vortex, cyclonic for a positive speed; dx, dy in the screen frame (km). A
+// mesocyclone's wind fades beyond about three of its radii (it is one storm's rotation, not the air's).
+function addVortex(out, dx, dy, radiusKm, vmax, fades = false) {
+  if (!vmax) return;
   const rho = Math.hypot(dx, dy);
   if (rho < 1e-3 || rho > radiusKm * 12) return;
-  const vt = vmax * (rho < radiusKm ? rho / radiusKm : (radiusKm / rho) ** 0.8);
+  const vt = vmax * (rho < radiusKm ? rho / radiusKm : (radiusKm / rho) ** 0.8) / (fades ? 1 + (rho / (3 * radiusKm)) ** 3 : 1);
   // Counter-clockwise on a north-up map: east component dy/ρ, north component dx/ρ.
   out.u += vt * dy / rho;
   out.v += vt * dx / rho;
@@ -427,13 +440,17 @@ function envWindAt(env, x, y, z, out) {
   out.v = lerp(envSample(env, env.levelV[k], x, y), envSample(env, env.levelV[k + 1], x, y), t);
 }
 
-function meanStormMotion(storms, env, widthKm, heightKm) {
+// The motion of the storms within reach of a place, the stronger counting for more.
+function meanStormMotion(storms, env, x, y, reachKm) {
   let u = 0, v = 0, w = 0;
-  for (const s of storms) { const k = 0.2 + s.weight; u += s.motion.u * k; v += s.motion.v * k; w += k; }
+  for (const s of storms) {
+    if (Math.hypot(s.x - x, s.y - y) > reachKm) continue;
+    const k = 0.2 + s.weight; u += s.motion.u * k; v += s.motion.v * k; w += k;
+  }
   if (w > 0) return { u: u / w, v: v / w, source: 'tracked-storms' };
-  // No storms: 0-6 km mean wind at the domain centre.
-  const cx = widthKm / 2, cy = heightKm / 2, sample = {};
-  for (let z = 0; z <= 6000; z += 500) { envWindAt(env, cx, cy, z, sample); u += sample.u; v += sample.v; w++; }
+  // No storms: the 0-6 km mean wind there.
+  const sample = {};
+  for (let z = 0; z <= 6000; z += 500) { envWindAt(env, x, y, z, sample); u += sample.u; v += sample.v; w++; }
   return { u: u / w, v: v / w, source: 'mean-wind' };
 }
 
@@ -479,6 +496,18 @@ function binAt(bins, x, y) {
   const bx = Math.floor(x / bins.size), by = Math.floor(y / bins.size);
   if (bx < 0 || by < 0 || bx >= bins.cols || by >= bins.rows) return null;
   return bins.cells[by * bins.cols + bx];
+}
+
+// Cuts the corners off a line of points (each piece replaced by its quarter points).
+function roundCorners(points) {
+  if (points.length < 3) return points;
+  const out = [points[0]];
+  for (let k = 0; k < points.length - 1; k++) {
+    const a = points[k], b = points[k + 1];
+    out.push({ x: 0.75 * a.x + 0.25 * b.x, y: 0.75 * a.y + 0.25 * b.y }, { x: 0.25 * a.x + 0.75 * b.x, y: 0.25 * a.y + 0.75 * b.y });
+  }
+  out.push(points.at(-1));
+  return out;
 }
 
 function segmentDistance(px, py, ax, ay, bx, by) {

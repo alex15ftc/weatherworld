@@ -14,6 +14,7 @@
     "inspect:activity": "node scripts/activity-report.mjs",
     "inspect:tornado-days": "node scripts/tornado-day-report.mjs",
     "inspect:players": "node scripts/player-report.mjs",
-    "inspect:risk": "node scripts/risk-climate.mjs"
+    "inspect:risk": "node scripts/risk-climate.mjs",
+    "inspect:outlook": "node scripts/outlook-verify.mjs"
   }
 }

@@ -68,7 +68,7 @@ async function serveApi(url, req, res) {
   }
   if (url.pathname === '/api/radar/mosaic') {
     const mosaic = runtime.radarMosaic();
-    const meta = { product: 'reflectivity', width: mosaic.width, height: mosaic.height, resKm: mosaic.resKm, tilt: mosaic.tiltDeg, validHourUtc: mosaic.validHourUtc, revision: mosaic.revision, buildMs: +mosaic.buildMs.toFixed(1) };
+    const meta = { product: 'reflectivity', width: mosaic.width, height: mosaic.height, resKm: mosaic.resKm, composite: true, validHourUtc: mosaic.validHourUtc, revision: mosaic.revision, buildMs: +mosaic.buildMs.toFixed(1) };
     return sendGzipBinary(req, res, mosaic.bytes, { 'x-radar-meta': JSON.stringify(meta) }, trace);
   }
   if (url.pathname.startsWith('/api/radar/')) return sendJson(req, res, 404, { error: 'Unknown radar endpoint' }, { cacheable:false, trace });

@@ -49,7 +49,9 @@ Settings are in `REGIONAL_DEFAULTS`.
 | `StormRotation.js` | mid-level rotation, low-level rotation and occlusion, from the storm's state and its inflow |
 | `TornadoEngine.js` | the tornado: forms from low-level rotation, lasts while the storm holds it, wind follows it |
 | `StormGeometry.js` | where the storm's parts are (updraught, wall cloud, rain and hail cores, gust front, anvil, tornado): one description for the radar and the game's 3D object |
-| `StormStructureEngine.js`, `StormInternalField.js` | the radar's picture and inner fields, built from the storm's state and geometry |
+| `StormStructureEngine.js`, `StormInternalField.js` | where a storm's rotation and its line's cores are, and its inner fields, built from the storm's state and geometry |
+| `js/radar/PrecipitationField.js` | where a storm's rain, snow, hail and debris are, at ten heights: precipitation of several sizes followed from each updraught through the storm-relative wind and the mesocyclone as it falls, sticks together, melts and evaporates. The forward flank, hook, overhang, anvil and a line's rain shield are where the wind puts them |
+| `js/radar/RadarSimulator.js` | what each radar measures of that through its beam (reflectivity, velocity, dual-pol), and the network mosaic of composite reflectivity |
 
 `AtmosphereWorld.prepare()` gives the storms what they read: soundings, convergence lift,
 ascent from 500 mb height falls, and the mesoscale diagnoses in

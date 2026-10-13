@@ -24,7 +24,7 @@ export function groundRangeKm(slantRangeKm, elevationDeg) {
 
 export const RADAR_PRODUCTS = {
   reflectivity: {
-    label: 'Base reflectivity', short: 'REF', units: 'dBZ', min: -32, step: 0.5, decimals: 1,
+    label: 'Base reflectivity', short: 'REF', units: 'dBZ', min: -32, step: 0.5, decimals: 1, band: 5,
     stops: [[-12, 70, 70, 90, 0], [-5, 90, 90, 110, 70], [5, 4, 233, 231, 255], [10, 1, 159, 244, 255], [15, 3, 0, 244, 255],
       [20, 2, 253, 2, 255], [25, 1, 197, 1, 255], [30, 0, 142, 0, 255], [35, 253, 248, 2, 255], [40, 229, 188, 0, 255],
       [45, 253, 149, 0, 255], [50, 253, 0, 0, 255], [55, 212, 0, 0, 255], [60, 188, 0, 0, 255], [65, 248, 0, 253, 255],
@@ -32,24 +32,24 @@ export const RADAR_PRODUCTS = {
     legend: [5, 20, 35, 50, 65, 75]
   },
   velocity: {
-    label: 'Base velocity', short: 'VEL', units: 'm/s', min: -63.5, step: 0.5, decimals: 1,
+    label: 'Base velocity', short: 'VEL', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5,
     stops: [[-63.5, 120, 255, 255, 255], [-40, 0, 255, 90, 255], [-25, 0, 200, 40, 255], [-10, 0, 120, 20, 255], [-1, 40, 75, 45, 255],
       [0, 115, 110, 110, 255], [1, 80, 35, 40, 255], [10, 140, 0, 15, 255], [25, 215, 0, 25, 255], [40, 255, 70, 70, 255], [63.5, 255, 210, 170, 255]],
     legend: [-50, -25, 0, 25, 50]
   },
   stormRelativeVelocity: {
-    label: 'Storm-relative velocity', short: 'SRV', units: 'm/s', min: -63.5, step: 0.5, decimals: 1,
+    label: 'Storm-relative velocity', short: 'SRV', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5,
     stops: null, // shares the velocity table
     legend: [-50, -25, 0, 25, 50]
   },
   correlationCoefficient: {
-    label: 'Correlation coefficient', short: 'CC', units: 'ρhv', min: 0.2, step: 0.0035, decimals: 3,
+    label: 'Correlation coefficient', short: 'CC', units: 'ρhv', min: 0.2, step: 0.0035, decimals: 3, band: 0.05,
     stops: [[0.2, 20, 20, 95, 255], [0.45, 60, 80, 200, 255], [0.65, 100, 190, 240, 255], [0.75, 90, 220, 100, 255], [0.85, 240, 230, 60, 255],
       [0.9, 250, 150, 30, 255], [0.95, 230, 40, 40, 255], [0.97, 175, 20, 95, 255], [1.0, 240, 170, 230, 255], [1.09, 255, 255, 255, 255]],
     legend: [0.2, 0.6, 0.8, 0.9, 0.97, 1.0]
   },
   differentialReflectivity: {
-    label: 'Differential reflectivity', short: 'ZDR', units: 'dB', min: -4, step: 0.05, decimals: 2,
+    label: 'Differential reflectivity', short: 'ZDR', units: 'dB', min: -4, step: 0.05, decimals: 2, band: 0.5,
     stops: [[-4, 60, 60, 60, 255], [-1, 120, 120, 140, 255], [0, 200, 200, 200, 255], [0.5, 80, 80, 220, 255], [1, 60, 170, 240, 255],
       [1.5, 70, 220, 140, 255], [2, 90, 220, 60, 255], [2.5, 240, 240, 60, 255], [3, 250, 170, 40, 255], [4, 240, 60, 40, 255],
       [5, 200, 30, 120, 255], [6, 250, 150, 220, 255], [8.7, 255, 255, 255, 255]],
@@ -70,12 +70,13 @@ export function decodeRadarValue(product, byte) {
   return spec.min + (byte - 1) * spec.step;
 }
 
-// 256-entry RGBA lookup table for a product; entry 0 is transparent.
-export function radarColorTable(product) {
-  const stops = RADAR_PRODUCTS[product].stops;
+// 256-entry RGBA lookup table for a product; entry 0 is transparent. Stepped, every value in
+// a band (5 dBZ for reflectivity) takes the band's colour, as on the classic displays.
+export function radarColorTable(product, stepped = false) {
+  const { stops, band } = RADAR_PRODUCTS[product];
   const lut = new Uint8Array(256 * 4);
   for (let b = 1; b < 256; b++) {
-    const v = decodeRadarValue(product, b);
+    const value = decodeRadarValue(product, b), v = stepped ? Math.floor(value / band + 1e-6) * band : value;
     let j = 0;
     while (j < stops.length - 2 && v > stops[j + 1][0]) j++;
     const a = stops[j], c = stops[j + 1];

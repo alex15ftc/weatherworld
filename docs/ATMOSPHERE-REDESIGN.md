@@ -855,6 +855,31 @@ simulated strip beyond the playable area would cure it, written up in `STATUS.md
 "Later, if wanted" and not done); severe weather as a whole still favours the east half (37%
 against 57%).
 
+### The Day 1 outlook (2026-10-12)
+
+Asked for: a discussion, risk categories and hatching, like the real ones.
+
+- `js/forecast/DayOneOutlook.js`: members (the world copied and run ahead, each with its own
+  storm seed), their average practically perfect chance per hazard, this world's categories,
+  hatching from the significant chances (10% and 30%), and a discussion in the real layout
+  (headline, summary, synopsis, tornado, hail, wind, uncertainty) written from those numbers.
+- `server/OutlookRuntime.js` and `server/outlookMember.js`: issued at start-up and at 12Z in
+  separate processes, about 25 seconds for eight members; routes `/api/outlooks/day1` and
+  `/api/outlooks/status`.
+- `day1.html` and `js/pages/outlookPage.js` replace the old Day 1 page (kept in
+  `phase9-old-day1-page`). Days 2 and 3 keep the old placeholder.
+- **A bug found and fixed**: members run one after another in one process from the same
+  serialized world did not start from the same state, because arrays read out of the same
+  bytes can share memory and a member advances them in place. Each member now gets its own
+  copy (`stateFromBytes`); the server's members always read their own. The first
+  verification run was affected and was thrown away.
+- `scripts/outlook-verify.mjs` (36 outlooks): highest category right on 72% of days and
+  within one on all; too low on 25%, too high on 3%; tornado chances reliable (15-30% ->
+  26%, 30-45% -> 41%, 45-60% -> 64%, 60%+ -> 87%); the day's tornado count inside the
+  forecast range on 83% of days. Forecast mix Slight 42, Enhanced 47, Moderate 11, High 0
+  against verified 33, 47, 14, 6.
+- Tests: `tests/day-one-outlook.mjs`.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and
