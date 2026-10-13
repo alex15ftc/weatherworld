@@ -78,7 +78,10 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
         cells.push(i); total += amount[i]; reaching += strong[i];
         for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && mark[j] !== pass && chance[j] >= level - 1e-9) { mark[j] = pass; stack.push(j); }
       }
-      const group = conditionalCig(total, reaching, bounds), parent = owner[start];
+      // An area is never given a lower group than the area around it: that one was judged with
+      // these cells in it, and the few reports inside a small core are too few to overrule it
+      // (it would leave a hole in the hatching where the chance is highest).
+      const parent = owner[start], group = Math.max(conditionalCig(total, reaching, bounds), parent >= 0 ? areas[parent].group : 0);
       for (const i of cells) { out[i] = group; owner[i] = areas.length; }
       areas.push({ level, cells: Int32Array.from(cells), group, parent });
     }

@@ -60,7 +60,7 @@ assert.equal(conditionalCig(0, 0, CIG_BOUNDS.wind), 0); assert.equal(conditional
   const groups = contourCig('hail', hail, hail, [big, giant], w, h);
   assert.equal(groups[at(4, 4)], 0, 'a seventh of the western area\'s hail is big: no group, even right beside it'); assert.equal(groups[at(1, 4)], 0);
   assert.equal(groups[at(12, 4)], 2, 'half the eastern area\'s hail is big: CIG2 over all of it');
-  assert.equal(groups[at(15, 4)], 0, 'but only a tenth of the hail in its 45% core is: the core has no group'); assert.equal(groups[at(10, 4)], 0);
+  assert.equal(groups[at(15, 4)], 2, 'only a tenth of the hail in its 45% core is, but the core keeps the group of the area around it: no hole'); assert.equal(groups[at(10, 4)], 0);
 }
 
 // --- From reports on the map: contour levels and intensity groups, and the category from them.

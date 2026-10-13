@@ -22,7 +22,7 @@
     #legend i { flex: none; display: inline-block; width: 22px; height: 13px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, .5); }
     #legend i.hatch { background-color: #cbd5e1; }
     /* CIG1: broken lines falling to the lower left; CIG2: solid lines falling to the lower right; CIG3: crossed. */
-    #legend i.cig1 { background-image: repeating-linear-gradient(135deg, #111827 0 1.5px, transparent 1.5px 6px); -webkit-mask-image: repeating-linear-gradient(45deg, #000 0 5px, transparent 5px 8px); mask-image: repeating-linear-gradient(45deg, #000 0 5px, transparent 5px 8px); }
+    #legend i.cig1 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='13'%3E%3Cpath d='M-9 13L4 0M-2 13L11 0M5 13L18 0M12 13L25 0M19 13L32 0' stroke='%23111827' stroke-width='1.5' stroke-dasharray='4 2.5'/%3E%3C/svg%3E"); }
     #legend i.cig2 { background-image: repeating-linear-gradient(45deg, #111827 0 1.5px, transparent 1.5px 6px); }
     #legend i.cig3 { background-image: repeating-linear-gradient(45deg, #111827 0 1.5px, transparent 1.5px 6px), repeating-linear-gradient(135deg, #111827 0 1.5px, transparent 1.5px 6px); }
     #summary { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; }
@@ -35,7 +35,7 @@
   </style>
 </head>
 <body data-page="day2">
-<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" class="active" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="radar" href="./radar.html">Radar</a><a class="perf-link" href="./performance.html">Performance</a></nav>
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" class="active" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="mesoscale" href="./mesoscale.html">Mesoscale</a><a data-nav-page="radar" href="./radar.html">Radar</a><a class="perf-link" href="./performance.html">Performance</a></nav>
   <aside class="panel outlook-side">
     <div class="outlook-card">
       <span id="product">Day 2 convective outlook</span>

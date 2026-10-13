@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mesoscale Discussions · Fake Plains Weather</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+  <style>
+    body { display: grid; grid-template-columns: 310px minmax(0, 1fr) 470px; height: 100vh; overflow: hidden; }
+    .md-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; overflow: auto; }
+    .md-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
+    .md-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
+    .md-card strong { font-size: 19px; }
+    #mdList { display: flex; flex-direction: column; gap: 6px; }
+    .md-item { text-align: left; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; }
+    .md-item:hover { border-color: var(--accent); } .md-item.on { border-color: #2563eb; background: rgba(37, 99, 235, .16); } .md-item.lapsed { opacity: .55; }
+    .md-item span { font-size: 12.5px; } .md-item small { grid-column: 1 / -1; color: var(--muted); }
+    #peaks { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; }
+    #peaks span { color: var(--muted); } #peaks b { text-align: right; }
+    .md-map { position: relative; min-width: 0; min-height: 0; padding: 70px 12px 12px; display: flex; align-items: center; justify-content: center; }
+    #mdCanvas { display: block; border-radius: 6px; }
+    .md-text { border-left: 1px solid var(--line); padding-top: 64px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+    #mdText { margin: 0; white-space: pre-wrap; font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--text); }
+    @media (max-width: 1100px) { body { grid-template-columns: 1fr; grid-template-rows: auto 70vh auto; height: auto; overflow: auto; } .md-map { padding-top: 12px; } }
+  </style>
+</head>
+<body data-page="mesoscale">
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="mesoscale" class="active" href="./mesoscale.html">Mesoscale</a><a data-nav-page="radar" href="./radar.html">Radar</a><a class="perf-link" href="./performance.html">Performance</a></nav>
+  <aside class="panel md-side">
+    <div class="md-card">
+      <span>Mesoscale discussions</span>
+      <strong id="status">—</strong>
+      <small class="muted">Blue: watch unlikely. Amber: watch possible. Red: watch likely.</small>
+    </div>
+    <div class="md-card">
+      <span>Most probable peaks</span>
+      <div id="peaks"></div>
+    </div>
+    <div class="md-card">
+      <span>Issued</span>
+      <div id="mdList"></div>
+    </div>
+  </aside>
+  <main class="md-map"><canvas id="mdCanvas"></canvas></main>
+  <aside class="panel md-text">
+    <p class="eyebrow">Discussion</p>
+    <pre id="mdText"></pre>
+  </aside>
+  <script type="module" src="./js/pages/mesoscalePage.js"></script>
+</body>
+</html>
