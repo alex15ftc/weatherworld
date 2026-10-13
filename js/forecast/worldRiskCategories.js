@@ -29,12 +29,12 @@ export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 // that (about 13%, 25%, 35%) cannot be used here as they are: strong tornadoes are a larger
 // share of this world's, and a 30% tornado contour is reached on one day in four, so they
 // make one day in five a High risk. These bars are set so that High stays near one day in
-// ten (320 days: below Slight 7%, Slight 12%, Enhanced about 45%, Moderate about 27%, High
-// 9%). The centre gives no figures for wind and hail; theirs are set the same way. The
+// ten (320 days with the wind bars at 0.3 / 0.6 / 0.8: below Slight 7%, Slight 11%, Enhanced
+// 44%, Moderate 27%, High 11%; the upper wind bars were then raised a little). The centre gives no figures for wind and hail; theirs are set the same way. The
 // upper bars are high because the centre's table makes a 30% tornado contour, or a 60%
 // wind contour, with CIG2 a High risk.
 // Each entry: the least share of an area's reports that must be significant for CIG1, CIG2, CIG3.
-export const CIG_BOUNDS = Object.freeze({ tornado: [0.2, 0.5, 0.65], wind: [0.3, 0.6, 0.8], hail: [0.15, 0.3], severe: [0.3, 0.6] });
+export const CIG_BOUNDS = Object.freeze({ tornado: [0.2, 0.5, 0.65], wind: [0.3, 0.65, 0.85], hail: [0.15, 0.3], severe: [0.3, 0.6] });
 // The fields of the verification's chances behind each hazard's tiers; the first is the
 // significant tier, which decides the group.
 export const CIG_TIERS = Object.freeze({

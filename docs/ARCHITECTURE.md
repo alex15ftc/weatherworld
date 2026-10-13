@@ -92,8 +92,10 @@ minutes per real minute. The world is saved every simulated hour.
 
 `js/forecast/spcOutlookRules.js` holds the Storm Prediction Center's contour levels and
 category tables; `js/forecast/worldRiskCategories.js` reads them (`worldCategory()`) and
-holds the one rule that is this world's own: `contourCig` gives each area inside a contour
-the highest intensity tier that 30% (`CIG_SHARE`) of the reports in it reach.
+holds the one thing that is this world's own: the bars between intensity groups
+(`CIG_BOUNDS`). `contourCigAreas` judges each area inside a contour as a whole, by the share
+of the reports in it that are significant, and hands back the areas so that the hatching can
+be traced along the contours themselves (`outlookShapes`).
 `js/verification/truth.js` gives every cell its unrounded chance of each hazard (`chance`),
 its intensity group (`observedCig`) and its category (`worldRisk`).
 `scripts/risk-climate.mjs` prints the mix of days; `scripts/risk-radius.mjs` the same for

@@ -1001,6 +1001,18 @@ tornado numbers the categories go with (Slight 0-3, Enhanced 3-8, Moderate 5-15+
 table is in STATUS.md. Every world's history is new from here: the earlier lists of High
 days no longer hold.
 
+### Intensity groups as the centre defines them (2026-10-13)
+
+The user: use the rule since March 2026; hatching must go with the contours. From the
+centre's page: a tornado group is a share of tornadoes that are strong (7% EF2+ with none,
+20%, 30%, 40%). The groups here had been tiers (EF2+, EF3+, EF4+ each needing a share).
+Now one quantity, the significant share of an area's reports, with bars this world's own
+(`CIG_BOUNDS`), since the centre's give 16% High days from tornadoes alone and 32% with the
+same on wind (user chose scaled bars). Two table entries corrected (tornado 2% and 5% with
+CIG2). `contourCigAreas` + `groupRings`: a group's outline is the outline of the contour
+areas it is made of. Tried and dropped on the way: hatching by the 25-mile chance of a
+significant event (the centre's rule before 2026).
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

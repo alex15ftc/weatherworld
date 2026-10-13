@@ -27,26 +27,37 @@ worlds ran high.
 **Risk categories** are the Storm Prediction Center's own (as changed in March 2026): the
 chance of each hazard within 25 miles, only at the fixed contour levels; a conditional
 intensity group (CIG1-3; two for hail); and the centre's own table turning the two into a
-category (`js/forecast/spcOutlookRules.js`). Nothing in the table is this world's.
+category (`js/forecast/spcOutlookRules.js`, checked against the published table 2026-10-13).
 
-What is this world's own is how an intensity group is decided, since the centre's
-forecasters judge it: each area inside a contour is given the highest tier that at least
-30% of the reports in it reach (`CIG_SHARE`, `contourCig` in
-`js/forecast/worldRiskCategories.js`). The same rule reads the forecast runs and the
-reports that verify them.
+**Intensity groups** are conditional, as the centre's are: a group says how large a share
+of the severe weather is significant where it happens (tornado EF2+, wind 75 mph, hail 2
+in). The centre's tornado groups go with about 7% of tornadoes EF2+ where none is drawn,
+20% in CIG1, 30% in CIG2 and 40% in CIG3. Each area inside a contour is judged as a whole
+from the reports in it (`contourCigAreas`), so the hatching follows the contours.
 
-| | Below Slight | Slight | Enhanced | Moderate | High |
+Where the bars between groups stand is this world's own (`CIG_BOUNDS` in
+`js/forecast/worldRiskCategories.js`), because the centre's would make one day in five a
+High risk here (strong tornadoes are a larger share of this world's, and a 30% tornado
+contour is reached on a quarter of days):
+
+| Least share of an area's reports that is significant | CIG1 | CIG2 | CIG3 |
+|---|---|---|---|
+| The centre's tornado groups imply about | 13% | 25% | 35% |
+| Tornado (EF2+) | 20% | 50% | 65% |
+| Wind (75 mph) | 30% | 65% | 85% |
+| Hail (2 in) | 15% | 30% | - |
+| Any severe weather, Day 3 | 30% | 60% | - |
+
+| 320 days, eight worlds | Below Slight | Slight | Enhanced | Moderate | High |
 |---|---|---|---|---|---|
 | First wanted | 5% | 30% | 40% | 20% | 5% |
-| 320 days, eight worlds | 7% | 10% | 52% | 23% | 8% |
+| Measured (upper wind bars at 60% and 80%; since raised a little) | 7% | 11% | 44% | 27% | 11% |
 
-The user accepted this mix to keep the centre's table and its 25 miles. Medians: Slight 1
-tornado, Enhanced 7, Moderate 18, High 36. Slight is thin and Enhanced fat because damaging
-wind is widespread here; only the storms' wind would change that. `npm run inspect:risk`
-prints the mix. Tried and set aside: this world's own table (hit the wanted mix, but was not
-the real table); a smaller radius (10 or 15 miles: thins the tornado contours but High stays
-near 38%, since wind makes those days; `node scripts/risk-radius.mjs`); the group from the
-single strongest report in a contour (High 43%); the group point by point (High 33%).
+How often a contour that is reached comes hatched: tornado 15% contour 42% of the time,
+30% contour 53%, 60% contour 63% (23%, 32% and 39% before the tornado change and these
+groups); wind CIG1 on about 15% of days and CIG2 on 2-4%; hail CIG1 on about 11% of days
+(1-2% before). The upper groups stay rare because the centre's table makes a 30% tornado
+contour or a 60% wind contour with CIG2 a High risk. `npm run inspect:risk` prints the mix.
 
 **Across the map, and from day to day.** The map roams along the geography: each day it
 moves 50 to 150 miles one way or the other, between having the high ground over its western
@@ -174,70 +185,33 @@ storms and in the discussion. A quiet Day 3 can be forecast with a chance of sev
 weather, because most of what could arrive from upstream here is severe.
 
 **Verification** (`npm run inspect:outlook`; eight worlds, seven mornings each, the outlooks
-made as the server makes them; 56 Day 1, 48 Day 2 and 40 Day 3 outlooks):
+made as the server makes them; 56 Day 1, 48 Day 2 and 40 Day 3 outlooks; 2026-10-13, with
+the tornado numbers and intensity groups as they are now):
 
 | | Day 1 | Day 2 | Day 3 |
 |---|---|---|---|
-| Highest category of the day right | 77% | 71% | 68% |
-| Within one category | 100% | 98% | 98% |
-| Forecast too high / too low | 11% / 13% | 10% / 19% | 10% / 23% |
-| Category right, place by place | 75% of the map | 58% | 48% |
-| Within one, place by place | 97% | 90% | 81% |
-| Forecast High / verified High | 9% / 7% | 4% / 6% | never / never (Day 3 stops at Moderate) |
+| Highest category of the day right | 70% | 67% | 70% |
+| Within one category | 100% | 94% | 98% |
+| Forecast too high / too low | 14% / 16% | 10% / 23% | 10% / 20% |
+| Category right, place by place | 75% of the map | 57% | 47% |
+| Forecast High / verified High | 11% / 13% | 6% / 13% | Day 3 stops at Moderate |
 
 Share of the places inside each contour (up to the next) where it then happened within 25 miles:
 
 | | 2% | 5% | 10% | 15% | 30% | 45% | 60% | 75% | 90% |
 |---|---|---|---|---|---|---|---|---|---|
-| Day 1 tornado | 2% | 6% | 12% | 23% | 45% | 72% | 90% | | |
-| Day 2 tornado | 4% | 7% | 13% | 24% | 48% | 63% | 91% | | |
+| Day 1 tornado | 2% | 7% | 11% | 23% | 47% | 77% | 86% | | |
+| Day 2 tornado | 3% | 8% | 13% | 26% | 48% | 70% | - | | |
 | Day 1 wind | | 3% | | 15% | 46% | 77% | 93% | 99% | 100% |
-| Day 2 wind | | 6% | | 22% | 50% | 74% | 89% | 98% | 100% |
 | Day 1 hail | | 5% | | 17% | 47% | 72% | 89% | | |
-| Day 2 hail | | 7% | | 26% | 53% | 75% | 89% | | |
 | Day 3 any severe | | 16% | | 26% | 45% | 69% | 88% | | |
 
-Every contour holds at least what it says. The later days are right about the day's highest
-category nearly as often as Day 1 and much less often about where. Day 3's weak point is
-outside its contours: 13% of the places it left out had severe weather within 25 miles.
-**Intensity groups.** A group is a promise about how strong the weather is where it
-happens, so it is checked at the places the hazard came within 25 miles (Day 1 outlooks):
-
-| Group drawn | Tornado: EF2+ / EF3+ / EF4+ nearby | Wind: 75 / 85 / 96 mph | Hail: 2 in |
-|---|---|---|---|
-| none | 19% / 7% / 1% | 18% / 2% / 0% | 14% |
-| CIG1 | 35% / 13% / 2% | 65% / 32% / 5% | 49% |
-| CIG2 | too little drawn | 99% / 84% / 29% | never drawn |
-| CIG3 | 46% / 44% / 12% | never drawn | - |
-
-(Measured before the tornado change below; the outlooks have not been verified since.)
-
-**Tornado numbers and hatching (2026-10-13).** In the real outlooks a high tornado contour
-comes hatched: the days with many tornadoes are the days with strong ones. Here the big days
-got their numbers from weak tornadoes. Tornado production now rises as the square of a
-storm's low-level rotation (`TORNADO` in `TornadoEngine.js`: from no rotation, to 2.2 an
-hour at full), and a tornado area is hatched when 15% of its tornadoes are EF2+
-(`CIG_SHARES.tornado`: 15%, 40%, 25%). On 320 days:
-
-| | Before | Now | The user's guide |
-|---|---|---|---|
-| Days with a tornado | 83% | 81% | |
-| Tornadoes on a Slight day (middle half) | 0-1 | 0-1 | 0-3 |
-| Enhanced | 3-13 | 1-8 | 3-8 |
-| Moderate | 12-32 | 7-22 | 5-15+ |
-| High | 26-49 | 29-44 | 10-30+ |
-| 15% tornado contour reached / of those, hatched | 62% / 23% | 57% / 51% | |
-| 30% tornado contour reached / hatched | 38% / 32% | 32% / 62% | |
-| 60% tornado contour reached / hatched | 10% / 39% | 8% / 81% | |
-| Mix: below Slight / Slight / Enhanced / Moderate / High | 7 / 10 / 52 / 23 / 8 | 7 / 11 / 50 / 24 / 8 | |
-
-Tried: a starting threshold of 0.04 with 3 an hour (the numbers nearest the guide: Enhanced
-1-7, Moderate 6-21, but a tornado on only 76% of days); no threshold with 3 an hour (84% of
-days, but Moderate 8-26 and High 29-48, 11% High days). The upper tornado groups stay rare
-(CIG2 or CIG3 on about 2% of days) because a 30% tornado contour with CIG2 is a High risk in
-the centre's table. Wind and hail groups are as they were: wind CIG2 on about 1% of days,
-CIG3 never; hail CIG1 on 1-2% of days, CIG2 never. Seed 8 is still the quiet world (a tornado
-on 63% of its days).
+Intensity groups, at the places the hazard came within 25 miles (Day 1): with no group
+drawn 11% had an EF2+ tornado nearby, in CIG1 32%; wind 18%, 63% and 84% had a 75 mph gust
+(none, CIG1, CIG2); hail 12%, 36% and 49% had 2 inch hail. On Day 2 the wind and hail groups
+hold (22% / 64% / 82%; 13% / 30%) and the tornado groups do not (15% against 22%): four runs
+are too few to say how strong the tornadoes will be. Day 2 is also too low more often than
+too high. Day 3 leaves 12% of the places with severe weather outside its contours.
 
 Not yet done:
 
