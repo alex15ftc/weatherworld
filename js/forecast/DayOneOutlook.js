@@ -1,36 +1,40 @@
-// The Day 1 convective outlook, laid out as the Storm Prediction Center lays out its own (as
-// changed in March 2026):
+// The convective outlooks for Days 1 to 3, laid out as the Storm Prediction Center lays out its
+// own (as changed in March 2026):
 //   - the chance of each hazard within 25 miles of a point, given only at fixed contour
 //     levels (tornado 2, 5, 10, 15, 30, 45, 60%; wind 5 to 90%; hail 5 to 60%), never as an
-//     exact figure;
+//     exact figure; Day 3 gives one chance, of any severe weather (5 to 60%);
 //   - conditional intensity groups (CIG1 to CIG3; two for hail), hatched over the chances:
 //     how strong the severe weather is expected to be where it happens;
-//   - the categorical outlook, from the chance and the intensity group together;
+//   - the categorical outlook, from the chance and the intensity group together, through the
+//     centre's own tables;
 //   - a general thunderstorm area, where the chance of thunderstorms is 10% or more;
 //   - a written discussion.
+// Day 1 is the outlook day in progress (12Z to 12Z), Day 2 the next, Day 3 the one after.
+// Day 1 is updated every 6 hours, Day 2 every 12 and Day 3 every 24 (OUTLOOK.updateHours).
 //
 // It is a forecast, not a look at the answer. The world is copied at issue time and run ahead
 // several times over (the members). Every member has the same atmosphere to start from, but
 // its storms take their chances differently: where exactly each one starts, which of them put
 // down a tornado and when. What the members agree on becomes a high chance; what only some of
-// them do, a lower one. The day that then happens is one more such draw.
+// them do, a lower one. The day that then happens is one more such draw. One run of the
+// members serves every day it reaches: each member reports each outlook day separately.
 import v8 from 'node:v8';
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
-import { captureTruth, aggregateTruth, CHANCE_FIELDS } from '../verification/truth.js';
+import { captureTruth, aggregateTruth, practicallyPerfectChance, CHANCE_FIELDS } from '../verification/truth.js';
 import { contourRings, softenArea } from './contourShapes.js';
-import { WORLD_RISK_ORDER, WORLD_RISK_LABELS, WORLD_HAZARDS, WORLD_MAX_CIG, CIG_MEANING, PROBABILITY_LEVELS, probabilityLevel, worldCategory, worldCategoryFromHazard, drawnCig } from './worldRiskCategories.js';
+import { WORLD_RISK_ORDER, WORLD_RISK_LABELS, WORLD_HAZARDS, WORLD_MAX_CIG, CIG_MEANING, PROBABILITY_LEVELS, probabilityLevel, worldCategory, worldCategoryFromHazard, drawnCig, conditionalCig, CIG_TIERS } from './worldRiskCategories.js';
 
 export const OUTLOOK = Object.freeze({
   members: 8, stepHours: 0.5, dayStartUtc: 12,
+  // The outlooks, how often each is issued afresh (hours, counted from 12Z), and what each
+  // gives a chance of.
+  days: ['day1', 'day2', 'day3'],
+  updateHours: { day1: 6, day2: 12, day3: 24 },
+  hazards: { day1: WORLD_HAZARDS, day2: WORLD_HAZARDS, day3: ['severe'] },
   // The general thunderstorm area: this chance (0-1) of a thunderstorm within 25 miles.
   thunderShare: 0.1,
-  // An intensity group is drawn where the chance of weather of its tier within 25 miles is at
-  // least this (percent); the highest tier that meets it gives the group.
-  cigChance: 10,
-  levels: { tornado: PROBABILITY_LEVELS.tornado, wind: PROBABILITY_LEVELS.wind, hail: PROBABILITY_LEVELS.hail }
+  levels: PROBABILITY_LEVELS
 });
-// The tiers behind each hazard's intensity groups (fields of the verification's chances).
-const TIERS = { tornado: ['tornadoSig', 'tornadoExtreme', 'tornadoViolent'], wind: ['windSig', 'windExtreme', 'windViolent'], hail: ['hailSig', 'hailExtreme'] };
 const rank = category => WORLD_RISK_ORDER.indexOf(category);
 const quantile = (values, q) => { const v = values.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.min(v.length - 1, Math.floor(q * (v.length - 1)))] : 0; };
 
@@ -46,19 +50,36 @@ export function hoursToDayEnd(hourUtc, dayStartUtc = OUTLOOK.dayStartUtc) {
 // from wherever the first one left off.
 export function stateFromBytes(bytes) { return v8.deserialize(Buffer.from(bytes)); }
 
-// One member: the saved world run ahead with its storms' chances drawn afresh. `state` must
-// be this member's own copy (see stateFromBytes).
-export function runOutlookMember(state, member, hours) {
+// One member: the saved world run ahead with its storms' chances drawn afresh, reported one
+// outlook day at a time (the first is what is left of the day in progress; a new one starts
+// at each 12Z). `state` must be this member's own copy (see stateFromBytes).
+export function runOutlookMemberDays(state, member, hours) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
-  const world = atmosphere.world;
+  const world = atmosphere.world, n = world.width * world.height, total = () => world.stormEngine?.totalTornadoes ?? 0;
   world.evolution = { ...(world.evolution ?? {}), config: { ...(world.evolution?.config ?? {}), seed: `${state.seed}|outlook|${member}` } };
-  const frames = [], seen = new Set(), initiations = [], startHour = world.validHourUtc, before = world.stormEngine?.totalTornadoes ?? 0;
-  const byHour = { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0) };
-  const result = { member, maxHailInches: 0, maxGustMph: 0, strongestTornadoMph: 0, environment: null, lines: [] };
+  const open = () => ({
+    frames: [], seen: new Set(), initiations: [], startHour: world.validHourUtc, before: total(),
+    byHour: { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0) },
+    result: { member, maxHailInches: 0, maxGustMph: 0, strongestTornadoMph: 0, environment: null, lines: [] }
+  });
+  const close = day => {
+    const truth = aggregateTruth(day.frames, day.initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+    const chance = Object.fromEntries(CHANCE_FIELDS.map(field => [field, truth.chance[field]]));
+    // Any severe weather (Day 3's one chance), and its tiers: a report of any of the three kinds.
+    const any = (...fields) => practicallyPerfectChance(Uint8Array.from({ length: n }, (_, i) => (fields.some(field => truth[`${field}Exact`][i]) ? 1 : 0)), world.width, world.height, world.cellSizeKm);
+    chance.severe = any('tornado', 'wind', 'hail'); chance.severeSig = any('tornadoSig', 'windSig', 'hailSig'); chance.severeExtreme = any('tornadoExtreme', 'windExtreme', 'hailExtreme');
+    return {
+      ...day.result, width: world.width, height: world.height, cellMiles: world.cellSizeMiles, fromHourUtc: day.startHour, toHourUtc: world.validHourUtc,
+      chance, thunder: truth.storm, storms: day.seen.size, tornadoes: total() - day.before, byHour: day.byHour
+    };
+  };
+  const days = [];
+  let day = null;
   for (let hour = 0; hour < hours - 1e-9; hour += OUTLOOK.stepHours) {
+    day ??= open();
     atmosphere.advance(OUTLOOK.stepHours);
-    const known = seen.size, frame = captureTruth(world, frames, seen, initiations), utc = Math.floor(((world.validHourUtc % 24) + 24) % 24);
+    const { result, byHour, seen } = day, known = seen.size, frame = captureTruth(world, day.frames, seen, day.initiations), utc = Math.floor(((world.validHourUtc % 24) + 24) % 24);
     byHour.storms[utc] += seen.size - known;
     if (frame.tornadoes) byHour.tornado[utc] += 1;
     let severe = false;
@@ -67,20 +88,20 @@ export function runOutlookMember(state, member, hours) {
       const hail = storm.currentHailSizeInches ?? 0, gust = storm.surfaceWind?.gustMph ?? 0;
       result.maxHailInches = Math.max(result.maxHailInches, hail); result.maxGustMph = Math.max(result.maxGustMph, gust);
       if (storm.tornado?.onGround) result.strongestTornadoMph = Math.max(result.strongestTornadoMph, storm.tornado.windSpeedMph ?? 0);
-      for (const t of storm.tornadoHistory ?? []) if (t.startedHourUtc >= startHour) result.strongestTornadoMph = Math.max(result.strongestTornadoMph, t.peakWindSpeedMph ?? 0);
+      for (const t of storm.tornadoHistory ?? []) if (t.startedHourUtc >= day.startHour) result.strongestTornadoMph = Math.max(result.strongestTornadoMph, t.peakWindSpeedMph ?? 0);
       if (hail >= 1 || gust >= 58 || storm.tornado?.onGround) severe = true;
     }
     if (severe) byHour.severe[utc] += 1;
-    // The air the storms will have: taken in the late afternoon, or at the last step of a short period.
-    if ((utc === 22 && !result.environment) || (!result.environment && hour + OUTLOOK.stepHours >= hours - 1e-9)) { result.environment = describeEnvironment(world); result.lines = describeLines(atmosphere); }
+    const last = hour + OUTLOOK.stepHours >= hours - 1e-9, dayEnds = hoursToDayEnd(world.validHourUtc) > 24 - 1e-6;
+    // The air the storms will have: taken in the late afternoon, or at the last step of a short day.
+    if (!result.environment && (utc === 22 || last || dayEnds)) { result.environment = describeEnvironment(world); result.lines = describeLines(atmosphere); }
+    if (last || dayEnds) { days.push(close(day)); day = null; }
   }
-  const truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
-  return {
-    ...result, width: world.width, height: world.height, cellMiles: world.cellSizeMiles,
-    chance: Object.fromEntries(CHANCE_FIELDS.map(field => [field, truth.chance[field]])), thunder: truth.storm,
-    storms: seen.size, tornadoes: (world.stormEngine?.totalTornadoes ?? 0) - before, byHour
-  };
+  return days;
 }
+
+// One member for one outlook day (hours must not run past the next 12Z).
+export function runOutlookMember(state, member, hours) { return runOutlookMemberDays(state, member, hours)[0]; }
 
 function describeEnvironment(world) {
   const cape = [], cin = [], shear = [], helicity = [], dewpoint = [], base = [];
@@ -107,23 +128,24 @@ function describeLines(atmosphere) {
   });
 }
 
-// The outlook from its members.
-export function combineOutlook(members, { issuedHourUtc, validToHourUtc, seed = null } = {}) {
+// The outlook for one day from its members' reports of that day.
+export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issuedHourUtc, validToHourUtc, seed = null, day = 'day1' } = {}) {
   if (!members.length) throw new Error('an outlook needs at least one member');
-  const { width, height, cellMiles } = members[0], n = width * height, count = members.length;
+  const { width, height, cellMiles } = members[0], n = width * height, count = members.length, hazards = OUTLOOK.hazards[day];
+  const fields = Object.keys(members[0].chance);
   // The members' average chance of each hazard and of each intensity tier (kept unrounded for
   // drawing smooth contours; never shown as a figure).
-  const mean = Object.fromEntries(CHANCE_FIELDS.map(field => [field, new Float32Array(n)])), thunder = new Float32Array(n);
-  for (const m of members) { for (const field of CHANCE_FIELDS) for (let i = 0; i < n; i++) mean[field][i] += m.chance[field][i] / count; for (let i = 0; i < n; i++) thunder[i] += (m.thunder[i] ? 1 : 0) / count; }
-  const chance = Object.fromEntries(WORLD_HAZARDS.map(hazard => [hazard, mean[hazard]]));
-  // The intensity group wanted at each point (the highest tier likely enough), before it is
-  // held to what the contour level there allows.
-  const intensity = Object.fromEntries(WORLD_HAZARDS.map(hazard => [hazard, new Uint8Array(n)]));
-  const level = Object.fromEntries(WORLD_HAZARDS.map(hazard => [hazard, new Uint8Array(n)])), cig = Object.fromEntries(WORLD_HAZARDS.map(hazard => [hazard, new Uint8Array(n)])), category = new Array(n);
+  const mean = Object.fromEntries(fields.map(field => [field, new Float32Array(n)])), thunder = new Float32Array(n);
+  for (const m of members) { for (const field of fields) for (let i = 0; i < n; i++) mean[field][i] += m.chance[field][i] / count; for (let i = 0; i < n; i++) thunder[i] += (m.thunder[i] ? 1 : 0) / count; }
+  const chance = Object.fromEntries(hazards.map(hazard => [hazard, mean[hazard]]));
+  // The intensity group wanted at each point (the highest tier that a large enough share of the
+  // severe weather there is expected to reach), before it is held to what the contour level allows.
+  const intensity = Object.fromEntries(hazards.map(hazard => [hazard, new Uint8Array(n)]));
+  const level = Object.fromEntries(hazards.map(hazard => [hazard, new Uint8Array(n)])), cig = Object.fromEntries(hazards.map(hazard => [hazard, new Uint8Array(n)])), category = new Array(n);
   for (let i = 0; i < n; i++) {
     const here = {};
-    for (const hazard of WORLD_HAZARDS) {
-      let wanted = 0; TIERS[hazard].forEach((field, k) => { if (mean[field][i] >= OUTLOOK.cigChance) wanted = k + 1; });
+    for (const hazard of hazards) {
+      const wanted = conditionalCig(chance[hazard][i], CIG_TIERS[hazard].map(field => mean[field]?.[i] ?? 0));
       intensity[hazard][i] = wanted;
       level[hazard][i] = probabilityLevel(hazard, chance[hazard][i]);
       cig[hazard][i] = drawnCig(hazard, chance[hazard][i], wanted);
@@ -136,12 +158,12 @@ export function combineOutlook(members, { issuedHourUtc, validToHourUtc, seed = 
   const sum = key => members.map(m => m[key]);
   const hours = which => { const total = new Array(24).fill(0); for (const m of members) m.byHour[which].forEach((v, h) => { total[h] += v; }); return total; };
   // The highest contour level and intensity group of each hazard, and where the chance is greatest.
-  const top = Object.fromEntries(WORLD_HAZARDS.map(hazard => {
+  const top = Object.fromEntries(hazards.map(hazard => {
     let best = 0; for (let i = 1; i < n; i++) if (chance[hazard][i] > chance[hazard][best]) best = i;
     return [hazard, { level: Math.max(...level[hazard]), cig: Math.max(...cig[hazard]), x: (best % width + 0.5) / width, y: (Math.floor(best / width) + 0.5) / height }];
   }));
   const outlook = {
-    day: 'day1', issuedHourUtc, validToHourUtc, seed, members: count, width, height, cellMiles,
+    day, hazards, issuedHourUtc, validFromHourUtc, validToHourUtc, seed, members: count, width, height, cellMiles,
     chance, intensity, level, cig, thunder, category, highest, areas, top,
     expected: {
       tornadoes: { low: quantile(sum('tornadoes'), 0.1), middle: quantile(sum('tornadoes'), 0.5), high: quantile(sum('tornadoes'), 0.9) },
@@ -152,7 +174,7 @@ export function combineOutlook(members, { issuedHourUtc, validToHourUtc, seed = 
     environment: averageEnvironment(members.map(m => m.environment).filter(Boolean)), lines: members[0].lines ?? []
   };
   // The hazard behind the highest category.
-  outlook.leading = rank(highest) < rank('MRGN') ? null : WORLD_HAZARDS.find(hazard => category.some((c, i) => c === highest && worldCategoryFromHazard(hazard, chance[hazard][i], intensity[hazard][i]) === highest)) ?? null;
+  outlook.leading = rank(highest) < rank('MRGN') ? null : hazards.find(hazard => category.some((c, i) => c === highest && worldCategoryFromHazard(hazard, chance[hazard][i], intensity[hazard][i]) === highest)) ?? null;
   outlook.discussion = writeDiscussion(outlook);
   return outlook;
 }
@@ -204,13 +226,16 @@ function busiestHours(byHour, startUtc) {
 const AMOUNT = {
   tornado: [[30, 'numerous tornadoes', 'are'], [15, 'several tornadoes', 'are'], [5, 'a few tornadoes', 'are'], [2, 'a tornado or two', 'is']],
   wind: [[60, 'widespread damaging winds', 'are'], [30, 'scattered damaging winds', 'are'], [5, 'isolated damaging winds', 'are']],
-  hail: [[45, 'widespread large hail', 'is'], [15, 'scattered large hail', 'is'], [5, 'isolated large hail', 'is']]
+  hail: [[45, 'widespread large hail', 'is'], [15, 'scattered large hail', 'is'], [5, 'isolated large hail', 'is']],
+  severe: [[45, 'widespread severe thunderstorms', 'are'], [15, 'scattered severe thunderstorms', 'are'], [5, 'isolated severe thunderstorms', 'are']]
 };
 const STRENGTH = {
   tornado: ['', ', some of them strong (EF2+)', ', some of them intense (EF3+)', ', including the potential for violent (EF4+) tornadoes'],
   wind: ['', ', some of them significant (75 mph or more)', ', with gusts of 85 mph or more possible', ', with gusts near 100 mph possible'],
-  hail: ['', ', some of it very large (2 inches or more)', ', some of it giant (3.5 inches or more)']
+  hail: ['', ', some of it very large (2 inches or more)', ', some of it giant (3.5 inches or more)'],
+  severe: ['', ', some with significant severe weather (strong tornadoes, 75 mph gusts or 2 inch hail)', ', some with intense severe weather (EF3+ tornadoes, 85 mph gusts or giant hail)']
 };
+const DAY_NUMBER = { day1: 1, day2: 2, day3: 3 }, WHEN = { day1: 'today', day2: 'tomorrow', day3: 'on Day 3' };
 function threat(hazard, top) {
   const found = AMOUNT[hazard].find(([level]) => top.level >= level);
   return found ? { words: `${found[1]}${STRENGTH[hazard][top.cig] ?? ''}`, verb: found[2] } : null;
@@ -218,18 +243,18 @@ function threat(hazard, top) {
 
 export function writeDiscussion(o) {
   const { width, height } = o, at = c => o.category.map(v => rank(v) >= rank(c)), label = c => WORLD_RISK_LABELS[c].toUpperCase();
-  const lines = [], start = OUTLOOK.dayStartUtc;
+  const lines = [], start = OUTLOOK.dayStartUtc, when = WHEN[o.day] ?? 'today', hazards = o.hazards ?? WORLD_HAZARDS;
   // Headline: the categories from the highest down, each with where it is.
   const headline = [];
   for (const c of ['HIGH', 'MDT', 'ENH', 'SLGT']) { if (rank(o.highest) >= rank(c) && o.areas[c] > 0) headline.push(`...THERE IS ${c === 'ENH' ? 'AN' : 'A'} ${label(c)} OF SEVERE THUNDERSTORMS OVER ${describeArea(at(c), width, height).toUpperCase()}...`); }
   if (!headline.length) headline.push(rank(o.highest) >= rank('MRGN') ? `...THERE IS A MARGINAL RISK OF SEVERE THUNDERSTORMS OVER ${describeArea(at('MRGN'), width, height).toUpperCase()}...` : o.areas.TSTM > 0 ? '...NO SEVERE THUNDERSTORM AREAS FORECAST...' : '...NO THUNDERSTORM AREAS FORECAST...');
-  lines.push(`Day 1 Convective Outlook`, `Valid ${clock(o.issuedHourUtc)} to ${clock(o.validToHourUtc)}`, '', ...headline, '');
+  lines.push(`Day ${DAY_NUMBER[o.day] ?? 1} Convective Outlook`, `Issued ${clock(o.issuedHourUtc)}. Valid ${clock(o.validFromHourUtc ?? o.issuedHourUtc)} to ${clock(o.validToHourUtc)}`, '', ...headline, '');
 
-  const severe = rank(o.highest) >= rank('MRGN'), threats = WORLD_HAZARDS.map(hazard => threat(hazard, o.top[hazard])).filter(Boolean);
+  const severe = rank(o.highest) >= rank('MRGN'), threats = hazards.map(hazard => threat(hazard, o.top[hazard])).filter(Boolean);
   const severeArea = describeArea(at('SLGT'), width, height) ?? describeArea(at('MRGN'), width, height);
   lines.push('...SUMMARY...');
-  if (severe) lines.push(`Severe thunderstorms are expected today over ${severeArea}. ${threats.length ? `The main hazards: ${threats.map(t => t.words).join('; ')}.` : 'Isolated severe weather is possible.'}${rank(o.highest) >= rank('MDT') ? ` The greatest risk is over ${describeArea(at(o.highest), width, height)}.` : ''}`);
-  else lines.push(o.areas.TSTM > 0 ? 'Thunderstorms are expected over part of the region today, but severe weather is not.' : 'No thunderstorms are expected today.');
+  if (severe) lines.push(`Severe thunderstorms are expected ${when} over ${severeArea}. ${threats.length ? `The main hazards: ${threats.map(t => t.words).join('; ')}.` : 'Isolated severe weather is possible.'}${rank(o.highest) >= rank('MDT') ? ` The greatest risk is over ${describeArea(at(o.highest), width, height)}.` : ''}`);
+  else lines.push(o.areas.TSTM > 0 ? `Thunderstorms are expected over part of the region ${when}, but severe weather is not.` : `No thunderstorms are expected ${when}.`);
   lines.push('');
 
   // Synopsis: the air and the features the storms will work with.
@@ -258,7 +283,9 @@ export function writeDiscussion(o) {
     if (begin) lines.push(`Storms are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)} local)${worst ? `, with severe weather most likely between ${clock(worst.first)} and ${clock(worst.last + 1)}` : ''}.`);
     const where = hazard => partAt(o.top[hazard].x, o.top[hazard].y);
     const area = (hazard, name) => `${o.top[hazard].level}% ${name} area${o.top[hazard].cig ? `, CIG${o.top[hazard].cig}` : ''}`;
-    const tor = threat('tornado', o.top.tornado), hail = threat('hail', o.top.hail), wind = threat('wind', o.top.wind);
+    const of = hazard => (o.top[hazard] ? threat(hazard, o.top[hazard]) : null);
+    const tor = of('tornado'), hail = of('hail'), wind = of('wind'), all = of('severe');
+    if (all) lines.push(`SEVERE: ${sentence(all.words.split(',')[0])} ${all.verb} expected${all.words.includes(',') ? all.words.slice(all.words.indexOf(',')) + ',' : ','} most likely over the ${where('severe')} part of the region (${area('severe', 'severe')}). The hazards will be set out separately as the day comes nearer.`);
     if (tor) {
       const helicity = e && e.helicity >= 200 ? 'Strong low-level shear' : e && e.helicity >= 100 ? 'Adequate low-level shear' : 'Modest low-level shear';
       const reasoning = e && e.helicity >= 100 && e.cloudBaseM <= 1500 ? `${helicity} and low cloud bases favour tornadoes with storms that stay on their own.` : e && e.helicity >= 100 ? `${helicity} favours tornadoes, but high cloud bases will limit them.` : `${helicity} will limit the tornado risk.`;
@@ -279,7 +306,7 @@ export function outlookShapes(o) {
   const { width, height } = o, area = inside => contourRings(softenArea(inside, width, height), width, height, 0.5);
   const kept = list => list.filter(entry => entry.rings.length);
   const shapes = { category: kept(WORLD_RISK_ORDER.slice(1).map(key => ({ key, rings: area(o.category.map(c => rank(c) >= rank(key))) }))) };
-  for (const hazard of WORLD_HAZARDS) shapes[hazard] = {
+  for (const hazard of o.hazards) shapes[hazard] = {
     levels: kept(OUTLOOK.levels[hazard].map(level => ({ level, rings: contourRings(o.chance[hazard], width, height, level) }))),
     groups: kept(Array.from({ length: WORLD_MAX_CIG[hazard] }, (_, k) => ({ group: k + 1, rings: area(Array.from(o.cig[hazard], v => v > k)) })))
   };
@@ -290,10 +317,10 @@ export function outlookShapes(o) {
 export function publicOutlook(o) {
   return {
     shapes: outlookShapes(o),
-    day: o.day, status: 'issued', issuedHourUtc: o.issuedHourUtc, validToHourUtc: o.validToHourUtc, seed: o.seed, members: o.members,
+    day: o.day, hazards: o.hazards, status: 'issued', issuedHourUtc: o.issuedHourUtc, validFromHourUtc: o.validFromHourUtc, validToHourUtc: o.validToHourUtc, updateHours: OUTLOOK.updateHours[o.day], seed: o.seed, members: o.members,
     width: o.width, height: o.height, cellMiles: o.cellMiles, highest: o.highest, leading: o.leading, areas: o.areas, top: o.top,
     category: o.category.map(rank), categories: WORLD_RISK_ORDER, labels: WORLD_RISK_LABELS,
-    cig: Object.fromEntries(WORLD_HAZARDS.map(hazard => [hazard, Array.from(o.cig[hazard])])),
+    cig: Object.fromEntries(o.hazards.map(hazard => [hazard, Array.from(o.cig[hazard])])),
     thunder: Array.from(o.thunder, v => Math.round(v * 100)), thunderLevel: Math.round(100 * OUTLOOK.thunderShare),
     levels: OUTLOOK.levels, maxCig: WORLD_MAX_CIG, cigMeaning: CIG_MEANING,
     timing: o.timing, environment: o.environment, discussion: o.discussion

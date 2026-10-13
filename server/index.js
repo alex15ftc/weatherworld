@@ -76,7 +76,8 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
-  if (url.pathname === '/api/outlooks/day1') return sendJson(req, res, 200, outlooks ? outlooks.dayOne() : { day: 'day1', status: 'off' }, { cacheable: false, trace });
+  const issuedOutlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);
+  if (issuedOutlook) return sendJson(req, res, 200, outlooks ? outlooks.day(issuedOutlook[1]) : { day: issuedOutlook[1], status: 'off' }, { cacheable: false, trace });
   if (url.pathname === '/api/outlooks/status') return sendJson(req, res, 200, outlooks ? outlooks.status() : { enabled: false }, { cacheable: false, trace });
   const outlookField = url.pathname.match(/^\/api\/outlooks\/(day[123])\/field$/);
   if (outlookField) return sendJson(req, res, 200, runtime.outlookField(outlookField[1], url.searchParams.get('product') ?? 'risk'), { trace });

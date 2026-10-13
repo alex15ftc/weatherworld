@@ -1,6 +1,9 @@
-// Issues the Day 1 outlook for the live world: once when the server has a world, and again at
-// the start of each outlook day (12Z). The members run in their own processes from a copy of
-// the world taken at issue time; the live world keeps running meanwhile.
+// Issues the Day 1, 2 and 3 outlooks for the live world. Day 1 is issued afresh every 6
+// hours, Day 2 every 12 and Day 3 every 24, all counted from 12Z (OUTLOOK.updateHours), and
+// all of them when the server first has a world. The members run at the same time, each in
+// its own process, from a copy of the world taken at issue time; the live world keeps
+// running meanwhile. One run serves every outlook that is due: it goes as far ahead as the
+// furthest of them, and each member reports each outlook day separately.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,48 +13,61 @@ import { fileURLToPath } from 'node:url';
 import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd } from '../js/forecast/DayOneOutlook.js';
 
 const MEMBER_SCRIPT = fileURLToPath(new URL('./outlookMember.js', import.meta.url));
-// A period shorter than this is not worth an outlook of its own: the next day's is issued at 12Z.
-const SHORTEST_PERIOD_HOURS = 3;
 
 export class OutlookRuntime {
-  // runtime: the weather authority (its `engine` is the live AtmosphereWorld).
-  constructor({ runtime, members = OUTLOOK.members, memberScript = MEMBER_SCRIPT, scratchDir = os.tmpdir() } = {}) {
-    this.runtime = runtime; this.members = members; this.memberScript = memberScript; this.scratchDir = scratchDir;
-    this.product = null; this.running = null; this.lastError = null; this.lastRunMs = null; this.children = new Set();
+  // runtime: the weather authority (its `engine` is the live AtmosphereWorld). days: which
+  // outlooks to issue (a prefix of OUTLOOK.days).
+  constructor({ runtime, members = OUTLOOK.members, days = OUTLOOK.days, memberScript = MEMBER_SCRIPT, scratchDir = os.tmpdir() } = {}) {
+    this.runtime = runtime; this.members = members; this.days = days; this.memberScript = memberScript; this.scratchDir = scratchDir;
+    this.products = {}; this.running = null; this.lastError = null; this.lastRunMs = null; this.children = new Set(); this.failedKey = null;
   }
 
-  // The outlook day an hour belongs to (days run 12Z to 12Z), and the engine it is for.
-  key(engine = this.runtime.engine) { return `${engine.seed}|${Math.floor((engine.world.validHourUtc - OUTLOOK.dayStartUtc) / 24)}`; }
+  // The issue an outlook belongs to at an hour: its update slot, counted from 12Z.
+  slot(day, hourUtc) { return Math.floor((hourUtc - OUTLOOK.dayStartUtc + 1e-6) / OUTLOOK.updateHours[day]); }
+  current(day, engine = this.runtime.engine) { const product = this.products[day]; return product && engine && product.engine === engine ? product : null; }
 
-  // Call now and then: starts an issue when the live world has entered a day with no outlook.
+  // The outlooks with no issue for the slot the live world is in.
+  due(engine = this.runtime.engine) {
+    const hour = engine.world.validHourUtc;
+    return this.days.filter(day => this.current(day, engine)?.slot !== this.slot(day, hour));
+  }
+
+  // Call now and then: starts an issue when an outlook is due.
   maybeIssue() {
     const engine = this.runtime.engine;
     if (!engine || this.running) return false;
-    if (this.product?.key === this.key(engine) && this.product.engine === engine) return false;
-    if (this.failedKey === this.key(engine)) return false;
-    if (hoursToDayEnd(engine.world.validHourUtc) < SHORTEST_PERIOD_HOURS && this.product?.engine === engine) return false;
-    this.issue().catch(() => {});
+    const due = this.due(engine);
+    if (!due.length) return false;
+    if (this.failedKey === this.key(engine, due)) return false;
+    this.issue(due).catch(() => {});
     return true;
   }
+  key(engine, due) { return `${engine.seed}|${due.map(day => `${day}:${this.slot(day, engine.world.validHourUtc)}`).join(',')}`; }
 
-  async issue() {
-    const engine = this.runtime.engine, key = this.key(engine), started = Date.now();
-    const issuedHourUtc = engine.world.validHourUtc, hours = hoursToDayEnd(issuedHourUtc);
+  async issue(due = this.due()) {
+    const engine = this.runtime.engine, key = this.key(engine, due), started = Date.now();
+    const issuedHourUtc = engine.world.validHourUtc, dayEnd = issuedHourUtc + hoursToDayEnd(issuedHourUtc);
+    // Far enough ahead for the furthest outlook due.
+    const furthest = Math.max(...due.map(day => OUTLOOK.days.indexOf(day))), hours = dayEnd - issuedHourUtc + 24 * furthest;
     const file = path.join(this.scratchDir, `weatherworld-outlook-${process.pid}-${Date.now()}.bin`);
     // The copy is taken now, in one go, so every member starts from the same moment.
     fs.writeFileSync(file, v8.serialize(engine.saveState()));
+    // Every member is started at once; they run side by side.
     const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.runMember(file, member, hours)));
-    this.running = { key, issuedHourUtc, startedAt: started };
+    this.running = { key, due, issuedHourUtc, hours, startedAt: started };
     try {
       const members = await run;
-      // A world that was reset or replaced meanwhile makes this outlook stale.
+      // A world that was reset or replaced meanwhile makes these outlooks stale.
       if (this.runtime.engine === engine) {
-        const outlook = combineOutlook(members, { issuedHourUtc, validToHourUtc: issuedHourUtc + hours, seed: engine.seed });
-        this.product = { key, engine, outlook, public: publicOutlook(outlook) };
+        for (const day of due) {
+          const index = OUTLOOK.days.indexOf(day), validFromHourUtc = index ? dayEnd + 24 * (index - 1) : issuedHourUtc;
+          const outlook = combineOutlook(members.map(member => member[index]), { day, issuedHourUtc, validFromHourUtc, validToHourUtc: dayEnd + 24 * index, seed: engine.seed });
+          this.products[day] = { slot: this.slot(day, issuedHourUtc), engine, outlook, public: publicOutlook(outlook) };
+        }
         this.lastError = null; this.failedKey = null;
       }
       this.lastRunMs = Date.now() - started;
-      return this.product?.outlook ?? null;
+      return due.map(day => this.current(day, engine)?.outlook ?? null);
     } catch (error) {
       this.lastError = String(error?.message ?? error); this.failedKey = key;
       throw error;
@@ -74,21 +90,27 @@ export class OutlookRuntime {
     });
   }
 
+  // When an outlook is next issued afresh (hour UTC of the world).
+  nextUpdateHourUtc(day, hourUtc) { return OUTLOOK.dayStartUtc + (this.slot(day, hourUtc) + 1) * OUTLOOK.updateHours[day]; }
+
   status() {
-    const engine = this.runtime.engine, current = Boolean(this.product && engine && this.product.engine === engine);
+    const engine = this.runtime.engine;
     return {
-      enabled: true, running: Boolean(this.running), members: this.members, lastRunMs: this.lastRunMs, error: this.lastError,
-      issuedHourUtc: current ? this.product.outlook.issuedHourUtc : null, validToHourUtc: current ? this.product.outlook.validToHourUtc : null,
-      highest: current ? this.product.outlook.highest : null
+      enabled: true, running: Boolean(this.running), runningFor: this.running?.due ?? null, members: this.members, lastRunMs: this.lastRunMs, error: this.lastError,
+      days: Object.fromEntries(this.days.map(day => { const product = this.current(day, engine); return [day, product ? { issuedHourUtc: product.outlook.issuedHourUtc, validFromHourUtc: product.outlook.validFromHourUtc, validToHourUtc: product.outlook.validToHourUtc, highest: product.outlook.highest, nextUpdateHourUtc: this.nextUpdateHourUtc(day, engine.world.validHourUtc), updateHours: OUTLOOK.updateHours[day] } : null]; })),
+      // Kept from when there was only Day 1.
+      issuedHourUtc: this.current('day1', engine)?.outlook.issuedHourUtc ?? null, validToHourUtc: this.current('day1', engine)?.outlook.validToHourUtc ?? null, highest: this.current('day1', engine)?.outlook.highest ?? null
     };
   }
 
-  // What the Day 1 page asks for.
-  dayOne() {
-    const engine = this.runtime.engine;
-    if (this.product && engine && this.product.engine === engine) return { ...this.product.public, running: Boolean(this.running), nowHourUtc: engine.world.validHourUtc };
-    return { day: 'day1', status: this.running ? 'running' : this.lastError ? 'failed' : 'pending', running: Boolean(this.running), error: this.lastError, members: this.members, nowHourUtc: engine?.world?.validHourUtc ?? null };
+  // What an outlook page asks for.
+  day(day) {
+    const engine = this.runtime.engine, product = this.current(day, engine), running = Boolean(this.running?.due.includes(day));
+    if (product) return { ...product.public, running, nowHourUtc: engine.world.validHourUtc, nextUpdateHourUtc: this.nextUpdateHourUtc(day, engine.world.validHourUtc) };
+    if (!this.days.includes(day)) return { day, status: 'off', running: false, members: this.members };
+    return { day, status: this.running ? 'running' : this.lastError ? 'failed' : 'pending', running: Boolean(this.running), error: this.lastError, members: this.members, nowHourUtc: engine?.world?.validHourUtc ?? null };
   }
+  dayOne() { return this.day('day1'); }
 
   stop() { for (const child of this.children) child.kill(); this.children.clear(); }
 }

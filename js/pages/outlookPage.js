@@ -1,7 +1,7 @@
-// The Day 1 convective outlook page, drawn as the Storm Prediction Center draws its own: the
+// The convective outlook pages (Day 1, 2 and 3; the page's data-page says which), drawn as the Storm Prediction Center draws its own: the
 // categorical map; for each hazard the chance at its fixed contour levels (never an exact
 // figure), with the conditional intensity groups hatched over it; and the discussion.
-// Everything shown is what the server issued (GET /api/outlooks/day1). The areas arrive as
+// Everything shown is what the server issued (GET /api/outlooks/day1, day2 or day3). The areas arrive as
 // outlines (rings of points, shares of the map) and are drawn as shapes: filled, outlined,
 // labelled and hatched; nothing is painted cell by cell.
 const $ = id => document.getElementById(id);
@@ -13,10 +13,13 @@ const CATEGORY_SHORT = { TSTM: 'TSTM', MRGN: 'MRGL', SLGT: 'SLGT', ENH: 'ENH', M
 const CHANCE_COLOURS = {
   tornado: { 2: '#008b00', 5: '#8b4726', 10: '#ffc800', 15: '#ff0000', 30: '#ff00ff', 45: '#912cee', 60: '#104e8b' },
   hail: { 5: '#8b4726', 15: '#ffc800', 30: '#ff0000', 45: '#ff00ff', 60: '#912cee' },
-  wind: { 5: '#8b4726', 15: '#ffc800', 30: '#ff0000', 45: '#ff00ff', 60: '#912cee', 75: '#104e8b', 90: '#00868b' }
+  wind: { 5: '#8b4726', 15: '#ffc800', 30: '#ff0000', 45: '#ff00ff', 60: '#912cee', 75: '#104e8b', 90: '#00868b' },
+  severe: { 5: '#8b4726', 15: '#ffc800', 30: '#ff0000', 45: '#ff00ff', 60: '#912cee' }
 };
-const LAYERS = { category: 'Categorical', tornado: 'Tornado', wind: 'Wind', hail: 'Hail' };
-const HAZARD = { tornado: 'a tornado', wind: 'damaging wind (58 mph or more)', hail: 'large hail (1 inch or more)' };
+const LAYERS = { category: 'Categorical', tornado: 'Tornado', wind: 'Wind', hail: 'Hail', severe: 'Severe' };
+const HAZARD = { tornado: 'a tornado', wind: 'damaging wind (58 mph or more)', hail: 'large hail (1 inch or more)', severe: 'severe weather (a tornado, damaging wind or large hail)' };
+const PAGE = ['day1', 'day2', 'day3'].includes(document.body.dataset.page) ? document.body.dataset.page : 'day1';
+const DAY_NUMBER = { day1: 1, day2: 2, day3: 3 }[PAGE];
 const BACKGROUND = [11, 17, 25];
 
 let outlook = null, layer = new URLSearchParams(location.search).get('layer') ?? 'category';
@@ -25,7 +28,6 @@ if (!LAYERS[layer]) layer = 'category';
 const rgb = hex => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
 const mix = (hex, share, towards = BACKGROUND) => `rgb(${rgb(hex).map((v, k) => Math.round(share * v + (1 - share) * towards[k])).join(',')})`;
 const clock = hour => `${String((((Math.round(hour) % 24) + 24) % 24)).padStart(2, '0')}Z`;
-const dayOf = hour => `Day ${Math.floor((hour - 12) / 24) + 1}`;
 
 // The rings of an area as one path (holes are left out by filling it with the even-odd rule).
 function pathOf(rings, side) {
@@ -80,7 +82,7 @@ function draw() {
   ctx.fillStyle = `rgb(${BACKGROUND.join(',')})`; ctx.fillRect(0, 0, side, side);
   if (!outlook || outlook.status !== 'issued') {
     ctx.fillStyle = '#9ca3af'; ctx.font = '600 15px system-ui, sans-serif'; ctx.textAlign = 'center';
-    const text = !outlook ? 'Loading the outlook…' : outlook.status === 'running' ? `The Day 1 outlook is being prepared (${outlook.members} forecast runs)…` : outlook.status === 'off' ? 'Outlooks are turned off on this server.' : outlook.status === 'failed' ? 'The outlook could not be prepared.' : 'Waiting for the first outlook…';
+    const text = !outlook ? 'Loading the outlook…' : outlook.status === 'running' ? `The Day ${DAY_NUMBER} outlook is being prepared (${outlook.members} forecast runs)…` : outlook.status === 'off' ? 'Outlooks are turned off on this server.' : outlook.status === 'failed' ? 'The outlook could not be prepared.' : 'Waiting for the first outlook…';
     ctx.fillText(text, side / 2, side / 2);
     return;
   }
@@ -116,10 +118,13 @@ function draw() {
 }
 
 function renderSide() {
-  for (const button of document.querySelectorAll('#layerButtons button')) button.classList.toggle('on', button.dataset.layer === layer);
+  // The maps on offer are the categorical one and one for each hazard this outlook gives.
+  const offered = ['category', ...(outlook?.hazards ?? ['tornado', 'wind', 'hail'])];
+  if (!offered.includes(layer)) layer = 'category';
+  for (const button of document.querySelectorAll('#layerButtons button')) { button.hidden = !offered.includes(button.dataset.layer); button.classList.toggle('on', button.dataset.layer === layer); }
   const legend = $('legend'), note = $('legendNote');
   if (!outlook || outlook.status !== 'issued') { legend.innerHTML = ''; note.textContent = ''; $('issue').textContent = outlook?.status === 'running' ? 'Being prepared…' : '—'; $('headline').textContent = '—'; $('discussion').textContent = outlook?.error ?? ''; $('summary').innerHTML = ''; return; }
-  $('issue').textContent = `${dayOf(outlook.issuedHourUtc)} · issued ${clock(outlook.issuedHourUtc)} · valid to ${clock(outlook.validToHourUtc)}${outlook.running ? ' · next outlook being prepared' : ''}`;
+  $('issue').textContent = `Issued ${clock(outlook.issuedHourUtc)} · valid ${clock(outlook.validFromHourUtc)} to ${clock(outlook.validToHourUtc)}${outlook.validFromHourUtc > outlook.nowHourUtc ? ` (starts in ${Math.round(outlook.validFromHourUtc - outlook.nowHourUtc)} h)` : ''} · ${outlook.running ? 'update being prepared' : `next update ${clock(outlook.nextUpdateHourUtc)}`}`;
   $('headline').textContent = outlook.labels[outlook.highest];
   $('headline').style.color = CATEGORY_COLOURS[outlook.highest] ?? 'inherit';
   if (layer === 'category') {
@@ -131,12 +136,12 @@ function renderSide() {
     note.textContent = `Chance of ${HAZARD[layer]} within ${outlook.radiusMiles ?? 25} miles of a point. Hatching: conditional intensity groups, how strong it is expected to be where it happens.`;
   }
   const row = hazard => { const top = outlook.top[hazard]; return `<span>${LAYERS[hazard]}</span><b>${top.level ? `${top.level}%${top.cig ? ` · CIG${top.cig}` : ''}` : 'less than ' + outlook.levels[hazard][0] + '%'}</b>`; };
-  $('summary').innerHTML = ['tornado', 'wind', 'hail'].map(row).join('');
+  $('summary').innerHTML = outlook.hazards.map(row).join('');
   $('discussion').textContent = outlook.discussion;
 }
 
 async function load() {
-  try { const response = await fetch('/api/outlooks/day1', { cache: 'no-store' }); outlook = await response.json(); }
+  try { const response = await fetch(`/api/outlooks/${PAGE}`, { cache: 'no-store' }); outlook = await response.json(); }
   catch { outlook = { status: 'failed', error: 'The weather server did not answer.' }; }
   renderSide(); draw();
 }
