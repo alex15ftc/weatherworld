@@ -34,7 +34,9 @@ function sampler(field, width, height) {
 }
 // The highest of a set of nested areas (each a 0/1 grid) a point is inside, by its smoothed edge; -1 for none.
 function nested(grids, width, height) {
-  const inside = grids.map(grid => sampler(grid, width, height));
+  // Each area is softened a little first, so its edge is a curve and not the grid's steps.
+  const soften = grid => { let field = Float32Array.from(grid); for (let pass = 0; pass < 2; pass++) { const out = new Float32Array(field.length); for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) { let sum = 0, count = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < width && Y < height) { sum += field[Y * width + X]; count++; } } out[y * width + x] = sum / count; } field = out; } return field; };
+  const inside = grids.map(grid => sampler(soften(grid), width, height));
   return (u, v) => { let best = -1; inside.forEach((read, k) => { if (read(u, v) >= 0.5) best = k; }); return best; };
 }
 

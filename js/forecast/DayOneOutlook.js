@@ -227,7 +227,7 @@ export function writeDiscussion(o) {
   const severe = rank(o.highest) >= rank('MRGN'), threats = WORLD_HAZARDS.map(hazard => threat(hazard, o.top[hazard])).filter(Boolean);
   const severeArea = describeArea(at('SLGT'), width, height) ?? describeArea(at('MRGN'), width, height);
   lines.push('...SUMMARY...');
-  if (severe) lines.push(`Severe thunderstorms are expected today over ${severeArea}. ${threats.length ? `${sentence(list(threats.map(t => t.words)))} ${threats.length > 1 ? 'are' : threats[0].verb} possible.` : 'Isolated severe weather is possible.'}${rank(o.highest) >= rank('MDT') ? ` The greatest risk is over ${describeArea(at(o.highest), width, height)}.` : ''}`);
+  if (severe) lines.push(`Severe thunderstorms are expected today over ${severeArea}. ${threats.length ? `The main hazards: ${threats.map(t => t.words).join('; ')}.` : 'Isolated severe weather is possible.'}${rank(o.highest) >= rank('MDT') ? ` The greatest risk is over ${describeArea(at(o.highest), width, height)}.` : ''}`);
   else lines.push(o.areas.TSTM > 0 ? 'Thunderstorms are expected over part of the region today, but severe weather is not.' : 'No thunderstorms are expected today.');
   lines.push('');
 
@@ -261,10 +261,10 @@ export function writeDiscussion(o) {
     if (tor) {
       const helicity = e && e.helicity >= 200 ? 'Strong low-level shear' : e && e.helicity >= 100 ? 'Adequate low-level shear' : 'Modest low-level shear';
       const reasoning = e && e.helicity >= 100 && e.cloudBaseM <= 1500 ? `${helicity} and low cloud bases favour tornadoes with storms that stay on their own.` : e && e.helicity >= 100 ? `${helicity} favours tornadoes, but high cloud bases will limit them.` : `${helicity} will limit the tornado risk.`;
-      lines.push(`TORNADO: ${sentence(tor.words)} ${tor.verb} expected, most likely over the ${where('tornado')} part of the region (${area('tornado', 'tornado')}). ${reasoning}${tornado ? ` The tornado risk peaks near ${clock(tornado.peak)}.` : ''}`);
+      lines.push(`TORNADO: ${sentence(tor.words.split(',')[0])} ${tor.verb} expected${tor.words.includes(',') ? tor.words.slice(tor.words.indexOf(',')) + ',' : ','} most likely over the ${where('tornado')} part of the region (${area('tornado', 'tornado')}). ${reasoning}${tornado ? ` The tornado risk peaks near ${clock(tornado.peak)}.` : ''}`);
     }
-    if (hail) lines.push(`HAIL: ${sentence(hail.words)} ${hail.verb} expected, most likely over the ${where('hail')} part of the region (${area('hail', 'hail')}).`);
-    if (wind) lines.push(`WIND: ${sentence(wind.words)} ${wind.verb} expected, most likely over the ${where('wind')} part of the region (${area('wind', 'wind')})${o.top.wind.cig >= 2 ? ', especially where storms merge into lines during the evening' : ''}.`);
+    if (hail) lines.push(`HAIL: ${sentence(hail.words.split(',')[0])} ${hail.verb} expected${hail.words.includes(',') ? hail.words.slice(hail.words.indexOf(',')) + ',' : ','} most likely over the ${where('hail')} part of the region (${area('hail', 'hail')}).`);
+    if (wind) lines.push(`WIND: ${sentence(wind.words.split(',')[0])} ${wind.verb} expected${wind.words.includes(',') ? wind.words.slice(wind.words.indexOf(',')) + ',' : ','} most likely over the ${where('wind')} part of the region (${area('wind', 'wind')})${o.top.wind.cig >= 2 ? ', especially where storms merge into lines during the evening' : ''}.`);
     const spread = o.expected.tornadoes.high - o.expected.tornadoes.low;
     lines.push('', '...UNCERTAINTY...', spread >= Math.max(6, 1.5 * o.expected.tornadoes.middle) ? 'The forecast runs differ widely on how many storms stay on their own before merging, so the higher end of this outlook is less certain than the lower.' : 'The forecast runs agree closely on the character of the day.');
   }
