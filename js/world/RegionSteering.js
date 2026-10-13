@@ -70,6 +70,7 @@ export class RegionSteering {
     const copy = this.scratch ??= new QuasiGeostrophicModel(live.params);
     for (const key of ['q1', 'q2', 'psi1', 'psi2']) copy[key].set(live[key]);
     copy.time = live.time; copy.history = live.history;   // the model replaces these arrays, never writes into them
+    copy.fastTransforms = live.fastTransforms;
     // Hours from now to each time the plan is judged on, soonest first.
     const ahead = p.scoreHoursUtc.map(h => ((h - now) % 24 + 24) % 24 || 24).sort((a, b) => a - b), fields = [];
     let advanced = 0;
@@ -79,7 +80,7 @@ export class RegionSteering {
     let best = null;
     for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) {
       let support = 0;
-      for (const field of fields) support += at(field.support, regional.origin.x + speed * field.hours * 3600) / fields.length;
+      for (const field of fields) support += at(field.support, regional.origin.x + (regional.timingLeadM ?? 0) + speed * field.hours * 3600) / fields.length;
       const miss = Math.abs(support - wanted);
       if (!best || miss < best.miss - 1e-9) best = { speed, support, miss };
     }

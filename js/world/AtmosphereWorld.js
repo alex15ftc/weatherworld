@@ -40,7 +40,8 @@ export const STORM_COUPLING = Object.freeze({
 export class AtmosphereWorld {
   // Pass `model` to share an already spun-up outer model (it is advanced by this world).
   // steering: settings for RegionSteering, or false to keep the region where it starts.
-  constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {} } = {}) {
+  // plan: false leaves the first steering plan unmade (a restored world is given its saved one).
+  constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {}, plan = true } = {}) {
     this.seed = seed;
     this.model = model ?? new QuasiGeostrophicModel({ seed });
     if (!model) this.model.advance(spinUpDays * 86400);
@@ -64,7 +65,7 @@ export class AtmosphereWorld {
     this.stormsEnabled = storms;
     this.boundaries = [];
     this.steering = steering ? new RegionSteering(this.regional, seed, steering) : null;
-    this.steering?.update();
+    if (plan) this.steering?.update();
     this.prepare(0);
     if (storms) initializeStormEngine(world);
   }
@@ -92,7 +93,7 @@ export class AtmosphereWorld {
     const model = new QuasiGeostrophicModel(state.model.params);
     for (const key of ['q1', 'q2', 'psi1', 'psi2']) model[key].set(state.model[key]);
     model.time = state.model.time; model.history = state.model.history;
-    const restored = new AtmosphereWorld({ seed: state.seed, model, regional: state.regional.params, storms: false, steering: state.steering ? state.steering.params : false });
+    const restored = new AtmosphereWorld({ seed: state.seed, model, regional: state.regional.params, storms: false, steering: state.steering ? state.steering.params : false, plan: false });
     const regional = restored.regional;
     regional.origin.x = state.regional.originX; regional.slideMs = state.regional.slideMs;
     if (state.regional.geography) { regional.geographyOffset = state.regional.geography.offset; regional.geographyTarget = state.regional.geography.target; regional.geographyRate = state.regional.geography.rate; regional.geographyVersion++; }

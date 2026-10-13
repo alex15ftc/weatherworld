@@ -2,15 +2,16 @@
 // hours, Day 2 every 12 and Day 3 every 24, all counted from 12Z (OUTLOOK.updateHours), and
 // all of them when the server first has a world. The members run at the same time, each in
 // its own process, from a copy of the world taken at issue time; the live world keeps
-// running meanwhile. One run serves every outlook that is due: it goes as far ahead as the
-// furthest of them, and each member reports each outlook day separately.
+// running meanwhile. One run serves every outlook that is due, and each member reports each
+// outlook day separately. Fewer members go into the later days (OUTLOOK.memberShare: 8 for
+// Day 1, 4 for Day 2, 2 for Day 3), so each member runs only as far as the last day it is in.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import v8 from 'node:v8';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd } from '../js/forecast/DayOneOutlook.js';
+import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd, membersFor } from '../js/forecast/DayOneOutlook.js';
 
 const MEMBER_SCRIPT = fileURLToPath(new URL('./outlookMember.js', import.meta.url));
 
@@ -47,13 +48,15 @@ export class OutlookRuntime {
   async issue(due = this.due()) {
     const engine = this.runtime.engine, key = this.key(engine, due), started = Date.now();
     const issuedHourUtc = engine.world.validHourUtc, dayEnd = issuedHourUtc + hoursToDayEnd(issuedHourUtc);
-    // Far enough ahead for the furthest outlook due.
-    const furthest = Math.max(...due.map(day => OUTLOOK.days.indexOf(day))), hours = dayEnd - issuedHourUtc + 24 * furthest;
+    // Each member goes as far ahead as the furthest outlook due that it is one of the runs for.
+    const count = day => membersFor(day, this.members);
+    const hoursFor = member => dayEnd - issuedHourUtc + 24 * Math.max(...due.filter(day => member < count(day)).map(day => OUTLOOK.days.indexOf(day)));
+    const hours = hoursFor(0);
     const file = path.join(this.scratchDir, `weatherworld-outlook-${process.pid}-${Date.now()}.bin`);
     // The copy is taken now, in one go, so every member starts from the same moment.
     fs.writeFileSync(file, v8.serialize(engine.saveState()));
     // Every member is started at once; they run side by side.
-    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.runMember(file, member, hours)));
+    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.runMember(file, member, hoursFor(member))));
     this.running = { key, due, issuedHourUtc, hours, startedAt: started };
     try {
       const members = await run;
@@ -61,7 +64,7 @@ export class OutlookRuntime {
       if (this.runtime.engine === engine) {
         for (const day of due) {
           const index = OUTLOOK.days.indexOf(day), validFromHourUtc = index ? dayEnd + 24 * (index - 1) : issuedHourUtc;
-          const outlook = combineOutlook(members.map(member => member[index]), { day, issuedHourUtc, validFromHourUtc, validToHourUtc: dayEnd + 24 * index, seed: engine.seed });
+          const outlook = combineOutlook(members.slice(0, count(day)).map(member => member[index]), { day, issuedHourUtc, validFromHourUtc, validToHourUtc: dayEnd + 24 * index, seed: engine.seed });
           this.products[day] = { slot: this.slot(day, issuedHourUtc), engine, outlook, public: publicOutlook(outlook) };
         }
         this.lastError = null; this.failedKey = null;

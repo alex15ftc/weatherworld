@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { WORLD_RISK_ORDER, WORLD_HAZARDS, WORLD_MAX_CIG, WORLD_CATEGORY_TABLES, PROBABILITY_LEVELS, worldCategory, worldCategoryFromHazard, drawnCig, highestCigAt, leadingHazard, conditionalCig, CIG_SHARE } from '../js/forecast/worldRiskCategories.js';
+import { WORLD_RISK_ORDER, WORLD_HAZARDS, WORLD_MAX_CIG, WORLD_CATEGORY_TABLES, PROBABILITY_LEVELS, worldCategory, worldCategoryFromHazard, drawnCig, highestCigAt, leadingHazard, conditionalCig, contourCig, CIG_SHARE } from '../js/forecast/worldRiskCategories.js';
 import { CATEGORY_TABLES, categoryFromHazard } from '../js/forecast/spcOutlookRules.js';
 import { aggregateTruth, practicallyPerfectChance, TRUTH_FIELDS, CHANCE_FIELDS } from '../js/verification/truth.js';
 
@@ -51,6 +51,16 @@ assert.equal(CIG_SHARE, 0.3);
 assert.equal(conditionalCig(40, [20, 13, 2]), 2, 'half EF2+, a third EF3+: CIG2');
 assert.equal(conditionalCig(40, [11, 3, 1]), 0, 'a quarter EF2+: no group');
 assert.equal(conditionalCig(40, [12, 12, 12]), 3); assert.equal(conditionalCig(0, [0, 0, 0]), 0);
+// Each separate area inside a contour is judged as a whole; a cell takes the group of the highest contour it is in.
+{
+  const w = 20, h = 10, hail = new Float32Array(w * h), big = new Float32Array(w * h), giant = new Float32Array(w * h), at = (x, y) => y * w + x;
+  for (let y = 2; y < 8; y++) { for (let x = 1; x < 8; x++) { hail[at(x, y)] = 20; big[at(x, y)] = x === 1 ? 20 : 0; } for (let x = 12; x < 19; x++) { hail[at(x, y)] = 20; big[at(x, y)] = 10; } }
+  for (let y = 4; y < 6; y++) for (let x = 14; x < 17; x++) { hail[at(x, y)] = 50; big[at(x, y)] = 5; }
+  const groups = contourCig('hail', hail, hail, [big, giant], w, h);
+  assert.equal(groups[at(4, 4)], 0, 'a seventh of the western area\'s hail is big: no group, even right beside it'); assert.equal(groups[at(1, 4)], 0);
+  assert.equal(groups[at(12, 4)], 1, 'well over 30% of the eastern area\'s hail is big: CIG1 over all of it');
+  assert.equal(groups[at(15, 4)], 0, 'but only a tenth of the hail in its 45% core is: the core has no group'); assert.equal(groups[at(10, 4)], 0);
+}
 
 // --- From reports on the map: contour levels and intensity groups, and the category from them.
 const width = 50, height = 50, cellMiles = 10, n = width * height;
@@ -66,7 +76,8 @@ frame.windSig[cell(45, 45)] = 1; frame.windExtreme[cell(45, 45)] = 1; frame.wind
 const truth = aggregateTruth([frame], [], width, height, 25 / cellMiles, cellMiles);
 assert.ok(PROBABILITY_LEVELS.tornado.includes(truth.observedProbability.tornado[cell(25, 25)]), 'the verified chance is a contour level');
 assert.ok(truth.observedProbability.tornado.every(v => v === 0 || PROBABILITY_LEVELS.tornado.includes(v)), 'everywhere');
-assert.equal(truth.observedCig.tornado[cell(17, 25)], 2, 'most tornadoes round about EF3+: CIG2'); assert.equal(truth.observedCig.tornado[cell(34, 25)], 0, 'few of them on the eastern side');
+assert.equal(truth.observedCig.tornado[cell(17, 25)], 2, 'half the tornadoes in the area EF3+: CIG2'); assert.equal(truth.observedCig.tornado[cell(34, 25)], 2, 'the area is judged as a whole');
+assert.equal(truth.observedCig.tornado[cell(49, 2)], 0, 'no group outside every contour');
 assert.equal(truth.observedCig.wind[cell(45, 45)], 0, 'one 96 mph gust in a wide swath of wind does not make a group');
 for (let i = 0; i < n; i++) assert.equal(truth.worldRisk[i] === 'NONE' || truth.worldRisk[i] === 'TSTM' ? null : truth.worldRisk[i], ['tornado', 'wind', 'hail'].map(h => (truth.observedProbability[h][i] ? categoryFromHazard(h, truth.observedProbability[h][i], truth.observedCig[h][i]) : null)).filter(Boolean).sort((a, b) => rank(b) - rank(a))[0] ?? null);
 assert.ok(rank(truth.worldRisk[cell(22, 25)]) >= rank('ENH'), `Enhanced or more at the heart of it (${truth.worldRisk[cell(22, 25)]})`);

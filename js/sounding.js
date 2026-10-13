@@ -335,10 +335,53 @@ function mixedLayerSource(profile,depthHpa){
  return {p:surfaceP,t,td,index:0};
 }
 function mostUnstableParcel(profile,elevation,depthHpa,envTv,surfaceResult=null){
- const surfaceP=profile[0].p;let best=null;
- // The level-0 candidate is exactly the surface parcel; reuse it when already lifted.
- profile.forEach((r,i)=>{if(r.p<surfaceP-depthHpa)return;const result=i===0&&surfaceResult?surfaceResult:parcelDiagnosticsForState(profile,{p:r.p,t:r.t,td:r.td,index:i},elevation,envTv);if(!best||result.thermo.cape>best.thermo.cape){best=result;best.sourceIndex=i}});
- return best||surfaceResult||parcelDiagnosticsForSource(profile,0,elevation,envTv);
+ const surfaceP=profile[0].p;let bestIndex=-1,bestCape=0;
+ // Every level in the layer is a candidate, but only its CAPE decides between them, so each
+ // is lifted for its CAPE alone (parcelCape: the same arithmetic as the full diagnosis,
+ // without building the parcel) and only the winner is diagnosed in full. The level-0
+ // candidate is exactly the surface parcel; it is reused when already lifted.
+ for(let i=0;i<profile.length;i++){
+   const r=profile[i];if(r.p<surfaceP-depthHpa)continue;
+   const cape=i===0&&surfaceResult?surfaceResult.thermo.cape:parcelCape(profile,{p:r.p,t:r.t,td:r.td,index:i},envTv);
+   if(bestIndex<0||cape>bestCape){bestIndex=i;bestCape=cape}
+ }
+ if(bestIndex<0)return surfaceResult||parcelDiagnosticsForSource(profile,0,elevation,envTv);
+ const source=profile[bestIndex];
+ const best=bestIndex===0&&surfaceResult?surfaceResult:parcelDiagnosticsForState(profile,{p:source.p,t:source.t,td:source.td,index:bestIndex},elevation,envTv);
+ best.sourceIndex=bestIndex;
+ return best;
+}
+// The CAPE diagnoseParcel gives for a parcel lifted from a level (buildParcelFromState), to
+// the last digit: the same steps in the same order, keeping only what CAPE needs.
+function parcelCape(profile,source,envTv=null){
+ const start=source.index||0,last=profile.length-1;
+ const tlclK=lclTemperatureK(source.t,source.td), theta=(source.t+273.15)*Math.pow(1000/source.p,RD/CP);
+ const pLcl=source.p*Math.pow(tlclK/(source.t+273.15),CP/RD);
+ const w0=mixingRatioFromDewpoint(source.td,source.p);
+ // Height of the condensation level, as heightAtPressure finds it in the profile from the source up.
+ let lclM=profile[last].heightM;
+ for(let i=start;i<last;i++){const a=profile[i],b=profile[i+1];if(pLcl<=a.p&&pLcl>=b.p){const f=(Math.log(a.p)-Math.log(pLcl))/(Math.log(a.p)-Math.log(b.p));lclM=lerp(a.heightM,b.heightM,f);break}}
+ let previousP=source.p,previousT=source.t,adiabat,cape=0,tvEnvB=0,tvParB=0;
+ for(let i=start;i<=last;i++){
+   const r=profile[i];let t,td;
+   if(r.p>=pLcl){t=theta*Math.pow(r.p/1000,RD/CP)-273.15;const e=w0*r.p/(EPS+w0);td=Math.min(t,dewpointFromVaporPressure(e));}
+   else {
+     if(adiabat===undefined)adiabat=pseudoAdiabatThroughPoint(tlclK-273.15,pLcl);
+     if(adiabat!==null)t=pseudoAdiabatTemperature(adiabat,r.p);
+     else {if(previousP>pLcl){previousP=pLcl;previousT=tlclK-273.15}t=moistLift(previousT,previousP,r.p);}
+     td=t;
+   }
+   previousP=r.p;previousT=t;
+   const tvEnvA=tvEnvB,tvParA=tvParB;
+   tvEnvB=envTv?envTv[i]:virtualTemperatureK(r.t,r.td,r.p);
+   tvParB=virtualTemperatureK(t,td,r.p);
+   if(i===start)continue;
+   const below=profile[i-1];
+   const buoyA=G*(tvParA-tvEnvA)/tvEnvA,buoyB=G*(tvParB-tvEnvB)/tvEnvB;
+   const dz=Math.max(0,r.heightM-below.heightM),area=.5*(buoyA+buoyB)*dz,midH=.5*(below.heightM+r.heightM);
+   if(midH>=lclM&&area>0)cape+=area;
+ }
+ return Math.max(0,cape);
 }
 function parcelDiagnosticsForState(profile,source,elevation,envTv=null){
  const parcel=buildParcelFromState(profile,source);
@@ -462,7 +505,9 @@ function precipitableWater(rows){let total=0;for(let i=0;i<rows.length-1;i++){co
 function mixingRatioFromDewpoint(td,p){const e=Math.min(p*.99,vaporPressureFromDewpoint(td));return EPS*e/(p-e);}
 function specificHumidity(td,p){const e=vaporPressureFromDewpoint(td),w=EPS*e/(p-e);return w/(1+w);}
 function wetBulbApprox(t,rh){return t*Math.atan(.151977*Math.sqrt(rh+8.313659))+Math.atan(t+rh)-Math.atan(rh-1.676331)+.00391838*Math.pow(rh,1.5)*Math.atan(.023101*rh)-4.686035;}
-function interpolateHeightForWetBulb(rows,target){const wb=rows.map(r=>({...r,t:wetBulbApprox(r.t,r.rh)}));return interpolateHeightForTemp(wb,target);}
+// The height where the wet-bulb temperature crosses a value (interpolateHeightForTemp on the
+// wet-bulb temperatures, worked out level by level as the search goes up).
+function interpolateHeightForWetBulb(rows,target){if(!rows.length)return NaN;let b=wetBulbApprox(rows[0].t,rows[0].rh);for(let i=0;i<rows.length-1;i++){const a=b;b=wetBulbApprox(rows[i+1].t,rows[i+1].rh);if((a-target)*(b-target)<=0&&b!==a){const f=(target-a)/(b-a);return lerp(rows[i].heightM,rows[i+1].heightM,f)}}return NaN}
 function interpolateAnchor(a,p){let lo=a[a.length-1],hi=a[0];for(let i=0;i<a.length-1;i++){if(p<=a[i].p&&p>=a[i+1].p){hi=a[i];lo=a[i+1];break}}const f=(Math.log(hi.p)-Math.log(p))/(Math.log(hi.p)-Math.log(lo.p));return{p,t:lerp(hi.t,lo.t,f),td:Math.min(lerp(hi.td,lo.td,f),lerp(hi.t,lo.t,f)),dir:blendDir(hi.dir,lo.dir,f),spd:lerp(hi.spd,lo.spd,f)}}
 function pressureToHeight(p,elev,surfaceP,surfaceT){const tv=surfaceT+273.15;return elev+(RD*tv/G)*Math.log(surfaceP/p);}
 function interpolateHeightForTemp(rows,target){for(let i=0;i<rows.length-1;i++){const a=rows[i],b=rows[i+1];if((a.t-target)*(b.t-target)<=0&&b.t!==a.t){const f=(target-a.t)/(b.t-a.t);return lerp(a.heightM,b.heightM,f)}}return NaN}

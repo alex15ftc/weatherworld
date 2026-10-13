@@ -929,6 +929,67 @@ not images, and a cheaper outlook (not started).
 - `OutlookRuntime`: the copy of the world could be left behind on Windows (removal failed
   while the file was still held); removal is now retried.
 
+### The centre's own table, and Days 1 to 3 (2026-10-13)
+
+The user chose: keep the Storm Prediction Center's table and its 25 miles, decide intensity
+groups by the 30% rule, and accept the mix that gives; issue Day 1 every 6 hours, Day 2 every
+12, Day 3 every 24; Days 2 and 3 by the centre's rules as well.
+
+- `worldRiskCategories.js` now reads the centre's tables (`CATEGORY_TABLES`, exported from
+  `spcOutlookRules.js`); this world's own table is gone (a copy is in the job's temp folder
+  only). New: `CIG_SHARE` 0.3, `conditionalCig`, `contourCig` (each separate area inside a
+  contour judged as a whole from the reports in it).
+- Two versions of the rule were measured on 320 days. Point by point (the ratio of the
+  smoothed chances at each cell): High 33%, because a small strong patch at the edge of a
+  contour sets the group. Area by area from the reports: below Slight 7, Slight 10, Enhanced
+  52, Moderate 23, High 8. The second is what is used, by forecasts and verification alike.
+- `DayOneOutlook.js`: `runOutlookMemberDays` reports each outlook day a run reaches, with the
+  reports beside the chances and a chance of any severe weather; `combineOutlook` takes the
+  day; Day 3 has the one hazard `severe`. `OutlookRuntime` keeps a product per day and issues
+  what is due by update slot. `day2.html` and `day3.html` are the Day 1 page with another
+  data-page (the old placeholder pages are in the trimmed folder, phase10).
+- Not done: verification of the new outlooks; an uncertain atmosphere for Days 2 and 3; the
+  cheaper run.
+
+### Vaguer outlooks for Days 2 and 3 (2026-10-13)
+
+The user asked for Days 2 and 3 to be vaguer, Day 3 more than Day 2. Three things were tried
+on the forecast runs, nothing on the live world:
+
+1. Small broad differences in the starting state of the large-scale model. Set aside: they
+   grow by about a third a day, so Day 3 was hardly vaguer than Day 1.
+2. A timing error (each run's systems travel faster or slower). Kept at 1.2 m/s. Alone it
+   helps only where the severe weather is a compact area.
+3. A run's own weather far upstream, none over the map (`perturbUpstream`, share 0.5).
+   Kept. The difference arrives with the systems: nil at issue, growing day by day. Share 1
+   gave no more than 0.5.
+
+Result on four worlds: runs 17, 30, 43 miles apart on Days 1, 2, 3 (14, 9, 8 before). On
+days when severe weather would cover the map anyway, the chances stay high; this world's
+climate, not the forecast, sets that. `scripts/outlook-spread.mjs` (new) measures it;
+`tests/ensemble-perturbation.mjs` (new).
+
+### Fewer runs for Days 2 and 3 (2026-10-13)
+
+The user proposed fewer runs for the later days (4 and 2) as the way to make them vaguer and
+cheaper. Done for the cost (720 run-hours per world day against 1,056). Measured for the
+vagueness: with no doubts about the atmosphere, 4 or 2 runs give the same outlook as 8,
+since the runs agree. So the timing and upstream doubts are kept as well; set
+`TIMING.spreadMs` and `UPSTREAM.share` to 0 to have them off.
+
+### Cheaper forecast runs, smoother Day 3 (2026-10-13)
+
+Profile of a 24-hour run before: soundings 38%, storms' inner fields 18%, large-scale model
+20% (with the steering look-ahead), garbage collection 12%. Done, each checked against a
+saved run's storms, tornadoes and chances, the soundings' hash and the world fingerprint:
+`world.withoutStormPictures` (StormEngine), `model.fastTransforms` (QuasiGeostrophicModel
+`solveFast`; forecast runs only, because its last digits differ and would change the live
+world's history), `parcelCape` in sounding.js, `interpolateHeightForWetBulb` without the
+copy, `plan: false` on restore. 14.2 s to 9.2 s. Not done: anything that changes the live
+world's numbers (a fast transform there, or pruning most-unstable candidates).
+`OUTLOOK.spreadKm` / `spreadFor`: Gaussian spreading of a day's chances by how few runs it
+has. `scripts/outlook-verify.mjs` rewritten to verify all three days as the server makes them.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

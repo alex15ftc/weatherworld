@@ -22,7 +22,7 @@ const statePath = process.env.WEATHER_PERSIST === 'off' ? null : path.resolve(RO
 if (process.env.WEATHER_SEED || !statePath || !fs.existsSync(statePath)) console.log('[weather-authority] starting a new world (about a minute)...');
 const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath });
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine });
-// The Day 1 outlook: issued when the world is ready and at each 12Z (WEATHER_OUTLOOK=off turns it off;
+// The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
 const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined });
 if (outlooks) { outlooks.maybeIssue(); setInterval(() => outlooks.maybeIssue(), 5_000).unref(); }

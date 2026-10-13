@@ -23,22 +23,49 @@ export const WORLD_MAX_CIG = { tornado: 3, wind: 3, hail: 2, severe: 2 };
 // combination is not used (a high intensity group is not drawn inside a very low chance).
 export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 
-// Conditional intensity: a group is given where at least this share of the severe weather of
-// that kind is expected to reach the group's tier (for tornadoes: 30% of them EF2+ is CIG1,
-// 30% EF3+ is CIG2, 30% EF4+ is CIG3). One strong report among many weak ones does not make
-// a group.
+// Conditional intensity: a contour area is given a group when at least this share of the
+// severe weather of that kind inside it reaches the group's tier (for tornadoes: 30% of them
+// EF2+ is CIG1, 30% EF3+ is CIG2, 30% EF4+ is CIG3). One strong report among many weak ones
+// does not make a group. Each area inside a contour is judged as a whole (contourCig).
 export const CIG_SHARE = 0.3;
 // The fields of the verification's chances behind each hazard's tiers.
 export const CIG_TIERS = Object.freeze({
   tornado: ['tornadoSig', 'tornadoExtreme', 'tornadoViolent'], wind: ['windSig', 'windExtreme', 'windViolent'],
   hail: ['hailSig', 'hailExtreme'], severe: ['severeSig', 'severeExtreme']
 });
-// The intensity group at a point from the chance of the hazard there and the chances of its tiers.
+// The intensity group from an amount of the hazard and the amounts of it reaching each tier.
 export function conditionalCig(chance, tierChances, share = CIG_SHARE) {
   if (!(chance > 0)) return 0;
   let group = 0;
   tierChances.forEach((tier, k) => { if (tier / chance >= share) group = k + 1; });
   return group;
+}
+
+// The intensity group at every cell of the map: for each contour level, each separate area
+// inside it is judged as a whole, and a cell takes the group of the highest contour it is
+// inside. `chance` is the hazard's chance (percent) on the cells and draws the contours;
+// `amount` is how much of the hazard each cell has (1 where there was a report; for a
+// forecast, the share of the runs with one) and `tiers` how much reaching each tier.
+export function contourCig(hazard, chance, amount, tiers, width, height, share = CIG_SHARE) {
+  const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), stack = [];
+  let pass = 0;
+  for (const level of PROBABILITY_LEVELS[hazard]) {
+    pass++;
+    for (let start = 0; start < n; start++) {
+      if (mark[start] === pass || !(chance[start] >= level - 1e-9)) continue;
+      // One area: the cells joined edge to edge that are inside this contour.
+      const cells = []; let total = 0; const reaching = tiers.map(() => 0);
+      stack.push(start); mark[start] = pass;
+      while (stack.length) {
+        const i = stack.pop(), x = i % width, y = (i - x) / width;
+        cells.push(i); total += amount[i]; tiers.forEach((tier, k) => { reaching[k] += tier[i]; });
+        for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && mark[j] !== pass && chance[j] >= level - 1e-9) { mark[j] = pass; stack.push(j); }
+      }
+      const group = conditionalCig(total, reaching, share);
+      for (const i of cells) out[i] = group;
+    }
+  }
+  return out;
 }
 
 // The highest intensity group that may be drawn inside a contour level.

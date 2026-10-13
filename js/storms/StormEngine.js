@@ -54,7 +54,9 @@ function createStorm(world, candidate, environment, modeHint = null, parentId = 
   storm.leftMover = modeHint === 'left-moving supercell';
   storm.elevatedFeed = modeHint === 'elevated convection';
   initializeTornadoState(storm);
-  createStormInternalField(storm, environment, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
+  // The inner fields are the storm's picture for radar; nothing in its behaviour reads them,
+  // so a world that draws no radar (a forecast run) leaves them out (world.withoutStormPictures).
+  if (!world.withoutStormPictures) createStormInternalField(storm, environment, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   initializeStormStructure(storm, environment, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   initializeStormDiagnostics(storm, environment);
   storm.mode = describeStormMode(storm, environment);
@@ -126,7 +128,7 @@ function updateStorm(world, storm, dtHours) {
   updateLifecycleEvolution(storm, environment, dtHours);
   updateStormConfidence(storm, environment, dtHours);
   stepStormRotation(storm, environment, dtHours);
-  evolveStormInternalField(storm, environment, dtHours);
+  if (!world.withoutStormPictures) evolveStormInternalField(storm, environment, dtHours);
   evolveStormStructure(storm, environment, dtHours, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   diagnoseObservedStorm(storm, environment);
   storm.mode = describeStormMode(storm, environment);

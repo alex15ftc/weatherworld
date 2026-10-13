@@ -122,6 +122,10 @@ export class RegionalAtmosphere {
     this.previousMid = null;
     // The region may slide east (+) or west along the outer model (m/s); see RegionSteering.
     this.slideMs = 0;
+    // A forecast run's timing error (ensemblePerturbation.js): its weather systems travel this
+    // much faster (+) than the model has them (m/s), and how far ahead that has put them (m).
+    // Always zero in the live world.
+    this.timingErrorMs = 0; this.timingLeadM = 0;
     // Where the map sits along the geography now (cells east of its western edge), where it is
     // heading, and how fast it may move (cells per hour). See RegionSteering.
     this.geographyOffset = p.geographyOffset; this.geographyTarget = p.geographyOffset; this.geographyRate = 0; this.geographyVersion = 0;
@@ -308,11 +312,13 @@ export class RegionalAtmosphere {
   step() {
     const p = this.params, dt = p.stepSeconds;
     this.driftGeography(dt);
-    if (this.slideMs) {
+    if (this.slideMs || this.timingErrorMs) {
       // Slide first, then read the heights at the new place before the model moves on, so
       // that their change over the step is the passing weather and not the slide itself.
       const length = this.model.lengthX;
-      this.origin.x = ((this.origin.x + this.slideMs * dt) % length + length) % length;
+      // Systems running ahead of the model are the same as reading the model further back.
+      this.origin.x = ((this.origin.x + (this.slideMs - this.timingErrorMs) * dt) % length + length) % length;
+      this.timingLeadM += this.timingErrorMs * dt;
       const mid = this.previousMid ??= new Float64Array(this.nx * this.ny);
       for (let y = 0; y < this.ny; y++) for (let x = 0; x < this.nx; x++) mid[y * this.nx + x] = this.outerAt(x, y).midPsi;
     }

@@ -90,12 +90,16 @@ minutes per real minute. The world is saved every simulated hour.
 
 ## Risk categories
 
-`js/forecast/worldRiskCategories.js` holds this world's own category thresholds and
-`worldCategory()`. `js/verification/truth.js` gives every cell its unrounded chance of each
-hazard (`chance`) and its category (`worldRisk`) beside the real-world ones (`risk`).
-`scripts/risk-climate.mjs` fits the thresholds; refit whenever the climate changes.
+`js/forecast/spcOutlookRules.js` holds the Storm Prediction Center's contour levels and
+category tables; `js/forecast/worldRiskCategories.js` reads them (`worldCategory()`) and
+holds the one rule that is this world's own: `contourCig` gives each area inside a contour
+the highest intensity tier that 30% (`CIG_SHARE`) of the reports in it reach.
+`js/verification/truth.js` gives every cell its unrounded chance of each hazard (`chance`),
+its intensity group (`observedCig`) and its category (`worldRisk`).
+`scripts/risk-climate.mjs` prints the mix of days; `scripts/risk-radius.mjs` the same for
+other radii.
 
-## The Day 1 outlook
+## The outlooks (Days 1 to 3)
 
 `js/forecast/DayOneOutlook.js`. At issue time the world is copied and run ahead several
 times (the members). Each has the same atmosphere, but its storms take their chances
@@ -106,31 +110,40 @@ Storm Prediction Center's is since March 2026:
 
 - chances shown only at the fixed contour levels (tornado 2, 5, 10, 15, 30, 45, 60%; wind 5,
   15, 30, 45, 60, 75, 90%; hail 5, 15, 30, 45, 60%);
-- conditional intensity groups hatched over them: the highest tier with a 10% chance
-  (tornado EF2+ / EF3+ / EF4+; wind 75 / 85 / 96 mph; hail 2 in / 3.5 in), held to what the
-  contour level allows;
-- the category from the contour level and the group together, through this world's tables
-  (`worldRiskCategories.js`);
+- conditional intensity groups hatched over them (tornado EF2+ / EF3+ / EF4+; wind 75 / 85 /
+  96 mph; hail 2 in / 3.5 in): each area inside a contour takes the highest tier that 30% of
+  the members' reports in it reach, held to what the contour level allows;
+- the category from the contour level and the group together, through the centre's tables;
+- Day 3 in the centre's Day 3 form: one chance, of any severe weather (5, 15, 30, 45, 60%),
+  two intensity groups, no category above Moderate;
 - a general thunderstorm area (10% or more of the members);
 - a discussion (`writeDiscussion`) that describes hazards in words and cites only contour
   levels and groups.
 
-`server/OutlookRuntime.js` issues it when the server has a world and at each 12Z, running
-the members in their own processes (`server/outlookMember.js`) from a copy of the world
+`server/OutlookRuntime.js` issues them: all three when the server has a world, then Day 1
+every 6 hours, Day 2 every 12 and Day 3 every 24, counted from 12Z (`OUTLOOK.updateHours`).
+One set of runs serves every outlook due, each member reporting each outlook day separately
+(`runOutlookMemberDays`). Day 1 is made from all the members, Day 2 from half and Day 3 from
+a quarter (`OUTLOOK.memberShare`, `membersFor`), and a member runs only as far as the last day
+it is in. Each member
+also has its own doubts about the atmosphere (`js/forecast/ensemblePerturbation.js`: a
+timing error, `regional.timingErrorMs`, and its own weather far upstream, `perturbUpstream`),
+so the later days are vaguer. The members run at the
+same time, each in its own process (`server/outlookMember.js`), from a copy of the world
 written to a scratch file; the live world keeps running. Each member must have its own copy
 of the saved world (`stateFromBytes`): arrays read out of the same bytes can share memory.
 
 | Route | Returns |
 |---|---|
-| `GET /api/outlooks/day1` | the outlook (the areas as outlines, intensity groups, discussion), or its status while one is being made |
-| `GET /api/outlooks/status` | whether one is running, when the current one was issued |
+| `GET /api/outlooks/day1`, `day2`, `day3` | the outlook (the areas as outlines, intensity groups, discussion, when it is next updated), or its status while one is being made |
+| `GET /api/outlooks/status` | whether a run is going, and for each day when it was issued and is next updated |
 
 The areas go out as outlines, not grids and not the chances themselves: `outlookShapes`
 traces each category, contour level and intensity group with `js/forecast/contourShapes.js`
 (closed rings of points as shares of the map, holes as rings of their own, closed along the
 map edge), so a page or a game draws the same shapes at any size.
 
-`day1.html` (`js/pages/outlookPage.js`) draws them as filled, outlined and labelled shapes:
+`day1.html`, `day2.html` and `day3.html` (one script, `js/pages/outlookPage.js`) draw them as filled, outlined and labelled shapes:
 the contour levels in the real
 colours; CIG1 broken lines falling to the lower left, CIG2 solid lines falling to the lower
 right, CIG3 crossed; no figures on the map. `scripts/outlook-verify.mjs` checks it.

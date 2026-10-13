@@ -76,9 +76,75 @@ export class QuasiGeostrophicModel {
     this.k2 = Float64Array.from({ length: this.kCount }, (_, k) => (2 - 2 * Math.cos(2 * Math.PI * k / nx)) / (this.d * this.d));
   }
 
+  // The same solve with fast Fourier transforms along x (the number of columns must be a power
+  // of two). It gives the same answer to within rounding, several times sooner, but not the
+  // same last digits, and over many days those would grow into a different history. So the
+  // live world keeps the plain transforms below; a forecast run, which is not held to the
+  // last digit, sets `fastTransforms` (see DayOneOutlook.js).
+  solveFast(rhs, lambda, out) {
+    const { nx, ny, d, kCount } = this, off = 1 / (d * d), fast = this.fast ??= this.buildFast();
+    const { fr, fi, specRe, specIm, re, im, cp, z } = fast;
+    for (let j = 0; j < ny; j++) {
+      const row = j * nx;
+      for (let i = 0; i < nx; i++) { fr[i] = rhs[row + i]; fi[i] = 0; }
+      this.fft(fr, fi, -1);
+      for (let k = 0; k < kCount; k++) { specRe[k * ny + j] = fr[k] / nx; specIm[k * ny + j] = fi[k] / nx; }
+    }
+    for (let k = 0; k < kCount; k++) {
+      const base = k * ny;
+      for (let j = 0; j < ny; j++) { re[j] = specRe[base + j]; im[j] = specIm[base + j]; }
+      const diagonal = -2 * off - this.k2[k] - Math.max(lambda, k === 0 ? 1e-13 : 0), gamma = -diagonal;
+      const thomas = values => {
+        const first = diagonal - gamma, last = diagonal - off * off / gamma;
+        cp[0] = off / first; values[0] /= first;
+        for (let j = 1; j < ny; j++) { const m = (j === ny - 1 ? last : diagonal) - off * cp[j - 1]; cp[j] = off / m; values[j] = (values[j] - off * values[j - 1]) / m; }
+        for (let j = ny - 2; j >= 0; j--) values[j] -= cp[j] * values[j + 1];
+      };
+      z.fill(0); z[0] = gamma; z[ny - 1] = off;
+      thomas(z); thomas(re); thomas(im);
+      const denominator = 1 + z[0] + off * z[ny - 1] / gamma;
+      const a = (re[0] + off * re[ny - 1] / gamma) / denominator, b = (im[0] + off * im[ny - 1] / gamma) / denominator;
+      for (let j = 0; j < ny; j++) { specRe[base + j] = re[j] - a * z[j]; specIm[base + j] = im[j] - b * z[j]; }
+    }
+    for (let j = 0; j < ny; j++) {
+      // The harmonics above the middle one mirror those below it (the field is real).
+      for (let k = 0; k < kCount; k++) { fr[k] = specRe[k * ny + j]; fi[k] = specIm[k * ny + j]; }
+      for (let k = kCount; k < nx; k++) { fr[k] = fr[nx - k]; fi[k] = -fi[nx - k]; }
+      this.fft(fr, fi, 1);
+      const row = j * nx;
+      for (let i = 0; i < nx; i++) out[row + i] = fr[i];
+    }
+    return out;
+  }
+
+  buildFast() {
+    const { nx, ny, kCount } = this, bits = Math.log2(nx), reverse = new Uint16Array(nx);
+    for (let i = 0; i < nx; i++) { let r = 0; for (let b = 0; b < bits; b++) if (i & (1 << b)) r |= 1 << (bits - 1 - b); reverse[i] = r; }
+    return {
+      reverse, cos: Float64Array.from({ length: nx / 2 }, (_, i) => Math.cos(2 * Math.PI * i / nx)), sin: Float64Array.from({ length: nx / 2 }, (_, i) => Math.sin(2 * Math.PI * i / nx)),
+      fr: new Float64Array(nx), fi: new Float64Array(nx), specRe: new Float64Array(kCount * ny), specIm: new Float64Array(kCount * ny),
+      re: new Float64Array(ny), im: new Float64Array(ny), cp: new Float64Array(ny), z: new Float64Array(ny)
+    };
+  }
+
+  // In-place Fourier transform of a row (sign -1: forward; +1: back, not divided by the length).
+  fft(re, im, sign) {
+    const { nx } = this, { reverse, cos, sin } = this.fast;
+    for (let i = 0; i < nx; i++) { const r = reverse[i]; if (r > i) { let t = re[i]; re[i] = re[r]; re[r] = t; t = im[i]; im[i] = im[r]; im[r] = t; } }
+    for (let size = 2; size <= nx; size <<= 1) {
+      const half = size >> 1, stride = nx / size;
+      for (let start = 0; start < nx; start += size) for (let k = 0; k < half; k++) {
+        const c = cos[k * stride], s = sign * sin[k * stride], p = start + k, q = p + half;
+        const tr = re[q] * c - im[q] * s, ti = re[q] * s + im[q] * c;
+        re[q] = re[p] - tr; im[q] = im[p] - ti; re[p] += tr; im[p] += ti;
+      }
+    }
+  }
+
   // Solves (lap - lambda) psi = rhs, periodic in both directions: Fourier in x, a cyclic
   // tridiagonal system in y for each harmonic.
   solve(rhs, lambda, out) {
+    if (this.fastTransforms && Number.isInteger(Math.log2(this.nx))) return this.solveFast(rhs, lambda, out);
     const { nx, ny, d, kCount } = this, off = 1 / (d * d);
     const re = new Float64Array(ny), im = new Float64Array(ny), cp = new Float64Array(ny), z = new Float64Array(ny);
     out.fill(0);

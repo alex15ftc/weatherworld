@@ -24,47 +24,29 @@ worlds ran high.
 | Tornadoes on a Slight / Enhanced / Moderate / High day (medians) | 1 / 10 / 28 / 65 |
 | Storms on a Slight / Enhanced / Moderate / High day (medians) | 100 / 167 / 219 / 345 |
 
-**Risk categories** are built as the Storm Prediction Center builds its own (as changed in
-March 2026): the chance of each hazard only at fixed contour levels, a conditional intensity
-group (CIG1-3; two for hail), and a table that turns the two into a category. The table's
-entries are this world's own (`js/forecast/worldRiskCategories.js`); by the real table 44% of
-days here would be High.
+**Risk categories** are the Storm Prediction Center's own (as changed in March 2026): the
+chance of each hazard within 25 miles, only at the fixed contour levels; a conditional
+intensity group (CIG1-3; two for hail); and the centre's own table turning the two into a
+category (`js/forecast/spcOutlookRules.js`). Nothing in the table is this world's.
+
+What is this world's own is how an intensity group is decided, since the centre's
+forecasters judge it: each area inside a contour is given the highest tier that at least
+30% of the reports in it reach (`CIG_SHARE`, `contourCig` in
+`js/forecast/worldRiskCategories.js`). The same rule reads the forecast runs and the
+reports that verify them.
 
 | | Below Slight | Slight | Enhanced | Moderate | High |
 |---|---|---|---|---|---|
-| Wanted | 5% | 30% | 40% | 20% | 5% |
-| 320 days, eight worlds | 7% | 28% | 40% | 20% | 5% |
+| First wanted | 5% | 30% | 40% | 20% | 5% |
+| 320 days, eight worlds | 7% | 10% | 52% | 23% | 8% |
 
-Category by contour level (rows) and intensity group (columns):
-
-| Tornado | none | CIG1 (EF2+) | CIG2 (EF3+) | CIG3 (EF4+) |
-|---|---|---|---|---|
-| 2% | Marginal | Marginal | Slight | - |
-| 5% | Slight | Slight | Slight | - |
-| 10% | Slight | Slight | Slight | Enhanced |
-| 15% | Slight | Slight | Enhanced | Enhanced |
-| 30% | Slight | Enhanced | Enhanced | Moderate |
-| 45% | Enhanced | Enhanced | Moderate | Moderate |
-| 60% | Enhanced | Moderate | Moderate | High |
-
-| Wind | none | CIG1 (75 mph) | CIG2 (85 mph) | CIG3 (96 mph) |
-|---|---|---|---|---|
-| 5% | Marginal | Marginal | Slight | - |
-| 15%, 30% | Slight | Slight | Slight | - |
-| 45% | Slight | Slight | Slight | Enhanced |
-| 60% | Slight | Slight | Enhanced | Enhanced |
-| 75%, 90% | Slight | Enhanced | Enhanced | Moderate |
-
-| Hail | none | CIG1 (2 in) | CIG2 (3.5 in) |
-|---|---|---|---|
-| 5% | Marginal | Marginal | Slight |
-| 15%, 30% | Slight | Slight | Slight |
-| 45% | Slight | Slight | Enhanced |
-| 60% | Slight | Enhanced | Enhanced |
-
-A High day is a 60% tornado area with violent tornadoes. Medians: Slight 2 tornadoes,
-Enhanced 9, Moderate 31, High 53. `npm run inspect:risk` records what each day reaches and
-prints the mix the tables give (`--from file` re-reads a saved run after a table is edited).
+The user accepted this mix to keep the centre's table and its 25 miles. Medians: Slight 1
+tornado, Enhanced 7, Moderate 18, High 36. Slight is thin and Enhanced fat because damaging
+wind is widespread here; only the storms' wind would change that. `npm run inspect:risk`
+prints the mix. Tried and set aside: this world's own table (hit the wanted mix, but was not
+the real table); a smaller radius (10 or 15 miles: thins the tornado contours but High stays
+near 38%, since wind makes those days; `node scripts/risk-radius.mjs`); the group from the
+single strongest report in a contour (High 43%); the group point by point (High 33%).
 
 **Across the map, and from day to day.** The map roams along the geography: each day it
 moves 50 to 150 miles one way or the other, between having the high ground over its western
@@ -130,57 +112,72 @@ What is not natural enough yet:
 - **A storm crossing an old outflow boundary gets no boost** to its low-level shear.
 - **Low-level shear is high**: afternoon helicity is about double the real median.
 
-## The Day 1 outlook
+## The outlooks
 
-Issued by the server when it starts and at each 12Z, from eight forecast runs (about 25
-seconds). Page: `/day1.html`. Laid out as the Storm Prediction Center's: the categorical map;
-tornado, wind and hail maps showing the chance only at the fixed contour levels, with the
-intensity groups hatched over them (CIG1 broken lines, CIG2 solid, CIG3 crossed); and a
-discussion that gives no exact chances.
-
-Checked on 30 outlooks (six worlds, five days each, six runs per outlook), with the first
-version of the category table:
-
-| | |
-|---|---|
-| Highest category of the day right / within one | 63% / 100% |
-| Category right, place by place | 78% of the map (within one: 97%) |
-| The day's tornado count inside the range of the forecast runs | 83% of days |
-
-| Places inside the contour | 2% | 5% | 10% | 15% | 30% | 45% | 60% | 75% | 90% |
-|---|---|---|---|---|---|---|---|---|---|
-| A tornado came within 25 miles | 2% | 6% | 12% | 25% | 42% | 64% | 87% | | |
-| 58 mph wind did | | 3% | | 16% | 44% | 77% | 89% | 97% | 100% |
-| 1 in hail did | | 5% | | 16% | 46% | 70% | 86% | | |
-
-| Inside the intensity group | EF2+ within 25 miles | EF3+ | EF4+ |
+| Outlook | Covers | Issued afresh | Gives |
 |---|---|---|---|
-| none drawn | 2% | 0% | 0% |
-| CIG1 | 15% | 5% | 3% |
-| CIG2 | 45% | 22% | 7% |
+| Day 1 (`/day1.html`) | the outlook day in progress (12Z to 12Z) | every 6 hours: 12Z, 18Z, 00Z, 06Z | tornado, wind and hail, each with intensity groups; up to High |
+| Day 2 (`/day2.html`) | the next outlook day | every 12 hours: 12Z, 00Z | the same as Day 1 |
+| Day 3 (`/day3.html`) | the one after | every 24 hours: 12Z | one chance, of any severe weather (5 to 60%), two intensity groups; up to Moderate |
 
-Not yet done: the outlook has not been re-verified since the category table was set; one
-outlook a day with no updates; Days 2 and 3.
+All three are also issued when the server first has a world. Each is the centre's layout:
+the categorical map, the chances only at the fixed contour levels, the intensity groups
+hatched (CIG1 broken lines, CIG2 solid, CIG3 crossed), and a discussion that gives no exact
+chances. The maps are drawn from outlines traced on the server, not from images.
 
-**Open decision: the real table with a smaller radius.** The user would rather keep the Storm
-Prediction Center's own table and make High days rare by taking the chance within 10 or 15
-miles of a point instead of 25. Measured on 320 days (`node scripts/risk-radius.mjs`), by the
-real table:
+One set of runs serves every outlook due, all started at the same time, one process each.
+Day 1 is made from eight runs, Day 2 from four of them and Day 3 from two
+(`OUTLOOK.memberShare`), so at 12Z two runs go 72 hours ahead, two more 48 and four 24; at
+00Z four go 36 hours and four 12. That is 720 run-hours per world day; with all eight going
+the whole way it was 1,056, and with one outlook a day 192.
 
-| Chance within | Intensity group from | Below Slight | Slight | Enhanced | Moderate | High |
-|---|---|---|---|---|---|---|
-| 25 miles | the strongest report in the contour | 8% | 9% | 18% | 23% | 43% |
-| 15 miles | the strongest report in the contour | 12% | 12% | 15% | 23% | 38% |
-| 10 miles | the strongest report in the contour | 16% | 11% | 16% | 20% | 37% |
-| 25 miles | 30% of the reports in the contour | 8% | 11% | 52% | 22% | 8% |
-| 15 miles | 30% of the reports in the contour | 12% | 13% | 47% | 23% | 5% |
-| 10 miles | 30% of the reports in the contour | 16% | 13% | 45% | 22% | 4% |
+Fewer runs make the later outlooks cheaper, not vaguer: without the doubts below, four runs
+give the same Day 2 as eight and two the same Day 3 (peak tornado chance 42 against 42, and
+34 against 35, averaged over four worlds), because the runs agree with one another.
 
-The radius alone does not do it: it thins the tornado contours (a 60% tornado area is reached
-on 10% of days at 25 miles, 1% at 15, never at 10), but the High days come from wind, which
-covers most of the map at any radius and reaches the top intensity groups on a single gust.
-What moves High is how the intensity group is decided. Nothing has been changed in the
-outlook yet; it still uses 25 miles and this world's table.
+**What a forecast run costs.** A 24-hour run took 14.2 s of one processor and takes 9.2 s,
+with the same result to the last digit shown (same storms, same tornadoes, same chances):
+
+| Saving | A 24-hour run |
+|---|---|
+| as it was | 14.2 s |
+| the storms' radar pictures left out of forecast runs (nothing in a storm's behaviour reads them) | 11.4 s |
+| fast Fourier transforms in the forecast runs' large-scale model (the live world keeps the plain ones, so its history is unchanged) | 10.7 s |
+| the most unstable parcel found by lifting each candidate for its CAPE alone (every sounding identical; the live world gains too) | 10.0 s |
+| the wet-bulb zero height without copying the profile; no plan made for a world that is about to be given its saved one | 9.2 s |
+
+With the fewer runs for Days 2 and 3, a world day of outlooks costs about 275 s of processor
+time against about 625 s. What is left of a run: soundings about half, the large-scale
+model a tenth, tidying memory a seventh. Days 2 and 3 are also smoothed
+(`OUTLOOK.spreadKm`: each run's weather stands for what could happen 40 km around it on
+Day 2 and 69 km on Day 3), so two runs give one smooth area and not two blocks.
+
+**What the forecast runs do not know** (`js/forecast/ensemblePerturbation.js`). Besides
+drawing its storms' chances afresh, each run has two doubts about the atmosphere, and both
+grow with the hours:
+
+- a timing error: its weather systems travel a little faster or slower than they really
+  will (1.2 m/s spread against about 22 m/s; about 50 km out through Day 1, 155 km through
+  Day 2, 260 km through Day 3);
+- its own weather far upstream: nothing differs within 700 km west of the map, and the
+  difference is full from 4,200 km west (about two days' travel). In the large-scale model
+  the difference over the map is nil at issue time, 15% of the model's own variation after
+  one day, 31% after two and 41% after three.
+
+On four worlds (`node scripts/outlook-spread.mjs`), the runs' severe weather was centred 14,
+9 and 8 miles apart on Days 1, 2 and 3 without these doubts, and 17, 30 and 43 miles apart
+with them; on one world the runs' Day 3 tornado counts went from 42-56 to 28-119. What
+"vaguer" looks like depends on the day: where the severe weather is a compact area, the
+later outlooks spread it wider at lower chances; where it would cover the whole map
+whatever happens upstream, the chances stay high and the doubt shows in the numbers of
+storms and in the discussion. A quiet Day 3 can be forecast with a chance of severe
+weather, because most of what could arrive from upstream here is severe.
+
+Not yet done:
+- The outlooks have not been verified since the categories moved to the centre's table (the
+  figures from before: highest category right on 63% of days and within one on all; places
+  inside the 15, 30, 45 and 60% tornado contours had a tornado within 25 miles 25, 42, 64
+  and 87% of the time).
 
 ## What a player would find
 
@@ -235,7 +232,7 @@ Decided 2026-10-12: not now.
 
 ## Open
 
-1. Outlooks: Day 1 is issued. Still to do: re-verify with the final category table, updates during the day, Days 2 and 3, watches and warnings.
+1. Outlooks: Days 1 to 3 are issued and updated. Still to do: verify them, make the runs cheaper, give Days 2 and 3 an uncertain atmosphere, watches and warnings.
    Also: the quiet world (seed 8), and the low western and southern edge strips.
 2. Getting players to the weather: place selection, travel, or a smaller map.
 3. Longer-lived tornadoes, or a slower clock, so that tornadoes can be chased.
