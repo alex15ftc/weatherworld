@@ -48,10 +48,11 @@ assert.equal(worldCategory(mixed), 'MDT'); assert.equal(leadingHazard(mixed, 'MD
 
 // --- Conditional intensity: a group needs its share of the severe weather to reach the tier.
 assert.equal(CIG_SHARE, 0.3); assert.deepEqual(CIG_SHARES.wind, [0.3, 0.3, 0.3]);
-// Tornadoes have lower bars for the upper groups, never rising with the tier.
-assert.ok(CIG_SHARES.tornado[0] >= CIG_SHARES.tornado[1] && CIG_SHARES.tornado[1] >= CIG_SHARES.tornado[2] && CIG_SHARES.tornado[2] > 0);
-assert.equal(conditionalCig(40, [20, 11, 2], CIG_SHARES.tornado), 2, 'a little over a quarter EF3+: CIG2 for tornadoes'); assert.equal(conditionalCig(40, [20, 11, 2]), 1, 'but not at the general 30%');
-assert.equal(conditionalCig(40, [13, 7, 6.5], CIG_SHARES.tornado), 3, 'a sixth violent: CIG3');
+// Tornadoes have bars of their own: a low one for hatching at all, high ones for the upper groups.
+assert.deepEqual(CIG_SHARES.tornado, [0.15, 0.4, 0.25]);
+assert.equal(conditionalCig(40, [7, 2, 0], CIG_SHARES.tornado), 1, 'a sixth of the tornadoes EF2+: hatched'); assert.equal(conditionalCig(40, [7, 2, 0]), 0, 'but not at the general 30%');
+assert.equal(conditionalCig(40, [20, 13, 2], CIG_SHARES.tornado), 1, 'a third EF3+ is not yet CIG2 for tornadoes'); assert.equal(conditionalCig(40, [24, 17, 2], CIG_SHARES.tornado), 2);
+assert.equal(conditionalCig(40, [24, 12, 11], CIG_SHARES.tornado), 3, 'a quarter violent: CIG3, whatever the EF3+ share');
 assert.equal(conditionalCig(40, [20, 13, 2]), 2, 'half EF2+, a third EF3+: CIG2');
 assert.equal(conditionalCig(40, [11, 3, 1]), 0, 'a quarter EF2+: no group');
 assert.equal(conditionalCig(40, [12, 12, 12]), 3); assert.equal(conditionalCig(0, [0, 0, 0]), 0);

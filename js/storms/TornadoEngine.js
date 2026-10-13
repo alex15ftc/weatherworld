@@ -20,8 +20,8 @@ export function initializeTornadoState(storm) {
 // A tornado cannot emerge from fields on a 10-mile grid, so it is modelled on the storm, from
 // the storm's own low-level rotation (StormRotation.js). There are no gates, vetoes or
 // cooldowns: everything moves smoothly with the storm's state.
-//   - Whether one forms: a rate that rises with low-level rotation, from none at
-//     onsetRotation[0] to one every fullRatePerHour-th of an hour at onsetRotation[1].
+//   - Whether one forms: a rate that rises with low-level rotation, slowly at first, from
+//     none at onsetRotation[0] to one every fullRatePerHour-th of an hour at onsetRotation[1].
 //     Low-level rotation takes time to build, so a tornado is seen coming; chance decides
 //     only the minute.
 //   - How long it lasts: as long as the storm holds its low-level rotation above
@@ -30,7 +30,13 @@ export function initializeTornadoState(storm) {
 //   - How strong it is: its wind follows the low-level rotation as it rises and falls. What
 //     sets one tornado apart from another under the same rotation cannot be resolved here,
 //     so each has its own draw (strengthUniform) within a spread the rotation scales.
-const TORNADO = { onsetRotation: [0.08, 0.5], fullRatePerHour: 3, power: 1, sustainRotation: 0.055, outlookHours: 0.5 };
+// The rate rises as the square of the way from onsetRotation[0] to onsetRotation[1] (power 2):
+// a weakly rotating storm seldom puts one down, a strongly rotating one often does, and it is
+// the strongly rotating ones whose tornadoes are strong. So the days with many tornadoes are
+// the days with strong ones, as in the real record (with power 1 the big days got their
+// numbers from weak tornadoes: twice the tornadoes the real outlook categories go with, and
+// three 15% tornado areas in four with no strong tornadoes to speak of).
+const TORNADO = { onsetRotation: [0.04, 0.5], fullRatePerHour: 3, power: 2, sustainRotation: 0.055, outlookHours: 0.5 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.

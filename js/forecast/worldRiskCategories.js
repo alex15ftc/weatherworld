@@ -28,12 +28,12 @@ export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 // EF2+ is CIG1, 30% EF3+ is CIG2, 30% EF4+ is CIG3). One strong report among many weak ones
 // does not make a group. Each area inside a contour is judged as a whole (contourCig).
 export const CIG_SHARE = 0.3;
-// Tornadoes are the exception: the stronger tiers are a small part of them even on the worst
-// days (on a day with a 30% tornado contour, a median 6% of the tornado reports in it are
-// EF3+ and none EF4+), so at 30% the upper groups were all but never drawn. Their bars are
-// lower. They cannot be much lower: in the centre's table a 30% tornado contour with CIG2 is
-// a High risk, so every step down here makes High days commoner (see docs/STATUS.md).
-export const CIG_SHARES = Object.freeze({ tornado: [0.3, 0.25, 0.15], wind: [0.3, 0.3, 0.3], hail: [0.3, 0.3], severe: [0.3, 0.3] });
+// Tornadoes have bars of their own. A tornado area is hatched (CIG1) when 15% of its
+// tornadoes are EF2+: half as much again as on an ordinary tornado day here, and enough that
+// most 15% and 30% areas carry hatching, as the real ones do. The upper groups have high
+// bars for a reason outside this file: in the centre's table a 30% tornado contour with CIG2
+// is a High risk, so their bars decide how common High days are (docs/STATUS.md).
+export const CIG_SHARES = Object.freeze({ tornado: [0.15, 0.4, 0.25], wind: [0.3, 0.3, 0.3], hail: [0.3, 0.3], severe: [0.3, 0.3] });
 // The fields of the verification's chances behind each hazard's tiers.
 export const CIG_TIERS = Object.freeze({
   tornado: ['tornadoSig', 'tornadoExtreme', 'tornadoViolent'], wind: ['windSig', 'windExtreme', 'windViolent'],
