@@ -23,7 +23,7 @@ import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { captureTruth, aggregateTruth, practicallyPerfectChance, CHANCE_FIELDS } from '../verification/truth.js';
 import { contourRings, softenArea } from './contourShapes.js';
 import { timingErrorMs, perturbUpstream } from './ensemblePerturbation.js';
-import { WORLD_RISK_ORDER, WORLD_RISK_LABELS, WORLD_HAZARDS, WORLD_MAX_CIG, CIG_MEANING, PROBABILITY_LEVELS, probabilityLevel, worldCategory, worldCategoryFromHazard, drawnCig, contourCig, CIG_TIERS } from './worldRiskCategories.js';
+import { WORLD_RISK_ORDER, WORLD_RISK_LABELS, WORLD_HAZARDS, WORLD_MAX_CIG, CIG_MEANING, PROBABILITY_LEVELS, probabilityLevel, worldCategory, worldCategoryFromHazard, drawnCig, contourCigAreas, highestCigAt, CIG_TIERS } from './worldRiskCategories.js';
 
 export const OUTLOOK = Object.freeze({
   members: 8, stepHours: 0.5, dayStartUtc: 12,
@@ -190,7 +190,8 @@ export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issu
   // (members made without their reports are read from their chances).
   const amount = Object.fromEntries(fields.map(field => [field, new Float32Array(n)])), zero = new Float32Array(n);
   for (const m of members) for (const field of fields) { const from = m.reports?.[field] ?? m.chance[field]; for (let i = 0; i < n; i++) amount[field][i] += from[i] / count; }
-  const intensity = Object.fromEntries(hazards.map(hazard => [hazard, contourCig(hazard, chance[hazard], amount[hazard], CIG_TIERS[hazard].map(field => amount[field] ?? zero), width, height)]));
+  const judged = Object.fromEntries(hazards.map(hazard => [hazard, contourCigAreas(hazard, chance[hazard], amount[hazard], CIG_TIERS[hazard].map(field => amount[field] ?? zero), width, height)]));
+  const intensity = Object.fromEntries(hazards.map(hazard => [hazard, judged[hazard].cig])), cigAreas = Object.fromEntries(hazards.map(hazard => [hazard, judged[hazard].areas]));
   const level = Object.fromEntries(hazards.map(hazard => [hazard, new Uint8Array(n)])), cig = Object.fromEntries(hazards.map(hazard => [hazard, new Uint8Array(n)])), category = new Array(n);
   for (let i = 0; i < n; i++) {
     const here = {};
@@ -213,7 +214,7 @@ export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issu
   }));
   const outlook = {
     day, hazards, issuedHourUtc, validFromHourUtc, validToHourUtc, seed, members: count, width, height, cellMiles,
-    chance, intensity, level, cig, thunder, category, highest, areas, top,
+    chance, intensity, cigAreas, level, cig, thunder, category, highest, areas, top,
     expected: {
       // The range of the runs: with only a few of them, the least and the most.
       tornadoes: { low: count < 5 ? Math.min(...sum('tornadoes')) : quantile(sum('tornadoes'), 0.1), middle: quantile(sum('tornadoes'), 0.5), high: count < 5 ? Math.max(...sum('tornadoes')) : quantile(sum('tornadoes'), 0.9) },
@@ -355,10 +356,27 @@ export function writeDiscussion(o) {
 export function outlookShapes(o) {
   const { width, height } = o, area = inside => contourRings(softenArea(inside, width, height), width, height, 0.5);
   const kept = list => list.filter(entry => entry.rings.length);
+  // An intensity group's outline follows the contours it was judged on: its area is made of
+  // whole contour areas, so it is traced from the same chances as they are. An area's outline
+  // is part of the group's wherever being in the group changes across it (inside against the
+  // contour area around it); filled by the even-odd rule, those outlines give the group's area.
+  const groupRings = (hazard, group) => {
+    const all = o.cigAreas?.[hazard];
+    if (!all) return area(Array.from(o.cig[hazard], v => v >= group));
+    const inGroup = a => Math.min(a.group, highestCigAt(hazard, a.level)) >= group, rings = [];
+    for (const a of all) {
+      if (inGroup(a) === (a.parent >= 0 && inGroup(all[a.parent]))) continue;
+      // This area's own outline: the other areas inside the same contour are put out of sight.
+      const own = new Uint8Array(width * height); for (const i of a.cells) own[i] = 1;
+      const field = Float32Array.from(o.chance[hazard], (v, i) => (v >= a.level - 1e-9 && !own[i] ? a.level - 1 : v));
+      rings.push(...contourRings(field, width, height, a.level));
+    }
+    return rings;
+  };
   const shapes = { category: kept(WORLD_RISK_ORDER.slice(1).map(key => ({ key, rings: area(o.category.map(c => rank(c) >= rank(key))) }))) };
   for (const hazard of o.hazards) shapes[hazard] = {
     levels: kept(OUTLOOK.levels[hazard].map(level => ({ level, rings: contourRings(o.chance[hazard], width, height, level) }))),
-    groups: kept(Array.from({ length: WORLD_MAX_CIG[hazard] }, (_, k) => ({ group: k + 1, rings: area(Array.from(o.cig[hazard], v => v > k)) })))
+    groups: kept(Array.from({ length: WORLD_MAX_CIG[hazard] }, (_, k) => ({ group: k + 1, rings: groupRings(hazard, k + 1) })))
   };
   return shapes;
 }

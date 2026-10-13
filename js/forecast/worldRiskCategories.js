@@ -56,8 +56,15 @@ export function conditionalCig(amount, significant, bounds) {
 // forecast, the share of the runs with one) and `significant` how much of it is significant
 // (an array of tiers may be given; the first is used).
 export function contourCig(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard]) {
+  return contourCigAreas(hazard, chance, amount, significant, width, height, bounds).cig;
+}
+
+// The same, with the areas themselves: { cig, areas }. Each area is { level, cells, group,
+// parent } (parent: the index of the area of the next contour down that it lies inside, or
+// -1), so that whatever draws the groups can follow the contours exactly.
+export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard]) {
   const strong = ArrayBuffer.isView(significant) ? significant : significant[0];
-  const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), stack = [];
+  const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), owner = new Int32Array(n).fill(-1), stack = [], areas = [];
   let pass = 0;
   for (const level of PROBABILITY_LEVELS[hazard]) {
     pass++;
@@ -71,11 +78,12 @@ export function contourCig(hazard, chance, amount, significant, width, height, b
         cells.push(i); total += amount[i]; reaching += strong[i];
         for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && mark[j] !== pass && chance[j] >= level - 1e-9) { mark[j] = pass; stack.push(j); }
       }
-      const group = conditionalCig(total, reaching, bounds);
-      for (const i of cells) out[i] = group;
+      const group = conditionalCig(total, reaching, bounds), parent = owner[start];
+      for (const i of cells) { out[i] = group; owner[i] = areas.length; }
+      areas.push({ level, cells: Int32Array.from(cells), group, parent });
     }
   }
-  return out;
+  return { cig: out, areas };
 }
 
 // The highest intensity group that may be drawn inside a contour level.

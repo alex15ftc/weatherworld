@@ -108,6 +108,8 @@ assert.ok(insideRings(page.shapes.category.at(-1).rings, ...centreAt) && !inside
 assert.deepEqual(page.shapes.tornado.levels.map(entry => entry.level), PROBABILITY_LEVELS.tornado.filter(level => level <= o.top.tornado.level), 'only contour levels, and only those reached');
 for (const hazard of WORLD_HAZARDS) { assert.equal(page.shapes[hazard].groups.length, o.top[hazard].cig); for (const entry of page.shapes[hazard].levels) assert.ok(insideRings(entry.rings, ...centreAt) && !insideRings(entry.rings, ...cornerAt)); }
 assert.ok(insideRings(page.shapes.tornado.groups.at(-1).rings, ...centreAt));
+// A group's outline is a contour's outline: here the whole of the lowest tornado contour is in the group.
+assert.deepEqual(page.shapes.tornado.groups[0].rings, page.shapes.tornado.levels[0].rings, 'the hatching ends where the contour does');
 assert.deepEqual(publicOutlook(calm).shapes.tornado, { levels: [], groups: [] });
 
 // --- A real member: the world run ahead with its storms' chances drawn afresh.
