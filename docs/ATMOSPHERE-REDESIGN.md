@@ -1013,6 +1013,18 @@ CIG2). `contourCigAreas` + `groupRings`: a group's outline is the outline of the
 areas it is made of. Tried and dropped on the way: hatching by the 25-mile chance of a
 significant event (the centre's rule before 2026).
 
+### Mesoscale discussions (2026-10-13)
+
+The user: do mesoscale discussions, matching what the centre does, with the most probable
+peak intensities; as many a day as fit, no duplicates; watches later. From the centre's
+pages: the parts of a discussion, the six probabilities and the wording for each, the goal
+of one to two hours before a watch, and two products of the day for the peak lines.
+Built as the outlooks are (members), three settings changed after measuring: the probability
+is the share of runs that get to a watch's worth (part credit gave 40% and 60% to areas that
+never did); a new area is compared with all recent discussions together (areas shift with
+the storms; 11 a day before, 5.6 after); areas under 4,000 sq mi and thin marginal cases
+are left out.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

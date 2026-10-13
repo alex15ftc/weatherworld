@@ -150,6 +150,23 @@ the contour levels in the real
 colours; CIG1 broken lines falling to the lower left, CIG2 solid lines falling to the lower
 right, CIG3 crossed; no figures on the map. `scripts/outlook-verify.mjs` checks it.
 
+## Mesoscale discussions
+
+`js/forecast/MesoscaleDiscussion.js`: `runMesoscaleMember` (the world three hours ahead with
+its storms' chances drawn afresh; reports, peaks and tornadoes by cell), `describeNow` (the
+air and the storms on the live map, as plain data), `buildMesoscaleDiscussions` (areas of
+concern, watch probability, peaks, the check against recent discussions, the outline and
+the text), `areaOutcome` (what one run does inside an area; also used to check a discussion
+against what happened). `server/MesoscaleRuntime.js` looks once in each hour of the world,
+running the members at the same time in their own processes (`server/mesoscaleMember.js`).
+
+| Route | Returns |
+|---|---|
+| `GET /api/mesoscale` | the discussions, newest first (outline, text, probability, peaks), each marked valid or lapsed |
+
+`mesoscale.html` (`js/pages/mesoscalePage.js`) lists them and draws the chosen one's outline
+with the others still valid. `scripts/mesoscale-report.mjs` measures them.
+
 ## Where the map sits
 
 The geography (rise to the high ground, lee trough, sources of dry, continental and Gulf

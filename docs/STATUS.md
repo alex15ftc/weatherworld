@@ -215,6 +215,43 @@ too high. Day 3 leaves 12% of the places with severe weather outside its contour
 
 Not yet done:
 
+## Mesoscale discussions
+
+Page: `/mesoscale.html`. After the Storm Prediction Center's: a short-range statement about
+one area where severe thunderstorms are developing or changing. Each has an outlined area,
+a "concerning" line, a valid time (two hours), the probability that a watch will be needed
+(only 5, 20, 40, 60, 80 or 95 percent, with the centre's wording: watch unlikely, possible,
+tornado or severe thunderstorm watch likely), a summary, a technical discussion written
+from the air over the area, and the most probable peak tornado intensity, wind gust and hail
+size as ranges ("85-115 MPH", "65-80 MPH", "1.50-2.50 IN").
+
+Once in each hour of the world, the world is copied and run three hours ahead four times
+(1.5 s a run; about 145 s of processor time a world day, against about 275 s for the
+outlooks). An area of concern is where at least half the runs have severe weather within 25
+miles, at least 4,000 sq mi. The watch probability is the share of the runs in which the
+area gets what calls for a watch (ten cells with severe hail or wind, two tornadoes, or one
+strong tornado); the peaks are the middle of the runs' strongest. No discussion is issued
+for ground that discussions of the last eight hours already cover with as much concern,
+unless the concern has stepped up.
+
+On 16 world days (`npm run inspect:mesoscale`): 5.6 a day (a day's count from 3 to 11),
+most between 16Z and 23Z; 57% for severe weather already under way, 20% before any storm
+has formed in the area.
+
+| Probability given | 20% | 40% | 60% | 80% | 95% |
+|---|---|---|---|---|---|
+| Issued | 20 | 1 | 8 | 5 | 56 |
+| The area then had what calls for a watch | 10% | - | 38% | 60% | 98% |
+
+The peak gust fell in the range given in 88% of discussions and the peak hail in 83%
+(within one range: 97% and 99%). Where a tornado peak was given, a tornado came in 58%;
+where none was given, in 3%. Of those saying a tornado watch was likely, 63% had the
+tornadoes for one.
+
+Not done: discussions about a watch in effect (there are no watches yet) or about a coming
+change to the outlook; the ranges of the peaks are taken from the centre's products as
+seen, not from a published list.
+
 ## What a player would find
 
 From `npm run inspect:players` on eight worlds (160 days). The clock runs 15 times real
