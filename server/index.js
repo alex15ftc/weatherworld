@@ -46,7 +46,7 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/health') return sendJson(req, res, 200, runtime.metadata(), { trace });
   if (url.pathname === '/api/authority/state') return sendJson(req, res, 200, runtime.authorityState(), { cacheable: false, trace });
   if (url.pathname === '/api/authority/reset' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.reset(body.seed);return sendJson(req,res,200,value,{cacheable:false,trace}); }
-  if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours);return sendJson(req,res,200,value,{cacheable:false,trace}); }
+  if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours,()=>surface.capture());return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/seek' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.seek(body.validHourUtc);return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/clock' && req.method === 'POST') { const body=await readJsonBody(req); return sendJson(req,res,200,runtime.setAutoAdvance(body.enabled),{cacheable:false,trace}); }
   if (url.pathname.startsWith('/api/atmosphere/') && surface.atmosphere !== runtime.engine) surface.attach(runtime.engine);

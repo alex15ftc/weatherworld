@@ -361,7 +361,16 @@ $('soundingClose').addEventListener('click', () => { selected = null; document.b
 // --- The world: move it on, stop its clock, or start another one.
 async function post(url, body) { const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); if (!response.ok) throw new Error(String(response.status)); return response.json(); }
 const worldNote = text => { $('worldNote').textContent = text; };
-$('worldAdvance').addEventListener('click', async () => { worldNote('Advancing…'); try { await post('/api/authority/advance', { hours: 0.5 }); frameHour = null; await load(); worldNote('Moved on half an hour.'); } catch { worldNote('Could not advance.'); } });
+// The server works a day through in half-hour steps before it answers, so the buttons are held until it does.
+async function advanceWorld(hours, working, done) {
+  const buttons = [$('worldAdvance'), $('worldAdvanceDay')];
+  for (const button of buttons) button.disabled = true;
+  worldNote(working);
+  try { await post('/api/authority/advance', { hours }); frameHour = null; await load(); worldNote(done); } catch { worldNote('Could not advance.'); }
+  for (const button of buttons) button.disabled = false;
+}
+$('worldAdvance').addEventListener('click', () => advanceWorld(0.5, 'Advancing…', 'Moved on half an hour.'));
+$('worldAdvanceDay').addEventListener('click', () => advanceWorld(24, 'Advancing a full day. This can take a little while…', 'Moved on a full day.'));
 $('worldClock').addEventListener('click', async () => { try { await post('/api/authority/clock', { enabled: !data?.clockRunning }); await load(); } catch { worldNote('Could not change the clock.'); } });
 $('worldNew').addEventListener('click', async () => {
   const answer = window.prompt('Starting number for the new world (any whole number). The current world is replaced.', String((data?.seed ?? 1) + 1));

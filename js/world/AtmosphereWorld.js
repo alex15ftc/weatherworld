@@ -109,8 +109,9 @@ export class AtmosphereWorld {
 
   // Advances the atmosphere in half-hour steps, and the storms with it. A live clock moves
   // the storms itself in short ticks (advanceStormLayer) and passes advanceStorms: false here,
-  // so that only their effect on the air is applied at each atmosphere step.
-  advance(hours = 0.5, { advanceStorms = true } = {}) {
+  // so that only their effect on the air is applied at each atmosphere step. `onStep` is
+  // called after every step, for a caller that keeps a record of each one.
+  advance(hours = 0.5, { advanceStorms = true, onStep } = {}) {
     const stepHours = this.regional.params.stepSeconds / 3600, steps = Math.max(1, Math.round(hours / stepHours));
     for (let step = 0; step < steps; step++) {
       this.regional.step();
@@ -118,6 +119,7 @@ export class AtmosphereWorld {
       this.steering?.update();
       this.prepare(stepHours);
       if (this.stormsEnabled) this.withStormEffects(() => (advanceStorms ? advanceStormEngine(this.world, stepHours) : applyStormFeedback(this.world, stepHours)));
+      onStep?.();
     }
   }
 

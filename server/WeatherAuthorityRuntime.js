@@ -76,14 +76,15 @@ export class WeatherAuthorityRuntime {
     return this.metadata();
   }
 
-  advance(hours = 0.5) {
+  // `onStep` is called after each atmosphere step of the advance.
+  advance(hours = 0.5, onStep) {
     const amount = Math.max(0, Math.min(72, Number(hours) || 0));
     if (amount < ATMOSPHERE_STEP_HOURS) return this.metadata();
     // Storms may have been ticked ahead of the atmosphere; bring both to the same time first.
     const world = this.atmosphere, ahead = (world.stormEngine?.validHourUtc ?? world.validHourUtc) - world.validHourUtc;
-    if (ahead > 1e-6) { this.engine.advanceStormLayer(ATMOSPHERE_STEP_HOURS - ahead); this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false }); }
+    if (ahead > 1e-6) { this.engine.advanceStormLayer(ATMOSPHERE_STEP_HOURS - ahead); this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep }); }
     const rest = amount - (ahead > 1e-6 ? ATMOSPHERE_STEP_HOURS : 0);
-    if (rest >= ATMOSPHERE_STEP_HOURS) this.engine.advance(rest);
+    if (rest >= ATMOSPHERE_STEP_HOURS) this.engine.advance(rest, { onStep });
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision += 1;
     this.invalidateProducts();
