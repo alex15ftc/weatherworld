@@ -20,9 +20,9 @@ function member(k, { tornadoAt = null, strength = 1, storms = true } = {}) {
   const chance = Object.fromEntries([...CHANCE_FIELDS, 'severe', 'severeSig', 'severeExtreme'].map(f => [f, new Float32Array(n)])), thunder = new Uint8Array(n);
   if (tornadoAt) for (let i = 0; i < n; i++) {
     const d = Math.hypot(i % width - tornadoAt.x, Math.floor(i / width) - tornadoAt.y), fall = Math.exp(-(d * d) / 60);
-    // 90% tornado at the heart, EF2+ 60%, EF3+ 30%, EF4+ 4%; hail 60% (2 in 20%); wind 50% (75 mph 5%);
+    // 90% tornado at the heart, EF2+ 60%, EF3+ 40%, EF4+ 4%; hail 60% (2 in 20%); wind 50% (75 mph 5%);
     // any severe weather 95% (significant 40%, intense 10%).
-    chance.tornado[i] = 90 * strength * fall; chance.tornadoSig[i] = 60 * strength * fall; chance.tornadoExtreme[i] = 30 * strength * fall; chance.tornadoViolent[i] = 4 * strength * fall;
+    chance.tornado[i] = 90 * strength * fall; chance.tornadoSig[i] = 60 * strength * fall; chance.tornadoExtreme[i] = 40 * strength * fall; chance.tornadoViolent[i] = 4 * strength * fall;
     chance.hail[i] = 60 * fall; chance.hailSig[i] = 20 * fall; chance.wind[i] = 50 * fall; chance.windSig[i] = 5 * fall;
     chance.severe[i] = 95 * fall; chance.severeSig[i] = 40 * fall; chance.severeExtreme[i] = 10 * fall;
     if (storms && d < 14) thunder[i] = 1;
@@ -41,7 +41,7 @@ assert.equal(o.level.tornado[centre], 60); assert.equal(o.level.hail[centre], 60
 for (const hazard of WORLD_HAZARDS) assert.ok(o.level[hazard].every(v => v === 0 || PROBABILITY_LEVELS[hazard].includes(v)), `${hazard}: only contour levels`);
 assert.deepEqual(o.top.tornado.level, 60); assert.equal(o.top.wind.level, 45);
 // Intensity groups: the highest tier that 30% of the severe weather is expected to reach. A third
-// of the tornadoes EF3+: CIG2; a third of the hail 2 in: CIG1; a tenth of the wind 75 mph: none.
+// of the hail 2 in: CIG1; a tenth of the wind 75 mph: none. Tornadoes have their own bars: over 40% EF3+ is CIG2.
 assert.equal(o.cig.tornado[centre], 2); assert.equal(o.cig.hail[centre], 1); assert.equal(o.cig.wind[centre], 0); assert.equal(o.cig.tornado[corner], 0);
 assert.equal(o.top.tornado.cig, 2);
 // The category is what the chance and the group give together, for the hazard that gives most.

@@ -36,7 +36,7 @@ export function initializeTornadoState(storm) {
 // the days with strong ones, as in the real record (with power 1 the big days got their
 // numbers from weak tornadoes: twice the tornadoes the real outlook categories go with, and
 // three 15% tornado areas in four with no strong tornadoes to speak of).
-const TORNADO = { onsetRotation: [0.04, 0.5], fullRatePerHour: 3, power: 2, sustainRotation: 0.055, outlookHours: 0.5 };
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 2.2, power: 2, sustainRotation: 0.055, outlookHours: 0.5 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
