@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import v8 from 'node:v8';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { insideRings } from '../js/forecast/contourShapes.js';
-import { OUTLOOK, runOutlookMember, stateFromBytes, combineOutlook, publicOutlook, describeArea, hoursToDayEnd, writeDiscussion } from '../js/forecast/DayOneOutlook.js';
+import { OUTLOOK, runOutlookMember, runOutlookMemberDays, stateFromBytes, combineOutlook, publicOutlook, describeArea, hoursToDayEnd, writeDiscussion } from '../js/forecast/DayOneOutlook.js';
 import { WORLD_RISK_ORDER, WORLD_HAZARDS, PROBABILITY_LEVELS, worldCategoryFromHazard } from '../js/forecast/worldRiskCategories.js';
 import { CHANCE_FIELDS } from '../js/verification/truth.js';
 import { OutlookRuntime } from '../server/OutlookRuntime.js';
@@ -17,12 +17,14 @@ assert.equal(hoursToDayEnd(12), 24); assert.equal(hoursToDayEnd(36), 24); assert
 // and categories follow.
 const width = 30, height = 30, n = width * height;
 function member(k, { tornadoAt = null, strength = 1, storms = true } = {}) {
-  const chance = Object.fromEntries(CHANCE_FIELDS.map(f => [f, new Float32Array(n)])), thunder = new Uint8Array(n);
+  const chance = Object.fromEntries([...CHANCE_FIELDS, 'severe', 'severeSig', 'severeExtreme'].map(f => [f, new Float32Array(n)])), thunder = new Uint8Array(n);
   if (tornadoAt) for (let i = 0; i < n; i++) {
     const d = Math.hypot(i % width - tornadoAt.x, Math.floor(i / width) - tornadoAt.y), fall = Math.exp(-(d * d) / 60);
-    // 90% tornado at the heart, EF2+ 40%, EF3+ 15%, EF4+ 4%; hail 60% (2 in 12%); wind 50% (75 mph 5%).
-    chance.tornado[i] = 90 * strength * fall; chance.tornadoSig[i] = 40 * strength * fall; chance.tornadoExtreme[i] = 15 * strength * fall; chance.tornadoViolent[i] = 4 * strength * fall;
-    chance.hail[i] = 60 * fall; chance.hailSig[i] = 12 * fall; chance.wind[i] = 50 * fall; chance.windSig[i] = 5 * fall;
+    // 90% tornado at the heart, EF2+ 60%, EF3+ 30%, EF4+ 4%; hail 60% (2 in 20%); wind 50% (75 mph 5%);
+    // any severe weather 95% (significant 40%, intense 10%).
+    chance.tornado[i] = 90 * strength * fall; chance.tornadoSig[i] = 60 * strength * fall; chance.tornadoExtreme[i] = 30 * strength * fall; chance.tornadoViolent[i] = 4 * strength * fall;
+    chance.hail[i] = 60 * fall; chance.hailSig[i] = 20 * fall; chance.wind[i] = 50 * fall; chance.windSig[i] = 5 * fall;
+    chance.severe[i] = 95 * fall; chance.severeSig[i] = 40 * fall; chance.severeExtreme[i] = 10 * fall;
     if (storms && d < 14) thunder[i] = 1;
   }
   const byHour = { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0) };
@@ -38,7 +40,8 @@ assert.ok(Math.abs(o.chance.tornado[centre] - 90) < 1e-3, 'where every member ag
 assert.equal(o.level.tornado[centre], 60); assert.equal(o.level.hail[centre], 60); assert.equal(o.level.wind[centre], 45); assert.equal(o.level.tornado[corner], 0);
 for (const hazard of WORLD_HAZARDS) assert.ok(o.level[hazard].every(v => v === 0 || PROBABILITY_LEVELS[hazard].includes(v)), `${hazard}: only contour levels`);
 assert.deepEqual(o.top.tornado.level, 60); assert.equal(o.top.wind.level, 45);
-// Intensity groups: the highest tier with a 10% chance. EF3+ at 15%: CIG2; 2 in hail at 12%: CIG1; 75 mph wind at 5%: none.
+// Intensity groups: the highest tier that 30% of the severe weather is expected to reach. A third
+// of the tornadoes EF3+: CIG2; a third of the hail 2 in: CIG1; a tenth of the wind 75 mph: none.
 assert.equal(o.cig.tornado[centre], 2); assert.equal(o.cig.hail[centre], 1); assert.equal(o.cig.wind[centre], 0); assert.equal(o.cig.tornado[corner], 0);
 assert.equal(o.top.tornado.cig, 2);
 // The category is what the chance and the group give together, for the hazard that gives most.
@@ -47,8 +50,20 @@ assert.equal(o.category[corner], 'NONE');
 for (let k = 2; k < WORLD_RISK_ORDER.length; k++) assert.ok(o.areas[WORLD_RISK_ORDER[k]] <= o.areas[WORLD_RISK_ORDER[k - 1]] + 1e-9, 'a higher category covers no more of the map');
 // Half the members without the event: half the chance, a lower contour, a lower category.
 const split = combineOutlook([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60 });
-assert.equal(split.level.tornado[centre], 45); assert.equal(split.cig.tornado[centre], 1, 'EF3+ at 7.5% no longer makes CIG2; EF2+ at 20% makes CIG1');
-assert.ok(rank(split.highest) < rank(o.highest), 'members that disagree give a lower category'); assert.equal(split.expected.membersWithTornado, 2);
+assert.equal(split.level.tornado[centre], 45); assert.equal(split.cig.tornado[centre], 2, 'the intensity group is conditional: fewer tornadoes expected, but as strong where they happen');
+assert.ok(rank(split.highest) <= rank(o.highest) && split.areas.SLGT < o.areas.SLGT, 'members that disagree give lower contours and smaller areas'); assert.equal(split.expected.membersWithTornado, 2);
+assert.equal(o.day, 'day1'); assert.deepEqual(o.hazards, WORLD_HAZARDS); assert.equal(o.validFromHourUtc, 36);
+
+// --- Day 2 is laid out as Day 1. Day 3 gives one chance, of any severe weather, and stops at Moderate.
+const two = combineOutlook([0, 1, 2, 3].map(k => member(k, { tornadoAt: spot })), { day: 'day2', issuedHourUtc: 36, validFromHourUtc: 60, validToHourUtc: 84 });
+assert.deepEqual(two.hazards, WORLD_HAZARDS); assert.equal(two.highest, o.highest); assert.ok(two.discussion.startsWith('Day 2 Convective Outlook')); assert.match(two.discussion, /expected tomorrow/);
+const three = combineOutlook([0, 1, 2, 3].map(k => member(k, { tornadoAt: spot })), { day: 'day3', issuedHourUtc: 36, validFromHourUtc: 84, validToHourUtc: 108 });
+assert.deepEqual(three.hazards, ['severe']); assert.deepEqual(Object.keys(three.chance), ['severe']);
+assert.equal(three.level.severe[centre], 60); assert.equal(three.cig.severe[centre], 1); assert.equal(three.highest, 'MDT', 'a 60% area with CIG1 on Day 3 is Moderate');
+assert.ok(three.level.severe.every(v => v === 0 || PROBABILITY_LEVELS.severe.includes(v)));
+assert.ok(three.discussion.startsWith('Day 3 Convective Outlook')); assert.match(three.discussion, /SEVERE: Widespread severe thunderstorms are expected.*\(60% severe area, CIG1\)/); assert.doesNotMatch(three.discussion, /TORNADO:/);
+const pageThree = publicOutlook(three); assert.deepEqual(pageThree.hazards, ['severe']); assert.equal(pageThree.updateHours, 24); assert.ok(pageThree.shapes.severe.levels.length === 5 && pageThree.shapes.severe.groups.length === 1 && !pageThree.shapes.tornado);
+assert.deepEqual(OUTLOOK.updateHours, { day1: 6, day2: 12, day3: 24 });
 // Storms without severe weather are a thunderstorm area (10% or more of the members); nothing at all is no area.
 const calm = combineOutlook([0, 1, 2].map(k => ({ ...member(k), thunder: Uint8Array.from({ length: n }, (_, i) => (i < 200 ? 1 : 0)) })), { issuedHourUtc: 36, validToHourUtc: 60 });
 assert.equal(calm.highest, 'TSTM'); assert.equal(calm.category[0], 'TSTM'); assert.equal(calm.category[n - 1], 'NONE'); assert.equal(calm.leading, null);
@@ -71,7 +86,7 @@ assert.match(describeArea(Array.from({ length: n }, (_, i) => i % width < 10 && 
 const page = publicOutlook(o);
 assert.equal(page.status, 'issued'); assert.equal(page.category.length, n); assert.equal(page.categories[page.category[centre]], o.highest);
 for (const hazard of WORLD_HAZARDS) { assert.equal(page.chance, undefined, 'the chances themselves are not sent'); assert.equal(page.cig[hazard].length, n); assert.deepEqual(page.levels[hazard], PROBABILITY_LEVELS[hazard]); }
-assert.equal(page.thunderLevel, 10); assert.deepEqual(page.maxCig, { tornado: 3, wind: 3, hail: 2 });
+assert.equal(page.thunderLevel, 10); assert.deepEqual(page.maxCig, { tornado: 3, wind: 3, hail: 2, severe: 2 });
 assert.ok(JSON.stringify(page).length < 400000, 'small enough to send');
 // The areas go out as outlines: one per category and contour level reached, and per intensity group.
 const centreAt = [(centre % width + 0.5) / width, (Math.floor(centre / width) + 0.5) / height], cornerAt = [(corner % width + 0.5) / width, (Math.floor(corner / width) + 0.5) / height];
@@ -95,9 +110,14 @@ assert.ok(first.environment && first.environment.aloftKt > 0, 'the air the storm
 const before = atmosphere.world.validHourUtc; assert.equal(before, 12 + 30);
 const real = combineOutlook([first, other], { issuedHourUtc: before, validToHourUtc: before + hours, seed: 3 });
 assert.ok(real.discussion.startsWith('Day 1 Convective Outlook'));
+// A longer run reports each outlook day it reaches: what is left of this one, then the next.
+const days = runOutlookMemberDays(stateFromBytes(bytes), 0, 20);
+assert.equal(days.length, 2); assert.equal(days[0].fromHourUtc, before); assert.equal(days[0].toHourUtc, 60); assert.equal(days[1].fromHourUtc, 60); assert.equal(days[1].toHourUtc, 62);
+assert.ok(days[0].storms >= first.storms && days[0].chance.severe.every((v, i) => v + 1e-3 >= days[0].chance.hail[i]), 'any severe weather is at least as likely as hail');
+assert.ok(days.every(day => day.environment), 'each day describes its air');
 
-// --- The server's part: members in their own processes, one outlook per outlook day.
-const runtime = { engine: atmosphere }, outlooks = new OutlookRuntime({ runtime, members: 2 });
+// --- The server's part: members in their own processes, one run for every outlook that is due.
+const runtime = { engine: atmosphere }, outlooks = new OutlookRuntime({ runtime, members: 2, days: ['day1', 'day2'] });
 assert.equal(outlooks.dayOne().status, 'pending');
 assert.equal(outlooks.maybeIssue(), true, 'a world with no outlook gets one'); assert.equal(outlooks.maybeIssue(), false, 'not twice at once');
 assert.equal(outlooks.dayOne().status, 'running'); assert.equal(outlooks.status().running, true);
@@ -106,7 +126,18 @@ assert.equal(outlooks.lastError, null, `the outlook ran (${outlooks.lastError})`
 const issued = outlooks.dayOne();
 assert.equal(issued.status, 'issued'); assert.equal(issued.members, 2); assert.equal(issued.issuedHourUtc, before); assert.equal(issued.validToHourUtc, before + hoursToDayEnd(before));
 assert.ok(issued.discussion.length > 200 && issued.category.length === atmosphere.world.width * atmosphere.world.height);
-assert.equal(outlooks.maybeIssue(), false, 'the same day is not issued again');
+assert.equal(outlooks.maybeIssue(), false, 'nothing is issued again before its next update');
+const second = outlooks.day('day2');
+assert.equal(second.status, 'issued'); assert.equal(second.day, 'day2'); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
+assert.equal(issued.nextUpdateHourUtc, 48); assert.equal(second.nextUpdateHourUtc, 48); assert.equal(outlooks.day('day3').status, 'off');
+assert.deepEqual(Object.keys(outlooks.status().days), ['day1', 'day2']);
+// The schedule: Day 1 every 6 hours, Day 2 every 12, Day 3 every 24, counted from 12Z.
+const clockwork = { seed: 1, world: { validHourUtc: 36 } }, schedule = new OutlookRuntime({ runtime: { engine: clockwork } });
+assert.deepEqual(schedule.due(), ['day1', 'day2', 'day3'], 'a new world is due all three');
+for (const day of schedule.days) schedule.products[day] = { slot: schedule.slot(day, 36), engine: clockwork };
+for (const [hour, due] of [[36, []], [41.5, []], [42, ['day1']], [47.5, ['day1']], [48, ['day1', 'day2']], [54, ['day1', 'day2']], [60, ['day1', 'day2', 'day3']]]) { clockwork.world.validHourUtc = hour; assert.deepEqual(schedule.due(), due, `due at hour ${hour}`); }
+for (const day of schedule.days) schedule.products[day].slot = schedule.slot(day, 48);
+clockwork.world.validHourUtc = 54; assert.deepEqual(schedule.due(), ['day1'], 'at 06Z only Day 1 is due again');
 assert.equal(atmosphere.world.validHourUtc, before, 'the live world did not move while its outlook was made');
 // A new world on the server makes the old outlook stale.
 runtime.engine = new AtmosphereWorld({ seed: 4, spinUpDays: 4, storms: false });
@@ -114,4 +145,4 @@ assert.equal(outlooks.dayOne().status, 'pending');
 outlooks.stop();
 await outlooks.cleanup;
 assert.equal(fs.readdirSync(outlooks.scratchDir).filter(name => name.startsWith(`weatherworld-outlook-${process.pid}-`)).length, 0, 'the copy of the world is cleaned up');
-console.log(`day one outlook passed (made-up day ${o.highest}; real members ${first.storms} and ${other.storms} storms; server issued ${issued.highest} in ${(outlooks.lastRunMs / 1000).toFixed(0)} s; cig level ${OUTLOOK.cigChance}%)`);
+console.log(`day one outlook passed (made-up day ${o.highest}; real members ${first.storms} and ${other.storms} storms; server issued ${issued.highest} in ${(outlooks.lastRunMs / 1000).toFixed(0)} s; ${outlooks.days.length} days)`);

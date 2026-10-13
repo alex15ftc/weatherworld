@@ -11,6 +11,6 @@ assert.equal(outlook.encoding,'f32-base64');
 assert.ok(catalog.sites.length>0&&catalog.tilts.includes(0.5));
 assert.equal(scan.products.reflectivity.length,catalog.radials*catalog.gates);
 assert.equal(runtime.radarScan(catalog.sites[0].id,0.5),scan,'radar scans are cached per revision');
-for(const page of ['day2.html','day3.html']) assert.match(fs.readFileSync(new URL(`../${page}`,import.meta.url),'utf8'),/pageBootstrap\.js/);
+for(const page of ['day1.html','day2.html','day3.html']) assert.match(fs.readFileSync(new URL(`../${page}`,import.meta.url),'utf8'),/js\/pages\/outlookPage\.js/);
 assert.doesNotMatch(fs.readFileSync(new URL('../js/remoteProductPage.js',import.meta.url),'utf8'),/getAuthorityState/);
 console.log('thin product clients passed');
