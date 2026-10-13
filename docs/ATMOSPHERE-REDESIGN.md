@@ -783,6 +783,45 @@ The first setting of the rear-inflow share (45%) gave 75 mph wind on 71% of days
 strongest gust of 86 mph at the median; 30% was adopted and changed little (69%, 83 mph),
 so most of the gain is not sensitive to that share. Tests: `tests/storm-shape-and-interactions.mjs`.
 
+### Risk categories, the quiet worlds and an even map (2026-10-12)
+
+**Eight worlds, not three.** Fitting the categories on eight seeds showed tornado days of 74%
+where three seeds had given 87-89%: seeds 5 and 8 had a tornado on about half their days.
+Headline figures are from eight seeds from here on.
+
+**The quiet worlds.** Not a matter of latitude: the large-scale model offers them the same
+support as the others at the region's latitude. The steering was asking for little support
+(0.1-0.45, set to hold down High days before the categories were this world's own). Asking
+for 0.35-0.8 took seed 5 from 63% to 83% tornado days and seed 8 from 47% to 60%; adopted.
+Seed 8 is still weak: the steering often cannot reach the support it asks for there.
+
+**An even map.** Severe weather by tenth of the map, west to east, was 0, 2, 7, 19, 38, 48,
+57, 56, 54, 51% of days: the western 40% is the dry side of the dryline. Tried and dropped:
+confining the high ground nearer the western edge (`terrainShape` 2.5 and 4: little change,
+less activity) and a wider map (the geography stretched with it). Adopted: the map's place
+along the geography is now a setting (`geographyColumns` 50, `geographyOffset` 15), so the
+playable 500 miles starts at the foot of the high ground and flat plains continue east. With
+offset 0 the storm behaviour is identical to before. Result on eight seeds: 14, 47, 65, 72,
+71, 68, 64, 61, 58, 52%; west half 54% against east 61%; tornadoes 14% against 14%. The
+dryline is now seldom on the map; storms that form on it arrive from the west.
+
+**This world's risk categories.** `scripts/risk-climate.mjs`: each category's thresholds
+sit at one common rarity of every hazard's own climate (the day's highest practically
+perfect chance), found so that the share of days reaching it is the share wanted. Hail does
+not make High; 58 mph wind does not go past Enhanced (it is close to certain on most days).
+Fitted on 320 days after the two changes above; on 160 other days the mix is below-Slight
+5, Slight 28, Enhanced 41, Moderate 21, High 5. Wired into `js/verification/truth.js`
+(`chance`, `worldRisk`) and the activity report. Tests: `tests/world-risk-categories.mjs`.
+
+| Eight seeds | Before | After |
+|---|---|---|
+| Days with a tornado | 74% | 85-88% |
+| Days with no severe weather | 6-7% | 4-5% |
+| Tornadoes per day, median (90th) | about 5 (30) | 10 (60) |
+| Storms per day, median | about 100 | 235 |
+| A tornado within 60 miles of a place | 26% of days | 37% |
+| A severe storm within 10 miles of a place | 19% of days | 35% |
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

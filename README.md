@@ -10,7 +10,7 @@ miles covering a 500 x 500 mile region, all showing the same weather from this o
 
 ```
 npm start            # http://localhost:3000  (first start builds a world: about a minute)
-npm test             # 39 tests, about 5 minutes
+npm test             # 40 tests, about 6 minutes
 ```
 
 | Setting | Meaning |
@@ -76,5 +76,7 @@ full working log of the redesign, with every measurement.
 | `npm run inspect:activity` | severe days, risk categories, tornado days | 10 min |
 | `npm run inspect:tornado-days` | why a day does or does not get a tornado; the part lines play | 9 min |
 | `npm run inspect:players` | what a player finds: waits, distances, tornado durations | 10 min |
+| `npm run inspect:risk` | fits this world's risk categories to its climate | 25 min |
+| `node scripts/spatial-report.mjs` | where on the map severe weather falls; each world's make-up | 25 min |
 
 Most take `key=value` to try a setting without editing code (see the top of each script).

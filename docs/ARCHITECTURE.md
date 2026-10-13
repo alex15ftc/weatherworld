@@ -86,6 +86,20 @@ minutes per real minute. The world is saved every simulated hour.
 | `GET /api/outlooks/day1..3` | `{ enabled: false }` until outlooks are rebuilt |
 | `GET /api/tiles/...`, `/api/map/manifest` | map tiles for the old outlook pages |
 
+## Risk categories
+
+`js/forecast/worldRiskCategories.js` holds this world's own category thresholds and
+`worldCategory()`. `js/verification/truth.js` gives every cell its unrounded chance of each
+hazard (`chance`) and its category (`worldRisk`) beside the real-world ones (`risk`).
+`scripts/risk-climate.mjs` fits the thresholds; refit whenever the climate changes.
+
+## Where the map sits
+
+The geography (rise to the high ground, lee trough, sources of dry, continental and Gulf
+air) is laid out over `geographyColumns` cells; the map starts `geographyOffset` cells east
+of its western edge (15: at the foot of the high ground). `geographyOffset: 0` puts the map
+over all of it, high ground included, which is what the geography's own tests use.
+
 ## Not used by the live server
 
 `js/verification/truth.js` and `js/forecast/spcOutlookRules.js` are used by the reports and

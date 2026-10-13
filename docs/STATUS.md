@@ -14,20 +14,50 @@ every measurement is `ATMOSPHERE-REDESIGN.md`.
 
 ## How active it is
 
-| | Region fixed | Region steered (now) |
-|---|---|---|
-| Quiet days (no severe report on the map) | 21% | 3-6% |
-| Below Slight | 25% | 3-6% |
-| Slight / Enhanced / Moderate / High | 21 / 20 / 14-24 / 9-16% | 12 / 36 / 27 / 20% |
-| Days with a tornado | 64-70% | 88-93% |
-| Days with a tornado with EF2+ winds | 37-41% | 64% |
-| Days with 1 in hail / 58 mph wind / 75 mph wind | 75 / 55 / 4% | 92 / 76 / 2% |
-| Storms per day, median | 50 | about 100 |
+Eight worlds (seeds 1 to 8), 160 to 320 days. Earlier figures in the working log from three
+worlds ran high: two of the eight are quieter than the rest.
 
-The floor is met. The top end is not: the categories are the real-world ones, and a world
-made more violent than the real one passes their thresholds often. Decided: the categories
-are to be defined for this world's own climate when the outlooks are rebuilt, not tuned
-through the atmosphere.
+| | |
+|---|---|
+| Days with a tornado | 85-88% (world by world: 78, 88, 85, 93, 93, 95, 98, 55%) |
+| Days with no severe weather anywhere | 4-5% |
+| Days with EF2+ winds / EF4+ winds | 61% / 26% |
+| Tornadoes per day, median (90th) | 10 (60) |
+| Storms per day, median | 235 |
+| Days with 1 in hail / 2 in hail | 89% / 58% |
+| Days with 58 mph wind / 75 mph wind | 96% / 77% |
+
+**Risk categories** are this world's own (`js/forecast/worldRiskCategories.js`), fitted to its
+climate so that the mix of days is the one wanted. By the real-world rules the same days
+would be 47% Moderate and 31% High.
+
+| | Below Slight | Slight | Enhanced | Moderate | High |
+|---|---|---|---|---|---|
+| Wanted | 5% | 30% | 40% | 20% | 5% |
+| On 160 days not used in the fit | 5% | 28% | 41% | 21% | 5% |
+
+| Category | Tornado | EF2+ tornado | 1 in hail | 2 in hail | 58 mph wind | 75 mph wind |
+|---|---|---|---|---|---|---|
+| Slight | any | any | any | any | 17% | any |
+| Enhanced | 39% | 13% | 79% | 16% | 96% | 63% |
+| Moderate | 70% | 35% | 93% | 48% | - | 93% |
+| High | 91% | 63% | - | - | - | 97% |
+
+(Chance within 25 miles of a point; a place reaches a category when any one hazard does.)
+
+| A day in each category (medians) | Tornadoes | Storms | Days with a tornado |
+|---|---|---|---|
+| Slight | 2 | 146 | 71% |
+| Enhanced | 15 | 230 | 98% |
+| Moderate | 43 | 292 | 100% |
+| High | 80 | 353 | 100% |
+
+**Across the map.** The playable 500 miles starts at the foot of the high ground
+(`geographyOffset` 15): the dry high plains and the dryline's home lie just west of it.
+Share of days with severe weather in each tenth of the map, west to east:
+14, 47, 65, 72, 71, 68, 64, 61, 58, 52%. West half 54% against east half 61%; for tornadoes
+14% against 14% (they peak mid-map: 0, 6, 16, 23, 26, 23, 18, 12, 9, 6%). North to south it is
+even. The westernmost and southernmost 50 miles are low (edge effects).
 
 ## How natural it is
 
@@ -76,58 +106,43 @@ What is not natural enough yet:
 
 ## What a player would find
 
-From `npm run inspect:players`. The clock runs 15 times real time, so a simulated day is 96
-real minutes.
+From `npm run inspect:players` on eight worlds (160 days). The clock runs 15 times real
+time, so a simulated day is 96 real minutes.
 
-**On the whole 500 x 500 mile map**
-
-| | |
+| On the whole map | |
 |---|---|
-| Days with a tornado | 88% |
-| Days with a tornado on the ground 10 minutes or more | 72% |
-| Days with EF2+ winds / EF4+ winds | 64% / 34% |
-| Tornadoes per day (10th / median / 90th) | 0 / 7 / 35 |
-| Minutes of the day with a tornado on the ground somewhere (10th / median / 90th) | 0 / 76 / 357 |
-| Hours of the day with a severe storm somewhere (median) | 10 |
-| Wait from one tornado to the next, when there is a gap (median / 90th / longest) | 1 h / 9 h / 53 h |
-| Gaps of 24 simulated hours or more with no tornado | 14 in 90 days |
+| Days with a tornado (all last 10 minutes or more) | 87% |
+| Days with one down 20 minutes or more | 66% |
+| Minutes of the day with a tornado on the ground somewhere (median / 90th) | 155 / 625 |
+| Hours of the day with a severe storm somewhere (median) | 18.5 |
+| Gaps of 24 simulated hours or more with no tornado | 17 in 160 days |
 
-**The tornadoes**
-
-| | |
+| The tornadoes | |
 |---|---|
-| Time on the ground (median / 90th / longest) | 4 / 25 / 62 minutes |
-| Lasting 10 minutes or more / 20 or more | 25% / 13% |
-| Path (median / 90th / longest) | 1.3 / 12 / 69 miles |
-| By peak wind, EF0 to EF5 | 41 / 32 / 14 / 8 / 4 / 1% |
-| Starting between noon and midnight local | 76% |
+| Time on the ground (median / 90th / longest) | 15 / 30 / 60 minutes |
+| Path (median / 90th / longest) | 6.5 / 22 / 76 miles |
+| By peak wind, EF0 to EF4+ | 47 / 30 / 12 / 7 / 3% |
+| Starting between 6 pm and midnight local | 60% |
 
-**From one 10 x 10 mile place**
-
-| On a given day | |
+| From one 10 x 10 mile place, on a given day | |
 |---|---|
-| A storm passes within 10 miles | 40% |
-| A severe storm within 10 miles / 25 miles | 14% / 28% |
-| A tornado inside the place (within 5 miles) | 1% |
-| A tornado within 25 / 60 / 120 miles | 10% / 26% / 48% |
-| A tornado lasting 10 minutes or more within 60 miles | 13% |
-| Distance to the day's nearest tornado (median) | 108 miles |
+| A storm passes within 10 miles | 69% |
+| A severe storm within 10 / 25 miles | 35% / 61% |
+| A tornado inside the place (within 5 miles) | 2% |
+| A tornado within 25 / 60 / 120 miles | 15% / 37% / 62% |
+| Distance to the day's nearest tornado (median) | 72 miles |
 
-What this means for the game:
-
-- **The map is active; a single place is not.** A tornado is somewhere on the map most
-  days, but it enters any one place about one day in a hundred (about 160 real hours at the
-  present clock). Players must be able to go to the weather, or be sent to it.
-- **Most tornadoes are too brief to chase.** Three in four are down for under 10 simulated
-  minutes, which is 40 real seconds at the present clock; the median is 16 real seconds.
-- **There are still dead stretches**: 14 gaps of a simulated day or more without a tornado
-  in 90 days.
-- **The clock decides the feel.** At 15 times real time a storm crosses a place in about a
-  minute. The clock is a setting still to be chosen.
+- A tornado within an hour's drive on 37% of days (it was 13% before the storm update and
+  the map change); inside one's own place on about one day in fifty.
+- Tornadoes last long enough to chase: 15 simulated minutes is one real minute at the
+  present clock, which is still short. The clock is a setting to be chosen.
+- One world in eight is quiet (a tornado on 55% of its days), and there are still gaps of a
+  day or more without a tornado.
 
 ## Open
 
-1. Risk categories defined for this world's climate; Day 1-3 outlooks, watches and warnings.
+1. Day 1-3 outlooks, watches and warnings, on this world's risk categories (done: the categories themselves).
+   Also: the quiet world (seed 8), and the low western and southern edge strips.
 2. Getting players to the weather: place selection, travel, or a smaller map.
 3. Longer-lived tornadoes, or a slower clock, so that tornadoes can be chased.
 4. Storm size and shape for 3D objects in Roblox.
