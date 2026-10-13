@@ -8,7 +8,8 @@
 // outlooks), and 58 mph wind, which is close to certain somewhere on most days here, counts
 // beyond Enhanced only through the chance of 75 mph wind.
 //
-// Fitted by `node scripts/risk-climate.mjs` on 320 days of eight worlds (2026-10-12). Refit
+// Fitted by `node scripts/risk-climate.mjs` on 320 days of eight worlds (2026-10-12, with the
+// map roaming along the geography). Refit
 // whenever the climate changes: `npm run inspect:risk` prints the table to put here.
 export const WORLD_RISK_ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 // tornado: any tornado; tornadoSig: one rated EF2 or more; hail: 1 in; hailSig: 2 in;
@@ -17,10 +18,10 @@ export const WORLD_RISK_HAZARDS = ['tornado', 'tornadoSig', 'hail', 'hailSig', '
 const ANY = 0.5;   // any report near enough to give a chance at all
 export const WORLD_RISK_THRESHOLDS = Object.freeze({
   MRGN: { tornado: ANY, tornadoSig: ANY, hail: ANY, hailSig: ANY, wind: ANY, windSig: ANY },
-  SLGT: { tornado: ANY, tornadoSig: ANY, hail: ANY, hailSig: ANY, wind: 17, windSig: ANY },
-  ENH: { tornado: 39, tornadoSig: 13, hail: 79, hailSig: 16, wind: 96, windSig: 63 },
-  MDT: { tornado: 70, tornadoSig: 35, hail: 93, hailSig: 48, wind: null, windSig: 93 },
-  HIGH: { tornado: 91, tornadoSig: 63, hail: null, hailSig: null, wind: null, windSig: 97 }
+  SLGT: { tornado: ANY, tornadoSig: ANY, hail: ANY, hailSig: ANY, wind: 7, windSig: ANY },
+  ENH: { tornado: 36, tornadoSig: 7, hail: 70, hailSig: 15, wind: 92, windSig: 49 },
+  MDT: { tornado: 66, tornadoSig: 29, hail: 91, hailSig: 43, wind: null, windSig: 90 },
+  HIGH: { tornado: 84, tornadoSig: 51, hail: null, hailSig: null, wind: null, windSig: 97 }
 });
 
 // The category a set of chances reaches (percent, keyed by hazard). `thunder` says whether

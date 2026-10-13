@@ -822,6 +822,39 @@ Fitted on 320 days after the two changes above; on 160 other days the mix is bel
 | A tornado within 60 miles of a place | 26% of days | 37% |
 | A severe storm within 10 miles of a place | 19% of days | 35% |
 
+### Even over many days, different from day to day (2026-10-12)
+
+The fixed map in the moist air made every day alike: severe weather over 68% of the map on a
+median day, and two thirds of it Enhanced by the real-world rules. The user wanted storms
+and tornadoes even over many days, with each day its own.
+
+- **Measured** (`scripts/spatial-report.mjs`, section 6): the share of the map covered on a
+  day, the overlap of one day's footprint with the next, how far the footprint's centre
+  ranges.
+- **Tried and removed**: steering the large-scale system to a chosen part of the map. It
+  cut the daily coverage to 44% but did not move where the weather falls, and tornado days
+  fell from 85% to 76%. The systems are wider than the map; what fixes the storm band in
+  place is the geography.
+- **Adopted: the map roams along the geography.** `geographyOffset` is now a state of the
+  regional layer; each day the steering sends the map 5 to 15 cells one way or the other
+  between -6 and 30 (a walk turned back at the ends, so every place comes up equally), and
+  it drifts there at no more than 0.7 cells an hour. The air and the storms stay on the map;
+  the ground under it changes.
+- A world restored from its saved state diverged once the map could move (the slope update
+  held the world it was built with); fixed, and the restore test covers it.
+
+Eight seeds, 240 days: tornadoes by tenth of the map 1, 6, 12, 15, 18, 18, 16, 12, 10, 7%
+(fixed in the moist air: 0, 6, 16, 23, 26, 23, 18, 12, 9, 6); severe weather on 51% of the
+map on a median day (68%); overlap with the day before 0.44 against 0.33 for unrelated days
+(0.57 against 0.38); tornado days 85%, no severe weather on 5%. Risk categories refitted:
+Enhanced at tornado 36 / EF2+ 7 / hail 70 / 2 in 15 / wind 92 / 75 mph 49; Moderate 66 / 29 /
+91 / 43 / - / 90; High 84 / 51 / - / - / - / 97.
+
+Left: the western and southern edge strips (storms cannot arrive from outside the map; a
+simulated strip beyond the playable area would cure it, written up in `STATUS.md` under
+"Later, if wanted" and not done); severe weather as a whole still favours the east half (37%
+against 57%).
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

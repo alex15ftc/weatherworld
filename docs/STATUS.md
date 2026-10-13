@@ -14,50 +14,53 @@ every measurement is `ATMOSPHERE-REDESIGN.md`.
 
 ## How active it is
 
-Eight worlds (seeds 1 to 8), 160 to 320 days. Earlier figures in the working log from three
-worlds ran high: two of the eight are quieter than the rest.
+Eight worlds (seeds 1 to 8), 240 to 320 days. Earlier figures in the working log from three
+worlds ran high.
 
 | | |
 |---|---|
-| Days with a tornado | 85-88% (world by world: 78, 88, 85, 93, 93, 95, 98, 55%) |
-| Days with no severe weather anywhere | 4-5% |
-| Days with EF2+ winds / EF4+ winds | 61% / 26% |
-| Tornadoes per day, median (90th) | 10 (60) |
-| Storms per day, median | 235 |
-| Days with 1 in hail / 2 in hail | 89% / 58% |
-| Days with 58 mph wind / 75 mph wind | 96% / 77% |
+| Days with a tornado | 83-85% (world by world: 77, 93, 70, 87, 90, 97, 93, 70%) |
+| Days with no severe weather anywhere | 5% |
+| Tornadoes on a Slight / Enhanced / Moderate / High day (medians) | 1 / 10 / 28 / 65 |
+| Storms on a Slight / Enhanced / Moderate / High day (medians) | 100 / 167 / 219 / 345 |
 
 **Risk categories** are this world's own (`js/forecast/worldRiskCategories.js`), fitted to its
 climate so that the mix of days is the one wanted. By the real-world rules the same days
-would be 47% Moderate and 31% High.
+would be 38% Moderate and 29% High.
 
 | | Below Slight | Slight | Enhanced | Moderate | High |
 |---|---|---|---|---|---|
 | Wanted | 5% | 30% | 40% | 20% | 5% |
-| On 160 days not used in the fit | 5% | 28% | 41% | 21% | 5% |
+| Fitted on half the worlds, applied to the other half | 4-5% | 29-33% | 38-41% | 21-22% | 3-4% |
 
 | Category | Tornado | EF2+ tornado | 1 in hail | 2 in hail | 58 mph wind | 75 mph wind |
 |---|---|---|---|---|---|---|
-| Slight | any | any | any | any | 17% | any |
-| Enhanced | 39% | 13% | 79% | 16% | 96% | 63% |
-| Moderate | 70% | 35% | 93% | 48% | - | 93% |
-| High | 91% | 63% | - | - | - | 97% |
+| Slight | any | any | any | any | 7% | any |
+| Enhanced | 36% | 7% | 70% | 15% | 92% | 49% |
+| Moderate | 66% | 29% | 91% | 43% | - | 90% |
+| High | 84% | 51% | - | - | - | 97% |
 
-(Chance within 25 miles of a point; a place reaches a category when any one hazard does.)
+(Chance within 25 miles of a point; a place reaches a category when any one hazard does.
+Refit with `npm run inspect:risk` whenever the climate changes.)
 
-| A day in each category (medians) | Tornadoes | Storms | Days with a tornado |
+**Across the map, and from day to day.** The map roams along the geography: each day it
+moves 50 to 150 miles one way or the other, between having the high ground over its western
+edge and sitting wholly on the eastern plains, at no more than 7 mph. The dryline and the
+storms that form along it therefore fall on a different part of the map each day.
+
+| | Map fixed on the high ground (before) | Map fixed in the moist air | Map roaming (now) |
 |---|---|---|---|
-| Slight | 2 | 146 | 71% |
-| Enhanced | 15 | 230 | 98% |
-| Moderate | 43 | 292 | 100% |
-| High | 80 | 353 | 100% |
+| Severe weather, west half / east half (share of days) | 13% / 53% | 54% / 61% | 37% / 57% |
+| A tornado, west half / east half | 1% / 14% | 14% / 14% | 10% / 12% |
+| Tornadoes by tenth of the map, west to east | 0 0 0 1 5 11 16 17 15 11 | 0 6 16 23 26 23 18 12 9 6 | 1 6 12 15 18 18 16 12 10 7 |
+| Share of the map with severe weather on a median day | 43% | 68% | 51% |
+| Overlap with the day before (1 = the same places) | 0.43 | 0.57 | 0.44 |
+| Same for two unrelated days | 0.37 | 0.38 | 0.33 |
+| Share of the map with a tornado on a median day | 8% | 9% | 7% |
 
-**Across the map.** The playable 500 miles starts at the foot of the high ground
-(`geographyOffset` 15): the dry high plains and the dryline's home lie just west of it.
-Share of days with severe weather in each tenth of the map, west to east:
-14, 47, 65, 72, 71, 68, 64, 61, 58, 52%. West half 54% against east half 61%; for tornadoes
-14% against 14% (they peak mid-map: 0, 6, 16, 23, 26, 23, 18, 12, 9, 6%). North to south it is
-even. The westernmost and southernmost 50 miles are low (edge effects).
+North to south it is even. The westernmost and southernmost 50 miles stay low whatever the
+map does: storms only start inside the map and need most of an hour to mature (see "Later,
+if wanted" below).
 
 ## How natural it is
 
@@ -138,6 +141,22 @@ time, so a simulated day is 96 real minutes.
   present clock, which is still short. The clock is a setting to be chosen.
 - One world in eight is quiet (a tornado on 55% of its days), and there are still gaps of a
   day or more without a tornado.
+
+## Later, if wanted
+
+**Edge strips.** The westernmost and southernmost 50 miles of the map almost never get a
+tornado (1% and 3-4% of days against 15-18% mid-map), because no storm can arrive from
+outside the map and one that starts near the edge is not yet mature. The cure is to
+simulate a strip beyond the playable area, on the west and the south, so that storms cross
+into it already grown:
+
+- make the regional layer about 56 x 56 cells and treat the eastern and northern 50 x 50 as
+  the playable map (the Roblox feed crops to it; the weather pages can show all of it);
+- about a quarter more computing (56 x 56 against 50 x 50);
+- the geography settings (`geographyColumns`, `roamLow`, `roamHigh`) shift by the strip's
+  width, and the risk categories need refitting on the playable part only.
+
+Decided 2026-10-12: not now.
 
 ## Open
 

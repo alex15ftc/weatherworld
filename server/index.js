@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WeatherAuthorityRuntime } from './WeatherAuthorityRuntime.js';
 import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
+import { OutlookRuntime } from './OutlookRuntime.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
 // Set WEATHER_PRIORITY=normal to leave the process priority alone.
@@ -21,6 +22,10 @@ const statePath = process.env.WEATHER_PERSIST === 'off' ? null : path.resolve(RO
 if (process.env.WEATHER_SEED || !statePath || !fs.existsSync(statePath)) console.log('[weather-authority] starting a new world (about a minute)...');
 const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath });
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine });
+// The Day 1 outlook: issued when the world is ready and at each 12Z (WEATHER_OUTLOOK=off turns it off;
+// WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
+const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined });
+if (outlooks) { outlooks.maybeIssue(); setInterval(() => outlooks.maybeIssue(), 5_000).unref(); }
 const ADVANCE_POLL_MS = 10_000;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
@@ -71,6 +76,8 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
+  if (url.pathname === '/api/outlooks/day1') return sendJson(req, res, 200, outlooks ? outlooks.dayOne() : { day: 'day1', status: 'off' }, { cacheable: false, trace });
+  if (url.pathname === '/api/outlooks/status') return sendJson(req, res, 200, outlooks ? outlooks.status() : { enabled: false }, { cacheable: false, trace });
   const outlookField = url.pathname.match(/^\/api\/outlooks\/(day[123])\/field$/);
   if (outlookField) return sendJson(req, res, 200, runtime.outlookField(outlookField[1], url.searchParams.get('product') ?? 'risk'), { trace });
   const outlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);

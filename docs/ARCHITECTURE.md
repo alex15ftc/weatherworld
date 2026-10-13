@@ -96,9 +96,14 @@ hazard (`chance`) and its category (`worldRisk`) beside the real-world ones (`ri
 ## Where the map sits
 
 The geography (rise to the high ground, lee trough, sources of dry, continental and Gulf
-air) is laid out over `geographyColumns` cells; the map starts `geographyOffset` cells east
-of its western edge (15: at the foot of the high ground). `geographyOffset: 0` puts the map
-over all of it, high ground included, which is what the geography's own tests use.
+air) is laid out over `geographyColumns` cells; the map sits `geographyOffset` cells east of
+its western edge. That place is a state of the regional layer (`geographyOffset`,
+`geographyTarget`, `driftGeography()`): each day `RegionSteering` sends the map `roamStep`
+cells one way or the other within `roamLow`..`roamHigh`, and it drifts there at no more than
+`roamCellsPerHour`. The air, the storms and their cold pools stay where they are on the map;
+only the ground under it changes. With `roamLow`/`roamHigh` null the map stays put, and
+`steering: false` holds everything still (the geography's own tests use offset 0: the whole
+geography, high ground included).
 
 ## Not used by the live server
 

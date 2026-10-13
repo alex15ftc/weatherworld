@@ -24,12 +24,6 @@ export const STEERING_DEFAULTS = Object.freeze({
   windCapKt: 70, southerlyCapKt: 25,
   // The support wanted on a day is drawn evenly between these (the same for a given seed and day).
   wantedLow: 0.35, wantedHigh: 0.8,
-  // Where on the map the day's weather is wanted. With focusWidth above 0 the support is
-  // wanted in a band that wide (a share of the map's width) centred on a place drawn for the
-  // day between focusRange (0 = the west edge, 1 = the east edge), and unwanted over the rest
-  // of the map (restWeight). Over many days every part of the map gets its turn. With 0 the
-  // support is wanted over the map as a whole.
-  focusWidth: 0, focusRange: [0.15, 0.85], restWeight: 0.5,
   // The map's place along the geography (cells east of its western edge; see the regional
   // layer's geographyOffset). Given both roamLow and roamHigh, each day the map is sent
   // roamStep cells one way or the other within that range, at no more than roamCellsPerHour, so the dryline and
@@ -62,15 +56,12 @@ export class RegionSteering {
     for (let i = 0; i < nx; i++) {
       for (let dj = 0; dj < span; dj++) { const f = model.fieldsAt(i, j0 + dj); mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span; }
     }
-    const support = new Float64Array(nx), column = new Float64Array(nx);
+    const support = new Float64Array(nx);
     for (let i = 0; i < nx; i++) {
       let m = 0, s = 0;
       for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; }
       support[i] = Math.min(m, p.windCapKt) / p.windCapKt * clamp(s, -p.southerlyCapKt, p.southerlyCapKt) / p.southerlyCapKt;
-      // The same for this one column of the model (the region's rows only).
-      column[i] = Math.min(mid[i], p.windCapKt) / p.windCapKt * clamp(south[i], -p.southerlyCapKt, p.southerlyCapKt) / p.southerlyCapKt;
     }
-    support.column = column;
     return support;
   }
 
@@ -85,28 +76,12 @@ export class RegionSteering {
     for (const hours of ahead) { copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours; fields.push({ hours, support: this.supportByColumn(copy) }); }
     const day = Math.floor((now - p.planHourUtc) / 24), wanted = p.wantedLow + (p.wantedHigh - p.wantedLow) * unit(`${this.seed}|steer|${day}`);
     const at = (support, xm) => { const g = ((xm / copy.d) % copy.nx + copy.nx) % copy.nx, i = Math.floor(g), t = g - i; return support[i] * (1 - t) + support[(i + 1) % copy.nx] * t; };
-    // The day's place on the map (a share of its width from the west edge), and the support
-    // inside the band around it and over the rest of the map for a region whose west edge is at xm.
-    const focused = p.focusWidth > 0, target = focused ? p.focusRange[0] + (p.focusRange[1] - p.focusRange[0]) * unit(`${this.seed}|focus|${day}`) : null;
-    const width = regional.nx * regional.dx, SAMPLES = 10;
-    const split = (support, xm) => {
-      let inside = 0, insideCount = 0, outside = 0, outsideCount = 0;
-      for (let k = 0; k < SAMPLES; k++) {
-        const share = (k + 0.5) / SAMPLES, value = at(support.column, xm + share * width);
-        if (Math.abs(share - target) <= p.focusWidth / 2) { inside += value; insideCount++; } else { outside += value; outsideCount++; }
-      }
-      return { inside: insideCount ? inside / insideCount : at(support.column, xm + target * width), outside: outsideCount ? outside / outsideCount : 0 };
-    };
     let best = null;
     for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) {
-      let support = 0, rest = 0;
-      for (const field of fields) {
-        const xm = regional.origin.x + speed * field.hours * 3600;
-        if (focused) { const part = split(field.support, xm); support += part.inside / fields.length; rest += part.outside / fields.length; }
-        else support += at(field.support, xm) / fields.length;
-      }
-      const miss = Math.abs(support - wanted) + (focused ? p.restWeight * Math.max(0, rest) : 0);
-      if (!best || miss < best.miss - 1e-9) best = { speed, support, rest, miss };
+      let support = 0;
+      for (const field of fields) support += at(field.support, regional.origin.x + speed * field.hours * 3600) / fields.length;
+      const miss = Math.abs(support - wanted);
+      if (!best || miss < best.miss - 1e-9) best = { speed, support, miss };
     }
     regional.slideMs = best.speed;
     if (Number.isFinite(p.roamLow) && Number.isFinite(p.roamHigh)) {
@@ -119,7 +94,7 @@ export class RegionSteering {
       if (next < p.roamLow) next = 2 * p.roamLow - next;
       regional.geographyTarget = clamp(next, p.roamLow, p.roamHigh); regional.geographyRate = p.roamCellsPerHour;
     }
-    this.plan = { hourUtc: now, day, wanted, support: best.support, slideMs: best.speed, target, rest: focused ? best.rest : null, geographyTarget: regional.geographyTarget };
+    this.plan = { hourUtc: now, day, wanted, support: best.support, slideMs: best.speed, geographyTarget: regional.geographyTarget };
     return this.plan;
   }
 

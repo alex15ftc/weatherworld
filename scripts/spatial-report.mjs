@@ -60,7 +60,6 @@ async function worker(seed) {
     for (let b = 0; b < BLOCKS * BLOCKS; b++) { hit.severe[b] = hit.tornado[b] || hit.hail[b] || hit.wind[b] ? 1 : 0; for (const kind of KINDS) blockDays[kind][b] += hit[kind][b]; }
     record.storms = seen.size; record.tornadoes = world.stormEngine.totalTornadoes - before; record.severeBlocks = hit.severe.reduce((a, b) => a + b, 0);
     record.severe = [...hit.severe].join(''); record.tornado = [...hit.tornado].join('');
-    record.target = plan?.target ?? null;
     daily.push(record);
   }
   process.send({ seed, daily, blockDays: Object.fromEntries(KINDS.map(kind => [kind, [...blockDays[kind]]])), bands: Object.fromEntries(Object.entries(bands).map(([k, v]) => [k, typeof v === 'number' ? v : [...v]])) });
