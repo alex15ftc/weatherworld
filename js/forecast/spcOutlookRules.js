@@ -15,7 +15,7 @@ export const GENERAL_THUNDER_LEVEL = 10;
 export const MAX_CIG = { tornado: 3, hail: 2, wind: 3, severe: 2 };
 
 // Rows: probability level; columns: CIG 0..3. null = combination not used operationally.
-const CATEGORY_TABLES = {
+export const CATEGORY_TABLES = {
   tornado: {
     2: ['MRGN', 'MRGN', null, null],
     5: ['SLGT', 'SLGT', null, null],

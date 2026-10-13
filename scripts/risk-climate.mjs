@@ -1,8 +1,8 @@
-// Risk categories for this world's own climate. The categories come from the chance of each
-// hazard at its contour level and its intensity group, through the tables in
-// js/forecast/worldRiskCategories.js. This script runs the world for many days, records which
-// combinations of contour level and intensity group each day reached, and reports the mix of
-// days the tables give against the mix wanted, so the tables can be set for this world.
+// The mix of risk categories this world's days get. The categories come from the chance of
+// each hazard at its contour level and its intensity group, through the Storm Prediction
+// Center's tables (js/forecast/worldRiskCategories.js). This script runs the world for many
+// days, records which combinations of contour level and intensity group each day reached,
+// and reports the mix of days against the mix wanted.
 //   node scripts/risk-climate.mjs [days per seed] [--seeds 1,2,3,4,5,6,7,8] [--json file]
 //   node scripts/risk-climate.mjs --from file      re-read a saved run (after editing the tables)
 // A day is 12Z to 12Z; the chances are the practically perfect ones outlooks are verified against.

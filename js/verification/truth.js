@@ -3,7 +3,7 @@
 // the extreme/violent tiers used for conditional intensity groups. The same definitions serve
 // the authoritative verification and the forecast ensemble members.
 import { RISK_ORDER, HAZARDS, categoryFromHazard } from '../forecast/spcOutlookRules.js';
-import { worldCategory } from '../forecast/worldRiskCategories.js';
+import { worldCategory, conditionalCig, CIG_TIERS } from '../forecast/worldRiskCategories.js';
 
 export const TRUTH_FIELDS = ['storm', 'tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme', 'windViolent'];
 // The fields whose chance within 25 miles is worked out unrounded (result.chance): each hazard
@@ -125,15 +125,13 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
     hail: practicallyPerfectProbability(result.hailExact, width, height, cellKm, [5, 15, 30, 45, 60]),
     wind: practicallyPerfectProbability(result.windExact, width, height, cellKm, [5, 15, 30, 45, 60, 75, 90])
   };
-  result.observedCig = {
-    tornado: observedCig(result.tornadoSig, result.tornadoExtreme, result.tornadoViolent, 3),
-    hail: observedCig(result.hailSig, result.hailExtreme, null, 2),
-    wind: observedCig(result.windSig, result.windExtreme, result.windViolent, 3)
-  };
   // The same chances unrounded (percent within 25 miles), for each hazard and each intensity tier.
   result.chance = Object.fromEntries(CHANCE_FIELDS.map(field => [field, practicallyPerfectChance(result[`${field}Exact`], width, height, cellKm)]));
-  // This world's own categories (worldRiskCategories.js): the same contour levels and
-  // intensity groups as the real ones, read through this world's tables.
+  // Conditional intensity groups: inside a hazard's lowest contour, the highest tier that a
+  // large enough share of the reports round about reached (worldRiskCategories.js).
+  result.observedCig = Object.fromEntries(HAZARDS.map(h => [h, Uint8Array.from({ length: n }, (_, i) => (result.observedProbability[h][i] > 0 ? conditionalCig(result.chance[h][i], CIG_TIERS[h].map(field => result.chance[field][i])) : 0))]));
+  // The category at each point (the Storm Prediction Center's tables). `risk` is the same
+  // thing from the older code path and is kept for the reports that read it.
   result.worldRisk = Array(n);
   for (let i = 0; i < n; i++) result.worldRisk[i] = worldCategory(Object.fromEntries(HAZARDS.map(h => [h, { percent: result.observedProbability[h][i], cig: result.observedCig[h][i] }])), { thunder: Boolean(result.storm[i]) });
   for (let i = 0; i < n; i++) {
