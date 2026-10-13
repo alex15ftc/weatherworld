@@ -22,8 +22,8 @@ function member(k, { tornadoAt = null, strength = 1, storms = true } = {}) {
     const d = Math.hypot(i % width - tornadoAt.x, Math.floor(i / width) - tornadoAt.y), fall = Math.exp(-(d * d) / 60);
     // 90% tornado at the heart, EF2+ 60%, EF3+ 40%, EF4+ 4%; hail 60% (2 in 20%); wind 50% (75 mph 5%);
     // any severe weather 95% (significant 40%, intense 10%).
-    chance.tornado[i] = 90 * strength * fall; chance.tornadoSig[i] = 60 * strength * fall; chance.tornadoExtreme[i] = 40 * strength * fall; chance.tornadoViolent[i] = 4 * strength * fall;
-    chance.hail[i] = 60 * fall; chance.hailSig[i] = 20 * fall; chance.wind[i] = 50 * fall; chance.windSig[i] = 5 * fall;
+    chance.tornado[i] = 90 * strength * fall; chance.tornadoSig[i] = 50 * strength * fall; chance.tornadoExtreme[i] = 40 * strength * fall; chance.tornadoViolent[i] = 4 * strength * fall;
+    chance.hail[i] = 60 * fall; chance.hailSig[i] = 12 * fall; chance.wind[i] = 50 * fall; chance.windSig[i] = 5 * fall;
     chance.severe[i] = 95 * fall; chance.severeSig[i] = 40 * fall; chance.severeExtreme[i] = 10 * fall;
     if (storms && d < 14) thunder[i] = 1;
   }
@@ -87,7 +87,7 @@ assert.match(o.discussion, /\.\.\.SUMMARY\.\.\.[\s\S]*\.\.\.SYNOPSIS\.\.\.[\s\S]
 assert.match(o.discussion, /\(60% tornado area, CIG2\)/); assert.match(o.discussion, /\(60% hail area, CIG1\)/); assert.match(o.discussion, /\(45% wind area\)/);
 const percents = [...o.discussion.matchAll(/(\d+(?:\.\d+)?)%/g)].map(m => Number(m[1])), allowed = new Set([...PROBABILITY_LEVELS.tornado, ...PROBABILITY_LEVELS.wind, ...PROBABILITY_LEVELS.hail]);
 assert.ok(percents.length > 0 && percents.every(p => allowed.has(p)), `every percentage in the discussion is a contour level (${percents.join(', ')})`);
-assert.match(o.discussion, /intense \(EF3\+\)/); assert.match(o.discussion, /southwesterly flow aloft \(55 kt at 500 mb\)/); assert.match(o.discussion, /a dryline over the western part/);
+assert.match(o.discussion, /many of them strong \(EF2 or stronger\)/); assert.match(o.discussion, /southwesterly flow aloft \(55 kt at 500 mb\)/); assert.match(o.discussion, /a dryline over the western part/);
 assert.match(o.discussion, /develop from about 21Z \(3 pm local\)/);
 assert.match(calm.discussion, /NO SEVERE THUNDERSTORM AREAS FORECAST/); assert.doesNotMatch(calm.discussion, /TORNADO:/);
 assert.equal(writeDiscussion(o), o.discussion, 'the same outlook gives the same words');
