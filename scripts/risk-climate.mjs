@@ -33,7 +33,11 @@ async function worker(seed) {
     // For each hazard and contour level: the highest intensity group found inside it (-1: the level was not reached).
     const reached = Object.fromEntries(WORLD_HAZARDS.map(h => [h, PROBABILITY_LEVELS[h].map(() => -1)]));
     for (let i = 0; i < n; i++) for (const h of WORLD_HAZARDS) { const k = PROBABILITY_LEVELS[h].indexOf(truth.observedProbability[h][i]); if (k >= 0) reached[h][k] = Math.max(reached[h][k], truth.observedCig[h][i]); }
-    daily.push({ seed, day, storms: seen.size, tornadoes: world.stormEngine.totalTornadoes - before, thunder: truth.storm.some(Boolean), reached, real: truth.risk.reduce((best, r) => Math.max(best, rank(r)), 0) });
+    // Inside each contour level (up to the next): the highest chance, within 25 miles of a point, of each intensity tier.
+    const TIERS = { tornado: ['tornadoSig', 'tornadoExtreme', 'tornadoViolent'], wind: ['windSig', 'windExtreme', 'windViolent'], hail: ['hailSig', 'hailExtreme'] };
+    const tierPeak = Object.fromEntries(WORLD_HAZARDS.map(h => [h, PROBABILITY_LEVELS[h].map(() => TIERS[h].map(() => 0))]));
+    for (let i = 0; i < n; i++) for (const h of WORLD_HAZARDS) { const k = PROBABILITY_LEVELS[h].indexOf(truth.observedProbability[h][i]); if (k >= 0) TIERS[h].forEach((field, t) => { tierPeak[h][k][t] = Math.max(tierPeak[h][k][t], truth.chance[field][i]); }); }
+    daily.push({ seed, day, storms: seen.size, tornadoes: world.stormEngine.totalTornadoes - before, thunder: truth.storm.some(Boolean), reached, tierPeak, real: truth.risk.reduce((best, r) => Math.max(best, rank(r)), 0) });
   }
   process.send(daily);
 }

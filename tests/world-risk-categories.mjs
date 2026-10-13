@@ -26,7 +26,7 @@ for (const hazard of WORLD_HAZARDS) {
   for (const level of PROBABILITY_LEVELS[hazard]) { let last = 0; for (let cig = 0; cig <= WORLD_MAX_CIG[hazard]; cig++) { const now = rank(worldCategoryFromHazard(hazard, level, cig)); assert.ok(now >= last, `${hazard} ${level}% up to CIG${cig}`); last = now; } }
 }
 // A high intensity group is not drawn inside a very low chance: it is held to what the contour allows.
-assert.equal(highestCigAt('tornado', 2), 1); assert.equal(drawnCig('tornado', 3, 3), 1); assert.equal(drawnCig('tornado', 31, 3), 3); assert.equal(drawnCig('hail', 50, 3), 2);
+assert.equal(highestCigAt('tornado', 2), 2); assert.equal(drawnCig('tornado', 3, 3), 2); assert.equal(drawnCig('tornado', 31, 3), 3); assert.equal(drawnCig('hail', 50, 3), 2);
 assert.equal(drawnCig('wind', 1, 3), 0, 'no group outside every contour');
 
 // --- The top and bottom of the scale.

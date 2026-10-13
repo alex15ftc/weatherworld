@@ -15,10 +15,11 @@ export const GENERAL_THUNDER_LEVEL = 10;
 export const MAX_CIG = { tornado: 3, hail: 2, wind: 3, severe: 2 };
 
 // Rows: probability level; columns: CIG 0..3. null = combination not used operationally.
+// As published at spc.noaa.gov/exper/conditional-intensity-information (checked 2026-10-13).
 export const CATEGORY_TABLES = {
   tornado: {
-    2: ['MRGN', 'MRGN', null, null],
-    5: ['SLGT', 'SLGT', null, null],
+    2: ['MRGN', 'MRGN', 'SLGT', null],
+    5: ['SLGT', 'SLGT', 'ENH', null],
     10: ['SLGT', 'ENH', 'ENH', 'ENH'],
     15: ['ENH', 'ENH', 'MDT', 'MDT'],
     30: ['ENH', 'MDT', 'HIGH', 'HIGH'],
@@ -61,7 +62,7 @@ export function probabilityLevel(hazard, percent) {
 export function maximumPublishedCig(hazard, probability) {
   const p = Number(probability) || 0;
   if (p <= 0) return 0;
-  if (hazard === 'tornado') return p <= 5 ? 1 : p <= 10 ? 2 : 3;
+  if (hazard === 'tornado') return p <= 5 ? 2 : 3;
   if (hazard === 'wind') return p < 45 ? 2 : 3;
   return MAX_CIG[hazard] ?? 0;
 }
