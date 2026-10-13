@@ -880,6 +880,35 @@ Asked for: a discussion, risk categories and hatching, like the real ones.
   against verified 33, 47, 14, 6.
 - Tests: `tests/day-one-outlook.mjs`.
 
+### The outlook redone to the Storm Prediction Center's rules (2026-10-13)
+
+The user: the contours did not match what the real outlooks do; a chance like 26% should
+never appear. Researched from the service change notice (SCN 26-11) and the centre's pages:
+since March 2026 chances are drawn only at fixed levels (tornado 2, 5, 10, 15, 30, 45, 60%;
+wind 5, 15, 30, 45, 60, 75, 90%; hail 5, 15, 30, 45, 60%), the single "significant" hatch is
+replaced by conditional intensity groups (CIG1-3; two for hail) each with its own hatch, and
+the category is read from a table of contour level against group.
+
+- `worldRiskCategories.js` rewritten as such tables, with this world's own entries (set on
+  320 days: below Slight 7, Slight 28, Enhanced 40, Moderate 20, High 5; the real table would
+  give 44% High). `risk-climate.mjs` rewritten to record what each day reaches and to print
+  the mix a table gives.
+- `truth.js`: wind tiers moved to the real 75, 85 and 96 mph; unrounded chances for every
+  tier; `worldRisk` from the contour level and the observed group.
+- `DayOneOutlook.js`: contour levels, intensity groups (the highest tier with a 10% chance,
+  held to what the contour allows), categories from the tables, and a discussion that
+  describes hazards in words and cites only contour levels and groups.
+- `outlookPage.js`: bands at the contour levels in the real colours, the three hatch styles,
+  no figures on the map.
+- Verification (30 outlooks, first version of the table): places inside the tornado contours
+  had one within 25 miles 2, 6, 12, 25, 42, 64, 87% of the time (2% to 60% contours); wind 3,
+  16, 44, 77, 89, 97, 100%; hail 5, 16, 46, 70, 86%.
+- High days in the 320-day record (day N is the Nth 12Z-12Z day of a fresh world): seed 1:
+  5; seed 2: 8, 9, 17, 25, 26; seed 3: 12, 36, 38; seed 4: 39; seed 5: 3; seed 6: 38; seed
+  7: 19, 20, 33; seed 8: 8, 37.
+- Three documentation files (README, STATUS, ARCHITECTURE) had lost the first outlook write-up
+  to a concurrent edit; it was put back here in its present form.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

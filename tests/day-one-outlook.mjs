@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import v8 from 'node:v8';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
+import { insideRings } from '../js/forecast/contourShapes.js';
 import { OUTLOOK, runOutlookMember, stateFromBytes, combineOutlook, publicOutlook, describeArea, hoursToDayEnd, writeDiscussion } from '../js/forecast/DayOneOutlook.js';
 import { WORLD_RISK_ORDER, WORLD_HAZARDS, PROBABILITY_LEVELS, worldCategoryFromHazard } from '../js/forecast/worldRiskCategories.js';
 import { CHANCE_FIELDS } from '../js/verification/truth.js';
@@ -69,9 +70,17 @@ assert.match(describeArea(Array.from({ length: n }, (_, i) => i % width < 10 && 
 // --- What the page gets: the three hazards, each with its intensity groups, and the levels to draw.
 const page = publicOutlook(o);
 assert.equal(page.status, 'issued'); assert.equal(page.category.length, n); assert.equal(page.categories[page.category[centre]], o.highest);
-for (const hazard of WORLD_HAZARDS) { assert.equal(page.chance[hazard].length, n); assert.equal(page.cig[hazard].length, n); assert.deepEqual(page.levels[hazard], PROBABILITY_LEVELS[hazard]); }
+for (const hazard of WORLD_HAZARDS) { assert.equal(page.chance, undefined, 'the chances themselves are not sent'); assert.equal(page.cig[hazard].length, n); assert.deepEqual(page.levels[hazard], PROBABILITY_LEVELS[hazard]); }
 assert.equal(page.thunderLevel, 10); assert.deepEqual(page.maxCig, { tornado: 3, wind: 3, hail: 2 });
 assert.ok(JSON.stringify(page).length < 400000, 'small enough to send');
+// The areas go out as outlines: one per category and contour level reached, and per intensity group.
+const centreAt = [(centre % width + 0.5) / width, (Math.floor(centre / width) + 0.5) / height], cornerAt = [(corner % width + 0.5) / width, (Math.floor(corner / width) + 0.5) / height];
+assert.equal(page.shapes.category.at(-1).key, o.highest);
+assert.ok(insideRings(page.shapes.category.at(-1).rings, ...centreAt) && !insideRings(page.shapes.category.at(-1).rings, ...cornerAt));
+assert.deepEqual(page.shapes.tornado.levels.map(entry => entry.level), PROBABILITY_LEVELS.tornado.filter(level => level <= o.top.tornado.level), 'only contour levels, and only those reached');
+for (const hazard of WORLD_HAZARDS) { assert.equal(page.shapes[hazard].groups.length, o.top[hazard].cig); for (const entry of page.shapes[hazard].levels) assert.ok(insideRings(entry.rings, ...centreAt) && !insideRings(entry.rings, ...cornerAt)); }
+assert.ok(insideRings(page.shapes.tornado.groups.at(-1).rings, ...centreAt));
+assert.deepEqual(publicOutlook(calm).shapes.tornado, { levels: [], groups: [] });
 
 // --- A real member: the world run ahead with its storms' chances drawn afresh.
 const atmosphere = new AtmosphereWorld({ seed: 3, spinUpDays: 6 }); atmosphere.advance(30);   // to 18Z of the second day

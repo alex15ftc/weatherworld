@@ -17,6 +17,7 @@
 import v8 from 'node:v8';
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { captureTruth, aggregateTruth, CHANCE_FIELDS } from '../verification/truth.js';
+import { contourRings, softenArea } from './contourShapes.js';
 import { WORLD_RISK_ORDER, WORLD_RISK_LABELS, WORLD_HAZARDS, WORLD_MAX_CIG, CIG_MEANING, PROBABILITY_LEVELS, probabilityLevel, worldCategory, worldCategoryFromHazard, drawnCig } from './worldRiskCategories.js';
 
 export const OUTLOOK = Object.freeze({
@@ -271,15 +272,27 @@ export function writeDiscussion(o) {
   return lines.join('\n');
 }
 
-// A compact, serializable copy for the pages. The chances are sent (to a tenth) only so the
-// contours can be drawn smoothly; what is shown is the contour levels.
+// The outlook's areas as outlines (see contourShapes.js; points are shares of the map): each
+// category, each hazard's contour levels and its intensity groups. An area is everything at or
+// above its level, so the areas nest and are drawn from the lowest up.
+export function outlookShapes(o) {
+  const { width, height } = o, area = inside => contourRings(softenArea(inside, width, height), width, height, 0.5);
+  const kept = list => list.filter(entry => entry.rings.length);
+  const shapes = { category: kept(WORLD_RISK_ORDER.slice(1).map(key => ({ key, rings: area(o.category.map(c => rank(c) >= rank(key))) }))) };
+  for (const hazard of WORLD_HAZARDS) shapes[hazard] = {
+    levels: kept(OUTLOOK.levels[hazard].map(level => ({ level, rings: contourRings(o.chance[hazard], width, height, level) }))),
+    groups: kept(Array.from({ length: WORLD_MAX_CIG[hazard] }, (_, k) => ({ group: k + 1, rings: area(Array.from(o.cig[hazard], v => v > k)) })))
+  };
+  return shapes;
+}
+
+// A compact, serializable copy for the pages: the areas as outlines, never the chances themselves.
 export function publicOutlook(o) {
-  const round = field => Array.from(field, v => Math.round(v * 10) / 10);
   return {
+    shapes: outlookShapes(o),
     day: o.day, status: 'issued', issuedHourUtc: o.issuedHourUtc, validToHourUtc: o.validToHourUtc, seed: o.seed, members: o.members,
     width: o.width, height: o.height, cellMiles: o.cellMiles, highest: o.highest, leading: o.leading, areas: o.areas, top: o.top,
     category: o.category.map(rank), categories: WORLD_RISK_ORDER, labels: WORLD_RISK_LABELS,
-    chance: Object.fromEntries(WORLD_HAZARDS.map(hazard => [hazard, round(o.chance[hazard])])),
     cig: Object.fromEntries(WORLD_HAZARDS.map(hazard => [hazard, Array.from(o.cig[hazard])])),
     thunder: Array.from(o.thunder, v => Math.round(v * 100)), thunderLevel: Math.round(100 * OUTLOOK.thunderShare),
     levels: OUTLOOK.levels, maxCig: WORLD_MAX_CIG, cigMeaning: CIG_MEANING,

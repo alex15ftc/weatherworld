@@ -24,24 +24,47 @@ worlds ran high.
 | Tornadoes on a Slight / Enhanced / Moderate / High day (medians) | 1 / 10 / 28 / 65 |
 | Storms on a Slight / Enhanced / Moderate / High day (medians) | 100 / 167 / 219 / 345 |
 
-**Risk categories** are this world's own (`js/forecast/worldRiskCategories.js`), fitted to its
-climate so that the mix of days is the one wanted. By the real-world rules the same days
-would be 38% Moderate and 29% High.
+**Risk categories** are built as the Storm Prediction Center builds its own (as changed in
+March 2026): the chance of each hazard only at fixed contour levels, a conditional intensity
+group (CIG1-3; two for hail), and a table that turns the two into a category. The table's
+entries are this world's own (`js/forecast/worldRiskCategories.js`); by the real table 44% of
+days here would be High.
 
 | | Below Slight | Slight | Enhanced | Moderate | High |
 |---|---|---|---|---|---|
 | Wanted | 5% | 30% | 40% | 20% | 5% |
-| Fitted on half the worlds, applied to the other half | 4-5% | 29-33% | 38-41% | 21-22% | 3-4% |
+| 320 days, eight worlds | 7% | 28% | 40% | 20% | 5% |
 
-| Category | Tornado | EF2+ tornado | 1 in hail | 2 in hail | 58 mph wind | 75 mph wind |
-|---|---|---|---|---|---|---|
-| Slight | any | any | any | any | 7% | any |
-| Enhanced | 36% | 7% | 70% | 15% | 92% | 49% |
-| Moderate | 66% | 29% | 91% | 43% | - | 90% |
-| High | 84% | 51% | - | - | - | 97% |
+Category by contour level (rows) and intensity group (columns):
 
-(Chance within 25 miles of a point; a place reaches a category when any one hazard does.
-Refit with `npm run inspect:risk` whenever the climate changes.)
+| Tornado | none | CIG1 (EF2+) | CIG2 (EF3+) | CIG3 (EF4+) |
+|---|---|---|---|---|
+| 2% | Marginal | Marginal | Slight | - |
+| 5% | Slight | Slight | Slight | - |
+| 10% | Slight | Slight | Slight | Enhanced |
+| 15% | Slight | Slight | Enhanced | Enhanced |
+| 30% | Slight | Enhanced | Enhanced | Moderate |
+| 45% | Enhanced | Enhanced | Moderate | Moderate |
+| 60% | Enhanced | Moderate | Moderate | High |
+
+| Wind | none | CIG1 (75 mph) | CIG2 (85 mph) | CIG3 (96 mph) |
+|---|---|---|---|---|
+| 5% | Marginal | Marginal | Slight | - |
+| 15%, 30% | Slight | Slight | Slight | - |
+| 45% | Slight | Slight | Slight | Enhanced |
+| 60% | Slight | Slight | Enhanced | Enhanced |
+| 75%, 90% | Slight | Enhanced | Enhanced | Moderate |
+
+| Hail | none | CIG1 (2 in) | CIG2 (3.5 in) |
+|---|---|---|---|
+| 5% | Marginal | Marginal | Slight |
+| 15%, 30% | Slight | Slight | Slight |
+| 45% | Slight | Slight | Enhanced |
+| 60% | Slight | Enhanced | Enhanced |
+
+A High day is a 60% tornado area with violent tornadoes. Medians: Slight 2 tornadoes,
+Enhanced 9, Moderate 31, High 53. `npm run inspect:risk` records what each day reaches and
+prints the mix the tables give (`--from file` re-reads a saved run after a table is edited).
 
 **Across the map, and from day to day.** The map roams along the geography: each day it
 moves 50 to 150 miles one way or the other, between having the high ground over its western
@@ -107,6 +130,38 @@ What is not natural enough yet:
 - **A storm crossing an old outflow boundary gets no boost** to its low-level shear.
 - **Low-level shear is high**: afternoon helicity is about double the real median.
 
+## The Day 1 outlook
+
+Issued by the server when it starts and at each 12Z, from eight forecast runs (about 25
+seconds). Page: `/day1.html`. Laid out as the Storm Prediction Center's: the categorical map;
+tornado, wind and hail maps showing the chance only at the fixed contour levels, with the
+intensity groups hatched over them (CIG1 broken lines, CIG2 solid, CIG3 crossed); and a
+discussion that gives no exact chances.
+
+Checked on 30 outlooks (six worlds, five days each, six runs per outlook), with the first
+version of the category table:
+
+| | |
+|---|---|
+| Highest category of the day right / within one | 63% / 100% |
+| Category right, place by place | 78% of the map (within one: 97%) |
+| The day's tornado count inside the range of the forecast runs | 83% of days |
+
+| Places inside the contour | 2% | 5% | 10% | 15% | 30% | 45% | 60% | 75% | 90% |
+|---|---|---|---|---|---|---|---|---|---|
+| A tornado came within 25 miles | 2% | 6% | 12% | 25% | 42% | 64% | 87% | | |
+| 58 mph wind did | | 3% | | 16% | 44% | 77% | 89% | 97% | 100% |
+| 1 in hail did | | 5% | | 16% | 46% | 70% | 86% | | |
+
+| Inside the intensity group | EF2+ within 25 miles | EF3+ | EF4+ |
+|---|---|---|---|
+| none drawn | 2% | 0% | 0% |
+| CIG1 | 15% | 5% | 3% |
+| CIG2 | 45% | 22% | 7% |
+
+Not yet done: the outlook has not been re-verified since the category table was set; one
+outlook a day with no updates; Days 2 and 3.
+
 ## What a player would find
 
 From `npm run inspect:players` on eight worlds (160 days). The clock runs 15 times real
@@ -160,7 +215,7 @@ Decided 2026-10-12: not now.
 
 ## Open
 
-1. Day 1-3 outlooks, watches and warnings, on this world's risk categories (done: the categories themselves).
+1. Outlooks: Day 1 is issued. Still to do: re-verify with the final category table, updates during the day, Days 2 and 3, watches and warnings.
    Also: the quiet world (seed 8), and the low western and southern edge strips.
 2. Getting players to the weather: place selection, travel, or a smaller map.
 3. Longer-lived tornadoes, or a slower clock, so that tornadoes can be chased.

@@ -20,6 +20,8 @@ npm test             # 42 tests, about 8 minutes
 | `WEATHER_PERSIST=off` | keep nothing on disk |
 | `WEATHER_STATE_PATH` | where the world is saved (default `data/cache/atmosphere-state.bin`) |
 | `WEATHER_PRIORITY=normal` | leave the process priority alone |
+| `WEATHER_OUTLOOK=off` | do not issue outlooks |
+| `WEATHER_OUTLOOK_MEMBERS=n` | forecast runs per outlook (default 8) |
 
 The clock runs at 15 simulated minutes per real minute (a simulated day is 96 real minutes).
 
@@ -29,7 +31,8 @@ The clock runs at 15 simulated minutes per real minute (a simulated day is 96 re
 |---|---|
 | `/` (`index.html`) | Surface observations and mesoanalysis: station plots, isobars, fronts, the dryline, outflow boundaries, storms, 27 overlay fields, click soundings, 36 frames of history |
 | `/radar.html` | Simulated radar sites and the composite mosaic |
-| `/day1.html`, `/day2.html`, `/day3.html` | Placeholders: outlooks are not issued yet |
+| `/day1.html` | The Day 1 convective outlook, laid out as the Storm Prediction Center's: risk categories; tornado, wind and hail chances at the fixed contour levels with hatched intensity groups; the forecast discussion |
+| `/day2.html`, `/day3.html` | Placeholders: these outlooks are not issued yet |
 | `/performance.html` | Server timing |
 
 ## How it works
@@ -76,6 +79,7 @@ full working log of the redesign, with every measurement.
 | `npm run inspect:activity` | severe days, risk categories, tornado days | 10 min |
 | `npm run inspect:tornado-days` | why a day does or does not get a tornado; the part lines play | 9 min |
 | `npm run inspect:players` | what a player finds: waits, distances, tornado durations | 10 min |
+| `npm run inspect:outlook` | makes Day 1 outlooks and checks them against what then happened | 25 min |
 | `npm run inspect:risk` | fits this world's risk categories to its climate | 25 min |
 | `node scripts/spatial-report.mjs` | where on the map severe weather falls; each world's make-up | 25 min |
 

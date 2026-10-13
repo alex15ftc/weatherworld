@@ -1,0 +1,112 @@
+// Contours as shapes. Given a field on the map's cell centres, traces the outline of the area
+// where it is at or above a level: closed rings of points (holes come out as rings of their
+// own, to be filled with the even-odd rule), following the map edge where the area runs off
+// the map. Coordinates are shares of the map (0-1 across from the west, 0-1 down from the
+// north), so whatever draws them (a page, a game) scales them as it likes.
+
+// The rings of { field >= level }. `smoothing` rounds the corners (Chaikin's corner cutting).
+export function contourRings(field, width, height, level, { smoothing = 2, decimals = 4 } = {}) {
+  // Nodes: the cell centres, a ring of nodes on the map edge holding the nearest centre's
+  // value, and a ring just outside holding a value below any level, so every outline closes.
+  const xs = [-1e-3, 0, ...Array.from({ length: width }, (_, x) => (x + 0.5) / width), 1, 1 + 1e-3];
+  const ys = [-1e-3, 0, ...Array.from({ length: height }, (_, y) => (y + 0.5) / height), 1, 1 + 1e-3];
+  const nx = xs.length, ny = ys.length, below = level - 1e6;
+  const value = (i, j) => (i === 0 || j === 0 || i === nx - 1 || j === ny - 1 ? below : field[Math.min(height - 1, Math.max(0, j - 2)) * width + Math.min(width - 1, Math.max(0, i - 2))]);
+  // Marching squares: one or two segments per square of nodes, each from edge to edge.
+  const segments = [];
+  const cross = (i1, j1, v1, i2, j2, v2) => { const t = (level - v1) / (v2 - v1); return [xs[i1] + (xs[i2] - xs[i1]) * t, ys[j1] + (ys[j2] - ys[j1]) * t]; };
+  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = value(i, j), b = value(i + 1, j), c = value(i + 1, j + 1), d = value(i, j + 1);
+    const code = (a >= level ? 8 : 0) | (b >= level ? 4 : 0) | (c >= level ? 2 : 0) | (d >= level ? 1 : 0);
+    if (code === 0 || code === 15) continue;
+    const top = () => cross(i, j, a, i + 1, j, b), right = () => cross(i + 1, j, b, i + 1, j + 1, c), bottom = () => cross(i, j + 1, d, i + 1, j + 1, c), left = () => cross(i, j, a, i, j + 1, d);
+    const add = (p, q) => segments.push([p, q]);
+    switch (code) {
+      case 1: case 14: add(left(), bottom()); break;
+      case 2: case 13: add(bottom(), right()); break;
+      case 3: case 12: add(left(), right()); break;
+      case 4: case 11: add(top(), right()); break;
+      case 6: case 9: add(top(), bottom()); break;
+      case 7: case 8: add(left(), top()); break;
+      // Saddles: joined through the middle or not by the value there.
+      case 5: if ((a + b + c + d) / 4 >= level) { add(left(), top()); add(bottom(), right()); } else { add(left(), bottom()); add(top(), right()); } break;
+      case 10: if ((a + b + c + d) / 4 >= level) { add(left(), bottom()); add(top(), right()); } else { add(left(), top()); add(bottom(), right()); } break;
+    }
+  }
+  // Join the segments end to end into closed rings.
+  const key = p => `${Math.round(p[0] * 1e7)},${Math.round(p[1] * 1e7)}`, ends = new Map();
+  segments.forEach((segment, index) => { for (const end of [0, 1]) { const k = key(segment[end]); if (!ends.has(k)) ends.set(k, []); ends.get(k).push({ index, end }); } });
+  const used = new Uint8Array(segments.length), rings = [];
+  for (let start = 0; start < segments.length; start++) {
+    if (used[start]) continue;
+    const ring = [segments[start][0]]; let index = start, end = 1;
+    used[start] = 1;
+    for (let guard = 0; guard <= segments.length; guard++) {
+      const point = segments[index][end]; ring.push(point);
+      const next = (ends.get(key(point)) ?? []).find(other => !used[other.index]);
+      if (!next) break;
+      used[next.index] = 1; index = next.index; end = 1 - next.end;
+    }
+    if (ring.length >= 4) rings.push(ring);
+  }
+  const clamp = v => Math.min(1, Math.max(0, v)), round = v => Number(v.toFixed(decimals));
+  return rings.map(ring => {
+    let points = ring.slice(0, -1).map(([x, y]) => [clamp(x), clamp(y)]);
+    for (let pass = 0; pass < smoothing; pass++) points = cutCorners(points);
+    return points.map(([x, y]) => [round(x), round(y)]);
+  }).filter(ring => ring.length >= 3 && Math.abs(ringArea(ring)) > 1e-6);
+}
+
+// Chaikin's corner cutting on a closed ring, leaving points on the map edge where they are
+// (so areas that run off the map keep a straight edge along it).
+function cutCorners(points) {
+  const onEdge = p => p[0] <= 0 || p[0] >= 1 || p[1] <= 0 || p[1] >= 1, out = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i], q = points[(i + 1) % points.length];
+    if (onEdge(p) && onEdge(q)) { out.push(p); continue; }
+    out.push(onEdge(p) ? p : [0.75 * p[0] + 0.25 * q[0], 0.75 * p[1] + 0.25 * q[1]]);
+    if (!onEdge(q)) out.push([0.25 * p[0] + 0.75 * q[0], 0.25 * p[1] + 0.75 * q[1]]);
+  }
+  return out;
+}
+
+// Signed area of a ring (shares of the map squared).
+export function ringArea(ring) {
+  let sum = 0;
+  for (let i = 0; i < ring.length; i++) { const p = ring[i], q = ring[(i + 1) % ring.length]; sum += p[0] * q[1] - q[0] * p[1]; }
+  return sum / 2;
+}
+
+// The share of the map inside a set of rings (even-odd: holes are taken out).
+export function ringsArea(rings) {
+  // A ring inside an odd number of the others is a hole (rings here wind either way).
+  return rings.reduce((sum, ring, k) => {
+    const depth = rings.filter((other, j) => j !== k && insideRings([other], ring[0][0], ring[0][1])).length;
+    return sum + (depth % 2 ? -1 : 1) * Math.abs(ringArea(ring));
+  }, 0);
+}
+
+// Whether a point is inside a set of rings by the even-odd rule.
+export function insideRings(rings, x, y) {
+  let inside = false;
+  for (const ring of rings) for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// A 0/1 area softened so that its outline is a curve and not the grid's steps (0.5 is the edge).
+export function softenArea(inside, width, height, passes = 2) {
+  let field = Float32Array.from(inside, v => (v ? 1 : 0));
+  for (let pass = 0; pass < passes; pass++) {
+    const out = new Float32Array(field.length);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      let sum = 0, count = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < width && Y < height) { sum += field[Y * width + X]; count++; } }
+      out[y * width + x] = sum / count;
+    }
+    field = out;
+  }
+  return field;
+}

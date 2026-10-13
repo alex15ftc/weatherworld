@@ -30,12 +30,14 @@ assert.equal(drawnCig('wind', 1, 3), 0, 'no group outside every contour');
 // --- The top and bottom of the scale.
 assert.equal(worldCategory(quiet), 'NONE'); assert.equal(worldCategory(quiet, { thunder: true }), 'TSTM');
 assert.equal(worldCategory({ ...quiet, tornado: { percent: 2, cig: 0 } }), 'MRGN');
-assert.equal(worldCategory({ ...quiet, tornado: { percent: 60, cig: 2 } }), 'HIGH');
-assert.equal(worldCategory({ ...quiet, wind: { percent: 90, cig: 3 } }), 'HIGH');
-// Hail alone does not make a High day, as in the real outlooks.
-assert.equal(worldCategory({ ...quiet, hail: { percent: 100, cig: 2 } }), 'MDT');
+// A High day in this world is a 60% tornado area with violent tornadoes expected.
+assert.equal(worldCategory({ ...quiet, tornado: { percent: 60, cig: 3 } }), 'HIGH');
+assert.equal(worldCategory({ ...quiet, tornado: { percent: 60, cig: 2 } }), 'MDT');
+// Wind and hail alone do not make a High day (hail does not in the real outlooks either).
+assert.equal(worldCategory({ ...quiet, wind: { percent: 90, cig: 3 } }), 'MDT');
+assert.equal(worldCategory({ ...quiet, hail: { percent: 100, cig: 2 } }), 'ENH');
 // The category is the highest any hazard gives; the hazard that gives it is named.
-const mixed = { tornado: { percent: 31, cig: 2 }, wind: { percent: 50, cig: 0 }, hail: { percent: 20, cig: 0 } };
+const mixed = { tornado: { percent: 46, cig: 2 }, wind: { percent: 50, cig: 0 }, hail: { percent: 20, cig: 0 } };
 assert.equal(worldCategory(mixed), 'MDT'); assert.equal(leadingHazard(mixed, 'MDT'), 'tornado'); assert.equal(leadingHazard(quiet, 'SLGT'), null);
 
 // --- From reports on the map: contour levels and intensity groups, and the category from them.

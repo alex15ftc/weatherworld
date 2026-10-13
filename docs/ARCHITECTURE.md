@@ -95,6 +95,40 @@ minutes per real minute. The world is saved every simulated hour.
 hazard (`chance`) and its category (`worldRisk`) beside the real-world ones (`risk`).
 `scripts/risk-climate.mjs` fits the thresholds; refit whenever the climate changes.
 
+## The Day 1 outlook
+
+`js/forecast/DayOneOutlook.js`. At issue time the world is copied and run ahead several
+times (the members). Each has the same atmosphere, but its storms take their chances
+differently (the storm seed is the member's own), so where they start and which of them put
+down a tornado differ. The outlook is the members' average chance of each hazard within 25
+miles of a point (the practically perfect chance it is verified against), laid out as the
+Storm Prediction Center's is since March 2026:
+
+- chances shown only at the fixed contour levels (tornado 2, 5, 10, 15, 30, 45, 60%; wind 5,
+  15, 30, 45, 60, 75, 90%; hail 5, 15, 30, 45, 60%);
+- conditional intensity groups hatched over them: the highest tier with a 10% chance
+  (tornado EF2+ / EF3+ / EF4+; wind 75 / 85 / 96 mph; hail 2 in / 3.5 in), held to what the
+  contour level allows;
+- the category from the contour level and the group together, through this world's tables
+  (`worldRiskCategories.js`);
+- a general thunderstorm area (10% or more of the members);
+- a discussion (`writeDiscussion`) that describes hazards in words and cites only contour
+  levels and groups.
+
+`server/OutlookRuntime.js` issues it when the server has a world and at each 12Z, running
+the members in their own processes (`server/outlookMember.js`) from a copy of the world
+written to a scratch file; the live world keeps running. Each member must have its own copy
+of the saved world (`stateFromBytes`): arrays read out of the same bytes can share memory.
+
+| Route | Returns |
+|---|---|
+| `GET /api/outlooks/day1` | the outlook (categories, chances, intensity groups, discussion), or its status while one is being made |
+| `GET /api/outlooks/status` | whether one is running, when the current one was issued |
+
+`day1.html` (`js/pages/outlookPage.js`) draws it: bands at the contour levels in the real
+colours; CIG1 broken lines falling to the lower left, CIG2 solid lines falling to the lower
+right, CIG3 crossed; no figures on the map. `scripts/outlook-verify.mjs` checks it.
+
 ## Where the map sits
 
 The geography (rise to the high ground, lee trough, sources of dry, continental and Gulf

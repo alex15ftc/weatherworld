@@ -145,6 +145,24 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
 
 // SPC's practically perfect forecast: reports on an 80 km grid, Gaussian-smoothed (sigma 120 km).
 const PP_GRID_KM = 80, PP_SIGMA_KM = 120;
+// The chance (percent, 0-100) of a report within radiusMiles of each cell, from one day's
+// reports: the share of the country round about (the practically perfect chance's own 120 km
+// Gaussian) that had a report within that radius. At 25 miles it is close to the practically
+// perfect chance itself; a smaller radius counts less of the country as hit, so it is lower.
+export function neighbourhoodChance(exact, width, height, cellKm, radiusMiles) {
+  const n = width * height, radiusCells = radiusMiles * 1.609344 / cellKm, near = new Float32Array(n), offsets = diskOffsets(Math.max(0.5, radiusCells));
+  for (let i = 0; i < n; i++) if (exact[i]) { const x = i % width, y = (i - x) / width; for (const [dx, dy] of offsets) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < width && Y < height) near[Y * width + X] = 1; } }
+  const sigma = PP_SIGMA_KM / cellKm, reach = Math.max(1, Math.ceil(3 * sigma)), kernel = Array.from({ length: 2 * reach + 1 }, (_, k) => Math.exp(-((k - reach) ** 2) / (2 * sigma * sigma)));
+  const total = kernel.reduce((p, q) => p + q, 0), pass = (field, stride, count, lines) => {
+    const out = new Float32Array(n);
+    for (let line = 0; line < lines; line++) for (let k = 0; k < count; k++) { let sum = 0; for (let d = -reach; d <= reach; d++) { const j = k + d; if (j >= 0 && j < count) sum += kernel[d + reach] * field[stride === 1 ? line * width + j : j * width + line]; } out[stride === 1 ? line * width + k : k * width + line] = sum / total; }
+    return out;
+  };
+  const smooth = pass(pass(near, 1, width, height), width, height, width);
+  for (let i = 0; i < n; i++) smooth[i] = 100 * Math.min(1, smooth[i]);
+  return smooth;
+}
+
 // The same chance unrounded (percent, 0-100) at every cell.
 export function practicallyPerfectChance(exact, width, height, cellKm) {
   const box = Math.max(1, Math.round(PP_GRID_KM / cellKm)), boxes = new Map(), out = new Float32Array(exact.length);

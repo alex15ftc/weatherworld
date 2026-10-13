@@ -12,7 +12,8 @@
 // are tied to the real climate, and this world is made more violent than the real one: by the
 // real tables two days in three here would be Moderate or High. These are set so that about
 // 5% of days stay below Slight, 30% are Slight, 40% Enhanced, 20% Moderate and 5% High
-// (`node scripts/activity-report.mjs` prints the mix; refit when the climate changes).
+// (`node scripts/risk-climate.mjs` records what each day reaches and prints the mix the tables
+// give; reset the tables when the climate changes).
 import { PROBABILITY_LEVELS, probabilityLevel } from './spcOutlookRules.js';
 
 export const WORLD_RISK_ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
@@ -27,29 +28,32 @@ export const WORLD_CATEGORY_TABLES = Object.freeze({
   tornado: {
     2: ['MRGN', 'MRGN', 'SLGT', null],
     5: ['SLGT', 'SLGT', 'SLGT', null],
-    10: ['SLGT', 'SLGT', 'ENH', 'ENH'],
-    15: ['SLGT', 'ENH', 'ENH', 'ENH'],
-    30: ['ENH', 'ENH', 'MDT', 'MDT'],
-    45: ['ENH', 'MDT', 'MDT', 'HIGH'],
-    60: ['MDT', 'MDT', 'HIGH', 'HIGH']
+    10: ['SLGT', 'SLGT', 'SLGT', 'ENH'],
+    15: ['SLGT', 'SLGT', 'ENH', 'ENH'],
+    30: ['SLGT', 'ENH', 'ENH', 'MDT'],
+    45: ['ENH', 'ENH', 'MDT', 'MDT'],
+    60: ['ENH', 'MDT', 'MDT', 'HIGH']
   },
   wind: {
     5: ['MRGN', 'MRGN', 'SLGT', null],
     15: ['SLGT', 'SLGT', 'SLGT', null],
     30: ['SLGT', 'SLGT', 'SLGT', null],
-    45: ['SLGT', 'SLGT', 'ENH', 'ENH'],
-    60: ['SLGT', 'ENH', 'ENH', 'MDT'],
-    75: ['SLGT', 'ENH', 'MDT', 'MDT'],
-    90: ['ENH', 'ENH', 'MDT', 'HIGH']
+    45: ['SLGT', 'SLGT', 'SLGT', 'ENH'],
+    60: ['SLGT', 'SLGT', 'ENH', 'ENH'],
+    75: ['SLGT', 'ENH', 'ENH', 'MDT'],
+    90: ['SLGT', 'ENH', 'ENH', 'MDT']
   },
   hail: {
     5: ['MRGN', 'MRGN', 'SLGT'],
     15: ['SLGT', 'SLGT', 'SLGT'],
-    30: ['SLGT', 'SLGT', 'ENH'],
-    45: ['SLGT', 'ENH', 'ENH'],
-    60: ['ENH', 'ENH', 'MDT']
+    30: ['SLGT', 'SLGT', 'SLGT'],
+    45: ['SLGT', 'SLGT', 'ENH'],
+    60: ['SLGT', 'ENH', 'ENH']
   }
 });
+// Checked on 320 days of eight worlds (2026-10-13, `node scripts/risk-climate.mjs`): below
+// Slight 8%, Slight 28%, Enhanced 40%, Moderate 20%, High 5%. A High day here is a 60% tornado
+// area with violent (EF4+) tornadoes; wind and hail on their own stop at Moderate and Enhanced.
 
 // The highest intensity group that may be drawn inside a contour level.
 export function highestCigAt(hazard, level) {
