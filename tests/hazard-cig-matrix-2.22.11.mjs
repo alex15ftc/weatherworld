@@ -4,8 +4,8 @@ import { categoryFromHazard } from '../js/forecast/spcOutlookRules.js';
 // Exact probability × CIG categorical mappings from the supplied SPC matrix.
 assert.equal(categoryFromHazard('tornado', 2, 0), 'MRGN');
 assert.equal(categoryFromHazard('tornado', 2, 1), 'MRGN');
-assert.equal(categoryFromHazard('tornado', 2, 2), 'MRGN');
-assert.equal(categoryFromHazard('tornado', 2, 3), 'MRGN'); // unused falls back
+assert.equal(categoryFromHazard('tornado', 2, 2), 'SLGT');
+assert.equal(categoryFromHazard('tornado', 2, 3), 'SLGT'); // unused falls back
 assert.equal(categoryFromHazard('tornado', 10, 1), 'ENH');
 assert.equal(categoryFromHazard('tornado', 15, 2), 'MDT');
 assert.equal(categoryFromHazard('tornado', 30, 2), 'HIGH');
