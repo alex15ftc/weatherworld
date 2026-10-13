@@ -7,7 +7,9 @@ import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
 import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, beamHeightKm, decodeRadarValue } from '../js/radar/RadarFormat.js';
 
-const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 6, storms: false }), world = atmosphere.world;
+// (The map is held still: this test is about the radar, and the same storm is wanted over the
+// same ground at every range.)
+const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 6, storms: false, steering: false }), world = atmosphere.world;
 atmosphere.advance(9);
 const sites = createRadarSites(world), site = sites.find(s => s.id === 'KCPL');
 const domainKm = world.width * world.cellSizeKm;

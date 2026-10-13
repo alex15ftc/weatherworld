@@ -53,8 +53,13 @@ export class AtmosphereWorld {
     // (Their rain-cooled air at the ground is in the regional layer: its cold pools.)
     this.stormAir = { mid: new Float32Array(n), inflow: new Float32Array(n) };
     // Slope of the ground (m per km, toward the east and toward the south), for upslope lift.
-    const elevation = (x, y) => world.cells[clamp(y, 0, world.height - 1)][clamp(x, 0, world.width - 1)].terrain.elevationM;
-    this.updateSlopes = () => { world.forEachCell((cell, x, y) => { cell.terrain.slopeX = (elevation(x + 1, y) - elevation(x - 1, y)) / (2 * world.cellSizeKm); cell.terrain.slopeY = (elevation(x, y + 1) - elevation(x, y - 1)) / (2 * world.cellSizeKm); }); this.slopeVersion = this.regional.geographyVersion; };
+    // (Recomputed when the map moves along the geography; reads the world as it is now, since a
+    // restored world replaces the one built here.)
+    this.updateSlopes = () => {
+      const w = this.world, elevation = (x, y) => w.cells[clamp(y, 0, w.height - 1)][clamp(x, 0, w.width - 1)].terrain.elevationM;
+      w.forEachCell((cell, x, y) => { cell.terrain.slopeX = (elevation(x + 1, y) - elevation(x - 1, y)) / (2 * w.cellSizeKm); cell.terrain.slopeY = (elevation(x, y + 1) - elevation(x, y - 1)) / (2 * w.cellSizeKm); });
+      this.slopeVersion = this.regional.geographyVersion;
+    };
     this.updateSlopes();
     this.stormsEnabled = storms;
     this.boundaries = [];

@@ -31,11 +31,11 @@ export const STEERING_DEFAULTS = Object.freeze({
   // support is wanted over the map as a whole.
   focusWidth: 0, focusRange: [0.15, 0.85], restWeight: 0.5,
   // The map's place along the geography (cells east of its western edge; see the regional
-  // layer's geographyOffset). Given both roamLow and roamHigh, each day a place between them
-  // is drawn and the map moves toward it at no more than roamCellsPerHour, so the dryline and
+  // layer's geographyOffset). Given both roamLow and roamHigh, each day the map is sent
+  // roamStep cells one way or the other within that range, at no more than roamCellsPerHour, so the dryline and
   // the storms that form along it fall on a different part of the map from day to day, and
   // on every part of it over many days. With null the map stays where it is.
-  roamLow: null, roamHigh: null, roamCellsPerHour: 0.6
+  roamLow: -6, roamHigh: 30, roamStep: [5, 15], roamCellsPerHour: 0.7
 });
 
 const KT = 1.943844;
@@ -109,7 +109,16 @@ export class RegionSteering {
       if (!best || miss < best.miss - 1e-9) best = { speed, support, rest, miss };
     }
     regional.slideMs = best.speed;
-    if (Number.isFinite(p.roamLow) && Number.isFinite(p.roamHigh)) { regional.geographyTarget = p.roamLow + (p.roamHigh - p.roamLow) * unit(`${this.seed}|roam|${day}`); regional.geographyRate = p.roamCellsPerHour; }
+    if (Number.isFinite(p.roamLow) && Number.isFinite(p.roamHigh)) {
+      // A day's move of roamStep cells one way or the other from where the map was heading,
+      // turned back at the ends of the range: every place in the range comes up equally often,
+      // and each day is some way from the last.
+      const stride = (p.roamStep[0] + (p.roamStep[1] - p.roamStep[0]) * unit(`${this.seed}|roam|${day}`)) * (unit(`${this.seed}|roam-way|${day}`) < 0.5 ? -1 : 1);
+      let next = clamp(regional.geographyTarget, p.roamLow, p.roamHigh) + stride;
+      if (next > p.roamHigh) next = 2 * p.roamHigh - next;
+      if (next < p.roamLow) next = 2 * p.roamLow - next;
+      regional.geographyTarget = clamp(next, p.roamLow, p.roamHigh); regional.geographyRate = p.roamCellsPerHour;
+    }
     this.plan = { hourUtc: now, day, wanted, support: best.support, slideMs: best.speed, target, rest: focused ? best.rest : null, geographyTarget: regional.geographyTarget };
     return this.plan;
   }

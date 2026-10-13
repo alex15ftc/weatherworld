@@ -43,4 +43,30 @@ assert.ok(plans.size >= 3, `a plan for each day (${plans.size} in two and a half
 // --- The same seed slides the same way.
 const again = build({}); again.advance(3);
 assert.equal(again.regional.origin.x, (() => { const other = build({}); other.advance(3); return other.regional.origin.x; })());
+
+// --- The map roams along the geography: a new place each day within its range, reached slowly,
+// with the ground under the map following and the air on the map left where it is.
+{
+  const roaming = build({}), r = roaming.regional, P = STEERING_DEFAULTS, places = new Set(), nx = roaming.world.width;
+  const elevationAt = x => roaming.world.cells[10][x].terrain.elevationM;
+  assert.ok(r.geographyTarget >= P.roamLow && r.geographyTarget <= P.roamHigh, 'the first day has a place in range');
+  let lastOffset = r.geographyOffset, lastTarget = r.geographyTarget, moved = 0;
+  for (let hour = 0; hour < 96; hour += 0.5) {
+    const moistureBefore = Float64Array.from(r.moisture), offsetBefore = r.geographyOffset;
+    r.driftGeography(1800);   // the move on its own: nothing on the map shifts with it
+    assert.deepEqual(r.moisture, moistureBefore, 'moving the map does not shift the air on it');
+    r.geographyOffset = offsetBefore; r.geographyVersion--;
+    roaming.advance(0.5);
+    assert.ok(Math.abs(r.geographyOffset - lastOffset) <= P.roamCellsPerHour * 0.5 + 1e-9, 'the map moves no faster than its limit');
+    assert.ok(r.geographyOffset >= P.roamLow - 1e-9 && r.geographyOffset <= Math.max(P.roamHigh, 15) + 1e-9 && r.geographyTarget >= P.roamLow && r.geographyTarget <= P.roamHigh, 'and stays in its range');
+    if (r.geographyTarget !== lastTarget) { const stride = Math.abs(r.geographyTarget - lastTarget); assert.ok(stride <= P.roamStep[1] + 1e-9, `a day's move is within the step (${stride.toFixed(1)} cells)`); places.add(r.geographyTarget); lastTarget = r.geographyTarget; }
+    moved += Math.abs(r.geographyOffset - lastOffset); lastOffset = r.geographyOffset;
+    // The ground is the geography at the map's present place: high to the west, the plains flat beyond it.
+    assert.ok(Math.abs(elevationAt(0) - r.terrainAt(0)) < 1e-9 && elevationAt(0) >= elevationAt(nx - 1), 'the ground under the map follows');
+  }
+  assert.ok(places.size >= 3 && moved > 10, `a new place each day (${places.size} in four days, ${moved.toFixed(0)} cells travelled)`);
+  // Held still when no range is given.
+  const still = build({ roamLow: null, roamHigh: null }); still.advance(30);
+  assert.equal(still.regional.geographyOffset, 15, 'without a range the map stays where it is');
+}
 console.log(`region steering passed (${plans.size} plans; first slide ${first.slideMs} m/s for support ${first.support.toFixed(2)}, wanted ${first.wanted.toFixed(2)})`);
