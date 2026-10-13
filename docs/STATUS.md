@@ -162,6 +162,26 @@ version of the category table:
 Not yet done: the outlook has not been re-verified since the category table was set; one
 outlook a day with no updates; Days 2 and 3.
 
+**Open decision: the real table with a smaller radius.** The user would rather keep the Storm
+Prediction Center's own table and make High days rare by taking the chance within 10 or 15
+miles of a point instead of 25. Measured on 320 days (`node scripts/risk-radius.mjs`), by the
+real table:
+
+| Chance within | Intensity group from | Below Slight | Slight | Enhanced | Moderate | High |
+|---|---|---|---|---|---|---|
+| 25 miles | the strongest report in the contour | 8% | 9% | 18% | 23% | 43% |
+| 15 miles | the strongest report in the contour | 12% | 12% | 15% | 23% | 38% |
+| 10 miles | the strongest report in the contour | 16% | 11% | 16% | 20% | 37% |
+| 25 miles | 30% of the reports in the contour | 8% | 11% | 52% | 22% | 8% |
+| 15 miles | 30% of the reports in the contour | 12% | 13% | 47% | 23% | 5% |
+| 10 miles | 30% of the reports in the contour | 16% | 13% | 45% | 22% | 4% |
+
+The radius alone does not do it: it thins the tornado contours (a 60% tornado area is reached
+on 10% of days at 25 miles, 1% at 15, never at 10), but the High days come from wind, which
+covers most of the map at any radius and reaches the top intensity groups on a single gust.
+What moves High is how the intensity group is decided. Nothing has been changed in the
+outlook yet; it still uses 25 miles and this world's table.
+
 ## What a player would find
 
 From `npm run inspect:players` on eight worlds (160 days). The clock runs 15 times real

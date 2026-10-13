@@ -909,6 +909,26 @@ the category is read from a table of contour level against group.
 - Three documentation files (README, STATUS, ARCHITECTURE) had lost the first outlook write-up
   to a concurrent edit; it was put back here in its present form.
 
+### Outlines for the outlook, and the radius question (2026-10-13)
+
+The user asked for three things and approved the first two steps: the real category table
+with a smaller radius (measure first), contours as shapes like the live analysis page's and
+not images, and a cheaper outlook (not started).
+
+- `js/forecast/contourShapes.js` (new): marching squares into closed rings, closed along the
+  map edge, corners rounded; `outlookShapes` in `DayOneOutlook.js` traces every category,
+  contour level and intensity group. `publicOutlook` sends those and no longer sends the
+  chances at all. `outlookPage.js` fills, outlines, labels and hatches the shapes; nothing is
+  painted pixel by pixel. Test: `tests/contour-shapes.mjs`.
+- `neighbourhoodChance` in `truth.js` (new): the chance of a report within any radius.
+  `scripts/risk-radius.mjs` (new) records, for 320 days and each radius, what the real table
+  gives. Result: High 43% at 25 miles, 38% at 15, 37% at 10. Wind alone makes those High
+  days; tornadoes alone would give 23%, 14%, 8%. With the intensity group taken as the tier
+  that 30% of the reports in a contour reach, High is 8%, 5%, 4%, but days below Slight rise
+  from 8% to 12% to 16% as the radius shrinks. Left for the user to decide.
+- `OutlookRuntime`: the copy of the world could be left behind on Windows (removal failed
+  while the file was still held); removal is now retried.
+
 ## What is kept and what is replaced
 
 Kept: soundings, the storm, tornado, hail and wind engines, the storm engine's forcing and

@@ -122,10 +122,16 @@ of the saved world (`stateFromBytes`): arrays read out of the same bytes can sha
 
 | Route | Returns |
 |---|---|
-| `GET /api/outlooks/day1` | the outlook (categories, chances, intensity groups, discussion), or its status while one is being made |
+| `GET /api/outlooks/day1` | the outlook (the areas as outlines, intensity groups, discussion), or its status while one is being made |
 | `GET /api/outlooks/status` | whether one is running, when the current one was issued |
 
-`day1.html` (`js/pages/outlookPage.js`) draws it: bands at the contour levels in the real
+The areas go out as outlines, not grids and not the chances themselves: `outlookShapes`
+traces each category, contour level and intensity group with `js/forecast/contourShapes.js`
+(closed rings of points as shares of the map, holes as rings of their own, closed along the
+map edge), so a page or a game draws the same shapes at any size.
+
+`day1.html` (`js/pages/outlookPage.js`) draws them as filled, outlined and labelled shapes:
+the contour levels in the real
 colours; CIG1 broken lines falling to the lower left, CIG2 solid lines falling to the lower
 right, CIG3 crossed; no figures on the map. `scripts/outlook-verify.mjs` checks it.
 

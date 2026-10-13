@@ -112,5 +112,6 @@ assert.equal(atmosphere.world.validHourUtc, before, 'the live world did not move
 runtime.engine = new AtmosphereWorld({ seed: 4, spinUpDays: 4, storms: false });
 assert.equal(outlooks.dayOne().status, 'pending');
 outlooks.stop();
+await outlooks.cleanup;
 assert.equal(fs.readdirSync(outlooks.scratchDir).filter(name => name.startsWith(`weatherworld-outlook-${process.pid}-`)).length, 0, 'the copy of the world is cleaned up');
 console.log(`day one outlook passed (made-up day ${o.highest}; real members ${first.storms} and ${other.storms} storms; server issued ${issued.highest} in ${(outlooks.lastRunMs / 1000).toFixed(0)} s; cig level ${OUTLOOK.cigChance}%)`);

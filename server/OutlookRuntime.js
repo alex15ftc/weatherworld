@@ -57,7 +57,8 @@ export class OutlookRuntime {
       throw error;
     } finally {
       this.running = null;
-      fs.rm(file, { force: true }, () => {});
+      // Retried: on Windows the copy can still be held (a member closing, a scanner) for a moment.
+      this.cleanup = fs.promises.rm(file, { force: true, maxRetries: 20, retryDelay: 250 }).catch(() => {});
     }
   }
 
