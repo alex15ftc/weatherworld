@@ -1,26 +1,20 @@
 // Issues the Day 1, 2 and 3 outlooks for the live world. Day 1 is issued afresh every 6
 // hours, Day 2 every 12 and Day 3 every 24, all counted from 12Z (OUTLOOK.updateHours), and
-// all of them when the server first has a world. The members run at the same time, each in
-// its own process, from a copy of the world taken at issue time; the live world keeps
-// running meanwhile. One run serves every outlook that is due, and each member reports each
-// outlook day separately. Fewer members go into the later days (OUTLOOK.memberShare: 8 for
-// Day 1, 4 for Day 2, 2 for Day 3), so each member runs only as far as the last day it is in.
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import v8 from 'node:v8';
-import { fork } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+// all of them when the server first has a world. The members are run by the forecast pool's
+// threads (ForecastPool.js), a few at a time, from a copy of the world taken at issue time; the
+// live world keeps running meanwhile. One run serves every outlook that is due, and each
+// member reports each outlook day separately. Fewer members go into the later days
+// (OUTLOOK.memberShare: 8 for Day 1, 4 for Day 2, 2 for Day 3), so each member runs only as
+// far as the last day it is in; the longest runs are started first.
 import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd, membersFor } from '../js/forecast/DayOneOutlook.js';
-
-const MEMBER_SCRIPT = fileURLToPath(new URL('./outlookMember.js', import.meta.url));
+import { sharedForecastPool, shareState } from './ForecastPool.js';
 
 export class OutlookRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). days: which
-  // outlooks to issue (a prefix of OUTLOOK.days).
-  constructor({ runtime, members = OUTLOOK.members, days = OUTLOOK.days, memberScript = MEMBER_SCRIPT, scratchDir = os.tmpdir() } = {}) {
-    this.runtime = runtime; this.members = members; this.days = days; this.memberScript = memberScript; this.scratchDir = scratchDir;
-    this.products = {}; this.running = null; this.lastError = null; this.lastRunMs = null; this.children = new Set(); this.failedKey = null;
+  // outlooks to issue (a prefix of OUTLOOK.days). pool: the threads that do the runs.
+  constructor({ runtime, members = OUTLOOK.members, days = OUTLOOK.days, pool = sharedForecastPool() } = {}) {
+    this.runtime = runtime; this.members = members; this.days = days; this.pool = pool;
+    this.products = {}; this.running = null; this.lastError = null; this.lastRunMs = null; this.failedKey = null;
   }
 
   // The issue an outlook belongs to at an hour: its update slot, counted from 12Z.
@@ -52,11 +46,10 @@ export class OutlookRuntime {
     const count = day => membersFor(day, this.members);
     const hoursFor = member => dayEnd - issuedHourUtc + 24 * Math.max(...due.filter(day => member < count(day)).map(day => OUTLOOK.days.indexOf(day)));
     const hours = hoursFor(0);
-    const file = path.join(this.scratchDir, `weatherworld-outlook-${process.pid}-${Date.now()}.bin`);
     // The copy is taken now, in one go, so every member starts from the same moment.
-    fs.writeFileSync(file, v8.serialize(engine.saveState()));
-    // Every member is started at once; they run side by side.
-    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.runMember(file, member, hoursFor(member))));
+    const state = shareState(engine.saveState({ forecast: true }));
+    // Member 0 runs furthest and is asked for first, so the long runs are not left to the end.
+    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('outlook', state, member, hoursFor(member))));
     this.running = { key, due, issuedHourUtc, hours, startedAt: started };
     try {
       const members = await run;
@@ -76,21 +69,7 @@ export class OutlookRuntime {
       throw error;
     } finally {
       this.running = null;
-      // Retried: on Windows the copy can still be held (a member closing, a scanner) for a moment.
-      this.cleanup = fs.promises.rm(file, { force: true, maxRetries: 20, retryDelay: 250 }).catch(() => {});
     }
-  }
-
-  runMember(file, member, hours) {
-    return new Promise((resolve, reject) => {
-      const child = fork(this.memberScript, [file, String(member), String(hours)], { serialization: 'advanced', stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
-      this.children.add(child);
-      let settled = false;
-      const finish = (fn, value) => { if (!settled) { settled = true; this.children.delete(child); fn(value); } };
-      child.once('message', message => (message?.ok ? finish(resolve, message.result) : finish(reject, new Error(message?.error ?? 'outlook member failed'))));
-      child.once('error', error => finish(reject, error));
-      child.once('exit', code => finish(reject, new Error(`outlook member ${member} ended with code ${code} before reporting`)));
-    });
   }
 
   // When an outlook is next issued afresh (hour UTC of the world).
@@ -115,5 +94,5 @@ export class OutlookRuntime {
   }
   dayOne() { return this.day('day1'); }
 
-  stop() { for (const child of this.children) child.kill(); this.children.clear(); }
+  stop() { return this.pool.stop(); }
 }

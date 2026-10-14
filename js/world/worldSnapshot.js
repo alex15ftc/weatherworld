@@ -1,13 +1,15 @@
 // Copies of the authoritative world. A forecast snapshot holds the physical state only (no
-// issued products, histories or observation archives); a full snapshot holds everything
-// needed to resume the world later. Both are safe to structured-clone or serialize.
+// issued products, histories or observation archives, and nothing a run works out again before
+// it reads it: each cell's sounding profile, each storm's radar picture); a full snapshot
+// holds everything needed to resume the world later. Both are safe to structured-clone or
+// serialize. The forecast one is about a quarter the size of the full one.
 import { Atmosphere } from '../atmosphere.js';
 
 const SKIP_WORLD = new Set([
   'runtime', 'outlookCycle', 'meteorologicalIntegrityHistory',
   'stormArchive', 'stormHistory'
 ]);
-const SKIP_CELL = new Set(['predictiveOutlook']);
+const SKIP_CELL = new Set(['predictiveOutlook', 'thermodynamics']);
 
 // Shallow-stripped view of the world. Pass { clone: true } for an independent deep copy;
 // serializing or posting to a worker makes its own copy, so those can skip the clone.
@@ -16,6 +18,7 @@ export function snapshotWorld(world, { clone = false, full = false } = {}) {
   for (const [key, value] of Object.entries(world)) {
     if (typeof value === 'function' || key === 'runtime' || (!full && SKIP_WORLD.has(key))) continue;
     if (key === 'cells' && !full) state[key] = value.map(row => row.map(stripCell));
+    else if (key === 'storms' && !full) state[key] = value.map(storm => ({ ...storm, internalField: null }));
     // Queued issuances carry their own world snapshots; they are re-issued, not saved.
     else if (key === 'outlookCycle') state[key] = { ...value, pending: [], memberLog: undefined };
     else state[key] = value;

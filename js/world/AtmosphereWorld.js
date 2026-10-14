@@ -74,7 +74,9 @@ export class AtmosphereWorld {
 
   // Everything needed to carry on later from exactly here (safe to serialize; the arrays are
   // the live ones, so serialize before advancing again).
-  saveState() {
+  // forecast: the smaller copy a forecast run starts from (worldSnapshot.js). A run from it
+  // goes exactly as one from the full copy, but the live world is not resumed from it.
+  saveState({ forecast = false } = {}) {
     const model = this.model, regional = this.regional;
     const arraysOf = object => Object.fromEntries(Object.entries(object).filter(([, value]) => value instanceof Float64Array || value instanceof Float32Array));
     return {
@@ -83,7 +85,7 @@ export class AtmosphereWorld {
       regional: { params: regional.params, hourUtc: regional.hourUtc, sunsetHour: regional.sunsetHour, midReference: regional.midReference, gulfSupply: regional.gulfSupply, originX: regional.origin.x, slideMs: regional.slideMs, geography: { offset: regional.geographyOffset, target: regional.geographyTarget, rate: regional.geographyRate }, arrays: arraysOf(regional) },
       steering: this.steering?.saveState() ?? null,
       heightFall: this.heightFall, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled,
-      world: snapshotWorld(this.world, { full: true })
+      world: snapshotWorld(this.world, { full: !forecast })
     };
   }
 

@@ -26,10 +26,14 @@ const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
 const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined });
-if (outlooks) { outlooks.maybeIssue(); setInterval(() => outlooks.maybeIssue(), 5_000).unref(); }
-// Mesoscale discussions: the world is looked at once in each of its hours (WEATHER_MESOSCALE=off turns them off).
+// Mesoscale discussions and watches: the world is looked at once in each of its hours, and a
+// watch waiting for its storms goes out when they fire (WEATHER_MESOSCALE=off turns them off).
 const mesoscale = process.env.WEATHER_MESOSCALE === 'off' ? null : new MesoscaleRuntime({ runtime });
-if (mesoscale) setInterval(() => mesoscale.maybeIssue(), 5_000).unref();
+// Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
+// asked for first: its runs are short and go ahead of an outlook's.
+const issueProducts = () => { mesoscale?.maybeIssue(); outlooks?.maybeIssue(); };
+outlooks?.maybeIssue();
+setInterval(issueProducts, 5_000).unref();
 const ADVANCE_POLL_MS = 10_000;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
@@ -80,7 +84,7 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
-  if (url.pathname === '/api/mesoscale') return sendJson(req, res, 200, mesoscale ? mesoscale.list() : { enabled: false, discussions: [] }, { cacheable: false, trace });
+  if (url.pathname === '/api/mesoscale') return sendJson(req, res, 200, mesoscale ? mesoscale.list() : { enabled: false, watches: [], discussions: [] }, { cacheable: false, trace });
   const issuedOutlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);
   if (issuedOutlook) return sendJson(req, res, 200, outlooks ? outlooks.day(issuedOutlook[1]) : { day: issuedOutlook[1], status: 'off' }, { cacheable: false, trace });
   if (url.pathname === '/api/outlooks/status') return sendJson(req, res, 200, outlooks ? outlooks.status() : { enabled: false }, { cacheable: false, trace });
