@@ -16,7 +16,7 @@ import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } fr
 import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
-const DEFAULT_SEED = 67;
+const DEFAULT_SEED = 5;
 const START_HOUR_UTC = 12;
 // A simulated day takes 96 real minutes. Storms move every five simulated minutes; the
 // atmosphere steps every half hour and then takes account of what the storms did meanwhile.

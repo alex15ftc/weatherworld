@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import v8 from 'node:v8';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { stateFromBytes } from '../js/forecast/DayOneOutlook.js';
-import { insideRings } from '../js/forecast/contourShapes.js';
+import { insideRings, connectedPieces, regionRings, enclosedHoles, solidRegion } from '../js/forecast/contourShapes.js';
 import { MESOSCALE, peakRange, watchStep, concerningLine, areaOutcome, runMesoscaleMember, describeNow, buildMesoscaleDiscussions, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
 import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, probabilityText, publicWatch } from '../js/forecast/Watch.js';
 import { MesoscaleRuntime } from '../server/MesoscaleRuntime.js';
@@ -163,6 +163,35 @@ assert.equal(watch.pds, false); assert.equal(watch.validToHourUtc, 50);
 const beside = withDiscussion([0, 1, 2, 3].map(k => run(k, { ...tornadic, x0: 38, y0: 18 })), now(45, [stormAt(44, 24)]), { watches: [watch], nextWatch: 13 });
 assert.equal(beside.watches.length, 1); assert.equal(beside.watches[0].number, 13);
 assert.ok(beside.watches[0].cells.every((v, i) => !(v && watch.cells[i])), 'no ground under two watches'); assert.ok(beside.watches[0].cells[at(46, 26)]);
+// One region each, never two apart. Severe weather on both sides of a watch: each side is
+// its own area, with its own discussion and its own watch.
+const joined = cells => connectedPieces(Array.from(cells.keys()).filter(i => cells[i]), width, height).length === 1;
+const across = [0, 1, 2, 3].map(k => {
+  const m = run(k, { ...tornadic, x0: 14, y0: 8 }), right = run(k, { ...tornadic, x0: 38, y0: 8 });
+  for (const key of ['near', 'reports', 'windReports', 'hailReports', 'windSignificant', 'significant', 'hail', 'gust', 'tornadoMph']) right[key].forEach((v, i) => { m[key][i] = Math.max(m[key][i], v); });
+  for (const key of ['firstHour', 'stormHour']) right[key].forEach((v, i) => { m[key][i] = Math.min(m[key][i], v); });
+  m.tornadoes.push(...right.tornadoes); m.tornadoPeaks.push(...right.tornadoPeaks);
+  for (let y = 8; y < 20; y++) for (let x = 26; x < 38; x++) m.near[at(x, y)] = 1;   // one area of concern, across the watch
+  return m;
+});
+const strip = { ...watch, cells: Uint8Array.from({ length: n }, (_, i) => (i % width >= 30 && i % width < 36 ? 1 : 0)), validToHourUtc: 52 };
+const split = lookAhead(across, now(45), { watches: [strip] });
+assert.ok(split.discussions.filter(d => !d.watchNumber).length >= 2, 'a discussion for each side');
+for (const product of [...split.discussions, ...split.pending]) { assert.ok(joined(product.cells), 'one joined-up region'); assert.equal(regionRings(product.cells, width, height).length >= 1, true); }
+assert.ok(split.pending.every(draft => draft.cells.every((v, i) => !(v && strip.cells[i]))));
+assert.deepEqual(connectedPieces([at(1, 1), at(2, 1), at(5, 5)], width, height), [[at(1, 1), at(2, 1)], [at(5, 5)]]);
+// A narrow neck that softening would part: the outline is of one region.
+const dumbbell = new Uint8Array(n); for (let y = 10; y < 18; y++) for (let x = 5; x < 13; x++) { dumbbell[y * width + x] = 1; dumbbell[y * width + x + 14] = 1; } for (let x = 13; x < 19; x++) dumbbell[13 * width + x] = 1;
+assert.equal(regionRings(dumbbell, width, height).length, 1);
+// No holes: a ring of severe weather is discussed as the whole disc, and a watch around
+// another watch gives up the ground north of it instead of wrapping round it.
+const ring = new Uint8Array(n); for (let y = 10; y < 30; y++) for (let x = 10; x < 30; x++) if (x < 15 || x >= 25 || y < 15 || y >= 25) ring[y * width + x] = 1;
+assert.equal(enclosedHoles(ring, width, height).length, 1); assert.equal(regionRings(ring, width, height).length, 1);
+const disc = solidRegion(ring, width, height); assert.equal(enclosedHoles(disc, width, height).length, 0); assert.ok(disc[20 * width + 20]);
+const inner = new Uint8Array(n); inner[20 * width + 20] = 1;
+const opened = solidRegion(ring, width, height, inner);
+assert.equal(enclosedHoles(opened, width, height).length, 0); assert.ok(!opened[20 * width + 20] && !opened[12 * width + 20] && opened[20 * width + 12], 'opened to the north of the other watch');
+for (const product of [...split.discussions, ...split.pending, md, watch]) assert.equal(enclosedHoles(product.cells, width, height).length, 0, 'no holes');
 // A discussion about the watch, once the last word on it has lapsed: no probability, the watch named.
 const status = lookAhead(four(tornadic), now(46, [stormAt(31, 9, { hail: 1.5 })]), { watches: [watch], nextDiscussion: 9 });
 assert.equal(status.watches.length, 0); assert.equal(status.discussions.length, 1);

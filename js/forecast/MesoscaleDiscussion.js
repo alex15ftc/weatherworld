@@ -14,7 +14,7 @@
 // it is now. The watches come from the same runs (Watch.js).
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { captureTruth, aggregateTruth } from '../verification/truth.js';
-import { contourRings, softenArea } from './contourShapes.js';
+import { regionRings, solidRegion } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
 
 export const MESOSCALE = Object.freeze({
@@ -205,7 +205,9 @@ export function withinLead(assessed) {
 // A discussion of an assessed area. watch: the watch in effect that it concerns, if any;
 // replacement: the watch that will follow that one when it expires ({ type, atHourUtc }).
 export function makeDiscussion(assessed, now, { number, seed = null, watch = null, replacement = null } = {}) {
-  const { width, height } = now, { inside, cells } = assessed, issued = now.hourUtc;
+  const { width, height } = now, issued = now.hourUtc;
+  // Its ground: one region with no holes (ground in a gap it encloses is part of it).
+  const inside = solidRegion(assessed.inside, width, height), cells = Array.from(inside.keys()).filter(i => inside[i]);
   const md = {
     number, seed, issuedHourUtc: issued, validToHourUtc: issued + MESOSCALE.validHours, members: assessed.members,
     cells: inside, areaCells: cells.length, areaSquareMiles: cells.length * now.cellMiles * now.cellMiles, where: describeArea(Array.from(inside, Boolean), width, height),
@@ -213,7 +215,7 @@ export function makeDiscussion(assessed, now, { number, seed = null, watch = nul
     watchNumber: watch?.number ?? null, watchType: watch?.type ?? null, replacement, watchPercent: watch ? null : assessed.percent, threatPercent: assessed.percent, tornadoWatch: watch ? watch.type === 'tornado' : assessed.tornadoWatch,
     concerning: watch ? `${watch.type === 'tornado' ? 'TORNADO' : 'SEVERE THUNDERSTORM'} WATCH ${watch.number}` : concerningLine(assessed.percent, assessed.tornadoWatch),
     peak: assessed.peak, peakText: assessed.peakText, stormsInHours: assessed.stormsInHours, startsInHours: assessed.startsInHours, here: assessed.here,
-    rings: contourRings(softenArea(inside, width, height), width, height, 0.5)
+    rings: regionRings(inside, width, height)
   };
   md.text = writeMesoscaleDiscussion(md);
   return md;

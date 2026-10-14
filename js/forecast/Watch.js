@@ -14,6 +14,9 @@
 //   - Each carries the centre's table of probabilities (2 or more tornadoes, a strong tornado,
 //     10 or more wind events, a 75 mph gust, 10 or more hail events, 2 inch hail, 6 or more
 //     hail and wind events together), given at the steps a discussion's probability takes.
+//   - Every watch and every discussion covers one joined-up region with no holes, never two
+//     apart. A gap a watch would enclose is filled in, unless it holds another watch; then the
+//     new watch gives up the ground north of it, so it does not wrap around the other.
 //   - Watches do not overlap: a new one covers only ground under no watch in effect. And a
 //     watch stands as issued until it expires: it is not extended, upgraded, replaced or
 //     cancelled. What changes inside it is said in a discussion that concerns it.
@@ -24,7 +27,7 @@
 //     look before it expires, a new watch is made ready for the moment it does, and a
 //     discussion about the old one says so.
 import { MESOSCALE, watchStep, concernAreas, assessArea, makeDiscussion, discussedLately, withinLead, describeSetting, stamp, list } from './MesoscaleDiscussion.js';
-import { contourRings, softenArea } from './contourShapes.js';
+import { regionRings, solidRegion, connectedPieces } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
 
 export const WATCH = Object.freeze({
@@ -75,12 +78,15 @@ export function draftWatch(assessed, now, { seed = null, covered = null } = {}) 
     cells = wider;
   }
   if (covered) for (let i = 0; i < n; i++) if (covered[i]) cells[i] = 0;
+  // One region with no holes: where taking away ground under other watches leaves pieces,
+  // the largest; gaps filled, or opened where they hold another watch.
+  cells = solidRegion(cells, width, height, covered);
   const areaCells = cells.reduce((a, v) => a + v, 0);
   return {
     type, pds: particularlyDangerous(type, assessed.perMember, assessed.peak.tornadoMph), seed, members: assessed.members,
     cells, areaCells, areaSquareMiles: areaCells * now.cellMiles * now.cellMiles, where: describeArea(Array.from(cells, Boolean), width, height),
     probabilities: watchProbabilities(assessed.perMember), peak: assessed.peak, peakText: assessed.peakText, here: assessed.here, runs: assessed.perMember,
-    rings: contourRings(softenArea(cells, width, height), width, height, 0.5)
+    rings: regionRings(cells, width, height)
   };
 }
 
@@ -135,10 +141,10 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
   inEffect.forEach(watch => cover(watch));
   out.settled = members.every(m => m.near.every((near, i) => !near || covered[i]));
   const discuss = (assessed, watch = null, replacement = null) => out.discussions.push(makeDiscussion(assessed, now, { number: nextDiscussion + out.discussions.length, seed, watch, replacement }));
-  // The ground under no watch.
-  const openGround = cells => {
-    const open = cells.filter(i => !covered[i]);
-    if (open.length < MESOSCALE.leastCells) return;
+  const pieces = cells => connectedPieces(cells, now.width, now.height).filter(piece => piece.length >= MESOSCALE.leastCells);
+  // The ground under no watch, each joined-up piece of it on its own.
+  const openGround = cells => { for (const piece of pieces(cells.filter(i => !covered[i]))) openPiece(piece); };
+  const openPiece = open => {
     const assessed = assessArea(members, now, open);
     if (assessed.percent < MESOSCALE.leastPercent) return;
     if (assessed.percent >= WATCH.leastPercent) {
@@ -160,9 +166,7 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
   for (const cells of concernAreas(members)) {
     openGround(cells);
     // The part under each watch in effect: how its threat is going.
-    for (const watch of inEffect) {
-      const part = cells.filter(i => watch.cells[i]);
-      if (part.length < MESOSCALE.leastCells) continue;
+    for (const watch of inEffect) for (const part of pieces(cells.filter(i => watch.cells[i]))) {
       const last = Math.max(watch.issuedHourUtc, ...[...discussions, ...out.discussions].filter(md => md.watchNumber === watch.number).map(md => md.issuedHourUtc));
       const expiring = watch.validToHourUtc <= issued + MESOSCALE.everyHours + 1e-6;
       if (!expiring) {
@@ -180,7 +184,8 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
       if ((assessed.percent >= WATCH.leastPercent && assessed.here.storms) || (assessed.percent >= WATCH.followPercent && assessed.here.severeNow)) {
         const later = Uint8Array.from(fresh);
         for (const other of inEffect) if (other.validToHourUtc > watch.validToHourUtc + 1e-6) cover(other, later);
-        const draft = draftWatch(assessArea(members, now, cells.filter(i => !later[i])), now, { seed, covered: later });
+        const ground = pieces(cells.filter(i => !later[i]))[0];
+        const draft = ground ? draftWatch(assessArea(members, now, ground), now, { seed, covered: later }) : { areaCells: 0 };
         if (draft.areaCells >= WATCH.leastCells) { follow = { ...draft, notBeforeHourUtc: watch.validToHourUtc, follows: watch.number }; cover(follow, fresh); out.pending.push(follow); }
       }
       if (follow || (assessed.percent >= MESOSCALE.leastPercent && issued - last >= MESOSCALE.validHours - 1e-6)) discuss(assessed, watch, follow && { type: follow.type, atHourUtc: follow.notBeforeHourUtc });

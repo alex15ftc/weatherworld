@@ -96,6 +96,82 @@ export function insideRings(rings, x, y) {
   return inside;
 }
 
+// The joined-up pieces of a set of cells (a list of cell indices; neighbours share a side),
+// each a list, the largest first.
+export function connectedPieces(cells, width, height) {
+  const inside = new Uint8Array(width * height), mark = new Uint8Array(width * height), pieces = [];
+  for (const i of cells) inside[i] = 1;
+  for (const start of cells) {
+    if (mark[start]) continue;
+    const piece = [], stack = [start]; mark[start] = 1;
+    while (stack.length) {
+      const i = stack.pop(), x = i % width, y = (i - x) / width; piece.push(i);
+      for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && inside[j] && !mark[j]) { mark[j] = 1; stack.push(j); }
+    }
+    pieces.push(piece);
+  }
+  return pieces.sort((a, b) => b.length - a.length);
+}
+
+// The parts of a 0/1 grid's background that are cut off from the map edge (holes in the
+// area), each a list of cells. Background cells join through shared sides only.
+export function enclosedHoles(grid, width, height) {
+  const n = width * height, reached = new Uint8Array(n), stack = [];
+  for (let i = 0; i < n; i++) { const x = i % width, y = (i - x) / width; if (!grid[i] && (x === 0 || y === 0 || x === width - 1 || y === height - 1)) { reached[i] = 1; stack.push(i); } }
+  const spread = (from, mark) => { while (from.length) { const i = from.pop(), x = i % width, y = (i - x) / width; for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && !grid[j] && !mark[j]) { mark[j] = 1; from.push(j); } } };
+  spread(stack, reached);
+  const holes = [], seen = Uint8Array.from(reached);
+  for (let i = 0; i < n; i++) {
+    if (grid[i] || seen[i]) continue;
+    const hole = [], from = [i]; seen[i] = 1;
+    while (from.length) { const k = from.pop(), x = k % width, y = (k - x) / width; hole.push(k); for (const j of [x > 0 ? k - 1 : -1, x < width - 1 ? k + 1 : -1, y > 0 ? k - width : -1, y < height - 1 ? k + width : -1]) if (j >= 0 && !grid[j] && !seen[j]) { seen[j] = 1; from.push(j); } }
+    holes.push(hole);
+  }
+  return holes;
+}
+
+// One joined-up area with no holes, from a 0/1 grid: its largest piece, with every hole
+// filled in. A hole holding ground the area may not take (blocked: a 0/1 grid, such as other
+// watches) is opened to the map edge instead, by giving up the area's cells due north of it.
+export function solidRegion(grid, width, height, blocked = null) {
+  const n = width * height;
+  let cells = new Uint8Array(n);
+  for (const i of connectedPieces(Array.from(grid.keys()).filter(i => grid[i]), width, height)[0] ?? []) cells[i] = 1;
+  for (let round = 0; round < 50; round++) {
+    const holes = enclosedHoles(cells, width, height), stuck = blocked ? holes.filter(hole => hole.some(i => blocked[i])) : [];
+    for (const hole of holes) if (!stuck.includes(hole)) for (const i of hole) cells[i] = 1;
+    if (!stuck.length) return cells;
+    for (const hole of stuck) { const top = new Map(); for (const i of hole) { const x = i % width, y = (i - x) / width; top.set(x, Math.min(top.get(x) ?? y, y)); } for (const [x, y] of top) for (let k = 0; k < y; k++) cells[k * width + x] = 0; }
+    const kept = connectedPieces(Array.from(cells.keys()).filter(i => cells[i]), width, height)[0] ?? [];
+    cells = new Uint8Array(n); for (const i of kept) cells[i] = 1;
+  }
+  return cells;
+}
+
+// The outline of one joined-up area with no holes (a 0/1 grid), softened as softenArea
+// softens it. Where softening would part a narrow neck into two, only the larger part is
+// outlined, and where it would close an inlet into a pocket the pocket is filled, so the
+// outline is always a single ring.
+export function regionRings(inside, width, height) {
+  const field = softenArea(inside, width, height), within = [];
+  for (let i = 0; i < field.length; i++) if (field[i] >= 0.5) within.push(i);
+  // Joined across corners as well as sides: the outline joins what touches at a corner.
+  const mark = new Uint8Array(field.length); let largest = [];
+  for (const start of within) {
+    if (mark[start]) continue;
+    const part = [], stack = [start]; mark[start] = 1;
+    while (stack.length) {
+      const i = stack.pop(), x = i % width, y = (i - x) / width; part.push(i);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy, j = Y * width + X; if (X >= 0 && Y >= 0 && X < width && Y < height && !mark[j] && field[j] >= 0.5) { mark[j] = 1; stack.push(j); } }
+    }
+    if (part.length > largest.length) largest = part;
+  }
+  const keep = new Uint8Array(field.length); for (const i of largest) keep[i] = 1;
+  for (let i = 0; i < field.length; i++) if (field[i] >= 0.5 && !keep[i]) field[i] = 0.49;
+  for (const hole of enclosedHoles(keep, width, height)) for (const i of hole) field[i] = 0.51;
+  return contourRings(field, width, height, 0.5);
+}
+
 // A 0/1 area softened so that its outline is a curve and not the grid's steps (0.5 is the edge).
 export function softenArea(inside, width, height, passes = 2) {
   let field = Float32Array.from(inside, v => (v ? 1 : 0));
