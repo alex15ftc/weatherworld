@@ -76,6 +76,10 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     if (draw < 1 - Math.exp(-ratePerHour * dtHours)) {
       beginTornado(world, storm, tornado);
       drawTornadoCharacter(world, storm, tornado);
+      // It is counted on the ground for the whole of this step, and the storm has already
+      // moved through it, so it touched down where the wall cloud was at the step's start.
+      tornado.positionKm = { x: tornado.positionKm.x - (storm.velocityKph?.east ?? 0) * dtHours, y: tornado.positionKm.y + (storm.velocityKph?.north ?? 0) * dtHours };
+      tornado.trackPoints.push({ ...tornado.positionKm, hourUtc: (world.stormEngine?.validHourUtc ?? world.validHourUtc) - dtHours });
     } else tornado.state = tornado.state === 'ended' ? 'ended' : 'none';
   }
 
@@ -125,8 +129,12 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // It ends when the storm no longer holds the low-level rotation for it, or falls apart. It
   // stays down through the step it formed in, so everything that looks at storms between
   // steps sees it.
-  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false)) endTornado(world, storm, tornado);
-  else tornado.state = 'on-ground';
+  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false)) {
+    // Why it ended, for the reports: the storm died or stopped rotating, the outflow cut it off
+    // (the storm would still hold the rotation were it not occluding), or the rotation faded.
+    const endedBy = storm.active === false ? 'storm ended' : rotating <= 0 ? 'not rotating' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
+    endTornado(world, storm, tornado, { endedBy, endOcclusion: storm.occlusion ?? 0, endLowRotationFree: storm.lowRotationFree ?? 0 });
+  } else tornado.state = 'on-ground';
   return tornado;
 }
 
@@ -147,7 +155,7 @@ function beginTornado(world, storm, tornado) {
   tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
 }
 
-function endTornado(world, storm, tornado) {
+function endTornado(world, storm, tornado, end = {}) {
   if (tornado.onGround || tornado.startedHourUtc != null) {
     storm.tornadoHistory ??= [];
     storm.tornadoHistory.push({
@@ -157,7 +165,7 @@ function endTornado(world, storm, tornado) {
       peakWindSpeedMph: tornado.peakWindSpeedMph, peakWidthYards: tornado.peakWidthYards,
       // estimatedEf is the damage rating; windEf is what its peak wind would be rated on wind alone.
       ratedWindMph: tornado.ratedWindMph ?? tornado.peakWindSpeedMph, estimatedEf: efRating(tornado.ratedWindMph ?? tornado.peakWindSpeedMph), windEf: efRating(tornado.peakWindSpeedMph),
-      trackPoints: (tornado.trackPoints ?? []).slice(-96)
+      trackPoints: (tornado.trackPoints ?? []).slice(-96), ...end
     });
     if (storm.tornadoHistory.length > 8) storm.tornadoHistory.shift();
   }
