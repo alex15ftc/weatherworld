@@ -5,10 +5,12 @@
 //   - A tornado watch when at least half the runs make the tornado case and the most probable
 //     peak tornado intensity is above the lowest range a discussion gives (up to 95 mph);
 //     otherwise a severe thunderstorm watch, which may still speak of a tornado or two.
-//   - "Particularly dangerous situation" (PDS) wording is kept for the rare ones: a tornado
-//     watch with an 80% chance or more of a strong (EF2+) tornado and several of them in half
-//     the runs; a severe thunderstorm watch with an 80% chance or more of widespread
-//     significant wind (a derecho).
+//   - "Particularly dangerous situation" (PDS) wording is kept for the rare ones (the centre
+//     gives it to about 3 watches in 100): a tornado watch with an 80% chance or more of
+//     several strong (EF2+) tornadoes, the most probable peak an intense one (136 mph, EF3,
+//     or more); a severe thunderstorm watch with an 80% chance or more of widespread
+//     significant wind with gusts of 100 mph (a derecho). On 16 world days these gave it to
+//     4 watches of 79; an 80% chance of one strong tornado, the centre's own least, to 13.
 //   - Each carries the centre's table of probabilities (2 or more tornadoes, a strong tornado,
 //     10 or more wind events, a 75 mph gust, 10 or more hail events, 2 inch hail, 6 or more
 //     hail and wind events together), given at the steps a discussion's probability takes.
@@ -24,12 +26,10 @@ export const WATCH = Object.freeze({
   // (hours), the least ground it covers (cells of 100 sq mi), and how far it is drawn beyond
   // the area of concern (cells).
   leastPercent: 80, hours: 6, leastCells: 150, marginCells: 2,
-  // Storms have begun to fire in an area when one there is at least this strong.
-  stormIntensity: 0.22,
-  // Particularly dangerous situations. Tornado: this chance of a strong tornado, and at least
-  // pdsStrongTornadoes of them in half the runs. Severe thunderstorm: this chance of a gust of
-  // pdsGustMph with pdsWindCells cells of 75 mph wind or more.
-  pdsPercent: 80, pdsStrongTornadoes: 2, pdsGustMph: 90, pdsWindCells: 10,
+  // Particularly dangerous situations. Tornado: this chance of pdsStrongTornadoes strong
+  // tornadoes, and a most probable peak of pdsTornadoMph or more. Severe thunderstorm: this
+  // chance of a gust of pdsGustMph with pdsWindCells cells of 75 mph wind or more.
+  pdsPercent: 80, pdsStrongTornadoes: 2, pdsTornadoMph: 136, pdsGustMph: 100, pdsWindCells: 25,
   kept: 20
 });
 
@@ -46,10 +46,11 @@ export function watchProbabilities(perMember) {
   };
 }
 
-export function particularlyDangerous(type, perMember) {
-  const share = test => perMember.filter(test).length / perMember.length;
-  if (type === 'tornado') return watchStep(share(m => m.strong >= 1)) >= WATCH.pdsPercent && share(m => m.strong >= WATCH.pdsStrongTornadoes) >= 0.5;
-  return watchStep(share(m => m.gust >= WATCH.pdsGustMph && m.windSignificant >= WATCH.pdsWindCells)) >= WATCH.pdsPercent;
+// peakTornadoMph: the most probable peak tornado intensity (assessArea's).
+export function particularlyDangerous(type, perMember, peakTornadoMph = 0) {
+  const chance = test => watchStep(perMember.filter(test).length / perMember.length);
+  if (type === 'tornado') return chance(m => m.strong >= WATCH.pdsStrongTornadoes) >= WATCH.pdsPercent && peakTornadoMph >= WATCH.pdsTornadoMph;
+  return chance(m => m.gust >= WATCH.pdsGustMph && m.windSignificant >= WATCH.pdsWindCells) >= WATCH.pdsPercent;
 }
 
 // A watch for an assessed area, not yet issued (no number or times). Its ground is the area
@@ -65,9 +66,9 @@ export function draftWatch(assessed, now, { seed = null, covered = null } = {}) 
   if (covered) for (let i = 0; i < n; i++) if (covered[i]) cells[i] = 0;
   const areaCells = cells.reduce((a, v) => a + v, 0);
   return {
-    type, pds: particularlyDangerous(type, assessed.perMember), seed, members: assessed.members,
+    type, pds: particularlyDangerous(type, assessed.perMember, assessed.peak.tornadoMph), seed, members: assessed.members,
     cells, areaCells, areaSquareMiles: areaCells * now.cellMiles * now.cellMiles, where: describeArea(Array.from(cells, Boolean), width, height),
-    probabilities: watchProbabilities(assessed.perMember), peak: assessed.peak, peakText: assessed.peakText, here: assessed.here,
+    probabilities: watchProbabilities(assessed.perMember), peak: assessed.peak, peakText: assessed.peakText, here: assessed.here, runs: assessed.perMember,
     rings: contourRings(softenArea(cells, width, height), width, height, 0.5)
   };
 }
@@ -79,23 +80,31 @@ export function issueWatch(draft, number, hourUtc) {
   return watch;
 }
 
-// How many storms have begun to fire on a piece of ground (a 0/1 grid) in the live world.
+// How many storms have begun to fire on a piece of ground (a 0/1 grid) in the live world:
+// every storm there, however young.
 export function stormsFiring(world, cells) {
   let count = 0;
   for (const storm of world.storms ?? []) {
-    if (!storm.active || (storm.intensity ?? 0) < WATCH.stormIntensity) continue;
+    if (!storm.active) continue;
     const x = Math.min(world.width - 1, Math.max(0, Math.floor(storm.positionKm.x / world.cellSizeKm))), y = Math.min(world.height - 1, Math.max(0, Math.floor(storm.positionKm.y / world.cellSizeKm)));
     if (cells[y * world.width + x]) count++;
   }
   return count;
 }
 
+// When the world is next to be looked at after a look at hourUtc that found `found`.
+export function nextLookHourUtc(found, hourUtc, watches) {
+  const expiring = watches.some(watch => watch.validToHourUtc > hourUtc + 1e-6 && watch.validToHourUtc <= hourUtc + MESOSCALE.settledHours + 1e-6);
+  return hourUtc + (found.settled && !expiring ? MESOSCALE.settledHours : MESOSCALE.everyHours);
+}
+
 // One look ahead: the discussions and watches to issue now, and the watches to issue as soon
 // as storms fire on their ground (pending: drafts; see stormsFiring). members:
 // runMesoscaleMember results; now: describeNow of the live world; discussions, watches: those
-// already issued (with their `cells`). quiet: no run had a storm anywhere.
+// already issued (with their `cells`). settled: no area of concern has ground under no watch
+// (see MESOSCALE.settledHours).
 export function lookAhead(members, now, { discussions = [], watches = [], nextDiscussion = 1, nextWatch = 1, seed = null } = {}) {
-  const out = { discussions: [], watches: [], pending: [], quiet: members.length > 0 && members.every(m => m.stormHour.every(hour => hour === Infinity)) };
+  const out = { discussions: [], watches: [], pending: [], settled: members.length > 0 };
   if (!members.length) return out;
   const issued = now.hourUtc, n = now.width * now.height, covered = new Uint8Array(n);
   const inEffect = watches.filter(watch => watch.validToHourUtc > issued + 1e-6);
@@ -115,6 +124,7 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
     // The ground under no watch.
     const open = cells.filter(i => !covered[i]);
     if (open.length < MESOSCALE.leastCells) continue;
+    out.settled = false;
     const assessed = assessArea(members, now, open);
     if (assessed.percent < MESOSCALE.leastPercent) continue;
     if (assessed.percent >= WATCH.leastPercent) {
@@ -123,7 +133,7 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
         cover(draft);
         // Storms already firing there: the watch goes out now and says it all. Otherwise it
         // waits for them, and a discussion says it is coming.
-        if (assessed.here.storms) { out.watches.push(issueWatch(draft, nextWatch + out.watches.length, issued)); continue; }
+        if (assessed.here.forming) { out.watches.push(issueWatch(draft, nextWatch + out.watches.length, issued)); continue; }
         out.pending.push(draft);
       }
     }
@@ -175,6 +185,6 @@ export function writeWatch(watch) {
 
 // What the pages get: the outline, not the cells.
 export function publicWatch(watch) {
-  const { cells, here, ...rest } = watch;
+  const { cells, here, runs, ...rest } = watch;
   return { ...rest, title: `${title(watch)} ${watch.number}`, environment: here, table: probabilityRows(watch) };
 }

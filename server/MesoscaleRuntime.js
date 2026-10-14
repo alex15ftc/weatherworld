@@ -1,11 +1,11 @@
 // Issues mesoscale discussions and watches for the live world. Once an hour of the world's
 // time the world is copied and run a few hours ahead several times by the forecast pool's
-// threads (ForecastPool.js), and the areas where most runs put severe weather are discussed
+// threads (ForecastPool.js; every other hour while nothing new is in sight), and the areas where most runs put severe weather are discussed
 // (js/forecast/MesoscaleDiscussion.js); those that call for a watch get one as soon as storms
 // are firing in them (js/forecast/Watch.js), which is checked every time this is called, not
 // only at the hourly look. The live world keeps running meanwhile.
 import { MESOSCALE, describeNow, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
-import { WATCH, lookAhead, issueWatch, stormsFiring, publicWatch } from '../js/forecast/Watch.js';
+import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, publicWatch } from '../js/forecast/Watch.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
 
 export class MesoscaleRuntime {
@@ -20,7 +20,7 @@ export class MesoscaleRuntime {
   // A new world starts its own series.
   adopt(engine) {
     this.engine = engine; this.discussions = []; this.watches = []; this.pending = [];
-    this.next = 1; this.nextWatch = 1; this.lastSlot = null; this.quietUntilHourUtc = -Infinity;
+    this.next = 1; this.nextWatch = 1; this.lastSlot = null; this.nextLookHourUtc = -Infinity;
   }
 
   slot(hourUtc) { return Math.floor((hourUtc + 1e-6) / MESOSCALE.everyHours); }
@@ -36,7 +36,7 @@ export class MesoscaleRuntime {
     const hour = engine.world.validHourUtc, slot = this.slot(hour);
     if (slot === this.lastSlot) return false;
     this.lastSlot = slot;
-    if (hour < this.quietUntilHourUtc - 1e-6) return false;
+    if (hour < this.nextLookHourUtc - 1e-6) return false;
     this.issue().catch(() => {});
     return true;
   }
@@ -67,7 +67,7 @@ export class MesoscaleRuntime {
       this.discussions = [...found.discussions.reverse(), ...this.discussions].slice(0, MESOSCALE.kept);
       this.watches = [...found.watches.reverse(), ...this.watches].slice(0, WATCH.kept);
       this.pending = found.pending;
-      this.quietUntilHourUtc = found.quiet ? now.hourUtc + MESOSCALE.quietHours : -Infinity;
+      this.nextLookHourUtc = nextLookHourUtc(found, now.hourUtc, this.watches);
       this.lastError = null; this.lastRunMs = Date.now() - started;
       return found;
     } catch (error) {

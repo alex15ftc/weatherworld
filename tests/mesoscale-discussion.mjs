@@ -6,7 +6,7 @@ import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { stateFromBytes } from '../js/forecast/DayOneOutlook.js';
 import { insideRings } from '../js/forecast/contourShapes.js';
 import { MESOSCALE, peakRange, watchStep, concerningLine, areaOutcome, runMesoscaleMember, describeNow, buildMesoscaleDiscussions, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
-import { WATCH, lookAhead, issueWatch, stormsFiring, probabilityText, publicWatch } from '../js/forecast/Watch.js';
+import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, probabilityText, publicWatch } from '../js/forecast/Watch.js';
 import { MesoscaleRuntime } from '../server/MesoscaleRuntime.js';
 import { ForecastPool } from '../server/ForecastPool.js';
 
@@ -35,6 +35,8 @@ function run(k, { reports = 0, tornadoes = 0, tornadoMph = 0, gust = 62, hail = 
 const four = settings => [0, 1, 2, 3].map(k => run(k, settings));
 const now = (hourUtc = 44, storms = []) => ({ hourUtc, width, height, cellMiles: 10, dewpoint: new Float32Array(n).fill(67), temperature: new Float32Array(n).fill(84), cape: new Float32Array(n).fill(2600), cin: new Float32Array(n).fill(20), shear: new Float32Array(n).fill(45), helicity: new Float32Array(n).fill(210), cloudBaseM: new Float32Array(n).fill(900), storms, lines: [{ type: 'dryline', cells: [at(30, 8), at(30, 10), at(30, 12)] }] });
 const stormAt = (x, y, more = {}) => ({ cell: at(x, y), hail: 0.5, gust: 40, tornado: false, rotating: true, line: false, intensity: 0.5, ...more });
+// A storm only just formed: enough for a watch to go out, not yet a thunderstorm to speak of.
+const young = (x, y) => stormAt(x, y, { hail: 0, gust: 0, rotating: false, intensity: 0.12 });
 
 // Every run has plenty there, three of them with tornadoes (two strong): a tornado watch is likely.
 const big = buildMesoscaleDiscussions([run(0, { reports: 14, tornadoes: 3, tornadoMph: 140, gust: 82, hail: 2.2 }), run(1, { reports: 12, tornadoes: 2, tornadoMph: 118, gust: 78, hail: 1.9 }), run(2, { reports: 16, gust: 70, hail: 2.4 }), run(3, { reports: 11, tornadoes: 1, tornadoMph: 100, gust: 74, hail: 1.7 })], now(), { next: 7, seed: 3 });
@@ -101,13 +103,13 @@ assert.equal(outcome.wind, 3); assert.equal(outcome.hailCells, 2); assert.equal(
 // and a discussion says it is coming.
 const tornadic = { reports: 14, tornadoes: 2, tornadoMph: 125, gust: 72, hail: 1.8, size: 12 };
 const waiting = lookAhead(four(tornadic), now(), { seed: 3 });
-assert.equal(waiting.watches.length, 0, 'no storms yet: no watch yet'); assert.equal(waiting.pending.length, 1); assert.equal(waiting.pending[0].type, 'tornado'); assert.equal(waiting.quiet, false);
+assert.equal(waiting.watches.length, 0, 'no storms yet: no watch yet'); assert.equal(waiting.pending.length, 1); assert.equal(waiting.pending[0].type, 'tornado'); assert.equal(waiting.settled, false);
 assert.equal(waiting.discussions.length, 1); assert.equal(waiting.discussions[0].concerning, 'SEVERE POTENTIAL...TORNADO WATCH LIKELY');
 // The storms fire: the watch goes out, at that moment.
 const liveWorld = (storms = []) => ({ width, height, cellSizeKm: 16, storms });
 const liveStorm = (x, y, intensity = 0.5) => ({ active: true, intensity, positionKm: { x: (x + 0.5) * 16, y: (y + 0.5) * 16 } });
-assert.equal(stormsFiring(liveWorld([liveStorm(30, 10, 0.1), liveStorm(5, 40)]), waiting.pending[0].cells), 0, 'a weak shower there and a storm elsewhere are not its storms');
-assert.equal(stormsFiring(liveWorld([liveStorm(30, 10)]), waiting.pending[0].cells), 1);
+assert.equal(stormsFiring(liveWorld([{ ...liveStorm(30, 10), active: false }, liveStorm(5, 40)]), waiting.pending[0].cells), 0, 'a storm that has died there and a storm elsewhere are not its storms');
+assert.equal(stormsFiring(liveWorld([liveStorm(30, 10, 0.12)]), waiting.pending[0].cells), 1, 'a storm there, however young, is');
 const fired = issueWatch(waiting.pending[0], 4, 45.5);
 assert.equal(fired.number, 4); assert.equal(fired.issuedHourUtc, 45.5); assert.equal(fired.validToHourUtc, 45.5 + WATCH.hours);
 // Storms already firing at the look: the watch goes out with it, and no discussion repeats it.
@@ -127,15 +129,19 @@ const page = publicWatch(watch); assert.equal(page.cells, undefined); assert.equ
 const severe = lookAhead(four({ reports: 14, tornadoes: 3, tornadoMph: 90, size: 12 }), firing).watches[0];
 assert.equal(severe.type, 'severe'); assert.match(severe.text, /^URGENT - IMMEDIATE BROADCAST REQUESTED\nSevere Thunderstorm Watch Number 1\n/); assert.match(severe.text, /A tornado or two possible/); assert.match(severe.text, /REMEMBER\.\.\.A severe thunderstorm watch means/);
 assert.equal(lookAhead(four({ reports: 9, size: 12 }), firing).watches.length, 0, 'short of what a watch needs: none');
+const atFirst = lookAhead(four(tornadic), now(44, [young(31, 9)]));
+assert.equal(atFirst.watches.length, 1, 'the first storm forming there is enough'); assert.match(atFirst.watches[0].text, /SUMMARY...Storms are expected to form over the watch area/);
 assert.equal(lookAhead(four({ reports: 14, tornadoes: 2, tornadoMph: 125 }), firing).watches.length, 0, 'ground too small for a watch');
 assert.equal(lookAhead(four({ reports: 14, tornadoes: 2, tornadoMph: 125 }), firing).discussions.length, 1, 'but still discussed');
-// Particularly dangerous situations: several strong tornadoes in most runs; or a derecho.
+// Particularly dangerous situations: several strong tornadoes in most runs, the most probable
+// peak an intense one; or a derecho.
 const outbreak = lookAhead(four({ ...tornadic, tornadoes: 3, tornadoMph: 150 }), firing).watches[0];
 assert.equal(outbreak.pds, true); assert.match(outbreak.text, /\n\.\.\.THIS IS A PARTICULARLY DANGEROUS SITUATION\.\.\.\n/); assert.match(outbreak.text, /Several tornadoes and a few intense tornadoes likely/);
 assert.equal(lookAhead(four({ ...tornadic, tornadoes: 1, tornadoMph: 150 }), firing).watches[0].pds, false, 'one strong tornado a run is a tornado watch, not a PDS one');
-const derecho = lookAhead(four({ reports: 24, gust: 96, windSignificant: 12, size: 12 }), firing).watches[0];
-assert.equal(derecho.type, 'severe'); assert.equal(derecho.pds, true); assert.match(derecho.text, /Widespread damaging winds and isolated significant gusts to 95 mph likely/);
-assert.equal(lookAhead(four({ reports: 24, gust: 80, windSignificant: 12, size: 12 }), firing).watches[0].pds, false);
+assert.equal(lookAhead(four({ ...tornadic, tornadoes: 3, tornadoMph: 130 }), firing).watches[0].pds, false, 'several strong ones short of intense: not a PDS one either');
+const derecho = lookAhead(four({ reports: 32, gust: 104, windSignificant: 26, size: 12 }), firing).watches[0];
+assert.equal(derecho.type, 'severe'); assert.equal(derecho.pds, true); assert.match(derecho.text, /Widespread damaging winds and isolated significant gusts to 105 mph likely/);
+assert.equal(lookAhead(four({ reports: 32, gust: 92, windSignificant: 26, size: 12 }), firing).watches[0].pds, false);
 
 // A watch in effect: no other watch on its ground, and it stands as issued until it expires,
 // whatever the runs say later.
@@ -144,9 +150,9 @@ const hourLater = lookAhead(worse, now(45, [stormAt(31, 9)]), { watches: [watch]
 assert.equal(hourLater.watches.length, 0, 'the ground has its watch'); assert.equal(hourLater.pending.length, 0); assert.equal(hourLater.discussions.length, 0, 'and the last word on it has not lapsed');
 assert.equal(watch.pds, false); assert.equal(watch.validToHourUtc, 50);
 // Other ground at the same time gets its own; where the two would meet, the new one stops.
-const beside = lookAhead([0, 1, 2, 3].map(k => run(k, { ...tornadic, x0: 34, y0: 12 })), now(45, [stormAt(42, 20)]), { watches: [watch], nextWatch: 13 });
+const beside = lookAhead([0, 1, 2, 3].map(k => run(k, { ...tornadic, x0: 38, y0: 18 })), now(45, [stormAt(44, 24)]), { watches: [watch], nextWatch: 13 });
 assert.equal(beside.watches.length, 1); assert.equal(beside.watches[0].number, 13);
-assert.ok(beside.watches[0].cells.every((v, i) => !(v && watch.cells[i])), 'no ground under two watches'); assert.ok(beside.watches[0].cells[at(44, 22)]);
+assert.ok(beside.watches[0].cells.every((v, i) => !(v && watch.cells[i])), 'no ground under two watches'); assert.ok(beside.watches[0].cells[at(46, 26)]);
 // A discussion about the watch, once the last word on it has lapsed: no probability, the watch named.
 const status = lookAhead(four(tornadic), now(46, [stormAt(31, 9, { hail: 1.5 })]), { watches: [watch], nextDiscussion: 9 });
 assert.equal(status.watches.length, 0); assert.equal(status.discussions.length, 1);
@@ -159,8 +165,13 @@ assert.match(lookAhead(four({ reports: 5, size: 12 }), now(46, [stormAt(31, 9)])
 // Expired: the ground is free again.
 const after = lookAhead(worse, now(50, [stormAt(31, 9)]), { watches: [watch], nextWatch: 13 });
 assert.equal(after.watches.length, 1); assert.equal(after.watches[0].number, 13); assert.equal(after.watches[0].pds, true);
-// No run with a storm anywhere: a quiet look.
-assert.equal(lookAhead(four(), now()).quiet, true); assert.equal(lookAhead([], now()).quiet, false);
+// Nothing new in sight (no area of concern, or the watches in effect cover it all): the next
+// look can wait, unless a watch is about to expire.
+const nothing = lookAhead(four(), now());
+assert.equal(nothing.settled, true); assert.equal(lookAhead([], now()).settled, false);
+assert.equal(nextLookHourUtc(nothing, 44, []), 44 + MESOSCALE.settledHours); assert.equal(nextLookHourUtc(waiting, 44, []), 45, 'an area coming on: every hour');
+assert.equal(hourLater.settled, true, 'all of the concern is under the watch'); assert.equal(beside.settled, false);
+assert.equal(nextLookHourUtc(hourLater, 45, [watch]), 47); assert.equal(nextLookHourUtc(hourLater, 48, [watch]), 49, 'its ground is free at 50: looked at on the hour');
 
 // --- A real run: the world a few hours ahead, the same run twice the same, another run different.
 const atmosphere = new AtmosphereWorld({ seed: 3, spinUpDays: 6 }); atmosphere.advance(31);   // 19Z of the second day

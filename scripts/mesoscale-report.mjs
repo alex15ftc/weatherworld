@@ -21,20 +21,37 @@ async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { stateFromBytes } = await import('../js/forecast/DayOneOutlook.js');
   const { MESOSCALE, runMesoscaleMember, describeNow, areaOutcome, peakRange } = await import('../js/forecast/MesoscaleDiscussion.js');
-  const { WATCH, lookAhead, issueWatch, stormsFiring } = await import('../js/forecast/Watch.js');
+  const { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring } = await import('../js/forecast/Watch.js');
   const atmosphere = new AtmosphereWorld({ seed }); atmosphere.advance(24 * Number(flag('--from', 2)));
   const world = atmosphere.world, rows = [], watchRows = [];
-  let discussions = [], watches = [], pending = [], next = 1, nextWatch = 1, memberMs = 0, runs = 0, overlaps = 0;
+  let discussions = [], watches = [], pending = [], next = 1, nextWatch = 1, memberMs = 0, runs = 0, overlaps = 0, looks = 0, nextLook = -Infinity;
   const copy = () => v8.serialize(atmosphere.saveState({ forecast: true }));
   // What a watch's ground then gets over its own hours.
   const checkWatch = (watch, bytes, waitedHours) => {
     const real = runMesoscaleMember(stateFromBytes(bytes), 0, WATCH.hours, { asItHappens: true }), got = areaOutcome(real, watch.cells), now = describeNow(atmosphere);
-    const there = now.storms.filter(s => watch.cells[s.cell] && s.intensity >= WATCH.stormIntensity);
+    const there = now.storms.filter(s => watch.cells[s.cell]);
     if (watches.some(other => other !== watch && other.validToHourUtc > watch.issuedHourUtc + 1e-6 && other.cells.some((v, i) => v && watch.cells[i]))) overlaps++;
-    watchRows.push({ seed, number: watch.number, type: watch.type, pds: watch.pds, hourUtc: watch.issuedHourUtc, cells: watch.areaCells, waitedHours, stormsThere: there.length, severeThere: there.filter(s => s.hail >= 1 || s.gust >= 58 || s.tornado).length,
+    // Following on: most of its ground was under a watch that expired in the last two hours.
+    const before = watches.filter(other => other !== watch && other.validToHourUtc <= watch.issuedHourUtc + 1e-6 && other.validToHourUtc > watch.issuedHourUtc - 2);
+    const followsOn = watch.cells.reduce((a, v, i) => a + (v && before.some(other => other.cells[i]) ? 1 : 0), 0) >= 0.5 * watch.areaCells;
+    watchRows.push({ seed, number: watch.number, type: watch.type, pds: watch.pds, hourUtc: watch.issuedHourUtc, cells: watch.areaCells, waitedHours, followsOn, peakTornadoMph: watch.peak.tornadoMph, runs: watch.runs.map(m => ({ strong: m.strong, gust: m.gust, windSignificant: m.windSignificant })), stormsThere: there.length, severeThere: there.filter(s => s.hail >= 1 || s.gust >= 58 || s.tornado).length,
       probabilities: watch.probabilities, got: { toward: got.toward, tornadoCase: got.tornadoCase, tornadoes: got.tornadoes, strong: got.strong, reports: got.reports, gust: got.gust, hail: got.hail, tornadoMph: got.tornadoMph, first: Number.isFinite(got.first) ? got.first : null }, text: watch.text });
   };
+  // The hour itself, a half hour at a time: a watch waiting for storms goes out when they fire.
+  const liveHour = () => {
+    for (let step = 0; step < MESOSCALE.everyHours / MESOSCALE.stepHours; step++) {
+      atmosphere.advance(MESOSCALE.stepHours);
+      for (const waiting of pending.filter(p => stormsFiring(world, p.draft.cells))) {
+        const watch = issueWatch(waiting.draft, nextWatch++, world.validHourUtc);
+        pending = pending.filter(p => p !== waiting); watches = [watch, ...watches];
+        checkWatch(watch, copy(), world.validHourUtc - waiting.sinceHourUtc);
+      }
+    }
+  };
   for (let hour = 0; hour < days * 24; hour++) {
+    // As on the server: no look while nothing new is in sight.
+    if (world.validHourUtc < nextLook - 1e-6) { liveHour(); continue; }
+    looks++;
     const bytes = copy(), now = describeNow(atmosphere), started = Date.now();
     const members = Array.from({ length: MESOSCALE.members }, (_, k) => runMesoscaleMember(stateFromBytes(bytes), k));
     memberMs += Date.now() - started; runs += members.length;
@@ -50,17 +67,10 @@ async function worker(seed) {
     next += found.discussions.length; nextWatch += found.watches.length;
     discussions = [...found.discussions, ...discussions].slice(0, MESOSCALE.kept); watches = [...found.watches, ...watches].slice(0, WATCH.kept); pending = found.pending.map(draft => ({ draft, sinceHourUtc: now.hourUtc }));
     for (const watch of found.watches) checkWatch(watch, bytes, 0);
-    // The hour itself, a half hour at a time: a watch waiting for storms goes out when they fire.
-    for (let step = 0; step < MESOSCALE.everyHours / MESOSCALE.stepHours; step++) {
-      atmosphere.advance(MESOSCALE.stepHours);
-      for (const waiting of pending.filter(p => stormsFiring(world, p.draft.cells))) {
-        const watch = issueWatch(waiting.draft, nextWatch++, world.validHourUtc);
-        pending = pending.filter(p => p !== waiting); watches = [watch, ...watches];
-        checkWatch(watch, copy(), world.validHourUtc - waiting.sinceHourUtc);
-      }
-    }
+    nextLook = nextLookHourUtc(found, now.hourUtc, watches);
+    liveHour();
   }
-  process.send({ rows, watchRows, overlaps, secondsPerRun: memberMs / 1000 / Math.max(1, runs) });
+  process.send({ rows, watchRows, overlaps, looks, secondsPerRun: memberMs / 1000 / Math.max(1, runs) });
 }
 
 async function main() {
@@ -76,6 +86,7 @@ async function main() {
   const middle = values => { const v = values.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.floor((v.length - 1) / 2)] : NaN; };
   console.log(`=== Mesoscale discussions and watches: ${days} days x seeds ${seeds.join(', ')} (${((Date.now() - started) / 1000).toFixed(0)} s; a ${MESOSCALE.hoursAhead}-hour run takes ${(results.reduce((a, r) => a + r.secondsPerRun, 0) / results.length).toFixed(1)} s) ===`);
   const perDay = new Map(); for (const md of all) perDay.set(`${md.seed}|${md.day}`, (perDay.get(`${md.seed}|${md.day}`) ?? 0) + 1);
+  console.log(`\n0. Looks ahead: ${(results.reduce((a, r) => a + r.looks, 0) / worldDays).toFixed(1)} a world day (one an hour would be 24)`);
   const counts = [...Array(worldDays)].map((_, k) => [...perDay.values()][k] ?? 0).sort((a, b) => a - b);
   console.log(`\n1. Discussions for ground under no watch: ${all.length} in ${worldDays} world days (${(all.length / worldDays).toFixed(1)} a day; a day's count: least ${counts[0]}, median ${counts[Math.floor(counts.length / 2)]}, most ${counts.at(-1)}). About a watch in effect: ${about.length} (${(about.length / worldDays).toFixed(1)} a day).`);
   console.log(`   by hour of issue (UTC): ${Array.from({ length: 24 }, (_, h) => all.filter(md => ((Math.floor(md.hourUtc) % 24) + 24) % 24 === h).length).map((c, h) => `${String(h).padStart(2, '0')}:${c}`).join(' ')}`);
@@ -99,7 +110,12 @@ async function main() {
 
   const tor = watches.filter(w => w.type === 'tornado'), svr = watches.filter(w => w.type !== 'tornado');
   console.log(`\n5. Watches: ${watches.length} in ${worldDays} world days (${(watches.length / worldDays).toFixed(1)} a day): ${tor.length} tornado (${tor.filter(w => w.pds).length} PDS), ${svr.length} severe thunderstorm (${svr.filter(w => w.pds).length} PDS). Area (median): ${middle(watches.map(w => w.cells)) * 100} sq mi. Two in effect on the same ground: ${results.reduce((a, r) => a + r.overlaps, 0)} (must be 0).`);
-  console.log(`   when issued: waited for storms to fire: ${pc(watches.filter(w => w.waitedHours > 0).length, watches.length)} | storms on its ground (median): ${middle(watches.map(w => w.stormsThere))} | severe weather already under way there: ${pc(watches.filter(w => w.severeThere > 0).length, watches.length)} | first severe weather after (median): ${middle(watches.map(w => w.got.first ?? NaN))} h`);
+  for (const [label, group] of [['on new ground', watches.filter(w => !w.followsOn)], ['following an expired watch', watches.filter(w => w.followsOn)]])
+    console.log(`   ${label.padEnd(27)}${String(group.length).padStart(3)} | waited for storms to fire: ${pc(group.filter(w => w.waitedHours > 0).length, group.length).padStart(4)} | storms on its ground when issued (median): ${middle(group.map(w => w.stormsThere))} | severe weather already under way there: ${pc(group.filter(w => w.severeThere > 0).length, group.length).padStart(4)} | first severe weather after (median): ${middle(group.map(w => w.got.first ?? NaN))} h`);
+  // How many would be particularly dangerous situations under other settings (most runs: 3 of 4).
+  const most = (w, test) => w.runs.filter(test).length >= 0.75 * w.runs.length, half = (w, test) => w.runs.filter(test).length >= 0.5 * w.runs.length;
+  console.log(`   PDS tornado under other settings: strong tornado in most runs ${tor.filter(w => most(w, m => m.strong >= 1)).length} | 2 strong in half ${tor.filter(w => most(w, m => m.strong >= 1) && half(w, m => m.strong >= 2)).length} | 2 strong in most ${tor.filter(w => most(w, m => m.strong >= 2)).length} | 2 strong in most and peak 136+ ${tor.filter(w => most(w, m => m.strong >= 2) && w.peakTornadoMph >= 136).length} | 3 strong in most ${tor.filter(w => most(w, m => m.strong >= 3)).length}   (of ${tor.length})`);
+  console.log(`   PDS severe under other settings (gust mph / cells of 75+ mph wind, in most runs): ${[[90, 10], [90, 25], [100, 10], [100, 25], [100, 40], [110, 25], [110, 40]].map(([gust, cells]) => `${gust}/${cells}: ${svr.filter(w => most(w, m => m.gust >= gust && m.windSignificant >= cells)).length}`).join(' | ')}   (of ${svr.length})`);
   const line = (label, group, test) => console.log(`   ${label.padEnd(58)}${pc(group.filter(test).length, group.length).padStart(4)} of ${group.length}`);
   console.log(`   what the ground then got in the watch's ${WATCH.hours} hours:`);
   line('any watch: what calls for a watch', watches, w => w.got.toward >= 1);
@@ -109,7 +125,7 @@ async function main() {
   line('severe thunderstorm watch: a strong tornado anyway', svr, w => w.got.strong >= 1);
   line('PDS tornado watch: 2 or more strong tornadoes', tor.filter(w => w.pds), w => w.got.strong >= 2);
   line('other tornado watch: 2 or more strong tornadoes', tor.filter(w => !w.pds), w => w.got.strong >= 2);
-  line('PDS severe thunderstorm watch: a gust of 90 mph or more', svr.filter(w => w.pds), w => w.got.gust >= 90);
+  line('PDS severe thunderstorm watch: a gust of 100 mph or more', svr.filter(w => w.pds), w => w.got.gust >= 100);
   const show = Number(flag('--show', 1));
   for (const md of [...all].sort((a, b) => (a.storms ? 1 : 0) - (b.storms ? 1 : 0) || b.percent - a.percent).slice(0, show)) console.log(`\n--- seed ${md.seed}, what then happened: ${md.got.reports} cells with severe hail or wind, ${md.got.tornadoes} tornadoes (strongest ${Math.round(md.got.tornadoMph)} mph), gust ${Math.round(md.got.gust)} mph, hail ${md.got.hailInches.toFixed(2)} in ---\n${md.text}`);
   for (const md of about.slice(0, show)) console.log(`\n--- seed ${md.seed}, a discussion about a watch ---\n${md.text}`);

@@ -165,9 +165,9 @@ assert.equal(pool.status().runs, 2, 'the pool did the runs');
 // More runs than threads wait their turn, the more urgent first; and a run that fails says so.
 const shared = shareState(atmosphere.saveState({ forecast: true })), order = [];
 const queued = [['outlook', 0, 0], ['outlook', 1, 0], ['outlook', 2, 0], ['mesoscale', 3, 1]].map(([kind, member, priority]) => pool.run(kind, shared, member, 0.5, { priority }).then(() => order.push(member)));
-assert.equal(pool.status().busy, 2); assert.equal(pool.status().waiting, 2);
+assert.equal(pool.status().busy, 2, 'one outlook run and the urgent one: a thread is kept for the urgent'); assert.equal(pool.status().waiting, 2);
 await Promise.all(queued);
-assert.ok(order.indexOf(3) < order.indexOf(2), `the urgent run went ahead of the one waiting (${order})`); assert.equal(pool.status().threads, 2, 'never more threads than its size');
+assert.ok(order.indexOf(3) < order.indexOf(1), `the urgent run went ahead of those waiting (${order})`); assert.equal(pool.status().threads, 2, 'never more threads than its size');
 await assert.rejects(pool.run('nothing', shared, 0, 1), /is not a function|forecast run failed/);
 await outlooks.stop();
 assert.equal(pool.status().threads, 0, 'the threads are ended');

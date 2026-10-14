@@ -1,12 +1,13 @@
 // The forecast runs behind the outlooks, the mesoscale discussions and the watches, done by a
-// few threads that stay up between runs. Every run starts from a copy of the world taken at
-// issue time; the threads share its bytes and each run reads its own world out of them, so
-// nothing is written to disk. Runs wait their turn when all the threads are busy, the more
-// urgent first (a mesoscale look ahead goes before the rest of an outlook), so the load is
-// never more than `size` cores however many products are due at once. A thread that has run
-// before has its code compiled already, so the later runs of a batch start faster; but a
-// thread keeps about 450 MB after a run (measured: the memory is not handed back while it
-// lives), so one with nothing to do is let go after half a minute.
+// few threads. Every run starts from a copy of the world taken at issue time; the threads
+// share its bytes and each run reads its own world out of them, so nothing is written to
+// disk. Runs wait their turn when the threads are busy, the more urgent first (a mesoscale
+// look ahead goes before the rest of an outlook), so the load is never more than `size` cores
+// however many products are due at once; and one thread is kept free for the urgent runs, so
+// a look ahead does not wait behind an outlook's long ones. A thread that has run before has
+// its code compiled already, so the later runs of a batch start faster; but a thread keeps
+// about 450 MB after a run (measured: the memory is not handed back while it lives), so one
+// with nothing to do is let go after half a minute.
 //   WEATHER_FORECAST_WORKERS sets the number of threads (default: a quarter of the cores, 1 to 4).
 //   WEATHER_FORECAST_IDLE_SECONDS sets how long a thread with nothing to do is kept.
 import os from 'node:os';
@@ -27,6 +28,8 @@ export class ForecastPool {
   // idleMs: a thread with nothing to do for this long is let go.
   constructor({ size = defaultSize(), idleMs = (Number(process.env.WEATHER_FORECAST_IDLE_SECONDS) || 30) * 1000, workerScript = WORKER_SCRIPT } = {}) {
     this.size = Math.max(1, size); this.idleMs = idleMs; this.workerScript = workerScript;
+    // Threads the runs that are not urgent (priority 0) leave free.
+    this.reserve = this.size > 1 ? 1 : 0;
     this.workers = new Set(); this.idle = []; this.queue = []; this.order = 0;
     this.stats = { runs: 0, busyMs: 0, longestWaitMs: 0 };
   }
@@ -42,8 +45,10 @@ export class ForecastPool {
 
   pump() {
     while (this.queue.length) {
-      const worker = this.idle.pop() ?? (this.workers.size < this.size ? this.start() : null);
-      if (!worker) return;
+      // The queue has the most urgent first.
+      const free = this.idle.length + this.size - this.workers.size;
+      if (free <= (this.queue[0].priority > 0 ? 0 : this.reserve)) return;
+      const worker = this.idle.pop() ?? this.start();
       const task = this.queue.shift();
       clearTimeout(worker.idleTimer);
       task.startedAt = Date.now(); this.stats.longestWaitMs = Math.max(this.stats.longestWaitMs, task.startedAt - task.queuedAt);

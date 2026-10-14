@@ -130,10 +130,24 @@ a quarter (`OUTLOOK.memberShare`, `membersFor`), and a member runs only as far a
 it is in. Each member
 also has its own doubts about the atmosphere (`js/forecast/ensemblePerturbation.js`: a
 timing error, `regional.timingErrorMs`, and its own weather far upstream, `perturbUpstream`),
-so the later days are vaguer. The members run at the
-same time, each in its own process (`server/outlookMember.js`), from a copy of the world
-written to a scratch file; the live world keeps running. Each member must have its own copy
-of the saved world (`stateFromBytes`): arrays read out of the same bytes can share memory.
+so the later days are vaguer. The members are run by the forecast pool (below) from a copy
+of the world taken at issue time; the live world keeps running. Each member must have its
+own copy of the saved world (`stateFromBytes`): arrays read out of the same bytes can share
+memory.
+
+### The forecast pool
+
+`server/ForecastPool.js` does every forecast run (the outlooks' members and the mesoscale
+look ahead) on a few threads (`server/forecastWorker.js`): a quarter of the cores, at most
+four, or `WEATHER_FORECAST_WORKERS`. Runs wait their turn, the more urgent first (the
+mesoscale runs go ahead of an outlook's), so the load is never more than that many cores
+however many products are due together. The copy of the world a run starts from is the
+forecast copy (`AtmosphereWorld.saveState({ forecast: true })`, `js/world/worldSnapshot.js`):
+it leaves out what a run works out again before reading it (each cell's sounding profile,
+each storm's radar picture) and the storm archives, is about a third the size of the full
+copy, and gives exactly the same run (the tests compare them). Its bytes are shared with the
+threads (`shareState`); nothing is written to disk. A thread with nothing to do is let go
+after half a minute (`WEATHER_FORECAST_IDLE_SECONDS`), because it keeps about 450 MB.
 
 | Route | Returns |
 |---|---|
@@ -150,19 +164,27 @@ the contour levels in the real
 colours; CIG1 broken lines falling to the lower left, CIG2 solid lines falling to the lower
 right, CIG3 crossed; no figures on the map. `scripts/outlook-verify.mjs` checks it.
 
-## Mesoscale discussions
+## Mesoscale discussions and watches
 
-`js/forecast/MesoscaleDiscussion.js`: `runMesoscaleMember` (the world three hours ahead with
-its storms' chances drawn afresh; reports, peaks and tornadoes by cell), `describeNow` (the
-air and the storms on the live map, as plain data), `buildMesoscaleDiscussions` (areas of
-concern, watch probability, peaks, the check against recent discussions, the outline and
-the text), `areaOutcome` (what one run does inside an area; also used to check a discussion
-against what happened). `server/MesoscaleRuntime.js` looks once in each hour of the world,
-running the members at the same time in their own processes (`server/mesoscaleMember.js`).
+`js/forecast/MesoscaleDiscussion.js`: `runMesoscaleMember` (the world five hours ahead with
+its storms' chances drawn afresh; reports, peaks, tornadoes and the first storm by cell),
+`describeNow` (the air and the storms on the live map, as plain data), `concernAreas` (where
+most runs put severe weather), `assessArea` (for a piece of ground: watch probability, which
+watch, peaks, when storms are expected), `withinLead` and `discussedLately` (whether to
+speak of it now), `makeDiscussion` (the outline and the text), `areaOutcome` (what one run
+does inside an area; also used to check a product against what happened).
+
+`js/forecast/Watch.js`: `lookAhead` (one hourly look: the discussions and watches to issue
+now, and the watches to issue when storms fire on their ground), `draftWatch` and
+`issueWatch`, `stormsFiring`, `watchProbabilities`, `particularlyDangerous`, `writeWatch`.
+The rules are at the top of the file and in docs/STATUS.md.
+
+`server/MesoscaleRuntime.js` looks once in each hour of the world (the runs are the forecast
+pool's), and every few seconds issues any waiting watch whose storms have begun.
 
 | Route | Returns |
 |---|---|
-| `GET /api/mesoscale` | the discussions, newest first (outline, text, probability, peaks), each marked valid or lapsed |
+| `GET /api/mesoscale` | `watches` and `discussions`, newest first (outline, text, probabilities or peaks), each marked valid or not; `watchesPending`: watches that will go out when storms fire |
 
 `mesoscale.html` (`js/pages/mesoscalePage.js`) lists them and draws the chosen one's outline
 with the others still valid. `scripts/mesoscale-report.mjs` measures them.

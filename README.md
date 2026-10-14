@@ -21,7 +21,8 @@ npm test             # 42 tests, about 8 minutes
 | `WEATHER_STATE_PATH` | where the world is saved (default `data/cache/atmosphere-state.bin`) |
 | `WEATHER_PRIORITY=normal` | leave the process priority alone |
 | `WEATHER_OUTLOOK=off` | do not issue outlooks |
-| `WEATHER_MESOSCALE=off` | do not issue mesoscale discussions |
+| `WEATHER_MESOSCALE=off` | do not issue mesoscale discussions or watches |
+| `WEATHER_FORECAST_WORKERS=n` | threads that do the forecast runs for the outlooks, discussions and watches (default: a quarter of the cores, at most 4) |
 | `WEATHER_OUTLOOK_MEMBERS=n` | forecast runs per outlook (default 8) |
 
 The clock runs at 15 simulated minutes per real minute (a simulated day is 96 real minutes).
@@ -33,7 +34,7 @@ The clock runs at 15 simulated minutes per real minute (a simulated day is 96 re
 | `/` (`index.html`) | Surface observations and mesoanalysis: station plots, isobars, fronts, the dryline, outflow boundaries, storms, 27 overlay fields, click soundings, 36 frames of history |
 | `/radar.html` | Simulated radar sites and the composite mosaic |
 | `/day1.html`, `/day2.html` | The Day 1 and Day 2 convective outlooks, laid out as the Storm Prediction Center's: risk categories; tornado, wind and hail chances at the fixed contour levels with hatched intensity groups; the forecast discussion. Day 1 is updated every 6 hours, Day 2 every 12 |
-| `/mesoscale.html` | Mesoscale discussions: areas where severe storms are developing, the probability of a watch, and the most probable peak tornado, wind and hail |
+| `/mesoscale.html` | Tornado and severe thunderstorm watches (issued as storms begin to fire, with the table of probabilities; some marked particularly dangerous situations), and mesoscale discussions: areas where severe storms are developing, the probability of a watch, the most probable peak tornado, wind and hail, and how the threat in a watch is going |
 | `/day3.html` | The Day 3 outlook, in the centre's Day 3 form: one chance of any severe weather. Updated every 24 hours |
 | `/performance.html` | Server timing |
 
@@ -82,7 +83,7 @@ full working log of the redesign, with every measurement.
 | `npm run inspect:tornado-days` | why a day does or does not get a tornado; the part lines play | 9 min |
 | `npm run inspect:players` | what a player finds: waits, distances, tornado durations | 10 min |
 | `npm run inspect:outlook` | makes Day 1 outlooks and checks them against what then happened | 25 min |
-| `npm run inspect:mesoscale` | issues mesoscale discussions for some days and checks them against what happened | 12 min |
+| `npm run inspect:mesoscale` | issues mesoscale discussions and watches for some days and checks them against what happened | 18 min |
 | `npm run inspect:risk` | the mix of risk categories this world's days get | 25 min |
 | `node scripts/spatial-report.mjs` | where on the map severe weather falls; each world's make-up | 25 min |
 

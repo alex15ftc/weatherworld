@@ -20,8 +20,11 @@ import { describeArea } from './DayOneOutlook.js';
 export const MESOSCALE = Object.freeze({
   members: 4, hoursAhead: 5, stepHours: 0.5,
   // How often the world is looked at (hours), and how long a discussion is valid. After a
-  // look in which no member has a storm anywhere, the next is not for quietHours.
-  everyHours: 1, validHours: 2, quietHours: 2,
+  // look that finds no area of concern on ground under no watch (nothing is coming, or the
+  // watches in effect cover it all), the next is not for settledHours, unless a watch is to
+  // expire by then: the runs look hoursAhead ahead, so what is not in sight now cannot be
+  // within its lead before the next look.
+  everyHours: 1, validHours: 2, settledHours: 2,
   // An area of concern: where at least this share of the members have severe weather within
   // 25 miles in the hours ahead, joined up, and at least this many cells (100 sq mi each).
   memberShare: 0.5, leastCells: 40,
@@ -231,12 +234,13 @@ export function buildMesoscaleDiscussions(members, now, { active = [], next = 1,
 // The air and the storms over an area now.
 function describeHere(now, inside) {
   const pick = field => { const out = []; for (let i = 0; i < inside.length; i++) if (inside[i]) out.push(field[i]); return out; };
-  const storms = now.storms.filter(s => inside[s.cell] && s.intensity >= 0.22), severe = storms.filter(s => s.hail >= 1 || s.gust >= 58 || s.tornado);
+  const forming = now.storms.filter(s => inside[s.cell]), storms = forming.filter(s => s.intensity >= 0.22), severe = storms.filter(s => s.hail >= 1 || s.gust >= 58 || s.tornado);
   const lines = now.lines.filter(line => line.cells.filter(i => inside[i]).length >= 2).map(line => line.type);
   return {
     dewpoint: quantile(pick(now.dewpoint), 0.5), temperature: quantile(pick(now.temperature), 0.5), cape: quantile(pick(now.cape), 0.75), cin: quantile(pick(now.cin), 0.5), shear: quantile(pick(now.shear), 0.5),
     helicity: quantile(pick(now.helicity), 0.75), cloudBaseM: quantile(pick(now.cloudBaseM), 0.5),
-    storms: storms.length, severeNow: severe.length, tornadoNow: storms.filter(s => s.tornado).length, rotating: storms.filter(s => s.rotating).length, lines: storms.filter(s => s.line).length,
+    // forming: every storm there, however young; storms: those that have grown into thunderstorms.
+    forming: forming.length, storms: storms.length, severeNow: severe.length, tornadoNow: storms.filter(s => s.tornado).length, rotating: storms.filter(s => s.rotating).length, lines: storms.filter(s => s.line).length,
     features: [...new Set(lines)]
   };
 }
@@ -269,7 +273,7 @@ export function writeMesoscaleDiscussion(md) {
   const threat = hazards.length ? list(hazards) : 'marginally severe hail and wind';
   const soon = hours => (hours <= 1 ? 'within the hour' : hours <= 2 ? 'within the next hour or two' : 'over the next few hours');
   const when = md.startsInHours === 0 ? 'Severe thunderstorms are ongoing' : e.storms ? `The storms in the area are expected to become severe ${soon(md.startsInHours ?? 3)}` : md.startsInHours !== null && md.startsInHours <= 1 ? 'Severe thunderstorms are expected within the hour' : `Severe thunderstorms are expected to develop ${soon(md.startsInHours ?? 3)}`;
-  const kind = md.tornadoWatch ? 'tornado' : 'severe thunderstorm', ongoing = md.startsInHours === 0 ? ' over the next few hours' : '';
+  const kind = md.tornadoWatch ? 'tornado' : 'severe thunderstorm', title = md.tornadoWatch ? 'Tornado Watch' : 'Severe Thunderstorm Watch', ongoing = md.startsInHours === 0 ? ' over the next few hours' : '';
   const lines = [
     `Mesoscale Discussion ${String(md.number).padStart(4, '0')}`, '',
     `Areas affected...${md.where ? md.where[0].toUpperCase() + md.where.slice(1) : 'Part of the region'}`, '',
@@ -279,7 +283,7 @@ export function writeMesoscaleDiscussion(md) {
   if (md.watchNumber) {
     // About a watch in effect: how its threat is going in this part of it.
     const going = md.threatPercent >= 40;
-    lines.push(`The severe weather threat for ${kind[0].toUpperCase()}${kind.slice(1)} Watch ${md.watchNumber} ${going ? 'continues' : 'is waning'}.`, '',
+    lines.push(`The severe weather threat for ${title} ${md.watchNumber} ${going ? 'continues' : 'is waning'}.`, '',
       going ? `SUMMARY...${when} over this part of the watch, with ${threat} possible${ongoing}.` : `SUMMARY...Only isolated severe weather (${threat}) is expected over this part of the watch from here on.`, '');
   } else {
     const action = md.watchPercent >= 80 ? `A ${kind} watch will likely be needed${e.storms ? '' : ' as storms form'}.` : md.watchPercent >= 40 ? `A ${kind} watch may be needed.` : 'The severe weather should stay too isolated or too brief for a watch.';
