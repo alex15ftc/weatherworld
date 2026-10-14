@@ -49,6 +49,9 @@ const tornadoDepthM = windMs => clamp(800 + 36 * (windMs - 30), 700, 3500);
 // Outflow near the ground and at the anvil (m/s per unit change of rain heaviness in a km), and
 // the rear-inflow jet behind a line at its strongest (m/s).
 const STORM_WINDS = { outflow: 110, anvil: 90, rearInflowMs: 24 };
+// Flow into a boundary (m/s) that doubles the insects along it, how much (dB) they vary along it,
+// and the depth of the denser air pushing under the other (m).
+const FINE_LINE_INFLOW_MS = 0.4, FINE_LINE_PATCHY_DB = 4, DENSITY_CURRENT_DEPTH_M = 1000;
 
 export function createRadarSites(world) {
   const widthKm = world.width * world.cellSizeKm, heightKm = world.height * world.cellSizeKm;
@@ -60,13 +63,27 @@ export function createRadarSites(world) {
 }
 
 // ---------------------------------------------------------------------------
-// Scene: everything a scan samples, extracted once per world revision.
+// Scene: everything a scan samples, extracted once per world revision. It is made in three
+// steps so the storms can be worked out on several threads: what the scene is made from (plain
+// data), each storm's precipitation, and the scene put together from them.
 
 export function buildRadarScene(world) {
+  const inputs = radarSceneInputs(world);
+  return assembleRadarScene(inputs, inputs.storms.map(input => buildStormEcho(input)));
+}
+
+// One storm's precipitation (PrecipitationField.js). shared: in memory other threads can read.
+export function buildStormEcho({ storm, top, freezing, su, sv }, { shared = false } = {}) {
+  return buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv }, { shared });
+}
+
+export function radarSceneInputs(world) {
   const w = world.width, h = world.height, cs = world.cellSizeKm, n = w * h;
   const env = {
     w, h, cs,
     terrain: new Float32Array(n), freezing: new Float32Array(n), top: new Float32Array(n), blDepth: new Float32Array(n),
+    // Virtual temperature at the surface (K): how dense the air is, for the boundaries.
+    virtualK: new Float32Array(n),
     // Wind profile per cell at surface, 850, 700, 500, 250 hPa: heights AGL (m) and u/v (m/s, east/north).
     levelHeight: Array.from({ length: 5 }, () => new Float32Array(n)),
     levelU: Array.from({ length: 5 }, () => new Float32Array(n)),
@@ -94,11 +111,12 @@ export function buildRadarScene(world) {
     const elAgl = Number(cell.derived?.sounding?.elM) - elev;
     env.top[i] = Number.isFinite(elAgl) && elAgl > 0 ? clamp(elAgl, 3000, 16500) : 11000;
     env.blDepth[i] = clamp(Number(cell.mesoscaleFields?.boundaryLayerDepthM) || 1200, 300, 3000);
+    env.virtualK[i] = virtualTemperatureK(levels[0].t, (Number(cell.surface.dewpoint) - 32) * 5 / 9);
   });
 
   const storms = [], wind = { u: 0, v: 0 };
   for (const storm of world.storms ?? []) {
-    if (storm.active === false) continue;
+    if (storm.active === false || !storm.structure) continue;
     const x = storm.positionKm.x, y = storm.positionKm.y;
     const motion = { u: (storm.velocityKph?.east ?? 0) / 3.6, v: (storm.velocityKph?.north ?? 0) / 3.6 };
     // Echo tops reach the equilibrium level (plus overshoot) in vigorous storms.
@@ -107,36 +125,51 @@ export function buildRadarScene(world) {
     // The wind through the storm's depth, relative to the storm: what carries its rain.
     const su = new Float32Array(WIND_PROFILE_LEVELS), sv = new Float32Array(WIND_PROFILE_LEVELS);
     for (let k = 0; k < WIND_PROFILE_LEVELS; k++) { envWindAt(env, x, y, k * WIND_PROFILE_STEP_M, wind); su[k] = wind.u - motion.u; sv[k] = wind.v - motion.v; }
-    const echo = buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv });
-    if (!echo) continue;
-    storms.push({
-      x, y, echo, motion, top, freezing,
-      seed: hashString(String(storm.id)),
-      tornadoDepthM: tornadoDepthM(echo.tornado?.windMs ?? 0),
-      weight: clamp(Number(storm.intensity) || 0, 0, 1)
-    });
+    storms.push({ storm, x, y, motion, top, freezing, su, sv, seed: hashString(String(storm.id)), weight: clamp(Number(storm.intensity) || 0, 0, 1) });
   }
 
-  const boundaries = [];
+  const validHourUtc = Number(world.stormEngine?.validHourUtc ?? world.validHourUtc), localHour = mod24(validHourUtc - 6);
+  // Fine lines: insects hold their height in rising air, so they pile up where the air flows
+  // together along a boundary. How many more there are than around them goes with how fast air
+  // flows into it: the change in the wind across it, or, where the grid is too coarse to show
+  // that, the speed the denser air on one side pushes under the other (a density current). How
+  // many there are to begin with goes with the time of day, as for the insects everywhere else.
+  const boundaries = [], insectZ = 10 ** (biologicalDbz(localHour) / 10), across = { u: 0, v: 0 }, behind = { u: 0, v: 0 };
   for (const boundary of world.mesoscale?.boundaries ?? []) {
     if (boundary.active === false) continue;
     // The analysed line is a few straight pieces; the insects along it follow a smooth curve,
-    // thicker in some stretches than others and here and there too few to see.
+    // thicker in some stretches than others.
     const points = roundCorners(roundCorners(boundary.pointsKm ?? [])), seed = hashString(String(boundary.id ?? boundary.type));
-    const dbz = boundaryFineLineDbz(boundary.type) + 4 * clamp(Number(boundary.strength) || 0.5, 0, 1);
     let along = 0;
     for (let k = 0; k < points.length - 1; k++) {
-      const a = points[k], b = points[k + 1], patchy = fbm(seed, along / 18, 0.5, 0);
-      along += Math.hypot(b.x - a.x, b.y - a.y);
-      boundaries.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, z: 10 ** ((dbz + 7 * patchy) / 10), widthKm: 1.2 * (1 + 0.4 * fbm(seed + 5, along / 30, 0.5, 0)) });
+      const a = points[k], b = points[k + 1], length = Math.hypot(b.x - a.x, b.y - a.y), patchy = fbm(seed, along / 18, 0.5, 0);
+      along += length;
+      if (length < 1e-6) continue;
+      // Across the piece, a grid cell out each way: the wind toward it (m/s), and the difference in density.
+      const nx = -(b.y - a.y) / length, ny = (b.x - a.x) / length, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, d = cs;
+      envWindAt(env, mx + nx * d, my + ny * d, 0, across); envWindAt(env, mx - nx * d, my - ny * d, 0, behind);
+      const windShift = -((across.u - behind.u) * nx - (across.v - behind.v) * ny);
+      const warmer = envSample(env, env.virtualK, mx + nx * d, my + ny * d), colder = envSample(env, env.virtualK, mx - nx * d, my - ny * d);
+      const densityCurrent = Math.sqrt(9.81 * DENSITY_CURRENT_DEPTH_M * Math.abs(warmer - colder) / (0.5 * (warmer + colder)));
+      const inflow = Math.max(windShift, densityCurrent);
+      if (!(inflow > 0)) continue;
+      const z = insectZ * inflow / FINE_LINE_INFLOW_MS * 10 ** (FINE_LINE_PATCHY_DB * patchy / 10);
+      boundaries.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, z, widthKm: 1.2 * (1 + 0.4 * fbm(seed + 5, along / 30, 0.5, 0)) });
     }
   }
 
-  const domainWidthKm = w * cs, domainHeightKm = h * cs;
+  return { validHourUtc, localHour, domainWidthKm: w * cs, domainHeightKm: h * cs, env, storms, boundaries };
+}
+
+// echoes: buildStormEcho's result for each of inputs.storms, in order.
+export function assembleRadarScene(inputs, echoes) {
+  const { validHourUtc, localHour, domainWidthKm, domainHeightKm, env, boundaries } = inputs, storms = [];
+  inputs.storms.forEach(({ x, y, motion, top, freezing, seed, weight }, k) => {
+    const echo = echoes[k];
+    if (echo) storms.push({ x, y, echo, motion, top, freezing, seed, tornadoDepthM: tornadoDepthM(echo.tornado?.windMs ?? 0), weight });
+  });
   const scene = {
-    validHourUtc: Number(world.stormEngine?.validHourUtc ?? world.validHourUtc),
-    localHour: mod24(Number(world.stormEngine?.validHourUtc ?? world.validHourUtc) - 6),
-    domainWidthKm, domainHeightKm, env, storms, boundaries,
+    validHourUtc, localHour, domainWidthKm, domainHeightKm, env, storms, boundaries,
     stormBins: binItems(storms, STORM_BIN_KM, domainWidthKm, domainHeightKm, s => [s.x + s.echo.minX, s.y + s.echo.minY, s.x + s.echo.maxX, s.y + s.echo.maxY]),
     boundaryBins: binItems(boundaries, BOUNDARY_BIN_KM, domainWidthKm, domainHeightKm, b =>
       [Math.min(b.ax, b.bx) - 4, Math.min(b.ay, b.by) - 4, Math.max(b.ax, b.bx) + 4, Math.max(b.ay, b.by) + 4]),
@@ -240,17 +273,19 @@ export function scanRadarTilt(scene, site, tiltDeg) {
 // upper parts. One byte per cell, row-major.
 export const MOSAIC_RES_KM = 1;
 const MOSAIC_CEILING_M = 19000;
-export function buildRadarMosaic(scene, sites) {
+export const mosaicSize = scene => ({ width: Math.ceil(scene.domainWidthKm / MOSAIC_RES_KM), height: Math.ceil(scene.domainHeightKm / MOSAIC_RES_KM) });
+// rows: [first, end) builds only those rows (bytes then holds just them), so threads can share the work.
+export function buildRadarMosaic(scene, sites, { rows = null } = {}) {
   const started = globalThis.performance?.now?.() ?? Date.now();
-  const width = Math.ceil(scene.domainWidthKm / MOSAIC_RES_KM), height = Math.ceil(scene.domainHeightKm / MOSAIC_RES_KM);
-  const bytes = new Uint8Array(width * height);
+  const { width, height } = mosaicSize(scene), [firstRow, endRow] = rows ?? [0, height];
+  const bytes = new Uint8Array(width * (endRow - firstRow));
   const sample = { zh: 0, zv: 0, cc: 0 }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const tilts = RADAR_TILTS_DEG.map(deg => ({ deg, cos: Math.cos(deg * DEG) }));
   const maxGround = groundRangeKm(RADAR_RANGE_KM, tilts[0].deg), beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const noiseSalt = 77 + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
   const candidates = [];
-  for (let j = 0; j < height; j++) for (let i = 0; i < width; i++) {
+  for (let j = firstRow; j < endRow; j++) for (let i = 0; i < width; i++) {
     const x = (i + 0.5) * MOSAIC_RES_KM, y = (j + 0.5) * MOSAIC_RES_KM;
     // Up to three in-range radars, nearest first (insertion into a short list).
     candidates.length = 0;
@@ -296,11 +331,11 @@ export function buildRadarMosaic(scene, sites) {
       }
       if (most <= 0) continue;
       const noise = gateNoise(j * width + i, noiseSalt) * 2 - 1;
-      bytes[j * width + i] = encodeRadarValue('reflectivity', 10 * Math.log10(most) + noise * (NOISE.dbz + 1.6 * Math.exp(-mostSnr / 6)));
+      bytes[(j - firstRow) * width + i] = encodeRadarValue('reflectivity', 10 * Math.log10(most) + noise * (NOISE.dbz + 1.6 * Math.exp(-mostSnr / 6)));
       break;
     }
   }
-  return { width, height, resKm: MOSAIC_RES_KM, composite: true, validHourUtc: scene.validHourUtc, bytes, buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started };
+  return { width, height, rows: [firstRow, endRow], resKm: MOSAIC_RES_KM, composite: true, validHourUtc: scene.validHourUtc, bytes, buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started };
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +491,12 @@ function meanStormMotion(storms, env, x, y, reachKm) {
 
 function levelWind(level) { return { dir: Number(level?.windDirection) || 0, spd: Number(level?.windSpeed) || 0, t: Number(level?.temperature) }; }
 
+function virtualTemperatureK(tempC, dewpointC) {
+  if (!Number.isFinite(tempC)) return 288;
+  const vapourHpa = Number.isFinite(dewpointC) ? 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5)) : 0;
+  return (tempC + 273.15) * (1 + 0.61 * 0.622 * vapourHpa / 1000);
+}
+
 function freezingLevelAgl(levels) {
   for (let k = 0; k < levels.length - 1; k++) {
     const a = levels[k], b = levels[k + 1];
@@ -463,15 +504,6 @@ function freezingLevelAgl(levels) {
     if (a.t >= 0 && b.t < 0) return a.h + (b.h - a.h) * a.t / (a.t - b.t);
   }
   return Number.isFinite(levels[0].t) && levels[0].t < 0 ? 0 : 4200;
-}
-
-function boundaryFineLineDbz(type = '') {
-  const t = String(type).toLowerCase();
-  if (t.includes('outflow')) return 14;
-  if (t.includes('cold')) return 10;
-  if (t.includes('dry')) return 9;
-  if (t.includes('warm') || t.includes('stationary')) return 4;
-  return 6;
 }
 
 // Insects and birds: modest daytime boundary-layer returns, a dusk bloom, quiet pre-dawn.

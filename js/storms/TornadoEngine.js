@@ -38,7 +38,7 @@ export function initializeTornadoState(storm) {
 // three 15% tornado areas in four with no strong tornadoes to speak of). The rise starts from
 // no rotation at all, so that the weakest storms still put one down now and then: with a
 // threshold of 0.04, one day in four had no tornado. Checked on 320 days (docs/STATUS.md).
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 2.5, power: 2, sustainRotation: 0.055, outlookHours: 0.5 };
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 2.5, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -70,6 +70,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   tornado.probability = chance;
   tornado.rawStp = ingredients;
 
+  const wasDown = tornado.onGround;
   if (!tornado.onGround) {
     const tick = Math.round(((world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0) + storm.ageHours) * 12);
     const draw = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|tor|${tick}`);
@@ -84,7 +85,18 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   }
 
   tornado.previousPositionKm = { ...tornado.positionKm };
-  tornado.positionKm = tornadoPosition(storm);
+  // A tornado on the ground goes where the storm's motion takes it, and drifts toward the wall
+  // cloud no faster than driftKph. The storm's centre can move at once when it merges or its
+  // line joins another, and the tornado does not go with it: it is left where it was, and if
+  // the storm's low-level rotation is no longer over it, it ends (below).
+  const wall = tornadoPosition(storm);
+  if (wasDown) {
+    const carried = { x: tornado.positionKm.x + (storm.velocityKph?.east ?? 0) * dtHours, y: tornado.positionKm.y - (storm.velocityKph?.north ?? 0) * dtHours };
+    const gap = Math.hypot(wall.x - carried.x, wall.y - carried.y), share = gap > 0 ? Math.min(1, TORNADO.driftKph * dtHours / gap) : 0;
+    tornado.positionKm = { x: carried.x + (wall.x - carried.x) * share, y: carried.y + (wall.y - carried.y) * share };
+  } else tornado.positionKm = wall;
+  const reachKm = storm.geometry?.updraught?.radiusKm ?? Infinity;
+  const leftBehind = Math.hypot(wall.x - tornado.positionKm.x, wall.y - tornado.positionKm.y) > reachKm;
   tornado.forwardSpeedMph = Math.hypot(storm.velocityKph?.east ?? 0, storm.velocityKph?.north ?? 0) * MPH_PER_KPH;
   tornado.motionDirectionDeg = motionDirection(storm.velocityKph);
   if (!tornado.onGround) return tornado;
@@ -129,10 +141,11 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // It ends when the storm no longer holds the low-level rotation for it, or falls apart. It
   // stays down through the step it formed in, so everything that looks at storms between
   // steps sees it.
-  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false)) {
-    // Why it ended, for the reports: the storm died or stopped rotating, the outflow cut it off
-    // (the storm would still hold the rotation were it not occluding), or the rotation faded.
-    const endedBy = storm.active === false ? 'storm ended' : rotating <= 0 ? 'not rotating' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
+  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false || leftBehind)) {
+    // Why it ended, for the reports: the storm died or stopped rotating, its rotation moved off
+    // (a merger), the outflow cut it off (the storm would still hold the rotation were it not
+    // occluding), or the rotation faded.
+    const endedBy = storm.active === false ? 'storm ended' : rotating <= 0 ? 'not rotating' : leftBehind ? 'left behind' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
     endTornado(world, storm, tornado, { endedBy, endOcclusion: storm.occlusion ?? 0, endLowRotationFree: storm.lowRotationFree ?? 0 });
   } else tornado.state = 'on-ground';
   return tornado;

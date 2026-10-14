@@ -85,8 +85,10 @@ const iceFallMs = (mm, snow) => (snow ? 1 + 0.3 * mm : 1.2 + 1.4 * mm);
 const hailFallMs = mm => 11.45 * Math.sqrt(mm / 10);
 
 // column: { topM, freezingM, su, sv } - the storm's top and freezing level above the ground, and
-// the wind relative to the storm (m/s east and north) every WIND_PROFILE_STEP_M.
-export function buildStormPrecipitation(storm, column) {
+// the wind relative to the storm (m/s east and north) every WIND_PROFILE_STEP_M. shared: keep the
+// result in memory other threads can read without a copy (the radar's threads share one scene).
+export function buildStormPrecipitation(storm, column, { shared = false } = {}) {
+  const alloc = shared ? sharedAlloc : plainAlloc;
   const structure = storm.structure;
   if (!structure) return null;
   const geometry = storm.geometry ?? buildStormGeometry({ ...storm });
@@ -135,13 +137,13 @@ export function buildStormPrecipitation(storm, column) {
     const widthKm = Math.min(REACH_KM, reach.maxX + margin) - x0, heightKm = Math.min(REACH_KM, reach.maxY + margin) - y0;
     const res = clamp(Math.ceil(Math.sqrt(widthKm * heightKm / COLUMNS) * 4) / 4, RESOLUTION_KM[0], RESOLUTION_KM[1]);
     const hail = model.sources.some(source => source.hailMass > 0);
-    grid = createGrid(x0, y0, res, Math.ceil(widthKm / res) + 1, Math.ceil(heightKm / res) + 1, hail);
-    if (res > INNER.resKm * 1.5 && model.sources[0]?.kind === 'updraught') inner = createGrid(-INNER.halfKm, -INNER.halfKm, INNER.resKm, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, hail);
+    grid = createGrid(x0, y0, res, Math.ceil(widthKm / res) + 1, Math.ceil(heightKm / res) + 1, hail, alloc);
+    if (res > INNER.resKm * 1.5 && model.sources[0]?.kind === 'updraught') inner = createGrid(-INNER.halfKm, -INNER.halfKm, INNER.resKm, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, hail, alloc);
     follow(model, grid, inner, 1);
-    finish(grid, true);
-    if (inner) finish(inner, false);
+    finish(grid, true, alloc);
+    if (inner) finish(inner, false, alloc);
   }
-  const debris = model.tornado ? loftDebris(model) : null;
+  const debris = model.tornado ? loftDebris(model, alloc) : null;
   // (A tornado's debris is part of the storm's extent even where no rain is.)
   if (debris && grid && !grid.extent) grid.extent = { minX: debris.x - debris.halfKm, minY: debris.y - debris.halfKm, maxX: debris.x + debris.halfKm, maxY: debris.y + debris.halfKm };
   else if (debris && grid) { const e = grid.extent; e.minX = Math.min(e.minX, debris.x - debris.halfKm); e.minY = Math.min(e.minY, debris.y - debris.halfKm); e.maxX = Math.max(e.maxX, debris.x + debris.halfKm); e.maxY = Math.max(e.maxY, debris.y + debris.halfKm); }
@@ -191,12 +193,16 @@ function updraughts(storm, structure, geometry, model, asLine, toMap) {
   return sources;
 }
 
-function createGrid(x0, y0, res, nx, ny, hail, coarser = COARSER) {
-  const n = nx * ny * LEVELS;
-  const grid = { x0, y0, res, nx, ny, plane: nx * ny, perKm: 1 / res, rain: new Float32Array(n), size: new Float32Array(n), snow: new Float32Array(n), hail: hail ? new Float32Array(n) : null, perVolume: LEVEL_DEPTH_KM.map(depth => 1 / (res * res * depth)), used: false };
+// Arrays the finished field keeps: in this thread's own memory, or in memory threads share.
+const plainAlloc = (Type, n) => new Type(n);
+const sharedAlloc = (Type, n) => new Type(new SharedArrayBuffer(n * Type.BYTES_PER_ELEMENT));
+function createGrid(x0, y0, res, nx, ny, hail, alloc = plainAlloc, coarser = COARSER) {
+  const n = nx * ny * LEVELS, F = Float32Array;
+  const grid = { x0, y0, res, nx, ny, plane: nx * ny, perKm: 1 / res, rain: alloc(F, n), size: alloc(F, n), snow: alloc(F, n), hail: hail ? alloc(F, n) : null, perVolume: LEVEL_DEPTH_KM.map(depth => 1 / (res * res * depth)), used: false };
   if (coarser > 0) {
+    // (The coarser copies are merged into the grid and dropped: they are never shared.)
     grid.scales = [grid];
-    for (let m = 1; m <= coarser; m++) { const finer = grid.scales[m - 1]; grid.scales.push(createGrid(x0, y0, finer.res * 2, Math.ceil((finer.nx - 1) / 2) + 1, Math.ceil((finer.ny - 1) / 2) + 1, false, 0)); }
+    for (let m = 1; m <= coarser; m++) { const finer = grid.scales[m - 1]; grid.scales.push(createGrid(x0, y0, finer.res * 2, Math.ceil((finer.nx - 1) / 2) + 1, Math.ceil((finer.ny - 1) / 2) + 1, false, plainAlloc, 0)); }
   }
   return grid;
 }
@@ -345,7 +351,7 @@ function follow(model, grid, inner, stride) {
 
 // Merges the coarser copies of the grid into it, notes where it holds anything, and works out
 // what the radar's winds need: how heavy the rain is near the ground and aloft (0-1).
-function finish(grid, winds) {
+function finish(grid, winds, alloc = plainAlloc) {
   // Merge the coarser copies down into the grid itself.
   for (let m = grid.scales.length - 1; m >= 1; m--) {
     const from = grid.scales[m], to = grid.scales[m - 1];
@@ -374,7 +380,7 @@ function finish(grid, winds) {
   const least = THINNEST_DBZ_UNITS / RAIN_REFLECTIVITY;
   for (let at = 0; at < grid.rain.length; at++) if (grid.rain[at] < least && grid.rain[at] > 0) { grid.rain[at] = 0; grid.size[at] = 0; grid.snow[at] = 0; }
   // Which columns hold anything (or stand beside one that does), so empty air is passed over quickly.
-  const { nx, ny } = grid, plane = nx * ny, holds = new Uint8Array(plane), any = grid.any = new Uint8Array(plane);
+  const { nx, ny } = grid, plane = nx * ny, holds = new Uint8Array(plane), any = grid.any = alloc(Uint8Array, plane);
   for (const field of [grid.rain, grid.hail]) {
     if (!field) continue;
     for (let k = 0; k < LEVELS; k++) for (let at = 0, from = k * plane; at < plane; at++) if (field[from + at] > 0) holds[at] = 1;
@@ -388,7 +394,7 @@ function finish(grid, winds) {
   grid.extent = iMax < 0 ? null : { minX: grid.x0 + (iMin - 1) * grid.res, minY: grid.y0 + (jMin - 1) * grid.res, maxX: grid.x0 + (iMax + 1) * grid.res, maxY: grid.y0 + (jMax + 1) * grid.res };
   if (!winds) return;
   const heaviness = (k, at) => clamp(Math.log10(1 + RAIN_REFLECTIVITY * grid.rain[k * plane + at] + (grid.hail ? HAIL_REFLECTIVITY * grid.hail[k * plane + at] : 0)) / 6, 0, 1);
-  grid.low = new Float32Array(plane); grid.aloft = new Float32Array(plane); grid.middle = new Float32Array(plane);
+  grid.low = alloc(Float32Array, plane); grid.aloft = alloc(Float32Array, plane); grid.middle = alloc(Float32Array, plane);
   for (let at = 0; at < plane; at++) {
     grid.low[at] = heaviness(0, at);
     grid.middle[at] = heaviness(3, at);
@@ -399,9 +405,9 @@ function finish(grid, winds) {
 // What a tornado throws up: debris lifted in the vortex as high as the tornado is strong, thrown
 // outward, carried round the mesocyclone and downwind as it falls.
 const DEBRIS = { halfKm: 8, resKm: 0.25, levelsM: [0, 300, 700, 1200, 2000, 3200, 5000, 7500] };
-function loftDebris(model) {
+function loftDebris(model, alloc = plainAlloc) {
   const { su, sv, tornado, mesocyclone: meso, spin } = model, D = DEBRIS, n = Math.round(2 * D.halfKm / D.resKm) + 1, levels = D.levelsM.length;
-  const field = new Float32Array(n * n * levels), wind = tornado.windMs;
+  const field = alloc(Float32Array, n * n * levels), wind = tornado.windMs;
   // A weak tornado lofts little, and only to the cloud base; a violent one to several kilometres.
   const topM = clamp(900 + 60 * (wind - 30), 800, 6000), amount = clamp((wind - 29) / 54, 0.15, 1.3) ** 2;
   const depth = D.levelsM.map((z, k) => (D.levelsM[Math.min(levels - 1, k + 1)] - D.levelsM[Math.max(0, k - 1)]) / 2000);

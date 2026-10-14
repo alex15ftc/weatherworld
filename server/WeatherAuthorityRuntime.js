@@ -24,6 +24,7 @@ const SIM_HOURS_PER_REAL_MINUTE = 0.25;
 const STORM_CADENCE_HOURS = 1 / 12, ATMOSPHERE_STEP_HOURS = 0.5;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const MAX_STEPS_PER_TICK = 4;
+const RADAR_PREWARM_MS = 60_000;
 const RISK_CODES = { NONE: 0, TSTM: 1, MRGN: 2, SLGT: 3, ENH: 4, MDT: 5, HIGH: 6 };
 const TILE_STYLE_REVISION = 'spc-probability-v6';
 const STATE_VERSION = 2;
@@ -33,8 +34,12 @@ export class WeatherAuthorityRuntime {
   // statePath: file the world is saved to every simulated hour and resumed from (null: nothing
   // is kept). An explicit seed always starts that world fresh. A fresh world first lets the
   // large-scale weather develop for spinUpDays, which takes about a second per day.
-  constructor({ seed, statePath = null, spinUpDays = 45 } = {}) {
+  // radarPool (RadarPool.js): threads the radar is worked out on; without one it is worked out here.
+  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null } = {}) {
     this.authorityInstance = crypto.randomBytes(8).toString('hex');
+    this.radarPool = radarPool;
+    // Radar products asked for lately (cache key -> when), made ready again as each new scan comes in.
+    this.radarWanted = new Map();
     this.statePath = statePath;
     this.spinUpDays = spinUpDays;
     this.codeVersion = statePath ? sourceVersion() : 'unversioned';
@@ -361,21 +366,45 @@ export class WeatherAuthorityRuntime {
     }));
   }
 
-  radarScene() { return this.cached('radar:scene', () => buildRadarScene(this.atmosphere)); }
+  // The radar's products are worked out on the radar pool's threads when there is one (the same
+  // bytes either way), so they are all asynchronous.
+  radarScene() {
+    return this.cachedAsync('radar:scene', () => (this.radarPool ? this.radarPool.buildScene(this.atmosphere) : buildRadarScene(this.atmosphere)));
+  }
 
-  // Lowest-tilt reflectivity from every site combined on a 1 km grid.
+  // Composite reflectivity from every site combined on a 1 km grid.
   radarMosaic() {
-    return this.cached('radar:mosaic', () => ({ ...buildRadarMosaic(this.radarScene(), this.radarCatalog().sites), revision: this.revision }));
+    this.radarWanted.set('mosaic', Date.now());
+    const revision = this.revision, sites = this.radarCatalog().sites;
+    return this.cachedAsync('radar:mosaic', async () => {
+      const scene = await this.radarScene();
+      return { ...(this.radarPool ? await this.radarPool.mosaic(scene, sites) : buildRadarMosaic(scene, sites)), revision };
+    });
   }
 
   // One tilt of one site; all products are simulated together and cached per revision.
-  radarScan(siteId, tiltDeg) {
+  async radarScan(siteId, tiltDeg) {
     const site = this.radarCatalog().sites.find(s => s.id === siteId);
     if (!site) return null;
     const tilt = RADAR_TILTS_DEG.reduce((a, b) => (Math.abs(b - tiltDeg) < Math.abs(a - tiltDeg) ? b : a));
-    return this.cached(`radar:scan:${site.id}:${tilt}`, () => {
-      return { ...scanRadarTilt(this.radarScene(), site, tilt), revision: this.revision };
+    this.radarWanted.set(`${site.id}|${tilt}`, Date.now());
+    const revision = this.revision;
+    return this.cachedAsync(`radar:scan:${site.id}:${tilt}`, async () => {
+      const scene = await this.radarScene();
+      return { ...(this.radarPool ? await this.radarPool.scan(scene, site, tilt) : scanRadarTilt(scene, site, tilt)), revision };
     });
+  }
+
+  // After a new scan time: works out again, on the radar pool's threads, what has been looked at
+  // in the last minute, so it is ready when the radar pages ask.
+  prewarmRadar(now = Date.now()) {
+    if (!this.radarPool) return;
+    for (const [key, at] of this.radarWanted) {
+      if (now - at > RADAR_PREWARM_MS) { this.radarWanted.delete(key); continue; }
+      const [site, tilt] = key.split('|');
+      (key === 'mosaic' ? this.radarMosaic() : this.radarScan(site, Number(tilt))).catch(() => {});
+      this.radarWanted.set(key, at);
+    }
   }
 
 

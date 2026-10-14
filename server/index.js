@@ -9,6 +9,7 @@ import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
 import { WarningRuntime } from './WarningRuntime.js';
+import { RadarPool } from './RadarPool.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
 // Set WEATHER_PRIORITY=normal to leave the process priority alone.
@@ -22,7 +23,9 @@ const PORT = Number(process.env.PORT) || 3000;
 // answers.
 const statePath = process.env.WEATHER_PERSIST === 'off' ? null : path.resolve(ROOT, process.env.WEATHER_STATE_PATH ?? 'data/cache/atmosphere-state.bin');
 if (process.env.WEATHER_SEED || !statePath || !fs.existsSync(statePath)) console.log('[weather-authority] starting a new world (about a minute)...');
-const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath });
+// The radar is worked out on its own threads (WEATHER_RADAR_WORKERS; 0 works it out on this one).
+const radarPool = process.env.WEATHER_RADAR_WORKERS === '0' ? null : new RadarPool();
+const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool });
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
@@ -42,8 +45,8 @@ const ADVANCE_POLL_MS = 10_000;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
 function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace.started; perf.totals.requests++; const stat=perf.endpoints[trace.pathname]??={count:0,totalMs:0,maxMs:0}; stat.count++;stat.totalMs+=totalMs;stat.maxMs=Math.max(stat.maxMs,totalMs);perf.recent.unshift({path:trace.pathname,totalMs:+totalMs.toFixed(2),...detail,at:new Date().toISOString()});if(perf.recent.length>50)perf.recent.length=50; return totalMs; }
-function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds}; }
-setInterval(() => { if (runtime.advanceOnTimer()) { surface.capture(); warnings?.update(); } }, ADVANCE_POLL_MS).unref();
+function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null}; }
+setInterval(() => { if (runtime.advanceOnTimer()) { surface.capture(); warnings?.update(); runtime.prewarmRadar(); } }, ADVANCE_POLL_MS).unref();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -73,13 +76,13 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/radar/catalog') return sendJson(req, res, 200, runtime.radarCatalog(), { trace });
   if (url.pathname === '/api/radar/scan') {
     const product = url.searchParams.get('product') ?? 'reflectivity';
-    const scan = runtime.radarScan(url.searchParams.get('site'), Number(url.searchParams.get('tilt') ?? 0.5));
+    const scan = await runtime.radarScan(url.searchParams.get('site'), Number(url.searchParams.get('tilt') ?? 0.5));
     if (!scan || !scan.products[product]) return sendJson(req, res, 404, { error: 'Unknown radar site or product' }, { cacheable: false, trace });
     const meta = { site: scan.siteId, tilt: scan.tiltDeg, product, validHourUtc: scan.validHourUtc, revision: scan.revision, stormMotion: scan.stormMotion, buildMs: +scan.buildMs.toFixed(1) };
     return sendGzipBinary(req, res, scan.products[product], { 'x-radar-meta': JSON.stringify(meta) }, trace);
   }
   if (url.pathname === '/api/radar/mosaic') {
-    const mosaic = runtime.radarMosaic();
+    const mosaic = await runtime.radarMosaic();
     const meta = { product: 'reflectivity', width: mosaic.width, height: mosaic.height, resKm: mosaic.resKm, composite: true, validHourUtc: mosaic.validHourUtc, revision: mosaic.revision, buildMs: +mosaic.buildMs.toFixed(1) };
     return sendGzipBinary(req, res, mosaic.bytes, { 'x-radar-meta': JSON.stringify(meta) }, trace);
   }

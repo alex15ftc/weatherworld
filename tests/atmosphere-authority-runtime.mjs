@@ -27,7 +27,7 @@ assert.ok(runtime.cellSummary(25, 30).instability.cape >= 0 && runtime.sounding(
 assert.ok(runtime.mapManifest({}).overlays.isobars.length > 0, 'map overlays');
 assert.ok((await runtime.productTile({ scope: 'live', z: 1, x: 0, y: 0, product: 'temperature', day: 'day1' })).length > 100, 'tiles');
 const catalog = runtime.radarCatalog();
-assert.ok(catalog.sites.length > 0 && runtime.radarMosaic().bytes.length > 0 && runtime.radarScan(catalog.sites[0].id, 0.5).products.reflectivity, 'radar');
+assert.ok(catalog.sites.length > 0 && (await runtime.radarMosaic()).bytes.length > 0 && (await runtime.radarScan(catalog.sites[0].id, 0.5)).products.reflectivity, 'radar');
 assert.equal(runtime.outlook('day1'), null);
 
 // --- The clock: storms move every 5 simulated minutes (20 real seconds), the atmosphere
