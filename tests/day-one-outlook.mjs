@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import v8 from 'node:v8';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { insideRings } from '../js/forecast/contourShapes.js';
@@ -7,6 +6,7 @@ import { OUTLOOK, runOutlookMember, runOutlookMemberDays, membersFor, spreadFor,
 import { WORLD_RISK_ORDER, WORLD_HAZARDS, PROBABILITY_LEVELS, worldCategoryFromHazard } from '../js/forecast/worldRiskCategories.js';
 import { CHANCE_FIELDS } from '../js/verification/truth.js';
 import { OutlookRuntime } from '../server/OutlookRuntime.js';
+import { ForecastPool, shareState } from '../server/ForecastPool.js';
 
 const rank = c => WORLD_RISK_ORDER.indexOf(c);
 
@@ -131,8 +131,11 @@ assert.equal(days.length, 2); assert.equal(days[0].fromHourUtc, before); assert.
 assert.ok(days[0].storms >= first.storms && days[0].chance.severe.every((v, i) => v + 1e-3 >= days[0].chance.hail[i]), 'any severe weather is at least as likely as hail');
 assert.ok(days.every(day => day.environment), 'each day describes its air');
 
-// --- The server's part: members in their own processes, one run for every outlook that is due.
-const runtime = { engine: atmosphere }, outlooks = new OutlookRuntime({ runtime, members: 2, days: ['day1', 'day2'] });
+// The smaller copy a forecast run starts from gives the very same run.
+assert.deepEqual(runOutlookMember(stateFromBytes(v8.serialize(atmosphere.saveState({ forecast: true }))), 0, hours), first, 'a member from the forecast copy is the member from the full one');
+
+// --- The server's part: members on the forecast pool's threads, one run for every outlook that is due.
+const pool = new ForecastPool({ size: 2 }), runtime = { engine: atmosphere }, outlooks = new OutlookRuntime({ runtime, members: 2, days: ['day1', 'day2'], pool });
 assert.equal(outlooks.dayOne().status, 'pending');
 assert.equal(outlooks.maybeIssue(), true, 'a world with no outlook gets one'); assert.equal(outlooks.maybeIssue(), false, 'not twice at once');
 assert.equal(outlooks.dayOne().status, 'running'); assert.equal(outlooks.status().running, true);
@@ -148,7 +151,7 @@ assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 2]
 assert.equal(issued.nextUpdateHourUtc, 48); assert.equal(second.nextUpdateHourUtc, 48); assert.equal(outlooks.day('day3').status, 'off');
 assert.deepEqual(Object.keys(outlooks.status().days), ['day1', 'day2']);
 // The schedule: Day 1 every 6 hours, Day 2 every 12, Day 3 every 24, counted from 12Z.
-const clockwork = { seed: 1, world: { validHourUtc: 36 } }, schedule = new OutlookRuntime({ runtime: { engine: clockwork } });
+const clockwork = { seed: 1, world: { validHourUtc: 36 } }, schedule = new OutlookRuntime({ runtime: { engine: clockwork }, pool });
 assert.deepEqual(schedule.due(), ['day1', 'day2', 'day3'], 'a new world is due all three');
 for (const day of schedule.days) schedule.products[day] = { slot: schedule.slot(day, 36), engine: clockwork };
 for (const [hour, due] of [[36, []], [41.5, []], [42, ['day1']], [47.5, ['day1']], [48, ['day1', 'day2']], [54, ['day1', 'day2']], [60, ['day1', 'day2', 'day3']]]) { clockwork.world.validHourUtc = hour; assert.deepEqual(schedule.due(), due, `due at hour ${hour}`); }
@@ -158,7 +161,14 @@ assert.equal(atmosphere.world.validHourUtc, before, 'the live world did not move
 // A new world on the server makes the old outlook stale.
 runtime.engine = new AtmosphereWorld({ seed: 4, spinUpDays: 4, storms: false });
 assert.equal(outlooks.dayOne().status, 'pending');
-outlooks.stop();
-await outlooks.cleanup;
-assert.equal(fs.readdirSync(outlooks.scratchDir).filter(name => name.startsWith(`weatherworld-outlook-${process.pid}-`)).length, 0, 'the copy of the world is cleaned up');
+assert.equal(pool.status().runs, 2, 'the pool did the runs');
+// More runs than threads wait their turn, the more urgent first; and a run that fails says so.
+const shared = shareState(atmosphere.saveState({ forecast: true })), order = [];
+const queued = [['outlook', 0, 0], ['outlook', 1, 0], ['outlook', 2, 0], ['mesoscale', 3, 1]].map(([kind, member, priority]) => pool.run(kind, shared, member, 0.5, { priority }).then(() => order.push(member)));
+assert.equal(pool.status().busy, 2); assert.equal(pool.status().waiting, 2);
+await Promise.all(queued);
+assert.ok(order.indexOf(3) < order.indexOf(2), `the urgent run went ahead of the one waiting (${order})`); assert.equal(pool.status().threads, 2, 'never more threads than its size');
+await assert.rejects(pool.run('nothing', shared, 0, 1), /is not a function|forecast run failed/);
+await outlooks.stop();
+assert.equal(pool.status().threads, 0, 'the threads are ended');
 console.log(`day one outlook passed (made-up day ${o.highest}; real members ${first.storms} and ${other.storms} storms; server issued ${issued.highest} in ${(outlooks.lastRunMs / 1000).toFixed(0)} s; ${outlooks.days.length} days)`);
