@@ -25,14 +25,15 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
     const hailSize = Number(storm.currentHailSizeInches ?? storm.hazards?.hailSizeInches ?? 0);
     const gust = Number(storm.surfaceWind?.gustMph ?? 0);
     if ((Number(storm.intensity) || 0) >= 0.22) frame.storm[idx] = 1;
-    const ef = maxTornadoEf(storm);
+    // Each tornado's track is rated by that tornado alone: a storm that cycles may put down a
+    // weak one after a strong one, and the weak one's track is not the strong one's.
     for (const point of collectTornadoTruthPoints(storm, previousHourUtc, world.validHourUtc)) {
-      const t = cellOf(point.x, point.y);
+      const t = cellOf(point.x, point.y), ef = point.ef;
       frame.tornado[t] = 1;
       if (ef >= 2) frame.tornadoSig[t] = 1;
       if (ef >= 3) frame.tornadoExtreme[t] = 1;
       if (ef >= 4) frame.tornadoViolent[t] = 1;
-      frame.tornadoTrackPoints.push({ stormId: storm.id, xKm: point.x, yKm: point.y, hourUtc: point.hourUtc, ef });
+      frame.tornadoTrackPoints.push({ stormId: storm.id, tornado: point.tornado, cell: t, xKm: point.x, yKm: point.y, hourUtc: point.hourUtc, ef });
     }
     if (hailSize >= 1) frame.hail[idx] = 1;
     if (hailSize >= 2) frame.hailSig[idx] = 1;
@@ -91,9 +92,13 @@ export function maxTornadoEf(storm) {
   }, -1);
 }
 
-// Tornado track points laid down in (previousHourUtc, currentHourUtc].
+const efNumber = rating => { const match = String(rating ?? '').match(/EF([0-5])/i); return match ? Number(match[1]) : -1; };
+
+// Tornado track points laid down in (previousHourUtc, currentHourUtc], each with the rating
+// of the tornado that laid it down (ef: 0-5, -1 if not yet rated).
 export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc) {
   const epsilon = 1e-6, points = [], seen = new Set();
+  let ef = -1, key = null;
   const addPoint = point => {
     const x = Number(point?.x), y = Number(point?.y), hourUtc = Number(point?.hourUtc);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -101,10 +106,13 @@ export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc
     const key = `${x.toFixed(4)}|${y.toFixed(4)}|${Number.isFinite(hourUtc) ? hourUtc.toFixed(4) : 'current'}`;
     if (seen.has(key)) return;
     seen.add(key);
-    points.push({ x, y, hourUtc: Number.isFinite(hourUtc) ? hourUtc : currentHourUtc });
+    points.push({ x, y, hourUtc: Number.isFinite(hourUtc) ? hourUtc : currentHourUtc, ef, tornado: key });
   };
+  const current = () => { ef = efNumber(storm.tornado?.estimatedEf ?? storm.tornado?.efRating); key = `${storm.id}|${storm.tornado?.cycleCount ?? 0}`; };
+  current();
   for (const point of storm.tornado?.trackPoints ?? []) addPoint(point);
-  for (const tornado of storm.tornadoHistory ?? []) for (const point of tornado.trackPoints ?? []) addPoint(point);
+  for (const tornado of storm.tornadoHistory ?? []) { ef = efNumber(tornado.estimatedEf ?? tornado.efRating ?? tornado.maxEfRating); key = `${storm.id}|${tornado.cycle ?? 0}`; for (const point of tornado.trackPoints ?? []) addPoint(point); }
+  current();
   // An on-ground tornado can exist before its first stored track point.
   if (storm.tornado?.onGround && !points.length) addPoint({ ...storm.tornado.positionKm, hourUtc: currentHourUtc });
   return points;
@@ -117,6 +125,17 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
   const result = { width, height, cellMiles, initiation: new Uint8Array(n), risk: Array(n).fill('NONE'), observedProbability: {}, observedCig: {} };
   for (const field of TRUTH_FIELDS) { result[field] = new Uint8Array(n); result[`${field}Exact`] = new Uint8Array(n); }
   const offsets = diskOffsets(radius);
+  // A tornado is rated as a whole, by the strongest it got: the parts of its track laid down
+  // before it strengthened take the same rating as the rest.
+  const strongest = new Map();
+  for (const frame of frames) for (const p of frame.tornadoTrackPoints ?? []) if (p.tornado) strongest.set(p.tornado, Math.max(strongest.get(p.tornado) ?? -1, p.ef ?? -1));
+  for (const frame of frames) for (const p of frame.tornadoTrackPoints ?? []) {
+    const ef = strongest.get(p.tornado) ?? p.ef ?? -1;
+    if (p.cell === undefined) continue;
+    if (ef >= 2 && frame.tornadoSig) frame.tornadoSig[p.cell] = 1;
+    if (ef >= 3 && frame.tornadoExtreme) frame.tornadoExtreme[p.cell] = 1;
+    if (ef >= 4 && frame.tornadoViolent) frame.tornadoViolent[p.cell] = 1;
+  }
   for (const frame of frames) for (const field of TRUTH_FIELDS) {
     if (!frame[field]) continue;
     const src = frame[field], exact = result[`${field}Exact`], near = result[field];
