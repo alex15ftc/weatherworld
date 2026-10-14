@@ -111,7 +111,7 @@ export function generateWorldMap(options = {}) {
   const noise = name => makeNoise(p.seed, name);
   const warpX = noise('warp-x'), warpY = noise('warp-y'), relief = noise('relief'), trunkWobble = noise('trunk'), patch = noise('patch'), patch2 = noise('patch-2');
 
-  const trunkU = v => p.trunkAt + 0.03 * Math.sin(v * 5 + p.seed) + 0.02 * fbm(trunkWobble, v * 3, 0.5, 3);
+  const trunkU = v => p.trunkAt + 0.05 * fbm(trunkWobble, v * 2.5, 0.5, 2) + 0.015 * fbm(trunkWobble, v * 12, 3.5, 2);
   const height = new Float64Array(cells), region = new Uint8Array(cells), rain = new Float64Array(cells), erodibility = new Float64Array(cells);
   const claims = new Float64Array(REGIONS.length), weights = new Float64Array(REGIONS.length);
 
