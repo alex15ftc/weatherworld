@@ -39,10 +39,11 @@ export const MESOSCALE = Object.freeze({
   // case and the most probable peak tornado intensity is above the lowest range given (up to
   // 95 mph): weak tornadoes alone go with a severe thunderstorm watch.
   tornadoWatchMph: 95,
-  // How long before storms are expected in an area its discussion goes out (hours): sooner
-  // where a tornado watch is in prospect. The members look hoursAhead ahead, so an area is
-  // seen about that long before its severe weather.
-  leadHours: { severe: 1.5, tornado: 3 },
+  // How long before storms are expected in an area its discussion goes out (hours): a little
+  // sooner where a tornado watch is in prospect. A watch goes out as storms fire, so a
+  // discussion saying one is likely is saying it is about an hour away. The members look
+  // hoursAhead ahead, so an area is seen well before that.
+  leadHours: { severe: 1.5, tornado: 2 },
   // The only probabilities given, and the words that go with them.
   steps: [5, 20, 40, 60, 80, 95],
   // Nothing is issued below this probability. And no second discussion for the same ground: a
@@ -201,14 +202,15 @@ export function withinLead(assessed) {
   return assessed.stormsInHours !== null && assessed.stormsInHours <= MESOSCALE.leadHours[assessed.tornadoWatch ? 'tornado' : 'severe'];
 }
 
-// A discussion of an assessed area. watch: the watch in effect that it concerns, if any.
-export function makeDiscussion(assessed, now, { number, seed = null, watch = null } = {}) {
+// A discussion of an assessed area. watch: the watch in effect that it concerns, if any;
+// replacement: the watch that will follow that one when it expires ({ type, atHourUtc }).
+export function makeDiscussion(assessed, now, { number, seed = null, watch = null, replacement = null } = {}) {
   const { width, height } = now, { inside, cells } = assessed, issued = now.hourUtc;
   const md = {
     number, seed, issuedHourUtc: issued, validToHourUtc: issued + MESOSCALE.validHours, members: assessed.members,
     cells: inside, areaCells: cells.length, areaSquareMiles: cells.length * now.cellMiles * now.cellMiles, where: describeArea(Array.from(inside, Boolean), width, height),
     // About a watch in effect: no probability (the watch is there), and the watch's own kind.
-    watchNumber: watch?.number ?? null, watchType: watch?.type ?? null, watchPercent: watch ? null : assessed.percent, threatPercent: assessed.percent, tornadoWatch: watch ? watch.type === 'tornado' : assessed.tornadoWatch,
+    watchNumber: watch?.number ?? null, watchType: watch?.type ?? null, replacement, watchPercent: watch ? null : assessed.percent, threatPercent: assessed.percent, tornadoWatch: watch ? watch.type === 'tornado' : assessed.tornadoWatch,
     concerning: watch ? `${watch.type === 'tornado' ? 'TORNADO' : 'SEVERE THUNDERSTORM'} WATCH ${watch.number}` : concerningLine(assessed.percent, assessed.tornadoWatch),
     peak: assessed.peak, peakText: assessed.peakText, stormsInHours: assessed.stormsInHours, startsInHours: assessed.startsInHours, here: assessed.here,
     rings: contourRings(softenArea(inside, width, height), width, height, 0.5)
@@ -284,9 +286,9 @@ export function writeMesoscaleDiscussion(md) {
     // About a watch in effect: how its threat is going in this part of it.
     const going = md.threatPercent >= 40;
     lines.push(`The severe weather threat for ${title} ${md.watchNumber} ${going ? 'continues' : 'is waning'}.`, '',
-      going ? `SUMMARY...${when} over this part of the watch, with ${threat} possible${ongoing}.` : `SUMMARY...Only isolated severe weather (${threat}) is expected over this part of the watch from here on.`, '');
+      `SUMMARY...${going ? `${when} over this part of the watch, with ${threat} possible${ongoing}.` : `Only isolated severe weather (${threat}) is expected over this part of the watch from here on.`}${md.replacement ? ` A new ${md.replacement.type === 'tornado' ? 'tornado' : 'severe thunderstorm'} watch will be needed when this one expires at ${stamp(md.replacement.atHourUtc)}.` : ''}`, '');
   } else {
-    const action = md.watchPercent >= 80 ? `A ${kind} watch will likely be needed${e.storms ? '' : ' as storms form'}.` : md.watchPercent >= 40 ? `A ${kind} watch may be needed.` : 'The severe weather should stay too isolated or too brief for a watch.';
+    const action = md.watchPercent >= 80 ? `A ${kind} watch will likely be needed within the hour${e.storms ? '' : ', as storms form'}.` : md.watchPercent >= 40 ? `A ${kind} watch may be needed.` : 'The severe weather should stay too isolated or too brief for a watch.';
     lines.push(`Probability of Watch Issuance...${md.watchPercent} percent`, '', `SUMMARY...${when} over the area, with ${threat} possible${ongoing}. ${action}`, '');
   }
   lines.push(`DISCUSSION...${describeSetting(e, Boolean(md.peakText.tornado))}`, '');

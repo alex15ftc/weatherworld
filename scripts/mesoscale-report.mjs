@@ -21,7 +21,7 @@ async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { stateFromBytes } = await import('../js/forecast/DayOneOutlook.js');
   const { MESOSCALE, runMesoscaleMember, describeNow, areaOutcome, peakRange } = await import('../js/forecast/MesoscaleDiscussion.js');
-  const { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring } = await import('../js/forecast/Watch.js');
+  const { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc } = await import('../js/forecast/Watch.js');
   const atmosphere = new AtmosphereWorld({ seed }); atmosphere.advance(24 * Number(flag('--from', 2)));
   const world = atmosphere.world, rows = [], watchRows = [];
   let discussions = [], watches = [], pending = [], next = 1, nextWatch = 1, memberMs = 0, runs = 0, overlaps = 0, looks = 0, nextLook = -Infinity;
@@ -41,8 +41,8 @@ async function worker(seed) {
   const liveHour = () => {
     for (let step = 0; step < MESOSCALE.everyHours / MESOSCALE.stepHours; step++) {
       atmosphere.advance(MESOSCALE.stepHours);
-      for (const waiting of pending.filter(p => stormsFiring(world, p.draft.cells))) {
-        const watch = issueWatch(waiting.draft, nextWatch++, world.validHourUtc, stormsFiring(world, waiting.draft.cells));
+      for (const waiting of pending.filter(p => readyHourUtc(p.draft, world) !== null)) {
+        const watch = issueWatch(waiting.draft, nextWatch++, readyHourUtc(waiting.draft, world), stormsFiring(world, waiting.draft.cells) || waiting.draft.here.forming);
         pending = pending.filter(p => p !== waiting); watches = [watch, ...watches];
         checkWatch(watch, copy(), world.validHourUtc - waiting.sinceHourUtc);
       }

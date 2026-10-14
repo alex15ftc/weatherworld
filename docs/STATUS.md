@@ -252,8 +252,18 @@ hail, 6 or more hail and wind events together), each Low, Mod or High. The rules
 - Watches do not overlap: a new one covers only ground under no watch in effect (it is
   drawn 20 miles beyond the area of concern, and stops at another watch's edge). The least
   a watch covers is 15,000 sq mi.
+- Every watch has a discussion before it. Where storms are already firing on ground that no
+  discussion has yet called a watch likely on, the discussion goes out at that look and the
+  watch half an hour later at the soonest (`WATCH.afterDiscussionHours`). A watch that
+  follows an expiring one is announced in a discussion about the expiring one.
 - A watch stands as issued until it expires: it is not extended, upgraded, replaced or
-  cancelled. When it expires, its ground can have a new one at the next look.
+  cancelled.
+- A watch over severe weather that is still going is followed without a gap. At the last
+  look before it expires, if its ground still calls for a watch with storms there (or has
+  severe weather under way and a probability of 40% or more), a new watch is made ready and
+  goes out at the hour the old one expires; a discussion about the old watch says "A new
+  tornado watch will be needed when this one expires at 0200Z". The new one may be of the
+  other kind, and takes in the area's ground that no later watch has.
 
 **How they are made.** Once in each hour of the world, the world is copied and run five
 hours ahead four times (about 2.4 s a run). An area of concern is where at least half the
@@ -261,12 +271,15 @@ runs have severe weather within 25 miles, at least 4,000 sq mi. The watch probab
 the share of the runs in which the area gets what calls for a watch (ten cells with severe
 hail or wind, two tornadoes, or one strong tornado); the peaks are the middle of the runs'
 strongest (a tornado's: of the runs that have one). A discussion goes out when storms are
-in the area or expected within 1.5 hours, or within 3 hours where a tornado watch is in
-prospect. No discussion is issued for ground that discussions of the last eight hours
+in the area or expected within 1.5 hours, or within 2 hours where a tornado watch is in
+prospect. A watch goes out as storms fire, so a discussion that says a watch is likely is
+saying it is about an hour away, and says so ("will likely be needed within the hour"). No discussion is issued for ground that discussions of the last eight hours
 already cover with as much concern, unless the concern has stepped up. After a look in
 which no run has severe weather on ground under no watch, the next is two hours later.
 
-On 16 world days (`npm run inspect:mesoscale`, 8 worlds, 2 days each):
+On 16 world days (`npm run inspect:mesoscale`, 8 worlds, 2 days each; measured before the
+rule for following an expiring watch and with a 3-hour lead for tornado watches, and not
+measured again since):
 
 | | Before (three hours ahead, no watches) | Now |
 |---|---|---|
@@ -308,9 +321,10 @@ expires" comes to in a long event.
 
 Short of what was wanted:
 
-- Discussions with a tornado watch in prospect get no more lead than the others (4 in 16
-  days; first storm an hour later). They are allowed 3 hours, but the runs seldom agree on
-  the tornadoes that early: the tornado case usually shows only once storms are going.
+- Discussions with a tornado watch in prospect got no more lead than the others (4 in 16
+  days; first storm an hour later) even when allowed 3 hours: the runs seldom agree on the
+  tornadoes that early, and the tornado case usually shows only once storms are going.
+- (Changed since: every watch now has a discussion before it; see the rules above.)
 - Tornado watches are 1 in 7 of the watches (the centre's: about 4 in 10), because a
   tornado watch needs the most probable peak above 95 mph.
 - A watch covers about 48,000 sq mi (median), a fifth of the map: the storms here are
@@ -335,8 +349,15 @@ for each run:
 The processor time over a world day is about what it was (the look ahead is two hours
 longer and costs the same; the outlooks' runs are the same runs). What is left is the
 simulation itself: about half of every run is soundings for all 2,500 cells each half hour.
-Making those cheaper would speed the live server too, and is the next thing to do if the
-load is still too much; `WEATHER_FORECAST_WORKERS=2` halves the cores used meanwhile (the
+
+The soundings are now 18% cheaper (2,500 of them: 103 ms to 84 ms) with every figure the
+same to the last digit (compared value by value on a saved world): each level's logarithm,
+vapour pressure and Exner factor, and each anchor's sine and cosine, are worked out once for
+a sounding and not once for each parcel lifted through it. A five-hour run went from 1.92 s
+to 1.68 s. What remains is mostly the exponential in each lifted parcel's virtual
+temperature (about 400 a sounding), which cannot be made cheaper without changing the last
+digits (a table of vapour pressures would, and every world's weather would then go
+differently from the same seed). `WEATHER_FORECAST_WORKERS=2` halves the cores used meanwhile (the
 12Z outlooks would then take two to three minutes; not measured).
 
 ## What a player would find

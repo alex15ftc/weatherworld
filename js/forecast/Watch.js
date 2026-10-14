@@ -17,6 +17,12 @@
 //   - Watches do not overlap: a new one covers only ground under no watch in effect. And a
 //     watch stands as issued until it expires: it is not extended, upgraded, replaced or
 //     cancelled. What changes inside it is said in a discussion that concerns it.
+//   - Every watch has a discussion before it. A watch for ground no discussion has yet called
+//     a watch likely on waits at least afterDiscussionHours after the one that does; a watch
+//     that follows an expiring one is announced in a discussion about that one.
+//   - A watch over severe weather that is still going is followed without a gap: at the last
+//     look before it expires, a new watch is made ready for the moment it does, and a
+//     discussion about the old one says so.
 import { MESOSCALE, watchStep, concernAreas, assessArea, makeDiscussion, discussedLately, withinLead, describeSetting, stamp, list } from './MesoscaleDiscussion.js';
 import { contourRings, softenArea } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
@@ -26,6 +32,11 @@ export const WATCH = Object.freeze({
   // (hours), the least ground it covers (cells of 100 sq mi), and how far it is drawn beyond
   // the area of concern (cells).
   leastPercent: 80, hours: 6, leastCells: 150, marginCells: 2,
+  // The least time between the discussion that says a watch is likely and the watch (hours).
+  afterDiscussionHours: 0.5,
+  // A watch about to expire is followed by a new one when its ground still calls for a watch
+  // with storms there, or has severe weather under way and at least this probability of one.
+  followPercent: 40,
   // Particularly dangerous situations. Tornado: this chance of pdsStrongTornadoes strong
   // tornadoes, and a most probable peak of pdsTornadoMph or more. Severe thunderstorm: this
   // chance of a gust of pdsGustMph with pdsWindCells cells of 75 mph wind or more.
@@ -93,14 +104,24 @@ export function stormsFiring(world, cells) {
   return count;
 }
 
+// When a watch that is waiting can go out, or null if not yet: one following an expiring
+// watch at the hour that one expires (notBeforeHourUtc); any other when storms fire on its
+// ground, and not before its discussion has been out a while (afterHourUtc).
+export function readyHourUtc(draft, world) {
+  if (draft.notBeforeHourUtc != null) return world.validHourUtc >= draft.notBeforeHourUtc - 1e-6 ? draft.notBeforeHourUtc : null;
+  if (draft.afterHourUtc != null && world.validHourUtc < draft.afterHourUtc - 1e-6) return null;
+  return stormsFiring(world, draft.cells) ? world.validHourUtc : null;
+}
+
 // When the world is next to be looked at after a look at hourUtc that found `found`.
 export function nextLookHourUtc(found, hourUtc, watches) {
   const expiring = watches.some(watch => watch.validToHourUtc > hourUtc + 1e-6 && watch.validToHourUtc <= hourUtc + MESOSCALE.settledHours + 1e-6);
   return hourUtc + (found.settled && !expiring ? MESOSCALE.settledHours : MESOSCALE.everyHours);
 }
 
-// One look ahead: the discussions and watches to issue now, and the watches to issue as soon
-// as storms fire on their ground (pending: drafts; see stormsFiring). members:
+// One look ahead: the discussions and watches to issue now, and the watches to issue later
+// (pending: drafts; see readyHourUtc): as soon as storms fire on their ground, or when the
+// watch they follow expires. members:
 // runMesoscaleMember results; now: describeNow of the live world; discussions, watches: those
 // already issued (with their `cells`). settled: no run has severe weather on ground under no
 // watch (see MESOSCALE.settledHours).
@@ -109,36 +130,61 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
   if (!members.length) return out;
   const issued = now.hourUtc, n = now.width * now.height, covered = new Uint8Array(n);
   const inEffect = watches.filter(watch => watch.validToHourUtc > issued + 1e-6);
-  const cover = watch => { for (let i = 0; i < n; i++) if (watch.cells[i]) covered[i] = 1; };
-  inEffect.forEach(cover);
+  // fresh: the ground of the watches made at this look.
+  const fresh = new Uint8Array(n), cover = (watch, grid = covered) => { for (let i = 0; i < n; i++) if (watch.cells[i]) grid[i] = 1; };
+  inEffect.forEach(watch => cover(watch));
   out.settled = members.every(m => m.near.every((near, i) => !near || covered[i]));
-  const discuss = (assessed, watch = null) => out.discussions.push(makeDiscussion(assessed, now, { number: nextDiscussion + out.discussions.length, seed, watch }));
+  const discuss = (assessed, watch = null, replacement = null) => out.discussions.push(makeDiscussion(assessed, now, { number: nextDiscussion + out.discussions.length, seed, watch, replacement }));
+  // The ground under no watch.
+  const openGround = cells => {
+    const open = cells.filter(i => !covered[i]);
+    if (open.length < MESOSCALE.leastCells) return;
+    const assessed = assessArea(members, now, open);
+    if (assessed.percent < MESOSCALE.leastPercent) return;
+    if (assessed.percent >= WATCH.leastPercent) {
+      const draft = draftWatch(assessed, now, { seed, covered });
+      if (draft.areaCells >= WATCH.leastCells) {
+        cover(draft); cover(draft, fresh);
+        // A discussion comes first. One has already said as much of this ground: the watch
+        // goes out now if storms are firing there, or waits for them. None has: it is issued
+        // now, and the watch waits for storms and at least afterDiscussionHours.
+        const said = discussedLately(assessed, issued, [...discussions, ...out.discussions]);
+        if (!said) discuss(assessed);
+        if (said && assessed.here.forming) out.watches.push(issueWatch(draft, nextWatch + out.watches.length, issued));
+        else out.pending.push(said ? draft : { ...draft, afterHourUtc: issued + WATCH.afterDiscussionHours });
+        return;
+      }
+    }
+    if (withinLead(assessed) && !discussedLately(assessed, issued, [...discussions, ...out.discussions])) discuss(assessed);
+  };
   for (const cells of concernAreas(members)) {
-    // The part under each watch in effect: how its threat is going, once the last word on it has lapsed.
+    openGround(cells);
+    // The part under each watch in effect: how its threat is going.
     for (const watch of inEffect) {
       const part = cells.filter(i => watch.cells[i]);
       if (part.length < MESOSCALE.leastCells) continue;
       const last = Math.max(watch.issuedHourUtc, ...[...discussions, ...out.discussions].filter(md => md.watchNumber === watch.number).map(md => md.issuedHourUtc));
-      if (issued - last < MESOSCALE.validHours - 1e-6) continue;
-      const assessed = assessArea(members, now, part);
-      if (assessed.percent >= MESOSCALE.leastPercent) discuss(assessed, watch);
-    }
-    // The ground under no watch.
-    const open = cells.filter(i => !covered[i]);
-    if (open.length < MESOSCALE.leastCells) continue;
-    const assessed = assessArea(members, now, open);
-    if (assessed.percent < MESOSCALE.leastPercent) continue;
-    if (assessed.percent >= WATCH.leastPercent) {
-      const draft = draftWatch(assessed, now, { seed, covered });
-      if (draft.areaCells >= WATCH.leastCells) {
-        cover(draft);
-        // Storms already firing there: the watch goes out now and says it all. Otherwise it
-        // waits for them, and a discussion says it is coming.
-        if (assessed.here.forming) { out.watches.push(issueWatch(draft, nextWatch + out.watches.length, issued)); continue; }
-        out.pending.push(draft);
+      const expiring = watch.validToHourUtc <= issued + MESOSCALE.everyHours + 1e-6;
+      if (!expiring) {
+        // Once the last word on it has lapsed.
+        if (issued - last < MESOSCALE.validHours - 1e-6) continue;
+        const assessed = assessArea(members, now, part);
+        if (assessed.percent >= MESOSCALE.leastPercent) discuss(assessed, watch);
+        continue;
       }
+      // The last look before it expires. Severe weather still going: a new watch is made
+      // ready for the moment this one expires, on this area's ground that no later watch
+      // has, and a discussion about this one says it is coming.
+      const assessed = assessArea(members, now, part);
+      let follow = null;
+      if ((assessed.percent >= WATCH.leastPercent && assessed.here.storms) || (assessed.percent >= WATCH.followPercent && assessed.here.severeNow)) {
+        const later = Uint8Array.from(fresh);
+        for (const other of inEffect) if (other.validToHourUtc > watch.validToHourUtc + 1e-6) cover(other, later);
+        const draft = draftWatch(assessArea(members, now, cells.filter(i => !later[i])), now, { seed, covered: later });
+        if (draft.areaCells >= WATCH.leastCells) { follow = { ...draft, notBeforeHourUtc: watch.validToHourUtc, follows: watch.number }; cover(follow, fresh); out.pending.push(follow); }
+      }
+      if (follow || (assessed.percent >= MESOSCALE.leastPercent && issued - last >= MESOSCALE.validHours - 1e-6)) discuss(assessed, watch, follow && { type: follow.type, atHourUtc: follow.notBeforeHourUtc });
     }
-    if (withinLead(assessed) && !discussedLately(assessed, issued, [...discussions, ...out.discussions])) discuss(assessed);
   }
   return out;
 }

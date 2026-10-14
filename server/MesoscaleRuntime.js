@@ -5,7 +5,7 @@
 // are firing in them (js/forecast/Watch.js), which is checked every time this is called, not
 // only at the hourly look. The live world keeps running meanwhile.
 import { MESOSCALE, describeNow, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
-import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, publicWatch } from '../js/forecast/Watch.js';
+import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, publicWatch } from '../js/forecast/Watch.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
 
 export class MesoscaleRuntime {
@@ -41,12 +41,13 @@ export class MesoscaleRuntime {
     return true;
   }
 
-  // The watches waiting for storms: each goes out when one is firing on its ground.
+  // The watches waiting: each goes out when a storm is firing on its ground, or, following a
+  // watch over severe weather still going, at the hour that one expires.
   issuePending() {
     const world = this.engine?.world;
     if (!world || !this.pending.length) return [];
     const issued = [];
-    this.pending = this.pending.filter(draft => { const firing = stormsFiring(world, draft.cells); if (firing) issued.push(issueWatch(draft, this.nextWatch++, world.validHourUtc, firing)); return !firing; });
+    this.pending = this.pending.filter(draft => { const hour = readyHourUtc(draft, world); if (hour !== null) issued.push(issueWatch(draft, this.nextWatch++, hour, stormsFiring(world, draft.cells) || draft.here.forming)); return hour === null; });
     if (issued.length) this.watches = [...issued.reverse(), ...this.watches].slice(0, WATCH.kept);
     return issued;
   }
@@ -86,7 +87,7 @@ export class MesoscaleRuntime {
       width: engine?.world?.width ?? null, height: engine?.world?.height ?? null, cellMiles: engine?.world?.cellSizeMiles ?? null,
       watches: current ? this.watches.map(watch => ({ ...publicWatch(watch), valid: watch.validToHourUtc > hour })) : [],
       // Watches that will be issued when storms fire on their ground.
-      watchesPending: current ? this.pending.map(draft => ({ type: draft.type, pds: draft.pds, where: draft.where, rings: draft.rings })) : [],
+      watchesPending: current ? this.pending.map(draft => ({ type: draft.type, pds: draft.pds, where: draft.where, rings: draft.rings, follows: draft.follows ?? null, atHourUtc: draft.notBeforeHourUtc ?? null })) : [],
       discussions: current ? this.discussions.map(md => ({ ...publicMesoscaleDiscussion(md), valid: md.validToHourUtc > hour })) : []
     };
   }
