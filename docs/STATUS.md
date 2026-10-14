@@ -292,9 +292,31 @@ Re-measured 2026-10-14 with every rule above in place (16 world days, the same 8
 | "Watch likely, 80%": the area then called for a watch | 83% | 52% |
 | "Watch likely, 95%": the same | 100% | 94% |
 
-The 80% discussions now verify too seldom, and the discussions come later and more often,
-since a discussion is now forced before every watch and areas split by watches are each
-discussed. Not yet fixed.
+The 80% discussions verified too seldom, and there were too many discussions, since one was
+forced before every watch and every piece of an area split by watches was discussed.
+
+Then, after the centre's own practice (a discussion one to two hours before each watch, the
+watch often set off by the first deep convection; spc.noaa.gov/misc/about.html): a watch is
+made ready only when storms are within a discussion's lead; a discussion that steps up the
+concern replaces the one still in effect over the same ground ("This discussion replaces
+Mesoscale Discussion 0030"); and a leftover piece of an area cut apart by watches gets a
+discussion or a watch only if it calls for a watch itself. Measured again the same way:
+
+| | All rules, 2026-10-14 | With these three |
+|---|---|---|
+| Discussions for ground under no watch | 5.2 a day | 3.9 a day |
+| ..."watch unlikely" (20%) | 15 | 5 |
+| ...issued before any storm had formed there | 56% | 47% |
+| Discussions about a watch in effect | 12.1 a day | 10.3 a day |
+| Watches | 5.8 a day | 5.1 a day |
+| Watches with a discussion before them | 100% | 100% |
+| Following an expired watch with no gap | 94% | 91% (the rest: one hour) |
+| "Watch likely, 80%": the area then called for a watch | 52% | 71% |
+| "Watch likely, 95%": the same | 94% | 97% |
+| Any watch: its ground got what calls for a watch | 97% | 99% |
+
+The cost: a "watch likely" discussion now comes with the storms close, so fewer go out
+before any storm has formed (47%). The discussion is still out before every watch.
 
 The first measurement, 2026-10-13 (before the rules for following an expiring watch, a
 discussion before every watch and one region each, with a 3-hour lead for tornado watches):
