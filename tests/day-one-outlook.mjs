@@ -40,17 +40,17 @@ assert.ok(Math.abs(o.chance.tornado[centre] - 90) < 1e-3, 'where every member ag
 assert.equal(o.level.tornado[centre], 60); assert.equal(o.level.hail[centre], 60); assert.equal(o.level.wind[centre], 45); assert.equal(o.level.tornado[corner], 0);
 for (const hazard of WORLD_HAZARDS) assert.ok(o.level[hazard].every(v => v === 0 || PROBABILITY_LEVELS[hazard].includes(v)), `${hazard}: only contour levels`);
 assert.deepEqual(o.top.tornado.level, 60); assert.equal(o.top.wind.level, 45);
-// Intensity groups: the highest tier that 30% of the severe weather is expected to reach. A third
-// of the hail 2 in: CIG1; a tenth of the wind 75 mph: none. Tornadoes have their own bars: over 40% EF3+ is CIG2.
-assert.equal(o.cig.tornado[centre], 2); assert.equal(o.cig.hail[centre], 1); assert.equal(o.cig.wind[centre], 0); assert.equal(o.cig.tornado[corner], 0);
-assert.equal(o.top.tornado.cig, 2);
+// Intensity groups, each on its own tier: a third of the hail 2 in and none 3.5 in: CIG1; a tenth
+// of the wind 75 mph: none. Over half the tornadoes EF2+, 44% EF3+ and 4% EF4+: CIG3.
+assert.equal(o.cig.tornado[centre], 3); assert.equal(o.cig.hail[centre], 1); assert.equal(o.cig.wind[centre], 0); assert.equal(o.cig.tornado[corner], 0);
+assert.equal(o.top.tornado.cig, 3);
 // The category is what the chance and the group give together, for the hazard that gives most.
-assert.equal(o.category[centre], worldCategoryFromHazard('tornado', 90, 2)); assert.equal(o.highest, o.category[centre]); assert.equal(o.leading, 'tornado');
+assert.equal(o.category[centre], worldCategoryFromHazard('tornado', 90, 3)); assert.equal(o.highest, o.category[centre]); assert.equal(o.leading, 'tornado');
 assert.equal(o.category[corner], 'NONE');
 for (let k = 2; k < WORLD_RISK_ORDER.length; k++) assert.ok(o.areas[WORLD_RISK_ORDER[k]] <= o.areas[WORLD_RISK_ORDER[k - 1]] + 1e-9, 'a higher category covers no more of the map');
 // Half the members without the event: half the chance, a lower contour, a lower category.
 const split = combineOutlook([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60 });
-assert.equal(split.level.tornado[centre], 45); assert.equal(split.cig.tornado[centre], 2, 'the intensity group is conditional: fewer tornadoes expected, but as strong where they happen');
+assert.equal(split.level.tornado[centre], 45); assert.equal(split.cig.tornado[centre], 3, 'the intensity group is conditional: fewer tornadoes expected, but as strong where they happen');
 assert.ok(rank(split.highest) <= rank(o.highest) && split.areas.SLGT < o.areas.SLGT, 'members that disagree give lower contours and smaller areas'); assert.equal(split.expected.membersWithTornado, 2);
 assert.equal(o.day, 'day1'); assert.deepEqual(o.hazards, WORLD_HAZARDS); assert.equal(o.validFromHourUtc, 36);
 
@@ -84,10 +84,10 @@ assert.equal(calm.highest, 'TSTM'); assert.equal(calm.category[0], 'TSTM'); asse
 // --- The discussion says what the maps show, and gives chances only as contour levels.
 assert.match(o.discussion, new RegExp(`THERE IS (A|AN) [A-Z]+ RISK OF SEVERE THUNDERSTORMS OVER .*NORTHEASTERN`));
 assert.match(o.discussion, /\.\.\.SUMMARY\.\.\.[\s\S]*\.\.\.SYNOPSIS\.\.\.[\s\S]*TORNADO:[\s\S]*HAIL:[\s\S]*WIND:[\s\S]*\.\.\.UNCERTAINTY\.\.\./, 'summary, synopsis, each hazard and the uncertainty, in that order');
-assert.match(o.discussion, /\(60% tornado area, CIG2\)/); assert.match(o.discussion, /\(60% hail area, CIG1\)/); assert.match(o.discussion, /\(45% wind area\)/);
+assert.match(o.discussion, /\(60% tornado area, CIG3\)/); assert.match(o.discussion, /\(60% hail area, CIG1\)/); assert.match(o.discussion, /\(45% wind area\)/);
 const percents = [...o.discussion.matchAll(/(\d+(?:\.\d+)?)%/g)].map(m => Number(m[1])), allowed = new Set([...PROBABILITY_LEVELS.tornado, ...PROBABILITY_LEVELS.wind, ...PROBABILITY_LEVELS.hail]);
 assert.ok(percents.length > 0 && percents.every(p => allowed.has(p)), `every percentage in the discussion is a contour level (${percents.join(', ')})`);
-assert.match(o.discussion, /many of them strong \(EF2 or stronger\)/); assert.match(o.discussion, /southwesterly flow aloft \(55 kt at 500 mb\)/); assert.match(o.discussion, /a dryline over the western part/);
+assert.match(o.discussion, /with violent tornadoes \(EF4 or stronger\) possible/); assert.match(o.discussion, /southwesterly flow aloft \(55 kt at 500 mb\)/); assert.match(o.discussion, /a dryline over the western part/);
 assert.match(o.discussion, /develop from about 21Z \(3 pm local\)/);
 assert.match(calm.discussion, /NO SEVERE THUNDERSTORM AREAS FORECAST/); assert.doesNotMatch(calm.discussion, /TORNADO:/);
 assert.equal(writeDiscussion(o), o.discussion, 'the same outlook gives the same words');
@@ -99,7 +99,7 @@ assert.match(describeArea(Array.from({ length: n }, (_, i) => i % width < 10 && 
 const page = publicOutlook(o);
 assert.equal(page.status, 'issued'); assert.equal(page.category.length, n); assert.equal(page.categories[page.category[centre]], o.highest);
 for (const hazard of WORLD_HAZARDS) { assert.equal(page.chance, undefined, 'the chances themselves are not sent'); assert.equal(page.cig[hazard].length, n); assert.deepEqual(page.levels[hazard], PROBABILITY_LEVELS[hazard]); }
-assert.equal(page.thunderLevel, 10); assert.deepEqual(page.maxCig, { tornado: 3, wind: 3, hail: 2, severe: 2 });
+assert.equal(page.thunderLevel, 10); assert.deepEqual(page.maxCig, { tornado: 3, wind: 3, hail: 2, severe: 1 });
 assert.ok(JSON.stringify(page).length < 400000, 'small enough to send');
 // The areas go out as outlines: one per category and contour level reached, and per intensity group.
 const centreAt = [(centre % width + 0.5) / width, (Math.floor(centre / width) + 0.5) / height], cornerAt = [(corner % width + 0.5) / width, (Math.floor(corner / width) + 0.5) / height];

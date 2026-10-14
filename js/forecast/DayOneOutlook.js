@@ -281,10 +281,10 @@ const AMOUNT = {
   severe: [[45, 'widespread severe thunderstorms', 'are'], [15, 'scattered severe thunderstorms', 'are'], [5, 'isolated severe thunderstorms', 'are']]
 };
 const STRENGTH = {
-  tornado: ['', ', some of them strong (EF2 or stronger)', ', many of them strong (EF2 or stronger), some intense', ', most of them strong, with violent tornadoes possible'],
-  wind: ['', ', some of them significant (75 mph or more)', ', many of them significant (75 mph or more)', ', most of them significant, with gusts near 100 mph possible'],
-  hail: ['', ', some of it very large (2 inches or more)', ', much of it very large (2 inches or more)'],
-  severe: ['', ', some of it significant (strong tornadoes, 75 mph gusts or 2 inch hail)', ', much of it significant (strong tornadoes, 75 mph gusts or 2 inch hail)']
+  tornado: ['', ', some of them strong (EF2 or stronger)', ', some of them intense (EF3 or stronger)', ', with violent tornadoes (EF4 or stronger) possible'],
+  wind: ['', ', some of them significant (75 mph or more)', ', some of 85 mph or more', ', with gusts near 100 mph possible'],
+  hail: ['', ', some of it very large (2 inches or more)', ', some of it giant (3.5 inches or more)'],
+  severe: ['', ', some of it significant (strong tornadoes, 75 mph gusts or 2 inch hail)', ', some of it intense (EF3 or stronger tornadoes, 85 mph gusts or 3.5 inch hail)']
 };
 const DAY_NUMBER = { day1: 1, day2: 2, day3: 3 }, WHEN = { day1: 'today', day2: 'tomorrow', day3: 'on Day 3' };
 function threat(hazard, top) {

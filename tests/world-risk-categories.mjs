@@ -10,7 +10,7 @@ const quiet = { tornado: { percent: 0, cig: 0 }, wind: { percent: 0, cig: 0 }, h
 assert.deepEqual(PROBABILITY_LEVELS.tornado, [2, 5, 10, 15, 30, 45, 60]);
 assert.deepEqual(PROBABILITY_LEVELS.wind, [5, 15, 30, 45, 60, 75, 90]);
 assert.deepEqual(PROBABILITY_LEVELS.hail, [5, 15, 30, 45, 60]);
-assert.deepEqual(WORLD_MAX_CIG, { tornado: 3, wind: 3, hail: 2, severe: 2 });
+assert.deepEqual(WORLD_MAX_CIG, { tornado: 3, wind: 3, hail: 2, severe: 1 }, 'Day 3 is hatched CIG1 at most');
 assert.equal(WORLD_CATEGORY_TABLES, CATEGORY_TABLES, 'the tables are the Storm Prediction Center\'s own');
 for (const hazard of WORLD_HAZARDS) assert.deepEqual(Object.keys(WORLD_CATEGORY_TABLES[hazard]).map(Number), PROBABILITY_LEVELS[hazard], `${hazard}: a row for every contour level`);
 
@@ -48,18 +48,21 @@ assert.equal(worldCategory(mixed), 'MDT'); assert.equal(leadingHazard(mixed, 'MD
 
 // --- Conditional intensity: a group needs its share of the severe weather to reach the tier.
 // The bars rise with the group, and a group is the highest whose bar the significant share reaches.
-for (const hazard of [...WORLD_HAZARDS, 'severe']) { assert.equal(CIG_BOUNDS[hazard].length, WORLD_MAX_CIG[hazard]); assert.ok(CIG_BOUNDS[hazard].every((bar, k, all) => bar > 0 && bar < 1 && (k === 0 || bar > all[k - 1])), hazard); }
-assert.equal(conditionalCig(40, 4, CIG_BOUNDS.tornado), 0, 'a tenth of the tornadoes strong: no group');
-assert.equal(conditionalCig(40, 9, CIG_BOUNDS.tornado), 1); assert.equal(conditionalCig(40, 21, CIG_BOUNDS.tornado), 2); assert.equal(conditionalCig(40, 30, CIG_BOUNDS.tornado), 3);
-assert.equal(conditionalCig(0, 0, CIG_BOUNDS.wind), 0); assert.equal(conditionalCig(40, 40, CIG_BOUNDS.hail), 2);
+for (const hazard of [...WORLD_HAZARDS, 'severe']) { assert.equal(CIG_BOUNDS[hazard].length, WORLD_MAX_CIG[hazard]); assert.ok(CIG_BOUNDS[hazard].every((bar, k, all) => bar > 0 && bar < 1), hazard); }
+// Each group on its own tier (EF2+, EF3+, EF4+), and each needs the ones below it.
+assert.equal(conditionalCig(40, [4, 0, 0], CIG_BOUNDS.tornado), 0, 'a tenth of the tornadoes strong: no group');
+assert.equal(conditionalCig(40, [9, 0, 0], CIG_BOUNDS.tornado), 1); assert.equal(conditionalCig(40, [21, 10, 0], CIG_BOUNDS.tornado), 2); assert.equal(conditionalCig(40, [30, 12, 1], CIG_BOUNDS.tornado), 3);
+assert.equal(conditionalCig(40, [9, 2, 1], CIG_BOUNDS.tornado), 1, 'a violent tornado among few intense ones is not CIG3: CIG2 is needed first');
+assert.equal(conditionalCig(40, 9, CIG_BOUNDS.tornado), 1, 'a single number is the first tier');
+assert.equal(conditionalCig(0, [0], CIG_BOUNDS.wind), 0); assert.equal(conditionalCig(40, [40, 40], CIG_BOUNDS.hail), 2); assert.equal(conditionalCig(40, [40, 0], CIG_BOUNDS.hail), 1, 'all of it 2 in, none 3.5 in: CIG1');
 // Each separate area inside a contour is judged as a whole; a cell takes the group of the highest contour it is in.
 {
   const w = 20, h = 10, hail = new Float32Array(w * h), big = new Float32Array(w * h), giant = new Float32Array(w * h), at = (x, y) => y * w + x;
-  for (let y = 2; y < 8; y++) { for (let x = 1; x < 8; x++) { hail[at(x, y)] = 20; big[at(x, y)] = x === 1 ? 20 : 0; } for (let x = 12; x < 19; x++) { hail[at(x, y)] = 20; big[at(x, y)] = 10; } }
+  for (let y = 2; y < 8; y++) { for (let x = 1; x < 8; x++) { hail[at(x, y)] = 20; big[at(x, y)] = x === 1 ? 20 : 0; } for (let x = 12; x < 19; x++) { hail[at(x, y)] = 20; big[at(x, y)] = 10; giant[at(x, y)] = 1; } }
   for (let y = 4; y < 6; y++) for (let x = 14; x < 17; x++) { hail[at(x, y)] = 50; big[at(x, y)] = 5; }
   const groups = contourCig('hail', hail, hail, [big, giant], w, h);
-  assert.equal(groups[at(4, 4)], 0, 'a seventh of the western area\'s hail is big: no group, even right beside it'); assert.equal(groups[at(1, 4)], 0);
-  assert.equal(groups[at(12, 4)], 2, 'half the eastern area\'s hail is big: CIG2 over all of it');
+  assert.equal(groups[at(4, 4)], 1, 'a seventh of the western area\'s hail is 2 in, none 3.5 in: CIG1 over all of it'); assert.equal(groups[at(1, 4)], 1);
+  assert.equal(groups[at(12, 4)], 2, 'half the eastern area\'s hail is 2 in and a twentieth 3.5 in: CIG2 over all of it');
   assert.equal(groups[at(15, 4)], 2, 'only a tenth of the hail in its 45% core is, but the core keeps the group of the area around it: no hole'); assert.equal(groups[at(10, 4)], 0);
 }
 

@@ -181,7 +181,11 @@ share of each area's severe weather is significant, so the groups (judged on tha
 more often and High days rose; the bars between the groups need refitting next. Judged on
 each group's own tier with bars fitted to 35/12/4% (tornado), 30/10/3% (wind), 35/10% (hail),
 High days would be 15%: the rest comes from the highest contours themselves (tornado 60% is
-High in the centre's table whatever the group).
+High in the centre's table whatever the group). [Corrected: with no group a 60% tornado contour is Enhanced; every High day needs a group (tornado 60% CIG1+, 30-45% CIG2+; wind 45% CIG3, 60-90% CIG2+). The High days that remain come from groups on the days that also reach the highest contours.]
+
+Tornado tracks were rated by the strongest rating their storm had ever had, so a weak tornado from a cycling storm counted as strong. Each tornado is now rated by its own peak, along its whole track (js/verification/truth.js). On the same 120 days that changed little: tornado CIG1+ 34%, CIG2+ 20%, CIG3+ 8%; High days 17%. The groups come often because strong tornadoes are common: 2.3 of 7.7 tornadoes a day are EF2+ (30%; about 10% in the real record).
+
+The intensity groups are now judged as the centre defines them, each on its own tier (js/forecast/worldRiskCategories.js): CIG1 on the share of an area's reports reaching EF2+ / 75 mph / 2 in, CIG2 on EF3+ / 85 mph / 3.5 in, CIG3 on EF4+ / 96 mph, each group needing the ones below it. Bars fitted on the same 120 days: tornado 14% / 24% / 2%, wind 42% / 32% / 22%, hail 8% / 2%. Days with each group or higher: tornado 35% / 11% / 3%, wind 32% / 11% / 3%, hail 37% / 2% (3.5 in hail is too rare for more). Day mix: below Slight 11%, Slight 16%, Enhanced 27%, Moderate 32%, High 15%. Day 3 (any severe weather) bars set to 30% / 20%, not fitted.
 
 | Outlook | Covers | Issued afresh | Gives |
 |---|---|---|---|

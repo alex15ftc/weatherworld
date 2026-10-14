@@ -6,8 +6,9 @@
 //
 //   contour levels   tornado 2, 5, 10, 15, 30, 45, 60%; wind 5, 15, 30, 45, 60, 75, 90%;
 //                    hail 5, 15, 30, 45, 60%; all severe weather (Day 3) 5, 15, 30, 45, 60%
-//   intensity groups how large a share of the severe weather is significant (tornado EF2+,
-//                    wind 75 mph, hail 2 in): the higher the group, the larger the share
+//   intensity groups how strong the severe weather is where it happens, each group judged on
+//                    its own tier: tornado EF2+ / EF3+ / EF4+, wind 75 / 85 / 96 mph (the
+//                    centre's 65 / 74 / 83 kt), hail 2 / 3.5 in
 //
 // What is this world's own is where the bars between the groups stand (CIG_BOUNDS below).
 // `node scripts/risk-climate.mjs` prints the mix of days these rules give.
@@ -17,35 +18,41 @@ export const WORLD_RISK_ORDER = RISK_ORDER;
 export const WORLD_HAZARDS = ['tornado', 'wind', 'hail'];
 // Kept for the reports that follow each kind of report separately.
 export const WORLD_RISK_HAZARDS = ['tornado', 'tornadoSig', 'hail', 'hailSig', 'wind', 'windSig'];
-export const WORLD_MAX_CIG = { tornado: 3, wind: 3, hail: 2, severe: 2 };
+// Day 3 (any severe weather) is hatched CIG1 at most.
+export const WORLD_MAX_CIG = { tornado: 3, wind: 3, hail: 2, severe: 1 };
 // Rows: contour level (percent). Columns: no intensity group, CIG1, CIG2, CIG3. null: the
 // combination is not used (a high intensity group is not drawn inside a very low chance).
 export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 
-// Conditional intensity, as the centre defines it: a group says how large a share of the
-// severe weather is significant where it happens. In its 20 years of records about 7% of
-// tornadoes are EF2+ where no group is drawn, 20% in CIG1, 30% in CIG2 and about 40% in CIG3
-// (spc.noaa.gov/exper/conditional-intensity-information). The bars between groups implied by
-// that (about 13%, 25%, 35%) cannot be used here as they are: strong tornadoes are a larger
-// share of this world's, and a 30% tornado contour is reached on one day in four, so they
-// make one day in five a High risk. These bars are set so that High stays near one day in
-// ten (320 days with the wind bars at 0.3 / 0.6 / 0.8: below Slight 7%, Slight 11%, Enhanced
-// 44%, Moderate 27%, High 11%; the upper wind bars were then raised a little). The centre gives no figures for wind and hail; theirs are set the same way. The
-// upper bars are high because the centre's table makes a 30% tornado contour, or a 60%
-// wind contour, with CIG2 a High risk.
-// Each entry: the least share of an area's reports that must be significant for CIG1, CIG2, CIG3.
-export const CIG_BOUNDS = Object.freeze({ tornado: [0.2, 0.5, 0.65], wind: [0.3, 0.65, 0.85], hail: [0.15, 0.3], severe: [0.3, 0.6] });
-// The fields of the verification's chances behind each hazard's tiers; the first is the
-// significant tier, which decides the group.
+// Conditional intensity, as the centre defines it: a group says how strong the severe weather
+// is likely to be where it happens. In its 20 years of records the share of tornadoes EF2+ is
+// 7% where no group is drawn, 20% in CIG1, 30% in CIG2 and about 40% in CIG3, and the share
+// EF3+ about 1%, 6%, 12% and 19% (spc.noaa.gov/exper/conditional-intensity-information).
+// Here each group is judged on its own tier, and needs the groups below it too: CIG1 on the
+// share of an area's reports that reach the first tier (EF2+, 75 mph, 2 in), CIG2 on the share
+// reaching the second (EF3+, 85 mph, 3.5 in), CIG3 on the third (EF4+, 96 mph).
+// The bars were fitted on 120 days of this world (2026-10-14, scripts/cig-climate.mjs) to give
+// tornado CIG1+ / CIG2+ / CIG3+ on about 35% / 12% / 4% of days and wind on 30% / 10% / 3%
+// (got 35/11/3 and 32/11/3). Hail CIG1 on about 35% (got 37%); hail CIG2 comes on only 2% of
+// days whatever its bar, because 3.5 in hail is that rare here. Day mix with them: below
+// Slight 11%, Slight 16%, Enhanced 27%, Moderate 32%, High 15%.
+// Each entry: the least share of an area's reports reaching the group's tier, for CIG1, CIG2, CIG3.
+export const CIG_BOUNDS = Object.freeze({ tornado: [0.14, 0.24, 0.02], wind: [0.42, 0.32, 0.22], hail: [0.08, 0.02], severe: [0.3] });
+// (Day 3's one hazard, any severe weather: CIG1 only, on the significant tier. Not fitted: Day 3
+// outlooks have so far drawn no group at all.)
+// The fields of the verification's chances behind each hazard's tiers, one for each group.
 export const CIG_TIERS = Object.freeze({
   tornado: ['tornadoSig', 'tornadoExtreme', 'tornadoViolent'], wind: ['windSig', 'windExtreme', 'windViolent'],
   hail: ['hailSig', 'hailExtreme'], severe: ['severeSig', 'severeExtreme']
 });
-// The intensity group from an amount of a hazard and the amount of it that is significant.
-export function conditionalCig(amount, significant, bounds) {
+// The intensity group from an amount of a hazard and the amount of it reaching each tier (an
+// array, one for each group; a single number is taken as the first tier only). Each group
+// needs the ones below it.
+export function conditionalCig(amount, reaching, bounds) {
   if (!(amount > 0)) return 0;
+  const tiers = Array.isArray(reaching) ? reaching : [reaching];
   let group = 0;
-  bounds.forEach((bar, k) => { if (significant / amount >= bar) group = k + 1; });
+  for (let k = 0; k < bounds.length && k < tiers.length; k++) { if (tiers[k] / amount >= bounds[k]) group = k + 1; else break; }
   return group;
 }
 
@@ -54,7 +61,7 @@ export function conditionalCig(amount, significant, bounds) {
 // inside. `chance` is the hazard's chance (percent) on the cells and draws the contours;
 // `amount` is how much of the hazard each cell has (1 where there was a report; for a
 // forecast, the share of the runs with one) and `significant` how much of it is significant
-// (an array of tiers may be given; the first is used).
+// (an array of tiers, one for each group; a single grid is taken as the first tier only).
 export function contourCig(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard]) {
   return contourCigAreas(hazard, chance, amount, significant, width, height, bounds).cig;
 }
@@ -63,7 +70,7 @@ export function contourCig(hazard, chance, amount, significant, width, height, b
 // parent } (parent: the index of the area of the next contour down that it lies inside, or
 // -1), so that whatever draws the groups can follow the contours exactly.
 export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard]) {
-  const strong = ArrayBuffer.isView(significant) ? significant : significant[0];
+  const tiers = ArrayBuffer.isView(significant) ? [significant] : significant;
   const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), owner = new Int32Array(n).fill(-1), stack = [], areas = [];
   let pass = 0;
   for (const level of PROBABILITY_LEVELS[hazard]) {
@@ -71,11 +78,11 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
     for (let start = 0; start < n; start++) {
       if (mark[start] === pass || !(chance[start] >= level - 1e-9)) continue;
       // One area: the cells joined edge to edge that are inside this contour.
-      const cells = []; let total = 0, reaching = 0;
+      const cells = [], reaching = tiers.map(() => 0); let total = 0;
       stack.push(start); mark[start] = pass;
       while (stack.length) {
         const i = stack.pop(), x = i % width, y = (i - x) / width;
-        cells.push(i); total += amount[i]; reaching += strong[i];
+        cells.push(i); total += amount[i]; for (let t = 0; t < tiers.length; t++) reaching[t] += tiers[t][i];
         for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && mark[j] !== pass && chance[j] >= level - 1e-9) { mark[j] = pass; stack.push(j); }
       }
       // An area is never given a lower group than the area around it: that one was judged with
@@ -95,7 +102,7 @@ export function highestCigAt(hazard, level) {
   if (!row) return 0;
   let highest = 0;
   for (let k = 1; k < row.length; k++) if (row[k]) highest = k;
-  return highest;
+  return Math.min(highest, WORLD_MAX_CIG[hazard] ?? highest);
 }
 
 // The intensity group as drawn: the one forecast, held to what its contour level allows.
@@ -133,6 +140,6 @@ export const WORLD_RISK_LABELS = Object.freeze({
   NONE: 'No thunderstorms', TSTM: 'Thunderstorms', MRGN: 'Marginal risk', SLGT: 'Slight risk', ENH: 'Enhanced risk', MDT: 'Moderate risk', HIGH: 'High risk'
 });
 // What each intensity group means, for the legends and the discussion.
-export const CIG_MEANING = Object.freeze(Object.fromEntries(Object.entries({ tornado: 'of tornadoes EF2 or stronger', wind: 'of gusts 75 mph or more', hail: 'of hail 2 inches or larger', severe: 'of it significant' })
-  .map(([hazard, what]) => [hazard, ['', ...CIG_BOUNDS[hazard].map(bar => `${Math.round(100 * bar)}% or more ${what}`)]])));
+const TIER_WORDS = { tornado: ['EF2 or stronger tornadoes', 'EF3 or stronger tornadoes', 'EF4 or stronger tornadoes'], wind: ['gusts of 75 mph or more', 'gusts of 85 mph or more', 'gusts of 96 mph or more'], hail: ['hail of 2 inches or more', 'hail of 3.5 inches or more'], severe: ['significant severe weather'] };
+export const CIG_MEANING = Object.freeze(Object.fromEntries(Object.entries(TIER_WORDS).map(([hazard, words]) => [hazard, ['', ...words.map(what => `${what} likely where it happens`)]])));
 export { PROBABILITY_LEVELS, probabilityLevel };

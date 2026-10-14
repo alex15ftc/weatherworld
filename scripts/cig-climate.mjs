@@ -64,7 +64,8 @@ function judge(day, bounds, tiered) {
     top[h] = 0;
     day.areas[h].forEach((a, k) => {
       let g = 0;
-      if (a.total > 0) bounds[h].forEach((bar, t) => { if ((tiered ? a.reach[t] : a.reach[0]) / a.total >= bar) g = t + 1; });
+      // Each group needs the ones below it as well (tiered: group k on tier k's share).
+      if (a.total > 0) for (let t = 0; t < bounds[h].length; t++) { if ((tiered ? a.reach[t] : a.reach[0]) / a.total >= bounds[h][t]) g = t + 1; else break; }
       g = Math.max(g, a.parent >= 0 ? groups[a.parent] : 0); groups[k] = g;
       const drawn = Math.min(g, highestCigAt(h, a.level)); top[h] = Math.max(top[h], drawn);
       const row = WORLD_CATEGORY_TABLES[h][a.level];
@@ -96,7 +97,7 @@ async function main() {
   })))).flat();
   if (flag('--json')) fs.writeFileSync(flag('--json'), JSON.stringify({ seeds, daily: all }));
   console.log(`=== Conditional intensity groups: ${all.length} days, seeds ${seeds.join(', ')}${saved ? '' : ` (${((Date.now() - started) / 1000).toFixed(0)} s)`} ===`);
-  show('now (every group judged on the share of EF2+ / 75 mph / 2 in reports)', summary(all, CIG_BOUNDS, false));
+  show('now (each group judged on its own tier)', summary(all, CIG_BOUNDS, true));
   // The bars for each group judged on its own tier, chosen hazard by hazard to come nearest
   // the wanted frequencies (each bar from 0.02 to 0.9).
   const grid = Array.from({ length: 45 }, (_, k) => 0.02 * (k + 1));
