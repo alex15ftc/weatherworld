@@ -64,6 +64,10 @@ Object.assign(supercell, {
   tornado: { onGround: true, widthYards: 700, windSpeedMph: 165 }
 });
 evolveStormStructure(supercell, { cape: 3200, bulkShear: 55, lapseRate700500: 7.8, dewpoint: 68 }, 0, 'TEST-SC');
+// The engine's tornado lags a little way behind the wall cloud: the radar must draw it there.
+const wall = supercell.geometry.wallCloud;
+supercell.tornado.positionKm = { x: wall.xKm - 1.5, y: wall.yKm + 1 };
+evolveStormStructure(supercell, { cape: 3200, bulkShear: 55, lapseRate700500: 7.8, dewpoint: 68 }, 0, 'TEST-SC');
 const synthetic = Object.create(Object.getPrototypeOf(world));
 Object.assign(synthetic, world, { storms: [supercell] });
 const scScene = buildRadarScene(synthetic);
@@ -72,6 +76,7 @@ const scMax = maxNear(scScan, site, 'reflectivity', warm.x, warm.y, 40);
 assert.ok(scMax >= 55, `mature supercell should have a >=55 dBZ core, got ${scMax}`);
 const echo = scScene.storms[0].echo;
 const torX = warm.x + echo.tornado.x, torY = warm.y + echo.tornado.y;
+assert.ok(Math.hypot(torX - supercell.tornado.positionKm.x, torY - supercell.tornado.positionKm.y) < 1e-6, 'the radar draws the tornado where the storm engine put it');
 const inbound = minNear(scScan, site, 'stormRelativeVelocity', torX, torY, 3), outbound = maxNear(scScan, site, 'stormRelativeVelocity', torX, torY, 3);
 assert.ok(outbound - inbound >= 45, `tornadic couplet should show >=45 m/s gate-to-gate delta-V, got ${outbound - inbound}`);
 const tdsCc = minNear(scScan, site, 'correlationCoefficient', torX, torY, 2);

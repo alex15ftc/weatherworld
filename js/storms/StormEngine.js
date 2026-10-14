@@ -9,6 +9,7 @@ import { clamp } from '../scenarios/math.js';
 import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js';
 import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js';
 import { initializeStormStructure, evolveStormStructure } from './StormStructureEngine.js';
+import { tornadoGeometry } from './StormGeometry.js';
 import { sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStormColdPool } from './StormEnvironmentCoupling.js';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
 
@@ -140,6 +141,8 @@ function updateStorm(world, storm, dtHours) {
   storm.mode = describeStormMode(storm, environment);
   const wasOnGround = Boolean(storm.tornado?.onGround);
   updateTornadoState(world, storm, environment, dtHours);
+  // The geometry was worked out before the tornado moved: give it where the tornado is now.
+  if (storm.geometry) storm.geometry.tornado = tornadoGeometry(storm);
   if (!wasOnGround && storm.tornado?.onGround) world.stormEngine.totalTornadoes = (world.stormEngine.totalTornadoes ?? 0) + 1;
   storm.hazards.tornadoProbability = Math.max(storm.hazards.tornadoProbability, storm.tornado?.probability ?? 0);
   if (storm.tornado?.onGround && !storm.eventTags.includes('tornado on ground')) storm.eventTags.push('tornado on ground');

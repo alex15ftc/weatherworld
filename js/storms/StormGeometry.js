@@ -43,7 +43,6 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
   const rainOffset = clamp(relativeSpeed * G.fallHours, G.rainOffsetKm[0], G.rainOffsetKm[1]) * (0.3 + 0.7 * clamp(storm.organization ?? 0, 0, 1));
   const rainCentre = { east: downwind.east * rainOffset, north: downwind.north * rainOffset };
   const hailInches = storm.currentHailSizeInches ?? 0;
-  const tornado = storm.tornado?.onGround ? { xKm: (storm.tornado.positionKm ?? at).x, yKm: (storm.tornado.positionKm ?? at).y, widthYards: storm.tornado.widthYards ?? 0, windMph: storm.tornado.windSpeedMph ?? 0 } : null;
   const wallStrength = ramp(low, 0.04, 0.4);
   storm.geometry = {
     updraught: { ...place(0, 0), radiusKm, speedMs: updraughtMs, baseM: Number(environment.lcl) || 1200, topM: clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]), rotation: clamp(storm.mesocycloneStrength ?? 0, 0, 1.2) },
@@ -56,9 +55,16 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
     gustFront: { radiusKm: storm.coldPoolRadiusKm ?? 0, strength: clamp(storm.coldPoolStrength ?? 0, 0, 1), leadKm: (storm.coldPoolRadiusKm ?? 0) * (0.3 + 0.7 * outflowDominance(storm, environment)), gustMph: storm.surfaceWind?.gustMph ?? 0 },
     anvil: { lengthKm: clamp(relativeSpeed * G.anvilSpeedShare * Math.min(storm.ageHours ?? 0, G.anvilHours), G.anvilKm[0], G.anvilKm[1]), widthKm: 20 + 60 * clamp(storm.intensity ?? 0, 0, 1), bearingDeg: bearing(downwind.east, downwind.north), topM: clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]) - 1500 },
     line: { share: linear, halfLengthKm: linear > 0.2 ? (storm.lineHalfLengthKm ?? storm.radar?.radiusXKm ?? 20) : 0, axisBearingDeg: bearing(right.east, right.north), bow: clamp(storm.rearInflow ?? 0, 0, 1) },
-    tornado
+    tornado: tornadoGeometry(storm)
   };
   return storm.geometry;
+}
+
+// Where the tornado is (TornadoEngine's position, the one place everything reads it from) and
+// how wide, while one is down. The storm engine sets it again once the tornado has moved.
+export function tornadoGeometry(storm) {
+  const t = storm.tornado, at = t?.positionKm ?? storm.positionKm;
+  return t?.onGround ? { xKm: at.x, yKm: at.y, widthYards: t.widthYards ?? 0, windMph: t.windSpeedMph ?? 0 } : null;
 }
 
 // The rain core's place in the storm's own frame (x along its motion, y to the right of it), in km.

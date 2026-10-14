@@ -107,6 +107,8 @@ export function buildStormPrecipitation(storm, column, { shared = false } = {}) 
   const toMap = (a, b) => ({ x: a * mx + b * rx, y: a * my + b * ry });
   const meso = structure.mesocyclone ?? {}, mesoAt = toMap(Number(meso.offsetXKm) || 0, Number(meso.offsetYKm) || 0);
   const tornado = storm.tornado, tornadoWindMs = (Number(tornado?.windSpeedMph) || 90) * 0.447;
+  // Where the engine put the tornado (it can lag behind the wall cloud), from the storm's centre.
+  const tornadoAt = geometry.tornado ? { x: geometry.tornado.xKm - storm.positionKm.x, y: geometry.tornado.yKm - storm.positionKm.y } : mesoAt;
   const model = {
     mx, my, rx, ry, topM: column.topM, freezingM: column.freezingM, su: column.su, sv: column.sv,
     inflowVapourGm3: column.inflowVapourGm3, precipitableWaterIn: column.precipitableWaterIn, midLevelRh: column.midLevelRh,
@@ -118,7 +120,7 @@ export function buildStormPrecipitation(storm, column, { shared = false } = {}) 
     // The rotation is under the wall cloud at the ground and leans to the updraught's centre by LEAN_M up.
     mesocyclone: { x: mesoAt.x, y: mesoAt.y, aloftX: 0, aloftY: 0, radiusKm: clamp(Number(meso.radiusKm) || 4, 1.5, 8), vmaxMs: 6 + 30 * clamp(Number(meso.strength) || 0, 0, 1.25) },
     // The radar sees 85% of the tornado's wind: the rest is in a core narrower than a gate.
-    tornado: tornado?.onGround ? { x: mesoAt.x, y: mesoAt.y, radiusKm: clamp((Number(tornado.widthYards) || 300) / 1094, 0.1, 2.5) / 2, vmaxMs: clamp(tornadoWindMs * 0.85, 25, 135), windMs: tornadoWindMs } : null,
+    tornado: tornado?.onGround ? { x: tornadoAt.x, y: tornadoAt.y, radiusKm: clamp((Number(tornado.widthYards) || 300) / 1094, 0.1, 2.5) / 2, vmaxMs: clamp(tornadoWindMs * 0.85, 25, 135), windMs: tornadoWindMs } : null,
     coldPool: clamp(Number(storm.coldPoolStrength) || 0, 0, 1.2), rearInflow: clamp(Number(storm.rearInflow) || 0, 0, 1)
   };
   const environment = storm.environment ?? {};
