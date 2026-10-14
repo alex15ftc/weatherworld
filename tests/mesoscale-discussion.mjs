@@ -216,6 +216,17 @@ assert.equal(lookAhead(four({ reports: 5, size: 12 }), now(49, [stormAt(31, 9)])
 // Expired with nothing ready to follow it: the ground is free again, and its next watch has its discussion first.
 const after = lookAhead(worse, now(50, [stormAt(31, 9)]), { watches: [watch], nextWatch: 13 });
 assert.equal(after.watches.length, 0); assert.equal(after.discussions.length, 1); assert.equal(after.pending.length, 1); assert.equal(after.pending[0].afterHourUtc, 50.5); assert.equal(after.pending[0].pds, true);
+// A discussion that steps up the concern replaces the one still in effect over the same ground.
+const early20 = lookAhead(four({ reports: 5, size: 12 }), now(44), { nextDiscussion: 30 }).discussions[0];
+assert.equal(early20.watchPercent, 20);
+const steppedUp = lookAhead(four(tornadic), now(45), { discussions: [early20], nextDiscussion: 31 }).discussions[0];
+assert.deepEqual(steppedUp.updates, [30]); assert.equal(early20.replacedBy, 31); assert.equal(early20.validToHourUtc, 45, 'the old one ends');
+assert.match(steppedUp.text, /This discussion replaces Mesoscale Discussion 0030\./);
+// A watch is made ready only when storms are within a discussion's lead.
+assert.equal(lookAhead(four({ ...tornadic, first: 4, storm: 3.5 }), now(44)).pending.length, 0);
+// A leftover piece of an area cut apart by a watch, short of a watch itself: left alone.
+const leftover = lookAhead([0, 1, 2, 3].map(k => run(k, { reports: 6, x0: 24, y0: 6, size: 16 })), now(45, [stormAt(31, 9)]), { watches: [watch] });
+assert.equal(leftover.discussions.filter(d => !d.watchNumber).length, 0); assert.equal(leftover.pending.length, 0);
 // Nothing new in sight (no area of concern, or the watches in effect cover it all): the next
 // look can wait, unless a watch is about to expire.
 const nothing = lookAhead(four(), now());

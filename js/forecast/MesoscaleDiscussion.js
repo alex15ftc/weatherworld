@@ -187,12 +187,12 @@ export function assessArea(members, now, cells) {
   };
 }
 
-const concern = (percent, tornado) => (percent <= 20 ? 0 : percent <= 60 ? 1 : tornado ? 3 : 2);
+export const concernOf = (percent, tornado) => (percent <= 20 ? 0 : percent <= 60 ? 1 : tornado ? 3 : 2);
 
 // Whether ground under no watch has been discussed lately with as much concern or more
 // (earlier: discussions already issued, each with its `cells`).
 export function discussedLately(assessed, issuedHourUtc, earlier) {
-  const same = earlier.filter(other => other.cells && !other.watchNumber && issuedHourUtc - other.issuedHourUtc < MESOSCALE.repeatHours && concern(other.watchPercent, other.tornadoWatch) >= concern(assessed.percent, assessed.tornadoWatch));
+  const same = earlier.filter(other => other.cells && !other.watchNumber && issuedHourUtc - other.issuedHourUtc < MESOSCALE.repeatHours && concernOf(other.watchPercent, other.tornadoWatch) >= concernOf(assessed.percent, assessed.tornadoWatch));
   return assessed.cells.filter(i => same.some(other => other.cells[i])).length >= MESOSCALE.overlapShare * assessed.cells.length;
 }
 
@@ -203,8 +203,9 @@ export function withinLead(assessed) {
 }
 
 // A discussion of an assessed area. watch: the watch in effect that it concerns, if any;
-// replacement: the watch that will follow that one when it expires ({ type, atHourUtc }).
-export function makeDiscussion(assessed, now, { number, seed = null, watch = null, replacement = null } = {}) {
+// replacement: the watch that will follow that one when it expires ({ type, atHourUtc });
+// updates: the numbers of the discussions this one replaces.
+export function makeDiscussion(assessed, now, { number, seed = null, watch = null, replacement = null, updates = [] } = {}) {
   const { width, height } = now, issued = now.hourUtc;
   // Its ground: one region with no holes (ground in a gap it encloses is part of it).
   const inside = solidRegion(assessed.inside, width, height), cells = Array.from(inside.keys()).filter(i => inside[i]);
@@ -212,7 +213,7 @@ export function makeDiscussion(assessed, now, { number, seed = null, watch = nul
     number, seed, issuedHourUtc: issued, validToHourUtc: issued + MESOSCALE.validHours, members: assessed.members,
     cells: inside, areaCells: cells.length, areaSquareMiles: cells.length * now.cellMiles * now.cellMiles, where: describeArea(Array.from(inside, Boolean), width, height),
     // About a watch in effect: no probability (the watch is there), and the watch's own kind.
-    watchNumber: watch?.number ?? null, watchType: watch?.type ?? null, replacement, watchPercent: watch ? null : assessed.percent, threatPercent: assessed.percent, tornadoWatch: watch ? watch.type === 'tornado' : assessed.tornadoWatch,
+    watchNumber: watch?.number ?? null, watchType: watch?.type ?? null, replacement, updates, replacedBy: null, watchPercent: watch ? null : assessed.percent, threatPercent: assessed.percent, tornadoWatch: watch ? watch.type === 'tornado' : assessed.tornadoWatch,
     concerning: watch ? `${watch.type === 'tornado' ? 'TORNADO' : 'SEVERE THUNDERSTORM'} WATCH ${watch.number}` : concerningLine(assessed.percent, assessed.tornadoWatch),
     peak: assessed.peak, peakText: assessed.peakText, stormsInHours: assessed.stormsInHours, startsInHours: assessed.startsInHours, here: assessed.here,
     rings: regionRings(inside, width, height)
@@ -291,7 +292,7 @@ export function writeMesoscaleDiscussion(md) {
       `SUMMARY...${going ? `${when} over this part of the watch, with ${threat} possible${ongoing}.` : `Only isolated severe weather (${threat}) is expected over this part of the watch from here on.`}${md.replacement ? ` A new ${md.replacement.type === 'tornado' ? 'tornado' : 'severe thunderstorm'} watch will be needed when this one expires at ${stamp(md.replacement.atHourUtc)}.` : ''}`, '');
   } else {
     const action = md.watchPercent >= 80 ? `A ${kind} watch will likely be needed within the hour${e.storms ? '' : ', as storms form'}.` : md.watchPercent >= 40 ? `A ${kind} watch may be needed.` : 'The severe weather should stay too isolated or too brief for a watch.';
-    lines.push(`Probability of Watch Issuance...${md.watchPercent} percent`, '', `SUMMARY...${when} over the area, with ${threat} possible${ongoing}. ${action}`, '');
+    lines.push(`Probability of Watch Issuance...${md.watchPercent} percent`, '', ...(md.updates?.length ? [`This discussion replaces ${list(md.updates.map(k => `Mesoscale Discussion ${String(k).padStart(4, '0')}`))}.`, ''] : []), `SUMMARY...${when} over the area, with ${threat} possible${ongoing}. ${action}`, '');
   }
   lines.push(`DISCUSSION...${describeSetting(e, Boolean(md.peakText.tornado))}`, '');
   if (md.peakText.tornado) lines.push(`MOST PROBABLE PEAK TORNADO INTENSITY...${md.peakText.tornado}`);

@@ -277,9 +277,27 @@ saying it is about an hour away, and says so ("will likely be needed within the 
 already cover with as much concern, unless the concern has stepped up. After a look in
 which no run has severe weather on ground under no watch, the next is two hours later.
 
-On 16 world days (`npm run inspect:mesoscale`, 8 worlds, 2 days each; measured before the
-rule for following an expiring watch and with a 3-hour lead for tornado watches, and not
-measured again since):
+Re-measured 2026-10-14 with every rule above in place (16 world days, the same 8 worlds):
+
+| | 2026-10-13 | 2026-10-14 (all rules) |
+|---|---|---|
+| Discussions for ground under no watch | 2.9 a day | 5.2 a day |
+| ...issued before any storm had formed there | 70% | 56% |
+| ...issued with severe weather already under way | 7% | 14% |
+| Discussions about a watch in effect | 8.0 a day | 12.1 a day |
+| Watches | 5.1 a day | 5.8 a day (13 tornado, 80 severe thunderstorm; 4 PDS) |
+| Watches with a discussion before them | about two thirds | 100% |
+| Watches following an expired one with no gap | - | 94% (the rest: one hour) |
+| Two watches on the same ground | never | never |
+| "Watch likely, 80%": the area then called for a watch | 83% | 52% |
+| "Watch likely, 95%": the same | 100% | 94% |
+
+The 80% discussions now verify too seldom, and the discussions come later and more often,
+since a discussion is now forced before every watch and areas split by watches are each
+discussed. Not yet fixed.
+
+The first measurement, 2026-10-13 (before the rules for following an expiring watch, a
+discussion before every watch and one region each, with a 3-hour lead for tornado watches):
 
 | | Before (three hours ahead, no watches) | Now |
 |---|---|---|

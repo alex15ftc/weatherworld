@@ -20,13 +20,23 @@
 //   - Watches do not overlap: a new one covers only ground under no watch in effect. And a
 //     watch stands as issued until it expires: it is not extended, upgraded, replaced or
 //     cancelled. What changes inside it is said in a discussion that concerns it.
-//   - Every watch has a discussion before it. A watch for ground no discussion has yet called
-//     a watch likely on waits at least afterDiscussionHours after the one that does; a watch
-//     that follows an expiring one is announced in a discussion about that one.
+//   - Every watch has a discussion before it, as the centre's nearly always do (its aim: the
+//     discussion one to two hours before the watch, the watch itself often set off by the
+//     first deep convection). A watch is made ready only when storms are expected within a
+//     discussion's lead, so the discussion that calls it likely is out about an hour before
+//     it; for ground no discussion has yet called a watch likely on, the watch waits at least
+//     afterDiscussionHours after the one that does. A watch that follows an expiring one is
+//     announced in a discussion about that one.
+//   - A discussion that steps up the concern over ground an earlier one still covers replaces
+//     that one (which ends then) and says so, so there are never two in effect saying
+//     different things about the same ground.
+//   - An area of concern cut apart by watches in effect: a leftover piece gets a discussion or
+//     a watch only if it calls for a watch itself (80% or more); pieces likely to come to
+//     nothing are left alone.
 //   - A watch over severe weather that is still going is followed without a gap: at the last
 //     look before it expires, a new watch is made ready for the moment it does, and a
 //     discussion about the old one says so.
-import { MESOSCALE, watchStep, concernAreas, assessArea, makeDiscussion, discussedLately, withinLead, describeSetting, stamp, list } from './MesoscaleDiscussion.js';
+import { MESOSCALE, watchStep, concernOf, concernAreas, assessArea, makeDiscussion, discussedLately, withinLead, describeSetting, stamp, list } from './MesoscaleDiscussion.js';
 import { regionRings, solidRegion, connectedPieces } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
 
@@ -140,14 +150,29 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
   const fresh = new Uint8Array(n), cover = (watch, grid = covered) => { for (let i = 0; i < n; i++) if (watch.cells[i]) grid[i] = 1; };
   inEffect.forEach(watch => cover(watch));
   out.settled = members.every(m => m.near.every((near, i) => !near || covered[i]));
-  const discuss = (assessed, watch = null, replacement = null) => out.discussions.push(makeDiscussion(assessed, now, { number: nextDiscussion + out.discussions.length, seed, watch, replacement }));
+  const discuss = (assessed, watch = null, replacement = null) => {
+    const number = nextDiscussion + out.discussions.length;
+    // Ground under no watch: earlier discussions still in effect, of less concern, over much
+    // of the same ground are replaced by this one.
+    const replaces = watch ? [] : [...discussions, ...out.discussions].filter(other => !other.watchNumber && other.cells && other.validToHourUtc > issued + 1e-6 && concernOf(other.watchPercent, other.tornadoWatch) < concernOf(assessed.percent, assessed.tornadoWatch)
+      && other.cells.reduce((a, v, i) => a + (v && assessed.inside[i] ? 1 : 0), 0) >= 0.3 * (other.areaCells || 1));
+    for (const other of replaces) { other.validToHourUtc = issued; other.replacedBy = number; }
+    out.discussions.push(makeDiscussion(assessed, now, { number, seed, watch, replacement, updates: replaces.map(other => other.number) }));
+  };
   const pieces = cells => connectedPieces(cells, now.width, now.height).filter(piece => piece.length >= MESOSCALE.leastCells);
   // The ground under no watch, each joined-up piece of it on its own.
-  const openGround = cells => { for (const piece of pieces(cells.filter(i => !covered[i]))) openPiece(piece); };
-  const openPiece = open => {
+  const openGround = cells => {
+    const open = cells.filter(i => !covered[i]), found = pieces(open);
+    // Cut apart by watches in effect: what is left is a piece, held to more.
+    const split = open.length < cells.length || found.length > 1;
+    for (const piece of found) openPiece(piece, split);
+  };
+  const openPiece = (open, split) => {
     const assessed = assessArea(members, now, open);
-    if (assessed.percent < MESOSCALE.leastPercent) return;
+    if (assessed.percent < (split ? WATCH.leastPercent : MESOSCALE.leastPercent)) return;
     if (assessed.percent >= WATCH.leastPercent) {
+      // Not yet within a discussion's lead: the next look will see to it.
+      if (!withinLead(assessed)) return;
       const draft = draftWatch(assessed, now, { seed, covered });
       if (draft.areaCells >= WATCH.leastCells) {
         cover(draft); cover(draft, fresh);

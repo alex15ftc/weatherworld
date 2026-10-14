@@ -33,8 +33,11 @@ async function worker(seed) {
     if (watches.some(other => other !== watch && other.validToHourUtc > watch.issuedHourUtc + 1e-6 && other.cells.some((v, i) => v && watch.cells[i]))) overlaps++;
     // Following on: most of its ground was under a watch that expired in the last two hours.
     const before = watches.filter(other => other !== watch && other.validToHourUtc <= watch.issuedHourUtc + 1e-6 && other.validToHourUtc > watch.issuedHourUtc - 2);
+    // A discussion before it: one issued earlier that said a watch was likely there, or announced this one.
+    const preceded = discussions.some(md => md.issuedHourUtc < watch.issuedHourUtc - 1e-6 && watch.issuedHourUtc - md.issuedHourUtc <= 8 && (md.watchPercent >= 80 || md.replacement) && md.cells.reduce((a, v, i) => a + (v && watch.cells[i] ? 1 : 0), 0) >= 0.2 * watch.areaCells);
+    const gapHours = before.length ? watch.issuedHourUtc - Math.max(...before.map(other => other.validToHourUtc)) : null;
     const followsOn = watch.cells.reduce((a, v, i) => a + (v && before.some(other => other.cells[i]) ? 1 : 0), 0) >= 0.5 * watch.areaCells;
-    watchRows.push({ seed, number: watch.number, type: watch.type, pds: watch.pds, hourUtc: watch.issuedHourUtc, cells: watch.areaCells, waitedHours, followsOn, peakTornadoMph: watch.peak.tornadoMph, runs: watch.runs.map(m => ({ strong: m.strong, gust: m.gust, windSignificant: m.windSignificant })), stormsThere: there.length, severeThere: there.filter(s => s.hail >= 1 || s.gust >= 58 || s.tornado).length,
+    watchRows.push({ seed, number: watch.number, type: watch.type, pds: watch.pds, hourUtc: watch.issuedHourUtc, cells: watch.areaCells, waitedHours, followsOn, preceded, gapHours, peakTornadoMph: watch.peak.tornadoMph, runs: watch.runs.map(m => ({ strong: m.strong, gust: m.gust, windSignificant: m.windSignificant })), stormsThere: there.length, severeThere: there.filter(s => s.hail >= 1 || s.gust >= 58 || s.tornado).length,
       probabilities: watch.probabilities, got: { toward: got.toward, tornadoCase: got.tornadoCase, tornadoes: got.tornadoes, strong: got.strong, reports: got.reports, gust: got.gust, hail: got.hail, tornadoMph: got.tornadoMph, first: Number.isFinite(got.first) ? got.first : null }, text: watch.text });
   };
   // The hour itself, a half hour at a time: a watch waiting for storms goes out when they fire.
@@ -118,6 +121,7 @@ async function main() {
   console.log(`   PDS severe under other settings (gust mph / cells of 75+ mph wind, in most runs): ${[[90, 10], [90, 25], [100, 10], [100, 25], [100, 40], [110, 25], [110, 40]].map(([gust, cells]) => `${gust}/${cells}: ${svr.filter(w => most(w, m => m.gust >= gust && m.windSignificant >= cells)).length}`).join(' | ')}   (of ${svr.length})`);
   const line = (label, group, test) => console.log(`   ${label.padEnd(58)}${pc(group.filter(test).length, group.length).padStart(4)} of ${group.length}`);
   console.log(`   what the ground then got in the watch's ${WATCH.hours} hours:`);
+  console.log(`   with a discussion before it: ${pc(watches.filter(w => w.preceded).length, watches.length)} | following an expired watch with no gap: ${pc(watches.filter(w => w.followsOn && w.gapHours !== null && w.gapHours < 1e-6).length, watches.filter(w => w.followsOn).length)} (largest gap ${Math.max(0, ...watches.filter(w => w.followsOn && w.gapHours !== null).map(w => w.gapHours))} h)`);
   line('any watch: what calls for a watch', watches, w => w.got.toward >= 1);
   line('tornado watch: 2 or more tornadoes, or a strong one', tor, w => w.got.tornadoCase >= 1);
   line('tornado watch: a strong tornado', tor, w => w.got.strong >= 1);
