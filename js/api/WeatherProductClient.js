@@ -40,6 +40,8 @@ export class WeatherProductClient {
   }
   // Network reflectivity mosaic: { meta: { width, height, resKm, ... }, bytes } (row-major).
   async getRadarMosaic() { return this.#binary('/api/radar/mosaic'); }
+  // Tornado and severe thunderstorm warnings, newest first (in effect and recently ended).
+  async getWarnings() { return this.#json(`/api/warnings?_=${Date.now()}`, { cacheable: false }); }
 
   async #binary(path) {
     const controller = new AbortController();

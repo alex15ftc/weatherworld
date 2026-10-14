@@ -272,3 +272,23 @@ body[data-page="radar"] .radar-viewer { position: relative; display: block; min-
 @media (max-width: 900px) { body[data-page="radar"] { grid-template-columns: 1fr; height: auto; } body[data-page="radar"] .viewer-shell { grid-column: 1; } body[data-page="radar"] .radar-viewer { height: 70vh; } }
 .radar-segmented button:disabled { opacity: .35; cursor: not-allowed; filter: none; }
 select:disabled { opacity: .5; }
+
+/* Warnings on the radar page: the list in the side panel and the text drawer over the map. */
+.warning-card { display: flex; flex-direction: column; gap: 10px; }
+.warning-key { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--muted); }
+.warning-key i { display: inline-block; width: 14px; height: 3px; margin-right: 5px; vertical-align: middle; background: var(--c); border-radius: 2px; }
+.warning-list { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; }
+.warning-list p { margin: 0; font-size: 12.5px; }
+.warning-item { text-align: left; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 8px; padding: 7px 9px; font: inherit; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; }
+.warning-item:hover { border-color: var(--accent); border-left-color: var(--c); }
+.warning-item.on { background: rgba(37, 99, 235, .16); border-color: #2563eb; border-left-color: var(--c); }
+.warning-item.ended { opacity: .55; }
+.warning-item b { font-size: 13px; } .warning-item span { font-size: 12px; color: var(--muted); text-align: right; } .warning-item small { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; }
+.warning-text { position: absolute; top: 14px; right: 14px; bottom: 14px; z-index: 4; width: min(520px, calc(100% - 28px)); display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(9, 14, 21, .95); }
+.warning-text.hidden { display: none; }
+.warning-text header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.warning-text header button { width: auto; padding: 2px 10px; font-size: 16px; }
+.warning-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.warning-tabs button { width: auto; padding: 4px 9px; font-size: 12px; }
+.warning-text pre { margin: 0; overflow: auto; white-space: pre-wrap; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--text); }
+@media (max-width: 980px) { .warning-text { top: auto; height: 60%; } }

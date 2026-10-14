@@ -8,6 +8,7 @@ import { WeatherAuthorityRuntime } from './WeatherAuthorityRuntime.js';
 import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
+import { WarningRuntime } from './WarningRuntime.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
 // Set WEATHER_PRIORITY=normal to leave the process priority alone.
@@ -29,9 +30,12 @@ const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRunti
 // Mesoscale discussions and watches: the world is looked at once in each of its hours, and a
 // watch waiting for its storms goes out when they fire (WEATHER_MESOSCALE=off turns them off).
 const mesoscale = process.env.WEATHER_MESOSCALE === 'off' ? null : new MesoscaleRuntime({ runtime });
+// Tornado and severe thunderstorm warnings: worked out at every volume scan from the storms as
+// the radar sees them (WEATHER_WARNINGS=off turns them off).
+const warnings = process.env.WEATHER_WARNINGS === 'off' ? null : new WarningRuntime({ runtime });
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
-const issueProducts = () => { mesoscale?.maybeIssue(); outlooks?.maybeIssue(); };
+const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); };
 outlooks?.maybeIssue();
 setInterval(issueProducts, 5_000).unref();
 const ADVANCE_POLL_MS = 10_000;
@@ -39,7 +43,7 @@ const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
 function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace.started; perf.totals.requests++; const stat=perf.endpoints[trace.pathname]??={count:0,totalMs:0,maxMs:0}; stat.count++;stat.totalMs+=totalMs;stat.maxMs=Math.max(stat.maxMs,totalMs);perf.recent.unshift({path:trace.pathname,totalMs:+totalMs.toFixed(2),...detail,at:new Date().toISOString()});if(perf.recent.length>50)perf.recent.length=50; return totalMs; }
 function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds}; }
-setInterval(() => { if (runtime.advanceOnTimer()) surface.capture(); }, ADVANCE_POLL_MS).unref();
+setInterval(() => { if (runtime.advanceOnTimer()) { surface.capture(); warnings?.update(); } }, ADVANCE_POLL_MS).unref();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -84,6 +88,7 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
+  if (url.pathname === '/api/warnings') return sendJson(req, res, 200, warnings ? warnings.list() : { enabled: false, warnings: [] }, { cacheable: false, trace });
   if (url.pathname === '/api/mesoscale') return sendJson(req, res, 200, mesoscale ? mesoscale.list() : { enabled: false, watches: [], discussions: [] }, { cacheable: false, trace });
   const issuedOutlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);
   if (issuedOutlook) return sendJson(req, res, 200, outlooks ? outlooks.day(issuedOutlook[1]) : { day: issuedOutlook[1], status: 'off' }, { cacheable: false, trace });

@@ -1,6 +1,7 @@
 // Radar page: polls the authority for new volume scans, renders polar scan bytes (single
 // site) or the Cartesian network mosaic of composite reflectivity with a WebGL fragment shader
-// (→ screen + colour table), and draws map overlays in 2D.
+// (→ screen + colour table), and draws map overlays in 2D, among them the tornado and severe
+// thunderstorm warnings in effect at the time of the scan shown (GET /api/warnings).
 import { WeatherProductClient } from '../api/WeatherProductClient.js';
 import { RADAR_PRODUCTS, decodeRadarValue, radarColorTable, beamHeightKm } from './RadarFormat.js';
 
@@ -19,7 +20,9 @@ const ui = {
   loop: $('radarLoop'), latest: $('radarLatest'), smooth: $('radarSmooth'), stepped: $('radarStepped'), coverage: $('radarCoverage'), rings: $('radarRings'), borders: $('radarBorders'),
   legend: $('radarLegend'), legendLabel: $('radarLegendLabel'), legendUnits: $('radarLegendUnits'), legendTicks: $('radarLegendTicks'),
   status: $('radarStatus'), title: $('radarTitle'), subtitle: $('radarSubtitle'), frameLabel: $('radarFrameLabel'),
-  viewer: $('radarViewer'), gl: $('radarGl'), overlay: $('radarOverlay'), readout: $('radarReadout')
+  viewer: $('radarViewer'), gl: $('radarGl'), overlay: $('radarOverlay'), readout: $('radarReadout'),
+  warnings: $('radarWarnings'), warningList: $('warningList'), warningCount: $('warningCount'),
+  warningText: $('warningText'), warningTextTitle: $('warningTextTitle'), warningTextTabs: $('warningTextTabs'), warningTextBody: $('warningTextBody'), warningTextClose: $('warningTextClose')
 };
 
 const client = new WeatherProductClient();
@@ -27,7 +30,10 @@ const state = {
   catalog: null, overlays: null, site: null, mosaic: true, tilt: 0.5, product: 'reflectivity',
   frames: new Map(), frameIndex: -1, looping: false, loopTimer: null,
   revision: null, smooth: false, stepped: false, coverage: false, rings: true, borders: true,
-  view: { centerX: 0, centerY: 0, kmPerPx: 1 }, pointer: null, fetching: false
+  view: { centerX: 0, centerY: 0, kmPerPx: 1 }, pointer: null, fetching: false,
+  // Warnings as issued (newest first), the hour they were fetched at, whether they are drawn,
+  // the one whose text is open and which of its statements is shown.
+  warnings: [], warningsHourUtc: null, showWarnings: true, chosenWarning: null, warningStatement: null
 };
 
 // WebGL2 by default; Canvas 2D when forced (?renderer=2d), when WebGL2 is unavailable, or
@@ -65,6 +71,7 @@ async function start() {
   state.site ??= catalog.sites.find(s => s.id === 'KCPL') ?? catalog.sites[0];
   state.product = !state.mosaic && catalog.products.includes(saved.product) ? saved.product : 'reflectivity';
   state.tilt = catalog.tilts.includes(saved.tilt) ? saved.tilt : catalog.tilts[0];
+  if (remembered.warnings === false) { state.showWarnings = false; toggleButton(ui.warnings, false, 'Warnings'); }
   if (remembered.stepped) { state.stepped = true; toggleButton(ui.stepped, true, 'Colour steps'); }
   ui.site.value = state.mosaic ? MOSAIC : state.site.id; ui.tilt.value = String(state.tilt);
   // ?coverage=1 opens with the coverage shading on.
@@ -73,7 +80,7 @@ async function start() {
   resize();
   centerOnSite();
   updateProductUi();
-  await fetchLatest();
+  await Promise.all([fetchLatest(), fetchWarnings()]);
   setInterval(poll, POLL_MS);
 }
 
@@ -88,7 +95,7 @@ async function poll() {
     const meta = await client.getLiveMetadata();
     if (meta.revision !== state.revision) {
       state.revision = meta.revision;
-      await fetchLatest();
+      await Promise.all([fetchLatest(), fetchWarnings()]);
     }
   } catch (error) { ui.status.textContent = `Lost contact with the authority: ${error.message}`; }
 }
@@ -110,6 +117,14 @@ async function fetchLatest() {
   } catch (error) {
     ui.status.textContent = `Scan request failed: ${error.message}`;
   } finally { state.fetching = false; }
+}
+
+async function fetchWarnings() {
+  try {
+    const data = await client.getWarnings();
+    state.warnings = data.warnings ?? []; state.warningsHourUtc = data.nowHourUtc ?? null;
+  } catch { /* the radar still works without them */ }
+  renderWarningList(); renderWarningText(); draw();
 }
 
 function showFrame(index) {
@@ -170,6 +185,8 @@ function bindControls() {
   ui.coverage.addEventListener('click', () => { state.coverage = !state.coverage; toggleButton(ui.coverage, state.coverage, 'Coverage'); draw(); });
   ui.rings.addEventListener('click', () => { state.rings = !state.rings; toggleButton(ui.rings, state.rings, 'Range rings'); draw(); });
   ui.borders.addEventListener('click', () => { state.borders = !state.borders; toggleButton(ui.borders, state.borders, 'Region borders'); draw(); });
+  ui.warnings.addEventListener('click', () => { state.showWarnings = !state.showWarnings; toggleButton(ui.warnings, state.showWarnings, 'Warnings'); savePreferences(); draw(); });
+  ui.warningTextClose.addEventListener('click', () => chooseWarning(null));
   window.addEventListener('resize', () => { resize(); draw(); });
   document.addEventListener('keydown', event => {
     if (event.target.matches('input, select')) return;
@@ -295,7 +312,15 @@ function bindPanZoom() {
     updateReadout();
   });
   const endDrag = () => { drag = null; ui.overlay.classList.remove('dragging'); };
-  ui.overlay.addEventListener('pointerup', endDrag);
+  ui.overlay.addEventListener('pointerup', event => {
+    const moved = drag ? Math.hypot(event.clientX - drag.x, event.clientY - drag.y) : Infinity;
+    endDrag();
+    if (moved > 4 || !state.showWarnings) return;
+    const rect = ui.overlay.getBoundingClientRect(), km = screenToKm((event.clientX - rect.left) * state.dpr, (event.clientY - rect.top) * state.dpr);
+    // The most urgent warning there, then the smallest.
+    const hit = warningsShown().filter(w => insidePolygon(w.polygon, km.x, km.y)).sort((a, b) => warningRank(b) - warningRank(a) || a.areaSquareMiles - b.areaSquareMiles)[0];
+    if (hit) chooseWarning(hit.id);
+  });
   ui.overlay.addEventListener('pointercancel', endDrag);
   ui.overlay.addEventListener('pointerleave', () => { state.pointer = null; updateReadout(); });
   ui.overlay.addEventListener('dblclick', event => {
@@ -396,6 +421,7 @@ function drawOverlay() {
 
   if (state.coverage) drawCoverage(ctx, a, b);
   if (state.borders && state.overlays?.regions?.cells?.length) drawRegions(ctx);
+  if (state.showWarnings) drawWarnings(ctx);
 
   if (state.rings && !state.mosaic) {
     const c = kmToScreen(state.site.xKm, state.site.yKm);
@@ -425,6 +451,98 @@ function drawOverlay() {
     ctx.lineWidth = 3 * dpr; ctx.strokeStyle = 'rgba(7,11,17,.9)'; ctx.strokeText(site.id, p.x + 8 * dpr, p.y + 4 * dpr);
     ctx.fillText(site.id, p.x + 8 * dpr, p.y + 4 * dpr);
   }
+}
+
+// --- Warnings ----------------------------------------------------------------
+
+// NWS colours: red for a tornado warning, yellow for a severe thunderstorm warning; magenta for
+// a particularly dangerous tornado, oranges for the damage tiers of a severe thunderstorm.
+function warningColour(w) {
+  if (w.type === 'tornado') return w.pds ? '#ff3df2' : '#ff2d2d';
+  return w.tags?.damage === 'DESTRUCTIVE' ? '#ff5a1f' : w.tags?.damage === 'CONSIDERABLE' ? '#ff9f1a' : '#f5c518';
+}
+const warningRank = w => (w.type === 'tornado' ? (w.pds ? 5 : w.tags?.tornado === 'OBSERVED' ? 4 : 3) : w.tags?.damage === 'DESTRUCTIVE' ? 2 : w.tags?.damage === 'CONSIDERABLE' ? 1 : 0);
+const warningEnd = w => w.endedHourUtc ?? w.validToHourUtc;
+const shortName = w => `${w.pds ? 'PDS ' : ''}${w.type === 'tornado' ? 'TOR' : 'SVR'} ${w.number}`;
+// The hour of the scan on screen, and the warnings in effect then.
+function shownHourUtc() { return currentFrames()[state.frameIndex]?.meta?.validHourUtc ?? state.warningsHourUtc; }
+function warningsShown() {
+  const hour = shownHourUtc();
+  if (hour == null) return [];
+  return state.warnings.filter(w => w.issuedHourUtc <= hour + 1e-6 && hour < warningEnd(w) - 1e-6);
+}
+function insidePolygon(polygon, x, y) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i], [xj, yj] = polygon[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function drawWarnings(ctx) {
+  const dpr = state.dpr;
+  // Severe thunderstorm warnings under tornado warnings, the chosen one on top.
+  const shown = warningsShown().sort((a, b) => warningRank(a) - warningRank(b) || (a.id === state.chosenWarning) - (b.id === state.chosenWarning));
+  for (const w of shown) {
+    const points = w.polygon.map(([x, y]) => kmToScreen(x, y)), chosen = w.id === state.chosenWarning, colour = warningColour(w);
+    ctx.beginPath(); points.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath();
+    ctx.globalAlpha = chosen ? 0.22 : 0.07; ctx.fillStyle = colour; ctx.fill(); ctx.globalAlpha = 1;
+    const width = (w.pds || w.tags?.damage === 'DESTRUCTIVE' ? 3.5 : w.tags?.damage || w.tags?.tornado === 'OBSERVED' ? 3 : 2) * dpr;
+    ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.lineWidth = width + 2.5 * dpr; ctx.stroke();
+    ctx.strokeStyle = colour; ctx.lineWidth = chosen ? width + 1.5 * dpr : width; ctx.stroke();
+    // Its name where the polygon is big enough on screen to hold it.
+    const xs = points.map(p => p.x), ys = points.map(p => p.y);
+    if (Math.max(...xs) - Math.min(...xs) < 46 * dpr && Math.max(...ys) - Math.min(...ys) < 46 * dpr) continue;
+    const cx = xs.reduce((a, b) => a + b, 0) / xs.length, cy = ys.reduce((a, b) => a + b, 0) / ys.length, text = shortName(w);
+    ctx.font = `700 ${11 * dpr}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(text).width + 8 * dpr;
+    ctx.fillStyle = 'rgba(7,11,17,.85)'; ctx.fillRect(cx - tw / 2, cy - 8 * dpr, tw, 16 * dpr);
+    ctx.fillStyle = colour; ctx.fillText(text, cx, cy + 0.5 * dpr);
+    ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+  }
+}
+
+function renderWarningList() {
+  const hour = state.warningsHourUtc, list = ui.warningList;
+  const active = state.warnings.filter(w => w.valid), recent = state.warnings.filter(w => !w.valid && hour != null && hour - warningEnd(w) <= 2);
+  const tor = active.filter(w => w.type === 'tornado').length;
+  ui.warningCount.textContent = hour == null ? '—' : `${tor} TOR · ${active.length - tor} SVR`;
+  list.innerHTML = '';
+  for (const w of [...active.sort((a, b) => warningRank(b) - warningRank(a) || b.issuedHourUtc - a.issuedHourUtc), ...recent]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `warning-item${w.id === state.chosenWarning ? ' on' : ''}${w.valid ? '' : ' ended'}`;
+    button.style.setProperty('--c', warningColour(w));
+    const tags = w.type === 'tornado' ? [w.tags.tornado === 'OBSERVED' ? 'observed' : 'radar indicated', w.tags.damage ? 'considerable damage' : null]
+      : [w.tags.damage ? `${w.tags.damage.toLowerCase()} damage` : null, w.tags.gustMph >= 58 ? `${w.tags.gustMph} mph` : null, w.tags.hailInches >= 1 ? `${w.tags.hailInches.toFixed(2)} in hail` : null, w.tags.tornado === 'POSSIBLE' ? 'tornado possible' : null];
+    button.innerHTML = `<b style="color:${warningColour(w)}">${w.title}</b><span>${formatClock(w.issuedHourUtc)}–${formatClock(warningEnd(w))}${w.valid ? '' : ` · ${w.status}`}</span><small>${tags.filter(Boolean).join(' · ')}</small>`;
+    button.addEventListener('click', () => chooseWarning(w.id === state.chosenWarning ? null : w.id));
+    list.append(button);
+  }
+  if (!list.children.length) list.innerHTML = '<p class="muted">None in effect. Warnings go out as storms reach severe limits or show rotation.</p>';
+}
+
+function chooseWarning(id) {
+  state.chosenWarning = id; state.warningStatement = null;
+  renderWarningList(); renderWarningText(); draw();
+}
+
+function renderWarningText() {
+  const w = state.warnings.find(x => x.id === state.chosenWarning);
+  ui.warningText.classList.toggle('hidden', !w);
+  if (!w) return;
+  const statements = w.statements ?? [], index = Math.min(state.warningStatement ?? statements.length - 1, statements.length - 1);
+  ui.warningTextTitle.textContent = w.title; ui.warningTextTitle.style.color = warningColour(w);
+  ui.warningTextTabs.innerHTML = '';
+  statements.forEach((statement, k) => {
+    const tab = document.createElement('button');
+    tab.type = 'button'; tab.className = `secondary${k === index ? ' active' : ''}`;
+    tab.textContent = `${statement.kind === 'issued' ? 'Issued' : statement.kind === 'cancelled' ? 'Cancelled' : 'Statement'} ${formatClock(statement.hourUtc)}`;
+    tab.addEventListener('click', () => { state.warningStatement = k; renderWarningText(); });
+    ui.warningTextTabs.append(tab);
+  });
+  ui.warningTextBody.textContent = statements[index]?.text ?? w.text;
 }
 
 // A bar of a round number of kilometres (and its miles), about a sixth of the view wide.
@@ -710,6 +828,11 @@ function link(gl, vsSource, fsSource) {
 
 // --- Misc ------------------------------------------------------------------
 
+function formatClock(hourUtc) {
+  const total = Math.round((((hourUtc % 24) + 24) % 24) * 60) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}${String(total % 60).padStart(2, '0')}Z`;
+}
+
 function formatTime(hourUtc) {
   const day = Math.floor(hourUtc / 24) + 1, h = ((hourUtc % 24) + 24) % 24;
   const hh = Math.floor(h + 1e-6), mm = Math.round((h - hh) * 60) % 60;
@@ -720,5 +843,5 @@ function readPreferences() {
   try { return JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? '{}'); } catch { return {}; }
 }
 function savePreferences() {
-  try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ site: state.mosaic ? MOSAIC : state.site.id, tilt: state.tilt, product: state.product, stepped: state.stepped })); } catch { /* storage unavailable */ }
+  try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ site: state.mosaic ? MOSAIC : state.site.id, tilt: state.tilt, product: state.product, stepped: state.stepped, warnings: state.showWarnings })); } catch { /* storage unavailable */ }
 }

@@ -4,7 +4,10 @@
 // (MesoscaleDiscussion.js): an area whose probability of a watch is 80% or more gets one.
 //   - A tornado watch when at least half the runs make the tornado case and the most probable
 //     peak tornado intensity is above the lowest range a discussion gives (up to 95 mph);
-//     otherwise a severe thunderstorm watch, which may still speak of a tornado or two.
+//     otherwise a severe thunderstorm watch, which may still speak of a tornado or two. But
+//     the watch's own tornado chances come first: High (80%+) for 2 or more tornadoes or for a
+//     strong one is always a tornado watch, Low (20% or less) for both always a severe
+//     thunderstorm watch, whatever the wind; the rule above decides only between.
 //   - "Particularly dangerous situation" (PDS) wording is kept for the rare ones (the centre
 //     gives it to about 3 watches in 100): a tornado watch with an 80% chance or more of
 //     several strong (EF2+) tornadoes, the most probable peak an intense one (136 mph, EF3,

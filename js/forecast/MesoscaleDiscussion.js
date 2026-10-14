@@ -39,6 +39,11 @@ export const MESOSCALE = Object.freeze({
   // case and the most probable peak tornado intensity is above the lowest range given (up to
   // 95 mph): weak tornadoes alone go with a severe thunderstorm watch.
   tornadoWatchMph: 95,
+  // But the watch's own table of tornado chances comes first: High (80% or more) for 2 or more
+  // tornadoes or for a strong one makes it a tornado watch whatever else; both Low (20% or
+  // less) make it a severe thunderstorm watch whatever else. The rule above decides only
+  // between (Mod).
+  tornadoChanceHigh: 80, tornadoChanceLow: 20,
   // How long before storms are expected in an area its discussion goes out (hours): a little
   // sooner where a tornado watch is in prospect. A watch goes out as storms fire, so a
   // discussion saying one is likely is saying it is about an hour away. The members look
@@ -179,7 +184,11 @@ export function assessArea(members, now, cells) {
   const withTornado = perMember.filter(m => m.tornadoes > 0);
   const peak = { tornadoMph: median(withTornado.map(m => m.tornadoMph)), gustMph: median(perMember.map(m => m.gust)), hailInches: median(perMember.map(m => m.hail)), membersWithTornado: withTornado.length };
   const peakText = { tornado: withTornado.length * 2 >= count ? peakRange('tornado', peak.tornadoMph) : null, wind: peakRange('wind', peak.gustMph), hail: peakRange('hail', peak.hailInches) };
-  const tornadoWatch = mean(m => (m.tornadoCase >= 1 ? 1 : 0)) >= 0.5 && peakText.tornado !== null && peak.tornadoMph >= MESOSCALE.tornadoWatchMph;
+  // The chances the watch would give of 2 or more tornadoes and of a strong one.
+  const several = watchStep(mean(m => (m.tornadoes >= 2 ? 1 : 0))), strong = watchStep(mean(m => (m.strong >= 1 ? 1 : 0)));
+  const tornadoWatch = several >= MESOSCALE.tornadoChanceHigh || strong >= MESOSCALE.tornadoChanceHigh ? true
+    : several <= MESOSCALE.tornadoChanceLow && strong <= MESOSCALE.tornadoChanceLow ? false
+    : mean(m => (m.tornadoCase >= 1 ? 1 : 0)) >= 0.5 && peakText.tornado !== null && peak.tornadoMph >= MESOSCALE.tornadoWatchMph;
   const here = describeHere(now, inside), firstSevere = perMember.map(m => m.first).filter(Number.isFinite), firstStorm = perMember.map(m => m.storm).filter(Number.isFinite);
   return {
     cells, inside, perMember, members: count, percent, tornadoWatch, peak, peakText, here,

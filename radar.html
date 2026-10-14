@@ -39,6 +39,16 @@
       <div id="radarLegendTicks" class="radar-legend-ticks"></div>
     </div>
 
+    <div class="legend-card warning-card">
+      <div class="legend-title"><span>Warnings</span><span id="warningCount" class="muted">—</span></div>
+      <button id="radarWarnings" type="button" class="secondary active" title="Draw tornado and severe thunderstorm warning polygons">Warnings on</button>
+      <div class="warning-key">
+        <span><i style="--c:#ff2d2d"></i>Tornado</span><span><i style="--c:#ff3df2"></i>PDS tornado</span>
+        <span><i style="--c:#f5c518"></i>Severe T-storm</span><span><i style="--c:#ff9f1a"></i>Considerable</span><span><i style="--c:#ff5a1f"></i>Destructive</span>
+      </div>
+      <div id="warningList" class="warning-list"></div>
+    </div>
+
     <small id="radarStatus" class="muted">Connecting to the weather authority…</small>
   </aside>
 
@@ -54,6 +64,11 @@
       <canvas id="radarGl" class="radar-layer"></canvas>
       <canvas id="radarOverlay" class="radar-layer radar-overlay" tabindex="0" aria-label="Radar display. Drag to pan, scroll to zoom."></canvas>
       <div id="radarReadout" class="radar-readout hidden"></div>
+      <section id="warningText" class="warning-text hidden" aria-live="polite">
+        <header><strong id="warningTextTitle"></strong><button id="warningTextClose" type="button" class="secondary" aria-label="Close warning text">×</button></header>
+        <div id="warningTextTabs" class="warning-tabs"></div>
+        <pre id="warningTextBody"></pre>
+      </section>
     </div>
   </main>
   <script type="module" src="./js/radar/RadarViewer.js"></script>

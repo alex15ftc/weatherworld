@@ -304,7 +304,10 @@ hail, 6 or more hail and wind events together), each Low, Mod or High. The rules
 - Which watch: a tornado watch when at least half the runs have two tornadoes or a strong
   one **and** the most probable peak tornado intensity is above the lowest range a
   discussion gives. A peak of "UP TO 95 MPH" goes with a severe thunderstorm watch, which
-  then says "a tornado or two possible".
+  then says "a tornado or two possible". The watch's own tornado chances come first: High
+  (80%+) for 2 or more tornadoes or for a strong one always makes a tornado watch, and Low
+  (20% or less) for both always a severe thunderstorm watch, whatever the wind chances; the
+  rule above decides only when they are Mod.
 - Particularly dangerous situation (PDS) wording: a tornado watch with an 80% chance of two
   or more strong (EF2+) tornadoes and a most probable peak of 136 mph (EF3) or more; a
   severe thunderstorm watch with an 80% chance of gusts of 100 mph with 25 or more cells of
@@ -461,6 +464,40 @@ temperature (about 400 a sounding), which cannot be made cheaper without changin
 digits (a table of vapour pressures would, and every world's weather would then go
 differently from the same seed). `WEATHER_FORECAST_WORKERS=2` halves the cores used meanwhile (the
 12Z outlooks would then take two to three minutes; not measured).
+
+## Warnings
+
+Tornado and severe thunderstorm warnings after the NWS's storm-based, impact-based ones
+(`js/forecast/Warning.js`, served by `server/WarningRuntime.js` at `GET /api/warnings`, drawn on
+the radar page). They are worked out at every volume scan (5 minutes of storm time) from what
+the radar shows of each storm; nothing is run ahead and nothing is written onto the storms.
+
+- Severe thunderstorm warning: hail of 1 inch or gusts of 58 mph. Damage threat tiers as the NWS
+  uses them since 2021: CONSIDERABLE from 1.75 in hail or 70 mph gusts, DESTRUCTIVE (which sets
+  off Wireless Emergency Alerts, so the text asks for EAS activation) from 2.75 in or 80 mph.
+  "TORNADO...POSSIBLE" when the storm's rotation gives a 12% chance of a tornado in the next
+  half hour. Hail and wind threats turn OBSERVED after 15 minutes of severe hail or wind.
+- Tornado warning: a 30% chance of a tornado in the next half hour (TornadoEngine's, from the
+  storm's low-level rotation), or a tornado on the ground. OBSERVED once the tornado has been
+  down 10 minutes (confirmed); a particularly dangerous situation (TORNADO DAMAGE
+  THREAT...CONSIDERABLE) when a confirmed tornado has EF2 winds (111 mph). The tornado
+  emergency (CATASTROPHIC) is not done.
+- 30 minutes for a tornado warning (the NWS default since 2012), 45 for a severe thunderstorm
+  warning. The polygon runs from just behind the storm along its motion, 15% faster than it
+  moves, widening 15 degrees each side; across the hail core, or along a line. Polygons do not
+  move; a storm 10 minutes from leaving its warning, or under one 10 minutes from expiring, gets
+  a new one downstream. A storm under a tornado warning gets no severe thunderstorm warning too.
+- Severe weather statements when a tag or damage threat changes (or a size goes up), and a
+  cancellation after two scans with no storm in the polygon still warranting it.
+
+Checked on 6 worlds x 48 hours (2026-10-14, a scratch script, not a test): 154 tornado warnings
+for 63 tornadoes, 46% with no tornado in them (the NWS's false alarm ratio is about 70%); every
+tornado under a warning by the time it touched down, mean lead 8 minutes (NWS about 9); 18
+tornado warnings were PDS at some time. 644 severe thunderstorm warnings: at issuance 70% base,
+18% considerable, 12% destructive (the NWS says about 10% of severe storms reach destructive).
+Median areas: tornado 700 sq mi, severe thunderstorm 2,850 sq mi (lines get long polygons; a
+single cell's is about 900). Real tornado warnings are usually smaller; these storms move fast
+(35-60 mph). `tests/warnings.mjs` covers the rules on made-up storms.
 
 ## What a player would find
 
