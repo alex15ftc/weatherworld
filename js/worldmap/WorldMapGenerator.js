@@ -11,6 +11,7 @@
 // traced where enough water has gathered; land cover from region, slope, rainfall and rivers.
 import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
 import { makeNoise, fbm, clamp, smoothstep } from './noise.js';
+import { planSettlements } from './settlements.js';
 
 const METRES_PER_MILE = 1609.344;
 
@@ -55,7 +56,7 @@ export const REGIONS = Object.freeze([
   { key: 'ozarkEdge', name: 'Ozark edge', reliefM: 60, wavelengthMi: 4, terrace: 0, ridged: false, liftM: 120, erodibility: 1.6 }
 ]);
 
-export const COVER = Object.freeze(['water', 'cropland', 'irrigated', 'grassland', 'sandhillGrass', 'forest', 'riparian', 'breaks', 'redRange', 'tallgrass']);
+export const COVER = Object.freeze(['water', 'cropland', 'irrigated', 'grassland', 'sandhillGrass', 'forest', 'riparian', 'breaks', 'redRange', 'tallgrass', 'urban', 'suburban']);
 const C = Object.fromEntries(COVER.map((key, i) => [key, i]));
 
 // The engine's ground height (m) at a distance east of the map's west edge (REGIONAL_DEFAULTS
@@ -221,11 +222,30 @@ export function generateWorldMap(options = {}) {
 
   const rivers = traceRivers(n, p, cellMi2, area, receiver);
   const cover = landCover(n, p, height, region, cellM, rivers, patch, patch2);
-  return {
-    params: p, size: n, cellMiles: p.cellMiles,
+  const map = {
+    params: p, size: n, cellMiles: p.cellMiles, regionKeys: REGIONS.map(r => r.key),
     elevation: Float32Array.from(height), region, cover, drainageMi2: Float32Array.from(area, a => a * cellMi2),
     rivers, inflows: inflowCells, trunkU
   };
+  const { settlements, roads } = planSettlements(map, p.settlements);
+  paintTowns(map, settlements);
+  return { ...map, settlements, roads };
+}
+
+// Built-up land: the core of each place is urban, the rest of its extent suburban (towns are
+// only a few blocks across at this scale; Roblox lays out their streets).
+function paintTowns(map, settlements) {
+  const { size: n, cellMiles, cover } = map;
+  for (const s of settlements) {
+    const reach = Math.ceil(s.extentMi / cellMiles);
+    const ci = Math.floor(s.x / cellMiles), cj = Math.floor(s.y / cellMiles);
+    for (let j = Math.max(0, cj - reach); j <= Math.min(n - 1, cj + reach); j++) for (let i = Math.max(0, ci - reach); i <= Math.min(n - 1, ci + reach); i++) {
+      const d = Math.hypot((i + 0.5) * cellMiles - s.x, (j + 0.5) * cellMiles - s.y), k = j * n + i;
+      if (cover[k] === C.water) continue;
+      if (d <= s.coreMi) cover[k] = C.urban;
+      else if (d <= s.extentMi && cover[k] !== C.urban) cover[k] = C.suburban;
+    }
+  }
 }
 
 // Rivers: chains of cells whose drainage reaches riverAreaMi2, each from a head (no river

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>World Map · Fake Plains Weather</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+  <style>
+    body { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100vh; overflow: hidden; }
+    .wm-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; overflow: auto; }
+    .wm-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
+    .wm-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
+    .wm-card label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .wm-card input[type=number] { width: 70px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+    #readout { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; }
+    #readout span { color: var(--muted); } #readout b { text-align: right; font-weight: 600; }
+    #legend { display: grid; grid-template-columns: 14px 1fr; gap: 4px 8px; font-size: 12.5px; align-items: center; }
+    #legend i { width: 14px; height: 14px; border-radius: 3px; display: block; }
+    #summary { margin: 0; font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; color: var(--text); }
+    .wm-map { position: relative; min-width: 0; min-height: 0; padding: 64px 12px 12px; display: flex; align-items: center; justify-content: center; }
+    #mapCanvas { display: block; max-width: 100%; max-height: 100%; aspect-ratio: 1; border-radius: 6px; cursor: crosshair; image-rendering: auto; }
+    @media (max-width: 900px) { body { grid-template-columns: 1fr; grid-template-rows: auto auto; height: auto; overflow: auto; } .wm-map { padding-top: 12px; } }
+  </style>
+</head>
+<body data-page="worldmap">
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="radar" href="./radar.html">Radar</a><a data-nav-page="worldmap" class="active" href="./worldmap.html">World map</a></nav>
+  <aside class="panel wm-side">
+    <div class="wm-card">
+      <span>World map</span>
+      <strong id="status">Loading…</strong>
+      <label>Seed <input id="seed" type="number" min="1" value="1" /></label>
+      <small class="muted">Build a seed first: <code>node scripts/build-world-map.mjs --seed N</code></small>
+    </div>
+    <div class="wm-card">
+      <span>Layers</span>
+      <label><input type="checkbox" id="showRivers" checked /> Rivers</label>
+      <label><input type="checkbox" id="showRoads" checked /> Roads and towns</label>
+      <label><input type="checkbox" id="showRegions" checked /> Region borders and names</label>
+      <label><input type="checkbox" id="showGrid" /> Weather cells (10 mi)</label>
+    </div>
+    <div class="wm-card">
+      <span>Under the cursor</span>
+      <div id="readout"></div>
+    </div>
+    <div class="wm-card">
+      <span>Land cover</span>
+      <div id="legend"></div>
+    </div>
+    <div class="wm-card">
+      <span>Summary</span>
+      <pre id="summary"></pre>
+    </div>
+  </aside>
+  <main class="wm-map"><canvas id="mapCanvas" width="1000" height="1000"></canvas></main>
+  <script type="module" src="./js/pages/worldMapPage.js"></script>
+</body>
+</html>

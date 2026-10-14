@@ -4,8 +4,9 @@
 export const COVER_COLOURS = Object.freeze({
   water: [70, 120, 190], cropland: [196, 178, 112], irrigated: [118, 160, 70], grassland: [168, 172, 112],
   sandhillGrass: [190, 180, 128], forest: [62, 102, 58], riparian: [86, 124, 70], breaks: [160, 132, 104],
-  redRange: [176, 120, 88], tallgrass: [130, 150, 90]
+  redRange: [176, 120, 88], tallgrass: [130, 150, 90], urban: [120, 118, 124], suburban: [170, 166, 160]
 });
+export const ROAD_STYLE = Object.freeze({ interstate: { colour: [200, 40, 50], widthPx: 2.6 }, highway: { colour: [235, 235, 235], widthPx: 1.1 } });
 export const RIVER_COLOUR = [58, 104, 170];
 
 // RGBA pixels (one per map cell) for the land cover with hillshading.
@@ -20,6 +21,26 @@ export function shadeMap(map, coverKeys, { exaggeration = 25 } = {}) {
     rgba[k * 4] = colour[0] * f; rgba[k * 4 + 1] = colour[1] * f; rgba[k * 4 + 2] = colour[2] * f; rgba[k * 4 + 3] = 255;
   }
   return rgba;
+}
+
+// Roads (highways first, interstates over them) and settlement dots drawn into the raster.
+export function drawRoads(rgba, n, roads, settlements, cellMiles) {
+  const line = (points, colour, r) => {
+    for (let s = 1; s < points.length; s++) {
+      const [x0, y0] = points[s - 1], [x1, y1] = points[s], steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / cellMiles * 2));
+      for (let t = 0; t <= steps; t++) dot((x0 + (x1 - x0) * t / steps) / cellMiles - 0.5, (y0 + (y1 - y0) * t / steps) / cellMiles - 0.5, r, colour);
+    }
+  };
+  const dot = (x, y, r, colour) => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const i = Math.round(x) + dx, j = Math.round(y) + dy;
+      if (i < 0 || j < 0 || i >= n || j >= n || dx * dx + dy * dy > r * r + 0.5) continue;
+      const k = (j * n + i) * 4;
+      rgba[k] = colour[0]; rgba[k + 1] = colour[1]; rgba[k + 2] = colour[2];
+    }
+  };
+  for (const kind of ['highway', 'interstate']) for (const road of roads) if (road.kind === kind) line(road.points, ROAD_STYLE[kind].colour, kind === 'interstate' ? 1 : 0);
+  for (const s of settlements) dot(s.x / cellMiles - 0.5, s.y / cellMiles - 0.5, s.kind === 'town' ? 1 : 3, [20, 20, 24]);
 }
 
 // Rivers drawn into an RGBA raster of the map (1 pixel per cell), wider rivers thicker.

@@ -28,8 +28,10 @@ export const STEERING_DEFAULTS = Object.freeze({
   // layer's geographyOffset). Given both roamLow and roamHigh, each day the map is sent
   // roamStep cells one way or the other within that range, at no more than roamCellsPerHour, so the dryline and
   // the storms that form along it fall on a different part of the map from day to day, and
-  // on every part of it over many days. With null the map stays where it is.
-  roamLow: -6, roamHigh: 30, roamStep: [5, 15], roamCellsPerHour: 0.7
+  // on every part of it over many days. With null the map stays where it is: the default, as
+  // the Roblox world's ground is fixed and must be the ground the weather is made over (roaming
+  // was -6 to 30).
+  roamLow: null, roamHigh: null, roamStep: [5, 15], roamCellsPerHour: 0.7
 });
 
 const KT = 1.943844;

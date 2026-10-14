@@ -44,10 +44,11 @@ assert.ok(plans.size >= 3, `a plan for each day (${plans.size} in two and a half
 const again = build({}); again.advance(3);
 assert.equal(again.regional.origin.x, (() => { const other = build({}); other.advance(3); return other.regional.origin.x; })());
 
-// --- The map roams along the geography: a new place each day within its range, reached slowly,
-// with the ground under the map following and the air on the map left where it is.
+// --- Given a range, the map roams along the geography: a new place each day within it, reached
+// slowly, with the ground under the map following and the air on the map left where it is.
 {
-  const roaming = build({}), r = roaming.regional, P = STEERING_DEFAULTS, places = new Set(), nx = roaming.world.width;
+  const range = { roamLow: -6, roamHigh: 30 };
+  const roaming = build(range), r = roaming.regional, P = { ...STEERING_DEFAULTS, ...range }, places = new Set(), nx = roaming.world.width;
   const elevationAt = x => roaming.world.cells[10][x].terrain.elevationM;
   assert.ok(r.geographyTarget >= P.roamLow && r.geographyTarget <= P.roamHigh, 'the first day has a place in range');
   let lastOffset = r.geographyOffset, lastTarget = r.geographyTarget, moved = 0;
@@ -65,8 +66,8 @@ assert.equal(again.regional.origin.x, (() => { const other = build({}); other.ad
     assert.ok(Math.abs(elevationAt(0) - r.terrainAt(0)) < 1e-9 && elevationAt(0) >= elevationAt(nx - 1), 'the ground under the map follows');
   }
   assert.ok(places.size >= 3 && moved > 10, `a new place each day (${places.size} in four days, ${moved.toFixed(0)} cells travelled)`);
-  // Held still when no range is given.
-  const still = build({ roamLow: null, roamHigh: null }); still.advance(30);
+  // Held still when no range is given (the default: the Roblox world's ground is fixed).
+  const still = build({}); still.advance(30);
   assert.equal(still.regional.geographyOffset, 15, 'without a range the map stays where it is');
 }
 console.log(`region steering passed (${plans.size} plans; first slide ${first.slideMs} m/s for support ${first.support.toFixed(2)}, wanted ${first.wanted.toFixed(2)})`);

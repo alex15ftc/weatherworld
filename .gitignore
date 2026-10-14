@@ -89,3 +89,6 @@ calibration/reports/*
 *.rbxl.lock
 *.rbxlx.lock
 roblox/sourcemap.json
+
+# Generated world maps (rebuild with scripts/build-world-map.mjs)
+data/worldmap/
