@@ -74,8 +74,9 @@ export function draftWatch(assessed, now, { seed = null, covered = null } = {}) 
 }
 
 // The watch as issued: its number, when it takes effect and when it expires, and its words.
-export function issueWatch(draft, number, hourUtc) {
-  const watch = { ...draft, number, issuedHourUtc: hourUtc, validToHourUtc: hourUtc + WATCH.hours };
+// forming: the storms on its ground now, for a watch that has waited for them (stormsFiring).
+export function issueWatch(draft, number, hourUtc, forming = draft.here.forming) {
+  const watch = { ...draft, here: { ...draft.here, forming }, number, issuedHourUtc: hourUtc, validToHourUtc: hourUtc + WATCH.hours };
   watch.text = writeWatch(watch);
   return watch;
 }
@@ -101,15 +102,16 @@ export function nextLookHourUtc(found, hourUtc, watches) {
 // One look ahead: the discussions and watches to issue now, and the watches to issue as soon
 // as storms fire on their ground (pending: drafts; see stormsFiring). members:
 // runMesoscaleMember results; now: describeNow of the live world; discussions, watches: those
-// already issued (with their `cells`). settled: no area of concern has ground under no watch
-// (see MESOSCALE.settledHours).
+// already issued (with their `cells`). settled: no run has severe weather on ground under no
+// watch (see MESOSCALE.settledHours).
 export function lookAhead(members, now, { discussions = [], watches = [], nextDiscussion = 1, nextWatch = 1, seed = null } = {}) {
-  const out = { discussions: [], watches: [], pending: [], settled: members.length > 0 };
+  const out = { discussions: [], watches: [], pending: [], settled: false };
   if (!members.length) return out;
   const issued = now.hourUtc, n = now.width * now.height, covered = new Uint8Array(n);
   const inEffect = watches.filter(watch => watch.validToHourUtc > issued + 1e-6);
   const cover = watch => { for (let i = 0; i < n; i++) if (watch.cells[i]) covered[i] = 1; };
   inEffect.forEach(cover);
+  out.settled = members.every(m => m.near.every((near, i) => !near || covered[i]));
   const discuss = (assessed, watch = null) => out.discussions.push(makeDiscussion(assessed, now, { number: nextDiscussion + out.discussions.length, seed, watch }));
   for (const cells of concernAreas(members)) {
     // The part under each watch in effect: how its threat is going, once the last word on it has lapsed.
@@ -124,7 +126,6 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
     // The ground under no watch.
     const open = cells.filter(i => !covered[i]);
     if (open.length < MESOSCALE.leastCells) continue;
-    out.settled = false;
     const assessed = assessArea(members, now, open);
     if (assessed.percent < MESOSCALE.leastPercent) continue;
     if (assessed.percent >= WATCH.leastPercent) {
@@ -160,7 +161,7 @@ function threats(watch) {
     const strong = k.tornadoMph >= 136 ? 'a few intense tornadoes' : 'a couple of strong tornadoes', strongLikely = p.strongTornado >= 80 ? 'likely' : 'possible';
     lines.push(p.strongTornado < 40 ? `${some} ${someLikely}` : someLikely === strongLikely ? `${some} and ${strong} ${someLikely}` : `${some} ${someLikely} with ${strong} ${strongLikely}`);
   } else if (watch.peakText.tornado) lines.push('A tornado or two possible');
-  const gust = 5 * Math.round(k.gustMph / 5), size = (Math.round(k.hailInches * 4) / 4).toFixed(2).replace(/0$/, '');
+  const gust = 5 * Math.round(k.gustMph / 5), size = String(Math.round(k.hailInches * 4) / 4);
   if (k.gustMph >= 58 || p.wind10 >= 40) lines.push(`${p.wind10 >= 80 ? 'Widespread damaging winds' : p.wind10 >= 40 ? 'Scattered damaging winds' : 'Isolated damaging wind gusts'}${p.wind75 >= 40 ? ` and isolated significant gusts to ${gust} mph` : ` to ${gust} mph`} ${p.wind10 >= 60 || p.wind75 >= 80 ? 'likely' : 'possible'}`);
   if (k.hailInches >= 1 || p.hail10 >= 40) lines.push(`${p.hail10 >= 80 ? 'Widespread large hail' : p.hail10 >= 40 ? 'Scattered large hail' : 'Isolated large hail events'}${p.hail2 >= 40 ? ` and isolated very large hail events to ${size} inches in diameter` : ` to ${size} inches in diameter`} ${p.hail10 >= 60 || p.hail2 >= 80 ? 'likely' : 'possible'}`);
   return lines;
@@ -176,7 +177,7 @@ export function writeWatch(watch) {
   ];
   if (watch.pds) lines.push('...THIS IS A PARTICULARLY DANGEROUS SITUATION...', '');
   lines.push('Primary threats include...', ...main.map(line => `  ${line}`), '');
-  lines.push(`SUMMARY...${e.storms ? 'The storms over the watch area are expected to strengthen and last' : 'Storms are expected to form over the watch area and strengthen'} through the next several hours${hazards.length ? `, with ${list(hazards)}` : ''}.`, '');
+  lines.push(`SUMMARY...${e.storms ? 'The storms over the watch area are expected to strengthen and last' : e.forming ? 'The storms forming over the watch area are expected to strengthen and last' : 'Storms are expected to form over the watch area and strengthen'} through the next several hours${hazards.length ? `, with ${list(hazards)}` : ''}.`, '');
   lines.push(`DISCUSSION...${describeSetting(e, watch.type === 'tornado' || Boolean(watch.peakText.tornado))}`, '');
   lines.push(`REMEMBER...A ${kind} watch means conditions are favorable for ${watch.type === 'tornado' ? 'tornadoes and severe thunderstorms' : 'severe thunderstorms'} in and close to the watch area. People there should watch for threatening weather and listen for later statements and warnings.`, '');
   lines.push('WATCH PROBABILITIES...', ...probabilityRows(watch).map(([label, value]) => `  ${`${label} `.padEnd(48, '.')}${value}`));

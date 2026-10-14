@@ -42,7 +42,7 @@ async function worker(seed) {
     for (let step = 0; step < MESOSCALE.everyHours / MESOSCALE.stepHours; step++) {
       atmosphere.advance(MESOSCALE.stepHours);
       for (const waiting of pending.filter(p => stormsFiring(world, p.draft.cells))) {
-        const watch = issueWatch(waiting.draft, nextWatch++, world.validHourUtc);
+        const watch = issueWatch(waiting.draft, nextWatch++, world.validHourUtc, stormsFiring(world, waiting.draft.cells));
         pending = pending.filter(p => p !== waiting); watches = [watch, ...watches];
         checkWatch(watch, copy(), world.validHourUtc - waiting.sinceHourUtc);
       }

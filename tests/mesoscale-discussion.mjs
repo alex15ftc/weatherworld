@@ -110,7 +110,8 @@ const liveWorld = (storms = []) => ({ width, height, cellSizeKm: 16, storms });
 const liveStorm = (x, y, intensity = 0.5) => ({ active: true, intensity, positionKm: { x: (x + 0.5) * 16, y: (y + 0.5) * 16 } });
 assert.equal(stormsFiring(liveWorld([{ ...liveStorm(30, 10), active: false }, liveStorm(5, 40)]), waiting.pending[0].cells), 0, 'a storm that has died there and a storm elsewhere are not its storms');
 assert.equal(stormsFiring(liveWorld([liveStorm(30, 10, 0.12)]), waiting.pending[0].cells), 1, 'a storm there, however young, is');
-const fired = issueWatch(waiting.pending[0], 4, 45.5);
+const fired = issueWatch(waiting.pending[0], 4, 45.5, 1);
+assert.match(fired.text, /SUMMARY\.\.\.The storms forming over the watch area[\s\S]*DISCUSSION\.\.\.Storms are beginning to form in the area\./); assert.doesNotMatch(fired.text, /No storms have formed/);
 assert.equal(fired.number, 4); assert.equal(fired.issuedHourUtc, 45.5); assert.equal(fired.validToHourUtc, 45.5 + WATCH.hours);
 // Storms already firing at the look: the watch goes out with it, and no discussion repeats it.
 const firing = now(44, [stormAt(31, 9)]);
@@ -130,7 +131,7 @@ const severe = lookAhead(four({ reports: 14, tornadoes: 3, tornadoMph: 90, size:
 assert.equal(severe.type, 'severe'); assert.match(severe.text, /^URGENT - IMMEDIATE BROADCAST REQUESTED\nSevere Thunderstorm Watch Number 1\n/); assert.match(severe.text, /A tornado or two possible/); assert.match(severe.text, /REMEMBER\.\.\.A severe thunderstorm watch means/);
 assert.equal(lookAhead(four({ reports: 9, size: 12 }), firing).watches.length, 0, 'short of what a watch needs: none');
 const atFirst = lookAhead(four(tornadic), now(44, [young(31, 9)]));
-assert.equal(atFirst.watches.length, 1, 'the first storm forming there is enough'); assert.match(atFirst.watches[0].text, /SUMMARY...Storms are expected to form over the watch area/);
+assert.equal(atFirst.watches.length, 1, 'the first storm forming there is enough'); assert.match(atFirst.watches[0].text, /SUMMARY\.\.\.The storms forming over the watch area/);
 assert.equal(lookAhead(four({ reports: 14, tornadoes: 2, tornadoMph: 125 }), firing).watches.length, 0, 'ground too small for a watch');
 assert.equal(lookAhead(four({ reports: 14, tornadoes: 2, tornadoMph: 125 }), firing).discussions.length, 1, 'but still discussed');
 // Particularly dangerous situations: several strong tornadoes in most runs, the most probable

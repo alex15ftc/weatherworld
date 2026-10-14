@@ -46,7 +46,7 @@ export class MesoscaleRuntime {
     const world = this.engine?.world;
     if (!world || !this.pending.length) return [];
     const issued = [];
-    this.pending = this.pending.filter(draft => { if (!stormsFiring(world, draft.cells)) return true; issued.push(issueWatch(draft, this.nextWatch++, world.validHourUtc)); return false; });
+    this.pending = this.pending.filter(draft => { const firing = stormsFiring(world, draft.cells); if (firing) issued.push(issueWatch(draft, this.nextWatch++, world.validHourUtc, firing)); return !firing; });
     if (issued.length) this.watches = [...issued.reverse(), ...this.watches].slice(0, WATCH.kept);
     return issued;
   }

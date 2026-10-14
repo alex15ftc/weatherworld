@@ -20,10 +20,10 @@ import { describeArea } from './DayOneOutlook.js';
 export const MESOSCALE = Object.freeze({
   members: 4, hoursAhead: 5, stepHours: 0.5,
   // How often the world is looked at (hours), and how long a discussion is valid. After a
-  // look that finds no area of concern on ground under no watch (nothing is coming, or the
-  // watches in effect cover it all), the next is not for settledHours, unless a watch is to
-  // expire by then: the runs look hoursAhead ahead, so what is not in sight now cannot be
-  // within its lead before the next look.
+  // look in which no run has severe weather on ground under no watch (nothing is coming, or
+  // the watches in effect cover it all), the next is not for settledHours, unless a watch is
+  // to expire by then. (Waiting whenever there was merely no area of concern yet cost lead:
+  // on 16 world days the discussions out before the storms fell from 76% to 61%.)
   everyHours: 1, validHours: 2, settledHours: 2,
   // An area of concern: where at least this share of the members have severe weather within
   // 25 miles in the hours ahead, joined up, and at least this many cells (100 sq mi each).
@@ -252,14 +252,14 @@ const FEATURE = { cold: 'a cold front', warm: 'a warm front', stationary: 'a sta
 // The technical paragraph, shared with the watches: what is there now, the air it is in, and
 // what that favours. e: describeHere's account; tornado: whether tornadoes are expected.
 export function describeSetting(e, tornado) {
-  const present = e.storms ? `${e.storms === 1 ? 'One storm is' : `${e.storms} storms are`} in the area${e.severeNow ? `, ${e.severeNow} of them severe` : ''}${e.tornadoNow ? ` and ${e.tornadoNow === 1 ? 'one with a tornado on the ground' : `${e.tornadoNow} with tornadoes on the ground`}` : ''}.` : 'No storms have formed in the area yet.';
+  const present = e.storms ? `${e.storms === 1 ? 'One storm is' : `${e.storms} storms are`} in the area${e.severeNow ? `, ${e.severeNow} of them severe` : ''}${e.tornadoNow ? ` and ${e.tornadoNow === 1 ? 'one with a tornado on the ground' : `${e.tornadoNow} with tornadoes on the ground`}` : ''}.` : e.forming ? 'Storms are beginning to form in the area.' : 'No storms have formed in the area yet.';
   const features = e.features.length ? ` ${list(e.features.map(type => FEATURE[type] ?? `a ${type} boundary`))[0].toUpperCase()}${list(e.features.map(type => FEATURE[type] ?? `a ${type} boundary`)).slice(1)} ${e.features.length > 1 ? 'lie' : 'lies'} across the area and will focus development.` : '';
   const tens = Math.floor(e.dewpoint / 10) * 10, dewpoints = `${e.dewpoint - tens < 3.5 ? 'lower ' : e.dewpoint - tens >= 6.5 ? 'upper ' : 'mid '}${tens}s F`;
   const instability = e.cape >= 3500 ? 'extreme' : e.cape >= 2500 ? 'strong' : e.cape >= 1000 ? 'moderate' : 'weak';
   const air = `Surface dewpoints in the ${dewpoints} beneath steep lapse rates give ${instability} instability (MLCAPE near ${Math.max(250, Math.round(e.cape / 250) * 250)} J/kg), with ${Math.round(e.shear / 5) * 5} kt of deep-layer shear.`;
   const mode = e.shear >= 40 ? (e.lines > e.rotating ? 'The shear supports organized storms; those here have grown into lines, and damaging wind is the main concern.' : 'The shear supports supercells, with large hail and damaging wind') : e.shear >= 25 ? 'The shear supports multicells and brief supercell structures' : 'Weak shear will keep storms short-lived and poorly organized';
   const tornadoWords = tornado ? (e.helicity >= 150 && e.cloudBaseM <= 1300 ? ` Low-level shear (0-1 km helicity near ${Math.round(e.helicity / 25) * 25} m2/s2) and low cloud bases favour tornadoes with storms that stay on their own.` : ` A tornado is possible with the strongest rotating storms, though ${e.cloudBaseM > 1300 ? 'high cloud bases limit' : 'modest low-level shear limits'} the risk.`) : '';
-  const cap = e.cin >= 75 && !e.storms ? ' A cap is holding storms back for now; how soon it breaks is the main doubt.' : '';
+  const cap = e.cin >= 75 && !e.storms && !e.forming ? ' A cap is holding storms back for now; how soon it breaks is the main doubt.' : '';
   return `${present}${features} ${air} ${mode}${mode.endsWith('.') ? '' : '.'}${tornadoWords}${cap}`;
 }
 

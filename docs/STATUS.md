@@ -215,42 +215,129 @@ too high. Day 3 leaves 12% of the places with severe weather outside its contour
 
 Not yet done:
 
-## Mesoscale discussions
+## Mesoscale discussions and watches
 
-Page: `/mesoscale.html`. After the Storm Prediction Center's: a short-range statement about
-one area where severe thunderstorms are developing or changing. Each has an outlined area,
-a "concerning" line, a valid time (two hours), the probability that a watch will be needed
-(only 5, 20, 40, 60, 80 or 95 percent, with the centre's wording: watch unlikely, possible,
-tornado or severe thunderstorm watch likely), a summary, a technical discussion written
-from the air over the area, and the most probable peak tornado intensity, wind gust and hail
-size as ranges ("85-115 MPH", "65-80 MPH", "1.50-2.50 IN").
+Page: `/mesoscale.html`. After the Storm Prediction Center's.
 
-Once in each hour of the world, the world is copied and run three hours ahead four times
-(1.5 s a run; about 145 s of processor time a world day, against about 275 s for the
-outlooks). An area of concern is where at least half the runs have severe weather within 25
-miles, at least 4,000 sq mi. The watch probability is the share of the runs in which the
-area gets what calls for a watch (ten cells with severe hail or wind, two tornadoes, or one
-strong tornado); the peaks are the middle of the runs' strongest. No discussion is issued
-for ground that discussions of the last eight hours already cover with as much concern,
-unless the concern has stepped up.
+**Discussions.** A short-range statement about one area where severe thunderstorms are
+developing or changing. Each has an outlined area, a "concerning" line, a valid time (two
+hours), the probability that a watch will be needed (only 5, 20, 40, 60, 80 or 95 percent,
+with the centre's wording: watch unlikely, possible, tornado or severe thunderstorm watch
+likely), a summary, a technical discussion written from the air over the area, and the most
+probable peak tornado intensity, wind gust and hail size as ranges ("85-115 MPH", "65-80
+MPH", "1.50-2.50 IN"). A discussion may instead concern a watch in effect ("Concerning...
+TORNADO WATCH 12"): how the threat is going in the part of the watch still under it. It
+gives no probability, and one goes out every two hours while the threat lasts.
 
-On 16 world days (`npm run inspect:mesoscale`): 5.6 a day (a day's count from 3 to 11),
-most between 16Z and 23Z; 57% for severe weather already under way, 20% before any storm
-has formed in the area.
+**Watches.** A tornado watch or a severe thunderstorm watch, for six hours, with the
+primary threats in the centre's words, and its table of probabilities (2 or more tornadoes,
+a strong tornado, 10 or more wind events, a 75 mph gust, 10 or more hail events, 2 inch
+hail, 6 or more hail and wind events together), each Low, Mod or High. The rules:
+
+- A watch is issued for an area whose probability of a watch is 80% or more, when storms
+  begin to fire there. If none has formed yet, the watch waits (the page shows it as
+  waiting, and a discussion says a watch will be needed as storms form) and goes out the
+  moment the first storm appears on its ground: this is checked every few seconds, not only
+  at the hourly look.
+- Which watch: a tornado watch when at least half the runs have two tornadoes or a strong
+  one **and** the most probable peak tornado intensity is above the lowest range a
+  discussion gives. A peak of "UP TO 95 MPH" goes with a severe thunderstorm watch, which
+  then says "a tornado or two possible".
+- Particularly dangerous situation (PDS) wording: a tornado watch with an 80% chance of two
+  or more strong (EF2+) tornadoes and a most probable peak of 136 mph (EF3) or more; a
+  severe thunderstorm watch with an 80% chance of gusts of 100 mph with 25 or more cells of
+  75 mph wind (a derecho). The centre's own least for a PDS tornado watch (an 80% chance of
+  one strong tornado) would have marked 4 of 11 tornado watches here; it marks about 3 in
+  100 of all its watches, so the bar is set higher.
+- Watches do not overlap: a new one covers only ground under no watch in effect (it is
+  drawn 20 miles beyond the area of concern, and stops at another watch's edge). The least
+  a watch covers is 15,000 sq mi.
+- A watch stands as issued until it expires: it is not extended, upgraded, replaced or
+  cancelled. When it expires, its ground can have a new one at the next look.
+
+**How they are made.** Once in each hour of the world, the world is copied and run five
+hours ahead four times (about 2.4 s a run). An area of concern is where at least half the
+runs have severe weather within 25 miles, at least 4,000 sq mi. The watch probability is
+the share of the runs in which the area gets what calls for a watch (ten cells with severe
+hail or wind, two tornadoes, or one strong tornado); the peaks are the middle of the runs'
+strongest (a tornado's: of the runs that have one). A discussion goes out when storms are
+in the area or expected within 1.5 hours, or within 3 hours where a tornado watch is in
+prospect. No discussion is issued for ground that discussions of the last eight hours
+already cover with as much concern, unless the concern has stepped up. After a look in
+which no run has severe weather on ground under no watch, the next is two hours later.
+
+On 16 world days (`npm run inspect:mesoscale`, 8 worlds, 2 days each):
+
+| | Before (three hours ahead, no watches) | Now |
+|---|---|---|
+| Discussions for ground under no watch | 5.6 a day | 2.9 a day |
+| ...issued before any storm had formed there | 20% | 70% |
+| ...issued with severe weather already under way | 57% | 7% |
+| Discussions about a watch in effect | - | 8.0 a day |
+| Watches | - | 5.1 a day (11 tornado, 71 severe thunderstorm; 4 PDS) |
+
+Of the discussions issued ahead of the storms, the first storm came an hour later (median)
+and the first severe weather an hour and a half later.
 
 | Probability given | 20% | 40% | 60% | 80% | 95% |
 |---|---|---|---|---|---|
-| Issued | 20 | 1 | 8 | 5 | 56 |
-| The area then had what calls for a watch | 10% | - | 38% | 60% | 98% |
+| Issued | 13 | 3 | 7 | 6 | 17 |
+| The area then had what calls for a watch | 23% | 33% | 71% | 83% | 100% |
 
-The peak gust fell in the range given in 88% of discussions and the peak hail in 83%
-(within one range: 97% and 99%). Where a tornado peak was given, a tornado came in 58%;
-where none was given, in 3%. Of those saying a tornado watch was likely, 63% had the
-tornadoes for one.
+The peak gust fell in the range given in 84% of discussions and the peak hail in 78%
+(within one range: 99% and 99%). Where a tornado peak was given, a tornado came in 72%;
+where none was given, in 5%.
 
-Not done: discussions about a watch in effect (there are no watches yet) or about a coming
-change to the outlook; the ranges of the peaks are taken from the centre's products as
-seen, not from a published list.
+Watches, checked against their own six hours:
+
+| | |
+|---|---|
+| Two watches in effect on the same ground | never |
+| Any watch: the ground got what calls for a watch | 98% of 82 |
+| Tornado watch: two or more tornadoes, or a strong one | 100% of 11 |
+| Tornado watch: a strong tornado | 36% of 11 |
+| Severe thunderstorm watch: a strong tornado anyway | 6% of 71 |
+| PDS tornado watch: two or more strong tornadoes | 1 of 1 |
+| PDS severe thunderstorm watch: a gust of 100 mph or more | 3 of 3 |
+
+Of the 38 watches on new ground, 29% waited for their storms and went out as they fired;
+the middle one had 2 storms on its ground when issued, and 32% had severe weather already
+under way (their areas reached 80% only once storms were going). The other 44 followed an
+expired watch over storms that were still going, which is what "not changed until it
+expires" comes to in a long event.
+
+Short of what was wanted:
+
+- Discussions with a tornado watch in prospect get no more lead than the others (4 in 16
+  days; first storm an hour later). They are allowed 3 hours, but the runs seldom agree on
+  the tornadoes that early: the tornado case usually shows only once storms are going.
+- Tornado watches are 1 in 7 of the watches (the centre's: about 4 in 10), because a
+  tornado watch needs the most probable peak above 95 mph.
+- A watch covers about 48,000 sq mi (median), a fifth of the map: the storms here are
+  spread over much of the map on most days.
+- Not done: warnings; discussions about a coming change to the outlook; keeping watches and
+  discussions across a restart of the server. The ranges of the peaks are taken from the
+  centre's products as seen, not from a published list.
+
+**What the forecast runs cost** (outlooks, discussions and watches together). They are now
+done by one pool of threads (`server/ForecastPool.js`, four on this machine), not a process
+for each run:
+
+| | Before | Now |
+|---|---|---|
+| Most cores busy at once (an outlook and a look ahead due together) | 12 | 4 |
+| Most memory held by the runs at once | about 12 x 450 MB | about 4 x 450 MB, let go half a minute after the last run |
+| The copy of the world a run starts from | 37 MB, written to disk, read by each process | 12 MB, in memory, shared |
+| The live server stopped while the copy is taken | 125 ms | 50 ms |
+| A mesoscale look ahead (four runs) | 2.9 s for three hours ahead | 2.4 s for five hours ahead |
+| All three outlooks at 12Z | 12 processes at once with the look ahead | 56 s on three threads, the fourth kept for the look ahead (which takes 8 to 10 s while an outlook is being made) |
+
+The processor time over a world day is about what it was (the look ahead is two hours
+longer and costs the same; the outlooks' runs are the same runs). What is left is the
+simulation itself: about half of every run is soundings for all 2,500 cells each half hour.
+Making those cheaper would speed the live server too, and is the next thing to do if the
+load is still too much; `WEATHER_FORECAST_WORKERS=2` halves the cores used meanwhile (the
+12Z outlooks would then take two to three minutes; not measured).
 
 ## What a player would find
 
@@ -305,7 +392,7 @@ Decided 2026-10-12: not now.
 
 ## Open
 
-1. Outlooks: Days 1 to 3 are issued and updated. Still to do: verify them, make the runs cheaper, give Days 2 and 3 an uncertain atmosphere, watches and warnings.
+1. Outlooks: Days 1 to 3 are issued and updated; mesoscale discussions and watches are issued. Still to do: verify the outlooks, make the runs themselves cheaper (soundings), give Days 2 and 3 an uncertain atmosphere, warnings.
    Also: the quiet world (seed 8), and the low western and southern edge strips.
 2. Getting players to the weather: place selection, travel, or a smaller map.
 3. Longer-lived tornadoes, or a slower clock, so that tornadoes can be chased.
