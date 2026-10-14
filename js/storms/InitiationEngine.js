@@ -19,6 +19,9 @@ const MIN_CAPE_J_KG = 300;
 // The rate rises steeply with the surplus: a strongly forced, uncapped front fires along its
 // length within an hour or two, a capped dryline releases a few storms, and broad weak ascent
 // only the occasional one.
+// Lowered from 0.012 on 2026-10-14: 127 thunderstorms a day on the 500 x 500 mile map filled
+// the outlooks' wind and hail contours on most days; now about 56 a day, with as many
+// tornadoes as before because storms now cycle (StormRotation.js).
 const FORCED_RATE_PER_HOUR = 0.005;
 const NET_LIFT_SCALE_J_KG = 100;
 // The fastest storms start anywhere (per cell and hour): lift well clear of the cap, ample CAPE.

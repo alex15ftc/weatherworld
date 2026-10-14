@@ -28,7 +28,7 @@ assert.equal(runSlots(cappedBoundary).length, 0, 'a boundary cannot lift parcels
 
 // ...but where the cap is modest, storms form along the boundary and only there.
 const forced = world((x) => cell({ mlcin: 60, boundary: x === 15 ? 0.9 : 0 }));
-const formed = runSlots(forced);
+const formed = runSlots(forced, [], 48);   // a day: storms are few at this rate
 assert.ok(formed.length >= 2, `boundary lift exceeding the cap should initiate storms (${formed.length})`);
 assert.ok(formed.every(c => c.x === 15), 'storms must form where the lift exceeds the inhibition');
 assert.ok(formed.every(c => c.liftEnergy > c.cin), 'every storm must have lift exceeding its CIN');

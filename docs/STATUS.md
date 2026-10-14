@@ -155,10 +155,33 @@ them in lines. On the same 120 days: wind CIG1+ 45% of days, CIG2+ 7%, CIG3+ 0%;
 wind contour on 33% of days (from 43%); day mix below Slight 7%, Slight 10%, Enhanced 31%,
 Moderate 38%, High 15% (more 75 mph wind inside high contours gives more High days).
 
-What is left is the number of storms: about 118 thunderstorms a day on the 500 x 500 mile
-map, so even 15% of them severe fills the wind contours, and hail (23% of storms reach 1 in,
-about right for supercells) still reaches its 60% contour on 53% of days. Fewer storms would
-mean fewer tornadoes too; not done.
+Then fewer storms, and storms that cycle (2026-10-14). Measured on 6 worlds x 3 days:
+
+| | Before | After |
+|---|---|---|
+| Thunderstorms a day | 127 | 56 |
+| Severe storms a day | 49 | 21 |
+| Tornadoes a day (strong) | 8.4 (1.2) | 7.7 (2.3) |
+| Tornadic storms with 2 or more tornadoes | 12% | 31% (up to 4) |
+| Tornadoes from storms that had more than one | 22% | 51% |
+
+- Initiation: `FORCED_RATE_PER_HOUR` 0.012 to 0.005 (js/storms/InitiationEngine.js).
+- Cycling: a storm whose tornado had ended usually lived on (2 hours, median) with a strong
+  mesocyclone and high helicity, but its outflow had grown too strong for rotation to spin up
+  near the ground again. Strong helicity near the ground now holds the outflow back
+  (`outflowHold` 0.6 between `helicityHold` 150 and 400 m2/s2, js/storms/StormRotation.js), as
+  strong inflow does in a real cyclic supercell; and the occlusion clears in 9 minutes, not 18.
+  A storm's tornadoes are an hour apart (median).
+
+On the same 120 days as above (`scripts/cig-climate.mjs`): the 90% wind contour on 18% of
+days (from 33%), the 60% hail contour on 30% (from 53%). Intensity groups (as now judged):
+tornado CIG1+ 35% / CIG2+ 21% / CIG3+ 8%, wind 39% / 8% / 2%, hail 21% / 6%; day mix below
+Slight 11%, Slight 15%, Enhanced 24%, Moderate 33%, High 18%. With fewer weak storms a larger
+share of each area's severe weather is significant, so the groups (judged on that share) come
+more often and High days rose; the bars between the groups need refitting next. Judged on
+each group's own tier with bars fitted to 35/12/4% (tornado), 30/10/3% (wind), 35/10% (hail),
+High days would be 15%: the rest comes from the highest contours themselves (tornado 60% is
+High in the centre's table whatever the group).
 
 | Outlook | Covers | Issued afresh | Gives |
 |---|---|---|---|

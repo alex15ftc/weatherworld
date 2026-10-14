@@ -39,7 +39,7 @@ for (let step = 0; step < 3 * 48; step++) {
   }
   for (const value of atmosphere.regional.coldPool) coolest = Math.max(coolest, value);
 }
-assert.ok(born.length >= 10, `storms form (${born.length} in three days)`);
+assert.ok(born.length >= 5, `storms form (${born.length} in three days)`);
 assert.ok(born.every(s => s.cape >= 300), 'only where there is instability to feed them');
 assert.ok(born.every(s => s.x >= 0 && s.y >= 0 && s.x <= world.domainWidthKm && s.y <= world.domainHeightKm), 'on the map');
 assert.ok(coolest > 1.5, `storms leave rain-cooled air behind them (${coolest.toFixed(1)} K at most)`);
