@@ -9,7 +9,7 @@ export const COVER_COLOURS = Object.freeze({
 export const RIVER_COLOUR = [58, 104, 170];
 
 // RGBA pixels (one per map cell) for the land cover with hillshading.
-export function shadeMap(map, coverKeys, { exaggeration = 8 } = {}) {
+export function shadeMap(map, coverKeys, { exaggeration = 25 } = {}) {
   const { size: n, elevation, cover } = map, cellM = map.cellMiles * 1609.344, rgba = new Uint8ClampedArray(n * n * 4);
   const lx = -0.6, ly = -0.6, lz = 0.53;   // light from the north-west, fairly low
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {

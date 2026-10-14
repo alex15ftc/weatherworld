@@ -18,10 +18,12 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   seed: 1,
   miles: 500,
   cellMiles: 0.5,
-  boundaryWarp: 0.035,      // how far region boundaries wander, as a share of the map
+  boundaryWarp: 0.09,       // how far region boundaries wander, as a share of the map
+  // Low hummocks everywhere (m, miles), so water on the flat plains wanders as it does in life.
+  detailM: 6, detailWavelengthMi: 3,
   // The big river (Missouri-like) runs north to south in the east; its valley and the
   // southward tilt of the eastern plains that lead water to it.
-  trunkAt: 0.8, trunkValleyM: 50, trunkValleyWidth: 0.035, eastTiltM: 25,
+  trunkAt: 0.8, trunkValleyM: 60, trunkValleyWidth: 0.03, eastTiltM: 25,
   // Stream-power erosion: dh = -K A^m S per step (A rain-weighted drainage area in cells),
   // solved implicitly; then hillslope diffusion.
   erosionSteps: 24, erosionK: 0.5, erosionM: 0.5, diffusion: 0.04, refillEvery: 4,
@@ -29,7 +31,7 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   rainWest: 0.4, rainEast: 1,
   // A creek appears on the map where this much rain-weighted drainage area (mi2) has gathered;
   // its width (m) is riverWidthPerRootMi2 times the root of that area.
-  riverAreaMi2: 60, riverWidthPerRootMi2: 2,
+  riverAreaMi2: 350, riverWidthPerRootMi2: 2,
   // Rivers coming in from beyond the map: edge, place along it (0 to 1), rain-weighted area (mi2).
   inflows: [
     { name: 'Platte-like', edge: 'west', at: 0.16, areaMi2: 25000 },
@@ -116,13 +118,13 @@ export function generateWorldMap(options = {}) {
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const k = j * n + i, u = (i + 0.5) / n, v = (j + 0.5) / n, xMi = u * p.miles, yMi = v * p.miles;
-      const wu = u + p.boundaryWarp * fbm(warpX, u * 6, v * 6, 3), wv = v + p.boundaryWarp * fbm(warpY, u * 6, v * 6, 3);
+      const wu = u + p.boundaryWarp * (fbm(warpX, u * 2, v * 2, 2) + 0.6 * fbm(warpX, u * 7 + 5.3, v * 7, 3)), wv = v + p.boundaryWarp * (fbm(warpY, u * 2, v * 2, 2) + 0.6 * fbm(warpY, u * 7, v * 7 + 5.3, 3));
       regionClaims(wu, wv, claims);
       let best = 0, total = 0;
       for (let r = 0; r < REGIONS.length; r++) { if (claims[r] > claims[best]) best = r; weights[r] = claims[r] ** 4; total += weights[r]; }
       region[k] = best;
 
-      let h = engineTerrainM(xMi), erode = 0;
+      let h = engineTerrainM(xMi) + p.detailM * fbm(relief, xMi / p.detailWavelengthMi - 91.3, yMi / p.detailWavelengthMi + 47.1, 3), erode = 0;
       for (let r = 0; r < REGIONS.length; r++) {
         const w = total > 0 ? weights[r] / total : 0;
         if (w < 0.01) continue;
@@ -134,7 +136,7 @@ export function generateWorldMap(options = {}) {
         erode += w * def.erodibility;
       }
       const east = smoothstep(0.55, 0.75, u);
-      h -= p.trunkValleyM * Math.exp(-(((u - trunkU(v)) / p.trunkValleyWidth) ** 2)) * smoothstep(0.5, 0.65, u);
+      h -= p.trunkValleyM * Math.exp(-Math.abs(u - trunkU(v)) / p.trunkValleyWidth) * smoothstep(0.5, 0.65, u);   // V-shaped: water gathers at the middle
       h -= p.eastTiltM * v * east;
       height[k] = h;
       erodibility[k] = erode;
@@ -277,12 +279,12 @@ function landCover(n, p, height, region, cellM, rivers, patch, patch2) {
     const left = height[j * n + Math.max(0, i - 1)], right = height[j * n + Math.min(n - 1, i + 1)];
     const up = height[Math.max(0, j - 1) * n + i], down = height[Math.min(n - 1, j + 1) * n + i];
     const slope = Math.hypot(right - left, down - up) / (2 * cellM);
-    const pick = 0.5 + 0.5 * fbm(patch, xMi / 2.5, yMi / 2.5, 3) * 1.6, pick2 = 0.5 + 0.5 * fbm(patch2, xMi / 1.5, yMi / 1.5, 2) * 1.6;
+    const pick = clamp(0.5 + 0.8 * fbm(patch, xMi / 6, yMi / 6, 4), 0, 1), pick2 = clamp(0.5 + 0.8 * fbm(patch2, xMi / 3, yMi / 3, 3), 0, 1);
     const wet = clamp((u - 0.3) / 0.5, 0, 1);
     const key = REGIONS[region[k]].key;
     let c;
     if (slope > 0.05) c = u < 0.6 && key !== 'ozarkEdge' ? C.breaks : C.forest;
-    else if (near[k] <= 1 && pick2 < 0.35 + 0.5 * wet) c = C.riparian;
+    else if (near[k] <= 1 + 2 * wet && pick2 < 0.4 + 0.5 * wet) c = C.riparian;
     else if (key === 'highPlains') c = pick < 0.5 ? C.cropland : pick < 0.68 ? C.irrigated : C.grassland;
     else if (key === 'smokyHills') c = pick < 0.55 ? C.cropland : C.grassland;
     else if (key === 'sandhills') c = near[k] <= 3 && pick < 0.15 ? C.irrigated : C.sandhillGrass;
