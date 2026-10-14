@@ -28,12 +28,16 @@ export const ROTATION = Object.freeze({
   // A left-moving split rotates the other way: it lives on shear that does not turn with
   // height, and has no rotation near the ground to speak of.
   leftHelicity: [80, 250], leftShare: 0.6,
-  lowSpinUpHours: 0.3, lowSpinDownHours: 0.08,
+  // Low-level rotation falls away over most of an hour, and the outflow takes a few times
+  // longer to wrap around a tornado than it once did (occlusionHours was 1.5-0.15, spin-down
+  // 0.08 h): tornadoes last about 50 minutes on average, not 16, with the rate, wind spread and
+  // damage rating in TornadoEngine.js re-set to keep counts and strengths (2026-10-14).
+  lowSpinUpHours: 0.3, lowSpinDownHours: 0.4,
   // Time for the outflow to wrap around a tornado: from balanced outflow to outflow that
   // outruns the shear, and shorter the weaker the rotation is (strong rotation means strong
   // inflow, which holds the outflow back). weakShare is the share of that time left to
   // rotation at holdRotation[0], rising to all of it at holdRotation[1].
-  occlusionHours: [1.5, 0.15], occlusionBalance: [0.5, 1.4], weakShare: 0.07, holdRotation: [0.12, 0.6], recoveryHours: 0.15
+  occlusionHours: [4.5, 0.45], occlusionBalance: [0.5, 1.4], weakShare: 0.07, holdRotation: [0.12, 0.6], recoveryHours: 0.15
 });
 
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);

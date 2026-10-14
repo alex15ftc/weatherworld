@@ -31,8 +31,9 @@ const tornadic = { cape: 3200, cin: 20, lcl: 750, srh: 380, bulkShear: 58 };
 const mean = values => values.reduce((a, b) => a + b, 0) / Math.max(1, values.length);
 
 // --- A strongly rotating storm in the right air: tornadoes, and seen coming.
-const strong = run(tornadic);
-assert.ok(strong.tornadoes.length >= 2, `a strong tornadic storm puts down tornadoes (${strong.tornadoes.length} in six hours)`);
+// Its tornadoes last up to about three hours in air this good, so it is watched for eight.
+const strong = run(tornadic, { hours: 8 });
+assert.ok(strong.tornadoes.length >= 2, `a strong tornadic storm puts down tornadoes (${strong.tornadoes.length} in eight hours)`);
 assert.ok(strong.firstCueAt !== null && strong.firstTornadoAt - strong.firstCueAt >= 2 * STEP - 1e-9, `the low-level rotation is there to be read before the first one (${Math.round((strong.firstTornadoAt - strong.firstCueAt) * 60)} minutes ahead)`);
 assert.ok(Math.min(...strong.lowAtOnset) >= 0.08, 'no tornado forms without low-level rotation under it');
 // It occludes, the tornado ends, and the storm builds another: cycles from its own state.
@@ -70,4 +71,4 @@ assert.ok(strained.length === 0 || mean(balanced) > mean(strained), `the stronge
 // --- The storm's name plays no part.
 const renamed = (() => { const a = run(tornadic, { hours: 3 }); const b = (() => { const world = { validHourUtc: 18, evolution: { config: { seed: 7 } }, stormEngine: { validHourUtc: 18 } }; const s = new Storm({ id: 'S0001', xKm: 100, yKm: 100, velocityEastKph: 50, velocityNorthKph: 15, sourceCell: { x: 6, y: 6 }, createdHourUtc: 18, modeHint: 'QLCS' }); setUpdraught(s, 42); s.organization = 0.8; s.coldPoolStrength = 0.12; s.orientationDeg = 70; initializeTornadoState(s); for (let h = STEP; h <= 3 + 1e-9; h += STEP) { world.stormEngine.validHourUtc = 18 + h; s.ageHours = h; s.mode = 'renamed'; s.lifecycleState = 'dissipating'; s.positionKm.x += 50 * STEP; s.positionKm.y -= 15 * STEP; stepStormRotation(s, tornadic, STEP); updateTornadoState(world, s, tornadic, STEP); } return s; })(); return [a.storm.tornadoHistory.length, b.tornadoHistory.length, a.storm.lowRotation, b.lowRotation]; })();
 assert.deepEqual(renamed.slice(0, 2), [renamed[0], renamed[0]]); assert.equal(renamed[2], renamed[3], 'the same storm in the same air does the same whatever it is called');
-console.log(`storm rotation passed (${strong.tornadoes.length} tornadoes in six hours, first read ${Math.round((strong.firstTornadoAt - strong.firstCueAt) * 60)} min ahead; lifetimes ${Math.min(...durations).toFixed(0)}-${Math.max(...durations).toFixed(0)} min; settings ${ROTATION.occlusionHours.join('-')} h)`);
+console.log(`storm rotation passed (${strong.tornadoes.length} tornadoes in eight hours, first read ${Math.round((strong.firstTornadoAt - strong.firstCueAt) * 60)} min ahead; lifetimes ${Math.min(...durations).toFixed(0)}-${Math.max(...durations).toFixed(0)} min; settings ${ROTATION.occlusionHours.join('-')} h)`);

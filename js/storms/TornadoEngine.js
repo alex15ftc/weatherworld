@@ -38,7 +38,7 @@ export function initializeTornadoState(storm) {
 // three 15% tornado areas in four with no strong tornadoes to speak of). The rise starts from
 // no rotation at all, so that the weakest storms still put one down now and then: with a
 // threshold of 0.04, one day in four had no tornado. Checked on 320 days (docs/STATUS.md).
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 2.2, power: 2, sustainRotation: 0.055, outlookHours: 0.5 };
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 2.5, power: 2, sustainRotation: 0.055, outlookHours: 0.5 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -182,14 +182,14 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // Wind above 65 mph = scale x (-ln(1 - quantile))^tail, the scale rising with the storm's
 // low-level rotation (0-1.2). This is the wind the tornado really has; its rating is a
 // separate thing (see DAMAGE_RATING).
-const INTENSITY = { baseScaleMph: 26, rotationScaleMph: 65, tail: 1.0, matureMinutes: 6, occlusionLoss: 0.6 };
+const INTENSITY = { baseScaleMph: 26, rotationScaleMph: 52, tail: 0.9, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times
 // a share that rises with the length of the path (more things hit) and with this tornado's
 // own luck in what it crossed: unexposedShare for a touch-down in open country, up to all of
 // it for a long track through something sturdy.
-const DAMAGE_RATING = { unexposedShare: 0.5, pathScaleKm: 6, luckFloor: 0.6 };
+const DAMAGE_RATING = { unexposedShare: 0.5, pathScaleKm: 14, luckFloor: 0.6 };
 
 function efRating(mph) { return mph >= 200 ? 'EF5' : mph >= 166 ? 'EF4' : mph >= 136 ? 'EF3' : mph >= 111 ? 'EF2' : mph >= 86 ? 'EF1' : mph >= 65 ? 'EF0' : null; }
 function deterministicUnit(text) {
