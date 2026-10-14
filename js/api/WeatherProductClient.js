@@ -39,9 +39,9 @@ export class WeatherProductClient {
     return this.#binary(`/api/radar/scan?site=${encodeURIComponent(site)}&tilt=${encodeURIComponent(tilt)}&product=${encodeURIComponent(product)}`);
   }
   // Network reflectivity mosaic: { meta: { width, height, resKm, ... }, bytes } (row-major).
-  // validHourUtc: one of the mosaics the authority keeps for the loop (getRadarMosaicFrames).
-  async getRadarMosaic(validHourUtc = null) { return this.#binary(validHourUtc === null ? '/api/radar/mosaic' : `/api/radar/mosaic?validHourUtc=${encodeURIComponent(validHourUtc)}`); }
-  async getRadarMosaicFrames() { return this.#json(`/api/radar/mosaic/frames?_=${Date.now()}`, { cacheable: false }); }
+  // kind: 'composite' or 'base'; validHourUtc: one of the mosaics the authority keeps for the loop (getRadarMosaicFrames).
+  async getRadarMosaic(validHourUtc = null, kind = 'composite') { return this.#binary(`/api/radar/mosaic?kind=${encodeURIComponent(kind)}${validHourUtc === null ? '' : `&validHourUtc=${encodeURIComponent(validHourUtc)}`}`); }
+  async getRadarMosaicFrames(kind = 'composite') { return this.#json(`/api/radar/mosaic/frames?kind=${encodeURIComponent(kind)}&_=${Date.now()}`, { cacheable: false }); }
   // Tornado and severe thunderstorm warnings, newest first (in effect and recently ended).
   async getWarnings() { return this.#json(`/api/warnings?_=${Date.now()}`, { cacheable: false }); }
 

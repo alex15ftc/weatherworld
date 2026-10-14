@@ -7,7 +7,7 @@ import { buildStormEcho, buildRadarMosaic, scanRadarTilt } from '../js/radar/Rad
 let scene = null, sceneId = null;
 const TASKS = {
   echo: ({ input }) => buildStormEcho(input, { shared: true }),
-  mosaic: ({ sites, rows }) => buildRadarMosaic(scene, sites, { rows }),
+  mosaic: ({ sites, rows, mosaicKind }) => buildRadarMosaic(scene, sites, { rows, kind: mosaicKind }),
   scan: ({ site, tiltDeg }) => scanRadarTilt(scene, site, tiltDeg)
 };
 

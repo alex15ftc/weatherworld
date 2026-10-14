@@ -36,11 +36,12 @@ export class RadarPool {
     return scene;
   }
 
-  async mosaic(scene, sites) {
+  // kind: 'composite' or 'base' (buildRadarMosaic).
+  async mosaic(scene, sites, kind = 'composite') {
     const { height } = mosaicSize(scene), count = Math.min(height, this.size * STRIPS_PER_THREAD);
     const started = performance.now();
     const strips = await Promise.all(Array.from({ length: count }, (_, k) =>
-      this.run({ kind: 'mosaic', sites, rows: [Math.round(k * height / count), Math.round((k + 1) * height / count)] }, scene)));
+      this.run({ kind: 'mosaic', sites, mosaicKind: kind, rows: [Math.round(k * height / count), Math.round((k + 1) * height / count)] }, scene)));
     const bytes = new Uint8Array(strips[0].width * height);
     for (const strip of strips) bytes.set(strip.bytes, strip.rows[0] * strip.width);
     const { rows, buildMs, ...rest } = strips[0];

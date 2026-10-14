@@ -3,14 +3,26 @@
 // (→ screen + colour table), and draws map overlays in 2D, among them the tornado and severe
 // thunderstorm warnings in effect at the time of the scan shown (GET /api/warnings).
 import { WeatherProductClient } from '../api/WeatherProductClient.js';
-import { RADAR_PRODUCTS, decodeRadarValue, radarColorTable, beamHeightKm } from './RadarFormat.js';
+import { RADAR_PRODUCTS, decodeRadarValue, radarColorTable, beamHeightKm, isRangeFolded } from './RadarFormat.js';
 
 const POLL_MS = 4000;
 const LOOP_FRAMES = 12;
 const LOOP_FRAME_MS = 450;
 const MS_TO_KT = 1.94384;
 const DEBUG = new URLSearchParams(location.search).has('debug');
+// The network mosaics, as the site list names them, and the product each shows.
 const MOSAIC = 'MOSAIC';
+const MOSAIC_OPTIONS = { MOSAIC: 'composite', 'MOSAIC-BASE': 'base', 'MOSAIC-ET': 'echoTops', 'MOSAIC-VIL': 'vil', 'MOSAIC-MESH': 'mesh' };
+const MOSAIC_NAMES = { composite: 'Composite reflectivity', base: 'Base reflectivity', echoTops: 'Echo tops', vil: 'Vertically integrated liquid', mesh: 'Hail size (MESH)' };
+const MOSAIC_LIST_NAMES = { composite: 'composite', base: 'base (lowest tilt)', echoTops: 'echo tops', vil: 'VIL', mesh: 'hail size (MESH)' };
+const MOSAIC_PRODUCT = { composite: 'reflectivity', base: 'reflectivity', echoTops: 'echoTops', vil: 'vil', mesh: 'mesh' };
+const MOSAIC_HINTS = {
+  composite: 'The mosaic shows the strongest echo any tilt of the nearest radar finds above each spot. Far from a radar its lowest beam is high and wide, so only a storm\'s upper parts show. Double-click the map to open that radar.',
+  base: 'The base mosaic shows what the lowest tilt of the nearest radar that clears the ground finds above each spot: the rain nearest the ground, not the anvil above it. Far from a radar even that beam is high, so a storm\'s low parts go unseen. Double-click the map to open that radar.',
+  echoTops: 'Echo tops: how high (thousand feet above sea level) the echo stays at 18 dBZ or more, from the tilts of the nearest radar. Close to a radar its highest tilt can pass below a storm\'s top, so tops there read low.',
+  vil: 'Vertically integrated liquid: the water the radar sees in the column above each spot (kg/m²). High VIL marks heavy cores and large hail.',
+  mesh: 'Maximum expected hail size (inches), from how strong the echo is above the freezing level up to the -20 °C level.'
+};
 const PREFERENCES_KEY = 'weatherworld.radar.v3';
 const ECHO_BYTE_20DBZ = 105; // reflectivity byte for 20 dBZ
 
@@ -27,7 +39,7 @@ const ui = {
 
 const client = new WeatherProductClient();
 const state = {
-  catalog: null, overlays: null, site: null, mosaic: true, tilt: 0.5, product: 'reflectivity',
+  catalog: null, overlays: null, site: null, mosaic: true, mosaicKind: 'composite', tilt: 0.5, product: 'reflectivity',
   frames: new Map(), frameIndex: -1, looping: false, loopTimer: null,
   revision: null, smooth: false, stepped: false, coverage: false, rings: true, borders: true,
   view: { centerX: 0, centerY: 0, kmPerPx: 1 }, pointer: null, fetching: false,
@@ -53,7 +65,7 @@ async function start() {
   state.catalog = catalog;
   state.overlays = manifest?.overlays ?? null;
   state.revision = catalog.revision;
-  ui.site.innerHTML = `<option value="${MOSAIC}">Network mosaic · all radars</option>`
+  ui.site.innerHTML = Object.entries(MOSAIC_OPTIONS).map(([value, kind]) => `<option value="${value}">Network · ${MOSAIC_LIST_NAMES[kind]}</option>`).join('')
     + catalog.sites.map(s => `<option value="${s.id}">${s.id} · ${s.name}</option>`).join('');
   ui.tilt.innerHTML = catalog.tilts.map(t => `<option value="${t}">${t.toFixed(1)}°</option>`).join('');
   ui.products.innerHTML = catalog.products.map(p => `<button type="button" data-product="${p}" title="${RADAR_PRODUCTS[p].label}">${RADAR_PRODUCTS[p].short}</button>`).join('');
@@ -68,12 +80,13 @@ async function start() {
   // The mosaic is the default: a single radar only sees storms within ~230 km.
   state.site = catalog.sites.find(s => s.id === saved.site) ?? null;
   state.mosaic = !state.site;
+  state.mosaicKind = MOSAIC_OPTIONS[saved.site] ?? 'composite';
   state.site ??= catalog.sites.find(s => s.id === 'KCPL') ?? catalog.sites[0];
-  state.product = !state.mosaic && catalog.products.includes(saved.product) ? saved.product : 'reflectivity';
+  state.product = state.mosaic ? MOSAIC_PRODUCT[state.mosaicKind] : catalog.products.includes(saved.product) ? saved.product : 'reflectivity';
   state.tilt = catalog.tilts.includes(saved.tilt) ? saved.tilt : catalog.tilts[0];
   if (remembered.warnings === false) { state.showWarnings = false; toggleButton(ui.warnings, false, 'Warnings'); }
   if (remembered.stepped) { state.stepped = true; toggleButton(ui.stepped, true, 'Colour steps'); }
-  ui.site.value = state.mosaic ? MOSAIC : state.site.id; ui.tilt.value = String(state.tilt);
+  ui.site.value = siteValue(); ui.tilt.value = String(state.tilt);
   // ?coverage=1 opens with the coverage shading on.
   if (params.get('coverage') === '1') { state.coverage = true; toggleButton(ui.coverage, true, 'Coverage'); }
   bindControls();
@@ -86,7 +99,8 @@ async function start() {
 
 // --- Data ------------------------------------------------------------------
 
-const selectionKey = () => (state.mosaic ? MOSAIC : `${state.site.id}|${state.tilt}|${state.product}`);
+const siteValue = () => (!state.mosaic ? state.site.id : Object.keys(MOSAIC_OPTIONS).find(value => MOSAIC_OPTIONS[value] === state.mosaicKind));
+const selectionKey = () => (state.mosaic ? `${MOSAIC}|${state.mosaicKind}` : `${state.site.id}|${state.tilt}|${state.product}`);
 const currentFrames = () => state.frames.get(selectionKey()) ?? [];
 
 async function poll() {
@@ -104,7 +118,7 @@ async function fetchLatest() {
   state.fetching = true;
   const key = selectionKey();
   try {
-    const { meta, bytes } = state.mosaic ? await client.getRadarMosaic() : await client.getRadarScan(state.site.id, state.tilt, state.product);
+    const { meta, bytes } = state.mosaic ? await client.getRadarMosaic(null, state.mosaicKind) : await client.getRadarScan(state.site.id, state.tilt, state.product);
     const frames = state.frames.get(key) ?? [];
     const existing = frames.findIndex(f => Math.abs(f.meta.validHourUtc - meta.validHourUtc) < 1e-6);
     if (existing >= 0) frames[existing] = { meta, bytes }; else frames.push({ meta, bytes });
@@ -122,18 +136,19 @@ async function fetchLatest() {
 
 // The authority keeps the last hour of mosaics: the loop has them as soon as the page opens.
 async function fillMosaicLoop() {
+  const kind = state.mosaicKind, key = selectionKey();
   try {
-    const { frames: kept = [] } = await client.getRadarMosaicFrames();
-    const frames = state.frames.get(MOSAIC) ?? [];
+    const { frames: kept = [] } = await client.getRadarMosaicFrames(kind);
+    const frames = state.frames.get(key) ?? [];
     const missing = kept.filter(k => !frames.some(f => Math.abs(f.meta.validHourUtc - k.validHourUtc) < 1e-6)).slice(-LOOP_FRAMES);
     if (!missing.length) return;
-    const loaded = await Promise.all(missing.map(k => client.getRadarMosaic(k.validHourUtc).catch(() => null)));
-    const now = state.frames.get(MOSAIC) ?? [];
+    const loaded = await Promise.all(missing.map(k => client.getRadarMosaic(k.validHourUtc, kind).catch(() => null)));
+    const now = state.frames.get(key) ?? [];
     for (const frame of loaded) if (frame && !now.some(f => Math.abs(f.meta.validHourUtc - frame.meta.validHourUtc) < 1e-6)) now.push(frame);
     now.sort((a, b) => a.meta.validHourUtc - b.meta.validHourUtc);
     while (now.length > LOOP_FRAMES) now.shift();
-    state.frames.set(MOSAIC, now);
-    if (state.mosaic && !state.looping) showFrame(now.length - 1);
+    state.frames.set(key, now);
+    if (key === selectionKey() && !state.looping) showFrame(now.length - 1);
   } catch { /* the loop still builds as new scans arrive */ }
 }
 
@@ -154,7 +169,7 @@ function showFrame(index) {
   else renderer.setData(frame.bytes, state.catalog.gates, state.catalog.radials);
   const latest = state.frameIndex === frames.length - 1;
   ui.title.textContent = state.mosaic
-    ? 'Network mosaic · Composite reflectivity'
+    ? `Network mosaic · ${MOSAIC_NAMES[state.mosaicKind]}`
     : `${state.site.id} · ${RADAR_PRODUCTS[state.product].label} · ${state.tilt.toFixed(1)}°`;
   ui.subtitle.textContent = `${formatTime(frame.meta.validHourUtc)}${latest ? ' · latest volume' : ''}`;
   ui.frameLabel.textContent = frameHint(frame, frames);
@@ -216,12 +231,14 @@ function bindControls() {
 }
 
 function selectSite(id) {
-  state.mosaic = id === MOSAIC;
-  if (!state.mosaic) state.site = state.catalog.sites.find(s => s.id === id) ?? state.site;
-  else state.product = 'reflectivity';
-  ui.site.value = state.mosaic ? MOSAIC : state.site.id;
+  const wasMosaic = state.mosaic;
+  state.mosaic = id in MOSAIC_OPTIONS;
+  if (!state.mosaic) { state.site = state.catalog.sites.find(s => s.id === id) ?? state.site; if (RADAR_PRODUCTS[state.product].mosaicOnly) state.product = 'reflectivity'; }
+  else { state.mosaicKind = MOSAIC_OPTIONS[id]; state.product = MOSAIC_PRODUCT[state.mosaicKind]; }
+  ui.site.value = siteValue();
   updateProductUi();
-  centerOnSite();
+  // (Between the two mosaics the view stays where it is.)
+  if (!(wasMosaic && state.mosaic)) centerOnSite();
   selectionChanged();
 }
 
@@ -243,7 +260,7 @@ function updateProductUi() {
   ui.tilt.disabled = state.mosaic;
   const spec = RADAR_PRODUCTS[state.product];
   renderer.setColorTable(radarColorTable(state.product, state.stepped));
-  ui.legendLabel.textContent = state.mosaic ? 'Composite reflectivity' : spec.label;
+  ui.legendLabel.textContent = state.mosaic ? MOSAIC_NAMES[state.mosaicKind] : spec.label;
   ui.legendUnits.textContent = state.product.includes('elocity') ? 'kt' : spec.units;
   drawLegend();
   updateTiltHint();
@@ -265,7 +282,7 @@ function setLooping(on) {
 function toggleButton(button, on, label) { button.classList.toggle('active', on); button.textContent = `${label} ${on ? 'on' : 'off'}`; }
 
 function updateTiltHint() {
-  if (state.mosaic) { ui.tiltHint.textContent = 'The mosaic shows the strongest echo any tilt of the nearest radar finds above each spot. Far from a radar its lowest beam is high and wide, so only a storm\'s upper parts show. Double-click the map to open that radar.'; return; }
+  if (state.mosaic) { ui.tiltHint.textContent = MOSAIC_HINTS[state.mosaicKind]; return; }
   const heights = [50, 100, 150].map(r => `${r} km: ${Math.round(beamHeightKm(r / Math.cos(state.tilt * Math.PI / 180), state.tilt) * 3281).toLocaleString()} ft`);
   ui.tiltHint.textContent = `Beam height above the radar · ${heights.join(' · ')}`;
 }
@@ -637,10 +654,10 @@ function updateReadout() {
   if (state.mosaic) {
     const i = Math.floor(km.x / frame.meta.resKm), j = Math.floor(km.y / frame.meta.resKm);
     const inside = i >= 0 && j >= 0 && i < frame.meta.width && j < frame.meta.height;
-    const value = inside ? decodeRadarValue('reflectivity', frame.bytes[j * frame.meta.width + i]) : null;
+    const value = inside ? decodeRadarValue(state.product, frame.bytes[j * frame.meta.width + i]) : null, spec = RADAR_PRODUCTS[state.product];
     const nearest = state.catalog.sites.reduce((a, b) => (Math.hypot(b.xKm - km.x, b.yKm - km.y) < Math.hypot(a.xKm - km.x, a.yKm - km.y) ? b : a));
     const ground = Math.hypot(nearest.xKm - km.x, nearest.yKm - km.y);
-    ui.readout.innerHTML = `<strong>${!inside ? 'Outside the network' : ground > state.catalog.gates * state.catalog.gateKm ? 'No radar reaches here' : value === null ? 'No echo' : `${value.toFixed(1)} dBZ`}</strong><span>Nearest radar ${nearest.id} · ${ground.toFixed(0)} km</span><br><span>Lowest beam ${Math.round(beamHeightKm(ground, 0.5) * 3281).toLocaleString()} ft above radar · double-click to open`;
+    ui.readout.innerHTML = `<strong>${!inside ? 'Outside the network' : ground > state.catalog.gates * state.catalog.gateKm ? 'No radar reaches here' : value === null ? (state.product === 'reflectivity' ? 'No echo' : 'None') : `${value.toFixed(spec.decimals)} ${spec.units}`}</strong><span>Nearest radar ${nearest.id} · ${ground.toFixed(0)} km</span><br><span>Lowest beam ${Math.round(beamHeightKm(ground, 0.5) * 3281).toLocaleString()} ft above radar · double-click to open`;
     ui.readout.classList.remove('hidden');
     return;
   }
@@ -651,9 +668,9 @@ function updateReadout() {
   let valueText = 'Out of range';
   if (gate < state.catalog.gates) {
     const radial = Math.floor(az / (360 / state.catalog.radials)) % state.catalog.radials;
-    const value = decodeRadarValue(state.product, frame.bytes[radial * state.catalog.gates + gate]);
+    const byte = frame.bytes[radial * state.catalog.gates + gate], value = decodeRadarValue(state.product, byte);
     const spec = RADAR_PRODUCTS[state.product];
-    valueText = value === null ? 'No echo'
+    valueText = isRangeFolded(state.product, byte) ? 'Range folded' : value === null ? 'No echo'
       : state.product.includes('elocity') ? `${Math.round(value * MS_TO_KT)} kt ${value < 0 ? 'inbound' : value > 0 ? 'outbound' : ''}`
       : `${value.toFixed(spec.decimals)} ${spec.units}`;
   }
@@ -861,5 +878,5 @@ function readPreferences() {
   try { return JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? '{}'); } catch { return {}; }
 }
 function savePreferences() {
-  try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ site: state.mosaic ? MOSAIC : state.site.id, tilt: state.tilt, product: state.product, stepped: state.stepped, warnings: state.showWarnings })); } catch { /* storage unavailable */ }
+  try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ site: siteValue(), tilt: state.tilt, product: state.product, stepped: state.stepped, warnings: state.showWarnings })); } catch { /* storage unavailable */ }
 }

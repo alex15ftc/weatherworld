@@ -34,13 +34,13 @@ export const RADAR_PRODUCTS = {
     legend: [5, 20, 35, 50, 65, 75]
   },
   velocity: {
-    label: 'Base velocity', short: 'VEL', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5,
+    label: 'Base velocity', short: 'VEL', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5, doppler: true,
     stops: [[-63.5, 120, 255, 255, 255], [-40, 0, 255, 90, 255], [-25, 0, 200, 40, 255], [-10, 0, 120, 20, 255], [-1, 40, 75, 45, 255],
       [0, 115, 110, 110, 255], [1, 80, 35, 40, 255], [10, 140, 0, 15, 255], [25, 215, 0, 25, 255], [40, 255, 70, 70, 255], [63.5, 255, 210, 170, 255]],
     legend: [-50, -25, 0, 25, 50]
   },
   stormRelativeVelocity: {
-    label: 'Storm-relative velocity', short: 'SRV', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5,
+    label: 'Storm-relative velocity', short: 'SRV', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5, doppler: true,
     stops: null, // shares the velocity table
     legend: [-50, -25, 0, 25, 50]
   },
@@ -49,6 +49,12 @@ export const RADAR_PRODUCTS = {
     stops: [[0.2, 20, 20, 95, 255], [0.45, 60, 80, 200, 255], [0.65, 100, 190, 240, 255], [0.75, 90, 220, 100, 255], [0.85, 240, 230, 60, 255],
       [0.9, 250, 150, 30, 255], [0.95, 230, 40, 40, 255], [0.97, 175, 20, 95, 255], [1.0, 240, 170, 230, 255], [1.09, 255, 255, 255, 255]],
     legend: [0.2, 0.6, 0.8, 0.9, 0.97, 1.0]
+  },
+  spectrumWidth: {
+    label: 'Spectrum width', short: 'SW', units: 'm/s', min: 0, step: 0.1, decimals: 1, band: 1, doppler: true,
+    stops: [[0, 60, 60, 60, 255], [1, 110, 110, 110, 255], [2, 150, 150, 150, 255], [3, 40, 110, 200, 255], [5, 40, 190, 80, 255],
+      [7, 230, 220, 40, 255], [9, 250, 140, 30, 255], [12, 230, 40, 40, 255], [16, 250, 120, 220, 255], [25.4, 255, 255, 255, 255]],
+    legend: [0, 4, 8, 12, 16, 20]
   },
   differentialReflectivity: {
     label: 'Differential reflectivity', short: 'ZDR', units: 'dB', min: -4, step: 0.05, decimals: 2, band: 0.5,
@@ -59,15 +65,42 @@ export const RADAR_PRODUCTS = {
   }
 };
 RADAR_PRODUCTS.stormRelativeVelocity.stops = RADAR_PRODUCTS.velocity.stops;
-export const RADAR_PRODUCT_KEYS = Object.keys(RADAR_PRODUCTS);
+// What the network works out from the radars' volume scans (mosaics only, not one radar's scan).
+Object.assign(RADAR_PRODUCTS, {
+  echoTops: {
+    label: 'Echo tops (18 dBZ)', short: 'ET', units: 'kft', min: 0, step: 0.5, decimals: 0, band: 5, mosaicOnly: true,
+    stops: [[0, 90, 90, 90, 255], [10, 40, 110, 200, 255], [20, 40, 190, 80, 255], [30, 230, 220, 40, 255], [40, 250, 140, 30, 255],
+      [50, 230, 40, 40, 255], [60, 250, 120, 220, 255], [70, 255, 255, 255, 255], [127, 255, 255, 255, 255]],
+    legend: [10, 20, 30, 40, 50, 60, 70]
+  },
+  vil: {
+    label: 'Vertically integrated liquid', short: 'VIL', units: 'kg/m²', min: 0, step: 0.5, decimals: 0, band: 5, mosaicOnly: true,
+    stops: [[0, 90, 90, 90, 255], [5, 40, 110, 200, 255], [15, 40, 190, 80, 255], [25, 230, 220, 40, 255], [35, 250, 140, 30, 255],
+      [45, 230, 40, 40, 255], [60, 250, 120, 220, 255], [80, 255, 255, 255, 255], [127, 255, 255, 255, 255]],
+    legend: [0, 15, 30, 45, 60, 75]
+  },
+  mesh: {
+    label: 'Maximum expected hail size', short: 'MESH', units: 'in', min: 0, step: 0.02, decimals: 2, band: 0.25, mosaicOnly: true,
+    stops: [[0.25, 40, 190, 80, 255], [0.75, 230, 220, 40, 255], [1, 250, 140, 30, 255], [1.5, 230, 40, 40, 255], [2, 250, 120, 220, 255],
+      [3, 255, 255, 255, 255], [5.1, 255, 255, 255, 255]],
+    legend: [0.25, 1, 2, 3, 4]
+  }
+});
+export const RADAR_PRODUCT_KEYS = Object.keys(RADAR_PRODUCTS).filter(key => !RADAR_PRODUCTS[key].mosaicOnly);
+
+// In the Doppler products (velocity, storm-relative velocity, spectrum width) byte 1 means
+// "range folded": an echo from beyond the Doppler range lies over this one, so its motion is
+// unknown (drawn purple). Their values start at byte 2.
+export const RANGE_FOLDED = 1;
+export const isRangeFolded = (product, byte) => byte === RANGE_FOLDED && Boolean(RADAR_PRODUCTS[product]?.doppler);
 
 export function encodeRadarValue(product, value) {
   const spec = RADAR_PRODUCTS[product];
-  return Math.max(1, Math.min(255, 1 + Math.round((value - spec.min) / spec.step)));
+  return Math.max(spec.doppler ? 2 : 1, Math.min(255, 1 + Math.round((value - spec.min) / spec.step)));
 }
 
 export function decodeRadarValue(product, byte) {
-  if (!byte) return null;
+  if (!byte || isRangeFolded(product, byte)) return null;
   const spec = RADAR_PRODUCTS[product];
   return spec.min + (byte - 1) * spec.step;
 }
@@ -85,5 +118,6 @@ export function radarColorTable(product, stepped = false) {
     const t = Math.max(0, Math.min(1, (v - a[0]) / (c[0] - a[0] || 1)));
     for (let k = 0; k < 4; k++) lut[b * 4 + k] = Math.round(a[k + 1] + (c[k + 1] - a[k + 1]) * t);
   }
+  if (RADAR_PRODUCTS[product].doppler) lut.set([119, 0, 125, 255], RANGE_FOLDED * 4);
   return lut;
 }

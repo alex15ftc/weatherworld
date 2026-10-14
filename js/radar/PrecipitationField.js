@@ -55,8 +55,11 @@ const PHYSICS = {
   longestS: 9000,              // fallout older than this is not followed
   // How much of the water vapour an updraught carries up comes down as precipitation (the rest
   // stays as cloud, or is carried away aloft): this share at most, a third as much in the
-  // strongest shear (0-6 km, kt), where more of it is carried off before it can grow.
-  efficiency: 0.3, efficiencyShearKt: [20, 60],
+  // strongest shear (0-6 km, kt), where more of it is carried off before it can grow; and less
+  // in a dry column, where the dry air the updraught mixes in on the way up evaporates its
+  // water: two fifths as much where the precipitable water (in) and the relative humidity
+  // 150-350 hPa above the ground (%) are both at the low ends of these ranges.
+  efficiency: 0.45, efficiencyShearKt: [20, 60], efficiencyDryShare: 0.4, efficiencyPwatIn: [0.6, 2], efficiencyMidRh: [20, 80],
   hailMass: [0.04, 0.1],       // share of the precipitation that is hail: least, and more with large stones
   hailRadarMm: 15              // stones larger than this reflect little more (they are no longer small beside the wavelength)
 };
@@ -90,7 +93,8 @@ const iceFallMs = (mm, snow) => (snow ? 1 + 0.3 * mm : 1.2 + 1.4 * mm);
 const hailFallMs = mm => 11.45 * Math.sqrt(mm / 10);
 
 // column: { topM, freezingM, su, sv } - the storm's top and freezing level above the ground, and
-// the wind relative to the storm (m/s east and north) every WIND_PROFILE_STEP_M. shared: keep the
+// the wind relative to the storm (m/s east and north) every WIND_PROFILE_STEP_M; and, from the
+// sounding where it stands, inflowVapourGm3, precipitableWaterIn and midLevelRh (optional). shared: keep the
 // result in memory other threads can read without a copy (the radar's threads share one scene).
 export function buildStormPrecipitation(storm, column, { shared = false } = {}) {
   const alloc = shared ? sharedAlloc : plainAlloc;
@@ -105,6 +109,7 @@ export function buildStormPrecipitation(storm, column, { shared = false } = {}) 
   const tornado = storm.tornado, tornadoWindMs = (Number(tornado?.windSpeedMph) || 90) * 0.447;
   const model = {
     mx, my, rx, ry, topM: column.topM, freezingM: column.freezingM, su: column.su, sv: column.sv,
+    inflowVapourGm3: column.inflowVapourGm3, precipitableWaterIn: column.precipitableWaterIn, midLevelRh: column.midLevelRh,
     baseM: clamp(Number(geometry.updraught.baseM) || 1200, 300, 4000),
     ageS: Math.min(PHYSICS.longestS, (Number(storm.ageHours) || 0) * 3600),
     seed: hashString(String(storm.id ?? 'storm')),
@@ -167,10 +172,13 @@ function updraughts(storm, structure, geometry, model, asLine, toMap) {
   const speed = clamp(Number(storm.updraughtMs) || 6, 3, 70), rain = clamp(Number(storm.precipitation) || 0, 0, 1.3);
   const steady = clamp(Number(storm.organization) || 0, 0, 1), hailMm = (Number(storm.currentHailSizeInches) || 0) * 25.4;
   const hailMass = hailMm > 6 ? PHYSICS.hailMass[0] + PHYSICS.hailMass[1] * clamp(hailMm / 63, 0, 1.2) : 0;
-  // Water vapour in the air drawn in (g/m³, from its dewpoint), and how much of it comes down.
+  // Water vapour in the air drawn in (g/m³: the lowest kilometre's, or from the dewpoint where
+  // there is no sounding), and how much of it comes down.
   const environment = storm.environment ?? {}, dewpointC = ((Number(environment.dewpoint) || 60) - 32) * 5 / 9;
-  const vapour = 216.7 * 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5)) / (dewpointC + 273.15);
-  const efficiency = PHYSICS.efficiency * (1 - 2 / 3 * ramp(environment.bulkShear, PHYSICS.efficiencyShearKt[0], PHYSICS.efficiencyShearKt[1]));
+  const vapour = Number.isFinite(model.inflowVapourGm3) ? model.inflowVapourGm3 : 216.7 * 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5)) / (dewpointC + 273.15);
+  const moist = 0.5 * ramp(Number.isFinite(model.precipitableWaterIn) ? model.precipitableWaterIn : 1.2, ...PHYSICS.efficiencyPwatIn) + 0.5 * ramp(Number.isFinite(model.midLevelRh) ? model.midLevelRh : 45, ...PHYSICS.efficiencyMidRh);
+  const efficiency = PHYSICS.efficiency * (1 - 2 / 3 * ramp(environment.bulkShear, PHYSICS.efficiencyShearKt[0], PHYSICS.efficiencyShearKt[1]))
+    * (PHYSICS.efficiencyDryShare + (1 - PHYSICS.efficiencyDryShare) * moist);
   const sources = [];
   const add = (at, R, w, share, hailShare, kind, index) => {
     const vigour = clamp(0.5 * rain + 0.5 * w / 45, 0, 1.1), slope = 3.6 - 1.9 * vigour;   // drop-size slope (per mm): 3.6 drizzle to 1.5 downpour
