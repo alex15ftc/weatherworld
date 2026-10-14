@@ -6,7 +6,9 @@ export const RADAR_GATE_KM = 0.5;
 export const RADAR_RANGE_KM = 230;
 export const RADAR_GATES = Math.round(RADAR_RANGE_KM / RADAR_GATE_KM);
 export const RADAR_BEAMWIDTH_DEG = 0.95;
-export const RADAR_TILTS_DEG = [0.5, 0.9, 1.3, 1.8, 2.4, 3.1, 4.0, 5.1, 6.4];
+// The tilts of a deep-convection volume scan (as VCP 12/212): close to the radar the higher
+// ones see a storm's upper parts, so the cone above the radar with no view is small.
+export const RADAR_TILTS_DEG = [0.5, 0.9, 1.3, 1.8, 2.4, 3.1, 4.0, 5.1, 6.4, 8.0, 10.0, 12.5, 15.6, 19.5];
 export const RADAR_ANTENNA_HEIGHT_M = 30;
 
 const EFFECTIVE_EARTH_RADIUS_KM = 6371 * 4 / 3;

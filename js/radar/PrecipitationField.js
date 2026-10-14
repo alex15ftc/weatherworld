@@ -11,6 +11,7 @@
 // Frame: x east and y south in km from the storm's centre; heights in metres above the ground.
 import { rotatingShare, lineShare } from '../storms/StormModeEngine.js';
 import { buildStormGeometry } from '../storms/StormGeometry.js';
+import { BUDGET } from '../storms/StormBudgets.js';
 
 export const PRECIP_LEVELS_M = [0, 700, 1500, 2500, 3700, 5200, 7000, 9200, 12000, 15500];
 // The storm-relative wind profile the fallout is carried by: one value every 250 m.
@@ -52,6 +53,10 @@ const PHYSICS = {
   // each of its sides (a steady, organised storm varies less).
   pulseS: 720, pulse: 0.75, sides: 6,
   longestS: 9000,              // fallout older than this is not followed
+  // How much of the water vapour an updraught carries up comes down as precipitation (the rest
+  // stays as cloud, or is carried away aloft): this share at most, a third as much in the
+  // strongest shear (0-6 km, kt), where more of it is carried off before it can grow.
+  efficiency: 0.3, efficiencyShearKt: [20, 60],
   hailMass: [0.04, 0.1],       // share of the precipitation that is hail: least, and more with large stones
   hailRadarMm: 15              // stones larger than this reflect little more (they are no longer small beside the wavelength)
 };
@@ -162,11 +167,18 @@ function updraughts(storm, structure, geometry, model, asLine, toMap) {
   const speed = clamp(Number(storm.updraughtMs) || 6, 3, 70), rain = clamp(Number(storm.precipitation) || 0, 0, 1.3);
   const steady = clamp(Number(storm.organization) || 0, 0, 1), hailMm = (Number(storm.currentHailSizeInches) || 0) * 25.4;
   const hailMass = hailMm > 6 ? PHYSICS.hailMass[0] + PHYSICS.hailMass[1] * clamp(hailMm / 63, 0, 1.2) : 0;
+  // Water vapour in the air drawn in (g/m³, from its dewpoint), and how much of it comes down.
+  const environment = storm.environment ?? {}, dewpointC = ((Number(environment.dewpoint) || 60) - 32) * 5 / 9;
+  const vapour = 216.7 * 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5)) / (dewpointC + 273.15);
+  const efficiency = PHYSICS.efficiency * (1 - 2 / 3 * ramp(environment.bulkShear, PHYSICS.efficiencyShearKt[0], PHYSICS.efficiencyShearKt[1]));
   const sources = [];
   const add = (at, R, w, share, hailShare, kind, index) => {
     const vigour = clamp(0.5 * rain + 0.5 * w / 45, 0, 1.1), slope = 3.6 - 1.9 * vigour;   // drop-size slope (per mm): 3.6 drizzle to 1.5 downpour
     const shares = DROP_MM.map((d, c) => d ** 3 * Math.exp(-slope * d) * DROP_RANGE_MM[c]), total = shares.reduce((a, b) => a + b, 0);
-    const flux = rain * (0.35 + 0.65 * clamp(w / 45, 0, 1.3)) * R * R * share;
+    // Precipitation made each second (g): the share of the vapour the updraught carries up, with
+    // the updraught as it was a while ago (rain takes time to form). Amounts in the grid are
+    // then grams per cubic metre (a km² is 1e6 m², a km³ 1e9 m³).
+    const flux = efficiency * vapour * rain * BUDGET.fullUpdraughtMs * (w / speed) * Math.PI * R * R * 1e-3 * share;
     if (!(flux > 0)) return;
     const counts = FOLLOWED[kind], classes = DROP_MM.map((d, c) => ({ mm: d, snow: c < SNOW_SIZES, hail: false, fallMs: iceFallMs(d, c < SNOW_SIZES), count: counts[c], each: flux * (1 - hailMass * hailShare) * shares[c] / total / counts[c] }));
     if (hailMass * hailShare > 0) HAIL_SIZE_SHARE.forEach((s, c) => {

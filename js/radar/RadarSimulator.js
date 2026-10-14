@@ -41,7 +41,13 @@ const BEAM_OFFSETS = [[-1, 0.25], [0, 0.5], [1, 0.25]], BEAM_CENTRE = [[0, 1]];
 const ACROSS_SHARE = 0.35 * RADAR_BEAMWIDTH_DEG / (360 / RADAR_RADIALS);
 const NEIGHBOUR_WEIGHT = BEAM_OFFSETS[0][1] * Math.min(1, ACROSS_SHARE), OWN_WEIGHT = 1 - 2 * NEIGHBOUR_WEIGHT;
 // Per-gate sums of one scan before blending and noise (reused between scans).
-const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, envRadial: null };
+const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, envRadial: null, hail: null, spike: null, spikeRadial: null };
+// Three-body scattering: the beam scattered down to the ground by a core of large hail comes back
+// up through the hail and in again, later than the echo from the hail itself, so it shows
+// farther out, starting as far beyond the core as the hail is above the ground. What returns is
+// this much weaker than the hail's own echo (dB), fades over this distance (km), and has the
+// hail's motion; a spray off the ground, it has high ZDR (dB) and low ρhv.
+const THREE_BODY = { lossDb: 48, fadeKm: 8, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
 const NOISE = { dbz: 0.8, velocityMs: 0.9, correlation: 0.008, zdrDb: 0.18 };
 // A tornado's wind is as deep as the tornado is strong: a weak one is seen only in the lowest
 // kilometre; a violent one reaches several kilometres.
@@ -187,11 +193,12 @@ export function scanRadarTilt(scene, site, tiltDeg) {
   const products = Object.fromEntries(RADAR_PRODUCT_KEYS.map(key => [key, new Uint8Array(total)]));
   const ref = products.reflectivity, vel = products.velocity, srv = products.stormRelativeVelocity;
   const cc = products.correlationCoefficient, zdr = products.differentialReflectivity;
-  const sample = { zh: 0, zv: 0, cc: 0 }, wind = { u: 0, v: 0 }, stormWind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
+  const sample = { zh: 0, zv: 0, cc: 0, hail: 0 }, wind = { u: 0, v: 0 }, stormWind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const cosTilt = Math.cos(tiltDeg * DEG);
   const siteHeightM = site.elevationM + RADAR_ANTENNA_HEIGHT_M;
+  const leastHail = 10 ** (THREE_BODY.leastHailDbz / 10), threeBodyShare = 10 ** (-THREE_BODY.lossDb / 10), threeBodyZv = 10 ** (THREE_BODY.zdrDb / 10);
   // Storm-relative velocity takes off the motion of the storms this radar can see.
   const stormMotion = meanStormMotion(scene.storms, scene.env, site.xKm, site.yKm, RADAR_RANGE_KM), su = stormMotion.u, sv = stormMotion.v;
   // Noise differs from scan to scan and from product to product.
@@ -203,6 +210,7 @@ export function scanRadarTilt(scene, site, tiltDeg) {
 
   for (const key of Object.keys(gateSums)) (gateSums[key] ??= new Float32Array(total)).fill(0);
   const sumZh = gateSums.zh, sumZv = gateSums.zv, sumCc = gateSums.cc, sumStorm = gateSums.stormRadial, envRadial = gateSums.envRadial;
+  const sumHail = gateSums.hail, spike = gateSums.spike, spikeRadial = gateSums.spikeRadial;
 
   // 1. Each radial on its own: the beam's depth (three samples up through it), and what the
   // echoes in it are doing. Velocity is weighted by how strongly each part reflects.
@@ -219,12 +227,12 @@ export function scanRadarTilt(scene, site, tiltDeg) {
       clearAir.bioZ = centerAgl - geo.spreadM < clearAir.bl * 1.3
         ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
       const inStorm = binAt(scene.stormBins, x, y) !== null;
-      let zh = 0, zv = 0, ccw = 0, stormRadial = 0;
+      let zh = 0, zv = 0, ccw = 0, stormRadial = 0, hail = 0;
       for (const [k, wgt] of BEAM_OFFSETS) {
         const agl = centerAgl + k * geo.spreadM;
         if (agl < 0) continue;
         sampleVolume(scene, x, y, agl, sample, clearAir);
-        zh += sample.zh * wgt; zv += sample.zv * wgt; ccw += sample.cc * wgt;
+        zh += sample.zh * wgt; zv += sample.zv * wgt; ccw += sample.cc * wgt; hail += sample.hail * wgt;
         if (inStorm && sample.zh > 0) { stormWindAt(scene, x, y, agl, stormWind); stormRadial += sample.zh * wgt * (stormWind.u * sinAz + stormWind.v * cosAz); }
       }
       if (zh <= 0) continue;
@@ -232,6 +240,15 @@ export function scanRadarTilt(scene, site, tiltDeg) {
       sumZh[index] = zh; sumZv[index] = zv; sumCc[index] = ccw; sumStorm[index] = stormRadial;
       envWindAt(scene.env, x, y, centerAgl, wind);
       envRadial[index] = wind.u * sinAz + wind.v * cosAz;
+      if (hail >= leastHail) {
+        // Three-body scattering from this gate's hail, spread over the gates beyond it (with the hail's motion).
+        const offsetKm = centerAgl / 1000, source = hail * threeBodyShare, motion = envRadial[index] + stormRadial / zh;
+        const first = Math.ceil(g + offsetKm / RADAR_GATE_KM), last = Math.min(RADAR_GATES - 1, Math.floor(g + (offsetKm + THREE_BODY.reachFades * THREE_BODY.fadeKm) / RADAR_GATE_KM));
+        for (let k = first; k <= last; k++) {
+          const z = source * Math.exp(-((k - g) * RADAR_GATE_KM - offsetKm) / THREE_BODY.fadeKm), at = r * RADAR_GATES + k;
+          spike[at] += z; spikeRadial[at] += z * motion;
+        }
+      }
     }
   }
 
@@ -242,14 +259,22 @@ export function scanRadarTilt(scene, site, tiltDeg) {
     const left = ((r + RADAR_RADIALS - 1) % RADAR_RADIALS) * RADAR_GATES, right = ((r + 1) % RADAR_RADIALS) * RADAR_GATES;
     for (let g = 0; g < RADAR_GATES; g++) {
       const index = r * RADAR_GATES + g, l = left + g, n = right + g;
-      const zh = OWN_WEIGHT * sumZh[index] + NEIGHBOUR_WEIGHT * (sumZh[l] + sumZh[n]);
+      const echo = OWN_WEIGHT * sumZh[index] + NEIGHBOUR_WEIGHT * (sumZh[l] + sumZh[n]);
+      const scattered = OWN_WEIGHT * spike[index] + NEIGHBOUR_WEIGHT * (spike[l] + spike[n]);
+      const zh = echo + scattered;
       if (zh <= 0) continue;
       const snr = 10 * Math.log10(zh) - gateGeometry[g].minDbz;
       if (snr < 0) continue;
-      const zv = OWN_WEIGHT * sumZv[index] + NEIGHBOUR_WEIGHT * (sumZv[l] + sumZv[n]), ccw = OWN_WEIGHT * sumCc[index] + NEIGHBOUR_WEIGHT * (sumCc[l] + sumCc[n]);
-      const stormRadial = OWN_WEIGHT * sumStorm[index] + NEIGHBOUR_WEIGHT * (sumStorm[l] + sumStorm[n]);
+      let zv = OWN_WEIGHT * sumZv[index] + NEIGHBOUR_WEIGHT * (sumZv[l] + sumZv[n]), ccw = OWN_WEIGHT * sumCc[index] + NEIGHBOUR_WEIGHT * (sumCc[l] + sumCc[n]);
+      let stormRadial = OWN_WEIGHT * sumStorm[index] + NEIGHBOUR_WEIGHT * (sumStorm[l] + sumStorm[n]);
       // The wind of the air itself varies little across a beam; where this radial saw nothing, its neighbours' is used.
-      const air = sumZh[index] > 0 ? envRadial[index] : sumZh[l] > 0 ? envRadial[l] : envRadial[n];
+      let air = sumZh[index] > 0 ? envRadial[index] : sumZh[l] > 0 ? envRadial[l] : envRadial[n];
+      if (scattered > 0) {
+        // The scattered part moves with the hail it came from (stormRadial is relative to the air's wind).
+        zv += scattered / threeBodyZv; ccw += scattered * THREE_BODY.rho;
+        if (!(echo > 0)) air = 0;
+        stormRadial += OWN_WEIGHT * spikeRadial[index] + NEIGHBOUR_WEIGHT * (spikeRadial[l] + spikeRadial[n]) - scattered * air;
+      }
       const lowSnr = Math.exp(-snr / 6);
       const noise = gateNoise(index, noiseSalt) * 2 - 1, velocityNoise = gateNoise(index, noiseSalt + 0.003) * 2 - 1, polarNoise = gateNoise(index, noiseSalt + 0.006) * 2 - 1;
       ref[index] = encodeRadarValue('reflectivity', 10 * Math.log10(zh) + noise * (NOISE.dbz + 1.6 * lowSnr));
@@ -279,7 +304,7 @@ export function buildRadarMosaic(scene, sites, { rows = null } = {}) {
   const started = globalThis.performance?.now?.() ?? Date.now();
   const { width, height } = mosaicSize(scene), [firstRow, endRow] = rows ?? [0, height];
   const bytes = new Uint8Array(width * (endRow - firstRow));
-  const sample = { zh: 0, zv: 0, cc: 0 }, clearAir = { bl: 0, bioZ: 0 };
+  const sample = { zh: 0, zv: 0, cc: 0, hail: 0 }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const tilts = RADAR_TILTS_DEG.map(deg => ({ deg, cos: Math.cos(deg * DEG) }));
   const maxGround = groundRangeKm(RADAR_RANGE_KM, tilts[0].deg), beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
@@ -343,7 +368,7 @@ export function buildRadarMosaic(scene, sites, { rows = null } = {}) {
 
 const tmp = {};
 function sampleVolume(scene, x, y, agl, out, clearAir) {
-  out.zh = 0; out.zv = 0; out.cc = 0;
+  out.zh = 0; out.zv = 0; out.cc = 0; out.hail = 0;
   const stormBin = binAt(scene.stormBins, x, y);
   if (stormBin) for (const s of stormBin) stormHydrometeors(s, x - s.x, y - s.y, agl, out);
   clearAirEchoes(scene, x, y, agl, out, clearAir);
@@ -372,7 +397,9 @@ function stormHydrometeors(s, lx, ly, z, out) {
     }
     if (tmp.hail > 0) {
       const wet = 1 - frozen;
-      addEcho(out, HAIL_REFLECTIVITY * tmp.hail * (0.35 + 0.65 * wet), 0.1 + 0.5 * wet, 0.92 - 0.06 * wet);
+      const hailZ = HAIL_REFLECTIVITY * tmp.hail * (0.35 + 0.65 * wet);
+      addEcho(out, hailZ, 0.1 + 0.5 * wet, 0.92 - 0.06 * wet);
+      out.hail += hailZ;
     }
   }
   const debris = sampleDebris(e, lx, ly, z);

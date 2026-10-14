@@ -112,11 +112,29 @@ async function fetchLatest() {
     while (frames.length > LOOP_FRAMES) frames.shift();
     state.frames.set(key, frames);
     if (key === selectionKey() && !state.looping) showFrame(frames.length - 1);
+    if (state.mosaic && frames.length < LOOP_FRAMES) fillMosaicLoop();
     const rendererName = renderer.kind === 'webgl2' ? 'WebGL' : 'Canvas 2D';
     ui.status.textContent = `${state.mosaic ? 'Mosaic' : 'Volume scan'} built in ${meta.buildMs} ms · ${rendererName} renderer · new scans every 5 simulated minutes`;
   } catch (error) {
     ui.status.textContent = `Scan request failed: ${error.message}`;
   } finally { state.fetching = false; }
+}
+
+// The authority keeps the last hour of mosaics: the loop has them as soon as the page opens.
+async function fillMosaicLoop() {
+  try {
+    const { frames: kept = [] } = await client.getRadarMosaicFrames();
+    const frames = state.frames.get(MOSAIC) ?? [];
+    const missing = kept.filter(k => !frames.some(f => Math.abs(f.meta.validHourUtc - k.validHourUtc) < 1e-6)).slice(-LOOP_FRAMES);
+    if (!missing.length) return;
+    const loaded = await Promise.all(missing.map(k => client.getRadarMosaic(k.validHourUtc).catch(() => null)));
+    const now = state.frames.get(MOSAIC) ?? [];
+    for (const frame of loaded) if (frame && !now.some(f => Math.abs(f.meta.validHourUtc - frame.meta.validHourUtc) < 1e-6)) now.push(frame);
+    now.sort((a, b) => a.meta.validHourUtc - b.meta.validHourUtc);
+    while (now.length > LOOP_FRAMES) now.shift();
+    state.frames.set(MOSAIC, now);
+    if (state.mosaic && !state.looping) showFrame(now.length - 1);
+  } catch { /* the loop still builds as new scans arrive */ }
 }
 
 async function fetchWarnings() {

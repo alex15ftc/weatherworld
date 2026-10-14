@@ -94,6 +94,12 @@ function updateStorm(world, storm, dtHours) {
   updateCoupledStormMotion(world, storm, environment, dtHours);
   const dx = storm.velocityKph.east * dtHours, dy = -storm.velocityKph.north * dtHours;
   storm.positionKm.x += dx; storm.positionKm.y += dy; storm.trackKm += Math.hypot(dx,dy);
+  // What is left of a merger's move to the merged centre.
+  if (storm.mergeShiftKm) {
+    const left = Math.hypot(storm.mergeShiftKm.x, storm.mergeShiftKm.y), share = left > 0 ? clamp(MERGE_GLIDE_KPH * dtHours / left, 0, 1) : 1, sx = storm.mergeShiftKm.x * share, sy = storm.mergeShiftKm.y * share;
+    storm.positionKm.x += sx; storm.positionKm.y += sy;
+    storm.mergeShiftKm = share >= 1 ? null : { x: storm.mergeShiftKm.x - sx, y: storm.mergeShiftKm.y - sy };
+  }
   storm.trackPoints ??= [{ ...storm.previousPositionKm, hourUtc: (world.stormEngine?.validHourUtc ?? world.validHourUtc) - dtHours }];
   const lastTrackPoint = storm.trackPoints.at(-1);
   if (!lastTrackPoint || Math.hypot(storm.positionKm.x-lastTrackPoint.x, storm.positionKm.y-lastTrackPoint.y) >= 2.5) {
@@ -164,7 +170,9 @@ function handleSplits(world) {
   }
 }
 
-const LINE_JOIN_OVERLAP = 0.75, MAX_LINE_HALF_LENGTH_KM = 160;
+const LINE_JOIN_OVERLAP = 0.75, LINE_JOIN_DEPTH_KM = 15, MAX_LINE_HALF_LENGTH_KM = 160;
+// Speed (beyond its own motion) at which a merged cell moves to its new centre.
+const MERGE_GLIDE_KPH = 60;
 // A storm starts with part of the line organization its forcing implies and grows into the rest.
 const INITIAL_LINE_SHARE = 0.6, LINE_RESPONSE_PER_HOUR = 1;
 const isLine = storm => lineShare(storm) >= 0.5;
@@ -182,15 +190,33 @@ function handleMergersAndOrganization(world, spatialIndex) {
     if (checked.has(pairKey)) continue;
     checked.add(pairKey);
     const d=distance(a,b);
-    // Neighbouring line segments whose ends overlap join into one longer line.
-    const joining = isLine(a) && isLine(b) && d <= (lineHalfLengthKm(a) + lineHalfLengthKm(b)) * LINE_JOIN_OVERLAP;
-    const joinedHalfLengthKm = joining ? clamp((lineHalfLengthKm(a) + lineHalfLengthKm(b) + d) / 2, 0, MAX_LINE_HALF_LENGTH_KM) : 0;
+    // Neighbouring line segments whose ends overlap join into one longer line. They must lie end
+    // to end: a line ahead of or behind another (more than a rain band's depth along their
+    // motion) is a second line, not part of the first.
+    const joining = isLine(a) && isLine(b) && d <= (lineHalfLengthKm(a) + lineHalfLengthKm(b)) * LINE_JOIN_OVERLAP && aheadKm(a, b) <= LINE_JOIN_DEPTH_KM;
     if (!joining && d > Math.max(7, (a.coldPoolRadiusKm+b.coldPoolRadiusKm)*0.20)) continue;
     if (rotatingShare(a) >= 0.5 && rotatingShare(b) >= 0.5 && !joining && d > 8) continue;
     const keeper = a.intensity >= b.intensity ? a : b, absorbed = keeper===a?b:a;
     const total = Math.max(0.1, keeper.intensity + absorbed.intensity);
-    keeper.positionKm.x = (keeper.positionKm.x*keeper.intensity + absorbed.positionKm.x*absorbed.intensity)/total;
-    keeper.positionKm.y = (keeper.positionKm.y*keeper.intensity + absorbed.positionKm.y*absorbed.intensity)/total;
+    let joinedHalfLengthKm = 0;
+    if (joining) {
+      // A line lies across its motion. Along that axis the joined line runs from the far end of
+      // one segment to the far end of the other, so it is centred between those ends and the rain
+      // it draws covers the ground both covered; across it, it stays on the keeper's leading edge.
+      const speed = Math.hypot(keeper.velocityKph.east, keeper.velocityKph.north);
+      const axis = speed > 0.1 ? { x: keeper.velocityKph.north / speed, y: keeper.velocityKph.east / speed } : { x: (absorbed.positionKm.x - keeper.positionKm.x) / Math.max(d, 1e-6), y: (absorbed.positionKm.y - keeper.positionKm.y) / Math.max(d, 1e-6) };
+      const t = (absorbed.positionKm.x - keeper.positionKm.x) * axis.x + (absorbed.positionKm.y - keeper.positionKm.y) * axis.y;
+      const from = Math.min(-lineHalfLengthKm(keeper), t - lineHalfLengthKm(absorbed)), to = Math.max(lineHalfLengthKm(keeper), t + lineHalfLengthKm(absorbed));
+      joinedHalfLengthKm = clamp((to - from) / 2, 0, MAX_LINE_HALF_LENGTH_KM);
+      keeper.positionKm = { x: keeper.positionKm.x + axis.x * (from + to) / 2, y: keeper.positionKm.y + axis.y * (from + to) / 2 };
+      keeper.mergeShiftKm = null;
+    } else {
+      // Two cells become one around their weighted centre; the merged storm moves there
+      // at MERGE_GLIDE_KPH (updateStorm) rather than at once.
+      const pending = keeper.mergeShiftKm ?? { x: 0, y: 0 }, heading = { x: keeper.positionKm.x + pending.x, y: keeper.positionKm.y + pending.y };
+      const centre = { x: (heading.x*keeper.intensity + absorbed.positionKm.x*absorbed.intensity)/total, y: (heading.y*keeper.intensity + absorbed.positionKm.y*absorbed.intensity)/total };
+      keeper.mergeShiftKm = { x: centre.x - keeper.positionKm.x, y: centre.y - keeper.positionKm.y };
+    }
     setUpdraught(keeper, Math.max(keeper.updraughtMs, absorbed.updraughtMs)); keeper.precipitation = Math.max(keeper.precipitation, absorbed.precipitation);
     keeper.coldPoolStrength = Math.max(keeper.coldPoolStrength, absorbed.coldPoolStrength);
     keeper.organization = clamp((keeper.organization+absorbed.organization)*0.55,0,1);
@@ -399,6 +425,11 @@ function updateLifecycleEvolution(storm, environment, dtHours) {
   lc.cycleNumber = cycle.cyclesCompleted; lc.cyclePhase = cycle.phase;
 }
 function distance(a,b){ return Math.hypot(a.positionKm.x-b.positionKm.x,a.positionKm.y-b.positionKm.y); }
+// How far one storm is ahead of or behind the other along their mean motion.
+function aheadKm(a,b){
+  const east = a.velocityKph.east + b.velocityKph.east, north = a.velocityKph.north + b.velocityKph.north, speed = Math.hypot(east, north);
+  return speed > 0.1 ? Math.abs((b.positionKm.x - a.positionKm.x) * east - (b.positionKm.y - a.positionKm.y) * north) / speed : 0;
+}
 
 function archiveEndedStorms(world) {
   world.stormArchive ??= [];

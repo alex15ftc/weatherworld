@@ -25,6 +25,8 @@ const STORM_CADENCE_HOURS = 1 / 12, ATMOSPHERE_STEP_HOURS = 0.5;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const MAX_STEPS_PER_TICK = 4;
 const RADAR_PREWARM_MS = 60_000;
+// Mosaics kept for the radar page's loop (one per scan time: an hour's worth).
+const RADAR_HISTORY_FRAMES = 12;
 const RISK_CODES = { NONE: 0, TSTM: 1, MRGN: 2, SLGT: 3, ENH: 4, MDT: 5, HIGH: 6 };
 const TILE_STYLE_REVISION = 'spc-probability-v6';
 const STATE_VERSION = 2;
@@ -40,6 +42,8 @@ export class WeatherAuthorityRuntime {
     this.radarPool = radarPool;
     // Radar products asked for lately (cache key -> when), made ready again as each new scan comes in.
     this.radarWanted = new Map();
+    // The latest mosaics, oldest first: { validHourUtc, mosaic }.
+    this.radarHistory = [];
     this.statePath = statePath;
     this.spinUpDays = spinUpDays;
     this.codeVersion = statePath ? sourceVersion() : 'unversioned';
@@ -74,6 +78,7 @@ export class WeatherAuthorityRuntime {
 
   reset(seed = this.seed) {
     this.build(seed);
+    this.radarHistory = [];
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision += 1;
     this.invalidateProducts();
@@ -378,9 +383,22 @@ export class WeatherAuthorityRuntime {
     const revision = this.revision, sites = this.radarCatalog().sites;
     return this.cachedAsync('radar:mosaic', async () => {
       const scene = await this.radarScene();
-      return { ...(this.radarPool ? await this.radarPool.mosaic(scene, sites) : buildRadarMosaic(scene, sites)), revision };
+      const mosaic = { ...(this.radarPool ? await this.radarPool.mosaic(scene, sites) : buildRadarMosaic(scene, sites)), revision };
+      this.rememberMosaic(mosaic);
+      return mosaic;
     });
   }
+
+  rememberMosaic(mosaic) {
+    const history = this.radarHistory.filter(frame => Math.abs(frame.validHourUtc - mosaic.validHourUtc) > 1e-6);
+    history.push({ validHourUtc: mosaic.validHourUtc, mosaic });
+    history.sort((a, b) => a.validHourUtc - b.validHourUtc);
+    this.radarHistory = history.slice(-RADAR_HISTORY_FRAMES);
+  }
+
+  // The scan times of the mosaics kept, and one of them.
+  radarMosaicFrames() { return { frames: this.radarHistory.map(({ validHourUtc, mosaic }) => ({ validHourUtc, revision: mosaic.revision })) }; }
+  radarMosaicAt(validHourUtc) { return this.radarHistory.find(frame => Math.abs(frame.validHourUtc - validHourUtc) < 1e-6)?.mosaic ?? null; }
 
   // One tilt of one site; all products are simulated together and cached per revision.
   async radarScan(siteId, tiltDeg) {
@@ -396,10 +414,13 @@ export class WeatherAuthorityRuntime {
   }
 
   // After a new scan time: works out again, on the radar pool's threads, what has been looked at
-  // in the last minute, so it is ready when the radar pages ask.
+  // in the last minute, so it is ready when the radar pages ask. The mosaic is always made, so
+  // the radar page's loop has the last hour as soon as it opens.
   prewarmRadar(now = Date.now()) {
     if (!this.radarPool) return;
+    if (!this.radarWanted.has('mosaic')) this.radarWanted.set('mosaic', now);
     for (const [key, at] of this.radarWanted) {
+      if (key === 'mosaic') { this.radarMosaic().catch(() => {}); continue; }
       if (now - at > RADAR_PREWARM_MS) { this.radarWanted.delete(key); continue; }
       const [site, tilt] = key.split('|');
       (key === 'mosaic' ? this.radarMosaic() : this.radarScan(site, Number(tilt))).catch(() => {});

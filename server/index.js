@@ -81,8 +81,12 @@ async function serveApi(url, req, res) {
     const meta = { site: scan.siteId, tilt: scan.tiltDeg, product, validHourUtc: scan.validHourUtc, revision: scan.revision, stormMotion: scan.stormMotion, buildMs: +scan.buildMs.toFixed(1) };
     return sendGzipBinary(req, res, scan.products[product], { 'x-radar-meta': JSON.stringify(meta) }, trace);
   }
+  if (url.pathname === '/api/radar/mosaic/frames') return sendJson(req, res, 200, runtime.radarMosaicFrames(), { cacheable: false, trace });
   if (url.pathname === '/api/radar/mosaic') {
-    const mosaic = await runtime.radarMosaic();
+    // ?validHourUtc= one of the kept mosaics (for the loop); otherwise the latest.
+    const at = url.searchParams.get('validHourUtc');
+    const mosaic = at === null ? await runtime.radarMosaic() : runtime.radarMosaicAt(Number(at));
+    if (!mosaic) return sendJson(req, res, 404, { error: 'No mosaic kept for that time' }, { cacheable: false, trace });
     const meta = { product: 'reflectivity', width: mosaic.width, height: mosaic.height, resKm: mosaic.resKm, composite: true, validHourUtc: mosaic.validHourUtc, revision: mosaic.revision, buildMs: +mosaic.buildMs.toFixed(1) };
     return sendGzipBinary(req, res, mosaic.bytes, { 'x-radar-meta': JSON.stringify(meta) }, trace);
   }
