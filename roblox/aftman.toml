@@ -1,0 +1,3 @@
+# Tools for the Roblox side. Run `aftman install` in this folder.
+[tools]
+rojo = "rojo-rbx/rojo@7.4.4"

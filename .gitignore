@@ -82,3 +82,10 @@ training/ready.json
 # Calibration outputs
 calibration/reports/*
 !calibration/reports/.gitkeep
+
+# Roblox build outputs
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+roblox/sourcemap.json
