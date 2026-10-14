@@ -12,8 +12,14 @@ import { clamp } from '../scenarios/math.js';
 export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 68, power: 2.6, nonRotating: 0.5, fullRotation: 0.4, lapseRange: [6.5, 8.5], lapseGain: 0.3, largestInches: 5.5 });
 // Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
 // more the more rain is falling), plus a share of the storm's own motion carried to the ground
-// (fast storms in strong flow are windier). Nothing is added for what kind of storm it is.
-export const GUST = Object.freeze({ downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.35, rearInflowShare: 0.3, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
+// (fast storms in strong flow are windier), plus the wind from the middle levels that a rear
+// inflow brings down behind an organised line. Nothing is added for what kind of storm it is.
+// Set 2026-10-14 from 7,766 storm-samples on 6 worlds: with 0.6 / 0.35 / 0.3, 45% of storms
+// reached 58 mph at some time (26% of samples), so the wind contours ran near 90% on half of
+// all days, yet only 0.2% of samples reached 85 mph. Real downdraughts lose much of sqrt(2
+// DCAPE) to entrainment and drag, and the strongest winds come with organised lines; with
+// these, 15% of samples reach 58 mph, 3% 75 mph and 1% 85 mph, most of them in lines.
+export const GUST = Object.freeze({ downdraughtShare: 0.5, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.9, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 const MPH_PER_MS = 2.23694;
 
 export function hailSizeInches(storm, environment) {

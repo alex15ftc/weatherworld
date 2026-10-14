@@ -17,6 +17,11 @@ export const ROTATION = Object.freeze({
   fullUpdraughtMs: 40, shearKt: [20, 55], helicity: [50, 350], shearShare: 0.35, lineLoss: 0.45,
   spinUpHours: 0.4, spinDownHours: 0.7,
   lowHelicity: [50, 250], helicityFloor: 0.5, cloudBaseM: [2000, 800], outflowBalance: [1.0, 1.8],
+  // Strong helicity near the ground means strong inflow, which holds the outflow back: the
+  // outflow a storm can have and still spin up near the ground rises by up to outflowHold
+  // (in the balance) between helicityHold[0] and [1]. So a storm in strongly turning low-level
+  // wind can cycle, putting down one tornado after another as real cyclic supercells do.
+  outflowHold: 0.6, helicityHold: [150, 400],
   // Helicity added near the ground where the inflow crosses the edge of older rain-cooled air
   // (an outflow boundary), from none at boundaryContrastK[0] to all of it at boundaryContrastK[1].
   boundaryHelicity: 150, boundaryContrastK: [1.5, 6],
@@ -28,7 +33,7 @@ export const ROTATION = Object.freeze({
   // outruns the shear, and shorter the weaker the rotation is (strong rotation means strong
   // inflow, which holds the outflow back). weakShare is the share of that time left to
   // rotation at holdRotation[0], rising to all of it at holdRotation[1].
-  occlusionHours: [1.5, 0.15], occlusionBalance: [0.5, 1.4], weakShare: 0.07, holdRotation: [0.12, 0.6], recoveryHours: 0.3
+  occlusionHours: [1.5, 0.15], occlusionBalance: [0.5, 1.4], weakShare: 0.07, holdRotation: [0.12, 0.6], recoveryHours: 0.15
 });
 
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
@@ -52,7 +57,8 @@ export function stepStormRotation(storm, environment, dtHours) {
   storm.boundaryBoost = ramp(environment.outflowContrastK, R.boundaryContrastK[0], R.boundaryContrastK[1]);
   const nearGround = R.helicityFloor + (1 - R.helicityFloor) * ramp((Number(environment.srh) || 0) + R.boundaryHelicity * storm.boundaryBoost, R.lowHelicity[0], R.lowHelicity[1]);
   const cloudBase = ramp(R.cloudBaseM[0] - (Number(environment.lcl) || R.cloudBaseM[0]), 0, R.cloudBaseM[0] - R.cloudBaseM[1]);
-  const outflow = 1 - ramp(balance, R.outflowBalance[0], R.outflowBalance[1]);
+  const held = R.outflowHold * ramp(environment.srh, R.helicityHold[0], R.helicityHold[1]);
+  const outflow = 1 - ramp(balance, R.outflowBalance[0] + held, R.outflowBalance[1] + held);
   // A storm feeding on air from above the ground has nothing near the ground to stretch.
   const freeTarget = storm.elevatedFeed || storm.leftMover ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow, lowTarget = freeTarget * (1 - storm.occlusion);
   // What the low-level rotation would be were the storm not occluding: its underlying strength.

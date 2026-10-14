@@ -38,10 +38,13 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
     if (hailSize >= 2) frame.hailSig[idx] = 1;
     if (hailSize >= 3.5) frame.hailExtreme[idx] = 1;
     // A line produces its wind along its whole length (strongest near the middle, where it
-    // bows); a single cell at its position.
-    for (const { index, share } of windFootprint(world, storm, idx, cellOf)) {
+    // bows); a single cell at its position. Its thunderstorm covers every cell along it, but
+    // its wind is reported once for each stretch of WIND_REPORT_SPACING_KM, as reports of a
+    // real line come in: one cell for every cell would make each line a wide swath of reports.
+    for (const { index, share, report } of windFootprint(world, storm, idx, cellOf)) {
       const local = gust * share;
       if (isLine(storm) && (Number(storm.intensity) || 0) >= 0.22) frame.storm[index] = 1;
+      if (!report) continue;
       if (local >= 58) frame.wind[index] = 1;
       if (local >= 75) frame.windSig[index] = 1;
       if (local >= 85) frame.windExtreme[index] = 1;
@@ -60,23 +63,24 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
 
 const LINEAR_MODES = ['broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS'];
 const LINE_END_GUST_SHARE = 0.8;
+// One wind report along a line for each stretch this long (25 miles), at each capture.
+const WIND_REPORT_SPACING_KM = 40;
 // A storm is part of a line by its line organization (the name is a fallback for old records).
 const isLine = storm => Number.isFinite(storm.lineOrganization) ? storm.lineOrganization >= 0.5 : LINEAR_MODES.includes(storm.mode);
 
-// Cells along a line's axis (perpendicular to its motion), with the share of the peak gust.
+// Cells along a line's axis (perpendicular to its motion), with the share of the peak gust;
+// report: whether the cell takes a wind report (the middle, and every WIND_REPORT_SPACING_KM
+// out from it).
 function windFootprint(world, storm, centreIndex, cellOf) {
   const half = isLine(storm) ? Number(storm.lineHalfLengthKm ?? storm.radar?.radiusXKm) || 0 : 0;
   const speed = Math.hypot(storm.velocityKph?.east ?? 0, storm.velocityKph?.north ?? 0);
-  if (half < world.cellSizeKm || !(speed > 1)) return [{ index: centreIndex, share: 1 }];
+  if (half < world.cellSizeKm || !(speed > 1)) return [{ index: centreIndex, share: 1, report: true }];
   // Screen frame: y grows southward, so north motion is -y.
   const ax = (storm.velocityKph.north) / speed, ay = (storm.velocityKph.east) / speed;
-  const out = new Map();
-  for (let d = -half; d <= half + 1e-6; d += world.cellSizeKm / 2) {
-    const index = cellOf(storm.positionKm.x + ax * d, storm.positionKm.y + ay * d);
-    const share = 1 - (1 - LINE_END_GUST_SHARE) * Math.abs(d) / half;
-    if (!(out.get(index) >= share)) out.set(index, share);
-  }
-  return [...out].map(([index, share]) => ({ index, share }));
+  const out = new Map(), at = d => cellOf(storm.positionKm.x + ax * d, storm.positionKm.y + ay * d), shareAt = d => 1 - (1 - LINE_END_GUST_SHARE) * Math.abs(d) / half;
+  for (let d = -half; d <= half + 1e-6; d += world.cellSizeKm / 2) { const index = at(d), known = out.get(index); out.set(index, { share: Math.max(shareAt(d), known?.share ?? 0), report: false }); }
+  for (let d = -Math.floor(half / WIND_REPORT_SPACING_KM) * WIND_REPORT_SPACING_KM; d <= half + 1e-6; d += WIND_REPORT_SPACING_KM) { const index = at(d); out.set(index, { share: Math.max(shareAt(d), out.get(index)?.share ?? 0), report: true }); }
+  return [...out].map(([index, { share, report }]) => ({ index, share, report }));
 }
 
 export function maxTornadoEf(storm) {

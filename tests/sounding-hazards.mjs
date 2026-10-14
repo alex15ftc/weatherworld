@@ -2,7 +2,7 @@
 // at a point. These check that it responds to the air the way storms do.
 import assert from 'node:assert/strict';
 import { runLoneStorm } from '../js/storms/SoundingHazards.js';
-import { hailSizeInches, gustMph } from '../js/storms/StormHazards.js';
+import { hailSizeInches, gustMph, GUST } from '../js/storms/StormHazards.js';
 
 const wind = (eastKt, northKt) => ({ eastKt, northKt });
 const air = overrides => ({
@@ -43,6 +43,6 @@ assert.ok(runLoneStorm({}, air({ dcape: 1500 })).wind.maxGustMph > runLoneStorm(
 // The shared functions themselves, at known inputs.
 const storm = { updraughtMs: 68, mesocycloneStrength: 0.4, precipitation: 1 };
 assert.ok(Math.abs(hailSizeInches(storm, { lapseRate700500: 7.2 }) - 2.3) < 1e-9, 'reference updraught, full rotation, neutral lapse rate = the scale size');
-assert.ok(Math.abs(gustMph(storm, { dcape: 800 }, 0) - Math.sqrt(1600) * 0.6 * 2.23694) < 1e-9);
+assert.ok(Math.abs(gustMph(storm, { dcape: 800 }, 0) - Math.sqrt(1600) * GUST.downdraughtShare * 2.23694) < 1e-9);
 
 console.log('sounding hazards: ok');

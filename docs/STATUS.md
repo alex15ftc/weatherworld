@@ -125,6 +125,41 @@ What is not natural enough yet:
 
 ## The outlooks
 
+**Intensity groups and how much is covered** (`node scripts/cig-climate.mjs`, 120 days of
+what happened, 2026-10-14). The share of days with each group or higher somewhere:
+
+| | CIG1+ | CIG2+ | CIG3+ |
+|---|---|---|---|
+| Tornado | 35% | 11% | 3% |
+| Wind | 21% | 1% | 0% |
+| Hail | 19% | 2% | - |
+
+Day mix: below Slight 8%, Slight 10%, Enhanced 38%, Moderate 34%, High 10% (wanted 5, 30,
+40, 20, 5). Wind and hail are hatched seldom because their chances are near the top already:
+wind reaches its 90% contour on 43% of days and hail its 60% contour on 53%, where the
+centre's tables make CIG2 wind a High risk. A line's wind is now reported once for each 25
+miles of it at each half-hour capture, not in every cell along it (`js/verification/truth.js`),
+which is how a real line's reports come in; that took the 90% wind days only from 48% to
+43% (High days from 13% to 10%; tornado contours unchanged), so the coverage comes from how
+many storms make severe wind, not from how lines were counted. Judging each group on its own
+tier (CIG2 on EF3+ / 85 mph, CIG3 on EF4+ / 96 mph) would give wind 31% / 10% / 4% but High
+days 18%; hail CIG2 cannot be reached that way (3.5 in hail is too rare). Not changed yet.
+
+Then the gusts (2026-10-14, GUST in js/storms/StormHazards.js): 45% of storms reached 58 mph at
+some time, 26% of storm-samples, because every mature storm drew a large share of sqrt(2
+DCAPE) and DCAPE is 600 to 1,000 J/kg over most of the moist air; yet only 0.2% of samples
+reached 85 mph. Now less of the downdraught's energy and of the storm's motion reaches the
+ground (0.5 and 0.3 of them, from 0.6 and 0.35) and more of the middle-level wind behind an
+organised line (0.9, from 0.3): 15% of samples reach 58 mph, 3% 75 mph, 1% 85 mph, most of
+them in lines. On the same 120 days: wind CIG1+ 45% of days, CIG2+ 7%, CIG3+ 0%; the 90%
+wind contour on 33% of days (from 43%); day mix below Slight 7%, Slight 10%, Enhanced 31%,
+Moderate 38%, High 15% (more 75 mph wind inside high contours gives more High days).
+
+What is left is the number of storms: about 118 thunderstorms a day on the 500 x 500 mile
+map, so even 15% of them severe fills the wind contours, and hail (23% of storms reach 1 in,
+about right for supercells) still reaches its 60% contour on 53% of days. Fewer storms would
+mean fewer tornadoes too; not done.
+
 | Outlook | Covers | Issued afresh | Gives |
 |---|---|---|---|
 | Day 1 (`/day1.html`) | the outlook day in progress (12Z to 12Z) | every 6 hours: 12Z, 18Z, 00Z, 06Z | tornado, wind and hail, each with intensity groups; up to High |

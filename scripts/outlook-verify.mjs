@@ -66,7 +66,9 @@ async function worker(seed) {
         if (f === t) sameCell++; if (Math.abs(f - t) <= 1) withinOne++;
       }
       out.push({
-        seed, day, lead, forecast: top(outlook.category), verified: top(verified), sameCell: sameCell / n, withinOne: withinOne / n, reliability, groups,
+        seed, day, lead, forecast: top(outlook.category),
+        // The highest intensity group drawn for each hazard, and the highest the day verified with.
+        drawnCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...outlook.cig[h])])), verifiedCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...(h === 'severe' ? severeCig : truth.observedCig[h]))])), verified: top(verified), sameCell: sameCell / n, withinOne: withinOne / n, reliability, groups,
         forecastTornadoes: outlook.expected.tornadoes, tornadoes: world.stormEngine.totalTornadoes - before,
         forecastArea: Object.fromEntries(ORDER.map((c, k) => [c, outlook.category.filter(v => ORDER.indexOf(v) >= k).length / n])), verifiedArea: Object.fromEntries(ORDER.map((c, k) => [c, verified.filter(v => ORDER.indexOf(v) >= k).length / n]))
       });
@@ -103,6 +105,8 @@ async function main() {
       const cells = all.reduce((a, d) => a + d.groups[h][g].cells, 0); if (cells < 100) continue;
       console.log(`  ${h.padEnd(9)}${(g ? 'CIG' + g : 'no group').padEnd(10)}${TIER_NAMES[h].map((name, k) => `${name} ${Math.round(100 * all.reduce((a, d) => a + d.groups[h][g][`tier${k + 1}`], 0) / Math.max(1, all.reduce((a, d) => a + d.groups[h][g].hits, 0)))}%`).join('  ')}  (${Math.round(100 * cells / all.reduce((a, d) => a + [0, 1, 2, 3].reduce((b, q) => b + d.groups[h][q].cells, 0), 0))}% of the area inside a contour)`);
     }
+    console.log('   How often each intensity group is the highest drawn somewhere on the outlook, and the highest the day verified with (share of outlooks)');
+    for (const h of hazards) console.log(`  ${h.padEnd(9)}${[0, 1, 2, 3].slice(0, TIER_NAMES[h].length + 1).map(g => `${g ? 'CIG' + g : 'none'} ${share(all, d => d.drawnCig[h] === g)} / ${share(all, d => d.verifiedCig[h] === g)}`).join('  |  ')}   (drawn / verified)`);
     console.log(`3. Tornadoes: the day's count fell inside the range of the runs on ${share(all, d => d.tornadoes >= d.forecastTornadoes.low && d.tornadoes <= d.forecastTornadoes.high)} of days`);
     console.log('  (range of the runs / what happened): ' + all.map(d => `${d.forecastTornadoes.low}-${d.forecastTornadoes.high}/${d.tornadoes}`).join('  '));
   }
