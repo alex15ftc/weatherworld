@@ -19,7 +19,7 @@ const MIN_CAPE_J_KG = 300;
 // The rate rises steeply with the surplus: a strongly forced, uncapped front fires along its
 // length within an hour or two, a capped dryline releases a few storms, and broad weak ascent
 // only the occasional one.
-const FORCED_RATE_PER_HOUR = 0.007;
+const FORCED_RATE_PER_HOUR = 0.005;
 const NET_LIFT_SCALE_J_KG = 100;
 // The fastest storms start anywhere (per cell and hour): lift well clear of the cap, ample CAPE.
 export const FULL_INITIATION_RATE_PER_HOUR = FORCED_RATE_PER_HOUR * 1.5;
