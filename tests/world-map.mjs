@@ -117,4 +117,36 @@ const meanArea = region => { const own = list.filter(c => c.region === region); 
 assert.ok(meanArea('highPlains') > meanArea('midwest') * 1.2, `High Plains counties (${meanArea('highPlains').toFixed(0)} mi2) are larger than the eastern farm country's (${meanArea('midwest').toFixed(0)} mi2)`);
 assert.ok(list.filter(c => c.seat).length >= 0.85 * list.length, 'nearly every county has a seat');
 
-console.log(`world map passed (${map.rivers.length} rivers, ${map.settlements.length} settlements, ${list.length} counties, slope match ±${summary.engineMatch.meanAbsM.toFixed(1)} m, lake ${lake.areaMi2} mi2, highways ${(100 * along / total).toFixed(0)}% on mile lines)`);
+// Airfields: an airport with an NWS office and a radar for every place of 40,000 or more, at a
+// distance real ones of its size are; one air base alone in the High Plains with a 12,000 ft
+// runway; fences clear of roads and rivers with no section road inside; access roads that end on
+// a road or a town's mile line; the radar list is the airfields' radars.
+const cities = map.settlements.filter(s => s.population >= 40000), airports = map.airfields.filter(a => a.kind === 'airport');
+assert.equal(airports.length, cities.length, 'every city of 40,000 has an airport');
+for (const city of cities) {
+  const a = airports.find(f => f.city === city.name), want = { metro: [12, 17], city: [5, 9], smallCity: [3, 5.5] }[city.kind];
+  assert.ok(a && a.distanceMi >= want[0] - 0.3 && a.distanceMi <= want[1] + 0.3, `${city.name}'s airport is ${a?.distanceMi} mi out`);
+  assert.ok(a.nws && a.radar && a.runways.length >= 2 && a.buildings.some(b => b.kind === 'terminal') && a.curbs.length && a.parking.length, `${a.name} has runways, a terminal, curbs, parking, an NWS office and a radar`);
+  assert.ok(a.runways.every(r => /^\d\d[LCR]?\/\d\d[LCR]?$/.test(r.name)) && a.runways[0].lengthFt >= 6500, `${a.name}'s runways are named and long enough`);
+}
+const bases = map.airfields.filter(a => a.kind === 'airBase');
+assert.equal(bases.length, 1, 'one air force base');
+const [base] = bases, baseRegion = REGIONS[map.region[Math.floor(base.y / map.cellMiles) * n + Math.floor(base.x / map.cellMiles)]].key;
+assert.ok(baseRegion === 'highPlains' && base.runways[0].lengthFt === 12000 && base.radar && base.areas.length >= 3, `the air base is in the High Plains (${baseRegion}) with its runway, areas and radar`);
+assert.ok(map.settlements.every(s => Math.hypot(s.x - base.x, s.y - base.y) - s.extentMi > 4), 'and away from every town');
+const inPoly = (x, y, poly) => { let inside = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; } return inside; };
+for (const a of map.airfields) {
+  for (const road of map.roads) for (const [x, y] of road.points) assert.ok(!inPoly(x, y, a.fence), `${road.name} keeps out of ${a.name}`);
+  for (const river of map.rivers) for (let k = 0; k < river.points.length; k += 2) assert.ok(!inPoly(river.points[k], river.points[k + 1], a.fence), `no river runs through ${a.name}`);
+  for (let J = 0; J < size; J++) for (let I = 0; I < size; I++) {
+    const v = grid[J * size + I];
+    if ((v & 3) && inPoly(I + 0.5, J, a.fence)) assert.fail(`a section road runs through ${a.name}`);
+    if (((v >> 2) & 3) && inPoly(I, J + 0.5, a.fence)) assert.fail(`a section road runs through ${a.name}`);
+  }
+  const [x, y] = a.access.points.at(-1);
+  assert.ok(near(x, y, 0.02) || (Number.isInteger(x) && Number.isInteger(y)), `${a.access.name} at ${a.name} ends on a road`);
+}
+assert.deepEqual(map.radars.map(r => r.id), map.airfields.map(a => a.radar.id), 'the radars are the airfields\' radars');
+assert.equal(new Set(map.radars.map(r => r.id)).size, map.radars.length, 'each radar has its own identifier');
+
+console.log(`world map passed (${map.rivers.length} rivers, ${map.settlements.length} settlements, ${list.length} counties, ${map.airfields.length} airfields, slope match ±${summary.engineMatch.meanAbsM.toFixed(1)} m, lake ${lake.areaMi2} mi2, highways ${(100 * along / total).toFixed(0)}% on mile lines)`);

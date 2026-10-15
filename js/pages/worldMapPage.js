@@ -3,7 +3,8 @@
 // pan. Land cover with hillshading; rivers; interstates, US routes, expressways and state highways;
 // interchange ramps, overpasses and signals once zoomed in; paved, gravel and dirt section roads
 // as the road rules leave them (js/worldmap/roadNetwork.js); labels for places, rivers, routes
-// and exits by zoom.
+// and exits by zoom; airports, the air base, NWS offices and radars (js/worldmap/airfields.js),
+// from a symbol when zoomed out to runways, taxiways, terminals, curbs and parking zoomed in.
 import { shadeMap, COVER_COLOURS, RIVER_COLOUR } from '../worldmap/worldMapStyle.js';
 import { interchangeRamps, crossingSin, tee } from '../worldmap/interchanges.js';
 import { sectionSegments, signalJunctions } from '../worldmap/roadNetwork.js';
@@ -60,6 +61,10 @@ async function load(seed) {
   ramps = (map.crossings ?? []).flatMap(c => interchangeRamps(c));
   $('status').textContent = `Seed ${seed} · ${n * map.cellMiles} × ${n * map.cellMiles} mi`;
   renderSummary();
+  // ?x=&y= (miles east and south) and ?zoom= (pixels a mile) open the map on a spot; ?airfield=CODE
+  // centres it on that airfield.
+  const params = new URLSearchParams(location.search), field = map.airfields?.find(a => a.code === params.get('airfield')?.toUpperCase());
+  if (field || params.has('x')) { view.x = field?.x ?? Number(params.get('x')); view.y = field?.y ?? Number(params.get('y')); view.scale = Number(params.get('zoom') ?? 30); }
   fit();
 }
 
@@ -101,6 +106,9 @@ function draw() {
   ctx.imageSmoothingEnabled = s / (1 / cell) < 3;
   ctx.drawImage(base, sx(0), sy(0), miles * s, miles * s);
   if ($('showRegions').checked) ctx.drawImage(regionBorders, sx(0), sy(0), miles * s, miles * s);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const left = mx(0) - 1, right = mx(width) + 1, top = my(0) - 1, bottom = my(height) + 1;
+  const inView = (x0, y0, x1, y1) => Math.max(x0, x1) >= left && Math.min(x0, x1) <= right && Math.max(y0, y1) >= top && Math.min(y0, y1) <= bottom;
   // County lines: thin and broken, as road maps draw them.
   if (counties && $('showCounties').checked) {
     ctx.strokeStyle = 'rgba(88, 28, 135, .75)'; ctx.lineWidth = s > 6 ? 1.6 : 1; ctx.setLineDash(s > 3 ? [6, 3, 1.5, 3] : []);
@@ -111,9 +119,6 @@ function draw() {
     }
     ctx.stroke(); ctx.setLineDash([]);
   }
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const left = mx(0) - 1, right = mx(width) + 1, top = my(0) - 1, bottom = my(height) + 1;
-  const inView = (x0, y0, x1, y1) => Math.max(x0, x1) >= left && Math.min(x0, x1) <= right && Math.max(y0, y1) >= top && Math.min(y0, y1) <= bottom;
 
   if ($('showGrid').checked) {
     ctx.strokeStyle = 'rgba(15, 23, 42, .3)'; ctx.lineWidth = 1;
@@ -172,7 +177,79 @@ function draw() {
       ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(sx(st.x), sy(st.y), st.kind === 'town' ? 1.8 : 4, 0, 2 * Math.PI); ctx.fill();
     }
   }
+  if ($('showAirports').checked || $('showNws').checked) drawAirfields(inView);
   if ($('showLabels').checked) drawLabels(inView);
+}
+
+// Airfield colours.
+const AIR = {
+  runway: '#2b2d31', runwayMark: '#f8fafc', taxiway: '#6b7078', apron: '#9aa0a8', fence: 'rgba(226, 232, 240, .85)',
+  terminal: '#c084fc', concourse: '#a855f7', tower: '#f43f5e', hangar: '#94a3b8', building: '#cbd5e1', igloo: '#65a30d',
+  parking: '#52525b', garage: '#3f3f46', curb: '#38bdf8', road: '#f4f4f0',
+  area: { cantonment: 'rgba(148, 163, 184, .35)', housing: 'rgba(250, 204, 21, .18)', munitions: 'rgba(101, 163, 13, .22)' },
+  nws: '#2563eb', radar: '#ffffff', radarRing: '#1d4ed8', airBase: '#0f766e', airport: '#7c3aed'
+};
+
+function fillPoly(poly, fill, stroke = null, lineWidth = 1) {
+  ctx.beginPath();
+  poly.forEach(([x, y], i) => (i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lineWidth; ctx.stroke(); }
+}
+function strokeLine(points, colour, widthMi, minPx) {
+  ctx.beginPath();
+  points.forEach(([x, y], i) => (i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
+  ctx.strokeStyle = colour; ctx.lineWidth = Math.max(minPx, widthMi * view.scale); ctx.stroke();
+}
+
+// Airports and the air base by zoom: a symbol when zoomed out; fence and runways from 4 px a
+// mile; taxiways, aprons, buildings, parking, curbs and roads from 12; runway markings from 40.
+// NWS offices and their radars on their own layer.
+function drawAirfields(inView) {
+  const s = view.scale, FT = 1 / 5280, airports = $('showAirports').checked, nws = $('showNws').checked;
+  for (const a of map.airfields ?? []) {
+    const xs = a.fence.map(q => q[0]), ys = a.fence.map(q => q[1]);
+    if (!inView(Math.min(...xs) - 1, Math.min(...ys) - 1, Math.max(...xs) + 1, Math.max(...ys) + 1)) continue;
+    if (airports) {
+      if (s >= 4) {
+        strokeLine(a.access.points, AIR.road, a.class === 'large hub' ? 0.04 : 0.022, 1);
+        for (const area of a.areas ?? []) fillPoly(area.poly, AIR.area[area.kind] ?? 'rgba(148,163,184,.3)');
+        ctx.setLineDash(s > 10 ? [4, 3] : []); fillPoly(a.fence, null, AIR.fence, 1); ctx.setLineDash([]);
+      }
+      if (s >= 12) {
+        for (const apron of a.aprons) fillPoly(apron, AIR.apron);
+        for (const t of a.taxiways) strokeLine(t, AIR.taxiway, 75 * FT, 1);
+        for (const lot of a.parking) fillPoly(lot.poly, lot.kind === 'garage' ? AIR.garage : AIR.parking, s > 60 ? '#a1a1aa' : null, 0.5);
+        for (const r of a.roads) strokeLine(r.points, AIR.road, (r.kind === 'street' ? 30 : 40) * FT, r.kind === 'street' ? 0.6 : 1);
+        for (const c of a.curbs) strokeLine(c.points, AIR.curb, 30 * FT, 2);
+        for (const b of a.buildings) fillPoly(b.poly, AIR[b.kind] ?? AIR.building, s > 60 ? '#1e293b' : null, 0.6);
+      }
+      if (s >= 4) {
+        for (const r of a.runways) {
+          strokeLine(r.ends, AIR.runway, r.widthFt * FT, s >= 12 ? 2 : 1.6);
+          if (s >= 40) { ctx.setLineDash([6, 6]); strokeLine(r.ends, AIR.runwayMark, 3 * FT, 0.8); ctx.setLineDash([]); }
+        }
+      } else if (inView(a.x, a.y, a.x, a.y)) {
+        // Zoomed out: a ring with the main runway across it.
+        const r = a.kind === 'airBase' ? 5 : a.class === 'regional' ? 4 : 5.5, h = a.headingDeg * Math.PI / 180;
+        ctx.fillStyle = a.kind === 'airBase' ? AIR.airBase : AIR.airport; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(sx(a.x), sy(a.y), r, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx(a.x) - Math.sin(h) * (r - 1), sy(a.y) + Math.cos(h) * (r - 1)); ctx.lineTo(sx(a.x) + Math.sin(h) * (r - 1), sy(a.y) - Math.cos(h) * (r - 1)); ctx.stroke();
+      }
+    }
+    if (nws) {
+      if (a.nws && s >= 12) {
+        fillPoly(a.nws.parking, AIR.parking, null); strokeLine(a.nws.drive, AIR.road, 24 * FT, 1);
+        fillPoly(a.nws.building, AIR.nws, s > 60 ? '#0b1f4d' : null, 0.6);
+        if (a.radar.service) strokeLine(a.radar.service, AIR.road, 16 * FT, 0.8);
+      }
+      if (s >= 12) fillPoly(a.radar.compound, 'rgba(203, 213, 225, .5)', '#e2e8f0', 0.8);
+      // The radar: a white dome ringed blue (the radome is about 39 ft across).
+      ctx.fillStyle = AIR.radar; ctx.strokeStyle = AIR.radarRing; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sx(a.radar.x), sy(a.radar.y), Math.max(s >= 4 ? 3 : 2.4, 20 * FT * s), 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    }
+  }
 }
 
 // Labels, the most important first, none overlapping.
@@ -194,6 +271,37 @@ function drawLabels(inView) {
     ctx.restore();
     return true;
   };
+  // Airports, the air base and the NWS offices and radars.
+  if (map.airfields) {
+    const FT = 1 / 5280;
+    for (const a of map.airfields) {
+      if (!inView(a.x, a.y, a.x, a.y)) continue;
+      if ($('showAirports').checked) {
+        const label = s > 8 ? `${a.name} (${a.code})` : a.kind === 'airBase' ? a.name.replace('Air Force Base', 'AFB') : a.code;
+        text(label, sx(a.x) + 8, sy(a.y) + 10, { size: s > 8 ? 12 : 10, weight: 700, box: a.kind === 'airBase' ? AIR.airBase : AIR.airport, boxText: '#ffffff' });
+        if (s >= 40) for (const r of a.runways) {
+          // Runway numbers at each end: the number painted at an end is the heading flown from it.
+          const [p, q] = r.ends, len = Math.hypot(q[0] - p[0], q[1] - p[1]), ux = (q[0] - p[0]) / len, uy = (q[1] - p[1]) / len, inset = 300 * FT;
+          const fromP = ((Math.round(((Math.atan2(ux, -uy) * 180 / Math.PI + 360) % 360) / 10) + 35) % 36) + 1;
+          const [n0, n1] = r.name.split('/'), [atP, atQ] = Number.parseInt(n0, 10) === fromP ? [n0, n1] : [n1, n0];
+          text(atP, sx(p[0] + ux * inset), sy(p[1] + uy * inset), { size: 10, weight: 800, colour: '#ffffff', centre: true });
+          text(atQ, sx(q[0] - ux * inset), sy(q[1] - uy * inset), { size: 10, weight: 800, colour: '#ffffff', centre: true });
+        }
+        if (s >= 40) {
+          for (const c of a.curbs) { const m = c.points[0]; text(c.label, sx(m[0]), sy(m[1]) - 9, { size: 10, weight: 600, colour: '#bae6fd' }); }
+          for (const b of a.buildings) if (['terminal', 'tower', 'base operations', 'visitor center'].includes(b.kind)) { const [cx, cy] = centroid(b.poly); text(b.kind, sx(cx), sy(cy), { size: 10, weight: 600, colour: '#f5f3ff', centre: true }); }
+          for (const lot of a.parking) { const [cx, cy] = centroid(lot.poly); text(lot.kind === 'garage' ? 'parking garage' : lot.kind === 'economy' ? 'economy parking' : 'parking', sx(cx), sy(cy), { size: 9, weight: 600, colour: '#e4e4e7', centre: true }); }
+        }
+        if (s >= 12) for (const area of a.areas ?? []) { const [cx, cy] = centroid(area.poly); text(area.kind === 'munitions' ? 'weapons storage area' : area.kind === 'housing' ? 'base housing' : 'cantonment', sx(cx), sy(cy), { size: 11, weight: 700, colour: '#e2e8f0', centre: true }); }
+        if (s >= 12) text(a.kind === 'airBase' ? 'main gate' : 'airport entrance', sx(a.gate[0]) + 6, sy(a.gate[1]) + 10, { size: 10, weight: 600, colour: '#fef3c7' });
+        if (s >= 10) { const m = a.access.points[Math.min(2, a.access.points.length - 1)]; text(a.access.name, sx(m[0]) + 6, sy(m[1]) - 8, { size: 10, weight: 600, colour: '#f8fafc' }); }
+      }
+      if ($('showNws').checked) {
+        if (s > 2.5) text(a.radar.id, sx(a.radar.x) + 6, sy(a.radar.y) - 9, { size: 10, weight: 800, box: '#1d4ed8', boxText: '#ffffff' });
+        if (a.nws && s >= 12) { const [cx, cy] = centroid(a.nws.building); text(`${a.nws.name} (WFO ${a.nws.id})`, sx(cx) + 8, sy(cy) + 12, { size: 11, weight: 700, colour: '#bfdbfe' }); }
+      }
+    }
+  }
   // Places by size and zoom.
   const rank = st => ({ metro: 0, city: 1, smallCity: 2 }[st.kind] ?? 3);
   const places = map.settlements.filter(st => inView(st.x, st.y, st.x, st.y) && (rank(st) <= 1 || (rank(st) === 2 && s > 1.4) || (st.population > 3000 && s > 3) || (st.population > 800 && s > 7) || s > 16));
@@ -208,7 +316,7 @@ function drawLabels(inView) {
       const kind = roadClass(road);
       if (kind === 'state' && s < 4) continue;
       const name = kind === 'expressway' ? road.name.split(' ')[0] : road.name;
-      if (!name || name.includes('bypass') || name.includes('–')) continue;
+      if (!name || road.name.includes('bypass') || name.includes('–')) continue;
       let gap = 130;
       for (let i = 1; i < road.points.length; i++) {
         const [x0, y0] = road.points[i - 1], [x1, y1] = road.points[i];
@@ -243,9 +351,11 @@ function drawLabels(inView) {
   if ($('showRegions').checked && s < 3) {
     const n = map.size, sums = map.regions.map(() => ({ x: 0, y: 0, count: 0 }));
     for (let j = 0; j < n; j += 4) for (let i = 0; i < n; i += 4) { const r = sums[map.region[j * n + i]]; r.x += i; r.y += j; r.count++; }
-    map.regions.forEach((def, r) => { const t = sums[r]; if (t.count) text(def.name, sx(t.x / t.count * map.cellMiles), sy(t.y / t.count * map.cellMiles), { size: 14, weight: 700, centre: true }); });
+    map.regions.forEach((def, r) => { const t = sums[r]; if (t.count) text(counties?.regions?.[r]?.label ?? def.name, sx(t.x / t.count * map.cellMiles), sy(t.y / t.count * map.cellMiles), { size: 14, weight: 700, centre: true }); });
   }
 }
+
+const centroid = poly => [poly.reduce((t, q) => t + q[0], 0) / poly.length, poly.reduce((t, q) => t + q[1], 0) / poly.length];
 
 function renderSummary() {
   const s = map.summary, cr = map.crossings ?? [];
@@ -256,6 +366,7 @@ function renderSummary() {
     `US routes: ${map.roads.filter(r => roadClass(r) === 'us').length}, state highways: ${map.roads.filter(r => roadClass(r) === 'state').length}`,
     `interstate exits: ${cr.filter(c => c.type === 'interchange').length}, overpasses: ${cr.filter(c => c.type === 'overpass').length}`,
     `signals: ${signals.length}`,
+    ...(map.airfields ? [`airports: ${map.airfields.filter(a => a.kind === 'airport').length}, air bases: ${map.airfields.filter(a => a.kind === 'airBase').length}, NWS offices: ${map.airfields.filter(a => a.nws).length}`, `radars: ${map.airfields.map(a => a.radar.id).join(' ')}`] : []),
     `section roads: ${Object.entries(map.sectionGrid.roadMiles).map(([k, v]) => `${k} ${v}`).join(', ')} mi`,
     ...(counties ? [`counties: ${counties.counties.length}, median ${[...counties.counties].map(c => c.areaMi2).sort((a, b) => a - b)[counties.counties.length >> 1]} mi²`] : []),
     '',
@@ -267,7 +378,10 @@ function renderSummary() {
     + swatch(ROADS.interstate.colour, 'interstate', true) + swatch(ROADS.expressway.colour, 'expressway (US, divided)', true)
     + swatch(ROADS.us.colour, 'US route', true) + swatch(ROADS.state.colour, 'state highway', true) + swatch(ROADS.ramp.colour, 'interchange ramp', true)
     + swatch(SECTIONS[3].colour, 'paved county road', true) + swatch(SECTIONS[2].colour, 'gravel road', true) + swatch(SECTIONS[1].colour, 'dirt road', true)
-    + swatch('#16a34a', 'traffic signals');
+    + swatch('#16a34a', 'traffic signals')
+    + swatch(AIR.runway, 'runway', true) + swatch(AIR.taxiway, 'taxiway', true) + swatch(AIR.apron, 'apron / flightline') + swatch(AIR.terminal, 'terminal')
+    + swatch(AIR.curb, 'drop-off / pick-up curb', true) + swatch(AIR.parking, 'parking lot') + swatch(AIR.garage, 'parking garage') + swatch(AIR.hangar, 'hangar')
+    + swatch(AIR.fence, 'airfield fence', true) + swatch(AIR.nws, 'NWS forecast office') + swatch(AIR.radarRing, 'weather radar (WSR-88D)');
 }
 
 canvas.addEventListener('wheel', event => {
@@ -302,10 +416,16 @@ canvas.addEventListener('mousemove', event => {
     ['Region', map.regions[map.region[k]].name],
     ...(countyIds ? [['County', countyText(countyIds[k])]] : []),
     ['Land cover', map.coverKeys[map.cover[k]]],
-    ['Nearest place', nearestPlace(east, south)]
+    ['Nearest place', nearestPlace(east, south)],
+    ...(map.airfields?.length ? [['Nearest airfield', nearestAirfield(east, south)]] : [])
   ];
   $('readout').innerHTML = rows.map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('');
 });
+
+function nearestAirfield(x, y) {
+  const a = map.airfields.reduce((best, f) => (Math.hypot(f.x - x, f.y - y) < Math.hypot(best.x - x, best.y - y) ? f : best));
+  return `${a.code} (${a.kind === 'airBase' ? 'AFB' : a.class}), ${Math.hypot(a.x - x, a.y - y).toFixed(1)} mi`;
+}
 
 function countyText(id) {
   const c = counties.counties[id - 1];
@@ -320,7 +440,7 @@ function nearestPlace(x, y) {
   return `${best.name} (${kind}, pop. ${best.population.toLocaleString()}), ${distance.toFixed(1)} mi`;
 }
 
-for (const id of ['showRivers', 'showRoads', 'showSections', 'showRegions', 'showCounties', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
+for (const id of ['showRivers', 'showRoads', 'showSections', 'showAirports', 'showNws', 'showRegions', 'showCounties', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
 $('seed').addEventListener('change', () => load(Number($('seed').value) || 1));
 window.addEventListener('resize', fit);
 load(1);

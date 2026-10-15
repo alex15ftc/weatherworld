@@ -12,7 +12,8 @@ import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
 import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
-import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic, MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
+import { buildRadarScene, scanRadarTilt, buildRadarMosaic, MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
+import { radarSitesFor } from './RadarSites.js';
 import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
@@ -368,7 +369,7 @@ export class WeatherAuthorityRuntime {
       revision: this.revision,
       validHourUtc: this.atmosphere.stormEngine?.validHourUtc ?? this.atmosphere.validHourUtc,
       domainWidthKm: this.atmosphere.domainWidthKm, domainHeightKm: this.atmosphere.domainHeightKm,
-      sites: createRadarSites(this.atmosphere), tilts: RADAR_TILTS_DEG, products: RADAR_PRODUCT_KEYS,
+      sites: radarSitesFor(this.atmosphere), tilts: RADAR_TILTS_DEG, products: RADAR_PRODUCT_KEYS,
       radials: RADAR_RADIALS, gates: RADAR_GATES, gateKm: RADAR_GATE_KM, beamwidthDeg: RADAR_BEAMWIDTH_DEG
     }));
   }

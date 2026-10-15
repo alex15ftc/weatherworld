@@ -3,14 +3,14 @@
 // as the radar sees them; nothing is run ahead. Call update() often: it does nothing until the
 // storms have moved on.
 import { WARNING, createWarningState, updateWarnings, publicWarning } from '../js/forecast/Warning.js';
-import { createRadarSites } from '../js/radar/RadarSimulator.js';
+import { radarSitesFor } from './RadarSites.js';
 import { countiesFor } from './CountyLayer.js';
 
 export class WarningRuntime {
   constructor({ runtime }) { this.runtime = runtime; this.adopt(null); }
 
   // A new world starts its own series.
-  adopt(engine) { this.engine = engine; this.state = createWarningState(engine ? countiesFor(engine.world) : null); this.sites = engine ? createRadarSites(engine.world) : []; }
+  adopt(engine) { this.engine = engine; this.state = createWarningState(engine ? countiesFor(engine.world) : null); this.sites = engine ? radarSitesFor(engine.world) : []; }
 
   update() {
     const engine = this.runtime.engine;

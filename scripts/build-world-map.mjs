@@ -2,8 +2,9 @@
 // meta.json (settings, regions, rivers, lakes, towns, roads, summary), elevation.f32, region.u8,
 // cover.u8, lake.u8 (lake id per cell, 0 for none), sections.u8 (the section-line road grid; see
 // sectionRoads.js), counties.u16 (county number per cell) with counties.json (the counties, and
-// the towns with the county each is in, for the forecast products; see js/forecast/counties.js)
-// and preview.png. The map page (worldmap.html) reads these.
+// the towns with the county each is in, for the forecast products; see js/forecast/counties.js),
+// airfields.json (airports, NWS offices, the air base and the weather radars at them; see
+// airfields.js; the server places its radars from it) and preview.png. The map page (worldmap.html) reads these.
 //   node scripts/build-world-map.mjs [--seed 1] [--out dir] [key=value ...]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -13,6 +14,7 @@ import { generateWorldMap, describeWorldMap, REGIONS, COVER } from '../js/worldm
 import { shadeMap, drawRivers, drawRoads, drawSectionRoads } from '../js/worldmap/worldMapStyle.js';
 import { SECTION_CLASSES, sectionRoadMiles } from '../js/worldmap/sectionRoads.js';
 import { writeCountyFiles } from '../js/worldmap/countyFiles.node.js';
+import { writeAirfieldFile } from '../js/worldmap/airfieldFiles.node.js';
 
 avoidBackgroundThrottling();
 
@@ -37,8 +39,10 @@ writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
   settlements: rest.settlements.map(s => ({ ...s, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 })),
   roads: rest.roads.map(r => ({ kind: r.kind, name: r.name, points: r.points.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]) })),
   crossings: rest.crossings.map(c => ({ ...c, x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100 })),
+  airfields: rest.airfields, radars: rest.radars,
   summary, buildSeconds: seconds
 }));
+writeAirfieldFile(map, out);
 writeFileSync(path.join(out, 'elevation.f32'), Buffer.from(elevation.buffer));
 writeFileSync(path.join(out, 'region.u8'), Buffer.from(region.buffer));
 writeFileSync(path.join(out, 'cover.u8'), Buffer.from(cover.buffer));
@@ -62,6 +66,7 @@ console.log(`highways: ${map.roads.filter(r => r.kind === 'highway' && r.name.st
 const areas = counties.list.map(k => k.areaMi2).sort((a, b) => a - b);
 console.log(`counties: ${areas.length}, median ${areas[areas.length >> 1]} mi2 (10-90%: ${areas[Math.floor(areas.length * 0.1)]}-${areas[Math.floor(areas.length * 0.9)]}), ${counties.list.filter(k => !k.seat).length} without a town for a seat`);
 console.log(`rivers: ${summary.rivers} (${Math.round(summary.riverMiles)} mi), ${summary.bigRivers} reaching 150 m wide`);
+for (const a of map.airfields) console.log(`${a.code} ${a.name}: ${a.distanceMi} mi from ${a.city}, runways ${a.runways.map(r => `${r.name} (${r.lengthFt} ft)`).join(', ')}, radar ${a.radar.id}${a.nws ? `, NWS office ${a.nws.id}` : ''}, access road to ${a.access.joins}`);
 for (const l of map.lakes) console.log(`lake ${l.id}: ${l.areaMi2.toFixed(0)} mi2 at ${l.damX.toFixed(0)}, ${l.damY.toFixed(0)} mi, surface ${l.surfaceM.toFixed(0)} m, dam ${l.damHeightM.toFixed(0)} m, on a river draining ${l.inflowMi2.toFixed(0)} mi2`);
 console.log(`section roads (mi): ${Object.entries(sectionMiles).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 for (const r of summary.regions) console.log(`  ${r.name.padEnd(18)} ${(r.share * 100).toFixed(1).padStart(5)}%  mean ${r.meanM?.toFixed(0) ?? '-'} m, relief (5-95%) ${r.reliefM?.toFixed(0) ?? '-'} m`);

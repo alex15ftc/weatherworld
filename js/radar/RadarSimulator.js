@@ -17,7 +17,9 @@ const STORM_BIN_KM = 10;
 const BOUNDARY_BIN_KM = 20;
 const DEG = Math.PI / 180;
 
-// Seven radars over the ~805 km domain, placed unevenly as real networks are. Two areas are
+// The generic network, for worlds without a map (the server places its radars at the world
+// map's airports and air base instead: server/RadarSites.js). Seven radars over the ~805 km
+// domain, placed unevenly as real networks are. Two areas are
 // poorly covered: the far west-centre, where the nearest radars are 230 km and more away (a
 // strip along the edge has no radar at all), and the south-centre, which three radars reach
 // only with beams 3 km and more above the ground. About a fifth of the map has no view of
@@ -74,12 +76,15 @@ const STORM_WINDS = { outflow: 110, anvil: 90, rearInflowMs: 24 };
 // and the depth of the denser air pushing under the other (m).
 const FINE_LINE_INFLOW_MS = 0.4, FINE_LINE_PATCHY_DB = 4, DENSITY_CURRENT_DEPTH_M = 1000;
 
-export function createRadarSites(world) {
+// layout: { id, name, fx, fy } with fx, fy shares of the domain's width and height. The server
+// passes the radars at the world map's airports and air base (server/RadarSites.js); SITE_LAYOUT
+// is the generic network used without a map (and by the tests).
+export function createRadarSites(world, layout = SITE_LAYOUT) {
   const widthKm = world.width * world.cellSizeKm, heightKm = world.height * world.cellSizeKm;
-  return SITE_LAYOUT.map(({ id, name, fx, fy }) => {
+  return layout.map(({ id, name, fx, fy, operator, airfield }) => {
     const xKm = fx * widthKm, yKm = fy * heightKm;
     const cell = world.getCell(Math.floor(xKm / world.cellSizeKm), Math.floor(yKm / world.cellSizeKm));
-    return { id, name, xKm, yKm, elevationM: Number(cell?.terrain?.elevationM) || 0 };
+    return { id, name, xKm, yKm, elevationM: Number(cell?.terrain?.elevationM) || 0, ...(operator ? { operator } : {}), ...(airfield ? { airfield } : {}) };
   });
 }
 

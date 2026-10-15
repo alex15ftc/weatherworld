@@ -84,7 +84,8 @@ async function start() {
   state.site = catalog.sites.find(s => s.id === saved.site) ?? null;
   state.mosaic = !state.site;
   state.mosaicKind = MOSAIC_OPTIONS[saved.site] ?? 'composite';
-  state.site ??= catalog.sites.find(s => s.id === 'KCPL') ?? catalog.sites[0];
+  // Otherwise the radar nearest the middle of the domain.
+  state.site ??= catalog.sites.reduce((best, s) => (Math.hypot(s.xKm - catalog.domainWidthKm / 2, s.yKm - catalog.domainHeightKm / 2) < Math.hypot(best.xKm - catalog.domainWidthKm / 2, best.yKm - catalog.domainHeightKm / 2) ? s : best));
   state.product = state.mosaic ? MOSAIC_PRODUCT[state.mosaicKind] : catalog.products.includes(saved.product) ? saved.product : 'reflectivity';
   state.tilt = catalog.tilts.includes(saved.tilt) ? saved.tilt : catalog.tilts[0];
   if (remembered.warnings === false) { state.showWarnings = false; toggleButton(ui.warnings, false, 'Warnings'); }
