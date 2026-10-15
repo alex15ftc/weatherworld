@@ -10,3 +10,6 @@ globalTypes.d.luau
 *.rbxlx
 *.rbxl.lock
 *.rbxlx.lock
+
+# Packed art waiting for upload (tools/pack-textures.py); the uploaded ids are in Shared/Weather/Textures.luau
+Textures/build/

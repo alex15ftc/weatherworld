@@ -18,6 +18,7 @@
 -- debris dome and dust skirt at the ground, and shards of debris thrown round it.
 -- Also lightning, the light dimming under a storm, and rain where the camera is.
 
+local ContentProvider = game:GetService("ContentProvider")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -25,6 +26,7 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.World.Config)
 local StormTrack = require(ReplicatedStorage.Shared.Weather.StormTrack)
 local Net = require(ReplicatedStorage.Shared.Weather.Net)
+local Textures = require(ReplicatedStorage.Shared.Weather.Textures)
 
 local StormController = {}
 
@@ -161,6 +163,54 @@ local function emitter(pool: Pool, key: string): (BasePart, ParticleEmitter)
 	return part, e :: ParticleEmitter
 end
 
+-- Billboards: an image that always faces the camera, sized in studs, seen at any distance
+-- (particles are not). Images are uploaded art (Shared/Weather/Textures); one is used only once
+-- Roblox serves it (uploads are moderated first), and until then the parts above stand in.
+local ready: { [string]: boolean } = {}
+
+local function isReady(image: string): boolean
+	return image ~= "" and ready[image] == true
+end
+
+-- An image, or one cell of a sheet, at position, size studs across and up.
+local function billboard(pool: Pool, key: string, position: Vector3, size: Vector2, image: string, cell: Vector2, cellSize: Vector2, colour: Color3, transparency: number)
+	local part = pool.parts[key]
+	local gui: BillboardGui
+	local label: ImageLabel
+	if not part then
+		local p = Instance.new("Part")
+		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+		p.Transparency = 1
+		p.Size = Vector3.one
+		p.Name = key
+		gui = Instance.new("BillboardGui")
+		gui.MaxDistance = math.huge
+		gui.LightInfluence = 0.6
+		gui.Adornee = p
+		label = Instance.new("ImageLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.Parent = gui
+		gui.Parent = p
+		p.Parent = pool.model
+		pool.parts[key] = p
+		part = p
+	else
+		gui = part:FindFirstChildOfClass("BillboardGui") :: BillboardGui
+		label = gui:FindFirstChildOfClass("ImageLabel") :: ImageLabel
+	end
+	pool.used[key] = true
+	local b = part :: BasePart
+	b.CFrame = CFrame.new(position)
+	gui.Size = UDim2.new(size.X, 0, size.Y, 0)
+	gui.Enabled = transparency < 0.99
+	label.Image = image
+	label.ImageRectOffset = cell
+	label.ImageRectSize = cellSize
+	label.ImageColor3 = colour
+	label.ImageTransparency = transparency
+end
+
 -- Hides what was not drawn this frame.
 local function finish(pool: Pool)
 	for key, part in pool.parts do
@@ -171,6 +221,10 @@ local function finish(pool: Pool)
 			local e = part:FindFirstChildOfClass("ParticleEmitter")
 			if e then
 				e.Enabled = false
+			end
+			local gui = part:FindFirstChildOfClass("BillboardGui")
+			if gui then
+				gui.Enabled = false
 			end
 		end
 	end
@@ -196,7 +250,11 @@ end
 -- `count` puffs filling an ellipsoid of `size` (x across, y up, z along) at `frame`. The
 -- middle ones are as clear as `transparency`, the outer ones clearer; the lower ones darker,
 -- toward `under`.
-local function puffs(pool: Pool, key: string, frame: CFrame, size: Vector3, count: number, colour: Color3, under: Color3, transparency: number, clock: number, seed: number)
+local function puffs(pool: Pool, key: string, kind: string, frame: CFrame, size: Vector3, count: number, colour: Color3, under: Color3, transparency: number, clock: number, seed: number)
+	local sheet = (Textures.clouds :: any)[kind]
+	local textured = sheet ~= nil and isReady(sheet.image)
+	local grid = if sheet then sheet.grid else 1
+	local cellPx = 1024 / grid
 	for i = 1, count do
 		local n = i * 5
 		local a = TAU * rand(seed, n)
@@ -207,7 +265,17 @@ local function puffs(pool: Pool, key: string, frame: CFrame, size: Vector3, coun
 		local boil = 1 + 0.05 * math.sin(clock * 0.12 + seed * 40 + i * 1.7)
 		local clear = 1 - (1 - transparency) * (1 - 0.5 * out / 0.62)
 		local shade = colour:Lerp(under, math.clamp(0.25 - y * 0.6, 0, 0.45))
-		blob(pool, `{key}#{i}`, frame * CFrame.new(offset), size * share * boil, shade, clear)
+		if textured then
+			-- A puff from the sheet, as wide as the cluster's puff and a little taller (the art
+			-- is round), softer than a part needs to be.
+			local pick = math.floor(rand(seed, n + 4) * grid * grid)
+			local cell = Vector2.new(pick % grid, math.floor(pick / grid)) * cellPx
+			local across = math.max(size.X, size.Z) * share * boil
+			local up = math.max(size.Y * share * boil * 1.6, across * 0.55)
+			billboard(pool, `{key}#{i}`, (frame * CFrame.new(offset)).Position, Vector2.new(across, up), sheet.image, cell, Vector2.new(cellPx, cellPx), shade, 1 - (1 - clear) * 0.95)
+		else
+			blob(pool, `{key}#{i}`, frame * CFrame.new(offset), size * share * boil, shade, clear)
+		end
 	end
 end
 
@@ -239,7 +307,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 			-- Leaning a little downwind with height, the way the wind aloft takes it.
 			local c = foot + Vector3.new(0, f * height, 0) + downwind * (f * f * 0.25 * height)
 			local colour = COLOUR.tower:Lerp(COLOUR.towerTop, f)
-			puffs(pool, `t{k}_{i}`, CFrame.new(c), Vector3.new(r * 2.2, height / levels * 2.8, r * 2.2), perLevel, colour, COLOUR.band, fade(0.04, alpha), clock, seed + k * 7.1 + i * 1.3)
+			puffs(pool, `t{k}_{i}`, "puff", CFrame.new(c), Vector3.new(r * 2.2, height / levels * 2.8, r * 2.2), perLevel, colour, COLOUR.band, fade(0.04, alpha), clock, seed + k * 7.1 + i * 1.3)
 			-- Bands round a rotating tower (striations), turning slowly.
 			if k == 1 and f < 0.5 and up.striation > 0.15 then
 				blob(pool, `band{i}`, CFrame.new(c) * CFrame.Angles(0, clock * 0.05 * up.rotation, 0), Vector3.new(r * 2.15, height / levels * 0.35, r * 2.05), COLOUR.band, fade(1 - 0.5 * up.striation, alpha))
@@ -248,7 +316,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		-- An overshooting dome over the strongest updraught.
 		if k == 1 and up.overshootM > 50 then
 			local dome = up.overshootM * SKY
-			puffs(pool, "overshoot", CFrame.new(foot + Vector3.new(0, height, 0) + downwind * 0.25 * height), Vector3.new(R * 1.1, dome * 2.4, R * 1.1), 3, COLOUR.towerTop, COLOUR.tower, fade(0.05, alpha), clock, seed + 3.3)
+			puffs(pool, "overshoot", "puff", CFrame.new(foot + Vector3.new(0, height, 0) + downwind * 0.25 * height), Vector3.new(R * 1.1, dome * 2.4, R * 1.1), 3, COLOUR.towerTop, COLOUR.tower, fade(0.05, alpha), clock, seed + 3.3)
 		end
 	end
 
@@ -258,17 +326,22 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 	local baseLength = if towers > 1 then 2 * s.line.halfLengthKm * KM + baseRadius else 2 * baseRadius
 	local baseThick = 120 * SKY + 0.04 * baseRadius
 	local baseFrame = CFrame.lookAt(centre, centre + axis)
-	blob(pool, "base", baseFrame, Vector3.new(1.5 * baseRadius, baseThick, baseLength * 0.75), COLOUR.base, fade(0.15, alpha))
-	puffs(pool, "baseRag", baseFrame, Vector3.new(2.3 * baseRadius, baseThick * 1.6, baseLength * 1.15), 9, COLOUR.base, COLOUR.wall, fade(0.35, alpha), clock, seed + 5.7)
+	local textured = isReady(Textures.clouds.puff.image)
+	if not textured then
+		blob(pool, "base", baseFrame, Vector3.new(1.5 * baseRadius, baseThick, baseLength * 0.75), COLOUR.base, fade(0.15, alpha))
+	end
+	puffs(pool, "baseRag", "scud", baseFrame, Vector3.new(2.3 * baseRadius, baseThick * 1.6, baseLength * 1.15), 9, COLOUR.base, COLOUR.wall, fade(0.35, alpha), clock, seed + 5.7)
 
 	-- The anvil spreading downwind from the top, and mammatus under a mature one.
 	local anvilTop = ground + s.anvil.topM * SKY
 	local length, width = s.anvil.lengthKm * KM, s.anvil.widthKm * KM
 	local anvilCentre = Vector3.new(centre.X, anvilTop, centre.Z) + downwind * (length * 0.45)
 	local anvilFrame = CFrame.lookAt(anvilCentre, anvilCentre + downwind)
-	blob(pool, "anvil", anvilFrame, Vector3.new(width * 0.7, 1100 * SKY, length * 0.75), COLOUR.anvil, fade(0.1, alpha))
-	puffs(pool, "anvilRag", anvilFrame, Vector3.new(width * 1.1, 1700 * SKY, length * 1.1), 9, COLOUR.anvil, COLOUR.tower, fade(0.3, alpha), clock, seed + 9.1)
-	puffs(pool, "anvilRoot", CFrame.new(Vector3.new(centre.X, anvilTop, centre.Z)), Vector3.new(R * 3, 2000 * SKY, R * 3), 4, COLOUR.anvil, COLOUR.tower, fade(0.05, alpha), clock, seed + 2.9)
+	if not textured then
+		blob(pool, "anvil", anvilFrame, Vector3.new(width * 0.7, 1100 * SKY, length * 0.75), COLOUR.anvil, fade(0.1, alpha))
+	end
+	puffs(pool, "anvilRag", "wisp", anvilFrame, Vector3.new(width * 1.1, 1700 * SKY, length * 1.1), 9, COLOUR.anvil, COLOUR.tower, fade(0.3, alpha), clock, seed + 9.1)
+	puffs(pool, "anvilRoot", "puff", CFrame.new(Vector3.new(centre.X, anvilTop, centre.Z)), Vector3.new(R * 3, 2000 * SKY, R * 3), 4, COLOUR.anvil, COLOUR.tower, fade(0.05, alpha), clock, seed + 2.9)
 	if s.anvil.mammatus > 0.2 then
 		for i = 1, 6 do
 			local p = anvilFrame * CFrame.new((rand(seed, 600 + i) - 0.5) * width * 0.5, -700 * SKY, -(0.1 + 0.5 * rand(seed, 700 + i)) * length * 0.5)
@@ -283,7 +356,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		local lower = math.max(30, wall.loweringM * SKY)
 		local wc = at(wall.xKm, wall.yKm, baseY - lower / 2)
 		local wallClear = 1 - math.clamp(wall.strength * 2.2, 0, 1)
-		puffs(pool, "wall", CFrame.new(wc) * CFrame.Angles(0, clock * 0.04 * (0.2 + wall.rotation), 0), Vector3.new(2.4 * wr, lower * 1.3, 2.4 * wr), 6, COLOUR.wall, COLOUR.wall, fade(wallClear + 0.1 * (1 - wallClear), alpha), clock, seed + 4.4)
+		puffs(pool, "wall", "scud", CFrame.new(wc) * CFrame.Angles(0, clock * 0.04 * (0.2 + wall.rotation), 0), Vector3.new(2.4 * wr, lower * 1.3, 2.4 * wr), 6, COLOUR.wall, COLOUR.wall, fade(wallClear + 0.1 * (1 - wallClear), alpha), clock, seed + 4.4)
 		local spin = clock * (0.15 + 0.6 * wall.rotation)
 		for i = 0, 5 do
 			local a = spin + TAU * i / 6
@@ -294,7 +367,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 			local d = heading(wall.tailBearingDeg)
 			local len = (2 + 5 * wall.tail) * KM
 			local p = wc + d * (wr + len / 2) + Vector3.new(0, lower * 0.1, 0)
-			puffs(pool, "tail", CFrame.lookAt(p, p + d), Vector3.new(0.9 * KM, lower * 0.8, len), 5, COLOUR.scud, COLOUR.wall, fade(1 - 0.8 * wall.tail, alpha), clock, seed + 6.2)
+			puffs(pool, "tail", "scud", CFrame.lookAt(p, p + d), Vector3.new(0.9 * KM, lower * 0.8, len), 5, COLOUR.scud, COLOUR.wall, fade(1 - 0.8 * wall.tail, alpha), clock, seed + 6.2)
 		end
 	end
 
@@ -308,7 +381,12 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		for j = 1, 6 do
 			local p = start + d * (len * (j - 0.5) / 6) + Vector3.new(0, (rand(seed, i * 40 + j) - 0.5) * 60 * SKY, 0)
 			local bead = 0.7 + 0.6 * rand(seed, i * 40 + j + 20)
-			blob(pool, `inflow{i}_{j}`, CFrame.lookAt(p, p + d), Vector3.new(0.6 * KM * bead, 110 * SKY * bead, len / 4.5), COLOUR.inflow, clear)
+			if isReady(Textures.clouds.wisp.image) then
+				local cell = Vector2.new(j % 4, math.floor(j / 4) % 4) * 256
+				billboard(pool, `inflow{i}_{j}`, p, Vector2.new(len / 4, 160 * SKY * bead), Textures.clouds.wisp.image, cell, Vector2.new(256, 256), COLOUR.inflow, clear)
+			else
+				blob(pool, `inflow{i}_{j}`, CFrame.lookAt(p, p + d), Vector3.new(0.6 * KM * bead, 110 * SKY * bead, len / 4.5), COLOUR.inflow, clear)
+			end
 		end
 	end
 
@@ -334,7 +412,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 			for k = 1, tiers do
 				local tierDrop = (k - 1) * 0.22 * (baseY - ground)
 				local q = Vector3.new(p.X, shelfY - tierDrop, p.Z) + d * ((k - 1) * 0.6 * KM)
-				puffs(pool, `shelf{i}_{k}`, CFrame.lookAt(q, q + d), Vector3.new(segLength * 1.6, (160 * SKY * shelf.strength + 40) * 1.4, 1.6 * KM), 2, COLOUR.shelf, COLOUR.wall, fade(1 - shelf.strength, alpha), clock, seed + i * 3.7 + k)
+				puffs(pool, `shelf{i}_{k}`, "scud", CFrame.lookAt(q, q + d), Vector3.new(segLength * 1.6, (160 * SKY * shelf.strength + 40) * 1.4, 1.6 * KM), 2, COLOUR.shelf, COLOUR.wall, fade(1 - shelf.strength, alpha), clock, seed + i * 3.7 + k)
 			end
 		end
 	end
@@ -493,6 +571,40 @@ local function rodFrame(p0: Vector3, p1: Vector3, spin: number): CFrame
 	return CFrame.lookAt((p0 + p1) / 2, p1) * CFrame.Angles(0, math.pi / 2, 0) * CFrame.Angles(spin, 0, 0)
 end
 
+-- The tornado as a billboard of the baked funnel (Shared/Weather/Textures): the sheet for the
+-- side it is seen from, the frame for where it is in its life (lowering as it touches down, a
+-- mature cone drifting slowly, roping out as it decays), scaled to the engine's height and
+-- width and stood on its ground point. False when the art is not ready, so the parts draw it.
+local function drawImpostor(pool: Pool, t: any, foot: Vector3, height: number, touch: number, wrapped: number, clock: number, seed: number, cameraPos: Vector3): boolean
+	local tex = Textures.tornado
+	local toCamera = cameraPos - foot
+	local bearing = math.deg(math.atan2(toCamera.X, -toCamera.Z)) % 360
+	local view = math.floor(bearing / (360 / #tex.views) + 0.5) % #tex.views + 1
+	local sheet = tex.sheets[view]
+	if not isReady(sheet) then
+		return false
+	end
+	local decay = math.clamp(t.decay or 0, 0, 1)
+	local stage
+	if decay > 0.05 then
+		stage = 36 + decay * 20 + (if touch < 1 then (1 - touch) * 7 else 0)
+	elseif touch < 1 then
+		stage = 1 + touch * 15
+	else
+		stage = 16 + 20 * (0.5 + 0.5 * math.sin(clock * 0.03 + seed * 10))
+	end
+	local frame = math.clamp(math.floor(stage), 0, tex.frames - 1)
+	local cellPx = 1024 / tex.grid
+	local cell = Vector2.new(frame % tex.grid, math.floor(frame / tex.grid)) * cellPx
+	-- The baked funnel fills the frame from the ground to the collar in the cloud base; its
+	-- middle is about a fifth of the frame across. Fit that to the engine's funnel.
+	local h = height * 1.12
+	local w = math.clamp(10 * radiusAt(t, 0.5), h * 0.45, h * 1.6)
+	local tint = Color3.new(1, 1, 1):Lerp(Color3.fromRGB(105, 108, 116), wrapped)
+	billboard(pool, "impostor", foot + Vector3.new(0, h / 2, 0), Vector2.new(w, h), sheet, cell, Vector2.new(cellPx, cellPx), tint, fade(0, math.min(1, touch * 3)))
+	return true
+end
+
 local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3)
 	local t = s.tornado
 	local touch = math.clamp(t.touch or 1, 0, 1)
@@ -532,6 +644,9 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 	-- Up to this share of the height the funnel melts into the debris cloud.
 	local melt = if debrisOn then math.clamp(dh * 0.9 / math.max(1, height), 0.04, 0.3) else 0.04
 
+	-- The baked funnel where its art is ready; otherwise the funnel is built from parts below.
+	local baked = drawImpostor(pool, t, foot, height, touch, wrapped, clock, seed, cameraPos)
+
 	-- What is shown: lowering from the cloud while it touches down (or lifting as it ends).
 	local lowest = 1 - touch
 	local condensed = math.clamp(t.condensedM / math.max(1, t.baseM), 0, 1)
@@ -545,18 +660,20 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 			local base = 0.08 + (if fm < 0.35 then hollow else 0)
 			-- Thinning toward the ground, so the bottom disappears into the debris.
 			local thin = if fm < melt then 0.55 * (1 - fm / melt) else 0
-			softRod(pool, `funnel{i}`, p0, p1, math.max(2, r), core, shell, fade(base + thin, touch ^ 0.5))
+			if not baked then
+				softRod(pool, `funnel{i}`, p0, p1, math.max(2, r), core, shell, fade(base + thin, touch ^ 0.5))
+			end
 			if detail then
 				local puff = math.max(6, r * 0.9)
 				local length = (p1 - p0).Magnitude
 				local rate = math.clamp(length * r / (puff * puff) * 6, 2, 40) * touch
-				smoke(pool, `funnelSmoke{i}`, rodFrame(p0, p1, clock * turn * (1 - 0.5 * fm)), Vector3.new(length, 2 * r * 1.05, 2 * r * 1.05), puff, 1.6, shell, 0.45 * (1 - thin), rate, 3, true)
+				smoke(pool, `funnelSmoke{i}`, rodFrame(p0, p1, clock * turn * (1 - 0.5 * fm)), Vector3.new(length, 2 * r * 1.05, 2 * r * 1.05), puff, 1.6, shell, (if baked then 0.22 else 0.45) * (1 - thin), rate, 3, true)
 			end
 		end
 	end
 	-- The collar under the cloud base the funnel hangs from.
 	local topR = radiusAt(t, 1)
-	if topR > 0 and touch > 0.05 then
+	if topR > 0 and touch > 0.05 and not baked then
 		local c = axis(1)
 		blob(pool, "collar", CFrame.new(c - Vector3.new(0, topR * 0.4, 0)), Vector3.new(topR * 3.4, topR * 1.4, topR * 3.4), shell, fade(0.45, touch))
 	end
@@ -570,7 +687,7 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 		end
 	end
 	-- Smaller vortices turning round the core.
-	if t.vortices > 1 then
+	if t.vortices > 1 and not baked then
 		local orbit = math.max(6, t.coreRadiusM * TOR * 0.85)
 		local spin = clock * math.clamp(0.5 * t.windMph * 0.447 / math.max(10, t.coreRadiusM), 0.4, 3)
 		local subR = math.max(3, t.subvortexRadiusM * TOR)
@@ -602,7 +719,13 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 	end
 	-- Far away, where the smoke is not drawn, a soft dome keeps the base dark.
 	if debrisOn and not detail then
-		blob(pool, "debrisFar", CFrame.new(foot + Vector3.new(0, dh * 0.3, 0)), Vector3.new(dr * 2, dh * 1.1, dr * 2), cloudColour, 0.35)
+		local dust = Textures.clouds.dust
+		if isReady(dust.image) then
+			local cellPx = 1024 / dust.grid
+			billboard(pool, "debrisFar", foot + Vector3.new(0, dh * 0.45, 0), Vector2.new(dr * 2.6, dh * 1.4), dust.image, Vector2.new(0, 0), Vector2.new(cellPx, cellPx), cloudColour, 0.15)
+		else
+			blob(pool, "debrisFar", CFrame.new(foot + Vector3.new(0, dh * 0.3, 0)), Vector3.new(dr * 2, dh * 1.1, dr * 2), cloudColour, 0.35)
+		end
 	end
 
 	-- Shards of debris: up the spiral, widening as they rise, then flung out and falling.
@@ -696,6 +819,37 @@ function StormController.Start()
 	end)
 	Net.AskFrames:Client():Fire()
 	root.Parent = workspace
+
+	-- Mark the storm art ready once Roblox serves it (a new upload waits for moderation, so
+	-- keep asking now and then); until then the part-built storm shows.
+	task.spawn(function()
+		local images: { string } = {}
+		for _, sheet in Textures.tornado.sheets do
+			table.insert(images, sheet)
+		end
+		for _, kind in Textures.clouds :: { [string]: { image: string, grid: number } } do
+			table.insert(images, kind.image)
+		end
+		while true do
+			local waiting = {}
+			for _, image in images do
+				if image ~= "" and not ready[image] then
+					table.insert(waiting, image)
+				end
+			end
+			if #waiting == 0 then
+				break
+			end
+			pcall(function()
+				ContentProvider:PreloadAsync(waiting, function(id: string, status: Enum.AssetFetchStatus)
+					if status == Enum.AssetFetchStatus.Success then
+						ready[id] = true
+					end
+				end)
+			end)
+			task.wait(60)
+		end
+	end)
 
 	local pools: { [string]: Pool } = {}
 	local bolts: { { parts: { BasePart }, untilClock: number } } = {}

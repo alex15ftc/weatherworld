@@ -110,6 +110,26 @@ real art, put a model at `ReplicatedStorage.Assets.Cars.ChaseCar` in the rally c
 scale (see `Server/Services/VehicleService/CarFactory.luau`); until then the car has a plain body
 made of parts.
 
+## Storm art
+
+Tornadoes and clouds are drawn as camera-facing billboards of uploaded art, visible at any
+distance, with particles and parts added near the camera. The art: a baked tornado life cycle seen
+from 8 sides (8 x 8 frames a sheet) and cloud puff sheets (4 x 4), ids in
+`Shared/Weather/Textures.luau`. Until Roblox serves an image (new uploads are moderated first),
+the storm is built from parts instead.
+
+```
+python -I tools/pack-textures.py <art dir>     # sheets + manifest into Textures/build/
+powershell -File tools/set-opencloud-key.ps1   # once: your Open Cloud key, as devflow keeps it
+node tools/upload-images.mjs check             # what the key can do
+node tools/upload-images.mjs upload            # upload new sheets, write Textures.luau
+```
+
+The key needs `asset: read, write` and `legacy-asset: manage`; it is stored DPAPI-encrypted for
+your Windows user (the file devflow uses) and never printed. `Textures/uploaded.json` remembers
+what is uploaded, so nothing goes up twice. The source art is in this repository's history:
+`git archive 6d941ae data/cloud-textures data/tornado-bake`.
+
 ## Checks
 
 CI (`.github/workflows/roblox.yml`) exports the world, installs packages, type-checks `Client`,
