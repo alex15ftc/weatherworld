@@ -240,7 +240,7 @@ export function generateWorldMap(options = {}) {
   accumulate();
 
   const { lake, lakes } = placeLakes(n, p, height, area, receiver, cellMi2, noise('lake-site'));
-  const rivers = splitAtLakes(traceRivers(n, p, cellMi2, area, receiver), lake, n, p.cellMiles);
+  const rivers = nameRivers(splitAtLakes(traceRivers(n, p, cellMi2, area, receiver), lake, n, p.cellMiles));
   const cover = landCover(n, p, height, coverRegion, cellM, rivers, patch, patch2, area, cellMi2);
   for (let k = 0; k < cells; k++) if (lake[k]) cover[k] = C.water;
   const map = {
@@ -250,7 +250,7 @@ export function generateWorldMap(options = {}) {
   };
   const { settlements, roads } = planSettlements(map, p.settlements);
   paintTowns(map, settlements);
-  const sections = planSectionRoads({ ...map, settlements }, p.sections);
+  const sections = planSectionRoads({ ...map, settlements, roads }, p.sections);
   const crossings = planCrossings({ ...map, roads, sections }, p.crossings);
   return { ...map, settlements, roads, sections, crossings };
 }
@@ -302,6 +302,17 @@ function placeLakes(n, p, height, area, receiver, cellMi2, siteNoise) {
     lakes.push({ id, surfaceM: crest, damHeightM: best.damM, areaMi2: count * cellMi2, cellI: best.i, cellJ: best.j, damX: (best.i + 0.5) * p.cellMiles, damY: (best.j + 0.5) * p.cellMiles, inflowMi2: area[best.k] * cellMi2 });
   }
   return { lake, lakes };
+}
+
+// Names for the larger rivers, the biggest first ('River' from 5000 mi2 of drainage, 'Creek'
+// from 1500); the others go unnamed.
+const RIVER_NAMES = ['Big Blue', 'Republican', 'Solomon', 'Saline', 'Smoky Hill', 'Walnut', 'Ninnescah', 'Cottonwood', 'Neosho', 'Verdigris', 'Marais des Cygnes', 'Delaware', 'Vermillion', 'Wakarusa', 'Chikaskia', 'Medicine Lodge', 'Pawnee', 'Arikaree', 'Sappa', 'Prairie Dog', 'Beaver', 'Elk', 'Fall', 'Caney', 'Grouse', 'Spring', 'Mill', 'Rock', 'Sand', 'Bluff', 'Turkey', 'Deer', 'Stranger', 'Soldier', 'Black Vermillion', 'Little Arkansas', 'Rattlesnake', 'Bow', 'Wildcat', 'Otter', 'Lyons', 'Clear', 'Indian', 'Badger', 'Cedar', 'Plum', 'Sycamore', 'Big Creek', 'Silver', 'Bear'];
+function nameRivers(rivers) {
+  let named = 0;
+  for (const river of [...rivers].sort((a, b) => b.mouthDrainageMi2 - a.mouthDrainageMi2)) {
+    river.name = river.mouthDrainageMi2 >= 1500 && named < RIVER_NAMES.length ? `${RIVER_NAMES[named++]} ${river.mouthDrainageMi2 >= 5000 ? 'River' : 'Creek'}` : '';
+  }
+  return rivers;
 }
 
 // Rivers cut where they enter a lake: the stretch upstream ends at the shore, the stretch

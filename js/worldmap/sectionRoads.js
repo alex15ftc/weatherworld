@@ -49,7 +49,7 @@ export const SECTION_DEFAULTS = Object.freeze({
 
 export function planSectionRoads(map, options = {}) {
   const p = { ...SECTION_DEFAULTS, ...options };
-  const { size: n, cellMiles, elevation, coverRegion, cover, coverKeys, drainageMi2, rivers, regionKeys, settlements = [] } = map;
+  const { size: n, cellMiles, elevation, coverRegion, cover, coverKeys, drainageMi2, rivers, regionKeys, settlements = [], roads: mapRoads = [] } = map;
   const per = Math.round(1 / cellMiles), miles = Math.floor(n / per), size = miles + 1;
   const cellM = cellMiles * 1609.344, water = coverKeys.indexOf('water'), urban = new Set([coverKeys.indexOf('urban'), coverKeys.indexOf('suburban')]);
   const gap = makeNoise(map.params.seed, 'section-gaps'), farm = makeNoise(map.params.seed, 'section-farms'), random = makeRandom(hashText(`${map.params.seed}|sections`));
@@ -123,7 +123,45 @@ export function planSectionRoads(map, options = {}) {
     const south = J < miles && I > 0 && I < miles ? classify(false, I, J) : 0;
     roads[J * size + I] = east | (south << 2);
   }
+  // No junction on a bridge: at a corner in a river only one line goes through, straight across
+  // (a highway's, where one passes; else the better road's), and the other arms end at the bank.
+  const wetCorner = riverCorners(rivers, size);
+  const along = (x, y) => {
+    for (const r of mapRoads) for (let i = 1; i < r.points.length; i++) {
+      const [ax, ay] = r.points[i - 1], [bx, by] = r.points[i];
+      const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? clamp(((x - ax) * dx + (y - ay) * dy) / l2, 0, 1) : 0;
+      if (Math.hypot(ax + dx * t - x, ay + dy * t - y) < 0.05) return Math.abs(dy) < 0.05 * Math.abs(dx) ? 0 : Math.abs(dx) < 0.05 * Math.abs(dy) ? 1 : 2;
+    }
+    return -1;
+  };
+  for (let J = 0; J < size; J++) for (let I = 0; I < size; I++) {
+    if (!wetCorner[J * size + I]) continue;
+    const K = J * size + I, W = I > 0 ? K - 1 : -1, N = J > 0 ? K - size : -1;
+    const ew = Math.max(roads[K] & 3, W >= 0 ? roads[W] & 3 : 0), ns = Math.max((roads[K] >> 2) & 3, N >= 0 ? (roads[N] >> 2) & 3 : 0);
+    if (!ew || !ns) continue;
+    const highway = along(I, J);
+    const keep = highway >= 0 ? highway : ew >= ns ? 0 : 1;
+    if (keep !== 0) { roads[K] &= ~3; if (W >= 0) roads[W] &= ~3; }
+    if (keep !== 1) { roads[K] &= ~12; if (N >= 0) roads[N] &= ~12; }
+  }
   return { size, miles: 1, roads };
+}
+
+// The corners of the 1-mile grid (size by size) that lie in a river, as wide as it is built
+// (the Roblox width: 0.18 of the engine width, 12 to 220 studs) with padMi more each side.
+export function riverCorners(rivers, size, padMi = 0.05) {
+  const wet = new Uint8Array(size * size);
+  for (const r of rivers) for (let k = 2; k < r.points.length; k += 2) {
+    const ax = r.points[k - 2], ay = r.points[k - 1], bx = r.points[k], by = r.points[k + 1];
+    const reach = Math.min(220, Math.max(12, r.widthsM[k / 2] * 0.18)) / 2000 + padMi;
+    for (let J = Math.max(0, Math.ceil(Math.min(ay, by) - reach)); J <= Math.min(size - 1, Math.floor(Math.max(ay, by) + reach)); J++) {
+      for (let I = Math.max(0, Math.ceil(Math.min(ax, bx) - reach)); I <= Math.min(size - 1, Math.floor(Math.max(ax, bx) + reach)); I++) {
+        const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? clamp(((I - ax) * dx + (J - ay) * dy) / l2, 0, 1) : 0;
+        if (Math.hypot(ax + dx * t - I, ay + dy * t - J) < reach) wet[J * size + I] = 1;
+      }
+    }
+  }
+  return wet;
 }
 
 // Miles of each kind of section road.

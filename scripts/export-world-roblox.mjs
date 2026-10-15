@@ -58,7 +58,7 @@ for (const river of map.rivers) {
 }
 const KIND = { interstate: 1, expressway: 2, highway: 3 };
 const CROSS_TYPE = { interchange: 1, overpass: 2 };
-const CROSS_ROAD = { interstate: 1, expressway: 2, highway: 3, paved: 4, gravel: 5 };
+const CROSS_ROAD = { interstate: 1, expressway: 2, us: 3, state: 3, highway: 3, paved: 4, gravel: 5 };
 const roadSegments = [];
 for (const road of map.roads) for (let i = 1; i < road.points.length; i++) roadSegments.push([KIND[road.kind], ...road.points[i - 1], ...road.points[i]]);
 
@@ -102,25 +102,10 @@ for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
   }
   const pack = buf => zstdCompressSync(buf).toString('base64');
   // Names for the larger rivers (each traced stretch), the biggest first.
-  const RIVER_NAMES = ['Big Blue', 'Republican', 'Solomon', 'Saline', 'Smoky Hill', 'Walnut', 'Ninnescah', 'Cottonwood', 'Neosho', 'Verdigris', 'Marais des Cygnes', 'Delaware', 'Vermillion', 'Wakarusa', 'Chikaskia', 'Medicine Lodge', 'Pawnee', 'Arikaree', 'Sappa', 'Prairie Dog', 'Beaver', 'Elk', 'Fall', 'Caney', 'Grouse', 'Spring', 'Mill', 'Rock', 'Sand', 'Bluff', 'Turkey', 'Deer', 'Stranger', 'Soldier', 'Black Vermillion', 'Little Arkansas', 'Rattlesnake', 'Bow', 'Wildcat', 'Otter', 'Lyons', 'Clear', 'Indian', 'Badger', 'Cedar', 'Plum', 'Sycamore', 'Big Creek', 'Silver', 'Bear'];
-  const simplify = (pts, tol) => {
-    const keep = new Uint8Array(pts.length / 2); keep[0] = keep[keep.length - 1] = 1;
-    const stack = [[0, keep.length - 1]];
-    while (stack.length) {
-      const [a, b] = stack.pop(), ax = pts[a * 2], ay = pts[a * 2 + 1], bx = pts[b * 2], by = pts[b * 2 + 1], len = Math.hypot(bx - ax, by - ay) || 1;
-      let worst = 0, at = -1;
-      for (let i = a + 1; i < b; i++) { const d = Math.abs((bx - ax) * (ay - pts[i * 2 + 1]) - (ax - pts[i * 2]) * (by - ay)) / len; if (d > worst) { worst = d; at = i; } }
-      if (worst > tol) { keep[at] = 1; stack.push([a, at], [at, b]); }
-    }
-    const out = []; keep.forEach((k, i) => { if (k) out.push(r(pts[i * 2], 2), r(pts[i * 2 + 1], 2)); });
-    return out;
-  };
   const rivers = [...map.rivers].sort((a, b) => b.mouthDrainageMi2 - a.mouthDrainageMi2);
-  let named = 0;
   const riverLines = rivers.map(rv => {
     const width = Math.round(Math.max(...rv.widthsM));
-    const big = rv.mouthDrainageMi2 >= 1500 && named < RIVER_NAMES.length;
-    const name = big ? `${RIVER_NAMES[named++]} ${rv.mouthDrainageMi2 >= 5000 ? 'River' : 'Creek'}` : '';
+    const name = rv.name ?? '';
     return `{ name = ${JSON.stringify(name)}, width = ${width}, points = { ${simplify(rv.points, 0.12).join(', ')} } }`;
   });
   const roadLines = map.roads.map(rd => `{ kind = "${rd.kind}", name = ${JSON.stringify(rd.kind === 'highway' ? '' : rd.name.replace(/ .*–.*/, '').replace(/ bypass$/, ''))}, points = { ${rd.points.flatMap(([x, y]) => [r(x, 2), r(y, 2)]).join(', ')} } }`);

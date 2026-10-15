@@ -2,6 +2,7 @@
 // river; the map's 10-mile averages stay on the weather engine's slope; every region, settlement
 // kind and interstate turns up; a reservoir is dammed; and roads keep to the section lines.
 import assert from 'node:assert/strict';
+import { interchangeRamps } from '../js/worldmap/interchanges.js';
 import { generateWorldMap, describeWorldMap, engineTerrainM, REGIONS, COVER } from '../js/worldmap/WorldMapGenerator.js';
 
 const small = { miles: 500, cellMiles: 1, erosionSteps: 12 };
@@ -32,10 +33,23 @@ const onAnother = (road, [x, y]) => interstates.some(o => o !== road && o.points
 assert.ok(interstates.filter(r => ['I-70', 'I-35', 'I-29'].includes(r.name)).every(r => r.points.some(([x, y]) => Math.hypot(x - metro.x, y - metro.y) < 3) || onAnother(r, r.points[0]) || onAnother(r, r.points.at(-1))), 'the interstates meet at the metro');
 // Interstate crossings: interchanges and overpasses only, never two of different interstates close together.
 assert.ok(map.crossings.some(c => c.type === 'interchange') && map.crossings.every(c => c.type === 'interchange' || c.type === 'overpass'), 'interstate crossings are planned');
+// US practice: highways are US or state routes; exits on one interstate at least a mile apart
+// (3 in the country, save where interstates meet); ramps clear of rivers.
+assert.ok(map.roads.filter(r => r.kind === 'highway').every(r => /^(US|K)-\d+$/.test(r.name)) && map.roads.some(r => r.name?.startsWith('US-')), 'highways are numbered US and state routes');
+const exitsOn = {};
+for (const c of map.crossings) if (c.type === 'interchange') (exitsOn[c.interstate] ??= []).push(c);
+for (const list of Object.values(exitsOn)) for (const c of list) for (const o of list) {
+  if (o === c || c.kind === 'interstate' || o.kind === 'interstate') continue;
+  assert.ok(Math.abs(o.milepost - c.milepost) >= (c.town && o.town ? 1 : 3) - 0.3 || Math.abs(o.milepost - c.milepost) < 0.35, `exits on ${c.interstate} are spaced (${o.milepost.toFixed(1)}, ${c.milepost.toFixed(1)})`);
+}
+for (const c of map.crossings) for (const ramp of interchangeRamps(c)) for (const river of map.rivers) for (let k = 0; k < river.points.length; k += 2) {
+  const half = Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000;
+  for (const [x, y] of ramp) assert.ok(Math.hypot(x - river.points[k], y - river.points[k + 1]) > half, `ramps at ${c.x.toFixed(1)}, ${c.y.toFixed(1)} keep out of rivers`);
+}
 // A beltway round the metro, out in its suburbs, and expressways leaving it.
 const beltway = map.roads.find(r => r.name === 'I-435');
 assert.ok(beltway && beltway.points.every(([x, y]) => Math.hypot(x - metro.x, y - metro.y) < metro.extentMi + 3), 'the metro has a beltway');
-assert.ok(map.roads.filter(r => r.kind === 'expressway' && r.points[0][0] === metro.x && r.points[0][1] === metro.y).length >= 2, 'expressways leave the metro');
+assert.ok(map.roads.filter(r => r.kind === 'expressway' && Math.hypot(r.points[0][0] - metro.x, r.points[0][1] - metro.y) < 3).length >= 2, 'expressways leave the metro');
 assert.ok(map.settlements.every(s => s.streetBlockMi > 0 && s.suburbanMi >= 0), 'every place says how its streets are laid');
 
 // A reservoir: about the area asked for, behind a dam of a usual height, all of it water, and

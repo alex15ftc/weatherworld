@@ -30,7 +30,7 @@ void trunkU; void drainageMi2; void coverRegion;
 const sectionMiles = sectionRoadMiles(sections);
 writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
   seed, size: map.size, cellMiles: map.cellMiles, params: rest.params, regions: REGIONS, cover: COVER,
-  inflows: rest.inflows, lakes: rest.lakes, sectionGrid: { size: sections.size, miles: sections.miles, classes: SECTION_CLASSES, roadMiles: sectionMiles }, rivers: rest.rivers.map(r => ({ points: r.points.map(v => Math.round(v * 100) / 100), widthsM: r.widthsM.map(Math.round), mouthDrainageMi2: Math.round(r.mouthDrainageMi2) })),
+  inflows: rest.inflows, lakes: rest.lakes, sectionGrid: { size: sections.size, miles: sections.miles, classes: SECTION_CLASSES, roadMiles: sectionMiles }, rivers: rest.rivers.map(r => ({ name: r.name, points: r.points.map(v => Math.round(v * 100) / 100), widthsM: r.widthsM.map(Math.round), mouthDrainageMi2: Math.round(r.mouthDrainageMi2) })),
   settlements: rest.settlements.map(s => ({ ...s, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 })),
   roads: rest.roads.map(r => ({ kind: r.kind, name: r.name, points: r.points.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]) })),
   crossings: rest.crossings.map(c => ({ ...c, x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100 })),
@@ -52,6 +52,8 @@ console.log(`seed ${seed}: ${map.size}x${map.size} cells of ${map.cellMiles} mi 
 console.log(`engine match (10-mile columns): mean ${summary.engineMatch.meanAbsM.toFixed(1)} m, worst ${summary.engineMatch.worstM.toFixed(1)} m`);
 const kinds = {}; for (const s of map.settlements) kinds[s.kind] = (kinds[s.kind] ?? 0) + 1;
 console.log(`settlements: ${Object.entries(kinds).map(([k, v]) => `${v} ${k}`).join(', ')}; roads: ${['interstate', 'expressway', 'highway'].map(kind => `${map.roads.filter(r => r.kind === kind).length} ${kind}`).join(', ')}`);
+console.log(`interstate crossings: ${['interchange', 'overpass'].map(t => `${map.crossings.filter(c => c.type === t).length} ${t === "overpass" ? "overpasses" : "interchanges"}`).join(', ')} (${map.crossings.stats?.downgraded ?? 0} exits made overpasses and ${map.crossings.stats?.dropped ?? 0} crossings dropped for rivers, highways or other interchanges)`);
+console.log(`highways: ${map.roads.filter(r => r.kind === 'highway' && r.name.startsWith('US')).length} US routes, ${map.roads.filter(r => r.name?.startsWith('K-')).length} state highways`);
 console.log(`rivers: ${summary.rivers} (${Math.round(summary.riverMiles)} mi), ${summary.bigRivers} reaching 150 m wide`);
 for (const l of map.lakes) console.log(`lake ${l.id}: ${l.areaMi2.toFixed(0)} mi2 at ${l.damX.toFixed(0)}, ${l.damY.toFixed(0)} mi, surface ${l.surfaceM.toFixed(0)} m, dam ${l.damHeightM.toFixed(0)} m, on a river draining ${l.inflowMi2.toFixed(0)} mi2`);
 console.log(`section roads (mi): ${Object.entries(sectionMiles).map(([k, v]) => `${k} ${v}`).join(', ')}`);
