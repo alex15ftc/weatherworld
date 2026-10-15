@@ -27,6 +27,7 @@ local Config = require(ReplicatedStorage.Shared.World.Config)
 local StormTrack = require(ReplicatedStorage.Shared.Weather.StormTrack)
 local Net = require(ReplicatedStorage.Shared.Weather.Net)
 local Textures = require(ReplicatedStorage.Shared.Weather.Textures)
+local ConVar = require(ReplicatedStorage.Shared.ConVar)
 
 local StormController = {}
 
@@ -112,8 +113,20 @@ local function basePart(pool: Pool, key: string, cylinder: boolean): BasePart
 	return part :: BasePart
 end
 
--- An ellipsoid of the given full size (x across, y up, z along) at cf.
+-- cl_hide_spheres 1 hides every ellipsoid ("sphere mesh") part, on this client only, to see
+-- what the billboards, cylinders and particles draw on their own (debug panel, or chat).
+local cl_hide_spheres = ConVar.Declare("cl_hide_spheres", false, ConVar.LOCAL, "Hides the storms' sphere-mesh parts on this client.")
+local hideSpheres = false
+cl_hide_spheres:Connect(function()
+	hideSpheres = cl_hide_spheres:GetBool()
+end)
+
+-- An ellipsoid of the given full size (x across, y up, z along) at cf. Not drawn (so hidden
+-- by finish) while cl_hide_spheres is on.
 local function blob(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number)
+	if hideSpheres then
+		return
+	end
 	local part = basePart(pool, key, false)
 	local ps = Vector3.new(math.clamp(size.X, 0.2, MAX_PART), math.clamp(size.Y, 0.2, MAX_PART), math.clamp(size.Z, 0.2, MAX_PART))
 	if part.Size ~= ps then

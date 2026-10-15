@@ -30,6 +30,7 @@ local Panel = {
 	y = MAP / 2,
 	walk = 16,
 	time = 14,
+	hideSpheres = false,
 	status = "F2 closes this panel; every button is also a chat command",
 }
 
@@ -140,6 +141,11 @@ local function draw(ImGui: any)
 		Panel.time = hours
 		runThrottled("time", `sv_time {fmt(hours)}`)
 	end
+	local changedSpheres, hide = ImGui.Checkbox("Hide sphere meshes (cl_hide_spheres, this client)", Panel.hideSpheres)
+	if changedSpheres then
+		Panel.hideSpheres = hide == true
+		run(`cl_hide_spheres {if Panel.hideSpheres then 1 else 0}`)
+	end
 
 	ImGui.Separator()
 	ImGui.TextDisabled(Panel.status)
@@ -151,6 +157,7 @@ local function build()
 	local G = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("ImGui")) :: any
 	local ImGui, ImGui_ImplRoblox = G.ImGui, G.ImGui_ImplRoblox
 
+	Panel.hideSpheres = ConVar.GetBool("cl_hide_spheres") == true
 	ImGui.CreateContext()
 	ImGui.GetIO().Fonts:AddFontDefault()
 	ImGui_ImplRoblox.Init(nil, 1.0)
