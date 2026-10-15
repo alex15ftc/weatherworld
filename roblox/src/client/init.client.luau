@@ -33,9 +33,12 @@ do
 		if processed or input.KeyCode ~= Enum.KeyCode.F then
 			return
 		end
-		flying = not flying
 		local character = player.Character
 		local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+		if humanoid and humanoid.SeatPart and not flying then
+			return -- in a car: get out first (V)
+		end
+		flying = not flying
 		if humanoid then
 			humanoid.PlatformStand = flying
 		end
@@ -49,6 +52,13 @@ do
 		local root = if character then character:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 		local camera = workspace.CurrentCamera
 		if not root or not camera then
+			return
+		end
+		-- Sat down (in a car): stop flying, or this would hold the whole car still.
+		local humanoid = (character :: Model):FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.SeatPart then
+			flying = false
+			humanoid.PlatformStand = false
 			return
 		end
 		local look, right = camera.CFrame.LookVector, camera.CFrame.RightVector
@@ -70,3 +80,9 @@ end
 
 require(script:WaitForChild("MapView")).start()
 require(script:WaitForChild("StormView")).start()
+require(script:WaitForChild("Vehicles")).start()
+
+-- Studio only: the debug panel (F2) and the ImGui module it is drawn with.
+if RunService:IsStudio() then
+	require(script:WaitForChild("DebugPanel")).start()
+end

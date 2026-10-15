@@ -29,6 +29,13 @@ local StormTrack = require(ReplicatedStorage.Shared.Weather.StormTrack)
 local WeatherFeed = {}
 WeatherFeed.track = StormTrack.new()
 
+-- The replay, as loaded (nil until it is), and where its storms are moved to (km east and south
+-- of the recording's). Changing the shift restarts the replay from its first frame.
+local replayMeta: any = nil
+local replayShift = { x = 0, y = 0 }
+local replayRevision = 0
+local replayEpoch = 0
+
 local folder = Instance.new("Folder")
 folder.Name = "Weather"
 local framesEvent = Instance.new("RemoteEvent")
@@ -126,6 +133,24 @@ local function runHttp(url: string)
 	end
 end
 
+-- A copy of a frame with every position (the xKm and yKm fields) moved by dx, dy km.
+local function moved(value: any, dx: number, dy: number): any
+	if type(value) ~= "table" then
+		return value
+	end
+	local out = {}
+	for key, item in value do
+		if key == "xKm" and type(item) == "number" then
+			out[key] = item + dx
+		elseif key == "yKm" and type(item) == "number" then
+			out[key] = item + dy
+		else
+			out[key] = moved(item, dx, dy)
+		end
+	end
+	return out
+end
+
 local function runReplay()
 	local data = ServerStorage:FindFirstChild("WorldData")
 	local replay = data and data:FindFirstChild("StormReplay")
@@ -139,26 +164,34 @@ local function runReplay()
 		local module = replay:WaitForChild(string.format("F%03d", i)) :: ModuleScript
 		table.insert(frames, HttpService:JSONDecode(require(module) :: any))
 	end
+	replayMeta = meta
 	if workspace:GetAttribute("StartMiles") == nil then
 		-- South-east of the touchdown, looking back at the storm.
 		workspace:SetAttribute("StartMiles", `{meta.focusMiles.x + 3},{meta.focusMiles.y + 3}`)
 	end
 	local first = math.max(1, (workspace:GetAttribute("ReplayStartFrame") :: number?) or meta.tornado.touchdownFrame - 3)
 	print(`[WeatherFeed] replay of seed {meta.seed}: {meta.frames} frames, {meta.tornado.peakMph} mph tornado at frame {meta.tornado.touchdownFrame}, starting at frame {first}`)
-	annotate(frames)
 	while true do
+		-- A copy of the recording, moved by the current shift (WeatherFeed.moveReplay).
+		local revision = replayRevision
+		local run = {}
+		for i, frame in frames do
+			run[i] = moved(frame, replayShift.x, replayShift.y)
+		end
+		annotate(run)
 		-- The replay's clock: frame `first` is shown now, and the loop restarts after the last.
-		local offset = frames[first].atMs - serverMs()
+		local offset = run[first].atMs - serverMs()
 		folder:SetAttribute("ClockOffsetMs", offset)
-		local epoch = os.time()
+		replayEpoch += 1
+		local epoch = replayEpoch
 		local released = 0
 		-- Hand frames over as the live feed would: each one a tick ahead of being shown.
-		while released < meta.frames do
+		while released < meta.frames and revision == replayRevision do
 			local now = serverMs() + offset
 			local give = {}
-			while released < meta.frames and frames[released + 1].atMs <= now + meta.tickMs * 1.6 do
+			while released < meta.frames and run[released + 1].atMs <= now + meta.tickMs * 1.6 do
 				released += 1
-				table.insert(give, frames[released])
+				table.insert(give, run[released])
 			end
 			if #give > 0 then
 				WeatherFeed.track:add(give, released == #give, epoch)
@@ -166,8 +199,39 @@ local function runReplay()
 			end
 			task.wait(1)
 		end
-		task.wait((frames[meta.frames].atMs - (serverMs() + offset)) / 1000 + 5)
+		if revision == replayRevision then
+			task.wait((run[meta.frames].atMs - (serverMs() + offset)) / 1000 + 5)
+		end
 	end
+end
+
+-- Where the recorded tornado touches down now, in map miles (nil while no replay is loaded).
+function WeatherFeed.tornadoMiles(): (number?, number?)
+	if not replayMeta then
+		return nil, nil
+	end
+	local km = Config.KM_PER_MILE
+	return replayMeta.focusMiles.x + replayShift.x / km, replayMeta.focusMiles.y + replayShift.y / km
+end
+
+-- Moves the replayed storms so that their tornado touches down at (xMiles, yMiles) (map miles east
+-- and south of the north-west corner, as the recording's touchdown is). Without a point, the
+-- recording goes back to where it was. The replay restarts from its first frame.
+function WeatherFeed.moveReplay(xMiles: number?, yMiles: number?): (boolean, string)
+	if not replayMeta then
+		return false, `no storm replay is loaded (StormSource is "{workspace:GetAttribute("StormSource") or "feed"}")`
+	end
+	if xMiles == nil or yMiles == nil then
+		replayShift = { x = 0, y = 0 }
+	else
+		local km = Config.KM_PER_MILE
+		replayShift = {
+			x = (xMiles - replayMeta.focusMiles.x) * km,
+			y = (yMiles - replayMeta.focusMiles.y) * km,
+		}
+	end
+	replayRevision += 1
+	return true, "replay moved"
 end
 
 function WeatherFeed.start()

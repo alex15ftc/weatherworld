@@ -6,6 +6,8 @@ local ChunkManager = require(script.ChunkManager)
 local TestDrive = require(script.TestDrive)
 local Explore = require(script.Explore)
 local WeatherFeed = require(script.WeatherFeed)
+local Vehicles = require(script.Vehicles)
+local DebugTools = require(script.DebugTools)
 
 print(`[WeatherWorld] server up: {Config.MAP_STUDS} studs across, {Config.STUDS_PER_MILE} studs/mile`)
 
@@ -14,3 +16,5 @@ TestDrive.start()
 -- Before Explore places anyone: a storm replay may set the start point.
 WeatherFeed.start()
 Explore.start()
+Vehicles.start()
+DebugTools.start()

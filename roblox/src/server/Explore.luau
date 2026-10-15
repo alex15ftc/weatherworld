@@ -40,9 +40,9 @@ local function startPoint(): (number, number)
 	return WorldMap.studsAt(WorldMap.meta.start.x, WorldMap.meta.start.y)
 end
 
-local function place(character: Model)
+-- Puts the character at (x, z) studs once the ground there has loaded, standing on it.
+local function moveTo(character: Model, x: number, z: number)
 	local root = character:WaitForChild("HumanoidRootPart") :: BasePart
-	local x, z = startPoint()
 	root.Anchored = true
 	character:PivotTo(CFrame.new(x, ChunkGen.groundStudsAt(x, z) + 60, z))
 	local position = Vector3.new(x, 0, z)
@@ -55,6 +55,12 @@ local function place(character: Model)
 	local y = if hit then hit.Position.Y else ChunkGen.groundStudsAt(x, z)
 	character:PivotTo(CFrame.new(x, y + 5, z))
 	root.Anchored = false
+end
+Explore.moveTo = moveTo
+
+local function place(character: Model)
+	local x, z = startPoint()
+	moveTo(character, x, z)
 end
 
 function Explore.start()

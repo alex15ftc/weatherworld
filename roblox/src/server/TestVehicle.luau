@@ -178,6 +178,9 @@ local function driveAt(character: Model, root: BasePart, humanoid: Humanoid, x: 
 	return row
 end
 
+-- Also used by the debug panel's car (server/DebugTools): a chassis and seat on four motor wheels.
+TestVehicle.buildCar = buildCar
+
 function TestVehicle.run(character: Model, root: BasePart)
 	local humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	local speed = workspace:GetAttribute("TestSpeed")
