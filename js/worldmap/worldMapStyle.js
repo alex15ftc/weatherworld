@@ -6,7 +6,9 @@ export const COVER_COLOURS = Object.freeze({
   sandhillGrass: [190, 180, 128], forest: [62, 102, 58], riparian: [86, 124, 70], breaks: [160, 132, 104],
   redRange: [176, 120, 88], tallgrass: [130, 150, 90], urban: [120, 118, 124], suburban: [170, 166, 160]
 });
-export const ROAD_STYLE = Object.freeze({ interstate: { colour: [200, 40, 50], widthPx: 2.6 }, highway: { colour: [235, 235, 235], widthPx: 1.1 } });
+export const ROAD_STYLE = Object.freeze({ interstate: { colour: [200, 40, 50], widthPx: 2.6 }, highway: { colour: [250, 196, 60], widthPx: 1.4 }, expressway: { colour: [235, 120, 40], widthPx: 2 } });
+// Section-line roads by class (SECTION_CLASSES order: none, dirt, gravel, paved).
+export const SECTION_STYLE = Object.freeze([null, { colour: [150, 118, 84], alpha: 0.5 }, { colour: [215, 208, 192], alpha: 0.45 }, { colour: [240, 240, 240], alpha: 0.85 }]);
 export const RIVER_COLOUR = [58, 104, 170];
 
 // RGBA pixels (one per map cell) for the land cover with hillshading.
@@ -39,8 +41,24 @@ export function drawRoads(rgba, n, roads, settlements, cellMiles) {
       rgba[k] = colour[0]; rgba[k + 1] = colour[1]; rgba[k + 2] = colour[2];
     }
   };
-  for (const kind of ['highway', 'interstate']) for (const road of roads) if (road.kind === kind) line(road.points, ROAD_STYLE[kind].colour, kind === 'interstate' ? 1 : 0);
+  for (const kind of ['highway', 'expressway', 'interstate']) for (const road of roads) if (road.kind === kind) line(road.points, ROAD_STYLE[kind].colour, kind === 'highway' ? 0 : 1);
   for (const s of settlements) dot(s.x / cellMiles - 0.5, s.y / cellMiles - 0.5, s.kind === 'town' ? 1 : 3, [20, 20, 24]);
+}
+
+// Section-line roads of the given classes drawn into the raster (blended, one pixel wide, on the
+// cells just east of and just south of each mile line).
+export function drawSectionRoads(rgba, n, sections, cellMiles, classes = [3]) {
+  const per = Math.round(1 / cellMiles), { size, roads } = sections;
+  const blend = (i, j, style) => {
+    if (i < 0 || j < 0 || i >= n || j >= n) return;
+    const k = (j * n + i) * 4, a = style.alpha;
+    for (let c = 0; c < 3; c++) rgba[k + c] = rgba[k + c] * (1 - a) + style.colour[c] * a;
+  };
+  for (let J = 0; J < size; J++) for (let I = 0; I < size; I++) {
+    const v = roads[J * size + I], east = v & 3, south = (v >> 2) & 3;
+    if (classes.includes(east)) for (let t = 0; t < per; t++) blend(I * per + t, J * per, SECTION_STYLE[east]);
+    if (classes.includes(south)) for (let t = 0; t < per; t++) blend(I * per, J * per + t, SECTION_STYLE[south]);
+  }
 }
 
 // Rivers drawn into an RGBA raster of the map (1 pixel per cell), wider rivers thicker.

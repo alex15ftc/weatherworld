@@ -7,11 +7,14 @@
 //
 // Steps: regions laid out over the map with wandering boundaries; each region's own relief on
 // top of the engine's slope; a few rivers entering from beyond the map; stream-power erosion
-// (rivers cut their valleys where water collects) with a little hillslope smoothing; rivers
-// traced where enough water has gathered; land cover from region, slope, rainfall and rivers.
+// (rivers cut their valleys where water collects) with a little hillslope smoothing; a
+// reservoir dammed on a river; rivers traced where enough water has gathered; land cover from
+// region, slope, rainfall and rivers, with neighbouring regions' land interfingering near their
+// borders; then towns, highways and the section-line road grid.
 import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
 import { makeNoise, fbm, clamp, smoothstep } from './noise.js';
 import { planSettlements } from './settlements.js';
+import { planSectionRoads } from './sectionRoads.js';
 
 const METRES_PER_MILE = 1609.344;
 
@@ -20,6 +23,10 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   miles: 500,
   cellMiles: 0.5,
   boundaryWarp: 0.09,       // how far region boundaries wander, as a share of the map
+  // Land cover near a border is drawn from the region at a point up to coverBlendMi away, in
+  // patches of about coverBlendScaleMi, so one region's farms and pasture give way to the next.
+  coverBlendMi: 25, coverBlendScaleMi: 3,
+  reliefBlend: 4,           // each region's relief is weighted by its claim to this power (higher: sharper edges)
   // Low hummocks everywhere (m, miles), so water on the flat plains wanders as it does in life.
   detailM: 6, detailWavelengthMi: 3,
   // The big river (Missouri-like) runs north to south in the east; its valley and the
@@ -32,7 +39,11 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   rainWest: 0.4, rainEast: 1,
   // A creek appears on the map where this much rain-weighted drainage area (mi2) has gathered;
   // its width (m) is riverWidthPerRootMi2 times the root of that area.
-  riverAreaMi2: 350, riverWidthPerRootMi2: 2,
+  riverAreaMi2: 1000, riverWidthPerRootMi2: 2,
+  // Reservoirs: a dam on a river draining lakeDrainMi2, raised until the water behind it covers
+  // lakeAreaMi2; built where the dam that takes is nearest lakeDamM (a deep lake in a confined
+  // valley, not a shallow spread over a flat) and no lower than its least.
+  lakes: 1, lakeAreaMi2: 120, lakeDamM: [10, 22, 40], lakeDrainMi2: [1500, 40000], lakeSpacingMi: 120,
   // Rivers coming in from beyond the map: edge, place along it (0 to 1), rain-weighted area (mi2).
   inflows: [
     { name: 'Platte-like', edge: 'west', at: 0.16, areaMi2: 25000 },
@@ -51,7 +62,7 @@ export const REGIONS = Object.freeze([
   { key: 'smokyHills', name: 'Smoky Hills', reliefM: 35, wavelengthMi: 8, terrace: 0.5, ridged: false, liftM: 0, erodibility: 1 },
   { key: 'sandhills', name: 'Sandhills', reliefM: 30, wavelengthMi: 3, terrace: 0, ridged: true, liftM: 10, erodibility: 0.25 },
   { key: 'redHills', name: 'Red Hills', reliefM: 45, wavelengthMi: 5, terrace: 0.7, ridged: false, liftM: 10, erodibility: 1.3 },
-  { key: 'flintHills', name: 'Flint Hills', reliefM: 55, wavelengthMi: 6, terrace: 0.4, ridged: false, liftM: 40, erodibility: 1 },
+  { key: 'flintHills', name: 'Flint Hills', reliefM: 45, wavelengthMi: 6, terrace: 0.4, ridged: false, liftM: 30, erodibility: 1 },
   { key: 'midwest', name: 'Midwest farmland', reliefM: 25, wavelengthMi: 6, terrace: 0, ridged: false, liftM: 0, erodibility: 1.2 },
   { key: 'ozarkEdge', name: 'Ozark edge', reliefM: 60, wavelengthMi: 4, terrace: 0, ridged: false, liftM: 120, erodibility: 1.6 }
 ]);
@@ -74,11 +85,11 @@ function regionClaims(u, v, out) {
   const ozark = smoothstep(0.74, 0.82, u) * smoothstep(0.62, 0.72, v);
   out[0] = west;
   out[1] = (1 - west) * (1 - east);
-  out[2] = 1.3 * band(u, 0.14, 0.56, 0.05) * (1 - smoothstep(0.15, 0.25, v));
-  out[3] = 1.3 * band(u, 0.3, 0.6, 0.05) * smoothstep(0.72, 0.8, v);
-  out[4] = 1.3 * band(u, 0.6, 0.7, 0.03) * band(v, 0.18, 0.9, 0.05);
+  out[2] = 2 * band(u, 0.14, 0.56, 0.05) * (1 - smoothstep(0.15, 0.25, v));
+  out[3] = 2 * band(u, 0.3, 0.6, 0.05) * smoothstep(0.72, 0.8, v);
+  out[4] = 2 * band(u, 0.61, 0.68, 0.03) * band(v, 0.25, 0.85, 0.05);
   out[5] = east * (1 - ozark);
-  out[6] = 1.3 * ozark;
+  out[6] = 2 * ozark;
 }
 
 // Min-heap of cell indices keyed by height, for the depression fill.
@@ -110,11 +121,11 @@ export function generateWorldMap(options = {}) {
   const p = { ...WORLD_MAP_DEFAULTS, ...options };
   const n = Math.round(p.miles / p.cellMiles), cells = n * n, cellM = p.cellMiles * METRES_PER_MILE, cellMi2 = p.cellMiles ** 2;
   const noise = name => makeNoise(p.seed, name);
-  const warpX = noise('warp-x'), warpY = noise('warp-y'), relief = noise('relief'), trunkWobble = noise('trunk'), patch = noise('patch'), patch2 = noise('patch-2');
+  const warpX = noise('warp-x'), warpY = noise('warp-y'), relief = noise('relief'), trunkWobble = noise('trunk'), patch = noise('patch'), patch2 = noise('patch-2'), blend = noise('blend');
 
   const trunkU = v => p.trunkAt + 0.05 * fbm(trunkWobble, v * 2.5, 0.5, 2) + 0.015 * fbm(trunkWobble, v * 12, 3.5, 2);
-  const height = new Float64Array(cells), region = new Uint8Array(cells), rain = new Float64Array(cells), erodibility = new Float64Array(cells);
-  const claims = new Float64Array(REGIONS.length), weights = new Float64Array(REGIONS.length);
+  const height = new Float64Array(cells), region = new Uint8Array(cells), coverRegion = new Uint8Array(cells), rain = new Float64Array(cells), erodibility = new Float64Array(cells);
+  const claims = new Float64Array(REGIONS.length), coverClaims = new Float64Array(REGIONS.length), weights = new Float64Array(REGIONS.length);
 
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
@@ -122,8 +133,14 @@ export function generateWorldMap(options = {}) {
       const wu = u + p.boundaryWarp * (fbm(warpX, u * 2, v * 2, 2) + 0.6 * fbm(warpX, u * 7 + 5.3, v * 7, 3)), wv = v + p.boundaryWarp * (fbm(warpY, u * 2, v * 2, 2) + 0.6 * fbm(warpY, u * 7, v * 7 + 5.3, 3));
       regionClaims(wu, wv, claims);
       let best = 0, total = 0;
-      for (let r = 0; r < REGIONS.length; r++) { if (claims[r] > claims[best]) best = r; weights[r] = claims[r] ** 4; total += weights[r]; }
+      for (let r = 0; r < REGIONS.length; r++) { if (claims[r] > claims[best]) best = r; weights[r] = claims[r] ** p.reliefBlend; total += weights[r]; }
       region[k] = best;
+      // The region whose land cover this cell takes: the region at a point jittered by up to
+      // coverBlendMi, so near a border the two regions' land interfingers for miles.
+      const jx = fbm(blend, xMi / p.coverBlendScaleMi, yMi / p.coverBlendScaleMi, 3), jy = fbm(blend, xMi / p.coverBlendScaleMi + 71.3, yMi / p.coverBlendScaleMi - 33.9, 3);
+      regionClaims(wu + 2 * jx * p.coverBlendMi / p.miles, wv + 2 * jy * p.coverBlendMi / p.miles, coverClaims);
+      coverRegion[k] = 0;
+      for (let r = 1; r < REGIONS.length; r++) if (coverClaims[r] > coverClaims[coverRegion[k]]) coverRegion[k] = r;
 
       let h = engineTerrainM(xMi) + p.detailM * fbm(relief, xMi / p.detailWavelengthMi - 91.3, yMi / p.detailWavelengthMi + 47.1, 3), erode = 0;
       for (let r = 0; r < REGIONS.length; r++) {
@@ -220,16 +237,85 @@ export function generateWorldMap(options = {}) {
   route();
   accumulate();
 
-  const rivers = traceRivers(n, p, cellMi2, area, receiver);
-  const cover = landCover(n, p, height, region, cellM, rivers, patch, patch2);
+  const { lake, lakes } = placeLakes(n, p, height, area, receiver, cellMi2, noise('lake-site'));
+  const rivers = splitAtLakes(traceRivers(n, p, cellMi2, area, receiver), lake, n, p.cellMiles);
+  const cover = landCover(n, p, height, coverRegion, cellM, rivers, patch, patch2, area, cellMi2);
+  for (let k = 0; k < cells; k++) if (lake[k]) cover[k] = C.water;
   const map = {
-    params: p, size: n, cellMiles: p.cellMiles, regionKeys: REGIONS.map(r => r.key),
-    elevation: Float32Array.from(height), region, cover, drainageMi2: Float32Array.from(area, a => a * cellMi2),
+    params: p, size: n, cellMiles: p.cellMiles, regionKeys: REGIONS.map(r => r.key), coverKeys: COVER,
+    elevation: Float32Array.from(height), region, coverRegion, cover, lake, lakes, drainageMi2: Float32Array.from(area, a => a * cellMi2),
     rivers, inflows: inflowCells, trunkU
   };
   const { settlements, roads } = planSettlements(map, p.settlements);
   paintTowns(map, settlements);
-  return { ...map, settlements, roads };
+  const sections = planSectionRoads({ ...map, settlements }, p.sections);
+  return { ...map, settlements, roads, sections };
+}
+
+// Reservoirs. For a candidate dam (a river cell of the right size away from the edges), the
+// water behind a dam of a given height fills every cell upstream of it, through the drainage
+// tree, that lies below the crest; the crest is raised until the lake reaches its area. The site
+// whose dam is nearest the usual height is built: a confined valley, as real reservoirs are sited.
+function placeLakes(n, p, height, area, receiver, cellMi2, siteNoise) {
+  const cells = n * n, lake = new Uint8Array(cells), lakes = [];
+  if (!p.lakes) return { lake, lakes };
+  // The cells flowing into each cell, as one list with offsets.
+  const start = new Int32Array(cells + 1), into = new Int32Array(cells);
+  for (let k = 0; k < cells; k++) if (receiver[k] >= 0) start[receiver[k] + 1]++;
+  for (let k = 0; k < cells; k++) start[k + 1] += start[k];
+  const next = start.slice(0, cells);
+  for (let k = 0; k < cells; k++) if (receiver[k] >= 0) into[next[receiver[k]]++] = k;
+
+  const target = p.lakeAreaMi2 / cellMi2, cap = Math.ceil(target * 3), queue = new Int32Array(cells);
+  // Cells behind the dam below the crest (counting stops at cap; with mark, they are flooded).
+  const flood = (dam, crest, mark = 0, limit = cap) => {
+    let count = 1, q = 0;
+    queue[0] = dam;
+    while (q < count && count < limit) {
+      const c = queue[q++];
+      for (let s = start[c]; s < start[c + 1] && count < limit; s++) {
+        const m = into[s];
+        if (height[m] < crest && !lake[m]) { queue[count++] = m; if (mark) lake[m] = mark; }
+      }
+    }
+    return count - 1;
+  };
+  const margin = Math.round(0.12 * n), spacing = p.lakeSpacingMi / p.cellMiles;
+  for (let made = 0; made < p.lakes; made++) {
+    let best = null;
+    for (let k = 0; k < cells; k += 3) {
+      const i = k % n, j = (k / n) | 0, mi2 = area[k] * cellMi2;
+      if (i < margin || j < margin || i >= n - margin || j >= n - margin || mi2 < p.lakeDrainMi2[0] || mi2 > p.lakeDrainMi2[1] || lake[k]) continue;
+      if (lakes.some(l => Math.hypot(l.cellI - i, l.cellJ - j) < spacing)) continue;
+      const [least, usual, most] = p.lakeDamM;
+      if (flood(k, height[k] + most) < target || flood(k, height[k] + least) >= target) continue;
+      let lo = least, hi = most;
+      for (let it = 0; it < 12; it++) { const mid = (lo + hi) / 2; if (flood(k, height[k] + mid) >= target) hi = mid; else lo = mid; }
+      const score = Math.abs(hi - usual) + 6 * siteNoise(i / n * 9, j / n * 9);   // a little variety between seeds
+      if (!best || score < best.score) best = { k, i, j, damM: hi, score };
+    }
+    if (!best) break;
+    const id = lakes.length + 1, crest = height[best.k] + best.damM, count = flood(best.k, crest, id, cells);
+    lakes.push({ id, surfaceM: crest, damHeightM: best.damM, areaMi2: count * cellMi2, cellI: best.i, cellJ: best.j, damX: (best.i + 0.5) * p.cellMiles, damY: (best.j + 0.5) * p.cellMiles, inflowMi2: area[best.k] * cellMi2 });
+  }
+  return { lake, lakes };
+}
+
+// Rivers cut where they enter a lake: the stretch upstream ends at the shore, the stretch
+// below starts again at the dam.
+function splitAtLakes(rivers, lake, n, cellMiles) {
+  const out = [], inLake = (x, y) => lake[Math.floor(y / cellMiles) * n + Math.floor(x / cellMiles)] > 0;
+  for (const river of rivers) {
+    let points = [], widthsM = [];
+    const flush = () => { if (points.length >= 4) out.push({ points, widthsM, mouthDrainageMi2: river.mouthDrainageMi2 }); points = []; widthsM = []; };
+    for (let s = 0; s < river.points.length; s += 2) {
+      const x = river.points[s], y = river.points[s + 1];
+      if (inLake(x, y)) { if (points.length) { points.push(x, y); widthsM.push(river.widthsM[s / 2]); flush(); } continue; }
+      points.push(x, y); widthsM.push(river.widthsM[s / 2]);
+    }
+    flush();
+  }
+  return out;
 }
 
 // Built-up land: the core of each place is urban, the rest of its extent suburban (towns are
@@ -275,12 +361,14 @@ function traceRivers(n, p, cellMi2, area, receiver) {
   return rivers;
 }
 
-function landCover(n, p, height, region, cellM, rivers, patch, patch2) {
-  const cells = n * n, cover = new Uint8Array(cells), near = new Float32Array(cells).fill(Infinity);
-  // Distance (cells) to the nearest river bank, out to a few cells.
-  const queue = [];
+function landCover(n, p, height, region, cellM, rivers, patch, patch2, area, cellMi2) {
+  const cells = n * n, cover = new Uint8Array(cells), near = new Float32Array(cells).fill(Infinity), reach = new Int8Array(cells).fill(-1);
+  // Distance (cells) to the nearest river bank, out to a few cells, and how far the river's own
+  // woods reach: a creek has a line of trees, a large river a wooded bottom a mile or two across.
+  const queue = [], bottom = Math.max(1, Math.round(0.5 / p.cellMiles));
   for (const river of rivers) for (let s = 0; s < river.points.length; s += 2) {
-    const i = Math.floor(river.points[s] / p.cellMiles), j = Math.floor(river.points[s + 1] / p.cellMiles), k = j * n + i;
+    const i = Math.floor(river.points[s] / p.cellMiles), j = Math.floor(river.points[s + 1] / p.cellMiles), k = j * n + i, mi2 = area[k] * cellMi2;
+    reach[k] = Math.max(reach[k], mi2 >= 15000 ? 2 * bottom : mi2 >= 3000 ? bottom : 0);
     if (near[k] > 0) { near[k] = 0; queue.push(k); }
   }
   for (let q = 0; q < queue.length; q++) {
@@ -291,6 +379,7 @@ function landCover(n, p, height, region, cellM, rivers, patch, patch2) {
       const ni = i + DX[e * 2], nj = j + DY[e * 2];
       if (ni < 0 || nj < 0 || ni >= n || nj >= n) continue;
       const m = nj * n + ni;
+      if (reach[m] < reach[k] - 1) reach[m] = reach[k] - 1;
       if (near[m] > d + 1) { near[m] = d + 1; queue.push(m); }
     }
   }
@@ -304,7 +393,7 @@ function landCover(n, p, height, region, cellM, rivers, patch, patch2) {
     const key = REGIONS[region[k]].key;
     let c;
     if (slope > 0.05) c = u < 0.6 && key !== 'ozarkEdge' ? C.breaks : C.forest;
-    else if (near[k] <= 1 + 2 * wet && pick2 < 0.4 + 0.5 * wet) c = C.riparian;
+    else if (near[k] <= reach[k] && pick2 < 0.35 + 0.45 * wet) c = C.riparian;
     else if (key === 'highPlains') c = pick < 0.5 ? C.cropland : pick < 0.68 ? C.irrigated : C.grassland;
     else if (key === 'smokyHills') c = pick < 0.55 ? C.cropland : C.grassland;
     else if (key === 'sandhills') c = near[k] <= 3 && pick < 0.15 ? C.irrigated : C.sandhillGrass;

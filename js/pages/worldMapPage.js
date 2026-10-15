@@ -1,13 +1,13 @@
 // The world map page: the built large-scale map for a seed (data/worldmap/seed-N, written by
 // scripts/build-world-map.mjs) drawn as land cover with hillshading, rivers, region borders and
 // the weather engine's 10-mile cells; the cursor reads out the place under it.
-import { shadeMap, COVER_COLOURS, RIVER_COLOUR, ROAD_STYLE } from '../worldmap/worldMapStyle.js';
+import { shadeMap, drawSectionRoads, COVER_COLOURS, RIVER_COLOUR, ROAD_STYLE, SECTION_STYLE } from '../worldmap/worldMapStyle.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('mapCanvas'), ctx = canvas.getContext('2d');
 const STUDS_PER_MILE = 1000;   // roblox/src/shared/World/Config.luau
 
-let map = null, base = null;
+let map = null, base = null, sectionLayers = {};
 
 async function load(seed) {
   $('status').textContent = `Loading seed ${seed}…`;
@@ -15,8 +15,8 @@ async function load(seed) {
   try {
     const meta = await (await fetch(`${dir}/meta.json`, { cache: 'no-cache' })).json();
     const bytes = async name => new Uint8Array(await (await fetch(`${dir}/${name}`, { cache: 'no-cache' })).arrayBuffer());
-    const [elevation, region, cover] = await Promise.all([bytes('elevation.f32'), bytes('region.u8'), bytes('cover.u8')]);
-    map = { ...meta, coverKeys: meta.cover, elevation: new Float32Array(elevation.buffer), region, cover };
+    const [elevation, region, cover, sections] = await Promise.all([bytes('elevation.f32'), bytes('region.u8'), bytes('cover.u8'), bytes('sections.u8')]);
+    map = { ...meta, coverKeys: meta.cover, elevation: new Float32Array(elevation.buffer), region, cover, sections: { ...meta.sectionGrid, roads: sections } };
   } catch {
     map = null;
     $('status').textContent = `Seed ${seed} not built yet`;
@@ -25,6 +25,13 @@ async function load(seed) {
   }
   canvas.width = canvas.height = map.size;
   base = new ImageData(shadeMap(map, map.coverKeys), map.size, map.size);
+  // The land with the paved county roads, and with all section roads, drawn once each.
+  sectionLayers = {};
+  for (const [key, classes] of [['paved', [3]], ['all', [1, 2, 3]]]) {
+    const pixels = new Uint8ClampedArray(base.data);
+    drawSectionRoads(pixels, map.size, map.sections, map.cellMiles, classes);
+    sectionLayers[key] = new ImageData(pixels, map.size, map.size);
+  }
   $('status').textContent = `Seed ${seed} · ${map.size * map.cellMiles} × ${map.size * map.cellMiles} mi`;
   renderSummary();
   draw();
@@ -33,7 +40,7 @@ async function load(seed) {
 function draw() {
   if (!map) return;
   const n = map.size, px = 1 / map.cellMiles;   // pixels per mile
-  ctx.putImageData(base, 0, 0);
+  ctx.putImageData($('showSections').checked ? sectionLayers.all : $('showRoads').checked ? sectionLayers.paved : base, 0, 0);
   if ($('showRegions').checked) {
     const overlay = ctx.getImageData(0, 0, n, n), d = overlay.data;
     for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
@@ -64,7 +71,7 @@ function draw() {
 
 function drawRoads(px) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (const kind of ['highway', 'interstate']) {
+  for (const kind of ['highway', 'expressway', 'interstate']) {
     const style = ROAD_STYLE[kind];
     ctx.strokeStyle = `rgb(${style.colour.join(',')})`; ctx.lineWidth = style.widthPx;
     for (const road of map.roads) {
@@ -106,11 +113,15 @@ function renderSummary() {
   $('summary').textContent = [
     `engine slope match: ±${s.engineMatch.meanAbsM.toFixed(0)} m (worst ${s.engineMatch.worstM.toFixed(0)})`,
     `rivers: ${s.rivers}, ${Math.round(s.riverMiles)} mi`,
+    ...(map.lakes ?? []).map(l => `lake: ${l.areaMi2.toFixed(0)} mi², dam ${l.damHeightM.toFixed(0)} m`),
+    `section roads: ${Object.entries(map.sectionGrid.roadMiles).map(([k, v]) => `${k} ${v}`).join(', ')} mi`,
     '',
     ...s.regions.map(r => `${r.name.padEnd(17)} ${(r.share * 100).toFixed(0).padStart(3)}%  ${r.meanM?.toFixed(0) ?? '-'} m`)
   ].join('\n');
   $('legend').innerHTML = map.coverKeys.map(key => `<i style="background: rgb(${(COVER_COLOURS[key] ?? [255, 0, 255]).join(',')})"></i><span>${key.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>`).join('')
-    + `<i style="background: rgb(${RIVER_COLOUR.join(',')})"></i><span>river</span>`;
+    + `<i style="background: rgb(${RIVER_COLOUR.join(',')})"></i><span>river</span>`
+    + [['interstate', ROAD_STYLE.interstate.colour], ['expressway', ROAD_STYLE.expressway.colour], ['highway', ROAD_STYLE.highway.colour], ['paved county road', SECTION_STYLE[3].colour], ['gravel road', SECTION_STYLE[2].colour], ['dirt road', SECTION_STYLE[1].colour]]
+      .map(([label, colour]) => `<i style="background: rgb(${colour.join(',')})"></i><span>${label}</span>`).join('');
 }
 
 canvas.addEventListener('mousemove', event => {
@@ -139,6 +150,6 @@ function nearestPlace(x, y) {
   return `${best.name} (${kind}, pop. ${best.population.toLocaleString()}), ${distance.toFixed(1)} mi`;
 }
 
-for (const id of ['showRivers', 'showRoads', 'showRegions', 'showGrid']) $(id).addEventListener('change', draw);
+for (const id of ['showRivers', 'showRoads', 'showSections', 'showRegions', 'showGrid']) $(id).addEventListener('change', draw);
 $('seed').addEventListener('change', () => load(Number($('seed').value) || 1));
 load(1);
