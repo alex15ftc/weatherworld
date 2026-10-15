@@ -1,6 +1,6 @@
 {
   "name": "WeatherWorld",
-  "servePort": 34880,
+  "servePort": 34960,
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {

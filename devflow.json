@@ -11,7 +11,7 @@
     "localSectionFile": "AGENTS.md"
   },
   "places": [
-    { "name": "WeatherWorld", "project": "roblox/default.project.json", "servePort": 34880 }
+    { "name": "WeatherWorld", "project": "roblox/default.project.json", "servePort": 34960 }
   ],
   "preview": {
     "gameSessionAttribute": "WeatherWorldPreviewSession",
