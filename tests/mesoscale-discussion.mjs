@@ -136,7 +136,7 @@ assert.ok(watch.areaCells >= WATCH.leastCells && watch.areaCells > 144, 'drawn a
 assert.ok(insideRings(watch.rings, 0.66, 0.22) && !insideRings(watch.rings, 0.2, 0.8));
 assert.deepEqual(watch.probabilities, { tornadoes2: 95, strongTornado: 95, wind10: 5, wind75: 5, hail10: 5, hail2: 5, combined6: 95 });
 assert.equal(probabilityText(5), 'Low (<5%)'); assert.equal(probabilityText(40), 'Mod (40%)'); assert.equal(probabilityText(80), 'High (80%)'); assert.equal(probabilityText(95), 'High (>95%)');
-assert.match(watch.text, /^URGENT - IMMEDIATE BROADCAST REQUESTED\nTornado Watch Number 12\n\nA tornado watch is in effect for [\s\S]*\nfrom 022000Z until 030200Z\.\n\nPrimary threats include\.\.\.\n  Several tornadoes and a couple of strong tornadoes likely\n/);
+assert.match(watch.text, /^URGENT - IMMEDIATE BROADCAST REQUESTED\nTornado Watch Number 12\nNWS Storm Prediction Center WeatherWorld\n\nA tornado watch is in effect for [\s\S]*\nfrom 022000Z until 030200Z\.\n\nPrimary threats include\.\.\.\n  Several tornadoes and a couple of strong tornadoes likely\n/);
 assert.match(watch.text, /REMEMBER\.\.\.A tornado watch means/); assert.match(watch.text, /WATCH PROBABILITIES\.\.\.\n  2 or more tornadoes \.+High \(>95%\)/); assert.doesNotMatch(watch.text, /PARTICULARLY DANGEROUS/);
 const page = publicWatch(watch); assert.equal(page.cells, undefined); assert.equal(page.title, 'Tornado Watch 12'); assert.equal(page.table.length, 7); assert.ok(page.rings.length);
 // Which watch: a Mod tornado chance, however weak the tornadoes, makes it a tornado watch; a Low

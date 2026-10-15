@@ -14,6 +14,11 @@
 //   - Each carries the centre's table of probabilities (2 or more tornadoes, a strong tornado,
 //     10 or more wind events, a 75 mph gust, 10 or more hail events, 2 inch hail, 6 or more
 //     hail and wind events together), given at the steps a discussion's probability takes.
+//   - A watch is a set of whole counties, as the centre's have been since its watch outline
+//     updates (WOU) came to list them: the area of concern is drawn a little wide, and every
+//     county with at least half its area inside is in the watch (countyShare). The map shades
+//     the counties; the text gives the centre's approximate line ("along and 40 statute miles
+//     either side of a line from ... to ...") and the WOU lists the counties. See counties.js.
 //   - Every watch and every discussion covers one joined-up region with no holes, never two
 //     apart. A gap a watch would enclose is filled in, unless it holds another watch; then the
 //     new watch gives up the ground north of it, so it does not wrap around the other.
@@ -37,14 +42,20 @@
 //     look before it expires, a new watch is made ready for the moment it does, and a
 //     discussion about the old one says so.
 import { MESOSCALE, watchStep, concernOf, concernAreas, assessArea, makeDiscussion, discussedLately, withinLead, describeSetting, stamp, list } from './MesoscaleDiscussion.js';
-import { regionRings, solidRegion, connectedPieces } from './contourShapes.js';
+import { solidRegion, connectedPieces } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
+import { cellCounties, countiesIn, countiesUnder, cellsOfCounties, countyRings, describeRegions, countyNames, nearestTown } from './counties.js';
 
 export const WATCH = Object.freeze({
   // The probability of a watch (a discussion's) from which one is issued, how long it lasts
   // (hours), the least ground it covers (cells of 100 sq mi), and how far it is drawn beyond
   // the area of concern (cells).
   leastPercent: 80, hours: 6, leastCells: 150, marginCells: 2,
+  // A county is in the watch when at least this share of it is in the area drawn.
+  countyShare: 0.5,
+  // The towns the approximate line is given from (people), as the centre gives it from places
+  // with an airport.
+  lineTownPopulation: 2000,
   // The least time between the discussion that says a watch is likely and the watch (hours).
   afterDiscussionHours: 0.5,
   // A watch about to expire is followed by a new one when its ground still calls for a watch
@@ -77,10 +88,14 @@ export function particularlyDangerous(type, perMember, peakTornadoMph = 0) {
   return chance(m => m.gust >= WATCH.pdsGustMph && m.windSignificant >= WATCH.pdsWindCells) >= WATCH.pdsPercent;
 }
 
+// The counties a weather grid's products use (describeNow's), or each cell a county of its own.
+export const layerOf = now => now.counties ?? cellCounties(now.width, now.height, now.cellMiles ?? 10);
+
 // A watch for an assessed area, not yet issued (no number or times). Its ground is the area
-// drawn a little wide, less any ground already under a watch (covered: a 0/1 grid).
+// drawn a little wide, made of the counties at least half inside it, less any county already
+// under a watch (covered: a 0/1 grid of the cells under watches).
 export function draftWatch(assessed, now, { seed = null, covered = null } = {}) {
-  const { width, height } = now, n = width * height, type = assessed.tornadoWatch ? 'tornado' : 'severe';
+  const { width, height } = now, n = width * height, type = assessed.tornadoWatch ? 'tornado' : 'severe', layer = layerOf(now);
   let cells = Uint8Array.from(assessed.inside);
   for (let pass = 0; pass < WATCH.marginCells; pass++) {
     const wider = Uint8Array.from(cells);
@@ -88,17 +103,54 @@ export function draftWatch(assessed, now, { seed = null, covered = null } = {}) 
     cells = wider;
   }
   if (covered) for (let i = 0; i < n; i++) if (covered[i]) cells[i] = 0;
-  // One region with no holes: where taking away ground under other watches leaves pieces,
-  // the largest; gaps filled, or opened where they hold another watch.
-  cells = solidRegion(cells, width, height, covered);
-  const areaCells = cells.reduce((a, v) => a + v, 0);
+  // Whole counties; then one region with no holes: where taking away ground under other
+  // watches leaves pieces, the largest; gaps filled, or opened where they hold another watch.
+  // The counties are those the region keeps most of.
+  const blocked = covered ? countiesUnder(layer, covered) : null;
+  const solid = solidRegion(cellsOfCounties(layer, countiesIn(layer, cells, { least: WATCH.countyShare, blocked })), width, height, covered);
+  const counties = layer.counties.filter(county => !blocked?.has(county.index) && (() => { let held = 0, all = 0; county.cells.forEach(cell => { if (layer.dominant[cell] === county.index) { all++; if (solid[cell]) held++; } }); return all ? held * 2 >= all : Boolean(solid[county.home]); })()).map(county => county.index);
+  cells = cellsOfCounties(layer, counties);
+  const areaCells = cells.reduce((a, v) => a + v, 0), regions = describeRegions(layer, counties);
   return {
     type, pds: particularlyDangerous(type, assessed.perMember, assessed.peak.tornadoMph), seed, members: assessed.members,
-    cells, areaCells, areaSquareMiles: areaCells * now.cellMiles * now.cellMiles, where: describeArea(Array.from(cells, Boolean), width, height),
+    cells, areaCells, counties, countyNames: countyNames(layer, counties),
+    areaSquareMiles: layer.named ? counties.reduce((a, index) => a + layer.counties[index].areaMi2, 0) : areaCells * now.cellMiles * now.cellMiles,
+    where: regions ? `portions of ${regions}` : describeArea(Array.from(cells, Boolean), width, height), line: watchLine(layer, counties),
     probabilities: watchProbabilities(assessed.perMember), peak: assessed.peak, peakText: assessed.peakText, here: assessed.here, runs: assessed.perMember,
-    rings: regionRings(cells, width, height)
+    rings: countyRings(layer, counties)
   };
 }
+
+// The centre's approximate description of a watch: a line along its length and how far its
+// ground reaches either side of it ("along and 45 statute miles north and south of a line from
+// 20 miles west of A to 15 miles east of B"), from its counties' outline. Null without names.
+export function watchLine(layer, counties) {
+  if (!layer.named || !counties.length) return null;
+  const points = counties.flatMap(index => layer.counties[index].rings.flat());
+  let area = 0, cx = 0, cy = 0;
+  for (const index of counties) { const c = layer.counties[index]; area += c.areaMi2; cx += c.x * c.areaMi2; cy += c.y * c.areaMi2; }
+  cx /= area; cy /= area;
+  // The long axis: the principal direction of the counties' middles, weighted by area.
+  let xx = 0, xy = 0, yy = 0;
+  for (const index of counties) { const c = layer.counties[index], dx = c.x - cx, dy = c.y - cy; xx += c.areaMi2 * dx * dx; xy += c.areaMi2 * dx * dy; yy += c.areaMi2 * dy * dy; }
+  const angle = 0.5 * Math.atan2(2 * xy, xx - yy), ax = Math.cos(angle), ay = Math.sin(angle);
+  let lo = Infinity, hi = -Infinity, half = 0;
+  for (const [x, y] of points) { const t = (x - cx) * ax + (y - cy) * ay, s = Math.abs(-(x - cx) * ay + (y - cy) * ax); lo = Math.min(lo, t); hi = Math.max(hi, t); half = Math.max(half, s); }
+  // The line's ends are drawn in from the outline's by its half-width at most, and run west to
+  // east (north to south for a line nearer north-south).
+  const inset = Math.min(half, (hi - lo) / 4);
+  let ends = [[cx + ax * (lo + inset), cy + ay * (lo + inset)], [cx + ax * (hi - inset), cy + ay * (hi - inset)]];
+  const eastWest = Math.abs(ax) >= Math.abs(ay);
+  if (eastWest ? ends[0][0] > ends[1][0] : ends[0][1] > ends[1][1]) ends = [ends[1], ends[0]];
+  const from = ([x, y]) => {
+    const near = nearestTown(layer, x, y, WATCH.lineTownPopulation) ?? nearestTown(layer, x, y);
+    if (!near) return null;
+    const miles = 5 * Math.round(near.miles / 5);
+    return miles < 5 ? near.town.name : `${miles} miles ${COMPASS[Math.round((((Math.atan2(x - near.town.x, -(y - near.town.y)) * 180 / Math.PI) % 360) + 360) % 360 / 45) % 8]} of ${near.town.name}`;
+  };
+  return { widthMiles: Math.max(10, 5 * Math.round(half / 5)), sides: eastWest ? 'north and south' : 'east and west', from: from(ends[0]), to: from(ends[1]) };
+}
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
 
 // The watch as issued: its number, when it takes effect and when it expires, and its words.
 // forming: the storms on its ground now, for a watch that has waited for them (stormsFiring).
@@ -243,25 +295,37 @@ function threats(watch) {
   return lines;
 }
 
-// The watch in words, laid out as the real ones are.
+// The watch in words, laid out as the real ones are (the centre's SEL text), followed by its
+// watch outline update listing the counties.
 export function writeWatch(watch) {
   const name = title(watch), kind = name.toLowerCase().replace(' watch', ''), e = watch.here, main = threats(watch);
   const hazards = [watch.type === 'tornado' ? (watch.peak.tornadoMph >= 136 ? 'tornadoes, some of them intense' : 'tornadoes, some of them strong') : null, watch.peak.gustMph >= 58 ? 'damaging winds' : null, watch.peak.hailInches >= 1 ? 'large hail' : null].filter(Boolean);
   const lines = [
-    'URGENT - IMMEDIATE BROADCAST REQUESTED', `${name} Number ${watch.number}`, '',
+    'URGENT - IMMEDIATE BROADCAST REQUESTED', `${name} Number ${watch.number}`, 'NWS Storm Prediction Center WeatherWorld', '',
     `A ${kind} watch is in effect for ${watch.where ?? 'part of the region'}`, `from ${stamp(watch.issuedHourUtc)} until ${stamp(watch.validToHourUtc)}.`, ''
   ];
   if (watch.pds) lines.push('...THIS IS A PARTICULARLY DANGEROUS SITUATION...', '');
   lines.push('Primary threats include...', ...main.map(line => `  ${line}`), '');
   lines.push(`SUMMARY...${e.storms ? 'The storms over the watch area are expected to strengthen and last' : e.forming ? 'The storms forming over the watch area are expected to strengthen and last' : 'Storms are expected to form over the watch area and strengthen'} through the next several hours${hazards.length ? `, with ${list(hazards)}` : ''}.`, '');
+  const line = watch.line;
+  if (line?.from && line?.to) lines.push(`The ${kind} watch area is approximately along and ${line.widthMiles} statute miles ${line.sides} of a line from ${line.from} to ${line.to}. For a complete depiction of the watch see the associated watch outline update (WOU${watch.number}).`, '');
   lines.push(`DISCUSSION...${describeSetting(e, watch.type === 'tornado' || Boolean(watch.peakText.tornado))}`, '');
   lines.push(`REMEMBER...A ${kind} watch means conditions are favorable for ${watch.type === 'tornado' ? 'tornadoes and severe thunderstorms' : 'severe thunderstorms'} in and close to the watch area. People there should watch for threatening weather and listen for later statements and warnings.`, '');
   lines.push('WATCH PROBABILITIES...', ...probabilityRows(watch).map(([label, value]) => `  ${`${label} `.padEnd(48, '.')}${value}`));
+  if (watch.countyNames?.length) lines.push('', '$$', '', ...watchOutline(watch));
   return lines.join('\n');
+}
+
+// The watch outline update: the counties in the watch, in the centre's layout (upper case, in
+// columns, alphabetical).
+export function watchOutline(watch) {
+  const names = watch.countyNames.map(name => name.toUpperCase()), rows = [];
+  for (let k = 0; k < names.length; k += 4) rows.push(names.slice(k, k + 4).map(name => name.padEnd(18)).join('').trimEnd());
+  return [`WOU${watch.number}`, '', `${title(watch).toUpperCase()} ${watch.number} IS IN EFFECT UNTIL ${stamp(watch.validToHourUtc)} FOR THE FOLLOWING LOCATIONS`, '', `COUNTIES INCLUDED ARE (${names.length})`, '', ...rows];
 }
 
 // What the pages get: the outline, not the cells.
 export function publicWatch(watch) {
-  const { cells, here, runs, ...rest } = watch;
-  return { ...rest, title: `${title(watch)} ${watch.number}`, environment: here, table: probabilityRows(watch) };
+  const { cells, here, runs, counties, ...rest } = watch;
+  return { ...rest, countyIds: counties?.map(index => index + 1) ?? [], title: `${title(watch)} ${watch.number}`, environment: here, table: probabilityRows(watch) };
 }

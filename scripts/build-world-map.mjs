@@ -1,7 +1,9 @@
 // Builds the large-scale world map for a seed and writes it to data/worldmap/seed-<seed>/:
 // meta.json (settings, regions, rivers, lakes, towns, roads, summary), elevation.f32, region.u8,
 // cover.u8, lake.u8 (lake id per cell, 0 for none), sections.u8 (the section-line road grid; see
-// sectionRoads.js) and preview.png. The map page (worldmap.html) reads these.
+// sectionRoads.js), counties.u16 (county number per cell) with counties.json (the counties, and
+// the towns with the county each is in, for the forecast products; see js/forecast/counties.js)
+// and preview.png. The map page (worldmap.html) reads these.
 //   node scripts/build-world-map.mjs [--seed 1] [--out dir] [key=value ...]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -10,6 +12,7 @@ import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js
 import { generateWorldMap, describeWorldMap, REGIONS, COVER } from '../js/worldmap/WorldMapGenerator.js';
 import { shadeMap, drawRivers, drawRoads, drawSectionRoads } from '../js/worldmap/worldMapStyle.js';
 import { SECTION_CLASSES, sectionRoadMiles } from '../js/worldmap/sectionRoads.js';
+import { writeCountyFiles } from '../js/worldmap/countyFiles.node.js';
 
 avoidBackgroundThrottling();
 
@@ -25,7 +28,7 @@ const seconds = (Date.now() - started) / 1000;
 const summary = describeWorldMap(map);
 
 mkdirSync(out, { recursive: true });
-const { trunkU, elevation, region, coverRegion, cover, lake, sections, drainageMi2, ...rest } = map;
+const { trunkU, elevation, region, coverRegion, cover, lake, sections, drainageMi2, counties, ...rest } = map;
 void trunkU; void drainageMi2; void coverRegion;
 const sectionMiles = sectionRoadMiles(sections);
 writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
@@ -41,11 +44,13 @@ writeFileSync(path.join(out, 'region.u8'), Buffer.from(region.buffer));
 writeFileSync(path.join(out, 'cover.u8'), Buffer.from(cover.buffer));
 writeFileSync(path.join(out, 'lake.u8'), Buffer.from(lake.buffer));
 writeFileSync(path.join(out, 'sections.u8'), Buffer.from(sections.roads.buffer));
+writeCountyFiles(map, out);
 
 const rgba = shadeMap(map, COVER);
 drawSectionRoads(rgba, map.size, sections, map.cellMiles, [3]);
 drawRivers(rgba, map.size, map.rivers, map.cellMiles);
 drawRoads(rgba, map.size, map.roads, map.settlements, map.cellMiles);
+drawCountyLines(rgba, map.size, counties.ids);
 writeFileSync(path.join(out, 'preview.png'), encodePng(rgba, map.size, map.size));
 
 console.log(`seed ${seed}: ${map.size}x${map.size} cells of ${map.cellMiles} mi in ${seconds.toFixed(1)}s -> ${out}`);
@@ -54,10 +59,20 @@ const kinds = {}; for (const s of map.settlements) kinds[s.kind] = (kinds[s.kind
 console.log(`settlements: ${Object.entries(kinds).map(([k, v]) => `${v} ${k}`).join(', ')}; roads: ${['interstate', 'expressway', 'highway'].map(kind => `${map.roads.filter(r => r.kind === kind).length} ${kind}`).join(', ')}`);
 console.log(`interstate crossings: ${['interchange', 'overpass'].map(t => `${map.crossings.filter(c => c.type === t).length} ${t === "overpass" ? "overpasses" : "interchanges"}`).join(', ')} (${map.crossings.stats?.downgraded ?? 0} exits made overpasses and ${map.crossings.stats?.dropped ?? 0} crossings dropped for rivers, highways or other interchanges)`);
 console.log(`highways: ${map.roads.filter(r => r.kind === 'highway' && r.name.startsWith('US')).length} US routes, ${map.roads.filter(r => r.name?.startsWith('K-')).length} state highways`);
+const areas = counties.list.map(k => k.areaMi2).sort((a, b) => a - b);
+console.log(`counties: ${areas.length}, median ${areas[areas.length >> 1]} mi2 (10-90%: ${areas[Math.floor(areas.length * 0.1)]}-${areas[Math.floor(areas.length * 0.9)]}), ${counties.list.filter(k => !k.seat).length} without a town for a seat`);
 console.log(`rivers: ${summary.rivers} (${Math.round(summary.riverMiles)} mi), ${summary.bigRivers} reaching 150 m wide`);
 for (const l of map.lakes) console.log(`lake ${l.id}: ${l.areaMi2.toFixed(0)} mi2 at ${l.damX.toFixed(0)}, ${l.damY.toFixed(0)} mi, surface ${l.surfaceM.toFixed(0)} m, dam ${l.damHeightM.toFixed(0)} m, on a river draining ${l.inflowMi2.toFixed(0)} mi2`);
 console.log(`section roads (mi): ${Object.entries(sectionMiles).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 for (const r of summary.regions) console.log(`  ${r.name.padEnd(18)} ${(r.share * 100).toFixed(1).padStart(5)}%  mean ${r.meanM?.toFixed(0) ?? '-'} m, relief (5-95%) ${r.reliefM?.toFixed(0) ?? '-'} m`);
+
+// County lines: a dark line on the cells where the county changes to the east or south.
+function drawCountyLines(rgba, size, ids) {
+  for (let k = 0; k < size * size; k++) {
+    const i = k % size;
+    if ((i < size - 1 && ids[k + 1] !== ids[k]) || (k + size < size * size && ids[k + size] !== ids[k])) { rgba[4 * k] = 40; rgba[4 * k + 1] = 30; rgba[4 * k + 2] = 50; }
+  }
+}
 
 function encodePng(pixels, width, height) {
   const raw = Buffer.alloc((width * 4 + 1) * height);

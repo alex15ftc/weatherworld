@@ -23,7 +23,7 @@ const ROADS = {
 const SECTIONS = { 3: { colour: '#f4f4f0', px: 1, mi: 0.022, from: 4 }, 2: { colour: '#d8cdb4', px: 0.8, mi: 0.016, from: 14 }, 1: { colour: '#9a7854', px: 0.7, mi: 0.01, from: 14 } };
 const roadClass = r => (r.kind === 'highway' ? (r.name?.startsWith('US') ? 'us' : 'state') : r.kind);
 
-let map = null, base = null, regionBorders = null, sections = null, signals = [], ramps = [];
+let map = null, base = null, regionBorders = null, sections = null, signals = [], ramps = [], counties = null, countyIds = null;
 const view = { x: 250, y: 250, scale: 1 };   // centre (miles) and pixels per mile
 let width = 0, height = 0, dpr = 1;
 
@@ -35,6 +35,8 @@ async function load(seed) {
     const bytes = async name => new Uint8Array(await (await fetch(`${dir}/${name}`, { cache: 'no-cache' })).arrayBuffer());
     const [elevation, region, cover, sectionBytes] = await Promise.all([bytes('elevation.f32'), bytes('region.u8'), bytes('cover.u8'), bytes('sections.u8')]);
     map = { ...meta, coverKeys: meta.cover, elevation: new Float32Array(elevation.buffer), region, cover, sections: { ...meta.sectionGrid, roads: sectionBytes } };
+    // The counties (js/worldmap/counties.js), if this build has them.
+    try { counties = await (await fetch(`${dir}/counties.json`, { cache: 'no-cache' })).json(); countyIds = new Uint16Array((await bytes('counties.u16')).buffer); } catch { counties = null; countyIds = null; }
   } catch {
     map = null;
     $('status').textContent = `Seed ${seed} not built yet`;
@@ -99,6 +101,16 @@ function draw() {
   ctx.imageSmoothingEnabled = s / (1 / cell) < 3;
   ctx.drawImage(base, sx(0), sy(0), miles * s, miles * s);
   if ($('showRegions').checked) ctx.drawImage(regionBorders, sx(0), sy(0), miles * s, miles * s);
+  // County lines: thin and broken, as road maps draw them.
+  if (counties && $('showCounties').checked) {
+    ctx.strokeStyle = 'rgba(88, 28, 135, .75)'; ctx.lineWidth = s > 6 ? 1.6 : 1; ctx.setLineDash(s > 3 ? [6, 3, 1.5, 3] : []);
+    ctx.beginPath();
+    for (const c of counties.counties) {
+      if (!inView(c.box[0], c.box[1], c.box[2], c.box[3])) continue;
+      for (const ring of c.rings) ring.forEach(([x, y], k) => (k ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y)))), ctx.closePath();
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const left = mx(0) - 1, right = mx(width) + 1, top = my(0) - 1, bottom = my(height) + 1;
   const inView = (x0, y0, x1, y1) => Math.max(x0, x1) >= left && Math.min(x0, x1) <= right && Math.max(y0, y1) >= top && Math.min(y0, y1) <= bottom;
@@ -187,6 +199,8 @@ function drawLabels(inView) {
   const places = map.settlements.filter(st => inView(st.x, st.y, st.x, st.y) && (rank(st) <= 1 || (rank(st) === 2 && s > 1.4) || (st.population > 3000 && s > 3) || (st.population > 800 && s > 7) || s > 16));
   places.sort((a, b) => rank(a) - rank(b) || b.population - a.population);
   for (const st of places) text(st.name, sx(st.x) + 6, sy(st.y) - 8, { size: [17, 15, 13, 11][rank(st)], weight: rank(st) < 3 ? 700 : 500, colour: '#fde68a' });
+  // County names, upper case, at each county's middle.
+  if (counties && $('showCounties').checked && s > 1.2) for (const c of counties.counties) if (inView(c.x, c.y, c.x, c.y)) text(c.name.toUpperCase(), sx(c.x), sy(c.y) + (s > 4 ? 14 : 0), { size: s > 4 ? 12 : 9, weight: 700, colour: '#e9d5ff', halo: 'rgba(59, 7, 100, .8)', centre: true });
   // Route shields along each route, about every 260 px.
   const shield = { interstate: ['#1d4ed8', '#ffffff'], expressway: ['#ffffff', '#111111'], us: ['#ffffff', '#111111'], state: ['#fef9c3', '#111111'] };
   if (s > 1.2) {
@@ -243,6 +257,7 @@ function renderSummary() {
     `interstate exits: ${cr.filter(c => c.type === 'interchange').length}, overpasses: ${cr.filter(c => c.type === 'overpass').length}`,
     `signals: ${signals.length}`,
     `section roads: ${Object.entries(map.sectionGrid.roadMiles).map(([k, v]) => `${k} ${v}`).join(', ')} mi`,
+    ...(counties ? [`counties: ${counties.counties.length}, median ${[...counties.counties].map(c => c.areaMi2).sort((a, b) => a - b)[counties.counties.length >> 1]} mi²`] : []),
     '',
     ...s.regions.map(r => `${r.name.padEnd(17)} ${(r.share * 100).toFixed(0).padStart(3)}%  ${r.meanM?.toFixed(0) ?? '-'} m`)
   ].join('\n');
@@ -285,11 +300,17 @@ canvas.addEventListener('mousemove', event => {
     ['StartMiles', `${east.toFixed(2)},${south.toFixed(2)}`],
     ['Elevation', `${map.elevation[k].toFixed(0)} m`],
     ['Region', map.regions[map.region[k]].name],
+    ...(countyIds ? [['County', countyText(countyIds[k])]] : []),
     ['Land cover', map.coverKeys[map.cover[k]]],
     ['Nearest place', nearestPlace(east, south)]
   ];
   $('readout').innerHTML = rows.map(([a, b]) => `<span>${a}</span><b>${b}</b>`).join('');
 });
+
+function countyText(id) {
+  const c = counties.counties[id - 1];
+  return c ? `${c.name} County, ${c.areaMi2.toLocaleString()} mi²${c.seat ? ` (seat ${c.seat})` : ''}` : '';
+}
 
 function nearestPlace(x, y) {
   let best = null, distance = Infinity;
@@ -299,7 +320,7 @@ function nearestPlace(x, y) {
   return `${best.name} (${kind}, pop. ${best.population.toLocaleString()}), ${distance.toFixed(1)} mi`;
 }
 
-for (const id of ['showRivers', 'showRoads', 'showSections', 'showRegions', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
+for (const id of ['showRivers', 'showRoads', 'showSections', 'showRegions', 'showCounties', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
 $('seed').addEventListener('change', () => load(Number($('seed').value) || 1));
 window.addEventListener('resize', fit);
 load(1);

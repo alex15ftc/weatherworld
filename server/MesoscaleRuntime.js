@@ -7,6 +7,7 @@
 import { MESOSCALE, describeNow, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
 import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, publicWatch } from '../js/forecast/Watch.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
+import { countiesFor } from './CountyLayer.js';
 
 export class MesoscaleRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). pool: the
@@ -56,7 +57,7 @@ export class MesoscaleRuntime {
     const engine = this.runtime.engine, started = Date.now();
     if (engine !== this.engine) this.adopt(engine);
     // The copy and the look at the air are taken now, in one go.
-    const state = shareState(engine.saveState({ forecast: true })), now = describeNow(engine);
+    const state = shareState(engine.saveState({ forecast: true })), now = describeNow(engine, { counties: countiesFor(engine.world) });
     // Ahead of any outlook runs waiting: these are short, and a watch should not wait.
     const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('mesoscale', state, member, MESOSCALE.hoursAhead, { priority: 1 })));
     this.running = { hourUtc: now.hourUtc, startedAt: started };
@@ -87,7 +88,7 @@ export class MesoscaleRuntime {
       width: engine?.world?.width ?? null, height: engine?.world?.height ?? null, cellMiles: engine?.world?.cellSizeMiles ?? null,
       watches: current ? this.watches.map(watch => ({ ...publicWatch(watch), valid: watch.validToHourUtc > hour })) : [],
       // Watches that will be issued when storms fire on their ground.
-      watchesPending: current ? this.pending.map(draft => ({ type: draft.type, pds: draft.pds, where: draft.where, rings: draft.rings, follows: draft.follows ?? null, atHourUtc: draft.notBeforeHourUtc ?? null })) : [],
+      watchesPending: current ? this.pending.map(draft => ({ type: draft.type, pds: draft.pds, where: draft.where, rings: draft.rings, countyIds: draft.counties?.map(index => index + 1) ?? [], follows: draft.follows ?? null, atHourUtc: draft.notBeforeHourUtc ?? null })) : [],
       discussions: current ? this.discussions.map(md => ({ ...publicMesoscaleDiscussion(md), valid: md.validToHourUtc > hour })) : []
     };
   }

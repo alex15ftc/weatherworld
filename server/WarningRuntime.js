@@ -4,12 +4,13 @@
 // storms have moved on.
 import { WARNING, createWarningState, updateWarnings, publicWarning } from '../js/forecast/Warning.js';
 import { createRadarSites } from '../js/radar/RadarSimulator.js';
+import { countiesFor } from './CountyLayer.js';
 
 export class WarningRuntime {
   constructor({ runtime }) { this.runtime = runtime; this.adopt(null); }
 
   // A new world starts its own series.
-  adopt(engine) { this.engine = engine; this.state = createWarningState(); this.sites = engine ? createRadarSites(engine.world) : []; }
+  adopt(engine) { this.engine = engine; this.state = createWarningState(engine ? countiesFor(engine.world) : null); this.sites = engine ? createRadarSites(engine.world) : []; }
 
   update() {
     const engine = this.runtime.engine;

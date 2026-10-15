@@ -1,6 +1,7 @@
 // The world map generator: the same seed gives the same map; water runs downhill along every
 // river; the map's 10-mile averages stay on the weather engine's slope; every region, settlement
-// kind and interstate turns up; a reservoir is dammed; and roads keep to the section lines.
+// kind and interstate turns up; a reservoir is dammed; roads keep to the section lines; and the
+// counties cover the map in one piece each, sized as Plains counties are.
 import assert from 'node:assert/strict';
 import { interchangeRamps } from '../js/worldmap/interchanges.js';
 import { riverCorners } from '../js/worldmap/sectionRoads.js';
@@ -99,4 +100,21 @@ for (const road of map.roads) if (road.kind === 'highway') for (let i = 1; i < r
 }
 assert.ok(along / total > 0.7, `highways keep to the mile lines (${(100 * along / total).toFixed(0)}% of their length)`);
 
-console.log(`world map passed (${map.rivers.length} rivers, ${map.settlements.length} settlements, slope match ±${summary.engineMatch.meanAbsM.toFixed(1)} m, lake ${lake.areaMi2} mi2, highways ${(100 * along / total).toFixed(0)}% on mile lines)`);
+// Counties: every cell in one, each joined up, sized as Plains counties are (larger in the dry
+// west than in the east), named once each, with a seat where the county has a town.
+const { counties } = map, list = counties.list, areas = list.map(c => c.areaMi2).sort((a, b) => a - b), median = areas[areas.length >> 1];
+assert.ok(counties.ids.every(id => id >= 1 && id <= list.length), 'every cell is in a county');
+assert.equal(new Set(list.map(c => c.name)).size, list.length, 'each county has its own name');
+assert.ok(list.length >= 250 && list.length <= 420 && median >= 600 && median <= 850, `${list.length} counties, median ${median} mi2 (Kansas: 105, median about 720)`);
+for (const c of list) {
+  const cells = []; for (let k = 0; k < counties.ids.length; k++) if (counties.ids[k] === c.id) cells.push(k);
+  const seen = new Set([cells[0]]), stack = [cells[0]], mine = new Set(cells);
+  while (stack.length) { const k = stack.pop(), i = k % n; for (const m of [i > 0 ? k - 1 : -1, i < n - 1 ? k + 1 : -1, k - n, k + n]) if (mine.has(m) && !seen.has(m)) { seen.add(m); stack.push(m); } }
+  assert.equal(seen.size, cells.length, `${c.name} County is in one piece`);
+  assert.ok(c.rings.length >= 1 && c.neighbours.length >= 1, `${c.name} County has an outline and neighbours`);
+}
+const meanArea = region => { const own = list.filter(c => c.region === region); return own.reduce((a, c) => a + c.areaMi2, 0) / own.length; };
+assert.ok(meanArea('highPlains') > meanArea('midwest') * 1.2, `High Plains counties (${meanArea('highPlains').toFixed(0)} mi2) are larger than the eastern farm country's (${meanArea('midwest').toFixed(0)} mi2)`);
+assert.ok(list.filter(c => c.seat).length >= 0.85 * list.length, 'nearly every county has a seat');
+
+console.log(`world map passed (${map.rivers.length} rivers, ${map.settlements.length} settlements, ${list.length} counties, slope match ±${summary.engineMatch.meanAbsM.toFixed(1)} m, lake ${lake.areaMi2} mi2, highways ${(100 * along / total).toFixed(0)}% on mile lines)`);

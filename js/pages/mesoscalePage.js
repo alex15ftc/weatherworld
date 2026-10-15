@@ -1,7 +1,8 @@
 // The mesoscale page: the watches and mesoscale discussions issued for the live world, newest
 // first; the chosen one's area on the map with the others still valid; and its text.
 // Everything shown is what the server issued (GET /api/mesoscale); nothing is worked out here
-// but the drawing.
+// but the drawing. The map's counties (GET /api/counties) are drawn faintly; a watch is the
+// counties it is made of, shaded, as the Storm Prediction Center draws them.
 const $ = id => document.getElementById(id);
 const canvas = $('mdCanvas'), ctx = canvas.getContext('2d');
 // Watches: red for a tornado watch, blue for a severe thunderstorm watch. Discussions: grey,
@@ -10,6 +11,7 @@ const WATCH_COLOUR = type => (type === 'tornado' ? '#ef4444' : '#3b82f6');
 const COLOUR = md => (md.watchNumber ? WATCH_COLOUR(md.watchType) : md.watchPercent >= 80 ? '#f97316' : md.watchPercent >= 40 ? '#f59e0b' : '#94a3b8');
 
 let data = null, chosen = null;   // chosen: 'watch:3' or 'md:12'
+let counties = null, countyPaths = null, countyPathsSide = 0;   // from /api/counties; each county's outline at the current size
 
 const clock = hour => { const h = ((hour % 24) + 24) % 24, hh = Math.floor(h + 1e-9), mm = Math.round((h - hh) * 60); return `${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}Z`; };
 const number = md => `MD ${String(md.number).padStart(4, '0')}`;
@@ -20,6 +22,13 @@ function pathOf(rings, side) {
   const path = new Path2D();
   for (const ring of rings) { ring.forEach(([x, y], k) => (k ? path.lineTo(x * side, y * side) : path.moveTo(x * side, y * side))); path.closePath(); }
   return path;
+}
+
+// Each county's outline as a path at this size (made again when the size changes).
+function countyPath(id, side) {
+  if (!counties) return null;
+  if (countyPathsSide !== side) { countyPaths = new Map(counties.counties.map(c => [c.id, pathOf(c.rings, side)])); countyPathsSide = side; }
+  return countyPaths.get(id) ?? null;
 }
 
 function label(text, rings, side, colour, bold) {
@@ -44,6 +53,7 @@ function draw() {
     ctx.fillText(!data ? 'Loading…' : data.enabled === false ? 'Watches and mesoscale discussions are turned off on this server.' : 'No watches or mesoscale discussions are in effect.', side / 2, side / 2);
   }
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, side, side); ctx.clip(); ctx.lineJoin = 'round';
+  if (counties) { ctx.strokeStyle = 'rgba(148,163,184,.22)'; ctx.lineWidth = 0.7; for (const c of counties.counties) ctx.stroke(countyPath(c.id, side)); }
   // Watches underneath (filled, heavy outline; a PDS watch with a second outline inside it),
   // the chosen one last; a watch waiting for its storms as a faint broken outline.
   for (const draft of waiting) { ctx.globalAlpha = 0.55; ctx.strokeStyle = WATCH_COLOUR(draft.type); ctx.lineWidth = 2; ctx.setLineDash([3, 6]); ctx.stroke(pathOf(draft.rings, side)); }
@@ -51,6 +61,9 @@ function draw() {
   for (const watch of [...watches].sort((a, b) => (watchKey(a) === chosen) - (watchKey(b) === chosen))) {
     const path = pathOf(watch.rings, side), colour = WATCH_COLOUR(watch.type), mine = watchKey(watch) === chosen;
     ctx.globalAlpha = mine ? 0.26 : 0.13; ctx.fillStyle = colour; ctx.fill(path, 'evenodd');
+    // The county lines inside it.
+    ctx.globalAlpha = mine ? 0.7 : 0.4; ctx.strokeStyle = colour; ctx.lineWidth = 0.8;
+    for (const id of watch.countyIds ?? []) { const county = countyPath(id, side); if (county) ctx.stroke(county); }
     ctx.globalAlpha = watch.valid ? 1 : 0.5; ctx.strokeStyle = colour; ctx.lineWidth = mine ? 4.5 : 3; ctx.setLineDash(watch.valid ? [] : [8, 6]); ctx.stroke(path);
     if (watch.pds) { ctx.strokeStyle = '#f0abfc'; ctx.lineWidth = 1.2; ctx.stroke(path); }
     ctx.setLineDash([]); ctx.globalAlpha = 1;
@@ -58,7 +71,12 @@ function draw() {
   // Discussions on top: a thin outline, the chosen one filled.
   for (const md of [...discussions].sort((a, b) => (mdKey(a) === chosen) - (mdKey(b) === chosen))) {
     const path = pathOf(md.rings, side), colour = COLOUR(md), mine = mdKey(md) === chosen;
-    if (mine) { ctx.globalAlpha = 0.22; ctx.fillStyle = colour; ctx.fill(path, 'evenodd'); }
+    if (mine) {
+      ctx.globalAlpha = 0.22; ctx.fillStyle = colour; ctx.fill(path, 'evenodd');
+      // The counties it covers, outlined.
+      ctx.globalAlpha = 0.5; ctx.strokeStyle = colour; ctx.lineWidth = 0.8;
+      for (const id of md.countyIds ?? []) { const county = countyPath(id, side); if (county) ctx.stroke(county); }
+    }
     ctx.globalAlpha = md.valid ? 1 : 0.5; ctx.strokeStyle = colour; ctx.lineWidth = mine ? 2.5 : 1.5; ctx.setLineDash(md.valid ? [5, 3] : [2, 5]); ctx.stroke(path);
     ctx.setLineDash([]); ctx.globalAlpha = 1;
   }
@@ -96,9 +114,14 @@ function renderSide() {
   $('textTitle').textContent = watch ? 'Watch' : 'Discussion';
   $('mdText').textContent = shown ? shown.text : data?.error ?? '';
   $('peaksTitle').textContent = watch ? 'Watch probabilities' : 'Most probable peaks';
-  const rows = watch ? [...watch.table, ['Area', `${Math.round(watch.areaSquareMiles / 100) * 100} sq mi`]]
-    : md ? [[md.watchNumber ? 'Concerning' : 'Watch probability', md.watchNumber ? md.concerning.toLowerCase() : `${md.watchPercent}%`], ['Tornado', md.peakText.tornado ?? 'none expected'], ['Wind gust', md.peakText.wind], ['Hail', md.peakText.hail], ['Area', `${Math.round(md.areaSquareMiles / 100) * 100} sq mi`]] : [];
+  const rows = watch ? [...watch.table, ['Area', `${Math.round(watch.areaSquareMiles / 100) * 100} sq mi`], ...(watch.countyNames?.length ? [['Counties', String(watch.countyNames.length)]] : [])]
+    : md ? [[md.watchNumber ? 'Concerning' : 'Watch probability', md.watchNumber ? md.concerning.toLowerCase() : `${md.watchPercent}%`], ['Tornado', md.peakText.tornado ?? 'none expected'], ['Wind gust', md.peakText.wind], ['Hail', md.peakText.hail], ['Area', `${Math.round(md.areaSquareMiles / 100) * 100} sq mi`], ...(md.countyNames?.length ? [['Counties', md.countyNames.join(', ')]] : [])] : [];
   $('peaks').innerHTML = rows.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
+}
+
+async function loadCounties() {
+  try { const response = await fetch('/api/counties'); if (response.ok) { counties = await response.json(); countyPathsSide = 0; draw(); } }
+  catch { /* no counties: the outlines alone */ }
 }
 
 async function load() {
@@ -108,5 +131,6 @@ async function load() {
 }
 
 window.addEventListener('resize', draw);
+loadCounties();
 load();
 setInterval(load, 15000);

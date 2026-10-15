@@ -45,7 +45,7 @@ const state = {
   view: { centerX: 0, centerY: 0, kmPerPx: 1 }, pointer: null, fetching: false,
   // Warnings as issued (newest first), the hour they were fetched at, whether they are drawn,
   // the one whose text is open and which of its statements is shown.
-  warnings: [], warningsHourUtc: null, showWarnings: true, chosenWarning: null, warningStatement: null
+  counties: null, warnings: [], warningsHourUtc: null, showWarnings: true, chosenWarning: null, warningStatement: null
 };
 
 // WebGL2 by default; Canvas 2D when forced (?renderer=2d), when WebGL2 is unavailable, or
@@ -65,6 +65,9 @@ async function start() {
   state.catalog = catalog;
   state.overlays = manifest?.overlays ?? null;
   state.revision = catalog.revision;
+  // The map's counties (outlines in shares of the map), drawn under the warnings as radar
+  // displays draw them; none if the server has no map.
+  fetch('/api/counties').then(r => (r.ok ? r.json() : null)).then(counties => { state.counties = counties; draw(); }).catch(() => {});
   ui.site.innerHTML = Object.entries(MOSAIC_OPTIONS).map(([value, kind]) => `<option value="${value}">Network · ${MOSAIC_LIST_NAMES[kind]}</option>`).join('')
     + catalog.sites.map(s => `<option value="${s.id}">${s.id} · ${s.name}</option>`).join('');
   ui.tilt.innerHTML = catalog.tilts.map(t => `<option value="${t}">${t.toFixed(1)}°</option>`).join('');
@@ -455,6 +458,7 @@ function drawOverlay() {
   ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
 
   if (state.coverage) drawCoverage(ctx, a, b);
+  if (state.borders && state.counties) drawCounties(ctx);
   if (state.borders && state.overlays?.regions?.cells?.length) drawRegions(ctx);
   if (state.showWarnings) drawWarnings(ctx);
 
@@ -626,6 +630,19 @@ function drawCoverage(ctx, a, b) {
     ctx.strokeStyle = 'rgba(148,163,184,.6)'; ctx.lineWidth = 1; ctx.strokeRect(x, y - 10 * dpr, 12 * dpr, 12 * dpr);
     ctx.fillStyle = 'rgba(203,213,225,.75)'; ctx.fillText(label, x + 16 * dpr, y); x += ctx.measureText(label).width + 30 * dpr;
   }
+}
+
+// County lines, and county names once zoomed in far enough for them to fit.
+function drawCounties(ctx) {
+  const w = state.catalog.domainWidthKm, h = state.catalog.domainHeightKm, dpr = state.dpr;
+  ctx.strokeStyle = 'rgba(148,163,184,.28)'; ctx.lineWidth = 0.8 * dpr;
+  ctx.beginPath();
+  for (const county of state.counties.counties) for (const ring of county.rings) { ring.forEach(([x, y], k) => { const p = kmToScreen(x * w, y * h); if (k) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.closePath(); }
+  ctx.stroke();
+  if (state.view.kmPerPx > 0.5 * dpr) return;
+  ctx.fillStyle = 'rgba(203,213,225,.45)'; ctx.font = `600 ${10 * dpr}px system-ui`; ctx.textAlign = 'center';
+  for (const county of state.counties.counties) { const p = kmToScreen(county.x * w, county.y * h); ctx.fillText(county.name.toUpperCase(), p.x, p.y); }
+  ctx.textAlign = 'start';
 }
 
 function drawRegions(ctx) {

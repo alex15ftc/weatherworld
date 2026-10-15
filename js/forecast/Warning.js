@@ -24,6 +24,13 @@
 //     no storm in it still warrants it. Otherwise it runs until it expires.
 //   - A storm under a tornado warning gets no severe thunderstorm warning as well: the tornado
 //     warning carries its hail. One already out stays in effect.
+//   - With the map's counties (createWarningState(counties)), a warning names what its polygon
+//     covers as the Weather Service's do: each county, or the part of it ("Northeastern Barton
+//     County in the Smoky Hills"), and the towns inside ("Locations impacted include..."); the
+//     storm is placed from the nearest town ("8 miles southwest of Hoisington"). Without them,
+//     from the nearest radar.
+import { polygonCounties, nearestTown } from './counties.js';
+
 export const WARNING = Object.freeze({
   // How long each runs (minutes): NWS tornado warnings default to 30 minutes since 2012;
   // severe thunderstorm warnings are mostly 30-60.
@@ -115,8 +122,17 @@ export function insidePolygon(polygon, x, y) {
 }
 const polygonArea = polygon => Math.abs(polygon.reduce((a, [x, y], i) => { const [u, v] = polygon[(i + 1) % polygon.length]; return a + x * v - u * y; }, 0)) / 2;
 
-// Where a point is, from the nearest radar.
-export function placeOf(x, y, sites) {
+// Where a point is (km): from the nearest town where there are counties (places: the
+// warnings' context, see placesFor), otherwise from the nearest radar (places: the radar sites).
+export function placeOf(x, y, places) {
+  if (places?.layer) {
+    const near = nearestTown(places.layer, x * places.milesPerKm, y * places.milesPerKm);
+    if (near) {
+      const miles = Math.round(near.miles), t = near.town;
+      return miles < 1 ? `over ${t.name}` : miles < 3 ? `near ${t.name}` : `${miles} miles ${compass(Math.atan2(x * places.milesPerKm - t.x, -(y * places.milesPerKm - t.y)) * 180 / Math.PI)} of ${t.name}`;
+    }
+  }
+  const sites = Array.isArray(places) ? places : places?.sites;
   if (!sites?.length) return `${Math.round(x)} km east and ${Math.round(y)} km south of the region's northwest corner`;
   const site = sites.reduce((a, b) => (Math.hypot(b.xKm - x, b.yKm - y) < Math.hypot(a.xKm - x, a.yKm - y) ? b : a));
   const miles = Math.round(Math.hypot(x - site.xKm, y - site.yKm) * MILES_PER_KM);
@@ -125,12 +141,14 @@ export function placeOf(x, y, sites) {
 }
 const motionOf = look => { const kph = Math.hypot(look.east, look.north); return { toDeg: (Math.atan2(look.east, look.north) * 180 / Math.PI + 360) % 360, mph: Math.round(kph * MILES_PER_KM), kt: Math.round(kph * KT_PER_KPH) }; };
 
-export const createWarningState = () => ({ warnings: [], next: { tornado: 1, severe: 1 }, lastHourUtc: null });
+// counties: the map's county layer for the world's grid (countyLayer in counties.js), or null.
+export const createWarningState = (counties = null) => ({ warnings: [], next: { tornado: 1, severe: 1 }, lastHourUtc: null, counties });
 export const inEffect = (state, hourUtc) => state.warnings.filter(w => w.status === 'in effect' && w.validToHourUtc > hourUtc + 1e-6);
 
 // One volume scan: warnings expire, are updated or cancelled, and new ones go out. sites: the
 // radars (createRadarSites), for the words. Returns what was issued, updated and ended.
-export function updateWarnings(state, world, sites = []) {
+export function updateWarnings(state, world, radarSites = []) {
+  const sites = placesFor(state, world, radarSites);
   const hour = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   const out = { issued: [], updated: [], ended: [] };
   if (state.lastHourUtc !== null && hour <= state.lastHourUtc + 1e-6) return out;
@@ -187,15 +205,38 @@ function covered(warnings, type, look, hour) {
   return warnings.some(w => w.type === type && w.validToHourUtc - hour >= lead - 1e-6 && insidePolygon(w.polygon, look.x, look.y) && insidePolygon(w.polygon, x, y));
 }
 
+// What the words are worked out from: the radars, and the counties (with the miles in a km of
+// the world's grid) when there are any.
+export function placesFor(state, world, sites = []) {
+  const layer = state.counties ?? null;
+  return { sites, layer, milesPerKm: layer ? layer.miles / (world.width * world.cellSizeKm) : null };
+}
+
+// The counties (or parts) and towns a polygon (km) covers, or null without counties.
+function coveredPlaces(polygon, places) {
+  if (!places?.layer) return null;
+  const found = polygonCounties(places.layer, polygon.map(([x, y]) => [x * places.milesPerKm, y * places.milesPerKm]));
+  if (!found?.counties.length) return null;
+  const regionName = key => places.layer.placeNames[key] ?? key;
+  return { counties: found.counties.map(c => ({ name: c.name, part: c.part, region: regionName(c.region) })), towns: found.towns.slice(0, 10).map(t => t.name) };
+}
+
+// The counties as a headline names them: "northeastern Barton and southwestern Rice Counties".
+export function countyPhrase(counties) {
+  const named = counties.map(c => `${c.part ? `${c.part} ` : ''}${c.name}`);
+  return `${named.length <= 1 ? named.join('') : `${named.slice(0, -1).join(', ')} and ${named.at(-1)}`} ${named.length === 1 ? 'County' : 'Counties'}`;
+}
+
 export function issueWarning(state, type, look, hour, sites = []) {
   const polygon = warningPolygon(type, look), number = state.next[type]++;
   const warning = {
     id: `${type === 'tornado' ? 'TOR' : 'SVR'}-${number}`, type, number, stormId: look.id,
     issuedHourUtc: hour, validToHourUtc: hour + WARNING.minutes[type] / 60, endedHourUtc: null, status: 'in effect',
     polygon, areaSquareMiles: Math.round(polygonArea(polygon) * MILES_PER_KM * MILES_PER_KM),
-    where: `the area from ${placeOf((polygon[0][0] + polygon[1][0]) / 2, (polygon[0][1] + polygon[1][1]) / 2, sites)} to ${placeOf((polygon[2][0] + polygon[3][0]) / 2, (polygon[2][1] + polygon[3][1]) / 2, sites)}`,
+    where: `the area from ${placeOf((polygon[0][0] + polygon[1][0]) / 2, (polygon[0][1] + polygon[1][1]) / 2, sites)} to ${placeOf((polygon[2][0] + polygon[3][0]) / 2, (polygon[2][1] + polygon[3][1]) / 2, sites)}`, places: coveredPlaces(polygon, sites),
     history: [], severeMinutes: { hail: 0, wind: 0 }, quiet: 0, statements: []
   };
+  if (warning.places) warning.where = countyPhrase(warning.places.counties);
   record(warning, look, hour, 0);
   warning.tags = tagsOf(warning, hour);
   warning.text = writeWarning(warning, look, hour, sites, false);
@@ -297,10 +338,11 @@ export function writeWarning(warning, look, hour, sites, statement) {
   const m = warning.motion, motDeg = Math.round((m.toDeg + 180) % 360);
   const lines = [...(statement ? [] : [eas ? 'BULLETIN - EAS ACTIVATION REQUESTED' : 'BULLETIN - IMMEDIATE BROADCAST REQUESTED']), statement ? 'Severe Weather Statement' : name, 'National Weather Service WeatherWorld', clock(hour), ''];
   if (statement) lines.push(`...A ${name.toUpperCase()} REMAINS IN EFFECT UNTIL ${clock(warning.validToHourUtc)} FOR ${warning.where.toUpperCase()}...`, '');
-  else lines.push('The National Weather Service has issued a', '', `* ${name} for...`, `  ${warning.where}.`, '', `* Until ${clock(warning.validToHourUtc)}.`, '');
+  else lines.push('The National Weather Service has issued a', '', `* ${name} for...`, ...(warning.places ? warning.places.counties.map((c, k, all) => `  ${c.part ? `${c.part[0].toUpperCase()}${c.part.slice(1)} ` : ''}${c.name} County in the ${c.region}${k === all.length - 1 ? '.' : '...'}`) : [`  ${warning.where}.`]), '', `* Until ${clock(warning.validToHourUtc)}.`, '');
   if (isParticularlyDangerous(warning)) lines.push('...THIS IS A PARTICULARLY DANGEROUS SITUATION. TAKE COVER NOW!...', '');
   if (t.damage === 'DESTRUCTIVE') lines.push(`...THIS IS A DESTRUCTIVE STORM FOR ${warning.where.toUpperCase()}...`, '');
   lines.push(`${statement ? '' : '* '}${stormSentence(warning, look, hour, sites)}`, '', `  HAZARD...${hazardText(warning)}`, '', `  SOURCE...${sourceText(warning)}`, '', `  IMPACT...${impactText(warning)}`, '');
+  if (warning.places?.towns.length) lines.push(`${statement ? '' : '* '}Locations impacted include...`, `  ${warning.places.towns.length === 1 ? warning.places.towns[0] : `${warning.places.towns.slice(0, -1).join(', ')} and ${warning.places.towns.at(-1)}`}.`, '');
   lines.push('PRECAUTIONARY/PREPAREDNESS ACTIONS...', '', precautions(warning), '', '&&', '');
   lines.push(`TIME...MOT...LOC ${clock(hour)} ${String(motDeg).padStart(3, '0')}DEG ${m.kt}KT ${Math.round(look.x)}KM ${Math.round(look.y)}KM`, '', ...tagLines(warning), '', '$$');
   return lines.join('\n');

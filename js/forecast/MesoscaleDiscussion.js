@@ -12,10 +12,15 @@
 // enough of it there to call for a watch gives the probability; what their strongest storms
 // there do gives the peak intensities. The words are written from the air over the area as
 // it is now. The watches come from the same runs (Watch.js).
+//
+// A discussion's outline is drawn freely, as the centre's are (only watches follow county
+// lines); its "Areas affected" names the parts of the regions it covers, and it carries the
+// counties at least half inside it for the pages (js/forecast/counties.js).
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { captureTruth, aggregateTruth } from '../verification/truth.js';
 import { regionRings, solidRegion } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
+import { cellCounties, countiesIn, countyNames, describeRegions } from './counties.js';
 
 export const MESOSCALE = Object.freeze({
   members: 4, hoursAhead: 5, stepHours: 0.5,
@@ -132,13 +137,15 @@ export function areaOutcome(m, inside) {
 }
 
 // What the air over the map is like now, cell by cell, and the storms on it: all a discussion
-// needs from the live world (taken at issue time; plain data).
-export function describeNow(atmosphere) {
+// needs from the live world (taken at issue time; plain data but for the county layer).
+// counties: the map's county layer (countyLayer in counties.js) for the world's grid; without
+// it each cell is a county of its own.
+export function describeNow(atmosphere, { counties = null } = {}) {
   const world = atmosphere.world, n = world.width * world.height;
   const field = pick => { const out = new Float32Array(n); world.forEachCell((cell, x, y) => { out[y * world.width + x] = pick(cell) ?? 0; }); return out; };
   const cellOf = at => Math.min(world.height - 1, Math.max(0, Math.floor(at.y / world.cellSizeKm))) * world.width + Math.min(world.width - 1, Math.max(0, Math.floor(at.x / world.cellSizeKm)));
   return {
-    hourUtc: world.validHourUtc, width: world.width, height: world.height, cellMiles: world.cellSizeMiles,
+    hourUtc: world.validHourUtc, width: world.width, height: world.height, cellMiles: world.cellSizeMiles, counties: counties ?? cellCounties(world.width, world.height, world.cellSizeMiles),
     dewpoint: field(c => c.surface.dewpoint), temperature: field(c => c.surface.temperature), cape: field(c => c.derived.sounding?.mlcape ?? c.derived.cape), cin: field(c => Math.abs(c.derived.sounding?.mlcin ?? c.derived.cin ?? 0)),
     shear: field(c => c.derived.bulkShear), helicity: field(c => c.derived.srh), cloudBaseM: field(c => c.derived.lclAgl),
     storms: (world.storms ?? []).filter(s => s.active).map(s => ({ cell: cellOf(s.positionKm), hail: s.currentHailSizeInches ?? 0, gust: s.surfaceWind?.gustMph ?? 0, tornado: Boolean(s.tornado?.onGround), rotating: (s.mesocycloneStrength ?? 0) >= 0.35, line: (s.lineOrganization ?? 0) >= 0.5, intensity: s.intensity ?? 0 })),
@@ -212,9 +219,11 @@ export function makeDiscussion(assessed, now, { number, seed = null, watch = nul
   const { width, height } = now, issued = now.hourUtc;
   // Its ground: one region with no holes (ground in a gap it encloses is part of it).
   const inside = solidRegion(assessed.inside, width, height), cells = Array.from(inside.keys()).filter(i => inside[i]);
+  const layer = now.counties ?? cellCounties(width, height, now.cellMiles), counties = countiesIn(layer, inside, { least: 0.5 }), regions = describeRegions(layer, counties);
   const md = {
     number, seed, issuedHourUtc: issued, validToHourUtc: issued + MESOSCALE.validHours, members: assessed.members,
-    cells: inside, areaCells: cells.length, areaSquareMiles: cells.length * now.cellMiles * now.cellMiles, where: describeArea(Array.from(inside, Boolean), width, height),
+    cells: inside, areaCells: cells.length, areaSquareMiles: cells.length * now.cellMiles * now.cellMiles,
+    where: regions ? `portions of ${regions}` : describeArea(Array.from(inside, Boolean), width, height), countyIds: layer.named ? counties.map(index => index + 1) : [], countyNames: countyNames(layer, counties),
     // About a watch in effect: no probability (the watch is there), and the watch's own kind.
     watchNumber: watch?.number ?? null, watchType: watch?.type ?? null, replacement, updates, replacedBy: null, watchPercent: watch ? null : assessed.percent, threatPercent: assessed.percent, tornadoWatch: watch ? watch.type === 'tornado' : assessed.tornadoWatch,
     concerning: watch ? `${watch.type === 'tornado' ? 'TORNADO' : 'SEVERE THUNDERSTORM'} WATCH ${watch.number}` : concerningLine(assessed.percent, assessed.tornadoWatch),

@@ -10,12 +10,13 @@
 // (rivers cut their valleys where water collects) with a little hillslope smoothing; a
 // reservoir dammed on a river; rivers traced where enough water has gathered; land cover from
 // region, slope, rainfall and rivers, with neighbouring regions' land interfingering near their
-// borders; then towns, highways and the section-line road grid.
+// borders; then towns, highways, the section-line road grid and the counties (counties.js).
 import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
 import { makeNoise, fbm, clamp, smoothstep } from './noise.js';
 import { planSettlements } from './settlements.js';
 import { planSectionRoads } from './sectionRoads.js';
 import { planCrossings } from './crossings.js';
+import { planCounties } from './counties.js';
 
 const METRES_PER_MILE = 1609.344;
 
@@ -252,7 +253,8 @@ export function generateWorldMap(options = {}) {
   paintTowns(map, settlements);
   const sections = planSectionRoads({ ...map, settlements, roads }, p.sections);
   const crossings = planCrossings({ ...map, roads, sections }, p.crossings);
-  return { ...map, settlements, roads, sections, crossings };
+  const counties = planCounties({ ...map, settlements }, p.counties);
+  return { ...map, settlements, roads, sections, crossings, counties };
 }
 
 // Reservoirs. For a candidate dam (a river cell of the right size away from the edges), the

@@ -10,6 +10,8 @@ import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
 import { WarningRuntime } from './WarningRuntime.js';
 import { RadarPool } from './RadarPool.js';
+import { countiesFor } from './CountyLayer.js';
+import { publicCounties } from '../js/forecast/counties.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
 // Set WEATHER_PRIORITY=normal to leave the process priority alone.
@@ -96,6 +98,7 @@ async function serveApi(url, req, res) {
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
   if (url.pathname === '/api/warnings') return sendJson(req, res, 200, warnings ? warnings.list() : { enabled: false, warnings: [] }, { cacheable: false, trace });
+  if (url.pathname === '/api/counties') { const counties = publicCounties(countiesFor(runtime.engine?.world)); return sendJson(req, res, counties ? 200 : 404, counties ?? { error: 'No counties' }, { trace }); }
   if (url.pathname === '/api/mesoscale') return sendJson(req, res, 200, mesoscale ? mesoscale.list() : { enabled: false, watches: [], discussions: [] }, { cacheable: false, trace });
   const issuedOutlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);
   if (issuedOutlook) return sendJson(req, res, 200, outlooks ? outlooks.day(issuedOutlook[1]) : { day: issuedOutlook[1], status: 'off' }, { cacheable: false, trace });
