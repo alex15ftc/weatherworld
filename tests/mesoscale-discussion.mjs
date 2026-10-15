@@ -54,18 +54,17 @@ assert.match(md.text, /expected to develop within the next hour or two/); assert
 assert.match(md.text, /A tornado watch will likely be needed within the hour, as storms form/);
 const sent = publicMesoscaleDiscussion(md); assert.equal(sent.cells, undefined); assert.ok(sent.rings.length && sent.environment.cape > 0);
 
-// Where the tornado chances are Mod, tornadoes of up to 95 mph go with a severe thunderstorm watch: a
-// tornado watch needs the most probable peak above that range.
-// (Half the runs with two weak tornadoes: a Mod chance of 2 or more, so this rule decides.)
+// A Mod tornado chance is a tornado watch, however weak the tornadoes.
+// (Half the runs with two weak tornadoes: a Mod chance of 2 or more.)
 const weakTornadoes = buildMesoscaleDiscussions([run(0, { reports: 12, tornadoes: 2, tornadoMph: 88 }), run(1, { reports: 12, tornadoes: 2, tornadoMph: 88 }), run(2, { reports: 12 }), run(3, { reports: 12 })], now())[0];
 assert.equal(weakTornadoes.watchPercent, 95); assert.equal(weakTornadoes.peakText.tornado, 'UP TO 95 MPH');
-assert.equal(weakTornadoes.tornadoWatch, false); assert.equal(weakTornadoes.concerning, 'SEVERE POTENTIAL...SEVERE THUNDERSTORM WATCH LIKELY');
-assert.match(weakTornadoes.text, /a tornado or two/); assert.match(weakTornadoes.text, /A severe thunderstorm watch will likely be needed/);
-assert.equal(buildMesoscaleDiscussions([run(0, { reports: 12, tornadoes: 2, tornadoMph: 104 }), run(1, { reports: 12, tornadoes: 2, tornadoMph: 104 }), run(2, { reports: 12 }), run(3, { reports: 12 })], now())[0].concerning, 'SEVERE POTENTIAL...TORNADO WATCH LIKELY', 'the next range up: a tornado watch');
-// The watch's own tornado chances come first. High (every run with 2 or more, however weak):
-// a tornado watch. Low (no run with 2 or more, none strong), whatever the wind: severe thunderstorm.
+assert.equal(weakTornadoes.tornadoWatch, true); assert.equal(weakTornadoes.concerning, 'SEVERE POTENTIAL...TORNADO WATCH LIKELY');
+assert.match(weakTornadoes.text, /A tornado watch will likely be needed/);
+// High (every run with 2 or more, however weak): a tornado watch. Low (no run with 2 or more,
+// none strong), whatever the wind: severe thunderstorm.
 assert.equal(buildMesoscaleDiscussions(four({ reports: 12, tornadoes: 3, tornadoMph: 88 }), now())[0].tornadoWatch, true, 'a High chance of 2 or more tornadoes: a tornado watch');
 assert.equal(buildMesoscaleDiscussions(four({ reports: 20, gust: 95, windSignificant: 15, tornadoes: 1, tornadoMph: 100 }), now())[0].tornadoWatch, false, 'a Low chance of tornadoes: a severe thunderstorm watch, however strong the wind');
+assert.equal(buildMesoscaleDiscussions([0, 1, 2, 3].map(k => run(k, { reports: 12, tornadoes: k < 2 ? 1 : 0, tornadoMph: 125 })), now())[0].tornadoWatch, false, 'a Mod chance of a strong tornado, Low of 2 or more: a severe thunderstorm watch');
 
 // Half the runs get to what a watch needs and the others most of the way: possible; and no
 // tornado peak is given when few runs have a tornado.
@@ -140,8 +139,10 @@ assert.equal(probabilityText(5), 'Low (<5%)'); assert.equal(probabilityText(40),
 assert.match(watch.text, /^URGENT - IMMEDIATE BROADCAST REQUESTED\nTornado Watch Number 12\n\nA tornado watch is in effect for [\s\S]*\nfrom 022000Z until 030200Z\.\n\nPrimary threats include\.\.\.\n  Several tornadoes and a couple of strong tornadoes likely\n/);
 assert.match(watch.text, /REMEMBER\.\.\.A tornado watch means/); assert.match(watch.text, /WATCH PROBABILITIES\.\.\.\n  2 or more tornadoes \.+High \(>95%\)/); assert.doesNotMatch(watch.text, /PARTICULARLY DANGEROUS/);
 const page = publicWatch(watch); assert.equal(page.cells, undefined); assert.equal(page.title, 'Tornado Watch 12'); assert.equal(page.table.length, 7); assert.ok(page.rings.length);
-// Which watch: weak tornadoes, or none, make it a severe thunderstorm watch.
-const severe = withDiscussion([0, 1, 2, 3].map(k => run(k, { reports: 14, tornadoes: k < 2 ? 2 : 0, tornadoMph: 90, size: 12 })), firing).watches[0];
+// Which watch: a Mod tornado chance, however weak the tornadoes, makes it a tornado watch; a Low
+// one (a weak tornado in every run, never two) a severe thunderstorm watch.
+assert.equal(withDiscussion([0, 1, 2, 3].map(k => run(k, { reports: 14, tornadoes: k < 2 ? 2 : 0, tornadoMph: 90, size: 12 })), firing).watches[0].type, 'tornado');
+const severe = withDiscussion([0, 1, 2, 3].map(k => run(k, { reports: 14, tornadoes: 1, tornadoMph: 90, size: 12 })), firing).watches[0];
 assert.equal(severe.type, 'severe'); assert.match(severe.text, /^URGENT - IMMEDIATE BROADCAST REQUESTED\nSevere Thunderstorm Watch Number 1\n/); assert.match(severe.text, /A tornado or two possible/); assert.match(severe.text, /REMEMBER\.\.\.A severe thunderstorm watch means/);
 assert.equal(lookAhead(four({ reports: 9, size: 12 }), firing).watches.length, 0, 'short of what a watch needs: none');
 const atFirst = withDiscussion(four(tornadic), now(44, [young(31, 9)]));

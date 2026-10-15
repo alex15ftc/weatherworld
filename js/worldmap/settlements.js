@@ -3,7 +3,10 @@
 // Missouri), a mid-size city on a large river near the middle, small cities and towns on good
 // ground near water, spaced more widely where the land is drier or rougher. Interstates join the
 // cities, laid out like I-70 (east-west through the metro), I-35 (metro to the mid city and on
-// south) and I-29 (north along the trunk river); highways join each town to its neighbours.
+// to the map edge beyond it) and I-29 (north along the trunk river). US routes run through on a
+// grid of lines and state highways join the larger towns. Interstates are limited access: other
+// roads cross them straight, never run along them nor cross by an interstate junction; no road
+// turns or meets another in a river.
 // Towns sit on section corners and roads follow the mile lines north-south and east-west over
 // flat ground, jogging at corners as Plains highways do; they cut across only in rough country.
 // Around the metro and the mid city: a beltway (like I-435 round Kansas City and I-235 round
@@ -216,8 +219,8 @@ function planRoads(map, p, settlements, grid) {
       const x = K % m, y = (K / m) | 0, first = from[S] < 0;
       for (let d = 0; d < 8; d++) {
         const bend = Math.min(Math.abs(d - din), 8 - Math.abs(d - din));
-        if (bend > 2 && !first) continue;
         const fresh = first && startDir < 0;
+        if (bend > 2 && !fresh) continue;   // no sharper than a right angle, at a waypoint too
         const nx = x + DX[d], ny = y + DY[d];
         if (nx < 0 || ny < 0 || nx >= m || ny >= m) continue;
         const N = ny * m + nx, T = N * 8 + d;
@@ -226,6 +229,10 @@ function planRoads(map, p, settlements, grid) {
         // and cross it straight (the interchange's ramps meet the road on either side).
         if (onInterstate[K] && bend && !first && style !== p.interstate) continue;
         if (nearJunction[N] && onInterstate[N] && N !== goal && style !== p.interstate) continue;
+        // A diagonal step across a diagonal interstate (between its corners) crosses it too.
+        const sideA = y * m + nx, sideB = ny * m + x;
+        const across = (d & 1) && onInterstate[sideA] && onInterstate[sideB] && !onInterstate[N] && !onInterstate[K];
+        if (across && (nearJunction[sideA] || nearJunction[sideB]) && style !== p.interstate) continue;
         if (inRiver[K] && bend && !first) continue;
         if (inRiver[N] && riverAxis[N] && !(riverAxis[N] & (1 << (d & 3)))) continue;
         const shared = onRoad[N] && onRoad[K], parallel = style.interstateCost && onInterstate[N] && Math.hypot(nx - ax, ny - ay) > (style.clearMi ?? 0);
@@ -233,7 +240,7 @@ function planRoads(map, p, settlements, grid) {
           + (fresh ? 0 : style.turnCost * bend * (bend > 2 ? 3 : 1))
           // Each crossing of an interstate is a bridge and ramps (a system interchange for another
           // interstate): dear, so routes cross once rather than weaving.
-          + (onInterstate[N] && !onInterstate[K] && N !== goal ? style.crossCost ?? p.interstateCrossCost : 0);
+          + ((onInterstate[N] && !onInterstate[K] && N !== goal) || across ? style.crossCost ?? p.interstateCrossCost : 0);
         const total = cost[S] + step;
         if (seen[T] !== generation || total < cost[T]) { seen[T] = generation; cost[T] = total; from[T] = S; push(T, total + h(N)); }
       }
@@ -260,25 +267,42 @@ function planRoads(map, p, settlements, grid) {
   const roads = [], metro = settlements.find(s => s.kind === 'metro'), city = settlements.find(s => s.kind === 'city');
   const smallCities = settlements.filter(s => s.kind === 'smallCity');
   const chain = (kind, name, points, style = p[kind]) => {
-    const line = [];
     if (kind === 'interstate') interstateId = roads.length + 1;
+    roads.push({ kind, name, points: chainLine(points, style) });
+  };
+  // Points through the given places in turn, heading on from each without doubling back.
+  const chainLine = (points, style) => {
+    const line = [];
     for (let i = 1; i < points.length; i++) {
       if (points[i][0] === points[i - 1][0] && points[i][1] === points[i - 1][1]) continue;
       const leg = route(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1], style, i > 1 ? endDir : -1);
       line.push(...(line.length ? leg.slice(1) : leg));
     }
-    roads.push({ kind, name, points: line });
+    // A hook where a leg overshoots a place by a few miles and doubles back: straightened.
+    for (let i = 2; i < line.length; i++) {
+      const [a, q, c] = [line[i - 2], line[i - 1], line[i]], u = [q[0] - a[0], q[1] - a[1]], v = [c[0] - q[0], c[1] - q[1]];
+      if (Math.hypot(...u) <= 4.5 && (u[0] * v[0] + u[1] * v[1]) / (Math.hypot(...u) * Math.hypot(...v)) < -0.2) { line.splice(i - 1, 1); i = Math.max(1, i - 2); }
+    }
+    return line;
   };
+  // Where a line turns back on itself (cos of the turn below -0.2).
+  const reversals = line => line.filter((q, i) => {
+    if (i < 1 || i >= line.length - 1) return false;
+    const a = line[i - 1], c = line[i + 1], u = [q[0] - a[0], q[1] - a[1]], v = [c[0] - q[0], c[1] - q[1]];
+    return (u[0] * v[0] + u[1] * v[1]) / ((Math.hypot(...u) * Math.hypot(...v)) || 1) < -0.2;
+  });
 
   // I-70: across the map east to west through the metro and the small cities near its latitude.
   const band = smallCities.filter(s => Math.abs(s.y - metro.y) < 70 && s.x < metro.x).sort((a, b) => b.x - a.x);
   chain('interstate', 'I-70', [[m, metro.y], [metro.x, metro.y], ...band.map(s => [s.x, s.y]), [0, (band.at(-1) ?? metro).y]]);
   if (city) {
-    // I-35: the metro to the mid city and on to the south edge.
-    chain('interstate', 'I-35', [[metro.x, metro.y], [city.x, city.y], [city.x - 10, m]]);
-    // I-135: the mid city north to the nearest small city.
-    const north = smallCities.filter(s => s.y < city.y - 30).sort((a, b) => Math.hypot(a.x - city.x, a.y - city.y) - Math.hypot(b.x - city.x, b.y - city.y))[0];
-    if (north) chain('interstate', 'I-135', [[city.x, city.y], [north.x, north.y]]);
+    // I-35: the metro to the mid city and on to the map edge beyond it (south, or north where the
+    // city lies north of the metro), so it never doubles back.
+    const southward = city.y >= metro.y;
+    chain('interstate', 'I-35', [[metro.x, metro.y], [city.x, city.y], [city.x - 10, southward ? m : 0]]);
+    // I-135: the mid city the other way, to the nearest small city.
+    const branch = smallCities.filter(s => (southward ? s.y < city.y - 30 : s.y > city.y + 30)).sort((a, b) => Math.hypot(a.x - city.x, a.y - city.y) - Math.hypot(b.x - city.x, b.y - city.y))[0];
+    if (branch) chain('interstate', 'I-135', [[city.x, city.y], [branch.x, branch.y]]);
   }
   // I-29: north from the metro along the trunk river.
   chain('interstate', 'I-29', [[metro.x, metro.y], [Math.round(map.trunkU(0) * m), 0]]);
@@ -441,9 +465,29 @@ function planRoads(map, p, settlements, grid) {
     lines.forEach((line, i) => {
       const names = eastWest ? EAST_WEST : NORTH_SOUTH;
       const name = names[Math.min(i, names.length - 1)];
+      // A stop the route would have to turn back from (a spur out and back) is left to the state
+      // highways.
+      const stops = line.stops;
+      for (let i = 1; i < stops.length - 1; i++) {
+        const [a, q, c] = [stops[i - 1], stops[i], stops[i + 1]], u = [q[0] - a[0], q[1] - a[1]], v = [c[0] - q[0], c[1] - q[1]];
+        if ((u[0] * v[0] + u[1] * v[1]) / ((Math.hypot(...u) * Math.hypot(...v)) || 1) < -0.17) { stops.splice(i, 1); i = 0; }
+      }
       const first = line.stops[0], last = line.stops.at(-1);
       const ends = eastWest ? [[0, first[1]], ...line.stops, [m, last[1]]] : [[first[0], 0], ...line.stops, [last[0], m]];
-      chain('highway', name, ends, { diagonalScale: 1, turnCost: p.turnCost, interstateCost: p.usInterstateCost, clearMi: 3 });
+      // A town the route would have to turn back from (a spur out and back) is left to the state
+      // highways: the route is laid again without it.
+      const style = { diagonalScale: 1, turnCost: p.turnCost, interstateCost: p.usInterstateCost, clearMi: 3 };
+      let points = chainLine(ends, style);
+      for (let tries = 0; tries < 10; tries++) {
+        const back = reversals(points);
+        // The town nearest a turn back (within 3 mi).
+        let drop = -1, best = 3;
+        ends.forEach((e, i) => { if (i > 0 && i < ends.length - 1) for (const q of back) { const d = Math.hypot(q[0] - e[0], q[1] - e[1]); if (d < best) { best = d; drop = i; } } });
+        if (drop < 0) break;
+        ends.splice(drop, 1);
+        points = chainLine(ends, style);
+      }
+      roads.push({ kind: 'highway', name, points });
       usRoutes.push(roads.at(-1));
     });
   }

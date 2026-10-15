@@ -3,6 +3,7 @@
 // kind and interstate turns up; a reservoir is dammed; and roads keep to the section lines.
 import assert from 'node:assert/strict';
 import { interchangeRamps } from '../js/worldmap/interchanges.js';
+import { riverCorners } from '../js/worldmap/sectionRoads.js';
 import { generateWorldMap, describeWorldMap, engineTerrainM, REGIONS, COVER } from '../js/worldmap/WorldMapGenerator.js';
 
 const small = { miles: 500, cellMiles: 1, erosionSteps: 12 };
@@ -42,6 +43,16 @@ for (const list of Object.values(exitsOn)) for (const c of list) for (const o of
   if (o === c || c.kind === 'interstate' || o.kind === 'interstate') continue;
   assert.ok(Math.abs(o.milepost - c.milepost) >= (c.town && o.town ? 1 : 3) - 0.3 || Math.abs(o.milepost - c.milepost) < 0.35, `exits on ${c.interstate} are spaced (${o.milepost.toFixed(1)}, ${c.milepost.toFixed(1)})`);
 }
+// Every ramp ends on a road (no interchange into a dead end), and no highway turns or meets
+// another in a river (no junction on a bridge).
+const near = (x, y, tol) => map.roads.some(r => r.points.some((q, i) => {
+  if (!i) return false;
+  const [ax, ay] = r.points[i - 1], dx = q[0] - ax, dy = q[1] - ay, l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0;
+  return Math.hypot(ax + dx * t - x, ay + dy * t - y) < tol;
+}));
+for (const c of map.crossings) for (const ramp of interchangeRamps(c)) assert.ok(near(...ramp.at(-1), 0.08) && near(...ramp[0], 0.08), `the ramps at ${c.interstate} exit ${c.exit} meet roads`);
+const wetCorners = riverCorners(map.rivers, map.sections.size);
+for (const road of map.roads) road.points.slice(1, -1).forEach(([x, y]) => assert.ok(!Number.isInteger(x) || !Number.isInteger(y) || !wetCorners[y * map.sections.size + x], `${road.name} turns in a river at ${x}, ${y}`));
 for (const c of map.crossings) for (const ramp of interchangeRamps(c)) for (const river of map.rivers) for (let k = 0; k < river.points.length; k += 2) {
   const half = Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000;
   for (const [x, y] of ramp) assert.ok(Math.hypot(x - river.points[k], y - river.points[k + 1]) > half, `ramps at ${c.x.toFixed(1)}, ${c.y.toFixed(1)} keep out of rivers`);

@@ -144,6 +144,34 @@ export function planSectionRoads(map, options = {}) {
     if (keep !== 0) { roads[K] &= ~3; if (W >= 0) roads[W] &= ~3; }
     if (keep !== 1) { roads[K] &= ~12; if (N >= 0) roads[N] &= ~12; }
   }
+  // Nor where a highway crosses a section road between corners, in a river: that mile goes.
+  const riverSegs = new Map();
+  for (const r of rivers) for (let k = 2; k < r.points.length; k += 2) {
+    const seg = [r.points[k - 2], r.points[k - 1], r.points[k], r.points[k + 1], Math.min(220, Math.max(12, r.widthsM[k / 2] * 0.18)) / 2000 + 0.05];
+    for (let x = Math.floor(Math.min(seg[0], seg[2])) - 1; x <= Math.floor(Math.max(seg[0], seg[2])) + 1; x++) for (let y = Math.floor(Math.min(seg[1], seg[3])) - 1; y <= Math.floor(Math.max(seg[1], seg[3])) + 1; y++) {
+      const key = x * 8192 + y; if (!riverSegs.has(key)) riverSegs.set(key, []); riverSegs.get(key).push(seg);
+    }
+  }
+  const wetAt = (x, y) => (riverSegs.get(Math.floor(x) * 8192 + Math.floor(y)) ?? []).some(([ax, ay, bx, by, reach]) => {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? clamp(((x - ax) * dx + (y - ay) * dy) / l2, 0, 1) : 0;
+    return Math.hypot(ax + dx * t - x, ay + dy * t - y) < reach;
+  });
+  for (const r of mapRoads) {
+    if (r.kind === 'interstate') continue;
+    for (let i = 1; i < r.points.length; i++) {
+      const [ax, ay] = r.points[i - 1], [bx, by] = r.points[i];
+      for (let I = Math.ceil(Math.min(ax, bx)); I <= Math.floor(Math.max(ax, bx)); I++) {
+        if (bx === ax || I < 0 || I >= size) continue;
+        const y = ay + (by - ay) * (I - ax) / (bx - ax), J = Math.floor(y);
+        if (J >= 0 && J < size && y - J > 0.05 && y - J < 0.95 && wetAt(I, y)) roads[J * size + I] &= ~12;
+      }
+      for (let J = Math.ceil(Math.min(ay, by)); J <= Math.floor(Math.max(ay, by)); J++) {
+        if (by === ay || J < 0 || J >= size) continue;
+        const x = ax + (bx - ax) * (J - ay) / (by - ay), I = Math.floor(x);
+        if (I >= 0 && I < size && x - I > 0.05 && x - I < 0.95 && wetAt(x, J)) roads[J * size + I] &= ~3;
+      }
+    }
+  }
   return { size, miles: 1, roads };
 }
 
