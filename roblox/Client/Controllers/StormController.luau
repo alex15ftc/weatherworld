@@ -227,6 +227,9 @@ end
 
 -- An image, or one cell of a sheet, at position, size studs across and up.
 local function billboard(pool: Pool, key: string, position: Vector3, size: Vector2, image: string, cell: Vector2, cellSize: Vector2, colour: Color3, transparency: number)
+	-- Its own names: a cloud puff is a billboard or a sphere part depending on its art, and
+	-- the two must never share a part.
+	key = `bb:{key}`
 	local part = pool.parts[key]
 	local gui: BillboardGui
 	local label: ImageLabel
