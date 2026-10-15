@@ -34,6 +34,7 @@
 // Geometry is laid out in feet in each airfield's own frame (a along the main runway's heading,
 // b to its right) and stored in map miles. Everything is deterministic from the seed.
 import { makeRandom, hashText, clamp } from './noise.js';
+import { interchangeRamps } from './interchanges.js';
 
 const FT = 1 / 5280;
 
@@ -43,6 +44,9 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   headingDeg: [150, 210],   // main runway heading (degrees true), drawn per airport
   flatM: 18,                // most relief inside an airfield fence (m)
   accessMi: 8,              // longest public access road from an airport gate
+  // International airports (these kinds of place) are reached by a freeway spur from their own
+  // interstate exit, up to freewayMi long, meeting the interstate square for its last stemMi.
+  international: ['metro', 'city'], freewayMi: 12, stemMi: 0.8,
   stubFt: 1320,             // the airport road runs straight out of the gate this far
   airBase: { region: 'highPlains', townClearMi: 9, nearestTownMi: [10, 20], interstateClearMi: 6, accessMi: 10, stubFt: 1800 }
 });
@@ -283,8 +287,9 @@ export function planAirfields(map, options = {}) {
     const seg = { type: road.kind === 'interstate' ? 'interstate' : 'road', road, ax, ay, bx, by, half: road.kind === 'interstate' ? 0.06 : 0.03 };
     addSeg(seg); roadSegs.push(seg);
   }
+  const riverSegs = [];
   for (const river of rivers) for (let k = 2; k < river.points.length; k += 2) {
-    addSeg({ type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000 + 0.03 });
+    addSeg(riverSegs[riverSegs.length] = { type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000 + 0.03 });
   }
   const segsNear = (x0, y0, x1, y1) => {
     const found = new Set();
@@ -359,27 +364,92 @@ export function planAirfields(map, options = {}) {
     for (const q of paths) if (pathClear(q.points, avoid, own)) return q;
     return null;
   };
-  const pathClear = (points, avoid, own = null) => {
+  // endRoad: the interstate a freeway spur ends on (it may meet that one at its end).
+  const pathClear = (points, avoid, own = null, endRoad = null) => {
     const end = points.at(-1);
     for (let i = 1; i < points.length; i++) {
       const [ax, ay] = points[i - 1], [bx, by] = points[i], last = i === points.length - 1;
       for (const s of segsNear(ax, ay, bx, by)) {
         const hit = segmentIntersection(ax, ay, bx, by, s.ax, s.ay, s.bx, s.by);
-        if (hit && !(last && hit.t > 0.995 && s.type === 'road')) return false;
+        if (hit && !(last && hit.t > 0.995 && (endRoad ? s.road === endRoad : s.type === 'road'))) return false;
       }
       const len = Math.hypot(bx - ax, by - ay), steps = Math.max(1, Math.ceil(len / 0.05));
       for (let k = 0; k <= steps; k++) {
         const x = ax + (bx - ax) * k / steps, y = ay + (by - ay) * k / steps, toEnd = Math.hypot(x - end[0], y - end[1]);
         if (cover[cellAt(x, y)] === water) return false;
         for (const s of segsNear(x, y, x, y)) {
+          if (endRoad && s.road === endRoad && toEnd < 0.6) continue;
           const d = distToSeg(x, y, s);
-          if (s.type === 'interstate' ? d < 0.2 : s.type === 'river' ? d < s.half : d < 0.04 && toEnd > 0.12) return false;
+          if (s.type === 'interstate' ? d < 0.2 : s.type === 'river' ? d < s.half : d < 0.04 && (endRoad || toEnd > 0.12)) return false;
         }
         for (const o of own ? [...placed, own] : placed) { const [a, b] = o.frame.local(x, y), [a0, b0, a1, b1] = o.fence; if (a > a0 && a < a1 && b > b0 && b < b1) return false; }
         for (const poly of avoid) if (pointInPoly(x, y, poly)) return false;
       }
     }
     return true;
+  };
+
+  // A freeway spur from S to its own exit on the nearest interstate it can reach (as Kansas City's
+  // airport is reached from I-29): a T interchange (crossings.js plans it from the road's end),
+  // sited where the interstate runs straight, as far from the interstate's other exits as exit
+  // spacing asks (1 mi in town, 3 in the country; the highways crossing it may all become exits),
+  // clear of its river bridges and other interstates, with its ramps clear of rivers and roads.
+  // The spur meets the interstate square: its last stemMi run straight out from it.
+  const townCover = new Set([coverKeys.indexOf('urban'), coverKeys.indexOf('suburban')]);
+  const freewaySpur = (S, reach, avoid, own) => {
+    const options = [];
+    for (const road of roads) {
+      if (road.kind !== 'interstate') continue;
+      const pts = road.points, along = [0];
+      for (let i = 1; i < pts.length; i++) along.push(along[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+      // Where other highways meet it (they may get exits), other interstates join it, and rivers cross it.
+      const highwaysAt = [], junctionsAt = [], riversAt = [];
+      for (let i = 1; i < pts.length; i++) {
+        const [ax, ay] = pts[i - 1], [bx, by] = pts[i], len = along[i] - along[i - 1];
+        const meet = (s, list) => {
+          if (Math.max(s.ax, s.bx) < Math.min(ax, bx) - 0.1 || Math.min(s.ax, s.bx) > Math.max(ax, bx) + 0.1 || Math.max(s.ay, s.by) < Math.min(ay, by) - 0.1 || Math.min(s.ay, s.by) > Math.max(ay, by) + 0.1) return;
+          const hit = segmentIntersection(ax, ay, bx, by, s.ax, s.ay, s.bx, s.by);
+          if (hit) { list.push(along[i - 1] + len * hit.t); return; }
+          for (const [qx, qy] of [[s.ax, s.ay], [s.bx, s.by]]) {
+            const seg = { ax, ay, bx, by }, [px, py] = nearestOnSegment(qx, qy, seg);
+            if (Math.hypot(px - qx, py - qy) < 0.06) list.push(along[i - 1] + Math.hypot(px - ax, py - ay));
+          }
+        };
+        for (const s of roadSegs) if (s.road !== road) meet(s, s.type === 'interstate' ? junctionsAt : highwaysAt);
+        for (const s of riverSegs) meet(s, riversAt);
+      }
+      for (let i = 1; i < pts.length; i++) {
+        const [ax, ay] = pts[i - 1], [bx, by] = pts[i], len = along[i] - along[i - 1];
+        if (len < 1.2) continue;
+        const ux = (bx - ax) / len, uy = (by - ay) / len;
+        // Straight for the ramps' reach either way: on this segment, 0.6 mi from its ends.
+        for (let t = 0.6; t <= len - 0.6; t += 0.1) {
+          const T = [ax + ux * t, ay + uy * t], s = along[i - 1] + t, d = Math.hypot(T[0] - S[0], T[1] - S[1]);
+          if (d > reach) continue;
+          const spacing = (townCover.has(cover[cellAt(T[0], T[1])]) ? 1 : 3) + 0.3;
+          if (highwaysAt.some(h => Math.abs(h - s) < spacing) || junctionsAt.some(h => Math.abs(h - s) < 2) || riversAt.some(h => Math.abs(h - s) < 0.6)) continue;
+          if (roadSegs.some(o => o.type === 'interstate' && o.road !== road && distToSeg(T[0], T[1], o) < 1.1)) continue;
+          // Square to the interstate, on the side the airport is.
+          let nx = -uy, ny = ux;
+          if ((S[0] - T[0]) * nx + (S[1] - T[1]) * ny < 0) { nx = -nx; ny = -ny; }
+          const P = [T[0] + nx * p.stemMi, T[1] + ny * p.stemMi];
+          for (const points of [[S, P, T], [S, [P[0], S[1]], P, T], [S, [S[0], P[1]], P, T]]) {
+            const clean = points.filter((v, k, all) => k === 0 || Math.hypot(v[0] - all[k - 1][0], v[1] - all[k - 1][1]) > 1e-6);
+            let length = 0;
+            for (let k = 1; k < clean.length; k++) length += Math.hypot(clean[k][0] - clean[k - 1][0], clean[k][1] - clean[k - 1][1]);
+            options.push({ road, points: clean, length, crossing: { type: 'interchange', x: T[0], y: T[1], ux, uy, vx: -nx, vy: -ny, vEnd: -1, uEnd: 0, kind: 'expressway' } });
+          }
+        }
+      }
+    }
+    options.sort((a, b) => a.length - b.length);
+    const rampsClear = c => interchangeRamps(c).every(ramp => ramp.every(([x, y]) => {
+      if (cover[cellAt(x, y)] === water) return false;
+      for (const s of segsNear(x, y, x, y)) if (s.type === 'river' ? distToSeg(x, y, s) < s.half + 0.02 : s.type === 'road' && distToSeg(x, y, s) < 0.04) return false;
+      return true;
+    }));
+    for (const q of options) if (rampsClear(q.crossing) && pathClear(q.points, avoid, own, q.road)) return q;
+    return null;
   };
 
   // The office and radar beside a gate's stub: the first spot clear on either side.
@@ -433,14 +503,15 @@ export function planAirfields(map, options = {}) {
     // The stub itself must be clear too.
     const own = { frame: f, fence };
     if (!pathClear([f.at([gateA + g.da * 10, gateB + g.db * 10]), S], avoid, own)) return null;
-    const access = accessRoad(S, base ? p.airBase.accessMi : p.accessMi, avoid, own, !base);
+    const freeway = !base && p.international.includes(city.kind);
+    const access = freeway ? freewaySpur(S, p.freewayMi, avoid, own) : accessRoad(S, base ? p.airBase.accessMi : p.accessMi, avoid, own, !base);
     if (!access) return null;
     const code = codeFor(base ? base.name : city.name, used);
     runwayNames(layout.runways, f);
     const poly = q => q.map(f.at), [a0, b0, a1, b1] = fence;
     const field = {
       kind: base ? 'airBase' : 'airport', code,
-      name: base ? `${base.name} Air Force Base` : `${city.name} ${city.kind === 'metro' ? 'International' : city.kind === 'city' ? 'National' : 'Regional'} Airport`,
+      name: base ? `${base.name} Air Force Base` : `${city.name} ${freeway ? 'International' : 'Regional'} Airport`,
       class: base ? 'air force base' : city.kind === 'metro' ? 'large hub' : city.kind === 'city' ? 'medium hub' : 'regional',
       city: base ? base.nearest.name : city.name, distanceMi: Math.round(Math.hypot(f.x - (base ? base.nearest.x : city.x), f.y - (base ? base.nearest.y : city.y)) * 10) / 10,
       x: Math.round(f.x * 1e4) / 1e4, y: Math.round(f.y * 1e4) / 1e4, headingDeg: Math.round(f.headingDeg * 10) / 10, elevationM: Math.round(elevation[cellAt(f.x, f.y)]),
@@ -452,7 +523,9 @@ export function planAirfields(map, options = {}) {
       parking: layout.parking.map(q => ({ kind: q.kind, poly: poly(q.poly) })),
       roads: [...layout.roads.map(r => ({ kind: r.kind, points: poly(r.points) })), { kind: 'entrance', points: [f.at([gateA - g.da * 300, gateB - g.db * 300]), f.at([gateA, gateB])] }],
       curbs: layout.curbs.map(c => ({ label: c.label, points: poly(c.points) })),
-      access: { name: base ? `${base.name} AFB Access Road` : city.kind === 'metro' ? 'Airport Parkway' : 'Airport Road', points: [f.at([gateA, gateB]), ...access.points], joins: access.t.road?.name ?? `${access.t.town.name} streets` }
+      access: freeway
+        ? { name: 'Airport Expressway', freeway: true, points: [f.at([gateA, gateB]), ...access.points], joins: access.road.name }
+        : { name: base ? `${base.name} AFB Access Road` : 'Airport Road', points: [f.at([gateA, gateB]), ...access.points], joins: access.t.road?.name ?? `${access.t.town.name} streets` }
     };
     if (base) {
       field.buildings.push({ kind: 'visitor center', poly: [[visitor[0] - 0.012, visitor[1] - 0.008], [visitor[0] + 0.012, visitor[1] - 0.008], [visitor[0] + 0.012, visitor[1] + 0.008], [visitor[0] - 0.012, visitor[1] + 0.008]] });
@@ -464,6 +537,16 @@ export function planAirfields(map, options = {}) {
     }
     const [cx0, cy0] = f.at([(a0 + a1) / 2, (b0 + b1) / 2]);
     placed.push({ frame: f, fence, cx: cx0, cy: cy0, radius: Math.hypot(a1 - a0, b1 - b0) / 2 * FT });
+    // The spur joins the map's roads (an expressway: crossings.js gives it its exit, the section
+    // roads meet it at signals or stop short of it), named for the airport and the interstate.
+    if (freeway) {
+      const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: field.access.points };
+      roads.push(road);
+      for (let i = 1; i < road.points.length; i++) {
+        const seg = { type: 'road', road, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: 0.04 };
+        addSeg(seg); roadSegs.push(seg);
+      }
+    }
     return field;
   }
 
@@ -556,13 +639,13 @@ export function pointInPoly(x, y, poly) {
   return inside;
 }
 
-function nearestOnSegment(x, y, s) {
+export function nearestOnSegment(x, y, s) {
   const dx = s.bx - s.ax, dy = s.by - s.ay, l2 = dx * dx + dy * dy, t = l2 ? clamp(((x - s.ax) * dx + (y - s.ay) * dy) / l2, 0, 1) : 0;
   return [s.ax + dx * t, s.ay + dy * t];
 }
-function distToSeg(x, y, s) { const [px, py] = nearestOnSegment(x, y, s); return Math.hypot(px - x, py - y); }
+export function distToSeg(x, y, s) { const [px, py] = nearestOnSegment(x, y, s); return Math.hypot(px - x, py - y); }
 
-function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
+export function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
   const rx = bx - ax, ry = by - ay, sx = dx - cx, sy = dy - cy, den = rx * sy - ry * sx;
   if (Math.abs(den) < 1e-12) return null;
   const t = ((cx - ax) * sy - (cy - ay) * sx) / den, u = ((cx - ax) * ry - (cy - ay) * rx) / den;
@@ -570,7 +653,7 @@ function segmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
 }
 
 // Whether the segment from (ax, ay) to (bx, by) touches the box (Liang-Barsky).
-function segmentHitsRect(ax, ay, bx, by, x0, y0, x1, y1) {
+export function segmentHitsRect(ax, ay, bx, by, x0, y0, x1, y1) {
   let t0 = 0, t1 = 1;
   const dx = bx - ax, dy = by - ay;
   for (const [pp, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]]) {

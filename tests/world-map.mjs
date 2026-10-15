@@ -148,5 +148,42 @@ for (const a of map.airfields) {
 }
 assert.deepEqual(map.radars.map(r => r.id), map.airfields.map(a => a.radar.id), 'the radars are the airfields\' radars');
 assert.equal(new Set(map.radars.map(r => r.id)).size, map.radars.length, 'each radar has its own identifier');
+// The metro's and the city's airports are international, reached by a spur from their own exit.
+for (const a of airports.filter(f => ['metro', 'city'].includes(cities.find(c => c.name === f.city).kind))) {
+  const [x, y] = a.access.points.at(-1), exit = map.crossings.find(c => c.type === 'interchange' && Math.hypot(c.x - x, c.y - y) < 0.1);
+  assert.ok(a.name.includes('International') && a.access.freeway && exit && exit.vEnd, `${a.name} has its own interstate exit (${exit ? `${exit.interstate} exit ${exit.exit}` : 'none'})`);
+}
+
+// Interstates are built off the section grid: they cross the mile lines between corners, and
+// where two meet no mile line is near.
+const offLines = (x, y) => Math.min(Math.abs(x - Math.round(x)), Math.abs(y - Math.round(y)));
+let lineCrossings = 0, atCorners = 0;
+for (const road of interstates) for (let i = 1; i < road.points.length; i++) {
+  const [ax, ay] = road.points[i - 1], [bx, by] = road.points[i];
+  for (let I = Math.ceil(Math.min(ax, bx)); I <= Math.floor(Math.max(ax, bx)); I++) if (bx !== ax) { const yy = ay + (by - ay) * (I - ax) / (bx - ax); lineCrossings++; if (Math.abs(yy - Math.round(yy)) < 0.05) atCorners++; }
+}
+assert.ok(atCorners <= 0.03 * lineCrossings, `interstates cross mile lines away from their corners (${atCorners} of ${lineCrossings} within 0.05 mi of one)`);
+for (const c of map.crossings) if (c.kind === 'interstate') assert.ok(offLines(c.x, c.y) >= 0.15, `${c.interstate} meets another interstate ${offLines(c.x, c.y).toFixed(2)} mi from a mile line`);
+
+// Facilities: a gas station in every place of 1,000 people, in about a quarter of the smaller
+// ones; schools in every place of 1,000 with parking; colleges in the cities; wind farms,
+// windmills and wells in their regions; no lot on a road.
+const fac = map.facilities, gasTowns = new Set(fac.gasStations.map(g => g.town)), schoolTowns = new Set(fac.schools.map(s => s.town));
+const large = map.settlements.filter(s => s.population >= 1000), smaller = map.settlements.filter(s => s.population < 1000);
+assert.ok(large.every(s => gasTowns.has(s.name)), `every place of 1,000 has a gas station (missing: ${large.filter(s => !gasTowns.has(s.name)).map(s => s.name).join(', ')})`);
+const smallShare = smaller.filter(s => gasTowns.has(s.name)).length / smaller.length;
+assert.ok(smallShare > 0.15 && smallShare < 0.35, `about a quarter of the smaller places have one (${(100 * smallShare).toFixed(0)}%)`);
+assert.ok(fac.gasStations.every(g => g.pumps.length >= 2) && new Set(fac.gasStations.map(g => g.size)).size >= 3, 'gas stations have pumps and come in sizes');
+const pumpsIn = kind => { const list = fac.gasStations.filter(g => map.settlements.find(s => s.name === g.town)?.kind === kind && g.size !== 'truck stop'); return list.reduce((t, g) => t + g.pumps.length, 0) / list.length; };
+assert.ok(pumpsIn('metro') > pumpsIn('town'), `city stations are bigger (${pumpsIn('metro').toFixed(1)} pumps against ${pumpsIn('town').toFixed(1)} in towns)`);
+assert.ok(large.every(s => schoolTowns.has(s.name)) && fac.schools.every(s => s.parking.length && s.buildings.length), 'every place of 1,000 has a school, each with parking');
+assert.ok(fac.campuses.length >= cities.length && fac.campuses.every(c => c.parking.length >= 3), 'colleges in the cities, with parking');
+const windRegions = new Set(fac.energy.windFarms.map(f => f.region)), regionOf = ([x, y]) => REGIONS[map.coverRegion[Math.floor(y / map.cellMiles) * n + Math.floor(x / map.cellMiles)]].key;
+assert.ok(fac.energy.windFarms.length >= 5 && !windRegions.has('ozarkEdge') && windRegions.has('highPlains'), `wind farms in the windy west (${[...windRegions].join(', ')})`);
+const wellRegions = {}; for (const w of fac.energy.wells) wellRegions[regionOf(w)] = (wellRegions[regionOf(w)] ?? 0) + 1;
+assert.ok(!wellRegions.ozarkEdge && (wellRegions.smokyHills ?? 0) > (wellRegions.midwest ?? 0), `oil where Kansas's is (${JSON.stringify(wellRegions)})`);
+assert.ok(fac.energy.wells.filter(w => w[2]).every(w => regionOf(w) === 'highPlains'), 'gas wells in the High Plains');
+const crossesRoad = poly => map.roads.some(r => r.points.some((q, i) => i > 0 && poly.some((v, k) => { const w = poly[(k + 1) % poly.length]; const [ax, ay] = r.points[i - 1], [bx, by] = q; const d = (bx - ax) * (w[1] - v[1]) - (by - ay) * (w[0] - v[0]); if (!d) return false; const t = ((v[0] - ax) * (w[1] - v[1]) - (v[1] - ay) * (w[0] - v[0])) / d, u = ((v[0] - ax) * (by - ay) - (v[1] - ay) * (bx - ax)) / d; return t >= 0 && t <= 1 && u >= 0 && u <= 1; })));
+assert.ok(![...fac.gasStations.map(g => g.lot), ...fac.schools.map(s => s.lot), ...fac.campuses.map(c => c.area)].some(crossesRoad), 'no lot or campus runs over a road');
 
 console.log(`world map passed (${map.rivers.length} rivers, ${map.settlements.length} settlements, ${list.length} counties, ${map.airfields.length} airfields, slope match ±${summary.engineMatch.meanAbsM.toFixed(1)} m, lake ${lake.areaMi2} mi2, highways ${(100 * along / total).toFixed(0)}% on mile lines)`);

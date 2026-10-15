@@ -38,6 +38,10 @@ export const SETTLEMENT_DEFAULTS = Object.freeze({
   diagonalCost: 0.8, flatSlope: 0.015, turnCost: 1.2,
   // Interstates were laid out for speed: diagonals freely, long straight legs, gentle bends.
   interstate: { diagonalScale: 0.1, turnCost: 4, interstateCost: 3, clearMi: 2, crossCost: 40 },
+  // Where the interstates are built, east and south of the corners they were routed over (miles).
+  interstateOffsetMi: [0.25, 0.5],
+  // Where two interstates meet, the nearest mile line (a section road) at least this far off.
+  lineClearMi: 0.2,
   // Expressways keep apart from the interstates outside the city they leave (a parallel
   // interstate costs this many times a fresh road).
   expressway: { diagonalScale: 0.4, turnCost: 2.5, interstateCost: 3 },
@@ -228,6 +232,9 @@ function planRoads(map, p, settlements, grid) {
         if (onInterstate[N] && onInterstate[K]) continue;
         // and cross it straight (the interchange's ramps meet the road on either side).
         if (onInterstate[K] && bend && !first && style !== p.interstate) continue;
+        // and straight for a mile more either side (the interstate is built up to half a mile off
+        // the corner it was routed over, and the ramps need the road straight there).
+        if (bend && !first && style !== p.interstate && (onInterstate[N] || onInterstate[(y - DY[din]) * m + x - DX[din]])) continue;
         if (nearJunction[N] && onInterstate[N] && N !== goal && style !== p.interstate) continue;
         // A diagonal step across a diagonal interstate (between its corners) crosses it too.
         const sideA = y * m + nx, sideB = ny * m + x;
@@ -358,15 +365,86 @@ function planRoads(map, p, settlements, grid) {
     if (road.points.every(onEarlier)) roads.splice(roads.indexOf(road), 1);
   }
 
+  // The interstates were routed over the section corners, but they are built on their own
+  // alignment: laid off the grid by p.interstateOffsetMi, so they cross the mile lines between
+  // corners (not where two county roads or town arterials meet), an east-west one runs between
+  // two mile lines rather than down one, and a diagonal one meets a crossing road a quarter mile
+  // from its corner. All are moved together, so where they meet they still meet.
+  const [offX, offY] = p.interstateOffsetMi;
+  for (const road of roads) if (road.kind === 'interstate') road.points = road.points.map(([x, y]) => [clamp(x + offX, 0, m), clamp(y + offY, 0, m)]);
+  // An interstate ending on another (a T) where a mile line passes would put its interchange on
+  // a section road: the end slides along the through interstate, on the straight, to where the
+  // nearest mile line is at least lineClearMi away.
+  const offLines = ([x, y]) => Math.min(Math.abs(x - Math.round(x)), Math.abs(y - Math.round(y)));
+  for (const road of roads.filter(r => r.kind === 'interstate')) {
+    for (const end of [0, road.points.length - 1]) {
+      const q = road.points[end];
+      if (offLines(q) >= p.lineClearMi) continue;
+      for (const other of roads) {
+        if (other === road || other.kind !== 'interstate') continue;
+        const pts = other.points, i = pts.findIndex((b, k) => k > 0 && distToSegment(q[0], q[1], pts[k - 1], b) < 0.05);
+        if (i < 1) continue;
+        // Along the through interstate (miles from its start), keeping 0.45 mi (the ramps' reach)
+        // from its bends.
+        const along = [0];
+        for (let k = 1; k < pts.length; k++) along.push(along[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+        const s0 = along[i - 1] + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]);
+        const pointAt = sAt => {
+          const k = along.findIndex((v, j) => j > 0 && v >= sAt);
+          if (k < 1 || sAt - along[k - 1] < 0.45 || along[k] - sAt < 0.45) return null;
+          const f = (sAt - along[k - 1]) / (along[k] - along[k - 1]);
+          return [Math.round((pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * f) * 100) / 100, Math.round((pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * f) * 100) / 100];
+        };
+        let best = null;
+        for (let d = 0.05; d <= 1 && !best; d += 0.05) for (const sAt of [s0 + d, s0 - d]) {
+          const at = pointAt(sAt);
+          if (at && offLines(at) >= p.lineClearMi) { best = at; break; }
+        }
+        if (best) road.points[end] = best;
+        break;
+      }
+    }
+  }
+
   // Beltways and bypasses: built as smooth rings round the centre, bridging whatever rivers they
   // meet (as real ones are), stepped outward where the ring would run into a lake.
-  const ring = (s, kind, name, radius, from = 0, to = 2 * Math.PI) => {
+  const ringPoints = (s, radius, from, to) => {
     const steps = Math.max(12, Math.round(72 * (to - from) / (2 * Math.PI))), points = [];
     for (let a = 0; a <= steps; a++) {
       const t = from + (to - from) * a / steps;
       let r = radius, x, y;
       do { x = clamp(s.x + r * Math.cos(t), 1, m - 2); y = clamp(s.y + r * Math.sin(t), 1, m - 2); r += 0.5; } while (wet[Math.floor(y) * m + Math.floor(x)] && r < 3 * radius);
       points.push([Math.round(x * 100) / 100, Math.round(y * 100) / 100]);
+    }
+    return points;
+  };
+  // Where a line crosses the interstates laid so far.
+  const interstateCrossings = points => {
+    const out = [];
+    for (const r of roads) if (r.kind === 'interstate') for (let i = 1; i < r.points.length; i++) for (let k = 1; k < points.length; k++) {
+      const [ax, ay] = r.points[i - 1], [bx, by] = r.points[i], [cx, cy] = points[k - 1], [dx, dy] = points[k];
+      const ux = bx - ax, uy = by - ay, vx = dx - cx, vy = dy - cy, den = ux * vy - uy * vx;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((cx - ax) * vy - (cy - ay) * vx) / den, u = ((cx - ax) * uy - (cy - ay) * ux) / den;
+      if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+      // With how near the interstate bends there (its ramps need it straight for 0.46 mi).
+      const x = ax + ux * t, y = ay + uy * t;
+      out.push({ x, y, bend: Math.min(...r.points.slice(1, -1).map(q => Math.hypot(q[0] - x, q[1] - y)), Infinity) });
+    }
+    return out;
+  };
+  const ring = (s, kind, name, radius, from = 0, to = 2 * Math.PI) => {
+    // A beltway's radius is picked (within a mile) so it crosses the interstates between the
+    // mile lines, not where a section road or arterial meets them, and away from their bends.
+    let points = ringPoints(s, radius, from, to);
+    if (kind === 'interstate') {
+      let best = -1;
+      // Centred on the place, or on the interstates' own alignment beside it.
+      for (const centre of [s, { x: s.x + offX, y: s.y + offY }]) for (let k = 0; k <= 100; k++) {
+        const r = radius + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.02, pts = ringPoints(centre, r, from, to);
+        const clearance = Math.min(1, ...interstateCrossings(pts).map(q => (q.bend < 0.7 ? -1 : offLines([q.x, q.y]))));
+        if (clearance > best + 1e-9) { best = clearance; points = pts; }
+      }
     }
     roads.push({ kind, name, points });
     // A ring interstate's corners are limited access too.

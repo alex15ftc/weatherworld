@@ -4,7 +4,9 @@
 // interchange ramps, overpasses and signals once zoomed in; paved, gravel and dirt section roads
 // as the road rules leave them (js/worldmap/roadNetwork.js); labels for places, rivers, routes
 // and exits by zoom; airports, the air base, NWS offices and radars (js/worldmap/airfields.js),
-// from a symbol when zoomed out to runways, taxiways, terminals, curbs and parking zoomed in.
+// from a symbol when zoomed out to runways, taxiways, terminals, curbs and parking zoomed in;
+// wind farms, windmills, oil and gas wells, schools, colleges and gas stations
+// (js/worldmap/facilities.js), each on its own layer.
 import { shadeMap, COVER_COLOURS, RIVER_COLOUR } from '../worldmap/worldMapStyle.js';
 import { interchangeRamps, crossingSin, tee } from '../worldmap/interchanges.js';
 import { sectionSegments, signalJunctions } from '../worldmap/roadNetwork.js';
@@ -24,6 +26,7 @@ const ROADS = {
 const SECTIONS = { 3: { colour: '#f4f4f0', px: 1, mi: 0.022, from: 4 }, 2: { colour: '#d8cdb4', px: 0.8, mi: 0.016, from: 14 }, 1: { colour: '#9a7854', px: 0.7, mi: 0.01, from: 14 } };
 const roadClass = r => (r.kind === 'highway' ? (r.name?.startsWith('US') ? 'us' : 'state') : r.kind);
 
+let facilities = null;
 let map = null, base = null, regionBorders = null, sections = null, signals = [], ramps = [], counties = null, countyIds = null;
 const view = { x: 250, y: 250, scale: 1 };   // centre (miles) and pixels per mile
 let width = 0, height = 0, dpr = 1;
@@ -38,6 +41,8 @@ async function load(seed) {
     map = { ...meta, coverKeys: meta.cover, elevation: new Float32Array(elevation.buffer), region, cover, sections: { ...meta.sectionGrid, roads: sectionBytes } };
     // The counties (js/worldmap/counties.js), if this build has them.
     try { counties = await (await fetch(`${dir}/counties.json`, { cache: 'no-cache' })).json(); countyIds = new Uint16Array((await bytes('counties.u16')).buffer); } catch { counties = null; countyIds = null; }
+    // Energy, schools and gas stations (facilities.js), if this build has them.
+    try { facilities = await (await fetch(`${dir}/facilities.json`, { cache: 'no-cache' })).json(); } catch { facilities = null; }
   } catch {
     map = null;
     $('status').textContent = `Seed ${seed} not built yet`;
@@ -177,6 +182,7 @@ function draw() {
       ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(sx(st.x), sy(st.y), st.kind === 'town' ? 1.8 : 4, 0, 2 * Math.PI); ctx.fill();
     }
   }
+  if (facilities) drawFacilities(inView);
   if ($('showAirports').checked || $('showNws').checked) drawAirfields(inView);
   if ($('showLabels').checked) drawLabels(inView);
 }
@@ -203,6 +209,83 @@ function strokeLine(points, colour, widthMi, minPx) {
   ctx.strokeStyle = colour; ctx.lineWidth = Math.max(minPx, widthMi * view.scale); ctx.stroke();
 }
 
+// Energy, schools and gas stations by zoom: symbols first, then lots, buildings, parking,
+// pumps and fields as they become big enough to see.
+const FAC = {
+  turbine: '#f8fafc', turbineRing: '#334155', gravel: '#d8cdb4', dirt: '#9a7854', windmill: '#7c2d12', tank: '#38bdf8', oil: '#111827', gas: '#f97316', battery: '#a8a29e',
+  substation: '#64748b', schoolLot: 'rgba(250, 204, 21, .14)', school: '#facc15', field: '#4d7c0f', track: '#b45309', playground: '#a3e635', campus: 'rgba(253, 230, 138, .25)', quad: '#65a30d',
+  station: '#ef4444', canopy: '#e5e7eb', store: '#fca5a5', pump: '#111827', diesel: '#16a34a', lot: '#71717a'
+};
+function drawFacilities(inView) {
+  const s = view.scale, at = q => inView(q[0], q[1], q[0], q[1]);
+  const dot = (q, r, fill, stroke = null) => { ctx.beginPath(); ctx.arc(sx(q[0]), sy(q[1]), r, 0, 2 * Math.PI); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); } };
+  const e = facilities.energy;
+  if ($('showEnergy').checked) {
+    if (s >= 14) for (const line of e.leaseRoads) if (at(line[0])) strokeLine(line, FAC.dirt, 12 / 5280, 0.6);
+    for (const farm of e.windFarms) {
+      if (s >= 10) for (const road of farm.roads) if (at(road[0]) || at(road.at(-1))) strokeLine(road, FAC.gravel, 16 / 5280, 0.8);
+      if (s >= 10 && farm.substation && at(farm.substation[0])) fillPoly(farm.substation, FAC.substation, '#0f172a', 0.6);
+      if (s < 2.5) continue;
+      for (const t of farm.turbines) {
+        if (!at(t)) continue;
+        if (s < 12) { dot(t, 1.6, FAC.turbine, FAC.turbineRing); continue; }
+        // Tower and three blades (the rotor is about 120 m, 0.075 mi, across).
+        const r = Math.max(5, 0.037 * s), x = sx(t[0]), y = sy(t[1]);
+        ctx.strokeStyle = FAC.turbineRing; ctx.lineWidth = 1.4; ctx.beginPath();
+        for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * 2 * Math.PI / 3; ctx.moveTo(x, y); ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a)); }
+        ctx.stroke(); dot(t, 2, FAC.turbine, FAC.turbineRing);
+      }
+    }
+    if (s >= 8) for (const w of e.wells) { if (at(w)) dot(w, s >= 30 ? 2.6 : 1.5, w[2] ? FAC.gas : FAC.oil, s >= 30 ? '#f8fafc' : null); }
+    if (s >= 14) for (const t of e.tanks) if (at(t)) { ctx.fillStyle = FAC.battery; ctx.fillRect(sx(t[0]) - 2.5, sy(t[1]) - 2.5, 5, 5); }
+    if (s >= 10) for (const w of e.windmills) {
+      if (!at(w)) continue;
+      const x = sx(w[0]), y = sy(w[1]);
+      if (s >= 30) dot([w[0] + 0.008, w[1] + 0.004], Math.max(2, 0.006 * s), FAC.tank);
+      ctx.strokeStyle = FAC.windmill; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(x - 3, y - 3); ctx.lineTo(x + 3, y + 3); ctx.moveTo(x + 3, y - 3); ctx.lineTo(x - 3, y + 3); ctx.stroke();
+    }
+  }
+  if ($('showSchools').checked) {
+    for (const c of facilities.campuses) {
+      if (!inView(c.area[0][0], c.area[0][1], c.area[2][0], c.area[2][1]) || s < 3) continue;
+      fillPoly(c.area, FAC.campus, s >= 10 ? '#fde68a' : null, 0.8);
+      if (s < 10) continue;
+      fillPoly(c.quad, FAC.quad);
+      for (const f of c.fields) fillPoly(f, FAC.field);
+      if (c.stadium) fillPoly(c.stadium, FAC.field, FAC.track, 2);
+      strokeLine(c.loop, AIR.road, 28 / 5280, 0.8);
+      for (const lot of c.parking) fillPoly(lot, AIR.parking);
+      for (const b of c.buildings) fillPoly(b, '#e7e5e4', s > 40 ? '#44403c' : null, 0.5);
+    }
+    for (const sc of facilities.schools) {
+      if (!at(sc.lot[0])) continue;
+      if (s < 4) continue;
+      if (s < 14) { const q = sc.buildings[0][0]; ctx.fillStyle = FAC.school; ctx.strokeStyle = '#422006'; ctx.lineWidth = 1; ctx.fillRect(sx(q[0]) - 3, sy(q[1]) - 3, 6, 6); ctx.strokeRect(sx(q[0]) - 3, sy(q[1]) - 3, 6, 6); continue; }
+      fillPoly(sc.lot, FAC.schoolLot, '#facc15', 0.6);
+      for (const f of sc.fields) {
+        if (f.kind === 'track') { fillPoly(f.poly, FAC.field, FAC.track, Math.max(1.5, 0.004 * s)); continue; }
+        fillPoly(f.poly, f.kind === 'playground' ? FAC.playground : FAC.field);
+      }
+      strokeLine(sc.drive, AIR.road, 24 / 5280, 1); strokeLine(sc.loop, AIR.road, 24 / 5280, 1);
+      for (const lot of sc.parking) fillPoly(lot, AIR.parking);
+      for (const b of sc.buildings) fillPoly(b, FAC.school, s > 40 ? '#422006' : null, 0.6);
+    }
+  }
+  if ($('showGas').checked) {
+    for (const g of facilities.gasStations) {
+      if (!at(g.lot[0]) || s < 6) continue;
+      if (s < 30) { dot(g.store[0], g.size === 'truck stop' ? 4 : 2.6, FAC.station, '#ffffff'); continue; }
+      fillPoly(g.lot, FAC.lot);
+      for (const d of g.drives) strokeLine(d, FAC.lot, 30 / 5280, 1);
+      for (const lot of g.parking) fillPoly(lot, AIR.parking, '#d4d4d8', 0.5);
+      fillPoly(g.store, FAC.store, '#7f1d1d', 0.6);
+      for (const c of g.canopies) fillPoly(c, FAC.canopy, '#9ca3af', 0.6);
+      for (const q of g.pumps) dot(q, Math.max(1.4, 0.0012 * s), FAC.pump);
+      for (const q of g.diesel) dot(q, Math.max(1.6, 0.0014 * s), FAC.diesel);
+    }
+  }
+}
+
 // Airports and the air base by zoom: a symbol when zoomed out; fence and runways from 4 px a
 // mile; taxiways, aprons, buildings, parking, curbs and roads from 12; runway markings from 40.
 // NWS offices and their radars on their own layer.
@@ -213,7 +296,7 @@ function drawAirfields(inView) {
     if (!inView(Math.min(...xs) - 1, Math.min(...ys) - 1, Math.max(...xs) + 1, Math.max(...ys) + 1)) continue;
     if (airports) {
       if (s >= 4) {
-        strokeLine(a.access.points, AIR.road, a.class === 'large hub' ? 0.04 : 0.022, 1);
+        if (!a.access.freeway) strokeLine(a.access.points, AIR.road, 0.022, 1);
         for (const area of a.areas ?? []) fillPoly(area.poly, AIR.area[area.kind] ?? 'rgba(148,163,184,.3)');
         ctx.setLineDash(s > 10 ? [4, 3] : []); fillPoly(a.fence, null, AIR.fence, 1); ctx.setLineDash([]);
       }
@@ -302,6 +385,15 @@ function drawLabels(inView) {
       }
     }
   }
+  // Wind farms, colleges, schools and gas stations.
+  if (facilities) {
+    if ($('showEnergy').checked && s >= 2.5) for (const farm of facilities.energy.windFarms) if (inView(farm.x, farm.y, farm.x, farm.y)) text(farm.name, sx(farm.x), sy(farm.y) - 14, { size: 11, weight: 700, colour: '#e0f2fe', centre: true });
+    if ($('showSchools').checked) {
+      if (s >= 5) for (const c of facilities.campuses) { const [cx, cy] = centroid(c.area); if (inView(cx, cy, cx, cy)) text(c.name, sx(cx), sy(cy), { size: c.tier === 'college' ? 10 : 12, weight: 700, colour: '#fef3c7', centre: true }); }
+      if (s >= 90) for (const sc of facilities.schools) { const [cx, cy] = centroid(sc.buildings[0]); if (inView(cx, cy, cx, cy)) text(sc.name, sx(cx), sy(cy) - 12, { size: 10, weight: 600, colour: '#fef08a', centre: true }); }
+    }
+    if ($('showGas').checked && s >= 120) for (const g of facilities.gasStations) { const [cx, cy] = centroid(g.store); if (inView(cx, cy, cx, cy)) text(g.size === 'truck stop' ? `truck stop · ${g.dispensers} pumps` : `gas · ${g.dispensers} pumps`, sx(cx), sy(cy) + 12, { size: 10, weight: 600, colour: '#fecaca', centre: true }); }
+  }
   // Places by size and zoom.
   const rank = st => ({ metro: 0, city: 1, smallCity: 2 }[st.kind] ?? 3);
   const places = map.settlements.filter(st => inView(st.x, st.y, st.x, st.y) && (rank(st) <= 1 || (rank(st) === 2 && s > 1.4) || (st.population > 3000 && s > 3) || (st.population > 800 && s > 7) || s > 16));
@@ -366,6 +458,7 @@ function renderSummary() {
     `US routes: ${map.roads.filter(r => roadClass(r) === 'us').length}, state highways: ${map.roads.filter(r => roadClass(r) === 'state').length}`,
     `interstate exits: ${cr.filter(c => c.type === 'interchange').length}, overpasses: ${cr.filter(c => c.type === 'overpass').length}`,
     `signals: ${signals.length}`,
+    ...(facilities ? [`gas stations: ${facilities.gasStations.length}, schools: ${facilities.schools.length}, campuses: ${facilities.campuses.length}`, `wind farms: ${facilities.energy.windFarms.length} (${facilities.energy.windFarms.reduce((a, f) => a + f.turbines.length, 0)} turbines), windmills: ${facilities.energy.windmills.length}, wells: ${facilities.energy.wells.length}`] : []),
     ...(map.airfields ? [`airports: ${map.airfields.filter(a => a.kind === 'airport').length}, air bases: ${map.airfields.filter(a => a.kind === 'airBase').length}, NWS offices: ${map.airfields.filter(a => a.nws).length}`, `radars: ${map.airfields.map(a => a.radar.id).join(' ')}`] : []),
     `section roads: ${Object.entries(map.sectionGrid.roadMiles).map(([k, v]) => `${k} ${v}`).join(', ')} mi`,
     ...(counties ? [`counties: ${counties.counties.length}, median ${[...counties.counties].map(c => c.areaMi2).sort((a, b) => a - b)[counties.counties.length >> 1]} mi²`] : []),
@@ -381,6 +474,8 @@ function renderSummary() {
     + swatch('#16a34a', 'traffic signals')
     + swatch(AIR.runway, 'runway', true) + swatch(AIR.taxiway, 'taxiway', true) + swatch(AIR.apron, 'apron / flightline') + swatch(AIR.terminal, 'terminal')
     + swatch(AIR.curb, 'drop-off / pick-up curb', true) + swatch(AIR.parking, 'parking lot') + swatch(AIR.garage, 'parking garage') + swatch(AIR.hangar, 'hangar')
+    + swatch(FAC.turbine, 'wind turbine') + swatch(FAC.windmill, 'farm windmill') + swatch(FAC.oil, 'oil well (pumpjack)') + swatch(FAC.gas, 'gas well')
+    + swatch(FAC.school, 'school') + swatch(FAC.campus, 'college campus') + swatch(FAC.field, 'athletic field') + swatch(FAC.station, 'gas station') + swatch(FAC.canopy, 'fuel canopy')
     + swatch(AIR.fence, 'airfield fence', true) + swatch(AIR.nws, 'NWS forecast office') + swatch(AIR.radarRing, 'weather radar (WSR-88D)');
 }
 
@@ -440,7 +535,7 @@ function nearestPlace(x, y) {
   return `${best.name} (${kind}, pop. ${best.population.toLocaleString()}), ${distance.toFixed(1)} mi`;
 }
 
-for (const id of ['showRivers', 'showRoads', 'showSections', 'showAirports', 'showNws', 'showRegions', 'showCounties', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
+for (const id of ['showRivers', 'showRoads', 'showSections', 'showAirports', 'showNws', 'showEnergy', 'showSchools', 'showGas', 'showRegions', 'showCounties', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
 $('seed').addEventListener('change', () => load(Number($('seed').value) || 1));
 window.addEventListener('resize', fit);
 load(1);

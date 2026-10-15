@@ -18,7 +18,8 @@
 // into two ramps that merge onto the other, with no bridge.
 //
 // Every crossing is then checked on the ground (interchanges.js): an interchange whose ramps or
-// bridge approaches would run into a river or across another highway becomes an overpass, and an
+// bridge approaches would run into a river or across another highway, or whose ramps would end off
+// the road (it bends too near the interstate), becomes an overpass, and an
 // overpass whose approaches would run into a river is dropped (a US route or expressway keeps its
 // overpass). Section-line roads a ramp would cross are removed there.
 // Exits are numbered by milepost, from the west end of an east-west interstate or the south end
@@ -261,7 +262,9 @@ export function planCrossings(map, options = {}) {
     if (c.type === 'interchange' && c.kind !== 'interstate' && !c.uEnd && !c.vEnd) {
       const pad = INTERCHANGE.rampHalf + p.riverMarginMi;
       const ramps = interchangeRamps(c);
-      if (ramps.some(r => lineHitsRiver(r, pad) || rampHitsHighway(c, r)) || lineHitsRiver(overpassLine(c), pad)) { c.type = 'overpass'; downgraded++; }
+      // (and one whose ramps would end off the road: it bends too near the interstate for a diamond)
+      const onRoad = ([x, y]) => map.roads.some(r => r.points.some((q, i) => i > 0 && x > Math.min(q[0], r.points[i - 1][0]) - 0.1 && x < Math.max(q[0], r.points[i - 1][0]) + 0.1 && y > Math.min(q[1], r.points[i - 1][1]) - 0.1 && y < Math.max(q[1], r.points[i - 1][1]) + 0.1 && pointSeg(x, y, r.points[i - 1][0], r.points[i - 1][1], q[0], q[1]) < 0.075));
+      if (ramps.some(r => lineHitsRiver(r, pad) || rampHitsHighway(c, r) || !onRoad(r[0]) || !onRoad(r.at(-1))) || lineHitsRiver(overpassLine(c), pad)) { c.type = 'overpass'; downgraded++; }
     }
     if (c.type === 'overpass' && lineHitsRiver(overpassLine(c), INTERCHANGE.rampHalf + p.riverMarginMi) && c.kind !== 'us' && c.kind !== 'expressway') { dropped++; continue; }
     kept.push(c);

@@ -4,7 +4,8 @@
 // sectionRoads.js), counties.u16 (county number per cell) with counties.json (the counties, and
 // the towns with the county each is in, for the forecast products; see js/forecast/counties.js),
 // airfields.json (airports, NWS offices, the air base and the weather radars at them; see
-// airfields.js; the server places its radars from it) and preview.png. The map page (worldmap.html) reads these.
+// airfields.js; the server places its radars from it), facilities.json (wind farms, windmills,
+// oil and gas wells, schools, colleges and gas stations; see facilities.js) and preview.png. The map page (worldmap.html) reads these.
 //   node scripts/build-world-map.mjs [--seed 1] [--out dir] [key=value ...]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -43,6 +44,7 @@ writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
   summary, buildSeconds: seconds
 }));
 writeAirfieldFile(map, out);
+writeFileSync(path.join(out, 'facilities.json'), JSON.stringify(map.facilities));
 writeFileSync(path.join(out, 'elevation.f32'), Buffer.from(elevation.buffer));
 writeFileSync(path.join(out, 'region.u8'), Buffer.from(region.buffer));
 writeFileSync(path.join(out, 'cover.u8'), Buffer.from(cover.buffer));
@@ -67,6 +69,9 @@ const areas = counties.list.map(k => k.areaMi2).sort((a, b) => a - b);
 console.log(`counties: ${areas.length}, median ${areas[areas.length >> 1]} mi2 (10-90%: ${areas[Math.floor(areas.length * 0.1)]}-${areas[Math.floor(areas.length * 0.9)]}), ${counties.list.filter(k => !k.seat).length} without a town for a seat`);
 console.log(`rivers: ${summary.rivers} (${Math.round(summary.riverMiles)} mi), ${summary.bigRivers} reaching 150 m wide`);
 for (const a of map.airfields) console.log(`${a.code} ${a.name}: ${a.distanceMi} mi from ${a.city}, runways ${a.runways.map(r => `${r.name} (${r.lengthFt} ft)`).join(', ')}, radar ${a.radar.id}${a.nws ? `, NWS office ${a.nws.id}` : ''}, access road to ${a.access.joins}`);
+const fac = map.facilities, e = fac.energy;
+console.log(`facilities: ${fac.gasStations.length} gas stations (${fac.gasStations.filter(g => g.size === 'truck stop').length} truck stops), ${fac.schools.length} schools, ${fac.campuses.length} campuses, ${e.windFarms.length} wind farms (${e.windFarms.reduce((a, f) => a + f.turbines.length, 0)} turbines), ${e.windmills.length} windmills, ${e.wells.length} wells, ${e.tanks.length} tank batteries`);
+if (fac.missing.gas.length || fac.missing.schools.length) console.log(`  not placed: gas ${fac.missing.gas.join(', ') || '-'}; schools ${fac.missing.schools.join(', ') || '-'}`);
 for (const l of map.lakes) console.log(`lake ${l.id}: ${l.areaMi2.toFixed(0)} mi2 at ${l.damX.toFixed(0)}, ${l.damY.toFixed(0)} mi, surface ${l.surfaceM.toFixed(0)} m, dam ${l.damHeightM.toFixed(0)} m, on a river draining ${l.inflowMi2.toFixed(0)} mi2`);
 console.log(`section roads (mi): ${Object.entries(sectionMiles).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 for (const r of summary.regions) console.log(`  ${r.name.padEnd(18)} ${(r.share * 100).toFixed(1).padStart(5)}%  mean ${r.meanM?.toFixed(0) ?? '-'} m, relief (5-95%) ${r.reliefM?.toFixed(0) ?? '-'} m`);
