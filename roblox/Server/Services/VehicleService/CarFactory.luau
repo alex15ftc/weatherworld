@@ -9,10 +9,19 @@
 -- Art: a Model at ReplicatedStorage.Assets.Cars.ChaseCar, laid out as the rally car's art
 -- (pivot on the ground midway between the axles, facing -Z; a Body model; optionally a Wheel
 -- model of one right-hand wheel, pivot at the hub) at the rally's 0.225 m a stud. It is scaled
--- down to this world (Config.SCALE). Without it the car gets a plain body made of parts.
+-- down to this world (Config.SCALE).
+--
+-- Stand-in: without that art, a mesh named "body car" (any spacing or case: BodyCar, Body Car)
+-- made in Studio is used as the body. It is looked for in ReplicatedStorage.Assets, then at the
+-- top of Workspace, ServerStorage and ReplicatedStorage, and fitted to the car: its long side
+-- along the car, scaled to the car's length, sat at the body's ride height. Attributes on it
+-- adjust the fit: Yaw (degrees, e.g. 180 if it faces backwards), Length (studs), Lift (studs).
+-- It should be upright (Y up). The plain wheels stay. Without any of these the car gets a plain
+-- body made of parts.
 
 local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage.Shared.Vehicles.Config)
 
@@ -23,6 +32,10 @@ local CarFactory = {}
 
 CarFactory.COLLISION_GROUP = "ChaseCar"
 CarFactory.ART_NAME = "ChaseCar"
+CarFactory.STANDIN_NAME = "bodycar" -- compared without spaces, underscores or case
+
+local STANDIN_LENGTH = 16.6 * S -- nose to tail of the plain body, bumpers included
+local STANDIN_BOTTOM = 0.75 -- studs above the ground: the plain body's underside
 
 local registered = false
 
@@ -207,6 +220,81 @@ local function attachArt(car: Model, chassis: BasePart, source: Instance, origin
 	copy.Parent = car
 end
 
+local function standinName(name: string): boolean
+	return (name:lower():gsub("[%s_%-]", "")) == CarFactory.STANDIN_NAME
+end
+
+local function findIn(parent: Instance?, deep: boolean): Instance?
+	if not parent then
+		return nil
+	end
+	local candidates: { Instance } = if deep then parent:GetDescendants() else parent:GetChildren()
+	for _, child in candidates do
+		if (child:IsA("BasePart") or child:IsA("Model")) and standinName(child.Name) then
+			return child
+		end
+	end
+	return nil
+end
+
+local warned = false
+local function findStandin(): Instance?
+	local found = findIn(ReplicatedStorage:FindFirstChild("Assets"), true)
+		or findIn(workspace, false)
+		or findIn(ServerStorage, false)
+		or findIn(ReplicatedStorage, false)
+	if not found and not warned then
+		warned = true
+		warn(`[CarFactory] no "body car" mesh found (ReplicatedStorage.Assets, or the top of Workspace, ServerStorage or ReplicatedStorage); using the plain body`)
+	end
+	return found
+end
+
+local function number(instance: Instance, name: string): number?
+	local value = instance:GetAttribute(name)
+	return if type(value) == "number" then value else nil
+end
+
+-- The stand-in mesh as the car's body, at the world origin like the rest of the car.
+local function standinBody(template: Instance): Model
+	local body = Instance.new("Model")
+	body.Name = "Body"
+	local copy = template:Clone()
+	if copy:IsA("BasePart") then
+		copy.Parent = body
+		-- Measure it in its own frame, so a part turned in Studio still fits.
+		body.WorldPivot = copy.CFrame
+	else
+		local model = copy :: Model
+		for _, child in model:GetChildren() do
+			child.Parent = body
+		end
+		body.WorldPivot = model.WorldPivot
+		model:Destroy()
+	end
+	for _, item in body:GetDescendants() do
+		if item:IsA("Script") or item:IsA("LocalScript") then
+			item:Destroy()
+		end
+	end
+
+	-- Centre the pivot on its bounds, scale its long side to the car's length, then place it.
+	local box, size = body:GetBoundingBox()
+	body.WorldPivot = box
+	local sideways = size.X > size.Z
+	local length = if sideways then size.X else size.Z
+	local target = number(template, "Length") or STANDIN_LENGTH
+	if length > 0 then
+		body:ScaleTo(body:GetScale() * target / length)
+		size *= target / length
+	end
+	local yaw = math.rad((if sideways then 90 else 0) + (number(template, "Yaw") or 0))
+	local lift = number(template, "Lift") or 0
+	local centre = Vector3.new(0, STANDIN_BOTTOM + lift + size.Y / 2, CAR.ChassisOffset.Z)
+	body:PivotTo(CFrame.new(centre) * CFrame.Angles(0, yaw, 0))
+	return body
+end
+
 -- A car at the world origin (origin on the ground, facing -Z), unanchored; the caller places it.
 function CarFactory.build(paint: Color3): Model
 	registerCollisionGroup()
@@ -233,10 +321,12 @@ function CarFactory.build(paint: Color3): Model
 	local template = cars and cars:FindFirstChild(CarFactory.ART_NAME)
 	local art = if template and template:IsA("Model") and template:FindFirstChild("Body") then template else nil
 
+	local standin = if art then nil else findStandin()
+
 	if art then
 		attachArt(car, chassis, art:FindFirstChild("Body") :: Instance, art:GetPivot(), "Body")
 	else
-		local body = plainBody(paint)
+		local body = if standin then standinBody(standin) else plainBody(paint)
 		for _, part in body:GetDescendants() do
 			if part:IsA("BasePart") then
 				decorate(part)
