@@ -1,0 +1,53 @@
+name: Roblox
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "roblox/**"
+      - "js/worldmap/**"
+      - "scripts/export-world-roblox.mjs"
+      - ".github/workflows/roblox.yml"
+  pull_request:
+    paths:
+      - "roblox/**"
+      - "js/worldmap/**"
+      - "scripts/export-world-roblox.mjs"
+      - ".github/workflows/roblox.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: ok-nick/setup-aftman@v0.4.2
+        with:
+          path: roblox
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # roblox/src/worlddata and roblox/src/shared/MapData are generated (and gitignored).
+      - name: Export the world map
+        run: node scripts/export-world-roblox.mjs
+
+      - name: Install packages
+        working-directory: roblox
+        run: |
+          wally install
+          rojo sourcemap default.project.json --output sourcemap.json
+          wally-package-types --sourcemap sourcemap.json Packages/
+
+      - name: Type check
+        working-directory: roblox
+        run: |
+          curl -sSfL -o globalTypes.d.luau https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/main/scripts/globalTypes.d.luau
+          luau-lsp analyze --definitions=globalTypes.d.luau --sourcemap=sourcemap.json \
+            --ignore="Packages/**" --ignore="src/worlddata/**" src
+
+      - name: Build place
+        working-directory: roblox
+        run: rojo build default.project.json --output WeatherWorld.rbxl

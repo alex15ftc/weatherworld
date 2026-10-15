@@ -1,0 +1,12 @@
+# Wally packages (reinstall with ./setup.sh or .\setup.ps1)
+Packages/
+
+# Generated
+sourcemap.json
+globalTypes.d.luau
+
+# Place files and Studio lock files
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock

@@ -1,0 +1,24 @@
+{
+  "name": "weatherworld",
+  "repository": {
+    "origins": [
+      "https://github.com/alex15ftc/weatherworld",
+      "https://github.com/alex15ftc/weatherworld.git",
+      "git@github.com:alex15ftc/weatherworld.git"
+    ],
+    "mainBranch": "main",
+    "mirrorBranches": ["main"],
+    "localSectionFile": "AGENTS.md"
+  },
+  "places": [
+    { "name": "WeatherWorld", "project": "roblox/default.project.json", "servePort": 34880 }
+  ],
+  "preview": {
+    "gameSessionAttribute": "WeatherWorldPreviewSession",
+    "requiredPaths": ["roblox/Packages", "roblox/src/worlddata", "roblox/src/shared/MapData"]
+  },
+  "dependencies": {
+    "manifests": ["roblox/aftman.toml", "roblox/wally.toml", "roblox/wally.lock"],
+    "setup": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "roblox/setup.ps1"]
+  }
+}

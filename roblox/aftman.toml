@@ -1,3 +1,7 @@
-# Tools for the Roblox side. Run `aftman install` in this folder.
+# Tools for the Roblox side, pinned. Run ./setup.sh (or .\setup.ps1) in this folder.
+# Rojo stays on 7.7.0: roblox-devflow's preview bridge is anchored to that version.
 [tools]
-rojo = "rojo-rbx/rojo@7.4.4"
+rojo = "rojo-rbx/rojo@7.7.0"
+wally = "upliftgames/wally@0.3.2"
+wally-package-types = "JohnnyMorganz/wally-package-types@1.6.2"
+luau-lsp = "JohnnyMorganz/luau-lsp@1.70.0"
