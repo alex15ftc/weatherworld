@@ -876,30 +876,62 @@ function StormController.Start()
 	Net.AskFrames:Client():Fire()
 	root.Parent = workspace
 
-	-- Load the storm art; anything that fails is asked for again each minute (a new upload
-	-- waits for moderation), and drawn with parts meanwhile.
+	-- Load the storm art, reporting its state as it goes (Output and the debug panel): Roblox's
+	-- status for each image is read every few seconds, so a stalled load shows too. Anything that
+	-- fails is asked for again each minute and drawn with parts meanwhile.
 	task.spawn(function()
 		local images = artImages()
-		local last = ""
-		while #images > 0 do
-			local ok, err = pcall(function()
-				ContentProvider:PreloadAsync(images, function(id: string, status: Enum.AssetFetchStatus)
-					fetched[id] = status
+		if #images == 0 then
+			print(`[StormController] {StormController.artStatus()}`)
+			return
+		end
+		local function preload(list: { string })
+			task.spawn(function()
+				local ok, err = pcall(function()
+					ContentProvider:PreloadAsync(list, function(id: string, status: Enum.AssetFetchStatus)
+						fetched[id] = status
+					end)
 				end)
+				if not ok then
+					warn(`[StormController] preloading the storm art failed: {err}`)
+				end
 			end)
-			local report = StormController.artStatus() .. (if ok then "" else ` (preload error: {err})`)
+		end
+		preload(images)
+		local last, sinceRetry = "", 0
+		while true do
+			local settled = true
+			for _, image in images do
+				local ok, status = pcall(ContentProvider.GetAssetFetchStatus, ContentProvider, image)
+				if ok and status ~= Enum.AssetFetchStatus.None then
+					fetched[image] = status
+				end
+				if fetched[image] ~= Enum.AssetFetchStatus.Success then
+					settled = false
+				end
+			end
+			local report = StormController.artStatus()
 			if report ~= last then
 				last = report
 				print(`[StormController] {report}`)
 			end
-			local retry = {}
-			for _, image in images do
-				if failed(fetched[image]) then
-					table.insert(retry, image)
+			if settled then
+				break
+			end
+			sinceRetry += 5
+			if sinceRetry >= 60 then
+				sinceRetry = 0
+				local retry = {}
+				for _, image in images do
+					if failed(fetched[image]) then
+						table.insert(retry, image)
+					end
+				end
+				if #retry > 0 then
+					preload(retry)
 				end
 			end
-			images = retry
-			task.wait(60)
+			task.wait(5)
 		end
 	end)
 
