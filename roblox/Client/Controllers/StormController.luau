@@ -182,6 +182,34 @@ local function fade(t: number, alpha: number): number
 end
 
 -- A storm's clouds --------------------------------------------------------------------------
+--
+-- Every cloud piece is a cluster of overlapping puffs rather than one smooth shape: random
+-- sizes and places (fixed per storm, so nothing flickers), the outer ones more see-through, so
+-- the edges are ragged and soft and no tiers line up. They swell and shrink a little, slowly,
+-- so the cloud boils.
+
+-- A fixed random number (0..1) for a seed and an index.
+local function rand(seed: number, n: number): number
+	return (math.sin(seed * 12.9898 + n * 78.233) * 43758.5453) % 1
+end
+
+-- `count` puffs filling an ellipsoid of `size` (x across, y up, z along) at `frame`. The
+-- middle ones are as clear as `transparency`, the outer ones clearer; the lower ones darker,
+-- toward `under`.
+local function puffs(pool: Pool, key: string, frame: CFrame, size: Vector3, count: number, colour: Color3, under: Color3, transparency: number, clock: number, seed: number)
+	for i = 1, count do
+		local n = i * 5
+		local a = TAU * rand(seed, n)
+		local out = math.sqrt(rand(seed, n + 1)) * 0.62
+		local y = (rand(seed, n + 2) - 0.5) * 0.55
+		local offset = Vector3.new(math.cos(a) * out * size.X / 2, y * size.Y / 2, math.sin(a) * out * size.Z / 2)
+		local share = 0.42 + 0.5 * rand(seed, n + 3)
+		local boil = 1 + 0.05 * math.sin(clock * 0.12 + seed * 40 + i * 1.7)
+		local clear = 1 - (1 - transparency) * (1 - 0.5 * out / 0.62)
+		local shade = colour:Lerp(under, math.clamp(0.25 - y * 0.6, 0, 0.45))
+		blob(pool, `{key}#{i}`, frame * CFrame.new(offset), size * share * boil, shade, clear)
+	end
+end
 
 local function drawClouds(pool: Pool, s: any, clock: number)
 	local alpha = s.alpha or 1
@@ -198,7 +226,8 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 	local lineShare = s.line.share
 	local towers = if lineShare > 0.3 then math.clamp(math.floor(2 * s.line.halfLengthKm / 12), 2, 8) else 1
 	local axis = heading(s.line.axisBearingDeg)
-	local levels = 6
+	local levels = 7
+	local perLevel = if towers > 1 then 3 else 6
 	for k = 1, towers do
 		local along = if towers > 1 then ((k - 0.5) / towers - 0.5) * 2 * s.line.halfLengthKm * KM else 0
 		local scale = if towers > 1 then 0.75 + 0.25 * math.sin(k * 2.3 + seed * 9) else 1
@@ -210,38 +239,39 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 			-- Leaning a little downwind with height, the way the wind aloft takes it.
 			local c = foot + Vector3.new(0, f * height, 0) + downwind * (f * f * 0.25 * height)
 			local colour = COLOUR.tower:Lerp(COLOUR.towerTop, f)
-			for j = 0, 2 do
-				local a = TAU * (j / 3 + seed + i * 0.37)
-				local off = Vector3.new(math.cos(a), 0, math.sin(a)) * r * 0.38
-				blob(pool, `t{k}_{i}_{j}`, CFrame.new(c + off), Vector3.new(r * 1.35, height / levels * 1.9, r * 1.35), colour, fade(0, alpha))
-			end
+			puffs(pool, `t{k}_{i}`, CFrame.new(c), Vector3.new(r * 2.2, height / levels * 2.8, r * 2.2), perLevel, colour, COLOUR.band, fade(0.04, alpha), clock, seed + k * 7.1 + i * 1.3)
 			-- Bands round a rotating tower (striations), turning slowly.
 			if k == 1 and f < 0.5 and up.striation > 0.15 then
-				blob(pool, `band{i}`, CFrame.new(c) * CFrame.Angles(0, clock * 0.05 * up.rotation, 0), Vector3.new(r * 2.15, height / levels * 0.35, r * 2.05), COLOUR.band, fade(1 - 0.7 * up.striation, alpha))
+				blob(pool, `band{i}`, CFrame.new(c) * CFrame.Angles(0, clock * 0.05 * up.rotation, 0), Vector3.new(r * 2.15, height / levels * 0.35, r * 2.05), COLOUR.band, fade(1 - 0.5 * up.striation, alpha))
 			end
 		end
 		-- An overshooting dome over the strongest updraught.
 		if k == 1 and up.overshootM > 50 then
 			local dome = up.overshootM * SKY
-			blob(pool, "overshoot", CFrame.new(foot + Vector3.new(0, height, 0) + downwind * 0.25 * height), Vector3.new(R * 0.9, dome * 2, R * 0.9), COLOUR.towerTop, fade(0, alpha))
+			puffs(pool, "overshoot", CFrame.new(foot + Vector3.new(0, height, 0) + downwind * 0.25 * height), Vector3.new(R * 1.1, dome * 2.4, R * 1.1), 3, COLOUR.towerTop, COLOUR.tower, fade(0.05, alpha), clock, seed + 3.3)
 		end
 	end
 
-	-- The base: dark and flat, broad as the storm's rain-free base, along a line as long as the line.
+	-- The base: dark, broad as the storm's rain-free base, along a line as long as the line;
+	-- flat underneath in the middle, torn at the edges.
 	local baseRadius = s.base.radiusKm * KM
 	local baseLength = if towers > 1 then 2 * s.line.halfLengthKm * KM + baseRadius else 2 * baseRadius
-	blob(pool, "base", CFrame.lookAt(centre, centre + axis) * CFrame.new(0, 0, 0), Vector3.new(2 * baseRadius, 120 * SKY + 0.04 * baseRadius, baseLength), COLOUR.base, fade(0, alpha))
+	local baseThick = 120 * SKY + 0.04 * baseRadius
+	local baseFrame = CFrame.lookAt(centre, centre + axis)
+	blob(pool, "base", baseFrame, Vector3.new(1.5 * baseRadius, baseThick, baseLength * 0.75), COLOUR.base, fade(0.15, alpha))
+	puffs(pool, "baseRag", baseFrame, Vector3.new(2.3 * baseRadius, baseThick * 1.6, baseLength * 1.15), 9, COLOUR.base, COLOUR.wall, fade(0.35, alpha), clock, seed + 5.7)
 
 	-- The anvil spreading downwind from the top, and mammatus under a mature one.
 	local anvilTop = ground + s.anvil.topM * SKY
 	local length, width = s.anvil.lengthKm * KM, s.anvil.widthKm * KM
 	local anvilCentre = Vector3.new(centre.X, anvilTop, centre.Z) + downwind * (length * 0.45)
 	local anvilFrame = CFrame.lookAt(anvilCentre, anvilCentre + downwind)
-	blob(pool, "anvil", anvilFrame, Vector3.new(width, 1400 * SKY, length), COLOUR.anvil, fade(0.02, alpha))
-	blob(pool, "anvilRoot", CFrame.new(Vector3.new(centre.X, anvilTop, centre.Z)), Vector3.new(R * 2.6, 1800 * SKY, R * 2.6), COLOUR.anvil, fade(0, alpha))
+	blob(pool, "anvil", anvilFrame, Vector3.new(width * 0.7, 1100 * SKY, length * 0.75), COLOUR.anvil, fade(0.1, alpha))
+	puffs(pool, "anvilRag", anvilFrame, Vector3.new(width * 1.1, 1700 * SKY, length * 1.1), 9, COLOUR.anvil, COLOUR.tower, fade(0.3, alpha), clock, seed + 9.1)
+	puffs(pool, "anvilRoot", CFrame.new(Vector3.new(centre.X, anvilTop, centre.Z)), Vector3.new(R * 3, 2000 * SKY, R * 3), 4, COLOUR.anvil, COLOUR.tower, fade(0.05, alpha), clock, seed + 2.9)
 	if s.anvil.mammatus > 0.2 then
 		for i = 1, 6 do
-			local p = anvilFrame * CFrame.new((hash(s.id .. i) - 0.5) * width * 0.5, -700 * SKY, -(0.1 + 0.5 * hash(s.id .. "m" .. i)) * length * 0.5)
+			local p = anvilFrame * CFrame.new((rand(seed, 600 + i) - 0.5) * width * 0.5, -700 * SKY, -(0.1 + 0.5 * rand(seed, 700 + i)) * length * 0.5)
 			blob(pool, `mamma{i}`, p, Vector3.new(width * 0.12, 500 * SKY, width * 0.12), COLOUR.anvil:Lerp(COLOUR.base, 0.25), fade(1 - s.anvil.mammatus, alpha))
 		end
 	end
@@ -252,28 +282,34 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		local wr = wall.radiusKm * KM
 		local lower = math.max(30, wall.loweringM * SKY)
 		local wc = at(wall.xKm, wall.yKm, baseY - lower / 2)
-		rod(pool, "wall", wc + Vector3.new(0, lower / 2, 0), wc - Vector3.new(0, lower / 2, 0), wr, COLOUR.wall, fade(1 - math.clamp(wall.strength * 2.2, 0, 1), alpha))
+		local wallClear = 1 - math.clamp(wall.strength * 2.2, 0, 1)
+		puffs(pool, "wall", CFrame.new(wc) * CFrame.Angles(0, clock * 0.04 * (0.2 + wall.rotation), 0), Vector3.new(2.4 * wr, lower * 1.3, 2.4 * wr), 6, COLOUR.wall, COLOUR.wall, fade(wallClear + 0.1 * (1 - wallClear), alpha), clock, seed + 4.4)
 		local spin = clock * (0.15 + 0.6 * wall.rotation)
 		for i = 0, 5 do
 			local a = spin + TAU * i / 6
 			local p = wc + Vector3.new(math.cos(a), -0.3, math.sin(a)) * Vector3.new(wr, lower, wr)
-			blob(pool, `scud{i}`, CFrame.new(p), Vector3.new(wr * 0.45, lower * 0.5, wr * 0.3), COLOUR.scud, fade(1 - wall.strength, alpha))
+			blob(pool, `scud{i}`, CFrame.new(p), Vector3.new(wr * 0.45, lower * 0.5, wr * 0.3), COLOUR.scud, fade(1 - 0.8 * wall.strength, alpha))
 		end
 		if wall.tail > 0.05 then
 			local d = heading(wall.tailBearingDeg)
 			local len = (2 + 5 * wall.tail) * KM
 			local p = wc + d * (wr + len / 2) + Vector3.new(0, lower * 0.1, 0)
-			blob(pool, "tail", CFrame.lookAt(p, p + d), Vector3.new(0.7 * KM, lower * 0.6, len), COLOUR.scud, fade(1 - wall.tail, alpha))
+			puffs(pool, "tail", CFrame.lookAt(p, p + d), Vector3.new(0.9 * KM, lower * 0.8, len), 5, COLOUR.scud, COLOUR.wall, fade(1 - 0.8 * wall.tail, alpha), clock, seed + 6.2)
 		end
 	end
 
-	-- Inflow bands, lying along the inflow, from where it comes toward the updraught.
+	-- Inflow bands, lying along the inflow toward the updraught: strings of faint beads.
 	local bands = s.inflowBands
 	for i = 1, bands.count do
 		local d = heading(bands.fromDeg + (i - (bands.count + 1) / 2) * 14)
 		local len = bands.lengthKm * KM
-		local p = centre + d * (R + len / 2) - Vector3.new(0, (baseY - ground) * 0.2, 0)
-		blob(pool, `inflow{i}`, CFrame.lookAt(p, p + d), Vector3.new(0.5 * KM, 90 * SKY, len), COLOUR.inflow, fade(1 - 0.8 * bands.strength, alpha))
+		local start = centre + d * R - Vector3.new(0, (baseY - ground) * 0.2, 0)
+		local clear = fade(math.max(0.45, 1 - 0.6 * bands.strength), alpha)
+		for j = 1, 6 do
+			local p = start + d * (len * (j - 0.5) / 6) + Vector3.new(0, (rand(seed, i * 40 + j) - 0.5) * 60 * SKY, 0)
+			local bead = 0.7 + 0.6 * rand(seed, i * 40 + j + 20)
+			blob(pool, `inflow{i}_{j}`, CFrame.lookAt(p, p + d), Vector3.new(0.6 * KM * bead, 110 * SKY * bead, len / 4.5), COLOUR.inflow, clear)
+		end
 	end
 
 	-- The shelf cloud along the gust front: a row along a line, an arc ahead of a cell.
@@ -298,7 +334,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 			for k = 1, tiers do
 				local tierDrop = (k - 1) * 0.22 * (baseY - ground)
 				local q = Vector3.new(p.X, shelfY - tierDrop, p.Z) + d * ((k - 1) * 0.6 * KM)
-				blob(pool, `shelf{i}_{k}`, CFrame.lookAt(q, q + d), Vector3.new(segLength * 1.4, 160 * SKY * shelf.strength + 40, 1.4 * KM), COLOUR.shelf, fade(1 - shelf.strength, alpha))
+				puffs(pool, `shelf{i}_{k}`, CFrame.lookAt(q, q + d), Vector3.new(segLength * 1.6, (160 * SKY * shelf.strength + 40) * 1.4, 1.6 * KM), 2, COLOUR.shelf, COLOUR.wall, fade(1 - shelf.strength, alpha), clock, seed + i * 3.7 + k)
 			end
 		end
 	end
