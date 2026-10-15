@@ -55,15 +55,19 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
     gustFront: { radiusKm: storm.coldPoolRadiusKm ?? 0, strength: clamp(storm.coldPoolStrength ?? 0, 0, 1), leadKm: (storm.coldPoolRadiusKm ?? 0) * (0.3 + 0.7 * outflowDominance(storm, environment)), gustMph: storm.surfaceWind?.gustMph ?? 0 },
     anvil: { lengthKm: clamp(relativeSpeed * G.anvilSpeedShare * Math.min(storm.ageHours ?? 0, G.anvilHours), G.anvilKm[0], G.anvilKm[1]), widthKm: 20 + 60 * clamp(storm.intensity ?? 0, 0, 1), bearingDeg: bearing(downwind.east, downwind.north), topM: clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]) - 1500 },
     line: { share: linear, halfLengthKm: linear > 0.2 ? (storm.lineHalfLengthKm ?? storm.radar?.radiusXKm ?? 20) : 0, axisBearingDeg: bearing(right.east, right.north), bow: clamp(storm.rearInflow ?? 0, 0, 1) },
-    tornado: tornadoGeometry(storm)
+    tornado: null
   };
+  // After the rest, so a tornado without a position of its own falls back to this wall cloud.
+  storm.geometry.tornado = tornadoGeometry(storm);
   return storm.geometry;
 }
 
 // Where the tornado is (TornadoEngine's position, the one place everything reads it from) and
-// how wide, while one is down. The storm engine sets it again once the tornado has moved.
+// how wide, while one is down. The storm engine sets it again once the tornado has moved. A
+// tornado with no position yet is under the wall cloud, as TornadoEngine puts one at touchdown.
 export function tornadoGeometry(storm) {
-  const t = storm.tornado, at = t?.positionKm ?? storm.positionKm;
+  const t = storm.tornado, wall = storm.geometry?.wallCloud;
+  const at = t?.positionKm ?? (wall ? { x: wall.xKm, y: wall.yKm } : storm.positionKm);
   return t?.onGround ? { xKm: at.x, yKm: at.y, widthYards: t.widthYards ?? 0, windMph: t.windSpeedMph ?? 0 } : null;
 }
 
