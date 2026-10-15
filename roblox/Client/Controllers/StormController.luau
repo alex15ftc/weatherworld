@@ -12,9 +12,10 @@
 -- one), the base, the anvil (mammatus under a mature one), the wall cloud with scud turning round
 -- it and its tail cloud, inflow bands, the shelf cloud on the gust front (tiers, running out
 -- ahead where the outflow leads), the rain and hail cores, and rain wrapping round the rotation.
--- Per tornado: the condensation funnel (its radius at each height, leaning and twisting as it
--- decays, lowering from the cloud as it touches down), the uncondensed vortex below it, the
--- smaller vortices of a multiple-vortex tornado, and the debris cloud and debris.
+-- Per tornado: the condensation funnel, soft-edged and wrapped in turning smoke (its radius at
+-- each height, leaning and twisting as it decays, lowering from the cloud as it touches down),
+-- the uncondensed vortex below it, the smaller vortices of a multiple-vortex tornado, the
+-- debris dome and dust skirt at the ground, and shards of debris thrown round it.
 -- Also lightning, the light dimming under a storm, and rain where the camera is.
 
 local Lighting = game:GetService("Lighting")
@@ -327,8 +328,110 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 end
 
 -- A tornado ---------------------------------------------------------------------------------
+--
+-- Drawn soft rather than solid: each piece of the funnel is a dense inner core inside a faint
+-- outer shell (a feathered edge that still holds its shape from miles off), wrapped in a sheath
+-- of smoke turning with the wind. The bottom of the funnel melts into the debris cloud and the
+-- top into a collar under the cloud base. At the ground, a dark dome of debris and dust turns
+-- round the base, a lighter skirt of dust rolls out along the ground, and near the camera
+-- shards of debris (boards, sheet metal, siding) spiral up and are flung out.
 
 local SEGMENTS = 18
+local SHARDS = 48
+local DETAIL_STUDS = 6000 -- smoke and shards within this distance of the camera
+local SHARD_STUDS = 3500
+local MAX_PUFF = 100 -- largest smoke particle drawn (studs)
+
+local SHARD_COLOURS = {
+	Color3.fromRGB(58, 48, 40), -- splintered wood, dark
+	Color3.fromRGB(122, 94, 66), -- lumber
+	Color3.fromRGB(150, 150, 154), -- sheet metal
+	Color3.fromRGB(150, 44, 36), -- barn red
+	Color3.fromRGB(214, 210, 200), -- siding
+	Color3.fromRGB(40, 40, 42), -- shingles
+}
+
+-- A plain block, for debris shards.
+local function block(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number)
+	local part = pool.parts[key]
+	if not part then
+		local p = Instance.new("Part")
+		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+		p.Material = Enum.Material.SmoothPlastic
+		p.Name = key
+		p.Parent = pool.model
+		pool.parts[key] = p
+		part = p
+	end
+	pool.used[key] = true
+	local b = part :: BasePart
+	if b.Size ~= size then
+		b.Size = size
+	end
+	b.CFrame = cf
+	b.Color = colour
+	b.Transparency = transparency
+end
+
+-- Emitter settings are written only when they change by more than a little (rebuilding the
+-- sequences every frame for every emitter costs more than drawing them).
+local settled: { [ParticleEmitter]: { [string]: number } } = setmetatable({}, { __mode = "k" }) :: any
+
+local function changed(e: ParticleEmitter, field: string, value: number, tolerance: number): boolean
+	local seen = settled[e]
+	if not seen then
+		seen = {}
+		settled[e] = seen
+	end
+	local last = seen[field]
+	if last and math.abs(value - last) <= tolerance * math.max(1, math.abs(last)) then
+		return false
+	end
+	seen[field] = value
+	return true
+end
+
+-- A smoke emitter on the part `key`: puffs of `size` studs that grow by `grow`, fading in then
+-- out over their life. Turning with the part (LockedToPart), so spinning the part swirls them.
+local function smoke(pool: Pool, key: string, cf: CFrame, partSize: Vector3, size: number, grow: number, colour: Color3, opacity: number, rate: number, life: number, surface: boolean): ParticleEmitter
+	local part, e = emitter(pool, key)
+	part.Size = Vector3.new(math.clamp(partSize.X, 0.2, MAX_PART), math.clamp(partSize.Y, 0.2, MAX_PART), math.clamp(partSize.Z, 0.2, MAX_PART))
+	part.CFrame = cf
+	if not e:GetAttribute("Tornado") then
+		e:SetAttribute("Tornado", true)
+		e.LockedToPart = true
+		e.Drag = 1.5
+		e.Speed = NumberRange.new(1, 4)
+		e.RotSpeed = NumberRange.new(-25, 25)
+		e.ShapeStyle = if surface then Enum.ParticleEmitterShapeStyle.Surface else Enum.ParticleEmitterShapeStyle.Volume
+	end
+	size = math.clamp(size, 4, MAX_PUFF)
+	if changed(e, "size", size, 0.1) or changed(e, "grow", grow, 0.05) then
+		e.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, size * 0.7),
+			NumberSequenceKeypoint.new(1, math.min(size * grow, MAX_PUFF * 1.5)),
+		})
+	end
+	if changed(e, "opacity", opacity, 0.05) then
+		local clear = 1 - math.clamp(opacity, 0, 1)
+		e.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.2, clear),
+			NumberSequenceKeypoint.new(0.7, clear + (1 - clear) * 0.3),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+	end
+	local c = math.floor(colour.R * 255) * 65536 + math.floor(colour.G * 255) * 256 + math.floor(colour.B * 255)
+	if changed(e, "colour", c, 0) then
+		e.Color = ColorSequence.new(colour)
+	end
+	if changed(e, "life", life, 0.1) then
+		e.Lifetime = NumberRange.new(life * 0.7, life)
+	end
+	e.Rate = rate
+	e.Enabled = rate > 0
+	return e
+end
 
 -- The funnel's radius (studs) at a share of the height to the base, from the profile.
 local function radiusAt(t: any, f: number): number
@@ -343,32 +446,56 @@ local function radiusAt(t: any, f: number): number
 	return (a + (b - a) * (x - i)) * TOR
 end
 
+-- A soft cylinder: a dense core inside a faint shell, so the edge feathers.
+local function softRod(pool: Pool, key: string, p0: Vector3, p1: Vector3, r: number, core: Color3, shell: Color3, transparency: number)
+	rod(pool, `{key}c`, p0, p1, r * 0.62, core, transparency)
+	rod(pool, `{key}s`, p0, p1, r, shell, 1 - (1 - transparency) * 0.38)
+end
+
+-- Spin about a rod's own axis (rod parts lie along X), for swirling locked smoke.
+local function rodFrame(p0: Vector3, p1: Vector3, spin: number): CFrame
+	return CFrame.lookAt((p0 + p1) / 2, p1) * CFrame.Angles(0, math.pi / 2, 0) * CFrame.Angles(spin, 0, 0)
+end
+
 local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3)
 	local t = s.tornado
 	local touch = math.clamp(t.touch or 1, 0, 1)
 	local ground = t.groundStuds or s.groundStuds or 0
 	local foot = at(t.xKm, t.yKm, ground)
+	local near = (foot - cameraPos).Magnitude
 	-- Near the camera, stand it on the ground actually loaded here.
-	if (foot - cameraPos).Magnitude < 4000 then
+	if near < 4000 then
 		local hit = workspace:Raycast(foot + Vector3.new(0, 2000, 0), Vector3.new(0, -4000, 0))
 		if hit and hit.Instance:IsA("Terrain") then
 			foot = Vector3.new(foot.X, hit.Position.Y, foot.Z)
 		end
 	end
+	local detail = near < DETAIL_STUDS
 	local height = t.baseM * SKY
 	local top = Vector3.new(t.tiltEastM, 0, -t.tiltNorthM) / 1000 * KM
 	local wrapped = math.clamp(t.rainWrap or 0, 0, 1)
-	local colour = COLOUR.funnel:Lerp(COLOUR.funnelWrapped, wrapped)
+	local core = COLOUR.funnel:Lerp(COLOUR.funnelWrapped, wrapped)
+	local shell = core:Lerp(COLOUR.towerTop, 0.3 * (1 - wrapped))
 	local seed = hash(t.id)
+	-- How fast it turns (rad/s), from the wind at the core.
+	local turn = math.clamp(t.windMph * 0.447 / math.max(15, t.coreRadiusM), 0.4, 4)
 	-- The funnel's axis at a share of the height: leaning toward its top, twisting as it decays.
+	local side = Vector3.new(top.Z, 0, -top.X).Unit
+	if side ~= side then
+		side = Vector3.xAxis
+	end
 	local function axis(f: number): Vector3
 		local wiggle = t.contortion * math.sin(f * math.pi * 2.5 + clock * 0.35 + seed * 10) * 0.12 * height * math.sin(f * math.pi)
-		local side = Vector3.new(top.Z, 0, -top.X).Unit
-		if side ~= side then
-			side = Vector3.xAxis
-		end
 		return foot + top * f + Vector3.new(0, f * height, 0) + side * wiggle
 	end
+
+	local debris = t.debris
+	local dr = math.max(8, debris.radiusM * TOR)
+	local dh = math.max(10, debris.heightM * TOR)
+	local debrisOn = touch > 0.5 and debris.strength > 0.02
+	-- Up to this share of the height the funnel melts into the debris cloud.
+	local melt = if debrisOn then math.clamp(dh * 0.9 / math.max(1, height), 0.04, 0.3) else 0.04
+
 	-- What is shown: lowering from the cloud while it touches down (or lifting as it ends).
 	local lowest = 1 - touch
 	local condensed = math.clamp(t.condensedM / math.max(1, t.baseM), 0, 1)
@@ -378,13 +505,33 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 		local fm = (f0 + f1) / 2
 		local r = radiusAt(t, fm)
 		if f1 > lowest and r > 0 and fm >= condensed then
-			local transparency = (if fm < 0.35 then hollow else 0) + 0.06
-			rod(pool, `funnel{i}`, axis(math.max(f0, lowest)), axis(f1), math.max(2, r), colour, fade(transparency, touch ^ 0.5))
+			local p0, p1 = axis(math.max(f0, lowest)), axis(f1)
+			local base = 0.08 + (if fm < 0.35 then hollow else 0)
+			-- Thinning toward the ground, so the bottom disappears into the debris.
+			local thin = if fm < melt then 0.55 * (1 - fm / melt) else 0
+			softRod(pool, `funnel{i}`, p0, p1, math.max(2, r), core, shell, fade(base + thin, touch ^ 0.5))
+			if detail then
+				local puff = math.max(6, r * 0.9)
+				local length = (p1 - p0).Magnitude
+				local rate = math.clamp(length * r / (puff * puff) * 6, 2, 40) * touch
+				smoke(pool, `funnelSmoke{i}`, rodFrame(p0, p1, clock * turn * (1 - 0.5 * fm)), Vector3.new(length, 2 * r * 1.05, 2 * r * 1.05), puff, 1.6, shell, 0.45 * (1 - thin), rate, 3, true)
+			end
 		end
+	end
+	-- The collar under the cloud base the funnel hangs from.
+	local topR = radiusAt(t, 1)
+	if topR > 0 and touch > 0.05 then
+		local c = axis(1)
+		blob(pool, "collar", CFrame.new(c - Vector3.new(0, topR * 0.4, 0)), Vector3.new(topR * 3.4, topR * 1.4, topR * 3.4), shell, fade(0.45, touch))
 	end
 	-- The uncondensed vortex below the funnel: a faint whirl of dust and air.
 	if condensed > 0.02 and touch > 0.3 then
 		rod(pool, "vortex", axis(0), axis(condensed), math.max(3, t.coreRadiusM * TOR), COLOUR.dust, fade(0.88, touch))
+		if detail then
+			local r = math.max(3, t.coreRadiusM * TOR)
+			local p0, p1 = axis(0), axis(condensed)
+			smoke(pool, "vortexSmoke", rodFrame(p0, p1, clock * turn), Vector3.new((p1 - p0).Magnitude, 2 * r, 2 * r), r * 0.8, 1.8, COLOUR.dust, 0.3, 10 * touch, 2.5, true)
+		end
 	end
 	-- Smaller vortices turning round the core.
 	if t.vortices > 1 then
@@ -397,32 +544,54 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 			local off = Vector3.new(math.cos(a), 0, math.sin(a)) * orbit
 			for j = 0, 3 do
 				local f0, f1 = reach * j / 4, reach * (j + 1) / 4
-				rod(pool, `sub{k}_{j}`, axis(f0) + off, axis(f1) + off * (1 - f1 / reach * 0.5), subR * (1 + j * 0.6), colour, fade(0.15, touch))
+				softRod(pool, `sub{k}_{j}`, axis(f0) + off, axis(f1) + off * (1 - f1 / reach * 0.5), subR * (1 + j * 0.6), core, shell, fade(0.2, touch))
 			end
 		end
 	end
-	-- The debris cloud and debris thrown round the base.
-	local debris = t.debris
-	local dr = math.max(8, debris.radiusM * TOR)
-	local dh = math.max(10, debris.heightM * TOR)
-	local dpart, demit = emitter(pool, "debrisCloud")
-	dpart.Size = Vector3.new(math.min(dh, MAX_PART), math.min(2 * dr, MAX_PART), math.min(2 * dr, MAX_PART))
-	dpart.CFrame = CFrame.new(foot + Vector3.new(0, dh / 2, 0)) * CFrame.Angles(0, 0, math.pi / 2)
-	demit.Enabled = touch > 0.5 and debris.strength > 0.02
-	demit.Color = ColorSequence.new(COLOUR.dust:Lerp(COLOUR.debris, 1 - debris.dust))
-	demit.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, math.clamp(dr * 0.25, 6, 60)), NumberSequenceKeypoint.new(1, math.clamp(dr * 0.6, 12, 100)) })
-	demit.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) })
-	demit.Lifetime = NumberRange.new(2, 4)
-	demit.Rate = 25 + 80 * debris.strength
-	demit.Speed = NumberRange.new(10, 30 + 80 * debris.strength)
-	demit.Acceleration = Vector3.new(0, 6 + 20 * debris.strength, 0)
-	local whirl = clock * math.clamp(t.windMph * 0.447 / math.max(15, t.coreRadiusM), 0.5, 4)
-	for i = 1, 14 do
-		local life = (clock * 0.4 + hash(t.id .. i)) % 1
-		local a = whirl * (0.6 + 0.4 * hash(t.id .. "s" .. i)) + TAU * i / 14
-		local r = dr * (0.4 + 0.6 * hash(t.id .. "r" .. i))
-		local p = foot + Vector3.new(math.cos(a) * r, life * dh * 2, math.sin(a) * r)
-		blob(pool, `chunk{i}`, CFrame.new(p) * CFrame.Angles(a, a * 1.3, 0), Vector3.new(3, 1.2, 4) * (1 + 3 * hash(t.id .. "z" .. i)), COLOUR.debris, if touch > 0.5 and debris.strength > 0.05 then 0 else 1)
+
+	-- The debris cloud: a dark dome turning round the base, and dust rolling out along the ground.
+	local cloudColour = COLOUR.dust:Lerp(COLOUR.debris, 1 - debris.dust)
+	local domeRate = if debrisOn and detail then (20 + 70 * debris.strength) else 0
+	local dome = smoke(pool, "debrisDome", CFrame.new(foot + Vector3.new(0, dh * 0.4, 0)) * CFrame.Angles(0, clock * turn * 0.6, math.pi / 2), Vector3.new(dh * 0.8, 2 * dr, 2 * dr), dr * 0.45, 1.7, cloudColour, 0.55 + 0.3 * debris.strength, domeRate, 4.5, false)
+	if changed(dome, "rise", debris.strength, 0.05) then
+		dome.Acceleration = Vector3.new(0, 2 + 10 * debris.strength, 0)
+		dome.Speed = NumberRange.new(2, 6 + 14 * debris.strength)
+	end
+	local skirt = smoke(pool, "dustSkirt", CFrame.new(foot + Vector3.new(0, 4, 0)) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(6, 2 * dr * 1.3, 2 * dr * 1.3), dr * 0.4, 2.2, COLOUR.dust, 0.35 * debris.dust + 0.15, if debrisOn and detail then 10 + 30 * debris.strength else 0, 3.5, true)
+	if changed(skirt, "skirt", 1, 0) then
+		skirt.LockedToPart = false
+		skirt.Speed = NumberRange.new(12, 30)
+		skirt.Drag = 0.8
+		skirt.Acceleration = Vector3.new(0, 1.5, 0)
+	end
+	-- Far away, where the smoke is not drawn, a soft dome keeps the base dark.
+	if debrisOn and not detail then
+		blob(pool, "debrisFar", CFrame.new(foot + Vector3.new(0, dh * 0.3, 0)), Vector3.new(dr * 2, dh * 1.1, dr * 2), cloudColour, 0.35)
+	end
+
+	-- Shards of debris: up the spiral, widening as they rise, then flung out and falling.
+	local shards = debrisOn and debris.strength > 0.05 and near < SHARD_STUDS
+	local lofted = dh * (2 + 2 * debris.strength)
+	-- A fixed random number per shard (0..1), from the tornado's seed.
+	local function rnd(n: number): number
+		return (math.sin(seed * 12.9898 + n * 78.233) * 43758.5453) % 1
+	end
+	for i = 1, if shards then SHARDS else 0 do
+		local key = `shard{i}`
+		local h1, h2, h3 = rnd(i), rnd(i + 0.37), rnd(i + 0.71)
+		local life = (clock * (0.08 + 0.1 * h1) + h2) % 1
+		local rise = life ^ 0.75
+		local r = dr * (0.35 + 0.5 * h3) * (1 + 1.6 * life)
+		local a = clock * turn * (1.3 - 0.6 * life) + TAU * h1 * 7
+		local p = foot + Vector3.new(math.cos(a) * r, rise * lofted, math.sin(a) * r)
+		if life > 0.8 then
+			-- Thrown clear: out along the turn, dropping.
+			local out = (life - 0.8) / 0.2
+			p += Vector3.new(-math.sin(a), 0, math.cos(a)) * out * dr * 0.8 - Vector3.new(0, out * out * lofted * 0.5, 0)
+		end
+		local size = Vector3.new(0.4 + 3.6 * h2, 0.15 + 0.25 * h3, 0.4 + 2.6 * h1) * (0.6 + 0.8 * debris.strength)
+		local tumble = CFrame.Angles(clock * (2 + 5 * h1), clock * (1 + 4 * h2), clock * 3 * h3)
+		block(pool, key, CFrame.new(p) * tumble, size, SHARD_COLOURS[1 + math.floor(h3 * #SHARD_COLOURS) % #SHARD_COLOURS], 0)
 	end
 end
 
@@ -433,9 +602,11 @@ local function drawFunnelAloft(pool: Pool, s: any)
 	local baseY = ground + (s.updraft.baseM - s.wallCloud.loweringM) * SKY
 	local length = f.lengthShare * (s.updraft.baseM - s.wallCloud.loweringM) * SKY
 	local p = at(f.xKm, f.yKm, baseY)
+	local shell = COLOUR.funnel:Lerp(COLOUR.towerTop, 0.3)
 	for i = 0, 5 do
 		local a, b = i / 6, (i + 1) / 6
-		rod(pool, `aloft{i}`, p - Vector3.new(0, a * length, 0), p - Vector3.new(0, b * length, 0), f.radiusM * TOR * (1 - 0.8 * (a + b) / 2), COLOUR.funnel, fade(0.1, s.alpha or 1))
+		-- Fading toward its tip, as it condenses from the cloud down.
+		softRod(pool, `aloft{i}`, p - Vector3.new(0, a * length, 0), p - Vector3.new(0, b * length, 0), f.radiusM * TOR * (1 - 0.8 * (a + b) / 2), COLOUR.funnel, shell, fade(0.1 + 0.5 * a, s.alpha or 1))
 	end
 end
 
