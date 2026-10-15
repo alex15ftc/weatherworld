@@ -18,6 +18,7 @@
 // street grid in its core), and suburbanMi (from coreMi out to extentMi the streets are
 // suburban: curving residential streets, collectors every half mile, arterials on every mile
 // line, which sectionRoads.js marks paved).
+import { curveRoads } from './curves.js';
 import { makeRandom, hashText, clamp } from './noise.js';
 import { riverCorners } from './sectionRoads.js';
 
@@ -164,7 +165,8 @@ export function planSettlements(map, options = {}) {
     add('town', x, y, { population, coreMi: 0.25 + 0.9 * Math.sqrt(population / 8000), extentMi: 0.4 + 1.3 * Math.sqrt(population / 8000) });
   }
 
-  const roads = planRoads(map, p, settlements, { m, per, drain, slope, regionKey, wet, inRiver });
+  // Routed along the mile lines, then each corner rounded into a curve (curves.js).
+  const roads = curveRoads(planRoads(map, p, settlements, { m, per, drain, slope, regionKey, wet, inRiver }), p.curves);
   return { settlements, roads };
 }
 

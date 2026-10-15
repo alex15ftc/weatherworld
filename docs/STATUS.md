@@ -501,8 +501,8 @@ single cell's is about 900). Real tornado warnings are usually smaller; these st
 
 ## What a player would find
 
-From `npm run inspect:players` on eight worlds (160 days). The clock runs 15 times real
-time, so a simulated day is 96 real minutes.
+From `npm run inspect:players` on eight worlds (160 days). The clock runs 12 times real
+time, so a simulated day is 120 real minutes (12x; 96 minutes at 15x before 2026-10-15).
 
 | On the whole map | |
 |---|---|

@@ -15,13 +15,15 @@ import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './ti
 import { buildRadarScene, scanRadarTilt, buildRadarMosaic, MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
 import { radarSitesFor } from './RadarSites.js';
 import { buildAnalysisOverlays } from './analysisOverlays.js';
+import { GameFeed } from './GameFeed.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 1000;
 const START_HOUR_UTC = 12;
-// A simulated day takes 96 real minutes. Storms move every five simulated minutes; the
-// atmosphere steps every half hour and then takes account of what the storms did meanwhile.
-const SIM_HOURS_PER_REAL_MINUTE = 0.25;
+// A simulated day takes 120 real minutes (12x; it was 96, 15x, until 2026-10-15). Storms move
+// every five simulated minutes; the atmosphere steps every half hour and then takes account
+// of what the storms did meanwhile.
+const SIM_HOURS_PER_REAL_MINUTE = 0.2;
 const STORM_CADENCE_HOURS = 1 / 12, ATMOSPHERE_STEP_HOURS = 0.5;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const MAX_STEPS_PER_TICK = 4;
@@ -60,6 +62,8 @@ export class WeatherAuthorityRuntime {
     this.performance = { cacheHits: 0, cacheMisses: 0, productBuilds: {} };
     this.autoAdvance = true;
     this.systemNumber = 1;
+    // The storms as the game draws them, a frame each storm tick (GameFeed.js).
+    this.gameFeed = new GameFeed({ tickMs: REAL_MS_PER_STORM_TICK });
     const explicitSeed = seed !== undefined && seed !== null && seed !== '';
     if (explicitSeed || !this.restoreState()) { this.build(seed); this.saveState(); }
   }
@@ -77,6 +81,9 @@ export class WeatherAuthorityRuntime {
     this.config = world.evolution.config;
     this.seed = engine.seed;
     this.assertSpatialIntegrity();
+    // The clocks run from now, not from before the world took its time to build.
+    this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.gameFeed?.restart(world, this.lastStormAdvancedAt);
   }
 
   reset(seed = this.seed) {
@@ -99,6 +106,7 @@ export class WeatherAuthorityRuntime {
     const rest = amount - (ahead > 1e-6 ? ATMOSPHERE_STEP_HOURS : 0);
     if (rest >= ATMOSPHERE_STEP_HOURS) this.engine.advance(rest, { onStep });
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.gameFeed.restart(world);
     this.revision += 1;
     this.invalidateProducts();
     this.saveState();
@@ -127,15 +135,18 @@ export class WeatherAuthorityRuntime {
     // Storms never run more than one atmosphere step ahead of the atmosphere.
     const room = Math.round((world.validHourUtc + ATMOSPHERE_STEP_HOURS - (world.stormEngine?.validHourUtc ?? world.validHourUtc)) / STORM_CADENCE_HOURS);
     const due = Math.floor(Math.max(0, now - this.lastStormAdvancedAt) / REAL_MS_PER_STORM_TICK), ticks = Math.max(0, Math.min(due, room));
-    if (ticks > 0) { this.engine.advanceStormLayer(ticks * STORM_CADENCE_HOURS); changed = true; }
+    // One tick at a time, so the game gets a frame for each, stamped with when it fell due.
+    for (let tick = 1; tick <= ticks; tick++) { this.engine.advanceStormLayer(STORM_CADENCE_HOURS); this.gameFeed.capture(world, this.lastStormAdvancedAt + tick * REAL_MS_PER_STORM_TICK); changed = true; }
     if (due > 0) this.lastStormAdvancedAt += due * REAL_MS_PER_STORM_TICK;
     const steps = Math.min(MAX_STEPS_PER_TICK, Math.floor((Math.max(0, now - this.lastAdvancedAt) / 60000 * SIM_HOURS_PER_REAL_MINUTE) / ATMOSPHERE_STEP_HOURS));
     if (steps > 0) {
       for (let step = 0; step < steps; step++) {
         const ahead = (world.stormEngine?.validHourUtc ?? world.validHourUtc) - world.validHourUtc;
-        if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) this.engine.advanceStormLayer(ATMOSPHERE_STEP_HOURS - ahead);
+        if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) { this.engine.advanceStormLayer(ATMOSPHERE_STEP_HOURS - ahead); this.gameFeed.capture(world, now); }
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
       }
+      // Caught up after a long pause: the storms jumped, and the game should not glide across it.
+      if (steps === MAX_STEPS_PER_TICK) this.gameFeed.restart(world, now);
       // After a long pause the clock restarts from now instead of racing to catch up.
       this.lastAdvancedAt = steps === MAX_STEPS_PER_TICK ? now : this.lastAdvancedAt + steps * ATMOSPHERE_STEP_HOURS / SIM_HOURS_PER_REAL_MINUTE * 60000;
       if (steps === MAX_STEPS_PER_TICK) this.lastStormAdvancedAt = now;

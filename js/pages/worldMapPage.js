@@ -6,7 +6,10 @@
 // and exits by zoom; airports, the air base, NWS offices and radars (js/worldmap/airfields.js),
 // from a symbol when zoomed out to runways, taxiways, terminals, curbs and parking zoomed in;
 // wind farms, windmills, oil and gas wells, schools, colleges and gas stations
-// (js/worldmap/facilities.js), each on its own layer.
+// (js/worldmap/facilities.js), each on its own layer. The road graph (js/worldmap/streets.js):
+// every road down to the town streets as one network, with the signals, stop signs and
+// cul-de-sacs at its nodes, drawn in place of the section roads when its layer is on; and where
+// planned footprints overlap (js/worldmap/footprints.js), as rings on their own layer.
 import { shadeMap, COVER_COLOURS, RIVER_COLOUR } from '../worldmap/worldMapStyle.js';
 import { interchangeRamps, crossingSin, tee } from '../worldmap/interchanges.js';
 import { sectionSegments, signalJunctions } from '../worldmap/roadNetwork.js';
@@ -26,7 +29,7 @@ const ROADS = {
 const SECTIONS = { 3: { colour: '#f4f4f0', px: 1, mi: 0.022, from: 4 }, 2: { colour: '#d8cdb4', px: 0.8, mi: 0.016, from: 14 }, 1: { colour: '#9a7854', px: 0.7, mi: 0.01, from: 14 } };
 const roadClass = r => (r.kind === 'highway' ? (r.name?.startsWith('US') ? 'us' : 'state') : r.kind);
 
-let facilities = null;
+let facilities = null, graph = null, conflicts = null;
 let map = null, base = null, regionBorders = null, sections = null, signals = [], ramps = [], counties = null, countyIds = null;
 const view = { x: 250, y: 250, scale: 1 };   // centre (miles) and pixels per mile
 let width = 0, height = 0, dpr = 1;
@@ -43,6 +46,10 @@ async function load(seed) {
     try { counties = await (await fetch(`${dir}/counties.json`, { cache: 'no-cache' })).json(); countyIds = new Uint16Array((await bytes('counties.u16')).buffer); } catch { counties = null; countyIds = null; }
     // Energy, schools and gas stations (facilities.js), if this build has them.
     try { facilities = await (await fetch(`${dir}/facilities.json`, { cache: 'no-cache' })).json(); } catch { facilities = null; }
+    // The road graph (streets.js), if this build has it.
+    try { graph = readGraph(await (await fetch(`${dir}/streets.json`, { cache: 'no-cache' })).json(), (await bytes('streets.bin')).buffer); } catch { graph = null; }
+    // Where planned footprints overlap (footprints.js), if this build has them.
+    try { conflicts = await (await fetch(`${dir}/conflicts.json`, { cache: 'no-cache' })).json(); } catch { conflicts = null; }
   } catch {
     map = null;
     $('status').textContent = `Seed ${seed} not built yet`;
@@ -129,8 +136,13 @@ function draw() {
     ctx.strokeStyle = 'rgba(15, 23, 42, .3)'; ctx.lineWidth = 1;
     for (let m = 10; m < miles; m += 10) { ctx.beginPath(); ctx.moveTo(sx(m), sy(0)); ctx.lineTo(sx(m), sy(miles)); ctx.moveTo(sx(0), sy(m)); ctx.lineTo(sx(miles), sy(m)); ctx.stroke(); }
   }
+  // Land use under the roads.
+  if (facilities?.landUse && $('showLandUse').checked) drawLandUse(inView);
+  // The road graph in place of the section roads.
+  const showGraph = graph && $('showGraph').checked;
+  if (showGraph && $('showRoads').checked) drawGraphEdges(inView);
   // Section roads by zoom: paved from 4 px a mile, gravel and dirt from 14.
-  if ($('showRoads').checked) {
+  if ($('showRoads').checked && !showGraph) {
     for (const cls of [1, 2, 3]) {
       const style = SECTIONS[cls];
       if (s < style.from || (cls < 3 && !$('showSections').checked)) continue;
@@ -182,9 +194,70 @@ function draw() {
       ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(sx(st.x), sy(st.y), st.kind === 'town' ? 1.8 : 4, 0, 2 * Math.PI); ctx.fill();
     }
   }
+  if (showGraph && $('showRoads').checked) drawGraphNodes(inView);
+  if (conflicts && $('showConflicts').checked) drawConflicts(inView);
   if (facilities) drawFacilities(inView);
   if ($('showAirports').checked || $('showNws').checked) drawAirfields(inView);
   if ($('showLabels').checked) drawLabels(inView);
+}
+
+// The road graph from streets.bin (see scripts/build-world-map.mjs).
+function readGraph(info, buffer) {
+  const N = info.nodes, E = info.edges;
+  let at = 0;
+  const take = (Type, count) => { const bytes = count * Type.BYTES_PER_ELEMENT, view = new Type(buffer.slice(at, at + bytes)); at += bytes; return view; };
+  return { info, xy: take(Float32Array, 2 * N), control: take(Uint8Array, N), end: take(Uint8Array, N), pairs: take(Uint32Array, 2 * E), kinds: take(Uint8Array, E) };
+}
+// Graph roads by kind: colour, width in pixels and in miles, the zoom (pixels a mile) they show
+// from. The map's own roads are drawn by the road layer above them.
+const GRAPH = {
+  arterial: { colour: '#fafaf9', px: 1.2, mi: 0.058, from: 3 }, county: { colour: '#f4f4f0', px: 1, mi: 0.026, from: 4 },
+  collector: { colour: '#fde68a', px: 1, mi: 0.044, from: 8 }, local: { colour: '#e7e5e4', px: 0.9, mi: 0.026, from: 10 },
+  frontage: { colour: '#d6d3d1', px: 0.9, mi: 0.026, from: 8 },
+  street: { colour: '#e7e5e4', px: 0.8, mi: 0.036, from: 10 }, gravel: { colour: '#d8cdb4', px: 0.8, mi: 0.02, from: 14 }, dirt: { colour: '#9a7854', px: 0.7, mi: 0.013, from: 14 }
+};
+function drawGraphEdges(inView) {
+  const s = view.scale, { xy, pairs, kinds, info } = graph;
+  for (const kind of ['dirt', 'gravel', 'local', 'street', 'frontage', 'collector', 'county', 'arterial']) {
+    const style = GRAPH[kind], code = info.kinds.indexOf(kind);
+    if (s < style.from || ((kind === 'gravel' || kind === 'dirt') && !$('showSections').checked)) continue;
+    ctx.strokeStyle = style.colour; ctx.lineWidth = Math.max(style.px, style.mi * s);
+    ctx.beginPath();
+    for (let i = 0; i < kinds.length; i++) {
+      if (kinds[i] !== code) continue;
+      const a = pairs[2 * i], b = pairs[2 * i + 1], x0 = xy[2 * a], y0 = xy[2 * a + 1], x1 = xy[2 * b], y1 = xy[2 * b + 1];
+      if (inView(x0, y0, x1, y1)) { ctx.moveTo(sx(x0), sy(y0)); ctx.lineTo(sx(x1), sy(y1)); }
+    }
+    ctx.stroke();
+  }
+}
+// Node controls from 24 px a mile: signals green, stop-controlled junctions red, cul-de-sacs as
+// rings, roads that stop short of a highway or interstate as a bar or a dot.
+function drawGraphNodes(inView) {
+  const s = view.scale, { xy, control, end } = graph;
+  if (s < 24) return;
+  for (let i = 0; i < control.length; i++) {
+    const x = xy[2 * i], y = xy[2 * i + 1];
+    if ((!control[i] && !end[i]) || !inView(x, y, x, y)) continue;
+    ctx.beginPath();
+    if (end[i] === 1) { ctx.arc(sx(x), sy(y), Math.max(2.5, 0.035 * s), 0, 2 * Math.PI); ctx.strokeStyle = '#e7e5e4'; ctx.lineWidth = 1.5; ctx.stroke(); continue; }
+    if (end[i] === 3) { ctx.arc(sx(x), sy(y), 2.5, 0, 2 * Math.PI); ctx.fillStyle = '#f97316'; ctx.fill(); continue; }
+    if (end[i] === 2) continue;
+    ctx.arc(sx(x), sy(y), control[i] === 2 ? 3 : 1.8, 0, 2 * Math.PI);
+    ctx.fillStyle = control[i] === 2 ? '#16a34a' : '#dc2626'; ctx.fill();
+  }
+}
+
+// Footprint conflicts (footprints.js): a ring at each, coloured by type, from 4 px a mile.
+const CONFLICT = { road: '#ef4444', culDeSac: '#f97316', lot: '#a855f7', river: '#0ea5e9' };
+function drawConflicts(inView) {
+  if (view.scale < 4) return;
+  ctx.lineWidth = 2;
+  for (const c of conflicts.list) {
+    if (!inView(c.x, c.y, c.x, c.y)) continue;
+    ctx.strokeStyle = CONFLICT[c.type] ?? '#ef4444';
+    ctx.beginPath(); ctx.arc(sx(c.x), sy(c.y), 6, 0, 2 * Math.PI); ctx.stroke();
+  }
 }
 
 // Airfield colours.
@@ -207,6 +280,37 @@ function strokeLine(points, colour, widthMi, minPx) {
   ctx.beginPath();
   points.forEach(([x, y], i) => (i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
   ctx.strokeStyle = colour; ctx.lineWidth = Math.max(minPx, widthMi * view.scale); ctx.stroke();
+}
+
+// Land use (facilities.js / landUse.js) from 3 px a mile: downtowns, shopping, highway strips,
+// industry and parks filled; neighbourhoods outlined with their collectors from 10, named from 24.
+const USE = {
+  downtown: ['rgba(244, 114, 182, .22)', '#f472b6'], mall: ['rgba(192, 132, 252, .55)', '#a855f7'], shopping: ['rgba(248, 113, 113, .45)', '#ef4444'],
+  corridor: ['rgba(251, 146, 60, .28)', null], travel: ['rgba(251, 146, 60, .5)', '#f97316'], industrial: ['rgba(148, 163, 184, .5)', '#64748b'], park: ['rgba(74, 222, 128, .5)', '#16a34a']
+};
+function drawLandUse(inView) {
+  const s = view.scale, lu = facilities.landUse, seen = poly => { const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]); return inView(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)); };
+  if (s < 3) return;
+  if (s >= 10) for (const nb of lu.neighborhoods) {
+    if (!seen(nb.poly)) continue;
+    fillPoly(nb.poly, 'rgba(253, 224, 71, .06)', 'rgba(253, 224, 71, .35)', 1);
+    if (s >= 14) for (const c of nb.collectors) strokeLine(c, 'rgba(244, 244, 240, .55)', 36 / 5280, 1);
+  }
+  for (const kind of ['downtown', 'corridor', 'industrial', 'park', 'shopping', 'mall', 'travel']) for (const z of lu.areas) {
+    if (z.kind !== kind || !seen(z.poly)) continue;
+    fillPoly(z.poly, USE[kind][0], s >= 10 ? USE[kind][1] : null, 1);
+  }
+}
+function drawLandUseLabels(inView) {
+  const s = view.scale, lu = facilities.landUse;
+  if (s >= 24) for (const nb of lu.neighborhoods) { const [cx, cy] = centroid(nb.poly); if (inView(cx, cy, cx, cy)) text(nb.name, sx(cx), sy(cy) + 16, { size: 10, weight: 600, colour: 'rgba(254, 249, 195, .85)', centre: true }); }
+  for (const z of lu.areas) {
+    if (!z.name || z.kind === 'corridor' || z.kind === 'downtown') continue;
+    const min = z.kind === 'mall' ? 5 : z.tier === 'community' || z.kind === 'industrial' ? 12 : 30;
+    if (s < min) continue;
+    const [cx, cy] = centroid(z.poly);
+    if (inView(cx, cy, cx, cy)) text(z.name, sx(cx), sy(cy), { size: z.kind === 'mall' ? 11 : 10, weight: 700, colour: z.kind === 'park' ? '#bbf7d0' : z.kind === 'industrial' ? '#e2e8f0' : '#fecaca', centre: true });
+  }
 }
 
 // Energy, schools and gas stations by zoom: symbols first, then lots, buildings, parking,
@@ -288,13 +392,14 @@ function drawFacilities(inView) {
 
 // Airports and the air base by zoom: a symbol when zoomed out; fence and runways from 4 px a
 // mile; taxiways, aprons, buildings, parking, curbs and roads from 12; runway markings from 40.
-// NWS offices and their radars on their own layer.
+// NWS offices and their radars on their own layer, with the offices in towns (kind nwsOffice).
 function drawAirfields(inView) {
   const s = view.scale, FT = 1 / 5280, airports = $('showAirports').checked, nws = $('showNws').checked;
   for (const a of map.airfields ?? []) {
     const xs = a.fence.map(q => q[0]), ys = a.fence.map(q => q[1]);
     if (!inView(Math.min(...xs) - 1, Math.min(...ys) - 1, Math.max(...xs) + 1, Math.max(...ys) + 1)) continue;
-    if (airports) {
+    const town = a.kind === 'nwsOffice';
+    if (airports && !town) {
       if (s >= 4) {
         if (!a.access.freeway) strokeLine(a.access.points, AIR.road, 0.022, 1);
         for (const area of a.areas ?? []) fillPoly(area.poly, AIR.area[area.kind] ?? 'rgba(148,163,184,.3)');
@@ -322,11 +427,15 @@ function drawAirfields(inView) {
       }
     }
     if (nws) {
+      if (town && s >= 4) strokeLine(a.access.points, AIR.road, 0.022, 1);
+      if (town && s >= 12) for (const r of a.roads) strokeLine(r.points, AIR.road, 24 * FT, 1);
       if (a.nws && s >= 12) {
         fillPoly(a.nws.parking, AIR.parking, null); strokeLine(a.nws.drive, AIR.road, 24 * FT, 1);
         fillPoly(a.nws.building, AIR.nws, s > 60 ? '#0b1f4d' : null, 0.6);
-        if (a.radar.service) strokeLine(a.radar.service, AIR.road, 16 * FT, 0.8);
+        if (a.radar.service && !a.sharedRadar) strokeLine(a.radar.service, AIR.road, 16 * FT, 0.8);
       }
+      // An office using another's radar (the air base's) draws none of its own.
+      if (a.sharedRadar) continue;
       if (s >= 12) fillPoly(a.radar.compound, 'rgba(203, 213, 225, .5)', '#e2e8f0', 0.8);
       // The radar: a white dome ringed blue (the radome is about 39 ft across).
       ctx.fillStyle = AIR.radar; ctx.strokeStyle = AIR.radarRing; ctx.lineWidth = 2;
@@ -359,7 +468,7 @@ function drawLabels(inView) {
     const FT = 1 / 5280;
     for (const a of map.airfields) {
       if (!inView(a.x, a.y, a.x, a.y)) continue;
-      if ($('showAirports').checked) {
+      if ($('showAirports').checked && a.kind !== 'nwsOffice') {
         const label = s > 8 ? `${a.name} (${a.code})` : a.kind === 'airBase' ? a.name.replace('Air Force Base', 'AFB') : a.code;
         text(label, sx(a.x) + 8, sy(a.y) + 10, { size: s > 8 ? 12 : 10, weight: 700, box: a.kind === 'airBase' ? AIR.airBase : AIR.airport, boxText: '#ffffff' });
         if (s >= 40) for (const r of a.runways) {
@@ -380,13 +489,15 @@ function drawLabels(inView) {
         if (s >= 10) { const m = a.access.points[Math.min(2, a.access.points.length - 1)]; text(a.access.name, sx(m[0]) + 6, sy(m[1]) - 8, { size: 10, weight: 600, colour: '#f8fafc' }); }
       }
       if ($('showNws').checked) {
-        if (s > 2.5) text(a.radar.id, sx(a.radar.x) + 6, sy(a.radar.y) - 9, { size: 10, weight: 800, box: '#1d4ed8', boxText: '#ffffff' });
+        if (s > 2.5 && !a.sharedRadar) text(a.radar.id, sx(a.radar.x) + 6, sy(a.radar.y) - 9, { size: 10, weight: 800, box: '#1d4ed8', boxText: '#ffffff' });
+        if (s > 2.5 && s < 12 && a.sharedRadar) text(`WFO ${a.nws.id}`, sx(a.x) + 6, sy(a.y) - 9, { size: 10, weight: 800, box: '#1e3a8a', boxText: '#ffffff' });
         if (a.nws && s >= 12) { const [cx, cy] = centroid(a.nws.building); text(`${a.nws.name} (WFO ${a.nws.id})`, sx(cx) + 8, sy(cy) + 12, { size: 11, weight: 700, colour: '#bfdbfe' }); }
       }
     }
   }
   // Wind farms, colleges, schools and gas stations.
   if (facilities) {
+    if (facilities.landUse && $('showLandUse').checked) drawLandUseLabels(inView);
     if ($('showEnergy').checked && s >= 2.5) for (const farm of facilities.energy.windFarms) if (inView(farm.x, farm.y, farm.x, farm.y)) text(farm.name, sx(farm.x), sy(farm.y) - 14, { size: 11, weight: 700, colour: '#e0f2fe', centre: true });
     if ($('showSchools').checked) {
       if (s >= 5) for (const c of facilities.campuses) { const [cx, cy] = centroid(c.area); if (inView(cx, cy, cx, cy)) text(c.name, sx(cx), sy(cy), { size: c.tier === 'college' ? 10 : 12, weight: 700, colour: '#fef3c7', centre: true }); }
@@ -459,7 +570,7 @@ function renderSummary() {
     `interstate exits: ${cr.filter(c => c.type === 'interchange').length}, overpasses: ${cr.filter(c => c.type === 'overpass').length}`,
     `signals: ${signals.length}`,
     ...(facilities ? [`gas stations: ${facilities.gasStations.length}, schools: ${facilities.schools.length}, campuses: ${facilities.campuses.length}`, `wind farms: ${facilities.energy.windFarms.length} (${facilities.energy.windFarms.reduce((a, f) => a + f.turbines.length, 0)} turbines), windmills: ${facilities.energy.windmills.length}, wells: ${facilities.energy.wells.length}`] : []),
-    ...(map.airfields ? [`airports: ${map.airfields.filter(a => a.kind === 'airport').length}, air bases: ${map.airfields.filter(a => a.kind === 'airBase').length}, NWS offices: ${map.airfields.filter(a => a.nws).length}`, `radars: ${map.airfields.map(a => a.radar.id).join(' ')}`] : []),
+    ...(map.airfields ? [`airports: ${map.airfields.filter(a => a.kind === 'airport').length}, air bases: ${map.airfields.filter(a => a.kind === 'airBase').length}, NWS offices: ${map.airfields.filter(a => a.nws).length}`, `radars: ${map.airfields.filter(a => !a.sharedRadar).map(a => a.radar.id).join(' ')}`] : []),
     `section roads: ${Object.entries(map.sectionGrid.roadMiles).map(([k, v]) => `${k} ${v}`).join(', ')} mi`,
     ...(counties ? [`counties: ${counties.counties.length}, median ${[...counties.counties].map(c => c.areaMi2).sort((a, b) => a - b)[counties.counties.length >> 1]} mi²`] : []),
     '',
@@ -518,7 +629,7 @@ canvas.addEventListener('mousemove', event => {
 });
 
 function nearestAirfield(x, y) {
-  const a = map.airfields.reduce((best, f) => (Math.hypot(f.x - x, f.y - y) < Math.hypot(best.x - x, best.y - y) ? f : best));
+  const a = map.airfields.filter(f => f.kind !== 'nwsOffice').reduce((best, f) => (Math.hypot(f.x - x, f.y - y) < Math.hypot(best.x - x, best.y - y) ? f : best));
   return `${a.code} (${a.kind === 'airBase' ? 'AFB' : a.class}), ${Math.hypot(a.x - x, a.y - y).toFixed(1)} mi`;
 }
 
@@ -535,7 +646,7 @@ function nearestPlace(x, y) {
   return `${best.name} (${kind}, pop. ${best.population.toLocaleString()}), ${distance.toFixed(1)} mi`;
 }
 
-for (const id of ['showRivers', 'showRoads', 'showSections', 'showAirports', 'showNws', 'showEnergy', 'showSchools', 'showGas', 'showRegions', 'showCounties', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
+for (const id of ['showRivers', 'showRoads', 'showSections', 'showGraph', 'showConflicts', 'showAirports', 'showNws', 'showEnergy', 'showSchools', 'showGas', 'showLandUse', 'showRegions', 'showCounties', 'showGrid', 'showLabels']) $(id).addEventListener('change', draw);
 $('seed').addEventListener('change', () => load(Number($('seed').value) || 1));
 window.addEventListener('resize', fit);
 load(1);

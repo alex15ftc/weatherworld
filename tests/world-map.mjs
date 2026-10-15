@@ -1,18 +1,23 @@
 // The world map generator: the same seed gives the same map; water runs downhill along every
 // river; the map's 10-mile averages stay on the weather engine's slope; every region, settlement
 // kind and interstate turns up; a reservoir is dammed; roads keep to the section lines; and the
-// counties cover the map in one piece each, sized as Plains counties are.
+// counties cover the map in one piece each, sized as Plains counties are; and the road graph
+// joins its roads only where the road rules let them meet, with footprints that do not overlap.
 import assert from 'node:assert/strict';
 import { interchangeRamps } from '../js/worldmap/interchanges.js';
 import { riverCorners } from '../js/worldmap/sectionRoads.js';
+import { polysNear, COMMERCIAL } from '../js/worldmap/landUse.js';
+import { pointInPoly, distToSeg } from '../js/worldmap/airfields.js';
+import { HALF_MI } from '../js/worldmap/streets.js';
+import { findConflicts } from '../js/worldmap/footprints.js';
 import { generateWorldMap, describeWorldMap, engineTerrainM, REGIONS, COVER } from '../js/worldmap/WorldMapGenerator.js';
 
 const small = { miles: 500, cellMiles: 1, erosionSteps: 12 };
 const map = generateWorldMap({ seed: 3, ...small });
-const again = generateWorldMap({ seed: 3, ...small });
+const again = generateWorldMap({ seed: 3, ...small, streets: false });
 assert.deepEqual(again.elevation, map.elevation, 'the same seed gives the same ground');
 assert.deepEqual(again.settlements.map(s => s.name), map.settlements.map(s => s.name), 'and the same towns');
-assert.notDeepEqual(generateWorldMap({ seed: 4, ...small }).elevation, map.elevation, 'another seed gives other ground');
+assert.notDeepEqual(generateWorldMap({ seed: 4, ...small, streets: false }).elevation, map.elevation, 'another seed gives other ground');
 
 const n = map.size, at = (x, y) => map.elevation[Math.floor(y / map.cellMiles) * n + Math.floor(x / map.cellMiles)];
 for (const river of map.rivers) {
@@ -117,6 +122,17 @@ const meanArea = region => { const own = list.filter(c => c.region === region); 
 assert.ok(meanArea('highPlains') > meanArea('midwest') * 1.2, `High Plains counties (${meanArea('highPlains').toFixed(0)} mi2) are larger than the eastern farm country's (${meanArea('midwest').toFixed(0)} mi2)`);
 assert.ok(list.filter(c => c.seat).length >= 0.85 * list.length, 'nearly every county has a seat');
 
+// County warning areas: every county in one office's, each office's in one piece holding the
+// county the office stands in.
+assert.deepEqual(map.offices.map(o => o.id).sort(), map.airfields.filter(a => a.nws).map(a => a.nws.id).sort(), 'an area for every NWS office');
+assert.equal(map.offices.reduce((n, o) => n + o.counties.length, 0), list.length, 'every county in exactly one office\'s area');
+for (const o of map.offices) {
+  const mine = new Set(o.counties), start = list.find(c => mine.has(c.id)), seen = new Set([start.id]), queue = [start];
+  while (queue.length) for (const n of queue.pop().neighbours) if (mine.has(n) && !seen.has(n)) { seen.add(n); queue.push(list[n - 1]); }
+  assert.equal(seen.size, mine.size, `${o.name}'s area is one piece`);
+  assert.equal(list[counties.ids[Math.floor(o.y / counties.cellMiles) * counties.size + Math.floor(o.x / counties.cellMiles)] - 1].office, o.id, `${o.name} stands in its own area`);
+}
+
 // Airfields: an airport with an NWS office and a radar for every place of 40,000 or more, at a
 // distance real ones of its size are; one air base alone in the High Plains with a 12,000 ft
 // runway; fences clear of roads and rivers with no section road inside; access roads that end on
@@ -146,7 +162,13 @@ for (const a of map.airfields) {
   const [x, y] = a.access.points.at(-1);
   assert.ok(near(x, y, 0.02) || (Number.isInteger(x) && Number.isInteger(y)), `${a.access.name} at ${a.name} ends on a road`);
 }
-assert.deepEqual(map.radars.map(r => r.id), map.airfields.map(a => a.radar.id), 'the radars are the airfields\' radars');
+assert.deepEqual(map.radars.map(r => r.id), map.airfields.filter(a => !a.sharedRadar).map(a => a.radar.id), 'the radars are the airfields\' radars');
+// Offices in towns fill the gaps the airports leave: every office's area at most about 30,000 mi2
+// (real Plains CWAs are 20,000 to 30,000); an office near the air base uses its radar.
+const townOffices = map.airfields.filter(a => a.kind === 'nwsOffice');
+assert.ok(townOffices.length >= 1 && townOffices.every(a => a.nws && a.radar && map.settlements.some(s => s.name === a.city)), `offices in towns: ${townOffices.map(a => a.city).join(', ')}`);
+assert.ok(map.offices.every(o => o.areaMi2 <= 32000), `office areas ${map.offices.map(o => o.areaMi2).join(', ')} mi2`);
+for (const a of townOffices.filter(t => t.sharedRadar)) assert.equal(a.radar.id, base.radar.id, `${a.name} uses the air base's radar`);
 assert.equal(new Set(map.radars.map(r => r.id)).size, map.radars.length, 'each radar has its own identifier');
 // The metro's and the city's airports are international, reached by a spur from their own exit.
 for (const a of airports.filter(f => ['metro', 'city'].includes(cities.find(c => c.name === f.city).kind))) {
@@ -201,5 +223,55 @@ for (let i = 0; i < lots.length; i++) for (const other of [...lots.slice(i + 1),
 assert.equal(clash.length, 0, `facilities overlap: ${clash.slice(0, 5).join('; ')}`);
 const metroSchools = fac.schools.filter(s => s.town === metro.name).length;
 assert.ok(metroSchools < metro.population / 5000, `city schools are larger, so fewer per person (${metroSchools} in ${metro.name})`);
+// Land use: gas stations only in the commercial areas and never five to a square mile; schools
+// apart from shopping and industry; shops, malls, industry and parks on ground of their own;
+// elementary schools in the cities' neighbourhoods.
+const lu = fac.landUse, shops = lu.areas.filter(z => COMMERCIAL.has(z.kind)), middle = poly => [poly.reduce((t, q) => t + q[0], 0) / poly.length, poly.reduce((t, q) => t + q[1], 0) / poly.length];
+const stations = fac.gasStations.map(g => middle(g.lot));
+assert.ok(stations.every(([x, y]) => shops.some(z => pointInPoly(x, y, z.poly))), 'every gas station stands in a commercial area');
+let densest = 0;
+for (const [x, y] of stations) for (const dx of [0, 0.5]) for (const dy of [0, 0.5]) densest = Math.max(densest, stations.filter(([a, b]) => a >= x - dx && a < x - dx + 1 && b >= y - dy && b < y - dy + 1).length);
+assert.ok(densest <= 4, `at most four gas stations to a square mile (${densest})`);
+const busy = lu.areas.filter(z => COMMERCIAL.has(z.kind) || z.kind === 'industrial');
+assert.ok(!fac.schools.some(s => busy.some(z => polysNear(s.lot, z.poly, 0.09))), 'schools stand apart from shopping and industry');
+const solid = lu.areas.filter(z => ['mall', 'shopping', 'industrial', 'park'].includes(z.kind));
+assert.ok(!solid.some((a, i) => solid.slice(i + 1).some(b => polysNear(a.poly, b.poly, 0))), 'shopping, industry and parks do not overlap');
+const hoodSchools = fac.schools.filter(s => s.town === metro.name && s.level === 'elementary' && lu.neighborhoods.some(nb => nb.town === metro.name && s.name === `${nb.name} Elementary`)).length;
+assert.ok(lu.areas.some(z => z.kind === 'mall') && hoodSchools > 0.8 * fac.schools.filter(s => s.town === metro.name && s.level === 'elementary').length, `a mall, and the metro's elementary schools in its neighbourhoods (${hoodSchools})`);
+
+// The road graph: roads cross only at shared nodes, except where one passes over an interstate
+// or a ramp; no town street comes near a highway it does not meet at a node, nor ever touches an
+// interstate, expressway or ramp; every street end is a cul-de-sac.
+const graphEdges = map.streets.graph.edges.filter(e => e.alive), cellOf = (x, y) => `${Math.floor(x)},${Math.floor(y)}`, byCell = new Map();
+for (const e of graphEdges) for (let X = Math.floor(Math.min(e.a.x, e.b.x)); X <= Math.floor(Math.max(e.a.x, e.b.x)); X++) for (let Y = Math.floor(Math.min(e.a.y, e.b.y)); Y <= Math.floor(Math.max(e.a.y, e.b.y)); Y++) { const k = `${X},${Y}`; if (!byCell.has(k)) byCell.set(k, []); byCell.get(k).push(e); }
+const GRADE_SEPARATED = new Set(['interstate', 'ramp']);
+let unjoined = 0, streetsNear = 0;
+for (const e of graphEdges) {
+  const others = new Set();
+  for (let X = Math.floor(Math.min(e.a.x, e.b.x)); X <= Math.floor(Math.max(e.a.x, e.b.x)); X++) for (let Y = Math.floor(Math.min(e.a.y, e.b.y)); Y <= Math.floor(Math.max(e.a.y, e.b.y)); Y++) for (const o of byCell.get(`${X},${Y}`) ?? []) others.add(o);
+  for (const o of others) {
+    if (o.id <= e.id || o.a === e.a || o.a === e.b || o.b === e.a || o.b === e.b || GRADE_SEPARATED.has(e.kind) || GRADE_SEPARATED.has(o.kind)) continue;
+    const rx = e.b.x - e.a.x, ry = e.b.y - e.a.y, sx = o.b.x - o.a.x, sy = o.b.y - o.a.y, den = rx * sy - ry * sx;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((o.a.x - e.a.x) * sy - (o.a.y - e.a.y) * sx) / den, u = ((o.a.x - e.a.x) * ry - (o.a.y - e.a.y) * rx) / den;
+    if (t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99) unjoined++;
+  }
+  if (e.kind === 'street') for (const node of [e.a, e.b]) for (const o of others) {
+    if (!['interstate', 'expressway', 'ramp', 'highway'].includes(o.kind) || (o.kind === 'highway' && (o.a === node || o.b === node))) continue;
+    if (o.kind !== 'highway' && (o.a === node || o.b === node)) streetsNear++;
+    else if (o.kind !== 'highway' && distToSeg(node.x, node.y, { ax: o.a.x, ay: o.a.y, bx: o.b.x, by: o.b.y }) < HALF_MI[o.kind] + 0.03) streetsNear++;
+  }
+}
+assert.equal(unjoined, 0, `roads cross only at nodes (${unjoined} crossings without one)`);
+assert.equal(streetsNear, 0, `town streets keep clear of interstates, expressways and ramps (${streetsNear} too near)`);
+const streetEnds = map.streets.graph.nodes.filter(nd => nd.edges.length === 1 && nd.edges[0].kind === 'street');
+assert.ok(streetEnds.length && streetEnds.every(nd => nd.end === 1), 'every street end is a cul-de-sac');
+assert.ok(graphEdges.some(e => e.kind === 'street') && graphEdges.some(e => e.kind === 'collector') && map.streets.graph.nodes.some(nd => nd.control === 2), 'the graph has streets, collectors and signals');
+
+// Footprints: no cul-de-sac overlaps anything, and few other overlaps are left anywhere.
+const conflicts = findConflicts(map), edgeCount = graphEdges.length;
+assert.ok(!conflicts.counts.culDeSac, `cul-de-sacs fit clear of roads, lots and rivers (${conflicts.counts.culDeSac} overlap)`);
+const overlapping = Object.values(conflicts.counts).reduce((a, b) => a + b, 0);
+assert.ok(overlapping < edgeCount * 0.002, `few footprint overlaps (${JSON.stringify(conflicts.counts)} among ${edgeCount} road edges)`);
 
 console.log(`world map passed (${map.rivers.length} rivers, ${map.settlements.length} settlements, ${list.length} counties, ${map.airfields.length} airfields, slope match ±${summary.engineMatch.meanAbsM.toFixed(1)} m, lake ${lake.areaMi2} mi2, highways ${(100 * along / total).toFixed(0)}% on mile lines)`);

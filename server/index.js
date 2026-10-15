@@ -43,7 +43,9 @@ const warnings = process.env.WEATHER_WARNINGS === 'off' ? null : new WarningRunt
 const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); };
 outlooks?.maybeIssue();
 setInterval(issueProducts, 5_000).unref();
-const ADVANCE_POLL_MS = 10_000;
+// Often enough that a storm tick is worked out within a couple of seconds of falling due: the
+// game shows each tick a fixed time after it falls due (GameFeed.js).
+const ADVANCE_POLL_MS = 2_000;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
 function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace.started; perf.totals.requests++; const stat=perf.endpoints[trace.pathname]??={count:0,totalMs:0,maxMs:0}; stat.count++;stat.totalMs+=totalMs;stat.maxMs=Math.max(stat.maxMs,totalMs);perf.recent.unshift({path:trace.pathname,totalMs:+totalMs.toFixed(2),...detail,at:new Date().toISOString()});if(perf.recent.length>50)perf.recent.length=50; return totalMs; }
@@ -72,6 +74,12 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/live/metadata') return sendJson(req, res, 200, runtime.metadata(), { trace });
   if (url.pathname === '/api/live/field') return sendJson(req, res, 200, runtime.liveField(url.searchParams.get('product') ?? 'temperature'), { trace });
   if (url.pathname === '/api/live/boundaries') return sendJson(req, res, 200, runtime.boundaries(), { trace });
+  // The game's storms (GameFeed.js): ?after=<seq> gives the frames after that one. Set
+  // WEATHER_GAME_KEY to require it in the x-api-key header.
+  if (url.pathname === '/api/game/v1/frames') {
+    if (process.env.WEATHER_GAME_KEY && req.headers['x-api-key'] !== process.env.WEATHER_GAME_KEY) return sendJson(req, res, 401, { error: 'Bad key' }, { cacheable: false, trace });
+    return sendText(req, res, 200, runtime.gameFeed.poll(url.searchParams.get('after')), trace);
+  }
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
@@ -183,5 +191,16 @@ function sendJson(req, res, status, value, { cacheable = true, trace = null } = 
   const totalMs=trace?finishRequest(trace,{status,rawBytes:raw.length,sentBytes:raw.length,serializeMs:+serializeMs.toFixed(2),compressed:false}):0;
   res.writeHead(status, { ...headers, 'content-length':raw.length,'server-timing':`total;dur=${totalMs.toFixed(2)}, serialize;dur=${serializeMs.toFixed(2)}` });
   res.end(raw);
+}
+// JSON already written as text (the game feed), compressed when the caller takes gzip.
+function sendText(req, res, status, text, trace = null) {
+  const raw = Buffer.from(text), headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', vary: 'Accept-Encoding' };
+  const done = (body, compressed) => {
+    if (trace) finishRequest(trace, { status, rawBytes: raw.length, sentBytes: body.length, compressed });
+    res.writeHead(status, { ...headers, ...(compressed ? { 'content-encoding': 'gzip' } : {}), 'content-length': body.length });
+    res.end(body);
+  };
+  if (/\bgzip\b/.test(req.headers['accept-encoding'] ?? '') && raw.length > 1024) return zlib.gzip(raw, (error, body) => error ? done(raw, false) : done(body, true));
+  done(raw, false);
 }
 server.listen(PORT, () => console.log(`[weather-authority] 2.23.2 listening on http://localhost:${PORT}`));

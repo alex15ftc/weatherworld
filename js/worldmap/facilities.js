@@ -17,22 +17,30 @@
 //     Dorado), fewer in the east; gas wells in the High Plains (as the Hugoton field). Wells
 //     stand on a 40-acre (quarter-mile) spacing, not every spot drilled, each on a lease road to
 //     the nearest section line, with a tank battery for every few oil wells.
+// Each place is first divided by use (landUse.js): downtown, shopping at the arterial corners,
+// highway strips, industry, parks, and in the cities neighbourhoods with collectors.
 // Schools (every place of schoolMinPopulation or more): a small town has an elementary school and
 // a junior-senior high; larger places an elementary school for about every 4,500 people, a middle
-// school for every 14,000 and a high school for every 25,000, spread over the town and its
-// suburbs as people are. Colleges: a community college in each small city and city, a state
-// university in the city and a large university and community colleges in the metro, each on its
-// own campus between the arterials. Every school and campus has parking lots.
+// school for every 14,000 and a high school for every 25,000, fewer for the people in a city
+// (bigger schools), spread over the town and its suburbs as people are. Elementary schools stand
+// inside a neighbourhood on its collector and take its name; town schools stand towards the
+// edge; all keep schoolGapMi from shopping and industry. Colleges: a community college in each
+// small city and city, a state university in the city and a large university and community
+// colleges in the metro, each on its own campus between the arterials. Every school and campus
+// has parking lots.
 // Gas stations: about one for every 2,200 people in a place of gasMinPopulation or more (at least
-// one), a one-in-gasSmallChance chance of one in a smaller place; small (two pumps) in the
-// smallest places up to large (eight to twelve) in cities; truck stops (car and diesel islands,
-// truck parking) at some interstate exits. All on the main roads and arterials.
+// one), fewer for the people in a city, a one-in-gasSmallChance chance of one in a smaller
+// place; small (two pumps) in the smallest places up to large (eight to twelve) in cities; truck
+// stops (car and diesel islands, truck parking) at some interstate exits. Only in the commercial
+// areas, gasSpacingMi apart and no more than three to a junction (gasCluster).
 //
 // Lots face a road: laid out in feet along the road (al) and back from it (ac), and stored in map
 // miles.
 import { makeNoise, makeRandom, hashText, fbm, clamp } from './noise.js';
 import { interchangeRamps } from './interchanges.js';
 import { pointInPoly, nearestOnSegment, distToSeg, segmentIntersection } from './airfields.js';
+import { planPlaceLandUse, planNeighborhoods, polysNear, COMMERCIAL } from './landUse.js';
+import { HALF_MI } from './streets.js';
 
 const FT = 1 / 5280;
 
@@ -44,7 +52,12 @@ export const FACILITY_DEFAULTS = Object.freeze({
   // City schools are bigger: the people per school grow as (population / from) ^ exponent above
   // `from` (Wichita, 400,000, has about 55 elementary, 16 middle and 10 high schools).
   schoolGrowth: { from: 25000, exponent: 0.2 }, schoolSpacing: 0.5,
-  gasMinPopulation: 1000, gasPeoplePer: 2200, gasSmallChance: 0.25, truckStopChance: { rural: 0.35, town: 0.15 }
+  schoolGapMi: 0.1,         // schools keep this far from shopping and industry
+  gasMinPopulation: 1000, gasPeoplePer: 2200, gasSmallChance: 0.25, truckStopChance: { rural: 0.35, town: 0.15 },
+  // Fewer stations for the people in a city (more drive past each), never closer than gasSpacingMi.
+  gasGrowth: { from: 25000, exponent: 0.2 }, gasSpacingMi: 0.4,
+  gasCluster: { mi: 0.75, most: 2 },   // at most this many others within mi of a station (three to a busy junction)
+  landUse: {}
 });
 
 const ELEMENTARY_NAMES = ['Lincoln', 'Washington', 'Jefferson', 'Roosevelt', 'Eisenhower', 'Garfield', 'Prairie View', 'Sunflower', 'Meadowlark', 'Cottonwood', 'Westridge', 'Sunset Hills', 'Lakeview', 'Oak Park', 'Riverside', 'Highland', 'Pleasant Valley', 'Hillcrest', 'Wheatland', 'Bluestem', 'Indian Hills', 'Fairview', 'Park Hill', 'Mill Creek', 'Stone Creek', 'Woodland', 'Prairie Ridge', 'Cedar Hills', 'Heritage', 'Pioneer', 'Santa Fe Trail', 'Chisholm Trail', 'Kenwood', 'Brookside', 'Windsor', 'Clearwater', 'Briarwood', 'Countryside', 'Lone Elm', 'Shawnee Mission'];
@@ -112,9 +125,12 @@ export function planFacilities(map, options = {}) {
   const HALF = { interstate: 0.051, expressway: 0.039, highway: 0.018 };
   for (const road of roads) for (let i = 1; i < road.points.length; i++) addSeg({ type: 'road', road, kind: road.kind, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: HALF[road.kind] ?? 0.018 });
   for (const c of crossings) for (const ramp of interchangeRamps(c)) for (let i = 1; i < ramp.length; i++) addSeg({ type: 'ramp', ax: ramp[i - 1][0], ay: ramp[i - 1][1], bx: ramp[i][0], by: ramp[i][1], half: 0.011 });
-  for (const river of rivers) for (let k = 2; k < river.points.length; k += 2) addSeg({ type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000 + 0.01 });
+  // Rivers with their banks and the valley side (footprints.js): lots keep out of the corridor.
+  for (const river of rivers) for (let k = 2; k < river.points.length; k += 2) addSeg({ type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000 + 0.048 });
   const segsNear = (x0, y0, x1, y1) => { const found = new Set(); for (const key of cellsOf(x0 - 0.1, y0 - 0.1, x1 + 0.1, y1 + 0.1, 1)) for (const s of index.get(key) ?? []) found.add(s); return found; };
-  const SECTION_HALF = [0, 0.008, 0.01, 0.013];
+  // Section roads as wide as Roblox builds them: paved ones are arterials in town.
+  const SECTION_HALF = [0, HALF_MI.dirt, HALF_MI.gravel, HALF_MI.county];
+  const sectionHalf = (cls, x, y) => (cls === 3 && townCover.has(cover[cellAt(x, y)]) ? HALF_MI.arterial : SECTION_HALF[cls]);
   const sectionClass = (I, J, east) => { if (I < 0 || J < 0 || I >= sections.size || J >= sections.size) return 0; const v = sections.roads[J * sections.size + I]; return east ? v & 3 : (v >> 2) & 3; };
   const fences = airfields.map(a => ({ poly: a.fence, box: bboxOf(a.fence) }));
   const taken = new Map();   // 0.25-mile cells -> boxes of what is placed
@@ -138,11 +154,11 @@ export function planFacilities(map, options = {}) {
     // Section roads on the mile lines near the lot.
     for (let I = Math.ceil(box[0] - 0.05); I <= Math.floor(box[2] + 0.05); I++) for (let J = Math.floor(box[1] - 0.05); J <= Math.floor(box[3] + 0.05); J++) {
       const cls = sectionClass(I, J, false);
-      if (cls && segPolyDist({ ax: I, ay: J, bx: I, by: J + 1 }, poly) < SECTION_HALF[cls] + pad) return false;
+      if (cls && segPolyDist({ ax: I, ay: J, bx: I, by: J + 1 }, poly) < sectionHalf(cls, I, J + 0.5) + pad) return false;
     }
     for (let J = Math.ceil(box[1] - 0.05); J <= Math.floor(box[3] + 0.05); J++) for (let I = Math.floor(box[0] - 0.05); I <= Math.floor(box[2] + 0.05); I++) {
       const cls = sectionClass(I, J, true);
-      if (cls && segPolyDist({ ax: I, ay: J, bx: I + 1, by: J }, poly) < SECTION_HALF[cls] + pad) return false;
+      if (cls && segPolyDist({ ax: I, ay: J, bx: I + 1, by: J }, poly) < sectionHalf(cls, I + 0.5, J) + pad) return false;
     }
     // Airfield fences: no corner of either inside the other, and no fence line across the lot.
     for (const f of fences) if (box[0] < f.box[2] + 0.05 && box[2] > f.box[0] - 0.05 && box[1] < f.box[3] + 0.05 && box[3] > f.box[1] - 0.05 && (poly.some(([x, y]) => pointInPoly(x, y, f.poly)) || f.poly.some(([x, y]) => pointInPoly(x, y, poly)) || f.poly.some(([ax, ay], i) => { const [bx, by] = f.poly[(i + 1) % f.poly.length]; return segPolyDist({ ax, ay, bx, by }, poly) < pad; }))) return false;
@@ -178,7 +194,8 @@ export function planFacilities(map, options = {}) {
       for (const east of [true, false]) {
         const cls = sectionClass(I, J, east), [mx, my] = east ? [I + 0.5, J] : [I, J + 0.5];
         if (cls !== 3 || Math.hypot(mx - st.x, my - st.y) > reach) continue;
-        out.push(east ? { ax: I, ay: J, bx: I + 1, by: J, half: 0.013, kind: 'section' } : { ax: I, ay: J, bx: I, by: J + 1, half: 0.013, kind: 'section' });
+        const half = sectionHalf(3, mx, my);
+        out.push(east ? { ax: I, ay: J, bx: I + 1, by: J, half, kind: 'section' } : { ax: I, ay: J, bx: I, by: J + 1, half, kind: 'section' });
       }
     }
     return out;
@@ -186,7 +203,7 @@ export function planFacilities(map, options = {}) {
 
   // Places a lot near a point of a place: on the line nearest the point, at the point's place
   // along it and on its side, nudged along if that spot is taken.
-  const placeLot = (lines, target, W, D, prefer = () => 1) => {
+  const placeLot = (lines, target, W, D, prefer = () => 1, accept = () => true) => {
     const scored = lines.map(line => {
       const [px, py] = nearestOnSegment(target[0], target[1], line);
       return { line, d: Math.hypot(px - target[0], py - target[1]) / prefer(line), px, py };
@@ -199,13 +216,22 @@ export function planFacilities(map, options = {}) {
         const at = at0 + nudge;
         if (at < W * FT / 2 + 0.01 || at > len - W * FT / 2 - 0.01) continue;
         const f = frontage(line, at, side, W, D);
-        if (clear(f.lot)) return f;
+        if (clear(f.lot) && accept(f.lot, f)) return f;
       }
     }
     return null;
   };
   const nearestTown = (x, y) => settlements.reduce((best, s) => (Math.hypot(s.x - x, s.y - y) < Math.hypot(best.x - x, best.y - y) ? s : best));
-  const pointInPlace = (st, rng, spread = 1) => { const r = st.extentMi * spread * Math.sqrt(rng()), t = 2 * Math.PI * rng(); return [st.x + r * Math.cos(t), st.y + r * Math.sin(t)]; };
+  const pointInPlace = (st, rng, spread = 1, from = 0) => { const r = st.extentMi * (from + (spread - from) * Math.sqrt(rng())), t = 2 * Math.PI * rng(); return [st.x + r * Math.cos(t), st.y + r * Math.sin(t)]; };
+
+  // Land use (landUse.js): the areas every place is divided into, and the neighbourhoods of the
+  // cities with their collectors (kept clear as roads are).
+  const areas = [], neighborhoods = [];
+  const helpers = { seed, areas, campuses: null, crossings, clear, sectionClass, segsNear, distToSeg, placeLot, linesIn: (st, reach) => linesIn(st, reach), isWater: (x, y) => cover[cellAt(x, y)] === water };
+  // A lot lies inside an area (its corners within the area, a few feet given).
+  const inside = (lot, zone, tol = 0.004) => lot.every(([x, y]) => pointInPoly(x, y, zone.poly) || [[tol, 0], [-tol, 0], [0, tol], [0, -tol]].some(([dx, dy]) => pointInPoly(x + dx, y + dy, zone.poly)));
+  const nearUse = (lot, kinds, gap) => areas.some(z => kinds.has(z.kind) && polysNear(lot, z, gap));
+  const SCHOOL_AVOID = new Set([...COMMERCIAL, 'industrial']);
 
   // --- Gas stations. -------------------------------------------------------------------------
   const gasStations = [], gasMissing = [];
@@ -258,7 +284,7 @@ export function planFacilities(map, options = {}) {
       const [w, h] = dims, slackX = 1 - w - 0.06, slackY = 1 - h - 0.06;
       const x0 = r4(I + 0.03 + slackX * rng()), y0 = r4(J + 0.03 + slackY * rng()), x1 = r4(x0 + w), y1 = r4(y0 + h);
       const area = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-      if (!clear(area, 0.01)) continue;
+      if (!clear(area, 0.01) || areas.some(z => z.kind !== 'corridor' && polysNear(area, z, 0.02))) continue;
       const box = (a, b, c, d) => [[r4(x0 + a * w), r4(y0 + b * h)], [r4(x0 + c * w), r4(y0 + b * h)], [r4(x0 + c * w), r4(y0 + d * h)], [r4(x0 + a * w), r4(y0 + d * h)]];
       const buildings = [], parking = [];
       // Buildings in two rings round the quad (the middle 30% by 30%).
@@ -288,44 +314,92 @@ export function planFacilities(map, options = {}) {
     const rng = makeRandom(hashText(`${seed}|place|${st.name}`)), reach = Math.max(st.extentMi, 0.6);
     const lines = linesIn(st, reach + 0.2);
     if (!lines.length) { if (st.population >= p.gasMinPopulation) gasMissing.push(st.name); continue; }
-    // Colleges first (they need whole blocks).
+    // Land use first: downtown, shopping, highway strips, industry and parks.
+    const zones = planPlaceLandUse(st, helpers, p.landUse);
+    // Colleges next (they need whole blocks), then the neighbourhoods round them.
     if (st.kind === 'metro') { buildCampus(st, 'university', `University of ${st.name}`, rng); for (let k = 0; k < Math.round(st.population / 600000); k++) buildCampus(st, 'college', `${st.name} ${['Metropolitan', 'Community', 'Technical'][k % 3]} College`, rng); }
     if (st.kind === 'city') { buildCampus(st, 'stateUniversity', `${st.name} State University`, rng); buildCampus(st, 'college', `${st.name} Community College`, rng); }
     if (st.kind === 'smallCity') buildCampus(st, 'college', `${st.name} Community College`, rng);
-    // Schools.
+    helpers.campuses = campuses;
+    const hoods = planNeighborhoods(st, helpers), collectors = [];
+    for (const nb of hoods) {
+      // A collector stops where an industrial park or campus stands across its line.
+      nb.collectors = nb.collectors.filter(c => { const seg = [[c.ax, c.ay], [c.bx, c.by]]; return !areas.some(z => z.town === st.name && (z.kind === 'industrial' || z.kind === 'park') && polysNear(seg, z, 0.01)) && !campuses.some(cp => polysNear(seg, cp.area, 0.01)); });
+      for (const c of nb.collectors) { addSeg({ type: 'collector', ...c }); collectors.push(c); }
+      neighborhoods.push(nb);
+    }
+    const allLines = [...lines, ...collectors];
+    // Schools: away from shopping and industry, off parks; an elementary school inside each of
+    // a spread of neighbourhoods, on its collector and named for it; in a town, towards the edge.
+    const schoolOk = lot => !nearUse(lot, SCHOOL_AVOID, p.schoolGapMi) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, 0.004));
     if (st.population >= p.schoolMinPopulation) {
       const grow = Math.max(1, st.population / p.schoolGrowth.from) ** p.schoolGrowth.exponent, per = level => Math.max(1, Math.round(st.population / (p.peoplePer[level] * grow)));
       const wanted = st.population < p.smallTownPopulation ? [['elementary', 1], ['juniorSenior', 1]] : [['elementary', per('elementary')], ['middle', per('middle')], ['high', per('high')]];
+      const town = st.kind === 'town';
       for (const [level, count] of wanted) {
         // Schools of a level keep apart: a share of the spacing their count over the place's area gives.
-        const apart = p.schoolSpacing * Math.sqrt(Math.PI * Math.max(st.extentMi, 0.6) ** 2 / count), same = [];
-        for (let k = 0; k < count; k++) {
+        const apart = p.schoolSpacing * Math.sqrt(Math.PI * reach ** 2 / count), same = [];
+        const order = level === 'elementary' && hoods.length ? hoods.map(nb => [rng(), nb]).sort((a, b) => a[0] - b[0]).map(x => x[1]) : [];
+        let k = 0;
+        // Elementary schools in the neighbourhoods.
+        for (const nb of order) {
+          if (k >= count) break;
+          if (same.some(([x, y]) => Math.hypot(x - nb.centre[0], y - nb.centre[1]) < apart)) continue;
+          const lay = schoolLayout(level), target = [nb.centre[0] + (rng() - 0.5) * 0.3, nb.centre[1] + (rng() - 0.5) * 0.3];
+          const f = placeLot([...nb.collectors, ...allLines], target, lay.W, lay.D, line => (line.kind === 'collector' ? 3 : 1), lot => schoolOk(lot) && inside(lot, nb, 0.03));
+          if (f) { buildSchool(f, level, `${nb.name} Elementary`, st.name); same.push(nb.centre); k++; }
+        }
+        for (; k < count; k++) {
           const name = level === 'elementary' ? `${count === 1 ? st.name : named(ELEMENTARY_NAMES, k)} Elementary`
             : level === 'juniorSenior' ? `${st.name} Junior-Senior High`
             // The first takes the town's name, the next few its sides, the rest names of their own.
             : `${k === 0 ? st.name : k <= SIDES.length ? `${st.name} ${SIDES[k - 1]}` : named(SCHOOL_NAMES, k - SIDES.length - 1 + (level === 'middle' ? 7 : 0))} ${level === 'middle' ? 'Middle School' : 'High School'}`;
           const lay = schoolLayout(level);
           let f = null;
-          for (let tries = 0; tries < 10 && !f; tries++) {
-            const target = pointInPlace(st, rng, tries < 5 ? 0.9 : 1.1);
-            if (tries < 8 && same.some(([x, y]) => Math.hypot(x - target[0], y - target[1]) < apart)) continue;
-            f = placeLot(lines, target, lay.W, lay.D);
+          for (let tries = 0; tries < 14 && !f; tries++) {
+            const target = town ? pointInPlace(st, rng, tries < 8 ? 1 : 1.25, 0.4) : pointInPlace(st, rng, tries < 7 ? 0.9 : 1.1);
+            if (tries < 10 && same.some(([x, y]) => Math.hypot(x - target[0], y - target[1]) < apart)) continue;
+            f = placeLot(allLines, target, lay.W, lay.D, () => 1, schoolOk);
           }
           if (f) { buildSchool(f, level, name, st.name); same.push(f.front); } else if (k === 0) schoolMissing.push(`${st.name} ${level}`);
         }
       }
     }
-    // Gas stations: on the highways and arterials, mostly where the traffic is.
-    const want = st.population >= p.gasMinPopulation ? Math.max(1, Math.round(st.population / p.gasPeoplePer)) : hashText(`${seed}|gas-chance|${st.name}`) / 4294967296 < p.gasSmallChance ? 1 : 0;
+    // Gas stations: only in the commercial areas (shopping corners, highway strips, downtown),
+    // fewer for the people in a city and kept apart; the corners and strips go first.
+    const grow = Math.max(1, st.population / p.gasGrowth.from) ** p.gasGrowth.exponent;
+    const want = st.population >= p.gasMinPopulation ? Math.max(1, Math.round(st.population / (p.gasPeoplePer * grow))) : hashText(`${seed}|gas-chance|${st.name}`) / 4294967296 < p.gasSmallChance ? 1 : 0;
+    const sites = [];
+    for (const z of zones) {
+      const rank = { corner: 0, neighborhood: 1, community: 2, mall: 4 }[z.tier] ?? (z.kind === 'corridor' ? 1 : z.kind === 'downtown' ? 3 : null);
+      if (rank === null) continue;
+      if (z.corner) { const [I, J] = z.corner, a = z.box[0] + z.box[2] > 2 * I ? 1 : -1, b = z.box[1] + z.box[3] > 2 * J ? 1 : -1; sites.push({ z, at: [I + a * 0.06, J + b * 0.06], rank }); }
+      else if (z.kind === 'corridor') { const l = z.line, len = Math.hypot(l.bx - l.ax, l.by - l.ay); for (let t = 0.05; t < len; t += 0.5) sites.push({ z, at: [l.ax + (l.bx - l.ax) * t / len, l.ay + (l.by - l.ay) * t / len], rank, lines: [l] }); }
+      else for (let k = 0; k < 2; k++) sites.push({ z, at: [z.box[0] + (z.box[2] - z.box[0]) * (0.2 + 0.6 * rng()), z.box[1] + (z.box[3] - z.box[1]) * (0.2 + 0.6 * rng())], rank });
+    }
+    sites.forEach(s => { s.key = s.rank + 2.5 * rng(); });
+    sites.sort((a, b) => a.key - b.key);
+    const spaced = lot => { const [x0, y0, x1, y1] = bboxOf(lot), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2; const d = gasStations.map(g => { const b = bboxOf(g.lot); return Math.hypot((b[0] + b[2]) / 2 - cx, (b[1] + b[3]) / 2 - cy); }); return d.every(v => v >= p.gasSpacingMi) && d.filter(v => v < p.gasCluster.mi).length < p.gasCluster.most; };
     let made = 0;
-    for (let k = 0; k < want; k++) {
+    for (const site of sites) {
+      if (made >= want) break;
+      const size = gasSize(st, rng), lay = gasLayout(size);
+      const f = placeLot(site.lines ?? lines, site.at, lay.W, lay.D, line => (line.kind === 'road' ? 2.5 : 1), lot => inside(lot, site.z) && spaced(lot));
+      if (f) { buildGas(f, size, st.name, { area: site.z.name ?? site.z.kind }); made++; }
+    }
+    // A place with no room in its commercial areas still has a station on its main road: a lone
+    // corner of shopping of its own, clear of the schools and parks.
+    if (!made && want) {
       const size = gasSize(st, rng), lay = gasLayout(size);
       let f = null;
-      for (let tries = 0; tries < (st.population >= p.gasMinPopulation && made === 0 ? 14 : 5) && !f; tries++) {
-        const target = made === 0 && tries < 4 ? [st.x + (rng() - 0.5) * 0.4, st.y + (rng() - 0.5) * 0.4] : pointInPlace(st, rng);
-        f = placeLot(lines, target, lay.W, lay.D, line => (line.kind === 'road' ? 2.5 : 1));
+      for (let tries = 0; tries < 14 && !f; tries++) {
+        const target = tries < 4 ? [st.x + (rng() - 0.5) * 0.4, st.y + (rng() - 0.5) * 0.4] : pointInPlace(st, rng);
+        f = placeLot(lines, target, lay.W, lay.D, line => (line.kind === 'road' ? 2.5 : 1), lot => spaced(lot) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, 0.004)) && !neighborhoods.some(nb => nb.town === st.name && inside(lot, { poly: [[nb.poly[0][0] + 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[2][1] - 0.1], [nb.poly[0][0] + 0.1, nb.poly[2][1] - 0.1]] }, 0)));
       }
-      if (f) { buildGas(f, size, st.name); made++; }
+      if (f) {
+        const z = { kind: 'shopping', tier: 'corner', name: null, town: st.name, poly: f.lot, box: bboxOf(f.lot) };
+        areas.push(z); buildGas(f, size, st.name, { area: 'corner' }); made++;
+      }
     }
     if (st.population >= p.gasMinPopulation && !made) gasMissing.push(st.name);
   }
@@ -352,7 +426,7 @@ export function planFacilities(map, options = {}) {
         const g = frontage(line, at, side, lay.W, lay.D);
         if (clear(g.lot)) { f = g; break; }
       }
-      if (f) { buildGas(f, 'truck stop', nearestTown(c.x, c.y).name, { exit: `${c.interstate} exit ${c.exit}` }); done = true; }
+      if (f) { const g = buildGas(f, 'truck stop', nearestTown(c.x, c.y).name, { exit: `${c.interstate} exit ${c.exit}` }); areas.push({ kind: 'travel', name: `${g.exit} travel center`, town: g.town, poly: f.lot, box: bboxOf(f.lot) }); done = true; }
     }
   }
 
@@ -448,6 +522,10 @@ export function planFacilities(map, options = {}) {
 
   return {
     gasStations, schools, campuses,
+    landUse: {
+      areas: areas.map(({ box, line, ...z }) => z),
+      neighborhoods: neighborhoods.map(nb => ({ name: nb.name, town: nb.town, poly: nb.poly, collectors: nb.collectors.map(c => [[c.ax, c.ay], [c.bx, c.by]]) }))
+    },
     energy: { windFarms, windmills, wells, tanks, leaseRoads },
     missing: { gas: gasMissing, schools: schoolMissing }
   };

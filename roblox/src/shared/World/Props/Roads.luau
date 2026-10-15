@@ -11,6 +11,12 @@
 --     approaches; crosswalks and signals at town and downtown crossings;
 --   signs, signals, lights and poles stand beyond the road's edge (and sidewalks), never on a
 --     road.
+-- Town roads have a concrete gutter along the pavement's edge, a curb, then the verge (grass,
+-- on suburban streets) and the sidewalk. Sidewalks stop at the edge of a crossing road's
+-- footprint; each street corner is a concrete pad between the two curbs. Cul-de-sacs (RoadNet
+-- bulbs) are a round turning circle with a curb and sidewalk round it, open where the street
+-- comes in. Where a road continues along the same line at a narrower width, its pavement tapers
+-- over a short distance instead of stepping in.
 -- Gravel and dirt roads are parts too (no paint). Each chunk lays the parts inside it.
 
 local Builder = require(script.Parent.Builder)
@@ -37,6 +43,12 @@ local SURFACE = {
 	dirt = { colour = rgb(128, 102, 72), material = M.Ground },
 }
 local CONCRETE = rgb(178, 174, 166)
+local CURB_COLOUR = rgb(196, 192, 184)
+local GUTTER = rgb(150, 148, 142)
+local VERGE = rgb(92, 128, 70)
+local CURB = RoadNet.CURB
+local CURB_RISE = 0.6 -- curb and sidewalk tops above the road's
+local GUTTER_W = 1.2
 local WHITE = rgb(238, 238, 232)
 local YELLOW = rgb(232, 182, 36)
 local POLE = rgb(118, 122, 128)
@@ -206,7 +218,7 @@ end
 -- counting pieces of the same road continuing along the same line.
 local function crossingRoad(ctx: Ctx, g: RoadNet.Segment, x: number, z: number, total: boolean, pad: number): RoadNet.Segment?
 	for _, o in ctx.net.segments do
-		if o ~= g then
+		if o ~= g and not o.bulb then
 			local sameLine = math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1
 			if not sameLine and RoadNet.toSegment(o, x, z) < (if total then o.spec.total else o.spec.pavement) + pad then
 				return o
@@ -214,6 +226,43 @@ local function crossingRoad(ctx: Ctx, g: RoadNet.Segment, x: number, z: number, 
 		end
 	end
 	return nil
+end
+
+-- Whether the edge of road g (its curb, verge or sidewalk) is taken at a point by another road:
+-- within that road's pavement (for the curb) or its whole footprint (verge and sidewalk),
+-- measured square to it and only alongside it (not beyond its ends, so a street ending at g
+-- takes only g's near side). A cul-de-sac takes the circle of its footprint.
+local function edgeTaken(near: { RoadNet.Segment }, g: RoadNet.Segment, x: number, z: number, total: boolean): boolean
+	for _, o in near do
+		if o ~= g then
+			local reach = if total then o.spec.total else o.spec.pavement
+			if o.bulb then
+				if (x - o.ax) ^ 2 + (z - o.az) ^ 2 < reach * reach then
+					return true
+				end
+			else
+				local sameLine = math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1
+				if not sameLine then
+					local along = (x - o.ax) * o.ux + (z - o.az) * o.uz
+					local across = math.abs((x - o.ax) * -o.uz + (z - o.az) * o.ux)
+					if along > -0.5 and along < o.length + 0.5 and across < reach then
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- Whether a point lies in a cul-de-sac's turning circle (less margin).
+local function inBulb(ctx: Ctx, x: number, z: number, margin: number): boolean
+	for _, o in ctx.net.segments do
+		if o.bulb and (x - o.ax) ^ 2 + (z - o.az) ^ 2 < (o.spec.pavement - margin) ^ 2 then
+			return true
+		end
+	end
+	return false
 end
 
 -- A road's surface, sidewalks and paint inside the chunk.
@@ -259,21 +308,41 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 			end
 		end
 	end
-	-- Sidewalks: along each side, stopping at the edge of any road they meet.
+	-- Edges of town roads, each side: a gutter on the pavement, the curb, the verge and the
+	-- sidewalk. The curb runs to the crossing road's pavement; verge and sidewalk stop at its
+	-- footprint (the corner pads fill the corners).
 	if s.sidewalk > 0 then
-		local centre = s.total - s.sidewalk / 2
+		local verge = s.total - s.sidewalk - s.pavement - CURB
+		-- The roads that could reach g's edges.
+		local near = {}
+		for _, o in ctx.net.segments do
+			local reach = s.total + o.spec.total + 1
+			if math.max(o.ax, o.bx) > math.min(g.ax, g.bx) - reach and math.min(o.ax, o.bx) < math.max(g.ax, g.bx) + reach
+				and math.max(o.az, o.bz) > math.min(g.az, g.bz) - reach and math.min(o.az, o.bz) < math.max(g.az, g.bz) + reach then
+				table.insert(near, o)
+			end
+		end
 		for _, side in { -1, 1 } do
-			local walk = runs(g, t0, t1, 2, function(x: number, z: number): boolean
-				local wx, wz = x - g.uz * side * centre, z + g.ux * side * centre
-				return not ctx.bridged(wx, wz, g) and not shadowed(x, z) and crossingRoad(ctx, g, wx, wz, false, 0.5) == nil
-			end)
-			for _, run in walk do
-				local a0, a1 = run[1], run[2]
-				local count = math.max(1, math.ceil((a1 - a0) / Roads.PIECE))
-				for i = 0, count - 1 do
-					strip(ctx, g, a0 + (a1 - a0) * i / count, a0 + (a1 - a0) * (i + 1) / count, side * centre, s.sidewalk, Roads.BED + 0.5, raise + 0.5, CONCRETE, M.Concrete)
+			local function lay(offset: number, width: number, total: boolean, thickness: number, top: number, colour: Color3, material: Enum.Material, collide: boolean?)
+				if width <= 0.05 then
+					return
+				end
+				local walk = runs(g, t0, t1, 2, function(x: number, z: number): boolean
+					local wx, wz = x - g.uz * side * offset, z + g.ux * side * offset
+					return not ctx.bridged(wx, wz, g) and not shadowed(x, z) and not edgeTaken(near, g, wx, wz, total)
+				end)
+				for _, run in walk do
+					local a0, a1 = run[1], run[2]
+					local count = math.max(1, math.ceil((a1 - a0) / Roads.PIECE))
+					for i = 0, count - 1 do
+						strip(ctx, g, a0 + (a1 - a0) * i / count, a0 + (a1 - a0) * (i + 1) / count, side * offset, width, thickness, top, colour, material, collide)
+					end
 				end
 			end
+			lay(s.pavement - GUTTER_W / 2, GUTTER_W, false, LINE_T, raise + LINE_T - 0.02, GUTTER, M.Concrete, false)
+			lay(s.pavement + CURB / 2, CURB, false, Roads.BED + CURB_RISE, raise + CURB_RISE + 0.02, CURB_COLOUR, M.Concrete)
+			lay(s.pavement + CURB + verge / 2, verge, true, Roads.BED + CURB_RISE, raise + CURB_RISE - 0.05, VERGE, M.Grass)
+			lay(s.total - s.sidewalk / 2, s.sidewalk, true, Roads.BED + CURB_RISE, raise + CURB_RISE, CONCRETE, M.Concrete)
 		end
 	end
 
@@ -284,6 +353,9 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 	end
 	local function free(x: number, z: number): boolean
 		if ctx.bridged(x, z, g) or shadowed(x, z) then
+			return false
+		end
+		if inBulb(ctx, x, z, -2) then
 			return false
 		end
 		local other = crossingRoad(ctx, g, x, z, false, 14) -- lines end at the stop bar
@@ -431,19 +503,141 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 			end
 		end
 	end
+
+	-- Corner pads: in each corner between two arms with sidewalks, concrete from curb to curb
+	-- out to the backs of both sidewalks.
+	for _, ax in arms do
+		for _, az in arms do
+			local a, b = ax.g.spec, az.g.spec
+			if ax.dx ~= 0 and az.dz ~= 0 and a.sidewalk > 0 and b.sidewalk > 0 then
+				-- ax runs along x (its edges are z offsets), az along z.
+				local x0, x1 = b.pavement + CURB, b.total
+				local z0, z1 = a.pavement + CURB, a.total
+				local cx, cz = x + ax.dx * (x0 + x1) / 2, z + az.dz * (z0 + z1) / 2
+				if ctx.inside(cx, cz) then
+					local y = ctx.gradeTop(cx, cz) + 0.004 * math.max(a.priority, b.priority) + CURB_RISE
+					Builder.block(props, CFrame.new(cx, y - (Roads.BED + CURB_RISE) / 2, cz), x1 - x0, Roads.BED + CURB_RISE, z1 - z0, CONCRETE, M.Concrete)
+				end
+			end
+		end
+	end
+end
+
+-- A cul-de-sac: the turning circle, then curb and sidewalk round it in short chords, open where
+-- a street comes in.
+local function layBulb(ctx: Ctx, b: RoadNet.Segment)
+	local x, z = b.ax, b.az
+	if not ctx.inside(x, z) or ctx.bridged(x, z) then
+		return
+	end
+	local s = b.spec
+	local props = ctx.props
+	local raise = 0.004 * s.priority
+	local top = ctx.gradeTop(x, z) + raise
+	local surface = SURFACE[s.surface]
+	Builder.add(props, "Cylinder", CFrame.new(x, top - Roads.BED / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * s.pavement, 2 * s.pavement), surface.colour, surface.material)
+	-- The streets coming in: their directions out of the circle and half-widths.
+	local mouths = {}
+	for _, g in ctx.net.segments do
+		if not g.bulb then
+			for _, e in { { g.ax, g.az, g.ux, g.uz }, { g.bx, g.bz, -g.ux, -g.uz } } do
+				if math.abs(e[1] - x) < 0.5 and math.abs(e[2] - z) < 0.5 then
+					table.insert(mouths, { dx = e[3], dz = e[4], half = g.spec.pavement + 0.5 })
+				end
+			end
+		end
+	end
+	local SIDES = 28
+	for _, ring in { { s.pavement + CURB / 2, CURB, CURB_COLOUR, 0.02 }, { s.pavement + CURB + s.sidewalk / 2, s.sidewalk, CONCRETE, 0 } } do
+		local r, width, colour, lift = ring[1], ring[2], ring[3], ring[4]
+		for k = 0, SIDES - 1 do
+			local a = (k + 0.5) / SIDES * 2 * math.pi
+			local dx, dz = math.cos(a), math.sin(a)
+			local open = false
+			for _, m in mouths do
+				-- Across the street's line, this chord's middle lies within its pavement.
+				if dx * m.dx + dz * m.dz > 0 and math.abs(dx * m.dz - dz * m.dx) * r < m.half then
+					open = true
+				end
+			end
+			if not open then
+				local chord = 2 * r * math.sin(math.pi / SIDES) + 0.6
+				local cx, cz = x + dx * r, z + dz * r
+				local y = top + CURB_RISE + lift
+				Builder.block(props, CFrame.new(cx, y - (Roads.BED + CURB_RISE) / 2, cz) * CFrame.Angles(0, -a, 0), width, Roads.BED + CURB_RISE, chord, colour, M.Concrete)
+			end
+		end
+	end
+end
+
+-- Where a road meets a narrower one continuing along its line, the wide pavement narrows over
+-- a taper on the narrow road's side: two flat triangles from the wide edges in to the narrow
+-- road's edges.
+local function taper(ctx: Ctx, wide: RoadNet.Segment, x: number, z: number, ux: number, uz: number, narrow: number)
+	local s = wide.spec
+	local step = s.pavement - narrow
+	if step < 1 or s.median > 0 then
+		return
+	end
+	local length = math.clamp(step * 4, 16, 48)
+	local mx, mz = x + ux * length / 2, z + uz * length / 2
+	if not ctx.inside(mx, mz) or ctx.bridged(mx, mz) then
+		return
+	end
+	local surface = SURFACE[s.surface]
+	local top = ctx.gradeTop(mx, mz) + 0.004 * s.priority - 0.003
+	local u = Vector3.new(ux, 0, uz)
+	for _, side in { -1, 1 } do
+		local r = Vector3.new(-uz, 0, ux) * side
+		-- A wedge's triangle lies in its YZ plane, the right angle at (-Y, +Z): turned so Y runs
+		-- across the road and -Z along it, the triangle lies flat.
+		local vy, vz = r, -u
+		local vx = vy:Cross(vz)
+		local corner = Vector3.new(x, top - Roads.BED / 2, z) + r * narrow
+		local centre = corner + vy * step / 2 - vz * length / 2
+		Builder.add(ctx.props, "Wedge", CFrame.fromMatrix(centre, vx, vy, vz), Vector3.new(Roads.BED, step, length), surface.colour, surface.material)
+	end
 end
 
 function Roads.build(ctx: Ctx)
 	local props, net = ctx.props, ctx.net
 	for _, g in net.segments do
-		layRoad(ctx, g)
+		if g.bulb then
+			layBulb(ctx, g)
+		else
+			layRoad(ctx, g)
+		end
+	end
+
+	-- Tapers where a road continues along its line at a narrower width.
+	for _, g in net.segments do
+		if not g.bulb then
+			for _, e in { { g.ax, g.az, -g.ux, -g.uz }, { g.bx, g.bz, g.ux, g.uz } } do
+				local x, z, ux, uz = e[1], e[2], e[3], e[4]
+				for _, o in net.segments do
+					if o ~= g and not o.bulb and o.spec.pavement < g.spec.pavement - 1 and math.abs(o.ux * ux + o.uz * uz) > 0.995 then
+						local startsHere = (math.abs(o.ax - x) < 1 and math.abs(o.az - z) < 1) or (math.abs(o.bx - x) < 1 and math.abs(o.bz - z) < 1)
+						-- Not where another road meets them there (a junction, not a taper).
+						local junction = false
+						for _, c in net.segments do
+							if c ~= g and c ~= o and not c.bulb and RoadNet.toSegment(c, x, z) < c.spec.pavement + 2 then
+								junction = true
+							end
+						end
+						if startsHere and not junction then
+							taper(ctx, g, x, z, ux, uz, o.spec.pavement)
+						end
+					end
+				end
+			end
+		end
 	end
 
 	-- Bends in the map's roads: a disc of road surface at each joint of their segments fills the
 	-- wedge left between two straight pieces meeting at an angle.
 	local joints = {}
 	for _, g in net.segments do
-		if g.main then
+		if g.main or g.mapLocal then
 			local s = g.spec
 			for _, e in { { g.ax, g.az }, { g.bx, g.bz } } do
 				local x, z = e[1], e[2]
@@ -492,14 +686,16 @@ function Roads.build(ctx: Ctx)
 	end
 
 	-- Where a US highway (expressway or highway) meets another, or a paved road or street, at
-	-- grade: traffic signals on every approach. (Interstates meet nothing at grade; gravel and dirt
-	-- roads never reach a highway.)
+	-- grade: traffic signals on every approach. Where a gravel or dirt road meets a two-lane
+	-- highway: stop signs on the gravel road. (Interstates meet nothing at grade; gravel and dirt
+	-- roads never reach an expressway.)
 	local junctions = {}
 	for _, m in net.segments do
 		if m.main and (m.spec.key == "highway" or m.spec.key == "expressway") then
 			for _, h in net.segments do
 				local hKey = h.spec.key
-				local other = h ~= m and h.spec.surface == "asphalt" and hKey ~= "interstate" and hKey ~= "ramp"
+				local unpaved = h.spec.surface ~= "asphalt"
+				local other = h ~= m and not h.bulb and (not unpaved or m.spec.key == "highway") and hKey ~= "interstate" and hKey ~= "ramp"
 					and not (h.main and h.key < m.key) -- two highways: met once
 				local den = m.ux * h.uz - m.uz * h.ux
 				if other and math.abs(den) > 0.3 then
@@ -526,7 +722,13 @@ function Roads.build(ctx: Ctx)
 									local px, pz = x + road.ux * dir * probe, z + road.uz * dir * probe
 									local there = net:covering(px, pz, nil, 0)
 									if there and there.spec.key == road.spec.key then
-										signalArm(ctx, x, z, road.ux * dir, road.uz * dir, road.spec, crossing.spec.pavement / sinT, crossing.spec.total / sinT, if road == m then "green" else "red")
+										if unpaved then
+											if road == h then
+												stopArm(ctx, x, z, ctx.gradeTop(x, z), road.ux * dir, road.uz * dir, road.spec, crossing.spec.pavement / sinT, crossing.spec.total / sinT)
+											end
+										else
+											signalArm(ctx, x, z, road.ux * dir, road.uz * dir, road.spec, crossing.spec.pavement / sinT, crossing.spec.total / sinT, if road == m then "green" else "red")
+										end
 									end
 								end
 							end

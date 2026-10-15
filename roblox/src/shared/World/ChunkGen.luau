@@ -9,7 +9,10 @@
 -- channel below a water level set a bank's height under the ground along its centre line, with
 -- banks rising from the water; then the road network (Props/RoadNet), whose roads are graded to
 -- Heightfield.gradeM along their centre lines and flattened (with their sidewalks) to that grade,
--- the road parts laid on top. Server only.
+-- the road parts laid on top. Airfields are levelled: flat at the field's height inside the
+-- fence, blending into the land beyond it, cut under runways, taxiways, aprons and buildings.
+-- What stands on the land (Sites: land use, gas stations, schools, campuses, airfields, energy)
+-- is placed by Props/Buildings. Server only.
 
 local Config = require(script.Parent.Config)
 local WorldMap = require(script.Parent.WorldMap)
@@ -21,6 +24,7 @@ local Roads = require(script.Parent.Props.Roads)
 local Bridges = require(script.Parent.Props.Bridges)
 local Buildings = require(script.Parent.Props.Buildings)
 local Interchanges = require(script.Parent.Interchanges)
+local Sites = require(script.Parent.Sites)
 
 local ChunkGen = {}
 
@@ -59,7 +63,12 @@ local RIVER_MIN, RIVER_MAX = 12, 220
 -- anything wider.
 local VALLEY_BASE, VALLEY_PER_HALF = 50, 1.2
 local STREET_BRIDGE_HALF = 30
-local DOWNTOWN = { metro = 650, city = 420 }
+-- Airfields: the ground beyond a fence blends to the field's level over FIELD_BLEND studs.
+-- Taxiways are TAXIWAY_HALF studs either side of their line; runways half as many studs wide as
+-- they are feet (Sites).
+local FIELD_BLEND = 400
+local TAXIWAY_HALF = 18
+local SITES_PAD = 300
 
 local function bankDropM(half: number): number
 	return math.clamp(1.8 + half * 0.025, 1.8, 5)
@@ -96,10 +105,52 @@ local function toSegment(px: number, pz: number, ax: number, az: number, bx: num
 	return math.sqrt(qx * qx + qz * qz), t
 end
 
--- Road top (studs) at a point on a road's centre line.
-local function gradeTop(x: number, z: number): number
-	local mx, my = WorldMap.milesAt(x, z)
-	return toStuds(Heightfield.gradeM(mx, my) + ROAD_RAISE_M) + Roads.LIFT
+-- The airfield whose level the ground takes at a point, and how fully (1 inside its fence,
+-- falling smoothly to 0 FIELD_BLEND studs beyond it).
+local function fieldAt(sites: Sites.Set, x: number, z: number): (any, number, number)
+	local best, weight, inside = nil, 0, math.huge
+	for _, f in sites.airfields do
+		local b = f.box
+		if x > b[1] - FIELD_BLEND and x < b[3] + FIELD_BLEND and z > b[2] - FIELD_BLEND and z < b[4] + FIELD_BLEND then
+			local d = Sites.distance(f.fence, x, z)
+			local t = math.clamp(1 - d / FIELD_BLEND, 0, 1)
+			local w = if d <= 0 then 1 else t * t * (3 - 2 * t)
+			if w > weight then
+				best, weight, inside = f, w, d
+			end
+		end
+	end
+	return best, weight, inside
+end
+
+-- Whether a point inside an airfield is paved or built on (runways, taxiways, aprons, buildings
+-- and parking).
+local function fieldPaved(f: any, x: number, z: number): boolean
+	for _, r in f.runways do
+		if toSegment(x, z, r.a.X, r.a.Y, r.b.X, r.b.Y) < r.half + 2 then
+			return true
+		end
+	end
+	for _, line in f.taxiways do
+		for i = 2, #line do
+			if toSegment(x, z, line[i - 1].X, line[i - 1].Y, line[i].X, line[i].Y) < TAXIWAY_HALF + 2 then
+				return true
+			end
+		end
+	end
+	for _, list in { f.aprons, f.parking } do
+		for _, p in list do
+			if Sites.inside(p, x, z) then
+				return true
+			end
+		end
+	end
+	for _, b in f.buildings do
+		if Sites.inside(b.poly, x, z) then
+			return true
+		end
+	end
+	return false
 end
 
 local function coverKeyAt(x: number, z: number): string
@@ -224,9 +275,22 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	local function mileX(I: number): number
 		return (I - HALF_MAP) * MILE
 	end
+	local sites = Sites.near(x0, z0, x1, z1, SITES_PAD)
+	-- The grade roads are built to (m) at a point: the land's smoothed grade, or an airfield's level.
+	local function gradeAtM(x: number, z: number): number
+		local grade = Heightfield.gradeM(WorldMap.milesAt(x, z))
+		local f, w = fieldAt(sites, x, z)
+		return if f then grade + (f.levelM - grade) * w else grade
+	end
+	local function gradeTop(x: number, z: number): number
+		return toStuds(gradeAtM(x, z) + ROAD_RAISE_M) + Roads.LIFT
+	end
 	local net = RoadNet.build({
 		x0 = x0, z0 = z0, x1 = x1, z1 = z1, mapRoads = mapRoads, section = WorldMap.sectionAt,
 		coverKey = coverKeyAt, mileOf = mileOf, mileX = mileX, crossings = crossings,
+		superblock = function(x: number, z: number): boolean
+			return Sites.superblock(sites, x, z)
+		end,
 	}, RoadNet.MAX_TOTAL + SHOULDER + 30)
 
 	local settlements = settlementsNear(x0 + SIZE / 2, z0 + SIZE / 2)
@@ -339,14 +403,10 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		end
 		return false
 	end
+	-- Downtown (signals at its street corners): the places' downtown areas.
 	local function downtown(x: number, z: number): boolean
-		for _, s in settlements do
-			local radius = DOWNTOWN[s.kind]
-			if radius and (s.x - x) ^ 2 + (s.z - z) ^ 2 < radius * radius then
-				return true
-			end
-		end
-		return false
+		local area = Sites.areaAt(sites, x, z)
+		return area ~= nil and area.kind == "downtown"
 	end
 	local paved = false
 	for _, s in settlements do
@@ -373,6 +433,21 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 			local water = -math.huge
 			local isBusy = false
 			local lake = false
+
+			-- Airfields: level inside the fence (grass, cut under what is paved), blending beyond.
+			local field, fieldWeight, fieldDistance = fieldAt(sites, x, z)
+			if field then
+				h += (field.levelM - h) * fieldWeight
+				if fieldDistance <= 0 then
+					isBusy = true
+					if fieldPaved(field, x, z) then
+						h = field.levelM - ROAD_CUT_M
+						material = M.Ground
+					else
+						material = M.Grass
+					end
+				end
+			end
 
 			-- Lakes: water up to the surface where the map has lake; an embankment along its
 			-- edge where the ground there is below the water (the dam, and low shores).
@@ -428,7 +503,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 			local g, d, along = net:near(x, z, SHOULDER)
 			if g and riverHalf == 0 and not nearBridge and not lake and not carried(g, x, z, 0) then
 				local px, pz = g.ax + g.ux * along, g.az + g.uz * along
-				local grade = Heightfield.gradeM(WorldMap.milesAt(px, pz)) + ROAD_RAISE_M
+				local grade = gradeAtM(px, pz) + ROAD_RAISE_M
 				local spec = g.spec
 				if d <= spec.total then
 					if spec.median > 0 and d < spec.median - 2 then
@@ -573,7 +648,10 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		x0 = x0, z0 = z0, x1 = x1, z1 = z1, props = props, net = net, inside = inside, ground = ground,
 		coverKey = coverKeyAt, busy = isBusy, water = function(x: number, z: number): boolean
 			return water(x, z) or onBridge(x, z, 6)
-		end, settlements = settlements, occupied = occupied,
+		end, settlements = settlements, occupied = occupied, sites = sites,
+		pavedTop = function(levelM: number): number
+			return toStuds(levelM + ROAD_RAISE_M) + Roads.LIFT
+		end,
 	})
 	local function inBuilding(x: number, z: number, margin: number): boolean
 		for _, o in occupied do

@@ -1,8 +1,8 @@
 // The road rules applied to the map's roads, for drawing them as they will be built:
 //   - interstates meet nothing at grade: a road crossing one is carried over it (an overpass or
 //     interchange from crossings.js) or stops short of it either side;
-//   - gravel and dirt roads never reach a highway (an interstate, expressway, US route, state
-//     highway or interchange ramp): they stop GRAVEL_GAP_MI short of one;
+//   - gravel and dirt roads never reach an interstate, expressway or interchange ramp: they stop
+//     GRAVEL_GAP_MI short of one; they meet two-lane US routes and state highways at grade;
 //   - US routes, expressways and state highways meet each other, and paved county roads, at grade
 //     at traffic signals.
 // The same rules as the Roblox world's RoadNet (roblox/src/shared/World/Props/RoadNet.luau).
@@ -61,6 +61,7 @@ export function sectionSegments(map, sections) {
       const cuts = [];
       for (const h of index.near(a, b)) {
         if (cls === 3 && h.kind !== 'interstate') continue;   // paved roads meet the other highways at grade
+        if (h.kind === 'highway') continue;                   // as gravel and dirt roads meet the two-lane ones
         const hit = intersect(a, b, h.a, h.b);
         if (!hit || hit.sin < 0.2) {
           // Running along a highway: the stretch beside it goes (the highway is the road there).

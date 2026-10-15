@@ -13,7 +13,7 @@ export function writeAirfieldFile(map, out) {
 
 export function loadAirfieldFile(seed = 1, dir = countyDir(seed)) {
   const file = path.join(dir, 'airfields.json');
-  if (!existsSync(file)) writeAirfieldFile(generateWorldMap({ seed }), dir);
+  if (!existsSync(file)) writeAirfieldFile(generateWorldMap({ seed, streets: false }), dir);
   return JSON.parse(readFileSync(file, 'utf8'));
 }
 

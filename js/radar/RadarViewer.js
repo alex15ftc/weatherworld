@@ -496,14 +496,15 @@ function drawOverlay() {
 // --- Warnings ----------------------------------------------------------------
 
 // NWS colours: red for a tornado warning, yellow for a severe thunderstorm warning; magenta for
-// a particularly dangerous tornado, oranges for the damage tiers of a severe thunderstorm.
+// a particularly dangerous tornado, violet for a tornado emergency, oranges for the damage tiers
+// of a severe thunderstorm.
 function warningColour(w) {
-  if (w.type === 'tornado') return w.pds ? '#ff3df2' : '#ff2d2d';
+  if (w.type === 'tornado') return w.emergency ? '#b44dff' : w.pds ? '#ff3df2' : '#ff2d2d';
   return w.tags?.damage === 'DESTRUCTIVE' ? '#ff5a1f' : w.tags?.damage === 'CONSIDERABLE' ? '#ff9f1a' : '#f5c518';
 }
-const warningRank = w => (w.type === 'tornado' ? (w.pds ? 5 : w.tags?.tornado === 'OBSERVED' ? 4 : 3) : w.tags?.damage === 'DESTRUCTIVE' ? 2 : w.tags?.damage === 'CONSIDERABLE' ? 1 : 0);
+const warningRank = w => (w.type === 'tornado' ? (w.emergency ? 6 : w.pds ? 5 : w.tags?.tornado === 'OBSERVED' ? 4 : 3) : w.tags?.damage === 'DESTRUCTIVE' ? 2 : w.tags?.damage === 'CONSIDERABLE' ? 1 : 0);
 const warningEnd = w => w.endedHourUtc ?? w.validToHourUtc;
-const shortName = w => `${w.pds ? 'PDS ' : ''}${w.type === 'tornado' ? 'TOR' : 'SVR'} ${w.number}`;
+const shortName = w => (w.emergency ? `TOR EMERGENCY ${w.number}` : `${w.pds ? 'PDS ' : ''}${w.type === 'tornado' ? 'TOR' : 'SVR'} ${w.number}`);
 // The hour of the scan on screen, and the warnings in effect then.
 function shownHourUtc() { return currentFrames()[state.frameIndex]?.meta?.validHourUtc ?? state.warningsHourUtc; }
 function warningsShown() {
@@ -528,7 +529,7 @@ function drawWarnings(ctx) {
     const points = w.polygon.map(([x, y]) => kmToScreen(x, y)), chosen = w.id === state.chosenWarning, colour = warningColour(w);
     ctx.beginPath(); points.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath();
     ctx.globalAlpha = chosen ? 0.22 : 0.07; ctx.fillStyle = colour; ctx.fill(); ctx.globalAlpha = 1;
-    const width = (w.pds || w.tags?.damage === 'DESTRUCTIVE' ? 3.5 : w.tags?.damage || w.tags?.tornado === 'OBSERVED' ? 3 : 2) * dpr;
+    const width = (w.emergency ? 4.5 : w.pds || w.tags?.damage === 'DESTRUCTIVE' ? 3.5 :w.tags?.damage || w.tags?.tornado === 'OBSERVED' ? 3 : 2) * dpr;
     ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.lineWidth = width + 2.5 * dpr; ctx.stroke();
     ctx.strokeStyle = colour; ctx.lineWidth = chosen ? width + 1.5 * dpr : width; ctx.stroke();
     // Its name where the polygon is big enough on screen to hold it.
@@ -554,7 +555,7 @@ function renderWarningList() {
     button.type = 'button';
     button.className = `warning-item${w.id === state.chosenWarning ? ' on' : ''}${w.valid ? '' : ' ended'}`;
     button.style.setProperty('--c', warningColour(w));
-    const tags = w.type === 'tornado' ? [w.tags.tornado === 'OBSERVED' ? 'observed' : 'radar indicated', w.tags.damage ? 'considerable damage' : null]
+    const tags = w.type === 'tornado' ? [w.tags.tornado === 'OBSERVED' ? 'observed' : 'radar indicated', w.emergency ? `TORNADO EMERGENCY for ${w.tags.emergencyFor.join(', ')}` : w.tags.damage ? 'considerable damage' : null]
       : [w.tags.damage ? `${w.tags.damage.toLowerCase()} damage` : null, w.tags.gustMph >= 58 ? `${w.tags.gustMph} mph` : null, w.tags.hailInches >= 1 ? `${w.tags.hailInches.toFixed(2)} in hail` : null, w.tags.tornado === 'POSSIBLE' ? 'tornado possible' : null];
     button.innerHTML = `<b style="color:${warningColour(w)}">${w.title}</b><span>${formatClock(w.issuedHourUtc)}–${formatClock(warningEnd(w))}${w.valid ? '' : ` · ${w.status}`}</span><small>${tags.filter(Boolean).join(' · ')}</small>`;
     button.addEventListener('click', () => chooseWarning(w.id === state.chosenWarning ? null : w.id));
@@ -633,12 +634,17 @@ function drawCoverage(ctx, a, b) {
   }
 }
 
-// County lines, and county names once zoomed in far enough for them to fit.
+// County lines and the offices' warning areas, and county names once zoomed in far enough for them to fit.
 function drawCounties(ctx) {
   const w = state.catalog.domainWidthKm, h = state.catalog.domainHeightKm, dpr = state.dpr;
   ctx.strokeStyle = 'rgba(148,163,184,.28)'; ctx.lineWidth = 0.8 * dpr;
   ctx.beginPath();
   for (const county of state.counties.counties) for (const ring of county.rings) { ring.forEach(([x, y], k) => { const p = kmToScreen(x * w, y * h); if (k) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.closePath(); }
+  ctx.stroke();
+  // The NWS offices' county warning areas, heavier, as on the Weather Service's own maps.
+  ctx.strokeStyle = 'rgba(148,163,184,.55)'; ctx.lineWidth = 1.8 * dpr;
+  ctx.beginPath();
+  for (const office of state.counties.offices ?? []) for (const ring of office.rings) { ring.forEach(([x, y], k) => { const p = kmToScreen(x * w, y * h); if (k) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.closePath(); }
   ctx.stroke();
   if (state.view.kmPerPx > 0.5 * dpr) return;
   ctx.fillStyle = 'rgba(203,213,225,.45)'; ctx.font = `600 ${10 * dpr}px system-ui`; ctx.textAlign = 'center';

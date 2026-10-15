@@ -1,8 +1,10 @@
 --!strict
 -- The road network round one chunk, as straight segments with a cross-section each: the map's
--- interstates, expressways and highways; the section-line roads (paved, gravel, dirt), which
--- become four-lane arterials with sidewalks in towns; and the town street grids (200-stud
--- blocks in town and city cores, 250-stud blocks in suburbs). Everything else asks it where the
+-- interstates, expressways and highways; its local roads (airfield and campus roads, paved; lease
+-- and wind farm roads, gravel); the section-line roads (paved, gravel, dirt), which become
+-- four-lane arterials with sidewalks in towns; and the town street grids (200-stud blocks in town
+-- and city cores, 250-stud blocks in suburbs), which do not run through superblocks (campuses,
+-- airfields, malls, industrial parks, larger parks and schools; Sites.superblock). Everything else asks it where the
 -- roads are: the terrain is flattened under them, road parts are laid along them, and signs,
 -- lights, poles, buildings and trees keep clear of them.
 --
@@ -16,6 +18,14 @@
 --   urban        one 11-stud lane each way, an 8-stud parking lane each side, sidewalks;
 --   suburban     one 10-stud lane each way, a grass strip and a sidewalk each side;
 --   gravel 20 studs wide, dirt 13.
+-- Town roads with sidewalks have a CURB-stud curb at the pavement's edge; the sidewalk lies at
+-- the back of the verge.
+--
+-- Access to the highways: town streets never meet an interstate, expressway, highway or ramp.
+-- Each stops short of one, far enough for a cul-de-sac; only the arterials (paved section lines)
+-- and other highways cross a highway, at signals. Any town street that ends without meeting
+-- another road ends in a cul-de-sac (a bulb: a segment of no length whose pavement is the
+-- turning circle).
 
 local Interchanges = require(script.Parent.Parent.Interchanges)
 
@@ -59,10 +69,26 @@ RoadNet.SPECS = {
 	dirt = spec({ key = "dirt", priority = 1, pavement = 6.5, lane = 6.5, lanesEach = 1, surface = "dirt" }),
 }
 local S = RoadNet.SPECS
-RoadNet.MAP_KINDS = { [1] = S.interstate, [2] = S.expressway, [3] = S.highway }
+RoadNet.MAP_KINDS = { [1] = S.interstate, [2] = S.expressway, [3] = S.highway, [4] = S.county, [5] = S.gravel }
+RoadNet.LOCAL_KIND = 4 -- map road kinds from here on are local roads, not highways
 RoadNet.SECTION_KINDS = { [1] = S.dirt, [2] = S.gravel, [3] = S.county }
 RoadNet.URBAN_GRID, RoadNet.SUBURB_GRID = 200, 250
 RoadNet.MAX_TOTAL = S.interstate.total
+RoadNet.CURB = 1
+local STREET_CLEAR = 10 -- between a cul-de-sac's edge and a highway's
+
+-- A cul-de-sac's cross-section for a street: a turning circle of two lanes and a bit, the curb
+-- and the street's sidewalk round it.
+local bulbSpecs: { [string]: Spec } = {}
+function RoadNet.bulbSpec(s: Spec): Spec
+	local b = bulbSpecs[s.key]
+	if not b then
+		local r = 2 * s.lane + 6
+		b = spec({ key = s.key, priority = s.priority, pavement = r, total = r + RoadNet.CURB + s.sidewalk, lane = s.lane, lanesEach = 1, sidewalk = s.sidewalk, town = true })
+		bulbSpecs[s.key] = b
+	end
+	return b
+end
 
 export type Segment = {
 	spec: Spec,
@@ -70,9 +96,11 @@ export type Segment = {
 	length: number, ux: number, uz: number,
 	axis: string?, -- "x" or "z" for grid roads (which coordinate runs along them)
 	main: boolean, -- one of the map's interstates, expressways or highways, or a ramp
+	mapLocal: boolean?, -- one of the map's local roads (bends filled like the main roads')
 	terminal: boolean?, -- a ramp's last piece: its end b meets the crossing road (stop sign there)
 	deadEnd: string?, -- "a" or "b": the road stops at that end, short of a highway
 	barrier: boolean?, -- a barrier across the dead end (roads cut at an interstate)
+	bulb: boolean?, -- a cul-de-sac: no length, its pavement the turning circle round (ax, az)
 	key: string,
 }
 
@@ -161,6 +189,7 @@ export type Ctx = {
 	mileOf: (x: number) -> number,
 	mileX: (I: number) -> number,
 	crossings: { any }, -- Interchanges records near the box
+	superblock: (x: number, z: number) -> boolean, -- town streets do not run here
 }
 
 local function isTown(key: string): boolean
@@ -173,9 +202,13 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 	local x0, z0, x1, z1 = ctx.x0 - pad, ctx.z0 - pad, ctx.x1 + pad, ctx.z1 + pad
 	local mains: { Segment } = {}
 	for _, road in ctx.mapRoads do
-		local g = segment(RoadNet.MAP_KINDS[road.kind], road.ax, road.az, road.bx, road.bz, true)
+		local main = road.kind < RoadNet.LOCAL_KIND
+		local g = segment(RoadNet.MAP_KINDS[road.kind], road.ax, road.az, road.bx, road.bz, main)
+		g.mapLocal = not main
 		table.insert(segments, g)
-		table.insert(mains, g)
+		if main then
+			table.insert(mains, g)
+		end
 	end
 	local function alongMain(x: number, z: number): boolean
 		for _, g in mains do
@@ -231,7 +264,7 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 					for q = math.floor(alo / step), math.floor(ahi / step) do
 						local a, b = q * step, (q + 1) * step
 						local mx, mz = if vertical then line else (a + b) / 2, if vertical then (a + b) / 2 else line
-						if ctx.coverKey(mx, mz) == want and not alongMain(mx, mz) then
+						if ctx.coverKey(mx, mz) == want and not alongMain(mx, mz) and not ctx.superblock(mx, mz) then
 							if vertical then
 								table.insert(segments, segment(s, line, a, line, b, false, "z"))
 							else
@@ -341,11 +374,11 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 		end
 	end
 
-	-- Gravel and dirt roads never reach a highway (an interstate, expressway or highway, or a
-	-- ramp): each stops 40 studs short of one it would cross or run into.
+	-- Gravel and dirt roads never reach an interstate, expressway or ramp: each stops 40 studs
+	-- short of one it would cross or run into. They meet two-lane highways at grade.
 	local highways = {}
 	for _, g in segments do
-		if g.main then
+		if g.main and g.spec.key ~= "highway" then
 			table.insert(highways, g)
 		end
 	end
@@ -384,6 +417,91 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 				end
 			end
 		end
+	end
+
+	-- Town streets keep off the highways (interstates, expressways, highways and ramps): each is
+	-- cut back to leave room for a cul-de-sac clear of the highway's edge; scraps too short to
+	-- be a street go.
+	local offLimits = {}
+	for _, g in segments do
+		if g.main then
+			table.insert(offLimits, g)
+		end
+	end
+	local cutBack = true
+	while cutBack do
+		cutBack = false
+		for index, g in segments do
+			if isTown(g.spec.key) then
+				local gap0 = RoadNet.bulbSpec(g.spec).total + STREET_CLEAR
+				for _, m in offLimits do
+					local gap = m.spec.total + gap0
+					if math.min(g.ax, g.bx) < math.max(m.ax, m.bx) + gap and math.max(g.ax, g.bx) > math.min(m.ax, m.bx) - gap
+						and math.min(g.az, g.bz) < math.max(m.az, m.bz) + gap and math.max(g.az, g.bz) > math.min(m.az, m.bz) - gap then
+						local n = math.max(1, math.ceil(g.length / 4))
+						local keep, hit = {}, false
+						local start: number? = nil
+						for i = 0, n do
+							local t = g.length * i / n
+							local clear = toSegment(m, g.ax + g.ux * t, g.az + g.uz * t) >= gap
+							hit = hit or not clear
+							if clear and not start then
+								start = t
+							elseif not clear and start then
+								table.insert(keep, { start, t - g.length / n })
+								start = nil
+							end
+						end
+						if start then
+							table.insert(keep, { start, g.length })
+						end
+						if hit then
+							table.remove(segments, index)
+							for _, run in keep do
+								if run[2] - run[1] >= 40 then
+									table.insert(segments, segment(g.spec, g.ax + g.ux * run[1], g.az + g.uz * run[1], g.ax + g.ux * run[2], g.az + g.uz * run[2], false, g.axis))
+								end
+							end
+							cutBack = true
+							break
+						end
+					end
+				end
+				if cutBack then
+					break
+				end
+			end
+		end
+	end
+
+	-- Cul-de-sacs at the ends of town streets that meet no other road. Only ends far enough
+	-- inside the network's box that every road which could meet them is in it, so each chunk
+	-- finds the same ones.
+	local inner = pad - 2
+	local bulbs = {}
+	for _, g in segments do
+		if isTown(g.spec.key) then
+			for _, e in { { g.ax, g.az }, { g.bx, g.bz } } do
+				local x, z = e[1], e[2]
+				if x > ctx.x0 - inner and x < ctx.x1 + inner and z > ctx.z0 - inner and z < ctx.z1 + inner then
+					local met = false
+					for _, o in segments do
+						if o ~= g and toSegment(o, x, z) < 1.5 then
+							met = true
+							break
+						end
+					end
+					if not met then
+						local b = segment(RoadNet.bulbSpec(g.spec), x, z, x, z, false)
+						b.bulb = true
+						table.insert(bulbs, b)
+					end
+				end
+			end
+		end
+	end
+	for _, b in bulbs do
+		table.insert(segments, b)
 	end
 
 	return setmetatable({ segments = segments }, NetMethods) :: any

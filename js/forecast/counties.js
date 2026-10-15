@@ -36,8 +36,10 @@ export function countyLayer(data, width, height) {
   }
   for (const county of counties) county.home = county.cells[county.shares.indexOf(Math.max(...county.shares))];
   const placeNames = Object.fromEntries((data.regions ?? []).map(r => [r.key, r.label ?? PLACE[r.key] ?? r.name]));
+  // The NWS offices, each with the counties (indices) of its county warning area.
+  const offices = (data.offices ?? []).map((o, index) => ({ ...o, index, countyIndices: o.counties.map(id => id - 1) }));
   return {
-    named: true, width, height, miles, size, ids: data.ids, counties, dominant, towns: data.towns ?? [], placeNames,
+    named: true, width, height, miles, size, ids: data.ids, counties, dominant, towns: data.towns ?? [], placeNames, offices,
     // The county index at a point (miles east and south of the northwest corner), or -1.
     at(x, y) { const i = Math.floor(x / fine), j = Math.floor(y / fine); return i < 0 || j < 0 || i >= size || j >= size ? -1 : data.ids[j * size + i] - 1; }
   };
@@ -49,7 +51,7 @@ export function cellCounties(width, height, cellMiles = 10) {
   const key = `${width}x${height}x${cellMiles}`;
   if (plain.has(key)) return plain.get(key);
   const counties = Array.from({ length: width * height }, (_, i) => ({ id: i + 1, index: i, name: null, areaMi2: cellMiles * cellMiles, cells: [i], shares: [1], home: i, x: (i % width + 0.5) * cellMiles, y: (Math.floor(i / width) + 0.5) * cellMiles }));
-  const layer = { named: false, width, height, miles: width * cellMiles, size: width, counties, dominant: Int32Array.from({ length: width * height }, (_, i) => i), towns: [], placeNames: {}, at: (x, y) => { const i = Math.floor(x / cellMiles), j = Math.floor(y / cellMiles); return i < 0 || j < 0 || i >= width || j >= height ? -1 : j * width + i; } };
+  const layer = { named: false, width, height, miles: width * cellMiles, size: width, counties, dominant: Int32Array.from({ length: width * height }, (_, i) => i), towns: [], placeNames: {}, offices: [], at: (x, y) => { const i = Math.floor(x / cellMiles), j = Math.floor(y / cellMiles); return i < 0 || j < 0 || i >= width || j >= height ? -1 : j * width + i; } };
   layer.ids = Uint16Array.from({ length: width * height }, (_, i) => i + 1);
   plain.set(key, layer);
   return layer;
@@ -170,12 +172,13 @@ export function nearestTown(layer, x, y, least = 0) {
   return best ? { town: best, miles: distance } : null;
 }
 
-// What the pages get to draw the counties: each one's outline in shares of the map, name and
-// seat. (Null without the map.)
+// What the pages get to draw the counties: each one's outline in shares of the map, name, seat
+// and office; and each office's county warning area outline. (Null without the map.)
 export function publicCounties(layer) {
   if (!layer?.named) return null;
   return {
     miles: layer.miles, regions: layer.placeNames,
-    counties: layer.counties.map(c => ({ id: c.id, name: c.name, seat: c.seat, region: c.region, areaMi2: c.areaMi2, x: +(c.x / layer.miles).toFixed(4), y: +(c.y / layer.miles).toFixed(4), rings: c.rings.map(ring => ring.map(([x, y]) => [+(x / layer.miles).toFixed(5), +(y / layer.miles).toFixed(5)])) }))
+    counties: layer.counties.map(c => ({ id: c.id, name: c.name, seat: c.seat, region: c.region, office: c.office ?? null, areaMi2: c.areaMi2, x: +(c.x / layer.miles).toFixed(4), y: +(c.y / layer.miles).toFixed(4), rings: c.rings.map(ring => ring.map(([x, y]) => [+(x / layer.miles).toFixed(5), +(y / layer.miles).toFixed(5)])) })),
+    offices: layer.offices.map(o => ({ id: o.id, name: o.name, city: o.city, x: +(o.x / layer.miles).toFixed(4), y: +(o.y / layer.miles).toFixed(4), rings: countyRings(layer, o.countyIndices) }))
   };
 }

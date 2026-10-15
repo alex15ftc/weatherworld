@@ -1,6 +1,7 @@
 // The county files the forecast products read: counties.u16 (the county number of each map
 // cell) and counties.json (the counties, the regions' place names and the towns, each with its
-// county). Written with the rest of the map by scripts/build-world-map.mjs; the server reads them
+// county), and the NWS offices whose county warning areas they make up. Written with the rest of
+// the map by scripts/build-world-map.mjs; the server reads them
 // (and makes them from the seed if the map was never built).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -19,6 +20,8 @@ export function countyFileData(map) {
   return {
     seed: map.params.seed, size: counties.size, cellMiles: counties.cellMiles, miles: n * c,
     regions: REGIONS.map(r => ({ key: r.key, name: r.name, label: labels[r.key] ?? r.name })), counties: counties.list,
+    // The NWS offices and their county warning areas (warningAreas.js; each county carries its office).
+    offices: map.offices ?? [],
     towns: map.settlements.map(t => ({ name: t.name, kind: t.kind, x: Math.round(t.x * 100) / 100, y: Math.round(t.y * 100) / 100, population: t.population, county: countyOf(t.x, t.y) }))
   };
 }
@@ -30,10 +33,12 @@ export function writeCountyFiles(map, out) {
 }
 
 // The county data for a seed: counties.json with `ids`. Made (and written) from the seed when
-// the files are not there, which takes some seconds.
+// the files are not there (or predate the offices), which takes some seconds.
 export function loadCountyFiles(seed = 1, dir = countyDir(seed)) {
   const json = path.join(dir, 'counties.json'), raw = path.join(dir, 'counties.u16');
-  if (!existsSync(json) || !existsSync(raw)) writeCountyFiles(generateWorldMap({ seed }), dir);
-  const data = JSON.parse(readFileSync(json, 'utf8')), bytes = readFileSync(raw);
+  if (!existsSync(json) || !existsSync(raw)) writeCountyFiles(generateWorldMap({ seed, streets: false }), dir);
+  let data = JSON.parse(readFileSync(json, 'utf8'));
+  if (!data.offices) { writeCountyFiles(generateWorldMap({ seed, streets: false }), dir); data = JSON.parse(readFileSync(json, 'utf8')); }
+  const bytes = readFileSync(raw);
   return { ...data, ids: new Uint16Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)) };
 }

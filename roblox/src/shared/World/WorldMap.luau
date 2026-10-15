@@ -46,7 +46,7 @@ for _, lake in Meta.lakes do
 	lakeSurface[lake.id] = lake.surfaceM
 end
 
-export type Tile = { data: buffer, rivers: { number }, roads: { number }, crossings: { number }, ti: number, tj: number }
+export type Tile = { data: buffer, rivers: { number }, roads: { number }, crossings: { number }, sites: any, ti: number, tj: number }
 
 local decode = Base64.decode
 
@@ -64,9 +64,9 @@ function WorldMap.tile(ti: number, tj: number): Tile
 		local ok, source = pcall(require, module)
 		if not ok then
 			warn(`[WeatherWorld] map tile T{ti}_{tj} read outside the prepared area`)
-			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, roads = {}, crossings = {}, ti = ti, tj = tj }
+			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, roads = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
 		end
-		tile = { data = decode(source.data), rivers = source.rivers, roads = source.roads, crossings = source.crossings or {}, ti = ti, tj = tj }
+		tile = { data = decode(source.data), rivers = source.rivers, roads = source.roads, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
 		tiles[key] = tile
 	end
 	return tile

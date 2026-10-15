@@ -10,13 +10,30 @@
 //           the section-road corners u8, 51 x 51 (see js/worldmap/sectionRoads.js).
 //   rivers  flat list, 8 numbers per segment: x0, y0, x1, y1 (miles from the NW corner),
 //           width0, width1 (m, as drawn on the map), level0, level1 (water surface, m).
-//   roads   flat list, 5 numbers per segment: kind (1 interstate, 2 expressway, 3 highway),
+//   roads   flat list, 5 numbers per segment: kind (1 interstate, 2 expressway, 3 highway, 4 a
+//           local paved road: airfield entrance and loop roads, access roads where they leave the
+//           mile lines, campus loops; 5 gravel: oil and gas lease roads, wind farm roads),
 //           x0, y0, x1, y1.
 //   crossings  flat list, 11 numbers per interstate crossing (js/worldmap/crossings.js): type
 //           (1 interchange, 2 overpass), crossing road (1 interstate, 2 expressway, 3 highway,
 //           4 paved, 5 gravel), x, y, the interstate's direction ux, uy, the crossing road's vx,
 //           vy, exit number, uEnd, vEnd (where a road ends at the crossing).
-// Segments are listed in every tile they come within a mile of.
+//   sites   what stands on the land (js/worldmap/landUse.js, facilities.js, airfields.js), each
+//           with an id (unique over the map) and polygons as flat lists of map miles:
+//             areas      land use in the places: { id, k = downtown | mall | shopping | corridor |
+//                        travel | industrial | park, t = tier, town, p = polygon };
+//             gas        { id, s = size, x, y (lot centre), fx, fy (towards the road), w, d (lot
+//                        miles along and back from the road) };
+//             schools    { id, l = level, n = name, x, y, fx, fy, w, d };
+//             campuses   { id, t = tier, n = name, p = area, q = quad, b = buildings, pk = parking,
+//                        st = stadium, f = fields };
+//             airfields  { id, k = kind, code, n = name, e = field elevation (m), fence, runways
+//                        { { a = ends x0, y0, x1, y1, w = width (ft) } }, taxiways (lines), aprons,
+//                        b { { k = kind, p } }, pk = parking, radar { x, y, p = compound } (absent
+//                        when shared), nws { b = building, pk = parking } };
+//             turbines   flat x, y; substations polygons; windmills flat x, y; wells flat x, y,
+//                        type (0 oil, 1 gas); tanks flat x, y.
+// Segments and sites are listed in every tile they come within a mile of.
 //
 // Also roblox/src/shared/MapData/MapVector.luau (replicated, for the players' map; see below).
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
@@ -61,6 +78,61 @@ const CROSS_TYPE = { interchange: 1, overpass: 2 };
 const CROSS_ROAD = { interstate: 1, expressway: 2, us: 3, state: 3, highway: 3, paved: 4, gravel: 5 };
 const roadSegments = [];
 for (const road of map.roads) for (let i = 1; i < road.points.length; i++) roadSegments.push([KIND[road.kind], ...road.points[i - 1], ...road.points[i]]);
+// Local roads from the airfields, campuses and energy fields. Legs along the mile lines are left
+// out: the section roads are there already (paved along airfield access roads; fitSectionRoads).
+const onMileLine = (a, b) => (Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[0] - Math.round(a[0])) < 1e-3) || (Math.abs(a[1] - b[1]) < 1e-6 && Math.abs(a[1] - Math.round(a[1])) < 1e-3);
+const addLine = (kind, pts, skipMileLines = false) => { for (let i = 1; i < pts.length; i++) if (!skipMileLines || !onMileLine(pts[i - 1], pts[i])) roadSegments.push([kind, ...pts[i - 1], ...pts[i]]); };
+for (const a of map.airfields) {
+  for (const road of a.roads) addLine(4, road.points);
+  if (!a.access.freeway) addLine(4, a.access.points, true);
+  if (a.nws?.drive) addLine(4, a.nws.drive);
+}
+const fac = map.facilities;
+for (const c of fac.campuses) addLine(4, c.loop);
+for (const road of fac.energy.leaseRoads) addLine(5, road, true);
+for (const farm of fac.energy.windFarms) for (const road of farm.roads) addLine(5, road, true);
+
+// Sites, each with its box (miles) for sharing out to the tiles.
+const flat = poly => poly.flatMap(([x, y]) => [r(x, 4), r(y, 4)]);
+const boxOf = pts => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return [x0, y0, x1, y1]; };
+// A lot laid out along a road (facilities.js frontage: the corners on the road side first): its
+// centre, the way to the road, and its size along and back from the road.
+const lotFrame = lot => {
+  const [c0, c1, c2] = lot, cx = lot.reduce((a, q) => a + q[0], 0) / lot.length, cy = lot.reduce((a, q) => a + q[1], 0) / lot.length;
+  const fx = (c0[0] + c1[0]) / 2 - cx, fy = (c0[1] + c1[1]) / 2 - cy, l = Math.hypot(fx, fy) || 1;
+  return { x: r(cx, 4), y: r(cy, 4), fx: r(fx / l, 4), fy: r(fy / l, 4), w: r(Math.hypot(c1[0] - c0[0], c1[1] - c0[1]), 4), d: r(Math.hypot(c2[0] - c1[0], c2[1] - c1[1]), 4) };
+};
+const POINT_SITES = new Set(['turbines', 'windmills', 'wells', 'tanks']);
+const sites = { areas: [], gas: [], schools: [], campuses: [], airfields: [], turbines: [], substations: [], windmills: [], wells: [], tanks: [] };
+let siteId = 0;
+const site = (list, box, value) => sites[list].push({ box, value: POINT_SITES.has(list) || Array.isArray(value) ? value : { id: ++siteId, ...value } });
+for (const z of fac.landUse.areas) site('areas', boxOf(z.poly), { k: z.kind, ...(z.tier ? { t: z.tier } : {}), town: z.town, p: flat(z.poly) });
+for (const g of fac.gasStations) site('gas', boxOf(g.lot), { s: g.size, ...lotFrame(g.lot) });
+for (const s of fac.schools) site('schools', boxOf(s.lot), { l: s.level, n: s.name, ...lotFrame(s.lot) });
+for (const c of fac.campuses) site('campuses', boxOf(c.area), { t: c.tier, n: c.name, p: flat(c.area), q: flat(c.quad), b: c.buildings.map(flat), pk: c.parking.map(flat), ...(c.stadium ? { st: flat(c.stadium) } : {}), f: c.fields.map(flat) });
+for (const a of map.airfields) {
+  const radar = a.sharedRadar ? null : a.radar;
+  site('airfields', boxOf([...a.fence, ...(radar ? radar.compound : []), ...(a.nws ? a.nws.building : [])]), {
+    k: a.kind, code: a.code, n: a.name, e: r(a.elevationM, 1), fence: flat(a.fence),
+    runways: a.runways.map(w => ({ a: flat(w.ends), w: w.widthFt })), taxiways: a.taxiways.map(flat), aprons: a.aprons.map(flat),
+    b: a.buildings.map(b => ({ k: b.kind, p: flat(b.poly) })), pk: a.parking.map(q => flat(q.poly)),
+    ...(radar ? { radar: { x: r(radar.x, 4), y: r(radar.y, 4), p: flat(radar.compound) } } : {}),
+    ...(a.nws ? { nws: { b: flat(a.nws.building), pk: flat(a.nws.parking) } } : {})
+  });
+}
+const energy = fac.energy;
+for (const farm of energy.windFarms) {
+  for (const [x, y] of farm.turbines) site('turbines', [x, y, x, y], [x, y]);
+  site('substations', boxOf(farm.substation), flat(farm.substation));
+}
+for (const w of energy.windmills) site('windmills', [w[0], w[1], w[0], w[1]], [w[0], w[1]]);
+for (const w of energy.wells) site('wells', [w[0], w[1], w[0], w[1]], [w[0], w[1], w[2]]);
+for (const t of energy.tanks) site('tanks', [t[0], t[1], t[0], t[1]], [t[0], t[1]]);
+
+// A value as a Luau literal.
+function lua(v) {
+  return Array.isArray(v) ? `{ ${v.map(lua).join(', ')} }` : typeof v === 'object' && v !== null ? `{ ${Object.entries(v).map(([k, x]) => `${/^[A-Za-z_]\w*$/.test(k) ? k : `["${k}"]`} = ${lua(x)}`).join(', ')} }` : typeof v === 'string' ? JSON.stringify(v) : String(v);
+}
 
 let bytes = 0;
 for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
@@ -82,7 +154,12 @@ for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
   const roads = roadSegments.filter(s => near(s[1], s[2], s[3], s[4])).flatMap(s => [s[0], r(s[1]), r(s[2]), r(s[3]), r(s[4])]);
   const crossings = map.crossings.filter(c => c.x >= x0 - 0.5 && c.x <= x1 + 0.5 && c.y >= y0 - 0.5 && c.y <= y1 + 0.5)
     .flatMap(c => [CROSS_TYPE[c.type], CROSS_ROAD[c.kind], r(c.x, 4), r(c.y, 4), r(c.ux, 5), r(c.uy, 5), r(c.vx, 5), r(c.vy, 5), c.exit, c.uEnd, c.vEnd]);
-  const text = `-- Generated by scripts/export-world-roblox.mjs (seed ${seed}); do not edit.\nreturn {\n\tdata = "${buf.toString('base64')}",\n\trivers = { ${rivers.join(', ')} },\n\troads = { ${roads.join(', ')} },\n\tcrossings = { ${crossings.join(', ')} },\n}\n`;
+  const boxNear = b => b[2] >= x0 && b[0] <= x1 && b[3] >= y0 && b[1] <= y1;
+  const tileSites = Object.entries(sites).map(([key, list]) => {
+    const here = list.filter(s => boxNear(s.box)).map(s => s.value);
+    return `${key} = ${POINT_SITES.has(key) ? `{ ${here.flat().join(', ')} }` : lua(here)}`;
+  });
+  const text = `-- Generated by scripts/export-world-roblox.mjs (seed ${seed}); do not edit.\nreturn {\n\tdata = "${buf.toString('base64')}",\n\trivers = { ${rivers.join(', ')} },\n\troads = { ${roads.join(', ')} },\n\tcrossings = { ${crossings.join(', ')} },\n\tsites = {\n\t\t${tileSites.join(',\n\t\t')},\n\t},\n}\n`;
   writeFileSync(path.join(out, 'Tiles', `T${ti}_${tj}.luau`), text);
   bytes += text.length;
 }
@@ -108,7 +185,7 @@ for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
     const name = rv.name ?? '';
     return `{ name = ${JSON.stringify(name)}, width = ${width}, points = { ${simplify(rv.points, 0.12).join(', ')} } }`;
   });
-  const roadLines = map.roads.map(rd => `{ kind = "${rd.kind}", name = ${JSON.stringify(rd.kind === 'highway' ? '' : rd.name.replace(/ .*–.*/, '').replace(/ bypass$/, ''))}, points = { ${rd.points.flatMap(([x, y]) => [r(x, 2), r(y, 2)]).join(', ')} } }`);
+  const roadLines = map.roads.map(rd => `{ kind = "${rd.kind}", name = ${JSON.stringify(rd.name.replace(/ .*–.*/, '').replace(/ bypass$/, ''))}, points = { ${rd.points.flatMap(([x, y]) => [r(x, 2), r(y, 2)]).join(', ')} } }`);
   const towns = map.settlements.map(st => `{ name = ${JSON.stringify(st.name)}, kind = "${st.kind}", x = ${r(st.x)}, y = ${r(st.y)}, population = ${st.population} }`);
   const lakes = map.lakes.map(l => `{ x = ${r(l.damX)}, y = ${r(l.damY)}, areaMi2 = ${Math.round(l.areaMi2)} }`);
   const dir = path.join('roblox', 'src', 'shared', 'MapData');
@@ -131,7 +208,6 @@ return {
 }
 
 const city = map.settlements.find(s => s.kind === 'city') ?? map.settlements[0];
-const lua = v => (Array.isArray(v) ? `{ ${v.map(lua).join(', ')} }` : typeof v === 'object' && v !== null ? `{ ${Object.entries(v).map(([k, x]) => `${/^[A-Za-z_]\w*$/.test(k) ? k : `["${k}"]`} = ${lua(x)}`).join(', ')} }` : typeof v === 'string' ? JSON.stringify(v) : String(v));
 const meta = {
   seed, miles: map.params.miles, cellMiles: map.cellMiles, tileMiles: TILE_MI, tiles, border: BORDER, tileCells: S, corners: CORNERS, baseM: BASE_M,
   cover: COVER, regions: REGIONS.map(x => x.key), sectionClasses: ['none', 'dirt', 'gravel', 'paved'],
@@ -142,3 +218,19 @@ const meta = {
 };
 writeFileSync(path.join(out, 'Meta.luau'), `-- Generated by scripts/export-world-roblox.mjs (seed ${seed}); do not edit.\nreturn ${lua(meta)}\n`);
 console.log(`seed ${seed}: ${tiles * tiles} tiles (${(bytes / 1e6).toFixed(1)} MB) and Meta.luau -> ${out}; start at ${meta.start.name} (${meta.start.x}, ${meta.start.y} mi)`);
+
+// A river's flat point list (x0, y0, x1, y1, ...) with the points that lie within tolerance
+// (miles) of the line through their neighbours dropped (Douglas–Peucker), rounded to 0.01 mi.
+function simplify(flatPoints, tolerance) {
+  const points = [];
+  for (let i = 0; i < flatPoints.length; i += 2) points.push([flatPoints[i], flatPoints[i + 1]]);
+  const keep = new Uint8Array(points.length); keep[0] = keep[points.length - 1] = 1;
+  const stack = points.length > 2 ? [[0, points.length - 1]] : [];
+  while (stack.length) {
+    const [a, b] = stack.pop(), [ax, ay] = points[a], [bx, by] = points[b], len = Math.hypot(bx - ax, by - ay) || 1;
+    let worst = 0, at = -1;
+    for (let i = a + 1; i < b; i++) { const d = Math.abs((bx - ax) * (ay - points[i][1]) - (ax - points[i][0]) * (by - ay)) / len; if (d > worst) { worst = d; at = i; } }
+    if (worst > tolerance) { keep[at] = 1; stack.push([a, at], [at, b]); }
+  }
+  return points.filter((_, i) => keep[i]).flatMap(([x, y]) => [r(x, 2), r(y, 2)]);
+}

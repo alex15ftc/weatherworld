@@ -32,6 +32,8 @@ export const ROTATION = Object.freeze({
   // longer to wrap around a tornado than it once did (occlusionHours was 1.5-0.15, spin-down
   // 0.08 h): tornadoes last about 50 minutes on average, not 16, with the rate, wind spread and
   // damage rating in TornadoEngine.js re-set to keep counts and strengths (2026-10-14).
+  // The live clock went from 15x to 12x on 2026-10-15 with these left as they were: a tornado
+  // lasts the same in simulated time, about 50 minutes, and so a quarter longer in real time.
   lowSpinUpHours: 0.3, lowSpinDownHours: 0.4,
   // Time for the outflow to wrap around a tornado: from balanced outflow to outflow that
   // outruns the shear, and shorter the weaker the rotation is (strong rotation means strong

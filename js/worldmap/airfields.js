@@ -20,6 +20,11 @@
 //     entrance, with its parking lot, and its WSR-88D radar in a fenced compound beside it, as at
 //     Dodge City (WFO and radar at the airport, 104 Airport Rd) and Wichita (2142 S Tyler Rd, by
 //     the airport). The radar network is these radars and the air base's.
+//   - Where those offices leave gaps (ground far from any office, or an office with far more
+//     ground than a Plains CWA's 20,000 to 30,000 mi2), more offices go to small towns, as the
+//     1990s modernization put WFOs at Goodland, Dodge City and North Platte for radar coverage:
+//     each beside a drive off a mile line on the edge of town, with its own WSR-88D, or using
+//     the air base's radar when it is near (as offices use the DoD's radars).
 //   - One air force base, alone in the High Plains like Cannon AFB (8 mi from Clovis off US-60):
 //     a 12,000 ft runway with a parallel taxiway 1,000 ft off it (UFC 3-260-01, Class B), the
 //     flightline ramp, hangars, tower and base operations along it, the cantonment (offices,
@@ -48,6 +53,10 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   // interstate exit, up to freewayMi long, meeting the interstate square for its last stemMi.
   international: ['metro', 'city'], freewayMi: 12, stemMi: 0.8,
   stubFt: 1320,             // the airport road runs straight out of the gate this far
+  // Offices in towns where the airports leave gaps (see planAirfields): until all ground is within
+  // reachMi of an office and no office has more than areaMi2 nearest it (sampled every sampleMi), at most `most` of them, in towns of minPopulation
+  // or more, using a radar without an office within sharedRadarMi, reached by a road of up to accessMi.
+  gapOffices: { reachMi: 175, areaMi2: 30000, sampleMi: 10, most: 6, minPopulation: 500, sharedRadarMi: 30, accessMi: 4 },
   airBase: { region: 'highPlains', townClearMi: 9, nearestTownMi: [10, 20], interstateClearMi: 6, accessMi: 10, stubFt: 1800 }
 });
 
@@ -56,6 +65,7 @@ const BASE_NAMES = ['Tolliver', 'Calloway', 'Prewitt', 'Brackett', 'Dunmore', 'G
 // ---------------------------------------------------------------------------
 // Layouts, in feet in the airfield's frame. rect(a0, b0, a1, b1) is a polygon.
 const rect = (a0, b0, a1, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]];
+const centroidOf = poly => [poly.reduce((s, q) => s + q[0], 0) / poly.length, poly.reduce((s, q) => s + q[1], 0) / poly.length];
 
 // A runway from one end to the other; widths in feet.
 const runway = (a0, b0, a1, b1, widthFt) => ({ ends: [[a0, b0], [a1, b1]], widthFt, lengthFt: Math.round(Math.hypot(a1 - a0, b1 - b0) / 100) * 100 });
@@ -591,7 +601,73 @@ export function planAirfields(map, options = {}) {
     if (field) { airfields.push(field); break; }
   }
 
-  const radars = airfields.map(a => ({ ...a.radar, airfield: a.code, kind: a.kind }));
+  // Forecast offices where the airports leave gaps: while some ground lies more than
+  // gapOffices.reachMi from every office, or some office has more than areaMi2 of ground nearer it
+  // than any other (real Plains CWAs are 20,000 to 30,000 mi2), an office goes to the town (of at least minPopulation)
+  // that most closes the gaps (the least sum of squared distances from the ground to its nearest
+  // office), as the modernized network put WFOs in small towns for radar coverage (Goodland,
+  // Dodge City, North Platte). An office within sharedRadarMi of a radar with no office of its
+  // own (the air base's) uses that radar, as offices use DoD radars; otherwise it gets its own.
+  const go = p.gapOffices, ground = [];
+  for (let y = go.sampleMi / 2; y < miles; y += go.sampleMi) for (let x = go.sampleMi / 2; x < miles; x += go.sampleMi) if (cover[cellAt(x, y)] !== water) ground.push([x, y]);
+  const officeAt = airfields.filter(a => a.nws).map(a => [a.radar.x, a.radar.y]);
+  const nearestOffice = ground.map(([x, y]) => Math.min(Infinity, ...officeAt.map(([u, v]) => Math.hypot(u - x, v - y))));
+  const largestArea = () => {
+    const count = new Map();
+    ground.forEach(([x, y]) => { let best = 0; officeAt.forEach(([u, v], k) => { if (Math.hypot(u - x, v - y) < Math.hypot(officeAt[best][0] - x, officeAt[best][1] - y)) best = k; }); count.set(best, (count.get(best) ?? 0) + 1); });
+    return Math.max(...count.values()) * go.sampleMi ** 2;
+  };
+  const taken = new Set(airfields.filter(a => a.nws).map(a => a.city));
+  let towns = settlements.filter(s => s.population >= go.minPopulation && !taken.has(s.name));
+  for (let k = 0; k < go.most && officeAt.length && (Math.max(...nearestOffice) > go.reachMi || largestArea() > go.areaMi2); k++) {
+    const ranked = towns.map(t => ({ t, cost: ground.reduce((sum, [x, y], i) => sum + Math.min(nearestOffice[i], Math.hypot(t.x - x, t.y - y)) ** 2, 0) })).sort((a, b) => a.cost - b.cost);
+    let field = null;
+    for (const { t } of ranked.slice(0, 8)) if ((field = townOffice(t))) break;
+    if (!field) break;
+    airfields.push(field); towns = towns.filter(t => t.name !== field.city);
+    const [ox, oy] = centroidOf(field.nws.building);
+    officeAt.push([ox, oy]);
+    ground.forEach(([x, y], i) => { nearestOffice[i] = Math.min(nearestOffice[i], Math.hypot(ox - x, oy - y)); });
+  }
+
+  // An office (and radar, unless it shares one) on the edge of a town: beside a private drive off
+  // one of the mile lines leading out of town, reached along that line (paved, fitSectionRoads).
+  function townOffice(town) {
+    const shared = airfields.find(a => a.radar && !a.nws && Math.hypot(a.radar.x - town.x, a.radar.y - town.y) <= go.sharedRadarMi)?.radar ?? null;
+    const I = Math.round(town.x), J = Math.round(town.y);
+    for (let out = town.extentMi + 0.3; out <= town.extentMi + 2; out += 0.25) {
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) for (const side of [1, -1]) {
+        // S: on the mile line through town, `out` miles from the centre; the drive leaves it square.
+        const S = dx ? [town.x + dx * out, J] : [I, town.y + dy * out], f = frame(S[0], S[1], 0);
+        const [da, db] = dx ? [side, 0] : [0, side];
+        const office = officeAndRadar(f, 0, 0, da, db);
+        if (!office) continue;
+        const parts = shared ? [office.building, office.parking] : [office.building, office.parking, office.compound];
+        const [la, lb] = f.local(...office.drive[0]), along = Math.abs(da ? la : lb) + 100, end = f.at([da * along, db * along]);
+        if (!pathClear([S, end], parts, null)) continue;
+        const access = accessRoad(S, go.accessMi, parts, null, true);
+        if (!access) continue;
+        const pts = [...parts.flat(), f.at([da * 200, db * 200]), end], xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), pad = 100 * FT;
+        const fence = [[Math.min(...xs) - pad, Math.min(...ys) - pad], [Math.max(...xs) + pad, Math.min(...ys) - pad], [Math.max(...xs) + pad, Math.max(...ys) + pad], [Math.min(...xs) - pad, Math.max(...ys) + pad]];
+        const code = codeFor(town.name, used), [cx, cy] = centroidOf(office.building);
+        const radar = shared ?? { id: `K${code}`, name: town.name, x: office.radar[0], y: office.radar[1], operator: 'NWS', compound: office.compound, service: office.service };
+        placed.push({ frame: f, fence: [0, 0, 0, 0], cx, cy, radius: 0.3 });
+        return {
+          kind: 'nwsOffice', code, name: `NWS ${town.name}`, class: 'forecast office', city: town.name,
+          distanceMi: Math.round(Math.hypot(cx - town.x, cy - town.y) * 10) / 10, x: Math.round(cx * 1e4) / 1e4, y: Math.round(cy * 1e4) / 1e4, headingDeg: 0, elevationM: Math.round(elevation[cellAt(cx, cy)]),
+          fence, gate: S, runways: [], taxiways: [], aprons: [], buildings: [], areas: [], parking: [], curbs: [],
+          roads: [{ kind: 'entrance', points: [S, end] }],
+          access: { name: `${town.name} Weather Office Road`, points: access.points, joins: access.t.road?.name ?? `${access.t.town.name} streets` },
+          radar, sharedRadar: Boolean(shared),
+          nws: { id: code, name: `NWS ${town.name}`, office: 'Weather Forecast Office', building: office.building, parking: office.parking, drive: office.drive }
+        };
+      }
+    }
+    return null;
+  }
+
+  // Each radar once (an office may use the air base's).
+  const radars = airfields.filter(a => a.radar && !a.sharedRadar).map(a => ({ ...a.radar, airfield: a.code, kind: a.kind }));
   return { airfields, radars };
 }
 

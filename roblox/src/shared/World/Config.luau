@@ -18,6 +18,24 @@ Config.REGION_MILES = 50
 -- Vertical: separate from horizontal so hills do not become cliffs.
 Config.STUDS_PER_METRE_VERTICAL = 1
 
+-- Storms (server/WeatherFeed, shared/Weather, client/StormView). Clouds and tornadoes go up at 1
+-- stud a metre, as the ground does (STUDS_PER_METRE_VERTICAL), so a cloud base, a funnel and the
+-- hills keep their true heights against each other (2026-10-15; it was 0.62, the map's scale
+-- across, which made every funnel look squat). A tornado is drawn 1 stud a metre across too,
+-- wider than the map scale, because houses and cars are true size and a tornado shrunk to the
+-- map would be smaller than a farmstead.
+Config.KM_PER_MILE = 1.609344
+Config.SKY_STUDS_PER_METRE = Config.STUDS_PER_METRE_VERTICAL
+Config.TORNADO_STUDS_PER_METRE = 1
+Config.STORM_VIEW_MILES = 60 -- storms drawn within this distance of the camera
+-- Where the frames come from: the live weather server (WEATHER_FEED_URL, or the Workspace
+-- attribute WeatherFeedUrl; Studio's game servers cannot reach localhost, so a tunnel or a host
+-- is needed), or a recorded replay (Workspace attribute StormSource = "replay";
+-- scripts/export-storm-replay.mjs). The key, if the server wants one, is the experience secret
+-- "weather_feed_key".
+Config.WEATHER_FEED_URL = ""
+Config.WEATHER_POLL_SECONDS = 5
+
 -- Chunks (Minecraft-style): generated around players, unloaded beyond the radius plus a margin.
 Config.VOXEL_STUDS = 4
 Config.CHUNK_STUDS = 256

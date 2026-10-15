@@ -11,8 +11,9 @@
 // reservoir dammed on a river; rivers traced where enough water has gathered; land cover from
 // region, slope, rainfall and rivers, with neighbouring regions' land interfingering near their
 // borders; then towns, highways, airports, NWS offices, radars and the air base (airfields.js),
-// the section-line road grid, energy, schools and gas stations (facilities.js) and the counties
-// (counties.js).
+// the section-line road grid, energy, schools and gas stations (facilities.js), the road graph
+// down to the town streets (streets.js), the counties (counties.js), and the NWS offices' county
+// warning areas (warningAreas.js).
 import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
 import { makeNoise, fbm, clamp, smoothstep } from './noise.js';
 import { planSettlements } from './settlements.js';
@@ -20,7 +21,9 @@ import { planSectionRoads } from './sectionRoads.js';
 import { planCrossings } from './crossings.js';
 import { planCounties } from './counties.js';
 import { planAirfields, fitSectionRoads } from './airfields.js';
+import { planWarningAreas } from './warningAreas.js';
 import { planFacilities } from './facilities.js';
+import { planStreets } from './streets.js';
 
 const METRES_PER_MILE = 1609.344;
 
@@ -260,8 +263,11 @@ export function generateWorldMap(options = {}) {
   fitSectionRoads(sections, airfields);
   const crossings = planCrossings({ ...map, roads, sections }, p.crossings);
   const facilities = planFacilities({ ...map, settlements, roads, sections, crossings, airfields }, p.facilities);
+  // (streets: false leaves the road graph out, for callers that do not need it.)
+  const streets = p.streets === false ? null : planStreets({ ...map, settlements, roads, sections, crossings, airfields, facilities }, p.streets);
   const counties = planCounties({ ...map, settlements }, p.counties);
-  return { ...map, settlements, roads, airfields, radars, sections, crossings, facilities, counties };
+  const offices = planWarningAreas(counties, airfields);
+  return { ...map, settlements, roads, airfields, radars, sections, crossings, facilities, streets, counties, offices };
 }
 
 // Reservoirs. For a candidate dam (a river cell of the right size away from the edges), the
