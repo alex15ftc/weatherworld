@@ -311,13 +311,14 @@ local function placeLabels()
 		used += 1
 		local l = labels[used]
 		if not l then
-			l = Instance.new("TextLabel")
-			l.BackgroundTransparency = 1
-			l.TextStrokeTransparency = 0.3
-			l.TextXAlignment = Enum.TextXAlignment.Left
-			l.ZIndex = 3
-			l.Parent = labelLayer
-			labels[used] = l
+			local made = Instance.new("TextLabel")
+			made.BackgroundTransparency = 1
+			made.TextStrokeTransparency = 0.3
+			made.TextXAlignment = Enum.TextXAlignment.Left
+			made.ZIndex = 3
+			made.Parent = labelLayer
+			labels[used] = made
+			l = made
 		end
 		l.Visible = true
 		l.Text = text
@@ -405,11 +406,11 @@ end
 -- Markers and readout ------------------------------------------------------------------------
 
 local function marker(p: Player): Frame
-	local m = markers[p]
-	if m then
-		return m
+	local existing = markers[p]
+	if existing then
+		return existing
 	end
-	m = Instance.new("Frame")
+	local m = Instance.new("Frame")
 	m.AnchorPoint = Vector2.new(0.5, 0.5)
 	m.Size = UDim2.fromOffset(14, 14)
 	m.BackgroundColor3 = if p == player then Color3.fromRGB(230, 50, 50) else Color3.fromRGB(60, 140, 255)

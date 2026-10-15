@@ -129,8 +129,7 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 	end
 
 	-- Ramps up from the road on each bank, on an earth embankment.
-	for i, e in { { -1, gA }, { 1, gB } } do
-		local dir, grade = e[1], e[2]
+	for i, dir in { -1, 1 } do
 		local length = ramp[i]
 		if length > 0 then
 			local farXZ = along(c, dir * (halfSpan + length), 0, 0)
@@ -141,13 +140,19 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 				local function ramped(side: number): (Vector3, Vector3)
 					return along(c, dir * halfSpan, side, near.Y), along(c, dir * (halfSpan + length), side, far.Y)
 				end
-				local lines = if c.kind == 1 or c.kind == 2 then { { 0, 1.8, CONCRETE, 1 } } else { { -0.45, 0.5, YELLOW, 0.1 }, { 0.45, 0.5, YELLOW, 0.1 } }
+				type Line = { offset: number, width: number, colour: Color3, height: number }
+				local lines: { Line } = if c.kind == 1 or c.kind == 2
+					then { { offset = 0, width = 1.8, colour = CONCRETE, height = 1 } }
+					else {
+						{ offset = -0.45, width = 0.5, colour = YELLOW, height = 0.1 },
+						{ offset = 0.45, width = 0.5, colour = YELLOW, height = 0.1 },
+					}
 				for _, side in { -1, 1 } do
-					table.insert(lines, { side * (c.roadHalf - 1), 0.5, WHITE, 0.1 })
+					table.insert(lines, { offset = side * (c.roadHalf - 1), width = 0.5, colour = WHITE, height = 0.1 })
 				end
 				for _, l in lines do
-					local p0, p1 = ramped(l[1])
-					Builder.slab(props, p0, p1, l[2], l[4], l[3], if l[3] == CONCRETE then M.Concrete else M.SmoothPlastic, 0.05 + l[4])
+					local p0, p1 = ramped(l.offset)
+					Builder.slab(props, p0, p1, l.width, l.height, l.colour, if l.colour == CONCRETE then M.Concrete else M.SmoothPlastic, 0.05 + l.height)
 				end
 			end
 			local groundY = ctx.ground(near.X, near.Z) - 2

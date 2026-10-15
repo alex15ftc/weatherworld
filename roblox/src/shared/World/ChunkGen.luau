@@ -344,7 +344,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	end
 	for _, rec in crossings do
 		local isTee = Interchanges.tee(rec) ~= nil
-		local over = not isTee and segmentAlong(rec.x, rec.z, rec.vx, rec.vz, if rec.road == 1 then true else false)
+		local over = if isTee then nil else segmentAlong(rec.x, rec.z, rec.vx, rec.vz, rec.road == 1)
 		local under = segmentAlong(rec.x, rec.z, rec.ux, rec.uz, true)
 		if over and under then
 			local sin = Interchanges.sin(rec)

@@ -547,7 +547,7 @@ function StormView.start()
 				local ground = s.groundStuds or 0
 				local strike = at(r.xKm, r.yKm, ground) + Vector3.new((math.random() - 0.5) * r.acrossKm * KM, 0, (math.random() - 0.5) * r.alongKm * KM)
 				local from = strike + Vector3.new(0, s.updraft.baseM * SKY, 0)
-				local parts = {}
+				local parts: { BasePart } = {}
 				local last = from
 				for i = 1, 7 do
 					local f = i / 7

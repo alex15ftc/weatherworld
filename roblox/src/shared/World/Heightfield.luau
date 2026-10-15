@@ -84,14 +84,14 @@ local function latticeM(i: number, j: number): number
 			sum += WorldMap.elevationM(WorldMap.milesAt(i * GRADE_STEP + di * GRADE_STEP * 0.5, j * GRADE_STEP + dj * GRADE_STEP * 0.5))
 		end
 	end
-	v = sum / 9
+	local mean = sum / 9
 	if gradeCached > 200000 then
 		table.clear(gradeCache)
 		gradeCached = 0
 	end
-	gradeCache[key] = v
+	gradeCache[key] = mean
 	gradeCached += 1
-	return v
+	return mean
 end
 
 local function catmull(p0: number, p1: number, p2: number, p3: number, t: number): number

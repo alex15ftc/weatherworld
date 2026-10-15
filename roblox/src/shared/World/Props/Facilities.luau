@@ -42,7 +42,7 @@ export type Kit = {
 	seat: (any, number, number, number, number, number) -> CFrame,
 	fits: (any, CFrame, number, number) -> number?,
 	stream: (number, number, number) -> () -> number,
-	pick: (list: { any }, r: number) -> any,
+	pick: <T>(list: { T }, r: number) -> T,
 	parking: (Builder.Props, CFrame, number, number, ((number, number) -> number)?) -> (),
 	park: (Builder.Props, CFrame, number, number, (number, number) -> number, () -> number) -> (),
 	warehouse: (Builder.Props, CFrame, number, number, () -> number) -> (),

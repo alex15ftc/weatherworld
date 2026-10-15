@@ -253,8 +253,12 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 	end
 
 	-- Town street grids, block by block where the land is town.
-	for _, grid in { { RoadNet.URBAN_GRID, "urban", S.urban }, { RoadNet.SUBURB_GRID, "suburban", S.suburban } } do
-		local step, want, s = grid[1], grid[2], grid[3]
+	local grids: { { step: number, want: string, spec: Spec } } = {
+		{ step = RoadNet.URBAN_GRID, want = "urban", spec = S.urban },
+		{ step = RoadNet.SUBURB_GRID, want = "suburban", spec = S.suburban },
+	}
+	for _, grid in grids do
+		local step, want, s = grid.step, grid.want, grid.spec
 		for _, vertical in { true, false } do
 			local lo, hi = if vertical then x0 else z0, if vertical then x1 else z1
 			local alo, ahi = if vertical then z0 else x0, if vertical then z1 else x1

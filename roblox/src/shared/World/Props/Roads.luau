@@ -487,9 +487,6 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 	end
 	for _, arm in arms do
 		local s = arm.g.spec
-		local hx, hz = -arm.dx, -arm.dz -- heading of traffic arriving along this arm
-		local rx, rz = -hz, hx -- its right
-		local lanes = s.lane * s.lanesEach
 		local cross = crossHalf(arm, false)
 		local crossTotal = crossHalf(arm, true)
 		if signals then
@@ -548,8 +545,13 @@ local function layBulb(ctx: Ctx, b: RoadNet.Segment)
 		end
 	end
 	local SIDES = 28
-	for _, ring in { { s.pavement + CURB / 2, CURB, CURB_COLOUR, 0.02 }, { s.pavement + CURB + s.sidewalk / 2, s.sidewalk, CONCRETE, 0 } } do
-		local r, width, colour, lift = ring[1], ring[2], ring[3], ring[4]
+	type Ring = { r: number, width: number, colour: Color3, lift: number }
+	local rings: { Ring } = {
+		{ r = s.pavement + CURB / 2, width = CURB, colour = CURB_COLOUR, lift = 0.02 },
+		{ r = s.pavement + CURB + s.sidewalk / 2, width = s.sidewalk, colour = CONCRETE, lift = 0 },
+	}
+	for _, ring in rings do
+		local r, width, colour, lift = ring.r, ring.width, ring.colour, ring.lift
 		for k = 0, SIDES - 1 do
 			local a = (k + 0.5) / SIDES * 2 * math.pi
 			local dx, dz = math.cos(a), math.sin(a)

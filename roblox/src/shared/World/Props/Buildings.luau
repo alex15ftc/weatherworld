@@ -137,7 +137,7 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 		end
 		at(props, frame, 0, 9, -d / 2 - 4, w * 0.84, 0.8, 8.6, roof, M.Slate, false)
 	end
-	local windows = if w > 34 then { -0.36, -0.12, 0.2, 0.38 } else { -0.32, 0.3 }
+	local windows: { number } = if w > 34 then { -0.36, -0.12, 0.2, 0.38 } else { -0.32, 0.3 }
 	for _, f in windows do
 		local wx = f * w
 		if math.abs(wx - doorX) > 4.5 then
@@ -820,8 +820,12 @@ function Buildings.build(ctx: Ctx)
 	-- Town blocks (200-stud grid where the land is town) and suburban blocks (250-stud grid):
 	-- each block takes the use of the land at its middle; houses fill the residential ones, with
 	-- whatever other use reaches into the block built parcel by parcel.
-	for _, grid in { { RoadNet.URBAN_GRID, "urban", 27, 101 }, { RoadNet.SUBURB_GRID, "suburban", 20, 202 } } do
-		local GRID, want, inset, salt = grid[1], grid[2], grid[3], grid[4]
+	local grids: { { step: number, want: string, inset: number, salt: number } } = {
+		{ step = RoadNet.URBAN_GRID, want = "urban", inset = 27, salt = 101 },
+		{ step = RoadNet.SUBURB_GRID, want = "suburban", inset = 20, salt = 202 },
+	}
+	for _, grid in grids do
+		local GRID, want, inset, salt = grid.step, grid.want, grid.inset, grid.salt
 		local suburb = want == "suburban"
 		for bx = math.floor(ctx.x0 / GRID) - 1, math.floor((ctx.x1 - 0.001) / GRID) do
 			for bz = math.floor(ctx.z0 / GRID) - 1, math.floor((ctx.z1 - 0.001) / GRID) do
