@@ -92,3 +92,7 @@ roblox/sourcemap.json
 
 # Generated world maps (rebuild with scripts/build-world-map.mjs)
 data/worldmap/
+
+# Generated world data for the Roblox place (scripts/export-world-roblox.mjs)
+roblox/src/worlddata/
+roblox/src/shared/MapData/

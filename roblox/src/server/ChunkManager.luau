@@ -1,6 +1,7 @@
 --!strict
 -- Minecraft-style chunk streaming: keeps terrain loaded within LOAD_RADIUS_STUDS of every
 -- player's character, nearest chunks first, and clears chunks beyond the radius plus a margin.
+-- Each chunk's props (trees, buildings) live in a folder named by its key under Workspace.WorldProps.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -20,6 +21,9 @@ type Loaded = { cx: number, cz: number, yMin: number, yMax: number }
 type Want = { cx: number, cz: number, d2: number }
 
 local terrain = workspace.Terrain
+local propsRoot = workspace:FindFirstChild("WorldProps") or Instance.new("Folder")
+propsRoot.Name = "WorldProps"
+propsRoot.Parent = workspace
 local loaded: { [string]: Loaded } = {}
 local inFlight: { [string]: boolean } = {}
 local loadedCount = 0
@@ -55,6 +59,10 @@ local function unload(key: string, chunk: Loaded)
 	local x0, z0 = chunk.cx * SIZE, chunk.cz * SIZE
 	local region = Region3.new(Vector3.new(x0, chunk.yMin, z0), Vector3.new(x0 + SIZE, chunk.yMax, z0 + SIZE))
 	terrain:FillRegion(region, VOXEL, Enum.Material.Air)
+	local props = propsRoot:FindFirstChild(key)
+	if props then
+		props:Destroy()
+	end
 	loaded[key] = nil
 	loadedCount -= 1
 	window.unloaded += 1
@@ -129,9 +137,11 @@ local function buildSerial()
 	while #pending > 0 and os.clock() < deadline do
 		local want = table.remove(pending) :: Want
 		local t0 = os.clock()
+		ChunkGen.prepare(want.cx, want.cz)
 		local chunk = ChunkGen.build(want.cx, want.cz)
 		local t1 = os.clock()
 		terrain:WriteVoxels(chunk.region, VOXEL, chunk.materials, chunk.occupancy)
+		ChunkGen.place(chunk.props, propsRoot, ChunkGen.key(want.cx, want.cz))
 		record((t1 - t0) * 1000, (os.clock() - t1) * 1000)
 		markLoaded(want.cx, want.cz, chunk.yMin, chunk.yMax)
 	end

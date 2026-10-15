@@ -221,6 +221,16 @@ function planRoads(map, p, settlements, grid) {
   }
   // I-29: north from the metro along the trunk river.
   chain('interstate', 'I-29', [[metro.x, metro.y], [Math.round(map.trunkU(0) * m), 0]]);
+  // Where a later interstate's route runs along an earlier one at its start or end (the router
+  // reuses roads already laid), it is cut back to where it leaves: the two join there instead of
+  // running side by side.
+  const interstates = roads.filter(r => r.kind === 'interstate');
+  for (let k = 1; k < interstates.length; k++) {
+    const road = interstates[k], earlier = interstates.slice(0, k);
+    const onEarlier = ([x, y]) => earlier.some(e => e.points.some((q, i) => i > 0 && distToSegment(x, y, e.points[i - 1], q) < 0.6));
+    while (road.points.length > 2 && onEarlier(road.points[0]) && onEarlier(road.points[1])) road.points.shift();
+    while (road.points.length > 2 && onEarlier(road.points.at(-1)) && onEarlier(road.points.at(-2))) road.points.pop();
+  }
 
   // Beltways and bypasses: built as smooth rings round the centre, bridging whatever rivers they
   // meet (as real ones are), stepped outward where the ring would run into a lake.
@@ -286,6 +296,12 @@ function planRoads(map, p, settlements, grid) {
     }
   }
   return roads;
+}
+
+function distToSegment(x, y, [ax, ay], [bx, by]) {
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+  return Math.hypot(ax + dx * t - x, ay + dy * t - y);
 }
 
 // Douglas–Peucker: drop points that sit within tolerance (miles) of the line through their neighbours.

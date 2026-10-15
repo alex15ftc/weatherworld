@@ -33,6 +33,7 @@ writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
   inflows: rest.inflows, lakes: rest.lakes, sectionGrid: { size: sections.size, miles: sections.miles, classes: SECTION_CLASSES, roadMiles: sectionMiles }, rivers: rest.rivers.map(r => ({ points: r.points.map(v => Math.round(v * 100) / 100), widthsM: r.widthsM.map(Math.round), mouthDrainageMi2: Math.round(r.mouthDrainageMi2) })),
   settlements: rest.settlements.map(s => ({ ...s, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 })),
   roads: rest.roads.map(r => ({ kind: r.kind, name: r.name, points: r.points.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]) })),
+  crossings: rest.crossings.map(c => ({ ...c, x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100 })),
   summary, buildSeconds: seconds
 }));
 writeFileSync(path.join(out, 'elevation.f32'), Buffer.from(elevation.buffer));

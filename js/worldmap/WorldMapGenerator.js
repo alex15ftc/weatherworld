@@ -15,6 +15,7 @@ import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
 import { makeNoise, fbm, clamp, smoothstep } from './noise.js';
 import { planSettlements } from './settlements.js';
 import { planSectionRoads } from './sectionRoads.js';
+import { planCrossings } from './crossings.js';
 
 const METRES_PER_MILE = 1609.344;
 
@@ -32,6 +33,7 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   // The big river (Missouri-like) runs north to south in the east; its valley and the
   // southward tilt of the eastern plains that lead water to it.
   trunkAt: 0.8, trunkValleyM: 60, trunkValleyWidth: 0.03, eastTiltM: 25,
+  trunkBends: 1.5,          // how much the big river's valley swings, in bends of 10 to 70 miles
   // Stream-power erosion: dh = -K A^m S per step (A rain-weighted drainage area in cells),
   // solved implicitly; then hillslope diffusion.
   erosionSteps: 24, erosionK: 0.5, erosionM: 0.5, diffusion: 0.04, refillEvery: 4,
@@ -123,7 +125,7 @@ export function generateWorldMap(options = {}) {
   const noise = name => makeNoise(p.seed, name);
   const warpX = noise('warp-x'), warpY = noise('warp-y'), relief = noise('relief'), trunkWobble = noise('trunk'), patch = noise('patch'), patch2 = noise('patch-2'), blend = noise('blend');
 
-  const trunkU = v => p.trunkAt + 0.05 * fbm(trunkWobble, v * 2.5, 0.5, 2) + 0.015 * fbm(trunkWobble, v * 12, 3.5, 2);
+  const trunkU = v => p.trunkAt + 0.05 * fbm(trunkWobble, v * 2.5, 0.5, 2) + p.trunkBends * (0.035 * fbm(trunkWobble, v * 7, 1.7, 2) + 0.02 * fbm(trunkWobble, v * 18, 3.5, 2) + 0.01 * fbm(trunkWobble, v * 45, 8.1, 1));
   const height = new Float64Array(cells), region = new Uint8Array(cells), coverRegion = new Uint8Array(cells), rain = new Float64Array(cells), erodibility = new Float64Array(cells);
   const claims = new Float64Array(REGIONS.length), coverClaims = new Float64Array(REGIONS.length), weights = new Float64Array(REGIONS.length);
 
@@ -249,7 +251,8 @@ export function generateWorldMap(options = {}) {
   const { settlements, roads } = planSettlements(map, p.settlements);
   paintTowns(map, settlements);
   const sections = planSectionRoads({ ...map, settlements }, p.sections);
-  return { ...map, settlements, roads, sections };
+  const crossings = planCrossings({ ...map, roads, sections }, p.crossings);
+  return { ...map, settlements, roads, sections, crossings };
 }
 
 // Reservoirs. For a candidate dam (a river cell of the right size away from the edges), the

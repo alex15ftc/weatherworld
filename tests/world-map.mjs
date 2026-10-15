@@ -25,7 +25,13 @@ const kinds = new Set(map.settlements.map(s => s.kind));
 for (const kind of ['metro', 'city', 'smallCity', 'town']) assert.ok(kinds.has(kind), `a ${kind} is placed`);
 assert.ok(map.roads.filter(r => r.kind === 'interstate').length >= 3 && map.roads.some(r => r.kind === 'highway'), 'interstates and highways are laid');
 const metro = map.settlements.find(s => s.kind === 'metro');
-assert.ok(map.roads.filter(r => ['I-70', 'I-35', 'I-29'].includes(r.name)).every(r => r.points.some(([x, y]) => Math.hypot(x - metro.x, y - metro.y) < 3)), 'the interstates meet at the metro');
+// The interstates meet at the metro: each passes it, or (where it shared another's route out of
+// the metro and was cut back) starts on another interstate.
+const interstates = map.roads.filter(r => r.kind === 'interstate');
+const onAnother = (road, [x, y]) => interstates.some(o => o !== road && o.points.some(([ox, oy]) => Math.hypot(ox - x, oy - y) < 1.5));
+assert.ok(interstates.filter(r => ['I-70', 'I-35', 'I-29'].includes(r.name)).every(r => r.points.some(([x, y]) => Math.hypot(x - metro.x, y - metro.y) < 3) || onAnother(r, r.points[0]) || onAnother(r, r.points.at(-1))), 'the interstates meet at the metro');
+// Interstate crossings: interchanges and overpasses only, never two of different interstates close together.
+assert.ok(map.crossings.some(c => c.type === 'interchange') && map.crossings.every(c => c.type === 'interchange' || c.type === 'overpass'), 'interstate crossings are planned');
 // A beltway round the metro, out in its suburbs, and expressways leaving it.
 const beltway = map.roads.find(r => r.name === 'I-435');
 assert.ok(beltway && beltway.points.every(([x, y]) => Math.hypot(x - metro.x, y - metro.y) < metro.extentMi + 3), 'the metro has a beltway');

@@ -15,8 +15,8 @@ Config.MAP_MILES = 500
 Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 500,000
 Config.REGION_MILES = 50
 
--- Vertical: separate from horizontal so hills do not become cliffs; tune in the map preview.
-Config.STUDS_PER_METRE_VERTICAL = 0.8
+-- Vertical: separate from horizontal so hills do not become cliffs.
+Config.STUDS_PER_METRE_VERTICAL = 1
 
 -- Chunks (Minecraft-style): generated around players, unloaded beyond the radius plus a margin.
 Config.VOXEL_STUDS = 4

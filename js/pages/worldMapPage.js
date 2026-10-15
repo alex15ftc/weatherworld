@@ -79,6 +79,12 @@ function drawRoads(px) {
       ctx.beginPath(); road.points.forEach(([x, y], i) => (i ? ctx.lineTo(x * px, y * px) : ctx.moveTo(x * px, y * px))); ctx.stroke();
     }
   }
+  // Interstate exits (white rings) and overpasses (short bars across the interstate).
+  for (const c of map.crossings ?? []) {
+    ctx.strokeStyle = '#f8fafc'; ctx.lineWidth = 1.5;
+    if (c.type === 'interchange') { ctx.beginPath(); ctx.arc(c.x * px, c.y * px, 3, 0, 2 * Math.PI); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.moveTo((c.x - c.vx * 1.2) * px, (c.y - c.vy * 1.2) * px); ctx.lineTo((c.x + c.vx * 1.2) * px, (c.y + c.vy * 1.2) * px); ctx.stroke(); }
+  }
   for (const s of map.settlements) {
     if (s.kind !== 'town') { ctx.fillStyle = 'rgba(148, 163, 184, .35)'; ctx.beginPath(); ctx.arc(s.x * px, s.y * px, s.extentMi * px, 0, 2 * Math.PI); ctx.fill(); }
     ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.arc(s.x * px, s.y * px, s.kind === 'town' ? 1.6 : 4, 0, 2 * Math.PI); ctx.fill();
