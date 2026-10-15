@@ -15,7 +15,7 @@
   ],
   "preview": {
     "gameSessionAttribute": "WeatherWorldPreviewSession",
-    "requiredPaths": ["roblox/Packages", "roblox/src/worlddata", "roblox/src/shared/MapData"]
+    "requiredPaths": ["roblox/Packages", "roblox/WorldData", "roblox/Shared/MapData"]
   },
   "dependencies": {
     "manifests": ["roblox/aftman.toml", "roblox/wally.toml", "roblox/wally.lock"],

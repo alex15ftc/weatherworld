@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Installs the pinned tools and Wally packages, generates package types, and exports the world
 # map the place is built from if it is not there yet. Run again whenever aftman.toml or
-# wally.toml changes; delete src/worlddata to re-export after changing the world generator.
+# wally.toml changes; delete WorldData to re-export after changing the world generator.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 aftman install --no-trust-check
-if [ ! -d src/worlddata ] || [ ! -d src/shared/MapData ]; then
+if [ ! -d WorldData ] || [ ! -d Shared/MapData ]; then
 	(cd .. && node scripts/export-world-roblox.mjs)
 fi
 wally install

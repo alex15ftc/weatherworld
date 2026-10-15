@@ -1,6 +1,6 @@
 # Installs the pinned tools and Wally packages, generates package types, and exports the world
 # map the place is built from if it is not there yet. Run again whenever aftman.toml or
-# wally.toml changes; delete src\worlddata to re-export after changing the world generator.
+# wally.toml changes; delete WorldData to re-export after changing the world generator.
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
@@ -10,7 +10,7 @@ function Invoke-Step([string] $Command, [string[]] $Arguments) {
 }
 
 Invoke-Step aftman @("install", "--no-trust-check")
-if (-not (Test-Path "src\worlddata") -or -not (Test-Path "src\shared\MapData")) {
+if (-not (Test-Path "WorldData") -or -not (Test-Path "Shared\MapData")) {
     Push-Location ..
     try { Invoke-Step node @("scripts/export-world-roblox.mjs") } finally { Pop-Location }
 }

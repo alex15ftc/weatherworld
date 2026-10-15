@@ -10,7 +10,7 @@ How the engine's storms reach the Roblox place and are drawn there (built 2026-1
 | Node | `server/GameFeed.js` | One frame per storm tick, stamped `atMs` = due time + one tick + 15 s margin. |
 | Node | `server/index.js` | `GET /api/game/v1/frames?after=<seq>` (optional `x-api-key` = `WEATHER_GAME_KEY`). |
 | Node | `scripts/appearance-report.mjs` | How often each look occurs (4 seeds x 3 days, ~90 s). |
-| Node | `scripts/export-storm-replay.mjs` | Records real frames round a seed's strongest tornado into `roblox/src/worlddata/StormReplay` (~2 min). |
+| Node | `scripts/export-storm-replay.mjs` | Records real frames round a seed's strongest tornado into `roblox/WorldData/StormReplay` (~2 min). |
 | Roblox | `shared/Weather/StormTrack.luau` | Frame buffer; storms between frames (Hermite centre, blended parts, fades, touchdown/lift). |
 | Roblox | `server/WeatherFeed.luau` | HTTP polling or replay, clock offset, ground heights, sends frames to clients. |
 | Roblox | `client/StormView.luau` | Draws clouds and tornadoes from parts; lightning, dimming, rain at the camera. |

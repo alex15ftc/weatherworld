@@ -1,6 +1,6 @@
 // The shape of an interstate crossing, in map miles: the ramps of an interchange and the bridge
 // carrying the crossing road over the interstate. The same geometry as the Roblox world's
-// roblox/src/shared/World/Interchanges.luau (in studs, 1000 to the mile); keep the two in step.
+// roblox/Shared/World/Interchanges.luau (in studs, 1000 to the mile); keep the two in step.
 //
 //   diamond (a US or state highway): the highway passes over the interstate; on each side an
 //     off-ramp leaves 0.4 mi before the crossing and an on-ramp joins 0.4 mi after it, curving

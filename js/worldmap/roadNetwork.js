@@ -5,7 +5,7 @@
 //     GRAVEL_GAP_MI short of one; they meet two-lane US routes and state highways at grade;
 //   - US routes, expressways and state highways meet each other, and paved county roads, at grade
 //     at traffic signals.
-// The same rules as the Roblox world's RoadNet (roblox/src/shared/World/Props/RoadNet.luau).
+// The same rules as the Roblox world's RoadNet (roblox/Shared/World/Props/RoadNet.luau).
 import { interchangeRamps } from './interchanges.js';
 
 export const GRAVEL_GAP_MI = 0.04;

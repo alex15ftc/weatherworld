@@ -24,16 +24,23 @@ weather; the place only shows what it produces.
 
 ## Roblox place
 
+Built on [Roblox-Boilerplate-Final](https://github.com/robloxdeveloper2/Roblox-Boilerplate-Final);
+keep to its patterns (`roblox/README.md`).
+
 - Setup: `roblox/setup.sh` (or `roblox\setup.ps1`). It installs the pinned tools (Aftman), Wally
-  packages and their types, and exports the generated world (`roblox/src/worlddata`,
-  `roblox/src/shared/MapData`; both gitignored, from `scripts/export-world-roblox.mjs`).
+  packages and their types, and exports the generated world (`roblox/WorldData`,
+  `roblox/Shared/MapData`; both gitignored, from `scripts/export-world-roblox.mjs`).
+- Game logic is `*Service` modules under `roblox/Server` and `*Controller` modules under
+  `roblox/Client`, found by name and run `Init()` (all of them, no yielding) then `Start()` (each
+  in its own thread). Anything that must happen before another service starts belongs in Init.
 - Every Luau file is `--!strict`. Before finishing Roblox work, run what CI runs
   (`.github/workflows/roblox.yml`): `luau-lsp analyze` must report nothing and `rojo build`
   must succeed. On Windows, run the check from a short path: deep checkouts push some files past
   260 characters and luau-lsp silently skips them.
-- Remotes go through `roblox/src/shared/Network.luau` (typed, validated). Never trust what a
-  client sends.
-- Studio-only tools (`server/DebugTools`, `client/DebugPanel`) must stay behind
-  `RunService:IsStudio()`.
+- Remotes are declared once in a Shared module through `Shared/Network` (typed, validated).
+  Never trust what a client sends.
+- Saved data goes in `Shared/PlayerData` (SaveData and Default), player settings in
+  `Shared/Settings/Frontend/*.toml` (then regenerate `Shared/Settings/Types.luau`), admin and
+  test commands are ConVars with the right flags (CHEAT for anything a player could abuse).
 - Rojo stays on 7.7.0: devflow's preview bridge is anchored to that version.
 - A Rojo build does not prove gameplay, physics or multiplayer. Say exactly what was checked.

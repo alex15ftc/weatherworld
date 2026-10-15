@@ -1,7 +1,10 @@
 # WeatherWorld — Roblox place
 
-Rojo 7.7.0 project for the single WeatherWorld place. The whole map is generated
-procedurally (seeded, chunk by chunk around players); see `src/shared/World/Config.luau`.
+The WeatherWorld place, built on
+[Roblox-Boilerplate-Final](https://github.com/robloxdeveloper2/Roblox-Boilerplate-Final):
+Rojo and Wally, a Service/Controller loader, typed networking, PlayerData, TOML settings,
+ConVars and React UI. The whole map is generated procedurally (seeded, chunk by chunk around
+players); see `Shared/World/Config.luau`.
 
 ## Setup
 
@@ -10,46 +13,85 @@ You need [Aftman](https://github.com/LPGhatguy/aftman), Node 24, Roblox Studio a
 
 ```
 ./setup.sh            # Windows PowerShell: .\setup.ps1
-rojo serve            # then Connect in the Rojo plugin in Studio
+rojo serve            # port 34960; then Connect in the Rojo plugin in Studio
 ```
 
 Setup installs the pinned tools (`aftman.toml`), the Wally packages (`Packages/`), their types,
 and, if it is missing, exports the world map the place is built from
-(`node scripts/export-world-roblox.mjs`, about 20 seconds): `src/worlddata` and
-`src/shared/MapData`. All three are gitignored. Run setup again when `aftman.toml` or
-`wally.toml` changes; delete `src/worlddata` and rerun it after changing the world generator.
-
-Build a place file: `rojo build -o WeatherWorld.rbxl`.
+(`node scripts/export-world-roblox.mjs`, about 20 seconds): `WorldData/` and `Shared/MapData/`.
+All three are gitignored. Run setup again when `aftman.toml` or `wally.toml` changes; delete
+`WorldData/` and rerun it after changing the world generator.
 
 Open the repository root in VS Code with the recommended extensions (Rojo, luau-lsp).
 
+> To save player data in Studio, publish the place and turn on **Game Settings → Security →
+> Enable Studio Access to API Services**. Until then PlayerData runs session-only. Studio
+> playtests save to `PlayerData_Studio`, and devflow previews to their own session's store.
+
 ## Layout
 
-| Folder        | In Studio                                   |
-|---------------|---------------------------------------------|
-| `src/shared`  | `ReplicatedStorage.Shared`                  |
-| `Packages`    | `ReplicatedStorage.Packages` (Wally)        |
-| `assets`      | `ReplicatedStorage.Assets` (Studio-only additions are kept) |
-| `src/worlddata` | `ServerStorage.WorldData`                 |
-| `src/server`  | `ServerScriptService.Server`                |
-| `src/client`  | `StarterPlayer.StarterPlayerScripts.Client` |
+```
+Client/        → ReplicatedFirst
+  Bootstrapper/  Boots every *Controller and Shared module on the client
+  Controllers/   MapController, StormController, VehicleController, FlyController,
+                 DebugController, TestDriveController, UIController
+  Modules/       Vehicles/ (the car's physics, input and effects)
+  UI/            React: Common, Hooks, Components (+ .story), Widgets (CarHud), Developer
+Server/        → ServerStorage
+  main.server.luau  Boots every *Service and Shared module on the server
+  Services/      ChunkService (terrain chunks, its worker Actor), WeatherService (storm feed),
+                 ExploreService, VehicleService, DebugService (ConVars), TestDriveService
+  Modules/       TestVehicle
+WorldData/     → ServerStorage.WorldData   (generated map tiles and storm replay)
+Shared/        → ReplicatedStorage.Shared  (World, Weather, Vehicles, MapData, and the
+                 boilerplate's ConVar, PlayerData, Settings, Network, System, ...)
+Config/        → ReplicatedStorage.Config  (AutoExec + command scripts)
+Assets/        → ReplicatedStorage.Assets  (Studio-only additions are kept)
+Packages/      → ReplicatedStorage.Packages (Wally)
+```
 
-Remotes are declared once in a shared module through `src/shared/Network.luau` (typed and
-validated; see `src/shared/Vehicles/Net.luau`).
+Services and controllers get `Init()` (all of them, before anything starts; do not yield) and
+then `Start()` (each in its own thread). Order that matters goes in `Init`: WeatherService starts
+its feed there, so a storm replay sets the start point before ExploreService places anyone.
 
-## Checks
+## How to…
 
-CI (`.github/workflows/roblox.yml`) exports the world, installs packages, type-checks every
-script with luau-lsp (strict, `.luaurc`) and builds the place. Run the same locally before
-pushing; on Windows, from a short path (see `AGENTS.md`).
+- **Talk between server and client:** declare the event once in a Shared module with
+  `Shared/Network` and a validator (see `Shared/Vehicles/Net.luau`, `Shared/Debug.luau`).
+- **Save player data:** add the field to `SaveData` and `Default` in `Shared/PlayerData.luau`,
+  change it on the server with `PlayerData.Get(userId):Patch(...)`, read it in UI with
+  `usePlayerData`. Saved now: `Stats.MilesDriven`, `Stats.CarsCalled`.
+- **Add a player setting:** add it to a TOML file in `Shared/Settings/Frontend/` (now
+  `Driving.toml`: SpeedUnits, SteeringAssist, ShowCarHud), then regenerate
+  `Shared/Settings/Types.luau` with the **Developer → CompileSettings** story in UI Labs.
+- **Add a command:** declare a ConVar (see `Server/Services/DebugService.luau`). List developers
+  for live servers in `Shared/Settings/Backend/Admins.toml`; everyone is a developer in Studio.
+- **Add UI:** a module in `Client/UI/Widgets/` is mounted in its own ScreenGui; presentational
+  components go in `Client/UI/Components/` with a `.story.luau` for UI Labs.
+
+## Commands
+
+All CHEAT-flagged: anyone in Studio, Developers in live servers, everyone once an operator sets
+`sv_cheats 1`. Type them in chat, or use the debug panel (**F2**), which runs the same commands.
+
+| Command | |
+|---|---|
+| `/tp x y`, `/tp town` | teleport to a map point (miles from the NW corner) or a town |
+| `/totornado` | teleport to the recorded tornado |
+| `/tornado x y`, `/tornado reset` | move the recorded tornado, or put it back |
+| `/car`, `/removecar` | a chase car / take it away |
+| `/heal`, `/walkspeed n` | |
+| `sv_time h` | time of day |
+
+Commands take an optional player first (`/car @p`, `/tp somebody 250 250`).
 
 ## The chase car
 
 The raycast-wheel chassis from Rally With Your Friends, scaled to this world
-(`src/shared/Vehicles/Config.luau`): spring/damper suspension per wheel, tyres with a friction
-circle (power, braking and cornering share the grip, so it slides on gravel), a hand brake that
-locks the rears, a gearbox for the engine note, and grip set by what each wheel is on (asphalt
-grips, wheat and sandhills do not). It reaches about 185 studs/s flat out.
+(`Shared/Vehicles/Config.luau`): spring/damper suspension per wheel, tyres with a friction circle
+(power, braking and cornering share the grip, so it slides on gravel), a hand brake that locks
+the rears, a gearbox for the engine note, and grip set by what each wheel is on. It reaches about
+185 studs/s flat out.
 
 | Key | |
 |---|---|
@@ -62,7 +104,20 @@ grips, wheat and sandhills do not). It reaches about 185 studs/s flat out.
 Gamepad: right trigger drives, left trigger brakes, left stick steers, A hand brake, Y in/out,
 X put it back on its wheels.
 
-The driver's client runs the physics (`src/client/Vehicles`); the server makes cars, seats
-people and parks a car where it stopped when nobody is driving (`src/server/Vehicles`). For real
-art, put a model at `ReplicatedStorage.Assets.Cars.ChaseCar` in the rally car's layout and scale
-(see `src/server/Vehicles/CarFactory.luau`); until then the car has a plain body made of parts.
+The driver's client runs the physics (`Client/Modules/Vehicles`); VehicleService makes cars,
+seats people, parks a car where it stopped when nobody is driving, and keeps the odometer. For
+real art, put a model at `ReplicatedStorage.Assets.Cars.ChaseCar` in the rally car's layout and
+scale (see `Server/Services/VehicleService/CarFactory.luau`); until then the car has a plain body
+made of parts.
+
+## Checks
+
+CI (`.github/workflows/roblox.yml`) exports the world, installs packages, type-checks `Client`,
+`Server` and `Shared` with luau-lsp (strict, `.luaurc`) and builds the place. Run the same
+locally before pushing; on Windows, from a short path (see `AGENTS.md`).
+
+## Credits
+
+The boilerplate's architecture and core modules (ConVar, PlayerData, Settings, the UI hooks and
+many of the packages) are by [MaximumADHD](https://github.com/MaximumADHD); see
+`BOILERPLATE-LICENSE`.

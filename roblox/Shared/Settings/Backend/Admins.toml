@@ -1,0 +1,6 @@
+# Players listed here get the "Developer" tag in live servers,
+# which unlocks DEV-flagged ConVars (e.g. /exec).
+# Everyone is treated as a developer in Studio playtests.
+#
+# Format: UserId = true
+# 1 = true

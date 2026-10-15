@@ -16,7 +16,7 @@ import { sectionSegments, signalJunctions } from '../worldmap/roadNetwork.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('mapCanvas'), ctx = canvas.getContext('2d');
-const STUDS_PER_MILE = 1000;   // roblox/src/shared/World/Config.luau
+const STUDS_PER_MILE = 1000;   // roblox/Shared/World/Config.luau
 
 // Road styles: colour, width in pixels, and width in miles (the larger is drawn).
 const ROADS = {

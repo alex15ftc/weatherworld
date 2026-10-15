@@ -3,6 +3,11 @@
 registry = "test"
 
 [[package]]
+name = "1foreverhd/topbarplus"
+version = "3.4.0"
+dependencies = []
+
+[[package]]
 name = "4dbug/imgui-luau"
 version = "0.3.0"
 dependencies = []
@@ -10,12 +15,202 @@ dependencies = []
 [[package]]
 name = "alex15ftc/weatherworld"
 version = "0.1.0"
-dependencies = [["ImGui", "4dbug/imgui-luau@0.3.0"], ["network", "maximumadhd/network@1.2.3"]]
+dependencies = [["CullThrottle", "boatbomber/cullthrottle@0.1.0-rc.10"], ["Future", "red-blox/future@1.0.1"], ["ImGui", "4dbug/imgui-luau@0.3.0"], ["Promise", "evaera/promise@4.0.0"], ["React", "haedrix/react@17.3.10"], ["React-Debug-Tools", "haedrix/react-debug-tools@17.3.10"], ["React-Roblox", "haedrix/react-roblox@17.3.10"], ["Ripple", "littensy/ripple@0.9.3"], ["Signal", "sleitnick/signal@2.0.3"], ["Trove", "sleitnick/trove@1.8.0"], ["api-dump", "maximumadhd/api-dump@1.0.1"], ["array-squash", "maximumadhd/array-squash@1.0.0"], ["avl-tree", "maximumadhd/avl-tree@1.0.0"], ["btreesv5", "onv-il/btreesv5@5.0.18"], ["buffer-extras", "maximumadhd/buffer-extras@1.0.1"], ["crunch-table", "maximumadhd/crunch-table@1.0.2"], ["delta-table", "maximumadhd/delta-table@1.0.1"], ["gradientcanvas", "boatbomber/gradientcanvas@0.1.8"], ["guid", "maximumadhd/guid@1.0.1"], ["linear-path", "maximumadhd/linear-path@1.0.0"], ["marketplace", "maximumadhd/marketplace@1.0.2"], ["model-squash", "maximumadhd/model-squash@1.1.2"], ["mutex", "maximumadhd/mutex@1.0.0"], ["network", "maximumadhd/network@1.1.0"], ["octree", "maximumadhd/octree@1.0.0"], ["policy-info", "maximumadhd/policy-info@1.0.2"], ["promise-typed", "maximumadhd/promise-typed@1.0.0"], ["roblox-mesh", "maximumadhd/roblox-mesh@1.0.1"], ["run-context", "maximumadhd/run-context@1.0.1"], ["stack-modifier", "maximumadhd/stack-modifier@1.0.0"], ["string-builder", "maximumadhd/string-builder@1.0.0"], ["tags", "maximumadhd/tags@1.0.1"], ["topbarplus", "1foreverhd/topbarplus@3.4.0"], ["ui-labs", "pepeeltoro41/ui-labs@2.4.2"]]
+
+[[package]]
+name = "boatbomber/cullthrottle"
+version = "0.1.0-rc.10"
+dependencies = []
+
+[[package]]
+name = "boatbomber/gradientcanvas"
+version = "0.1.8"
+dependencies = []
+
+[[package]]
+name = "data-oriented-house/squash"
+version = "4.1.0"
+dependencies = []
+
+[[package]]
+name = "evaera/promise"
+version = "4.0.0"
+dependencies = []
+
+[[package]]
+name = "haedrix/react"
+version = "17.3.10"
+dependencies = [["LuauPolyfill", "jsdotlua/luau-polyfill@1.2.7"], ["ReactGlobals", "haedrix/react-globals@17.3.10"], ["Shared", "haedrix/shared@17.3.10"]]
+
+[[package]]
+name = "haedrix/react-debug-tools"
+version = "17.3.10"
+dependencies = [["LuauPolyfill", "jsdotlua/luau-polyfill@1.2.7"], ["ReactGlobals", "haedrix/react-globals@17.3.10"], ["ReactReconciler", "haedrix/react-reconciler@17.3.10"], ["Shared", "haedrix/shared@17.3.10"]]
+
+[[package]]
+name = "haedrix/react-globals"
+version = "17.3.10"
+dependencies = [["SafeFlags", "roblox/safe-flags@0.1.2"]]
+
+[[package]]
+name = "haedrix/react-reconciler"
+version = "17.3.10"
+dependencies = [["LuauPolyfill", "jsdotlua/luau-polyfill@1.2.7"], ["Promise", "evaera/promise@4.0.0"], ["React", "haedrix/react@17.3.10"], ["ReactGlobals", "haedrix/react-globals@17.3.10"], ["SafeFlags", "roblox/safe-flags@0.1.2"], ["Scheduler", "haedrix/scheduler@17.3.10"], ["Shared", "haedrix/shared@17.3.10"]]
+
+[[package]]
+name = "haedrix/react-roblox"
+version = "17.3.10"
+dependencies = [["LuauPolyfill", "jsdotlua/luau-polyfill@1.2.7"], ["React", "haedrix/react@17.3.10"], ["ReactGlobals", "haedrix/react-globals@17.3.10"], ["ReactReconciler", "haedrix/react-reconciler@17.3.10"], ["Scheduler", "haedrix/scheduler@17.3.10"], ["Shared", "haedrix/shared@17.3.10"]]
+
+[[package]]
+name = "haedrix/scheduler"
+version = "17.3.10"
+dependencies = [["LuauPolyfill", "jsdotlua/luau-polyfill@1.2.7"], ["ReactGlobals", "haedrix/react-globals@17.3.10"], ["SafeFlags", "roblox/safe-flags@0.1.2"], ["Shared", "haedrix/shared@17.3.10"]]
+
+[[package]]
+name = "haedrix/shared"
+version = "17.3.10"
+dependencies = [["LuauPolyfill", "jsdotlua/luau-polyfill@1.2.7"], ["ReactGlobals", "haedrix/react-globals@17.3.10"], ["SafeFlags", "roblox/safe-flags@0.1.2"]]
+
+[[package]]
+name = "jsdotlua/boolean"
+version = "1.2.7"
+dependencies = [["number", "jsdotlua/number@1.2.7"]]
+
+[[package]]
+name = "jsdotlua/collections"
+version = "1.2.7"
+dependencies = [["es7-types", "jsdotlua/es7-types@1.2.7"], ["instance-of", "jsdotlua/instance-of@1.2.7"]]
+
+[[package]]
+name = "jsdotlua/console"
+version = "1.2.7"
+dependencies = [["collections", "jsdotlua/collections@1.2.7"]]
+
+[[package]]
+name = "jsdotlua/es7-types"
+version = "1.2.7"
+dependencies = []
+
+[[package]]
+name = "jsdotlua/instance-of"
+version = "1.2.7"
+dependencies = []
+
+[[package]]
+name = "jsdotlua/luau-polyfill"
+version = "1.2.7"
+dependencies = [["boolean", "jsdotlua/boolean@1.2.7"], ["collections", "jsdotlua/collections@1.2.7"], ["console", "jsdotlua/console@1.2.7"], ["es7-types", "jsdotlua/es7-types@1.2.7"], ["instance-of", "jsdotlua/instance-of@1.2.7"], ["math", "jsdotlua/math@1.2.7"], ["number", "jsdotlua/number@1.2.7"], ["string", "jsdotlua/string@1.2.7"], ["symbol-luau", "jsdotlua/symbol-luau@1.0.1"], ["timers", "jsdotlua/timers@1.2.7"]]
+
+[[package]]
+name = "jsdotlua/math"
+version = "1.2.7"
+dependencies = []
+
+[[package]]
+name = "jsdotlua/number"
+version = "1.2.7"
+dependencies = []
+
+[[package]]
+name = "jsdotlua/string"
+version = "1.2.7"
+dependencies = [["es7-types", "jsdotlua/es7-types@1.2.7"], ["number", "jsdotlua/number@1.2.7"]]
+
+[[package]]
+name = "jsdotlua/symbol-luau"
+version = "1.0.1"
+dependencies = []
+
+[[package]]
+name = "jsdotlua/timers"
+version = "1.2.7"
+dependencies = [["collections", "jsdotlua/collections@1.2.7"]]
+
+[[package]]
+name = "littensy/ripple"
+version = "0.9.3"
+dependencies = [["Promise", "evaera/promise@4.0.0"]]
+
+[[package]]
+name = "maximumadhd/api-dump"
+version = "1.0.1"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/array-squash"
+version = "1.0.0"
+dependencies = [["Squash", "data-oriented-house/squash@4.1.0"]]
+
+[[package]]
+name = "maximumadhd/avl-tree"
+version = "1.0.0"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/buffer-extras"
+version = "1.0.1"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/crunch-table"
+version = "1.0.2"
+dependencies = [["BufferExtras", "maximumadhd/buffer-extras@1.0.1"], ["Guid", "maximumadhd/guid@1.0.1"]]
+
+[[package]]
+name = "maximumadhd/delta-table"
+version = "1.0.1"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/guid"
+version = "1.0.1"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/linear-path"
+version = "1.0.0"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/marketplace"
+version = "1.0.2"
+dependencies = [["Network", "maximumadhd/network@1.1.0"], ["Promise", "maximumadhd/promise-typed@1.0.0"], ["RunContext", "maximumadhd/run-context@1.0.1"], ["Signal", "sleitnick/signal@2.0.3"]]
+
+[[package]]
+name = "maximumadhd/model-squash"
+version = "1.1.2"
+dependencies = [["ArraySquash", "maximumadhd/array-squash@1.0.0"], ["Squash", "data-oriented-house/squash@4.1.0"]]
+
+[[package]]
+name = "maximumadhd/mutex"
+version = "1.0.0"
+dependencies = []
 
 [[package]]
 name = "maximumadhd/network"
-version = "1.2.3"
-dependencies = [["RunContext", "maximumadhd/run-context@1.0.1"], ["Signal", "stravant/goodsignal@0.3.1"]]
+version = "1.1.0"
+dependencies = [["RunContext", "maximumadhd/run-context@1.0.1"], ["Signal", "sleitnick/signal@2.0.3"]]
+
+[[package]]
+name = "maximumadhd/octree"
+version = "1.0.0"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/policy-info"
+version = "1.0.2"
+dependencies = [["Promise", "maximumadhd/promise-typed@1.0.0"]]
+
+[[package]]
+name = "maximumadhd/promise-typed"
+version = "1.0.0"
+dependencies = [["PromiseBase", "evaera/promise@4.0.0"]]
+
+[[package]]
+name = "maximumadhd/roblox-mesh"
+version = "1.0.1"
+dependencies = [["RunContext", "maximumadhd/run-context@1.0.1"]]
 
 [[package]]
 name = "maximumadhd/run-context"
@@ -23,6 +218,51 @@ version = "1.0.1"
 dependencies = []
 
 [[package]]
-name = "stravant/goodsignal"
-version = "0.3.1"
+name = "maximumadhd/stack-modifier"
+version = "1.0.0"
+dependencies = [["AVLTree", "maximumadhd/avl-tree@1.0.0"], ["RunContext", "maximumadhd/run-context@1.0.1"], ["Tags", "maximumadhd/tags@1.0.1"], ["Trove", "sleitnick/trove@1.8.0"]]
+
+[[package]]
+name = "maximumadhd/string-builder"
+version = "1.0.0"
+dependencies = []
+
+[[package]]
+name = "maximumadhd/tags"
+version = "1.0.1"
+dependencies = [["RunContext", "maximumadhd/run-context@1.0.1"], ["Signal", "sleitnick/signal@2.0.3"], ["Trove", "sleitnick/trove@1.8.0"]]
+
+[[package]]
+name = "onv-il/btreesv5"
+version = "5.0.18"
+dependencies = []
+
+[[package]]
+name = "pepeeltoro41/ui-labs"
+version = "2.4.2"
+dependencies = []
+
+[[package]]
+name = "red-blox/future"
+version = "1.0.1"
+dependencies = [["Spawn", "red-blox/spawn@1.1.0"]]
+
+[[package]]
+name = "red-blox/spawn"
+version = "1.1.0"
+dependencies = []
+
+[[package]]
+name = "roblox/safe-flags"
+version = "0.1.2"
+dependencies = []
+
+[[package]]
+name = "sleitnick/signal"
+version = "2.0.3"
+dependencies = []
+
+[[package]]
+name = "sleitnick/trove"
+version = "1.8.0"
 dependencies = []
