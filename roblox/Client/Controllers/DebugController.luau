@@ -15,6 +15,7 @@ local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.World.Config)
 local ConVar = require(Shared.ConVar)
 local Debug = require(Shared.Debug)
+local StormController = require(script.Parent.StormController)
 
 local DebugController = {}
 
@@ -141,6 +142,7 @@ local function draw(ImGui: any)
 		Panel.time = hours
 		runThrottled("time", `sv_time {fmt(hours)}`)
 	end
+	ImGui.TextDisabled(StormController.artStatus())
 	local changedSpheres, hide = ImGui.Checkbox("Hide sphere meshes (cl_hide_spheres, this client)", Panel.hideSpheres)
 	if changedSpheres then
 		Panel.hideSpheres = hide == true

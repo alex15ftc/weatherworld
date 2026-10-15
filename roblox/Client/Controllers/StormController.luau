@@ -177,12 +177,52 @@ local function emitter(pool: Pool, key: string): (BasePart, ParticleEmitter)
 end
 
 -- Billboards: an image that always faces the camera, sized in studs, seen at any distance
--- (particles are not). Images are uploaded art (Shared/Weather/Textures); one is used only once
--- Roblox serves it (uploads are moderated first), and until then the parts above stand in.
-local ready: { [string]: boolean } = {}
+-- (particles are not). Images are uploaded art (Shared/Weather/Textures). One is used unless
+-- Roblox reports it failed to load (not approved, deleted, no access); then the parts above
+-- stand in. StormController.artStatus() says how many are in each state.
+local fetched: { [string]: Enum.AssetFetchStatus } = {}
+
+local function failed(status: Enum.AssetFetchStatus?): boolean
+	return status == Enum.AssetFetchStatus.Failure or status == Enum.AssetFetchStatus.TimedOut
+end
 
 local function isReady(image: string): boolean
-	return image ~= "" and ready[image] == true
+	return image ~= "" and not failed(fetched[image])
+end
+
+local function artImages(): { string }
+	local images: { string } = {}
+	for _, sheet in Textures.tornado.sheets do
+		if sheet ~= "" then
+			table.insert(images, sheet)
+		end
+	end
+	for _, kind in Textures.clouds :: { [string]: { image: string, grid: number } } do
+		if kind.image ~= "" then
+			table.insert(images, kind.image)
+		end
+	end
+	return images
+end
+
+-- "13 storm images: 13 loaded" and the like (debug panel, Output).
+function StormController.artStatus(): string
+	local images = artImages()
+	if #images == 0 then
+		return "no storm art uploaded (Shared/Weather/Textures is empty): parts only"
+	end
+	local counts: { [string]: number } = {}
+	for _, image in images do
+		local status = fetched[image]
+		local name = if status then status.Name else "Loading"
+		counts[name] = (counts[name] or 0) + 1
+	end
+	local parts = {}
+	for name, n in counts do
+		table.insert(parts, `{n} {name}`)
+	end
+	table.sort(parts)
+	return `{#images} storm images: {table.concat(parts, ", ")}`
 end
 
 -- An image, or one cell of a sheet, at position, size studs across and up.
@@ -674,7 +714,7 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 			-- Thinning toward the ground, so the bottom disappears into the debris.
 			local thin = if fm < melt then 0.55 * (1 - fm / melt) else 0
 			if not baked then
-				softRod(pool, `funnel{i}`, p0, p1, math.max(2, r), core, shell, fade(base + thin, touch ^ 0.5))
+				softRod(pool, `funnel{i}`, p0, p1, math.clamp(r, 2, math.max(20, 0.18 * height)), core, shell, fade(base + thin, touch ^ 0.5))
 			end
 			if detail then
 				local puff = math.max(6, r * 0.9)
@@ -833,33 +873,29 @@ function StormController.Start()
 	Net.AskFrames:Client():Fire()
 	root.Parent = workspace
 
-	-- Mark the storm art ready once Roblox serves it (a new upload waits for moderation, so
-	-- keep asking now and then); until then the part-built storm shows.
+	-- Load the storm art; anything that fails is asked for again each minute (a new upload
+	-- waits for moderation), and drawn with parts meanwhile.
 	task.spawn(function()
-		local images: { string } = {}
-		for _, sheet in Textures.tornado.sheets do
-			table.insert(images, sheet)
-		end
-		for _, kind in Textures.clouds :: { [string]: { image: string, grid: number } } do
-			table.insert(images, kind.image)
-		end
-		while true do
-			local waiting = {}
-			for _, image in images do
-				if image ~= "" and not ready[image] then
-					table.insert(waiting, image)
-				end
-			end
-			if #waiting == 0 then
-				break
-			end
-			pcall(function()
-				ContentProvider:PreloadAsync(waiting, function(id: string, status: Enum.AssetFetchStatus)
-					if status == Enum.AssetFetchStatus.Success then
-						ready[id] = true
-					end
+		local images = artImages()
+		local last = ""
+		while #images > 0 do
+			local ok, err = pcall(function()
+				ContentProvider:PreloadAsync(images, function(id: string, status: Enum.AssetFetchStatus)
+					fetched[id] = status
 				end)
 			end)
+			local report = StormController.artStatus() .. (if ok then "" else ` (preload error: {err})`)
+			if report ~= last then
+				last = report
+				print(`[StormController] {report}`)
+			end
+			local retry = {}
+			for _, image in images do
+				if failed(fetched[image]) then
+					table.insert(retry, image)
+				end
+			end
+			images = retry
 			task.wait(60)
 		end
 	end)
