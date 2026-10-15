@@ -41,6 +41,9 @@ export const FACILITY_DEFAULTS = Object.freeze({
   oil: { weight: { highPlains: 0.55, smokyHills: 1, redHills: 0.7, flintHills: 0.6, midwest: 0.2, sandhills: 0.05, ozarkEdge: 0 }, fieldMi: 14, threshold: 0.76, drilled: 0.22, gasRegions: ['highPlains'], tankEvery: 8 },
   windmills: { covers: ['grassland', 'sandhillGrass', 'tallgrass', 'redRange'], perMi2: 0.08 },
   schoolMinPopulation: 1000, smallTownPopulation: 3000, peoplePer: { elementary: 4500, middle: 14000, high: 25000 },
+  // City schools are bigger: the people per school grow as (population / from) ^ exponent above
+  // `from` (Wichita, 400,000, has about 55 elementary, 16 middle and 10 high schools).
+  schoolGrowth: { from: 25000, exponent: 0.2 }, schoolSpacing: 0.5,
   gasMinPopulation: 1000, gasPeoplePer: 2200, gasSmallChance: 0.25, truckStopChance: { rural: 0.35, town: 0.15 }
 });
 
@@ -117,6 +120,14 @@ export function planFacilities(map, options = {}) {
   const taken = new Map();   // 0.25-mile cells -> boxes of what is placed
   const take = box => { for (const key of cellsOf(box[0], box[1], box[2], box[3], 0.25)) { if (!taken.has(key)) taken.set(key, []); taken.get(key).push(box); } };
   const isTaken = (box, pad) => cellsOf(box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad, 0.25).some(key => (taken.get(key) ?? []).some(o => box[0] - pad < o[2] && box[2] + pad > o[0] && box[1] - pad < o[3] && box[3] + pad > o[1]));
+  // What the airfields have outside their fences: the NWS office, its parking and the radar
+  // compound are taken; the airport roads out to the highways are kept clear as roads are (an
+  // airport expressway is already among the roads).
+  for (const a of airfields) {
+    for (const poly of [a.nws?.building, a.nws?.parking, a.radar?.compound]) if (poly) take(bboxOf(poly));
+    const outside = [...(a.access?.freeway ? [] : [a.access?.points ?? []]), ...a.roads.filter(r => r.kind === 'entrance').map(r => r.points)];
+    for (const pts of outside) for (let i = 1; i < pts.length; i++) addSeg({ type: 'access', ax: pts[i - 1][0], ay: pts[i - 1][1], bx: pts[i][0], by: pts[i][1], half: 0.012 });
+  }
 
   // Whether a polygon (map miles) stands clear, pad miles beyond every road's edge.
   const clear = (poly, pad = 0.004) => {
@@ -133,7 +144,8 @@ export function planFacilities(map, options = {}) {
       const cls = sectionClass(I, J, true);
       if (cls && segPolyDist({ ax: I, ay: J, bx: I + 1, by: J }, poly) < SECTION_HALF[cls] + pad) return false;
     }
-    for (const f of fences) if (box[0] < f.box[2] + 0.05 && box[2] > f.box[0] - 0.05 && box[1] < f.box[3] + 0.05 && box[3] > f.box[1] - 0.05 && (poly.some(([x, y]) => pointInPoly(x, y, f.poly)) || f.poly.some(([x, y]) => pointInPoly(x, y, poly)))) return false;
+    // Airfield fences: no corner of either inside the other, and no fence line across the lot.
+    for (const f of fences) if (box[0] < f.box[2] + 0.05 && box[2] > f.box[0] - 0.05 && box[1] < f.box[3] + 0.05 && box[3] > f.box[1] - 0.05 && (poly.some(([x, y]) => pointInPoly(x, y, f.poly)) || f.poly.some(([x, y]) => pointInPoly(x, y, poly)) || f.poly.some(([ax, ay], i) => { const [bx, by] = f.poly[(i + 1) % f.poly.length]; return segPolyDist({ ax, ay, bx, by }, poly) < pad; }))) return false;
     return !isTaken(box, 0.006);
   };
   const pointClear = (x, y, roadGap, lineGap) => {
@@ -282,10 +294,11 @@ export function planFacilities(map, options = {}) {
     if (st.kind === 'smallCity') buildCampus(st, 'college', `${st.name} Community College`, rng);
     // Schools.
     if (st.population >= p.schoolMinPopulation) {
-      const wanted = st.population < p.smallTownPopulation
-        ? [['elementary', 1], ['juniorSenior', 1]]
-        : [['elementary', Math.max(1, Math.round(st.population / p.peoplePer.elementary))], ['middle', Math.max(1, Math.round(st.population / p.peoplePer.middle))], ['high', Math.max(1, Math.round(st.population / p.peoplePer.high))]];
+      const grow = Math.max(1, st.population / p.schoolGrowth.from) ** p.schoolGrowth.exponent, per = level => Math.max(1, Math.round(st.population / (p.peoplePer[level] * grow)));
+      const wanted = st.population < p.smallTownPopulation ? [['elementary', 1], ['juniorSenior', 1]] : [['elementary', per('elementary')], ['middle', per('middle')], ['high', per('high')]];
       for (const [level, count] of wanted) {
+        // Schools of a level keep apart: a share of the spacing their count over the place's area gives.
+        const apart = p.schoolSpacing * Math.sqrt(Math.PI * Math.max(st.extentMi, 0.6) ** 2 / count), same = [];
         for (let k = 0; k < count; k++) {
           const name = level === 'elementary' ? `${count === 1 ? st.name : named(ELEMENTARY_NAMES, k)} Elementary`
             : level === 'juniorSenior' ? `${st.name} Junior-Senior High`
@@ -293,8 +306,12 @@ export function planFacilities(map, options = {}) {
             : `${k === 0 ? st.name : k <= SIDES.length ? `${st.name} ${SIDES[k - 1]}` : named(SCHOOL_NAMES, k - SIDES.length - 1 + (level === 'middle' ? 7 : 0))} ${level === 'middle' ? 'Middle School' : 'High School'}`;
           const lay = schoolLayout(level);
           let f = null;
-          for (let tries = 0; tries < 6 && !f; tries++) f = placeLot(lines, pointInPlace(st, rng, tries < 3 ? 0.9 : 1.1), lay.W, lay.D);
-          if (f) buildSchool(f, level, name, st.name); else if (k === 0) schoolMissing.push(`${st.name} ${level}`);
+          for (let tries = 0; tries < 10 && !f; tries++) {
+            const target = pointInPlace(st, rng, tries < 5 ? 0.9 : 1.1);
+            if (tries < 8 && same.some(([x, y]) => Math.hypot(x - target[0], y - target[1]) < apart)) continue;
+            f = placeLot(lines, target, lay.W, lay.D);
+          }
+          if (f) { buildSchool(f, level, name, st.name); same.push(f.front); } else if (k === 0) schoolMissing.push(`${st.name} ${level}`);
         }
       }
     }

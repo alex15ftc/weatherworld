@@ -185,5 +185,21 @@ assert.ok(!wellRegions.ozarkEdge && (wellRegions.smokyHills ?? 0) > (wellRegions
 assert.ok(fac.energy.wells.filter(w => w[2]).every(w => regionOf(w) === 'highPlains'), 'gas wells in the High Plains');
 const crossesRoad = poly => map.roads.some(r => r.points.some((q, i) => i > 0 && poly.some((v, k) => { const w = poly[(k + 1) % poly.length]; const [ax, ay] = r.points[i - 1], [bx, by] = q; const d = (bx - ax) * (w[1] - v[1]) - (by - ay) * (w[0] - v[0]); if (!d) return false; const t = ((v[0] - ax) * (w[1] - v[1]) - (v[1] - ay) * (w[0] - v[0])) / d, u = ((v[0] - ax) * (by - ay) - (v[1] - ay) * (bx - ax)) / d; return t >= 0 && t <= 1 && u >= 0 && u <= 1; })));
 assert.ok(![...fac.gasStations.map(g => g.lot), ...fac.schools.map(s => s.lot), ...fac.campuses.map(c => c.area)].some(crossesRoad), 'no lot or campus runs over a road');
+// No two facilities on one spot: lots, campuses, NWS offices, radar compounds and airport fences
+// (convex polygons; separating-axis test).
+const overlaps = (a, b) => {
+  for (const p of [a, b]) for (let i = 0; i < p.length; i++) {
+    const [x0, y0] = p[i], [x1, y1] = p[(i + 1) % p.length], ax = y0 - y1, ay = x1 - x0, span = q => q.map(([x, y]) => x * ax + y * ay);
+    if (Math.max(...span(a)) <= Math.min(...span(b)) || Math.max(...span(b)) <= Math.min(...span(a))) return false;
+  }
+  return true;
+};
+const lots = [...fac.gasStations.map(g => [`${g.town} gas station`, g.lot]), ...fac.schools.map(s => [s.name, s.lot]), ...fac.campuses.map(c => [c.name, c.area])];
+const fixedSites = map.airfields.flatMap(a => [[`${a.code} fence`, a.fence], ...(a.nws ? [[a.nws.name, a.nws.building], [`${a.nws.name} parking`, a.nws.parking]] : []), ...(a.radar?.compound ? [[`${a.radar.id} radar`, a.radar.compound]] : [])]);
+const clash = [];
+for (let i = 0; i < lots.length; i++) for (const other of [...lots.slice(i + 1), ...fixedSites]) if (overlaps(lots[i][1], other[1])) clash.push(`${lots[i][0]} / ${other[0]}`);
+assert.equal(clash.length, 0, `facilities overlap: ${clash.slice(0, 5).join('; ')}`);
+const metroSchools = fac.schools.filter(s => s.town === metro.name).length;
+assert.ok(metroSchools < metro.population / 5000, `city schools are larger, so fewer per person (${metroSchools} in ${metro.name})`);
 
 console.log(`world map passed (${map.rivers.length} rivers, ${map.settlements.length} settlements, ${list.length} counties, ${map.airfields.length} airfields, slope match ±${summary.engineMatch.meanAbsM.toFixed(1)} m, lake ${lake.areaMi2} mi2, highways ${(100 * along / total).toFixed(0)}% on mile lines)`);
