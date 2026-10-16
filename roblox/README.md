@@ -130,6 +130,15 @@ your Windows user (the file devflow uses) and never printed. `Textures/uploaded.
 what is uploaded, so nothing goes up twice. The source art is in this repository's history:
 `git archive 6d941ae data/cloud-textures data/tornado-bake`.
 
+Each tornado shape (cone, stovepipe, wedge, partial wedge, drillbit, rope, elephant trunk,
+uncondensed) has its own bake from `Art/tornado/tz_0037_cone_R.blend`
+(`scripts/blender/bake_tornado_types.py`, Cycles on the GPU). A shape that has not been baked uses
+the original bake. To bake every shape, pack and upload in one go, double-click
+`tools/Bake and upload tornadoes.bat`. It needs Blender, Python with Pillow, and Node. It takes a
+few hours, baking one shape at a time into `%LOCALAPPDATA%\WeatherWorldBake`. If it stops, run it
+again and it carries on from the last frame finished. `tools/bake-and-upload-tornadoes.ps1 -Types
+wedge,rope` bakes only those shapes; `-SkipBake` and `-SkipUpload` skip those steps.
+
 ## Checks
 
 CI (`.github/workflows/roblox.yml`) exports the world, installs packages, type-checks `Client`,
