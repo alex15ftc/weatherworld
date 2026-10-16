@@ -335,9 +335,72 @@ function StormController.volumeStatus(): string
 	return if volumesOn then `{Volumes.status()}; {count} placed` else "volumes: off (cl_volumes 0)"
 end
 
--- A shape of the given full size at cf: an EditableMesh volume where they are on and built,
--- else a sphere part. kind: "cloud" (billowed), "rain" (streaked), "band" (a ring).
+-- One cell (picked by n) of a cloud sheet: its image, offset and cell size, or nil if not loaded.
+local function sheetCell(kind: string, n: number): (string?, Vector2, Vector2)
+	local sheet = (Textures.clouds :: any)[kind]
+	if not sheet or not isReady(sheet.image) then
+		return nil, Vector2.zero, Vector2.zero
+	end
+	local grid = sheet.grid
+	local px = 1024 / grid
+	if grid == 1 then
+		return sheet.image, Vector2.zero, Vector2.new(256, 256)
+	end
+	local pick = math.floor(n * grid * grid) % (grid * grid)
+	return sheet.image, Vector2.new(pick % grid, math.floor(pick / grid)) * px, Vector2.new(px, px)
+end
+
+-- The shape as billboard art, like the clouds: rain as a soft curtain with streaks over it,
+-- upright and stacked so a tall shaft is not squashed; cloud bits as scud puffs; a band as wisps
+-- round its ring. False where the art is not loaded.
+local function artBlob(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number, kind: Volumes.Kind): boolean
+	local seed = hash(key)
+	if kind == "rain" then
+		local curtain, cCell, cSize = sheetCell("smoke", seed)
+		local streaks, sCell, sSize = sheetCell("rain", 0)
+		if not curtain or not streaks then
+			return false
+		end
+		local across = math.max(size.X, size.Z)
+		local tiles = math.max(1, math.ceil(size.Y / MAX_SPRITE))
+		local tileHeight = size.Y / tiles
+		local bottom = cf.Position - Vector3.new(0, size.Y / 2, 0)
+		for k = 1, tiles do
+			local at = bottom + Vector3.new(0, (k - 0.5) * tileHeight, 0)
+			billboard(pool, `{key}:curtain{k}`, at, Vector2.new(across, tileHeight * 1.08), curtain :: string, cCell, cSize, colour, transparency, true)
+			billboard(pool, `{key}:streaks{k}`, at, Vector2.new(across * 0.9, tileHeight), streaks :: string, sCell, sSize, colour:Lerp(Color3.new(1, 1, 1), 0.25), 1 - (1 - transparency) * 0.8, true)
+		end
+		return true
+	elseif kind == "band" then
+		local image, _, cellSize = sheetCell("wisp", 0)
+		if not image then
+			return false
+		end
+		-- Wisps round the ring, turning with it.
+		for k = 1, 6 do
+			local a = (k / 6) * math.pi * 2
+			local at = (cf * CFrame.new(math.cos(a) * size.X * 0.45, 0, math.sin(a) * size.Z * 0.45)).Position
+			local _, cell = sheetCell("wisp", hash(key .. k))
+			billboard(pool, `{key}:wisp{k}`, at, Vector2.new(size.X * 0.45, size.Y * 2.5), image :: string, cell, cellSize, colour, transparency)
+		end
+		return true
+	end
+	local image, cell, cellSize = sheetCell("scud", seed)
+	if not image then
+		return false
+	end
+	local across = math.max(size.X, size.Z)
+	billboard(pool, `{key}:scud`, cf.Position, Vector2.new(across, math.max(size.Y * 1.3, across * 0.5)), image :: string, cell, cellSize, colour, transparency)
+	return true
+end
+
+-- A shape of the given full size at cf: billboard art where it is loaded; else an EditableMesh
+-- volume where they are on and built; else a sphere part. kind: "cloud" (billowed), "rain"
+-- (streaked), "band" (a ring).
 local function blob(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number, kind: Volumes.Kind?)
+	if artBlob(pool, key, cf, size, colour, transparency, kind or "cloud") then
+		return
+	end
 	if not volumesOn or not Volumes.ready() then
 		sphere(pool, key, cf, size, colour, transparency)
 		return

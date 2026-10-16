@@ -147,5 +147,6 @@ return table.freeze({
 		scud = table.freeze({ image = "rbxassetid://80600788130860", grid = 4 }),
 		wisp = table.freeze({ image = "rbxassetid://94379355907680", grid = 4 }),
 		dust = table.freeze({ image = "rbxassetid://86924460393104", grid = 4 }),
+		rain = table.freeze({ image = "rbxassetid://104453621879668", grid = 1 }),
 	}),
 })
