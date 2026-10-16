@@ -14,14 +14,10 @@
 -- each volume tints it (SurfaceAppearance.Color) and sets its transparency, so all volumes of a
 -- kind share a handful of meshes and images and nothing is redrawn frame to frame.
 --
--- The shell meshes come from ReplicatedStorage.StormMeshes where the server has made them from
--- uploaded copies (scripts/bake-volume-meshes.mjs, StormMeshService): the same shapes, for places
--- where EditableMesh is refused or over budget. Any missing are built with EditableMesh here.
 -- Built in the background at start (ready() is false until then, and StormController draws
 -- spheres); if no shell can be had, it stays false.
 
 local AssetService = game:GetService("AssetService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Volumes = {}
 
@@ -215,7 +211,6 @@ local templates: { [string]: { [number]: { Template } } } = {}
 local state: "building" | "ready" | "failed" = "building"
 local reason = ""
 local tintable = false -- SurfaceAppearance (tint and alpha holes) works here
-local uploadedCount, builtCount = 0, 0 -- shells from uploaded meshes, from EditableMesh
 
 function Volumes.ready(): boolean
 	return state == "ready"
@@ -227,8 +222,7 @@ function Volumes.status(): string
 	elseif state == "failed" then
 		return `volumes: unavailable ({reason}); spheres`
 	end
-	local source = if builtCount == 0 then "uploaded meshes" elseif uploadedCount == 0 then "EditableMesh" else `{uploadedCount} uploaded, {builtCount} EditableMesh`
-	return `volumes: shells from {source}, {if tintable then "tinted" else "untinted (SurfaceAppearance unavailable)"}`
+	return `volumes: EditableMesh shells, {if tintable then "tinted" else "untinted (SurfaceAppearance unavailable)"}`
 end
 
 -- A volume: SHELLS nested parts in a Model, sharing a template's meshes and images.
@@ -298,15 +292,6 @@ function Volumes.build()
 			look:Destroy()
 		end)
 		probe:Destroy()
-		-- The shell meshes the server made from the uploaded ones (StormMeshService), where there
-		-- are any; EditableMesh for any missing.
-		local uploaded = ReplicatedStorage:WaitForChild("StormMeshes", 30)
-		if uploaded then
-			local waited = 0
-			while uploaded:GetAttribute("Ready") ~= true and waited < 60 do
-				waited += task.wait(0.5)
-			end
-		end
 		local kinds: { Kind } = { "cloud", "rain", "band" }
 		for _, kind: Kind in kinds do
 			local byVariant: { [number]: { Template } } = {}
@@ -316,15 +301,7 @@ function Volumes.build()
 				local set: { Template } = {}
 				for shell = 1, #SHELLS do
 					local shellSeed = seed + shell * 0.37
-					local part: MeshPart
-					local made = uploaded and uploaded:FindFirstChild(`{kind}-{variant}-{shell}`)
-					if made and made:IsA("MeshPart") then
-						part = made:Clone()
-						uploadedCount += 1
-					else
-						part = AssetService:CreateMeshPartAsync(Content.fromObject(buildMesh(kind, shellSeed)), { CollisionFidelity = Enum.CollisionFidelity.Box })
-						builtCount += 1
-					end
+					local part = AssetService:CreateMeshPartAsync(Content.fromObject(buildMesh(kind, shellSeed)), { CollisionFidelity = Enum.CollisionFidelity.Box })
 					part.Anchored, part.CanCollide, part.CanQuery, part.CanTouch, part.CastShadow = true, false, false, false, false
 					part.DoubleSided = true
 					part.Material = Enum.Material.SmoothPlastic
