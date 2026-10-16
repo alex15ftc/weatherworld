@@ -18,6 +18,16 @@ export type Tornado = {
 }
 
 local tornadoes: { [string]: Tornado } = {
+	["classic"] = {
+		shape = "cone",
+		vortices = 1,
+		grid = 8,
+		frames = 64,
+		frameShare = 1.1200,
+		midRadiusShare = 0.1120,
+		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
+		sheets = { "rbxassetid://85287408511997", "rbxassetid://105481514967529", "rbxassetid://83371311643524", "rbxassetid://94292435135357", "rbxassetid://129017669737203", "rbxassetid://134089389416424", "rbxassetid://132480441362939", "rbxassetid://89587687072883" },
+	},
 	["cone"] = {
 		shape = "cone",
 		vortices = 1,

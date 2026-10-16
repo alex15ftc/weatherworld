@@ -810,11 +810,11 @@ end
 -- side it is seen from, the frame for where it is in its life (lowering as it touches down, a
 -- mature cone drifting slowly, roping out as it decays), scaled to the engine's height and
 -- width and stood on its ground point. False when the art is not ready, so the parts draw it.
--- The baked tornado for this one: the shape the engine names it (several vortices: its -multi
--- bake, where there is one), else the cone; nil until some art has loaded.
+-- The baked tornado for this one: the original bake ("classic", the look the owner prefers),
+-- fitted to every shape; the per-shape bakes only if it has not loaded. nil until some has.
 local function bakedFor(t: any): Textures.Tornado?
 	local name = string.gsub(if type(t.shape) == "string" then t.shape else "cone", " ", "-")
-	local choices = { if (t.vortices or 1) > 1 then `{name}-multi` else name, name, "cone" }
+	local choices = { "classic", if (t.vortices or 1) > 1 then `{name}-multi` else name, name, "cone" }
 	for _, choice in choices do
 		local tex = Textures.tornadoes[choice]
 		if tex and isReady(tex.sheets[1]) then
