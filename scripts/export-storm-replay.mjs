@@ -3,7 +3,7 @@
 // days, runs the same world again and keeps the game frames (server/GameFeed.js) from an hour
 // before it touches down to half an hour after it ends, with the storms within RADIUS_KM.
 //   node scripts/export-storm-replay.mjs [--seed 2] [--days 2]
-// Writes roblox/src/worlddata/StormReplay/ (gitignored; Rojo syncs it to ServerStorage.WorldData):
+// Writes roblox/WorldData/StormReplay/ (gitignored; Rojo syncs it to ServerStorage.WorldData):
 //   Meta.luau   { seed, frames, tickMs, focusMiles = { x, y }, tornado = { ... } }
 //   F001.luau ... each returns one frame as JSON text.
 // The place plays it when the Workspace attribute StormSource is "replay" (server/WeatherFeed.luau).
@@ -16,7 +16,7 @@ import { buildStormAppearance } from '../js/storms/StormAppearance.js';
 
 avoidBackgroundThrottling();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'roblox/src/worlddata/StormReplay');
+const OUT = path.join(ROOT, 'roblox/WorldData/StormReplay');
 const args = process.argv.slice(2);
 const flag = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
 const seed = Number(flag('--seed', 2)), days = Number(flag('--days', 2));

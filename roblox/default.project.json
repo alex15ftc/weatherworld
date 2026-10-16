@@ -1,33 +1,64 @@
 {
-  "name": "WeatherWorld",
-  "tree": {
-    "$className": "DataModel",
-    "ReplicatedStorage": {
-      "Shared": {
-        "$path": "src/shared"
-      }
-    },
-    "ServerStorage": {
-      "WorldData": {
-        "$path": "src/worlddata"
-      }
-    },
-    "ServerScriptService": {
-      "Server": {
-        "$path": "src/server"
-      }
-    },
-    "StarterPlayer": {
-      "StarterPlayerScripts": {
-        "Client": {
-          "$path": "src/client"
+    "name": "WeatherWorld",
+    "emitLegacyScripts": false,
+    "servePort": 34960,
+
+    "tree": {
+        "$className": "DataModel",
+
+        "Players": {
+            "$className": "Players",
+            "$properties": {
+                "CharacterAutoLoads": true
+            }
+        },
+
+        "StarterPlayer": {
+            "$className": "StarterPlayer",
+            "$properties": {
+                "EnableMouseLockOption": false
+            }
+        },
+
+        "ReplicatedFirst": {
+            "$path": "Client"
+        },
+
+        "ReplicatedStorage": {
+            "$className": "ReplicatedStorage",
+
+            "Assets": {
+                "$path": "Assets",
+                "$ignoreUnknownInstances": true
+            },
+
+            "Config": {
+                "$path": "Config"
+            },
+
+            "Packages": {
+                "$path": "Packages"
+            },
+
+            "Shared": {
+                "$path": "Shared"
+            }
+        },
+
+        "ServerStorage": {
+            "$path": "Server",
+            "$ignoreUnknownInstances": true,
+
+            "WorldData": {
+                "$path": "WorldData"
+            }
+        },
+
+        "Workspace": {
+            "$className": "Workspace",
+            "$properties": {
+                "StreamingEnabled": true
+            }
         }
-      }
-    },
-    "Workspace": {
-      "$properties": {
-        "StreamingEnabled": true
-      }
     }
-  }
 }

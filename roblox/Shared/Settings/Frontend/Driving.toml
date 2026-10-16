@@ -1,0 +1,26 @@
+"$CategoryOrder" = 0
+
+[SpeedUnits]
+Order = 1
+Title = "Speed Units"
+Description = """
+How the driving HUD shows the car's speed.
+"""
+Default = "mph"
+Options = ["mph", "km/h"]
+
+[SteeringAssist]
+Order = 2
+Title = "Steering Assist"
+Description = """
+Keyboard and gamepad: the car steers into a slide for you to help catch it.
+"""
+Default = true
+
+[ShowCarHud]
+Order = 3
+Title = "Driving HUD"
+Description = """
+Speed, gear and miles driven while you are behind the wheel.
+"""
+Default = true

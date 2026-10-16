@@ -1,0 +1,9 @@
+#
+# Auto-executes command scripts from Config/Scripts when you join a Studio playtest.
+# Write `YourUsername = "ScriptName"` to run that script on spawn.
+#
+# To run multiple scripts, wrap them in brackets:
+# `YourUsername = ["ScriptName1", "ScriptName2"]`
+#
+
+# YourUsername = "example"

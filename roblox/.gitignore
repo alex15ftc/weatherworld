@@ -1,0 +1,15 @@
+# Wally packages (reinstall with ./setup.sh or .\setup.ps1)
+Packages/
+
+# Generated
+sourcemap.json
+globalTypes.d.luau
+
+# Place files and Studio lock files
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# Packed art waiting for upload (tools/pack-textures.py); the uploaded ids are in Shared/Weather/Textures.luau
+Textures/build/
