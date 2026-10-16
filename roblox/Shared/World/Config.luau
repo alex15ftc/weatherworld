@@ -26,6 +26,11 @@ Config.STUDS_PER_METRE_VERTICAL = 1
 -- map would be smaller than a farmstead.
 Config.KM_PER_MILE = 1.609344
 Config.SKY_STUDS_PER_METRE = Config.STUDS_PER_METRE_VERTICAL
+-- Storms are drawn taller below their cloud base than the ground's scale (owner, 2026-10-15): the
+-- tornado, wall cloud, base, shelf and rain at this many studs a metre, so a tornado stands twice
+-- as tall and the clouds sit that much higher. Above the base, towers and anvils keep
+-- SKY_STUDS_PER_METRE, rising from the raised base.
+Config.STORM_LOW_STUDS_PER_METRE = 2 * Config.STUDS_PER_METRE_VERTICAL
 Config.TORNADO_STUDS_PER_METRE = 1
 Config.STORM_VIEW_MILES = 60 -- storms drawn within this distance of the camera
 -- Where the frames come from: the live weather server (WEATHER_FEED_URL, or the Workspace

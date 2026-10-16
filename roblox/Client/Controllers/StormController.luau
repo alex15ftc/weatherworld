@@ -33,7 +33,8 @@ local Volumes = require(script.Parent.Parent:WaitForChild("Modules"):WaitForChil
 local StormController = {}
 
 local KM = Config.STUDS_PER_MILE / Config.KM_PER_MILE -- studs a km, across
-local SKY = Config.SKY_STUDS_PER_METRE -- studs a metre, up (clouds)
+local SKY = Config.SKY_STUDS_PER_METRE -- studs a metre, up (clouds above their base)
+local LOW = Config.STORM_LOW_STUDS_PER_METRE -- studs a metre, up to the cloud base (tornado, base, wall cloud)
 local TOR = Config.TORNADO_STUDS_PER_METRE -- studs a metre, across a tornado
 local HALF = Config.MAP_MILES / 2 * Config.STUDS_PER_MILE
 local VIEW = Config.STORM_VIEW_MILES * Config.STUDS_PER_MILE
@@ -448,8 +449,8 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 	local alpha = s.alpha or 1
 	local ground = s.groundStuds or 0
 	local up = s.updraft
-	local baseY = ground + up.baseM * SKY
-	local topY = ground + up.topM * SKY
+	local baseY = ground + up.baseM * LOW
+	local topY = baseY + (up.topM - up.baseM) * SKY
 	local R = up.radiusKm * KM
 	local centre = at(up.xKm, up.yKm, baseY)
 	local seed = hash(s.id)
@@ -460,7 +461,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 	local towers = if lineShare > 0.3 then math.clamp(math.floor(2 * s.line.halfLengthKm / 12), 2, 8) else 1
 	local axis = heading(s.line.axisBearingDeg)
 	local levels = 7
-	local perLevel = if towers > 1 then 3 else 6
+	local perLevel = if towers > 1 then 4 else 8
 	for k = 1, towers do
 		local along = if towers > 1 then ((k - 0.5) / towers - 0.5) * 2 * s.line.halfLengthKm * KM else 0
 		local scale = if towers > 1 then 0.75 + 0.25 * math.sin(k * 2.3 + seed * 9) else 1
@@ -495,17 +496,23 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 	if not textured then
 		blob(pool, "base", baseFrame, Vector3.new(1.5 * baseRadius, baseThick, baseLength * 0.75), COLOUR.base, fade(0.15, alpha))
 	end
-	puffs(pool, "baseRag", "scud", baseFrame, Vector3.new(2.3 * baseRadius, baseThick * 1.6, baseLength * 1.15), 9, COLOUR.base, COLOUR.wall, fade(0.35, alpha), clock, seed + 5.7)
+	puffs(pool, "baseRag", "scud", baseFrame, Vector3.new(2.3 * baseRadius, baseThick * 1.6, baseLength * 1.15), 16, COLOUR.base, COLOUR.wall, fade(0.35, alpha), clock, seed + 5.7)
+
+	-- A deck of broken cloud round the storm, a little above its base (never over the tornado),
+	-- so it stands in a cloudy sky rather than alone in a clear one.
+	local deckY = baseY + 250 * SKY
+	puffs(pool, "deck", "puff", CFrame.new(Vector3.new(centre.X, deckY, centre.Z)), Vector3.new(R * 7, 500 * SKY, R * 7), 24,
+		COLOUR.tower:Lerp(COLOUR.base, 0.35), COLOUR.base, fade(0.25, alpha), clock, seed + 12.7)
 
 	-- The anvil spreading downwind from the top, and mammatus under a mature one.
-	local anvilTop = ground + s.anvil.topM * SKY
+	local anvilTop = baseY + (s.anvil.topM - up.baseM) * SKY
 	local length, width = s.anvil.lengthKm * KM, s.anvil.widthKm * KM
 	local anvilCentre = Vector3.new(centre.X, anvilTop, centre.Z) + downwind * (length * 0.45)
 	local anvilFrame = CFrame.lookAt(anvilCentre, anvilCentre + downwind)
 	if not textured then
 		blob(pool, "anvil", anvilFrame, Vector3.new(width * 0.7, 1100 * SKY, length * 0.75), COLOUR.anvil, fade(0.1, alpha))
 	end
-	puffs(pool, "anvilRag", "wisp", anvilFrame, Vector3.new(width * 1.1, 1700 * SKY, length * 1.1), 9, COLOUR.anvil, COLOUR.tower, fade(0.3, alpha), clock, seed + 9.1)
+	puffs(pool, "anvilRag", "wisp", anvilFrame, Vector3.new(width * 1.1, 1700 * SKY, length * 1.1), 14, COLOUR.anvil, COLOUR.tower, fade(0.3, alpha), clock, seed + 9.1)
 	puffs(pool, "anvilRoot", "puff", CFrame.new(Vector3.new(centre.X, anvilTop, centre.Z)), Vector3.new(R * 3, 2000 * SKY, R * 3), 4, COLOUR.anvil, COLOUR.tower, fade(0.05, alpha), clock, seed + 2.9)
 	if s.anvil.mammatus > 0.2 then
 		for i = 1, 6 do
@@ -518,7 +525,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 	local wall = s.wallCloud
 	if wall.strength > 0.03 then
 		local wr = wall.radiusKm * KM
-		local lower = math.max(30, wall.loweringM * SKY)
+		local lower = math.max(30, wall.loweringM * LOW)
 		local wc = at(wall.xKm, wall.yKm, baseY - lower / 2)
 		local wallClear = 1 - math.clamp(wall.strength * 2.2, 0, 1)
 		puffs(pool, "wall", "scud", CFrame.new(wc) * CFrame.Angles(0, clock * 0.04 * (0.2 + wall.rotation), 0), Vector3.new(2.4 * wr, lower * 1.3, 2.4 * wr), 6, COLOUR.wall, COLOUR.wall, fade(wallClear + 0.1 * (1 - wallClear), alpha), clock, seed + 4.4)
@@ -562,7 +569,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		local lead = (s.gustFront.radiusKm * 0.6 + s.gustFront.leadKm + 2 * shelf.detached) * KM
 		local tiers = math.max(1, shelf.tiers)
 		local segments = 9
-		local shelfY = ground + shelf.heightM * SKY - shelf.detached * 150 * SKY
+		local shelfY = ground + shelf.heightM * LOW - shelf.detached * 150 * LOW
 		for i = 1, segments do
 			local f = (i - 0.5) / segments - 0.5
 			local p, d
@@ -577,7 +584,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 			for k = 1, tiers do
 				local tierDrop = (k - 1) * 0.22 * (baseY - ground)
 				local q = Vector3.new(p.X, shelfY - tierDrop, p.Z) + d * ((k - 1) * 0.6 * KM)
-				puffs(pool, `shelf{i}_{k}`, "scud", CFrame.lookAt(q, q + d), Vector3.new(segLength * 1.6, (160 * SKY * shelf.strength + 40) * 1.4, 1.6 * KM), 2, COLOUR.shelf, COLOUR.wall, fade(1 - shelf.strength, alpha), clock, seed + i * 3.7 + k)
+				puffs(pool, `shelf{i}_{k}`, "scud", CFrame.lookAt(q, q + d), Vector3.new(segLength * 1.6, (160 * SKY * shelf.strength + 40) * 1.4, 1.6 * KM), 3, COLOUR.shelf, COLOUR.wall, fade(1 - shelf.strength, alpha), clock, seed + i * 3.7 + k)
 			end
 		end
 	end
@@ -820,7 +827,7 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 		end
 	end
 	local detail = near < DETAIL_STUDS
-	local height = t.baseM * SKY
+	local height = t.baseM * LOW
 	local top = Vector3.new(t.tiltEastM, 0, -t.tiltNorthM) / 1000 * KM
 	local wrapped = math.clamp(t.rainWrap or 0, 0, 1)
 	local core = COLOUR.funnel:Lerp(COLOUR.funnelWrapped, wrapped)
@@ -959,8 +966,8 @@ end
 local function drawFunnelAloft(pool: Pool, s: any)
 	local f = s.funnelAloft
 	local ground = s.groundStuds or 0
-	local baseY = ground + (s.updraft.baseM - s.wallCloud.loweringM) * SKY
-	local length = f.lengthShare * (s.updraft.baseM - s.wallCloud.loweringM) * SKY
+	local baseY = ground + (s.updraft.baseM - s.wallCloud.loweringM) * LOW
+	local length = f.lengthShare * (s.updraft.baseM - s.wallCloud.loweringM) * LOW
 	local p = at(f.xKm, f.yKm, baseY)
 	local shell = COLOUR.funnel:Lerp(COLOUR.towerTop, 0.3)
 	for i = 0, 5 do
@@ -1008,6 +1015,27 @@ local function inside(xKm: number, yKm: number, alongKm: number, acrossKm: numbe
 	local along = dx * d.X + dy * -d.Z
 	local across = dx * -d.Z - dy * d.X
 	return (along / math.max(0.1, alongKm)) ^ 2 + (across / math.max(0.1, acrossKm)) ^ 2
+end
+
+-- The sky round the storms: Roblox's own cloud layer (Terrain Clouds, on this client), broken
+-- far from any storm and closing in, thicker and greyer, as one comes near.
+local skyClouds: Clouds? = nil
+local lastOvercast = -1
+local function skyCover(overcast: number)
+	if not skyClouds then
+		local made = workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
+		made.Parent = workspace.Terrain
+		skyClouds = made
+	end
+	if math.abs(overcast - lastOvercast) < 0.01 then
+		return
+	end
+	lastOvercast = overcast
+	local clouds = skyClouds :: Clouds
+	clouds.Enabled = true
+	clouds.Cover = 0.45 + 0.45 * overcast
+	clouds.Density = 0.3 + 0.55 * overcast
+	clouds.Color = Color3.new(1, 1, 1):Lerp(Color3.fromRGB(118, 122, 132), overcast)
 end
 
 -- Running ----------------------------------------------------------------------------------
@@ -1098,9 +1126,11 @@ function StormController.Start()
 		local px, py = (cameraPos.X + HALF) / KM, (cameraPos.Z + HALF) / KM
 		local alive: { [string]: boolean } = {}
 		local cover, rainRate = 0, 0
+		local overcast = 0 -- 0 far from any storm, 1 under one
 		for _, s in storms do
 			local centre = at(s.xKm, s.yKm, cameraPos.Y)
 			local distance = (Vector3.new(centre.X, 0, centre.Z) - Vector3.new(cameraPos.X, 0, cameraPos.Z)).Magnitude
+			overcast = math.max(overcast, math.clamp(1 - distance / (VIEW * 0.7), 0, 1) * (s.alpha or 1))
 			if distance > VIEW then
 				continue
 			end
@@ -1135,7 +1165,7 @@ function StormController.Start()
 			if math.random() < (s.lightningPerMin or 0) / 60 * dt * 0.25 and distance < VIEW * 0.6 then
 				local ground = s.groundStuds or 0
 				local strike = at(r.xKm, r.yKm, ground) + Vector3.new((math.random() - 0.5) * r.acrossKm * KM, 0, (math.random() - 0.5) * r.alongKm * KM)
-				local from = strike + Vector3.new(0, s.updraft.baseM * SKY, 0)
+				local from = strike + Vector3.new(0, s.updraft.baseM * LOW, 0)
 				local parts: { BasePart } = {}
 				local last = from
 				for i = 1, 7 do
@@ -1169,6 +1199,7 @@ function StormController.Start()
 			end
 		end
 		drawVolumes()
+		skyCover(overcast)
 		Lighting.ExposureCompensation = baseExposure - 1.4 * cover
 		cameraRain(rainRate, cameraPos)
 	end)
