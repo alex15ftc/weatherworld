@@ -226,21 +226,32 @@ function StormController.artStatus(): string
 end
 
 -- An image, or one cell of a sheet, at position, size studs across and up.
-local function billboard(pool: Pool, key: string, position: Vector3, size: Vector2, image: string, cell: Vector2, cellSize: Vector2, colour: Color3, transparency: number)
-	-- Its own names: a cloud puff is a billboard or a sphere part depending on its art, and
-	-- the two must never share a part.
+-- Where the camera is this frame; sprites turn to face it.
+local eye = Vector3.zero
+local MAX_SPRITE = 2048 -- a part's largest side
+
+-- An image, or one cell of a sheet, at position, size studs across and up: an image on a thin
+-- invisible part turned to face the camera's position. Unlike a BillboardGui it does not follow
+-- the camera's turning or tilting, only where the camera is. Upright ones turn only about the
+-- vertical (the tornado stands straight); the rest face the camera fully, so a cloud base
+-- overhead faces down at you.
+local function billboard(pool: Pool, key: string, position: Vector3, size: Vector2, image: string, cell: Vector2, cellSize: Vector2, colour: Color3, transparency: number, upright: boolean?)
+	-- Its own names: a cloud puff is a sprite or a sphere part depending on its art, and the two
+	-- must never share a part.
 	key = `bb:{key}`
 	local part = pool.parts[key]
-	local gui: BillboardGui
+	local gui: SurfaceGui
 	local label: ImageLabel
 	if not part then
 		local p = Instance.new("Part")
 		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
 		p.Transparency = 1
-		p.Size = Vector3.one
 		p.Name = key
-		gui = Instance.new("BillboardGui")
-		gui.MaxDistance = math.huge
+		gui = Instance.new("SurfaceGui")
+		gui.Face = Enum.NormalId.Front
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+		gui.CanvasSize = Vector2.new(256, 256)
+		gui.MaxDistance = 1e7
 		gui.LightInfluence = 0.6
 		gui.Adornee = p
 		label = Instance.new("ImageLabel")
@@ -252,13 +263,23 @@ local function billboard(pool: Pool, key: string, position: Vector3, size: Vecto
 		pool.parts[key] = p
 		part = p
 	else
-		gui = part:FindFirstChildOfClass("BillboardGui") :: BillboardGui
+		gui = part:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
 		label = gui:FindFirstChildOfClass("ImageLabel") :: ImageLabel
 	end
 	pool.used[key] = true
-	local b = part :: BasePart
-	b.CFrame = CFrame.new(position)
-	gui.Size = UDim2.new(size.X, 0, size.Y, 0)
+	local p = part :: BasePart
+	local partSize = Vector3.new(math.clamp(size.X, 0.2, MAX_SPRITE), math.clamp(size.Y, 0.2, MAX_SPRITE), 0.05)
+	if p.Size ~= partSize then
+		p.Size = partSize
+	end
+	local target = if upright then Vector3.new(eye.X, position.Y, eye.Z) else eye
+	local toward = target - position
+	if toward.Magnitude < 0.01 then
+		p.CFrame = CFrame.new(position)
+	else
+		local up = if math.abs(toward.Unit.Y) > 0.995 then Vector3.zAxis else Vector3.yAxis
+		p.CFrame = CFrame.lookAt(position, target, up)
+	end
 	gui.Enabled = transparency < 0.99
 	label.Image = image
 	label.ImageRectOffset = cell
@@ -278,7 +299,7 @@ local function finish(pool: Pool)
 			if e then
 				e.Enabled = false
 			end
-			local gui = part:FindFirstChildOfClass("BillboardGui")
+			local gui = part:FindFirstChildOfClass("SurfaceGui")
 			if gui then
 				gui.Enabled = false
 			end
@@ -311,6 +332,11 @@ local function puffs(pool: Pool, key: string, kind: string, frame: CFrame, size:
 	local textured = sheet ~= nil and isReady(sheet.image)
 	local grid = if sheet then sheet.grid else 1
 	local cellPx = 1024 / grid
+	if textured then
+		-- A sprite is at most MAX_SPRITE across: fill a wider piece (the anvil) with more of them.
+		local wide = math.max(size.X, size.Z) / MAX_SPRITE
+		count = math.max(count, math.min(40, math.ceil(wide * wide * 0.7)))
+	end
 	for i = 1, count do
 		local n = i * 5
 		local a = TAU * rand(seed, n)
@@ -635,9 +661,16 @@ local function drawImpostor(pool: Pool, t: any, foot: Vector3, height: number, t
 	local tex = Textures.tornado
 	local toCamera = cameraPos - foot
 	local bearing = math.deg(math.atan2(toCamera.X, -toCamera.Z)) % 360
-	local view = math.floor(bearing / (360 / #tex.views) + 0.5) % #tex.views + 1
-	local sheet = tex.sheets[view]
-	if not isReady(sheet) then
+	-- Turning: seeing it from a steadily later side is seeing it turn (counter-clockwise from
+	-- above, as a tornado here does). Between two baked sides, the next fades in over this one.
+	local turnsPerSecond = math.clamp(0.2 + (t.windMph or 0) / 600, 0.2, 0.6)
+	local step = 360 / #tex.views
+	local angle = (bearing + clock * turnsPerSecond * 360) % 360
+	local view = math.floor(angle / step) % #tex.views + 1
+	local nextView = view % #tex.views + 1
+	local blend = (angle % step) / step
+	local sheet, nextSheet = tex.sheets[view], tex.sheets[nextView]
+	if not isReady(sheet) or not isReady(nextSheet) then
 		return false
 	end
 	local decay = math.clamp(t.decay or 0, 0, 1)
@@ -657,7 +690,13 @@ local function drawImpostor(pool: Pool, t: any, foot: Vector3, height: number, t
 	local h = height * 1.12
 	local w = math.clamp(10 * radiusAt(t, 0.5), h * 0.45, h * 1.6)
 	local tint = Color3.new(1, 1, 1):Lerp(Color3.fromRGB(105, 108, 116), wrapped)
-	billboard(pool, "impostor", foot + Vector3.new(0, h / 2, 0), Vector2.new(w, h), sheet, cell, Vector2.new(cellPx, cellPx), tint, fade(0, math.min(1, touch * 3)))
+	local centre = foot + Vector3.new(0, h / 2, 0)
+	local shown = math.min(1, touch * 3)
+	billboard(pool, "impostor", centre, Vector2.new(w, h), sheet, cell, Vector2.new(cellPx, cellPx), tint, fade(0, shown), true)
+	-- The next side, just in front so the two never fight over depth.
+	local flat = Vector3.new(cameraPos.X - foot.X, 0, cameraPos.Z - foot.Z)
+	local forward = if flat.Magnitude > 0.01 then flat.Unit else Vector3.zero
+	billboard(pool, "impostorNext", centre + forward * 1, Vector2.new(w, h), nextSheet, cell, Vector2.new(cellPx, cellPx), tint, fade(1 - blend, shown), true)
 	return true
 end
 
@@ -946,6 +985,7 @@ function StormController.Start()
 			return
 		end
 		local cameraPos = camera.CFrame.Position
+		eye = cameraPos
 		local nowMs = workspace:GetServerTimeNow() * 1000 + ((weather:GetAttribute("ClockOffsetMs") :: number?) or 0)
 		local storms = track:sample(nowMs)
 		local px, py = (cameraPos.X + HALF) / KM, (cameraPos.Z + HALF) / KM
