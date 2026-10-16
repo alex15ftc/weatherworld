@@ -312,108 +312,76 @@ local function finish(pool: Pool)
 	table.clear(pool.used)
 end
 
--- Ray-marched volumes (Modules/Weather/Volumes) in place of the sphere parts, on sprites like
--- the clouds'. cl_volumes 0 turns them off on this client (spheres instead), to compare.
-local cl_volumes = ConVar.Declare("cl_volumes", true, ConVar.LOCAL, "Ray-marched storm volumes instead of sphere parts (this client).")
+-- Volumes (Modules/Weather/Volumes): nested EditableMesh shells with lit EditableImage
+-- textures in place of the sphere parts. cl_volumes 0 turns them off on this client (spheres
+-- instead), to compare.
+local cl_volumes = ConVar.Declare("cl_volumes", true, ConVar.LOCAL, "EditableMesh storm volumes instead of sphere parts (this client).")
 local volumesOn = true
 cl_volumes:Connect(function()
 	volumesOn = cl_volumes:GetBool()
 end)
-local volumeOf: { [BasePart]: Volumes.Volume } = {}
-local volumeList: { Volumes.Volume } = {}
+type Placed = { volume: Volumes.Volume, frame: number }
+local placed: { [Model]: { [string]: Placed } } = {} -- per storm (its pool's model), by key
+local frameId = 0
 
 function StormController.volumeStatus(): string
-	if not Volumes.available() then
-		return "volumes: EditableImage not available here (spheres)"
+	local count = 0
+	for _, byKey in placed do
+		for _ in byKey do
+			count += 1
+		end
 	end
-	return if volumesOn then `volumes: on, {#volumeList} drawn` else "volumes: off (cl_volumes 0)"
+	return if volumesOn then `{Volumes.status()}; {count} placed` else "volumes: off (cl_volumes 0)"
 end
 
--- A shape of the given full size at cf: a ray-marched volume where they are on and can be
--- made, else a sphere part. kind: "cloud" (billowed), "rain" (streaks falling), "band" (a ring).
+-- A shape of the given full size at cf: an EditableMesh volume where they are on and built,
+-- else a sphere part. kind: "cloud" (billowed), "rain" (streaked), "band" (a ring).
 local function blob(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number, kind: Volumes.Kind?)
-	if not volumesOn or not Volumes.available() then
+	if not volumesOn or not Volumes.ready() then
 		sphere(pool, key, cf, size, colour, transparency)
 		return
 	end
-	key = `vol:{key}`
-	local part = pool.parts[key]
-	if not part then
-		local p = Instance.new("Part")
-		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
-		p.Transparency = 1
-		p.Name = key
-		local gui = Instance.new("SurfaceGui")
-		gui.Face = Enum.NormalId.Front
-		gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
-		gui.CanvasSize = Vector2.new(256, 256)
-		gui.MaxDistance = 1e7
-		gui.LightInfluence = 0.3
-		gui.Adornee = p
-		local label = Instance.new("ImageLabel")
-		label.BackgroundTransparency = 1
-		label.Size = UDim2.fromScale(1, 1)
-		label.Parent = gui
-		gui.Parent = p
-		local volume = Volumes.new()
+	local byKey = placed[pool.model]
+	if not byKey then
+		byKey = {}
+		placed[pool.model] = byKey
+	end
+	local entry = byKey[key]
+	if not entry then
+		local volume = Volumes.new(kind or "cloud", math.floor(hash(key) * Volumes.VARIANTS) + 1)
 		if not volume then
-			p:Destroy()
 			sphere(pool, key, cf, size, colour, transparency)
 			return
 		end
-		label.ImageContent = volume.content
-		volumeOf[p] = volume
-		table.insert(volumeList, volume)
-		p.Parent = pool.model
-		pool.parts[key] = p
-		part = p
+		volume.model.Name = `vol:{key}`
+		entry = { volume = volume, frame = frameId }
+		byKey[key] = entry
 	end
-	pool.used[key] = true
-	local p = part :: BasePart
-	local volume = volumeOf[p]
-	-- A square facing the camera, as wide as the shape's longest side; one too big for a part is
-	-- drawn smaller and nearer the camera, covering the same view.
-	local side = math.max(size.X, size.Y, size.Z) * 1.05
-	local centre = cf.Position
-	local fit = math.min(1, MAX_SPRITE / side)
-	local at = eye + (centre - eye) * fit
-	local quadSize = side * fit
-	local toward = eye - at
-	local up = if toward.Magnitude > 0.01 and math.abs(toward.Unit.Y) > 0.995 then Vector3.zAxis else Vector3.yAxis
-	local quad = if toward.Magnitude > 0.01 then CFrame.lookAt(at, eye, up) else CFrame.new(at)
-	local q = Vector3.new(quadSize, quadSize, 0.05)
-	if p.Size ~= q then
-		p.Size = q
+	entry.frame = frameId
+	if entry.volume.model.Parent ~= pool.model then
+		entry.volume.model.Parent = pool.model
 	end
-	p.CFrame = quad
-	local gui = p:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
-	gui.Enabled = transparency < 0.99
-	volume.frame = cf
-	volume.half = size / 2
-	volume.colour = colour
-	volume.opacity = 1 - transparency
-	volume.kind = kind or "cloud"
-	-- The pass draws rays from the centre's true distance; the quad is only where it shows.
-	volume.quad = CFrame.lookAt(centre, eye, up)
-	volume.quadSize = side
-	volume.used = os.clock()
+	Volumes.place(entry.volume, cf, size, colour, 1 - transparency)
 end
 
--- Frees the volumes of parts that are gone (a storm out of view), and draws this frame's share.
+-- End of frame: volumes not drawn this frame are put away (kept for when they are next drawn);
+-- those of storms gone are destroyed.
 local function drawVolumes()
-	for part, volume in volumeOf do
-		if not part.Parent then
-			Volumes.free(volume)
-			volumeOf[part] = nil
-			local i = table.find(volumeList, volume)
-			if i then
-				table.remove(volumeList, i)
+	for model, byKey in placed do
+		if not model.Parent then
+			for _, entry in byKey do
+				entry.volume.model:Destroy()
+			end
+			placed[model] = nil
+			continue
+		end
+		for _, entry in byKey do
+			if entry.frame ~= frameId and entry.volume.model.Parent then
+				entry.volume.model.Parent = nil
 			end
 		end
 	end
-	if volumesOn and #volumeList > 0 then
-		Volumes.draw(volumeList, eye, os.clock())
-	end
+	frameId += 1
 end
 
 local function fade(t: number, alpha: number): number
@@ -462,7 +430,14 @@ local function puffs(pool: Pool, key: string, kind: string, frame: CFrame, size:
 			local cell = Vector2.new(pick % grid, math.floor(pick / grid)) * cellPx
 			local across = math.max(size.X, size.Z) * share * boil
 			local up = math.max(size.Y * share * boil * 1.6, across * 0.55)
-			billboard(pool, `{key}#{i}`, (frame * CFrame.new(offset)).Position, Vector2.new(across, up), sheet.image, cell, Vector2.new(cellPx, cellPx), shade, 1 - (1 - clear) * 0.95)
+			-- The art is round, so a wide puff's sprite is tall too; keep its bottom no lower than
+			-- the piece's, or the cloud base hangs far down over the tornado.
+			local at = (frame * CFrame.new(offset)).Position
+			local floor = frame.Position.Y - size.Y / 2
+			if at.Y - up / 2 < floor then
+				at = Vector3.new(at.X, floor + up / 2, at.Z)
+			end
+			billboard(pool, `{key}#{i}`, at, Vector2.new(across, up), sheet.image, cell, Vector2.new(cellPx, cellPx), shade, 1 - (1 - clear) * 0.95)
 		else
 			blob(pool, `{key}#{i}`, frame * CFrame.new(offset), size * share * boil, shade, clear)
 		end
@@ -1044,6 +1019,7 @@ function StormController.Start()
 		track:add(packet.frames, packet.reset, packet.epoch)
 	end)
 	Net.AskFrames:Client():Fire()
+	task.spawn(Volumes.build)
 	root.Parent = workspace
 
 	-- Load the storm art, reporting its state as it goes (Output and the debug panel): Roblox's
