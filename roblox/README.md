@@ -140,7 +140,11 @@ again and it carries on from the last frame finished. `tools/bake-and-upload-tor
 wedge,rope` bakes only those shapes; `-SkipBake` and `-SkipUpload` skip those steps.
 
 Close up, a tornado can be drawn as a skinned funnel mesh instead (`cl_tornado_mesh 1`, debug
-panel; off until it has its edge-boil textures). Its rings of spoke bones are moved every frame
+panel; off by default for now). It is two layers, a core and a wispy skin, each swapping through
+64 looping edge-boil frames baked from the same `.blend` (`scripts/blender/bake_funnel_boil.py`,
+then `scripts/pack-funnel-boil.py`, then `upload`). Scripts cannot set a SurfaceAppearance's
+image, so `tools/funnel-model.luau <rig.rbxm> <out.rbxm> Textures/build` builds the frames into
+the model before it is uploaded. Its rings of spoke bones are moved every frame
 to the funnel's radius, lean and spin (`Client/Modules/Weather/TornadoMesh.luau`). The model is
 built by `scripts/blender/build_funnel_rig.py`, cleaned up by `tools/funnel-model.luau`,
 uploaded with `node tools/upload-images.mjs model <file> <out.rbxm>`, and loaded at runtime by

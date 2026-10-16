@@ -78,6 +78,16 @@ local tornadoes: { [string]: Tornado } = {
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
 		sheets = { "rbxassetid://96396415568687", "rbxassetid://87367481662599", "rbxassetid://136902611960508", "rbxassetid://128369268401121", "rbxassetid://88538076502885", "rbxassetid://73254543190728", "rbxassetid://70375072481128", "rbxassetid://84061560476253" },
 	},
+	["rope"] = {
+		shape = "rope",
+		vortices = 1,
+		grid = 8,
+		frames = 64,
+		frameShare = 1.2305,
+		midRadiusShare = 0.0257,
+		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
+		sheets = { "rbxassetid://75014155483389", "rbxassetid://116049377400750", "rbxassetid://123100914127926", "rbxassetid://81840664637929", "rbxassetid://112813114421488", "rbxassetid://107174293670096", "rbxassetid://80391139625245", "rbxassetid://83749510186502" },
+	},
 }
 
 -- Storm volume shell meshes (scripts/bake-volume-meshes.mjs), uploaded for where the game

@@ -5,5 +5,5 @@
 -- game's by tools/funnel-model.luau, uploaded with tools/upload-images.mjs model). Rebuild and
 -- re-upload it to change it, and put the new model id here.
 return table.freeze({
-	funnel = 92549592536480,
+	funnel = 88932428159830,
 })

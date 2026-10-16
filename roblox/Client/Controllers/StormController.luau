@@ -327,8 +327,8 @@ local placed: { [Model]: { [string]: Placed } } = {} -- per storm (its pool's mo
 local frameId = 0
 
 -- cl_tornado_mesh 1 draws a tornado within MESH_STUDS of the camera as the skinned funnel
--- (Modules/Weather/TornadoMesh) instead of the baked billboard, on this client. Off until the
--- funnel has its edge-boil textures.
+-- (Modules/Weather/TornadoMesh) instead of the baked billboard, on this client. Off by default
+-- until it has been tried in play.
 local MESH_STUDS = 3000
 local meshOn = false
 local cl_tornado_mesh = ConVar.Declare("cl_tornado_mesh", false, ConVar.LOCAL, "Close tornadoes as the skinned funnel mesh (this client).")
@@ -946,6 +946,7 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 			spin = function(f: number): number
 				return clock * turn * (1 - 0.5 * f)
 			end,
+			clock = clock,
 			colour = core,
 			transparency = 1 - 0.75 * touch ^ 0.5,
 		})

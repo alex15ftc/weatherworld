@@ -215,6 +215,7 @@ async function main() {
     ...Object.values(manifest.tornadoes ?? {}).flatMap(t => t.views.map(v => t.files[v])),
     ...Object.values(manifest.clouds ?? {}).map(c => c.file),
     ...Object.values(manifest.volumes ?? {}).flat(2),
+    ...Object.values(manifest.boil?.shells ?? {}).flat(),
   ];
   const ids = {};
   for (const file of files) {
@@ -242,6 +243,8 @@ async function main() {
     console.log(`${file}: decal ${assetId}, image ${imageId}`);
   }
   writeLuau(manifest, ids);
+  // Every file's id, for tools/funnel-model.luau (the funnel's SurfaceAppearances).
+  writeFileSync(path.join(dir, 'ids.json'), JSON.stringify(ids, null, 2));
   console.log(`wrote ${path.relative(process.cwd(), OUT_LUAU)}`);
 }
 
