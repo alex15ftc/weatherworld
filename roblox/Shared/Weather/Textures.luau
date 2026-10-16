@@ -58,6 +58,26 @@ local tornadoes: { [string]: Tornado } = {
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
 		sheets = { "rbxassetid://91395380338773", "rbxassetid://78335424486921", "rbxassetid://124960536570248", "rbxassetid://85287474656176", "rbxassetid://92935984193517", "rbxassetid://137554303008613", "rbxassetid://136607590131608", "rbxassetid://123647144249466" },
 	},
+	["drillbit"] = {
+		shape = "drillbit",
+		vortices = 1,
+		grid = 8,
+		frames = 64,
+		frameShare = 1.2305,
+		midRadiusShare = 0.0348,
+		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
+		sheets = { "rbxassetid://97747892602362", "rbxassetid://78052244684511", "rbxassetid://80729644646530", "rbxassetid://118358113714428", "rbxassetid://123641868893138", "rbxassetid://79006834492270", "rbxassetid://137264175032852", "rbxassetid://80074957811453" },
+	},
+	["partial-wedge"] = {
+		shape = "partial wedge",
+		vortices = 1,
+		grid = 8,
+		frames = 64,
+		frameShare = 1.2305,
+		midRadiusShare = 0.3429,
+		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
+		sheets = { "rbxassetid://96396415568687", "rbxassetid://87367481662599", "rbxassetid://136902611960508", "rbxassetid://128369268401121", "rbxassetid://88538076502885", "rbxassetid://73254543190728", "rbxassetid://70375072481128", "rbxassetid://84061560476253" },
+	},
 }
 
 -- Storm volume shell meshes (scripts/bake-volume-meshes.mjs), uploaded for where the game
