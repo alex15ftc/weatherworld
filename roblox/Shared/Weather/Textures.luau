@@ -130,8 +130,17 @@ local tornadoes: { [string]: Tornado } = {
 	},
 }
 
+-- Storm volume shell meshes (scripts/bake-volume-meshes.mjs), uploaded for where the game
+-- cannot build them with EditableMesh: per kind, per variant, the mesh of each shell.
+local volumes: { [string]: { { string } } } = {
+	cloud = { { "rbxassetid://132057698038805", "rbxassetid://89230496025163", "rbxassetid://127878119200360" }, { "rbxassetid://75011966540544", "rbxassetid://133569560398294", "rbxassetid://83324174755421" }, { "rbxassetid://126380462484442", "rbxassetid://105297468796364", "rbxassetid://110399994912842" } },
+	rain = { { "rbxassetid://92903908365674", "rbxassetid://127131498496284", "rbxassetid://108479595896459" }, { "rbxassetid://98621062941812", "rbxassetid://82253291590418", "rbxassetid://116916112048938" }, { "rbxassetid://112205533769890", "rbxassetid://124564683739174", "rbxassetid://89001497728290" } },
+	band = { { "rbxassetid://90586995838789", "rbxassetid://120557639143373", "rbxassetid://83780439148832" }, { "rbxassetid://75239183181099", "rbxassetid://122723070944889", "rbxassetid://89801906681522" }, { "rbxassetid://71528254949425", "rbxassetid://112469819846306", "rbxassetid://104019444091974" } },
+}
+
 return table.freeze({
 	tornadoes = table.freeze(tornadoes),
+	volumes = table.freeze(volumes),
 	clouds = table.freeze({
 		puff = table.freeze({ image = "rbxassetid://133878183938680", grid = 4 }),
 		smoke = table.freeze({ image = "rbxassetid://93895085078849", grid = 4 }),

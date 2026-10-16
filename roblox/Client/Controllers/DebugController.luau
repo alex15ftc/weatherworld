@@ -145,7 +145,7 @@ local function draw(ImGui: any)
 	end
 	ImGui.TextDisabled(StormController.artStatus())
 	ImGui.TextDisabled(StormController.volumeStatus())
-	local changedVolumes, volumes = ImGui.Checkbox("Ray-marched volumes (cl_volumes, this client)", Panel.volumes)
+	local changedVolumes, volumes = ImGui.Checkbox("Storm volumes, not spheres (cl_volumes, this client)", Panel.volumes)
 	if changedVolumes then
 		Panel.volumes = volumes == true
 		run(`cl_volumes {if Panel.volumes then 1 else 0}`)

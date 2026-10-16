@@ -11,7 +11,8 @@
 // show, and StormController keeps drawing the part-built storm.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,6 +74,37 @@ async function uploadDecal(key, userId, file, name) {
   return op.response.assetId;
 }
 
+// Uploads one .glb as a Model (Roblox imports its mesh) and waits; returns the model's asset id.
+async function uploadModel(key, userId, file, name) {
+  const form = new FormData();
+  form.append('request', JSON.stringify({
+    assetType: 'Model',
+    displayName: name,
+    description: 'WeatherWorld storm volume mesh',
+    creationContext: { creator: { userId: String(userId) } },
+  }));
+  form.append('fileContent', new Blob([readFileSync(file)], { type: 'model/gltf-binary' }), path.basename(file));
+  let op = JSON.parse(await call(key, 'POST', '/assets/v1/assets', form));
+  for (let i = 0; !op.done && i < 60; i++) {
+    await sleep(2000);
+    op = JSON.parse(await call(key, 'GET', `/assets/v1/${op.path}`));
+  }
+  if (!op.done) throw new Error(`upload of ${name} did not finish`);
+  if (op.error) throw new Error(`upload of ${name} failed: ${JSON.stringify(op.error)}`);
+  return op.response.assetId;
+}
+
+// The mesh inside an uploaded model: download the model and read its MeshPart (tools/mesh-id.luau).
+async function meshIdOf(key, modelId) {
+  const where = JSON.parse(await call(key, 'GET', `/asset-delivery-api/v1/assetId/${modelId}`));
+  const bytes = Buffer.from(await (await fetch(where.location)).arrayBuffer());
+  const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'ww-mesh-')), 'model.rbxm');
+  writeFileSync(file, bytes);
+  const id = execFileSync('lune', ['run', path.join(HERE, 'mesh-id.luau'), file], { encoding: 'utf8', cwd: ROBLOX }).trim();
+  if (!/^\d+$/.test(id)) throw new Error(`no mesh id in model ${modelId}: ${id}`);
+  return id;
+}
+
 // A Decal wraps an Image; ImageLabels need the Image's id. Asset delivery gives either the PNG
 // itself (already an image id) or the decal's model, which names its texture.
 async function imageIdOf(key, assetId) {
@@ -127,8 +159,16 @@ function writeLuau(manifest, ids) {
   lines.push(
     '}',
     '',
+    '-- Storm volume shell meshes (scripts/bake-volume-meshes.mjs), uploaded for where the game',
+    '-- cannot build them with EditableMesh: per kind, per variant, the mesh of each shell.',
+    'local volumes: { [string]: { { string } } } = {',
+    ...Object.entries(manifest.volumes ?? {}).map(([kind, variants]) =>
+      `	${kind} = { ${variants.map(files => `{ ${files.map(f => id(f)).join(', ')} }`).join(', ')} },`),
+    '}',
+    '',
     'return table.freeze({',
     '	tornadoes = table.freeze(tornadoes),',
+    '	volumes = table.freeze(volumes),',
     '	clouds = table.freeze({',
     ...Object.entries(manifest.clouds ?? {}).map(([kind, c]) => `		${kind} = table.freeze({ image = ${id(c.file)}, grid = ${c.grid} }),`),
     '	}),',
@@ -157,6 +197,7 @@ async function main() {
   const files = [
     ...Object.values(manifest.tornadoes ?? {}).flatMap(t => t.views.map(v => t.files[v])),
     ...Object.values(manifest.clouds ?? {}).map(c => c.file),
+    ...Object.values(manifest.volumes ?? {}).flat(2),
   ];
   const ids = {};
   for (const file of files) {
@@ -165,6 +206,15 @@ async function main() {
     if (record[hash]) {
       ids[file] = record[hash];
       console.log(`${file}: already uploaded (${record[hash]})`);
+      continue;
+    }
+    if (file.endsWith('.glb')) {
+      const modelId = await uploadModel(key, owner, full, `WeatherWorld ${path.basename(file, '.glb')}`);
+      const meshId = await meshIdOf(key, modelId);
+      record[hash] = meshId;
+      ids[file] = meshId;
+      writeFileSync(RECORD, JSON.stringify(record, null, 2));
+      console.log(`${file}: model ${modelId}, mesh ${meshId}`);
       continue;
     }
     const assetId = await uploadDecal(key, owner, full, `WeatherWorld ${file.replace(/\.png$/, '')}`);
