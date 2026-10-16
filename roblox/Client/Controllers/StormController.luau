@@ -192,9 +192,11 @@ end
 
 local function artImages(): { string }
 	local images: { string } = {}
-	for _, sheet in Textures.tornado.sheets do
-		if sheet ~= "" then
-			table.insert(images, sheet)
+	for _, tornado in Textures.tornadoes do
+		for _, sheet in tornado.sheets do
+			if sheet ~= "" then
+				table.insert(images, sheet)
+			end
 		end
 	end
 	for _, kind in Textures.clouds :: { [string]: { image: string, grid: number } } do
@@ -657,8 +659,25 @@ end
 -- side it is seen from, the frame for where it is in its life (lowering as it touches down, a
 -- mature cone drifting slowly, roping out as it decays), scaled to the engine's height and
 -- width and stood on its ground point. False when the art is not ready, so the parts draw it.
+-- The baked tornado for this one: the shape the engine names it (several vortices: its -multi
+-- bake, where there is one), else the cone; nil until some art has loaded.
+local function bakedFor(t: any): Textures.Tornado?
+	local name = string.gsub(if type(t.shape) == "string" then t.shape else "cone", " ", "-")
+	local choices = { if (t.vortices or 1) > 1 then `{name}-multi` else name, name, "cone" }
+	for _, choice in choices do
+		local tex = Textures.tornadoes[choice]
+		if tex and isReady(tex.sheets[1]) then
+			return tex
+		end
+	end
+	return nil
+end
+
 local function drawImpostor(pool: Pool, t: any, foot: Vector3, height: number, touch: number, wrapped: number, clock: number, seed: number, cameraPos: Vector3): boolean
-	local tex = Textures.tornado
+	local tex = bakedFor(t)
+	if not tex then
+		return false
+	end
 	local toCamera = cameraPos - foot
 	local bearing = math.deg(math.atan2(toCamera.X, -toCamera.Z)) % 360
 	-- Turning: seeing it from a steadily later side is seeing it turn (counter-clockwise from
@@ -685,10 +704,16 @@ local function drawImpostor(pool: Pool, t: any, foot: Vector3, height: number, t
 	local frame = math.clamp(math.floor(stage), 0, tex.frames - 1)
 	local cellPx = 1024 / tex.grid
 	local cell = Vector2.new(frame % tex.grid, math.floor(frame / tex.grid)) * cellPx
-	-- The baked funnel fills the frame from the ground to the collar in the cloud base; its
-	-- middle is about a fifth of the frame across. Fit that to the engine's funnel.
-	local h = height * 1.12
-	local w = math.clamp(10 * radiusAt(t, 0.5), h * 0.45, h * 1.6)
+	-- The frame stands on the ground, frameShare cloud-base heights square; widen or narrow it
+	-- so its funnel is as wide as the engine's halfway up. A part is at most MAX_SPRITE, so a
+	-- bigger one shrinks as a whole rather than squashing.
+	local h = height * tex.frameShare
+	local bakedMid = tex.midRadiusShare * height
+	local mid = radiusAt(t, 0.5)
+	local widen = if mid > 0 and bakedMid > 0 then math.clamp(mid / bakedMid, 0.6, 1.6) else 1
+	local w = h * widen
+	local fit = math.min(1, MAX_SPRITE / h, MAX_SPRITE / w)
+	h, w = h * fit, w * fit
 	local tint = Color3.new(1, 1, 1):Lerp(Color3.fromRGB(105, 108, 116), wrapped)
 	local centre = foot + Vector3.new(0, h / 2, 0)
 	local shown = math.min(1, touch * 3)
