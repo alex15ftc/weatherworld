@@ -114,7 +114,19 @@ end
 -- The shape's EditableMesh: a grid (U x V, the seam column repeated so the texture wraps), with
 -- UVs matching the texture's layout.
 local function buildMesh(kind: Kind, seed: number): EditableMesh
-	local mesh = AssetService:CreateEditableMesh({})
+	-- Roblox returns nothing where EditableMesh is not allowed (the experience's Security
+	-- setting for mesh and image APIs) or the device's budget for them is used up.
+	local made: EditableMesh? = (AssetService :: any):CreateEditableMesh()
+	if not made then
+		made = AssetService:CreateEditableMesh({ FixedSize = false })
+	end
+	if not made then
+		error(
+			"CreateEditableMesh returned nothing: turn on Game Settings > Security > Allow Mesh / Image APIs (and publish), or the device's EditableMesh budget is used up",
+			0
+		)
+	end
+	local mesh = made :: EditableMesh
 	local ids: { [number]: { [number]: number } } = {}
 	local uvs: { [number]: { [number]: number } } = {}
 	for j = 0, V do
