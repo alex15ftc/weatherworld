@@ -26,7 +26,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.1949,
 		midRadiusShare = 0.1310,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://123299024861402", "rbxassetid://106099336369962", "rbxassetid://113545710331574", "rbxassetid://129527537197921", "rbxassetid://102460217190671", "rbxassetid://101138760038929", "rbxassetid://103692608905175", "rbxassetid://101247178897329" },
 	},
 	["stovepipe"] = {
 		shape = "stovepipe",
@@ -36,7 +36,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.1702,
 		midRadiusShare = 0.2536,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://100524961626085", "rbxassetid://85944296535306", "rbxassetid://96450825265978", "rbxassetid://111594652843883", "rbxassetid://76752701578210", "rbxassetid://126017589739800", "rbxassetid://124567797053935", "rbxassetid://137455787944780" },
 	},
 	["wedge"] = {
 		shape = "wedge",
@@ -46,7 +46,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 2.9664,
 		midRadiusShare = 0.8544,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://130064577603812", "rbxassetid://75614956337586", "rbxassetid://134352375011248", "rbxassetid://76502806476917", "rbxassetid://106573914126237", "rbxassetid://125130484377027", "rbxassetid://97640471581160", "rbxassetid://123630730439898" },
 	},
 	["partial-wedge"] = {
 		shape = "partial wedge",
@@ -56,7 +56,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.3430,
 		midRadiusShare = 0.3193,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://76915189423355", "rbxassetid://91946706627873", "rbxassetid://82952154966762", "rbxassetid://116479282105720", "rbxassetid://108784580093918", "rbxassetid://113634950781624", "rbxassetid://70618635304435", "rbxassetid://88637202653737" },
 	},
 	["drillbit"] = {
 		shape = "drillbit",
@@ -66,7 +66,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.1200,
 		midRadiusShare = 0.0371,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://73560876100148", "rbxassetid://74938547996005", "rbxassetid://85664479028912", "rbxassetid://116008375448090", "rbxassetid://123335476115734", "rbxassetid://111318377168877", "rbxassetid://138838916478640", "rbxassetid://111339349356086" },
 	},
 	["rope"] = {
 		shape = "rope",
@@ -76,7 +76,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.1200,
 		midRadiusShare = 0.0318,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://80243396613676", "rbxassetid://93863844509491", "rbxassetid://123496595169176", "rbxassetid://74329264314565", "rbxassetid://94455625520108", "rbxassetid://73173108626466", "rbxassetid://107731023480026", "rbxassetid://139816400995212" },
 	},
 	["elephant-trunk"] = {
 		shape = "elephant trunk",
@@ -86,7 +86,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 2.0454,
 		midRadiusShare = 0.1310,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://125168713230889", "rbxassetid://130170968804240", "rbxassetid://88935335275695", "rbxassetid://87555608689075", "rbxassetid://137052169484375", "rbxassetid://129422976396152", "rbxassetid://78262867060449", "rbxassetid://70488965763163" },
 	},
 	["uncondensed"] = {
 		shape = "uncondensed",
@@ -96,7 +96,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.1200,
 		midRadiusShare = 0.0000,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://120717919826446", "rbxassetid://108238415410722", "rbxassetid://125920762874011", "rbxassetid://101714905481622", "rbxassetid://126058966065855", "rbxassetid://81200003536653", "rbxassetid://135716342720740", "rbxassetid://81274561027768" },
 	},
 	["wedge-multi"] = {
 		shape = "wedge",
@@ -106,7 +106,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 3.0774,
 		midRadiusShare = 0.8950,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://83501917289955", "rbxassetid://108449907783397", "rbxassetid://134599860655096", "rbxassetid://101377152991827", "rbxassetid://102495089564354", "rbxassetid://79751309829882", "rbxassetid://103692892228168", "rbxassetid://70597230881680" },
 	},
 	["cone-multi"] = {
 		shape = "cone",
@@ -116,7 +116,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.3892,
 		midRadiusShare = 0.2103,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://108115156630925", "rbxassetid://122520026257093", "rbxassetid://116019595057962", "rbxassetid://107709825425505", "rbxassetid://116041575089647", "rbxassetid://138243988598683", "rbxassetid://108286254740705", "rbxassetid://124263512323671" },
 	},
 	["stovepipe-multi"] = {
 		shape = "stovepipe",
@@ -126,7 +126,7 @@ local tornadoes: { [string]: Tornado } = {
 		frameShare = 1.2635,
 		midRadiusShare = 0.3154,
 		views = { 0, 45, 90, 135, 180, 225, 270, 315 },
-		sheets = { "", "", "", "", "", "", "", "" },
+		sheets = { "rbxassetid://113224323934900", "rbxassetid://139129900869590", "rbxassetid://98767919658541", "rbxassetid://121198710237598", "rbxassetid://111982961828074", "rbxassetid://98682364115590", "rbxassetid://135320866942212", "rbxassetid://102129128751980" },
 	},
 }
 
