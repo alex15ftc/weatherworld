@@ -32,6 +32,7 @@ local Panel = {
 	walk = 16,
 	time = 14,
 	hideSpheres = false,
+	volumes = true,
 	status = "F2 closes this panel; every button is also a chat command",
 }
 
@@ -143,6 +144,12 @@ local function draw(ImGui: any)
 		runThrottled("time", `sv_time {fmt(hours)}`)
 	end
 	ImGui.TextDisabled(StormController.artStatus())
+	ImGui.TextDisabled(StormController.volumeStatus())
+	local changedVolumes, volumes = ImGui.Checkbox("Ray-marched volumes (cl_volumes, this client)", Panel.volumes)
+	if changedVolumes then
+		Panel.volumes = volumes == true
+		run(`cl_volumes {if Panel.volumes then 1 else 0}`)
+	end
 	local changedSpheres, hide = ImGui.Checkbox("Hide sphere meshes (cl_hide_spheres, this client)", Panel.hideSpheres)
 	if changedSpheres then
 		Panel.hideSpheres = hide == true
@@ -160,6 +167,7 @@ local function build()
 	local ImGui, ImGui_ImplRoblox = G.ImGui, G.ImGui_ImplRoblox
 
 	Panel.hideSpheres = ConVar.GetBool("cl_hide_spheres") == true
+	Panel.volumes = ConVar.GetBool("cl_volumes") ~= false
 	ImGui.CreateContext()
 	ImGui.GetIO().Fonts:AddFontDefault()
 	ImGui_ImplRoblox.Init(nil, 1.0)

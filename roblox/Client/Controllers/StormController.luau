@@ -28,6 +28,7 @@ local StormTrack = require(ReplicatedStorage.Shared.Weather.StormTrack)
 local Net = require(ReplicatedStorage.Shared.Weather.Net)
 local Textures = require(ReplicatedStorage.Shared.Weather.Textures)
 local ConVar = require(ReplicatedStorage.Shared.ConVar)
+local Volumes = require(script.Parent.Parent:WaitForChild("Modules"):WaitForChild("Weather"):WaitForChild("Volumes"))
 
 local StormController = {}
 
@@ -121,9 +122,10 @@ cl_hide_spheres:Connect(function()
 	hideSpheres = cl_hide_spheres:GetBool()
 end)
 
--- An ellipsoid of the given full size (x across, y up, z along) at cf. Not drawn (so hidden
--- by finish) while cl_hide_spheres is on.
-local function blob(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number)
+-- An ellipsoid part of the given full size (x across, y up, z along) at cf: what blob draws
+-- where volumes are off or cannot be made. Not drawn (so hidden by finish) while
+-- cl_hide_spheres is on.
+local function sphere(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number)
 	if hideSpheres then
 		return
 	end
@@ -310,6 +312,110 @@ local function finish(pool: Pool)
 	table.clear(pool.used)
 end
 
+-- Ray-marched volumes (Modules/Weather/Volumes) in place of the sphere parts, on sprites like
+-- the clouds'. cl_volumes 0 turns them off on this client (spheres instead), to compare.
+local cl_volumes = ConVar.Declare("cl_volumes", true, ConVar.LOCAL, "Ray-marched storm volumes instead of sphere parts (this client).")
+local volumesOn = true
+cl_volumes:Connect(function()
+	volumesOn = cl_volumes:GetBool()
+end)
+local volumeOf: { [BasePart]: Volumes.Volume } = {}
+local volumeList: { Volumes.Volume } = {}
+
+function StormController.volumeStatus(): string
+	if not Volumes.available() then
+		return "volumes: EditableImage not available here (spheres)"
+	end
+	return if volumesOn then `volumes: on, {#volumeList} drawn` else "volumes: off (cl_volumes 0)"
+end
+
+-- A shape of the given full size at cf: a ray-marched volume where they are on and can be
+-- made, else a sphere part. kind: "cloud" (billowed), "rain" (streaks falling), "band" (a ring).
+local function blob(pool: Pool, key: string, cf: CFrame, size: Vector3, colour: Color3, transparency: number, kind: Volumes.Kind?)
+	if not volumesOn or not Volumes.available() then
+		sphere(pool, key, cf, size, colour, transparency)
+		return
+	end
+	key = `vol:{key}`
+	local part = pool.parts[key]
+	if not part then
+		local p = Instance.new("Part")
+		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+		p.Transparency = 1
+		p.Name = key
+		local gui = Instance.new("SurfaceGui")
+		gui.Face = Enum.NormalId.Front
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+		gui.CanvasSize = Vector2.new(256, 256)
+		gui.MaxDistance = 1e7
+		gui.LightInfluence = 0.3
+		gui.Adornee = p
+		local label = Instance.new("ImageLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.Parent = gui
+		gui.Parent = p
+		local volume = Volumes.new()
+		if not volume then
+			p:Destroy()
+			sphere(pool, key, cf, size, colour, transparency)
+			return
+		end
+		label.ImageContent = volume.content
+		volumeOf[p] = volume
+		table.insert(volumeList, volume)
+		p.Parent = pool.model
+		pool.parts[key] = p
+		part = p
+	end
+	pool.used[key] = true
+	local p = part :: BasePart
+	local volume = volumeOf[p]
+	-- A square facing the camera, as wide as the shape's longest side; one too big for a part is
+	-- drawn smaller and nearer the camera, covering the same view.
+	local side = math.max(size.X, size.Y, size.Z) * 1.05
+	local centre = cf.Position
+	local fit = math.min(1, MAX_SPRITE / side)
+	local at = eye + (centre - eye) * fit
+	local quadSize = side * fit
+	local toward = eye - at
+	local up = if toward.Magnitude > 0.01 and math.abs(toward.Unit.Y) > 0.995 then Vector3.zAxis else Vector3.yAxis
+	local quad = if toward.Magnitude > 0.01 then CFrame.lookAt(at, eye, up) else CFrame.new(at)
+	local q = Vector3.new(quadSize, quadSize, 0.05)
+	if p.Size ~= q then
+		p.Size = q
+	end
+	p.CFrame = quad
+	local gui = p:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+	gui.Enabled = transparency < 0.99
+	volume.frame = cf
+	volume.half = size / 2
+	volume.colour = colour
+	volume.opacity = 1 - transparency
+	volume.kind = kind or "cloud"
+	-- The pass draws rays from the centre's true distance; the quad is only where it shows.
+	volume.quad = CFrame.lookAt(centre, eye, up)
+	volume.quadSize = side
+	volume.used = os.clock()
+end
+
+-- Frees the volumes of parts that are gone (a storm out of view), and draws this frame's share.
+local function drawVolumes()
+	for part, volume in volumeOf do
+		if not part.Parent then
+			Volumes.free(volume)
+			volumeOf[part] = nil
+			local i = table.find(volumeList, volume)
+			if i then
+				table.remove(volumeList, i)
+			end
+		end
+	end
+	if volumesOn and #volumeList > 0 then
+		Volumes.draw(volumeList, eye, os.clock())
+	end
+end
+
 local function fade(t: number, alpha: number): number
 	return 1 - (1 - t) * math.clamp(alpha, 0, 1)
 end
@@ -394,7 +500,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 			puffs(pool, `t{k}_{i}`, "puff", CFrame.new(c), Vector3.new(r * 2.2, height / levels * 2.8, r * 2.2), perLevel, colour, COLOUR.band, fade(0.04, alpha), clock, seed + k * 7.1 + i * 1.3)
 			-- Bands round a rotating tower (striations), turning slowly.
 			if k == 1 and f < 0.5 and up.striation > 0.15 then
-				blob(pool, `band{i}`, CFrame.new(c) * CFrame.Angles(0, clock * 0.05 * up.rotation, 0), Vector3.new(r * 2.15, height / levels * 0.35, r * 2.05), COLOUR.band, fade(1 - 0.5 * up.striation, alpha))
+				blob(pool, `band{i}`, CFrame.new(c) * CFrame.Angles(0, clock * 0.05 * up.rotation, 0), Vector3.new(r * 2.15, height / levels * 0.35, r * 2.05), COLOUR.band, fade(1 - 0.5 * up.striation, alpha), "band")
 			end
 		end
 		-- An overshooting dome over the strongest updraught.
@@ -505,11 +611,11 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 	local rain = s.rain
 	if rain.intensity > 0.03 then
 		local p = at(rain.xKm, rain.yKm, ground)
-		blob(pool, "rain", CFrame.lookAt(p, p + heading(rain.bearingDeg)), Vector3.new(rain.acrossKm * KM, 2 * (baseY - ground), rain.alongKm * KM), COLOUR.rain, fade(0.9 - 0.55 * rain.intensity, alpha))
+		blob(pool, "rain", CFrame.lookAt(p, p + heading(rain.bearingDeg)), Vector3.new(rain.acrossKm * KM, 2 * (baseY - ground), rain.alongKm * KM), COLOUR.rain, fade(0.9 - 0.55 * rain.intensity, alpha), "rain")
 	end
 	if s.hail.radiusKm > 0.2 then
 		local p = at(s.hail.xKm, s.hail.yKm, ground)
-		blob(pool, "hail", CFrame.new(p), Vector3.new(2 * s.hail.radiusKm * KM, 1.9 * (baseY - ground), 2 * s.hail.radiusKm * KM), COLOUR.hail, fade(0.92 - 0.3 * math.clamp(s.hail.sizeInches / 2.5, 0, 1), alpha))
+		blob(pool, "hail", CFrame.new(p), Vector3.new(2 * s.hail.radiusKm * KM, 1.9 * (baseY - ground), 2 * s.hail.radiusKm * KM), COLOUR.hail, fade(0.92 - 0.3 * math.clamp(s.hail.sizeInches / 2.5, 0, 1), alpha), "rain")
 	end
 	if rain.wrap > 0.1 and wall.strength > 0.03 then
 		local wc = at(wall.xKm, wall.yKm, ground)
@@ -520,7 +626,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		for i = 0, 5 do
 			local a = base + (i / 5 - 0.5) * 2 * arc
 			local p = wc + Vector3.new(math.cos(a), 0, math.sin(a)) * wr
-			blob(pool, `wrap{i}`, CFrame.new(p), Vector3.new(1.6 * KM, 1.9 * (baseY - ground), 1.6 * KM), COLOUR.rain, fade(1 - 0.75 * rain.wrap, alpha))
+			blob(pool, `wrap{i}`, CFrame.new(p), Vector3.new(1.6 * KM, 1.9 * (baseY - ground), 1.6 * KM), COLOUR.rain, fade(1 - 0.75 * rain.wrap, alpha), "rain")
 		end
 	end
 end
@@ -1086,6 +1192,7 @@ function StormController.Start()
 				table.remove(bolts, i)
 			end
 		end
+		drawVolumes()
 		Lighting.ExposureCompensation = baseExposure - 1.4 * cover
 		cameraRain(rainRate, cameraPos)
 	end)
