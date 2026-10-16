@@ -24,7 +24,7 @@ export const BOUNDARY_DEFAULTS = Object.freeze({
   coldSideReachCells: 2, drylineFrontClearanceCells: 3, drylineColdSideLimitK: 2
 });
 
-const MS_PER_KT = 0.514444, EDGE_CELLS = 3;
+const MS_PER_KT = 0.514444;
 
 // Reads the fields the analysis needs from the cells. Rows count southward, so "y" grows to
 // the south here and in the returned points, like every other map product.
@@ -79,10 +79,11 @@ function gradient(field, width, height, cellKm) {
 
 // Cells on a crest of the gradient: at least the threshold, and no smaller than the gradient
 // one cell either way along its own direction.
-function crestCells(grad, width, height, threshold) {
+function crestCells(grad, width, height, threshold, edge) {
   const crest = new Uint8Array(grad.size.length);
-  // The outermost cells are left out: air entering the map there has not met the map's own air yet.
-  for (let y = EDGE_CELLS; y < height - EDGE_CELLS; y++) for (let x = EDGE_CELLS; x < width - EDGE_CELLS; x++) {
+  // The outermost cells are left out: air entering the map there has not met the map's own air
+  // yet. That is every cell the smoothing and the gradient carry the edge cells' values into.
+  for (let y = edge; y < height - edge; y++) for (let x = edge; x < width - edge; x++) {
     const k = y * width + x, g = grad.size[k];
     if (g < threshold) continue;
     const nx = grad.gx[k] / g, ny = grad.gy[k] / g;
@@ -122,12 +123,12 @@ export function analyseBoundaries(world, options = {}) {
   const temperature = smooth(raw.temperature, width, height, p.smoothingPasses), moisture = smooth(raw.moisture, width, height, p.smoothingPasses);
   const u = smooth(raw.u, width, height, 1), v = smooth(raw.v, width, height, 1);
   const thermal = gradient(temperature, width, height, cellKm), moist = gradient(moisture, width, height, cellKm);
-  const minCells = Math.max(3, Math.round(p.minLengthKm / cellKm / 1.2));
+  const minCells = Math.max(3, Math.round(p.minLengthKm / cellKm / 1.2)), edge = p.smoothingPasses + 2;
   const boundaries = [];
   const toKm = point => ({ x: Math.round((point.x + 0.5) * cellKm * 10) / 10, y: Math.round((point.y + 0.5) * cellKm * 10) / 10 });
 
   // --- Fronts.
-  const frontCrest = crestCells(thermal, width, height, p.frontGradient);
+  const frontCrest = crestCells(thermal, width, height, p.frontGradient, edge);
   // Moist air is usually the cooler air mass, so a dryline has a temperature contrast too. A
   // contrast whose cool side is the moist side of a sharp moisture change is the dryline, not
   // a front: behind a front the air is colder and drier.
@@ -171,7 +172,7 @@ export function analyseBoundaries(world, options = {}) {
   // side is as warm as the moist side or warmer, and no front runs along it.
   const nearFront = new Uint8Array(frontCrest.length), clearance = p.drylineFrontClearanceCells;
   for (let k = 0; k < frontCrest.length; k++) if (frontCrest[k]) { const x = k % width, y = (k - x) / width; for (let yy = Math.max(0, y - clearance); yy <= Math.min(height - 1, y + clearance); yy++) for (let xx = Math.max(0, x - clearance); xx <= Math.min(width - 1, x + clearance); xx++) nearFront[yy * width + xx] = 1; }
-  const dryCrest = crestCells(moist, width, height, p.drylineGradient);
+  const dryCrest = crestCells(moist, width, height, p.drylineGradient, edge);
   for (let k = 0; k < dryCrest.length; k++) {
     if (!dryCrest[k]) continue;
     const x = k % width, y = (k - x) / width, g = moist.size[k], nx = moist.gx[k] / g, ny = moist.gy[k] / g;   // points at the moist air

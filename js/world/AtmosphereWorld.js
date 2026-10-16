@@ -17,16 +17,17 @@ import { RegionSteering } from './RegionSteering.js';
 
 const ramp = (value, low, high) => clamp((value - low) / (high - low), 0, 1);
 
-const STATE_VERSION = 3;
+const STATE_VERSION = 4;
 
 export const STORM_COUPLING = Object.freeze({
   // Surface convergence (the same measure and range the storm engine was built with:
   // difference in wind, kt, across two cells, over 8 x their distance in km) that counts as
   // weak to strong lift, and how much of the previous half hour's lift carries over.
   convergenceLiftRange: [0.005, 0.028], liftMemory: 0.72,
-  // 500 mb height falls (dam per 12 h) from weak to strong ascent, smoothed over this long.
-  // Lifting cools the capping layer (and sinking warms it) by this much at full strength (C).
-  heightFallRangeDm: [1.5, 9], ascentMemoryHours: 2, capCoolingC: 1.5, capWarmingC: 0.5,
+  // The outer model's ascent (K per hour of cooling of its 250-750 mb layer) from weak to strong,
+  // smoothed over this long. It works on the cap in the regional layer (capLift there); here it
+  // is only described, for the storm engine's forcing diagnosis and elevated parcels.
+  ascentRangeKh: [0.03, 0.25], ascentMemoryHours: 2,
   // Contrast (K or g/kg per 100 km) of a strong front or dryline, for the strength shown on maps.
   strongFrontContrast: 6, strongDrylineContrast: 10,
   // Warming aloft and drying of the inflow layer by storms fade over this long.
@@ -81,10 +82,10 @@ export class AtmosphereWorld {
     const arraysOf = object => Object.fromEntries(Object.entries(object).filter(([, value]) => value instanceof Float64Array || value instanceof Float32Array));
     return {
       version: STATE_VERSION, seed: this.seed,
-      model: { params: model.params, time: model.time, history: model.history, q1: model.q1, q2: model.q2, psi1: model.psi1, psi2: model.psi2 },
+      model: { params: model.params, time: model.time, history: model.history, q1: model.q1, q2: model.q2, psi1: model.psi1, psi2: model.psi2, moisture: model.moisture, ascentCooling: model.ascentCooling },
       regional: { params: regional.params, hourUtc: regional.hourUtc, sunsetHour: regional.sunsetHour, midReference: regional.midReference, gulfSupply: regional.gulfSupply, originX: regional.origin.x, slideMs: regional.slideMs, geography: { offset: regional.geographyOffset, target: regional.geographyTarget, rate: regional.geographyRate }, arrays: arraysOf(regional) },
       steering: this.steering?.saveState() ?? null,
-      heightFall: this.heightFall, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled,
+      ascent: this.ascent, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled,
       world: snapshotWorld(this.world, { full: !forecast })
     };
   }
@@ -93,7 +94,7 @@ export class AtmosphereWorld {
   static restore(state) {
     if (state?.version !== STATE_VERSION) return null;
     const model = new QuasiGeostrophicModel(state.model.params);
-    for (const key of ['q1', 'q2', 'psi1', 'psi2']) model[key].set(state.model[key]);
+    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'ascentCooling']) model[key].set(state.model[key]);
     model.time = state.model.time; model.history = state.model.history;
     const restored = new AtmosphereWorld({ seed: state.seed, model, regional: state.regional.params, storms: false, steering: state.steering ? state.steering.params : false, plan: false });
     const regional = restored.regional;
@@ -104,7 +105,7 @@ export class AtmosphereWorld {
     regional.hourUtc = state.regional.hourUtc; regional.sunsetHour = state.regional.sunsetHour; regional.midReference = state.regional.midReference; regional.gulfSupply = state.regional.gulfSupply;
     const world = hydrateWorld(state.world, restored.world.runtime);
     regional.world = restored.world = world;
-    restored.heightFall = state.heightFall; restored.stormAir = state.stormAir; restored.stormsEnabled = state.stormsEnabled;
+    restored.ascent = state.ascent; restored.stormAir = state.stormAir; restored.stormsEnabled = state.stormsEnabled;
     restored.boundaries = world.mesoscale?.boundaries ?? [];
     return restored;
   }
@@ -156,16 +157,15 @@ export class AtmosphereWorld {
     const world = this.world, { width, height } = world, cellKm = world.cellSizeKm, c = STORM_COUPLING, air = this.stormAir;
     const fade = dtHours > 0 ? Math.exp(-dtHours / c.stormAirRecoveryHours) : 1;
 
-    // --- Ascent ahead of troughs (500 mb heights falling) and sinking behind them; what they
-    // do to the cap; air modified by storms; then the soundings of the result.
+    // --- Large-scale ascent and sinking (the outer model's own; the cap has already felt them
+    // in the regional layer); air modified by storms; then the soundings of the result.
     const ascentBlend = dtHours > 0 ? 1 - Math.exp(-dtHours / c.ascentMemoryHours) : 1;
-    this.heightFall ??= new Float32Array(width * height);
+    this.ascent ??= new Float32Array(width * height);
     world.forEachCell((cell, x, y) => {
       const k = y * width + x, features = cell.features;
-      this.heightFall[k] += (-(Number(cell.levels[500].heightTendencyDm12h) || 0) - this.heightFall[k]) * ascentBlend;
-      features.synopticAscent = ramp(this.heightFall[k], c.heightFallRangeDm[0], c.heightFallRangeDm[1]);
-      features.synopticSubsidence = ramp(-this.heightFall[k], c.heightFallRangeDm[0], c.heightFallRangeDm[1]);
-      cell.levels[700].temperature += c.capWarmingC * features.synopticSubsidence - c.capCoolingC * features.synopticAscent;
+      this.ascent[k] += ((Number(features.ascentCoolingKh) || 0) - this.ascent[k]) * ascentBlend;
+      features.synopticAscent = ramp(this.ascent[k], c.ascentRangeKh[0], c.ascentRangeKh[1]);
+      features.synopticSubsidence = ramp(-this.ascent[k], c.ascentRangeKh[0], c.ascentRangeKh[1]);
       air.mid[k] *= fade; air.inflow[k] *= fade;
       if (air.mid[k] || air.inflow[k]) {
         cell.levels[500].temperature += air.mid[k]; cell.levels[700].temperature += 0.4 * air.mid[k];
@@ -191,6 +191,21 @@ export class AtmosphereWorld {
       const lift = ramp(convergence, c.convergenceLiftRange[0], c.convergenceLiftRange[1]);
       features.convergenceLift = (Number(features.convergenceLift) || 0) * liftMemory + lift * (1 - liftMemory);
       features.boundaryConvergence = clamp((Number(features.boundaryConvergence) || 0) * liftMemory + Math.max(0, convergence) * (1 - liftMemory), 0, 1);
+    });
+    // Lift for parcels above the ground: warm, moist air carried up over cooler air (850 mb warm
+    // advection over the stability above it, isentropic ascent) and the convergence of the
+    // 850 mb wind, strongest where the low-level jet ends (taken through 1 km).
+    const level = (x, y, p) => world.cells[clamp(y, 0, height - 1)][clamp(x, 0, width - 1)].levels[p];
+    const theta = (x, y, p) => (level(x, y, p).temperature + 273.15) * (1000 / p) ** 0.2857;
+    const wind850 = (x, y) => { const l = level(x, y, 850), d = l.windDirection * Math.PI / 180, s = l.windSpeed * 0.514444; return { east: -Math.sin(d) * s, north: -Math.cos(d) * s }; };
+    const metres = cellKm * 1000;
+    world.forEachCell((cell, x, y) => {
+      const here = wind850(x, y), dThetaEast = (theta(x + 1, y, 850) - theta(x - 1, y, 850)) / (2 * metres), dThetaNorth = (theta(x, y - 1, 850) - theta(x, y + 1, 850)) / (2 * metres);
+      const warmAdvection = -(here.east * dThetaEast + here.north * dThetaNorth);   // K/s
+      const stability = Math.max(0.001, (theta(x, y, 700) - theta(x, y, 850)) / 1500);   // K/m
+      cell.features.isentropicLiftMs = clamp(warmAdvection / stability, 0, 0.3);
+      const e = wind850(x + 1, y), w = wind850(x - 1, y), n = wind850(x, y - 1), s = wind850(x, y + 1);
+      cell.features.jetConvergenceLiftMs = clamp(-((e.east - w.east) + (n.north - s.north)) / (2 * metres) * 1000, 0, 0.3);
     });
     // The storm engine's own diagnoses of the fields: convergence, moisture convergence,
     // upslope flow, divergence aloft and how ready the air is; then the inflow each storm draws on.

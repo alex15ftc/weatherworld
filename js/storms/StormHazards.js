@@ -19,7 +19,13 @@ export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 68, po
 // all days, yet only 0.2% of samples reached 85 mph. Real downdraughts lose much of sqrt(2
 // DCAPE) to entrainment and drag, and the strongest winds come with organised lines; with
 // these, 15% of samples reach 58 mph, 3% 75 mph and 1% 85 mph, most of them in lines.
-export const GUST = Object.freeze({ downdraughtShare: 0.5, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.9, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
+// 2026-10-15: rear inflow share 0.9 to 0.6: real rear-inflow jets bring down about half the
+// mid-level wind, and with lines more common the wind reports reached 96 mph over most of
+// the map on a fifth of all days (every High day had them); High days 20% to 8%.
+// 2026-10-15: downdraught share 0.5 to 0.4. Damaging wind alone still made a third of all High
+// days (wind contours at 75-90% on half of all days); at 0.4 High days fell from 45% to 38% on
+// 40 days, with tornadoes unchanged.
+export const GUST = Object.freeze({ downdraughtShare: 0.4, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.6, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 const MPH_PER_MS = 2.23694;
 
 export function hailSizeInches(storm, environment) {
@@ -49,10 +55,12 @@ export function stepRearInflow(storm, dtHours) {
 }
 
 // Fuel: an existing updraft can force surface-based parcels through moderate inhibition
-// (~150 J/kg); otherwise it can feed on an elevated parcel that is essentially uncapped.
+// (~200 J/kg; 150 until 2026-10-15, when the cap became a real elevated mixed layer and storms
+// moving off the lines into it went elevated within the hour); otherwise it can feed on an
+// elevated parcel that is essentially uncapped.
 // Without either the storm has no buoyant inflow and collapses.
 export function stormFuel(environment) {
-  const surfaceFuel = (Number(environment.cin) || 0) <= 150 ? Number(environment.cape) || 0 : 0;
+  const surfaceFuel = (Number(environment.cin) || 0) <= 200 ? Number(environment.cape) || 0 : 0;
   const elevatedFuel = (Number(environment.mostUnstableCin) || 0) <= 60 ? 0.85 * (Number(environment.mostUnstableCape) || 0) : 0;
   const fuelCape = Math.max(surfaceFuel, elevatedFuel), elevatedFeed = elevatedFuel > surfaceFuel;
   const feedEnvironment = elevatedFeed ? { ...environment, cape: elevatedFuel, cin: Number(environment.mostUnstableCin) || 0 } : environment;

@@ -561,3 +561,221 @@ Decided 2026-10-12: not now.
 6. Stronger fronts and real warm fronts.
 7. The Roblox region feed and hosting.
 8. Remove or replace the old outlook pages and tile routes (see `ARCHITECTURE.md`).
+
+## Agenda (2026-10-15)
+
+Done 2026-10-15: sharper fronts and drylines (cubic semi-Lagrangian advection, a pressure
+trough along fronts from the air-mass contrast, friction carrying the air into troughs; front
+width 129 to 80 km) and pressure centres marked by closed isobars. No "L" shows yet because
+the region sits in the warm sector, east of the lows (step 7).
+
+### What was measured (seeds 1-8, the same day)
+
+- About 40-45% of days reach High (aim about 5-10%). Wind alone makes a third of them;
+  tornado reports piling up on the biggest days make the rest.
+- Storms never become MCSs, lines are rare, and tornado days look alike whatever made them.
+- **Storms do not start on the lines.** Only 6% of new storms start within 30 km of a
+  dryline (3% of the moist air is there); starts are no closer to fronts than the moist air is.
+- **The cap is there in the morning and gone everywhere by afternoon.** Inhibition in the
+  moist, unstable air (median): 94 J/kg at 15Z, 36 at 18Z, 4 at 21Z (real afternoon warm
+  sector 25-75). At 21Z heating alone beats it in 56% of the moist air.
+- **Large-scale ascent acts as a trigger, not as preparation.** It is read from 500 mb height
+  falls; at 21Z it is at full strength over half the moist air, and on its own it beats the cap
+  in 58% of it. Boundary lift is weak beside it (median 0.01, 90th 0.41 of full).
+
+### How storms start in the real atmosphere (what the work below follows)
+
+- **Large scale (the outer model).** Quasi-geostrophic ascent is a few cm/s, set by the
+  vorticity advection that increases with height and by warm advection (the omega equation;
+  Q-vector convergence). It does not set storms off. Over hours it lifts and cools the capping
+  layer, deepens the moist layer, and decides *where* the cap can be broken that day. Under
+  sinking air the cap strengthens and the day busts.
+- **The cap.** Hot, dry air off the high ground (the elevated mixed layer) lies over the
+  Gulf air. It keeps the warm sector capped through the afternoon, so storms come only where
+  something lifts the air through it. Warm advection at 700 mb keeps it strong during the day.
+- **Heating.** The sun deepens the mixed layer and lowers the inhibition, but not evenly:
+  moist or rain-soaked ground, morning low cloud, and cloud left by storms heat more slowly.
+  Where the heating differs, it makes boundaries of its own.
+- **Mesoscale lift.** Convergence along drylines, fronts and outflow, strongest where they
+  cross; confluence bands and pre-frontal troughs in the warm sector; upslope flow; and
+  boundary-layer rolls, which alone seldom start storms but set the exact spot along a line
+  (Weckwerth and Parsons 2006; Ziegler and Rasmussen 1998).
+- **Night.** The low-level jet carries moisture and warm air north over the cooled ground;
+  where it converges at its northern and eastern end (and over a warm front), lifted parcels
+  start storms well above the ground. This is how most night storms and MCSs begin.
+- **Moisture return.** After a front clears the Gulf, the air coming back is shallow and
+  modest for a day or two before the sea moistens it again. A shallow moist layer mixes out
+  by afternoon, which keeps such days marginal.
+
+### How the outer model fits
+
+- It supplies the right things for this: winds, the troughs and ridges, the temperature of
+  the troposphere. It is coarse (80 km, systems about 1,000 km across), so its ascent is broad
+  and slow, which is right for preparation and wrong for a trigger.
+- Its own vertical motion is already in it: in a two-layer model the ascent follows from the
+  change of thickness (the temperature between the layers) that the flow does not account
+  for. That carries both terms of the omega equation, including warm advection, so ascent
+  falls north and east of the low, over the warm front, as well as ahead of the trough.
+  500 mb height falls see mostly the vorticity part.
+- It has one temperature for 250-750 mb, so it cannot hold the cap or warm advection at
+  850-700 mb. Those belong to the regional layer: its 850 and 700 mb air moved by its own
+  winds, with the lifting of that air over cooler air (isentropic ascent) worked out from them.
+- What it lacks (frontal circulations, the low-level jet, heating, the cap) is added in the
+  regional layer, as with the fronts today.
+
+### The climate to hold through all of it (agreed 2026-10-15)
+
+The changes below move storm numbers a lot; these are the targets every check is held to, and
+re-balancing (step 7) is done against them only.
+
+| | Now (104 days, seeds 1-8) | Target |
+|---|---|---|
+| Tornadoes a day, mean | 7.5 | about the same |
+| Days without a tornado | 25% | about 10% |
+| Days with no severe weather | 1-3% | under 5% |
+| High | 38-45% | about 5% |
+| Moderate | 18-21% | 10-15% |
+| Slight and Enhanced | 33-40% | most days (75-80%), a few tornadoes in a local area |
+| Marginal or less | 2-6% | under 5% |
+| Tornadoes that are EF2+ | about 30% | about 15% |
+
+Keeping the mean while High falls means spreading the tornadoes over more days (fewer days
+with none, fewer with 30+; days of 21+ now give 43% of all tornadoes) and fewer of them
+strong: a day reaches High through the intensity group, which comes from the EF2+ share. The
+category tables and their intensity bars stay as they are; the weather is what changes.
+
+### One model (agreed 2026-10-15)
+
+The atmosphere becomes one model with one state and one time step, built from tested reduced
+models rather than patched piece by piece. WRF, MPAS and cloud models are ruled out (cost).
+Each part writes fields the next reads; the storms feed back into the same state.
+
+| Part | Built from | What it holds and does | Now |
+|---|---|---|---|
+| A. Weather systems | Moist two-layer quasi-geostrophic model (Lapeyre and Held 2004) | Troughs, lows, winds; a moisture field and latent heating, which make lows stronger and more compact; its own vertical motion (vorticity and warm advection) | Dry two-layer QG model; ascent read from 500 mb height falls |
+| B. Boundary layer | Slab mixed layer as the model's lowest layer (UCLA model, Suarez, Arakawa and Randall 1983; the CLASS equations) | Per column: depth, temperature, moisture, the temperature jump at its top (the cap). Heating grows it into the cap; ascent from A cools the cap from above; sinking warms it | `RegionalAtmosphere` heat, mixed depth and moisture, worked out by rule |
+| C. The lid | Elevated mixed layer (Carlson et al. 1983) | Hot, dry air made over the high ground and carried over the Gulf air by the 700 mb wind; its temperature and depth set the cap's strength | The `eml` share (0-1) |
+| D. Convection | The storm engine as the model's convection scheme; start when lifting energy beats the cap (ALE, Rio et al.; Kain-Fritsch trigger) | Lifting energy from convergence (lines, their crossings, confluence), thermals, cold pools, upslope; storms put cold pools into B, warm and dry the air aloft, release latent heat into A | Fixed lift energies (170 / 60 / 90 / 30 J/kg) against CIN |
+
+Cost stays close to today's: B and C are a few numbers per column on 2,500 columns, and A gains
+one field on its 128 x 64 grid.
+
+### Progress (2026-10-15, steps 1-6 applied)
+
+1. Gusts: `GUST.downdraughtShare` 0.4.
+2. Lee trough depth levels off (tanh) at 7 hPa instead of growing to 17.5: 850 mb wind median
+   31 to 28 kt, 0-1 km helicity 158 to 129, STP 90th 4.9 to 3.5. The rest of the bias (the
+   outer model's own southerly, the evening jet) is left for step 7.
+3. Moist QG (`latentHeatShare` 1, 95% mean humidity): lows' cores sharper (rise within 160 km
+   0.43 to 0.65 hPa), strongest ascent 0.28 to 0.40 K/h, rain over 7% of the domain; half-depth
+   radius unchanged (set by the 80 km grid and the deformation radius). Its own ascent drives
+   `capLift` (the cap cooled 2.4 times the column's cooling, carried with the 700 mb air) and no
+   longer lifts surface parcels. Fixed on the way: latent heating had no balancing cooling (the
+   domain warmed 1 K) and the arbitrary mean of the streamfunction leaked into pressure (sea-level
+   pressure near 1,147 hPa); both corrected. Saved worlds from before are not resumed
+   (`STATE_VERSION` 4).
+4. Boundary layer: moist-layer top moves with the air, rises with ascent, arrives shallow after
+   a front; ground wetted by storms' rain heats less and moistens the air; entrainment 0.2.
+5. The lid: its own potential temperature, from the day's deepest mixed layer over the high
+   ground and from the desert plateau beyond the map (`lidSourceThetaK` 318 entering from the west),
+   cooling 1.5 K a day. 21Z inhibition in the moist air: median 4 to 24 J/kg (75th 129); 700 mb
+   median 10 C, 90th 14 C.
+6. Storm starts: Kain-Fritsch warming from the rising air at cloud base (surface convergence
+   through the mixed layer, upslope, the outer model's ascent) over the capping layer, plus the
+   thermals' lifting energy; elevated parcels lifted by 850 mb warm advection over the stability
+   and the jet's convergence. `NET_LIFT_SCALE_J_KG` 30, `FORCED_RATE_PER_HOUR` 0.015.
+
+Where the climate is now (40 days, seeds 1-4): storms a day median 60 (90th 177); no severe
+weather on 23% of days (runs up to 5); a tornado on 65%; tornadoes a day median 1 (90th 9);
+High 15%, Moderate 8%, Enhanced 35%, Slight 13%. Open for step 7: storms start only slightly more
+often near lines (convergence on fronts is hardly above the background; the dryline about 1.5
+times), so the capped, sheared, unstable air often stays capped while storms go up in weak,
+uncapped air; and capped spells last several days.
+
+Step 7 (2026-10-15, re-balance; checked on 40 days, seeds 1-4):
+
+- Lines stand out: the cold air's push (`coldPushGradient`) now starts at a frontal contrast,
+  2-4 K per 100 km instead of 0.5-1.5. The weaker gradients found all over the warm sector had
+  been setting off most of the convergence away from the lines. Convergence (90th percentile)
+  away from lines fell from 8.6e-5 to 1.9e-5 /s; near the dryline it is now 5 times that, near
+  fronts 1.6 times.
+- Storm starts: the share of a cell where lift beats the cap, with the lift spread within
+  the cell (0.4 of the lift + 3 J/kg), times the base rate 0.015 an hour (in place of a rate
+  in proportion to the surplus).
+- Tornado rate 2.5 to 5 an hour (the environments are lower now), strength spread 52 to 40 mph;
+  storms keep feeding from the ground through up to 200 J/kg of inhibition (was 150); rear
+  inflow share 0.9 to 0.6; lid source 318 to 316 K.
+
+| | Target | Before step 7 | Now |
+|---|---|---|---|
+| Days without severe weather | under 5% | 23% (runs of 5) | 10% (never two in a row) |
+| Days with a tornado | about 90% | 60% | 88% |
+| Tornadoes a day | mean about 7.5 | median 1 | median 6 (mean about 6.7) |
+| High | about 5% | 13% | 8% |
+| Moderate | 10-15% | 15% | 23% |
+| Slight and Enhanced | 75-80% | 40% | 58% |
+| Marginal or less | under 5% | 33% | 13% |
+
+Environment (32 days): inhibition median 25 J/kg (90th 262), 700 mb 9.7 C (90th 13.6), lapse
+rate 7.1 C/km, 850 mb wind 25 kt (90th 41), 0-1 km helicity 114 (still high; real 40-70), STP 90th 2.6.
+
+Still open from step 7: Moderate days too common and some days still without severe weather
+(weak-shear days give pulse storms with no severe hail or wind); helicity near the ground still
+high; fronts flicker more since step 3 (median 80-90 km between analyses 3 h apart, was 40).
+
+### In order
+
+1. **Weaker downdraught gusts.** `GUST.downdraughtShare` 0.5 to about 0.35-0.4, or mixing
+   losses in the downdraught. Tested at 0.4: High 45% to 38%, tornadoes unchanged.
+2. **Low-level wind and helicity down to real values.** 0-1 km helicity median 158 (real
+   40-70), 850 mb wind 31 kt (15-25), STP 90th 4.9 (0.5-1). Find where the excess comes from
+   (lee-trough southerlies, night-time jet) first.
+3. **Part A: moist QG and its own ascent.** Add moisture and latent heating to the outer
+   model; diagnose its vertical motion from the change of thickness the flow does not account
+   for. Check: lows deeper and smaller than now (7.6 hPa, 520 km half-depth radius); ascent
+   north-east of the low and over the warm front as well as ahead of the trough.
+4. **Part B: the slab boundary layer with the cap at its top.** Replace the rule-based heat,
+   mixed depth and moisture with the mixed-layer equations: surface heat and moisture fluxes
+   (less over moist ground, under cloud and on ground cooled by earlier storms), entrainment
+   through the cap, the cap cooled by A's ascent and warmed by sinking. Moisture coming back
+   from the Gulf shallow at first after a front. Check: 21Z inhibition in the warm sector
+   median 25-75 J/kg; busts under sinking air; the dryline from the equations.
+5. **Part C: the lid.** The elevated mixed layer as a layer with its own temperature and
+   depth, made over the high ground and carried by the 700 mb wind, with warm advection at
+   700 mb. Check: 700 mb 10-14 C on strong-cap days, weaker caps on others.
+6. **Part D: storms as the convection scheme.** Start where lifting energy beats the cap,
+   the lifting energy from the fields: convergence on lines and where they cross, confluence
+   bands, thermals, cold pools, upslope, and, at night, the end of the low-level jet and warm,
+   moist air lifted over cooler air (elevated storms). Storms feed back into A, B and C.
+   Check: storm starts 2-4 times as common near lines as in the moist air at large, with a
+   good share elsewhere on some days; night storms.
+7. **Re-balance against the targets above.** Few settings, in this order: how often storms
+   start, the tornado chance per supercell, how strong tornadoes get, the gusts. Check:
+   activity report, 40 days.
+8. **The zone along a front that matters to storms.** Near-ground spin is made in a narrow
+   zone along a front, mostly on its cool side within about 10-30 km (Markowski et al. 1998,
+   VORTEX-95): the winds back and converge into the front, and the temperature contrast makes
+   horizontal spin along it. Storms riding along the front, or just on its cool side while still
+   fed from the surface, take it in. The first part comes from the fields once fronts converge
+   properly (step 7); the second is too narrow for the 16 km grid and is added the way outflow
+   boundaries already are (`StormRotation.js` boundaryBoost, now from cold-pool contrast only),
+   from the air-mass contrast beside the storm, only while the storm is surface-based. Already
+   there and left alone: a storm that moves deep into the cold air feeds on air from above the
+   stable layer and cannot make a tornado, and is surface-based again on the warm side
+   (`stormFuel` checks every step).
+9. **Lows and triple points on the map.** Let the region's reading point slide north-south
+   as well as east-west, and let the lee trough close into a lee low where ascent aloft
+   crosses it (helped by step 3's stronger, smaller lows).
+10. **Setup variety.** Classify each day by what its storms and tornadoes started on
+    (dryline, front, triple point, outflow, confluence, warm advection, upslope, under the
+    upper low, line) and report the mix; let steering aim for different places in the wave
+    instead of one support value.
+11. **Forecasts with more of the uncertainty real ones have.** The runs already differ in
+    timing (`ensemblePerturbation.js`: about 50 km by mid Day 1) and far upstream, but every run
+    has the same cap, moisture return and boundaries, which is where real Day 1 forecasts go
+    wrong. Perturb those as well and issue from the spread, as forecasters do: High only when
+    the runs agree, broader lower categories when they do not, upgrades and downgrades through
+    the day. This changes what players are told, not what happens, so it comes after the
+    climate is right and does not stand in for it.
+12. **Upscale growth.** MCS and QLCS days, helped by step 6's night storms, which also bring
+    line tornadoes and derechos.

@@ -12,6 +12,19 @@
 // Winds follow from the streamfunctions and the temperature of the air between the layers
 // from their difference, so mass, temperature and wind are consistent by construction
 // (see docs/ATMOSPHERE-REDESIGN.md).
+//
+// Moisture (Lapeyre and Held 2004, linearised): the lower layer carries a moisture
+// disturbance m on a mean that increases toward the warm south. Air holds more water the
+// warmer it is (about 7% per K), so it condenses where m exceeds what the air's temperature
+// allows; that happens where air rises and cools. The latent heat thickens the column, which
+// is what makes lows deeper and tighter and the ascent ahead of them stronger.
+//   dm/dt + U2 dm/dx + J(psi2, m) + v2 dm_mean/dy = evaporation - condensation
+//   condensation = max(0, m - a T - deficit) / condensationHours,  a = dm_sat/dT
+//
+// The model's own vertical motion is diagnosed each step: the change of thickness that the
+// flow, the latent heat and radiation do not account for is the adiabatic cooling of rising
+// air (or warming of sinking air). It carries both terms of the omega equation (vorticity
+// advection and warm advection) and the ascent friction drives.
 import { mulberry32 } from '../scenarios/math.js';
 
 const DAY = 86400;
@@ -35,6 +48,11 @@ export const QG_DEFAULTS = Object.freeze({
   // time in light wind and it shortens as the low-level wind passes dragReferenceMs. This is
   // what stops strong systems from strengthening without limit.
   thermalRelaxationDays: 5, dragDays: 2, dragReferenceMs: 8, dampingHours: 6,
+  // Moisture of the lower layer: saturation at the domain's middle latitude (g/kg), how far below
+  // it the mean state is (relative humidity), how fast the surface brings the air back toward
+  // that (days) and how fast excess vapour condenses (hours). latentHeatShare is the share of
+  // the condensation's heat that warms the 250-750 mb column (0 turns the moisture off).
+  saturationGkg: 9, meanHumidity: 0.95, evaporationDays: 4, condensationHours: 3, latentHeatShare: 1,
   // Size of the seeded disturbances the run starts from (potential vorticity, 1/s).
   initialNoise: 2e-5,
   timeStepSeconds: 300
@@ -49,6 +67,9 @@ export class QuasiGeostrophicModel {
     const n = this.nx * this.ny;
     this.q1 = new Float64Array(n); this.q2 = new Float64Array(n);
     this.psi1 = new Float64Array(n); this.psi2 = new Float64Array(n);
+    // Lower-layer moisture disturbance (g/kg); rain falling now (g/kg per hour); adiabatic
+    // cooling of rising air averaged over the last advance (K per hour, sinking negative).
+    this.moisture = new Float64Array(n); this.rain = new Float64Array(n); this.ascentCooling = new Float64Array(n);
     this.work = Array.from({ length: 8 }, () => new Float64Array(n));
     this.buildTransforms();
     this.reset(options.seed ?? 1);
@@ -60,6 +81,7 @@ export class QuasiGeostrophicModel {
   reset(seed = 1) {
     const random = mulberry32(Number(seed) >>> 0);
     for (let k = 0; k < this.q1.length; k++) { const noise = this.params.initialNoise * (random() - 0.5); this.q1[k] = noise; this.q2[k] = -noise; }
+    this.moisture.fill(0); this.rain.fill(0); this.ascentCooling.fill(0);
     this.time = 0; this.history = [];
     this.invert();
   }
@@ -190,7 +212,11 @@ export class QuasiGeostrophicModel {
     for (let i = 0; i < n; i++) { sum[i] = (this.q1[i] + this.q2[i]) / 2; difference[i] = (this.q1[i] - this.q2[i]) / 2; }
     this.solve(sum, 0, barotropic);
     this.solve(difference, 2 * this.F, baroclinic);
-    for (let i = 0; i < n; i++) { this.psi1[i] = barotropic[i] + baroclinic[i]; this.psi2[i] = barotropic[i] - baroclinic[i]; }
+    // The mean of the layer-average streamfunction over the domain is arbitrary (it carries no
+    // wind) and drifts; it is set to zero so that pressures read from it do not drift with it.
+    let level = 0;
+    for (let i = 0; i < n; i++) level += barotropic[i] / n;
+    for (let i = 0; i < n; i++) { this.psi1[i] = barotropic[i] - level + baroclinic[i]; this.psi2[i] = barotropic[i] - level - baroclinic[i]; }
   }
 
   index(i, j) { const { nx, ny } = this; return ((j % ny + ny) % ny) * nx + ((i % nx + nx) % nx); }
@@ -243,23 +269,81 @@ export class QuasiGeostrophicModel {
       this.laplacian(q, lap); this.laplacian(lap, lap2);
       for (let k = 0; k < n; k++) t[k] -= nu * lap2[k];
     }
-    return [t1, t2];
+    // Moisture and the latent heat of its condensation (thickness tendency, m^2/s per s).
+    const heat = this.heatTendency ??= new Float64Array(n);
+    heat.fill(0);
+    if (!(p.latentHeatShare > 0)) return [t1, t2];
+    const tm = new Float64Array(n), m = this.moisture, jm = this.jacobian(this.psi2, m, lap);
+    const a = this.saturationSlope(), meanGradient = p.meanHumidity * a * this.meanTemperatureGradient(), deficit = (1 - p.meanHumidity) * p.saturationGkg;
+    const kelvin = this.kelvinPerThickness(), toThickness = 2.5 * p.latentHeatShare / kelvin;   // 2.5 K per g/kg condensed
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx;
+      const v2 = (this.psi2[e] - this.psi2[w]) * half, temperature = kelvin * (this.psi1[k] - this.psi2[k]);
+      const condensation = Math.max(0, m[k] - a * temperature - deficit) / (p.condensationHours * 3600);
+      tm[k] = -jm[k] - p.lowerWindMs * (m[e] - m[w]) * half - v2 * meanGradient - m[k] / (p.evaporationDays * DAY) - condensation;
+      heat[k] = toThickness * condensation;
+    }
+    // Radiation removes on average what condensation adds (the mean state already holds that
+    // balance), so the heating only moves warmth about: the domain mean is taken out.
+    let meanHeat = 0;
+    for (let k = 0; k < n; k++) meanHeat += heat[k] / n;
+    this.meanHeat = meanHeat;
+    for (let k = 0; k < n; k++) {
+      heat[k] -= meanHeat;
+      // Heating thickens the column (q1 holds -F tau, q2 +F tau).
+      t1[k] -= F * heat[k]; t2[k] += F * heat[k];
+    }
+    this.laplacian(m, lap); this.laplacian(lap, lap2);
+    for (let k = 0; k < n; k++) tm[k] -= nu * lap2[k];
+    return [t1, t2, tm];
   }
+
+  // Kelvin of layer temperature per unit of thickness streamfunction (hydrostatic, 250-750 mb).
+  kelvinPerThickness() { return this.params.f0 / (287 * Math.log(3)); }
+  // Change of saturation moisture with temperature (g/kg per K), about 7% per K.
+  saturationSlope() { return 0.07 * this.params.saturationGkg; }
+  // North-south gradient of the mean layer temperature (K per m; negative: colder northward).
+  meanTemperatureGradient() { const p = this.params; return -(p.upperWindMs - p.lowerWindMs) * this.kelvinPerThickness(); }
 
   // One time step (third-order Adams-Bashforth, lower order while starting).
   step() {
     const dt = this.params.timeStepSeconds, now = this.tendencies(), h = this.history, n = this.q1.length;
     const c = h.length >= 2 ? [23 / 12, -16 / 12, 5 / 12] : h.length === 1 ? [1.5, -0.5, 0] : [1, 0, 0];
-    for (let layer = 0; layer < 2; layer++) {
-      const q = layer ? this.q2 : this.q1, t0 = now[layer], t1 = h[0]?.[layer], t2 = h[1]?.[layer];
+    const before = this.thicknessBefore ??= new Float64Array(n);
+    for (let k = 0; k < n; k++) before[k] = this.psi1[k] - this.psi2[k];
+    for (let layer = 0; layer < now.length; layer++) {
+      const q = [this.q1, this.q2, this.moisture][layer], t0 = now[layer], t1 = h[0]?.[layer], t2 = h[1]?.[layer];
       for (let k = 0; k < n; k++) q[k] += dt * (c[0] * t0[k] + (t1 ? c[1] * t1[k] : 0) + (t2 ? c[2] * t2[k] : 0));
     }
     this.history = [now, h[0]].filter(Boolean);
     this.time += dt;
     this.invert();
+    this.accumulateAscent(before, dt);
   }
 
-  advance(seconds) { for (let s = 0; s < seconds - 1e-6; s += this.params.timeStepSeconds) this.step(); }
+  // Adiabatic cooling of rising air over the last step (K/s, added to a running sum): the
+  // change of thickness less what the mean-layer flow carried in, the latent heat and radiation.
+  accumulateAscent(before, dt) {
+    const { nx, ny, d, params: p } = this, n = nx * ny, half = 1 / (2 * d), kelvin = this.kelvinPerThickness();
+    const [mean, thickness, , , advection] = this.work;
+    for (let k = 0; k < n; k++) { mean[k] = (this.psi1[k] + this.psi2[k]) / 2; thickness[k] = this.psi1[k] - this.psi2[k]; }
+    this.jacobian(mean, thickness, advection);
+    const meanWind = (p.upperWindMs + p.lowerWindMs) / 2, shear = p.upperWindMs - p.lowerWindMs, radiation = 1 / (p.thermalRelaxationDays * DAY);
+    const sum = this.ascentSum ??= new Float64Array(n), heat = this.heatTendency;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx;
+      const followingFlow = (thickness[k] - before[k]) / dt + advection[k] + meanWind * (thickness[e] - thickness[w]) * half - shear * (mean[e] - mean[w]) * half;
+      sum[k] -= kelvin * (followingFlow - (heat?.[k] ?? 0) + radiation * thickness[k]);
+      this.rain[k] = p.latentHeatShare > 0 ? Math.max(0, (heat?.[k] ?? 0) + (this.meanHeat ?? 0)) * kelvin / (2.5 * p.latentHeatShare) * 3600 : 0;
+    }
+    this.ascentSteps = (this.ascentSteps ?? 0) + 1;
+  }
+
+  advance(seconds) {
+    this.ascentSum?.fill(0); this.ascentSteps = 0;
+    for (let s = 0; s < seconds - 1e-6; s += this.params.timeStepSeconds) this.step();
+    if (this.ascentSteps) for (let k = 0; k < this.ascentCooling.length; k++) this.ascentCooling[k] = this.ascentSum[k] / this.ascentSteps * 3600;
+  }
 
   // Thickness (psi1 - psi2) of the mean state at a distance north (m): it thins northward,
   // which is the colder air there.
@@ -283,7 +367,10 @@ export class QuasiGeostrophicModel {
       surfaceStreamfunction: total2 - 0.5 * thickness,
       midStreamfunction: (total1 + total2) / 2,
       // Mean temperature of the 250-750 mb layer (K, relative to the southern edge; hydrostatic).
-      layerTemperatureK: p.f0 * thickness / (287 * Math.log(3))
+      layerTemperatureK: p.f0 * thickness / (287 * Math.log(3)),
+      // Cooling of rising air (K per hour; sinking negative) over the last advance, the
+      // lower layer's moisture disturbance (g/kg) and its rain (g/kg per hour).
+      ascentCoolingKh: this.ascentCooling[k], moistureGkg: this.moisture[k], rainGkgH: this.rain[k]
     };
   }
 }

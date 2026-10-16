@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { Atmosphere } from '../js/atmosphere.js';
-import { analyseBoundaries } from '../js/atmosphere/BoundaryAnalysis.js';
+import { analyseBoundaries, BOUNDARY_DEFAULTS } from '../js/atmosphere/BoundaryAnalysis.js';
 import { QuasiGeostrophicModel } from '../js/atmosphere/QuasiGeostrophicModel.js';
 import { RegionalAtmosphere } from '../js/atmosphere/RegionalAtmosphere.js';
 
@@ -76,7 +76,7 @@ assert.equal(analyseBoundaries(world({ temperature: [74, 77] })).boundaries.leng
   assert.equal(dry.symbolSide, leftIsEast(dry) ? 1 : -1, 'dryline scallops face the moist air (east)');
 }
 
-// --- On the regional atmosphere: a dryline in the afternoon, in the western half, dry to its west.
+// --- On the regional atmosphere: a dryline in the afternoon, dry to its west.
 {
   const model = new QuasiGeostrophicModel({ seed: 3, initialNoise: 4e-4 });
   model.advance(8 * 86400);
@@ -86,9 +86,11 @@ assert.equal(analyseBoundaries(world({ temperature: [74, 77] })).boundaries.leng
     regional.step();
     if (step < 48 || regional.hourUtc % 24 !== 22) continue;
     afternoons++;
-    for (const line of analyseBoundaries(regional.world).boundaries.filter(b => b.type === 'dryline' && b.lengthKm > 250)) {
-      const at = column(line, regional.world);
-      assert.ok(at > 3 && at < 35, `the dryline is in the western part of the map (column ${at.toFixed(0)})`);
+    for (const line of analyseBoundaries(regional.world).boundaries.filter(b => b.type === 'dryline' && b.lengthKm >= BOUNDARY_DEFAULTS.minLengthKm)) {
+      // Dry air to its west (it may surge far east on a day of strong westerly flow).
+      const w = regional.world, dew = (x, y) => w.cells[Math.max(0, Math.min(w.height - 1, y))][Math.max(0, Math.min(w.width - 1, x))].surface.dewpoint;
+      const westMinusEast = line.pointsKm.reduce((sum, p) => { const x = Math.floor(p.x / w.cellSizeKm), y = Math.floor(p.y / w.cellSizeKm); return sum + dew(x - 3, y) - dew(x + 3, y); }, 0) / line.pointsKm.length;
+      assert.ok(westMinusEast < -5, `the dryline has its dry air to the west (${westMinusEast.toFixed(1)} F)`);
       found++;
       break;
     }

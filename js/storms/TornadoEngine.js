@@ -38,7 +38,9 @@ export function initializeTornadoState(storm) {
 // three 15% tornado areas in four with no strong tornadoes to speak of). The rise starts from
 // no rotation at all, so that the weakest storms still put one down now and then: with a
 // threshold of 0.04, one day in four had no tornado. Checked on 320 days (docs/STATUS.md).
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 2.5, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// 2026-10-15: fullRatePerHour 2.5 to 5 once the environments came down to real values (0-1 km
+// helicity median 158 to 114, STP 90th 4.9 to 2.6): tornado days 60% to 88%, about 6.7 a day.
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 5, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -195,7 +197,8 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // Wind above 65 mph = scale x (-ln(1 - quantile))^tail, the scale rising with the storm's
 // low-level rotation (0-1.2). This is the wind the tornado really has; its rating is a
 // separate thing (see DAMAGE_RATING).
-const INTENSITY = { baseScaleMph: 26, rotationScaleMph: 52, tail: 0.9, matureMinutes: 6, occlusionLoss: 0.6 };
+// rotationScaleMph 52 to 40 on 2026-10-15 with the tornado rate doubled, to keep strong ones about as common.
+const INTENSITY = { baseScaleMph: 26, rotationScaleMph: 40, tail: 0.9, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times

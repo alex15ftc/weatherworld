@@ -8,9 +8,11 @@ function world(cellFor) {
   return { width, height, cellSizeKm: 16, getCell: (x, y) => cells[y * width + x], evolution: { config: { seed: 7 } } };
 }
 const cell = ({ mlcape = 2500, mlcin = 20, mucape = mlcape, mucin = mlcin, sbcape = mlcape, boundary = 0, synoptic = 0 }) => ({
-  derived: { sounding: { mlcape, mlcin: -mlcin, mucape, mucin: -mucin, sbcape } },
-  features: { boundaryConvergence: boundary, convergenceLift: boundary, explicitBoundaryInfluence: boundary, synopticAscent: synoptic, primaryBoundaryType: boundary ? 'dryline' : null, primaryBoundaryId: boundary ? 'OBJ-DRYLINE-001' : null },
-  dynamics: {}
+  // Physical inputs: boundary 1 is surface convergence of 3e-4 /s (a strong dryline on this grid),
+  // synoptic 1 is outer-model ascent of 0.25 K/h with warm air lifted over cool air at 5 cm/s.
+  derived: { sounding: { mlcape, mlcin: -mlcin, mucape, mucin: -mucin, sbcape, lclAglM: 1000 } },
+  features: { mixedLayerDepthM: 1500, ascentCoolingKh: 0.25 * synoptic, isentropicLiftMs: 0.05 * synoptic, boundaryConvergence: boundary, convergenceLift: boundary, explicitBoundaryInfluence: boundary, synopticAscent: synoptic, primaryBoundaryType: boundary ? 'dryline' : null, primaryBoundaryId: boundary ? 'OBJ-DRYLINE-001' : null },
+  dynamics: { surfaceConvergenceS1: 3e-4 * boundary }
 });
 const runSlots = (w, storms = [], slots = 16) => {
   let total = [];
@@ -22,12 +24,12 @@ const runSlots = (w, storms = [], slots = 16) => {
 const capped = world(() => cell({ mlcin: 220, boundary: 0, synoptic: 0.3 }));
 assert.equal(runSlots(capped).length, 0, 'forcing weaker than the cap must not initiate storms');
 
-// A strong boundary through the same capped air is not enough either (lift 170 < CIN 220)...
+// A strong boundary through the same capped air is not enough either (about 80 J/kg < CIN 220)...
 const cappedBoundary = world((x) => cell({ mlcin: 220, boundary: x === 15 ? 0.9 : 0 }));
 assert.equal(runSlots(cappedBoundary).length, 0, 'a boundary cannot lift parcels through a cap stronger than its lift');
 
 // ...but where the cap is modest, storms form along the boundary and only there.
-const forced = world((x) => cell({ mlcin: 60, boundary: x === 15 ? 0.9 : 0 }));
+const forced = world((x) => cell({ mlcin: 30, boundary: x === 15 ? 0.9 : 0 }));
 const formed = runSlots(forced, [], 48);   // a day: storms are few at this rate
 assert.ok(formed.length >= 2, `boundary lift exceeding the cap should initiate storms (${formed.length})`);
 assert.ok(formed.every(c => c.x === 15), 'storms must form where the lift exceeds the inhibition');

@@ -43,6 +43,9 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // Cells over which the pressure responds to low-level temperature contrasts, and how long
   // the day's heat stays in the air after sunset.
   thermalSmoothingCells: 8, residualHeatHours: 8,
+  // The same for the contrasts between air masses that the wind has brought together (fronts):
+  // their cold air is shallow (coldAirDepthM), and the pressure follows its edge more closely.
+  airMassPressureSmoothingCells: 3,
   // Air cooled by storms' rain (cold pools): how deep it is, and how long it takes to warm
   // back up under the sun and at night.
   coldPoolDepthM: 800, coldPoolRecoveryHoursDay: 3, coldPoolRecoveryHoursNight: 8,
@@ -76,15 +79,51 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // the ground is surfaceWindShare of it, backed by surfaceBackingDeg. At sunset the layer is
   // cut off from the ground and its departure from balance swings freely: the night-time jet.
   mixedLayerFriction: 0.3, surfaceWindShare: 0.75, surfaceBackingDeg: 22,
-  // Hot, dry mixed air from the high terrain (elevated mixed layer): where it forms and how
-  // much warmer it is at 700 mb than the air it overruns.
-  emlSourceTerrainM: 1150, emlWarmthK: 6.5, emlLifetimeDays: 2,
+  // Most of the mid-level wind a mixed layer 3 km deep brings down to the ground.
+  momentumMixingShare: 0.7,
+  // Hot, dry mixed air from the high terrain (elevated mixed layer, Carlson et al. 1983): the
+  // afternoon mixed layer over the high ground, carried off it by the 700 mb wind over the
+  // cooler Gulf air, where it is the cap. It is well mixed, so one potential temperature (its
+  // source's) describes it; it cools by radiation at lidCoolingKPerDay on the way. Where it
+  // forms (terrain), and how long the share of it at a place lasts once it stops being renewed.
+  emlSourceTerrainM: 1150, emlLifetimeDays: 2, lidCoolingKPerDay: 1.5,
+  // Its main source is beyond the map: the deep afternoon mixed layer over the higher, hotter
+  // desert plateau to the west and south-west. Lid air entering across the map's western side
+  // has that layer's potential temperature (K), changed by the outer model's warmth there that day.
+  // (318 gave a cap that held for days over the best air: no severe weather on 18% of days.)
+  lidSourceThetaK: 316,
   airMassRelaxationDays: 2,
+  // Average turning of the wind toward low pressure through the low-level air mass (degrees):
+  // the friction layer's flow across the isobars, which carries the air masses into troughs.
+  airMassInflowDeg: 15,
   // Cold air is heavier and pushes under the warm air next to it like a density current. The
   // colder the air than the warmest air within reach, the faster it pushes, so the cold edge
   // catches up with itself and sharpens into a front, while a retreating edge spreads out.
   // Speed = factor x sqrt(g x depth x deficit / temperature).
   coldPushFactor: 0.4, coldAirDepthM: 1200, coldPushReachCells: 10,
+  // Temperature gradient (K per 100 km) from which the push starts to its full strength: a
+  // frontal contrast. (From 0.5-1.5 on 2026-10-15: the warm sector has gradients like that
+  // everywhere, and the push they set off was most of the convergence away from the lines.)
+  coldPushGradient: [2, 4],
+  // Large-scale ascent and the cap. The outer model's ascent cools its 250-750 mb layer at the
+  // rate it reports; the capping layer near 700 mb is far more stable, so the same lift cools it
+  // capLiftRatio times as much ((dry adiabatic - cap lapse rate) / (dry adiabatic - mean lapse
+  // rate), about (9.8 - 2) / (9.8 - 6.5)). The extra cooling stays with the air it was done to,
+  // moves with the 700 mb wind and fades over capLiftHours; sinking air warms the cap the same way.
+  capLiftRatio: 2.4, capLiftHours: 24,
+  // The moist layer's top (m above sea level) moves with the low-level air. Large-scale ascent
+  // raises it and sinking lowers it (at the rate the outer model's cooling implies: about
+  // ascentCoolingPerMetre K per m of lift in the mid troposphere); it settles back toward
+  // moistLayerTopM over moistTopDays. Gulf air coming back soon after a front has scoured the
+  // Gulf arrives only moistReturnShallowM deep.
+  ascentCoolingPerMetre: 0.0033, moistTopDays: 2, moistReturnShallowM: 1300,
+  // Ground wetted by storms' rain heats the air less and gives it moisture instead, until the
+  // sun has dried it (wetGroundDryingDays of sunshine): wetGroundHeatingCut of the heating goes
+  // into evaporation, adding up to wetGroundMoisteningGkgH g/kg an hour at full sun.
+  wetGroundDryingDays: 1.5, wetGroundHeatingCut: 0.6, wetGroundMoisteningGkgH: 0.15,
+  // Entrainment (mixed-layer models; CLASS): the growing mixed layer draws down warmer air from
+  // above it, adding this share of the surface heating to its own warming.
+  entrainmentRatio: 0.2,
   // Ratio of the large-scale clock to the daily cycle (a tempo above 1 brings systems more often).
   tempo: 1,
   // Soundings and the indices built on them for every cell, every step. Costly; switch off
@@ -118,6 +157,11 @@ export class RegionalAtmosphere {
     this.residualHeat = new Float64Array(n); this.mixedTheta = new Float64Array(n); this.eveningExcess = new Float64Array(n); this.eveningDepth = new Float64Array(n);
     this.coldPushU = new Float64Array(n); this.coldPushV = new Float64Array(n);   // m/s, east and north
     this.coldPool = new Float64Array(n);   // how much colder than its air mass the air at the ground is (K)
+    this.capLift = new Float64Array(n);    // extra cooling of the capping layer by large-scale ascent (K; warming negative)
+    // Potential temperature of the elevated mixed layer (K), wherever its air is.
+    this.lidTheta = new Float64Array(n).fill((p.reference700C + 6.5 + 273.15) * (1000 / 700) ** KAPPA);
+    this.moistTop = new Float64Array(n).fill(p.moistLayerTopM);   // top of the moist layer (m above sea level)
+    this.wetGround = new Float64Array(n);  // how wet storms' rain has left the ground (0-1)
     this.gulfSupply = p.gulfMixingRatio;   // mixing ratio of the air offshore now (g/kg)
     this.previousMid = null;
     // The region may slide east (+) or west along the outer model (m/s); see RegionSteering.
@@ -150,11 +194,11 @@ export class RegionalAtmosphere {
   outer(xm, ym) {
     const m = this.model, gx = xm / m.d, gy = ym / m.d - 0.5;
     const i0 = Math.floor(gx), j0 = clamp(Math.floor(gy), 1, m.ny - 3), tx = gx - i0, ty = clamp(gy - j0, 0, 1);
-    const out = { upperU: 0, upperV: 0, lowerU: 0, lowerV: 0, layerK: 0, lowPsi: 0, midPsi: 0, north: ym - m.lengthY / 2 };
+    const out = { upperU: 0, upperV: 0, lowerU: 0, lowerV: 0, layerK: 0, lowPsi: 0, midPsi: 0, ascentKh: 0, north: ym - m.lengthY / 2 };
     for (const [di, dj, w] of [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]]) {
       const f = m.fieldsAt(((i0 + di) % m.nx + m.nx) % m.nx, j0 + dj);
       out.upperU += w * f.upperWind.u; out.upperV += w * f.upperWind.v; out.lowerU += w * f.lowerWind.u; out.lowerV += w * f.lowerWind.v;
-      out.layerK += w * f.layerTemperatureK; out.lowPsi += w * f.lowerDisturbanceStreamfunction; out.midPsi += w * f.midStreamfunction;
+      out.layerK += w * f.layerTemperatureK; out.lowPsi += w * f.lowerDisturbanceStreamfunction; out.midPsi += w * f.midStreamfunction; out.ascentKh += w * (f.ascentCoolingKh ?? 0);
     }
     return out;
   }
@@ -192,7 +236,10 @@ export class RegionalAtmosphere {
   // (v = dp/dx / (rho f)); the trough is shallow and is gone by 700 mb.
   leeTrough(x, outer) {
     const p = this.params, width = p.leeTroughWidthKm * 1000;
-    const cross = clamp(this.windAt(outer, 700).u / p.leeFlowMs, 0, 2.5);
+    // The trough deepens with the flow across the high ground and levels off as it strengthens
+    // (it was linear up to 2.5 times leeTroughFlowHpa, which gave lee troughs of up to 17 hPa
+    // and a balanced southerly of over 40 kt beside them; real ones are a few hPa).
+    const cross = Math.tanh(Math.max(0, this.windAt(outer, 700).u) / p.leeFlowMs);
     const depthHpa = p.leeTroughFlowHpa * cross;
     const distance = (x + this.geographyOffset - p.leeTroughColumn * ((p.geographyColumns ?? this.nx) - 1)) * this.dx, shape = Math.exp(-((distance / width) ** 2));
     return { pressureHpa: -depthHpa * shape, wind: depthHpa * 100 * shape * 2 * distance / (width * width) / (1.2 * this.model.params.f0) };
@@ -202,7 +249,7 @@ export class RegionalAtmosphere {
   // the place: moist air is mixed through most of the moist layer, dry air through a layer
   // that is deep over the high ground (yesterday's mixed layer, the source of the cap).
   airMassDepth(terrain, k) {
-    const p = this.params, moistLayer = clamp(p.moistLayerTopM - terrain, 50, 3000);
+    const p = this.params, moistLayer = clamp((this.moistTop?.[k] ?? p.moistLayerTopM) - terrain, 50, 3000);
     const moistShare = ramp(this.moisture[k], p.dryMixingRatio + 1, p.gulfMixingRatio - 3);
     return clamp(0.8 * moistLayer + (1 - moistShare) * (2800 - 0.8 * moistLayer) * this.plateau(terrain), 300, 3200);
   }
@@ -215,22 +262,31 @@ export class RegionalAtmosphere {
   // 200 km), not cell by cell.
   thermalBalance(outers) {
     const { nx, ny, dx } = this, p = this.params, n = nx * ny, f0 = this.model.params.f0;
-    let pressure = new Float64Array(n);
+    let pressure = new Float64Array(n), airMass = new Float64Array(n);
     this.world.forEachCell((cell, x, y) => {
       const k = y * nx + x, terrain = cell.terrain.elevationM;
       const column = p.plateauWarmthK * this.plateau(terrain) * Math.min(this.airMassDepth(terrain, k), Math.max(600, 3050 - terrain)) + Math.max(this.heat[k], this.residualHeat[k]);   // K m
       pressure[k] = -RHO_AIR * GRAVITY * column / this.theta[k];   // Pa
+      // The air masses the wind has drawn together here (fronts) are sharper than the outer
+      // model's smooth temperature; their cold side is heavier, so the pressure rises behind a
+      // front and the front lies in a trough.
+      airMass[k] = -RHO_AIR * GRAVITY * p.coldAirDepthM * (this.theta[k] - this.airMassTheta(outers[k], terrain)) / this.theta[k];
     });
-    const r = p.thermalSmoothingCells;
-    for (let pass = 0; pass < 2 && r > 0; pass++) {
-      const out = new Float64Array(n);
-      for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-        let sum = 0, count = 0;
-        for (let yy = Math.max(0, y - r); yy <= Math.min(ny - 1, y + r); yy++) for (let xx = Math.max(0, x - r); xx <= Math.min(nx - 1, x + r); xx++) { sum += pressure[yy * nx + xx]; count++; }
-        out[y * nx + x] = sum / count;
+    const smooth = (field, r) => {
+      for (let pass = 0; pass < 2 && r > 0; pass++) {
+        const out = new Float64Array(n);
+        for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+          let sum = 0, count = 0;
+          for (let yy = Math.max(0, y - r); yy <= Math.min(ny - 1, y + r); yy++) for (let xx = Math.max(0, x - r); xx <= Math.min(nx - 1, x + r); xx++) { sum += field[yy * nx + xx]; count++; }
+          out[y * nx + x] = sum / count;
+        }
+        field = out;
       }
-      pressure = out;
-    }
+      return field;
+    };
+    pressure = smooth(pressure, p.thermalSmoothingCells);
+    airMass = smooth(airMass, p.airMassPressureSmoothingCells);
+    for (let k = 0; k < n; k++) pressure[k] += airMass[k];
     for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
       const k = y * nx + x, e = Math.min(nx - 1, x + 1), w = Math.max(0, x - 1), north = Math.max(0, y - 1), south = Math.min(ny - 1, y + 1);
       const eastward = (pressure[y * nx + e] - pressure[y * nx + w]) / ((e - w) * dx), northward = (pressure[north * nx + x] - pressure[south * nx + x]) / ((south - north) * dx);
@@ -246,6 +302,8 @@ export class RegionalAtmosphere {
     for (let y = Math.max(0, Math.floor(cy - reach)); y <= Math.min(this.ny - 1, Math.ceil(cy + reach)); y++) for (let x = Math.max(0, Math.floor(cx - reach)); x <= Math.min(this.nx - 1, Math.ceil(cx + reach)); x++) {
       const value = deficitK * Math.exp(-((Math.hypot(x - cx, y - cy) * cellKm / radiusKm) ** 2)), k = y * this.nx + x;
       if (value > this.coldPool[k]) this.coldPool[k] = value;
+      // Where the rain-cooled air is, the rain has wetted the ground.
+      this.wetGround[k] = Math.max(this.wetGround[k], clamp(value / 8, 0, 1));
     }
   }
 
@@ -264,7 +322,7 @@ export class RegionalAtmosphere {
       const k = y * nx + x, e = Math.min(nx - 1, x + 1), w = Math.max(0, x - 1), north = Math.max(0, y - 1), south = Math.min(ny - 1, y + 1);
       const gx = (air[y * nx + e] - air[y * nx + w]) / ((e - w) * dx), gy = (air[north * nx + x] - air[south * nx + x]) / ((south - north) * dx), size = Math.hypot(gx, gy);
       // No push where the air is the same all around (deep inside an air mass).
-      const speed = p.coldPushFactor * Math.sqrt(GRAVITY * p.coldAirDepthM * Math.max(0, warmest[k] - air[k]) / this.theta[k]) * ramp(size * 1e5, 0.5, 1.5);
+      const speed = p.coldPushFactor * Math.sqrt(GRAVITY * p.coldAirDepthM * Math.max(0, warmest[k] - air[k]) / this.theta[k]) * ramp(size * 1e5, p.coldPushGradient[0], p.coldPushGradient[1]);
       this.coldPushU[k] = size > 0 ? speed * gx / size : 0; this.coldPushV[k] = size > 0 ? speed * gy / size : 0;
     }
   }
@@ -293,14 +351,21 @@ export class RegionalAtmosphere {
   }
 
   // Semi-Lagrangian transport by the low-level (or given) wind; air entering takes the
-  // properties of its source.
+  // properties of its source. The value at the departure point is read with cubic
+  // interpolation held within the four nearest values (quasi-monotone, Bermejo and Staniforth
+  // 1992). Linear interpolation spreads an edge by a cell or more a day wherever the wind is
+  // slow across it, which is exactly at fronts and the dryline.
   advect(field, windOf, inflowOf, dt) {
     const { nx, ny, dx } = this, out = new Float64Array(field.length);
+    const at = (i, j) => field[clamp(j, 0, ny - 1) * nx + clamp(i, 0, nx - 1)];
+    const cubic = (a, b, c, d, t) => b + 0.5 * t * (c - a + t * (2 * a - 5 * b + 4 * c - d + t * (3 * (b - c) + d - a)));
     for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
       const w = windOf(x, y), sx = x - w.u * dt / dx, sy = y + w.v * dt / dx;   // rows count southward
       if (sx < 0 || sy < 0 || sx > nx - 1 || sy > ny - 1) { out[y * nx + x] = inflowOf(clamp(Math.round(sx), 0, nx - 1), clamp(Math.round(sy), 0, ny - 1), x, y); continue; }
-      const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(nx - 1, x0 + 1), y1 = Math.min(ny - 1, y0 + 1), tx = sx - x0, ty = sy - y0;
-      out[y * nx + x] = (field[y0 * nx + x0] * (1 - tx) + field[y0 * nx + x1] * tx) * (1 - ty) + (field[y1 * nx + x0] * (1 - tx) + field[y1 * nx + x1] * tx) * ty;
+      const x0 = Math.min(nx - 2, Math.floor(sx)), y0 = Math.min(ny - 2, Math.floor(sy)), tx = sx - x0, ty = sy - y0;
+      const rows = [-1, 0, 1, 2].map(j => cubic(at(x0 - 1, y0 + j), at(x0, y0 + j), at(x0 + 1, y0 + j), at(x0 + 2, y0 + j), tx));
+      const a = at(x0, y0), b = at(x0 + 1, y0), c = at(x0, y0 + 1), d = at(x0 + 1, y0 + 1);
+      out[y * nx + x] = clamp(cubic(rows[0], rows[1], rows[2], rows[3], ty), Math.min(a, b, c, d), Math.max(a, b, c, d));
     }
     field.set(out);
   }
@@ -339,9 +404,13 @@ export class RegionalAtmosphere {
     this.coldPush();
     if (dt > 0) {
       // Air masses move with the low-level wind, the elevated mixed layer with the 700 mb wind.
+      const inflowCos = Math.cos(p.airMassInflowDeg * Math.PI / 180), inflowSin = Math.sin(p.airMassInflowDeg * Math.PI / 180);
       const lowWind = (x, y) => {
         const k = y * nx + x, w = this.windAt(outers[k], 900), mixed = daytime ? this.momentumMixing(this.mixedDepth[k]) : 0, aloft = this.windAt(outers[k], 700);
-        const u = w.u + this.ageoU[k] + 0.85 * this.thermalU[k], v = w.v + this.ageoV[k] + 0.85 * (this.thermalV[k] + this.leeTrough(x, outers[k]).wind);
+        // Friction in the layer turns the balanced wind toward low pressure, so the air runs
+        // into troughs, fronts among them, and draws their air masses together.
+        const bu = w.u + 0.85 * this.thermalU[k], bv = w.v + 0.85 * (this.thermalV[k] + this.leeTrough(x, outers[k]).wind);
+        const u = bu * inflowCos - bv * inflowSin + this.ageoU[k], v = bu * inflowSin + bv * inflowCos + this.ageoV[k];
         return { u: u + mixed * (aloft.u - u) + this.coldPushU[k], v: v + mixed * (aloft.v - v) + this.coldPushV[k] };
       };
       const midWind = (x, y) => this.windAt(outers[y * nx + x], 700);
@@ -353,7 +422,13 @@ export class RegionalAtmosphere {
       this.gulfSupply += (p.gulfScouredMixingRatio - this.gulfSupply) * scour * clamp(dt / (p.gulfScourHours * 3600), 0, 1) + (p.gulfMixingRatio - this.gulfSupply) * (1 - scour) * clamp(dt / (p.gulfRecoveryDays * DAY), 0, 1);
       this.advect(this.moisture, lowWind, (sx, sy) => this.inflowMoisture(sx, sy), dt);
       this.advect(this.coldPool, lowWind, () => 0, dt);
+      this.advect(this.capLift, midWind, () => 0, dt);
+      // The moist layer's depth goes with its air; air entering from the Gulf side is shallow
+      // while the Gulf is still recovering from a front.
+      const returnTop = p.moistReturnShallowM + (p.moistLayerTopM - p.moistReturnShallowM) * ramp(this.gulfSupply, p.gulfScouredMixingRatio, p.gulfMixingRatio - 1);
+      this.advect(this.moistTop, lowWind, (sx, sy) => (this.eastShare(sx) > 0.3 ? returnTop : p.moistLayerTopM), dt);
       this.advect(this.eml, midWind, (sx, sy) => ramp(world.cells[sy][sx].terrain.elevationM, p.emlSourceTerrainM - 300, p.emlSourceTerrainM), dt);
+      this.advect(this.lidTheta, midWind, (sx, sy) => (sx === 0 || (sy === ny - 1 && this.eastShare(sx) < 0.5) ? p.lidSourceThetaK + p.temperatureShare[700] * (outers[sy * nx + sx].layerK - this.referenceLayerK) : this.lidTheta[sy * nx + sx]), dt);
     }
 
     world.validHourUtc = this.hourUtc;
@@ -363,7 +438,11 @@ export class RegionalAtmosphere {
         // The air mass stays tied to the troposphere above it over a couple of days.
         this.theta[k] += (this.airMassTheta(outer, terrain) - this.theta[k]) * clamp(dt / (p.airMassRelaxationDays * DAY), 0, 1);
         this.eml[k] *= Math.exp(-dt / (p.emlLifetimeDays * DAY));
+        this.lidTheta[k] -= p.lidCoolingKPerDay * dt / DAY;
         this.coldPool[k] *= Math.exp(-dt / 3600 / (daytime ? p.coldPoolRecoveryHoursDay : p.coldPoolRecoveryHoursNight));
+        this.capLift[k] = this.capLift[k] * Math.exp(-dt / (p.capLiftHours * 3600)) + (p.capLiftRatio - 1) * outer.ascentKh * dt / 3600;
+        const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre;
+        this.moistTop[k] = clamp(this.moistTop[k] + liftMs * dt + (p.moistLayerTopM - this.moistTop[k]) * clamp(dt / (p.moistTopDays * DAY), 0, 1), 600, 3500);
       }
       const { pressureHpa: leePressureHpa, wind: leeWind } = this.leeTrough(x, outer);
       // Rain-cooled air is heavier: the pressure under it is higher (the storm's mesohigh).
@@ -371,7 +450,10 @@ export class RegionalAtmosphere {
       const surfacePressure = (1013 + leePressureHpa + this.thermalHpa[k] + coldPoolHpa + this.balancedPressureHpa(outer)) * Math.exp(-terrain / 8434.5);
       const seaLevelPressure = surfacePressure / Math.exp(-terrain / 8434.5);
       const anomaly = outer.layerK - this.referenceLayerK;
-      const t700 = p.reference700C + p.temperatureShare[700] * anomaly + p.emlWarmthK * this.eml[k];
+      // 700 mb: the ordinary troposphere, or the lid where its air is and is warmer; then what
+      // large-scale ascent or sinking has done to the capping layer.
+      const ordinary700 = p.reference700C + p.temperatureShare[700] * anomaly, lid700 = this.lidTheta[k] * 0.7 ** KAPPA - 273.15;
+      const t700 = ordinary700 + this.eml[k] * Math.max(0, lid700 - ordinary700) - this.capLift[k];
       const adiabat500 = (t700 + 273.15) * (500 / 700) ** KAPPA - 273.15, ordinary500 = p.reference500C + p.temperatureShare[500] * anomaly;
       const t500 = ordinary500 + Math.min(0, adiabat500 - ordinary500) * p.emlLapseShare * this.eml[k], t250 = p.reference250C + p.temperatureShare[250] * anomaly;
       const theta700 = (t700 + 273.15) * (1000 / 700) ** KAPPA;
@@ -380,13 +462,19 @@ export class RegionalAtmosphere {
       // then deepens through the air mass (potential temperature theta) and into the stable
       // air beneath 700 mb. Depths are above ground.
       const airTheta = this.theta[k], height700 = Math.max(600, 3050 - terrain);
-      const moistLayer = clamp(p.moistLayerTopM - terrain, 50, 3000), airMassDepth = this.airMassDepth(terrain, k);
+      const moistLayer = clamp(this.moistTop[k] - terrain, 50, 3000), airMassDepth = this.airMassDepth(terrain, k);
       const lapseAbove = Math.max(0.0015, Math.max(0.5, theta700 - airTheta) / Math.max(300, height700 - airMassDepth));   // K per m above it
       // How dry the air at the ground was a step ago: dry air over dry ground is heated harder,
       // mixes deeper and dries further, which is what sharpens the dryline.
       const dryness = 1 - ramp(this.surfaceMixingRatio[k] || this.moisture[k], p.dryMixingRatio + 1, p.gulfMixingRatio - 3);
       if (dt > 0) {
-        if (daytime) this.heat[k] += (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryness) * sun / 1200 * dt;
+        // Wet ground puts part of the sun's energy into evaporation instead of heating the air.
+        const wet = this.wetGround[k];
+        if (daytime) {
+          this.heat[k] += (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryness) * (1 - p.wetGroundHeatingCut * wet) * sun / 1200 * dt;
+          this.moisture[k] += p.wetGroundMoisteningGkgH * wet * sun * dt / 3600;
+          this.wetGround[k] = wet * Math.exp(-sun * dt / (p.wetGroundDryingDays * 0.45 * DAY));
+        }
         else if (this.heat[k] > 0) {
           // Sunset: the heated layer is left above the ground as a residual layer.
           this.eveningTheta[k] = this.surfaceTheta(k, airTheta, airMassDepth, lapseAbove);
@@ -400,7 +488,14 @@ export class RegionalAtmosphere {
       const nightDrop = p.nightCoolingK * (0.7 + 0.6 * dryness) * (1 - Math.exp(-nightHours / p.nightCoolingHours));
       const surfaceTheta = daytime ? this.surfaceTheta(k, airTheta, airMassDepth, lapseAbove) : Math.max(airTheta - 12, this.eveningTheta[k] - nightDrop);
       const depth = daytime ? this.mixedDepth[k] : 150;
-      if (daytime) this.eml[k] = Math.max(this.eml[k], ramp(terrain, p.emlSourceTerrainM - 300, p.emlSourceTerrainM) * ramp(depth, 1200, 2200));
+      if (daytime) {
+        // Over the high ground the day's deepest, hottest mixed layer is the lid's air (what is
+        // left of it aloft after sunset is the elevated mixed layer): the lid takes on its
+        // potential temperature, but cooler hours of the day do not cool it.
+        const source = ramp(terrain, p.emlSourceTerrainM - 300, p.emlSourceTerrainM) * ramp(depth, 1200, 2200);
+        this.eml[k] = Math.max(this.eml[k], source);
+        if (dt > 0 && source > 0 && this.mixedTheta[k] > this.lidTheta[k]) this.lidTheta[k] += source * (this.mixedTheta[k] - this.lidTheta[k]) * clamp(dt / 3600, 0, 1);
+      }
       // Moisture: the mixed layer holds the moist layer's vapour, diluted by the dry air it
       // entrains once it grows deeper than the moist layer.
       const moistDepth = moistLayer;
@@ -468,21 +563,25 @@ export class RegionalAtmosphere {
       // ground or the day's heating. This is the field fronts are found in.
       cell.features.airMassThetaK = airTheta - p.plateauWarmthK * this.plateau(terrain) - this.coldPool[k];
       cell.features.coldPoolK = this.coldPool[k];
-      cell.features.emlInfluence = this.eml[k]; cell.features.mixedLayerDepthM = depth;
+      // The outer model's ascent here (K per hour of cooling; sinking negative) and what it has
+      // done to the capping layer so far (K of cooling).
+      cell.features.ascentCoolingKh = outer.ascentKh; cell.features.capLiftK = this.capLift[k];
+      cell.features.emlInfluence = this.eml[k]; cell.features.lidThetaK = this.lidTheta[k]; cell.features.mixedLayerDepthM = depth;
       // The cap air is well mixed from its base to 700 mb, so its base is warmer than 700 mb by
       // the dry-adiabatic difference between the two pressures.
       cell.features.emlBaseExcessC = (t700 + 273.15) * ((780 / 700) ** KAPPA - 1) * 0.9;
       // How much this is warm, moist air that the boundary layer has not mixed out (0-1).
       cell.features.warmSector = ramp(this.moisture[k], 9, 13) * (1 - ramp(depth / moistDepth, 1.3, 1.9));
       // How hard the ground is heating the air now, against the most it does over dry ground (0-1).
-      cell.features.surfaceHeating = daytime ? (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryness) * sun / p.heatingDryWm2 : 0;
+      cell.features.surfaceHeating = daytime ? (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryness) * (1 - p.wetGroundHeatingCut * this.wetGround[k]) * sun / p.heatingDryWm2 : 0;
+      cell.features.moistLayerTopM = this.moistTop[k]; cell.features.wetGround = this.wetGround[k];
       if (p.diagnostics) updateCellDiagnostics(cell);
     });
     this.previousMid = Float64Array.from(outers, o => o.midPsi);
   }
 
   // Share of the mid-level wind mixed down to the ground by a mixed layer of this depth (m).
-  momentumMixing(depth) { return 0.7 * ramp(depth, 1800, 3000); }
+  momentumMixing(depth) { return this.params.momentumMixingShare * ramp(depth, 1800, 3000); }
 
   referenceMidPsi() { return this.midReference ??= this.outer(this.origin.x + this.nx * this.dx / 2, this.origin.y + this.ny * this.dx / 2).midPsi; }
 
@@ -492,7 +591,9 @@ export class RegionalAtmosphere {
   surfaceTheta(k, airTheta, airMassDepth, lapseAbove) {
     const inversion = Math.max(0, airTheta - (this.eveningTheta[k] - this.params.nightCoolingK * 0.8));
     const inversionHeat = 0.5 * 300 * inversion;            // K m needed to erode the night inversion
-    const heat = this.heat[k];
+    // The mixed layer warms by the surface heating and, once it is growing into the stable air,
+    // by the warmer air it entrains from above (entrainmentRatio of the surface heating).
+    const heat = this.heat[k] * (this.heat[k] > inversionHeat ? 1 + this.params.entrainmentRatio : 1);
     if (heat <= inversionHeat) {
       const fraction = inversionHeat > 0 ? Math.sqrt(heat / inversionHeat) : 1;
       this.mixedDepth[k] = 300 * fraction;

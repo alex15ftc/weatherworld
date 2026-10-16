@@ -1,8 +1,8 @@
 // Surface-analysis overlays for the live map, derived from the current fields: isobars,
 // pressure centres, which side of each front its symbols face, and wind barbs.
 const ISOBAR_INTERVAL_HPA = 2;
-const CENTRE_RADIUS_CELLS = 5;
-const CENTRE_PROMINENCE_HPA = 1.2;
+const CENTRE_RADIUS_CELLS = 3;
+const CENTRE_CLOSED_HPA = 1;
 const BARB_SPACING_CELLS = 3;
 
 export function buildAnalysisOverlays(world, boundaries = []) {
@@ -55,24 +55,37 @@ function contours(field, width, height, cellSizeKm) {
   return out;
 }
 
-// Local extrema of the smoothed pressure that stand out from their surroundings.
+// Pressure centres the way an analyst marks them: the lowest (highest) point of a closed
+// isobar, one CENTRE_CLOSED_HPA above (below) it, that lies wholly on the map. A synoptic low is
+// hundreds of km across with a shallow bottom, so how fast the pressure rises right next to the
+// centre says little; whether the isobars close around it does.
 function centres(field, width, height, cellSizeKm) {
   const out = [];
+  const closed = (start, sign) => {
+    const limit = sign * field[start] + CENTRE_CLOSED_HPA, seen = new Uint8Array(field.length), stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const k = stack.pop(), x = k % width, y = (k - x) / width;
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) return false;
+      for (const m of [k - 1, k + 1, k - width, k + width]) if (!seen[m] && sign * field[m] < limit) {
+        if (sign * field[m] < sign * field[start]) return false;   // a deeper centre shares this isobar
+        seen[m] = 1; stack.push(m);
+      }
+    }
+    return true;
+  };
   for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
-    const value = field[y * width + x];
-    let low = true, high = true, ringSum = 0, ringCount = 0;
+    const k = y * width + x, value = field[k];
+    let low = true, high = true;
     for (let dy = -CENTRE_RADIUS_CELLS; dy <= CENTRE_RADIUS_CELLS && (low || high); dy++) for (let dx = -CENTRE_RADIUS_CELLS; dx <= CENTRE_RADIUS_CELLS; dx++) {
       const xx = x + dx, yy = y + dy;
       if ((!dx && !dy) || xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
       const other = field[yy * width + xx];
       if (other <= value) low = false;
       if (other >= value) high = false;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) === CENTRE_RADIUS_CELLS) { ringSum += other; ringCount++; }
     }
-    if ((!low && !high) || !ringCount) continue;
-    const prominence = ringSum / ringCount - value;
-    if (low && prominence >= CENTRE_PROMINENCE_HPA) out.push({ type: 'L', xKm: (x + 0.5) * cellSizeKm, yKm: (y + 0.5) * cellSizeKm, hPa: Math.round(value) });
-    if (high && -prominence >= CENTRE_PROMINENCE_HPA) out.push({ type: 'H', xKm: (x + 0.5) * cellSizeKm, yKm: (y + 0.5) * cellSizeKm, hPa: Math.round(value) });
+    if (low && closed(k, 1)) out.push({ type: 'L', xKm: (x + 0.5) * cellSizeKm, yKm: (y + 0.5) * cellSizeKm, hPa: Math.round(value) });
+    if (high && closed(k, -1)) out.push({ type: 'H', xKm: (x + 0.5) * cellSizeKm, yKm: (y + 0.5) * cellSizeKm, hPa: Math.round(value) });
   }
   return out;
 }
