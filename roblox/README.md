@@ -139,6 +139,14 @@ few hours, baking one shape at a time into `%LOCALAPPDATA%\WeatherWorldBake`. If
 again and it carries on from the last frame finished. `tools/bake-and-upload-tornadoes.ps1 -Types
 wedge,rope` bakes only those shapes; `-SkipBake` and `-SkipUpload` skip those steps.
 
+Close up, a tornado can be drawn as a skinned funnel mesh instead (`cl_tornado_mesh 1`, debug
+panel; off until it has its edge-boil textures). Its rings of spoke bones are moved every frame
+to the funnel's radius, lean and spin (`Client/Modules/Weather/TornadoMesh.luau`). The model is
+built by `scripts/blender/build_funnel_rig.py`, cleaned up by `tools/funnel-model.luau`,
+uploaded with `node tools/upload-images.mjs model <file> <out.rbxm>`, and loaded at runtime by
+`TornadoAssetService`, because Rojo cannot sync a MeshPart's mesh. Its id is in
+`Shared/Weather/Meshes.luau`.
+
 ## Checks
 
 CI (`.github/workflows/roblox.yml`) exports the world, installs packages, type-checks `Client`,

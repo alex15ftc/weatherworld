@@ -29,6 +29,7 @@ local Net = require(ReplicatedStorage.Shared.Weather.Net)
 local Textures = require(ReplicatedStorage.Shared.Weather.Textures)
 local ConVar = require(ReplicatedStorage.Shared.ConVar)
 local Volumes = require(script.Parent.Parent:WaitForChild("Modules"):WaitForChild("Weather"):WaitForChild("Volumes"))
+local TornadoMesh = require(script.Parent.Parent:WaitForChild("Modules"):WaitForChild("Weather"):WaitForChild("TornadoMesh"))
 
 local StormController = {}
 
@@ -324,6 +325,20 @@ end)
 type Placed = { volume: Volumes.Volume, frame: number }
 local placed: { [Model]: { [string]: Placed } } = {} -- per storm (its pool's model), by key
 local frameId = 0
+
+-- cl_tornado_mesh 1 draws a tornado within MESH_STUDS of the camera as the skinned funnel
+-- (Modules/Weather/TornadoMesh) instead of the baked billboard, on this client. Off until the
+-- funnel has its edge-boil textures.
+local MESH_STUDS = 3000
+local meshOn = false
+local cl_tornado_mesh = ConVar.Declare("cl_tornado_mesh", false, ConVar.LOCAL, "Close tornadoes as the skinned funnel mesh (this client).")
+cl_tornado_mesh:Connect(function()
+	meshOn = cl_tornado_mesh:GetBool()
+end)
+
+function StormController.meshStatus(): string
+	return if meshOn then TornadoMesh.status() else "funnel mesh: off (cl_tornado_mesh 0)"
+end
 
 function StormController.volumeStatus(): string
 	local count = 0
@@ -916,8 +931,25 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 	-- Up to this share of the height the funnel melts into the debris cloud.
 	local melt = if debrisOn then math.clamp(dh * 0.9 / math.max(1, height), 0.04, 0.3) else 0.04
 
-	-- The baked funnel where its art is ready; otherwise the funnel is built from parts below.
-	local baked = drawImpostor(pool, t, foot, height, touch, wrapped, clock, seed, cameraPos)
+	-- Close up, the skinned funnel where it has loaded; else the baked funnel where its art is
+	-- ready; otherwise the funnel is built from parts below.
+	local meshed = meshOn
+		and near < MESH_STUDS
+		and TornadoMesh.draw(t.id, {
+			foot = foot,
+			axis = axis,
+			-- The top ring is the cloud's collar, not the cloud's whole width.
+			radius = function(f: number): number
+				return math.max(1, math.min(radiusAt(t, f), radiusAt(t, 0.875) * 1.6))
+			end,
+			lowest = math.max(1 - touch, math.clamp(t.condensedM / math.max(1, t.baseM), 0, 1)),
+			spin = function(f: number): number
+				return clock * turn * (1 - 0.5 * f)
+			end,
+			colour = core,
+			transparency = 1 - 0.75 * touch ^ 0.5,
+		})
+	local baked = meshed or drawImpostor(pool, t, foot, height, touch, wrapped, clock, seed, cameraPos)
 
 	-- What is shown: lowering from the cloud while it touches down (or lifting as it ends).
 	local lowest = 1 - touch
@@ -1189,6 +1221,7 @@ function StormController.Start()
 		local storms = track:sample(nowMs)
 		local px, py = (cameraPos.X + HALF) / KM, (cameraPos.Z + HALF) / KM
 		local alive: { [string]: boolean } = {}
+		TornadoMesh.sweep() -- funnels not drawn last frame
 		local cover, rainRate = 0, 0
 		local overcast = 0 -- 0 far from any storm, 1 under one
 		for _, s in storms do

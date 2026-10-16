@@ -33,6 +33,7 @@ local Panel = {
 	time = 14,
 	hideSpheres = false,
 	volumes = true,
+	tornadoMesh = false,
 	status = "F2 closes this panel; every button is also a chat command",
 }
 
@@ -150,6 +151,12 @@ local function draw(ImGui: any)
 		Panel.volumes = volumes == true
 		run(`cl_volumes {if Panel.volumes then 1 else 0}`)
 	end
+	ImGui.TextDisabled(StormController.meshStatus())
+	local changedMesh, mesh = ImGui.Checkbox("Close tornadoes as the funnel mesh (cl_tornado_mesh, this client)", Panel.tornadoMesh)
+	if changedMesh then
+		Panel.tornadoMesh = mesh == true
+		run(`cl_tornado_mesh {if Panel.tornadoMesh then 1 else 0}`)
+	end
 	local changedSpheres, hide = ImGui.Checkbox("Hide sphere meshes (cl_hide_spheres, this client)", Panel.hideSpheres)
 	if changedSpheres then
 		Panel.hideSpheres = hide == true
@@ -168,6 +175,7 @@ local function build()
 
 	Panel.hideSpheres = ConVar.GetBool("cl_hide_spheres") == true
 	Panel.volumes = ConVar.GetBool("cl_volumes") ~= false
+	Panel.tornadoMesh = ConVar.GetBool("cl_tornado_mesh") == true
 	ImGui.CreateContext()
 	ImGui.GetIO().Fonts:AddFontDefault()
 	ImGui_ImplRoblox.Init(nil, 1.0)

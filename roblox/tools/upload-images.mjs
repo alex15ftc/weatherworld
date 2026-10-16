@@ -3,6 +3,9 @@
 //
 //   node roblox/tools/upload-images.mjs check            what the key can do, and whose it is
 //   node roblox/tools/upload-images.mjs upload [dir]     upload what is not uploaded yet
+//   node roblox/tools/upload-images.mjs model <file.fbx> <out.rbxm>
+//                                                        upload a mesh as a Model and save the
+//                                                        model Roblox makes of it (MeshPart, Bones)
 //
 // The key is the one roblox-devflow keeps (tools/set-opencloud-key.ps1, or `devflow key set`):
 // DPAPI-encrypted for this Windows user in %LOCALAPPDATA%\devflow\opencloud-key.dat. It is read
@@ -74,7 +77,7 @@ async function uploadDecal(key, userId, file, name) {
   return op.response.assetId;
 }
 
-// Uploads one .glb as a Model (Roblox imports its mesh) and waits; returns the model's asset id.
+// Uploads one .glb, .fbx or .rbxm as a Model (Roblox imports its mesh) and waits; returns the model's asset id.
 async function uploadModel(key, userId, file, name) {
   const form = new FormData();
   form.append('request', JSON.stringify({
@@ -83,7 +86,8 @@ async function uploadModel(key, userId, file, name) {
     description: 'WeatherWorld storm volume mesh',
     creationContext: { creator: { userId: String(userId) } },
   }));
-  form.append('fileContent', new Blob([readFileSync(file)], { type: 'model/gltf-binary' }), path.basename(file));
+  const type = { '.fbx': 'model/fbx', '.rbxm': 'model/x-rbxm', '.rbxmx': 'model/x-rbxmx' }[path.extname(file)] ?? 'model/gltf-binary';
+  form.append('fileContent', new Blob([readFileSync(file)], { type }), path.basename(file));
   let op = JSON.parse(await call(key, 'POST', '/assets/v1/assets', form));
   for (let i = 0; !op.done && i < 60; i++) {
     await sleep(2000);
@@ -94,10 +98,15 @@ async function uploadModel(key, userId, file, name) {
   return op.response.assetId;
 }
 
+// An uploaded model's file (.rbxm).
+async function downloadModel(key, modelId) {
+  const where = JSON.parse(await call(key, 'GET', `/asset-delivery-api/v1/assetId/${modelId}`));
+  return Buffer.from(await (await fetch(where.location)).arrayBuffer());
+}
+
 // The mesh inside an uploaded model: download the model and read its MeshPart (tools/mesh-id.luau).
 async function meshIdOf(key, modelId) {
-  const where = JSON.parse(await call(key, 'GET', `/asset-delivery-api/v1/assetId/${modelId}`));
-  const bytes = Buffer.from(await (await fetch(where.location)).arrayBuffer());
+  const bytes = await downloadModel(key, modelId);
   const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'ww-mesh-')), 'model.rbxm');
   writeFileSync(file, bytes);
   const id = execFileSync('lune', ['run', path.join(HERE, 'mesh-id.luau'), file], { encoding: 'utf8', cwd: ROBLOX }).trim();
@@ -189,8 +198,16 @@ async function main() {
     for (const s of scopes) console.log(`  ${s}`);
     return;
   }
-  if (command !== 'upload') throw new Error(`unknown command ${command}`);
   if (!owner) throw new Error('the key has no owning user (group keys are not supported here)');
+  if (command === 'model') {
+    const [file, out] = process.argv.slice(3);
+    if (!file || !out) throw new Error('usage: model <file.fbx|.glb> <out.rbxm>');
+    const modelId = await uploadModel(key, owner, path.resolve(file), `WeatherWorld ${path.basename(file).replace(/\.\w+$/, '')}`);
+    writeFileSync(out, await downloadModel(key, modelId));
+    console.log(`${file}: model ${modelId} -> ${out}`);
+    return;
+  }
+  if (command !== 'upload') throw new Error(`unknown command ${command}`);
   const dir = path.resolve(dirArg ?? path.join(ROBLOX, 'Textures', 'build'));
   const manifest = JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
   const record = existsSync(RECORD) ? JSON.parse(readFileSync(RECORD, 'utf8')) : {};
