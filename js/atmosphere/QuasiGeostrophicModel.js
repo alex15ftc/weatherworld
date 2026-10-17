@@ -80,7 +80,10 @@ export const QG_DEFAULTS = Object.freeze({
   // ground and the sea drawing it back toward that mean over surfaceMoistureRelaxationDays.
   // Southerly flow brings moist air north over a whole region and northerly flow behind a front
   // dries one out; the regional layer takes its moisture from it as it takes its temperature.
-  surfaceMoistureGradientGkgPer1000Km: 5, surfaceMoistureRelaxationDays: 2.5,
+  // (5 to 3 g/kg per 1000 km on 2026-10-17: with 5 the anomalies ran to +-6.5 g/kg, the Gulf's air
+  // was under 13 g/kg a third of the time and the moist air covered under 15% of the map on 29% of
+  // afternoons; with 3 about half the map is moist on a typical afternoon, CAPE median 1,700.)
+  surfaceMoistureGradientGkgPer1000Km: 3, surfaceMoistureRelaxationDays: 2.5,
   // Passes of a 1-2-1 spreading of the latent heat over neighbouring cells. Without it the heat
   // came in 80 km patches that switched on and off from step to step, and the fronts below
   // flickered with them (they moved 1.6 times as far between analyses as the wind carried them;

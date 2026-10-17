@@ -202,14 +202,25 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // low-level rotation (0-1.2). This is the wind the tornado really has; its rating is a
 // separate thing (see DAMAGE_RATING).
 // rotationScaleMph 52 to 40 on 2026-10-15 with the tornado rate doubled, to keep strong ones about as common.
-const INTENSITY = { baseScaleMph: 26, rotationScaleMph: 40, tail: 0.9, matureMinutes: 6, occlusionLoss: 0.6 };
+// 2026-10-17: 26/40 to 80/90 with the damage rating below made harsher: the ratings were three
+// quarters EF0 and none EF4 (the US record is about EF0 38%, EF1 37%, EF2 17%, EF3 6%, EF4 1.5%),
+// and mobile radar finds tornado winds well above their damage ratings (Wurman et al. 2021: about
+// 1-1.5 categories; Kosiba and Wurman 2023: strongest near the ground). On 160 days: ratings EF0
+// 42%, EF1 34%, EF2 16%, EF3 7%, EF4 1.5%; peak winds EF0 24%, EF1 27%, EF2 22%, EF3 18%, EF4 7%,
+// EF5 2%, about a category above.
+// Then 70/70 with the moister warm sectors of the outer model's gentler moisture gradient (they made
+// the storms rotate harder): ratings on 160 days EF0 43%, EF1 31%, EF2 15%, EF3 8%, EF4 3%; winds
+// EF4 and more 11%.
+const INTENSITY = { baseScaleMph: 70, rotationScaleMph: 70, tail: 0.9, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times
 // a share that rises with the length of the path (more things hit) and with this tornado's
 // own luck in what it crossed: unexposedShare for a touch-down in open country, up to all of
 // it for a long track through something sturdy.
-const DAMAGE_RATING = { unexposedShare: 0.5, pathScaleKm: 14, luckFloor: 0.6 };
+// (2026-10-17: 0.5, 14 km, 0.6 to 0.4, 20 km, 0.35 with the wider winds above: a violent rating
+// needs a long track and luck in what it crosses.)
+const DAMAGE_RATING = { unexposedShare: 0.4, pathScaleKm: 20, luckFloor: 0.35 };
 
 function efRating(mph) { return mph >= 200 ? 'EF5' : mph >= 166 ? 'EF4' : mph >= 136 ? 'EF3' : mph >= 111 ? 'EF2' : mph >= 86 ? 'EF1' : mph >= 65 ? 'EF0' : null; }
 function deterministicUnit(text) {

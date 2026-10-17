@@ -469,7 +469,11 @@ function loftDebris(model, alloc = plainAlloc) {
 
 // Reflectivity (mm6/m3) of a unit of the grid's rain, hail and debris amounts; and the least
 // reflectivity kept (-5 dBZ).
-export const RAIN_REFLECTIVITY = 1600, HAIL_REFLECTIVITY = 1600, DEBRIS_REFLECTIVITY = 1600;
+// Debris lofted by a tornado echoes far more strongly than rain (55-60 dBZ in violent tornadoes),
+// which is why its signature stands out in heavy rain (1600 to 8000 on 2026-10-17, once storms had
+// their full depth: the equilibrium level had been read under the cap, the storms were shallow and
+// carried little rain about the tornado).
+export const RAIN_REFLECTIVITY = 1600, HAIL_REFLECTIVITY = 1600, DEBRIS_REFLECTIVITY = 8000;
 const THINNEST_DBZ_UNITS = 10 ** -0.5;
 
 // The amounts at one place: rain (as reflectivity of the liquid), its reflectivity-weighted

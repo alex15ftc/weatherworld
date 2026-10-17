@@ -435,7 +435,10 @@ function diagnoseParcel(env,parcel,elevation,source,envTv=null){
    tvParB=virtualTemperatureK(pb.t,pb.td,b.p);
    const buoyA=G*(tvParA-tvEnvA)/tvEnvA,buoyB=G*(tvParB-tvEnvB)/tvEnvB;
    const dz=Math.max(0,b.heightM-a.heightM),area=.5*(buoyA+buoyB)*dz,midH=.5*(a.heightM+b.heightM);
-   if(midH>=lclM&&area>0){cape+=area;if(!positive){lfcM=midH;positive=true}}
+   // The equilibrium level is where the parcel last turns cold: buoyant again above a capping
+   // layer, it has not reached it yet (until 2026-10-17 the first turn was kept, often at 2-3 km
+   // under a cap with most of the CAPE above, and radar tops of strong storms sat there).
+   if(midH>=lclM&&area>0){cape+=area;elM=NaN;if(!positive){lfcM=midH;positive=true}}
    else if(!positive&&area<0&&midH<=elevation+4000)cin+=area;
    if(positive&&area<0&&Number.isNaN(elM))elM=midH;
  }

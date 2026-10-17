@@ -37,9 +37,10 @@ assert.ok(leadDbz >= 20, `the strongest in-domain storm should produce a precipi
 const again = scanRadarTilt(buildRadarScene(world), leadSite, 0.5);
 for (const key of RADAR_PRODUCT_KEYS) assert.ok(Buffer.compare(Buffer.from(scan.products[key]), Buffer.from(again.products[key])) === 0, `${key} not deterministic`);
 
-// The network mosaic shows every in-domain storm without choosing a radar.
+// The network mosaic shows every in-domain storm with rain falling, without choosing a radar (a
+// storm started this step has no rain yet, and no echo).
 const mosaic = buildRadarMosaic(scene, sites);
-for (const storm of storms) {
+for (const storm of storms.filter(s => (s.precipitation ?? 0) >= 0.05)) {
   let best = 0;
   for (let dy = -20; dy <= 20; dy++) for (let dx = -20; dx <= 20; dx++) {
     const i = Math.floor((storm.positionKm.x + dx) / mosaic.resKm), j = Math.floor((storm.positionKm.y + dy) / mosaic.resKm);

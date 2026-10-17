@@ -1175,3 +1175,59 @@ one most often (11 of 16), warm-sector days 28 of 50, upper-trough days 2 of 6. 
 steering support cut harder in drier air (none at 2 g/kg below the mean: ground-fed supercell days
 66%, but quiet days 11%, days without storms 5%, High 10%), and with it a kind mix of 45/45/10
 (63%; quiet 13%, High 9%).
+
+Game metrics and tornado strength (2026-10-17):
+
+- activity-report.mjs adds, for the game: tornado-free days in a row, real hours between tornadoes,
+  chaseable afternoons (a ground-fed supercell 1-10 pm local), the hazards that alone reach each
+  day's category (tornado, wind, hail or a mix), intensity groups verified by hazard, tornado
+  ratings and peak winds on the EF scale, and each tornado's look at its peak wind (cone,
+  drillbit, wedge, stovepipe, rope, elephant trunk, uncondensed; multi-vortex, rain-wrapped).
+- Before (160 days): ratings EF0 75%, EF1 20%, EF2 4%, EF3 1.5%, EF4 0%; High days wind only 78%,
+  Moderate hail only 59%; tornado intensity group on 9% of days; looks drillbit 51%, multi-vortex 1%.
+- Tornado winds wider (INTENSITY 80/90 mph, was 26/40) and the damage rating harsher (0.4 of the
+  wind for a touchdown in open country, full over 20 km paths with luck from 0.35): ratings now
+  follow the US record and peak winds run about a category above them, as mobile radar finds
+  (Wurman et al. 2021, Kosiba and Wurman 2023). 160 days: ratings EF0 42%, EF1 34%, EF2 16%, EF3
+  7%, EF4 1.5%; winds EF0 24%, EF1 27%, EF2 22%, EF3 18%, EF4 7%, EF5 2%. Looks: cone 41%, drillbit
+  36%, wedge 15% (EF3 67%, EF4 88% wedges); multi-vortex 13%. High days 60% tornado-involved,
+  Moderates 47%.
+- Still open for the game: chaseable afternoons 47%; tornado-free runs of 3+ days (6 in 160 days,
+  longest 7); High 9% and Moderate 27% (targets 5% and 20%); tornado days about 60-70%.
+- Tried and not kept: drought-aware steering (after a day without a chaseable storm, aim near a
+  low or for the warm sector at 0.35): on 160 days chaseable afternoons 47% → 43%, tornado days
+  59% → 56%, quiet days 8% → 14%, runs of 3+ tornado-free days 6 → 9, 60+ tornado days 0 → 1%. A
+  quiet day leaves the map's own air dry or in weak shear; aiming elsewhere the next day does not
+  change that air, and it bunches the strong setups.
+- Moisture: the Gulf's air at the map's edge was under 13 g/kg a third of the time (median 14.5) and
+  the moist air covered under 15% of the map on 29% of afternoons: the outer model's moisture
+  anomalies (gradient 5 g/kg per 1000 km) ran to +-6.5 g/kg. Gradient 3: moist air on about half
+  the map on a typical afternoon, CAPE median 1,728, inhibition 38.
+- Tornado rate 8, 6, 5 with it (160 days): High 15%, 11%, 10%; tornado days 64%, 60%, 59%. The
+  ratings had moved up with the moister air (EF3 9-11%, EF4 4%); tornado winds 70/70 (from 80/90)
+  bring them back near the record; High stays about 11%: it comes from many strong tornadoes close
+  together on the best days, not from the strength of each.
+- Now (160 days, rate 8): High 11%, Moderate 23%, Enhanced 26%, Slight 24%, Marginal or less 16%;
+  quiet days 9%; a tornado on 64% of days (mean 4.4); chaseable afternoons 53%; tornado-free runs
+  of 3+ days 6 (longest 4); ratings EF0 43%, EF1 31%, EF2 15%, EF3 8%, EF4 3%; storm speed 32 mph.
+- Sounding fix (2026-10-17): a parcel's equilibrium level is where it last turns cold (sounding.js);
+  under a cap the first turn, 2-3 km up, was kept with most of the CAPE above it, and the radar drew
+  strong storms 2-3 km deep (one drew no echo). Debris echoes stronger than rain (DEBRIS_REFLECTIVITY
+  1600 → 8000; 55-60 dBZ in violent tornadoes), as the fuller storms carried more rain about the
+  tornado. The radar test asks for an echo only from storms with rain falling. All 51 test files pass.
+- Climate now (160 days, unchanged by the sounding fix): a tornado on 64% of days (mean 4.4); chaseable
+  afternoons 53%; tornado-free runs of 3+ days 6 (longest 4); quiet 9%; High 11% (tornado only 72%,
+  wind only 22%), Moderate 23%, Enhanced 26%, Slight 24%, Marginal or less 16%; ratings EF0 43%, EF1
+  31%, EF2 15%, EF3 8%, EF4 3%, EF5 0.1%; winds EF4+ 11%; looks cone 41%, drillbit 36%, wedge 16%,
+  multi-vortex 14%. Environment: CAPE 1,728, inhibition 38, cloud base 1,052 m, dewpoint 65 F, 0-1 km
+  helicity 73 (90th 178), 0-6 km shear 39 kt (90th 62), 500 mb 42 kt (90th 65), STP 90th 1.5.
+- Still open: High 11% (target 5%); chaseable afternoons; Marginal or less 16%; the outlook
+  calibration was fitted on the climate before these changes and needs refitting.
+- Outlook calibration refitted (2026-10-17) for the climate of this day; seeds 9-16, Day 1 within 25
+  miles, uncalibrated → calibrated: tornado 30%/45% 64%/83% → 42%/69%; wind 45%/60% 79%/93% → 49%/72%;
+  hail 45%/60% 69%/89% → 43%/80%. Category right 73% → 65%; High issued on 10% of mornings against 5%
+  verified (4 against 2 of 40). Day 2 and 3 about the same.
+- High days (160 days, by verified category, afternoon medians): Enhanced 3 tornadoes, shear 44 kt,
+  500 mb 46 kt; Moderate 9, 47, 50; High 14, 56, 58 (counts 1-33). High days are the strong-flow days.
+  Tried: stronger drag in the outer model's low-level wind (dragReferenceMs 6): High 15%, the shear
+  and 500 mb tails unchanged (99th 95 and 90 kt); chaseable afternoons 58%. Not kept.
