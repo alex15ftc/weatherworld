@@ -1136,3 +1136,42 @@ Step 6, boundaries and the first climate lever (2026-10-17):
 Now (80 days): quiet 10%, a supercell on 81% of days but one fed from the ground on 60%; every
 tornado-free day lacked a ground-fed supercell; tornado days 71%, mean 3.7; High 6%, Moderate 24%;
 night tornadoes 40% (above the 35% guardrail).
+
+Boundary realism, continued (2026-10-17):
+
+- boundary-report.mjs also gives each line's orientation, cold fronts by orientation and motion,
+  where the symbols face (the right air mass, the way the line moved, the compass), and
+  interactions (two fronts side by side within 150 km, crossings, lines per analysis).
+- The analysis types a front by how the line itself moves since the last analysis (the cold air's
+  push only for a new line; continuity margin 2.5 m/s), keeps one front to a frontal zone (a crest
+  must be the strongest within 7 cells across it), and draws a dryline only with its moist air to
+  the east. Only the drawing changes; storms read the fields.
+- 6 seeds x 8 days, before → after: symbols facing the way the line moves, cold 88% → 96%, warm
+  87% → 94%; stationary fronts 3.1 → 1.9 m/s (90th 9.7 → 4.8); two fronts side by side 14% → 8%
+  of analyses; dryline pieces lying E-W 31% → 6%, all drylines facing E/SE/NE; kind changing each
+  half hour 4-8% → 5%. Cold fronts face E, SE or S 66%, NE 15% (NNW-SSE fronts pushing east-
+  north-east), SW 9% (back-door), N, W or NW 10%. Warm fronts face N, NE or NW 81%. Open: fronts
+  crossing in 25% of analyses (some are junctions at lows); the cold-front temperature drop (7 F).
+
+Supercells, when and how (8 seeds x 8 days, 1,109 supercells): 30% ever fed from the ground.
+By local hour of first rotation: 10-14h 115 (60% ground-fed), 14-18h 148 (81%), 18-22h 172 (52%),
+22-2h 259 (12%), 2-6h 259 (2%), 6-10h 156 (12%). 61% form overnight on air from aloft (85% started
+elevated, median start 5:30 am). Real supercells peak late afternoon and evening. Likely causes:
+a storm fed from aloft is given the rotation of the near-ground shear and helicity it does not
+take in, and the night's storms leave cold pools and worked-over air for the next afternoon.
+
+Rotation from the layer a storm takes in (2026-10-17): a storm's mid-level rotation reads the
+shear and helicity of its inflow: from the ground at 50 J/kg of inhibition or less, from above the
+lowest km at 200 or when fed from aloft (0-3 km helicity less 0-1 km; 0-6 km shear less 0-1 km), in
+between in proportion (StormRotation; environmentSampling adds srh03 and shear01). Supercells
+1,109 → 742 (8 seeds x 8 days), those forming 10 pm - 10 am 674 → 362, ground-fed 30% → 43%; night
+tornadoes 40% → 31%; quiet days 8%, Marginal or less 13%. Days with a ground-fed supercell
+unchanged (58%), days with a tornado 68%.
+
+Days without a ground-fed supercell (31 of 72): 12 dry (moist air under 15% of the map at 21Z), 9
+in weak shear (under 30 kt in the moist air), 10 with moisture and shear but no supercell fed from
+the ground; none capped everywhere, none short of afternoon storms. Days steered near a low had
+one most often (11 of 16), warm-sector days 28 of 50, upper-trough days 2 of 6. Tried and not kept:
+steering support cut harder in drier air (none at 2 g/kg below the mean: ground-fed supercell days
+66%, but quiet days 11%, days without storms 5%, High 10%), and with it a kind mix of 45/45/10
+(63%; quiet 13%, High 9%).

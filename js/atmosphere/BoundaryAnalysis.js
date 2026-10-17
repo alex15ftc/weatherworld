@@ -28,10 +28,24 @@ export const BOUNDARY_DEFAULTS = Object.freeze({
   stationarySpeedMs: 2,
   // Continuity, as analysts keep it from one map to the next (2026-10-16): where the last analysis
   // had a front within continuityKm, it keeps its kind until the cold air's push has passed the
-  // threshold by typeHysteresisMs the other way (a cold front turns stationary below 0.5 m/s, a
-  // stationary one cold or warm beyond 3.5). Without it 8% of front points changed kind every half
-  // hour. Only the drawing: storms read the fields, not the lines.
-  typeHysteresisMs: 1.5, continuityKm: 48,
+  // threshold by typeHysteresisMs the other way (a cold front turns stationary below -0.5 m/s, a
+  // stationary one cold or warm beyond 4.5). Without it 8% of front points changed kind every half
+  // hour; 5% with it (2.5; 1.5 gave 7% once the kind came from the line's own motion, which is
+  // noisier). Only the drawing: storms read the fields, not the lines.
+  typeHysteresisMs: 2.5, continuityKm: 48,
+  // The kind of a front follows how the line itself moves since the last analysis (toward the warm
+  // air: cold; toward the cold air: warm), as analysts type them; the cold air's push (the wind on
+  // its cold side) is used only for a line with nothing before it. (2026-10-17: typed by the push
+  // alone, a third of the moving cold-front points went the way a warm front goes, and one in six
+  // had its symbols on the cold side.) Smoothed over motionSmoothPoints either side along the line.
+  motionSmoothPoints: 4,
+  // One front to a frontal zone: a crest must be the strongest gradient within this many cells
+  // either side across it (2026-10-17: with only its neighbours, broad zones gave two parallel
+  // fronts about 90 km apart in 14% of analyses; 11% with 5 cells, 8% with 7).
+  frontSeparationCells: 7,
+  // A dryline has its moist air to the east (within 60 degrees): dry air off the high ground to the
+  // west meeting the Gulf's. Other moisture edges are not drawn as drylines.
+  drylineMoistEastCos: 0.5,
   // How far into the cold air its wind is read (cells), and how far a moisture line must be
   // from a front, and how much colder its dry side may be, to count as a dryline.
   coldSideReachCells: 2, drylineFrontClearanceCells: 3, drylineColdSideLimitK: 2
@@ -92,7 +106,7 @@ function gradient(field, width, height, cellKm) {
 
 // Cells on a crest of the gradient: at least the threshold, and no smaller than the gradient
 // one cell either way along its own direction.
-function crestCells(grad, width, height, threshold, edge) {
+function crestCells(grad, width, height, threshold, edge, reach = 1) {
   const crest = new Uint8Array(grad.size.length);
   // The outermost cells are left out: air entering the map there has not met the map's own air
   // yet. That is every cell the smoothing and the gradient carry the edge cells' values into.
@@ -100,7 +114,9 @@ function crestCells(grad, width, height, threshold, edge) {
     const k = y * width + x, g = grad.size[k];
     if (g < threshold) continue;
     const nx = grad.gx[k] / g, ny = grad.gy[k] / g;
-    if (g >= bilinear(grad.size, width, height, x + nx, y + ny) && g >= bilinear(grad.size, width, height, x - nx, y - ny)) crest[k] = 1;
+    let top = true;
+    for (let r = 1; r <= reach && top; r++) if (g < bilinear(grad.size, width, height, x + nx * r, y + ny * r) || g < bilinear(grad.size, width, height, x - nx * r, y - ny * r)) top = false;
+    if (top) crest[k] = 1;
   }
   return crest;
 }
@@ -150,11 +166,15 @@ export function analyseBoundaries(world, options = {}) {
   const boundaries = [];
   // The kind the last analysis gave the front nearest a point (cell coordinates), if any was near.
   const before = (options.previous ?? []).filter(b => b.type === 'cold' || b.type === 'warm' || b.type === 'stationary').flatMap(b => b.pointsKm.map(q => ({ x: q.x / cellKm - 0.5, y: q.y / cellKm - 0.5, type: b.type })));
-  const kindBefore = point => { let best = null, reach = (p.continuityKm / cellKm) ** 2; for (const q of before) { const d = (q.x - point.x) ** 2 + (q.y - point.y) ** 2; if (d <= reach) { reach = d; best = q.type; } } return best; };
+  const nearestBefore = point => { let best = null, reach = (p.continuityKm / cellKm) ** 2; for (const q of before) { const d = (q.x - point.x) ** 2 + (q.y - point.y) ** 2; if (d <= reach) { reach = d; best = q; } } return best; };
+  const kindBefore = point => nearestBefore(point)?.type ?? null;
+  // How fast a point of a line has moved toward the warm air (m/s) since the last analysis, or null.
+  const hours = Number(options.previousHours) || 0;
+  const movedToWarm = point => { if (!(hours > 0)) return null; const q = nearestBefore(point); return q ? ((point.x - q.x) * point.nx + (point.y - q.y) * point.ny) * cellKm * 1000 / (hours * 3600) : null; };
   const toKm = point => ({ x: Math.round((point.x + 0.5) * cellKm * 10) / 10, y: Math.round((point.y + 0.5) * cellKm * 10) / 10 });
 
   // --- Fronts.
-  const frontCrest = crestCells(thermal, width, height, p.frontGradient, edge);
+  const frontCrest = crestCells(thermal, width, height, p.frontGradient, edge, p.frontSeparationCells ?? 1);
   {
     const weak = crestCells(thermal, width, height, p.outflowGradient ?? p.frontGradient, edge);
     for (let k = 0; k < weak.length; k++) if (weak[k] && !frontCrest[k]) {
@@ -184,7 +204,10 @@ export function analyseBoundaries(world, options = {}) {
       return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, outflow: bilinear(raw.coldPool, width, height, coldX, coldY) >= p.outflowDeficitK, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
     });
     // The kind of front can change along it (cold on one flank of a low, warm on the other).
-    const advance = points.map((_, i) => { let sum = 0, count = 0; for (let j = Math.max(0, i - 2); j <= Math.min(points.length - 1, i + 2); j++) { sum += points[j].advance; count++; } return sum / count; });
+    // How the line moves (or, with nothing before it, how the cold air pushes), smoothed along it.
+    const moved = points.map(movedToWarm), reach = moved.some(m => m !== null) ? p.motionSmoothPoints : 2;
+    const own = points.map((q, i) => moved[i] ?? (moved.some(m => m !== null) ? null : q.advance));
+    const advance = points.map((_, i) => { let sum = 0, count = 0; for (let j = Math.max(0, i - reach); j <= Math.min(points.length - 1, i + reach); j++) if (own[j] !== null) { sum += own[j]; count++; } return count ? sum / count : points[i].advance; });
     // The edge of storm-cooled air is an outflow boundary whichever way it is moving.
     const kind = advance.map((a, i) => (points[i].outflow ? 'outflow' : frontKind(a, kindBefore(points[i]), p)));
     const half = Math.max(2, Math.floor(Math.min(minCells, outflowCells) / 2));
@@ -210,7 +233,7 @@ export function analyseBoundaries(world, options = {}) {
     if (!dryCrest[k]) continue;
     const x = k % width, y = (k - x) / width, g = moist.size[k], nx = moist.gx[k] / g, ny = moist.gy[k] / g;   // points at the moist air
     const drySideColder = bilinear(temperature, width, height, x + 2 * nx, y + 2 * ny) - bilinear(temperature, width, height, x - 2 * nx, y - 2 * ny);
-    if (nearFront[k] || drySideColder > p.drylineColdSideLimitK) dryCrest[k] = 0;
+    if (nearFront[k] || drySideColder > p.drylineColdSideLimitK || nx < p.drylineMoistEastCos) dryCrest[k] = 0;
   }
   for (const line of linkLines(dryCrest, width, height, minCells)) {
     const points = smoothLine(line.map(k => {

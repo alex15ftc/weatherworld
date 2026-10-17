@@ -56,8 +56,18 @@ const toward = (value, target, dtHours, upHours, downHours) => value + (target -
 export function stepStormRotation(storm, environment, dtHours) {
   const R = ROTATION, linear = lineShare(storm);
   const updraught = clamp((storm.updraughtMs ?? 0) / R.fullUpdraughtMs, 0, 1.2);
-  const turning = storm.leftMover ? R.leftShare * (1 - ramp(environment.srh, R.leftHelicity[0], R.leftHelicity[1])) : ramp(environment.srh, R.helicity[0], R.helicity[1]);
-  const tilting = R.shearShare * ramp(environment.bulkShear, R.shearKt[0], R.shearKt[1]) + (1 - R.shearShare) * turning;
+  // How much of its inflow the storm takes from near the ground (the inhibition term of the
+  // significant tornado parameter: all of it at 50 J/kg or less, none at 200; none for a storm fed
+  // from aloft). The rest comes from above the lowest km, and brings only the shear and helicity
+  // there: 0-3 km helicity less 0-1 km, 0-6 km shear less 0-1 km (2026-10-17, the effective inflow
+  // layer of forecasting practice; given the near-ground values, 61% of supercells formed overnight
+  // on air from aloft).
+  const fromGround = storm.elevatedFeed ? 0 : clamp((R.groundCinJkg[1] - Math.abs(Number(environment.cin) || 0)) / (R.groundCinJkg[1] - R.groundCinJkg[0]), 0, 1);
+  const srhLow = Number(environment.srh) || 0, shearDeep = Number(environment.bulkShear) || 0, shearLow = Number(environment.shear01) || 0;
+  const srhAloft = Math.max(0, (Number(environment.srh03) || srhLow) - srhLow), shearAloft = Math.sqrt(Math.max(0, shearDeep * shearDeep - shearLow * shearLow));
+  const srhIn = fromGround * srhLow + (1 - fromGround) * srhAloft, shearIn = fromGround * shearDeep + (1 - fromGround) * shearAloft;
+  const turning = storm.leftMover ? R.leftShare * (1 - ramp(srhIn, R.leftHelicity[0], R.leftHelicity[1])) : ramp(srhIn, R.helicity[0], R.helicity[1]);
+  const tilting = R.shearShare * ramp(shearIn, R.shearKt[0], R.shearKt[1]) + (1 - R.shearShare) * turning;
   const clear = 0.4 + 0.6 * clamp(storm.organization ?? 0, 0, 1);
   // Updraughts along a line share their inflow and rotate less than a storm on its own.
   const midTarget = updraught * tilting * clear * (1 - R.lineLoss * linear);
@@ -79,7 +89,6 @@ export function stepStormRotation(storm, environment, dtHours) {
   // from the ground at 50 J/kg or less, none at 200; Thompson et al. 2003, Davies 2004). (Without
   // it, from 2026-10-16, storms over the night's cooled ground counted as fed from the ground up to
   // 200 J/kg and made 58-67% of the tornadoes at night.)
-  const fromGround = clamp((ROTATION.groundCinJkg[1] - Math.abs(Number(environment.cin) || 0)) / (ROTATION.groundCinJkg[1] - ROTATION.groundCinJkg[0]), 0, 1);
   const freeTarget = storm.elevatedFeed || storm.leftMover ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow * fromGround, lowTarget = freeTarget * (1 - storm.occlusion);
   // What the low-level rotation would be were the storm not occluding: its underlying strength.
   storm.lowRotationFree = toward(storm.lowRotationFree ?? 0, freeTarget, dtHours, R.lowSpinUpHours, R.lowSpinDownHours);

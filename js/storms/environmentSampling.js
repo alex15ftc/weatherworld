@@ -65,6 +65,8 @@ export function sampleStormEnvironment(world, xKm, yKm) {
     mostUnstableCin: mean(cell => Math.abs(cell.derived?.sounding?.mucin ?? cell.derived.cin ?? 0)),
     surfaceBasedCape: mean(cell => cell.derived?.sounding?.sbcape ?? cell.derived.cape),
     dewpoint: mean(cell => cell.surface.dewpoint),
+    // The shear and helicity above the lowest km too: what a storm fed from above the ground takes in.
+    srh03: mean(cell => cell.derived?.sounding?.srh03 ?? cell.derived.srh), shear01: mean(cell => cell.derived?.sounding?.shear01 ?? 0),
     cin: mean(cell => cell.derived.cin), srh, outflowContrastK, densityGradient, moistureGradient,
     stp: mean(cell => cell.derived.stp ?? 0), rawStp: mean(cell => cell.derived.rawStp ?? cell.derived.stp ?? 0),
     vtp: mean(cell => cell.derived.vtp ?? 0), synopticTornadoSupport: mean(cell => cell.derived.synopticTornadoSupport ?? 0), scp: mean(cell => cell.derived.scp ?? 0),
