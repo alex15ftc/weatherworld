@@ -1231,3 +1231,12 @@ Game metrics and tornado strength (2026-10-17):
   500 mb 46 kt; Moderate 9, 47, 50; High 14, 56, 58 (counts 1-33). High days are the strong-flow days.
   Tried: stronger drag in the outer model's low-level wind (dragReferenceMs 6): High 15%, the shear
   and 500 mb tails unchanged (99th 95 and 90 kt); chaseable afternoons 58%. Not kept.
+- Calibration may lower a chance freely but raise it one contour level at most, and not into a
+  level from 30% (tornado) or 45% (wind, hail) up: Moderate and High must come from the runs. Day 1
+  on seeds 9-16: High issued 5% against 5% verified (10% uncapped), none too high (5%), category
+  right 70% (65% uncapped, 73% uncalibrated); levels up to 15-30% stay calibrated, 30%+ tornado
+  areas verify 64% (under-confident at the top, as forecasters hold back High).
+- Days without a chaseable (ground-fed afternoon) supercell, current climate (72 days): 32; of
+  them 11 in weak shear (under 30 kt), 11 moist and sheared with many storms but a weak cap
+  (inhibition median 26 against 60 on the good days: storms form everywhere and grow into
+  clusters and lines), 9 dry. A moderate cap keeps storms discrete.
