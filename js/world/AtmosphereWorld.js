@@ -178,7 +178,7 @@ export class AtmosphereWorld {
 
     // --- Lines: fronts, drylines and outflow boundaries from the fields, for the maps and the
     // radar. Storms do not read them: they feel a line only through the winds and the air.
-    const analysis = analyseBoundaries(world);
+    const analysis = analyseBoundaries(world, { previous: this.boundaries });
     // How fast the moisture changes here (g/kg per 100 km, smoothed as the analysis smooths): a dryline.
     world.forEachCell((cell, x, y) => { cell.features.moistureGradientGkg100 = analysis.fields.moistureGradient[y * width + x]; });
     this.boundaries = analysis.boundaries.map(line => ({

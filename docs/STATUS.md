@@ -1106,3 +1106,33 @@ Outlook calibration (2026-10-16, step 5 of the plan):
   diagonal too (tornado 30% → 31%, wind 45% → 45%), categories about the same.
 - Day 3 is not calibrated: made from two runs, its fitted curve did not carry over to the other
   seeds (45% areas verified 27%; within one category 83% → 75%).
+
+Step 6, boundaries and the first climate lever (2026-10-17):
+
+- scripts/boundary-report.mjs: boundaries tracked point by point across the line between half-hour
+  analyses (speed and direction), contrasts 64 km either side (afternoon and night), the dryline by
+  local time, outflow lifetimes, fronts about closed lows. The activity report adds days with a
+  supercell and with one fed from the ground.
+- Measured (6 seeds x 8 days): cold fronts 7.6 m/s toward E-SE mostly (about a quarter toward
+  N-W), wind turning about 50 degrees across them (real 45-90), temperature drop 7 F median
+  (75th 12; real 10-15, still short: neither the cold air's depth in the trough pressure,
+  slower relaxation, a stronger outer contrast nor less damping of the outer model's ground air
+  moved it); warm fronts 5.7 m/s toward N-NE; stationary fronts 3 m/s.
+- Front kinds keep continuity between analyses (BoundaryAnalysis typeHysteresisMs 1.5,
+  continuityKm 48): points changing kind each half hour 8% to 4%.
+- The dryline: air entering across the western side is dry, off the high ground (westInflowDry);
+  it took the moisture of its place in the geography, mostly the Gulf's. The dryline now lies
+  furthest west around noon (about 200 km in), moves east into the evening (about 275 km) and
+  back west overnight (real: 100-200 km; it peaks a little late). Dewpoint across it 19 F. Slower
+  erosion of the moist layer (moistureErosionHours, kept at 1) flattened the cycle; letting the
+  map's air only dry toward its target, never moisten, blurred it and raised CAPE.
+- Cold pools warm by the day's heating through their depth (a 4 K pool in full sun about five
+  hours) instead of fading over 3 hours; outflow edges are followed from 2.5 K per 100 km next to
+  storm-cooled air. Storm-cooled air is left at 9 am on 79% of days (11% of the map at the 90th);
+  the tracked outflow lines still break up within 1-2 hours (the tracker follows fragments).
+- A deep-shear floor in steering (support cut below 35-40 kt mid-level wind) did not help:
+  supercell days 81% to 78-83%, tornado days unchanged, High 6% to 9-11%. Not kept.
+
+Now (80 days): quiet 10%, a supercell on 81% of days but one fed from the ground on 60%; every
+tornado-free day lacked a ground-fed supercell; tornado days 71%, mean 3.7; High 6%, Moderate 24%;
+night tornadoes 40% (above the 35% guardrail).

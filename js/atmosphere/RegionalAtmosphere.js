@@ -58,9 +58,9 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // Depth (m) of the near-ground air whose own temperature shows in the pressure (the rest of
   // the column is the outer model's).
   airMassPressureDepthM: 400,
-  // Air cooled by storms' rain (cold pools): how deep it is, and how long it takes to warm
-  // back up under the sun and at night.
-  coldPoolDepthM: 800, coldPoolRecoveryHoursDay: 3, coldPoolRecoveryHoursNight: 8,
+  // Air cooled by storms' rain (cold pools): how deep it is, and how long it takes to warm back up
+  // at night (by day the sun warms it; see fill).
+  coldPoolDepthM: 800, coldPoolRecoveryHoursNight: 8,
   // The mountains west of the map block the mean westerly below their crest: share of it
   // removed at 850 mb and below, fading to none at the crest.
   mountainBlocking: 0.8, crestPressureHpa: 700,
@@ -149,6 +149,17 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // sun has dried it (wetGroundDryingDays of sunshine): wetGroundHeatingCut of the heating goes
   // into evaporation, adding up to wetGroundMoisteningGkgH g/kg an hour at full sun.
   wetGroundDryingDays: 1.5, wetGroundHeatingCut: 0.6, wetGroundMoisteningGkgH: 0.15,
+  // How fast (hours) the moist layer itself is lost where the mixed layer has grown well past it:
+  // its moisture is carried off by the stronger winds aloft. The air at the ground takes the
+  // mixed-down moisture at once (the dryline's eastward surge by day); the layer goes more slowly,
+  // so that after sunset, when the ground air is cut off from the mixing, what is left of it shows
+  // at the ground again and the dryline falls back west.
+  moistureErosionHours: 1,
+  // Air entering across the western side has come down off the high ground, as the lid air has,
+  // and is dry (2026-10-16; it took the moisture of its place in the geography, mostly the Gulf's,
+  // and the dryline had no dry air behind it: it sat furthest east at dawn and furthest west at
+  // noon; now it is furthest west around noon, east into the evening and back west overnight).
+  westInflowDry: 1,
   // Entrainment (mixed-layer models; CLASS): the growing mixed layer draws down warmer air from
   // above it, adding this share of the surface heating to its own warming.
   entrainmentRatio: 0.2,
@@ -498,7 +509,7 @@ export class RegionalAtmosphere {
       let gulf = 0, count = 0;
       for (let x = Math.floor(0.4 * nx); x < nx; x += 2) { gulf += this.gulfAir(outers[(ny - 1) * nx + x]); count++; }
       this.gulfSupply = gulf / count;
-      this.advect(this.moisture, lowWind, (sx, sy) => this.inflowMoisture(sx, sy, outers[sy * nx + sx]), dt);
+      this.advect(this.moisture, lowWind, (sx, sy) => (p.westInflowDry && sx === 0 ? Math.min(p.dryMixingRatio + 1, this.inflowMoisture(sx, sy, outers[sy * nx + sx])) : this.inflowMoisture(sx, sy, outers[sy * nx + sx])), dt);
       this.advect(this.coldPool, lowWind, () => 0, dt);
       this.advect(this.capLift, midWind, () => 0, dt);
       // The moist layer's depth goes with its air; air entering from the Gulf side is shallow
@@ -528,7 +539,15 @@ export class RegionalAtmosphere {
         this.moisture[k] += (this.inflowMoisture(x, y, outer) - this.moisture[k]) * relax;
         this.eml[k] *= Math.exp(-dt / (p.emlLifetimeDays * DAY));
         this.lidTheta[k] -= p.lidCoolingKPerDay * dt / DAY;
-        this.coldPool[k] *= Math.exp(-dt / 3600 / (daytime ? p.coldPoolRecoveryHoursDay : p.coldPoolRecoveryHoursNight));
+        if (daytime) {
+          // The sun warms the rain-cooled layer at the rate the ground heats the air there (less over
+          // wet ground), through its depth: a 4 K pool 800 m deep goes in about five hours of full
+          // sun, a deeper or colder one takes longer. (2026-10-16; it faded over 3 hours whatever
+          // its size, and outflow boundaries lasted 1.5 hours.)
+          const dryHere = 1 - ramp(this.surfaceMixingRatio[k] || this.moisture[k], p.dryMixingRatio + 1, p.gulfMixingRatio - 3);
+          const heating = (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryHere) * (1 - p.wetGroundHeatingCut * this.wetGround[k]) * sun;
+          this.coldPool[k] = Math.max(0, this.coldPool[k] - heating * dt / (RHO_AIR * 1005 * p.coldPoolDepthM));
+        } else this.coldPool[k] *= Math.exp(-dt / 3600 / p.coldPoolRecoveryHoursNight);
         this.capLift[k] = this.capLift[k] * Math.exp(-dt / (p.capLiftHours * 3600)) + (p.capLiftRatio - 1) * outer.ascentKh * dt / 3600;
         const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre;
         this.moistTop[k] = clamp(this.moistTop[k] + liftMs * dt + (p.moistLayerTopM - this.moistTop[k]) * clamp(dt / (p.moistTopDays * DAY), 0, 1), 600, 3500);
@@ -593,7 +612,7 @@ export class RegionalAtmosphere {
       // Where the mixed layer has grown well past the moist layer, the moisture is carried up
       // and away on the stronger winds aloft: the moist layer itself erodes there by day (and is
       // replaced from the east and south at night, when the dryline retreats).
-      if (dt > 0 && daytime && depth > 1.15 * moistDepth) this.moisture[k] += (mixingRatio - this.moisture[k]) * clamp(dt / 3600, 0, 1);
+      if (dt > 0 && daytime && depth > 1.15 * moistDepth) this.moisture[k] += (mixingRatio - this.moisture[k]) * clamp(dt / (p.moistureErosionHours * 3600), 0, 1);
       const temperatureK = (surfaceTheta - this.coldPool[k]) * (surfacePressure / 1000) ** KAPPA;
       const dewpointK = Math.min(temperatureK, dewpointFromMixingRatio(mixingRatio, surfacePressure));
 

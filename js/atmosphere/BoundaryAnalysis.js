@@ -19,8 +19,19 @@ export const BOUNDARY_DEFAULTS = Object.freeze({
   // An outflow boundary is the edge of storm-cooled air at least this much colder (K) than
   // its air mass; such lines are shorter than fronts.
   outflowDeficitK: 1.5, outflowMinLengthKm: 60,
+  // Next to storm-cooled air (a cold pool at least outflowDeficitK cold within two cells) an edge
+  // counts from this weaker contrast (K per 100 km): analysts follow an outflow boundary as a
+  // wind shift long after its contrast has fallen below a front's (2026-10-16: with the front's 5,
+  // outflow boundaries lasted 1.5 hours, a twentieth of them 6 hours or more).
+  outflowGradient: 2.5,
   // Cold air advancing or retreating slower than this (m/s) makes the front stationary.
   stationarySpeedMs: 2,
+  // Continuity, as analysts keep it from one map to the next (2026-10-16): where the last analysis
+  // had a front within continuityKm, it keeps its kind until the cold air's push has passed the
+  // threshold by typeHysteresisMs the other way (a cold front turns stationary below 0.5 m/s, a
+  // stationary one cold or warm beyond 3.5). Without it 8% of front points changed kind every half
+  // hour. Only the drawing: storms read the fields, not the lines.
+  typeHysteresisMs: 1.5, continuityKm: 48,
   // How far into the cold air its wind is read (cells), and how far a moisture line must be
   // from a front, and how much colder its dry side may be, to count as a dryline.
   coldSideReachCells: 2, drylineFrontClearanceCells: 3, drylineColdSideLimitK: 2
@@ -119,6 +130,16 @@ const lengthKm = (points, cellKm) => points.slice(1).reduce((sum, p, i) => sum +
 // Returns { boundaries, fields } for the world's current state. Each boundary:
 //   { id, type: 'cold' | 'warm' | 'stationary' | 'dryline' | 'outflow', symbolSide, pointsKm: [{ x, y }], lengthKm,
 //     contrast (K or g/kg per 100 km), advanceMs (cold or dry air moving toward the warm, moist side) }
+// The kind of front for the cold air's push across it (m/s, toward the warm air), given the kind
+// the last analysis had there (or null).
+function frontKind(advance, previous, p) {
+  const s = p.stationarySpeedMs, h = previous ? p.typeHysteresisMs : 0;
+  if (previous === 'cold' && advance > s - h) return 'cold';
+  if (previous === 'warm' && advance < -(s - h)) return 'warm';
+  const reach = previous === 'stationary' ? s + h : s;
+  return advance > reach ? 'cold' : advance < -reach ? 'warm' : 'stationary';
+}
+
 export function analyseBoundaries(world, options = {}) {
   const p = { ...BOUNDARY_DEFAULTS, ...options }, { width, height } = world, cellKm = world.cellSizeKm;
   const raw = readFields(world);
@@ -127,10 +148,20 @@ export function analyseBoundaries(world, options = {}) {
   const thermal = gradient(temperature, width, height, cellKm), moist = gradient(moisture, width, height, cellKm);
   const minCells = Math.max(3, Math.round(p.minLengthKm / cellKm / 1.2)), frontCells = Math.max(3, Math.round((p.frontMinLengthKm ?? p.minLengthKm) / cellKm / 1.2)), edge = p.smoothingPasses + 2;
   const boundaries = [];
+  // The kind the last analysis gave the front nearest a point (cell coordinates), if any was near.
+  const before = (options.previous ?? []).filter(b => b.type === 'cold' || b.type === 'warm' || b.type === 'stationary').flatMap(b => b.pointsKm.map(q => ({ x: q.x / cellKm - 0.5, y: q.y / cellKm - 0.5, type: b.type })));
+  const kindBefore = point => { let best = null, reach = (p.continuityKm / cellKm) ** 2; for (const q of before) { const d = (q.x - point.x) ** 2 + (q.y - point.y) ** 2; if (d <= reach) { reach = d; best = q.type; } } return best; };
   const toKm = point => ({ x: Math.round((point.x + 0.5) * cellKm * 10) / 10, y: Math.round((point.y + 0.5) * cellKm * 10) / 10 });
 
   // --- Fronts.
   const frontCrest = crestCells(thermal, width, height, p.frontGradient, edge);
+  {
+    const weak = crestCells(thermal, width, height, p.outflowGradient ?? p.frontGradient, edge);
+    for (let k = 0; k < weak.length; k++) if (weak[k] && !frontCrest[k]) {
+      const x = k % width, y = (k - x) / width;
+      near: for (let yy = Math.max(0, y - 2); yy <= Math.min(height - 1, y + 2); yy++) for (let xx = Math.max(0, x - 2); xx <= Math.min(width - 1, x + 2); xx++) if (raw.coldPool[yy * width + xx] >= p.outflowDeficitK) { frontCrest[k] = 1; break near; }
+    }
+  }
   // Moist air is usually the cooler air mass, so a dryline has a temperature contrast too. A
   // contrast whose cool side is the moist side of a sharp moisture change is the dryline, not
   // a front: behind a front the air is colder and drier.
@@ -155,7 +186,7 @@ export function analyseBoundaries(world, options = {}) {
     // The kind of front can change along it (cold on one flank of a low, warm on the other).
     const advance = points.map((_, i) => { let sum = 0, count = 0; for (let j = Math.max(0, i - 2); j <= Math.min(points.length - 1, i + 2); j++) { sum += points[j].advance; count++; } return sum / count; });
     // The edge of storm-cooled air is an outflow boundary whichever way it is moving.
-    const kind = advance.map((a, i) => (points[i].outflow ? 'outflow' : a > p.stationarySpeedMs ? 'cold' : a < -p.stationarySpeedMs ? 'warm' : 'stationary'));
+    const kind = advance.map((a, i) => (points[i].outflow ? 'outflow' : frontKind(a, kindBefore(points[i]), p)));
     const half = Math.max(2, Math.floor(Math.min(minCells, outflowCells) / 2));
     for (let i = 0; i < kind.length;) {   // short runs take the kind of the run before them
       let j = i; while (j < kind.length && kind[j] === kind[i]) j++;
