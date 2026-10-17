@@ -28,13 +28,22 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // Terrain: High Plains rising to the west (m above sea level).
   terrainEastM: 300, terrainWestM: 1500, terrainShape: 1.25,
   // Reference state at the map centre for a warm-season Plains air mass.
-  airMassThetaK: 302.5,               // potential temperature of the low-level air mass
+  // (302.5 to 301 on 2026-10-16, with Gulf air back at 16 g/kg: the warm sector ran at 85 F over
+  // 66 F, cloud bases near 1,500 m and the tornado parameter low; now about 83 F over 67 F.)
+  airMassThetaK: 301,                 // potential temperature of the low-level air mass
   plateauWarmthK: 11,                 // the air over the high ground is hotter (and deeply mixed)
   // Lee trough: westerly flow descending the high ground lowers the pressure along its foot;
   // the low-level wind east of it turns southerly. (The outer model has no mountains, so this
   // part is set here. The thermal low over the hot plateau is not set: it follows from the
   // temperature of the low-level air, see thermalBalance.)
-  leeTroughFlowHpa: 7, leeTroughColumn: 0.2, leeTroughWidthKm: 450, leeFlowMs: 15,
+  // leeTroughColumn 0.2 to 0.39 on 2026-10-16: the axis along the foot of the high ground at
+  // the map's western edge (ground near 1,000 m, where lee troughs lie over the Plains) instead
+  // of 80 km west of the map, where neither it nor the lows that form in it could be seen.
+  leeTroughFlowHpa: 4, leeTroughColumn: 0.39, leeTroughWidthKm: 450, leeFlowMs: 15,
+  // Lee cyclogenesis: where the outer model's ascent (an approaching trough) crosses the lee
+  // trough, air descending the slope is stretched and the trough deepens there, by up to
+  // leeCycloneGain of its depth at leeCycloneAscentKh, into a closed low.
+  leeCycloneGain: 0.5, leeCycloneAscentKh: 0.2,
   // The geography (the rise to the high ground, the lee trough, where dry, continental and
   // Gulf air come from) is laid out over geographyColumns cells from its western edge; the map
   // starts geographyOffset cells east of that edge. With 0 and null the map spans all of it.
@@ -45,7 +54,10 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   thermalSmoothingCells: 8, residualHeatHours: 8,
   // The same for the contrasts between air masses that the wind has brought together (fronts):
   // their cold air is shallow (coldAirDepthM), and the pressure follows its edge more closely.
-  airMassPressureSmoothingCells: 3,
+  airMassPressureSmoothingCells: 2,
+  // Depth (m) of the near-ground air whose own temperature shows in the pressure (the rest of
+  // the column is the outer model's).
+  airMassPressureDepthM: 400,
   // Air cooled by storms' rain (cold pools): how deep it is, and how long it takes to warm
   // back up under the sun and at night.
   coldPoolDepthM: 800, coldPoolRecoveryHoursDay: 3, coldPoolRecoveryHoursNight: 8,
@@ -57,19 +69,30 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // lies overhead the temperature falls off faster with height: 500 mb is this share of the
   // way from its ordinary temperature to the dry adiabat through 700 mb.
   emlLapseShare: 0.45,
-  // Moisture offshore. A front that reaches the Gulf replaces the moist air there with drier
-  // air (down to gulfScouredMixingRatio, over gulfScourHours of northerly flow of
-  // gulfScourWindMs across the map's southern edge); afterwards the sea moistens it again
-  // over gulfRecoveryDays. So the moisture coming back north after a front is modest at first.
-  gulfScouredMixingRatio: 8.5, gulfScourHours: 12, gulfScourWindMs: 6, gulfRecoveryDays: 4.5,
+  // Moisture offshore: the Gulf's air is gulfMixingRatio plus the outer model's moisture anomaly
+  // near the ground there (its surfaceMoisture; 2026-10-16, in place of this layer's own scouring
+  // by northerly wind at the map's southern edge and recovery over 2.5 days, which the outer
+  // field now does over the whole country). After a front has dried the air over the Gulf, the
+  // moisture coming back north is modest at first, and shallow (moistReturnShallowM) while it is
+  // still near gulfScouredMixingRatio. The Gulf's air is at most gulfMixingRatio + gulfMoistMoreGkg
+  // (1.5 gave warm sectors at 17.5 g/kg, a CAPE 90th of 4,100 and Moderate on 28% of days).
+  gulfScouredMixingRatio: 8.5, gulfMoistMoreGkg: 0.5,
   // How strongly each level follows the outer model's tropospheric temperature. Cold air
   // masses are shallow and sharpest near the ground. Warm ones are not: the moist air under a
   // warm pattern comes off the sea and keeps close to the sea's temperature, and the warmth
   // shows above it instead, which is what strengthens the cap.
-  temperatureShare: { lowCold: 1.8, lowWarm: 0.7, 700: 1.0, 500: 0.9, 250: 0.3 },
+  temperatureShare: { 700: 1.0, 500: 0.9, 250: 0.3 },
+  // The low-level air masses come from the outer model's air near the ground (its surface
+  // temperature, carried by its low-level flow over the whole country; 2026-10-16, in place of
+  // 1.8 times its 250-750 mb temperature, which varies far too little to make a front). Warm
+  // anomalies count at surfaceWarmShare: warm-sector air comes off the sea and keeps close to
+  // the sea's temperature. (0.45 to 0.3 on 2026-10-16 with the cap: the warm sector reached 88-93 F
+  // by afternoon and its CAPE ran at twice the real values.)
+  surfaceWarmShare: 0.3,
   // Moisture: mixing ratio (g/kg) of the air entering at each side, and the altitude of the
-  // top of the Gulf moist layer.
-  gulfMixingRatio: 16, continentalMixingRatio: 7, dryMixingRatio: 3.5, moistLayerTopM: 2100,
+  // top of the Gulf moist layer. (2026-10-16: continental air 0.55 to 0.45 of saturation, so the
+  // dewpoint falls further behind fronts.)
+  gulfMixingRatio: 16, continentalMixingRatio: 7, continentalHumidity: 0.45, dryMixingRatio: 3.5, moistLayerTopM: 2100,
   // Boundary layer.
   // Peak heating of the air by the ground: moist, vegetated ground puts most of the sun's
   // energy into evaporation, dry ground into heating the air.
@@ -78,7 +101,10 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // balanced wind of the layer, less this share lost to friction at the ground. The wind at
   // the ground is surfaceWindShare of it, backed by surfaceBackingDeg. At sunset the layer is
   // cut off from the ground and its departure from balance swings freely: the night-time jet.
-  mixedLayerFriction: 0.3, surfaceWindShare: 0.75, surfaceBackingDeg: 22,
+  // (2026-10-16: friction 0.3 to 0.4, turning 22 to 15 degrees by day and 38 to 25 at night,
+  // with the lee trough at most 4 hPa instead of 7: helicity in the lowest km came down from a
+  // median of 138 to 96, 90th 311 to 220; the night turning made the evening's jump.)
+  mixedLayerFriction: 0.4, surfaceWindShare: 0.75, surfaceBackingDeg: 15, surfaceBackingNightDeg: 25,
   // Most of the mid-level wind a mixed layer 3 km deep brings down to the ground.
   momentumMixingShare: 0.7,
   // Hot, dry mixed air from the high terrain (elevated mixed layer, Carlson et al. 1983): the
@@ -90,8 +116,10 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // Its main source is beyond the map: the deep afternoon mixed layer over the higher, hotter
   // desert plateau to the west and south-west. Lid air entering across the map's western side
   // has that layer's potential temperature (K), changed by the outer model's warmth there that day.
-  // (318 gave a cap that held for days over the best air: no severe weather on 18% of days.)
-  lidSourceThetaK: 316,
+  // (318 gave a cap that held for days over the best air: no severe weather on 18% of days. That
+  // was with the lid covering at most 0.6-0.7 of the map; 316 to 315.5 on 2026-10-16 once the lid
+  // air came in whole, and 317 gave quiet days on half the days.)
+  lidSourceThetaK: 315.5,
   airMassRelaxationDays: 2,
   // Average turning of the wind toward low pressure through the low-level air mass (degrees):
   // the friction layer's flow across the isobars, which carries the air masses into troughs.
@@ -166,6 +194,10 @@ export class RegionalAtmosphere {
     this.previousMid = null;
     // The region may slide east (+) or west along the outer model (m/s); see RegionSteering.
     this.slideMs = 0;
+    // ...and north (+) or south (slideNorthMs). Only the weather overhead changes with it, not
+    // the map's climate: the mean north-south fall of temperature and the 500 mb height reference
+    // are taken about the map's own place (homeY is where it started).
+    this.slideNorthMs = 0; this.homeY = this.origin.y;
     // A forecast run's timing error (ensemblePerturbation.js): its weather systems travel this
     // much faster (+) than the model has them (m/s), and how far ahead that has put them (m).
     // Always zero in the live world.
@@ -190,16 +222,21 @@ export class RegionalAtmosphere {
   position(x, y) { return { x: this.origin.x + (x + 0.5) * this.dx, y: this.origin.y + (this.ny - 0.5 - y) * this.dx }; }
   outerAt(x, y) { const at = this.position(x, y); return this.outer(at.x, at.y); }
 
-  // Outer-model fields at a point (bilinear in the channel grid).
+  // Outer-model fields at a point (bilinear in the channel grid; the weather repeats north-south,
+  // so rows wrap).
   outer(xm, ym) {
-    const m = this.model, gx = xm / m.d, gy = ym / m.d - 0.5;
-    const i0 = Math.floor(gx), j0 = clamp(Math.floor(gy), 1, m.ny - 3), tx = gx - i0, ty = clamp(gy - j0, 0, 1);
-    const out = { upperU: 0, upperV: 0, lowerU: 0, lowerV: 0, layerK: 0, lowPsi: 0, midPsi: 0, ascentKh: 0, north: ym - m.lengthY / 2 };
+    const m = this.model, gx = xm / m.d, gy = ym / m.d - 0.5, shift = this.origin.y - (this.homeY ?? this.origin.y);
+    const i0 = Math.floor(gx), j0 = Math.floor(gy), tx = gx - i0, ty = gy - j0;
+    const out = { upperU: 0, upperV: 0, lowerU: 0, lowerV: 0, layerK: 0, lowPsi: 0, midPsi: 0, ascentKh: 0, surfaceK: 0, surfaceQ: 0, north: ym - m.lengthY / 2 - shift };
     for (const [di, dj, w] of [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]]) {
       const f = m.fieldsAt(((i0 + di) % m.nx + m.nx) % m.nx, j0 + dj);
       out.upperU += w * f.upperWind.u; out.upperV += w * f.upperWind.v; out.lowerU += w * f.lowerWind.u; out.lowerV += w * f.lowerWind.v;
-      out.layerK += w * f.layerTemperatureK; out.lowPsi += w * f.lowerDisturbanceStreamfunction; out.midPsi += w * f.midStreamfunction; out.ascentKh += w * (f.ascentCoolingKh ?? 0);
+      out.layerK += w * f.layerTemperatureK; out.lowPsi += w * f.lowerDisturbanceStreamfunction; out.midPsi += w * f.midStreamfunction; out.ascentKh += w * (f.ascentCoolingKh ?? 0); out.surfaceK += w * (f.surfaceThetaK ?? 0); out.surfaceQ += w * (f.surfaceMoistureGkg ?? 0);
     }
+    // The mean state's own fall northward is taken about the map's place, not the slide's.
+    const q = m.params;
+    out.layerK += q.f0 * (q.upperWindMs - q.lowerWindMs) * shift / (RD * Math.log(3));
+    out.midPsi += (q.upperWindMs + q.lowerWindMs) / 2 * shift;
     return out;
   }
 
@@ -226,21 +263,36 @@ export class RegionalAtmosphere {
   // How far up the slope a place is (0 on the low plains, 1 at the western edge).
   plateau(terrain) { return ramp(terrain, this.params.terrainEastM, this.params.terrainWestM); }
   airMassTheta(outer, terrain) {
-    const p = this.params, anomaly = outer.layerK - this.referenceLayerK;
-    return p.airMassThetaK + (anomaly < 0 ? p.temperatureShare.lowCold : p.temperatureShare.lowWarm) * anomaly + p.plateauWarmthK * this.plateau(terrain);
+    const p = this.params, q = this.model.params;
+    // The ground-level air about the middle of the map: its own anomaly and the mean fall northward.
+    const anomaly = outer.surfaceK - (q.surfaceGradientKPer1000Km ?? 0) * outer.north / 1e6;
+    return p.airMassThetaK + (anomaly > 0 ? p.surfaceWarmShare : 1) * anomaly + p.plateauWarmthK * this.plateau(terrain);
   }
 
   // Lee trough: westerly flow descending the high ground lowers the pressure along its foot,
   // most when the mid-level flow crosses it squarely. Returns the pressure change (hPa) and the
   // southerly balanced wind (m/s) it adds near the ground east of the trough axis
   // (v = dp/dx / (rho f)); the trough is shallow and is gone by 700 mb.
+  // The lee trough over the map (hPa) and the balanced wind it adds near the ground (m/s, east
+  // and north), worked out from its pressure as the other pressure patterns are.
+  leeTroughField(outers) {
+    const { nx, ny, dx } = this, f0 = this.model.params.f0, n = nx * ny;
+    const pressure = this.leeHpa ??= new Float64Array(n), u = this.leeU ??= new Float64Array(n), v = this.leeV ??= new Float64Array(n);
+    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) pressure[y * nx + x] = this.leeTrough(x, outers[y * nx + x]).pressureHpa;
+    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+      const k = y * nx + x, e = Math.min(nx - 1, x + 1), w = Math.max(0, x - 1), north = Math.max(0, y - 1), south = Math.min(ny - 1, y + 1);
+      const eastward = (pressure[y * nx + e] - pressure[y * nx + w]) * 100 / ((e - w) * dx), northward = (pressure[north * nx + x] - pressure[south * nx + x]) * 100 / ((south - north) * dx);
+      u[k] = -northward / (RHO_AIR * f0); v[k] = eastward / (RHO_AIR * f0);
+    }
+  }
+
   leeTrough(x, outer) {
     const p = this.params, width = p.leeTroughWidthKm * 1000;
     // The trough deepens with the flow across the high ground and levels off as it strengthens
     // (it was linear up to 2.5 times leeTroughFlowHpa, which gave lee troughs of up to 17 hPa
     // and a balanced southerly of over 40 kt beside them; real ones are a few hPa).
     const cross = Math.tanh(Math.max(0, this.windAt(outer, 700).u) / p.leeFlowMs);
-    const depthHpa = p.leeTroughFlowHpa * cross;
+    const depthHpa = p.leeTroughFlowHpa * cross * (1 + p.leeCycloneGain * clamp((outer.ascentKh ?? 0) / p.leeCycloneAscentKh, 0, 1));
     const distance = (x + this.geographyOffset - p.leeTroughColumn * ((p.geographyColumns ?? this.nx) - 1)) * this.dx, shape = Math.exp(-((distance / width) ** 2));
     return { pressureHpa: -depthHpa * shape, wind: depthHpa * 100 * shape * 2 * distance / (width * width) / (1.2 * this.model.params.f0) };
   }
@@ -267,10 +319,11 @@ export class RegionalAtmosphere {
       const k = y * nx + x, terrain = cell.terrain.elevationM;
       const column = p.plateauWarmthK * this.plateau(terrain) * Math.min(this.airMassDepth(terrain, k), Math.max(600, 3050 - terrain)) + Math.max(this.heat[k], this.residualHeat[k]);   // K m
       pressure[k] = -RHO_AIR * GRAVITY * column / this.theta[k];   // Pa
-      // The air masses the wind has drawn together here (fronts) are sharper than the outer
-      // model's smooth temperature; their cold side is heavier, so the pressure rises behind a
-      // front and the front lies in a trough.
-      airMass[k] = -RHO_AIR * GRAVITY * p.coldAirDepthM * (this.theta[k] - this.airMassTheta(outers[k], terrain)) / this.theta[k];
+      // The low-level air masses (fronts) differ from the temperature the outer model's pressure
+      // already holds (its 250-750 mb layer); the cold side is heavier, so the pressure rises
+      // behind a front and the front lies in a trough.
+      const layerHeld = p.airMassThetaK + (outers[k].layerK - this.referenceLayerK) + p.plateauWarmthK * this.plateau(terrain);
+      airMass[k] = -RHO_AIR * GRAVITY * p.airMassPressureDepthM * (this.theta[k] - layerHeld) / this.theta[k];
     });
     const smooth = (field, r) => {
       for (let pass = 0; pass < 2 && r > 0; pass++) {
@@ -342,12 +395,36 @@ export class RegionalAtmosphere {
     this.geographyVersion++;
   }
 
+  // The Gulf's air (g/kg) for the outer model's air near the ground at a place: gulfMixingRatio
+  // plus the outer model's moisture anomaly there (about the map's own place, as the temperature),
+  // and a forecast run's own error in it (ensemblePerturbation.js; 0 in the live world).
+  gulfAir(outer) {
+    const p = this.params, q = this.model.params;
+    const anomaly = outer.surfaceQ + (q.surfaceMoistureGradientGkgPer1000Km ?? 0) * outer.north / 1e6;
+    return clamp(p.gulfMixingRatio + anomaly + (this.gulfMoistureErrorGkg ?? 0), p.dryMixingRatio, p.gulfMixingRatio + p.gulfMoistMoreGkg);
+  }
+
   // Moisture of the air entering the map: Gulf air along the south-eastern side, continental
-  // air to the north, dry air off the high ground to the west.
-  inflowMoisture(x, y) {
+  // air to the north, dry air off the high ground to the west. It is also what the air on the map
+  // is drawn toward over airMassRelaxationDays, as its temperature is (2026-10-16; until then the
+  // air was only ever dried, toward continentalHumidity of what its temperature allows, and Gulf
+  // air in a warm sector at 16 g/kg was drawn toward about 9).
+  inflowMoisture(x, y, outer = this.outerAt(x, y)) {
     const p = this.params, east = this.eastShare(x), south = y / (this.ny - 1);
     const gulf = (0.45 + 0.55 * south) * ramp(east, 0.1, 0.4);
-    return p.dryMixingRatio + (p.continentalMixingRatio - p.dryMixingRatio) * ramp(east, 0.05, 0.3) + (this.gulfSupply - p.continentalMixingRatio) * gulf;
+    // Continental air holds the moisture its temperature allows (continentalHumidity of
+    // saturation, at most continentalMixingRatio): air from the cold north is dry because it is
+    // cold, which is the dryness behind a cold front.
+    const continental = Math.min(p.continentalMixingRatio, this.continentalMoisture(outer, this.terrainAt(x)));
+    return p.dryMixingRatio + (continental - p.dryMixingRatio) * ramp(east, 0.05, 0.3) + (Math.max(continental, this.gulfAir(outer)) - continental) * gulf;
+  }
+
+  // Moisture (g/kg) continental air of the air mass the outer model has here can hold at
+  // continentalHumidity.
+  continentalMoisture(outer, terrain) {
+    const pressure = 1000 * Math.exp(-terrain / 8434.5), temperatureC = this.airMassTheta(outer, terrain) * (pressure / 1000) ** KAPPA - 273.15;
+    const vapour = 6.112 * Math.exp(17.67 * temperatureC / (temperatureC + 243.5));
+    return this.params.continentalHumidity * 622 * vapour / (pressure - vapour);
   }
 
   // Semi-Lagrangian transport by the low-level (or given) wind; air entering takes the
@@ -377,12 +454,13 @@ export class RegionalAtmosphere {
   step() {
     const p = this.params, dt = p.stepSeconds;
     this.driftGeography(dt);
-    if (this.slideMs || this.timingErrorMs) {
+    if (this.slideMs || this.slideNorthMs || this.timingErrorMs) {
       // Slide first, then read the heights at the new place before the model moves on, so
       // that their change over the step is the passing weather and not the slide itself.
       const length = this.model.lengthX;
       // Systems running ahead of the model are the same as reading the model further back.
       this.origin.x = ((this.origin.x + (this.slideMs - this.timingErrorMs) * dt) % length + length) % length;
+      this.origin.y += this.slideNorthMs * dt;
       this.timingLeadM += this.timingErrorMs * dt;
       const mid = this.previousMid ??= new Float64Array(this.nx * this.ny);
       for (let y = 0; y < this.ny; y++) for (let x = 0; x < this.nx; x++) mid[y * this.nx + x] = this.outerAt(x, y).midPsi;
@@ -401,6 +479,7 @@ export class RegionalAtmosphere {
     for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) outers[y * nx + x] = this.outerAt(x, y);
 
     this.thermalBalance(outers);
+    this.leeTroughField(outers);
     this.coldPush();
     if (dt > 0) {
       // Air masses move with the low-level wind, the elevated mixed layer with the 700 mb wind.
@@ -409,34 +488,44 @@ export class RegionalAtmosphere {
         const k = y * nx + x, w = this.windAt(outers[k], 900), mixed = daytime ? this.momentumMixing(this.mixedDepth[k]) : 0, aloft = this.windAt(outers[k], 700);
         // Friction in the layer turns the balanced wind toward low pressure, so the air runs
         // into troughs, fronts among them, and draws their air masses together.
-        const bu = w.u + 0.85 * this.thermalU[k], bv = w.v + 0.85 * (this.thermalV[k] + this.leeTrough(x, outers[k]).wind);
+        const bu = w.u + 0.85 * (this.thermalU[k] + this.leeU[k]), bv = w.v + 0.85 * (this.thermalV[k] + this.leeV[k]);
         const u = bu * inflowCos - bv * inflowSin + this.ageoU[k], v = bu * inflowSin + bv * inflowCos + this.ageoV[k];
         return { u: u + mixed * (aloft.u - u) + this.coldPushU[k], v: v + mixed * (aloft.v - v) + this.coldPushV[k] };
       };
       const midWind = (x, y) => this.windAt(outers[y * nx + x], 700);
       this.advect(this.theta, lowWind, (sx, sy) => this.airMassTheta(outers[sy * nx + sx], world.cells[sy][sx].terrain.elevationM), dt);
-      // Offshore moisture: scoured by northerly flow across the southern edge, restored by the sea.
-      let northerly = 0, count = 0;
-      for (let x = Math.floor(0.4 * nx); x < nx; x += 2) { northerly += -lowWind(x, ny - 1).v; count++; }
-      const scour = clamp(northerly / count / p.gulfScourWindMs, 0, 1);
-      this.gulfSupply += (p.gulfScouredMixingRatio - this.gulfSupply) * scour * clamp(dt / (p.gulfScourHours * 3600), 0, 1) + (p.gulfMixingRatio - this.gulfSupply) * (1 - scour) * clamp(dt / (p.gulfRecoveryDays * DAY), 0, 1);
-      this.advect(this.moisture, lowWind, (sx, sy) => this.inflowMoisture(sx, sy), dt);
+      // The Gulf's air along the map's south-eastern edge (it sets how deep the moisture coming back is).
+      let gulf = 0, count = 0;
+      for (let x = Math.floor(0.4 * nx); x < nx; x += 2) { gulf += this.gulfAir(outers[(ny - 1) * nx + x]); count++; }
+      this.gulfSupply = gulf / count;
+      this.advect(this.moisture, lowWind, (sx, sy) => this.inflowMoisture(sx, sy, outers[sy * nx + sx]), dt);
       this.advect(this.coldPool, lowWind, () => 0, dt);
       this.advect(this.capLift, midWind, () => 0, dt);
       // The moist layer's depth goes with its air; air entering from the Gulf side is shallow
       // while the Gulf is still recovering from a front.
       const returnTop = p.moistReturnShallowM + (p.moistLayerTopM - p.moistReturnShallowM) * ramp(this.gulfSupply, p.gulfScouredMixingRatio, p.gulfMixingRatio - 1);
       this.advect(this.moistTop, lowWind, (sx, sy) => (this.eastShare(sx) > 0.3 ? returnTop : p.moistLayerTopM), dt);
-      this.advect(this.eml, midWind, (sx, sy) => ramp(world.cells[sy][sx].terrain.elevationM, p.emlSourceTerrainM - 300, p.emlSourceTerrainM), dt);
-      this.advect(this.lidTheta, midWind, (sx, sy) => (sx === 0 || (sy === ny - 1 && this.eastShare(sx) < 0.5) ? p.lidSourceThetaK + p.temperatureShare[700] * (outers[sy * nx + sx].layerK - this.referenceLayerK) : this.lidTheta[sy * nx + sx]), dt);
+      // Lid air entering across the western side (and the western half of the southern side) has
+      // come off the plateau beyond the map, so it is all lid air, as hot as its source; elsewhere
+      // what enters is what the edge itself holds. (Until 2026-10-16 the share came from the edge
+      // cell's own terrain, about 1,050 m: the lid never covered more than 0.6-0.7 of the moist
+      // air, 700 mb stayed near 9 C and the cap was gone by 21Z almost everywhere.)
+      const offPlateau = (sx, sy) => sx === 0 || (sy === ny - 1 && this.eastShare(sx) < 0.5);
+      this.advect(this.eml, midWind, (sx, sy) => (offPlateau(sx, sy) ? 1 : ramp(world.cells[sy][sx].terrain.elevationM, p.emlSourceTerrainM - 300, p.emlSourceTerrainM)), dt);
+      this.advect(this.lidTheta, midWind, (sx, sy) => (offPlateau(sx, sy) ? p.lidSourceThetaK + p.temperatureShare[700] * (outers[sy * nx + sx].layerK - this.referenceLayerK) : this.lidTheta[sy * nx + sx]), dt);
     }
 
     world.validHourUtc = this.hourUtc;
     world.forEachCell((cell, x, y) => {
       const k = y * nx + x, outer = outers[k], terrain = cell.terrain.elevationM;
       if (dt > 0) {
-        // The air mass stays tied to the troposphere above it over a couple of days.
-        this.theta[k] += (this.airMassTheta(outer, terrain) - this.theta[k]) * clamp(dt / (p.airMassRelaxationDays * DAY), 0, 1);
+        // The air mass stays tied to the air near the ground in the outer model over a couple of
+        // days: its temperature, and its moisture (the air coming in here would have; see
+        // inflowMoisture): moist where the large-scale flow has brought the Gulf's air, dry where
+        // a front has swept it away or the air came from a cold land.
+        const relax = clamp(dt / (p.airMassRelaxationDays * DAY), 0, 1);
+        this.theta[k] += (this.airMassTheta(outer, terrain) - this.theta[k]) * relax;
+        this.moisture[k] += (this.inflowMoisture(x, y, outer) - this.moisture[k]) * relax;
         this.eml[k] *= Math.exp(-dt / (p.emlLifetimeDays * DAY));
         this.lidTheta[k] -= p.lidCoolingKPerDay * dt / DAY;
         this.coldPool[k] *= Math.exp(-dt / 3600 / (daytime ? p.coldPoolRecoveryHoursDay : p.coldPoolRecoveryHoursNight));
@@ -444,7 +533,7 @@ export class RegionalAtmosphere {
         const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre;
         this.moistTop[k] = clamp(this.moistTop[k] + liftMs * dt + (p.moistLayerTopM - this.moistTop[k]) * clamp(dt / (p.moistTopDays * DAY), 0, 1), 600, 3500);
       }
-      const { pressureHpa: leePressureHpa, wind: leeWind } = this.leeTrough(x, outer);
+      const leePressureHpa = this.leeHpa[k], leeU = this.leeU[k], leeV = this.leeV[k];
       // Rain-cooled air is heavier: the pressure under it is higher (the storm's mesohigh).
       const coldPoolHpa = RHO_AIR * GRAVITY * p.coldPoolDepthM * this.coldPool[k] / this.theta[k] / 100;
       const surfacePressure = (1013 + leePressureHpa + this.thermalHpa[k] + coldPoolHpa + this.balancedPressureHpa(outer)) * Math.exp(-terrain / 8434.5);
@@ -514,8 +603,8 @@ export class RegionalAtmosphere {
       const geo850 = this.windAt(outer, 850), geoSurface = this.windAt(outer, 1000);
       // The pressure pattern owed to the low-level air fades upward through that air.
       const z850 = Math.max(0, 1460 - terrain), thermalShare850 = clamp(1 - z850 / height700, 0, 1);
-      geo850.u += thermalShare850 * this.thermalU[k]; geo850.v += 0.7 * leeWind + thermalShare850 * this.thermalV[k];
-      geoSurface.u += this.thermalU[k]; geoSurface.v += leeWind + this.thermalV[k];
+      geo850.u += 0.7 * leeU + thermalShare850 * this.thermalU[k]; geo850.v += 0.7 * leeV + thermalShare850 * this.thermalV[k];
+      geoSurface.u += leeU + this.thermalU[k]; geoSurface.v += leeV + this.thermalV[k];
       const layerWind = { u: (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.u + geo850.u), v: (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.v + geo850.v) };
       if (dt > 0) {
         if (daytime) {
@@ -536,7 +625,7 @@ export class RegionalAtmosphere {
       w850.u += mixedDown * (w700.u - w850.u) + 0.5 * this.coldPushU[k]; w850.v += mixedDown * (w700.v - w850.v) + 0.5 * this.coldPushV[k];
       // Surface wind: the mixed layer's wind by day, the mean of the lowest levels at night,
       // slowed and turned toward low pressure by friction (more so at night).
-      const drag = daytime ? p.surfaceWindShare : 0.4, turn = (daytime ? p.surfaceBackingDeg : 38) * Math.PI / 180;
+      const drag = daytime ? p.surfaceWindShare : 0.4, turn = (daytime ? p.surfaceBackingDeg : p.surfaceBackingNightDeg) * Math.PI / 180;
       const low = daytime ? layerWind : { u: 0.5 * (geoSurface.u + w850.u), v: 0.5 * (geoSurface.v + w850.v) };
       const base = { u: low.u + mixedDown * (w700.u - low.u), v: low.v + mixedDown * (w700.v - low.v) };
       const surfaceWind = { u: drag * (base.u * Math.cos(turn) - base.v * Math.sin(turn)) + this.coldPushU[k], v: drag * (base.u * Math.sin(turn) + base.v * Math.cos(turn)) + this.coldPushV[k] };

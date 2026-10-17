@@ -56,12 +56,15 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
   const active = existingStorms.filter(storm => storm.active !== false);
   if (active.length >= MAX_ACTIVE_STORMS) return [];
   const seed = world.evolution?.config?.seed ?? 'seed';
+  // A forecast run's own error in the lift that starts storms (ensemblePerturbation.js); 1 in
+  // the live world.
+  const liftScale = Number(world.forecastLiftScale) || 1;
   const candidates = [];
 
   for (let y = 1; y < world.height - 1; y++) {
     for (let x = 1; x < world.width - 1; x++) {
       const cell = world.getCell(x, y);
-      const start = diagnoseInitiation(cell);
+      const start = diagnoseInitiation(cell, liftScale);
       if (!start?.canStart) continue;
       const { synoptic, boundary, terrain, thermals, surfaceLift, elevatedLift, mlCape, mlCin, muCape, muCin, elevated } = start;
       const xKm = (x + nextUnit(seed, hourUtc, x, y, 'x')) * world.cellSizeKm;
@@ -108,7 +111,8 @@ export function kainFritschLift(w, lclAgl, capDepth) {
   return 9.81 * warming / 293 * capDepth;
 }
 
-export function diagnoseInitiation(cell) {
+// liftScale: a forecast run's error in the mesoscale lift (1: none).
+export function diagnoseInitiation(cell, liftScale = 1) {
   const sounding = cell.derived?.sounding;
   if (!sounding) return null;
   const terrainM = Number(cell.terrain?.elevationM) || 0, features = cell.features ?? {}, dynamics = cell.dynamics ?? {};
@@ -126,10 +130,10 @@ export function diagnoseInitiation(cell) {
   const heatFlux = clamp(Number(features.surfaceHeating) || 0, 0, 1) * FULL_HEATING_WM2;
   const wStar = Math.cbrt(9.81 / 300 * heatFlux / (1.2 * 1005) * mixedDepth);
   const thermalLift = 0.5 * (THERMAL_PEAK * wStar) ** 2;
-  const surfaceLift = kainFritschLift(w, lclAgl, capDepth) + thermalLift;
+  const surfaceLift = liftScale * (kainFritschLift(w, lclAgl, capDepth) + thermalLift);
   // Elevated parcels: warm air lifted over cooler air, the low-level jet's convergence, ascent.
   const wElevated = Math.max(0, Number(features.isentropicLiftMs) || 0) + Math.max(0, Number(features.jetConvergenceLiftMs) || 0) + wLarge;
-  const elevatedLift = kainFritschLift(wElevated, 1500, DEFAULT_CAP_DEPTH_M);
+  const elevatedLift = liftScale * kainFritschLift(wElevated, 1500, DEFAULT_CAP_DEPTH_M);
   // What did the lifting (shares), for the reports and the storms' records.
   const total = w + 0.02 * thermalLift || 1;
   const boundary = clamp(wBoundary / total, 0, 1), terrain = clamp(wTerrain / total, 0, 1), synoptic = clamp(wLarge / total, 0, 1), thermals = clamp(0.02 * thermalLift / total, 0, 1);

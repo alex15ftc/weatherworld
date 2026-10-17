@@ -69,7 +69,12 @@ export function contourCig(hazard, chance, amount, significant, width, height, b
 // The same, with the areas themselves: { cig, areas }. Each area is { level, cells, group,
 // parent } (parent: the index of the area of the next contour down that it lies inside, or
 // -1), so that whatever draws the groups can follow the contours exactly.
-export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard]) {
+// runs: for a forecast, each run's own amount and significant grids ([{ amount, significant }]).
+// Given them, an area's group is the typical run's: each run that has the hazard in the area is
+// judged on its own reports there, and the area takes the lower median of those groups. (Pooled,
+// a run with an outbreak outweighs all the others, and the strongest runs set the group: drawn on
+// 35% of days against 20% that verified, 2026-10-16.)
+export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard], runs = null) {
   const tiers = ArrayBuffer.isView(significant) ? [significant] : significant;
   const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), owner = new Int32Array(n).fill(-1), stack = [], areas = [];
   let pass = 0;
@@ -88,7 +93,19 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
       // An area is never given a lower group than the area around it: that one was judged with
       // these cells in it, and the few reports inside a small core are too few to overrule it
       // (it would leave a hole in the hatching where the chance is highest).
-      const parent = owner[start], group = Math.max(conditionalCig(total, reaching, bounds), parent >= 0 ? areas[parent].group : 0);
+      let judged = conditionalCig(total, reaching, bounds);
+      if (runs?.length) {
+        const groups = [];
+        for (const run of runs) {
+          const own = ArrayBuffer.isView(run.significant) ? [run.significant] : run.significant, reach = own.map(() => 0);
+          let sum = 0;
+          for (const i of cells) { sum += run.amount[i]; for (let t = 0; t < own.length; t++) reach[t] += own[t][i]; }
+          if (sum > 0) groups.push(conditionalCig(sum, reach, bounds));
+        }
+        groups.sort((a, b) => a - b);
+        judged = groups.length ? groups[Math.floor((groups.length - 1) / 2)] : 0;
+      }
+      const parent = owner[start], group = Math.max(judged, parent >= 0 ? areas[parent].group : 0);
       for (const i of cells) { out[i] = group; owner[i] = areas.length; }
       areas.push({ level, cells: Int32Array.from(cells), group, parent });
     }

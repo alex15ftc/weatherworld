@@ -12,8 +12,10 @@ import { clamp } from '../scenarios/math.js';
 export const BOUNDARY_DEFAULTS = Object.freeze({
   smoothingPasses: 2,
   // Smallest contrast that counts, per 100 km: air-mass temperature (K) and moisture (g/kg).
-  frontGradient: 4, drylineGradient: 5,
-  minLengthKm: 200,
+  // (4 and 200 km until 2026-10-16: with the air masses' contrasts at real strength, the weaker
+  // zones those let through gave 3.7 lines a map, most of them short; analysts draw one or two.)
+  frontGradient: 5, drylineGradient: 5,
+  minLengthKm: 200, frontMinLengthKm: 250,
   // An outflow boundary is the edge of storm-cooled air at least this much colder (K) than
   // its air mass; such lines are shorter than fronts.
   outflowDeficitK: 1.5, outflowMinLengthKm: 60,
@@ -123,7 +125,7 @@ export function analyseBoundaries(world, options = {}) {
   const temperature = smooth(raw.temperature, width, height, p.smoothingPasses), moisture = smooth(raw.moisture, width, height, p.smoothingPasses);
   const u = smooth(raw.u, width, height, 1), v = smooth(raw.v, width, height, 1);
   const thermal = gradient(temperature, width, height, cellKm), moist = gradient(moisture, width, height, cellKm);
-  const minCells = Math.max(3, Math.round(p.minLengthKm / cellKm / 1.2)), edge = p.smoothingPasses + 2;
+  const minCells = Math.max(3, Math.round(p.minLengthKm / cellKm / 1.2)), frontCells = Math.max(3, Math.round((p.frontMinLengthKm ?? p.minLengthKm) / cellKm / 1.2)), edge = p.smoothingPasses + 2;
   const boundaries = [];
   const toKm = point => ({ x: Math.round((point.x + 0.5) * cellKm * 10) / 10, y: Math.round((point.y + 0.5) * cellKm * 10) / 10 });
 
@@ -141,14 +143,14 @@ export function analyseBoundaries(world, options = {}) {
     }
   }
   const outflowCells = Math.max(3, Math.round(p.outflowMinLengthKm / cellKm / 1.2));
-  for (const line of linkLines(frontCrest, width, height, Math.min(minCells, outflowCells))) {
+  for (const line of linkLines(frontCrest, width, height, Math.min(frontCells, outflowCells))) {
     const points = line.map(k => {
       const x = k % width, y = (k - x) / width, g = thermal.size[k], nx = thermal.gx[k] / g, ny = thermal.gy[k] / g;   // (nx, ny) points at the warm air
       // The front lies on the warm edge of the zone: walk toward the warm air until the
       // contrast has fallen to half its crest value.
       let reach = 0; while (reach < 6 && bilinear(thermal.size, width, height, x + nx * (reach + 0.5), y + ny * (reach + 0.5)) > 0.5 * g) reach += 0.5;
       const coldX = x - nx * p.coldSideReachCells, coldY = y - ny * p.coldSideReachCells;
-      return { x: x + nx * reach, y: y + ny * reach, nx, ny, contrast: g, outflow: bilinear(raw.coldPool, width, height, coldX, coldY) >= p.outflowDeficitK, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
+      return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, outflow: bilinear(raw.coldPool, width, height, coldX, coldY) >= p.outflowDeficitK, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
     });
     // The kind of front can change along it (cold on one flank of a low, warm on the other).
     const advance = points.map((_, i) => { let sum = 0, count = 0; for (let j = Math.max(0, i - 2); j <= Math.min(points.length - 1, i + 2); j++) { sum += points[j].advance; count++; } return sum / count; });
@@ -163,7 +165,7 @@ export function analyseBoundaries(world, options = {}) {
     for (let i = 0; i < kind.length;) {
       let j = i; while (j < kind.length && kind[j] === kind[i]) j++;
       const part = smoothLine(points.slice(Math.max(0, i - 1), j));
-      if (part.length >= (kind[i] === 'outflow' ? half : Math.max(half, Math.floor(minCells / 2))) && (kind[i] === 'outflow' || line.length >= minCells)) boundaries.push({ type: kind[i], points: part });
+      if (part.length >= (kind[i] === 'outflow' ? half : Math.max(half, Math.floor(frontCells / 2))) && (kind[i] === 'outflow' || line.length >= frontCells)) boundaries.push({ type: kind[i], points: part });
       i = j;
     }
   }

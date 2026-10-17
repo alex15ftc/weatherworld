@@ -719,11 +719,279 @@ Step 7 (2026-10-15, re-balance; checked on 40 days, seeds 1-4):
 Environment (32 days): inhibition median 25 J/kg (90th 262), 700 mb 9.7 C (90th 13.6), lapse
 rate 7.1 C/km, 850 mb wind 25 kt (90th 41), 0-1 km helicity 114 (still high; real 40-70), STP 90th 2.6.
 
-Still open from step 7: Moderate days too common and some days still without severe weather
-(weak-shear days give pulse storms with no severe hail or wind); helicity near the ground still
-high; fronts flicker more since step 3 (median 80-90 km between analyses 3 h apart, was 40).
+Still open from step 7, decided 2026-10-16: the flickering fronts are looked at now (steps 8
+and 10 rest on fronts); the rest waits for one tuning pass after step 12 (step 13), since steps
+8-12 move the same numbers again.
+
+2026-10-16:
+
+- Flickering fronts: the outer model's latent heat came in 80 km patches that switched on and
+  off; it is now spread over neighbouring cells (`latentHeatSpreadPasses` 2). Fronts move 1.4
+  times as far between analyses as the wind carries them (1.6 before; 1.5 with no moisture).
+- Step 8 done: storms near a front take in the spin it makes, from how fast the air masses'
+  density changes there (`densityGradientK100`: virtual potential temperature, smoothed as
+  the front analysis smooths, without storms' cold pools), full above 9 K per 100 km, none
+  below 4. It reads the zone itself, not the drawn line (drawn, as analysts do, on the zone's
+  warm edge). Frontal zones (4% of the map) have a median of 5.7 K/100 km; ordinary air 0.6;
+  dryline zones 3.5 (moist air is lighter, so a dryline's density contrast is weaker).
+- Fronts made stronger (2026-10-16). Measured on the frontal zones themselves (the core of each
+  zone, 64 km either side), not on the drawn lines. The cause was supply: the outer model's
+  250-750 mb temperature varies too little (about 1 K across 384 km at a front), and the
+  regional layer took its air masses from it. Now:
+  - the outer model carries the temperature of the air near the ground (`surfaceTheta`; Eady,
+    surface QG) with its low-level flow over the whole country, on a mean that falls 10 K per
+    1000 km northward, relaxed over 3 days; it does not change the flow. The regional air masses
+    are drawn toward it (warm anomalies at 0.7: Gulf air stays near the sea's temperature);
+  - cold air masses are dry: continental air holds 55% of what its temperature allows, both
+    entering the map and as the air mass relaxes (moisture only ever comes down this way);
+  - the front's trough: low-level air masses against the temperature the outer model's pressure
+    already holds (its layer), smoothed over 2 cells, so the cold side's weight raises the
+    pressure behind a front;
+  - a front point walked to the warm edge of its zone stays on the map (a bug the stronger
+    fronts showed).
+  Strongest quarter of frontal zones: 10.8 F across 128 km (75th 16.7; was 6.2), 13.5 F across
+  384 km (75th 23), wind turning 57 degrees (75th 92; was 17), trough 0.4 hPa (75th 0.9),
+  dewpoint 4.4 F (75th 8.9; real 10-20, still short). Fronts move 1.16 times as far as the wind
+  carries them.
+  Side effects for step 13: warm sectors warmer (CAPE median 2,308 to 3,151; real 1,000-2,000),
+  850 mb wind 25 to 31 kt and 0-1 km helicity 114 to 148 (the surface pressure now follows
+  the low-level temperature); the analysis draws more lines (2.3 cold fronts per analysis).
+
+Steps 9 and 10, together (2026-10-16):
+
+- The map's reading point may slide north-south as well as east-west (`slideNorthMs`); only the
+  weather overhead changes, not the map's climate (the mean north-south fall of temperature and
+  the 500 mb height reference are taken about the map's own place).
+- Steering aims each day for a kind of place in the weather (`kinds`): the warm sector (55%, as
+  before), near a surface low (30%: the low 100 km north of the map's middle) or under the middle
+  of an upper trough (15%); where none can be reached within 500 km, the warm sector. Its copy of
+  the outer model now carries moisture and the near-surface temperature too (it ran dry before).
+- The lee trough's axis lies on the map's western edge (`leeTroughColumn` 0.39, ground near
+  1,000 m; it was 80 km off the map) and deepens where the outer model's ascent crosses it, by up
+  to half again (lee cyclogenesis); its wind is worked out from its pressure in both directions.
+- `scripts/setup-report.mjs` labels each tornado by the conditions where its storm started (line
+  if its storm is in a squall line then) and each day by its main kind.
+
+88 days (seeds 1-8): main setup of the day: front 23%, line 17%, triple point 8%, warm sector 9%,
+mixed 7%, dryline 2%, outflow 1%, no tornado 33%. Tornadoes: front 33%, line 30%, warm sector 19%,
+triple point 12%, dryline 3%; 44% at night. A closed low on the map at 21Z on 10% of days (13% of
+the days steered near a low). For step 13: no tornado on a third of days (4.4 a day) since the
+front fix and the new steering; days steered near a low go without a tornado most often (47%);
+dryline tornadoes rare; many at night.
+
+Steps 12 and 13, physics part (2026-10-16; tuning comes last):
+
+- Clock test brought up to the 12x clock (25 s storm ticks).
+- Lines keep the system's age through mergers (`systemAgeHours`), so MCSs and derechos can be
+  recognised (days with an MCS: 0 before, about 10% now).
+- Environment: the front pressure term counts a 400 m layer of near-ground air
+  (`airMassPressureDepthM`), and warm anomalies reach the ground at 0.45 (`surfaceWarmShare`):
+  surface temperature 90th 94 to 90 F (99th 107 to 97), 850 mb wind median 35 to 30 kt, 0-1 km
+  helicity 167 to 138.
+- Storm fuel: a storm feeds from the ground whenever the ground air can be lifted into it
+  (inhibition up to 200 J/kg), and from aloft only when it cannot. It went elevated whenever the
+  most unstable parcel had more energy than the mixed-layer one, which it nearly always has.
+  Days without severe weather 13% to 3%, days with a tornado 77% to 98%, days steered near a low
+  with a tornado 53% to 100%.
+- Lift for parcels aloft: isentropic ascent follows the air (the local change of 850 mb potential
+  temperature included, so a front moving with the wind lifts nothing), from fields smoothed as
+  the front analysis smooths, with at least 3 K/km of stability; the jet's convergence from the
+  smoothed 850 mb wind (90th percentile of each fell from 14-17 and 9-10 cm/s to about 7 and 4).
+- Setup report: storm starts by setup, day and night, lines looked for within 2 cells.
+
+Now (40 days, seeds 1-4): no severe weather 3%, a tornado on 98% of days, Marginal or less 3%;
+too many tornadoes (mean 20.8, median 7) and High 30% (tornadoes) - for tuning. Storm starts
+(8 seeds): most near a line; dryline and frontal zones overlap; dryline-born storms are the most
+likely to make a tornado. Still to look at before tuning: the dewpoint drop across fronts, how
+many fronts the analysis draws, hail from pulse storms.
+
+Later the same day:
+
+- Front analysis draws fronts from 5 K per 100 km over 250 km (`frontGradient`, `frontMinLengthKm`;
+  drylines keep 200 km): 2.1 lines a map instead of 3.7, a front on 89% of maps.
+- Hail grows with the square of the updraught (`HAIL.power` 2, reference 60 m/s): 1 in hail on 90%
+  of days, 2 in on 30%; pulse and elevated storms now give the odd marginal stone.
+- Squall-line gusts: `rearInflowShare` 0.5.
+
+Tuning tried on 40 days (seeds 1-4), and what it showed:
+
+| Change | Tornadoes a day mean (median) | No tornado | High |
+|---|---|---|---|
+| as now | 20.8 (7) | 3% | 30% |
+| tornado rate 2.5 / 1.5 | 13.2 (4) / 9.2 (3) | 13% / 20% | 25% / 15% |
+| a storm's recovery after a tornado 0.5 / 0.8 h | 20.1 / 19.3 | 3% | 28% / 25% |
+| fewer storm starts (0.008), tornado rate 5 / 7 | 15.5 / 18.5 | 13% / 10% | 30% / 28% |
+| storms 60 km apart | 19.9 | 10% | 25% |
+
+None reaches the targets: the tornadoes are spread very unevenly over the days (a few days
+with 60-100), and that comes from the environment rather than the storms: helicity in the lowest
+km is still far above real (median 138 at 21Z, 192 at 00Z; real 40-70), so on a big day nearly
+every supercell is tornadic. Next: bring the low-level winds and helicity down (the outer model's
+low-level systems are carried to the ground undiminished, the lee trough's winds, the evening
+jet), then set the tornado rate and strength.
+
+Low-level winds and tuning (2026-10-16):
+
+- Low-level spin down: lee trough at most 4 hPa (`leeTroughFlowHpa`), the wind near the ground
+  turned 15 degrees toward low pressure by day and 25 at night (`surfaceBackingDeg`,
+  `surfaceBackingNightDeg`; 22 and 38 before), boundary-layer friction 0.4. Helicity in the lowest
+  km: median 138 to 96, 90th 311 to 220; 850 mb wind median 30 to 26 kt; STP 90th 3.0 to 1.9.
+  Fronts lost some of their wind shift (strongest quarter: median 28 degrees).
+- Tuning (40 and 120 days): neither the tornado rate, a storm's recovery after a tornado, the
+  number of storm starts, their spacing, nor the share of steering kinds made the climate right.
+  It is two-sided: too many quiet days (13-15%) and too many outbreak days (30+ tornadoes on 15%,
+  60+ on 4-6%), too few ordinary days between. The outer model's systems pass about once a day at
+  twice real speed, and steering puts the map in one; real Plains springs have a strong system
+  every 3-6 days with moderate days between. Decided (the user): slow the outer model's systems
+  down and space them out, then tune.
+- Targets for the upper end (the user): days with 30+ tornadoes rare (about 5%), 60+ about 1%;
+  quiet days rare (under 5%); the tornado mean about 5 a day, the rare big days allowed.
+
+Slower, weaker systems and the tuning that followed (2026-10-16):
+
+- Outer model: deformation radius 350 to 400 km, mean winds 26.5/17 to 22/14 m/s (less shear):
+  a trough every 1.5-2 days, weaker than before, moving about 1,300 km a day (1,900 before).
+  Steering slides no faster than 15 m/s (the systems' speed now).
+- Gulf: scoured over 24 hours (12), back in 2.5 days (4.5): dry spells after fronts ran 5 days.
+- Steering: warm-sector days search north-south as well as east-west; support wanted 0.2-0.35
+  (0.35-0.8: with the weaker systems the support reached seldom passes 0.35, so steering took
+  the most it could every day and the wanted value did nothing); lows counted from 2 hPa and
+  upper troughs from 20 m (3 and 30), so those kinds of day are reached.
+- Pulse storms: hail from non-rotating storms 0.8 of a rotating one's (0.5); downdraught share
+  back to 0.5 (0.4). High-CAPE days in weak shear give the odd marginal report.
+- Tornado rate kept at 5 (7 gave 30+ tornado days on 9%).
+- Tests: region-steering checks a day aimed at a low as well as a warm-sector day, and the
+  north-south slide.
+
+80 days (seeds 1-8), against the targets:
+
+| | Target | Now |
+|---|---|---|
+| Tornadoes a day | mean about 5, a few on most days | mean 7.8, median 4 (90th 22, most 47) |
+| Days with 30+ / 60+ tornadoes | about 5% / 1% | 5% / 0% |
+| Days without a tornado | about 10% | 16% |
+| Days without severe weather | under 5% | 8% (longest run 3) |
+| High / Moderate | about 5% / 10-15% | 4% / 11% |
+| Slight and Enhanced | 75-80% | 70% |
+| Marginal or less | under 5% | 15% |
+
+Environment (32 days): 0-1 km helicity median 65 (90th 135), 850 mb wind 19 kt, 500 mb 41 kt,
+0-6 km shear 40 kt, STP 90th 1.3; storm speed (median of days) 38 to 31 mph. Still off: CAPE median
+3,093 J/kg (real 1,000-2,000) and the cap too weak (inhibition median 3; real 25-75). The slower
+westerlies carry less of the high ground's hot, dry air over the map. Next: the cap and CAPE,
+then quiet and tornado-free days.
+
+The cap, CAPE, and the quiet and tornado-free days (2026-10-16, later):
+
+- The lid: air entering at 700 mb across the western side (and the western half of the southern
+  side) has come off the plateau, so it comes in as lid air whole (`eml` 1 there, as its
+  temperature already did). It took its share from the edge cell's own terrain (about 1,050 m),
+  so the lid never covered more than 0.6-0.7 of the moist air and the cap was gone by 21Z.
+  `lidSourceThetaK` 316 to 315.5 (317 gave quiet days on half the days).
+- Air masses: `airMassThetaK` 302.5 to 301, `surfaceWarmShare` 0.45 to 0.3 (the warm sector ran
+  at 85-93 F with cloud bases near 1,500 m); Gulf air stays 16 g/kg; continental air 0.55 to 0.45
+  of saturation (dewpoint drop across frontal zones, 64 km either side, median about 10 F, 75th
+  12-36 F by seed; was about 8).
+- A running updraught keeps CAPE - CIN of its energy (`inhibitionEfficiency` sqrt(1 - CIN/CAPE),
+  was 1 - CIN/170): with a real cap the old form took 30% off every storm and quiet days rose to
+  a third. Starting a storm and keeping its inflow are unchanged (liftingWork, stormFuel).
+- Boundary-fed updraughts entrain less (`ENTRAINMENT_CONVERGENCE` 0.12 of the convergence under
+  the storm): every storm in an air mass reached the same updraught before, and weak-flow days
+  with dozens of storms made no severe report. Quiet days 14% to 9%.
+- Fully undercut storms keep 5% of their potential (`undercutShare` 0.95, was 0.9): weak-shear
+  storms on boundaries otherwise hung on at the 4 m/s that ends a storm.
+- Lines lengthen on their own where they have fuel: each end moves out at 0.25 of the cold
+  pool's speed (`LINE_GROWTH_SHARE`, full with a cold pool of 0.4 and 1,500 J/kg). Lines grew
+  only by joining before; none reached the 220 km of an MCS. MCS days 0% to 33%.
+- Reports: activity-report steps like the server (`--half-hour` for the old stepping; 14% and 15%
+  quiet days on the same 80); setup-report takes key=value and counts MCS days.
+
+Environment (32 days, 21Z and 00Z, moist air), before → now [real]: inhibition median 3 → 34
+[25-75], 90th 207 [150-250]; 700 mb 9.7 → 10.4 C [8-10]; CAPE median 3,093 → about 2,500
+[1,000-2,000]; cloud base 1,260 m; surface 83 F over 67 F; STP 90th 1.2, 99th 3.1 [0.5-1, 3-5];
+supercell air with STP 1+ 31% [a quarter to a third].
+
+80 days (seeds 1-8), against the targets:
+
+| | Target | Before (morning) | Now |
+|---|---|---|---|
+| Days without a severe report | about 5% | 8% | 10% |
+| Days without a tornado | about 10% | 16% | 27% (setup report 25%) |
+| Tornadoes a day | mean about 5 | median 4 | median 2 (90th 14, most 32) |
+| High / Moderate | about 5% / 10-15% | 4% / 11% | 6% / 10% |
+| Enhanced / Slight | 40% / 30% | 70% together | 39% / 31% |
+| Marginal or less | under 5% | 15% | 14% |
+| MCS days | | 0% | 33% |
+| Dryline share of tornadoes | | 3% | 10% |
+
+Still open: the tornado-free days are mostly days where steering finds little support (31 of 80
+days below 0.15) since the outer model's systems were made slower and weaker; CAPE a little high;
+no closed low on the map at 21Z on any day (it was 10% after steps 9-10; already 0-1% this morning,
+before these changes, and 0% with them undone, so it came with the slower, weaker systems).
+
+Lows and tornado-free days, looked into (2026-10-16, nothing changed in the model):
+
+- The outer model's low-level systems are half as strong as before they were slowed: pressure
+  spread 3.2-3.7 hPa (was 7.2), deepest low about -9.5 hPa (was -19 to -20; real -15 to -25),
+  95th-percentile ascent 0.06 K/h (0.15). Its systems' strength follows how far the shear between
+  the layers exceeds the critical value set by beta and the deformation radius: 8 m/s against 2.6
+  now (3.1 times), 9.5 against 2.0 before (4.9 times).
+- Raising the shear and keeping the mean wind keeps the systems slow (about 1,280 km a day): 23.5
+  over 13.5 m/s gives a spread of 6.7-7.3 hPa and lows of -17.5 to -19.3 on 4 seeds. But on 80
+  days: quiet days 10% to 19%, 0-1 km helicity 90th 128 to 183 (99th 330), 0-6 km shear 90th 63
+  kt, night tornadoes 33% to 42%; closed lows 3%. 23 over 14: quiet 18%, MCS 18%, no lows. The
+  extra quiet days are mostly cap busts (2,500-3,000 J/kg, 30-40 kt, 0-8 storms) under the
+  stronger ridges' sinking air.
+- The map's lowest pressure at 21Z is on its western edge on nearly every day: the pressure rises
+  6-13 hPa eastward across it, about a third each from the high ground's warmth (thermalHpa), the
+  lee trough and the outer model (steering aims for the warm sector, east of the lows). Moving the
+  lee trough's axis inside the map, narrowing it, or halving or removing the high ground's
+  standing warmth in the pressure gave no more closed lows (1-2 of 40 maps): on the few days aimed
+  near a low, the outer model's own low closes by only 0.5-0.6 hPa.
+- Reports: activity-report prints the tornado mean, 30+ and 60+ tornado days and storm speed;
+  setup-report takes qg.key=value.
+
+Decided (the user, 2026-10-16): stronger systems, then repair. The outer model's winds are now 23.5
+over 13.5 m/s (QuasiGeostrophicModel.js). Not yet repaired, 80 days: quiet days 19%, 0-1 km
+helicity median 80, 90th 183, 99th 330; 0-6 km shear 90th 63 kt; night tornadoes 42%; closed lows
+3%; tornado-free days 27%; MCS days 35%; storm speed 32 mph. Tried and not kept: the cap's response
+to sinking air (capLiftRatio 1.6: quiet 14%), the Gulf's scouring threshold (9-12 m/s: little),
+steering for stronger support (0.3-0.5 / 0.35-0.6: quiet 14-15%, but High 13-18%). Most of the
+extra quiet days are dry spells after strong fronts (the moist air under 25% of the map), which the
+steering cannot help: it moves where the map reads the outer model, not the map's own air. A time
+jump past quiet days (the user's idea) is being designed; the rules are still to be settled.
+
+Step 11 done (2026-10-16): forecasts with more of the uncertainty real ones have.
+
+- Each forecast run also draws its own errors in the air over the map (ensemblePerturbation.js,
+  MESOSCALE): the lid's temperature (1 K), the Gulf air's moisture on the map and offshore
+  (0.8 g/kg) and its depth (150 m), and the lift that starts storms (a factor e^(0.3 x normal);
+  InitiationEngine reads world.forecastLiftScale). Full when the afternoon (21Z) is 15 hours or
+  more away, down to 0.35 of that just before it, so the runs come together through the day.
+- Issued from the spread (the user's rule): a contour level is drawn only where enough runs had
+  the hazard near (their own chance at least its lowest level): an eighth of them for the lowest
+  level up to three quarters for the highest (OUTLOOK.agreement); an intensity group only where
+  half (first group) to three quarters (highest) had its tier near (OUTLOOK.groupAgreement).
+- outlook-verify.mjs takes OLD=1 for the outlooks as before. 5 mornings x seeds 1-4 (Day 1 20
+  outlooks, Day 2 16, Day 3 12), before → after: category within one of what happened, Day 1 90%
+  → 95%, Day 2 88% → 94%, Day 3 67% → 83%; Day 2 High issued 13% → 0% (verified 0%); the day's
+  tornado count inside the runs' range on Day 1 85% → 95%; contours still verify at or above their
+  level.
+- The intensity groups are judged by the typical run (contourCigAreas with each run's own
+  reports: the lower median of the groups of the runs that have the hazard in the area), not from
+  all the runs' reports pooled, where one outbreak run set the group; and the runs' errors over the
+  map go in pairs (opposite errors, same draw), so they average out to the atmosphere as it is.
+  Before these two, Day 1 tornado groups were drawn on 35% of days against 20% verified (20 days).
+- 40 days (5 mornings x seeds 1-8), old outlooks → now: Day 1 right 58% → 63% (within one 95% →
+  93%), Day 3 within one 83% → 92%, the day's tornado count inside the runs' range Day 2 81% → 88%;
+  groups drawn / verified: Day 1 tornado 0/13% → 10/13%, hail 28/30% → 25/30%; Day 2 tornado 9/9%
+  (one CIG2) → 13/9%, hail 25/34% → 28/34%; Day 3 8/4% → 4/4%. Inside Day 1 hail CIG1 38% of the
+  hail reached 2 in (8% outside). Still open (as before): Moderate issued on 8% of days, verified
+  on 20%.
 
 ### In order
+
+Order decided 2026-10-16: steps 1-10 done; steps 12 and 13 next, together; then step 11.
 
 1. **Weaker downdraught gusts.** `GUST.downdraughtShare` 0.5 to about 0.35-0.4, or mixing
    losses in the downdraught. Tested at 0.4: High 45% to 38%, tornadoes unchanged.
@@ -770,12 +1038,71 @@ high; fronts flicker more since step 3 (median 80-90 km between analyses 3 h apa
     (dryline, front, triple point, outflow, confluence, warm advection, upslope, under the
     upper low, line) and report the mix; let steering aim for different places in the wave
     instead of one support value.
-11. **Forecasts with more of the uncertainty real ones have.** The runs already differ in
-    timing (`ensemblePerturbation.js`: about 50 km by mid Day 1) and far upstream, but every run
-    has the same cap, moisture return and boundaries, which is where real Day 1 forecasts go
-    wrong. Perturb those as well and issue from the spread, as forecasters do: High only when
-    the runs agree, broader lower categories when they do not, upgrades and downgrades through
-    the day. This changes what players are told, not what happens, so it comes after the
-    climate is right and does not stand in for it.
+11. **Forecasts with more of the uncertainty real ones have** (after 12-13). The runs already
+    differ in timing (`ensemblePerturbation.js`: about 50 km by mid Day 1) and far upstream, but
+    every run has the same cap, moisture return and boundaries, which is where real Day 1
+    forecasts go wrong. Perturb those as well and issue from the spread. Rule (the user, 2026-10-16):
+    a higher risk only where the runs agree on it; where confidence is low, the risk issued is
+    lower too (broader, lower categories), with upgrades and downgrades through the day as the
+    runs come together. This changes what players are told, not what happens.
 12. **Upscale growth.** MCS and QLCS days, helped by step 6's night storms, which also bring
     line tornadoes and derechos.
+13. **Final tuning, against the climate targets.** Moderate days (23% after step 7; aim 10-15%);
+    days without severe weather (10%; aim under 5%), where weak-shear pulse storms should give
+    the odd marginal hail or downburst report; 0-1 km helicity still above real values (median
+    114; real 40-70); High, the tornado rate and the EF2+ share. One set of settings at a time,
+    checked on the 40-day activity report.
+
+Repairs for the stronger systems (2026-10-16, later; plan agreed with the user, no time jump):
+
+- Moisture near the ground in the outer model (QuasiGeostrophicModel surfaceMoisture: passive,
+  carried by the lower layer, mean falling 5 g/kg per 1000 km northward, relaxed over 2.5 days).
+  The regional layer's Gulf air is gulfMixingRatio plus its anomaly there (at most +0.5 g/kg), in
+  place of its own scouring and recovery; its air relaxes toward the air it would take in
+  (inflowMoisture) both ways, as its temperature does (it was only ever dried, toward 45% of
+  saturation: Gulf air in a warm sector at 16 g/kg was drawn toward about 9). Steering's support
+  is cut where the outer model's air near the ground is drier than its mean (none at 4 g/kg
+  below). A forecast run's moisture error is now gulfMoistureErrorGkg.
+- Storms fed from the ground through inhibition draw less of their inflow from near the ground:
+  their low-level spin is scaled by the inhibition term of the significant tornado parameter
+  (StormRotation groundCinJkg 50-200). Night tornadoes 58% to 34%. Tornado rate 5 to 8.
+- Tried and not kept: Gulf base 14 or 13.5 (quiet days 18-20%, inhibition median 90); steering for
+  0.25-0.45 support (High 13%, 60+ tornado days 3%, tornado days unchanged).
+
+80 days (seeds 1-8), against the targets:
+
+| | Target | Stronger systems, unrepaired | Now |
+|---|---|---|---|
+| Quiet days | about 5% | 19% | 11% (longest run 2) |
+| Days without a tornado | about 10% | 27% | 30% |
+| Tornadoes a day | mean about 5 | 6.1 | 3.7 (median 2, most 18) |
+| High / Moderate / Enhanced / Slight | 5 / 20 / 40 / 30% | 4 / 16 / 45 / 11% | 5 / 21 / 34 / 23% |
+| Marginal or less | under 5% | 24% | 17% |
+| Night tornadoes | | 42% | 33% |
+| MCS days / closed low | | 35% / 3% | 49% / 3% |
+| Storm speed | slow | 32 mph | 33 mph |
+
+Environment (32 days): CAPE median 2,081 (90th 3,866), inhibition 56 (90th 246), cloud base 1,171 m,
+dewpoint 65 F (90th 69), 0-1 km helicity 68 (90th 164), 850 mb 19 kt, 0-6 km shear 38 kt (90th 59),
+500 mb 42 kt (90th 63), STP 90th 1.3. Fronts: dewpoint drop median 9-14 F (75th 20-26), cold side
+37-47 F. Step 2 of the plan (friction growing with the wind) is not needed: the low-level tails
+came down; the deep shear and 500 mb tails (a little high) are the outer model's upper winds.
+
+Tornado-free days, what limits them (80 days): of 24, 14 had no supercell at all (weak shear),
+9 had supercells only in strongly capped or elevated air, 1 weak helicity, none high cloud bases.
+By steering kind: warm sector 35% without a tornado, near a low 25%, upper trough 14%.
+
+Outlook calibration (2026-10-16, step 5 of the plan):
+
+- The runs' averaged chance is mapped to the chance that verified before the agreement rule
+  (js/forecast/outlookCalibration.js; combineOutlook keeps the raw one as rawChance). Fitted on 40
+  mornings (seeds 1-8) with outlook-verify --calibration-data and fit-outlook-calibration.mjs
+  (bins merged to at least 400 places, never falling); checked on 40 other mornings (seeds 9-16).
+  NOCAL=1 turns it off in outlook-verify.
+- Day 1 on seeds 9-16, how often the hazard came within 25 miles inside each level, uncalibrated →
+  calibrated: tornado 15/30/45% 17/62/77% → 13/33/66%; wind 30/45/60% 42/82/93% → 28/43/61%; hail
+  30/45/60% 41/71/91% → 36/43/77%. Category right 65% → 70% (within one 100% → 98%); Moderate
+  issued on 18% of days (verified 10% on these seeds, about 20% on seeds 1-8). Day 2 near the
+  diagonal too (tornado 30% → 31%, wind 45% → 45%), categories about the same.
+- Day 3 is not calibrated: made from two runs, its fitted curve did not carry over to the other
+  seeds (45% areas verified 27%; within one category 83% → 75%).

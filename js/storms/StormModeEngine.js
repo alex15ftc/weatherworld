@@ -49,7 +49,9 @@ export function describeStormMode(storm, environment = storm.environment ?? {}) 
   const halfLengthKm = Number(storm.lineHalfLengthKm) || 0;
   if (storm.elevatedFeed && rotating < 0.5 && linear < 0.5) return 'elevated convection';
   if (linear >= 0.5) {
-    if (halfLengthKm >= 110 && (storm.coldPoolStrength ?? 0) >= 0.2 && (storm.ageHours ?? 0) >= 4) return 'MCS';
+    // An MCS by the usual definition: a line at least 220 km long that has kept going for hours
+    // (the system's age, through the cells it took in).
+    if (halfLengthKm >= 110 && (storm.coldPoolStrength ?? 0) >= 0.2 && (storm.systemAgeHours ?? storm.ageHours ?? 0) >= 4) return 'MCS';
     if (halfLengthKm >= 60) return rotating >= 0.5 ? 'QLCS with embedded supercells' : 'QLCS';
     return linear >= 0.75 ? 'linear segment' : 'broken line';
   }

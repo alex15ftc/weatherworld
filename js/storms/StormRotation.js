@@ -17,6 +17,8 @@ export const ROTATION = Object.freeze({
   fullUpdraughtMs: 40, shearKt: [20, 55], helicity: [50, 350], shearShare: 0.35, lineLoss: 0.45,
   spinUpHours: 0.4, spinDownHours: 0.7,
   lowHelicity: [50, 250], helicityFloor: 0.5, cloudBaseM: [2000, 800], outflowBalance: [1.0, 1.8],
+  // Inhibition (J/kg) at which a storm fed from the ground takes all, and none, of its inflow from near the ground.
+  groundCinJkg: [50, 200],
   // Strong helicity near the ground means strong inflow, which holds the outflow back: the
   // outflow a storm can have and still spin up near the ground rises by up to outflowHold
   // (in the balance) between helicityHold[0] and [1]. So a storm in strongly turning low-level
@@ -25,6 +27,12 @@ export const ROTATION = Object.freeze({
   // Helicity added near the ground where the inflow crosses the edge of older rain-cooled air
   // (an outflow boundary), from none at boundaryContrastK[0] to all of it at boundaryContrastK[1].
   boundaryHelicity: 150, boundaryContrastK: [1.5, 6],
+  // The same near a front, from how fast the air masses' density changes there
+  // (frontGradientK100, K of virtual potential temperature per 100 km). Near-ground spin is made in a narrow zone
+  // along a front, mostly on its cool side (Markowski et al. 1998): the winds back into it and
+  // the contrast turns the air. Only a storm still fed from the ground can use it; one that has
+  // gone deep into the cold air feeds above it and makes no near-ground rotation anyway.
+  frontGradientK100: [4, 9],
   // A left-moving split rotates the other way: it lives on shear that does not turn with
   // height, and has no rotation near the ground to speak of.
   leftHelicity: [80, 250], leftShare: 0.6,
@@ -60,13 +68,19 @@ export function stepStormRotation(storm, environment, dtHours) {
   storm.occlusion = clamp((storm.occlusion ?? 0) + (storm.tornado?.onGround
     ? dtHours / (hold * (R.occlusionHours[0] + (R.occlusionHours[1] - R.occlusionHours[0]) * ramp(balance, R.occlusionBalance[0], R.occlusionBalance[1])))
     : -dtHours / R.recoveryHours), 0, 1);
-  storm.boundaryBoost = ramp(environment.outflowContrastK, R.boundaryContrastK[0], R.boundaryContrastK[1]);
+  storm.boundaryBoost = Math.max(ramp(environment.outflowContrastK, R.boundaryContrastK[0], R.boundaryContrastK[1]), ramp(environment.densityGradient, R.frontGradientK100[0], R.frontGradientK100[1]));
   const nearGround = R.helicityFloor + (1 - R.helicityFloor) * ramp((Number(environment.srh) || 0) + R.boundaryHelicity * storm.boundaryBoost, R.lowHelicity[0], R.lowHelicity[1]);
   const cloudBase = ramp(R.cloudBaseM[0] - (Number(environment.lcl) || R.cloudBaseM[0]), 0, R.cloudBaseM[0] - R.cloudBaseM[1]);
   const held = R.outflowHold * ramp(environment.srh, R.helicityHold[0], R.helicityHold[1]);
   const outflow = 1 - ramp(balance, R.outflowBalance[0] + held, R.outflowBalance[1] + held);
-  // A storm feeding on air from above the ground has nothing near the ground to stretch.
-  const freeTarget = storm.elevatedFeed || storm.leftMover ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow, lowTarget = freeTarget * (1 - storm.occlusion);
+  // A storm feeding on air from above the ground has nothing near the ground to stretch. One fed
+  // from the ground through inhibition draws more of its inflow from above the stable layer the
+  // more inhibition there is (the inhibition term of the significant tornado parameter: all of it
+  // from the ground at 50 J/kg or less, none at 200; Thompson et al. 2003, Davies 2004). (Without
+  // it, from 2026-10-16, storms over the night's cooled ground counted as fed from the ground up to
+  // 200 J/kg and made 58-67% of the tornadoes at night.)
+  const fromGround = clamp((ROTATION.groundCinJkg[1] - Math.abs(Number(environment.cin) || 0)) / (ROTATION.groundCinJkg[1] - ROTATION.groundCinJkg[0]), 0, 1);
+  const freeTarget = storm.elevatedFeed || storm.leftMover ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow * fromGround, lowTarget = freeTarget * (1 - storm.occlusion);
   // What the low-level rotation would be were the storm not occluding: its underlying strength.
   storm.lowRotationFree = toward(storm.lowRotationFree ?? 0, freeTarget, dtHours, R.lowSpinUpHours, R.lowSpinDownHours);
   const before = storm.lowRotation ?? 0;

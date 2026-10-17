@@ -38,9 +38,13 @@ export function initializeTornadoState(storm) {
 // three 15% tornado areas in four with no strong tornadoes to speak of). The rise starts from
 // no rotation at all, so that the weakest storms still put one down now and then: with a
 // threshold of 0.04, one day in four had no tornado. Checked on 320 days (docs/STATUS.md).
+// 2026-10-16: 5 kept with the outer model's systems slowed and weakened (7 tried: 30+ tornado days on 9%).
 // 2026-10-15: fullRatePerHour 2.5 to 5 once the environments came down to real values (0-1 km
 // helicity median 158 to 114, STP 90th 4.9 to 2.6): tornado days 60% to 88%, about 6.7 a day.
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 5, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// 2026-10-16 (later): 5 to 8 once storms over the night's cooled ground stopped counting as fed
+// from the ground (StormRotation groundCinJkg): those had made 58% of the tornadoes, and without
+// them the mean fell to 3 a day; 8 gives 3.7, a tornado on 70% of days.
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 8, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.

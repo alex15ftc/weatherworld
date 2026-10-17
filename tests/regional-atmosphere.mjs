@@ -40,7 +40,11 @@ const warmest = highest('t'), coolest = lowest('t');
 assert.ok(within(warmest.hour, 20, 0), `warmest in the late afternoon (${warmest.hour}Z)`);
 assert.ok(within(coolest.hour, 10, 14), `coolest near sunrise (${coolest.hour}Z)`);
 assert.ok(warmest.value - coolest.value > 12 && warmest.value - coolest.value < 32, `day-night range ${(warmest.value - coolest.value).toFixed(1)} F`);
-assert.ok(within(lowest('cin').hour, 19, 1), `the cap is weakest in the afternoon (${lowest('cin').hour}Z)`);
+// The sun wears the cap down through the day. (Not the single weakest hour: with the high
+// ground on the map its afternoon mixed layer renews the lid nearby, and the cap stays about as
+// weak from late morning to evening.)
+const capBetween = (from, to) => mean(cycle('cin').filter(c => within(c.hour, from, to)).map(c => c.value));
+assert.ok(capBetween(18, 22) < 0.8 * capBetween(9, 13), `the cap is weaker in the afternoon (${capBetween(18, 22).toFixed(0)} J/kg) than in the morning (${capBetween(9, 13).toFixed(0)})`);
 
 // --- The low-level jet is a night-time feature, and the wind veers with height.
 // By day the wind at the ground is the slower, backed foot of the mixed layer's wind.

@@ -18,11 +18,16 @@ const steered = build({}), regional = steered.regional, length = steered.model.l
 const first = steered.steering.plan;
 assert.ok(first, 'a plan is made when the world is built');
 assert.ok(Math.abs(first.slideMs) <= STEERING_DEFAULTS.systemSpeedMs + 1e-9, `the slide is within the systems' own speed (${first.slideMs} m/s)`);
-assert.ok(first.support >= 0 && first.support <= 1 && first.wanted >= STEERING_DEFAULTS.wantedLow && first.wanted <= STEERING_DEFAULTS.wantedHigh, 'support and the support wanted are in range');
-const start = regional.origin.x, moisture = Float64Array.from(regional.moisture);
+// A warm-sector day aims for a support in range; a day aimed at a low or an upper trough for
+// the low (and slides north or south no faster than allowed).
+if (first.kind.startsWith('warmSector')) assert.ok(first.support >= -1 && first.support <= 1 && first.wanted >= STEERING_DEFAULTS.wantedLow && first.wanted <= STEERING_DEFAULTS.wantedHigh, 'support and the support wanted are in range');
+else assert.ok(Number.isFinite(first.missKm) && first.missKm <= STEERING_DEFAULTS.maxMissKm, `the day aims for a ${first.kind} within reach (${first.missKm} km)`);
+assert.ok(Math.abs(first.slideNorthMs ?? 0) <= STEERING_DEFAULTS.northSpeedMs + 1e-9, 'the north-south slide is within its limit');
+const start = regional.origin.x, startNorth = regional.origin.y, moisture = Float64Array.from(regional.moisture);
 steered.advance(3);
 const moved = ((regional.origin.x - start) % length + length) % length, expected = ((first.slideMs * 3 * 3600) % length + length) % length;
 assert.ok(Math.abs(moved - expected) < 1, `after 3 hours the region has slid ${(first.slideMs * 3 * 3.6).toFixed(0)} km`);
+assert.ok(Math.abs(regional.origin.y - startNorth - (first.slideNorthMs ?? 0) * 3 * 3600) < 1, 'and north or south as planned');
 // The air on the map is carried by the wind as before, not shifted with the slide: a slide of
 // several cells would otherwise move the whole moisture pattern by that much.
 const change = moisture.reduce((sum, value, k) => sum + Math.abs(regional.moisture[k] - value), 0) / moisture.length;

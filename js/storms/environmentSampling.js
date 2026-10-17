@@ -41,6 +41,12 @@ export function sampleStormEnvironment(world, xKm, yKm) {
   // How sharply rain-cooled air changes across this place (K between neighbouring cells): the
   // edge of a cold pool. Air crossing it is turned about a horizontal axis along the edge.
   const pools = cells.map(cell => Number(cell.features?.coldPoolK) || 0), outflowContrastK = Math.max(...pools) - Math.min(...pools);
+  // How fast the air masses' density changes here (K per 100 km; AtmosphereWorld): a front.
+  // Along it the winds back into the front and the density contrast turns the air about a
+  // horizontal axis along it.
+  const densityGradient = mean(cell => Number(cell.features?.densityGradientK100) || 0);
+  // ...and how fast the moisture does (g/kg per 100 km): a dryline.
+  const moistureGradient = mean(cell => Number(cell.features?.moistureGradientGkg100) || 0);
   // Temperature contrast across the storm's surroundings (deg F per cell): a dense air mass
   // undercutting the warm air (cold front, outflow) forces a solid line; a dryline does not.
   const temperatures = cells.map(cell => cell.surface.temperature);
@@ -59,7 +65,7 @@ export function sampleStormEnvironment(world, xKm, yKm) {
     mostUnstableCin: mean(cell => Math.abs(cell.derived?.sounding?.mucin ?? cell.derived.cin ?? 0)),
     surfaceBasedCape: mean(cell => cell.derived?.sounding?.sbcape ?? cell.derived.cape),
     dewpoint: mean(cell => cell.surface.dewpoint),
-    cin: mean(cell => cell.derived.cin), srh, outflowContrastK,
+    cin: mean(cell => cell.derived.cin), srh, outflowContrastK, densityGradient, moistureGradient,
     stp: mean(cell => cell.derived.stp ?? 0), rawStp: mean(cell => cell.derived.rawStp ?? cell.derived.stp ?? 0),
     vtp: mean(cell => cell.derived.vtp ?? 0), synopticTornadoSupport: mean(cell => cell.derived.synopticTornadoSupport ?? 0), scp: mean(cell => cell.derived.scp ?? 0),
     bulkShear, lcl,

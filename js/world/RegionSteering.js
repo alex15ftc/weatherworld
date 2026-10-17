@@ -17,13 +17,20 @@ export const STEERING_DEFAULTS = Object.freeze({
   planHourUtc: 6,                  // after the evening's storms (local midnight)
   scoreHoursUtc: [21, 2],          // the afternoon and the evening the plan is judged on
   // Speed of the weather systems (m/s, eastward): the most the region may slide either way.
-  systemSpeedMs: 22, speedStepMs: 1,
+  systemSpeedMs: 15, speedStepMs: 1,
   // Large-scale support: wind aloft times low-level flow from the south, each up to a cap.
   // 0 to 1 ahead of a trough; below 0 where the low-level flow is from the north (behind a
   // trough: a wanted value below 0 lets its cold front sweep the region).
   windCapKt: 70, southerlyCapKt: 25,
+  // ...less where the outer model's air near the ground is drier than usual: none where it is
+  // dryGkg below the mean (2026-10-16). Southerly flow under strong wind aloft right behind a
+  // front has not yet brought the moisture back, and aiming there made dry, quiet days.
+  dryGkg: 4,
   // The support wanted on a day is drawn evenly between these (the same for a given seed and day).
-  wantedLow: 0.35, wantedHigh: 0.8,
+  // (0.35-0.8 until 2026-10-16. With the outer model's systems slowed and weakened, the support
+  // reached is seldom above 0.35, so steering just took the most it could every day and the
+  // wanted value meant nothing; 0.2-0.35 is a real choice between moderate and strong places.)
+  wantedLow: 0.2, wantedHigh: 0.35,
   // The map's place along the geography (cells east of its western edge; see the regional
   // layer's geographyOffset). Given both roamLow and roamHigh, each day the map is sent
   // roamStep cells one way or the other within that range, at no more than roamCellsPerHour, so the dryline and
@@ -31,7 +38,20 @@ export const STEERING_DEFAULTS = Object.freeze({
   // on every part of it over many days. With null the map stays where it is: the default, as
   // the Roblox world's ground is fixed and must be the ground the weather is made over (roaming
   // was -6 to 30).
-  roamLow: null, roamHigh: null, roamStep: [5, 15], roamCellsPerHour: 0.7
+  roamLow: null, roamHigh: null, roamStep: [5, 15], roamCellsPerHour: 0.7,
+  // What kind of place in the weather each day aims for (shares; 2026-10-16). warmSector: the
+  // large-scale support above (southerly flow under strong wind aloft, ahead of a trough).
+  // nearLow: a surface low of at least lowDepthHpa (against its surroundings 480 km out) with
+  // the map's middle lowOffsetKm from it (east, north): the low near the map's north-west
+  // corner, its warm front and the dryline crossing the map, the triple point between.
+  // upperLow: the middle of an upper trough or low (the 500 mb disturbance at least
+  // upperLowDepthM deep; the mean westerlies seldom let one close off in this model) with the
+  // map's middle upperLowOffsetKm from it: cold-core days. Where no such low can be reached to within
+  // maxMissKm, the day aims for the warm sector instead. The map may slide north or south at
+  // up to northSpeedMs; only the weather overhead changes with it (RegionalAtmosphere).
+  kinds: { warmSector: 0.55, nearLow: 0.3, upperLow: 0.15 },
+  lowDepthHpa: 2, lowOffsetKm: [0, -100], upperLowDepthM: 20, upperLowOffsetKm: [150, -100],
+  maxMissKm: 500, northSpeedMs: 8, northStepMs: 2
 });
 
 const KT = 1.943844;
@@ -50,19 +70,23 @@ export class RegionSteering {
   }
 
   // Large-scale support along the belt at one time of the copy: for each column of the model,
-  // the support a region whose west edge is there would have.
-  supportByColumn(model) {
+  // the support a region whose west edge is there would have (northM: with the region that far
+  // north of where it is).
+  supportByColumn(model, northM = 0) {
     const regional = this.regional, p = this.params, { nx, d } = model;
-    const span = Math.max(1, Math.round(regional.nx * regional.dx / d)), j0 = Math.floor(regional.origin.y / d);
-    const mid = new Float64Array(nx), south = new Float64Array(nx);
+    const span = Math.max(1, Math.round(regional.nx * regional.dx / d)), j0 = Math.floor((regional.origin.y + northM) / d);
+    const mid = new Float64Array(nx), south = new Float64Array(nx), wet = new Float64Array(nx);
+    // The mean moisture falls northward: a slide north is a move into drier air.
+    const meanWet = -(model.params.surfaceMoistureGradientGkgPer1000Km ?? 0) * northM / 1e6;
     for (let i = 0; i < nx; i++) {
-      for (let dj = 0; dj < span; dj++) { const f = model.fieldsAt(i, j0 + dj); mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span; }
+      for (let dj = 0; dj < span; dj++) { const f = model.fieldsAt(i, j0 + dj); mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span; wet[i] += ((f.surfaceMoistureGkg ?? 0) + meanWet) / span; }
     }
     const support = new Float64Array(nx);
     for (let i = 0; i < nx; i++) {
-      let m = 0, s = 0;
-      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; }
+      let m = 0, s = 0, q = 0;
+      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; q += wet[(i + di) % nx] / span; }
       support[i] = Math.min(m, p.windCapKt) / p.windCapKt * clamp(s, -p.southerlyCapKt, p.southerlyCapKt) / p.southerlyCapKt;
+      if (support[i] > 0) support[i] *= clamp(1 + q / p.dryGkg, 0, 1);
     }
     return support;
   }
@@ -70,23 +94,43 @@ export class RegionSteering {
   makePlan() {
     const regional = this.regional, live = regional.model, p = this.params, now = regional.hourUtc;
     const copy = this.scratch ??= new QuasiGeostrophicModel(live.params);
-    for (const key of ['q1', 'q2', 'psi1', 'psi2']) copy[key].set(live[key]);
+    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) if (live[key]) copy[key].set(live[key]);
     copy.time = live.time; copy.history = live.history;   // the model replaces these arrays, never writes into them
     copy.fastTransforms = live.fastTransforms;
     // Hours from now to each time the plan is judged on, soonest first.
     const ahead = p.scoreHoursUtc.map(h => ((h - now) % 24 + 24) % 24 || 24).sort((a, b) => a - b), fields = [];
     let advanced = 0;
-    for (const hours of ahead) { copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours; fields.push({ hours, support: this.supportByColumn(copy) }); }
-    const day = Math.floor((now - p.planHourUtc) / 24), wanted = p.wantedLow + (p.wantedHigh - p.wantedLow) * unit(`${this.seed}|steer|${day}`);
-    const at = (support, xm) => { const g = ((xm / copy.d) % copy.nx + copy.nx) % copy.nx, i = Math.floor(g), t = g - i; return support[i] * (1 - t) + support[(i + 1) % copy.nx] * t; };
-    let best = null;
-    for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) {
-      let support = 0;
-      for (const field of fields) support += at(field.support, regional.origin.x + (regional.timingLeadM ?? 0) + speed * field.hours * 3600) / fields.length;
-      const miss = Math.abs(support - wanted);
-      if (!best || miss < best.miss - 1e-9) best = { speed, support, miss };
+    // The north-south slides tried (m/s), and the support along the belt for each at each time.
+    const norths = [];
+    for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) norths.push(north);
+    for (const hours of ahead) {
+      copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours;
+      fields.push({ hours, supportByNorth: new Map(norths.map(north => [north, this.supportByColumn(copy, north * hours * 3600)])), lows: this.findLows(copy, 'surface'), upperLows: this.findLows(copy, 'upper') });
     }
-    regional.slideMs = best.speed;
+    const day = Math.floor((now - p.planHourUtc) / 24), wanted = p.wantedLow + (p.wantedHigh - p.wantedLow) * unit(`${this.seed}|steer|${day}`);
+    // The kind of day aimed for.
+    const draw = unit(`${this.seed}|kind|${day}`), shares = Object.entries(p.kinds), total = shares.reduce((s, [, v]) => s + v, 0);
+    let kind = shares[0][0], acc = 0;
+    for (const [name, share] of shares) { acc += share / total; if (draw < acc) { kind = name; break; } }
+    const aimed = kind === 'warmSector' ? null : this.aimAtLow(copy, fields, kind === 'nearLow' ? 'lows' : 'upperLows', kind === 'nearLow' ? p.lowOffsetKm : p.upperLowOffsetKm);
+    if (aimed) {
+      regional.slideMs = aimed.speed; regional.slideNorthMs = aimed.north;
+      this.plan = { hourUtc: now, day, kind, missKm: Math.round(aimed.miss / 1000), slideMs: aimed.speed, slideNorthMs: aimed.north, geographyTarget: regional.geographyTarget };
+      return this.plan;
+    }
+    regional.slideNorthMs = 0;
+    if (kind !== 'warmSector') kind = `warmSector (no ${kind} in reach)`;
+    const at = (support, xm) => { const g = ((xm / copy.d) % copy.nx + copy.nx) % copy.nx, i = Math.floor(g), t = g - i; return support[i] * (1 - t) + support[(i + 1) % copy.nx] * t; };
+    // The slide, east-west and north-south, that brings the support nearest the day's wanted
+    // value (the least north-south slide among equals: only the weather overhead changes with it).
+    let best = null;
+    for (const north of norths) for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) {
+      let support = 0;
+      for (const field of fields) support += at(field.supportByNorth.get(north), regional.origin.x + (regional.timingLeadM ?? 0) + speed * field.hours * 3600) / fields.length;
+      const miss = Math.abs(support - wanted);
+      if (!best || miss < best.miss - 0.01 || (Math.abs(miss - best.miss) <= 0.01 && Math.abs(north) < Math.abs(best.north))) best = { speed, north, support, miss };
+    }
+    regional.slideMs = best.speed; regional.slideNorthMs = best.north;
     if (Number.isFinite(p.roamLow) && Number.isFinite(p.roamHigh)) {
       // A day's move of roamStep cells one way or the other from where the map was heading,
       // turned back at the ends of the range: every place in the range comes up equally often,
@@ -97,8 +141,49 @@ export class RegionSteering {
       if (next < p.roamLow) next = 2 * p.roamLow - next;
       regional.geographyTarget = clamp(next, p.roamLow, p.roamHigh); regional.geographyRate = p.roamCellsPerHour;
     }
-    this.plan = { hourUtc: now, day, wanted, support: best.support, slideMs: best.speed, geographyTarget: regional.geographyTarget };
+    this.plan = { hourUtc: now, day, kind, wanted, support: best.support, slideMs: best.speed, slideNorthMs: best.north, geographyTarget: regional.geographyTarget };
     return this.plan;
+  }
+
+  // Lows in the copy at one time: surface lows (the lower layer's pressure) or the middle of
+  // upper troughs and lows (the mid-level disturbance), each a local minimum at least so deep
+  // against its surroundings 480 km out. Positions in metres in the channel.
+  findLows(model, which) {
+    const { nx, ny, d } = model, p = this.params, f0 = model.params.f0, field = new Float64Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      // hPa for the surface, metres of height for 500 mb.
+      field[k] = which === 'surface' ? 1.2 * f0 * model.psi2[k] / 100 : f0 * (model.psi1[k] + model.psi2[k]) / 2 / 9.81;
+    }
+    const lows = [], need = which === 'surface' ? p.lowDepthHpa : p.upperLowDepthM;
+    for (let j = 1; j < ny - 1; j++) for (let i = 0; i < nx; i++) {
+      const v = field[j * nx + i]; let lowest = true;
+      for (let dj = -2; dj <= 2 && lowest; dj++) for (let di = -2; di <= 2; di++) if ((di || dj) && field[model.index(i + di, Math.min(ny - 1, Math.max(0, j + dj)))] < v) { lowest = false; break; }
+      if (!lowest) continue;
+      let ring = 0; for (let a = 0; a < 16; a++) ring += field[model.index(i + Math.round(6 * Math.cos(a * Math.PI / 8)), Math.min(ny - 1, Math.max(0, j + Math.round(6 * Math.sin(a * Math.PI / 8)))))] / 16;
+      if (ring - v >= need) lows.push({ x: (i + 0.5) * d, y: (j + 0.5) * d, depth: ring - v });
+    }
+    return lows;
+  }
+
+  // The slide (m/s east and north) that best brings the map's middle to offsetKm from one of the
+  // lows at the times the plan is judged on; null when none comes within maxMissKm.
+  aimAtLow(model, fields, key, offsetKm) {
+    const regional = this.regional, p = this.params, Lx = model.lengthX, Ly = model.lengthY;
+    const cx = regional.origin.x + (regional.timingLeadM ?? 0) + regional.nx * regional.dx / 2, cy = regional.origin.y + regional.ny * regional.dx / 2;
+    const wrap = (v, L) => ((v % L) + L + L / 2) % L - L / 2;
+    let best = null;
+    for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) {
+      let miss = 0;
+      for (const field of fields) {
+        const x = cx + speed * field.hours * 3600, y = cy + north * field.hours * 3600;
+        let nearest = Infinity;
+        for (const low of field[key]) nearest = Math.min(nearest, Math.hypot(wrap(x - low.x - offsetKm[0] * 1000, Lx), wrap(y - low.y - offsetKm[1] * 1000, Ly)));
+        miss += nearest / fields.length;
+      }
+      if (!best || miss < best.miss - 1 || (Math.abs(miss - best.miss) <= 1 && Math.abs(north) < Math.abs(best.north))) best = { speed, north, miss };
+    }
+    return best && best.miss <= p.maxMissKm * 1000 ? best : null;
   }
 
   saveState() { return { params: this.params, lastPlanDay: this.lastPlanDay, plan: this.plan }; }

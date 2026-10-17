@@ -18,6 +18,7 @@ import { RegionSteering } from './RegionSteering.js';
 const ramp = (value, low, high) => clamp((value - low) / (high - low), 0, 1);
 
 const STATE_VERSION = 4;
+const ISENTROPIC_STABILITY = 0.003;   // K per m: the least stability isentropic lift is worked out with
 
 export const STORM_COUPLING = Object.freeze({
   // Surface convergence (the same measure and range the storm engine was built with:
@@ -82,8 +83,8 @@ export class AtmosphereWorld {
     const arraysOf = object => Object.fromEntries(Object.entries(object).filter(([, value]) => value instanceof Float64Array || value instanceof Float32Array));
     return {
       version: STATE_VERSION, seed: this.seed,
-      model: { params: model.params, time: model.time, history: model.history, q1: model.q1, q2: model.q2, psi1: model.psi1, psi2: model.psi2, moisture: model.moisture, ascentCooling: model.ascentCooling },
-      regional: { params: regional.params, hourUtc: regional.hourUtc, sunsetHour: regional.sunsetHour, midReference: regional.midReference, gulfSupply: regional.gulfSupply, originX: regional.origin.x, slideMs: regional.slideMs, geography: { offset: regional.geographyOffset, target: regional.geographyTarget, rate: regional.geographyRate }, arrays: arraysOf(regional) },
+      model: { params: model.params, time: model.time, history: model.history, q1: model.q1, q2: model.q2, psi1: model.psi1, psi2: model.psi2, moisture: model.moisture, ascentCooling: model.ascentCooling, surfaceTheta: model.surfaceTheta, surfaceMoisture: model.surfaceMoisture },
+      regional: { params: regional.params, hourUtc: regional.hourUtc, sunsetHour: regional.sunsetHour, midReference: regional.midReference, gulfSupply: regional.gulfSupply, originX: regional.origin.x, originY: regional.origin.y, homeY: regional.homeY, slideMs: regional.slideMs, slideNorthMs: regional.slideNorthMs, geography: { offset: regional.geographyOffset, target: regional.geographyTarget, rate: regional.geographyRate }, arrays: arraysOf(regional) },
       steering: this.steering?.saveState() ?? null,
       ascent: this.ascent, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled,
       world: snapshotWorld(this.world, { full: !forecast })
@@ -94,11 +95,12 @@ export class AtmosphereWorld {
   static restore(state) {
     if (state?.version !== STATE_VERSION) return null;
     const model = new QuasiGeostrophicModel(state.model.params);
-    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'ascentCooling']) model[key].set(state.model[key]);
+    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'ascentCooling', 'surfaceTheta', 'surfaceMoisture']) if (state.model[key]) model[key].set(state.model[key]);
     model.time = state.model.time; model.history = state.model.history;
     const restored = new AtmosphereWorld({ seed: state.seed, model, regional: state.regional.params, storms: false, steering: state.steering ? state.steering.params : false, plan: false });
     const regional = restored.regional;
     regional.origin.x = state.regional.originX; regional.slideMs = state.regional.slideMs;
+    if (Number.isFinite(state.regional.originY)) { regional.origin.y = state.regional.originY; regional.homeY = state.regional.homeY; regional.slideNorthMs = state.regional.slideNorthMs ?? 0; }
     if (state.regional.geography) { regional.geographyOffset = state.regional.geography.offset; regional.geographyTarget = state.regional.geography.target; regional.geographyRate = state.regional.geography.rate; regional.geographyVersion++; }
     if (state.steering) restored.steering.restoreState(state.steering);
     for (const [key, values] of Object.entries(state.regional.arrays)) regional[key] = values;
@@ -176,10 +178,40 @@ export class AtmosphereWorld {
 
     // --- Lines: fronts, drylines and outflow boundaries from the fields, for the maps and the
     // radar. Storms do not read them: they feel a line only through the winds and the air.
-    this.boundaries = analyseBoundaries(world).boundaries.map(line => ({
+    const analysis = analyseBoundaries(world);
+    // How fast the moisture changes here (g/kg per 100 km, smoothed as the analysis smooths): a dryline.
+    world.forEachCell((cell, x, y) => { cell.features.moistureGradientGkg100 = analysis.fields.moistureGradient[y * width + x]; });
+    this.boundaries = analysis.boundaries.map(line => ({
       ...line, strength: clamp(line.contrast / (line.type === 'dryline' ? c.strongDrylineContrast : c.strongFrontContrast), 0.2, 1)
     }));
     world.mesoscale = { boundaries: this.boundaries };
+    // --- How fast the density of the air masses changes across a place (K of virtual potential
+    // temperature per 100 km, smoothed as the front analysis smooths): a front. Moist air is
+    // lighter, so a dryline has little of it; storms' rain-cooled air is left out (its edge is
+    // the outflow contrast). Storms near a front take in the spin it makes (StormRotation.js).
+    {
+      const density = new Float64Array(width * height);
+      world.forEachCell((cell, x, y) => {
+        const theta = (Number(cell.features.airMassThetaK) || 0) + (Number(cell.features.coldPoolK) || 0), dewC = (cell.surface.dewpoint - 32) * 5 / 9;
+        const vapour = 6.112 * Math.exp(17.67 * dewC / (dewC + 243.5)), mixing = 0.622 * vapour / Math.max(100, (cell.surface.pressure || 1000) - vapour);
+        density[y * width + x] = theta * (1 + 0.61 * mixing);
+      });
+      let field = density;
+      for (let pass = 0; pass < 2; pass++) {
+        const out = new Float64Array(field.length);
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+          let sum = 0, count = 0;
+          for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) { sum += field[yy * width + xx]; count++; }
+          out[y * width + x] = sum / count;
+        }
+        field = out;
+      }
+      world.forEachCell((cell, x, y) => {
+        const e = Math.min(width - 1, x + 1), w = Math.max(0, x - 1), s = Math.min(height - 1, y + 1), n = Math.max(0, y - 1);
+        const gx = (field[y * width + e] - field[y * width + w]) / ((e - w) * cellKm), gy = (field[s * width + x] - field[n * width + x]) / ((s - n) * cellKm);
+        cell.features.densityGradientK100 = Math.hypot(gx, gy) * 100;
+      });
+    }
     // --- Lift and ascent.
     const wind = (x, y) => { const w = world.cells[clamp(y, 0, height - 1)][clamp(x, 0, width - 1)].surface.wind, d = w.direction * Math.PI / 180; return { east: -Math.sin(d) * w.speed, north: -Math.cos(d) * w.speed }; };
     const liftMemory = dtHours > 0 ? c.liftMemory : 0;
@@ -192,21 +224,53 @@ export class AtmosphereWorld {
       features.convergenceLift = (Number(features.convergenceLift) || 0) * liftMemory + lift * (1 - liftMemory);
       features.boundaryConvergence = clamp((Number(features.boundaryConvergence) || 0) * liftMemory + Math.max(0, convergence) * (1 - liftMemory), 0, 1);
     });
-    // Lift for parcels above the ground: warm, moist air carried up over cooler air (850 mb warm
-    // advection over the stability above it, isentropic ascent) and the convergence of the
-    // 850 mb wind, strongest where the low-level jet ends (taken through 1 km).
+    // Lift for parcels above the ground: warm, moist air carried up over cooler air (isentropic
+    // ascent: the change of 850 mb potential temperature following the air, over the stability
+    // above it; a pattern that only moves with the wind lifts nothing) and the convergence of
+    // the 850 mb wind, strongest where the low-level jet ends (taken through 1 km).
     const level = (x, y, p) => world.cells[clamp(y, 0, height - 1)][clamp(x, 0, width - 1)].levels[p];
     const theta = (x, y, p) => (level(x, y, p).temperature + 273.15) * (1000 / p) ** 0.2857;
     const wind850 = (x, y) => { const l = level(x, y, 850), d = l.windDirection * Math.PI / 180, s = l.windSpeed * 0.514444; return { east: -Math.sin(d) * s, north: -Math.cos(d) * s }; };
-    const metres = cellKm * 1000;
+    // (The 850 mb field is smoothed twice first, as the front analysis smooths, so that the grid's
+    // own unevenness is not taken for lift; and the stability is at least ISENTROPIC_STABILITY:
+    // where the layer is nearly well mixed, under the elevated mixed layer, air is not lifted
+    // along it, it mixes.)
+    const metres = cellKm * 1000, previous = this.previousTheta850;
+    let current = new Float32Array(width * height);
+    world.forEachCell((cell, x, y) => { current[y * width + x] = theta(x, y, 850); });
+    for (let pass = 0; pass < 2; pass++) {
+      const out = new Float32Array(width * height);
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        let sum = 0, count = 0;
+        for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) { sum += current[yy * width + xx]; count++; }
+        out[y * width + x] = sum / count;
+      }
+      current = out;
+    }
+    const smoothTheta = (x, y) => current[clamp(y, 0, height - 1) * width + clamp(x, 0, width - 1)];
+    // The 850 mb wind, smoothed the same way, for its convergence.
+    let jetEast = new Float32Array(width * height), jetNorth = new Float32Array(width * height);
+    world.forEachCell((cell, x, y) => { const v = wind850(x, y); jetEast[y * width + x] = v.east; jetNorth[y * width + x] = v.north; });
+    for (let pass = 0; pass < 2; pass++) {
+      const outEast = new Float32Array(width * height), outNorth = new Float32Array(width * height);
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        let east = 0, north = 0, count = 0;
+        for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) { east += jetEast[yy * width + xx]; north += jetNorth[yy * width + xx]; count++; }
+        outEast[y * width + x] = east / count; outNorth[y * width + x] = north / count;
+      }
+      jetEast = outEast; jetNorth = outNorth;
+    }
+    const jet = (x, y) => { const k = clamp(y, 0, height - 1) * width + clamp(x, 0, width - 1); return { east: jetEast[k], north: jetNorth[k] }; };
     world.forEachCell((cell, x, y) => {
-      const here = wind850(x, y), dThetaEast = (theta(x + 1, y, 850) - theta(x - 1, y, 850)) / (2 * metres), dThetaNorth = (theta(x, y - 1, 850) - theta(x, y + 1, 850)) / (2 * metres);
-      const warmAdvection = -(here.east * dThetaEast + here.north * dThetaNorth);   // K/s
-      const stability = Math.max(0.001, (theta(x, y, 700) - theta(x, y, 850)) / 1500);   // K/m
+      const here = wind850(x, y), dThetaEast = (smoothTheta(x + 1, y) - smoothTheta(x - 1, y)) / (2 * metres), dThetaNorth = (smoothTheta(x, y - 1) - smoothTheta(x, y + 1)) / (2 * metres);
+      const localChange = previous && dtHours > 0 ? (current[y * width + x] - previous[y * width + x]) / (dtHours * 3600) : 0;
+      const warmAdvection = -(here.east * dThetaEast + here.north * dThetaNorth) - localChange;   // K/s, following the air
+      const stability = Math.max(ISENTROPIC_STABILITY, (theta(x, y, 700) - theta(x, y, 850)) / 1500);   // K/m
       cell.features.isentropicLiftMs = clamp(warmAdvection / stability, 0, 0.3);
-      const e = wind850(x + 1, y), w = wind850(x - 1, y), n = wind850(x, y - 1), s = wind850(x, y + 1);
+      const e = jet(x + 1, y), w = jet(x - 1, y), n = jet(x, y - 1), s = jet(x, y + 1);
       cell.features.jetConvergenceLiftMs = clamp(-((e.east - w.east) + (n.north - s.north)) / (2 * metres) * 1000, 0, 0.3);
     });
+    if (dtHours > 0) this.previousTheta850 = current;
     // The storm engine's own diagnoses of the fields: convergence, moisture convergence,
     // upslope flow, divergence aloft and how ready the air is; then the inflow each storm draws on.
     diagnoseForcing(world);

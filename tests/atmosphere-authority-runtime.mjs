@@ -30,18 +30,19 @@ const catalog = runtime.radarCatalog();
 assert.ok(catalog.sites.length > 0 && (await runtime.radarMosaic()).bytes.length > 0 && (await runtime.radarScan(catalog.sites[0].id, 0.5)).products.reflectivity, 'radar');
 assert.equal(runtime.outlook('day1'), null);
 
-// --- The clock: storms move every 5 simulated minutes (20 real seconds), the atmosphere
-// every half hour (2 real minutes), and storms never run more than one step ahead.
+// --- The clock (12x since 2026-10-15): storms move every 5 simulated minutes (25 real
+// seconds), the atmosphere every half hour (2.5 real minutes), and storms never run more than
+// one step ahead.
 const start = Date.now();
 runtime.lastAdvancedAt = start; runtime.lastStormAdvancedAt = start;
 assert.equal(runtime.advanceOnTimer(start + 10_000), false, 'nothing is due after 10 seconds');
-runtime.advanceOnTimer(start + 61_000);
+runtime.advanceOnTimer(start + 76_000);
 assert.equal(world.validHourUtc, 22);
-assert.ok(Math.abs(world.stormEngine.validHourUtc - 22.25) < 1e-6, 'three storm ticks in a minute');
-runtime.advanceOnTimer(start + 121_000);
+assert.ok(Math.abs(world.stormEngine.validHourUtc - 22.25) < 1e-5, 'three storm ticks in 75 seconds');
+runtime.advanceOnTimer(start + 151_000);
 assert.equal(world.validHourUtc, 22.5);
 assert.ok(Math.abs(world.stormEngine.validHourUtc - 22.5) < 1e-6, 'atmosphere and storms meet at the half hour');
-runtime.advanceOnTimer(start + 121_000 + 45_000);
+runtime.advanceOnTimer(start + 151_000 + 55_000);
 assert.ok(world.stormEngine.validHourUtc > world.validHourUtc && world.stormEngine.validHourUtc <= world.validHourUtc + 0.5 + 1e-6);
 runtime.advance(1);
 assert.equal(world.validHourUtc, 23.5);

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { WORLD_RISK_ORDER, WORLD_HAZARDS, WORLD_MAX_CIG, WORLD_CATEGORY_TABLES, PROBABILITY_LEVELS, worldCategory, worldCategoryFromHazard, drawnCig, highestCigAt, leadingHazard, conditionalCig, contourCig, CIG_BOUNDS } from '../js/forecast/worldRiskCategories.js';
+import { WORLD_RISK_ORDER, WORLD_HAZARDS, WORLD_MAX_CIG, WORLD_CATEGORY_TABLES, PROBABILITY_LEVELS, worldCategory, worldCategoryFromHazard, drawnCig, highestCigAt, leadingHazard, conditionalCig, contourCig, contourCigAreas, CIG_BOUNDS } from '../js/forecast/worldRiskCategories.js';
 import { CATEGORY_TABLES, categoryFromHazard } from '../js/forecast/spcOutlookRules.js';
 import { aggregateTruth, practicallyPerfectChance, TRUTH_FIELDS, CHANCE_FIELDS } from '../js/verification/truth.js';
 
@@ -54,6 +54,15 @@ assert.equal(conditionalCig(40, [4, 0, 0], CIG_BOUNDS.tornado), 0, 'a tenth of t
 assert.equal(conditionalCig(40, [9, 0, 0], CIG_BOUNDS.tornado), 1); assert.equal(conditionalCig(40, [21, 10, 0], CIG_BOUNDS.tornado), 2); assert.equal(conditionalCig(40, [30, 12, 1], CIG_BOUNDS.tornado), 3);
 assert.equal(conditionalCig(40, [9, 2, 1], CIG_BOUNDS.tornado), 1, 'a violent tornado among few intense ones is not CIG3: CIG2 is needed first');
 assert.equal(conditionalCig(40, 9, CIG_BOUNDS.tornado), 1, 'a single number is the first tier');
+{
+  // A forecast's group is the typical run's: one run with an outbreak of strong tornadoes among
+  // three with weak ones gives no group, though pooled their reports would give one.
+  const w = 4, h = 1, chance = new Float32Array(w).fill(30), weak = () => ({ amount: Float32Array.from([1, 1, 1, 1]), significant: [new Float32Array(w), new Float32Array(w), new Float32Array(w)] });
+  const outbreak = { amount: Float32Array.from([8, 8, 8, 8]), significant: [Float32Array.from([6, 6, 6, 6]), Float32Array.from([2, 2, 2, 2]), new Float32Array(w)] };
+  const runs = [outbreak, weak(), weak(), weak()], pooledAmount = Float32Array.from({ length: w }, (_, i) => runs.reduce((a, r) => a + r.amount[i], 0)), pooledSig = [0, 1, 2].map(t => Float32Array.from({ length: w }, (_, i) => runs.reduce((a, r) => a + r.significant[t][i], 0)));
+  assert.ok(contourCigAreas('tornado', chance, pooledAmount, pooledSig, w, h).cig[0] >= 1, 'pooled, the outbreak run sets a group');
+  assert.equal(contourCigAreas('tornado', chance, pooledAmount, pooledSig, w, h, undefined, runs).cig[0], 0, 'judged run by run, the typical run has none');
+}
 assert.equal(conditionalCig(0, [0], CIG_BOUNDS.wind), 0); assert.equal(conditionalCig(40, [40, 40], CIG_BOUNDS.hail), 2); assert.equal(conditionalCig(40, [40, 0], CIG_BOUNDS.hail), 1, 'all of it 2 in, none 3.5 in: CIG1');
 // Each separate area inside a contour is judged as a whole; a cell takes the group of the highest contour it is in.
 {

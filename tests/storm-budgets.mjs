@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { Storm } from '../js/storms/Storm.js';
 import { BUDGET, startStormBudgets, stepStormBudgets, stormIsOver } from '../js/storms/StormBudgets.js';
 import { diagnoseStormRealizationPhysics } from '../js/storms/StormRealizationPhysics.js';
+import { stormFuel } from '../js/storms/StormHazards.js';
 
 // A storm's life from its three budgets alone, in air that does not change. What differs
 // between the runs is only the air.
@@ -13,7 +14,8 @@ function life(environment, hours = 6, rotation = 0) {
   const record = { storm, peakMs: 0, peakRain: 0, peakPool: 0, endedAt: null, updraughtPeakAt: 0, rainPeakAt: 0 };
   for (let hour = STEP; hour <= hours + 1e-9; hour += STEP) {
     storm.ageHours = hour;
-    stepStormBudgets(storm, environment, diagnoseStormRealizationPhysics(environment, storm), STEP);
+    // Fed as the engine feeds it: no buoyant inflow it can lift (stormFuel), no updraught.
+    stepStormBudgets(storm, environment, diagnoseStormRealizationPhysics(environment, storm), STEP, { starving: stormFuel(environment).starving });
     for (const value of [storm.updraughtMs, storm.precipitation, storm.coldPoolStrength, storm.organization, storm.intensity]) assert.ok(Number.isFinite(value) && value >= 0, 'budgets stay finite and non-negative');
     if (storm.updraughtMs > record.peakMs) { record.peakMs = storm.updraughtMs; record.updraughtPeakAt = hour; }
     if (storm.precipitation > record.peakRain) { record.peakRain = storm.precipitation; record.rainPeakAt = hour; }

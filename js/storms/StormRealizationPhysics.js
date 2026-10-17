@@ -2,6 +2,7 @@ import { clamp } from '../scenarios/math.js';
 
 const G = 9.80665;
 const KNOT_TO_MS = 0.514444;
+const ENTRAINMENT_CONVERGENCE = 0.12;
 
 function ramp(value, low, high) {
   return clamp((Number(value) - low) / Math.max(1e-6, high - low), 0, 1);
@@ -27,9 +28,19 @@ export function diagnoseStormRealizationPhysics(environment, storm = null) {
   // inhibition, and inflow contamination. This is not presented as a literal
   // resolved cloud-model vertical velocity.
   const theoreticalUpdraftMs = Math.sqrt(2 * cape);
-  const entrainmentEfficiency = clamp(0.42 + 0.25 * ramp(shearKt, 15, 50) + 0.18 * ramp(cape, 500, 3000) - 0.16 * ramp(lcl, 1200, 2600), 0.25, 0.90);
+  // Air converging under a storm (a boundary, a collision of outflows) feeds a wider updraught,
+  // and a wider updraught loses less to the dry air it draws in at its sides (entrainment goes as
+  // one over its width): of storms in the same air, those fed by a boundary grow strongest.
+  // (2026-10-16: without it every storm in an air mass reached the same updraught, and weak-flow
+  // days with dozens of storms in 1,500-2,000 J/kg made no severe report at all.)
+  const entrainmentEfficiency = clamp(0.42 + 0.25 * ramp(shearKt, 15, 50) + 0.18 * ramp(cape, 500, 3000) - 0.16 * ramp(lcl, 1200, 2600) + ENTRAINMENT_CONVERGENCE * convergence, 0.25, 0.90);
   const precipitationEfficiency = clamp(0.92 - 0.22 * ramp(cape, 2500, 5000) - 0.18 * ramp(environment.stormCoverage ?? 0, 0.55, 1), 0.48, 0.95);
-  const inhibitionEfficiency = clamp(1 - cin / Math.max(80, 170 + 115 * forcing + 90 * capErosion), 0, 1);
+  // A running updraught spends the inhibition's energy lifting its inflow through the cap, so it
+  // keeps CAPE - CIN of it: speed as sqrt(1 - CIN / CAPE). (Until 2026-10-16 it was
+  // 1 - CIN / (170 + ...), which did nothing while the cap was too weak; with a real cap, 50 J/kg
+  // took 30% off every storm in 2,000 J/kg and quiet days rose from 8% to a third. Whether a
+  // storm can start, and keep its inflow at all, is decided elsewhere: liftingWork below, stormFuel.)
+  const inhibitionEfficiency = cape > 0 ? Math.sqrt(Math.max(0, cape - cin) / cape) : 0;
   const inflowEfficiency = clamp(1 - (Number(environment.processedAir) || 0) * 0.62, 0.25, 1);
   const realizedUpdraftMs = theoreticalUpdraftMs * entrainmentEfficiency * precipitationEfficiency * inhibitionEfficiency * inflowEfficiency;
   const realizedUpdraft = clamp(realizedUpdraftMs / 65, 0, 1.2);

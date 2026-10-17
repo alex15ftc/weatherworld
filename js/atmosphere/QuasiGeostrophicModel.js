@@ -21,6 +21,15 @@
 //   dm/dt + U2 dm/dx + J(psi2, m) + v2 dm_mean/dy = evaporation - condensation
 //   condensation = max(0, m - a T - deficit) / condensationHours,  a = dm_sat/dT
 //
+// Air near the ground: the temperature at the surface (as in the Eady model and surface
+// quasi-geostrophic theory) is carried by the lower layer's flow over the whole domain, on a mean
+// that falls northward much faster than the layer above (the ground's own contrast, set by
+// surfaceGradientKPer1000Km), and drawn back toward that mean by the ground over
+// surfaceRelaxationDays. Northerly flow behind a trough brings genuinely cold air from far
+// away, and the flow's deformation packs the contrast into fronts. It is carried, not felt: it
+// does not change the flow. The regional layer takes its low-level air masses from it.
+//   d theta_s/dt + U2 d theta_s/dx + J(psi2, theta_s) - v2 G = -theta_s / surfaceRelaxationDays
+//
 // The model's own vertical motion is diagnosed each step: the change of thickness that the
 // flow, the latent heat and radiation do not account for is the adiabatic cooling of rising
 // air (or warming of sinking air). It carries both terms of the omega equation (vorticity
@@ -35,13 +44,23 @@ export const QG_DEFAULTS = Object.freeze({
   // Internal Rossby radius: sets the size of the systems. Smaller systems carry stronger
   // winds for the same pressure change and come more often (about every 2 days at 350 km,
   // every 3 at 550 km, where the lows were deep but their winds slack).
-  deformationRadiusKm: 350,
+  // 2026-10-16: 350 to 400 km, the mean winds lower and the shear less (26.5/17 to 22/14):
+  // a trough every day and a half or so, weaker than before, moving at about 1,300 km a day instead of
+  // 1,900: moderate systems on most days and strong ones seldom.
+  // With a system over the map every day, the world had outbreaks on 15% of days and no severe
+  // weather on as many.
+  deformationRadiusKm: 400,
   // Mean west wind of each layer. Their difference (the shear) decides how strong the systems
   // get: a little more of it and they overshoot, a lot more and they never settle. Adding the
   // same amount to both changes nothing about the systems except how fast they travel, so that
   // is how the strength of the flow aloft is set. The model has no mountains: the wind this
   // leaves near the ground is dealt with where the terrain is (the regional layer).
-  upperWindMs: 26.5, lowerWindMs: 17,
+  // (22/14 to 23.5/13.5 later on 2026-10-16: the same mean wind, so the same travelling speed, but
+  // more shear. With 8 m/s the systems sat only 3 times above the critical shear (beta times the
+  // deformation radius squared, 2.6 m/s) and grew half as strong as before: low-level pressure
+  // spread 3.5 hPa, the deepest lows -9.5 hPa, and no closed low on the map on any day. With 10
+  // m/s: spread 7 hPa, lows -17 to -19, about 1,280 km a day.)
+  upperWindMs: 23.5, lowerWindMs: 13.5,
   // Radiation pulls the temperature disturbances back toward the mean state; drag slows the
   // lower layer. Together they set how strong the systems get.
   // Surface friction grows with the wind (drag force ~ speed squared): dragDays is the spin-down
@@ -53,6 +72,20 @@ export const QG_DEFAULTS = Object.freeze({
   // that (days) and how fast excess vapour condenses (hours). latentHeatShare is the share of
   // the condensation's heat that warms the 250-750 mb column (0 turns the moisture off).
   saturationGkg: 9, meanHumidity: 0.95, evaporationDays: 4, condensationHours: 3, latentHeatShare: 1,
+  // Air near the ground: north-south gradient of its mean temperature (K per 1000 km, colder
+  // northward) and how fast the ground draws it back toward that mean (days).
+  surfaceGradientKPer1000Km: 10, surfaceRelaxationDays: 3,
+  // Moisture of the air near the ground (2026-10-16), carried the same way and as passively: a
+  // mean that falls northward (g/kg per 1000 km: the Gulf's air to the northern Plains'), and the
+  // ground and the sea drawing it back toward that mean over surfaceMoistureRelaxationDays.
+  // Southerly flow brings moist air north over a whole region and northerly flow behind a front
+  // dries one out; the regional layer takes its moisture from it as it takes its temperature.
+  surfaceMoistureGradientGkgPer1000Km: 5, surfaceMoistureRelaxationDays: 2.5,
+  // Passes of a 1-2-1 spreading of the latent heat over neighbouring cells. Without it the heat
+  // came in 80 km patches that switched on and off from step to step, and the fronts below
+  // flickered with them (they moved 1.6 times as far between analyses as the wind carried them;
+  // 1.4 with two passes, 1.5 with no moisture at all; 4 seeds, 2026-10-16).
+  latentHeatSpreadPasses: 2,
   // Size of the seeded disturbances the run starts from (potential vorticity, 1/s).
   initialNoise: 2e-5,
   timeStepSeconds: 300
@@ -70,6 +103,8 @@ export class QuasiGeostrophicModel {
     // Lower-layer moisture disturbance (g/kg); rain falling now (g/kg per hour); adiabatic
     // cooling of rising air averaged over the last advance (K per hour, sinking negative).
     this.moisture = new Float64Array(n); this.rain = new Float64Array(n); this.ascentCooling = new Float64Array(n);
+    this.surfaceTheta = new Float64Array(n);   // the ground-level air's temperature about its mean (K)
+    this.surfaceMoisture = new Float64Array(n);   // ...and its moisture about its mean (g/kg)
     this.work = Array.from({ length: 8 }, () => new Float64Array(n));
     this.buildTransforms();
     this.reset(options.seed ?? 1);
@@ -81,7 +116,7 @@ export class QuasiGeostrophicModel {
   reset(seed = 1) {
     const random = mulberry32(Number(seed) >>> 0);
     for (let k = 0; k < this.q1.length; k++) { const noise = this.params.initialNoise * (random() - 0.5); this.q1[k] = noise; this.q2[k] = -noise; }
-    this.moisture.fill(0); this.rain.fill(0); this.ascentCooling.fill(0);
+    this.moisture.fill(0); this.rain.fill(0); this.ascentCooling.fill(0); this.surfaceTheta.fill(0); this.surfaceMoisture.fill(0);
     this.time = 0; this.history = [];
     this.invert();
   }
@@ -269,10 +304,28 @@ export class QuasiGeostrophicModel {
       this.laplacian(q, lap); this.laplacian(lap, lap2);
       for (let k = 0; k < n; k++) t[k] -= nu * lap2[k];
     }
+    // Air near the ground, carried by the lower layer's flow.
+    const ts = new Float64Array(n), surface = this.surfaceTheta, js = this.jacobian(this.psi2, surface, lap);
+    const surfaceGradient = p.surfaceGradientKPer1000Km / 1e6, surfaceRelax = 1 / (p.surfaceRelaxationDays * DAY);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx, v2 = (this.psi2[e] - this.psi2[w]) * half;
+      ts[k] = -js[k] - p.lowerWindMs * (surface[e] - surface[w]) * half + v2 * surfaceGradient - surface[k] * surfaceRelax;
+    }
+    this.laplacian(surface, lap); this.laplacian(lap, lap2);
+    for (let k = 0; k < n; k++) ts[k] -= nu * lap2[k];
+    // Its moisture, the same way.
+    const tq = new Float64Array(n), wet = this.surfaceMoisture, jq = this.jacobian(this.psi2, wet, lap);
+    const moistureGradient = p.surfaceMoistureGradientGkgPer1000Km / 1e6, moistureRelax = 1 / (p.surfaceMoistureRelaxationDays * DAY);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx, v2 = (this.psi2[e] - this.psi2[w]) * half;
+      tq[k] = -jq[k] - p.lowerWindMs * (wet[e] - wet[w]) * half + v2 * moistureGradient - wet[k] * moistureRelax;
+    }
+    this.laplacian(wet, lap); this.laplacian(lap, lap2);
+    for (let k = 0; k < n; k++) tq[k] -= nu * lap2[k];
     // Moisture and the latent heat of its condensation (thickness tendency, m^2/s per s).
     const heat = this.heatTendency ??= new Float64Array(n);
     heat.fill(0);
-    if (!(p.latentHeatShare > 0)) return [t1, t2];
+    if (!(p.latentHeatShare > 0)) return [t1, t2, null, ts, tq];
     const tm = new Float64Array(n), m = this.moisture, jm = this.jacobian(this.psi2, m, lap);
     const a = this.saturationSlope(), meanGradient = p.meanHumidity * a * this.meanTemperatureGradient(), deficit = (1 - p.meanHumidity) * p.saturationGkg;
     const kelvin = this.kelvinPerThickness(), toThickness = 2.5 * p.latentHeatShare / kelvin;   // 2.5 K per g/kg condensed
@@ -285,6 +338,16 @@ export class QuasiGeostrophicModel {
     }
     // Radiation removes on average what condensation adds (the mean state already holds that
     // balance), so the heating only moves warmth about: the domain mean is taken out.
+    // The heat a storm system releases is spread by the storms and the gravity waves around them
+    // over more than one 80 km cell.
+    for (let pass = 0; pass < p.latentHeatSpreadPasses; pass++) {
+      const spread = this.work[6];
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx, nn = ((j + 1) % ny) * nx + i, ss = ((j - 1 + ny) % ny) * nx + i;
+        spread[k] = (4 * heat[k] + heat[e] + heat[w] + heat[nn] + heat[ss]) / 8;
+      }
+      heat.set(spread);
+    }
     let meanHeat = 0;
     for (let k = 0; k < n; k++) meanHeat += heat[k] / n;
     this.meanHeat = meanHeat;
@@ -295,7 +358,7 @@ export class QuasiGeostrophicModel {
     }
     this.laplacian(m, lap); this.laplacian(lap, lap2);
     for (let k = 0; k < n; k++) tm[k] -= nu * lap2[k];
-    return [t1, t2, tm];
+    return [t1, t2, tm, ts, tq];
   }
 
   // Kelvin of layer temperature per unit of thickness streamfunction (hydrostatic, 250-750 mb).
@@ -312,7 +375,8 @@ export class QuasiGeostrophicModel {
     const before = this.thicknessBefore ??= new Float64Array(n);
     for (let k = 0; k < n; k++) before[k] = this.psi1[k] - this.psi2[k];
     for (let layer = 0; layer < now.length; layer++) {
-      const q = [this.q1, this.q2, this.moisture][layer], t0 = now[layer], t1 = h[0]?.[layer], t2 = h[1]?.[layer];
+      const q = [this.q1, this.q2, this.moisture, this.surfaceTheta, this.surfaceMoisture][layer], t0 = now[layer], t1 = h[0]?.[layer], t2 = h[1]?.[layer];
+      if (!t0) continue;
       for (let k = 0; k < n; k++) q[k] += dt * (c[0] * t0[k] + (t1 ? c[1] * t1[k] : 0) + (t2 ? c[2] * t2[k] : 0));
     }
     this.history = [now, h[0]].filter(Boolean);
@@ -370,7 +434,13 @@ export class QuasiGeostrophicModel {
       layerTemperatureK: p.f0 * thickness / (287 * Math.log(3)),
       // Cooling of rising air (K per hour; sinking negative) over the last advance, the
       // lower layer's moisture disturbance (g/kg) and its rain (g/kg per hour).
-      ascentCoolingKh: this.ascentCooling[k], moistureGkg: this.moisture[k], rainGkgH: this.rain[k]
+      ascentCoolingKh: this.ascentCooling[k], moistureGkg: this.moisture[k], rainGkgH: this.rain[k],
+      // The ground-level air's temperature about its mean (K; the mean's north-south fall is the
+      // caller's: surfaceGradientKPer1000Km).
+      surfaceThetaK: this.surfaceTheta[k],
+      // ...and its moisture about its mean (g/kg; the mean's fall northward is the caller's:
+      // surfaceMoistureGradientGkgPer1000Km).
+      surfaceMoistureGkg: this.surfaceMoisture[k]
     };
   }
 }

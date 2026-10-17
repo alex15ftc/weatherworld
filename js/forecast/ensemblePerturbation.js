@@ -64,3 +64,44 @@ export function timingErrorMs(seed, spreadMs = TIMING.spreadMs) {
   const random = generator(`timing|${seed}`), a = Math.max(1e-12, random()), b = random();
   return spreadMs * Math.sqrt(-2 * Math.log(a)) * Math.cos(2 * Math.PI * b);
 }
+
+// What a forecast does not know about the air over the map itself, which is where real Day 1
+// forecasts go wrong (agenda step 11, 2026-10-16): how strong the cap is, how much moisture comes
+// back north and how deep it is, and how readily the mesoscale lift starts storms. Each run
+// draws its own error in each (one standard deviation given here) and keeps it: its lid air is
+// that much warmer or cooler, including the lid air still to come in, its Gulf air that much
+// moister or drier, offshore as well as on the map, and its storms start under a lift that much
+// stronger or weaker. The errors are at full size when the afternoon is still a night away and
+// shrink toward leastShare as it comes: a later issue knows the morning's soundings, so the runs
+// come together through the day and the outlook is upgraded or downgraded as they do.
+export const MESOSCALE = Object.freeze({
+  capK: 1.0, moistureGkg: 0.8, moistTopM: 150, liftLog: 0.3,
+  afternoonUtc: 21, fullHours: 15, leastShare: 0.35
+});
+
+// The share of the full errors for a forecast issued at hourUtc.
+export function mesoscaleShare(hourUtc, p = MESOSCALE) {
+  const ahead = (((p.afternoonUtc - hourUtc) % 24) + 24) % 24;
+  return Math.min(1, p.leastShare + (1 - p.leastShare) * ahead / p.fullHours);
+}
+
+// Gives a run its own errors in the air over the map (see MESOSCALE); changes the regional
+// layer and the world in place. share: their size (mesoscaleShare). sign: -1 gives the opposite
+// errors of the same draw. The runs go in pairs (one +1, one -1, same seed), so their errors
+// average out to the atmosphere as it is, however few runs there are.
+export function perturbMesoscale(atmosphere, seed, share = 1, p = MESOSCALE, sign = 1) {
+  if (!(share > 0)) return atmosphere;
+  const random = generator(`mesoscale|${seed}`), normal = () => { const a = Math.max(1e-12, random()), b = random(); return Math.sqrt(-2 * Math.log(a)) * Math.cos(2 * Math.PI * b); };
+  const regional = atmosphere.regional, rp = regional.params;
+  const capK = sign * share * p.capK * normal(), moisture = sign * share * p.moistureGkg * normal(), top = sign * share * p.moistTopM * normal(), lift = Math.exp(sign * share * p.liftLog * normal());
+  // The cap: the lid air over the map and the lid air still to come in.
+  for (let k = 0; k < regional.lidTheta.length; k++) regional.lidTheta[k] += capK;
+  regional.params = { ...rp, lidSourceThetaK: rp.lidSourceThetaK + capK };
+  // The moisture coming back: the Gulf air on the map (not the dry air) and offshore, and its depth.
+  const gulfShare = g => Math.min(1, Math.max(0, (g - 9) / 4));
+  for (let k = 0; k < regional.moisture.length; k++) { const s = gulfShare(regional.moisture[k]); regional.moisture[k] += moisture * s; regional.moistTop[k] += top * s; }
+  regional.gulfMoistureErrorGkg = (regional.gulfMoistureErrorGkg ?? 0) + moisture;
+  // The lift that starts storms (InitiationEngine.js).
+  atmosphere.world.forecastLiftScale = lift;
+  return atmosphere;
+}

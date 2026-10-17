@@ -19,7 +19,10 @@ export const BUDGET = Object.freeze({
   growthHours: 0.35, decayHours: 0.3, falloutHours: 0.4,
   // 0-6 km shear (kt) from which the rain starts to fall clear of the updraught, to fully clear.
   separationShearKt: [15, 45],
-  loadingShare: 0.45, undercutShare: 0.9,
+  // A storm fully undercut by its outflow keeps 1 - undercutShare of what its inflow could
+  // support. (0.9 to 0.95 on 2026-10-16: with boundary-fed updraughts entraining less, fully
+  // undercut storms in weak shear hung on at the 4 m/s that ends a storm instead of dying.)
+  loadingShare: 0.45, undercutShare: 0.95,
   lineOrganization: 0.7, lineUndercutBalance: [1.8, 3],
   // Share of the undercutting a fully rotating updraught resists: its rotation draws air up
   // into it from below, so it holds its inflow against outflow that would cut off another storm.

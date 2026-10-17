@@ -18,6 +18,12 @@ const args = process.argv.slice(2);
 const days = Number(args.find(a => /^\d+$/.test(a)) ?? 7);
 const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const memberCount = Number(flag('--members') ?? 8);
+// OLD=1: the outlooks as before agenda step 11 (no errors in the air over the map, no agreement rule), to compare.
+const OLD = process.env.OLD === '1';
+// NOCAL=1: without the calibration of the chances. --calibration-data: print, as JSON, the runs'
+// raw chances binned against whether the hazard came within 25 miles (for fit-outlook-calibration.mjs).
+const NOCAL = process.env.NOCAL === '1' || OLD, CAL_DATA = args.includes('--calibration-data');
+const CAL_BINS = [0, 1, 2, 3.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50, 60, 75, 101];
 const ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 // The contour levels of each hazard: places are grouped by the contour they are inside.
 const LEVELS = { tornado: [0, 2, 5, 10, 15, 30, 45, 60], wind: [0, 5, 15, 30, 45, 60, 75, 90], hail: [0, 5, 15, 30, 45, 60], severe: [0, 5, 15, 30, 45, 60] };
@@ -35,8 +41,8 @@ async function worker(seed) {
   for (let day = 0; day < days; day++) {
     // The morning's outlooks: each run goes as far as the last day it is one of the runs for.
     const bytes = v8.serialize(atmosphere.saveState()), now = world.validHourUtc, runs = [];
-    for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length));
-    issued[day] = OUTLOOK.days.map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).map(run => run[index]), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed }));
+    for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, OLD ? { mesoscale: 0 } : {}));
+    issued[day] = OUTLOOK.days.map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).map(run => run[index]), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : {}) }));
     // What then happened.
     const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;
     for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations); }
@@ -54,6 +60,9 @@ async function worker(seed) {
       const verified = outlook.hazards.includes('severe') ? verifiedAs.severe : verifiedAs.full;
       const reliability = Object.fromEntries(outlook.hazards.map(h => [h, LEVELS[h].map(() => ({ cells: 0, hits: 0 }))]));
       const groups = Object.fromEntries(outlook.hazards.map(h => [h, [0, 1, 2, 3].map(() => ({ cells: 0, hits: 0, tier1: 0, tier2: 0, tier3: 0 }))]));
+      // Calibration data: the raw chance's bin, the cells in it and how many had the hazard near.
+      const calibration = Object.fromEntries(outlook.hazards.map(h => [h, CAL_BINS.slice(1).map(() => ({ cells: 0, hits: 0, raw: 0 }))]));
+      if (CAL_DATA) for (let i = 0; i < n; i++) for (const h of outlook.hazards) { const raw = outlook.rawChance[h][i], b = CAL_BINS.findIndex((edge, k) => raw >= edge && raw < CAL_BINS[k + 1]), slot = calibration[h][b]; slot.cells++; slot.raw += raw; if (near[h][i]) slot.hits++; }
       let sameCell = 0, withinOne = 0;
       for (let i = 0; i < n; i++) {
         for (const h of outlook.hazards) {
@@ -68,7 +77,7 @@ async function worker(seed) {
       out.push({
         seed, day, lead, forecast: top(outlook.category),
         // The highest intensity group drawn for each hazard, and the highest the day verified with.
-        drawnCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...outlook.cig[h])])), verifiedCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...(h === 'severe' ? severeCig : truth.observedCig[h]))])), verified: top(verified), sameCell: sameCell / n, withinOne: withinOne / n, reliability, groups,
+        drawnCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...outlook.cig[h])])), verifiedCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...(h === 'severe' ? severeCig : truth.observedCig[h]))])), verified: top(verified), calibration, sameCell: sameCell / n, withinOne: withinOne / n, reliability, groups,
         forecastTornadoes: outlook.expected.tornadoes, tornadoes: world.stormEngine.totalTornadoes - before,
         forecastArea: Object.fromEntries(ORDER.map((c, k) => [c, outlook.category.filter(v => ORDER.indexOf(v) >= k).length / n])), verifiedArea: Object.fromEntries(ORDER.map((c, k) => [c, verified.filter(v => ORDER.indexOf(v) >= k).length / n]))
       });
@@ -80,9 +89,17 @@ async function worker(seed) {
 async function main() {
   const seeds = (flag('--seeds') ?? '1,2,3,4,5,6').split(',').map(Number), started = Date.now();
   const results = await Promise.all(seeds.map(seed => new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount)]);
+    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount), ...(CAL_DATA ? ['--calibration-data'] : [])]);
     child.once('message', resolve); child.once('error', reject); child.once('exit', code => { if (code) reject(new Error(`seed ${seed} exited with ${code}`)); });
   })));
+  if (CAL_DATA) {
+    const data = {};
+    for (const row of results.flat()) {
+      const day = `day${row.lead}`;
+      for (const [h, bins] of Object.entries(row.calibration)) bins.forEach((bin, k) => { const slot = (((data[day] ??= {})[h] ??= CAL_BINS.slice(1).map(() => ({ cells: 0, hits: 0, raw: 0 }))))[k]; slot.cells += bin.cells; slot.hits += bin.hits; slot.raw += bin.raw; });
+    }
+    console.log('CALIBRATION_DATA ' + JSON.stringify(data));
+  }
   const everything = results.flat(), share = (rows, test) => `${Math.round(100 * rows.filter(test).length / Math.max(1, rows.length))}%`, mean = values => values.reduce((a, b) => a + b, 0) / Math.max(1, values.length);
   console.log(`=== Outlook verification: ${days} mornings x seeds ${seeds.join(', ')}, ${memberCount} runs (${((Date.now() - started) / 1000).toFixed(0)} s) ===`);
   for (const lead of [1, 2, 3]) {

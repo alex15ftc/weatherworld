@@ -9,7 +9,11 @@ import { clamp } from '../scenarios/math.js';
 // stones in the growth zone longer; steep mid-level lapse rates put more of the buoyancy
 // there. Fitted on the redesigned atmosphere so that a typical mature storm is near half an
 // inch, about one mature storm-sample in ten reaches 2 in, and the strongest pass 3 in.
-export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 68, power: 2.6, nonRotating: 0.5, fullRotation: 0.4, lapseRange: [6.5, 8.5], lapseGain: 0.3, largestInches: 5.5 });
+// 2026-10-16: power 2.6 to 2, reference 68 to 60 m/s. A stone falls at a speed that grows with
+// the square root of its size, so the largest an updraught can hold grows with the square of the
+// updraught; with 2.6 the moderate updraughts of pulse storms and elevated storms made almost no
+// hail at all (a 47 m/s updraught under an inch even rotating).
+export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 60, power: 2, nonRotating: 0.8, fullRotation: 0.4, lapseRange: [6.5, 8.5], lapseGain: 0.3, largestInches: 5.5 });
 // Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
 // more the more rain is falling), plus a share of the storm's own motion carried to the ground
 // (fast storms in strong flow are windier), plus the wind from the middle levels that a rear
@@ -19,13 +23,17 @@ export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 68, po
 // all days, yet only 0.2% of samples reached 85 mph. Real downdraughts lose much of sqrt(2
 // DCAPE) to entrainment and drag, and the strongest winds come with organised lines; with
 // these, 15% of samples reach 58 mph, 3% 75 mph and 1% 85 mph, most of them in lines.
+// 2026-10-16: downdraught share back to 0.5 and non-rotating hail 0.8: high-CAPE pulse storms
+// gave no marginal hail or downburst at all (with the over-strong flow and lines of before
+// fixed, the extra wind reports are gone).
+// 2026-10-16: 0.6 to 0.5 (wind still made about half the High days; tested on 40 days).
 // 2026-10-15: rear inflow share 0.9 to 0.6: real rear-inflow jets bring down about half the
 // mid-level wind, and with lines more common the wind reports reached 96 mph over most of
 // the map on a fifth of all days (every High day had them); High days 20% to 8%.
 // 2026-10-15: downdraught share 0.5 to 0.4. Damaging wind alone still made a third of all High
 // days (wind contours at 75-90% on half of all days); at 0.4 High days fell from 45% to 38% on
 // 40 days, with tornadoes unchanged.
-export const GUST = Object.freeze({ downdraughtShare: 0.4, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.6, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
+export const GUST = Object.freeze({ downdraughtShare: 0.5, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.5, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 const MPH_PER_MS = 2.23694;
 
 export function hailSizeInches(storm, environment) {
@@ -59,10 +67,15 @@ export function stepRearInflow(storm, dtHours) {
 // moving off the lines into it went elevated within the hour); otherwise it can feed on an
 // elevated parcel that is essentially uncapped.
 // Without either the storm has no buoyant inflow and collapses.
+// A storm is fed from the ground whenever the air there can be lifted into it, and draws on the
+// most unstable air in that inflow too; it feeds from above only when the ground air is capped
+// beyond that. (Until 2026-10-16 it went elevated whenever the most unstable parcel had more
+// energy than the mixed-layer one, which near the ground it nearly always has: storms spent
+// 84% of their time "elevated" over ground air that was rising into them.)
 export function stormFuel(environment) {
   const surfaceFuel = (Number(environment.cin) || 0) <= 200 ? Number(environment.cape) || 0 : 0;
   const elevatedFuel = (Number(environment.mostUnstableCin) || 0) <= 60 ? 0.85 * (Number(environment.mostUnstableCape) || 0) : 0;
-  const fuelCape = Math.max(surfaceFuel, elevatedFuel), elevatedFeed = elevatedFuel > surfaceFuel;
+  const elevatedFeed = surfaceFuel < 150 && elevatedFuel > surfaceFuel, fuelCape = elevatedFeed ? elevatedFuel : Math.max(surfaceFuel, elevatedFuel);
   const feedEnvironment = elevatedFeed ? { ...environment, cape: elevatedFuel, cin: Number(environment.mostUnstableCin) || 0 } : environment;
   return { fuelCape, elevatedFeed, feedEnvironment, starving: fuelCape < 150 };
 }

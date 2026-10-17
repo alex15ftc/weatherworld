@@ -107,7 +107,9 @@ function updateStorm(world, storm, dtHours) {
     storm.trackPoints.push({ x: storm.positionKm.x, y: storm.positionKm.y, hourUtc: world.stormEngine?.validHourUtc ?? world.validHourUtc });
     if (storm.trackPoints.length > 240) storm.trackPoints.splice(0, storm.trackPoints.length-240);
   }
-  storm.ageHours += dtHours; storm.modeAgeHours += dtHours; storm.environment = environment;
+  // systemAgeHours: how long the storm system has been going, carried through mergers (a line
+  // that keeps taking in new cells is as old as its oldest part); ageHours is this cell's own.
+  storm.ageHours += dtHours; storm.modeAgeHours += dtHours; storm.systemAgeHours = (storm.systemAgeHours ?? storm.ageHours - dtHours) + dtHours; storm.environment = environment;
   // Fuel: an existing updraft can force surface-based parcels through moderate inhibition
   // (~150 J/kg); otherwise it can feed on an elevated parcel that is essentially uncapped.
   // Without either the storm has no buoyant inflow and collapses.
@@ -130,6 +132,10 @@ function updateStorm(world, storm, dtHours) {
   stepRearInflow(storm, dtHours);
   // Line organization follows the forcing and the cold pool's balance with the shear.
   storm.lineOrganization = lineShare(storm) + (lineOrganizationTarget(storm, environment) - lineShare(storm)) * clamp(LINE_RESPONSE_PER_HOUR * dtHours, 0, 1);
+  if (isLine(storm) && !starving) {
+    const spreadKph = physics.coldPoolSpeedMs * 3.6 * LINE_GROWTH_SHARE * clamp(storm.coldPoolStrength / LINE_GROWTH_POOL, 0, 1) * clamp(fuelCape / LINE_GROWTH_FUEL_JKG, 0, 1);
+    storm.lineHalfLengthKm = Math.min(MAX_LINE_HALF_LENGTH_KM, lineHalfLengthKm(storm) + spreadKph * dtHours);
+  }
   storm.coldPoolRadiusKm = clamp(5 + storm.ageHours * 5 + storm.coldPoolStrength * 24, 5, 52);
   updateStormColdPool(world, storm, environment, dtHours);
   updateLifecycleEvolution(storm, environment, dtHours);
@@ -174,6 +180,12 @@ function handleSplits(world) {
 }
 
 const LINE_JOIN_OVERLAP = 0.75, LINE_JOIN_DEPTH_KM = 15, MAX_LINE_HALF_LENGTH_KM = 160;
+// A line's gust front spreads sideways as well as forward, and at the line's ends it lifts the
+// air beside them into new cells, so a line that has fuel lengthens on its own (upscale growth):
+// each end moves out at this share of the cold pool's speed, with a strong cold pool
+// (LINE_GROWTH_POOL) and full fuel (LINE_GROWTH_FUEL_JKG). (2026-10-16: lines grew only by joining
+// their neighbours; none reached the 220 km of an MCS.)
+const LINE_GROWTH_SHARE = 0.25, LINE_GROWTH_POOL = 0.4, LINE_GROWTH_FUEL_JKG = 1500;
 // Speed (beyond its own motion) at which a merged cell moves to its new centre.
 const MERGE_GLIDE_KPH = 60;
 // A storm starts with part of the line organization its forcing implies and grows into the rest.
@@ -225,6 +237,8 @@ function handleMergersAndOrganization(world, spatialIndex) {
     keeper.organization = clamp((keeper.organization+absorbed.organization)*0.55,0,1);
     keeper.lineOrganization = Math.max(lineShare(keeper), lineShare(absorbed));
     keeper.mergeCount += 1 + absorbed.mergeCount;
+    keeper.systemAgeHours = Math.max(keeper.systemAgeHours ?? keeper.ageHours, absorbed.systemAgeHours ?? absorbed.ageHours);
+    keeper.trackKm = Math.max(keeper.trackKm ?? 0, absorbed.trackKm ?? 0);
     if (joining) keeper.lineHalfLengthKm = Math.max(joinedHalfLengthKm, keeper.lineHalfLengthKm ?? 0);
     keeper.mergedStormIds ??= []; keeper.mergedStormIds.push(absorbed.id, ...(absorbed.mergedStormIds ?? [])); keeper.mergedStormIds = [...new Set(keeper.mergedStormIds)].slice(-20);
     keeper.lastInteractionHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
@@ -393,7 +407,7 @@ function diagnoseObservedStorm(storm, environment) {
   if (storm.mode === 'MCS') tags.push('MCS');
   if (storm.mode === 'QLCS') tags.push('QLCS');
   if (tornadoProbability > .42 && storm.lifecycleState === 'mature') tags.push('tornado');
-  const derechoDistance = storm.trackKm >= 400 && linear >= .5 && windProbability > .62 && storm.ageHours >= 6;
+  const derechoDistance = storm.trackKm >= 400 && linear >= .5 && windProbability > .62 && (storm.systemAgeHours ?? storm.ageHours) >= 6;
   if (derechoDistance) tags.push('derecho');
   storm.eventTags = tags;
 }
