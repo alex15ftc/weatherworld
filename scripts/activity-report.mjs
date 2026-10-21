@@ -19,6 +19,9 @@ const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : null)
 const settings = args.filter(a => a.includes('='));
 const ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 
+// The time-of-day windows (local CDT hour).
+function timeBand(h) { return h >= 7 && h < 13 ? 'morning' : h >= 13 && h < 20 ? 'afternoon' : h >= 20 ? 'evening' : 'overnight'; }
+
 if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else await main();
 
 async function worker(seed) {
@@ -56,8 +59,9 @@ async function worker(seed) {
           record.supercell = true;
           if (!s.elevatedFeed && Math.abs(s.environment?.cin ?? 999) < 100) {
             record.groundSupercell = true;
-            const localHour = ((((world.stormEngine.validHourUtc ?? world.validHourUtc) - 6) % 24) + 24) % 24;
-            if (localHour >= 13 && localHour < 22) record.afternoonSupercell = true;   // a chaseable afternoon or evening
+            // Any hour counts: players chase day and night.
+            const localHour = ((((world.stormEngine.validHourUtc ?? world.validHourUtc) - 5) % 24) + 24) % 24;
+            record.supercellBands ??= new Set(); record.supercellBands.add(timeBand(localHour));
           }
         }
         if (s.tornado?.onGround) {
@@ -85,7 +89,7 @@ async function worker(seed) {
       hailStorms: record.hailStorms.size, windStorms: record.windStorms.size, maxHail: record.maxHail, maxGust: record.maxGust, maxWindEf: record.maxWindEf,
       severe: any('hail') || any('wind') || any('tornado'), tornado: any('tornado'), sigTornado: any('tornadoSig'), sigHail: any('hailSig'), sigWind: any('windSig'),
       category: ORDER[Math.max(...order)], worldCategory: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))], worldSlightArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('SLGT')).length / n, worldEnhancedArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('ENH')).length / n, slightArea: share('SLGT'), enhancedArea: share('ENH'), cape: record.cape, shear: record.shear, wind500: record.wind500,
-      supercell: record.supercell, groundSupercell: record.groundSupercell, afternoonSupercell: record.afternoonSupercell,
+      supercell: record.supercell, groundSupercell: record.groundSupercell, afternoonSupercell: record.afternoonSupercell, supercellBands: [...(record.supercellBands ?? [])],
       tornadoList: record.tornadoKeys.map(k => { const l = looks.get(k); return { start: l.startHourUtc, ef: l.ef, windEf: l.windEf ?? l.ef, shape: l.shape ?? 'unseen', multi: Boolean(l.multi), wrapped: Boolean(l.wrapped) }; }),
       // What drives the day's category: the category each hazard alone reaches somewhere, and the
       // highest intensity group each verified with.
@@ -134,7 +138,8 @@ async function main() {
     console.log('\nFor the game (a game day is 2 real hours):');
     console.log(`  tornado-free days in a row: ${streaks.filter(r => r === 1).length} single, ${streaks.filter(r => r === 2).length} pairs, ${streaks.filter(r => r >= 3).length} runs of 3+ (longest ${Math.max(0, ...streaks)})`);
     console.log(`  real time between tornadoes: median ${at(0.5).toFixed(1)} h, 90th ${at(0.9).toFixed(1)} h, longest ${(g.at(-1) ?? 0).toFixed(1)} h; gaps over 4 real hours: ${g.filter(x => x > 4).length} of ${g.length}`);
-    console.log(`  chaseable afternoons (a ground-fed supercell 1-10 pm local): ${share(d => d.afternoonSupercell)}`);
+    // Players chase day and night: a day is chaseable when a ground-fed supercell is on the map at any hour.
+    console.log(`  chaseable days (a ground-fed supercell at any hour, day or night): ${share(d => d.supercellBands.length > 0)} | with a tornado at any hour: ${share(d => d.tornado)}`);
     console.log("  what reaches the day's category (days; the hazards that alone reach it):");
     for (const c of ['MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH']) {
       const rows = all.filter(d => d.worldCategory === c), k = ORDER.indexOf(c); if (!rows.length) continue;

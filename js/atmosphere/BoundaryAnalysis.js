@@ -18,7 +18,11 @@ export const BOUNDARY_DEFAULTS = Object.freeze({
   minLengthKm: 200, frontMinLengthKm: 250,
   // An outflow boundary is the edge of storm-cooled air at least this much colder (K) than
   // its air mass; such lines are shorter than fronts.
-  outflowDeficitK: 1.5, outflowMinLengthKm: 60,
+  // ...and only where the storm-cooled air makes up at least outflowShare of the contrast across
+  // the line (its deficit on the cold side less that on the warm side, against the whole
+  // temperature difference). 2026-10-19: until then any front with 1.5 K of rain-cooled air
+  // behind it was drawn as an outflow boundary, a 43 F cold front among them.
+  outflowDeficitK: 2, outflowMinLengthKm: 120, outflowShare: 0.5,
   // Next to storm-cooled air (a cold pool at least outflowDeficitK cold within two cells) an edge
   // counts from this weaker contrast (K per 100 km): analysts follow an outflow boundary as a
   // wind shift long after its contrast has fallen below a front's (2026-10-16: with the front's 5,
@@ -201,14 +205,19 @@ export function analyseBoundaries(world, options = {}) {
       // contrast has fallen to half its crest value.
       let reach = 0; while (reach < 6 && bilinear(thermal.size, width, height, x + nx * (reach + 0.5), y + ny * (reach + 0.5)) > 0.5 * g) reach += 0.5;
       const coldX = x - nx * p.coldSideReachCells, coldY = y - ny * p.coldSideReachCells;
-      return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, outflow: bilinear(raw.coldPool, width, height, coldX, coldY) >= p.outflowDeficitK, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
+      const warmX = x + nx * (reach + p.coldSideReachCells), warmY = y + ny * (reach + p.coldSideReachCells);
+      const poolCold = bilinear(raw.coldPool, width, height, coldX, coldY), poolWarm = bilinear(raw.coldPool, width, height, warmX, warmY);
+      const across = Math.max(0.5, bilinear(temperature, width, height, warmX, warmY) - bilinear(temperature, width, height, coldX, coldY));
+      const outflow = poolCold >= p.outflowDeficitK && (poolCold - poolWarm) >= p.outflowShare * across;
+      return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, outflow, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
     });
     // The kind of front can change along it (cold on one flank of a low, warm on the other).
     // How the line moves (or, with nothing before it, how the cold air pushes), smoothed along it.
     const moved = points.map(movedToWarm), reach = moved.some(m => m !== null) ? p.motionSmoothPoints : 2;
     const own = points.map((q, i) => moved[i] ?? (moved.some(m => m !== null) ? null : q.advance));
     const advance = points.map((_, i) => { let sum = 0, count = 0; for (let j = Math.max(0, i - reach); j <= Math.min(points.length - 1, i + reach); j++) if (own[j] !== null) { sum += own[j]; count++; } return count ? sum / count : points[i].advance; });
-    // The edge of storm-cooled air is an outflow boundary whichever way it is moving.
+    // The edge of storm-cooled air is an outflow boundary whichever way it is moving (where the
+    // storm-cooled air is most of the contrast; see outflowShare).
     const kind = advance.map((a, i) => (points[i].outflow ? 'outflow' : frontKind(a, kindBefore(points[i]), p)));
     const half = Math.max(2, Math.floor(Math.min(minCells, outflowCells) / 2));
     for (let i = 0; i < kind.length;) {   // short runs take the kind of the run before them

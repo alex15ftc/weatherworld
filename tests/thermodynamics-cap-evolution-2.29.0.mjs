@@ -21,7 +21,7 @@ function cell(overrides={}){
 
 const c=cell();
 const sounding=updateCellDiagnostics(c);
-assert.ok(c.thermodynamics?.profile?.length>20,'shared profile exists');
+assert.ok(sounding.profile?.length>20,'the profile is returned');
 assert.equal(c.derived.mlcinSigned<=0,true,'MLCIN is signed negative/zero');
 assert.equal(c.derived.mlcinMagnitude,Math.abs(c.derived.mlcinSigned),'magnitude matches signed CIN');
 assert.equal(c.derived.cin,c.derived.mlcinMagnitude,'legacy CIN aliases ML magnitude');

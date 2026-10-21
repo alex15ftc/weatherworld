@@ -99,9 +99,13 @@ function observe(world, station) {
     ...station, elevationM: Math.round(blend(c => c.terrain.elevationM)),
     temperatureF: Math.round(temperatureF), dewpointF: Math.round(Math.min(temperatureF, blend(c => c.surface.dewpoint))),
     pressureHpa: Math.round(blend(c => c.surface.seaLevelPressure) * 10) / 10,
-    windKt: Math.round(Math.hypot(u, v)), windFromDeg: Math.round((Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360)
+    windKt: Math.round(Math.hypot(u, v)), windFromDeg: Math.round((Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360),
+    // Sky cover as a station reports it, in eighths: clear, few, scattered, broken, overcast.
+    skyCover: skyCover(blend(c => c.features?.cloudTotal ?? 0))
   };
 }
+
+function skyCover(share) { const octas = Math.round(8 * share); return octas === 0 ? 'CLR' : octas <= 2 ? 'FEW' : octas <= 4 ? 'SCT' : octas <= 7 ? 'BKN' : 'OVC'; }
 
 // A storm as the map shows it: where it is, how strong, where it is going, what it is producing.
 function describeStorm(storm) {

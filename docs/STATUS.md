@@ -562,6 +562,812 @@ Decided 2026-10-12: not now.
 7. The Roblox region feed and hosting.
 8. Remove or replace the old outlook pages and tile routes (see `ARCHITECTURE.md`).
 
+## Playtest agenda (2026-10-17)
+
+**Seed 1000, 3 days.** I played three days of seed 1000 as a chaser, using only the products a player sees: outlooks, discussions, watches, warnings, radar mosaics and site scans, soundings and mesoanalysis maps.
+- **Rules:** a car limited to 90 mph, running at the speed limit + 10 on the road graph; fuel to buy; instant airport-to-airport travel for a fee.
+- **Result:** rated 6/10. I never came within 5 miles of a tornado. The closest was 11 miles, to a 141 mph tornado on Day 2.
+- **Totals:** 734 miles driven, 4 flights.
+- **Game time:** about 60% of it was spent waiting.
+
+In order:
+
+1. **Keep the action off the map edges.** Every day, the best area touched an edge: STP 7 on the bottom row on Day 1, storms leaving east on Day 2, the 2% tornado area on the south edge on Day 3. This is the "Edge strips" item above. Use an outer strip, or a playable inner part.
+2. **Roads a chaser can use.** Gravel makes up most rural miles, so routes average about 45 mph, and road distance is 1.3-1.6 times the straight line. Storms move 35-47 mph, so a storm moving away cannot be caught. Options:
+   - pave more of the mile grid;
+   - drive faster on dry gravel;
+   - add a chase aid, such as where a storm crosses your road.
+3. **Watches before tornadoes.**
+   - Day 1: the watch came 70 minutes after the first tornado, and the "tornado watch likely" discussion 40 minutes after it.
+   - Day 2: no watch at all, through three tornadoes (141 and 186 mph among them) and several PDS warnings. Its discussion said "watch unlikely, 20%" as the 141 mph tornado touched down.
+   - Three days produced 1 watch and 4 discussions.
+4. **The game loop.**
+   - What a player can see: rain-wrapped tornadoes, darkness after sunset.
+   - A sighting score: distance, angle, duration.
+   - Damage: hail and wind on the car, debris and closed roads.
+   - Driving through a 60+ dBZ core now does nothing.
+5. **Something to do while waiting.** At 12x, waiting from 12Z to 21Z is about 45 real minutes.
+   - A morning target-forecast contest, scored at the end of the day.
+   - Scouting, and the 16Z and 20Z updates.
+   - The clock is shared, so there is no time skip.
+6. **Saturated moist sector.** At 18Z on Day 1, about 60% of cells had a surface dewpoint equal to the temperature (28/28 F at 12Z inside the Slight Risk), while the dry side ran 50+ F depressions. Only Day 3 had a normal 80/63.
+7. **Outlook wording.**
+   - Timing that contradicts itself: "storms from 18Z", "severe most likely 05Z-12Z", "tornado risk peaks near 20Z".
+   - A Day 2 starting at 07Z whose tornado risk "peaks near 01Z".
+   - A Marginal Risk worded "severe thunderstorms are expected".
+8. **Storm-relative velocity.** Each storm shows nearly one sign, and the couplet is a round blob, not a tight pair at the hook.
+9. **Warnings.**
+   - One storm gets two or three warnings from different offices, sometimes with the same number. Group them by storm in the UI.
+   - Lines with red cores go unwarned after warnings lapse.
+   - The coordinate line is in km.
+10. **Airport travel.** It was strong (instant) but healthy: it turned the slow roads into a choice. Revisit it after item 2.
+
+### Realism, seed 4242 (2026-10-17, second playtest)
+
+**What I ran.** Three days of chasing under the same rules as the first playtest.
+- **The audit:** each run of the harness's grid-wide audit covered surface spread, LCL against Espy, precipitable water and CAPE by dewpoint, lapse rates, level temperatures, cross-isobar angle, wind against geostrophic, helicity, STP and gradients. It ran at 12Z, 15Z, 18Z, 00Z and 03Z.
+- **Trip:** 451 miles, 3 flights.
+- **Tornadoes:** 15 in all (9, 3 and 3 by day). None was seen. The closest was 13 miles away: an unwarned 78 mph tornado at 8:50 am.
+
+**What holds up:**
+- **Moisture and instability.** Precipitable water and CAPE scale properly with dewpoint (PW 1.06 in at 60-65 F, 1.26 at 65-70 F).
+- **The dryline.** Contrasts of 13-19 F; it retreats west in the evening.
+- **Evening winds.** The evening low-level jet and helicity rise (850 mb median 30 kt, 0-1 km helicity 150 at 00Z).
+- **The Day 3 soundings.** Loaded-gun profiles: 77/69, CAPE 2,900, CIN -191 under a 13 C lid; later 82/67, CAPE 3,850, CIN -3, STP 4.2.
+- **Watch timing on Day 1.** The tornado watch came at 12:30Z, ahead of the warnings, better than seed 1000.
+
+**What doesn't, in order:**
+
+11. **The surface goes saturated far too often.** T = Td in:
+    - 69% of moist cells at 12Z on Day 2;
+    - 83% of all cells at 12Z on Day 3;
+    - 44% of all cells at 00Z on Day 2, in post-frontal 40-50 F air with 15-30 kt winds.
+
+    Every cold-pool cell is saturated (727 of 727 at 00Z on Day 1). Outflow air should cool toward the wet bulb and keep a 2-6 F spread. Wind-mixed morning air should keep 2-5 F under stratus. Seed 1000 showed the same thing (item 6).
+12. **Cold pools cover too much.** At 00Z on Day 1 they covered 77% of the moist sector (1,455 of 1,881 cells).
+13. **Cold outbreaks that don't fit a warm-season model.**
+    - At 12Z on Day 3, 40% of the map was below 35 F (18-25 F, saturated).
+    - Day 2 ran from 15 to 97 F across the map.
+    - One cell went from 91 to 24 F in a day.
+
+    RegionalAtmosphere describes a warm-season Plains reference state.
+14. **Edge rows and columns break away from the interior.** Row 0 at 65 F sat beside row 1 at 25 F, and column 0 at 61 F beside 21 F: 39 F jumps over 10 miles. Instability also enters as a 3-4-row strip on the south edge (MLCAPE 4,400-4,665, STP 3.8-4.2) on Days 2 and 3. Together with item 1.
+15. **The surface wind is a fixed formula in quiet weather.** At 12Z on Day 1 the cross-isobar angle was 20-24 deg everywhere (real 10-50, varying with stability and roughness), and the speed 0.32-0.35 of geostrophic everywhere. It only varies where storms disturb it.
+16. **The upper troposphere has no temperature gradient.** 250 mb ran -46 to -48 C across the map on every day (a spread of 0.5 C at 12Z on Day 3) under a 90-140 kt jet. That is inconsistent with thermal wind.
+17. **Front analysis.**
+    - A 43 F-contrast boundary moving 32 mph was typed outflow, beside a cold front of 38 F.
+    - At 12Z on Day 3, a 20-40 F thermal boundary across the north had no front drawn.
+    - 11-13 outflow boundaries were analysed at a time.
+    - A 1018-1019 hPa High was drawn in the warm sector.
+18. **Morning, low-helicity tornadoes.**
+    - On Day 1, 6 of 9 tornadoes were before local noon, in 0-1 km helicity of 22-70 over a stable or saturated surface layer (inflow at 12Z: SBCAPE 266, MUCAPE 1,456, CIN -147).
+    - The outlook put the tornado peak at 15Z.
+    - Most were 5-20 minutes long.
+    - One 78 mph tornado had no warning.
+19. **Radar.**
+    - One cluster drew a continuous 60+ dBZ block about 50 x 40 miles; overlapping storm echoes probably stack. Real systems have a narrow 50-55 dBZ line and 30-40 dBZ stratiform rain.
+    - Concentric arc banding in two storms.
+    - Storms combed into parallel NNW-SSE bands about 20 miles apart.
+    - Storm-relative velocity mostly one sign (item 8).
+20. **Product text against the data.**
+    - The outlook gave a 90% wind area.
+    - It said "moist air covers about half the region" when 94% was moist.
+    - It said "a strong cap will hold storms back" with storms from 12Z.
+    - An MD said "steep lapse rates" with 700-500 mb at 5.0 C/km domain-wide.
+    - On Day 2 the 15% tornado area lay on the cold side of a fresh front.
+21. **Warning volume and duplicates.**
+    - One office's Severe Thunderstorm Warnings reached number 140 in two days.
+    - One 112 mph tornado carried 4 tornado warnings at once (2 offices x 2 storm ids).
+    - SCP reached 30-35.
+
+### Products, as an NWS forecaster would see them (2026-10-19 review)
+
+**What I ran.** Seeds 31415 and 2718, 72 hours each.
+- **How:** the real server runtimes on a fake clock, stepped as the server steps. Every outlook, discussion, watch and warning was logged and checked against the storms.
+- **Seed 31415:** an outbreak day (21 tornadoes), then a day with no storms, then 4 tornadoes.
+- **Seed 2718:** quiet, with 4 night tornadoes.
+
+**What holds up:**
+- **The Day 1 Moderate.** Nearly all of the 21 tornadoes fell in the Enhanced or Moderate area.
+- **Watch coverage on the big day.** 21 of 25 tornadoes were in a watch.
+- **The products' look.** Watches with county lists (WOU) and the centre's table; warnings with damage tags.
+- **Daytime surface air.** Dewpoint spreads of 10-14 F by afternoon.
+
+**What doesn't, in order:**
+
+22. **The outlooks for one day swing between issues.** For the same Day 3:
+    - Day 3 (2 runs): Marginal.
+    - Day 2 at 12Z (4 runs): Enhanced.
+    - Day 2 at 00Z: High, with 45% tornado and CIG3.
+    - Day 1 at 12Z (8 runs): Slight, over 0.4% of the map.
+    - What came: 4 tornadoes, one of 159 mph.
+
+    The centre has issued a Day 2 High only a handful of times. A 2-run Day 3 still says "the runs agree closely". A Day 2 Slight came for a day with no storms at all.
+23. **Too many discussions.** 34 discussions and 12 watches on one day, over a 500 x 500 mile map. Most were "Watch N continues", about one per watch every 2 hours. The centre issues 10-20 on a big day for the whole country.
+24. **Watches are too wide.** "Along and 115-155 statute miles either side of a line" is common (the centre's are usually 40-75). One watch was 64,659 sq mi, about a quarter of the map.
+25. **The watch type contradicts its own discussion.** Discussion 1 gave a most probable peak tornado of 120-150 mph and "tornadoes, some of them intense", then called for a severe thunderstorm watch.
+26. **Isolated and night tornadoes get no watch.** Seed 2718 had 4 night tornadoes in 4.5 hours, none in a watch; its discussion said "watch unlikely" with a tornado on the ground. This is the same thing as item 3.
+27. **Tornado warnings have no lead time.** 25 of 25 tornadoes were warned, but the median lead was 0 minutes (the NWS's mean is about 8-10). The false-alarm ratio was 0.48 (the NWS's is about 0.7).
+28. **Severe thunderstorm warning volume.** 620 in about 18 hours, for 90 storms (median 6 each, up to 25):
+    - 182 were extra pieces in the same scan (counties of other offices);
+    - 348 were re-issues at later scans;
+    - 239 warnings were cancelled along the way.
+
+    Polygons: median 1,180 sq mi, largest 6,088. The LOC line is still in km (item 9).
+29. **Product text, more of it** (item 20):
+    - "Beneath steep lapse rates" is printed whatever the lapse rate.
+    - The tornado sentence ("modest low-level shear limits the risk") sits under "tornado watch likely".
+    - "Hail events to 1 inches".
+    - Local times are UTC-6, where summer is CDT (UTC-5).
+    - Outlook headlines list six compass parts instead of the region names the discussions use.
+    - Outlooks go out at 12, 18, 00 and 06Z. The centre's Day 1 goes at 06, 13, 1630, 20 and 01Z, and players wait for the 16Z and 20Z.
+30. **The significant share of hail and wind is high.**
+    - Of 5-minute storm samples with 1 inch hail or more, 38% had 2 inches or more (the reports' share is about 10%).
+    - Of those with 58 mph or more, 33% had 75 mph or more.
+    - Tornadoes are fine by rating: 3 of 25 were EF2 or more (12%). Their winds run higher than their ratings by design (estimatedEf is the damage survey, windEf the wind; TornadoEngine.js:131-135). Pages that show both should label both.
+31. **The lowest pressure is on the map edge.** It sat at row 0, column 0 or another edge in nearly every hour of both seeds. See "Fronts and lows" (2026-10-15): the map is steered into the warm sector, and the low lies off the map.
+
+### Causes and fixes (diagnosed 2026-10-19)
+
+Read from the code against the runs above. Nothing here has been changed or measured as a fix yet.
+
+**1, 14. Map edges.**
+- **Cause, edge rows:** advection (RegionalAtmosphere.js:452) gives a cell whose air came from beyond the map a prescribed value from `inflowOf`:
+  - temperature: the outer model's smooth air mass;
+  - moisture: `inflowMoisture`;
+  - rain-cooled air: none.
+
+  A step is 30 minutes and a cell 16 km, so with wind above about 17 kt the whole edge row is replaced every step (two rows above 35 kt). The edge never carries what fronts, cold air and storms did inside, hence the 39 F jumps.
+- **Cause, the south edge:** `inflowMoisture` (line 425) weights Gulf air by the row number (`south = y/(ny-1)`), and the moisture everywhere is drawn toward it (line 539). The bottom row is always the moistest and least disturbed, so the CAPE and STP maxima sit on row 49. A share set by map row is a painted value.
+- **Fix:**
+  - Run a buffer several cells wide around the playable map (the 56 x 56 plan under "Edge strips") and relax toward the outside values across it, instead of overwriting the edge row.
+  - Take the inflow from the outer model plus the departure carried in from upstream.
+  - Take Gulf moisture from where the low-level air has come from (the outer flow's trajectory), not from the row.
+
+**3, 26. Watches before tornadoes, and none for isolated storms.**
+- **Cause, waiting:** a watch waits until storms are firing on its ground (`readyHourUtc`, Watch.js:178). Where they fire quickly, or form just outside, the first tornado comes before or without it.
+- **Cause, isolated storms:** an area of concern needs half the runs to have severe weather within 25 miles over 40 joined cells (4,000 sq mi; MesoscaleDiscussion.js:35). A watch needs 2 tornadoes, or one strong one, in a run. One or two supercells, the usual night case, never get there.
+- **Fix:**
+  - Issue a watch when the discussion's chance reaches 80% and storms are expected within about 2 hours, not only once they fire.
+  - Let a strong-tornado chance of 40% or more (or the runs' median peak at EF2 or more) make an area of concern on its own, however small.
+
+**6, 11, 13. The surface saturates at night; the cold mornings.**
+- **Cause, cooling:** at night the surface temperature is `eveningTheta - nightDrop`, with `nightCoolingK` 16 K e-folding over 4 hours, times 0.7-1.3 for dryness (line 596). It does not depend on wind or cloud.
+- **Cause, dewpoint:** the dewpoint is only clamped to the temperature (line 617). Nothing removes the extra vapour as dew or fog, and nothing releases its latent heat, which is what holds real nights a few degrees above the dewpoint.
+- **Cause, sunset:** the layer goes from the day's mixed depth to 150 m (line 595), so its moisture is no longer diluted and the dewpoint rises.
+- **What the numbers show:** with a 10-14 F afternoon spread, moist cells reach saturation 4-5 hours after sunset (58% of cells at 03Z, 67-94% at 06Z).
+- **The cold mornings:** dry air cools up to 1.3 x 16 = 21 K, floored only at `airTheta - 12` (line 597). That gives 23-27 F mornings, and 91 F to 24 F with a front.
+- **Fix:**
+  - Scale the night cooling down with wind (with the low-level jet blowing a warm-sector night cools 5-10 F) and with cloud.
+  - Stop the cooling near the dewpoint: take the extra vapour out as dew or fog and add its latent heat back.
+  - Lower the dry-air cooling and its floor.
+
+**12. Cold pools cover too much and saturate.**
+- **Cause, spread:** each storm adds a Gaussian of rain-cooled air every step along its track (`addColdPool`, line 364). It fades only with sunshine, or at night with an 8-hour e-folding (line 550). There is no least value and no mixing with the air around it, so faint tails last all night and over most of the moist sector.
+- **Cause, saturation:** the cooling is taken off the temperature (line 616) with the moisture unchanged, so any pool colder than the spread saturates (727 of 727 cells).
+- **Cause, pressure:** the pool's pressure (line 557) also makes the High drawn in the warm sector (item 17).
+- **Fix:**
+  - Cool toward the wet bulb and add the vapour the rain gives up.
+  - Mix the pool out faster where the wind over it is strong.
+  - Drop pools below about 1 K.
+
+**15. Surface wind is a fixed formula.**
+- **Cause:** speed is a fixed share of the wind above (0.75 by day, 0.4 at night) and the turning a fixed angle (15 degrees by day, 25 at night; line 647), plus `airMassInflowDeg` 15.
+- **Fix:** make both depend on the stability: the mixed layer's depth by day, the strength of the inversion and the wind at night. A deep mixed layer gives little turning and fast wind; a strong inversion, weak wind and 30-45 degrees.
+
+**16. Flat temperature at 250 mb.**
+- **Cause:** `t250 = -48 C + 0.3 x` the one layer anomaly the outer model has (line 566). With the outer model's gradient of about 1.7 K per 100 km, that gives about 4 C across the map, as measured.
+- **Fix:** make the 500-250 mb thickness from the upper layer's own flow (thermal wind with the jet), or treat the tropopause as it is, so the jet has its temperature gradient.
+
+**17. Front analysis.**
+- **Cause, outflow typing:** a point of a front is typed outflow if there is 1.5 K of rain-cooled air on its cold side, whichever way it moves (BoundaryAnalysis.js:212). So a 43 F front with storms behind it became an outflow boundary.
+- **Cause, too many lines:** with the faint pools of item 12 everywhere, and an outflow contrast of only 2.5 K per 100 km, there are 11-13 outflow lines at a time.
+- **Cause, the warm-sector High:** the pools' pressure (item 12).
+- **Fix:**
+  - Type outflow only where the rain-cooled air makes up most of the contrast across the line.
+  - Count only pools of at least 1-2 K, and require that they are young.
+  - Fix item 12 first.
+
+**18. Morning tornadoes in weak helicity.**
+- **Cause, the helicity floor:** near-ground rotation keeps `helicityFloor` 0.5 of its strength at no 0-1 km helicity (StormRotation.js:82). Deep shear alone (65-85 kt) still builds a mesocyclone (`shearShare` 0.35).
+- **Cause, the cloud base:** a saturated surface puts it at the ground, which makes the cloud-base term 1 (line 83).
+- **What the runs show:** a 141 mph tornado formed in helicity 57 and STP 0.6. Item 11 is feeding this.
+- **Fix:** fix item 11 first; then lower `helicityFloor` to about 0.1-0.2, so that real tornado environments (helicity at or above about 100) carry the rate.
+
+**19. Radar: 60 dBZ blocks.**
+- **Cause:** overlapping storms' echoes are added in linear Z (`addEcho`, RadarSimulator.js:517). Ten storm objects along a merged line, over the same ground, add up to 10 dB.
+- **Fix:** make one precipitation field from all storms, with the water conserved, or combine where they overlap by maximum or by a weighted mean.
+- **Not diagnosed:** the arc banding and the bands combed about 20 miles apart.
+
+**8. Storm-relative velocity.**
+- **Cause, the motion taken off:** the radar takes off one weighted mean motion of every storm within its range (`meanStormMotion`, line 237), not each storm's own. What is left of the environment's wind (10-25 m/s) swamps the vortex.
+- **Cause, the vortex:** the mesocyclone is one round vortex of 4 km radius (1.5-8), at most 6 + 30 x strength m/s (PrecipitationField.js:121), centred near the storm's core and not at the hook.
+- **Fix:**
+  - Use each storm's motion near it, or let the player pick a storm, as AWIPS does.
+  - Put a narrower vortex (1.5-3 km) at the rear-flank notch, with its strength from the low-level rotation.
+  - Add the rear-flank surge and the inflow converging on it.
+
+**7, 20, 29. Outlook and discussion wording.**
+- **Cause, the severe timing:** `byHour.severe` counts whether there is severe weather anywhere on the map in each half hour (DayOneOutlook.js:151). On a busy day it sits at its top for most of the day, so `busiestHours` (line 316) gives "15Z to 11Z".
+- **Cause, "develop from":** this is the start of the busiest run of new storms, not the first storm (`byHour.storms`), so it can be later than the storms already going.
+- **Cause, the environment sentences:** the moisture share, cap and CAPE are taken at 22Z over every cell with a dewpoint of 58 F or more. A median CIN over all of it says "strong cap" where the storms are breaking it. The sentence is written even with MLCAPE 0 (line 374).
+- **Cause, the discussions:**
+  - "Steep lapse rates" is a fixed string (MesoscaleDiscussion.js:276).
+  - The tornado sentence reads the helicity now (line 278), while the watch type comes from what the runs do later.
+- **Cause, local time:** `localTime` is UTC-6 (DayOneOutlook.js:299).
+- **Fix:**
+  - Count reports and storms per hour, not whether there are any.
+  - Give the hours that hold the middle 70% of the severe weather.
+  - Say "ongoing" for storms going at issue time, and "develop" for the first starts in the risk area.
+  - Read CIN and CAPE where storms form.
+  - Write the lapse rate only when it is 7 C/km or more.
+  - Give helicity "increasing this evening" from the runs.
+  - Use CDT, and name the regions in the outlooks.
+
+**9, 21, 28. Warning volume and duplicates.**
+- **Cause, re-issues:** a severe thunderstorm warning runs 45 minutes (Warning.js:55). A storm within 10 minutes of leaving it, or of its expiry, gets a new one (line 85), and at 40 mph that is every 25-35 minutes.
+- **Cause, cancellations:** two quiet scans cancel a warning (line 77). A storm whose hail sits near 1 inch is warned, cancelled and warned again, and a line with red cores lapses between.
+- **Cause, the pieces:** every office the path crosses issues its own (182 pieces), as WarnGen does. That one is real practice, but the pages must group them by storm.
+- **Fix:**
+  - Run 60 minutes, and continue a warning downstream with a statement in place of a new one.
+  - Cancel only after 3-4 quiet scans.
+  - Give one warning to a line segment.
+  - Write the LOC line as latitude and longitude (line 492), and add the LAT...LON block.
+
+**27. No tornado warning lead.**
+- **Cause:** a warning goes out at a 30% chance of a tornado in the next half hour (`tornadoChance`, Warning.js:59). That is only low-level rotation 0.15. At full rotation the touchdown rate is 8 an hour (TornadoEngine.js:47), 49% a scan, and rotation spins up over 0.3 hours, so the chance crosses 30% and the tornado touches down within the same scan or the next.
+- **Cause, too accurate:** warnings also read the storm's true state, so they are both too late and too accurate.
+- **Fix:** issue on the rotation's trend and the mesocyclone, as forecasters do, at a lower chance (10-15%), with radar-like uncertainty (range, beam height). That gives lead time and the NWS's false alarms. To be confirmed by logging the rotation before each touchdown.
+
+**22. Outlooks that swing.**
+- **Cause, few runs:** Day 2 has 4 runs and Day 3 has 2 (`memberShare`). A level needs `agreement` 0.75 of the runs at the top (DayOneOutlook.js:53), which is 3 of 4. One set of perturbations that lines up gives a High.
+- **Cause, no memory:** nothing ties an issue to the one before. The uncertainty sentence is the same whatever the number of runs.
+- **Fix:**
+  - Hold Day 2 to Moderate and Day 3 to Enhanced unless every run agrees.
+  - Allow at most a category up or down from the outlook before, except as the day comes nearer.
+  - Write the uncertainty from the spread, and never "agree closely" from 2 runs.
+  - Or more runs for Day 2 and 3, at the cost.
+
+**23, 24, 25. Discussions and watches.**
+- **Cause, the flood:** each watch in effect gets a "continues" discussion whenever 2 hours have passed and its ground is at 20% or more (Watch.js:251).
+- **Cause, the size:** an area of concern is where half the runs have severe weather within 25 miles at any time in the next 5 hours. That is a 5-hour swath of storms moving 40 mph, widened by 2 cells and then rounded out to whole counties.
+- **Cause, the type:** 4 runs make the chances 0, 25, 50, 75 or 100%, given as 5, 20, 60, 80 or 95. Two runs with a strong tornado make 40% for one strong tornado (under the 80% that makes a tornado watch) and 20% for 2 or more (not above 20; MesoscaleDiscussion.js:191).
+- **Fix:**
+  - Discuss a watch only when something changes: the threat steps up or ends, or the watch needs extending or replacing.
+  - Draw the watch from the next 2-3 hours, held to about 70 miles either side.
+  - Let a 40% chance of a strong tornado, or a median peak at EF2 or more, make it a tornado watch.
+  - Allow extending a watch by its WOU, and cancelling it early.
+
+**30. Significant hail and wind.**
+- **Cause:** follows the agreed step-13 tuning (`GUST` in StormHazards.js, hail from updraught speed). The measure here is per storm sample, which counts long-lived big storms more than reports do.
+- **Fix:** re-measure as reports (truth.js) before tuning.
+
+**2, 4, 5, 10. Roads, game loop, waiting, airports.**
+- **Roads:** the engine sets only the paving (`pavedShare` 0.15-0.7 by region, sectionRoads.js:42). Speeds are the game's.
+- **The rest:** these are game-design choices, not engine causes.
+
+### Applied 2026-10-19: the fields first (items 1, 6, 11-18 in part)
+
+Done before the products, which come next: outlooks, watches, warnings, radar, text, map.
+
+**How it was measured.** A field audit stepped as the server steps: 8 seeds (1-6, 31415, 4242), 72 hours each, about 30 s a seed. The "before" figures are from seeds 31415, 2718 and 4242. `npm test` passes, 51 of 51.
+
+| | Before | After |
+|---|---|---|
+| Moist cells saturated, 1 and 6 am local (median) | 92% | 1% |
+| Dewpoint spread in moist air at night (median) | 0 F | 4.7 F |
+| Coldest 5% of the map at dawn | 41 F | 59 F |
+| Rain-cooled cells saturated | 98% | 0% |
+| Tornadoes in 0-1 km helicity under 100 | 40% | 7% |
+| Tornadoes 6 am to noon | 17% | 5% |
+| Tornadoes a day | 6.4 (3 seeds) | 8.0 (8 seeds; target about 7.5) |
+| Surface wind / geostrophic, day and night | 0.40 and 0.38, alike everywhere | 0.40 and 0.37, quartiles 0.31-0.41 at night |
+| Angle across the isobars, day and night | 12 and 23 degrees, fixed | 12 and 22 degrees, quartiles about 6-34 |
+| 250 mb spread across the map, afternoon | 1.4 C | 3.5 C |
+| Outflow lines at a time (same 8 seeds) | 3.8 (up to 16) | 2.0 (up to 12) |
+| Edge-to-neighbour jump (median, 95th) | 20, 35 F | 7, 18 F (inside the map: 11, 20 F) |
+| Southern strip | MLCAPE 4,400+ | +180-220 J/kg over the rows inside it, the gradient alone |
+
+**What changed:**
+- **Night (RegionalAtmosphere.js).**
+  - Calm-night cooling is `nightCoolingK` 12 K (moist air 0.75 of it), shrinking with the wind near 900 mb including the night-time jet (`nightWindMs` 10, `nightWindFloor` 0.25).
+  - Near saturation the cooling goes into dew. Its latent heat slows the air to 1/(1 + L dqs/dT / cp), and the wind keeps a spread (`nightSpreadK` 0.2-2 K).
+  - The morning inversion is the night's own (`nightTheta`).
+- **Cold pools.**
+  - Evaporation cools toward the wet bulb and adds the vapour. Downdraught air arrives at no more than `coldPoolHumidity` 0.85.
+  - The wind mixes pools out (`coldPoolMixingKm` 300), and pools under 0.3 K are dropped.
+- **Tornadoes.** `helicityFloor` went from 0.5 to 0.15 (StormRotation.js). `fullRatePerHour` went back from 8 to 5 (TornadoEngine.js), since the night's storms are fed from the ground again.
+- **Surface wind.**
+  - By day the share (0.7-0.82) and the turning (20-10 degrees) follow the mixed layer's depth.
+  - At night they follow a bulk Richardson number over 150 m (0.4-0.15, and 20-40 degrees).
+- **250 mb.** The share of the layer anomaly went from 0.3 to 0.7, with a soft tropopause at -58 C.
+- **Fronts (BoundaryAnalysis.js).**
+  - Outflow only where the rain-cooled air is at least half the contrast across the line (`outflowShare`).
+  - Pools of at least 2 K, and lines at least 120 km long.
+- **Edges.**
+  - Air entering keeps the edge's departure from the outer model, fading over `edgeMemoryCells` 6 (`advect`). The plateau's lid air and the dry west inflow keep their sources.
+  - The Gulf share no longer falls by map row.
+  - `gulfAir` had the outer model's northward moisture fall with the wrong sign (moister to the north). It is fixed, with an extra 2 g/kg per 1000 km, measured from a coast `gulfCoastSouthKm` 500 south of the map's middle.
+
+**Left open:**
+- **Tornadoes lean to night** (most from 8 pm to 3 am local), in night-time jet helicity of 250 or more. This is the "0-1 km helicity still high" item for step 13.
+- **Cold pools cover 15-26% of the moist air at night** (12% before, with more storms now). Not tuned.
+- **The 250 mb gradient** is as large as thermal wind allows in the outer model. Its mean shear between layers is 10 m/s (0.32 K per 100 km), and its jets are nearly equivalent-barotropic. More needs a more baroclinic outer model.
+- **The lowest pressure is on the edge** in 84% of hours. That is where the steering puts the map (item 31; open decision).
+- **The 56 x 56 strip** for storms to arrive grown is still not built. The boundary zone above removes the jumps, not the lack of storms coming in.
+
+### Applied 2026-10-19, second pass: from the forecaster's mesoanalysis review
+
+**The review.** Seed 6060, 72 hours, as a forecaster. Inputs every hour:
+- the surface analysis and all the mesoanalysis fields;
+- soundings from a network of 9 sites every 3 hours, and at the highest STP and every touchdown;
+- maps of the fields.
+
+It found:
+- fronts grid-sharp (16-20 C across one cell at 850 mb), with no pressure trough or wind shift;
+- the cold air behind them a flat slab under a lid, so 700 mb was 3 C or more warmer than 850 over 40-67% of the map;
+- no closed low on the map in 73 hours;
+- windy nights at 80 F or more;
+- strong tornadoes in STP 0.5-1 at night.
+
+The changes (RegionalAtmosphere.js unless noted):
+- **Sloping cold dome.** Cold air deepens with distance behind the warmer air (`domeSlope` 1:120, 300 m to 4.5 km; `coldDome`, a chamfer distance transform).
+  - Its coldness fades to none at its top, so 850 and 700 mb cool, and the lid rides over it.
+  - Its weight is half its depth times its deficit. The shallow 400 m stays sharp at the front; the deeper part adjusts over the deformation radius (`thermalSmoothingCells`).
+  - At 850 mb it counts by ((h - z) / h)^2.
+- **Front width.** Mixing at the deformation's rate, K = D L^2 (`frontWidthKm` 25, D at most 4e-4 /s, sub-stepped).
+- **Cyclones on the fronts** (Petterssen). The pressure falls at `cycloneGainHpa` 3 hPa an hour per K/h of the outer model's ascent where the air-mass contrast is 2-6 K per 100 km. The fall moves with 0.8 of the 700 mb wind and fills over 18 hours.
+- **Cloud cover** (new; mesoanalysis `cloudTotal/Low/Mid/High`, station `skyCover`):
+  - low: stratus within 1.5-0.3 K of saturation, cumulus at the mixed layer's cloud base, Sundqvist cloud at 850 mb;
+  - mid and high: the outer model's ascent;
+  - anvils: from storms (AtmosphereWorld.js), carried on the 250 mb wind.
+  - Cloud cuts the sun's heating (0.5/0.3/0.1 of each layer's share) and the night's cooling (0.6/0.35/0.15).
+- **Night cooling.** `nightCoolingK` 14 and `nightWindFloor` 0.4.
+- **Cold pools.** `coldPoolDeficitK` 18 to 12 (AtmosphereWorld.js; observed 5-11 K, Engerer et al. 2008).
+- **Surface wind by day.** 0.6-0.75 of the mixed layer's wind, turned 25-15 degrees.
+- **Tornadoes.** `helicityFloor` 0.3, and the rate a steeper curve (`power` 3, `fullRatePerHour` 4.2; TornadoEngine.js). A lower rate alone left an ideal supercell one tornado in eight hours.
+
+| Seed 6060, 72 h | Before | After |
+|---|---|---|
+| Steepest 850 mb change across one cell | 16-20 C | 2-3 C |
+| Map with 700 mb 3 C+ warmer than 850 mb | 40-67% | 0% |
+| Front in a trough (median, 10th percentile) | 0.35, 0.75 hPa | 0.40, 0.90 hPa |
+| Wind shift across fronts (median) | 26 deg | 94 deg |
+| Hours with a closed centre analysed | 0 of 73 | 8 of 73 (a 988 hPa low formed and crossed the map) |
+| Cells 80 F or more at 1-5 am (night 2) | 360-374 | 193-256 (night 1: 0-2) |
+| Tornado STP / 0-1 km helicity | 0-4.1 / 26-287 | 1.6-2.8 / 194-272 (all supercells) |
+| Mean cloud cover | none | 28-40% |
+
+On 8 seeds x 3 days (field audit; the "after" is the final code):
+- **Tornadoes a day:** 6.9, of which 1% in helicity under 100.
+- **Night saturation:** 8% of moist cells.
+- **Edge jumps:** median 4.2 F, 95th percentile 10.5 F (inside the map: 5.9 and 10.7).
+
+`npm test` passes, 51 of 51.
+
+**Still open:**
+- **Tornadoes lean to night: 58% from 9 pm to 6 am** (real Plains about 25-40%). Storms' inflow 0-1 km helicity is about 50 by day against about 140 at night. By day the mixed layer makes the low-level wind too uniform: there is little veering in the lowest kilometre. That is the step-13 helicity item.
+- **The lowest pressure is still on the map edge** in 62 of 73 hours. Lows now form and cross the map, but the parent low is off-map most of the time (the steering decision).
+- **Windy, cloudy nights** after a 90 F day still hold 80 F in places, which is the warm edge of real.
+- **The daily range in the moist east is 12 F,** just inside the test's limit. Moist-ground heating (110 W/m2) keeps afternoons near 83 F.
+- **Not changed:** the 850 mb jet of 70-90 kt on strong-flow days (seed 31415) is mostly the outer model's own, the dome adding about 40%. Shear over 100 kt (0-6 km) occurs in 1-3% of cell-hours on strong-jet days.
+
+### Applied 2026-10-20: outlooks, discussions, watches and warnings (items 3, 7, 9, 20-29)
+
+**Outlooks** (DayOneOutlook.js, OutlookRuntime.js):
+- **Issue times are the centre's** (`issueTimesUtc`): Day 1 at 06, 13, 1630, 20 and 01Z; Day 2 at 06 and 1730Z; Day 3 at 0730 and 1930Z. An issue less than 6.5 hours before 12Z is for the coming day.
+- **Caps** (`leadCaps`): Day 2 at most Moderate, Day 3 at most Enhanced.
+- **One step per issue:** each issue may raise its day's category by at most one step from the last, until 4 hours into the day (`nowcastAfterHours`). When a cap holds the outlook down, the uncertainty section says so.
+- **Timing from counts:** severe storms and tornadoes are now counted per hour, where before it was only whether there were any. The text gives the hours holding the middle 70%, from the period's start, and says "ongoing at the start of the period" when it is.
+- **Environment read near the runs' storms:** the cap sentence now reads the air there (a strong cap only lets storms form where boundaries lift the air through it).
+- **Wording:**
+  - the moisture sentence names its measure (58 F dewpoints by late afternoon), with no instability sentence when MLCAPE is under 250;
+  - a Marginal Risk says "isolated severe thunderstorms are possible";
+  - local times are CDT, and headlines name the map's regions;
+  - the uncertainty is written from the runs' spread, and two runs never "agree closely".
+
+**Discussions** (MesoscaleDiscussion.js, Watch.js):
+- **A tornado watch** also at a 40% chance of a strong tornado, or when the most probable peak is EF2 or more.
+- **Small tornado-only areas** of 12 cells or more are areas of concern.
+- **About a watch in effect, only when something changes:**
+  - the threat turns to tornadoes in a severe thunderstorm watch;
+  - 4 hours pass with a watch's worth of severe weather going on;
+  - once, that the threat is waning, with 2 hours or more left;
+  - a watch must follow one that is expiring.
+- **Wording:**
+  - "steep" mid-level lapse rates only at 7.5 C/km (fairly steep at 7);
+  - a tornado call with low helicity now says so and why;
+  - "1 inch" and "one of them" in place of "1 inches" and "1 of them".
+
+**Watches:**
+- **Drawn smaller:** a margin of 1 cell, and at most 220 cells drawn (about 22,000 sq mi). When the area is bigger, the ground where severe weather comes first is kept, cut again until the finished watch fits.
+- **Issued earlier:** once the runs bring severe weather within 2 hours, not only once storms fire.
+
+**Warnings** (Warning.js):
+- **Tornado warnings earlier,** on a tightening rotation trend or a strong mesocyclone (`earlyTornadoChance` 0.08).
+- **Severe thunderstorm warnings** run 60 minutes, and are cancelled after 4 quiet scans.
+- **No re-issue churn at the edge:** a storm counts as covered ahead where its own warning's path runs past every office's counties. That had caused re-issues at every scan near the map's edge.
+- **An office for every warning:** a path in no county warning area takes the office of the nearest county.
+- **LAT...LON and TIME...MOT...LOC in degrees,** with the map's north-west corner at 40.9 N, 101.6 W.
+
+**Measured.** Product runs, 72 hours each, server stepping. The "before" is seed 8181 earlier the same day, with the same atmosphere code.
+
+| | Before (seed 8181) | After (seed 8181) | After (seed 31415) |
+|---|---|---|---|
+| Watch sizes | up to about 45,000 sq mi | 12,000-24,000 sq mi | 12,000-25,000 sq mi |
+| Tornado warning lead (median) | 0 min (first review) | about 10 min (false alarms 0.50) | 5-10 min (0.55) |
+| Severe thunderstorm warnings | 596 | 413 (3.3 a severe storm) | 1,104 for 240 severe storms |
+| Same-storm re-issues 5 min apart | about a quarter | none (25th percentile 35 min) | 25th percentile 25 min |
+| Warnings with no office | some | 0 | 0 |
+| Day 2 / Day 3 above Moderate / Enhanced | yes (Day 2 High) | never | never |
+
+`npm test` passes, 51 of 51.
+
+**Still open:**
+- **Tornadoes inside a watch:** 11 of 22 on seed 8181, now that watches are smaller; 17 of 21 on seed 31415. The centre's figure is about 75-80%.
+- **Discussions about watches.** Final on seed 31415: 51 discussions for 32 watches.
+  - About watches: 15 announce a following watch, 22 are updates at 3 hours (with 3 or more left) or a threat turning to tornadoes, and 3 say a threat is waning (the waning ones were about one a watch before the 2-hour limit).
+  - Under no watch: 11.
+  - 32 watches in 3 days is that world's 240 severe storms.
+- **A small tornado-only area** can read "watch unlikely" with an intense most probable peak: the honest result of a few runs with a tornado.
+- **Warning volume follows the storm climate:** 240 severe storms in 3 days on seed 31415.
+- **The tornado wind against damage rating gap** (see the 2026-10-19 rating check).
+
+### Chase and forecaster runs (2026-10-20), after the products pass
+
+Same seeds as 2026-10-19 so the two can be compared: a 3-day chase on seed 5150 and a forecaster run (products plus mesoanalysis, 72 hours, server stepping) on seed 8181. The map was left out of scope.
+
+**Better than 2026-10-19:**
+- Watches came before the first tornado on seed 5150 (Tornado Watch 1 before the 09Z tornado); watch sizes 12-24k sq mi.
+- Tornado warnings: POD 22/22, median lead about 7-8 min (was 0), every warning has an office.
+- Day 2 stays at Moderate or below and Day 3 at Enhanced or below; the 06Z and 1630Z Day 1 High on seed 8181 verified (16 tornadoes, all inside Moderate or High).
+- Real capping days: seed 5150 Days 2-3 had 700 mb at 11-13 C and MLCIN about -200 under 40-47 kt of shear.
+- Seed 8181's outbreak had 9 of 16 tornadoes in daylight.
+- Day 1 storms on seed 5150 moved 15-28 mph (was 37-46).
+
+**Not better:**
+- **Chase: 8 tornadoes, 0 seen**, again. All 8 came at night or in twilight (local 2:55, 6:20, 7:50, 19:15, 23:55, 0:35, 1:30, 4:00). The closest was 37 mi, at 1:30 am. On Day 2 (Moderate, 30%), STP 3-5 and 45-59 kt shear from 16-00Z brought no afternoon tornado.
+- **Night lean:** 12 of 22 tornadoes from 8 pm to 6 am on seed 8181. By local hour, the median SRH01 over moist air is 47-56 from 11-18 against 120-139 from 0-5.
+- **Too many violent tornadoes:** on seed 8181, 4 EF4 and 4 EF3 of 22 (EF2+ 55%; target about 15%).
+- **No closed lows:** the lowest pressure sat on the map edge in 67 of 73 hours, with 0 closed centres.
+- **Extreme night jet:** at 06Z on Day 3 the median SRH01 over moist air was 310, the 850 mb maximum 65-69 kt, and 58 cell-hours had SRH01 over 600.
+- **Watch coverage:** 11 of 22 tornadoes inside a valid watch. The first tornado of a day and the early-morning ones are the ones missed; MD 32 said "tornado watch likely, 95%" at 08Z on Day 3, and the watch then held 1 of the 6 tornadoes.
+
+**Found this time:**
+1. **Left-movers outlive their right-moving parents.** Over 72 hours, left-moving splits held 34% (seed 5150) and 40% (seed 8181) of all supercell-hours. In 22 of 35 and 26 of 50 splits, the left child stayed a supercell at least as long as its parent. Parents were supercells for only 0.7-1.0 h of a 3-4 h life before turning into clusters or lines. In the chase, the tracked supercells in STP 2-4 air were mostly left-movers moving NNE at 40-50 mph. In a veering hodograph the right-mover should dominate and the left one weaken (handleSplits in StormEngine.js, leftSplitShare in StormModeEngine.js, leftHelicity in StormRotation.js).
+2. **Discrete supercells don't last.** They are supercells for under an hour, and storms are fast: the median for split parents is 37-45 mph and for left-movers 41-49 mph. A chaser has almost nothing to stay with.
+3. **Stacked warnings from one office.** 202 of 516 new warnings (53 tornado) were issued while the same office already had a valid warning of the same type for the same storm; one storm had 3 severe warnings from one office at once. The cause: `covered()` in Warning.js wants a warning with the full lead still left that also holds the projected position, so near expiry, or when the projection slips out of the polygon, a new one is issued beside the old. The new one should replace the old (or extend it). Cross-office pairs are fine, since each office warns its own counties.
+4. **Warning wording and timing:**
+   - **PDS overuse:** 31 of 103 tornado warnings were PDS.
+   - **Tag inflation:** 147 of 413 severe warnings were "considerable" or "destructive".
+   - **Late severe warnings:** they mostly come at or after a storm's first severe sample; the median lead is about 0, and many are 25-145 min late.
+   - **Large polygons:** severe polygons have a median of 1,082 sq mi and a p90 of 4,854.
+5. **Day 1 outlook flip-flops.** Seed 5150's Day 1 went ENH (12Z), SLGT (13Z), SLGT (1630Z), ENH (20Z), SLGT (01Z), because the one-step rule limits only raises. Day 3's 1630Z ENH with 15% tornado was drawn on SRH01 of 2-5 and verified with no tornadoes.
+6. **Outlook text:**
+   - The tornado timing windows are 16-19 h long ("16Z to 11Z", "16Z and 08Z, peaking near 06Z"), and they peak at 06-09Z even on daytime setups.
+   - The summary names the Slight-risk area as where storms are expected, while the headline names the Moderate area.
+   - "Adequate low-level shear" is written at SRH01 about 60.
+   - The shear sentence reads the air near the runs' storms ("weak shear, 25 kt") when 42-47 kt sits beside it.
+   - "Extreme instability" is written at MLCAPE 3,500.
+7. **Discussions and watches:**
+   - On seed 5150 Day 1 the first MD came at 03Z, so there were no daytime MDs.
+   - "Watch unlikely" MDs carry a "120-150 MPH" tornado peak.
+   - Watch probabilities contradict each other: Severe Thunderstorm Watch 13 has every hazard at 5% but combined at 95%, and Tornado Watch 3 has 2+ tornadoes at 5%.
+8. **Mid-level lapse rates of 4.3-5.0 C/km** on non-plume days (seed 8181 Day 1, seed 5150 Day 1), more stable than a moist adiabat. Real warm-season Plains air rarely goes under about 5.5.
+9. **Minor:**
+   - Point fields jump near storms: at one point SRH01 went from 81 to 243 and 0-6 km shear from 38 to 59 kt in 30 minutes. In moist air, the hourly change in SRH01 is 76 or more in 5% of cell-hours and 133 or more in 1%.
+   - Watch MD numbers are issued out of order within an hour.
+
+### Applied 2026-10-20: the run's findings 1-9
+
+**Storms:**
+- **Splits** (StormModeEngine.js `leftSplitShare`) and a left-mover's own rotation (StormRotation.js) are read from 0-3 km helicity (ramp 50-200), not 0-1 km. Left-movers fell from 34-40% of supercell time to 2-5%.
+- **Line organization** (`lineOrganizationTarget`) weighs the cold pool against the measured 0-3 km shear (new `shear03` in the storm environment) instead of half the 0-6 km. The soundings give 0.75-1.0 of it. Supercell phases on seed 8181: median 1.0 to 1.7 h, mean 1.3 to 1.7 h.
+  - The outflow, rotation and occlusion uses of the balance keep the old definition, because their ranges were calibrated on it. Using the measured shear there too took seed 8181 from 21 to 49 tornadoes.
+  - Tried and reverted: 0-3 km helicity for a ground-fed mesocyclone (more tornadoes, mostly at night).
+- **Hail:** power 2 to 1.8, with the scale (2.12) keeping 1 inch at the same updraught. The 2-inch share of 1-inch-plus samples went from 17.6% to 13.7% on 4 worlds x 48 h.
+- **The sounding's 700-500 and 850-500 mb lapse rates** use the layer's own mean temperature for its depth; they had read about 10% low. HAIL.lapseRange moves with it (7.2-9.4).
+- Not changed: the reference profile (`reference500C` -9.5 still gives about 5.4 C/km without a plume). Steepening it to -11.5 removed quiet days and added hail, so it waits for the final tuning with the low-level moisture and CAPE.
+
+**80 days (8 seeds x 10), before against after:**
+- tornadoes a day 6.2 to 7.6, days with a tornado 73% to 81%;
+- High 30% to 38% (High was already far over the 5% aim before this round), wind-only High 21% to 10%;
+- days with 2-inch hail 76% to 66%, largest hail median 2.68 to 2.40 in.
+
+**Warnings** (Warning.js):
+- When an office re-warns a storm, its earlier warnings for that storm that no longer hold a storm warranting them are cancelled ("moved out").
+- Severe thunderstorm warnings go out early on a growing core (`soon`: hail from 0.75 inch or gusts from 50 mph trending to severe within 15 minutes).
+- Tags rise only on what two scans show, except on a new warning.
+
+On seed 8181 over 48 h:
+- **Stacking:** three at once from one office fell from common to 9 of 3,853 group-scans.
+- **Severe lead:** median 5 min, p75 15 (was about 0).
+- **PDS:** 21% of tornado warnings (was 40%).
+- **Severe tags:** a damage tag on 39% of severe warnings (was 55%), destructive 4.5% (was 15%).
+- **Severe polygons:** median 1,167 sq mi (was 1,515).
+
+**Outlooks:**
+- **Continuity:** each issue keeps 35% of the last issue's chances for the same day, 20% once the day is under way (OUTLOOK.continuity). Seed 5150's Day 1 was ENH, SLGT, SLGT, ENH, SLGT; it is now ENH, SLGT, SLGT, SLGT, ENH (the last raise came as night tornadoes began).
+- **Timing:** the fewest hours holding 60% of the severe weather or tornadoes. Windows are 5-10 h, where they were 16-19.
+- **Wording:** "the greatest risk" is said from Enhanced, and "extreme" instability from 4,000 J/kg (outlooks and MDs).
+
+**Discussions and watches:**
+- **MD watch chance:** where the tornadoes alone call for a tornado watch, the chance of a watch is at least the share of runs with a tornado, so there is no "watch unlikely" beside a 120-150 mph peak.
+- **Watch table:** the 10-wind, 10-hail and 6-combined rows count each run's events as a Poisson mean. The tornado and peak rows stay plain shares.
+
+**Not changed:**
+- Daytime MDs on a weak-storm day (none were warranted).
+- The shear and helicity sentences, which read the runs' storms by design.
+- Field jumps near storms (outflow).
+- MD numbering, which was in order; the harness listed them newest first.
+
+`npm test` passes, 51 of 51.
+
+**Still open (older items, unchanged):**
+- the night lean (seed 5150 had 1 of 13 tornadoes by day in the probe);
+- the EF mix (EF3+ about 23%);
+- High days at 38%;
+- lows off the map;
+- the night jet;
+- storm speeds of 40-50 mph on strong-flow days (Bunkers motion in that flow);
+- the 75 mph gust share.
+
+The next fix should be the final tuning pass: low-level winds by day and night, moisture and CAPE with the lapse rates, then the tornado rate and the category mix.
+
+### Final tuning pass (2026-10-20)
+
+Measured with a diurnal tuning audit (8 seeds x 5 days, server stepping: medians over moist air by local hour, tornado timing and ratings) and the activity report (8 seeds x 10 days).
+
+**1. Low-level winds** (RegionalAtmosphere.js):
+- Settings: `mixedLayerFriction` 0.4 to 0.15, `surfaceWindShare` 0.6-0.75 to 0.5-0.65, `surfaceBackingDeg` 25-15 to 40-30.
+- Why: the afternoon's 850 mb wind was the mixed layer's at 0.6 of balanced, about 17 kt and nearly the surface wind. The night's jet swung from that deficit.
+- 0-1 km helicity over moist air: by day (13-18 local) 53 to 89, at night (0-5) 147 to 129.
+- 850 mb wind: 17 to 22 kt by day, 31 to 28 kt at night.
+- Tornadoes from 9 pm to 6 am: 66% to 24%.
+
+**2. Moisture, CAPE and lapse rates:**
+- Settings: `reference500C` -9.5 to -11.5, `gulfMixingRatio` 16 to 14.75, hail scale 2.12 to 1.9.
+- Lapse rate without a plume: 5.2 to 5.9 C/km.
+- Afternoon MLCAPE over moist air: about 2,700 (unchanged).
+- Dewpoint over moist air: 67 to 66 F.
+
+**3. Tornado ratings** (TornadoEngine.js INTENSITY 70/70 to 40/30):
+- Rated EF0-EF4 on 80 days: 49/32/10/6/1.6% (EF2+ 18%; the US record is 38/37/17/6/1.5).
+- Peak winds about half a category above the ratings (EF4 winds 4-5%). Mobile radar suggests more; this mostly changes how many look violent.
+
+**80 days, before this pass and after:**
+
+| | Before | After | Aim |
+|---|---|---|---|
+| Tornadoes a day | 7.6 | 5.5 | about 5 |
+| Days with a tornado | 81% | 61% | open (user to decide) |
+| Night tornadoes (9 pm-6 am) | 66% | 24% | 25-40% |
+| EF2+ rated | about 41% | 18% | about 15% |
+| HIGH | 38% | 11% | 5% |
+| MDT | 29% | 30% | 20% |
+| ENH | 24% | 26% | 40% |
+| SLGT | 6% | 25% | 30% |
+| Marginal or less | 4% | 8% | under 5% |
+| Quiet days | 3% | 5% | about 5% |
+
+Other numbers after the pass:
+- largest hail median 2.0 in;
+- 2-inch hail on 54% of days;
+- chaseable afternoons 68% (was 73%).
+
+**Tried and not kept:**
+- Gulf air at 15 g/kg: Moderate 44%. At 14.5: 17% of days under Slight and tornadoes on 58%.
+- Tornado rate power 2: tornado days only 58% to 65%, more weak tornadoes, and it undoes the 2026-10-16 reason for power 3.
+- Hail scale 1.75: little more gained, more quiet days.
+
+**Left open:**
+- **The spread between days:** moisture moves the quiet and the big days together, so Enhanced stays under its share and Moderate and High over theirs. It comes from how strongly the outer model's systems pass, which is a design question rather than tuning.
+- **Tornado-free days** (39%).
+- **Lows off the map.**
+- **Fast storms** on strong-flow days.
+
+**Chase after the pass** (seed 5150, the same 3 days as the morning's run):
+- **Tornadoes:** 2 (was 8), both in daylight at 2:45 and 4:05 pm CST, where before all 8 were at night or in twilight. 0 seen; the closest was 104 mi.
+- **Products:** Day 2's tornado peak was forecast for 22Z the day before. MD 3 and Tornado Watch 1 came ahead of the threat.
+- **Supercells:** all three intercepted (two of them tornado-warned) turned into broken lines or clusters, or lost their rotation, within about an hour, by the time the car arrived (roads about 2x the straight line).
+- **Moderate with 15% tornado** verified with 2 tornadoes: over-forecast.
+- **Next for the game:** how long supercells stay discrete on busy days (coverage drives the line organization), and per-storm tornado odds by day.
+
+**Forecaster review after the pass** (seeds 8181, against the morning's run, and 4096, new; 72 h each):
+
+Better:
+- **Watches:** 12 of 17 tornadoes inside a valid watch on seed 8181 (was 11 of 22); 3 of 3 on seed 4096.
+- **Warnings on seed 8181:**
+  - 161 severe thunderstorm warnings (was 413), with a median polygon of 559 sq mi (was 1,082);
+  - "considerable" on 11% of severe warnings (was 36%) and PDS on 8% of tornado warnings (was 30%);
+  - tornado POD 17/17.
+- **The daily cycle on seed 8181:** 0-1 km helicity 72-97 by day against 99-113 at night. No cell-hours with 0-1 km helicity over 600 (was 58).
+- **Outlooks on 8181:** the Day 2 forecast ran ENH, ENH, MDT, MDT; its tornadoes fell inside ENH/MDT.
+- **Lows on seed 4096:** closed lows analysed in 19 of 73 hours, and the pressure minimum on the edge in only 38.
+
+Found:
+1. **Long-lived weak tornadoes.** On seed 8181, EF0s lasted 45-120 minutes (six of them an hour or more). A tornado lasts while its storm holds low-level rotation, whatever its own strength; with the wind scale lowered in the pass, the durations stayed. Real EF0s mostly last minutes; long tracks belong to strong tornadoes.
+2. **Ratings bunched at the ends.** Seed 8181's Day 2 had 13 EF0, no EF1-2, 1 EF3 and 1 EF4.
+3. **A heavy-handed High.** The 20Z Day 1 issue on 8181 went to High mid-event for a day of mostly EF0s.
+4. **Short tornado warning lead:** median about 5 minutes on 8181, with false alarms at 0.55; 0.71 on 4096.
+5. **An 850 mb jet of 75-90 kt** overnight in the north-west quadrant of a 986 hPa low on seed 4096 (726 cell-hours over 70 kt). This was earlier traced to the outer model's own flow.
+6. **0-3 km lapse rates over 10 C/km** on the top map row only (seed 4096, 6 am-2 pm): an edge artifact.
+7. **Weak-flow days have no afternoon low-level shear.** On seed 4096 the afternoon 850 mb wind is 9-10 kt and 0-1 km helicity 21-32; the night jet is 35 kt.
+8. **Unchanged:** lows still pinned to the edge on 8181 (64 of 73 hours).
+
+Causes, diagnosed the same day:
+1. **Long-lived weak tornadoes.**
+   - Cause: a tornado ends only when the storm's low-level rotation falls under `sustainRotation` 0.055 or the outflow occludes it, which takes up to 4.5 h of `occlusionHours`. Both are set by the storm, not by the tornado's own strength draw (`strengthUniform`).
+   - Fix: let the tornado's own strength set how fast it dies (weak vortices in minutes, violent ones in tens of minutes), and keep the storm's rotation as the upper limit.
+2. **and 3. Ratings bunched; a High on a day of EF0s.**
+   - Cause: strength barely follows the environment. The 9 tornadoes after 20Z on 8181 were all EF0 in STP 4.3-5.5 and 0-1 km helicity 280-360, while the EF4 came in STP 2.1. The pass scaled all winds down alike (INTENSITY 40/30).
+   - The High itself followed the rules: the runs, from storms that had just made an EF4 and an EF3, gave 30% with the EF3+ group.
+   - Fix: steeper dependence on the storm's underlying rotation, with a lower base and a higher rotation scale, recalibrated to the same overall mix.
+4. **Short tornado warning lead.**
+   - Cause: warnings key on the same quantity that starts tornadoes (the chance from low-level rotation, rate as its cube), so a warning goes out only about when genesis becomes likely.
+   - Fix: warn on a strong mesocyclone in a tornadic environment (the storm's own helicity, LCL and CIN), as forecasters do. That buys lead at some cost in false alarms, which are now 0.55-0.71 (the NWS's are about 0.7).
+5. **The 75-90 kt 850 mb jet** (seed 4096).
+   - Cause: not the night oscillation; the boundary layer's departure is 3-5 kt there. It is the balanced wind stacked: the outer model's 45-51 kt, plus the lee trough's 25-30 kt at 0.7, plus the low-level temperature pattern's up to 48 kt.
+   - Fix: fade the lee and low-level thermal parts with height through their own depth, so they mostly affect the surface and the lowest km.
+6. **0-3 km lapse over 10 C/km** (seed 4096). This is not an edge artifact: rows 0-3 all show it.
+   - Cause: overnight 700 mb cooled from +4.8 to -5 C (cold advection aloft in the outer model) while 850 mb held 15 C and the surface 25 C, leaving 850-700 mb at about 13 C/km.
+   - 850 mb comes from the regional air mass and 700 mb from the outer model, and nothing ties them.
+   - Fix: a convective adjustment in RegionalAtmosphere, so the air under 700 mb is never left potentially warmer than the air above it; it mixes instead.
+7. **Weak afternoon flow on 4096: a pooling artifact, not a fault.**
+   - The 9 kt median is Day 1, a thunder-only day with 1,553 moist cells; Days 2-3 afternoons had 22-24 kt.
+8. **Lows on the edge on 8181.** The region steering keeps the map in the warm sector and the parent low off-map (see the 2026-10-15 fronts and lows diagnosis); seed 4096 shows lows can cross when steered there.
+   - Fix (a design choice): weight the steering toward "near the low" setups more often, or enlarge the regional domain.
+
+**Applied 2026-10-20, the fixes for the review's causes** (in this order):
+1. **Tornado lifetime** (TornadoEngine.js LIFE).
+   - Each tornado draws its own life at touchdown, with a mean from 3 minutes (barely 65 mph possible) to 60 minutes (200 mph), as (way up)^1.5.
+   - A spent vortex takes the low-level rotation with it (0.2 left), so the next tornado is a new cycle.
+   - Median durations by rating EF0-4: 5/15/40/60/45 min (were 45-70 for all).
+2. **Strength follows the air.**
+   - INTENSITY is now 20 + 35 x rotation + 40 x the inflow STP (full at 6), with the damage survey's open-country share 0.4 to 0.25.
+   - Ratings on 80 days: EF0-4 58/23/9.5/6/3% (EF2+ 19%); peak winds about a category above (EF4+ winds about 18%).
+   - Median STP at touchdown: 3.7 for EF0 against 7.8-9.8 for EF3-4.
+   - The sounding's hazard outlook uses the same scale.
+3. **Convective adjustment** (RegionalAtmosphere.js adjustMarginK/adjustHours):
+   - air near the ground potentially warmer than 700 mb mixes down within about an hour;
+   - a mixed layer grown past 700 mb gives it its temperature.
+   - Superadiabatic 0-3 km cell-hours on seed 4096: 486 to 60.
+4. **The jet:** the lee trough's cyclogenesis gain fades where the outer model already has a low of 4-12 hPa (leeCycloneOuterLowHpa). 850 mb over 70 kt on seed 4096: 733 to 129 cell-hours, max 90 to 76 kt.
+   - Tried and reverted: fading the lee and thermal winds with height. It missed the jet (on the high ground 850 mb is near the ground) and weakened the plains' own low-level jet.
+5. **Tornado warnings:** no change. After step 1 the median lead was already 10 minutes on seed 8181 (false alarms 0.63, near the NWS's figures). An extra warning on a mesocyclone in high-STP air added no lead and raised false alarms to 0.68-0.87.
+6. **Steering** (RegionSteering.js reaim): on days aimed at a low, the slide is worked out again every 6 hours.
+   - Near-low miss: median 219 to 125 km.
+   - Lowest pressure inside the map at 21Z: 17 to 27 of 80 days.
+   - Most of the rest (39) is on the west edge, the lee trough along the foot of the high ground where the map ends: realistic as drawn.
+7. **Tornado rate** fullRatePerHour 1.0 (tornado families: cyclic supercells), hail scale 1.8.
+
+**80 days (8 seeds x 10):**
+- tornadoes 5.7 a day; 30+ days 5%, 60+ days 1%;
+- tornado days 59%;
+- HIGH 13%, MDT 34% (hail alone reaches 56% of the Moderates), ENH 29%, SLGT 16%;
+- quiet days 3%; chaseable afternoons 76%.
+
+`npm test` 51/51 (storm-rotation's modest-air comparison now runs 120 storms).
+
+**Reviews after these fixes** (the same seeds: the chase on 5150, the forecaster runs on 8181 and 4096):
+- **Chase:** 2 tornadoes, both in daylight (1:10 pm, 89 mph; 4:45 pm CST, 136 mph). The closest was 22 mi, the best of three runs (37 and 104 before); 0 seen.
+  - The 136 mph one came from S0134, intercepted on its NNE track at 2215Z. It turned NE, as a right-mover does, and passed east of the intercept point.
+  - Two supercells within 40 mi went unchased: 20-minute looks are too coarse for 35-40 mph storms.
+- **Tornadoes on 8181:** 11 (9 EF0, 2 EF2). EF0s last 0-10 minutes and EF2s 10-15 (were 45-120).
+- **Watches:** 9 of 11 tornadoes inside a valid watch (82%).
+- **Tornado warnings:** POD 11/11, median lead 10 min, 54 tornado warnings (was 104). False alarms 0.78, a little above the NWS's 0.7, now that tornadoes are fewer and briefer.
+- **Fields:**
+  - 0-3 km lapse over 10 C/km: 0 cell-hours on both seeds (was 486 on 4096);
+  - 850 mb over 70 kt: 0 on 8181 and 105 on 4096 (was 726);
+  - closed lows on 4096 in 13 of 73 hours; 8181's minimum still on the edge (66/73, the lee trough).
+- **Outlooks:**
+  - 8181's Day 2 ran ENH, SLGT, ENH, MDT (13Z), ENH, ENH, ENH, and its tornadoes fell inside ENH.
+  - 4096's Day 3 went ENH to MDT (1630Z) to SLGT (20Z) on a hail and wind day with no tornadoes: a mid-day Moderate that came and went.
+- **Seed 4096 warnings:** 247 severe thunderstorm warnings with a median polygon of 1,270 sq mi on a line-driven day.
+
+**Diagnosed and fixed 2026-10-20 (the Moderates that come and go; tornado warning false alarms), with new-seed runs:**
+
+1. **Moderate on hail days.**
+   - The outlooks are honest: on 18 mornings, 60% hail areas verified 79-91% of the time, and the Day 1 Moderate rate forecast (11%) is under the verified one (17%).
+   - The truth is that hail falls widely. 35 storms a day have 1 inch or more (48 on Moderate and High days), and on such days much of it comes from supercells.
+   - Tried and reverted:
+     - sampling hail like reports (35% of storm-cells): no change, because a hazard counts within 25 miles anyway;
+     - less hail from storms that do not rotate (nonRotating 0.65 and 0.55): 35 to 25 hail storms a day, Moderate unchanged.
+   - What is left needs a decision: fewer supercells per day, or refitted intensity bars (excluded by the rules).
+   - Seed 4096's Moderate at 1630Z was a 3% area as the event reached the map's east edge; it went at 20Z with the storms. That is reasonable.
+2. **Tornado warning false alarms.**
+   - Pieces issued at once for a neighbouring office's counties were all false alarms (14 of 80 tornado warnings on seeds 8181 and 4242). Such a piece now goes out only when the storm is due there within downstreamMinutes (15).
+   - Tried and not kept: dropping or tightening the strong-mesocyclone early path, which cut false alarms further but cost 5 minutes of lead.
+   - With the final code: seed 8181 lead 10 min, false alarms 0.74; seed 1357 POD 53/54, lead 15 min, false alarms 0.54, tornado warnings 326 to 210; seed 2468 lead 20 min, false alarms 0.63.
+3. **Found by the new-seed forecaster run: an 850 mb jet of 100-132 kt on seed 1357** (4,760 cell-hours over 70 kt, 3,252 over 600 of 0-1 km helicity).
+   - Cause: the regional frontal cyclone (cycloneGainHpa) deepened to 17 hPa in a low about 50 km across (smoothed only 3 cells), with a balanced wind of 188 kt.
+   - Now smoothed over 6 cells: 141 cell-hours, at most 76 kt, closed lows on 14 of 73 hours (16 before). Seed 4096's small closed lows (13 hours) are gone.
+   - Tornado rate 1.0 to 1.25 to keep the climate: on 80 days 5.3 tornadoes a day, tornado days 53%, EF2+ 19%, HIGH 11%, MDT 31%.
+
+**New-seed runs:**
+- **Chase on seed 7777, 10-minute checks:** 0 tornadoes in 3 days, and the outlooks never went above 5% tornado, so they were right.
+  - Day 1 (Enhanced; STP 1-1.6, SRH01 about 170, 36-50 kt) gave only fast multicells, lines and an MCS. No supercell formed in the capped, crowded air: a chaser's dud.
+- **Forecaster on seeds 2468 (quiet, 1 tornado) and 1357 (outbreak):**
+  - On 1357, 48 tornadoes from 10:45 am to 8 pm CDT, 6 rated EF3; 47 of 53 inside a watch.
+
+`npm test` 51/51 (counties: the storm crossing an office line is now 6 miles out, and a new case checks that a storm 20 miles out gets no downstream piece).
+
+**Chaser and forecaster on the same seed, 5000 (2026-10-20):**
+- **The weather:** Day 1 was a Slight with no tornadoes; Day 2 a High-Risk outbreak; Day 3 dry behind the front.
+  - Day 2 had 42 tornadoes: EF0-4 19/12/8/2/1, median 5 min, 16 between 9 am and 8 pm CDT and the rest in the evening and night.
+  - Shear was 73-80 kt under an 80 kt 500 mb jet, and storms moved 49-63 mph.
+- **The forecaster's view:**
+  - Day 2 forecast: MDT the day before, then HIGH from 06Z through 01Z (45% to 60% tornado), and it verified.
+  - Watches: 40 of 42 tornadoes inside a valid watch; MDs said "tornado watch likely" from 13Z.
+  - Tornado warnings: POD 42/42, median lead about 7 min (a third had none on the fast storms), false alarms 0.73, 268 tornado warnings.
+  - Severe thunderstorm warnings: 831 in 3 days, 30% "destructive" and 23% "considerable", median polygon 1,070 sq mi. That is too many, the warning-volume item.
+  - Fields: 850 mb over 70 kt in 518 cell-hours, a strong synoptic day; 0-3 km lapse over 10 C/km in 109 (the dry deep mixing of Day 3); closed lows in 10 of 73 hours.
+- **The chaser's view:** 0 seen of 42, 416 miles. The 77 and 112 mph tornadoes came at 12:40 pm, 38-52 mi away. Two tornado-warned supercells (S0038, S0077, couplet 0.43) passed within 4-5 mi without a tornado while near the car.
+  - The 144 mph S0111 tracked to 20 mi at 7:25-7:55 pm: an intercept that a drive north-west at first sight would probably have made (a chaser's miss).
+  - The closest was 10.5 mi just after dark.
+  - At 50-60 mph only storms coming toward the car could be met; none could be caught from behind.
+
+**More tornado days (2026-10-20):**
+- **Diagnostic** (tordiag.mjs in the job tmp; 80 days): 30 days had ground-fed supercells and no tornado.
+  - Near the ground they were fine: helicity factor 0.94, cloud base 0.89 (LCL 984 m), outflow 0.83, SRH01 about 226.
+  - Their mesocyclones were about half as strong (0.41 against 0.75): the helicity turning took 0.36 of 0.65 against 0.59, the ramp saturating only at 350.
+  - Expected tornadoes from their rates: 0.13 a day.
+- **Change:** ROTATION.helicity [50, 350] to [50, 250], and the tornado rate 1.25 to 0.9.
+- **80 days:** tornado days 53% to 59%, with the mean unchanged at 5.3 a day, 60+ days 1%, EF2+ 17%, HIGH 11%, MDT 31% to 33%, SLGT 16% to 19%. Chaseable days 89%; night share 25%.
+- **Also tried:**
+  - saturating at 200 (rate 0.75): tornado days 68% but MDT 38%, through hail, whose size follows the mesocyclone;
+  - 225 (rate 0.82): tornado days 59%, MDT 39%.
+  - Runs differ by about 4 points.
+
+**Helicity 200 and hail (2026-10-21):**
+- **Settings:** ROTATION.helicity [50, 200], tornado rate 0.75.
+- **The extra Moderates came from more storms:** at 200 against 250, storms a day 88 to 93, hail storms 32 to 36, largest hail median 2.14 to 2.29 in, Moderate days 26 to 30.
+- **Hail melting** (StormHazards.js, with wetBulbZeroAglM now in the sounding summary and the storm environment): loss 0.3 in x (wet-bulb zero / 3 km) / sqrt(size). The hail curve goes back to power 2, scale 2.0.
+- **Hail CIG1 bar 0.08 to 0.2** (user's decision): 8% was below this world's own share of 2 in among 1 in hail.
+- **80 days:**
+  - Moderate 38% to 25%, Enhanced 28% to 38%, High 10%, quiet days 6%;
+  - hail-only share of Moderates 63% to 45%;
+  - hail CIG1 days 38% to 25%, CIG2 (3.5 in) 0% to 4%;
+  - largest hail median 2.33 in (90th 3.29);
+  - tornado days 68%, 5.2 a day, EF2+ 18%.
+- **Also tried:**
+  - melting with the old curve: Moderate 20% but no giant hail;
+  - power 2 with scale 2.3: CIG2 on 13% of days and Moderate 36%;
+  - power and scale 1.9: Moderate 25%, CIG2 1%.
+- `npm test` 51/51. sounding-hazards tests melting; world-risk-categories' fixture has a 2/7 share of 2 in.
+
+**Outlook spread and intensity groups (2026-10-21, 18 mornings):**
+- **Outlooks run low:**
+  - Day 1 Enhanced-or-more 10% of the map against 14% verified; Day 2 6% against 18%; most misses are too low.
+  - Contours under-confident: 45% hail areas verify at 64-78%, 60% at 86%.
+  - Groups drawn far less than they verify: Day 1 hail CIG1 6% against 17%, Day 2 0% against 25%; tornado CIG2 0% against 11%.
+- **Tried:** groupAgreement [0.5, 0.75] to [0.375, 0.625] with the runs' perturbations at 70% of their size. It changed nothing beyond noise; reverted.
+- **Likely causes:**
+  - the chance calibration (outlookCalibration.js) was fitted on 2026-10-17's climate, and its guard keeps it from raising into the Moderate/High levels;
+  - groups are judged on the typical run and need half or more of the runs to agree, with no calibration of their own.
+
+**Outlook calibration refitted, intensity groups calibrated (2026-10-21):**
+- **Chances:** CALIBRATION was refitted for Days 1-2 on 40 mornings (seeds 1-8, 5 each) of the current climate. Day 3 stays uncalibrated. The guard on raising into the Moderate/High levels is kept.
+- **Groups:** new CIG_SHARE, fitted by the new scripts/fit-cig-calibration.mjs from outlook-verify --cig-data.
+  - Each contour area records the share of runs whose own reports reach each group.
+  - A group is drawn from the lowest share at which it verified on its area's reports more often than not; that replaces the median run plus OUTLOOK.groupAgreement.
+  - Groups with fewer than 40 areas in the data keep the agreement they needed before.
+  - Fitted: Day 1 tornado CIG1 from 3/8 of the runs (verified 54% there, 76% from 5/8); hail CIG1 from 4/8 on Days 1-2 (86% and 50%); Day 2 wind CIG1 never (0% of 47 areas).
+- **On 18 unseen mornings (seeds 9-14)**, forecast against verified:
+  - Day 1 Enhanced-or-more map share 13% against 15% (before, on seeds 1-6, 10 against 14);
+  - Day 2 14% against 20% (before 6 against 18);
+  - Day 1 groups drawn: tornado CIG1+ 22% against 18% verified, hail 6% against 6%, wind CIG2 6% against 6% (before: hail 6% against 17%, tornado 6% against 11%).
+- **Still open:**
+  - The top contours remain under-confident (Day 1 45% hail areas verify 81%, 60% verify 94%). The guard keeps calibration from raising into those levels.
+  - Intense groups (tornado CIG2/3, hail CIG2) are still not drawn: too few cases to calibrate on.
+- `npm test` 51/51.
+
+**Still open:**
+- **The category mix:** Moderate and High are over their aims, more so with more near-low days. Hail-only Moderates, and wind on the High days.
+- **Tornado-free days:** 41%.
+
+Tests: `npm test` 51/51. In radar-range-and-coverage the debris assertions were eased (CC 0.8 to 0.82 near the radar, the near-far gap 0.1 to 0.09): the test's world now has a windier boundary layer that spreads the debris a little.
+
 ## Agenda (2026-10-15)
 
 Done 2026-10-15: sharper fronts and drylines (cubic semi-Lagrangian advection, a pressure

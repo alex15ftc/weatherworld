@@ -14,9 +14,18 @@ import { clamp } from '../scenarios/math.js';
 import { lineShare, coldPoolBalance } from './StormModeEngine.js';
 
 export const ROTATION = Object.freeze({
-  fullUpdraughtMs: 40, shearKt: [20, 55], helicity: [50, 350], shearShare: 0.35, lineLoss: 0.45,
+  // helicity: the inflow's helicity over which the mesocyclone's turning grows to its full share
+  // (2026-10-20: [50, 350] to [50, 200]; effective helicity of 150-250 is a strong supercell's in
+  // forecasting practice. On 30 of 80 days supercells had 0-1 km helicity near 226 and made no
+  // tornado: their mesocyclones took 0.36 of the turning against 0.59 on tornado days, half as strong.)
+  fullUpdraughtMs: 40, shearKt: [20, 55], helicity: [50, 200], shearShare: 0.35, lineLoss: 0.45,
   spinUpHours: 0.4, spinDownHours: 0.7,
-  lowHelicity: [50, 250], helicityFloor: 0.5, cloudBaseM: [2000, 800], outflowBalance: [1.0, 1.8],
+  // helicityFloor: the share of near-ground spin a storm has with no helicity in the lowest km
+  // (2026-10-19: 0.5 to 0.15; with half of it kept, deep shear alone and a saturated surface's
+  // ground-level cloud base put tornadoes down in 0-1 km helicity of 20-70 in the morning. Then
+  // 0.3 the same day: 0.15 left afternoon storms, whose inflow helicity is only about 50 against
+  // about 140 at night, almost no tornadoes.)
+  lowHelicity: [50, 250], helicityFloor: 0.3, cloudBaseM: [2000, 800], outflowBalance: [1.0, 1.8],
   // Inhibition (J/kg) at which a storm fed from the ground takes all, and none, of its inflow from near the ground.
   groundCinJkg: [50, 200],
   // Strong helicity near the ground means strong inflow, which holds the outflow back: the
@@ -34,8 +43,11 @@ export const ROTATION = Object.freeze({
   // gone deep into the cold air feeds above it and makes no near-ground rotation anyway.
   frontGradientK100: [4, 9],
   // A left-moving split rotates the other way: it lives on shear that does not turn with
-  // height, and has no rotation near the ground to speak of.
-  leftHelicity: [80, 250], leftShare: 0.6,
+  // height, and has no rotation near the ground to speak of. Read from 0-3 km helicity, as the
+  // split itself is (leftSplitShare); until 2026-10-20 from the inflow's helicity, which by day
+  // was the weak 0-1 km value, so a left-mover in an afternoon of 0-3 km helicity 150 kept
+  // nearly as much rotation as its parent and often outlived it.
+  leftHelicity: [50, 200], leftShare: 0.6,
   // Low-level rotation falls away over most of an hour, and the outflow takes a few times
   // longer to wrap around a tornado than it once did (occlusionHours was 1.5-0.15, spin-down
   // 0.08 h): tornadoes last about 50 minutes on average, not 16, with the rate, wind spread and
@@ -65,8 +77,13 @@ export function stepStormRotation(storm, environment, dtHours) {
   const fromGround = storm.elevatedFeed ? 0 : clamp((R.groundCinJkg[1] - Math.abs(Number(environment.cin) || 0)) / (R.groundCinJkg[1] - R.groundCinJkg[0]), 0, 1);
   const srhLow = Number(environment.srh) || 0, shearDeep = Number(environment.bulkShear) || 0, shearLow = Number(environment.shear01) || 0;
   const srhAloft = Math.max(0, (Number(environment.srh03) || srhLow) - srhLow), shearAloft = Math.sqrt(Math.max(0, shearDeep * shearDeep - shearLow * shearLow));
+  // (Tried 2026-10-20: 0-3 km helicity for a storm fed from the ground. It strengthened night
+  // mesocyclones most, where the night jet gives 0-3 km helicity of 230-400, and tornadoes went
+  // from 22 to 31 on seed 8181 and 8 to 24 on seed 5150, mostly at night; reverted.)
   const srhIn = fromGround * srhLow + (1 - fromGround) * srhAloft, shearIn = fromGround * shearDeep + (1 - fromGround) * shearAloft;
-  const turning = storm.leftMover ? R.leftShare * (1 - ramp(srhIn, R.leftHelicity[0], R.leftHelicity[1])) : ramp(srhIn, R.helicity[0], R.helicity[1]);
+  // A left-mover's rotation is read from the 0-3 km helicity, as the split is (leftSplitShare).
+  const srhLayer = Math.max(srhLow, Number(environment.srh03) || srhLow);
+  const turning = storm.leftMover ? R.leftShare * (1 - ramp(srhLayer, R.leftHelicity[0], R.leftHelicity[1])) : ramp(srhIn, R.helicity[0], R.helicity[1]);
   const tilting = R.shearShare * ramp(shearIn, R.shearKt[0], R.shearKt[1]) + (1 - R.shearShare) * turning;
   const clear = 0.4 + 0.6 * clamp(storm.organization ?? 0, 0, 1);
   // Updraughts along a line share their inflow and rotate less than a storm on its own.

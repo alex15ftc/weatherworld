@@ -11,11 +11,22 @@
 // on 40 others (seeds 9-16): Day 1 and Day 2 only. Day 3, made from two runs, did not carry over
 // to other seeds when tried (2026-10-16: its higher levels verified at half their value), so it is
 // issued as it is.
-export const CALIBRATION = Object.freeze({"day1": {"tornado":[[2,1.4], [4.2,2.9], [6.2,6], [8.7,6.3], [12.3,8.6], [17.4,10], [22.4,27.6], [27.1,39.1], [34.3,44.5], [46.5,68.7]],
-  "wind":[[1.5,0], [2.7,0], [4.2,0.1], [6.2,1.4], [8.7,4.3], [11.2,5.9], [13.7,9.8], [17.4,12.3], [22.4,19], [27.4,24.6], [34.9,48.4], [44.9,67.8], [54.8,81.8], [66.4,91.2], [80.9,97.4]],
-  "hail":[[2.1,0.4], [4.2,1.7], [6.2,3.3], [10.9,6.7], [17.4,11.1], [22.5,21.3], [27.5,26.7], [34.8,39.6], [44.6,56.4], [54.8,73.4], [66.6,85.7], [81.2,96.1]]},"day2": {"tornado":[[2,2], [4.2,3.7], [7.2,4], [11.2,7.9], [13.7,12.5], [17.2,17.3], [22.1,21.1], [27.2,39.2], [37.1,61.3]],
-  "wind":[[2.1,4], [4.2,4.6], [6.2,7.9], [8.7,9.6], [11.2,12.8], [13.7,16.3], [17.4,21.3], [22.4,29.7], [34.9,36.6], [54.5,58.4], [68.8,93.1]],
-  "hail":[[1.5,4], [2.7,4.2], [4.2,5.5], [6.2,8], [8.7,10.9], [11.2,14.3], [13.7,15.4], [17.4,17.8], [22.4,20], [27.5,34.1], [34.8,36], [44.7,43.6], [54.4,70.9], [66.8,87.5]]}});
+// Refitted 2026-10-21 on 40 mornings (seeds 1-8, 5 each) with that day's climate (hail melting, the
+// stronger mesocyclones): the record had drifted, 45% hail and wind areas verifying about 62% and
+// 30-35% tornado areas 57% on Day 1.
+export const CALIBRATION = Object.freeze({"day1": {"tornado":[[1.4,1],[3.2,2.8],[6.1,3.5],[8.7,7.1],[11.2,12.3],[13.7,17.2],[17.1,23.7],[22.4,28.9],[27.3,28.9],[33.9,57.2]],
+  "wind":[[1.5,0.2],[3.4,0.5],[6.2,0.6],[8.7,1.2],[11.2,6.3],[13.7,7.1],[17.4,10.3],[22.4,16.6],[27.5,24.8],[34.9,38.5],[45,62.1],[54.7,81.2],[67.1,91.5],[83.6,99]],
+  "hail":[[1.5,0],[2.7,0.6],[4.2,1.5],[6.2,1.5],[8.7,2.6],[11.2,6.4],[13.7,9.6],[17.4,12.9],[22.4,19.8],[27.4,25.8],[34.8,41.2],[44.9,62.1],[54.7,71.3],[66.9,86.4],[82.4,96.2]]},"day2": {"tornado":[[1.5,3],[2.7,3.3],[5.2,3.9],[8.7,7.4],[11.2,10],[13.7,14.4],[26,15.3]],
+  "wind":[[2.1,2.1],[4.2,3.5],[6.2,4.8],[8.7,5.5],[11.2,8.8],[13.7,10.6],[17.4,14.2],[22.3,20],[27.5,27.5],[34.5,39],[44.9,58.3],[55,70.3],[66.6,78.7],[81.5,90.1]],
+  "hail":[[2.1,1.3],[4.2,2.5],[6.2,5.5],[8.8,6.6],[11.2,10.2],[13.7,13.7],[17.4,18.3],[22.5,26.3],[27.5,30],[34.4,40.6],[44.9,52.4],[54.9,66.9],[66.8,75.7],[79.4,93.4]]}});
+
+// Intensity groups (2026-10-21): for each outlook day and hazard, the share of the runs whose own
+// reports in a contour area reach group g that a group needs to be drawn there, set where the group
+// then verified there more often than not (scripts/fit-cig-calibration.mjs, from outlook-verify
+// --cig-data). Without an entry an area takes its median run's group and the runs' agreement
+// (OUTLOOK.groupAgreement), as before. Fitted 2026-10-21 on the same 40 mornings; groups with fewer
+// than 40 areas there keep the agreement they needed before, and 1.01 is never.
+export const CIG_SHARE = Object.freeze({"day1":{"tornado":[0.375,0.625,0.75],"wind":[0.5,0.625,0.75],"hail":[0.5,0.75]},"day2":{"tornado":[0.5,0.625,0.75],"wind":[1.01,0.625,0.75],"hail":[0.5,0.75]}});
 
 import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 

@@ -53,8 +53,9 @@ assert.ok(elevated.storm.mesocycloneStrength > 0.3, 'though it can rotate aloft'
 
 // --- Stronger rotation under it: longer-lived and stronger tornadoes (over many storms, since
 // each tornado has its own draw).
-const many = environment => Array.from({ length: 30 }, (_, k) => run(environment, { id: `S${1000 + k}`, hours: 4 }).tornadoes).flat();
-const best = many(tornadic), modest = many({ ...tornadic, srh: 190, lcl: 1250, bulkShear: 42 });
+// (Modest air from 120 storms since 2026-10-20: with the lower tornado rate 30 gave one or two.)
+const many = (environment, count = 30) => Array.from({ length: count }, (_, k) => run(environment, { id: `S${1000 + k}`, hours: 4 }).tornadoes).flat();
+const best = many(tornadic), modest = many({ ...tornadic, srh: 190, lcl: 1250, bulkShear: 42 }, 120);
 assert.ok(best.length > 20 && modest.length > 5, `both produce some (${best.length} and ${modest.length})`);
 assert.ok(mean(best.map(t => t.groundTimeMinutes)) > 1.3 * mean(modest.map(t => t.groundTimeMinutes)), `stronger rotation holds a tornado longer (${mean(best.map(t => t.groundTimeMinutes)).toFixed(0)} against ${mean(modest.map(t => t.groundTimeMinutes)).toFixed(0)} minutes)`);
 assert.ok(mean(best.map(t => t.peakWindSpeedMph)) > mean(modest.map(t => t.peakWindSpeedMph)) + 8, `and makes it stronger (${mean(best.map(t => t.peakWindSpeedMph)).toFixed(0)} against ${mean(modest.map(t => t.peakWindSpeedMph)).toFixed(0)} mph)`);

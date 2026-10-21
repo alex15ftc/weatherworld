@@ -42,7 +42,12 @@ assert.ok(runLoneStorm({}, air({ dcape: 1500 })).wind.maxGustMph > runLoneStorm(
 
 // The shared functions themselves, at known inputs.
 const storm = { updraughtMs: HAIL.referenceUpdraftMs, mesocycloneStrength: 0.4, precipitation: 1 };
-assert.ok(Math.abs(hailSizeInches(storm, { lapseRate700500: 7.2 }) - HAIL.scaleInches) < 1e-9, 'reference updraught, full rotation, neutral lapse rate = the scale size');
+const neutral = HAIL.lapseRange[0] + 0.35 * (HAIL.lapseRange[1] - HAIL.lapseRange[0]);
+assert.ok(Math.abs(hailSizeInches(storm, { lapseRate700500: neutral, wetBulbZeroAglM: 0 }) - HAIL.scaleInches) < 1e-9, 'reference updraught, full rotation, neutral lapse rate, no melting = the scale size');
+// Melting: a deeper warm layer takes more off, and a small stone loses a larger share of itself than a big one.
+const small = { updraughtMs: 40, mesocycloneStrength: 0.4 }, sizeAt = (s, m) => hailSizeInches(s, { lapseRate700500: neutral, wetBulbZeroAglM: m });
+assert.ok(sizeAt(storm, 4000) < sizeAt(storm, 2000), 'more melting under a higher wet-bulb zero');
+assert.ok(1 - sizeAt(small, 3000) / sizeAt(small, 0) > 1 - sizeAt(storm, 3000) / sizeAt(storm, 0), 'small stones lose a larger share');
 assert.ok(Math.abs(gustMph(storm, { dcape: 800 }, 0) - Math.sqrt(1600) * GUST.downdraughtShare * 2.23694) < 1e-9);
 
 console.log('sounding hazards: ok');

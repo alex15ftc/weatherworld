@@ -96,7 +96,7 @@ assert.match(o.discussion, /\(60% tornado area, CIG3\)/); assert.match(o.discuss
 const percents = [...o.discussion.matchAll(/(\d+(?:\.\d+)?)%/g)].map(m => Number(m[1])), allowed = new Set([...PROBABILITY_LEVELS.tornado, ...PROBABILITY_LEVELS.wind, ...PROBABILITY_LEVELS.hail]);
 assert.ok(percents.length > 0 && percents.every(p => allowed.has(p)), `every percentage in the discussion is a contour level (${percents.join(', ')})`);
 assert.match(o.discussion, /with violent tornadoes \(EF4 or stronger\) possible/); assert.match(o.discussion, /southwesterly flow aloft \(55 kt at 500 mb\)/); assert.match(o.discussion, /a dryline over the western part/);
-assert.match(o.discussion, /develop from about 21Z \(3 pm local\)/);
+assert.match(o.discussion, /develop from about 21Z \(4 pm CDT\)/);
 assert.match(calm.discussion, /NO SEVERE THUNDERSTORM AREAS FORECAST/); assert.doesNotMatch(calm.discussion, /TORNADO:/);
 assert.equal(writeDiscussion(o), o.discussion, 'the same outlook gives the same words');
 assert.equal(describeArea(new Array(n).fill(true), width, height), 'most of the region');
@@ -156,15 +156,15 @@ assert.equal(outlooks.maybeIssue(), false, 'nothing is issued again before its n
 const second = outlooks.day('day2');
 assert.equal(second.status, 'issued'); assert.equal(second.day, 'day2'); assert.equal(second.members, 1, 'half the runs go on to Day 2');
 assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 2]); assert.equal(membersFor('day3', 2), 1); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
-assert.equal(issued.nextUpdateHourUtc, 48); assert.equal(second.nextUpdateHourUtc, 48); assert.equal(outlooks.day('day3').status, 'off');
+assert.equal(issued.nextUpdateHourUtc, 44); assert.equal(second.nextUpdateHourUtc, 54); assert.equal(outlooks.day('day3').status, 'off');
 assert.deepEqual(Object.keys(outlooks.status().days), ['day1', 'day2']);
-// The schedule: Day 1 every 6 hours, Day 2 every 12, Day 3 every 24, counted from 12Z.
+// The schedule: the centre's times (Day 1 at 06, 13, 1630, 20 and 01Z; Day 2 at 06 and 1730Z; Day 3 at 0730 and 1930Z).
 const clockwork = { seed: 1, world: { validHourUtc: 36 } }, schedule = new OutlookRuntime({ runtime: { engine: clockwork }, pool });
 assert.deepEqual(schedule.due(), ['day1', 'day2', 'day3'], 'a new world is due all three');
 for (const day of schedule.days) schedule.products[day] = { slot: schedule.slot(day, 36), engine: clockwork };
-for (const [hour, due] of [[36, []], [41.5, []], [42, ['day1']], [47.5, ['day1']], [48, ['day1', 'day2']], [54, ['day1', 'day2']], [60, ['day1', 'day2', 'day3']]]) { clockwork.world.validHourUtc = hour; assert.deepEqual(schedule.due(), due, `due at hour ${hour}`); }
+for (const [hour, due] of [[36, []], [36.9, []], [37, ['day1']], [41.4, ['day1']], [41.5, ['day1', 'day2']], [43.5, ['day1', 'day2', 'day3']]]) { clockwork.world.validHourUtc = hour; assert.deepEqual(schedule.due(), due, `due at hour ${hour}`); }
 for (const day of schedule.days) schedule.products[day].slot = schedule.slot(day, 48);
-clockwork.world.validHourUtc = 54; assert.deepEqual(schedule.due(), ['day1'], 'at 06Z only Day 1 is due again');
+clockwork.world.validHourUtc = 54; assert.deepEqual(schedule.due(), ['day1', 'day2'], 'at 06Z Day 1 and Day 2 are due again');
 assert.equal(atmosphere.world.validHourUtc, before, 'the live world did not move while its outlook was made');
 // A new world on the server makes the old outlook stale.
 runtime.engine = new AtmosphereWorld({ seed: 4, spinUpDays: 4, storms: false });

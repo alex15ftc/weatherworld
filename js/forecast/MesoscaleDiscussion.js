@@ -45,6 +45,20 @@ export const MESOSCALE = Object.freeze({
   // more) for a strong one; anything else is a severe thunderstorm watch. The wind plays no
   // part.
   tornadoChanceLow: 20, tornadoChanceHigh: 80,
+  // ...and also (2026-10-20) a chance of a strong tornado of tornadoChanceStrong or more, or a most
+  // probable peak tornado of strongTornadoMph or more: until then two runs of four with a strong
+  // tornado gave a severe thunderstorm watch under a discussion forecasting 120-150 mph.
+  tornadoChanceStrong: 40,
+  // Small areas where tornadoes alone are the concern (an isolated supercell, a night-time
+  // tornado threat): where at least memberShare of the runs have a tornado within 25 miles, at
+  // least tornadoLeastCells, are areas of concern too (2026-10-20; until then they needed the
+  // 40 cells of severe weather any area did, and four night tornadoes went without a watch).
+  tornadoLeastCells: 12,
+  // About a watch in effect, a discussion only when something changes (2026-10-20; until then one
+  // every validHours while its ground was at 20% or more, two or three an hour on a big day):
+  // the threat turns to tornadoes in a severe thunderstorm watch, the watch is about to expire,
+  // or statusHours have passed while a watch's worth of severe weather goes on.
+  statusHours: 3,
   // How long before storms are expected in an area its discussion goes out (hours): a little
   // sooner where a tornado watch is in prospect. A watch goes out as storms fire, so a
   // discussion saying one is likely is saying it is about an hour away. The members look
@@ -147,7 +161,7 @@ export function describeNow(atmosphere, { counties = null } = {}) {
   return {
     hourUtc: world.validHourUtc, width: world.width, height: world.height, cellMiles: world.cellSizeMiles, counties: counties ?? cellCounties(world.width, world.height, world.cellSizeMiles),
     dewpoint: field(c => c.surface.dewpoint), temperature: field(c => c.surface.temperature), cape: field(c => c.derived.sounding?.mlcape ?? c.derived.cape), cin: field(c => Math.abs(c.derived.sounding?.mlcin ?? c.derived.cin ?? 0)),
-    shear: field(c => c.derived.bulkShear), helicity: field(c => c.derived.srh), cloudBaseM: field(c => c.derived.lclAgl),
+    shear: field(c => c.derived.bulkShear), helicity: field(c => c.derived.srh), cloudBaseM: field(c => c.derived.lclAgl), lapse: field(c => c.derived.sounding?.lapseRate700500 ?? c.derived.lapseRate700500 ?? 6.5),
     storms: (world.storms ?? []).filter(s => s.active).map(s => ({ cell: cellOf(s.positionKm), hail: s.currentHailSizeInches ?? 0, gust: s.surfaceWind?.gustMph ?? 0, tornado: Boolean(s.tornado?.onGround), rotating: (s.mesocycloneStrength ?? 0) >= 0.35, line: (s.lineOrganization ?? 0) >= 0.5, intensity: s.intensity ?? 0 })),
     lines: (atmosphere.boundaries ?? []).filter(line => (line.pointsKm?.length ?? 0) > 1).map(line => ({ type: line.type, cells: line.pointsKm.map(cellOf) }))
   };
@@ -169,6 +183,19 @@ export function concernAreas(members) {
     }
     if (cells.length >= MESOSCALE.leastCells) areas.push(cells);
   }
+  // Tornado threats too small to be an area of severe weather: where enough runs have a tornado
+  // within two cells (about 25 miles), on ground no area above holds.
+  const tornadoShare = new Float32Array(n);
+  for (const m of members) { const near = new Uint8Array(n); for (const cell of m.tornadoes ?? []) { const x = cell % width, y = Math.floor(cell / width); for (let yy = Math.max(0, y - 2); yy <= Math.min(height - 1, y + 2); yy++) for (let xx = Math.max(0, x - 2); xx <= Math.min(width - 1, x + 2); xx++) near[yy * width + xx] = 1; } for (let i = 0; i < n; i++) tornadoShare[i] += near[i] / members.length; }
+  for (let start = 0; start < n; start++) {
+    if (mark[start] || tornadoShare[start] < MESOSCALE.memberShare) continue;
+    const cells = [], stack = [start]; mark[start] = 1;
+    while (stack.length) {
+      const i = stack.pop(), x = i % width, y = (i - x) / width; cells.push(i);
+      for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && !mark[j] && tornadoShare[j] >= MESOSCALE.memberShare) { mark[j] = 1; stack.push(j); }
+    }
+    if (cells.length >= MESOSCALE.tornadoLeastCells) areas.push(cells);
+  }
   return areas.sort((a, b) => b.length - a.length);
 }
 
@@ -181,7 +208,7 @@ export function assessArea(members, now, cells) {
   const perMember = members.map(m => areaOutcome(m, inside));
   const mean = pick => perMember.reduce((a, m) => a + pick(m), 0) / count;
   const there = mean(m => (m.toward >= 1 ? 1 : 0)), part = mean(m => m.toward);
-  const percent = there > 0 ? (there === 0.5 && part >= 0.75 ? 60 : watchStep(there)) : part >= MESOSCALE.marginalShare ? 20 : 5;
+  let percent = there > 0 ? (there === 0.5 && part >= 0.75 ? 60 : watchStep(there)) : part >= MESOSCALE.marginalShare ? 20 : 5;
   // Most probable peaks: the middle of the members' strongest in the area; a tornado's, the
   // middle of the members that have one (given only when at least half of them do).
   const withTornado = perMember.filter(m => m.tornadoes > 0);
@@ -189,10 +216,17 @@ export function assessArea(members, now, cells) {
   const peakText = { tornado: withTornado.length * 2 >= count ? peakRange('tornado', peak.tornadoMph) : null, wind: peakRange('wind', peak.gustMph), hail: peakRange('hail', peak.hailInches) };
   // The chances the watch would give of 2 or more tornadoes and of a strong one.
   const several = watchStep(mean(m => (m.tornadoes >= 2 ? 1 : 0))), strong = watchStep(mean(m => (m.strong >= 1 ? 1 : 0)));
-  const tornadoWatch = several > MESOSCALE.tornadoChanceLow || strong >= MESOSCALE.tornadoChanceHigh;
+  const tornadoWatch = several > MESOSCALE.tornadoChanceLow || strong >= MESOSCALE.tornadoChanceStrong || (Boolean(peakText.tornado) && peak.tornadoMph >= MESOSCALE.strongTornadoMph);
+  // Where the tornadoes alone call for a tornado watch, the chance of one is at least the share of
+  // runs with a tornado there. (Until 2026-10-20 it counted only runs with a watch's worth of
+  // reports, and half the runs could put a 120-150 mph tornado in an area said to be "watch unlikely".)
+  if (tornadoWatch) percent = Math.max(percent, watchStep(withTornado.length / count));
   const here = describeHere(now, inside), firstSevere = perMember.map(m => m.first).filter(Number.isFinite), firstStorm = perMember.map(m => m.storm).filter(Number.isFinite);
+  // When the runs bring severe weather to each cell (the median run's hours ahead; never: after the look's end).
+  const firstAt = new Float32Array(inside.length).fill(Infinity);
+  for (const i of cells) { const hours = members.map(m => (Number.isFinite(m.firstHour?.[i]) ? m.firstHour[i] : MESOSCALE.hoursAhead + 1)).sort((a, b) => a - b); firstAt[i] = hours[Math.floor((hours.length - 1) / 2)]; }
   return {
-    cells, inside, perMember, members: count, percent, tornadoWatch, peak, peakText, here,
+    cells, inside, perMember, members: count, percent, tornadoWatch, peak, peakText, here, firstAt,
     stormsInHours: here.storms ? 0 : (firstStorm.length ? median(firstStorm) : null), startsInHours: here.severeNow ? 0 : (firstSevere.length ? median(firstSevere) : null)
   };
 }
@@ -255,7 +289,7 @@ function describeHere(now, inside) {
   const lines = now.lines.filter(line => line.cells.filter(i => inside[i]).length >= 2).map(line => line.type);
   return {
     dewpoint: quantile(pick(now.dewpoint), 0.5), temperature: quantile(pick(now.temperature), 0.5), cape: quantile(pick(now.cape), 0.75), cin: quantile(pick(now.cin), 0.5), shear: quantile(pick(now.shear), 0.5),
-    helicity: quantile(pick(now.helicity), 0.75), cloudBaseM: quantile(pick(now.cloudBaseM), 0.5),
+    helicity: quantile(pick(now.helicity), 0.75), cloudBaseM: quantile(pick(now.cloudBaseM), 0.5), lapse: now.lapse ? quantile(pick(now.lapse), 0.5) : null,
     // forming: every storm there, however young; storms: those that have grown into thunderstorms.
     forming: forming.length, storms: storms.length, severeNow: severe.length, tornadoNow: storms.filter(s => s.tornado).length, rotating: storms.filter(s => s.rotating).length, lines: storms.filter(s => s.line).length,
     features: [...new Set(lines)]
@@ -268,14 +302,18 @@ const FEATURE = { cold: 'a cold front', warm: 'a warm front', stationary: 'a sta
 
 // The technical paragraph, shared with the watches: what is there now, the air it is in, and
 // what that favours. e: describeHere's account; tornado: whether tornadoes are expected.
-export function describeSetting(e, tornado) {
-  const present = e.storms ? `${e.storms === 1 ? 'One storm is' : `${e.storms} storms are`} in the area${e.severeNow ? `, ${e.severeNow} of them severe` : ''}${e.tornadoNow ? ` and ${e.tornadoNow === 1 ? 'one with a tornado on the ground' : `${e.tornadoNow} with tornadoes on the ground`}` : ''}.` : e.forming ? 'Storms are beginning to form in the area.' : 'No storms have formed in the area yet.';
+// tornadoExpected: the runs' call is a tornado watch (its tornadoes are not in doubt, whatever the air now).
+export function describeSetting(e, tornado, tornadoExpected = false) {
+  const present = e.storms ? `${e.storms === 1 ? `One storm is in the area${e.severeNow ? ', and it is severe' : ''}` : `${e.storms} storms are in the area${e.severeNow ? `, ${e.severeNow === 1 ? 'one' : e.severeNow} of them severe` : ''}`}${e.tornadoNow ? ` and ${e.tornadoNow === 1 ? 'one with a tornado on the ground' : `${e.tornadoNow} with tornadoes on the ground`}` : ''}.` : e.forming ? 'Storms are beginning to form in the area.' : 'No storms have formed in the area yet.';
   const features = e.features.length ? ` ${list(e.features.map(type => FEATURE[type] ?? `a ${type} boundary`))[0].toUpperCase()}${list(e.features.map(type => FEATURE[type] ?? `a ${type} boundary`)).slice(1)} ${e.features.length > 1 ? 'lie' : 'lies'} across the area and will focus development.` : '';
   const tens = Math.floor(e.dewpoint / 10) * 10, dewpoints = `${e.dewpoint - tens < 3.5 ? 'lower ' : e.dewpoint - tens >= 6.5 ? 'upper ' : 'mid '}${tens}s F`;
-  const instability = e.cape >= 3500 ? 'extreme' : e.cape >= 2500 ? 'strong' : e.cape >= 1000 ? 'moderate' : 'weak';
-  const air = `Surface dewpoints in the ${dewpoints} beneath steep lapse rates give ${instability} instability (MLCAPE near ${Math.max(250, Math.round(e.cape / 250) * 250)} J/kg), with ${Math.round(e.shear / 5) * 5} kt of deep-layer shear.`;
+  // ("Extreme" from 4,000 J/kg, as forecasters use it; 3,500 until 2026-10-20.)
+  const instability = e.cape >= 4000 ? 'extreme' : e.cape >= 2500 ? 'strong' : e.cape >= 1000 ? 'moderate' : 'weak';
+  // (Steep only when they are: 7 C/km or more between 700 and 500 mb; 2026-10-20.)
+  const aloft = e.lapse == null ? '' : e.lapse >= 7.5 ? ' beneath steep mid-level lapse rates' : e.lapse >= 7 ? ' beneath fairly steep mid-level lapse rates' : e.lapse < 6 ? ' beneath weak mid-level lapse rates' : '';
+  const air = `Surface dewpoints in the ${dewpoints}${aloft} give ${instability} instability (MLCAPE near ${Math.max(250, Math.round(e.cape / 250) * 250)} J/kg), with ${Math.round(e.shear / 5) * 5} kt of deep-layer shear.`;
   const mode = e.shear >= 40 ? (e.lines > e.rotating ? 'The shear supports organized storms; those here have grown into lines, and damaging wind is the main concern.' : 'The shear supports supercells, with large hail and damaging wind') : e.shear >= 25 ? 'The shear supports multicells and brief supercell structures' : 'Weak shear will keep storms short-lived and poorly organized';
-  const tornadoWords = tornado ? (e.helicity >= 150 && e.cloudBaseM <= 1300 ? ` Low-level shear (0-1 km helicity near ${Math.round(e.helicity / 25) * 25} m2/s2) and low cloud bases favour tornadoes with storms that stay on their own.` : ` A tornado is possible with the strongest rotating storms, though ${e.cloudBaseM > 1300 ? 'high cloud bases limit' : 'modest low-level shear limits'} the risk.`) : '';
+  const tornadoWords = tornado ? (e.helicity >= 150 && e.cloudBaseM <= 1300 ? ` Low-level shear (0-1 km helicity near ${Math.round(e.helicity / 25) * 25} m2/s2) and low cloud bases favour tornadoes with storms that stay on their own.` : (tornadoExpected ? ` Low-level shear is modest at present (0-1 km helicity near ${Math.round(e.helicity / 25) * 25} m2/s2), but the forecast runs bring tornadoes as the storms mature${e.helicity < 100 ? ' and the low-level wind strengthens' : ''}.` : ` A tornado is possible with the strongest rotating storms, though ${e.cloudBaseM > 1300 ? 'high cloud bases limit' : 'modest low-level shear limits'} the risk.`)) : '';
   const cap = e.cin >= 75 && !e.storms && !e.forming ? ' A cap is holding storms back for now; how soon it breaks is the main doubt.' : '';
   return `${present}${features} ${air} ${mode}${mode.endsWith('.') ? '' : '.'}${tornadoWords}${cap}`;
 }
@@ -306,7 +344,7 @@ export function writeMesoscaleDiscussion(md) {
     const action = md.watchPercent >= 80 ? `A ${kind} watch will likely be needed within the hour${e.storms ? '' : ', as storms form'}.` : md.watchPercent >= 40 ? `A ${kind} watch may be needed.` : 'The severe weather should stay too isolated or too brief for a watch.';
     lines.push(`Probability of Watch Issuance...${md.watchPercent} percent`, '', ...(md.updates?.length ? [`This discussion replaces ${list(md.updates.map(k => `Mesoscale Discussion ${String(k).padStart(4, '0')}`))}.`, ''] : []), `SUMMARY...${when} over the area, with ${threat} possible${ongoing}. ${action}`, '');
   }
-  lines.push(`DISCUSSION...${describeSetting(e, Boolean(md.peakText.tornado))}`, '');
+  lines.push(`DISCUSSION...${describeSetting(e, Boolean(md.peakText.tornado), md.tornadoWatch)}`, '');
   if (md.peakText.tornado) lines.push(`MOST PROBABLE PEAK TORNADO INTENSITY...${md.peakText.tornado}`);
   lines.push(`MOST PROBABLE PEAK WIND GUST...${md.peakText.wind}`, `MOST PROBABLE PEAK HAIL SIZE...${md.peakText.hail}`);
   return lines.join('\n');

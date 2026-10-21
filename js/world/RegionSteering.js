@@ -51,7 +51,9 @@ export const STEERING_DEFAULTS = Object.freeze({
   // up to northSpeedMs; only the weather overhead changes with it (RegionalAtmosphere).
   kinds: { warmSector: 0.55, nearLow: 0.3, upperLow: 0.15 },
   lowDepthHpa: 2, lowOffsetKm: [0, -100], upperLowDepthM: 20, upperLowOffsetKm: [150, -100],
-  maxMissKm: 500, northSpeedMs: 8, northStepMs: 2
+  maxMissKm: 500, northSpeedMs: 8, northStepMs: 2,
+  // Hours between fresh aims on a day aimed at a low (see reaim).
+  reaimHours: 6
 });
 
 const KT = 1.943844;
@@ -67,6 +69,36 @@ export class RegionSteering {
   update() {
     const hour = this.regional.hourUtc, day = Math.floor((hour - this.params.planHourUtc) / 24);
     if (this.lastPlanDay === null || day > this.lastPlanDay) { this.lastPlanDay = day; this.makePlan(); }
+    else if (this.plan && (this.plan.kind === 'nearLow' || this.plan.kind === 'upperLow') && hour - (this.plan.aimedHourUtc ?? this.plan.hourUtc) >= this.params.reaimHours - 1e-6) this.reaim();
+  }
+
+  // On a day aimed at a low, the slide is worked out again every reaimHours from a fresh look
+  // ahead, so the map follows the low as it turns or slows. (2026-10-20: one slide held all day
+  // missed its low by a median of 219 km, and the low was on the map's edge on 9 of 16 such days.)
+  reaim() {
+    const regional = this.regional, p = this.params, kind = this.plan.kind, { copy, fields } = this.forecastFields();
+    const aimed = this.aimAtLow(copy, fields, kind === 'nearLow' ? 'lows' : 'upperLows', kind === 'nearLow' ? p.lowOffsetKm : p.upperLowOffsetKm);
+    if (aimed) { regional.slideMs = aimed.speed; regional.slideNorthMs = aimed.north; this.plan = { ...this.plan, missKm: Math.round(aimed.miss / 1000), slideMs: aimed.speed, slideNorthMs: aimed.north }; }
+    this.plan.aimedHourUtc = regional.hourUtc;
+  }
+
+  // A copy of the outer model run ahead to each time the plan is judged on, with the support,
+  // lows and upper lows there.
+  forecastFields() {
+    const regional = this.regional, live = regional.model, p = this.params, now = regional.hourUtc;
+    const copy = this.scratch ??= new QuasiGeostrophicModel(live.params);
+    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) if (live[key]) copy[key].set(live[key]);
+    copy.time = live.time; copy.history = live.history;   // the model replaces these arrays, never writes into them
+    copy.fastTransforms = live.fastTransforms;
+    const ahead = p.scoreHoursUtc.map(h => ((h - now) % 24 + 24) % 24 || 24).sort((a, b) => a - b), fields = [];
+    let advanced = 0;
+    const norths = [];
+    for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) norths.push(north);
+    for (const hours of ahead) {
+      copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours;
+      fields.push({ hours, supportByNorth: new Map(norths.map(north => [north, this.supportByColumn(copy, north * hours * 3600)])), lows: this.findLows(copy, 'surface'), upperLows: this.findLows(copy, 'upper') });
+    }
+    return { copy, fields, norths };
   }
 
   // Large-scale support along the belt at one time of the copy: for each column of the model,
@@ -92,21 +124,9 @@ export class RegionSteering {
   }
 
   makePlan() {
-    const regional = this.regional, live = regional.model, p = this.params, now = regional.hourUtc;
-    const copy = this.scratch ??= new QuasiGeostrophicModel(live.params);
-    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) if (live[key]) copy[key].set(live[key]);
-    copy.time = live.time; copy.history = live.history;   // the model replaces these arrays, never writes into them
-    copy.fastTransforms = live.fastTransforms;
-    // Hours from now to each time the plan is judged on, soonest first.
-    const ahead = p.scoreHoursUtc.map(h => ((h - now) % 24 + 24) % 24 || 24).sort((a, b) => a - b), fields = [];
-    let advanced = 0;
-    // The north-south slides tried (m/s), and the support along the belt for each at each time.
-    const norths = [];
-    for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) norths.push(north);
-    for (const hours of ahead) {
-      copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours;
-      fields.push({ hours, supportByNorth: new Map(norths.map(north => [north, this.supportByColumn(copy, north * hours * 3600)])), lows: this.findLows(copy, 'surface'), upperLows: this.findLows(copy, 'upper') });
-    }
+    const regional = this.regional, p = this.params, now = regional.hourUtc;
+    // The outer model run ahead to each time the plan is judged on, and the north-south slides tried (m/s).
+    const { copy, fields, norths } = this.forecastFields();
     const day = Math.floor((now - p.planHourUtc) / 24), wanted = p.wantedLow + (p.wantedHigh - p.wantedLow) * unit(`${this.seed}|steer|${day}`);
     // The kind of day aimed for.
     const draw = unit(`${this.seed}|kind|${day}`), shares = Object.entries(p.kinds), total = shares.reduce((s, [, v]) => s + v, 0);

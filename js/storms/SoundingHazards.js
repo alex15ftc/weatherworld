@@ -94,8 +94,8 @@ export function runLoneStorm(world, environment) {
     tornado: {
       chance: lasting ? 1 - noTornado : 0, ingredients, lowRotation: peak.lowRotation,
       // Of the tornadoes such a storm produces, the share with EF2+ and with EF4+ winds.
-      strongShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation), 111),
-      violentShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation), 166)
+      strongShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 111),
+      violentShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 166)
     }
   };
 }

@@ -37,7 +37,10 @@ export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 // days whatever its bar, because 3.5 in hail is that rare here. Day mix with them: below
 // Slight 11%, Slight 16%, Enhanced 27%, Moderate 32%, High 15%.
 // Each entry: the least share of an area's reports reaching the group's tier, for CIG1, CIG2, CIG3.
-export const CIG_BOUNDS = Object.freeze({ tornado: [0.14, 0.24, 0.02], wind: [0.42, 0.32, 0.22], hail: [0.08, 0.02], severe: [0.3] });
+// Hail CIG1 0.08 to 0.2 on 2026-10-21 (user's decision): 8% was under this world's own share of 1 in
+// hail that reaches 2 in (about 14%), so the intense-hail group meant ordinary hail and, with 60% hail,
+// made a Moderate on most widespread-hail days. With hail melting the same day: Moderate 38% to 25%.
+export const CIG_BOUNDS = Object.freeze({ tornado: [0.14, 0.24, 0.02], wind: [0.42, 0.32, 0.22], hail: [0.2, 0.02], severe: [0.3] });
 // (Day 3's one hazard, any severe weather: CIG1 only, on the significant tier. Not fitted: Day 3
 // outlooks have so far drawn no group at all.)
 // The fields of the verification's chances behind each hazard's tiers, one for each group.
@@ -74,7 +77,11 @@ export function contourCig(hazard, chance, amount, significant, width, height, b
 // judged on its own reports there, and the area takes the lower median of those groups. (Pooled,
 // a run with an outbreak outweighs all the others, and the strongest runs set the group: drawn on
 // 35% of days against 20% that verified, 2026-10-16.)
-export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard], runs = null) {
+// runs: the forecast runs' own amounts and tiers; each area then records shares[g - 1], the share of
+// the runs whose own reports there reach group g, and is given the group the median run reaches, or
+// with cigShare (calibrated, outlookCalibration.js CIG_SHARE) the highest group whose share reaches
+// cigShare[g - 1].
+export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard], runs = null, cigShare = null) {
   const tiers = ArrayBuffer.isView(significant) ? [significant] : significant;
   const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), owner = new Int32Array(n).fill(-1), stack = [], areas = [];
   let pass = 0;
@@ -103,11 +110,14 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
           if (sum > 0) groups.push(conditionalCig(sum, reach, bounds));
         }
         groups.sort((a, b) => a - b);
-        judged = groups.length ? groups[Math.floor((groups.length - 1) / 2)] : 0;
+        var shares = bounds.map((_, g) => groups.filter(v => v >= g + 1).length / runs.length);
+        if (cigShare) { judged = 0; shares.forEach((s, g) => { if (s >= (cigShare[g] ?? Infinity) - 1e-9) judged = g + 1; }); }
+        else judged = groups.length ? groups[Math.floor((groups.length - 1) / 2)] : 0;
       }
       const parent = owner[start], group = Math.max(judged, parent >= 0 ? areas[parent].group : 0);
       for (const i of cells) { out[i] = group; owner[i] = areas.length; }
-      areas.push({ level, cells: Int32Array.from(cells), group, parent });
+      areas.push({ level, cells: Int32Array.from(cells), group, parent, shares: runs?.length ? shares : null });
+      shares = undefined;
     }
   }
   return { cig: out, areas };

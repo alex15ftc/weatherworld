@@ -52,11 +52,23 @@ import { polygonCounties, nearestTown, countyRings } from './counties.js';
 export const WARNING = Object.freeze({
   // How long each runs (minutes): NWS tornado warnings default to 30 minutes since 2012;
   // severe thunderstorm warnings are mostly 30-60.
-  minutes: { tornado: 30, severe: 45 },
+  // (Severe 45 to 60 on 2026-10-20: re-issued every 25-35 minutes along a 40 mph storm, one office's
+  // severe thunderstorm warnings reached number 140 in two days.)
+  minutes: { tornado: 30, severe: 60 },
   // Tornado: the chance of one in the next half hour from which a radar-indicated warning is
   // issued, below which a warning is no longer warranted, and from which a severe
   // thunderstorm warning says a tornado is possible.
   tornadoChance: 0.3, keepTornadoChance: 0.12, possibleTornadoChance: 0.12,
+  // ...and earlier, as forecasters warn on a mesocyclone tightening toward the ground before a
+  // tornado is likely: from earlyTornadoChance where the low-level rotation is strengthening by
+  // earlyTrendPerHour or more, or the mesocyclone is at least earlyMesocyclone (2026-10-20; until
+  // then warnings went out with the tornado, a median lead of 0 minutes, where the NWS's is 8-10,
+  // with a false-alarm ratio of 0.5 against the NWS's 0.7). Such a warning is kept while the chance
+  // stays at earlyKeepChance with the mesocyclone still that strong.
+  earlyTornadoChance: 0.08, earlyTrendPerHour: 0.25, earlyMesocyclone: 0.5, earlyKeepChance: 0.05,
+  // (Tried 2026-10-20: also warning on a strong mesocyclone in inflow STP of 1 or more. With the
+  // tornado lifetimes of the same day the median lead was already 10 minutes on seed 8181 (false
+  // alarms 0.63); the extra path added no lead and took false alarms to 0.68-0.87. Not kept.)
   // Minutes on the ground before a tornado counts as confirmed, and the wind (mph) from which
   // a confirmed one makes it a particularly dangerous situation (EF2).
   confirmMinutes: 10, considerableTornadoMph: 111,
@@ -70,11 +82,17 @@ export const WARNING = Object.freeze({
   // Severe limits, the lower ones that keep a warning going, and the damage tiers.
   severeHailInches: 1, severeGustMph: 58, keepHailInches: 0.75, keepGustMph: 50,
   considerable: { hailInches: 1.75, gustMph: 70 }, destructive: { hailInches: 2.75, gustMph: 80 },
+  // ...and earlier, as forecasters warn on a core still growing toward the limits: hail of at
+  // least soonFloor.hailInches (or gusts of soonFloor.gustMph) rising fast enough over the last
+  // scan to reach severe within soonMinutes (2026-10-20; until then a warning went out with the
+  // first severe hail, a median lead of 0 minutes where the NWS's is 15-20).
+  soonMinutes: 15, soonFloor: { hailInches: 0.75, gustMph: 50 },
   // Minutes of severe hail or wind under a warning before reports have come in (OBSERVED).
   observedMinutes: 15,
   // The tags give the most seen over the last tagMinutes (a scan or two of noise is not news);
   // a warning is cancelled after quietScans scans in a row with no storm in it warranting it.
-  tagMinutes: 15, quietScans: 2,
+  // (quietScans 2 to 4 on 2026-10-20: a storm whose hail sat near an inch was warned, cancelled and warned again.)
+  tagMinutes: 15, quietScans: 4,
   // The polygon: how far the motion may turn either way (degrees), how much faster the storm
   // may go, how far behind the storm it starts, how far beyond the hazard its sides lie, the
   // most its half-width may be, and the most a gust front's lead adds ahead of a storm (km).
@@ -83,8 +101,13 @@ export const WARNING = Object.freeze({
   spreadDeg: 15, speedMargin: 1.15, behindKm: 5, edgeKm: { tornado: 6, severe: 6 }, widestKm: 50, gustLeadKm: 10,
   // A storm within this many minutes of leaving its warning, or of its warning expiring, gets a new one.
   leadMinutes: 10,
+  // How soon (minutes) a storm must be due in a neighbouring office's area for that office's piece to go out with the first.
+  downstreamMinutes: 15,
   // Most vertices in a polygon (NWSI 10-511).
   vertices: 20,
+  // Where the map lies on the earth, for the LAT...LON and TIME...MOT...LOC lines: its north-west
+  // corner (degrees north and east), with x east and y south from it in km.
+  mapNorthwest: [40.9, -101.6],
   kept: 60
 });
 
@@ -112,7 +135,7 @@ export function observeStorm(storm) {
     id: storm.id, x: storm.positionKm.x, y: storm.positionKm.y,
     east: storm.velocityKph?.east ?? 0, north: storm.velocityKph?.north ?? 0,
     hail: Number(storm.currentHailSizeInches) || 0, gust: Number(storm.surfaceWind?.gustMph) || 0,
-    chance: Number(tornado.probability) || 0, onGround,
+    chance: Number(tornado.probability) || 0, onGround, trend: Number(storm.lowRotationTrend) || 0, mesocyclone: Number(storm.mesocycloneStrength) || 0,
     confirmed: onGround && (tornado.groundTimeMinutes ?? 0) >= WARNING.confirmMinutes - 1e-6,
     tornadoMph: onGround ? Number(tornado.windSpeedMph) || 0 : 0,
     // Where the tornado is (km) and how wide it is (yards), while it is on the ground.
@@ -126,8 +149,21 @@ export function observeStorm(storm) {
     gustLeadKm: storm.geometry?.gustFront?.leadKm ?? 0
   };
 }
-const warrants = (type, look) => (type === 'tornado' ? look.onGround || look.chance >= WARNING.tornadoChance : look.hail >= WARNING.severeHailInches || look.gust >= WARNING.severeGustMph);
-const keeps = (type, look) => (type === 'tornado' ? look.onGround || look.chance >= WARNING.keepTornadoChance : look.hail >= WARNING.keepHailInches || look.gust >= WARNING.keepGustMph);
+// The storm's hail and gust trends (per hour) from the last scan it was seen at.
+function withTrend(look, seen, hour) {
+  const dt = seen ? hour - seen.hourUtc : 0;
+  const ok = dt > 1e-6 && dt <= 0.2;
+  return { ...look, hailTrend: ok ? (look.hail - seen.hail) / dt : 0, gustTrend: ok ? (look.gust - seen.gust) / dt : 0 };
+}
+// (Tried 2026-10-20: dropping the strong-mesocyclone path, or asking 0.65 of it. False alarms fell
+// from about 0.75 to 0.62-0.72 but the median lead from 5-10 minutes to 0-5; kept as it is.)
+const early = look => look.chance >= WARNING.earlyTornadoChance && (look.trend >= WARNING.earlyTrendPerHour || look.mesocyclone >= WARNING.earlyMesocyclone);
+const soon = look => {
+  const ahead = WARNING.soonMinutes / 60, f = WARNING.soonFloor;
+  return (look.hail >= f.hailInches && look.hail + (look.hailTrend ?? 0) * ahead >= WARNING.severeHailInches) || (look.gust >= f.gustMph && look.gust + (look.gustTrend ?? 0) * ahead >= WARNING.severeGustMph);
+};
+const warrants = (type, look) => (type === 'tornado' ? look.onGround || look.chance >= WARNING.tornadoChance || early(look) : look.hail >= WARNING.severeHailInches || look.gust >= WARNING.severeGustMph || soon(look));
+const keeps = (type, look) => (type === 'tornado' ? look.onGround || look.chance >= WARNING.keepTornadoChance || (look.chance >= WARNING.earlyKeepChance && look.mesocyclone >= WARNING.earlyMesocyclone) : look.hail >= WARNING.severeHailInches * 0.75 || look.gust >= WARNING.keepGustMph);
 const threat = look => (look.onGround ? 10 : 0) + look.chance * 5 + look.hail + look.gust / 60;
 
 // The polygon (km, y southward): from just behind the storm along its motion for the time the
@@ -185,7 +221,7 @@ export function updateWarnings(state, world, radarSites = []) {
   if (state.lastHourUtc !== null && hour <= state.lastHourUtc + 1e-6) return out;
   const stepMinutes = state.lastHourUtc === null ? 5 : Math.min(5, (hour - state.lastHourUtc) * 60);
   state.lastHourUtc = hour;
-  const looks = (world.storms ?? []).filter(storm => storm.active && storm.positionKm).map(observeStorm).sort((a, b) => threat(b) - threat(a));
+  const looks = (world.storms ?? []).filter(storm => storm.active && storm.positionKm).map(storm => withTrend(observeStorm(storm), state.seen?.[storm.id], hour)).sort((a, b) => threat(b) - threat(a));
 
   for (const warning of state.warnings) {
     if (warning.status !== 'in effect') continue;
@@ -221,8 +257,22 @@ export function updateWarnings(state, world, radarSites = []) {
     if (!warrants(type, look)) continue;
     const current = inEffect(state, hour);
     if (covered(current, type, look, hour) || (type === 'severe' && covered(current, 'tornado', look, hour))) continue;
-    out.issued.push(...issueWarnings(state, type, look, hour, sites));
+    const issued = issueWarnings(state, type, look, hour, sites);
+    out.issued.push(...issued);
+    // The office's earlier warnings for this storm that it has left (and that hold no other
+    // storm still warranting them) are cancelled as it re-warns: until 2026-10-20 they ran on
+    // beside the new one, up to three at once from one office for one storm. One the storm is
+    // still in runs out on its own, as real ones overlap for their last minutes.
+    for (const old of current) {
+      if (old.type !== type || old.stormId !== look.id || issued.includes(old) || !issued.some(w => w.office?.id === old.office?.id)) continue;
+      if (looks.some(l => insidePolygon(old.polygon, l.x, l.y) && keeps(type, l))) continue;
+      old.status = 'cancelled'; old.endedHourUtc = hour;
+      old.statements.push({ hourUtc: hour, kind: 'cancelled', text: writeCancellation(old, hour, 'moved') });
+      out.ended.push(old);
+    }
   }
+  // What each storm looked like at this scan, for the trends at the next one.
+  state.seen = Object.fromEntries(looks.map(l => [l.id, { hourUtc: hour, hail: l.hail, gust: l.gust }]));
   if (state.warnings.length > WARNING.kept) {
     // Ended ones go first, oldest first.
     const ended = state.warnings.filter(w => w.status !== 'in effect');
@@ -237,7 +287,10 @@ export function updateWarnings(state, world, radarSites = []) {
 function covered(warnings, type, look, hour) {
   const lead = WARNING.leadMinutes / 60, x = look.x + look.east * lead, y = look.y - look.north * lead;
   const running = warnings.filter(w => w.type === type && w.validToHourUtc - hour >= lead - 1e-6);
-  return running.some(w => insidePolygon(w.polygon, look.x, look.y)) && running.some(w => insidePolygon(w.polygon, x, y));
+  // Ahead, its own warning's whole path counts too: where the path runs on past the counties of
+  // any office (the map's edge) there is no piece to hold it, and until 2026-10-20 the office
+  // issued a new, smaller warning for it at every scan.
+  return running.some(w => insidePolygon(w.polygon, look.x, look.y)) && running.some(w => insidePolygon(w.polygon, x, y) || (w.stormId === look.id && w.path && insidePolygon(w.path, x, y)));
 }
 
 // What the words are worked out from: the radars, and the counties (with the miles in a km of
@@ -277,6 +330,23 @@ export function officePieces(path, look, places) {
     return holds || (cx - look.x) * along[0] + (cy - look.y) * along[1] > 0 ? { office, polygon, holds } : null;
   }).filter(Boolean).sort((a, b) => b.holds - a.holds);
   return pieces.length ? pieces : null;
+}
+
+// The office of the county nearest a storm, or null without offices.
+function nearestOffice(look, places) {
+  const layer = places?.layer;
+  if (!layer?.offices?.length) return null;
+  const x = look.x * places.milesPerKm, y = look.y * places.milesPerKm;
+  let best = null, far = Infinity;
+  for (const county of layer.counties) { if (!county.office) continue; const d = Math.hypot(county.x - x, county.y - y); if (d < far) { far = d; best = county; } }
+  return best ? layer.offices.find(o => o.id === best.office) ?? null : null;
+}
+
+// Degrees for a point on the map (km east and south of its north-west corner), as the
+// products write them: hundredths of a degree, latitude then west longitude.
+export function latLonOf(x, y) {
+  const [north, east] = WARNING.mapNorthwest, lat = north - y / 111.1, lon = east + x / (111.1 * Math.cos(lat * Math.PI / 180));
+  return `${Math.round(lat * 100)} ${Math.round(-lon * 100)}`;
 }
 
 // An office's county warning area as rings in km on the world's grid (kept on the office).
@@ -335,7 +405,15 @@ export function countyPhrase(counties) {
 // holding the storm first), or one for the whole path without offices.
 export function issueWarnings(state, type, look, hour, sites = []) {
   const path = warningPolygon(type, look);
-  const pieces = officePieces(path, look, sites) ?? [{ office: null, polygon: path }];
+  // (A path that crosses no county warning area, near the map's edge, is the office of the
+  // county nearest the storm; until 2026-10-20 it went out with no office.)
+  // A piece in a neighbouring office's area goes out only once the storm is due there within
+  // downstreamMinutes; until then the office warns it on its own when the storm comes (the usual
+  // new warning downstream). (2026-10-20: every piece the path touched was warned at once, and
+  // those pieces were all false alarms, 14 of 80 tornado warnings on two seeds.)
+  const ahead = WARNING.downstreamMinutes / 60, soonX = look.x + look.east * ahead, soonY = look.y - look.north * ahead;
+  const all = officePieces(path, look, sites), pieces = all ? all.filter(p => p.holds || insidePolygon(p.polygon, soonX, soonY)) : [{ office: nearestOffice(look, sites), polygon: path }];
+  if (!pieces.length) pieces.push(all[0]);
   return pieces.map(({ office, polygon }) => issuePiece(state, type, look, hour, sites, office, polygon, path));
 }
 // The first of them: the warning from the office holding the storm.
@@ -384,12 +462,21 @@ function townsOnTrack(warning, look, places) {
   }).sort((a, b) => b.population - a.population).map(t => ({ name: t.name, population: t.population ?? 0 }));
 }
 
-// The tags, from the most seen over the last tagMinutes.
+// The tags, from what was seen over the last tagMinutes. A tag goes up only on what two scans
+// have shown (one scan of noise is not news; until 2026-10-20 a single scan raised it, and 36% of
+// severe thunderstorm warnings carried a damage threat and 30% of tornado warnings were PDS),
+// and once up it holds while any scan in the window still reaches it. A new warning starts
+// from its one scan.
 function tagsOf(warning, hour) {
-  const recent = warning.history, most = key => Math.max(0, ...recent.map(h => Number(h[key]) || 0));
-  const hail = hailTag(most('hail')), gust = windTag(most('gust')), confirmed = recent.some(h => h.confirmed);
+  const recent = warning.history, was = warning.tags ?? {}, most = key => Math.max(0, ...recent.map(h => Number(h[key]) || 0));
+  const held = (key, tag, before) => {
+    const v = recent.map(h => Number(h[key]) || 0).sort((a, b) => b - a), twice = v.length > 1 ? v[1] : v[0] ?? 0;
+    return Math.max(tag(twice), Math.min(tag(v[0] ?? 0), before ?? 0));
+  };
+  const hail = held('hail', hailTag, was.hailInches), gust = held('gust', windTag, was.gustMph), confirmed = recent.some(h => h.confirmed);
   if (warning.type === 'tornado') {
-    const considerable = recent.some(h => h.confirmed && h.tornadoMph >= WARNING.considerableTornadoMph);
+    const strong = recent.filter(h => h.confirmed && h.tornadoMph >= WARNING.considerableTornadoMph).length;
+    const considerable = strong >= Math.min(2, recent.length) || (strong >= 1 && (was.damage === 'CONSIDERABLE' || was.damage === 'CATASTROPHIC'));
     // An emergency for the population centers a violent tornado threatened over the last tagMinutes.
     const emergencyFor = [...new Set(recent.flatMap(h => h.threatened ?? []).filter(t => t.population >= WARNING.emergencyMinPopulation).map(t => t.name))];
     return { tornado: confirmed ? 'OBSERVED' : 'RADAR INDICATED', damage: emergencyFor.length ? 'CATASTROPHIC' : considerable ? 'CONSIDERABLE' : null, hailInches: hail, gustMph: null, emergencyFor };
@@ -489,7 +576,10 @@ export function writeWarning(warning, look, hour, sites, statement) {
   lines.push(`  HAZARD...${hazardText(warning)}`, '', `  SOURCE...${sourceText(warning)}`, '', `  IMPACT...${impactText(warning)}`, '');
   if (warning.places?.towns.length) lines.push(`${statement ? '' : '* '}Locations impacted include...`, `  ${warning.places.towns.length === 1 ? warning.places.towns[0] : `${warning.places.towns.slice(0, -1).join(', ')} and ${warning.places.towns.at(-1)}`}.`, '');
   lines.push('PRECAUTIONARY/PREPAREDNESS ACTIONS...', '', precautions(warning), '', '&&', '');
-  lines.push(`TIME...MOT...LOC ${clock(hour)} ${String(motDeg).padStart(3, '0')}DEG ${m.kt}KT ${Math.round(look.x)}KM ${Math.round(look.y)}KM`, '', ...tagLines(warning), '', '$$');
+  // In degrees, as the products give them (until 2026-10-20 in km on the map).
+  const latLon = warning.polygon.map(([x, y]) => latLonOf(x, y)), rows = [];
+  for (let k = 0; k < latLon.length; k += 4) rows.push(`${k ? '      ' : 'LAT...LON '}${latLon.slice(k, k + 4).join(' ')}`);
+  lines.push(...rows, `TIME...MOT...LOC ${clock(hour)} ${String(motDeg).padStart(3, '0')}DEG ${m.kt}KT ${latLonOf(look.x, look.y)}`, '', ...tagLines(warning), '', '$');
   return lines.join('\n');
 }
 

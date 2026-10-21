@@ -188,16 +188,27 @@ export function planStreets(map, options = {}) {
   // A highway along another (a concurrency: two routes on one road) is left out too. Only a
   // point alongside the other road counts, not one beyond its end (where a road carries on
   // along the same line as another kind).
-  const shadowed = (k, x, y, ux, uy) => {
-    for (const e of g.edgesNear(x - 0.1, y - 0.1, x + 0.1, y + 0.1)) {
+  // The roads that could leave a road of kind k going (ux, uy) out somewhere in a box: those
+  // higher ranked and on (nearly) its line. Looked up once for a whole stretch, then tested at
+  // each point of it (shadowed); any road alongside a point is within 0.1 mile of it, so in the
+  // box widened by that.
+  const shadowers = (k, x0, y0, x1, y1, ux, uy) => {
+    const found = [];
+    for (const e of g.edgesNear(x0 - 0.1, y0 - 0.1, x1 + 0.1, y1 + 0.1)) {
       if (e.kind === 'ramp') continue;
       if (MAP_ROADS.has(k) ? !MAP_ROADS.has(e.kind) || RANK[e.kind] > RANK[k] : RANK[e.kind] >= RANK[k]) continue;
       const ex = e.b.x - e.a.x, ey = e.b.y - e.a.y, el = Math.hypot(ex, ey);
       if (Math.abs((ex * ux + ey * uy) / el) <= 0.9) continue;
+      found.push({ e, ex, ey, el, reach: HALF_MI[e.kind] + (MAP_ROADS.has(k) ? 0 : HALF_MI[k] + 0.004) });
+    }
+    return found;
+  };
+  const shadowed = (near, x, y) => {
+    for (const { e, ex, ey, el, reach } of near) {
       const along = ((x - e.a.x) * ex + (y - e.a.y) * ey) / el, across = Math.abs((x - e.a.x) * ey - (y - e.a.y) * ex) / el;
       // Alongside where their widths touch (a road leaving another's line on a curve drops
       // out until it is clear of it).
-      if (along > 0.002 && along < el - 0.002 && across < HALF_MI[e.kind] + (MAP_ROADS.has(k) ? 0 : HALF_MI[k] + 0.004)) return true;
+      if (along > 0.002 && along < el - 0.002 && across < reach) return true;
     }
     return false;
   };
@@ -212,10 +223,11 @@ export function planStreets(map, options = {}) {
     // Stretches along a higher road, and blocked stretches.
     if (k !== 'ramp' || blocked) {
       const steps = Math.max(1, Math.ceil(len / p.sampleMi));
+      const near = k !== 'ramp' ? shadowers(k, Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by), ux, uy) : [];
       let start = null;
       for (let i = 0; i <= steps; i++) {
         const t = len * i / steps, x = ax + ux * t, y = ay + uy * t;
-        const off = (k !== 'ramp' && shadowed(k, x, y, ux, uy)) || (blocked && blocked(x, y, ux, uy));
+        const off = (near.length > 0 && shadowed(near, x, y)) || (blocked && blocked(x, y, ux, uy));
         if (off && start === null) start = t;
         if (!off && start !== null) { cuts.push([Math.max(0, start - len / steps / 2), t - len / steps / 2, 0, 0]); start = null; }
       }

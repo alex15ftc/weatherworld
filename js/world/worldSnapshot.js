@@ -1,8 +1,9 @@
 // Copies of the authoritative world. A forecast snapshot holds the physical state only (no
 // issued products, histories or observation archives, and nothing a run works out again before
-// it reads it: each cell's sounding profile, each storm's radar picture); a full snapshot
+// it reads it: each cell's sounding figures, each storm's radar picture); a full snapshot
 // holds everything needed to resume the world later. Both are safe to structured-clone or
-// serialize. The forecast one is about a quarter the size of the full one.
+// serialize. (The forecast one was a quarter the size of the full one while cells kept their
+// whole sounding profiles; since 2026-10-17 they do not, and it is about 85%.)
 import { Atmosphere } from '../atmosphere.js';
 
 const SKIP_WORLD = new Set([

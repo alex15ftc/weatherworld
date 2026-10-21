@@ -50,7 +50,12 @@ export const WATCH = Object.freeze({
   // The probability of a watch (a discussion's) from which one is issued, how long it lasts
   // (hours), the least ground it covers (cells of 100 sq mi), and how far it is drawn beyond
   // the area of concern (cells).
-  leastPercent: 80, hours: 6, leastCells: 150, marginCells: 2,
+  // (2026-10-20: margin 2 to 1 cell, and at most mostCells of ground, the part where the runs bring
+  // severe weather first: watches had run 115-155 miles either side of their line and up to
+  // 65,000 sq mi; the centre's are mostly 40-75 miles either side, 20,000-30,000 sq mi. A watch now
+  // goes out once the runs bring severe weather within issueLeadHours, not only once storms fire:
+  // the centre's go out an hour or two ahead of the first storms.)
+  leastPercent: 80, hours: 6, leastCells: 120, marginCells: 1, mostCells: 220, issueLeadHours: 2, waningHoursLeft: 2,
   // A county is in the watch when at least this share of it is in the area drawn.
   countyShare: 0.5,
   // The towns the approximate line is given from (people), as the centre gives it from places
@@ -71,13 +76,20 @@ export const WATCH = Object.freeze({
 const title = watch => `${watch.type === 'tornado' ? 'Tornado' : 'Severe Thunderstorm'} Watch`;
 
 // The table of probabilities, from what each run does in the area (areaOutcome). An "event"
-// is a cell with a report.
+// is a cell with a report. A run's count of hail, wind or combined events is one draw of what
+// that weather could give: it is taken as the mean of a Poisson count, and the chance is the runs'
+// average chance of reaching the number. (Until 2026-10-20 the plain share of runs reaching it:
+// with 4-8 runs, a watch could read 5% for 10 hail and for 10 wind events beside 95% for 6
+// combined.) The tornado rows, where the counts are small and the runs themselves are the spread,
+// and the peak gust and hail rows are the share of runs reaching them.
+const atLeast = (mean, k) => { if (!(mean > 0)) return 0; let term = Math.exp(-mean), below = 0; for (let i = 0; i < k; i++) { below += term; term *= mean / (i + 1); } return Math.max(0, 1 - below); };
 export function watchProbabilities(perMember) {
   const p = test => watchStep(perMember.filter(test).length / perMember.length);
+  const count = (key, k) => watchStep(perMember.reduce((a, m) => a + atLeast(Number(m[key]) || 0, k), 0) / perMember.length);
   return {
     tornadoes2: p(m => m.tornadoes >= 2), strongTornado: p(m => m.strong >= 1),
-    wind10: p(m => m.wind >= 10), wind75: p(m => m.gust >= 75),
-    hail10: p(m => m.hailCells >= 10), hail2: p(m => m.hail >= 2), combined6: p(m => m.reports >= 6)
+    wind10: count('wind', 10), wind75: p(m => m.gust >= 75),
+    hail10: count('hailCells', 10), hail2: p(m => m.hail >= 2), combined6: count('reports', 6)
   };
 }
 
@@ -96,7 +108,31 @@ export const layerOf = now => now.counties ?? cellCounties(now.width, now.height
 // under a watch (covered: a 0/1 grid of the cells under watches).
 export function draftWatch(assessed, now, { seed = null, covered = null } = {}) {
   const { width, height } = now, n = width * height, type = assessed.tornadoWatch ? 'tornado' : 'severe', layer = layerOf(now);
-  let cells = Uint8Array.from(assessed.inside);
+  // Too big for one watch: the ground where severe weather comes first, cut again until the watch
+  // drawn from it (with its margin, gaps filled and whole counties) is no bigger than mostCells.
+  const inside = []; for (let i = 0; i < n; i++) if (assessed.inside[i]) inside.push(i);
+  if (assessed.firstAt) inside.sort((a, b) => assessed.firstAt[a] - assessed.firstAt[b]);
+  let keep = Math.min(inside.length, WATCH.mostCells), drawn = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    drawn = drawWatchGround(inside.slice(0, keep), now, covered, layer);
+    if (drawn.areaCells <= WATCH.mostCells * 1.15 || keep <= WATCH.leastCells / 2) break;
+    keep = Math.max(Math.round(WATCH.leastCells / 2), Math.floor(keep * WATCH.mostCells / drawn.areaCells));
+  }
+  const { cells, counties, areaCells } = drawn, regions = describeRegions(layer, counties);
+  return {
+    type, pds: particularlyDangerous(type, assessed.perMember, assessed.peak.tornadoMph), seed, members: assessed.members,
+    cells, areaCells, counties, countyNames: countyNames(layer, counties),
+    areaSquareMiles: layer.named ? counties.reduce((a, index) => a + layer.counties[index].areaMi2, 0) : areaCells * now.cellMiles * now.cellMiles,
+    where: regions ? `portions of ${regions}` : describeArea(Array.from(cells, Boolean), width, height), line: watchLine(layer, counties),
+    probabilities: watchProbabilities(assessed.perMember), peak: assessed.peak, peakText: assessed.peakText, here: assessed.here, runs: assessed.perMember,
+    rings: countyRings(layer, counties)
+  };
+}
+
+// A watch's ground from the cells it is drawn round: a margin, whole counties, one region with no holes.
+function drawWatchGround(list, now, covered, layer) {
+  const { width, height } = now, n = width * height;
+  let cells = new Uint8Array(n); for (const i of list) cells[i] = 1;
   for (let pass = 0; pass < WATCH.marginCells; pass++) {
     const wider = Uint8Array.from(cells);
     for (let i = 0; i < n; i++) { if (!cells[i]) continue; const x = i % width; if (x > 0) wider[i - 1] = 1; if (x < width - 1) wider[i + 1] = 1; if (i >= width) wider[i - width] = 1; if (i < n - width) wider[i + width] = 1; }
@@ -110,15 +146,7 @@ export function draftWatch(assessed, now, { seed = null, covered = null } = {}) 
   const solid = solidRegion(cellsOfCounties(layer, countiesIn(layer, cells, { least: WATCH.countyShare, blocked })), width, height, covered);
   const counties = layer.counties.filter(county => !blocked?.has(county.index) && (() => { let held = 0, all = 0; county.cells.forEach(cell => { if (layer.dominant[cell] === county.index) { all++; if (solid[cell]) held++; } }); return all ? held * 2 >= all : Boolean(solid[county.home]); })()).map(county => county.index);
   cells = cellsOfCounties(layer, counties);
-  const areaCells = cells.reduce((a, v) => a + v, 0), regions = describeRegions(layer, counties);
-  return {
-    type, pds: particularlyDangerous(type, assessed.perMember, assessed.peak.tornadoMph), seed, members: assessed.members,
-    cells, areaCells, counties, countyNames: countyNames(layer, counties),
-    areaSquareMiles: layer.named ? counties.reduce((a, index) => a + layer.counties[index].areaMi2, 0) : areaCells * now.cellMiles * now.cellMiles,
-    where: regions ? `portions of ${regions}` : describeArea(Array.from(cells, Boolean), width, height), line: watchLine(layer, counties),
-    probabilities: watchProbabilities(assessed.perMember), peak: assessed.peak, peakText: assessed.peakText, here: assessed.here, runs: assessed.perMember,
-    rings: countyRings(layer, counties)
-  };
+  return { cells, counties, areaCells: cells.reduce((a, v) => a + v, 0) };
 }
 
 // The centre's approximate description of a watch: a line along its length and how far its
@@ -178,6 +206,7 @@ export function stormsFiring(world, cells) {
 export function readyHourUtc(draft, world) {
   if (draft.notBeforeHourUtc != null) return world.validHourUtc >= draft.notBeforeHourUtc - 1e-6 ? draft.notBeforeHourUtc : null;
   if (draft.afterHourUtc != null && world.validHourUtc < draft.afterHourUtc - 1e-6) return null;
+  if (draft.readyAtHourUtc != null && world.validHourUtc >= draft.readyAtHourUtc - 1e-6) return world.validHourUtc;
   return stormsFiring(world, draft.cells) ? world.validHourUtc : null;
 }
 
@@ -233,8 +262,10 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
         // now, and the watch waits for storms and at least afterDiscussionHours.
         const said = discussedLately(assessed, issued, [...discussions, ...out.discussions]);
         if (!said) discuss(assessed);
-        if (said && assessed.here.forming) out.watches.push(issueWatch(draft, nextWatch + out.watches.length, issued));
-        else out.pending.push(said ? draft : { ...draft, afterHourUtc: issued + WATCH.afterDiscussionHours });
+        const soon = assessed.here.forming || (assessed.startsInHours !== null && assessed.startsInHours <= WATCH.issueLeadHours);
+        const readyAtHourUtc = assessed.startsInHours !== null ? issued + Math.max(0, assessed.startsInHours - WATCH.issueLeadHours) : null;
+        if (said && soon) out.watches.push(issueWatch(draft, nextWatch + out.watches.length, issued));
+        else out.pending.push(said ? { ...draft, readyAtHourUtc } : { ...draft, afterHourUtc: issued + WATCH.afterDiscussionHours, readyAtHourUtc });
         return;
       }
     }
@@ -247,10 +278,17 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
       const last = Math.max(watch.issuedHourUtc, ...[...discussions, ...out.discussions].filter(md => md.watchNumber === watch.number).map(md => md.issuedHourUtc));
       const expiring = watch.validToHourUtc <= issued + MESOSCALE.everyHours + 1e-6;
       if (!expiring) {
-        // Once the last word on it has lapsed.
+        // Only when something changes: the threat turns to tornadoes in a severe thunderstorm
+        // watch, or statusHours have passed while a watch's worth of severe weather goes on.
         if (issued - last < MESOSCALE.validHours - 1e-6) continue;
         const assessed = assessArea(members, now, part);
-        if (assessed.percent >= MESOSCALE.leastPercent) discuss(assessed, watch);
+        const turned = watch.type !== 'tornado' && assessed.tornadoWatch && assessed.percent >= WATCH.leastPercent;
+        // (Not in its last waningHoursLeft: the discussion at its expiry speaks for it then.)
+        const ongoing = issued - last >= MESOSCALE.statusHours - 1e-6 && watch.validToHourUtc - issued > WATCH.waningHoursLeft + 1e-6 && assessed.percent >= WATCH.leastPercent && assessed.here.severeNow > 0;
+        // ...or, once, that its threat is waning (a watch that may come down before it expires).
+        // (Only with a couple of hours or more left: a watch about to run out is simply let go.)
+        const waning = assessed.percent < WATCH.followPercent && watch.validToHourUtc - issued >= WATCH.waningHoursLeft - 1e-6 && ![...discussions, ...out.discussions].some(md => md.watchNumber === watch.number && md.threatPercent < WATCH.followPercent);
+        if (turned || ongoing || waning) discuss(assessed, watch);
         continue;
       }
       // The last look before it expires. Severe weather still going: a new watch is made
@@ -265,7 +303,9 @@ export function lookAhead(members, now, { discussions = [], watches = [], nextDi
         const draft = ground ? draftWatch(assessArea(members, now, ground), now, { seed, covered: later }) : { areaCells: 0 };
         if (draft.areaCells >= WATCH.leastCells) { follow = { ...draft, notBeforeHourUtc: watch.validToHourUtc, follows: watch.number }; cover(follow, fresh); out.pending.push(follow); }
       }
-      if (follow || (assessed.percent >= MESOSCALE.leastPercent && issued - last >= MESOSCALE.validHours - 1e-6)) discuss(assessed, watch, follow && { type: follow.type, atHourUtc: follow.notBeforeHourUtc });
+      // About to expire: a word on what follows, or that the threat is ending.
+      // (Only when a new watch must follow it: one that simply runs out is let go, as the centre's are.)
+      if (follow) discuss(assessed, watch, { type: follow.type, atHourUtc: follow.notBeforeHourUtc });
     }
   }
   return out;
@@ -289,9 +329,9 @@ function threats(watch) {
     const strong = k.tornadoMph >= 136 ? 'a few intense tornadoes' : 'a couple of strong tornadoes', strongLikely = p.strongTornado >= 80 ? 'likely' : 'possible';
     lines.push(p.strongTornado < 40 ? `${some} ${someLikely}` : someLikely === strongLikely ? `${some} and ${strong} ${someLikely}` : `${some} ${someLikely} with ${strong} ${strongLikely}`);
   } else if (watch.peakText.tornado) lines.push('A tornado or two possible');
-  const gust = 5 * Math.round(k.gustMph / 5), size = String(Math.round(k.hailInches * 4) / 4);
+  const gust = 5 * Math.round(k.gustMph / 5), sizeValue = Math.round(k.hailInches * 4) / 4, size = `${sizeValue} inch${sizeValue === 1 ? '' : 'es'}`;
   if (k.gustMph >= 58 || p.wind10 >= 40) lines.push(`${p.wind10 >= 80 ? 'Widespread damaging winds' : p.wind10 >= 40 ? 'Scattered damaging winds' : 'Isolated damaging wind gusts'}${p.wind75 >= 40 ? ` and isolated significant gusts to ${gust} mph` : ` to ${gust} mph`} ${p.wind10 >= 60 || p.wind75 >= 80 ? 'likely' : 'possible'}`);
-  if (k.hailInches >= 1 || p.hail10 >= 40) lines.push(`${p.hail10 >= 80 ? 'Widespread large hail' : p.hail10 >= 40 ? 'Scattered large hail' : 'Isolated large hail events'}${p.hail2 >= 40 ? ` and isolated very large hail events to ${size} inches in diameter` : ` to ${size} inches in diameter`} ${p.hail10 >= 60 || p.hail2 >= 80 ? 'likely' : 'possible'}`);
+  if (k.hailInches >= 1 || p.hail10 >= 40) lines.push(`${p.hail10 >= 80 ? 'Widespread large hail' : p.hail10 >= 40 ? 'Scattered large hail' : 'Isolated large hail events'}${p.hail2 >= 40 ? ` and isolated very large hail events to ${size} in diameter` : ` to ${size} in diameter`} ${p.hail10 >= 60 || p.hail2 >= 80 ? 'likely' : 'possible'}`);
   return lines;
 }
 
@@ -309,7 +349,7 @@ export function writeWatch(watch) {
   lines.push(`SUMMARY...${e.storms ? 'The storms over the watch area are expected to strengthen and last' : e.forming ? 'The storms forming over the watch area are expected to strengthen and last' : 'Storms are expected to form over the watch area and strengthen'} through the next several hours${hazards.length ? `, with ${list(hazards)}` : ''}.`, '');
   const line = watch.line;
   if (line?.from && line?.to) lines.push(`The ${kind} watch area is approximately along and ${line.widthMiles} statute miles ${line.sides} of a line from ${line.from} to ${line.to}. For a complete depiction of the watch see the associated watch outline update (WOU${watch.number}).`, '');
-  lines.push(`DISCUSSION...${describeSetting(e, watch.type === 'tornado' || Boolean(watch.peakText.tornado))}`, '');
+  lines.push(`DISCUSSION...${describeSetting(e, watch.type === 'tornado' || Boolean(watch.peakText.tornado), watch.type === 'tornado')}`, '');
   lines.push(`REMEMBER...A ${kind} watch means conditions are favorable for ${watch.type === 'tornado' ? 'tornadoes and severe thunderstorms' : 'severe thunderstorms'} in and close to the watch area. People there should watch for threatening weather and listen for later statements and warnings.`, '');
   lines.push('WATCH PROBABILITIES...', ...probabilityRows(watch).map(([label, value]) => `  ${`${label} `.padEnd(48, '.')}${value}`));
   if (watch.countyNames?.length) lines.push('', '$$', '', ...watchOutline(watch));

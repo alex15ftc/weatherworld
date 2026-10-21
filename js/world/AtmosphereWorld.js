@@ -5,6 +5,7 @@
 // ahead of troughs (500 mb height falls) and upslope flow. Nothing here knows what kind of
 // day it is supposed to be, and nothing is drawn around a front for storms to find.
 import { QuasiGeostrophicModel } from '../atmosphere/QuasiGeostrophicModel.js';
+import { spunUpModel } from '../atmosphere/spinUpCache.node.js';
 import { RegionalAtmosphere } from '../atmosphere/RegionalAtmosphere.js';
 import { analyseBoundaries } from '../atmosphere/BoundaryAnalysis.js';
 import { updateCellDiagnostics } from '../sounding.js';
@@ -36,7 +37,12 @@ export const STORM_COUPLING = Object.freeze({
   // Storms at least this strong leave rain-cooled air; it is centred this share of its
   // radius behind the storm. Its coldest air is this much colder (K) for the strongest cold
   // pool the storm engine produces (rain evaporating into dry air under a strong storm).
-  coldPoolMinStrength: 0.22, coldPoolTrailShare: 0.7, coldPoolDeficitK: 18
+  // (18 to 12 on 2026-10-19: Oklahoma Mesonet cold pools run 5-10 K, above 11 K by day, Engerer
+  // et al. 2008; with up to 1.2 strength that is now at most about 14 K.)
+  coldPoolMinStrength: 0.22, coldPoolTrailShare: 0.7, coldPoolDeficitK: 12,
+  // Storms at least this strong spread an anvil of cirrus, anvilKm plus anvilKmPerStrength times
+  // their strength in radius, as thick as anvilShare times their strength (2026-10-19).
+  anvilMinStrength: 0.3, anvilKm: 20, anvilKmPerStrength: 60, anvilShare: 1.5
 });
 
 export class AtmosphereWorld {
@@ -45,8 +51,8 @@ export class AtmosphereWorld {
   // plan: false leaves the first steering plan unmade (a restored world is given its saved one).
   constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {}, plan = true } = {}) {
     this.seed = seed;
-    this.model = model ?? new QuasiGeostrophicModel({ seed });
-    if (!model) this.model.advance(spinUpDays * 86400);
+    // (A spin-up already run for this seed is read back from disk: spinUpCache.node.js.)
+    this.model = model ?? spunUpModel({ seed }, spinUpDays * 86400);
     // Soundings are computed here, after the storms' own cooling has been put back in.
     this.regional = new RegionalAtmosphere(this.model, { ...regional, diagnostics: false });
     const world = this.world = this.regional.world, n = world.width * world.height;
@@ -147,6 +153,7 @@ export class AtmosphereWorld {
     });
     // Each storm's rain-cooled air goes into the atmosphere as a cold pool, centred behind
     // the storm (its inflow side stays in the warm air).
+    for (const storm of world.storms) if (storm.active && storm.intensity >= c.anvilMinStrength) this.regional.addAnvil(storm.positionKm.x, storm.positionKm.y, c.anvilKm + c.anvilKmPerStrength * storm.intensity, Math.min(1, c.anvilShare * storm.intensity));
     for (const storm of world.storms) {
       if (!storm.active || storm.intensity < c.coldPoolMinStrength || !(storm.coldPoolStrength > 0)) continue;
       const speed = Math.hypot(storm.velocityKph.east, storm.velocityKph.north) || 1, radius = Math.max(8, storm.coldPoolRadiusKm ?? 8), back = c.coldPoolTrailShare * radius;

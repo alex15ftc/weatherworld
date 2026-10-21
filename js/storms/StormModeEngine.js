@@ -17,16 +17,20 @@ const ROTATION_RANGE = [0.15, 0.35];
 // and organizes the convection along its leading edge.
 const COLD_POOL_BALANCE_RANGE = [0.7, 1.3];
 const COLD_POOL_SPEED_MS = 38;      // gust-front speed of the strongest cold pool, m/s
-const LOW_LEVEL_SHEAR_SHARE = 0.5;  // 0-3 km share of the 0-6 km bulk shear
+// 0-3 km share of the 0-6 km bulk shear in the balance the storm's outflow, rotation and occlusion
+// are set against (their ranges were calibrated on it).
+const LOW_LEVEL_SHEAR_SHARE = 0.5;
 const KT_TO_MS = 0.514444;
 
 export const rotatingShare = storm => ramp(storm.mesocycloneStrength ?? 0, ROTATION_RANGE[0], ROTATION_RANGE[1]);
 export const lineShare = storm => clamp(Number(storm.lineOrganization) || 0, 0, 1);
 
-// Ratio of cold-pool speed to low-level shear (dimensionless).
-export function coldPoolBalance(storm, environment) {
+// Ratio of cold-pool speed to low-level shear (dimensionless). measured: against the air's own
+// 0-3 km shear (where known) rather than the share of the 0-6 km.
+export function coldPoolBalance(storm, environment, measured = false) {
   const coldPoolSpeed = COLD_POOL_SPEED_MS * Math.sqrt(clamp(storm.coldPoolStrength ?? 0, 0, 1));
-  const lowLevelShear = Math.max(4, LOW_LEVEL_SHEAR_SHARE * (Number(environment.bulkShear) || 0) * KT_TO_MS);
+  const shear03 = (measured && Number(environment.shear03)) || LOW_LEVEL_SHEAR_SHARE * (Number(environment.bulkShear) || 0);
+  const lowLevelShear = Math.max(4, shear03 * KT_TO_MS);
   return coldPoolSpeed / lowLevelShear;
 }
 
@@ -34,8 +38,13 @@ export function coldPoolBalance(storm, environment) {
 export function lineOrganizationTarget(storm, environment) {
   // Linear forcing where it formed or sits: shear along a boundary, or dense air undercutting.
   const forced = ramp(environment.linearFraction, 0.3, 0.7);
-  // Its own cold pool, shared with close neighbours, overpowering the shear.
-  const coldPoolDriven = ramp(coldPoolBalance(storm, environment), COLD_POOL_BALANCE_RANGE[0], COLD_POOL_BALANCE_RANGE[1]) * ramp(environment.stormCoverage, 0.2, 0.6);
+  // Its own cold pool, shared with close neighbours, overpowering the shear: the RKW balance against
+  // the measured 0-3 km shear. (Until 2026-10-20 against half the 0-6 km shear, where the soundings
+  // give 0.75-1.0 of it in moist air on supercell days: the balance ran about 1.6 times too high
+  // and supercells in 55-60 kt of shear turned into lines within the hour. Using it for the
+  // outflow, rotation and occlusion as well took seed 8181 from 21 to 49 tornadoes, their ranges
+  // having been calibrated on the share; left for the final tuning.)
+  const coldPoolDriven = ramp(coldPoolBalance(storm, environment, true), COLD_POOL_BALANCE_RANGE[0], COLD_POOL_BALANCE_RANGE[1]) * ramp(environment.stormCoverage, 0.2, 0.6);
   return clamp(Math.max(forced, coldPoolDriven), 0, 1);
 }
 
@@ -66,10 +75,13 @@ export function describeStormMode(storm, environment = storm.environment ?? {}) 
 }
 
 // A rotating storm on its own in strong shear splits once into right- and left-moving members.
-// How much of it goes to the left-mover depends on how the wind turns with height: an even
-// split where the shear does not turn (little helicity), almost nothing where it turns
-// strongly clockwise, which is the usual tornado day.
-const SPLIT = { ageHours: [0.6, 3.2], shearKt: 35, capeJkg: 850, straightHelicity: [80, 250], leastShare: 0.25 };
+// How much of it goes to the left-mover depends on how the wind turns with height through the
+// lower half of the storm (0-3 km helicity, the curvature of the hodograph that sets the split's
+// pressure forcing; Rotunno and Klemp 1982, Bunkers 2002): an even split where the shear does not
+// turn, almost nothing where it turns strongly clockwise, which is the usual tornado day.
+// (Until 2026-10-20 this read 0-1 km helicity, about 50 by day where the 0-3 km is 140-200: day
+// splits came out even, and left-movers held 34-40% of all supercell time.)
+const SPLIT = { ageHours: [0.6, 3.2], shearKt: 35, capeJkg: 850, straightHelicity: [50, 200], leastShare: 0.25 };
 export function shouldSplitStorm(storm, environment) {
   return !storm.hasSplit && !storm.leftMover && storm.ageHours >= SPLIT.ageHours[0] && storm.ageHours <= SPLIT.ageHours[1] &&
     rotatingShare(storm) >= 0.5 && lineShare(storm) < 0.3 &&
@@ -77,6 +89,6 @@ export function shouldSplitStorm(storm, environment) {
 }
 // The left-mover's share of the parent (0-1); below leastShare it does not survive the split.
 export function leftSplitShare(environment) {
-  const share = 1 - ramp(environment.srh, SPLIT.straightHelicity[0], SPLIT.straightHelicity[1]);
+  const share = 1 - ramp(environment.srh03 ?? environment.srh, SPLIT.straightHelicity[0], SPLIT.straightHelicity[1]);
   return share >= SPLIT.leastShare ? share : 0;
 }

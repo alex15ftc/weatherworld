@@ -22,7 +22,9 @@ const memberCount = Number(flag('--members') ?? 8);
 const OLD = process.env.OLD === '1';
 // NOCAL=1: without the calibration of the chances. --calibration-data: print, as JSON, the runs'
 // raw chances binned against whether the hazard came within 25 miles (for fit-outlook-calibration.mjs).
-const NOCAL = process.env.NOCAL === '1' || OLD, CAL_DATA = args.includes('--calibration-data');
+const NOCAL = process.env.NOCAL === '1' || OLD, CAL_DATA = args.includes('--calibration-data'), CIG_DATA = args.includes('--cig-data');
+// --cig-data: for each Day 1 and 2 contour area, the share of the runs reaching each intensity group
+// against the group the area's reports then reached (for fit-cig-calibration.mjs).
 const CAL_BINS = [0, 1, 2, 3.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50, 60, 75, 101];
 const ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 // The contour levels of each hazard: places are grouped by the contour they are inside.
@@ -35,7 +37,7 @@ async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { captureTruth, aggregateTruth, practicallyPerfectChance } = await import('../js/verification/truth.js');
   const { OUTLOOK, runOutlookMemberDays, combineOutlook, stateFromBytes, membersFor } = await import('../js/forecast/DayOneOutlook.js');
-  const { CIG_TIERS, contourCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
+  const { CIG_TIERS, CIG_BOUNDS, contourCig, conditionalCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
   const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, n = world.width * world.height, out = [], issued = [];
   atmosphere.advance(24);   // a day for the storms to get going
   for (let day = 0; day < days; day++) {
@@ -63,6 +65,14 @@ async function worker(seed) {
       // Calibration data: the raw chance's bin, the cells in it and how many had the hazard near.
       const calibration = Object.fromEntries(outlook.hazards.map(h => [h, CAL_BINS.slice(1).map(() => ({ cells: 0, hits: 0, raw: 0 }))]));
       if (CAL_DATA) for (let i = 0; i < n; i++) for (const h of outlook.hazards) { const raw = outlook.rawChance[h][i], b = CAL_BINS.findIndex((edge, k) => raw >= edge && raw < CAL_BINS[k + 1]), slot = calibration[h][b]; slot.cells++; slot.raw += raw; if (near[h][i]) slot.hits++; }
+      // Intensity-group calibration data: each contour area's run shares, and the group its reports reached.
+      const cigData = [];
+      if (CIG_DATA && lead <= 2) for (const h of outlook.hazards) for (const area of outlook.cigAreas?.[h] ?? []) {
+        if (!area.shares) continue;
+        let total = 0; const reach = CIG_TIERS[h].map(() => 0);
+        for (const i of area.cells) { total += truth[`${h}Exact`][i]; CIG_TIERS[h].forEach((field, t) => { reach[t] += truth[`${field}Exact`][i]; }); }
+        if (total > 0) cigData.push({ h, shares: area.shares, verified: conditionalCig(total, reach, CIG_BOUNDS[h]) });
+      }
       let sameCell = 0, withinOne = 0;
       for (let i = 0; i < n; i++) {
         for (const h of outlook.hazards) {
@@ -75,7 +85,7 @@ async function worker(seed) {
         if (f === t) sameCell++; if (Math.abs(f - t) <= 1) withinOne++;
       }
       out.push({
-        seed, day, lead, forecast: top(outlook.category),
+        seed, day, lead, forecast: top(outlook.category), cigData,
         // The highest intensity group drawn for each hazard, and the highest the day verified with.
         drawnCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...outlook.cig[h])])), verifiedCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...(h === 'severe' ? severeCig : truth.observedCig[h]))])), verified: top(verified), calibration, sameCell: sameCell / n, withinOne: withinOne / n, reliability, groups,
         forecastTornadoes: outlook.expected.tornadoes, tornadoes: world.stormEngine.totalTornadoes - before,
@@ -89,9 +99,19 @@ async function worker(seed) {
 async function main() {
   const seeds = (flag('--seeds') ?? '1,2,3,4,5,6').split(',').map(Number), started = Date.now();
   const results = await Promise.all(seeds.map(seed => new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount), ...(CAL_DATA ? ['--calibration-data'] : [])]);
+    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount), ...(CAL_DATA ? ['--calibration-data'] : []), ...(CIG_DATA ? ['--cig-data'] : [])]);
     child.once('message', resolve); child.once('error', reject); child.once('exit', code => { if (code) reject(new Error(`seed ${seed} exited with ${code}`)); });
   })));
+  if (CIG_DATA) {
+    // For each day, hazard and group: areas binned by the share of runs reaching the group (eighths),
+    // with how many of them verified the group or more.
+    const data = {};
+    for (const row of results.flat()) for (const { h, shares, verified } of row.cigData ?? []) shares.forEach((share, g) => {
+      const bins = ((data[`day${row.lead}`] ??= {})[h] ??= [])[g] ??= Array.from({ length: 9 }, () => ({ areas: 0, hits: 0 }));
+      const b = bins[Math.round(share * 8)]; b.areas++; if (verified >= g + 1) b.hits++;
+    });
+    console.log('CIG_DATA ' + JSON.stringify(data));
+  }
   if (CAL_DATA) {
     const data = {};
     for (const row of results.flat()) {

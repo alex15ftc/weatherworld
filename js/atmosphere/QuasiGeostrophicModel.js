@@ -203,14 +203,31 @@ export class QuasiGeostrophicModel {
 
   // Solves (lap - lambda) psi = rhs, periodic in both directions: Fourier in x, a cyclic
   // tridiagonal system in y for each harmonic.
+  // (Every sum is added up in the same order as the plain loops would, so the answer is the
+  // same to the last digit; the loops only work on four rows, or four harmonics, at a time,
+  // which lets the processor overlap them.)
   solve(rhs, lambda, out) {
     if (this.fastTransforms && Number.isInteger(Math.log2(this.nx))) return this.solveFast(rhs, lambda, out);
     const { nx, ny, d, kCount } = this, off = 1 / (d * d);
-    const re = new Float64Array(ny), im = new Float64Array(ny), cp = new Float64Array(ny), z = new Float64Array(ny);
-    out.fill(0);
+    const plain = this.plain ??= { re: new Float64Array(ny), im: new Float64Array(ny), cp: new Float64Array(ny), z: new Float64Array(ny), specRe: new Float64Array(kCount * ny), specIm: new Float64Array(kCount * ny) };
+    const { re, im, cp, z, specRe, specIm } = plain;
     for (let k = 0; k < kCount; k++) {
       const c = this.cos[k], s = this.sin[k];
-      for (let j = 0; j < ny; j++) {
+      let j = 0;
+      for (; j + 3 < ny; j += 4) {
+        let a0 = 0, b0 = 0, a1 = 0, b1 = 0, a2 = 0, b2 = 0, a3 = 0, b3 = 0;
+        const r0 = j * nx, r1 = r0 + nx, r2 = r1 + nx, r3 = r2 + nx;
+        for (let i = 0; i < nx; i++) {
+          const ci = c[i], si = s[i];
+          let v = rhs[r0 + i]; a0 += v * ci; b0 -= v * si;
+          v = rhs[r1 + i]; a1 += v * ci; b1 -= v * si;
+          v = rhs[r2 + i]; a2 += v * ci; b2 -= v * si;
+          v = rhs[r3 + i]; a3 += v * ci; b3 -= v * si;
+        }
+        re[j] = a0 / nx; im[j] = b0 / nx; re[j + 1] = a1 / nx; im[j + 1] = b1 / nx;
+        re[j + 2] = a2 / nx; im[j + 2] = b2 / nx; re[j + 3] = a3 / nx; im[j + 3] = b3 / nx;
+      }
+      for (; j < ny; j++) {
         let a = 0, b = 0;
         const row = j * nx;
         for (let i = 0; i < nx; i++) { const v = rhs[row + i]; a += v * c[i]; b -= v * s[i]; }
@@ -235,8 +252,25 @@ export class QuasiGeostrophicModel {
       const denominator = 1 + z[0] + off * z[ny - 1] / gamma;
       const fr = (re[0] + off * re[ny - 1] / gamma) / denominator, fi = (im[0] + off * im[ny - 1] / gamma) / denominator;
       const weight = k === 0 || (nx % 2 === 0 && k === nx / 2) ? 1 : 2;
-      for (let j = 0; j < ny; j++) {
-        const row = j * nx, a = (re[j] - fr * z[j]) * weight, b = (im[j] - fi * z[j]) * weight;
+      for (let j = 0; j < ny; j++) { specRe[k * ny + j] = (re[j] - fr * z[j]) * weight; specIm[k * ny + j] = (im[j] - fi * z[j]) * weight; }
+    }
+    // Back to the grid: each point adds up the harmonics in order, k = 0 first.
+    out.fill(0);
+    for (let j = 0; j < ny; j++) {
+      const row = j * nx;
+      let k = 0;
+      for (; k + 3 < kCount; k += 4) {
+        const a0 = specRe[k * ny + j], b0 = specIm[k * ny + j], a1 = specRe[(k + 1) * ny + j], b1 = specIm[(k + 1) * ny + j];
+        const a2 = specRe[(k + 2) * ny + j], b2 = specIm[(k + 2) * ny + j], a3 = specRe[(k + 3) * ny + j], b3 = specIm[(k + 3) * ny + j];
+        const c0 = this.cos[k], s0 = this.sin[k], c1 = this.cos[k + 1], s1 = this.sin[k + 1], c2 = this.cos[k + 2], s2 = this.sin[k + 2], c3 = this.cos[k + 3], s3 = this.sin[k + 3];
+        for (let i = 0; i < nx; i++) {
+          let v = out[row + i];
+          v += a0 * c0[i] - b0 * s0[i]; v += a1 * c1[i] - b1 * s1[i]; v += a2 * c2[i] - b2 * s2[i]; v += a3 * c3[i] - b3 * s3[i];
+          out[row + i] = v;
+        }
+      }
+      for (; k < kCount; k++) {
+        const a = specRe[k * ny + j], b = specIm[k * ny + j], c = this.cos[k], s = this.sin[k];
         for (let i = 0; i < nx; i++) out[row + i] += a * c[i] - b * s[i];
       }
     }
@@ -259,13 +293,24 @@ export class QuasiGeostrophicModel {
 
   index(i, j) { const { nx, ny } = this; return ((j % ny + ny) % ny) * nx + ((i % nx + nx) % nx); }
 
+  // The neighbours of each column (east, west) and the start of the rows either side of each
+  // row (north, south), all wrapping around: the stencils below look them up instead of
+  // working them out at every point.
+  neighbours() {
+    const { nx, ny } = this;
+    return this.wrap ??= {
+      east: Int32Array.from({ length: nx }, (_, i) => (i + 1) % nx), west: Int32Array.from({ length: nx }, (_, i) => (i - 1 + nx) % nx),
+      north: Int32Array.from({ length: ny }, (_, j) => ((j + 1) % ny) * nx), south: Int32Array.from({ length: ny }, (_, j) => ((j - 1 + ny) % ny) * nx)
+    };
+  }
+
   // Arakawa (1966) energy- and enstrophy-conserving Jacobian J(psi, q).
   jacobian(psi, q, out) {
-    const { nx, ny, d } = this, scale = 1 / (12 * d * d);
+    const { nx, ny, d } = this, scale = 1 / (12 * d * d), { east, west, north, south } = this.neighbours();
     for (let j = 0; j < ny; j++) {
-      const jn = ((j + 1) % ny) * nx, js = ((j - 1 + ny) % ny) * nx, jc = j * nx;
+      const jn = north[j], js = south[j], jc = j * nx;
       for (let i = 0; i < nx; i++) {
-        const e = (i + 1) % nx, w = (i - 1 + nx) % nx;
+        const e = east[i], w = west[i];
         const pe = psi[jc + e], pw = psi[jc + w], pn = psi[jn + i], ps = psi[js + i], pne = psi[jn + e], pnw = psi[jn + w], pse = psi[js + e], psw = psi[js + w];
         const qe = q[jc + e], qw = q[jc + w], qn = q[jn + i], qs = q[js + i], qne = q[jn + e], qnw = q[jn + w], qse = q[js + e], qsw = q[js + w];
         out[jc + i] = scale * (
@@ -278,50 +323,53 @@ export class QuasiGeostrophicModel {
   }
 
   laplacian(field, out) {
-    const { nx, ny, d } = this, inv = 1 / (d * d);
+    const { nx, ny, d } = this, inv = 1 / (d * d), { east, west, north, south } = this.neighbours();
     for (let j = 0; j < ny; j++) {
-      const jn = ((j + 1) % ny) * nx, js = ((j - 1 + ny) % ny) * nx, jc = j * nx;
-      for (let i = 0; i < nx; i++) out[jc + i] = (field[jc + (i + 1) % nx] + field[jc + (i - 1 + nx) % nx] + field[jn + i] + field[js + i] - 4 * field[jc + i]) * inv;
+      const jn = north[j], js = south[j], jc = j * nx;
+      for (let i = 0; i < nx; i++) out[jc + i] = (field[jc + east[i]] + field[jc + west[i]] + field[jn + i] + field[js + i] - 4 * field[jc + i]) * inv;
     }
     return out;
   }
 
   tendencies() {
-    const { nx, ny, d, F, params: p } = this, n = nx * ny;
+    const { nx, ny, d, F, params: p, psi1, psi2, q1, q2 } = this, n = nx * ny, { east, west, north, south } = this.neighbours();
     const t1 = new Float64Array(n), t2 = new Float64Array(n);
     const [, , , , j1, j2, lap, lap2] = this.work;
-    this.jacobian(this.psi1, this.q1, j1); this.jacobian(this.psi2, this.q2, j2);
-    const shear = p.upperWindMs - p.lowerWindMs, gradient1 = p.beta + F * shear, gradient2 = p.beta - F * shear;
-    const drag = 1 / (p.dragDays * DAY), half = 1 / (2 * d), relax = F / (p.thermalRelaxationDays * DAY);
-    const vorticity2 = this.laplacian(this.psi2, lap);
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx, cooling = relax * (this.psi1[k] - this.psi2[k]);
-      t1[k] = cooling - j1[k] - p.upperWindMs * (this.q1[e] - this.q1[w]) * half - gradient1 * (this.psi1[e] - this.psi1[w]) * half;
-      const u2 = -(this.psi2[((j + 1) % ny) * nx + i] - this.psi2[((j - 1 + ny) % ny) * nx + i]) * half, v2 = (this.psi2[e] - this.psi2[w]) * half;
-      const friction = drag * (1 + Math.hypot(u2, v2) / p.dragReferenceMs);
-      t2[k] = -cooling - j2[k] - p.lowerWindMs * (this.q2[e] - this.q2[w]) * half - gradient2 * (this.psi2[e] - this.psi2[w]) * half - friction * vorticity2[k];
+    this.jacobian(psi1, q1, j1); this.jacobian(psi2, q2, j2);
+    const upper = p.upperWindMs, lower = p.lowerWindMs, shear = upper - lower, gradient1 = p.beta + F * shear, gradient2 = p.beta - F * shear;
+    const drag = 1 / (p.dragDays * DAY), half = 1 / (2 * d), relax = F / (p.thermalRelaxationDays * DAY), reference = p.dragReferenceMs;
+    const vorticity2 = this.laplacian(psi2, lap);
+    for (let j = 0; j < ny; j++) {
+      const row = j * nx, jn = north[j], js = south[j];
+      for (let i = 0; i < nx; i++) {
+        const k = row + i, e = row + east[i], w = row + west[i], cooling = relax * (psi1[k] - psi2[k]);
+        t1[k] = cooling - j1[k] - upper * (q1[e] - q1[w]) * half - gradient1 * (psi1[e] - psi1[w]) * half;
+        const u2 = -(psi2[jn + i] - psi2[js + i]) * half, v2 = (psi2[e] - psi2[w]) * half;
+        const friction = drag * (1 + Math.hypot(u2, v2) / reference);
+        t2[k] = -cooling - j2[k] - lower * (q2[e] - q2[w]) * half - gradient2 * (psi2[e] - psi2[w]) * half - friction * vorticity2[k];
+      }
     }
     // Scale-selective (biharmonic) damping of the smallest resolved features.
     const nu = d ** 4 / (64 * p.dampingHours * 3600);
-    for (const [q, t] of [[this.q1, t1], [this.q2, t2]]) {
+    for (const [q, t] of [[q1, t1], [q2, t2]]) {
       this.laplacian(q, lap); this.laplacian(lap, lap2);
       for (let k = 0; k < n; k++) t[k] -= nu * lap2[k];
     }
     // Air near the ground, carried by the lower layer's flow.
-    const ts = new Float64Array(n), surface = this.surfaceTheta, js = this.jacobian(this.psi2, surface, lap);
+    const ts = new Float64Array(n), surface = this.surfaceTheta, jt = this.jacobian(psi2, surface, lap);
     const surfaceGradient = p.surfaceGradientKPer1000Km / 1e6, surfaceRelax = 1 / (p.surfaceRelaxationDays * DAY);
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx, v2 = (this.psi2[e] - this.psi2[w]) * half;
-      ts[k] = -js[k] - p.lowerWindMs * (surface[e] - surface[w]) * half + v2 * surfaceGradient - surface[k] * surfaceRelax;
+    for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
+      const k = row + i, e = row + east[i], w = row + west[i], v2 = (psi2[e] - psi2[w]) * half;
+      ts[k] = -jt[k] - lower * (surface[e] - surface[w]) * half + v2 * surfaceGradient - surface[k] * surfaceRelax;
     }
     this.laplacian(surface, lap); this.laplacian(lap, lap2);
     for (let k = 0; k < n; k++) ts[k] -= nu * lap2[k];
     // Its moisture, the same way.
-    const tq = new Float64Array(n), wet = this.surfaceMoisture, jq = this.jacobian(this.psi2, wet, lap);
+    const tq = new Float64Array(n), wet = this.surfaceMoisture, jq = this.jacobian(psi2, wet, lap);
     const moistureGradient = p.surfaceMoistureGradientGkgPer1000Km / 1e6, moistureRelax = 1 / (p.surfaceMoistureRelaxationDays * DAY);
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx, v2 = (this.psi2[e] - this.psi2[w]) * half;
-      tq[k] = -jq[k] - p.lowerWindMs * (wet[e] - wet[w]) * half + v2 * moistureGradient - wet[k] * moistureRelax;
+    for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
+      const k = row + i, e = row + east[i], w = row + west[i], v2 = (psi2[e] - psi2[w]) * half;
+      tq[k] = -jq[k] - lower * (wet[e] - wet[w]) * half + v2 * moistureGradient - wet[k] * moistureRelax;
     }
     this.laplacian(wet, lap); this.laplacian(lap, lap2);
     for (let k = 0; k < n; k++) tq[k] -= nu * lap2[k];
@@ -329,14 +377,15 @@ export class QuasiGeostrophicModel {
     const heat = this.heatTendency ??= new Float64Array(n);
     heat.fill(0);
     if (!(p.latentHeatShare > 0)) return [t1, t2, null, ts, tq];
-    const tm = new Float64Array(n), m = this.moisture, jm = this.jacobian(this.psi2, m, lap);
+    const tm = new Float64Array(n), m = this.moisture, jm = this.jacobian(psi2, m, lap);
     const a = this.saturationSlope(), meanGradient = p.meanHumidity * a * this.meanTemperatureGradient(), deficit = (1 - p.meanHumidity) * p.saturationGkg;
     const kelvin = this.kelvinPerThickness(), toThickness = 2.5 * p.latentHeatShare / kelvin;   // 2.5 K per g/kg condensed
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx;
-      const v2 = (this.psi2[e] - this.psi2[w]) * half, temperature = kelvin * (this.psi1[k] - this.psi2[k]);
-      const condensation = Math.max(0, m[k] - a * temperature - deficit) / (p.condensationHours * 3600);
-      tm[k] = -jm[k] - p.lowerWindMs * (m[e] - m[w]) * half - v2 * meanGradient - m[k] / (p.evaporationDays * DAY) - condensation;
+    const condensationSeconds = p.condensationHours * 3600, evaporationSeconds = p.evaporationDays * DAY;
+    for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
+      const k = row + i, e = row + east[i], w = row + west[i];
+      const v2 = (psi2[e] - psi2[w]) * half, temperature = kelvin * (psi1[k] - psi2[k]);
+      const condensation = Math.max(0, m[k] - a * temperature - deficit) / condensationSeconds;
+      tm[k] = -jm[k] - lower * (m[e] - m[w]) * half - v2 * meanGradient - m[k] / evaporationSeconds - condensation;
       heat[k] = toThickness * condensation;
     }
     // Radiation removes on average what condensation adds (the mean state already holds that
@@ -345,8 +394,8 @@ export class QuasiGeostrophicModel {
     // over more than one 80 km cell.
     for (let pass = 0; pass < p.latentHeatSpreadPasses; pass++) {
       const spread = this.work[6];
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-        const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx, nn = ((j + 1) % ny) * nx + i, ss = ((j - 1 + ny) % ny) * nx + i;
+      for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
+        const k = row + i, e = row + east[i], w = row + west[i], nn = north[j] + i, ss = south[j] + i;
         spread[k] = (4 * heat[k] + heat[e] + heat[w] + heat[nn] + heat[ss]) / 8;
       }
       heat.set(spread);
@@ -391,14 +440,14 @@ export class QuasiGeostrophicModel {
   // Adiabatic cooling of rising air over the last step (K/s, added to a running sum): the
   // change of thickness less what the mean-layer flow carried in, the latent heat and radiation.
   accumulateAscent(before, dt) {
-    const { nx, ny, d, params: p } = this, n = nx * ny, half = 1 / (2 * d), kelvin = this.kelvinPerThickness();
+    const { nx, ny, d, params: p } = this, n = nx * ny, half = 1 / (2 * d), kelvin = this.kelvinPerThickness(), { east, west } = this.neighbours();
     const [mean, thickness, , , advection] = this.work;
     for (let k = 0; k < n; k++) { mean[k] = (this.psi1[k] + this.psi2[k]) / 2; thickness[k] = this.psi1[k] - this.psi2[k]; }
     this.jacobian(mean, thickness, advection);
     const meanWind = (p.upperWindMs + p.lowerWindMs) / 2, shear = p.upperWindMs - p.lowerWindMs, radiation = 1 / (p.thermalRelaxationDays * DAY);
     const sum = this.ascentSum ??= new Float64Array(n), heat = this.heatTendency;
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i, e = j * nx + (i + 1) % nx, w = j * nx + (i - 1 + nx) % nx;
+    for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
+      const k = row + i, e = row + east[i], w = row + west[i];
       const followingFlow = (thickness[k] - before[k]) / dt + advection[k] + meanWind * (thickness[e] - thickness[w]) * half - shear * (mean[e] - mean[w]) * half;
       sum[k] -= kelvin * (followingFlow - (heat?.[k] ?? 0) + radiation * thickness[k]);
       this.rain[k] = p.latentHeatShare > 0 ? Math.max(0, (heat?.[k] ?? 0) + (this.meanHeat ?? 0)) * kelvin / (2.5 * p.latentHeatShare) * 3600 : 0;

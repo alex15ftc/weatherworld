@@ -64,7 +64,7 @@ assert.match(weakTornadoes.text, /A tornado watch will likely be needed/);
 // none strong), whatever the wind: severe thunderstorm.
 assert.equal(buildMesoscaleDiscussions(four({ reports: 12, tornadoes: 3, tornadoMph: 88 }), now())[0].tornadoWatch, true, 'a High chance of 2 or more tornadoes: a tornado watch');
 assert.equal(buildMesoscaleDiscussions(four({ reports: 20, gust: 95, windSignificant: 15, tornadoes: 1, tornadoMph: 100 }), now())[0].tornadoWatch, false, 'a Low chance of tornadoes: a severe thunderstorm watch, however strong the wind');
-assert.equal(buildMesoscaleDiscussions([0, 1, 2, 3].map(k => run(k, { reports: 12, tornadoes: k < 2 ? 1 : 0, tornadoMph: 125 })), now())[0].tornadoWatch, false, 'a Mod chance of a strong tornado, Low of 2 or more: a severe thunderstorm watch');
+assert.equal(buildMesoscaleDiscussions([0, 1, 2, 3].map(k => run(k, { reports: 12, tornadoes: k < 2 ? 1 : 0, tornadoMph: 125 })), now())[0].tornadoWatch, true, 'a Mod chance of a strong tornado (and a strong most probable peak): a tornado watch (2026-10-20; was a severe thunderstorm watch)');
 
 // Half the runs get to what a watch needs and the others most of the way: possible; and no
 // tornado peak is given when few runs have a tornado.
@@ -78,7 +78,7 @@ assert.equal(buildMesoscaleDiscussions([run(0, { reports: 14 }), run(1), run(2),
 assert.equal(buildMesoscaleDiscussions([], now()).length, 0);
 // Storms already severe there: it says so.
 const under = buildMesoscaleDiscussions(four({ reports: 12 }), now(44, [stormAt(30, 9, { hail: 1.5, gust: 60, intensity: 0.7 })]))[0];
-assert.match(under.text, /Severe thunderstorms are ongoing/); assert.match(under.text, /One storm is in the area, 1 of them severe/); assert.equal(under.startsInHours, 0); assert.equal(under.stormsInHours, 0);
+assert.match(under.text, /Severe thunderstorms are ongoing/); assert.match(under.text, /One storm is in the area, and it is severe/); assert.equal(under.startsInHours, 0); assert.equal(under.stormsInHours, 0);
 
 // --- Lead: a discussion goes out before the storms, and sooner where a tornado watch is in prospect.
 assert.deepEqual(MESOSCALE.leadHours, { severe: 1.5, tornado: 2 }); assert.ok(MESOSCALE.hoursAhead > MESOSCALE.leadHours.tornado);
@@ -134,7 +134,9 @@ const watch = issued.watches[0];
 assert.equal(watch.number, 12); assert.equal(watch.type, 'tornado'); assert.equal(watch.pds, false); assert.equal(watch.issuedHourUtc, 44); assert.equal(watch.validToHourUtc, 50);
 assert.ok(watch.areaCells >= WATCH.leastCells && watch.areaCells > 144, 'drawn a little wider than the area of concern'); assert.ok(watch.cells[at(30, 10)] && !watch.cells[at(5, 40)]);
 assert.ok(insideRings(watch.rings, 0.66, 0.22) && !insideRings(watch.rings, 0.2, 0.8));
-assert.deepEqual(watch.probabilities, { tornadoes2: 95, strongTornado: 95, wind10: 5, wind75: 5, hail10: 5, hail2: 5, combined6: 95 });
+// (Hail and wind events as Poisson counts about each run's: runs with 14 reports between them give
+// a fair chance of 10 of one kind; 2026-10-20.)
+assert.deepEqual(watch.probabilities, { tornadoes2: 95, strongTornado: 95, wind10: 20, wind75: 5, hail10: 20, hail2: 5, combined6: 95 });
 assert.equal(probabilityText(5), 'Low (<5%)'); assert.equal(probabilityText(40), 'Mod (40%)'); assert.equal(probabilityText(80), 'High (80%)'); assert.equal(probabilityText(95), 'High (>95%)');
 assert.match(watch.text, /^URGENT - IMMEDIATE BROADCAST REQUESTED\nTornado Watch Number 12\nNWS Storm Prediction Center WeatherWorld\n\nA tornado watch is in effect for [\s\S]*\nfrom 022000Z until 030200Z\.\n\nPrimary threats include\.\.\.\n  Several tornadoes and a couple of strong tornadoes likely\n/);
 assert.match(watch.text, /REMEMBER\.\.\.A tornado watch means/); assert.match(watch.text, /WATCH PROBABILITIES\.\.\.\n  2 or more tornadoes \.+High \(>95%\)/); assert.doesNotMatch(watch.text, /PARTICULARLY DANGEROUS/);
@@ -198,14 +200,15 @@ const inner = new Uint8Array(n); inner[20 * width + 20] = 1;
 const opened = solidRegion(ring, width, height, inner);
 assert.equal(enclosedHoles(opened, width, height).length, 0); assert.ok(!opened[20 * width + 20] && !opened[12 * width + 20] && opened[20 * width + 12], 'opened to the north of the other watch');
 for (const product of [...split.discussions, ...split.pending, md, watch]) assert.equal(enclosedHoles(product.cells, width, height).length, 0, 'no holes');
-// A discussion about the watch, once the last word on it has lapsed: no probability, the watch named.
-const status = lookAhead(four(tornadic), now(46, [stormAt(31, 9, { hail: 1.5 })]), { watches: [watch], nextDiscussion: 9 });
+// A discussion about the watch, once statusHours have passed with a watch's worth of severe weather going on: no probability, the watch named.
+assert.equal(lookAhead(four(tornadic), now(46, [stormAt(31, 9, { hail: 1.5 })]), { watches: [watch], nextDiscussion: 9 }).discussions.length, 0, 'not every two hours: only when something changes');
+const status = lookAhead(four(tornadic), now(44 + MESOSCALE.statusHours, [stormAt(31, 9, { hail: 1.5 })]), { watches: [watch], nextDiscussion: 9 });
 assert.equal(status.watches.length, 0); assert.equal(status.discussions.length, 1);
 const about = status.discussions[0];
 assert.equal(about.number, 9); assert.equal(about.watchNumber, 12); assert.equal(about.watchPercent, null); assert.equal(about.concerning, 'TORNADO WATCH 12');
-assert.match(about.text, /\nConcerning\.\.\.TORNADO WATCH 12\n\nValid 022200Z - 030000Z\n\nThe severe weather threat for Tornado Watch 12 continues\.\n\nSUMMARY\.\.\.Severe thunderstorms are ongoing over this part of the watch/); assert.doesNotMatch(about.text, /Probability of Watch Issuance/);
+assert.match(about.text, /\nConcerning\.\.\.TORNADO WATCH 12\n\nValid 022300Z - 030100Z\n\nThe severe weather threat for Tornado Watch 12 continues\.\n\nSUMMARY\.\.\.Severe thunderstorms are ongoing over this part of the watch/); assert.doesNotMatch(about.text, /Probability of Watch Issuance/);
 assert.ok(about.cells.every((v, i) => !v || watch.cells[i]), 'it covers the part of the watch under threat');
-assert.equal(lookAhead(four(tornadic), now(47, [stormAt(31, 9)]), { watches: [watch], discussions: [about] }).discussions.length, 0, 'not again while that one is valid');
+assert.equal(lookAhead(four(tornadic), now(44.5 + MESOSCALE.statusHours, [stormAt(31, 9)]), { watches: [watch], discussions: [about] }).discussions.length, 0, 'not again while that one is valid');
 assert.match(lookAhead(four({ reports: 5, size: 12 }), now(46, [stormAt(31, 9)]), { watches: [watch] }).discussions[0].text, /The severe weather threat for Tornado Watch 12 is waning/);
 // The last look before it expires, severe weather still going: a new watch is made ready for
 // the moment it does (no gap, no overlap), and a discussion about the old one says so.
@@ -217,7 +220,9 @@ assert.equal(ending.discussions.length, 1); assert.equal(ending.discussions[0].w
 assert.match(ending.discussions[0].text, /A new tornado watch will be needed when this one expires at 030200Z\./);
 assert.equal(readyHourUtc(follow, { validHourUtc: 49.5 }), null); assert.equal(readyHourUtc(follow, { validHourUtc: 50 }), 50);
 assert.equal(issueWatch(follow, 13, 50).validToHourUtc, 56);
-assert.equal(readyHourUtc(waiting.pending[0], { ...liveWorld([liveStorm(30, 10)]), validHourUtc: 45.5 }), 45.5, 'a watch waiting for storms goes out when they fire'); assert.equal(readyHourUtc(waiting.pending[0], { ...liveWorld(), validHourUtc: 45.5 }), null);
+assert.equal(readyHourUtc(waiting.pending[0], { ...liveWorld([liveStorm(30, 10)]), validHourUtc: 45.5 }), 45.5, 'a watch waiting for storms goes out when they fire'); assert.equal(readyHourUtc(waiting.pending[0], { ...liveWorld(), validHourUtc: 45.5 }), 45.5, 'or, with no storm yet, once severe weather is within WATCH.issueLeadHours (2026-10-20)');
+const far = lookAhead(four({ ...tornadic, first: 3.5, storm: 2 }), now(44), { seed: 3, discussions: waiting.discussions }).pending[0];
+if (far) { assert.equal(readyHourUtc(far, { ...liveWorld(), validHourUtc: 44.5 }), null, 'not before'); assert.equal(readyHourUtc(far, { ...liveWorld(), validHourUtc: 45.5 }), 45.5); }
 assert.equal(lookAhead(four({ reports: 5, size: 12 }), now(49, [stormAt(31, 9)]), { watches: [watch] }).pending.length, 0, 'the threat gone: nothing follows');
 // Expired with nothing ready to follow it: the ground is free again, and its next watch has its discussion first.
 const after = lookAhead(worse, now(50, [stormAt(31, 9)]), { watches: [watch], nextWatch: 13 });
@@ -251,7 +256,7 @@ assert.equal(a.tornadoes.length, a.tornadoPeaks.length); assert.equal(a.stormHou
 assert.equal(atmosphere.world.validHourUtc, before, 'the live world is untouched');
 // The smaller copy a forecast run starts from gives the very same run.
 const small = v8.serialize(atmosphere.saveState({ forecast: true }));
-assert.ok(small.length < 0.5 * bytes.length, `the forecast copy is the smaller (${small.length} of ${bytes.length} bytes)`);
+assert.ok(small.length < bytes.length, `the forecast copy is the smaller (${small.length} of ${bytes.length} bytes)`);
 assert.deepEqual(runMesoscaleMember(stateFromBytes(small), 0, 2), a, 'a run from the forecast copy is the run from the full one');
 const air = describeNow(atmosphere); assert.equal(air.hourUtc, before); assert.equal(air.cape.length, a.near.length); assert.ok(air.dewpoint.some(v => v > 40));
 

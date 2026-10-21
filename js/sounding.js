@@ -87,7 +87,10 @@ export function updateCellDiagnostics(cell) {
   const state=cin.mlMagnitude<=5?'breached':cin.mlMagnitude<=25?'nearly-breached':tendency<=-2?'eroding':tendency>=2?'strengthening':'steady';
   const priorBreach=cell.cap?.breachHourUtc ?? null;
   cell.thermodynamics={
-    profile:sounding.profile, parcel:sounding.parcel,
+    // (The profile and the parcels are not kept on the cell: nothing reads them there, and every
+    // cell holding ~75 of them from step to step was 40% of a world's memory (82 MB of heap, 48
+    // without them; measured 2026-10-17). A sounding that is
+    // asked for is built afresh: buildSounding.)
     parcels:{surface:{cape:p.sbcape,cinSigned:p.sbcin,cinMagnitude:cin.sbMagnitude},mixedLayer:{cape:p.mlcape,cinSigned:p.mlcin,cinMagnitude:cin.mlMagnitude},mostUnstable:{cape:p.mucape,cinSigned:p.mucin,cinMagnitude:cin.muMagnitude}},
     cape:{sb:p.sbcape,ml:p.mlcape,mu:p.mucape}, cin,
     lapseRates:{km0_1:p.lapseRate01km,km0_3:p.lapseRate03km,mb700_500:p.lapseRate700500,mb850_500:p.lapseRate850500},
@@ -108,7 +111,7 @@ export function updateCellDiagnostics(cell) {
   cell.derived.bulkShear=p.shear06; cell.derived.srh=p.srh01;
   cell.derived.stp=p.stp; cell.derived.rawStp=p.rawStp; cell.derived.stpComponents={...p.stpComponents};
   cell.derived.vtp=p.vtp; cell.derived.synopticTornadoSupport=p.synopticSupport; cell.derived.scp=p.scp;
-  cell.derived.sounding={sbcape:p.sbcape,mlcape:p.mlcape,mucape:p.mucape,sbcin:p.sbcin,mlcin:p.mlcin,mucin:p.mucin,lclM:p.lclM,lclAglM:cell.derived.lclAgl,lfcM:p.lfcM,elM:p.elM,shear01:p.shear01,shear03:p.shear03,shear06:p.shear06,srh01:p.srh01,srh03:p.srh03,lapseRate01km:p.lapseRate01km,lapseRate03km:p.lapseRate03km,lapseRate700500:p.lapseRate700500,lapseRate850500:p.lapseRate850500,stpComponents:{...p.stpComponents}};
+  cell.derived.sounding={sbcape:p.sbcape,mlcape:p.mlcape,mucape:p.mucape,sbcin:p.sbcin,mlcin:p.mlcin,mucin:p.mucin,lclM:p.lclM,lclAglM:cell.derived.lclAgl,lfcM:p.lfcM,elM:p.elM,shear01:p.shear01,shear03:p.shear03,shear06:p.shear06,srh01:p.srh01,srh03:p.srh03,lapseRate01km:p.lapseRate01km,lapseRate03km:p.lapseRate03km,lapseRate700500:p.lapseRate700500,lapseRate850500:p.lapseRate850500,wetBulbZeroAglM:Number.isFinite(p.wetBulbZeroM)?p.wetBulbZeroM-(cell.terrain?.elevationM??0):null,stpComponents:{...p.stpComponents}};
   return sounding;
 }
 
@@ -123,10 +126,13 @@ function interpolateProfileAtHeight(profile,heightM){
   for(let i=0;i<profile.length-1;i++){const a=profile[i],b=profile[i+1];if((a.heightM??0)<=heightM&&(b.heightM??0)>=heightM){const f=(heightM-a.heightM)/Math.max(1e-6,b.heightM-a.heightM);return {t:a.t+(b.t-a.t)*f,td:a.td+(b.td-a.td)*f,heightM};}}
   return heightM<=(profile[0]?.heightM??0)?profile[0]:profile.at(-1);
 }
+// The layer's depth from its own mean temperature (the hypsometric equation). (Until 2026-10-20 from
+// the profile's heights, which are worked out with the surface temperature for the whole column:
+// a 700-500 mb layer about 10% too deep under a hot surface, and its lapse rate about 10% too small.)
 function layerLapseRate(profile, lowerP, upperP){
   const lower=interpolateProfileAtPressure(profile,lowerP);
   const upper=interpolateProfileAtPressure(profile,upperP);
-  const dz=Math.max(500,(upper.heightM??0)-(lower.heightM??0));
+  const dz=Math.max(500,RD*((lower.t+upper.t)/2+273.15)/G*Math.log(lowerP/upperP));
   return clamp(((lower.t-upper.t)/(dz/1000)),3,10.5);
 }
 function interpolateProfileAtPressure(profile,p){

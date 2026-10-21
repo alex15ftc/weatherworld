@@ -96,7 +96,9 @@ const offices = [{ id: 'WST', name: 'NWS Westport', city: 'Westport', x: 75, y: 
 const officeOf = c => (c.box[0] < 150 ? 'WST' : 'EAV');
 const split = countyLayer({ size, cellMiles: fine, miles: 300, ids, counties: counties.map(c => ({ ...c, office: officeOf(c) })), towns, offices: offices.map(o => ({ ...o, counties: counties.filter(c => officeOf(c) === o.id).map(c => c.id) })), regions: [{ key: 'highPlains', label: 'High Plains' }, { key: 'midwest', label: 'Big Blue Valley' }] }, width, height);
 const both = createWarningState(split), lineKm = 150 * kmPerMile;
-const nearLine = { ...look, x: lineKm - 8 * kmPerMile, y: 150 * kmPerMile };
+// (6 miles out, about 12 minutes: since 2026-10-20 the next office's piece goes out with the
+// first only when the storm is due there within WARNING.downstreamMinutes.)
+const nearLine = { ...look, x: lineKm - 6 * kmPerMile, y: 150 * kmPerMile };
 const issued = issueWarnings(both, 'tornado', nearLine, 44.5, placesFor(both, world));
 assert.deepEqual(issued.map(w => w.id), ['WST-TOR-1', 'EAV-TOR-1'], 'the office holding the storm warns first, the next office downstream');
 assert.ok(issued[0].polygon.every(([x]) => x <= lineKm + 0.05) && issued[1].polygon.every(([x]) => x >= lineKm - 0.05), 'no piece crosses the office line');
@@ -105,6 +107,9 @@ assert.match(issued[1].text, /^BULLETIN - EAS ACTIVATION REQUESTED\nTornado Warn
 assert.match(issued[1].text, /The National Weather Service in Eastville has issued a/);
 assert.ok(issued[1].places.counties.every(c => Number(c.name.slice(4)) % across > 5), 'Eastville names only its own counties');
 assert.ok(publicCounties(split).offices.every(o => o.rings.length === 1), 'each office\'s area is drawn as one outline');
+// A storm still 20 miles (about 40 minutes) from the line: only its own office warns yet.
+const farState = createWarningState(split), far = issueWarnings(farState, 'tornado', { ...nearLine, x: lineKm - 20 * kmPerMile }, 44.5, placesFor(farState, world));
+assert.deepEqual(far.map(w => w.office.id), ['WST'], 'the next office waits until the storm is due');
 // The downstream piece stays in effect while the storm is on its way to it.
 const scanAt = (hour, x) => updateWarnings(both, { width, height, cellSizeKm: world.cellSizeKm, validHourUtc: hour, storms: [{ id: 's1', active: true, positionKm: { x, y: nearLine.y }, velocityKph: { east: 50, north: 5 }, currentHailSizeInches: 2, surfaceWind: { gustMph: 70 }, tornado: { probability: 0.5, onGround: false }, geometry: {} }] }, []);
 scanAt(44.5 + 1 / 12, nearLine.x + 4); scanAt(44.5 + 2 / 12, nearLine.x + 8); scanAt(44.5 + 3 / 12, nearLine.x + 12);

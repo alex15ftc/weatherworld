@@ -596,8 +596,8 @@ function resolveField(cell, product) {
     case 'temperature': return cell.surface?.temperatureF ?? cell.surface?.temperature;
     case 'dewpoint': return cell.surface?.dewpointF ?? cell.surface?.dewpoint;
     case 'pressure': return cell.surface?.seaLevelPressure ?? cell.surface?.pressureMb;
-    case 'cape': return cell.derived?.cape ?? cell.thermodynamics?.capeJkg;
-    case 'cin': return Math.abs(cell.derived?.cin ?? cell.thermodynamics?.cinJkg ?? 0);
+    case 'cape': return cell.derived?.cape;
+    case 'cin': return Math.abs(cell.derived?.cin ?? 0);
     case 'srh': return cell.derived?.srh ?? cell.kinematics?.srh01M2s2;
     case 'bulkShear': return cell.derived?.bulkShear ?? cell.kinematics?.bulkShear06Kt;
     case 'stp': return cell.derived?.stp ?? 0;

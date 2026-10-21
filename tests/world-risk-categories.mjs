@@ -67,10 +67,10 @@ assert.equal(conditionalCig(0, [0], CIG_BOUNDS.wind), 0); assert.equal(condition
 // Each separate area inside a contour is judged as a whole; a cell takes the group of the highest contour it is in.
 {
   const w = 20, h = 10, hail = new Float32Array(w * h), big = new Float32Array(w * h), giant = new Float32Array(w * h), at = (x, y) => y * w + x;
-  for (let y = 2; y < 8; y++) { for (let x = 1; x < 8; x++) { hail[at(x, y)] = 20; big[at(x, y)] = x === 1 ? 20 : 0; } for (let x = 12; x < 19; x++) { hail[at(x, y)] = 20; big[at(x, y)] = 10; giant[at(x, y)] = 1; } }
+  for (let y = 2; y < 8; y++) { for (let x = 1; x < 8; x++) { hail[at(x, y)] = 20; big[at(x, y)] = x <= 2 ? 20 : 0; } for (let x = 12; x < 19; x++) { hail[at(x, y)] = 20; big[at(x, y)] = 10; giant[at(x, y)] = 1; } }
   for (let y = 4; y < 6; y++) for (let x = 14; x < 17; x++) { hail[at(x, y)] = 50; big[at(x, y)] = 5; }
   const groups = contourCig('hail', hail, hail, [big, giant], w, h);
-  assert.equal(groups[at(4, 4)], 1, 'a seventh of the western area\'s hail is 2 in, none 3.5 in: CIG1 over all of it'); assert.equal(groups[at(1, 4)], 1);
+  assert.equal(groups[at(4, 4)], 1, 'two sevenths of the western area\'s hail is 2 in (CIG1 needs a fifth since 2026-10-21), none 3.5 in: CIG1 over all of it'); assert.equal(groups[at(1, 4)], 1);
   assert.equal(groups[at(12, 4)], 2, 'half the eastern area\'s hail is 2 in and a twentieth 3.5 in: CIG2 over all of it');
   assert.equal(groups[at(15, 4)], 2, 'only a tenth of the hail in its 45% core is, but the core keeps the group of the area around it: no hole'); assert.equal(groups[at(10, 4)], 0);
 }

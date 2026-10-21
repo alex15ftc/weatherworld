@@ -41,9 +41,11 @@ assert.match(svr.text, /^BULLETIN - IMMEDIATE BROADCAST REQUESTED\nSevere Thunde
 assert.match(svr.text, /HAZARD\.\.\.Quarter size hail\./); assert.match(svr.text, /MAX HAIL SIZE\.\.\.1\.00 IN/); assert.match(svr.text, /MAX WIND GUST\.\.\.55 MPH/);
 assert.match(svr.text, /located 62 miles west of the Central Plains radar \(KCPL\), moving east at 37 mph/);
 assert.doesNotMatch(svr.text, /DAMAGE THREAT/);
-// The same storm, still inside its warning, gets no second one.
-assert.equal(scan(state, 20 + 2 / 12, [storm('a', { x: 405, hail: 1.1 })]).issued.length, 0);
-// Its gusts reach 80 mph: a statement raises it to DESTRUCTIVE, with an EAS request.
+// The same storm, still inside its warning, gets no second one. Its gusts reach 80 mph on one
+// scan: not yet news (tags go up on what two scans show).
+found = scan(state, 20 + 2 / 12, [storm('a', { x: 405, hail: 1.1, gust: 82 })]);
+assert.equal(found.issued.length, 0); assert.equal(found.updated.length, 0); assert.equal(svr.tags.damage, null);
+// On a second: a statement raises it to DESTRUCTIVE, with an EAS request.
 found = scan(state, 20 + 3 / 12, [storm('a', { x: 410, hail: 1.1, gust: 82 })]);
 assert.equal(found.updated.length, 1); assert.equal(svr.tags.damage, 'DESTRUCTIVE'); assert.equal(svr.tags.gustMph, 80);
 const update = svr.statements.at(-1);
@@ -52,12 +54,11 @@ assert.match(update.text, /Flying debris will be dangerous/);
 // A weaker gust next scan does not lower the tags (they hold the most of the last 15 minutes);
 // but the hail has now been severe for 15 minutes, so reports are in: HAIL THREAT...OBSERVED.
 found = scan(state, 20 + 4 / 12, [storm('a', { x: 415, hail: 1.1, gust: 60 })]);
-assert.equal(svr.tags.gustMph, 80); assert.equal(svr.tags.damage, 'DESTRUCTIVE'); assert.equal(svr.tags.hailSource, 'OBSERVED'); assert.equal(svr.tags.windSource, 'RADAR INDICATED');
+assert.equal(svr.tags.gustMph, 80); assert.equal(svr.tags.damage, 'DESTRUCTIVE'); assert.equal(svr.tags.hailSource, 'OBSERVED'); assert.equal(svr.tags.windSource, 'OBSERVED', 'severe gusts for 15 minutes too');
 assert.equal(found.updated.length, 1); assert.match(svr.statements.at(-1).text, /HAIL THREAT\.\.\.OBSERVED/); assert.match(svr.statements.at(-1).text, /SOURCE\.\.\.Trained weather spotters\./);
-// It falls apart: cancelled after two quiet scans, with the reason.
-scan(state, 20 + 5 / 12, [storm('a', { x: 420, hail: 0.3, gust: 30 })]);
-assert.equal(svr.status, 'in effect');
-found = scan(state, 20 + 6 / 12, [storm('a', { x: 425, hail: 0.3, gust: 30 })]);
+// It falls apart: cancelled after WARNING.quietScans quiet scans (four since 2026-10-20), with the reason.
+for (let k = 5; k < 4 + WARNING.quietScans; k++) { scan(state, 20 + k / 12, [storm('a', { x: 395 + 5 * k, hail: 0.3, gust: 30 })]); assert.equal(svr.status, 'in effect'); }
+found = scan(state, 20 + (4 + WARNING.quietScans) / 12, [storm('a', { x: 395 + 5 * (4 + WARNING.quietScans), hail: 0.3, gust: 30 })]);
 assert.equal(svr.status, 'cancelled'); assert.equal(found.ended[0], svr);
 assert.match(svr.statements.at(-1).text, /IS CANCELLED[\s\S]*weakened below severe limits/);
 
@@ -74,16 +75,29 @@ assert.equal(svrFirst.status, 'in effect', 'the severe thunderstorm warning alre
 // Down for 5 minutes: not yet confirmed. Down for 10: OBSERVED.
 scan(state, 22 + 2 / 12, [storm('t', { x: 410, chance: 0.6, onGround: true, groundMinutes: 5, tornadoMph: 90 })]);
 assert.equal(tor.tags.tornado, 'RADAR INDICATED');
-scan(state, 22 + 3 / 12, [storm('t', { x: 415, chance: 0.6, onGround: true, groundMinutes: 10, tornadoMph: 100 })]);
+scan(state, 22 + 3 / 12, [storm('t', { x: 415, chance: 0.6, onGround: true, groundMinutes: 10, tornadoMph: 115 })]);
 assert.equal(tor.tags.tornado, 'OBSERVED'); assert.equal(publicWarning(tor, 22.25).pds, false);
 assert.match(tor.statements.at(-1).text, /a confirmed tornado was located/); assert.match(tor.statements.at(-1).text, /TORNADO\.\.\.OBSERVED/);
-// EF2 winds: a particularly dangerous situation.
+// EF2 winds on a second scan (one is not enough, above): a particularly dangerous situation.
 scan(state, 22 + 4 / 12, [storm('t', { x: 420, chance: 0.7, onGround: true, groundMinutes: 15, tornadoMph: 125 })]);
 assert.equal(tor.tags.damage, 'CONSIDERABLE'); assert.equal(publicWarning(tor, 22.33).pds, true);
 const pds = tor.statements.at(-1).text;
 assert.match(pds, /THIS IS A PARTICULARLY DANGEROUS SITUATION/); assert.match(pds, /TORNADO DAMAGE THREAT\.\.\.CONSIDERABLE/); assert.match(pds, /HAZARD\.\.\.Damaging tornado/); assert.match(pds, /life-threatening situation/);
 // No severe thunderstorm warning goes out for a storm under a tornado warning.
 assert.ok(inEffect(state, 22.4).every(w => w.type === 'tornado' || w === svrFirst));
+
+// A core growing toward the limits is warned before it gets there: 0.8 to 0.9 inch in 5 minutes
+// reaches an inch well within 15.
+state = createWarningState();
+assert.equal(scan(state, 3, [storm('g', { hail: 0.8 })]).issued.length, 0);
+assert.equal(scan(state, 3 + 1 / 12, [storm('g', { x: 405, hail: 0.9 })]).issued[0]?.type, 'severe');
+
+// A storm that has left its office's warning sideways is re-warned, and the old one cancelled.
+state = createWarningState();
+const sidewise = scan(state, 4, [storm('s', { hail: 1.5 })]).issued[0];
+scan(state, 4 + 1 / 12, [storm('s', { x: 405, y: 560, hail: 1.5 })]);
+assert.equal(sidewise.status, 'cancelled'); assert.equal(inEffect(state, 4.1).length, 1);
+assert.match(sidewise.statements.at(-1).text, /moved out of the warned area/);
 
 // A storm about to leave its warning gets a new one downstream; the old one expires on time.
 state = createWarningState();

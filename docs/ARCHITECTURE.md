@@ -138,8 +138,8 @@ memory.
 ### The forecast pool
 
 `server/ForecastPool.js` does every forecast run (the outlooks' members and the mesoscale
-look ahead) on a few threads (`server/forecastWorker.js`): a quarter of the cores, at most
-four, or `WEATHER_FORECAST_WORKERS`. Runs wait their turn, the more urgent first (the
+look ahead) on a few threads (`server/forecastWorker.js`): a third of the cores, at most
+eight, or `WEATHER_FORECAST_WORKERS`. Runs wait their turn, the more urgent first (the
 mesoscale runs go ahead of an outlook's), so the load is never more than that many cores
 however many products are due together. The copy of the world a run starts from is the
 forecast copy (`AtmosphereWorld.saveState({ forecast: true })`, `js/world/worldSnapshot.js`):

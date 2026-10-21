@@ -22,7 +22,7 @@ npm test             # 42 tests, about 8 minutes
 | `WEATHER_PRIORITY=normal` | leave the process priority alone |
 | `WEATHER_OUTLOOK=off` | do not issue outlooks |
 | `WEATHER_MESOSCALE=off` | do not issue mesoscale discussions or watches |
-| `WEATHER_FORECAST_WORKERS=n` | threads that do the forecast runs for the outlooks, discussions and watches (default: a quarter of the cores, at most 4) |
+| `WEATHER_FORECAST_WORKERS=n` | threads that do the forecast runs for the outlooks, discussions and watches (default: a third of the cores, at most 8) |
 | `WEATHER_OUTLOOK_MEMBERS=n` | forecast runs per outlook (default 8) |
 
 The clock runs at 15 simulated minutes per real minute (a simulated day is 96 real minutes).

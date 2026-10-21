@@ -44,7 +44,14 @@ export function initializeTornadoState(storm) {
 // 2026-10-16 (later): 5 to 8 once storms over the night's cooled ground stopped counting as fed
 // from the ground (StormRotation groundCinJkg): those had made 58% of the tornadoes, and without
 // them the mean fell to 3 a day; 8 gives 3.7, a tornado on 70% of days.
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 8, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// 2026-10-19: back to 5 once nights cool with the wind (RegionalAtmosphere nightCoolingK): the
+// warm sector under the night-time jet stays fed from the ground, as it really does. Then (the
+// same day): with fronts as sloping cold domes, cyclones on the map and cloud holding the night's
+// heat in, 5 gave 11.7 tornadoes a day on 8 seeds x 3 days (2.5 gave 9.5 once nights cooled
+// more under cloud); the target is about 7.5. A lower rate alone starved the strongest storms (an
+// ideal supercell put down one tornado in eight hours), so the rise was made steeper instead
+// (power 2 to 3, rate 4.2): weakly rotating storms lose far more of their tornadoes than strong ones.
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.75, power: 3, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -60,7 +67,7 @@ export const tornadoImminence = storm => ramp(clamp(storm.lowRotation ?? 0, 0, 1
 export const tornadoRatePerHour = imminence => TORNADO.fullRatePerHour * Math.pow(imminence, TORNADO.power);
 // Scale (mph above 65) of the wind spread for a tornado under this low-level rotation, and the
 // share of tornadoes from that spread whose wind reaches a given speed.
-export const tornadoWindScaleMph = lowRotation => INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2);
+export const tornadoWindScaleMph = (lowRotation, stp = 0) => INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2) + INTENSITY.stpScaleMph * clamp(stp / INTENSITY.stpFull, 0, 1.2);
 export const tornadoShareReaching = (scaleMph, mph) => Math.exp(-Math.pow(Math.max(0, mph - 65) / scaleMph, 1 / INTENSITY.tail));
 
 export function updateTornadoState(world, storm, environment, dtHours) {
@@ -117,9 +124,16 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // Wind: this tornado's draw is its quantile in a spread whose scale the storm's underlying
   // low-level rotation sets; the wind builds over its first minutes and falls as it occludes.
   const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 0.999);
-  const scaleMph = tornadoWindScaleMph(storm.lowRotationFree ?? low);
+  const scaleMph = tornadoWindScaleMph(storm.lowRotationFree ?? low, ingredients);
   const ceilingMph = Math.min(235, 65 + scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail));
-  const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / INTENSITY.matureMinutes, 0.25, 1) * (1 - INTENSITY.occlusionLoss * clamp(storm.occlusion ?? 0, 0, 1));
+  // Its life, from the wind it can reach when it first comes down (LIFE).
+  if (tornado.lifeMinutes == null) {
+    const mean = LIFE.meanMinutes[0] + (LIFE.meanMinutes[1] - LIFE.meanMinutes[0]) * Math.pow(clamp((ceilingMph - 65) / (LIFE.ceilingMph - 65), 0, 1.3), LIFE.power);
+    tornado.lifeMinutes = -mean * Math.log(1 - clamp(Number.isFinite(tornado.lifeDraw) ? tornado.lifeDraw : 0.5, 0, 0.999));
+  }
+  // A brief vortex reaches its wind sooner than a long-lived one builds to its own.
+  const matureMinutes = Math.min(INTENSITY.matureMinutes, Math.max(1, 0.4 * tornado.lifeMinutes));
+  const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / matureMinutes, 0.25, 1) * (1 - INTENSITY.occlusionLoss * clamp(storm.occlusion ?? 0, 0, 1));
   tornado.windSpeedMph += (targetWind - tornado.windSpeedMph) * clamp(dtHours * 6, 0, 1);
   tornado.environmentWindCeilingMph = ceilingMph;
   // Stronger tornadoes are wider: about 50 yd at EF0, 150 at EF1, 250 at EF2, 450 at EF3 and
@@ -147,12 +161,13 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // It ends when the storm no longer holds the low-level rotation for it, or falls apart. It
   // stays down through the step it formed in, so everything that looks at storms between
   // steps sees it.
-  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false || leftBehind)) {
+  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false || leftBehind || (tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6))) {
     // Why it ended, for the reports: the storm died or stopped rotating, its rotation moved off
     // (a merger), the outflow cut it off (the storm would still hold the rotation were it not
     // occluding), or the rotation faded.
-    const endedBy = storm.active === false ? 'storm ended' : rotating <= 0 ? 'not rotating' : leftBehind ? 'left behind' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
+    const endedBy = storm.active === false ? 'storm ended' : tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6 && low >= TORNADO.sustainRotation && !leftBehind && rotating > 0 ? 'vortex spent' : rotating <= 0 ? 'not rotating' : leftBehind ? 'left behind' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
     endTornado(world, storm, tornado, { endedBy, endOcclusion: storm.occlusion ?? 0, endLowRotationFree: storm.lowRotationFree ?? 0 });
+    if (endedBy === 'vortex spent') storm.lowRotation = (storm.lowRotation ?? 0) * LIFE.rotationLeft;
   } else tornado.state = 'on-ground';
   return tornado;
 }
@@ -163,6 +178,7 @@ function drawTornadoCharacter(world, storm, tornado) {
   const seed = `${world.evolution?.config?.seed ?? 1}|${storm.id}|cycle${tornado.cycleCount}`;
   tornado.strengthUniform = deterministicUnit(seed + '|strength');
   tornado.damageDraw = deterministicUnit(seed + '|damage');
+  tornado.lifeDraw = deterministicUnit(seed + '|life'); tornado.lifeMinutes = null;
   tornado.ratedWindMph = 0;
 }
 
@@ -211,7 +227,18 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // Then 70/70 with the moister warm sectors of the outer model's gentler moisture gradient (they made
 // the storms rotate harder): ratings on 160 days EF0 43%, EF1 31%, EF2 15%, EF3 8%, EF4 3%; winds
 // EF4 and more 11%.
-const INTENSITY = { baseScaleMph: 70, rotationScaleMph: 70, tail: 0.9, matureMinutes: 6, occlusionLoss: 0.6 };
+// 2026-10-20 (final tuning): 70/70 to 40/30. Storms now rotate harder (afternoon helicity, longer-
+// lived supercells) and the ratings had drifted to EF2+ 44%, EF3+ 21%; with 40/30, EF0-4 48/34/13/4.5/0.4%
+// (EF2+ 18%, the agreed aim about 15%) on 8 seeds x 5 days. Peak winds sit about half a category
+// above the ratings (EF4 winds 4%), below what mobile radar suggests.
+// 2026-10-20 (second pass): 40/30 to 20/35 plus stpScaleMph 40 (the storm's inflow STP, full at
+// stpFull). The low-level rotation saturates in tornadic air (its helicity ramp tops at 250 where
+// tornadic storms form in about 345), so rotation alone could not tell a strong tornado's storm
+// from a weak one's: nine EF0s came in STP 4-5.5 while an EF4 came in 2.1. Strong tornadoes come
+// with high STP in the real record (Thompson et al. 2012). With the damage survey below made
+// harsher: ratings EF0-4 52/30/12/4.5/1.4% (EF2+ 18%), peak winds about a category above (EF4 9%),
+// median STP at touchdown from 3.7 (EF0) to 9.8 (EF4), on 8 seeds x 5 days.
+const INTENSITY = { baseScaleMph: 20, rotationScaleMph: 35, tail: 0.9, stpScaleMph: 40, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times
@@ -220,7 +247,23 @@ const INTENSITY = { baseScaleMph: 70, rotationScaleMph: 70, tail: 0.9, matureMin
 // it for a long track through something sturdy.
 // (2026-10-17: 0.5, 14 km, 0.6 to 0.4, 20 km, 0.35 with the wider winds above: a violent rating
 // needs a long track and luck in what it crosses.)
-const DAMAGE_RATING = { unexposedShare: 0.4, pathScaleKm: 20, luckFloor: 0.35 };
+// How long a tornado's own vortex lasts. Strong tornadoes live in steady, intense low-level
+// mesocyclones and last long; weak ones are brief vortices (US record: path length, and so
+// duration, rises steeply with rating; Brooks 2004). Each has a life drawn at touchdown from an
+// exponential spread whose mean rises with the wind it could reach (its ceiling then), from
+// meanMinutes[0] for a tornado that can barely reach 65 mph to meanMinutes[1] at ceilingMph, as
+// (way up)^power. The storm can end it sooner (its rotation or the occlusion, above). (2026-10-20:
+// until then only the storm ended a tornado, and once winds were scaled down, EF0s lasted 45-120 min.)
+// With it, median durations by rating EF0-4 of 5/15/40/60/45 minutes (8 seeds x 5 days), and the
+// tornado rate fullRatePerHour 4.2 to 0.75 (with the mesocyclone helicity of StormRotation.js the same day): a storm whose vortex is spent can put down another.
+// A spent vortex goes with the low-level mesocyclone that fed it (the outflow that ends it wraps
+// round it): the storm keeps rotationLeft of its low-level rotation and builds it again at its
+// usual pace, so the next tornado is a new cycle some 10-30 minutes on. (Without it a strongly
+// rotating storm put one down every few minutes: 158 tornadoes on one day.)
+const LIFE = { meanMinutes: [3, 60], ceilingMph: 200, power: 1.5, rotationLeft: 0.2 };
+// (unexposedShare 0.4 to 0.25 on 2026-10-20, with the winds set by the storm's air: most of a path
+// crosses open country that cannot show a strong tornado's full wind.)
+const DAMAGE_RATING = { unexposedShare: 0.25, pathScaleKm: 20, luckFloor: 0.35 };
 
 function efRating(mph) { return mph >= 200 ? 'EF5' : mph >= 166 ? 'EF4' : mph >= 136 ? 'EF3' : mph >= 111 ? 'EF2' : mph >= 86 ? 'EF1' : mph >= 65 ? 'EF0' : null; }
 function deterministicUnit(text) {

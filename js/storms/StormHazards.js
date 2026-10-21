@@ -13,7 +13,21 @@ import { clamp } from '../scenarios/math.js';
 // the square root of its size, so the largest an updraught can hold grows with the square of the
 // updraught; with 2.6 the moderate updraughts of pulse storms and elevated storms made almost no
 // hail at all (a 47 m/s updraught under an inch even rotating).
-export const HAIL = Object.freeze({ scaleInches: 2.3, referenceUpdraftMs: 60, power: 2, nonRotating: 0.8, fullRotation: 0.4, lapseRange: [6.5, 8.5], lapseGain: 0.3, largestInches: 5.5 });
+// 2026-10-20: lapseRange 6.5-8.5 to 7.2-9.4 when the sounding's 700-500 mb lapse rate was corrected
+// (it had read about 10% low; the same air, the same hail). And power 2 to 1.8, with the scale
+// keeping an inch of hail at the same updraught (40 m/s): of the storm-samples with an inch or
+// more on 4 worlds x 48 hours, 17.6% reached 2 inches (13.7% now) where about 10-12% of US reports
+// do, and severe thunderstorm warnings carried a damage threat on a third of them.
+// Then (final tuning, the same day) scale 2.12 to 1.9, and 1.8 in the second pass: hail alone made half the Moderate days, with
+// an inch of hail on 96% of days; on 80 days Moderate 33% to 30% with the moister Gulf air, largest
+// hail median 2.0 in, 2 in hail on 54% of days.
+// Melting (2026-10-21): a stone falls through the air above the wet-bulb zero and loses meltInches
+// for each meltRefM of it, divided by the square root of its size (small stones fall slower and lose
+// more of themselves; after Rasmussen and Heymsfield 1987, about 30% of an inch over a 3 km warm
+// layer, 10% of 2 inches, 5% of 3). Until then hail reached the ground at the size it grew.
+// With it, power 1.8 to 2 and scale 1.8 to 2.0: melting trims the marginal stones, so the curve can
+// again reach giant hail (80 days: 3.5 in hail group on 4% of days, none before; largest hail median 2.3 in).
+export const HAIL = Object.freeze({ scaleInches: 2.0, referenceUpdraftMs: 60, power: 2, meltInches: 0.3, meltRefM: 3000, nonRotating: 0.8, fullRotation: 0.4, lapseRange: [7.2, 9.4], lapseGain: 0.3, largestInches: 5.5 });
 // Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
 // more the more rain is falling), plus a share of the storm's own motion carried to the ground
 // (fast storms in strong flow are windier), plus the wind from the middle levels that a rear
@@ -41,7 +55,9 @@ export function hailSizeInches(storm, environment) {
   const updraughtMs = storm.updraughtMs ?? storm.updraftStrength * 65;
   const rotation = HAIL.nonRotating + (1 - HAIL.nonRotating) * clamp((storm.mesocycloneStrength ?? 0) / HAIL.fullRotation, 0, 1);
   const lapse = 1 + HAIL.lapseGain * (clamp((lapseRate - HAIL.lapseRange[0]) / (HAIL.lapseRange[1] - HAIL.lapseRange[0]), 0, 1) - 0.35);
-  return clamp(HAIL.scaleInches * (updraughtMs / HAIL.referenceUpdraftMs) ** HAIL.power * rotation * lapse, 0, HAIL.largestInches);
+  const grown = clamp(HAIL.scaleInches * (updraughtMs / HAIL.referenceUpdraftMs) ** HAIL.power * rotation * lapse, 0, HAIL.largestInches);
+  const warmM = Math.max(0, Number(environment.wetBulbZeroAglM ?? HAIL.meltRefM));
+  return Math.max(0, grown - HAIL.meltInches * (warmM / HAIL.meltRefM) / Math.sqrt(Math.max(grown, 0.25)));
 }
 
 export function gustMph(storm, environment, motionSpeedKph) {

@@ -8,14 +8,15 @@
 // its code compiled already, so the later runs of a batch start faster; but a thread keeps
 // about 450 MB after a run (measured: the memory is not handed back while it lives), so one
 // with nothing to do is let go after half a minute.
-//   WEATHER_FORECAST_WORKERS sets the number of threads (default: a quarter of the cores, 1 to 4).
+//   WEATHER_FORECAST_WORKERS sets the number of threads (default: a third of the cores, 1 to 8;
+//   on a 24-thread laptop 8 threads issued Day 1-3 in 33 s where 4 took 42, 2026-10-17).
 //   WEATHER_FORECAST_IDLE_SECONDS sets how long a thread with nothing to do is kept.
 import os from 'node:os';
 import v8 from 'node:v8';
 import { Worker } from 'node:worker_threads';
 
 const WORKER_SCRIPT = new URL('./forecastWorker.js', import.meta.url);
-const defaultSize = () => Number(process.env.WEATHER_FORECAST_WORKERS) || Math.max(1, Math.min(4, Math.floor(os.availableParallelism() / 4)));
+const defaultSize = () => Number(process.env.WEATHER_FORECAST_WORKERS) || Math.max(1, Math.min(8, Math.floor(os.availableParallelism() / 3)));
 
 // A world's saved state as bytes every thread can read (see AtmosphereWorld.saveState).
 export function shareState(state) {
