@@ -3,12 +3,14 @@
 // Everything shown is what the server issued (GET /api/mesoscale); nothing is worked out here
 // but the drawing. The map's counties (GET /api/counties) are drawn faintly; a watch is the
 // counties it is made of, shaded, as the Storm Prediction Center draws them.
+import { WATCH_COLOURS, DISCUSSION_COLOURS, discussionColourKey } from '../forecast/productColours.js';
+
 const $ = id => document.getElementById(id);
 const canvas = $('mdCanvas'), ctx = canvas.getContext('2d');
 // Watches: red for a tornado watch, blue for a severe thunderstorm watch. Discussions: grey,
 // amber and orange as a watch goes from unlikely to likely; one about a watch takes its colour.
-const WATCH_COLOUR = type => (type === 'tornado' ? '#ef4444' : '#3b82f6');
-const COLOUR = md => (md.watchNumber ? WATCH_COLOUR(md.watchType) : md.watchPercent >= 80 ? '#f97316' : md.watchPercent >= 40 ? '#f59e0b' : '#94a3b8');
+const WATCH_COLOUR = type => WATCH_COLOURS[type === 'tornado' ? 'tornado' : 'severe'];
+const COLOUR = md => DISCUSSION_COLOURS[discussionColourKey(md)];
 
 let data = null, chosen = null;   // chosen: 'watch:3' or 'md:12'
 let counties = null, countyPaths = null, countyPathsSide = 0;   // from /api/counties; each county's outline at the current size

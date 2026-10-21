@@ -1,28 +1,51 @@
 --!strict
--- The world map, opened and closed with M. The part of the map in view is drawn afresh, at the
--- screen's own resolution, whenever it is zoomed or panned, from the map's data
--- (ReplicatedStorage Shared.MapData.MapVector): land cover with hill-shading, the section-line
--- roads once zoomed in, rivers and main roads as lines, and labels for cities, towns (more of them
--- the closer in), rivers and highways. Every player is marked. Scroll to zoom about the cursor,
--- drag to pan, C to centre on yourself.
+-- The map every product screen draws on (it was the world map, client/MapView). The part of the
+-- map in view is drawn afresh, at the screen's own resolution, whenever it is zoomed or panned,
+-- from the map's data (ReplicatedStorage Shared.MapData.MapVector): land cover with
+-- hill-shading, the section-line roads once zoomed in, rivers and main roads as lines, and
+-- labels for cities, towns (more of them the closer in), rivers and highways. Every player is
+-- marked. Scroll to zoom about the cursor, drag to pan, C to centre on yourself.
+--
+-- A product screen sets an overlay: it may mute the base map so its own colours read, draws
+-- shapes into the same image (fill, hatch, stroke; rings are flat lists of map miles,
+-- x1, y1, x2, y2..., filled by the even-odd rule) and places labels before the map's own.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local AssetService = game:GetService("AssetService")
 local EncodingService = game:GetService("EncodingService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
 local Interchanges = require(ReplicatedStorage.Shared.World.Interchanges)
+local Raster = require(script.Parent.Raster)
 
-local MapView = {}
+local MapCanvas = {}
+
+export type Colour = Raster.Colour
+export type Rings = Raster.Rings
+-- fill, hatch and stroke (Raster.luau).
+export type Draw = Raster.Raster
+export type Labels = {
+	-- A boxed label on one of the rings' points: in view, as near the middle as it can be, clear
+	-- of the labels already placed. False if there was no room.
+	onRing: (text: string, rings: Rings, border: Colour) -> boolean,
+	-- A boxed label centred on a map point, if it is in view and clear of the others.
+	at: (text: string, mx: number, my: number, border: Colour) -> boolean,
+}
+export type Overlay = {
+	muted: boolean?,
+	draw: ((Draw) -> ())?,
+	labels: ((Labels) -> ())?,
+}
 
 local player = Players.LocalPlayer
 local MILE = Config.STUDS_PER_MILE
 local HALF = Config.MAP_MILES / 2
 local MAX_RES = 1024
 local MIN_MPP = 0.01 -- miles per pixel when fully zoomed in (10 studs a pixel)
+-- A muted map keeps this share of its colour, the rest going to MUTE_TO.
+local MUTE_KEEP, MUTE_TO = 0.38, { 22, 26, 32 }
 
 local COVER_COLOURS: { [string]: { number } } = {
 	water = { 70, 120, 190 }, cropland = { 196, 178, 112 }, irrigated = { 118, 160, 70 }, grassland = { 168, 172, 112 },
@@ -84,20 +107,24 @@ end
 
 -- View --------------------------------------------------------------------------------------
 
-local gui: ScreenGui? = nil
 local viewport: Frame
 local image: ImageLabel
 local labelLayer: Frame
-local readout: TextLabel
+local readout: TextLabel? = nil
 local editable: any = nil
 local editableSize = Vector2.zero
 local markers: { [Player]: Frame } = {}
 local labels: { TextLabel } = {}
+local overlay: Overlay? = nil
+local visible = false
 
 local centreX, centreY = HALF, HALF -- map miles at the middle of the view
-local mpp = 1 -- map miles per screen pixel
+local mpp = math.huge -- map miles per screen pixel (the whole map to start with)
 local dirty, quickPending = true, false
+local overlayDirty = false
+local clickHandler: ((mx: number, my: number) -> ())? = nil
 local lastChange = 0
+local lastQuick = 0
 
 local function viewSize(): Vector2
 	return viewport.AbsoluteSize
@@ -126,59 +153,43 @@ end
 
 local pixels: buffer
 local pw, ph = 0, 0
+local muted = false
 
-local function stamp(x: number, y: number, r: number, c: { number })
-	local x0, x1 = math.max(0, math.floor(x - r)), math.min(pw - 1, math.floor(x + r))
-	local y0, y1 = math.max(0, math.floor(y - r)), math.min(ph - 1, math.floor(y + r))
-	for py = y0, y1 do
-		local row = py * pw
-		for px = x0, x1 do
-			local o = (row + px) * 4
-			buffer.writeu8(pixels, o, c[1])
-			buffer.writeu8(pixels, o + 1, c[2])
-			buffer.writeu8(pixels, o + 2, c[3])
-		end
+local function tone(c: { number }): { number }
+	if not muted then
+		return c
 	end
+	return {
+		c[1] * MUTE_KEEP + MUTE_TO[1] * (1 - MUTE_KEEP),
+		c[2] * MUTE_KEEP + MUTE_TO[2] * (1 - MUTE_KEEP),
+		c[3] * MUTE_KEEP + MUTE_TO[3] * (1 - MUTE_KEEP),
+	}
 end
 
--- A line between map points, width in pixels, in image pixels (scale: image pixels per screen pixel).
-local function line(ax: number, ay: number, bx: number, by: number, width: number, c: { number }, scale: number)
-	local sx0, sy0 = toScreen(ax, ay)
-	local sx1, sy1 = toScreen(bx, by)
-	sx0, sy0, sx1, sy1 = sx0 * scale, sy0 * scale, sx1 * scale, sy1 * scale
-	if math.max(sx0, sx1) < -4 or math.min(sx0, sx1) > pw + 4 or math.max(sy0, sy1) < -4 or math.min(sy0, sy1) > ph + 4 then
-		return
-	end
-	local length = math.sqrt((sx1 - sx0) ^ 2 + (sy1 - sy0) ^ 2)
-	local steps = math.max(1, math.ceil(length / 0.8))
-	local r = math.max(0, width * scale / 2 - 0.5)
-	for i = 0, steps do
-		local t = i / steps
-		stamp(sx0 + (sx1 - sx0) * t, sy0 + (sy1 - sy0) * t, r, c)
-	end
-end
+-- The base map of the last view drawn, kept so a product can be redrawn over it (a radar
+-- loop's next frame) without drawing the map again.
+local baseKey = ""
+local basePixels: buffer? = nil
 
-local function polyline(points: { number }, width: number, c: { number }, scale: number)
-	for i = 3, #points, 2 do
-		line(points[i - 2], points[i - 1], points[i], points[i + 1], width, c, scale)
-	end
-end
-
-local function render(scale: number)
-	local size = viewSize()
-	pw, ph = math.max(1, math.floor(size.X * scale)), math.max(1, math.floor(size.Y * scale))
-	pixels = buffer.create(pw * ph * 4)
+local function drawBase(raster: Raster.Raster, scale: number, size: Vector2)
+	local line, polyline = raster.line, raster.polyline
 	local step = mpp / scale
 	local left, top = centreX - size.X * mpp / 2, centreY - size.Y * mpp / 2
 	local n = cells
-	-- Land: cover colour times hill-shade, blended between cells once zoomed in past them.
+	-- Land: cover colour times hill-shade, blended between cells once zoomed in past them; a
+	-- muted map keeps MUTE_KEEP of it.
 	local NN = n * n
+	local keep = if muted then MUTE_KEEP else 1
+	local base1, base2, base3 = 0, 0, 0
+	if muted then
+		base1, base2, base3 = MUTE_TO[1] * (1 - keep), MUTE_TO[2] * (1 - keep), MUTE_TO[3] * (1 - keep)
+	end
 	local function cellColour(i: number, j: number): (number, number, number)
 		i, j = math.clamp(i, 0, n - 1), math.clamp(j, 0, n - 1)
 		local k = j * n + i
 		local c = coverRGB[buffer.readu8(land, k)]
-		local f = buffer.readu8(land, NN + k) / 200
-		return c[1] * f, c[2] * f, c[3] * f
+		local f = buffer.readu8(land, NN + k) / 200 * keep
+		return c[1] * f + base1, c[2] * f + base2, c[3] * f + base3
 	end
 	local smooth = step < cellMiles * 0.7
 	for py = 0, ph - 1 do
@@ -232,6 +243,7 @@ local function render(scale: number)
 	-- Section-line roads once zoomed in (paved from 12 pixels a mile, all from 40).
 	if mpp < 1 / 12 then
 		local minClass = if mpp < 1 / 40 then 1 else 3
+		local sectionColours = { tone(SECTION_COLOURS[1]), tone(SECTION_COLOURS[2]), tone(SECTION_COLOURS[3]) }
 		local I0, I1 = math.max(0, math.floor(left)), math.min(sectionSize - 1, math.ceil(left + size.X * mpp))
 		local J0, J1 = math.max(0, math.floor(top)), math.min(sectionSize - 1, math.ceil(top + size.Y * mpp))
 		for J = J0, J1 do
@@ -239,33 +251,58 @@ local function render(scale: number)
 				local v = buffer.readu8(sections, J * sectionSize + I)
 				local east, south = v % 4, (v // 4) % 4
 				if east >= minClass then
-					line(I, J, I + 1, J, if east == 3 then 1.5 else 1, SECTION_COLOURS[east], scale)
+					line(I, J, I + 1, J, if east == 3 then 1.5 else 1, sectionColours[east])
 				end
 				if south >= minClass then
-					line(I, J, I, J + 1, if south == 3 then 1.5 else 1, SECTION_COLOURS[south], scale)
+					line(I, J, I, J + 1, if south == 3 then 1.5 else 1, sectionColours[south])
 				end
 			end
 		end
 	end
 	-- Rivers (wider ones wider), then the main roads.
-	for _, river in data.rivers do
-		local studs = math.clamp(river.width * 0.18, 12, 220)
-		polyline(river.points, math.max(1, studs / MILE / mpp), RIVER, scale)
+	local river = tone(RIVER)
+	for _, r in data.rivers do
+		local studs = math.clamp(r.width * 0.18, 12, 220)
+		polyline(r.points, math.max(1, studs / MILE / mpp), river)
 	end
 	-- Interchange ramps once zoomed in.
 	if mpp < 0.15 then
-		for _, line in rampLines do
-			polyline(line, math.max(1, 22 / MILE / mpp), { 235, 150, 90 }, scale)
+		local ramp = tone({ 235, 150, 90 })
+		for _, l in rampLines do
+			polyline(l, math.max(1, 22 / MILE / mpp), ramp)
 		end
 	end
 	for _, kind in { "highway", "expressway", "interstate" } do
 		local style = ROAD_STYLE[kind]
 		local width = style.width * math.clamp(0.25 / mpp, 1, 3)
+		local colour = tone(style.colour)
 		for _, road in data.roads do
 			if road.kind == kind then
-				polyline(road.points, width, style.colour, scale)
+				polyline(road.points, width, colour)
 			end
 		end
+	end
+end
+
+local function render(scale: number)
+	muted = overlay ~= nil and overlay.muted == true
+	local size = viewSize()
+	pw, ph = math.max(1, math.floor(size.X * scale)), math.max(1, math.floor(size.Y * scale))
+	pixels = buffer.create(pw * ph * 4)
+	local raster = Raster.new(pixels, pw, ph, toScreen, scale)
+	local key = string.format("%d|%d|%.6f|%.6f|%.9f|%s", pw, ph, centreX, centreY, mpp, tostring(muted))
+	local kept = basePixels
+	if kept and key == baseKey then
+		buffer.copy(pixels, 0, kept)
+	else
+		drawBase(raster, scale, size)
+		local copy = buffer.create(pw * ph * 4)
+		buffer.copy(copy, 0, pixels)
+		basePixels, baseKey = copy, key
+	end
+	-- The product over the map.
+	if overlay and overlay.draw then
+		overlay.draw(raster)
 	end
 	if not editable or editableSize ~= Vector2.new(pw, ph) then
 		if editable then
@@ -279,6 +316,8 @@ local function render(scale: number)
 end
 
 -- Labels --------------------------------------------------------------------------------------
+
+type LabelStyle = { border: Colour? }
 
 local function placeLabels()
 	for _, l in labels do
@@ -298,6 +337,23 @@ local function placeLabels()
 		end
 		return true
 	end
+	local function take(): TextLabel
+		used += 1
+		local l = labels[used]
+		if not l then
+			l = Instance.new("TextLabel")
+			l.TextStrokeTransparency = 0.3
+			l.ZIndex = 3
+			local stroke = Instance.new("UIStroke")
+			stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			stroke.Thickness = 1
+			stroke.Parent = l
+			l.Parent = labelLayer
+			labels[used] = l
+		end
+		l.Visible = true
+		return l
+	end
 	local function label(text: string, x: number, y: number, textSize: number, colour: Color3, bold: boolean, rotation: number?): boolean
 		local w, h = #text * textSize * 0.55 + 6, textSize + 4
 		local lx, ly = x + 5, y - h / 2
@@ -308,18 +364,10 @@ local function placeLabels()
 			return false
 		end
 		table.insert(taken, { lx, ly, w, h })
-		used += 1
-		local l = labels[used]
-		if not l then
-			l = Instance.new("TextLabel")
-			l.BackgroundTransparency = 1
-			l.TextStrokeTransparency = 0.3
-			l.TextXAlignment = Enum.TextXAlignment.Left
-			l.ZIndex = 3
-			l.Parent = labelLayer
-			labels[used] = l
-		end
-		l.Visible = true
+		local l = take()
+		l.BackgroundTransparency = 1
+		l.TextStrokeTransparency = 0.3
+		;(l:FindFirstChildOfClass("UIStroke") :: UIStroke).Enabled = false
 		l.Text = text
 		l.TextSize = textSize
 		l.Font = if bold then Enum.Font.GothamBold else Enum.Font.Gotham
@@ -329,6 +377,60 @@ local function placeLabels()
 		l.Rotation = rotation or 0
 		l.TextXAlignment = if rotation then Enum.TextXAlignment.Center else Enum.TextXAlignment.Left
 		return true
+	end
+	-- A boxed product label centred on a point.
+	local function box(text: string, x: number, y: number, border: Colour): boolean
+		local w, h = #text * 7 + 10, 16
+		local lx, ly = x - w / 2, y - h / 2
+		if not free(lx, ly, w, h) then
+			return false
+		end
+		table.insert(taken, { lx - 20, ly - 12, w + 40, h + 24 }) -- keep product labels apart
+		local l = take()
+		l.BackgroundTransparency = 0.08
+		l.BackgroundColor3 = Color3.fromRGB(11, 17, 25)
+		l.TextStrokeTransparency = 1
+		local stroke = l:FindFirstChildOfClass("UIStroke") :: UIStroke
+		stroke.Enabled = true
+		stroke.Color = Color3.fromRGB(border[1], border[2], border[3])
+		l.Text = text
+		l.TextSize = 12
+		l.Font = Enum.Font.GothamBold
+		l.TextColor3 = Color3.fromRGB(241, 245, 249)
+		l.Size = UDim2.fromOffset(w, h)
+		l.Position = UDim2.fromOffset(lx, ly)
+		l.Rotation = 0
+		l.TextXAlignment = Enum.TextXAlignment.Center
+		return true
+	end
+	-- The product's labels first: they matter more than place names.
+	if overlay and overlay.labels then
+		overlay.labels({
+			at = function(text: string, mx: number, my: number, border: Colour): boolean
+				local x, y = toScreen(mx, my)
+				return box(text, x, y, border)
+			end,
+			onRing = function(text: string, rings: Rings, border: Colour): boolean
+				local points: { { number } } = {}
+				for _, ring in rings do
+					for i = 1, #ring - 1, 2 do
+						local x, y = toScreen(ring[i], ring[i + 1])
+						if x > 30 and y > 20 and x < size.X - 30 and y < size.Y - 20 then
+							table.insert(points, { x, y, (x - size.X / 2) ^ 2 + (y - size.Y / 2) ^ 2 })
+						end
+					end
+				end
+				table.sort(points, function(a, b)
+					return a[3] < b[3]
+				end)
+				for k = 1, math.min(#points, 60) do
+					if box(text, points[k][1], points[k][2], border) then
+						return true
+					end
+				end
+				return false
+			end,
+		})
 	end
 	-- Places by importance; smaller ones only as the view closes in.
 	local towns = {}
@@ -463,7 +565,8 @@ local function updateMarkers()
 		end
 	end
 	local mx, my = myMiles()
-	if mx and my then
+	local out = readout
+	if out and mx and my then
 		local best, distance = nil, math.huge
 		for _, s in data.settlements do
 			local d = math.sqrt((s.x - mx) ^ 2 + (s.y - my) ^ 2)
@@ -471,7 +574,7 @@ local function updateMarkers()
 				best, distance = s, d
 			end
 		end
-		readout.Text = string.format("You: %.1f mi east, %.1f mi south  ·  region %d, %d", mx, my, mx // Config.REGION_MILES, my // Config.REGION_MILES)
+		out.Text = string.format("You: %.1f mi east, %.1f mi south  ·  region %d, %d", mx, my, mx // Config.REGION_MILES, my // Config.REGION_MILES)
 			.. (if best then string.format("  ·  %s %.1f mi", best.name, distance) else "")
 			.. string.format("  ·  %s", if mpp < 0.1 then string.format("%.0f studs/px", mpp * MILE) else string.format("%.2f mi/px", mpp))
 	end
@@ -483,58 +586,19 @@ local function changed()
 	lastChange = os.clock()
 end
 
--- Building the screen -------------------------------------------------------------------------
+-- Public --------------------------------------------------------------------------------------
 
-local function build(): ScreenGui
+-- Builds the map inside a frame (it fills it). readoutLabel, if given, shows where you are.
+function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	loadData()
-	local screen = Instance.new("ScreenGui")
-	screen.Name = "WorldMap"
-	screen.ResetOnSpawn = false
-	screen.IgnoreGuiInset = true
-	screen.DisplayOrder = 10
-	screen.Enabled = false
-
-	local shade = Instance.new("Frame")
-	shade.Size = UDim2.fromScale(1, 1)
-	shade.BackgroundColor3 = Color3.new(0, 0, 0)
-	shade.BackgroundTransparency = 0.45
-	shade.Parent = screen
-
-	local panel = Instance.new("Frame")
-	panel.AnchorPoint = Vector2.new(0.5, 0.5)
-	panel.Position = UDim2.fromScale(0.5, 0.5)
-	panel.Size = UDim2.fromScale(0.92, 0.92)
-	panel.BackgroundColor3 = Color3.fromRGB(20, 24, 30)
-	panel.Parent = screen
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 12)
-	corner.Parent = panel
-
-	local title = Instance.new("TextLabel")
-	title.BackgroundTransparency = 1
-	title.Position = UDim2.new(0, 16, 0, 8)
-	title.Size = UDim2.new(1, -32, 0, 28)
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 20
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.TextColor3 = Color3.fromRGB(236, 240, 245)
-	title.Text = "World map"
-	title.Parent = panel
-	local hint = title:Clone()
-	hint.Font = Enum.Font.Gotham
-	hint.TextSize = 14
-	hint.TextXAlignment = Enum.TextXAlignment.Right
-	hint.TextColor3 = Color3.fromRGB(150, 160, 175)
-	hint.Text = "M close  ·  scroll or +/− zoom  ·  drag pan  ·  C centre on you"
-	hint.Parent = panel
-
+	readout = readoutLabel
 	viewport = Instance.new("Frame")
-	viewport.Position = UDim2.new(0, 12, 0, 44)
-	viewport.Size = UDim2.new(1, -24, 1, -84)
+	viewport.Name = "MapCanvas"
+	viewport.Size = UDim2.fromScale(1, 1)
 	viewport.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
 	viewport.ClipsDescendants = true
 	viewport.Active = true
-	viewport.Parent = panel
+	viewport.Parent = parent
 
 	image = Instance.new("ImageLabel")
 	image.Size = UDim2.fromScale(1, 1)
@@ -546,68 +610,32 @@ local function build(): ScreenGui
 	labelLayer.BackgroundTransparency = 1
 	labelLayer.Parent = viewport
 
-	readout = Instance.new("TextLabel")
-	readout.BackgroundTransparency = 1
-	readout.Position = UDim2.new(0, 16, 1, -36)
-	readout.Size = UDim2.new(1, -32, 0, 28)
-	readout.Font = Enum.Font.Gotham
-	readout.TextSize = 15
-	readout.TextXAlignment = Enum.TextXAlignment.Left
-	readout.TextColor3 = Color3.fromRGB(220, 226, 235)
-	readout.Parent = panel
-
 	viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(changed)
-	screen.Parent = player:WaitForChild("PlayerGui")
-	return screen
-end
 
-local function centreOnMe()
-	local mx, my = myMiles()
-	if mx and my then
-		centreX, centreY = mx, my
-	end
-	changed()
-end
-
-function MapView.toggle()
-	local first = gui == nil
-	if not gui then
-		gui = build()
-	end
-	local screen = gui :: ScreenGui
-	screen.Enabled = not screen.Enabled
-	if screen.Enabled then
-		if first then
-			mpp = math.huge -- the whole map to start with
-			centreOnMe()
-		end
-		changed()
-	end
-end
-
-function MapView.start()
-	UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
-		if processed then
-			return
-		end
-		if input.KeyCode == Enum.KeyCode.M then
-			MapView.toggle()
-		elseif input.KeyCode == Enum.KeyCode.C and gui and gui.Enabled then
-			centreOnMe()
-		elseif (input.KeyCode == Enum.KeyCode.Equals or input.KeyCode == Enum.KeyCode.Minus) and gui and gui.Enabled then
-			mpp *= if input.KeyCode == Enum.KeyCode.Equals then 0.5 else 2
-			clampView()
-			changed()
+	-- Scroll to zoom about the cursor; drag the map itself to pan. A press that hardly moves is a
+	-- click, handed to the click handler as a map point.
+	local dragging: Vector3? = nil
+	local pressedAt: Vector3? = nil
+	viewport.InputBegan:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = input.Position
+			pressedAt = input.Position
 		end
 	end)
-
-	local dragging: Vector3? = nil
-	UserInputService.InputChanged:Connect(function(input: InputObject)
-		local screen = gui
-		if not screen or not screen.Enabled then
-			return
+	UserInputService.InputEnded:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local from = pressedAt
+			dragging, pressedAt = nil, nil
+			local handler = clickHandler
+			if visible and from and handler and (input.Position - from).Magnitude < 5 then
+				local size = viewSize()
+				local at = Vector2.new(input.Position.X, input.Position.Y) - viewport.AbsolutePosition
+				handler(centreX + (at.X - size.X / 2) * mpp, centreY + (at.Y - size.Y / 2) * mpp)
+			end
 		end
-		if input.UserInputType == Enum.UserInputType.MouseWheel then
+	end)
+	viewport.InputChanged:Connect(function(input: InputObject)
+		if visible and input.UserInputType == Enum.UserInputType.MouseWheel then
 			local mouse = UserInputService:GetMouseLocation() - viewport.AbsolutePosition
 			local size = viewSize()
 			-- Keep the map point under the cursor where it is.
@@ -617,7 +645,10 @@ function MapView.start()
 			centreX, centreY = px - (mouse.X - size.X / 2) * mpp, py - (mouse.Y - size.Y / 2) * mpp
 			clampView()
 			changed()
-		elseif input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if visible and dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 			centreX -= (input.Position.X - dragging.X) * mpp
 			centreY -= (input.Position.Y - dragging.Y) * mpp
 			dragging = input.Position
@@ -625,44 +656,88 @@ function MapView.start()
 			changed()
 		end
 	end)
-	UserInputService.InputBegan:Connect(function(input: InputObject)
-		local screen = gui
-		if screen and screen.Enabled and input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = input.Position
-		end
-	end)
-	UserInputService.InputEnded:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = nil
-		end
-	end)
-
-	-- While the view moves, redraw at half resolution (at most every 70 ms); once it has been
-	-- still for a quarter second, at full resolution.
-	local lastQuick = 0
-	RunService.RenderStepped:Connect(function()
-		local screen = gui
-		if not screen or not screen.Enabled then
-			return
-		end
-		local now = os.clock()
-		if dirty then
-			clampView()
-			local size = viewSize()
-			local full = math.min(1, MAX_RES / math.max(size.X, size.Y))
-			if now - lastChange > 0.25 then
-				render(full)
-				placeLabels()
-				dirty, quickPending = false, false
-			elseif quickPending and now - lastQuick > 0.07 then
-				render(full * 0.4)
-				placeLabels()
-				quickPending = false
-				lastQuick = now
-			end
-		end
-		updateMarkers()
-	end)
 end
 
-return MapView
+-- What is drawn over the map (nil: the plain world map). quick: only the product changed, so
+-- it is drawn at once over the kept map (a radar loop's next frame).
+function MapCanvas.setOverlay(value: Overlay?, quick: boolean?)
+	overlay = value
+	if quick then
+		overlayDirty = true
+	else
+		changed()
+	end
+end
+
+-- Draw again (the overlay's product changed).
+function MapCanvas.redraw()
+	changed()
+end
+
+-- Called with the map point (miles) of a click on the map; nil to stop.
+function MapCanvas.onClick(handler: ((mx: number, my: number) -> ())?)
+	clickHandler = handler
+end
+
+-- Map miles per screen pixel at the current zoom.
+function MapCanvas.milesPerPixel(): number
+	return mpp
+end
+
+-- The map point (miles) of a player's character, if it has one.
+function MapCanvas.playerMiles(): (number?, number?)
+	return myMiles()
+end
+
+function MapCanvas.setVisible(on: boolean)
+	visible = on
+	if on then
+		changed()
+	end
+end
+
+function MapCanvas.centreOnMe()
+	local mx, my = myMiles()
+	if mx and my then
+		centreX, centreY = mx, my
+	end
+	changed()
+end
+
+function MapCanvas.zoom(factor: number)
+	mpp *= factor
+	clampView()
+	changed()
+end
+
+-- Call every frame while the screen is open. While the view moves, it is redrawn at reduced
+-- resolution (at most every 70 ms); once it has been still for a quarter second, at full.
+function MapCanvas.step()
+	if not visible then
+		return
+	end
+	local now = os.clock()
+	if dirty then
+		clampView()
+		local size = viewSize()
+		local full = math.min(1, MAX_RES / math.max(size.X, size.Y))
+		if now - lastChange > 0.25 then
+			render(full)
+			placeLabels()
+			dirty, quickPending = false, false
+		elseif quickPending and now - lastQuick > 0.07 then
+			render(full * 0.4)
+			placeLabels()
+			quickPending = false
+			lastQuick = now
+		end
+	elseif overlayDirty then
+		local size = viewSize()
+		render(math.min(1, MAX_RES / math.max(size.X, size.Y)))
+		placeLabels()
+	end
+	overlayDirty = false
+	updateMarkers()
+end
+
+return MapCanvas

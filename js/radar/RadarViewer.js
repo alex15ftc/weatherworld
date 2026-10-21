@@ -4,6 +4,7 @@
 // thunderstorm warnings in effect at the time of the scan shown (GET /api/warnings).
 import { WeatherProductClient } from '../api/WeatherProductClient.js';
 import { RADAR_PRODUCTS, decodeRadarValue, radarColorTable, beamHeightKm, isRangeFolded } from './RadarFormat.js';
+import { WARNING_COLOURS, warningColourKey, warningRank } from '../forecast/productColours.js';
 
 const POLL_MS = 4000;
 const LOOP_FRAMES = 12;
@@ -498,11 +499,7 @@ function drawOverlay() {
 // NWS colours: red for a tornado warning, yellow for a severe thunderstorm warning; magenta for
 // a particularly dangerous tornado, violet for a tornado emergency, oranges for the damage tiers
 // of a severe thunderstorm.
-function warningColour(w) {
-  if (w.type === 'tornado') return w.emergency ? '#b44dff' : w.pds ? '#ff3df2' : '#ff2d2d';
-  return w.tags?.damage === 'DESTRUCTIVE' ? '#ff5a1f' : w.tags?.damage === 'CONSIDERABLE' ? '#ff9f1a' : '#f5c518';
-}
-const warningRank = w => (w.type === 'tornado' ? (w.emergency ? 6 : w.pds ? 5 : w.tags?.tornado === 'OBSERVED' ? 4 : 3) : w.tags?.damage === 'DESTRUCTIVE' ? 2 : w.tags?.damage === 'CONSIDERABLE' ? 1 : 0);
+const warningColour = w => WARNING_COLOURS[warningColourKey(w)];
 const warningEnd = w => w.endedHourUtc ?? w.validToHourUtc;
 const shortName = w => (w.emergency ? `TOR EMERGENCY ${w.number}` : `${w.pds ? 'PDS ' : ''}${w.type === 'tornado' ? 'TOR' : 'SVR'} ${w.number}`);
 // The hour of the scan on screen, and the warnings in effect then.

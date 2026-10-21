@@ -9,7 +9,8 @@
 // which it verified at least --target of the time (0.5: more often than not). A group that never
 // does gets a share above 1: never drawn on the runs' word alone. A group with fewer than --thin
 // areas in all keeps the agreement it needed before (OUTLOOK.groupAgreement, rising from the first
-// group to the last): too few to say either way.
+// group to the last): too few to say either way. A higher group never asks less of the runs than
+// the one below it (a group is part of every lower one).
 //   node scripts/fit-cig-calibration.mjs data.txt [--least 12] [--target 0.5] [--thin 40]
 import { readFileSync } from 'node:fs';
 import { OUTLOOK } from '../js/forecast/DayOneOutlook.js';
@@ -40,5 +41,6 @@ for (const [day, hazards] of Object.entries(data)) for (const [hazard, groups] o
     console.log(`${day} ${hazard.padEnd(7)} CIG${g + 1}: ${pooled.map(p => `${p.from}/8+ ${(100 * p.hits / p.areas).toFixed(0)}% (${p.areas})`).join('  ') || 'no areas'} -> ${found ? `draw from ${found.from}/8 of the runs` : 'never'}`);
     return found ? Math.round(1000 * found.from / 8) / 1000 : 1.01;
   });
+  table[day][hazard] = table[day][hazard].map((share, g, all) => Math.max(share, ...all.slice(0, g)));
 }
 console.log('\nexport const CIG_SHARE = Object.freeze(' + JSON.stringify(table) + ');');

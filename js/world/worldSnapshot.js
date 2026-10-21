@@ -8,7 +8,7 @@ import { Atmosphere } from '../atmosphere.js';
 
 const SKIP_WORLD = new Set([
   'runtime', 'outlookCycle', 'meteorologicalIntegrityHistory',
-  'stormArchive', 'stormHistory'
+  'stormArchive', 'stormHistory', 'reportLog'
 ]);
 const SKIP_CELL = new Set(['predictiveOutlook', 'thermodynamics']);
 

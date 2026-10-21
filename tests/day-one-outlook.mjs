@@ -11,7 +11,8 @@ import { ForecastPool, shareState } from '../server/ForecastPool.js';
 const rank = c => WORLD_RISK_ORDER.indexOf(c);
 // The combining of the runs, without the calibration of the chances (outlookCalibration.js),
 // which is checked at the end.
-const combine = (members, options) => combineOutlook(members, { calibration: {}, ...options });
+// The rules themselves, without the fitted chance and intensity-group calibrations.
+const combine = (members, options) => combineOutlook(members, { calibration: {}, cigCalibration: null, ...options });
 
 // --- The outlook day runs 12Z to 12Z.
 assert.equal(hoursToDayEnd(12), 24); assert.equal(hoursToDayEnd(36), 24); assert.equal(hoursToDayEnd(18), 18); assert.equal(hoursToDayEnd(11.5), 0.5); assert.equal(hoursToDayEnd(60.5), 23.5);
@@ -57,6 +58,10 @@ for (let k = 2; k < WORLD_RISK_ORDER.length; k++) assert.ok(o.areas[WORLD_RISK_O
 const split = combine([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60 });
 assert.equal(split.level.tornado[centre], 15); assert.ok(split.agreementHeld.tornado > 0, 'the agreement rule held the chance down somewhere');
 assert.equal(o.agreementHeld.tornado, 0, 'where every run agrees nothing is held down'); assert.equal(split.cig.tornado[centre], 1, 'the intensity group needs the runs to agree too: with half of them, only the first group');
+// With an intensity-group calibration (CIG_SHARE), the share of runs it asks for is all: half the
+// runs reaching the third group draws it where the calibration says half is enough.
+const calibrated = combine([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60, cigCalibration: { day1: { tornado: [0.5, 0.5, 0.5] }, day2: { tornado: [0.5, 0.5, 0.5] } } });
+assert.equal(calibrated.cig.tornado[centre], 3, 'a calibrated group is drawn from the share of runs it was fitted to');
 assert.ok(rank(split.highest) <= rank(o.highest) && split.areas.SLGT < o.areas.SLGT, 'members that disagree give lower contours and smaller areas'); assert.equal(split.expected.membersWithTornado, 2);
 assert.equal(o.day, 'day1'); assert.deepEqual(o.hazards, WORLD_HAZARDS); assert.equal(o.validFromHourUtc, 36);
 

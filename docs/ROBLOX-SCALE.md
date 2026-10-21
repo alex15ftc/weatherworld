@@ -72,8 +72,26 @@ These belong to the storm work that follows, not to the Roblox layer.
   radar draws the hook and debris on the rear-right flank, 3 to 10 km away. Both must use
   one position before storms are built in 3D.
 
-## If tornadoes still feel too brief
+## Chasing playability (decided 2026-10-21)
 
-Only after the storm work, and only if play testing shows it: ease the shared clock from
-12x toward 6x while a tornado-producing storm has players near it, at any hour, with a
-smooth ramp and a visible indicator. Never tie the clock to the time of day.
+At 12x a tornado on the ground for 48 simulated minutes is on screen for 4 real minutes. The
+user ruled out both shortcuts: tornado ground time stays as the engine gives it, and the
+shared clock is not slowed near tornadoes (so the earlier idea of easing it toward 6x is
+dropped). What makes the window work instead, both built on the Roblox side:
+
+1. **Travel compressed as much as time.** A tornado only feels short if getting into position
+   takes real-world proportions of the window. Tune vehicle speeds against the place scale
+   (about 50 engine miles a place) so crossing ground takes the same share of a chase it
+   would in reality: a 1-2 hour real reposition becomes 5-10 real minutes, and a 48-minute
+   tornado still gets its 4. Roads keep their 1.7-2x detour over a straight line.
+2. **A visible life around the damage path.** The engine's ground time is the damage path
+   only. Show what a chaser sees on either side of it, from the engine's own fields:
+   - before touchdown: the wall cloud lowering and the funnel descending while the storm's
+     tornado imminence rises (`tornado.genesisPotential`, `storm.lowRotation`);
+   - after it lifts: the rope-out, the condensation funnel thinning and leaning as it decays
+     (the lean is already in StormAppearance.js), for a minute or two of game time.
+
+   Neither adds damage or changes when the engine says the tornado is down.
+
+(Option 2 from the same discussion, earlier cues and intercept guidance such as "tornado
+likely within N minutes" and projected tracks, was not chosen for now.)

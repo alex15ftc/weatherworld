@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Storm Reports · Fake Plains Weather</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+  <style>
+    body { display: grid; grid-template-columns: 290px minmax(0, 1fr) minmax(420px, 46vw); height: 100vh; overflow: hidden; }
+    .rp-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; overflow: auto; }
+    .rp-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
+    .rp-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
+    .rp-card strong { font-size: 15px; line-height: 1.35; }
+    #daySelect { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+    #counts { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; font-size: 13px; align-items: center; }
+    #counts b { text-align: right; }
+    .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+    .legend { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; font-size: 12.5px; align-items: center; }
+    .filters label { display: flex; gap: 6px; align-items: center; justify-content: flex-start; font-size: 13px; font-weight: 600; }
+    .filters input { width: auto; margin: 0; }
+    td a { color: #93c5fd; }
+    .rp-map { position: relative; min-width: 0; min-height: 0; padding: 70px 12px 12px; display: flex; align-items: center; justify-content: center; }
+    #rpCanvas { display: block; border-radius: 6px; }
+    #tip { position: absolute; pointer-events: none; background: rgba(11,17,25,.95); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; display: none; max-width: 320px; }
+    .rp-tables { border-left: 1px solid var(--line); padding: 64px 14px 14px; display: flex; flex-direction: column; gap: 14px; overflow: auto; }
+    .rp-tables h2 { font-size: 14px; margin: 0; display: flex; justify-content: space-between; align-items: center; padding: 6px 9px; border-radius: 6px; color: #0b1119; }
+    .rp-tables h2 a { font-size: 11.5px; color: #0b1119; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    tr.on td { background: rgba(37, 99, 235, .18); }
+    td.cmt { color: var(--muted); }
+    .note { font-size: 12px; color: var(--muted); margin: 0; }
+    @media (max-width: 1100px) { body { grid-template-columns: 1fr; grid-template-rows: auto 70vh auto; height: auto; overflow: auto; } .rp-map { padding-top: 12px; } }
+  </style>
+</head>
+<body data-page="reports">
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="mesoscale" href="./mesoscale.html">Mesoscale</a><a data-nav-page="radar" href="./radar.html">Radar</a><a data-nav-page="reports" class="active" href="./reports.html">Storm reports</a><a data-nav-page="damage" href="./damage.html">Damage surveys</a><a class="perf-link" href="./performance.html">Performance</a></nav>
+  <aside class="panel rp-side">
+    <div class="rp-card">
+      <span>Storm reports</span>
+      <select id="daySelect" aria-label="Day"></select>
+      <strong id="status">—</strong>
+      <p class="note">Each day runs from 1200 UTC to 1159 UTC the next day. All reports are preliminary.</p>
+    </div>
+    <div class="rp-card">
+      <span>Reports</span>
+      <div id="counts"></div>
+    </div>
+    <div class="rp-card filters">
+      <span>Show</span>
+      <label><input type="checkbox" data-type="tornado" checked /> Tornado</label>
+      <label><input type="checkbox" data-type="hail" checked /> Hail</label>
+      <label><input type="checkbox" data-type="wind" checked /> Wind</label>
+    </div>
+    <div class="rp-card">
+      <span>Key</span>
+      <div class="legend">
+        <i class="dot" style="background:#ef4444"></i><span>Tornado</span>
+        <i class="dot" style="background:#22c55e"></i><span>Hail (1 in or larger)</span>
+        <i class="dot" style="background:#3b82f6"></i><span>Wind damage, or a gust of 58 mph or more</span>
+        <i class="dot" style="background:#0b1119;border:2px solid #fff;border-radius:2px"></i><span>Significant: hail 2 in or larger, gust 75 mph or more</span>
+      </div>
+    </div>
+  </aside>
+  <main class="rp-map"><canvas id="rpCanvas"></canvas><div id="tip"></div></main>
+  <section class="panel rp-tables" id="tables">
+    <p class="note">Times are UTC. Hail size is in hundredths of an inch (175 = 1.75 in). Wind speed is in mph; UNK means unknown. Locations are miles and direction from the nearest town; X and Y are miles east and south of the map's northwest corner. The office that would take the report is in parentheses.</p>
+  </section>
+  <script type="module" src="./js/pages/reportsPage.js"></script>
+</body>
+</html>

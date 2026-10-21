@@ -130,13 +130,16 @@ export class AtmosphereWorld {
       this.steering?.update();
       this.prepare(stepHours);
       if (this.stormsEnabled) this.withStormEffects(() => (advanceStorms ? advanceStormEngine(this.world, stepHours) : applyStormFeedback(this.world, stepHours)));
+      if (advanceStorms && this.stormsEnabled) this.onStormTick?.();
       onStep?.();
     }
   }
 
   // Moves the storms alone, between atmosphere steps (they may run up to a step ahead of it).
+  // onStormTick, when set (the live world's storm log, js/reports/stormLog.js), is called after
+  // each move of the storms.
   advanceStormLayer(hours = 1 / 12) {
-    if (this.stormsEnabled && hours > 0) advanceStormEngine(this.world, hours, { applyFeedback: false, initiate: true });
+    if (this.stormsEnabled && hours > 0) { advanceStormEngine(this.world, hours, { applyFeedback: false, initiate: true }); this.onStormTick?.(); }
   }
 
   // Storms warm the air aloft and dry their inflow layer. The regional layer rewrites the

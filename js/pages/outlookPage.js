@@ -4,18 +4,10 @@
 // Everything shown is what the server issued (GET /api/outlooks/day1, day2 or day3). The areas arrive as
 // outlines (rings of points, shares of the map) and are drawn as shapes: filled, outlined,
 // labelled and hatched; nothing is painted cell by cell.
+import { CATEGORY_COLOURS, CATEGORY_SHORT, CHANCE_COLOURS } from '../forecast/productColours.js';
+
 const $ = id => document.getElementById(id);
 const canvas = $('outlookCanvas'), ctx = canvas.getContext('2d');
-
-// Colours as the real outlooks use them (the 75% and 90% wind levels, added in 2026, are this page's own choice).
-const CATEGORY_COLOURS = { TSTM: '#c1e9c1', MRGN: '#66a366', SLGT: '#ffe066', ENH: '#ffa366', MDT: '#e06666', HIGH: '#ee99ee' };
-const CATEGORY_SHORT = { TSTM: 'TSTM', MRGN: 'MRGL', SLGT: 'SLGT', ENH: 'ENH', MDT: 'MDT', HIGH: 'HIGH' };
-const CHANCE_COLOURS = {
-  tornado: { 2: '#008b00', 5: '#8b4726', 10: '#ffc800', 15: '#ff0000', 30: '#ff00ff', 45: '#912cee', 60: '#104e8b' },
-  hail: { 5: '#8b4726', 15: '#ffc800', 30: '#ff0000', 45: '#ff00ff', 60: '#912cee' },
-  wind: { 5: '#8b4726', 15: '#ffc800', 30: '#ff0000', 45: '#ff00ff', 60: '#912cee', 75: '#104e8b', 90: '#00868b' },
-  severe: { 5: '#8b4726', 15: '#ffc800', 30: '#ff0000', 45: '#ff00ff', 60: '#912cee' }
-};
 const LAYERS = { category: 'Categorical', tornado: 'Tornado', wind: 'Wind', hail: 'Hail', severe: 'Severe' };
 const HAZARD = { tornado: 'a tornado', wind: 'damaging wind (58 mph or more)', hail: 'large hail (1 inch or more)', severe: 'severe weather (a tornado, damaging wind or large hail)' };
 const PAGE = ['day1', 'day2', 'day3'].includes(document.body.dataset.page) ? document.body.dataset.page : 'day1';

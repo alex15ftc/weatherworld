@@ -51,7 +51,7 @@ export function initializeTornadoState(storm) {
 // more under cloud); the target is about 7.5. A lower rate alone starved the strongest storms (an
 // ideal supercell put down one tornado in eight hours), so the rise was made steeper instead
 // (power 2 to 3, rate 4.2): weakly rotating storms lose far more of their tornadoes than strong ones.
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.75, power: 3, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.6, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -102,9 +102,19 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // cloud no faster than driftKph. The storm's centre can move at once when it merges or its
   // line joins another, and the tornado does not go with it: it is left where it was, and if
   // the storm's low-level rotation is no longer over it, it ends (below).
-  const wall = tornadoPosition(storm);
+  // Occlusion: as the rear-flank outflow wraps round the tornado it turns it left of the storm's
+  // track and slows it, so its track hooks left late in its life (observed turns of 30-55
+  // degrees with rear-flank surges, and more as a tornado dissipates; it does not run back over
+  // its own path). The tornado moves at the storm's velocity turned left by up to
+  // OCCLUSION_TRACK.turnDeg and slowed by up to slowShare as the storm occludes; what that takes
+  // it from the wall cloud is kept (to capRadii updraught radii), and it is carried by it as
+  // well as by the storm's motion, so it is no more "left behind" for it than before.
+  const before = (wasDown && tornado.occlusionOffsetKm) || { x: 0, y: 0 };
+  const offset = wasDown ? occlusionStep(storm, before, dtHours) : { x: 0, y: 0 };
+  const held = tornadoPosition(storm), wall = { x: held.x + offset.x, y: held.y + offset.y };
+  tornado.occlusionOffsetKm = offset;
   if (wasDown) {
-    const carried = { x: tornado.positionKm.x + (storm.velocityKph?.east ?? 0) * dtHours, y: tornado.positionKm.y - (storm.velocityKph?.north ?? 0) * dtHours };
+    const carried = { x: tornado.positionKm.x + (storm.velocityKph?.east ?? 0) * dtHours + offset.x - before.x, y: tornado.positionKm.y - (storm.velocityKph?.north ?? 0) * dtHours + offset.y - before.y };
     const gap = Math.hypot(wall.x - carried.x, wall.y - carried.y), share = gap > 0 ? Math.min(1, TORNADO.driftKph * dtHours / gap) : 0;
     tornado.positionKm = { x: carried.x + (wall.x - carried.x) * share, y: carried.y + (wall.y - carried.y) * share };
   } else tornado.positionKm = wall;
@@ -130,7 +140,18 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   if (tornado.lifeMinutes == null) {
     const mean = LIFE.meanMinutes[0] + (LIFE.meanMinutes[1] - LIFE.meanMinutes[0]) * Math.pow(clamp((ceilingMph - 65) / (LIFE.ceilingMph - 65), 0, 1.3), LIFE.power);
     tornado.lifeMinutes = -mean * Math.log(1 - clamp(Number.isFinite(tornado.lifeDraw) ? tornado.lifeDraw : 0.5, 0, 0.999));
+    // Now and then an intense tornado's storm does not occlude (STEADY): its rear-flank outflow
+    // does not wrap round and undercut it (a warmer, more buoyant downdraught, which this scale
+    // cannot resolve, so it is drawn), and the odds rise with how strong it can get and with the
+    // low-level helicity feeding it. Such a tornado keeps under its updraught: a long, nearly
+    // straight track with the storm, its wind and width held, until the outflow at last wraps
+    // round it in its last STEADY.endMinutes and it hooks left and dies.
+    const steadyOdds = STEADY.share * ramp(ceilingMph, STEADY.ceilingMph[0], STEADY.ceilingMph[1]) * ramp(environment.srh, STEADY.srh[0], STEADY.srh[1]);
+    tornado.steady = (Number.isFinite(tornado.steadyDraw) ? tornado.steadyDraw : 1) < steadyOdds;
+    if (tornado.steady) tornado.lifeMinutes *= STEADY.lifeFactor;
   }
+  // How fast the storm occludes round it, for StormRotation (1: as usual).
+  tornado.occlusionShare = tornado.steady && tornado.groundTimeMinutes < tornado.lifeMinutes - STEADY.endMinutes ? STEADY.occlusionShare : 1;
   // A brief vortex reaches its wind sooner than a long-lived one builds to its own.
   const matureMinutes = Math.min(INTENSITY.matureMinutes, Math.max(1, 0.4 * tornado.lifeMinutes));
   const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / matureMinutes, 0.25, 1) * (1 - INTENSITY.occlusionLoss * clamp(storm.occlusion ?? 0, 0, 1));
@@ -143,8 +164,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.windSpeedMph);
   tornado.peakWidthYards = Math.max(tornado.peakWidthYards, tornado.widthYards);
   // What a damage survey would make of it so far (a rating never goes back down).
-  const exposure = (1 - Math.exp(-tornado.pathLengthKm / DAMAGE_RATING.pathScaleKm)) * (DAMAGE_RATING.luckFloor + (1 - DAMAGE_RATING.luckFloor) * clamp(Number.isFinite(tornado.damageDraw) ? tornado.damageDraw : 0.5, 0, 1));
-  const ratedNow = 65 + (tornado.peakWindSpeedMph - 65) * (DAMAGE_RATING.unexposedShare + (1 - DAMAGE_RATING.unexposedShare) * exposure);
+  const ratedNow = damageRatingWind(tornado.peakWindSpeedMph, tornado.peakWidthYards, tornado.pathLengthKm, Number.isFinite(tornado.damageDraw) ? tornado.damageDraw : 0.5);
   tornado.ratedWindMph = Math.max(tornado.ratedWindMph ?? 0, ratedNow);
   tornado.estimatedEf = efRating(tornado.ratedWindMph);
   tornado.windEf = efRating(tornado.peakWindSpeedMph);
@@ -179,6 +199,7 @@ function drawTornadoCharacter(world, storm, tornado) {
   tornado.strengthUniform = deterministicUnit(seed + '|strength');
   tornado.damageDraw = deterministicUnit(seed + '|damage');
   tornado.lifeDraw = deterministicUnit(seed + '|life'); tornado.lifeMinutes = null;
+  tornado.steadyDraw = deterministicUnit(seed + '|steady'); tornado.steady = false; tornado.occlusionShare = 1;
   tornado.ratedWindMph = 0;
 }
 
@@ -186,7 +207,7 @@ function beginTornado(world, storm, tornado) {
   tornado.state = 'on-ground'; tornado.onGround = true; tornado.ageMinutes = 0;
   tornado.groundTimeMinutes = 0; tornado.pathLengthKm = 0; tornado.widthYards = 35;
   tornado.windSpeedMph = 75; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
-  tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.positionKm = tornadoPosition(storm);
+  tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.positionKm = tornadoPosition(storm);
   tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
 }
 
@@ -200,18 +221,31 @@ function endTornado(world, storm, tornado, end = {}) {
       peakWindSpeedMph: tornado.peakWindSpeedMph, peakWidthYards: tornado.peakWidthYards,
       // estimatedEf is the damage rating; windEf is what its peak wind would be rated on wind alone.
       ratedWindMph: tornado.ratedWindMph ?? tornado.peakWindSpeedMph, estimatedEf: efRating(tornado.ratedWindMph ?? tornado.peakWindSpeedMph), windEf: efRating(tornado.peakWindSpeedMph),
-      trackPoints: (tornado.trackPoints ?? []).slice(-96), ...end
+      trackPoints: (tornado.trackPoints ?? []).slice(-96), lifeMinutes: tornado.lifeMinutes ?? null, steady: Boolean(tornado.steady), damageDraw: tornado.damageDraw ?? null, ...end
     });
     if (storm.tornadoHistory.length > 8) storm.tornadoHistory.shift();
   }
   tornado.state = 'ended'; tornado.onGround = false; tornado.endedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
-  tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null;
+  tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null; tornado.occlusionShare = 1;
 }
 
 // Under the storm's wall cloud (StormGeometry.js); at the storm's centre until its shape is first worked out.
 function tornadoPosition(storm) {
   const wall = storm.geometry?.wallCloud;
   return wall ? { x: wall.xKm, y: wall.yKm } : { ...storm.positionKm };
+}
+const OCCLUSION_TRACK = { turnDeg: 60, slowShare: 0.5, capRadii: 1.8 };
+// The occlusion's offset of the tornado from the wall cloud (km, east and south) after a step:
+// the difference between the tornado's turned, slowed motion and the storm's, added up.
+function occlusionStep(storm, before, dtHours) {
+  const occlusion = clamp(storm.occlusion ?? 0, 0, 1), v = storm.velocityKph ?? {}, east = v.east ?? 0, north = v.north ?? 0;
+  if (!(occlusion > 0) || !(Math.hypot(east, north) > 0.5)) return before;
+  const turn = OCCLUSION_TRACK.turnDeg * occlusion * Math.PI / 180, keep = 1 - OCCLUSION_TRACK.slowShare * occlusion;
+  // Turned left (counterclockwise seen from above), in east and north; the offset is east and south.
+  const te = keep * (east * Math.cos(turn) - north * Math.sin(turn)), tn = keep * (east * Math.sin(turn) + north * Math.cos(turn));
+  const next = { x: before.x + (te - east) * dtHours, y: before.y - (tn - north) * dtHours };
+  const cap = OCCLUSION_TRACK.capRadii * (storm.geometry?.updraught?.radiusKm ?? 5), size = Math.hypot(next.x, next.y);
+  return size > cap ? { x: next.x * cap / size, y: next.y * cap / size } : next;
 }
 function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0) * 180 / Math.PI + 360) % 360; }
 // Wind above 65 mph = scale x (-ln(1 - quantile))^tail, the scale rising with the storm's
@@ -261,9 +295,40 @@ const INTENSITY = { baseScaleMph: 20, rotationScaleMph: 35, tail: 0.9, stpScaleM
 // usual pace, so the next tornado is a new cycle some 10-30 minutes on. (Without it a strongly
 // rotating storm put one down every few minutes: 158 tornadoes on one day.)
 const LIFE = { meanMinutes: [3, 60], ceilingMph: 200, power: 1.5, rotationLeft: 0.2 };
-// (unexposedShare 0.4 to 0.25 on 2026-10-20, with the winds set by the storm's air: most of a path
-// crosses open country that cannot show a strong tornado's full wind.)
-const DAMAGE_RATING = { unexposedShare: 0.25, pathScaleKm: 20, luckFloor: 0.35 };
+// Tornadoes whose storm does not occlude (2026-10-21, the user's request): the odds (share at most,
+// from a wind ceiling of 136 mph, full by 200, and 0-1 km helicity of 250, full by 450), the rate
+// the storm then occludes at, how much longer it lives, and the minutes at its end in which the
+// outflow wraps round after all. (Long-track tornadoes come with much stronger low-level shear and
+// winds, Gensini/Kanak et al. 2024; supercells range from steady to occluding cyclic, Droegemeier
+// et al.; a long-track violent tornado ends as a rainy downdraught encircles it, Orf et al. 2017.)
+const STEADY = { share: 0.35, ceilingMph: [136, 200], srh: [250, 450], occlusionShare: 0.1, lifeFactor: 2.5, endMinutes: 10 };
+// The rating a survey would give (2026-10-21, the user's choice of a physical rule; it was a share
+// of the wind above 65 mph that rose with path length, which no setting could fit to the record:
+// EF1s came out EF0 while EF3+ stayed too common). A tornado is rated EFk where its EFk contour
+// covered something able to show EFk damage. The contour's width is the share of its path's
+// width where its wind reached the EFk threshold (the wind falling off outside its core as the
+// distance to the power decay, as damageSurvey.js draws it: 63% of the width for EF1 down to 15%
+// for EF5), along peakShare of its path (where it was near its peak); things able to show each
+// rating stand densityPerSqMi apart (poles, trees and outbuildings show EF1; only well-built
+// houses EF4-5). The chance its contour held one is 1 - exp(-density x area), read against the
+// tornado's own draw. Fitted on 362 tornadoes (seeds 1-6 x 10 days), first to the US record of
+// 2008-2022 (EF0 52%, EF1 35%, EF2 9%, EF3 2.4%, EF4 0.45%), then at the user's wish to more
+// EF1s and EF4s (aim 45 / 38 / 11 / 4 / 1.5 / 0.15): fitted 46 / 38 / 11 / 3.9 / 1.1 / 0.3.
+const DAMAGE_RATING = { densityPerSqMi: [9.6, 1.9, 0.72, 0.13, 0.08], peakShare: 0.4, decay: 0.6 };
+const EF_FLOOR_MPH = [65, 86, 111, 136, 166, 201, 260];
+// The rated wind: the peak wind where the damage could show it all, otherwise the middle of the
+// highest category it showed.
+export function damageRatingWind(peakMph, widthYards, pathKm, draw) {
+  const windEf = EF_FLOOR_MPH.findLastIndex(m => peakMph >= m);
+  if (windEf < 0) return peakMph;
+  const along = Math.max(0, pathKm) * 0.621371 * DAMAGE_RATING.peakShare, width = Math.max(0, widthYards) / 1760;
+  let shown = 0;
+  for (let k = 1; k <= windEf; k++) {
+    const area = along * width * Math.pow(65 / EF_FLOOR_MPH[k], 1 / DAMAGE_RATING.decay);
+    if (draw < 1 - Math.exp(-DAMAGE_RATING.densityPerSqMi[k - 1] * area)) shown = k; else break;
+  }
+  return shown === windEf ? peakMph : (EF_FLOOR_MPH[shown] + EF_FLOOR_MPH[shown + 1]) / 2;
+}
 
 function efRating(mph) { return mph >= 200 ? 'EF5' : mph >= 166 ? 'EF4' : mph >= 136 ? 'EF3' : mph >= 111 ? 'EF2' : mph >= 86 ? 'EF1' : mph >= 65 ? 'EF0' : null; }
 function deterministicUnit(text) {

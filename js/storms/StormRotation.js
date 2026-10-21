@@ -93,7 +93,7 @@ export function stepStormRotation(storm, environment, dtHours) {
   const balance = coldPoolBalance(storm, environment);
   const hold = R.weakShare + (1 - R.weakShare) * ramp(storm.lowRotationFree ?? 0, R.holdRotation[0], R.holdRotation[1]);
   storm.occlusion = clamp((storm.occlusion ?? 0) + (storm.tornado?.onGround
-    ? dtHours / (hold * (R.occlusionHours[0] + (R.occlusionHours[1] - R.occlusionHours[0]) * ramp(balance, R.occlusionBalance[0], R.occlusionBalance[1])))
+    ? (storm.tornado.occlusionShare ?? 1) * dtHours / (hold * (R.occlusionHours[0] + (R.occlusionHours[1] - R.occlusionHours[0]) * ramp(balance, R.occlusionBalance[0], R.occlusionBalance[1])))
     : -dtHours / R.recoveryHours), 0, 1);
   storm.boundaryBoost = Math.max(ramp(environment.outflowContrastK, R.boundaryContrastK[0], R.boundaryContrastK[1]), ramp(environment.densityGradient, R.frontGradientK100[0], R.frontGradientK100[1]));
   const nearGround = R.helicityFloor + (1 - R.helicityFloor) * ramp((Number(environment.srh) || 0) + R.boundaryHelicity * storm.boundaryBoost, R.lowHelicity[0], R.lowHelicity[1]);

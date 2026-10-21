@@ -9,6 +9,8 @@ import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
 import { WarningRuntime } from './WarningRuntime.js';
+import { ReportsRuntime } from './ReportsRuntime.js';
+import { GameProducts } from './GameProducts.js';
 import { RadarPool } from './RadarPool.js';
 import { countiesFor } from './CountyLayer.js';
 import { publicCounties } from '../js/forecast/counties.js';
@@ -38,6 +40,10 @@ const mesoscale = process.env.WEATHER_MESOSCALE === 'off' ? null : new Mesoscale
 // Tornado and severe thunderstorm warnings: worked out at every volume scan from the storms as
 // the radar sees them (WEATHER_WARNINGS=off turns them off).
 const warnings = process.env.WEATHER_WARNINGS === 'off' ? null : new WarningRuntime({ runtime });
+// Storm reports and damage surveys, from the live world's daily storm log (ReportsRuntime.js).
+const reports = new ReportsRuntime({ runtime });
+// The products as the Roblox place draws them (GameProducts.js).
+const gameProducts = new GameProducts({ runtime, outlooks, mesoscale, warnings });
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
 const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); };
@@ -76,10 +82,12 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/live/boundaries') return sendJson(req, res, 200, runtime.boundaries(), { trace });
   // The game's storms (GameFeed.js): ?after=<seq> gives the frames after that one. Set
   // WEATHER_GAME_KEY to require it in the x-api-key header.
-  if (url.pathname === '/api/game/v1/frames') {
-    if (process.env.WEATHER_GAME_KEY && req.headers['x-api-key'] !== process.env.WEATHER_GAME_KEY) return sendJson(req, res, 401, { error: 'Bad key' }, { cacheable: false, trace });
-    return sendText(req, res, 200, runtime.gameFeed.poll(url.searchParams.get('after')), trace);
-  }
+  if (url.pathname.startsWith('/api/game/v1/') && process.env.WEATHER_GAME_KEY && req.headers['x-api-key'] !== process.env.WEATHER_GAME_KEY) return sendJson(req, res, 401, { error: 'Bad key' }, { cacheable: false, trace });
+  if (url.pathname === '/api/game/v1/frames') return sendText(req, res, 200, runtime.gameFeed.poll(url.searchParams.get('after')), trace);
+  // The products the game draws (GameProducts.js): the manifest of versions, and each product's text.
+  if (url.pathname === '/api/game/v1/manifest') return sendJson(req, res, 200, gameProducts.manifest(), { cacheable: false, trace });
+  const gameProduct = url.pathname.match(/^\/api\/game\/v1\/product\/([A-Za-z0-9.]+)$/);
+  if (gameProduct) { const entry = await gameProducts.productAsync(gameProduct[1]); return entry ? sendText(req, res, 200, entry.text, trace, { 'x-product-version': entry.version }) : sendJson(req, res, 404, { error: 'Unknown product' }, { cacheable: false, trace }); }
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
@@ -107,6 +115,10 @@ async function serveApi(url, req, res) {
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
   if (url.pathname === '/api/warnings') return sendJson(req, res, 200, warnings ? warnings.list() : { enabled: false, warnings: [] }, { cacheable: false, trace });
   if (url.pathname === '/api/counties') { const counties = publicCounties(countiesFor(runtime.engine?.world)); return sendJson(req, res, counties ? 200 : 404, counties ?? { error: 'No counties' }, { trace }); }
+  const dayParam = () => (url.searchParams.has('day') ? Number(url.searchParams.get('day')) : undefined);
+  if (url.pathname === '/api/reports/days') return sendJson(req, res, 200, reports.days(), { cacheable: false, trace });
+  if (url.pathname === '/api/reports') return sendJson(req, res, 200, reports.reports(dayParam()), { cacheable: false, trace });
+  if (url.pathname === '/api/damage') return sendJson(req, res, 200, reports.damage(dayParam()), { cacheable: false, trace });
   if (url.pathname === '/api/mesoscale') return sendJson(req, res, 200, mesoscale ? mesoscale.list() : { enabled: false, watches: [], discussions: [] }, { cacheable: false, trace });
   const issuedOutlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);
   if (issuedOutlook) return sendJson(req, res, 200, outlooks ? outlooks.day(issuedOutlook[1]) : { day: issuedOutlook[1], status: 'off' }, { cacheable: false, trace });
@@ -193,8 +205,8 @@ function sendJson(req, res, status, value, { cacheable = true, trace = null } = 
   res.end(raw);
 }
 // JSON already written as text (the game feed), compressed when the caller takes gzip.
-function sendText(req, res, status, text, trace = null) {
-  const raw = Buffer.from(text), headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', vary: 'Accept-Encoding' };
+function sendText(req, res, status, text, trace = null, extraHeaders = {}) {
+  const raw = Buffer.from(text), headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', vary: 'Accept-Encoding', ...extraHeaders };
   const done = (body, compressed) => {
     if (trace) finishRequest(trace, { status, rawBytes: raw.length, sentBytes: body.length, compressed });
     res.writeHead(status, { ...headers, ...(compressed ? { 'content-encoding': 'gzip' } : {}), 'content-length': body.length });

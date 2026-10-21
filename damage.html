@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Damage Surveys · Fake Plains Weather</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+  <style>
+    body { display: grid; grid-template-columns: 300px minmax(0, 1fr) 430px; height: 100vh; overflow: hidden; }
+    .dt-side, .dt-text { display: flex; flex-direction: column; gap: 12px; padding-top: 64px; overflow: auto; }
+    .dt-side { border-right: 1px solid var(--line); } .dt-text { border-left: 1px solid var(--line); }
+    .dt-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
+    .dt-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
+    .dt-card strong { font-size: 15px; line-height: 1.35; }
+    #daySelect { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+    #torList { display: flex; flex-direction: column; gap: 6px; }
+    .tor { text-align: left; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; }
+    .tor:hover { border-color: var(--accent); } .tor.on { border-color: #2563eb; background: rgba(37, 99, 235, .16); }
+    .tor small { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; }
+    .ef { font-weight: 800; font-size: 12px; padding: 2px 7px; border-radius: 6px; color: #0b1119; }
+    .layers label { display: flex; gap: 6px; align-items: center; justify-content: flex-start; font-size: 13px; font-weight: 600; }
+    .layers input { width: auto; margin: 0; }
+    .legend { display: flex; flex-wrap: wrap; gap: 5px; }
+    .dt-map { position: relative; min-width: 0; min-height: 0; padding: 64px 0 0; }
+    #dtCanvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    #dtCanvas.drag { cursor: grabbing; }
+    .hint { position: absolute; left: 12px; bottom: 10px; font-size: 11.5px; color: var(--muted); background: rgba(11,17,25,.8); padding: 3px 8px; border-radius: 6px; }
+    #summary { margin: 0; white-space: pre-wrap; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--text); }
+    #point { font-size: 13px; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; }
+    #point span { color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    .note { font-size: 12px; color: var(--muted); margin: 0; }
+    @media (max-width: 1100px) { body { grid-template-columns: 1fr; grid-template-rows: auto 70vh auto; height: auto; overflow: auto; } .dt-map { padding-top: 0; } }
+  </style>
+</head>
+<body data-page="damage">
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="day1" href="./day1.html">Day 1</a><a data-nav-page="day2" href="./day2.html">Day 2</a><a data-nav-page="day3" href="./day3.html">Day 3</a><a data-nav-page="mesoscale" href="./mesoscale.html">Mesoscale</a><a data-nav-page="radar" href="./radar.html">Radar</a><a data-nav-page="reports" href="./reports.html">Storm reports</a><a data-nav-page="damage" class="active" href="./damage.html">Damage surveys</a><a class="perf-link" href="./performance.html">Performance</a></nav>
+  <aside class="panel dt-side">
+    <div class="dt-card">
+      <span>Damage surveys</span>
+      <select id="daySelect" aria-label="Day"></select>
+      <strong id="status">—</strong>
+      <p class="note">Each tornado as surveyed: its track, the EF contours of its damage swath, and damage points (what was hit, its degree of damage and the wind estimated from it). A tornado is rated by its worst surveyed damage; EFU where it hit nothing that can be rated.</p>
+    </div>
+    <div class="dt-card">
+      <span>Tornadoes</span>
+      <div id="torList"></div>
+    </div>
+    <div class="dt-card layers">
+      <span>Layers</span>
+      <label><input type="checkbox" data-layer="contours" checked /> EF contours (wind swath)</label>
+      <label><input type="checkbox" data-layer="points" checked /> Damage points</label>
+      <label><input type="checkbox" data-layer="tracks" checked /> Track centrelines</label>
+      <label><input type="checkbox" data-layer="trees" checked /> Tree damage points</label>
+      <label><input type="checkbox" data-layer="roads" checked /> Roads and towns</label>
+      <div class="legend" id="legend"></div>
+    </div>
+  </aside>
+  <main class="dt-map"><canvas id="dtCanvas"></canvas><div class="hint">Scroll to zoom · drag to move · click a track or damage point</div></main>
+  <aside class="panel dt-text">
+    <div class="dt-card"><span>Damage point</span><div id="point"><span>—</span><b>Click a damage point on the map.</b></div></div>
+    <div class="dt-card"><span>Survey</span><pre id="summary">Choose a tornado.</pre></div>
+    <div class="dt-card"><span>Damage indicators</span><div id="indicators"></div></div>
+  </aside>
+  <script type="module" src="./js/pages/damagePage.js"></script>
+</body>
+</html>

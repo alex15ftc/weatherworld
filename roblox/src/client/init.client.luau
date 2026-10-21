@@ -68,5 +68,5 @@ do
 	end)
 end
 
-require(script:WaitForChild("MapView")).start()
+require(script:WaitForChild("Products")).start()
 require(script:WaitForChild("StormView")).start()

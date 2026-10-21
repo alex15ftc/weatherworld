@@ -11,3 +11,8 @@ procedurally (seeded, chunk by chunk around players); see `src/shared/World/Conf
 
 Live sync: run `rojo serve` in this folder, then press **Connect** in the Rojo plugin in Studio.
 Build a place file: `rojo build -o WeatherWorld.rbxl`.
+
+Weather screens (press **M**): the world map and the issued products, fed by
+`server/ProductFeed.luau`. Without a feed URL they show the recorded snapshot in
+`src/worlddata/ProductSnapshot`; see `docs/ROBLOX-UI-PLAN.md` for running them live through a
+cloudflared tunnel.

@@ -16,6 +16,8 @@ import { buildRadarScene, scanRadarTilt, buildRadarMosaic, MOSAIC_KINDS } from '
 import { radarSitesFor } from './RadarSites.js';
 import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { GameFeed } from './GameFeed.js';
+import { countiesFor } from './CountyLayer.js';
+import { logStormTick } from '../js/reports/stormLog.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 1000;
@@ -84,6 +86,10 @@ export class WeatherAuthorityRuntime {
     // The clocks run from now, not from before the world took its time to build.
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.gameFeed?.restart(world, this.lastStormAdvancedAt);
+    // The day's storm reports and tornado tracks (js/reports/stormLog.js), after each storm tick.
+    const layer = countiesFor(world), places = { layer, milesPerKm: layer ? layer.miles / (world.width * world.cellSizeKm) : 0.621371 };
+    this.places = places;
+    engine.onStormTick = () => logStormTick(world, places);
   }
 
   reset(seed = this.seed) {
@@ -101,10 +107,13 @@ export class WeatherAuthorityRuntime {
     const amount = Math.max(0, Math.min(72, Number(hours) || 0));
     if (amount < ATMOSPHERE_STEP_HOURS) return this.metadata();
     // Storms may have been ticked ahead of the atmosphere; bring both to the same time first.
-    const world = this.atmosphere, ahead = (world.stormEngine?.validHourUtc ?? world.validHourUtc) - world.validHourUtc;
-    if (ahead > 1e-6) { this.engine.advanceStormLayer(ATMOSPHERE_STEP_HOURS - ahead); this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep }); }
-    const rest = amount - (ahead > 1e-6 ? ATMOSPHERE_STEP_HOURS : 0);
-    if (rest >= ATMOSPHERE_STEP_HOURS) this.engine.advance(rest, { onStep });
+    // The storms move in the same five-minute ticks as on the clock (in half-hour steps tornadoes
+    // came and went unseen and storms jumped past the towns that would report them).
+    const world = this.atmosphere;
+    for (let step = 0; step < Math.round(amount / ATMOSPHERE_STEP_HOURS); step++) {
+      this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS);
+      this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep });
+    }
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.gameFeed.restart(world);
     this.revision += 1;
@@ -128,6 +137,18 @@ export class WeatherAuthorityRuntime {
 
   invalidateProducts() { this.productCache.clear(); }
 
+  // Moves the storms on to an hour in storm ticks (the last one shorter if it must be).
+  stormTicksTo(hourUtc) {
+    const world = this.atmosphere;
+    for (let guard = 0; guard < 64; guard++) {
+      const left = hourUtc - (world.stormEngine?.validHourUtc ?? world.validHourUtc);
+      // The storm clock is rounded at each tick; a sliver left over is not a tick, and the clock is
+      // set to the hour.
+      if (left <= 1e-3) { if (left > 0 && world.stormEngine) world.stormEngine.validHourUtc = hourUtc; return; }
+      this.engine.advanceStormLayer(Math.min(STORM_CADENCE_HOURS, left));
+    }
+  }
+
   advanceOnTimer(now = Date.now()) {
     if (!this.autoAdvance) return false;
     const world = this.atmosphere;
@@ -142,7 +163,7 @@ export class WeatherAuthorityRuntime {
     if (steps > 0) {
       for (let step = 0; step < steps; step++) {
         const ahead = (world.stormEngine?.validHourUtc ?? world.validHourUtc) - world.validHourUtc;
-        if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) { this.engine.advanceStormLayer(ATMOSPHERE_STEP_HOURS - ahead); this.gameFeed.capture(world, now); }
+        if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) { this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS); this.gameFeed.capture(world, now); }
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.

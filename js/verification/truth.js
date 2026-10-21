@@ -94,8 +94,10 @@ export function maxTornadoEf(storm) {
 
 const efNumber = rating => { const match = String(rating ?? '').match(/EF([0-5])/i); return match ? Number(match[1]) : -1; };
 
-// Tornado track points laid down in (previousHourUtc, currentHourUtc], each with the rating
-// of the tornado that laid it down (ef: 0-5, -1 if not yet rated).
+// Tornado track points laid down in (previousHourUtc, currentHourUtc], each with the EF of the
+// peak wind so far of the tornado that laid it down (ef: 0-5, -1 if none yet). The intensity
+// groups go by the tornado's wind, not its damage rating (the user's choice, 2026-10-21): a
+// strong tornado over open country is still a strong tornado.
 export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc) {
   const epsilon = 1e-6, points = [], seen = new Set();
   let ef = -1, key = null;
@@ -108,10 +110,10 @@ export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc
     seen.add(key);
     points.push({ x, y, hourUtc: Number.isFinite(hourUtc) ? hourUtc : currentHourUtc, ef, tornado: key });
   };
-  const current = () => { ef = efNumber(storm.tornado?.estimatedEf ?? storm.tornado?.efRating); key = `${storm.id}|${storm.tornado?.cycleCount ?? 0}`; };
+  const current = () => { ef = efNumber(storm.tornado?.windEf ?? storm.tornado?.estimatedEf ?? storm.tornado?.efRating); key = `${storm.id}|${storm.tornado?.cycleCount ?? 0}`; };
   current();
   for (const point of storm.tornado?.trackPoints ?? []) addPoint(point);
-  for (const tornado of storm.tornadoHistory ?? []) { ef = efNumber(tornado.estimatedEf ?? tornado.efRating ?? tornado.maxEfRating); key = `${storm.id}|${tornado.cycle ?? 0}`; for (const point of tornado.trackPoints ?? []) addPoint(point); }
+  for (const tornado of storm.tornadoHistory ?? []) { ef = efNumber(tornado.windEf ?? tornado.estimatedEf ?? tornado.efRating ?? tornado.maxEfRating); key = `${storm.id}|${tornado.cycle ?? 0}`; for (const point of tornado.trackPoints ?? []) addPoint(point); }
   current();
   // An on-ground tornado can exist before its first stored track point.
   if (storm.tornado?.onGround && !points.length) addPoint({ ...storm.tornado.positionKm, hourUtc: currentHourUtc });

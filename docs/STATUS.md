@@ -1362,6 +1362,111 @@ Causes, diagnosed the same day:
   - Intense groups (tornado CIG2/3, hail CIG2) are still not drawn: too few cases to calibrate on.
 - `npm test` 51/51.
 
+**Refit on 100 mornings (seeds 1-20, 5 each), the same day:**
+- **Chances and groups refitted.** The fit never asks less of the runs for a higher group than for a lower one.
+- **The 40-morning fit had been noisy.** At 3 of 8 runs, Day 1 tornado CIG1 verified 24% in the larger data.
+- **Fitted shares** (of the 8 runs needed to draw a group):
+
+  | | Tornado | Wind | Hail |
+  |---|---|---|---|
+  | Day 1 | CIG1-2: 4/8 (CIG2 verified 93% from 3/8, 14 areas) | CIG1: 5/8 | CIG1: 5/8 |
+  | Day 2 | 6/8 | 6/8 | 6/8 |
+
+- **Still too few cases:** hail CIG2 (22 areas) and tornado CIG3 (35) keep the old agreement ramp.
+- **On 18 unseen mornings (seeds 21-26):**
+  - Day 1: 72% of categories right, 100% within one. Map share at Enhanced or more 29% forecast against 30% verified; at Moderate or more, 13% against 14%.
+  - Tornado CIG2 drawn 6%, verified 6%.
+  - Hail CIG1 is drawn too often (39% against 22%). Tornado CIG1 is drawn too rarely (6% against 17%).
+  - Day 2 under-forecasts Moderate (6% of the map against 18%).
+
+**Storm reports and damage surveys (2026-10-21):**
+- **Storm log.** The live world keeps a daily storm log (js/reports/stormLog.js, `world.reportLog`, 14 days):
+  - Days run 12Z to 12Z, as the SPC's do.
+  - `world.stormHistory` is emptied at each 12Z.
+  - Forecast snapshots skip the log.
+  - It runs from `AtmosphereWorld.onStormTick`, which only the live runtime sets.
+- **Reports page** (reports.html):
+  - Tornado, hail and wind reports in SPC format: map, three tables, CSV.
+  - A report is filed where people would see it: within a town's reach (less at night), one per storm, hazard and town, from where the storm passed closest.
+  - Whether a town reports at all is a draw that rises with its population.
+  - Hail is reported at the standard sizes. Wind is a measured gust near towns of 10,000 or more, otherwise damage of unknown speed.
+- **Damage surveys page** (damage.html), after the NWS Damage Assessment Toolkit (js/reports/damageSurvey.js):
+  - Each tornado's centreline, EF contours and damage points.
+  - Damage indicators and degrees of damage come from the EF-scale tables (Texas Tech 2006, js/reports/damageIndicators.js): FR12, MHSW, MHDW, SBO, ES, MBS, TH, TS.
+  - What stands on the ground comes from the map: town cores and extents, land cover, elementary schools, industrial parks (js/reports/surveyMap.node.js).
+  - A tornado is rated from its worst surveyed damage, and EFU when nothing ratable was hit. Trees cap a rating at EF3.
+- **Survey tracks follow the tornado's life.**
+  - The engine moves a tornado through its last 5-minute step before ending it, so the log takes that stretch from `tornadoHistory`, which now carries `lifeMinutes`.
+  - A tornado whose vortex ran out ends at its drawn life.
+  - The path starts and ends at the 65 mph damage threshold and curves through the steps.
+  - Durations on seed 5000, Day 2: 0.3-65 minutes. Before, 27 of 42 were exactly 5 minutes.
+- **API:** /api/reports/days, /api/reports?day=N, /api/damage?day=N (server/ReportsRuntime.js).
+- **Open:**
+  - Wind reports are heavy on outbreak days (seed 5000 Day 2: 825 wind, 215 hail, 25 tornado). The storms' gusts are the cause, the same thing behind its 831 severe warnings.
+  - Tracks are near-straight, because storms move 45-60 mph in a steady direction.
+- **Occlusion now moves the tornado** (TornadoEngine.js, OCCLUSION_TRACK), at the user's request.
+  - The rear-flank outflow carries the tornado left of and behind the wall cloud, in proportion to storm.occlusion (up to 1.5 updraught radii left, 1.0 back).
+  - The tornado is carried by that shift, so "left behind" endings and tornado counts are unchanged.
+  - Seed 5000, Day 2: same 42 tornadoes and durations; most tracks hook 15-60° left.
+- **Non-occluding (steady) tornadoes** (STEADY), at the user's request.
+  - A per-tornado draw stands in for the rear-flank downdraught's buoyancy, which this scale cannot resolve.
+  - Odds: up to 0.35 for wind ceilings from 136 mph (full by 200) in 0-1 km SRH from 250 (full by 450).
+  - Such a storm occludes at 0.1 of the usual rate, and the tornado lives 2.5 times as long: a long, near-straight track with steady wind and width.
+  - In its last 10 minutes the outflow wraps round after all, and it hooks and dies.
+  - About 1 in 8 tornadoes with 136+ mph winds (4 of 31 over seeds 1-6, 5000 and 8181). Examples:
+    - 90 mi, 120 min, surveyed EF5 (seed 8181, with the SRH range at 150-400);
+    - 61 mi, 170 min (seed 6).
+  - The SRH range started at 150 at first; storm-rotation.mjs caught modest air (SRH 190) lengthening its tornadoes, so it now starts at 250.
+- **Stepping no longer loses reports** (asked: are reports missed by the stepping?). Measured on seed 5000, 2 days:
+
+  | Path | Lost before | Fix | After |
+  |---|---|---|---|
+  | Live clock (5-min storm ticks) | No tornadoes; hail and wind reports where a storm passed a town between samples (11% of passes) | stormLog judges each pass along the storm's path since the last tick | Hail 215 to 254, wind 825 to 986 |
+  | Manual advance and catch-up after a pause (30-min storm steps) | 16 of 30 tornadoes, about 70% of reports | runtime.advance and the catch-up move storms in 5-min ticks (stormTicksTo, which sets the rounded storm clock to the hour rather than taking a sliver tick) | Same weather and log as the live clock |
+
+  - Safety net: the log takes any tornado the engine recorded but never saw on the ground from its tornadoHistory.
+  - Wind reports on outbreak days are heavier still (986 on seed 5000, Day 2).
+- **Tornado rate on marginal supercell days.** The user was concerned about seed 1000: 17 tornadoes in 13 days, on 4 days.
+  - Cause: on tornado-free supercell days (67% of them), the best storm's low-level rotation peaks near 0.23 (SRH01 about 178, shear about 53 kt). At rate power 3 that expects about 1% per supercell; in reality perhaps 20-25%.
+  - TORNADO now has power 2 and full rate 0.6 (was 3 and 0.75). This is about 1.7 times the rate at rotation 0.23, and the same at 0.4.
+  - Activity report, seeds 1-3 × 30 days:
+    - days with a tornado 57% to 64%;
+    - mean tornadoes a day 4.4 to 5.9 (median 1);
+    - days with 30+ tornadoes 3% to 6%, the most on one day 42 to 61;
+    - High-risk days 12 to 13.
+  - Seeds 1000-1002, 13 days: days with a tornado 28% to 33%.
+  - Power 2 at full rate 0.75 overshot: 69% of days, mean 7.2, the most on one day 74, 17 High days.
+  - Still open:
+    - EF0 is 71% of ratings (US about 38%);
+    - spells of weak low-level helicity (seed 1000 days 9-13, SRH01 120-155) stay tornado-free, with the mesocyclone as the limit.
+- **Physical tornado ratings** (the user's choice), measured on 362 tornadoes (seeds 1-6 × 10 days).
+  - TornadoEngine DAMAGE_RATING: a tornado is rated EFk where its EFk contour held something able to show it. The contour area is the path width's share above the threshold (power-0.6 falloff) × 40% of the path. Indicator densities per sq mi: EF1 5.9, EF2 1.3, EF3 0.6, EF4 0.13, EF5 0.1.
+  - Engine ratings EF0-EF5: 57 / 30 / 9.4 / 2.2 / 0.6 / 0.8 (were 59 / 23 / 10 / 4.7 / 2.5 / 0.3; US 2008-22: 52 / 35 / 9.3 / 2.4 / 0.45 / 0.05).
+  - The activity report's reference was the F-scale era (EF0 38%); it now shows the US 2008-22 shares.
+  - Survey (damage page):
+    - estimates within each degree's bounds by construction quality, as surveyors do, never above the wind that occurred;
+    - wood-pole distribution lines (ETL, degrees 1-4) on about half the section lines;
+    - trees and poles capped at EF2 (135 mph) on their own.
+  - Survey ratings 47 / 30 / 17 / 3.2 / 2.5 / 0.7, plus EFU 17% (short tracks over open farmland). The survey and the engine agree within one category on 90% of tornadoes.
+  - Open:
+    - the survey does not set the official rating (reports and verification use the engine's);
+    - outlook intensity calibration should be refit, since EF2+ fell from about 18% to 13%.
+- **More EF1s and EF4s** (the user's wish):
+  - DAMAGE_RATING densities refit to 9.6 / 1.9 / 0.72 / 0.13 / 0.08 per sq mi.
+  - On the same 362 tornadoes: EF0-EF5 46 / 38 / 11 / 3.9 / 1.1 / 0.3 (aim 45 / 38 / 11 / 4 / 1.5 / 0.15).
+- **Tornado intensity groups go by EF-equivalent wind** (verification/truth.js uses windEf, not the damage rating), at the user's request.
+- **Outlooks recalibrated** on 100 mornings: chances, and CIG_SHARE.
+  - Tornado groups are fitted for the first time on Day 1 (CIG1 from 1/8 of the runs, CIG2-3 from 5/8) and on Day 2 (CIG1-2 from 4/8; CIG3 never, 48% at 4/8).
+  - On 18 unseen mornings (seeds 21-26):
+    - Day 1: 67% right, 100% within one; map share at Enhanced or more 31/30, at Moderate or more 14/14.
+    - Tornado groups drawn 39% against 33% verified (Day 2: 50 against 42).
+    - Day 2 Moderate still low (11 against 17).
+- **Chase playability ideas** (travel compressed as much as time; a visible funnel before touchdown and rope-out after) are documented in docs/ROBLOX-SCALE.md for the Roblox side.
+- **Occlusion motion without loops:** occlusion turns the tornado's velocity left (up to 60°) and slows it (to half), rather than moving its place. On three seeds no track runs back (before, steady tornadoes looped at their end); the most-turned tenth hook 27-76° left.
+- **Path lengths stay about 3× the record** (the user chose not to shorten tornado lives or slow the clock). The causes are forward speed (38-44 mph against about 30) and life.
+- **Housekeeping:** the old data/cache/authority-state.bin (42 MB, from before the redesign) was deleted.
+- `npm test` 52/52 (new: storm-reports.mjs).
+
 **Still open:**
 - **The category mix:** Moderate and High are over their aims, more so with more near-low days. Hail-only Moderates, and wind on the High days.
 - **Tornado-free days:** 41%.

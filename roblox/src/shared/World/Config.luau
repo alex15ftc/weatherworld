@@ -35,6 +35,10 @@ Config.STORM_VIEW_MILES = 60 -- storms drawn within this distance of the camera
 -- "weather_feed_key".
 Config.WEATHER_FEED_URL = ""
 Config.WEATHER_POLL_SECONDS = 5
+-- The products (outlooks, and later radar, warnings...): the manifest is polled this often, on
+-- the same URL and key (server/ProductFeed.luau). Workspace attribute ProductSource = "snapshot"
+-- uses the recorded ServerStorage.WorldData.ProductSnapshot instead.
+Config.PRODUCT_POLL_SECONDS = 10 -- radar frames come every 25 s (one storm tick)
 
 -- Chunks (Minecraft-style): generated around players, unloaded beyond the radius plus a margin.
 Config.VOXEL_STUDS = 4
