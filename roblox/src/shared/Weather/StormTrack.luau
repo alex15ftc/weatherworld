@@ -182,4 +182,57 @@ function StormTrack.sample(self: Track, nowMs: number): ({ any }, number?, boole
 	return out, hour, stale
 end
 
+local SKY_FIELDS = { "low", "mid", "high", "tF", "tdF", "windKt", "soil" }
+
+-- One frame's sky (js/world/SkyAppearance.js) at a place, between its grid points.
+local function skyPoint(sky: any, xKm: number, yKm: number): { [string]: number }
+	local fx = math.clamp(xKm / sky.cellKm - 0.5, 0, sky.cols - 1)
+	local fy = math.clamp(yKm / sky.cellKm - 0.5, 0, sky.rows - 1)
+	local i0, j0 = math.floor(fx), math.floor(fy)
+	local i1, j1 = math.min(i0 + 1, sky.cols - 1), math.min(j0 + 1, sky.rows - 1)
+	local u, v = fx - i0, fy - j0
+	local out = {}
+	for _, f in SKY_FIELDS do
+		local g = sky[f]
+		local function at(i: number, j: number): number
+			return g[j * sky.cols + i + 1] or 0
+		end
+		out[f] = (at(i0, j0) * (1 - u) + at(i1, j0) * u) * (1 - v) + (at(i0, j1) * (1 - u) + at(i1, j1) * u) * v
+	end
+	return out
+end
+
+-- The sky at nowMs over a place (km east and south of the map's NW corner), blended between the
+-- frames either side: cloud shares 0-1 (low, mid, high), temperature and dewpoint (F), wind (kt),
+-- soil moisture 0-1; and `sun`, the map's latitude and day. Nil when no frame carries a sky.
+function StormTrack.skyAt(self: Track, nowMs: number, xKm: number, yKm: number): any
+	local a, b = nil, nil
+	for _, frame in self.frames do
+		local sky = (frame :: any).sky
+		if sky then
+			if frame.atMs <= nowMs then
+				a = frame
+			else
+				b = frame
+				break
+			end
+		end
+	end
+	a = a or b
+	b = b or a
+	if not a then
+		return nil
+	end
+	local pa = skyPoint((a :: any).sky, xKm, yKm)
+	local pb = if b == a then pa else skyPoint((b :: any).sky, xKm, yKm)
+	local dt = b.atMs - a.atMs
+	local u = if dt > 0 then math.clamp((nowMs - a.atMs) / dt, 0, 1) else 0
+	local out: any = { sun = (a :: any).sky.sun }
+	for _, f in SKY_FIELDS do
+		out[f] = pa[f] + (pb[f] - pa[f]) * u
+	end
+	out.low, out.mid, out.high, out.soil = out.low / 100, out.mid / 100, out.high / 100, out.soil / 100
+	return out
+end
+
 return StormTrack

@@ -13,6 +13,11 @@
 -- A single radar's scan (radar.site.<ID>.<product>) is fetched the first time a player asks for
 -- it, and kept up to date while some player has asked for it in the last SITE_KEEP_SECONDS.
 --
+-- The storm reports and damage surveys (reports.*, survey.*) are also handed to ReportArchive,
+-- which keeps the finished days in a DataStore; a report product the weather server no longer
+-- lists (an older day) is given from there, and the archive's index is the product
+-- "reports.archive".
+--
 -- ReplicatedStorage.Products:
 --   Get       RemoteFunction (id, haveVersion?) -> { version, text? } (text left out when the
 --             player already has that version; nil for an unknown product)
@@ -26,16 +31,24 @@ local ServerStorage = game:GetService("ServerStorage")
 local Players = game:GetService("Players")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
+local ReportArchive = require(script.Parent.ReportArchive)
 
 local ProductFeed = {}
 
 type Product = { version: string, text: string }
 local products: { [string]: Product } = {}
+-- Products this place makes itself (the report archive's index).
+local localProducts: { [string]: Product } = {}
+
+local function isReport(id: string): boolean
+	return string.match(id, "^reports%.") ~= nil or string.match(id, "^survey%.") ~= nil
+end
 
 local SITE_KEEP_SECONDS = 90
 local SITE_PATTERN = "^radar%.site%.[%w]+%.[%w]+$"
 local siteAsked: { [string]: number } = {} -- site product id -> when a player last asked for it
 local fetchOnDemand: ((id: string) -> ())? = nil -- set by the http source
+local fetchDirect: ((id: string) -> Product?)? = nil -- a product straight from the weather server (http source)
 
 local folder = Instance.new("Folder")
 folder.Name = "Products"
@@ -53,6 +66,9 @@ folder.Parent = ReplicatedStorage
 local function versions(): { [string]: string }
 	local out = {}
 	for id, product in products do
+		out[id] = product.version
+	end
+	for id, product in localProducts do
 		out[id] = product.version
 	end
 	return out
@@ -91,7 +107,10 @@ getFunction.OnServerInvoke = function(player: Player, id: unknown, haveVersion: 
 			(fetchOnDemand :: (string) -> ())(id)
 		end
 	end
-	local product = products[id]
+	local product = products[id] or localProducts[id]
+	if not product and isReport(id) then
+		product = ReportArchive.get(id)
+	end
 	if not product then
 		return nil
 	end
@@ -127,6 +146,14 @@ local function runHttp(url: string)
 		return fallback
 	end
 
+	fetchDirect = function(id: string): Product?
+		local got, text, responseHeaders = get(`/api/game/v1/product/{id}`)
+		if not got then
+			return nil
+		end
+		return { version = versionOf(responseHeaders, HttpService:GenerateGUID(false)), text = text }
+	end
+
 	-- A site scan asked for before it is held: fetched once, the other askers waiting for it.
 	local fetching: { [string]: boolean } = {}
 	fetchOnDemand = function(id: string)
@@ -143,6 +170,9 @@ local function runHttp(url: string)
 			local version = versionOf(responseHeaders, HttpService:GenerateGUID(false))
 			products[id] = { version = version, text = text }
 			announce({ [id] = version })
+			if isReport(id) then
+				ReportArchive.offer(id, products[id])
+			end
 		else
 			warn(`[ProductFeed] {id}: {text}`)
 		end
@@ -173,6 +203,9 @@ local function runHttp(url: string)
 						local version = versionOf(responseHeaders, entry.version)
 						products[id] = { version = version, text = text }
 						changed[id] = version
+						if isReport(id) then
+							ReportArchive.offer(id, products[id])
+						end
 					else
 						warn(`[ProductFeed] {id}: {text}`)
 					end
@@ -222,6 +255,9 @@ local function runSnapshot()
 		products[id] = { version = entry.version, text = table.concat(parts) }
 		changed[id] = entry.version
 		table.insert(ids, id)
+		if isReport(id) then
+			ReportArchive.offer(id, products[id])
+		end
 	end
 	table.sort(ids)
 	print(`[ProductFeed] snapshot recorded {meta.recordedAt}: {#ids} products`)
@@ -231,7 +267,19 @@ end
 function ProductFeed.start()
 	local source = workspace:GetAttribute("ProductSource")
 	local url = (workspace:GetAttribute("WeatherFeedUrl") :: string?) or Config.WEATHER_FEED_URL
-	if source == "http" or (source == nil and url ~= "") then
+	local http = source == "http" or (source == nil and url ~= "")
+	ReportArchive.start({
+		-- A recorded snapshot is not a live world: its days are not kept.
+		write = http,
+		fetch = function(id: string): Product?
+			return products[id] or (if fetchDirect then (fetchDirect :: (string) -> Product?)(id) else nil)
+		end,
+		publish = function(id: string, entry: Product)
+			localProducts[id] = entry
+			announce({ [id] = entry.version })
+		end,
+	})
+	if http then
 		task.spawn(runHttp, (string.gsub(url, "/+$", "")))
 	else
 		task.spawn(runSnapshot)

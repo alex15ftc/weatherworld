@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { funnelProfile, describeFunnel, FUNNEL } from '../js/storms/StormAppearance.js';
 import { GameFeed, GAME_FEED } from '../server/GameFeed.js';
+import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
 
 const MPH = 0.44704, G = 9.81;
 
@@ -42,4 +43,18 @@ assert.deepEqual(next.frames.map(f => f.seq), [all.frames[2].seq], 'a poll gives
 assert.equal(JSON.parse(feed.poll(all.latestSeq)).frames.length, 0, 'an up-to-date game gets nothing');
 for (let i = 0; i < GAME_FEED.keepFrames + 2; i++) feed.capture(world);
 assert.equal(JSON.parse(feed.poll(all.frames[0].seq)).reset, true, 'a game whose last frame is no longer kept starts afresh');
+
+// The sky the game lights the world from: block averages of the cells, whole numbers, the day.
+assert.equal(JSON.parse(feed.poll(null)).frames[0].sky, null, 'a world without cells has no sky');
+const cell = (x, y) => ({ features: { cloudLow: x === 0 ? 1 : 0, cloudMid: 0.5, cloudHigh: 0 }, surface: { temperature: 80 + y, dewpoint: 60, wind: { speed: 10 * x } }, terrain: { soilMoisture: 0.2 } });
+const cells = [0, 1, 2].map(y => [0, 1, 2].map(x => cell(x, y)));
+const sky = buildSkyAppearance({ cells, width: 3, height: 3 }, { utcOffsetHours: -6, sunriseLocal: 5, sunsetLocal: 19 });
+assert.equal(sky.cols, 2); assert.equal(sky.rows, 2);
+assert.deepEqual(sky.low, [50, 0, 50, 0], 'cloud shares average over each block, per cent');
+assert.deepEqual(sky.mid, [50, 50, 50, 50]);
+assert.deepEqual(sky.tF, [80.5, 80.5, 82, 82], 'temperatures to a tenth');
+assert.deepEqual(sky.windKt, [5, 20, 5, 20]);
+assert.deepEqual(sky.soil, [20, 20, 20, 20]);
+assert.deepEqual({ ...sky.sun, latDeg: 0 }, { latDeg: 0, utcOffsetHours: -6, sunriseLocal: 5, sunsetLocal: 19 });
+assert.ok(sky.sun.latDeg < 40.9 && sky.sun.latDeg > 30, 'the map lies south of its NW corner');
 console.log('storm appearance and game feed: ok');

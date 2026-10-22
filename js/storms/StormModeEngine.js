@@ -20,6 +20,8 @@ const COLD_POOL_SPEED_MS = 38;      // gust-front speed of the strongest cold po
 // 0-3 km share of the 0-6 km bulk shear in the balance the storm's outflow, rotation and occlusion
 // are set against (their ranges were calibrated on it).
 const LOW_LEVEL_SHEAR_SHARE = 0.5;
+// Share of the cold pool's pull into a line that a fully rotating storm resists.
+const ROTATION_HOLDS_DISCRETE = 0.4;
 const KT_TO_MS = 0.514444;
 
 export const rotatingShare = storm => ramp(storm.mesocycloneStrength ?? 0, ROTATION_RANGE[0], ROTATION_RANGE[1]);
@@ -44,7 +46,12 @@ export function lineOrganizationTarget(storm, environment) {
   // and supercells in 55-60 kt of shear turned into lines within the hour. Using it for the
   // outflow, rotation and occlusion as well took seed 8181 from 21 to 49 tornadoes, their ranges
   // having been calibrated on the share; left for the final tuning.)
-  const coldPoolDriven = ramp(coldPoolBalance(storm, environment, true), COLD_POOL_BALANCE_RANGE[0], COLD_POOL_BALANCE_RANGE[1]) * ramp(environment.stormCoverage, 0.2, 0.6);
+  // A rotating updraught resists it: its rotation lifts it (the dynamic pressure of the mesocyclone)
+  // whatever the gust front does, so a supercell keeps its own inflow among neighbours
+  // (ROTATION_HOLDS_DISCRETE). (2026-10-21: on 8 seeds x 10 days the median discrete-supercell spell
+  // lasted 1.4 h, 29% of them 2 h or more, and 46% ended by lining out; real discrete supercells last
+  // 2-4 h. With 0.4: about 2 h, 50% and 28%, tornadoes 5.5 to 6.4 a day; 0.6 left 8% lining out.)
+  const coldPoolDriven = ramp(coldPoolBalance(storm, environment, true), COLD_POOL_BALANCE_RANGE[0], COLD_POOL_BALANCE_RANGE[1]) * ramp(environment.stormCoverage, 0.2, 0.6) * (1 - ROTATION_HOLDS_DISCRETE * rotatingShare(storm));
   return clamp(Math.max(forced, coldPoolDriven), 0, 1);
 }
 

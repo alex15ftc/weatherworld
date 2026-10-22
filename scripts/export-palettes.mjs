@@ -5,7 +5,7 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CATEGORY_COLOURS, CATEGORY_SHORT, CHANCE_COLOURS, WATCH_COLOURS, DISCUSSION_COLOURS, WARNING_COLOURS } from '../js/forecast/productColours.js';
+import { CATEGORY_COLOURS, CATEGORY_SHORT, CHANCE_COLOURS, WATCH_COLOURS, DISCUSSION_COLOURS, WARNING_COLOURS, REPORT_COLOURS, EF_COLOURS, EFU_COLOUR } from '../js/forecast/productColours.js';
 import { RADAR_PRODUCTS, radarColorTable, RANGE_FOLDED } from '../js/radar/RadarFormat.js';
 
 // The radar products the game shows (server/GameProducts.js): a single site's lowest tilt, and the mosaics.
@@ -48,6 +48,11 @@ ${Object.entries(CHANCE_COLOURS).map(([hazard, levels]) => `\t${hazard} = ${tabl
 -- Watches, mesoscale discussions and warnings, by the colour key the weather server gives each.
 Palettes.WATCH = ${table(Object.entries(WATCH_COLOURS).map(([k, v]) => [k, rgb(v)]), k => k, '')}
 Palettes.DISCUSSION = ${table(Object.entries(DISCUSSION_COLOURS).map(([k, v]) => [k, rgb(v)]), k => k, '')}
+
+-- Storm reports by type; damage survey ratings EF0-EF5 (Palettes.EF[ef + 1]) and EF-Unknown.
+Palettes.REPORT = ${table(Object.entries(REPORT_COLOURS).map(([k, v]) => [k, rgb(v)]), k => k, '')}
+Palettes.EF = { ${EF_COLOURS.map(rgb).join(', ')} }
+Palettes.EFU = ${rgb(EFU_COLOUR)}
 Palettes.WARNING = ${table(Object.entries(WARNING_COLOURS).map(([k, v]) => [k, rgb(v)]), k => k, '')}
 
 -- Radar products: how a byte reads (value = min + (byte - 1) * step; 0 is no echo, and in the

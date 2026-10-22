@@ -337,9 +337,11 @@ export function writeMesoscaleDiscussion(md) {
   ];
   if (md.watchNumber) {
     // About a watch in effect: how its threat is going in this part of it.
-    const going = md.threatPercent >= 40;
-    lines.push(`The severe weather threat for ${title} ${md.watchNumber} ${going ? 'continues' : 'is waning'}.`, '',
-      `SUMMARY...${going ? `${when} over this part of the watch, with ${threat} possible${ongoing}.` : `Only isolated severe weather (${threat}) is expected over this part of the watch from here on.`}${md.replacement ? ` A new ${md.replacement.type === 'tornado' ? 'tornado' : 'severe thunderstorm'} watch will be needed when this one expires at ${stamp(md.replacement.atHourUtc)}.` : ''}`, '');
+    // (A watch whose storms never came is not waning: the cap has held. 2026-10-21: "is waning" over
+    // "No storms have formed in the area yet".)
+    const going = md.threatPercent >= 40, unformed = !going && !e.storms && !e.forming;
+    lines.push(`The severe weather threat for ${title} ${md.watchNumber} ${going ? 'continues' : unformed ? 'has not materialized' : 'is waning'}.`, '',
+      `SUMMARY...${going ? `${when} over this part of the watch, with ${threat} possible${ongoing}.` : unformed ? `Storms have not formed over this part of the watch, and the cap is expected to hold; should one break through, ${threat} would be possible.` : `Only isolated severe weather (${threat}) is expected over this part of the watch from here on.`}${md.replacement ? ` A new ${md.replacement.type === 'tornado' ? 'tornado' : 'severe thunderstorm'} watch will be needed when this one expires at ${stamp(md.replacement.atHourUtc)}.` : ''}`, '');
   } else {
     const action = md.watchPercent >= 80 ? `A ${kind} watch will likely be needed within the hour${e.storms ? '' : ', as storms form'}.` : md.watchPercent >= 40 ? `A ${kind} watch may be needed.` : 'The severe weather should stay too isolated or too brief for a watch.';
     lines.push(`Probability of Watch Issuance...${md.watchPercent} percent`, '', ...(md.updates?.length ? [`This discussion replaces ${list(md.updates.map(k => `Mesoscale Discussion ${String(k).padStart(4, '0')}`))}.`, ''] : []), `SUMMARY...${when} over the area, with ${threat} possible${ongoing}. ${action}`, '');

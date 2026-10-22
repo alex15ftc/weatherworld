@@ -10,24 +10,17 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ChunkGen = require(ReplicatedStorage.Shared.World.ChunkGen)
 local WorldMap = require(ReplicatedStorage.Shared.World.WorldMap)
+local LandSurface = require(ReplicatedStorage.Shared.World.LandSurface)
 local ChunkManager = require(script.Parent.ChunkManager)
 
 local Explore = {}
 
 local M = Enum.Material
-local COLOURS = {
-	[M.Grass] = Color3.fromRGB(116, 134, 70), -- prairie and pasture
-	[M.LeafyGrass] = Color3.fromRGB(78, 112, 48), -- crops in leaf, woods floor, tallgrass
-	[M.Ground] = Color3.fromRGB(112, 88, 62), -- worked fields, breaks
-	[M.Sandstone] = Color3.fromRGB(196, 170, 108), -- wheat and stubble
-	[M.Sand] = Color3.fromRGB(214, 196, 150), -- sandhill blowouts
-	[M.Salt] = Color3.fromRGB(168, 102, 74), -- red soil of the Red Hills
-	[M.Mud] = Color3.fromRGB(118, 96, 70), -- dirt roads, river and lake beds
-	[M.Limestone] = Color3.fromRGB(176, 168, 152), -- gravel roads
-	[M.Asphalt] = Color3.fromRGB(58, 58, 62),
-	[M.Pavement] = Color3.fromRGB(150, 148, 144),
-	[M.Rock] = Color3.fromRGB(124, 112, 96),
-}
+-- The terrain's colours, shared with the map (LandSurface).
+local COLOURS: { [Enum.Material]: Color3 } = {}
+for name, c in LandSurface.COLOURS do
+	COLOURS[(M :: any)[name]] = Color3.fromRGB(c[1], c[2], c[3])
+end
 
 local function startPoint(): (number, number)
 	local text = workspace:GetAttribute("StartMiles")

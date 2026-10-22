@@ -51,7 +51,12 @@ export function initializeTornadoState(storm) {
 // more under cloud); the target is about 7.5. A lower rate alone starved the strongest storms (an
 // ideal supercell put down one tornado in eight hours), so the rise was made steeper instead
 // (power 2 to 3, rate 4.2): weakly rotating storms lose far more of their tornadoes than strong ones.
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.6, power: 2, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// (2026-10-21, with StormRotation's outflow, cloud base and surface inhibition of the same day and
+// the later sunset: power 2 to 1.5 and fullRatePerHour 0.6 to 0.75. At power 2 the best storms on
+// outbreak days took most of the tornadoes: High on 21% of 80 days, 30+ tornadoes on 8%. Now 7.8 a
+// day, tornadoes on 76% of days, High 11%, Moderate 25% (before the day's changes 5.9, 64%, about
+// 14% and 25%).)
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.75, power: 1.5, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -272,7 +277,10 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // with high STP in the real record (Thompson et al. 2012). With the damage survey below made
 // harsher: ratings EF0-4 52/30/12/4.5/1.4% (EF2+ 18%), peak winds about a category above (EF4 9%),
 // median STP at touchdown from 3.7 (EF0) to 9.8 (EF4), on 8 seeds x 5 days.
-const INTENSITY = { baseScaleMph: 20, rotationScaleMph: 35, tail: 0.9, stpScaleMph: 40, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
+// (2026-10-21: scales 20/35/40 to 19/33.25/38 and tail 0.9 to 0.85 with the stronger rotation near the
+// ground of the same day: EF4+ winds had reached 8.9% of tornadoes and the EF4+ intensity group 18%
+// of days.)
+const INTENSITY = { baseScaleMph: 19, rotationScaleMph: 33.25, tail: 0.85, stpScaleMph: 38, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times
@@ -314,7 +322,10 @@ const STEADY = { share: 0.35, ceilingMph: [136, 200], srh: [250, 450], occlusion
 // tornado's own draw. Fitted on 362 tornadoes (seeds 1-6 x 10 days), first to the US record of
 // 2008-2022 (EF0 52%, EF1 35%, EF2 9%, EF3 2.4%, EF4 0.45%), then at the user's wish to more
 // EF1s and EF4s (aim 45 / 38 / 11 / 4 / 1.5 / 0.15): fitted 46 / 38 / 11 / 3.9 / 1.1 / 0.3.
-const DAMAGE_RATING = { densityPerSqMi: [9.6, 1.9, 0.72, 0.13, 0.08], peakShare: 0.4, decay: 0.6 };
+// (EF1 indicators 9.6 to 22 per sq mi on 2026-10-21, with the weaker tornadoes the rate's power 1.5
+// adds: 80 days rated 63/26/8.1/2.4/0.2/0.2, now 53/37/8.1/2.4/0.2/0.2, US 2008-22 52/35/9/2.4/0.45/0.05.
+// Trees, poles and outbuildings show EF1 damage almost everywhere in farm country.)
+const DAMAGE_RATING = { densityPerSqMi: [22, 1.9, 0.72, 0.13, 0.08], peakShare: 0.4, decay: 0.6 };
 const EF_FLOOR_MPH = [65, 86, 111, 136, 166, 201, 260];
 // The rated wind: the peak wind where the damage could show it all, otherwise the middle of the
 // highest category it showed.

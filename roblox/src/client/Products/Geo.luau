@@ -36,6 +36,22 @@ function Geo.middle(rings: { { number } }): (number, number)
 	return sx / n, sy / n
 end
 
+-- How far a point is from a line (a flat list of points), in map miles.
+function Geo.lineDistance(points: { number }, x: number, y: number): number
+	local best = math.huge
+	if #points == 2 then
+		return math.sqrt((points[1] - x) ^ 2 + (points[2] - y) ^ 2)
+	end
+	for i = 3, #points, 2 do
+		local ax, ay, bx, by = points[i - 2], points[i - 1], points[i], points[i + 1]
+		local dx, dy = bx - ax, by - ay
+		local length2 = dx * dx + dy * dy
+		local t = if length2 > 0 then math.clamp(((x - ax) * dx + (y - ay) * dy) / length2, 0, 1) else 0
+		best = math.min(best, math.sqrt((ax + t * dx - x) ^ 2 + (ay + t * dy - y) ^ 2))
+	end
+	return best
+end
+
 -- "21:35Z" from an hour of the world's clock.
 function Geo.clock(hour: number): string
 	local minutes = math.round(hour * 60) % (24 * 60)

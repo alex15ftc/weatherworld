@@ -575,6 +575,10 @@ function clearAirEchoes(scene, x, y, z, out, { bl, bioZ }) {
 
 // What storms add to the environmental wind: mesocyclone and tornado vortices, outflow away
 // from the heavy rain near the ground, the rear-inflow jet and the anvil's outflow near the top.
+// The low-level circulation under a mesocyclone: below fullBelowM it is narrower by up to tighten of the
+// mesocyclone's radius and its wind faster by up to spinUp, in proportion to the storm's near-ground
+// rotation, fading to the mesocyclone's own by depthM.
+const LOW_MESO = { fullBelowM: 1000, depthM: 3000, tighten: 0.55, spinUp: 0.4 };
 const gradient = {};
 function stormWindAt(scene, x, y, z, out) {
   out.u = 0; out.v = 0;
@@ -586,7 +590,11 @@ function stormWindAt(scene, x, y, z, out) {
     // Mesocyclone: strongest at mid levels, present down to the ground in mature supercells.
     const mesoDepth = 0.55 + 0.45 * Math.exp(-(((z - 4500) / 2600) ** 2));
     const lean = clamp(z / MESOCYCLONE_LEAN_M, 0, 1), meso = e.mesocyclone;
-    addVortex(out, lx - meso.x - (meso.aloftX - meso.x) * lean, ly - meso.y - (meso.aloftY - meso.y) * lean, meso.radiusKm, e.spin * e.mesocyclone.vmaxMs * mesoDepth * (z > s.top ? 0.2 : 1), true);
+    // Near the ground a strengthening low-level circulation is tighter and spins faster than the
+    // mesocyclone above it (2026-10-21: one radius at all heights, so the couplet at the lowest tilt
+    // was the mid-level one, its peaks 4-5 miles apart).
+    const tight = (meso.low ?? 0) * clamp((LOW_MESO.depthM - z) / (LOW_MESO.depthM - LOW_MESO.fullBelowM), 0, 1);
+    addVortex(out, lx - meso.x - (meso.aloftX - meso.x) * lean, ly - meso.y - (meso.aloftY - meso.y) * lean, meso.radiusKm * (1 - LOW_MESO.tighten * tight), e.spin * e.mesocyclone.vmaxMs * mesoDepth * (1 + LOW_MESO.spinUp * tight) * (z > s.top ? 0.2 : 1), true);
     if (e.tornado && z < s.tornadoDepthM) addVortex(out, lx - e.tornado.x, ly - e.tornado.y, e.tornado.radiusKm, e.spin * e.tornado.vmaxMs * (1 - z / s.tornadoDepthM * 0.6));
     if (z < 1500) {
       // Rain-cooled air spreads away from the heavy rain: gust fronts, and the surge behind a hook.

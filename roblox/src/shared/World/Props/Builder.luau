@@ -21,12 +21,7 @@ export type Props = { Prop }
 local M = Enum.Material
 
 -- Uniform 0 to 1 from integers (the same everywhere for the same inputs).
-function Builder.hash(a: number, b: number, salt: number): number
-	local h = (math.floor(a) * 73856093 + math.floor(b) * 19349663 + salt * 83492791) % 2147483647
-	h = (h * 48271) % 2147483647
-	h = (h * 48271) % 2147483647
-	return h / 2147483647
-end
+Builder.hash = require(script.Parent.Parent.LandSurface).hash
 
 function Builder.add(props: Props, shape: string, cf: CFrame, size: Vector3, color: Color3, material: Enum.Material?, collide: boolean?): Prop
 	local p: Prop = { shape = shape, cf = cf, size = size, color = color, material = material or M.SmoothPlastic, collide = if collide == nil then true else collide }

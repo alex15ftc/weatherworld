@@ -403,10 +403,12 @@ function spanThrough(byHour, startUtc, lowShare, highShare) {
 // How a hazard's maps read, in words: its highest contour gives how much of it, its highest
 // intensity group how strong. Each entry is [lowest contour level, words, verb].
 const AMOUNT = {
-  tornado: [[30, 'numerous tornadoes', 'are'], [15, 'several tornadoes', 'are'], [5, 'a few tornadoes', 'are'], [2, 'a tornado or two', 'is']],
-  wind: [[60, 'widespread damaging winds', 'are'], [30, 'scattered damaging winds', 'are'], [5, 'isolated damaging winds', 'are']],
-  hail: [[45, 'widespread large hail', 'is'], [15, 'scattered large hail', 'is'], [5, 'isolated large hail', 'is']],
-  severe: [[45, 'widespread severe thunderstorms', 'are'], [15, 'scattered severe thunderstorms', 'are'], [5, 'isolated severe thunderstorms', 'are']]
+  // (The lowest of each is "possible", as the SPC words a 2% tornado or 5% hail or wind area;
+// "expected" until 2026-10-21.)
+  tornado: [[30, 'numerous tornadoes', 'are'], [15, 'several tornadoes', 'are'], [5, 'a few tornadoes', 'are'], [2, 'a tornado or two', 'is', 'possible']],
+  wind: [[60, 'widespread damaging winds', 'are'], [30, 'scattered damaging winds', 'are'], [5, 'isolated damaging winds', 'are', 'possible']],
+  hail: [[45, 'widespread large hail', 'is'], [15, 'scattered large hail', 'is'], [5, 'isolated large hail', 'is', 'possible']],
+  severe: [[45, 'widespread severe thunderstorms', 'are'], [15, 'scattered severe thunderstorms', 'are'], [5, 'isolated severe thunderstorms', 'are', 'possible']]
 };
 const STRENGTH = {
   tornado: ['', ', some of them strong (EF2 or stronger)', ', some of them intense (EF3 or stronger)', ', with violent tornadoes (EF4 or stronger) possible'],
@@ -417,8 +419,11 @@ const STRENGTH = {
 const DAY_NUMBER = { day1: 1, day2: 2, day3: 3 }, WHEN = { day1: 'today', day2: 'tomorrow', day3: 'on Day 3' };
 function threat(hazard, top) {
   const found = AMOUNT[hazard].find(([level]) => top.level >= level);
-  return found ? { words: `${found[1]}${STRENGTH[hazard][top.cig] ?? ''}`, verb: found[2] } : null;
+  return found ? { words: `${found[1]}${STRENGTH[hazard][top.cig] ?? ''}`, verb: `${found[2]} ${found[3] ?? 'expected'}` } : null;
 }
+
+// The part of the day an hour (UTC) falls in, in the region's clock time.
+const partOfDay = hourUtc => { const h = (((Math.round(hourUtc) - 5) % 24) + 24) % 24; return h >= 6 && h < 12 ? 'during the morning' : h < 17 && h >= 12 ? 'during the afternoon' : h >= 17 && h < 22 ? 'during the evening' : 'overnight'; };
 
 export function writeDiscussion(o) {
   const { width, height } = o, at = c => o.category.map(v => rank(v) >= rank(c)), label = c => WORLD_RISK_LABELS[c].toUpperCase();
@@ -426,7 +431,10 @@ export function writeDiscussion(o) {
   // Headline: the categories from the highest down, each with where it is.
   const headline = [];
   const named = c => o.areaNames?.[c] ?? describeArea(at(c), width, height);
-  for (const c of ['HIGH', 'MDT', 'ENH', 'SLGT']) { if (rank(o.highest) >= rank(c) && o.areas[c] > 0) headline.push(`...THERE IS ${c === 'ENH' ? 'AN' : 'A'} ${label(c)} OF SEVERE THUNDERSTORMS OVER ${named(c).toUpperCase()}...`); }
+  // A lower category is named only where its area reads differently from those above it (2026-10-21:
+  // "much of the Big Blue Valley into much of the Smoky Hills" three times over).
+  const said = new Set();
+  for (const c of ['HIGH', 'MDT', 'ENH', 'SLGT']) { if (rank(o.highest) >= rank(c) && o.areas[c] > 0 && !said.has(named(c))) { said.add(named(c)); headline.push(`...THERE IS ${c === 'ENH' ? 'AN' : 'A'} ${label(c)} OF SEVERE THUNDERSTORMS OVER ${named(c).toUpperCase()}...`); } }
   if (!headline.length) headline.push(rank(o.highest) >= rank('MRGN') ? `...THERE IS A MARGINAL RISK OF SEVERE THUNDERSTORMS OVER ${named('MRGN').toUpperCase()}...` : o.areas.TSTM > 0 ? '...NO SEVERE THUNDERSTORM AREAS FORECAST...' : '...NO THUNDERSTORM AREAS FORECAST...');
   lines.push(`Day ${DAY_NUMBER[o.day] ?? 1} Convective Outlook`, `Issued ${clock(o.issuedHourUtc)}. Valid ${clock(o.validFromHourUtc ?? o.issuedHourUtc)} to ${clock(o.validToHourUtc)}`, '', ...headline, '');
 
@@ -466,21 +474,21 @@ export function writeDiscussion(o) {
     // Timing from the period's start: new storms (the first tenth of them), and the fewest hours
     // holding 60% of the severe storms, and of the tornadoes.
     const from = Math.round(((o.validFromHourUtc ?? start) % 24 + 24) % 24);
-    const begin = spanOf(o.timing.storms, from, 0.1, 0.9), tornado = spanOf(o.timing.tornado, from), worst = spanOf(o.timing.severe, from);
+    const begin = spanOf(o.timing.storms, from, 0.1, 0.9), tornado = spanOf(o.timing.tornado, from), worst = densestSpan(o.timing.severe, from, 0.5);
     const going = (o.ongoing ?? 0) >= 2;
     if (begin || going) lines.push(`${going ? `Storms are ongoing at the start of the period${begin ? `, and more are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)})` : ''}` : `Storms are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)})`}${worst ? `, with severe weather most likely between ${clock(worst.first)} and ${clock(worst.last + 1)}` : ''}.`);
     const where = hazard => partAt(o.top[hazard].x, o.top[hazard].y);
     const area = (hazard, name) => `${o.top[hazard].level}% ${name} area${o.top[hazard].cig ? `, CIG${o.top[hazard].cig}` : ''}`;
     const of = hazard => (o.top[hazard] ? threat(hazard, o.top[hazard]) : null);
     const tor = of('tornado'), hail = of('hail'), wind = of('wind'), all = of('severe');
-    if (all) lines.push(`SEVERE: ${sentence(all.words.split(',')[0])} ${all.verb} expected${all.words.includes(',') ? all.words.slice(all.words.indexOf(',')) + ',' : ','} most likely over the ${where('severe')} part of the region (${area('severe', 'severe')}). The hazards will be set out separately as the day comes nearer.`);
+    if (all) lines.push(`SEVERE: ${sentence(all.words.split(',')[0])} ${all.verb}${all.words.includes(',') ? all.words.slice(all.words.indexOf(',')) + ',' : ','} most likely over the ${where('severe')} part of the region (${area('severe', 'severe')}). The hazards will be set out separately as the day comes nearer.`);
     if (tor) {
       const helicity = e && e.helicity >= 200 ? 'Strong low-level shear' : e && e.helicity >= 100 ? 'Adequate low-level shear' : 'Modest low-level shear';
       const reasoning = e && e.helicity >= 100 && e.cloudBaseM <= 1500 ? `${helicity} and low cloud bases favour tornadoes with storms that stay on their own.` : e && e.helicity >= 100 ? `${helicity} favours tornadoes, but high cloud bases will limit them.` : `${helicity} will limit the tornado risk.`;
-      lines.push(`TORNADO: ${sentence(tor.words.split(',')[0])} ${tor.verb} expected${tor.words.includes(',') ? tor.words.slice(tor.words.indexOf(',')) + ',' : ','} most likely over the ${where('tornado')} part of the region (${area('tornado', 'tornado')}). ${reasoning}${tornado ? ` The tornado risk is greatest between ${clock(tornado.first)} and ${clock(tornado.last + 1)}${(tornado.last - tornado.first + 24) % 24 >= 3 ? `, peaking near ${clock(tornado.peak)}` : ''}.` : ''}`);
+      lines.push(`TORNADO: ${sentence(tor.words.split(',')[0])} ${tor.verb}${tor.words.includes(',') ? tor.words.slice(tor.words.indexOf(',')) + ',' : ','} most likely over the ${where('tornado')} part of the region (${area('tornado', 'tornado')}). ${reasoning}${tornado ? ` The tornado risk is greatest between ${clock(tornado.first)} and ${clock(tornado.last + 1)}${(tornado.last - tornado.first + 24) % 24 >= 3 ? `, peaking near ${clock(tornado.peak)}` : ''}.` : ''}`);
     }
-    if (hail) lines.push(`HAIL: ${sentence(hail.words.split(',')[0])} ${hail.verb} expected${hail.words.includes(',') ? hail.words.slice(hail.words.indexOf(',')) + ',' : ','} most likely over the ${where('hail')} part of the region (${area('hail', 'hail')}).`);
-    if (wind) lines.push(`WIND: ${sentence(wind.words.split(',')[0])} ${wind.verb} expected${wind.words.includes(',') ? wind.words.slice(wind.words.indexOf(',')) + ',' : ','} most likely over the ${where('wind')} part of the region (${area('wind', 'wind')})${o.top.wind.cig >= 2 ? ', especially where storms merge into lines during the evening' : ''}.`);
+    if (hail) lines.push(`HAIL: ${sentence(hail.words.split(',')[0])} ${hail.verb}${hail.words.includes(',') ? hail.words.slice(hail.words.indexOf(',')) + ',' : ','} most likely over the ${where('hail')} part of the region (${area('hail', 'hail')}).`);
+    if (wind) lines.push(`WIND: ${sentence(wind.words.split(',')[0])} ${wind.verb}${wind.words.includes(',') ? wind.words.slice(wind.words.indexOf(',')) + ',' : ','} most likely over the ${where('wind')} part of the region (${area('wind', 'wind')})${o.top.wind.cig >= 2 ? `, especially where storms merge into lines${worst ? ` ${partOfDay(worst.peak)}` : ''}` : ''}.`);
     // From the runs themselves (2026-10-20; until then two runs could "agree closely").
     const spread = o.expected.tornadoes.high - o.expected.tornadoes.low, cells = o.expected.severeCells ?? { low: 0, middle: 0, high: 0 }, cellSpread = (cells.high - cells.low) / Math.max(1, cells.middle);
     const notes = [];

@@ -76,6 +76,7 @@ RoadNet.URBAN_GRID, RoadNet.SUBURB_GRID = 200, 250
 RoadNet.MAX_TOTAL = S.interstate.total
 RoadNet.CURB = 1
 local STREET_CLEAR = 10 -- between a cul-de-sac's edge and a highway's
+local TRIM_SLACK = 0.5 -- studs; see the gravel and dirt roads' trimming in build
 
 -- A cul-de-sac's cross-section for a street: a turning circle of two lanes and a bit, the curb
 -- and the street's sidewalk round it.
@@ -395,7 +396,11 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 						local t = (wx * m.uz - wz * m.ux) / den -- along g
 						local u = (wx * g.uz - wz * g.ux) / den -- along m
 						local gap = m.spec.total / sin + 40
-						if u >= -m.spec.total and u <= m.length + m.spec.total and t > -gap and t < g.length + gap then
+						-- TRIM_SLACK: a piece cut back ends exactly gap from the crossing, and rounding
+						-- could make it count as running in again and be cut again, unchanged, for
+						-- ever (2026-10-21: "Script timeout" in this loop). Ends within the slack of
+						-- the gap are left alone.
+						if u >= -m.spec.total and u <= m.length + m.spec.total and t > -gap + TRIM_SLACK and t < g.length + gap - TRIM_SLACK then
 							table.remove(segments, index)
 							if t - gap > 1 then
 								local a = segment(g.spec, g.ax, g.az, g.ax + g.ux * (t - gap), g.az + g.uz * (t - gap), false, g.axis)

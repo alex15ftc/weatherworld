@@ -24,6 +24,14 @@
         }
       }
     },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future",
+        "GlobalShadows": true,
+        "EnvironmentDiffuseScale": 1,
+        "EnvironmentSpecularScale": 1
+      }
+    },
     "Workspace": {
       "$properties": {
         "StreamingEnabled": true

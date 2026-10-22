@@ -18,6 +18,7 @@ import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { GameFeed } from './GameFeed.js';
 import { countiesFor } from './CountyLayer.js';
 import { logStormTick } from '../js/reports/stormLog.js';
+import { LightningLog } from '../js/storms/Lightning.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 1000;
@@ -32,8 +33,6 @@ const MAX_STEPS_PER_TICK = 4;
 const RADAR_PREWARM_MS = 60_000;
 // Mosaics kept for the radar page's loop (one per scan time: an hour's worth).
 const RADAR_HISTORY_FRAMES = 12;
-// Mosaics made at every scan whether looked at or not (the others while they are looked at).
-const RADAR_ALWAYS = ['composite', 'base'];
 const RISK_CODES = { NONE: 0, TSTM: 1, MRGN: 2, SLGT: 3, ENH: 4, MDT: 5, HIGH: 6 };
 const TILE_STYLE_REVISION = 'spc-probability-v6';
 const STATE_VERSION = 2;
@@ -44,7 +43,9 @@ export class WeatherAuthorityRuntime {
   // is kept). An explicit seed always starts that world fresh. A fresh world first lets the
   // large-scale weather develop for spinUpDays, which takes about a second per day.
   // radarPool (RadarPool.js): threads the radar is worked out on; without one it is worked out here.
-  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null } = {}) {
+  // regional: settings for the regional layer (RegionalAtmosphere's), for audits that try them.
+  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null, regional = {} } = {}) {
+    this.regionalSettings = regional;
     this.authorityInstance = crypto.randomBytes(8).toString('hex');
     this.radarPool = radarPool;
     // Radar products asked for lately (cache key -> when), made ready again as each new scan comes in.
@@ -65,14 +66,14 @@ export class WeatherAuthorityRuntime {
     this.autoAdvance = true;
     this.systemNumber = 1;
     // The storms as the game draws them, a frame each storm tick (GameFeed.js).
-    this.gameFeed = new GameFeed({ tickMs: REAL_MS_PER_STORM_TICK });
+    this.gameFeed = new GameFeed({ tickMs: REAL_MS_PER_STORM_TICK, regional });
     const explicitSeed = seed !== undefined && seed !== null && seed !== '';
     if (explicitSeed || !this.restoreState()) { this.build(seed); this.saveState(); }
   }
 
   build(seed) {
     const number = Number(seed), given = seed !== undefined && seed !== null && seed !== '' && Number.isFinite(number);
-    this.adoptEngine(new AtmosphereWorld({ seed: given ? Math.trunc(number) : DEFAULT_SEED, spinUpDays: this.spinUpDays }));
+    this.adoptEngine(new AtmosphereWorld({ seed: given ? Math.trunc(number) : DEFAULT_SEED, spinUpDays: this.spinUpDays, regional: this.regionalSettings ?? {} }));
   }
 
   adoptEngine(engine) {
@@ -89,7 +90,9 @@ export class WeatherAuthorityRuntime {
     // The day's storm reports and tornado tracks (js/reports/stormLog.js), after each storm tick.
     const layer = countiesFor(world), places = { layer, milesPerKm: layer ? layer.miles / (world.width * world.cellSizeKm) : 0.621371 };
     this.places = places;
-    engine.onStormTick = () => logStormTick(world, places);
+    // The last half hour's lightning (js/storms/Lightning.js), added to after each storm tick.
+    this.lightning = new LightningLog({ seed: engine.seed });
+    engine.onStormTick = () => { logStormTick(world, places); this.lightning.record(world); };
   }
 
   reset(seed = this.seed) {
@@ -455,7 +458,6 @@ export class WeatherAuthorityRuntime {
   // the radar page's loop has the last hour as soon as it opens.
   prewarmRadar(now = Date.now()) {
     if (!this.radarPool) return;
-    for (const kind of RADAR_ALWAYS) this.radarWanted.set('mosaic|' + kind, now);
     for (const [key, at] of this.radarWanted) {
       if (now - at > RADAR_PREWARM_MS) { this.radarWanted.delete(key); continue; }
       if (key.startsWith('mosaic|')) { this.radarMosaic(key.slice(7)).catch(() => {}); this.radarWanted.set(key, at); continue; }

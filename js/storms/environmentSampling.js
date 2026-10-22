@@ -69,7 +69,7 @@ export function sampleStormEnvironment(world, xKm, yKm) {
     srh03: mean(cell => cell.derived?.sounding?.srh03 ?? cell.derived.srh), shear01: mean(cell => cell.derived?.sounding?.shear01 ?? 0), shear03: mean(cell => cell.derived?.sounding?.shear03 ?? 0),
     // Height of the wet-bulb zero above the ground (m): how far hail falls through melting air.
     wetBulbZeroAglM: mean(cell => cell.derived?.sounding?.wetBulbZeroAglM ?? 3000),
-    cin: mean(cell => cell.derived.cin), srh, outflowContrastK, densityGradient, moistureGradient,
+    cin: mean(cell => cell.derived.cin), sbcin: mean(cell => cell.derived.sbcinMagnitude ?? cell.derived.cin), srh, outflowContrastK, densityGradient, moistureGradient,
     stp: mean(cell => cell.derived.stp ?? 0), rawStp: mean(cell => cell.derived.rawStp ?? cell.derived.stp ?? 0),
     vtp: mean(cell => cell.derived.vtp ?? 0), synopticTornadoSupport: mean(cell => cell.derived.synopticTornadoSupport ?? 0), scp: mean(cell => cell.derived.scp ?? 0),
     bulkShear, lcl,

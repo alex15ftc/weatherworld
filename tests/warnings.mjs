@@ -2,7 +2,7 @@
 // and observed tornadoes, PDS, the polygon along the storm's path, statements, cancellation,
 // expiry and a new warning downstream.
 import assert from 'node:assert/strict';
-import { WARNING, hailTag, windTag, thunderstormDamage, warningPolygon, insidePolygon, observeStorm, createWarningState, updateWarnings, inEffect, publicWarning } from '../js/forecast/Warning.js';
+import { WARNING, hailTag, windTag, thunderstormDamage, warningPolygon, warningMinutes, insidePolygon, observeStorm, createWarningState, updateWarnings, inEffect, publicWarning } from '../js/forecast/Warning.js';
 
 const sites = [{ id: 'KCPL', name: 'Central Plains', xKm: 500, yKm: 500 }];
 // A storm moving east at 60 km/h, with whatever hazards it is given.
@@ -24,7 +24,10 @@ assert.equal(thunderstormDamage(2.75, 60), 'DESTRUCTIVE'); assert.equal(thunders
 const look = observeStorm(storm('a', { hail: 1.2 }));
 const polygon = warningPolygon('severe', look);
 assert.ok(insidePolygon(polygon, 400, 500), 'the storm is in its own warning');
-assert.ok(insidePolygon(polygon, 400 + 60 * WARNING.minutes.severe / 60, 500), 'and so is where it will be when the warning ends');
+assert.ok(insidePolygon(polygon, 400 + 60 * warningMinutes('severe', look) / 60, 500), 'and so is where it will be when the warning ends');
+// A severe thunderstorm warning runs as long as the storm takes to cover severeAheadKm, within severeMinutes.
+assert.equal(warningMinutes('severe', look), 40); assert.equal(warningMinutes('tornado', look), WARNING.minutes.tornado);
+assert.equal(warningMinutes('severe', { ...look, east: 150 }), 30); assert.equal(warningMinutes('severe', { ...look, east: 20 }), 60);
 assert.ok(!insidePolygon(polygon, 360, 500), 'not far behind it');
 assert.ok(Math.abs(polygon[2][1] - polygon[3][1]) > Math.abs(polygon[0][1] - polygon[1][1]), 'wider ahead than behind');
 const line = warningPolygon('severe', observeStorm(storm('l', { hail: 1.2, line: 40 })));

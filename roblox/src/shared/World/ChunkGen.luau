@@ -25,6 +25,7 @@ local Bridges = require(script.Parent.Props.Bridges)
 local Buildings = require(script.Parent.Props.Buildings)
 local Interchanges = require(script.Parent.Interchanges)
 local Sites = require(script.Parent.Sites)
+local LandSurface = require(script.Parent.LandSurface)
 
 local ChunkGen = {}
 
@@ -33,7 +34,6 @@ local VOXEL = Config.VOXEL_STUDS
 local N = SIZE // VOXEL
 local MILE = Config.STUDS_PER_MILE
 local HALF_MAP = Config.MAP_MILES / 2
-local SEED_Z = Config.SEED * 29.7 + 0.5
 local toStuds = Heightfield.toStuds
 local C = WorldMap.cover
 local COVER_KEYS = WorldMap.meta.cover :: { string }
@@ -158,40 +158,18 @@ local function coverKeyAt(x: number, z: number): string
 	return COVER_KEYS[cover + 1]
 end
 
--- Surface material of open land of a cover at a point (stud x, z; map miles mx, my).
+-- Surface material of open land of a cover at a point (map miles mx, my), as the map draws it
+-- too (LandSurface); urban land is paved only where the streets are.
+local SURFACE_MATERIAL: { [string]: Enum.Material } = {}
+for surface, name in LandSurface.MATERIAL do
+	SURFACE_MATERIAL[surface] = (M :: any)[name]
+end
 local function landMaterial(cover: number, mx: number, my: number, paved: boolean): Enum.Material
-	if cover == C.cropland or cover == C.irrigated then
-		local qx, qy = math.floor(mx * 2), math.floor(my * 2) -- quarter sections
-		if cover == C.irrigated then
-			local cx, cy = (qx + 0.5) / 2, (qy + 0.5) / 2
-			if (mx - cx) ^ 2 + (my - cy) ^ 2 < 0.235 ^ 2 then
-				return if hash(qx, qy, 3) < 0.7 then M.LeafyGrass else M.Sandstone
-			end
-			return M.Grass
-		end
-		local crop = hash(qx, qy, 1)
-		if crop < 0.35 then
-			return M.Sandstone -- wheat and stubble
-		elseif crop < 0.6 then
-			return M.Ground -- worked ground
-		elseif crop < 0.86 then
-			return M.LeafyGrass -- corn, soybeans
-		end
-		return M.Grass -- pasture
-	elseif cover == C.forest or cover == C.riparian then
-		return M.LeafyGrass
-	elseif cover == C.sandhillGrass then
-		return if math.noise(mx * 9, my * 9, SEED_Z) > 0.42 then M.Sand else M.Grass
-	elseif cover == C.redRange then
-		return if math.noise(mx * 6, my * 6, SEED_Z + 2) > 0.2 then M.Salt else M.Grass -- red soil (Salt recoloured)
-	elseif cover == C.breaks then
-		return if math.noise(mx * 8, my * 8, SEED_Z + 4) > 0 then M.Ground else M.Grass
-	elseif cover == C.tallgrass then
-		return M.LeafyGrass
-	elseif cover == C.urban then
+	local surface = LandSurface.at(COVER_KEYS[cover + 1], mx, my)
+	if surface == "urban" then
 		return if paved then M.Pavement else M.Grass
 	end
-	return M.Grass
+	return SURFACE_MATERIAL[surface]
 end
 
 -- Settlements within reach of the chunk, in studs.

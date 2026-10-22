@@ -22,5 +22,10 @@ export const discussionColourKey = md => (md.watchNumber ? (md.watchType === 'to
 // of a severe thunderstorm.
 export const WARNING_COLOURS = { tornadoEmergency: '#b44dff', tornadoPds: '#ff3df2', tornado: '#ff2d2d', severeDestructive: '#ff5a1f', severeConsiderable: '#ff9f1a', severe: '#f5c518' };
 export const warningColourKey = w => (w.type === 'tornado' ? (w.emergency ? 'tornadoEmergency' : w.pds ? 'tornadoPds' : 'tornado') : w.tags?.damage === 'DESTRUCTIVE' ? 'severeDestructive' : w.tags?.damage === 'CONSIDERABLE' ? 'severeConsiderable' : 'severe');
+// Storm reports (SPC): red tornado, green hail, blue wind. Damage surveys (DAT): each EF rating
+// its colour, grey for EF-Unknown.
+export const REPORT_COLOURS = { tornado: '#ef4444', hail: '#22c55e', wind: '#3b82f6' };
+export const EF_COLOURS = ['#60a5fa', '#4ade80', '#facc15', '#fb923c', '#ef4444', '#e879f9'];
+export const EFU_COLOUR = '#9ca3af';
 // The most urgent first.
 export const warningRank = w => (w.type === 'tornado' ? (w.emergency ? 6 : w.pds ? 5 : w.tags?.tornado === 'OBSERVED' ? 4 : 3) : w.tags?.damage === 'DESTRUCTIVE' ? 2 : w.tags?.damage === 'CONSIDERABLE' ? 1 : 0);

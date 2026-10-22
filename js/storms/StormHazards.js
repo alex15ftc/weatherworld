@@ -47,7 +47,11 @@ export const HAIL = Object.freeze({ scaleInches: 2.0, referenceUpdraftMs: 60, po
 // 2026-10-15: downdraught share 0.5 to 0.4. Damaging wind alone still made a third of all High
 // days (wind contours at 75-90% on half of all days); at 0.4 High days fell from 45% to 38% on
 // 40 days, with tornadoes unchanged.
-export const GUST = Object.freeze({ downdraughtShare: 0.5, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.5, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
+// (rearInflowShare 0.5 to 0.25 on 2026-10-21: on seed 2112 the severe gusts had a median of 75 mph
+// and a 90th of 101, 40% of them 80 mph or more, nearly all behind lines on strong-flow days, where
+// half the 500 mb wind added 15-20 m/s; reported severe gusts run at a median near 60-65 mph, and
+// 80 mph or more is perhaps one in twenty. 40% of the severe thunderstorm warnings were DESTRUCTIVE.)
+export const GUST = Object.freeze({ downdraughtShare: 0.5, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.25, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 const MPH_PER_MS = 2.23694;
 
 export function hailSizeInches(storm, environment) {

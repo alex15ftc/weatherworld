@@ -25,9 +25,13 @@ export const ROTATION = Object.freeze({
   // ground-level cloud base put tornadoes down in 0-1 km helicity of 20-70 in the morning. Then
   // 0.3 the same day: 0.15 left afternoon storms, whose inflow helicity is only about 50 against
   // about 140 at night, almost no tornadoes.)
-  lowHelicity: [50, 250], helicityFloor: 0.3, cloudBaseM: [2000, 800], outflowBalance: [1.0, 1.8],
+  // (cloudBaseM [2000, 800] to [2000, 1000] on 2026-10-21, the significant tornado parameter's LCL
+  // term: afternoon storms under 1,000-1,300 m bases were held back further than night ones.)
+  lowHelicity: [50, 250], helicityFloor: 0.3, cloudBaseM: [2000, 1000], outflowBalance: [1.0, 1.8],
   // Inhibition (J/kg) at which a storm fed from the ground takes all, and none, of its inflow from near the ground.
-  groundCinJkg: [50, 200],
+  // (2026-10-21: [50, 200] to [30, 120]; it is read from the surface parcel as well for the rotation
+  // near the ground, see surfaceFed.)
+  groundCinJkg: [30, 120],
   // Strong helicity near the ground means strong inflow, which holds the outflow back: the
   // outflow a storm can have and still spin up near the ground rises by up to outflowHold
   // (in the balance) between helicityHold[0] and [1]. So a storm in strongly turning low-level
@@ -62,6 +66,8 @@ export const ROTATION = Object.freeze({
   occlusionHours: [4.5, 0.45], occlusionBalance: [0.5, 1.4], weakShare: 0.07, holdRotation: [0.12, 0.6], recoveryHours: 0.15
 });
 
+// Median ratio of the cold-pool balance against the measured 0-3 km shear to that against half the 0-6 km shear, over supercells.
+const MEASURED_SHARE = 0.72;
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 const toward = (value, target, dtHours, upHours, downHours) => value + (target - value) * clamp(dtHours / (target > value ? upHours : downHours), 0, 1);
 
@@ -99,14 +105,26 @@ export function stepStormRotation(storm, environment, dtHours) {
   const nearGround = R.helicityFloor + (1 - R.helicityFloor) * ramp((Number(environment.srh) || 0) + R.boundaryHelicity * storm.boundaryBoost, R.lowHelicity[0], R.lowHelicity[1]);
   const cloudBase = ramp(R.cloudBaseM[0] - (Number(environment.lcl) || R.cloudBaseM[0]), 0, R.cloudBaseM[0] - R.cloudBaseM[1]);
   const held = R.outflowHold * ramp(environment.srh, R.helicityHold[0], R.helicityHold[1]);
-  const outflow = 1 - ramp(balance, R.outflowBalance[0] + held, R.outflowBalance[1] + held);
+  // The outflow set against the measured 0-3 km shear, the low-level shear the cold pool works
+  // against (Rotunno, Klemp and Weisman); the ranges, set on half the 0-6 km shear, are scaled by
+  // MEASURED_SHARE, its median ratio over supercells. (2026-10-21: by day the deep shear eases while
+  // the low-level shear does not, so half the 0-6 km shear made afternoon storms look outflow
+  // dominated: their outflow factor was 0.27-0.30 from 3 to 8 pm against 0.40-0.47 at night.)
+  // (Without a measured 0-3 km shear the balance falls back to half the 0-6 km, on the ranges as set.)
+  const scale = Number(environment.shear03) > 0 ? MEASURED_SHARE : 1;
+  const outflow = 1 - ramp(coldPoolBalance(storm, environment, true), scale * (R.outflowBalance[0] + held), scale * (R.outflowBalance[1] + held));
   // A storm feeding on air from above the ground has nothing near the ground to stretch. One fed
   // from the ground through inhibition draws more of its inflow from above the stable layer the
   // more inhibition there is (the inhibition term of the significant tornado parameter: all of it
   // from the ground at 50 J/kg or less, none at 200; Thompson et al. 2003, Davies 2004). (Without
   // it, from 2026-10-16, storms over the night's cooled ground counted as fed from the ground up to
   // 200 J/kg and made 58-67% of the tornadoes at night.)
-  const freeTarget = storm.elevatedFeed || storm.leftMover ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow * fromGround, lowTarget = freeTarget * (1 - storm.occlusion);
+  // Rotation near the ground stretches the air at the ground itself, so it also needs the surface
+  // parcel to reach the storm: its inhibition rises within hours of sunset, and stays until the
+  // morning's mixing has worn the inversion away, while the mixed layer's rises slowly. (2026-10-21:
+  // with the mixed layer's alone 42% of tornadoes came from 9 pm to 6 am.)
+  const surfaceFed = Math.min(fromGround, clamp((R.groundCinJkg[1] - Math.abs(Number(environment.sbcin ?? environment.cin) || 0)) / (R.groundCinJkg[1] - R.groundCinJkg[0]), 0, 1));
+  const freeTarget = storm.elevatedFeed || storm.leftMover ? 0 : storm.mesocycloneStrength * nearGround * cloudBase * outflow * surfaceFed, lowTarget = freeTarget * (1 - storm.occlusion);
   // What the low-level rotation would be were the storm not occluding: its underlying strength.
   storm.lowRotationFree = toward(storm.lowRotationFree ?? 0, freeTarget, dtHours, R.lowSpinUpHours, R.lowSpinDownHours);
   const before = storm.lowRotation ?? 0;

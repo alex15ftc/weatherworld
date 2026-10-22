@@ -32,11 +32,11 @@ The clock runs at 15 simulated minutes per real minute (a simulated day is 96 re
 | Page | What it shows |
 |---|---|
 | `/` (`index.html`) | Surface observations and mesoanalysis: station plots, isobars, fronts, the dryline, outflow boundaries, storms, 27 overlay fields, click soundings, 36 frames of history |
-| `/radar.html` | Simulated radar sites and the composite mosaic |
-| `/day1.html`, `/day2.html` | The Day 1 and Day 2 convective outlooks, laid out as the Storm Prediction Center's: risk categories; tornado, wind and hail chances at the fixed contour levels with hatched intensity groups; the forecast discussion. Day 1 is updated every 6 hours, Day 2 every 12 |
-| `/mesoscale.html` | Tornado and severe thunderstorm watches (issued as storms begin to fire, with the table of probabilities; some marked particularly dangerous situations), and mesoscale discussions: areas where severe storms are developing, the probability of a watch, the most probable peak tornado, wind and hail, and how the threat in a watch is going |
-| `/day3.html` | The Day 3 outlook, in the centre's Day 3 form: one chance of any severe weather. Updated every 24 hours |
 | `/performance.html` | Server timing |
+
+The radar (with lightning), outlooks, watches and mesoscale discussions, warnings, storm reports,
+damage surveys and the world map are drawn in the Roblox place from the game feed
+(`/api/game/v1/*`, `server/GameProducts.js`); their Node pages were retired on 2026-10-22.
 
 ## How it works
 

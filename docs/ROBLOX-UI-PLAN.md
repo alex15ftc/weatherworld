@@ -90,7 +90,7 @@ need more detail (a sounding at a point, a storm's attributes) go to small on-de
    server-side), sounding and hodograph on click.
 6. **Storm reports and damage surveys** — the day's map and lists; surveys on demand.
 
-Not ported: `performance.html` (a developer tool) and `worldmap.html` (MapView already covers it).
+Not ported: `performance.html` (a developer tool). `worldmap.html` was retired 2026-10-22 (MapView covers it), with the Node radar, outlook, mesoscale, storm report and damage survey pages.
 
 Each step: the backend product gets a unit test in `tests/`; the Roblox screen is checked in
 Studio against the matching web developer view on the same snapshot.
@@ -174,3 +174,55 @@ Radar not working on 2026-10-21 was the backend and the proxy still running the 
 the radar products; restart both after updating.
 
 Not done yet: higher tilts, CC/ZDR/SW, a radar loop, sirens and alerts for players inside a warning.
+
+### Step 6: storm reports and damage surveys (2026-10-22)
+
+Two more map layers, **Reports** and **Damage**, sharing one day picker (`Layers/ReportDays.luau`):
+SPC-style report dots (red tornado, green hail, blue wind; ringed when significant) and DAT-style
+tornado tracks in their EF colour. Clicking a track opens the survey (EF contours, then damage
+points close in, each one clickable).
+
+- The engine still makes the reports and surveys (`js/reports/*`). Roblox stores them, serves the
+  history and draws it. Products: `reports.days`, `reports.day.<N>`, `survey.<tornado id>` and
+  `survey.indicators` (`server/GameProducts.js`). The manifest lists only today and yesterday;
+  older days can be fetched by id while the engine's 14-day log still holds them.
+- `server/ReportArchive.luau` keeps every *final* day (over, with every tornado lifted) and its
+  surveys in the DataStore `StormReports` under `<worldId>/...`, for `Config.REPORT_ARCHIVE_DAYS`
+  (365 world days, about 15 MB). One server writes at a time, using a MemoryStore lease;
+  `UpdateAsync` skips any write that is already stored. Any server reads. A day the
+  place missed (because no server was up) is caught up while the engine still has it. Players get
+  the archive index as the product `reports.archive`.
+- `worldId` (on `world.reportLog`, saved with the world) separates worlds, since a new world
+  numbers its days from 1 again. Archives of earlier worlds are left in the store and never
+  cleaned up yet.
+- Product ids may now contain `-` and `_` (server route and `game-feed-proxy.mjs`): restart both.
+- Not yet seen in Studio. In Studio, DataStores need *Enable Studio Access to API Services*.
+  Without it, old days come from the engine only. A recorded snapshot never writes.
+
+### Map sharpness (2026-10-22)
+
+The map screen (`client/Products/MapCanvas.luau`) was one image of at most 1024 pixels, redrawn
+at 40% while moving, so it blurred on any large screen and while zooming. It is now tiled:
+
+- **Tiles**: 256 GUI units square, at zoom levels a half-octave apart, drawn at the screen's
+  physical resolution and kept (up to about 29 MB of image memory a layer). Panning draws only
+  new tiles; between levels the tiles on show are scaled by the GPU while the next level's are
+  drawn a few a frame (10 ms budget), nearest the middle first.
+- **High-DPI**: Roblox does not report display scaling, but GUI units are physical pixels over
+  it, so a view 989.33 units wide gives 1.5. Workspace attribute `MapPixelDensity` overrides it.
+- **Layers**, bottom to top: base map tiles; a veil Frame that mutes them under a product (no
+  redraw); the shapes of layers listed before radar (the outlook) in clear tiles; radar in one
+  view image as before (`Layer.drawRaster`), moved and scaled with the map; the other shapes
+  (radar's range ring, watches, MDs, warnings, reports, damage) in clear tiles (none kept where
+  nothing is drawn); labels on top. Radar is drawn over the outlook's fill (the user asked).
+- **Anti-aliasing** (`Raster.luau`): lines by distance (round ends and joins), fills and hatching
+  sampled on 4 sub-rows with exact horizontal coverage, smooth dots.
+- **Product detail** (`server/GameProducts.js`): outlook and MD contours get 3 more corner cuts
+  and keep 0.02 mi; watches and warnings keep their straight edges, rounded to 0.01 mi.
+- **The ground** (`client/Products/MapBase.luau`, `shared/World/LandSurface.luau`): zoomed in
+  past 0.16 mi a pixel the map fades into the surface the world builds (crisp half-mile cells,
+  quarter-section crops, centre pivots, blowouts, red soil, lake shores), coloured so each cover
+  keeps its zoomed-out map colour (`CONTRAST` 0.5), with smooth hill-shading. ChunkGen and the
+  terrain colours now come from LandSurface too (checked identical at 300,000 points).
+- Checked in Studio at 1.5x display scaling: whole map, 68 and 17 studs a pixel, radar, MD and
+  warning outlines; a view fills in under a second after zooming.

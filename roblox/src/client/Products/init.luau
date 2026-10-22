@@ -2,8 +2,9 @@
 -- The weather screen, opened and closed with M (docs/ROBLOX-UI-PLAN.md): the world map with the
 -- products the weather server issues as layers over it, each turned on or off with its button
 -- in the side panel: the convective outlook, one radar, the watches, the mesoscale discussions
--- and the warnings. A click on the map opens the details of what is there (a warning first,
--- then a watch, a discussion, the outlook); a click on a radar's label picks that radar.
+-- and the warnings; and the storm reports and damage surveys of a day. A click on the map opens
+-- the details of what is there (a report or a damage survey first, then a warning, a watch, a
+-- discussion, the outlook); a click on a radar's label picks that radar.
 -- Scroll or +/− to zoom, drag to pan, C to centre on yourself.
 
 local Players = game:GetService("Players")
@@ -17,6 +18,8 @@ local Layer = require(script.Layer)
 local Outlook = require(script.Layers.Outlook)
 local Radar = require(script.Layers.Radar)
 local Areas = require(script.Layers.Areas)
+local Reports = require(script.Layers.Reports)
+local Damage = require(script.Layers.Damage)
 
 local Products = {}
 
@@ -52,10 +55,32 @@ local function compose(): MapCanvas.Overlay?
 	end
 	return {
 		muted = true,
-		draw = function(draw: MapCanvas.Draw)
+		-- The layers drawn before radar's (the outlook) go under the radar image; radar's own
+		-- shapes and those after it go over it.
+		drawUnder = function(draw: MapCanvas.Draw)
 			for _, layer in drawOrder do
+				if layer.drawRaster then
+					break
+				end
 				if layer.enabled then
 					layer:draw(draw)
+				end
+			end
+		end,
+		draw = function(draw: MapCanvas.Draw)
+			local over = false
+			for _, layer in drawOrder do
+				over = over or layer.drawRaster ~= nil
+				if over and layer.enabled then
+					layer:draw(draw)
+				end
+			end
+		end,
+		-- Raster products (radar): one image between the two.
+		drawRaster = function(draw: MapCanvas.Draw)
+			for _, layer in drawOrder do
+				if layer.enabled and layer.drawRaster then
+					(layer.drawRaster :: any)(layer, draw)
 				end
 			end
 		end,
@@ -141,6 +166,8 @@ local function build(): ScreenGui
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "WeatherScreens"
 	screen.ResetOnSpawn = false
+	-- Each frame orders its own children (the map canvas stacks its layers this way).
+	screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	-- Below Roblox's own buttons at the top.
 	screen.IgnoreGuiInset = false
 	screen.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
@@ -228,12 +255,19 @@ local function build(): ScreenGui
 	local watches = Areas.new(Areas.WATCHES, context, column, true)
 	local discussionsHeading = heading("Mesoscale discussions")
 	local discussions = Areas.new(Areas.DISCUSSIONS, context, column, true)
+	local reportsHeading = heading("Storm reports")
+	local reports = Reports.new(context, column)
+	local damageHeading = heading("Damage surveys")
+	local damage = Damage.new(context, column)
 	legendBox = Ui.section(column)
 
-	layers = { outlook :: any, radar :: any, watches :: any, discussions :: any, warnings :: any }
-	headings = { outlook = outlookHeading, radar = radarHeading, warnings = warningsHeading, watches = watchesHeading, discussions = discussionsHeading }
-	drawOrder = { outlook :: any, radar :: any, discussions :: any, watches :: any, warnings :: any }
-	hitOrder = { radar :: any, warnings :: any, watches :: any, discussions :: any, outlook :: any }
+	layers = { outlook :: any, radar :: any, watches :: any, discussions :: any, warnings :: any, reports :: any, damage :: any }
+	headings = {
+		outlook = outlookHeading, radar = radarHeading, warnings = warningsHeading, watches = watchesHeading, discussions = discussionsHeading,
+		reports = reportsHeading, damage = damageHeading,
+	}
+	drawOrder = { outlook :: any, radar :: any, discussions :: any, watches :: any, warnings :: any, damage :: any, reports :: any }
+	hitOrder = { radar :: any, reports :: any, damage :: any, warnings :: any, watches :: any, discussions :: any, outlook :: any }
 
 	for _, layer in layers do
 		layerButtons[layer.key] = Ui.button(buttonRow, layer.name, function()

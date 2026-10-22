@@ -8,14 +8,20 @@
 // the game's next poll. Every game server places frames by atMs on the wall clock, so all of
 // them show the same storm in the same place at the same moment.
 //
+// Each frame also carries the sky (js/world/SkyAppearance.js): the clouds, air and wind the game
+// lights the world from, and where the sun is.
+//
 // Frames are kept as JSON text, written once, so a poll costs a string join however many game
 // servers ask.
 import { buildStormAppearance } from '../js/storms/StormAppearance.js';
+import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
 
 export const GAME_FEED = Object.freeze({ marginMs: 15_000, keepFrames: 12, maxPerPoll: 6 });
 
 export class GameFeed {
-  constructor({ tickMs }) {
+  // regional: the regional layer's settings (its day), for the sky.
+  constructor({ tickMs, regional = {} }) {
+    this.regional = regional;
     this.tickMs = Math.round(tickMs);
     this.lagMs = this.tickMs + GAME_FEED.marginMs;
     this.frames = [];          // { seq, atMs, text }, oldest first
@@ -40,7 +46,7 @@ export class GameFeed {
     }
     // Never before the frame already given: the game's frames only run forward.
     const atMs = Math.max(Math.round(dueMs + this.lagMs), (this.frames.at(-1)?.atMs ?? -Infinity) + 1000);
-    const frame = { seq: ++this.seq, atMs, simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), storms };
+    const frame = { seq: ++this.seq, atMs, simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), storms, sky: buildSkyAppearance(world, this.regional) };
     this.frames.push({ seq: frame.seq, atMs: frame.atMs, text: JSON.stringify(frame) });
     if (this.frames.length > GAME_FEED.keepFrames) this.frames.shift();
   }

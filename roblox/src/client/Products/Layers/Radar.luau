@@ -4,6 +4,9 @@
 -- labels on the map can be clicked too. The bytes and their colours are the weather server's
 -- (js/radar/RadarFormat.js); this only draws them. A radar's scan is made when first asked for
 -- and kept current while it is on show.
+-- Over it, across the whole map, the last half hour's lightning ("lightning", js/storms/Lightning.js):
+-- ground strikes as crosses (ringed when positive), flashes in the cloud as dots if asked for,
+-- coloured by age as the weather server says.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EncodingService = game:GetService("EncodingService")
@@ -25,6 +28,13 @@ local RADAR_ALPHA = 0.92
 local RING = { 150, 160, 175 }
 local SITE_BORDER, SITE_CHOSEN = { 120, 130, 145 }, { 255, 255, 255 }
 local PICK_PIXELS = 14 -- a click this close to a radar's label picks it
+local STRIKE_PICK_PIXELS = 8
+local CROSS_PIXELS, CROSS_WIDTH, OUTLINE_WIDTH = 4.5, 1.6, 3.4
+local CLOUD_DOT_PIXELS = 1.2
+local STRIKE_OUTLINE = { 20, 20, 24 }
+local NEARBY_MILES, NEARBY_MINUTES = 10, 15 -- a strike's details count the ground strikes this near and this recent
+
+type Strikes = { key: string, x: { number }, y: { number }, age: { number }, kind: { number } }
 
 local decoded: { [string]: { version: string, bytes: buffer } } = {}
 
@@ -45,6 +55,50 @@ local function bytesOf(product: any): buffer?
 	return bytes
 end
 
+-- The strikes of a lightning product, oldest first (decoded once a version).
+local strikesHeld: Strikes? = nil
+local function strikesOf(product: any): Strikes?
+	if not product or product.kind ~= "lightning" then
+		return nil
+	end
+	local key = tostring(product.nowHourUtc) .. ":" .. tostring(product.count)
+	local held = strikesHeld
+	if held and held.key == key then
+		return held
+	end
+	local out: Strikes = { key = key, x = {}, y = {}, age = {}, kind = {} }
+	if product.count > 0 and product.data ~= "" then
+		local ok, bytes = pcall(function()
+			return EncodingService:DecompressBuffer(EncodingService:Base64Decode(buffer.fromstring(product.data)), Enum.CompressionAlgorithm.Zstd)
+		end)
+		if not ok then
+			warn(`[Radar] lightning: could not unpack ({bytes})`)
+			return nil
+		end
+		local size = product.strikeBytes
+		for k = 0, math.min(product.count, buffer.len(bytes) // size) - 1 do
+			local o = k * size
+			table.insert(out.x, buffer.readu16(bytes, o) / 100)
+			table.insert(out.y, buffer.readu16(bytes, o + 2) / 100)
+			table.insert(out.age, buffer.readu8(bytes, o + 4) / 4)
+			table.insert(out.kind, buffer.readu8(bytes, o + 5))
+		end
+	end
+	strikesHeld = out
+	return out
+end
+
+local function ageColour(ages: { any }, minutes: number): { number }?
+	for _, band in ages do
+		if minutes <= band.toMinutes then
+			return band.colour
+		end
+	end
+	return nil
+end
+
+local KIND_NAMES = { [0] = "In the cloud", [1] = "Cloud to ground, negative", [2] = "Cloud to ground, positive" }
+
 local function byteOf(spec: any, value: number): number
 	return math.clamp(1 + math.round((value - spec.min) / spec.step), if spec.doppler then 2 else 1, 255)
 end
@@ -62,6 +116,9 @@ function Radar.new(ctx: Layer.Context, optionsParent: Instance)
 		shown = nil :: any,
 		loaded = false,
 		keepaliveToken = 0,
+		lightning = nil :: any,
+		showGround = true,
+		showCloud = false,
 	}, Radar)
 	return self
 end
@@ -71,7 +128,7 @@ function Radar.productId(self: any): string?
 end
 
 function Radar.wants(self: any, id: string): boolean
-	return id == "radar.sites" or id == self:productId()
+	return id == "radar.sites" or id == "lightning" or id == self:productId()
 end
 
 function Radar.site(self: any): any
@@ -94,6 +151,21 @@ function Radar.renderOptions(self: any)
 	if self.loaded and not self.sites then
 		Ui.text(self.options, "The weather server sends no radar. Restart it, and scripts/game-feed-proxy.mjs, on the current code.", { size = 13, colour = Color3.fromRGB(250, 170, 90) })
 		return
+	end
+	local strikes = Ui.buttons(self.options, 26)
+	Ui.setOn(Ui.button(strikes, "Lightning", function()
+		self.showGround = not self.showGround
+		self:renderOptions()
+		self.ctx.redraw()
+	end), self.showGround)
+	Ui.setOn(Ui.button(strikes, "Cloud flashes", function()
+		self.showCloud = not self.showCloud
+		self:renderOptions()
+		self.ctx.redraw()
+	end), self.showCloud)
+	local l = self.lightning
+	if l and l.nowHourUtc then
+		Ui.text(self.options, `Lightning to {Geo.clock(l.nowHourUtc)}: {l.ground} to the ground, {l.count - l.ground} in the cloud, last {l.keepMinutes} min.`, { size = 12, colour = Ui.MUTED })
 	end
 	local products = Ui.buttons(self.options, 28)
 	for _, entry in PRODUCTS do
@@ -126,6 +198,7 @@ end
 
 function Radar.refresh(self: any)
 	self.sites = ProductClient.get("radar.sites")
+	self.lightning = ProductClient.get("lightning")
 	self.loaded = true
 	if self.sites and not self.siteId then
 		-- The radar nearest you to start with.
@@ -165,7 +238,8 @@ function Radar.setEnabled(self: any, on: boolean)
 	end)
 end
 
-function Radar.draw(self: any, draw: MapCanvas.Draw)
+-- The scan itself: one image of the view (MapCanvas draws it at up to 1024 pixels).
+function Radar.drawRaster(self: any, draw: MapCanvas.Draw)
 	local shown = self.shown
 	if shown and shown.kind == "radar-polar" then
 		local bytes = bytesOf(shown)
@@ -174,7 +248,10 @@ function Radar.draw(self: any, draw: MapCanvas.Draw)
 			draw.polar(bytes, shown.radials, shown.gates, shown.gateGroundMiles, shown.xMiles, shown.yMiles, spec.lut, RADAR_ALPHA)
 		end
 	end
-	-- The chosen radar's reach.
+end
+
+-- The chosen radar's reach, drawn sharp with the other shapes.
+function Radar.draw(self: any, draw: MapCanvas.Draw)
 	local site = self:site()
 	if site and self.sites then
 		local ring = {}
@@ -185,6 +262,81 @@ function Radar.draw(self: any, draw: MapCanvas.Draw)
 		end
 		draw.stroke({ ring }, 1.2, RING)
 	end
+	self:drawLightning(draw)
+end
+
+-- Oldest first, so the newest strikes lie on top.
+function Radar.drawLightning(self: any, draw: MapCanvas.Draw)
+	local l = self.lightning
+	local strikes = if self.showGround or self.showCloud then strikesOf(l) else nil
+	if not strikes then
+		return
+	end
+	local mpp = MapCanvas.milesPerPixel()
+	local arm = CROSS_PIXELS * mpp
+	for k = 1, #strikes.x do
+		local kind = strikes.kind[k]
+		local colour = ageColour(l.ages, strikes.age[k])
+		if colour then
+			local x, y = strikes.x[k], strikes.y[k]
+			if kind == 0 then
+				if self.showCloud then
+					draw.dot(x, y, CLOUD_DOT_PIXELS, colour)
+				end
+			elseif self.showGround then
+				draw.line(x - arm, y, x + arm, y, OUTLINE_WIDTH, STRIKE_OUTLINE)
+				draw.line(x, y - arm, x, y + arm, OUTLINE_WIDTH, STRIKE_OUTLINE)
+				draw.line(x - arm, y, x + arm, y, CROSS_WIDTH, colour)
+				draw.line(x, y - arm, x, y + arm, CROSS_WIDTH, colour)
+				if kind == 2 then
+					local ring = {}
+					for j = 0, 15 do
+						local a = j / 16 * 2 * math.pi
+						table.insert(ring, x + 1.25 * arm * math.cos(a))
+						table.insert(ring, y + 1.25 * arm * math.sin(a))
+					end
+					draw.stroke({ ring }, 1.2, colour)
+				end
+			end
+		end
+	end
+end
+
+-- The strike nearest a map point within reach, if any: its details, and how many ground
+-- strikes there have been near it lately.
+function Radar.hitLightning(self: any, mx: number, my: number, milesPerPixel: number): Layer.Detail?
+	local l = self.lightning
+	local strikes = if self.showGround or self.showCloud then strikesOf(l) else nil
+	if not strikes then
+		return nil
+	end
+	local reach = STRIKE_PICK_PIXELS * milesPerPixel
+	local best, bestD = nil, reach * reach
+	for k = #strikes.x, 1, -1 do
+		local kind = strikes.kind[k]
+		if (kind == 0 and self.showCloud) or (kind ~= 0 and self.showGround) then
+			local d = (strikes.x[k] - mx) ^ 2 + (strikes.y[k] - my) ^ 2
+			if d < bestD then
+				best, bestD = k, d
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	local nearby = 0
+	for k = 1, #strikes.x do
+		if strikes.kind[k] ~= 0 and strikes.age[k] <= NEARBY_MINUTES and (strikes.x[k] - strikes.x[best]) ^ 2 + (strikes.y[k] - strikes.y[best]) ^ 2 <= NEARBY_MILES ^ 2 then
+			nearby += 1
+		end
+	end
+	local age = strikes.age[best]
+	local lines = {
+		`{KIND_NAMES[strikes.kind[best]] or "Lightning"}.`,
+		`{Geo.clock(l.nowHourUtc - age / 60)}, {math.round(age)} min before the latest data ({Geo.clock(l.nowHourUtc)}).`,
+		`{nearby} ground strikes within {NEARBY_MILES} miles in the last {NEARBY_MINUTES} minutes.`,
+	}
+	return { title = "Lightning", subtitle = "Lightning detection", body = table.concat(lines, "\n"), colour = ageColour(l.ages, age), layer = self.key, item = `strike:{best}` }
 end
 
 function Radar.labels(self: any, labels: MapCanvas.Labels)
@@ -209,10 +361,20 @@ function Radar.hit(self: any, mx: number, my: number, milesPerPixel: number): La
 			return { title = `{site.id} {site.name} radar`, subtitle = "Doppler radar", body = table.concat(lines, "\n"), colour = SITE_CHOSEN, layer = self.key, item = site.id }
 		end
 	end
-	return nil
+	return self:hitLightning(mx, my, milesPerPixel)
 end
 
 function Radar.legend(self: any, parent: Instance)
+	local l = self.lightning
+	if l and (self.showGround or self.showCloud) then
+		Ui.text(parent, "Lightning (minutes ago)", { size = 12, bold = true, colour = Ui.MUTED })
+		local from = 0
+		for _, band in l.ages do
+			Ui.legendRow(parent, Color3.fromRGB(band.colour[1], band.colour[2], band.colour[3]), `{from}-{band.toMinutes}`, "")
+			from = band.toMinutes
+		end
+		Ui.text(parent, "+ ground strike, ringed when positive; dot: in the cloud.", { size = 12, colour = Ui.MUTED })
+	end
 	local shown = self.shown
 	local spec = if shown then Palettes.RADAR[shown.product] else nil
 	if not spec then

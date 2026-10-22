@@ -14,6 +14,7 @@ assert.equal(await runtime.radarScan(catalog.sites[0].id,0.5),scan,'radar scans 
 const mosaic=await runtime.radarMosaic();
 assert.deepEqual(runtime.radarMosaicFrames().frames.map(f=>f.validHourUtc),[mosaic.validHourUtc],'the mosaic is kept for the loop');
 assert.equal(runtime.radarMosaicAt(mosaic.validHourUtc),mosaic,'a kept mosaic is served by its time');
-for(const page of ['day1.html','day2.html','day3.html']) assert.match(fs.readFileSync(new URL(`../${page}`,import.meta.url),'utf8'),/js\/pages\/outlookPage\.js/);
+// The outlook, radar, mesoscale, report and survey pages were retired (they live in Roblox now).
+for(const page of ['day1.html','day2.html','day3.html','radar.html','mesoscale.html','reports.html','damage.html']) assert.ok(!fs.existsSync(new URL(`../${page}`,import.meta.url)),`${page} is retired`);
 assert.doesNotMatch(fs.readFileSync(new URL('../js/remoteProductPage.js',import.meta.url),'utf8'),/getAuthorityState/);
 console.log('thin product clients passed');

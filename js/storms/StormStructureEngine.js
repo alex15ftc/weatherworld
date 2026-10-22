@@ -97,7 +97,7 @@ function buildStructure(storm, env, prior, seed, dtHours=0) {
   const target = {
     schemaVersion:3, orientationDeg, widthKm:2*reachKm, heightKm:2*reachKm,
     precipitationEfficiency:precipEff, hailGrowthPotential:hail, hookStrength, lineStrength,
-    mesocyclone:{strength:Math.max(meso, low),radiusKm:mesoRadius,offsetXKm:rotation.x,offsetYKm:rotation.y,occlusionPhase:phase},
+    mesocyclone:{strength:Math.max(meso, low),lowStrength:low,radiusKm:mesoRadius,offsetXKm:rotation.x,offsetYKm:rotation.y,occlusionPhase:phase},
     wind:{inflowStrength:clamp(org*.7+meso*.3,0,1.2),rearFlankStrength:clamp(cold*.75+meso*.2,0,1.2),rearInflowStrength:Math.max(lineStrength*.5, rearInflow)},
     features, updatedAgeHours:storm.ageHours ?? 0
   };

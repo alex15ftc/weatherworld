@@ -71,6 +71,15 @@ Palettes.DISCUSSION = {
 	possible = { 245, 158, 11 },
 	unlikely = { 148, 163, 184 },
 }
+
+-- Storm reports by type; damage survey ratings EF0-EF5 (Palettes.EF[ef + 1]) and EF-Unknown.
+Palettes.REPORT = {
+	tornado = { 239, 68, 68 },
+	hail = { 34, 197, 94 },
+	wind = { 59, 130, 246 },
+}
+Palettes.EF = { { 96, 165, 250 }, { 74, 222, 128 }, { 250, 204, 21 }, { 251, 146, 60 }, { 239, 68, 68 }, { 232, 121, 249 } }
+Palettes.EFU = { 156, 163, 175 }
 Palettes.WARNING = {
 	tornadoEmergency = { 180, 77, 255 },
 	tornadoPds = { 255, 61, 242 },

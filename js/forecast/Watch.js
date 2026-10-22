@@ -325,9 +325,11 @@ export const probabilityRows = watch => TABLE.map(([key, label]) => [label, prob
 function threats(watch) {
   const p = watch.probabilities, k = watch.peak, lines = [];
   if (watch.type === 'tornado') {
-    const some = p.tornadoes2 >= 80 ? 'Several tornadoes' : 'A few tornadoes', someLikely = p.tornadoes2 >= 60 ? 'likely' : 'possible';
-    const strong = k.tornadoMph >= 136 ? 'a few intense tornadoes' : 'a couple of strong tornadoes', strongLikely = p.strongTornado >= 80 ? 'likely' : 'possible';
-    lines.push(p.strongTornado < 40 ? `${some} ${someLikely}` : someLikely === strongLikely ? `${some} and ${strong} ${someLikely}` : `${some} ${someLikely} with ${strong} ${strongLikely}`);
+    // How many follows the chance of two or more (2026-10-21: "A few tornadoes and a few intense
+    // tornadoes possible" stood over two or more at 20%).
+    const some = p.tornadoes2 >= 80 ? 'Several tornadoes' : p.tornadoes2 >= 40 ? 'A few tornadoes' : 'A tornado or two', someLikely = p.tornadoes2 >= 60 ? 'likely' : 'possible';
+    const kindOf = k.tornadoMph >= 136 ? 'intense' : 'strong', strong = k.tornadoMph >= 136 ? 'a few intense tornadoes' : 'a couple of strong tornadoes', strongLikely = p.strongTornado >= 80 ? 'likely' : 'possible';
+    lines.push(p.strongTornado < 40 ? `${some} ${someLikely}` : p.tornadoes2 < 40 ? `${some} possible, one of which could be ${kindOf}` : someLikely === strongLikely ? `${some} and ${strong} ${someLikely}` : `${some} ${someLikely} with ${strong} ${strongLikely}`);
   } else if (watch.peakText.tornado) lines.push('A tornado or two possible');
   const gust = 5 * Math.round(k.gustMph / 5), sizeValue = Math.round(k.hailInches * 4) / 4, size = `${sizeValue} inch${sizeValue === 1 ? '' : 'es'}`;
   if (k.gustMph >= 58 || p.wind10 >= 40) lines.push(`${p.wind10 >= 80 ? 'Widespread damaging winds' : p.wind10 >= 40 ? 'Scattered damaging winds' : 'Isolated damaging wind gusts'}${p.wind75 >= 40 ? ` and isolated significant gusts to ${gust} mph` : ` to ${gust} mph`} ${p.wind10 >= 60 || p.wind75 >= 80 ? 'likely' : 'possible'}`);

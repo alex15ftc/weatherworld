@@ -15,14 +15,15 @@
 -- Per tornado: the condensation funnel (its radius at each height, leaning and twisting as it
 -- decays, lowering from the cloud as it touches down), the uncondensed vortex below it, the
 -- smaller vortices of a multiple-vortex tornado, and the debris cloud and debris.
--- Also lightning, the light dimming under a storm, and rain where the camera is.
+-- Also lightning and rain where the camera is; the light, haze and sun are SkyLight's.
 
-local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
 local StormTrack = require(ReplicatedStorage.Shared.Weather.StormTrack)
+local SkyLight = require(script.Parent.SkyLight)
+local TornadoArt = require(script.Parent.TornadoArt)
 
 local StormView = {}
 
@@ -250,14 +251,23 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		local wr = wall.radiusKm * KM
 		local lower = math.max(30, wall.loweringM * SKY)
 		local wc = at(wall.xKm, wall.yKm, baseY - lower / 2)
-		rod(pool, "wall", wc + Vector3.new(0, lower / 2, 0), wc - Vector3.new(0, lower / 2, 0), wr, COLOUR.wall, fade(1 - math.clamp(wall.strength * 2.2, 0, 1), alpha))
+		-- A lowering of the base, not a wall: narrowing and thinning toward its bottom, where the
+		-- funnel comes out of it (drawn whole, a low wall cloud hid everything under it).
+		local solid = math.clamp(wall.strength * 2.2, 0, 1)
+		local top = wc + Vector3.new(0, lower / 2, 0)
+		for k = 0, 3 do
+			local a, b = k / 4, (k + 1) / 4
+			local r = wr * (1 - 0.45 * (a + b) / 2)
+			local thin = 0.5 * (a + b) / 2
+			rod(pool, `wall{k}`, top - Vector3.new(0, a * lower, 0), top - Vector3.new(0, b * lower, 0), r, COLOUR.wall, fade(1 - solid * (1 - thin), alpha))
+		end
 		local spin = clock * (0.15 + 0.6 * wall.rotation)
-		for i = 0, 5 do
+		for i = 0, if Config.SHOW_CLOUD_DETAIL then 5 else -1 do
 			local a = spin + TAU * i / 6
 			local p = wc + Vector3.new(math.cos(a), -0.3, math.sin(a)) * Vector3.new(wr, lower, wr)
 			blob(pool, `scud{i}`, CFrame.new(p), Vector3.new(wr * 0.45, lower * 0.5, wr * 0.3), COLOUR.scud, fade(1 - wall.strength, alpha))
 		end
-		if wall.tail > 0.05 then
+		if Config.SHOW_CLOUD_DETAIL and wall.tail > 0.05 then
 			local d = heading(wall.tailBearingDeg)
 			local len = (2 + 5 * wall.tail) * KM
 			local p = wc + d * (wr + len / 2) + Vector3.new(0, lower * 0.1, 0)
@@ -267,7 +277,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 
 	-- Inflow bands, lying along the inflow, from where it comes toward the updraught.
 	local bands = s.inflowBands
-	for i = 1, bands.count do
+	for i = 1, if Config.SHOW_CLOUD_DETAIL then bands.count else 0 do
 		local d = heading(bands.fromDeg + (i - (bands.count + 1) / 2) * 14)
 		local len = bands.lengthKm * KM
 		local p = centre + d * (R + len / 2) - Vector3.new(0, (baseY - ground) * 0.2, 0)
@@ -276,7 +286,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 
 	-- The shelf cloud along the gust front: a row along a line, an arc ahead of a cell.
 	local shelf = s.shelf
-	if shelf.strength > 0.05 then
+	if Config.SHOW_CLOUD_DETAIL and shelf.strength > 0.05 then
 		local facing = heading(shelf.facingDeg)
 		local lead = (s.gustFront.radiusKm * 0.6 + s.gustFront.leadKm + 2 * shelf.detached) * KM
 		local tiers = math.max(1, shelf.tiers)
@@ -301,15 +311,20 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		end
 	end
 
-	-- Rain and hail, from the base to the ground; rain wrapping round the rotation.
+	-- Rain and hail, from the base to the ground; rain wrapping round the rotation. Thin veils:
+	-- as smooth shapes, anything denser reads as a wall hiding what is behind (2026-10-22; streaked
+	-- curtains are the better answer, not yet made). Seeing in the rain is SkyLight's haze.
 	local rain = s.rain
+	if not Config.SHOW_PRECIPITATION then
+		return
+	end
 	if rain.intensity > 0.03 then
 		local p = at(rain.xKm, rain.yKm, ground)
-		blob(pool, "rain", CFrame.lookAt(p, p + heading(rain.bearingDeg)), Vector3.new(rain.acrossKm * KM, 2 * (baseY - ground), rain.alongKm * KM), COLOUR.rain, fade(0.9 - 0.55 * rain.intensity, alpha))
+		blob(pool, "rain", CFrame.lookAt(p, p + heading(rain.bearingDeg)), Vector3.new(rain.acrossKm * KM, 2 * (baseY - ground), rain.alongKm * KM), COLOUR.rain, fade(0.95 - 0.15 * rain.intensity, alpha))
 	end
 	if s.hail.radiusKm > 0.2 then
 		local p = at(s.hail.xKm, s.hail.yKm, ground)
-		blob(pool, "hail", CFrame.new(p), Vector3.new(2 * s.hail.radiusKm * KM, 1.9 * (baseY - ground), 2 * s.hail.radiusKm * KM), COLOUR.hail, fade(0.92 - 0.3 * math.clamp(s.hail.sizeInches / 2.5, 0, 1), alpha))
+		blob(pool, "hail", CFrame.new(p), Vector3.new(2 * s.hail.radiusKm * KM, 1.9 * (baseY - ground), 2 * s.hail.radiusKm * KM), COLOUR.hail, fade(0.96 - 0.12 * math.clamp(s.hail.sizeInches / 2.5, 0, 1), alpha))
 	end
 	if rain.wrap > 0.1 and wall.strength > 0.03 then
 		local wc = at(wall.xKm, wall.yKm, ground)
@@ -320,7 +335,7 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		for i = 0, 5 do
 			local a = base + (i / 5 - 0.5) * 2 * arc
 			local p = wc + Vector3.new(math.cos(a), 0, math.sin(a)) * wr
-			blob(pool, `wrap{i}`, CFrame.new(p), Vector3.new(1.6 * KM, 1.9 * (baseY - ground), 1.6 * KM), COLOUR.rain, fade(1 - 0.75 * rain.wrap, alpha))
+			blob(pool, `wrap{i}`, CFrame.new(p), Vector3.new(1.6 * KM, 1.9 * (baseY - ground), 1.6 * KM), COLOUR.rain, fade(1 - 0.3 * rain.wrap, alpha))
 		end
 	end
 end
@@ -342,6 +357,8 @@ local function radiusAt(t: any, f: number): number
 	return (a + (b - a) * (x - i)) * TOR
 end
 
+local SPRITE_BEYOND = Config.TORNADO_ART.spriteBeyondStuds
+
 local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3)
 	local t = s.tornado
 	local touch = math.clamp(t.touch or 1, 0, 1)
@@ -357,7 +374,11 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 	local height = t.baseM * SKY
 	local top = Vector3.new(t.tiltEastM, 0, -t.tiltNorthM) / 1000 * KM
 	local wrapped = math.clamp(t.rainWrap or 0, 0, 1)
-	local colour = COLOUR.funnel:Lerp(COLOUR.funnelWrapped, wrapped)
+	-- White with the sun behind the viewer; with it behind, glowing if thin, dark if thick; grey
+	-- with no direct sun (TornadoArt).
+	local angle, direct = TornadoArt.sunAngle(foot, cameraPos), SkyLight.direct()
+	local back = TornadoArt.backlight(angle, direct)
+	local colour = TornadoArt.colour(angle, direct, wrapped, radiusAt(t, 0.5) / TOR)
 	local seed = hash(t.id)
 	-- The funnel's axis at a share of the height: leaning toward its top, twisting as it decays.
 	local function axis(f: number): Vector3
@@ -372,11 +393,35 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 	local lowest = 1 - touch
 	local condensed = math.clamp(t.condensedM / math.max(1, t.baseM), 0, 1)
 	local hollow = math.clamp(0.25 * t.twoCell + (if t.vortices > 1 then 0.25 else 0), 0, 0.6)
-	for i = 0, SEGMENTS - 1 do
+	-- Far off, a sprite of a rendered tornado; nearer, the funnel as meshes; parts if neither art
+	-- is there. The visible surface turns at a share of the wind over the core (slowed to read).
+	local distance = (foot - cameraPos).Magnitude
+	local ratio = 2 * radiusAt(t, 0.5 * (1 + math.max(lowest, condensed))) / math.max(1, height * (1 - math.max(lowest, condensed)))
+	local spin = math.clamp(0.25 * t.windMph * 0.447 / math.max(20, t.coreRadiusM), 0.3, 2.5)
+	-- Where the funnel flares into the wall cloud it is drawn no further: the profile widens to
+	-- the wall cloud's width there, and drawn as funnel that is a lid hiding everything under it
+	-- (the wall cloud covers the join).
+	local bottom = math.max(lowest, condensed)
+	local flareLimit = 2.5 * math.max(radiusAt(t, 0.5 * (1 + bottom)), t.coreRadiusM * TOR)
+	local top = 1
+	for k = SEGMENTS, 1, -1 do
+		if radiusAt(t, k / SEGMENTS) <= flareLimit then
+			top = k / SEGMENTS
+			break
+		end
+	end
+	local drawn = distance > SPRITE_BEYOND
+		and TornadoArt.drawSprite(t.id, pool.model, axis(math.max(lowest, condensed)), height * (1 - math.max(lowest, condensed)), ratio, back, touch, wrapped, cameraPos, clock)
+	if not drawn then
+		drawn = TornadoArt.drawFunnel(t.id, pool.model, axis, function(f)
+			return math.max(2, radiusAt(t, f))
+		end, bottom, math.max(top, bottom + 0.05), clock, spin, colour, 1 - touch ^ 0.5 + hollow * 0.5, distance < 3000)
+	end
+	for i = 0, if drawn then -1 else SEGMENTS - 1 do
 		local f0, f1 = i / SEGMENTS, (i + 1) / SEGMENTS
 		local fm = (f0 + f1) / 2
 		local r = radiusAt(t, fm)
-		if f1 > lowest and r > 0 and fm >= condensed then
+		if f1 > lowest and r > 0 and fm >= condensed and f0 < top then
 			local transparency = (if fm < 0.35 then hollow else 0) + 0.06
 			rod(pool, `funnel{i}`, axis(math.max(f0, lowest)), axis(f1), math.max(2, r), colour, fade(transparency, touch ^ 0.5))
 		end
@@ -408,9 +453,17 @@ local function drawTornado(pool: Pool, s: any, clock: number, cameraPos: Vector3
 	dpart.Size = Vector3.new(math.min(dh, MAX_PART), math.min(2 * dr, MAX_PART), math.min(2 * dr, MAX_PART))
 	dpart.CFrame = CFrame.new(foot + Vector3.new(0, dh / 2, 0)) * CFrame.Angles(0, 0, math.pi / 2)
 	demit.Enabled = touch > 0.5 and debris.strength > 0.02
-	demit.Color = ColorSequence.new(COLOUR.dust:Lerp(COLOUR.debris, 1 - debris.dust))
-	demit.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, math.clamp(dr * 0.25, 6, 60)), NumberSequenceKeypoint.new(1, math.clamp(dr * 0.6, 12, 100)) })
-	demit.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) })
+	-- Dust lit like the funnel: pale with the sun behind the viewer, dark against it.
+	local dustColour = COLOUR.dust:Lerp(COLOUR.debris, 1 - debris.dust)
+	demit.Color = ColorSequence.new(dustColour:Lerp(Color3.new(0.2, 0.19, 0.18), back * 0.6))
+	if TornadoArt.styleDebris(demit) then
+		-- The puff grows within its frames: a steady size, fading only at the end of its life.
+		demit.Size = NumberSequence.new(math.clamp(dr * 0.7, 12, 160))
+		demit.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.8, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	else
+		demit.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, math.clamp(dr * 0.25, 6, 60)), NumberSequenceKeypoint.new(1, math.clamp(dr * 0.6, 12, 100)) })
+		demit.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) })
+	end
 	demit.Lifetime = NumberRange.new(2, 4)
 	demit.Rate = 25 + 80 * debris.strength
 	demit.Speed = NumberRange.new(10, 30 + 80 * debris.strength)
@@ -495,7 +548,6 @@ function StormView.start()
 
 	local pools: { [string]: Pool } = {}
 	local bolts: { { parts: { BasePart }, untilClock: number } } = {}
-	local baseExposure = Lighting.ExposureCompensation
 	local clock = 0
 	RunService.RenderStepped:Connect(function(dt: number)
 		clock += dt
@@ -505,10 +557,10 @@ function StormView.start()
 		end
 		local cameraPos = camera.CFrame.Position
 		local nowMs = workspace:GetServerTimeNow() * 1000 + ((weather:GetAttribute("ClockOffsetMs") :: number?) or 0)
-		local storms = track:sample(nowMs)
+		local storms, hourUtc = track:sample(nowMs)
 		local px, py = (cameraPos.X + HALF) / KM, (cameraPos.Z + HALF) / KM
 		local alive: { [string]: boolean } = {}
-		local cover, rainRate = 0, 0
+		local rainRate = 0
 		for _, s in storms do
 			local centre = at(s.xKm, s.yKm, cameraPos.Y)
 			local distance = (Vector3.new(centre.X, 0, centre.Z) - Vector3.new(cameraPos.X, 0, cameraPos.Z)).Magnitude
@@ -528,18 +580,9 @@ function StormView.start()
 				drawFunnelAloft(pool, s)
 			end
 			finish(pool)
-			-- Under the anvil or the base the light falls; in the rain it rains.
-			local anvilCentreX = s.updraft.xKm + math.sin(math.rad(s.anvil.bearingDeg)) * s.anvil.lengthKm * 0.45
-			local anvilCentreY = s.updraft.yKm - math.cos(math.rad(s.anvil.bearingDeg)) * s.anvil.lengthKm * 0.45
-			if inside(anvilCentreX, anvilCentreY, s.anvil.lengthKm / 2, s.anvil.widthKm / 2, s.anvil.bearingDeg, px, py) < 1 then
-				cover = math.max(cover, 0.35 * (s.alpha or 1))
-			end
-			if inside(s.updraft.xKm, s.updraft.yKm, s.base.radiusKm, s.base.radiusKm, 0, px, py) < 1 then
-				cover = math.max(cover, 0.7 * (s.alpha or 1))
-			end
+			-- In the rain it rains.
 			local r = s.rain
 			if inside(r.xKm, r.yKm, r.alongKm / 2, r.acrossKm / 2, r.bearingDeg, px, py) < 1 then
-				cover = math.max(cover, 0.6 + 0.3 * r.intensity)
 				rainRate = math.max(rainRate, 400 * r.intensity * (s.alpha or 1))
 			end
 			-- Lightning, at the rate the storm gives, from the base to the ground near the rain.
@@ -563,8 +606,17 @@ function StormView.start()
 					last = nextPoint
 				end
 				table.insert(bolts, { parts = parts, untilClock = clock + 0.18 })
+				SkyLight.flash((strike - cameraPos).Magnitude)
 			end
 		end
+		local aliveTornadoes: { [string]: boolean } = {}
+		for _, s in storms do
+			if s.tornado then
+				aliveTornadoes[s.tornado.id] = true
+			end
+		end
+		TornadoArt.sweep(aliveTornadoes)
+		TornadoArt.sweepSprites()
 		for id, pool in pools do
 			if not alive[id] then
 				pool.model:Destroy()
@@ -579,7 +631,26 @@ function StormView.start()
 				table.remove(bolts, i)
 			end
 		end
-		Lighting.ExposureCompensation = baseExposure - 1.4 * cover
+		SkyLight.update(storms, hourUtc, track:skyAt(nowMs, px, py), cameraPos, dt)
+		-- For looking at the art: with the Workspace attribute WatchTornado set, the camera looks
+		-- from where it is at the nearest tornado's funnel.
+		if workspace:GetAttribute("WatchTornado") == true then
+			local best, bestD = nil, math.huge
+			for _, s in storms do
+				if s.tornado then
+					local t = s.tornado
+					local p = at(t.xKm, t.yKm, (t.groundStuds or 0) + t.baseM * SKY * 0.45)
+					local d = (p - cameraPos).Magnitude
+					if d < bestD then
+						best, bestD = p, d
+					end
+				end
+			end
+			if best then
+				camera.CameraType = Enum.CameraType.Scriptable
+				camera.CFrame = CFrame.lookAt(cameraPos, best)
+			end
+		end
 		cameraRain(rainRate, cameraPos)
 	end)
 end

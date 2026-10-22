@@ -1,14 +1,21 @@
 --!strict
--- The map every product screen draws on (it was the world map, client/MapView). The part of the
--- map in view is drawn afresh, at the screen's own resolution, whenever it is zoomed or panned,
--- from the map's data (ReplicatedStorage Shared.MapData.MapVector): land cover with
+-- The map every product screen draws on (it was the world map, client/MapView), drawn from the
+-- map's data (ReplicatedStorage Shared.MapData.MapVector, MapBase.luau): land cover with
 -- hill-shading, the section-line roads once zoomed in, rivers and main roads as lines, and
 -- labels for cities, towns (more of them the closer in), rivers and highways. Every player is
 -- marked. Scroll to zoom about the cursor, drag to pan, C to centre on yourself.
 --
--- A product screen sets an overlay: it may mute the base map so its own colours read, draws
--- shapes into the same image (fill, hatch, stroke; rings are flat lists of map miles,
--- x1, y1, x2, y2..., filled by the even-odd rule) and places labels before the map's own.
+-- The map is made of tiles, as a web map is: TILE pixels square, at zoom levels LEVEL_STEP
+-- apart, each drawn once at full resolution and kept while there is room (MAX_TILE_PIXELS), so
+-- panning only draws the tiles coming into view. Between levels the tiles on show are scaled
+-- by the GPU, and the next level's tiles are drawn a few a frame (FRAME_BUDGET), nearest the
+-- middle first, replacing them as they come.
+--
+-- A product screen sets an overlay: it may mute the base map so its own colours read (a dark
+-- veil over the map, not a redraw), draws shapes into its own clear tiles over the map (fill,
+-- hatch, stroke; rings are flat lists of map miles, x1, y1, x2, y2..., filled by the even-odd
+-- rule), may draw raster products (radar) into one image of the whole view at up to MAX_RES
+-- pixels, and places labels before the map's own.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -19,12 +26,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.World.Config)
 local Interchanges = require(ReplicatedStorage.Shared.World.Interchanges)
 local Raster = require(script.Parent.Raster)
+local MapBase = require(script.Parent.MapBase)
 
 local MapCanvas = {}
 
 export type Colour = Raster.Colour
 export type Rings = Raster.Rings
--- fill, hatch and stroke (Raster.luau).
+-- fill, hatch, stroke, dot, polar... (Raster.luau).
 export type Draw = Raster.Raster
 export type Labels = {
 	-- A boxed label on one of the rings' points: in view, as near the middle as it can be, clear
@@ -35,15 +43,25 @@ export type Labels = {
 }
 export type Overlay = {
 	muted: boolean?,
+	-- Shapes, drawn into the product tiles (sharp at every zoom), over the raster products.
 	draw: ((Draw) -> ())?,
+	-- Shapes drawn under the raster products (the outlook's fill, so radar shows over it).
+	drawUnder: ((Draw) -> ())?,
+	-- Raster products (radar), drawn into one image of the view.
+	drawRaster: ((Draw) -> ())?,
 	labels: ((Labels) -> ())?,
 }
 
 local player = Players.LocalPlayer
 local MILE = Config.STUDS_PER_MILE
 local HALF = Config.MAP_MILES / 2
-local MAX_RES = 1024
+local MAX_RES = 1024 -- the raster products' image (an EditableImage is at most 1024 square)
 local MIN_MPP = 0.01 -- miles per pixel when fully zoomed in (10 studs a pixel)
+local TILE = 256 -- screen pixels (GUI units) a side; drawn at TILE * density image pixels
+local LEVEL_STEP = math.sqrt(2) -- so a tile is shown between 0.84 and 1.19 of its drawn size
+local MAX_TILE_PIXELS = 110 * 256 * 256 -- image pixels of tiles kept per layer (about 29 MB)
+local FRAME_BUDGET = 0.010 -- seconds of tile drawing a frame (at least one tile)
+local SETTLE_SECONDS = 0.25 -- the radar image is drawn again once the view has been still this long
 -- A muted map keeps this share of its colour, the rest going to MUTE_TO.
 local MUTE_KEEP, MUTE_TO = 0.38, { 22, 26, 32 }
 
@@ -52,22 +70,11 @@ local COVER_COLOURS: { [string]: { number } } = {
 	sandhillGrass = { 190, 180, 128 }, forest = { 62, 102, 58 }, riparian = { 86, 124, 70 }, breaks = { 160, 132, 104 },
 	redRange = { 176, 120, 88 }, tallgrass = { 130, 150, 90 }, urban = { 128, 124, 130 }, suburban = { 176, 170, 164 },
 }
-local ROAD_STYLE = {
-	interstate = { colour = { 205, 40, 50 }, width = 2.4 },
-	expressway = { colour = { 235, 120, 40 }, width = 2 },
-	highway = { colour = { 250, 196, 60 }, width = 1.5 },
-}
-local RIVER = { 58, 104, 170 }
-local SECTION_COLOURS = { [1] = { 150, 120, 88 }, [2] = { 214, 204, 178 }, [3] = { 244, 244, 240 } }
 
 -- Map data ----------------------------------------------------------------------------------
 
 local data: any = nil
-local land: buffer
-local cells, cellMiles = 0, 0.5
-local coverRGB: { { number } } = {}
-local sections: buffer
-local sectionSize = 0
+local base: MapBase.Data
 
 local function unpack(text: string): buffer
 	local raw = EncodingService:Base64Decode(buffer.fromstring(text))
@@ -95,24 +102,29 @@ local function loadData()
 			end
 		end
 	end
-	land = unpack(data.land)
-	sections = unpack(data.sections)
-	cells = data.cells
-	cellMiles = data.miles / cells
-	sectionSize = data.sectionSize
+	local coverRGB: { [number]: { number } } = {}
+	local coverKeys: { [number]: string } = {}
 	for i, key in data.cover do
 		coverRGB[i - 1] = COVER_COLOURS[key] or { 255, 0, 255 }
+		coverKeys[i - 1] = key
 	end
+	base = {
+		miles = data.miles, cells = data.cells, cellMiles = data.miles / data.cells,
+		land = unpack(data.land), sections = unpack(data.sections), sectionSize = data.sectionSize,
+		coverKeys = coverKeys, coverRGB = coverRGB, rivers = data.rivers, roads = data.roads, rampLines = rampLines, studsPerMile = MILE,
+	}
 end
 
 -- View --------------------------------------------------------------------------------------
 
 local viewport: Frame
-local image: ImageLabel
+local baseLayer: Frame -- the map's tiles
+local veil: Frame -- mutes the map under a product
+local rasterImage: ImageLabel -- the raster products (radar)
+local underLayer: Frame -- the product's tiles under the raster products
+local overLayer: Frame -- the product's tiles over them
 local labelLayer: Frame
 local readout: TextLabel? = nil
-local editable: any = nil
-local editableSize = Vector2.zero
 local markers: { [Player]: Frame } = {}
 local labels: { TextLabel } = {}
 local overlay: Overlay? = nil
@@ -120,11 +132,14 @@ local visible = false
 
 local centreX, centreY = HALF, HALF -- map miles at the middle of the view
 local mpp = math.huge -- map miles per screen pixel (the whole map to start with)
-local dirty, quickPending = true, false
-local overlayDirty = false
+local viewChanged = true
+local labelsDue = true
+local rasterDue = false
 local clickHandler: ((mx: number, my: number) -> ())? = nil
 local lastChange = 0
-local lastQuick = 0
+local lastLabels = 0
+-- While a layer's tiles are drawn, the zoom they are drawn at (MapCanvas.milesPerPixel).
+local drawingMpp: number? = nil
 
 local function viewSize(): Vector2
 	return viewport.AbsoluteSize
@@ -149,170 +164,362 @@ local function toScreen(mx: number, my: number): (number, number)
 	return (mx - centreX) / mpp + size.X / 2, (my - centreY) / mpp + size.Y / 2
 end
 
--- Rasterising ---------------------------------------------------------------------------------
+-- Tiles --------------------------------------------------------------------------------------
 
-local pixels: buffer
-local pw, ph = 0, 0
-local muted = false
+type Tile = {
+	k: number, -- zoom level
+	i: number, -- column and row in that level
+	j: number,
+	image: ImageLabel,
+	editable: any?,
+	version: number, -- what it shows (-1: nothing yet)
+	seen: number, -- when it was last in view
+}
+type Layer = { tiles: { [string]: Tile }, count: number, parent: Frame }
+type Want = { i: number, j: number, d: number }
 
-local function tone(c: { number }): { number }
-	if not muted then
-		return c
+local baseTiles: Layer
+local underTiles: Layer
+local overTiles: Layer
+local overlayVersion = 0
+local level = 0
+-- Image pixels to a screen pixel. Roblox does not say a screen's display scaling, but its GUI
+-- units are physical pixels divided by it, so a view 989.33 units wide on a 150% screen gives
+-- it away. A screen whose sizes come out whole at 1 is drawn at 1 (Workspace attribute
+-- MapPixelDensity sets it).
+local density = 1
+local tilePx = TILE
+local maxTiles = 110
+local scratch = buffer.create(TILE * TILE * 4)
+
+local function pixelDensity(): number
+	local forced = workspace:GetAttribute("MapPixelDensity")
+	if type(forced) == "number" and forced >= 1 and forced <= 4 then
+		return forced
 	end
-	return {
-		c[1] * MUTE_KEEP + MUTE_TO[1] * (1 - MUTE_KEEP),
-		c[2] * MUTE_KEEP + MUTE_TO[2] * (1 - MUTE_KEEP),
-		c[3] * MUTE_KEEP + MUTE_TO[3] * (1 - MUTE_KEEP),
-	}
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return 1
+	end
+	local size = camera.ViewportSize
+	for _, s in { 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3 } do
+		local w, h = size.X * s, size.Y * s
+		if math.abs(w - math.round(w)) < 0.02 and math.abs(h - math.round(h)) < 0.02 then
+			return s
+		end
+	end
+	return 1
+end
+local wanted: { Want } = {} -- the current level's tiles in view, nearest the middle first
+local wantedKeys: { [string]: boolean } = {}
+
+local function levelMpp(k: number): number
+	return MIN_MPP * LEVEL_STEP ^ k
 end
 
--- The base map of the last view drawn, kept so a product can be redrawn over it (a radar
--- loop's next frame) without drawing the map again.
-local baseKey = ""
-local basePixels: buffer? = nil
+local function levelOf(m: number): number
+	return math.max(0, math.round(math.log(m / MIN_MPP) / math.log(LEVEL_STEP)))
+end
 
-local function drawBase(raster: Raster.Raster, scale: number, size: Vector2)
-	local line, polyline = raster.line, raster.polyline
-	local step = mpp / scale
-	local left, top = centreX - size.X * mpp / 2, centreY - size.Y * mpp / 2
-	local n = cells
-	-- Land: cover colour times hill-shade, blended between cells once zoomed in past them; a
-	-- muted map keeps MUTE_KEEP of it.
-	local NN = n * n
-	local keep = if muted then MUTE_KEEP else 1
-	local base1, base2, base3 = 0, 0, 0
-	if muted then
-		base1, base2, base3 = MUTE_TO[1] * (1 - keep), MUTE_TO[2] * (1 - keep), MUTE_TO[3] * (1 - keep)
+local function keyOf(k: number, i: number, j: number): string
+	return `{k}/{i}/{j}`
+end
+
+local function newLayer(parent: Frame): Layer
+	return { tiles = {}, count = 0, parent = parent }
+end
+
+local function dropTile(layer: Layer, key: string)
+	local tile = layer.tiles[key]
+	if not tile then
+		return
 	end
-	local function cellColour(i: number, j: number): (number, number, number)
-		i, j = math.clamp(i, 0, n - 1), math.clamp(j, 0, n - 1)
-		local k = j * n + i
-		local c = coverRGB[buffer.readu8(land, k)]
-		local f = buffer.readu8(land, NN + k) / 200 * keep
-		return c[1] * f + base1, c[2] * f + base2, c[3] * f + base3
+	if tile.editable then
+		tile.editable:Destroy()
 	end
-	local smooth = step < cellMiles * 0.7
-	for py = 0, ph - 1 do
-		local my = top + (py + 0.5) * step
-		local row = py * pw
-		if my < 0 or my >= data.miles then
-			for px = 0, pw - 1 do
-				buffer.writeu32(pixels, (row + px) * 4, 0xFF1E1A18)
-			end
-		elseif smooth then
-			local gy = my / cellMiles - 0.5
-			local j0 = math.floor(gy)
-			local fy = gy - j0
-			for px = 0, pw - 1 do
-				local mx = left + (px + 0.5) * step
-				local o = (row + px) * 4
-				if mx < 0 or mx >= data.miles then
-					buffer.writeu32(pixels, o, 0xFF1E1A18)
-				else
-					local gx = mx / cellMiles - 0.5
-					local i0 = math.floor(gx)
-					local fx = gx - i0
-					local r1, g1, b1 = cellColour(i0, j0)
-					local r2, g2, b2 = cellColour(i0 + 1, j0)
-					local r3, g3, b3 = cellColour(i0, j0 + 1)
-					local r4, g4, b4 = cellColour(i0 + 1, j0 + 1)
-					local w1, w2, w3, w4 = (1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy
-					buffer.writeu8(pixels, o, math.min(255, r1 * w1 + r2 * w2 + r3 * w3 + r4 * w4))
-					buffer.writeu8(pixels, o + 1, math.min(255, g1 * w1 + g2 * w2 + g3 * w3 + g4 * w4))
-					buffer.writeu8(pixels, o + 2, math.min(255, b1 * w1 + b2 * w2 + b3 * w3 + b4 * w4))
-					buffer.writeu8(pixels, o + 3, 255)
-				end
-			end
-		else
-			local j = math.floor(my / cellMiles)
-			for px = 0, pw - 1 do
-				local mx = left + (px + 0.5) * step
-				local o = (row + px) * 4
-				if mx < 0 or mx >= data.miles then
-					buffer.writeu32(pixels, o, 0xFF1E1A18)
-				else
-					local r, g, bl = cellColour(math.floor(mx / cellMiles), j)
-					buffer.writeu8(pixels, o, math.min(255, r))
-					buffer.writeu8(pixels, o + 1, math.min(255, g))
-					buffer.writeu8(pixels, o + 2, math.min(255, bl))
-					buffer.writeu8(pixels, o + 3, 255)
-				end
-			end
+	tile.image:Destroy()
+	layer.tiles[key] = nil
+	layer.count -= 1
+end
+
+-- Lets go of the tiles longest out of view while there are more than maxTiles (or `extra`
+-- more than the room left, when an image could not be made). Tiles in view are kept.
+local function evict(layer: Layer, extra: number?)
+	local over = layer.count - maxTiles + (extra or 0)
+	if over <= 0 then
+		return
+	end
+	local old = {}
+	for key, tile in layer.tiles do
+		if not tile.image.Visible and not wantedKeys[key] then
+			table.insert(old, { key = key, seen = tile.seen })
 		end
 	end
-	-- Section-line roads once zoomed in (paved from 12 pixels a mile, all from 40).
-	if mpp < 1 / 12 then
-		local minClass = if mpp < 1 / 40 then 1 else 3
-		local sectionColours = { tone(SECTION_COLOURS[1]), tone(SECTION_COLOURS[2]), tone(SECTION_COLOURS[3]) }
-		local I0, I1 = math.max(0, math.floor(left)), math.min(sectionSize - 1, math.ceil(left + size.X * mpp))
-		local J0, J1 = math.max(0, math.floor(top)), math.min(sectionSize - 1, math.ceil(top + size.Y * mpp))
-		for J = J0, J1 do
-			for I = I0, I1 do
-				local v = buffer.readu8(sections, J * sectionSize + I)
-				local east, south = v % 4, (v // 4) % 4
-				if east >= minClass then
-					line(I, J, I + 1, J, if east == 3 then 1.5 else 1, sectionColours[east])
-				end
-				if south >= minClass then
-					line(I, J, I, J + 1, if south == 3 then 1.5 else 1, sectionColours[south])
-				end
-			end
-		end
-	end
-	-- Rivers (wider ones wider), then the main roads.
-	local river = tone(RIVER)
-	for _, r in data.rivers do
-		local studs = math.clamp(r.width * 0.18, 12, 220)
-		polyline(r.points, math.max(1, studs / MILE / mpp), river)
-	end
-	-- Interchange ramps once zoomed in.
-	if mpp < 0.15 then
-		local ramp = tone({ 235, 150, 90 })
-		for _, l in rampLines do
-			polyline(l, math.max(1, 22 / MILE / mpp), ramp)
-		end
-	end
-	for _, kind in { "highway", "expressway", "interstate" } do
-		local style = ROAD_STYLE[kind]
-		local width = style.width * math.clamp(0.25 / mpp, 1, 3)
-		local colour = tone(style.colour)
-		for _, road in data.roads do
-			if road.kind == kind then
-				polyline(road.points, width, colour)
-			end
-		end
+	table.sort(old, function(a, b)
+		return a.seen < b.seen
+	end)
+	for n = 1, math.min(over, #old) do
+		dropTile(layer, old[n].key)
 	end
 end
 
-local function render(scale: number)
-	muted = overlay ~= nil and overlay.muted == true
-	local size = viewSize()
-	pw, ph = math.max(1, math.floor(size.X * scale)), math.max(1, math.floor(size.Y * scale))
-	pixels = buffer.create(pw * ph * 4)
-	local raster = Raster.new(pixels, pw, ph, toScreen, scale)
-	local key = string.format("%d|%d|%.6f|%.6f|%.9f|%s", pw, ph, centreX, centreY, mpp, tostring(muted))
-	local kept = basePixels
-	if kept and key == baseKey then
-		buffer.copy(pixels, 0, kept)
-	else
-		drawBase(raster, scale, size)
-		local copy = buffer.create(pw * ph * 4)
-		buffer.copy(copy, 0, pixels)
-		basePixels, baseKey = copy, key
+local function tileOf(layer: Layer, k: number, i: number, j: number): Tile
+	local key = keyOf(k, i, j)
+	local tile = layer.tiles[key]
+	if tile then
+		return tile
 	end
-	-- The product over the map.
-	if overlay and overlay.draw then
-		overlay.draw(raster)
-	end
-	if not editable or editableSize ~= Vector2.new(pw, ph) then
-		if editable then
-			editable:Destroy()
+	local image = Instance.new("ImageLabel")
+	image.BackgroundTransparency = 1
+	image.Visible = false
+	image.Parent = layer.parent
+	local made: Tile = { k = k, i = i, j = j, image = image, editable = nil, version = -1, seen = os.clock() }
+	layer.tiles[key] = made
+	layer.count += 1
+	return made
+end
+
+local function newImage(): any
+	local ok, made = pcall(function()
+		return (AssetService :: any):CreateEditableImage({ Size = Vector2.new(tilePx, tilePx) })
+	end)
+	return if ok then made else nil
+end
+
+-- Writes the scratch buffer into a tile's image (made when first needed). False if no image
+-- could be made (the device's image memory is full even after letting old tiles go).
+local function show(layer: Layer, tile: Tile): boolean
+	if not tile.editable then
+		local made = newImage()
+		if not made then
+			evict(layer, 8)
+			made = newImage()
+			if not made then
+				return false
+			end
 		end
-		editable = (AssetService :: any):CreateEditableImage({ Size = Vector2.new(pw, ph) })
-		editableSize = Vector2.new(pw, ph)
-		image.ImageContent = Content.fromObject(editable)
+		tile.editable = made
+		tile.image.ImageContent = Content.fromObject(made)
 	end
-	editable:WritePixelsBuffer(Vector2.zero, Vector2.new(pw, ph), pixels)
+	tile.editable:WritePixelsBuffer(Vector2.zero, Vector2.new(tilePx, tilePx), scratch)
+	return true
+end
+
+local function drawBaseTile(tile: Tile)
+	local t = levelMpp(tile.k)
+	MapBase.draw(base, scratch, tilePx, tilePx, tile.i * TILE * t, tile.j * TILE * t, t / density, density)
+	if show(baseTiles, tile) then
+		tile.version = 0
+	end
+end
+
+-- One product tile of a layer (under or over the raster products), drawn by the overlay's
+-- function for it.
+local function drawShapeTile(layer: Layer, tile: Tile, drawFn: ((Draw) -> ())?)
+	local t = levelMpp(tile.k)
+	local left, top = tile.i * TILE * t, tile.j * TILE * t
+	buffer.fill(scratch, 0, 0)
+	local raster = Raster.new(scratch, tilePx, tilePx, function(mx: number, my: number)
+		return (mx - left) / t, (my - top) / t
+	end, density, tile.i * tilePx, tile.j * tilePx)
+	if drawFn then
+		drawingMpp = t
+		local ok, problem = pcall(drawFn, raster)
+		drawingMpp = nil
+		if not ok then
+			warn(`[MapCanvas] product drawing failed: {problem}`)
+		end
+	end
+	if raster.drawn() then
+		if not show(layer, tile) then
+			return
+		end
+	elseif tile.editable then
+		-- Nothing here: no image kept for it.
+		tile.editable:Destroy()
+		tile.editable = nil
+		tile.image.ImageContent = Content.none
+	end
+	tile.version = overlayVersion
+end
+
+-- The current level's tiles in view, nearest the middle first.
+local function findWanted()
+	table.clear(wanted)
+	table.clear(wantedKeys)
+	local size = viewport.AbsoluteSize
+	local span = TILE * levelMpp(level)
+	local last = math.ceil(data.miles / span) - 1
+	local i0 = math.max(0, math.floor((centreX - size.X * mpp / 2) / span))
+	local i1 = math.min(last, math.floor((centreX + size.X * mpp / 2) / span))
+	local j0 = math.max(0, math.floor((centreY - size.Y * mpp / 2) / span))
+	local j1 = math.min(last, math.floor((centreY + size.Y * mpp / 2) / span))
+	for j = j0, j1 do
+		for i = i0, i1 do
+			wantedKeys[keyOf(level, i, j)] = true
+			table.insert(wanted, { i = i, j = j, d = ((i + 0.5) * span - centreX) ^ 2 + ((j + 0.5) * span - centreY) ^ 2 })
+		end
+	end
+	table.sort(wanted, function(a, b)
+		return a.d < b.d
+	end)
+end
+
+-- Puts every kept tile where the view has it. The current level's finished tiles go on top; a
+-- tile of another level is shown under them only while the current level still has gaps. (A
+-- product tile with nothing drawn has no image and is never shown.)
+local function placeTiles()
+	local size = viewport.AbsoluteSize
+	local now = os.clock()
+	for _, layer in { baseTiles, underTiles, overTiles } do
+		local complete = true
+		for _, w in wanted do
+			local tile = layer.tiles[keyOf(level, w.i, w.j)]
+			if not tile or tile.version < 0 then
+				complete = false
+				break
+			end
+		end
+		for _, tile in layer.tiles do
+			local t = levelMpp(tile.k)
+			local x0 = math.floor((tile.i * TILE * t - centreX) / mpp + size.X / 2)
+			local x1 = math.floor(((tile.i + 1) * TILE * t - centreX) / mpp + size.X / 2)
+			local y0 = math.floor((tile.j * TILE * t - centreY) / mpp + size.Y / 2)
+			local y1 = math.floor(((tile.j + 1) * TILE * t - centreY) / mpp + size.Y / 2)
+			local inView = x1 > 0 and y1 > 0 and x0 < size.X and y0 < size.Y
+			local current = tile.k == level
+			local on = inView and tile.version >= 0 and tile.editable ~= nil and (current or not complete)
+			-- Another level's product tile stands in only if it shows the product as it is now
+			-- (not a layer just turned off).
+			if layer ~= baseTiles and (not overlay or (not current and tile.version ~= overlayVersion)) then
+				on = false
+			end
+			if layer == underTiles and not (overlay and overlay.drawUnder) then
+				on = false
+			end
+			tile.image.Visible = on
+			if inView and current then
+				tile.seen = now
+			end
+			if on then
+				tile.seen = now
+				tile.image.Position = UDim2.fromOffset(x0, y0)
+				tile.image.Size = UDim2.fromOffset(x1 - x0, y1 - y0)
+				tile.image.ZIndex = if current then 2 else 1
+			end
+		end
+	end
+end
+
+-- Follows the screen's pixel density: when it changes (the window moved to another screen),
+-- every tile is drawn again at the new one.
+local function applyDensity()
+	local d = pixelDensity()
+	if d == density and tilePx == math.round(TILE * d) then
+		return
+	end
+	for _, layer in { baseTiles, underTiles, overTiles } do
+		for key in layer.tiles do
+			dropTile(layer, key)
+		end
+	end
+	density = d
+	tilePx = math.round(TILE * d)
+	maxTiles = math.max(40, math.floor(MAX_TILE_PIXELS / (tilePx * tilePx)))
+	scratch = buffer.create(tilePx * tilePx * 4)
+end
+
+-- Draws tiles for up to FRAME_BUDGET (at least one), nearest the middle first, each place's
+-- map and product together. True if any was drawn.
+local function drawTiles(): boolean
+	local deadline = os.clock() + FRAME_BUDGET
+	local any = false
+	for _, w in wanted do
+		local tile = tileOf(baseTiles, level, w.i, w.j)
+		if tile.version < 0 then
+			drawBaseTile(tile)
+			any = true
+		end
+		local current = overlay
+		if current then
+			if current.drawUnder then
+				local under = tileOf(underTiles, level, w.i, w.j)
+				if under.version ~= overlayVersion then
+					drawShapeTile(underTiles, under, current.drawUnder)
+					any = true
+				end
+			end
+			local over = tileOf(overTiles, level, w.i, w.j)
+			if over.version ~= overlayVersion then
+				drawShapeTile(overTiles, over, current.draw)
+				any = true
+			end
+		end
+		if any and os.clock() > deadline then
+			break
+		end
+	end
+	if any then
+		evict(baseTiles)
+		evict(underTiles)
+		evict(overTiles)
+	end
+	return any
+end
+
+-- The raster products' image: the whole view at up to MAX_RES pixels, as the map was drawn
+-- before tiles. It is drawn for one view, and moved and scaled with the map until the view
+-- settles and it is drawn again.
+local rasterEditable: any = nil
+local rasterSize = Vector2.zero
+local rasterView = { left = 0, top = 0, right = 0, bottom = 0 }
+
+local function placeRaster()
+	if not rasterImage.Visible then
+		return
+	end
+	local size = viewport.AbsoluteSize
+	local x0 = (rasterView.left - centreX) / mpp + size.X / 2
+	local y0 = (rasterView.top - centreY) / mpp + size.Y / 2
+	rasterImage.Position = UDim2.fromOffset(x0, y0)
+	rasterImage.Size = UDim2.fromOffset((rasterView.right - rasterView.left) / mpp, (rasterView.bottom - rasterView.top) / mpp)
+end
+
+local function drawRaster()
+	rasterDue = false
+	local current = overlay
+	if not current or not current.drawRaster then
+		rasterImage.Visible = false
+		return
+	end
+	local size = viewport.AbsoluteSize
+	local scale = math.min(1, MAX_RES / math.max(size.X, size.Y, 1))
+	local pw, ph = math.max(1, math.floor(size.X * scale)), math.max(1, math.floor(size.Y * scale))
+	local pixels = buffer.create(pw * ph * 4)
+	local cx, cy, m = centreX, centreY, mpp
+	local raster = Raster.new(pixels, pw, ph, function(mx: number, my: number)
+		return (mx - cx) / m + size.X / 2, (my - cy) / m + size.Y / 2
+	end, scale)
+	local ok, problem = pcall(current.drawRaster :: (Draw) -> (), raster)
+	if not ok then
+		warn(`[MapCanvas] raster product drawing failed: {problem}`)
+	end
+	if not raster.drawn() then
+		rasterImage.Visible = false
+		return
+	end
+	if not rasterEditable or rasterSize ~= Vector2.new(pw, ph) then
+		if rasterEditable then
+			rasterEditable:Destroy()
+		end
+		rasterEditable = (AssetService :: any):CreateEditableImage({ Size = Vector2.new(pw, ph) })
+		rasterSize = Vector2.new(pw, ph)
+		rasterImage.ImageContent = Content.fromObject(rasterEditable)
+	end
+	rasterEditable:WritePixelsBuffer(Vector2.zero, Vector2.new(pw, ph), pixels)
+	rasterView = { left = cx - size.X / 2 * m, top = cy - size.Y / 2 * m, right = cx + size.X / 2 * m, bottom = cy + size.Y / 2 * m }
+	rasterImage.Visible = true
+	placeRaster()
 end
 
 -- Labels --------------------------------------------------------------------------------------
@@ -343,7 +550,7 @@ local function placeLabels()
 		if not l then
 			l = Instance.new("TextLabel")
 			l.TextStrokeTransparency = 0.3
-			l.ZIndex = 3
+			l.ZIndex = 8
 			local stroke = Instance.new("UIStroke")
 			stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 			stroke.Thickness = 1
@@ -515,7 +722,7 @@ local function marker(p: Player): Frame
 	m.AnchorPoint = Vector2.new(0.5, 0.5)
 	m.Size = UDim2.fromOffset(14, 14)
 	m.BackgroundColor3 = if p == player then Color3.fromRGB(230, 50, 50) else Color3.fromRGB(60, 140, 255)
-	m.ZIndex = 5
+	m.ZIndex = 10
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(1, 0)
 	c.Parent = m
@@ -529,7 +736,7 @@ local function marker(p: Player): Frame
 	pointer.Size = UDim2.fromOffset(3, 16)
 	pointer.BackgroundColor3 = Color3.new(1, 1, 1)
 	pointer.BorderSizePixel = 0
-	pointer.ZIndex = 4
+	pointer.ZIndex = 9
 	pointer.Parent = m
 	m.Parent = labelLayer
 	markers[p] = m
@@ -581,14 +788,28 @@ local function updateMarkers()
 end
 
 local function changed()
-	dirty = true
-	quickPending = true
+	viewChanged = true
+	labelsDue = true
+	rasterDue = true
 	lastChange = os.clock()
 end
 
 -- Public --------------------------------------------------------------------------------------
 
+local function layerFrame(name: string, z: number): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = name
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.BackgroundTransparency = 1
+	frame.ZIndex = z
+	frame.Parent = viewport
+	return frame
+end
+
 -- Builds the map inside a frame (it fills it). readoutLabel, if given, shows where you are.
+-- Bottom to top: the map's tiles, the veil that mutes them, the product's tiles that go under
+-- the raster products (the outlook), the raster products (radar), the product's other tiles,
+-- then labels and player markers.
 function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	loadData()
 	readout = readoutLabel
@@ -600,15 +821,24 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	viewport.Active = true
 	viewport.Parent = parent
 
-	image = Instance.new("ImageLabel")
-	image.Size = UDim2.fromScale(1, 1)
-	image.BackgroundTransparency = 1
-	image.Parent = viewport
-
-	labelLayer = Instance.new("Frame")
-	labelLayer.Size = UDim2.fromScale(1, 1)
-	labelLayer.BackgroundTransparency = 1
-	labelLayer.Parent = viewport
+	baseLayer = layerFrame("Map", 1)
+	veil = layerFrame("Veil", 2)
+	underLayer = layerFrame("ProductUnder", 3)
+	veil.BackgroundColor3 = Color3.fromRGB(MUTE_TO[1], MUTE_TO[2], MUTE_TO[3])
+	veil.BackgroundTransparency = MUTE_KEEP
+	veil.BorderSizePixel = 0
+	veil.Visible = false
+	rasterImage = Instance.new("ImageLabel")
+	rasterImage.Name = "Raster"
+	rasterImage.BackgroundTransparency = 1
+	rasterImage.ZIndex = 4
+	rasterImage.Visible = false
+	rasterImage.Parent = viewport
+	overLayer = layerFrame("Product", 5)
+	labelLayer = layerFrame("Labels", 8)
+	baseTiles = newLayer(baseLayer)
+	underTiles = newLayer(underLayer)
+	overTiles = newLayer(overLayer)
 
 	viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(changed)
 
@@ -658,20 +888,21 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	end)
 end
 
--- What is drawn over the map (nil: the plain world map). quick: only the product changed, so
--- it is drawn at once over the kept map (a radar loop's next frame).
-function MapCanvas.setOverlay(value: Overlay?, quick: boolean?)
+-- What is drawn over the map (nil: the plain world map). The product's tiles are drawn again,
+-- a few a frame, and the old ones shown until then; the map itself is not drawn again.
+-- quick: kept for the callers that only change a raster product (it is drawn at once).
+function MapCanvas.setOverlay(value: Overlay?, _quick: boolean?)
 	overlay = value
-	if quick then
-		overlayDirty = true
-	else
-		changed()
-	end
+	overlayVersion += 1
+	veil.Visible = value ~= nil and value.muted == true
+	rasterDue = true
+	labelsDue = true
+	lastChange = 0 -- the raster image is drawn without waiting for the view to settle
 end
 
--- Draw again (the overlay's product changed).
+-- Draw the product again (its data changed).
 function MapCanvas.redraw()
-	changed()
+	MapCanvas.setOverlay(overlay)
 end
 
 -- Called with the map point (miles) of a click on the map; nil to stop.
@@ -679,9 +910,10 @@ function MapCanvas.onClick(handler: ((mx: number, my: number) -> ())?)
 	clickHandler = handler
 end
 
--- Map miles per screen pixel at the current zoom.
+-- Map miles per screen pixel at the current zoom; while a product's tiles are drawn, the zoom
+-- they are drawn at (within 19% of the view's).
 function MapCanvas.milesPerPixel(): number
-	return mpp
+	return drawingMpp or mpp
 end
 
 -- The map point (miles) of a player's character, if it has one.
@@ -710,33 +942,35 @@ function MapCanvas.zoom(factor: number)
 	changed()
 end
 
--- Call every frame while the screen is open. While the view moves, it is redrawn at reduced
--- resolution (at most every 70 ms); once it has been still for a quarter second, at full.
+-- Call every frame while the screen is open: places the tiles for the view, draws a few more,
+-- places the labels (at most every 70 ms while the view moves) and draws the raster products
+-- again once the view has settled.
 function MapCanvas.step()
 	if not visible then
 		return
 	end
 	local now = os.clock()
-	if dirty then
+	local moved = viewChanged
+	if viewChanged then
+		viewChanged = false
+		applyDensity()
 		clampView()
-		local size = viewSize()
-		local full = math.min(1, MAX_RES / math.max(size.X, size.Y))
-		if now - lastChange > 0.25 then
-			render(full)
-			placeLabels()
-			dirty, quickPending = false, false
-		elseif quickPending and now - lastQuick > 0.07 then
-			render(full * 0.4)
-			placeLabels()
-			quickPending = false
-			lastQuick = now
-		end
-	elseif overlayDirty then
-		local size = viewSize()
-		render(math.min(1, MAX_RES / math.max(size.X, size.Y)))
+		level = levelOf(mpp)
+		findWanted()
+	end
+	local drew = drawTiles()
+	if moved or drew or labelsDue then
+		placeTiles()
+		placeRaster()
+	end
+	if labelsDue and now - lastLabels > 0.07 then
+		labelsDue = false
+		lastLabels = now
 		placeLabels()
 	end
-	overlayDirty = false
+	if rasterDue and now - lastChange > SETTLE_SECONDS then
+		drawRaster()
+	end
 	updateMarkers()
 end
 

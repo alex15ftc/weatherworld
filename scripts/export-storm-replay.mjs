@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { buildStormAppearance } from '../js/storms/StormAppearance.js';
+import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
 
 avoidBackgroundThrottling();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -62,7 +63,7 @@ run((world, hour) => {
     if (a) storms.push(a);
     if (s.id === best.stormId && a?.tornado) tornadoSeen = true;
   }
-  frames.push({ seq: frames.length + 1, atMs: frames.length * TICK_MS, simHourUtc: +hour.toFixed(4), storms });
+  frames.push({ seq: frames.length + 1, atMs: frames.length * TICK_MS, simHourUtc: +hour.toFixed(4), storms, sky: buildSkyAppearance(world) });
   if (!best.touchdownKm && storm?.tornado?.onGround) best.touchdownKm = { ...storm.tornado.positionKm };
   return true;
 });

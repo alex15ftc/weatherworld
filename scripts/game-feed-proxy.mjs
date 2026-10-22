@@ -7,7 +7,7 @@
 import http from 'node:http';
 
 const TARGET = Number(process.env.TARGET_PORT ?? 3000), PORT = Number(process.env.PORT ?? 3001);
-const GAME_ROUTE = /^\/api\/game\/v1\/(frames|manifest|product\/[A-Za-z0-9.]+)$/;
+const GAME_ROUTE = /^\/api\/game\/v1\/(frames|manifest|product\/[A-Za-z0-9._-]+)$/;
 const PASS_IN = ['accept-encoding', 'x-api-key'];
 const PASS_OUT = ['content-type', 'content-encoding', 'content-length', 'cache-control', 'vary', 'x-product-version'];
 

@@ -4,6 +4,8 @@
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
 import { GameProducts, gameOutlook, gameMesoscale, gameWarnings, ringsToMiles, GAME_PRODUCTS } from '../server/GameProducts.js';
+import { ReportsRuntime } from '../server/ReportsRuntime.js';
+import { logStormTick } from '../js/reports/stormLog.js';
 
 // A circle of 200 points, radius 0.2 of a 500-mile map: about 100 miles across.
 const circle = Array.from({ length: 200 }, (_, k) => [0.5 + 0.2 * Math.cos(k / 200 * 2 * Math.PI), 0.5 + 0.2 * Math.sin(k / 200 * 2 * Math.PI)]);
@@ -41,7 +43,9 @@ assert.equal(game.headline, 'Slight risk'); assert.equal(game.nextUpdateHourUtc,
 assert.equal(game.category[0].key, 'TSTM'); assert.ok(Array.isArray(game.category[0].rings[0]) && typeof game.category[0].rings[0][0] === 'number');
 assert.equal(game.hazards.tornado.levels[0].level, 2); assert.equal(game.hazards.tornado.groups[0].group, 1);
 assert.deepEqual(game.hazards.tornado.contourLevels, [2, 5]); assert.equal(game.hazards.tornado.top.level, 5);
-assert.ok(JSON.stringify(game).length < 4000, 'no per-cell arrays');
+assert.ok(!('thunder' in game) && !Array.isArray(game.category[0].rings[0][0]) && !JSON.stringify(game).includes(',1,1,1,1,1,1,1,1,'), 'no per-cell arrays');
+// Contours stay curves at close zoom: many more points than the 0.3-mile simplification kept.
+assert.ok(game.category[0].rings[0].length / 2 > 120, `${game.category[0].rings[0].length / 2} points`);
 assert.deepEqual(gameOutlook('day2', { status: 'running' }), { v: 1, id: 'outlook.day2', kind: 'outlook', day: 2, status: 'running', error: null });
 
 // Versions: unchanged while the source is unchanged; new when an outlook is issued.
@@ -61,7 +65,7 @@ const runtime = {
 const products = new GameProducts({ runtime, outlooks });
 const first = products.manifest();
 assert.equal(first.epoch, 42); assert.equal(first.simHourUtc, 13);
-assert.deepEqual(Object.keys(first.products), ['outlook.day1', 'outlook.day2', 'outlook.day3', 'mesoscale', 'warnings', 'radar.sites']);
+assert.deepEqual(Object.keys(first.products), ['outlook.day1', 'outlook.day2', 'outlook.day3', 'mesoscale', 'warnings', 'lightning', 'radar.sites']);
 assert.equal(JSON.parse(products.product('outlook.day1').text).status, 'pending');
 assert.equal(products.manifest().products['outlook.day1'].version, first.products['outlook.day1'].version);
 outlooks.running = { due: ['day1'] };
@@ -133,5 +137,53 @@ assert.equal(withAll.manifest().products.warnings.version, v1);
 warnList.warnings[0].statements.push({}); warnList.warnings[0].latestText = 'SVR UPDATE';
 assert.notEqual(withAll.manifest().products.warnings.version, v1);
 assert.equal(JSON.parse(withAll.product('mesoscale').text).watches[0].number, 7);
+
+// Storm reports and damage surveys: a tornado crossing a town on day 1, logged as the live world
+// logs it (js/reports/stormLog.js); the day is final once it is over and its tornado has lifted.
+{
+  const layer = { miles: 100, towns: [{ name: 'Testville', x: 50, y: 50, population: 20000 }], counties: [{ name: 'Test', office: 'TST' }], at: () => 0 };
+  const places = { layer, milesPerKm: 1 };
+  const tornado = { onGround: true, cycleCount: 1, startedHourUtc: 20, windSpeedMph: 160, widthYards: 400, positionKm: { x: 45, y: 50 }, trackPoints: [{ x: 44.5, y: 50, hourUtc: 19.9 }] };
+  const storm = { id: 'S0001', active: true, tornado, positionKm: { x: 46, y: 50 }, currentHailSizeInches: 2.2, surfaceWind: { gustMph: 80 }, velocityKph: { east: 50, north: 0 } };
+  const world = { seed: 7, validHourUtc: 20, stormEngine: { validHourUtc: 20 }, storms: [storm], stormHistory: [] };
+  const tick = () => logStormTick(world, places);
+  for (let k = 0; k < 12; k++) { world.stormEngine.validHourUtc = 20 + k / 12; tornado.positionKm = { x: 45 + k * 0.9, y: 50 }; storm.positionKm = { x: 46 + k * 0.9, y: 50 }; tick(); }
+  const reports = new ReportsRuntime({ runtime: { engine: { world }, places, seed: 7 } });
+  const games = new GameProducts({ runtime, reports });
+  // On the ground: reported, not yet surveyed.
+  let listed = games.manifest().products;
+  assert.ok(listed['reports.days'] && listed['survey.indicators'] && listed['reports.day.1'] && !listed['survey.S0001-T1'], Object.keys(listed).join(','));
+  let day = JSON.parse(games.product('reports.day.1').text);
+  assert.equal(day.world, world.reportLog.worldId); assert.ok(day.world.length > 4 && day.world.length < 20);
+  assert.equal(day.final, false); assert.equal(day.ongoing, 1); assert.equal(day.tornadoes.length, 0);
+  const torReport = day.reports.find(r => r.type === 'tornado');
+  assert.ok(torReport.tornadoId === 'S0001-T1' && /Tornado/.test(torReport.title) && /Testville|Test County/.test(torReport.text), JSON.stringify(torReport));
+  assert.ok(day.reports.some(r => r.type === 'hail' && r.significant), 'hail of 2 in or more is significant');
+  // Lifted: surveyed and listed; the day changes, yesterday stays listed, then the day is final.
+  tornado.onGround = false; world.stormEngine.validHourUtc = 21; tick();
+  listed = games.manifest().products;
+  assert.ok(listed['survey.S0001-T1'], 'a lifted tornado is surveyed');
+  const survey = JSON.parse(games.product('survey.S0001-T1').text);
+  assert.equal(survey.kind, 'survey'); assert.equal(survey.world, day.world); assert.ok(['EF2', 'EF3'].includes(survey.rating) && survey.ef === Number(survey.rating.slice(2)));
+  assert.ok(survey.contours.length >= 3 && survey.contours.every(c => c.rings.every(ring => ring.length >= 6 && ring.every(Number.isFinite))));
+  assert.ok(survey.points.length > 20 && survey.points.every(p => p.length === 7 && typeof p[2] === 'string'), 'damage points as [x, y, di, dod, mph, ef, hour]');
+  assert.ok(survey.track.length >= 4 && /Rating:\s+EF/.test(survey.text));
+  day = JSON.parse(games.product('reports.day.1').text);
+  assert.equal(day.tornadoes.length, 1); assert.equal(day.tornadoes[0].rating, survey.rating); assert.equal(day.final, false, 'day 1 is not over yet');
+  world.stormEngine.validHourUtc = 36.5; world.storms = []; tick();
+  listed = games.manifest().products;
+  assert.ok(listed['reports.day.1'] && listed['survey.S0001-T1'], 'yesterday is still listed (its last changes come after 12Z)');
+  assert.equal(JSON.parse(games.product('reports.day.1').text).final, true);
+  assert.equal(JSON.parse(games.product('reports.days').text).currentDay, 2);
+  // Versions hold while nothing changes; unknown days and tornadoes are not products.
+  assert.equal(games.manifest().products['reports.day.1'].version, listed['reports.day.1'].version);
+  assert.equal(games.product('reports.day.99'), null); assert.equal(games.product('survey.S9999-T1'), null);
+  assert.ok(JSON.parse(games.product('survey.indicators').text).indicators.FR12.dods.length >= 10);
+  // Two days on, day 1 leaves the manifest but is still given by id while the log holds it.
+  world.stormEngine.validHourUtc = 60.5; tick();
+  listed = games.manifest().products;
+  assert.ok(!listed['reports.day.1'] && !listed['survey.S0001-T1'] && listed['reports.day.3']);
+  assert.ok(games.product('reports.day.1') && games.product('survey.S0001-T1'));
+}
 
 console.log('game-products: ok');

@@ -25,6 +25,9 @@ export const convectiveDay = hourUtc => Math.floor((hourUtc - 12) / 24) + 1;
 // warnings use them), or null.
 export function logStormTick(world, places = null) {
   const log = world.reportLog ??= { day: null, days: {}, open: {}, last: {} };
+  // Which world the log is of, for whatever keeps its days beyond it (the Roblox report archive):
+  // a new world numbers its days from 1 again. It is saved with the world, so a restart keeps it.
+  log.worldId ??= `${Number(world.seed ?? 0).toString(36)}${Date.now().toString(36)}`;
   const hourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc, day = convectiveDay(hourUtc);
   if (log.day !== day) {
     if (log.day !== null) world.stormHistory = [];

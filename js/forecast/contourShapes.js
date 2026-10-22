@@ -59,7 +59,7 @@ export function contourRings(field, width, height, level, { smoothing = 2, decim
 
 // Chaikin's corner cutting on a closed ring, leaving points on the map edge where they are
 // (so areas that run off the map keep a straight edge along it).
-function cutCorners(points) {
+export function cutCorners(points) {
   const onEdge = p => p[0] <= 0 || p[0] >= 1 || p[1] <= 0 || p[1] >= 1, out = [];
   for (let i = 0; i < points.length; i++) {
     const p = points[i], q = points[(i + 1) % points.length];

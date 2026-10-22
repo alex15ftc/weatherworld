@@ -48,6 +48,10 @@ const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - 
 const bearing = (east, north) => (Math.atan2(east, north) * 180 / Math.PI + 360) % 360;
 const r2 = v => Math.round(v * 100) / 100, r0 = v => Math.round(v);
 
+// Flashes a minute (in the cloud and to the ground together), rising steeply with the updraught
+// that lofts the ice that charges a storm. js/storms/Lightning.js places them.
+export const flashRatePerMin = updraughtMs => 30 * ramp(updraughtMs, 8, 50) ** 2;
+
 export function buildStormAppearance(storm, environment = storm.environment ?? {}) {
   const g = storm.geometry, s = storm.structure;
   if (!g) return null;
@@ -98,7 +102,11 @@ export function buildStormAppearance(storm, environment = storm.environment ?? {
     },
     // The flat, rain-free base under the updraught, hidden as the rain wraps in.
     base: { radiusKm: r2(1.3 * up.radiusKm), rainFree: r2(clamp(1 - rainWrap, 0, 1) * (0.3 + 0.7 * supercell)) },
-    wallCloud: { xKm: r2(wall.xKm), yKm: r2(wall.yKm), radiusKm: r2(wall.radiusKm), loweringM: r0(Math.min(wall.loweringM, 0.8 * lcl)), rotation: r2(wall.rotation), strength: r2(wall.strength),
+    // A wall cloud lowers the base by a share of its height (the moist, rain-cooled air it takes in
+    // condenses a little lower), 15-45% as it strengthens. (2026-10-22: it was the geometry's
+    // 150-600 m capped at 80% of the base: under a 600 m base a strong wall cloud hung 120 m off
+    // the ground, and the funnel under it, whose cloud base is the wall cloud's, was a squat disc.)
+    wallCloud: { xKm: r2(wall.xKm), yKm: r2(wall.yKm), radiusKm: r2(wall.radiusKm), loweringM: r0(Math.min(wall.loweringM, (0.15 + 0.3 * clamp(wall.strength, 0, 1)) * lcl)), rotation: r2(wall.rotation), strength: r2(wall.strength),
       tail: r2(tail), tailBearingDeg: r0(bearing(rain.xKm - wall.xKm, -(rain.yKm - wall.yKm))) },
     inflowBands: { strength: r2(bandStrength), fromDeg: r0(inflowFromDeg), count: bandStrength > 0.05 ? 1 + Math.round(3 * bandStrength) : 0, lengthKm: r2(10 + 40 * bandStrength) },
     rain: { xKm: r2(rain.xKm), yKm: r2(rain.yKm), alongKm: r2(rain.alongKm), acrossKm: r2(rain.acrossKm), bearingDeg: r0(rain.bearingDeg), intensity: r2(rain.intensity), wrap: r2(rainWrap) },
@@ -116,8 +124,7 @@ export function buildStormAppearance(storm, environment = storm.environment ?? {
     line: { share: r2(linear), halfLengthKm: r2(g.line.halfLengthKm), axisBearingDeg: r0(g.line.axisBearingDeg), bow: r2(g.line.bow) },
     anvil: { lengthKm: r2(g.anvil.lengthKm), widthKm: r2(g.anvil.widthKm), bearingDeg: r0(g.anvil.bearingDeg), topM: r0(g.anvil.topM),
       mammatus: r2(ramp(intensity, 0.5, 1) * ramp(storm.ageHours, 1, 3)) },
-    // Flashes a minute, rising steeply with the updraught that lofts the ice that charges a storm.
-    lightningPerMin: r2(30 * ramp(updraughtMs, 8, 50) ** 2),
+    lightningPerMin: r2(flashRatePerMin(updraughtMs)),
     tornado: null, funnelAloft: null
   };
   const t = storm.tornado;

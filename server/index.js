@@ -12,8 +12,6 @@ import { WarningRuntime } from './WarningRuntime.js';
 import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
 import { RadarPool } from './RadarPool.js';
-import { countiesFor } from './CountyLayer.js';
-import { publicCounties } from '../js/forecast/counties.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
 // Set WEATHER_PRIORITY=normal to leave the process priority alone.
@@ -43,7 +41,7 @@ const warnings = process.env.WEATHER_WARNINGS === 'off' ? null : new WarningRunt
 // Storm reports and damage surveys, from the live world's daily storm log (ReportsRuntime.js).
 const reports = new ReportsRuntime({ runtime });
 // The products as the Roblox place draws them (GameProducts.js).
-const gameProducts = new GameProducts({ runtime, outlooks, mesoscale, warnings });
+const gameProducts = new GameProducts({ runtime, outlooks, mesoscale, warnings, reports });
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
 const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); };
@@ -86,47 +84,17 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/game/v1/frames') return sendText(req, res, 200, runtime.gameFeed.poll(url.searchParams.get('after')), trace);
   // The products the game draws (GameProducts.js): the manifest of versions, and each product's text.
   if (url.pathname === '/api/game/v1/manifest') return sendJson(req, res, 200, gameProducts.manifest(), { cacheable: false, trace });
-  const gameProduct = url.pathname.match(/^\/api\/game\/v1\/product\/([A-Za-z0-9.]+)$/);
+  const gameProduct = url.pathname.match(/^\/api\/game\/v1\/product\/([A-Za-z0-9._-]+)$/);
   if (gameProduct) { const entry = await gameProducts.productAsync(gameProduct[1]); return entry ? sendText(req, res, 200, entry.text, trace, { 'x-product-version': entry.version }) : sendJson(req, res, 404, { error: 'Unknown product' }, { cacheable: false, trace }); }
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
-  if (url.pathname === '/api/radar/catalog') return sendJson(req, res, 200, runtime.radarCatalog(), { trace });
-  if (url.pathname === '/api/radar/scan') {
-    const product = url.searchParams.get('product') ?? 'reflectivity';
-    const scan = await runtime.radarScan(url.searchParams.get('site'), Number(url.searchParams.get('tilt') ?? 0.5));
-    if (!scan || !scan.products[product]) return sendJson(req, res, 404, { error: 'Unknown radar site or product' }, { cacheable: false, trace });
-    const meta = { site: scan.siteId, tilt: scan.tiltDeg, product, validHourUtc: scan.validHourUtc, revision: scan.revision, stormMotion: scan.stormMotion, buildMs: +scan.buildMs.toFixed(1) };
-    return sendGzipBinary(req, res, scan.products[product], { 'x-radar-meta': JSON.stringify(meta) }, trace);
-  }
-  if (url.pathname === '/api/radar/mosaic/frames') return sendJson(req, res, 200, runtime.radarMosaicFrames(url.searchParams.get('kind') ?? 'composite'), { cacheable: false, trace });
-  if (url.pathname === '/api/radar/mosaic') {
-    // ?kind=composite|base; ?validHourUtc= one of the kept mosaics (for the loop), otherwise the latest.
-    const at = url.searchParams.get('validHourUtc'), kind = url.searchParams.get('kind') ?? 'composite';
-    const mosaic = at === null ? await runtime.radarMosaic(kind) : runtime.radarMosaicAt(Number(at), kind);
-    if (!mosaic) return sendJson(req, res, 404, { error: 'No mosaic kept for that time' }, { cacheable: false, trace });
-    const meta = { product: mosaic.product ?? 'reflectivity', width: mosaic.width, height: mosaic.height, resKm: mosaic.resKm, kind: mosaic.kind, composite: mosaic.composite, validHourUtc: mosaic.validHourUtc, revision: mosaic.revision, buildMs: +mosaic.buildMs.toFixed(1) };
-    return sendGzipBinary(req, res, mosaic.bytes, { 'x-radar-meta': JSON.stringify(meta) }, trace);
-  }
-  if (url.pathname.startsWith('/api/radar/')) return sendJson(req, res, 404, { error: 'Unknown radar endpoint' }, { cacheable:false, trace });
+  // The radar, outlook, mesoscale, warning, storm report and damage survey pages were retired
+  // on 2026-10-22: those products are drawn in Roblox from /api/game/v1/* (GameProducts.js).
   if (url.pathname === '/api/performance') return sendJson(req,res,200,performanceSnapshot(),{cacheable:false,trace});
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
-  if (url.pathname === '/api/warnings') return sendJson(req, res, 200, warnings ? warnings.list() : { enabled: false, warnings: [] }, { cacheable: false, trace });
-  if (url.pathname === '/api/counties') { const counties = publicCounties(countiesFor(runtime.engine?.world)); return sendJson(req, res, counties ? 200 : 404, counties ?? { error: 'No counties' }, { trace }); }
-  const dayParam = () => (url.searchParams.has('day') ? Number(url.searchParams.get('day')) : undefined);
-  if (url.pathname === '/api/reports/days') return sendJson(req, res, 200, reports.days(), { cacheable: false, trace });
-  if (url.pathname === '/api/reports') return sendJson(req, res, 200, reports.reports(dayParam()), { cacheable: false, trace });
-  if (url.pathname === '/api/damage') return sendJson(req, res, 200, reports.damage(dayParam()), { cacheable: false, trace });
-  if (url.pathname === '/api/mesoscale') return sendJson(req, res, 200, mesoscale ? mesoscale.list() : { enabled: false, watches: [], discussions: [] }, { cacheable: false, trace });
-  const issuedOutlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);
-  if (issuedOutlook) return sendJson(req, res, 200, outlooks ? outlooks.day(issuedOutlook[1]) : { day: issuedOutlook[1], status: 'off' }, { cacheable: false, trace });
-  if (url.pathname === '/api/outlooks/status') return sendJson(req, res, 200, outlooks ? outlooks.status() : { enabled: false }, { cacheable: false, trace });
-  const outlookField = url.pathname.match(/^\/api\/outlooks\/(day[123])\/field$/);
-  if (outlookField) return sendJson(req, res, 200, runtime.outlookField(outlookField[1], url.searchParams.get('product') ?? 'risk'), { trace });
-  const outlook = url.pathname.match(/^\/api\/outlooks\/(day[123])$/);
-  if (outlook) return sendJson(req, res, 200, runtime.outlook(outlook[1]), { trace });
   return sendJson(req, res, 404, { error: 'Unknown API endpoint' }, { cacheable: false, trace });
 }
 
@@ -155,24 +123,6 @@ function sendBinary(req,res,status,body,contentType,{trace=null}={}){
   if(req.headers['if-none-match']===etag){const totalMs=trace?finishRequest(trace,{status:304,rawBytes:0,sentBytes:0,cacheHit:true}):0;res.writeHead(304,{etag,'cache-control':'public, max-age=31536000, immutable','server-timing':`total;dur=${totalMs.toFixed(2)}`});return res.end();}
   const totalMs=trace?finishRequest(trace,{status,rawBytes:body.length,sentBytes:body.length}):0;
   res.writeHead(status,{'content-type':contentType,'content-length':body.length,etag,'cache-control':'public, max-age=31536000, immutable','server-timing':`total;dur=${totalMs.toFixed(2)}`});res.end(body);
-}
-
-// Radar scans are mostly empty gates, so they compress well; the per-revision cache key is
-// in the metadata, and the client always asks for the current revision.
-function sendGzipBinary(req, res, bytes, extraHeaders, trace) {
-  const raw = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const headers = { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', ...extraHeaders };
-  if (!/\bgzip\b/.test(req.headers['accept-encoding'] ?? '')) {
-    finishRequest(trace, { status: 200, rawBytes: raw.length, sentBytes: raw.length });
-    res.writeHead(200, { ...headers, 'content-length': raw.length });
-    return res.end(raw);
-  }
-  zlib.gzip(raw, { level: 4 }, (error, body) => {
-    if (error) { res.writeHead(500); return res.end(); }
-    finishRequest(trace, { status: 200, rawBytes: raw.length, sentBytes: body.length, compressed: true });
-    res.writeHead(200, { ...headers, 'content-encoding': 'gzip', 'content-length': body.length });
-    res.end(body);
-  });
 }
 
 function sendJson(req, res, status, value, { cacheable = true, trace = null } = {}) {

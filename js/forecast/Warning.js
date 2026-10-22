@@ -98,7 +98,13 @@ export const WARNING = Object.freeze({
   // most its half-width may be, and the most a gust front's lead adds ahead of a storm (km).
   // Set 2026-10-14 so a single storm's warning is a few hundred square miles for a tornado and
   // under a thousand for hail and wind, as the NWS's are; a line's runs along the line.
-  spreadDeg: 15, speedMargin: 1.15, behindKm: 5, edgeKm: { tornado: 6, severe: 6 }, widestKm: 50, gustLeadKm: 10,
+  // (2026-10-21: widestKm 50 to 40, which still covers a line's length (one storm here stands for
+  // the whole line, so narrower left its ends unwarned), and a severe thunderstorm warning runs for
+  // as long as the storm takes to cover severeAheadKm, 30 to 60 minutes, as offices shorten them
+  // for fast storms. On seed 2112, with storms at 40-55 mph, the
+  // polygons had a median of 1,900 sq mi and a 90th of 5,500; one covered eight counties.)
+  spreadDeg: 15, speedMargin: 1.15, behindKm: 5, edgeKm: { tornado: 6, severe: 6 }, widestKm: 40, gustLeadKm: 10,
+  severeAheadKm: 45, severeMinutes: [30, 60],
   // A storm within this many minutes of leaving its warning, or of its warning expiring, gets a new one.
   leadMinutes: 10,
   // How soon (minutes) a storm must be due in a neighbouring office's area for that office's piece to go out with the first.
@@ -168,8 +174,17 @@ const threat = look => (look.onGround ? 10 : 0) + look.chance * 5 + look.hail + 
 
 // The polygon (km, y southward): from just behind the storm along its motion for the time the
 // warning runs, widening ahead by the spread in its direction.
+// How long a warning runs (minutes): a tornado warning its set time; a severe thunderstorm warning
+// as long as the storm takes to cover severeAheadKm, in steps of 5 minutes within severeMinutes.
+export function warningMinutes(type, look) {
+  if (type === 'tornado') return WARNING.minutes.tornado;
+  const kph = Math.hypot(look.east, look.north) * WARNING.speedMargin, [least, most] = WARNING.severeMinutes;
+  return kph > 1 ? clampMinutes(5 * Math.round(WARNING.severeAheadKm / kph * 60 / 5), least, most) : most;
+}
+const clampMinutes = (m, a, b) => Math.max(a, Math.min(b, m));
+
 export function warningPolygon(type, look) {
-  const speed = Math.hypot(look.east, look.north), minutes = WARNING.minutes[type];
+  const speed = Math.hypot(look.east, look.north), minutes = warningMinutes(type, look);
   const along = speed > 3 ? { x: look.east / speed, y: -look.north / speed } : { x: 1, y: 0 }, across = { x: -along.y, y: along.x };
   const reach = type === 'tornado' ? look.tornadoReachKm : look.severeReachKm;
   const half = Math.min(WARNING.widestKm, reach + WARNING.edgeKm[type]);
@@ -424,7 +439,7 @@ function issuePiece(state, type, look, hour, sites, office, polygon, path) {
   const warning = {
     id: `${office ? `${office.id}-` : ''}${type === 'tornado' ? 'TOR' : 'SVR'}-${number}`, type, number, stormId: look.id,
     office: office ? { id: office.id, name: office.name, city: office.city } : null,
-    issuedHourUtc: hour, validToHourUtc: hour + WARNING.minutes[type] / 60, endedHourUtc: null, status: 'in effect',
+    issuedHourUtc: hour, validToHourUtc: hour + warningMinutes(type, look) / 60, endedHourUtc: null, status: 'in effect',
     polygon, path, reached: insidePolygon(polygon, look.x, look.y), areaSquareMiles: Math.round(polygonArea(polygon) * MILES_PER_KM * MILES_PER_KM),
     where: `the area from ${placeOf((path[0][0] + path[1][0]) / 2, (path[0][1] + path[1][1]) / 2, sites)} to ${placeOf((path[2][0] + path[3][0]) / 2, (path[2][1] + path[3][1]) / 2, sites)}`, places: coveredPlaces(polygon, sites, office),
     history: [], severeMinutes: { hail: 0, wind: 0 }, quiet: 0, statements: []
@@ -432,6 +447,14 @@ function issuePiece(state, type, look, hour, sites, office, polygon, path) {
   if (warning.places) warning.where = countyPhrase(warning.places.counties);
   record(warning, look, hour, 0, sites);
   warning.tags = tagsOf(warning, hour);
+  // A severe thunderstorm warning issued on a core still growing (see soon) names the severe hail
+  // or wind it was issued for, as the NWS's tags always do. (2026-10-21: 27% of them went out
+  // tagged with the sub-severe hail and gusts of the moment.)
+  if (type === 'severe' && warning.tags.hailInches < WARNING.severeHailInches && warning.tags.gustMph < WARNING.severeGustMph) {
+    const ahead = WARNING.soonMinutes / 60;
+    if (look.hail + (look.hailTrend ?? 0) * ahead >= WARNING.severeHailInches) warning.tags.hailInches = WARNING.severeHailInches;
+    if (look.gust + (look.gustTrend ?? 0) * ahead >= WARNING.severeGustMph || warning.tags.hailInches < WARNING.severeHailInches) warning.tags.gustMph = windTag(WARNING.severeGustMph);
+  }
   warning.text = writeWarning(warning, look, hour, sites, false);
   warning.statements.push({ hourUtc: hour, kind: 'issued', text: warning.text });
   state.warnings.push(warning);

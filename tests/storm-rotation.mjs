@@ -65,9 +65,16 @@ const durations = best.map(t => t.groundTimeMinutes);
 // The damage rating never exceeds the wind.
 assert.ok(best.every(t => t.ratedWindMph <= t.peakWindSpeedMph + 1e-6));
 
-// --- Balanced outflow keeps a tornado down longer than outflow close to outrunning the storm.
-const balanced = many(tornadic).map(t => t.groundTimeMinutes), strained = Array.from({ length: 30 }, (_, k) => run(tornadic, { id: `S${1000 + k}`, hours: 4, coldPool: 0.42 }).tornadoes).flat().map(t => t.groundTimeMinutes);
-assert.ok(strained.length === 0 || mean(balanced) > mean(strained), `the stronger the outflow against the shear, the sooner it occludes (${mean(balanced).toFixed(0)} against ${mean(strained).toFixed(0)} minutes)`);
+// --- Outflow close to outrunning the storm wraps round a tornado sooner than balanced outflow.
+// (Measured on the occlusion itself: since 2026-10-21 a tornado's length is mostly its drawn life,
+// and the mean durations of the two kinds came within a minute of each other.)
+const occludes = coldPool => {
+  const s = new Storm({ id: 'S0900', xKm: 100, yKm: 100, velocityEastKph: 50, velocityNorthKph: 15, sourceCell: { x: 6, y: 6 }, createdHourUtc: 18 });
+  setUpdraught(s, 42); Object.assign(s, { organization: 0.8, coldPoolStrength: coldPool, mesocycloneStrength: 0.8, lowRotation: 0.5, lowRotationFree: 0.5, occlusion: 0, tornado: { onGround: true, occlusionShare: 1 } });
+  for (let step = 0; step < 3; step++) stepStormRotation(s, tornadic, STEP);
+  return s.occlusion;
+};
+assert.ok(occludes(0.42) > 1.2 * occludes(0.12), `the stronger the outflow against the shear, the sooner it occludes (${occludes(0.42).toFixed(2)} against ${occludes(0.12).toFixed(2)} in 15 minutes)`);
 
 // --- The storm's name plays no part.
 const renamed = (() => { const a = run(tornadic, { hours: 3 }); const b = (() => { const world = { validHourUtc: 18, evolution: { config: { seed: 7 } }, stormEngine: { validHourUtc: 18 } }; const s = new Storm({ id: 'S0001', xKm: 100, yKm: 100, velocityEastKph: 50, velocityNorthKph: 15, sourceCell: { x: 6, y: 6 }, createdHourUtc: 18, modeHint: 'QLCS' }); setUpdraught(s, 42); s.organization = 0.8; s.coldPoolStrength = 0.12; s.orientationDeg = 70; initializeTornadoState(s); for (let h = STEP; h <= 3 + 1e-9; h += STEP) { world.stormEngine.validHourUtc = 18 + h; s.ageHours = h; s.mode = 'renamed'; s.lifecycleState = 'dissipating'; s.positionKm.x += 50 * STEP; s.positionKm.y -= 15 * STEP; stepStormRotation(s, tornadic, STEP); updateTornadoState(world, s, tornadic, STEP); } return s; })(); return [a.storm.tornadoHistory.length, b.tornadoHistory.length, a.storm.lowRotation, b.lowRotation]; })();

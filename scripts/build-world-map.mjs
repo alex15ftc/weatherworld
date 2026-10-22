@@ -8,7 +8,7 @@
 // county warning areas), facilities.json (wind farms, windmills,
 // oil and gas wells, schools, colleges and gas stations; see facilities.js), streets.json with
 // streets.bin (the road graph, every road down to the town streets; see streets.js), conflicts.json
-// (where planned footprints overlap; see footprints.js) and preview.png. The map page (worldmap.html) reads these.
+// (where planned footprints overlap; see footprints.js) and preview.png (scripts/export-world-roblox.mjs takes them to Roblox).
 //   node scripts/build-world-map.mjs [--seed 1] [--out dir] [key=value ...]
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

@@ -25,6 +25,11 @@ const ramp = (value, low, high) => clamp((value - low) / (high - low), 0, 1);
 export const REGIONAL_DEFAULTS = Object.freeze({
   columns: 50, rows: 50, cellKm: 16.09344,
   utcOffsetHours: -6,
+  // The day, in local solar time (clocks there read CDT, an hour later): sunrise and sunset, and how
+  // long after sunrise the ground starts heating the air and before sunset it stops. (2026-10-21:
+  // 5 and 19, a late-spring day, with 0.75. Until then the heating ran from 6:30 to 17:00, a
+  // winter's day: the air decoupled near 6 pm CDT, an hour and a half early.)
+  sunriseLocal: 5, sunsetLocal: 19, heatingLagHours: 0.75,
   // Terrain: High Plains rising to the west (m above sea level).
   terrainEastM: 300, terrainWestM: 1500, terrainShape: 1.25,
   // Reference state at the map centre for a warm-season Plains air mass.
@@ -161,7 +166,13 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // calm to windy over nightSpreadWindMs). 2026-10-19: calm dry air about 14 K (25 F; 12 until cloud came in, which now holds part of the night's heat), calm moist
   // 10.5 K, a warm-sector night under a 15-20 m/s jet about 5 K (floor 0.25 to 0.4 the same day: windy
   // nights stayed at 80 F and more until dawn); until then 11-21 K whatever the wind.
-  nightCoolingK: 14, nightCoolingHours: 4, nightMoistShare: 0.75, nightWindMs: 10, nightWindFloor: 0.4,
+  // (2026-10-21: moist share 0.75 to 0.85 and floor 0.4 to 0.6. The moist air's day-night range
+  // was 6-13 F on four seeds, against 18-25 F on spring Plains nights, and warm-sector air stayed
+  // 8-10 F above its dewpoint at dawn under the jet; a windy moist night now cools about 8.5 K.)
+  // (nightCoolingHours 4 to 2.5 on 2026-10-21, with the later sunset: most of a night's cooling at
+  // the ground comes in the first hours after sunset, and with 4 the surface parcel's inhibition was
+  // still low at 9-11 pm, when 32% of tornadoes came; 24% with 2.5.)
+  nightCoolingK: 14, nightCoolingHours: 2.5, nightMoistShare: 0.85, nightWindMs: 10, nightWindFloor: 0.6,
   nightSpreadK: [0.2, 2], nightSpreadWindMs: [3, 12],
   // By day the boundary layer is mixed, so it has one wind through its depth: the mean
   // balanced wind of the layer, less this share lost to friction at the ground. The wind at
@@ -185,8 +196,18 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // helicity over moist air was about 53 by day against 147 at night (the night's jet swinging from
   // that deficit), and 66% of the tornadoes came between 9 pm and 6 am. Now about 88 by day and
   // 130 at night, and 26% at night (tune audit, 8 seeds x 5 days).
-  mixedLayerFriction: 0.15, surfaceWindShare: [0.5, 0.65], surfaceBackingDeg: [40, 30], surfaceMixedDepthM: [300, 2500],
+  // 2026-10-21: friction 0.15 to 0.25, and the layer's wind crosses the isobars toward low pressure
+  // by mixedLayerTurnDeg (the surface's turning is now counted from it, so the wind at the ground
+  // keeps its direction). That departure from balance is what swings into the night-time jet
+  // (Blackadar): with 0.15 and no turning it was 2-4 kt, the 850 mb wind barely rose after dark,
+  // and 0-1 km helicity was lowest from 3 to 6 pm and never had its evening rise, so only 21 of
+  // 102 tornadoes on four seeds came between 3 and 9 pm. Now the jet is back to balance by about
+  // 8 pm and peaks near 1.3 times it around 1-3 am.
+  mixedLayerFriction: 0.25, mixedLayerTurnDeg: 10, surfaceWindShare: [0.5, 0.65], surfaceBackingDeg: [30, 20], surfaceMixedDepthM: [300, 2500],
   surfaceWindShareNight: [0.4, 0.15], surfaceBackingNightDeg: [20, 40], nightLayerM: 150, nightRichardson: 0.25,
+  // Depth (m) of the night's inversion the morning's mixed layer wears through before the day's
+  // surface wind holds (0: at once at sunrise).
+  morningTransitionM: 300,
   // Most of the mid-level wind a mixed layer 3 km deep brings down to the ground.
   momentumMixingShare: 0.7,
   // Hot, dry mixed air from the high terrain (elevated mixed layer, Carlson et al. 1983): the
@@ -666,7 +687,7 @@ export class RegionalAtmosphere {
 
   // Heating of the air by the ground (0-1 of its early-afternoon peak) at a local solar hour:
   // it turns positive a while after sunrise and negative again before sunset.
-  sunshine(localHour) { return Math.max(0, Math.sin(Math.PI * (localHour - 6.5) / 10.5)); }
+  sunshine(localHour) { const p = this.params, start = p.sunriseLocal + p.heatingLagHours, end = p.sunsetLocal - p.heatingLagHours; return Math.max(0, Math.sin(Math.PI * (localHour - start) / (end - start))); }
 
   step() {
     const p = this.params, dt = p.stepSeconds;
@@ -888,7 +909,9 @@ export class RegionalAtmosphere {
       const domeShare850 = this.domeDepth[k] > z850 ? ((this.domeDepth[k] - z850) / this.domeDepth[k]) ** 2 : 0;
       geo850.u += 0.7 * leeU + thermalShare850 * (this.thermalU[k] - this.domeU[k]) + domeShare850 * this.domeU[k]; geo850.v += 0.7 * leeV + thermalShare850 * (this.thermalV[k] - this.domeV[k]) + domeShare850 * this.domeV[k];
       geoSurface.u += leeU + this.thermalU[k]; geoSurface.v += leeV + this.thermalV[k];
-      const layerWind = { u: (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.u + geo850.u), v: (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.v + geo850.v) };
+      const layerTurn = p.mixedLayerTurnDeg * Math.PI / 180, layerCos = Math.cos(layerTurn), layerSin = Math.sin(layerTurn);
+      const meanU = (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.u + geo850.u), meanV = (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.v + geo850.v);
+      const layerWind = { u: meanU * layerCos - meanV * layerSin, v: meanU * layerSin + meanV * layerCos };
       if (dt > 0) {
         if (daytime) {
           // 850 mb takes the mixed layer's wind where the layer has grown up past it (over the
@@ -911,9 +934,15 @@ export class RegionalAtmosphere {
       const between = (range, share) => range[0] + (range[1] - range[0]) * share;
       const deep = ramp(depth, p.surfaceMixedDepthM[0], p.surfaceMixedDepthM[1]);
       const richardson = GRAVITY / airTheta * Math.max(0, airTheta - temperatureK / exner) * p.nightLayerM / Math.max(1, stir * stir), decoupled = richardson / (richardson + p.nightRichardson);
-      const drag = daytime ? between(p.surfaceWindShare, deep) : between(p.surfaceWindShareNight, decoupled);
-      const turn = (daytime ? between(p.surfaceBackingDeg, deep) : between(p.surfaceBackingNightDeg, decoupled)) * Math.PI / 180;
-      const low = daytime ? layerWind : { u: 0.5 * (geoSurface.u + w850.u), v: 0.5 * (geoSurface.v + w850.v) };
+      // In the morning the ground stays cut off from the wind above until the mixed layer has worn
+      // through the night's inversion (its first 300 m): until then the night's rule holds, and the
+      // day's takes over as the inversion goes. (2026-10-21: the switch at sunrise doubled the
+      // surface wind and backed it 40 degrees at once, so 0-1 km helicity peaked at 8-11 am.)
+      const eroded = daytime ? (p.morningTransitionM > 0 ? ramp(depth, 0, p.morningTransitionM) : 1) : 0;
+      const nightLow = { u: 0.5 * (geoSurface.u + w850.u), v: 0.5 * (geoSurface.v + w850.v) };
+      const drag = between(p.surfaceWindShareNight, decoupled) + (between(p.surfaceWindShare, deep) - between(p.surfaceWindShareNight, decoupled)) * eroded;
+      const turn = (between(p.surfaceBackingNightDeg, decoupled) + (between(p.surfaceBackingDeg, deep) - between(p.surfaceBackingNightDeg, decoupled)) * eroded) * Math.PI / 180;
+      const low = { u: nightLow.u + (layerWind.u - nightLow.u) * eroded, v: nightLow.v + (layerWind.v - nightLow.v) * eroded };
       const base = { u: low.u + mixedDown * (w700.u - low.u), v: low.v + mixedDown * (w700.v - low.v) };
       const surfaceWind = { u: drag * (base.u * Math.cos(turn) - base.v * Math.sin(turn)) + this.coldPushU[k], v: drag * (base.u * Math.sin(turn) + base.v * Math.cos(turn)) + this.coldPushV[k] };
 

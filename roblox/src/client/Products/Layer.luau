@@ -37,7 +37,10 @@ export type Layer = {
 	wants: (self: any, id: string) -> boolean,
 	-- Fetch what it draws (yields) and rebuild its options.
 	refresh: (self: any) -> (),
+	-- Shapes, drawn into the map's product tiles (sharp at every zoom).
 	draw: (self: any, draw: MapCanvas.Draw) -> (),
+	-- Raster products (radar), drawn into one image of the view under the shapes (optional).
+	drawRaster: ((self: any, draw: MapCanvas.Draw) -> ())?,
 	labels: (self: any, labels: MapCanvas.Labels) -> (),
 	-- The details of what is at a map point, if anything (milesPerPixel: the zoom).
 	hit: (self: any, mx: number, my: number, milesPerPixel: number) -> Detail?,
