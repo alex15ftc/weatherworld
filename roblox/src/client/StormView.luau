@@ -206,8 +206,11 @@ local function drawClouds(pool: Pool, s: any, clock: number)
 		for i = 0, levels - 1 do
 			local f = i / (levels - 1)
 			local r = R * scale * (0.95 - 0.35 * f * f)
-			-- Leaning a little downwind with height, the way the wind aloft takes it.
-			local c = foot + Vector3.new(0, f * height, 0) + downwind * (f * f * 0.25 * height)
+			-- Leaning a little downwind with height, the way the wind aloft takes it. Stacked up from
+			-- the base: each level's blob reaches half its height below its centre, so the lowest sits
+			-- on the base (centred on it, it hung kilometres below the base, down to the ground).
+			local half = height / levels * 0.95
+			local c = foot + Vector3.new(0, half + f * (height - 2 * half), 0) + downwind * (f * f * 0.25 * height)
 			local colour = COLOUR.tower:Lerp(COLOUR.towerTop, f)
 			for j = 0, 2 do
 				local a = TAU * (j / 3 + seed + i * 0.37)
