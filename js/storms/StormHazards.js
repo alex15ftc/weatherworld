@@ -27,7 +27,14 @@ import { clamp } from '../scenarios/math.js';
 // layer, 10% of 2 inches, 5% of 3). Until then hail reached the ground at the size it grew.
 // With it, power 1.8 to 2 and scale 1.8 to 2.0: melting trims the marginal stones, so the curve can
 // again reach giant hail (80 days: 3.5 in hail group on 4% of days, none before; largest hail median 2.3 in).
-export const HAIL = Object.freeze({ scaleInches: 2.0, referenceUpdraftMs: 60, power: 2, meltInches: 0.3, meltRefM: 3000, nonRotating: 0.8, fullRotation: 0.4, lapseRange: [7.2, 9.4], lapseGain: 0.3, largestInches: 5.5 });
+// 2026-10-23: scale 2.0 to 3.0 and power 2 to 2.5, so an inch of hail grows at about 39 m/s (it took
+// 48 m/s), 2 in at 50, 3 in at 60 and 3.7 in at 65 m/s, before melting. (Scale 3.85 first: an
+// inch at 35 m/s, but the day's largest stone had a median of 4.1 in on 40 days.) Supercells drawing in
+// 1,600-2,000 J/kg with updraughts of 40-44 m/s made 0.5-0.8 in hail (90th 0.7-1.4), and supercell
+// days often had no severe hail at all (seed 2112: 35 km of 1 in hail path from about 20
+// supercells); updraughts of 35-45 m/s commonly make 1-2 in hail. (The outlooks' hail truth is
+// the core size until it is taken from reports: group 4 of docs/FIX-PLAN-2026-10-22.md.)
+export const HAIL = Object.freeze({ scaleInches: 3.0, referenceUpdraftMs: 60, power: 2.5, meltInches: 0.3, meltRefM: 3000, nonRotating: 0.8, fullRotation: 0.4, lapseRange: [7.2, 9.4], lapseGain: 0.3, largestInches: 5.5 });
 // Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
 // more the more rain is falling), plus a share of the storm's own motion carried to the ground
 // (fast storms in strong flow are windier), plus the wind from the middle levels that a rear
@@ -51,7 +58,14 @@ export const HAIL = Object.freeze({ scaleInches: 2.0, referenceUpdraftMs: 60, po
 // and a 90th of 101, 40% of them 80 mph or more, nearly all behind lines on strong-flow days, where
 // half the 500 mb wind added 15-20 m/s; reported severe gusts run at a median near 60-65 mph, and
 // 80 mph or more is perhaps one in twenty. 40% of the severe thunderstorm warnings were DESTRUCTIVE.)
-export const GUST = Object.freeze({ downdraughtShare: 0.5, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.25, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
+// The outflow's surge (2026-10-23): the gust front of a deep, cold outflow runs at the speed a
+// density current of its strength spreads at (coldPoolSpeedMs times the square root of its
+// strength, as StormModeEngine's), and its gusts with it; with a share of the storm's motion that
+// is a storm's gust where it is more than the downdraught's. Organized storms and lines, whose
+// outflows are strong, bring damaging wind this way; a pulse storm's weak outflow does not. (Until
+// then the outflow did not enter the gust: on days of lines and clusters in 800-900 J/kg of DCAPE
+// the gusts' median was 39-46 mph and none reached 58 on two of three such days.)
+export const GUST = Object.freeze({ downdraughtShare: 0.5, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.25, coldPoolSpeedMs: 38, surgeShare: 0.85, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 const MPH_PER_MS = 2.23694;
 
 export function hailSizeInches(storm, environment) {
@@ -71,7 +85,9 @@ export function gustMph(storm, environment, motionSpeedKph) {
   // forward: the wind up there reaches the ground, and the line bows out ahead of it.
   const aloftMs = Math.hypot(environment.wind500?.eastKt ?? 0, environment.wind500?.northKt ?? 0) * 0.514444;
   const rearInflowMs = GUST.rearInflowShare * clamp(storm.rearInflow ?? 0, 0, 1) * aloftMs;
-  return clamp((downdraughtMs + motionMs + rearInflowMs) * MPH_PER_MS, 10, 130);
+  const surgeMs = GUST.surgeShare * GUST.coldPoolSpeedMs * Math.sqrt(clamp(storm.coldPoolStrength ?? 0, 0, 1));
+  // (The rear inflow comes down behind the gust front and adds to whichever drives it.)
+  return clamp((Math.max(downdraughtMs, surgeMs) + rearInflowMs + motionMs) * MPH_PER_MS, 10, 130);
 }
 
 // Rear inflow (0-1) builds behind a line as its cold pool deepens and its rain falls.

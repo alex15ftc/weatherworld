@@ -56,7 +56,10 @@ export function initializeTornadoState(storm) {
 // outbreak days took most of the tornadoes: High on 21% of 80 days, 30+ tornadoes on 8%. Now 7.8 a
 // day, tornadoes on 76% of days, High 11%, Moderate 25% (before the day's changes 5.9, 64%, about
 // 14% and 25%).)
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.75, power: 1.5, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// (2026-10-23: fullRatePerHour 0.75 to 0.4 after the jet stream and the storm changes of group 3 of
+// docs/FIX-PLAN-2026-10-22.md (deep shear's share of the mesocyclone, the outflow balance, the
+// strength scales, night lift on the cap) took the climate from 6.3 to 14.9 tornadoes a day.)
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.22, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -72,7 +75,7 @@ export const tornadoImminence = storm => ramp(clamp(storm.lowRotation ?? 0, 0, 1
 export const tornadoRatePerHour = imminence => TORNADO.fullRatePerHour * Math.pow(imminence, TORNADO.power);
 // Scale (mph above 65) of the wind spread for a tornado under this low-level rotation, and the
 // share of tornadoes from that spread whose wind reaches a given speed.
-export const tornadoWindScaleMph = (lowRotation, stp = 0) => INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2) + INTENSITY.stpScaleMph * clamp(stp / INTENSITY.stpFull, 0, 1.2);
+export const tornadoWindScaleMph = (lowRotation, stp = 0) => INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2) + INTENSITY.stpScaleMph * clamp(stp / INTENSITY.stpFull, 0, 1.2) ** INTENSITY.stpPower;
 export const tornadoShareReaching = (scaleMph, mph) => Math.exp(-Math.pow(Math.max(0, mph - 65) / scaleMph, 1 / INTENSITY.tail));
 
 export function updateTornadoState(world, storm, environment, dtHours) {
@@ -280,7 +283,16 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // (2026-10-21: scales 20/35/40 to 19/33.25/38 and tail 0.9 to 0.85 with the stronger rotation near the
 // ground of the same day: EF4+ winds had reached 8.9% of tornadoes and the EF4+ intensity group 18%
 // of days.)
-const INTENSITY = { baseScaleMph: 19, rotationScaleMph: 33.25, tail: 0.85, stpScaleMph: 38, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
+// (2026-10-23: base 19, rotation 33.25, tail 0.85, STP 38 to 10, 60, 0.6, 55. With the long tail and
+// small scales a tornado's strength was mostly its draw (rank correlation of the draw with peak
+// wind 0.81): two EF4s came from draws of 0.92 and 0.98 under STP 2 at midday while STP 6-7 in
+// the evening gave EF0-1. Now strength follows the low-level rotation and the environment more,
+// and the draw less (0.65).)
+// (2026-10-23, later: the environment's part rises faster than the STP itself, stpScaleMph 45 to 70 as
+// (STP / stpFull)^stpPower: little in marginal air, much more in an outbreak's. On an outbreak day with
+// STP 4-5 most tornadoes peaked at 75-95 mph and only the two in the strongest-rotating storms were
+// strong; real days like it have a quarter or more of their tornadoes rated EF2 or stronger.)
+const INTENSITY = { baseScaleMph: 10, rotationScaleMph: 50, tail: 0.6, stpScaleMph: 70, stpPower: 1.5, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times
@@ -325,7 +337,10 @@ const STEADY = { share: 0.35, ceilingMph: [136, 200], srh: [250, 450], occlusion
 // (EF1 indicators 9.6 to 22 per sq mi on 2026-10-21, with the weaker tornadoes the rate's power 1.5
 // adds: 80 days rated 63/26/8.1/2.4/0.2/0.2, now 53/37/8.1/2.4/0.2/0.2, US 2008-22 52/35/9/2.4/0.45/0.05.
 // Trees, poles and outbuildings show EF1 damage almost everywhere in farm country.)
-const DAMAGE_RATING = { densityPerSqMi: [22, 1.9, 0.72, 0.13, 0.08], peakShare: 0.4, decay: 0.6 };
+// (EF4 indicators 0.13 to 0.6 per sq mi on 2026-10-24, about one well-built, well-anchored house per
+// 1.7 sq mi: none of 442 tornadoes on 40 days was rated EF4, though 21 had EF4+ winds; refitted on
+// them offline, the top ratings came out EF3 2.5%, EF4 0.7%, EF5 0, the US record 2.4 / 0.45 / 0.05.)
+const DAMAGE_RATING = { densityPerSqMi: [22, 1.9, 0.72, 0.6, 0.08], peakShare: 0.4, decay: 0.6 };
 const EF_FLOOR_MPH = [65, 86, 111, 136, 166, 201, 260];
 // The rated wind: the peak wind where the damage could show it all, otherwise the middle of the
 // highest category it showed.

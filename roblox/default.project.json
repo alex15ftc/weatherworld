@@ -36,6 +36,16 @@
       "$properties": {
         "StreamingEnabled": true
       }
+    },
+    "MaterialService": {
+      "CloudMatte": {
+        "$className": "MaterialVariant",
+        "$properties": {
+          "BaseMaterial": "SmoothPlastic",
+          "RoughnessMap": "rbxassetid://95712331838936",
+          "StudsPerTile": 64
+        }
+      }
     }
   }
 }

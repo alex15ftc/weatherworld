@@ -18,12 +18,15 @@
 // Refitted 2026-10-22 on 100 mornings (seeds 1-20, 5 each) after the later sunset, the surface
 // inhibition and the tornado rate of 2026-10-21: with the 2026-10-21 table Day 1 30% tornado areas
 // verified 48% and 45% ones 75%, and Day 2 was too low on 36% of days. Day 3 is still issued as it is.
-export const CALIBRATION = Object.freeze({"day1": {"tornado":[[1.4,0.8],[2.7,2.4],[4.2,3.6],[6.2,5.6],[8.7,7.9],[11.2,13],[13.7,16.1],[17.3,21.2],[22.3,31.2],[27.3,34.6],[34,46.4],[46.8,68.5]],
-  "wind":[[1.5,0.3],[2.7,0.6],[4.2,0.9],[6.2,1.5],[8.7,3.1],[11.2,7],[13.7,9.5],[17.4,12.4],[22.4,19.5],[27.4,28],[34.7,43.9],[44.9,64.8],[54.7,82.4],[67.2,93.1],[83.6,96.6]],
-  "hail":[[1.5,0.5],[2.7,0.6],[4.2,0.9],[6.2,2.2],[8.7,4.1],[11.2,6.9],[13.7,10.8],[17.4,14.7],[22.4,22.1],[27.5,30.2],[34.9,44.5],[44.7,59],[54.7,74.8],[67.2,88.1],[82.9,95.1]]},
- "day2": {"tornado":[[1.5,1.5],[2.7,3.6],[5.3,5.4],[8.6,8.4],[11.2,12.6],[13.7,16.5],[17.3,20.3],[26,24.3],[45.1,59.8]],
-  "wind":[[1.5,0.6],[2.7,0.7],[4.2,3],[6.2,5.2],[8.7,9.6],[11.2,10.2],[13.7,12.2],[17.3,16.4],[22.4,24.7],[27.4,33.3],[34.7,46],[44.7,56.1],[54.4,69.5],[66.5,78.8],[79.6,96]],
-  "hail":[[1.5,2.5],[2.7,3.1],[4.2,3.1],[6.2,4.6],[8.7,8.2],[11.2,11.7],[13.7,11.9],[17.4,18.8],[22.3,26.1],[27.4,32.6],[34.8,43.6],[44.9,56.1],[54.6,72.1],[66.7,78.8],[79.2,87.5]]}});
+// Refitted again 2026-10-23 on 100 mornings (seeds 1-20, 5 each), after the review fixes (hatching by
+// contour ring, gusts with the outflow surge, wind reports, tornado strength by STP); before that on 70 mornings (seeds 1-10, 4 each, and 21-30, 3 each) after the jet stream and the storm changes of
+// docs/FIX-PLAN-2026-10-22.md (group 3), with hail and wind now verified by reports (truth.js): with the
+// 2026-10-22 table Day 1 45% hail areas verified 75% and 45% wind areas 80%.
+// Refitted 2026-10-24 on the same 100 mornings, after the regional air stopped lagging the large-scale
+// air (RegionalAtmosphere carryDeparture), the ground column's weight, the line winds' cores and the
+// truth's tornadoes judged by their damage ratings (verification/truth.js).
+// Refitted 2026-10-24 again on the same 100 mornings after the EF4 damage indicators (TornadoEngine).
+export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,0.4],[2.7,1.5],[4.2,3],[6.2,4.7],[8.7,8.4],[11.2,11.4],[13.7,13.9],[17.4,16.9],[22.4,28.3],[27.4,34.6],[34.5,42.4],[44.1,59.1],[54.2,66.5],[66.3,89.3]],"wind":[[1.5,0.4],[2.7,1.1],[5.3,2],[8.7,2.2],[11.2,4.2],[13.7,6],[17.4,7.7],[22.5,11.9],[27.5,21.9],[34.8,38.9],[45,66.1],[54.8,87],[67.3,96.5],[85.4,99.4]],"hail":[[2.1,0.5],[4.2,1.8],[6.2,2.5],[8.7,4.3],[11.2,4.9],[13.7,7.7],[17.4,11.4],[22.5,17.5],[27.5,26.2],[34.7,37.8],[45,60.4],[54.7,79.5],[67.4,92.4],[85,97.9]]},"day2":{"tornado":[[1.5,2.3],[2.7,2.5],[4.2,4.1],[6.2,5],[8.7,7.3],[11.2,10.7],[13.7,14.3],[17.4,18],[22.3,26.9],[27.3,29.9],[34.3,36.9],[44.1,40],[57,45.8]],"wind":[[1.5,1.1],[2.7,1.8],[4.2,2.2],[6.2,2.8],[8.7,3.3],[11.2,6],[13.7,7.7],[17.5,12.8],[22.5,19.3],[27.5,28.7],[34.9,39.3],[44.8,57.6],[54.9,73.4],[66.7,84.3],[83.5,96.9]],"hail":[[2.1,1.7],[4.2,2.6],[6.2,3.3],[8.7,5.3],[11.2,8.8],[13.7,10.4],[17.5,15.5],[22.4,20.3],[27.5,27.1],[34.8,39.7],[44.8,57.2],[54.7,70.1],[66.9,86.3],[83.3,96.5]]},"day3":{"severe":[[1.5,19],[7.5,22.1],[17.5,28.7],[25,36],[34.9,41.8],[44.8,49.5],[54.7,60.2],[66.6,68],[82.8,83.7]]}});
 
 // Intensity groups (2026-10-21): for each outlook day and hazard, the share of the runs whose own
 // reports in a contour area reach group g that a group needs to be drawn there, set where the group
@@ -34,7 +37,24 @@ export const CALIBRATION = Object.freeze({"day1": {"tornado":[[1.4,0.8],[2.7,2.4
 // than 40 areas there keep the agreement they needed before, and 1.01 is never.
 // Refitted 2026-10-22 on the same 100 mornings as the chances above (with them): with the 2026-10-21
 // shares Day 1 drew tornado CIG1 on 52% of outlooks against 19% verified.
-export const CIG_SHARE = Object.freeze({"day1":{"tornado":[0.5,0.5,0.5],"wind":[0.5,0.625,0.75],"hail":[0.375,0.75]},"day2":{"tornado":[0.75,1.01,1.01],"wind":[0.5,0.625,0.75],"hail":[0.5,0.75]}});
+// Refitted again on the same 100 mornings. Day 1 tornado CIG2 (EF3+) verified 50% at 3 of 8 runs and
+// CIG3 (EF4+) 76%, so both are drawn from 3 of 8 (the fit would hold them to CIG1's 5 of 8, as a
+// higher group never asks less; the user wants the top groups drawn boldly, and the data bears it).
+// (On 70 mornings both had come out never.) Set by hand instead
+// (the user's choice, 2026-10-23): the top groups are drawn more boldly, as forecasters do for the
+// most dangerous days, CIG2 (EF3+) from 2 of 8 runs and CIG3 (EF4+) from 3 of 8, so they appear now
+// and then; about half the CIG2 areas then verify.
+// Refitted 2026-10-24 with the tornadoes judged by their damage ratings (truth.js). Day 1 tornado CIG1
+// (EF2+) verified 64% from 4 of 8 runs; CIG2 (EF3+) about a quarter of the time at 1-2 of 8 (the fit:
+// never), and is drawn from 4 of 8, as boldly as CIG1 allows, so that it appears now and then (the
+// user's wish); CIG3 (EF4+) is never drawn, as no tornado was rated EF4 in 40 days of this world.
+// Day 2 tornado CIG1 never verified more often than not (45% at 6 of 8). Hail CIG2 (3.5 in) never.
+// Refitted 2026-10-24 again, after the EF4 damage indicators: Day 1 tornado CIG1 verified 53-87% from 3 of
+// 8 runs; CIG2 about a quarter of the time at 1-2 of 8 (the fit: never), drawn from 3 of 8, as boldly as
+// CIG1 allows (the user's wish); CIG3 (EF4+), now rated now and then (verified on 7% of mornings), had
+// too few areas to fit and is drawn where 6 of 8 runs have it, so it appears on the most extreme days.
+// Hail CIG2 (3.5 in) verified 83% at 4 of 8 (12 areas).
+export const CIG_SHARE = Object.freeze({"day1":{"hail":[0.5,0.5],"tornado":[0.375,0.375,0.75],"wind":[0.5,0.625,0.75]},"day2":{"tornado":[1.01,1.01,1.01],"wind":[0.5,0.625,0.75],"hail":[0.5,0.75]}});
 
 import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 

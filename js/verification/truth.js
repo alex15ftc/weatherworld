@@ -4,6 +4,7 @@
 // the authoritative verification and the forecast ensemble members.
 import { RISK_ORDER, HAZARDS, categoryFromHazard } from '../forecast/spcOutlookRules.js';
 import { worldCategory, contourCig, CIG_TIERS } from '../forecast/worldRiskCategories.js';
+import { logStormTick } from '../reports/stormLog.js';
 
 export const TRUTH_FIELDS = ['storm', 'tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme', 'windViolent'];
 // The fields whose chance within 25 miles is worked out unrounded (result.chance): each hazard
@@ -12,7 +13,14 @@ export const TRUTH_FIELDS = ['storm', 'tornado', 'tornadoSig', 'tornadoExtreme',
 export const CHANCE_FIELDS = ['tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme', 'windViolent'];
 
 // Appends one frame (cells where each hazard is occurring now) and records new storms.
-export function captureTruth(world, frames, seenStormIds = new Set(), initiations = []) {
+// places ({ layer, milesPerKm }, server/CountyLayer.js placesFor): with them, hail and wind are
+// taken from the reports the storm log makes (js/reports/stormLog.js), as the Storm Prediction
+// Center verifies with reports: a cell has hail or wind where a report came in, at the size or
+// gust reported there, not wherever a storm's core passed. Tornadoes are their tracks either way,
+// as surveyed. (2026-10-23: until then hail and wind were the storm's own core size and peak gust
+// in its cell, so hail of 2 in or more made half the hail areas' cells where it makes perhaps
+// 10-15% of real reports, and hail alone made three quarters of the Moderate days.)
+export function captureTruth(world, frames, seenStormIds = new Set(), initiations = [], places = null) {
   const n = world.width * world.height;
   const previousHourUtc = frames.at(-1)?.hourUtc ?? Number.NEGATIVE_INFINITY;
   const frame = { hourUtc: world.validHourUtc, activeStorms: 0, tornadoes: 0, tornadoTrackPoints: [] };
@@ -35,9 +43,11 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
       if (ef >= 4) frame.tornadoViolent[t] = 1;
       frame.tornadoTrackPoints.push({ stormId: storm.id, tornado: point.tornado, cell: t, xKm: point.x, yKm: point.y, hourUtc: point.hourUtc, ef });
     }
-    if (hailSize >= 1) frame.hail[idx] = 1;
-    if (hailSize >= 2) frame.hailSig[idx] = 1;
-    if (hailSize >= 3.5) frame.hailExtreme[idx] = 1;
+    if (!places) {
+      if (hailSize >= 1) frame.hail[idx] = 1;
+      if (hailSize >= 2) frame.hailSig[idx] = 1;
+      if (hailSize >= 3.5) frame.hailExtreme[idx] = 1;
+    }
     // A line produces its wind along its whole length (strongest near the middle, where it
     // bows); a single cell at its position. Its thunderstorm covers every cell along it, but
     // its wind is reported once for each stretch of WIND_REPORT_SPACING_KM, as reports of a
@@ -45,7 +55,7 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
     for (const { index, share, report } of windFootprint(world, storm, idx, cellOf)) {
       const local = gust * share;
       if (isLine(storm) && (Number(storm.intensity) || 0) >= 0.22) frame.storm[index] = 1;
-      if (!report) continue;
+      if (!report || places) continue;
       if (local >= 58) frame.wind[index] = 1;
       if (local >= 75) frame.windSig[index] = 1;
       if (local >= 85) frame.windExtreme[index] = 1;
@@ -58,8 +68,36 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
       initiations.push({ stormId: storm.id, hourUtc: storm.createdHourUtc, x: idx % world.width, y: Math.floor(idx / world.width), mode: storm.mode });
     }
   }
+  if (places) reportedHazards(world, frames, frame, places, cellOf);
   frames.push(frame);
   return frame;
+}
+
+// The hail and wind reports that came in since the last frame (the storm log run on this world),
+// put into the frame's cells by what was reported. Reports the world already held when the
+// frames began (a forecast run starts from the live world's log) are not new.
+function reportedHazards(world, frames, frame, places, cellOf) {
+  const all = () => Object.values(world.reportLog?.days ?? {}).flatMap(day => day.reports);
+  frames.reportsSeen ??= new Set(all());
+  logStormTick(world, places);
+  const k = places.milesPerKm || 0.621371;
+  for (const report of all()) {
+    if (frames.reportsSeen.has(report)) continue;
+    frames.reportsSeen.add(report);
+    const i = cellOf(report.x / k, report.y / k);
+    if (report.type === 'hail') {
+      const inches = (Number(report.size) || 0) / 100;
+      if (inches >= 1) frame.hail[i] = 1;
+      if (inches >= 2) frame.hailSig[i] = 1;
+      if (inches >= 3.5) frame.hailExtreme[i] = 1;
+    } else if (report.type === 'wind') {
+      const mph = Number(report.speed ?? report.estimatedMph) || 0;
+      if (mph >= 58) frame.wind[i] = 1;
+      if (mph >= 75) frame.windSig[i] = 1;
+      if (mph >= 85) frame.windExtreme[i] = 1;
+      if (mph >= 96) frame.windViolent[i] = 1;
+    }
+  }
 }
 
 const LINEAR_MODES = ['broken line', 'linear segment', 'QLCS with embedded supercells', 'QLCS', 'MCS'];
@@ -94,10 +132,12 @@ export function maxTornadoEf(storm) {
 
 const efNumber = rating => { const match = String(rating ?? '').match(/EF([0-5])/i); return match ? Number(match[1]) : -1; };
 
-// Tornado track points laid down in (previousHourUtc, currentHourUtc], each with the EF of the
-// peak wind so far of the tornado that laid it down (ef: 0-5, -1 if none yet). The intensity
-// groups go by the tornado's wind, not its damage rating (the user's choice, 2026-10-21): a
-// strong tornado over open country is still a strong tornado.
+// Tornado track points laid down in (previousHourUtc, currentHourUtc], each with the damage
+// rating so far of the tornado that laid it down (ef: 0-5, -1 if none yet), as the Storm
+// Prediction Center verifies its outlooks (the surveys' ratings). (The user's choice, 2026-10-23;
+// from 2026-10-21 the tornado's peak wind was taken, which runs 1-1.5 categories above the
+// ratings: on 40 days High verified on 23% of them against 13% by ratings, EF4+ hatching on 20%
+// against none, and two High days had no tornado rated EF2. docs/FIX-PLAN-2026-10-22.md.)
 export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc) {
   const epsilon = 1e-6, points = [], seen = new Set();
   let ef = -1, key = null;
@@ -110,10 +150,10 @@ export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc
     seen.add(key);
     points.push({ x, y, hourUtc: Number.isFinite(hourUtc) ? hourUtc : currentHourUtc, ef, tornado: key });
   };
-  const current = () => { ef = efNumber(storm.tornado?.windEf ?? storm.tornado?.estimatedEf ?? storm.tornado?.efRating); key = `${storm.id}|${storm.tornado?.cycleCount ?? 0}`; };
+  const current = () => { ef = efNumber(storm.tornado?.estimatedEf ?? storm.tornado?.efRating ?? storm.tornado?.windEf); key = `${storm.id}|${storm.tornado?.cycleCount ?? 0}`; };
   current();
   for (const point of storm.tornado?.trackPoints ?? []) addPoint(point);
-  for (const tornado of storm.tornadoHistory ?? []) { ef = efNumber(tornado.windEf ?? tornado.estimatedEf ?? tornado.efRating ?? tornado.maxEfRating); key = `${storm.id}|${tornado.cycle ?? 0}`; for (const point of tornado.trackPoints ?? []) addPoint(point); }
+  for (const tornado of storm.tornadoHistory ?? []) { ef = efNumber(tornado.estimatedEf ?? tornado.efRating ?? tornado.maxEfRating ?? tornado.windEf); key = `${storm.id}|${tornado.cycle ?? 0}`; for (const point of tornado.trackPoints ?? []) addPoint(point); }
   current();
   // An on-ground tornado can exist before its first stored track point.
   if (storm.tornado?.onGround && !points.length) addPoint({ ...storm.tornado.positionKm, hourUtc: currentHourUtc });

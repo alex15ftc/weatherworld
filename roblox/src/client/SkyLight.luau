@@ -30,6 +30,8 @@ local SkyLight = {}
 local KM = Config.STUDS_PER_MILE / Config.KM_PER_MILE -- studs a km, across
 local SKY = Config.SKY_STUDS_PER_METRE -- studs a metre, up
 local HALF = Config.MAP_MILES / 2 * Config.STUDS_PER_MILE
+local HALF_X = if Config.VIEW_ORIGIN_KM then Config.VIEW_ORIGIN_KM.x * KM else HALF -- (see Config.VIEW_ORIGIN_KM)
+local HALF_Z = if Config.VIEW_ORIGIN_KM then Config.VIEW_ORIGIN_KM.y * KM else HALF
 
 local LOOK = {
 	-- Roblox's Atmosphere (undocumented; measured in Studio 2026-10-22 with black towers 1-32k
@@ -58,12 +60,14 @@ local LOOK = {
 	-- How much of the sun a storm's parts stop, and of the sky's light when overhead.
 	stormOpacity = { tower = 0.97, base = 0.9, anvil = 0.55, anvilRoot = 0.85, rain = 0.7 },
 	stormShade = { base = 0.8, anvil = 0.45, rain = 0.5 },
-	-- The eye adapts: this share of a change in light shows (log2 of exposure).
-	adapt = 0.4,
+	-- The eye adapts: this share of a change in light shows (log2 of exposure). (2026-10-23: 0.4
+	-- -> 0.1, measured against storm-base photos: under a base the scene read 4x too dark against
+	-- an adapted eye or camera; docs/storm-visuals/PLAN.md section 6)
+	adapt = 0.1,
 	-- The sky's light never falls below this share of an open sky's: under a storm's base, in its
 	-- rain, light still comes in from round the storm (the shading of each part multiplied
 	-- otherwise left 2% and a scene too dark to see).
-	diffuseFloor = 0.15,
+	diffuseFloor = 0.4, -- (2026-10-23: 0.15 -> 0.4, against photos from under a base's edge)
 	-- The sky's fill light with the sun blocked. Roblox's outdoor ambient is the fill beside a
 	-- bright sun; with the sun gone the sky's light is all the light, so the fill rises toward
 	-- this as the direct sun falls (then dims as the storm covers the sky).
@@ -81,7 +85,7 @@ local LOOK = {
 
 -- Map position (studs) to km east and south of the NW corner.
 local function km(p: Vector3): (number, number)
-	return (p.X + HALF) / KM, (p.Z + HALF) / KM
+	return (p.X + HALF_X) / KM, (p.Z + HALF_Z) / KM
 end
 
 -- How far inside an ellipse (half-lengths along and across a bearing, centred at x, y) a place
@@ -236,6 +240,12 @@ function SkyLight.direct(): number
 	return if state then state.direct else 1
 end
 
+-- How far one sees at the camera now (km; from the humidity, dust and rain), for the storm
+-- clouds' own haze (StormMesh): nil before the first frame.
+function SkyLight.visibilityKm(): number?
+	return if state then state.visibilityKm else nil
+end
+
 -- A lightning strike this far (studs) from the camera.
 function SkyLight.flash(distanceStuds: number)
 	if state then
@@ -360,7 +370,9 @@ function SkyLight.update(storms: { any }, hourUtc: number?, sky: any, cameraPos:
 	a.Color = scale(tint, 0.45 + 0.55 * D)
 	a.Decay = scale(tint:Lerp(LOOK.rainColour, 0.5), 0.35 + 0.45 * D)
 	local overcast = 1 - D
-	a.Haze = math.clamp(0.5 + 3 * st.humid ^ 4 + 5 * overcast + 4 * st.wet, 0, 10)
+	-- (2026-10-23: clear-air part 0.5 + 3 RH^4 -> 0.15 + 1.2 RH^4, against storm photos: the sky
+	-- round a storm in sunshine is a deep blue, which a haze of ~2.5 washed out)
+	a.Haze = math.clamp(0.15 + 1.2 * st.humid ^ 4 + 5 * overcast + 4 * st.wet, 0, 10)
 	a.Glare = math.clamp(0.6 * S * (1 - overcast), 0, 10)
 	a.Offset = st.offset
 

@@ -27,11 +27,17 @@ const statePath = process.env.WEATHER_PERSIST === 'off' ? null : path.resolve(RO
 if (process.env.WEATHER_SEED || !statePath || !fs.existsSync(statePath)) console.log('[weather-authority] starting a new world (about a minute)...');
 // The radar is worked out on its own threads (WEATHER_RADAR_WORKERS; 0 works it out on this one).
 const radarPool = process.env.WEATHER_RADAR_WORKERS === '0' ? null : new RadarPool();
-const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool });
+// A review package for each finished day (DayReviewRecorder.js): WEATHER_DAY_REVIEWS=off turns them
+// off, WEATHER_DAY_REVIEW_PNG=on adds PNG copies (a headless Chrome or Edge), and the newest
+// WEATHER_DAY_REVIEW_DAYS (14) are kept.
+const dayReviews = process.env.WEATHER_DAY_REVIEWS === 'off' ? null : { dir: path.resolve(ROOT, process.env.WEATHER_DAY_REVIEW_DIR ?? 'data/day-reviews/live'), png: process.env.WEATHER_DAY_REVIEW_PNG === 'on', keepDays: Number(process.env.WEATHER_DAY_REVIEW_DAYS) || 14 };
+const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool, dayReviews });
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
 const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined });
+// The day packages take the day's first Day 1 outlook issued once the day has begun.
+runtime.dayReviewOutlook = (from, to) => { const outlook = outlooks?.current('day1')?.outlook; return outlook && outlook.validToHourUtc === to && outlook.issuedHourUtc >= from ? outlook : null; };
 // Mesoscale discussions and watches: the world is looked at once in each of its hours, and a
 // watch waiting for its storms goes out when they fire (WEATHER_MESOSCALE=off turns them off).
 const mesoscale = process.env.WEATHER_MESOSCALE === 'off' ? null : new MesoscaleRuntime({ runtime });

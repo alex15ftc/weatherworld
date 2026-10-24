@@ -14,5 +14,11 @@ ChunkManager.start(script:WaitForChild("ChunkWorker") :: Actor)
 TestDrive.start()
 -- Before Explore places anyone: a storm replay may set the start point.
 WeatherFeed.start()
+-- the cloud kit's uploaded meshes, for every client's storms (shared/Weather/CloudKit)
+do
+	local RS = game:GetService("ReplicatedStorage")
+	local KitConfig = require(RS:WaitForChild("Shared"):WaitForChild("World"):WaitForChild("Config"))
+	require(RS.Shared:WaitForChild("Weather"):WaitForChild("CloudKit")).serverLoad(KitConfig.STORM_KIT.meshAsset)
+end
 ProductFeed.start()
 Explore.start()

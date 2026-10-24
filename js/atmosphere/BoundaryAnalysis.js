@@ -1,7 +1,10 @@
 // Fronts and drylines found from the fields (stage 3 of docs/ATMOSPHERE-REDESIGN.md). Nothing
 // here knows what the weather pattern is supposed to be: a front is where the air-mass
 // temperature changes fastest, a dryline where the moisture does, and the kind of front
-// follows from which way the cold air is moving.
+// follows from which way the line moves. Each line is followed from one analysis to the next,
+// as an analyst keeps continuity: it keeps its id, its motion is averaged over a couple of hours,
+// and it is kept down to a lower contrast than a new line needs. Only the drawing: storms read
+// the fields, never these lines.
 //
 // Method (the standard objective one): smooth the field, take the size of its gradient, keep
 // the crest lines of that gradient (points where it is larger than on either side along the
@@ -47,9 +50,25 @@ export const BOUNDARY_DEFAULTS = Object.freeze({
   // either side across it (2026-10-17: with only its neighbours, broad zones gave two parallel
   // fronts about 90 km apart in 14% of analyses; 11% with 5 cells, 8% with 7).
   frontSeparationCells: 7,
-  // A dryline has its moist air to the east (within 60 degrees): dry air off the high ground to the
-  // west meeting the Gulf's. Other moisture edges are not drawn as drylines.
-  drylineMoistEastCos: 0.5,
+  // A dryline has its moist air to the east or to the side, not to the west (the cosine of the
+  // angle between the way to the moist air and east is at least this): dry air off the high
+  // ground meeting the Gulf's, where it bends round into an east-west moisture edge too.
+  // (0.5 until 2026-10-22: the bend where storms started was not drawn at all.)
+  drylineMoistEastCos: -0.2,
+  // A temperature contrast whose cool side is the moist side of a sharp moisture change is the
+  // dryline's (moist air cooler than the hot dry air beside it), not a front, where the moist air
+  // lies to the east within this cosine. Elsewhere, cool moist air beside warmer air is a front:
+  // the cool side of a warm front near a low. (Until 2026-10-22 every such edge was taken for a
+  // dryline, and no warm front was drawn even beside a 983 hPa low.)
+  drylineVetoEastCos: 0.5,
+  // Continuity (2026-10-22): a line that lies along one in the last analysis (at least half of
+  // either line within matchKm of the other: a line that grows or shrinks is still itself) is
+  // that line: it keeps its id, and its kind follows its motion averaged over about motionHours. A
+  // line followed this way is drawn down to keepShare of the contrast (and length) a new one needs. (Before,
+  // kinds came from each half hour's motion, which the grid makes noisy by 4-9 m/s, and lines
+  // came and went as their contrast hovered at the threshold: one moisture edge was cold, then
+  // stationary, then a dryline, then warm in 7 hours.)
+  matchKm: 60, motionHours: 2, keepShare: 0.7,
   // How far into the cold air its wind is read (cells), and how far a moisture line must be
   // from a front, and how much colder its dry side may be, to count as a dryline.
   coldSideReachCells: 2, drylineFrontClearanceCells: 3, drylineColdSideLimitK: 2
@@ -108,15 +127,16 @@ function gradient(field, width, height, cellKm) {
   return { gx, gy, size };
 }
 
-// Cells on a crest of the gradient: at least the threshold, and no smaller than the gradient
-// one cell either way along its own direction.
+// Cells on a crest of the gradient: at least the threshold (one value, or one for each cell), and
+// no smaller than the gradient `reach` cells either way along its own direction.
 function crestCells(grad, width, height, threshold, edge, reach = 1) {
+  const least = typeof threshold === 'number' ? () => threshold : k => threshold[k];
   const crest = new Uint8Array(grad.size.length);
   // The outermost cells are left out: air entering the map there has not met the map's own air
   // yet. That is every cell the smoothing and the gradient carry the edge cells' values into.
   for (let y = edge; y < height - edge; y++) for (let x = edge; x < width - edge; x++) {
     const k = y * width + x, g = grad.size[k];
-    if (g < threshold) continue;
+    if (g < least(k)) continue;
     const nx = grad.gx[k] / g, ny = grad.gy[k] / g;
     let top = true;
     for (let r = 1; r <= reach && top; r++) if (g < bilinear(grad.size, width, height, x + nx * r, y + ny * r) || g < bilinear(grad.size, width, height, x - nx * r, y - ny * r)) top = false;
@@ -149,7 +169,9 @@ const lengthKm = (points, cellKm) => points.slice(1).reduce((sum, p, i) => sum +
 
 // Returns { boundaries, fields } for the world's current state. Each boundary:
 //   { id, type: 'cold' | 'warm' | 'stationary' | 'dryline' | 'outflow', symbolSide, pointsKm: [{ x, y }], lengthKm,
-//     contrast (K or g/kg per 100 km), advanceMs (cold or dry air moving toward the warm, moist side) }
+//     contrast (K or g/kg per 100 km), advanceMs (cold or dry air moving toward the warm, moist side),
+//     motionMs (each point's motion toward the warm or moist side, averaged in time) }
+// options: previous (the last analysis's boundaries) and previousHours (how long ago it was).
 // The kind of front for the cold air's push across it (m/s, toward the warm air), given the kind
 // the last analysis had there (or null).
 function frontKind(advance, previous, p) {
@@ -161,44 +183,83 @@ function frontKind(advance, previous, p) {
 }
 
 export function analyseBoundaries(world, options = {}) {
-  const p = { ...BOUNDARY_DEFAULTS, ...options }, { width, height } = world, cellKm = world.cellSizeKm;
+  const p = { ...BOUNDARY_DEFAULTS, ...options }, { width, height } = world, cellKm = world.cellSizeKm, n = width * height;
   const raw = readFields(world);
   const temperature = smooth(raw.temperature, width, height, p.smoothingPasses), moisture = smooth(raw.moisture, width, height, p.smoothingPasses);
   const u = smooth(raw.u, width, height, 1), v = smooth(raw.v, width, height, 1);
   const thermal = gradient(temperature, width, height, cellKm), moist = gradient(moisture, width, height, cellKm);
   const minCells = Math.max(3, Math.round(p.minLengthKm / cellKm / 1.2)), frontCells = Math.max(3, Math.round((p.frontMinLengthKm ?? p.minLengthKm) / cellKm / 1.2)), edge = p.smoothingPasses + 2;
-  const boundaries = [];
-  // The kind the last analysis gave the front nearest a point (cell coordinates), if any was near.
-  const before = (options.previous ?? []).filter(b => b.type === 'cold' || b.type === 'warm' || b.type === 'stationary').flatMap(b => b.pointsKm.map(q => ({ x: q.x / cellKm - 0.5, y: q.y / cellKm - 0.5, type: b.type })));
-  const nearestBefore = point => { let best = null, reach = (p.continuityKm / cellKm) ** 2; for (const q of before) { const d = (q.x - point.x) ** 2 + (q.y - point.y) ** 2; if (d <= reach) { reach = d; best = q; } } return best; };
-  const kindBefore = point => nearestBefore(point)?.type ?? null;
-  // How fast a point of a line has moved toward the warm air (m/s) since the last analysis, or null.
-  const hours = Number(options.previousHours) || 0;
-  const movedToWarm = point => { if (!(hours > 0)) return null; const q = nearestBefore(point); return q ? ((point.x - q.x) * point.nx + (point.y - q.y) * point.ny) * cellKm * 1000 / (hours * 3600) : null; };
+  const outflowCells = Math.max(3, Math.round(p.outflowMinLengthKm / cellKm / 1.2)), shortestFront = Math.min(frontCells, outflowCells);
   const toKm = point => ({ x: Math.round((point.x + 0.5) * cellKm * 10) / 10, y: Math.round((point.y + 0.5) * cellKm * 10) / 10 });
+  const hours = Number(options.previousHours) || 0, blend = hours > 0 ? 1 - Math.exp(-hours / p.motionHours) : 1;
+
+  // --- The last analysis's lines (cell coordinates), for continuity.
+  const familyOf = type => (type === 'dryline' || type === 'outflow' ? type : 'front');
+  const previous = (options.previous ?? []).filter(b => (b.pointsKm?.length ?? 0) > 1).map(b => ({
+    id: b.id, type: b.type, family: familyOf(b.type),
+    points: b.pointsKm.map((q, i) => ({ x: q.x / cellKm - 0.5, y: q.y / cellKm - 0.5, type: b.type, motion: Number.isFinite(b.motionMs?.[i]) ? b.motionMs[i] : null }))
+  }));
+  // How much a line and a previous line lie along each other: the larger share of either's points
+  // within matchKm of the other (0-1). The previous line (of the given families) a line is, if any.
+  const within = (a, b) => { const reach = (p.matchKm / cellKm) ** 2; let count = 0; for (const q of a) { for (const r of b) if ((q.x - r.x) ** 2 + (q.y - r.y) ** 2 <= reach) { count++; break; } } return count / Math.max(1, a.length); };
+  const overlap = (points, line) => Math.max(within(points, line.points), within(line.points, points));
+  const matchOf = (points, families) => {
+    let best = null;
+    for (const line of previous) if (families.includes(line.family)) { const o = overlap(points, line); if (o >= 0.5 && (!best || o > best.o)) best = { line, o }; }
+    return best?.line ?? null;
+  };
+  const nearestIn = (line, point) => { let best = null, reach = (p.continuityKm / cellKm) ** 2; for (const q of line?.points ?? []) { const d = (q.x - point.x) ** 2 + (q.y - point.y) ** 2; if (d <= reach) { reach = d; best = q; } } return best; };
+  // The contrast each cell needs: less near a line of the family the last analysis had there.
+  const thresholdNear = (family, full) => {
+    const out = new Float64Array(n).fill(full), reach = Math.ceil(p.continuityKm / cellKm);
+    for (const line of previous) if (line.family === family || (family === 'front' && line.family === 'outflow')) for (const q of line.points) {
+      const cx = Math.round(q.x), cy = Math.round(q.y);
+      for (let y = Math.max(0, cy - reach); y <= Math.min(height - 1, cy + reach); y++) for (let x = Math.max(0, cx - reach); x <= Math.min(width - 1, cx + reach); x++) out[y * width + x] = full * p.keepShare;
+    }
+    return out;
+  };
+  const dilate = (mask, cells) => {
+    const out = new Uint8Array(n);
+    for (let k = 0; k < n; k++) if (mask[k]) { const x = k % width, y = (k - x) / width; for (let yy = Math.max(0, y - cells); yy <= Math.min(height - 1, y + cells); yy++) for (let xx = Math.max(0, x - cells); xx <= Math.min(width - 1, x + cells); xx++) out[yy * width + xx] = 1; }
+    return out;
+  };
+  const boundaries = [];
 
   // --- Fronts.
-  const frontCrest = crestCells(thermal, width, height, p.frontGradient, edge, p.frontSeparationCells ?? 1);
+  const frontThreshold = thresholdNear('front', p.frontGradient);
+  const local = crestCells(thermal, width, height, frontThreshold, edge);
   {
+    // Next to storm-cooled air an edge counts from a weaker contrast (an outflow boundary).
     const weak = crestCells(thermal, width, height, p.outflowGradient ?? p.frontGradient, edge);
-    for (let k = 0; k < weak.length; k++) if (weak[k] && !frontCrest[k]) {
+    for (let k = 0; k < n; k++) if (weak[k] && !local[k]) {
       const x = k % width, y = (k - x) / width;
-      near: for (let yy = Math.max(0, y - 2); yy <= Math.min(height - 1, y + 2); yy++) for (let xx = Math.max(0, x - 2); xx <= Math.min(width - 1, x + 2); xx++) if (raw.coldPool[yy * width + xx] >= p.outflowDeficitK) { frontCrest[k] = 1; break near; }
+      near: for (let yy = Math.max(0, y - 2); yy <= Math.min(height - 1, y + 2); yy++) for (let xx = Math.max(0, x - 2); xx <= Math.min(width - 1, x + 2); xx++) if (raw.coldPool[yy * width + xx] >= p.outflowDeficitK) { local[k] = 1; break near; }
     }
   }
-  // Moist air is usually the cooler air mass, so a dryline has a temperature contrast too. A
-  // contrast whose cool side is the moist side of a sharp moisture change is the dryline, not
-  // a front: behind a front the air is colder and drier.
-  for (let k = 0; k < frontCrest.length; k++) {
-    if (!frontCrest[k]) continue;
+  // Moist air east of a dryline is usually cooler than the hot dry air west of it.
+  // That contrast, along a sharp moisture change with the moist air to the east, is the dryline's;
+  // but where the last analysis had a front, it is that front still (a cold front overtaking the
+  // dryline is drawn as the cold front).
+  const besideFront = thresholdNear('front', 1);
+  for (let k = 0; k < n; k++) {
+    if (!local[k] || besideFront[k] < 1) continue;
     const x = k % width, y = (k - x) / width;
     search: for (let yy = Math.max(0, y - 2); yy <= Math.min(height - 1, y + 2); yy++) for (let xx = Math.max(0, x - 2); xx <= Math.min(width - 1, x + 2); xx++) {
-      const m = yy * width + xx;
-      if (moist.size[m] >= p.drylineGradient && moist.gx[m] * thermal.gx[k] + moist.gy[m] * thermal.gy[k] < 0) { frontCrest[k] = 0; break search; }
+      const m = yy * width + xx, g = moist.size[m];
+      if (g >= p.drylineGradient && moist.gx[m] * thermal.gx[k] + moist.gy[m] * thermal.gy[k] < 0 && moist.gx[m] / g >= p.drylineVetoEastCos) { local[k] = 0; break search; }
     }
   }
-  const outflowCells = Math.max(3, Math.round(p.outflowMinLengthKm / cellKm / 1.2));
-  for (const line of linkLines(frontCrest, width, height, Math.min(frontCells, outflowCells))) {
+  // One front to a frontal zone: the strongest crest across it, but only crests that are drawn
+  // keep the others away (a stronger crest that is a dryline's, or too short to draw, does not).
+  const strong = crestCells(thermal, width, height, frontThreshold, edge, p.frontSeparationCells ?? 1);
+  for (let k = 0; k < n; k++) strong[k] = strong[k] && local[k] ? 1 : 0;
+  const drawn = new Uint8Array(n);
+  for (const line of linkLines(strong, width, height, shortestFront)) for (const k of line) drawn[k] = 1;
+  const shadow = dilate(drawn, p.frontSeparationCells ?? 1), frontCrest = new Uint8Array(n);
+  for (let k = 0; k < n; k++) frontCrest[k] = drawn[k] || (local[k] && !shadow[k]) ? 1 : 0;
+  const frontLineCells = new Uint8Array(n);
+  for (const line of linkLines(frontCrest, width, height, shortestFront)) {
+    for (const k of line) frontLineCells[k] = 1;
     const points = line.map(k => {
       const x = k % width, y = (k - x) / width, g = thermal.size[k], nx = thermal.gx[k] / g, ny = thermal.gy[k] / g;   // (nx, ny) points at the warm air
       // The front lies on the warm edge of the zone: walk toward the warm air until the
@@ -209,17 +270,22 @@ export function analyseBoundaries(world, options = {}) {
       const poolCold = bilinear(raw.coldPool, width, height, coldX, coldY), poolWarm = bilinear(raw.coldPool, width, height, warmX, warmY);
       const across = Math.max(0.5, bilinear(temperature, width, height, warmX, warmY) - bilinear(temperature, width, height, coldX, coldY));
       const outflow = poolCold >= p.outflowDeficitK && (poolCold - poolWarm) >= p.outflowShare * across;
-      return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, outflow, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
+      return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, moistContrast: moist.size[k], outflow, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
     });
-    // The kind of front can change along it (cold on one flank of a low, warm on the other).
-    // How the line moves (or, with nothing before it, how the cold air pushes), smoothed along it.
-    const moved = points.map(movedToWarm), reach = moved.some(m => m !== null) ? p.motionSmoothPoints : 2;
+    // The line it was in the last analysis (of any kind: a dryline that gains a temperature
+    // contrast after dark is still that dryline).
+    const was = matchOf(points, ['front', 'outflow']) ?? matchOf(points, ['dryline']), wasFront = was && was.family !== 'dryline' ? was : null;
+    // How the line moves toward the warm air (m/s), point by point, from where that line was; with
+    // nothing before it, how the cold air pushes. Smoothed along the line, then averaged in time.
+    const moved = points.map(q => { if (!(hours > 0) || !wasFront) return null; const r = nearestIn(wasFront, q); return r ? ((q.x - r.x) * q.nx + (q.y - r.y) * q.ny) * cellKm * 1000 / (hours * 3600) : null; });
+    const reach = moved.some(m => m !== null) ? p.motionSmoothPoints : 2;
     const own = points.map((q, i) => moved[i] ?? (moved.some(m => m !== null) ? null : q.advance));
-    const advance = points.map((_, i) => { let sum = 0, count = 0; for (let j = Math.max(0, i - reach); j <= Math.min(points.length - 1, i + reach); j++) if (own[j] !== null) { sum += own[j]; count++; } return count ? sum / count : points[i].advance; });
+    const along = points.map((_, i) => { let sum = 0, count = 0; for (let j = Math.max(0, i - reach); j <= Math.min(points.length - 1, i + reach); j++) if (own[j] !== null) { sum += own[j]; count++; } return count ? sum / count : points[i].advance; });
+    points.forEach((q, i) => { const r = nearestIn(wasFront, q); q.motion = Number.isFinite(r?.motion) ? r.motion + (along[i] - r.motion) * blend : along[i]; q.before = r && r.type !== 'outflow' ? r.type : null; });
     // The edge of storm-cooled air is an outflow boundary whichever way it is moving (where the
     // storm-cooled air is most of the contrast; see outflowShare).
-    const kind = advance.map((a, i) => (points[i].outflow ? 'outflow' : frontKind(a, kindBefore(points[i]), p)));
-    const half = Math.max(2, Math.floor(Math.min(minCells, outflowCells) / 2));
+    const kind = points.map(q => (q.outflow ? 'outflow' : frontKind(q.motion, q.before, p)));
+    const half = Math.max(2, Math.floor(shortestFront / 2));
     for (let i = 0; i < kind.length;) {   // short runs take the kind of the run before them
       let j = i; while (j < kind.length && kind[j] === kind[i]) j++;
       if (j - i < half && i > 0) for (let m = i; m < j; m++) kind[m] = kind[i - 1];
@@ -228,17 +294,26 @@ export function analyseBoundaries(world, options = {}) {
     for (let i = 0; i < kind.length;) {
       let j = i; while (j < kind.length && kind[j] === kind[i]) j++;
       const part = smoothLine(points.slice(Math.max(0, i - 1), j));
-      if (part.length >= (kind[i] === 'outflow' ? half : Math.max(half, Math.floor(frontCells / 2))) && (kind[i] === 'outflow' || line.length >= frontCells)) boundaries.push({ type: kind[i], points: part });
+      // (A front followed from the last analysis is kept down to keepShare of a new one's length
+      // too: one weakening as it overtook the dryline broke into pieces just short of it.)
+      if (part.length >= (kind[i] === 'outflow' ? half : Math.max(half, Math.floor(frontCells / 2))) && (kind[i] === 'outflow' || line.length >= (wasFront ? Math.ceil(p.keepShare * frontCells) : frontCells))) {
+        // A line that was a dryline stays one while its moisture change is still a dryline's and
+        // its dry air is not pushing on as a cold front's does (a dryline drifting back after dark
+        // gains a temperature contrast; a cold front overtaking the dryline is the cold front).
+        const mean = key => part.reduce((sum, q) => sum + q[key], 0) / part.length;
+        const stillDryline = was?.family === 'dryline' && kind[i] !== 'outflow' && mean('moistContrast') >= p.drylineGradient * p.keepShare && mean('motion') <= p.stationarySpeedMs;
+        boundaries.push({ type: stillDryline ? 'dryline' : kind[i], points: part });
+      }
       i = j;
     }
   }
 
   // --- Drylines: sharp moisture lines that are not the moisture change of a front. Its dry
-  // side is as warm as the moist side or warmer, and no front runs along it.
-  const nearFront = new Uint8Array(frontCrest.length), clearance = p.drylineFrontClearanceCells;
-  for (let k = 0; k < frontCrest.length; k++) if (frontCrest[k]) { const x = k % width, y = (k - x) / width; for (let yy = Math.max(0, y - clearance); yy <= Math.min(height - 1, y + clearance); yy++) for (let xx = Math.max(0, x - clearance); xx <= Math.min(width - 1, x + clearance); xx++) nearFront[yy * width + xx] = 1; }
-  const dryCrest = crestCells(moist, width, height, p.drylineGradient, edge);
-  for (let k = 0; k < dryCrest.length; k++) {
+  // side is as warm as the moist side or warmer, its moist air is not to the west, and no drawn
+  // front runs along it.
+  const nearFront = dilate(frontLineCells, p.drylineFrontClearanceCells);
+  const dryCrest = crestCells(moist, width, height, thresholdNear('dryline', p.drylineGradient), edge);
+  for (let k = 0; k < n; k++) {
     if (!dryCrest[k]) continue;
     const x = k % width, y = (k - x) / width, g = moist.size[k], nx = moist.gx[k] / g, ny = moist.gy[k] / g;   // points at the moist air
     const drySideColder = bilinear(temperature, width, height, x + 2 * nx, y + 2 * ny) - bilinear(temperature, width, height, x - 2 * nx, y - 2 * ny);
@@ -249,20 +324,33 @@ export function analyseBoundaries(world, options = {}) {
       const x = k % width, y = (k - x) / width, g = moist.size[k], nx = moist.gx[k] / g, ny = moist.gy[k] / g, dryX = x - nx * p.coldSideReachCells, dryY = y - ny * p.coldSideReachCells;
       return { x, y, nx, ny, contrast: g, advance: bilinear(u, width, height, dryX, dryY) * nx + bilinear(v, width, height, dryX, dryY) * ny };
     }));
+    points.forEach(q => { q.motion = q.advance; });
     boundaries.push({ type: 'dryline', points });
   }
 
-  const counts = {};
+  // --- Ids: each line keeps the id of the line it was in the last analysis (the one it lies along
+  // most, a line of its own family first, each given once); a new line gets the next number.
+  let next = 1 + previous.reduce((most, line) => Math.max(most, Number(/(\d+)$/.exec(String(line.id ?? ''))?.[1]) || 0), 0);
+  const pairs = [];
+  boundaries.forEach((b, i) => previous.forEach((line, j) => { const o = overlap(b.points, line); if (o >= 0.5) pairs.push({ i, j, o: o + (familyOf(b.type) === line.family ? 1 : 0) }); }));
+  pairs.sort((a, b) => b.o - a.o);
+  const ids = new Array(boundaries.length).fill(null), taken = new Set();
+  for (const { i, j } of pairs) if (ids[i] === null && !taken.has(j)) { ids[i] = previous[j].id; taken.add(j); }
+
   return {
-    boundaries: boundaries.map(({ type, points }) => {
-      counts[type] = (counts[type] ?? 0) + 1;
+    boundaries: boundaries.map(({ type, points }, i) => {
       const mean = key => points.reduce((sum, q) => sum + q[key], 0) / points.length;
       // Which side of the line (left of its drawing direction = +1) its symbols go on: the side
       // a cold front or the dry air is heading for, the cold side of a warm front.
       let left = 0;
-      for (let i = 1; i < points.length; i++) { const a = points[i - 1], b = points[i]; left += (b.y - a.y) * (a.nx + b.nx) - (b.x - a.x) * (a.ny + b.ny); }
+      for (let j = 1; j < points.length; j++) { const a = points[j - 1], b = points[j]; left += (b.y - a.y) * (a.nx + b.nx) - (b.x - a.x) * (a.ny + b.ny); }
       const symbolSide = (left >= 0 ? 1 : -1) * (type === 'warm' ? -1 : 1);
-      return { id: `${type}-${counts[type]}`, type, symbolSide, pointsKm: points.map(toKm), lengthKm: Math.round(lengthKm(points, cellKm)), contrast: Math.round(mean('contrast') * 10) / 10, advanceMs: Math.round(mean('advance') * 10) / 10, widthKm: 30, active: true, diagnosed: true };
+      return {
+        id: ids[i] ?? `line-${next++}`, type, symbolSide, pointsKm: points.map(toKm), lengthKm: Math.round(lengthKm(points, cellKm)), contrast: Math.round(mean('contrast') * 10) / 10, advanceMs: Math.round(mean('advance') * 10) / 10,
+        // How fast each point has been moving toward the warm (or moist) air, averaged in time (m/s).
+        motionMs: points.map(q => Math.round((q.motion ?? q.advance) * 10) / 10),
+        widthKm: 30, active: true, diagnosed: true
+      };
     }),
     fields: { temperature, moisture, thermalGradient: thermal.size, moistureGradient: moist.size }
   };

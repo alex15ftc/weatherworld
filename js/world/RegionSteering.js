@@ -17,7 +17,8 @@ export const STEERING_DEFAULTS = Object.freeze({
   planHourUtc: 6,                  // after the evening's storms (local midnight)
   scoreHoursUtc: [21, 2],          // the afternoon and the evening the plan is judged on
   // Speed of the weather systems (m/s, eastward): the most the region may slide either way.
-  systemSpeedMs: 15, speedStepMs: 1,
+  // (15 until 2026-10-23; with the jet stream the systems move about 15 m/s, not 22.)
+  systemSpeedMs: 10, speedStepMs: 1,
   // Large-scale support: wind aloft times low-level flow from the south, each up to a cap.
   // 0 to 1 ahead of a trough; below 0 where the low-level flow is from the north (behind a
   // trough: a wanted value below 0 lets its cold front sweep the region).
@@ -52,6 +53,11 @@ export const STEERING_DEFAULTS = Object.freeze({
   kinds: { warmSector: 0.55, nearLow: 0.3, upperLow: 0.15 },
   lowDepthHpa: 2, lowOffsetKm: [0, -100], upperLowDepthM: 20, upperLowOffsetKm: [150, -100],
   maxMissKm: 500, northSpeedMs: 8, northStepMs: 2,
+  // How far north or south of its home latitude (the jet's core) the map may be slid (km), and,
+  // among slides that do equally well, the one ending the day nearest home is taken: the map goes
+  // to a jet's flank or under a cut-off low when the day aims there, and comes back after.
+  // (2026-10-23; before, the least north-south slide was taken, and nothing brought the map back.)
+  homeReachKm: 1500,
   // Hours between fresh aims on a day aimed at a low (see reaim).
   reaimHours: 6
 });
@@ -93,7 +99,7 @@ export class RegionSteering {
     const ahead = p.scoreHoursUtc.map(h => ((h - now) % 24 + 24) % 24 || 24).sort((a, b) => a - b), fields = [];
     let advanced = 0;
     const norths = [];
-    for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) norths.push(north);
+    for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) if (this.withinReach(north)) norths.push(north);
     for (const hours of ahead) {
       copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours;
       fields.push({ hours, supportByNorth: new Map(norths.map(north => [north, this.supportByColumn(copy, north * hours * 3600)])), lows: this.findLows(copy, 'surface'), upperLows: this.findLows(copy, 'upper') });
@@ -148,7 +154,7 @@ export class RegionSteering {
       let support = 0;
       for (const field of fields) support += at(field.supportByNorth.get(north), regional.origin.x + (regional.timingLeadM ?? 0) + speed * field.hours * 3600) / fields.length;
       const miss = Math.abs(support - wanted);
-      if (!best || miss < best.miss - 0.01 || (Math.abs(miss - best.miss) <= 0.01 && Math.abs(north) < Math.abs(best.north))) best = { speed, north, support, miss };
+      if (!best || miss < best.miss - 0.01 || (Math.abs(miss - best.miss) <= 0.01 && this.fromHome(north) < this.fromHome(best.north))) best = { speed, north, support, miss };
     }
     regional.slideMs = best.speed; regional.slideNorthMs = best.north;
     if (Number.isFinite(p.roamLow) && Number.isFinite(p.roamHigh)) {
@@ -194,6 +200,7 @@ export class RegionSteering {
     const wrap = (v, L) => ((v % L) + L + L / 2) % L - L / 2;
     let best = null;
     for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) {
+      if (!this.withinReach(north)) continue;
       let miss = 0;
       for (const field of fields) {
         const x = cx + speed * field.hours * 3600, y = cy + north * field.hours * 3600;
@@ -201,10 +208,15 @@ export class RegionSteering {
         for (const low of field[key]) nearest = Math.min(nearest, Math.hypot(wrap(x - low.x - offsetKm[0] * 1000, Lx), wrap(y - low.y - offsetKm[1] * 1000, Ly)));
         miss += nearest / fields.length;
       }
-      if (!best || miss < best.miss - 1 || (Math.abs(miss - best.miss) <= 1 && Math.abs(north) < Math.abs(best.north))) best = { speed, north, miss };
+      if (!best || miss < best.miss - 1 || (Math.abs(miss - best.miss) <= 1 && this.fromHome(north) < this.fromHome(best.north))) best = { speed, north, miss };
     }
     return best && best.miss <= p.maxMissKm * 1000 ? best : null;
   }
+
+  // How far from its home latitude (m) the map would be after a day's slide north at this speed, and
+  // whether that is within homeReachKm (or nearer home than now).
+  fromHome(northMs) { const r = this.regional; return Math.abs(r.origin.y - (r.homeY ?? r.origin.y) + northMs * 86400); }
+  withinReach(northMs) { const r = this.regional, now = Math.abs(r.origin.y - (r.homeY ?? r.origin.y)); return this.fromHome(northMs) <= Math.max(this.params.homeReachKm * 1000, now); }
 
   saveState() { return { params: this.params, lastPlanDay: this.lastPlanDay, plan: this.plan }; }
   restoreState(state) { this.lastPlanDay = state.lastPlanDay; this.plan = state.plan; }

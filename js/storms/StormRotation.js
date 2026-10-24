@@ -18,7 +18,12 @@ export const ROTATION = Object.freeze({
   // (2026-10-20: [50, 350] to [50, 200]; effective helicity of 150-250 is a strong supercell's in
   // forecasting practice. On 30 of 80 days supercells had 0-1 km helicity near 226 and made no
   // tornado: their mesocyclones took 0.36 of the turning against 0.59 on tornado days, half as strong.)
-  fullUpdraughtMs: 40, shearKt: [20, 55], helicity: [50, 200], shearShare: 0.35, lineLoss: 0.45,
+  // shearShare: how much of the mesocyclone deep shear alone can give (the rest needs the inflow's
+  // helicity). 0.35 to 0.55 on 2026-10-23: with 0.35 a storm in 55-85 kt of straight-hodograph
+  // shear and little low-level helicity stayed a multicell (mesocyclone about 0.2); real storms
+  // there split into supercells, which deep shear alone makes (Weisman and Klemp 1982). Storms in
+  // 50+ kt shear went from 26% to 15% of their time as multicells.
+  fullUpdraughtMs: 40, shearKt: [20, 55], helicity: [50, 200], shearShare: 0.55, lineLoss: 0.45,
   spinUpHours: 0.4, spinDownHours: 0.7,
   // helicityFloor: the share of near-ground spin a storm has with no helicity in the lowest km
   // (2026-10-19: 0.5 to 0.15; with half of it kept, deep shear alone and a saturated surface's
@@ -27,7 +32,11 @@ export const ROTATION = Object.freeze({
   // about 140 at night, almost no tornadoes.)
   // (cloudBaseM [2000, 800] to [2000, 1000] on 2026-10-21, the significant tornado parameter's LCL
   // term: afternoon storms under 1,000-1,300 m bases were held back further than night ones.)
-  lowHelicity: [50, 250], helicityFloor: 0.3, cloudBaseM: [2000, 1000], outflowBalance: [1.0, 1.8],
+  // (outflowBalance [1.0, 1.8] to [1.4, 2.4] on 2026-10-23: by mid-afternoon the cold pools under
+  // DCAPE near 1,000 J/kg had cut the low-level rotation of supercells to a third of the morning's,
+  // and the evening's best environments gave weak tornadoes or none; with it the 3-9 pm share of
+  // tornadoes went from 35% to 43%.)
+  lowHelicity: [50, 250], helicityFloor: 0.3, cloudBaseM: [2000, 1000], outflowBalance: [1.4, 2.4],
   // Inhibition (J/kg) at which a storm fed from the ground takes all, and none, of its inflow from near the ground.
   // (2026-10-21: [50, 200] to [30, 120]; it is read from the surface parcel as well for the rotation
   // near the ground, see surfaceFed.)

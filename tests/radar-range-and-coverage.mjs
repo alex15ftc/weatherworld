@@ -8,8 +8,9 @@ import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } fr
 import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, beamHeightKm, decodeRadarValue } from '../js/radar/RadarFormat.js';
 
 // (The map is held still: this test is about the radar, and the same storm is wanted over the
-// same ground at every range.)
-const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 6, storms: false, steering: false }), world = atmosphere.world;
+// same ground at every range. 20 days of spin-up, 6 until 2026-10-23: with the jet stream the
+// ground wind under its core is the weather systems' own, and they take two to three weeks to grow.)
+const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 20, storms: false, steering: false }), world = atmosphere.world;
 atmosphere.advance(9);
 const sites = createRadarSites(world), site = sites.find(s => s.id === 'KCPL');
 const domainKm = world.width * world.cellSizeKm;

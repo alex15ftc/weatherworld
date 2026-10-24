@@ -60,7 +60,21 @@ export const QG_DEFAULTS = Object.freeze({
   // deformation radius squared, 2.6 m/s) and grew half as strong as before: low-level pressure
   // spread 3.5 hPa, the deepest lows -9.5 hPa, and no closed low on the map on any day. With 10
   // m/s: spread 7 hPa, lows -17 to -19, about 1,280 km a day.)
-  upperWindMs: 23.5, lowerWindMs: 13.5,
+  // These are the winds at the jet stream's flanks less the jet (below): the mean wind of each
+  // layer at a latitude is upperWindMs or lowerWindMs plus the jet's share there.
+  // (23.5/13.5 until 2026-10-23, with no jet.)
+  upperWindMs: 13.5, lowerWindMs: 3.5,
+  // The jet stream (2026-10-23): the mean west wind is strongest at the domain's middle latitude
+  // (where the region sits) and slack north and south of it, U(y) = U0 + A cos(2 pi (y - Ly/2) / Ly),
+  // with A = jetMs + jetShearMs / 2 aloft and jetMs - jetShearMs / 2 below: jetMs stronger in both
+  // layers at the core, and jetShearMs more shear between them there. With the same wind at every
+  // latitude there was no slack flow for a trough to close off in: a closed 500 mb low over a
+  // US-sized area 1% of the time and no cut-off lows (most spring days have one). With the jet:
+  // 18-20% and 1-1.5 cut-offs a month, systems as strong as before (the core's extra shear makes
+  // up for what the jet's shear across the flow takes), moving about 1,280 km a day instead of
+  // 1,900, and the winds over the region about as before (500 mb about 19 m/s at the core).
+  // Negative tilt was no more common with any jet tried (docs/FIX-PLAN-2026-10-22.md).
+  jetMs: 10, jetShearMs: 10,
   // Radiation pulls the temperature disturbances back toward the mean state; drag slows the
   // lower layer. Together they set how strong the systems get.
   // Surface friction grows with the wind (drag force ~ speed squared): dragDays is the spin-down
@@ -109,12 +123,37 @@ export class QuasiGeostrophicModel {
     this.surfaceTheta = new Float64Array(n);   // the ground-level air's temperature about its mean (K)
     this.surfaceMoisture = new Float64Array(n);   // ...and its moisture about its mean (g/kg)
     this.work = Array.from({ length: 8 }, () => new Float64Array(n));
+    // The mean state row by row: each layer's west wind (m/s) and the north-south gradient of its
+    // potential vorticity (beta, less the wind's curvature, and the shear's share), and the
+    // shear's thermal gradient.
+    this.upperMean = new Float64Array(this.ny); this.lowerMean = new Float64Array(this.ny);
+    this.gradient1 = new Float64Array(this.ny); this.gradient2 = new Float64Array(this.ny);
+    for (let j = 0; j < this.ny; j++) {
+      const y = this.y(j), c = this.jetShape(y), [a1, a2] = this.jetAmplitudes(), K = 2 * Math.PI / this.lengthY;
+      this.upperMean[j] = p.upperWindMs + a1 * c; this.lowerMean[j] = p.lowerWindMs + a2 * c;
+      const shear = this.upperMean[j] - this.lowerMean[j];
+      this.gradient1[j] = p.beta + K * K * a1 * c + this.F * shear;
+      this.gradient2[j] = p.beta + K * K * a2 * c - this.F * shear;
+    }
     this.buildTransforms();
     this.reset(options.seed ?? 1);
   }
 
   // Distance north of the southern edge (m) of row j.
   y(j) { return (j + 0.5) * this.d; }
+
+  // The jet's shape at a distance north (1 at its core in the middle latitude, -1 at the domain's
+  // northern and southern edges, which meet), and its strength in each layer (m/s).
+  jetShape(northM) { return Math.cos(2 * Math.PI * (northM - this.lengthY / 2) / this.lengthY); }
+  jetAmplitudes() { const p = this.params, jet = p.jetMs ?? 0, shear = p.jetShearMs ?? 0; return [jet + shear / 2, jet - shear / 2]; }
+  // The mean state's streamfunction of each layer at a distance north (its west wind is minus its
+  // northward derivative): U0 y and the jet's share.
+  meanStreamfunction(northM) {
+    const p = this.params, K = 2 * Math.PI / this.lengthY, s = Math.sin(K * (northM - this.lengthY / 2)), [a1, a2] = this.jetAmplitudes();
+    return [-p.upperWindMs * northM - a1 / K * s, -p.lowerWindMs * northM - a2 / K * s];
+  }
+  // Each layer's mean west wind at a distance north (m/s).
+  meanWinds(northM) { const p = this.params, c = this.jetShape(northM), [a1, a2] = this.jetAmplitudes(); return [p.upperWindMs + a1 * c, p.lowerWindMs + a2 * c]; }
 
   reset(seed = 1) {
     const random = mulberry32(Number(seed) >>> 0);
@@ -336,11 +375,10 @@ export class QuasiGeostrophicModel {
     const t1 = new Float64Array(n), t2 = new Float64Array(n);
     const [, , , , j1, j2, lap, lap2] = this.work;
     this.jacobian(psi1, q1, j1); this.jacobian(psi2, q2, j2);
-    const upper = p.upperWindMs, lower = p.lowerWindMs, shear = upper - lower, gradient1 = p.beta + F * shear, gradient2 = p.beta - F * shear;
     const drag = 1 / (p.dragDays * DAY), half = 1 / (2 * d), relax = F / (p.thermalRelaxationDays * DAY), reference = p.dragReferenceMs;
     const vorticity2 = this.laplacian(psi2, lap);
     for (let j = 0; j < ny; j++) {
-      const row = j * nx, jn = north[j], js = south[j];
+      const row = j * nx, jn = north[j], js = south[j], upper = this.upperMean[j], lower = this.lowerMean[j], gradient1 = this.gradient1[j], gradient2 = this.gradient2[j];
       for (let i = 0; i < nx; i++) {
         const k = row + i, e = row + east[i], w = row + west[i], cooling = relax * (psi1[k] - psi2[k]);
         t1[k] = cooling - j1[k] - upper * (q1[e] - q1[w]) * half - gradient1 * (psi1[e] - psi1[w]) * half;
@@ -360,7 +398,7 @@ export class QuasiGeostrophicModel {
     const surfaceGradient = p.surfaceGradientKPer1000Km / 1e6, surfaceRelax = 1 / (p.surfaceRelaxationDays * DAY);
     for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
       const k = row + i, e = row + east[i], w = row + west[i], v2 = (psi2[e] - psi2[w]) * half;
-      ts[k] = -jt[k] - lower * (surface[e] - surface[w]) * half + v2 * surfaceGradient - surface[k] * surfaceRelax;
+      ts[k] = -jt[k] - this.lowerMean[j] * (surface[e] - surface[w]) * half + v2 * surfaceGradient - surface[k] * surfaceRelax;
     }
     this.laplacian(surface, lap); this.laplacian(lap, lap2);
     for (let k = 0; k < n; k++) ts[k] -= nu * lap2[k];
@@ -369,7 +407,7 @@ export class QuasiGeostrophicModel {
     const moistureGradient = p.surfaceMoistureGradientGkgPer1000Km / 1e6, moistureRelax = 1 / (p.surfaceMoistureRelaxationDays * DAY);
     for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
       const k = row + i, e = row + east[i], w = row + west[i], v2 = (psi2[e] - psi2[w]) * half;
-      tq[k] = -jq[k] - lower * (wet[e] - wet[w]) * half + v2 * moistureGradient - wet[k] * moistureRelax;
+      tq[k] = -jq[k] - this.lowerMean[j] * (wet[e] - wet[w]) * half + v2 * moistureGradient - wet[k] * moistureRelax;
     }
     this.laplacian(wet, lap); this.laplacian(lap, lap2);
     for (let k = 0; k < n; k++) tq[k] -= nu * lap2[k];
@@ -378,14 +416,14 @@ export class QuasiGeostrophicModel {
     heat.fill(0);
     if (!(p.latentHeatShare > 0)) return [t1, t2, null, ts, tq];
     const tm = new Float64Array(n), m = this.moisture, jm = this.jacobian(psi2, m, lap);
-    const a = this.saturationSlope(), meanGradient = p.meanHumidity * a * this.meanTemperatureGradient(), deficit = (1 - p.meanHumidity) * p.saturationGkg;
+    const a = this.saturationSlope(), deficit = (1 - p.meanHumidity) * p.saturationGkg;
     const kelvin = this.kelvinPerThickness(), toThickness = 2.5 * p.latentHeatShare / kelvin;   // 2.5 K per g/kg condensed
     const condensationSeconds = p.condensationHours * 3600, evaporationSeconds = p.evaporationDays * DAY;
     for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
       const k = row + i, e = row + east[i], w = row + west[i];
-      const v2 = (psi2[e] - psi2[w]) * half, temperature = kelvin * (psi1[k] - psi2[k]);
+      const v2 = (psi2[e] - psi2[w]) * half, temperature = kelvin * (psi1[k] - psi2[k]), meanGradient = p.meanHumidity * a * this.meanTemperatureGradient(this.y(j));
       const condensation = Math.max(0, m[k] - a * temperature - deficit) / condensationSeconds;
-      tm[k] = -jm[k] - lower * (m[e] - m[w]) * half - v2 * meanGradient - m[k] / evaporationSeconds - condensation;
+      tm[k] = -jm[k] - this.lowerMean[j] * (m[e] - m[w]) * half - v2 * meanGradient - m[k] / evaporationSeconds - condensation;
       heat[k] = toThickness * condensation;
     }
     // Radiation removes on average what condensation adds (the mean state already holds that
@@ -417,8 +455,9 @@ export class QuasiGeostrophicModel {
   kelvinPerThickness() { return this.params.f0 / (287 * Math.log(3)); }
   // Change of saturation moisture with temperature (g/kg per K), about 7% per K.
   saturationSlope() { return 0.07 * this.params.saturationGkg; }
-  // North-south gradient of the mean layer temperature (K per m; negative: colder northward).
-  meanTemperatureGradient() { const p = this.params; return -(p.upperWindMs - p.lowerWindMs) * this.kelvinPerThickness(); }
+  // North-south gradient of the mean layer temperature (K per m; negative: colder northward) at a
+  // distance north (steepest under the jet's core).
+  meanTemperatureGradient(northM = this.lengthY / 2) { const [u1, u2] = this.meanWinds(northM); return -(u1 - u2) * this.kelvinPerThickness(); }
 
   // One time step (third-order Adams-Bashforth, lower order while starting).
   step() {
@@ -444,10 +483,10 @@ export class QuasiGeostrophicModel {
     const [mean, thickness, , , advection] = this.work;
     for (let k = 0; k < n; k++) { mean[k] = (this.psi1[k] + this.psi2[k]) / 2; thickness[k] = this.psi1[k] - this.psi2[k]; }
     this.jacobian(mean, thickness, advection);
-    const meanWind = (p.upperWindMs + p.lowerWindMs) / 2, shear = p.upperWindMs - p.lowerWindMs, radiation = 1 / (p.thermalRelaxationDays * DAY);
+    const radiation = 1 / (p.thermalRelaxationDays * DAY);
     const sum = this.ascentSum ??= new Float64Array(n), heat = this.heatTendency;
     for (let j = 0; j < ny; j++) for (let i = 0, row = j * nx; i < nx; i++) {
-      const k = row + i, e = row + east[i], w = row + west[i];
+      const k = row + i, e = row + east[i], w = row + west[i], meanWind = (this.upperMean[j] + this.lowerMean[j]) / 2, shear = this.upperMean[j] - this.lowerMean[j];
       const followingFlow = (thickness[k] - before[k]) / dt + advection[k] + meanWind * (thickness[e] - thickness[w]) * half - shear * (mean[e] - mean[w]) * half;
       sum[k] -= kelvin * (followingFlow - (heat?.[k] ?? 0) + radiation * thickness[k]);
       this.rain[k] = p.latentHeatShare > 0 ? Math.max(0, (heat?.[k] ?? 0) + (this.meanHeat ?? 0)) * kelvin / (2.5 * p.latentHeatShare) * 3600 : 0;
@@ -463,18 +502,22 @@ export class QuasiGeostrophicModel {
 
   // Thickness (psi1 - psi2) of the mean state at a distance north (m): it thins northward,
   // which is the colder air there.
-  meanThickness(northM) { return -(this.params.upperWindMs - this.params.lowerWindMs) * northM; }
+  meanThickness(northM) { const [s1, s2] = this.meanStreamfunction(northM); return s1 - s2; }
+  // ...and the mean of the two layers' streamfunctions there (the 500 mb height's mean state).
+  meanMidStreamfunction(northM) { const [s1, s2] = this.meanStreamfunction(northM); return (s1 + s2) / 2; }
 
   // Physical fields at a grid point (i east, j north; both wrap around).
   fieldsAt(i, j) {
     const { d, params: p } = this, k = this.index(i, j);
     const wind = (psi, mean) => ({ u: mean - (psi[this.index(i, j + 1)] - psi[this.index(i, j - 1)]) / (2 * d), v: (psi[this.index(i + 1, j)] - psi[this.index(i - 1, j)]) / (2 * d) });
-    const upper = wind(this.psi1, p.upperWindMs), lower = wind(this.psi2, p.lowerWindMs);
+    const upper = wind(this.psi1, this.upperMean[((j % this.ny) + this.ny) % this.ny]), lower = wind(this.psi2, this.lowerMean[((j % this.ny) + this.ny) % this.ny]);
     // Streamfunctions including the mean flow (not periodic northward), on the unwrapped row.
-    const north = this.y(j), total1 = this.psi1[k] - p.upperWindMs * north, total2 = this.psi2[k] - p.lowerWindMs * north;
+    const north = this.y(j), [mean1, mean2] = this.meanStreamfunction(north), total1 = this.psi1[k] + mean1, total2 = this.psi2[k] + mean2;
     const thickness = total1 - total2;
     return {
       upperWind: upper, lowerWind: lower,
+      // Each layer's mean west wind here (the jet's share of the wind above).
+      upperMeanU: this.upperMean[((j % this.ny) + this.ny) % this.ny], lowerMeanU: this.lowerMean[((j % this.ny) + this.ny) % this.ny],
       // The lower layer's weather systems alone (its streamfunction without the mean flow).
       lowerDisturbanceStreamfunction: this.psi2[k],
       midWind: { u: (upper.u + lower.u) / 2, v: (upper.v + lower.v) / 2 },

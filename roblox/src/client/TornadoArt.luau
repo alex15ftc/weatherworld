@@ -34,9 +34,14 @@ local MAX_PART = 2048
 local RINGS, SEGS = 24, 32
 -- Per shell: radius (share of the funnel's), turn rate (share of the funnel's), rise (texture
 -- heights a second), transparency, texture repeats round and up.
+-- billow: how far noise pushes the surface in and out (share of the radius); soft: how wide the
+-- fade toward the silhouette is (0 a hard edge, 1 fading from the middle); patchy: how much
+-- drifting noise thins the layer in places. featureStuds: the size of one texture repeat round the
+-- funnel (the texture repeats in proportion to the funnel, so a wedge is not one smeared tile).
 local SHELLS = {
-	{ texture = ART.funnelCore, radius = 1.0, spin = 1.0, rise = 0.06, transparency = 0.04, uRepeat = 2, vRepeat = 3 },
-	{ texture = ART.funnelWisp, radius = 1.22, spin = 0.6, rise = 0.04, transparency = 0.3, uRepeat = 1, vRepeat = 2 },
+	{ texture = ART.funnelCore, radius = 1.0, spin = 1.0, rise = 0.06, transparency = 0.04, billow = 0.07, soft = 0.45, patchy = 0.2, featureStuds = 260 },
+	{ texture = ART.funnelWisp, radius = 1.2, spin = 0.6, rise = 0.04, transparency = 0.25, billow = 0.13, soft = 0.7, patchy = 0.45, featureStuds = 420 },
+	{ texture = ART.funnelWisp, radius = 1.45, spin = 0.35, rise = 0.025, transparency = 0.55, billow = 0.2, soft = 0.9, patchy = 0.6, featureStuds = 650 },
 }
 
 -- Colours of a funnel's cloud: sunlit (the sun behind the viewer); backlit, thin (glowing) and
@@ -89,6 +94,7 @@ type Shell = {
 	verts: { number },
 	uvs: { number },
 	uvBase: { Vector2 },
+	colours: { number },
 	failed: boolean,
 }
 type Funnel = { shells: { Shell }, used: boolean, lastUpdate: number }
@@ -97,7 +103,7 @@ local funnels: { [string]: Funnel } = {}
 local meshWarned = false
 
 local function newShell(spec: any, parent: Instance): Shell
-	local shell: Shell = { spec = spec, mesh = nil, part = nil, verts = {}, uvs = {}, uvBase = {}, failed = false }
+	local shell: Shell = { spec = spec, mesh = nil, part = nil, verts = {}, uvs = {}, uvBase = {}, colours = {}, failed = false }
 	local ok, em = pcall(function()
 		return AssetService:CreateEditableMesh({})
 	end)
@@ -116,9 +122,11 @@ local function newShell(spec: any, parent: Instance): Shell
 		for j = 0, SEGS do
 			local a = TAU * j / SEGS
 			table.insert(shell.verts, em:AddVertex(Vector3.new(math.cos(a), y, math.sin(a))))
-			local base = Vector2.new(spec.uRepeat * j / SEGS, spec.vRepeat * (1 - i / (RINGS - 1)))
+			-- (u round, v down the funnel, both 0-1: scaled to the funnel's size as it is drawn)
+			local base = Vector2.new(j / SEGS, 1 - i / (RINGS - 1))
 			table.insert(shell.uvBase, base)
 			table.insert(shell.uvs, em:AddUV(base))
+			table.insert(shell.colours, em:AddColor(Color3.new(1, 1, 1), 1))
 		end
 	end
 	local function at(i: number, j: number): number
@@ -130,8 +138,10 @@ local function newShell(spec: any, parent: Instance): Shell
 			-- Wound to face outward.
 			local f1 = em:AddTriangle(shell.verts[a], shell.verts[c], shell.verts[b])
 			em:SetFaceUVs(f1, { shell.uvs[a], shell.uvs[c], shell.uvs[b] })
+			em:SetFaceColors(f1, { shell.colours[a], shell.colours[c], shell.colours[b] })
 			local f2 = em:AddTriangle(shell.verts[b], shell.verts[c], shell.verts[d])
 			em:SetFaceUVs(f2, { shell.uvs[b], shell.uvs[c], shell.uvs[d] })
+			em:SetFaceColors(f2, { shell.colours[b], shell.colours[c], shell.colours[d] })
 		end
 	end
 	task.spawn(function()
@@ -162,7 +172,13 @@ end
 -- spinRate in radians a second; transparency 0-1 over the shells' own; `near` asks for an update
 -- every frame (otherwise ~15 a second). Returns false when meshes are not available yet (or at
 -- all): draw it some other way this frame.
-function TornadoArt.drawFunnel(key: string, parent: Instance, axis: (number) -> Vector3, radius: (number) -> number, lo: number, hi: number, clock: number, spinRate: number, colour: Color3, transparency: number, near: boolean): boolean
+--
+-- What keeps it from looking like a solid tube: each vertex's opacity falls toward the
+-- silhouette (how squarely its surface faces the camera: the fresnel fade of a volume seen
+-- through its thin edge), toward the ends (into the wall cloud above, and where condensation
+-- starts below), and in patches that drift with the cloud; and noise pushes the surface in and
+-- out, so its outline billows and changes.
+function TornadoArt.drawFunnel(key: string, parent: Instance, axis: (number) -> Vector3, radius: (number) -> number, lo: number, hi: number, clock: number, spinRate: number, colour: Color3, transparency: number, near: boolean, cameraPos: Vector3): boolean
 	local funnel = funnels[key]
 	if not funnel then
 		funnel = { shells = {}, used = true, lastUpdate = -math.huge }
@@ -181,36 +197,58 @@ function TornadoArt.drawFunnel(key: string, parent: Instance, axis: (number) -> 
 		return true
 	end
 	funnel.lastUpdate = clock
-	for _, shell in funnel.shells do
+	local seed = (#key * 7.3) % 50
+	for n, shell in funnel.shells do
 		local spec = shell.spec
 		local part = shell.part :: MeshPart
 		local turn = clock * spinRate * spec.spin
-		-- The rings in world space, and their bounds.
+		-- The texture's repeats: round the funnel in proportion to its girth (a whole number, so
+		-- the seam meets), up it so the features stay about square.
+		local midR = math.max(1, radius(0.5 * (lo + hi)) * spec.radius)
+		local girth = TAU * midR
+		local uScale = math.clamp(math.round(girth / spec.featureStuds), 1, 12)
+		local height = math.max(1, (axis(hi) - axis(lo)).Magnitude)
+		local vScale = math.clamp(height / (girth / uScale), 0.5, 24)
+		local rise = (clock * spec.rise) % 1
+		-- The rings in world space, their opacity, and their bounds.
 		local points = table.create(RINGS * (SEGS + 1))
+		local alphas = table.create(RINGS * (SEGS + 1))
 		local lo3, hi3 = Vector3.one * math.huge, -Vector3.one * math.huge
 		for i = 0, RINGS - 1 do
-			local f = lo + (hi - lo) * i / (RINGS - 1)
+			local s = i / (RINGS - 1)
+			local f = lo + (hi - lo) * s
 			local c = axis(f)
-			local r = math.max(1, radius(f) * spec.radius)
+			local r0 = math.max(1, radius(f) * spec.radius)
+			-- Fading in where condensation starts (unless it reaches the ground) and out into the
+			-- wall cloud at the top.
+			local ends = math.clamp(if lo > 0.02 then s / 0.12 else 1, 0, 1) * math.clamp((1 - s) / 0.15, 0, 1)
 			for j = 0, SEGS do
 				local a = TAU * j / SEGS + turn
-				local p = c + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+				local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+				-- Billowing: noise in the cloud's own frame (it turns with it), changing slowly.
+				local u = TAU * j / SEGS
+				local wob = math.noise(math.cos(u) * 1.7 + seed, math.sin(u) * 1.7 + n * 3.1, f * 6 + clock * 0.12)
+				local p = c + dir * (r0 * (1 + spec.billow * wob))
 				table.insert(points, p)
 				lo3, hi3 = lo3:Min(p), hi3:Max(p)
+				-- The silhouette fade: how squarely this point faces the camera.
+				local view = cameraPos - p
+				local facing = if view.Magnitude > 1 then math.abs(dir:Dot(view.Unit)) else 1
+				local edge = math.clamp(facing / math.max(0.05, spec.soft), 0, 1)
+				local patch = 1 - spec.patchy * math.clamp(0.5 + math.noise(math.cos(u) * 2.3 + seed, f * 4 - clock * 0.08, n * 5.7 + clock * 0.05), 0, 1)
+				table.insert(alphas, edge * edge * (3 - 2 * edge) * ends * patch)
 			end
 		end
 		-- Vertices in the part's space, scaled to fill -1..1 (the part's size scales them back).
 		local centre = (lo3 + hi3) / 2
 		local half = ((hi3 - lo3) / 2):Max(Vector3.one)
 		local size = (half * 2):Min(Vector3.one * MAX_PART)
+		local mesh = shell.mesh
 		for k, p in points do
-			shell.mesh:SetPosition(shell.verts[k], (p - centre) / half)
-		end
-		-- The texture creeping upward.
-		local rise = (clock * spec.rise) % 1
-		for k, uv in shell.uvs do
+			mesh:SetPosition(shell.verts[k], (p - centre) / half)
+			mesh:SetColorAlpha(shell.colours[k], alphas[k])
 			local base = shell.uvBase[k]
-			shell.mesh:SetUV(uv, Vector2.new(base.X, base.Y + rise))
+			mesh:SetUV(shell.uvs[k], Vector2.new(base.X * uScale, base.Y * vScale + rise))
 		end
 		if part.Size ~= size then
 			part.Size = size
@@ -345,7 +383,105 @@ function TornadoArt.drawSprite(key: string, parent: Instance, foot: Vector3, hei
 	return true
 end
 
+-- The baked tornado ------------------------------------------------------------------------
+
+local BAKED = ART.baked
+local baked: { [string]: Sprite } = {}
+local preloaded = false
+
+local function newBakedSprite(parent: Instance): Sprite
+	local part = Instance.new("Part")
+	part.Anchored, part.CanCollide, part.CanQuery, part.CanTouch, part.CastShadow = true, false, false, false, false
+	part.Transparency = 1
+	part.Name = "tornadoBaked"
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+	gui.CanvasSize = Vector2.new(BAKED.cell, BAKED.cell)
+	gui.LightInfluence = 0.6
+	gui.Parent = part
+	local function layer(z: number): ImageLabel
+		local l = Instance.new("ImageLabel")
+		l.Size = UDim2.fromScale(1, 1)
+		l.BackgroundTransparency = 1
+		l.ImageRectSize = Vector2.new(BAKED.cell, BAKED.cell)
+		l.ZIndex = z
+		l.Parent = gui
+		return l
+	end
+	local sprite = { part = part, back = layer(1), lit = layer(2), used = true }
+	part.Parent = parent
+	return sprite
+end
+
+-- Draws the tornado from the baked volume: its foot on the ground, `height` studs to the cloud
+-- base, the funnel's width / height, how backlit it looks, how far it is down (touch), rain
+-- wrapping round it, how fast it turns (radians a second). Returns false without the art.
+function TornadoArt.drawBaked(key: string, parent: Instance, foot: Vector3, height: number, ratio: number, back: number, touch: number, rainWrap: number, cameraPos: Vector3, clock: number, spin: number): boolean
+	if not BAKED or BAKED.lit[1] == "" or BAKED.back[1] == "" then
+		return false
+	end
+	if not preloaded then
+		preloaded = true
+		local ids = {}
+		for _, id in BAKED.lit do
+			table.insert(ids, id)
+		end
+		for _, id in BAKED.back do
+			table.insert(ids, id)
+		end
+		task.spawn(function()
+			pcall(function()
+				game:GetService("ContentProvider"):PreloadAsync(ids)
+			end)
+		end)
+	end
+	local sprite = baked[key]
+	if not sprite then
+		sprite = newBakedSprite(parent)
+		baked[key] = sprite
+	end
+	sprite.used = true
+	-- A frame's ground row on the ground, its cloud-base row at the base; stretched across to this
+	-- funnel's width.
+	local cellH = math.max(10, height) / (BAKED.groundRow - BAKED.baseRow)
+	-- (past 1.6x the cone reads as squashed: wide tornadoes want a wedge bake of their own)
+	local stretch = math.clamp(ratio / BAKED.ratio, 0.7, 1.6)
+	local h = math.min(MAX_PART, cellH)
+	local w = math.min(MAX_PART, cellH * stretch)
+	local centre = Vector3.new(foot.X, foot.Y + h * (BAKED.groundRow - 0.5), foot.Z)
+	if sprite.part.Size.X ~= w or sprite.part.Size.Y ~= h then
+		sprite.part.Size = Vector3.new(w, h, 0.2)
+	end
+	sprite.part.CFrame = CFrame.lookAt(centre, Vector3.new(cameraPos.X, centre.Y, cameraPos.Z))
+	-- One loop a turn of the funnel's surface.
+	local fps = math.clamp(spin / TAU * BAKED.frames, 4, 18)
+	local frame = math.floor(clock * fps) % BAKED.frames
+	local sheet = frame // BAKED.perSheet + 1
+	local idx = frame % BAKED.perSheet
+	local offset = Vector2.new((idx % BAKED.columns) * BAKED.cell, (idx // BAKED.columns) * BAKED.cell)
+	local wrapDim = 1 - 0.55 * math.clamp(rainWrap, 0, 1)
+	for _, l in { sprite.lit, sprite.back } do
+		l.ImageRectOffset = offset
+		l.ImageColor3 = Color3.new(wrapDim, wrapDim, wrapDim)
+	end
+	sprite.lit.Image = BAKED.lit[sheet]
+	sprite.back.Image = BAKED.back[sheet]
+	local shown = math.clamp(touch, 0, 1)
+	sprite.back.ImageTransparency = 1 - shown
+	sprite.lit.ImageTransparency = 1 - shown * (1 - math.clamp(back, 0, 1))
+	return true
+end
+
 function TornadoArt.sweepSprites()
+	for key, sprite in baked do
+		if not sprite.used then
+			sprite.part:Destroy()
+			baked[key] = nil
+		else
+			sprite.used = false
+		end
+	end
 	for key, sprite in sprites do
 		if not sprite.used then
 			sprite.part:Destroy()

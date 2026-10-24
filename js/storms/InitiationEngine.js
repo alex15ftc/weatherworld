@@ -140,13 +140,15 @@ export function diagnoseInitiation(cell, liftScale = 1) {
 
   const mlCape = Number(sounding.mlcape) || 0, mlCin = Math.abs(Number(sounding.mlcin) || 0);
   const muCape = Number(sounding.mucape) || 0, muCin = Math.abs(Number(sounding.mucin) || 0);
-  // Elevated only when the most-unstable parcel originates above the surface layer.
-  const muAloft = muCape > (Number(sounding.sbcape) || 0) + 50;
+  // Elevated where the most-unstable parcel originates above the surface layer (more so the more
+  // of its CAPE the surface parcel lacks) and the surface air is capped (more so the more it is).
+  // (2026-10-23: both were on-off steps, at 50 J/kg more CAPE and 75 J/kg of surface CIN.)
+  const aloftShare = clamp((muCape - (Number(sounding.sbcape) || 0)) / 100, 0, 1), cappedShare = clamp((mlCin - 25) / 100, 0, 1), muAloft = aloftShare > 0;
   // The share of the cell where the lift beats the cap: lift varies within a 16 km cell, so a
   // cell whose mean lift is a little short of its mean CIN still has places where a storm can
   // start, and one just over it has places where none can.
   const surfaceShare = mlCape >= MIN_CAPE_J_KG ? overcomeShare(surfaceLift, mlCin) : 0;
-  const elevatedShare = muAloft && muCape >= MIN_CAPE_J_KG * 1.5 && mlCin > 75 ? overcomeShare(elevatedLift, muCin) : 0;
+  const elevatedShare = muCape >= MIN_CAPE_J_KG * 1.5 ? aloftShare * cappedShare * overcomeShare(elevatedLift, muCin) : 0;
   const elevated = elevatedShare > surfaceShare;
   const share = Math.max(surfaceShare, elevatedShare);
   const base = { synoptic, boundary, terrain, thermals, surfaceLift, elevatedLift, mlCape, mlCin, muCape, muCin, elevated };

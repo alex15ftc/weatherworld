@@ -101,7 +101,12 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // diffusion of K = D L^2 on the air-mass temperature (2026-10-19; until then nothing did, and
   // fronts closed to a single 10-mile cell with 15-20 C across it at 850 mb).
   frontWidthKm: 25, frontDeformationS: 4e-4,
-  domeSlope: 1 / 120, domeMinM: 300, domeMaxM: 4500, domeWarmK: 1.5,
+  // A dome's depth is also no more than its coldness allows (domeDeficitKPerM: the cold air's
+  // coldness fades upward at about the rate a real cold air mass's does, so a colder dome is
+  // deeper). 2026-10-23: until then a dome with no warmer air on the map was taken at domeMaxM
+  // whatever its coldness, and every dome jumped to 4.5 km deep, or back, as the last warm cell
+  // left or came onto the map: 6-10 hPa in an hour.
+  domeSlope: 1 / 120, domeMinM: 300, domeMaxM: 4500, domeWarmK: 1.5, domeDeficitKPerM: 0.0035,
   // Air cooled by storms' rain (cold pools): how deep it is, and how long it takes to warm back up
   // at night (by day the sun warms it; see fill).
   coldPoolDepthM: 800, coldPoolRecoveryHoursNight: 8,
@@ -245,6 +250,18 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // rate), about (9.8 - 2) / (9.8 - 6.5)). The extra cooling stays with the air it was done to,
   // moves with the 700 mb wind and fades over capLiftHours; sinking air warms the cap the same way.
   capLiftRatio: 2.4, capLiftHours: 24,
+  // The map's air takes the large-scale change a slide makes under it (see step).
+  carryDeparture: true,
+  // The share of the 1000-750 mb column's weight counted in the ground pressure (balancedPressureHpa).
+  groundColumnShare: 1,
+  // The lift the outer model cannot see works on the cap the same way: warm air carried up over
+  // cooler air and the low-level jet's air piling up where it ends (AtmosphereWorld's
+  // isentropicLiftMs and jetConvergenceLiftMs, m/s, up to mesoLiftMaxMs) cool the capping layer
+  // as lifting any stable layer does (by capLapseGapKPerM, the dry adiabat less the cap's lapse
+  // rate, per metre), mesoCapLiftShare of it. (2026-10-23: until then only the outer model's
+  // ascent wore the cap down, and under a 50-60 kt low-level jet at night the elevated parcels
+  // still faced 170-350 J/kg against the 50-65 their lift brings: no storms started at night.)
+  mesoCapLiftShare: 0.25, mesoLiftMaxMs: 0.1, capLapseGapKPerM: 0.0078,
   // The moist layer's top (m above sea level) moves with the low-level air. Large-scale ascent
   // raises it and sinking lowers it (at the rate the outer model's cooling implies: about
   // ascentCoolingPerMetre K per m of lift in the mid troposphere); it settles back toward
@@ -356,13 +373,23 @@ export class RegionalAtmosphere {
     const out = { upperU: 0, upperV: 0, lowerU: 0, lowerV: 0, layerK: 0, lowPsi: 0, midPsi: 0, ascentKh: 0, surfaceK: 0, surfaceQ: 0, north: ym - m.lengthY / 2 - shift };
     for (const [di, dj, w] of [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]]) {
       const f = m.fieldsAt(((i0 + di) % m.nx + m.nx) % m.nx, j0 + dj);
-      out.upperU += w * f.upperWind.u; out.upperV += w * f.upperWind.v; out.lowerU += w * f.lowerWind.u; out.lowerV += w * f.lowerWind.v;
+      // (The west winds without their mean: the mean is the map's own; see below.)
+      out.upperU += w * (f.upperWind.u - f.upperMeanU); out.upperV += w * f.upperWind.v; out.lowerU += w * (f.lowerWind.u - f.lowerMeanU); out.lowerV += w * f.lowerWind.v;
       out.layerK += w * f.layerTemperatureK; out.lowPsi += w * f.lowerDisturbanceStreamfunction; out.midPsi += w * f.midStreamfunction; out.ascentKh += w * (f.ascentCoolingKh ?? 0); out.surfaceK += w * (f.surfaceThetaK ?? 0); out.surfaceQ += w * (f.surfaceMoistureGkg ?? 0);
     }
-    // The mean state's own fall northward is taken about the map's place, not the slide's.
-    const q = m.params;
-    out.layerK += q.f0 * (q.upperWindMs - q.lowerWindMs) * shift / (RD * Math.log(3));
-    out.midPsi += (q.upperWindMs + q.lowerWindMs) / 2 * shift;
+    // The mean state's fall of temperature and height northward is taken about the map's own
+    // place, not the slide's (the map keeps its climate). Its west winds are where the map has
+    // slid to: under the jet's core at home, and slacker on its flanks, so a day slid off the jet
+    // has the weaker flow and shear of the flank, and one under a cut-off low the slack flow round
+    // it. (2026-10-23: the winds were also taken at home until then, and every day had the core's
+    // strong shear.) The ground-level pressure slope follows the same winds (meanGroundPsi, about
+    // the map's middle).
+    const q = m.params, home = ym - shift, [upperMean, lowerMean] = m.meanWinds(ym);
+    out.layerK += q.f0 * (m.meanThickness(home) - m.meanThickness(ym)) / (RD * Math.log(3));
+    out.midPsi += m.meanMidStreamfunction(home) - m.meanMidStreamfunction(ym);
+    out.upperMeanU = upperMean; out.lowerMeanU = lowerMean; out.upperU += upperMean; out.lowerU += lowerMean;
+    const ground = y => { const [s1, s2] = m.meanStreamfunction(y); return s2 - 0.5 * (s1 - s2); };
+    out.meanGroundPsi = ground(ym) - ground(ym - out.north);
     return out;
   }
 
@@ -373,17 +400,24 @@ export class RegionalAtmosphere {
   // systems further down along the shear would weaken them toward the ground, where real
   // lows and their winds are strongest.
   windAt(outer, pressure) {
-    const s = (750 - pressure) / 500, between = Math.max(0, s), q = this.model.params, p = this.params;
-    const mean = (q.lowerWindMs + s * (q.upperWindMs - q.lowerWindMs)) * (1 - p.mountainBlocking * ramp(pressure, p.crestPressureHpa, 850));
-    const lowerU = outer.lowerU - q.lowerWindMs, upperU = outer.upperU - q.upperWindMs;
+    const s = (750 - pressure) / 500, between = Math.max(0, s), p = this.params;
+    const mean = (outer.lowerMeanU + s * (outer.upperMeanU - outer.lowerMeanU)) * (1 - p.mountainBlocking * ramp(pressure, p.crestPressureHpa, 850));
+    const lowerU = outer.lowerU - outer.lowerMeanU, upperU = outer.upperU - outer.upperMeanU;
     return { u: mean + lowerU + between * (upperU - lowerU), v: outer.lowerV + between * (outer.upperV - outer.lowerV) };
   }
 
   // Pressure pattern near the ground (hPa about the mean): the lower layer's systems, plus the
-  // north-south slope that balances what is left of the mean wind at the ground.
+  // north-south slope that balances what is left of the mean wind at the ground (the mean state's
+  // streamfunction carried down to the ground along the shear, about the map's middle; see outer).
+  // The lower layer's pressure is that of about 750 mb; the air between there and the ground weighs
+  // less where the layer is warmer than usual and more where colder (hydrostatic: about 1 hPa per K
+  // over the 1000-750 mb column), so a high in warm air is weaker at the ground and one in cold air
+  // stronger. (2026-10-23: the 750 mb pressure was taken to the ground as it was, and highs of
+  // 1037-1043 hPa sat over 85-90 F air; on seed 31 the layer was 4.4 K warm under a +22 hPa high.)
+  // Only the pressure: the winds keep the lower layer's (see windAt).
   balancedPressureHpa(outer) {
-    const q = this.model.params, meanAtGround = (q.lowerWindMs - 0.5 * (q.upperWindMs - q.lowerWindMs)) * (1 - this.params.mountainBlocking);
-    return RHO_AIR * q.f0 * (outer.lowPsi - meanAtGround * outer.north) / 100;
+    const columnHpa = -this.params.groundColumnShare * 1013 * Math.log(1013 / 750) * (outer.layerK - this.referenceLayerK) / 285;
+    return RHO_AIR * this.model.params.f0 * (outer.lowPsi + outer.meanGroundPsi * (1 - this.params.mountainBlocking)) / 100 + columnHpa;
   }
 
   // How far up the slope a place is (0 on the low plains, 1 at the western edge).
@@ -491,7 +525,7 @@ export class RegionalAtmosphere {
 
   // The cold air's depth from its distance behind the warmer air (see domeSlope). Distances by a
   // two-pass chamfer transform from the cells of warmer air; with no warmer air on the map the
-  // cold air is taken to be at its deepest.
+  // cold air is as deep as its coldness allows.
   coldDome(outers) {
     const { nx, ny, dx } = this, p = this.params, n = nx * ny, far = 1e12, distance = new Float64Array(n);
     this.world.forEachCell((cell, x, y) => {
@@ -501,7 +535,7 @@ export class RegionalAtmosphere {
     const diag = Math.SQRT2 * dx, relax = (k, j, step) => { if (distance[j] + step < distance[k]) distance[k] = distance[j] + step; };
     for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) { const k = y * nx + x; if (x > 0) relax(k, k - 1, dx); if (y > 0) { relax(k, k - nx, dx); if (x > 0) relax(k, k - nx - 1, diag); if (x < nx - 1) relax(k, k - nx + 1, diag); } }
     for (let y = ny - 1; y >= 0; y--) for (let x = nx - 1; x >= 0; x--) { const k = y * nx + x; if (x < nx - 1) relax(k, k + 1, dx); if (y < ny - 1) { relax(k, k + nx, dx); if (x < nx - 1) relax(k, k + nx + 1, diag); if (x > 0) relax(k, k + nx - 1, diag); } }
-    for (let k = 0; k < n; k++) this.domeDepth[k] = this.domeDeficit[k] > p.domeWarmK ? clamp(p.domeSlope * distance[k], p.domeMinM, p.domeMaxM) : 0;
+    for (let k = 0; k < n; k++) this.domeDepth[k] = this.domeDeficit[k] > p.domeWarmK ? clamp(Math.min(p.domeSlope * distance[k], this.domeDeficit[k] / p.domeDeficitKPerM), p.domeMinM, p.domeMaxM) : 0;
   }
 
   // Hydrostatic balance near the ground: a column of warm low-level air weighs less, so the
@@ -733,7 +767,21 @@ export class RegionalAtmosphere {
         return { u: u + mixed * (aloft.u - u) + this.coldPushU[k], v: v + mixed * (aloft.v - v) + this.coldPushV[k] };
       };
       const midWind = (x, y) => this.windAt(outers[y * nx + x], 700);
-      this.advect(this.theta, lowWind, (sx, sy) => this.airMassTheta(outers[sy * nx + sx], world.cells[sy][sx].terrain.elevationM), dt);
+      if (p.carryDeparture) {
+        // The map's air is the large-scale air where the map now is, plus its own departure from it
+        // (fronts it has sharpened, storms' cooled air, the day's heating), which moves with the
+        // map's wind. (2026-10-23: the map's air was moved whole, and on a sliding day it caught up
+        // with the large-scale air beneath only over airMassRelaxationDays: 4 K behind on average,
+        // read as cold domes under 1036-1046 hPa highs in 85 F air. Moving the large-scale air as
+        // well, by the map's wind less the lower layer's, put it 5.7 K behind: the two winds differ
+        // steadily. docs/FIX-PLAN-2026-10-22.md, "Regional pressure: the slide lag".)
+        const target = new Float64Array(nx * ny), was = this.lastTarget;
+        for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) target[y * nx + x] = this.airMassTheta(outers[y * nx + x], world.cells[y][x].terrain.elevationM);
+        for (let k = 0; k < nx * ny; k++) this.theta[k] -= was ? was[k] : target[k];
+        this.advect(this.theta, lowWind, () => 0, dt);
+        for (let k = 0; k < nx * ny; k++) this.theta[k] += target[k];
+        this.lastTarget = target;
+      } else this.advect(this.theta, lowWind, (sx, sy) => this.airMassTheta(outers[sy * nx + sx], world.cells[sy][sx].terrain.elevationM), dt);
       this.frontalMixing(lowWind, dt);
       // The Gulf's air along the map's south-eastern edge (it sets how deep the moisture coming back is).
       let gulf = 0, count = 0;
@@ -790,7 +838,8 @@ export class RegionalAtmosphere {
         } else this.coldPool[k] *= Math.exp(-dt / 3600 / p.coldPoolRecoveryHoursNight);
         this.coldPool[k] *= Math.exp(-stir * dt / (p.coldPoolMixingKm * 1000));
         if (this.coldPool[k] < p.coldPoolLeastK) this.coldPool[k] = 0;
-        this.capLift[k] = this.capLift[k] * Math.exp(-dt / (p.capLiftHours * 3600)) + (p.capLiftRatio - 1) * outer.ascentKh * dt / 3600;
+        const mesoLift = Math.min(p.mesoLiftMaxMs, Math.max(0, Number(cell.features?.isentropicLiftMs) || 0) + Math.max(0, Number(cell.features?.jetConvergenceLiftMs) || 0));
+        this.capLift[k] = this.capLift[k] * Math.exp(-dt / (p.capLiftHours * 3600)) + (p.capLiftRatio - 1) * outer.ascentKh * dt / 3600 + p.mesoCapLiftShare * mesoLift * p.capLapseGapKPerM * dt;
         const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre;
         this.moistTop[k] = clamp(this.moistTop[k] + liftMs * dt + (p.moistLayerTopM - this.moistTop[k]) * clamp(dt / (p.moistTopDays * DAY), 0, 1), 600, 3500);
       }

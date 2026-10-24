@@ -96,3 +96,6 @@ data/worldmap/
 # Generated world data for the Roblox place (scripts/export-world-roblox.mjs)
 roblox/src/worlddata/
 roblox/src/shared/MapData/
+
+# Meteorologist day packages (scripts/day-review-pack.mjs)
+data/day-reviews/

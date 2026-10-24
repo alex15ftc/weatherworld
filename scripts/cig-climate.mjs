@@ -25,10 +25,11 @@ const WANTED_MIX = { 'below SLGT': 5, SLGT: 30, ENH: 40, MDT: 20, HIGH: 5 };
 async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { captureTruth, aggregateTruth } = await import('../js/verification/truth.js');
+  const { placesFor } = await import('../server/CountyLayer.js');
   const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, { width, height } = world, n = width * height, daily = [];
   for (let day = 0; day < days; day++) {
     const frames = [], seen = new Set(), initiations = [];
-    for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations); }
+    for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations, placesFor(world)); }
     const truth = aggregateTruth(frames, initiations, width, height, 25 / world.cellSizeMiles, world.cellSizeMiles);
     const areas = {};
     for (const h of WORLD_HAZARDS) {

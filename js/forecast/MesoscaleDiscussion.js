@@ -99,9 +99,10 @@ const quantile = (values, q) => { const v = values.filter(Number.isFinite).sort(
 // `state` must be this member's own copy (see stateFromBytes in DayOneOutlook.js).
 // asItHappens: leave the storms' chances as the live world has them (what will really happen;
 // used to check discussions afterwards).
-export function runMesoscaleMember(state, member, hours = MESOSCALE.hoursAhead, { asItHappens = false } = {}) {
+export function runMesoscaleMember(state, member, hours = MESOSCALE.hoursAhead, { asItHappens = false, placesFor } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
+  const places = placesFor?.(atmosphere.world) ?? null;   // hail and wind as reports (see captureTruth)
   const world = atmosphere.world, n = world.width * world.height, start = world.validHourUtc;
   if (!asItHappens) world.evolution = { ...(world.evolution ?? {}), config: { ...(world.evolution?.config ?? {}), seed: `${state.seed}|mesoscale|${start}|${member}` } };
   // As in an outlook's runs: no radar pictures, and the fast transforms.
@@ -113,7 +114,7 @@ export function runMesoscaleMember(state, member, hours = MESOSCALE.hoursAhead, 
   const note = (key, mph, at) => { const cell = cellOf(at), known = tornadoes.get(key); tornadoMph[cell] = Math.max(tornadoMph[cell], mph); if (known) known.mph = Math.max(known.mph, mph); else tornadoes.set(key, { cell, mph }); };
   for (let hour = 0; hour < hours - 1e-9; hour += MESOSCALE.stepHours) {
     atmosphere.advance(MESOSCALE.stepHours);
-    const frame = captureTruth(world, frames, seen, initiations), ahead = world.validHourUtc - start;
+    const frame = captureTruth(world, frames, seen, initiations, places), ahead = world.validHourUtc - start;
     for (let i = 0; i < n; i++) { if ((frame.tornado[i] || frame.wind[i] || frame.hail[i]) && firstHour[i] === Infinity) firstHour[i] = ahead; if (frame.storm[i] && stormHour[i] === Infinity) stormHour[i] = ahead; }
     for (const storm of world.storms) {
       if (!storm.active) continue;

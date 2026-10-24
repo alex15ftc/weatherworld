@@ -3,13 +3,14 @@
 import { parentPort } from 'node:worker_threads';
 import { runOutlookMemberDays, stateFromBytes } from '../js/forecast/DayOneOutlook.js';
 import { runMesoscaleMember } from '../js/forecast/MesoscaleDiscussion.js';
+import { placesFor } from './CountyLayer.js';
 
 const RUNS = { outlook: runOutlookMemberDays, mesoscale: runMesoscaleMember };
 
 parentPort?.on('message', ({ kind, state, member, hours, options }) => {
   try {
     // The bytes are shared with the other threads; stateFromBytes reads this run's own world out of them.
-    parentPort.postMessage({ ok: true, result: RUNS[kind](stateFromBytes(state), member, hours, options) });
+    parentPort.postMessage({ ok: true, result: RUNS[kind](stateFromBytes(state), member, hours, { ...options, placesFor }) });
   } catch (error) {
     parentPort.postMessage({ ok: false, error: String(error?.stack ?? error) });
   }

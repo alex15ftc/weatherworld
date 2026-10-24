@@ -8,6 +8,13 @@ import { countyLayer } from '../js/forecast/counties.js';
 let data, failed = false;
 const layers = new Map();
 
+// The towns and counties a world's reports are made from, as the storm log takes them
+// (js/reports/stormLog.js): { layer, milesPerKm }.
+export function placesFor(world) {
+  const layer = countiesFor(world);
+  return { layer, milesPerKm: layer ? layer.miles / (world.width * world.cellSizeKm) : 0.621371 };
+}
+
 export function countiesFor(world) {
   if (!world || failed || process.env.WEATHER_COUNTIES === 'off') return null;
   try {

@@ -8,13 +8,17 @@
 // the game's next poll. Every game server places frames by atMs on the wall clock, so all of
 // them show the same storm in the same place at the same moment.
 //
+// Each storm carries its rain and hail near the ground as a small grid (js/radar/StormPrecipGrid.js:
+// the radar's own precipitation field, a little coarser), for the game's rain and hail shafts.
+//
 // Each frame also carries the sky (js/world/SkyAppearance.js): the clouds, air and wind the game
 // lights the world from, and where the sun is.
 //
 // Frames are kept as JSON text, written once, so a poll costs a string join however many game
 // servers ask.
-import { buildStormAppearance } from '../js/storms/StormAppearance.js';
+import { buildStormFeedList } from '../js/storms/StormAppearance.js';
 import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
+import { buildStormPrecipGrids } from '../js/radar/StormPrecipGrid.js';
 
 export const GAME_FEED = Object.freeze({ marginMs: 15_000, keepFrames: 12, maxPerPoll: 6 });
 
@@ -38,12 +42,8 @@ export class GameFeed {
 
   // The frame for the storm tick that fell due at dueMs.
   capture(world, dueMs = Date.now()) {
-    const storms = [];
-    for (const storm of world.storms ?? []) {
-      if (storm.active === false) continue;
-      const appearance = buildStormAppearance(storm);
-      if (appearance) storms.push(appearance);
-    }
+    // Living storms, and for a while the remnants of those that have gone (StormAppearance.js).
+    const storms = buildStormFeedList(world, buildStormPrecipGrids(world));
     // Never before the frame already given: the game's frames only run forward.
     const atMs = Math.max(Math.round(dueMs + this.lagMs), (this.frames.at(-1)?.atMs ?? -Infinity) + 1000);
     const frame = { seq: ++this.seq, atMs, simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), storms, sky: buildSkyAppearance(world, this.regional) };

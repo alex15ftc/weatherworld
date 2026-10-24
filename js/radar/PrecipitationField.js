@@ -99,7 +99,11 @@ const hailFallMs = mm => 11.45 * Math.sqrt(mm / 10);
 // the wind relative to the storm (m/s east and north) every WIND_PROFILE_STEP_M; and, from the
 // sounding where it stands, inflowVapourGm3, precipitableWaterIn and midLevelRh (optional). shared: keep the
 // result in memory other threads can read without a copy (the radar's threads share one scene).
-export function buildStormPrecipitation(storm, column, { shared = false } = {}) {
+// A coarser field for a quick look (the game's rain map each storm tick, StormPrecipGrid.js):
+// follow one particle in `stride` (each standing for that many; and fewer to find the fallout's
+// reach), on cells no finer than leastResKm, without the fine inner grid and, with debris false,
+// without a tornado's debris. The amounts are the same on average; the detail is less.
+export function buildStormPrecipitation(storm, column, { shared = false, stride = 1, leastResKm = RESOLUTION_KM[0], fine = true, debris: withDebris = true } = {}) {
   const alloc = shared ? sharedAlloc : plainAlloc;
   const structure = storm.structure;
   if (!structure) return null;
@@ -143,22 +147,23 @@ export function buildStormPrecipitation(storm, column, { shared = false } = {}) 
   for (let k = 0; k <= inflowLevels; k++) { model.inflowU += column.su[k] / (inflowLevels + 1); model.inflowV += column.sv[k] / (inflowLevels + 1); }
   model.mesoDepth = Float32Array.from({ length: WIND_PROFILE_LEVELS }, (_, k) => (0.55 + 0.45 * Math.exp(-(((k * WIND_PROFILE_STEP_M - 4500) / 2600) ** 2))) * (k * WIND_PROFILE_STEP_M > column.topM ? 0.2 : 1));
 
-  const reach = follow(model, null, null, 8);
+  stride = Math.max(1, Math.round(stride));
+  const reach = follow(model, null, null, Math.max(8, 2 * stride));
   let grid = null, inner = null;
   if (reach) {
     // Room beyond what was measured: only one particle in eight was followed, and old fallout is spread wide.
     const margin = 4 + 0.1 * Math.max(reach.maxX - reach.minX, reach.maxY - reach.minY) + 0.4 * (PHYSICS.spreadMs[0] + PHYSICS.spreadMs[1] * 40) * model.ageS / 1000;
     const x0 = Math.max(-REACH_KM, reach.minX - margin), y0 = Math.max(-REACH_KM, reach.minY - margin);
     const widthKm = Math.min(REACH_KM, reach.maxX + margin) - x0, heightKm = Math.min(REACH_KM, reach.maxY + margin) - y0;
-    const res = clamp(Math.ceil(Math.sqrt(widthKm * heightKm / COLUMNS) * 4) / 4, RESOLUTION_KM[0], RESOLUTION_KM[1]);
+    const res = clamp(Math.ceil(Math.sqrt(widthKm * heightKm / COLUMNS) * 4) / 4, Math.max(RESOLUTION_KM[0], leastResKm), Math.max(RESOLUTION_KM[1], leastResKm));
     const hail = model.sources.some(source => source.hailMass > 0);
     grid = createGrid(x0, y0, res, Math.ceil(widthKm / res) + 1, Math.ceil(heightKm / res) + 1, hail, alloc);
-    if (res > INNER.resKm * 1.5 && model.sources[0]?.kind === 'updraught') inner = createGrid(-INNER.halfKm, -INNER.halfKm, INNER.resKm, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, hail, alloc);
-    follow(model, grid, inner, 1);
+    if (fine && res > INNER.resKm * 1.5 && model.sources[0]?.kind === 'updraught') inner = createGrid(-INNER.halfKm, -INNER.halfKm, INNER.resKm, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, Math.round(2 * INNER.halfKm / INNER.resKm) + 1, hail, alloc);
+    follow(model, grid, inner, stride);
     finish(grid, true, alloc);
     if (inner) finish(inner, false, alloc);
   }
-  const debris = model.tornado ? loftDebris(model, alloc) : null;
+  const debris = model.tornado && withDebris ? loftDebris(model, alloc) : null;
   // (A tornado's debris is part of the storm's extent even where no rain is.)
   if (debris && grid && !grid.extent) grid.extent = { minX: debris.x - debris.halfKm, minY: debris.y - debris.halfKm, maxX: debris.x + debris.halfKm, maxY: debris.y + debris.halfKm };
   else if (debris && grid) { const e = grid.extent; e.minX = Math.min(e.minX, debris.x - debris.halfKm); e.minY = Math.min(e.minY, debris.y - debris.halfKm); e.maxX = Math.max(e.maxX, debris.x + debris.halfKm); e.maxY = Math.max(e.maxY, debris.y + debris.halfKm); }

@@ -1,0 +1,62 @@
+{
+  "name": "TornadoLab",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$className": "Folder",
+        "Tornado": {
+          "$path": "src/shared/Tornado"
+        },
+        "World": {
+          "$path": "src/shared/World"
+        },
+        "Weather": {
+          "$path": "src/shared/Weather"
+        }
+      },
+      "GameClient": {
+        "$path": "src/client"
+      },
+      "StormReplay": {
+        "$path": "src/worlddata/StormReplay"
+      },
+      "StormReplayLine": {
+        "$path": "src/worlddata/StormReplayLine"
+      }
+    },
+    "ServerScriptService": {
+      "Lab": {
+        "$path": "src/lab/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Lab": {
+          "$path": "src/lab/client"
+        }
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future",
+        "GlobalShadows": true
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
+      }
+    },
+    "MaterialService": {
+      "CloudMatte": {
+        "$className": "MaterialVariant",
+        "$properties": {
+          "BaseMaterial": "SmoothPlastic",
+          "RoughnessMap": "rbxassetid://95712331838936",
+          "StudsPerTile": 64
+        }
+      }
+    }
+  }
+}

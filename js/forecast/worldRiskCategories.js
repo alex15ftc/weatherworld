@@ -85,8 +85,14 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
   const tiers = ArrayBuffer.isView(significant) ? [significant] : significant;
   const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), owner = new Int32Array(n).fill(-1), stack = [], areas = [];
   let pass = 0;
-  for (const level of PROBABILITY_LEVELS[hazard]) {
+  // Each area is judged on its own ring: its cells that are not inside the next contour up (the
+  // core is judged as an area of its own). (2026-10-23: judged on all its cells, an outer area took
+  // the core's reports as its own and the hatching spread out to the 2-5% contour wherever the core
+  // had it; forecasters hatch the core.)
+  const levels = PROBABILITY_LEVELS[hazard];
+  for (const [index, level] of levels.entries()) {
     pass++;
+    const next = levels[index + 1] ?? Infinity, inRing = i => !(chance[i] >= next - 1e-9);
     for (let start = 0; start < n; start++) {
       if (mark[start] === pass || !(chance[start] >= level - 1e-9)) continue;
       // One area: the cells joined edge to edge that are inside this contour.
@@ -94,7 +100,8 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
       stack.push(start); mark[start] = pass;
       while (stack.length) {
         const i = stack.pop(), x = i % width, y = (i - x) / width;
-        cells.push(i); total += amount[i]; for (let t = 0; t < tiers.length; t++) reaching[t] += tiers[t][i];
+        cells.push(i);
+        if (inRing(i)) { total += amount[i]; for (let t = 0; t < tiers.length; t++) reaching[t] += tiers[t][i]; }
         for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, y > 0 ? i - width : -1, y < height - 1 ? i + width : -1]) if (j >= 0 && mark[j] !== pass && chance[j] >= level - 1e-9) { mark[j] = pass; stack.push(j); }
       }
       // An area is never given a lower group than the area around it: that one was judged with
@@ -106,7 +113,7 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
         for (const run of runs) {
           const own = ArrayBuffer.isView(run.significant) ? [run.significant] : run.significant, reach = own.map(() => 0);
           let sum = 0;
-          for (const i of cells) { sum += run.amount[i]; for (let t = 0; t < own.length; t++) reach[t] += own[t][i]; }
+          for (const i of cells) { if (!inRing(i)) continue; sum += run.amount[i]; for (let t = 0; t < own.length; t++) reach[t] += own[t][i]; }
           if (sum > 0) groups.push(conditionalCig(sum, reach, bounds));
         }
         groups.sort((a, b) => a - b);

@@ -7,7 +7,9 @@
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
+local Config = require(ReplicatedStorage.Shared.World.Config)
 local ChunkGen = require(ReplicatedStorage.Shared.World.ChunkGen)
 local WorldMap = require(ReplicatedStorage.Shared.World.WorldMap)
 local LandSurface = require(ReplicatedStorage.Shared.World.LandSurface)
@@ -33,9 +35,9 @@ local function startPoint(): (number, number)
 	return WorldMap.studsAt(WorldMap.meta.start.x, WorldMap.meta.start.y)
 end
 
-local function place(character: Model)
+-- Puts a character on the ground at (x, z) studs, held in the air until the ground has loaded.
+local function placeAt(character: Model, x: number, z: number)
 	local root = character:WaitForChild("HumanoidRootPart") :: BasePart
-	local x, z = startPoint()
 	root.Anchored = true
 	character:PivotTo(CFrame.new(x, ChunkGen.groundStudsAt(x, z) + 60, z))
 	local position = Vector3.new(x, 0, z)
@@ -48,6 +50,49 @@ local function place(character: Model)
 	local y = if hit then hit.Position.Y else ChunkGen.groundStudsAt(x, z)
 	character:PivotTo(CFrame.new(x, y + 5, z))
 	root.Anchored = false
+end
+
+local function place(character: Model)
+	local x, z = startPoint()
+	placeAt(character, x, z)
+end
+
+-- The debug page's teleport (client/DebugPage): only in Studio or for the place's owner.
+local function mayDebug(player: Player): boolean
+	if RunService:IsStudio() or player.UserId == game.CreatorId then
+		return true
+	end
+	if game.CreatorType == Enum.CreatorType.Group then
+		local ok, rank = pcall(player.GetRankInGroup, player, game.CreatorId)
+		return ok and rank >= 254
+	end
+	return false
+end
+
+local function debugRemotes()
+	local folder = Instance.new("Folder")
+	folder.Name = "Debug"
+	local teleport = Instance.new("RemoteEvent")
+	teleport.Name = "Teleport"
+	teleport.Parent = folder
+	folder.Parent = ReplicatedStorage
+	local busy: { [Player]: boolean } = {}
+	local edge = Config.MAP_STUDS / 2 - 600
+	teleport.OnServerEvent:Connect(function(player: Player, x: any, z: any)
+		if typeof(x) ~= "number" or typeof(z) ~= "number" or x ~= x or z ~= z or busy[player] or not mayDebug(player) then
+			return
+		end
+		local character = player.Character
+		if not character then
+			return
+		end
+		busy[player] = true
+		pcall(placeAt, character, math.clamp(x, -edge, edge), math.clamp(z, -edge, edge))
+		busy[player] = nil
+	end)
+	Players.PlayerRemoving:Connect(function(player: Player)
+		busy[player] = nil
+	end)
 end
 
 function Explore.start()
@@ -72,6 +117,7 @@ function Explore.start()
 			task.spawn(place, player.Character)
 		end
 	end
+	debugRemotes()
 	Players.PlayerAdded:Connect(added)
 	for _, player in Players:GetPlayers() do
 		added(player)

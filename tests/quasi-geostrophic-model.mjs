@@ -5,13 +5,21 @@ import { QuasiGeostrophicModel } from '../js/atmosphere/QuasiGeostrophicModel.js
 // domain is only for checks that do not need the systems to settle: a domain much smaller
 // than the default holds a single wave, which keeps strengthening.
 const quick = { initialNoise: 4e-4 }, small = { nx: 64, ny: 32, initialNoise: 4e-4 };
-const meanWind = model => (model.params.upperWindMs + model.params.lowerWindMs) / 2;
-const disturbanceWind = model => { let sum = 0, n = 0; for (let j = 0; j < model.ny; j += 2) for (let i = 0; i < model.nx; i += 2) { const f = model.fieldsAt(i, j); sum += Math.hypot(f.midWind.u - meanWind(model), f.midWind.v); n++; } return sum / n; };
+// The mean west wind at a row (the jet stream's share included), at mid-level.
+const meanWind = (model, j) => { const [upper, lower] = model.meanWinds(model.y(j)); return (upper + lower) / 2; };
+const disturbanceWind = model => { let sum = 0, n = 0; for (let j = 0; j < model.ny; j += 2) for (let i = 0; i < model.nx; i += 2) { const f = model.fieldsAt(i, j); sum += Math.hypot(f.midWind.u - meanWind(model, j), f.midWind.v); n++; } return sum / n; };
 
 // --- The undisturbed state is the mean flow of each layer, with colder air to the north.
 const calm = new QuasiGeostrophicModel({ nx: 64, ny: 32, initialNoise: 0 });
-const p = calm.params, start = calm.fieldsAt(10, 20);
-assert.ok(Math.abs(start.upperWind.u - p.upperWindMs) < 1e-9 && Math.abs(start.lowerWind.u - p.lowerWindMs) < 1e-9, 'layer mean winds');
+const start = calm.fieldsAt(10, 20), [upperMean, lowerMean] = calm.meanWinds(calm.y(20));
+assert.ok(Math.abs(start.upperWind.u - upperMean) < 1e-9 && Math.abs(start.lowerWind.u - lowerMean) < 1e-9, 'layer mean winds');
+// The jet stream: the mean wind is strongest at the middle latitude and slack at the edges, and
+// the shear is largest at its core.
+{
+  const mid = calm.fieldsAt(10, 16).midWind.u, edge = calm.fieldsAt(10, 0).midWind.u, core = calm.fieldsAt(10, 16), flank = calm.fieldsAt(10, 0);
+  assert.ok(mid > edge + 10, `a jet at the middle latitude (${mid.toFixed(1)} against ${edge.toFixed(1)} m/s at the edge)`);
+  assert.ok(core.upperWind.u - core.lowerWind.u > flank.upperWind.u - flank.lowerWind.u, 'more shear at its core');
+}
 assert.ok(start.surfaceWind.u < start.lowerWind.u && start.midWind.u > start.lowerWind.u && start.midWind.u < start.upperWind.u, 'the wind increases with height');
 assert.equal(start.midWind.v, 0, 'the mean flow is zonal');
 assert.ok(calm.fieldsAt(10, 26).layerTemperatureK < calm.fieldsAt(10, 14).layerTemperatureK, 'thermal wind: colder air to the north of westerly shear');

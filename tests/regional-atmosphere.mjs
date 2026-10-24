@@ -38,8 +38,13 @@ const within = (hour, from, to) => (from <= to ? hour >= from && hour <= to : ho
 // --- The daily cycle is timed by the sun (local time is UTC - 6).
 const warmest = highest('t'), coolest = lowest('t');
 assert.ok(within(warmest.hour, 20, 0), `warmest in the late afternoon (${warmest.hour}Z)`);
-assert.ok(within(coolest.hour, 10, 14), `coolest near sunrise (${coolest.hour}Z)`);
-assert.ok(warmest.value - coolest.value > 12 && warmest.value - coolest.value < 32, `day-night range ${(warmest.value - coolest.value).toFixed(1)} F`);
+// (From 9Z: the last hours of the night are within a tenth of a degree of each other, 67.08 F at
+// 9Z and 67.14 at 10Z on 2026-10-23, so which of them is lowest is a toss-up.)
+assert.ok(within(coolest.hour, 9, 14), `coolest near sunrise (${coolest.hour}Z)`);
+// (Floor 12 to 11 F on 2026-10-23: with the map carrying only its departure from the large-scale air
+// this seed's afternoons came out 1.8 F cooler, 13.8 to 11.8 F; on six full-world seeds the humid
+// afternoons were not cooler, 81.5 and 82.0 F.)
+assert.ok(warmest.value - coolest.value > 11 && warmest.value - coolest.value < 32, `day-night range ${(warmest.value - coolest.value).toFixed(1)} F`);
 // The sun wears the cap down through the day. (Not the single weakest hour: with the high
 // ground on the map its afternoon mixed layer renews the lid nearby, and the cap stays about as
 // weak from late morning to evening.)
@@ -83,7 +88,10 @@ for (let day = 0; day < 5; day++) {
   afternoons.depth.push(column(west, c => c.features.mixedLayerDepthM) - column(east, c => c.features.mixedLayerDepthM));
   afternoons.southerly.push(column(Math.floor(nx / 2), (c, k) => regional.thermalV[k]));
 }
-assert.ok(mean(afternoons.pressure) < -2, `lower pressure over the hot high ground (${mean(afternoons.pressure).toFixed(1)} hPa)`);
+// (-2 until 2026-10-23: with the jet stream the low-level west wind at its core, over the map, is
+// 8.5 m/s instead of 13.5, so less air comes down the high ground and the lee trough is shallower:
+// -1.6 hPa on these afternoons.)
+assert.ok(mean(afternoons.pressure) < -1.5, `lower pressure over the hot high ground (${mean(afternoons.pressure).toFixed(1)} hPa)`);
 assert.ok(mean(afternoons.dewpoint) < -12, `dry air in the west, moist in the east (${mean(afternoons.dewpoint).toFixed(0)} F)`);
 assert.ok(mean(afternoons.depth) > 400, `a deeper mixed layer over the high ground (${mean(afternoons.depth).toFixed(0)} m)`);
 assert.ok(mean(afternoons.southerly) > 0, 'southerly balanced wind east of the thermal low');

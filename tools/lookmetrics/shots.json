@@ -1,0 +1,80 @@
+{
+  "ref1": {
+    "what": "Ref1 mature cone, close, from the ground (Phase 1 target)",
+    "reference": "docs/tornado-reference/ref1_image.png",
+    "rows": [
+      0.6,
+      0.86
+    ],
+    "centre": [
+      0.43,
+      0.41
+    ],
+    "skyLeft": [
+      0.04,
+      0.16
+    ],
+    "skyRight": [
+      0.74,
+      0.9
+    ],
+    "samples": 12,
+    "captureFrame": {
+      "rows": [
+        0.6,
+        0.86
+      ],
+      "centre": [
+        0.5,
+        0.5
+      ],
+      "skyLeft": [
+        0.04,
+        0.2
+      ],
+      "skyRight": [
+        0.8,
+        0.96
+      ]
+    }
+  },
+  "ref1sweep": {
+    "what": "Ref1 cone, sweep ground shots (Shots.luau 'Ref1 cone / ground N') against Ref1",
+    "reference": "docs/tornado-reference/ref1_image.png",
+    "rows": [
+      0.6,
+      0.86
+    ],
+    "centre": [
+      0.43,
+      0.41
+    ],
+    "skyLeft": [
+      0.04,
+      0.16
+    ],
+    "skyRight": [
+      0.74,
+      0.9
+    ],
+    "samples": 12,
+    "captureFrame": {
+      "rows": [
+        0.6,
+        0.8
+      ],
+      "centre": [
+        0.36,
+        0.36
+      ],
+      "skyLeft": [
+        0.02,
+        0.12
+      ],
+      "skyRight": [
+        0.75,
+        0.95
+      ]
+    }
+  }
+}

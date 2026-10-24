@@ -38,16 +38,19 @@ async function worker(seed) {
   const { captureTruth, aggregateTruth, practicallyPerfectChance } = await import('../js/verification/truth.js');
   const { OUTLOOK, runOutlookMemberDays, combineOutlook, stateFromBytes, membersFor } = await import('../js/forecast/DayOneOutlook.js');
   const { CIG_TIERS, CIG_BOUNDS, contourCig, conditionalCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
+  // Hail and wind as reports, in the runs and in what happened (truth.js captureTruth).
+  const { placesFor } = await import('../server/CountyLayer.js');
   const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, n = world.width * world.height, out = [], issued = [];
   atmosphere.advance(24);   // a day for the storms to get going
   for (let day = 0; day < days; day++) {
     // The morning's outlooks: each run goes as far as the last day it is one of the runs for.
     const bytes = v8.serialize(atmosphere.saveState()), now = world.validHourUtc, runs = [];
-    for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, OLD ? { mesoscale: 0 } : {}));
+    for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, { placesFor, ...(OLD ? { mesoscale: 0 } : {}) }));
     issued[day] = OUTLOOK.days.map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).map(run => run[index]), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : {}) }));
     // What then happened.
     const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;
-    for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations); }
+    const places = placesFor(world);
+    for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations, places); }
     const truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
     // The same day as a Day 3 outlook would give it: one chance, of any severe weather.
     const any = (...fields) => Uint8Array.from({ length: n }, (_, i) => (fields.some(field => truth[field][i]) ? 1 : 0));

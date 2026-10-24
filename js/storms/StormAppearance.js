@@ -33,6 +33,8 @@
 // against the storm's updraught drawing air through an inflow layer SWIRL.inflowDepthM deep.
 import { clamp } from '../scenarios/math.js';
 import { rotatingShare, lineShare, outflowDominance, describeStormMode } from './StormModeEngine.js';
+import { BUDGET } from './StormBudgets.js';
+import { MERGE_GLIDE_KPH } from './StormEngine.js';
 
 const G = 9.81, MS_PER_MPH = 0.44704, M_PER_YD = 0.9144, KPH_PER_KT = 1.852;
 // The wind at the edge of the damage path (EF0, 65 mph), which sets the core's radius from the
@@ -125,6 +127,7 @@ export function buildStormAppearance(storm, environment = storm.environment ?? {
     anvil: { lengthKm: r2(g.anvil.lengthKm), widthKm: r2(g.anvil.widthKm), bearingDeg: r0(g.anvil.bearingDeg), topM: r0(g.anvil.topM),
       mammatus: r2(ramp(intensity, 0.5, 1) * ramp(storm.ageHours, 1, 3)) },
     lightningPerMin: r2(flashRatePerMin(updraughtMs)),
+    life: stormLife(storm),
     tornado: null, funnelAloft: null
   };
   const t = storm.tornado;
@@ -135,6 +138,118 @@ export function buildStormAppearance(storm, environment = storm.environment ?? {
     appearance.funnelAloft = { xKm: appearance.wallCloud.xKm, yKm: appearance.wallCloud.yKm, lengthShare: r2(0.6 * share), radiusM: r0(40 + 120 * share) };
   }
   return appearance;
+}
+
+// Where the storm is in its life, as numbers the game can blend (StormTrack) and draw from. From
+// the updraught budget (StormBudgets.js), which heads for a target it can support:
+//   trend = (target - w) / max(deadMs, w), so target = w + trend * max(deadMs, w).
+//   growth: how built-up the storm is against what it can be now, w / max(target, w), held back
+//     early by the age it takes to grow (two growth time constants): min(w / max(target, w),
+//     age / 2 tau_grow). A new storm starts near 0, one at its potential is 1, a dying one that
+//     has caught its falling target is 1 too (it is all it can be: decay says it is going).
+//   decay: how far it has fallen from its peak toward the updraught that ends it,
+//     (wPeak - w) / (wPeak - deadMs), while it is falling toward a target well below it (ramp
+//     of -trend, 0.3 to 0.8: a storm whose inflow is gone has trend -1; the swings of a healthy
+//     storm's target as the air it feeds on is renewed each half hour stay above about -0.4);
+//     1 when it has gone (a remnant, below).
+//   towering: the growing cumulus tower before the storm has spread out: 1 through the engine's
+//     tower stage (its first 0.3 h) and while growth < 0.5, gone by 1 h of age or growth 0.95.
+//   mergedFrom / splitFrom: the storm that merged into this one, or that it split from, for
+//     EVENT_HOURS (two storm ticks) after it happened.
+export const LIFE = Object.freeze({ towerHours: [0.3, 1], towerGrowth: [0.5, 0.95], fallingTrend: [0.3, 0.8], eventHours: 2 / 12,
+  // An anvil left by a storm that has died thins out over remnantHours, the longer the larger it
+  // was (more ice to sublimate): anvil length 15 km to 300 km.
+  remnantHours: [0.5, 0.75], remnantAnvilKm: [15, 300] });
+
+export function stormLife(storm) {
+  const w = Math.max(0, storm.updraughtMs ?? 0), trend = Number(storm.updraughtTrend) || 0, age = Math.max(0, storm.ageHours ?? 0);
+  const target = Math.max(0, w + trend * Math.max(BUDGET.deadUpdraughtMs, w));
+  const growth = Math.min(w / Math.max(target, w, 1e-6), clamp(age / (2 * BUDGET.growthHours), 0, 1));
+  const peak = Math.max(w, 65 * (storm.peakUpdraftStrength ?? 0));
+  const fall = peak > BUDGET.deadUpdraughtMs ? clamp((peak - w) / (peak - BUDGET.deadUpdraughtMs), 0, 1) : 0;
+  const life = {
+    ageMin: r0(age * 60), growth: r2(growth), trend: r2(clamp(trend, -1, 1)),
+    decay: r2(fall * ramp(-trend, LIFE.fallingTrend[0], LIFE.fallingTrend[1])),
+    coldPool: r2(clamp(storm.coldPoolStrength ?? 0, 0, 1)), organization: r2(clamp(storm.organization ?? 0, 0, 1)),
+    towering: r2(Math.min(1 - ramp(age, LIFE.towerHours[0], LIFE.towerHours[1]), 1 - ramp(growth, LIFE.towerGrowth[0], LIFE.towerGrowth[1]))),
+    fade: 0
+  };
+  if (storm.lastMergedFromId && age - (storm.mergedAtAgeHours ?? -Infinity) <= LIFE.eventHours + 1e-6) life.mergedFrom = storm.lastMergedFromId;
+  if (storm.parentId && age - (storm.splitAtAgeHours ?? -Infinity) <= LIFE.eventHours + 1e-6) life.splitFrom = storm.parentId;
+  return life;
+}
+
+// What a storm leaves for a while after it has gone, from its last appearance, `hours` after:
+// one merged into another glides into it (at the engine's MERGE_GLIDE_KPH, carried along with
+// the storm that took it) for LIFE.eventHours with life.mergeInto; one that died leaves its
+// anvil, drifting with the wind aloft and thinning (life.fade 0 to 1) over LIFE.remnantHours.
+// Everything that needs a living updraught (the tower, rain, hail, outflow, lowerings,
+// lightning) is 0, so the game blends the storm's last frame into it.
+function remnantAppearance(last, hours, lifeHours, { dx, dy, velocity }, mergeInto = null) {
+  const a = structuredClone(last);
+  const move = obj => { for (const [k, v] of Object.entries(obj)) { if ((k === 'xKm' || k === 'yKm') && typeof v === 'number') obj[k] = r2(v + (k === 'xKm' ? dx : dy)); else if (v && typeof v === 'object' && !Array.isArray(v)) move(v); } };
+  move(a);
+  a.eastKph = r2(velocity.east); a.northKph = r2(velocity.north);
+  a.intensity = 0; a.rotating = 0; a.lightningPerMin = 0; a.tornado = null; a.funnelAloft = null; a.precip = null;
+  Object.assign(a.updraft, { speedMs: 0, overshootM: 0, rotation: 0, striation: 0 });
+  a.base.rainFree = 0;
+  Object.assign(a.wallCloud, { loweringM: 0, rotation: 0, strength: 0, tail: 0 });
+  Object.assign(a.inflowBands, { strength: 0, count: 0 });
+  a.rain.intensity = 0; a.rain.wrap = 0;
+  Object.assign(a.hail, { radiusKm: 0, sizeInches: 0 });
+  Object.assign(a.rearFlank, { wrap: 0, strength: 0, clearSlot: 0, downdraftMs: 0 });
+  Object.assign(a.gustFront, { strength: 0, gustMph: 0 });
+  Object.assign(a.shelf, { strength: 0, tiers: 0, detached: 0 });
+  const fade = clamp(hours / lifeHours, 0, 1);
+  a.anvil.mammatus = r2(a.anvil.mammatus * (1 - fade));
+  a.life = { ...a.life, ageMin: r0(a.life.ageMin + hours * 60), growth: 0, trend: -1, decay: 1, coldPool: 0, towering: 0, fade: r2(fade) };
+  delete a.life.mergedFrom; delete a.life.splitFrom;
+  if (mergeInto) a.life.mergeInto = mergeInto;
+  return a;
+}
+
+// The storms of one game frame (server/GameFeed.js, scripts/export-storm-replay.mjs): each
+// living storm's appearance with its precipitation grid, and the remnants of those that have
+// gone (above). `keep(xKm, yKm)` limits them to a place. The last appearance of each storm is
+// remembered against the world, so call this once a storm tick.
+const lastSeen = new WeakMap();
+export function buildStormFeedList(world, precip = new Map(), keep = () => true) {
+  const now = world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0;
+  let seen = lastSeen.get(world);
+  if (!seen) lastSeen.set(world, seen = new Map());
+  const out = [], alive = new Map();
+  for (const storm of world.storms ?? []) {
+    if (storm.active === false) continue;
+    alive.set(storm.id, storm);
+    const a = buildStormAppearance(storm);
+    if (!a) continue;
+    a.precip = precip.get(storm.id) ?? null;
+    const aloft = storm.environment?.wind500 ?? { eastKt: 0, northKt: 0 };
+    seen.set(storm.id, { appearance: a, hourUtc: now, aloftKph: { east: (aloft.eastKt ?? 0) * KPH_PER_KT, north: (aloft.northKt ?? 0) * KPH_PER_KT } });
+    if (keep(a.xKm, a.yKm)) out.push(a);
+  }
+  const ended = new Map((world.stormArchive ?? []).map(r => [r.id, r]));
+  for (const [id, memory] of seen) {
+    if (alive.has(id)) continue;
+    const record = ended.get(id), reason = record?.dissipationReason ?? '';
+    // Time since its last frame (it ended during the tick after it).
+    const hours = now - memory.hourUtc, last = memory.appearance;
+    const mergeInto = reason.startsWith('merged-into-') ? reason.slice('merged-into-'.length) : null, keeper = mergeInto && alive.get(mergeInto);
+    const lifeHours = mergeInto ? LIFE.eventHours : LIFE.remnantHours[0] + (LIFE.remnantHours[1] - LIFE.remnantHours[0]) * ramp(last.anvil.lengthKm, LIFE.remnantAnvilKm[0], LIFE.remnantAnvilKm[1]);
+    if (!record || reason === 'left-domain' || (mergeInto && !keeper) || hours > lifeHours + 1e-6) { seen.delete(id); continue; }
+    const aloft = memory.aloftKph;
+    let move = { dx: aloft.east * hours, dy: -aloft.north * hours, velocity: aloft };
+    if (keeper) {
+      // Carried with the storm that took it in, and gliding toward it at MERGE_GLIDE_KPH.
+      const v = keeper.velocityKph ?? { east: 0, north: 0 }, carryX = v.east * hours, carryY = -v.north * hours;
+      const gx = keeper.positionKm.x - carryX - last.xKm, gy = keeper.positionKm.y - carryY - last.yKm;
+      const share = Math.min(1, MERGE_GLIDE_KPH * hours / Math.max(Math.hypot(gx, gy), 1e-6));
+      move = { dx: carryX + gx * share, dy: carryY + gy * share, velocity: v };
+    }
+    const r = remnantAppearance(last, hours, lifeHours, move, mergeInto);
+    if (keep(r.xKm, r.yKm)) out.push(r);
+  }
+  return out;
 }
 
 // The tornado's look while it is down.

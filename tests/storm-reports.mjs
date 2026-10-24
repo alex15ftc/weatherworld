@@ -39,7 +39,10 @@ const entry = today.tornadoes[0];
 assert.ok(entry.ended && entry.points.length === 13, 'the touchdown point and one each tick, then ended');
 assert.equal(today.reports.filter(r => r.type === 'tornado').length, 1, 'a tornado is reported once');
 const hail = today.reports.filter(r => r.type === 'hail');
-assert.equal(hail.length, 1, 'one hail report from the town for the storm'); assert.equal(hail[0].size, 200); assert.equal(hail[0].office, 'TST');
+// The town under the core reports the core's size (2.2 in, reported as 2 in); anyone else along
+// the way reports what fell where they were, never more than the core's.
+assert.equal(hail.filter(r => r.location === 'Testville').length >= 1 && hail.find(r => r.location === 'Testville').size, 200, 'the town under the core reports its size');
+assert.ok(hail.every(r => r.size >= 100 && r.size <= 200 && r.office === 'TST'), JSON.stringify(hail.map(r => r.size)));
 assert.ok(today.reports.some(r => r.type === 'wind' && r.measured), 'a big town close by measures the gust');
 assert.deepEqual(world.stormHistory, [{ id: 'old' }], 'within the day the history stays');
 

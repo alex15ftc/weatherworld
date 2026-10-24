@@ -98,9 +98,10 @@ export function buildRadarScene(world) {
   return assembleRadarScene(inputs, inputs.storms.map(input => buildStormEcho(input)));
 }
 
-// One storm's precipitation (PrecipitationField.js). shared: in memory other threads can read.
-export function buildStormEcho({ storm, top, freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh }, { shared = false } = {}) {
-  return buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh }, { shared });
+// One storm's precipitation (PrecipitationField.js). shared: in memory other threads can read;
+// the other options (stride, leastResKm, fine) give a coarser field for a quick look.
+export function buildStormEcho({ storm, top, freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh }, options = {}) {
+  return buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh }, options);
 }
 
 export function radarSceneInputs(world) {
@@ -156,11 +157,11 @@ export function radarSceneInputs(world) {
     const motion = { u: (storm.velocityKph?.east ?? 0) / 3.6, v: (storm.velocityKph?.north ?? 0) / 3.6 };
     // Echo tops reach the equilibrium level (plus overshoot) in vigorous storms.
     const updraft = clamp(Math.max(Number(storm.updraftStrength) || 0, (Number(storm.intensity) || 0) * 1.3), 0, 1);
-    const top = envSample(env, env.top, x, y) * (0.6 + 0.48 * updraft), freezing = envSample(env, env.freezing, x, y);
+    const top = envSample(env, env.top, x, y) * (0.6 + 0.48 * updraft), freezing = envSample(env, env.freezing, x, y), minus20 = envSample(env, env.minus20, x, y);
     // The wind through the storm's depth, relative to the storm: what carries its rain.
     const su = new Float32Array(WIND_PROFILE_LEVELS), sv = new Float32Array(WIND_PROFILE_LEVELS);
     for (let k = 0; k < WIND_PROFILE_LEVELS; k++) { envWindAt(env, x, y, k * WIND_PROFILE_STEP_M, wind); su[k] = wind.u - motion.u; sv[k] = wind.v - motion.v; }
-    storms.push({ storm, x, y, motion, top, freezing, su, sv, ...stormMoisture(world, x, y), seed: hashString(String(storm.id)), weight: clamp(Number(storm.intensity) || 0, 0, 1) });
+    storms.push({ storm, x, y, motion, top, freezing, minus20, su, sv, ...stormMoisture(world, x, y), seed: hashString(String(storm.id)), weight: clamp(Number(storm.intensity) || 0, 0, 1) });
   }
 
   const validHourUtc = Number(world.stormEngine?.validHourUtc ?? world.validHourUtc), localHour = mod24(validHourUtc - 6);
@@ -502,6 +503,8 @@ function structureValue(kind, heights, echoes, count, terrainM, freezingM, minus
   const meshIn = 2.54 * Math.sqrt(shi) / 25.4;
   return meshIn >= STRUCTURE.leastMeshIn ? meshIn : 0;
 }
+// MESH (in) from a column of linear Z at heights (m above the ground), as the mosaic works it out.
+export const meshInches = (heights, echoes, count, freezingM, minus20M) => structureValue('mesh', heights, echoes, count, 0, freezingM, minus20M);
 
 // ---------------------------------------------------------------------------
 // Volume sampling: linear Zh, Zv (for ZDR) and Zh-weighted ρhv at one point.
@@ -522,8 +525,20 @@ function addEcho(out, zh, zdrDb, rho) {
 // A storm's precipitation at one place, as a radar sees it: rain below the freezing level, ice
 // above (which reflects a fifth as well), a bright band where snow melts, hail, and debris.
 function stormHydrometeors(s, lx, ly, z, out) {
-  const e = s.echo, fz = s.freezing;
+  const e = s.echo;
   if (lx < e.minX || ly < e.minY || lx > e.maxX || ly > e.maxY) return;
+  precipitationEcho(e, s.freezing, lx, ly, z, out);
+  const debris = sampleDebris(e, lx, ly, z);
+  if (debris > 0) {
+    const cell = Math.floor((lx + 99) * 7) * 977 + Math.floor((ly + 99) * 7);
+    addEcho(out, DEBRIS_REFLECTIVITY * debris, (gateNoise(cell, s.seed) - 0.5) * 2, 0.25 + 0.35 * gateNoise(cell, s.seed + 0.5) ** 2);
+  }
+}
+// The rain, snow and hail part of that (no debris), added to out's zh, zv, cc and hail (linear
+// Z) at a place lx, ly km from the storm's centre and z m above the ground; fz is the freezing
+// level. Returns the share of the precipitation there that is snow (not yet melted).
+export function precipitationEcho(e, fz, lx, ly, z, out) {
+  let snow = 0;
   if (samplePrecipitation(e, lx, ly, z, tmp)) {
     const frozen = smoothstep(fz - 300, fz + 700, z);
     if (tmp.rain > 0) {
@@ -534,6 +549,7 @@ function stormHydrometeors(s, lx, ly, z, out) {
       const column = frozen > 0 ? liquidAloft(e, lx, ly, z - fz) : 0;
       if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), clamp(0.8 * tmp.sizeMm - 0.5, 0.15, 4.5) + melting, 0.992 - 0.06 * melting);
       if (frozen > 0) addEcho(out, zh * frozen * 0.2 * (1 + 2 * column), 0.3 + 2.8 * column, 0.985 - 0.02 * column);
+      snow = tmp.snow * frozen;
     }
     if (tmp.hail > 0) {
       const wet = 1 - frozen;
@@ -542,11 +558,7 @@ function stormHydrometeors(s, lx, ly, z, out) {
       out.hail += hailZ;
     }
   }
-  const debris = sampleDebris(e, lx, ly, z);
-  if (debris > 0) {
-    const cell = Math.floor((lx + 99) * 7) * 977 + Math.floor((ly + 99) * 7);
-    addEcho(out, DEBRIS_REFLECTIVITY * debris, (gateNoise(cell, s.seed) - 0.5) * 2, 0.25 + 0.35 * gateNoise(cell, s.seed + 0.5) ** 2);
-  }
+  return snow;
 }
 
 // How far a place above the freezing level is inside a strong updraught's column of lofted rain (0-1).

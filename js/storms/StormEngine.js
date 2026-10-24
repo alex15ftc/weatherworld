@@ -174,6 +174,8 @@ function handleSplits(world) {
     const child = createStorm(world, candidate, storm.environment, 'left-moving supercell', storm.id, offset);
     child.ageHours = 0.45; setUpdraught(child, storm.updraughtMs * (0.4 + 0.45 * leftShare)); child.precipitation = storm.precipitation * 0.5; child.organization = storm.organization * 0.85;
     child.mesocycloneStrength = (storm.mesocycloneStrength ?? 0) * 0.85; child.lowRotation = 0; child.occlusion = 0;
+    // When the split happened, in the child's own age (the game shows it for a few frames).
+    child.splitAtAgeHours = child.ageHours;
     storm.children.push(child.id);
     world.stormEngine.totalSplits += 1;
   }
@@ -187,7 +189,7 @@ const LINE_JOIN_OVERLAP = 0.75, LINE_JOIN_DEPTH_KM = 15, MAX_LINE_HALF_LENGTH_KM
 // their neighbours; none reached the 220 km of an MCS.)
 const LINE_GROWTH_SHARE = 0.25, LINE_GROWTH_POOL = 0.4, LINE_GROWTH_FUEL_JKG = 1500;
 // Speed (beyond its own motion) at which a merged cell moves to its new centre.
-const MERGE_GLIDE_KPH = 60;
+export const MERGE_GLIDE_KPH = 60;
 // A storm starts with part of the line organization its forcing implies and grows into the rest.
 const INITIAL_LINE_SHARE = 0.6, LINE_RESPONSE_PER_HOUR = 1;
 const isLine = storm => lineShare(storm) >= 0.5;
@@ -242,6 +244,8 @@ function handleMergersAndOrganization(world, spatialIndex) {
     if (joining) keeper.lineHalfLengthKm = Math.max(joinedHalfLengthKm, keeper.lineHalfLengthKm ?? 0);
     keeper.mergedStormIds ??= []; keeper.mergedStormIds.push(absorbed.id, ...(absorbed.mergedStormIds ?? [])); keeper.mergedStormIds = [...new Set(keeper.mergedStormIds)].slice(-20);
     keeper.lastInteractionHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
+    // The latest storm taken in and when, in the keeper's own age (the game shows it for a few frames).
+    keeper.lastMergedFromId = absorbed.id; keeper.mergedAtAgeHours = keeper.ageHours;
     keeper.interactions ??= { mergerBoost: 0, inflowCompetition: 0, lastType: null };
     keeper.interactions.mergerBoost = clamp((keeper.interactions.mergerBoost ?? 0) + 0.34, 0, 1);
     keeper.interactions.lastType = 'merger';

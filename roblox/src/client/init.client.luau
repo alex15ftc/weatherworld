@@ -70,3 +70,4 @@ end
 
 require(script:WaitForChild("Products")).start()
 require(script:WaitForChild("StormView")).start()
+require(script:WaitForChild("DebugPage")).start()

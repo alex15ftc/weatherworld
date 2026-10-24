@@ -1,7 +1,7 @@
 // Climate tuning, step 3 (docs/ATMOSPHERE-REDESIGN.md): how often severe weather happens.
 // Runs the world with its storms and counts severe reports day by day (a day is 12Z to 12Z),
 // using the same definitions the outlooks are verified with (js/verification/truth.js).
-//   node scripts/activity-report.mjs [days] [--seeds 1,2,3] [--days] [key=value ...]
+//   node scripts/activity-report.mjs [days] [--seeds 1,2,3] [--days] [--json file] [key=value ...]
 // key=value sets a regional-layer setting, qg.key=value one of the outer model's, steer.key=value one of
 // the region steering's; --fixed keeps the region where it starts; --days lists every day.
 // Steps like the server (storms every 5 minutes, the atmosphere every half hour) and looks at the
@@ -27,6 +27,8 @@ if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else awai
 async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { captureTruth, aggregateTruth } = await import('../js/verification/truth.js');
+  // Hail and wind as reports (as the outlooks are verified; truth.js captureTruth).
+  const { placesFor } = await import('../server/CountyLayer.js');
   const { buildStormAppearance, tornadoAppearance } = await import('../js/storms/StormAppearance.js');
   const { worldCategoryFromHazard } = await import('../js/forecast/worldRiskCategories.js');
   // Each tornado (storm and cycle): its look at its peak wind and its rating (EF from the rated wind).
@@ -38,7 +40,7 @@ async function worker(seed) {
   let model = null;
   if (Object.keys(outer).length) { const { QuasiGeostrophicModel } = await import('../js/atmosphere/QuasiGeostrophicModel.js'); model = new QuasiGeostrophicModel({ seed, ...outer }); model.advance(45 * 86400); }
   const atmosphere = new AtmosphereWorld({ seed, regional, steering: args.includes('--fixed') ? false : steer, ...(model ? { model } : {}) }), world = atmosphere.world, n = world.width * world.height;
-  const daily = [];
+  const daily = [], places = placesFor(world);
   for (let day = 0; day < days; day++) {
     const frames = [], seen = new Set(), initiations = [], tornadoesBefore = world.stormEngine.totalTornadoes, plan = atmosphere.steering?.plan ?? null;
     const record = { storms: 0, peak: 0, hailStorms: new Set(), windStorms: new Set(), sigHail: false, sigWind: false, maxHail: 0, maxGust: 0, maxWindEf: -1, wind500: 0, shear: 0, cape: 0, speeds: [], supercell: false, groundSupercell: false, afternoonSupercell: false, tornadoKeys: [] };
@@ -46,7 +48,7 @@ async function worker(seed) {
     for (let step = 0; step < (halfHour ? 48 : 288); step++) {
       if (halfHour) atmosphere.advance(0.5);
       else { atmosphere.advanceStormLayer(1 / 12); if ((step + 1) % 6 === 0) atmosphere.advance(0.5, { advanceStorms: false }); }
-      const frame = captureTruth(world, frames, seen, initiations);
+      const frame = captureTruth(world, frames, seen, initiations, places);
       record.peak = Math.max(record.peak, frame.activeStorms);
       for (const s of world.storms) {
         if (!s.active) continue;
@@ -57,8 +59,10 @@ async function worker(seed) {
         // air lifted into it through little inhibition (under 100 J/kg).
         if ((s.mesocycloneStrength ?? 0) >= 0.3) {
           record.supercell = true;
+          (record.supercellIds ??= new Set()).add(s.id);
           if (!s.elevatedFeed && Math.abs(s.environment?.cin ?? 999) < 100) {
             record.groundSupercell = true;
+            (record.groundSupercellIds ??= new Set()).add(s.id);
             // Any hour counts: players chase day and night.
             const localHour = ((((world.stormEngine.validHourUtc ?? world.validHourUtc) - 5) % 24) + 24) % 24;
             record.supercellBands ??= new Set(); record.supercellBands.add(timeBand(localHour));
@@ -89,8 +93,8 @@ async function worker(seed) {
       hailStorms: record.hailStorms.size, windStorms: record.windStorms.size, maxHail: record.maxHail, maxGust: record.maxGust, maxWindEf: record.maxWindEf,
       severe: any('hail') || any('wind') || any('tornado'), tornado: any('tornado'), sigTornado: any('tornadoSig'), sigHail: any('hailSig'), sigWind: any('windSig'),
       category: ORDER[Math.max(...order)], worldCategory: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))], worldSlightArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('SLGT')).length / n, worldEnhancedArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('ENH')).length / n, slightArea: share('SLGT'), enhancedArea: share('ENH'), cape: record.cape, shear: record.shear, wind500: record.wind500,
-      supercell: record.supercell, groundSupercell: record.groundSupercell, afternoonSupercell: record.afternoonSupercell, supercellBands: [...(record.supercellBands ?? [])],
-      tornadoList: record.tornadoKeys.map(k => { const l = looks.get(k); return { start: l.startHourUtc, ef: l.ef, windEf: l.windEf ?? l.ef, shape: l.shape ?? 'unseen', multi: Boolean(l.multi), wrapped: Boolean(l.wrapped) }; }),
+      supercell: record.supercell, groundSupercell: record.groundSupercell, supercells: record.supercellIds?.size ?? 0, groundSupercells: [...(record.groundSupercellIds ?? [])], afternoonSupercell: record.afternoonSupercell, supercellBands: [...(record.supercellBands ?? [])],
+      tornadoList: record.tornadoKeys.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.startHourUtc, ef: l.ef, windEf: l.windEf ?? l.ef, shape: l.shape ?? 'unseen', multi: Boolean(l.multi), wrapped: Boolean(l.wrapped) }; }),
       // What drives the day's category: the category each hazard alone reaches somewhere, and the
       // highest intensity group each verified with.
       byHazard: Object.fromEntries(['tornado', 'wind', 'hail'].map(h => { let top = 0; for (let i = 0; i < n; i++) { const c = worldCategoryFromHazard(h, truth.observedProbability[h][i], truth.observedCig[h][i]); if (c) top = Math.max(top, ORDER.indexOf(c)); } return [h, { top, cig: Math.max(0, ...truth.observedCig[h]) }]; })),
@@ -106,7 +110,10 @@ async function main() {
     const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), ...settings, ...['--fixed', '--half-hour'].filter(a => args.includes(a))]);
     child.once('message', resolve); child.once('error', reject); child.once('exit', code => { if (code) reject(new Error(`seed ${seed} exited with ${code}`)); });
   })));
-  const all = results.flat(), pct = (a, q) => { const v = [...a].sort((x, y) => x - y); return v[Math.floor(q * (v.length - 1))]; };
+  const all = results.flat();
+  // --json <file>: every day's record, for a closer look.
+  if (flag('--json')) (await import('node:fs')).writeFileSync(flag('--json'), JSON.stringify(all));
+  const pct = (a, q) => { const v = [...a].sort((x, y) => x - y); return v[Math.floor(q * (v.length - 1))]; };
   const share = test => `${Math.round(100 * all.filter(test).length / all.length)}%`;
   console.log(`=== Activity report: ${days} days x seeds ${seeds.join(', ')} = ${all.length} days (${((Date.now() - started) / 1000).toFixed(0)} s), ${JSON.stringify(settings)} ===`);
   if (args.includes('--days')) {

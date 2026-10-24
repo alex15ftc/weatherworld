@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { CALIBRATION, calibrateChance } from '../js/forecast/outlookCalibration.js';
 
 // A hazard or day without points is issued as it is; none means none.
-assert.equal(calibrateChance('day3', 'severe', 37), 37);
+// (Day 3 had no points until 2026-10-23, and was issued as it was.)
+assert.equal(calibrateChance('day2', 'severe', 37), 37);
 assert.equal(calibrateChance('day1', 'tornado', 0), 0);
 assert.equal(calibrateChance('day1', 'tornado', 20, {}), 20);
 // Each fitted curve never falls, and the chances stay chances.

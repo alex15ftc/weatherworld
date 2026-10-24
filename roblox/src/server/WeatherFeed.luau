@@ -1,7 +1,7 @@
 --!strict
 -- Brings the storm frames in and hands them to the players.
 --
--- Source (Workspace attribute StormSource, else "http" when a feed URL is set, else "replay"):
+-- Source (Workspace attribute StormSource; unset or empty: "http" when a feed URL is set, else "replay"):
 --   http    polls the weather server's GET /api/game/v1/frames?after=<seq> every
 --           WEATHER_POLL_SECONDS (12 of the 500 requests a minute a game server may make).
 --           Needs HTTP requests allowed (Experience Settings > Security) and a URL the game
@@ -173,6 +173,10 @@ end
 function WeatherFeed.start()
 	local source = workspace:GetAttribute("StormSource")
 	local url = (workspace:GetAttribute("WeatherFeedUrl") :: string?) or Config.WEATHER_FEED_URL
+	-- (An empty StormSource counts as unset: the live feed when there is a URL.)
+	if source == "" then
+		source = nil
+	end
 	if source == "http" or (source == nil and url ~= "") then
 		task.spawn(runHttp, (string.gsub(url, "/+$", "")))
 	else

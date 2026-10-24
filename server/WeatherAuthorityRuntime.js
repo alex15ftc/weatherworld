@@ -16,8 +16,9 @@ import { buildRadarScene, scanRadarTilt, buildRadarMosaic, MOSAIC_KINDS } from '
 import { radarSitesFor } from './RadarSites.js';
 import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { GameFeed } from './GameFeed.js';
-import { countiesFor } from './CountyLayer.js';
+import { countiesFor, placesFor } from './CountyLayer.js';
 import { logStormTick } from '../js/reports/stormLog.js';
+import { createDayRecorder } from './DayReviewRecorder.js';
 import { LightningLog } from '../js/storms/Lightning.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
 
@@ -44,8 +45,12 @@ export class WeatherAuthorityRuntime {
   // large-scale weather develop for spinUpDays, which takes about a second per day.
   // radarPool (RadarPool.js): threads the radar is worked out on; without one it is worked out here.
   // regional: settings for the regional layer (RegionalAtmosphere's), for audits that try them.
-  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null, regional = {} } = {}) {
+  // dayReviews: { dir, png, keepDays } to write a review package for each finished day
+  // (DayReviewRecorder.js), or null; dayReviewOutlook(from, to) gives it that day's Day 1 outlook.
+  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null, regional = {}, dayReviews = null } = {}) {
     this.regionalSettings = regional;
+    this.dayReviews = dayReviews;
+    this.dayReviewOutlook = null;
     this.authorityInstance = crypto.randomBytes(8).toString('hex');
     this.radarPool = radarPool;
     // Radar products asked for lately (cache key -> when), made ready again as each new scan comes in.
@@ -88,11 +93,13 @@ export class WeatherAuthorityRuntime {
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.gameFeed?.restart(world, this.lastStormAdvancedAt);
     // The day's storm reports and tornado tracks (js/reports/stormLog.js), after each storm tick.
-    const layer = countiesFor(world), places = { layer, milesPerKm: layer ? layer.miles / (world.width * world.cellSizeKm) : 0.621371 };
+    const places = placesFor(world);
     this.places = places;
     // The last half hour's lightning (js/storms/Lightning.js), added to after each storm tick.
     this.lightning = new LightningLog({ seed: engine.seed });
-    engine.onStormTick = () => { logStormTick(world, places); this.lightning.record(world); };
+    // The meteorologist's day packages (DayReviewRecorder.js), from the next 12Z on.
+    this.dayReview = this.dayReviews ? createDayRecorder({ engine, outDir: this.dayReviews.dir, places, png: Boolean(this.dayReviews.png), keepDays: this.dayReviews.keepDays ?? null, outlookFor: (from, to) => this.dayReviewOutlook?.(from, to) ?? null }) : null;
+    engine.onStormTick = () => { logStormTick(world, places); this.lightning.record(world); this.dayReview?.stormTick(); };
   }
 
   reset(seed = this.seed) {
@@ -116,6 +123,7 @@ export class WeatherAuthorityRuntime {
     for (let step = 0; step < Math.round(amount / ATMOSPHERE_STEP_HOURS); step++) {
       this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS);
       this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep });
+      this.dayReview?.afterStep();
     }
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.gameFeed.restart(world);
@@ -168,6 +176,7 @@ export class WeatherAuthorityRuntime {
         const ahead = (world.stormEngine?.validHourUtc ?? world.validHourUtc) - world.validHourUtc;
         if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) { this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS); this.gameFeed.capture(world, now); }
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
+        this.dayReview?.afterStep();
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.
       if (steps === MAX_STEPS_PER_TICK) this.gameFeed.restart(world, now);

@@ -1,0 +1,62 @@
+{
+  "name": "StormLab",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "StormLab": {
+        "$className": "Folder",
+        "Sim": {
+          "$path": "src/stormlab/shared/Sim"
+        },
+        "LabConfig": {
+          "$path": "src/stormlab/shared/LabConfig.luau"
+        },
+        "VisualTests": {
+          "$path": "src/stormlab/shared/VisualTests.luau"
+        },
+        "Data": {
+          "$path": "src/stormlab/data"
+        }
+      },
+      "Shared": {
+        "$className": "Folder",
+        "Weather": {
+          "$path": "src/shared/Weather"
+        }
+      }
+    },
+    "ServerScriptService": {
+      "StormLab": {
+        "$path": "src/stormlab/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "StormLab": {
+          "$path": "src/stormlab/client"
+        }
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future",
+        "GlobalShadows": true
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
+      }
+    },
+    "MaterialService": {
+      "CloudMatte": {
+        "$className": "MaterialVariant",
+        "$properties": {
+          "BaseMaterial": "SmoothPlastic",
+          "RoughnessMap": "rbxassetid://95712331838936",
+          "StudsPerTile": 64
+        }
+      }
+    }
+  }
+}

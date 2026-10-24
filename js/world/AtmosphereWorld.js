@@ -92,7 +92,9 @@ export class AtmosphereWorld {
       model: { params: model.params, time: model.time, history: model.history, q1: model.q1, q2: model.q2, psi1: model.psi1, psi2: model.psi2, moisture: model.moisture, ascentCooling: model.ascentCooling, surfaceTheta: model.surfaceTheta, surfaceMoisture: model.surfaceMoisture },
       regional: { params: regional.params, hourUtc: regional.hourUtc, sunsetHour: regional.sunsetHour, midReference: regional.midReference, gulfSupply: regional.gulfSupply, originX: regional.origin.x, originY: regional.origin.y, homeY: regional.homeY, slideMs: regional.slideMs, slideNorthMs: regional.slideNorthMs, geography: { offset: regional.geographyOffset, target: regional.geographyTarget, rate: regional.geographyRate }, arrays: arraysOf(regional) },
       steering: this.steering?.saveState() ?? null,
-      ascent: this.ascent, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled,
+      // (The last step's 850 mb potential temperature: the next step's warm-air lift is worked out
+      // from its change, and that lift works on the cap. Saved since 2026-10-23.)
+      ascent: this.ascent, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled, previousTheta850: this.previousTheta850 ?? null,
       world: snapshotWorld(this.world, { full: !forecast })
     };
   }
@@ -114,6 +116,7 @@ export class AtmosphereWorld {
     const world = hydrateWorld(state.world, restored.world.runtime);
     regional.world = restored.world = world;
     restored.ascent = state.ascent; restored.stormAir = state.stormAir; restored.stormsEnabled = state.stormsEnabled;
+    if (state.previousTheta850) restored.previousTheta850 = state.previousTheta850;
     restored.boundaries = world.mesoscale?.boundaries ?? [];
     return restored;
   }

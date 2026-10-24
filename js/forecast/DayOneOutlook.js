@@ -113,9 +113,12 @@ export function stateFromBytes(bytes) { return v8.deserialize(Buffer.from(bytes)
 // One member: the saved world run ahead with its storms' chances drawn afresh, reported one
 // outlook day at a time (the first is what is left of the day in progress; a new one starts
 // at each 12Z). `state` must be this member's own copy (see stateFromBytes).
-export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale } = {}) {
+// placesFor(world): the towns its hail and wind reports are made from (server/CountyLayer.js), so
+// that a run's hail and wind are reports, as the outlook is verified; without it, the storms' cores.
+export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
+  const places = placesFor?.(atmosphere.world) ?? null;
   const world = atmosphere.world, n = world.width * world.height, total = () => world.stormEngine?.totalTornadoes ?? 0;
   world.evolution = { ...(world.evolution ?? {}), config: { ...(world.evolution?.config ?? {}), seed: `${state.seed}|outlook|${member}` } };
   // No radar is drawn from a forecast run, so its storms keep no picture of themselves; and it
@@ -152,7 +155,7 @@ export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, ups
   for (let hour = 0; hour < hours - 1e-9; hour += OUTLOOK.stepHours) {
     day ??= open();
     atmosphere.advance(OUTLOOK.stepHours);
-    const { result, byHour, seen } = day, known = seen.size, frame = captureTruth(world, day.frames, seen, day.initiations), utc = Math.floor(((world.validHourUtc % 24) + 24) % 24);
+    const { result, byHour, seen } = day, known = seen.size, frame = captureTruth(world, day.frames, seen, day.initiations, places), utc = Math.floor(((world.validHourUtc % 24) + 24) % 24);
     byHour.storms[utc] += seen.size - known;
     // Each hour's counts (2026-10-20; until then whether there was any, which on a busy day put
     // every hour at the top and the outlook's window over the whole day): new storms, severe
@@ -166,8 +169,12 @@ export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, ups
       result.maxHailInches = Math.max(result.maxHailInches, hail); result.maxGustMph = Math.max(result.maxGustMph, gust);
       if (storm.tornado?.onGround) result.strongestTornadoMph = Math.max(result.strongestTornadoMph, storm.tornado.windSpeedMph ?? 0);
       for (const t of storm.tornadoHistory ?? []) if (t.startedHourUtc >= day.startHour) result.strongestTornadoMph = Math.max(result.strongestTornadoMph, t.peakWindSpeedMph ?? 0);
-      if (hail >= 1 || gust >= 58 || storm.tornado?.onGround) severe++;
     }
+    // When the severe weather comes: the places with hail, wind or a tornado reported in this step
+    // (2026-10-23; until then the severe storms going at each step, which night storms that kept a
+    // severe core for hours outweighed, so a day whose severe weather came at 6-9 pm read "most
+    // likely between 06Z and 09Z").
+    for (let i = 0; i < n; i++) if (frame.hail[i] || frame.wind[i] || frame.tornado[i]) severe++;
     byHour.severe[utc] += severe;
     if (day.steps++ === 0) result.ongoing = world.storms.filter(storm => storm.active && storm.intensity >= 0.3).length;
     const last = hour + OUTLOOK.stepHours >= hours - 1e-9, dayEnds = hoursToDayEnd(world.validHourUtc) > 24 - 1e-6;
@@ -202,7 +209,9 @@ function describeEnvironment(world, stormy = null) {
     shear.push(cell.derived.bulkShear ?? 0); helicity.push(cell.derived.srh ?? 0); base.push(cell.derived.lclAgl ?? 0);
   });
   return {
-    moistShare: moist / n, cape: quantile(cape, 0.9), capeMedian: quantile(cape, 0.5), cin: quantile(cin, 0.5), shear: quantile(shear, 0.5), helicity: quantile(helicity, 0.9),
+    // (Shear in the better part of that air, as the CAPE is: the median, until 2026-10-23, read
+    // "weak (25-35 kt)" on days whose storms had 40-52 kt.)
+    moistShare: moist / n, cape: quantile(cape, 0.9), capeMedian: quantile(cape, 0.5), cin: quantile(cin, 0.5), shear: quantile(shear, 0.75), helicity: quantile(helicity, 0.9),
     dewpoint: quantile(dewpoint, 0.5), cloudBaseM: quantile(base, 0.5), aloftKt: Math.hypot(u, v) / n, aloftFromDeg: (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360
   };
 }
@@ -464,7 +473,7 @@ export function writeDiscussion(o) {
       const shear = e.shear >= 50 ? 'strong' : e.shear >= 35 ? 'sufficient' : 'weak';
       // (The cap where the runs' storms are: strong there means they form only where lift breaks it.)
       const cap = !severe ? '' : e.cin >= 100 ? 'A strong cap covers the warm air; storms will form only where fronts, the dryline or outflow lift the air through it.' : e.cin >= 40 ? 'A cap will limit storms to where the lift is strongest.' : 'There is little cap, so storms should form readily.';
-      lines.push(`In the moist air, ${instability} instability (MLCAPE to ${Math.round(e.cape / 500) * 500} J/kg) and ${shear} deep-layer shear (${Math.round(e.shear / 5) * 5} kt) will ${e.shear >= 35 ? 'support organized storms, including supercells' : 'favour short-lived storms and clusters'}. ${cap}`);
+      lines.push(`In the moist air, ${instability} instability (MLCAPE to ${Math.round(e.cape / 500) * 500} J/kg) and ${shear} deep-layer shear (${Math.round(e.shear / 5) * 5} kt) ${severe ? `will ${e.shear >= 35 ? 'support organized storms, including supercells' : 'favour short-lived storms and clusters'}` : `would ${e.shear >= 35 ? 'support organized storms' : 'favour short-lived storms'}, but storms are not expected to become severe`}. ${cap}`);
     }
     lines.push('');
   }
@@ -474,7 +483,10 @@ export function writeDiscussion(o) {
     // Timing from the period's start: new storms (the first tenth of them), and the fewest hours
     // holding 60% of the severe storms, and of the tornadoes.
     const from = Math.round(((o.validFromHourUtc ?? start) % 24 + 24) % 24);
-    const begin = spanOf(o.timing.storms, from, 0.1, 0.9), tornado = spanOf(o.timing.tornado, from), worst = densestSpan(o.timing.severe, from, 0.5);
+    // (When storms develop: the busiest stretch of new storms. Until 2026-10-23 the first tenth of them,
+    // which a few left over from the night reached at the period's start: "from about 12Z" on days
+    // whose storms came late at night.)
+    const begin = densestSpan(o.timing.storms, from, 0.6), tornado = spanOf(o.timing.tornado, from), worst = densestSpan(o.timing.severe, from, 0.5);
     const going = (o.ongoing ?? 0) >= 2;
     if (begin || going) lines.push(`${going ? `Storms are ongoing at the start of the period${begin ? `, and more are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)})` : ''}` : `Storms are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)})`}${worst ? `, with severe weather most likely between ${clock(worst.first)} and ${clock(worst.last + 1)}` : ''}.`);
     const where = hazard => partAt(o.top[hazard].x, o.top[hazard].y);
