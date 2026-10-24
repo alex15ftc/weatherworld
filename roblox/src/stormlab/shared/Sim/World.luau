@@ -594,8 +594,12 @@ function World.labScene(self: World, scene: any, site: { x: number, y: number })
 	-- its rain shafts, cold pool and anvil, as a few minutes of the world
 	local g, i = self.genesis, self.initiation
 	self.genesis, self.initiation = false, false
-	for _ = 1, 120 do
+	for i = 1, 120 do
 		self:step(5)
+		local y = (self :: any).yield
+		if y and i % 4 == 0 then
+			y()
+		end
 	end
 	self.genesis, self.initiation = g, i
 	p.t = 0
@@ -628,9 +632,16 @@ function World.spinUp(self: World, seconds: number, chunk: number?)
 	self.genesis = false
 	local c = chunk or 5
 	local t = 0
+	local n = 0
 	while t < seconds do
 		self:step(c)
 		t += c
+		n += 1
+		-- (a host that must not block for long - the Roblox server - sets world.yield)
+		local y = (self :: any).yield
+		if y and n % 4 == 0 then
+			y()
+		end
 	end
 	self.genesis = g
 	self.time = 0

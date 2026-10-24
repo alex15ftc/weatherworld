@@ -88,7 +88,10 @@ export function describeStormMode(storm, environment = storm.environment ?? {}) 
 // turn, almost nothing where it turns strongly clockwise, which is the usual tornado day.
 // (Until 2026-10-20 this read 0-1 km helicity, about 50 by day where the 0-3 km is 140-200: day
 // splits came out even, and left-movers held 34-40% of all supercell time.)
-const SPLIT = { ageHours: [0.6, 3.2], shearKt: 35, capeJkg: 850, straightHelicity: [50, 200], leastShare: 0.25 };
+// (straightHelicity [50, 200] to [25, 150] on 2026-10-24: left-movers held 20% of supercell time, 9% of
+// all storm time, more than discrete right-movers; a strong left-mover needs a nearly straight low-level
+// hodograph. Now 10% of supercell time; tornado days unchanged, 78% on 40 days.)
+const SPLIT = { ageHours: [0.6, 3.2], shearKt: 35, capeJkg: 850, straightHelicity: [25, 150], leastShare: 0.25 };
 export function shouldSplitStorm(storm, environment) {
   return !storm.hasSplit && !storm.leftMover && storm.ageHours >= SPLIT.ageHours[0] && storm.ageHours <= SPLIT.ageHours[1] &&
     rotatingShare(storm) >= 0.5 && lineShare(storm) < 0.3 &&

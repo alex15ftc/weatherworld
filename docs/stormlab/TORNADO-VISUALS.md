@@ -66,3 +66,49 @@ The **debug views** are geometry, condensation heatmap, centreline + profile con
 **Counters:** client ms/fps, tornado LOD counts, meshes and ms, cloud parts and ms, dust, debris, active flashes, and visual instances.
 
 Offline: `luau --codegen tools/stormlab/test_scenes.luau` prints each scene's tornado (vc, rc, swirl, condensation by height, nearby rain) and its profile weights.
+
+## Funnel technique comparison (prototype)
+
+The aim is to judge rendering approaches side by side before building any further. `client/Render/FunnelCompare` draws two alternatives to the mesh funnel (A). Both read the same smoothed state, the same condensation physics and the same scene light as A, so only the technique differs:
+
+- **B: layered noise-textured ribbons.** Camera-facing Beams stacked up the axis, in three layers (streaky body, fibrous middle, soft haze) scrolling upward at different speeds. Width comes from the condensed radius; opacity from the cloud optical depth.
+- **C: particle condensation.** Soft puffs fill the condensed tube band by band. They are locked to invisible parts that turn at the vortex's angular speed, so the puffs orbit with the flow. Roblox stops drawing particles ~800 studs out, so C is drawn scaled toward the camera beyond 700 studs.
+
+**Toggle:** F4 panel "compare" button, or **C** while the panel is open.
+
+| Mode | What you see |
+|---|---|
+| off | A only |
+| A \| B \| C | B and C as copies either side of the real tornado (A), square to the view: B right, C left |
+| B only | B at the real tornado, with the real dust and debris; A hidden |
+| C only | C at the real tornado; A hidden |
+
+There is no LOD, and only one tornado is drawn (the one nearest the focus). The panel's counters include the comparison's cost as `FunnelCompare` in the per-module ms.
+
+**First comparison result** (stovepipe scene, daylight, 2026-10-25):
+
+| Approach | Result |
+|---|---|
+| A (mesh) | The only one that reads as a solid condensation funnel: clean silhouette from cloud base to ground, dust at the foot. |
+| B (ribbons) | Weakest. Thin dark strands with seams between segments. Sprite sheets tile as beads; the single smoke-column texture is too narrow to fill the body. It would need a purpose-made tileable noise texture. |
+| C (particles) | Turbulent, lumpy, smoky detail and motion that A lacks, but no coherent edge. It reads as smoke rather than a condensed funnel. |
+
+Suggested direction: a hybrid. A keeps the form; C-style particles add breakup at the edges, tip and base.
+
+**Second round** (2026-10-25), against the user's target clip: a soft grey cone flaring into a broad soft lowering, no hard outline anywhere.
+- **D, billboard volume (added).** About 30 heights × (a centre card plus a ring of 5 turning with the flow), soft round cards, about 180 BillboardGuis. Card size comes from the condensation radius *without* the profile cap, so the funnel flares into the lowering as the physics gives it (up to 4 core radii). Each card carries part of the optical depth, so the stack is opaque in the middle and soft at every edge. It is the closest to the target and costs ~1 ms (A: ~2.5 ms). Billboards draw at any distance.
+- **B with the game's `funnelCore` / `funnelWisp` textures.** Still poor: stacked horizontal slabs with seams.
+- **Modes now:** off → A | B | C → A | D → B only → C only → D only.
+
+## Default funnel: billboard volume (`client/Render/TornadoCards`, 2026-10-25)
+
+Option D became the default funnel style. The mesh (`Render/TornadoVisuals`) stays as the F4 "funnel: mesh" style and as A in the comparison. The technique matches what another Roblox storm developer described (~200-300 BillboardGuis, sized in studs from radius and height, client-side, sun dot-product shading, LOD, positions set directly).
+
+- **Cards:** 32 heights × (centre + ring of 6) = 224 per tornado, at most 2 tornadoes (the nearest). The ring turns with the flow at its radius.
+- **Size:** condensed radius up to 4 core radii (no envelope cap), so the funnel flares into the lowering. Where the column is narrower than the layer spacing, cards are drawn taller than wide (≥ 1.4 × spacing), so the tip stays continuous and streaky.
+- **Shading:** sunlight left after the chord of funnel between the card and the sunward surface (exp(-0.02/m × path), longer when the sun is low), and less sky light deeper inside. Colour comes from SceneLight (storm shading, local flashes); rain between the camera and the funnel greys it.
+- **LOD:** no work while the funnel is off screen; every other height beyond 12 km; size/opacity/colour at 1/4 frame rate (1/6 beyond 4 km), positions every frame.
+- **Cost:** ~0.2 ms for 224 cards (TornadoCards module ~0.6 ms incl. writes) vs ~2.5 ms for the mesh.
+- **Seen in Studio:** stovepipe (full height, flared), cone (soft cone tapering to a continuous tip ~450 m up, dust below).
+- **Not done yet:** the mesh's debug overlays (LOD readout, centreline …) only work in mesh style; the multi-vortex sub-vortices aren't drawn as cards yet. The wedge scene camera (now 4 km) is still poorly framed: the storm's own tower pieces sit in front.
+- **Teardrops removed (2026-10-25):** `Vortex.deficit` / `condensationRadius` no longer let the near-ground swirl jet deepen the pressure deficit (the jet stays in the wind field). Pressure in the thin surface layer is set by the swirl above it, so condensation now shrinks steadily toward the ground instead of reappearing at the ground under a gap. Cone: continuous to ~250 m. Stovepipe: continuous to the ground. Vortex tests pass.

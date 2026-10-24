@@ -149,6 +149,9 @@ local function loadScenario(name: string)
 	local t0 = os.clock()
 	data = Json.decode(require(module))
 	world = World.new(data)
+	world.yield = function() -- (spin-up and lab scenes yield between chunks: no script timeout)
+		task.wait()
+	end
 	world.genesis = settings.genesis
 	world.initiation = settings.initiation
 	world:spinUp(LabConfig.SPIN_UP_SECONDS)

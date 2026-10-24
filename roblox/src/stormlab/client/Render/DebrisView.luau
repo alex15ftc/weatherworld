@@ -153,6 +153,16 @@ function DebrisView.new(ctx: any): any
 						p.waitDt = 0
 					end
 				end
+				-- a flying piece far from the camera steps every other frame with twice the time (a
+				-- few pixels on screen; it halves the wind evaluations)
+				if not wasResting and stepDt > 0 and (p.x - camX) ^ 2 + (p.y - camY) ^ 2 > 800 * 800 then
+					p.waitDt = (p.waitDt or 0) + stepDt
+					p.odd = not p.odd
+					stepDt = if p.odd then 0 else p.waitDt
+					if stepDt > 0 then
+						p.waitDt = 0
+					end
+				end
 				if stepDt > 0 then
 					-- (two substeps when the time scale is high)
 					local n = if stepDt > 0.12 then 2 else 1

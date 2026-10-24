@@ -650,7 +650,10 @@ function TV.new(ctx: any): any
 		self.frame += 1
 		local t0 = os.clock()
 		adapter:update(dt)
-		local show = ctx.state.show.funnel ~= false
+		-- (the mesh draws when the funnel style is "mesh", or as A in the comparison; the default style
+		-- "cards" is Render/TornadoCards. Hidden in the comparison's B/C/D-only modes.)
+		local meshStyle = (ctx.state.funnelStyle or "cards") == "mesh" or (ctx.state.compare or "off") ~= "off"
+		local show = ctx.state.show.funnel ~= false and meshStyle and not ctx.state.hideFunnelA
 		local dbg = ctx.state.debug or {}
 		local camPos = ctx.camera.CFrame.Position
 		local camX, camY, camZ = ctx:simCamera()

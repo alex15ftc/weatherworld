@@ -311,7 +311,10 @@ function StormPlan.plan(s: any, Storm: any, CloudKit: any, detail: number): { an
 					local hz = zb + (0.25 + 0.2 * i) * (base - zb)
 					local p = v3(px, py, hz)
 					local cf = CFrame.lookAt(p, p + Vector3.new(fx, 0, -fy))
-					add("base", cf, Vector3.new(w * (0.45 - 0.08 * i), (base - hz) + 200, seg * 1.3), Util.cloudColour(0.5, lit), nil)
+					local tail = add("base", cf, Vector3.new(w * (0.45 - 0.08 * i), (base - hz) + 200, seg * 1.3), Util.cloudColour(0.5, lit), nil)
+					if tail then
+						tail.tail = true -- (kept in the billboard cloud style: Render/StormCards)
+					end
 				end
 			end
 		end

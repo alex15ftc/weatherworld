@@ -444,6 +444,11 @@ function Storm.step(s: Storm, dt: number, world: any)
 	local env, cp = world.env, world.coldPool
 	local ix, iy = inflowPoint(s, env)
 	local ru = s.Ru
+	-- the storm-relative low-level inflow (500 m): clients draw the inflow band along it
+	do
+		local eu, ev = env:windAt(s.x, s.y, 500)
+		s.srU, s.srV = eu - s.u, ev - s.v
+	end
 
 	-- updraft
 	local inhib = 1
@@ -554,7 +559,11 @@ function Storm.step(s: Storm, dt: number, world: any)
 	local tM = tS - mix * dF
 	local tdM = math.min(tM, tdS + mix * dF * 0.35 * mF)
 	local lclMix = 125 * (tM - tdM)
-	s.lowering = math.clamp(s.base - lclMix, 0, 0.6 * s.base) * s.rot
+	-- plus, near the rotation centre, the low-level mesocyclone's pressure deficit: a Rankine
+	-- vortex's central deficit rho v^2 lowers the condensation level by dp / (rho g) = v^2 / g
+	-- (Atkins et al. 2013: extra lowering under a >10 hPa deficit; docs/stormlab/RESEARCH-WALLCLOUD-HV.md)
+	local dynLower = s.vlow * s.vlow / 9.81
+	s.lowering = math.clamp(s.base - lclMix + dynLower, 0, 0.6 * s.base) * s.rot
 	s.wallBase = s.base - s.lowering
 
 	-- anvil: spreads downstream at the anvil-level storm-relative wind
@@ -794,6 +803,7 @@ function Storm.snapshot(s: Storm): { [string]: any }
 		shear06 = s.shear06, lcl = s.lcl, rkw = s.rkw, loading = s.loading, efficiency = s.efficiency,
 		surfaceBased = s.surfaceBased, systemId = s.systemId,
 		upperU = s.upperU, upperV = s.upperV, profVersion = s.profVersion,
+		srU = s.srU, srV = s.srV,
 	}
 	return snap
 end

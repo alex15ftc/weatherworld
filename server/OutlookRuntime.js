@@ -3,10 +3,11 @@
 // all of them when the server first has a world. The members are run by the forecast pool's
 // threads (ForecastPool.js), a few at a time, from a copy of the world taken at issue time; the
 // live world keeps running meanwhile. One run serves every outlook that is due, and each
-// member reports each outlook day separately. Fewer members go into the later days
-// (OUTLOOK.memberShare: 8 for Day 1, 4 for Day 2, 2 for Day 3), so each member runs only as
-// far as the last day it is in; the longest runs are started first.
-import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd, membersFor } from '../js/forecast/DayOneOutlook.js';
+// member reports each outlook day separately. Every member goes into Day 1 and half of them into Day 2
+// and Day 3 (OUTLOOK.memberShare), but only the days in OUTLOOK.stormShare are run with storms (8 for
+// Day 1, 4 for Day 2, none for Day 3): the Day 2 members run on to Day 3 with the atmosphere alone, and
+// Day 3 comes from the ingredients for storms. The longest runs are started first.
+import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd, membersFor, stormDaysFor } from '../js/forecast/DayOneOutlook.js';
 import { WORLD_RISK_ORDER } from '../js/forecast/worldRiskCategories.js';
 import { countiesIn, describeRegions } from '../js/forecast/counties.js';
 import { countiesFor } from './CountyLayer.js';
@@ -58,7 +59,7 @@ export class OutlookRuntime {
     // The copy is taken now, in one go, so every member starts from the same moment.
     const state = shareState(engine.saveState({ forecast: true }));
     // Member 0 runs furthest and is asked for first, so the long runs are not left to the end.
-    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('outlook', state, member, hoursFor(member))));
+    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('outlook', state, member, hoursFor(member), { options: { stormDays: stormDaysFor(member, this.members, lead) } })));
     this.running = { key, due, issuedHourUtc, hours, startedAt: started };
     try {
       const members = await run;

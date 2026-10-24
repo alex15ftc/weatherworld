@@ -112,3 +112,169 @@ The ~30 ms Studio frame is mostly the engine plus the in-process server, not lab
 - Night flash reveal not verified on screen (flashes end before a capture lands).
 - Rope (1), uncondensed (5) and LOD dolly (-) not captured this pass.
 - Dust is ~2 ms at ~270 puffs.
+
+## Billboard storms, step 1 (2026-10-25)
+
+The user asked for the whole storm in the billboard method. The default cloud style is now cards (`client/Render/StormCards`, layout in `CloudParts/CardPlan`, shape rules shared in `CloudParts/StormShape`); F4 "clouds: kit" switches back to the cloud-kit meshes.
+
+- **What is cards:** tower rings up the tilted updraft + billows + top/overshooting dome, the anvil slab (two soft layers), the base (two dense dark layers), the wall cloud (its own anchor turning at the low-level rotation), and the tail cloud. The kit still draws mammatus; shelf clouds and rain shafts are unchanged.
+- **Physical rules:** card sizes from the updraft radius profile, the anvil from anvilLen and the upper-wind direction, the base from Ru(base). No card reaches below the cloud base (the condensation level). Light = albedo × (sky × what the card faces + direct sun × what reaches its sunward surface through the storm, marched) + haze; near lightning recolours cards. 4 × 4 sheets show one frame per card.
+- **Cost:** ~560-620 cards for 2-4 storms; StormCards ~1.8-2.3 ms/frame. Mostly re-plan frames (sun march per card); anchors move with one BulkMoveTo.
+- **Seen:** from ~15 km a soft tower over a dark base. Under the storm: a dark layered lumpy base, a flat wall cloud lowering, the funnel below, rain shafts, a bright horizon gap.
+- **Next:** check the anvil at a distance; spread re-plan work over frames; mammatus, shelf clouds and rain shafts as cards; LOD for many storms; night and flash check.
+
+### Round 2 (2026-10-25)
+- **Tornado scenes:** the cone and stovepipe now condense to the ground. Their cloud bases were too high for their vortex strength (full condensation needs a base under ~2.06 vc²/g). Cone: base 670 / lowering 150 → 23 m radius at the ground, 196 m near the 520 m base. Stovepipe: narrower, stronger mesocyclone (Ru 2600, vlow 30, base 750) → vc 66, rc 51, radius 43-87 m up to 250 m, flaring above 400 m. A violent, tube-like column. The scene labels match.
+- **Storm cards:** lumpier, lighter base (more sky light, less squashed cards); a scud fringe under the base, denser toward the lowering; scud circling the wall cloud on its turning anchor; a raggeder tail cloud; a greyer tower (less contrast). The kit now only draws mammatus.
+- **Server:** scenario spin-up and lab scenes yield between chunks (`world.yield`). On a slow machine the synchronous spin-up hit Roblox's script timeout.
+- **Cost:** lightning now recolours only (no re-layout), at ~15 Hz, and only storms within 30 km of a flash; it was ~19 ms/frame during constant lightning. A new plan is written over several frames (~200 cards/frame).
+
+### Round 3 (2026-10-25): smooth storms + open items
+- **Smooth motion:**
+  - `StormCards` draws each storm at a smoothed track: it glides with s.u, s.v and eases (~2 s) toward each snapshot. The kit's remaining pieces follow it (`ctx.stormTrack`).
+  - Cards have stable keys (CardPlan `cardKey`: texture + rounded position). A re-plan updates the same card in place; new cards fade in and dropped ones fade out (1.2 s), so re-plans no longer reshuffle.
+  - Debug attribute `StormCardsPlan`: kept / new / dropped on the last re-plan.
+- **Mammatus as cards:** pouch fields under a mature, productive anvil (the StormPlan rule).
+- **Shelf clouds as cards:** squall-line systems are planned by `ShelfPlan` and converted to cards (`CardPlan.fromPieces`), drifting with the line. The kit draws no storm or shelf pieces in the cards style (only rain shafts stay separate).
+- **Multi-vortex:** `TornadoCards` draws each sub-vortex as a thin orbiting column of cards. It is visible where its deficit plus the parent's at its orbit condenses air (the mesh's rule).
+- **Stovepipe bulge:** the funnel flare is capped at 3 core radii (was 4).
+- **Wedge scene camera:** 3.5 km, yaw -110 (the storm's towers were in front from yaw 200).
+- **Not seen in Studio yet:** Studio stopped rendering frames during the check (window minimized or in the background).
+
+### Round 3 checked in Studio (2026-10-25)
+- **Re-plans are smooth:** kept 261 / new 9 / dropped 9 and kept 44 / 0 / 0 on consecutive re-plans; new and dropped cards fade.
+- **Tower from ~18 km:** soft, spreading at the top. Fixed: the single `softFlat` image has no clear edges, so big or squashed cards (tower centre, anvil, mammatus) showed as grey rectangles. All storm cards now use the clear-edged 4x4 sheet frames (`softSheetFlat`).
+- **Stovepipe (3):** a clean tube with a smaller flare into a lumpy, ragged base.
+- **Wedge (4):** a broad rain-wrapped mass under the base from 3.5 km.
+- **Multi-vortex (6):** still reads only as a dark rain-wrapped area; the sub-vortex columns are not distinguishable. The base was lowered to 500 m (from 900) so they condense lower; still weak. Open.
+- **Night (8):** dark base with a faint skyglow and the funnel's silhouette; not shown lit by a flash (flashes end before a capture lands). Open.
+- **Cost:** StormCards 0.06-2.2 ms (re-plan frames), 770-1440 cards for 2-4 storms.
+
+### Visual review pass (2026-10-25)
+Looked at a supercell from ~18 km, tilted up at the anvil, and from under the base (stovepipe scene).
+- **Tower shading:** cards carry the outward normal of the cloud surface they stand for (CardPlan). StormCards lights them by wrapped sun·normal on top of the storm's self-shadow, sees less sky on down-facing surfaces, and adds forward scatter on edges seen toward the sun (silver lining). The tower now has a lit side and a shaded side instead of a flat pale blob.
+- **Rain shafts:** opacity is the optical depth of a chord through the rain (0.33 R^0.66 per km, as the funnel obscuration), not a capped log curve, so heavy cores are opaque curtains. Shafts are now billboards: the curtain fades in below the cloud and frays toward the ground (UIGradient), and is capped by a dark lumpy card of the rain cloud it falls from. Forward-flank rain no longer falls out of clear sky; the base reads as a broad deck.
+- **Anvil:** three overlapping layers (lit top, body, shaded underside), nearly opaque at the root and thinning downstream; it reads as a dense spreading anvil in the normal chase view.
+- **Mammatus:** jittered, overlapping lumpy pouches coloured like the anvil underside (they were a grid of dark dots).
+- **Base:** both layers shaded as down-facing, so it is less blotchy.
+- **Camera:** PageUp / PageDown tilt the chase view (anvils, tower tops).
+- **Still to improve:** mammatus still slightly patterned from a distance; rain curtain streaks show a barcode pattern up close; tower edges are soft rather than crisp cauliflower.
+
+### Motion, rain and hail pass (2026-10-25)
+- **Cloud motion** (`CardPlan` motion specs, animated each frame by `StormCards` for storms within 40 km, in sim time; each card loops with fades at both ends):
+  - Scud under the base and round the wall cloud, and the tail cloud, are drawn toward the lowering by the inflow (½ the low-level rotation, 4-20 m/s), swirl about it, and are lifted toward the base, accelerating.
+  - Billows and a rising tower's top boil upward at ~0.12 W and spread.
+- **Funnel condensation tags** (`TornadoCards`, within 6 km): ragged fragments under the base spiral in at ~0.35 vc, round at ~0.4 vc, and rise from ~0.55 H into the funnel's top.
+- **Funnel top:** fades out by the cloud base (it is inside the cloud). It no longer shows as a dark bulb against the base.
+- **Rain as lost visibility:**
+  - Billboards ignore the Atmosphere, so storm cards, rain shafts and the funnel are fogged by the rain between the camera and them: a march through the surface rain field, extinction 0.33 R^0.66 per km. All use one rain-fog grey.
+  - Near-camera streak sheets cut to a faint hint (max opacity 0.06, was 0.27).
+- **Rain curtains:** a soft stretched puff (no streak texture, no barcode), fading in below a lumpy rain-cloud cap.
+- **Hail:** it exists; the supercell lays 360-490 km² of ≥ 0.5 cm surface hail, up to ~2.6 cm, 2-9 km from the updraft, but only inside that swath. New F4 → Camera → "go to hail core" puts the camera in the biggest hail (seen: 2.5 cm stones falling and bouncing, extinction 3.3/km). Hail shafts are paler from a distance.
+- Diagnostic: `tools/stormlab/diag_hail.luau`.
+- **Funnel surface motion:** the funnel's ring cards slide up through their layer at ~0.15 vc and loop with a fade (the centre cards hold its density). TornadoCards is now ~1.2 ms (per-frame opacity writes).
+- **Hail density:** the emitter rate is now 150-450 stones/s (was 60-200).
+- **Texture review vs reference photos:** `docs/stormlab/TEXTURE-REVIEW.md` (findings and a proposed order; not implemented).
+
+## Texture pass, steps 1-2 (2026-10-25)
+
+- **Shading inside cards:** every storm card has a UIGradient. The card's colour is its sunward side; the gradient holds the shadow-to-lit ratio (lit for the first 45 %, the card's own light at 75 %, shadow at the edge), turned toward the sun as seen on screen (it is re-aimed when the camera turns more than 3°). Ratios are cached and shared, and lightning rewrites only the colour.
+- **Base deck:** seen from outside, a few big soft-sheet cards in two opaque layers. From under it (within 1.7 Rb), a grid of medium cards, because a big billboard seen from below stands up as a far wall instead of a ceiling. A ragged rim, a loose grid of shaded lumps hanging under it, and scud with a wide spread of sizes, stretched along the inflow.
+- **Rain fog per card:** a storm's fog is measured to its centre; each card now takes it in proportion to its own distance and the share of the path below the cloud base (overhead cloud is no longer washed out).
+- **Funnel top:** ring cards flatten toward the cloud base (down to 0.45 of their width), so the funnel spreads into a skirt instead of ending in a round bulb.
+- **Cost:** StormCards ~0.5 ms between re-plans (was ~2 ms before the pass); kept cards refresh their colour only, with full shading every 6th re-plan.
+
+## Texture pass, colour + steps 3/5 code (2026-10-25)
+
+- **Light colour:** storm-card diffuse light turns blue-slate with depth in the storm's shadow (1 - lit: multiple scattering through big drops absorbs a little red); sunlight is cream, warmer at a low sun. The funnel uses the same colours.
+- **Rain-fog colour from the light where the rain is:** it was the open-sky grey (from the sun's elevation), which washed the whole base pale under a storm. It is now sampled from the scene light at the camera (overcast sky and the storm's shadow) 4 times a second, and shared by the storm cards and the rain shafts. Under the storm the base now reads as a dark slate deck, with the bright gap at the horizon.
+- **Regression check:** far view, cone, stovepipe, wedge and night scenes all render with no errors. The rain-wrapped wedge is very faint at 3.5 km.
+- **Rain shafts:** they slant with the wind relative to the storm (sampled halfway down at re-bin) across the line of sight, against the fall speed (7 m/s, hail up to 15). They use `curtainFlat` once it is uploaded (fallback: the soft puff + gradient).
+- **Mesocyclone striations:** 3-4 stacked rings of `striationFlat` cards round the updraft just above the base, turning at vmid / R (a "spin" motion), shown where rot and vmid are strong. Off until the texture is uploaded.
+- **New sheets:** `tools/smoke/storm_sheets.py` writes `roblox/assets/clouds/curtain_sheet.png` and `striation_sheet.png` (+ previews). Not uploaded yet; the ids go in `LabConfig.TEXTURES.curtainFlat` / `striationFlat`.
+- **Uploaded and seen in Studio (2026-10-25):** `curtainFlat` = rbxassetid://79610318303479 and `striationFlat` = rbxassetid://114024701514552 (ATGuardian). The first uploads (82242042419843, 97897910741889) were decal ids that do not load in an ImageLabel and are unused. In the stovepipe scene: fibrous rain curtains slanting with the storm-relative wind beside the funnel, banded striations round the updraft, no errors. The striation rings move ~5 times a second (they turn ~0.5 deg/s); a fog-colour change alone rewrites colours, not shading. StormCards 0.3 ms (StormCardsParts attribute: jobs / fades / fog / motion).
+
+## Wall cloud, debris cloud, horizontal vortices, optimization (2026-10-25)
+
+Research: `docs/stormlab/RESEARCH-WALLCLOUD-HV.md` (wall cloud, scud, horizontal vortices, debris cloud, with equations and sources).
+
+- **Wall cloud:**
+  - Sim (`Storm.luau`): the lowering adds the low-level mesocyclone's pressure deficit, v²/g, to the forward-flank mixing term.
+  - Cards (`CardPlan` wall section):
+    - **Body:** smooth, opaque, 1-3.5 km across, with a flat underside rising steeply to the base (zb + D (r/R)⁴), and a few lumps underneath.
+    - **Turning layer:** banding (striation cards) and condensation filaments spiralling in.
+    - **Scud:** 100-600 m below the base, 20-300 m across, rising in.
+    - **Rear-flank side:** a ragged fringe, fixed to the storm.
+    - **Tail cloud:** streams in from the forward flank.
+  - Base scud far from the lowering is now rare: scud needs near-saturated outflow air.
+- **Contrast:**
+  - Card normals lean toward the camera, so tower cloud seen from below through gaps shows its shadowed underside.
+  - Rain shafts take their light from the scene light at the shaft (the storm's shadow), not open daylight.
+  - The pre-shaded `basePuffs` texture is no longer used under the base: it made black ovals.
+- **Debris cloud (`Render/DebrisCloud`, new):**
+  - **Skirt:** a ring of dirt cards from ~1.15 rc out to rc·v_max/25 (1.5-3.2 rc). Height 12 (v_max − 25) m, capped by the sim's debrisTop. Cards orbit at v(r)/r, climb at ~30°, and each streak is turned to its motion on screen.
+  - **Horizontal vortices on EF3+:** 1-3 at a time in the south-to-east arc at 1.3-2.8 rc, orbiting counter-clockwise, their leading end drawn in and lifted ~200 m. Each is a white condensation tube when (v/2)² ≥ g · cloud base / 4, otherwise a dust roll.
+- **Flying dirt (`TornadoDust`):** tornado pickups are streaked grains, stretched along their screen velocity and centrifuged out at w_t v²/(g r) with w_t = 2 m/s. Outflow dust stays soft.
+- **Optimization:**
+  - TornadoDust: light cached at 4 Hz, wind sampled for a quarter of the puffs per frame, colours every 8th frame. 2-4 ms → 0.7 ms.
+  - TornadoCards: centre light cached at 4 Hz, per-row light at 2 Hz, lightning flashes read fresh.
+  - DebrisView: flying pieces beyond 800 m step every other frame.
+  - StormCards: the striation rings move at ~5 Hz; a fog-colour change rewrites colours only. The `StormCardsParts` attribute shows the cost breakdown.
+- **New sheets, not uploaded:** `debriscloud_sheet.png` and `dirtspray_sheet.png` (`tools/smoke/storm_sheets.py --only ...`). Until uploaded, the code falls back to shredFlat / wispFlat (`LabConfig.TEXTURES.debrisCloudFlat`, `dirtSprayFlat`).
+
+## Dust at the foot, tufts and scud (2026-10-25, after user feedback)
+
+Feedback: the dust was a cloud, streaky, and circled the funnel all the way up; clouds and tornadoes had too few tufts and scud. References: the Severity clips (10-37-29, 11-04-14), ref2, the real scud, wall cloud underside and clear-slot photos.
+
+- **Dust (`Render/DebrisCloud`):** the rotating skirt is gone. Dirt is now short-lived bursts at the foot:
+  - kicked up at 0.8-1.6 rc and thrown outward at 0.08 v + 0-4 m/s
+  - up to an apex of 4 (v_peak − 20) m, clamped to 30-300 m, settling within 3-8 s
+  - swirl only near the ground: it decays as exp(−z/40 m) and exp(−age/2 s)
+  - drawn as grainy clumps (`dirtGrainFlat`)
+- **Flung grains (`TornadoDust`):** fewer; coarse sand (w_t 6 m/s) centrifuged out low, not carried up the core; small grainy clumps, no streaks.
+- **Horizontal vortices:** dust rolls use the grain texture.
+- **Scud and tufts** (`fractusFlat`: torn, ragged pieces with fibrous ends; falls back to shred/wisp):
+  - a ring of ~30 tufts hanging 50-300 m under the deck's edge
+  - wall-cloud scud ×2.5 (60), 20-300 m across
+  - fractus on the rear-flank fringe, tail cloud and base scud
+  - funnel: a ragged collar of 12 tufts where it meets the cloud, 8 tags torn off its upper third rising into the cloud, and the existing condensation tags (light cached)
+- **Sheets:** `tools/smoke/storm_sheets.py --only dirtgrain,fractus` writes `roblox/assets/clouds/dirtgrain_sheet.png` and `fractus_sheet.png`, not uploaded yet. The streak and debris-cloud sheets from the round before are dropped.
+- **Studio (fallback textures):** dust stays low, no errors; DebrisCloud 0.5 ms; all scripts 7.2 ms.
+
+## Dust reverted, scud rebuilt from the photos (2026-10-25, second feedback)
+
+Feedback: the burst dust was worse than the original swirl; the original only looked too cloudy. The scud had no variety and used features the references don't show.
+
+- **Dust:**
+  - `TornadoDust` is back to its original swirling pickup round the funnel's foot; only the optimizations stay.
+  - The tornado puffs switch to the grainy `dirtGrainFlat` sheet once it is uploaded, and keep `softFlat` until then.
+  - The DebrisCloud bursts are removed; DebrisCloud now draws only the horizontal vortices.
+- **Removed (not in the references):** the ring of tufts round the deck's rim, the funnel collar and the tags torn off its upper third.
+- **Scud as clusters** (`cluster()` in `CardPlan`): 3-6 graded pieces breaking off a cloud's lower edge. The biggest overlaps the edge, the smaller ones hang lower and trail downstream, with varied size, tone and spacing. Three forms:
+  - **rise:** cumuliform lumps (04_wall_cloud_b), on the wall-cloud rim facing the forward-flank inflow, drawn in and up
+  - **rag:** tatters (05_inflow_region_b), toward the rear flank, under the deck's edge on the forward-flank (outflow) side, and at the tail cloud's frayed end
+  - **streak:** fibrous streamers (04_wall_cloud_underside_c), round the rest of the turning rim
+- **Optimization:**
+  - The plan's sun march is memoised on a 300 m grid: a re-plan is 1.2-2.4 ms (`StormCardsPlanMs`).
+  - Gradient re-aims are spread at 250 cards/frame.
+  - Lightning recolours are queued at 300 cards/frame, and a card is recoloured only when its own flash light changed by more than 0.02. This was the big cost: ~3.9 ms → mean 1.8 ms during flashes.
+  - `StormCardsParts` shows a running mean and the parts.
+
+## Horizontal vortices as wind, lightning ball, inflow band (2026-10-25, third feedback)
+
+- **"Caterpillar" orbiting the tornado:** it was the horizontal vortices drawn as a chain of cards.
+  - They are no longer drawn. Render/DebrisCloud keeps their motion and publishes them as wind (`ctx.hvField`).
+  - TornadoDust adds each tube's Rankine swirl round its axis (an arc at r0, height zc, inside its arc, within 5 core radii) to the wind its dust relaxes to.
+  - Turning sense: from the inflow jet (fastest lowest): in under the tube, out over it, so dust rises on the side toward the tornado.
+  - The wind-driven dust rolls over there; nothing else changes.
+- **Lightning ball:** the in-cloud "glow" was a Neon sphere at each strike, now removed. The cloud round the channel is already lit by the flash field (storm cards and funnel).
+- **Inflow band (beaver tail):** new; it did not exist in the billboard storm.
+  - Physics: moist inflow riding over the forward-flank outflow boundary reaches its condensation level.
+  - Shape: a smooth flat band at the base, from the updraft upstream along the storm-relative 500 m inflow (now in the storm snapshot: `srU`, `srV`), set toward the forward-flank side.
+  - Length 1.1 Rb + 300 s · |inflow| (3-14 km); turbulent near the updraft, laminar and thinning outward; drifting in.
+  - Shown when the storm rotates (rot > 0.3) and the inflow is > 6 m/s.
+  - Seen faintly from the far view.
+- **Uploaded and seen in Studio (2026-10-25):**
+  - `dirtGrainFlat` = rbxassetid://118568148658026: the swirling tornado dust now reads as grainy dirt.
+  - `fractusFlat` = rbxassetid://73789623374463: ragged scud clusters.
+  - No load warnings in the stovepipe or cone scenes.

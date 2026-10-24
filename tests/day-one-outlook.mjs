@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import v8 from 'node:v8';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { insideRings } from '../js/forecast/contourShapes.js';
-import { OUTLOOK, runOutlookMember, runOutlookMemberDays, membersFor, spreadFor, stateFromBytes, combineOutlook, publicOutlook, describeArea, hoursToDayEnd, writeDiscussion } from '../js/forecast/DayOneOutlook.js';
+import { OUTLOOK, runOutlookMember, runOutlookMemberDays, membersFor, stormMembersFor, spreadFor, stateFromBytes, combineOutlook, publicOutlook, describeArea, hoursToDayEnd, writeDiscussion } from '../js/forecast/DayOneOutlook.js';
 import { WORLD_RISK_ORDER, WORLD_HAZARDS, PROBABILITY_LEVELS, worldCategoryFromHazard } from '../js/forecast/worldRiskCategories.js';
 import { CHANCE_FIELDS } from '../js/verification/truth.js';
 import { OutlookRuntime } from '../server/OutlookRuntime.js';
@@ -75,8 +75,9 @@ assert.ok(three.level.severe.every(v => v === 0 || PROBABILITY_LEVELS.severe.inc
 assert.ok(three.discussion.startsWith('Day 3 Convective Outlook')); assert.match(three.discussion, /SEVERE: Widespread severe thunderstorms are expected.*\(60% severe area, CIG1\)/); assert.doesNotMatch(three.discussion, /TORNADO:/);
 const pageThree = publicOutlook(three); assert.deepEqual(pageThree.hazards, ['severe']); assert.equal(pageThree.updateHours, 24); assert.ok(pageThree.shapes.severe.levels.length === 5 && pageThree.shapes.severe.groups.length === 1 && !pageThree.shapes.tornado);
 assert.deepEqual(OUTLOOK.updateHours, { day1: 6, day2: 12, day3: 24 });
-// A day made from fewer runs has its chances spread out: none for Day 1, more for Day 3 than Day 2.
-assert.equal(spreadFor('day1'), 0); assert.equal(spreadFor('day2'), OUTLOOK.spreadKm); assert.ok(Math.abs(spreadFor('day3') - OUTLOOK.spreadKm * Math.sqrt(3)) < 1e-9);
+// A day made from fewer runs has its chances spread out: none for Day 1; Day 2 and Day 3 have four runs
+// each since 2026-10-24 (Day 3 from the ingredients of the Day 2 runs), so the same.
+assert.equal(spreadFor('day1'), 0); assert.equal(spreadFor('day2'), OUTLOOK.spreadKm); assert.equal(spreadFor('day3'), OUTLOOK.spreadKm);
 {
   // Two runs that put a small storm area in different places: blocky as they are, one smooth area on Day 3.
   const lone = (k, x) => { const m = member(k); for (let i = 0; i < n; i++) { const d = Math.hypot(i % width - x, Math.floor(i / width) - 25); m.chance.severe[i] = d < 3 ? 80 : 0; } return m; };
@@ -84,7 +85,7 @@ assert.equal(spreadFor('day1'), 0); assert.equal(spreadFor('day2'), OUTLOOK.spre
   const raw = new Float32Array(n); for (const m of pair) for (let i = 0; i < n; i++) raw[i] += m.chance.severe[i] / 2;
   const total = field => field.reduce((a, v) => a + v, 0), peak = field => Math.max(...field), between = 25 * width + 24;
   assert.equal(raw[between], 0); assert.ok(smooth.chance.severe[between] > 5, 'the country between the storms of the two runs has a chance too');
-  assert.ok(peak(smooth.chance.severe) < 0.6 * peak(raw), 'lower at the heart'); // Spreading keeps the chance in all; the agreement rule (one run of two at each place) only takes
+  assert.ok(peak(smooth.chance.severe) < 0.8 * peak(raw), 'lower at the heart'); // (0.6 to 0.8 on 2026-10-24: Day 3 is spread 40 km since it has four runs, not 69.) // Spreading keeps the chance in all; the agreement rule (one run of two at each place) only takes
 // some off the peaks.
   assert.ok(total(smooth.chance.severe) <= 1.02 * total(raw) && total(smooth.chance.severe) > 0.85 * total(raw), 'about the same chance in all, spread wider');
   assert.equal(publicOutlook(smooth).shapes.severe.levels[0].rings.length, 1, 'one area, not one for each run');
@@ -160,7 +161,8 @@ assert.ok(issued.discussion.length > 200 && issued.category.length === atmospher
 assert.equal(outlooks.maybeIssue(), false, 'nothing is issued again before its next update');
 const second = outlooks.day('day2');
 assert.equal(second.status, 'issued'); assert.equal(second.day, 'day2'); assert.equal(second.members, 1, 'half the runs go on to Day 2');
-assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 2]); assert.equal(membersFor('day3', 2), 1); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
+// (Day 3 from the ingredients of the four Day 2 runs since 2026-10-24: none of them with storms.)
+assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 4]); assert.equal(membersFor('day3', 2), 1); assert.deepEqual(['day1', 'day2', 'day3'].map(day => stormMembersFor(day)), [8, 4, 0]); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
 assert.equal(issued.nextUpdateHourUtc, 44); assert.equal(second.nextUpdateHourUtc, 54); assert.equal(outlooks.day('day3').status, 'off');
 assert.deepEqual(Object.keys(outlooks.status().days), ['day1', 'day2']);
 // The schedule: the centre's times (Day 1 at 06, 13, 1630, 20 and 01Z; Day 2 at 06 and 1730Z; Day 3 at 0730 and 1930Z).

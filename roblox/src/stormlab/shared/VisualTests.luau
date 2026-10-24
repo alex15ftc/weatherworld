@@ -26,14 +26,14 @@ VisualTests.SCENES = {
 		client = { localHour = 17.5, camera = { dist = 1400, yaw = -110 } },
 	},
 	{
-		id = "cone_partial", label = "2 Cone, partial condensation",
-		storm = { W = 40, Ru = 3200, vmid = 20, vlow = 20, base = 950, lowering = 150, u = 11, v = 5, rearShare = 0.05, rfdDeficit = 0.5, seed = 102 },
+		id = "cone_partial", label = "2 Cone, condensed to the ground",
+		storm = { W = 40, Ru = 3200, vmid = 20, vlow = 20, base = 670, lowering = 150, u = 11, v = 5, rearShare = 0.05, rfdDeficit = 0.5, seed = 102 },
 		run = 150, hold = true,
 		client = { localHour = 16.5, camera = { dist = 1500, yaw = -110 } },
 	},
 	{
 		id = "stovepipe_day", label = "3 Stovepipe, daylight",
-		storm = { W = 42, Ru = 3400, vmid = 22, vlow = 21, base = 700, lowering = 250, u = 12, v = 4, rearShare = 0.05, rfdDeficit = 0.5, seed = 103 },
+		storm = { W = 45, Ru = 2600, vmid = 26, vlow = 30, base = 750, lowering = 150, u = 12, v = 4, rearShare = 0.05, rfdDeficit = 0.5, seed = 103 },
 		run = 150, hold = true,
 		client = { localHour = 16.0, camera = { dist = 1500, yaw = -110 } },
 	},
@@ -41,7 +41,7 @@ VisualTests.SCENES = {
 		id = "wedge_rain", label = "4 Wedge, rain-wrapped",
 		storm = { W = 48, Ru = 6000, vmid = 26, vlow = 26, base = 600, lowering = 250, u = 14, v = 6, rearShare = 0.7, rfdDeficit = 0.5, seed = 104 },
 		run = 240, hold = true,
-		client = { localHour = 16.5, camera = { dist = 2500, yaw = 200 } },
+		client = { localHour = 16.5, camera = { dist = 3500, yaw = -110 } },
 	},
 	{
 		id = "uncondensed", label = "5 Nearly uncondensed, ground dust",
@@ -51,7 +51,7 @@ VisualTests.SCENES = {
 	},
 	{
 		id = "multivortex", label = "6 Multi-vortex",
-		storm = { W = 30, Ru = 8000, vmid = 20, vlow = 22, base = 900, lowering = 200, u = 12, v = 5, rearShare = 0.05, rfdDeficit = 0.5, seed = 106 },
+		storm = { W = 30, Ru = 8000, vmid = 20, vlow = 22, base = 500, lowering = 150, u = 12, v = 5, rearShare = 0.05, rfdDeficit = 0.5, seed = 106 },
 		run = 200, hold = true,
 		client = { localHour = 16.5, camera = { dist = 1600, yaw = -110 } },
 	},

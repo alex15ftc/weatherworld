@@ -251,18 +251,9 @@ function LightningFx.new(ctx)
 			ic = isIc, shown = -1,
 			flash = (if isIc then 0.16 else 0.32 * cur) / (1 + (dMin / 5000) ^ 2),
 		}
-		-- the glow inside the cloud (IC: the channel's middle; CG: its top, where it leaves the cloud)
-		local gx, gy, gz = if isIc then mx else f.x0, if isIc then my else f.y0, if isIc then mz else f.z0
-		local gp, gd, gs = project(gx, gy, gz)
-		local gSize = (if isIc then 3500 else 2200)
-		if gd > gSize * 0.8 and #freeGlows > 0 then
-			local g = table.remove(freeGlows) :: BasePart
-			local size = math.min(2048, gSize * gs)
-			g.Size = Vector3.new(size, size * 0.6, size)
-			g.CFrame = CFrame.new(gp)
-			b.glow = g
-			b.glowVis = (if isIc then 0.32 else 0.18) * (1 - 0.7 * Util.ramp(gd, 10000, 60000))
-		end
+		-- (no glow part in the cloud: a Neon ball read as a hard sphere at each strike. The
+		-- cloud round the channel is lit by the flash field instead - Render/StormCards and the
+		-- funnel recolour from FlashField.at.)
 		-- the light near the camera for close strikes
 		if not isIc and dMin < 3000 and #freeLights > 0 then
 			local L = table.remove(freeLights)

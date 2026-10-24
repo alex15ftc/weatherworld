@@ -36,7 +36,7 @@ if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else awai
 async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { captureTruth, aggregateTruth, practicallyPerfectChance } = await import('../js/verification/truth.js');
-  const { OUTLOOK, runOutlookMemberDays, combineOutlook, stateFromBytes, membersFor } = await import('../js/forecast/DayOneOutlook.js');
+  const { OUTLOOK, runOutlookMemberDays, combineOutlook, stateFromBytes, membersFor, stormDaysFor } = await import('../js/forecast/DayOneOutlook.js');
   const { CIG_TIERS, CIG_BOUNDS, contourCig, conditionalCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
   // Hail and wind as reports, in the runs and in what happened (truth.js captureTruth).
   const { placesFor } = await import('../server/CountyLayer.js');
@@ -45,7 +45,7 @@ async function worker(seed) {
   for (let day = 0; day < days; day++) {
     // The morning's outlooks: each run goes as far as the last day it is one of the runs for.
     const bytes = v8.serialize(atmosphere.saveState()), now = world.validHourUtc, runs = [];
-    for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, { placesFor, ...(OLD ? { mesoscale: 0 } : {}) }));
+    for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, { placesFor, stormDays: stormDaysFor(m, memberCount), ...(OLD ? { mesoscale: 0 } : {}) }));
     issued[day] = OUTLOOK.days.map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).map(run => run[index]), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : {}) }));
     // What then happened.
     const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;

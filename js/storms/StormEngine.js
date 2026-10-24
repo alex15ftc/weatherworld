@@ -225,8 +225,9 @@ function handleMergersAndOrganization(world, spatialIndex) {
       const t = (absorbed.positionKm.x - keeper.positionKm.x) * axis.x + (absorbed.positionKm.y - keeper.positionKm.y) * axis.y;
       const from = Math.min(-lineHalfLengthKm(keeper), t - lineHalfLengthKm(absorbed)), to = Math.max(lineHalfLengthKm(keeper), t + lineHalfLengthKm(absorbed));
       joinedHalfLengthKm = clamp((to - from) / 2, 0, MAX_LINE_HALF_LENGTH_KM);
-      keeper.positionKm = { x: keeper.positionKm.x + axis.x * (from + to) / 2, y: keeper.positionKm.y + axis.y * (from + to) / 2 };
-      keeper.mergeShiftKm = null;
+      // The joined line's middle is reached at MERGE_GLIDE_KPH too (2026-10-24: it was taken at once, and
+      // the line's track jumped sideways along it, the right-angle jogs on the storm maps).
+      keeper.mergeShiftKm = { x: axis.x * (from + to) / 2, y: axis.y * (from + to) / 2 };
     } else {
       // Two cells become one around their weighted centre; the merged storm moves there
       // at MERGE_GLIDE_KPH (updateStorm) rather than at once.

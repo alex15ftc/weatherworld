@@ -145,9 +145,11 @@ export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc
     const x = Number(point?.x), y = Number(point?.y), hourUtc = Number(point?.hourUtc);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     if (Number.isFinite(hourUtc) && (hourUtc <= previousHourUtc + epsilon || hourUtc > currentHourUtc + epsilon)) return;
-    const key = `${x.toFixed(4)}|${y.toFixed(4)}|${Number.isFinite(hourUtc) ? hourUtc.toFixed(4) : 'current'}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    // (Its own key for repeats: the tornado's key, below, names the tornado. 2026-10-24: this one was
+    // also called key and hid it, so every point was its own tornado and a track was not rated as a whole.)
+    const pointKey = `${x.toFixed(4)}|${y.toFixed(4)}|${Number.isFinite(hourUtc) ? hourUtc.toFixed(4) : 'current'}`;
+    if (seen.has(pointKey)) return;
+    seen.add(pointKey);
     points.push({ x, y, hourUtc: Number.isFinite(hourUtc) ? hourUtc : currentHourUtc, ef, tornado: key });
   };
   const current = () => { ef = efNumber(storm.tornado?.estimatedEf ?? storm.tornado?.efRating ?? storm.tornado?.windEf); key = `${storm.id}|${storm.tornado?.cycleCount ?? 0}`; };

@@ -74,6 +74,20 @@ LabConfig.TEXTURES = {
 	rainShaft = "rbxassetid://86246653635299", -- distant rain shaft: soft column, faint streaks
 	basePuffs = "rbxassetid://101768089677789", -- 4x4 rendered volumetric puffs seen from below
 	hailstone = "rbxassetid://75884893304957", -- solid hailstone sprite (main game tools/rain/splash_hail.py)
+	-- the main game's funnel art (tools/blender/funnel_texture.py; Config.TORNADO_ART): tileable
+	-- streak noise made for a funnel surface
+	funnelCore = "rbxassetid://103842331190084",
+	funnelWisp = "rbxassetid://118029183384379",
+	-- a wide, short soft ellipse (0.88 x 0.29 of the frame): anvil and flat cloud cards
+	-- (main game tools/smoke smoke_flipbook.py --variant wide --single --flat)
+	wideFlat = "rbxassetid://101986960654906",
+	-- tools/smoke/storm_sheets.py (4x4 sheets, white alpha; uploaded 2026-10-25). Empty: the
+	-- renderers fall back to softSheetFlat (curtain) or draw no band (striation)
+	curtainFlat = "rbxassetid://79610318303479", -- rain shaft: fine vertical fibres, soft sides and top, feathered foot
+	striationFlat = "rbxassetid://114024701514552", -- mesocyclone band: a lens of long horizontal ribs
+	-- (uploaded 2026-10-25; empty: the renderers fall back to softFlat / shredFlat)
+	dirtGrainFlat = "rbxassetid://118568148658026", -- tornado dust as dirt: dense grains thinning to a speckled edge
+	fractusFlat = "rbxassetid://73789623374463", -- scud: ragged pieces with torn, fibrous ends
 }
 -- the cloud kit: one Model asset of mesh pieces (ReplicatedStorage.Shared.Weather.CloudKit;
 -- the server calls CloudKit.serverLoad(LabConfig.CLOUD_KIT_ASSET))

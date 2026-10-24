@@ -159,6 +159,9 @@ export function logStormTick(world, places = null) {
     if (entry) {
       const owner = (world.storms ?? []).find(s => s.id === entry.stormId) ?? (world.stormArchive ?? []).find(s => s.id === entry.stormId);
       const record = (owner?.tornadoHistory ?? []).find(h => h.cycle === entry.cycle);
+      // (A track the engine cut back to the tornado's life loses what the log took past that end.)
+      const recordEnd = record?.trackPoints?.at(-1)?.hourUtc;
+      if (Number.isFinite(recordEnd) && entry.points.length > 1) entry.points = entry.points.filter((p, i) => i === 0 || p[2] <= recordEnd + 1e-6);
       const last = entry.points.at(-1);
       for (const p of record?.trackPoints ?? []) if (last && p.hourUtc > last[2] + 1e-6) entry.points.push([r(p.x), r(p.y), r(p.hourUtc, 4), last[3], last[4]]);
       entry.ended = true; entry.endHourUtc = entry.points.at(-1)?.[2] ?? hourUtc;
@@ -245,7 +248,9 @@ function spotters(log, hazard, stormId, slot, km, move, pathMiles, swath, layer,
     const when = hourUtc - (hourUtc - move.hourUtc) * back;
     log.places ??= {};
     const patch = `${hazard}|${Math.floor(at.x * k / LOG.placeMiles)}|${Math.floor(at.y * k / LOG.placeMiles)}`;
-    if (when - (log.places[patch] ?? -Infinity) < LOG.placeMemoryHours) continue;
+    // (Wind damage only: each hailfall is a report of its own, and hail reports had fallen by 70% on
+    // one day under this rule; docs/METEOROLOGIST-REVIEW-2026-10-24.md.)
+    if (hazard === 'wind' && when - (log.places[patch] ?? -Infinity) < LOG.placeMemoryHours) continue;
     log.places[patch] = when;
     dayOf(log, convectiveDay(when)).reports.push(hazardReport(hazard, when, at, k, where, stormId, value, false));
   }

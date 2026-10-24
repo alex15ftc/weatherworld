@@ -43,7 +43,7 @@ local RINGS = {
 	{ radius = 24, count = 8, height = 84, tileW = 14, tileH = 60, weight = 0.85 },
 	{ radius = 60, count = 10, height = 190, tileW = 32, tileH = 130, weight = 0.7 },
 }
-local MAX_SHEET_OPACITY = 0.27 -- (StormView lesson: stronger sheets read as a screen overlay)
+local MAX_SHEET_OPACITY = 0.06 -- (rain reads as lost visibility - Atmosphere + the cards' rain fog - not as drawn streaks; the sheets are only a faint hint of motion)
 local RAIN_COLOUR = Color3.fromRGB(172, 178, 188)
 local HAIL_COLOUR = Color3.fromRGB(236, 240, 246)
 local SPLASH_RANGE = 150 -- studs above the ground; splashes and bounces only below this
@@ -349,7 +349,7 @@ function NearPrecip.new(ctx)
 			local dir = Vector3.new(relW.X, -vt, relW.Z)
 			local dirU = dir.Unit
 			local size = math.clamp(cm * 0.04, 0.06, 0.5) -- a few times life size, so a stone reads
-			local rate = (60 + 140 * Util.ramp(cm, 0.5, 4)) * hailK
+			local rate = (150 + 300 * Util.ramp(cm, 0.5, 4)) * hailK -- (a real core drops several stones per m² per second: as many as the particle budget allows)
 			-- the stones start upwind so they arrive round the camera
 			local fallTime = (HAIL_SKY + math.min(above, 120)) / vt
 			local start = camPos + Vector3.new(0, HAIL_SKY, 0) - Vector3.new(relW.X, 0, relW.Z) * (HAIL_SKY / vt)

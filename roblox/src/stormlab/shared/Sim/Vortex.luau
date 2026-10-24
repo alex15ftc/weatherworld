@@ -311,22 +311,15 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	return u, v, w
 end
 
--- The near-ground swirl jet in the core (the corner-flow region): stronger swirl there deepens
--- the pressure deficit, so condensation can reach lower than the swirl aloft alone would allow.
-local function nearJet(p: any, z: number): number
-	local S = p.swirl or 0.3
-	local jet = 0.25 - 0.12 * ramp(S, 0.2, 1.0)
-	local zj = 30
-	return 1 + jet * (z / zj) * exp(1 - z / zj) + 0.5 * jet * exp(-z / 150)
-end
-
 -- Pressure deficit (Pa, positive = lower than ambient) at radius r from the axis, height z.
+-- The deficit comes from the swirl above the surface layer (vc), impressed down through that thin
+-- layer (pressure is near hydrostatic there): neither the wind's drop to zero at the ground nor the
+-- near-ground swirl jet of the corner flow (Vortex.sample) changes it. (Letting the jet deepen it
+-- made condensation reappear at the ground under a clear gap: a detached "teardrop".)
 function Vortex.deficit(p: State, r: number, z: number): number
-	-- (no surface factor: the wind drops to zero at the ground but the pressure deficit is
-	-- impressed through the thin surface layer from the swirl just above it)
 	local rc = rcAt(p :: any, z)
 	local aloft = 1 - ramp(z, p.cloudBase, p.cloudBase + 400)
-	local v = p.vc * aloft * nearJet(p, z)
+	local v = p.vc * aloft
 	return RHO * v * v * deficitIntegral(r / rc)
 end
 
@@ -339,7 +332,7 @@ function Vortex.condensationRadius(p: State, z: number): number
 	end
 	local need = RHO * G * (zb - z) -- Pa: the pressure fall from z to the cloud base
 	local rc = rcAt(p :: any, z)
-	local v = p.vc * nearJet(p, z) -- (deficit reaches the ground: see Vortex.deficit)
+	local v = p.vc -- (the swirl above the surface layer, impressed to the ground: Vortex.deficit)
 	local scale = RHO * v * v
 	if scale <= 0 then
 		return 0

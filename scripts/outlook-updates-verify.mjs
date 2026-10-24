@@ -3,7 +3,9 @@
 // with the last issue by OUTLOOK.continuity, capped at one category above it until the day is
 // under way) and set against what happened from its issue to the end of the day (12Z), as the
 // Storm Prediction Center verifies its later outlooks. Hail and wind are reports (truth.js).
-//   node scripts/outlook-updates-verify.mjs [days per seed] [--seeds 1,2,3]
+//   node scripts/outlook-updates-verify.mjs [days per seed] [--seeds 1,2,3] [--calibration-data]
+// --calibration-data prints the update issues' (18Z and 00Z) raw chances binned against what then
+// happened, as CALIBRATION_DATA under day1update, for scripts/fit-outlook-calibration.mjs.
 // (The 12Z issue starts without the day before's Day 2 to blend with, as outlook-verify.mjs does.)
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -17,18 +19,25 @@ const days = Number(args.find(a => /^\d+$/.test(a)) ?? 3);
 const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 const ISSUES = [0, 6, 12];   // hours after 12Z
+const CAL_DATA = args.includes('--calibration-data');
+const CAL_BINS = [0, 1, 2, 3.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50, 60, 75, 101];   // as outlook-verify.mjs
 
 if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else await main();
 
 async function main() {
   const seeds = String(flag('--seeds') ?? '1,2,3,4,5,6').split(',').map(Number), started = Date.now(), all = [];
   await Promise.all(seeds.map(seed => new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed)], { serialization: 'advanced' });
+    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), ...(CAL_DATA ? ['--calibration-data'] : [])], { serialization: 'advanced' });
     child.on('message', rows => all.push(...rows));
     child.on('exit', code => (code === 0 ? resolve() : reject(new Error(`seed ${seed} failed (${code})`))));
   })));
   const share = (list, test) => `${Math.round(100 * list.filter(test).length / Math.max(1, list.length))}%`;
   const mean = list => list.reduce((a, b) => a + b, 0) / Math.max(1, list.length);
+  if (CAL_DATA) {
+    const data = { day1update: {} };
+    for (const row of all) for (const [h, bins] of Object.entries(row.calibration ?? {})) bins.forEach((bin, k) => { const slot = (data.day1update[h] ??= CAL_BINS.slice(1).map(() => ({ cells: 0, hits: 0, raw: 0 })))[k]; slot.cells += bin.cells; slot.hits += bin.hits; slot.raw += bin.raw; });
+    console.log('CALIBRATION_DATA ' + JSON.stringify(data));
+  }
   console.log(`=== Day 1 outlook by issue: ${days} days x seeds ${seeds.join(', ')} (${Math.round((Date.now() - started) / 1000)} s) ===`);
   for (const after of ISSUES) {
     const rows = all.filter(r => r.after === after), utc = String((12 + after) % 24).padStart(2, '0');
@@ -74,7 +83,14 @@ async function worker(seed) {
       const top = list => list.reduce((best, c) => Math.max(best, ORDER.indexOf(c)), 0);
       let same = 0, near = 0;
       for (let i = 0; i < n; i++) { const f = ORDER.indexOf(outlook.category[i]), v = ORDER.indexOf(truth.worldRisk[i]); if (f === v) same++; if (Math.abs(f - v) <= 1) near++; }
-      rows.push({ seed, day, after, forecast: top(outlook.category), verified: top(truth.worldRisk), sameCell: same / n, withinOne: near / n });
+      // (For the update table: the raw chances of the issues after 12Z against what came within 25 miles.)
+      let calibration = null;
+      if (CAL_DATA && after > 0) {
+        const hit = { tornado: truth.tornado, wind: truth.wind, hail: truth.hail };
+        calibration = Object.fromEntries(outlook.hazards.map(h => [h, CAL_BINS.slice(1).map(() => ({ cells: 0, hits: 0, raw: 0 }))]));
+        for (let i = 0; i < n; i++) for (const h of outlook.hazards) { const raw = outlook.rawChance[h][i], b = CAL_BINS.findIndex((edge, k) => raw >= edge && raw < CAL_BINS[k + 1]), slot = calibration[h][b]; slot.cells++; slot.raw += raw; if (hit[h][i]) slot.hits++; }
+      }
+      rows.push({ seed, day, after, forecast: top(outlook.category), verified: top(truth.worldRisk), sameCell: same / n, withinOne: near / n, calibration });
     }
   }
   process.send(rows);

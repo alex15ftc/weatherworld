@@ -52,7 +52,10 @@ function TornadoDust.new(ctx: any): any
 		table.insert(self.free, p)
 	end
 
-	local function spawn(x: number, y: number, z: number, u: number, v: number, w: number, strength: number, colour: Color3, size: number)
+	-- (tx, ty: the tornado a puff was picked up by - drawn as dirt, grainy, once the dirt sheet
+	-- is uploaded; nil: soft dust from outflow and dust fronts)
+	local texDirt = if (C.TEXTURES.dirtGrainFlat or "") ~= "" then C.TEXTURES.dirtGrainFlat else nil
+	local function spawn(x: number, y: number, z: number, u: number, v: number, w: number, strength: number, colour: Color3, size: number, tx: number?, ty: number?)
 		local p = table.remove(self.free)
 		if not p then
 			return
@@ -67,6 +70,16 @@ function TornadoDust.new(ctx: any): any
 		p.dens = math.clamp(strength, 0.05, 1)
 		p.img.ImageColor3 = colour
 		p.base = colour
+		p.tx, p.ty = tx, ty
+		if tx and texDirt then
+			p.img.Image = texDirt
+			p.img.ImageRectSize = Vector2.new(256, 256)
+			local fr = math.floor(random() * 16)
+			p.img.ImageRectOffset = Vector2.new((fr % 4) * 256, (fr // 4) * 256)
+		else
+			p.img.Image = C.TEXTURES.softFlat
+			p.img.ImageRectSize = Vector2.zero
+		end
 		p.img.Rotation = random() * 360
 		p.bb.Enabled = true
 	end
@@ -125,7 +138,7 @@ function TornadoDust.new(ctx: any): any
 							local s, u, v, w = pickup(x, y)
 							if s > 0 and random() < math.min(1, s * 0.9 * simDt * 6) then
 								local size = math.clamp(0.35 * t.rc, 8, 70) * (0.6 + 0.6 * random())
-								spawn(x, y, 1 + 3 * random(), u * 0.5, v * 0.5, w + 2, s * (0.4 + 0.6 * (t.debrisLoft or 0.3) + 0.3), col, size)
+								spawn(x, y, 1 + 3 * random(), u * 0.5, v * 0.5, w + 2, s * (0.4 + 0.6 * (t.debrisLoft or 0.3) + 0.3), col, size, t.x, t.y)
 							end
 						end
 					end
@@ -148,9 +161,17 @@ function TornadoDust.new(ctx: any): any
 		-- the light on the dust (one sample near the focus, one at the camera: puffs take the nearer)
 		local SceneLight = ctx.Tornado.SceneLight
 		local fxL, fyL = ctx:focus()
-		local lightF = SceneLight.shade(SceneLight.sample(ctx, fxL, fyL, 60), 1, 0.4)
-		local lightC = SceneLight.shade(SceneLight.sample(ctx, camX, camY, 60), 1, 0.4)
-	-- motion: half the puffs sample the wind each frame, the rest coast on their velocity
+		-- (each sample marches the sun through the storm: refreshed 4 times a second)
+		local nowL = os.clock()
+		if not self.lightF or nowL - (self.lightAt or 0) > 0.25 then
+			self.lightAt = nowL
+			self.lightF = SceneLight.shade(SceneLight.sample(ctx, fxL, fyL, 60), 1, 0.4)
+			self.lightC = SceneLight.shade(SceneLight.sample(ctx, camX, camY, 60), 1, 0.4)
+		end
+		local lightF, lightC = self.lightF, self.lightC
+	-- motion: a quarter of the puffs sample the wind each frame (they relax toward it over
+		-- ~0.75 s, so a sample every 4 frames is plenty), the rest coast on their velocity
+		local quarter = self.frame % 4
 		local half = self.frame % 2
 		local wcount = 0
 		for i, p in self.puffs do
@@ -159,11 +180,38 @@ function TornadoDust.new(ctx: any): any
 				if p.age > p.life or not show then
 					kill(p)
 				else
-					if i % 2 == half and simDt > 0 then
+					if i % 4 == quarter and simDt > 0 then
 						local u, v, w = cw:windAt(p.x, p.y, math.max(1, p.z))
 						wcount += 1
+						-- horizontal vortex tubes round violent tornadoes (Render/DebrisCloud): a
+						-- Rankine swirl round each tube's axis (an arc at r0, height zc). The inflow
+						-- jet is fastest lowest, so under the tube the air moves in and over it out:
+						-- dust rises on the side toward the tornado
+						local hvf = ctx.hvField
+						if hvf and #hvf > 0 then
+							for _, hv in hvf do
+								local rx, ry = p.x - hv.x, p.y - hv.y
+								local rp = sqrt(rx * rx + ry * ry)
+								if rp > 1 then
+									local dth = (math.atan2(ry, rx) - hv.th + math.pi) % (2 * math.pi) - math.pi
+									if math.abs(dth) < hv.half then
+										local dr, dz = rp - hv.r0, math.max(1, p.z) - hv.zc
+										local d = sqrt(dr * dr + dz * dz)
+										if d < 5 * hv.a and d > 0.5 then
+											local V = hv.vh * (if d < hv.a then d / hv.a else hv.a / d)
+											-- (and it tapers toward the tube's ends)
+											V *= 1 - (math.abs(dth) / hv.half) ^ 4
+											local vr, vz = V * dz / d, -V * dr / d
+											u += rx / rp * vr
+											v += ry / rp * vr
+											w += vz
+										end
+									end
+								end
+							end
+						end
 						local U = sqrt(u * u + v * v)
-						local k = 1 - exp(-simDt * 2 / 1.5)
+						local k = 1 - exp(-simDt * 4 * 2 / 1.5)
 						p.u += (u - p.u) * k
 						p.v += (v - p.v) * k
 						-- turbulent lift keeps raising dust near the ground; settling slowly
@@ -182,6 +230,9 @@ function TornadoDust.new(ctx: any): any
 					if i % 2 ~= half or p.age < 1.5 then
 						p.bb.Size = UDim2.fromScale(s, s)
 						p.img.ImageTransparency = 1 - math.clamp(opacity, 0, 0.55)
+					end
+					-- (its light changes slowest of all: every 8th frame)
+					if (i + self.frame) % 8 == 0 or p.age < 0.5 then
 						local lf = if (p.x - fxL) ^ 2 + (p.y - fyL) ^ 2 < (p.x - camX) ^ 2 + (p.y - camY) ^ 2 then lightF else lightC
 						local b = p.base or Color3.new(0.5, 0.45, 0.4)
 						p.img.ImageColor3 = Color3.new(math.min(1, b.R * lf.R * 2.4), math.min(1, b.G * lf.G * 2.4), math.min(1, b.B * lf.B * 2.4)) -- (dust scatters sky light: lighter than the cloud it sits under)

@@ -254,6 +254,13 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   carryDeparture: true,
   // The share of the 1000-750 mb column's weight counted in the ground pressure (balancedPressureHpa).
   groundColumnShare: 1,
+  // 850 and 700 mb mix where 700 mb would be cooler in potential temperature (see fill).
+  convectiveAdjustment: true,
+  // The share of the ground air's moisture at 850 mb above the day's mixed layer (and all night): the
+  // moist layer thins toward its top. (0.85 to 0.75 on 2026-10-24: 850 mb dewpoints of 15-17.5 C over most
+  // of the warm sector, where outbreak soundings usually have 12-14, and MLCAPE rising overnight to 4,500-
+  // 5,300 J/kg; docs/METEOROLOGIST-REVIEW-2026-10-24.md.)
+  moisture850Share: 0.75,
   // The lift the outer model cannot see works on the cap the same way: warm air carried up over
   // cooler air and the low-level jet's air piling up where it ends (AtmosphereWorld's
   // isentropicLiftMs and jetConvergenceLiftMs, m/s, up to mesoLiftMaxMs) cool the capping layer
@@ -326,7 +333,7 @@ export class RegionalAtmosphere {
     this.cyclone = new Float64Array(n);
     this.cloudLow = new Float64Array(n); this.cloudMid = new Float64Array(n); this.cloudHigh = new Float64Array(n);   // share of the sky (0-1)
     this.anvil = new Float64Array(n);   // storms' anvil cirrus (0-1), carried by the 250 mb wind   // pressure fall from cyclone development on the fronts (Pa, negative)
-    this.domeDepth = new Float64Array(n); this.domeDeficit = new Float64Array(n);   // cold air's depth (m) and how much colder than its column it is at the ground (K)
+    this.domeDepth = new Float64Array(n); this.domeDeficit = new Float64Array(n); this.domeTopM = new Float64Array(n);   // cold air's depth (m) and how much colder than its column it is at the ground (K)
     this.coldPool = new Float64Array(n);   // how much colder than its air mass the air at the ground is (K)
     this.capLift = new Float64Array(n);    // extra cooling of the capping layer by large-scale ascent (K; warming negative)
     // Potential temperature of the elevated mixed layer (K), wherever its air is.
@@ -535,7 +542,13 @@ export class RegionalAtmosphere {
     const diag = Math.SQRT2 * dx, relax = (k, j, step) => { if (distance[j] + step < distance[k]) distance[k] = distance[j] + step; };
     for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) { const k = y * nx + x; if (x > 0) relax(k, k - 1, dx); if (y > 0) { relax(k, k - nx, dx); if (x > 0) relax(k, k - nx - 1, diag); if (x < nx - 1) relax(k, k - nx + 1, diag); } }
     for (let y = ny - 1; y >= 0; y--) for (let x = nx - 1; x >= 0; x--) { const k = y * nx + x; if (x < nx - 1) relax(k, k + 1, dx); if (y < ny - 1) { relax(k, k + nx, dx); if (x < nx - 1) relax(k, k + nx + 1, diag); if (x > 0) relax(k, k + nx - 1, diag); } }
-    for (let k = 0; k < n; k++) this.domeDepth[k] = this.domeDeficit[k] > p.domeWarmK ? clamp(Math.min(p.domeSlope * distance[k], this.domeDeficit[k] / p.domeDeficitKPerM), p.domeMinM, p.domeMaxM) : 0;
+    // (No deeper than the 750 mb level: from there up the outer model's layer holds the temperature, and
+    // the column below it is counted in the ground pressure already (balancedPressureHpa). 2026-10-24:
+    // up to domeMaxM, 4.5 km, and air 15 K below a layer of normal warmth weighed as a 4.3 km dome, its
+    // high 8-12 hPa too strong in the map's cool corners.)
+    const below750 = 8434.5 * Math.log(1013 / 750);
+    this.world.forEachCell((cell, x, y) => { const k = y * nx + x; this.domeTopM[k] = Math.max(p.domeMinM, Math.min(p.domeMaxM, below750 - cell.terrain.elevationM)); });
+    for (let k = 0; k < n; k++) this.domeDepth[k] = this.domeDeficit[k] > p.domeWarmK ? clamp(Math.min(p.domeSlope * distance[k], this.domeDeficit[k] / p.domeDeficitKPerM), p.domeMinM, this.domeTopM[k]) : 0;
   }
 
   // Hydrostatic balance near the ground: a column of warm low-level air weighs less, so the
@@ -1006,11 +1019,25 @@ export class RegionalAtmosphere {
       const profile850 = airTheta + (z850 > airMassDepth ? lapseAbove * (z850 - airMassDepth) : 0) + (z850 < this.eveningDepth[k] ? this.eveningExcess[k] : 0) + (dome > 0 ? this.domeDeficit[k] - coldAt(z850) : 0);
       const mixed850 = daytime && z850 < depth, t850 = (mixed850 ? Math.max(this.mixedTheta[k], profile850) : profile850) * 0.85 ** KAPPA - 273.15;
       const moistReaches850 = ramp(terrain + moistDepth, 1350, 1700);
-      cell.levels[850].temperature = t850; cell.levels[850].dewpoint = Math.min(t850 - 1, dewpointFromMixingRatio(mixed850 ? mixingRatio : p.dryMixingRatio + (0.85 * this.moisture[k] - p.dryMixingRatio) * moistReaches850, 850) - 273.15);
+      cell.levels[850].temperature = t850; cell.levels[850].dewpoint = Math.min(t850 - 1, dewpointFromMixingRatio(mixed850 ? mixingRatio : p.dryMixingRatio + (p.moisture850Share * this.moisture[k] - p.dryMixingRatio) * moistReaches850, 850) - 273.15);
       // A mixed layer grown up past 700 mb gives it its own temperature (a deep mixed layer is one
       // potential temperature through its depth; until 2026-10-20 700 mb kept the outer model's).
       const mixedTo700 = daytime && this.mixedDepth[k] >= height700 ? this.mixedTheta[k] * 0.7 ** KAPPA - 273.15 : -Infinity;
       cell.levels[700].temperature = Math.max(t700, mixedTo700); cell.levels[700].dewpoint = cell.levels[700].temperature - (12 + 14 * this.eml[k]);
+      // Air cannot stay cooler (in potential temperature) at 700 mb than at 850 mb: such a layer
+      // overturns at once, and the two levels mix to the potential temperature they share, the heat
+      // kept (convective adjustment). (2026-10-24: 850 mb carries the map's own warm-sector air and
+      // 700 mb the large-scale layer's, less up to 6 K of lift cooling, and nothing stopped 700 mb
+      // from falling past the dry adiabat: lapse rates of 10-13 C/km between them, and CAPE of 4,500-
+      // 5,900 J/kg on seed 1000; docs/METEOROLOGIST-REVIEW-2026-10-24.md.)
+      if (p.convectiveAdjustment) {
+        const theta850 = (cell.levels[850].temperature + 273.15) / 0.85 ** KAPPA, theta700 = (cell.levels[700].temperature + 273.15) / 0.7 ** KAPPA;
+        if (theta700 < theta850) {
+          const shared = (theta850 + theta700) / 2, dew850 = cell.levels[850].dewpoint - cell.levels[850].temperature;
+          cell.levels[850].temperature = shared * 0.85 ** KAPPA - 273.15; cell.levels[850].dewpoint = cell.levels[850].temperature + Math.min(-1, dew850);
+          cell.levels[700].temperature = shared * 0.7 ** KAPPA - 273.15; cell.levels[700].dewpoint = cell.levels[700].temperature - (12 + 14 * this.eml[k]);
+        }
+      }
       cell.levels[500].temperature = t500; cell.levels[250].temperature = t250;
       set(cell.levels[850], w850); set(cell.levels[700], this.windAt(outer, 700)); set(cell.levels[500], this.windAt(outer, 500)); set(cell.levels[250], this.windAt(outer, 250));
       cell.levels[500].heightDm = (5760 + f0 * (outer.midPsi - this.referenceMidPsi()) / GRAVITY) / 10;

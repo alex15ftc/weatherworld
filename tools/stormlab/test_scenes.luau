@@ -11,7 +11,7 @@ for _, scene in VisualTests.SCENES do
 	local t = world:labScene(scene, VisualTests.SITE)
 	if not t then print(scene.id, "no tornado") continue end
 	local cond = {}
-	for _, z in { 5, 100, 300, 600 } do table.insert(cond, string.format("%d:%.0f", z, Vortex.condensationRadius(t, z))) end
+	for _, z in { 5, 50, 150, 250, 400, 600 } do table.insert(cond, string.format("%d:%.0f", z, Vortex.condensationRadius(t, z))) end
 	local p = Vortex.params(t)
 	local rain = 0
 	for a = 0, 11 do for _, r in { 300, 800, 1500, 2500 } do rain = math.max(rain, world.precip.rainRate:sample(t.x + r * math.cos(a * 0.52), t.y + r * math.sin(a * 0.52))) end end

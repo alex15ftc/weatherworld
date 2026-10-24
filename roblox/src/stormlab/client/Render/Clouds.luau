@@ -224,7 +224,8 @@ function M.new(ctx: any)
 
 	local function planStorm(g: any, s: any, cam: Vector3, camX: number, camY: number, nInRange: number)
 		local d = math.sqrt((s.x - camX) ^ 2 + (s.y - camY) ^ 2)
-		local pieces = StormPlan.plan(s, Storm, CloudKit, stormDetail(d, nInRange))
+		-- (billboard cloud style: Render/StormCards draws the whole storm; no kit pieces here)
+		local pieces = if (ctx.state.cloudStyle or "cards") == "cards" then {} else StormPlan.plan(s, Storm, CloudKit, stormDetail(d, nInRange))
 		local origin = Config.toWorld(s.x, s.y, 0)
 		g.seed = s.seed or 1
 		commit(g, pieces, origin, cam)
@@ -232,6 +233,9 @@ function M.new(ctx: any)
 
 	local function planSystem(g: any, sys: any, cam: Vector3, camX: number, camY: number)
 		local pieces, vx, vy = ShelfPlan.plan(sys, ctx.cw.storms, CloudKit, camX, camY, 1)
+		if (ctx.state.cloudStyle or "cards") == "cards" then
+			pieces = {} -- (billboard style: Render/StormCards draws the shelf clouds as cards)
+		end
 		g.ox, g.oy, g.vx, g.vy, g.t0 = 0, 0, vx, vy, ctx.cw.time
 		g.seed = 4241
 		commit(g, pieces, Vector3.zero, cam)
@@ -438,7 +442,11 @@ function M.new(ctx: any)
 			local origin
 			if g.isStorm then
 				local s = g.obj
-				origin = Config.toWorld(s.x + (s.u or 0) * dtSnap, s.y + (s.v or 0) * dtSnap, 0)
+				-- (the billboard storms' smoothed track when there is one: the pieces move with them)
+				local tr = ctx.stormTrack and ctx.stormTrack[tostring(s.id)]
+				origin = if tr
+					then Config.toWorld(tr.x, tr.y, 0)
+					else Config.toWorld(s.x + (s.u or 0) * dtSnap, s.y + (s.v or 0) * dtSnap, 0)
 			else
 				local dt = math.clamp(simT - (g.t0 or simT), -5, 60)
 				origin = Config.toWorld(g.vx * dt, g.vy * dt, 0)

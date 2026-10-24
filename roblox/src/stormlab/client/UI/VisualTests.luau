@@ -131,6 +131,22 @@ function VisualTestsUI.new(ctx: any): any
 	local nightB = button(rs, "night: off", 100, function()
 		ctx.state.clockOverride = if ctx.state.clockOverride then nil else 22.5
 	end)
+	-- funnel comparison (Render/FunnelCompare): off -> A | B | C -> A | D -> B, C or D alone
+	local COMPARE = { "off", "A | B | C", "A | D", "B only", "C only", "D only" }
+	local function cycleCompare()
+		local i = table.find(COMPARE, ctx.state.compare or "off") or 1
+		ctx.state.compare = COMPARE[i % #COMPARE + 1]
+	end
+	local rs2 = row()
+	local compareB = button(rs2, "compare: off", 110, cycleCompare)
+	-- funnel style: soft billboard volume (Render/TornadoCards, default) or the mesh (Render/TornadoVisuals)
+	local styleB = button(rs2, "funnel: cards", 100, function()
+		ctx.state.funnelStyle = if (ctx.state.funnelStyle or "cards") == "cards" then "mesh" else "cards"
+	end)
+	-- cloud style: billboard cards (Render/StormCards, default) or the cloud-kit meshes (Render/Clouds)
+	local cloudB = button(rs2, "clouds: cards", 100, function()
+		ctx.state.cloudStyle = if (ctx.state.cloudStyle or "cards") == "cards" then "kit" else "cards"
+	end)
 
 	-- flash injection (visual only: the same flash path the server's lightning takes)
 	local function inject(kind: string, distance: number, bearing: number, height: number, current: number)
@@ -167,6 +183,41 @@ function VisualTestsUI.new(ctx: any): any
 				task.wait(0.3 + math.random() * 0.3)
 			end
 		end)
+	end)
+
+	-- where hail falls: the camera into the biggest surface hail (the replicated field), looking
+	-- at the nearest storm; hail shows only inside its swath
+	text("Camera", 12, ACCENT, true)
+	local rh = row()
+	local hailB
+	hailB = button(rh, "go to hail core", 150, function()
+		local vol = ctx.cw.vol
+		if not vol or not vol.hail then
+			hailB.Text = "no field yet"
+			return
+		end
+		local nx, x0 = vol.nxv, vol.x0
+		local vox = -2 * x0 / nx
+		local best, bc = 0, nil
+		for col, h in vol.hail do
+			if h > best then
+				best, bc = h, col
+			end
+		end
+		if not bc or best < 0.5 then
+			hailB.Text = "no hail on the ground"
+			return
+		end
+		local x, y = x0 + (bc % nx + 0.5) * vox, x0 + (bc // nx + 0.5) * vox
+		local near, nd = nil, math.huge
+		for _, st in ctx.cw.storms do
+			local d = (st.x - x) ^ 2 + (st.y - y) ^ 2
+			if d < nd then
+				near, nd = st, d
+			end
+		end
+		ctx.state.cameraGoto = { x = x, y = y, z = 2, lookX = near and near.x or x + 1, lookY = near and near.y or y, pitch = 12 }
+		hailB.Text = string.format("hail %.1f cm (go again)", best)
 	end)
 
 	text("Counters", 12, ACCENT, true)
@@ -206,6 +257,10 @@ function VisualTestsUI.new(ctx: any): any
 			Enum.KeyCode.Six, Enum.KeyCode.Seven, Enum.KeyCode.Eight, Enum.KeyCode.Nine, Enum.KeyCode.Zero, Enum.KeyCode.Minus }
 		local pad = { Enum.KeyCode.KeypadOne, Enum.KeyCode.KeypadTwo, Enum.KeyCode.KeypadThree, Enum.KeyCode.KeypadFour, Enum.KeyCode.KeypadFive,
 			Enum.KeyCode.KeypadSix, Enum.KeyCode.KeypadSeven, Enum.KeyCode.KeypadEight, Enum.KeyCode.KeypadNine, Enum.KeyCode.KeypadZero, Enum.KeyCode.KeypadMinus }
+		if input.KeyCode == Enum.KeyCode.C then
+			cycleCompare()
+			return
+		end
 		local n = table.find(digits, input.KeyCode) or table.find(pad, input.KeyCode)
 		if n then
 			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
@@ -247,6 +302,9 @@ function VisualTestsUI.new(ctx: any): any
 		moonB.Text = "moon: " .. (if (ctx.state.moonlight or 0) > 0 then "on" else "off")
 		qualB.Text = "quality: " .. (if (ctx.state.quality or 1) >= 1 then "full" else "low")
 		nightB.Text = "night: " .. (if ctx.state.clockOverride then string.format("%.1f h", ctx.state.clockOverride) else "off")
+		compareB.Text = "compare (C): " .. (ctx.state.compare or "off")
+		styleB.Text = "funnel: " .. (ctx.state.funnelStyle or "cards")
+		cloudB.Text = "clouds: " .. (ctx.state.cloudStyle or "cards")
 		local nInst = #ctx.root:GetDescendants()
 		counters.Text = string.format(
 			"client %.1f ms/frame (%.0f fps)\ntornado: %s\ncloud parts %s (%s ms) · shafts %s\ndust %s · debris %s · flashes %d\nvisual instances %d\nrain at camera %s mm/h · camera %s",

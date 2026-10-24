@@ -69,6 +69,12 @@ export const BOUNDARY_DEFAULTS = Object.freeze({
   // came and went as their contrast hovered at the threshold: one moisture edge was cold, then
   // stationary, then a dryline, then warm in 7 hours.)
   matchKm: 60, motionHours: 2, keepShare: 0.7,
+  // A front must show at the ground as analysts read it there (2026-10-24): across it, the air's
+  // potential temperature as it now is changes by thetaK, or its moisture by moistureGkg, or its wind by
+  // windMs, along at least share of the front. The air mass the front is found in leaves out the day's
+  // heating, which can even it out: three "warm fronts" were drawn in uniform 80-90 F air with no
+  // dewpoint or wind change (docs/METEOROLOGIST-REVIEW-2026-10-24.md).
+  groundShows: { thetaK: 2, moistureGkg: 2, windMs: 8, share: 0.5 },
   // How far into the cold air its wind is read (cells), and how far a moisture line must be
   // from a front, and how much colder its dry side may be, to count as a dryline.
   coldSideReachCells: 2, drylineFrontClearanceCells: 3, drylineColdSideLimitK: 2
@@ -80,20 +86,21 @@ const MS_PER_KT = 0.514444;
 // the south here and in the returned points, like every other map product.
 function readFields(world) {
   const { width, height } = world, n = width * height;
-  const temperature = new Float64Array(n), moisture = new Float64Array(n), u = new Float64Array(n), v = new Float64Array(n), coldPool = new Float64Array(n);
+  const temperature = new Float64Array(n), moisture = new Float64Array(n), u = new Float64Array(n), v = new Float64Array(n), coldPool = new Float64Array(n), ground = new Float64Array(n);
   world.forEachCell((cell, x, y) => {
     const k = y * width + x, surface = cell.surface;
     // Potential temperature of the air mass where the state carries it (no day-night swing, no
     // terrain in it), else of the air at the ground.
     const airMassK = Number(cell.features?.airMassThetaK);
     coldPool[k] = Number(cell.features?.coldPoolK) || 0;
-    temperature[k] = Number.isFinite(airMassK) && airMassK > 0 ? airMassK : ((surface.temperature - 32) * 5 / 9 + 273.15) * (1000 / (surface.pressure || 1000)) ** 0.2857;
+    ground[k] = ((surface.temperature - 32) * 5 / 9 + 273.15) * (1000 / (surface.pressure || 1000)) ** 0.2857;
+    temperature[k] = Number.isFinite(airMassK) && airMassK > 0 ? airMassK : ground[k];
     const dewpointC = (surface.dewpoint - 32) * 5 / 9, vapour = 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5));
     moisture[k] = 622 * vapour / Math.max(100, (surface.pressure || 1000) - vapour);
     const speed = (Number(surface.wind?.speed) || 0) * MS_PER_KT, direction = (Number(surface.wind?.direction) || 0) * Math.PI / 180;
     u[k] = -Math.sin(direction) * speed; v[k] = Math.cos(direction) * speed;   // v positive toward the south (down the rows)
   });
-  return { temperature, moisture, u, v, coldPool };
+  return { temperature, moisture, u, v, coldPool, ground };
 }
 
 function smooth(values, width, height, passes) {
@@ -270,7 +277,11 @@ export function analyseBoundaries(world, options = {}) {
       const poolCold = bilinear(raw.coldPool, width, height, coldX, coldY), poolWarm = bilinear(raw.coldPool, width, height, warmX, warmY);
       const across = Math.max(0.5, bilinear(temperature, width, height, warmX, warmY) - bilinear(temperature, width, height, coldX, coldY));
       const outflow = poolCold >= p.outflowDeficitK && (poolCold - poolWarm) >= p.outflowShare * across;
-      return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, moistContrast: moist.size[k], outflow, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
+      // What the front shows at the ground across it: the air's temperature as it is now, its moisture, its wind.
+      const gs = p.groundShows, at = (field, gx, gy) => bilinear(field, width, height, gx, gy);
+      const shows = at(raw.ground, warmX, warmY) - at(raw.ground, coldX, coldY) >= gs.thetaK || Math.abs(at(raw.moisture, warmX, warmY) - at(raw.moisture, coldX, coldY)) >= gs.moistureGkg
+        || Math.hypot(at(u, warmX, warmY) - at(u, coldX, coldY), at(v, warmX, warmY) - at(v, coldX, coldY)) >= gs.windMs;
+      return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, moistContrast: moist.size[k], outflow, shows: shows ? 1 : 0, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
     });
     // The line it was in the last analysis (of any kind: a dryline that gains a temperature
     // contrast after dark is still that dryline).
@@ -301,6 +312,8 @@ export function analyseBoundaries(world, options = {}) {
         // its dry air is not pushing on as a cold front's does (a dryline drifting back after dark
         // gains a temperature contrast; a cold front overtaking the dryline is the cold front).
         const mean = key => part.reduce((sum, q) => sum + q[key], 0) / part.length;
+        // A front is drawn only where it shows at the ground along at least groundShows.share of it.
+        if (kind[i] !== 'outflow' && mean('shows') < p.groundShows.share) { i = j; continue; }
         const stillDryline = was?.family === 'dryline' && kind[i] !== 'outflow' && mean('moistContrast') >= p.drylineGradient * p.keepShare && mean('motion') <= p.stationarySpeedMs;
         boundaries.push({ type: stillDryline ? 'dryline' : kind[i], points: part });
       }

@@ -495,12 +495,14 @@ function stamp(hour) {
 export async function toPng(list, outDir) {
   const browser = process.env.CHROME ?? ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(p => fs.existsSync(p));
   if (!browser) { console.warn('[day review] no Chrome or Edge found: SVG only'); return; }
-  const queue = [...list], profiles = path.join(outDir, '.chrome', String(process.pid));
+  const queue = [...list], profiles = path.join(path.resolve(outDir), '.chrome', String(process.pid));
   const one = (item, slot) => new Promise(resolve => {
     const size = /width="(\d+)" height="(\d+)"/.exec(item.svg), file = path.resolve(`${item.file}.svg`);
     execFile(browser, ['--headless=new', '--disable-gpu', '--hide-scrollbars', `--user-data-dir=${path.join(profiles, String(slot))}`, `--window-size=${size[1]},${size[2]}`, `--screenshot=${path.resolve(`${item.file}.png`)}`, `file:///${file.replace(/\\/g, '/')}`], { timeout: 60000 }, () => { if (fs.existsSync(path.resolve(`${item.file}.png`))) fs.rmSync(file, { force: true }); resolve(); });
   });
   await Promise.all(Array.from({ length: 2 }, async (_, slot) => { while (queue.length) await one(queue.shift(), slot); }));
+  // Charts the browser did not draw (several seeds at once can make it time out), once more one at a time.
+  for (const item of list) if (!fs.existsSync(path.resolve(`${item.file}.png`))) await one(item, 0);
   try { fs.rmSync(profiles, { recursive: true, force: true }); } catch { /* a browser still closing; harmless */ }
 }
 

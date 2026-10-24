@@ -54,6 +54,10 @@ function CameraRig.new(ctx: any): any
 				self.free.yaw = math.atan2(-look.X, -look.Z)
 				self.free.pitch = math.asin(math.clamp(look.Y, -1, 1))
 			end
+		elseif input.KeyCode == Enum.KeyCode.PageUp or input.KeyCode == Enum.KeyCode.PageDown then
+			-- chase view: tilt the look up or down (anvils, tower tops)
+			local step = math.rad(6) * (if input.KeyCode == Enum.KeyCode.PageUp then 1 else -1)
+			self.tilt = math.clamp((self.tilt or 0) + step, math.rad(-20), math.rad(70))
 		elseif input.KeyCode == Enum.KeyCode.Tab then
 			-- next focus: tornadoes first, then storms by strength
 			local list = {}
@@ -160,6 +164,17 @@ function CameraRig.new(ctx: any): any
 	end
 
 	function self:update(dt: number)
+		-- a jump request (UI/VisualTests "hail core"): free camera at a sim point looking at another
+		local go = ctx.state.cameraGoto
+		if go then
+			ctx.state.cameraGoto = nil
+			self.mode = "free"
+			ctx.state.cameraMode = "free"
+			self.free.pos = C.toWorld(go.x, go.y, go.z or 2)
+			local dx, dy = (go.lookX or go.x + 1) - go.x, (go.lookY or go.y) - go.y
+			self.free.yaw = math.atan2(-dx, dy) -- (Roblox: look = (-sin yaw, 0, -cos yaw); sim y = -Z)
+			self.free.pitch = math.rad(go.pitch or 8)
+		end
 		local x, y, lookZ, kind = focusInfo()
 		applyPreset(dt)
 		if kind ~= self.lastKind then
@@ -189,7 +204,8 @@ function CameraRig.new(ctx: any): any
 			local cx = fx + math.cos(self.yaw) * self.dist
 			local cy = fy + math.sin(self.yaw) * self.dist
 			local eye = C.toWorld(cx, cy, 2 + self.dist * 0.002)
-			cam.CFrame = CFrame.lookAt(eye, C.toWorld(fx, fy, fz))
+			local look = CFrame.lookAt(eye, C.toWorld(fx, fy, fz))
+			cam.CFrame = if (self.tilt or 0) ~= 0 then look * CFrame.Angles(self.tilt, 0, 0) else look
 		elseif self.mode == "orbit" then
 			local h = self.dist * math.sin(self.pitch)
 			local r = self.dist * math.cos(self.pitch)

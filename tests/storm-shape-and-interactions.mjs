@@ -60,7 +60,8 @@ assert.ok(onBoundary.lowRotation > 1.2 * open.lowRotation, `a storm drawing in a
 assert.equal(onBoundary.mesocycloneStrength, open.mesocycloneStrength, 'its rotation aloft is the same');
 
 // --- Splits follow the turning of the wind with height.
-assert.equal(leftSplitShare({ srh: 40 }), 1, 'shear that does not turn splits a storm evenly');
+// (Helicity 40 to 20 on 2026-10-24, with the straight-hodograph range [25, 150].)
+assert.equal(leftSplitShare({ srh: 20 }), 1, 'shear that does not turn splits a storm evenly');
 assert.equal(leftSplitShare({ srh: 300 }), 0, 'shear that turns strongly clockwise leaves no left-mover');
 assert.ok(shouldSplitStorm(storm({ ageHours: 1 }), air) && !shouldSplitStorm(storm({ ageHours: 1, hasSplit: true }), air) && !shouldSplitStorm(storm({ ageHours: 1, lineOrganization: 0.8 }), air), 'a rotating storm on its own splits once');
 const leftMover = spin({ ...air, srh: 60 }, { leftMover: true }), leftInTurning = spin(air, { leftMover: true });

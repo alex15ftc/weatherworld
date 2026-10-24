@@ -194,7 +194,8 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     // (a merger), the outflow cut it off (the storm would still hold the rotation were it not
     // occluding), or the rotation faded.
     const endedBy = storm.active === false ? 'storm ended' : tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6 && low >= TORNADO.sustainRotation && !leftBehind && rotating > 0 ? 'vortex spent' : rotating <= 0 ? 'not rotating' : leftBehind ? 'left behind' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
-    endTornado(world, storm, tornado, { endedBy, endOcclusion: storm.occlusion ?? 0, endLowRotationFree: storm.lowRotationFree ?? 0 });
+    const cut = endedBy === 'vortex spent' ? cutToLife(tornado) : null;
+    endTornado(world, storm, tornado, { endedBy, endOcclusion: storm.occlusion ?? 0, endLowRotationFree: storm.lowRotationFree ?? 0, ...(cut ? { endedHourUtc: cut } : {}) });
     if (endedBy === 'vortex spent') storm.lowRotation = (storm.lowRotation ?? 0) * LIFE.rotationLeft;
   } else tornado.state = 'on-ground';
   return tornado;
@@ -217,6 +218,25 @@ function beginTornado(world, storm, tornado) {
   tornado.windSpeedMph = 75; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.positionKm = tornadoPosition(storm);
   tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
+}
+
+// A tornado whose drawn life ran out between storm ticks ended then: its track is cut back to that
+// moment (the end point between the last two ticks), and its path, time on the ground and rating are
+// those of the cut track. Returns the hour it ended, or null when nothing was cut. (2026-10-24: it
+// could end only at a tick after the one it formed in, so every short-lived tornado lasted exactly
+// 10 minutes and ran 5-8 miles: 15 of 19 and 15 of 22 tornadoes on two reviewed days.)
+function cutToLife(tornado) {
+  const points = tornado.trackPoints ?? [], life = tornado.lifeMinutes;
+  if (points.length < 2 || !Number.isFinite(life)) return null;
+  const endAt = points[0].hourUtc + life / 60;
+  if (points.at(-1).hourUtc <= endAt + 1e-9) return null;
+  const i = points.findIndex(p => p.hourUtc > endAt), a = points[i - 1], b = points[i], f = (endAt - a.hourUtc) / Math.max(1e-9, b.hourUtc - a.hourUtc);
+  tornado.trackPoints = [...points.slice(0, i), { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, hourUtc: endAt }];
+  tornado.pathLengthKm = tornado.trackPoints.slice(1).reduce((sum, p, k) => sum + Math.hypot(p.x - tornado.trackPoints[k].x, p.y - tornado.trackPoints[k].y), 0);
+  tornado.groundTimeMinutes = life;
+  tornado.ratedWindMph = damageRatingWind(tornado.peakWindSpeedMph, tornado.peakWidthYards, tornado.pathLengthKm, Number.isFinite(tornado.damageDraw) ? tornado.damageDraw : 0.5);
+  tornado.estimatedEf = efRating(tornado.ratedWindMph);
+  return endAt;
 }
 
 function endTornado(world, storm, tornado, end = {}) {
