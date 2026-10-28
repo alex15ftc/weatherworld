@@ -3,7 +3,8 @@
 -- interstates, expressways and highways; its local roads (airfield and campus roads, paved; lease
 -- and wind farm roads, gravel); the section-line roads (paved, gravel, dirt), which become
 -- four-lane arterials with sidewalks in towns; and the town street grids (200-stud blocks in town
--- and city cores, 250-stud blocks in suburbs), which do not run through superblocks (campuses,
+-- and city cores, 300-stud blocks in suburbs: three and two to the 600-stud mile, so the section
+-- lines fall on both grids), which do not run through superblocks (campuses,
 -- airfields, malls, industrial parks, larger parks and schools; Sites.superblock). Everything else asks it where the
 -- roads are: the terrain is flattened under them, road parts are laid along them, and signs,
 -- lights, poles, buildings and trees keep clear of them.
@@ -28,6 +29,9 @@
 -- turning circle).
 
 local Interchanges = require(script.Parent.Parent.Interchanges)
+local Config = require(script.Parent.Parent.Config)
+
+local MILE = Config.STUDS_PER_MILE
 
 local RoadNet = {}
 
@@ -72,7 +76,10 @@ local S = RoadNet.SPECS
 RoadNet.MAP_KINDS = { [1] = S.interstate, [2] = S.expressway, [3] = S.highway, [4] = S.county, [5] = S.gravel }
 RoadNet.LOCAL_KIND = 4 -- map road kinds from here on are local roads, not highways
 RoadNet.SECTION_KINDS = { [1] = S.dirt, [2] = S.gravel, [3] = S.county }
-RoadNet.URBAN_GRID, RoadNet.SUBURB_GRID = 200, 250
+-- (Both must divide STUDS_PER_MILE. 2026-10-28: suburbs 250 -> 300 when the mile went from 1000
+-- to 600 studs; 250 left 100 and 150-stud slivers against the section lines.)
+RoadNet.URBAN_GRID, RoadNet.SUBURB_GRID = 200, 300
+assert(MILE % RoadNet.URBAN_GRID == 0 and MILE % RoadNet.SUBURB_GRID == 0, "[RoadNet] town grids must divide STUDS_PER_MILE")
 RoadNet.MAX_TOTAL = S.interstate.total
 RoadNet.CURB = 1
 local STREET_CLEAR = 10 -- between a cul-de-sac's edge and a highway's
@@ -222,7 +229,7 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 	end
 
 	-- Section lines, in quarter-mile pieces (so a line can turn arterial where it enters a town).
-	local QUARTER = 250
+	local QUARTER = MILE / 4
 	for _, vertical in { true, false } do
 		local lo, hi = if vertical then x0 else z0, if vertical then x1 else z1
 		local alo, ahi = if vertical then z0 else x0, if vertical then z1 else x1
@@ -261,7 +268,7 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 			local alo, ahi = if vertical then z0 else x0, if vertical then z1 else x1
 			for k = math.ceil(lo / step), math.floor(hi / step) do
 				local line = k * step
-				if line % 1000 ~= 0 then
+				if line % MILE ~= 0 then -- (the section lines are roads already)
 					for q = math.floor(alo / step), math.floor(ahi / step) do
 						local a, b = q * step, (q + 1) * step
 						local mx, mz = if vertical then line else (a + b) / 2, if vertical then (a + b) / 2 else line

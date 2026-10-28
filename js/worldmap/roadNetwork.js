@@ -7,9 +7,12 @@
 //     at traffic signals.
 // The same rules as the Roblox world's RoadNet (roblox/src/shared/World/Props/RoadNet.luau).
 import { interchangeRamps } from './interchanges.js';
+import { AT_1000, STUDS } from './scale.js';
 
-export const GRAVEL_GAP_MI = 0.04;
-const HALF = { interstate: 0.051, expressway: 0.039, highway: 0.018, ramp: 0.011 };
+// Character-scale gaps and RoadNet's half-widths, in studs (scale.js; streets.js gravelGapMi, HALF_MI).
+export const GRAVEL_GAP_MI = AT_1000(0.04);
+const PAVED_GAP_MI = AT_1000(0.01);
+const HALF = { interstate: STUDS(51), expressway: STUDS(39), highway: STUDS(18), ramp: STUDS(11) };
 
 function intersect(a, b, c, d) {
   const rx = b[0] - a[0], ry = b[1] - a[1], sx = d[0] - c[0], sy = d[1] - c[1], den = rx * sy - ry * sx;
@@ -22,7 +25,7 @@ function intersect(a, b, c, d) {
 function highwayIndex(map) {
   const cells = new Map(), segs = [];
   const add = (a, b, kind, road) => {
-    const seg = { a, b, kind, road, half: HALF[kind] ?? 0.018 };
+    const seg = { a, b, kind, road, half: HALF[kind] ?? HALF.highway };
     segs.push(seg);
     for (let x = Math.floor(Math.min(a[0], b[0]) / 2); x <= Math.floor(Math.max(a[0], b[0]) / 2); x++) {
       for (let y = Math.floor(Math.min(a[1], b[1]) / 2); y <= Math.floor(Math.max(a[1], b[1]) / 2); y++) {
@@ -67,7 +70,7 @@ export function sectionSegments(map, sections) {
           // Running along a highway: the stretch beside it goes (the highway is the road there).
           continue;
         }
-        const gap = h.half / hit.sin + (cls === 3 ? 0.01 : GRAVEL_GAP_MI);
+        const gap = h.half / hit.sin + (cls === 3 ? PAVED_GAP_MI : GRAVEL_GAP_MI);
         const hl = Math.hypot(h.b[0] - h.a[0], h.b[1] - h.a[1]) || 1;   // u is a share of the highway segment
         if (hit.u < -gap / hl || hit.u > 1 + gap / hl || hit.t < -gap || hit.t > 1 + gap) continue;
         if (cls === 3 && carried(a[0] + (b[0] - a[0]) * hit.t, a[1] + (b[1] - a[1]) * hit.t)) continue;

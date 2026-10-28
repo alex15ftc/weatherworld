@@ -6,8 +6,9 @@
 //   - Wind farms on high, open farm and range land where the wind is steadiest: most in the High
 //     Plains and Smoky Hills, some in the Red Hills (as Flat Ridge in Barber County) and on the
 //     Flint Hills' edge, few in the wetter east. Turbines stand in strings across the prevailing
-//     south and north winds (east-west), half a mile off the section lines, about 0.28 mi apart
-//     along a string and a mile between strings (about 4 and 10 rotor diameters), each reached by
+//     south and north winds (east-west), half a mile off the section lines, about 240 studs
+//     apart along a string and 1,200 studs between strings (alongMi, every rowEveryMi-th mile
+//     line; about 4 and 10 rotor diameters at the turbine model's scale), each reached by
 //     a gravel road. The farms are shared out between those regions (wind.quota). Farms keep well away from towns, airports and the weather radars (turbines
 //     clutter a radar's view; the NWS asks for space round them). Each farm has a substation.
 //   - Farm windmills (water pumps over stock tanks) on pasture: grassland, Sandhills range, the
@@ -36,18 +37,25 @@
 //
 // Lots face a road: laid out in feet along the road (al) and back from it (ac), and stored in map
 // miles.
+//
+// Scale (scale.js): lots, campuses, buildings and the clearances round roads are built at
+// character scale and keep their size in studs, so a layout foot is AT_1000(1/5280) map miles (the
+// stud size a foot had at 1000 studs a mile). Point features (turbines, windmills, wells) keep the
+// spacing in studs they had then: thinned by K^2 per square map mile. How many schools and
+// stations a place has and where (people, extents, the mile grid) is the map's.
 import { makeNoise, makeRandom, hashText, fbm, clamp } from './noise.js';
 import { interchangeRamps } from './interchanges.js';
 import { pointInPoly, nearestOnSegment, distToSeg, segmentIntersection } from './airfields.js';
 import { planPlaceLandUse, planNeighborhoods, polysNear, COMMERCIAL } from './landUse.js';
-import { HALF_MI } from './streets.js';
+import { HALF_MI, STREET_DEFAULTS } from './streets.js';
+import { AT_1000, K, STUDS } from './scale.js';
 
-const FT = 1 / 5280;
+const FT = AT_1000(1 / 5280);   // a layout foot in map miles
 
 export const FACILITY_DEFAULTS = Object.freeze({
-  wind: { weight: { highPlains: 1, smokyHills: 0.9, redHills: 0.6, flintHills: 0.35, midwest: 0.1, sandhills: 0.15, ozarkEdge: 0 }, farms: 9, quota: { highPlains: 4, smokyHills: 3, redHills: 1, flintHills: 1 }, spacingMi: 35, alongMi: 0.28, widthMi: [7, 14], depthMi: [4, 8], townClearMi: 2.5, airfieldClearMi: 5, radarClearMi: 6 },
-  oil: { weight: { highPlains: 0.55, smokyHills: 1, redHills: 0.7, flintHills: 0.6, midwest: 0.2, sandhills: 0.05, ozarkEdge: 0 }, fieldMi: 14, threshold: 0.76, drilled: 0.22, gasRegions: ['highPlains'], tankEvery: 8 },
-  windmills: { covers: ['grassland', 'sandhillGrass', 'tallgrass', 'redRange'], perMi2: 0.08 },
+  wind: { weight: { highPlains: 1, smokyHills: 0.9, redHills: 0.6, flintHills: 0.35, midwest: 0.1, sandhills: 0.15, ozarkEdge: 0 }, farms: 9, quota: { highPlains: 4, smokyHills: 3, redHills: 1, flintHills: 1 }, spacingMi: 35, alongMi: 0.4, rowEveryMi: 2, widthMi: [7, 14], depthMi: [4, 8], townClearMi: 2.5, airfieldClearMi: 5, radarClearMi: 6 },
+  oil: { weight: { highPlains: 0.55, smokyHills: 1, redHills: 0.7, flintHills: 0.6, midwest: 0.2, sandhills: 0.05, ozarkEdge: 0 }, fieldMi: 14, threshold: 0.76, drilled: 0.22 / K ** 2, gasRegions: ['highPlains'], tankEvery: 8 },
+  windmills: { covers: ['grassland', 'sandhillGrass', 'tallgrass', 'redRange'], perMi2: 0.08 / K ** 2 },
   schoolMinPopulation: 1000, smallTownPopulation: 3000, peoplePer: { elementary: 4500, middle: 14000, high: 25000 },
   // City schools are bigger: the people per school grow as (population / from) ^ exponent above
   // `from` (Wichita, 400,000, has about 55 elementary, 16 middle and 10 high schools).
@@ -94,6 +102,9 @@ function schoolLayout(level) {
   if (level === 'elementary') return { W: 620, D: 520, building: [[-150, 130, 150, 270], [-150, 270, -60, 340]], parking: [[-290, 40, -170, 220]], loop: [[-150, 40], [150, 40], [150, 110], [-150, 110], [-150, 40]], fields: [{ kind: 'playground', r: [180, 150, 290, 300] }, { kind: 'field', r: [-220, 360, 220, 500] }] };
   if (level === 'middle') return { W: 820, D: 680, building: [[-200, 130, 200, 310], [-200, 310, -80, 400]], parking: [[-390, 40, -220, 290], [220, 40, 390, 160]], loop: [[-200, 40], [200, 40], [200, 110], [-200, 110], [-200, 40]], fields: [{ kind: 'track', r: [-280, 420, 280, 660] }, { kind: 'baseball', r: [230, 200, 400, 380] }] };
   if (level === 'juniorSenior') return { W: 920, D: 740, building: [[-220, 130, 220, 330], [-220, 330, -100, 420]], parking: [[-440, 40, -240, 320]], loop: [[-220, 40], [220, 40], [220, 110], [-220, 110], [-220, 40]], fields: [{ kind: 'track', r: [-300, 440, 300, 720] }, { kind: 'baseball', r: [260, 150, 440, 340] }] };
+  // A high school turned deep (narrow frontage, fields behind) for where the wide one does not
+  // fit along a road between the cross streets (the collectors on the half-mile lines).
+  if (level === 'highDeep') return { W: 1020, D: 1320, building: [[-300, 150, 300, 420], [-300, 420, -150, 520], [150, 420, 300, 520]], parking: [[-500, 40, -330, 460], [330, 40, 500, 300]], loop: [[-300, 40], [300, 40], [300, 120], [-300, 120], [-300, 40]], fields: [{ kind: 'track', r: [-300, 580, 300, 960] }, { kind: 'baseball', r: [-500, 1000, -220, 1280] }, { kind: 'field', r: [120, 1000, 500, 1300] }] };
   return { W: 1320, D: 1020, building: [[-300, 150, 300, 420], [-300, 420, -150, 520], [150, 420, 300, 520]], parking: [[-640, 40, -330, 460], [330, 40, 640, 300]], loop: [[-300, 40], [300, 40], [300, 120], [-300, 120], [-300, 40]], fields: [{ kind: 'track', r: [-300, 580, 300, 960] }, { kind: 'baseball', r: [360, 560, 640, 840] }, { kind: 'field', r: [-640, 560, -360, 960] }] };
 }
 
@@ -122,12 +133,13 @@ export function planFacilities(map, options = {}) {
     return out;
   };
   const addSeg = seg => { for (const key of cellsOf(Math.min(seg.ax, seg.bx) - seg.half, Math.min(seg.ay, seg.by) - seg.half, Math.max(seg.ax, seg.bx) + seg.half, Math.max(seg.ay, seg.by) + seg.half, 1)) { if (!index.has(key)) index.set(key, []); index.get(key).push(seg); } };
-  const HALF = { interstate: 0.051, expressway: 0.039, highway: 0.018 };
-  for (const road of roads) for (let i = 1; i < road.points.length; i++) addSeg({ type: 'road', road, kind: road.kind, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: HALF[road.kind] ?? 0.018 });
-  for (const c of crossings) for (const ramp of interchangeRamps(c)) for (let i = 1; i < ramp.length; i++) addSeg({ type: 'ramp', ax: ramp[i - 1][0], ay: ramp[i - 1][1], bx: ramp[i][0], by: ramp[i][1], half: 0.011 });
+  // An interstate is kept clear out to its frontage roads (streets.js lays them in town, later).
+  const ROAD_HALF = { ...HALF_MI, interstate: STREET_DEFAULTS.frontageMi + HALF_MI.frontage };
+  for (const road of roads) for (let i = 1; i < road.points.length; i++) addSeg({ type: 'road', road, kind: road.kind, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: ROAD_HALF[road.kind] ?? HALF_MI.highway });
+  for (const c of crossings) for (const ramp of interchangeRamps(c)) for (let i = 1; i < ramp.length; i++) addSeg({ type: 'ramp', ax: ramp[i - 1][0], ay: ramp[i - 1][1], bx: ramp[i][0], by: ramp[i][1], half: HALF_MI.ramp });
   // Rivers with their banks and the valley side (footprints.js): lots keep out of the corridor.
-  for (const river of rivers) for (let k = 2; k < river.points.length; k += 2) addSeg({ type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000 + 0.048 });
-  const segsNear = (x0, y0, x1, y1) => { const found = new Set(); for (const key of cellsOf(x0 - 0.1, y0 - 0.1, x1 + 0.1, y1 + 0.1, 1)) for (const s of index.get(key) ?? []) found.add(s); return found; };
+  for (const river of rivers) for (let k = 2; k < river.points.length; k += 2) addSeg({ type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: STUDS(Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18))) / 2 + AT_1000(0.048) });
+  const segsNear = (x0, y0, x1, y1) => { const found = new Set(); for (const key of cellsOf(x0 - AT_1000(0.1), y0 - AT_1000(0.1), x1 + AT_1000(0.1), y1 + AT_1000(0.1), 1)) for (const s of index.get(key) ?? []) found.add(s); return found; };
   // Section roads as wide as Roblox builds them: paved ones are arterials in town.
   const SECTION_HALF = [0, HALF_MI.dirt, HALF_MI.gravel, HALF_MI.county];
   const sectionHalf = (cls, x, y) => (cls === 3 && townCover.has(cover[cellAt(x, y)]) ? HALF_MI.arterial : SECTION_HALF[cls]);
@@ -142,41 +154,45 @@ export function planFacilities(map, options = {}) {
   for (const a of airfields) {
     for (const poly of [a.nws?.building, a.nws?.parking, a.radar?.compound]) if (poly) take(bboxOf(poly));
     const outside = [...(a.access?.freeway ? [] : [a.access?.points ?? []]), ...a.roads.filter(r => r.kind === 'entrance').map(r => r.points)];
-    for (const pts of outside) for (let i = 1; i < pts.length; i++) addSeg({ type: 'access', ax: pts[i - 1][0], ay: pts[i - 1][1], bx: pts[i][0], by: pts[i][1], half: 0.012 });
+    for (const pts of outside) for (let i = 1; i < pts.length; i++) addSeg({ type: 'access', ax: pts[i - 1][0], ay: pts[i - 1][1], bx: pts[i][0], by: pts[i][1], half: AT_1000(0.012) });
   }
 
   // Whether a polygon (map miles) stands clear, pad miles beyond every road's edge.
-  const clear = (poly, pad = 0.004) => {
+  const clear = (poly, pad = AT_1000(0.004)) => {
+    const m = AT_1000(0.05);
     const box = bboxOf(poly);
     if (box[0] < 1 || box[1] < 1 || box[2] > miles - 1 || box[3] > miles - 1) return false;
     for (const q of [...poly, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]]) if (cover[cellAt(q[0], q[1])] === water) return false;
     for (const s of segsNear(...box)) if (segPolyDist(s, poly) < s.half + pad) return false;
     // Section roads on the mile lines near the lot.
-    for (let I = Math.ceil(box[0] - 0.05); I <= Math.floor(box[2] + 0.05); I++) for (let J = Math.floor(box[1] - 0.05); J <= Math.floor(box[3] + 0.05); J++) {
+    for (let I = Math.ceil(box[0] - m); I <= Math.floor(box[2] + m); I++) for (let J = Math.floor(box[1] - m); J <= Math.floor(box[3] + m); J++) {
       const cls = sectionClass(I, J, false);
       if (cls && segPolyDist({ ax: I, ay: J, bx: I, by: J + 1 }, poly) < sectionHalf(cls, I, J + 0.5) + pad) return false;
     }
-    for (let J = Math.ceil(box[1] - 0.05); J <= Math.floor(box[3] + 0.05); J++) for (let I = Math.floor(box[0] - 0.05); I <= Math.floor(box[2] + 0.05); I++) {
+    for (let J = Math.ceil(box[1] - m); J <= Math.floor(box[3] + m); J++) for (let I = Math.floor(box[0] - m); I <= Math.floor(box[2] + m); I++) {
       const cls = sectionClass(I, J, true);
       if (cls && segPolyDist({ ax: I, ay: J, bx: I + 1, by: J }, poly) < sectionHalf(cls, I + 0.5, J) + pad) return false;
     }
     // Airfield fences: no corner of either inside the other, and no fence line across the lot.
-    for (const f of fences) if (box[0] < f.box[2] + 0.05 && box[2] > f.box[0] - 0.05 && box[1] < f.box[3] + 0.05 && box[3] > f.box[1] - 0.05 && (poly.some(([x, y]) => pointInPoly(x, y, f.poly)) || f.poly.some(([x, y]) => pointInPoly(x, y, poly)) || f.poly.some(([ax, ay], i) => { const [bx, by] = f.poly[(i + 1) % f.poly.length]; return segPolyDist({ ax, ay, bx, by }, poly) < pad; }))) return false;
-    return !isTaken(box, 0.006);
+    for (const f of fences) if (box[0] < f.box[2] + m && box[2] > f.box[0] - m && box[1] < f.box[3] + m && box[3] > f.box[1] - m && (poly.some(([x, y]) => pointInPoly(x, y, f.poly)) || f.poly.some(([x, y]) => pointInPoly(x, y, poly)) || f.poly.some(([ax, ay], i) => { const [bx, by] = f.poly[(i + 1) % f.poly.length]; return segPolyDist({ ax, ay, bx, by }, poly) < pad; }))) return false;
+    return !isTaken(box, AT_1000(0.006));
   };
+  // A point feature's spot (gaps in miles at 1000 studs a mile, kept in studs).
   const pointClear = (x, y, roadGap, lineGap) => {
+    roadGap = AT_1000(roadGap); lineGap = AT_1000(lineGap);
+    const r = AT_1000(0.01);
     if (x < 1 || y < 1 || x > miles - 1 || y > miles - 1 || cover[cellAt(x, y)] === water) return false;
     if (Math.abs(x - Math.round(x)) < lineGap || Math.abs(y - Math.round(y)) < lineGap) return false;
     for (const s of segsNear(x, y, x, y)) if (distToSeg(x, y, s) < s.half + roadGap) return false;
     for (const f of fences) if (x > f.box[0] - 0.3 && x < f.box[2] + 0.3 && y > f.box[1] - 0.3 && y < f.box[3] + 0.3) return false;
-    return !isTaken([x - 0.01, y - 0.01, x + 0.01, y + 0.01], 0.01);
+    return !isTaken([x - r, y - r, x + r, y + r], r);
   };
 
   // A lot facing a road: line {ax, ay, bx, by, half}, centred at `at` miles along it, on `side`
   // (+1 to the right of a to b, -1 left). L(al, ac) maps lot feet to map miles.
   const frontage = (line, at, side, W, D) => {
     const len = Math.hypot(line.bx - line.ax, line.by - line.ay), ux = (line.bx - line.ax) / len, uy = (line.by - line.ay) / len;
-    const nx = -uy * side, ny = ux * side, ox = line.ax + ux * at, oy = line.ay + uy * at, set = line.half + 0.006;
+    const nx = -uy * side, ny = ux * side, ox = line.ax + ux * at, oy = line.ay + uy * at, set = line.half + AT_1000(0.006);
     const L = (al, ac) => [r4(ox + ux * al * FT + nx * (set + ac * FT)), r4(oy + uy * al * FT + ny * (set + ac * FT))];
     const R = ([a0, c0, a1, c1]) => [L(a0, c0), L(a1, c0), L(a1, c1), L(a0, c1)];
     return { L, R, lot: R([-W / 2, 0, W / 2, D]), edge: [r4(ox + nx * line.half), r4(oy + ny * line.half)], front: [r4(ox + nx * set), r4(oy + ny * set)] };
@@ -213,8 +229,8 @@ export function planFacilities(map, options = {}) {
       const cross = (line.bx - line.ax) * (target[1] - line.ay) - (line.by - line.ay) * (target[0] - line.ax);
       const side0 = cross >= 0 ? 1 : -1;
       for (const nudge of [0, 0.05, -0.05, 0.1, -0.1, 0.18, -0.18, 0.28, -0.28]) for (const side of [side0, -side0]) {
-        const at = at0 + nudge;
-        if (at < W * FT / 2 + 0.01 || at > len - W * FT / 2 - 0.01) continue;
+        const at = at0 + AT_1000(nudge);
+        if (at < W * FT / 2 + AT_1000(0.01) || at > len - W * FT / 2 - AT_1000(0.01)) continue;
         const f = frontage(line, at, side, W, D);
         if (clear(f.lot) && accept(f.lot, f)) return f;
       }
@@ -227,9 +243,9 @@ export function planFacilities(map, options = {}) {
   // Land use (landUse.js): the areas every place is divided into, and the neighbourhoods of the
   // cities with their collectors (kept clear as roads are).
   const areas = [], neighborhoods = [];
-  const helpers = { seed, areas, campuses: null, crossings, clear, sectionClass, segsNear, distToSeg, placeLot, linesIn: (st, reach) => linesIn(st, reach), isWater: (x, y) => cover[cellAt(x, y)] === water };
+  const helpers = { seed, areas, campuses: null, crossings, clear, lotFt: mi => mi / FT, sectionClass, segsNear, distToSeg, placeLot, linesIn: (st, reach) => linesIn(st, reach), isWater: (x, y) => cover[cellAt(x, y)] === water };
   // A lot lies inside an area (its corners within the area, a few feet given).
-  const inside = (lot, zone, tol = 0.004) => lot.every(([x, y]) => pointInPoly(x, y, zone.poly) || [[tol, 0], [-tol, 0], [0, tol], [0, -tol]].some(([dx, dy]) => pointInPoly(x + dx, y + dy, zone.poly)));
+  const inside = (lot, zone, tol = AT_1000(0.004)) => lot.every(([x, y]) => pointInPoly(x, y, zone.poly) || [[tol, 0], [-tol, 0], [0, tol], [0, -tol]].some(([dx, dy]) => pointInPoly(x + dx, y + dy, zone.poly)));
   const nearUse = (lot, kinds, gap) => areas.some(z => kinds.has(z.kind) && polysNear(lot, z, gap));
   const SCHOOL_AVOID = new Set([...COMMERCIAL, 'industrial']);
 
@@ -258,8 +274,7 @@ export function planFacilities(map, options = {}) {
 
   // --- Schools and colleges. -------------------------------------------------------------------
   const schools = [], campuses = [], schoolMissing = [];
-  const buildSchool = (f, level, name, town) => {
-    const s = schoolLayout(level);
+  const buildSchool = (f, level, name, town, s = schoolLayout(level)) => {
     const school = {
       level, name, town, lot: f.lot, buildings: s.building.map(f.R), parking: s.parking.map(f.R),
       loop: s.loop.map(([al, ac]) => f.L(al, ac)), fields: s.fields.map(x => ({ kind: x.kind, poly: f.R(x.r) })),
@@ -271,8 +286,16 @@ export function planFacilities(map, options = {}) {
 
   // A campus inside one square mile between arterials: buildings round a quad, parking lots on
   // its edges, a stadium for a university, a campus loop road.
+  // Sizes are kept in studs (AT_1000); a campus too big for the square mile between the
+  // arterials (the university) is cut to fit, and one with no clear block (the shopping corners
+  // and parks round it) smaller again, with fewer buildings of the same size.
   const buildCampus = (st, tier, name, rng) => {
-    const dims = { university: [0.8, 0.7], stateUniversity: [0.55, 0.46], college: [0.3, 0.24] }[tier];
+    const full = { university: [0.8, 0.7], stateUniversity: [0.55, 0.46], college: [0.3, 0.24] }[tier].map(AT_1000), inset = AT_1000(0.03);
+    const most = Math.min(1, (1 - 2 * inset) / full[0], (1 - 2 * inset) / full[1]);
+    for (const fit of [most, most * 0.85, most * 0.7, most * 0.6]) { const campus = campusAt(st, tier, name, rng, full.map(v => v * fit), fit, inset); if (campus) return campus; }
+    return null;
+  };
+  const campusAt = (st, tier, name, rng, dims, fit, inset) => {
     const cells = [];
     const r = Math.ceil(st.extentMi);
     for (let J = Math.floor(st.y - r); J <= st.y + r; J++) for (let I = Math.floor(st.x - r); I <= st.x + r; I++) {
@@ -281,19 +304,19 @@ export function planFacilities(map, options = {}) {
     }
     cells.sort((a, b) => a.d - b.d);
     for (const { I, J } of cells) {
-      const [w, h] = dims, slackX = 1 - w - 0.06, slackY = 1 - h - 0.06;
-      const x0 = r4(I + 0.03 + slackX * rng()), y0 = r4(J + 0.03 + slackY * rng()), x1 = r4(x0 + w), y1 = r4(y0 + h);
+      const [w, h] = dims, slackX = 1 - w - 2 * inset, slackY = 1 - h - 2 * inset;
+      const x0 = r4(I + inset + slackX * rng()), y0 = r4(J + inset + slackY * rng()), x1 = r4(x0 + w), y1 = r4(y0 + h);
       const area = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-      if (!clear(area, 0.01) || areas.some(z => z.kind !== 'corridor' && polysNear(area, z, 0.02))) continue;
+      if (!clear(area, AT_1000(0.01)) || areas.some(z => z.kind !== 'corridor' && polysNear(area, z, AT_1000(0.02)))) continue;
       const box = (a, b, c, d) => [[r4(x0 + a * w), r4(y0 + b * h)], [r4(x0 + c * w), r4(y0 + b * h)], [r4(x0 + c * w), r4(y0 + d * h)], [r4(x0 + a * w), r4(y0 + d * h)]];
       const buildings = [], parking = [];
       // Buildings in two rings round the quad (the middle 30% by 30%).
-      const count = tier === 'university' ? 34 : tier === 'stateUniversity' ? 22 : 7;
+      const count = Math.round((tier === 'university' ? 34 : tier === 'stateUniversity' ? 22 : 7) * fit * fit);
       for (let k = 0; k < count; k++) {
         const ring = k < count / 2 ? 0.2 : 0.08, t = (k / Math.ceil(count / 2)) % 1, side = Math.floor(t * 4), s = (t * 4) % 1;
         const cx = side === 0 ? 0.35 + 0.3 * s : side === 1 ? 0.65 + ring : side === 2 ? 0.65 - 0.3 * s : 0.35 - ring;
         const cy = side === 0 ? 0.35 - ring : side === 1 ? 0.35 + 0.3 * s : side === 2 ? 0.65 + ring : 0.65 - 0.3 * s;
-        const bw = (0.05 + 0.04 * rng()) * (tier === 'college' ? 1.6 : 1), bh = (0.035 + 0.03 * rng()) * (tier === 'college' ? 1.6 : 1);
+        const bw = (0.05 + 0.04 * rng()) * (tier === 'college' ? 1.6 : 1) / fit, bh = (0.035 + 0.03 * rng()) * (tier === 'college' ? 1.6 : 1) / fit;
         buildings.push(box(cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2));
       }
       // Parking on the campus edges.
@@ -324,14 +347,16 @@ export function planFacilities(map, options = {}) {
     const hoods = planNeighborhoods(st, helpers), collectors = [];
     for (const nb of hoods) {
       // A collector stops where an industrial park or campus stands across its line.
-      nb.collectors = nb.collectors.filter(c => { const seg = [[c.ax, c.ay], [c.bx, c.by]]; return !areas.some(z => z.town === st.name && (z.kind === 'industrial' || z.kind === 'park') && polysNear(seg, z, 0.01)) && !campuses.some(cp => polysNear(seg, cp.area, 0.01)); });
+      nb.collectors = nb.collectors.filter(c => { const seg = [[c.ax, c.ay], [c.bx, c.by]]; return !areas.some(z => z.town === st.name && (z.kind === 'industrial' || z.kind === 'park') && polysNear(seg, z, AT_1000(0.01))) && !campuses.some(cp => polysNear(seg, cp.area, AT_1000(0.01))); });
       for (const c of nb.collectors) { addSeg({ type: 'collector', ...c }); collectors.push(c); }
       neighborhoods.push(nb);
     }
     const allLines = [...lines, ...collectors];
+    // A town school may stand just out of town, past the highway strips (its lot is big on the squashed map).
+    const schoolLines = st.kind === 'town' ? linesIn(st, reach * 1.5 + 0.2) : allLines;
     // Schools: away from shopping and industry, off parks; an elementary school inside each of
     // a spread of neighbourhoods, on its collector and named for it; in a town, towards the edge.
-    const schoolOk = lot => !nearUse(lot, SCHOOL_AVOID, p.schoolGapMi) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, 0.004));
+    const schoolOk = lot => !nearUse(lot, SCHOOL_AVOID, p.schoolGapMi) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, AT_1000(0.004)));
     if (st.population >= p.schoolMinPopulation) {
       const grow = Math.max(1, st.population / p.schoolGrowth.from) ** p.schoolGrowth.exponent, per = level => Math.max(1, Math.round(st.population / (p.peoplePer[level] * grow)));
       const wanted = st.population < p.smallTownPopulation ? [['elementary', 1], ['juniorSenior', 1]] : [['elementary', per('elementary')], ['middle', per('middle')], ['high', per('high')]];
@@ -354,14 +379,15 @@ export function planFacilities(map, options = {}) {
             : level === 'juniorSenior' ? `${st.name} Junior-Senior High`
             // The first takes the town's name, the next few its sides, the rest names of their own.
             : `${k === 0 ? st.name : k <= SIDES.length ? `${st.name} ${SIDES[k - 1]}` : named(SCHOOL_NAMES, k - SIDES.length - 1 + (level === 'middle' ? 7 : 0))} ${level === 'middle' ? 'Middle School' : 'High School'}`;
-          const lay = schoolLayout(level);
-          let f = null;
-          for (let tries = 0; tries < 14 && !f; tries++) {
-            const target = town ? pointInPlace(st, rng, tries < 8 ? 1 : 1.25, 0.4) : pointInPlace(st, rng, tries < 7 ? 0.9 : 1.1);
+          const lays = level === 'high' ? [schoolLayout('high'), schoolLayout('highDeep')] : [schoolLayout(level)];
+          let f = null, lay = null;
+          for (let tries = 0; tries < 24 && !f; tries++) {
+            // (Lots are bigger on the squashed map: later tries reach further out.)
+            const target = town ? pointInPlace(st, rng, tries < 8 ? 1 : tries < 14 ? 1.25 : 1.5, 0.4) : pointInPlace(st, rng, tries < 7 ? 0.9 : 1.1);
             if (tries < 10 && same.some(([x, y]) => Math.hypot(x - target[0], y - target[1]) < apart)) continue;
-            f = placeLot(allLines, target, lay.W, lay.D, () => 1, schoolOk);
+            for (const l of lays) if (!f && (f = placeLot(schoolLines, target, l.W, l.D, () => 1, schoolOk))) lay = l;
           }
-          if (f) { buildSchool(f, level, name, st.name); same.push(f.front); } else if (k === 0) schoolMissing.push(`${st.name} ${level}`);
+          if (f) { buildSchool(f, level, name, st.name, lay); same.push(f.front); } else if (k === 0) schoolMissing.push(`${st.name} ${level}`);
         }
       }
     }
@@ -373,7 +399,7 @@ export function planFacilities(map, options = {}) {
     for (const z of zones) {
       const rank = { corner: 0, neighborhood: 1, community: 2, mall: 4 }[z.tier] ?? (z.kind === 'corridor' ? 1 : z.kind === 'downtown' ? 3 : null);
       if (rank === null) continue;
-      if (z.corner) { const [I, J] = z.corner, a = z.box[0] + z.box[2] > 2 * I ? 1 : -1, b = z.box[1] + z.box[3] > 2 * J ? 1 : -1; sites.push({ z, at: [I + a * 0.06, J + b * 0.06], rank }); }
+      if (z.corner) { const [I, J] = z.corner, a = z.box[0] + z.box[2] > 2 * I ? 1 : -1, b = z.box[1] + z.box[3] > 2 * J ? 1 : -1; sites.push({ z, at: [I + a * AT_1000(0.06), J + b * AT_1000(0.06)], rank }); }
       else if (z.kind === 'corridor') { const l = z.line, len = Math.hypot(l.bx - l.ax, l.by - l.ay); for (let t = 0.05; t < len; t += 0.5) sites.push({ z, at: [l.ax + (l.bx - l.ax) * t / len, l.ay + (l.by - l.ay) * t / len], rank, lines: [l] }); }
       else for (let k = 0; k < 2; k++) sites.push({ z, at: [z.box[0] + (z.box[2] - z.box[0]) * (0.2 + 0.6 * rng()), z.box[1] + (z.box[3] - z.box[1]) * (0.2 + 0.6 * rng())], rank });
     }
@@ -394,7 +420,7 @@ export function planFacilities(map, options = {}) {
       let f = null;
       for (let tries = 0; tries < 14 && !f; tries++) {
         const target = tries < 4 ? [st.x + (rng() - 0.5) * 0.4, st.y + (rng() - 0.5) * 0.4] : pointInPlace(st, rng);
-        f = placeLot(lines, target, lay.W, lay.D, line => (line.kind === 'road' ? 2.5 : 1), lot => spaced(lot) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, 0.004)) && !neighborhoods.some(nb => nb.town === st.name && inside(lot, { poly: [[nb.poly[0][0] + 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[2][1] - 0.1], [nb.poly[0][0] + 0.1, nb.poly[2][1] - 0.1]] }, 0)));
+        f = placeLot(lines, target, lay.W, lay.D, line => (line.kind === 'road' ? 2.5 : 1), lot => spaced(lot) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, AT_1000(0.004))) && !neighborhoods.some(nb => nb.town === st.name && inside(lot, { poly: [[nb.poly[0][0] + 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[2][1] - 0.1], [nb.poly[0][0] + 0.1, nb.poly[2][1] - 0.1]] }, 0)));
       }
       if (f) {
         const z = { kind: 'shopping', tier: 'corner', name: null, town: st.name, poly: f.lot, box: bboxOf(f.lot) };
@@ -412,17 +438,17 @@ export function planFacilities(map, options = {}) {
     if (hashText(`${key}|chance`) / 4294967296 > (c.town ? p.truckStopChance.town : p.truckStopChance.rural)) continue;
     const lay = gasLayout('truck stop');
     let done = false;
-    for (const reach of [0.8, 0.95, 1.1, 1.3]) for (const dir of rng() < 0.5 ? [1, -1] : [-1, 1]) {
+    for (const reach of [0.8, 0.95, 1.1, 1.3].map(AT_1000)) for (const dir of rng() < 0.5 ? [1, -1] : [-1, 1]) {
       if (done) break;
       const q = [c.x + c.vx * dir * reach, c.y + c.vy * dir * reach];
       let best = null;
-      for (const s of segsNear(q[0], q[1], q[0], q[1])) if (s.type === 'road' && s.kind !== 'interstate' && distToSeg(q[0], q[1], s) < 0.05) best = s;
+      for (const s of segsNear(q[0], q[1], q[0], q[1])) if (s.type === 'road' && s.kind !== 'interstate' && distToSeg(q[0], q[1], s) < AT_1000(0.05)) best = s;
       if (!best) continue;
       const line = { ax: best.ax, ay: best.ay, bx: best.bx, by: best.by, half: best.half }, [px, py] = nearestOnSegment(q[0], q[1], line);
       const len = Math.hypot(line.bx - line.ax, line.by - line.ay), at = Math.hypot(px - line.ax, py - line.ay);
       let f = null;
       for (const side of [1, -1]) {
-        if (at < lay.W * FT / 2 + 0.01 || at > len - lay.W * FT / 2 - 0.01) break;
+        if (at < lay.W * FT / 2 + AT_1000(0.01) || at > len - lay.W * FT / 2 - AT_1000(0.01)) break;
         const g = frontage(line, at, side, lay.W, lay.D);
         if (clear(g.lot)) { f = g; break; }
       }
@@ -453,7 +479,11 @@ export function planFacilities(map, options = {}) {
     if (windFarms.filter(f => f.region === regionAt(site.x, site.y)).length >= (wp.quota[regionAt(site.x, site.y)] ?? 0)) continue;
     const width = wp.widthMi[0] + (wp.widthMi[1] - wp.widthMi[0]) * random(), depth = wp.depthMi[0] + (wp.depthMi[1] - wp.depthMi[0]) * random();
     const turbines = [], roadsOut = [];
+    // Strings every rowEveryMi section lines (half a mile off them), turbines alongMi apart: about
+    // 240 and 1,200 studs (280 and 1,000 at 1000 studs a mile, 0.28 and 1 mile; thinned so the
+    // squashed map is not crowded).
     for (let J = Math.floor(site.y - depth / 2); J <= site.y + depth / 2; J++) {
+      if (((J % wp.rowEveryMi) + wp.rowEveryMi) % wp.rowEveryMi) continue;
       const y = J + 0.5, row = [];
       for (let x = Math.floor(site.x - width / 2) + 0.14; x <= site.x + width / 2; x += wp.alongMi) {
         const edge = ((x - site.x) / (width / 2)) ** 2 + ((y - site.y) / (depth / 2)) ** 2;
@@ -475,13 +505,15 @@ export function planFacilities(map, options = {}) {
       };
       for (const t of row) { if (run.length && t[0] - run.at(-1)[0] > wp.alongMi * 2.2) flush(); run.push(t); }
       flush();
-      for (const t of row) { turbines.push(t); take([t[0] - 0.02, t[1] - 0.02, t[0] + 0.02, t[1] + 0.02]); }
+      const tr = AT_1000(0.02);
+      for (const t of row) { turbines.push(t); take([t[0] - tr, t[1] - tr, t[0] + tr, t[1] + tr]); }
     }
     if (turbines.length < 20) continue;
     let substation = null;
     for (let k = 0; k < 40 && !substation; k++) {
       const x = Math.round(site.x) + 0.08 + random() * 0.84, y = Math.round(site.y) + 0.08 + random() * 0.84;
-      if (pointClear(x, y, 0.05, 0.06)) { substation = [[r4(x - 0.02), r4(y - 0.015)], [r4(x + 0.02), r4(y - 0.015)], [r4(x + 0.02), r4(y + 0.015)], [r4(x - 0.02), r4(y + 0.015)]]; take([x - 0.02, y - 0.015, x + 0.02, y + 0.015]); }
+      const sw = AT_1000(0.02), sd = AT_1000(0.015);
+      if (pointClear(x, y, 0.05, 0.06)) { substation = [[r4(x - sw), r4(y - sd)], [r4(x + sw), r4(y - sd)], [r4(x + sw), r4(y + sd)], [r4(x - sw), r4(y + sd)]]; take([x - sw, y - sd, x + sw, y + sd]); }
     }
     windFarms.push({ name: `${nearestTown(site.x, site.y).name} Wind Farm`, x: site.x, y: site.y, region: regionAt(site.x, site.y), turbines, roads: roadsOut, substation });
   }
@@ -502,13 +534,14 @@ export function planFacilities(map, options = {}) {
     if (v < threshold || random() > op.drilled * clamp((v - threshold) / 0.08, 0, 1)) continue;
     if (townCover.has(cover[cellAt(x, y)]) || !pointClear(x, y, 0.05, 0.06)) continue;
     const gas = op.gasRegions.includes(region), well = [r4(x), r4(y), gas ? 1 : 0];
-    wells.push(well); take([x - 0.01, y - 0.01, x + 0.01, y + 0.01]);
+    const wr = AT_1000(0.01);
+    wells.push(well); take([x - wr, y - wr, x + wr, y + wr]);
     // The lease road: straight to the nearest mile line.
     const dx = x - Math.round(x), dy = y - Math.round(y), to = Math.abs(dx) < Math.abs(dy) ? [Math.round(x), y] : [x, Math.round(y)];
     if (pathClearOfRoads([[x, y], to])) leaseRoads.push([[r4(x), r4(y)], [r4(to[0]), r4(to[1])]]);
     if (!gas && ++oilCount % op.tankEvery === 0) {
-      const tx = x + (Math.abs(dx) < Math.abs(dy) ? 0 : 0.035), ty = y + (Math.abs(dx) < Math.abs(dy) ? 0.035 : 0);
-      if (pointClear(tx, ty, 0.04, 0.03)) { tanks.push([r4(tx), r4(ty)]); take([tx - 0.01, ty - 0.01, tx + 0.01, ty + 0.01]); }
+      const off = AT_1000(0.035), tx = x + (Math.abs(dx) < Math.abs(dy) ? 0 : off), ty = y + (Math.abs(dx) < Math.abs(dy) ? off : 0);
+      if (pointClear(tx, ty, 0.04, 0.03)) { tanks.push([r4(tx), r4(ty)]); take([tx - wr, ty - wr, tx + wr, ty + wr]); }
     }
   }
   // Farm windmills over stock tanks on pasture.
@@ -517,7 +550,8 @@ export function planFacilities(map, options = {}) {
     if (random() > p.windmills.perMi2) continue;
     const x = I + 0.12 + 0.76 * random(), y = J + 0.12 + 0.76 * random();
     if (!pasture.has(cover[cellAt(x, y)]) || !pointClear(x, y, 0.05, 0.08)) continue;
-    windmills.push([r4(x), r4(y)]); take([x - 0.01, y - 0.01, x + 0.01, y + 0.01]);
+    const wr = AT_1000(0.01);
+    windmills.push([r4(x), r4(y)]); take([x - wr, y - wr, x + wr, y + wr]);
   }
 
   return {

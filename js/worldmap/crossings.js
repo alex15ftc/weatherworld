@@ -25,18 +25,28 @@
 // Exits are numbered by milepost, from the west end of an east-west interstate or the south end
 // of a north-south one.
 import { interchangeRamps, overpassLine, INTERCHANGE } from './interchanges.js';
+import { AT_1000, STUDS } from './scale.js';
+import { HALF_MI } from './streets.js';
+
+// Scale (scale.js): spacings from road practice (exits a mile or three apart, overpasses, how far
+// apart crossings fall) are the map's own, in map miles; what follows from an interchange's size
+// on the ground (its ramps, bridge approaches, margins to rivers and roads) is at character scale
+// and keeps its size in studs (AT_1000, STUDS). Where the ramps outgrow a map spacing, the spacing
+// is raised to fit them.
 
 export const CROSSING_DEFAULTS = Object.freeze({
   minSinAngle: 0.25,          // shallower crossings are the same corridor, not a crossing
   spacingMi: 0.75,            // no two crossings of one interstate closer than this
-  exitSpacingTownMi: 1,       // no two exits closer than this in a town (AASHTO urban)
+  // No two exits closer than this in a town (AASHTO urban: a mile; but at least room for both
+  // exits' ramps, 400 studs each way, and a gap between them).
+  exitSpacingTownMi: Math.max(1, AT_1000(1)),
   exitSpacingRuralMi: 3,      // or in the country (rural interstates)
   pavedOverpassMi: 1.5,       // a paved road gets an overpass if no crossing is this near
-  exitClearMi: 1,             // and no exit
-  apartMi: 0.9,               // crossings of different interstates at least this far apart
-  riverClearMi: 0.35,         // none this near where the interstate itself crosses a river
-  riverMarginMi: 0.02,        // ramps and approaches keep this far from a river's banks
-  highwayMarginMi: 0.03       // and ramps this far from other highways
+  exitClearMi: Math.max(1, AT_1000(0.7)), // and no exit (clear of its ramps)
+  apartMi: AT_1000(0.9),      // crossings of different interstates at least this far apart (their ramps clear)
+  riverClearMi: AT_1000(0.35), // none this near where the interstate itself crosses a river
+  riverMarginMi: AT_1000(0.02), // ramps and approaches keep this far from a river's banks
+  highwayMarginMi: AT_1000(0.03) // and ramps this far from other highways
 });
 
 // Crossing kinds, most important first.
@@ -133,7 +143,7 @@ export function planCrossings(map, options = {}) {
       }
     }
     const candidates = [];
-    const endMi = 0.3;
+    const endMi = AT_1000(0.3);   // a road ending this near the crossing makes it a T (its ramps' reach)
     const consider = (i, t, kind, vx, vy, name, vEnd = 0, other = null) => {
       const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
       const len = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / len, uy = (by - ay) / len;
@@ -180,6 +190,15 @@ export function planCrossings(map, options = {}) {
     const chosen = [];
     const near = (c, miles, pred = () => true) => chosen.some(o => pred(o) && Math.abs(o.along - c.along) < miles);
     const exits = o => o.type === 'interchange';
+    // A section-line road is not carried over where a corner of the mile grid with a road across
+    // it lies within the interstate's width and its own (a junction on the bridge): it stops short
+    // either side instead.
+    const cornerOnBridge = c => {
+      if (c.crossName !== '') return false;
+      const vertical = Math.abs(c.vy) > Math.abs(c.vx), at = vertical ? c.y : c.x, K = Math.round(at), line = Math.round(vertical ? c.x : c.y);
+      if (Math.abs(at - K) * c.sin >= HALF_MI.interstate + HALF_MI.arterial + STUDS(4)) return false;
+      return vertical ? sectionClass(line - 1, K, true) > 0 || sectionClass(line, K, true) > 0 : sectionClass(K, line - 1, false) > 0 || sectionClass(K, line, false) > 0;
+    };
     for (const c of candidates) {
       if (c.kind === 'dirt' || c.kind === 'gravel') continue;
       if (riverAt.some(a => Math.abs(a - c.along) < p.riverClearMi)) continue;
@@ -191,13 +210,13 @@ export function planCrossings(map, options = {}) {
         type = 'interchange';
       } else if (c.kind === 'us' || c.kind === 'expressway') {
         // A second crossing right by another is the same corridor (roads sharing a route); nor
-        // may it fall among an exit's ramps (they reach 0.4 mi each way).
-        if (near(c, 0.35) || near(c, 0.7, exits)) continue;
+        // may it fall among an exit's ramps (they reach INTERCHANGE.rampAlong each way).
+        if (near(c, 0.35) || near(c, INTERCHANGE.rampAlong + AT_1000(0.3), exits)) continue;
         type = near(c, exitSpacing, exits) ? 'overpass' : 'interchange';
       } else if (c.kind === 'state') {
-        if (near(c, p.spacingMi) || near(c, 0.7, exits)) continue;
+        if (near(c, p.spacingMi) || near(c, INTERCHANGE.rampAlong + AT_1000(0.3), exits)) continue;
         type = near(c, exitSpacing, exits) ? 'overpass' : 'interchange';
-      } else if (c.kind === 'paved' && !near(c, p.pavedOverpassMi) && !near(c, p.exitClearMi, exits)) {
+      } else if (c.kind === 'paved' && !near(c, p.pavedOverpassMi) && !near(c, p.exitClearMi, exits) && !cornerOnBridge(c)) {
         type = 'overpass';
       }
       if (type === 'overpass' && (c.vEnd || c.uEnd)) type = null; // a road ending here is not carried over
@@ -206,7 +225,7 @@ export function planCrossings(map, options = {}) {
     for (const c of chosen) {
       // Headings over the reach of the ramps (a curving beltway), keeping each road's sense.
       if (c.type === 'interchange') {
-        const reach = 0.46, u = headingAt(pts, c.x, c.y, reach);
+        const reach = INTERCHANGE.systemAlong, u = headingAt(pts, c.x, c.y, reach);
         if (u[0] * c.ux + u[1] * c.uy > 0.9) { c.ux = u[0]; c.uy = u[1]; }
         if (c.other) {
           const v = headingAt(c.other.points, c.x, c.y, reach), sense = v[0] * c.vx + v[1] * c.vy;
@@ -225,15 +244,16 @@ export function planCrossings(map, options = {}) {
   // On the ground: rivers (with their widths in the Roblox world) and the other highways.
   const riverLines = map.rivers.map(r => {
     const pts = [];
-    for (let k = 0; k < r.points.length; k += 2) pts.push([r.points[k], r.points[k + 1], Math.min(220, Math.max(12, r.widthsM[k / 2] * 0.18)) / 2000]);
+    for (let k = 0; k < r.points.length; k += 2) pts.push([r.points[k], r.points[k + 1], STUDS(Math.min(220, Math.max(12, r.widthsM[k / 2] * 0.18))) / 2]);
     return pts;
   });
   const highwayLines = map.roads.filter(r => r.kind !== 'interstate').map(r => r.points);
   const bbox = pts => pts.reduce((b, q) => [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[0]), Math.max(b[3], q[1])], [Infinity, Infinity, -Infinity, -Infinity]);
+  const LOOK = STUDS(110) + AT_1000(0.06);   // the widest river's half-width and the widest pad
   const lineHitsRiver = (line, pad) => {
     const b = bbox(line);
     return riverLines.some(river => river.some((q, k) => {
-      if (k === 0 || q[0] < b[0] - 0.2 || q[0] > b[2] + 0.2 || q[1] < b[1] - 0.2 || q[1] > b[3] + 0.2) return false;
+      if (k === 0 || q[0] < b[0] - LOOK || q[0] > b[2] + LOOK || q[1] < b[1] - LOOK || q[1] > b[3] + LOOK) return false;
       for (let i = 1; i < line.length; i++) if (segSeg(line[i - 1], line[i], river[k - 1], q) < q[2] + pad) return true;
       return false;
     }));
@@ -263,7 +283,7 @@ export function planCrossings(map, options = {}) {
       const pad = INTERCHANGE.rampHalf + p.riverMarginMi;
       const ramps = interchangeRamps(c);
       // (and one whose ramps would end off the road: it bends too near the interstate for a diamond)
-      const onRoad = ([x, y]) => map.roads.some(r => r.points.some((q, i) => i > 0 && x > Math.min(q[0], r.points[i - 1][0]) - 0.1 && x < Math.max(q[0], r.points[i - 1][0]) + 0.1 && y > Math.min(q[1], r.points[i - 1][1]) - 0.1 && y < Math.max(q[1], r.points[i - 1][1]) + 0.1 && pointSeg(x, y, r.points[i - 1][0], r.points[i - 1][1], q[0], q[1]) < 0.075));
+      const onRoad = ([x, y]) => map.roads.some(r => r.points.some((q, i) => i > 0 && x > Math.min(q[0], r.points[i - 1][0]) - AT_1000(0.1) && x < Math.max(q[0], r.points[i - 1][0]) + AT_1000(0.1) && y > Math.min(q[1], r.points[i - 1][1]) - AT_1000(0.1) && y < Math.max(q[1], r.points[i - 1][1]) + AT_1000(0.1) && pointSeg(x, y, r.points[i - 1][0], r.points[i - 1][1], q[0], q[1]) < AT_1000(0.075)));
       if (ramps.some(r => lineHitsRiver(r, pad) || rampHitsHighway(c, r) || !onRoad(r[0]) || !onRoad(r.at(-1))) || lineHitsRiver(overpassLine(c), pad)) { c.type = 'overpass'; downgraded++; }
     }
     if (c.type === 'overpass' && lineHitsRiver(overpassLine(c), INTERCHANGE.rampHalf + p.riverMarginMi) && c.kind !== 'us' && c.kind !== 'expressway') { dropped++; continue; }
@@ -287,7 +307,7 @@ export function planCrossings(map, options = {}) {
             const serves = Math.abs(along[0] * c.vy - along[1] * c.vx) < 0.05 && pointSeg(c.x, c.y, a[0] - along[0] * 2, a[1] - along[1] * 2, e[0] + along[0] * 2, e[1] + along[1] * 2) < 0.05;
             if (serves || !sectionClass(I, J, east)) continue;
             let hit = false;
-            for (let k = 1; k < ramp.length && !hit; k++) hit = segSeg(ramp[k - 1], ramp[k], a, e) < INTERCHANGE.rampHalf + 0.012;
+            for (let k = 1; k < ramp.length && !hit; k++) hit = segSeg(ramp[k - 1], ramp[k], a, e) < INTERCHANGE.rampHalf + AT_1000(0.012);
             if (hit) sections.roads[J * secSize + I] &= east ? ~3 : ~12;
           }
         }

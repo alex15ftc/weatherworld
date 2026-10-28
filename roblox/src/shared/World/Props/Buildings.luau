@@ -25,6 +25,7 @@ local Trees = require(script.Parent.Trees)
 local RoadNet = require(script.Parent.RoadNet)
 local Facilities = require(script.Parent.Facilities)
 local Sites = require(script.Parent.Parent.Sites)
+local Config = require(script.Parent.Parent.Config)
 
 local Buildings = {}
 
@@ -818,7 +819,7 @@ function Buildings.build(ctx: Ctx)
 	-- What the map plans goes down first; the town fabric fills in round it.
 	Facilities.build(ctx, KIT)
 
-	-- Town blocks (200-stud grid where the land is town) and suburban blocks (250-stud grid):
+	-- Town blocks (200-stud grid where the land is town) and suburban blocks (300-stud grid):
 	-- each block takes the use of the land at its middle; houses fill the residential ones, with
 	-- whatever other use reaches into the block built parcel by parcel.
 	for _, grid in { { RoadNet.URBAN_GRID, "urban", 27, 101 }, { RoadNet.SUBURB_GRID, "suburban", 20, 202 } } do
@@ -911,13 +912,18 @@ function Buildings.build(ctx: Ctx)
 		end
 	end
 
-	-- Farmsteads: about one in five quarter sections of farm and ranch land.
-	for qx = math.floor(ctx.x0 / 500) - 1, math.floor(ctx.x1 / 500) do
-		for qz = math.floor(ctx.z0 / 500) - 1, math.floor(ctx.z1 / 500) do
-			if hash(qx, qz, 21) < 0.2 then
+	-- Farmsteads on farm and ranch land, one to a quarter section at most, as many to the square
+	-- stud as at 1000 studs a mile (one in five of its 500-stud quarter sections; 2026-10-28): the
+	-- farmsteads are built at character scale, so where the mile is squashed fewer of its quarter
+	-- sections have one.
+	local QUARTER = Config.STUDS_PER_MILE / 2
+	local FARMSTEAD_SHARE = 0.2 * (QUARTER / 500) ^ 2
+	for qx = math.floor(ctx.x0 / QUARTER) - 1, math.floor(ctx.x1 / QUARTER) do
+		for qz = math.floor(ctx.z0 / QUARTER) - 1, math.floor(ctx.z1 / QUARTER) do
+			if hash(qx, qz, 21) < FARMSTEAD_SHARE then
 				local rnd = stream(qx, qz, 303)
-				local fx = qx * 500 + 50 + 120 * rnd()
-				local fz = qz * 500 + 60 + 120 * rnd()
+				local fx = qx * QUARTER + 50 + 120 * rnd()
+				local fz = qz * QUARTER + 60 + 120 * rnd()
 				local key = ctx.coverKey(fx, fz)
 				if ctx.inside(fx, fz) and (key == "cropland" or key == "irrigated" or key == "grassland" or key == "tallgrass" or key == "redRange") and not ctx.busy(fx, fz) and ctx.net:clear(fx, fz, 90) and unoccupied(ctx, CFrame.new(fx + 50, 0, fz), 220, 140) then
 					farmstead(props, ctx, fx, fz, rnd)

@@ -1,5 +1,5 @@
-// What every planned thing takes up on the ground in the Roblox world (map miles, at 1000 studs a
-// mile), and where those footprints overlap: the check that roads, cul-de-sacs, rivers, lots and
+// What every planned thing takes up on the ground in the Roblox world (map miles, at the Roblox
+// map's studs a mile, scale.js), and where those footprints overlap: the check that roads, cul-de-sacs, rivers, lots and
 // areas each have ground of their own.
 //   roads        each edge of the road graph (streets.js) as a strip its cross-section wide
 //                (HALF_MI), each cul-de-sac as a circle of bulbMi;
@@ -17,13 +17,14 @@
 //                skewed bridges than a road should need); a lot reaches into a river's corridor.
 import { HALF_MI } from './streets.js';
 import { pointInPoly } from './airfields.js';
+import { AT_1000, STUDS } from './scale.js';
 
 export const FOOTPRINT_DEFAULTS = Object.freeze({
-  bulbMi: 0.035,
-  bankMi: 0.018,          // the banks a bridge spans beyond the water (Bridges.BANK_EXTRA)
-  valleyMi: 0.03,         // lots keep this much further from a river's banks
+  bulbMi: STUDS(35),      // a cul-de-sac's radius (RoadNet.bulbSpec; streets.js bulbMi)
+  bankMi: STUDS(18),      // the banks a bridge spans beyond the water (Bridges.BANK_EXTRA)
+  valleyMi: AT_1000(0.03), // lots keep this much further from a river's banks
   skewSin: 0.5,           // a road crossing a river at a slant flatter than this is a conflict
-  interchangeMi: 0.35,    // ramps within this of their crossing are the interchange's own
+  interchangeMi: AT_1000(0.35), // ramps within this of their crossing are the interchange's own
   cellMi: 0.25
 });
 
@@ -47,7 +48,9 @@ export function segmentPolyDistance(a, b, poly) {
   return best;
 }
 
-const riverHalf = widthM => Math.min(220, Math.max(12, widthM * 0.18)) / 2000;
+const riverHalf = widthM => STUDS(Math.min(220, Math.max(12, widthM * 0.18))) / 2;
+// Beyond a footprint's own half-width, how far to look for others (the widest road's half-width).
+const LOOK = HALF_MI.interstate + STUDS(9);
 
 // Every footprint conflict on the map. Returns { counts: { type: n }, list: [{ type, what, x, y }] }.
 export function findConflicts(map, options = {}) {
@@ -86,13 +89,18 @@ export function findConflicts(map, options = {}) {
   for (const c of fac.campuses) lot('campus', c.area);
   for (const z of fac.landUse.areas) {
     const xs = z.poly.map(q => q[0]), ys = z.poly.map(q => q[1]), small = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-    if (z.kind === 'mall' || z.kind === 'travel' || z.tier === 'community' || z.kind === 'industrial' || (z.kind === 'park' && small > 0.15)) lot(z.kind, z.poly);
+    if (z.kind === 'mall' || z.kind === 'travel' || z.tier === 'community' || z.kind === 'industrial' || (z.kind === 'park' && small > AT_1000(0.15))) lot(z.kind, z.poly);
   }
   for (const a of map.airfields ?? []) { lot('airfield', a.fence); for (const poly of [a.nws?.building, a.radar?.compound]) if (poly) lot('NWS office', poly); }
 
   const crossings = map.crossings ?? [];
   const inInterchange = (x, y) => crossings.some(c => c.type === 'interchange' && Math.hypot(c.x - x, c.y - y) < p.interchangeMi);
   const crosses = (r, o) => segmentDistance(r.a, r.b, o.a, o.b) === 0;
+  // Whether two roads cross here: these two edges, or either and the next edge of the other road
+  // (a bridge over a road's bend spans the chords either side of it).
+  const pieces = e => [e, ...[e.a, e.b].flatMap(n => n.edges.filter(f => f !== e && f.kind === e.kind))];
+  const seg = e => ({ a: [e.a.x, e.a.y], b: [e.b.x, e.b.y] });
+  const crossesNear = (r, o) => crosses(r, o) || pieces(r.e).some(e => pieces(o.e).some(f => (e !== r.e || f !== o.e) && crosses(seg(e), seg(f))));
   // The junctions: nodes where roads of different kinds or routes meet. Two roads overlapping
   // close enough to a junction both run into are inside that junction (its wide corners where
   // they meet at a slant), not in conflict.
@@ -106,7 +114,7 @@ export function findConflicts(map, options = {}) {
   const inJunction = (r, o, x, y) => {
     const ex = r.b[0] - r.a[0], ey = r.b[1] - r.a[1], fx = o.b[0] - o.a[0], fy = o.b[1] - o.a[1];
     const sin = Math.abs(ex * fy - ey * fx) / (Math.hypot(ex, ey) * Math.hypot(fx, fy));
-    const reach = (r.half + o.half) / Math.max(sin, 0.2) + 0.02;
+    const reach = (r.half + o.half) / Math.max(sin, 0.2) + AT_1000(0.02);
     for (let X = Math.floor((x - reach) / C); X <= Math.floor((x + reach) / C); X++) for (let Y = Math.floor((y - reach) / C); Y <= Math.floor((y + reach) / C); Y++) {
       for (const n of junctionCells.get(X * 8192 + Y) ?? []) {
         if (Math.hypot(n.x - x, n.y - y) > reach) continue;
@@ -133,7 +141,7 @@ export function findConflicts(map, options = {}) {
 
   // Roads against roads, lots and rivers.
   for (const r of roads) {
-    const reach = r.half + 0.06;
+    const reach = r.half + LOOK;
     for (const o of near(Math.min(r.a[0], r.b[0]) - reach, Math.min(r.a[1], r.b[1]) - reach, Math.max(r.a[0], r.b[0]) + reach, Math.max(r.a[1], r.b[1]) + reach)) {
       if (o.kind === 'road') {
         if (o.e.id <= r.e.id) continue;
@@ -147,7 +155,7 @@ export function findConflicts(map, options = {}) {
         const cos = Math.abs(ex * fx + ey * fy) / (Math.hypot(ex, ey) * Math.hypot(fx, fy));
         if (cos > 0.995 && e.kind === f.kind && Math.abs((o.a[0] - r.a[0]) * ey - (o.a[1] - r.a[1]) * ex) / Math.hypot(ex, ey) < 1e-4) continue;
         const separated = e.kind === 'interstate' || f.kind === 'interstate' || e.kind === 'ramp' || f.kind === 'ramp';
-        if (separated && crosses(r, o)) continue;
+        if (separated && crossesNear(r, o)) continue;
         if ((e.kind === 'ramp' && f.kind === 'interstate') || (f.kind === 'ramp' && e.kind === 'interstate')) continue;   // merging
         const d = segmentDistance(r.a, r.b, o.a, o.b);
         if (d >= r.half + o.half) continue;
@@ -175,7 +183,7 @@ export function findConflicts(map, options = {}) {
   // Cul-de-sacs.
   for (const b of bulbs) {
     const own = b.n.edges[0], r0 = p.bulbMi;
-    for (const o of near(b.x - r0 - 0.06, b.y - r0 - 0.06, b.x + r0 + 0.06, b.y + r0 + 0.06)) {
+    for (const o of near(b.x - r0 - LOOK, b.y - r0 - LOOK, b.x + r0 + LOOK, b.y + r0 + LOOK)) {
       if (o.kind === 'bulb') { if (o.n.id > b.n.id && Math.hypot(o.x - b.x, o.y - b.y) < 2 * r0) report('culDeSac', 'two cul-de-sacs', (b.x + o.x) / 2, (b.y + o.y) / 2); }
       else if (o.kind === 'road') {
         if (o.e === own || o.e.a === own.a || o.e.a === own.b || o.e.b === own.a || o.e.b === own.b) continue;
@@ -186,7 +194,7 @@ export function findConflicts(map, options = {}) {
   }
   // Lots in river corridors.
   for (const l of lots) {
-    const reach = 0.15;
+    const reach = STUDS(110) + p.bankMi + p.valleyMi;   // the widest river's half-width, banks and valley
     for (const o of near(l.box[0] - reach, l.box[1] - reach, l.box[2] + reach, l.box[3] + reach)) {
       if (o.kind !== 'river') continue;
       if (segmentPolyDistance(o.a, o.b, l.poly) < o.half + p.bankMi + p.valleyMi) { report('river', `${l.what} in a river corridor`, (l.box[0] + l.box[2]) / 2, (l.box[1] + l.box[3]) / 2); break; }

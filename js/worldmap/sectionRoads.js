@@ -22,6 +22,11 @@
 // to south): bits 0-1 the road east from the corner, bits 2-3 the road south, each one of
 // SECTION_CLASSES.
 import { makeNoise, makeRandom, hashText, fbm, clamp } from './noise.js';
+import { AT_1000, STUDS } from './scale.js';
+
+// A river's half-width as built in Roblox (0.18 studs a metre of its width, 12 to 220 studs), in
+// map miles (scale.js).
+const riverHalfMi = widthM => STUDS(Math.min(220, Math.max(12, widthM * 0.18))) / 2;
 
 export const SECTION_CLASSES = Object.freeze(['none', 'dirt', 'gravel', 'paved']);
 
@@ -147,7 +152,7 @@ export function planSectionRoads(map, options = {}) {
   // Nor where a highway crosses a section road between corners, in a river: that mile goes.
   const riverSegs = new Map();
   for (const r of rivers) for (let k = 2; k < r.points.length; k += 2) {
-    const seg = [r.points[k - 2], r.points[k - 1], r.points[k], r.points[k + 1], Math.min(220, Math.max(12, r.widthsM[k / 2] * 0.18)) / 2000 + 0.05];
+    const seg = [r.points[k - 2], r.points[k - 1], r.points[k], r.points[k + 1], riverHalfMi(r.widthsM[k / 2]) + AT_1000(0.05)];
     for (let x = Math.floor(Math.min(seg[0], seg[2])) - 1; x <= Math.floor(Math.max(seg[0], seg[2])) + 1; x++) for (let y = Math.floor(Math.min(seg[1], seg[3])) - 1; y <= Math.floor(Math.max(seg[1], seg[3])) + 1; y++) {
       const key = x * 8192 + y; if (!riverSegs.has(key)) riverSegs.set(key, []); riverSegs.get(key).push(seg);
     }
@@ -176,12 +181,13 @@ export function planSectionRoads(map, options = {}) {
 }
 
 // The corners of the 1-mile grid (size by size) that lie in a river, as wide as it is built
-// (the Roblox width: 0.18 of the engine width, 12 to 220 studs) with padMi more each side.
-export function riverCorners(rivers, size, padMi = 0.05) {
+// (the Roblox width: 0.18 of the engine width, 12 to 220 studs) with padMi more each side (a
+// bridge's reach beyond the water, at character scale).
+export function riverCorners(rivers, size, padMi = AT_1000(0.05)) {
   const wet = new Uint8Array(size * size);
   for (const r of rivers) for (let k = 2; k < r.points.length; k += 2) {
     const ax = r.points[k - 2], ay = r.points[k - 1], bx = r.points[k], by = r.points[k + 1];
-    const reach = Math.min(220, Math.max(12, r.widthsM[k / 2] * 0.18)) / 2000 + padMi;
+    const reach = riverHalfMi(r.widthsM[k / 2]) + padMi;
     for (let J = Math.max(0, Math.ceil(Math.min(ay, by) - reach)); J <= Math.min(size - 1, Math.floor(Math.max(ay, by) + reach)); J++) {
       for (let I = Math.max(0, Math.ceil(Math.min(ax, bx) - reach)); I <= Math.min(size - 1, Math.floor(Math.max(ax, bx) + reach)); I++) {
         const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? clamp(((I - ax) * dx + (J - ay) * dy) / l2, 0, 1) : 0;

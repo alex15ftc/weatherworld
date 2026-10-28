@@ -5,11 +5,14 @@ local Config = require(ReplicatedStorage.Shared.World.Config)
 local ChunkManager = require(script.ChunkManager)
 local TestDrive = require(script.TestDrive)
 local Explore = require(script.Explore)
+local PlayerCars = require(script.PlayerCars)
 local StormHost = require(script.StormHost)
 local ProductFeed = require(script.ProductFeed)
 
 print(`[WeatherWorld] server up: {Config.MAP_STUDS} studs across, {Config.STUDS_PER_MILE} studs/mile`)
 
+-- (the car template out of the world before anyone arrives: each player gets a car of their own)
+PlayerCars.start()
 ChunkManager.start(script:WaitForChild("ChunkWorker") :: Actor)
 TestDrive.start()
 -- the storms: the storm lab's atmosphere run here for this place, kept in step with the weather

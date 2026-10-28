@@ -224,9 +224,10 @@ function Sites.near(x0: number, z0: number, x1: number, z1: number, pad: number)
 					local runways = {}
 					for _, r in a.runways do
 						local ends = poly(r.a)
-						-- Lengths are the map's (1000 studs a mile); widths half the true feet in studs,
-						-- since at the map's scale a 150 ft runway would be 28 studs, narrower than a
-						-- highway at character scale.
+						-- Lengths come from the map (laid out at character scale by js/worldmap/airfields.js
+						-- through scale.js, so they keep their studs whatever STUDS_PER_MILE); widths half
+						-- the true feet in studs, since squashed with the map a 150 ft runway would be
+						-- narrower than a highway at character scale.
 						table.insert(runways, { a = ends[1], b = ends[2], half = r.w * 0.25 })
 					end
 					local lines = {}

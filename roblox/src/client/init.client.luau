@@ -36,6 +36,10 @@ do
 		flying = not flying
 		local character = player.Character
 		local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+		if humanoid and flying and humanoid.SeatPart then
+			-- (out of the car first: flying the driver would drag the car's body off its wheels)
+			humanoid.Sit = false
+		end
 		if humanoid then
 			humanoid.PlatformStand = flying
 		end

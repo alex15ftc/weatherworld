@@ -16,19 +16,26 @@
 //     as Perry's neighbourhood unit: houses on its streets, a collector across it on the half-mile
 //     lines, an elementary school inside it named for it, shopping only at its corners.
 // Everything else in a place is houses. Areas are convex polygons in map miles.
+// Scale (scale.js): the areas' own sizes (shopping centres, strips' depth, industrial parks,
+// parks, the gaps between areas) are built at character scale and keep their size in studs
+// (AT_1000); where they stand (spacing by people, the town's extent, the mile grid) is the map's.
 import { makeRandom, hashText } from './noise.js';
+import { AT_1000 } from './scale.js';
+import { HALF_MI } from './streets.js';
 
 export const LAND_USE_DEFAULTS = Object.freeze({
   peoplePer: { mall: 250000, community: 35000, neighborhood: 9000, corner: 12000 },
   communityMinPopulation: 15000,
   spacingMi: { mall: 4, community: 1.8, neighborhood: 0.9, corner: 0.6 },
-  sizeMi: { mall: [0.4, 0.3], community: [0.22, 0.18], neighborhood: [0.13, 0.1], corner: [0.075, 0.075] },
+  sizeMi: { mall: [AT_1000(0.4), AT_1000(0.3)], community: [AT_1000(0.22), AT_1000(0.18)], neighborhood: [AT_1000(0.13), AT_1000(0.1)], corner: [AT_1000(0.075), AT_1000(0.075)] },
   corners: { mall: 1, community: 2, neighborhood: 1, corner: 1 },
-  roadSetMi: 0.032,                       // from a road's centre line to where an area starts (an arterial's half-width and a little)
-  corridor: { maxPopulation: 100000, from: 0.4, to: 1.05, depthMi: 0.07, minMi: 0.1 },
-  industrial: { minPopulation: 1000, peoplePer: 60000, sizeMi: { town: [0.12, 0.1], smallCity: [0.3, 0.22], city: [0.5, 0.4] }, from: 0.55, to: 1.1 },
-  parks: { minPopulation: 1000, peoplePer: 12000 },
-  gapMi: 0.03                             // between areas of different uses
+  roadSetMi: HALF_MI.arterial + AT_1000(0.003),   // from a road's centre line to where an area starts (an arterial's half-width and a little)
+  corridor: { maxPopulation: 100000, from: 0.4, to: 1.05, depthMi: AT_1000(0.07), minMi: AT_1000(0.1) },
+  industrial: { minPopulation: 1000, peoplePer: 60000, sizeMi: { town: [AT_1000(0.12), AT_1000(0.1)], smallCity: [AT_1000(0.3), AT_1000(0.22)], city: [AT_1000(0.5), AT_1000(0.4)] }, from: 0.55, to: 1.1 },
+  // Park sides: a town park sizeMi.town[0] + up to [1]; a city park in a quarter section [0] + up to [1].
+  parks: { minPopulation: 1000, peoplePer: 12000, sizeMi: { town: [AT_1000(0.05), AT_1000(0.04)], city: [AT_1000(0.08), AT_1000(0.14)] } },
+  downtownMinMi: AT_1000(0.12),           // a small town's main street
+  gapMi: AT_1000(0.03)                    // between areas of different uses
 });
 
 const AREA_NAMES = ['Prairie Ridge', 'Westridge', 'Sunset Hills', 'Lakeview', 'Oak Park', 'Riverside', 'Highland', 'Pleasant Valley', 'Hillcrest', 'Wheatland', 'Bluestem', 'Indian Hills', 'Fairview', 'Park Hill', 'Mill Creek', 'Stone Creek', 'Woodland', 'Cedar Hills', 'Heritage', 'Pioneer', 'Kenwood', 'Brookside', 'Windsor', 'Clearwater', 'Briarwood', 'Countryside', 'Lone Elm', 'Meadowlark', 'Cottonwood', 'Sunflower', 'Quail Creek', 'Deer Run', 'Fox Run', 'Willow Bend', 'Rolling Hills', 'Prairie Village', 'Timber Ridge', 'Copper Creek', 'Shadow Lake', 'Autumn Ridge', 'Spring Hill', 'Maple Grove', 'Ashford', 'Hawthorne', 'Northbrook', 'Southwind', 'Eastborough', 'Crestview', 'Fairway', 'Country Club'];
@@ -73,7 +80,7 @@ export function planPlaceLandUse(st, h, options = {}) {
   const free = (poly, gap = p.gapMi, except = () => false) => !h.areas.some(z => z.kind !== 'corridor' && !except(z) && polysNear(poly, z, gap));
 
   // Downtown: a square at the middle, from main street in a small town to two miles across in the metro.
-  const side = Math.min(2, 0.12 + 0.35 * Math.sqrt(st.population / 40000)), half = side / 2;
+  const side = Math.min(2, p.downtownMinMi + 0.35 * Math.sqrt(st.population / 40000)), half = side / 2;
   const downtown = add({ kind: 'downtown', name: st.kind === 'town' ? `${st.name} Main Street` : `Downtown ${st.name}`, poly: rect(st.x - half, st.y - half, st.x + half, st.y + half) });
 
   // Highway strips at the town's edges.
@@ -106,7 +113,7 @@ export function planPlaceLandUse(st, h, options = {}) {
     const d = Math.hypot(I - st.x, J - st.y);
     if (d > R * 0.95 || (Math.abs(I - st.x) < half && Math.abs(J - st.y) < half)) continue;
     const paved = [h.sectionClass(I, J, true), h.sectionClass(I - 1, J, true), h.sectionClass(I, J, false), h.sectionClass(I, J - 1, false)].filter(c => c === 3).length;
-    const highways = new Set([...h.segsNear(I, J, I, J)].filter(s => s.type === 'road' && s.kind !== 'interstate' && h.distToSeg(I, J, s) < 0.06).map(s => s.road)).size;
+    const highways = new Set([...h.segsNear(I, J, I, J)].filter(s => s.type === 'road' && s.kind !== 'interstate' && h.distToSeg(I, J, s) < AT_1000(0.06)).map(s => s.road)).size;
     if (paved + 2 * highways < 3) continue;
     const exit = h.crossings.some(c => c.type === 'interchange' && Math.hypot(c.x - I, c.y - J) < 1.2);
     corners.push({ I, J, d, exit, score: paved + 2 * highways + 2 * (1 - d / R) + 1.5 * rng() });
@@ -149,7 +156,7 @@ export function planPlaceLandUse(st, h, options = {}) {
     for (let tries = 0; tries < want * 8 && sites.length < want; tries++) {
       const r = R * (ind.from + (ind.to - ind.from) * rng()), t = 2 * Math.PI * rng(), target = [st.x + r * Math.cos(t), st.y + r * Math.sin(t)];
       if (sites.some(q => Math.hypot(q[0] - target[0], q[1] - target[1]) < Math.max(1, R / 3))) continue;
-      const f = h.placeLot(lines, target, w * 5280, d * 5280, () => 1, lot => free(lot, 0.12, z => z.kind === 'industrial'));
+      const f = h.placeLot(lines, target, h.lotFt(w), h.lotFt(d), () => 1, lot => free(lot, 0.12, z => z.kind === 'industrial'));
       if (!f) continue;
       add({ kind: 'industrial', name: st.kind === 'town' ? `${st.name} Co-op` : `${st.name} ${['Industrial Park', 'Business Park', 'Commerce Center'][sites.length % 3]}${sites.length >= 3 ? ` ${Math.floor(sites.length / 3) + 1}` : ''}`, poly: f.lot });
       sites.push(target);
@@ -164,10 +171,10 @@ export function planPlaceLandUse(st, h, options = {}) {
       let cx, cy, size;
       if (st.kind === 'town') {
         const r = R * 0.5 * Math.sqrt(rng()), t = 2 * Math.PI * rng();
-        cx = st.x + r * Math.cos(t); cy = st.y + r * Math.sin(t); size = 0.05 + 0.04 * rng();
+        cx = st.x + r * Math.cos(t); cy = st.y + r * Math.sin(t); size = p.parks.sizeMi.town[0] + p.parks.sizeMi.town[1] * rng();
       } else {
         const r = R * 0.9 * Math.sqrt(rng()), t = 2 * Math.PI * rng();
-        cx = Math.floor(st.x + r * Math.cos(t)) + (rng() < 0.5 ? 0.25 : 0.75); cy = Math.floor(st.y + r * Math.sin(t)) + (rng() < 0.5 ? 0.25 : 0.75); size = 0.08 + 0.14 * rng() ** 2;
+        cx = Math.floor(st.x + r * Math.cos(t)) + (rng() < 0.5 ? 0.25 : 0.75); cy = Math.floor(st.y + r * Math.sin(t)) + (rng() < 0.5 ? 0.25 : 0.75); size = p.parks.sizeMi.city[0] + p.parks.sizeMi.city[1] * rng() ** 2;
       }
       const poly = rect(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2);
       if (!h.clear(poly) || !free(poly)) continue;
@@ -189,12 +196,12 @@ export function planNeighborhoods(st, h) {
     const cx = I + 0.5, cy = J + 0.5;
     if (Math.hypot(cx - st.x, cy - st.y) > R || h.isWater(cx, cy)) continue;
     if (downtown && cx > downtown.box[0] && cx < downtown.box[2] && cy > downtown.box[1] && cy < downtown.box[3]) continue;
-    const poly = rect(I + 0.02, J + 0.02, I + 0.98, J + 0.98);
+    const inset = AT_1000(0.02), poly = rect(I + inset, J + inset, I + 1 - inset, J + 1 - inset);
     if (h.campuses.some(c => polysNear(poly, c.area, 0) && (bboxOf(c.area)[2] - bboxOf(c.area)[0]) * (bboxOf(c.area)[3] - bboxOf(c.area)[1]) > 0.25)) continue;
     let name;
     do name = nameOf(j++); while (names.has(name));
     names.add(name);
-    const collectors = [{ ax: I + 0.5, ay: J, bx: I + 0.5, by: J + 1, half: 0.022, kind: 'collector' }, { ax: I, ay: J + 0.5, bx: I + 1, by: J + 0.5, half: 0.022, kind: 'collector' }];
+    const collectors = [{ ax: I + 0.5, ay: J, bx: I + 0.5, by: J + 1, half: HALF_MI.collector, kind: 'collector' }, { ax: I, ay: J + 0.5, bx: I + 1, by: J + 0.5, half: HALF_MI.collector, kind: 'collector' }];
     out.push({ kind: 'neighborhood', name, town: st.name, I, J, poly, box: bboxOf(poly), collectors, centre: [cx, cy] });
   }
   return out;

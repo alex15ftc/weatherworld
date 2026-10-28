@@ -33,7 +33,8 @@ Shots.REFERENCE = {
 
 -- Storm mode (key N): the replay's tornado storm from a chaser's distances (yaw 45: from the
 -- south-east, the usual view of a supercell's updraft with the rain beyond it). Horizontal
--- scale ~621 studs a km, vertical 1 stud a metre. `frame`: the replay frame to show.
+-- scale the map's (Config.STUDS_PER_MILE / 1.609: ~373 studs a km at 600 studs a mile), vertical
+-- 1 stud a metre. `frame`: the replay frame to show.
 Shots.STORM = {
 	-- matched to references (tools/lookmetrics/storm_metrics.py): hourShift moves the replay's
 	-- clock (12:20 local at frame 14) so the light matches the photo's

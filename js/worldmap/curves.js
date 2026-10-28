@@ -8,6 +8,11 @@
 // the curve is as wide as they allow. Near an interstate (where another road may cross it at an
 // interchange or overpass, planned for straight roads) a curve keeps clearMi from it, shrinking or
 // leaving the corner sharp.
+// Scale (scale.js): the room kept for interchanges and overpasses is at character scale and keeps
+// its size in studs (AT_1000); the radii (rounding the routes' corners, which come a mile or so
+// apart; scaled, they made more overlaps where curves pass town arterials) and which roads come
+// near a corner (keepMi) are the map's own.
+import { AT_1000 } from './scale.js';
 
 export const CURVE_DEFAULTS = Object.freeze({
   radiusMi: { interstate: 0.6, expressway: 0.35, highway: 0.15 },
@@ -15,8 +20,8 @@ export const CURVE_DEFAULTS = Object.freeze({
   stepDeg: 6,          // the arc is drawn in chords turning at most this much
   minDeg: 2,           // corners turning less than this are left as they are
   keepMi: 0.15,        // corners this near a point of another road stay sharp
-  clearMi: 0.35,       // curves of other roads keep this far from an interstate
-  systemClearMi: 1     // an interstate's curves keep this far from another interstate (its interchange's ramps)
+  clearMi: AT_1000(0.35), // curves of other roads keep this far from an interstate
+  systemClearMi: AT_1000(1) // an interstate's curves keep this far from another interstate (its interchange's ramps)
 });
 
 // The polyline with each corner rounded (points as [x, y]). keep(x, y) holds for corners that

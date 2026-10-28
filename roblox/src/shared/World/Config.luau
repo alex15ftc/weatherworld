@@ -7,25 +7,30 @@ local Config = {}
 
 Config.SEED = 1
 
--- Horizontal: 1000 studs per engine mile. The map is centred on the origin, so every coordinate
--- stays under 262,144 studs (1/64-stud float precision). At the fixed 12x clock a 41 mph storm
--- moves 137 studs/s, so chasing needs cars around 170 studs/s on highways.
-Config.STUDS_PER_MILE = 1000
+-- Horizontal: 600 studs per engine mile (2026-10-28; 1000 before). The map is centred on the
+-- origin, so every coordinate stays under 262,144 studs (1/64-stud float precision). At the fixed
+-- 12x clock a 41 mph storm moves 82 studs/s (137 at 1000 studs a mile), so a player's car
+-- (server/PlayerCars, 100 mph top) outruns one on any paved road. Keep equal to
+-- js/worldmap/scale.js STUDS_PER_MILE: the map generator sizes roads, lots, buildings and
+-- airfields in studs at that scale (WorldMap warns if the exported map says otherwise).
+Config.STUDS_PER_MILE = 600
 Config.MAP_MILES = 500
-Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 500,000
+Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 300,000
 Config.REGION_MILES = 50
 
 -- Roblox's standard scale (2026-10-27): 1 stud = 0.28 m, as the storm lab (stormlab LabConfig.SCALE).
 -- Everything people see up close is at this scale: houses, roads, trees and cars (built at
 -- character scale all along), the ground's height, and gravity (Workspace.Gravity 9.81 m/s^2 =
 -- 35 studs/s^2, default.project.json). Only map distance is squashed (STUDS_PER_MILE above, about
--- 5.75 times shorter than true): at true scale the map would be 2.9 million studs across, past
+-- 9.6 times shorter than true): at true scale the map would be 2.9 million studs across, past
 -- float precision, and no car could keep up with a storm on the 12x clock.
 Config.STUDS_PER_METRE = 1 / 0.28
 Config.GRAVITY = 9.81 * Config.STUDS_PER_METRE
 
 -- Vertical: the ground's height at the standard scale, so a 5 m rise is 18 studs against an
--- 11-stud storey. The map's slopes stay gentle (99.9% under 9%, steepest 14%). The cuts the
+-- 11-stud storey. Squashing the map steepens its slopes (at 600 studs a mile, 99.9% under 14%,
+-- steepest 23%, the half-mile cells' slopes; 9% and 14% at 1000); roads take a smoothed grade
+-- (Heightfield.gradeM) and the ground is cut and banked to it. The cuts the
 -- world carves itself (river channels, banks, road beds, ditches) are sized in studs to match the
 -- props, not in metres (ChunkGen).
 Config.STUDS_PER_METRE_VERTICAL = Config.STUDS_PER_METRE
@@ -36,23 +41,29 @@ Config.RAY_TOP_STUDS = 6000
 -- Storms (server/WeatherFeed, shared/Weather, client/StormView). A storm's heights (cloud base,
 -- tower, anvil, funnel) and a tornado's widths are drawn at a scale that eases with the storm's
 -- distance from the camera (Config.skyScaleAt, 2026-10-27):
---   * near (within SKY_NEAR_MILES) at the standard scale, so a cloud base, a funnel and a tornado
+--   * near (within SKY_NEAR_STUDS) at the standard scale, so a cloud base, a funnel and a tornado
 --     are true against the houses, the cars and the ground;
---   * far (beyond SKY_FAR_MILES) at SKY_FAR_STUDS_PER_METRE, because the map's distances are
---     squashed: at the standard scale a storm 30 miles off would tower 60 degrees up (truly 17).
--- Positions across stay at the map's scale throughout.
+--   * far (beyond SKY_FAR_STUDS) at SKY_FAR_STUDS_PER_METRE, because the map's distances are
+--     squashed: at the standard scale a storm 30,000 studs off (50 miles) would tower 60 degrees
+--     up (truly 10).
+-- Positions across stay at the map's scale throughout. The two distances are studs, not map
+-- miles (2026-10-28; they were 3 and 15 miles at 1000 studs a mile): what they judge is what the
+-- player sees - near, the storm against the houses and ground streamed round them (studs);
+-- far, the angle a storm stands at over the horizon, which is height in studs over distance in
+-- studs. Kept in miles they would have shrunk to 1,800 and 9,000 studs with the map, easing a
+-- storm only 2,000 studs off, its base over the houses streamed round you, toward the far scale.
 Config.KM_PER_MILE = 1.609344
 Config.SKY_STUDS_PER_METRE = Config.STUDS_PER_METRE_VERTICAL -- near
 Config.SKY_FAR_STUDS_PER_METRE = 1
-Config.SKY_NEAR_MILES = 3
-Config.SKY_FAR_MILES = 15
+Config.SKY_NEAR_STUDS = 3000
+Config.SKY_FAR_STUDS = 15000
 -- A tornado's widths against its storm's heights (1: the same scale, so a funnel keeps its shape).
 Config.TORNADO_SHARE_OF_SKY = 1
 Config.TORNADO_STUDS_PER_METRE = Config.SKY_STUDS_PER_METRE * Config.TORNADO_SHARE_OF_SKY -- near
 
 -- Studs a metre up for a storm whose centre is this many studs (across) from the camera.
 function Config.skyScaleAt(distanceStuds: number): number
-	local near, far = Config.SKY_NEAR_MILES * Config.STUDS_PER_MILE, Config.SKY_FAR_MILES * Config.STUDS_PER_MILE
+	local near, far = Config.SKY_NEAR_STUDS, Config.SKY_FAR_STUDS
 	local t = math.clamp((distanceStuds - near) / (far - near), 0, 1)
 	t = t * t * (3 - 2 * t)
 	return Config.SKY_STUDS_PER_METRE + (Config.SKY_FAR_STUDS_PER_METRE - Config.SKY_STUDS_PER_METRE) * t
@@ -493,9 +504,11 @@ Config.SERIAL_BUDGET_MS = 8
 
 -- Streaming and vehicle tests (turned on by the Workspace attribute TestDrive; see server/TestDrive).
 -- Workspace attributes TestOriginX, TestSpeed and TestSeconds override these defaults.
-Config.TEST_SPEED_STUDS = 170 -- highway chase speed at 1000 studs/mile
+-- (160 studs/s: 100 mph, the player's car's top speed (server/PlayerCars) at 1 stud = 0.28 m;
+-- the fastest the world has to stream in. 170 before, chase speed at 1000 studs a mile.)
+Config.TEST_SPEED_STUDS = 160
 Config.TEST_SECONDS = 60
 Config.TEST_ORIGIN_X = 8000 -- clear of the Baseplate and SpawnLocation at the origin
-Config.TEST_VEHICLE_X = { 8000, 250000, 480000 } -- near the centre, the map edge, beyond it
+Config.TEST_VEHICLE_X = { 8000, 150000, 480000 } -- near the centre, the map edge, beyond it
 
 return table.freeze(Config)

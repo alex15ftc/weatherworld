@@ -26,6 +26,8 @@ export type Record = {
 
 export type Ramp = { points: { Vector2 }, side: number, after: boolean, merges: boolean }
 
+-- All in studs at character scale (they keep their size whatever STUDS_PER_MILE);
+-- js/worldmap/interchanges.js has the same in map miles (studs / STUDS_PER_MILE, scale.js).
 Interchanges.INTERSTATE_HALF = 51 -- RoadNet's interstate cross-section (pavement)
 Interchanges.RAMP_ALONG = 400 -- where a ramp leaves or joins the interstate, from the crossing
 Interchanges.TERMINAL_EXTRA = 300 -- the ramp meets the crossing road this far beyond the interstate's edge

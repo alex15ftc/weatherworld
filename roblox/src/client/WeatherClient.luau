@@ -25,7 +25,7 @@ local Weather = {}
 -- Scales (2026-10-27, the user's choice: each storm drawn whole at one scale). Across, positions
 -- are at the map's scale. Each storm (tornado, shaft, flash...) is drawn about its centre at
 -- Config.skyScaleAt(its distance from the camera): true (Config.STUDS_PER_METRE, 3.57) within
--- SKY_NEAR_MILES, easing to SKY_FAR_STUDS_PER_METRE beyond SKY_FAR_MILES. Things at the camera
+-- SKY_NEAR_STUDS, easing to SKY_FAR_STUDS_PER_METRE beyond SKY_FAR_STUDS. Things at the camera
 -- (near rain, splashes) and the ground's height are at the true scale.
 local KH = Config.STUDS_PER_MILE / 1609.344
 Weather.WEATHER_STUDS_PER_METRE = Config.STUDS_PER_METRE
@@ -262,22 +262,41 @@ function Weather.storms(): { any }
 			torByParent[t.parentId] = t
 		end
 	end
+	local function tornadoOf(t: any, base: number?): any
+		local tx, ty = km(t.x, t.y)
+		return { xKm = tx, yKm = ty, baseM = t.cloudBase or base or 1000, ef = t.ef, windMph = math.floor((t.peakWind or 0) * 2.237 + 0.5), widthYards = math.floor((t.rc or 0) * 2 * 1.094 + 0.5), shape = t.stage }
+	end
+	local stormRows = {}
 	for _, s in ctx.cw.storms do
 		if not s.dead then
 			local xk, yk = km(s.x, s.y)
 			local lx, ly = km(s.lowX or s.x, s.lowY or s.y)
 			local t = torByParent[s.id]
-			local tor = nil
-			if t then
-				local tx, ty = km(t.x, t.y)
-				tor = { xKm = tx, yKm = ty, baseM = t.cloudBase or s.base, ef = t.ef, windMph = math.floor((t.peakWind or 0) * 2.237 + 0.5), widthYards = math.floor((t.rc or 0) * 2 * 1.094 + 0.5), shape = t.stage }
-			end
-			table.insert(out, {
+			local row = {
 				id = tostring(s.id), xKm = xk, yKm = yk, eastKph = (s.u or 0) * 3.6, northKph = (s.v or 0) * 3.6,
 				mode = if (s.rot or 0) > 0.5 then "supercell" else "storm", intensity = math.clamp((s.W or 0) / 50, 0, 1.5),
 				groundStuds = f.datum(s.x, s.y),
 				updraft = { xKm = xk, yKm = yk, baseM = s.base or 1000, radiusKm = (s.Ru or 3000) / 1000 },
 				wallCloud = { xKm = lx, yKm = ly, strength = math.clamp((s.lowering or 0) / 300, 0, 1) },
+				tornado = if t then tornadoOf(t, s.base) else nil, funnelAloft = false,
+			}
+			stormRows[s.id] = row
+			table.insert(out, row)
+		end
+	end
+	-- Every live tornado as a row of its own (id "tor:<id>"), centred and moving with the tornado,
+	-- so the page can teleport to and follow it even when its storm has two or has died.
+	for _, t in ctx.cw.tornadoes do
+		if not t.ended then
+			local parent = stormRows[t.parentId]
+			local tor = tornadoOf(t, if parent then parent.updraft.baseM else nil)
+			table.insert(out, {
+				id = `tor:{t.id}`, parentId = if parent then parent.id else nil,
+				xKm = tor.xKm, yKm = tor.yKm, eastKph = (t.ut or 0) * 3.6, northKph = (t.vt or 0) * 3.6,
+				mode = "tornado", intensity = if parent then parent.intensity else 0,
+				groundStuds = f.datum(t.x, t.y),
+				updraft = if parent then parent.updraft else { xKm = tor.xKm, yKm = tor.yKm, baseM = tor.baseM, radiusKm = 3 },
+				wallCloud = if parent then parent.wallCloud else nil,
 				tornado = tor, funnelAloft = false,
 			})
 		end

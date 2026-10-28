@@ -2,7 +2,8 @@
 // ServerStorage.WorldData), which builds its terrain chunk by chunk from it.
 //   node scripts/export-world-roblox.mjs [--seed 1] [key=value ...]
 //
-// Meta.luau: scale, cover and region keys, lakes, settlements, start points.
+// Meta.luau: scale (studsPerMile, js/worldmap/scale.js: must equal Roblox's Config.STUDS_PER_MILE),
+// cover and region keys, lakes, settlements, start points.
 // Tiles/T<i>_<j>.luau, one per 50 x 50 miles (i east, j south): returns
 //   data    base64 of: elevation u16 LE (decimetres above baseM), cover u8, cover region u8,
 //           lake id u8, each (100 + 2 * border)^2 cells of 0.5 mi with a border of cells from the
@@ -41,6 +42,7 @@ import { zstdCompressSync } from 'node:zlib';
 import path from 'node:path';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 import { generateWorldMap, REGIONS, COVER } from '../js/worldmap/WorldMapGenerator.js';
+import { STUDS_PER_MILE } from '../js/worldmap/scale.js';
 
 avoidBackgroundThrottling();
 
@@ -209,7 +211,8 @@ return {
 
 const city = map.settlements.find(s => s.kind === 'city') ?? map.settlements[0];
 const meta = {
-  seed, miles: map.params.miles, cellMiles: map.cellMiles, tileMiles: TILE_MI, tiles, border: BORDER, tileCells: S, corners: CORNERS, baseM: BASE_M,
+  // studsPerMile: the Roblox scale the map was made for (WorldMap.luau warns if Config.STUDS_PER_MILE differs)
+  seed, studsPerMile: STUDS_PER_MILE, miles: map.params.miles, cellMiles: map.cellMiles, tileMiles: TILE_MI, tiles, border: BORDER, tileCells: S, corners: CORNERS, baseM: BASE_M,
   cover: COVER, regions: REGIONS.map(x => x.key), sectionClasses: ['none', 'dirt', 'gravel', 'paved'],
   lakes: map.lakes.map(l => ({ id: l.id, surfaceM: r(l.surfaceM, 1), x: r(l.damX), y: r(l.damY) })),
   settlements: map.settlements.map(s => ({ name: s.name, kind: s.kind, x: s.x, y: s.y, population: s.population, coreMi: r(s.coreMi), extentMi: r(s.extentMi), streetBlockMi: r(s.streetBlockMi, 4) })),

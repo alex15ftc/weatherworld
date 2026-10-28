@@ -20,6 +20,14 @@ local TileModules = Data:WaitForChild("Tiles")
 local WorldMap = {}
 WorldMap.meta = Meta
 
+-- The scale the map was generated for (js/worldmap/scale.js, written by the export; older exports
+-- lack it): the generator sizes roads, lots, buildings and airfields in studs at that scale, so a
+-- map made for another drifts against everything built here.
+if Meta.studsPerMile ~= nil and Meta.studsPerMile ~= Config.STUDS_PER_MILE then
+	-- (each actor loading the map says it too: hard to miss in the output)
+	warn(`[WeatherWorld] SCALE MISMATCH: the world map (ServerStorage.WorldData) was exported at {Meta.studsPerMile} studs a mile, but Config.STUDS_PER_MILE is {Config.STUDS_PER_MILE}. Set js/worldmap/scale.js and roblox/src/shared/World/Config.luau to the same value and re-run node scripts/export-world-roblox.mjs.`)
+end
+
 local CELL = Meta.cellMiles :: number
 local TILE_MI = Meta.tileMiles :: number
 local TILES = Meta.tiles :: number

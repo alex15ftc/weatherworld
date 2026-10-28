@@ -34,7 +34,7 @@ weather engine (Node)                      game server (Roblox)                 
     - A `WeatherGround` RemoteFunction gives clients the ground's height on a 1 km grid over ±60 km.
 - **Client** (`client/WeatherClient.luau`):
   - It sets the lab's frame (`LabConfig.setFrame`):
-    - across, the map's scale (1000 studs/mile);
+    - across, the map's scale (`Config.STUDS_PER_MILE`: 600 studs/mile since 2026-10-28, 1000 before);
     - origin at the window centre's studs;
     - a smooth ground datum (the terrain blurred over ~20 km) that clouds sit over;
     - the ground's height from the grid, refined by raycasts within 1.5 km of the camera.
@@ -48,9 +48,9 @@ weather engine (Node)                      game server (Roblox)                 
 
 ## Scale (decided 2026-10-27: each storm drawn whole)
 
-The game is anisotropic on purpose: map distance is squashed (1000 studs/mile, ~0.62 studs/m), while objects and the ground's height are at Roblox's 0.28 m stud (3.57 studs/m). Each storm, tornado, rain shaft and flash is drawn whole at one scale about its centre, which keeps its true shape:
+The game is anisotropic on purpose: map distance is squashed (600 studs/mile since 2026-10-28, ~0.37 studs/m; 1000 studs/mile, ~0.62 studs/m, before), while objects and the ground's height are at Roblox's 0.28 m stud (3.57 studs/m). Each storm, tornado, rain shaft and flash is drawn whole at one scale about its centre, which keeps its true shape:
 
-- the scale is `Config.skyScaleAt(distance from the camera)`: true (3.57 studs/m) within 3 miles, easing to 1 stud/m beyond 15 miles;
+- the scale is `Config.skyScaleAt(distance from the camera)`: true (3.57 studs/m) within 3,000 studs, easing to 1 stud/m beyond 15,000 studs (`SKY_NEAR_STUDS`, `SKY_FAR_STUDS`; 3 and 15 miles at 1000 studs/mile);
 - only the centre sits at its map position (`LabConfig.scaleAbout`, `toWorldAbout`, `localAbout`);
 - near rain and splashes round the camera are at true scale;
 - a near storm's footprint is wider than its map area.

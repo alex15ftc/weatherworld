@@ -38,10 +38,16 @@
 //
 // Geometry is laid out in feet in each airfield's own frame (a along the main runway's heading,
 // b to its right) and stored in map miles. Everything is deterministic from the seed.
+// Scale (scale.js): an airfield is built at character scale and keeps its size in studs, so a
+// layout foot is AT_1000(1/5280) map miles (the studs a foot had at 1000 studs a mile; Roblox
+// draws runway lengths at the map's scale and widths from widthFt). The clearances round roads,
+// rivers and ramps keep their studs too; distances to towns and highways are the map's.
 import { makeRandom, hashText, clamp } from './noise.js';
 import { interchangeRamps } from './interchanges.js';
+import { AT_1000, STUDS } from './scale.js';
 
-const FT = 1 / 5280;
+const FT = AT_1000(1 / 5280);   // a layout foot in map miles
+const HALF_MI_EXPRESSWAY = AT_1000(0.04);   // an airport expressway's half-width and a little (streets.js HALF_MI.expressway)
 
 export const AIRFIELD_DEFAULTS = Object.freeze({
   minPopulation: 40000,
@@ -51,13 +57,19 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   accessMi: 8,              // longest public access road from an airport gate
   // International airports (these kinds of place) are reached by a freeway spur from their own
   // interstate exit, up to freewayMi long, meeting the interstate square for its last stemMi.
-  international: ['metro', 'city'], freewayMi: 12, stemMi: 0.8,
+  international: ['metro', 'city'], freewayMi: 12, stemMi: AT_1000(0.8),
   stubFt: 1320,             // the airport road runs straight out of the gate this far
   // Offices in towns where the airports leave gaps (see planAirfields): until all ground is within
   // reachMi of an office and no office has more than areaMi2 nearest it (sampled every sampleMi), at most `most` of them, in towns of minPopulation
   // or more, using a radar without an office within sharedRadarMi, reached by a road of up to accessMi.
   gapOffices: { reachMi: 175, areaMi2: 30000, sampleMi: 10, most: 6, minPopulation: 500, sharedRadarMi: 30, accessMi: 4 },
-  airBase: { region: 'highPlains', townClearMi: 9, nearestTownMi: [10, 20], interstateClearMi: 6, accessMi: 10, stubFt: 1800 }
+  airBase: { region: 'highPlains', townClearMi: 9, nearestTownMi: [10, 20], interstateClearMi: 6, accessMi: 10, stubFt: 1800 },
+  // Radar sites taken out by hand, per seed (codes come from town names, so they differ by seed):
+  // the radar and the forecast office beside it go, after the gap offices are placed (so none is
+  // put back in its place); the airport stays and the neighbouring offices take its counties.
+  // Seed 1, 2026-10-28 (the user's choice): KPLM (50 mi from KLOR), KDGL (67 from KSPB), KWAP (90
+  // from KSMF), KGRG (41 from the air base's KHLL).
+  removedRadars: { 1: ['KPLM', 'KDGL', 'KWAP', 'KGRG'] }
 });
 
 const BASE_NAMES = ['Tolliver', 'Calloway', 'Prewitt', 'Brackett', 'Dunmore', 'Garrity', 'Hollister', 'Wendell', 'Ashby', 'Corwin'];
@@ -294,12 +306,12 @@ export function planAirfields(map, options = {}) {
   const roadSegs = [];
   for (const road of roads) for (let i = 1; i < road.points.length; i++) {
     const [ax, ay] = road.points[i - 1], [bx, by] = road.points[i];
-    const seg = { type: road.kind === 'interstate' ? 'interstate' : 'road', road, ax, ay, bx, by, half: road.kind === 'interstate' ? 0.06 : 0.03 };
+    const seg = { type: road.kind === 'interstate' ? 'interstate' : 'road', road, ax, ay, bx, by, half: AT_1000(road.kind === 'interstate' ? 0.06 : 0.03) };
     addSeg(seg); roadSegs.push(seg);
   }
   const riverSegs = [];
   for (const river of rivers) for (let k = 2; k < river.points.length; k += 2) {
-    addSeg(riverSegs[riverSegs.length] = { type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18)) / 2000 + 0.03 });
+    addSeg(riverSegs[riverSegs.length] = { type: 'river', ax: river.points[k - 2], ay: river.points[k - 1], bx: river.points[k], by: river.points[k + 1], half: STUDS(Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18))) / 2 + AT_1000(0.03) });
   }
   const segsNear = (x0, y0, x1, y1) => {
     const found = new Set();
@@ -338,8 +350,9 @@ export function planAirfields(map, options = {}) {
   // may run).
   const spotClear = poly => {
     const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    if (Math.floor(x1 + 0.03) !== Math.floor(x0 - 0.03) || Math.floor(y1 + 0.03) !== Math.floor(y0 - 0.03)) return false;
-    for (const s of segsNear(x0, y0, x1, y1)) if (segmentHitsRect(s.ax, s.ay, s.bx, s.by, x0 - s.half - 0.02, y0 - s.half - 0.02, x1 + s.half + 0.02, y1 + s.half + 0.02)) return false;
+    const line = AT_1000(0.03), m = AT_1000(0.02);
+    if (Math.floor(x1 + line) !== Math.floor(x0 - line) || Math.floor(y1 + line) !== Math.floor(y0 - line)) return false;
+    for (const s of segsNear(x0, y0, x1, y1)) if (segmentHitsRect(s.ax, s.ay, s.bx, s.by, x0 - s.half - m, y0 - s.half - m, x1 + s.half + m, y1 + s.half + m)) return false;
     return cover[cellAt((x0 + x1) / 2, (y0 + y1) / 2)] !== water;
   };
 
@@ -390,7 +403,7 @@ export function planAirfields(map, options = {}) {
         for (const s of segsNear(x, y, x, y)) {
           if (endRoad && s.road === endRoad && toEnd < 0.6) continue;
           const d = distToSeg(x, y, s);
-          if (s.type === 'interstate' ? d < 0.2 : s.type === 'river' ? d < s.half : d < 0.04 && (endRoad || toEnd > 0.12)) return false;
+          if (s.type === 'interstate' ? d < AT_1000(0.2) : s.type === 'river' ? d < s.half : d < AT_1000(0.04) && (endRoad || toEnd > AT_1000(0.12))) return false;
         }
         for (const o of own ? [...placed, own] : placed) { const [a, b] = o.frame.local(x, y), [a0, b0, a1, b1] = o.fence; if (a > a0 && a < a1 && b > b0 && b < b1) return false; }
         for (const poly of avoid) if (pointInPoly(x, y, poly)) return false;
@@ -422,7 +435,7 @@ export function planAirfields(map, options = {}) {
           if (hit) { list.push(along[i - 1] + len * hit.t); return; }
           for (const [qx, qy] of [[s.ax, s.ay], [s.bx, s.by]]) {
             const seg = { ax, ay, bx, by }, [px, py] = nearestOnSegment(qx, qy, seg);
-            if (Math.hypot(px - qx, py - qy) < 0.06) list.push(along[i - 1] + Math.hypot(px - ax, py - ay));
+            if (Math.hypot(px - qx, py - qy) < AT_1000(0.06)) list.push(along[i - 1] + Math.hypot(px - ax, py - ay));
           }
         };
         for (const s of roadSegs) if (s.road !== road) meet(s, s.type === 'interstate' ? junctionsAt : highwaysAt);
@@ -430,15 +443,16 @@ export function planAirfields(map, options = {}) {
       }
       for (let i = 1; i < pts.length; i++) {
         const [ax, ay] = pts[i - 1], [bx, by] = pts[i], len = along[i] - along[i - 1];
-        if (len < 1.2) continue;
+        const rampReach = AT_1000(0.6);
+        if (len < 2 * rampReach) continue;
         const ux = (bx - ax) / len, uy = (by - ay) / len;
-        // Straight for the ramps' reach either way: on this segment, 0.6 mi from its ends.
-        for (let t = 0.6; t <= len - 0.6; t += 0.1) {
+        // Straight for the ramps' reach either way: on this segment, rampReach from its ends.
+        for (let t = rampReach; t <= len - rampReach; t += 0.1) {
           const T = [ax + ux * t, ay + uy * t], s = along[i - 1] + t, d = Math.hypot(T[0] - S[0], T[1] - S[1]);
           if (d > reach) continue;
           const spacing = (townCover.has(cover[cellAt(T[0], T[1])]) ? 1 : 3) + 0.3;
-          if (highwaysAt.some(h => Math.abs(h - s) < spacing) || junctionsAt.some(h => Math.abs(h - s) < 2) || riversAt.some(h => Math.abs(h - s) < 0.6)) continue;
-          if (roadSegs.some(o => o.type === 'interstate' && o.road !== road && distToSeg(T[0], T[1], o) < 1.1)) continue;
+          if (highwaysAt.some(h => Math.abs(h - s) < spacing) || junctionsAt.some(h => Math.abs(h - s) < 2) || riversAt.some(h => Math.abs(h - s) < rampReach)) continue;
+          if (roadSegs.some(o => o.type === 'interstate' && o.road !== road && distToSeg(T[0], T[1], o) < AT_1000(1.1))) continue;
           // Square to the interstate, on the side the airport is.
           let nx = -uy, ny = ux;
           if ((S[0] - T[0]) * nx + (S[1] - T[1]) * ny < 0) { nx = -nx; ny = -ny; }
@@ -455,23 +469,24 @@ export function planAirfields(map, options = {}) {
     options.sort((a, b) => a.length - b.length);
     const rampsClear = c => interchangeRamps(c).every(ramp => ramp.every(([x, y]) => {
       if (cover[cellAt(x, y)] === water) return false;
-      for (const s of segsNear(x, y, x, y)) if (s.type === 'river' ? distToSeg(x, y, s) < s.half + 0.02 : s.type === 'road' && distToSeg(x, y, s) < 0.04) return false;
+      for (const s of segsNear(x, y, x, y)) if (s.type === 'river' ? distToSeg(x, y, s) < s.half + AT_1000(0.02) : s.type === 'road' && distToSeg(x, y, s) < AT_1000(0.04)) return false;
       return true;
     }));
     for (const q of options) if (rampsClear(q.crossing) && pathClear(q.points, avoid, own, q.road)) return q;
     return null;
   };
 
-  // The office and radar beside a gate's stub: the first spot clear on either side.
-  const officeAndRadar = (f, gateA, gateB, da, db) => {
+  // The office and radar beside a gate's stub: the first spot clear on either side. off: feet
+  // further across, beside a stub that is an expressway (wider than the airport road).
+  const officeAndRadar = (f, gateA, gateB, da, db, off = 0) => {
     for (const along of [600, 900, 400, 1150]) for (const side of [1, -1]) {
       // Across the stub: the side axis is the stub turned a right angle.
       const sa = -db * side, sb = da * side, P = (al, ac) => [gateA + da * al + sa * ac, gateB + db * al + sb * ac];
       const box = (al0, ac0, al1, ac1) => [P(al0, ac0), P(al1, ac0), P(al1, ac1), P(al0, ac1)].map(f.at);
-      const building = box(along - 60, 160, along + 60, 300), parking = box(along - 90, 60, along + 90, 150), compound = box(along - 110, 400, along + 110, 620);
+      const building = box(along - 60, 160 + off, along + 60, 300 + off), parking = box(along - 90, 60 + off, along + 90, 150 + off), compound = box(along - 110, 400 + off, along + 110, 620 + off);
       if (![building, parking, compound].every(spotClear)) continue;
-      const drive = [P(along, 20), P(along, 60)].map(f.at), service = [P(along, 300), P(along, 400)].map(f.at);
-      return { building, parking, compound, drive, service, radar: f.at(P(along, 510)) };
+      const drive = [P(along, 20 + off), P(along, 60 + off)].map(f.at), service = [P(along, 300 + off), P(along, 400 + off)].map(f.at);
+      return { building, parking, compound, drive, service, radar: f.at(P(along, 510 + off)) };
     }
     return null;
   };
@@ -505,7 +520,9 @@ export function planAirfields(map, options = {}) {
   function finish({ f, layout, fence }, city, base = null) {
     const g = layout.gate, gateA = g.da ? fence[g.da > 0 ? 2 : 0] : g.a, gateB = g.db ? fence[g.db > 0 ? 3 : 1] : g.b;
     const stub = base ? p.airBase.stubFt : p.stubFt;
-    const office = base ? null : officeAndRadar(f, gateA, gateB, g.da, g.db);
+    const freeway = !base && p.international.includes(city.kind);
+    // Beside an expressway stub the office stands clear of its width (the airport road's half-width is 0.03 mi at 1000 studs a mile).
+    const office = base ? null : officeAndRadar(f, gateA, gateB, g.da, g.db, freeway ? (HALF_MI_EXPRESSWAY - AT_1000(0.03)) / FT : 0);
     if (!base && !office) return null;
     const visitor = base ? f.at([gateA + 250, gateB + 300]) : null;
     const S = f.at([gateA + g.da * stub, gateB + g.db * stub]);
@@ -513,7 +530,6 @@ export function planAirfields(map, options = {}) {
     // The stub itself must be clear too.
     const own = { frame: f, fence };
     if (!pathClear([f.at([gateA + g.da * 10, gateB + g.db * 10]), S], avoid, own)) return null;
-    const freeway = !base && p.international.includes(city.kind);
     const access = freeway ? freewaySpur(S, p.freewayMi, avoid, own) : accessRoad(S, base ? p.airBase.accessMi : p.accessMi, avoid, own, !base);
     if (!access) return null;
     const code = codeFor(base ? base.name : city.name, used);
@@ -538,7 +554,8 @@ export function planAirfields(map, options = {}) {
         : { name: base ? `${base.name} AFB Access Road` : 'Airport Road', points: [f.at([gateA, gateB]), ...access.points], joins: access.t.road?.name ?? `${access.t.town.name} streets` }
     };
     if (base) {
-      field.buildings.push({ kind: 'visitor center', poly: [[visitor[0] - 0.012, visitor[1] - 0.008], [visitor[0] + 0.012, visitor[1] - 0.008], [visitor[0] + 0.012, visitor[1] + 0.008], [visitor[0] - 0.012, visitor[1] + 0.008]] });
+      const vw = AT_1000(0.012), vd = AT_1000(0.008);
+      field.buildings.push({ kind: 'visitor center', poly: [[visitor[0] - vw, visitor[1] - vd], [visitor[0] + vw, visitor[1] - vd], [visitor[0] + vw, visitor[1] + vd], [visitor[0] - vw, visitor[1] + vd]] });
       const radar = f.at(layout.radarAt);
       field.radar = { id: `K${code}`, name: `${base.name} AFB`, x: radar[0], y: radar[1], operator: 'DoD', compound: poly(rect(layout.radarAt[0] - 110, layout.radarAt[1] - 110, layout.radarAt[0] + 110, layout.radarAt[1] + 110)) };
     } else {
@@ -553,7 +570,7 @@ export function planAirfields(map, options = {}) {
       const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: field.access.points };
       roads.push(road);
       for (let i = 1; i < road.points.length; i++) {
-        const seg = { type: 'road', road, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: 0.04 };
+        const seg = { type: 'road', road, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: HALF_MI_EXPRESSWAY };
         addSeg(seg); roadSegs.push(seg);
       }
     }
@@ -651,7 +668,7 @@ export function planAirfields(map, options = {}) {
         const fence = [[Math.min(...xs) - pad, Math.min(...ys) - pad], [Math.max(...xs) + pad, Math.min(...ys) - pad], [Math.max(...xs) + pad, Math.max(...ys) + pad], [Math.min(...xs) - pad, Math.max(...ys) + pad]];
         const code = codeFor(town.name, used), [cx, cy] = centroidOf(office.building);
         const radar = shared ?? { id: `K${code}`, name: town.name, x: office.radar[0], y: office.radar[1], operator: 'NWS', compound: office.compound, service: office.service };
-        placed.push({ frame: f, fence: [0, 0, 0, 0], cx, cy, radius: 0.3 });
+        placed.push({ frame: f, fence: [0, 0, 0, 0], cx, cy, radius: AT_1000(0.3) });
         return {
           kind: 'nwsOffice', code, name: `NWS ${town.name}`, class: 'forecast office', city: town.name,
           distanceMi: Math.round(Math.hypot(cx - town.x, cy - town.y) * 10) / 10, x: Math.round(cx * 1e4) / 1e4, y: Math.round(cy * 1e4) / 1e4, headingDeg: 0, elevationM: Math.round(elevation[cellAt(cx, cy)]),
@@ -665,6 +682,20 @@ export function planAirfields(map, options = {}) {
     }
     return null;
   }
+
+  // Radar sites removed by hand (removedRadars): the radar and its office go; an office in a town
+  // goes whole, an airport keeps its field. An office that shared a removed radar goes too.
+  const removed = new Set(p.removedRadars?.[map.params.seed] ?? []);
+  const found = new Set();
+  for (let i = airfields.length - 1; i >= 0; i--) {
+    const a = airfields[i];
+    if (!a.radar || !removed.has(a.radar.id)) continue;
+    found.add(a.radar.id);
+    if (a.kind === 'nwsOffice') airfields.splice(i, 1);
+    else { delete a.radar; delete a.sharedRadar; delete a.nws; }
+  }
+  // (a code that matches nothing is a typo, or from a map made before the towns changed)
+  for (const id of removed) if (!found.has(id)) console.warn(`[worldmap] removedRadars: no radar ${id} on seed ${map.params.seed}`);
 
   // Each radar once (an office may use the air base's).
   const radars = airfields.filter(a => a.radar && !a.sharedRadar).map(a => ({ ...a.radar, airfield: a.code, kind: a.kind }));

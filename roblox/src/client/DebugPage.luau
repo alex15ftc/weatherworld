@@ -3,9 +3,11 @@
 -- the feed has, strongest first (a tornado's first), with how far and which way it is from you.
 --   Teleport: puts you on the ground beside it (server/Explore waits for the ground to load):
 --     to the right of its track (the inflow side of a storm moving north-east), a few km off.
+--     Each live tornado has its own row (top of the list) whose Teleport lands closer.
 --   Follow:   a cinematic camera that stays with it, looking at the tornado, else the wall cloud
 --     or the updraught's base. Orbit circles it slowly; Chase holds the teleport's angle as it
 --     moves. Scroll to move in or out; Stop (or Backspace) drops you to the ground under the camera.
+--     Following a tornado row stays on that tornado; when it lifts, the camera keeps its storm.
 -- While following, your character rides along hidden at the camera, so the ground and the storms
 -- load where you are looking.
 
@@ -34,7 +36,7 @@ local statusLabel: TextLabel
 local modeButtons: { [string]: TextButton } = {}
 local rows: { [string]: { frame: Frame, label: TextLabel } } = {}
 
-type Follow = { id: string, mode: string, zoom: number, angle: number, pos: Vector3?, look: Vector3? }
+type Follow = { id: string, parentId: string?, mode: string, zoom: number, angle: number, pos: Vector3?, look: Vector3? }
 local follow: Follow? = nil
 local lastMode = "Orbit"
 local message = ""
@@ -168,7 +170,12 @@ local function startFollow(id: string)
 		return
 	end
 	local _, _, side = framing(s)
-	follow = { id = id, mode = lastMode, zoom = 1, angle = math.atan2(side.Z, side.X) }
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid and humanoid.SeatPart then
+		humanoid.Sit = false -- (out of the car: the camera carries the character along)
+	end
+	follow = { id = id, parentId = s.parentId, mode = lastMode, zoom = 1, angle = math.atan2(side.Z, side.X) }
 	message = ""
 	setHidden(true)
 end
@@ -180,10 +187,19 @@ local function stepFollow(dt: number)
 		return
 	end
 	local s = findStorm(f.id)
+	if not s and f.parentId and findStorm(f.parentId :: string) then
+		-- (the tornado lifted: stay with the storm that made it)
+		f.id, f.parentId = f.parentId :: string, nil
+		message = "The tornado lifted; following its storm."
+		s = findStorm(f.id)
+	end
 	if not s then
-		message = "The storm you were following has gone."
+		message = if string.sub(f.id, 1, 4) == "tor:" then "The tornado you were following has lifted." else "The storm you were following has gone."
 		stopFollow(true)
 		return
+	end
+	if s.parentId then
+		f.parentId = s.parentId
 	end
 	local look, distance, side = framing(s)
 	distance *= f.zoom
@@ -225,6 +241,9 @@ local function describe(s: any, from: Vector3): string
 	local speedMph = math.sqrt((s.eastKph or 0) ^ 2 + (s.northKph or 0) ^ 2) / Config.KM_PER_MILE
 	local moving = if speedMph < 2 then "nearly still" else `moving {compass(s.eastKph, -s.northKph)} {math.round(speedMph)} mph`
 	local kind = s.mode or "storm"
+	if s.mode == "tornado" then
+		kind = if s.parentId then `tornado from storm {s.parentId}` else "tornado (its storm has gone)"
+	end
 	if s.supercellType then
 		kind ..= ` ({s.supercellType})`
 	end
@@ -240,8 +259,20 @@ local function describe(s: any, from: Vector3): string
 	return table.concat(lines, "\n")
 end
 
+local function tornadoCount(list: { any }): number
+	local n = 0
+	for _, s in list do
+		if s.mode == "tornado" then
+			n += 1
+		end
+	end
+	return n
+end
+
 local function rank(s: any): number
-	if s.tornado then
+	if s.mode == "tornado" then
+		return 20 + (s.tornado.windMph or 0) / 100
+	elseif s.tornado then
 		return 10 + (s.tornado.windMph or 0) / 100
 	end
 	return (s.intensity or 0) + (if s.funnelAloft then 1 else 0)
@@ -254,9 +285,12 @@ local function teleportTo(id: string)
 	end
 	stopFollow(false)
 	local look, distance, side = framing(s)
+	if s.mode == "tornado" then
+		distance *= 0.5 -- (close: the tornado fills the view, still off its track)
+	end
 	local spot = clampToMap(Vector3.new(look.X, 0, look.Z) + side * distance)
 	if requestTeleport(spot.X, spot.Z) then
-		message = `Teleporting beside {s.mode or "the storm"} ...`
+		message = `Teleporting beside the {s.mode or "storm"} ...`
 	end
 end
 
@@ -335,7 +369,9 @@ local function refresh()
 		end
 	end
 	local f = follow
-	local status = if f then `Following {(findStorm(f.id) or {}).mode or f.id} · {f.mode} · zoom {string.format("%.1f", 1 / f.zoom)}x` else `{#storms} storm{if #storms == 1 then "" else "s"} on the map`
+	local tornadoes = tornadoCount(storms)
+	local others = #storms - tornadoes
+	local status = if f then `Following the {(findStorm(f.id) or {}).mode or f.id} · {f.mode} · zoom {string.format("%.1f", 1 / f.zoom)}x` else `{others} storm{if others == 1 then "" else "s"}, {tornadoes} tornado{if tornadoes == 1 then "" else "es"} on the map`
 	statusLabel.Text = if message ~= "" then `{status}\n{message}` else status
 	for name, b in modeButtons do
 		Ui.setOn(b, (if f then f.mode else lastMode) == name)
@@ -365,7 +401,7 @@ local function build(): ScreenGui
 
 	local column = Ui.column(panel)
 	Ui.text(column, "Storm debug", { size = 18, bold = true })
-	Ui.text(column, "E closes · Teleport puts you beside a storm · Follow is a cinematic camera (scroll to zoom, Backspace stops)", { size = 12, colour = Ui.MUTED })
+	Ui.text(column, "E closes · Tornadoes are listed first · Teleport puts you beside one · Follow is a cinematic camera (scroll to zoom, Backspace stops)", { size = 12, colour = Ui.MUTED })
 	statusLabel = Ui.text(column, "", { size = 13 })
 	local controls = Ui.buttons(column, 28)
 	controls.Name = "Controls"

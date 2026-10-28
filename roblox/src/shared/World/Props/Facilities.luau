@@ -19,6 +19,7 @@
 local Builder = require(script.Parent.Builder)
 local Trees = require(script.Parent.Trees)
 local Sites = require(script.Parent.Parent.Sites)
+local Config = require(script.Parent.Parent.Config)
 
 local Facilities = {}
 
@@ -35,6 +36,7 @@ local DARK_GLASS = rgb(40, 52, 60)
 local TURF = rgb(96, 140, 70)
 local TRACK = rgb(150, 70, 56)
 local BED = 4 -- slab thickness under paved tops (as road slabs)
+local MILE = Config.STUDS_PER_MILE -- the mile lines lie on multiples of this (stud 0 is on one)
 local PIECE = 480 -- runways, taxiways and fences are laid in pieces no longer than this
 
 export type Kit = {
@@ -309,7 +311,7 @@ local function areaFrame(area: Sites.Area): (CFrame, number, number)
 		local fx, fz = -math.sin(a), -math.cos(a)
 		local reach = if k % 2 == 0 then sz / 2 else sx / 2
 		local ex, ez = cx + fx * reach, cz + fz * reach
-		local d = math.min(math.abs(ex - math.round(ex / 1000) * 1000), math.abs(ez - math.round(ez / 1000) * 1000))
+		local d = math.min(math.abs(ex - math.round(ex / MILE) * MILE), math.abs(ez - math.round(ez / MILE) * MILE))
 		if d < bestD then
 			best, bestD = k, d
 		end

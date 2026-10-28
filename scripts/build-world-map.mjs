@@ -82,7 +82,7 @@ console.log(`highways: ${map.roads.filter(r => r.kind === 'highway' && r.name.st
 const areas = counties.list.map(k => k.areaMi2).sort((a, b) => a - b);
 console.log(`counties: ${areas.length}, median ${areas[areas.length >> 1]} mi2 (10-90%: ${areas[Math.floor(areas.length * 0.1)]}-${areas[Math.floor(areas.length * 0.9)]}), ${counties.list.filter(k => !k.seat).length} without a town for a seat`);
 console.log(`rivers: ${summary.rivers} (${Math.round(summary.riverMiles)} mi), ${summary.bigRivers} reaching 150 m wide`);
-for (const a of map.airfields) console.log(`${a.code} ${a.name}: ${a.distanceMi} mi from ${a.city}, ${a.runways.length ? `runways ${a.runways.map(r => `${r.name} (${r.lengthFt} ft)`).join(', ')}` : 'no airfield'}, radar ${a.radar.id}${a.sharedRadar ? ' (shared)' : ''}${a.nws ? `, NWS office ${a.nws.id}` : ''}, access road to ${a.access.joins}`);
+for (const a of map.airfields) console.log(`${a.code} ${a.name}: ${a.distanceMi} mi from ${a.city}, ${a.runways.length ? `runways ${a.runways.map(r => `${r.name} (${r.lengthFt} ft)`).join(', ')}` : 'no airfield'}, ${a.radar ? `radar ${a.radar.id}` : "no radar"}${a.sharedRadar ? ' (shared)' : ''}${a.nws ? `, NWS office ${a.nws.id}` : ''}, access road to ${a.access.joins}`);
 for (const o of map.offices) console.log(`${o.name}: county warning area of ${o.counties.length} counties, ${o.areaMi2.toLocaleString('en-US')} mi2`);
 const fac = map.facilities, e = fac.energy;
 const uses = {}; for (const z of fac.landUse.areas) uses[z.kind] = (uses[z.kind] ?? 0) + 1;

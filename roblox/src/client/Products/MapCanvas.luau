@@ -56,7 +56,7 @@ local player = Players.LocalPlayer
 local MILE = Config.STUDS_PER_MILE
 local HALF = Config.MAP_MILES / 2
 local MAX_RES = 1024 -- the raster products' image (an EditableImage is at most 1024 square)
-local MIN_MPP = 0.01 -- miles per pixel when fully zoomed in (10 studs a pixel)
+local MIN_MPP = 0.01 -- miles per pixel when fully zoomed in (6 studs a pixel at 600 studs a mile)
 local TILE = 256 -- screen pixels (GUI units) a side; drawn at TILE * density image pixels
 local LEVEL_STEP = math.sqrt(2) -- so a tile is shown between 0.84 and 1.19 of its drawn size
 -- image pixels of tiles kept per layer while the map is open (about 11 MB; three layers). All of

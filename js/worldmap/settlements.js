@@ -23,8 +23,12 @@ import { makeRandom, hashText, clamp } from './noise.js';
 import { riverCorners } from './sectionRoads.js';
 
 export const SETTLEMENT_DEFAULTS = Object.freeze({
-  // Least distance (miles) between towns, by region.
-  townSpacingMi: { highPlains: 24, smokyHills: 18, sandhills: 30, redHills: 22, flintHills: 22, midwest: 12, ozarkEdge: 15 },
+  // Least distance (miles) between towns, by region, and between a town and the edge of a bigger
+  // place's suburbs (townEdgeMi). (2026-10-28: widened from 24, 18, 30, 22, 22, 12, 15 and 3 when the
+  // Roblox map went from 1000 to 600 studs a mile (scale.js): at 12 miles the Midwest's towns came
+  // every 7,200 studs, under a minute's drive, and the towns round the metro crowded its suburbs.)
+  townSpacingMi: { highPlains: 26, smokyHills: 21, sandhills: 30, redHills: 24, flintHills: 24, midwest: 15, ozarkEdge: 18 },
+  townEdgeMi: 5,
   // How much each region draws settlement.
   appeal: { highPlains: 0.5, smokyHills: 0.65, sandhills: 0.2, redHills: 0.45, flintHills: 0.45, midwest: 1, ozarkEdge: 0.4 },
   smallCities: 6, smallCitySpacingMi: 55, metroMinMi: 150,
@@ -159,7 +163,7 @@ export function planSettlements(map, options = {}) {
   for (const c of candidates) {
     const x = c.K % m, y = (c.K / m) | 0;
     const spacing = p.townSpacingMi[regionKey[c.K]];
-    const clear = settlements.every(s => Math.hypot(s.x - x, s.y - y) >= Math.max(spacing, s.extentMi + 3));
+    const clear = settlements.every(s => Math.hypot(s.x - x, s.y - y) >= Math.max(spacing, s.extentMi + p.townEdgeMi));
     if (!clear) continue;
     const size = clamp(c.score, 0, 2) / 2, population = Math.round(150 + 7000 * size ** 3 * random());
     add('town', x, y, { population, coreMi: 0.25 + 0.9 * Math.sqrt(population / 8000), extentMi: 0.4 + 1.3 * Math.sqrt(population / 8000) });

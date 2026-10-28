@@ -14,6 +14,7 @@ local ChunkGen = require(ReplicatedStorage.Shared.World.ChunkGen)
 local WorldMap = require(ReplicatedStorage.Shared.World.WorldMap)
 local LandSurface = require(ReplicatedStorage.Shared.World.LandSurface)
 local ChunkManager = require(script.Parent.ChunkManager)
+local PlayerCars = require(script.Parent.PlayerCars)
 
 local Explore = {}
 
@@ -55,6 +56,10 @@ end
 local function place(character: Model)
 	local x, z = startPoint()
 	placeAt(character, x, z)
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		PlayerCars.give(player, character)
+	end
 end
 
 -- The debug page's teleport (client/DebugPage): only in Studio or for the place's owner.
@@ -87,7 +92,10 @@ local function debugRemotes()
 			return
 		end
 		busy[player] = true
+		-- (the car can't be dragged along by its driver: a new one is made where they land)
+		PlayerCars.remove(player)
 		pcall(placeAt, character, math.clamp(x, -edge, edge), math.clamp(z, -edge, edge))
+		pcall(PlayerCars.give, player, character)
 		busy[player] = nil
 	end)
 	Players.PlayerRemoving:Connect(function(player: Player)
