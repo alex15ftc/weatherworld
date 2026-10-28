@@ -26,10 +26,22 @@ local LabConfig = require(lab:WaitForChild("LabConfig"))
 local folder = ReplicatedStorage:WaitForChild(LabConfig.NET_FOLDER)
 local hello = folder:WaitForChild(LabConfig.REMOTES.hello)
 local info = hello:InvokeServer()
-local data = Json.decode(require(lab:WaitForChild("Data"):WaitForChild(info.scenario)))
+-- (a relayed source may send the scenario's environment itself, when the client has no module of
+-- that name: docs/stormlab/FRAME-V2.md)
+local function scenarioData(name: string, json: string?): any
+	if type(json) == "string" then
+		return Json.decode(json)
+	end
+	return Json.decode(require(lab:WaitForChild("Data"):WaitForChild(name)))
+end
+local data = scenarioData(info.scenario, info.data)
 local cw = ClientWorld.new(data)
 local ctx = Context.new(cw)
 ctx.scenario = info.scenario
+if info.town then
+	LabConfig.groundCentre = { x = info.town.x, y = info.town.y }
+end
+ctx.source = info.source or "sim"
 ctx.scenarioData = data
 ctx:noteServerTime(info.time or 0)
 Net.connect(ctx)
@@ -70,6 +82,10 @@ local function start(module: ModuleScript)
 	table.insert(running, { name = module.Name, obj = obj, errors = 0 })
 end
 
+-- the tornado state every tornado renderer reads (TornadoCards, DebrisCloud, TornadoDust):
+-- smoothed from the server's snapshots, updated each frame before the renderers
+ctx.tornadoAdapter = ctx.Tornado.StateAdapter.new(ctx)
+
 -- the camera and panel first, then everything that draws
 start(script:WaitForChild("CameraRig"))
 start(script:WaitForChild("Panel"))
@@ -86,14 +102,19 @@ end
 
 -- when the server switches scenario, rebuild the client world from the new data
 ctx.signals.event:Connect(function(e)
+	if e.kind == "town" and e.x then
+		-- the ground's relief is centred on the town (LabConfig.groundAt; the server built it)
+		LabConfig.groundCentre = { x = e.x, y = e.y }
+	end
 	if e.kind == "scenario" then
-		local d = Json.decode(require(lab.Data:WaitForChild(e.scenario)))
+		local d = scenarioData(e.scenario, e.data)
 		local fresh = ClientWorld.new(d)
 		for k, v in fresh do
 			cw[k] = v
 		end
 		ctx.scenario = e.scenario
 		ctx.scenarioData = d
+		ctx.source = e.source or ctx.source
 		ctx.signals.scenario:Fire(e.scenario)
 	end
 end)
@@ -121,6 +142,12 @@ RunService.RenderStepped:Connect(function(dt)
 			table.insert(parts, string.format("%s %.1f", list[i].name, list[i].ms))
 		end
 		ctx.root:SetAttribute("ClientModuleMs", string.format("scripts %.1f ms: ", total) .. table.concat(parts, " · "))
+	end
+	do
+		local ok, err = pcall(ctx.tornadoAdapter.update, ctx.tornadoAdapter, dt)
+		if not ok then
+			warn("[StormLab] tornado adapter: " .. tostring(err))
+		end
 	end
 	for _, r in running do
 		if not r.off and r.obj.update then

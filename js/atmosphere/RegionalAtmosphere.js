@@ -44,7 +44,12 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // leeTroughColumn 0.2 to 0.39 on 2026-10-16: the axis along the foot of the high ground at
   // the map's western edge (ground near 1,000 m, where lee troughs lie over the Plains) instead
   // of 80 km west of the map, where neither it nor the lows that form in it could be seen.
-  leeTroughFlowHpa: 4, leeTroughColumn: 0.39, leeTroughWidthKm: 450, leeFlowMs: 15,
+  // (2026-10-26: leeTroughFlowHpa 4 to 8, mixedLayerTurnDeg 10 to 20, surfaceBackingNightDeg [20, 40] to [30, 50], set to the wind
+  // directions of real 7 pm warm-sector soundings with 500 mb winds of 35 kt or more: surface / 850 / 500 mb 155 / 193 / 241
+  // degrees, where the engine had 175 / 207 / 233. The low-level shear ran nearly along the deep shear (17 degrees apart against
+  // 52), the critical angle was 51 against 78, and 0-1 km helicity at a given deep shear about half the real. The cuts of
+  // 2026-10-16 had been made, against no observations, to bring helicity down. Now 159 / 196 / 236.)
+  leeTroughFlowHpa: 8, leeTroughColumn: 0.39, leeTroughWidthKm: 450, leeFlowMs: 15,
   // Lee cyclogenesis: where the outer model's ascent (an approaching trough) crosses the lee
   // trough, air descending the slope is stretched and the trough deepens there, by up to
   // leeCycloneGain of its depth at leeCycloneAscentKh, into a closed low.
@@ -121,7 +126,7 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // The mountains west of the map block the mean westerly below their crest: share of it
   // removed at 850 mb and below, fading to none at the crest.
   mountainBlocking: 0.8, crestPressureHpa: 700,
-  reference700C: 5, reference500C: -11.5, reference250C: -48,
+  reference700C: 5, reference500C: -10, reference250C: -48,
   // The hot, dry air off the plateau is well mixed from its base to near 500 mb, so where it
   // lies overhead the temperature falls off faster with height: 500 mb is this share of the
   // way from its ordinary temperature to the dry adiabat through 700 mb.
@@ -160,11 +165,14 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // moisture held the Gulf's air at its cap, 16.5, and afternoon dewpoints over moist air near 67 F;
   // with the steeper mid-levels this keeps MLCAPE about where it was. 14.5 gave 17% of days under a
   // Slight Risk and tornadoes on 58%; 15 gave Moderate on 44%.)
-  gulfMixingRatio: 14.75, continentalMixingRatio: 7, continentalHumidity: 0.45, dryMixingRatio: 3.5, moistLayerTopM: 2100,
+  // (moistLayerTopM 2100 to 1700 m on 2026-10-25: 1.3-1.4 km of moist air over the low plains, as under a lid,
+  // against 1.7-1.8 km; a deep afternoon mixed layer then takes in dry air above it, where before it carried
+  // the ground's moisture up through 850 mb at 17.5-17.9 C dewpoints; third review round.)
+  gulfMixingRatio: 14.75, continentalMixingRatio: 7, continentalHumidity: 0.45, dryMixingRatio: 3.5, moistLayerTopM: 1700,
   // Boundary layer.
   // Peak heating of the air by the ground: moist, vegetated ground puts most of the sun's
   // energy into evaporation, dry ground into heating the air.
-  heatingMoistWm2: 110, heatingDryWm2: 390,
+  heatingMoistWm2: 110, heatingDryWm2: 390, longwaveWm2PerK: 6, longwaveRefK: 303, drySkinExcessK: 15,
   // Night cooling of the air near the ground on a calm night (K, sunset to sunrise, moist air at
   // nightMoistShare of dry air's), shrinking with the low-level wind (to 0.62 at nightWindMs, at
   // least nightWindFloor of it), and the spread the wind keeps the air from saturation (K, from
@@ -208,8 +216,8 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // and 0-1 km helicity was lowest from 3 to 6 pm and never had its evening rise, so only 21 of
   // 102 tornadoes on four seeds came between 3 and 9 pm. Now the jet is back to balance by about
   // 8 pm and peaks near 1.3 times it around 1-3 am.
-  mixedLayerFriction: 0.25, mixedLayerTurnDeg: 10, surfaceWindShare: [0.5, 0.65], surfaceBackingDeg: [30, 20], surfaceMixedDepthM: [300, 2500],
-  surfaceWindShareNight: [0.4, 0.15], surfaceBackingNightDeg: [20, 40], nightLayerM: 150, nightRichardson: 0.25,
+  mixedLayerFriction: 0.25, mixedLayerTurnDeg: 20, surfaceWindShare: [0.5, 0.65], surfaceBackingDeg: [30, 20], surfaceMixedDepthM: [300, 2500],
+  surfaceWindShareNight: [0.3, 0.1], surfaceBackingNightDeg: [30, 50], nightLayerM: 150, nightRichardson: 0.25,
   // Depth (m) of the night's inversion the morning's mixed layer wears through before the day's
   // surface wind holds (0: at once at sunrise).
   morningTransitionM: 300,
@@ -220,7 +228,7 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // cooler Gulf air, where it is the cap. It is well mixed, so one potential temperature (its
   // source's) describes it; it cools by radiation at lidCoolingKPerDay on the way. Where it
   // forms (terrain), and how long the share of it at a place lasts once it stops being renewed.
-  emlSourceTerrainM: 1150, emlLifetimeDays: 2, lidCoolingKPerDay: 1.5,
+  emlSourceTerrainM: 1150, emlLifetimeDays: 3, lidCoolingKPerDay: 1.5,
   // Its main source is beyond the map: the deep afternoon mixed layer over the higher, hotter
   // desert plateau to the west and south-west. Lid air entering across the map's western side
   // has that layer's potential temperature (K), changed by the outer model's warmth there that day.
@@ -255,12 +263,45 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // The share of the 1000-750 mb column's weight counted in the ground pressure (balancedPressureHpa).
   groundColumnShare: 1,
   // 850 and 700 mb mix where 700 mb would be cooler in potential temperature (see fill).
-  convectiveAdjustment: true,
+  convectiveAdjustment: true, moistAdjustmentK: [1, 5],
   // The share of the ground air's moisture at 850 mb above the day's mixed layer (and all night): the
   // moist layer thins toward its top. (0.85 to 0.75 on 2026-10-24: 850 mb dewpoints of 15-17.5 C over most
   // of the warm sector, where outbreak soundings usually have 12-14, and MLCAPE rising overnight to 4,500-
   // 5,300 J/kg; docs/METEOROLOGIST-REVIEW-2026-10-24.md.)
   moisture850Share: 0.75,
+  // The share of the low-level wind the moisture near the ground moves with at night (see fill).
+  nightMoistureWindShare: 0.7,
+  // The capping inversion (2026-10-26): where the elevated mixed layer's air lies over the moist layer, potential
+  // temperature jumps at the moist layer's top to the lid's (its 700 mb value), capInversionShare of the way, times the
+  // share of lid air there; below it the air warms gently as before. The afternoon mixed layer grows by its heat through
+  // that profile, so it stays under the inversion until its heating reaches the lid's warmth (the cap breaking), and 850 mb
+  // reads the same profile. (Until then the air warmed in a straight line from the mixed air to 700 mb, the mixed layer grew
+  // smoothly through 850 mb, and at 7 pm 56% of the warm sector had MLCIN weaker than -10 J/kg, median -4.7, against 17% and
+  // -50 in 412 real Plains soundings of May 2015-2023, with 850 mb at 16.2 C against 18.1 and MLCAPE 2,008 against 1,370;
+  // docs/METEOROLOGIST-REVIEW-2026-10-25-evening.md.) 0: the straight line.
+  // (With it, 2026-10-26: emlLifetimeDays 2 to 3, real lids lasting days and travelling far; mesoCapLiftShare 0.25 to 0.15,
+  // the night jet's lift having taken 1.8 K off the next afternoon's cap; reference500C -11.5 to -10, 500 mb in the warm
+  // sector having run 1.3 C below the real median of -10.6. At 7 pm in the warm sector: MLCIN median -45 against a real -50,
+  // 51% capped beyond -50 against 50%, 850 mb 18.0 C against 18.1; 40% uncapped against 17%, MLCAPE 2,235 against 1,370.
+  // The user's choice of a softened lid (4 days, full at 0.6, 0.1 gave -54 and 37%, but cut chaseable days from 89% to 80% and
+  // tornado days from 80.5% to 76.5% on 80 days; with these, 85% and 79%.)
+  capInversionShare: 1,
+  // A column caps fully once lidFullShare of its air aloft is lid air, and in proportion below that: the share is how much of
+  // the plume reached it, and a thinned plume is still a warm layer aloft (2026-10-26: scaled with the share all the way, the
+  // warm sector split into capped cells and uncapped ones where the lid was thin, 40% at MLCIN weaker than -10 against 17%).
+  lidFullShare: 0.75,
+  // The warmest the lid's air gets (K): the deepest afternoon mixed layers of the desert plateaus it comes from, about the
+  // warmest 700 mb on record over the Plains in May; held to it wherever it comes from, the plateau beyond the map's west edge included (16.4 C, 320.6 K; the 99th percentile 14.6 C, 318.6 K, of 2,376 00Z
+  // soundings 2015-2023). (2026-10-26: the map's own high ground kept warming it without end, to 19 C at 700 mb, and under
+  // it a day reached 850 mb 34 C, 700 mb 17.5 C, MLCIN -500 and 112 F at 7 pm.)
+  // Inside the afternoon mixed layer the vapour thins with height, the dry air mixed in at its top drying it from above:
+  // at the top by mixedTopDryingShare of the difference from the dry air above. (2026-10-26: one mixing ratio through the
+  // layer gave 850 mb dewpoints of 15.3 C at 7 pm in the warm sector against 13.0 C in 412 real May Plains soundings, with
+  // the surface right at 19.1 against 19.0; the mixed-layer parcel, and MLCAPE, ran moist and high.)
+  mixedTopDryingShare: 0.2,
+  midDryAllowanceGkg: 2, rh500Share: 0.55, midRh: 0.55, midRhPerGkg: 0.15, midRhRange: [0.05, 0.97], emlMidDrying: 0.3,
+  emlBaseMslM: 1200, capBlendM: 200, jetNoseM: 500,
+  lidMaxThetaK: 319.5,
   // The lift the outer model cannot see works on the cap the same way: warm air carried up over
   // cooler air and the low-level jet's air piling up where it ends (AtmosphereWorld's
   // isentropicLiftMs and jetConvergenceLiftMs, m/s, up to mesoLiftMaxMs) cool the capping layer
@@ -268,7 +309,7 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // rate, per metre), mesoCapLiftShare of it. (2026-10-23: until then only the outer model's
   // ascent wore the cap down, and under a 50-60 kt low-level jet at night the elevated parcels
   // still faced 170-350 J/kg against the 50-65 their lift brings: no storms started at night.)
-  mesoCapLiftShare: 0.25, mesoLiftMaxMs: 0.1, capLapseGapKPerM: 0.0078,
+  mesoCapLiftShare: 0.15, mesoLiftMaxMs: 0.1, capLapseGapKPerM: 0.0078,
   // The moist layer's top (m above sea level) moves with the low-level air. Large-scale ascent
   // raises it and sinking lowers it (at the rate the outer model's cooling implies: about
   // ascentCoolingPerMetre K per m of lift in the mid troposphere); it settles back toward
@@ -304,6 +345,18 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   edgeMemoryCells: 6
 });
 
+// Temperature (K) at p1 (hPa) of saturated air lifted (or lowered) from tempK at p0 along the moist
+// adiabat, in steps of 5 hPa.
+function moistAdiabatTo(tempK, p0, p1) {
+  const rd = 287.04, cp = 1005.7, lv = 2.501e6, eps = 0.622, steps = Math.max(1, Math.round(Math.abs(p1 - p0) / 5)), dp = (p1 - p0) / steps;
+  let t = tempK, p = p0;
+  for (let i = 0; i < steps; i++) {
+    const es = 6.112 * Math.exp(17.67 * (t - 273.15) / (t - 29.65)), rs = eps * es / (p - es);
+    t += dp * (rd * t + lv * rs) / (p * (cp + lv * lv * rs * eps / (rd * t * t))); p += dp;
+  }
+  return t;
+}
+
 export class RegionalAtmosphere {
   // model: a spun-up QuasiGeostrophicModel. The map sits in the middle of its domain (the
   // weather is statistically the same everywhere in it).
@@ -323,7 +376,7 @@ export class RegionalAtmosphere {
     // low-level wind from balance (m/s).
     this.heat = new Float64Array(n); this.eveningTheta = new Float64Array(n); this.mixedDepth = new Float64Array(n);
     this.nightTheta = new Float64Array(n);   // the night's surface potential temperature, which the sun must first make up (K)
-    this.ageoU = new Float64Array(n); this.ageoV = new Float64Array(n); this.surfaceMixingRatio = new Float64Array(n);
+    this.ageoU = new Float64Array(n); this.ageoV = new Float64Array(n); this.noseU = new Float64Array(n); this.noseV = new Float64Array(n); this.surfaceMixingRatio = new Float64Array(n);
     // Low-level pressure (hPa) and balanced wind (m/s) owed to the temperature of the air near
     // the ground; the day's heat left in the air after sunset.
     this.thermalHpa = new Float64Array(n); this.thermalU = new Float64Array(n); this.thermalV = new Float64Array(n);
@@ -377,12 +430,12 @@ export class RegionalAtmosphere {
   outer(xm, ym) {
     const m = this.model, gx = xm / m.d, gy = ym / m.d - 0.5, shift = this.origin.y - (this.homeY ?? this.origin.y);
     const i0 = Math.floor(gx), j0 = Math.floor(gy), tx = gx - i0, ty = gy - j0;
-    const out = { upperU: 0, upperV: 0, lowerU: 0, lowerV: 0, layerK: 0, lowPsi: 0, midPsi: 0, ascentKh: 0, surfaceK: 0, surfaceQ: 0, north: ym - m.lengthY / 2 - shift };
+    const out = { upperU: 0, upperV: 0, lowerU: 0, lowerV: 0, layerK: 0, lowPsi: 0, midPsi: 0, ascentKh: 0, surfaceK: 0, surfaceQ: 0, moistureGkg: 0, north: ym - m.lengthY / 2 - shift };
     for (const [di, dj, w] of [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]]) {
       const f = m.fieldsAt(((i0 + di) % m.nx + m.nx) % m.nx, j0 + dj);
       // (The west winds without their mean: the mean is the map's own; see below.)
       out.upperU += w * (f.upperWind.u - f.upperMeanU); out.upperV += w * f.upperWind.v; out.lowerU += w * (f.lowerWind.u - f.lowerMeanU); out.lowerV += w * f.lowerWind.v;
-      out.layerK += w * f.layerTemperatureK; out.lowPsi += w * f.lowerDisturbanceStreamfunction; out.midPsi += w * f.midStreamfunction; out.ascentKh += w * (f.ascentCoolingKh ?? 0); out.surfaceK += w * (f.surfaceThetaK ?? 0); out.surfaceQ += w * (f.surfaceMoistureGkg ?? 0);
+      out.layerK += w * f.layerTemperatureK; out.lowPsi += w * f.lowerDisturbanceStreamfunction; out.midPsi += w * f.midStreamfunction; out.ascentKh += w * (f.ascentCoolingKh ?? 0); out.surfaceK += w * (f.surfaceThetaK ?? 0); out.surfaceQ += w * (f.surfaceMoistureGkg ?? 0); out.moistureGkg += w * (f.moistureGkg ?? 0);
     }
     // The mean state's fall of temperature and height northward is taken about the map's own
     // place, not the slide's (the map keeps its climate). Its west winds are where the map has
@@ -780,6 +833,12 @@ export class RegionalAtmosphere {
         return { u: u + mixed * (aloft.u - u) + this.coldPushU[k], v: v + mixed * (aloft.v - v) + this.coldPushV[k] };
       };
       const midWind = (x, y) => this.windAt(outers[y * nx + x], 700);
+      // After sunset the air at the ground decouples from the night-time jet above it: the moisture near the ground comes
+      // north with the slower wind there, nightMoistureWindShare of the low-level wind, while by day the mixed layer moves
+      // as one. (2026-10-26: carried at the jet's 40-47 kt, the moist air spread from 17% to 73% of the map between 00Z
+      // and 06Z on seed 1000 day 2 and MLCAPE peaked at dawn, 3,667 at 12Z against 1,446 at 21Z; four reviewers in two
+      // rounds found instability peaking overnight. docs/METEOROLOGIST-REVIEW-2026-10-25-evening.md.)
+      const moistWind = daytime ? lowWind : (x, y) => { const v = lowWind(x, y); return { u: v.u * p.nightMoistureWindShare, v: v.v * p.nightMoistureWindShare }; };
       if (p.carryDeparture) {
         // The map's air is the large-scale air where the map now is, plus its own departure from it
         // (fronts it has sharpened, storms' cooled air, the day's heating), which moves with the
@@ -800,7 +859,7 @@ export class RegionalAtmosphere {
       let gulf = 0, count = 0;
       for (let x = Math.floor(0.4 * nx); x < nx; x += 2) { gulf += this.gulfAir(outers[(ny - 1) * nx + x]); count++; }
       this.gulfSupply = gulf / count;
-      this.advect(this.moisture, lowWind, (sx, sy) => (p.westInflowDry && sx === 0 ? Math.min(p.dryMixingRatio + 1, this.inflowMoisture(sx, sy, outers[sy * nx + sx])) : this.inflowMoisture(sx, sy, outers[sy * nx + sx])), dt, sx => !(p.westInflowDry && sx === 0));
+      this.advect(this.moisture, moistWind, (sx, sy) => (p.westInflowDry && sx === 0 ? Math.min(p.dryMixingRatio + 1, this.inflowMoisture(sx, sy, outers[sy * nx + sx])) : this.inflowMoisture(sx, sy, outers[sy * nx + sx])), dt, sx => !(p.westInflowDry && sx === 0));
       this.advect(this.coldPool, lowWind, () => 0, dt);
       this.advect(this.capLift, midWind, () => 0, dt);
       this.advect(this.anvil, (x, y) => this.windAt(outers[y * nx + x], 250), () => 0, dt, () => false);
@@ -809,7 +868,7 @@ export class RegionalAtmosphere {
       // The moist layer's depth goes with its air; air entering from the Gulf side is shallow
       // while the Gulf is still recovering from a front.
       const returnTop = p.moistReturnShallowM + (p.moistLayerTopM - p.moistReturnShallowM) * ramp(this.gulfSupply, p.gulfScouredMixingRatio, p.gulfMixingRatio - 1);
-      this.advect(this.moistTop, lowWind, (sx, sy) => (this.eastShare(sx) > 0.3 ? returnTop : p.moistLayerTopM), dt);
+      this.advect(this.moistTop, moistWind, (sx, sy) => (this.eastShare(sx) > 0.3 ? returnTop : p.moistLayerTopM), dt);
       // Lid air entering across the western side (and the western half of the southern side) has
       // come off the plateau beyond the map, so it is all lid air, as hot as its source; elsewhere
       // what enters is what the edge itself holds. (Until 2026-10-16 the share came from the edge
@@ -839,7 +898,7 @@ export class RegionalAtmosphere {
         this.theta[k] += (this.airMassTheta(outer, terrain) - this.theta[k]) * relax;
         this.moisture[k] += (this.inflowMoisture(x, y, outer) - this.moisture[k]) * relax;
         this.eml[k] *= Math.exp(-dt / (p.emlLifetimeDays * DAY));
-        this.lidTheta[k] -= p.lidCoolingKPerDay * dt / DAY;
+        this.lidTheta[k] = Math.min(p.lidMaxThetaK, this.lidTheta[k] - p.lidCoolingKPerDay * dt / DAY);
         if (daytime) {
           // The sun warms the rain-cooled layer at the rate the ground heats the air there (less over
           // wet ground), through its depth: a 4 K pool 800 m deep goes in about five hours of full
@@ -867,7 +926,7 @@ export class RegionalAtmosphere {
       const ordinary700 = p.reference700C + p.temperatureShare[700] * anomaly, lid700 = this.lidTheta[k] * 0.7 ** KAPPA - 273.15;
       // The cold dome: its coldness fades to none at its top, and the lid's air rides up over it.
       const dome = this.domeDepth[k], z700 = Math.max(600, 3050 - terrain), coldAt = z => (dome > 0 ? this.domeDeficit[k] * Math.max(0, 1 - z / dome) : 0);
-      const lidHere = this.eml[k] * (1 - ramp(dome, z700 - 500, z700 + 500));
+      const lidCover = Math.min(1, this.eml[k] / p.lidFullShare), lidHere = lidCover * (1 - ramp(dome, z700 - 500, z700 + 500));
       const t700 = ordinary700 + lidHere * Math.max(0, lid700 - ordinary700) - this.capLift[k] - coldAt(z700) * 0.7 ** KAPPA;
       const adiabat500 = (t700 + 273.15) * (500 / 700) ** KAPPA - 273.15, ordinary500 = p.reference500C + p.temperatureShare[500] * anomaly;
       const t500 = ordinary500 + Math.min(0, adiabat500 - ordinary500) * p.emlLapseShare * this.eml[k], t250 = softMax(p.reference250C + p.temperatureShare[250] * anomaly, p.tropopauseC, 2);
@@ -885,6 +944,24 @@ export class RegionalAtmosphere {
       const airTheta = this.theta[k], height700 = Math.max(600, 3050 - terrain);
       const moistLayer = clamp(this.moistTop[k] - terrain, 50, 3000), airMassDepth = this.airMassDepth(terrain, k);
       const lapseAbove = Math.max(0.0015, Math.max(0.5, theta700 - airTheta) / Math.max(300, height700 - airMassDepth));   // K per m above it
+      // (The cap sits over the cold dome where there is one: the lid's air rides over the dome's, so it starts no lower than the
+      // dome's top, up to just under 700 mb. 2026-10-26: it started at the moist layer's top inside a 2,170 m dome, so a day's heat
+      // went into 350 m of air and drove the ground to 112 F under 850 mb at 32 C, seed 31 day 3.)
+      // (Only as far as the dome is cold: none at 3 K of deficit, all of it at 8 K. 2026-10-27: applied to every dome, the shallow,
+      // barely cold remnants that cover most of the map in a morning, it deepened the mixing everywhere and halved the warm
+      // sector's 60 F dewpoint area on seed 8181 day 2, 49% to 26%.)
+      const domeCap = ramp(this.domeDeficit[k], 3, 8) * Math.min(this.domeDepth[k], height700 - 200);
+      // (Under the elevated mixed layer the cap sits no lower than emlBaseMslM above sea level, as far as the lid covers: its air came
+      // off the plateaus, and the sounding puts its base near 780 mb. 2026-10-27: it sat on a 400 m moist layer, so the day's heat
+      // went into 400 m and brought the lid's air to the ground at 109 F over a 66 F dewpoint, seed 31 day 3.)
+      const emlBase = lidCover * Math.min(Math.max(0, p.emlBaseMslM - terrain), height700 - 200);
+      // (The candidates are blended where they cross, over capBlendM, rather than switched: 2026-10-27, the hard maximum flipped between
+      // them from cell to cell and left 23 steps of more than 3 C a map in the 850 mb temperature.)
+      const zCap = softMax(softMax(softMax(airMassDepth, moistLayer, p.capBlendM), domeCap, p.capBlendM), emlBase, p.capBlendM), topBelow = airTheta + lapseAbove * (zCap - airMassDepth);
+      const lidOver = Math.min(1, this.eml[k] / p.lidFullShare) * (1 - ramp(this.domeDepth[k], height700 - 500, height700 + 500));
+      // (The jump fades in as the cap's base comes 150-350 m under 700 mb, where it switched on at 150 m: a seam; 2026-10-26.)
+      const jump = p.capInversionShare * lidOver * Math.max(0, theta700 - topBelow) * ramp(height700 - zCap, 150, 350);
+      const column = columnProfile(airTheta, airMassDepth, lapseAbove, zCap, jump, theta700, height700);
       // How dry the air at the ground was a step ago: dry air over dry ground is heated harder,
       // mixes deeper and dries further, which is what sharpens the dryline.
       const dryness = 1 - ramp(this.surfaceMixingRatio[k] || this.moisture[k], p.dryMixingRatio + 1, p.gulfMixingRatio - 3);
@@ -892,13 +969,19 @@ export class RegionalAtmosphere {
         // Wet ground puts part of the sun's energy into evaporation instead of heating the air.
         const wet = this.wetGround[k];
         if (daytime) {
-          this.heat[k] += (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryness) * (1 - p.wetGroundHeatingCut * wet) * sunHere / 1200 * dt;
+          // A hotter ground sends more of the sun's energy back to the sky as infrared (about 4 sigma T^3, 6 W/m2 for each kelvin near
+          // 300 K), leaving less to heat the air: the heating falls by longwaveWm2PerK for each kelvin the mixed layer is above
+          // longwaveRefK at the ground; dry ground's skin runs drySkinExcessK hotter than the air in full sun (moist ground about as warm
+          // as the air), and the infrared leaves from the skin. (2026-10-27: without it a shallow layer over dry ground kept taking the full flux and reached
+          // 43-46 C at 7 pm, where real May Plains soundings reach 39 C; seed 31 day 3 had 109-110 F.)
+          const groundK = this.mixedTheta[k] * (surfacePressure / 1000) ** KAPPA + p.drySkinExcessK * dryness * (1 - wet) * sunHere, longwave = p.longwaveWm2PerK * Math.max(0, groundK - p.longwaveRefK);
+          this.heat[k] += Math.max(0, (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryness) * (1 - p.wetGroundHeatingCut * wet) * sunHere - longwave * sunHere) / 1200 * dt;
           this.moisture[k] += p.wetGroundMoisteningGkgH * wet * sunHere * dt / 3600;
           this.wetGround[k] = wet * Math.exp(-sun * dt / (p.wetGroundDryingDays * 0.45 * DAY));
         }
         else if (this.heat[k] > 0) {
           // Sunset: the heated layer is left above the ground as a residual layer.
-          this.eveningTheta[k] = this.surfaceTheta(k, airTheta, airMassDepth, lapseAbove);
+          this.eveningTheta[k] = this.surfaceTheta(k, airTheta, column);
           this.residualHeat[k] = this.heat[k]; this.eveningExcess[k] = Math.max(0, this.mixedTheta[k] - airTheta); this.eveningDepth[k] = this.mixedDepth[k];
           this.heat[k] = 0; this.sunsetHour = this.hourUtc;
         }
@@ -914,7 +997,7 @@ export class RegionalAtmosphere {
       // the wind, so the moist air was saturated by midnight and dry air fell into the 20s F.)
       const windShare = p.nightWindFloor + (1 - p.nightWindFloor) / (1 + (stir / p.nightWindMs) ** 2);
       const nightDrop = p.nightCoolingK * (p.nightMoistShare + (1 - p.nightMoistShare) * dryness) * windShare * clearNight * (1 - Math.exp(-nightHours / p.nightCoolingHours));
-      const surfaceTheta = daytime ? this.surfaceTheta(k, airTheta, airMassDepth, lapseAbove) : Math.max(airTheta - p.nightCoolingK, this.eveningTheta[k] - nightDrop);
+      const surfaceTheta = daytime ? this.surfaceTheta(k, airTheta, column) : Math.max(airTheta - p.nightCoolingK, this.eveningTheta[k] - nightDrop);
       const depth = daytime ? this.mixedDepth[k] : 150;
       if (daytime) {
         // Over the high ground the day's deepest, hottest mixed layer is the lid's air (what is
@@ -922,7 +1005,7 @@ export class RegionalAtmosphere {
         // potential temperature, but cooler hours of the day do not cool it.
         const source = ramp(terrain, p.emlSourceTerrainM - 300, p.emlSourceTerrainM) * ramp(depth, 1200, 2200);
         this.eml[k] = Math.max(this.eml[k], source);
-        if (dt > 0 && source > 0 && this.mixedTheta[k] > this.lidTheta[k]) this.lidTheta[k] += source * (this.mixedTheta[k] - this.lidTheta[k]) * clamp(dt / 3600, 0, 1);
+        if (dt > 0 && source > 0 && this.mixedTheta[k] > this.lidTheta[k]) this.lidTheta[k] = Math.min(p.lidMaxThetaK, this.lidTheta[k] + source * (this.mixedTheta[k] - this.lidTheta[k]) * clamp(dt / 3600, 0, 1));
       }
       // Moisture: the mixed layer holds the moist layer's vapour, diluted by the dry air it
       // entrains once it grows deeper than the moist layer.
@@ -971,6 +1054,13 @@ export class RegionalAtmosphere {
       const domeShare850 = this.domeDepth[k] > z850 ? ((this.domeDepth[k] - z850) / this.domeDepth[k]) ** 2 : 0;
       geo850.u += 0.7 * leeU + thermalShare850 * (this.thermalU[k] - this.domeU[k]) + domeShare850 * this.domeU[k]; geo850.v += 0.7 * leeV + thermalShare850 * (this.thermalV[k] - this.domeV[k]) + domeShare850 * this.domeV[k];
       geoSurface.u += leeU + this.thermalU[k]; geoSurface.v += leeV + this.thermalV[k];
+      // The jet's nose, jetNoseM above the ground: the level the night-time jet is strongest at, over the night's inversion
+      // and under 850 mb (300-800 m in the Plains; Bonner 1968, Whiteman et al. 1997). Its balanced wind is between the
+      // ground's and 850 mb's; by day it takes the mixed layer's wind, and after sunset its departure from balance swings
+      // round as 850 mb's does (Blackadar 1957). (2026-10-26: with nothing between the ground and 850 mb, the jet's turning
+      // and speed-up in the lowest kilometre were interpolated away: 0-1 km helicity stayed flat overnight, median 85 to 82,
+      // where 1,358 real May Plains soundings double, 53 to 102, and their stormiest tenth 194 to 308.)
+      const noseShare = clamp(p.jetNoseM / Math.max(1, z850), 0, 1), geoNose = { u: geoSurface.u + (geo850.u - geoSurface.u) * noseShare, v: geoSurface.v + (geo850.v - geoSurface.v) * noseShare };
       const layerTurn = p.mixedLayerTurnDeg * Math.PI / 180, layerCos = Math.cos(layerTurn), layerSin = Math.sin(layerTurn);
       const meanU = (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.u + geo850.u), meanV = (1 - p.mixedLayerFriction) * 0.5 * (geoSurface.v + geo850.v);
       const layerWind = { u: meanU * layerCos - meanV * layerSin, v: meanU * layerSin + meanV * layerCos };
@@ -981,16 +1071,20 @@ export class RegionalAtmosphere {
           // wind where it is still above the layer.
           const blend = clamp(dt / (2 * 3600), 0, 1), inside = ramp(depth - z850, 0, 300);
           this.ageoU[k] += (inside * (layerWind.u - geo850.u) - this.ageoU[k]) * blend; this.ageoV[k] += (inside * (layerWind.v - geo850.v) - this.ageoV[k]) * blend;
+          const insideNose = ramp(depth - p.jetNoseM, 0, 300);
+          this.noseU[k] += (insideNose * (layerWind.u - geoNose.u) - this.noseU[k]) * blend; this.noseV[k] += (insideNose * (layerWind.v - geoNose.v) - this.noseV[k]) * blend;
         } else {
           const turn = -f0 * dt, c = Math.cos(turn), s = Math.sin(turn), u = this.ageoU[k], v = this.ageoV[k];
           this.ageoU[k] = u * c - v * s; this.ageoV[k] = u * s + v * c;
+          const nu = this.noseU[k], nv = this.noseV[k]; this.noseU[k] = nu * c - nv * s; this.noseV[k] = nu * s + nv * c;
         }
       }
-      const w850 = { u: geo850.u + this.ageoU[k], v: geo850.v + this.ageoV[k] };
+      const w850 = { u: geo850.u + this.ageoU[k], v: geo850.v + this.ageoV[k] }, nose = { u: geoNose.u + this.noseU[k], v: geoNose.v + this.noseV[k] };
       // A deep, dry mixed layer brings the mid-level wind down to the ground: west of the
       // dryline the afternoon wind turns westerly and strengthens, and the air converges on it.
       const mixedDown = daytime ? this.momentumMixing(depth) : 0, w700 = this.windAt(outer, 700);
       w850.u += mixedDown * (w700.u - w850.u) + 0.5 * this.coldPushU[k]; w850.v += mixedDown * (w700.v - w850.v) + 0.5 * this.coldPushV[k];
+      nose.u += mixedDown * (w700.u - nose.u) + 0.75 * this.coldPushU[k]; nose.v += mixedDown * (w700.v - nose.v) + 0.75 * this.coldPushV[k];
       // Surface wind: the mixed layer's wind by day, the mean of the lowest levels at night,
       // slowed and turned toward low pressure by friction (more so at night).
       const between = (range, share) => range[0] + (range[1] - range[0]) * share;
@@ -1013,17 +1107,38 @@ export class RegionalAtmosphere {
       cell.surface.pressure = surfacePressure; cell.surface.seaLevelPressure = seaLevelPressure;
       cell.surface.temperature = kelvinToF(temperatureK); cell.surface.dewpoint = kelvinToF(dewpointK);
       cell.surface.wind = { speed: Math.hypot(surfaceWind.u, surfaceWind.v) * KT, direction: (Math.atan2(-surfaceWind.u, -surfaceWind.v) * 180 / Math.PI + 360) % 360 };
+      cell.jetNose = { heightAglM: p.jetNoseM, windSpeed: Math.hypot(nose.u, nose.v) * KT, windDirection: (Math.atan2(-nose.u, -nose.v) * 180 / Math.PI + 360) % 360 };
       // 850 mb: inside the mixed layer by day it has the mixed layer's temperature and moisture;
       // otherwise the air mass (with what is left of yesterday's heating) or the stable air above it.
       // (Above a shallow cold dome 850 mb is in the warmer air over it: the deficit comes back with height.)
-      const profile850 = airTheta + (z850 > airMassDepth ? lapseAbove * (z850 - airMassDepth) : 0) + (z850 < this.eveningDepth[k] ? this.eveningExcess[k] : 0) + (dome > 0 ? this.domeDeficit[k] - coldAt(z850) : 0);
-      const mixed850 = daytime && z850 < depth, t850 = (mixed850 ? Math.max(this.mixedTheta[k], profile850) : profile850) * 0.85 ** KAPPA - 273.15;
+      // (Over a dome, 850 mb is the warm air mass the dome undercut, less what coldness the dome still has at that height, or
+      // the lid where 850 mb is up in it, whichever is warmer: the deficit is never added on top of the lid. 2026-10-26: it had
+      // been, putting 850 mb at 34-37 C over 26-31 C surfaces and, by overturning, 700 mb at up to 20.5 C, against real May
+      // Plains maxima of 32.8 and 16.4 C.)
+      const overDome = dome > 0 ? Math.max(thetaNear(column, z850), airTheta + this.domeDeficit[k] - coldAt(z850)) : thetaNear(column, z850);
+      const profile850 = overDome + (z850 < this.eveningDepth[k] ? this.eveningExcess[k] : 0);
+      // How much 850 mb is in the mixed layer: all of it 150 m or more below its top, none 150 m above, blended between (the
+      // top is a zone, not a line). (2026-10-26: a yes-or-no switch; 5 m of mixed-layer depth between two cells flipped the 850
+      // mb dewpoint from 13.5 to 6.3 C and MLCAPE from 1,245 to 332 J/kg, the seams in the charts.)
+      const inMixed = daytime ? ramp(depth - z850, -150, 150) : 0;
+      const t850 = (profile850 + inMixed * Math.max(0, this.mixedTheta[k] - profile850)) * 0.85 ** KAPPA - 273.15;
+      const mixed850Q = mixingRatio - p.mixedTopDryingShare * Math.max(0, mixingRatio - p.dryMixingRatio) * clamp(z850 / Math.max(1, depth), 0, 1);
       const moistReaches850 = ramp(terrain + moistDepth, 1350, 1700);
-      cell.levels[850].temperature = t850; cell.levels[850].dewpoint = Math.min(t850 - 1, dewpointFromMixingRatio(mixed850 ? mixingRatio : p.dryMixingRatio + (p.moisture850Share * this.moisture[k] - p.dryMixingRatio) * moistReaches850, 850) - 273.15);
+      cell.levels[850].temperature = t850; cell.levels[850].dewpoint = Math.min(t850 - 1, dewpointFromMixingRatio(inMixed * mixed850Q + (1 - inMixed) * (p.dryMixingRatio + (p.moisture850Share * this.moisture[k] - p.dryMixingRatio) * moistReaches850), 850) - 273.15);
       // A mixed layer grown up past 700 mb gives it its own temperature (a deep mixed layer is one
       // potential temperature through its depth; until 2026-10-20 700 mb kept the outer model's).
       const mixedTo700 = daytime && this.mixedDepth[k] >= height700 ? this.mixedTheta[k] * 0.7 ** KAPPA - 273.15 : -Infinity;
-      cell.levels[700].temperature = Math.max(t700, mixedTo700); cell.levels[700].dewpoint = cell.levels[700].temperature - (12 + 14 * this.eml[k]);
+      // 700 mb humidity: the large-scale lower layer's (its moisture anomaly, moist where air has been rising and raining, dry
+      // where it has sunk), dried further under the elevated mixed layer's desert air. (2026-10-26: a fixed dewpoint depression
+      // of 12 + 14 x EML C, never under 12, median 20 at 7 pm in the warm sector, where 689 real May Plains soundings run 2.8 /
+      // 11.6 / 25 C at p10 / 50 / 90: mid-levels were never moist, DCAPE high and alike for every storm, and wind with it.)
+      const midRh = clamp(p.midRh + p.midRhPerGkg * (Number(outer.moistureGkg) || 0), p.midRhRange[0], p.midRhRange[1]) * (1 - p.emlMidDrying * this.eml[k]);
+      // (Over dry ground the 700 mb air holds at most the surface air's vapour plus midDryAllowanceGkg, none of it under the elevated
+      // mixed layer, whose air came up from a desert mixed layer. 2026-10-27: a 700 mb dewpoint of 11 C stood over a 27 F surface
+      // on seed 31 day 3, holding 3.5 times the ground's vapour, and fed dozens of elevated storms.)
+      const q700Most = mixingRatio + p.midDryAllowanceGkg * (1 - this.eml[k]);
+      const dew700 = t => { const ln = Math.log(midRh) + 17.67 * t / (t + 243.5); return Math.min(t - 0.5, 243.5 * ln / (17.67 - ln), dewpointFromMixingRatio(q700Most, 700) - 273.15); };
+      cell.levels[700].temperature = Math.max(t700, mixedTo700); cell.levels[700].dewpoint = dew700(cell.levels[700].temperature);
       // Air cannot stay cooler (in potential temperature) at 700 mb than at 850 mb: such a layer
       // overturns at once, and the two levels mix to the potential temperature they share, the heat
       // kept (convective adjustment). (2026-10-24: 850 mb carries the map's own warm-sector air and
@@ -1035,10 +1150,31 @@ export class RegionalAtmosphere {
         if (theta700 < theta850) {
           const shared = (theta850 + theta700) / 2, dew850 = cell.levels[850].dewpoint - cell.levels[850].temperature;
           cell.levels[850].temperature = shared * 0.85 ** KAPPA - 273.15; cell.levels[850].dewpoint = cell.levels[850].temperature + Math.min(-1, dew850);
-          cell.levels[700].temperature = shared * 0.7 ** KAPPA - 273.15; cell.levels[700].dewpoint = cell.levels[700].temperature - (12 + 14 * this.eml[k]);
+          cell.levels[700].temperature = shared * 0.7 ** KAPPA - 273.15; cell.levels[700].dewpoint = dew700(cell.levels[700].temperature);
+        }
+        // Where 850 mb is saturated, or nearly (within moistAdjustmentK of its dewpoint), the layer's
+        // limit is the moist adiabat: rising air warms by its condensing water, and a saturated layer
+        // steeper than that overturns at once. The two levels meet halfway; 850 mb dries by what rains
+        // out. (2026-10-24: held only to the dry adiabat, a near-saturated 850-700 mb layer stood at 9.6-10
+        // C/km on seed 1000 day 3, where the moist adiabat is 5-6, and MLCAPE stayed at 4,700-5,900 J/kg;
+        // docs/METEOROLOGIST-REVIEW-2026-10-24.md, second round.)
+        const t850 = cell.levels[850].temperature, dew850 = cell.levels[850].dewpoint, moist700 = moistAdiabatTo(t850 + 273.15, 850, 700) - 273.15;
+        // (Fading from all of it at moistAdjustmentK[0] of dewpoint spread to none at [1], and, where 850 mb is
+        // inside the day's mixed layer, the ground cooling with it: that layer is one air. 2026-10-25: a
+        // switch at 2 K left columns at 2.2-2.4 K untouched and striped the CAPE maps cell by cell, and
+        // cooling 850 mb alone left 11.5-12.5 C/km between the ground and 850 mb; third review round.)
+        const depression = t850 - dew850, share = 1 - ramp(depression, p.moistAdjustmentK[0], p.moistAdjustmentK[1]);
+        if (share > 0 && cell.levels[700].temperature < moist700) {
+          const gap = share * (moist700 - cell.levels[700].temperature);
+          cell.levels[850].temperature = t850 - gap / 2; cell.levels[850].dewpoint = Math.min(dew850, cell.levels[850].temperature - depression);
+          cell.levels[700].temperature += gap / 2; cell.levels[700].dewpoint = dew700(cell.levels[700].temperature);
+          if (inMixed > 0) { const cooled = inMixed * gap / 2 * (cell.surface.pressure / 850) ** KAPPA * 9 / 5; cell.surface.temperature -= cooled; cell.surface.dewpoint = Math.min(cell.surface.dewpoint, cell.surface.temperature); }
         }
       }
       cell.levels[500].temperature = t500; cell.levels[250].temperature = t250;
+      // 500 mb humidity from the same large-scale layer, a little drier aloft (rh500Share; 682 real soundings: 2.5 / 14.8 / 35.4 C
+      // dewpoint depressions at p10 / 50 / 90; until 2026-10-26 the sounding painted 18-26 C).
+      { const rh = clamp(p.midRh + p.midRhPerGkg * (Number(outer.moistureGkg) || 0), p.midRhRange[0], p.midRhRange[1]) * p.rh500Share, ln = Math.log(rh) + 17.67 * t500 / (t500 + 243.5); cell.levels[500].dewpoint = Math.min(t500 - 0.5, 243.5 * ln / (17.67 - ln)); }
       set(cell.levels[850], w850); set(cell.levels[700], this.windAt(outer, 700)); set(cell.levels[500], this.windAt(outer, 500)); set(cell.levels[250], this.windAt(outer, 250));
       cell.levels[500].heightDm = (5760 + f0 * (outer.midPsi - this.referenceMidPsi()) / GRAVITY) / 10;
       // 500 mb height tendency (dam per 12 h): falls mark large-scale ascent.
@@ -1051,7 +1187,7 @@ export class RegionalAtmosphere {
       // The outer model's ascent here (K per hour of cooling; sinking negative) and what it has
       // done to the capping layer so far (K of cooling).
       cell.features.ascentCoolingKh = outer.ascentKh; cell.features.capLiftK = this.capLift[k];
-      cell.features.emlInfluence = this.eml[k]; cell.features.lidThetaK = this.lidTheta[k]; cell.features.mixedLayerDepthM = depth;
+      cell.features.emlInfluence = Math.min(1, this.eml[k] / p.lidFullShare); cell.features.lidThetaK = this.lidTheta[k]; cell.features.mixedLayerDepthM = depth;
       // The cap air is well mixed from its base to 700 mb, so its base is warmer than 700 mb by
       // the dry-adiabatic difference between the two pressures.
       cell.features.emlBaseExcessC = (t700 + 273.15) * ((780 / 700) ** KAPPA - 1) * 0.9;
@@ -1089,7 +1225,7 @@ export class RegionalAtmosphere {
   // Potential temperature of the mixed layer for the heat put in so far, and its depth.
   // Profile above ground: a night inversion in the lowest 300 m, the well-mixed air mass up
   // to airMassDepth, then stable air with potential temperature rising at lapseAbove.
-  surfaceTheta(k, airTheta, airMassDepth, lapseAbove) {
+  surfaceTheta(k, airTheta, column) {
     // The night's own inversion (how far the night cooled the air near the ground below its air
     // mass); before a night has been worked out, what a calm night would have left.
     const inversion = Math.max(0, airTheta - (this.nightTheta[k] > 0 ? this.nightTheta[k] : this.eveningTheta[k] - this.params.nightCoolingK * 0.8));
@@ -1102,13 +1238,46 @@ export class RegionalAtmosphere {
       this.mixedDepth[k] = 300 * fraction;
       return this.mixedTheta[k] = airTheta - inversion * (1 - fraction);
     }
-    // Then the whole air mass is mixed; extra heat warms it and deepens it into the stable air:
-    // heat = rise * airMassDepth + rise^2 / (2 * lapseAbove).
-    const extra = heat - inversionHeat, a = 1 / (2 * lapseAbove), b = airMassDepth;
-    const rise = (-b + Math.sqrt(b * b + 4 * a * extra)) / (2 * a);
-    this.mixedDepth[k] = airMassDepth + rise / lapseAbove; this.mixedTheta[k] = airTheta + rise;
-    return airTheta + rise + 1;   // the air next to the ground is slightly superadiabatic
+    // Then the whole air mass is mixed; extra heat warms it and deepens it into the stable air above, as far as the
+    // profile lets it (columnProfile): the heat it takes is what the mixed layer's warmth stands above the profile's.
+    const extra = heat - inversionHeat;
+    let low = airTheta, high = airTheta + 40;
+    for (let i = 0; i < 40; i++) { const mid = (low + high) / 2; if (mixingHeat(column, mid).heat < extra) low = mid; else high = mid; }
+    const mixed = mixingHeat(column, low);
+    this.mixedDepth[k] = mixed.depth; this.mixedTheta[k] = low;
+    return low + 1;   // the air next to the ground is slightly superadiabatic
   }
+}
+
+// The column above the ground (potential temperature by height, m): the air mass's own to airMassDepth, rising at lapseAbove
+// to the moist layer's top (zCap), a jump there (the capping inversion), then on to 700 mb's at height700, and 4 K per km
+// above. Segments { from, to, theta, rate }.
+function columnProfile(airTheta, airMassDepth, lapseAbove, zCap, jump, theta700, height700) {
+  const topBelow = airTheta + lapseAbove * (zCap - airMassDepth), base = topBelow + jump;
+  const rate = height700 > zCap ? Math.max(0.0005, (theta700 - base) / (height700 - zCap)) : lapseAbove;
+  const at700 = base + rate * Math.max(0, height700 - zCap);
+  return [{ from: 0, to: airMassDepth, theta: airTheta, rate: 0 }, { from: airMassDepth, to: zCap, theta: airTheta, rate: lapseAbove },
+    { from: zCap, to: Math.max(zCap, height700), theta: base, rate }, { from: Math.max(zCap, height700), to: 20000, theta: at700, rate: 0.004 }];
+}
+// The profile's potential temperature about a height, averaged over 400 m: the inversion is a layer a few hundred m thick, not a
+// step, and 850 mb read off a step jumped by up to 8 K between neighbouring cells (2026-10-26).
+function thetaNear(column, z) { let sum = 0; for (let i = -4; i <= 4; i++) sum += thetaAt(column, z + 50 * i); return sum / 9; }
+// The profile's potential temperature at a height.
+function thetaAt(column, z) {
+  for (const s of column) if (z < s.to || s === column[column.length - 1]) return s.theta + s.rate * Math.max(0, Math.min(z, s.to) - s.from);
+  return column[0].theta;
+}
+// The heat (K m) a mixed layer of potential temperature mixed has taken from the profile, and how deep it reaches: up to
+// where the profile is first as warm.
+function mixingHeat(column, mixed) {
+  let heat = 0;
+  for (const s of column) {
+    if (s.theta >= mixed) return { heat, depth: s.from };
+    const top = s.theta + s.rate * (s.to - s.from);
+    if (top > mixed) { const d = (mixed - s.theta) / s.rate; return { heat: heat + (mixed - s.theta) * d - s.rate * d * d / 2, depth: s.from + d }; }
+    heat += (mixed - s.theta) * (s.to - s.from) - s.rate * (s.to - s.from) ** 2 / 2;
+  }
+  return { heat, depth: column[column.length - 1].to };
 }
 
 // The larger of a and b, rounded off over about `width` where they meet.

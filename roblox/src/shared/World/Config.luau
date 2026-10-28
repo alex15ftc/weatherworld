@@ -15,18 +15,48 @@ Config.MAP_MILES = 500
 Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 500,000
 Config.REGION_MILES = 50
 
--- Vertical: separate from horizontal so hills do not become cliffs.
-Config.STUDS_PER_METRE_VERTICAL = 1
+-- Roblox's standard scale (2026-10-27): 1 stud = 0.28 m, as the storm lab (stormlab LabConfig.SCALE).
+-- Everything people see up close is at this scale: houses, roads, trees and cars (built at
+-- character scale all along), the ground's height, and gravity (Workspace.Gravity 9.81 m/s^2 =
+-- 35 studs/s^2, default.project.json). Only map distance is squashed (STUDS_PER_MILE above, about
+-- 5.75 times shorter than true): at true scale the map would be 2.9 million studs across, past
+-- float precision, and no car could keep up with a storm on the 12x clock.
+Config.STUDS_PER_METRE = 1 / 0.28
+Config.GRAVITY = 9.81 * Config.STUDS_PER_METRE
 
--- Storms (server/WeatherFeed, shared/Weather, client/StormView). Clouds and tornadoes go up at 1
--- stud a metre, as the ground does (STUDS_PER_METRE_VERTICAL), so a cloud base, a funnel and the
--- hills keep their true heights against each other (2026-10-15; it was 0.62, the map's scale
--- across, which made every funnel look squat). A tornado is drawn 1 stud a metre across too,
--- wider than the map scale, because houses and cars are true size and a tornado shrunk to the
--- map would be smaller than a farmstead.
+-- Vertical: the ground's height at the standard scale, so a 5 m rise is 18 studs against an
+-- 11-stud storey. The map's slopes stay gentle (99.9% under 9%, steepest 14%). The cuts the
+-- world carves itself (river channels, banks, road beds, ditches) are sized in studs to match the
+-- props, not in metres (ChunkGen).
+Config.STUDS_PER_METRE_VERTICAL = Config.STUDS_PER_METRE
+-- Top of any ground in studs (the map's highest point is about 930 m above its base, 3,300 studs):
+-- rays looking for the ground start here.
+Config.RAY_TOP_STUDS = 6000
+
+-- Storms (server/WeatherFeed, shared/Weather, client/StormView). A storm's heights (cloud base,
+-- tower, anvil, funnel) and a tornado's widths are drawn at a scale that eases with the storm's
+-- distance from the camera (Config.skyScaleAt, 2026-10-27):
+--   * near (within SKY_NEAR_MILES) at the standard scale, so a cloud base, a funnel and a tornado
+--     are true against the houses, the cars and the ground;
+--   * far (beyond SKY_FAR_MILES) at SKY_FAR_STUDS_PER_METRE, because the map's distances are
+--     squashed: at the standard scale a storm 30 miles off would tower 60 degrees up (truly 17).
+-- Positions across stay at the map's scale throughout.
 Config.KM_PER_MILE = 1.609344
-Config.SKY_STUDS_PER_METRE = Config.STUDS_PER_METRE_VERTICAL
-Config.TORNADO_STUDS_PER_METRE = 1
+Config.SKY_STUDS_PER_METRE = Config.STUDS_PER_METRE_VERTICAL -- near
+Config.SKY_FAR_STUDS_PER_METRE = 1
+Config.SKY_NEAR_MILES = 3
+Config.SKY_FAR_MILES = 15
+-- A tornado's widths against its storm's heights (1: the same scale, so a funnel keeps its shape).
+Config.TORNADO_SHARE_OF_SKY = 1
+Config.TORNADO_STUDS_PER_METRE = Config.SKY_STUDS_PER_METRE * Config.TORNADO_SHARE_OF_SKY -- near
+
+-- Studs a metre up for a storm whose centre is this many studs (across) from the camera.
+function Config.skyScaleAt(distanceStuds: number): number
+	local near, far = Config.SKY_NEAR_MILES * Config.STUDS_PER_MILE, Config.SKY_FAR_MILES * Config.STUDS_PER_MILE
+	local t = math.clamp((distanceStuds - near) / (far - near), 0, 1)
+	t = t * t * (3 - 2 * t)
+	return Config.SKY_STUDS_PER_METRE + (Config.SKY_FAR_STUDS_PER_METRE - Config.SKY_STUDS_PER_METRE) * t
+end
 Config.STORM_VIEW_MILES = 60 -- storms drawn within this distance of the camera
 -- The map point (km east and south of the north-west corner) at stud x = z = 0. nil: the map's
 -- centre (the game). The tornado lab puts its storm replay's touchdown there (the attribute

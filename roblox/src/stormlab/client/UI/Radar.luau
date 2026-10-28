@@ -16,9 +16,9 @@
 -- Gate spacing follows the zoom: 250 m x 0.5 deg (30 km view), 500 m x 0.5 deg (60 km),
 -- 1 km x 1 deg (120 km).
 --
--- Controls: R toggles the panel. Products REF / VEL / SRV / CC / SW; tilt up/down (0.5-6.4 deg);
+-- Controls: R toggles the panel (while open: V next product, N site near focus, Z next zoom). Products REF / VEL / SRV / CC / SW; tilt up/down (0.5-6.4 deg);
 -- view 30 / 60 / 120 km; centre on the focus or the site; "Site near focus" moves the radar
--- ~62 km south-west of what the lab follows (the map's Shift+click sets ctx.state.radarSite);
+-- ~25 km south-west of what the lab follows (the map's Shift+click sets ctx.state.radarSite);
 -- Alias toggles a 32 m/s Nyquist velocity; Marks toggles storm / tornado markers. Hover the
 -- image for the gate value, beam height, range / azimuth and position.
 local UserInputService = game:GetService("UserInputService")
@@ -34,9 +34,13 @@ local ZOOMS = {
 	{ half = 120000, dr = 1000, da = 1.0, ring = 25000, label = "120" },
 }
 local PRODUCTS = { "REF", "VEL", "SRV", "CC", "SW" }
-local N, FALLBACK_N = 512, 96
+-- (FALLBACK_N: the Frames grid used only if CreateEditableImage fails - at most 32 x 32 = 1 024
+-- Frames; 96 x 96 was 9 216 Frames, far too many for a game client)
+local N, FALLBACK_N = 512, 32
 local MAX_RANGE = 150000
-local SITE_DIST = 62000
+-- (25 km: the lowest beam is ~400 m wide there - a mesocyclone is resolved and a tornado shows
+-- as gate-to-gate shear; at 62 km the beam was ~1 km wide and smeared both)
+local SITE_DIST = 25000
 local NYQUIST = 32
 local GATE_BUDGET = 0.0016 -- s of sampling per frame
 local REPAINT_BUDGET = 0.004
@@ -123,16 +127,19 @@ function M.new(ctx)
 	local setZoom -- forward
 	local placeSiteNearFocus -- forward
 
+	local function selectProduct(p: string)
+		if product ~= p then
+			product = p
+			for q, b in productBtns do
+				Widgets.setActive(b, q == p)
+			end
+			rebuildLegend()
+			requestRepaint()
+		end
+	end
 	for i, p in PRODUCTS do
 		productBtns[p] = Widgets.button(panel, p, 10 + (i - 1) * 50, 32, 46, 22, function()
-			if product ~= p then
-				product = p
-				for q, b in productBtns do
-					Widgets.setActive(b, q == p)
-				end
-				rebuildLegend()
-				requestRepaint()
-			end
+			selectProduct(p)
 		end)
 	end
 	Widgets.setActive(productBtns[product], true)
@@ -843,6 +850,16 @@ function M.new(ctx)
 		end
 		if input.KeyCode == Enum.KeyCode.R then
 			st.show.radar = not st.show.radar
+		elseif st.show.radar == true then
+			-- (while it is open) V: next product, N: site near the focus, Z: next zoom
+			if input.KeyCode == Enum.KeyCode.V then
+				local i = table.find(PRODUCTS, product) or 1
+				selectProduct(PRODUCTS[i % #PRODUCTS + 1])
+			elseif input.KeyCode == Enum.KeyCode.N then
+				placeSiteNearFocus()
+			elseif input.KeyCode == Enum.KeyCode.Z then
+				setZoom(zoomIdx % #ZOOMS + 1)
+			end
 		end
 	end))
 	table.insert(conns, ctx.signals.scenario:Connect(function()
@@ -902,7 +919,7 @@ function M.new(ctx)
 		if fs then
 			smU, smV = fs.u or 0, fs.v or 0
 		end
-		rctx.vol = cw.vol
+		rctx.vol = cw.volFull or cw.vol -- (the full volume when one has come)
 		rctx.tornadoes = cw.tornadoes
 		rctx.coldPool = cw.coldPool
 		local fz = if fs then fs.freezing else nil

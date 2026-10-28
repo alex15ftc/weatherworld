@@ -32,7 +32,9 @@ export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 // share of an area's reports that reach the first tier (EF2+, 75 mph, 2 in), CIG2 on the share
 // reaching the second (EF3+, 85 mph, 3.5 in), CIG3 on the third (EF4+, 96 mph).
 // The bars were fitted on 120 days of this world (2026-10-14, scripts/cig-climate.mjs) to give
-// tornado CIG1+ / CIG2+ / CIG3+ on about 35% / 12% / 4% of days and wind on 30% / 10% / 3%
+// tornado CIG1+ / CIG2+ / CIG3+ on about 35% / 12% / 4% of days (aims lowered to 20% / 5% / 1.5% on 2026-10-25, what
+// May 2015-2023 reports verify with these rules over the central US, 18 / 4.7 / 1.1%, and CONUS, 21 / 5.7 / 1.4%;
+// docs/TARGETS-2026-10-25.md) and wind on 30% / 10% / 3%
 // (got 35/11/3 and 32/11/3). Hail CIG1 on about 35% (got 37%); hail CIG2 comes on only 2% of
 // days whatever its bar, because 3.5 in hail is that rare here. Day mix with them: below
 // Slight 11%, Slight 16%, Enhanced 27%, Moderate 32%, High 15%.
@@ -40,7 +42,12 @@ export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 // Hail CIG1 0.08 to 0.2 on 2026-10-21 (user's decision): 8% was under this world's own share of 1 in
 // hail that reaches 2 in (about 14%), so the intense-hail group meant ordinary hail and, with 60% hail,
 // made a Moderate on most widespread-hail days. With hail melting the same day: Moderate 38% to 25%.
-export const CIG_BOUNDS = Object.freeze({ tornado: [0.14, 0.24, 0.02], wind: [0.42, 0.32, 0.22], hail: [0.2, 0.02], severe: [0.3] });
+// (Wind [0.42, 0.32, 0.22] to [0.2, 0.08, 0.03] on 2026-10-24: with the line winds in cores (stormLog, 2026-10-23)
+// 5.4% of wind reports reach 75 mph, about the US record's share, and almost no area had 42% of them: wind
+// groups verified on 3% of 40 days. A fifth of an area's reports at 75 mph, four times the usual share, now
+// marks it: CIG1 on 13% of days, CIG2 on 3% (scripts/cig-climate.mjs data, judged offline). The frequency
+// fit wanted bars of 0.02, which would mark any area with one 75 mph report.)
+export const CIG_BOUNDS = Object.freeze({ tornado: [0.14, 0.24, 0.02], wind: [0.2, 0.08, 0.03], hail: [0.2, 0.02], severe: [0.3] });
 // (Day 3's one hazard, any severe weather: CIG1 only, on the significant tier. Not fitted: Day 3
 // outlooks have so far drawn no group at all.)
 // The fields of the verification's chances behind each hazard's tiers, one for each group.

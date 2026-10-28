@@ -278,3 +278,164 @@ Feedback: the burst dust was worse than the original swirl; the original only lo
   - `dirtGrainFlat` = rbxassetid://118568148658026: the swirling tornado dust now reads as grainy dirt.
   - `fractusFlat` = rbxassetid://73789623374463: ragged scud clusters.
   - No load warnings in the stovepipe or cone scenes.
+
+## Rain as visibility, cheap (2026-10-25)
+
+What Twisted does (devforum changelogs 1.17, 1.18, 1.19.1, 1.21.2 beta; no technical write-up exists):
+- rain curtains that shroud visibility and fade as you approach
+- rain intensity by HP/LP and lighter in hail cores; shafts by hail density
+- dense rain round tornadoes; atmosphere colouring
+- no drop or screen effects mentioned
+
+Changes:
+- **Shafts** cross-fade as you drive in (fully drawn from ~3 km past their edge, gone within 300 m of it) instead of switching off at 0.6 w + 800 m.
+- **Short range:** the Atmosphere fog from the rain's extinction (0.33 R^0.66 /km, NearPrecip → Sky) was checked. Heavy rain at 100 mm/h needs density 0.44 (~600 m visibility), well under the 0.9 cap (~30 m), so no change.
+- **Near-camera rain sheets off** (`MAX_SHEET_OPACITY = 0`; their ~90-part BulkMoveTo is skipped).
+- **Splashes** only from 8 mm/h (full at 20 mm/h). Hail is unchanged.
+- **Funnel rain wrap:** TornadoCards counts ~0.3 km of the rain wrapped round the vortex (the adapter's `e.wrap`, heaviest rain within 1.5 km) as in the line of sight. The 1 km grid misses a close hook. The funnel's greying is capped at 0.8.
+- **Studio:** cone and wedge, no errors. The rain-wrapped wedge stays hidden at 3.5 km in heavy rain: the rain grey under the storm is close to the funnel's own grey. It was already very faint before these changes.
+
+## Radar: finer field, patchy clear air (2026-10-25, in progress)
+
+- **Diagnostic (`tools/stormlab/diag_radar_fine.luau`):** only ~600 parcels lay below 1.5 km round the supercell, so at 500 m the field was shot noise (the radar's red speckle). The hook release (a crescent round the low meso, 0.25 rot of the rain) is in the physics but drowned.
+- **Parcels:** mass 1.5e5 → 6e4 kg (2.5x the parcels, same rain mass), cap 12000 → 24000, release cap 60 → 150 per step. Cost (`tools/stormlab/time_parcels.luau`, at raised priority): 11.6 → 17.8 ms per sim second; spin-up 6.7 → 10 s.
+- **Fine field (`Precip.binFine`):** 500 m x 500 m cells, 0-8 km, windows +-16 km round up to four strong storms. It is appended to the precip message, and `Precip.sample` reads it inside the windows.
+- **Clear air (`Radar.gate`):**
+  - insect echo is patchy (a ~7 km fBm field drifting scan to scan), -10..0 dBZ with gaps, fading out by ~78 km; fine lines on gust fronts unchanged
+  - display: < 0 dBZ near-black grey, 0-5 dBZ dim grey
+- **Studio:** the first test, with 5x parcels, ended with the TornadoLab Studio window gone (crash handler running). The cause is not confirmed; scaled back to 2.5x with more yields in the fine binning. Not yet seen in Studio.
+- **Seen in Studio (after the reopen):** starts cleanly at 2.5x (14,600 parcels); server 0.18 ms/frame; no errors from client or server.
+  - Radar: clear-air echo is patchy and dim; the supercell shows more structure and less speckle, with a curved low-reflectivity notch on its SW side.
+  - Not yet a clear hook appendage. Edges are still blocky at 500 m.
+  - VEL / SRV not checked: clicks on the radar's product buttons did not register through the test input.
+- **Then:**
+  - **Fine field smoothed:** [1 2 1]/4 across x and y on the masses, ~750 m with the cell sharing.
+  - **Hook rain released low:** the hook share (0.25 rot) is now released 300 m - 2 km above the base, for the rear-flank downdraft carrying it down fast. Before, it came from the mid levels and smeared out over minutes of fall.
+  - **Offline (`diag_radar_fine`):** a distinct pendant of low-level rain 5-8 km SSW of the core with a weaker gap between them.
+  - **Studio:** heavier echo curls round a weak hole at the low meso on the storm's W-SW side (hook and notch starting to read), smoother edges, no errors, server 0.17 ms/frame.
+  - The emission's random sequence changed, so scenario storms evolve a little differently than before.
+- **Hook vs couplet (user: "they don't line up"):**
+  - **Offline (diag with an L marker):** the hook rain fell ON the low meso. It was released 0.18-0.6 Ru from it, which filled the notch after the radar smoothing, on an arc reaching into the inflow side.
+  - **Fix:** the crescent is now 0.35-0.9 Ru (inner ~1.3 km) and from back−1.4 to back+1.6 rad, wrapping cyclonically N → rear → S and leaving the meso and its inflow side as the rain-free notch.
+  - Held test-scene tornadoes now still follow their parent's low meso.
+- **Debris signature:** radius 2.5 rc + 0.25 debrisTop, 150-1500 m. It was 2.5 rc, narrower than the beam (Bodine et al. 2013: ~1-2 km for strong tornadoes).
+- **Radar default site:** 25 km SW of the focus (was 62 km; the beam is ~400 m wide there, so a meso and a tornado shear show).
+- **Keys while the radar is open:** V next product, N site near focus, Z next zoom.
+- **Studio (cone scene, radar 25 km):** REF hook wraps W → S with the tornado at its inner tip beside the notch; the SRV couplet sits on the tornado; CC shows a low-CC debris signature there. No errors.
+
+## Supercell layout corrected (2026-10-25)
+
+Research: `docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md`. Measured with `tools/stormlab/diag_layout.luau` (each feature's bearing from motion and distance from the low-level meso).
+
+- **Before:** the low meso (and so the wall cloud and tornado) sat on the updraft's right-rear (bearing −115 deg).
+  - The updraft and the low-level rain core were then both front-left of it; heavy low rain lay 0.3 km from it.
+  - The wall cloud sat a third of the way out on the rain-free base.
+- **Now:**
+  - **Low meso:** on the updraft's rear (upshear) edge, a little left (lowAngle 2.75 rad, 0.6 Ru), at the occlusion point. Occlusion drifts it to the left-rear (2.75 − 1.0 occl).
+  - **RFD:** directly behind the low meso, a little right.
+  - **Hook arc:** from the low meso's left through its rear to its right-rear, so it stops short of the inflow notch.
+  - **Hook share** 0.25 → 0.15 rot: the hook is weaker than the core.
+  - **Rain-free base deck** shifted 0.3 Rb away from the low meso, so the wall cloud sits on its rear edge.
+- **Measured (expected):**
+  - updraft at the base +47 deg, 2.3 km (+45..+100, 1-4)
+  - BWER +21 deg (−30..+30)
+  - FFD −5 deg, 9.5 km (−60..+10, 5-20)
+  - RFD 169 deg (rear)
+  - low-level rain core −62 deg, 3.8 km (5-20; a little close)
+  - wall cloud at 69% of the deck radius
+- **Studio (cone scene):**
+  - Radar: the tornado at the storm's rear edge with the core ahead (ENE) and weaker echo curling round it; the SRV couplet on it.
+  - Ground: tornado / wall cloud on the left, the rain core to the right, as from the SE.
+  - No errors.
+
+## Supercell lifecycle on radar (2026-10-25)
+
+References:
+- `docs/storm-reference/radar/` (23 images: Moore, Bridge Creek, Joplin, Tuscaloosa, Mayfield, Rolling Fork, Greensburg, HP example, conceptual diagrams; `SOURCES.md`)
+- `docs/stormlab/RESEARCH-SUPERCELL-LIFECYCLE.md` (stages, times, sizes, values)
+
+Tool: `tools/stormlab/render_radar.luau -a <min> <every>` followed by `radar_frames.py` renders the lab's own 0.5 deg REF + SRV of the focus storm through its life, offline (~1 min for 2 h).
+
+What the frames showed and the fixes:
+- **Echoes faded after ~1 h with the updraft still strong:** the parcel field hit its cap and new rain could not be released. Cap 24000 → 32000, and parcels get heavier steeply past half full, so the cap is never reached.
+- **Compact round echo (~10 km), no forward flank:** graupel/snow aggregates fell at 5-7 m/s, so they melted near the updraft. Now 1.0 + 4 size m/s (~1.5-3, Locatelli & Hobbs 1974). They drift far downstream before melting: a 20-30 km forward-flank region.
+- **Hook inside the core:** the hook rain is now an inward cyclonic spiral, from 1.4 Ru at the core's rear-left round the rear to its tip 0.4 Ru right-rear of the meso. The result is a classic comma / hook appendage with the meso inside the curl.
+- **Occlusion cycle ~33 min:** now ~50 min (occl rate / 2000; research 40-90).
+- **Studio:** the server runs (0.09 ms/frame, 15.6k parcels) with no errors. The early storm shows a forward flank and the start of a curl.
+- **Still open:** occlusion has no echo signature yet; the decay stage is not checked; the tornado's timing relative to the hook (10-30 min after it forms) is not checked.
+
+## Condensation detail: lit lobe cards (2026-10-25)
+
+Cumuliform storm cards now draw lit lobe sheets baked in Cycles: light from the frame's top, the card turned to the sun, and amb + sun-mask ImageLabels inside one BillboardGui. The tower shows crisp cauliflower lobes and self-shadow instead of soft blobs. The tornado is trimmed to 200 billboards (26 heights). Details, costs and open items: `CONDENSATION-DETAIL.md` ("Implemented").
+
+## Billboards only, tornado blending, dynamic scud (2026-10-25)
+
+- **Billboards only.** These were removed: the cloud-kit mesh clouds (`Render/Clouds.luau`, `CloudParts/StormPlan.luau`), the mesh funnel (`Render/TornadoVisuals.luau`, `Tornado/TubeMesh.luau`), the funnel comparison (`Render/FunnelCompare.luau`), the F4 compare/funnel/clouds style buttons, the C compare key and the mesh-only debug views. The server no longer loads the cloud kit, and the lab project files no longer map `ReplicatedStorage.Shared`; the main game's copy is untouched. Pieces the billboards needed were moved:
+  - the tornado state (`ctx.tornadoAdapter`) is created and updated by `client/init`;
+  - rain shafts have their own `Render/RainShafts.luau`;
+  - shelf planning uses a fixed list of piece names instead of the kit.
+- **Start-up timeout fixed.** `World.new` analyses the environment in chunks with yields (`opts.yield`); all at once, it hit the script timeout when Studio was throttled.
+- **Soft lobe sheets v3:** firmer edges (feather 1.6), clearer billows (contrast 0.45) and fine rim wisps (`lobe_post.py --wisps`). Ids are in `LabConfig.LOBES`.
+- **Tornado blends into the lowering.** StormCards publishes the colour its wall-cloud underside cards were shaded with (`ctx.stormBase[stormId]`). The funnel's cards lerp toward it from 0.4 to 0.95 of the cloud base (the same cloud) and use the soft lobe texture there; the condensation fragments take 75 % of it. This is the fix for the pale stub seen hanging under a dark base.
+- **Dynamic scud** (`Render/Scud.luau`, `LabConfig.SCUD`): fragments form where `World.windAt` lifts nearly saturated air. Saturation comes from surface rain, and it sets how far below the base a parcel condenses. The fragments ride the wind, condense while rising, evaporate when sinking and merge at the base. They are stretched and turned along the on-screen wind, and lit like the lowering with rain fog. CardPlan's scripted moving scud clusters are off while it runs (`CardPlan.dynamicScud`); the hanging fringe and tail cloud stay.
+- **Checked:** type-check clean for the whole lab; the server loads and runs with no errors.
+- **Not yet seen on screen:** the tornado blend and the scud. Studio stopped rendering frames in the background, so the client's updates didn't run during the check.
+- **Sync with the main game:** `docs/stormlab/SYNC-PLAN.md`.
+
+## Game scale, uneven ground, light rain (2026-10-26)
+
+- **Scale:** `LabConfig.SCALE = 1 / 0.28` (about 3.57) studs per metre, the same on every axis: Roblox's standard 1 stud = 0.28 m, the game's scale (was 0.3 until 2026-10-26). Everything is computed in metres; studs appear only at Roblox through `toWorld` / `fromWorld` / `studs` / `metres`. The rules are in `SCALE-RULES.md`.
+  - Converted: every renderer, the camera, the UI, the town, vehicles, debris, NearPrecip's per-stud extinction and Sky's.
+  - Gravity is 9.81 × SCALE studs/s². With `SCALE = 1` the maths is the old maths.
+  - `LIMITS` (`farDraw` etc.) stay Roblox stud limits.
+- **Ground:** `LabConfig.groundAt(x, y)` (the main game replaces it with its terrain).
+  - The lab has Terrain hills up to 35 m round the town (`GROUND.relief`; `server/Terrain` builds them with WriteVoxels, ~2.1 M voxels in ~4 s, and rebuilds them when the town moves). The town sits on a flat 900 m pad, and the hills fade to flat by 9 km.
+  - Follow the ground: the tornado (bottom on the ground, top at the cloud base), dust, debris (heights above the datum), shaft feet, splashes, scud, wind arrows, vehicles, the town, the camera's minimum height.
+  - Stay at their altitude: clouds.
+- **Light rain:** `precipLite` (~12 KB, 5 % of the full volume) every 10 s; the full volume every 60 s for the radar (`RATES.precipFullEvery`, 0 = never). `test_frames.luau` passes.
+- **Seen in Studio at 0.3:**
+  - storm cards, an EF4 cone with its dust on the ground blending into the lowering, shafts, and 139 scud fragments;
+  - Terrain built at load and rebuilt after "Town ahead";
+  - no errors; lab scripts 4.5 ms.
+- **Not done:** a run at `SCALE = 1` in Studio (the code reduces to the old maths, but this hasn't been looked at on screen).
+
+## Scud, wall clouds, tails, supercell structure (2026-10-26)
+
+- **Scud (`Render/Scud`)** reads as part of the cloud:
+  - Drift: the wind without the tornado's vortex, averaged over ~6 s.
+  - Condensing / evaporating: over tens of seconds.
+  - Shape: soft wisps drawn out along the drift, half transparent, level with the base, with only an eased tilt of at most 18° (no spinning).
+  - Placement: born at the base's underside, mostly round the lowering.
+  - Colour: the lowering's own.
+- **Wall cloud lowering (`Storm.update`)** uses wet-bulb mixing. Forward-flank outflow is cooled by the cold pool's deficit along its wet-bulb line and moistened toward saturation. The updraft ingests up to 60 % of it, with rotation, and the lowering is the inflow LCL minus the mixture's LCL, plus v²/g.
+  - Sample: the strongest outflow on the path from the forward-flank core to the low-level meso.
+  - Effect: moist, low-LCL air gives low wall clouds; outflow-poor storms get little.
+  - Lab Supercell (`tools/stormlab/diag_wallcloud.luau`): lowerings 150–475 m for the storms with outflow (was ~20–150 m).
+- **Tails (`CardPlan`):** the tail cloud shows whenever there is a wall cloud (q > 0.1, was 0.3, which almost never happened). The beaver tail starts at the base deck's edge and sits 30–90 m below the base, so it shows against the sky.
+- **Supercell structure** (`tools/stormlab/diag_structure.luau`, `structure_png.py`; images in `docs/stormlab/structure/` (before) and `structure/after/`):
+  - The 0.5° radar used to show a ring of 50–59 dBZ round the low meso, the maximum at its right-front where the inflow notch belongs, and almost no echo above 6 km.
+  - Fixes:
+    1. the mesocyclone's winds outside its core fall as 1/r (was r^-0.6), confined by exp(-(r/3R)²) to 6 R (was 8 R / 12 R), so rain no longer orbits the storm;
+    2. rain falls out downshear and 0.3 rad to the left (spread 0.4, was 0.9);
+    3. graupel and hail are released up to 0.8 EL (max 11 km, was 0.65 EL / 8 km);
+    4. `ffdAt` = where that rain falls (the 5 km storm-relative wind + 0.3 rad, 1.45 Ru(5 km)).
+  - Now: a forward-flank core left-front of the low meso, a hook curling round its rear, the inflow side clear, echo aloft overhanging downstream, and a weak echo region over the updraft at 5 km.
+  - Still missing: a hook joined to the core's right-rear corner (it is slightly detached); an upper-level V-notch (no flow split round the updraft); a stronger low-level updraft and forward-flank gust front.
+- **Seen in Studio:** no errors, scripts 3.1 ms. The wall cloud reads as −187 m on the panel, and from under the base the scud shows as soft wisps. The new wall cloud and tails have not been judged on screen.
+
+## Supercell structure, round 2 (2026-10-26)
+
+Images: `docs/stormlab/structure/after2/` (compare with `structure/` and `structure/after/`).
+
+- **Hook joined to the core:** the hook's precipitation spiral starts at the forward-flank core's rear edge and curls cyclonically round the low meso to its tip at the meso's right-rear (it used to start 1.4 Ru from the meso, detached).
+- **Upper-level V-notch / "flying eagle":**
+  - Above half the storm top, the storm-relative wind at each height splits round the updraft core: potential flow round a cylinder of 1.2 Ru(z) (`Storm.windAt`).
+  - The mesocyclone fades out by 0.55–0.7 of the top (it was felt up to 0.8–1.0 top and turned the whole anvil-level flow one way).
+  - High-level hail and graupel leave the updraft round its downstream half on both flanks.
+  - Result: the 8 km CAPPI shows a horseshoe/V of echo opening toward the updraft, and the 5 km CAPPI a C round the weak-echo region.
+- **Low-level updraft:** dynamic lift under the low-level mesocyclone (its low pressure; Klemp & Rotunno), centred on its inflow side, 0–3.5 km, up to 0.6 · min(vlow, W/2). The peak w at 1 km is 9.3 m/s (was 2.4).
+- **Forward-flank gust front:** rain-driven downdrafts get a base speed of 1.2 m/s from 5 mm/h (evaporation and melting through the column) on top of 0.12 m/s per mm/h (`ColdPool.downdrafts`).
+  - Before, the forward flank's pool took ~20 min to form while the storm moved ~20 km.
+  - The pool under the forward flank is now 1.9–2.9 K (was 1.3–2.4), and its 1 K edge runs east along the north side of the inflow.
+- **Tools:** `tools/stormlab/diag_ffd.luau` (pool, rain and downdraft deficit along the forward flank) and `diag_wallcloud.luau`.
+- **Known:** the sim's surface rain rate peaks at ~20 mm/h under 55–60 dBZ cores (a 1 km-grid average, low for such echo). It is left as is.

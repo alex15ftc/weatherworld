@@ -5,20 +5,15 @@ local Config = require(ReplicatedStorage.Shared.World.Config)
 local ChunkManager = require(script.ChunkManager)
 local TestDrive = require(script.TestDrive)
 local Explore = require(script.Explore)
-local WeatherFeed = require(script.WeatherFeed)
+local StormHost = require(script.StormHost)
 local ProductFeed = require(script.ProductFeed)
 
 print(`[WeatherWorld] server up: {Config.MAP_STUDS} studs across, {Config.STUDS_PER_MILE} studs/mile`)
 
 ChunkManager.start(script:WaitForChild("ChunkWorker") :: Actor)
 TestDrive.start()
--- Before Explore places anyone: a storm replay may set the start point.
-WeatherFeed.start()
--- the cloud kit's uploaded meshes, for every client's storms (shared/Weather/CloudKit)
-do
-	local RS = game:GetService("ReplicatedStorage")
-	local KitConfig = require(RS:WaitForChild("Shared"):WaitForChild("World"):WaitForChild("Config"))
-	require(RS.Shared:WaitForChild("Weather"):WaitForChild("CloudKit")).serverLoad(KitConfig.STORM_KIT.meshAsset)
-end
+-- the storms: the storm lab's atmosphere run here for this place, kept in step with the weather
+-- engine, published as storm frames v2 (server/StormHost, docs/stormlab/SYNC-PLAN.md)
+StormHost.start()
 ProductFeed.start()
 Explore.start()

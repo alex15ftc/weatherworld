@@ -59,7 +59,10 @@ local MAX_RES = 1024 -- the raster products' image (an EditableImage is at most 
 local MIN_MPP = 0.01 -- miles per pixel when fully zoomed in (10 studs a pixel)
 local TILE = 256 -- screen pixels (GUI units) a side; drawn at TILE * density image pixels
 local LEVEL_STEP = math.sqrt(2) -- so a tile is shown between 0.84 and 1.19 of its drawn size
-local MAX_TILE_PIXELS = 110 * 256 * 256 -- image pixels of tiles kept per layer (about 29 MB)
+-- image pixels of tiles kept per layer while the map is open (about 11 MB; three layers). All of
+-- it is let go when the map closes (setVisible): EditableImage memory is a small per-device budget
+-- the game shares, and keeping ~90 MB of tiles after closing ran it out (2026-10-28)
+local MAX_TILE_PIXELS = 44 * 256 * 256
 local FRAME_BUDGET = 0.010 -- seconds of tile drawing a frame (at least one tile)
 local SETTLE_SECONDS = 0.25 -- the radar image is drawn again once the view has been still this long
 -- A muted map keeps this share of its colour, the rest going to MUTE_TO.
@@ -321,7 +324,7 @@ local function drawShapeTile(layer: Layer, tile: Tile, drawFn: ((Draw) -> ())?)
 	buffer.fill(scratch, 0, 0)
 	local raster = Raster.new(scratch, tilePx, tilePx, function(mx: number, my: number)
 		return (mx - left) / t, (my - top) / t
-	end, density, tile.i * tilePx, tile.j * tilePx)
+	end, density, tile.i * tilePx, tile.j * tilePx, Config.MAP_MILES)
 	if drawFn then
 		drawingMpp = t
 		local ok, problem = pcall(drawFn, raster)
@@ -425,7 +428,7 @@ local function applyDensity()
 	end
 	density = d
 	tilePx = math.round(TILE * d)
-	maxTiles = math.max(40, math.floor(MAX_TILE_PIXELS / (tilePx * tilePx)))
+	maxTiles = math.max(24, math.floor(MAX_TILE_PIXELS / (tilePx * tilePx))) -- (a screen of tiles plus a ring)
 	scratch = buffer.create(tilePx * tilePx * 4)
 end
 
@@ -499,7 +502,7 @@ local function drawRaster()
 	local cx, cy, m = centreX, centreY, mpp
 	local raster = Raster.new(pixels, pw, ph, function(mx: number, my: number)
 		return (mx - cx) / m + size.X / 2, (my - cy) / m + size.Y / 2
-	end, scale)
+	end, scale, 0, 0, Config.MAP_MILES)
 	local ok, problem = pcall(current.drawRaster :: (Draw) -> (), raster)
 	if not ok then
 		warn(`[MapCanvas] raster product drawing failed: {problem}`)
@@ -621,8 +624,11 @@ local function placeLabels()
 				local points: { { number } } = {}
 				for _, ring in rings do
 					for i = 1, #ring - 1, 2 do
-						local x, y = toScreen(ring[i], ring[i + 1])
-						if x > 30 and y > 20 and x < size.X - 30 and y < size.Y - 20 then
+						local mx, my = ring[i], ring[i + 1]
+						local x, y = toScreen(mx, my)
+						-- Not on the map's edge, where a ring runs only to close up.
+						local onEdge = math.min(mx, my) <= 0.011 or math.max(mx, my) >= Config.MAP_MILES - 0.011
+						if not onEdge and x > 30 and y > 20 and x < size.X - 30 and y < size.Y - 20 then
 							table.insert(points, { x, y, (x - size.X / 2) ^ 2 + (y - size.Y / 2) ^ 2 })
 						end
 					end
@@ -925,6 +931,23 @@ function MapCanvas.setVisible(on: boolean)
 	visible = on
 	if on then
 		changed()
+	elseif baseTiles then
+		-- closed: give every tile's image memory back (they are redrawn when it opens again)
+		for _, layer in { baseTiles, underTiles, overTiles } do
+			local keys = {}
+			for key in layer.tiles do
+				table.insert(keys, key)
+			end
+			for _, key in keys do
+				dropTile(layer, key)
+			end
+		end
+		if rasterEditable then
+			rasterEditable:Destroy()
+			rasterEditable = nil
+			rasterSize = Vector2.zero
+			rasterImage.Visible = false
+		end
 	end
 end
 

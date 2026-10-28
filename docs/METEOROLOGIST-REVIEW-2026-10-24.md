@@ -323,3 +323,515 @@ tables, Day 1 was right 66% and within one 95%. Installed:
 Day 1 EF2+ hatching was drawn on 3% of these outlooks and verified on 7%; Day 2 drew 10% and verified 10%.
 
 Full suite: 55 of 55 pass.
+
+## Second review round (same seeds and weather, after the day's fixes)
+
+Packages in `data/day-reviews/2026-10-24-b`.
+
+**Means:**
+
+| | Synoptic | Mesoscale | Outcome | Outlook |
+|---|---|---|---|---|
+| Earlier today | 6.8 | 5.3 | 5.5 | 5.8 |
+| Now | 6.8 | 5.4 | 5.6 | 6.5 |
+
+**Helped (all reviewers):**
+- **Outlook categories now follow the CIG matrix.** The seed 2112 day 2 Moderate tornado area verified 11 tornadoes against a middle of 9; seed 31's bogus Day 3 tornado area and its time window are gone.
+- **Tornado durations are no longer stuck at 10 minutes.** 0 of 18 on seed 8181 last exactly 10, and seed 8181's EF mix is now 56 / 28 / 17%.
+- **Night and morning instability is down 15-25%,** with far fewer morning storms (seed 2112: 15 to 2).
+- **Track jogs are mostly gone.**
+- **Some false fronts are removed,** and left-movers are down on 3 of 4 seeds.
+
+**Remaining:**
+1. **Afternoon instability is unchanged (MLCAPE p90 4,700-4,900, peaks 5,900).** The 850-700 mb layer on the extreme day is nearly saturated, and the convective adjustment holds it only at the dry adiabat (about 9.6-10 C/km), where a saturated layer should be held near the moist adiabat (5-6 C/km). The region's moisture also runs 15-16 g/kg where the large-scale field shows 9-11.
+2. **Reports.** Seed 2112 day 2 has 775 hail (up from 617, since hail is no longer limited by the place rule) and 809 wind reports along supercell tracks. Ordinary storms in hail environments give none (seed 8181 day 3: 28 storms, 0 reports). Lines still give few wind reports.
+3. **No strong tornadoes on seeds 2112 and 1000** in STP 4-6.
+4. **The cap breaks under rising heights** (seed 2112 day 3: storms all morning and a 9:30 am tornado).
+5. **Text slips:**
+   - the flow called "weak (35 kt)" and "moderate" at 50-55 kt (the same rounding issue as shear had);
+   - height wording read against the issue time, while the text describes the late afternoon;
+   - the trough not named for falls of 3-5 dam.
+6. **Smaller:**
+   - 0-minute tornadoes, one an EF1 with a 0.0 mi path;
+   - a dryline possibly missing on seed 1000 day 3 (front check?);
+   - edge environments;
+   - the night jet collapsing (seed 2112 day 2);
+   - heat lows.
+
+## After the second round (2026-10-24)
+
+**Engine batch:**
+- **Moist adiabat** (RegionalAtmosphere `moistAdjustmentK` 2, `moistAdiabatTo`): where 850 mb is within 2 K of saturation, 700 mb may not be colder than the moist adiabat from it, and the two meet halfway, with 850 mb drying. Seed 1000 day 3 21Z MLCAPE p90 went from 4,821 to 3,371; nights and mornings fell 15-30%. 40-day probe: supercells 41 to 38 a day, tornado days 78 to 75%.
+- Text: the flow's label judged on its printed speed; height wording reads "by late afternoon".
+- A tornado lasts at least a minute.
+
+**Dryline (seed 1000 day 3).** It was not the ground check: a fresh analysis drew a 411-582 km dryline with or without it. In the live analysis, every front crest, outflow boundaries and undrawn crests among them, kept drylines off it. Now only lines drawn as fronts (or followed drylines) do (BoundaryAnalysis); the live analysis draws a 528-582 km dryline. Maps and outlook text only.
+
+**Regional moisture against the large-scale model.** No mismatch. The map's air follows its target (inflowMoisture), and the large-scale air itself has 13.6-15.1 g/kg there on seed 1000 day 3, from the Gulf supply (14.75 g/kg). The extreme days are rich-moisture days.
+
+**Outlook archive** (`outlook-verify --save/--from`, `scripts/refit-from-archive.mjs`, data/outlook-archive, git-ignored). Re-scoring two saved mornings gave identical results in 1.2 s; 1.2 MB per 2 mornings.
+
+**Server cost of the ingredient Day 3: unsettled.** Timed while a refit ran, so contended, one storm-free Day 3 took 37 s and one with storms 29 s; idle earlier, 8 s against 14 s a day. If the contended figure holds, 4 ingredient runs cost about 90 s more CPU per issue than the 2 storm runs did. To time again idle; the fallback is 2 ingredient runs.
+
+**Refit from the archive (sixth of the day, about 5 s).** `scripts/refit-from-archive.mjs
+data/outlook-archive/fit-2026-10-24 --check data/outlook-archive/check-2026-10-24 --install`.
+
+| Check set (seeds 21-30 x 3) | Right / within one, before | After |
+|---|---|---|
+| Day 1 | 53% / 90% | 60% / 90% |
+| Day 2 | 65% / 80% | 65% / 80% |
+| Day 3 | 60% / 90% | 60% / 90% |
+
+Installed groups:
+
+| | Day 1 | Day 2 |
+|---|---|---|
+| Tornado | [0.625, 0.625, 0.75] (CIG1 61% at 5 of 8) | never |
+| Wind | [0.5, 0.625, 0.75] (CIG1 78% at 4 of 8) | |
+| Hail | [0.375, never] | [0.5, 0.75] |
+
+Full suite: 55 of 55 pass.
+
+**Ingredient Day 3, timed idle:** 15 s per run without storms against 18 s with them, so 4 runs cost
+58 s against the old 36 s, about 22 s more per Day 3 issue. Re-scored from the archive (60 Day 3
+outlooks):
+
+| | Right / within one |
+|---|---|
+| 4 runs | 53% / 85% |
+| 2 runs | 47% / 83% |
+
+Contours with 4 runs: 15, 30, 45 and 60% verified 22, 39, 49 and 72%. Kept at 4 for now.
+
+## Third review round (2026-10-24-c, same weather)
+
+**Means:** synoptic 6.75, mesoscale 5.6, outcome 5.5, outlook 6.75.
+
+**Helped:**
+- **Moist adiabat:** seed 1000 day 3 MLCAPE p90 fell 4,813 to 3,371, with storms 285 to 205; seed 2112 day 3 lost its 9:30 am tornado.
+- **Drylines** are drawn again beside outflows.
+- **Outlook categories** are consistent with the CIG matrix: seed 1000 day 3 went MDT to ENH, the reviewer's own call.
+- **Tornadoes** no longer have 0-minute or 0 mi paths.
+
+**Side effects of the moist adiabat** (seed 1000):
+- The 2 K threshold acts as a switch: columns at 2.2-2.4 K escape it, and day 3's MLCAPE maps show stripes and blocky steps a large-scale cell wide.
+- It cools 850 mb but not the ground, leaving about 11.5-12.5 C/km from the ground to 850 mb; SBCAPE is 1,500-1,800 above MLCAPE.
+
+**Remaining:**
+1. **Afternoon moisture.** The daytime mixed layer carries the ground's moisture up through 850 mb (Td 17.5-17.9 C, about 13 g/kg) with no drying by entrainment, so afternoon CAPE is unchanged where 850 mb is not near saturation.
+2. **Ordinary storms give no reports** in 2,000-3,000 J/kg (seed 8181 day 3, three builds running; seed 2112 day 1). The runs give none either, so Day 1 stays TSTM where the SPC would draw SLGT.
+3. **Tornadoes and hail are weak at the top.** Seed 2112 had 1 EF2 in 22; the largest hail is 2.0-2.75 in where 3-4 in is expected. The top end swings between builds (8181: EF5, EF2, EF1).
+4. **Supercells live 6-9 hours** (250-450 mi).
+5. **Night:** the 850 mb flow collapses (seed 2112 day 2), and day 2 CAPE builds overnight on seed 1000.
+6. **Text:**
+   - the wind direction from the map mean, not mid-map;
+   - the height change too small (map mean);
+   - "weak shear (30 kt)" on a 37-42 kt day;
+   - timing windows before storm onset.
+7. **Drawing:** fronts around cold pools and in uniform air; tile-edge steps in maps.
+
+**Climate** (40 days, seeds 1-4, after the moist adiabat and the dryline fix):
+
+| Measure | Now | Target |
+|---|---|---|
+| Tornadoes a day (mean) | 8.6 | 7.5 |
+| Tornado days | 78% | 83% |
+| Quiet days | 13% | under 10% |
+| Days with 30+ tornadoes | 8% | 5% |
+| High / Moderate / Enhanced / Slight / below | 10 / 25 / 20 / 25 / 21% | 5 / 20 / 40 / 30 / 5% |
+| EF0-EF4 | 60.9 / 30.6 / 6.2 / 1.5 / 0.9 | 52 / 35 / 9 / 2.4 / 0.45 |
+| Tornado CIG1+ / 2+ / 3+ | 27 / 10 / 5% | 35 / 12 / 4% |
+| Wind CIG1+ | 13% | 30% |
+| Hail CIG1+ / 2+ | 36 / 8% | 35 / 10% |
+
+## Batch after the third round (2026-10-25)
+
+**Changes:**
+- **Moist adjustment, smooth** (`moistAdjustmentK` [1, 5]): all of it within 1 K of saturation, none from 5 K. Where 850 mb is inside the day's mixed layer, the ground cools with it.
+- **Moist layer top** (`moistLayerTopM`) 2100 to 1700 m ASL: a deep afternoon mixed layer now takes in dry air above it.
+
+**Effect:**
+
+| | Before | After |
+|---|---|---|
+| Seed 2112 day 1 21Z MLCAPE p90 | 3,137 | 1,330 |
+| Seed 2112 day 1 850 mb Td p90 | 17.2 C | 12.8 C |
+| Seed 1000 day 3 21Z MLCAPE p90 | 3,253 | 2,685 |
+| 4 pm MLCIN p50 (humid air) | 16 | 40 |
+| New storms per day (40-day probe) | 85 | 69 |
+| Supercells per day | 38 | 32 |
+| Tornado days | 75% | 69% |
+
+Full suite: 55 of 55 pass.
+
+## Boundaries, squall-line and landspout tornadoes (2026-10-25)
+
+Research: docs/storm-reference/boundaries-qlcs-landspouts-2026-10-25.md.
+
+**A. Boundary zone** (StormEnvironmentCoupling `airMassContrast`, StormRotation `boundary*`):
+- The inflow's air-mass density is compared with air within 16-32 km. Contrast is read on the cool side
+  (full) and the warm side (half), at 0.6-1.8 K (a drawn front is about 2 K on the grid; the warm sector
+  is 0.3-0.4).
+- Exposure builds over 0.35 h and fades over 1 h.
+- It adds up to 180 to the 0-1 km SRH and takes 150 m off the cloud base.
+- Tornadoes starting in a zone went from 4% to 20%.
+
+**B. Rotation without a mesocyclone** (StormRotation `line`, `landspout`; `tornado.source`):
+- **Line mesovortices:** line-normal 0-3 km shear of 12-30 kt, the outflow balance and the rear-inflow
+  surge.
+- **Landspouts:** a young updraught on convergence, a steep 0-3 km lapse rate, deep shear under 25-35 kt.
+- **Shares:** lines 16% and landspouts about 2% of tornadoes, against about 18% and 11% in the record.
+- **Ratings:** line tornadoes are 96% EF0, against 46% EF0 and 44% EF1 in the record.
+  - A higher line peak made more of them, not stronger ones.
+  - Adding forward speed to the tornado wind didn't separate lines from supercells (supercell tornadoes
+    here move as fast), so it was removed.
+
+**D. Active season** (`jetMs` 10 to 12): tornado days 80% to 75%, so it was not kept.
+- 6 of the 7 weak-flow days (500 mb under 30 kt) now have tornadoes, from B.
+- The remaining tornado-free days had 37-70 kt aloft.
+
+**40-day climate:**
+
+| Measure | Before | After A + B | Target |
+|---|---|---|---|
+| Tornado days | 78% | 80% | 83% |
+| Quiet days | 13% | 10% | under 10% |
+| Tornadoes per day | 8.6 | 10.0 | 7.5 |
+| Days with 30+ tornadoes | 8% | 13% | 5% |
+| High | 10% | 20% | 5% |
+| Moderate | 25% | 13% | 20% |
+| Enhanced | 20% | 23% | 40% |
+| Slight | 25% | 30% | 30% |
+| EF0 / EF1 / EF2 | 61 / 31 / 6.2 | 63 / 29 / 5.3 | 52 / 35 / 9 |
+
+High days are mostly reached by tornadoes alone (7 of 8). Full suite: 55 of 55 pass.
+
+**Follow-up, same day.** Boundary boost fades where the inflow's 0-1 km helicity is already strong
+(`boundaryAmbientSrh` [100, 300], Garner 2012). High 20% to 18%, other figures about the same.
+
+The doubling of High days was not from A or B. The same 40 days with A and B switched off gave High 18% and
+13% days with 30+ tornadoes, the same as with them. A and B together:
+
+| Measure | A and B off | A and B on |
+|---|---|---|
+| Tornado days | 70% | 80% |
+| Quiet days | 13% | 10% |
+| Tornadoes per day | 8.4 | 9.9 |
+| High | 18% | 18% |
+
+So High went from 10% to 18% with the moisture batch earlier today (`moistAdjustmentK` [1, 5],
+`moistLayerTopM` 1700): stronger caps and fewer, more discrete storms. (An earlier comparison counted one
+tornado per storm a day and was wrong.)
+
+**Moist-layer depth and outbreak days (2026-10-25).**
+
+80 days (seeds 1-8):
+
+| Measure | 1700 m | 1900 m |
+|---|---|---|
+| High days | 18% | 11% |
+| Tornado days | 80% | 88% |
+| Quiet days | 11% | 6% |
+| Tornadoes per day | 10.2 | 11.4 |
+
+Seeds 1-4 alone gave High 18% at 1700 m, 5% at 1900 m and 13% at 2100 m, and seeds 5-8 gave 18% at both,
+so 40 days cannot separate them. 1900 m gives back most of the afternoon-moisture fix on the flagged day
+(seed 2112 day 1, 21Z 850 mb Td p90 12.8 to 16.1 C, MLCAPE p90 1,330 to 2,315), so 1700 m is kept.
+
+Outbreak days come from the number of supercells, not their efficiency:
+
+| Day type | Supercells a day | Tornadic storms a day | Share tornadic |
+|---|---|---|---|
+| 30+ tornadoes | 125 | 31 | 25% |
+| 10-29 tornadoes | 74 | 16 | 22% |
+| 1-9 tornadoes | 20 | 3.7 | 18% |
+
+The real share of tornadic mesocyclones is about 26% (Trapp et al. 2005), and each tornadic storm makes 1-2
+tornadoes (at most 4). Next: why the strong days start so many supercells.
+
+**Outbreak days: storm initiation (2026-10-25).**
+
+On two outbreak days (seed 4 day 5, seed 1 day 3) there were 198 and 140 fresh storms, in air with
+a median CIN of 3 J/kg at their birth, about 55 km apart:
+- by boundaries 116 / 77, by the day's heating alone 51 / 54, by large-scale ascent 30 / 8;
+- 59 / 35 of them before noon;
+- 30-41 rotating storms at once.
+
+Spreading the storms' warming aloft outward as gravity waves (100 km/h, total kept) changed nothing
+(144 fresh storms against 145) and was removed.
+
+**Change: shear-limited initiation** (InitiationEngine `WIDE_LIFT_J_KG`, `SHEAR_LOSS_KT`, `SHEAR_LOSS`; Peters et al. 2019, 2020).
+- In strong 0-6 km shear, a narrow updraught is diluted by the air it entrains, and only wide ones grow.
+- Width follows the organised lift's Kain-Fritsch energy (10-50 J/kg). Heating alone makes narrow updraughts.
+- Narrow ones lose up to 60% of their rate as the shear rises from 30 to 60 kt.
+- With 85% over 25-50 kt the outbreak day had 103 storms, but over 40 days tornado days fell to 65% and quiet days rose to 20%.
+
+80 days (seeds 1-8):
+
+| Measure | Before | After | Target |
+|---|---|---|---|
+| High | 18% | 4% | 5% |
+| Moderate | 18% | 29% | 20% |
+| Enhanced | 23% | 26% | 40% |
+| Slight | 27% | 25% | 30% |
+| Tornadoes per day | 10.2 | 7.7 | 7.5 |
+| Days with 30+ tornadoes | 12% | 1.5% | 5% |
+| Tornado days | 80% | 77.5% | 83% |
+| Quiet days | 11% | 9% | under 10% |
+| EF0 / EF1 / EF2 / EF3 / EF4 | | 62 / 33 / 3.9 / 1.2 / 0.15 | 52 / 35 / 9 / 2.4 / 0.45 |
+
+Wind CIG1+ is on 0-5% of days. Full suite: 55 of 55 pass.
+
+**Open:**
+- Moderate is a bit high and Enhanced low.
+- EF2-EF3 tornadoes are too few.
+- Wind intensity groups are rare.
+- The outlooks need a refit for the changed engine: `outlook-verify --save`, then `refit-from-archive --install --check`.
+
+**Outlook refit for the changed engine (2026-10-25).**
+- Archives: data/outlook-archive/fit-2026-10-25 (seeds 1-20 x 5) and check-2026-10-25 (seeds 21-30 x 3).
+- Command: `node scripts/refit-from-archive.mjs data/outlook-archive/fit-2026-10-25 --check data/outlook-archive/check-2026-10-25 --install`.
+- Tables before the refit: outlookCalibration.js as of the morning.
+
+Forecast right / within one category:
+
+| | Fit set, old tables | Fit set, new tables | Check set, old tables | Check set, new tables |
+|---|---|---|---|---|
+| Day 1 | 59 / 93% | 59 / 94% | 50 / 93% | 50 / 90% |
+| Day 2 | 44 / 90% | 49 / 89% | 30 / 80% | 50 / 80% |
+| Day 3 | 37 / 82% | 40 / 80% | 50 / 100% | 60 / 90% |
+
+All days still lean low: Day 1 too low 32%, too high 9%. On the check set Marginal is forecast on 30% of
+mornings and verified on 10%, Slight forecast on 20% and verified on 43%.
+
+Intensity groups:
+- Day 1 tornado CIG1 now needs 3 of 8 runs.
+- Hail CIG1 needs 4 of 8 on Day 1 and 6 of 8 on Day 2.
+- Wind and the higher groups had too few areas to fit and keep their values.
+
+**Strong tornadoes and the forecasts' lean (2026-10-25).**
+
+Supercell tornadoes form in realistic environments: STP median 1.5 for EF0-1 and 2.5 for EF2+ (Thompson et al.
+2012). Only 9.7% reached EF3 winds, against EF4 winds in about 10-20% of supercell tornadoes on mobile radar.
+The strength scale had been fitted when the afternoon air was too unstable, so `rotationScaleMph` went from 50
+to 80. Tornadoes per day did not change. 40 days:
+
+| | EF0 | EF1 | EF2 | EF3 | EF4 |
+|---|---|---|---|---|---|
+| Before | 62% | 33% | 3.9% | 1.2% | 0.15% |
+| After | 57% | 33% | 8.0% | 1.0% | 0.7% |
+| US record | 52% | 35% | 9% | 2.4% | 0.45% |
+
+Squall-line tornadoes, 15% of all, are still 86% EF0 and 14% EF1.
+
+The forecasts' lean is not the agreement bars. With Slight at 1/8 of the runs, Enhanced 2/8 and Moderate 4/8,
+refitted on the same archive, Day 1 scored the same (59% fit set, 50% check set) and Day 2 slightly worse. The
+user's bars and the refit tables were restored. The lean is in the chances themselves: with fewer, more
+scattered storms the runs disagree on where storms go, so the chance at any place stays below 15% where a Slight
+area verifies.
+
+**EF2 and EF3 (2026-10-25, later).**
+
+Median width and path by rating, SPC database 2008-2022:
+
+| | EF0 | EF1 | EF2 | EF3 | EF4 | EF5 |
+|---|---|---|---|---|---|---|
+| Width (yd) | 50 | 125 | 300 | 600 | 900 | 1,600 |
+| Path (mi) | 0.6 | 2.8 | 6.5 | 12.5 | 23 | 37 |
+
+The engine's tornadoes were about half as wide at EF2-EF4 winds (195 / 294 / 459 yd), so their paths showed too
+little damage: of 18 tornadoes with EF3 winds none was rated EF3.
+
+Changes:
+- Width curve `30 + 0.66 (wind - 65)^1.5`, from `30 + 1.3 (wind - 65)^1.25`.
+- EF3 and EF4 indicator densities 0.72 and 0.6 to 0.4 and 0.13 per sq mi. With the two nearly equal, a path showing
+  EF3 almost always showed EF4. Fitted offline over all draws on 286 tornadoes: expected 58.4 / 29.8 / 9.0 / 2.25 /
+  0.50 / 0.06, US 52 / 35 / 9 / 2.4 / 0.45 / 0.05.
+- 40 days: EF2 10.1%, EF3 1.0%, EF4 0.7% (3 and 2 tornadoes). Tornado CIG1+ days 22% to 30%.
+
+**Below-Slight days.** 13 of 80 days:
+- **4 are quiet for good reason:** no CAPE, a capped day with no storms, or pulse storms in 11 kt of shear.
+- **The other 9 had storms in the weaker air.** Three days profiled: storms drew in 840-1,500 J/kg against about
+  2,000 in the warm sector's median, with 700-500 mb lapse rates of 6.2-7.2 C/km, the wet-bulb zero near 2.5 km and
+  updraughts of 23-34 m/s. They made hail of 0.3-1.5 in and gusts of 44-61 mph, just short of severe.
+- **Two causes:**
+  - storms not forming in the best air (on high-shear days the shear limit needs organised lift there);
+  - weak mid-level lapse rates (no elevated mixed layer) on those days.
+
+Full suite: 55 of 55 pass.
+
+**Hail-driven Moderate days (2026-10-25, later).**
+
+On 16 of 23 Moderate days hail reached the 60% contour with 2 in hatching, Moderate on hail alone. Those days had
+30-100 hail storms and 33-115 supercells, against about 10 and 11 on a median Slight or Enhanced day.
+
+Tried and removed: rear-flank cycling of rotating updraughts (wrap 0.8-0.3 h, recovery 0.25 h, up to 35% of the
+inflow).
+
+| 80 days | Before | With cycling |
+|---|---|---|
+| High | 5% | 7.5% |
+| Moderate | 29% | 26% |
+| Enhanced | 25% | 20% |
+| Slight | 25% | 30% |
+| Below Slight | 16% | 16% |
+| Hail-only Moderate days | 8 | 8 |
+| Quiet days, seeds 1-4 | 10% | 15% |
+
+A gap of 10-20 minutes in a swath is 5-10 mi at storm speeds, small against the 25 mi of the chances, so with
+dozens of hail storms the coverage stays at 60%. The excess is the number of hail-producing storms on stormy days.
+
+**Supercell counts on stormy days (2026-10-25, later).**
+
+Two Moderate days traced: seed 7 day 6 had 106 fresh storms (CIN 4 J/kg at birth, a third started by heating
+alone in 40-50 kt of shear) and seed 4 day 10 had 85 (CIN 43).
+
+Across 40 days at 3 pm CDT in the moist air (Td 60 F+, CAPE 500+), the elevated mixed layer is there:
+- 700-500 mb lapse rate median 8.0 C/km (days p10 6.3, p90 8.4);
+- EML share 0.77.
+
+But it does not cap the moist air: MLCIN median 4 J/kg, and only 15% of the moist air has CIN of 50 or more.
+
+Tried as a run setting only: `lidCoolingKPerDay` 1.5 to 0.75.
+
+| 80 days | Now | With 0.75 |
+|---|---|---|
+| High | 5% | 9% |
+| Moderate | 29% | 24% |
+| Enhanced | 25% | 27.5% |
+| Slight | 25% | 24% |
+| Below Slight | 16% | 16% |
+| Tornado days | 77.5% | 75% |
+
+Within chance (each share is about +-5 points on 80 days); not kept.
+
+**Why the cap is weak (2026-10-25, later).**
+
+At 3 pm CDT in the moist air, medians of 38 afternoons:
+
+| Measure | Median | Days p10-p90 |
+|---|---|---|
+| The lid's own 700 mb temperature | 11.0 C | 6.0 to 16.0 |
+| The 700 mb temperature | 7.3 C | |
+| `capLift` (the cooling of the cap by lift) | 2.3 K | 0.6 to 4.4 |
+| MLCIN | 3.8 J/kg | |
+| LFC | 1,380 m | |
+
+A surface parcel of 25 C over 18 C reaches 700 mb near 9-10 C: capped by the lid, not by the 700 mb temperature.
+
+Of the 2.3 K, the mesoscale part (`mesoCapLiftShare`, isentropic and low-level-jet lift, added 2026-10-23 so that
+night storms could start) is about 1.8 K, and its cooling lasts into the next afternoon (`capLiftHours` 24):
+
+| | MLCIN median | MLCIN p75 | LFC |
+|---|---|---|---|
+| Now | 4 J/kg | 38 | 1,380 m |
+| Mesoscale part off | 8 J/kg | 78 | 2,150 m |
+| Large-scale part at ratio 1 | 5 J/kg | 45 | 1,590 m |
+
+80 days (run settings only; not kept):
+
+| Measure | 0.25 (now) | 0.1 | 0 |
+|---|---|---|---|
+| High | 5% | 11% | 9% |
+| Moderate | 29% | 19% | 17.5% |
+| Enhanced | 25% | 25% | 22.5% |
+| Slight | 25% | 27.5% | 24% |
+| Below Slight | 16% | 17.5% | 27.5% |
+| Tornado days | 77.5% | 78% | 64% |
+| Quiet days | 9% | 12.5% | 17.5% |
+| Tornadoes per day | 7.7 | 6.75 | 6.0 |
+
+A stronger cap moves Moderate days both up to High and down, but does not fill Enhanced or lower the below-Slight
+days.
+
+**Wind (2026-10-25, later).**
+
+Research notes on downbursts, wind-report climatology and bow echoes are in this session's research summary (Smith
+et al. 2013; Edwards et al. 2018; Evans and Doswell 2001; Cohen et al. 2007; Weisman 1993).
+
+Coverage of 45% verifies on 33 of 80 days. What is missing is the significant tier: 5.4% of wind reports reach 75 mph,
+and the group needs a fifth of an area's reports there, which only clustered damaging winds (bows, derechos) give.
+
+Tried and removed:
+- Downdraught energy plus rain loading (150 J/kg at full rain), with a share of 0.55.
+- The rear-inflow jet as its own gust: 5-28 m/s with CAPE and 0-3 km shear, reaching the ground at 0.75 x (jet + line
+  speed), in place of a quarter of the 500 mb wind added to every line's gust.
+- Rear inflow from the cold pool alone. It had also been multiplied by the rain: median 0.07, now 0.30.
+
+| 80 days | Before | With the changes |
+|---|---|---|
+| Categories (High / Moderate / Enhanced / Slight / below) | 5 / 29 / 25 / 25 / 16% | 6 / 26 / 26 / 25 / 16% |
+| Days with 58 mph | 77% | 84% |
+| Days with 75 mph | 29% | 11.5% |
+| Wind CIG days | 2.5% | 0% |
+
+The lines cannot drive a bow. Line storms (organisation 0.5+, 1 h+ old, 4,762 samples) have medians of:
+- updraught 18 m/s (90th 38);
+- speed 14 m/s (90th 21; about 90% of derechos move faster than 18, Cohen et al. 2007);
+- cold pool 0.25, rain 0.38;
+- gust 45 mph (90th 64).
+
+Only 9% of them are in CAPE 2,000+ with 0-3 km shear of 30 kt or more. Next for wind: why lines stay weak and slow
+(their updraughts, cold pools and propagation), the "MCS never forms" item of 2026-10-15.
+
+**Squall lines and MCSs, step 1 (2026-10-25).** Research: docs/storm-reference/squall-lines-mcs-wind-2026-10-25.md.
+
+Line storms' budget (medians, organisation 0.5+, 1 h+ old):
+- potential updraught 32 m/s;
+- undercut 0.50, so the target was 14.7 m/s (supercells: 49, 0.21 and 38.9);
+- the line's cold-pool propagation added about 4 km/h.
+
+Changes:
+- **Line undercut** (StormBudgets `lineUndercutShare`): at most 0.5 of the updraught, against 0.95 for a lone storm (RKW).
+- **Line motion, Corfidi** (environmentSampling `LINE_PROPAGATION_K`, `CLOUD_LAYER_WEIGHTS`): cloud-layer mean
+  (0.4 x 850 + 0.6 x 500 mb) plus k x (that less 850 mb), k 0.3 to 1 as the cold pool goes 0.2 to 0.6. Until then:
+  0-6 km mean plus 0.6 x (mean less 850).
+
+Line storms:
+
+| | Before | After |
+|---|---|---|
+| Updraught, median / 90th | 18 / 38 m/s | 17 / 37 m/s |
+| Speed, median / 90th | 13.7 / 21.4 m/s | 13.3 / 26.2 m/s |
+| Gust, median / 90th / 99th | 45 / 64 / 77 mph | 43 / 72 / 95 mph |
+| Samples with 75+ mph | 2.0% | 7.9% |
+
+80 days (seeds 1-8):
+
+| Measure | Before | After |
+|---|---|---|
+| High / Moderate / Enhanced / Slight / below | 5 / 29 / 25 / 25 / 16% | 9 / 22.5 / 27.5 / 27.5 / 14% |
+| Wind CIG1+ days | 2.5% | 11.5% |
+| Tornado days | 77.5% | 80% |
+| Tornadoes per day | 7.7 | 7.4 |
+
+- 6 of 7 High days came from tornadoes; one was wind-only (s4d6, 60% wind with CIG3, 114 mph).
+- EF mix 63 / 28 / 6.6 / 2.4 / 0.35%.
+- Full suite: 55 of 55 pass.
+
+**Open:**
+- Line updraughts did not rise: the median line storm's CAPE is 1,350 J/kg, often in air storms have used.
+- Line cold pools stay near 0.22, against about 0.6-0.9 (7-11 K) observed.
+- How often an MCS forms on the map has not been measured yet.
+
+**Squall lines and MCSs, step 2 (tried and removed, 2026-10-25).**
+
+Line cold pools were fed by the system's rain, the leading rain x (1 + 0.67 x line) for a stratiform share of about
+40% (Houze 2004), and deepened with the line's length, up to x1.5 from 25 to 100 km half-length. Line cold pools went
+from a median of 0.22 to 0.32 (90th 0.48 to 0.64) and speeds to 15.3 m/s (90th 29).
+
+| 80 days | Step 1 | Step 2, surge 0.85 | 0.7 | 0.55 |
+|---|---|---|---|---|
+| High | 9% | 11% | 9% | 9% |
+| Moderate | 22.5% | 26% | 24% | 21% |
+| Enhanced | 27.5% | 27.5% | 20% | 20% |
+| Slight | 27.5% | 22.5% | 35% | 35% |
+| Below Slight | 14% | 12.5% | 12.5% | 15% |
+| Wind CIG1+ days | 11.5% | 25% | 4% | 0% |
+| Days with 75 mph | about 39% | 55-68% | 33-40% | 5-15% |
+| Tornadoes per day | 7.4 | 6.25 | 6.25 | 6.25 |
+
+At 0.85 the line gusts were 46% at 75 mph or more among severe ones; at 0.55, 16%.
+
+Stronger pools gave too much wind at the old surge share, and none clustered enough for the intensity group once gusts
+were scaled back. They also undercut supercells (about a tornado a day fewer). Back to step 1.

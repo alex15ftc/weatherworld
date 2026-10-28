@@ -7,12 +7,15 @@
 --   back into the storms' base; a stronger edge uses the 4-tier piece and adds a second tier set
 --   back above it; behind it a dark turbulent base strip (the "whale's mouth").
 -- Bowing segments come out bowed because the segments themselves are.
--- Pieces are absolute (Roblox frame, origin at the lab origin); returns pieces, vx, vy (m/s).
+-- Pieces are absolute (Roblox axis order, origin at the lab origin) but in METRES, not studs: they
+-- are never given to Roblox (CardPlan.fromPieces turns them back into sim-metre cards), so they
+-- take no LabConfig scaling. Returns pieces, vx, vy (m/s).
 local Util = require(script.Parent:WaitForChild("Util"))
 
 local ShelfPlan = {}
 local ramp, hash = Util.ramp, Util.hash
 
+-- (metres in Roblox axis order: internal geometry only, see above)
 local function v3(x: number, y: number, z: number): Vector3
 	return Vector3.new(x, z, -y)
 end

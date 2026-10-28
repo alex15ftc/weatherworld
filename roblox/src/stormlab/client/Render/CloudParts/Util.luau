@@ -1,5 +1,5 @@
 --!nonstrict
--- Shared helpers for the storm-cloud renderer (Render/Clouds.luau): ramps, deterministic picks,
+-- Shared helpers for the billboard storm renderers (StormCards, RainShafts): ramps, deterministic picks,
 -- the far-draw rule and distance haze, sun light. Pure apart from reading Lighting.
 local Lighting = game:GetService("Lighting")
 
@@ -44,6 +44,8 @@ end
 -- would sit in front of things really in front of it (a 14 km storm base pulled in to fit hid a
 -- tornado 1.6 km away). What still doesn't fit keeps its place with its footprint capped
 -- (Util.capSize); Clouds splits near pieces so that is rare.
+-- (unused by the billboard renderers; d, D, biggest and MAX_PART here are all STUDS - convert a
+-- metre distance with LabConfig.studs before calling)
 Util.MAX_PART = 2040
 Util.NEAR_MIN = 2500
 function Util.farK(d: number, D: number, biggest: number?): number

@@ -13,12 +13,18 @@
 --            darkening with lofted wreckage; puffs grow and thin as they rise and spread
 -- So the debris cloud's width, height and density come out of the wind field, and a funnel that
 -- doesn't reach the ground still shows its circulation in the dust.
+-- Units: metres; a puff's z is its height above the local ground (C.groundAt), drawn through
+-- C.toWorldGround; billboard sizes cross to studs (docs/stormlab/SCALE-RULES.md). A tornado's dust
+-- is drawn with the tornado, about its ground point at its scale (LabConfig.scaleAbout /
+-- toWorldAbout); dust from outflow and dust fronts about its own place.
 local Workspace = game:GetService("Workspace")
 
 local TornadoDust = {}
 
 local MAX_PUFFS = 280
 local sqrt, exp, random = math.sqrt, math.exp, math.random
+local MARGIN = 0.1 -- rad beyond the view's half-diagonal before a puff counts as off screen
+local CULL_REFRESH = 8 -- an off-screen puff's position is still moved every 8th frame (staggered)
 
 function TornadoDust.new(ctx: any): any
 	local C = ctx.Config
@@ -55,7 +61,7 @@ function TornadoDust.new(ctx: any): any
 	-- (tx, ty: the tornado a puff was picked up by - drawn as dirt, grainy, once the dirt sheet
 	-- is uploaded; nil: soft dust from outflow and dust fronts)
 	local texDirt = if (C.TEXTURES.dirtGrainFlat or "") ~= "" then C.TEXTURES.dirtGrainFlat else nil
-	local function spawn(x: number, y: number, z: number, u: number, v: number, w: number, strength: number, colour: Color3, size: number, tx: number?, ty: number?)
+	local function spawn(x: number, y: number, z: number, u: number, v: number, w: number, strength: number, colour: Color3, size: number, tx: number?, ty: number?, tid: any?)
 		local p = table.remove(self.free)
 		if not p then
 			return
@@ -69,8 +75,10 @@ function TornadoDust.new(ctx: any): any
 		p.grow = size * (0.25 + 0.35 * random())
 		p.dens = math.clamp(strength, 0.05, 1)
 		p.img.ImageColor3 = colour
+		p.col = colour
+		p.wp = nil -- (its first position is always written)
 		p.base = colour
-		p.tx, p.ty = tx, ty
+		p.tx, p.ty, p.tid = tx, ty, tid
 		if tx and texDirt then
 			p.img.Image = texDirt
 			p.img.ImageRectSize = Vector2.new(256, 256)
@@ -88,6 +96,7 @@ function TornadoDust.new(ctx: any): any
 		p.alive = false
 		p.bb.Enabled = false
 		p.img.ImageTransparency = 1
+		p.tr = 1
 		table.insert(self.free, p)
 	end
 
@@ -121,7 +130,7 @@ function TornadoDust.new(ctx: any): any
 		self.frame += 1
 		local show = ctx.state.show.dust
 		local cw = ctx.cw
-		local simDt = if ctx.state.paused then 0 else dt * ctx.state.timeScale
+		local simDt = ctx:visualDt(dt) -- (dust is local motion: real speed in the game)
 		local camX, camY, camZ = ctx:simCamera()
 		if show and simDt > 0 then
 			-- pickup around each tornado (more tries where the wind is strongest)
@@ -138,7 +147,7 @@ function TornadoDust.new(ctx: any): any
 							local s, u, v, w = pickup(x, y)
 							if s > 0 and random() < math.min(1, s * 0.9 * simDt * 6) then
 								local size = math.clamp(0.35 * t.rc, 8, 70) * (0.6 + 0.6 * random())
-								spawn(x, y, 1 + 3 * random(), u * 0.5, v * 0.5, w + 2, s * (0.4 + 0.6 * (t.debrisLoft or 0.3) + 0.3), col, size, t.x, t.y)
+								spawn(x, y, 1 + 3 * random(), u * 0.5, v * 0.5, w + 2, s * (0.4 + 0.6 * (t.debrisLoft or 0.3) + 0.3), col, size, t.x, t.y, t.id)
 							end
 						end
 					end
@@ -146,11 +155,15 @@ function TornadoDust.new(ctx: any): any
 			end
 			-- outflow surges, ground circulations, dust fronts: near the camera and the focus
 			local fx, fy = ctx:focus()
-			for _, centre in { { camX, camY, 1500 }, { fx, fy, 2500 } } do
+			for ci = 1, 2 do
+				local ccx, ccy, cr = camX, camY, 1500
+				if ci == 2 then
+					ccx, ccy, cr = fx, fy, 2500
+				end
 				for _ = 1, 3 do
 					local a = random() * 2 * math.pi
-					local rr = centre[3] * sqrt(random())
-					local x, y = centre[1] + rr * math.cos(a), centre[2] + rr * math.sin(a)
+					local rr = cr * sqrt(random())
+					local x, y = ccx + rr * math.cos(a), ccy + rr * math.sin(a)
 					local s, u, v, w = pickup(x, y)
 					if s > 0 and random() < math.min(1, s * simDt * 1.5) then
 						spawn(x, y, 1, u * 0.6, v * 0.6, w + 1, 0.35 * s, Color3.fromRGB(140, 124, 104), 12 + 18 * random())
@@ -165,8 +178,8 @@ function TornadoDust.new(ctx: any): any
 		local nowL = os.clock()
 		if not self.lightF or nowL - (self.lightAt or 0) > 0.25 then
 			self.lightAt = nowL
-			self.lightF = SceneLight.shade(SceneLight.sample(ctx, fxL, fyL, 60), 1, 0.4)
-			self.lightC = SceneLight.shade(SceneLight.sample(ctx, camX, camY, 60), 1, 0.4)
+			self.lightF = SceneLight.shade(SceneLight.sample(ctx, fxL, fyL, 60 + C.groundAt(fxL, fyL)), 1, 0.4)
+			self.lightC = SceneLight.shade(SceneLight.sample(ctx, camX, camY, 60 + C.groundAt(camX, camY)), 1, 0.4)
 		end
 		local lightF, lightC = self.lightF, self.lightC
 	-- motion: a quarter of the puffs sample the wind each frame (they relax toward it over
@@ -174,6 +187,32 @@ function TornadoDust.new(ctx: any): any
 		local quarter = self.frame % 4
 		local half = self.frame % 2
 		local wcount = 0
+		-- the view, for skipping the writes of puffs off screen and changes too small to see (half
+		-- a pixel; angles and pixel sizes are unit-free, so this works in studs)
+		local cam = Workspace.CurrentCamera
+		local cf = cam.CFrame
+		local camS, look = cf.Position, cf.LookVector
+		local vp = cam.ViewportSize
+		local tanV = math.tan(math.rad(cam.FieldOfView) / 2)
+		local halfDiag = math.atan(tanV * sqrt(1 + (vp.X / math.max(vp.Y, 1)) ^ 2)) + MARGIN
+		local pxK = 0.5 * 2 * tanV / math.max(vp.Y, 1) -- (half a pixel per stud of distance)
+		-- each tornado's ground point now and its scale (its dust is drawn about it)
+		local tors = self.torCentres
+		if not tors then
+			tors = {}
+			self.torCentres = tors
+		end
+		table.clear(tors)
+		for _, t in cw.tornadoes do
+			local tc = self.torPool and self.torPool[t.id]
+			if not tc then
+				self.torPool = self.torPool or {}
+				tc = {}
+				self.torPool[t.id] = tc
+			end
+			tc.x, tc.y, tc.k = t.x, t.y, C.scaleAbout(t.x, t.y)
+			tors[t.id] = tc
+		end
 		for i, p in self.puffs do
 			if p.alive then
 				p.age += simDt
@@ -225,22 +264,74 @@ function TornadoDust.new(ctx: any): any
 					local a = math.clamp(p.age / 1.2, 0, 1) * math.clamp((p.life - p.age) / 3, 0, 1)
 					-- denser low down; thinner as the puff spreads
 					local opacity = p.dens * a * (0.55 * p.size / s + 0.15)
-					p.att.WorldPosition = Vector3.new(p.x, p.z, -p.y)
-					-- size, fade and light change slowly: half the puffs each frame (fewer instance writes)
-					if i % 2 ~= half or p.age < 1.5 then
-						p.bb.Size = UDim2.fromScale(s, s)
-						p.img.ImageTransparency = 1 - math.clamp(opacity, 0, 0.55)
+					-- (about its tornado's ground point now, else where it was picked up, else itself)
+					local tc = p.tid ~= nil and tors[p.tid]
+					local ccx, ccy, k
+					if tc then
+						ccx, ccy, k = tc.x, tc.y, tc.k
+					elseif p.tx then
+						ccx, ccy = p.tx, p.ty
+						k = C.scaleAbout(ccx, ccy)
+					else
+						ccx, ccy = p.x, p.y
+						k = C.scaleAbout(ccx, ccy)
 					end
-					-- (its light changes slowest of all: every 8th frame)
-					if (i + self.frame) % 8 == 0 or p.age < 0.5 then
-						local lf = if (p.x - fxL) ^ 2 + (p.y - fyL) ^ 2 < (p.x - camX) ^ 2 + (p.y - camY) ^ 2 then lightF else lightC
-						local b = p.base or Color3.new(0.5, 0.45, 0.4)
-						p.img.ImageColor3 = Color3.new(math.min(1, b.R * lf.R * 2.4), math.min(1, b.G * lf.G * 2.4), math.min(1, b.B * lf.B * 2.4)) -- (dust scatters sky light: lighter than the cloud it sits under)
+					local wp = C.toWorldAbout(p.x, p.y, p.z + C.groundAt(p.x, p.y), ccx, ccy, k)
+					local ss = s * k
+					-- on screen? (a cone round the view, widened by the puff's own angular size)
+					local rel = wp - camS
+					local dist = rel.Magnitude
+					local vis = dist <= ss
+					if not vis then
+						local ang = math.acos(math.clamp(rel:Dot(look) / dist, -1, 1))
+						vis = ang < halfDiag + math.asin(math.min(1, 0.75 * ss / dist))
+					end
+					local thr = pxK * dist -- (studs: half a pixel there)
+					local back = vis and p.culled -- (back on screen: everything is written now)
+					p.culled = not vis
+					if p.wp == nil or vis or (i + self.frame) % CULL_REFRESH == 0 then
+						local last = p.wp
+						if last == nil or (wp - last).Magnitude > thr then
+							p.wp = wp
+							p.att.WorldPosition = wp
+						end
+					end
+					if vis then
+						-- size, fade and light change slowly: half the puffs each frame (fewer instance writes)
+						if i % 2 ~= half or p.age < 1.5 or back then
+							if math.abs(ss - (p.ss or -1)) > thr then
+								p.ss = ss
+								p.bb.Size = UDim2.fromScale(ss, ss)
+							end
+							local tr = 1 - math.clamp(opacity, 0, 0.55)
+							if math.abs(tr - (p.tr or 2)) > 0.002 then
+								p.tr = tr
+								p.img.ImageTransparency = tr
+							end
+						end
+						-- (its light changes slowest of all: every 8th frame)
+						if (i + self.frame) % 8 == 0 or p.age < 0.5 or back then
+							local lf = if (p.x - fxL) ^ 2 + (p.y - fyL) ^ 2 < (p.x - camX) ^ 2 + (p.y - camY) ^ 2 then lightF else lightC
+							local b = p.base or Color3.new(0.5, 0.45, 0.4)
+							local cr, cg, cb = math.min(1, b.R * lf.R * 2.4), math.min(1, b.G * lf.G * 2.4), math.min(1, b.B * lf.B * 2.4) -- (dust scatters sky light: lighter than the cloud it sits under)
+							local pc = p.col
+							if not pc or math.abs(cr - pc.R) > 0.002 or math.abs(cg - pc.G) > 0.002 or math.abs(cb - pc.B) > 0.002 then
+								local col = Color3.new(cr, cg, cb)
+								p.col = col
+								p.img.ImageColor3 = col
+							end
+						end
 					end
 				end
 			end
 		end
-		ctx.root:SetAttribute("DustPuffs", MAX_PUFFS - #self.free)
+		-- (debug count: only when it changes, at most twice a second)
+		local nPuffs = MAX_PUFFS - #self.free
+		local nowS = os.clock()
+		if nPuffs ~= self.statN and nowS - (self.statAt or -math.huge) > 0.5 then
+			self.statN, self.statAt = nPuffs, nowS
+			ctx.root:SetAttribute("DustPuffs", nPuffs)
+		end
 		local _ = camZ
 		local __ = wcount
 	end
@@ -249,7 +340,6 @@ function TornadoDust.new(ctx: any): any
 		anchor:Destroy()
 	end
 
-	local _ = Workspace
 	return self
 end
 

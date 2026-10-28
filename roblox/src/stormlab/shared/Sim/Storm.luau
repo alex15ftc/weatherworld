@@ -67,7 +67,7 @@ function Storm.new(o: { [string]: any }): Storm
 		vlow = o.vlow or 0,
 		occl = 0,
 		cycle = 0,
-		lowAngle = -2.1, -- the low meso's bearing from the updraft centre, relative to motion
+		lowAngle = 2.75, -- the low meso's bearing from the updraft centre, relative to motion (rad, CCW)
 		leftMover = o.leftMover or false,
 		split = o.split or false,
 		G = 0,
@@ -225,13 +225,17 @@ end
 Storm.heading = heading
 
 -- Where the circulations sit (offsets from the updraft base centre):
---   low meso: at the rear-right flank (bearing lowAngle from motion), 0.5 Ru out
+--   low meso: on the updraft's rear (upshear) edge, a little to its left, where the rear-flank
+--             downdraft meets the edge of the forward-flank rain (the occlusion point; Lemon &
+--             Doswell 1979, docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md): bearing lowAngle
+--             (~160 deg from motion), 0.6 Ru out - the low-level updraft spreads to its
+--             right-front, the rain core lies ahead / ahead-left of it
 --   mid meso: over the tilted updraft at 5 km, a little to the rear-right
 function Storm.lowMesoAt(s: Storm): (number, number)
 	local hx, hy = heading(s)
 	local ang = s.lowAngle * (if s.leftMover then -1 else 1)
 	local ox, oy = rot2(hx, hy, ang)
-	local r = 0.5 * s.Ru
+	local r = 0.6 * s.Ru
 	return s.x + ox * r, s.y + oy * r
 end
 
@@ -245,22 +249,32 @@ end
 -- forward-flank (the main precipitation region downwind) and rear-flank downdraft centres
 function Storm.ffdAt(s: Storm): (number, number)
 	local hx, hy = heading(s)
-	-- precipitation falls out where the mid/upper storm-relative wind carries it
-	local ru, rv = s.upperU - s.u, s.upperV - s.v
+	-- the forward-flank core: where Storm.emitPrecip lets the precipitation fall out - downshear
+	-- of the updraft in the mid-level storm-relative wind (~5 km), a little to its left for a
+	-- right mover, ~1.45 updraft radii out
+	local eu, ev = s.upperU, s.upperV
+	if s.prof then
+		eu, ev = Thermo.windAt(s.prof, 5000)
+	end
+	local ru, rv = eu - s.u, ev - s.v
 	local m = sqrt(ru * ru + rv * rv)
 	if m > 1 then
 		ru, rv = ru / m, rv / m
 	else
 		ru, rv = hx, hy
 	end
-	local d = s.Ru * (1.1 + 0.03 * math.min(m, 40))
-	return s.x + ru * d, s.y + rv * d
+	ru, rv = rot2(ru, rv, 0.3 * (if s.leftMover then -1 else 1))
+	local _, tx, ty = wprofAt(s, 5000)
+	local d = 1.45 * updraftRadiusAt(s, 5000)
+	return s.x + tx + ru * d, s.y + ty + rv * d
 end
 
 function Storm.rfdAt(s: Storm): (number, number)
 	local lx, ly = Storm.lowMesoAt(s)
 	local hx, hy = heading(s)
-	local ang = (s.lowAngle - 0.6) * (if s.leftMover then -1 else 1)
+	-- (directly behind the low meso, a little to its right: the clear slot on its rear side,
+	-- wrapping S and E round it as it surges)
+	local ang = (math.pi + 0.2) * (if s.leftMover then -1 else 1)
 	local ox, oy = rot2(hx, hy, ang)
 	return lx + ox * 0.35 * s.Ru, ly + oy * 0.35 * s.Ru
 end
@@ -280,13 +294,17 @@ function Storm.updraftAt(s: Storm, x: number, y: number, z: number): number
 	return s.W * f * exp(-r2)
 end
 
--- Rotational wind of a modified-Rankine circulation (alpha 0.6) at radius r, core R, peak V
+-- Rotational wind of a Rankine circulation at radius r, core R, peak V: solid body inside, a
+-- potential vortex (1/r) outside. (Was alpha 0.6 with a tail to 8 R: the mesocyclone's winds
+-- reached so far that rain falling for minutes was carried right round the storm, and the radar
+-- showed a ring round the updraft instead of a forward-flank core and a hook:
+-- docs/stormlab/structure/, 2026-10-26.)
 local function rankine(V: number, r: number, R: number): number
 	local q = r / R
 	if q <= 1 then
 		return V * q
 	end
-	return V * q ^ -0.6
+	return V / q
 end
 
 -- Work out once per storm step what Storm.windAt needs (circulation centres, base numbers), so
@@ -363,6 +381,58 @@ function Storm.windAt(s: Storm, x: number, y: number, z: number): (number, numbe
 			v += ur * dy / r * fz
 		end
 	end
+	-- the updraft as an obstacle to the upper-level flow: the storm-relative wind at anvil levels
+	-- splits round the updraft core (flow round a cylinder: u - iv = conj(U) - U R^2 / z^2
+	-- outside it; the air inside rises with the storm). Ice and precipitation released there are
+	-- carried round both sides and downstream: the upper-level V-notch and the radar's "flying
+	-- eagle" (Lemon 1998 on overshooting-top flow; docs/stormlab/structure/)
+	if W > 0.5 and z > 0.5 * s.top and z < s.top + 500 then
+		local _, tx, ty = wprofAt(s, z)
+		local Rc = 1.2 * updraftRadiusAt(s, z)
+		-- (the storm-relative wind at this height: the sounding's where the storm has one, else
+		-- the anvil-level wind)
+		local eu, ev = s.upperU or s.u, s.upperV or s.v
+		if s.prof then
+			eu, ev = Thermo.windAt(s.prof, z)
+		end
+		local Ux, Uy = eu - s.u, ev - s.v
+		local dx, dy = x - (s.x + tx), y - (s.y + ty)
+		local r2 = dx * dx + dy * dy
+		local fz = ramp(z, 0.5 * s.top, 0.65 * s.top) * (1 - ramp(z, s.top - 300, s.top + 500))
+		if fz > 0 then
+			if r2 > Rc * Rc then
+				-- A = U Rc^2 / zeta^2 (complex); the perturbation is u' = -Re A, v' = Im A
+				local zr2 = dx * dx - dy * dy -- (zeta^2 = zr2 + i zi2)
+				local zi2 = 2 * dx * dy
+				local m = r2 * r2
+				local ar = (Ux * zr2 + Uy * zi2) / m * Rc * Rc
+				local ai = (Uy * zr2 - Ux * zi2) / m * Rc * Rc
+				u += -ar * fz
+				v += ai * fz
+			else
+				u -= Ux * fz
+				v -= Uy * fz
+			end
+		end
+	end
+	-- dynamic lift under the low-level mesocyclone: its low pressure (~rho v^2 at the centre) pulls
+	-- the air beneath it up - the strong low-level updraft of a supercell, on the inflow side of the
+	-- low-level meso, 0.5-3 km up (Klemp & Rotunno 1983; Markowski & Richardson 2010 ch. 8)
+	if W > 0.5 and z < 3500 and math.abs(s.vlow) > 3 and s.cLowX then
+		local sr = sqrt((s.srU or 0) ^ 2 + (s.srV or 0) ^ 2)
+		local ix, iy = 0, 0
+		if sr > 1 then
+			ix, iy = -(s.srU or 0) / sr, -(s.srV or 0) / sr -- (toward where the inflow comes from)
+		end
+		local Rl = 0.3 * s.Ru
+		local cx, cy = s.cLowX + ix * 0.8 * Rl, s.cLowY + iy * 0.8 * Rl
+		local dx, dy = x - cx, y - cy
+		local q = (dx * dx + dy * dy) / (1.3 * Rl) ^ 2
+		if q < 9 then
+			local gz = sin(math.pi * math.clamp(z / 3500, 0, 1)) ^ 0.7
+			w += 0.6 * math.min(math.abs(s.vlow), 0.5 * W) * gz * exp(-q)
+		end
+	end
 	-- mesocyclone: low-level circulation below ~1.5 km, mid-level 3-8 km, blended between
 	local sign = if s.leftMover then -1 else 1
 	if math.abs(s.vlow) > 0.5 or math.abs(s.vmid) > 0.5 then
@@ -373,12 +443,15 @@ function Storm.windAt(s: Storm, x: number, y: number, z: number): (number, numbe
 		local cx, cy = lx + (mx - lx) * blend, ly + (my - ly) * blend
 		local Vr = s.vlow + (s.vmid - s.vlow) * blend
 		local R = (0.3 * s.Ru) + (0.45 * s.Ru - 0.3 * s.Ru) * blend
-		local aloft = 1 - ramp(z, 0.8 * s.top, s.top)
+		-- (the mesocyclone is a mid-level feature: gone by the anvil levels, where the flow splits
+		-- evenly round the updraft instead of being turned one way)
+		local aloft = 1 - ramp(z, 0.55 * s.top, 0.7 * s.top)
 		local ground = math.min(1, (z + 2) / 30)
 		local dx, dy = x - cx, y - cy
 		local r = sqrt(dx * dx + dy * dy)
-		if r > 1 and r < 12 * R then
-			local vt = rankine(Vr, r, R) * aloft * ground * exp(-(r / (8 * R)) ^ 2)
+		if r > 1 and r < 6 * R then
+			-- (the circulation is confined to the storm: a few core radii)
+			local vt = rankine(Vr, r, R) * aloft * ground * exp(-(r / (3 * R)) ^ 2)
 			-- cyclonic for right movers (counter-clockwise), anticyclonic for left movers
 			u += -vt * dy / r * sign
 			v += vt * dx / r * sign
@@ -542,28 +615,46 @@ function Storm.step(s: Storm, dt: number, world: any)
 	s.rfd += (rfdT - s.rfd) * (1 - exp(-dt / 300))
 	s.rfdDeficit = cp:deficitAt(rx, ry)
 	-- the RFD gust front wraps round the low meso: occlusion, then a new circulation forms
-	s.occl += dt * (s.rfd / 10) * s.rot / 1300
-	s.lowAngle = -2.0 - 1.4 * s.occl
+	-- (~45-60 min a cycle for a strong rear-flank downdraft: Burgess et al. 1982 / Adlerman &
+	-- Droegemeier 2005, 40-90 min; docs/stormlab/RESEARCH-SUPERCELL-LIFECYCLE.md)
+	s.occl += dt * (s.rfd / 10) * s.rot / 2000
+	-- (occluding, the old low meso drifts to the left-rear of the updraft, into the cold
+	-- outflow; the next one forms back at the rear edge, right-front of the old)
+	s.lowAngle = 2.75 - 1.0 * s.occl
 	if s.occl >= 1 then
 		s.occl = 0
 		s.cycle += 1
 		s.vlow *= 0.35
-		s.lowAngle = -2.0
+		s.lowAngle = 2.75
 	end
 
-	-- wall cloud: inflow partly drawn from rain-cooled, moistened forward-flank outflow lowers
-	-- the cloud base under the updraft (LCL of the mixed air), only where the updraft rotates
-	local dF, mF = cp:deficitAt(fx * 0.5 + lx * 0.5, fy * 0.5 + ly * 0.5)
+	-- wall cloud: the rotating updraft ingests some rain-cooled forward-flank outflow, and the
+	-- mixture's condensation level is lower than the inflow's (Markowski & Richardson 2010 ch. 8;
+	-- docs/stormlab/RESEARCH-WALLCLOUD-HV.md). The outflow air was cooled by evaporating rain
+	-- along its wet-bulb line: cooled by the cold pool's deficit dF, its dew point rose in
+	-- proportion, up to saturation at the wet-bulb temperature (Tw ~ T - (T - Td) / 3). The share
+	-- ingested grows with the outflow's strength and the rotation drawing it in. So the lowering
+	-- follows the environment's dew-point spread (its LCL) and the outflow: a moist, low-LCL day
+	-- gives a wall cloud hanging close to the ground; a dry, high-LCL day a bigger lowering from a
+	-- higher base, or none without outflow.
+	-- (the outflow along the path from the forward flank to the low-level meso: its strongest)
+	local dF = math.max(cp:deficitAt(fx * 0.5 + lx * 0.5, fy * 0.5 + ly * 0.5), cp:deficitAt(fx * 0.8 + lx * 0.2, fy * 0.8 + ly * 0.2), (cp:deficitAt(fx, fy)))
 	local tS, tdS = env:surfaceAt(ix, iy)
-	local mix = 0.45 * ramp(dF, 0.3, 3)
-	local tM = tS - mix * dF
-	local tdM = math.min(tM, tdS + mix * dF * 0.35 * mF)
+	local spread = math.max(tS - tdS, 0)
+	local tw = tS - spread / 3
+	local p = math.clamp(dF / math.max(tS - tw, 0.3), 0, 1) -- (how far toward saturation)
+	local tO = tS - dF
+	local tdO = math.min(tO, tdS + p * (tw - tdS))
+	local mShare = 0.6 * ramp(dF, 0.2, 2.5) * math.clamp(s.rot, 0, 1)
+	local tM = tS + mShare * (tO - tS)
+	local tdM = math.min(tM, tdS + mShare * (tdO - tdS))
 	local lclMix = 125 * (tM - tdM)
 	-- plus, near the rotation centre, the low-level mesocyclone's pressure deficit: a Rankine
 	-- vortex's central deficit rho v^2 lowers the condensation level by dp / (rho g) = v^2 / g
 	-- (Atkins et al. 2013: extra lowering under a >10 hPa deficit; docs/stormlab/RESEARCH-WALLCLOUD-HV.md)
 	local dynLower = s.vlow * s.vlow / 9.81
-	s.lowering = math.clamp(s.base - lclMix + dynLower, 0, 0.6 * s.base) * s.rot
+	-- (measured against the inflow's own condensation level, so the two use the same air)
+	s.lowering = math.clamp(125 * spread - lclMix + dynLower, 0, 0.6 * s.base) * s.rot
 	s.wallBase = s.base - s.lowering
 
 	-- anvil: spreads downstream at the anvil-level storm-relative wind
@@ -692,19 +783,56 @@ function Storm.emitPrecip(s: Storm, dt: number, world: any)
 		end
 		local ru_, rv_ = eu - s.u, ev - s.v
 		local downshear = atan2(rv_, ru_)
-		if rng:next() < (if s.pin and s.pin.rearShare then s.pin.rearShare else 0.25 * s.rot) then
+		local sgnLeft = if s.leftMover then -1 else 1
+		if spread == 2 then
 			-- the hook: precipitation swept round the low-level mesocyclone by its rotation, a
-			-- crescent from its rear round its far side (rain wrapping a tornado comes from here)
+			-- crescent wrapping cyclonically from the forward flank round its rear to its far
+			-- side (rain wrapping a tornado comes from here). It stays off the mesocyclone itself
+			-- and its inflow side: there the updraft's inflow keeps a rain-free notch, where the
+			-- tornado is (inner radius 0.35 Ru, ~1.3 km, wider than the radar field's smoothing)
 			local lx, ly = s.cLowX or s.x, s.cLowY or s.y
 			local hx, hy = heading(s)
 			local back = atan2(-hy, -hx)
 			local sgn = if s.leftMover then -1 else 1
-			local a = back + sgn * rng:range(-1.6, 2.4)
-			local rr = s.Ru * rng:range(0.18, 0.6)
+			-- an inward cyclonic spiral (Lemon & Doswell 1979; docs/storm-reference/radar): it
+			-- leaves the core's rear-left (WNW of the meso for an eastward storm) 1.4 Ru out and
+			-- curls round the rear to its tip just right-rear of the meso (SSW), 0.4 Ru from it -
+			-- the tornado sits inside the curl, the inflow notch beyond the tip
+			-- (it grows out of the forward-flank core: it starts at the core's rear edge and curls
+			-- cyclonically round the low meso to its tip at the meso's right-rear)
+			local fx, fy = s.cFfdX, s.cFfdY
+			if not fx then
+				fx, fy = Storm.ffdAt(s)
+			end
+			local ex, ey = fx - hx * 0.55 * s.Ru, fy - hy * 0.55 * s.Ru -- (the core's rear edge)
+			local a0 = atan2(ey - ly, ex - lx)
+			local r0 = math.clamp(sqrt((ex - lx) ^ 2 + (ey - ly) ^ 2), 0.6 * s.Ru, 1.6 * s.Ru)
+			-- the tip: just right-rear of the meso (the old spiral's end)
+			local aTip = back + sgn * 1.05
+			local sweep = ((aTip - a0) * sgn) % (2 * math.pi) -- (cyclonic sweep from the root)
+			if sweep < 1.2 then
+				sweep += 2 * math.pi
+			end
+			sweep = math.min(sweep, 4.2)
+			local f = rng:next()
+			local a = a0 + sgn * sweep * f
+			local rr = (r0 * (1 - f) + 0.4 * s.Ru * f) * rng:range(0.85, 1.15)
 			return lx + rr * cos(a), ly + rr * sin(a)
 		end
-		local a = downshear + rng:normal() * 0.9
-		local rr = ru * spread * rng:range(1.25, 1.8)
+		-- high up (above half the top) the strong updraft's hail and graupel leave it round its
+		-- downstream half, on both flanks; the upper flow, split round the updraft, carries them
+		-- along both sides: echo wraps the updraft aloft with a weak-echo notch over it (the
+		-- "flying eagle" / V-notch, Lemon 1998)
+		if spread == 1 and z > 0.5 * s.top then
+			local a = downshear + (rng:next() * 2 - 1) * 1.75
+			local rr = 1.2 * ru * rng:range(1.0, 1.3)
+			return s.x + tx + rr * cos(a), s.y + ty + rr * sin(a)
+		end
+		-- out of the updraft's downshear side, a little to the left of the storm-relative flow for
+		-- a right mover (the forward-flank core sits left-front of the updraft; the right-front
+		-- stays clear: the inflow notch)
+		local a = downshear + sgnLeft * 0.3 + rng:normal() * 0.4
+		local rr = ru * spread * rng:range(1.1, 1.8)
 		return s.x + tx + rr * cos(a), s.y + ty + rr * sin(a)
 	end
 	local rate = s.precipRate
@@ -717,7 +845,7 @@ function Storm.emitPrecip(s: Storm, dt: number, world: any)
 	local budget = rate * dt + (s.precipDebt or 0)
 	local n = math.floor(budget / m0)
 	s.precipDebt = budget - n * m0
-	for _ = 1, math.min(n, 60) do
+	for _ = 1, math.min(n, 150) do
 		local z
 		if s.dead then
 			z = rng:range(4500, 7500)
@@ -727,14 +855,25 @@ function Storm.emitPrecip(s: Storm, dt: number, world: any)
 			-- level, graupel and hail above it)
 			z = s.base + 500
 			for _ = 1, 4 do
-				local cand = rng:range(math.max(s.base + 400, 2500), math.max(s.base + 800, math.min(0.65 * s.el, 8000)))
+				-- (up to ~0.8 of the equilibrium level: graupel and hail carried high by the updraft
+				-- give the echo aloft - the overhang over the inflow, the BWER's cap)
+				local cand = rng:range(math.max(s.base + 400, 2500), math.max(s.base + 800, math.min(0.8 * s.el, 11000)))
 				if rng:next() < wprofAt(s, cand) then
 					z = cand
 					break
 				end
 			end
 		end
-		local x, y = place(z, if s.dead then -2.2 else 1)
+		-- the hook's share: rain the rear-flank downdraft brings down fast, released low (from
+		-- ~300 m to ~2 km above the base) so the low-level rotation wraps it before it spreads -
+		-- released aloft with the rest it fell for minutes through the mid-level flow and the
+		-- crescent smeared out (docs/stormlab/STATUS.md, radar)
+		-- (0.15: on radar the hook is weaker than the main core - 40-50 vs 55-65 dBZ)
+		local hook = not s.dead and rng:next() < (if s.pin and s.pin.rearShare then s.pin.rearShare else 0.15 * s.rot)
+		if hook then
+			z = rng:range(s.base + 300, math.max(s.base + 600, math.min(s.freezing - 200, s.base + 2000)))
+		end
+		local x, y = place(z, if s.dead then -2.2 elseif hook then 2 else 1)
 		local kind, size = 1, 0
 		if z > s.freezing then
 			kind = 2

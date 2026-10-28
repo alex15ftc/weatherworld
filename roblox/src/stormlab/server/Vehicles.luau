@@ -3,8 +3,10 @@
 -- server owns them) pushed by aerodynamic force from the RELATIVE wind, F = 1/2 rho Cd A |vr| vr,
 -- per body axis (a car is ~2.5x more draggy side-on), plus lift over the roof. The force acts at
 -- the centre of pressure, above the centre of mass, so sliding, tipping and rolling come out of
--- the physics: no thresholds, no scripted states. Workspace.Gravity is 9.81 (1 stud = 1 m);
--- masses are scaled into Roblox's density limit and forces by the same factor.
+-- the physics: no thresholds, no scripted states. Everything is computed in metres (sizes, areas,
+-- the wind, the force in newtons); Roblox works in studs at LabConfig.SCALE studs per metre and
+-- Workspace.Gravity is 9.81 x SCALE studs/s^2, so a force F (N) on a real mass m (kg) becomes
+-- F x SCALE x (Roblox mass / m): the same acceleration, in studs/s^2.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local lab = ReplicatedStorage:WaitForChild("StormLab")
@@ -16,6 +18,7 @@ Vehicles.__index = Vehicles
 
 local RHO = 1.15
 local toWorld, fromWorld = LabConfig.toWorld, LabConfig.fromWorld
+local K = LabConfig.SCALE
 
 local COLOURS = { Color3.fromRGB(150, 28, 28), Color3.fromRGB(36, 58, 108), Color3.fromRGB(210, 210, 204), Color3.fromRGB(40, 40, 44), Color3.fromRGB(96, 110, 70) }
 
@@ -29,18 +32,19 @@ function Vehicles.add(self: any, className: string, x: number, y: number, headin
 	local c = Debris.CLASSES[className]
 	local body = Instance.new("Part")
 	body.Name = className
-	body.Size = Vector3.new(c.size[1], c.size[2], c.size[3])
+	body.Size = Vector3.new(c.size[1], c.size[2], c.size[3]) * K
 	body.Color = COLOURS[(colourIndex or 1) % #COLOURS + 1]
 	body.Material = Enum.Material.SmoothPlastic
 	body.TopSurface = Enum.SurfaceType.Smooth
 	body.BottomSurface = Enum.SurfaceType.Smooth
-	body.CFrame = CFrame.new(toWorld(x, y, c.size[2] / 2 + 0.25)) * CFrame.Angles(0, -heading, 0)
+	-- parked on the ground there (LabConfig.groundAt)
+	body.CFrame = CFrame.new(LabConfig.toWorldGround(x, y, c.size[2] / 2 + 0.25)) * CFrame.Angles(0, -heading, 0)
 	-- density chosen so the part's Roblox mass is (real mass x MASS_SCALE)
 	body.CustomPhysicalProperties = PhysicalProperties.new(1, 0.7, 0.05, 1, 1)
 	-- a cabin and wheels for the look (welded, massless)
 	local cabin = Instance.new("Part")
-	cabin.Size = Vector3.new(c.size[1] * 0.5, c.size[2] * 0.55, c.size[3] * 0.92)
-	cabin.CFrame = body.CFrame * CFrame.new(-c.size[1] * 0.05, c.size[2] * 0.75, 0)
+	cabin.Size = Vector3.new(c.size[1] * 0.5, c.size[2] * 0.55, c.size[3] * 0.92) * K
+	cabin.CFrame = body.CFrame * CFrame.new(Vector3.new(-c.size[1] * 0.05, c.size[2] * 0.75, 0) * K)
 	cabin.Color = Color3.fromRGB(70, 90, 110)
 	cabin.Material = Enum.Material.Glass
 	cabin.Transparency = 0.25
@@ -52,8 +56,8 @@ function Vehicles.add(self: any, className: string, x: number, y: number, headin
 	for _, wpos in { { 0.32, 0.5 }, { -0.32, 0.5 }, { 0.32, -0.5 }, { -0.32, -0.5 } } do
 		local w = Instance.new("Part")
 		w.Shape = Enum.PartType.Cylinder
-		w.Size = Vector3.new(0.3, 0.7, 0.7)
-		w.CFrame = body.CFrame * CFrame.new(wpos[1] * c.size[1], -c.size[2] / 2, wpos[2] * c.size[3]) * CFrame.Angles(0, math.pi / 2, 0)
+		w.Size = Vector3.new(0.3, 0.7, 0.7) * K
+		w.CFrame = body.CFrame * CFrame.new(Vector3.new(wpos[1] * c.size[1], -c.size[2] / 2, wpos[2] * c.size[3]) * K) * CFrame.Angles(0, math.pi / 2, 0)
 		w.Color = Color3.fromRGB(24, 24, 24)
 		w.Massless = true
 		w.CanCollide = false
@@ -64,7 +68,7 @@ function Vehicles.add(self: any, className: string, x: number, y: number, headin
 	end
 	-- the aerodynamic force acts at the centre of pressure, a little above the centre of mass
 	local att = Instance.new("Attachment")
-	att.Position = Vector3.new(0, c.size[2] * 0.2, 0)
+	att.Position = Vector3.new(0, LabConfig.studs(c.size[2] * 0.2), 0)
 	att.Parent = body
 	local force = Instance.new("VectorForce")
 	force.Attachment0 = att
@@ -86,12 +90,14 @@ function Vehicles.update(self: any, world: any)
 	for _, e in self.list do
 		local b = e.body
 		if b.Parent then
-			local x, y, z = fromWorld(b.Position)
+			local x, y, zAbs = fromWorld(b.Position)
+			-- height above the local ground: the sim's near-surface wind knows no hills
+			local z = zAbs - LabConfig.groundAt(x, y)
 			local wu, wv, ww = world:windAt(x, y, math.max(0.8, z))
 			local vel = b.AssemblyLinearVelocity
-			local vu, vv, vw = fromWorld(vel)
-			-- relative wind in Roblox axes, then in the body's own axes
-			local rel = toWorld(wu - vu, wv - vv, ww - vw)
+			local vu, vv, vw = fromWorld(vel) -- (m/s: fromWorld is linear)
+			-- relative wind in Roblox axes (m/s), then in the body's own axes
+			local rel = toWorld(wu - vu, wv - vv, ww - vw) / K
 			local cf = b.CFrame
 			local lx, ly, lz = cf.RightVector:Dot(rel), cf.UpVector:Dot(rel), cf.LookVector:Dot(rel)
 			local speed = rel.Magnitude
@@ -108,10 +114,10 @@ function Vehicles.update(self: any, world: any)
 			local hs = math.sqrt(lx * lx + lz * lz)
 			local lift = 0.5 * RHO * c.cl * aTop * hs * hs
 			local fWorld = cf.RightVector * fx + cf.UpVector * fy + cf.LookVector * fz + Vector3.yAxis * lift
-			e.force.Force = fWorld * e.scale
+			e.force.Force = fWorld * (e.scale * K) -- (N on the real mass -> studs-based force on the Roblox mass)
 			local ws = math.sqrt(wu * wu + wv * wv)
 			e.maxWind = math.max(e.maxWind, ws)
-			e.travelled = (b.Position - e.start).Magnitude
+			e.travelled = (b.Position - e.start).Magnitude / K -- (m)
 			if z > c.size[2] + 1.5 then
 				e.lofted = math.max(e.lofted, z)
 			end

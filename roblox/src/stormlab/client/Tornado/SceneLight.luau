@@ -26,13 +26,30 @@ local function sunThrough(cw: any, x: number, y: number, z: number, sun: Vector3
 		return 0
 	end
 	local tau = 0
+	-- (the ray's horizontal reach per metre of height: a storm farther from (x, y) than the reach
+	-- up to its highest test level plus its own size adds nothing, so it is skipped - the result
+	-- is the same to the bit, the work is not O(all storms) for a point far from most of them)
+	local reachK = sqrt(sx * sx + sy * sy) / sz
 	for _, s in cw.storms do
 		local ru = s.Ru or 3000
 		local base = s.base or 1200
 		local top = s.top or 10000
+		local h1, h2, h3 = base + 200, 0.5 * (base + top), (s.el or top) - 800
+		local hMax = math.max(h1, h2, h3)
+		if hMax <= z then
+			continue
+		end
+		local len = s.anvilLen or 0
+		local size = 3.125 * ru + (if len > 2000 and s.anvilU then 1.35 * len + 2 * ru else 0)
+		local reach = (hMax - z) * reachK + size + 1
+		local ddx, ddy = x - s.x, y - s.y
+		if ddx * ddx + ddy * ddy > reach * reach then
+			continue
+		end
 		local fadeT = if s.dead then exp(-(s.deadFor or 0) / 600) else 1
 		local fadeA = if s.dead then exp(-(s.deadFor or 0) / 1800) else 1
-		for _, h in { base + 200, 0.5 * (base + top), (s.el or top) - 800 } do
+		for hi = 1, 3 do
+			local h = if hi == 1 then h1 elseif hi == 2 then h2 else h3
 			if h > z then
 				local k = (h - z) / sz
 				local px, py = x + sx * k, y + sy * k
@@ -40,7 +57,6 @@ local function sunThrough(cw: any, x: number, y: number, z: number, sun: Vector3
 				local d = sqrt(dx * dx + dy * dy)
 				local rr = if h < base + 600 then 2.5 * ru else 1.5 * ru
 				tau += 2.5 * fadeT * math.clamp((1.25 - d / rr) / 0.5, 0, 1)
-				local len = s.anvilLen or 0
 				if h > (s.el or top) - 2000 and len > 2000 and s.anvilU then
 					local along = dx * s.anvilU + dy * s.anvilV
 					local across = math.abs(-dx * s.anvilV + dy * s.anvilU)
@@ -55,13 +71,25 @@ local function sunThrough(cw: any, x: number, y: number, z: number, sun: Vector3
 	return exp(-tau)
 end
 
+-- (the sun's direction and Render/Sky's SkyDiffuse attribute change slowly: read once a frame,
+-- not per sample - many samples are taken a frame)
+local cacheAt, cacheRoot, cacheSun, cacheOvercast = -math.huge, nil, Vector3.yAxis, 1
+local CACHE_S = 1 / 120
+
+-- (the returned table is the caller's: several callers keep it and change its flash)
 function SceneLight.sample(ctx: any, x: number, y: number, z: number): any
-	local sun = Lighting:GetSunDirection()
+	local now = os.clock()
+	if now - cacheAt > CACHE_S or cacheRoot ~= ctx.root then
+		cacheAt, cacheRoot = now, ctx.root
+		cacheSun = Lighting:GetSunDirection()
+		local skyDiffuse = ctx.root:GetAttribute("SkyDiffuse")
+		cacheOvercast = if type(skyDiffuse) == "number" then skyDiffuse else 1
+	end
+	local sun = cacheSun
 	local elev = sun.Y
 	-- night: 0 with the sun up, 1 once it is ~10 degrees below the horizon
 	local night = smooth(0.05, -0.17, elev)
-	local skyDiffuse = ctx.root:GetAttribute("SkyDiffuse")
-	local overcast = if type(skyDiffuse) == "number" then skyDiffuse else 1
+	local overcast = cacheOvercast
 	local moon = ctx.state.moonlight or 0
 	local skyglow = 0.035 + 0.12 * moon
 	local daySky = (0.32 + 0.38 * smooth(0, 0.5, elev)) * overcast

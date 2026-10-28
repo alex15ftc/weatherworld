@@ -46,7 +46,7 @@ local function placeAt(character: Model, x: number, z: number)
 	end
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
-	local hit = workspace:Raycast(Vector3.new(x, 3000, z), Vector3.new(0, -6000, 0), params)
+	local hit = workspace:Raycast(Vector3.new(x, Config.RAY_TOP_STUDS, z), Vector3.new(0, -2 * Config.RAY_TOP_STUDS, 0), params)
 	local y = if hit then hit.Position.Y else ChunkGen.groundStudsAt(x, z)
 	character:PivotTo(CFrame.new(x, y + 5, z))
 	root.Anchored = false

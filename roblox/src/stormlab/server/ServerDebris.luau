@@ -5,6 +5,8 @@
 -- each client flies the same piece through the same replicated wind field to draw it. When a
 -- piece comes to rest the server leaves an anchored piece of rubble there (replicated once) and
 -- tells clients to drop their copy. Pieces are capped; the oldest are settled where they are.
+-- Units: pieces fly in METRES (z above the datum; the ground under them is LabConfig.groundAt, the
+-- wind is sampled at the height above that ground); rubble parts are placed in studs.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -54,10 +56,11 @@ function ServerDebris.settle(self: any, p: any)
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
-	part.Size = Vector3.new(c.size[1], math.max(0.02, c.size[2]), c.size[3])
+	part.Size = Vector3.new(c.size[1], math.max(0.02, c.size[2]), c.size[3]) * LabConfig.SCALE
 	part.Color = Color3.fromRGB(c.color[1], c.color[2], c.color[3])
 	part.Material = Enum.Material[c.material] or Enum.Material.Wood
-	part.CFrame = CFrame.new(LabConfig.toWorld(p.x, p.y, math.max(0.02, p.z))) * CFrame.Angles(0, p.yaw, 0)
+	local gz = LabConfig.groundAt(p.x, p.y)
+	part.CFrame = CFrame.new(LabConfig.toWorld(p.x, p.y, math.max(gz + 0.02, p.z))) * CFrame.Angles(0, p.yaw, 0)
 	part.Parent = self.folder
 	table.insert(self.rubble, part)
 	while #self.rubble > MAX_RUBBLE do
@@ -78,13 +81,14 @@ function ServerDebris.update(self: any, world: any, dt: number)
 		return
 	end
 	self.acc -= steps * STEP
+	-- (the sim's near-surface wind knows no hills: sample it at the height above the local ground)
 	local function wind(x: number, y: number, z: number): (number, number, number)
-		return world:windAt(x, y, z)
+		return world:windAt(x, y, math.max(0, z - LabConfig.groundAt(x, y)))
 	end
 	local keep = {}
 	for _, p in self.flying do
 		for _ = 1, steps do
-			Debris.step(p, STEP, wind)
+			Debris.step(p, STEP, wind, LabConfig.groundAt(p.x, p.y))
 			if p.resting and p.restFor > 1.5 then
 				break
 			end

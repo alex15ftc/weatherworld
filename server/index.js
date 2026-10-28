@@ -89,6 +89,8 @@ async function serveApi(url, req, res) {
   if (url.pathname.startsWith('/api/game/v1/') && process.env.WEATHER_GAME_KEY && req.headers['x-api-key'] !== process.env.WEATHER_GAME_KEY) return sendJson(req, res, 401, { error: 'Bad key' }, { cacheable: false, trace });
   if (url.pathname === '/api/game/v1/frames') return sendText(req, res, 200, runtime.gameFeed.poll(url.searchParams.get('after')), trace);
   // The products the game draws (GameProducts.js): the manifest of versions, and each product's text.
+  if (url.pathname === '/api/game/v1/lab/window') return sendJson(req, res, 200, runtime.labWindow(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half')), { cacheable: false, trace });
+  if (url.pathname === '/api/game/v1/lab/storms') return sendJson(req, res, 200, runtime.labStormsAt(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half')), { cacheable: false, trace });
   if (url.pathname === '/api/game/v1/manifest') return sendJson(req, res, 200, gameProducts.manifest(), { cacheable: false, trace });
   const gameProduct = url.pathname.match(/^\/api\/game\/v1\/product\/([A-Za-z0-9._-]+)$/);
   if (gameProduct) { const entry = await gameProducts.productAsync(gameProduct[1]); return entry ? sendText(req, res, 200, entry.text, trace, { 'x-product-version': entry.version }) : sendJson(req, res, 404, { error: 'Unknown product' }, { cacheable: false, trace }); }

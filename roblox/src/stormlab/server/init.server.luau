@@ -7,7 +7,11 @@
 --                     itself at World.pause points), so storms, rain and cold pools never stall
 --                     the tornado
 --   replication       tornadoes 15 Hz, world 2 Hz, profiles on change, cold pool / rain volume
---                     every 10 s, flashes and events as they happen
+--                     every 10 s, flashes and events as they happen; all of it as storm frames
+--                     (Sim/Frames) through server/Publisher, which can also record them
+--   source            LabConfig.SOURCE (or the Workspace attribute StormLabSource): "sim" runs the
+--                     lab's simulation; "replay" / "feed" relay recorded or HTTP frames instead
+--                     (server/Relay), the way the main game will relay the engine's
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -23,24 +27,13 @@ local Town = require(script:WaitForChild("Town"))
 local Vehicles = require(script:WaitForChild("Vehicles"))
 local ServerDebris = require(script:WaitForChild("ServerDebris"))
 local VisualTests = require(lab:WaitForChild("VisualTests"))
+local Frames = require(Sim:WaitForChild("Frames"))
+local Publisher = require(script:WaitForChild("Publisher"))
+local Relay = require(script:WaitForChild("Relay"))
+local LabTerrain = require(script:WaitForChild("Terrain"))
 
 Players.CharacterAutoLoads = false
-Workspace.Gravity = 9.81 -- 1 stud = 1 m
-
--- the cloud kit's uploaded meshes (ReplicatedStorage.CloudKitMeshes) for the cloud renderer
-do
-	local shared = ReplicatedStorage:FindFirstChild("Shared")
-	local weather = shared and shared:FindFirstChild("Weather")
-	local kit = weather and weather:FindFirstChild("CloudKit")
-	if kit then
-		local ok, err = pcall(function()
-			require(kit).serverLoad(LabConfig.CLOUD_KIT_ASSET)
-		end)
-		if not ok then
-			warn("[StormLab] cloud kit: " .. tostring(err))
-		end
-	end
-end
+Workspace.Gravity = 9.81 * LabConfig.SCALE -- (9.81 m/s^2 in studs at the lab's scale)
 
 -- remotes
 local net = Instance.new("Folder")
@@ -62,17 +55,14 @@ for key, name in R do
 end
 net.Parent = ReplicatedStorage
 
--- clients that have said hello (their listeners are connected): only they get broadcasts
-local joined: { [Player]: boolean } = {}
-local function broadcast(remote: any, ...)
-	for p in joined do
-		if p.Parent then
-			remote:FireClient(p, ...)
-		else
-			joined[p] = nil
-		end
-	end
-end
+-- every frame goes through the publisher (only clients that said "ready" get broadcasts)
+local world: any = nil
+local relay: any = nil
+local lastRecording: string? = nil
+local source = "sim" -- (set below from LabConfig.SOURCE)
+local pub = Publisher.new(remotes, Frames, function(): number
+	return if world then world.time elseif relay then relay:time() else 0
+end)
 
 local settings = {
 	timeScale = LabConfig.DEFAULT_TIME_SCALE,
@@ -82,12 +72,11 @@ local settings = {
 }
 
 local scenarioName = Workspace:GetAttribute("StormLabScenario") or LabConfig.DEFAULT_SCENARIO
-local world: any = nil
 local data: any = nil
 local town: any = nil
 local vehicles = Vehicles.new(Workspace)
 local debris = ServerDebris.new(function(e)
-	broadcast(remotes.event, e)
+	pub:send("event", e)
 end)
 local ready = false
 local profileSeen = {}
@@ -123,6 +112,12 @@ local function placeTown(x: number, y: number, bearing: number)
 	end
 	vehicles:clear()
 	debris:clear()
+	-- the uneven ground round the town (LabConfig.GROUND.relief; the town sits on a flat pad)
+	local t0 = os.clock()
+	local voxels = LabTerrain.build(LabConfig, x, y, function()
+		task.wait()
+	end)
+	log("terrain: %d voxels in %.1f s", voxels, os.clock() - t0)
 	town = Town.new(x, y, bearing, 7)
 	-- cars and pickups parked along the main street
 	local cb, sb = math.cos(bearing), math.sin(bearing)
@@ -136,7 +131,7 @@ local function placeTown(x: number, y: number, bearing: number)
 		return town:groundAt(gx, gy)
 	end
 	log("town of %d structures at (%.1f, %.1f) km", #town.structures, x / 1000, y / 1000)
-	broadcast(remotes.event, { kind = "town", x = x, y = y, bearing = bearing })
+	pub:send("event", { kind = "town", x = x, y = y, bearing = bearing })
 end
 
 local function loadScenario(name: string)
@@ -148,10 +143,12 @@ local function loadScenario(name: string)
 	end
 	local t0 = os.clock()
 	data = Json.decode(require(module))
-	world = World.new(data)
-	world.yield = function() -- (spin-up and lab scenes yield between chunks: no script timeout)
+	-- (the analysis, spin-up and lab scenes yield between chunks: no script timeout)
+	local function yieldNow()
 		task.wait()
 	end
+	world = World.new(data, { yield = yieldNow })
+	world.yield = yieldNow
 	world.genesis = settings.genesis
 	world.initiation = settings.initiation
 	world:spinUp(LabConfig.SPIN_UP_SECONDS)
@@ -162,14 +159,41 @@ local function loadScenario(name: string)
 	ready = true
 end
 
-loadScenario(scenarioName)
+source = Workspace:GetAttribute("StormLabSource") or LabConfig.SOURCE.mode or "sim"
+if source == "sim" then
+	loadScenario(scenarioName)
+else
+	-- relay recorded or HTTP frames instead of simulating (server/Relay)
+	local opts = table.clone(LabConfig.SOURCE)
+	opts.recording = Workspace:GetAttribute("StormLabRecording") or opts.recording
+	opts.scenario = scenarioName
+	local ok, r = pcall(Relay.new, source, opts, pub, Frames)
+	if ok then
+		relay = r
+		relay.settings = settings
+		scenarioName = relay.scenario or scenarioName
+		log("relaying %s frames (scenario %s)", source, scenarioName)
+		ready = true
+	else
+		warn("[StormLab] " .. tostring(r) .. "; running the simulation instead")
+		source = "sim"
+		loadScenario(scenarioName)
+	end
+end
 
 remotes.hello.OnServerInvoke = function(player)
 	while not ready do
 		task.wait(0.2)
 	end
 	-- (the newcomer gets the full state once its listeners are connected: the "ready" command)
-	return { scenario = scenarioName, time = world.time, settings = settings }
+	return {
+		scenario = scenarioName,
+		time = if world then world.time else relay:time(),
+		settings = settings,
+		source = source,
+		frameVersion = Frames.VERSION,
+		town = if town then { x = town.cx, y = town.cy } else nil, -- (the ground's relief centre)
+	}
 end
 
 -- the strongest live tornado, or nil
@@ -199,13 +223,58 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 	local c = cmd.cmd
 	if c == "ready" then
 		-- the client's listeners are connected: from now on it gets broadcasts, and the full state
-		joined[player] = true
-		remotes.profiles:FireClient(player, world:profileSnapshot({}))
-		remotes.state:FireClient(player, world:snapshot(), settings)
-		remotes.coldPool:FireClient(player, world:packColdPool())
-		remotes.precip:FireClient(player, world.precip:pack())
+		pub:join(player)
 		if town then
-			remotes.event:FireClient(player, { kind = "town", x = town.cx, y = town.cy })
+			pub:sendTo(player, "event", { kind = "town", x = town.cx, y = town.cy })
+		end
+		return
+	end
+	if c == "source" then
+		-- switch the running server between its simulation and replaying a recording (the last
+		-- one made, or cmd.recording): the clients rebuild from the scenario event, then the
+		-- recording's first frames restore the full state
+		pub:stop()
+		if cmd.mode == "replay" then
+			local name = if type(cmd.recording) == "string" then cmd.recording else lastRecording
+			local ok, r = pcall(Relay.new, "replay", { recording = name, scenario = scenarioName }, pub, Frames)
+			if not ok then
+				warn("[StormLab] " .. tostring(r))
+				return
+			end
+			relay = r
+			relay.settings = settings
+			world = nil
+			source = "replay"
+			log("replaying %s", tostring(name))
+		elseif relay then
+			relay = nil
+			source = "sim"
+			loadScenario(scenarioName)
+		end
+		pub:reset()
+		pub:send("event", { kind = "scenario", scenario = scenarioName, source = source })
+		return
+	end
+	if c == "record" then
+		-- record the frames sent from now on (ServerStorage.StormLabRecordings.<name>)
+		if cmd.on then
+			local name = if type(cmd.name) == "string" then cmd.name else os.date("!lab-%Y%m%d-%H%M%S")
+			lastRecording = name
+			local where = pub:record(name, { Scenario = scenarioName, Source = source })
+			log("recording frames to %s", where)
+		else
+			local nF, nSkip = pub:stop()
+			log("recording stopped: %d frames (%d not encodable)", nF, nSkip)
+		end
+		pub:send("event", { kind = "recording", on = pub:recording() })
+		return
+	end
+	if relay then
+		-- (relaying: only the playback clock can be changed)
+		if c == "timeScale" then
+			settings.timeScale = math.clamp(tonumber(cmd.value) or 1, 0.1, 120)
+		elseif c == "pause" then
+			settings.paused = not settings.paused
 		end
 		return
 	end
@@ -214,12 +283,14 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 	elseif c == "pause" then
 		settings.paused = not settings.paused
 	elseif c == "scenario" and type(cmd.name) == "string" then
+		pub:reset()
 		loadScenario(cmd.name)
-		broadcast(remotes.event, { kind = "scenario", scenario = scenarioName })
+		pub:send("event", { kind = "scenario", scenario = scenarioName })
 		task.wait()
-		broadcast(remotes.profiles, world:profileSnapshot(profileSeen))
-		broadcast(remotes.coldPool, world:packColdPool())
-		broadcast(remotes.precip, world.precip:pack())
+		pub:send("profiles", world:profileSnapshot(profileSeen))
+		pub:send("coldPool", world:packColdPool())
+		pub:send("precip", world.precip:pack())
+		pub:send("precipLite", world.precip:packLite())
 	elseif c == "forceTornado" then
 		local s = stormById(cmd.id)
 		if not s then
@@ -258,7 +329,7 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 			local t0 = os.clock()
 			local t = world:labScene(scene, VisualTests.SITE)
 			log("visual test %s built in %.1f s: %s", scene.id, os.clock() - t0, if t then string.format("%s %s vc %.0f rc %.0f S %.2f", t.id, t.stage, t.vc, t.rc, t.swirl) else "no tornado")
-			broadcast(remotes.event, { kind = "labScene", id = scene.id, tornado = t and t.id, x = t and t.x, y = t and t.y })
+			pub:send("event", { kind = "labScene", id = scene.id, tornado = t and t.id, x = t and t.x, y = t and t.y })
 		end
 	elseif c == "clearScene" then
 		for _, s in world.storms do
@@ -278,7 +349,7 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 		Storm.environment(cell, world)
 		table.insert(world.storms, cell)
 	end
-	broadcast(remotes.state, world:snapshot(), settings)
+	pub:send("state", world:snapshot(), settings)
 end)
 
 -- the slow simulation, run as a coroutine with a time budget per frame
@@ -292,12 +363,16 @@ local function yieldFn()
 	end
 end
 
-local timers = { tornado = 0, state = 0, cold = 0, precip = 0 }
+local timers = { tornado = 0, state = 0, cold = 0, precip = 0, precipFull = 0 }
 local townAcc = 0
 local stats = { slowMs = 0, fastMs = 0, frames = 0 }
 
 RunService.Heartbeat:Connect(function(dt)
 	if not ready then
+		return
+	end
+	if relay then
+		relay:step(math.min(dt, 0.1), settings.timeScale, settings.paused)
 		return
 	end
 	local t0 = os.clock()
@@ -316,7 +391,7 @@ RunService.Heartbeat:Connect(function(dt)
 				debris:release(releases, world.time)
 			end
 			if #reports > 0 then
-				broadcast(remotes.event, { kind = "damage", reports = reports })
+				pub:send("event", { kind = "damage", reports = reports })
 			end
 		end
 	end
@@ -351,15 +426,19 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	if timers.tornado >= 1 / LabConfig.RATES.tornadoHz then
 		timers.tornado = 0
-		broadcast(remotes.tornado, world:tornadoSnapshot(), world.time)
+		-- one tornado a message: the unreliable remote drops payloads over ~900 bytes, and one
+		-- snapshot is ~600 (the client merges them: client/Net)
+		for _, t in world:tornadoSnapshot() do
+			pub:send("tornado", { t }, world.time)
+		end
 	end
 	if timers.state >= 1 / LabConfig.RATES.stateHz then
 		timers.state = 0
 		local profiles = world:profileSnapshot(profileSeen)
 		if #profiles > 0 then
-			broadcast(remotes.profiles, profiles)
+			pub:send("profiles", profiles)
 		end
-		broadcast(remotes.state, world:snapshot(), settings)
+		pub:send("state", world:snapshot(), settings)
 		Workspace:SetAttribute("StormLabFrameMs", math.floor((stats.fastMs + stats.slowMs) / math.max(1, stats.frames) * 100) / 100)
 		Workspace:SetAttribute("StormLabSimTime", math.floor(world.time))
 		Workspace:SetAttribute("StormLabParcels", world.precip.n)
@@ -367,19 +446,24 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	if timers.cold >= LabConfig.RATES.coldPoolEvery then
 		timers.cold = 0
-		broadcast(remotes.coldPool, world:packColdPool())
+		pub:send("coldPool", world:packColdPool())
 	end
 	if timers.precip >= LabConfig.RATES.precipEvery then
 		timers.precip = 0
-		broadcast(remotes.precip, world.precip:pack())
+		pub:send("precipLite", world.precip:packLite())
+	end
+	local fullEvery = LabConfig.RATES.precipFullEvery or 0
+	if fullEvery > 0 and timers.precipFull >= fullEvery then
+		timers.precipFull = 0
+		pub:send("precip", world.precip:pack())
 	end
 	if #world.flashes > 0 then
-		broadcast(remotes.flash, world.flashes)
+		pub:send("flash", world.flashes)
 		world.flashes = {}
 	end
 	if #world.events > 0 then
 		for _, e in world.events do
-			broadcast(remotes.event, e)
+			pub:send("event", e)
 			if e.kind == "tornado" then
 				log("tornado %s from %s at t=%.0f s", e.id, e.parent, e.time)
 			end

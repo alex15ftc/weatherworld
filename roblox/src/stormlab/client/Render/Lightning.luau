@@ -26,7 +26,11 @@
 --   Far       every channel vertex farther than LabConfig.LIMITS.farDraw is pulled along its
 --             line of sight to that distance (widths scaled alike): the same angular shape and
 --             size, within Roblox's part draw range. Shared vertices stay shared, so the
---             channel stays connected.
+--             channel stays connected. farDraw is in STUDS (a Roblox draw-range limit, as all
+--             LabConfig.LIMITS); every distance and width computed here is in metres and goes
+--             through LabConfig only where a part takes it. Each flash is drawn whole about its
+--             channel's ground point (the lower end, x0 / y0 or x1 / y1) at that point's scale
+--             (LabConfig.scaleAbout / toWorldAbout); thunder uses the true distances (m).
 --
 -- Cost: everything pooled in new() (600 segment parts, 6 glows, 2 lights, 6 sounds); a flash
 -- moves its parts once with BulkMoveTo; per frame only the transparency of live bolts changes
@@ -51,7 +55,7 @@ function LightningFx.new(ctx)
 	local Noise = Sim.Noise
 	local Config = ctx.Config
 	local SOUND_SPEED = Lightning.SOUND_SPEED or 343
-	local FAR = (Config.LIMITS and Config.LIMITS.farDraw) or 4500
+	local FAR = (Config.LIMITS and Config.LIMITS.farDraw) or 4500 -- studs
 	local SOUNDS = Config.SOUNDS or {}
 
 	local folder = Instance.new("Folder")
@@ -68,7 +72,7 @@ function LightningFx.new(ctx)
 	end
 	local freeGlows: { BasePart } = {}
 	for i = 1, MAX_BOLTS do
-		local g = Util.part({ Material = Enum.Material.Neon, Color = GLOW_COLOUR, Transparency = 1, Shape = Enum.PartType.Ball, Size = Vector3.new(10, 10, 10), Name = "Glow" })
+		local g = Util.part({ Material = Enum.Material.Neon, Color = GLOW_COLOUR, Transparency = 1, Shape = Enum.PartType.Ball, Size = Vector3.one * Config.studs(10), Name = "Glow" })
 		g.CFrame = PARK
 		g.Parent = folder
 		freeGlows[i] = g
@@ -77,7 +81,7 @@ function LightningFx.new(ctx)
 	for i = 1, 2 do
 		local holder = Util.part({ Transparency = 1, Size = Vector3.new(0.2, 0.2, 0.2), Name = "FlashLight" })
 		local light = Instance.new("PointLight")
-		light.Range = 60
+		light.Range = math.min(60, Config.studs(60)) -- (Roblox caps a PointLight at 60 studs)
 		light.Brightness = 0
 		light.Color = BOLT_COLOUR
 		light.Shadows = false
@@ -183,8 +187,8 @@ function LightningFx.new(ctx)
 		if ctx.flashField then
 			ctx.Tornado.FlashField.add(ctx.flashField, f, os.clock())
 		end
-		local camPos = ctx.camera.CFrame.Position
-		local cx, cy, cz = ctx:simCamera()
+		local camPos = ctx.camera.CFrame.Position -- (studs)
+		local cx, cy, cz = Config.fromWorld(camPos) -- (metres)
 		-- distance to the flash's middle sets the channel's detail
 		local mx, my, mz = (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2, (f.z0 + f.z1) / 2
 		local dMid = math.sqrt((mx - cx) ^ 2 + (my - cy) ^ 2 + (mz - cz) ^ 2)
@@ -203,21 +207,30 @@ function LightningFx.new(ctx)
 		-- thunder distances from the whole channel
 		local dMin, dMax = math.huge, 0
 		local nearX, nearY, nearZ = f.x1, f.y1, f.z1
-		local function project(x: number, y: number, z: number): (Vector3, number, number)
-			local P = Config.toWorld(x, y, z)
+		-- the flash is drawn about its channel's ground point at that point's scale
+		local gx, gy = f.x0, f.y0
+		if (f.z1 or 0) < (f.z0 or 0) then
+			gx, gy = f.x1, f.y1
+		end
+		local k = Config.scaleAbout(gx, gy)
+		-- a channel vertex as the stud position it is drawn at, its true distance (m), the
+		-- far-draw pull-in factor and its drawn distance (studs, before the pull-in)
+		local function project(x: number, y: number, z: number): (Vector3, number, number, number)
+			local P = Config.toWorldAbout(x, y, z, gx, gy, k)
 			local off = P - camPos
-			local d = off.Magnitude
+			local d = off.Magnitude -- (studs)
+			local dm = math.sqrt((x - cx) ^ 2 + (y - cy) ^ 2 + (z - cz) ^ 2)
 			if d > FAR then
-				return camPos + off * (FAR / d), d, FAR / d
+				return camPos + off * (FAR / d), dm, FAR / d, d
 			end
-			return P, d, 1
+			return P, dm, 1, d
 		end
 		local parts, cfs = {}, {}
 		local widths = {}
 		for i, s in segs do
 			local x0, y0, z0, x1, y1, z1, w = s[1], s[2], s[3], s[4], s[5], s[6], s[7]
-			local a, da = project(x0, y0, z0)
-			local b, db = project(x1, y1, z1)
+			local a, da, _, dsa = project(x0, y0, z0)
+			local b, db, _, dsb = project(x1, y1, z1)
 			if da < dMin then
 				dMin, nearX, nearY, nearZ = da, x0, y0, z0
 			end
@@ -227,12 +240,14 @@ function LightningFx.new(ctx)
 			dMax = math.max(dMax, da, db)
 			if i <= cap then
 				local dm = (da + db) / 2
-				local scale = if dm > FAR then FAR / dm else 1
-				local wTrue = math.max(w * 1.2, dm * PIXEL * (0.5 + 0.7 * w))
-				local len = (b - a).Magnitude
-				if len > 0.01 then
+				local dmS = (dsa + dsb) / 2 -- (studs: the drawn distance)
+				local scale = if dmS > FAR then FAR / dmS else 1
+				-- (its width at the flash's scale, at least about a pixel at its drawn distance)
+				local wDraw = math.min(2048, math.max(w * 1.2 * k, dmS * PIXEL * (0.5 + 0.7 * w)) * scale) -- (studs)
+				local len = (b - a).Magnitude -- (studs, already pulled in)
+				if len > 0.01 * k then
 					local p = table.remove(freeSegs) :: BasePart
-					p.Size = Vector3.new(math.min(2048, wTrue * scale), math.min(2048, wTrue * scale), math.min(2048, len))
+					p.Size = Vector3.new(wDraw, wDraw, math.min(2048, len))
 					table.insert(parts, p)
 					table.insert(cfs, CFrame.lookAt((a + b) / 2, b))
 					-- haze: far channels fade (the Atmosphere only sees their draw distance)
@@ -257,10 +272,10 @@ function LightningFx.new(ctx)
 		-- the light near the camera for close strikes
 		if not isIc and dMin < 3000 and #freeLights > 0 then
 			local L = table.remove(freeLights)
-			local np = Config.toWorld(nearX, nearY, nearZ)
+			local np = Config.toWorldAbout(nearX, nearY, nearZ, gx, gy, k)
 			local dir = np - camPos
 			dir = if dir.Magnitude > 1e-3 then dir.Unit else Vector3.new(0, 1, 0)
-			L.part.CFrame = CFrame.new(camPos + dir * 40 + Vector3.new(0, 25, 0))
+			L.part.CFrame = CFrame.new(camPos + dir * Config.studs(40) + Vector3.new(0, Config.studs(25), 0))
 			L.light.Brightness = 0
 			L.light.Enabled = true
 			b.light = L
@@ -271,11 +286,14 @@ function LightningFx.new(ctx)
 		-- thunder
 		if dMin < 25000 then
 			local delay = dMin / SOUND_SPEED
-			table.insert(thunders, { at = (f.t or ctx:simTime()) + delay, dur = math.max(0.5, (dMax - dMin) / SOUND_SPEED), dist = dMin, cg = not isIc })
+			-- (sound travels at its real speed whatever the weather clock: the delay in real seconds,
+			-- as sim seconds on the sim clock; the lab: the same clock)
+			local k = (ctx.state.timeScale or 1) / ctx:visualScale()
+			table.insert(thunders, { at = (f.t or ctx:simTime()) + delay * k, dur = math.max(0.5, (dMax - dMin) / SOUND_SPEED) * k, dist = dMin, cg = not isIc })
 			if #thunders > 24 then
 				table.remove(thunders, 1)
 			end
-			ctx.root:SetAttribute("LastThunderIn", delay / math.max(0.01, ctx.state.timeScale or 1))
+			ctx.root:SetAttribute("LastThunderIn", delay / math.max(0.01, ctx:visualScale()))
 			ctx.root:SetAttribute("LastThunderDistance", math.floor(dMin + 0.5))
 			ctx.root:SetAttribute("ThunderPending", #thunders)
 		end
@@ -395,7 +413,7 @@ function LightningFx.new(ctx)
 		-- Clouds, funnel and dust take their own local flash light from the field.
 		local camFlash = 0
 		if ctx.flashField then
-			local cx, cy, cz = ctx:simCamera()
+			local cx, cy, cz = Config.fromWorld(ctx.camera.CFrame.Position)
 			camFlash = ctx.Tornado.FlashField.camera(ctx.flashField, cx, cy, cz)
 		end
 		flashFx.Brightness = math.clamp(0.12 * camFlash, 0, 0.15)

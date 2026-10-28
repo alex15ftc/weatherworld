@@ -28,6 +28,9 @@ Precip.RAIN, Precip.HAIL, Precip.ICE = 1, 2, 3
 local VOX = 1000 -- voxel size (m), horizontal and vertical
 local NZV = 16 -- 0..16 km
 Precip.VOX, Precip.NZV = VOX, NZV
+-- the radar's finer field near strong storms (Precip.binFine): cell (m), levels, window half-width
+local FINE, FINE_NZ, FINE_HALF = 500, 16, 16000
+Precip.FINE, Precip.FINE_NZ, Precip.FINE_HALF = FINE, FINE_NZ, FINE_HALF
 
 export type Precip = typeof(setmetatable({} :: {
 	env: any,
@@ -36,6 +39,7 @@ export type Precip = typeof(setmetatable({} :: {
 	n: number,
 	px: { number }, py: { number }, pz: { number }, pm: { number }, pk: { number }, pd: { number },
 	free: { number },
+	fineWins: { { number } }, fineDbz: { [number]: number }, fineShare: { [number]: number },
 	alive: { boolean },
 	nxv: number, x0: number,
 	vRain: { [number]: number }, vHail: { [number]: number }, vHailZ: { [number]: number }, vIce: { [number]: number },
@@ -49,7 +53,7 @@ export type Precip = typeof(setmetatable({} :: {
 function Precip.new(env: any, coldPool: any, maxParcels: number?): Precip
 	local self = setmetatable({}, Precip) :: any
 	self.env, self.coldPool = env, coldPool
-	self.max = maxParcels or 12000
+	self.max = maxParcels or 32000
 	self.n = 0
 	self.px, self.py, self.pz, self.pm, self.pk, self.pd = {}, {}, {}, {}, {}, {}
 	self.alive = {}
@@ -58,6 +62,7 @@ function Precip.new(env: any, coldPool: any, maxParcels: number?): Precip
 	self.x0 = -self.nxv * VOX / 2
 	self.vRain, self.vHail, self.vHailZ, self.vIce = {}, {}, {}, {}
 	self.dbz, self.hailShare, self.columns = {}, {}, {}
+	self.fineWins, self.fineDbz, self.fineShare = {}, {}, {}
 	-- surface: 1 km grids of rain rate (mm/h), largest hail (cm), and the accumulation behind them
 	self.rainRate = Grid.new(self.nxv, self.nxv, VOX, self.x0, self.x0, 0)
 	self.hailSize = Grid.new(self.nxv, self.nxv, VOX, self.x0, self.x0, 0)
@@ -70,7 +75,11 @@ end
 -- the mass a new parcel should carry, so the parcel count stays within budget
 function Precip.parcelMass(self: Precip): number
 	local fill = self.n / self.max
-	return 1.5e5 * (1 + 6 * math.max(0, fill - 0.5) ^ 2)
+	-- (6e4 kg, 2.5x the parcels of 1.5e5: enough that the low-level field near a storm is less
+	-- shot noise for the radar's 500 m field, at ~1.6x the simulation cost)
+	-- (heavier parcels as the field fills - steeply past half - so it never reaches the cap: at
+	-- the cap no storm can release rain and echoes fade with their updrafts still strong)
+	return 6e4 * (1 + 30 * math.max(0, fill - 0.5) ^ 2)
 end
 
 function Precip.emit(self: Precip, x: number, y: number, z: number, mass: number, kind: number, size: number)
@@ -99,7 +108,10 @@ local function fallSpeed(kind: number, size: number, z: number): number
 		return 8 * thin
 	elseif kind == 2 then
 		if size < 0.5 then
-			return (4 + 8 * size) * thin -- graupel (2-5 mm: ~5-7 m/s)
+			-- graupel and snow aggregates (2-5 mm: ~1.5-3 m/s, Locatelli & Hobbs 1974): above the
+			-- melting level they drift far downstream on the storm-relative wind before melting -
+			-- the forward flank's long precipitation region (20-60 km on radar)
+			return (1.0 + 4 * size) * thin
 		end
 		return 14 * math.sqrt(size) * thin
 	end
@@ -337,6 +349,15 @@ end
 
 -- reflectivity (dBZ, -999 none) and hail share at a point, from the binned volume (trilinear)
 function Precip.sample(self: Precip, x: number, y: number, z: number): (number, number)
+	-- inside a fine window (Precip.binFine), the 500 m field
+	local wins = (self :: any).fineWins
+	if wins and z < FINE * FINE_NZ then
+		for _, w in wins do
+			if math.abs(x - w[1]) < FINE_HALF and math.abs(y - w[2]) < FINE_HALF then
+				return Precip.sampleFine(self, x, y, z)
+			end
+		end
+	end
 	local nx, x0 = self.nxv, self.x0
 	local gx = (x - x0) / VOX - 0.5
 	local gy = (y - x0) / VOX - 0.5
@@ -360,6 +381,144 @@ function Precip.sample(self: Precip, x: number, y: number, z: number): (number, 
 					end
 					wsum += w
 				end
+			end
+		end
+	end
+	if zsum <= 1 then
+		return -999, 0
+	end
+	return 10 * math.log10(zsum / math.max(1e-6, wsum)), hs / zsum
+end
+
+-- A finer reflectivity field for the radar near strong storms: 500 m cells (horizontal and
+-- vertical) from the ground to 8 km in windows of +-FINE_HALF round each centre, from the same
+-- parcels and the same Z relations as Precip.bin (each parcel's mass shared over its eight
+-- neighbouring cells). Stored sparse in a global 500 m grid; Precip.pack sends it after the
+-- coarse volume and Precip.sample reads it inside the windows.
+function Precip.binFine(self: Precip, centres: { { number } }, yieldFn: (() -> ())?)
+	local nxf = self.nxv * 2
+	local nxy = nxf * nxf
+	local x0 = self.x0
+	local mR, mH, mHZ, mI = {}, {}, {}, {}
+	local wins = {}
+	for _, c in centres do
+		table.insert(wins, { c[1], c[2] })
+	end
+	self.fineWins = wins
+	local function inWin(x: number, y: number): boolean
+		for _, w in wins do
+			if math.abs(x - w[1]) < FINE_HALF + FINE and math.abs(y - w[2]) < FINE_HALF + FINE then
+				return true
+			end
+		end
+		return false
+	end
+	for i = 1, #self.px do
+		if yieldFn and i % 1500 == 0 then
+			yieldFn()
+		end
+		if self.alive[i] and self.pz[i] < FINE * FINE_NZ and inWin(self.px[i], self.py[i]) then
+			local gx = (self.px[i] - x0) / FINE - 0.5
+			local gy = (self.py[i] - x0) / FINE - 0.5
+			local gz = self.pz[i] / FINE - 0.5
+			local ix, iy, iz = math.floor(gx), math.floor(gy), math.floor(gz)
+			local fx, fy, fz = gx - ix, gy - iy, gz - iz
+			local m, kind, d = self.pm[i], self.pk[i], self.pd[i]
+			local target = if kind == 1 then mR elseif kind == 2 then mH else mI
+			local d3 = d * d * d
+			for a = 0, 1 do
+				for b = 0, 1 do
+					for c = 0, 1 do
+						local cx, cy, cz = ix + a, iy + b, iz + c
+						if cx >= 0 and cy >= 0 and cx < nxf and cy < nxf and cz >= 0 and cz < FINE_NZ then
+							local w = (if a == 1 then fx else 1 - fx) * (if b == 1 then fy else 1 - fy) * (if c == 1 then fz else 1 - fz)
+							if w > 0 then
+								local key = cx + cy * nxf + cz * nxy
+								target[key] = (target[key] or 0) + m * w
+								if kind == 2 then
+									mHZ[key] = (mHZ[key] or 0) + m * w * d3
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	-- a [1 2 1]/4 pass across x and across y (with the eight-cell sharing above, the parcels
+	-- are spread over ~750 m: the field is not shot noise where parcels are sparse)
+	local function smooth(t: { [number]: number }, step: number): { [number]: number }
+		local out = {}
+		for key, m in t do
+			out[key] = (out[key] or 0) + 0.5 * m
+			out[key - step] = (out[key - step] or 0) + 0.25 * m
+			out[key + step] = (out[key + step] or 0) + 0.25 * m
+		end
+		return out
+	end
+	mR = smooth(smooth(mR, 1), nxf)
+	mH = smooth(smooth(mH, 1), nxf)
+	mHZ = smooth(smooth(mHZ, 1), nxf)
+	mI = smooth(smooth(mI, 1), nxf)
+	if yieldFn then
+		yieldFn()
+	end
+	local fdbz, fshare = {}, {}
+	local vol = FINE * FINE * FINE
+	local function add(key: number)
+		if fdbz[key] then
+			return
+		end
+		local mr = (mR[key] or 0) / vol * 1000
+		local mh = (mH[key] or 0) / vol * 1000
+		local mi = (mI[key] or 0) / vol * 1000
+		local zr = if mr > 0 then 2.4e4 * mr ^ 1.82 else 0
+		local zh = 1.25e5 * (mHZ[key] or 0) / vol * 1000
+		if mh > 0 and zh < 3e3 * mh then
+			zh = 3e3 * mh
+		end
+		local zi = if mi > 0 then 600 * mi ^ 1.3 else 0
+		local z = zr + zh + zi
+		if z > 1 then
+			fdbz[key] = 10 * math.log10(z)
+			fshare[key] = (zh + 0.4 * zi) / z
+		end
+	end
+	local nk = 0
+	for _, src in { mR, mH, mI } do
+		for key in src do
+			add(key)
+			nk += 1
+			if yieldFn and nk % 4000 == 0 then
+				yieldFn()
+			end
+		end
+	end
+	self.fineDbz, self.fineShare = fdbz, fshare
+end
+
+function Precip.sampleFine(self: any, x: number, y: number, z: number): (number, number)
+	local nxf = self.nxv * 2
+	local nxy = nxf * nxf
+	local gx = (x - self.x0) / FINE - 0.5
+	local gy = (y - self.x0) / FINE - 0.5
+	local gz = z / FINE - 0.5
+	local ix, iy, iz = math.floor(gx), math.floor(gy), math.floor(gz)
+	local fx, fy, fz = gx - ix, gy - iy, gz - iz
+	local zsum, hs, wsum = 0, 0, 0
+	local fdbz, fshare = self.fineDbz, self.fineShare
+	for a = 0, 1 do
+		for b = 0, 1 do
+			for c = 0, 1 do
+				local cx, cy, cz = ix + a, iy + b, math.clamp(iz + c, 0, FINE_NZ - 1)
+				local w = (if a == 1 then fx else 1 - fx) * (if b == 1 then fy else 1 - fy) * (if c == 1 then fz else 1 - fz)
+				local d = fdbz[cx + cy * nxf + cz * nxy]
+				if d then
+					local zl = 10 ^ (d / 10)
+					zsum += zl * w
+					hs += (fshare[cx + cy * nxf + cz * nxy] or 0) * zl * w
+				end
+				wsum += w
 			end
 		end
 	end
@@ -397,7 +556,32 @@ function Precip.pack(self: Precip): buffer
 		buffer.writeu8(b, off + 5 + 2 * NZV, math.clamp(math.floor((self.hailSize.v[k] or 0) * 10 + 0.5), 0, 255))
 		off += per
 	end
-	return b
+	-- the fine field (Precip.binFine): its windows (f32 x, y), then cells (u32 key, u8 dBZ, u8 hail)
+	local wins = self.fineWins
+	local cells = {}
+	for key in self.fineDbz do
+		table.insert(cells, key)
+	end
+	local fb = buffer.create(8 + 8 * #wins + 6 * #cells)
+	buffer.writeu32(fb, 0, #wins)
+	local fo = 4
+	for _, w in wins do
+		buffer.writef32(fb, fo, w[1])
+		buffer.writef32(fb, fo + 4, w[2])
+		fo += 8
+	end
+	buffer.writeu32(fb, fo, #cells)
+	fo += 4
+	for _, key in cells do
+		buffer.writeu32(fb, fo, key)
+		buffer.writeu8(fb, fo + 4, math.clamp(math.floor((self.fineDbz[key] + 32) * 2 + 0.5), 1, 255))
+		buffer.writeu8(fb, fo + 5, math.clamp(math.floor((self.fineShare[key] or 0) * 255 + 0.5), 0, 255))
+		fo += 6
+	end
+	local all = buffer.create(off + fo)
+	buffer.copy(all, 0, b, 0, off)
+	buffer.copy(all, off, fb, 0, fo)
+	return all
 end
 
 -- The client side: rebuild a sampling volume from a packed buffer.
@@ -423,6 +607,114 @@ function Precip.unpack(b: buffer, extent: number): any
 		local rr = buffer.readu8(b, off + 4 + 2 * NZV) / 16
 		vol.rain[col] = rr * rr
 		vol.hail[col] = buffer.readu8(b, off + 5 + 2 * NZV) / 10
+	end
+	-- the fine field, when the buffer carries one
+	local fo = 4 + n * per
+	if buffer.len(b) >= fo + 8 then
+		local nw = buffer.readu32(b, fo)
+		fo += 4
+		local wins = {}
+		for _ = 1, nw do
+			table.insert(wins, { buffer.readf32(b, fo), buffer.readf32(b, fo + 4) })
+			fo += 8
+		end
+		local nc = buffer.readu32(b, fo)
+		fo += 4
+		local fdbz, fshare = {}, {}
+		for _ = 1, nc do
+			local key = buffer.readu32(b, fo)
+			fdbz[key] = buffer.readu8(b, fo + 4) / 2 - 32
+			fshare[key] = buffer.readu8(b, fo + 5) / 255
+			fo += 6
+		end
+		vol.fineWins, vol.fineDbz, vol.fineShare = wins, fdbz, fshare
+	end
+	return setmetatable(vol, { __index = { sample = Precip.sample } })
+end
+
+-- The light rain frame (Frames kind "precipLite"; ~9 bytes a column with echo, about a quarter
+-- of Precip.pack and no fine field): what the renderers need - surface rain and hail per column -
+-- plus a column summary (peak reflectivity, echo top, hail share) from which the client rebuilds
+-- an approximate profile for the radar and map. Layout: u8 76 ("L"), u8 version 1, u32 n, then
+-- per column u16 cx, u16 cy, u8 rain (sqrt mm/h x16), u8 hail (mm), u8 peak dBZ ((d+32) x2),
+-- u8 echo top (100 m), u8 hail share at the peak (x255).
+function Precip.packLite(self: Precip): buffer
+	local nx = self.nxv
+	local nxy = nx * nx
+	local list = {}
+	for col in self.columns do
+		table.insert(list, col)
+	end
+	local per = 9
+	local b = buffer.create(6 + #list * per)
+	buffer.writeu8(b, 0, 76)
+	buffer.writeu8(b, 1, 1)
+	buffer.writeu32(b, 2, #list)
+	local off = 6
+	for _, col in list do
+		local cx, cy = col % nx, col // nx
+		local peak, top, share = -999, 0, 0
+		for z = 0, NZV - 1 do
+			local d = self.dbz[col + z * nxy]
+			if d then
+				if d > peak then
+					peak = d
+					share = self.hailShare[col + z * nxy] or 0
+				end
+				if d > 18 then
+					top = (z + 1) * VOX -- (echo top: the highest level above 18 dBZ)
+				end
+			end
+		end
+		local k = cx + 1 + cy * nx
+		buffer.writeu16(b, off, cx)
+		buffer.writeu16(b, off + 2, cy)
+		buffer.writeu8(b, off + 4, math.clamp(math.floor(math.sqrt(self.rainRate.v[k] or 0) * 16 + 0.5), 0, 255))
+		buffer.writeu8(b, off + 5, math.clamp(math.floor((self.hailSize.v[k] or 0) * 10 + 0.5), 0, 255))
+		buffer.writeu8(b, off + 6, if peak > -999 then math.clamp(math.floor((peak + 32) * 2 + 0.5), 1, 255) else 0)
+		buffer.writeu8(b, off + 7, math.clamp(math.floor(top / 100 + 0.5), 0, 255))
+		buffer.writeu8(b, off + 8, math.clamp(math.floor(share * 255 + 0.5), 0, 255))
+		off += per
+	end
+	return b
+end
+
+-- The client side of packLite: the same fields as Precip.unpack (rain, hail and columns exactly;
+-- the 3-D reflectivity rebuilt from each column's peak and echo top: the peak up to ~half the
+-- echo top, then falling ~25 dB to the top; hail share with the peak, in the lower half).
+function Precip.unpackLite(b: buffer, extent: number): any
+	local nx = math.ceil(2 * extent / VOX)
+	local x0 = -nx * VOX / 2
+	local nxy = nx * nx
+	local vol = { nxv = nx, x0 = x0, dbz = {}, hailShare = {}, rain = {}, hail = {}, columns = {}, lite = true }
+	if buffer.len(b) < 6 or buffer.readu8(b, 0) ~= 76 then
+		return setmetatable(vol, { __index = { sample = Precip.sample } })
+	end
+	local n = buffer.readu32(b, 2)
+	for c = 0, n - 1 do
+		local off = 6 + c * 9
+		local cx, cy = buffer.readu16(b, off), buffer.readu16(b, off + 2)
+		local col = cx + cy * nx
+		vol.columns[col] = true
+		local rr = buffer.readu8(b, off + 4) / 16
+		vol.rain[col] = rr * rr
+		vol.hail[col] = buffer.readu8(b, off + 5) / 10
+		local raw = buffer.readu8(b, off + 6)
+		local top = buffer.readu8(b, off + 7) * 100
+		local share = buffer.readu8(b, off + 8) / 255
+		if raw > 0 then
+			local peak = raw / 2 - 32
+			local zt = math.max(top, VOX)
+			for z = 0, NZV - 1 do
+				local zc = (z + 0.5) * VOX
+				if zc > zt + VOX then
+					break
+				end
+				local f = math.clamp((zc - 0.5 * zt) / math.max(0.5 * zt, 1), 0, 1.5)
+				vol.dbz[col + z * nxy] = peak - 25 * f
+				vol.hailShare[col + z * nxy] = if zc < 0.5 * zt then share else share * 0.5
+			end
+		end
 	end
 	return setmetatable(vol, { __index = { sample = Precip.sample } })
 end

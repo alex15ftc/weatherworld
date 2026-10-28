@@ -9,6 +9,12 @@
 --               each flying, tumbling and falling out on its own trajectory - no carousel
 -- Near pieces are real parts moved with BulkMoveTo; far ones aren't drawn (they would be
 -- sub-pixel).
+-- Units: metres. A piece's z is its height above the DATUM (Sim/Debris: the ground under it is
+-- C.groundAt, passed to Debris.step as groundZ; the wind is sampled at the height above that
+-- ground); the server's pieces arrive the same way. Positions and part sizes cross to studs
+-- through Config (docs/stormlab/SCALE-RULES.md). A piece is drawn with its tornado: about the
+-- nearest live tornado's ground point at that tornado's scale (LabConfig.scaleAbout /
+-- toWorldAbout), or about itself when there is none.
 local Workspace = game:GetService("Workspace")
 
 local DebrisView = {}
@@ -24,7 +30,20 @@ function DebrisView.new(ctx: any): any
 	folder.Name = "Debris"
 	folder.Parent = ctx.root
 	local self = { pieces = {}, byId = {}, pool = {} }
+	-- (running counts of the pieces in self.pieces: no recount per event or frame)
+	local nServer, nLocalAll = 0, 0
 
+	-- (the scale each part's size was set at: a part is resized when its piece's scale moves > 2%)
+	local partK: { [BasePart]: number } = {}
+	local function sizeAt(p: BasePart, className: string, k: number)
+		local k0 = partK[p]
+		if k0 and math.abs(k - k0) <= 0.02 * k0 then
+			return
+		end
+		partK[p] = k
+		local c = Debris.CLASSES[className]
+		p.Size = Vector3.new(c.size[1] * k, math.max(0.02, c.size[2]) * k, c.size[3] * k)
+	end
 	local function partFor(className: string): BasePart
 		local list = self.pool[className]
 		local p = list and table.remove(list)
@@ -36,7 +55,7 @@ function DebrisView.new(ctx: any): any
 		p = Instance.new("Part")
 		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
 		p.CastShadow = c.group ~= "fine"
-		p.Size = Vector3.new(c.size[1], math.max(0.02, c.size[2]), c.size[3])
+		sizeAt(p, className, C.studs(1))
 		p.Color = Color3.fromRGB(c.color[1], c.color[2], c.color[3])
 		p.Material = Enum.Material[c.material] or Enum.Material.Wood
 		p.Parent = folder
@@ -54,6 +73,11 @@ function DebrisView.new(ctx: any): any
 		piece.isLocal = isLocal
 		piece.id = id
 		table.insert(self.pieces, piece)
+		if isLocal then
+			nLocalAll += 1
+		else
+			nServer += 1
+		end
 		if id then
 			self.byId[id] = piece
 		end
@@ -62,13 +86,7 @@ function DebrisView.new(ctx: any): any
 	ctx.signals.event:Connect(function(e)
 		if e.kind == "debris" then
 			for _, d in e.pieces do
-				local count = 0
-				for _, p in self.pieces do
-					if not p.isLocal then
-						count += 1
-					end
-				end
-				if count < MAX_SERVER then
+				if nServer < MAX_SERVER then
 					add(Debris.new(d.class, d.x, d.y, d.z, d.u, d.v, d.w, d.seed), false, d.id)
 				end
 			end
@@ -92,21 +110,22 @@ function DebrisView.new(ctx: any): any
 	end
 
 	local parts, cfs = {}, {}
+	local spare = {} -- (the other half of the double-buffered piece list)
+	-- (the wind field's heights are above the ground; one closure for the module, reading the
+	-- current ClientWorld)
+	local cw = ctx.cw
+	local function wind(x: number, y: number, z: number): (number, number, number)
+		return cw:windAt(x, y, math.max(0, z - C.groundAt(x, y)))
+	end
+	local statAt, statN = -math.huge, -1
+	local torC = {}
 	function self:update(dt: number)
 		local show = ctx.state.show.debris
-		local simDt = if ctx.state.paused then 0 else math.min(dt * ctx.state.timeScale, 0.25)
-		local cw = ctx.cw
+		local simDt = math.min(ctx:visualDt(dt), 0.25) -- (flying debris: local motion)
+		cw = ctx.cw
 		local camX, camY = ctx:simCamera()
-		local function wind(x: number, y: number, z: number): (number, number, number)
-			return cw:windAt(x, y, z)
-		end
 		-- local pickups
-		local nLocal = 0
-		for _, p in self.pieces do
-			if p.isLocal then
-				nLocal += 1
-			end
-		end
+		local nLocal = nLocalAll
 		if show and simDt > 0 then
 			for _, t in cw.tornadoes do
 				if not t.ended and (t.x - camX) ^ 2 + (t.y - camY) ^ 2 < RANGE * RANGE then
@@ -122,21 +141,40 @@ function DebrisView.new(ctx: any): any
 						local cls = LOCAL[math.random(1, #LOCAL)]
 						-- loose objects lift once the wind beats ~1.4x the speed that slides them
 						if U > 1.4 * slide[cls] and math.random() < simDt * 3 then
-							add(Debris.new(cls, x, y, 0.3, u * 0.2, v * 0.2, 1, math.random(1, 1e6)), true)
+							add(Debris.new(cls, x, y, C.groundAt(x, y) + 0.3, u * 0.2, v * 0.2, 1, math.random(1, 1e6)), true)
 							nLocal += 1
 						end
 					end
 				end
 			end
 		end
+		-- the live tornadoes' ground points and scales (pieces are drawn about the nearest)
+		local nT = 0
+		for _, t in cw.tornadoes do
+			if not t.ended then
+				nT += 1
+				local tc = torC[nT]
+				if not tc then
+					tc = {}
+					torC[nT] = tc
+				end
+				tc.x, tc.y, tc.k = t.x, t.y, C.scaleAbout(t.x, t.y)
+			end
+		end
 		-- fly everything
 		table.clear(parts)
 		table.clear(cfs)
-		local keep = {}
+		local keep = spare
+		table.clear(keep)
 		for _, p in self.pieces do
 			local far = (p.x - camX) ^ 2 + (p.y - camY) ^ 2 > (RANGE * 1.6) ^ 2
 			if p.done or (p.isLocal and (p.age > 90 or (p.resting and p.restFor > 6) or far)) or not show then
 				release(p, p.class.name)
+				if p.isLocal then
+					nLocalAll -= 1
+				else
+					nServer -= 1
+				end
 				if p.id then
 					self.byId[p.id] = nil
 				end
@@ -167,22 +205,40 @@ function DebrisView.new(ctx: any): any
 					-- (two substeps when the time scale is high)
 					local n = if stepDt > 0.12 then 2 else 1
 					for _ = 1, n do
-						Debris.step(p, stepDt / n, wind)
+						Debris.step(p, stepDt / n, wind, C.groundAt(p.x, p.y))
 					end
 				end
 				if not (wasResting and p.resting and p.placed) then
 					p.placed = p.resting
 					table.insert(parts, p.part)
-					table.insert(cfs, CFrame.new(C.toWorld(p.x, p.y, p.z)) * CFrame.fromEulerAnglesYXZ(p.pitch, p.yaw, p.roll))
+					-- (about the nearest live tornado, else about itself)
+					local ccx, ccy, k = p.x, p.y, nil
+					local best = math.huge
+					for ti = 1, nT do
+						local tc = torC[ti]
+						local d2 = (tc.x - p.x) ^ 2 + (tc.y - p.y) ^ 2
+						if d2 < best then
+							best, ccx, ccy, k = d2, tc.x, tc.y, tc.k
+						end
+					end
+					k = k or C.scaleAbout(ccx, ccy)
+					sizeAt(p.part, p.class.name, k)
+					table.insert(cfs, CFrame.new(C.toWorldAbout(p.x, p.y, p.z, ccx, ccy, k)) * CFrame.fromEulerAnglesYXZ(p.pitch, p.yaw, p.roll))
 				end
 				table.insert(keep, p)
 			end
 		end
+		spare = self.pieces
 		self.pieces = keep
 		if #parts > 0 then
 			Workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
 		end
-		ctx.root:SetAttribute("DebrisPieces", #keep)
+		-- (debug count: twice a second, and only when it changed)
+		local nowS = os.clock()
+		if #keep ~= statN and nowS - statAt > 0.5 then
+			statAt, statN = nowS, #keep
+			ctx.root:SetAttribute("DebrisPieces", #keep)
+		end
 	end
 
 	function self:destroy()

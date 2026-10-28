@@ -74,7 +74,16 @@ export const BOUNDARY_DEFAULTS = Object.freeze({
   // windMs, along at least share of the front. The air mass the front is found in leaves out the day's
   // heating, which can even it out: three "warm fronts" were drawn in uniform 80-90 F air with no
   // dewpoint or wind change (docs/METEOROLOGIST-REVIEW-2026-10-24.md).
-  groundShows: { thetaK: 2, moistureGkg: 2, windMs: 8, share: 0.5 },
+  // (2026-10-26, as analysts separate a front from a baroclinic zone: read across the line's own width, crossCells either
+  // side, the moisture changes by moistureGkg, or the air temperature by tempK together with a moisture change of
+  // withMoistureGkg or a wind shift along the line of shearMs. The 2 K of potential temperature over up to 190 km had passed
+  // the warm edge of every broad ramp, terrain alone adding 1 K on the slope: five fronts in uniform 50 F-dewpoint air on
+  // seed 1000 with 0.1-0.9 g/kg and 0.6-2.5 m/s across them.)
+  // A contrast of strongTempK or more counts on its own.
+  groundShows: { moistureGkg: 2, strongTempK: 6, tempK: 3, withMoistureGkg: 1, shearMs: 4, crossCells: 2, share: 0.5 },
+  // Drylines are searched to within drylineEdgeCells of the map's edge (the dry air comes in at the west edge on lee-trough
+  // days; the fronts' 4-cell margin hid every dryline on seed 31 day 2).
+  drylineEdgeCells: 1,
   // How far into the cold air its wind is read (cells), and how far a moisture line must be
   // from a front, and how much colder its dry side may be, to count as a dryline.
   coldSideReachCells: 2, drylineFrontClearanceCells: 3, drylineColdSideLimitK: 2
@@ -86,21 +95,21 @@ const MS_PER_KT = 0.514444;
 // the south here and in the returned points, like every other map product.
 function readFields(world) {
   const { width, height } = world, n = width * height;
-  const temperature = new Float64Array(n), moisture = new Float64Array(n), u = new Float64Array(n), v = new Float64Array(n), coldPool = new Float64Array(n), ground = new Float64Array(n);
+  const temperature = new Float64Array(n), moisture = new Float64Array(n), u = new Float64Array(n), v = new Float64Array(n), coldPool = new Float64Array(n), ground = new Float64Array(n), airT = new Float64Array(n);
   world.forEachCell((cell, x, y) => {
     const k = y * width + x, surface = cell.surface;
     // Potential temperature of the air mass where the state carries it (no day-night swing, no
     // terrain in it), else of the air at the ground.
     const airMassK = Number(cell.features?.airMassThetaK);
     coldPool[k] = Number(cell.features?.coldPoolK) || 0;
-    ground[k] = ((surface.temperature - 32) * 5 / 9 + 273.15) * (1000 / (surface.pressure || 1000)) ** 0.2857;
+    airT[k] = (surface.temperature - 32) * 5 / 9; ground[k] = ((surface.temperature - 32) * 5 / 9 + 273.15) * (1000 / (surface.pressure || 1000)) ** 0.2857;
     temperature[k] = Number.isFinite(airMassK) && airMassK > 0 ? airMassK : ground[k];
     const dewpointC = (surface.dewpoint - 32) * 5 / 9, vapour = 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5));
     moisture[k] = 622 * vapour / Math.max(100, (surface.pressure || 1000) - vapour);
     const speed = (Number(surface.wind?.speed) || 0) * MS_PER_KT, direction = (Number(surface.wind?.direction) || 0) * Math.PI / 180;
     u[k] = -Math.sin(direction) * speed; v[k] = Math.cos(direction) * speed;   // v positive toward the south (down the rows)
   });
-  return { temperature, moisture, u, v, coldPool, ground };
+  return { temperature, moisture, u, v, coldPool, ground, airT };
 }
 
 function smooth(values, width, height, passes) {
@@ -266,7 +275,6 @@ export function analyseBoundaries(world, options = {}) {
   for (let k = 0; k < n; k++) frontCrest[k] = drawn[k] || (local[k] && !shadow[k]) ? 1 : 0;
   const frontLineCells = new Uint8Array(n);
   for (const line of linkLines(frontCrest, width, height, shortestFront)) {
-    for (const k of line) frontLineCells[k] = 1;
     const points = line.map(k => {
       const x = k % width, y = (k - x) / width, g = thermal.size[k], nx = thermal.gx[k] / g, ny = thermal.gy[k] / g;   // (nx, ny) points at the warm air
       // The front lies on the warm edge of the zone: walk toward the warm air until the
@@ -279,8 +287,9 @@ export function analyseBoundaries(world, options = {}) {
       const outflow = poolCold >= p.outflowDeficitK && (poolCold - poolWarm) >= p.outflowShare * across;
       // What the front shows at the ground across it: the air's temperature as it is now, its moisture, its wind.
       const gs = p.groundShows, at = (field, gx, gy) => bilinear(field, width, height, gx, gy);
-      const shows = at(raw.ground, warmX, warmY) - at(raw.ground, coldX, coldY) >= gs.thetaK || Math.abs(at(raw.moisture, warmX, warmY) - at(raw.moisture, coldX, coldY)) >= gs.moistureGkg
-        || Math.hypot(at(u, warmX, warmY) - at(u, coldX, coldY), at(v, warmX, warmY) - at(v, coldX, coldY)) >= gs.windMs;
+      const cX = x - nx * gs.crossCells, cY = y - ny * gs.crossCells, wX = x + nx * gs.crossCells, wY = y + ny * gs.crossCells;
+      const dT = at(raw.airT, wX, wY) - at(raw.airT, cX, cY), dq = Math.abs(at(raw.moisture, wX, wY) - at(raw.moisture, cX, cY)), shift = Math.abs((at(u, wX, wY) - at(u, cX, cY)) * ny - (at(v, wX, wY) - at(v, cX, cY)) * nx);
+      const shows = dq >= gs.moistureGkg || dT >= gs.strongTempK || (dT >= gs.tempK && (dq >= gs.withMoistureGkg || shift >= gs.shearMs));
       return { x: clamp(x + nx * reach, 0, width - 1), y: clamp(y + ny * reach, 0, height - 1), nx, ny, contrast: g, moistContrast: moist.size[k], outflow, shows: shows ? 1 : 0, advance: bilinear(u, width, height, coldX, coldY) * nx + bilinear(v, width, height, coldX, coldY) * ny };
     });
     // The line it was in the last analysis (of any kind: a dryline that gains a temperature
@@ -316,6 +325,10 @@ export function analyseBoundaries(world, options = {}) {
         if (kind[i] !== 'outflow' && mean('shows') < p.groundShows.share) { i = j; continue; }
         const stillDryline = was?.family === 'dryline' && kind[i] !== 'outflow' && mean('moistContrast') >= p.drylineGradient * p.keepShare && mean('motion') <= p.stationarySpeedMs;
         boundaries.push({ type: stillDryline ? 'dryline' : kind[i], points: part });
+        // Only a line drawn as a front (or a dryline followed as one) keeps a dryline off it; an outflow
+        // boundary or a crest not drawn does not (2026-10-24: storms' outflows hid a 400-580 km dryline on
+        // seed 1000 day 3 that a fresh analysis drew).
+        if (kind[i] !== 'outflow') for (const q of part) frontLineCells[Math.round(q.y) * width + Math.round(q.x)] = 1;
       }
       i = j;
     }
@@ -325,7 +338,7 @@ export function analyseBoundaries(world, options = {}) {
   // side is as warm as the moist side or warmer, its moist air is not to the west, and no drawn
   // front runs along it.
   const nearFront = dilate(frontLineCells, p.drylineFrontClearanceCells);
-  const dryCrest = crestCells(moist, width, height, thresholdNear('dryline', p.drylineGradient), edge);
+  const dryCrest = crestCells(moist, width, height, thresholdNear('dryline', p.drylineGradient), p.drylineEdgeCells);
   for (let k = 0; k < n; k++) {
     if (!dryCrest[k]) continue;
     const x = k % width, y = (k - x) / width, g = moist.size[k], nx = moist.gx[k] / g, ny = moist.gy[k] / g;   // points at the moist air

@@ -241,7 +241,9 @@ export function createDayRecorder({ engine, seed = engine.seed, outDir, places, 
     world.forEachCell((cell, x, y) => {
       const stp = cell.derived?.stp ?? 0, cape = cell.derived?.sounding?.mlcape ?? 0;
       // (Where STP is nil everywhere, the supercell composite instead.)
-      const score = stp + 0.01 * (cell.derived?.scp ?? 0);
+      // (2026-10-27: only in the unstable air, MLCAPE 250+ and MLCIN weaker than -150, so a capped corner is not shown as the day's best.)
+      const open = cape >= 250 && (cell.derived?.sounding?.mlcin ?? 0) > -150;
+      const score = stp + (open ? 0.01 * (cell.derived?.scp ?? 0) : 0);
       if (!best || score > best.v) best = { v: score, cell, x, y };
       if (!bestCape || cape > bestCape.v) bestCape = { v: cape, cell, x, y };
     });
@@ -254,7 +256,7 @@ export function createDayRecorder({ engine, seed = engine.seed, outDir, places, 
         params: `MLCAPE ${r0(s.mlcape)}, SBCAPE ${r0(s.sbcape)}, MUCAPE ${r0(s.mucape)}, MLCIN ${r0(s.mlcin)}, LCL ${r0(c.derived.lclAgl)} m, 700-500 lapse ${(s.lapseRate700500 ?? 0).toFixed(1)} C/km, 0-3 km lapse ${(s.lapseRate03km ?? 0).toFixed(1)}, 0-1 shear ${r0(s.shear01)} kt, 0-6 shear ${r0(s.shear06)} kt, SRH01 ${r0(s.srh01)}, SRH03 ${r0(s.srh03)}, STP ${(c.derived.stp ?? 0).toFixed(1)}, SCP ${(c.derived.scp ?? 0).toFixed(1)}`
       };
     };
-    return [describe('highest STP', best), describe('highest MLCAPE', bestCape)];
+    return [describe(best.v >= 0.1 ? 'highest STP' : 'highest SCP in the unstable air (STP nil)', best), describe('highest MLCAPE', bestCape)];
   }
 
   function writeDay(D, dir) {

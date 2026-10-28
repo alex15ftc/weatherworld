@@ -173,14 +173,18 @@ export function regionRings(inside, width, height) {
 }
 
 // A 0/1 area softened so that its outline is a curve and not the grid's steps (0.5 is the edge).
+// Beyond the map each edge cell is taken to carry on outward (as contourRings' edge nodes do):
+// averaging only the cells on the map would pull an area lying a cell or two in from the edge
+// out to it in a narrow neck.
 export function softenArea(inside, width, height, passes = 2) {
   let field = Float32Array.from(inside, v => (v ? 1 : 0));
+  const clampX = X => Math.min(width - 1, Math.max(0, X)), clampY = Y => Math.min(height - 1, Math.max(0, Y));
   for (let pass = 0; pass < passes; pass++) {
     const out = new Float32Array(field.length);
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      let sum = 0, count = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < width && Y < height) { sum += field[Y * width + X]; count++; } }
-      out[y * width + x] = sum / count;
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += field[clampY(y + dy) * width + clampX(x + dx)];
+      out[y * width + x] = sum / 9;
     }
     field = out;
   }

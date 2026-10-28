@@ -48,7 +48,21 @@ function World.new(data: any, opts: { [string]: any }?): World
 	self.seed = data.meta.seed or 1
 	self.time = 0
 	self.env = Environment.new(data)
-	self.env:analyse()
+	-- (analysed in chunks with a yield between them when the host passes one - the Roblox server:
+	-- all cells at once can exceed the script timeout on a throttled machine)
+	local yieldNow = o.yield
+	if yieldNow then
+		local total = self.env.ag.nx * self.env.ag.ny
+		local done = 0
+		while done < total do
+			local n = math.min(64, total - done)
+			self.env:analyse(n)
+			done += n
+			yieldNow()
+		end
+	else
+		self.env:analyse()
+	end
 	self.coldPool = ColdPool.new(self.env)
 	self.coldPool:seedFromEngine(data.cells, self.env.cellM)
 	self.env.coldPool = self.coldPool
@@ -490,6 +504,16 @@ function World.stepSlow(self: World, dt: number)
 	if T.bin >= 10 then
 		T.bin = 0
 		self.precip:bin(function()
+			self:pause()
+		end)
+		-- the radar's finer field round the strong storms (at most four)
+		local centres = {}
+		for _, st in self.storms do
+			if not st.dead and (st.W > 15 or (st.rot or 0) > 0.3) and #centres < 4 then
+				table.insert(centres, { st.x, st.y })
+			end
+		end
+		self.precip:binFine(centres, function()
 			self:pause()
 		end)
 		precipLoading(self)

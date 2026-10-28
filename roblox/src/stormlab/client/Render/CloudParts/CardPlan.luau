@@ -14,6 +14,9 @@
 --   anvil    a slab of wide flat cards downstream at el, widening and thinning downstream
 --   base     wide flat dark cards under the updraft at the cloud base (~2.2 Ru(base))
 -- `detail` (0.3 .. 1) thins the cards with distance.
+-- lobe     (optional) the lit lobe family the renderer draws a card with ("tower", "under",
+--          "soft"); cumuliform lumpyFlat cards default to tower / under by their normal
+--          (Render/StormCards, docs/stormlab/CONDENSATION-DETAIL.md)
 local Util = require(script.Parent:WaitForChild("Util"))
 local StormShape = require(script.Parent:WaitForChild("StormShape"))
 
@@ -28,6 +31,9 @@ local TAU = 2 * math.pi
 local SHEETS = { lumpyFlat = true, basePuffs = true, softSheetFlat = true, shredFlat = true, wispFlat = true, wispyFlat = true, strandsFlat = true, striationFlat = true, curtainFlat = true, fractusFlat = true, dirtGrainFlat = true }
 -- textures that exist (set by the renderer from LabConfig.TEXTURES: some are optional)
 CardPlan.available = {} :: { [string]: boolean }
+-- when Render/Scud draws wind-driven scud, the plan leaves out its own moving scud clusters (the
+-- ones drawn in toward the lowering); the hanging fringe and the tail cloud stay
+CardPlan.dynamicScud = false
 -- scud and tufts: the torn fractus sheet once uploaded, else the shreds / wisps
 local function scudTex(h: number): string
 	if CardPlan.available.fractusFlat then
@@ -108,6 +114,9 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 	-- toX, toY, riseTo: where it is drawn and how high it rises (nil: it only hangs)
 	local function cluster(px: number, py: number, zEdge: number, size: number, fx: number, fy: number, kind: string,
 		salt: number, alb: number, lit: number, toX: number?, toY: number?, riseTo: number?, swirlR: number?)
+		if toX and CardPlan.dynamicScud then
+			return
+		end
 		local n = 3 + math.floor(hash(seed, salt, 1) * 4)
 		for i = 0, n - 1 do
 			local hA, hB, hC = hash(seed, salt + i * 7, 2), hash(seed, salt + i * 7, 3), hash(seed, salt + i * 7, 4)
@@ -163,16 +172,23 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 			lvl += 1
 			local r, tx, ty = cloudR(z)
 			-- the centre fills the column (it sees little sky, gets sun only through the column)
-			add(tx, ty, z, 1.7 * r, 1.7 * r, 0.9, "softSheetFlat", albedo, sunLit(tx + shx * r, ty + shy * r, z) * 0.6, 0.6, baseZ)
+			local cc = add(tx, ty, z, 1.7 * r, 1.7 * r, 0.9, "softSheetFlat", albedo, sunLit(tx + shx * r, ty + shy * r, z) * 0.6, 0.6, baseZ)
+			cc.lobe = "soft"
+
 			local n = clamp(math.floor(8 * dk + 0.5), 4, 9)
 			local a0 = hash(seed, lvl, 40) * TAU
 			for k = 1, n do
 				local a = a0 + (k - 1) / n * TAU
 				local ox, oy = cos(a), sin(a)
-				local px, py = tx + ox * 0.62 * r, ty + oy * 0.62 * r
+				-- a gentle mix of sizes (about one card in four a bigger lobe set a little further
+				-- in). A strong mix of big and small cards read as a pile of bubbles (2026-10-25)
+				local hb = hash(seed, lvl * 16 + k, 42)
+				local big = hb < 0.25
+				local out = if big then 0.56 else 0.62 + 0.05 * hb
+				local px, py = tx + ox * out * r, ty + oy * out * r
 				-- lit from its outer surface toward the sun: the sunny side bright, the far side dark
 				local lit = sunLit(px + ox * 0.45 * r, py + oy * 0.45 * r, z)
-				local wc = 1.05 * r * (0.9 + 0.25 * hash(seed, lvl * 16 + k, 41))
+				local wc = r * (if big then 1.2 else 0.9 + 0.15 * hb) * (0.9 + 0.25 * hash(seed, lvl * 16 + k, 41))
 				local nx, ny, nz = norm(ox, oy, 0.15)
 				add(px, py, z, wc, wc, 0.92, "lumpyFlat", albedo, lit, 1, baseZ, nx, ny, nz)
 			end
@@ -267,7 +283,8 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				-- three layers: the lit top, the body, the shaded underside (what is seen from below)
 				local litTop = sunLit(px, py, tp + 60)
 				local ch = max(th * 1.3, 0.4 * cw)
-				add(px, py, tp - 0.25 * th, cw, ch, a, "lumpyFlat", 0.92, litTop, 0.9, nil, 0, 0, 1)
+				local at = add(px, py, tp - 0.25 * th, cw, ch, a, "lumpyFlat", 0.92, litTop, 0.9, nil, 0, 0, 1)
+				at.lobe = "soft" -- (an anvil's top is smooth ice cloud)
 				add(px - cxv * 0.25 * sp, py - cyv * 0.25 * sp, tp - 0.5 * th, cw, ch, a, "softSheetFlat", 0.88, litTop * 0.6, 0.75)
 				add(px + cxv * 0.3 * sp, py + cyv * 0.3 * sp, tp - 0.8 * th, cw * 0.95, ch * 0.8, a, "softSheetFlat", 0.82, litTop * 0.3, 0.6, nil, 0, 0, -1)
 			end
@@ -321,6 +338,18 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 	if fade < 0.6 and maturity > 0.2 then
 		local _, tx, ty = Storm.wprofAt(s, base)
 		local Rb = clamp(2.2 * Storm.updraftRadiusAt(s, base), 1500, 15000) * (1 - 0.6 * fade) * (0.55 + 0.45 * ramp(W, 3, 15))
+		-- the rain-free base reaches from the wall cloud (on its rear edge, by the rain) out toward
+		-- the storm's right flank and flanking line: its centre sits beyond the updraft, away from
+		-- the low meso (docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md)
+		do
+			local ddx, ddy = tx - lowX, ty - lowY
+			local dl = sqrt(ddx * ddx + ddy * ddy)
+			if dl > 100 and (s.rot or 0) > 0.25 then
+				local k = 0.3 * Rb * ramp(s.rot or 0, 0.25, 0.6)
+				tx += ddx / dl * k
+				ty += ddy / dl * k
+			end
+		end
 		local thick = 380 + 0.02 * Rb
 		local albedo = 0.72 - 0.12 * ramp(top - base, 6000, 13000)
 		-- the deck: one continuous sheet, not a carpet of puffs. A few large soft cards overlap
@@ -436,11 +465,13 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 			for i = 1, nB do
 				local f = (i - 0.5) / nB
 				local h1, h2 = hash(seed, 760 + i, 11), hash(seed, 760 + i, 12)
-				local along = 0.7 * Ru0 + f * len
+				-- (from the base deck's edge out into the clear inflow, where it shows against the
+				-- sky; a little below the base: the inflow lifted over the outflow condenses there)
+				local along = 0.85 * Ru0 + f * len
 				local side = (0.25 + 0.1 * (h1 - 0.5)) * Ru0 * (1 - 0.5 * f)
 				local bx, by = ux + dx * along + px0 * side, uy + dy * along + py0 * side
 				local w = wid * (1 - 0.55 * f) * (0.85 + 0.3 * h2)
-				local z = base - 40 + 80 * h1
+				local z = base - 90 + 60 * h1
 				local smooth = f > 0.3
 				local c = add(bx, by, z, w * 2.2, max(w * 0.35, 120), (0.75 - 0.45 * f) * q,
 					if smooth then "softSheetFlat" else "lumpyFlat", 0.7 - 0.08 * ramp(top - base, 6000, 13000), sunLit(bx, by, z) * 0.8, 0.55,
@@ -598,7 +629,8 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				lx, ly, if kind == "rise" then zbot(0.3 * R) else zbot(r) - 40, if kind == "rise" then nil else R)
 		end
 		-- tail cloud: a band at the wall cloud's base streaming in from the forward-flank rain
-		if s.ffdX and q > 0.3 then
+		-- (wherever there is a wall cloud at all: the same ingested outflow air that lowers it)
+		if s.ffdX and q > 0.1 then
 			local fx, fy = s.ffdX - s.lowX, s.ffdY - s.lowY
 			local dl = sqrt(fx * fx + fy * fy)
 			if dl > 800 then
@@ -628,7 +660,8 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 	return out, sh, wall
 end
 
--- Cards filling kit-style pieces ({ cf = unit box bottom-middle, Roblox frame; size; colour }),
+-- Cards filling kit-style pieces ({ cf = unit box bottom-middle, Roblox axis order but metres;
+-- size (m); colour }),
 -- e.g. the shelf clouds of CloudParts/ShelfPlan: each box becomes a grid of soft lumpy cards
 -- (spacing from its height), its brightness from the piece's colour. Positions in sim metres,
 -- absolute (as the pieces).

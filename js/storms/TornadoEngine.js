@@ -59,7 +59,11 @@ export function initializeTornadoState(storm) {
 // (2026-10-23: fullRatePerHour 0.75 to 0.4 after the jet stream and the storm changes of group 3 of
 // docs/FIX-PLAN-2026-10-22.md (deep shear's share of the mesocyclone, the outflow balance, the
 // strength scales, night lift on the cap) took the climate from 6.3 to 14.9 tornadoes a day.)
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.22, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// (fullRatePerHour 0.22 to 0.28 on 2026-10-26 with the capping inversion: fewer, more isolated storms; tornadoes a day 5.45 to
+// 7.7 on 80 days.)
+// (fullRatePerHour 0.28 to 0.2 on 2026-10-26, after the low-level jet and helicity corrections: 22% of supercells made a
+// tornado and 11-12 a day came; now 18%, within the record's 15-26% (Trapp et al. 2005; Thompson et al. 2017), and 8 a day.)
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.23, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -165,9 +169,11 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / matureMinutes, 0.25, 1) * (1 - INTENSITY.occlusionLoss * clamp(storm.occlusion ?? 0, 0, 1));
   tornado.windSpeedMph += (targetWind - tornado.windSpeedMph) * clamp(dtHours * 6, 0, 1);
   tornado.environmentWindCeilingMph = ceilingMph;
-  // Stronger tornadoes are wider: about 50 yd at EF0, 150 at EF1, 250 at EF2, 450 at EF3 and
-  // half a mile for the violent ones.
-  const targetWidth = clamp(30 + 1.3 * Math.max(0, tornado.windSpeedMph - 65) ** 1.25, 25, 1600);
+  // Stronger tornadoes are wider: fitted to the record's median widths by rating (SPC database 2008-2022: EF0 50 yd,
+  // EF1 125, EF2 300, EF3 600, EF4 900, EF5 1,600). (2026-10-25: 30 + 1.3 x (wind - 65)^1.25 gave about 195 yd at EF2
+  // winds, 290 at EF3 and 460 at EF4, half the record's, and the narrow paths showed too little damage: of 18
+  // tornadoes with EF3 winds none was rated EF3.)
+  const targetWidth = clamp(30 + 0.66 * Math.max(0, tornado.windSpeedMph - 65) ** 1.5, 25, 1600);
   tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 8, 0, 1);
   tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.windSpeedMph);
   tornado.peakWidthYards = Math.max(tornado.peakWidthYards, tornado.widthYards);
@@ -186,15 +192,23 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   extreme.maxWindEf = efRating(extreme.maxWindMph);
   extreme.cycles = Math.max(extreme.cycles ?? 0, tornado.cycleCount ?? 0);
 
+  // A tornado from a line's mesovortex or a boundary (a landspout) has no mesocyclone to lose: the storm's rotation
+  // ends only one from a mesocyclone (2026-10-25: every one of them ended at its second tick, after exactly 10 minutes,
+  // 13 of 17 on one reviewed day).
+  const ownRotation = tornado.source && tornado.source !== 'mesocyclone', spinning = ownRotation || rotating > 0;
   // It ends when the storm no longer holds the low-level rotation for it, or falls apart. It
   // stays down through the step it formed in, so everything that looks at storms between
   // steps sees it.
-  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || rotating <= 0 || storm.active === false || leftBehind || (tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6))) {
+  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || !spinning || storm.active === false || leftBehind || (tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6))) {
     // Why it ended, for the reports: the storm died or stopped rotating, its rotation moved off
     // (a merger), the outflow cut it off (the storm would still hold the rotation were it not
     // occluding), or the rotation faded.
-    const endedBy = storm.active === false ? 'storm ended' : tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6 && low >= TORNADO.sustainRotation && !leftBehind && rotating > 0 ? 'vortex spent' : rotating <= 0 ? 'not rotating' : leftBehind ? 'left behind' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
-    const cut = endedBy === 'vortex spent' ? cutToLife(tornado) : null;
+    const endedBy = storm.active === false ? 'storm ended' : tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6 && low >= TORNADO.sustainRotation && !leftBehind && spinning ? 'vortex spent' : !spinning ? 'not rotating' : leftBehind ? 'left behind' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
+    // One whose rotation fell below what holds it (faded, or cut off by the outflow) ended when it crossed sustainRotation
+    // within the last step, not at the tick that saw it (2026-10-25: those ended on ticks, 16-39% of them at exactly 10 min).
+    const prevLow = low - (storm.lowRotationTrend ?? 0) * dtHours, crossed = low < TORNADO.sustainRotation && prevLow > low ? clamp((prevLow - TORNADO.sustainRotation) / (prevLow - low), 0, 1) : null;
+    const fadedLife = crossed !== null && tornado.trackPoints?.length >= 2 ? (tornado.trackPoints.at(-1).hourUtc - dtHours * (1 - crossed) - tornado.trackPoints[0].hourUtc) * 60 : null;
+    const cut = endedBy === 'vortex spent' ? cutToLife(tornado) : (endedBy === 'rotation faded' || endedBy === 'occluded') && fadedLife !== null ? cutToLife(tornado, fadedLife) : null;
     endTornado(world, storm, tornado, { endedBy, endOcclusion: storm.occlusion ?? 0, endLowRotationFree: storm.lowRotationFree ?? 0, ...(cut ? { endedHourUtc: cut } : {}) });
     if (endedBy === 'vortex spent') storm.lowRotation = (storm.lowRotation ?? 0) * LIFE.rotationLeft;
   } else tornado.state = 'on-ground';
@@ -218,6 +232,8 @@ function beginTornado(world, storm, tornado) {
   tornado.windSpeedMph = 75; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.positionKm = tornadoPosition(storm);
   tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
+  // What made the rotation it came from: a mesocyclone, a line's mesovortex or a boundary (a landspout).
+  tornado.source = storm.lowRotationSource ?? 'mesocyclone';
 }
 
 // A tornado whose drawn life ran out between storm ticks ended then: its track is cut back to that
@@ -225,8 +241,9 @@ function beginTornado(world, storm, tornado) {
 // those of the cut track. Returns the hour it ended, or null when nothing was cut. (2026-10-24: it
 // could end only at a tick after the one it formed in, so every short-lived tornado lasted exactly
 // 10 minutes and ran 5-8 miles: 15 of 19 and 15 of 22 tornadoes on two reviewed days.)
-function cutToLife(tornado) {
-  const points = tornado.trackPoints ?? [], life = tornado.lifeMinutes;
+function cutToLife(tornado, lifeMinutes = tornado.lifeMinutes) {
+  // (At least a minute: a 0-minute EF1 with no path appeared once the track was cut, 2026-10-24.)
+  const points = tornado.trackPoints ?? [], life = Math.max(1, lifeMinutes);
   if (points.length < 2 || !Number.isFinite(life)) return null;
   const endAt = points[0].hourUtc + life / 60;
   if (points.at(-1).hourUtc <= endAt + 1e-9) return null;
@@ -243,7 +260,7 @@ function endTornado(world, storm, tornado, end = {}) {
   if (tornado.onGround || tornado.startedHourUtc != null) {
     storm.tornadoHistory ??= [];
     storm.tornadoHistory.push({
-      cycle: tornado.cycleCount, startedHourUtc: tornado.startedHourUtc,
+      cycle: tornado.cycleCount, source: tornado.source ?? 'mesocyclone', startedHourUtc: tornado.startedHourUtc,
       endedHourUtc: world.stormEngine?.validHourUtc ?? world.validHourUtc,
       pathLengthKm: tornado.pathLengthKm, groundTimeMinutes: tornado.groundTimeMinutes,
       peakWindSpeedMph: tornado.peakWindSpeedMph, peakWidthYards: tornado.peakWidthYards,
@@ -312,7 +329,19 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // (STP / stpFull)^stpPower: little in marginal air, much more in an outbreak's. On an outbreak day with
 // STP 4-5 most tornadoes peaked at 75-95 mph and only the two in the strongest-rotating storms were
 // strong; real days like it have a quarter or more of their tornadoes rated EF2 or stronger.)
-const INTENSITY = { baseScaleMph: 10, rotationScaleMph: 50, tail: 0.6, stpScaleMph: 70, stpPower: 1.5, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
+// (rotationScaleMph 50 to 80 on 2026-10-25: fitted when the afternoon air was too unstable, the scale gave weaker
+// tornadoes once CAPE came down to real values. Supercells' tornadoes form in STP about 1.5 (EF0-1) and 2.5 (EF2+), as
+// in the record (Thompson et al. 2012), but only 9.7% reached EF3 winds and 1.2% were rated EF3+. With 80: rated
+// 57 / 33 / 8.0 / 1.0 / 0.7%, US 52 / 35 / 9 / 2.4 / 0.45; EF4 winds in 5.9% of supercells' tornadoes, tornadoes per day unchanged.)
+// (2026-10-26: baseScaleMph 10 to 20, stpScaleMph 70 to 45, rotationScaleMph 80 to 65, tail 0.6 to 0.8. Ratings had followed
+// STP too steeply: supercell tornadoes EF2+ 3% under STP 1, 12% at 1-3, 38% at 3-6 (EF3+ 19%), where the record, scaled from
+// Thompson et al. 2012's strongest-per-hour sample (19% EF2+ overall) to all tornadoes (12%), runs about 7-9 / 12-14 / 18-21%,
+// and EF0 was 62%. Now 4 / 11 / 33% and 55.9 / 34.7 / 6.3 / 2.3 / 0.6% overall (US 52 / 35 / 9 / 2.4 / 0.45). Rotation, not
+// the environment, sets most of a rating (Smith et al. 2015); weak setups' short, narrow paths keep their ratings low.)
+// (Later on 2026-10-26, after the low-level jet fix: baseScaleMph 20 to 22, stpScaleMph 45 to 25, tail 0.8 to 0.7. With realistic
+// helicity, tornado-time STP reached the record's range (90th percentile 3.6) and STP 3-6 gave 47% EF2+; now 35%, and EF0-4
+// 53.6 / 32.8 / 9.6 / 3.1 / 0.6% against the US record's 52 / 35 / 9 / 2.4 / 0.45.)
+const INTENSITY = { baseScaleMph: 22, rotationScaleMph: 65, tail: 0.7, stpScaleMph: 25, stpPower: 1.5, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times
@@ -360,7 +389,10 @@ const STEADY = { share: 0.35, ceilingMph: [136, 200], srh: [250, 450], occlusion
 // (EF4 indicators 0.13 to 0.6 per sq mi on 2026-10-24, about one well-built, well-anchored house per
 // 1.7 sq mi: none of 442 tornadoes on 40 days was rated EF4, though 21 had EF4+ winds; refitted on
 // them offline, the top ratings came out EF3 2.5%, EF4 0.7%, EF5 0, the US record 2.4 / 0.45 / 0.05.)
-const DAMAGE_RATING = { densityPerSqMi: [22, 1.9, 0.72, 0.6, 0.08], peakShare: 0.4, decay: 0.6 };
+// (EF3 and EF4 indicators 0.72 and 0.6 to 0.4 and 0.13 per sq mi on 2026-10-25, once tornadoes are as wide as the record's
+// (width above): with the two nearly equal a path that showed EF3 almost always showed EF4 too, EF3 2.3% and EF4 1.9%
+// expected over 286 tornadoes; now 58.4 / 29.8 / 9.0 / 2.25 / 0.50 / 0.06, US 52 / 35 / 9 / 2.4 / 0.45 / 0.05.)
+const DAMAGE_RATING = { densityPerSqMi: [22, 1.9, 0.4, 0.13, 0.08], peakShare: 0.4, decay: 0.6 };
 const EF_FLOOR_MPH = [65, 86, 111, 136, 166, 201, 260];
 // The rated wind: the peak wind where the damage could show it all, otherwise the middle of the
 // highest category it showed.

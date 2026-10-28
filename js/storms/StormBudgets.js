@@ -22,7 +22,11 @@ export const BUDGET = Object.freeze({
   // A storm fully undercut by its outflow keeps 1 - undercutShare of what its inflow could
   // support. (0.9 to 0.95 on 2026-10-16: with boundary-fed updraughts entraining less, fully
   // undercut storms in weak shear hung on at the 4 m/s that ends a storm instead of dying.)
-  loadingShare: 0.45, undercutShare: 0.95,
+  // lineUndercutShare (2026-10-25): a line whose cold pool outruns the shear tilts its updraughts back over the cold air,
+  // and the gust front's lifting keeps making new ones, so it weakens but goes on (Rotunno, Klemp and Weisman 1988; Weisman
+  // and Rotunno 2004): mature squall lines' cores run about 15-25 m/s. (With the lone storm's 0.95 lines' updraughts had a
+  // median of 16 m/s, half of the 32 their inflow could support, and their rain, cold pools and gusts stayed weak.)
+  loadingShare: 0.45, undercutShare: 0.95, lineUndercutShare: 0.5,
   lineOrganization: 0.7, lineUndercutBalance: [1.8, 3],
   // Share of the undercutting a fully rotating updraught resists: its rotation draws air up
   // into it from below, so it holds its inflow against outflow that would cut off another storm.
@@ -61,11 +65,12 @@ export function stepStormBudgets(storm, environment, physics, dtHours, { starvin
   // Cold outflow that outruns the updraught cuts off its inflow; a rotating updraught resists
   // it. A line stands a stronger cold pool, but not one that far outruns the shear: then the
   // gust front leaves it behind too.
-  const undercut = outflowDominance(storm, environment) * (1 - BUDGET.rotationLift * rotatingShare(storm)) * (1 - linear) + ramp(coldPoolBalance(storm, environment), BUDGET.lineUndercutBalance[0], BUDGET.lineUndercutBalance[1]) * linear;
+  const undercutCell = outflowDominance(storm, environment) * (1 - BUDGET.rotationLift * rotatingShare(storm)) * (1 - linear), undercutLine = ramp(coldPoolBalance(storm, environment), BUDGET.lineUndercutBalance[0], BUDGET.lineUndercutBalance[1]) * linear;
+  const undercut = undercutCell + undercutLine;
   // What the inflow can support (parcel theory less entrainment and inhibition), less the
   // weight of the rain, the undercutting, and inflow spoiled by other storms.
   const potentialMs = starving ? 0 : physics.theoreticalUpdraftMs * physics.entrainmentEfficiency * physics.inhibitionEfficiency;
-  const targetMs = potentialMs * (1 - BUDGET.loadingShare * storm.loading) * (1 - BUDGET.undercutShare * undercut) * clamp(storm.inflowQuality ?? 1, 0, 1);
+  const targetMs = potentialMs * (1 - BUDGET.loadingShare * storm.loading) * (1 - BUDGET.undercutShare * undercutCell - BUDGET.lineUndercutShare * undercutLine) * clamp(storm.inflowQuality ?? 1, 0, 1);
   storm.updraughtTrend = (targetMs - storm.updraughtMs) / Math.max(BUDGET.deadUpdraughtMs, storm.updraughtMs);
   setUpdraught(storm, storm.updraughtMs + (targetMs - storm.updraughtMs) * clamp(dtHours / (targetMs > storm.updraughtMs ? BUDGET.growthHours : BUDGET.decayHours), 0, 1));
   // Organization: how well the updraught is kept clear of its own rain and outflow (or, in a

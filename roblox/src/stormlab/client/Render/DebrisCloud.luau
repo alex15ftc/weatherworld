@@ -10,6 +10,8 @@
 -- (1-3 rc) in an arc from south to east, orbit counter-clockwise with the outer flow, and rise
 -- at the tornado's edge. They are not drawn: this module keeps their motion and publishes them
 -- as wind (ctx.hvField), and Render/TornadoDust rolls its dust round them.
+-- Units: metres, heights above the local ground (C.groundAt); positions and sizes cross to studs
+-- through Config (docs/stormlab/SCALE-RULES.md).
 local Workspace = game:GetService("Workspace")
 
 local DebrisCloud = {}
@@ -99,7 +101,8 @@ function DebrisCloud.new(ctx: any): any
 		return sqrt(u * u + v * v)
 	end
 
-	-- screen angle (ImageLabel.Rotation, clockwise degrees) of a sim-frame direction
+	-- screen angle (ImageLabel.Rotation, clockwise degrees) of a sim-frame direction (a direction:
+	-- the axis swap only, no scale)
 	local right, up = Vector3.xAxis, Vector3.yAxis
 	local function screenRot(dx: number, dy: number, dz: number): number
 		local w = Vector3.new(dx, dz, -dy)
@@ -107,16 +110,33 @@ function DebrisCloud.new(ctx: any): any
 	end
 
 	local used = 0
-	local field = {} -- (this frame's horizontal vortex tubes, for Render/TornadoDust)
+	-- (this frame's horizontal vortex tubes, for Render/TornadoDust: two lists used in turn, so the
+	-- one a reader got last frame is not cleared under it; their entries are pooled)
+	local field = {}
+	local fieldSpare = {}
+	local tubePool, tubeSpare = {}, {}
+	local nTubes = 0
+	local function newTube(): any
+		nTubes += 1
+		local t = tubePool[nTubes]
+		if not t then
+			t = {}
+			tubePool[nTubes] = t
+		end
+		return t
+	end
+	-- (the tornado being drawn: its ground point and scale - its cards are drawn about it)
+	local curX, curY, curK = 0, 0, C.studs(1)
 	local function put(x: number, y: number, z: number, w: number, h: number, a: number, rot: number, tex: string, frame: number, col: Color3)
 		used += 1
 		local c = card(used)
 		setTex(c, tex, frame)
-		c.att.WorldPosition = Vector3.new(x, z, -y)
+		-- (z: m above the ground there)
+		c.att.WorldPosition = C.toWorldAbout(x, y, z + C.groundAt(x, y), curX, curY, curK)
 		-- (size, colour and opacity only when they change enough to see: fewer writes)
-		if math.abs(w - (c.w or 0)) > 0.03 * w or math.abs(h - (c.h or 0)) > 0.03 * h then
-			c.w, c.h = w, h
-			c.bb.Size = UDim2.fromScale(max(w, 2), max(h, 2))
+		if math.abs(w - (c.w or 0)) > 0.03 * w or math.abs(h - (c.h or 0)) > 0.03 * h or c.k ~= curK then
+			c.w, c.h, c.k = w, h, curK
+			c.bb.Size = UDim2.fromScale(max(w, 2) * curK, max(h, 2) * curK)
 		end
 		if math.abs(rot - (c.rot or 1e9)) > 1.5 then
 			c.rot = rot
@@ -138,6 +158,7 @@ function DebrisCloud.new(ctx: any): any
 	end
 
 	local function drawTornado(e: any, s: any, simDt: number, camPos: Vector3, nearK: number)
+		curX, curY, curK = e.x, e.y, C.scaleAbout(e.x, e.y)
 		local fade = e.fade or 1
 		local loft = (e.debrisLoft or 0) * fade
 		local pk = max(e.peakWind or 0, e.vc or 0)
@@ -146,7 +167,7 @@ function DebrisCloud.new(ctx: any): any
 		local now = os.clock()
 		if now - s.lightAt > 0.25 then
 			s.lightAt = now
-			local lc = SceneLight.shade(SceneLight.sample(ctx, e.x, e.y, 40), 1, 0.4)
+			local lc = SceneLight.shade(SceneLight.sample(ctx, e.x, e.y, 40 + C.groundAt(e.x, e.y)), 1, 0.4)
 			-- loose soil, darkened once wreckage is in it (loft > 0.3 needs structures or deep soil)
 			local soil = Color3.fromRGB(132, 108, 84):Lerp(Color3.fromRGB(78, 74, 70), clamp((loft - 0.3) * 1.3, 0, 0.75))
 			s.colour = Color3.new(min(1, soil.R * lc.R * 2.2), min(1, soil.G * lc.G * 2.2), min(1, soil.B * lc.B * 2.2))
@@ -157,7 +178,7 @@ function DebrisCloud.new(ctx: any): any
 		-- horizontal vortices: violent tornadoes only
 		if pk >= 61 and (e.O or 1) > 0.5 and fade > 0.3 then
 			local want = clamp(1 + math.floor((pk - 61) / 15), 1, 3)
-			local tNow = ctx:simTime()
+			local tNow = ctx:visualTime()
 			if #s.hvs < want and tNow >= s.nextHV then
 				local hh = hash(#s.hvs + 1, tNow)
 				local len = clamp(rc * (1 + 2 * hh), 50, 500)
@@ -189,13 +210,13 @@ function DebrisCloud.new(ctx: any): any
 					-- drawn shape. Its swirl: stretched by the tornado's flow to ~half the outer-flow
 					-- speed; its core radius a fraction of its length; it rises at the tornado's
 					-- edge as it ages (up to ~200 m)
-					table.insert(field, {
-						x = e.x, y = e.y, th = hv.th, r0 = hv.r0,
-						zc = hv.z0 + 100 * life ^ 0.7,
-						half = 0.5 * hv.len / hv.r0,
-						a = clamp(0.15 * hv.len, 15, 60),
-						vh = 0.5 * v * env,
-					})
+					local tube = newTube()
+					tube.x, tube.y, tube.th, tube.r0 = e.x, e.y, hv.th, hv.r0
+					tube.zc = hv.z0 + 100 * life ^ 0.7
+					tube.half = 0.5 * hv.len / hv.r0
+					tube.a = clamp(0.15 * hv.len, 15, 60)
+					tube.vh = 0.5 * v * env
+					table.insert(field, tube)
 				end
 			end
 		else
@@ -203,29 +224,45 @@ function DebrisCloud.new(ctx: any): any
 		end
 	end
 
+	local statAt, statN = -math.huge, -1
+	local list = {}
+	local entryPool = {}
+	local function byDist(a: any, b: any): boolean
+		return a.d < b.d
+	end
 	function self:update(dt: number)
 		local adapter = ctx.tornadoAdapter
 		local show = ctx.state.show.dust ~= false
 		used = 0
-		field = {}
+		field, fieldSpare = fieldSpare, field
+		tubePool, tubeSpare = tubeSpare, tubePool
+		table.clear(field)
+		nTubes = 0
 		ctx.hvField = field
 		if adapter and show then
 			local cam = Workspace.CurrentCamera
 			local camPos = cam.CFrame.Position
+			local cx, cy, cz = C.fromWorld(camPos)
 			right, up = cam.CFrame.RightVector, cam.CFrame.UpVector
-			local simDt = if ctx.state.paused then 0 else dt * (ctx.state.timeScale or 1)
-			local list = {}
+			local simDt = ctx:visualDt(dt) -- (local motion)
+			table.clear(list)
 			for _, e in adapter.entries do
 				if e.params and (e.fade or 1) > 0.01 and ((e.debrisLoft or 0) > 0.02 or (e.peakWind or 0) >= 61) then
-					local d = (Vector3.new(e.x, 0, -e.y) - camPos).Magnitude
+					-- (m: from the camera to the tornado's foot on the ground)
+					local d = sqrt((e.x - cx) ^ 2 + (e.y - cy) ^ 2 + (C.groundAt(e.x, e.y) - cz) ^ 2)
 					if d < RANGE then
-						table.insert(list, { e = e, d = d })
+						local k = #list + 1
+						local it = entryPool[k]
+						if not it then
+							it = {}
+							entryPool[k] = it
+						end
+						it.e, it.d = e, d
+						list[k] = it
 					end
 				end
 			end
-			table.sort(list, function(a, b)
-				return a.d < b.d
-			end)
+			table.sort(list, byDist)
 			for _, s in sets do
 				s.seen = false
 			end
@@ -247,7 +284,12 @@ function DebrisCloud.new(ctx: any): any
 				c.bb.Enabled = false
 			end
 		end
-		ctx.root:SetAttribute("DebrisCloudCards", used)
+		-- (debug count: only when it changes, at most twice a second)
+		local nowS = os.clock()
+		if used ~= statN and nowS - statAt > 0.5 then
+			statAt, statN = nowS, used
+			ctx.root:SetAttribute("DebrisCloudCards", used)
+		end
 	end
 
 	function self:destroy()

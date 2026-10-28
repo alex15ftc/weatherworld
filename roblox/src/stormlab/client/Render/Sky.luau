@@ -31,6 +31,8 @@
 --            = the clear air (50 km visibility) plus the extinction Render/NearPrecip publishes
 --            as the ctx.root attribute PrecipExtinction (1/stud; PrecipDust its dust share),
 --            added in extinction and turned into a density with the measured Atmosphere curve.
+--            (Extinctions here are per STUD, what the Atmosphere works in: a per-metre
+--            extinction k is k / SCALE per stud.)
 --
 -- Published on ctx.root for other renderers: SkyDirect (0..1, direct sun reaching the camera)
 -- and SkyDiffuse (DIFFUSE_FLOOR..1, sky light), both eased.
@@ -157,7 +159,7 @@ function Sky.new(ctx)
 		Haze = atmosphere.Haze,
 	}
 	local kDefault = Util.extinctionForDensity(defAtmo.Density)
-	local kClear = 3.912 / CLEAR_VISIBILITY
+	local kClear = 3.912 / ctx.Config.studs(CLEAR_VISIBILITY) -- (1/stud)
 
 	local st = {
 		ready = false, at = -1, clock = 0,
@@ -198,7 +200,7 @@ function Sky.new(ctx)
 
 	-- the 10 Hz analysis: direct sun, sky light, overcast and the green tint
 	local function analyse()
-		local cx, cy, cz = ctx:simCamera()
+		local cx, cy, cz = ctx.Config.fromWorld(ctx.camera.CFrame.Position) -- (metres)
 		local d = Lighting:GetSunDirection()
 		local sx, sy, sz = d.X, -d.Z, d.Y
 		local sunUp = sz > 0.01
@@ -363,7 +365,7 @@ function Sky.new(ctx)
 		grade.Contrast = -0.1 * (1 - S)
 
 		-- the haze
-		local kPkm = kP * 1000
+		local kPkm = kP * ctx.Config.SCALE * 1000 -- (1/stud -> 1/km)
 		local wetTarget = ramp(kPkm, 0.2, 3) * (1 - dustShare)
 		local dustTarget = ramp(kPkm, 0.2, 3) * dustShare
 		st.wet += (wetTarget - st.wet) * k

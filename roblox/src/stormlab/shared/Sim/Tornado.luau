@@ -92,8 +92,15 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	end
 	-- held (lab visual tests): the life stage stays put; it keeps moving and animating
 	if t.hold then
-		t.x += t.ut * dt
-		t.y += t.vt * dt
+		-- (it still follows its parent's low-level circulation, so it stays in the storm's
+		-- hook and couplet; without a parent it drifts at its own motion)
+		if parent and not parent.dead then
+			t.x += (parent.u or 0) * dt + (parent.x - t.x) * (1 - exp(-dt / 50))
+			t.y += (parent.v or 0) * dt + (parent.y - t.y) * (1 - exp(-dt / 50))
+		else
+			t.x += t.ut * dt
+			t.y += t.vt * dt
+		end
 		return
 	end
 	local vlow, rlow, wLow, rfdDef, cloudBase = 0, 1500, 10, 0, t.cloudBase
@@ -212,6 +219,13 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 end
 
 -- what clients need (replicated 10-20 Hz): exactly the Vortex.State plus a few display numbers
+-- (Size, 2026-10-27: this table serializes to roughly 550-650 bytes - 36 string keys plus
+-- numbers and the stage string. The server sends the list of every tornado World still holds
+-- (live ones and ones ended < 120 s ago, World forgets them after that) on the "tornado" remote,
+-- an UnreliableRemoteEvent, whose payload limit is ~900 bytes: with TWO tornadoes in the list
+-- (two live, or one live plus one that just ended) a frame is over the limit and Roblox drops it
+-- (silently, every frame while both exist). Not redesigned here; the fix is a field trim / packed
+-- buffer, one snapshot per send, or a reliable remote for the tornado list.)
 function Tornado.snapshot(t: Tornado): { [string]: any }
 	return {
 		id = t.id, parentId = t.parentId, x = t.x, y = t.y, ut = t.ut, vt = t.vt, envU = t.envU, envV = t.envV,

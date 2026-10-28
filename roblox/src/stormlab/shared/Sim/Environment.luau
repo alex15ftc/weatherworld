@@ -221,14 +221,19 @@ function Environment.windAt(self: Environment, x: number, y: number, z: number):
 	local fz = kz - k
 	local cols = self.agCols
 	local nx = ag.nx
-	local function cu(col: Column): (number, number)
-		return col.u[k] + (col.u[k + 1] - col.u[k]) * fz, col.v[k] + (col.v[k + 1] - col.v[k]) * fz
-	end
+	local k1 = k + 1
+	-- (each column's wind at z, interpolated between its two levels; written out inline: no
+	-- closure per call)
 	local base = i + (j - 1) * nx
-	local u1, v1 = cu(cols[base])
-	local u2, v2 = cu(cols[base + 1])
-	local u3, v3 = cu(cols[base + nx])
-	local u4, v4 = cu(cols[base + nx + 1])
+	local c1, c2, c3, c4 = cols[base], cols[base + 1], cols[base + nx], cols[base + nx + 1]
+	local cu1, cv1 = c1.u, c1.v
+	local u1, v1 = cu1[k] + (cu1[k1] - cu1[k]) * fz, cv1[k] + (cv1[k1] - cv1[k]) * fz
+	local cu2, cv2 = c2.u, c2.v
+	local u2, v2 = cu2[k] + (cu2[k1] - cu2[k]) * fz, cv2[k] + (cv2[k1] - cv2[k]) * fz
+	local cu3, cv3 = c3.u, c3.v
+	local u3, v3 = cu3[k] + (cu3[k1] - cu3[k]) * fz, cv3[k] + (cv3[k1] - cv3[k]) * fz
+	local cu4, cv4 = c4.u, c4.v
+	local u4, v4 = cu4[k] + (cu4[k1] - cu4[k]) * fz, cv4[k] + (cv4[k1] - cv4[k]) * fz
 	local w1, w2, w3, w4 = (1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy
 	return u1 * w1 + u2 * w2 + u3 * w3 + u4 * w4, v1 * w1 + v2 * w2 + v3 * w3 + v4 * w4
 end

@@ -127,7 +127,8 @@ assert.deepEqual(page.shapes.tornado.groups[0].rings, page.shapes.tornado.levels
 assert.deepEqual(publicOutlook(calm).shapes.tornado, { levels: [], groups: [] });
 
 // --- A real member: the world run ahead with its storms' chances drawn afresh.
-const atmosphere = new AtmosphereWorld({ seed: 3, spinUpDays: 6 }); atmosphere.advance(30);   // to 18Z of the second day
+// (Seed 2 since 2026-10-26: with the corrected cap, seed 3's first member started no storms in these hours.)
+const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 6 }); atmosphere.advance(30);   // to 18Z of the second day
 const bytes = v8.serialize(atmosphere.saveState()), hours = 8;
 const first = runOutlookMember(stateFromBytes(bytes), 0, hours), again = runOutlookMember(stateFromBytes(bytes), 0, hours), other = runOutlookMember(stateFromBytes(bytes), 1, hours);
 for (const field of CHANCE_FIELDS) { assert.equal(first.chance[field].length, atmosphere.world.width * atmosphere.world.height); assert.ok(first.chance[field].every(v => v >= 0 && v <= 100)); }

@@ -3,6 +3,9 @@
 -- the lab has ground anywhere in its ~240 km domain. The town's own ground (server, physical)
 -- sits a little higher where it exists. Fields vary a little in colour (seeded per tile) like
 -- Plains section-line farmland.
+-- The tiles lie at the datum (their top ~0.15 m below it): the server's Terrain hills
+-- (LabConfig.GROUND.relief, never below the datum) cover them where the ground rises. Tile sizes
+-- are metres, crossed to studs through Config (docs/stormlab/SCALE-RULES.md).
 local Workspace = game:GetService("Workspace")
 
 local Ground = {}
@@ -20,7 +23,7 @@ function Ground.new(ctx: any): any
 		local p = Instance.new("Part")
 		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
 		p.CastShadow = false
-		p.Size = Vector3.new(G.tile, 2, G.tile)
+		p.Size = Vector3.new(C.studs(G.tile), C.studs(2), C.studs(G.tile))
 		p.Material = Enum.Material[G.material] or Enum.Material.Grass
 		p.TopSurface = Enum.SurfaceType.Smooth
 		p.Parent = folder

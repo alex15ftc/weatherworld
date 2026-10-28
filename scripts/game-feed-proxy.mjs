@@ -1,5 +1,6 @@
 // The weather server's public face for a tunnel (cloudflared, ngrok): only the game's read-only
-// routes are passed on (GET /api/game/v1/frames, /manifest and /product/<id>; server/GameProducts.js);
+// routes are passed on (GET /api/game/v1/frames, /manifest, /product/<id> (server/GameProducts.js) and
+// the storm area: /lab/window, /lab/storms (js/game/LabWindow.js, the game's server/StormHost));
 // everything else (reset, advance, pages) is refused, so a public URL cannot change the world.
 //   node scripts/game-feed-proxy.mjs            listens on 127.0.0.1:3001, forwards to :3000
 //   PORT=3001 TARGET_PORT=3000 node scripts/game-feed-proxy.mjs
@@ -7,7 +8,7 @@
 import http from 'node:http';
 
 const TARGET = Number(process.env.TARGET_PORT ?? 3000), PORT = Number(process.env.PORT ?? 3001);
-const GAME_ROUTE = /^\/api\/game\/v1\/(frames|manifest|product\/[A-Za-z0-9._-]+)$/;
+const GAME_ROUTE = /^\/api\/game\/v1\/(frames|manifest|product\/[A-Za-z0-9._-]+|lab\/window|lab\/storms)$/;
 const PASS_IN = ['accept-encoding', 'x-api-key'];
 const PASS_OUT = ['content-type', 'content-encoding', 'content-length', 'cache-control', 'vary', 'x-product-version'];
 
@@ -24,4 +25,4 @@ http.createServer((req, res) => {
   });
   upstream.on('error', () => { res.writeHead(502, { 'content-type': 'text/plain' }); res.end('weather server unreachable'); });
   upstream.end();
-}).listen(PORT, '127.0.0.1', () => console.log(`game feed proxy on 127.0.0.1:${PORT} -> 127.0.0.1:${TARGET} (only GET /api/game/v1/frames, manifest, product/<id>)`));
+}).listen(PORT, '127.0.0.1', () => console.log(`game feed proxy on 127.0.0.1:${PORT} -> 127.0.0.1:${TARGET} (only GET /api/game/v1/frames, manifest, product/<id>, lab/window, lab/storms)`));

@@ -15,12 +15,15 @@ export function buildSounding(cell) {
   const profile=new Array(count), logP=new Float64Array(count), exner=new Float64Array(count), vapour=new Float64Array(count), envTv=new Float64Array(count);
   for(let i=0;i<count;i++){
     const p=i?LEVELS[first+i-1]:surfaceP, lp=i?LOG_LEVELS[first+i-1]:Math.log(surfaceP), row=interpolateAnchorAt(anchors,p,lp);
-    row.heightM = pressureToHeight(p, cell.terrain.elevationM, surfaceP, surfaceT);
     const r=row.dir*Math.PI/180; row.u=-Math.sin(r)*row.spd; row.v=-Math.cos(r)*row.spd;
     const e=saturationVaporPressure(row.td);
     row.rh = clamp(100*e/saturationVaporPressure(row.t),0,100);
     // Environment virtual temperature is identical for every parcel lifted through this profile.
     envTv[i]=(row.t+273.15)*(1+.61*(EPS*e/(p-e)));
+    // Heights by the hypsometric equation, layer by layer with each layer's mean virtual temperature.
+    // (2026-10-26: until then the whole column was taken at the surface temperature, which put 500 mb
+    // about 300 m and 200 mb about 1.8 km too high, inflating CAPE by 15-20% and every "6 km" layer.)
+    row.heightM = i ? profile[i-1].heightM + RD * .5 * (envTv[i-1] + envTv[i]) / G * (logP[i-1] - lp) : cell.terrain.elevationM;
     profile[i]=row; logP[i]=lp; exner[i]=Math.pow(p/1000,RD/CP); vapour[i]=e;
   }
   for(const a of anchors){delete a.logP;delete a.sin;delete a.cos}
@@ -36,8 +39,8 @@ export function buildSounding(cell) {
   const convectiveTemp = surfaceT + Math.max(0, Math.abs(surfaceResult.thermo.cin)/45);
   const capeTerm=clamp(mixedResult.thermo.cape/1500,0,3);
   const srhTerm=clamp(kinematics.srh01/150,0,3);
-  const effectiveShearMs=kinematics.shear06*KNOT_TO_MS;
-  const shearTerm=effectiveShearMs<12.5?0:clamp(effectiveShearMs/20,0,1.5);
+  const shear06StpMs=kinematics.shear06*KNOT_TO_MS;
+  const shearTerm=shear06StpMs<12.5?0:clamp(shear06StpMs/20,0,1.5);
   const mixedLclAgl=Math.max(0,mixedResult.thermo.lclM-cell.terrain.elevationM);
   const lclTerm=mixedLclAgl<1000?1:clamp((2000-mixedLclAgl)/1000,0,1);
   const cinMagnitude=Math.abs(mixedResult.thermo.cin);
@@ -45,10 +48,15 @@ export function buildSounding(cell) {
   const surfaceRooted=mixedResult.thermo.cape>=100&&cinMagnitude<=250;
   const rawStp=surfaceRooted?clamp(capeTerm*srhTerm*shearTerm*lclTerm*cinTerm,0,15):0;
   const synopticSupport=diagnoseSynopticTornadoSupport(cell);
-  // Standard SPC fixed-layer STP from the sounding alone.
+  // STP from the sounding alone: fixed-layer 0-1 km helicity and 0-6 km shear with the mixed-layer CAPE, cloud base and
+  // CIN terms (a hybrid of SPC's fixed-layer and effective-layer versions; until 2026-10-26 it was labelled fixed-layer).
   const stp=rawStp, targetAirMassFactor=1, airMassFactor=1;
-  const vtp=diagnoseViolentTornadoParameter({stp,rawStp,synopticSupport,cape:mixedResult.thermo.cape,srh:kinematics.srh01,shear:kinematics.shear06,lcl:mixedResult.thermo.lclM,cin:Math.abs(mixedResult.thermo.cin),criticalAngle:kinematics.criticalAngle});
-  const scp=clamp((muResult.thermo.cape/1000)*(kinematics.srh03/100)*clamp(kinematics.shear06/40,0,1.5),0,35);
+  const vtp=diagnoseViolentTornadoParameter({stp,rawStp,synopticSupport,cape:mixedResult.thermo.cape,srh:Math.max(0,kinematics.srh01),shear:kinematics.shear06,lcl:mixedResult.thermo.lclM,cin:Math.abs(mixedResult.thermo.cin),criticalAngle:kinematics.criticalAngle});
+  // SPC's supercell composite: MUCAPE/1000 x helicity/50 x a shear term of 0 below 10 m/s, shear/20 m/s from there, 1 above
+  // 20 m/s. With 0-3 km helicity and 0-6 km shear standing in for the effective-layer ones. (2026-10-26: was helicity/100 and
+  // shear in kt/40, the Richardson-number shear's 40, which differed from SPC's by 30% either way.)
+  const shear06Ms=kinematics.shear06*KNOT_TO_MS, scpShear=shear06Ms<10?0:Math.min(1,shear06Ms/20);
+  const scp=clamp((muResult.thermo.cape/1000)*(Math.max(0,kinematics.srh03)/50)*scpShear,0,60);
   const lapseRate01km=layerLapseRateByHeight(profile,cell.terrain.elevationM,0,1000);
   const lapseRate03km=layerLapseRateByHeight(profile,cell.terrain.elevationM,0,3000);
   const lapseRate700500=layerLapseRate(profile,700,500);
@@ -108,7 +116,7 @@ export function updateCellDiagnostics(cell) {
   cell.derived.midLevelLapseRate=p.lapseRate700500;
   cell.derived.lcl=p.lclM;
   cell.derived.lclAgl=Math.max(0,p.lclM-(cell.terrain?.elevationM??0));
-  cell.derived.bulkShear=p.shear06; cell.derived.srh=p.srh01;
+  cell.derived.bulkShear=p.shear06; cell.derived.srh=Math.max(0,p.srh01);
   cell.derived.stp=p.stp; cell.derived.rawStp=p.rawStp; cell.derived.stpComponents={...p.stpComponents};
   cell.derived.vtp=p.vtp; cell.derived.synopticTornadoSupport=p.synopticSupport; cell.derived.scp=p.scp;
   cell.derived.sounding={sbcape:p.sbcape,mlcape:p.mlcape,mucape:p.mucape,sbcin:p.sbcin,mlcin:p.mlcin,mucin:p.mucin,lclM:p.lclM,lclAglM:cell.derived.lclAgl,lfcM:p.lfcM,elM:p.elM,shear01:p.shear01,shear03:p.shear03,shear06:p.shear06,srh01:p.srh01,srh03:p.srh03,lapseRate01km:p.lapseRate01km,lapseRate03km:p.lapseRate03km,lapseRate700500:p.lapseRate700500,lapseRate850500:p.lapseRate850500,wetBulbZeroAglM:Number.isFinite(p.wetBulbZeroM)?p.wetBulbZeroM-(cell.terrain?.elevationM??0):null,stpComponents:{...p.stpComponents}};
@@ -316,10 +324,17 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
   {p:surfaceP,t:surfaceT,td:surfaceTd,dir:cell.surface.wind.direction,spd:cell.surface.wind.speed,isSurface:true},
   {p:850,t:t850,td:td850,dir:cell.levels[850].windDirection,spd:cell.levels[850].windSpeed},
   {p:700,t:t700,td:td700,dir:cell.levels[700].windDirection,spd:cell.levels[700].windSpeed},
-  {p:500,t:t500,td:Math.min(t500,t500-18-8*(1-moistureDepth)),dir:cell.levels[500].windDirection,spd:cell.levels[500].windSpeed},
+  {p:500,t:t500,td:Math.min(t500,Number.isFinite(cell.levels[500].dewpoint)?cell.levels[500].dewpoint:t500-18-8*(1-moistureDepth)),dir:cell.levels[500].windDirection,spd:cell.levels[500].windSpeed},
   {p:250,t:t250,td:Math.min(t250,t250-28),dir:cell.levels[250].windDirection,spd:cell.levels[250].windSpeed},
   {p:100,t:-56,td:-76,dir:(cell.levels[250].windDirection+10)%360,spd:Math.max(55,cell.levels[250].windSpeed*.75)}
  ];
+ // The low-level jet's nose (RegionalAtmosphere's jetNose): a wind between the ground and 850 mb, its temperature and moisture
+ // those the two give there. (2026-10-26: without it the lowest kilometre's winds were a straight line to 850 mb.)
+ const jet=cell.jetNose;
+ if(jet&&Number.isFinite(jet.windSpeed)){
+  const pNose=surfaceP*Math.exp(-jet.heightAglM*G/(RD*(surfaceT+273.15)));
+  if(pNose>865&&pNose<surfaceP-5){const f=Math.log(surfaceP/pNose)/Math.log(surfaceP/850);anchors.splice(1,0,{p:pNose,t:surfaceT+(t850-surfaceT)*f,td:Math.min(surfaceT+(t850-surfaceT)*f,surfaceTd+(td850-surfaceTd)*f),dir:jet.windDirection,spd:jet.windSpeed});}
+ }
  // Elevated mixed layer: its base is a warm, dry inversion near 780 mb above the moist layer,
  // with a near dry-adiabatic lapse rate up to 700 mb. Interpolating straight from 850 to 700 mb
  // would miss the inversion that caps both surface parcels and the moist air below it.
@@ -341,11 +356,21 @@ function parcelDiagnosticsForSource(profile,index,elevation,envTv,work){
  const src=profile[index];
  return parcelDiagnosticsForState(profile,{p:src.p,t:src.t,td:src.td,index},elevation,envTv,work);
 }
+// The mixed-layer parcel: the pressure-weighted mean potential temperature and mixing ratio of the
+// lowest depthHpa (trapezoids in pressure, the last layer cut at the layer's top). (2026-10-26: an
+// unweighted mean of the levels, which counted the bottom twice where the surface row sits a few mb
+// under the first standard level: the parcel came out 0.6 g/kg too moist.)
 function mixedLayerSource(profile,depthHpa,work){
- const surfaceP=profile[0].p;
- let theta=0,w=0,n=0;
- for(let i=0;i<profile.length;i++){const r=profile[i];if(!(r.p>=surfaceP-depthHpa))continue;const e=Math.min(r.p*.99,work.vapour[i]);theta+=(r.t+273.15)*Math.pow(1000/r.p,RD/CP);w+=EPS*e/(r.p-e);n++}
- theta/=n;w/=n;
+ const surfaceP=profile[0].p, top=surfaceP-depthHpa;
+ const thetaOf=i=>(profile[i].t+273.15)*Math.pow(1000/profile[i].p,RD/CP), wOf=i=>{const e=Math.min(profile[i].p*.99,work.vapour[i]);return EPS*e/(profile[i].p-e)};
+ let theta=0,w=0,weight=0;
+ for(let i=0;i<profile.length-1;i++){
+   const a=profile[i].p,b=profile[i+1].p;if(a<=top)break;
+   const f=b>=top?1:(a-top)/(a-b), dp=a-Math.max(b,top);
+   const thetaB=thetaOf(i)+(thetaOf(i+1)-thetaOf(i))*f, wB=wOf(i)+(wOf(i+1)-wOf(i))*f;
+   theta+=.5*(thetaOf(i)+thetaB)*dp; w+=.5*(wOf(i)+wB)*dp; weight+=dp;
+ }
+ if(weight>0){theta/=weight;w/=weight}else{theta=thetaOf(0);w=wOf(0)}
  const t=theta*Math.pow(surfaceP/1000,RD/CP)-273.15;
  const e=w*surfaceP/(EPS+w),td=dewpointFromVaporPressure(e);
  return {p:surfaceP,t,td,index:0};
@@ -430,7 +455,7 @@ function buildParcelFromState(profile,source,work=null){
 function diagnoseParcel(env,parcel,elevation,source,envTv=null){
  const tlcl=lclTemperatureK(source.t,source.td), pLcl=source.p*Math.pow(tlcl/(source.t+273.15),CP/RD);
  const lclM=heightAtPressure(env,pLcl);
- let cape=0,cin=0,lfcM=NaN,elM=NaN,positive=false;
+ let cape=0,cin=0,lfcM=NaN,elM=NaN,positive=false,runStart=null,runArea=0,bestRun=0,mainLfc=NaN;const negatives=[];
  // Each level's virtual temperature feeds two adjacent layers; carry it forward.
  let tvEnvB=env.length?(envTv?envTv[0]:virtualTemperatureK(env[0].t,env[0].td,env[0].p)):0;
  let tvParB=env.length?virtualTemperatureK(parcel[0].t,parcel[0].td,env[0].p):0;
@@ -444,10 +469,15 @@ function diagnoseParcel(env,parcel,elevation,source,envTv=null){
    // The equilibrium level is where the parcel last turns cold: buoyant again above a capping
    // layer, it has not reached it yet (until 2026-10-17 the first turn was kept, often at 2-3 km
    // under a cap with most of the CAPE above, and radar tops of strong storms sat there).
-   if(midH>=lclM&&area>0){cape+=area;elM=NaN;if(!positive){lfcM=midH;positive=true}}
-   else if(!positive&&area<0&&midH<=elevation+4000)cin+=area;
+   if(midH>=lclM&&area>0){cape+=area;elM=NaN;if(!positive){lfcM=midH;positive=true}if(runStart===null){runStart=midH;runArea=0}runArea+=area;if(runArea>bestRun){bestRun=runArea;mainLfc=runStart}}
+   else {runStart=null;if(area<0&&midH<=elevation+4000)negatives.push([midH,area]);}
    if(positive&&area<0&&Number.isNaN(elM))elM=midH;
  }
+ // The LFC is the bottom of the main buoyant layer (the one holding the most CAPE), and the CIN all the negative area
+ // below it, as SHARPpy does: a shallow buoyant pocket under the cap no longer hides the cap. (2026-10-26: the first
+ // buoyant layer was taken, and CIN stopped there: one cell read -5 against -39.)
+ if(Number.isFinite(mainLfc)){lfcM=mainLfc;for(const [h,area] of negatives)if(h<lfcM)cin+=area;}
+ else for(const [,area] of negatives)cin+=area;
  if(Number.isNaN(lfcM)){lfcM=NaN;elM=NaN;cape=0;}
  else if(Number.isNaN(elM))elM=env[env.length-1].heightM;
  return {cape:Math.max(0,cape),cin:Math.max(-500,Math.min(0,cin)),lclM,lfcM,elM,effectiveLayer:{bottomM:elevation,topM:Number.isFinite(elM)?Math.min(elM,elevation+6000):elevation}};
@@ -543,7 +573,7 @@ function interpolatePressureValue(rows,p,key){for(let i=0;i<rows.length-1;i++){c
 function bunkers(rows,elevation,mean=meanWindLayer(rows,0,6000,elevation)){const low=windAtAgl(rows,0,elevation),upper=windAtAgl(rows,6000,elevation),du=upper.u-low.u,dv=upper.v-low.v,mag=Math.hypot(du,dv)||1,dev=7.5/KNOT_TO_MS;return{right:{u:mean.u+dv/mag*dev,v:mean.v-du/mag*dev},left:{u:mean.u-dv/mag*dev,v:mean.v+du/mag*dev}}}
 function windAtAgl(rows,z,elev){const target=elev+z;for(let i=0;i<rows.length-1;i++){const a=rows[i],b=rows[i+1];if(target>=a.heightM&&target<=b.heightM){const f=(target-a.heightM)/(b.heightM-a.heightM);return{u:lerp(a.u,b.u,f),v:lerp(a.v,b.v,f)}}}return rows[rows.length-1]}
 function meanWindLayer(rows,bottom,top,elev){let u=0,v=0,n=0;for(let z=bottom;z<=top;z+=250){const w=windAtAgl(rows,z,elev);u+=w.u;v+=w.v;n++}return{u:u/n,v:v/n}}
-function stormRelativeHelicity(rows,storm,bottom,top,elev){let sum=0,prev=windAtAgl(rows,bottom,elev);for(let z=bottom+250;z<=top;z+=250){const cur=windAtAgl(rows,z,elev);sum+=(cur.u-storm.u)*(prev.v-storm.v)-(prev.u-storm.u)*(cur.v-storm.v);prev=cur}return Math.abs(sum)*KNOT_TO_MS*KNOT_TO_MS}
+function stormRelativeHelicity(rows,storm,bottom,top,elev){let sum=0,prev=windAtAgl(rows,bottom,elev);for(let z=bottom+250;z<=top;z+=250){const cur=windAtAgl(rows,z,elev);sum+=(cur.u-storm.u)*(prev.v-storm.v)-(prev.u-storm.u)*(cur.v-storm.v);prev=cur}return sum*KNOT_TO_MS*KNOT_TO_MS}  // signed: anticyclonic helicity is negative (2026-10-26; was an absolute value)
 function agl(r,rows){return r.heightM-rows[0].heightM}
 function nearestAgl(rows,z,all){return rows.reduce((a,b)=>Math.abs(agl(b,all)-z)<Math.abs(agl(a,all)-z)?b:a)}
 function interpolatedLayer(rows,lo,hi,all){return rows.filter(r=>agl(r,all)>=lo&&agl(r,all)<=hi)}

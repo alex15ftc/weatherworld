@@ -94,8 +94,9 @@ end
 
 -- Rain-driven downdrafts: where rain reaches the ground, saturated downdraft air arrives with the
 -- environment's downdraft deficit (Thermo ddDeficit: the wet-bulb parcel from the lowest theta-e
--- level). The pool there is replaced by that air at the downdraft's mass flux: w_dd ~ 0.12 m/s
--- per mm/h (cap 10 m/s); light rain can't keep a downdraft saturated, so it arrives warmer.
+-- level). The pool there is replaced by that air at the downdraft's mass flux: w_dd ~ 1.2 m/s
+-- (from 5 mm/h) + 0.12 m/s per mm/h (cap 10 m/s); light rain can't keep a downdraft saturated, so
+-- it arrives warmer.
 function ColdPool.downdrafts(self: ColdPool, rainRate: any, ddField: any, dt: number, yieldFn: (() -> ())?)
 	local D, M = self.D, self.M
 	for j = 1, D.ny do
@@ -107,7 +108,11 @@ function ColdPool.downdrafts(self: ColdPool, rainRate: any, ddField: any, dt: nu
 			local r = rainRate:sample(x, y)
 			if r > 0.5 then
 				local k = D:index(i, j)
-				local wdd = math.min(10, 0.12 * r)
+				-- (a precipitation-driven downdraft is ~1-3 m/s from evaporation and melting through
+				-- the whole column above, not only in proportion to the rain reaching the ground:
+				-- tied to surface rain alone, the forward flank's pool took ~20 min to form while
+				-- the storm moved on ~20 km, and there was no forward-flank gust front)
+				local wdd = math.min(10, 1.2 * math.clamp(r / 5, 0, 1) + 0.12 * r)
 				local target = ddField:sample(x, y) * math.clamp(r / 30, 0.25, 1)
 				local d = D.v[k]
 				if target > d then

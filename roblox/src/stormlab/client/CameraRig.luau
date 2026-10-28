@@ -6,6 +6,9 @@
 --   orbit  round the focus at any height and angle (right-drag, wheel).
 --   free   fly: WASD, E/Q up/down, Shift faster, right-drag to look, wheel changes speed.
 -- C cycles the modes; Tab cycles the focus (tornadoes first, then storms).
+-- Units: distances, heights and speeds are in METRES (m, m/s); only the camera's CFrame is in
+-- studs (LabConfig.toWorld / toWorldGround). Heights near the ground are above the LOCAL ground
+-- (LabConfig.groundAt); the focus point (cloud base, storm tower) is above the datum.
 local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -24,7 +27,7 @@ function CameraRig.new(ctx: any): any
 		pitch = math.rad(12),
 		dist = 900,
 		target = nil,
-		free = { pos = Vector3.new(0, 30, 0), yaw = 0, pitch = 0, speed = 60 },
+		free = { pos = C.toWorld(0, 0, 30), yaw = 0, pitch = 0, speed = 60 }, -- pos: studs; speed: m/s
 		dragging = false,
 		lastKind = nil,
 	}
@@ -170,7 +173,7 @@ function CameraRig.new(ctx: any): any
 			ctx.state.cameraGoto = nil
 			self.mode = "free"
 			ctx.state.cameraMode = "free"
-			self.free.pos = C.toWorld(go.x, go.y, go.z or 2)
+			self.free.pos = C.toWorldGround(go.x, go.y, go.z or 2) -- (go.z: m above the ground there)
 			local dx, dy = (go.lookX or go.x + 1) - go.x, (go.lookY or go.y) - go.y
 			self.free.yaw = math.atan2(-dx, dy) -- (Roblox: look = (-sin yaw, 0, -cos yaw); sim y = -Z)
 			self.free.pitch = math.rad(go.pitch or 8)
@@ -203,7 +206,7 @@ function CameraRig.new(ctx: any): any
 		if self.mode == "chase" then
 			local cx = fx + math.cos(self.yaw) * self.dist
 			local cy = fy + math.sin(self.yaw) * self.dist
-			local eye = C.toWorld(cx, cy, 2 + self.dist * 0.002)
+			local eye = C.toWorldGround(cx, cy, 2 + self.dist * 0.002) -- (eye height above the local ground)
 			local look = CFrame.lookAt(eye, C.toWorld(fx, fy, fz))
 			cam.CFrame = if (self.tilt or 0) ~= 0 then look * CFrame.Angles(self.tilt, 0, 0) else look
 		elseif self.mode == "orbit" then
@@ -211,7 +214,7 @@ function CameraRig.new(ctx: any): any
 			local r = self.dist * math.cos(self.pitch)
 			local cx = fx + math.cos(self.yaw) * r
 			local cy = fy + math.sin(self.yaw) * r
-			local eye = C.toWorld(cx, cy, math.max(3, fz + h))
+			local eye = C.toWorld(cx, cy, math.max(C.groundAt(cx, cy) + 3, fz + h))
 			cam.CFrame = CFrame.lookAt(eye, C.toWorld(fx, fy, fz))
 		else
 			local f = self.free
@@ -237,9 +240,14 @@ function CameraRig.new(ctx: any): any
 			end
 			local sp = f.speed * (if keys[Enum.KeyCode.LeftShift] then 6 else 1)
 			if move.Magnitude > 0 then
-				f.pos += move.Unit * sp * dt
+				f.pos += move.Unit * C.studs(sp * dt)
 			end
-			f.pos = Vector3.new(f.pos.X, math.max(1.5, f.pos.Y), f.pos.Z)
+			-- at least 1.5 m above the local ground
+			local px, py, pz = C.fromWorld(f.pos)
+			local minZ = C.groundAt(px, py) + 1.5
+			if pz < minZ then
+				f.pos = C.toWorld(px, py, minZ)
+			end
 			cam.CFrame = CFrame.new(f.pos) * rot
 		end
 	end

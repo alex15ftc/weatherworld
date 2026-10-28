@@ -69,5 +69,6 @@ do
 end
 
 require(script:WaitForChild("Products")).start()
-require(script:WaitForChild("StormView")).start()
+-- the storms: the storm lab's billboard renderers on the server's storm frames (client/Weather)
+require(script:WaitForChild("WeatherClient")).start()
 require(script:WaitForChild("DebugPage")).start()

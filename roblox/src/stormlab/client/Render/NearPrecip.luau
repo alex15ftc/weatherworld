@@ -32,6 +32,11 @@
 --
 -- Cost: ~24 textured parts moved with one BulkMoveTo and 4 emitters' properties per frame; the
 -- field and the wind are sampled at 10 Hz, the ground ray at 4 Hz; nothing is created after new().
+--
+-- Units: everything here is metres (ring sizes, heights, speeds); parts, textures' studs per tile
+-- and particle sizes / speeds / accelerations cross to studs through Config (S below;
+-- docs/stormlab/SCALE-RULES.md). The ground under the camera is the ray's hit (the real Terrain
+-- and town), never below C.groundAt.
 local Util = require(script.Parent:WaitForChild("FxParts"):WaitForChild("Util"))
 
 local NearPrecip = {}
@@ -43,18 +48,22 @@ local RINGS = {
 	{ radius = 24, count = 8, height = 84, tileW = 14, tileH = 60, weight = 0.85 },
 	{ radius = 60, count = 10, height = 190, tileW = 32, tileH = 130, weight = 0.7 },
 }
-local MAX_SHEET_OPACITY = 0.06 -- (rain reads as lost visibility - Atmosphere + the cards' rain fog - not as drawn streaks; the sheets are only a faint hint of motion)
+-- (0: off. Rain reads as lost visibility - the Atmosphere fog from its extinction and the storm
+-- cards' rain fog - not as drawn streaks; the sheets cost a BulkMoveTo of ~90 parts a frame)
+local MAX_SHEET_OPACITY = 0
 local RAIN_COLOUR = Color3.fromRGB(172, 178, 188)
 local HAIL_COLOUR = Color3.fromRGB(236, 240, 246)
-local SPLASH_RANGE = 150 -- studs above the ground; splashes and bounces only below this
-local HAIL_SKY = 45 -- the hail emitter's height over the camera
+local SPLASH_RANGE = 150 -- m above the ground; splashes and bounces only below this
+local HAIL_SKY = 45 -- m, the hail emitter's height over the camera
 local SPARKLE = "rbxasset://textures/particles/sparkles_main.dds" -- engine content, not an upload
 
 function NearPrecip.new(ctx)
 	local self = {}
 	local cw = ctx.cw
 	local Precip = ctx.Sim.Precip
-	local T = ctx.Config.TEXTURES
+	local C = ctx.Config
+	local S = C.studs
+	local T = C.TEXTURES
 	local streakTex = T.nearRain or T.rainShaft
 	local hailTex = T.hailstone or T.mediumFlat or T.softFlat
 	local splashTex = T.softFlat
@@ -65,20 +74,21 @@ function NearPrecip.new(ctx)
 
 	-- the curtains
 	local sheets = {}
+	local noSheets: typeof(sheets) = {}
 	local sheetParts: { BasePart } = {}
 	local sheetCFrames: { CFrame } = {}
 	for r, ring in RINGS do
 		local width = TAU * ring.radius / ring.count * 1.5 -- (overlapping: the tile fades at its sides)
 		for i = 1, ring.count do
-			local part = Util.part({ Transparency = 1, Size = Vector3.new(width, ring.height, 0.05), Name = "Rain" .. r .. "_" .. i })
+			local part = Util.part({ Transparency = 1, Size = Vector3.new(S(width), S(ring.height), S(0.05)), Name = "Rain" .. r .. "_" .. i })
 			local tex = Instance.new("Texture")
 			tex.Face = Enum.NormalId.Front
 			tex.Texture = streakTex
-			tex.StudsPerTileU = ring.tileW
-			tex.StudsPerTileV = ring.tileH
+			tex.StudsPerTileU = S(ring.tileW)
+			tex.StudsPerTileV = S(ring.tileH)
 			tex.Color3 = RAIN_COLOUR
 			tex.Transparency = 1
-			tex.OffsetStudsU = (i * 0.618 % 1) * ring.tileW
+			tex.OffsetStudsU = S((i * 0.618 % 1) * ring.tileW)
 			tex.Parent = part
 			part.CFrame = CFrame.new(0, -1e5, 0)
 			part.Parent = folder
@@ -92,7 +102,7 @@ function NearPrecip.new(ctx)
 	end
 
 	-- ground effects: splashes, hail bounces and sparkles on a flat part under the camera
-	local groundPart = Util.part({ Transparency = 1, Size = Vector3.new(120, 0.2, 120), Name = "PrecipGround" })
+	local groundPart = Util.part({ Transparency = 1, Size = Vector3.new(S(120), S(0.2), S(120)), Name = "PrecipGround" })
 	local function emitter(parent: Instance, texture: string): ParticleEmitter
 		local e = Instance.new("ParticleEmitter")
 		e.Texture = texture
@@ -107,7 +117,7 @@ function NearPrecip.new(ctx)
 	splash.EmissionDirection = Enum.NormalId.Top
 	splash.Speed = NumberRange.new(0)
 	splash.Lifetime = NumberRange.new(0.1, 0.2)
-	splash.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 0.6) })
+	splash.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, S(0.2)), NumberSequenceKeypoint.new(1, S(0.6)) })
 	splash.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1) })
 	splash.Color = ColorSequence.new(HAIL_COLOUR) -- (one colour with the hail: overlapping layers of different colours flicker)
 	splash.Orientation = Enum.ParticleOrientation.FacingCameraWorldUp
@@ -115,9 +125,9 @@ function NearPrecip.new(ctx)
 
 	local bounce = emitter(groundPart, hailTex)
 	bounce.EmissionDirection = Enum.NormalId.Top
-	bounce.Speed = NumberRange.new(3, 8)
+	bounce.Speed = NumberRange.new(S(3), S(8))
 	bounce.SpreadAngle = Vector2.new(60, 60)
-	bounce.Acceleration = Vector3.new(0, -30, 0)
+	bounce.Acceleration = Vector3.new(0, S(-30), 0)
 	bounce.Drag = 1
 	bounce.Lifetime = NumberRange.new(0.3, 0.6)
 	bounce.RotSpeed = NumberRange.new(-400, 400)
@@ -125,7 +135,7 @@ function NearPrecip.new(ctx)
 
 	local sparkle = emitter(groundPart, SPARKLE)
 	sparkle.EmissionDirection = Enum.NormalId.Top
-	sparkle.Speed = NumberRange.new(0.5, 2)
+	sparkle.Speed = NumberRange.new(S(0.5), S(2))
 	sparkle.Lifetime = NumberRange.new(0.05, 0.12)
 	sparkle.LightEmission = 1
 	sparkle.LightInfluence = 0
@@ -134,7 +144,7 @@ function NearPrecip.new(ctx)
 	groundPart.CFrame = CFrame.new(0, -1e5, 0)
 	groundPart.Parent = folder
 
-	local skyPart = Util.part({ Transparency = 1, Size = Vector3.new(90, 0.2, 90), Name = "HailSky" })
+	local skyPart = Util.part({ Transparency = 1, Size = Vector3.new(S(90), S(0.2), S(90)), Name = "HailSky" })
 	local hail = emitter(skyPart, hailTex)
 	hail.EmissionDirection = Enum.NormalId.Bottom
 	hail.RotSpeed = NumberRange.new(-250, 250)
@@ -150,11 +160,14 @@ function NearPrecip.new(ctx)
 		wu = 0, wv = 0, -- air relative to the camera (sim, m/s), smoothed
 		au = 0, av = 0, -- wind (sim) last sampled
 		vx = 0, vy = 0, -- camera velocity (sim, m/s), smoothed
-		groundY = 0,
+		groundY = 0, -- (studs: the ground's Roblox Y under the camera)
 		sampleAt = -1, rayAt = -1, clock = 0,
 		lastPos = nil :: Vector3?,
 		hailOn = false, splashOn = false,
 		published = -1,
+		-- (the emitter values last written: Render writes only changes)
+		splashRate = -1, hailRate = -1, bounceRate = -1, sparkleRate = -1,
+		hailQv = nil :: number?, hailQt = nil :: number?, hailQs = nil :: number?,
 	}
 
 	-- surface rain and hail, bilinear between the cell centres
@@ -241,9 +254,9 @@ function NearPrecip.new(ctx)
 		local camPos = ctx.camera.CFrame.Position
 		local cx, cy, cz = ctx:simCamera()
 
-		-- the camera's own motion (teleports ignored)
+		-- the camera's own motion in m/s (teleports ignored)
 		if st.lastPos and dt > 0 then
-			local d = (camPos - st.lastPos) / dt
+			local d = (camPos - st.lastPos) / dt / C.SCALE
 			if d.Magnitude < 200 then
 				local k = Util.ease(dt, 0.3)
 				st.vx += (d.X - st.vx) * k
@@ -254,9 +267,10 @@ function NearPrecip.new(ctx)
 
 		if st.clock - st.rayAt > 0.25 then
 			st.rayAt = st.clock
-			st.groundY = Util.groundY(ctx.root, camPos)
+			-- (the ray finds the real Terrain / town; where it misses, the ground's own height)
+			st.groundY = math.max(Util.groundY(ctx.root, camPos), S(C.groundAt(cx, cy)))
 		end
-		local above = math.max(0, camPos.Y - st.groundY)
+		local above = math.max(0, C.metres(camPos.Y - st.groundY)) -- (m)
 		if st.clock - st.sampleAt > 0.1 then
 			st.sampleAt = st.clock
 			sample(cx, cy, cz, above)
@@ -272,8 +286,8 @@ function NearPrecip.new(ctx)
 		st.wu += ((st.au - st.vx) - st.wu) * kw
 		st.wv += ((st.av - st.vy) - st.wv) * kw
 
-		-- publish for Render/Sky (only when it changes noticeably)
-		local kStud = st.ext / 1000
+		-- publish for Render/Sky (only when it changes noticeably): 1/km -> 1/m -> 1/stud
+		local kStud = st.ext / 1000 / C.SCALE
 		local key = math.floor(st.ext * 200 + 0.5) + math.floor(st.dust * 20 + 0.5) * 1e6
 		if key ~= st.published then
 			st.published = key
@@ -291,7 +305,8 @@ function NearPrecip.new(ctx)
 		local relW = ctx.Config.dirWorld(st.wu, st.wv)
 		local density = 0.35 + 0.65 * heavy
 		local n = 0
-		for _, sh in sheets do
+		local sheetList = if MAX_SHEET_OPACITY > 0 then sheets else noSheets
+		for _, sh in sheetList do
 			local ring = sh.ring
 			local w = math.clamp(density * ring.count - (sh.order - 1), 0, 1)
 			local a = MAX_SHEET_OPACITY * heavy ^ 0.8 * ring.weight * w
@@ -304,7 +319,7 @@ function NearPrecip.new(ctx)
 				sh.tex.Transparency = 1 - shown / 200
 			end
 			if shown > 0 then
-				local p = camPos + Vector3.new(math.cos(sh.angle) * ring.radius, ring.height / 2 - 8, math.sin(sh.angle) * ring.radius)
+				local p = camPos + Vector3.new(S(math.cos(sh.angle) * ring.radius), S(ring.height / 2 - 8), S(math.sin(sh.angle) * ring.radius))
 				local toCam = Vector3.new(camPos.X - p.X, 0, camPos.Z - p.Z)
 				local cf = CFrame.lookAt(p, p + toCam)
 				-- lean the streaks with the air across the line of sight
@@ -313,7 +328,7 @@ function NearPrecip.new(ctx)
 				cf *= CFrame.Angles(0, 0, roll)
 				local speed = math.sqrt(fall * fall + across * across)
 				sh.scroll = (sh.scroll - speed * dt) % ring.tileH
-				sh.tex.OffsetStudsV = sh.scroll -- (decreasing: the streaks move down the face)
+				sh.tex.OffsetStudsV = S(sh.scroll) -- (decreasing: the streaks move down the face; scroll in m)
 				n += 1
 				sheetParts[n] = sh.part
 				sheetCFrames[n] = cf
@@ -329,14 +344,18 @@ function NearPrecip.new(ctx)
 
 		-- splashes and hail
 		local nearGround = above < SPLASH_RANGE
-		local groundPos = Vector3.new(camPos.X, st.groundY + 0.15, camPos.Z)
-		local splashRate = if nearGround and R > 0.3 then 900 * heavy ^ 1.5 else 0
+		local groundPos = Vector3.new(camPos.X, st.groundY + S(0.15), camPos.Z)
+		-- (splashes only in heavy rain: lighter rain is the fog alone)
+		local splashRate = if nearGround and R > 8 then 900 * heavy ^ 1.5 * Util.ramp(R, 8, 20) else 0
 		local hailK = Util.ramp(st.hail, 0.4, 0.7)
 		local hailOn = hailK > 0
 		if nearGround or st.splashOn then
 			groundPart.CFrame = CFrame.new(groundPos)
 		end
-		splash.Rate = splashRate
+		if splashRate ~= st.splashRate then
+			st.splashRate = splashRate
+			splash.Rate = splashRate
+		end
 		local splashOn = splashRate > 1
 		if splashOn ~= st.splashOn then
 			st.splashOn = splashOn
@@ -346,28 +365,51 @@ function NearPrecip.new(ctx)
 		if hailOn then
 			local cm = st.hail
 			local vt = 9 * math.sqrt(cm) -- terminal speed (m/s)
-			local dir = Vector3.new(relW.X, -vt, relW.Z)
+			local dir = Vector3.new(relW.X, -vt, relW.Z) -- (m/s: only its direction is used)
 			local dirU = dir.Unit
-			local size = math.clamp(cm * 0.04, 0.06, 0.5) -- a few times life size, so a stone reads
+			local size = math.clamp(cm * 0.04, 0.06, 0.5) -- m: a few times life size, so a stone reads
 			local rate = (150 + 300 * Util.ramp(cm, 0.5, 4)) * hailK -- (a real core drops several stones per m² per second: as many as the particle budget allows)
 			-- the stones start upwind so they arrive round the camera
 			local fallTime = (HAIL_SKY + math.min(above, 120)) / vt
-			local start = camPos + Vector3.new(0, HAIL_SKY, 0) - Vector3.new(relW.X, 0, relW.Z) * (HAIL_SKY / vt)
+			local start = camPos + Vector3.new(0, S(HAIL_SKY), 0) - Vector3.new(relW.X, 0, relW.Z) * S(HAIL_SKY / vt)
 			-- the emitter part's bottom face points along the fall
 			local look = if math.abs(dirU.Y) < 0.99 then Vector3.new(0, 0, 1) else Vector3.new(1, 0, 0)
 			local up = -dirU
 			local right = look:Cross(up).Unit
 			local back = right:Cross(up).Unit
 			skyPart.CFrame = CFrame.fromMatrix(start, right, up, back)
-			hail.Speed = NumberRange.new(vt * 0.9, vt * 1.1)
-			hail.Lifetime = NumberRange.new(fallTime * 0.95, fallTime * 1.05)
-			hail.Size = NumberSequence.new(size)
-			hail.Rate = rate
-			bounce.Size = NumberSequence.new(size * 0.9)
-			bounce.Speed = NumberRange.new(0.2 * vt, 0.45 * vt)
-			bounce.Rate = if nearGround then rate * 0.8 else 0
-			sparkle.Size = NumberSequence.new(size * 1.6)
-			sparkle.Rate = if nearGround then rate * 0.35 else 0
+			-- (the emitters' ranges and sequences are new objects: written only when a quantized
+			-- value moves - 1% in fall speed, 2% in fall time, 1 mm in size - and then exactly; the
+			-- rates are numbers, written when they change)
+			local qv = math.floor(math.log(vt) * 100 + 0.5)
+			local qt = math.floor(math.log(math.max(fallTime, 1e-3)) * 50 + 0.5)
+			local qs = math.floor(size * 1000 + 0.5)
+			if qv ~= st.hailQv or qt ~= st.hailQt then
+				st.hailQv, st.hailQt = qv, qt
+				hail.Speed = NumberRange.new(S(vt * 0.9), S(vt * 1.1))
+				hail.Lifetime = NumberRange.new(fallTime * 0.95, fallTime * 1.05)
+				bounce.Speed = NumberRange.new(S(0.2 * vt), S(0.45 * vt))
+			end
+			if qs ~= st.hailQs then
+				st.hailQs = qs
+				hail.Size = NumberSequence.new(S(size))
+				bounce.Size = NumberSequence.new(S(size * 0.9))
+				sparkle.Size = NumberSequence.new(S(size * 1.6))
+			end
+			local bRate = if nearGround then rate * 0.8 else 0
+			local sRate = if nearGround then rate * 0.35 else 0
+			if rate ~= st.hailRate then
+				st.hailRate = rate
+				hail.Rate = rate
+			end
+			if bRate ~= st.bounceRate then
+				st.bounceRate = bRate
+				bounce.Rate = bRate
+			end
+			if sRate ~= st.sparkleRate then
+				st.sparkleRate = sRate
+				sparkle.Rate = sRate
+			end
 		end
 		if hailOn ~= st.hailOn then
 			st.hailOn = hailOn

@@ -50,6 +50,25 @@ const SUPPRESSION_STRENGTH = 0.92;
 // there form closer together (and can grow into lines).
 const BOUNDARY_SPACING_REDUCTION = 0.75;
 const GUST_FRONT_WIDTH_KM = 14;
+// Shear tears narrow updrafts apart: in strong deep-layer shear the environmental air entrained into a young
+// updraught dilutes it, and only a wide one keeps enough of its buoyancy to grow into a storm (Peters et al. 2019,
+// 2020). How wide an updraught is follows its lift: organised lift (convergence lines, slopes, the large-scale
+// ascent; its Kain-Fritsch energy, J/kg) from none at WIDE_LIFT_J_KG[0] to wide at [1], where thermals alone make
+// narrow ones. Narrow updraughts are lost by up to SHEAR_LOSS of their rate as the 0-6 km shear rises through
+// SHEAR_LOSS_KT. (2026-10-25: outbreak days started 140-200 storms in air with next to no cap, a quarter of them
+// from the day's heating alone, and kept 30-41 rotating storms at once; docs/METEOROLOGIST-REVIEW-2026-10-24.md.)
+
+
+const WIDE_LIFT_J_KG = [10, 50], SHEAR_LOSS_KT = [30, 60], SHEAR_LOSS = 0.6;
+// A sharp boundary's lift is not spread over the cell: a dryline or front gathers the surface convergence into a zone a
+// few km wide (about 1e-3 /s there; Ziegler and Rasmussen 1998), which the 16 km grid averages away. Where a cell holds
+// one (its moisture gradient, g/kg per 100 km, over BOUNDARY_MOISTURE, or its density gradient, K per 100 km, over
+// BOUNDARY_DENSITY), its convergence is taken as up to BOUNDARY_CONCENTRATION times as strong along the boundary, and storms
+// start along it as they would where that lift covered the cell (a line of strong lift fires storms along its length):
+// organised, wide lift that can break a cap the cell's mean lift cannot. (2026-10-25: on seed 31 day 2 the dryline
+// cells' mean convergence of 0.5-3e-5 /s gave 3-22 J/kg of lift against MLCIN of 60-150, and a 3,000 J/kg, 50-65 kt
+// dryline afternoon had no storms; docs/METEOROLOGIST-REVIEW-2026-10-25-evening.md.)
+const BOUNDARY_MOISTURE = [4, 10], BOUNDARY_DENSITY = [3, 6], BOUNDARY_CONCENTRATION = 10;
 const MAX_ACTIVE_STORMS = 70;     // computational limit, not a meteorological one
 
 export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours = 0.5) {
@@ -71,6 +90,8 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
       const yKm = (y + nextUnit(seed, hourUtc, x, y, 'y')) * world.cellSizeKm;
       const spacingKm = SUPPRESSION_RADIUS_KM * (1 - BOUNDARY_SPACING_REDUCTION * boundary);
       const suppression = stormSuppression(active, xKm, yKm, spacingKm);
+      // (A readiness clock, from 2026-10-26, was removed on 2026-10-27: a cell's clock reset as a moving dryline's lift passed from cell
+      // to cell, so storms barely started along it; seed 8181 day 2 fell from 23 storms to 5 in an uncapped, strongly sheared sector.)
       const rate = start.ratePerHour * (1 - suppression);
       const probability = 1 - Math.exp(-rate * dtHours);
       if (nextUnit(seed, hourUtc, x, y, 'fire') > probability) continue;
@@ -130,7 +151,7 @@ export function diagnoseInitiation(cell, liftScale = 1) {
   const heatFlux = clamp(Number(features.surfaceHeating) || 0, 0, 1) * FULL_HEATING_WM2;
   const wStar = Math.cbrt(9.81 / 300 * heatFlux / (1.2 * 1005) * mixedDepth);
   const thermalLift = 0.5 * (THERMAL_PEAK * wStar) ** 2;
-  const surfaceLift = liftScale * (kainFritschLift(w, lclAgl, capDepth) + thermalLift);
+  const forcedLift = liftScale * kainFritschLift(w, lclAgl, capDepth), surfaceLift = forcedLift + liftScale * thermalLift;
   // Elevated parcels: warm air lifted over cooler air, the low-level jet's convergence, ascent.
   const wElevated = Math.max(0, Number(features.isentropicLiftMs) || 0) + Math.max(0, Number(features.jetConvergenceLiftMs) || 0) + wLarge;
   const elevatedLift = liftScale * kainFritschLift(wElevated, 1500, DEFAULT_CAP_DEPTH_M);
@@ -147,7 +168,10 @@ export function diagnoseInitiation(cell, liftScale = 1) {
   // The share of the cell where the lift beats the cap: lift varies within a 16 km cell, so a
   // cell whose mean lift is a little short of its mean CIN still has places where a storm can
   // start, and one just over it has places where none can.
-  const surfaceShare = mlCape >= MIN_CAPE_J_KG ? overcomeShare(surfaceLift, mlCin) : 0;
+  const sharp = Math.max(clampRamp(Number(features.moistureGradientGkg100) || 0, BOUNDARY_MOISTURE[0], BOUNDARY_MOISTURE[1]), clampRamp(Number(features.densityGradientK100) || 0, BOUNDARY_DENSITY[0], BOUNDARY_DENSITY[1]));
+  const gather = 1 + (BOUNDARY_CONCENTRATION - 1) * sharp, lineLift = gather > 1 ? liftScale * kainFritschLift(gather * wBoundary + wTerrain + wLarge, lclAgl, capDepth) : forcedLift;
+  const lineShare = gather > 1 && mlCape >= MIN_CAPE_J_KG ? overcomeShare(lineLift + liftScale * thermalLift, mlCin) : 0;
+  const surfaceShare = mlCape >= MIN_CAPE_J_KG ? Math.max(overcomeShare(surfaceLift, mlCin), lineShare) : 0;
   const elevatedShare = muCape >= MIN_CAPE_J_KG * 1.5 ? aloftShare * cappedShare * overcomeShare(elevatedLift, muCin) : 0;
   const elevated = elevatedShare > surfaceShare;
   const share = Math.max(surfaceShare, elevatedShare);
@@ -157,11 +181,15 @@ export function diagnoseInitiation(cell, liftScale = 1) {
   const buoyancy = clamp(((elevated ? muCape : mlCape) - MIN_CAPE_J_KG) / 1500, 0.15, 1);
   const processed = clamp(Number(cell.features?.stormProcessedAir) || 0, 0, 1);
   const netLift = elevated ? elevatedLift - muCin : surfaceLift - mlCin;
-  return { ...base, canStart: true, netLift, overcomeShare: share, ratePerHour: FORCED_RATE_PER_HOUR * share * buoyancy * (1 - 0.8 * processed) };
+  const wide = clampRamp(elevated ? elevatedLift : (lineShare > 0 && lineShare >= overcomeShare(surfaceLift, mlCin) ? lineLift : forcedLift), WIDE_LIFT_J_KG[0], WIDE_LIFT_J_KG[1]);
+  const survives = 1 - SHEAR_LOSS * clampRamp(Number(cell.derived?.bulkShear) || 0, SHEAR_LOSS_KT[0], SHEAR_LOSS_KT[1]) * (1 - wide);
+  return { ...base, canStart: true, netLift, overcomeShare: share, survives, ratePerHour: FORCED_RATE_PER_HOUR * share * buoyancy * (1 - 0.8 * processed) * survives };
 }
 
 // Share of a cell where lift beats the inhibition, for its mean lift and CIN (J/kg), the lift
 // spread normally within the cell.
+function clampRamp(value, low, high) { return clamp((value - low) / (high - low), 0, 1); }
+
 function overcomeShare(lift, cin) {
   const z = (lift - cin) / ((SUBGRID_SPREAD_SHARE * lift + SUBGRID_SPREAD_J_KG) * Math.SQRT2), t = 1 / (1 + 0.3275911 * Math.abs(z));
   const erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z);

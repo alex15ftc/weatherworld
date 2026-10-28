@@ -5,7 +5,7 @@
 --   Base layers (the < > buttons): surface temperature and dewpoint (the advected surface grids),
 --   SBCAPE, MLCIN, SRH 0-1 km, 0-6 km shear, STP (the 8 km parcel analyses, filled gradually
 --   after start), the cold-pool deficit, surface rain rate and composite reflectivity (the
---   replicated precipitation volume). The raster (one 256x256 EditableImage, or 64x64 Frames)
+--   replicated precipitation volume). The raster (one 256x256 EditableImage, or 32x32 Frames)
 --   is rebuilt in time-sliced rows (~1.5 ms/frame) every 3 s and whenever the view changes.
 --   Objects: storms (size by updraft, magenta ring when rot > 0.5, 30-minute motion vector, id),
 --   tornadoes (red triangles, with the tracks this client has seen), gust fronts (cold-pool
@@ -20,7 +20,9 @@ local Widgets = require(script.Parent:WaitForChild("RadarParts"):WaitForChild("W
 
 local M = {}
 
-local N, FALLBACK_N = 256, 64
+-- (FALLBACK_N: the Frames grid used only if CreateEditableImage fails - at most 32 x 32 = 1 024
+-- Frames, not 64 x 64 = 4 096)
+local N, FALLBACK_N = 256, 32
 local REFRESH_S = 3
 local RASTER_BUDGET = 0.0015
 local OVERLAY_HZ = 4

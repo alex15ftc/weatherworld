@@ -3,13 +3,20 @@
 // them for each day); then the day is run, and what happened is set against the Day 1
 // outlook made that morning, the Day 2 outlook made the morning before and the Day 3 outlook
 // made the morning before that.
-//   node scripts/outlook-verify.mjs [days per seed] [--seeds 1,2,3,4,5,6] [--members 8]
+//   node scripts/outlook-verify.mjs [days per seed] [--seeds 1,2,3,4,5,6] [--members 8] [--save dir | --from dir]
+// --save dir keeps each morning's runs and what then happened (one file a morning, seed-S-day-D.bin.gz);
+// --from dir scores those again without running anything: only what makes the outlooks from the runs
+// (calibration, agreement, intensity groups, categories) can have changed, and it takes a minute or two
+// in place of an hour. Runs saved by older code that the outlooks now read differently need saving again.
 // Reports, for each outlook: the mix of forecast categories against the mix that verified,
 // how often the forecast category was right, and whether the contours mean what they say (of
 // the places inside a 30% contour, about 30% or more should have had it within 25 miles).
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import v8 from 'node:v8';
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
 avoidBackgroundThrottling();
@@ -18,6 +25,8 @@ const args = process.argv.slice(2);
 const days = Number(args.find(a => /^\d+$/.test(a)) ?? 7);
 const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const memberCount = Number(flag('--members') ?? 8);
+const SAVE = flag('--save'), FROM = flag('--from');
+const saved = (dir, seed, day) => path.join(dir, `seed-${seed}-day-${day}.bin.gz`);
 // OLD=1: the outlooks as before agenda step 11 (no errors in the air over the map, no agreement rule), to compare.
 const OLD = process.env.OLD === '1';
 // NOCAL=1: without the calibration of the chances. --calibration-data: print, as JSON, the runs'
@@ -40,22 +49,34 @@ async function worker(seed) {
   const { CIG_TIERS, CIG_BOUNDS, contourCig, conditionalCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
   // Hail and wind as reports, in the runs and in what happened (truth.js captureTruth).
   const { placesFor } = await import('../server/CountyLayer.js');
-  const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, n = world.width * world.height, out = [], issued = [];
-  atmosphere.advance(24);   // a day for the storms to get going
+  const atmosphere = FROM ? null : new AtmosphereWorld({ seed }), world = atmosphere?.world, out = [], issued = [];
+  let n = world ? world.width * world.height : 0;
+  atmosphere?.advance(24);   // a day for the storms to get going
+  if (SAVE) fs.mkdirSync(SAVE, { recursive: true });
   for (let day = 0; day < days; day++) {
+    // A saved morning, when scoring again.
+    let kept = null;
+    if (FROM) { const file = saved(FROM, seed, day); if (!fs.existsSync(file)) break; kept = v8.deserialize(zlib.gunzipSync(fs.readFileSync(file))); n = kept.map.width * kept.map.height; }
+    const map = kept ? kept.map : { width: world.width, height: world.height, cellSizeKm: world.cellSizeKm, cellSizeMiles: world.cellSizeMiles };
     // The morning's outlooks: each run goes as far as the last day it is one of the runs for.
-    const bytes = v8.serialize(atmosphere.saveState()), now = world.validHourUtc, runs = [];
-    for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, { placesFor, stormDays: stormDaysFor(m, memberCount), ...(OLD ? { mesoscale: 0 } : {}) }));
+    const now = kept ? kept.now : world.validHourUtc, runs = kept ? kept.runs : [];
+    if (!kept) { const bytes = v8.serialize(atmosphere.saveState()); for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, { placesFor, stormDays: stormDaysFor(m, memberCount), ...(OLD ? { mesoscale: 0 } : {}) })); }
     issued[day] = OUTLOOK.days.map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).map(run => run[index]), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : {}) }));
     // What then happened.
-    const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;
-    const places = placesFor(world);
-    for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations, places); }
-    const truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+    let truth, happened;
+    if (kept) ({ truth, happened } = kept);
+    else {
+      const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;
+      const places = placesFor(world);
+      for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations, places); }
+      truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+      happened = world.stormEngine.totalTornadoes - before;
+      if (SAVE) fs.writeFileSync(saved(SAVE, seed, day), zlib.gzipSync(v8.serialize({ now, runs, truth, happened, map })));
+    }
     // The same day as a Day 3 outlook would give it: one chance, of any severe weather.
     const any = (...fields) => Uint8Array.from({ length: n }, (_, i) => (fields.some(field => truth[field][i]) ? 1 : 0));
     const exact = { severe: any('tornadoExact', 'windExact', 'hailExact'), severeSig: any('tornadoSigExact', 'windSigExact', 'hailSigExact'), severeExtreme: any('tornadoExtremeExact', 'windExtremeExact', 'hailExtremeExact') };
-    const severeChance = practicallyPerfectChance(exact.severe, world.width, world.height, world.cellSizeKm), severeCig = contourCig('severe', severeChance, exact.severe, [exact.severeSig, exact.severeExtreme], world.width, world.height);
+    const severeChance = practicallyPerfectChance(exact.severe, map.width, map.height, map.cellSizeKm), severeCig = contourCig('severe', severeChance, exact.severe, [exact.severeSig, exact.severeExtreme], map.width, map.height);
     const near = { tornado: truth.tornado, wind: truth.wind, hail: truth.hail, severe: any('tornado', 'wind', 'hail'), tornadoSig: truth.tornadoSig, tornadoExtreme: truth.tornadoExtreme, tornadoViolent: truth.tornadoViolent, windSig: truth.windSig, windExtreme: truth.windExtreme, windViolent: truth.windViolent, hailSig: truth.hailSig, hailExtreme: truth.hailExtreme, severeSig: any('tornadoSig', 'windSig', 'hailSig'), severeExtreme: any('tornadoExtreme', 'windExtreme', 'hailExtreme') };
     const verifiedAs = { full: truth.worldRisk, severe: Array.from({ length: n }, (_, i) => worldCategory({ severe: { percent: probabilityLevel('severe', severeChance[i]), cig: severeCig[i] } }, { thunder: Boolean(truth.storm[i]) })) };
     const top = list => list.reduce((best, c) => Math.max(best, ORDER.indexOf(c)), 0);
@@ -91,7 +112,7 @@ async function worker(seed) {
         seed, day, lead, forecast: top(outlook.category), cigData,
         // The highest intensity group drawn for each hazard, and the highest the day verified with.
         drawnCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...outlook.cig[h])])), verifiedCig: Object.fromEntries(outlook.hazards.map(h => [h, Math.max(0, ...(h === 'severe' ? severeCig : truth.observedCig[h]))])), verified: top(verified), calibration, sameCell: sameCell / n, withinOne: withinOne / n, reliability, groups,
-        forecastTornadoes: outlook.expected.tornadoes, tornadoes: world.stormEngine.totalTornadoes - before,
+        forecastTornadoes: outlook.expected.tornadoes, tornadoes: happened,
         forecastArea: Object.fromEntries(ORDER.map((c, k) => [c, outlook.category.filter(v => ORDER.indexOf(v) >= k).length / n])), verifiedArea: Object.fromEntries(ORDER.map((c, k) => [c, verified.filter(v => ORDER.indexOf(v) >= k).length / n]))
       });
     }
@@ -102,7 +123,7 @@ async function worker(seed) {
 async function main() {
   const seeds = (flag('--seeds') ?? '1,2,3,4,5,6').split(',').map(Number), started = Date.now();
   const results = await Promise.all(seeds.map(seed => new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount), ...(CAL_DATA ? ['--calibration-data'] : []), ...(CIG_DATA ? ['--cig-data'] : [])]);
+    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount), ...(CAL_DATA ? ['--calibration-data'] : []), ...(CIG_DATA ? ['--cig-data'] : []), ...(SAVE ? ['--save', SAVE] : []), ...(FROM ? ['--from', FROM] : [])]);
     child.once('message', resolve); child.once('error', reject); child.once('exit', code => { if (code) reject(new Error(`seed ${seed} exited with ${code}`)); });
   })));
   if (CIG_DATA) {

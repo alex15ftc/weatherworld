@@ -3,6 +3,7 @@
 -- Render/Sky). Not a renderer itself: init.client.luau only starts ModuleScripts directly in
 -- Render/, and this lives in Render/FxParts/.
 local Lighting = game:GetService("Lighting")
+local LabConfig = require(game:GetService("ReplicatedStorage"):WaitForChild("StormLab"):WaitForChild("LabConfig"))
 
 local Util = {}
 
@@ -81,8 +82,8 @@ function Util.colorEffect(name: string): ColorCorrectionEffect
 	return e :: ColorCorrectionEffect
 end
 
--- a ray from the camera straight down to the drawn ground (ignoring the lab's visuals); the sim
--- ground (z = 0) when nothing is hit
+-- a ray from the camera straight down to the drawn ground (ignoring the lab's visuals): its Y in
+-- STUDS. When nothing is hit, the sim ground under the point (LabConfig.groundAt, in studs)
 local rayParams: RaycastParams? = nil
 function Util.groundY(root: Instance, from: Vector3): number
 	if not rayParams then
@@ -97,7 +98,8 @@ function Util.groundY(root: Instance, from: Vector3): number
 	if hit then
 		return hit.Position.Y
 	end
-	return 0
+	local x, y = LabConfig.fromWorld(from)
+	return LabConfig.studs(LabConfig.groundAt(x, y))
 end
 
 return Util

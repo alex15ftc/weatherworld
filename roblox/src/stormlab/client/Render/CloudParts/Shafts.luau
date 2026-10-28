@@ -13,7 +13,10 @@
 -- Billboards (like the storm cards): a curtain (LabConfig.TEXTURES.rainShaft) that fades in from
 -- its top and frays near the ground (UIGradient), capped by a lumpy dark card of the rain cloud it
 -- falls from - forward-flank rain far from the base falls from a ragged deck, not from clear sky.
--- Pooled; positions moved every frame (each shaft drifts with its storm).
+-- Each shaft is drawn whole about its own column (x, y) at that column's scale (LabConfig.scaleAbout:
+-- its height, width and cap at k). Pooled; positions moved every frame (each shaft drifts with its storm). Only changes that show
+-- (half a pixel, 1/500 in colour or opacity) are written, and a shaft off screen keeps only its
+-- position roughly current.
 local Workspace = game:GetService("Workspace")
 
 local Util = require(script.Parent:WaitForChild("Util"))
@@ -21,9 +24,11 @@ local Util = require(script.Parent:WaitForChild("Util"))
 local Shafts = {}
 Shafts.__index = Shafts
 
-local MAX_SHAFTS = 200
+local MAX_SHAFTS = 90 -- (nearest first; each shaft is two billboards)
 local NEAR_FINE = 14000
 local PARK = CFrame.new(0, -200000, 0)
+local MARGIN = 0.1 -- rad beyond the view's half-diagonal before a shaft counts as off screen
+local CULL_REFRESH = 8 -- an off-screen shaft's position is still moved every 8th frame (staggered)
 
 function Shafts.new(ctx: any)
 	local self = setmetatable({
@@ -105,7 +110,7 @@ function Shafts:rebin()
 	self.list = {}
 	self.dirty = false
 	self.binnedAt = os.clock()
-	local cx0, cy0 = ctx:simCamera()
+	local cx0, cy0 = ctx.Config.fromWorld(ctx.camera.CFrame.Position)
 	self.binCam = Vector3.new(cx0, cy0, 0)
 	if not vol or not vol.rain or not vol.nxv then
 		return
@@ -242,15 +247,19 @@ function Shafts:hide()
 	self.count = 0
 end
 
--- draw every shaft this frame; returns the number drawn
-function Shafts:draw(cam: Vector3, simT: number, D: number): number
+-- draw every shaft this frame; returns the number drawn. cam: the camera's Roblox position
+-- (studs); everything below is in sim metres. D (LabConfig.LIMITS.farDraw) is not used: shafts are
+-- billboards, which Roblox draws at any distance (no far-draw pull-in needed)
+function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 	local ctx = self.ctx
-	local cx, cy = ctx:simCamera()
+	local C = ctx.Config
+	local cx, cy, cz = C.fromWorld(cam)
+	local camM = Vector3.new(cx, cy, cz) -- (sim frame, metres)
 	if self.dirty or (Vector3.new(cx, cy, 0) - self.binCam).Magnitude > 4000 or os.clock() - self.binnedAt > 20 then
 		self:rebin()
 	end
 	local L = Util.light
-	local sunV = Vector3.new(L.sunSim[1], L.sunSim[3], -L.sunSim[2])
+	local sunV = Vector3.new(L.sunSim[1], L.sunSim[2], L.sunSim[3]) -- (sim frame)
 	local dt = math.clamp(simT - self.t0, -5, 120)
 	-- the rain in FRONT of each shaft (to 85% of the way: not the shaft's own rain), ~3 Hz
 	local vol = ctx.cw.vol
@@ -272,17 +281,29 @@ function Shafts:draw(cam: Vector3, simT: number, D: number): number
 			sh.fog = math.clamp(1 - math.exp(-tau), 0, 0.97)
 		end
 	end
-	local parts, frames = {}, {}
+	-- the view (angles and pixel sizes are unit-free: worked in studs)
+	local camera = Workspace.CurrentCamera
+	local look = camera.CFrame.LookVector
+	local vp = camera.ViewportSize
+	local tanV = math.tan(math.rad(camera.FieldOfView) / 2)
+	local halfDiag = math.atan(tanV * math.sqrt(1 + (vp.X / math.max(vp.Y, 1)) ^ 2)) + MARGIN
+	local pxK = 0.5 * 2 * tanV / math.max(vp.Y, 1) -- (half a pixel per stud of distance)
+	self.tick = (self.tick or 0) + 1
 	local n = 0
 	for _, sh in self.list do
 		local x, y = sh.x + sh.vx * dt, sh.y + sh.vy * dt
-		local P = Vector3.new(x, sh.h * 0.5, -y)
-		local flat = Vector3.new(P.X - cam.X, 0, P.Z - cam.Z)
-		local dh = flat.Magnitude
-		if dh < 0.6 * sh.w + 800 then
-			continue -- (the camera is in or at this rain: the near-rain renderer draws it)
+		-- the curtain spans the local ground (gz) to the cloud base (sh.h, above the datum)
+		local gz = C.groundAt(x, y)
+		local hh = math.max(sh.h - gz, 50)
+		local P = Vector3.new(x, y, gz + hh * 0.5) -- (sim frame, metres)
+		local dh = math.sqrt((x - cx) ^ 2 + (y - cy) ^ 2)
+		-- fading as you drive in (fully drawn from ~3 km out, gone at its edge): inside, the
+		-- rain is the Atmosphere fog from its extinction (Render/NearPrecip), not a curtain
+		local near = Util.ramp(dh, 0.6 * sh.w + 300, 0.6 * sh.w + 3000)
+		if near < 0.02 then
+			continue
 		end
-		local d = (P - cam).Magnitude
+		local d = (P - camM).Magnitude
 		n += 1
 		local p = self.parts[n]
 		if not p then
@@ -293,9 +314,43 @@ function Shafts:draw(cam: Vector3, simT: number, D: number): number
 			local fc = (n * 5 + 3) % 16
 			p.img.ImageRectOffset = Vector2.new((fc % 4) * 256, (fc // 4) * 256)
 		end
+		-- on screen? (a cone round the view, widened by the curtain's own angular size: the curtain
+		-- and its cap in one sphere round the curtain's middle)
+		local k = C.scaleAbout(x, y)
+		local wp = C.toWorldAbout(x, y, gz + hh * 0.5, x, y, k)
+		local capH = math.clamp(sh.w * 0.2, 300, 900)
+		local cwp = C.toWorldAbout(x, y, sh.h + 0.2 * capH, x, y, k)
+		local radS = (0.5 * math.sqrt((sh.w * 1.25) ^ 2 + (hh * 1.3) ^ 2) + 0.5 * capH + 0.2 * capH) * k
+		local rel = wp - cam
+		local distS = rel.Magnitude
+		local vis = distS <= radS
+		if not vis then
+			local ang = math.acos(math.clamp(rel:Dot(look) / distS, -1, 1))
+			vis = ang < halfDiag + math.asin(math.min(1, radS / distS))
+		end
+		local thr = pxK * math.max(distS - radS, 1) -- (studs: half a pixel at its nearest part)
+		if not vis and p.sh == sh and p.wp then
+			-- off screen, still drawing the same shaft: only its position, now and then
+			if (self.tick + n) % CULL_REFRESH == 0 then
+				if (wp - p.wp).Magnitude > thr then
+					p.wp = wp
+					p.att.WorldPosition = wp
+				end
+				if (cwp - p.cwp).Magnitude > thr then
+					p.cwp = cwp
+					p.catt.WorldPosition = cwp
+				end
+			end
+			if not p.on then
+				p.on = true
+				p.bb.Enabled, p.cbb.Enabled = true, true
+			end
+			continue
+		end
+		p.sh = sh
 		-- colour: rain under a storm is in its shadow: a dark blue-grey, silvery when the sun is
 		-- behind it, whiter with hail; hazed by true distance
-		local view = (P - cam).Unit
+		local view = (P - camM).Unit
 		local fwd = math.max(0, view:Dot(sunV)) ^ 3 * L.sunUp
 		-- (hail scatters much more light: a hail shaft is a pale, whitish curtain)
 		local g = (0.4 + 0.35 * fwd + 0.45 * sh.hail) * (sh.light or 1)
@@ -304,7 +359,7 @@ function Shafts:draw(cam: Vector3, simT: number, D: number): number
 		local f = Util.hazeF(d)
 		col = Util.quant(Util.mix(col, L.haze, f))
 		-- (haze is in the colour already; it only thins the curtain a little)
-		local a = sh.a * (1 - 0.4 * f)
+		local a = sh.a * (1 - 0.4 * f) * near
 		-- rain between the camera and the shaft fogs it (billboards ignore the Atmosphere)
 		-- (toward the storm cards' rain-fog colour: the light under the storm, Render/StormCards)
 		local fog = sh.fog or 0
@@ -313,27 +368,60 @@ function Shafts:draw(cam: Vector3, simT: number, D: number): number
 		end
 		-- (the puff fills ~3/4 of its frame: the card is drawn larger so the column reaches the
 		-- ground and the cloud)
-		p.att.WorldPosition = Vector3.new(x, sh.h * 0.5, -y)
-		p.bb.Size = UDim2.fromScale(sh.w * 1.25, sh.h * 1.3)
+		if not p.wp or (wp - p.wp).Magnitude > thr then
+			p.wp = wp
+			p.att.WorldPosition = wp
+		end
+		local bw, bh = sh.w * 1.25 * k, hh * 1.3 * k
+		if not p.bw or math.abs(bw - p.bw) > thr or math.abs(bh - p.bh) > thr then
+			p.bw, p.bh = bw, bh
+			p.bb.Size = UDim2.fromScale(bw, bh)
+		end
 		-- slant: the wind across the line of sight against the fall speed (hail falls faster).
 		-- Screen right for a view along (dx, dy) is (dy, -dx); the foot goes downwind, so the
 		-- image turns the other way (Rotation is clockwise)
-		local dx, dy = x - cam.X, y + cam.Z
+		local dx, dy = x - cx, y - cy
 		local dl = math.max(math.sqrt(dx * dx + dy * dy), 1)
 		local across = ((sh.su or 0) * dy - (sh.sv or 0) * dx) / dl
 		local fall = 7 + 8 * sh.hail
-		p.img.Rotation = -math.deg(math.clamp(math.atan2(across, fall), -0.6, 0.6))
-		p.img.ImageColor3 = col
-		p.img.ImageTransparency = 1 - a
+		local rot = -math.deg(math.clamp(math.atan2(across, fall), -0.6, 0.6))
+		-- (a turn shows as the curtain's foot moving: half a pixel at its half-height)
+		local rotThr = math.deg(thr / math.max(0.5 * bh, 1))
+		if not p.rot or math.abs(rot - p.rot) > rotThr then
+			p.rot = rot
+			p.img.Rotation = rot
+		end
+		if p.col ~= col then
+			p.col = col
+			p.img.ImageColor3 = col
+		end
+		local tr = 1 - a
+		if not p.tr or math.abs(tr - p.tr) > 0.002 then
+			p.tr = tr
+			p.img.ImageTransparency = tr
+		end
 		-- the rain cloud it falls from: dark, lumpy, a little wider than the curtain
 		local gc = (0.36 + 0.15 * fwd) * (0.35 + 0.65 * L.day)
 		local ccol = Util.quant(Util.mix(Color3.new(gc, gc * 1.02, gc * 1.06), L.haze, f))
 		-- (a thin deck at the cloud base: its lumps hang just below the base, the rest is above)
-		local capH = math.clamp(sh.w * 0.2, 300, 900)
-		p.catt.WorldPosition = Vector3.new(x, sh.h + 0.2 * capH, -y)
-		p.cbb.Size = UDim2.fromScale(sh.w * 1.25, capH)
-		p.cimg.ImageColor3 = ccol
-		p.cimg.ImageTransparency = 1 - math.clamp(a * 1.15, 0, 0.9)
+		if not p.cwp or (cwp - p.cwp).Magnitude > thr then
+			p.cwp = cwp
+			p.catt.WorldPosition = cwp
+		end
+		local cbh = capH * k
+		if not p.cbw or math.abs(bw - p.cbw) > thr or math.abs(cbh - p.cbh) > thr then
+			p.cbw, p.cbh = bw, cbh
+			p.cbb.Size = UDim2.fromScale(bw, cbh)
+		end
+		if p.ccol ~= ccol then
+			p.ccol = ccol
+			p.cimg.ImageColor3 = ccol
+		end
+		local ctr = 1 - math.clamp(a * 1.15, 0, 0.9)
+		if not p.ctr or math.abs(ctr - p.ctr) > 0.002 then
+			p.ctr = ctr
+			p.cimg.ImageTransparency = ctr
+		end
 		if not p.on then
 			p.on = true
 			p.bb.Enabled, p.cbb.Enabled = true, true

@@ -4,7 +4,7 @@ import { setUpdraught } from '../js/storms/StormBudgets.js';
 import { stepStormRotation } from '../js/storms/StormRotation.js';
 import { buildStormGeometry } from '../js/storms/StormGeometry.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
-import { gustMph, stepRearInflow } from '../js/storms/StormHazards.js';
+import { gustMph, stepRearInflow, stepBow } from '../js/storms/StormHazards.js';
 import { leftSplitShare, shouldSplitStorm } from '../js/storms/StormModeEngine.js';
 
 // A storm moving north-east at 50 km/h under a 60 kt westerly aloft.
@@ -45,13 +45,19 @@ assert.ok(bow(line) > 2 * bow(calm), `and bows where air is driven down behind i
 const dry = storm({ precipitation: 0.1 }); evolveStormStructure(dry, air, 0, 'k');
 assert.ok(dry.structure.precipitationEfficiency < 0.5 * plain.structure.precipitationEfficiency, 'a storm holding little rain shows little echo');
 
-// --- Rear inflow: only behind a line with a cold pool and rain, and it adds to the gust.
+// --- Rear inflow: only behind a line with a cold pool. A line bows only where everything a bow needs is there, and a
+// bow's apex brings damaging wind that an ordinary line does not.
 const bowing = storm({ lineOrganization: 1, coldPoolStrength: 0.6 }), alone = storm({ lineOrganization: 0, coldPoolStrength: 0.6 }), shallow = storm({ lineOrganization: 1, coldPoolStrength: 0.1 });
 for (let step = 0; step < 36; step++) for (const s of [bowing, alone, shallow]) stepRearInflow(s, 1 / 12);
 assert.ok(bowing.rearInflow > 0.6 && alone.rearInflow === 0 && shallow.rearInflow === 0, `rear inflow builds behind a line with a deep cold pool (${bowing.rearInflow.toFixed(2)})`);
-const without = gustMph({ ...bowing, rearInflow: 0 }, air, 70), withIt = gustMph(bowing, air, 70);
-assert.ok(withIt > without + 10, `and brings the wind aloft to the ground (${withIt.toFixed(0)} against ${without.toFixed(0)} mph)`);
-assert.ok(gustMph(bowing, { ...air, wind500: { eastKt: 20, northKt: 0 } }, 70) < withIt, 'less of it under a weaker wind aloft');
+// A fast line (80 km/h) in 3,000 J/kg and 30 kt of 0-3 km shear, with the low-level wind against it, against one in weak air.
+const bowAir = { ...air, shear03: 30, wind850: { eastKt: -10, northKt: 30 } }, weakAir = { ...bowAir, cape: 600, shear03: 8 };
+const bowLine = storm({ lineOrganization: 1, coldPoolStrength: 0.5, mesocycloneStrength: 0, velocityKph: { east: 80, north: 0 } }), weakLine = storm({ lineOrganization: 1, coldPoolStrength: 0.5, mesocycloneStrength: 0, velocityKph: { east: 80, north: 0 } });
+for (let step = 0; step < 36; step++) { stepBow(bowLine, bowAir, 1 / 12); stepBow(weakLine, weakAir, 1 / 12); }
+assert.ok(bowLine.bow > 0.6 && weakLine.bow < 0.05, `a line bows where a bow's ingredients are there (${bowLine.bow.toFixed(2)} against ${weakLine.bow.toFixed(2)})`);
+const bowGust = gustMph(bowLine, bowAir, 80), flatGust = gustMph({ ...bowLine, bow: 0 }, bowAir, 80);
+assert.ok(bowGust >= 75 && bowGust > flatGust, `and its apex brings damaging wind (${bowGust.toFixed(0)} against ${flatGust.toFixed(0)} mph)`);
+assert.ok(gustMph(bowLine, { ...bowAir, cape: 2000 }, 80) < bowGust, 'a weaker rear-inflow jet, and apex wind, with less CAPE');
 
 // --- An outflow boundary in the inflow adds rotation near the ground.
 const spin = (environment, state = {}) => { const s = storm({ mesocycloneStrength: 0, lowRotation: 0, lowRotationFree: 0, occlusion: 0, ...state }); for (let step = 0; step < 24; step++) stepStormRotation(s, environment, 1 / 12); return s; };
@@ -67,4 +73,4 @@ assert.ok(shouldSplitStorm(storm({ ageHours: 1 }), air) && !shouldSplitStorm(sto
 const leftMover = spin({ ...air, srh: 60 }, { leftMover: true }), leftInTurning = spin(air, { leftMover: true });
 assert.ok(leftMover.mesocycloneStrength > 0.2 && leftMover.lowRotation === 0, 'a left-mover rotates aloft but not near the ground');
 assert.ok(leftInTurning.mesocycloneStrength < leftMover.mesocycloneStrength, 'and fades where the shear turns clockwise');
-console.log(`storm shape and interactions passed (rain core ${Math.hypot(g.rain.xKm - g.updraught.xKm, g.rain.yKm - g.updraught.yKm).toFixed(0)} km downwind; rear inflow adds ${(withIt - without).toFixed(0)} mph; boundary lifts low rotation ${open.lowRotation.toFixed(2)} to ${onBoundary.lowRotation.toFixed(2)})`);
+console.log(`storm shape and interactions passed (rain core ${Math.hypot(g.rain.xKm - g.updraught.xKm, g.rain.yKm - g.updraught.yKm).toFixed(0)} km downwind; a bow apex adds ${(bowGust - flatGust).toFixed(0)} mph; boundary lifts low rotation ${open.lowRotation.toFixed(2)} to ${onBoundary.lowRotation.toFixed(2)})`);

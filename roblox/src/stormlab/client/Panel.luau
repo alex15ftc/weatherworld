@@ -200,7 +200,7 @@ function Panel.new(ctx: any): any
 		acc += dt
 		-- labels every frame (positions), text 4 Hz
 		local cw = ctx.cw
-		local camPos = ctx.camera.CFrame.Position
+		local camPos = ctx.camera.CFrame.Position -- (studs: d and LIMITS.farDraw are both Roblox distances)
 		for _, l in self.labels do
 			l.seen = false
 		end

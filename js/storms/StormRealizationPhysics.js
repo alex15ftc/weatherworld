@@ -33,7 +33,10 @@ export function diagnoseStormRealizationPhysics(environment, storm = null) {
   // one over its width): of storms in the same air, those fed by a boundary grow strongest.
   // (2026-10-16: without it every storm in an air mass reached the same updraught, and weak-flow
   // days with dozens of storms in 1,500-2,000 J/kg made no severe report at all.)
-  const entrainmentEfficiency = clamp(0.42 + 0.25 * ramp(shearKt, 15, 50) + 0.18 * ramp(cape, 500, 3000) - 0.16 * ramp(lcl, 1200, 2600) + ENTRAINMENT_CONVERGENCE * convergence, 0.25, 0.90);
+  // (Base 0.42 to 0.48 on 2026-10-26, when the sounding's heights and mixed-layer parcel were corrected and CAPE fell by about
+  // a quarter (warm-sector median 2,260 to 1,735 J/kg, real 1,370): the same storms keep the same updraughts, about 0.5-0.8 of
+  // parcel theory's, as observed. It had been set against the inflated CAPE.)
+  const entrainmentEfficiency = clamp(0.48 + 0.25 * ramp(shearKt, 15, 50) + 0.18 * ramp(cape, 500, 3000) - 0.16 * ramp(lcl, 1200, 2600) + ENTRAINMENT_CONVERGENCE * convergence, 0.25, 0.90);
   const precipitationEfficiency = clamp(0.92 - 0.22 * ramp(cape, 2500, 5000) - 0.18 * ramp(environment.stormCoverage ?? 0, 0.55, 1), 0.48, 0.95);
   // A running updraught spends the inhibition's energy lifting its inflow through the cap, so it
   // keeps CAPE - CIN of it: speed as sqrt(1 - CIN / CAPE). (Until 2026-10-16 it was

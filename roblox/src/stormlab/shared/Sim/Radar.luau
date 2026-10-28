@@ -55,7 +55,10 @@ local function debrisAt(tornadoes: { any }?, x: number, y: number, z: number): n
 		local loft = t.debrisLoft or 0
 		if loft > 0.02 and not t.ended then
 			local dx, dy = x - t.x, y - t.y
-			local R = math.max(150, 2.5 * t.rc)
+			-- (the lofted debris spreads well beyond the vortex: the radar debris signature of a strong
+			-- tornado is ~1-2 km across and grows with how high debris goes - Bodine et al. 2013;
+			-- docs/stormlab/RESEARCH-WALLCLOUD-HV.md)
+			local R = math.clamp(2.5 * t.rc + 0.25 * (t.debrisTop or 0), 150, 1500)
 			local r2 = (dx * dx + dy * dy) / (R * R)
 			local top = t.debrisTop or 500
 			if r2 < 4 and z < top * 1.3 then
@@ -83,6 +86,11 @@ function Radar.gate(site: Site, ctx: any, azDeg: number, range: number, elevDeg:
 	local zsum, hsum, vsum, v2sum, wsum = 0, 0, 0, 0, 0
 	local cm = ctx.coldPool
 	local bio = 0
+	-- clear-air scatterers (insects, dust) are patchy: a ~7 km field drifting slowly scan to scan
+	local patch = 0
+	if h < 1800 and cm then
+		patch = Noise.fbm3(cx / 7000, cy / 7000, (scan or 0) / 12, site.seed + 77, 2)
+	end
 	local debris = 0
 	for k = -1, 1 do
 		local wgt = if k == 0 then 0.5 else 0.25
@@ -93,8 +101,11 @@ function Radar.gate(site: Site, ctx: any, azDeg: number, range: number, elevDeg:
 		-- concentrated where gust fronts and boundaries converge them (the fine line)
 		if h < 1800 and cm then
 			local edge = cm.EDGE:sample(x, y)
-			-- faint insect echo near the radar, fading with range; fine lines stand out at 10-14 dBZ
-			local b = 10 ^ ((-6 + 20 * edge) / 10) * math.clamp(1 - h / 1500, 0, 1) * math.clamp(1.5 - range / 60000, 0, 1)
+			-- faint, patchy insect echo in the boundary layer (none in the gaps), fading with range;
+			-- fine lines stand out at 10-14 dBZ where gust fronts gather the scatterers
+			local p = math.clamp((patch + 0.15) / 0.6, 0, 1)
+			local b = 10 ^ ((-10 + 10 * p + 20 * edge) / 10) * (p * p + edge) * math.clamp(1 - h / 1500, 0, 1)
+				* math.clamp(1.3 - range / 60000, 0, 1)
 			bio += b * wgt
 			zl += b
 		end
@@ -153,7 +164,7 @@ end
 
 -- Colour tables (NWS-like): returns r, g, b 0..1 or nil for no data
 local REF = {
-	{ -10, 0.40, 0.40, 0.40 }, { 5, 0.02, 0.92, 0.92 }, { 10, 0.0, 0.62, 0.96 }, { 15, 0.0, 0.0, 0.96 },
+	{ -10, 0.17, 0.17, 0.19 }, { 0, 0.27, 0.27, 0.29 }, { 5, 0.02, 0.92, 0.92 }, { 10, 0.0, 0.62, 0.96 }, { 15, 0.0, 0.0, 0.96 },
 	{ 20, 0.0, 1.0, 0.0 }, { 25, 0.0, 0.78, 0.0 }, { 30, 0.0, 0.56, 0.0 }, { 35, 1.0, 1.0, 0.0 },
 	{ 40, 0.91, 0.75, 0.0 }, { 45, 1.0, 0.56, 0.0 }, { 50, 1.0, 0.0, 0.0 }, { 55, 0.84, 0.0, 0.0 },
 	{ 60, 0.75, 0.0, 0.0 }, { 65, 1.0, 0.0, 1.0 }, { 70, 0.6, 0.33, 0.79 }, { 75, 1.0, 1.0, 1.0 },

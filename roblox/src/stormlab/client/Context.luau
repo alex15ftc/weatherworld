@@ -119,8 +119,7 @@ function Context.new(cw: any): any
 end
 
 function Context:simCamera(): (number, number, number)
-	local p = self.camera.CFrame.Position
-	return p.X, -p.Z, p.Y
+	return self.Config.fromWorld(self.camera.CFrame.Position)
 end
 
 function Context:simTime(): number
@@ -128,6 +127,28 @@ function Context:simTime(): number
 		return self.serverTime
 	end
 	return self.serverTime + (os.clock() - self.clockAt) * self.state.timeScale
+end
+
+-- The clock for local motion - a tornado's spin, dust, debris, scud, cloud boiling - as against
+-- where storms are (simTime). The lab: the same as the sim clock (state.visualScale unset). The
+-- game runs its weather at 12x but draws local motion at real speed (state.visualScale = 1):
+-- a tornado spun or dust blown at 12x reads as a fast-forward.
+function Context:visualScale(): number
+	return self.state.visualScale or self.state.timeScale or 1
+end
+
+function Context:visualTime(): number
+	if self.state.visualScale == nil then
+		return self:simTime()
+	end
+	return os.clock() * self.state.visualScale
+end
+
+function Context:visualDt(dt: number): number
+	if self.state.paused then
+		return 0
+	end
+	return dt * self:visualScale()
 end
 
 function Context:noteServerTime(t: number)

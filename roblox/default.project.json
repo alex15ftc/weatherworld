@@ -5,6 +5,18 @@
     "ReplicatedStorage": {
       "Shared": {
         "$path": "src/shared"
+      },
+      "StormLab": {
+        "$className": "Folder",
+        "Sim": {
+          "$path": "src/stormlab/shared/Sim"
+        },
+        "LabConfig": {
+          "$path": "src/stormlab/shared/LabConfig.luau"
+        },
+        "Data": {
+          "$path": "src/stormlab/data"
+        }
       }
     },
     "ServerStorage": {
@@ -14,13 +26,35 @@
     },
     "ServerScriptService": {
       "Server": {
-        "$path": "src/server"
+        "$path": "src/server",
+        "StormPublisher": {
+          "$path": "src/stormlab/server/Publisher.luau"
+        }
       }
     },
     "StarterPlayer": {
+      "$properties": {
+        "CharacterUseJumpPower": false,
+        "CharacterJumpHeight": 7.2
+      },
       "StarterPlayerScripts": {
         "Client": {
-          "$path": "src/client"
+          "$path": "src/client",
+          "Weather": {
+            "$className": "Folder",
+            "Context": {
+              "$path": "src/stormlab/client/Context.luau"
+            },
+            "Net": {
+              "$path": "src/stormlab/client/Net.luau"
+            },
+            "Render": {
+              "$path": "src/stormlab/client/Render"
+            },
+            "Tornado": {
+              "$path": "src/stormlab/client/Tornado"
+            }
+          }
         }
       }
     },
@@ -34,7 +68,8 @@
     },
     "Workspace": {
       "$properties": {
-        "StreamingEnabled": true
+        "StreamingEnabled": true,
+        "Gravity": 35.0357
       }
     },
     "MaterialService": {

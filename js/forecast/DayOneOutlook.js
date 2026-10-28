@@ -75,6 +75,18 @@ export const OUTLOOK = Object.freeze({
   // The same for the intensity groups, from the first group to the highest a hazard has: they
   // say how strong the weather will be where it happens, which needs most of the runs behind it.
   groupAgreement: [0.5, 0.75],
+  // ...except on a day at least highRunShare of whose runs each made a High day of their own: the top
+  // levels and groups then need no more than that share of the runs (2026-10-24, the user's choice: the
+  // runs' mean peak is lower than any one day's, and High was issued on 4% of 100 mornings against 13%
+  // verified, while the areas at Enhanced and Moderate or more matched).
+  highRunShare: 0.75,
+  // The share of the runs each category needs (2026-10-24, chosen with the user): a contour level needs
+  // that of the category it makes with the first intensity group (worldCategoryFromHazard at CIG1), so a
+  // level asks for as much agreement as what it stands for: Marginal one run in eight, Slight two,
+  // Enhanced three, Moderate five and High six, the Storm Prediction Center's care rising with the
+  // stakes (Moderate was issued on 44% of 100 mornings against 30% verified, Enhanced on 14% against 24%).
+  // In place of OUTLOOK.agreement's even steps when no agreement is given.
+  categoryAgreement: { MRGN: 0.125, SLGT: 0.25, ENH: 0.375, MDT: 0.625, HIGH: 0.75 },
   levels: PROBABILITY_LEVELS
 });
 const rank = category => WORLD_RISK_ORDER.indexOf(category);
@@ -94,7 +106,9 @@ export function stormDaysFor(member, members = OUTLOOK.members, lead = 0) { retu
 // shearKt[1]. Summed within 25 miles over the day, that is the number of severe storms to expect near
 // it, and its chance is that of at least one (the outlook's calibration then sets what it is worth).
 // Thunder is the same without the severity, from thunderShare.
-const INGREDIENTS = { capeJkg: [250, 2500], shearKt: [25, 50], severeShareWeakShear: 0.35, thunderShare: 0.5 };
+// (capeJkg [250, 2500] to [200, 1900] on 2026-10-26: the sounding's CAPE fell by about a quarter when its heights and mixed
+// layer were corrected, and Day 3 was then too low on 63% of days.)
+const INGREDIENTS = { capeJkg: [200, 1900], shearKt: [25, 50], severeShareWeakShear: 0.35, thunderShare: 0.5 };
 const ramp01 = (value, low, high) => Math.max(0, Math.min(1, ((Number(value) || 0) - low) / (high - low)));
 
 // How far a day's chances are spread out (km): see OUTLOOK.spreadKm.
@@ -187,6 +201,8 @@ export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, ups
     any('severe', 'tornado', 'wind', 'hail'); any('severeSig', 'tornadoSig', 'windSig', 'hailSig'); any('severeExtreme', 'tornadoExtreme', 'windExtreme', 'hailExtreme');
     return {
       ...day.result, width: world.width, height: world.height, cellMiles: world.cellSizeMiles, fromHourUtc: day.startHour, toHourUtc: world.validHourUtc,
+      // The category the run's own day reached, judged as a day is verified.
+      dayCategory: truth.worldRisk.reduce((best, c) => (rank(c) > rank(best) ? c : best), 'NONE'),
       chance, reports, thunder: truth.storm, storms: day.seen.size,
       // Every tornado on the ground in the period, those already down at its start too (2026-10-24: only
       // those that began in it were counted, and an outlook drew a 2% tornado area from a tornado still
@@ -251,7 +267,10 @@ export function runOutlookMember(state, member, hours) { return runOutlookMember
 // moist air before any storm has formed.
 function describeEnvironment(world, stormy = null) {
   const cape = [], cin = [], shear = [], helicity = [], dewpoint = [], base = [];
-  let u = 0, v = 0, n = 0, moist = 0, speedSum = 0, falls = 0;
+  let u = 0, v = 0, n = 0, moist = 0, speedSum = 0, falls = 0, moistSpeedSum = 0;
+  const speeds = [];
+  const cinUnstable = [];
+  const capeAll = [], shearAll = [], cinAll = [], changes = [];
   const { width, height } = world, near = new Uint8Array(width * height);
   let nearCount = 0;
   if (stormy) for (let i = 0; i < near.length; i++) if (stormy[i]) { const x = i % width, y = Math.floor(i / width); for (let yy = Math.max(0, y - 2); yy <= Math.min(height - 1, y + 2); yy++) for (let xx = Math.max(0, x - 2); xx <= Math.min(width - 1, x + 2); xx++) near[yy * width + xx] = 1; }
@@ -259,9 +278,9 @@ function describeEnvironment(world, stormy = null) {
   const useNear = nearCount >= 20;
   world.forEachCell((cell, x, y) => {
     const direction = (cell.levels[500].windDirection ?? 270) * Math.PI / 180, speed = cell.levels[500].windSpeed ?? 0;
-    u += -Math.sin(direction) * speed; v += -Math.cos(direction) * speed; n++; speedSum += speed; falls += Number(cell.levels[500].heightTendencyDm12h) || 0;
+    u += -Math.sin(direction) * speed; v += -Math.cos(direction) * speed; n++; speedSum += speed; speeds.push(speed); falls += Number(cell.levels[500].heightTendencyDm12h) || 0; changes.push(Number(cell.levels[500].heightTendencyDm12h) || 0);
     if (cell.surface.dewpoint < 58) return;
-    moist++;
+    moist++; moistSpeedSum += speed; if ((cell.derived.sounding?.mlcape ?? 0) >= 500) cinUnstable.push(Math.abs(cell.derived.sounding?.mlcin ?? 0)); capeAll.push(cell.derived.sounding?.mlcape ?? 0); shearAll.push(cell.derived.bulkShear ?? 0); cinAll.push(Math.abs(cell.derived.sounding?.mlcin ?? 0));
     if (useNear && !near[y * width + x]) return; dewpoint.push(cell.surface.dewpoint); cape.push(cell.derived.sounding?.mlcape ?? 0); cin.push(Math.abs(cell.derived.sounding?.mlcin ?? 0));
     shear.push(cell.derived.bulkShear ?? 0); helicity.push(cell.derived.srh ?? 0); base.push(cell.derived.lclAgl ?? 0);
   });
@@ -271,8 +290,21 @@ function describeEnvironment(world, stormy = null) {
     // (2026-10-24: the 90th percentile, as the CAPE is, since the 75th read "weak (25 kt)" beside maps
     // showing 45-53 kt; and the flow aloft as the mean speed, the vector mean having read 20-25 kt where
     // the map's middle had 27-31; and the change of the 500 mb heights over 12 hours, to name a trough.)
-    moistShare: moist / n, cape: quantile(cape, 0.9), capeMedian: quantile(cape, 0.5), cin: quantile(cin, 0.5), shear: quantile(shear, 0.9), helicity: quantile(helicity, 0.9),
-    dewpoint: quantile(dewpoint, 0.5), cloudBaseM: quantile(base, 0.5), aloftKt: speedSum / n, aloftFromDeg: (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360, heightChangeDm: falls / n
+    // (2026-10-26: the cap is the whole moist sector's median too: near the runs' storms, where it had broken, it read "little
+    // cap" beside a warm sector at MLCIN -70 to -87.)
+    // (2026-10-26: the CAPE and shear quoted are the whole moist sector's 90th percentiles, as forecasters quote the warm
+    // sector's upper values; near the runs' storms, which often sit in the weaker air, they read "MLCAPE to 2,000" and "to
+    // 35 kt" beside analyses of 2,840 and 47-65. The heights' change is the strongest part of it, falls or rises, which a
+    // trough brings; the map's mean called 17-21 dam of falls "about 9". docs/METEOROLOGIST-REVIEW-2026-10-25-evening.md.)
+    // (2026-10-27: the cap is the weakest-capped quarter of that air, where storms can form, and the flow aloft the 75th percentile
+    // of the region's 500 mb wind, the stronger flow a forecaster would cite: the median read "a strong cap" beside dryline
+    // soundings at -50 to -59, and the moist air's mean wind "weak flow (15-25 kt)" beside 31-36 kt at mid-map.)
+    // (Later on 2026-10-26: the cap is the median over the moist air with MLCAPE of 500 or more, where storms could form, and the
+    // flow aloft is the mean over the moist air; with all the moist air, "a strong cap" read beside warm-sector CIN of -8 to -52,
+    // and the map-wide mean wind "weak flow (25-30 kt)" beside moist-sector shear of 45-70 kt.)
+    moistShare: moist / n, cape: quantile(capeAll, 0.9), capeMedian: quantile(cape, 0.5), cin: cinUnstable.length >= 10 ? quantile(cinUnstable, 0.25) : quantile(cinAll, 0.5), shear: quantile(shearAll, 0.9), helicity: quantile(helicity, 0.9),
+    dewpoint: quantile(dewpoint, 0.5), cloudBaseM: quantile(base, 0.5), aloftKt: quantile(speeds, 0.75), aloftFromDeg: (Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360,
+    heightChangeDm: (() => { const fall = quantile(changes, 0.15), rise = quantile(changes, 0.85); return Math.abs(fall) >= Math.abs(rise) ? fall : rise; })(), heightChangeMeanDm: falls / n
   };
 }
 
@@ -289,8 +321,19 @@ function describeLines(atmosphere) {
 // maxCategory: the highest category this issue may give (see OUTLOOK.leadCaps; the runtime adds
 // the one-step limit from the last issue). regions: names the map's regions an area covers (the
 // counties' place names), or null for compass parts.
-export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issuedHourUtc, validToHourUtc, seed = null, day = 'day1', agreement = OUTLOOK.agreement, groupAgreement = OUTLOOK.groupAgreement, calibration = CALIBRATION, maxCategory = null, regions = null, previous = null, continuity = 0, cigCalibration = CIG_SHARE } = {}) {
+export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issuedHourUtc, validToHourUtc, seed = null, day = 'day1', agreement: explicitAgreement = null, groupAgreement = OUTLOOK.groupAgreement, calibration = CALIBRATION, maxCategory = null, regions = null, previous = null, continuity = 0, cigCalibration = CIG_SHARE } = {}) {
   if (!members.length) throw new Error('an outlook needs at least one member');
+  let agreement = explicitAgreement ?? OUTLOOK.agreement;
+  // Most runs made a High day of their own (OUTLOOK.highRunShare): the top levels and groups need no more of them.
+  const highRuns = members.filter(m => m.dayCategory === 'HIGH').length / members.length, relaxed = highRuns >= OUTLOOK.highRunShare;
+  if (relaxed) { agreement = [agreement[0], Math.min(agreement[1], highRuns)]; groupAgreement = [Math.min(groupAgreement[0], highRuns), Math.min(groupAgreement[1], highRuns)]; }
+  // Each level's share of runs (see OUTLOOK.categoryAgreement), or the even steps of an agreement given.
+  const byCategory = !explicitAgreement;
+  const levelShare = (hazard, r, levels) => {
+    if (!byCategory) return agreement[0] + (agreement[1] - agreement[0]) * r / Math.max(1, levels.length - 1);
+    const share = OUTLOOK.categoryAgreement[worldCategoryFromHazard(hazard, levels[r], 1) ?? 'MRGN'] ?? agreement[1];
+    return relaxed ? Math.min(share, highRuns) : share;
+  };
   const { width, height, cellMiles } = members[0], n = width * height, count = members.length, hazards = OUTLOOK.hazards[day];
   const fields = Object.keys(members[0].chance);
   // The members' average chance of each hazard and of each intensity tier (kept unrounded for
@@ -325,7 +368,7 @@ export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issu
     let held = 0;
     for (let i = 0; i < n; i++) {
       let allowed = -1;
-      for (let r = 0; r < levels.length; r++) if (support[i] >= least + (most - least) * r / Math.max(1, levels.length - 1) - 1e-6) allowed = r;
+      for (let r = 0; r < levels.length; r++) if (support[i] >= levelShare(hazard, r, levels) - 1e-6) allowed = r;
       const ceiling = allowed + 1 < levels.length ? levels[allowed + 1] - 0.01 : Infinity;
       if (chance[hazard][i] > ceiling) { chance[hazard][i] = ceiling; held++; }
     }
@@ -392,7 +435,7 @@ export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issu
     return [hazard, { level: Math.max(...level[hazard]), cig: Math.max(...cig[hazard]), x: (best % width + 0.5) / width, y: (Math.floor(best / width) + 0.5) / height }];
   }));
   const outlook = {
-    day, hazards, issuedHourUtc, validFromHourUtc, validToHourUtc, seed, members: count, width, height, cellMiles, agreementHeld: agreed, rawChance, blend, capped: capped > 0, maxCategory,
+    day, hazards, issuedHourUtc, validFromHourUtc, validToHourUtc, seed, members: count, highRuns, width, height, cellMiles, agreementHeld: agreed, rawChance, blend, capped: capped > 0, maxCategory,
     chance, intensity, cigAreas, level, cig, thunder, category, highest, areas, top,
     expected: {
       // The range of the runs: with only a few of them, the least and the most.
@@ -523,14 +566,17 @@ export function writeDiscussion(o) {
   const e = o.environment;
   if (e) {
     lines.push('...SYNOPSIS...');
-    const flow = e.aloftKt >= 55 ? 'A strong' : e.aloftKt >= 35 ? 'A moderate' : 'A weak';
+    // (Judged on the number the text gives: 'a weak flow (35 kt)' until 2026-10-24.)
+    const aloftKt = Math.round(e.aloftKt / 5) * 5, flow = aloftKt >= 55 ? 'A strong' : aloftKt >= 35 ? 'A moderate' : 'A weak';
     // (The share is of dewpoints of 58 F or more in the late afternoon, said as such.)
     const moisture = e.moistShare >= 0.75 ? 'By late afternoon dewpoints of 58 F or more cover most of the region' : e.moistShare >= 0.4 ? 'By late afternoon dewpoints of 58 F or more cover about half of the region' : e.moistShare > 0.05 ? 'By late afternoon dewpoints of 58 F or more are confined to a small part of the region' : 'The air over the region is dry';
     const tens = Math.floor(e.dewpoint / 10) * 10, dewpoints = `${e.dewpoint - tens < 3.5 ? 'lower ' : e.dewpoint - tens >= 6.5 ? 'upper ' : 'mid '}${tens}s F`;
-    const change = Number(e.heightChangeDm) || 0, aloft = change <= -6 ? ` Heights aloft are falling sharply (about ${Math.round(-change)} dam in 12 hours) as an upper trough approaches.` : change <= -2 ? ' Heights aloft are falling slowly ahead of an upper trough.' : change >= 6 ? ` Heights aloft are rising (about ${Math.round(change)} dam in 12 hours) under a building ridge.` : change >= 2 ? ' Heights aloft are rising slowly.' : '';
-    lines.push(`${flow} ${compass(e.aloftFromDeg)}erly flow aloft (${Math.round(e.aloftKt / 5) * 5} kt at 500 mb) crosses the region.${aloft} ${moisture}${e.moistShare > 0.05 ? `, with afternoon dewpoints in the ${dewpoints}` : ''}.`);
+    const change = Number(e.heightChangeDm) || 0, aloft = change <= -10 ? ` By late afternoon heights aloft are falling sharply (up to about ${Math.round(-change)} dam in 12 hours) as an upper trough approaches.` : change <= -4 ? ` By late afternoon heights aloft are falling (up to about ${Math.round(-change)} dam in 12 hours) ahead of an upper trough.` : change <= -2 ? ' By late afternoon heights aloft are falling slowly ahead of an upper trough.' : change >= 6 ? ` By late afternoon heights aloft are rising (about ${Math.round(change)} dam in 12 hours) under a building ridge.` : change >= 2 ? ' By late afternoon heights aloft are rising slowly.' : '';
+    lines.push(`${flow} ${compass(e.aloftFromDeg)}erly flow aloft (${aloftKt} kt at 500 mb) crosses the region.${aloft} ${moisture}${e.moistShare > 0.05 ? `, with afternoon dewpoints in the ${dewpoints}` : ''}.`);
     const drawn = [];
-    for (const type of ['dryline', 'cold', 'warm', 'stationary']) { const found = o.lines.filter(l => l.type === type).sort((a, b) => b.lengthKm - a.lengthKm)[0]; if (found) drawn.push(`${type === 'dryline' ? 'a dryline' : `a ${type} front`} over the ${partAt(found.x, found.y)} part of the region`); }
+    // (A dryline is named by the westernmost drawn, the moist air's western edge; the longest had named a line on the eastern side
+    // of a moist tongue, 2026-10-26. Fronts by the longest.)
+    for (const type of ['dryline', 'cold', 'warm', 'stationary']) { const found = o.lines.filter(l => l.type === type).sort((a, b) => type === 'dryline' ? a.x - b.x : b.lengthKm - a.lengthKm)[0]; if (found) drawn.push(`${type === 'dryline' ? 'a dryline' : `a ${type} front`} over the ${partAt(found.x, found.y)} part of the region`); }
     if (drawn.length) lines.push(`By late afternoon the surface analysis is expected to show ${list(drawn)}.`);
     if (e.moistShare > 0.05 && e.cape >= 250) {
       // ("Extreme" from 4,000 J/kg, as forecasters use it; 3,500 until 2026-10-20.)
@@ -538,8 +584,11 @@ export function writeDiscussion(o) {
       // (Judged on the number the text gives, so it never reads 'weak (to 35 kt)'.)
       const shearKt = Math.round(e.shear / 5) * 5, shear = shearKt >= 50 ? 'strong' : shearKt >= 35 ? 'sufficient' : 'weak';
       // (The cap where the runs' storms are: strong there means they form only where lift breaks it.)
+      // Why no severe weather where nothing caps it: from the fields (2026-10-27; the outlook had given no reason for a quiet day in
+      // 1,500 J/kg and 45 kt).
+      const quietReason = (Number(e.heightChangeDm) || 0) >= 4 ? 'as heights rise and the sinking air aloft keeps storms in check' : (e.cloudBaseM ?? 0) >= 1800 ? 'their cloud bases high over dry low levels' : e.moistShare < 0.25 ? 'the moist air being confined to a small part of the region' : 'the lift to start them being weak';
       const cap = !severe ? '' : e.cin >= 100 ? 'A strong cap covers the warm air; storms will form only where fronts, the dryline or outflow lift the air through it.' : e.cin >= 40 ? 'A cap will limit storms to where the lift is strongest.' : 'There is little cap, so storms should form readily.';
-      lines.push(`In the moist air, ${instability} instability (MLCAPE to ${Math.round(e.cape / 500) * 500} J/kg) and ${shear} deep-layer shear (to ${shearKt} kt) ${severe ? `will ${shearKt >= 35 ? 'support organized storms, including supercells' : 'favour short-lived storms and clusters'}` : `would ${shearKt >= 35 ? 'support organized storms' : 'favour short-lived storms'}, but storms are not expected to become severe`}. ${cap}`);
+      lines.push(`In the moist air, ${instability} instability (MLCAPE to ${Math.round(e.cape / 500) * 500} J/kg) and ${shear} deep-layer shear (to ${shearKt} kt) ${severe ? `will ${shearKt >= 35 ? 'support organized storms, including supercells' : 'favour short-lived storms and clusters'}` : `would ${shearKt >= 35 ? 'support organized storms' : 'favour short-lived storms'} should any form, but ${e.cin >= 40 ? 'a cap is expected to hold over most of it, and the forecast runs develop few storms and none severe' : `the forecast runs develop few storms and none severe, ${quietReason}`}`}. ${cap}`);
     }
     lines.push('');
   }
@@ -556,8 +605,17 @@ export function writeDiscussion(o) {
     // (With storms going at the start, their first hour is theirs, not the day's: 2026-10-24, "most likely
     // between 12Z and 13Z" and "peaking near 12Z" from the night's storms. Kept when it is all there is.)
     const later = byHour => { if (!going) return byHour; const rest = byHour.slice(); rest[from] = 0; return rest.some(v => v > 0) ? rest : byHour; };
-    const begin = densestSpan(o.timing.storms, from, 0.6), tornado = spanOf(later(o.timing.tornado), from), worst = densestSpan(later(o.timing.severe), from, 0.5);
-    if (begin || going) lines.push(`${going ? `Storms are ongoing at the start of the period${begin ? `, and more are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)})` : ''}` : `Storms are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)})`}${worst ? `, with severe weather most likely between ${clock(worst.first)} and ${clock(worst.last + 1)}` : ''}.`);
+    const begin = densestSpan(o.timing.storms, from, 0.6), tornado = spanOf(later(o.timing.tornado), from), worst0 = densestSpan(later(o.timing.severe), from, 0.5);
+    // (The severe window takes in the tornado peak, so the two never disagree: 2026-10-25, "severe weather most likely
+    // between 21Z and 01Z" beside "tornado risk greatest near 18Z".)
+    // (Only where that keeps the window within 12 hours: a tornado peak at the period's far end had stretched it to "between
+    // 12Z and 12Z", 2026-10-26.)
+    const ahead = h => (h - from + 24) % 24, widened = worst0 && tornado ? { ...worst0, first: ahead(tornado.peak) < ahead(worst0.first) ? tornado.peak : worst0.first, last: ahead(tornado.peak) > ahead(worst0.last) ? tornado.peak : worst0.last } : worst0;
+    const worst = widened && ahead(widened.last) - ahead(widened.first) <= 11 ? widened : worst0;
+    // (Storms are said to develop no later than the severe weather starts: 2026-10-27, "develop from about 05Z" beside "severe
+    // weather most likely between 04Z and 10Z", the busiest stretch of new storms falling after the first severe ones.)
+    const startHour = begin && worst && !going && ahead(worst.first) < ahead(begin.first) ? worst.first : begin?.first;
+    if (begin || going) lines.push(`${going ? `Storms are ongoing at the start of the period${begin ? `, and more are expected to develop from about ${clock(begin.first)} (${localTime(begin.first)})` : ''}` : `Storms are expected to develop from about ${clock(startHour)} (${localTime(startHour)})`}${worst ? `, with severe weather most likely between ${clock(worst.first)} and ${clock(worst.last + 1)}` : ''}.`);
     const where = hazard => partAt(o.top[hazard].x, o.top[hazard].y);
     const area = (hazard, name) => `${o.top[hazard].level}% ${name} area${o.top[hazard].cig ? `, CIG${o.top[hazard].cig}` : ''}`;
     const of = hazard => (o.top[hazard] ? threat(hazard, o.top[hazard]) : null);
@@ -565,7 +623,9 @@ export function writeDiscussion(o) {
     if (all) lines.push(`SEVERE: ${sentence(all.words.split(',')[0])} ${all.verb}${all.words.includes(',') ? all.words.slice(all.words.indexOf(',')) + ',' : ','} most likely over the ${where('severe')} part of the region (${area('severe', 'severe')}). The hazards will be set out separately as the day comes nearer.`);
     if (tor) {
       const helicity = e && e.helicity >= 200 ? 'Strong low-level shear' : e && e.helicity >= 100 ? 'Adequate low-level shear' : 'Modest low-level shear';
-      const reasoning = e && e.helicity >= 100 && e.cloudBaseM <= 1500 ? `${helicity} and low cloud bases favour tornadoes with storms that stay on their own.` : e && e.helicity >= 100 ? `${helicity} favours tornadoes, but high cloud bases will limit them.` : `${helicity} will limit the tornado risk.`;
+      // (Only a tornado area of 5% or more is said to be favoured: 2026-10-27, "strong low-level shear and low cloud bases favour
+      // tornadoes" on a 2% day whose high-helicity soundings had 2,100-2,600 m cloud bases.)
+      const reasoning = o.top.tornado.level < 5 ? (e && e.cloudBaseM > 1500 ? 'High cloud bases will keep any tornado brief and isolated.' : 'Any tornado should be brief and isolated.') : e && e.helicity >= 100 && e.cloudBaseM <= 1500 ? `${helicity} and low cloud bases favour tornadoes with storms that stay on their own.` : e && e.helicity >= 100 ? `${helicity} favours tornadoes, but high cloud bases will limit them.` : o.top.tornado.level >= 10 ? 'Low-level shear is modest over much of the region, so the tornado risk is tied to where storms find stronger shear near boundaries.' : `${helicity} will limit the tornado risk.`;
       lines.push(`TORNADO: ${sentence(tor.words.split(',')[0])} ${tor.verb}${tor.words.includes(',') ? tor.words.slice(tor.words.indexOf(',')) + ',' : ','} most likely over the ${where('tornado')} part of the region (${area('tornado', 'tornado')}). ${reasoning}${tornado ? ((tornado.last - tornado.first + 24) % 24 >= 9 ? ` The tornado risk is spread through the period, greatest near ${clock(tornado.peak)} (${localTime(tornado.peak)}).` : ` The tornado risk is greatest between ${clock(tornado.first)} and ${clock(tornado.last + 1)}${(tornado.last - tornado.first + 24) % 24 >= 3 ? `, peaking near ${clock(tornado.peak)}` : ''}.`) : ''}`);
     }
     if (hail) lines.push(`HAIL: ${sentence(hail.words.split(',')[0])} ${hail.verb}${hail.words.includes(',') ? hail.words.slice(hail.words.indexOf(',')) + ',' : ','} most likely over the ${where('hail')} part of the region (${area('hail', 'hail')}).`);

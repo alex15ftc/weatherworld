@@ -1,21 +1,40 @@
 --!nonstrict
 --!native
--- Storm clouds as billboard cards (the default cloud style; F4 "clouds: kit" switches back to the
--- cloud-kit meshes of Render/Clouds). Each storm's tower, billows, top, anvil, base, scud, wall
--- cloud and tail cloud are soft camera-facing cards laid out from its fields (CloudParts/CardPlan).
+-- Storm clouds as billboard cards (the lab draws everything as billboards; rain shafts are
+-- Render/RainShafts). Each storm's tower, billows, top, anvil, base, scud, wall cloud and tail
+-- cloud are soft camera-facing cards laid out from its fields (CloudParts/CardPlan).
 --
 --   track    a storm's drawn position glides with its velocity and eases (~2 s) toward each new
 --            snapshot, so snapshot steps never show as jumps
 --   anchor   one invisible part per storm (and one for its wall cloud, turned at the low-level
 --            rotation); cards hang from attachments at storm-local offsets, so motion is one
 --            BulkMoveTo for every storm
---   plan     a storm is re-planned every PLAN_EVERY s; each card has a stable key (CardPlan), so a
+--   plan     a storm is re-planned every PLAN_EVERY s (longer far away: PLAN_FAR s beyond
+--            PLAN_FAR_M); each card has a stable key (CardPlan), so a
 --            re-plan updates the same card in place (it drifts with the storm's evolution), new
 --            cards fade in and dropped ones fade out (FADE s). Plans are written ~200 cards a frame
 --   light    self-lit (LightInfluence 0): albedo x (sky light x the sky it sees + direct sun x what
 --            reaches its sunward surface through the storm) + distance haze; lightning recolours
 --            the cards of storms near a flash (~15 Hz, colours only)
 --   detail   fewer cards with distance and with many storms (CardPlan detail); none beyond MAX_RANGE
+--   lobes    cumuliform cards (CardPlan tex lumpyFlat, or c.lobe) draw soft lit lobe sheets
+--            (tools/blender/lobe_bake.py + lobe_post.py, docs/stormlab/CONDENSATION-DETAIL.md):
+--            smooth billows with the light baked in from the frame's top at low contrast, ONE image
+--            per card (two stacked alpha-blended labels darken every rim over the card behind),
+--            tinted and gradient-shaded like any card, turned so its top faces the sun on screen.
+--            The sheet is the bake for the sun's angle to the view: front (sun behind the viewer),
+--            side or back (behind the cloud). Family by on-screen size: soft below LOBE_SOFT_PX,
+--            the 512 px near sheets above LOBE_NEAR_PX
+--   scale    each storm is drawn whole at one scale about its centre (LabConfig.scaleAbout: in the
+--            lab SCALE, in the game true near the camera and less far away): its anchor at its map
+--            position, every card's offset, height and size at the layer's scale k (the wall
+--            layer about the wall's centre). A layer is rewritten (RESCALE_BUDGET cards a frame)
+--            when its scale moves by more than 2%. A squall line's shelf keeps its cards at their
+--            map positions across (it spans the map), heights and sizes at the line's scale.
+--   cost     only changes that show are written (half a pixel, 1/500 in colour or opacity); a
+--            storm off screen (a sphere round its cards against the view) skips its motion, fade
+--            and fog writes, and its anchors move only every 8th frame; fog recolours are queued
+--            and written RECOLOUR_BUDGET cards a frame
 -- Debug attribute on ctx.root: StormCards ("storms · cards · ms").
 local Workspace = game:GetService("Workspace")
 
@@ -26,11 +45,21 @@ local ShelfPlan = require(Parts:WaitForChild("ShelfPlan"))
 
 local StormCards = {}
 
-local PLAN_EVERY = 3
+local PLAN_EVERY = 3 -- s, a storm within PLAN_NEAR_M
+local PLAN_FAR = 20 -- s, a storm beyond PLAN_FAR_M (in between: linear)
+local PLAN_NEAR_M, PLAN_FAR_M = 10000, 40000
+local RECOLOUR_BUDGET = 300 -- fog recolours a frame
+local RESCALE_BUDGET = 400 -- card rewrites a frame after a layer's scale moved
+local RESCALE_STEP = 0.02 -- a layer is redrawn at a new scale once it has moved by this share
+local MARGIN = 0.1 -- rad beyond the view's half-diagonal before a storm counts as off screen
+local CULL_REFRESH = 8 -- an off-screen storm's anchors still move every 8th frame
 local MAX_RANGE = 150000
 local FRAME = 256 -- px a frame of a 4 x 4 sheet (1024 px)
 local FADE = 1.2 -- s for a card to fade in or out
 local BUDGET = 200 -- card writes a frame for pending plans
+local NEAR_BUDGET = 400 -- cards a frame checked for the near-camera fade
+local LOBE_SOFT_PX = 40 -- a lobe card smaller than this on screen draws the soft family
+local LOBE_NEAR_PX = 320 -- and bigger than this the near (2 x 2, 512 px) sheets
 
 local function smooth(a: number, b: number, x: number): number
 	local t = math.clamp((x - a) / (b - a), 0, 1)
@@ -42,29 +71,34 @@ function StormCards.new(ctx: any): any
 	local C = ctx.Config
 	CardPlan.available.striationFlat = (C.TEXTURES.striationFlat or "") ~= ""
 	CardPlan.available.fractusFlat = (C.TEXTURES.fractusFlat or "") ~= ""
+	CardPlan.dynamicScud = (C.SCUD or {}).enabled ~= false
+	-- lit lobe sheets (LabConfig.LOBES[family] = { front, side, back }; a family is used only when
+	-- all three are set)
+	local LOBES = {}
+	for fam, set in (C.LOBES or {}) do
+		if (set.side or "") ~= "" and (set.front or "") ~= "" and (set.back or "") ~= "" then
+			LOBES[fam] = set
+		end
+	end
+	local MIRROR = C.LOBE_MIRROR ~= false
 	local Storm = ctx.Sim.Storm
 	local self = {}
 	local folder = Instance.new("Folder")
 	folder.Name = "StormCards"
 	folder.Parent = ctx.root
 	local groups = {}
+	local nearQueue = {} -- (the near-camera fade's pending cards)
 	local anchors, frames = {}, {}
-	-- the cloud kit only names the shelf plan's pieces (the cards use their boxes)
-	local CloudKit = nil
+	-- ShelfPlan names its pieces by kind (the cards use only their boxes): a fixed list of names, so
+	-- the shelf plan needs no cloud kit
+	local SHELF_NAMES = { shelf = { "shelf_1", "shelf_2" }, base = { "base_1", "base_2" } }
+	local KitNames = {
+		names = function(kind: string): { string }
+			return SHELF_NAMES[kind] or {}
+		end,
+	}
 	local function cloudKit(): any
-		if CloudKit then
-			return CloudKit
-		end
-		local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
-		local weather = shared and shared:FindFirstChild("Weather")
-		local mod = weather and weather:FindFirstChild("CloudKit")
-		if mod then
-			local ok, ck = pcall(require, mod)
-			if ok then
-				CloudKit = ck
-			end
-		end
-		return CloudKit
+		return KitNames
 	end
 	local ORIGIN = { x = 0, y = 0 }
 	local statAt = 0
@@ -80,8 +114,17 @@ function StormCards.new(ctx: any): any
 	end
 
 	-- a set of keyed cards on one anchor
+	-- k: the layer's scale (studs a metre: its cards' offsets, heights and sizes); mapH: offsets
+	-- across at the map's own scale (a squall line's shelf)
 	local function newLayer(anchor: BasePart): any
-		return { anchor = anchor, byKey = {}, free = {}, fades = {}, anim = {}, count = 0 }
+		return { anchor = anchor, byKey = {}, free = {}, fades = {}, anim = {}, count = 0, k = C.studs(1), mapH = false }
+	end
+	-- a card's place on its layer's anchor (studs)
+	local function cardPos(layer: any, x: number, y: number, z: number): Vector3
+		if layer.mapH then
+			return C.toLocal(x, y, 0) + Vector3.new(0, z * layer.k, 0)
+		end
+		return C.localAbout(x, y, z, layer.k)
 	end
 	local function acquire(layer: any): any
 		local inst = table.remove(layer.free)
@@ -105,11 +148,68 @@ function StormCards.new(ctx: any): any
 		grad.Parent = img
 		img.Parent = bb
 		bb.Parent = layer.anchor
-		return { att = att, bb = bb, img = img, grad = grad, a = 0, target = 0 }
+		return { att = att, bb = bb, img = img, grad = grad, a = 0, target = 0, tr = 1, irot = 0, grot = 0 }
+	end
+	-- Instance writes only when the value changed (caches on the inst; every write of these
+	-- properties goes through here, so the caches are what the instances show)
+	local function setAlpha(inst: any, a: number)
+		local tr = 1 - a * (inst.near or 1)
+		local last = inst.tr
+		if math.abs(tr - last) > 0.002 or ((tr >= 1 or tr <= 0) and tr ~= last) then
+			inst.tr = tr
+			inst.img.ImageTransparency = tr
+		end
+	end
+	local function setPos(inst: any, v: Vector3)
+		if inst.pos ~= v then
+			inst.pos = v
+			inst.att.Position = v
+		end
+	end
+	local function setSize(inst: any, w: number, h: number)
+		if inst.sw ~= w or inst.sh ~= h then
+			inst.sw, inst.sh = w, h
+			inst.bb.Size = UDim2.fromScale(w, h)
+		end
+	end
+	local function setRot(inst: any, r: number)
+		if inst.irot ~= r then
+			inst.irot = r
+			inst.img.Rotation = r
+		end
+	end
+	local function setGradRot(inst: any, r: number)
+		if inst.grot ~= r then
+			inst.grot = r
+			inst.grad.Rotation = r
+		end
+	end
+	local function setImage(inst: any, tex: string)
+		if inst.tex ~= tex then
+			inst.tex = tex
+			inst.img.Image = tex
+		end
+	end
+	local function setRect(inst: any, size: Vector2, off: Vector2?)
+		if inst.rs ~= size then
+			inst.rs = size
+			inst.img.ImageRectSize = size
+		end
+		if off and inst.ro ~= off then
+			inst.ro = off
+			inst.img.ImageRectOffset = off
+		end
+	end
+	local function setCol(inst: any, col: Color3)
+		local last = inst.col
+		if not last or math.abs(col.R - last.R) > 0.002 or math.abs(col.G - last.G) > 0.002 or math.abs(col.B - last.B) > 0.002 then
+			inst.col = col
+			inst.img.ImageColor3 = col
+		end
 	end
 	local function release(layer: any, inst: any)
 		inst.bb.Enabled = false
-		inst.img.ImageTransparency = 1
+		setAlpha(inst, 0)
 		layer.byKey[inst.key] = nil
 		layer.fades[inst] = nil
 		layer.anim[inst] = nil
@@ -120,29 +220,75 @@ function StormCards.new(ctx: any): any
 	local function clearLayer(layer: any)
 		for _, inst in layer.byKey do
 			inst.bb.Enabled = false
-			inst.img.ImageTransparency = 1
+			setAlpha(inst, 0)
 			inst.key, inst.card = nil, nil
 			table.insert(layer.free, inst)
 		end
 		layer.byKey, layer.fades, layer.anim, layer.count = {}, {}, {}, 0
 	end
 
+	local groupSeq = 0 -- (staggers the off-screen anchor refreshes)
 	local function newGroup(id: string): any
+		groupSeq += 1
 		return {
 			main = newLayer(newAnchor("Storm_" .. id)),
 			wallL = newLayer(newAnchor("Wall_" .. id)),
 			plan = {}, wall = nil, plannedAt = -math.huge, jobs = {},
+			vis = true, n = groupSeq,
 		}
 	end
 	local function hideGroup(g: any)
 		clearLayer(g.main)
 		clearLayer(g.wallL)
 		g.jobs = {}
+		g.mainCF, g.wallCF = nil, nil
+	end
+	-- a sphere round a group's cards, relative to its anchor (m): for the view test. Animated cards
+	-- are counted where their motion can take them.
+	local function bound(g: any)
+		local x0, y0, z0, x1, y1, z1 = math.huge, math.huge, math.huge, -math.huge, -math.huge, -math.huge
+		local function add(c: any, ox: number, oy: number, extra: number)
+			local m = c.mv
+			local r = 0.5 * math.max(c.w, c.h) * (if m and m.grow then 1 + math.max(0, m.grow) else 1) + extra
+			local zr = if m and m.rise then math.max(0, m.rise) else 0
+			local x, y = c.x + ox, c.y + oy
+			if m and m.tx then
+				-- (turning or drawn in about its target: anywhere within its distance of it)
+				local tx, ty = m.tx + ox, m.ty + oy
+				local rr = math.sqrt((x - tx) ^ 2 + (y - ty) ^ 2)
+				x0, x1 = math.min(x0, tx - rr - r), math.max(x1, tx + rr + r)
+				y0, y1 = math.min(y0, ty - rr - r), math.max(y1, ty + rr + r)
+			else
+				x0, x1 = math.min(x0, x - r), math.max(x1, x + r)
+				y0, y1 = math.min(y0, y - r), math.max(y1, y + r)
+			end
+			z0, z1 = math.min(z0, c.z - r), math.max(z1, c.z + r + zr)
+		end
+		for _, c in g.plan do
+			add(c, 0, 0, 0)
+		end
+		local w = g.wall
+		g.wallRad = 0
+		if w then
+			-- (the wall layer turns about its anchor at (w.x, w.y): a card anywhere on its circle)
+			for _, c in w.cards do
+				local rr = math.sqrt(c.x * c.x + c.y * c.y) + 0.5 * math.max(c.w, c.h)
+				g.wallRad = math.max(g.wallRad, rr)
+				add(c, w.x, w.y, math.sqrt(c.x * c.x + c.y * c.y))
+			end
+		end
+		if x0 > x1 then
+			g.bx, g.by, g.bz, g.brad = 0, 0, 0, nil
+			return
+		end
+		g.bx, g.by, g.bz = 0.5 * (x0 + x1), 0.5 * (y0 + y1), 0.5 * (z0 + z1)
+		g.brad = 0.5 * math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2 + (z1 - z0) ^ 2)
 	end
 
 	-- the scene's light for clouds (as Tornado/SceneLight, but the sun unshadowed: the card's own
 	-- `lit` carries the storm's shadow)
 	local fogLightAt, fogLight = -math.huge, 0.5
+	local Lnow = {} -- (light()'s result: one table, rewritten each frame)
 	local function light(): any
 		local sun = game:GetService("Lighting"):GetSunDirection()
 		local elev = sun.Y
@@ -159,14 +305,17 @@ function StormCards.new(ctx: any): any
 		local now = os.clock()
 		if now - fogLightAt > 0.25 then
 			fogLightAt = now
-			local cam = Workspace.CurrentCamera.CFrame.Position
-			local Ls = ctx.Tornado.SceneLight.sample(ctx, cam.X, -cam.Z, math.max(cam.Y, 2))
+			local cx, cy, cz = C.fromWorld(Workspace.CurrentCamera.CFrame.Position)
+			local Ls = ctx.Tornado.SceneLight.sample(ctx, cx, cy, math.max(cz, C.groundAt(cx, cy) + 2))
 			fogLight = 0.75 * Ls.sky + 0.12 * Ls.sun
 		end
 		local fg = fogLight
 		local fog = Color3.new(fg * 0.93, fg * 0.98, fg * 1.06)
 		ctx.rainFogColour = fog
-		return { sky = sky, direct = direct, warm = warm, night = night, sx = sun.X, sy = -sun.Z, sz = sun.Y, fog = fog }
+		local Lt = Lnow
+		Lt.sky, Lt.direct, Lt.warm, Lt.night = sky, direct, warm, night
+		Lt.sx, Lt.sy, Lt.sz, Lt.fog = sun.X, -sun.Z, sun.Y, fog
+		return Lt
 	end
 	-- vx, vy, vz: the unit view direction from the camera to the card (sim frame)
 	-- shift: the part of the card's surface tilted toward (+) or away from (-) the sun
@@ -216,6 +365,7 @@ function StormCards.new(ctx: any): any
 		end
 		return c
 	end
+	local camXNow, camYNow = 0, 0 -- (the camera this frame, m)
 	local fogNow = 0 -- (the group being written: its rain fog along the ground, 0..1)
 	local baseNow = 1000 -- (and its cloud base, m)
 	local distNow = 1e4 -- (and the camera's distance from it, m)
@@ -244,13 +394,14 @@ function StormCards.new(ctx: any): any
 		end
 		return seq
 	end
-	-- write a card's colour (and, when `full`, its shading)
+	-- write a card's colour (and, when `full`, its shading). camPos (here and below): the camera in
+	-- the sim frame, metres (x east, y north, z up), not a Roblox position
 	local function shadeCard(inst: any, c: any, wx: number, wy: number, camPos: Vector3, L: any, flashes: boolean, full: boolean)
 		local ff = ctx.flashField
 		local flash = if flashes and ff then ctx.Tornado.FlashField.at(ff, wx, wy, c.z) else 0
-		local rel = Vector3.new(wx, c.z, -wy) - camPos
+		local rel = Vector3.new(wx, wy, c.z) - camPos
 		local d = math.max(rel.Magnitude, 1)
-		local vx, vy, vz, hf = rel.X / d, -rel.Z / d, rel.Y / d, Util.hazeF(d)
+		local vx, vy, vz, hf = rel.X / d, rel.Y / d, rel.Z / d, Util.hazeF(d)
 		-- a lobe is bright across most of its sunward face and dark only in the crease on the far
 		-- side: lit over the first half, the card's own light in the middle, shadow at the edge
 		local lit = colour(c, L, flash, hf, vx, vy, vz, 0.3)
@@ -263,7 +414,7 @@ function StormCards.new(ctx: any): any
 			f = 1 - math.exp(-tau)
 			lit = Util.mix(lit, L.fog, f)
 		end
-		inst.img.ImageColor3 = lit
+		setCol(inst, lit)
 		if full then
 			local mid = colour(c, L, 0, hf, vx, vy, vz, 0)
 			local dark = colour(c, L, 0, hf, vx, vy, vz, -0.4)
@@ -271,7 +422,11 @@ function StormCards.new(ctx: any): any
 				mid = Util.mix(mid, L.fog, f)
 				dark = Util.mix(dark, L.fog, f)
 			end
-			inst.grad.Color = ratioSeq(lit, mid, dark)
+			local seq = ratioSeq(lit, mid, dark)
+			if inst.seq ~= seq then
+				inst.seq = seq
+				inst.grad.Color = seq
+			end
 		end
 	end
 	-- the gradient's direction on screen: from the sun's side to the far side. The sun's
@@ -279,7 +434,6 @@ function StormCards.new(ctx: any): any
 	-- card image's own rotation (the gradient turns with the image)
 	local gradAngle = 0
 	local aimQueue = {}
-	local flashQueue = {}
 	local function sunScreenAngle(L: any): number
 		local cf = Workspace.CurrentCamera.CFrame
 		local sun = Vector3.new(L.sx, L.sz, -L.sy)
@@ -312,6 +466,33 @@ function StormCards.new(ctx: any): any
 		return math.clamp(1 - math.exp(-tau), 0, 0.97)
 	end
 
+	-- a card's lobe family (nil: it keeps its own texture). Cumuliform cards (lumpyFlat) are tower
+	-- lobes, or hanging `under` lobes when they face down; CardPlan can name one (c.lobe). Small on
+	-- screen they draw the soft family, big the near sheets.
+	local fpxNow = 1000 -- (pixels per unit size at unit distance: this frame's camera)
+	local pxKNow = 0.0005 -- (half a pixel per metre of distance: this frame's camera)
+	local camSNow = Vector3.zero -- (the camera this frame, studs)
+	-- (wx, wy: the card's map position; cx, cy: its layer's centre; the on-screen size is the drawn
+	-- size over the drawn distance, both at the layer's scale)
+	local function lobeFamily(c: any, layer: any, cx: number, cy: number, camPos: Vector3): string?
+		local fam = c.lobe
+		if not fam and c.tex == "lumpyFlat" then
+			fam = if (c.nz or 0) < -0.3 then "under" else "tower"
+		end
+		if not fam or not LOBES[fam] then
+			return nil
+		end
+		local at = C.toWorld(cx, cy, 0) + cardPos(layer, c.x, c.y, c.z)
+		local px = math.max(c.w, c.h) * layer.k * fpxNow / math.max((at - camSNow).Magnitude, layer.k)
+		if px < LOBE_SOFT_PX and fam ~= "soft" and LOBES.soft then
+			return "soft"
+		end
+		if px > LOBE_NEAR_PX and LOBES[fam .. "_near"] then
+			return fam .. "_near"
+		end
+		return fam
+	end
+
 	-- write one planned card into its layer: the same key keeps its card (it moves a little), a
 	-- new key fades in
 	local function put(layer: any, c: any, ox: number, oy: number, s: any, camPos: Vector3, L: any, flashes: boolean, stamp: number): boolean
@@ -324,34 +505,69 @@ function StormCards.new(ctx: any): any
 			layer.byKey[c.key] = inst
 			layer.count += 1
 			inst.bb.Enabled = true
-			inst.img.ImageTransparency = 1
+			inst.near, inst.nearOff = 1, false
+			inst.fam = nil
+			setAlpha(inst, 0)
 		end
 		inst.card = c
 		inst.stamp = stamp
 		layer.anim[inst] = if c.mv then true else nil
-		inst.att.Position = Vector3.new(c.x, c.z, -c.y)
-		inst.bb.Size = UDim2.fromScale(math.max(c.w, 5), math.max(c.h, 5))
-		local img = inst.img
-		local tex = C.TEXTURES[c.tex] or C.TEXTURES.softFlat
-		if img.Image ~= tex then
-			img.Image = tex
-		end
-		if c.frame >= 0 then
-			img.ImageRectSize = Vector2.new(FRAME, FRAME)
-			img.ImageRectOffset = Vector2.new((c.frame % 4) * FRAME, math.floor(c.frame / 4) * FRAME)
+		local k = layer.k
+		setPos(inst, cardPos(layer, c.x, c.y, c.z))
+		setSize(inst, math.max(c.w, 5) * k, math.max(c.h, 5) * k)
+		-- lobe family: by the card's kind and its size on screen
+		local wx, wy = s.x + ox + c.x, s.y + oy + c.y
+		local fam = lobeFamily(c, layer, s.x + ox, s.y + oy, camPos)
+		inst.fam = fam
+		local square = c.h >= c.w * 0.8
+		if fam then
+			-- the bake for the sun's angle to the view (with a margin, so a card does not flip
+			-- between two sheets)
+			local rel = Vector3.new(wx, wy, c.z) - camPos
+			local d = math.max(rel.Magnitude, 1)
+			local vs = (rel.X * L.sx + rel.Y * L.sy + rel.Z * L.sz) / d
+			local pass = inst.pass or "side"
+			if vs < -0.4 then
+				pass = "front"
+			elseif vs > 0.4 then
+				pass = "back"
+			elseif vs > -0.25 and vs < 0.25 then
+				pass = "side"
+			end
+			inst.pass = pass
+			setImage(inst, LOBES[fam][pass])
+			-- the frame (the near sheets are 2 x 2 of the main sheet's first four lobes), mirrored
+			-- for half the cards (the light still comes from the top)
+			local near = string.sub(fam, -5) == "_near"
+			local fs = if near then 512 else FRAME
+			local per = if near then 2 else 4
+			local fr = if near then c.frame % 4 else c.frame
+			local fx, fy = (fr % per) * fs, math.floor(fr / per) * fs
+			local mirror = MIRROR and (c.ph or 0) > 0.5
+			local size = Vector2.new(if mirror then -fs else fs, fs)
+			local off = Vector2.new(if mirror then fx + fs else fx, fy)
+			setRect(inst, size, off)
+			-- the frame's top faces the sun on screen (squashed cards stay level: the light is
+			-- from above anyway)
+			setRot(inst, if square then gradAngle - 90 else 0)
 		else
-			img.ImageRectSize = Vector2.zero
+			setImage(inst, C.TEXTURES[c.tex] or C.TEXTURES.softFlat)
+			if c.frame >= 0 then
+				setRect(inst, Vector2.new(FRAME, FRAME), Vector2.new((c.frame % 4) * FRAME, math.floor(c.frame / 4) * FRAME))
+			else
+				setRect(inst, Vector2.zero, nil)
+			end
+			setRot(inst, if square then c.rot else 0)
 		end
-		img.Rotation = if c.h < c.w * 0.8 then 0 else c.rot
 		-- (a kept card refreshes its colour; its shading is redone only when new or now and then)
 		inst.shadeN = ((inst.shadeN or 0) + 1) % 6
 		shadeCard(inst, c, s.x + ox + c.x, s.y + oy + c.y, camPos, L, flashes, isNew or inst.shadeN == 0)
-		inst.grad.Rotation = gradAngle - img.Rotation
+		setGradRot(inst, gradAngle - inst.irot)
 		inst.target = c.a
 		if math.abs(inst.a - c.a) > 0.005 then
 			layer.fades[inst] = true
 		else
-			img.ImageTransparency = 1 - c.a
+			setAlpha(inst, c.a)
 		end
 		return isNew
 	end
@@ -387,7 +603,9 @@ function StormCards.new(ctx: any): any
 		return budget
 	end
 
-	local function stepFades(layer: any, dt: number)
+	-- vis: the group is on screen (off screen only a finished fade is written); animOn: its moving
+	-- cards are animated this frame (animate writes their opacity, so it is not written twice)
+	local function stepFades(layer: any, dt: number, vis: boolean, animOn: boolean)
 		local k = dt / FADE
 		for inst in layer.fades do
 			local t = inst.target
@@ -396,7 +614,10 @@ function StormCards.new(ctx: any): any
 			else
 				inst.a = math.max(t, inst.a - k)
 			end
-			inst.img.ImageTransparency = 1 - inst.a
+			local m = animOn and layer.anim[inst] and inst.card and inst.card.mv
+			if (vis and not (m and m.k ~= "spin")) or inst.a == t then
+				setAlpha(inst, inst.a)
+			end
 			if inst.a == t then
 				layer.fades[inst] = nil
 				if t <= 0 then
@@ -406,8 +627,17 @@ function StormCards.new(ctx: any): any
 		end
 	end
 
-	-- one animated card's place and opacity this frame (storm-local, sim time t)
-	local function animate(inst: any, t: number, gain: number)
+	-- one animated card's place and opacity this frame (storm-local, sim time t); thr: studs a card
+	-- must move before its position is written (half a pixel at its storm's nearest part)
+	local animThr = 0
+	local function movePos(inst: any, v: Vector3)
+		local last = inst.pos
+		if last == nil or (v - last).Magnitude > animThr then
+			inst.pos = v
+			inst.att.Position = v
+		end
+	end
+	local function animate(inst: any, t: number, gain: number, layer: any)
 		local c = inst.card
 		local m = c and c.mv
 		if not m then
@@ -424,8 +654,8 @@ function StormCards.new(ctx: any): any
 			local th = m.omega * t
 			local cs, sn = math.cos(th), math.sin(th)
 			local dx, dy = c.x - m.tx, c.y - m.ty
-			inst.att.Position = Vector3.new(m.tx + dx * cs - dy * sn, c.z, -(m.ty + dx * sn + dy * cs))
-			inst.img.ImageTransparency = 1 - inst.a * gain
+			movePos(inst, cardPos(layer, m.tx + dx * cs - dy * sn, m.ty + dx * sn + dy * cs, c.z))
+			setAlpha(inst, inst.a * gain)
 			return
 		end
 		local phi = (t / m.P + c.ph) % 1
@@ -444,17 +674,78 @@ function StormCards.new(ctx: any): any
 		else
 			z += m.rise * phi
 			local g = 1 + m.grow * phi
-			inst.bb.Size = UDim2.fromScale(math.max(c.w * g, 5), math.max(c.h * g, 5))
+			local w, h = math.max(c.w * g, 5) * layer.k, math.max(c.h * g, 5) * layer.k
+			if inst.sw == nil or math.abs(w - inst.sw) > animThr or math.abs(h - inst.sh) > animThr then
+				setSize(inst, w, h)
+			end
 		end
-		inst.att.Position = Vector3.new(x, z, -y)
-		inst.img.ImageTransparency = 1 - inst.a * env * gain
+		movePos(inst, cardPos(layer, x, y, z))
+		setAlpha(inst, inst.a * env * gain)
 	end
 
-	local function recolourLayer(layer: any, ox: number, oy: number, s: any, camPos: Vector3, L: any, flashes: boolean, full: boolean)
+	-- fog recolours: queued (parallel arrays: inst, group, wall layer?, full shading?) and written
+	-- RECOLOUR_BUDGET cards a frame, with the group's fog at the time they are written
+	local rqInst, rqG, rqWall, rqFull = {}, {}, {}, {}
+	local rqN = 0
+	local function recolourLayer(g: any, layer: any, isWall: boolean, full: boolean)
 		for _, inst in layer.byKey do
+			if inst.card then
+				rqN += 1
+				rqInst[rqN], rqG[rqN], rqWall[rqN], rqFull[rqN] = inst, g, isWall, full
+			end
+		end
+	end
+	-- a layer whose scale moved: its cards redrawn at the new one, RESCALE_BUDGET a frame
+	local rsInst, rsLayer = {}, {}
+	local rsN = 0
+	local function setScale(layer: any, k: number)
+		local k0 = layer.k
+		if math.abs(k - k0) <= RESCALE_STEP * k0 then
+			return
+		end
+		layer.k = k
+		for _, inst in layer.byKey do
+			rsN += 1
+			rsInst[rsN], rsLayer[rsN] = inst, layer
+		end
+	end
+	local function runRescales()
+		local n = math.min(rsN, RESCALE_BUDGET)
+		for _ = 1, n do
+			local inst, layer = rsInst[rsN], rsLayer[rsN]
+			rsInst[rsN], rsLayer[rsN] = nil, nil
+			rsN -= 1
 			local c = inst.card
-			if c then
-				shadeCard(inst, c, s.x + ox + c.x, s.y + oy + c.y, camPos, L, flashes, full)
+			if c and not layer.gone and layer.byKey[inst.key] == inst then
+				local k = layer.k
+				-- (a moving card is placed by animate; its size here, its place too until then)
+				inst.pos = nil
+				setPos(inst, cardPos(layer, c.x, c.y, c.z))
+				setSize(inst, math.max(c.w, 5) * k, math.max(c.h, 5) * k)
+			end
+		end
+	end
+	local function runRecolours(camPos: Vector3, L: any)
+		local n = math.min(rqN, RECOLOUR_BUDGET)
+		for _ = 1, n do
+			local inst, g, isWall, full = rqInst[rqN], rqG[rqN], rqWall[rqN], rqFull[rqN]
+			rqInst[rqN], rqG[rqN] = nil, nil
+			rqN -= 1
+			local c = inst.card
+			local s = g.storm
+			if c and s and not g.gone then
+				local ox, oy = 0, 0
+				if isWall then
+					local w = g.wall
+					if not w then
+						continue
+					end
+					ox, oy = w.x, w.y
+				end
+				fogNow = g.fog or 0
+				baseNow = s.base or 1000
+				distNow = math.max(g.dCam or 1e4, 500)
+				shadeCard(inst, c, s.x + ox + c.x, s.y + oy + c.y, camPos, L, false, full)
 			end
 		end
 	end
@@ -462,10 +753,48 @@ function StormCards.new(ctx: any): any
 	local flashActive = false
 	local flashAt = 0
 	local stamp = 0
+	local live = {} -- (storms and systems in range this frame: reused)
+	local EMPTY = {}
+	-- flash recolours queued (parallel arrays: inst, group, wall layer?)
+	local fqInst, fqG, fqWall = {}, {}, {}
+	local fqN = 0
+	-- the view this frame (sim frame: the camera's look direction, the view cone's half-angle)
+	local lookS, halfDiag = Vector3.zAxis, 1
+	local frameN = 0
+	local function planEvery(g: any): number
+		if g.isSystem then
+			return PLAN_EVERY
+		end
+		local s = g.storm
+		local d = g.dCam or math.sqrt((s.x - camXNow) ^ 2 + (s.y - camYNow) ^ 2)
+		local k = math.clamp((d - PLAN_NEAR_M) / (PLAN_FAR_M - PLAN_NEAR_M), 0, 1)
+		return PLAN_EVERY + (PLAN_FAR - PLAN_EVERY) * k
+	end
+	-- A group's sphere of cards in studs (round its anchor at px, py, drawn at its layers' scales):
+	-- the centre and radius, and its distance from the camera. The radius covers the layers'
+	-- scales and the map's (the wall's offset is across at the map scale).
+	local function groupSphere(g: any): (Vector3?, number, number)
+		local rad = g.brad
+		if not rad or not g.px then
+			return nil, 0, 0
+		end
+		local km, kw, kh = g.main.k, g.wallL.k, C.frame.kh
+		local kmax, kmin = math.max(km, kw, kh), math.min(km, kw, kh)
+		local centre = C.toWorld(g.px, g.py, 0) + cardPos(g.main, g.bx, g.by, g.bz)
+		local radS = rad * (2 * kmax - kmin)
+		return centre, radS, (centre - camSNow).Magnitude
+	end
+	-- is it in the view? (studs: angles are unit-free)
+	local function groupVisible(centre: Vector3?, radS: number, dS: number): boolean
+		if not centre or dS <= radS then
+			return true
+		end
+		local cosA = math.clamp((centre - camSNow):Dot(lookS) / dS, -1, 1)
+		return math.acos(cosA) < halfDiag + math.asin(math.min(1, radS / dS))
+	end
 	function self:update(dt: number)
 		local t0 = os.clock()
-		local style = ctx.state.cloudStyle or "cards"
-		local on = style == "cards" and ctx.state.show.clouds ~= false
+		local on = ctx.state.show.clouds ~= false
 		if not on then
 			for _, g in groups do
 				hideGroup(g)
@@ -475,9 +804,25 @@ function StormCards.new(ctx: any): any
 		end
 		Util.refreshLight()
 		local cw = ctx.cw
-		local camPos = Workspace.CurrentCamera.CFrame.Position
-		local camX, camY = camPos.X, -camPos.Z
+		-- (the camera in the sim frame, metres)
+		local camera = Workspace.CurrentCamera
+		local camCF = camera.CFrame
+		local camPos = Vector3.new(C.fromWorld(camCF.Position))
+		local camX, camY = camPos.X, camPos.Y
+		camXNow, camYNow = camX, camY
+		frameN += 1
+		do
+			-- (the view: angles and pixel sizes are unit-free; the look direction in the sim frame)
+			lookS = camCF.LookVector
+			camSNow = camCF.Position
+			local vp = camera.ViewportSize
+			local tanV = math.tan(math.rad(camera.FieldOfView) / 2)
+			halfDiag = math.atan(tanV * math.sqrt(1 + (vp.X / math.max(vp.Y, 1)) ^ 2)) + MARGIN
+			fpxNow = 0.5 * vp.Y / tanV
+			pxKNow = 0.5 / fpxNow -- (half a pixel per unit of distance)
+		end
 		local simT = ctx:simTime()
+		local vT = ctx:visualTime() -- (local motion: boiling, inflow, the wall cloud's turn)
 		local simDt = if ctx.state.paused then 0 else dt * (ctx.state.timeScale or 1)
 		local dtSnap = math.clamp(simT - (cw.time or simT), -5, 60)
 		local L = light()
@@ -492,23 +837,29 @@ function StormCards.new(ctx: any): any
 			if math.abs(diff) > 5 and #aimQueue == 0 then
 				gradAngle = ang
 				for _, g in groups do
-					for _, layer in { g.main, g.wallL } do
-						for _, inst in layer.byKey do
-							table.insert(aimQueue, inst)
-						end
+					for _, inst in g.main.byKey do
+						table.insert(aimQueue, inst)
+					end
+					for _, inst in g.wallL.byKey do
+						table.insert(aimQueue, inst)
 					end
 				end
 			end
 			local nA = math.min(#aimQueue, 250)
 			for _ = 1, nA do
 				local inst = table.remove(aimQueue)
-				inst.grad.Rotation = gradAngle - inst.img.Rotation
+				local c = inst.card
+				if inst.fam and c and c.h >= c.w * 0.8 then
+					setRot(inst, gradAngle - 90)
+				end
+				setGradRot(inst, gradAngle - inst.irot)
 			end
 		end
 		local aimMs = (os.clock() - tAim) * 1000
 		local flashes = ctx.flashField ~= nil and #ctx.flashField.flashes > 0
 		-- storms in range
-		local live, inRange = {}, 0
+		table.clear(live)
+		local inRange = 0
 		for _, s in cw.storms do
 			local d2 = (s.x - camX) ^ 2 + (s.y - camY) ^ 2
 			if d2 < MAX_RANGE * MAX_RANGE then
@@ -517,7 +868,7 @@ function StormCards.new(ctx: any): any
 			end
 		end
 		-- squall-line systems: shelf clouds along their leading edges
-		local systems = (cw.systemsSnap and cw.systemsSnap.systems) or {}
+		local systems = (cw.systemsSnap and cw.systemsSnap.systems) or EMPTY
 		for _, sys in systems do
 			if sys.segments and #sys.segments > 0 then
 				live["y:" .. tostring(sys.id)] = sys
@@ -526,13 +877,18 @@ function StormCards.new(ctx: any): any
 		for id, g in groups do
 			if not live[id] then
 				hideGroup(g)
+				g.gone = true -- (queued recolours and rescales of its cards are dropped)
+				g.main.gone, g.wallL.gone = true, true
 				g.main.anchor:Destroy()
 				g.wallL.anchor:Destroy()
 				groups[id] = nil
+				if ctx.stormTrack then
+					ctx.stormTrack[id] = nil
+				end
 			end
 		end
-		-- re-plan the stalest storm (one a frame)
-		local stalest, oldest = nil, math.huge
+		-- re-plan the most overdue storm (one a frame; far storms are re-planned less often)
+		local stalest, overdue = nil, -math.huge
 		for id, s in live do
 			local g = groups[id]
 			if not g then
@@ -542,12 +898,25 @@ function StormCards.new(ctx: any): any
 			g.isSystem = string.sub(id, 1, 2) == "y:"
 			g.storm = if g.isSystem then ORIGIN else s
 			g.obj = s
-			if g.plannedAt < oldest then
-				stalest, oldest = id, g.plannedAt
+			-- its scale about its centre (a shelf: about the middle of its cards), and the wall
+			-- layer's about the wall's centre
+			local px, py = g.px or s.x, g.py or s.y
+			if g.isSystem then
+				g.main.mapH = true
+				px, py = (g.px or 0) + (g.bx or 0), (g.py or 0) + (g.by or 0)
+			end
+			setScale(g.main, C.scaleAbout(px, py))
+			local w = g.wall
+			if w then
+				setScale(g.wallL, C.scaleAbout((g.px or s.x) + w.x, (g.py or s.y) + w.y))
+			end
+			local od = (t0 - g.plannedAt) - planEvery(g)
+			if od > overdue then
+				stalest, overdue = id, od
 			end
 		end
 		local tPlan0 = os.clock()
-		if stalest and t0 - oldest >= PLAN_EVERY then
+		if stalest and overdue >= 0 then
 			local g = groups[stalest]
 			local s = g.storm
 			local plan, wall
@@ -561,7 +930,9 @@ function StormCards.new(ctx: any): any
 				g.vx, g.vy, g.t0 = vx, vy, cw.time or simT
 			else
 				local d = math.sqrt((s.x - camX) ^ 2 + (s.y - camY) ^ 2)
-				local detail = math.clamp(1 - (d - 15000) / 120000, 0.3, 1) * math.clamp(8 / math.max(inRange, 1), 0.4, 1)
+				-- (fewer cards with distance and with many storms in range: the whole sky's card
+				-- count, not each storm's, is what the frame pays for)
+				local detail = math.clamp(1 - (d - 15000) / 90000, 0.25, 1) * math.clamp(5 / math.max(inRange, 1), 0.3, 1)
 				local cp0 = os.clock()
 				plan, _, wall = CardPlan.plan(s, Storm, detail, camX - s.x, camY - s.y)
 				-- (debug: what a re-plan costs - one storm every PLAN_EVERY / storms seconds)
@@ -569,17 +940,18 @@ function StormCards.new(ctx: any): any
 			end
 			g.plan, g.wall = plan, wall
 			g.plannedAt = t0
+			bound(g)
 			stamp += 1
 			g.jobs = {
 				{ layer = g.main, cards = plan, i = 1, ox = 0, oy = 0, stamp = stamp },
 				{ layer = g.wallL, cards = if wall then wall.cards else {}, i = 1, ox = if wall then wall.x else 0, oy = if wall then wall.y else 0, stamp = stamp },
 			}
-		elseif flashes or flashActive or #flashQueue > 0 then
+		elseif flashes or flashActive or fqN > 0 then
 			tPlan0 = os.clock() -- (a flash recolour, not a plan)
 			-- lightning: colours only, for storms near a flash (and once more when it ends). A pass
 			-- over their cards is queued and written 300 cards a frame (each card ~14 times a
 			-- second at 60 fps, as fast as the flash changes), not all at once.
-			if #flashQueue == 0 then
+			if fqN == 0 then
 				flashAt = t0
 				for _, g in groups do
 					local s = g.storm
@@ -595,20 +967,23 @@ function StormCards.new(ctx: any): any
 					if near or g.flashLit then
 						g.flashLit = near
 						for _, inst in g.main.byKey do
-							table.insert(flashQueue, { inst, g, false })
+							fqN += 1
+							fqInst[fqN], fqG[fqN], fqWall[fqN] = inst, g, false
 						end
 						if g.wall then
 							for _, inst in g.wallL.byKey do
-								table.insert(flashQueue, { inst, g, true })
+								fqN += 1
+								fqInst[fqN], fqG[fqN], fqWall[fqN] = inst, g, true
 							end
 						end
 					end
 				end
 			end
-			local nF = math.min(#flashQueue, 300)
+			local nF = math.min(fqN, 300)
 			for _ = 1, nF do
-				local item = table.remove(flashQueue)
-				local inst, g, isWall = item[1], item[2], item[3]
+				local inst, g, isWall = fqInst[fqN], fqG[fqN], fqWall[fqN]
+				fqInst[fqN], fqG[fqN] = nil, nil
+				fqN -= 1
 				local c = inst.card
 				if c and g.storm then
 					local s = g.storm
@@ -638,19 +1013,26 @@ function StormCards.new(ctx: any): any
 		-- (a running mean of the whole update, to see averages not one frame)
 		self.meanMs = (self.meanMs or 0) * 0.98
 		local budget = BUDGET
-		for _, g in groups do
-			for _, job in g.jobs do
-				if budget <= 0 then
-					break
-				end
-				if not job.done then
-					fogNow = g.fog or 0
-					baseNow = (g.storm and g.storm.base) or 1000
-					distNow = math.max(g.dCam or 1e4, 500)
-					budget = runJob(job, g.storm, camPos, L, flashes, budget)
+		-- (storms on screen first, then those off it with what is left)
+		for pass = 1, 2 do
+			for _, g in groups do
+				if (pass == 1) == (g.vis ~= false) then
+					for _, job in g.jobs do
+						if budget <= 0 then
+							break
+						end
+						if not job.done then
+							fogNow = g.fog or 0
+							baseNow = (g.storm and g.storm.base) or 1000
+							distNow = math.max(g.dCam or 1e4, 500)
+							budget = runJob(job, g.storm, camPos, L, flashes, budget)
+						end
+					end
 				end
 			end
 		end
+		runRecolours(camPos, L)
+		runRescales()
 		local tFog, tAnim, tFade = 0, 0, 0
 		tJobs = os.clock() - tJobs
 		-- fades, smoothed tracks, and every anchor moved at once
@@ -664,15 +1046,23 @@ function StormCards.new(ctx: any): any
 		end
 		for _, g in groups do
 			local c0 = os.clock()
-			stepFades(g.main, dt)
-			stepFades(g.wallL, dt)
-			tFade += os.clock() - c0
-			c0 = os.clock()
 			local s = g.storm
 			local dCam = math.sqrt(((g.px or s.x) - camX) ^ 2 + ((g.py or s.y) - camY) ^ 2)
 			g.dCam = dCam
+			-- on screen? (off screen: no motion, fade or fog writes; its anchors move now and then)
+			local sc, radS, dS = groupSphere(g)
+			local vis = groupVisible(sc, radS, dS)
+			-- (half a pixel at the storm's nearest part, studs)
+			local thrS = pxKNow * math.max(50 * g.main.k, dS - radS)
+			local back = vis and not g.vis -- (back on screen: its fog is checked now)
+			g.vis = vis
+			local animOn = vis and dCam < 40000
+			stepFades(g.main, dt, vis, animOn)
+			stepFades(g.wallL, dt, vis, animOn)
+			tFade += os.clock() - c0
+			c0 = os.clock()
 			-- rain between the camera and the storm: fog its cards (recoloured when it changes)
-			if fogTick and not g.isSystem then
+			if (fogTick or back) and vis and not g.isSystem then
 				g.fog = rainFog(g.px or s.x, g.py or s.y, camX, camY)
 				local fogMoved = math.abs(g.fog - (g.fogApplied or 0)) > 0.04
 				if fogMoved or (g.fog > 0.05 and math.abs(fogLight - (g.fogLightApplied or 0)) > 0.03) then
@@ -682,23 +1072,23 @@ function StormCards.new(ctx: any): any
 					baseNow = s.base or 1000
 					distNow = math.max(dCam, 500)
 					-- (a change of the fog's colour alone rewrites colours, not the shading)
-					recolourLayer(g.main, 0, 0, s, camPos, L, false, fogMoved)
-					local w = g.wall
-					if w then
-						recolourLayer(g.wallL, w.x, w.y, s, camPos, L, false, fogMoved)
+					recolourLayer(g, g.main, false, fogMoved)
+					if g.wall then
+						recolourLayer(g, g.wallL, true, fogMoved)
 					end
 				end
 			end
 			tFog += os.clock() - c0
 			c0 = os.clock()
 			-- motion: scud drawn in and lifted, billows boiling (near storms only)
-			if dCam < 40000 then
+			if animOn then
 				local gain = 1
+				animThr = thrS
 				for inst in g.main.anim do
-					animate(inst, simT, gain)
+					animate(inst, vT, gain, g.main)
 				end
 				for inst in g.wallL.anim do
-					animate(inst, simT, gain)
+					animate(inst, vT, gain, g.wallL)
 				end
 			end
 			tAnim += os.clock() - c0
@@ -716,24 +1106,119 @@ function StormCards.new(ctx: any): any
 				g.px += (tx - g.px) * ease
 				g.py += (ty - g.py) * ease
 			end
-			table.insert(anchors, g.main.anchor)
-			table.insert(frames, CFrame.new(C.toWorld(g.px, g.py, 0)))
-			local w = g.wall
-			if w then
-				-- turning cyclonically (counter-clockwise seen from above) at the low-level rotation
-				table.insert(anchors, g.wallL.anchor)
-				table.insert(frames, CFrame.new(C.toWorld(g.px + w.x, g.py + w.y, 0)) * CFrame.Angles(0, (w.spin or 0) * simT % (2 * math.pi), 0))
+			-- the anchors: moved when the move shows (half a pixel at the storm's nearest part; a
+			-- turn of the wall layer at its outermost card), off screen only every 8th frame
+			local refresh = vis or (frameN + (g.n or 0)) % CULL_REFRESH == 0
+			if refresh then
+				local p = C.toWorld(g.px, g.py, 0)
+				local last = g.mainCF
+				if last == nil or (p - last).Magnitude > thrS then
+					g.mainCF = p
+					table.insert(anchors, g.main.anchor)
+					table.insert(frames, CFrame.new(p))
+				end
+				local w = g.wall
+				if w then
+					-- turning cyclonically (counter-clockwise seen from above) at the low-level rotation
+					local wp = C.toWorld(g.px + w.x, g.py + w.y, 0)
+					local ang = (w.spin or 0) * vT % (2 * math.pi)
+					local lastW = g.wallCF
+					local rS = math.max((g.wallRad or 0) * g.wallL.k, 1)
+					if lastW == nil or (wp - lastW).Magnitude > thrS or math.abs(ang - (g.wallAng or 0)) * rS > thrS then
+						g.wallCF, g.wallAng = wp, ang
+						table.insert(anchors, g.wallL.anchor)
+						table.insert(frames, CFrame.new(wp) * CFrame.Angles(0, ang, 0))
+					end
+				end
 			end
 			n += g.main.count + g.wallL.count
+		end
+		-- Near the camera: a card the camera is inside or close to (within about its own size)
+		-- fades out and stops drawing. Inside a cloud, dozens of screen-sized translucent cards
+		-- stacked on each other were the frame's fill-rate cost (2026-10-28: ~3,000 billboards with
+		-- many over the whole screen); the cards further off still draw the cloud round you.
+		-- Staggered: NEAR_BUDGET cards a frame, over the groups whose cards reach the camera.
+		do
+			local camS = Workspace.CurrentCamera.CFrame.Position
+			if #nearQueue == 0 then
+				for _, g in groups do
+					local sc, radS, dS = groupSphere(g)
+					local close = dS < radS * 1.1
+					if close or g.nearWas then
+						g.nearWas = close
+						for _, layer in { g.main, g.wallL } do
+							for _, inst in layer.byKey do
+								table.insert(nearQueue, { inst, layer, close })
+							end
+						end
+					end
+				end
+			end
+			for _ = 1, math.min(#nearQueue, NEAR_BUDGET) do
+				local item = table.remove(nearQueue)
+				local inst, layer, close = item[1], item[2], item[3]
+				if inst.key then
+					local f = 1
+					if close and inst.pos and inst.sw then
+						local p = layer.anchor.CFrame:PointToWorldSpace(inst.pos)
+						local size = math.max(inst.sw, inst.sh)
+						local d = (p - camS).Magnitude
+						f = smooth(0.3 * size, 0.85 * size, d)
+					end
+					if math.abs(f - (inst.near or 1)) > 0.03 or (f == 1 and inst.near ~= 1) then
+						inst.near = f
+						setAlpha(inst, inst.a)
+					end
+					local off = f < 0.01
+					if off ~= (inst.nearOff or false) then
+						inst.nearOff = off
+						inst.bb.Enabled = not off
+					end
+				end
+			end
 		end
 		if #anchors > 0 then
 			Workspace:BulkMoveTo(anchors, frames, Enum.BulkMoveMode.FireCFrameChanged)
 		end
-		-- (other renderers - the kit's mammatus, shelf clouds - can follow the same smoothed tracks)
+		-- the lowering's light for the tornado (Render/TornadoCards): a funnel's upper part is the
+		-- same cloud as the wall cloud it hangs from, so it takes the colour these cards were shaded
+		-- with (their light, haze and rain fog), measured from the wall cloud's underside cards
+		if fogTick then
+			ctx.stormBase = ctx.stormBase or {}
+			for id, g in groups do
+				local w = g.wall
+				if w and not g.isSystem then
+					local r, gg, b, k = 0, 0, 0, 0
+					for _, inst in g.wallL.byKey do
+						local c = inst.card
+						if c and (c.nz or 0) < -0.2 and inst.a > 0.3 then
+							local col = inst.col or inst.img.ImageColor3
+							r += col.R
+							gg += col.G
+							b += col.B
+							k += 1
+						end
+					end
+					if k > 0 then
+						ctx.stormBase[id] = {
+							col = Color3.new(r / k, gg / k, b / k),
+							x = g.px + w.x, y = g.py + w.y, z = (g.storm.wallBase or g.storm.base or 1000),
+						}
+					end
+				else
+					ctx.stormBase[id] = nil
+				end
+			end
+		end
 		ctx.stormTrack = ctx.stormTrack or {}
 		for id, g in groups do
 			if not g.isSystem then
-				ctx.stormTrack[id] = { x = g.px, y = g.py }
+				local tr = ctx.stormTrack[id]
+				if not tr then
+					tr = {}
+					ctx.stormTrack[id] = tr
+				end
+				tr.x, tr.y = g.px, g.py
 			end
 		end
 		self.meanMs += 0.02 * (os.clock() - t0) * 1000

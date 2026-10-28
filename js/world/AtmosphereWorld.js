@@ -208,6 +208,8 @@ export class AtmosphereWorld {
         const theta = (Number(cell.features.airMassThetaK) || 0) + (Number(cell.features.coldPoolK) || 0), dewC = (cell.surface.dewpoint - 32) * 5 / 9;
         const vapour = 6.112 * Math.exp(17.67 * dewC / (dewC + 243.5)), mixing = 0.622 * vapour / Math.max(100, (cell.surface.pressure || 1000) - vapour);
         density[y * width + x] = theta * (1 + 0.61 * mixing);
+        // Kept unsmoothed too: storms read which side of a boundary they are on from it (StormEnvironmentCoupling.js).
+        cell.features.airMassDensityK = density[y * width + x];
       });
       let field = density;
       for (let pass = 0; pass < 2; pass++) {
@@ -223,6 +225,8 @@ export class AtmosphereWorld {
         const e = Math.min(width - 1, x + 1), w = Math.max(0, x - 1), s = Math.min(height - 1, y + 1), n = Math.max(0, y - 1);
         const gx = (field[y * width + e] - field[y * width + w]) / ((e - w) * cellKm), gy = (field[s * width + x] - field[n * width + x]) / ((s - n) * cellKm);
         cell.features.densityGradientK100 = Math.hypot(gx, gy) * 100;
+        // Which way the dense air lies (a unit vector, east and north; rows run south): the front's orientation.
+        const g = Math.hypot(gx, gy) || 1; cell.features.densityGradientEast = gx / g; cell.features.densityGradientNorth = -gy / g;
       });
     }
     // --- Lift and ascent.

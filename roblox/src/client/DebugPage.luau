@@ -15,13 +15,13 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
-local StormView = require(script.Parent.StormView)
+local StormView = require(script.Parent.WeatherClient) -- (the storm list: client/Weather)
 local Ui = require(script.Parent.Products.Ui)
 
 local DebugPage = {}
 
 local KM = Config.STUDS_PER_MILE / Config.KM_PER_MILE
-local SKY = Config.SKY_STUDS_PER_METRE
+local SKY = Config.SKY_STUDS_PER_METRE -- (near)
 local HALF = Config.MAP_MILES / 2 * Config.STUDS_PER_MILE
 local EDGE = HALF - 600
 local WIDTH = 380
@@ -49,7 +49,7 @@ local groundParams = RaycastParams.new()
 groundParams.FilterType = Enum.RaycastFilterType.Include
 groundParams.FilterDescendantsInstances = { workspace.Terrain }
 local function ground(x: number, z: number, fallback: number): number
-	local hit = workspace:Raycast(Vector3.new(x, 6000, z), Vector3.new(0, -12000, 0), groundParams)
+	local hit = workspace:Raycast(Vector3.new(x, Config.RAY_TOP_STUDS, z), Vector3.new(0, -2 * Config.RAY_TOP_STUDS, 0), groundParams)
 	return if hit then hit.Position.Y else fallback
 end
 
@@ -85,15 +85,16 @@ local function framing(s: any): (Vector3, number, Vector3)
 	local look, distance
 	if t then
 		local g = t.groundStuds or s.groundStuds or 0
-		look = at(t.xKm, t.yKm, g + t.baseM * SKY * 0.4)
-		distance = math.clamp(t.baseM * SKY * 1.8, 1200, 4000)
+		distance = math.clamp(t.baseM * SKY * 1.8, 1200, 6000)
+		-- (heights at the scale the storm is drawn at from there: Config.skyScaleAt)
+		look = at(t.xKm, t.yKm, g + t.baseM * Config.skyScaleAt(distance) * 0.4)
 	else
 		local g = s.groundStuds or 0
 		local w = s.wallCloud
 		local p = if w and w.strength > 0.03 then w else s.updraft
-		look = at(p.xKm, p.yKm, g + s.updraft.baseM * SKY * 0.7)
 		-- Near enough that the base and tower fill the view (across is compressed, up is not).
-		distance = math.clamp(s.updraft.radiusKm * KM + s.updraft.baseM * SKY, 2500, 6000)
+		distance = math.clamp(s.updraft.radiusKm * KM + s.updraft.baseM * SKY, 2500, 9000)
+		look = at(p.xKm, p.yKm, g + s.updraft.baseM * Config.skyScaleAt(distance) * 0.7)
 	end
 	local motion = Vector3.new(s.eastKph or 0, 0, -(s.northKph or 0))
 	local side

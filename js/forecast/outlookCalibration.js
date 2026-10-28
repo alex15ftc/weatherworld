@@ -33,7 +33,22 @@
 // Refitted 2026-10-24 (fifth time): Day 3 from the ingredients for storms (DayOneOutlook INGREDIENTS; its raw
 // chance verified close to itself: 35% 33%, 45% 46%), and day1update, the Day 1 issued after the day is under
 // way, fitted on the 18Z and 00Z issues of 50 days (seeds 1-10, outlook-updates-verify --calibration-data).
-export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.4],[2.7,1.5],[4.2,2.4],[6.1,4.5],[8.7,7.3],[11.2,9.4],[13.7,12.1],[17.4,17.8],[22.4,27.6],[27.3,34.2],[34.3,45.4],[44.4,54.7],[54.1,57.6],[71.8,80.3]],"wind":[[2.1,0.3],[5.3,1.3],[8.7,3.5],[14.5,4.9],[22.5,10.9],[27.5,20],[34.9,37.7],[45,64.8],[54.9,85.7],[67.3,95.6],[84.9,98.9]],"hail":[[1.5,0.3],[2.7,0.5],[4.2,1.4],[6.2,2.7],[8.7,6],[12.4,8.2],[17.4,9.7],[22.4,16.6],[27.5,24.4],[34.9,37],[45,59.8],[54.9,78.3],[67.3,90.9],[84.6,97.3]]},"day2":{"tornado":[[1.5,1.4],[2.7,2.4],[4.2,3.4],[6.2,5.3],[8.7,7.5],[11.2,11.3],[13.7,14.5],[17.4,18.6],[22.4,27.8],[27.3,31.4],[34.2,32],[43.9,42.3],[54.1,50.8]],"wind":[[2.7,0.5],[4.2,1.5],[6.2,3.4],[8.7,4.6],[11.3,6.1],[13.8,10.6],[17.4,12.9],[22.4,18.2],[27.5,28.3],[34.8,39.8],[44.8,62.7],[54.9,77.1],[66.7,87.9],[82.5,96.9]],"hail":[[1.5,1.8],[2.7,2.3],[4.2,2.5],[6.2,2.8],[8.7,4.4],[11.3,6.6],[13.7,10.7],[17.4,14.5],[22.4,19.7],[27.5,26.2],[34.7,43],[44.8,57.5],[54.7,72.1],[67.1,86.3],[82.2,95.8]]},"day3":{"severe":[[1.5,4],[2.7,6.4],[4.2,8],[6.2,9.2],[8.8,10.8],[12.6,13.7],[17.5,14.4],[22.5,20.9],[27.5,25.5],[35,33.4],[45,45.6],[54.7,50.8],[66.7,55.9],[82.4,76.5]]},"day1update":{"tornado":[[1.4,0.8],[2.7,1],[4.2,2.2],[6.2,3.1],[8.7,5.2],[11.2,7.1],[13.7,8.5],[17.4,13.1],[22.4,22.7],[27.4,27.2],[34.5,32.9],[47,45.5],[63.3,65.7]],"wind":[[1.5,0],[2.7,0.2],[4.2,0.4],[6.2,0.9],[8.7,2.3],[11.2,4],[13.7,5.1],[17.4,7.5],[22.4,9.4],[27.5,16.5],[34.9,35.4],[45,65.3],[54.8,85.6],[67.3,95.1],[84.4,99.3]],"hail":[[1.5,0.1],[2.7,0.6],[4.2,1],[6.1,2.2],[8.7,4],[11.2,5.9],[13.7,6.6],[17.4,9.7],[22.5,16.9],[27.4,25.1],[34.8,38.5],[44.8,60.7],[54.8,79.5],[67.2,89.5],[84.5,97.4]]}});
+// (Refitted 2026-10-25 from data/outlook-archive/fit-2026-10-24 by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-25 from data/outlook-archive/fit-2026-10-25 by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-25 from data/outlook-archive/fit-2026-10-25b by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-25c by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26 by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26b by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26c by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26d by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26d by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-26e by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-26f by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27a by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27b by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27c by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27d by scripts/refit-from-archive.mjs.)
+export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,0.9],[2.7,1.7],[4.2,2.8],[6.2,5.2],[8.7,7.7],[11.2,10.4],[13.7,13.6],[17.3,20.5],[22.3,26.7],[27.3,32.1],[34.5,44],[44,55.7],[54.7,72.4],[64.4,87.5]],"wind":[[1.5,0.7],[2.7,1.3],[4.2,2.4],[6.2,3.2],[8.7,4.4],[11.2,6.2],[13.7,9],[17.4,12.5],[22.4,19.5],[27.4,28],[34.9,40.5],[44.8,62.4],[54.6,78.4],[66.9,90.5],[82.6,95.7]],"hail":[[1.5,0.5],[2.7,1.1],[4.2,1.7],[6.2,1.8],[8.7,4.5],[11.2,5.9],[13.7,8.5],[17.4,12.8],[22.4,18.8],[27.4,26.9],[34.9,40.1],[44.7,59.9],[54.8,79.2],[67,89.7],[82.5,95.5]]},"day2":{"tornado":[[1.5,1],[2.7,2.3],[4.2,4.4],[6.1,5.8],[8.7,9.6],[11.2,12.2],[13.7,14.7],[17.3,19.7],[22.3,25.6],[27.3,29.6],[34.3,39.9],[44.2,55.1],[54.5,65.6]],"wind":[[1.5,2.7],[2.7,4.4],[4.2,4.6],[6.2,5.3],[8.7,6.2],[11.2,9.3],[13.7,11.6],[17.4,15.8],[22.4,22],[27.4,29.9],[34.6,43.1],[44.7,58],[54.6,70.7],[66.1,86.1],[80.9,92.8]],"hail":[[1.5,1.5],[2.7,1.9],[4.2,2.2],[6.2,3.5],[8.7,5.3],[11.2,8.1],[13.7,9.8],[17.4,15.7],[22.4,25],[27.4,36.7],[34.6,45.6],[44.8,57.3],[54.6,71.1],[66.2,84.8],[80.7,90.7]]},"day3":{"severe":[[1.5,7.9],[2.8,8.1],[4.3,11.3],[6.2,13.1],[8.7,15.4],[11.2,18.3],[13.8,21.8],[17.4,23.2],[22.4,28.6],[27.4,35.6],[34.6,43.4],[44.3,47.2],[54,63.7],[65.6,77.2],[80,98.8]]},"day1update":{"tornado":[[1.4,0.8],[2.7,1],[4.2,2.2],[6.2,3.1],[8.7,5.2],[11.2,7.1],[13.7,8.5],[17.4,13.1],[22.4,22.7],[27.4,27.2],[34.5,32.9],[47,45.5],[63.3,65.7]],"wind":[[1.5,0],[2.7,0.2],[4.2,0.4],[6.2,0.9],[8.7,2.3],[11.2,4],[13.7,5.1],[17.4,7.5],[22.4,9.4],[27.5,16.5],[34.9,35.4],[45,65.3],[54.8,85.6],[67.3,95.1],[84.4,99.3]],"hail":[[1.5,0.1],[2.7,0.6],[4.2,1],[6.1,2.2],[8.7,4],[11.2,5.9],[13.7,6.6],[17.4,9.7],[22.5,16.9],[27.4,25.1],[34.8,38.5],[44.8,60.7],[54.8,79.5],[67.2,89.5],[84.5,97.4]]}});
 
 // Intensity groups (2026-10-21): for each outlook day and hazard, the share of the runs whose own
 // reports in a contour area reach group g that a group needs to be drawn there, set where the group
@@ -67,7 +82,22 @@ export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.4],[2.7,1.5]
 // Refitted 2026-10-24 (fourth time): Day 1 tornado CIG1 verified 60-63% from 3 of 8 runs; CIG2 10% (the
 // fit: never), drawn with CIG1 (the user's wish); CIG3 too few areas, 6 of 8. Hail CIG1 77% from 3 of 8, CIG2
 // 57% at 2 of 8, drawn with CIG1. Day 2 tornado CIG1 53% from 4 of 8.
-export const CIG_SHARE = Object.freeze({"day1":{"tornado":[0.375,0.375,0.75],"wind":[0.5,0.625,0.75],"hail":[0.375,0.375]},"day2":{"tornado":[0.5,0.625,0.75],"wind":[0.5,0.625,0.75],"hail":[0.5,0.5]}});
+// (Refitted 2026-10-25 from data/outlook-archive/fit-2026-10-24 by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-25 from data/outlook-archive/fit-2026-10-25 by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-25 from data/outlook-archive/fit-2026-10-25b by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-25c by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26 by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26b by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26c by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26d by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-26 from data/outlook-archive/fit-2026-10-26d by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-26e by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-26f by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27a by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27b by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27c by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+// (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27d by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)
+export const CIG_SHARE = Object.freeze({"day1":{"tornado":[0.375,0.375,0.75],"wind":[1.01,1.01,1.01],"hail":[0.625,1.01]},"day2":{"tornado":[0.5,0.625,0.75],"wind":[1.01,1.01,1.01],"hail":[0.5,0.75]}});
 
 import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 

@@ -17,13 +17,25 @@ local Noise = require(Sim:WaitForChild("Noise"))
 local Town = {}
 Town.__index = Town
 
-local toWorld = LabConfig.toWorld
+-- The town is laid out in METRES: builders compose CFrames in "metre space" (Roblox axes, 1 unit =
+-- 1 m; mspace below) and part / wedge scale sizes and positions to studs (LabConfig.SCALE).
+local K = LabConfig.SCALE
+
+-- a metre position in Roblox axes, unscaled (metre space: the builders' frame)
+local function mspace(x: number, y: number, z: number): Vector3
+	return LabConfig.toWorld(x, y, z) / K
+end
+
+-- a metre-space CFrame as a stud CFrame (same rotation, position scaled)
+local function toStuds(cf: CFrame): CFrame
+	return cf.Rotation + cf.Position * K
+end
 
 local function part(parent: Instance, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material, group: string?): BasePart
 	local p = Instance.new("Part")
 	p.Anchored = true
-	p.Size = size
-	p.CFrame = cf
+	p.Size = size * K
+	p.CFrame = toStuds(cf)
 	p.Color = colour
 	p.Material = material
 	p.TopSurface = Enum.SurfaceType.Smooth
@@ -39,8 +51,8 @@ end
 local function wedge(parent: Instance, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material, group: string?): BasePart
 	local p = Instance.new("WedgePart")
 	p.Anchored = true
-	p.Size = size
-	p.CFrame = cf
+	p.Size = size * K
+	p.CFrame = toStuds(cf)
 	p.Color = colour
 	p.Material = material
 	if group then
@@ -84,7 +96,7 @@ local function buildHouse(model: Model, origin: CFrame, rng: any)
 		local g = part(model, Vector3.new(1.4, 1.2, 0.05), origin * wpos, rgb(120, 150, 170), Enum.Material.Glass, "windows")
 		g.Transparency = 0.3
 		if wpos.Position.X > W / 2 - 0.1 then
-			g.Size = Vector3.new(0.05, 1.2, 1.4)
+			g.Size = Vector3.new(0.05, 1.2, 1.4) * K
 		end
 	end
 	part(model, Vector3.new(0.08, 2.2, 2.6), origin * CFrame.new(-W / 2 - 0.15, 0.3 + 1.1, -2.5), rgb(236, 236, 230), Enum.Material.Metal, "roofDeck")
@@ -157,7 +169,7 @@ local function buildTree(model: Model, origin: CFrame, rng: any)
 		local off = Vector3.new(rng:range(-0.8, 0.8), 0, rng:range(-0.8, 0.8))
 		local s = part(model, Vector3.new(r * 2, r * 1.6, r * 2), origin * CFrame.new(off + Vector3.new(0, h * c[2], 0)), green, Enum.Material.Grass, c[1])
 		s.Shape = Enum.PartType.Ball
-		s.Size = Vector3.one * r * 2
+		s.Size = Vector3.one * r * 2 * K
 	end
 	return h
 end
@@ -197,17 +209,20 @@ function Town.new(cx: number, cy: number, bearing: number?, seed: number?): any
 		return cx + dx * cb - dy * sb, cy + dx * sb + dy * cb
 	end
 	local yaw = -b -- Roblox yaw for a sim bearing
+	-- the town sits on the ground (the relief keeps a flat pad round the town centre)
+	local gz = LabConfig.groundAt(cx, cy)
+	self.gz = gz
 	-- the ground plate under the town and roads (physics ground for vehicles)
 	local ground = Instance.new("Model")
 	ground.Name = "TownGround"
 	ground.Parent = self.model
 	local gsize = 1800
-	local gc = part(ground, Vector3.new(gsize, 2, gsize), CFrame.new(toWorld(cx, cy, -1)) * CFrame.Angles(0, yaw, 0), rgb(106, 128, 76), Enum.Material.Grass)
+	local gc = part(ground, Vector3.new(gsize, 2, gsize), CFrame.new(mspace(cx, cy, gz - 1)) * CFrame.Angles(0, yaw, 0), rgb(106, 128, 76), Enum.Material.Grass)
 	gc.CustomPhysicalProperties = PhysicalProperties.new(2, 0.8, 0.1, 1, 1)
 	gc.CastShadow = false
 	for _, road in { { 0, 0, 1600, 9 }, { 0, 0, 9, 1600 }, { -300, 0, 9, 900 }, { 300, 0, 9, 900 } } do
 		local rx, ry = at(road[1], road[2])
-		local r = part(ground, Vector3.new(road[3], 0.1, road[4]), CFrame.new(toWorld(rx, ry, 0.05)) * CFrame.Angles(0, yaw, 0), rgb(78, 76, 74), Enum.Material.Asphalt)
+		local r = part(ground, Vector3.new(road[3], 0.1, road[4]), CFrame.new(mspace(rx, ry, gz + 0.05)) * CFrame.Angles(0, yaw, 0), rgb(78, 76, 74), Enum.Material.Asphalt)
 		r.CastShadow = false
 		r.CustomPhysicalProperties = PhysicalProperties.new(2, 0.8, 0.1, 1, 1)
 	end
@@ -215,13 +230,15 @@ function Town.new(cx: number, cy: number, bearing: number?, seed: number?): any
 		local x, y = at(dx, dy)
 		local m = Instance.new("Model")
 		m.Name = string.format("%s_%d", di, #self.structures + 1)
-		local origin = CFrame.new(toWorld(x, y, 0)) * CFrame.Angles(0, yaw + rot, 0)
+		local sgz = LabConfig.groundAt(x, y)
+		local origin = CFrame.new(mspace(x, y, sgz)) * CFrame.Angles(0, yaw + rot, 0) -- (metre space)
 		local h = BUILDERS[di](m, origin, rng)
-		m.WorldPivot = origin -- (shifts, rolls and falls turn about the base)
+		m.WorldPivot = toStuds(origin) -- (shifts, rolls and falls turn about the base)
 		m.Parent = self.model
 		local s = Damage.newStructure(m.Name, di, x, y, h, self.seed * 1000 + #self.structures, quality)
 		s.model = m
-		s.origin = origin
+		s.origin = toStuds(origin) -- (studs)
+		s.gz = sgz -- ground height under it (m above the datum)
 		s.wind3 = 0
 		s.roof3 = 0
 		s.groups = {}
@@ -294,9 +311,9 @@ local function fail(s: any, group: string, dirX: number, dirY: number)
 	end
 	-- moves: whole buildings shift / roll, trees fall, poles lean
 	if group == "anchors" then
-		s.model:PivotTo(s.model:GetPivot() + push * 1.5)
+		s.model:PivotTo(s.model:GetPivot() + push * LabConfig.studs(1.5))
 	elseif group == "roll" then
-		s.model:PivotTo(s.model:GetPivot() * CFrame.Angles(math.rad(80), 0, 0) + push * 8)
+		s.model:PivotTo(s.model:GetPivot() * CFrame.Angles(math.rad(80), 0, 0) + push * LabConfig.studs(8))
 	elseif group == "uproot" then
 		local axis = Vector3.yAxis:Cross(push)
 		if axis.Magnitude > 0 then
@@ -313,7 +330,9 @@ local function fail(s: any, group: string, dirX: number, dirY: number)
 end
 
 -- Load every structure near a tornado or a strong outflow with the simulated wind. dt: sim
--- seconds. Returns the debris to release: { { class, x, y, z, u, v, w } }.
+-- seconds. Returns the debris to release: { { class, x, y, z, u, v, w } } (metres; z above the
+-- datum, i.e. the ground under the structure plus the release height). The wind is sampled at
+-- heights above the local ground (the sim's near-surface wind knows no hills).
 function Town.update(self: any, world: any, dt: number): ({ any }, { any })
 	local releases = {}
 	local reports = {}
@@ -354,7 +373,7 @@ function Town.update(self: any, world: any, dt: number): ({ any }, { any })
 						local a = (n / f.count) * 2 * math.pi
 						table.insert(releases, {
 							f.debris,
-							s.x + math.cos(a) * 3, s.y + math.sin(a) * 3, math.max(1, s.roofZ * (0.4 + 0.6 * ((n % 3) / 2))),
+							s.x + math.cos(a) * 3, s.y + math.sin(a) * 3, (s.gz or 0) + math.max(1, s.roofZ * (0.4 + 0.6 * ((n % 3) / 2))),
 							u * 0.4, v * 0.4, 2,
 						})
 					end

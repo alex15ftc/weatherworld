@@ -52,6 +52,11 @@ export const LOG = Object.freeze({
   // beside it swept the same farms one after another: 1,984 wind reports on one day of seed 2112,
   // one for each 16 square miles of severe wind, where real derecho days give one for 50-60.)
   placeMiles: 8, placeMemoryHours: 2,
+  // A storm sends the country's reports of a hazard in no more often than every stormReportMinutes, wherever along it they
+  // are seen (2026-10-25: each spot along a line had its own reporters, and an active day sent 1,894 hail and wind
+  // reports from a 500-mile map, where real days send about 70-85 of each from the busiest such area; reviewers asked
+  // for about one per storm per 10 minutes; docs/TARGETS-2026-10-25.md).
+  stormReportMinutes: 20,
   // A wind report is a report of damage (or a station's measured gust): a gust of damageMph[0]
   // seldom brings anything down, one of damageMph[1] or more nearly always does; between, the
   // chance of damage to report rises evenly.
@@ -138,6 +143,7 @@ export function logStormTick(world, places = null) {
   // The country's odometers of storms that are gone.
   for (const key of Object.keys(log.odometer ?? {})) if (!(key.slice(0, key.indexOf('|')) in moved)) delete log.odometer[key];
   for (const [patch, when] of Object.entries(log.places ?? {})) if (hourUtc - when >= LOG.placeMemoryHours) delete log.places[patch];
+  for (const [sent, when] of Object.entries(log.stormLast ?? {})) if (hourUtc - when > 6) delete log.stormLast[sent];
   // Passes that came no closer this tick are over: reported from their closest point.
   for (const [key, pass] of Object.entries(log.passes)) {
     if (touched.has(key)) continue;
@@ -251,6 +257,10 @@ function spotters(log, hazard, stormId, slot, km, move, pathMiles, swath, layer,
     // (Wind damage only: each hailfall is a report of its own, and hail reports had fallen by 70% on
     // one day under this rule; docs/METEOROLOGIST-REVIEW-2026-10-24.md.)
     if (hazard === 'wind' && when - (log.places[patch] ?? -Infinity) < LOG.placeMemoryHours) continue;
+    log.stormLast ??= {};
+    const sent = `${stormId}|${hazard}`;
+    if (Math.abs(when - (log.stormLast[sent] ?? -Infinity)) < LOG.stormReportMinutes / 60) continue;
+    log.stormLast[sent] = when;
     log.places[patch] = when;
     dayOf(log, convectiveDay(when)).reports.push(hazardReport(hazard, when, at, k, where, stormId, value, false));
   }

@@ -45,12 +45,19 @@ ChunkGen.VOXEL = VOXEL
 local M = Enum.Material
 local AIR, WATER = M.Air, M.Water
 
-local SHOULDER = 18 -- studs over which a road's grade blends into the land beyond its edge
-local ROAD_RAISE_M = 0.3 -- graded road top above the ground under its centre line
+-- Studs over which a road's grade blends into the land beyond its edge: at least SHOULDER, and
+-- wider where the land stands far above or below the road (roads take the land's broad grade, not
+-- its small hills), so the bank is no steeper than about 0.6 (SHOULDER_PER_STUD studs of shoulder
+-- per stud of height), up to SHOULDER_MAX.
+local SHOULDER, SHOULDER_MAX, SHOULDER_PER_STUD = 18, 64, 2.5
+-- The world's own cuts and fills (road beds, ditches, river channels and banks, lake shores) are
+-- sized in studs to fit the props (Roads.BED is 4 studs), so they are written as studs / VERTICAL
+-- metres and keep their size whatever the ground's vertical scale.
+local VERTICAL = Config.STUDS_PER_METRE_VERTICAL
+local ROAD_RAISE_M = 0.3 / VERTICAL -- graded road top above the ground under its centre line
 -- The ground is cut this far (m) below a road's grade under the road and its sidewalks (hidden by
 -- the road slabs), and lies this far below it at the road's edge (a ditch in the country), rising
 -- to the natural ground over the shoulder.
-local VERTICAL = Config.STUDS_PER_METRE_VERTICAL
 local ROAD_CUT_M, DITCH_M, TOWN_DITCH_M, MEDIAN_M = 3.2 / VERTICAL, 1.6 / VERTICAL, 0.7 / VERTICAL, 1.6 / VERTICAL
 
 -- River channel: map width (m, as drawn) to studs; the water sits a bank's height below the
@@ -70,11 +77,12 @@ local FIELD_BLEND = 400
 local TAXIWAY_HALF = 18
 local SITES_PAD = 300
 
+-- Bank height and channel depth: studs (from the channel's half-width in studs), returned in metres.
 local function bankDropM(half: number): number
-	return math.clamp(1.8 + half * 0.025, 1.8, 5)
+	return math.clamp(1.8 + half * 0.025, 1.8, 5) / VERTICAL
 end
 local function channelDepthM(half: number): number
-	return math.clamp(half * 0.09, 7, 15)
+	return math.clamp(half * 0.09, 7, 15) / VERTICAL
 end
 
 export type Chunk = {
@@ -269,7 +277,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		superblock = function(x: number, z: number): boolean
 			return Sites.superblock(sites, x, z)
 		end,
-	}, RoadNet.MAX_TOTAL + SHOULDER + 30)
+	}, RoadNet.MAX_TOTAL + SHOULDER_MAX + 30)
 
 	local settlements = settlementsNear(x0 + SIZE / 2, z0 + SIZE / 2)
 
@@ -435,8 +443,8 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 					water = lakeSurface
 					isBusy, lake = true, true
 					material = M.Mud
-				elseif lakeShare > 0.3 and h < lakeSurface + 2 then
-					h = lakeSurface + 2
+				elseif lakeShare > 0.3 and h < lakeSurface + 2 / VERTICAL then
+					h = lakeSurface + 2 / VERTICAL
 					material = M.Ground
 				end
 			end
@@ -456,7 +464,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 					end
 					if d < half then
 						local depth = channelDepthM(half)
-						h = math.min(h, level - depth * (1 - (d / half) ^ 4) - 0.5)
+						h = math.min(h, level - depth * (1 - (d / half) ^ 4) - 0.5 / VERTICAL)
 						water = math.max(water, level)
 						material = if d > half * 0.8 then M.Sand else M.Mud
 						isBusy = true
@@ -478,7 +486,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 			end
 
 			-- Roads: flattened to their grade under the road and its sidewalks, blended beyond.
-			local g, d, along = net:near(x, z, SHOULDER)
+			local g, d, along = net:near(x, z, SHOULDER_MAX)
 			if g and riverHalf == 0 and not nearBridge and not lake and not carried(g, x, z, 0) then
 				local px, pz = g.ax + g.ux * along, g.az + g.uz * along
 				local grade = gradeAtM(px, pz) + ROAD_RAISE_M
@@ -495,7 +503,8 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 					water = -math.huge
 				else
 					local edge = grade - (if spec.town then TOWN_DITCH_M else DITCH_M)
-					local f = math.clamp((d - spec.total) / SHOULDER, 0, 1)
+					local shoulder = math.clamp(math.abs(h - edge) * VERTICAL * SHOULDER_PER_STUD, SHOULDER, SHOULDER_MAX)
+					local f = math.clamp((d - spec.total) / shoulder, 0, 1)
 					h = edge + (h - edge) * f * f * (3 - 2 * f)
 				end
 			end

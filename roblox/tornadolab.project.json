@@ -17,12 +17,6 @@
         "Data": {
           "$path": "src/stormlab/data"
         }
-      },
-      "Shared": {
-        "$className": "Folder",
-        "Weather": {
-          "$path": "src/shared/Weather"
-        }
       }
     },
     "ServerScriptService": {

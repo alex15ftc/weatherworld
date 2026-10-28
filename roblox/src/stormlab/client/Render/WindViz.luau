@@ -9,6 +9,8 @@
 --             plus a vertical slice through the core square to the camera showing only the flow
 --             in the slice (inflow along the ground turning up into the funnel, the downdraught
 --             on the axis of a two-celled vortex); an arrow is as long as the air goes in 0.6 s
+-- Units: metres; arrow heights are above the local ground (the wind field's z), drawn through
+-- C.toWorldGround; lengths and thicknesses cross to studs (docs/stormlab/SCALE-RULES.md).
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -105,9 +107,10 @@ function WindViz.new(ctx: any): any
 		local fx, fy, kind = ctx:focus()
 		table.clear(parts)
 		table.clear(cfs)
-		-- one arrow from sim point (x, y, z) along the sim vector (u, v, w), len studs long
+		-- one arrow from sim point (x, y, z: m above the ground there) along the sim vector (u, v, w),
+		-- len m long, thick m thick
 		local k = 0
-		local function place(x: number, y: number, z: number, u: number, v: number, w: number, len: number, thick: number)
+		local function place(x: number, y: number, z: number, u: number, v: number, w: number, lenM: number, thickM: number)
 			k += 1
 			local a = self.arrows[k]
 			local s = math.sqrt(u * u + v * v + w * w)
@@ -115,8 +118,9 @@ function WindViz.new(ctx: any): any
 				a.shaft.Transparency, a.head.Transparency = 1, 1
 				return
 			end
-			local pos = C.toWorld(x, y, z)
-			local cf = CFrame.lookAt(pos, pos + C.toWorld(u, v, w))
+			local len, thick = C.studs(lenM), C.studs(thickM)
+			local pos = C.toWorldGround(x, y, z)
+			local cf = CFrame.lookAt(pos, pos + Vector3.new(u, w, -v)) -- (a direction: axis swap only)
 			a.shaft.Size = Vector3.new(thick, thick, len)
 			a.head.Size = Vector3.new(thick, thick * 4, thick * 4)
 			table.insert(parts, a.shaft)

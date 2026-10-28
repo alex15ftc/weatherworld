@@ -20,21 +20,49 @@ export function sampleEffectiveInflowEnvironment(world, storm) {
     northKt: samples.reduce((sum, env, i) => sum + (env[key]?.northKt ?? 0) * weights[i], 0)
   });
   const base = { ...samples[0] };
-  for (const key of ['cape','cin','srh','stp','rawStp','vtp','synopticTornadoSupport','scp','bulkShear','lcl','readiness','trigger','initiation','forcing','stormCoverage','discreteFraction','linearFraction','warmSector','openWarmSectorSupport','prefrontalSupercellSupport','tornadicEnvironmentSupport','synopticAscent','synopticCoherence','moisturePooling','capErosion','boundaryInfluence','processedAir','outflowConvergence']) base[key] = blend(key);
+  for (const key of ['lapseRate01','lapseRate03','cape','cin','srh','stp','rawStp','vtp','synopticTornadoSupport','scp','bulkShear','lcl','readiness','trigger','initiation','forcing','stormCoverage','discreteFraction','linearFraction','warmSector','openWarmSectorSupport','prefrontalSupercellSupport','tornadicEnvironmentSupport','synopticAscent','synopticCoherence','moisturePooling','capErosion','boundaryInfluence','processedAir','outflowConvergence']) base[key] = blend(key);
   // An outflow boundary lying in the inflow, beyond the storm's own rain-cooled air.
   base.outflowContrastK = Math.max(samples[1].outflowContrastK ?? 0, samples[2].outflowContrastK ?? 0);
   // A front in the inflow or under the storm.
   base.densityGradient = Math.max(...samples.map(env => env.densityGradient ?? 0));
   base.moistureGradient = Math.max(...samples.map(env => env.moistureGradient ?? 0));
+  base.airMassContrastK = airMassContrast(world, storm.positionKm.x + ux * offsets[0], storm.positionKm.y + uy * offsets[0]);
   base.surfaceWind = vectorBlend('surfaceWind'); base.wind850 = vectorBlend('wind850'); base.wind500 = vectorBlend('wind500');
   base.effectiveInflowSamples = offsets.length; base.effectiveInflowDistanceKm = offsets.at(-1);
   return base;
 }
 
+// Which side of an air-mass boundary (a front, or a dryline's denser moist side) the inflow is on, and
+// how sharp it is: how much denser (cooler, virtual potential temperature) the inflow's air is than air
+// within BOUNDARY_RING_KM[1] of it, or, at BOUNDARY_WARM_SHARE, how much lighter than air within
+// BOUNDARY_RING_KM[0]. (2026-10-25: tornadoes form mostly from 10 km on the warm side to 30 km on the
+// cool side of a boundary, where the winds back into it and its contrast turns the air; Markowski,
+// Rasmussen and Straka 1998, docs/storm-reference/boundaries-qlcs-landspouts-2026-10-25.md.) Storms'
+// own rain-cooled air is left out of the field; the edge of another storm's is the outflow contrast.
+const BOUNDARY_RING_KM = [16, 32], BOUNDARY_WARM_SHARE = 0.5;
+function airMassContrast(world, xKm, yKm) {
+  const at = (x, y) => {
+    const gx = clamp(x / world.cellSizeKm - 0.5, 0, world.width - 1), gy = clamp(y / world.cellSizeKm - 0.5, 0, world.height - 1);
+    const x0 = Math.floor(gx), y0 = Math.floor(gy), x1 = Math.min(world.width - 1, x0 + 1), y1 = Math.min(world.height - 1, y0 + 1), tx = gx - x0, ty = gy - y0;
+    const v = (cx, cy) => Number(world.getCell(cx, cy).features?.airMassDensityK) || 0;
+    return (v(x0, y0) * (1 - tx) + v(x1, y0) * tx) * (1 - ty) + (v(x0, y1) * (1 - tx) + v(x1, y1) * tx) * ty;
+  };
+  const here = at(xKm, yKm);
+  if (!here) return 0;
+  let cool = 0, warm = 0;
+  for (const r of BOUNDARY_RING_KM) for (let a = 0; a < 8; a++) {
+    const there = at(xKm + r * Math.cos(a * Math.PI / 4), yKm + r * Math.sin(a * Math.PI / 4));
+    if (!there) continue;
+    cool = Math.max(cool, there - here);
+    if (r === BOUNDARY_RING_KM[0]) warm = Math.max(warm, here - there);
+  }
+  return Math.max(cool, BOUNDARY_WARM_SHARE * warm);
+}
+
 export function updateCoupledStormMotion(world, storm, environment, dtHours) {
   // Storms are not steered by drawn lines: fronts, drylines and cold pools reach them only
   // through the air they draw in and the winds that carry them.
-  const target = diagnoseStormMotion({ ...environment, coldPoolPropagation: storm.coldPoolPropagation ?? {east:0,north:0} }, { rotating: rotatingShare(storm), linear: lineShare(storm), leftMover: storm.leftMover });
+  const target = diagnoseStormMotion({ ...environment, coldPoolPropagation: storm.coldPoolPropagation ?? {east:0,north:0} }, { rotating: rotatingShare(storm), linear: lineShare(storm), leftMover: storm.leftMover, coldPool: storm.coldPoolStrength ?? 0 });
   const responseHours = 0.70 - 0.20 * rotatingShare(storm) - 0.35 * lineShare(storm) * (1 - rotatingShare(storm));
   const blend = clamp(dtHours / responseHours, 0, 1);
   storm.velocityKph.east += (target.east - storm.velocityKph.east) * blend;

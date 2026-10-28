@@ -1,0 +1,5 @@
+0: sim elev=0.5 t=70 storm=C005 W=52 rot=1.00 tornadoes=2
+1: full-wire elev=0.5 t=70 storm=C005 W=52 rot=1.00 tornadoes=2
+2: lite-wire elev=0.5 t=70 storm=C005 W=52 rot=1.00 tornadoes=2
+3: full-wire elev=2.4 t=70 storm=C005 W=52 rot=1.00 tornadoes=2
+4: lite-wire elev=2.4 t=70 storm=C005 W=52 rot=1.00 tornadoes=2

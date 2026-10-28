@@ -79,7 +79,7 @@ local function groundBelow(x: number, z: number): boolean
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
 	params.FilterDescendantsInstances = { workspace.Terrain }
-	return workspace:Raycast(Vector3.new(x, 2000, z), Vector3.new(0, -4000, 0), params) ~= nil
+	return workspace:Raycast(Vector3.new(x, Config.RAY_TOP_STUDS, z), Vector3.new(0, -2 * Config.RAY_TOP_STUDS, 0), params) ~= nil
 end
 
 -- Jitter only (Workspace attribute TestJitterSweep = true): stands the character at each distance

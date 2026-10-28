@@ -91,8 +91,16 @@ function ClientWorld.applyColdPool(cw: any, b: buffer)
 	World.unpackColdPool(cw.coldPool, b)
 end
 
+-- the full volume (Precip.pack): everything, the radar's best data
 function ClientWorld.applyPrecip(cw: any, b: buffer)
 	cw.vol = Precip.unpack(b, cw.env.extent)
+	cw.volFull = cw.vol
+end
+
+-- the light rain frame (Precip.packLite): the renderers' surface rain and hail, and an approximate
+-- profile (the radar keeps the last full volume when it has one: cw.volFull)
+function ClientWorld.applyPrecipLite(cw: any, b: buffer)
+	cw.vol = Precip.unpackLite(b, cw.env.extent)
 end
 
 -- surface rain (mm/h) and hail (cm) at a point

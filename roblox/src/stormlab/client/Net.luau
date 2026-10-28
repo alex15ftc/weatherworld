@@ -14,7 +14,7 @@ function Net.connect(ctx: any)
 	end
 	local net = {
 		state = get(R.state), profiles = get(R.profiles), tornado = get(R.tornado), coldPool = get(R.coldPool),
-		precip = get(R.precip), flash = get(R.flash), event = get(R.event), command = get(R.command), hello = get(R.hello),
+		precip = get(R.precip), precipLite = get(R.precipLite), flash = get(R.flash), event = get(R.event), command = get(R.command), hello = get(R.hello),
 	}
 	ctx.net = net
 	local cw = ctx.cw
@@ -33,12 +33,27 @@ function Net.connect(ctx: any)
 		end
 		ctx.signals.snapshot:Fire(snap)
 	end)
+	-- tornadoes arrive one a message (the unreliable remote's size limit): merged by id, and a
+	-- tornado not heard from for 1.5 s is gone from the list
+	local heard = {}
 	net.tornado.OnClientEvent:Connect(function(list, time)
-		ClientWorld.applyTornadoes(cw, list)
+		local now = os.clock()
+		for _, t in list do
+			heard[t.id] = { t = t, at = now }
+		end
+		local merged = {}
+		for id, h in heard do
+			if now - h.at > 1.5 then
+				heard[id] = nil
+			else
+				table.insert(merged, h.t)
+			end
+		end
+		ClientWorld.applyTornadoes(cw, merged)
 		if time then
 			ctx:noteServerTime(time)
 		end
-		ctx.signals.tornado:Fire(list)
+		ctx.signals.tornado:Fire(merged)
 	end)
 	net.coldPool.OnClientEvent:Connect(function(b)
 		ClientWorld.applyColdPool(cw, b)
@@ -46,6 +61,10 @@ function Net.connect(ctx: any)
 	end)
 	net.precip.OnClientEvent:Connect(function(b)
 		ClientWorld.applyPrecip(cw, b)
+		ctx.signals.precip:Fire()
+	end)
+	net.precipLite.OnClientEvent:Connect(function(b)
+		ClientWorld.applyPrecipLite(cw, b)
 		ctx.signals.precip:Fire()
 	end)
 	net.flash.OnClientEvent:Connect(function(list)

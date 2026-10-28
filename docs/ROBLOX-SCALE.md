@@ -95,3 +95,15 @@ dropped). What makes the window work instead, both built on the Roblox side:
 
 (Option 2 from the same discussion, earlier cues and intercept guidance such as "tornado
 likely within N minutes" and projected tracks, was not chosen for now.)
+
+## Standard scale in the main world (2026-10-27)
+
+The main world now uses Roblox's standard scale, 1 stud = 0.28 m (about 3.57 studs per metre), the same as the storm lab. Settings are in `roblox/src/shared/World/Config.luau`.
+
+- **Map distance stays squashed** at 1,000 studs per mile, about 5.75 times shorter than true. At true scale the map would be 2.9 million studs across, past float precision, and cars would need about 1,000 studs/s to keep up with storms on the 12x clock.
+- **Buildings, roads, trees and the car** were already built at character scale (12-stud lanes, 11-stud storeys), which is close to true at 0.28 m. They are unchanged.
+- **Ground height** is 3.57 studs/m (`STUDS_PER_METRE_VERTICAL`). The map's own slopes stay gentle (99.9% under 9%, the steepest 14%). The cuts the world makes (road beds, ditches, river channels and banks, lake shores) stay sized in studs to fit the props. Road shoulders widen up to 64 studs where the land stands well above or below a road. Farm barns and sheds sit on the lowest ground under them.
+- **Gravity** is 9.81 m/s² = 35 studs/s² (`default.project.json`). Jump height is fixed at Roblox's 7.2 studs.
+- **Storm heights and tornado widths** ease with distance (`Config.skyScaleAt`). Within `SKY_NEAR_MILES` (3) of the camera they are true (3.57 studs/m), so a cloud base and a funnel are true against houses. Beyond `SKY_FAR_MILES` (15) they drop to `SKY_FAR_STUDS_PER_METRE` (1), so distant storms sit at believable angles. At the standard scale, a storm 30 miles off would tower 60° up instead of a true 17°. Setting the far value to 0.62 would make distant angles exactly true. StormView, SkyLight and the debug camera all use the same scale for each storm.
+- **Tornado sprites** taller or wider than the 2,048-stud part limit are laid as a grid of tiles (`TornadoArt`).
+- **Hail near the camera** falls at its true speed in studs/s.

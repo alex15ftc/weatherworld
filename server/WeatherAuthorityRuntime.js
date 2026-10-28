@@ -16,6 +16,9 @@ import { buildRadarScene, scanRadarTilt, buildRadarMosaic, MOSAIC_KINDS } from '
 import { radarSitesFor } from './RadarSites.js';
 import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { GameFeed } from './GameFeed.js';
+import { buildLabWindow, labStorms } from '../js/game/LabWindow.js';
+import { buildStormFeedList } from '../js/storms/StormAppearance.js';
+import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
 import { countiesFor, placesFor } from './CountyLayer.js';
 import { logStormTick } from '../js/reports/stormLog.js';
 import { createDayRecorder } from './DayReviewRecorder.js';
@@ -309,6 +312,25 @@ export class WeatherAuthorityRuntime {
   }
 
   boundaries() { return this.cached('boundaries', () => this.atmosphere.mesoscale?.boundaries ?? this.atmosphere.mesoscale ?? {}); }
+  // The storm lab's view round a point (game servers run the lab's atmosphere from it:
+  // docs/stormlab/SYNC-PLAN.md): map km (y south), half = cells each way. labWindow: soundings,
+  // boundaries, storms; labStormsAt: only the storms (cheap, for keeping the game's storms in step).
+  labWindow(xKm, yKm, half = 7) {
+    const world = this.atmosphere;
+    const h = Math.max(2, Math.min(12, Math.round(Number(half) || 7)));
+    const centreKm = { x: Number(xKm) || world.domainWidthKm / 2, y: Number(yKm) || world.domainHeightKm / 2 };
+    const sky = buildSkyAppearance(world);
+    return buildLabWindow(world, { centreKm, half: h, boundaries: this.engine.boundaries ?? world.mesoscale?.boundaries ?? [], feed: buildStormFeedList(world, new Map()), meta: { name: 'live', seed: this.seed, sun: sky?.sun ?? null, revision: this.revision } });
+  }
+  labStormsAt(xKm, yKm, half = 7) {
+    const world = this.atmosphere;
+    const cellKm = world.cellSizeKm, h = Math.max(2, Math.min(12, Math.round(Number(half) || 7)));
+    // (the same centre snapping as the window)
+    const cx = Math.min(world.width - 1 - h, Math.max(h, Math.floor((Number(xKm) || 0) / cellKm)));
+    const cy = Math.min(world.height - 1 - h, Math.max(h, Math.floor((Number(yKm) || 0) / cellKm)));
+    const centre = { x: (cx + 0.5) * cellKm, y: (cy + 0.5) * cellKm };
+    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), centreMapKm: centre, storms: labStorms(world, centre, (h + 0.5) * cellKm, buildStormFeedList(world, new Map())) };
+  }
   storms() { return this.cached('storms', () => ({
     schemaVersion: 3,
     revision: this.revision,

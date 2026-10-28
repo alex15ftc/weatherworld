@@ -431,16 +431,31 @@ local function parking(props: Builder.Props, frame: CFrame, w: number, d: number
 	end
 end
 
+-- A frame at (x, z) turned by yaw, standing on the lowest ground under a footprint of sx by sz
+-- (so on a slope the uphill side sinks into the ground rather than the downhill side floating).
+local function seat(ctx: Ctx, x: number, z: number, yaw: number, sx: number, sz: number): CFrame
+	local base = CFrame.new(x, 0, z) * CFrame.Angles(0, yaw, 0)
+	local y = math.huge
+	for _, fx in { -0.5, 0, 0.5 } do
+		for _, fz in { -0.5, 0, 0.5 } do
+			local p = base * Vector3.new(fx * sx, 0, fz * sz)
+			y = math.min(y, ctx.ground(p.X, p.Z))
+		end
+	end
+	return CFrame.new(x, y, z) * CFrame.Angles(0, yaw, 0)
+end
+
 local function farmstead(props: Builder.Props, ctx: Ctx, x: number, z: number, rnd: () -> number)
 	local y = ctx.ground(x, z)
 	local yaw = math.floor(rnd() * 4) * math.pi / 2
 	local frame = CFrame.new(x, y, z) * CFrame.Angles(0, yaw, 0)
 	house(props, frame, rnd, 30, ctx.ground)
-	-- Barn: red, white or grey, set off at a random spot.
+	-- Barn: red, white or grey, set off at a random spot, on the lowest ground under it.
 	local bx, bz = x + 50 + 20 * rnd(), z + (rnd() - 0.4) * 50
-	local barn = CFrame.new(bx, ctx.ground(bx, bz), bz) * CFrame.Angles(0, math.floor(rnd() * 2) * math.pi / 2, 0)
+	local barnYaw = math.floor(rnd() * 2) * math.pi / 2
 	local barnColour = pick({ rgb(150, 44, 36), rgb(150, 44, 36), rgb(220, 220, 214), rgb(120, 120, 124) }, rnd())
 	local bw, bd = 26 + 10 * rnd(), 40 + 16 * rnd()
+	local barn = seat(ctx, bx, bz, barnYaw, bw, bd)
 	at(props, barn, 0, -3, 0, bw, 25, bd, barnColour, M.WoodPlanks)
 	local top = barn * CFrame.new(0, 22, 0)
 	Builder.gable(props, top.X, top.Y, top.Z, bd, bw, 14 + 4 * rnd(), rgb(80, 80, 86), yawOf(barn) + math.pi / 2, 1)
@@ -448,7 +463,7 @@ local function farmstead(props: Builder.Props, ctx: Ctx, x: number, z: number, r
 	-- A machine shed, grain bins, maybe a silo.
 	if rnd() < 0.6 then
 		local sx, sz = x - 10 + 40 * rnd(), z + 50 + 15 * rnd()
-		local shed = CFrame.new(sx, ctx.ground(sx, sz), sz) * CFrame.Angles(0, yaw, 0)
+		local shed = seat(ctx, sx, sz, yaw, 50, 30)
 		at(props, shed, 0, -2, 0, 50, 20, 30, rgb(190, 194, 198), M.CorrodedMetal)
 		at(props, shed, 0, 0, -15.2, 16, 14, 0.3, rgb(100, 106, 112), M.Metal, false)
 	end
@@ -573,20 +588,6 @@ local function fits(ctx: Ctx, frame: CFrame, sx: number, sz: number): number?
 		end
 	end
 	return nil
-end
-
--- A frame at (x, z) turned by yaw, standing on the lowest ground under a footprint of sx by sz
--- (so on a slope the uphill side sinks into the ground rather than the downhill side floating).
-local function seat(ctx: Ctx, x: number, z: number, yaw: number, sx: number, sz: number): CFrame
-	local base = CFrame.new(x, 0, z) * CFrame.Angles(0, yaw, 0)
-	local y = math.huge
-	for _, fx in { -0.5, 0, 0.5 } do
-		for _, fz in { -0.5, 0, 0.5 } do
-			local p = base * Vector3.new(fx * sx, 0, fz * sz)
-			y = math.min(y, ctx.ground(p.X, p.Z))
-		end
-	end
-	return CFrame.new(x, y, z) * CFrame.Angles(0, yaw, 0)
 end
 
 -- One parcel in a city or town block.

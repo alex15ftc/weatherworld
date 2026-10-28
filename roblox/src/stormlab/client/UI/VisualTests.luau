@@ -1,14 +1,11 @@
 --!nonstrict
--- The tornado visual test runner and debug views (visual plan section 10). F4 shows it.
+-- The tornado visual test runner, settings and frame recording (visual plan section 10). F4 shows it.
 --   scenes    the deterministic scenes in shared/VisualTests: the server builds the pinned lab
 --             storm and its tornado; here the visual clock, flashes and camera shot are applied
---   debug     main geometry only, condensation field, centreline + profile points, sub-vortex
---             ids and trajectories, ground-effect radius, LOD readout, physics/visual separation,
---             lightning events (ctx.state.debug, read by Render/TornadoVisuals)
 --   settings  moonlight, quality (secondary layers first), flash injection (near IC, distant CG,
 --             burst), clear scene / overrides
---   counters  client frame time, tornado visual ms and LOD counts, dust puffs, debris pieces,
---             cloud parts, active flashes, instance count under the lab's visuals
+--   counters  client frame time, tornado and storm cards, dust puffs, debris pieces, rain
+--             shafts, active flashes, instance count under the lab's visuals
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -73,7 +70,7 @@ function VisualTestsUI.new(ctx: any): any
 	end
 
 	text("TORNADO VISUAL TESTS  (F4)", 14, ACCENT, true)
-	text("keys: 1-9, 0, - (or the keypad) run scenes · Shift+1-8 debug views", 10, DIM)
+	text("keys: 1-9, 0, - (or the keypad) run scenes", 10, DIM)
 	local status = text("pick a scene", 11, DIM)
 
 	-- scenes
@@ -102,23 +99,6 @@ function VisualTestsUI.new(ctx: any): any
 		status.Text = "cleared"
 	end)
 
-	-- debug views
-	text("Debug views", 12, ACCENT, true)
-	local dbgButtons = {}
-	local DBG = {
-		{ "geometryOnly", "geometry" }, { "condensation", "condensation" }, { "centerline", "centreline" },
-		{ "subvortices", "sub-vortices" }, { "groundRadius", "ground radius" }, { "lod", "LOD" },
-		{ "physics", "physics check" }, { "flashes", "flashes" },
-	}
-	for n, d in DBG do
-		if n % 3 == 1 then
-			r = row()
-		end
-		dbgButtons[d[1]] = button(r, d[2], 100, function()
-			ctx.state.debug[d[1]] = not ctx.state.debug[d[1]]
-		end)
-	end
-
 	-- settings
 	text("Settings", 12, ACCENT, true)
 	local rs = row()
@@ -131,21 +111,21 @@ function VisualTestsUI.new(ctx: any): any
 	local nightB = button(rs, "night: off", 100, function()
 		ctx.state.clockOverride = if ctx.state.clockOverride then nil else 22.5
 	end)
-	-- funnel comparison (Render/FunnelCompare): off -> A | B | C -> A | D -> B, C or D alone
-	local COMPARE = { "off", "A | B | C", "A | D", "B only", "C only", "D only" }
-	local function cycleCompare()
-		local i = table.find(COMPARE, ctx.state.compare or "off") or 1
-		ctx.state.compare = COMPARE[i % #COMPARE + 1]
-	end
-	local rs2 = row()
-	local compareB = button(rs2, "compare: off", 110, cycleCompare)
-	-- funnel style: soft billboard volume (Render/TornadoCards, default) or the mesh (Render/TornadoVisuals)
-	local styleB = button(rs2, "funnel: cards", 100, function()
-		ctx.state.funnelStyle = if (ctx.state.funnelStyle or "cards") == "cards" then "mesh" else "cards"
+	-- record the storm frames the server sends (Sim/Frames; ServerStorage.StormLabRecordings),
+	-- to replay them later with LabConfig.SOURCE.mode = "replay"
+	local recording = false
+	local rr = row()
+	local recB = button(rr, "record: off", 150, function()
+		ctx:command({ cmd = "record", on = not recording })
 	end)
-	-- cloud style: billboard cards (Render/StormCards, default) or the cloud-kit meshes (Render/Clouds)
-	local cloudB = button(rs2, "clouds: cards", 100, function()
-		ctx.state.cloudStyle = if (ctx.state.cloudStyle or "cards") == "cards" then "kit" else "cards"
+	-- replay the last recording through the relay (the main game's path), or back to the sim
+	local srcB = button(rr, "replay last", 100, function()
+		ctx:command({ cmd = "source", mode = if ctx.source == "replay" then "sim" else "replay" })
+	end)
+	ctx.signals.event:Connect(function(e)
+		if e.kind == "recording" then
+			recording = e.on
+		end
 	end)
 
 	-- flash injection (visual only: the same flash path the server's lightning takes)
@@ -248,8 +228,7 @@ function VisualTestsUI.new(ctx: any): any
 			root.Visible = not root.Visible
 			return
 		end
-		-- with the panel open: 1-9, 0, minus run the scenes in order; Shift + 1-8 toggle the
-		-- debug views (keyboard: the same shots whatever the window layout)
+		-- with the panel open: 1-9, 0, minus run the scenes in order
 		if not root.Visible then
 			return
 		end
@@ -257,20 +236,9 @@ function VisualTestsUI.new(ctx: any): any
 			Enum.KeyCode.Six, Enum.KeyCode.Seven, Enum.KeyCode.Eight, Enum.KeyCode.Nine, Enum.KeyCode.Zero, Enum.KeyCode.Minus }
 		local pad = { Enum.KeyCode.KeypadOne, Enum.KeyCode.KeypadTwo, Enum.KeyCode.KeypadThree, Enum.KeyCode.KeypadFour, Enum.KeyCode.KeypadFive,
 			Enum.KeyCode.KeypadSix, Enum.KeyCode.KeypadSeven, Enum.KeyCode.KeypadEight, Enum.KeyCode.KeypadNine, Enum.KeyCode.KeypadZero, Enum.KeyCode.KeypadMinus }
-		if input.KeyCode == Enum.KeyCode.C then
-			cycleCompare()
-			return
-		end
 		local n = table.find(digits, input.KeyCode) or table.find(pad, input.KeyCode)
-		if n then
-			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-				local d = DBG[n]
-				if d then
-					ctx.state.debug[d[1]] = not ctx.state.debug[d[1]]
-				end
-			elseif Scenes.SCENES[n] then
-				runScene(Scenes.SCENES[n])
-			end
+		if n and Scenes.SCENES[n] then
+			runScene(Scenes.SCENES[n])
 		end
 	end)
 
@@ -296,20 +264,16 @@ function VisualTestsUI.new(ctx: any): any
 			return
 		end
 		acc = 0
-		for key, b in dbgButtons do
-			b.BackgroundColor3 = if ctx.state.debug[key] then Color3.fromRGB(150, 92, 40) else Color3.fromRGB(40, 48, 60)
-		end
 		moonB.Text = "moon: " .. (if (ctx.state.moonlight or 0) > 0 then "on" else "off")
 		qualB.Text = "quality: " .. (if (ctx.state.quality or 1) >= 1 then "full" else "low")
 		nightB.Text = "night: " .. (if ctx.state.clockOverride then string.format("%.1f h", ctx.state.clockOverride) else "off")
-		compareB.Text = "compare (C): " .. (ctx.state.compare or "off")
-		styleB.Text = "funnel: " .. (ctx.state.funnelStyle or "cards")
-		cloudB.Text = "clouds: " .. (ctx.state.cloudStyle or "cards")
+		recB.Text = "record: " .. (if recording then "on" else "off") .. " · " .. tostring(ctx.source or "sim")
+		srcB.Text = if ctx.source == "replay" then "back to sim" else "replay last"
 		local nInst = #ctx.root:GetDescendants()
 		counters.Text = string.format(
-			"client %.1f ms/frame (%.0f fps)\ntornado: %s\ncloud parts %s (%s ms) · shafts %s\ndust %s · debris %s · flashes %d\nvisual instances %d\nrain at camera %s mm/h · camera %s",
-			self.frameMs, 1000 / math.max(1, self.frameMs), tostring(ctx.root:GetAttribute("TornadoVisuals") or "-"),
-			tostring(ctx.root:GetAttribute("CloudParts") or 0), tostring(ctx.root:GetAttribute("CloudMs") or 0), tostring(ctx.root:GetAttribute("CloudShafts") or 0),
+			"client %.1f ms/frame (%.0f fps)\ntornado: %s\nstorms: %s · shafts %s\ndust %s · debris %s · flashes %d\nvisual instances %d\nrain at camera %s mm/h · camera %s",
+			self.frameMs, 1000 / math.max(1, self.frameMs), tostring(ctx.root:GetAttribute("TornadoCards") or "-"),
+			tostring(ctx.root:GetAttribute("StormCards") or "-"), tostring(ctx.root:GetAttribute("CloudShafts") or 0),
 			tostring(ctx.root:GetAttribute("DustPuffs") or 0), tostring(ctx.root:GetAttribute("DebrisPieces") or 0),
 			if ctx.flashField then #ctx.flashField.flashes else 0, nInst,
 			tostring(ctx.root:GetAttribute("PrecipRain") or "-"), (function()

@@ -1,0 +1,7 @@
+./tools/radar_compare/lab_full_vs_lite.luau:24: attempt to index nil with 'stderr'
+stacktrace:
+./tools/radar_compare/lab_full_vs_lite.luau:24
+
+real	0m48.754s
+user	0m0.000s
+sys	0m0.015s

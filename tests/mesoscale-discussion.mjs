@@ -247,7 +247,8 @@ assert.equal(hourLater.settled, true, 'all of the concern is under the watch'); 
 assert.equal(nextLookHourUtc(hourLater, 45, [watch]), 47); assert.equal(nextLookHourUtc(hourLater, 48, [watch]), 49, 'its ground is free at 50: looked at on the hour');
 
 // --- A real run: the world a few hours ahead, the same run twice the same, another run different.
-const atmosphere = new AtmosphereWorld({ seed: 3, spinUpDays: 6 }); atmosphere.advance(31);   // 19Z of the second day
+// (Seed 2 since 2026-10-26: with the corrected cap, seed 3 had no storms in these hours for its runs to differ on.)
+const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 6 }); atmosphere.advance(31);   // 19Z of the second day
 const bytes = v8.serialize(atmosphere.saveState()), before = atmosphere.world.validHourUtc;
 const a = runMesoscaleMember(stateFromBytes(bytes), 0, 2), again = runMesoscaleMember(stateFromBytes(bytes), 0, 2), b = runMesoscaleMember(stateFromBytes(bytes), 1, 2);
 assert.equal(a.near.length, atmosphere.world.width * atmosphere.world.height); assert.deepEqual(again.gust, a.gust, 'the same run twice is the same run');

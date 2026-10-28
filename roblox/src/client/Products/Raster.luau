@@ -20,7 +20,8 @@ export type Raster = {
 	-- Hatch the area: "dashLeft" broken lines falling to the lower left, "right" solid lines
 	-- falling to the lower right, "cross" both solid.
 	hatch: (rings: Rings, kind: string, colour: Colour) -> (),
-	-- Outline each ring, width in screen pixels.
+	-- Outline each ring, width in screen pixels. Sides lying along the map's edge (an area traced
+	-- off the map closes along it) are left out, so the outline ends at the edge.
 	stroke: (rings: Rings, width: number, colour: Colour) -> (),
 	-- A byte grid from the map's north-west corner (width x height cells of cellMiles), coloured
 	-- by a 256-entry RGBA table (lut[byte * 4 + 1 .. 4]); byte 0 and clear colours are left alone.
@@ -38,7 +39,8 @@ local SPACING, WIDTH, DASH, GAP = 11, 1.4, 9, 6
 -- pixels: pw x ph RGBA; toScreen: map miles to screen pixels; scale: image pixels per screen
 -- pixel; originX, originY: where this image's top-left pixel is in a larger picture made of
 -- several (a tile's place in its zoom level), so hatching runs on unbroken across them.
-function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, number) -> (number, number), scale: number, originX: number?, originY: number?): Raster
+-- mapMiles: the map's size (0 to mapMiles both ways), so outlines are left off its edge.
+function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, number) -> (number, number), scale: number, originX: number?, originY: number?, mapMiles: number?): Raster
 	local ox, oy = originX or 0, originY or 0
 	local touched = false
 
@@ -278,12 +280,28 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 		end)
 	end
 
+	-- Whether the side from (ax, ay) to (bx, by) runs along one edge of the map (rings are
+	-- rounded to 0.01 mi).
+	local EDGE = 0.011
+	local function alongEdge(ax: number, ay: number, bx: number, by: number): boolean
+		if not mapMiles then
+			return false
+		end
+		local far = mapMiles - EDGE
+		return (ax <= EDGE and bx <= EDGE) or (ax >= far and bx >= far) or (ay <= EDGE and by <= EDGE) or (ay >= far and by >= far)
+	end
+
 	local function stroke(rings: Rings, width: number, c: Colour)
 		for _, ring in rings do
-			polyline(ring, width, c)
 			local n = #ring
 			if n >= 4 then
-				line(ring[n - 1], ring[n], ring[1], ring[2], width, c)
+				for i = 1, n - 1, 2 do
+					local j = if i + 2 > n then 1 else i + 2
+					local ax, ay, bx, by = ring[i], ring[i + 1], ring[j], ring[j + 1]
+					if not alongEdge(ax, ay, bx, by) then
+						line(ax, ay, bx, by, width, c)
+					end
+				end
 			end
 		end
 	end

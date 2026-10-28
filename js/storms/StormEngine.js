@@ -4,7 +4,7 @@ import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampli
 import { describeStormMode, shouldSplitStorm, leftSplitShare, rotatingShare, lineShare, lineOrganizationTarget } from './StormModeEngine.js';
 import { BUDGET, setUpdraught, startStormBudgets, stepStormBudgets, stormIsOver } from './StormBudgets.js';
 import { stepStormRotation } from './StormRotation.js';
-import { hailSizeInches as diagnoseHailSize, gustMph as diagnoseGust, stormFuel, stepRearInflow } from './StormHazards.js';
+import { hailSizeInches as diagnoseHailSize, gustMph as diagnoseGust, stormFuel, stepRearInflow, stepBow } from './StormHazards.js';
 import { clamp } from '../scenarios/math.js';
 import { createStormInternalField, evolveStormInternalField } from './StormInternalField.js';
 import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js';
@@ -130,6 +130,7 @@ function updateStorm(world, storm, dtHours) {
   // The storm's budgets: updraught, rain, and the cold pool the rain makes (StormBudgets.js).
   stepStormBudgets(storm, environment, physics, dtHours, { starving });
   stepRearInflow(storm, dtHours);
+  stepBow(storm, environment, dtHours);
   // Line organization follows the forcing and the cold pool's balance with the shear.
   storm.lineOrganization = lineShare(storm) + (lineOrganizationTarget(storm, environment) - lineShare(storm)) * clamp(LINE_RESPONSE_PER_HOUR * dtHours, 0, 1);
   if (isLine(storm) && !starving) {
