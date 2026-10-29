@@ -3,6 +3,15 @@
 //
 // Frame: x east and y south in km on the map (as storm positions are); heights in metres above
 // the ground. Bearings are degrees clockwise from north, the way the thing extends.
+//
+// A rotating storm grows from its MESOCYCLONE (2026-10-29): the storm's position is its low-level
+// mesocyclone, where its wall cloud hangs and its tornado forms, and the rest is placed from it
+// (docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md: Lemon & Doswell 1979, Markowski 2002). The updraught
+// column leans downshear from it: the BWER, the mid-level mesocyclone and the highest echo tops are
+// 1-5 km ahead, the distance the storm-relative wind carries air rising to mid-levels. The
+// forward-flank rain falls downwind of the updraught, and the rear-flank downdraught and hook wrap
+// round the mesocyclone from behind (StormStructureEngine). A storm that doesn't rotate (a cell, a
+// line) is centred on its updraught as before.
 //   updraught   the rising column: where, how wide, how fast, cloud base and top
 //   wallCloud   the lowering under the updraught that low-level rotation makes: the cue
 //               that comes before a tornado
@@ -22,8 +31,9 @@ const GEOMETRY = {
   rainOffsetKm: [3, 45], anvilHours: 3, anvilKm: [15, 300], anvilSpeedShare: 1.4,
   topM: [7000, 17500], topPerMs: 160
 };
-// Where the wall cloud is, in updraught radii: behind the updraught's centre and to its right.
-export const WALL_CLOUD = Object.freeze({ back: 0.3, right: 0.4 });
+// How far the updraught leans from the mesocyclone: the storm-relative mid-level wind over the time
+// air takes to rise riseM at the updraught's speed (km, kept within the observed 1-5 km).
+const TILT = Object.freeze({ riseM: 5000, minMs: 10, km: [1, 5] });
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 const bearing = (east, north) => (Math.atan2(east, north) * 180 / Math.PI + 360) % 360;
 
@@ -38,19 +48,24 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
   const downwind = relativeSpeed > 1 ? { east: relative.east / relativeSpeed, north: relative.north / relativeSpeed } : along;
   const place = (east, north) => ({ xKm: at.x + east, yKm: at.y - north });
   const radiusKm = 2.5 + 0.1 * updraughtMs + 1.5 * rotating;
-  // The rotation is on the right of the updraught, or on the left of a left-moving storm.
-  const side = storm.leftMover ? -1 : 1;
+  // The updraught's lean from the mesocyclone (the origin), as far as the storm is a rotating one.
+  const asRotating = ramp(rotating * (1 - linear), 0.15, 0.6);
+  const tiltKm = clamp(relativeSpeed * TILT.riseM / Math.max(updraughtMs, TILT.minMs) / 3600, TILT.km[0], TILT.km[1]) * asRotating;
+  const lean = { east: downwind.east * tiltKm, north: downwind.north * tiltKm };
   const rainOffset = clamp(relativeSpeed * G.fallHours, G.rainOffsetKm[0], G.rainOffsetKm[1]) * (0.3 + 0.7 * clamp(storm.organization ?? 0, 0, 1));
-  const rainCentre = { east: downwind.east * rainOffset, north: downwind.north * rainOffset };
+  // (the rain falls downwind of the updraught, so its core is measured from there)
+  const rainCentre = { east: lean.east + downwind.east * rainOffset, north: lean.north + downwind.north * rainOffset };
   const hailInches = storm.currentHailSizeInches ?? 0;
   const wallStrength = ramp(low, 0.04, 0.4);
   storm.geometry = {
-    updraught: { ...place(0, 0), radiusKm, speedMs: updraughtMs, baseM: Number(environment.lcl) || 1200, topM: clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]), rotation: clamp(storm.mesocycloneStrength ?? 0, 0, 1.2) },
-    // Under the rear right of the updraught, where the inflow meets the wrapping outflow. A
-    // tornado forms here (TornadoEngine), and the radar's hook and couplet are drawn here.
-    wallCloud: { ...place(side * right.east * WALL_CLOUD.right * radiusKm - along.east * WALL_CLOUD.back * radiusKm, side * right.north * WALL_CLOUD.right * radiusKm - along.north * WALL_CLOUD.back * radiusKm), strength: wallStrength, radiusKm: 1 + 3 * lowFree, loweringM: wallStrength > 0 ? 150 + 450 * wallStrength : 0, rotation: low },
+    updraught: { ...place(lean.east, lean.north), leanKm: tiltKm, radiusKm, speedMs: updraughtMs, baseM: Number(environment.lcl) || 1200, topM: clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]), rotation: clamp(storm.mesocycloneStrength ?? 0, 0, 1.2) },
+    // At the mesocyclone, the origin: on the updraught's rear (upshear) edge, where the inflow meets
+    // the wrapping rear-flank outflow. A tornado forms here (TornadoEngine), and the radar's hook
+    // and couplet curl round it.
+    wallCloud: { ...place(0, 0), strength: wallStrength, radiusKm: 1 + 3 * lowFree, loweringM: wallStrength > 0 ? 150 + 450 * wallStrength : 0, rotation: low },
     rain: { ...place(rainCentre.east, rainCentre.north), alongKm: 8 + 26 * rain + 10 * linear, acrossKm: 6 + 16 * rain, bearingDeg: bearing(downwind.east, downwind.north), intensity: rain },
-    hail: { ...place(rainCentre.east * 0.3, rainCentre.north * 0.3), radiusKm: hailInches > 0.25 ? 1.5 + 1.6 * hailInches : 0, sizeInches: hailInches },
+    // (the hail falls close to the updraught, on its forward edge)
+    hail: { ...place(lean.east + (rainCentre.east - lean.east) * 0.3, lean.north + (rainCentre.north - lean.north) * 0.3), radiusKm: hailInches > 0.25 ? 1.5 + 1.6 * hailInches : 0, sizeInches: hailInches },
     rearFlank: { wrap: clamp(storm.occlusion ?? 0, 0, 1), strength: clamp((storm.coldPoolStrength ?? 0) * (0.4 + 0.6 * rotating), 0, 1) },
     gustFront: { radiusKm: storm.coldPoolRadiusKm ?? 0, strength: clamp(storm.coldPoolStrength ?? 0, 0, 1), leadKm: (storm.coldPoolRadiusKm ?? 0) * (0.3 + 0.7 * outflowDominance(storm, environment)), gustMph: storm.surfaceWind?.gustMph ?? 0 },
     anvil: { lengthKm: clamp(relativeSpeed * G.anvilSpeedShare * Math.min(storm.ageHours ?? 0, G.anvilHours), G.anvilKm[0], G.anvilKm[1]), widthKm: 20 + 60 * clamp(storm.intensity ?? 0, 0, 1), bearingDeg: bearing(downwind.east, downwind.north), topM: clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]) - 1500 },
@@ -73,8 +88,14 @@ export function tornadoGeometry(storm) {
 
 // The rain core's place in the storm's own frame (x along its motion, y to the right of it), in km.
 export function rainOffsetInStormFrame(storm) {
-  const g = storm.geometry, v = storm.velocityKph ?? { east: 0, north: 0 }, speed = Math.hypot(v.east, v.north) || 1;
-  if (!g) return { x: 0, y: 0 };
-  const east = g.rain.xKm - storm.positionKm.x, north = -(g.rain.yKm - storm.positionKm.y);
+  return offsetInStormFrame(storm, storm.geometry?.rain);
+}
+
+// A part's place (anything with xKm, yKm) in the storm's own frame, in km from the storm's
+// position (its mesocyclone): x along its motion, y to the right of it.
+export function offsetInStormFrame(storm, part) {
+  const v = storm.velocityKph ?? { east: 0, north: 0 }, speed = Math.hypot(v.east, v.north) || 1;
+  if (!part) return { x: 0, y: 0 };
+  const east = part.xKm - storm.positionKm.x, north = -(part.yKm - storm.positionKm.y);
   return { x: (east * v.east + north * v.north) / speed, y: (east * v.north - north * v.east) / speed };
 }

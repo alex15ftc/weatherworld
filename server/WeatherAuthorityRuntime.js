@@ -27,10 +27,11 @@ import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_
 
 const DEFAULT_SEED = 1000;
 const START_HOUR_UTC = 12;
-// A simulated day takes 120 real minutes (12x; it was 96, 15x, until 2026-10-15). Storms move
+// A simulated day takes 3 real hours (8x, 2026-10-29, the user's choice: a slower game, more time with
+// each storm; it was 2 hours, 12x, from 2026-10-15, and 96 minutes, 15x, before). Storms move
 // every five simulated minutes; the atmosphere steps every half hour and then takes account
 // of what the storms did meanwhile.
-const SIM_HOURS_PER_REAL_MINUTE = 0.2;
+export const SIM_HOURS_PER_REAL_MINUTE = 24 / 180;
 const STORM_CADENCE_HOURS = 1 / 12, ATMOSPHERE_STEP_HOURS = 0.5;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const MAX_STEPS_PER_TICK = 4;
@@ -320,7 +321,7 @@ export class WeatherAuthorityRuntime {
     const h = Math.max(2, Math.min(12, Math.round(Number(half) || 7)));
     const centreKm = { x: Number(xKm) || world.domainWidthKm / 2, y: Number(yKm) || world.domainHeightKm / 2 };
     const sky = buildSkyAppearance(world);
-    return buildLabWindow(world, { centreKm, half: h, boundaries: this.engine.boundaries ?? world.mesoscale?.boundaries ?? [], feed: buildStormFeedList(world, new Map()), meta: { name: 'live', seed: this.seed, sun: sky?.sun ?? null, revision: this.revision } });
+    return buildLabWindow(world, { centreKm, half: h, boundaries: this.engine.boundaries ?? world.mesoscale?.boundaries ?? [], feed: buildStormFeedList(world, new Map()), meta: { name: 'live', seed: this.seed, sun: sky?.sun ?? null, revision: this.revision, paused: !this.autoAdvance } });
   }
   labStormsAt(xKm, yKm, half = 7) {
     const world = this.atmosphere;
@@ -329,7 +330,8 @@ export class WeatherAuthorityRuntime {
     const cx = Math.min(world.width - 1 - h, Math.max(h, Math.floor((Number(xKm) || 0) / cellKm)));
     const cy = Math.min(world.height - 1 - h, Math.max(h, Math.floor((Number(yKm) || 0) / cellKm)));
     const centre = { x: (cx + 0.5) * cellKm, y: (cy + 0.5) * cellKm };
-    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), centreMapKm: centre, storms: labStorms(world, centre, (h + 0.5) * cellKm, buildStormFeedList(world, new Map())) };
+    // paused: the authority's clock is stopped (the game holds its storms still, Roblox StormHost)
+    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), paused: !this.autoAdvance, centreMapKm: centre, storms: labStorms(world, centre, (h + 0.5) * cellKm, buildStormFeedList(world, new Map())) };
   }
   storms() { return this.cached('storms', () => ({
     schemaVersion: 3,

@@ -1,0 +1,13 @@
+import { avoidBackgroundThrottling } from '../../js/runtime/processPriority.node.js';
+import { AtmosphereWorld } from '../../js/world/AtmosphereWorld.js';
+import { runOutlookMemberDays, runOutlookMemberSet } from '../../js/forecast/DayOneOutlook.js';
+avoidBackgroundThrottling();
+const w = new AtmosphereWorld({ seed: 2 }); w.advance(4);
+const state = w.saveState();
+let t = performance.now(); const plain = runOutlookMemberDays(structuredClone(state), 0, 20); const tPlain = performance.now() - t;
+t = performance.now(); const set = runOutlookMemberSet(structuredClone(state), 0, 20, { cheapRuns: 3 }); const tSet = performance.now() - t;
+const sum = a => a.reduce((s, v) => s + v, 0);
+const same = JSON.stringify(plain.map(d => [d.storms, d.tornadoes, sum(d.reports.severe), sum(d.reports.tornado)])) === JSON.stringify(set.days.map(d => [d.storms, d.tornadoes, sum(d.reports.severe), sum(d.reports.tornado)]));
+console.log('host unchanged by cheap runs:', same);
+console.log(`plain ${(tPlain/1000).toFixed(1)} s, with 3 cheap ${(tSet/1000).toFixed(1)} s -> ${((tSet - tPlain)/3/1000).toFixed(2)} s per cheap run`);
+for (const d of [set.days[0], ...set.cheap.map(c => c[0])]) console.log(` ${d.cheap === undefined ? 'host   ' : 'cheap ' + d.cheap} storms ${d.storms} tornadoes ${d.tornadoes} severe cells ${sum(d.reports.severe)} day ${d.dayCategory} env ${d.environment ? 'yes' : 'no'}`);

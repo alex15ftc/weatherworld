@@ -83,9 +83,51 @@ function Tornado.supply(parent: any): (number, number, number, number, number)
 	return math.abs(parent.vlow or 0), parent.rlow or 1500, parent.wLow or 15, parent.rfdDeficit or 0, parent.cloudBase or 900
 end
 
+-- Where the engine's tornado is `age` s after its update: carried with the storm, and while it
+-- occludes revolving round its mesocyclone (eng.omega, rad/s, counterclockwise seen from above;
+-- the engine's occlusion orbit: js/storms/TornadoEngine.js). A strong tornado under a slow storm
+-- revolves faster than the storm moves, and its track loops.
+local function engineAt(eng: any, age: number): (number, number)
+	local w = eng.omega or 0
+	if w == 0 or not eng.cx then
+		return eng.x + eng.u * age, eng.y + eng.v * age
+	end
+	local a = w * age
+	local c, s_ = math.cos(a), math.sin(a)
+	local dx, dy = eng.x - eng.cx, eng.y - eng.cy
+	return eng.cx + eng.u * age + dx * c - dy * s_, eng.cy + eng.v * age + dx * s_ + dy * c
+end
+
+-- The weather engine's word on a tornado (the game: server/StormHost each poll). et: the engine's
+-- { mph, yards, ef, orbit? } or nil once it has lifted; x, y: where it is at lab time `at` (lab
+-- metres); u, v: its storm's motion; cx, cy: its mesocyclone then (for et.orbit, rad/s). A jump
+-- from where the last update carried it is eased away (Tornado.step).
+function Tornado.setEngine(t: Tornado, et: any?, x: number, y: number, u: number, v: number, at: number, cx: number?, cy: number?)
+	local old = t.eng
+	if not et then
+		if old then
+			old.on = false
+		end
+		return
+	end
+	local ox, oy = 0, 0
+	if old then
+		local wx, wy = engineAt(old, at - old.at)
+		ox = old.ox + wx - x
+		oy = old.oy + wy - y
+	else
+		-- (a new tornado starts where the engine's is, not at its parent's centre)
+		t.x, t.y = x, y
+	end
+	t.eng = { on = true, mph = et.mph or 0, yards = et.yards or 100, x = x, y = y, u = u, v = v, at = at, ox = ox, oy = oy,
+		omega = if cx then et.orbit or 0 else 0, cx = cx, cy = cy }
+end
+
 function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	t.age += dt
 	t.time = (t.time + dt) % 8192
+	-- the sub-vortices' orbit angle, integrated (Vortex: p.orbit)
+	t.orbit = (t.orbit or 0) + (if t.params then t.params.sOrbit else 0) * dt
 	if t.ended then
 		t.endedFor += dt
 		return
@@ -109,11 +151,20 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		vlow, rlow, wLow, rfdDef, cloudBase = Tornado.supply(parent)
 	end
 	t.cloudBase += (math.clamp(cloudBase, 150, 2500) - t.cloudBase) * (1 - exp(-dt / 60))
+	-- an engine tornado (Tornado.setEngine): on the ground while the engine says so, as strong and
+	-- as wide as it says, where it says; its shape (tilt, bend, rope, sub-vortices) is drawn here
+	local eng = t.eng
+	if eng then
+		alive = eng.on
+	end
 
 	-- organisation and dissipation
 	local warm = math.clamp(1 - (rfdDef - 1.5) / 3.5, 0, 1)
 	local supplyOk = alive and vlow > 6 and warm > 0.15
 	local tiltM = sqrt(t.topX * t.topX + t.topY * t.topY)
+	if eng then
+		supplyOk, tiltM = eng.on, 0
+	end
 	if supplyOk and tiltM < 2.2 * t.cloudBase then
 		t.O = math.min(1, t.O + dt / 90)
 		t.decay = math.max(0, t.decay - dt / 600)
@@ -126,10 +177,22 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	t.swirl += (S - t.swirl) * (1 - exp(-dt / 90))
 	local rc0 = 0.05 * rlow
 	local rcT = rc0 * (0.5 + 2.2 * t.swirl) * (1 - 0.45 * t.decay)
+	if eng then
+		-- the engine's damage-path width is about four core radii across
+		rcT = 0.25 * eng.yards * 0.9144 * (1 - 0.45 * t.decay)
+	end
 	t.rc += (math.clamp(rcT, 15, 900) - t.rc) * (1 - exp(-dt / 60))
 	local pulse = 1 + 0.12 * Noise.value1(t.age / 40, t.seed) + 0.2 * Noise.value1(t.age / 240, t.seed + 3)
 	local q = t.quality * (0.45 + 0.4 * warm)
 	local vT = q * vlow * (rlow / math.max(15, t.rc)) ^ 0.4 * pulse
+	if eng then
+		-- core wind scaled until the vortex's peak ground wind (the rating below) is the engine's
+		-- (its translation and swirl are in that peak, so this is a feedback, not a formula)
+		local target = eng.mph * 0.44704
+		local peak = t.peakWind or 0
+		local scale = if peak > 1 then math.clamp(target / peak, 0.5, 2) else 2
+		vT = math.max(8, t.vc) * scale
+	end
 	vT *= (0.25 + 0.75 * t.O) * (1 - t.decay)
 	if not alive then
 		vT = 0
@@ -140,7 +203,26 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- track: the contact follows the circulation; the top stays under it at the cloud base
 	local px, py = t.x, t.y
 	local pu, pv = t.ut, t.vt
-	if parent then
+	if eng then
+		-- the engine's track: carried on along its motion since the last update (held still while
+		-- the engine's clock is paused), a jump between updates eased away over ~60 s
+		if world.holdStill then
+			eng.x, eng.y = t.x - eng.ox, t.y - eng.oy
+			eng.cx, eng.omega = nil, 0
+			eng.at = world.time
+		end
+		local keep = exp(-dt / 60)
+		eng.ox *= keep
+		eng.oy *= keep
+		local wx, wy = engineAt(eng, world.time - eng.at)
+		t.x = wx + eng.ox
+		t.y = wy + eng.oy
+		-- the top stays under the parent's circulation at the cloud base (the tilt)
+		if parent then
+			t.topX += ((parent.x - t.x) - t.topX) * (1 - exp(-dt / 20))
+			t.topY += ((parent.y - t.y) - t.topY) * (1 - exp(-dt / 20))
+		end
+	elseif parent then
 		local cx, cy = parent.x, parent.y
 		local follow = 50 + 250 * t.decay -- a dissipating vortex's base lags behind
 		local du, dv = (parent.u or 0), (parent.v or 0)
@@ -157,9 +239,25 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		t.x += t.ut * dt
 		t.y += t.vt * dt
 	end
-	local mu, mv = (t.x - px) / dt, (t.y - py) / dt
-	t.ut += (mu - pu) * (1 - exp(-dt / 8))
-	t.vt += (mv - pv) * (1 - exp(-dt / 8))
+	if eng then
+		-- the engine's motion (none while it is paused): easing away an update's jump is not
+		-- motion, and the translation adds to the ground wind the rating reads
+		local hold = world.holdStill
+		t.ut = if hold then 0 else eng.u
+		t.vt = if hold then 0 else eng.v
+		if not hold and (eng.omega or 0) ~= 0 and eng.cx then
+			-- (plus its revolution round the mesocyclone: omega x its offset from it)
+			local age = world.time - eng.at
+			local rx = t.x - (eng.cx + eng.u * age)
+			local ry = t.y - (eng.cy + eng.v * age)
+			t.ut -= eng.omega * ry
+			t.vt += eng.omega * rx
+		end
+	else
+		local mu, mv = (t.x - px) / dt, (t.y - py) / dt
+		t.ut += (mu - pu) * (1 - exp(-dt / 8))
+		t.vt += (mv - pv) * (1 - exp(-dt / 8))
+	end
 	t.pathLength += sqrt((t.x - px) ^ 2 + (t.y - py) ^ 2)
 	local eu, ev = world.env:windAt(t.x, t.y, 300)
 	t.envU, t.envV = eu, ev
@@ -231,7 +329,7 @@ function Tornado.snapshot(t: Tornado): { [string]: any }
 		id = t.id, parentId = t.parentId, x = t.x, y = t.y, ut = t.ut, vt = t.vt, envU = t.envU, envV = t.envV,
 		vc = t.vc, rc = t.rc, swirl = t.swirl, inflow = t.inflow, cloudBase = t.cloudBase,
 		topX = t.topX, topY = t.topY, bendX = t.bendX, bendY = t.bendY, wave = t.wave,
-		seed = t.seed, time = t.time, age = t.age, O = t.O, decay = t.decay, stage = t.stage,
+		seed = t.seed, time = t.time, orbit = t.orbit, age = t.age, O = t.O, decay = t.decay, stage = t.stage,
 		ef = t.ef, peakEf = t.peakEf, peakWind = t.peakWind, ended = t.ended, endedFor = t.endedFor,
 		funnelGround = t.funnelGround, pathLength = t.pathLength, hold = t.hold, lab = t.lab,
 		debrisLoft = t.debrisLoft, debrisTop = t.debrisTop, peak = t.peak,

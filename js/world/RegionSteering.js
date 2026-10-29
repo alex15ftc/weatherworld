@@ -18,7 +18,8 @@ export const STEERING_DEFAULTS = Object.freeze({
   scoreHoursUtc: [21, 2],          // the afternoon and the evening the plan is judged on
   // Speed of the weather systems (m/s, eastward): the most the region may slide either way.
   // (15 until 2026-10-23; with the jet stream the systems move about 15 m/s, not 22.)
-  systemSpeedMs: 10, speedStepMs: 1,
+  // (10 until 2026-10-28: 15 lets the map stay with a system through its afternoon more often.)
+  systemSpeedMs: 15, speedStepMs: 1,
   // Large-scale support: wind aloft times low-level flow from the south, each up to a cap.
   // 0 to 1 ahead of a trough; below 0 where the low-level flow is from the north (behind a
   // trough: a wanted value below 0 lets its cold front sweep the region).
@@ -31,7 +32,10 @@ export const STEERING_DEFAULTS = Object.freeze({
   // (0.35-0.8 until 2026-10-16. With the outer model's systems slowed and weakened, the support
   // reached is seldom above 0.35, so steering just took the most it could every day and the
   // wanted value meant nothing; 0.2-0.35 is a real choice between moderate and strong places.)
-  wantedLow: 0.2, wantedHigh: 0.35,
+  // (2026-10-28, the outbreak climate: 1 and 1, so every day aims at the strongest support it can
+  // reach. The world is a storm-chasing game, and every day should be an active one; with 0.2-0.35
+  // a quarter of days had no tornado.)
+  wantedLow: 1, wantedHigh: 1,
   // The map's place along the geography (cells east of its western edge; see the regional
   // layer's geographyOffset). Given both roamLow and roamHigh, each day the map is sent
   // roamStep cells one way or the other within that range, at no more than roamCellsPerHour, so the dryline and

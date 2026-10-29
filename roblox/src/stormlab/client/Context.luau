@@ -151,9 +151,25 @@ function Context:visualDt(dt: number): number
 	return dt * self:visualScale()
 end
 
+-- A message's server time. A message is never early, only late by its trip (and the tornado
+-- remote is unreliable: late, bunched or out of order), so the clock moves forward to the freshest
+-- and drifts back only slowly toward older ones (clock rates differ a little); a big difference -
+-- a new scenario, a pause, the first message - is taken as it is. (2026-10-28: re-anchoring on
+-- every message made the clock - and every tornado - jump by the trip time's jitter x 12, and a
+-- late tornado message stepped it back.)
 function Context:noteServerTime(t: number)
+	local now = os.clock()
+	if self.timeHeard and not self.state.paused then
+		local scale = self.state.timeScale or 1
+		local pred = self.serverTime + (now - self.clockAt) * scale
+		local err = t - pred
+		if math.abs(err) < 3 * math.max(1, scale) and err < 0 then
+			t = pred + err * 0.05
+		end
+	end
 	self.serverTime = t
-	self.clockAt = os.clock()
+	self.clockAt = now
+	self.timeHeard = true
 end
 
 -- what the lab follows: the chosen tornado/storm, else the strongest tornado, else the most

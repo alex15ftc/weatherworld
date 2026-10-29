@@ -3,7 +3,7 @@
 // them for each day); then the day is run, and what happened is set against the Day 1
 // outlook made that morning, the Day 2 outlook made the morning before and the Day 3 outlook
 // made the morning before that.
-//   node scripts/outlook-verify.mjs [days per seed] [--seeds 1,2,3,4,5,6] [--members 8] [--save dir | --from dir]
+//   node scripts/outlook-verify.mjs [days per seed] [--seeds 1,2,3,4,5,6] [--members 8] [--cheap 3] [--save dir | --from dir]
 // --save dir keeps each morning's runs and what then happened (one file a morning, seed-S-day-D.bin.gz);
 // --from dir scores those again without running anything: only what makes the outlooks from the runs
 // (calibration, agreement, intensity groups, categories) can have changed, and it takes a minute or two
@@ -12,6 +12,7 @@
 // how often the forecast category was right, and whether the contours mean what they say (of
 // the places inside a 30% contour, about 30% or more should have had it within 25 miles).
 import { fork } from 'node:child_process';
+import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';
 import { fileURLToPath } from 'node:url';
 import v8 from 'node:v8';
 import fs from 'node:fs';
@@ -25,6 +26,8 @@ const args = process.argv.slice(2);
 const days = Number(args.find(a => /^\d+$/.test(a)) ?? 7);
 const flag = name => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const memberCount = Number(flag('--members') ?? 8);
+// --cheap N: cheap runs each member carries (default OUTLOOK.cheapPerMember, as the server; 0 for the full runs alone).
+const CHEAP_FLAG = flag('--cheap');
 const SAVE = flag('--save'), FROM = flag('--from');
 const saved = (dir, seed, day) => path.join(dir, `seed-${seed}-day-${day}.bin.gz`);
 // OLD=1: the outlooks as before agenda step 11 (no errors in the air over the map, no agreement rule), to compare.
@@ -45,10 +48,11 @@ if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else awai
 async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { captureTruth, aggregateTruth, practicallyPerfectChance } = await import('../js/verification/truth.js');
-  const { OUTLOOK, runOutlookMemberDays, combineOutlook, stateFromBytes, membersFor, stormDaysFor } = await import('../js/forecast/DayOneOutlook.js');
+  const { OUTLOOK, runOutlookMemberSet, combineOutlook, stateFromBytes, membersFor, stormDaysFor } = await import('../js/forecast/DayOneOutlook.js');
   const { CIG_TIERS, CIG_BOUNDS, contourCig, conditionalCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
   // Hail and wind as reports, in the runs and in what happened (truth.js captureTruth).
   const { placesFor } = await import('../server/CountyLayer.js');
+  const CHEAP = CHEAP_FLAG === null ? OUTLOOK.cheapPerMember : Number(CHEAP_FLAG);
   const atmosphere = FROM ? null : new AtmosphereWorld({ seed }), world = atmosphere?.world, out = [], issued = [];
   let n = world ? world.width * world.height : 0;
   atmosphere?.advance(24);   // a day for the storms to get going
@@ -60,16 +64,18 @@ async function worker(seed) {
     const map = kept ? kept.map : { width: world.width, height: world.height, cellSizeKm: world.cellSizeKm, cellSizeMiles: world.cellSizeMiles };
     // The morning's outlooks: each run goes as far as the last day it is one of the runs for.
     const now = kept ? kept.now : world.validHourUtc, runs = kept ? kept.runs : [];
-    if (!kept) { const bytes = v8.serialize(atmosphere.saveState()); for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberDays(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, { placesFor, stormDays: stormDaysFor(m, memberCount), ...(OLD ? { mesoscale: 0 } : {}) })); }
-    issued[day] = OUTLOOK.days.map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).map(run => run[index]), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : {}) }));
+    if (!kept) { const bytes = v8.serialize(atmosphere.saveState()); for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberSet(stateFromBytes(bytes), m, 24 * OUTLOOK.days.filter(name => m < membersFor(name, memberCount)).length, { placesFor, stormDays: stormDaysFor(m, memberCount), cheapRuns: CHEAP, ...(OLD ? { mesoscale: 0 } : {}) })); }
+    issued[day] = OUTLOOK.days.map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).flatMap(run => (Array.isArray(run) ? [run[index]] : [run.days[index], ...run.cheap.map(days => days[index]).filter(Boolean)])), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : {}) }));
     // What then happened.
     let truth, happened;
     if (kept) ({ truth, happened } = kept);
     else {
       const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;
       const places = placesFor(world);
-      for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations, places); }
-      truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+      // (stepped as the server steps the live world: the storms in 5-minute ticks, then the atmosphere;
+      // until 2026-10-28 advance(0.5), whose storms made fewer tornadoes than the live world's)
+      for (let step = 0; step < 48; step++) { for (let k = 0; k < 6; k++) atmosphere.advanceStormLayer(1 / 12); atmosphere.advance(0.5, { advanceStorms: false }); captureTruth(world, frames, seen, initiations, places); }
+      truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
       happened = world.stormEngine.totalTornadoes - before;
       if (SAVE) fs.writeFileSync(saved(SAVE, seed, day), zlib.gzipSync(v8.serialize({ now, runs, truth, happened, map })));
     }

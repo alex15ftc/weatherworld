@@ -1,0 +1,69 @@
+CALIBRATION_DATA {"day1":{"tornado":[{"cells":110791,"hits":318,"raw":39396.556924009215},{"cells":39869,"hits":567,"raw":57552.29445338249},{"cells":31988,"hits":1169,"raw":85348.5642259121},{"cells":18506,"hits":1119,"raw":77388.17930650711},{"cells":16964,"hits":1743,"raw":103702.55077695847},{"cells":10680,"hits":1660,"raw":92493.52950048447},{"cells":7179,"hits":1499,"raw":80263.34900283813},{"cells":4541,"hits":1132,"raw":62158.80896949768},{"cells":4516,"hits":1367,"raw":77203.72933673859},{"cells":2374,"hits":903,"raw":53054.58700180054},{"cells":1367,"hits":627,"raw":37080.53508377075},{"cells":906,"hits":599,"raw":31210.411819458008},{"cells":242,"hits":204,"raw":10763.283836364746},{"cells":77,"hits":72,"raw":4000.501377105713},{"cells":0,"hits":0,"raw":0},{"cells":0,"hits":0,"raw":0}],"wind":[{"cells":8741,"hits":11,"raw":3472.395259198762},{"cells":6673,"hits":43,"raw":10056.85331606865},{"cells":9989,"hits":44,"raw":27355.929656744003},{"cells":9476,"hits":75,"raw":40293.88991713524},{"cells":14808,"hits":186,"raw":92241.46792888641},{"cells":12993,"hits":219,"raw":113242.57115459442},{"cells":12015,"hits":274,"raw":135064.31127166748},{"cells":11642,"hits":427,"raw":159882.12102985382},{"cells":21250,"hits":1274,"raw":370657.96410369873},{"cells":18834,"hits":1614,"raw":423146.53284454346},{"cells":17237,"hits":2111,"raw":472988.47179985046},{"cells":29849,"hits":5759,"raw":1040654.8842105865},{"cells":26133,"hits":7298,"raw":1171479.5391349792},{"cells":18623,"hits":7370,"raw":1019301.4722938538},{"cells":20126,"hits":9904,"raw":1350463.9986457825},{"cells":11611,"hits":7795,"raw":949481.6721038818}],"hail":[{"cells":14106,"hits":5,"raw":5474.599316844629},{"cells":9729,"hits":13,"raw":14596.585167050362},{"cells":9955,"hits":20,"raw":26938.97097802162},{"cells":8842,"hits":44,"raw":37540.132190704346},{"cells":13451,"hits":174,"raw":83689.32385349274},{"cells":12608,"hits":190,"raw":110182.07671642303},{"cells":11702,"hits":250,"raw":131541.66061973572},{"cells":11249,"hits":344,"raw":154700.71580314636},{"cells":20788,"hits":872,"raw":362392.1726446152},{"cells":17980,"hits":1470,"raw":404063.9303703308},{"cells":16729,"hits":1978,"raw":458910.76683425903},{"cells":27953,"hits":4882,"raw":973204.3002490997},{"cells":22213,"hits":6710,"raw":996510.3052825928},{"cells":17794,"hits":7207,"raw":974529.5009803772},{"cells":20637,"hits":10974,"raw":1385253.5249671936},{"cells":14264,"hits":10443,"raw":1179793.5293121338}]},"day2":{"tornado":[{"cells":85819,"hits":371,"raw":32323.990348787614},{"cells":35189,"hits":601,"raw":50988.29069054127},{"cells":28460,"hits":1217,"raw":76027.29236936569},{"cells":15767,"hits":1276,"raw":66021.74281716347},{"cells":15623,"hits":1752,"raw":95871.01069116592},{"cells":8746,"hits":1344,"raw":75528.87228298187},{"cells":4291,"hits":830,"raw":47519.23918437958},{"cells":2173,"hits":566,"raw":29635.48167705536},{"cells":2011,"hits":586,"raw":34430.664830207825},{"cells":947,"hits":395,"raw":21093.346786499023},{"cells":560,"hits":313,"raw":15213.90970993042},{"cells":414,"hits":351,"raw":13687.141805648804},{"cells":0,"hits":0,"raw":0},{"cells":0,"hits":0,"raw":0},{"cells":0,"hits":0,"raw":0},{"cells":0,"hits":0,"raw":0}],"wind":[{"cells":6878,"hits":5,"raw":2157.237821196991},{"cells":5224,"hits":16,"raw":7976.509714961052},{"cells":8627,"hits":114,"raw":23615.976886749268},{"cells":8318,"hits":116,"raw":35346.975776195526},{"cells":13259,"hits":369,"raw":82964.24803829193},{"cells":13511,"hits":441,"raw":118217.59876394272},{"cells":12463,"hits":509,"raw":139952.46438884735},{"cells":11526,"hits":646,"raw":158427.08204174042},{"cells":19828,"hits":1948,"raw":345591.70250606537},{"cells":17333,"hits":2407,"raw":388950.0346107483},{"cells":15255,"hits":2765,"raw":418685.0432510376},{"cells":25076,"hits":6159,"raw":871871.7055206299},{"cells":18903,"hits":6338,"raw":844925.6610832214},{"cells":12433,"hits":5452,"raw":677992.461730957},{"cells":9005,"hits":4536,"raw":595939.5198783875},{"cells":2361,"hits":1526,"raw":190274.52793884277}],"hail":[{"cells":9729,"hits":0,"raw":3911.5556346427675},{"cells":7053,"hits":16,"raw":10440.121047973633},{"cells":9143,"hits":96,"raw":24928.93706727028},{"cells":7946,"hits":97,"raw":33833.778044462204},{"cells":13241,"hits":343,"raw":82626.15324497223},{"cells":12252,"hits":488,"raw":107033.3003487587},{"cells":11494,"hits":551,"raw":129256.07068824768},{"cells":10667,"hits":619,"raw":146426.88644886017},{"cells":19352,"hits":1516,"raw":336975.56012153625},{"cells":15979,"hits":1965,"raw":358775.1176509857},{"cells":13930,"hits":2533,"raw":382437.14604377747},{"cells":23577,"hits":5728,"raw":819530.0698070526},{"cells":17028,"hits":5916,"raw":763282.892917633},{"cells":13170,"hits":6195,"raw":720931.533782959},{"cells":11576,"hits":6474,"raw":771812.0527000427},{"cells":3863,"hits":2610,"raw":310524.8821029663}]},"day3":{"severe":[{"cells":5848,"hits":376,"raw":3345.396553587634},{"cells":8227,"hits":799,"raw":12232.877913951874},{"cells":14347,"hits":1872,"raw":40172.72526025772},{"cells":15692,"hits":2175,"raw":66881.27726101875},{"cells":23222,"hits":4083,"raw":144706.9023618698},{"cells":20790,"hits":4966,"raw":180700.4922862053},{"cells":16877,"hits":4675,"raw":189077.39835834503},{"cells":12903,"hits":4154,"raw":176905.4362592697},{"cells":15955,"hits":5920,"raw":274073.47515773773},{"cells":8313,"hits":3276,"raw":185225.8302707672},{"cells":4025,"hits":2183,"raw":108775.70408058167},{"cells":3013,"hits":2202,"raw":100519.35937690735},{"cells":685,"hits":585,"raw":30670.635524749756},{"cells":103,"hits":99,"raw":5257.659320831299},{"cells":0,"hits":0,"raw":0},{"cells":0,"hits":0,"raw":0}]}}
+=== Outlook verification: 5 mornings x seeds 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 8 runs (3817 s) ===
+
+--- Day 1 outlooks: 100 ---
+1. The highest category of the day
+  forecast  TSTM 3%, MRGN 3%, SLGT 10%, ENH 70%, MDT 12%, HIGH 2%
+  verified  TSTM 4%, MRGN 6%, SLGT 33%, ENH 35%, MDT 18%, HIGH 4%
+  forecast right: 48% | within one category: 98% | forecast too high: 37%, too low: 15%
+  place by place: the category was right over 44% of the map, within one category over 84%
+  share of the map at Enhanced or more: forecast 30%, verified 15% | at Moderate or more: forecast 3%, verified 4%
+2. Do the contours mean what they say? (places inside each contour level, up to the next; share of them where it happened within 25 miles)
+  tornado  below: 1%  2%: 6%  5%: 15%  10%: 23%  15%: 34%  30%: 68%  45%: -  60%: -
+  wind     below: 1%  5%: 4%  15%: 10%  30%: 20%  45%: 36%  60%: 49%  75%: 66%  90%: 84%
+  hail     below: 1%  5%: 3%  15%: 9%  30%: 20%  45%: 38%  60%: 61%
+   Intensity groups (places inside a contour by the group drawn there; of those where the hazard came within 25 miles, the share where each tier did)
+  tornado  no group  EF2+ 13%  EF3+ 3%  EF4+ 1%  (46% of the area inside a contour)
+  tornado  CIG1      EF2+ 43%  EF3+ 20%  EF4+ 9%  (49% of the area inside a contour)
+  tornado  CIG2      EF2+ 60%  EF3+ 35%  EF4+ 20%  (3% of the area inside a contour)
+  tornado  CIG3      EF2+ 87%  EF3+ 71%  EF4+ 40%  (1% of the area inside a contour)
+  wind     no group  75 mph 5%  85 mph 0%  96 mph 0%  (100% of the area inside a contour)
+  hail     no group  2 in 25%  3.5 in 0%  (96% of the area inside a contour)
+  hail     CIG1      2 in 51%  3.5 in 3%  (4% of the area inside a contour)
+   How often each intensity group is the highest drawn somewhere on the outlook, and the highest the day verified with (share of outlooks)
+  tornado  none 55% / 51%  |  CIG1 37% / 32%  |  CIG2 6% / 5%  |  CIG3 2% / 12%   (drawn / verified)
+  wind     none 100% / 95%  |  CIG1 0% / 5%  |  CIG2 0% / 0%  |  CIG3 0% / 0%   (drawn / verified)
+  hail     none 92% / 82%  |  CIG1 8% / 15%  |  CIG2 0% / 3%   (drawn / verified)
+3. Tornadoes: the day's count fell inside the range of the runs on 79% of days
+  (range of the runs / what happened): 0-5/3  1-6/2  5-22/20  6-20/19  9-24/21  20-39/18  5-15/8  9-19/6  0-4/1  1-10/7  19-86/57  29-57/37  24-35/30  3-10/7  1-8/5  19-55/29  28-46/34  11-58/29  1-14/12  8-24/12  6-12/6  5-23/13  15-33/28  0-7/3  54-78/80  3-8/8  3-12/7  6-27/11  0-8/0  2-9/2  2-6/4  7-26/24  7-23/24  31-55/58  5-19/16  10-26/25  5-24/11  0-3/2  21-40/36  2-12/6  14-34/37  5-14/12  16-43/32  8-16/5  6-19/15  5-13/11  10-37/25  1-2/1  1-16/4  8-18/6  40-66/59  23-48/38  1-6/6  4-12/10  0-2/1  13-29/31  7-11/8  6-16/3  2-31/13  11-41/33  14-25/16  16-30/15  0-4/0  0-1/0  0-0/0  2-8/4  1-4/0  3-13/10  9-16/22  5-19/19  10-27/27  17-31/32  22-35/29  8-20/16  2-7/8  12-22/9  3-18/13  4-10/3  28-42/48  3-10/11  5-17/11  11-38/29  17-35/23  0-2/0  6-16/7  2-12/6  3-15/10  52-82/85  4-11/7  1-10/7  35-59/51  59-80/73  28-47/56  0-1/1  12-38/29  30-58/52  6-12/12  8-43/22  0-1/0  0-1/1
+
+--- Day 2 outlooks: 80 ---
+1. The highest category of the day
+  forecast  TSTM 3%, MRGN 8%, SLGT 23%, ENH 50%, MDT 16%, HIGH 1%
+  verified  TSTM 4%, MRGN 6%, SLGT 35%, ENH 35%, MDT 18%, HIGH 3%
+  forecast right: 64% | within one category: 99% | forecast too high: 23%, too low: 14%
+  place by place: the category was right over 40% of the map, within one category over 76%
+  share of the map at Enhanced or more: forecast 25%, verified 14% | at Moderate or more: forecast 3%, verified 3%
+2. Do the contours mean what they say? (places inside each contour level, up to the next; share of them where it happened within 25 miles)
+  tornado  below: 1%  2%: 6%  5%: 12%  10%: 19%  15%: 35%  30%: 85%  45%: -  60%: -
+  wind     below: 1%  5%: 4%  15%: 14%  30%: 25%  45%: 41%  60%: 50%  75%: 64%  90%: -
+  hail     below: 1%  5%: 5%  15%: 11%  30%: 24%  45%: 44%  60%: 59%
+   Intensity groups (places inside a contour by the group drawn there; of those where the hazard came within 25 miles, the share where each tier did)
+  tornado  no group  EF2+ 22%  EF3+ 5%  EF4+ 2%  (67% of the area inside a contour)
+  tornado  CIG1      EF2+ 48%  EF3+ 25%  EF4+ 12%  (33% of the area inside a contour)
+  tornado  CIG2      EF2+ 92%  EF3+ 82%  EF4+ 46%  (0% of the area inside a contour)
+  wind     no group  75 mph 6%  85 mph 0%  96 mph 0%  (100% of the area inside a contour)
+  hail     no group  2 in 26%  3.5 in 1%  (83% of the area inside a contour)
+  hail     CIG1      2 in 34%  3.5 in 1%  (17% of the area inside a contour)
+   How often each intensity group is the highest drawn somewhere on the outlook, and the highest the day verified with (share of outlooks)
+  tornado  none 68% / 51%  |  CIG1 31% / 34%  |  CIG2 1% / 5%  |  CIG3 0% / 10%   (drawn / verified)
+  wind     none 100% / 94%  |  CIG1 0% / 6%  |  CIG2 0% / 0%  |  CIG3 0% / 0%   (drawn / verified)
+  hail     none 80% / 81%  |  CIG1 20% / 16%  |  CIG2 0% / 3%   (drawn / verified)
+3. Tornadoes: the day's count fell inside the range of the runs on 84% of days
+  (range of the runs / what happened): 0-6/2  4-28/20  1-36/19  13-32/21  6-14/8  6-19/6  0-2/1  0-15/7  11-55/37  7-49/30  2-12/7  0-2/5  19-58/34  17-54/29  4-23/12  0-32/12  5-26/13  5-38/28  1-5/3  6-23/80  2-47/7  1-24/11  0-6/0  2-10/2  6-27/24  2-24/24  31-83/58  2-13/16  0-26/11  0-3/2  2-35/36  3-8/6  3-14/12  3-21/32  2-8/5  8-30/15  8-60/25  0-19/1  2-10/4  4-20/6  16-36/38  0-6/6  4-15/10  0-6/1  5-38/8  4-29/3  3-27/13  6-36/33  7-17/15  0-9/0  0-1/0  0-0/0  0-4/0  4-11/10  2-12/22  3-9/19  11-28/32  8-41/29  9-36/16  0-5/8  1-31/13  1-12/3  1-34/48  0-14/11  4-57/29  16-33/23  0-3/0  5-38/7  0-16/10  49-87/85  1-10/7  0-15/7  38-75/73  20-41/56  0-2/1  12-42/29  12-29/12  14-37/22  0-1/0  0-4/1
+
+--- Day 3 outlooks: 60 ---
+1. The highest category of the day
+  forecast  TSTM 0%, MRGN 7%, SLGT 90%, ENH 3%, MDT 0%, HIGH 0%
+  verified  TSTM 3%, MRGN 5%, SLGT 37%, ENH 33%, MDT 22%, HIGH 0%
+  forecast right: 42% | within one category: 73% | forecast too high: 7%, too low: 52%
+  place by place: the category was right over 34% of the map, within one category over 66%
+  share of the map at Enhanced or more: forecast 0%, verified 15% | at Moderate or more: forecast 0%, verified 4%
+2. Do the contours mean what they say? (places inside each contour level, up to the next; share of them where it happened within 25 miles)
+  severe   below: 10%  5%: 17%  15%: 32%  30%: 59%  45%: 91%  60%: -
+   Intensity groups (places inside a contour by the group drawn there; of those where the hazard came within 25 miles, the share where each tier did)
+  severe   no group  significant 25%  intense 3%  (100% of the area inside a contour)
+   How often each intensity group is the highest drawn somewhere on the outlook, and the highest the day verified with (share of outlooks)
+  severe   none 100% / 72%  |  CIG1 0% / 28%  |  CIG2 0% / 0%   (drawn / verified)
+3. Tornadoes: the day's count fell inside the range of the runs on 10% of days
+  (range of the runs / what happened): 0-0/20  0-0/19  0-0/21  0-0/6  0-0/1  0-0/7  0-0/30  0-0/7  0-0/5  0-0/29  0-0/12  0-0/12  0-0/28  0-0/3  0-0/80  0-0/11  0-0/0  0-0/2  0-0/24  0-0/58  0-0/16  0-0/2  0-0/36  0-0/6  0-0/32  0-0/5  0-0/15  0-0/1  0-0/4  0-0/6  0-0/6  0-0/10  0-0/1  0-0/3  0-0/13  0-0/33  0-0/0  0-0/0  0-0/0  0-0/10  0-0/22  0-0/19  0-0/29  0-0/16  0-0/8  0-0/3  0-0/48  0-0/11  0-0/23  0-0/0  0-0/7  0-0/85  0-0/7  0-0/7  0-0/56  0-0/1  0-0/29  0-0/22  0-0/0  0-0/1

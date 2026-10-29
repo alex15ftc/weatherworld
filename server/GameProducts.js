@@ -34,6 +34,7 @@
 // sent beyond what the weather server holds (roblox/src/server/ReportArchive.luau), and a new
 // world numbers its days from 1 again.
 import crypto from 'node:crypto';
+import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';
 import zlib from 'node:zlib';
 import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, groundRangeKm } from '../js/radar/RadarFormat.js';
 import { discussionColourKey, warningColourKey, warningRank } from '../js/forecast/productColours.js';
@@ -143,8 +144,9 @@ export function gameOutlook(day, published, { nextUpdateHourUtc = null } = {}) {
   return {
     ...head, status: 'issued', seed: o.seed, mapMiles,
     issuedHourUtc: o.issuedHourUtc, validFromHourUtc: o.validFromHourUtc, validToHourUtc: o.validToHourUtc, nextUpdateHourUtc,
+    updating: Boolean(o.running), // an update to this day is being prepared now
     highest: o.highest, headline: o.labels[o.highest], categories: o.categories, labels: o.labels,
-    thunderLevel: o.thunderLevel, radiusMiles: o.radiusMiles ?? 25,
+    thunderLevel: o.thunderLevel, radiusMiles: o.radiusMiles ?? RISK_RADIUS_MILES,
     category: o.shapes.category.map(entry => ({ key: entry.key, rings: miles(entry.rings) })),
     hazardOrder: o.hazards, hazards, discussion: o.discussion
   };

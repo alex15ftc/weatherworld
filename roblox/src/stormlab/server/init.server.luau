@@ -23,6 +23,7 @@ local LabConfig = require(lab:WaitForChild("LabConfig"))
 local Json = require(Sim:WaitForChild("Json"))
 local World = require(Sim:WaitForChild("World"))
 local Storm = require(Sim:WaitForChild("Storm"))
+local EngineFollow = require(Sim:WaitForChild("EngineFollow"))
 local Town = require(script:WaitForChild("Town"))
 local Vehicles = require(script:WaitForChild("Vehicles"))
 local ServerDebris = require(script:WaitForChild("ServerDebris"))
@@ -69,7 +70,13 @@ local settings = {
 	paused = false,
 	genesis = true,
 	initiation = true,
+	-- the storms: "engine" = driven by the engine's updates in the scenario (its polls), exactly
+	-- as the game drives them (Sim/EngineFollow); "own" = the lab's own dynamics from the start
+	-- state (initiation, genesis, occlusion cycles). Workspace attribute StormLabStorms.
+	storms = Workspace:GetAttribute("StormLabStorms") or LabConfig.DEFAULT_STORMS,
 }
+local follower = EngineFollow.new()
+local nextPoll = 1 -- (the scenario's next engine update to apply)
 
 local scenarioName = Workspace:GetAttribute("StormLabScenario") or LabConfig.DEFAULT_SCENARIO
 local data: any = nil
@@ -147,16 +154,50 @@ local function loadScenario(name: string)
 	local function yieldNow()
 		task.wait()
 	end
-	world = World.new(data, { yield = yieldNow })
+	local engine = settings.storms == "engine" and data.polls ~= nil and #data.polls > 0
+	world = World.new(data, { yield = yieldNow, followEngine = engine })
 	world.yield = yieldNow
 	world.genesis = settings.genesis
 	world.initiation = settings.initiation
+	world.engineDriven = engine
+	if engine then
+		EngineFollow.beforeSpinUp(world, LabConfig.SPIN_UP_SECONDS, false)
+	end
 	world:spinUp(LabConfig.SPIN_UP_SECONDS)
+	nextPoll = 1
+	if engine then
+		EngineFollow.afterSpinUp(follower, world, data, 0, false)
+		EngineFollow.startTornadoes(world, data.storms)
+	elseif settings.storms == "engine" then
+		warn("[StormLab] scenario " .. name .. " has no engine updates (re-export it): its storms run on the lab's own dynamics")
+	end
 	profileSeen = {}
 	scenarioName = name
-	log("scenario %s (seed %d, %s UTC %.2f): %d storms, spun up in %.1f s", name, data.meta.seed, data.meta.focus, data.meta.simHourUtc, #world.storms, os.clock() - t0)
-	placeTown(townSite())
+	log("scenario %s (seed %d, %s UTC %.2f): %d storms (%s), spun up in %.1f s", name, data.meta.seed, data.meta.focus, data.meta.simHourUtc, #world.storms, if engine then "engine-driven" else "own dynamics", os.clock() - t0)
 	ready = true
+	-- the town and its ground are built after: the relief (LabConfig.GROUND.relief) takes minutes at
+	-- the lab's scale, and the clients waited for it with nothing on screen (2026-10-29)
+	local site = { townSite() }
+	task.spawn(function()
+		placeTown(table.unpack(site))
+	end)
+end
+
+-- (set before the scenario loads: its spin-up yields for seconds, and a client that asked
+-- meanwhile, with no handler set yet, waited forever - 2026-10-29. It waits for `ready` instead.)
+remotes.hello.OnServerInvoke = function(player)
+	while not ready do
+		task.wait(0.2)
+	end
+	-- (the newcomer gets the full state once its listeners are connected: the "ready" command)
+	return {
+		scenario = scenarioName,
+		time = if world then world.time else relay:time(),
+		settings = settings,
+		source = source,
+		frameVersion = Frames.VERSION,
+		town = if town then { x = town.cx, y = town.cy } else nil, -- (the ground's relief centre)
+	}
 end
 
 source = Workspace:GetAttribute("StormLabSource") or LabConfig.SOURCE.mode or "sim"
@@ -181,20 +222,6 @@ else
 	end
 end
 
-remotes.hello.OnServerInvoke = function(player)
-	while not ready do
-		task.wait(0.2)
-	end
-	-- (the newcomer gets the full state once its listeners are connected: the "ready" command)
-	return {
-		scenario = scenarioName,
-		time = if world then world.time else relay:time(),
-		settings = settings,
-		source = source,
-		frameVersion = Frames.VERSION,
-		town = if town then { x = town.cx, y = town.cy } else nil, -- (the ground's relief centre)
-	}
-end
 
 -- the strongest live tornado, or nil
 local function strongestTornado()
@@ -322,6 +349,17 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 	elseif c == "initiation" then
 		settings.initiation = not settings.initiation
 		world.initiation = settings.initiation
+	elseif c == "storms" then
+		-- engine-driven <-> own dynamics: the scenario is rebuilt
+		settings.storms = if settings.storms == "engine" then "own" else "engine"
+		pub:reset()
+		loadScenario(scenarioName)
+		pub:send("event", { kind = "scenario", scenario = scenarioName })
+		task.wait()
+		pub:send("profiles", world:profileSnapshot(profileSeen))
+		pub:send("coldPool", world:packColdPool())
+		pub:send("precip", world.precip:pack())
+		pub:send("precipLite", world.precip:packLite())
 	elseif c == "testScene" and type(cmd.id) == "string" then
 		-- a deterministic visual test scene (shared/VisualTests): blocks the server a few seconds
 		local scene = VisualTests.byId(cmd.id)
@@ -377,6 +415,18 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	local t0 = os.clock()
 	local simDt = if settings.paused then 0 else math.min(dt, 0.1) * settings.timeScale
+	-- the engine's updates (engine-driven storms): each applied when the lab's clock reaches it,
+	-- as the game applies each /lab/storms poll
+	if world.engineDriven and data.polls then
+		while nextPoll <= #data.polls and world.time >= data.polls[nextPoll].min * 60 do
+			local p = data.polls[nextPoll]
+			EngineFollow.apply(follower, world, p.storms, p.simHourUtc, false, log)
+			nextPoll += 1
+			if nextPoll > #data.polls then
+				log("the scenario's engine updates end here: storms carry on along their last motion")
+			end
+		end
+	end
 	if simDt > 0 then
 		-- the tornadoes, finely: substeps no longer than 0.5 s (stepFast does that itself)
 		world:stepFast(simDt)

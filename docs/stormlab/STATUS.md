@@ -439,3 +439,12 @@ Images: `docs/stormlab/structure/after2/` (compare with `structure/` and `struct
   - The pool under the forward flank is now 1.9–2.9 K (was 1.3–2.4), and its 1 K edge runs east along the north side of the inflow.
 - **Tools:** `tools/stormlab/diag_ffd.luau` (pool, rain and downdraft deficit along the forward flank) and `diag_wallcloud.luau`.
 - **Known:** the sim's surface rain rate peaks at ~20 mm/h under 55–60 dBZ cores (a 1 km-grid average, low for such echo). It is left as is.
+
+## Sync with the game + realism review (2026-10-29)
+
+See `REALISM-REVIEW-2026-10-29.md`.
+- **Fixed:** since 2026-10-28 every scenario storm was engine-driven with its first state frozen (no own motion, rotation, occlusion or genesis). `Storm.fromEngine(e, follow)` / `World.new(data, { followEngine })` make it opt-in.
+- **Storms: engine (default) / own:** `Sim/EngineFollow.luau` (moved out of the game's `server/StormHost`, which now uses it) drives the lab's storms from the scenario's `polls` exactly as the game does. F4 button, `LabConfig.DEFAULT_STORMS`, Workspace attribute `StormLabStorms`.
+- **Scenarios re-exported** from the current engine via `js/game/LabWindow.js` (Supercell: seed 8181, tornado on S0008 at 22:25 UTC; SquallLine: seed 2112, S0068). Old files in git history.
+- **Test:** `luau tools/stormlab/test_engine_follow.luau -a Supercell 45`.
+- Not yet seen in Studio.

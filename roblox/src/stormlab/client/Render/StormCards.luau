@@ -456,12 +456,11 @@ function StormCards.new(ctx: any): any
 		local d = math.sqrt((x - camX) ^ 2 + (y - camY) ^ 2)
 		local n = math.clamp(math.floor(d / 800), 3, 16)
 		local tau = 0
+		local step = C.sightPath(d / n) / 1000 -- (km of drawn sight line a sample)
 		for i = 1, n do
 			local f = (i - 0.5) / n
 			local r = Precip.surface(vol, camX + (x - camX) * f, camY + (y - camY) * f) or 0
-			if r > 0.05 then
-				tau += 0.33 * r ^ 0.66 * (d / n) / 1000
-			end
+			tau += C.rainExtinction(r) * step
 		end
 		return math.clamp(1 - math.exp(-tau), 0, 0.97)
 	end
@@ -822,7 +821,8 @@ function StormCards.new(ctx: any): any
 			pxKNow = 0.5 / fpxNow -- (half a pixel per unit of distance)
 		end
 		local simT = ctx:simTime()
-		local vT = ctx:visualTime() -- (local motion: boiling, inflow, the wall cloud's turn)
+		local vT = ctx:visualTime() -- (local motion: boiling, inflow)
+		local vDt = ctx:visualDt(dt) -- (the wall cloud's turn, integrated)
 		local simDt = if ctx.state.paused then 0 else dt * (ctx.state.timeScale or 1)
 		local dtSnap = math.clamp(simT - (cw.time or simT), -5, 60)
 		local L = light()
@@ -1056,6 +1056,12 @@ function StormCards.new(ctx: any): any
 			local thrS = pxKNow * math.max(50 * g.main.k, dS - radS)
 			local back = vis and not g.vis -- (back on screen: its fog is checked now)
 			g.vis = vis
+			-- the wall cloud's turn at the low-level rotation, integrated every frame (as spin x
+			-- the clock it jumped by up to whole turns whenever the storm's vlow changed: every
+			-- engine nudge)
+			if g.wall then
+				g.wallPhase = ((g.wallPhase or 0) + (g.wall.spin or 0) * vDt) % (2 * math.pi)
+			end
 			local animOn = vis and dCam < 40000
 			stepFades(g.main, dt, vis, animOn)
 			stepFades(g.wallL, dt, vis, animOn)
@@ -1121,7 +1127,7 @@ function StormCards.new(ctx: any): any
 				if w then
 					-- turning cyclonically (counter-clockwise seen from above) at the low-level rotation
 					local wp = C.toWorld(g.px + w.x, g.py + w.y, 0)
-					local ang = (w.spin or 0) * vT % (2 * math.pi)
+					local ang = g.wallPhase or 0
 					local lastW = g.wallCF
 					local rS = math.max((g.wallRad or 0) * g.wallL.k, 1)
 					if lastW == nil or (wp - lastW).Magnitude > thrS or math.abs(ang - (g.wallAng or 0)) * rS > thrS then

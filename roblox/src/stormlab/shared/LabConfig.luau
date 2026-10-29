@@ -26,6 +26,7 @@ local F = {
 	kh = LabConfig.SCALE, kv = LabConfig.SCALE, ks = LabConfig.SCALE, ox = 0, oz = 0,
 	datum = nil :: ((number, number) -> number)?, ground = nil :: ((number, number) -> number)?,
 	sky = nil :: ((number, number) -> number)?, -- studs a metre for things about (cx, cy) (scaleAbout)
+	precipVisibility = 1, -- how strongly rain and hail cut visibility (rainExtinction); 1 = physical
 }
 LabConfig.frame = F
 
@@ -80,6 +81,25 @@ function LabConfig.metres(s: number): number
 	return s / F.ks
 end
 
+-- Seeing through precipitation. The extinction (1/km) of rain at R mm/h (0.33 R^0.66: ~12 km
+-- visibility in 1 mm/h, ~1 km in 50 mm/h) times frame.precipVisibility (the game's
+-- Config.PRECIP_VISIBILITY; 1 in the lab). Every renderer that fogs by rain uses this, so the
+-- Atmosphere, the storm cards, the shafts, the scud and the funnel stay in step.
+function LabConfig.rainExtinction(r: number): number
+	if r <= 0.05 then
+		return 0
+	end
+	return 0.33 * r ^ 0.66 * F.precipVisibility
+end
+
+-- The length of a sight line across the map as it is DRAWN (m at the size scale): a sim distance
+-- d metres is kh / ks as long on screen (the game's map is squashed across: ~0.1; the lab: 1). The
+-- rain between the camera and a far point is crossed over this length, the same length the
+-- Atmosphere fogs the terrain over, so a funnel and the ground beside it fog alike.
+function LabConfig.sightPath(d: number): number
+	return d * F.kh / F.ks
+end
+
 -- a simulation horizontal vector (east, north) as a Roblox direction (Y = 0)
 function LabConfig.dirWorld(u: number, v: number): Vector3
 	return Vector3.new(u, 0, -v)
@@ -94,6 +114,9 @@ LabConfig.SCENARIOS = { "Supercell", "SquallLine" }
 LabConfig.SOURCE = { mode = "sim", recording = "", url = "", poll = 5, lag = 15 }
 LabConfig.DEFAULT_SCENARIO = "Supercell"
 LabConfig.DEFAULT_TIME_SCALE = 1
+-- the scenario storms: "engine" = driven by the engine's 5-minute updates, as in the game
+-- (Sim/EngineFollow); "own" = the lab's own dynamics (F4 panel: Storms button)
+LabConfig.DEFAULT_STORMS = "engine"
 LabConfig.SPIN_UP_SECONDS = 600 -- simulated before anyone watches (fills rain and cold pools)
 
 -- Network: remotes live in ReplicatedStorage.StormLabNet (made by the server)

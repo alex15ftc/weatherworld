@@ -17,12 +17,15 @@ import { sharedForecastPool, shareState } from './ForecastPool.js';
 // may raise the category for its day by at most one step from the last, within the caps for Days
 // 2 and 3, until the day is under way. The header above describes the earlier schedule.)
 
+// Outlook issues whose runs are kept for the model page's ensemble products.
+const ENSEMBLES_KEPT = 4;
 export class OutlookRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). days: which
   // outlooks to issue (a prefix of OUTLOOK.days). pool: the threads that do the runs.
-  constructor({ runtime, members = OUTLOOK.members, days = OUTLOOK.days, pool = sharedForecastPool() } = {}) {
-    this.runtime = runtime; this.members = members; this.days = days; this.pool = pool;
-    this.products = {}; this.history = new Map(); this.running = null; this.lastError = null; this.lastRunMs = null; this.failedKey = null;
+  // cheapPerMember: cheap runs each full run carries (OUTLOOK.cheapPerMember).
+  constructor({ runtime, members = OUTLOOK.members, cheapPerMember = OUTLOOK.cheapPerMember, days = OUTLOOK.days, pool = sharedForecastPool() } = {}) {
+    this.runtime = runtime; this.members = members; this.cheapPerMember = cheapPerMember; this.days = days; this.pool = pool;
+    this.products = {}; this.history = new Map(); this.ensembles = []; this.running = null; this.lastError = null; this.lastRunMs = null; this.failedKey = null;
   }
 
   // The issue an outlook belongs to at an hour: its update slot, counted from 12Z.
@@ -59,7 +62,7 @@ export class OutlookRuntime {
     // The copy is taken now, in one go, so every member starts from the same moment.
     const state = shareState(engine.saveState({ forecast: true }));
     // Member 0 runs furthest and is asked for first, so the long runs are not left to the end.
-    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('outlook', state, member, hoursFor(member), { options: { stormDays: stormDaysFor(member, this.members, lead) } })));
+    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('outlook', state, member, hoursFor(member), { options: { stormDays: stormDaysFor(member, this.members, lead), cheapRuns: this.cheapPerMember } })));
     this.running = { key, due, issuedHourUtc, hours, startedAt: started };
     try {
       const members = await run;
@@ -72,11 +75,18 @@ export class OutlookRuntime {
           const lastOutlook = this.history.get(validToHourUtc) ?? null, last = lastOutlook?.highest, underWay = issuedHourUtc >= validToHourUtc - 24 + OUTLOOK.nowcastAfterHours;
           const caps = [OUTLOOK.leadCaps[day], !underWay && last ? WORLD_RISK_ORDER[Math.min(WORLD_RISK_ORDER.length - 1, Math.max(WORLD_RISK_ORDER.indexOf('SLGT'), WORLD_RISK_ORDER.indexOf(last) + 1))] : null].filter(Boolean);
           const maxCategory = caps.length ? caps.reduce((a, b) => (WORLD_RISK_ORDER.indexOf(a) <= WORLD_RISK_ORDER.indexOf(b) ? a : b)) : null;
-          const outlook = combineOutlook(members.slice(0, count(day)).map(member => member[index]), { day, issuedHourUtc, validFromHourUtc, validToHourUtc, seed: engine.seed, maxCategory, regions, previous: lastOutlook, continuity: lastOutlook ? OUTLOOK.continuity[underWay ? 'underWay' : 'before'] : 0 });
+          // Each full run's day, and its cheap runs' days where they ran (the days with storms).
+          const runs = members.slice(0, count(day)).flatMap(member => [member.days[index], ...member.cheap.map(days => days[index]).filter(Boolean)]);
+          const outlook = combineOutlook(runs, { day, issuedHourUtc, validFromHourUtc, validToHourUtc, seed: engine.seed, maxCategory, regions, previous: lastOutlook, continuity: lastOutlook ? OUTLOOK.continuity[underWay ? 'underWay' : 'before'] : 0 });
           this.history.set(validToHourUtc, outlook);
           for (const ended of [...this.history.keys()]) if (ended <= issuedHourUtc) this.history.delete(ended);
           this.products[day] = { slot: this.slot(day, issuedHourUtc), engine, outlook, public: publicOutlook(outlook) };
         }
+        // Every run's storm tracks, for the model page's ensemble products (the last ENSEMBLES_KEPT issues).
+        const sets = members.flatMap((member, m) => [{ member: m, cheap: null, days: member.days }, ...member.cheap.map((days, j) => ({ member: m, cheap: j, days }))]);
+        this.ensembles = this.ensembles.filter(e => e.engine === engine && e.issuedHourUtc !== issuedHourUtc);
+        this.ensembles.push({ engine, issuedHourUtc, hours, runs: sets.map(({ member, cheap, days }) => ({ member, cheap, track: days.filter(Boolean).flatMap(d => d.stormTrack ?? []) })) });
+        while (this.ensembles.length > ENSEMBLES_KEPT) this.ensembles.shift();
         this.lastError = null; this.failedKey = null;
       }
       this.lastRunMs = Date.now() - started;
@@ -89,13 +99,20 @@ export class OutlookRuntime {
     }
   }
 
+  // The outlook runs as the model page's ensemble: the issues kept, and one issue's runs and their storms.
+  ensembleList(engine = this.runtime.engine) { return { model: 'outlook ensemble', running: this.running ? { issuedHourUtc: this.running.issuedHourUtc, hours: this.running.hours } : null, issues: this.ensembles.filter(e => e.engine === engine).map(e => ({ issuedHourUtc: e.issuedHourUtc, hours: e.hours, runs: e.runs.length, full: e.runs.filter(r => r.cheap === null).length })) }; }
+  ensembleTracks(issued, engine = this.runtime.engine) {
+    const kept = this.ensembles.filter(e => e.engine === engine), e = issued === undefined || issued === null || issued === '' ? kept.at(-1) : kept.find(k => k.issuedHourUtc === Number(issued));
+    return e ? { issuedHourUtc: e.issuedHourUtc, hours: e.hours, columns: ['hourUtc', 'storm', 'xKm', 'yKm', 'dbz', 'uh', 'tornado'], runs: e.runs } : null;
+  }
+
   // When an outlook is next issued afresh (hour UTC of the world).
   nextUpdateHourUtc(day, hourUtc) { const times = OUTLOOK.issueTimesUtc[day], dayNumber = Math.floor((hourUtc + 1e-6) / 24), within = hourUtc - 24 * dayNumber, next = times.find(t => t > within + 1e-6); return next !== undefined ? 24 * dayNumber + next : 24 * (dayNumber + 1) + times[0]; }
 
   status() {
     const engine = this.runtime.engine;
     return {
-      enabled: true, running: Boolean(this.running), runningFor: this.running?.due ?? null, members: this.members, lastRunMs: this.lastRunMs, error: this.lastError,
+      enabled: true, running: Boolean(this.running), runningFor: this.running?.due ?? null, members: this.members, cheapPerMember: this.cheapPerMember, lastRunMs: this.lastRunMs, error: this.lastError,
       days: Object.fromEntries(this.days.map(day => { const product = this.current(day, engine); return [day, product ? { issuedHourUtc: product.outlook.issuedHourUtc, validFromHourUtc: product.outlook.validFromHourUtc, validToHourUtc: product.outlook.validToHourUtc, highest: product.outlook.highest, nextUpdateHourUtc: this.nextUpdateHourUtc(day, engine.world.validHourUtc), updateHours: OUTLOOK.updateHours[day] } : null]; })),
       // Kept from when there was only Day 1.
       issuedHourUtc: this.current('day1', engine)?.outlook.issuedHourUtc ?? null, validToHourUtc: this.current('day1', engine)?.outlook.validToHourUtc ?? null, highest: this.current('day1', engine)?.outlook.highest ?? null

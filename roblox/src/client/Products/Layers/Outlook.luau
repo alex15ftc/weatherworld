@@ -118,6 +118,11 @@ function Outlook.renderOptions(self: any)
 			headline.TextColor3 = Ui.rgb(top)
 		end
 		Ui.text(self.options, `Issued {Geo.clock(product.issuedHourUtc)} · valid {Geo.clock(product.validFromHourUtc)} to {Geo.clock(product.validToHourUtc)}. Click an area for the details.`, { size = 12, colour = Ui.MUTED })
+		if product.updating then
+			Ui.text(self.options, `An updated Day {self.day} outlook is being prepared…`, { size = 13, bold = true })
+		elseif product.nextUpdateHourUtc then
+			Ui.text(self.options, `Next update {Geo.clock(product.nextUpdateHourUtc)}`, { size = 12, colour = Ui.MUTED })
+		end
 	end
 end
 

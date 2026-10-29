@@ -219,11 +219,10 @@ function NearPrecip.new(ctx)
 
 		-- extinction (1/km)
 		local ext, dust = 0, 0
-		if rain > 0.05 then
-			ext += 0.33 * rain ^ 0.66
-		end
+		-- (rain and hail through C.rainExtinction's precipitation-visibility factor; dust is not)
+		ext += C.rainExtinction(rain)
 		if hailCm > 0.3 then
-			ext += 0.8 * hailCm * math.min(1, rain / 10 + 0.3)
+			ext += 0.8 * hailCm * math.min(1, rain / 10 + 0.3) * C.frame.precipVisibility
 		end
 		if show then
 			for _, t in cw.tornadoes do

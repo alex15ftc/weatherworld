@@ -8,7 +8,7 @@
 // Local frame: +x downstream along the storm's motion, +y to the right of it.
 import { clamp } from '../scenarios/math.js';
 import { rotatingShare, lineShare } from './StormModeEngine.js';
-import { buildStormGeometry, rainOffsetInStormFrame, WALL_CLOUD } from './StormGeometry.js';
+import { buildStormGeometry, rainOffsetInStormFrame, offsetInStormFrame } from './StormGeometry.js';
 
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 // How the radar's shapes follow the geometry: a rain core's radius as a share of the core's
@@ -49,8 +49,13 @@ function buildStructure(storm, env, prior, seed, dtHours=0) {
   const along = geometry.rain.alongKm, across = geometry.rain.acrossKm, U = geometry.updraught.radiusKm;
   const rainRadius = { x: SHAPE.rainRadiusShare * along, y: SHAPE.rainRadiusShare * across };
   const mesoRadius = clamp(SHAPE.mesoShare * U, 1.5, 4);
-  // The rotation's place: under the wall cloud, behind and to the right (left for a left-mover).
-  const side = storm.leftMover ? -1 : 1, rotation = { x: -WALL_CLOUD.back * U, y: side * WALL_CLOUD.right * U };
+  // The storm grows from its mesocyclone: the rotation (wall cloud, couplet, hook centre) is the
+  // origin, and the updraught leans downshear from it (StormGeometry). Bearings below are from
+  // the mesocyclone, clockwise from the storm's motion (RESEARCH-SUPERCELL-LAYOUT).
+  const side = storm.leftMover ? -1 : 1, rotation = { x: 0, y: 0 };
+  const core = offsetInStormFrame(storm, geometry.updraught);
+  // Where the tornado is while one is down (it drifts left-rear of the mesocyclone as the storm occludes).
+  const tornadoAt = geometry.tornado ? offsetInStormFrame(storm, geometry.tornado) : rotation;
   // A line: as long as the storm's share of the line, its leading rain several km deep.
   const lineLength = 2 * Math.max(SHAPE.minLineHalfKm, geometry.line.halfLengthKm), lineWidth = 8 + 6 * clamp(precipEff, 0, 1);
   const shieldDepth = 12 + 35 * system;
@@ -65,14 +70,18 @@ function buildStructure(storm, env, prior, seed, dtHours=0) {
   const features = [];
   if (asSupercell > .05) {
     features.push(lobe('forwardFlank', flank.x, flank.y, rainRadius.x, rainRadius.y, (.2+.75*precipEff)*asSupercell, downwindDeg, {rain:.86,ice:.2,graupel:.16}));
-    // The updraught's core lies on the side away from the rotation, so the hook stands clear of it.
-    features.push(lobe('updraftCore', .1*U, -.25*U*side, .32*U, .36*U,(.6+.38*updraft)*asSupercell, -8, {rain:.18,ice:.55,graupel:.48,hail:.25*hail,vertical:updraft}));
-    features.push(lobe('hailCore', flank.x*.3+.1*U, flank.y*.3-.2*U*side, Math.max(1.5,.5*geometry.hail.radiusKm), Math.max(1.8,.6*geometry.hail.radiusKm),hail*asSupercell, 6, {rain:.24,ice:.44,graupel:.68,hail:.9*hail,vertical:updraft*.75}));
+    // The updraught's core: ahead of the mesocyclone where the column leans (the BWER and the
+    // highest tops above it), on the side away from the rotation so the hook stands clear of it.
+    features.push(lobe('updraftCore', core.x+.1*U, core.y-.25*U*side, .32*U, .36*U,(.6+.38*updraft)*asSupercell, -8, {rain:.18,ice:.55,graupel:.48,hail:.25*hail,vertical:updraft}));
+    // The hail core hugs the updraught's forward-left edge (-100..-20 deg from the mesocyclone).
+    features.push(lobe('hailCore', core.x+(flank.x-core.x)*.3+.1*U, core.y+(flank.y-core.y)*.3-.2*U*side, Math.max(1.5,.5*geometry.hail.radiusKm), Math.max(1.8,.6*geometry.hail.radiusKm),hail*asSupercell, 6, {rain:.24,ice:.44,graupel:.68,hail:.9*hail,vertical:updraft*.75}));
+    // The rear-flank downdraught: behind the mesocyclone and a little left (~210 deg, 1-5 km).
     features.push(lobe('rearFlank', rotation.x-.55*U, rotation.y-.3*U*side, .4*U, .4*U,(.3+.42*cold)*asSupercell, 22, {rain:.5,graupel:.16,downdraft:cold}));
     // The hook curls round the rotation, further round as the storm occludes.
     features.push({type:'hookArc', centerXKm:rotation.x, centerYKm:rotation.y, radiusKm:1.2*mesoRadius, thicknessKm:Math.max(1.2,.35*mesoRadius), startDeg:120, endDeg:300+60*occlusion, intensity:hookStrength, rain:.68, graupel:.25, age:phase});
-    // The inflow notch sits on the right flank between the forward flank and the hook.
-    features.push(lobe('inflowNotch', rotation.x+.75*U, rotation.y+.35*U*side, .6*U, .5*U,clamp(.45+.4*org,0,1)*asSupercell, 18, {subtractRain:.75,inflow:org}));
+    // The inflow notch sits on the right flank between the forward flank and the hook, opening to
+    // the right-front of the mesocyclone (+30..+120 deg, 2-8 km).
+    features.push(lobe('inflowNotch', rotation.x+.6*U, rotation.y+.55*U*side, .6*U, .5*U,clamp(.45+.4*org,0,1)*asSupercell, 18, {subtractRain:.75,inflow:org}));
   }
   if (asLine > .05) {
     // The line bows forward where air from aloft is driven down behind it.
@@ -87,8 +96,8 @@ function buildStructure(storm, env, prior, seed, dtHours=0) {
     }
   }
   if (asCell > .05) features.push(lobe('cellCore', flank.x*.4, flank.y*.4, rainRadius.x, rainRadius.y, (.2+.7*precipEff)*asCell, downwindDeg, {rain:.72,ice:.2,graupel:.22,hail:.15*hail,vertical:updraft*.6}));
-  // Debris where the tornado is: under the wall cloud.
-  if (tornadoActive) features.push(lobe('debris', rotation.x, rotation.y, 1.2, 1.2, clamp(.35+.65*tornadoIntensity,0,1.2), 0, {debris:clamp(.5+.5*tornadoIntensity,0,1.2),rotation:1.2*tornadoIntensity}));
+  // Debris where the tornado is: under the wall cloud, or where it has drifted to.
+  if (tornadoActive) features.push(lobe('debris', tornadoAt.x, tornadoAt.y, 1.2, 1.2, clamp(.35+.65*tornadoIntensity,0,1.2), 0, {debris:clamp(.5+.5*tornadoIntensity,0,1.2),rotation:1.2*tornadoIntensity}));
 
   // How far the picture reaches from the storm's centre (km), for whatever draws it.
   const reachKm = features.reduce((most, f) => Math.max(most, f.type === 'hookArc' ? Math.hypot(f.centerXKm, f.centerYKm) + f.radiusKm + 3 * f.thicknessKm

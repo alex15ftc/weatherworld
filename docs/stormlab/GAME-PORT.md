@@ -23,10 +23,11 @@ weather engine (Node)                      game server (Roblox)                 
   - **engine** (a feed URL is set):
     - On start, it fetches the window round the place's start point and spins it up.
     - Every 25 s it polls the storms:
-      - each lab storm's position moves a third of the way toward its engine storm, and its motion, updraft and rotation are pulled toward the engine's;
+      - each lab storm closes the gap to its engine storm smoothly over ~8 s (the engine's position carried on along its motion from the engine's storm clock to the lab's, `r.simHourUtc`), its motion target is the engine's (`engineU/V`, Storm.step), and its updraft and rotation are pulled toward the engine's (2026-10-28; it was a 35% jump each poll, which made tornadoes lurch);
       - new engine storms are added, and storms the engine drops die;
       - a tornado starts when the engine has one and winds down when it doesn't (the lab's own initiation and genesis are off);
       - the soundings are refetched every 30 min.
+      - a new window is built back along the storms' motion by the spin-up time, so the spun-up storms are where the engine's are; live tornadoes carry over into it under the same engine storms.
   - **lab** (no URL, or Workspace attribute `StormSource = "lab"`): runs a lab scenario (`StormHostScenario`, default Supercell) set down at the start point. Use it for Studio without the engine.
   - **In both modes:**
     - The simulation runs at the 12x clock with a 3 ms/frame slow-step budget.

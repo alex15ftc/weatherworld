@@ -22,7 +22,7 @@ place, weather that is never interesting. Players notice those long before a 2 K
 
 1. **One shared world.** One engine runs the weather and every Roblox server shows it. Nothing is per-player or painted
    on.
-2. **A 12x clock.** A game day is 2 real hours, so a 2-hour supercell lasts 10 real minutes.
+2. **An 8x clock** (12x until 2026-10-29). A game day is 3 real hours, so a 2-hour supercell lasts 15 real minutes.
    - Storms are deliberately long-lived: supercells often last 4-9 hours of game time, against 1-4 in reality, so players
      can chase them.
    - Do not count long lifetimes, or the long tracks and larger report totals they bring, as errors.

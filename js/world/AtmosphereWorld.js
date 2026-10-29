@@ -49,12 +49,18 @@ export class AtmosphereWorld {
   // Pass `model` to share an already spun-up outer model (it is advanced by this world).
   // steering: settings for RegionSteering, or false to keep the region where it starts.
   // plan: false leaves the first steering plan unmade (a restored world is given its saved one).
-  constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {}, plan = true } = {}) {
+  // warmUpHours: hours the regional layer and the steering run, without storms, before the world's
+  // first hour (12Z), so that its first day starts from weather the steering has already brought over
+  // the map. (2026-10-28: without it a new world's first day began from the outer model's air alone,
+  // far from the system aimed at, and went without a tornado on half the seeds.) Not for a restored world
+  // or one without steering.
+  constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {}, plan = true, warmUpHours = 24 } = {}) {
     this.seed = seed;
     // (A spin-up already run for this seed is read back from disk: spinUpCache.node.js.)
     this.model = model ?? spunUpModel({ seed }, spinUpDays * 86400);
     // Soundings are computed here, after the storms' own cooling has been put back in.
-    this.regional = new RegionalAtmosphere(this.model, { ...regional, diagnostics: false });
+    const warmUp = plan && steering ? Math.max(0, warmUpHours) : 0;
+    this.regional = new RegionalAtmosphere(this.model, { ...regional, diagnostics: false, ...(warmUp ? { startHourUtc: 12 - warmUp } : {}) });
     const world = this.world = this.regional.world, n = world.width * world.height;
     world.evolution = { config: { seed } };
     world.runtime = { profile: { name: 'atmosphere-world', stormSubstepsPerHour: 12, verification: false } };
@@ -70,11 +76,13 @@ export class AtmosphereWorld {
       this.slopeVersion = this.regional.geographyVersion;
     };
     this.updateSlopes();
-    this.stormsEnabled = storms;
+    this.stormsEnabled = false;
     this.boundaries = [];
     this.steering = steering ? new RegionSteering(this.regional, seed, steering) : null;
     if (plan) this.steering?.update();
     this.prepare(0);
+    if (warmUp) this.advance(warmUp);
+    this.stormsEnabled = storms;
     if (storms) initializeStormEngine(world);
   }
 

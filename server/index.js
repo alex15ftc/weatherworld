@@ -4,10 +4,12 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { WeatherAuthorityRuntime } from './WeatherAuthorityRuntime.js';
+import { WeatherAuthorityRuntime, SIM_HOURS_PER_REAL_MINUTE } from './WeatherAuthorityRuntime.js';
 import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
+import { ShortRangeRuntime } from './ShortRangeRuntime.js';
+import { countiesFor } from './CountyLayer.js';
 import { WarningRuntime } from './WarningRuntime.js';
 import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
@@ -32,7 +34,7 @@ const radarPool = process.env.WEATHER_RADAR_WORKERS === '0' ? null : new RadarPo
 // WEATHER_DAY_REVIEW_DAYS (14) are kept.
 const dayReviews = process.env.WEATHER_DAY_REVIEWS === 'off' ? null : { dir: path.resolve(ROOT, process.env.WEATHER_DAY_REVIEW_DIR ?? 'data/day-reviews/live'), png: process.env.WEATHER_DAY_REVIEW_PNG === 'on', keepDays: Number(process.env.WEATHER_DAY_REVIEW_DAYS) || 14 };
 const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool, dayReviews });
-const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine });
+const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine, simHoursPerRealMinute: SIM_HOURS_PER_REAL_MINUTE });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
 const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined });
@@ -44,13 +46,16 @@ const mesoscale = process.env.WEATHER_MESOSCALE === 'off' ? null : new Mesoscale
 // Tornado and severe thunderstorm warnings: worked out at every volume scan from the storms as
 // the radar sees them (WEATHER_WARNINGS=off turns them off).
 const warnings = process.env.WEATHER_WARNINGS === 'off' ? null : new WarningRuntime({ runtime });
+// The short range model: a run at each whole simulated hour, for the model page (ShortRangeRuntime.js;
+// WEATHER_SHORT_RANGE=off turns it off).
+const shortRange = process.env.WEATHER_SHORT_RANGE === 'off' ? null : new ShortRangeRuntime({ runtime });
 // Storm reports and damage surveys, from the live world's daily storm log (ReportsRuntime.js).
 const reports = new ReportsRuntime({ runtime });
 // The products as the Roblox place draws them (GameProducts.js).
 const gameProducts = new GameProducts({ runtime, outlooks, mesoscale, warnings, reports });
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
-const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); };
+const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); };
 outlooks?.maybeIssue();
 setInterval(issueProducts, 5_000).unref();
 // Often enough that a storm tick is worked out within a couple of seconds of falling due: the
@@ -81,6 +86,23 @@ async function serveApi(url, req, res) {
   if (url.pathname.startsWith('/api/atmosphere/') && surface.atmosphere !== runtime.engine) surface.attach(runtime.engine);
   if (url.pathname === '/api/atmosphere/surface') return sendJson(req, res, 200, { ...surface.analysis(url.searchParams.get('frame')), clockRunning: runtime.autoAdvance }, { cacheable: false, trace });
   if (url.pathname === '/api/atmosphere/parameter') { const field = surface.parameter(url.searchParams.get('key'), url.searchParams.get('frame')); return sendJson(req, res, field ? 200 : 404, field ?? { error: 'Unknown parameter' }, { cacheable: Boolean(field), trace }); }
+  // The short range model's runs (ShortRangeRuntime.js): the list; a run's description (?init=, the newest
+  // without); one hour's field (?init&hour&key); the storms at a minute (?init&minute); the tracks (?init).
+  if (url.pathname.startsWith('/api/models/short-range/')) {
+    const q = name => url.searchParams.get(name), part = url.pathname.slice('/api/models/short-range/'.length);
+    if (!shortRange) return sendJson(req, res, 404, { error: 'The short range model is off' }, { cacheable: false, trace });
+    const value = part === 'runs' ? shortRange.list() : part === 'run' ? shortRange.meta(q('init')) : part === 'field' ? shortRange.field(q('init'), q('hour'), q('key')) : part === 'storms' ? shortRange.storms(q('init'), q('minute')) : part === 'tracks' ? shortRange.tracks(q('init')) : undefined;
+    return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
+  }
+  // The outlook runs as an ensemble (OutlookRuntime.js): the issues kept, and one issue's storm tracks (?issued=).
+  if (url.pathname === '/api/models/ensemble/runs') return sendJson(req, res, outlooks ? 200 : 404, outlooks ? outlooks.ensembleList() : { error: 'Outlooks are off' }, { cacheable: false, trace });
+  if (url.pathname === '/api/models/ensemble/tracks') { const value = outlooks?.ensembleTracks(url.searchParams.get('issued')); return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace }); }
+  // The counties and towns for the model page's base map (miles from the north-west corner).
+  if (url.pathname === '/api/map/counties') {
+    const layer = countiesFor(runtime.engine?.world);
+    if (!layer) return sendJson(req, res, 404, { error: 'No counties' }, { cacheable: false, trace });
+    return sendJson(req, res, 200, { miles: layer.miles, counties: layer.counties.map(c => ({ name: c.name, rings: c.rings })), towns: layer.towns.map(t => ({ name: t.name, kind: t.kind, x: t.x, y: t.y, population: t.population })) }, { trace });
+  }
   if (url.pathname === '/api/live/metadata') return sendJson(req, res, 200, runtime.metadata(), { trace });
   if (url.pathname === '/api/live/field') return sendJson(req, res, 200, runtime.liveField(url.searchParams.get('product') ?? 'temperature'), { trace });
   if (url.pathname === '/api/live/boundaries') return sendJson(req, res, 200, runtime.boundaries(), { trace });

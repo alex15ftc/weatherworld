@@ -8,6 +8,7 @@
 // storms every 5 minutes; --half-hour steps everything by half hours as before 2026-10-16 (pulse
 // storms live under an hour; on 80 days the two gave 14% and 15% quiet days).
 import { fork } from 'node:child_process';
+import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';
 import { fileURLToPath } from 'node:url';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
@@ -30,7 +31,7 @@ async function worker(seed) {
   // Hail and wind as reports (as the outlooks are verified; truth.js captureTruth).
   const { placesFor } = await import('../server/CountyLayer.js');
   const { buildStormAppearance, tornadoAppearance } = await import('../js/storms/StormAppearance.js');
-  const { worldCategoryFromHazard } = await import('../js/forecast/worldRiskCategories.js');
+  const { worldCategoryFromHazard, PROBABILITY_LEVELS } = await import('../js/forecast/worldRiskCategories.js');
   // Each tornado (storm and cycle): its look at its peak wind and its rating (EF from the rated wind).
   const looks = new Map();
   const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : 0);
@@ -73,7 +74,7 @@ async function worker(seed) {
           let look = looks.get(key);
           if (!look) { look = { startHourUtc: world.stormEngine.validHourUtc ?? world.validHourUtc, peak: -1, ef: 0 }; looks.set(key, look); record.tornadoKeys.push(key); }
           look.ef = Math.max(look.ef, efOf(s.tornado.ratedWindMph ?? s.tornado.peakWindSpeedMph ?? wind));
-          look.windEf = Math.max(look.windEf ?? 0, efOf(s.tornado.peakWindSpeedMph ?? wind));
+          look.windEf = Math.max(look.windEf ?? 0, efOf(s.tornado.peakWindSpeedMph ?? wind)); look.km = Math.max(look.km ?? 0, s.tornado.pathLengthKm ?? 0); look.min = Math.max(look.min ?? 0, s.tornado.groundTimeMinutes ?? 0);
           if (wind > look.peak) { const t = tornadoAppearance(s, buildStormAppearance(s)); if (t) { look.peak = wind; look.shape = t.shape; look.multi = t.vortices > 1; look.wrapped = (t.rainWrap ?? 0) >= 0.55; } }
         }
         if ((halfHour || step % 6 === 5) && (s.intensity ?? 0) >= 0.22) record.speeds.push(Math.hypot(s.velocityKph?.east ?? 0, s.velocityKph?.north ?? 0) * 0.621371);
@@ -86,7 +87,7 @@ async function worker(seed) {
         record.cape = median(unstable.map(c => c.derived.sounding.mlcape)); record.shear = median(unstable.map(c => c.derived.bulkShear)); record.wind500 = median(unstable.map(c => c.levels[500].windSpeed));
       }
     }
-    const truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+    const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
     const order = truth.risk.map(r => ORDER.indexOf(r)), share = level => order.filter(o => o >= ORDER.indexOf(level)).length / n, any = field => truth[`${field}Exact`].some(Boolean);
     daily.push({
       seed, day: day + 1, support: plan?.support ?? null, wanted: plan?.wanted ?? null, slideMs: plan?.slideMs ?? null, storms: seen.size, peak: record.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore,
@@ -94,9 +95,11 @@ async function worker(seed) {
       severe: any('hail') || any('wind') || any('tornado'), tornado: any('tornado'), sigTornado: any('tornadoSig'), sigHail: any('hailSig'), sigWind: any('windSig'),
       category: ORDER[Math.max(...order)], worldCategory: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))], worldSlightArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('SLGT')).length / n, worldEnhancedArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('ENH')).length / n, slightArea: share('SLGT'), enhancedArea: share('ENH'), cape: record.cape, shear: record.shear, wind500: record.wind500,
       supercell: record.supercell, groundSupercell: record.groundSupercell, supercells: record.supercellIds?.size ?? 0, groundSupercells: [...(record.groundSupercellIds ?? [])], afternoonSupercell: record.afternoonSupercell, supercellBands: [...(record.supercellBands ?? [])],
-      tornadoList: record.tornadoKeys.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.startHourUtc, ef: l.ef, windEf: l.windEf ?? l.ef, shape: l.shape ?? 'unseen', multi: Boolean(l.multi), wrapped: Boolean(l.wrapped) }; }),
+      tornadoList: record.tornadoKeys.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.startHourUtc, ef: l.ef, windEf: l.windEf ?? l.ef, km: Math.round(l.km ?? 0), minutes: Math.round(l.min ?? 0), shape: l.shape ?? 'unseen', multi: Boolean(l.multi), wrapped: Boolean(l.wrapped) }; }),
       // What drives the day's category: the category each hazard alone reaches somewhere, and the
       // highest intensity group each verified with.
+      // For each hazard and contour level, the highest intensity group inside it (-1: not reached), so other tables can be judged offline.
+      reached: Object.fromEntries(['tornado', 'wind', 'hail'].map(h => { const levels = PROBABILITY_LEVELS[h], r = levels.map(() => -1); for (let i = 0; i < n; i++) { const k = levels.indexOf(truth.observedProbability[h][i]); if (k >= 0) r[k] = Math.max(r[k], truth.observedCig[h][i]); } return [h, r]; })),
       byHazard: Object.fromEntries(['tornado', 'wind', 'hail'].map(h => { let top = 0; for (let i = 0; i < n; i++) { const c = worldCategoryFromHazard(h, truth.observedProbability[h][i], truth.observedCig[h][i]); if (c) top = Math.max(top, ORDER.indexOf(c)); } return [h, { top, cig: Math.max(0, ...truth.observedCig[h]) }]; })),
       stormMph: record.speeds.length ? record.speeds.sort((a, b) => a - b)[Math.floor(record.speeds.length / 2)] : null
     });
@@ -165,6 +168,8 @@ async function main() {
     console.log(`  tornadoes (${tor.length}): ${[0, 1, 2, 3, 4, 5].map(e => `EF${e} ${(100 * (efs['EF' + e] ?? 0) / Math.max(1, tor.length)).toFixed(1)}%`).join('  ')}   [US record 2008-22 about EF0 52%, EF1 35%, EF2 9%, EF3 2.4%, EF4 0.45%, EF5 0.05%]`);
     console.log(`  their peak wind on the same scale (what a radar would measure near the ground): ${[0, 1, 2, 3, 4, 5].map(e => `EF${e} ${(100 * (windEfs['EF' + e] ?? 0) / Math.max(1, tor.length)).toFixed(1)}%`).join('  ')}   [mobile radar: about 1-1.5 categories above the ratings, EF4+ winds in roughly 10-20% of supercell tornadoes]
   their look at peak wind: ${Object.entries(shapes).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(100 * v / Math.max(1, tor.length))}%`).join(', ')} | multi-vortex ${Math.round(100 * tor.filter(t => t.multi).length / Math.max(1, tor.length))}%, rain-wrapped ${Math.round(100 * tor.filter(t => t.wrapped).length / Math.max(1, tor.length))}%`);
+    { const km = tor.map(t => t.km ?? 0).sort((x, y) => x - y), q = f => (km.length ? km[Math.floor(f * (km.length - 1))] : 0), long = tor.filter(t => (t.km ?? 0) >= 40);
+      console.log(`  track length: median ${(q(0.5) / 1.609).toFixed(1)} mi, 90th ${(q(0.9) / 1.609).toFixed(1)} mi | 25+ mi tracks: ${long.length} (${(100 * long.length / Math.max(1, tor.length)).toFixed(1)}%), of them EF2+ ${long.filter(t => t.ef >= 2).length} | days with a 25+ mi EF2+ tornado: ${share(d => d.tornadoList.some(t => (t.km ?? 0) >= 40 && t.ef >= 2))}`); }
     for (const e of [0, 1, 2, 3, 4, 5]) { const these = tor.filter(t => t.ef === e); if (!these.length) continue; const sh = {}; for (const t of these) sh[t.shape] = (sh[t.shape] ?? 0) + 1; console.log(`    EF${e} (${these.length}): ${Object.entries(sh).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(100 * v / these.length)}%`).join(', ')}`); }
   }
   console.log(`days with: 1 in hail ${share(d => d.hailStorms > 0)}, 58 mph wind ${share(d => d.windStorms > 0)}, a tornado ${share(d => d.tornado)}, 2 in hail ${share(d => d.sigHail)}, 75 mph wind ${share(d => d.sigWind)}, a tornado rated EF2+ ${share(d => d.sigTornado)}, a tornado with EF2+ winds ${share(d => d.maxWindEf >= 2)}`);

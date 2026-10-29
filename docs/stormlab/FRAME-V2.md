@@ -41,7 +41,7 @@ On the wire, a frame is `{ k = kind, t = sim time (s), a = { arguments }, n = #a
 
   `Storm.snapshot` sends more; the radar, map and labels use some of the extra fields.
 - **Profile:** `id, version, wprof` (65 normalised levels), `tiltX, tiltY`. `Storm.windAt` and the card layout need it.
-- **Tornado** (live): `id, parentId, x, y, ut, vt, envU, envV, vc, rc, swirl, inflow, cloudBase, topX, topY, bendX, bendY, wave, seed, time, O, decay, stage, ef, peakWind, hold, debrisLoft, debrisTop`.
+- **Tornado** (live): `id, parentId, x, y, ut, vt, envU, envV, vc, rc, swirl, inflow, cloudBase, topX, topY, bendX, bendY, wave, seed, time, O, decay, stage, ef, peakWind, hold, debrisLoft, debrisTop`. Optional `orbit` (rad): the sub-vortices' integrated orbit angle (Vortex uses it over `sOrbit x time`, which jumped whenever vc or rc changed).
 - **State:** `time, clockUtc, storms, systems` (`{systems, vortices, fronts}`), `boundaries`.
 
 The client rebuilds the wind (`World.windAt`) from the environment soundings, the cold pool, the storms with their profiles, and the tornadoes. Because nothing else is needed, every client sees the same air motion from the same frames.

@@ -271,12 +271,11 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 			local d = math.sqrt((x - cx) ^ 2 + (y - cy) ^ 2)
 			local n = math.clamp(math.floor(d / 1500), 2, 10)
 			local tau = 0
+			local step = C.sightPath(0.85 * d / n) / 1000 -- (km of drawn sight line a sample)
 			for i = 1, n do
 				local f = 0.85 * (i - 0.5) / n
 				local r = Precip.surface(vol, cx + (x - cx) * f, cy + (y - cy) * f) or 0
-				if r > 0.05 then
-					tau += 0.33 * r ^ 0.66 * (0.85 * d / n) / 1000
-				end
+				tau += C.rainExtinction(r) * step
 			end
 			sh.fog = math.clamp(1 - math.exp(-tau), 0, 0.97)
 		end

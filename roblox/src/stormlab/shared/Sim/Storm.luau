@@ -506,13 +506,23 @@ function Storm.step(s: Storm, dt: number, world: any)
 		s.rfd *= exp(-dt / 300)
 		s.vmid *= exp(-dt / 900)
 		s.vlow *= exp(-dt / 300)
-		s.x += s.u * dt
-		s.y += s.v * dt
+		if not world.holdStill then
+			s.x += s.u * dt
+			s.y += s.v * dt
+		end
 		Storm.prepare(s)
 		return
 	end
 	if s.envAge > 30 then
 		Storm.environment(s, world)
+	end
+	-- a storm the weather engine drives (the game: server/StormHost): its position, motion,
+	-- updraft, size, rotation and occlusion are the engine's (Storm.followEngine); only what is
+	-- drawn from them (rain, downdrafts, outflow, wall cloud, anvil, hail, lightning) is worked
+	-- out here. own: the lab's own dynamics run (lab scenarios)
+	local own = s.eng == nil
+	if not own then
+		Storm.followEngine(s, dt, world)
 	end
 	local env, cp = world.env, world.coldPool
 	local ix, iy = inflowPoint(s, env)
@@ -541,40 +551,42 @@ function Storm.step(s: Storm, dt: number, world: any)
 	local loadF = 1 / (1 + 0.35 * s.loading)
 	local Wt = eta * sqrt(2 * math.max(0, s.cape)) * inhib * balance * loadF * (1 + 0.12 * s.rot)
 	local tau = if Wt > s.W then 360 else 600
-	s.W += (Wt - s.W) * (1 - exp(-dt / tau))
-	-- updraft width: grows with rotation and shear, toward a target over ~15 min
-	-- (e-folding radius: a supercell's w > 10 m/s core ends up ~8-10 km across)
-	local Rt = 1100 + 1700 * s.rot + 700 * ramp(s.shear06, 10, 30) + 600 * ramp(s.cape, 500, 3500)
-	if s.W < 6 then
-		Rt = math.min(Rt, 1800)
-	end
-	s.Ru += (Rt - s.Ru) * (1 - exp(-dt / 900))
+	if own then
+		s.W += (Wt - s.W) * (1 - exp(-dt / tau))
+		-- updraft width: grows with rotation and shear, toward a target over ~15 min
+		-- (e-folding radius: a supercell's w > 10 m/s core ends up ~8-10 km across)
+		local Rt = 1100 + 1700 * s.rot + 700 * ramp(s.shear06, 10, 30) + 600 * ramp(s.cape, 500, 3500)
+		if s.W < 6 then
+			Rt = math.min(Rt, 1800)
+		end
+		s.Ru += (Rt - s.Ru) * (1 - exp(-dt / 900))
 
-	-- motion: mean wind + rotation-driven deviation (Bunkers), relaxing over ~10 min
-	local tu, tv = s.meanU, s.meanV
-	if s.leftMover then
-		tu += s.rot * s.leftU
-		tv += s.rot * s.leftV
-	else
-		tu += s.rot * s.devU
-		tv += s.rot * s.devV
-	end
-	-- cells caught by a line's gust front ride with it (Systems sets lineU/V)
-	if s.lineU then
-		local share = s.lineShare or 0
-		tu += (s.lineU - tu) * share
-		tv += (s.lineV - tv) * share
-	end
-	s.u += (tu - s.u) * (1 - exp(-dt / 600))
-	s.v += (tv - s.v) * (1 - exp(-dt / 600))
-	s.x += s.u * dt
-	s.y += s.v * dt
+		-- motion: mean wind + rotation-driven deviation (Bunkers), relaxing over ~10 min
+		local tu, tv = s.meanU, s.meanV
+		if s.leftMover then
+			tu += s.rot * s.leftU
+			tv += s.rot * s.leftV
+		else
+			tu += s.rot * s.devU
+			tv += s.rot * s.devV
+		end
+		-- cells caught by a line's gust front ride with it (Systems sets lineU/V)
+		if s.lineU then
+			local share = s.lineShare or 0
+			tu += (s.lineU - tu) * share
+			tv += (s.lineV - tv) * share
+		end
+		s.u += (tu - s.u) * (1 - exp(-dt / 600))
+		s.v += (tv - s.v) * (1 - exp(-dt / 600))
+		s.x += s.u * dt
+		s.y += s.v * dt
 
-	-- mid-level mesocyclone from storm-relative helicity (signed: left movers spin anticyclonic)
-	local srh3 = s.srh03 * (if s.leftMover then -1 else 1)
-	local Vm = 1.15 * sqrt(math.max(0, srh3)) * math.clamp(s.W / 30, 0, 1.3)
-	s.vmid += (Vm - s.vmid) * (1 - exp(-dt / 600))
-	s.rot = ramp(s.vmid, 7, 17)
+		-- mid-level mesocyclone from storm-relative helicity (signed: left movers spin anticyclonic)
+		local srh3 = s.srh03 * (if s.leftMover then -1 else 1)
+		local Vm = 1.15 * sqrt(math.max(0, srh3)) * math.clamp(s.W / 30, 0, 1.3)
+		s.vmid += (Vm - s.vmid) * (1 - exp(-dt / 600))
+		s.rot = ramp(s.vmid, 7, 17)
+	end
 
 	-- low-level mesocyclone
 	local lx, ly = Storm.lowMesoAt(s)
@@ -600,7 +612,9 @@ function Storm.step(s: Storm, dt: number, world: any)
 	-- cut off from warm inflow and weakens
 	local fOcc = (1 + 0.5 * math.sin(math.pi * s.occl)) * (1 - 0.7 * ramp(s.occl, 0.8, 1))
 	local Vl = (Venv + Vbc + Vbnd) * fCold * fOcc * s.rot
-	s.vlow += (Vl - s.vlow) * (1 - exp(-dt / (if Vl > s.vlow then 360 else 240)))
+	if own then
+		s.vlow += (Vl - s.vlow) * (1 - exp(-dt / (if Vl > s.vlow then 360 else 240)))
+	end
 
 	-- downdrafts: the FFD from the precipitation falling out downwind; the RFD forced by the
 	-- low-level circulation's pressure field plus precipitation wrapping round the hook
@@ -617,15 +631,18 @@ function Storm.step(s: Storm, dt: number, world: any)
 	-- the RFD gust front wraps round the low meso: occlusion, then a new circulation forms
 	-- (~45-60 min a cycle for a strong rear-flank downdraft: Burgess et al. 1982 / Adlerman &
 	-- Droegemeier 2005, 40-90 min; docs/stormlab/RESEARCH-SUPERCELL-LIFECYCLE.md)
-	s.occl += dt * (s.rfd / 10) * s.rot / 2000
-	-- (occluding, the old low meso drifts to the left-rear of the updraft, into the cold
-	-- outflow; the next one forms back at the rear edge, right-front of the old)
-	s.lowAngle = 2.75 - 1.0 * s.occl
-	if s.occl >= 1 then
-		s.occl = 0
-		s.cycle += 1
-		s.vlow *= 0.35
-		s.lowAngle = 2.75
+	-- (an engine storm's occlusion is the engine's: Storm.followEngine)
+	if own then
+		s.occl += dt * (s.rfd / 10) * s.rot / 2000
+		-- (occluding, the old low meso drifts to the left-rear of the updraft, into the cold
+		-- outflow; the next one forms back at the rear edge, right-front of the old)
+		s.lowAngle = 2.75 - 1.0 * s.occl
+		if s.occl >= 1 then
+			s.occl = 0
+			s.cycle += 1
+			s.vlow *= 0.35
+			s.lowAngle = 2.75
+		end
 	end
 
 	-- wall cloud: the rotating updraft ingests some rain-cooled forward-flank outflow, and the
@@ -695,8 +712,9 @@ function Storm.step(s: Storm, dt: number, world: any)
 	end
 	s.lightning = math.clamp(6.75e-11 * vol - 13.9, 0, 140)
 
-	-- tornado genesis potential: near-ground stretching of the low-level circulation
-	if not s.tornado then
+	-- tornado genesis potential: near-ground stretching of the low-level circulation (an engine
+	-- storm's tornadoes are the engine's)
+	if own and not s.tornado then
 		local rlow = 0.3 * ru
 		local zeta = 2 * math.abs(s.vlow) / rlow
 		local gamma = (zeta * stretch) / (0.02 * 0.02)
@@ -708,8 +726,8 @@ function Storm.step(s: Storm, dt: number, world: any)
 		s.G = math.max(0, s.G + (drive + wobble - 0.8) * dt / 300)
 	end
 
-	-- weakening and death
-	if s.W < 3 and s.age > 900 then
+	-- weakening and death (an engine storm dies when the engine drops it: server/StormHost)
+	if own and s.W < 3 and s.age > 900 then
 		s.weakFor += dt
 	else
 		s.weakFor = 0
@@ -952,8 +970,12 @@ function Storm.fromSnapshot(snap: { [string]: any }): Storm
 	return snap :: any
 end
 
--- A storm from the engine's storm object (scripts/export-lab-scenario.mjs)
-function Storm.fromEngine(e: any): Storm
+-- A storm from the engine's storm object (scripts/export-lab-scenario.mjs, the game's lab window).
+-- follow: the engine drives it from now on (Storm.setEngine; the game's engine mode and the lab's
+-- engine mode: Sim/EngineFollow); otherwise the engine's state only starts it and the lab's own
+-- dynamics (motion, rotation, occlusion cycles, genesis, decay) run it. (2026-10-29: it always
+-- followed since 2026-10-28, which froze every lab scenario storm at its first engine state.)
+function Storm.fromEngine(e: any, follow: boolean?): Storm
 	local feed = e.feed
 	local s = Storm.new({
 		engineId = e.id,
@@ -970,7 +992,92 @@ function Storm.fromEngine(e: any): Storm
 		seed = tonumber(string.sub(e.id, 2)) or 1,
 	})
 	s.rot = ramp(s.vmid, 7, 17)
+	if follow then
+		Storm.setEngine(s, e, e.pos[1], e.pos[2], 0)
+		s.engOX, s.engOY = 0, 0
+	end
 	return s
+end
+
+-- How long a jump between the engine's updates is eased away over (sim s; 60 = 5 s at the 12x clock)
+local ENGINE_EASE = 60
+
+-- The weather engine's latest word on a storm (server/StormHost, each poll; Storm.fromEngine):
+-- where it is at lab time `at` (lab metres), its motion, updraft, size, rotation and occlusion.
+-- Storm.step then follows it exactly (Storm.followEngine). Where the storm is drawn jumps by the
+-- difference between this update and where the last one had carried it; that is eased away.
+function Storm.setEngine(s: any, e: any, x: number, y: number, at: number)
+	local old = s.eng
+	if old then
+		-- (drawn now minus the new update's position now)
+		s.engOX = (s.engOX or 0) + (old.x + old.u * (at - old.at)) - x
+		s.engOY = (s.engOY or 0) + (old.y + old.v * (at - old.at)) - y
+	end
+	local feed = e.feed
+	-- the low-level circulation: the engine's index, or - while the engine has a tornado under the
+	-- storm - what a tornado that strong needs under it (Tornado: supply > 6 m/s), so the wall
+	-- cloud, RFD and hook look the part (the index alone, 0.02-0.25 under the engine's
+	-- tornadoes, is only 0.4-4.5 m/s)
+	local vlow = 18 * math.clamp(e.lowRotation, 0, 1.2)
+	if e.tornado then
+		vlow = math.max(vlow, 8 + 0.06 * (e.tornado.mph or 0))
+	end
+	s.eng = {
+		x = x, y = y, at = at, u = e.motion[1], v = e.motion[2],
+		W = math.clamp(e.updraftMs * 0.8, 5, 60),
+		Ru = if feed and feed.updraft then math.clamp(feed.updraft.radiusKm * 1000 * 0.45, 1500, 7000) else s.Ru,
+		vmid = 20 * math.clamp(e.meso, 0, 1.2),
+		vlow = vlow,
+		occl = math.clamp(e.occlusion or 0, 0, 0.999),
+		-- the engine's tornado relative to its storm (same snapshot): the low-level circulation
+		-- stands over it
+		torDX = if e.tornado and e.tornado.pos then e.tornado.pos[1] - e.pos[1] else nil,
+		torDY = if e.tornado and e.tornado.pos then e.tornado.pos[2] - e.pos[2] else nil,
+	}
+	s.leftMover = e.leftMover
+end
+
+-- Storm.step's engine part: the storm is where the engine's motion carries it from the last
+-- update (held still while the engine's clock is paused: world.holdStill), its fields eased to
+-- the engine's over ENGINE_EASE so an update never pops. Left movers spin the other way.
+function Storm.followEngine(s: any, dt: number, world: any)
+	local e = s.eng
+	local k = 1 - exp(-dt / ENGINE_EASE)
+	local keep = exp(-dt / ENGINE_EASE)
+	if world.holdStill then
+		-- held where it is drawn now (the next update eases it to the paused engine's position)
+		e.x, e.y = s.x - (s.engOX or 0) - (s.engSX or 0), s.y - (s.engOY or 0) - (s.engSY or 0)
+		e.at = world.time
+	end
+	s.engOX, s.engOY = (s.engOX or 0) * keep, (s.engOY or 0) * keep
+	local age = world.time - e.at
+	-- The engine's storm position IS its mesocyclone (2026-10-29: the storm grows from it - its
+	-- wall cloud and tornado form there, and its updraft, downdrafts and rain are placed from it:
+	-- js/storms/StormGeometry.js). So the lab's updraft centre s.x, s.y sits where its own low-level
+	-- circulation (Storm.lowMesoAt, on the updraft's rear edge) lands on the engine's position.
+	-- An occluding tornado drifts left-rear of it (up to 0.4 updraft radii) and may revolve round
+	-- it (Tornado.setEngine); the storm stays on its mesocyclone and the funnel leans to it.
+	local lx, ly = Storm.lowMesoAt(s)
+	local shX, shY = -(lx - s.x), -(ly - s.y)
+	if s.engSX == nil then
+		-- (a new storm starts with its circulation on the engine's at once)
+		s.engSX, s.engSY = shX, shY
+	end
+	-- (over ~4 sim min, 30 s at the 8x clock: a shift of a km or two is a slow glide, not a slide)
+	local kS = 1 - exp(-dt / 240)
+	s.engSX = s.engSX + (shX - s.engSX) * kS
+	s.engSY = s.engSY + (shY - s.engSY) * kS
+	s.x = e.x + e.u * age + s.engOX + s.engSX
+	s.y = e.y + e.v * age + s.engOY + s.engSY
+	s.u, s.v = e.u, e.v
+	local sign = if s.leftMover then -1 else 1
+	s.W += (e.W - s.W) * k
+	s.Ru += (e.Ru - s.Ru) * k
+	s.vmid += (sign * e.vmid - s.vmid) * k
+	s.rot = ramp(math.abs(s.vmid), 7, 17)
+	s.vlow += (sign * e.vlow - s.vlow) * k
+	s.occl = e.occl
+	s.lowAngle = 2.75 - 1.0 * s.occl
 end
 
 return Storm

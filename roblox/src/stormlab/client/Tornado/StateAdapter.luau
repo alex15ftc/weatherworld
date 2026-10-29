@@ -5,7 +5,8 @@
 --   motion     position extrapolated with the tornado's own translation between snapshots;
 --              a new snapshot's correction is eased in over ~0.4 s (no jumps)
 --   fields     vc, rc, swirl, cloud base, axis shape, decay, organisation eased (~0.3 s)
---   time       the vortex's phase clock continues smoothly (the funnel turns at sim speed)
+--   time       the vortex's phase clock and sub-vortex orbit continue smoothly on the visual
+--              clock (Context:visualDt: the sim clock in the lab, real speed in the game)
 --   scale R    the visible envelope's width scale: the condensation radius where it is
 --              condensed, the core radius (x1.15) where it is not (a nearly invisible tornado
 --              still has a shape for wisps and rain to cling to)
@@ -39,10 +40,12 @@ local function obscuration(ctx: any, x: number, y: number): (number, number)
 	local d = sqrt((x - cx) ^ 2 + (y - cy) ^ 2)
 	local n = math.clamp(math.floor(d / 700), 3, 16)
 	local tau = 0
+	local C = ctx.Config
+	local step = C.sightPath(d / n) / 1000 -- (km of drawn sight line a sample)
 	for i = 1, n do
 		local f = (i - 0.5) / n
 		local r = Precip.surface(vol, cx + (x - cx) * f, cy + (y - cy) * f) or 0
-		tau += 0.33 * r ^ 0.66 * (d / n) / 1000
+		tau += C.rainExtinction(r) * step
 	end
 	-- rain wrapped round the vortex: the heaviest rain within ~1.5 km
 	local wrap = 0
@@ -72,7 +75,8 @@ function StateAdapter.update(self: any, dt: number)
 		if not t.ended then
 			seen[t.id] = true
 			local e = self.entries[t.id]
-			local since = math.max(0, simNow - (self.snapSim or simNow))
+			-- (sim time since this snapshot was taken: its own server stamp, Net; else since it came)
+			local since = math.max(0, simNow - (t.simAt or self.snapSim or simNow))
 			local tx, ty = t.x + t.ut * since, t.y + t.vt * since
 			if not e then
 				e = { id = t.id, seed = t.seed, x = tx, y = ty, ox = 0, oy = 0, time = t.time, fade = 0, age = 0 }
@@ -85,18 +89,22 @@ function StateAdapter.update(self: any, dt: number)
 			end
 			e.snap = t
 			e.age += dt
-			-- position: the extrapolated snapshot, with any correction eased away
+			-- position: the extrapolated snapshot, with any correction eased away. The target's
+			-- jump this frame beyond its own motion (a new snapshot, a late or early one) becomes
+			-- an offset that decays over ~0.4 s. (2026-10-28: this used to add the whole remaining
+			-- gap to the offset every frame, an integrator that rang: the drawn speed swung
+			-- 0.5-2x the true speed at ~2-3 Hz with snapshots arriving 60-120 ms late.)
 			local px, py = tx, ty
-			if e.ut0 ~= nil then
-				px, py = e.x + e.ut0 * simDt, e.y + e.vt0 * simDt
+			if e.tx ~= nil then
+				px, py = e.tx + e.ut0 * simDt, e.ty + e.vt0 * simDt
 			end
-			e.ox += tx - px
-			e.oy += ty - py
-			local k = 1 - exp(-dt / 0.4)
-			local cxr, cyr = e.ox * k, e.oy * k
-			e.ox -= cxr
-			e.oy -= cyr
-			e.x, e.y = px + cxr, py + cyr
+			e.ox += px - tx
+			e.oy += py - ty
+			local k = exp(-dt / 0.4)
+			e.ox *= k
+			e.oy *= k
+			e.x, e.y = tx + e.ox, ty + e.oy
+			e.tx, e.ty = tx, ty
 			e.ut0, e.vt0 = t.ut, t.vt
 			e.ut, e.vt = t.ut, t.vt
 			-- fields
@@ -105,9 +113,20 @@ function StateAdapter.update(self: any, dt: number)
 				local target = t[f] or 0
 				e[f] = (e[f] or target) + (target - (e[f] or target)) * kf
 			end
-			e.time = (e.time + simDt) % 8192
-			if math.abs(((t.time + since) % 8192) - e.time) > 2 then
+			-- the vortex's own clock (sub-vortex lives, rope waves, gusts) and the sub-vortices'
+			-- orbit angle run on the visual clock: local motion, at real speed in the game (the
+			-- funnel's ring spin in Render/TornadoCards is real speed too); in the lab the visual
+			-- clock is the sim clock and stays locked to the server's. The orbit is integrated
+			-- (Vortex.params: a rate x time product jumped whenever vc or rc changed)
+			local vDt = ctx:visualDt(dt)
+			e.time = (e.time + vDt) % 8192
+			if ctx.state.visualScale == nil and math.abs(((t.time + since) % 8192) - e.time) > 2 then
 				e.time = (t.time + since) % 8192
+			end
+			local sOrbit = if e.params then e.params.sOrbit else 0
+			e.orbit = (e.orbit or t.orbit or 0) + sOrbit * vDt
+			if ctx.state.visualScale == nil and t.orbit and math.abs(t.orbit + sOrbit * since - e.orbit) > 0.3 then
+				e.orbit = t.orbit + sOrbit * since -- (the lab: the server's sub-vortices, as its debris sees them)
 			end
 			e.stage, e.ef, e.peakWind, e.hold = t.stage, t.ef, t.peakWind, t.hold
 			-- life: organising in, dissipating out, stale updates fade

@@ -189,7 +189,10 @@ function subvortex(p: Params, i: number, t: number): (number, number)
 	local seed = p.seed + i * 7919
 	local phase0 = Noise.hash(i, 1, 0, p.seed) * 2 * math.pi
 	-- orbit with a slowly wandering angular speed
-	local ang = phase0 + p.sOrbit * t * (0.85 + 0.3 * Noise.hash(i, 2, 0, p.seed)) + 0.6 * Noise.value1(t / 23 + i * 3.1, seed)
+	-- (the orbit angle: integrated by the owner when it keeps one - p.orbit - since a rate x time
+	-- product jumps whenever vc or rc changes)
+	local orbit = (p :: any).orbit or p.sOrbit * t
+	local ang = phase0 + orbit * (0.85 + 0.3 * Noise.hash(i, 2, 0, p.seed)) + 0.6 * Noise.value1(t / 23 + i * 3.1, seed)
 	-- life: each sub-vortex waxes and wanes over 10-40 s
 	local life = 0.5 + 0.5 * Noise.value1(t / (10 + 30 * Noise.hash(i, 3, 0, p.seed)) + i * 1.7, seed + 3)
 	local present = math.clamp(p.subCount - (i - 1), 0, 1)
@@ -285,7 +288,7 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	local turb = (p :: any).turbulence :: number
 	if speed > 2 and turb > 0 then
 		local L = 0.5 * rc
-		local rot = p.sOrbit * p.time
+		local rot = (p :: any).orbit or p.sOrbit * p.time
 		local cr, sr = cos(rot), sin(rot)
 		local qx, qy = (dx * cr + dy * sr) / L, (-dx * sr + dy * cr) / L
 		local qz, qt = z / L, p.time * 0.35

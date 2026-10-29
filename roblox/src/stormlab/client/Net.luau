@@ -39,7 +39,15 @@ function Net.connect(ctx: any)
 	net.tornado.OnClientEvent:Connect(function(list, time)
 		local now = os.clock()
 		for _, t in list do
-			heard[t.id] = { t = t, at = now }
+			-- (stamped with its server time: Tornado/StateAdapter extrapolates from it; one older
+			-- than what we have - the unreliable remote may reorder - is dropped, unless far older:
+			-- a new scenario restarted the clock)
+			t.simAt = time
+			local h = heard[t.id]
+			local was = h and h.t.simAt
+			if not (time and was and time < was and time > was - 60) then
+				heard[t.id] = { t = t, at = now }
+			end
 		end
 		local merged = {}
 		for id, h in heard do

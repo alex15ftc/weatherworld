@@ -1,7 +1,12 @@
 // SPC convective outlook conventions: probability contour levels (chance of the hazard within
-// 25 mi of a point during the valid period), conditional intensity groups (CIG hatching) and
+// RISK_RADIUS_MILES of a point during the valid period), conditional intensity groups (CIG hatching) and
 // the matrix that turns probability + CIG into the categorical outlook.
 
+// The radius (miles) each chance is given within: the chance of the hazard within this distance of a point.
+// The centre uses 25. This world uses 10 (2026-10-28, the user's choice, with the outbreak climate; 15 at first): the same
+// storms give lower chances within 10 miles than within 25, so each contour level, and the categories and
+// intensity groups drawn from them, take more and denser severe weather to reach. The tables are the centre's.
+export const RISK_RADIUS_MILES = 10;
 export const RISK_ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 export const HAZARDS = ['tornado', 'hail', 'wind'];
 export const PROBABILITY_LEVELS = {

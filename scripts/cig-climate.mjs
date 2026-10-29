@@ -8,6 +8,7 @@
 // A day is 12Z to 12Z, judged on what happened (the practically perfect chances and the
 // reports the outlooks are verified against).
 import { fork } from 'node:child_process';
+import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
@@ -30,7 +31,7 @@ async function worker(seed) {
   for (let day = 0; day < days; day++) {
     const frames = [], seen = new Set(), initiations = [];
     for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations, placesFor(world)); }
-    const truth = aggregateTruth(frames, initiations, width, height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+    const truth = aggregateTruth(frames, initiations, width, height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
     const areas = {};
     for (const h of WORLD_HAZARDS) {
       const chance = truth.chance[h], amount = truth[`${h}Exact`], tiers = CIG_TIERS[h].map(field => truth[`${field}Exact`]);

@@ -1,0 +1,67 @@
+=== Outlook verification: 5 mornings x seeds 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 8 runs (4 s) ===
+
+--- Day 1 outlooks: 100 ---
+1. The highest category of the day
+  forecast  TSTM 5%, MRGN 6%, SLGT 22%, ENH 47%, MDT 16%, HIGH 4%
+  verified  TSTM 4%, MRGN 6%, SLGT 33%, ENH 35%, MDT 18%, HIGH 4%
+  forecast right: 61% | within one category: 99% | forecast too high: 23%, too low: 16%
+  place by place: the category was right over 52% of the map, within one category over 90%
+  share of the map at Enhanced or more: forecast 22%, verified 15% | at Moderate or more: forecast 5%, verified 4%
+2. Do the contours mean what they say? (places inside each contour level, up to the next; share of them where it happened within 25 miles)
+  tornado  below: 1%  2%: 3%  5%: 7%  10%: 14%  15%: 28%  30%: 68%  45%: -  60%: -
+  wind     below: 2%  5%: 9%  15%: 22%  30%: 38%  45%: 50%  60%: 68%  75%: -  90%: -
+  hail     below: 2%  5%: 10%  15%: 21%  30%: 37%  45%: 51%  60%: 71%
+   Intensity groups (places inside a contour by the group drawn there; of those where the hazard came within 25 miles, the share where each tier did)
+  tornado  no group  EF2+ 4%  EF3+ 1%  EF4+ 0%  (49% of the area inside a contour)
+  tornado  CIG1      EF2+ 34%  EF3+ 13%  EF4+ 5%  (42% of the area inside a contour)
+  tornado  CIG2      EF2+ 64%  EF3+ 31%  EF4+ 13%  (3% of the area inside a contour)
+  tornado  CIG3      EF2+ 63%  EF3+ 42%  EF4+ 26%  (7% of the area inside a contour)
+  wind     no group  75 mph 5%  85 mph 0%  96 mph 0%  (100% of the area inside a contour)
+  hail     no group  2 in 24%  3.5 in 0%  (92% of the area inside a contour)
+  hail     CIG1      2 in 48%  3.5 in 3%  (8% of the area inside a contour)
+   How often each intensity group is the highest drawn somewhere on the outlook, and the highest the day verified with (share of outlooks)
+  tornado  none 44% / 51%  |  CIG1 40% / 32%  |  CIG2 7% / 5%  |  CIG3 9% / 12%   (drawn / verified)
+  wind     none 100% / 95%  |  CIG1 0% / 5%  |  CIG2 0% / 0%  |  CIG3 0% / 0%   (drawn / verified)
+  hail     none 90% / 82%  |  CIG1 10% / 15%  |  CIG2 0% / 3%   (drawn / verified)
+3. Tornadoes: the day's count fell inside the range of the runs on 79% of days
+  (range of the runs / what happened): 0-5/3  1-6/2  5-22/20  6-20/19  9-24/21  20-39/18  5-15/8  9-19/6  0-4/1  1-10/7  19-86/57  29-57/37  24-35/30  3-10/7  1-8/5  19-55/29  28-46/34  11-58/29  1-14/12  8-24/12  6-12/6  5-23/13  15-33/28  0-7/3  54-78/80  3-8/8  3-12/7  6-27/11  0-8/0  2-9/2  2-6/4  7-26/24  7-23/24  31-55/58  5-19/16  10-26/25  5-24/11  0-3/2  21-40/36  2-12/6  14-34/37  5-14/12  16-43/32  8-16/5  6-19/15  5-13/11  10-37/25  1-2/1  1-16/4  8-18/6  40-66/59  23-48/38  1-6/6  4-12/10  0-2/1  13-29/31  7-11/8  6-16/3  2-31/13  11-41/33  14-25/16  16-30/15  0-4/0  0-1/0  0-0/0  2-8/4  1-4/0  3-13/10  9-16/22  5-19/19  10-27/27  17-31/32  22-35/29  8-20/16  2-7/8  12-22/9  3-18/13  4-10/3  28-42/48  3-10/11  5-17/11  11-38/29  17-35/23  0-2/0  6-16/7  2-12/6  3-15/10  52-82/85  4-11/7  1-10/7  35-59/51  59-80/73  28-47/56  0-1/1  12-38/29  30-58/52  6-12/12  8-43/22  0-1/0  0-1/1
+
+--- Day 2 outlooks: 80 ---
+1. The highest category of the day
+  forecast  TSTM 5%, MRGN 9%, SLGT 30%, ENH 43%, MDT 11%, HIGH 3%
+  verified  TSTM 4%, MRGN 6%, SLGT 35%, ENH 35%, MDT 18%, HIGH 3%
+  forecast right: 60% | within one category: 100% | forecast too high: 15%, too low: 25%
+  place by place: the category was right over 42% of the map, within one category over 85%
+  share of the map at Enhanced or more: forecast 19%, verified 14% | at Moderate or more: forecast 3%, verified 3%
+2. Do the contours mean what they say? (places inside each contour level, up to the next; share of them where it happened within 25 miles)
+  tornado  below: 1%  2%: 4%  5%: 7%  10%: 13%  15%: 27%  30%: 85%  45%: -  60%: -
+  wind     below: 2%  5%: 10%  15%: 22%  30%: 37%  45%: 49%  60%: 65%  75%: -  90%: -
+  hail     below: 2%  5%: 9%  15%: 22%  30%: 37%  45%: 52%  60%: 65%
+   Intensity groups (places inside a contour by the group drawn there; of those where the hazard came within 25 miles, the share where each tier did)
+  tornado  no group  EF2+ 12%  EF3+ 3%  EF4+ 2%  (49% of the area inside a contour)
+  tornado  CIG1      EF2+ 36%  EF3+ 15%  EF4+ 7%  (41% of the area inside a contour)
+  tornado  CIG2      EF2+ 60%  EF3+ 36%  EF4+ 17%  (10% of the area inside a contour)
+  wind     no group  75 mph 5%  85 mph 0%  96 mph 0%  (100% of the area inside a contour)
+  hail     no group  2 in 28%  3.5 in 1%  (100% of the area inside a contour)
+   How often each intensity group is the highest drawn somewhere on the outlook, and the highest the day verified with (share of outlooks)
+  tornado  none 46% / 51%  |  CIG1 40% / 34%  |  CIG2 14% / 5%  |  CIG3 0% / 10%   (drawn / verified)
+  wind     none 100% / 94%  |  CIG1 0% / 6%  |  CIG2 0% / 0%  |  CIG3 0% / 0%   (drawn / verified)
+  hail     none 100% / 81%  |  CIG1 0% / 16%  |  CIG2 0% / 3%   (drawn / verified)
+3. Tornadoes: the day's count fell inside the range of the runs on 84% of days
+  (range of the runs / what happened): 0-6/2  4-28/20  1-36/19  13-32/21  6-14/8  6-19/6  0-2/1  0-15/7  11-55/37  7-49/30  2-12/7  0-2/5  19-58/34  17-54/29  4-23/12  0-32/12  5-26/13  5-38/28  1-5/3  6-23/80  2-47/7  1-24/11  0-6/0  2-10/2  6-27/24  2-24/24  31-83/58  2-13/16  0-26/11  0-3/2  2-35/36  3-8/6  3-14/12  3-21/32  2-8/5  8-30/15  8-60/25  0-19/1  2-10/4  4-20/6  16-36/38  0-6/6  4-15/10  0-6/1  5-38/8  4-29/3  3-27/13  6-36/33  7-17/15  0-9/0  0-1/0  0-0/0  0-4/0  4-11/10  2-12/22  3-9/19  11-28/32  8-41/29  9-36/16  0-5/8  1-31/13  1-12/3  1-34/48  0-14/11  4-57/29  16-33/23  0-3/0  5-38/7  0-16/10  49-87/85  1-10/7  0-15/7  38-75/73  20-41/56  0-2/1  12-42/29  12-29/12  14-37/22  0-1/0  0-4/1
+
+--- Day 3 outlooks: 60 ---
+1. The highest category of the day
+  forecast  TSTM 0%, MRGN 0%, SLGT 97%, ENH 3%, MDT 0%, HIGH 0%
+  verified  TSTM 3%, MRGN 5%, SLGT 37%, ENH 33%, MDT 22%, HIGH 0%
+  forecast right: 40% | within one category: 75% | forecast too high: 8%, too low: 52%
+  place by place: the category was right over 33% of the map, within one category over 66%
+  share of the map at Enhanced or more: forecast 0%, verified 15% | at Moderate or more: forecast 0%, verified 4%
+2. Do the contours mean what they say? (places inside each contour level, up to the next; share of them where it happened within 25 miles)
+  severe   below: 10%  5%: 16%  15%: 25%  30%: 44%  45%: 91%  60%: -
+   Intensity groups (places inside a contour by the group drawn there; of those where the hazard came within 25 miles, the share where each tier did)
+  severe   no group  significant 25%  intense 3%  (100% of the area inside a contour)
+   How often each intensity group is the highest drawn somewhere on the outlook, and the highest the day verified with (share of outlooks)
+  severe   none 100% / 72%  |  CIG1 0% / 28%  |  CIG2 0% / 0%   (drawn / verified)
+3. Tornadoes: the day's count fell inside the range of the runs on 10% of days
+  (range of the runs / what happened): 0-0/20  0-0/19  0-0/21  0-0/6  0-0/1  0-0/7  0-0/30  0-0/7  0-0/5  0-0/29  0-0/12  0-0/12  0-0/28  0-0/3  0-0/80  0-0/11  0-0/0  0-0/2  0-0/24  0-0/58  0-0/16  0-0/2  0-0/36  0-0/6  0-0/32  0-0/5  0-0/15  0-0/1  0-0/4  0-0/6  0-0/6  0-0/10  0-0/1  0-0/3  0-0/13  0-0/33  0-0/0  0-0/0  0-0/0  0-0/10  0-0/22  0-0/19  0-0/29  0-0/16  0-0/8  0-0/3  0-0/48  0-0/11  0-0/23  0-0/0  0-0/7  0-0/85  0-0/7  0-0/7  0-0/56  0-0/1  0-0/29  0-0/22  0-0/0  0-0/1

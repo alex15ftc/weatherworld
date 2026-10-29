@@ -6,9 +6,12 @@
 -- them with the lab's billboard renderers (client/Weather). The weather engine stays the authority:
 --   engine  (a feed URL is set) GET {url}/api/game/v1/lab/window?x&y (km) for the window's
 --           soundings, boundaries and storms; then every POLL s /lab/storms: each engine storm's
---           position, motion, updraft and rotation pull the lab's copy toward it (new engine storms
---           are added, gone ones die); a tornado starts under a lab storm when the engine has one
---           there and winds down when it has none. The lab's own initiation and genesis are off. The
+--           position, motion, updraft, size, rotation and occlusion ARE the lab copy's
+--           (Storm.setEngine / followEngine: carried on along the engine's motion between polls,
+--           held still while the engine's clock is paused; new engine storms are added, gone ones
+--           die), and so is its tornado: on the ground, as strong, as wide and where the engine
+--           says (Tornado.setEngine). The lab only draws from them (rain, outflow, wall cloud,
+--           funnel shape). The lab's own initiation and genesis are off. The
 --           window is fetched again every REWINDOW s (its soundings change through the day), and
 --           moved when the players' centre drifts more than RECENTRE m from it (one window a server:
 --           the players' mean position; clients rebuild their frame on the scenario event).
@@ -18,7 +21,7 @@
 -- The frame: lab metres, x east, y north from the window centre; the clients turn it into studs
 -- with the frame below (map scale across, origin at the window centre's studs, a smooth ground
 -- datum) - see Weather.frameFor. Ground heights reach clients as a coarse grid (WeatherGround).
--- The clock runs at the game's 12x (Config: 0.2 sim hours a real minute).
+-- The clock runs at the game's 8x (a game day in 3 real hours; 12x until 2026-10-29).
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -32,14 +35,14 @@ local Sim = lab:WaitForChild("Sim")
 local LabConfig = require(lab:WaitForChild("LabConfig"))
 local Json = require(Sim:WaitForChild("Json"))
 local World = require(Sim:WaitForChild("World"))
-local Storm = require(Sim:WaitForChild("Storm"))
+local EngineFollow = require(Sim:WaitForChild("EngineFollow"))
 local Frames = require(Sim:WaitForChild("Frames"))
 local Publisher = require(script.Parent:WaitForChild("StormPublisher"))
 
 local StormHost = {}
 
-local TIME_SCALE = 12 -- the game's clock
-local POLL = 25 -- s between engine storm polls (one engine storm tick)
+local TIME_SCALE = 8 -- the game's clock (server/WeatherAuthorityRuntime.js SIM_HOURS_PER_REAL_MINUTE)
+local POLL = 37.5 -- s between engine storm polls (one engine storm tick: 5 sim minutes at 8x)
 local REWINDOW = 1800 -- s between window (soundings) refreshes
 local SLOW_BUDGET = 3 / 1000 -- s of server time a frame for the slow simulation
 local GROUND_CELL = 1000 -- m, the ground grid clients get
@@ -48,6 +51,7 @@ local RECENTRE = 35000 -- m: the players' centre this far from the window centre
 
 local state: any = { ready = false, world = nil, centreKm = nil, mode = nil, scenarioName = nil, dataJson = nil, dataJsonNext = nil, profileSeen = {} }
 StormHost.state = state
+local follower = EngineFollow.new() -- (the engine-following state: clock, stalls, missing storms)
 
 local function log(fmt: string, ...)
 	print("[StormHost] " .. string.format(fmt, ...))
@@ -170,16 +174,33 @@ local function yieldNow()
 	task.wait()
 end
 
--- build the world from window data (lab frame), spin it up
-local function adopt(data: any, mode: string)
-	local w = World.new(data, { yield = yieldNow })
+-- build the world from window data (lab frame), spin it up (engine mode: the engine drives the
+-- storms - Sim/EngineFollow, shared with the storm lab's engine mode)
+local function adopt(data: any, mode: string, shiftX: number?, shiftY: number?)
+	local engine = mode == "engine"
+	local w = World.new(data, { yield = yieldNow, followEngine = engine })
 	w.yield = yieldNow
-	if mode == "engine" then
-		w.initiation = false
-		w.genesis = false
+	local spin = LabConfig.SPIN_UP_SECONDS
+	-- the engine's clock is paused: its storms are where it says, and stay there (w.holdStill)
+	local paused = engine and data.meta ~= nil and data.meta.paused == true
+	if engine then
+		EngineFollow.beforeSpinUp(w, spin, paused)
 	end
 	local t0 = os.clock()
-	w:spinUp(LabConfig.SPIN_UP_SECONDS)
+	w:spinUp(spin)
+	if engine then
+		-- (the engine ran on while this window was fetched and spun up)
+		local late = if state.fetchedAt then math.clamp((os.clock() - state.fetchedAt) * TIME_SCALE, 0, 900) else 0
+		EngineFollow.afterSpinUp(follower, w, data, late, paused)
+		local old = state.world
+		if old then
+			local n = EngineFollow.carryTornadoes(old, w, shiftX or 0, shiftY or 0)
+			if n > 0 then
+				log("%d tornado(es) carried into the new window", n)
+			end
+		end
+		EngineFollow.startTornadoes(w, data.storms)
+	end
 	state.world = w
 	state.dataJson = state.dataJsonNext
 	pub:reset()
@@ -190,56 +211,10 @@ local function adopt(data: any, mode: string)
 	log("%s window: %d storms, spun up in %.1f s", mode, #w.storms, os.clock() - t0)
 end
 
--- keep the lab's storms in step with the engine's
-local missing = {}
-local function nudge(list: { any })
-	local w = state.world
-	if not w then
-		return
-	end
-	local byEngine = {}
-	for _, s in w.storms do
-		if s.engineId then
-			byEngine[s.engineId] = s
-		end
-	end
-	local seen = {}
-	for _, e in list do
-		seen[e.id] = true
-		local s = byEngine[e.id]
-		if not s and (e.intensity or 0) > 0.15 then
-			s = Storm.fromEngine(e)
-			Storm.environment(s, w)
-			table.insert(w.storms, s)
-			log("engine storm %s joins at (%.1f, %.1f) km", e.id, e.pos[1] / 1000, e.pos[2] / 1000)
-		elseif s and not s.dead then
-			-- position: a third of the way per poll (the lab moves it in between), motion as the engine
-			local k = 0.35
-			s.x += (e.pos[1] - s.x) * k
-			s.y += (e.pos[2] - s.y) * k
-			s.u, s.v = e.motion[1], e.motion[2]
-			-- strength and rotation drift toward the engine's (the lab's dynamics fill in the detail)
-			s.W += (math.clamp(e.updraftMs * 0.8, 5, 60) - s.W) * 0.3
-			s.vmid += (20 * math.clamp(e.meso, 0, 1.2) - s.vmid) * 0.3
-			s.vlow += (18 * math.clamp(e.lowRotation, 0, 1.2) - s.vlow) * 0.3
-			-- tornado: the engine says when
-			if e.tornado and not s.tornado then
-				w:forceTornado(s)
-			elseif not e.tornado and s.tornado then
-				s.vlow *= 0.5 -- (its supply weakens: it winds down by itself)
-			end
-		end
-	end
-	for id, s in byEngine do
-		if not seen[id] then
-			missing[id] = (missing[id] or 0) + 1
-			if missing[id] >= 2 and not s.dead then
-				s.dead = true
-				s.deadFor = 0
-			end
-		else
-			missing[id] = nil
-		end
+-- keep the lab's storms in step with the engine's (Sim/EngineFollow.apply)
+local function nudge(list: { any }, stampUtc: number?, paused: boolean?)
+	if state.world then
+		EngineFollow.apply(follower, state.world, list, stampUtc, paused, log)
 	end
 end
 
@@ -267,6 +242,7 @@ local function runEngine(cx: number, cy: number)
 	-- ask for it when they rebuild on the scenario event adopt sends)
 	local function window(x: number, y: number): boolean
 		local data = get(string.format("/api/game/v1/lab/window?x=%.2f&y=%.2f&half=7", x, y))
+		state.fetchedAt = os.clock()
 		if not data or not data.cells then
 			return false
 		end
@@ -276,9 +252,12 @@ local function runEngine(cx: number, cy: number)
 			groundBlob = nil
 			buildGround(c.x, c.y)
 		end
+		-- (lab metres from the old centre to the new: carried tornadoes keep their map spot)
+		local was = state.centreKm or c
+		local shiftX, shiftY = (was.x - c.x) * 1000, -(was.y - c.y) * 1000
 		state.centreKm = c
 		state.dataJsonNext = HttpService:JSONEncode(data)
-		adopt(data, "engine")
+		adopt(data, "engine", shiftX, shiftY)
 		cx, cy = x, y
 		return true
 	end
@@ -291,15 +270,18 @@ local function runEngine(cx: number, cy: number)
 		task.wait(POLL)
 		since += POLL
 		local px, py = playersKm()
-		local far = px ~= nil and ((px - state.centreKm.x) ^ 2 + (py - state.centreKm.y) ^ 2) * 1e6 > RECENTRE * RECENTRE
+		-- (measured from the point the window was asked for, not its centre: near the map's edge the
+		-- engine clamps the centre inward, and players by the edge were "far" from it forever - the
+		-- window was rebuilt every poll and its tornado restarted each time. 2026-10-28)
+		local far = px ~= nil and ((px - cx) ^ 2 + (py - cy) ^ 2) * 1e6 > RECENTRE * RECENTRE
 		if far then
-			log("players moved %.0f km from the window centre: moving the window", math.sqrt((px - state.centreKm.x) ^ 2 + (py - state.centreKm.y) ^ 2))
+			log("players moved %.0f km from the window's point: moving the window", math.sqrt((px - cx) ^ 2 + (py - cy) ^ 2))
 			window(px :: number, py :: number)
 			since = 0
 		else
 			local r = get(string.format("/api/game/v1/lab/storms?x=%.2f&y=%.2f&half=7", cx, cy))
 			if r and r.storms then
-				nudge(r.storms)
+				nudge(r.storms, r.simHourUtc, r.paused)
 			end
 			if since >= REWINDOW then
 				since = 0
@@ -342,6 +324,7 @@ local function heartbeat(dt: number)
 		return
 	end
 	local simDt = math.min(dt, 0.1) * settings.timeScale
+	-- (the engine's storms are placed by Storm.followEngine; its updates' jumps eased there)
 	w:stepFast(simDt)
 	slowPending += simDt
 	deadline = os.clock() + SLOW_BUDGET

@@ -122,6 +122,7 @@ local function setFrame(C: any, info: any)
 	local cam = Workspace.CurrentCamera
 	C.setFrame({
 		kh = kh, kv = kv, ks = kv, ox = ox, oz = oz,
+		precipVisibility = Config.PRECIP_VISIBILITY,
 		datum = datumStuds,
 		-- a storm's scale from its centre's distance (studs across) to the camera
 		sky = function(x: number, y: number): number
@@ -171,7 +172,7 @@ function Weather.start()
 	ctx.scenarioData = data -- (the sun's place and time zone: Render/Sky)
 	ctx.source = info.source
 	ctx.state.show.labels = false
-	-- the weather runs at the game's 12x clock (storms move and evolve with it), but local motion
+	-- the weather runs at the game's 8x clock (storms move and evolve with it), but local motion
 	-- - a tornado's spin, dust, debris, scud, cloud boiling, thunder's delay - at real speed
 	ctx.state.visualScale = 1
 	ctx:noteServerTime(info.time or 0)

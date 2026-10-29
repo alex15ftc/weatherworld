@@ -36,7 +36,9 @@ export function labStorms(world, centre, half, feed = []) {
     rotating: r2(rotatingShare(s)), line: r2(lineShare(s)), lineHalfKm: r1(s.lineHalfLengthKm ?? 0), rearInflow: r2(s.rearInflow ?? 0),
     coldPool: r2(s.coldPoolStrength ?? 0), coldPoolKm: r1(s.coldPoolRadiusKm ?? 0), leftMover: !!s.leftMover,
     maxDbz: Math.round(s.radar?.maxReflectivityDbz ?? 0), hailIn: r2(s.currentHailSizeInches ?? 0),
-    tornado: s.tornado?.onGround ? { mph: Math.round(s.tornado.windSpeedMph), yards: Math.round(s.tornado.widthYards ?? 0), ef: s.tornado.estimatedEf ?? null, pos: lab(s.tornado.positionKm.x, s.tornado.positionKm.y) } : null,
+    // (orbit: rad/s, counterclockwise seen from above, while an occluding tornado revolves round
+    // its mesocyclone - the storm's position; TornadoEngine occlusionStep)
+    tornado: s.tornado?.onGround ? { mph: Math.round(s.tornado.windSpeedMph), yards: Math.round(s.tornado.widthYards ?? 0), ef: s.tornado.estimatedEf ?? null, pos: lab(s.tornado.positionKm.x, s.tornado.positionKm.y), orbit: +((s.tornado.orbitRadPerS ?? 0).toFixed(5)) } : null,
     feed: feed.find(f => f.id === s.id) ?? null,
   }));
 }
@@ -74,7 +76,8 @@ export function buildLabWindow(world, { centreKm, half: HALF = 7, boundaries = [
     points: b.pointsKm.map(p => lab(p.x, p.y)),
   }));
   return {
-    meta: { ...meta, simHourUtc: r2(world.stormEngine?.validHourUtc ?? world.validHourUtc), cellKm: r2(cellKm), half: HALF, centreMapKm: { x: r1(centre.x), y: r1(centre.y) } },
+    // (simHourUtc to 4 places: the game server places the engine's storms by it; 0.01 h is 36 s, ~0.5 km of motion)
+    meta: { ...meta, simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), cellKm: r2(cellKm), half: HALF, centreMapKm: { x: r1(centre.x), y: r1(centre.y) } },
     cells, boundaries: bnd, storms: labStorms(world, centre, halfKm, feed),
   };
 }

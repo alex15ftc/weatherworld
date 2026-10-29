@@ -247,9 +247,11 @@ function TornadoCards.new(ctx: any): any
 		-- grid the sight-line march samples misses a hook of rain close round the funnel, so
 		-- ~0.3 km of it is counted in front (same extinction law, 0.33 R^0.66 per km); capped so
 		-- a rain-wrapped funnel stays a faint darker mass in the rain, as it usually reads
-		local wrapT = math.exp(-0.33 * (e.wrap or 0) ^ 0.66 * 0.3)
+		-- (the storm is drawn at true scale about its centre, so this 0.3 km is not squashed)
+		local wrapT = math.exp(-C.rainExtinction(e.wrap or 0) * 0.3)
 		local rainK = math.clamp((1 - trans * wrapT) * 0.85, 0, 0.8)
-		local tNow = ctx:visualTime() -- (the funnel's surface rising: local motion)
+		local vDt = ctx:visualDt(dt) -- (the funnel's spin and its surface rising: local motion)
+		set.rise = set.rise or {}
 		local riseW = 0.15 * e.vc
 		-- rain between camera and funnel greys it toward the same rain-fog grey the storm cards
 		-- use (Render/StormCards: the sky's light diffused in rain), so funnel and storm agree
@@ -289,7 +291,11 @@ function TornadoCards.new(ctx: any): any
 			-- the ring turns with the flow at its radius
 			local Rn = max(rc, 1) * 0.45 / max(5, rcz)
 			local omega = min(e.vc / max(20, rcz) * Vortex.profile(max(Rn, 0.05)) / max(Rn, 0.05), 2.5)
-			set.spin[h] = (set.spin[h] + omega * ctx:visualDt(dt) * step) % (2 * math.pi)
+			-- (each height drawn this frame turns by this frame's time whatever the LOD step: with
+			-- x step the far LOD, d > 12 km, spun twice as fast)
+			set.spin[h] = (set.spin[h] + omega * vDt) % (2 * math.pi)
+			-- the surface's rise, integrated (a rate x clock product jumped whenever vc changed)
+			set.rise[h] = ((set.rise[h] or 0) + riseW / max(dz, 4) * 0.6 * vDt) % 1
 			local row = set.cards[h]
 			-- (inside the cloud base the funnel is lost in the cloud: gone by the base)
 			local fadeTop = 1 - smooth(H * 0.82, H * 1.0, z)
@@ -326,7 +332,7 @@ function TornadoCards.new(ctx: any): any
 				-- centre card holds the funnel's density
 				local zr, env = z, 1
 				if k > 0 then
-					local q = (tNow * riseW / max(dz, 4) * 0.6 + card.rot / 360) % 1
+					local q = (set.rise[h] + card.rot / 360) % 1
 					zr = z + (q - 0.5) * 1.6 * dz
 					env = 0.35 + 0.65 * math.sin(math.pi * q) ^ 0.7
 				end
@@ -454,7 +460,12 @@ function TornadoCards.new(ctx: any): any
 			local vin = max(4, 0.35 * e.vc)
 			local P = clamp(2.6 * Rb / vin, 20, 240)
 			local spin = 0.4 * e.vc / max(20, 2 * Rb)
-			local t = ctx:visualTime() -- (condensation tags spiralling in: local motion)
+			-- (condensation tags spiralling in: local motion. The loop phase and the turn are
+			-- integrated: as rate x clock products they jumped whenever vc or Rb changed - more the
+			-- longer the client had run - and ran backwards about half the time)
+			local tDt = ctx:visualDt(dt)
+			set.tagLoop = ((set.tagLoop or 0) + tDt / P) % 1
+			set.tagTurn = ((set.tagTurn or 0) + spin * tDt) % (2 * math.pi)
 			local ax, ay = Vortex.axisAt(e, H * 0.8)
 			-- (light cached 4 times a second, as the funnel's)
 			if not set.Lt or nowL - (set.LtAt or 0) > 0.25 then
@@ -479,10 +490,10 @@ function TornadoCards.new(ctx: any): any
 					set.tags[i] = card
 				end
 				local ph0 = (i * 0.618) % 1
-				local phi = (t / P + ph0) % 1
+				local phi = (set.tagLoop + ph0) % 1
 				local env = math.min(1, phi / 0.2) * math.min(1, (1 - phi) / 0.25)
 				local r = Rb * (3.5 - 2.6 * phi)
-				local th = ph0 * 2 * math.pi + spin * t + 1.5 * phi
+				local th = ph0 * 2 * math.pi + set.tagTurn + 1.5 * phi
 				local z = H * (0.55 + 0.43 * phi ^ 1.5)
 				local qx, qy = e.x + ax + math.cos(th) * r, e.y + ay + math.sin(th) * r
 				setPos(card, C.toWorldAbout(qx, qy, altitude(z, C.groundAt(qx, qy), H), ex, ey, k))

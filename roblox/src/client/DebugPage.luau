@@ -1,5 +1,6 @@
 --!strict
--- The storm debug page, opened and closed with E (not while flying, where E is up): every storm
+-- The storm debug page, opened and closed with F2, or E (not while flying, where E is up; a car
+-- prompt also takes E, so F2 is the sure one): every storm
 -- the feed has, strongest first (a tornado's first), with how far and which way it is from you.
 --   Teleport: puts you on the ground beside it (server/Explore waits for the ground to load):
 --     to the right of its track (the inflow side of a storm moving north-east), a few km off.
@@ -449,7 +450,7 @@ function DebugPage.start()
 		if processed then
 			return
 		end
-		if input.KeyCode == Enum.KeyCode.E and not isFlying() then
+		if input.KeyCode == Enum.KeyCode.F2 or (input.KeyCode == Enum.KeyCode.E and not isFlying()) then
 			DebugPage.toggle()
 		elseif input.KeyCode == Enum.KeyCode.Backspace and follow then
 			stopFollow(true)

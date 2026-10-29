@@ -8,6 +8,7 @@
 // happened, as CALIBRATION_DATA under day1update, for scripts/fit-outlook-calibration.mjs.
 // (The 12Z issue starts without the day before's Day 2 to blend with, as outlook-verify.mjs does.)
 import { fork } from 'node:child_process';
+import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';
 import { fileURLToPath } from 'node:url';
 import v8 from 'node:v8';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
@@ -79,7 +80,7 @@ async function worker(seed) {
     }
     // Each issue against what happened from its issue to the day's end.
     for (const { after, outlook, from } of issued) {
-      const truth = aggregateTruth(frames.slice(from), initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+      const truth = aggregateTruth(frames.slice(from), initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
       const top = list => list.reduce((best, c) => Math.max(best, ORDER.indexOf(c)), 0);
       let same = 0, near = 0;
       for (let i = 0; i < n; i++) { const f = ORDER.indexOf(outlook.category[i]), v = ORDER.indexOf(truth.worldRisk[i]); if (f === v) same++; if (Math.abs(f - v) <= 1) near++; }

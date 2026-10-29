@@ -1,0 +1,72 @@
+1 done (truth 1) exit 0
+2 done (truth 2) exit 0
+3 done (dice 2 0 8) exit 0
+4 done (full 2 24 8) exit 0
+5 done (full 2 8 8) exit 0
+6 done (dice 2 8 8) exit 0
+7 done (full 2 0 8) exit 0
+8 done (full 2 16 8) exit 0
+9 done (dice 1 0 8) exit 0
+10 done (dice 1 16 8) exit 0
+11 done (dice 1 8 8) exit 0
+12 done (full 1 0 8) exit 0
+13 done (dice 1 24 8) exit 0
+14 done (full 1 16 8) exit 0
+15 done (full 1 8 8) exit 0
+16 done (full 1 24 8) exit 0
+17 done (truth 3) exit 0
+18 done (truth 4) exit 0
+19 done (dice 2 24 8) exit 0
+20 done (dice 2 16 8) exit 0
+21 done (dice 3 0 8) exit 0
+22 done (full 3 16 8) exit 0
+23 done (full 3 8 8) exit 0
+24 done (full 3 0 8) exit 0
+25 done (full 3 24 8) exit 0
+26 done (dice 3 8 8) exit 0
+27 done (full 4 8 8) exit 0
+28 done (dice 3 16 8) exit 0
+29 done (dice 3 24 8) exit 0
+30 done (full 4 0 8) exit 0
+31 done (full 4 24 8) exit 0
+32 done (full 4 16 8) exit 0
+33 done (dice 4 0 8) exit 0
+34 done (dice 4 8 8) exit 0
+35 done (truth 6) exit 0
+36 done (dice 4 16 8) exit 0
+37 done (dice 4 24 8) exit 0
+38 done (truth 5) exit 0
+39 done (full 6 8 8) exit 0
+40 done (full 6 0 8) exit 0
+41 done (full 5 8 8) exit 0
+42 done (full 5 0 8) exit 0
+43 done (full 5 16 8) exit 0
+44 done (full 5 24 8) exit 0
+45 done (dice 5 8 8) exit 0
+46 done (dice 5 24 8) exit 0
+47 done (dice 5 0 8) exit 0
+48 done (dice 5 16 8) exit 0
+49 done (full 6 16 8) exit 0
+50 done (dice 6 0 8) exit 0
+51 done (dice 6 8 8) exit 0
+52 done (dice 6 16 8) exit 0
+53 done (full 6 24 8) exit 0
+54 done (dice 6 24 8) exit 0
+55 done (truth 7) exit 0
+56 done (truth 8) exit 0
+57 done (full 7 0 8) exit 0
+58 done (full 7 8 8) exit 0
+59 done (full 7 16 8) exit 0
+60 done (full 8 0 8) exit 0
+61 done (dice 7 0 8) exit 0
+62 done (full 7 24 8) exit 0
+63 done (dice 7 24 8) exit 0
+64 done (dice 7 8 8) exit 0
+65 done (dice 7 16 8) exit 0
+66 done (dice 8 0 8) exit 0
+67 done (full 8 8 8) exit 0
+68 done (full 8 16 8) exit 0
+69 done (full 8 24 8) exit 0
+70 done (dice 8 8 8) exit 0
+71 done (dice 8 16 8) exit 0
+72 done (dice 8 24 8) exit 0

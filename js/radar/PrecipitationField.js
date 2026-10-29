@@ -116,6 +116,9 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   const tornado = storm.tornado, tornadoWindMs = (Number(tornado?.windSpeedMph) || 90) * 0.447;
   // Where the engine put the tornado (it can lag behind the wall cloud), from the storm's centre.
   const tornadoAt = geometry.tornado ? { x: geometry.tornado.xKm - storm.positionKm.x, y: geometry.tornado.yKm - storm.positionKm.y } : mesoAt;
+  // The updraught's centre from the storm's position (its mesocyclone: the column leans downshear
+  // from it, StormGeometry), on the map.
+  const updraughtAt = { x: (Number(geometry.updraught.xKm) || storm.positionKm.x) - storm.positionKm.x, y: (Number(geometry.updraught.yKm) || storm.positionKm.y) - storm.positionKm.y };
   const model = {
     mx, my, rx, ry, topM: column.topM, freezingM: column.freezingM, su: column.su, sv: column.sv,
     inflowVapourGm3: column.inflowVapourGm3, precipitableWaterIn: column.precipitableWaterIn, midLevelRh: column.midLevelRh,
@@ -125,10 +128,11 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
     // A left-moving storm turns the other way.
     spin: storm.leftMover ? -1 : 1,
     // The rotation is under the wall cloud at the ground and leans to the updraught's centre by LEAN_M up.
-    mesocyclone: { x: mesoAt.x, y: mesoAt.y, aloftX: 0, aloftY: 0, radiusKm: clamp(Number(meso.radiusKm) || 4, 1.5, 8), vmaxMs: 6 + 30 * clamp(Number(meso.strength) || 0, 0, 1.25), low: clamp(Number(meso.lowStrength) || 0, 0, 1) },
+    mesocyclone: { x: mesoAt.x, y: mesoAt.y, aloftX: updraughtAt.x, aloftY: updraughtAt.y, radiusKm: clamp(Number(meso.radiusKm) || 4, 1.5, 8), vmaxMs: 6 + 30 * clamp(Number(meso.strength) || 0, 0, 1.25), low: clamp(Number(meso.lowStrength) || 0, 0, 1) },
     // The radar sees 85% of the tornado's wind: the rest is in a core narrower than a gate.
     tornado: tornado?.onGround ? { x: tornadoAt.x, y: tornadoAt.y, radiusKm: clamp((Number(tornado.widthYards) || 300) / 1094, 0.1, 2.5) / 2, vmaxMs: clamp(tornadoWindMs * 0.85, 25, 135), windMs: tornadoWindMs } : null,
-    coldPool: clamp(Number(storm.coldPoolStrength) || 0, 0, 1.2), rearInflow: clamp(Number(storm.rearInflow) || 0, 0, 1)
+    coldPool: clamp(Number(storm.coldPoolStrength) || 0, 0, 1.2), rearInflow: clamp(Number(storm.rearInflow) || 0, 0, 1),
+    updraughtAt
   };
   const environment = storm.environment ?? {};
   // How dry the air the rain falls through is: below cloud (a high cloud base, energetic
@@ -205,7 +209,7 @@ function updraughts(storm, structure, geometry, model, asLine, toMap) {
     });
     sources.push({ kind, x: at.x, y: at.y, R, w, classes, hailMass: hailMass * hailShare, pulse: PHYSICS.pulse * (1 - 0.7 * steady), seed: (model.seed ^ Math.imul(index + 1, 0x9e3779b1)) | 0 });
   };
-  if (asLine < 0.95) add({ x: 0, y: 0 }, 0.45 * geometry.updraught.radiusKm, speed, 1 - asLine, 1, 'updraught', 0);
+  if (asLine < 0.95) add(model.updraughtAt ?? { x: 0, y: 0 }, 0.45 * geometry.updraught.radiusKm, speed, 1 - asLine, 1, 'updraught', 0);
   const line = structure.features?.find(f => f.type === 'convectiveLine');
   if (asLine > 0.05 && line) {
     const cores = structure.features.filter(f => f.type === 'embeddedCore'), half = line.lengthKm / 2;

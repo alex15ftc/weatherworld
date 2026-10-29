@@ -105,12 +105,11 @@ function Scud.new(ctx: any): any
 		end
 		local d = sqrt((x - camX) ^ 2 + (y - camY) ^ 2)
 		local tau = 0
+		local step = C.sightPath(d / 4) / 1000 -- (km of drawn sight line a sample)
 		for i = 1, 4 do
 			local f = (i - 0.5) / 4
 			local r = Precip.surface(vol, camX + (x - camX) * f, camY + (y - camY) * f) or 0
-			if r > 0.05 then
-				tau += 0.33 * r ^ 0.66 * (d / 4) / 1000
-			end
+			tau += C.rainExtinction(r) * step
 		end
 		return clamp(1 - exp(-tau), 0, 0.95)
 	end

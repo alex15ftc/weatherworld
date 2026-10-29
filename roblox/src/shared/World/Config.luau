@@ -9,7 +9,7 @@ Config.SEED = 1
 
 -- Horizontal: 600 studs per engine mile (2026-10-28; 1000 before). The map is centred on the
 -- origin, so every coordinate stays under 262,144 studs (1/64-stud float precision). At the fixed
--- 12x clock a 41 mph storm moves 82 studs/s (137 at 1000 studs a mile), so a player's car
+-- 8x clock (12x until 2026-10-29) a 41 mph storm moves 55 studs/s (82 at 12x), so a player's car
 -- (server/PlayerCars, 100 mph top) outruns one on any paved road. Keep equal to
 -- js/worldmap/scale.js STUDS_PER_MILE: the map generator sizes roads, lots, buildings and
 -- airfields in studs at that scale (WorldMap warns if the exported map says otherwise).
@@ -23,7 +23,7 @@ Config.REGION_MILES = 50
 -- character scale all along), the ground's height, and gravity (Workspace.Gravity 9.81 m/s^2 =
 -- 35 studs/s^2, default.project.json). Only map distance is squashed (STUDS_PER_MILE above, about
 -- 9.6 times shorter than true): at true scale the map would be 2.9 million studs across, past
--- float precision, and no car could keep up with a storm on the 12x clock.
+-- float precision, and no car could keep up with a storm on the game's clock.
 Config.STUDS_PER_METRE = 1 / 0.28
 Config.GRAVITY = 9.81 * Config.STUDS_PER_METRE
 
@@ -85,6 +85,13 @@ end)()
 -- shapes they read as walls hiding the tornado; back on once they are textured curtains. The rain
 -- falling at the camera is drawn either way.
 Config.SHOW_PRECIPITATION = true
+-- How strongly rain and hail cut visibility (2026-10-28: the user could rarely see a tornado
+-- near it). Scales the extinction the rain field gives (0.33 R^0.66 per km, hail ~0.8 per cm):
+-- the Atmosphere fog at the camera, the rain fog on storm cards, shafts and scud, and the funnel's
+-- greying by rain in front of it and wrapped round it. 1 = physical; 0.4: heavy rain (100 mm/h)
+-- leaves a tornado a mile off ~55% of its contrast, light rain hardly matters. Still field-driven:
+-- more rain still hides more. (LabConfig.rainExtinction; the lab keeps 1.)
+Config.PRECIP_VISIBILITY = 0.4
 -- The storm's smaller cloud features: scud turning under the wall cloud, the tail cloud, inflow
 -- bands and the shelf cloud (client/StormView). Off for now (2026-10-22): as smooth shapes, the
 -- inflow bands and shelf (kilometres long, low) stood in front of the tornado. The towers, base,
@@ -484,7 +491,7 @@ Config.WEATHER_POLL_SECONDS = 5
 -- The products (outlooks, and later radar, warnings...): the manifest is polled this often, on
 -- the same URL and key (server/ProductFeed.luau). Workspace attribute ProductSource = "snapshot"
 -- uses the recorded ServerStorage.WorldData.ProductSnapshot instead.
-Config.PRODUCT_POLL_SECONDS = 10 -- radar frames come every 25 s (one storm tick)
+Config.PRODUCT_POLL_SECONDS = 10 -- radar frames come every 37.5 s (one storm tick at 8x)
 -- The storm report days and damage surveys kept in a DataStore (server/ReportArchive.luau), in
 -- days of the world's clock (12 a real day). A day is a few KB plus 1-6 KB a tornado survey,
 -- about 40 KB on an active day: a year of the world's days is about 15 MB of the place's storage.

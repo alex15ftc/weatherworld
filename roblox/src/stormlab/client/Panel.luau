@@ -106,6 +106,9 @@ function Panel.new(ctx: any): any
 	local iniB = button(r4, "Initiation: on", 132, function()
 		ctx:command({ cmd = "initiation" })
 	end)
+	local stormsB = button(row(), "Storms: engine", 268, function()
+		ctx:command({ cmd = "storms" })
+	end)
 
 	label("Layers", 13, ACCENT, true)
 	local layerButtons = {}
@@ -248,6 +251,7 @@ function Panel.new(ctx: any): any
 		pauseB.Text = if st.paused then "Resume" else "Pause"
 		genB.Text = "Genesis: " .. (if sv.genesis == false then "off" else "on")
 		iniB.Text = "Initiation: " .. (if sv.initiation == false then "off" else "on")
+		stormsB.Text = "Storms: " .. (if sv.storms == "own" then "own" else "engine")
 		for n, b in layerButtons do
 			b.BackgroundColor3 = if st.show[n] then Color3.fromRGB(40, 92, 150) else Color3.fromRGB(40, 48, 60)
 		end

@@ -103,9 +103,13 @@ export function updateTornadoState(world, storm, environment, dtHours) {
       beginTornado(world, storm, tornado);
       drawTornadoCharacter(world, storm, tornado);
       // It is counted on the ground for the whole of this step, and the storm has already
-      // moved through it, so it touched down where the wall cloud was at the step's start.
-      tornado.positionKm = { x: tornado.positionKm.x - (storm.velocityKph?.east ?? 0) * dtHours, y: tornado.positionKm.y + (storm.velocityKph?.north ?? 0) * dtHours };
-      tornado.trackPoints.push({ ...tornado.positionKm, hourUtc: (world.stormEngine?.validHourUtc ?? world.validHourUtc) - dtHours });
+      // moved through it, so it touched down where the wall cloud was at the step's start: its
+      // track (and path) starts there, and it is now under the mesocyclone with the storm.
+      // (2026-10-29: its position was left at the step's start, a step's motion - ~4 km -
+      // behind its own mesocyclone, until it drifted back.)
+      const start = { x: tornado.positionKm.x - (storm.velocityKph?.east ?? 0) * dtHours, y: tornado.positionKm.y + (storm.velocityKph?.north ?? 0) * dtHours };
+      tornado.trackPoints.push({ ...start, hourUtc: (world.stormEngine?.validHourUtc ?? world.validHourUtc) - dtHours });
+      tornado.pathLengthKm += Math.hypot(tornado.positionKm.x - start.x, tornado.positionKm.y - start.y);
     } else tornado.state = tornado.state === 'ended' ? 'ended' : 'none';
   }
 
@@ -230,7 +234,7 @@ function beginTornado(world, storm, tornado) {
   tornado.state = 'on-ground'; tornado.onGround = true; tornado.ageMinutes = 0;
   tornado.groundTimeMinutes = 0; tornado.pathLengthKm = 0; tornado.widthYards = 35;
   tornado.windSpeedMph = 75; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
-  tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.positionKm = tornadoPosition(storm);
+  tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.loopTurnRad = 0; tornado.orbitRadPerS = 0; tornado.positionKm = tornadoPosition(storm);
   tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   // What made the rotation it came from: a mesocyclone, a line's mesovortex or a boundary (a landspout).
   tornado.source = storm.lowRotationSource ?? 'mesocyclone';
@@ -266,7 +270,7 @@ function endTornado(world, storm, tornado, end = {}) {
       peakWindSpeedMph: tornado.peakWindSpeedMph, peakWidthYards: tornado.peakWidthYards,
       // estimatedEf is the damage rating; windEf is what its peak wind would be rated on wind alone.
       ratedWindMph: tornado.ratedWindMph ?? tornado.peakWindSpeedMph, estimatedEf: efRating(tornado.ratedWindMph ?? tornado.peakWindSpeedMph), windEf: efRating(tornado.peakWindSpeedMph),
-      trackPoints: (tornado.trackPoints ?? []).slice(-96), lifeMinutes: tornado.lifeMinutes ?? null, steady: Boolean(tornado.steady), damageDraw: tornado.damageDraw ?? null, ...end
+      trackPoints: (tornado.trackPoints ?? []).slice(-96), loops: Math.floor((tornado.loopTurnRad ?? 0) / (2 * Math.PI) + 0.25), lifeMinutes: tornado.lifeMinutes ?? null, steady: Boolean(tornado.steady), damageDraw: tornado.damageDraw ?? null, ...end
     });
     if (storm.tornadoHistory.length > 8) storm.tornadoHistory.shift();
   }
@@ -279,18 +283,57 @@ function tornadoPosition(storm) {
   const wall = storm.geometry?.wallCloud;
   return wall ? { x: wall.xKm, y: wall.yKm } : { ...storm.positionKm };
 }
-const OCCLUSION_TRACK = { turnDeg: 60, slowShare: 0.5, capRadii: 1.8 };
+// capRadii: how far an occluding tornado drifts from the mesocyclone it formed under, in updraught
+// radii (0.4: up to ~3 km for the largest storms), toward the updraught's left-rear; the storm's
+// next mesocyclone forms back at the origin.
+// (2026-10-29: was 1.8, and tornadoes wandered 8-14 km from their storm.)
+const OCCLUSION_TRACK = { turnDeg: 60, slowShare: 0.5, capRadii: 0.4 };
+// The occlusion orbit (2026-10-29): an occluding tornado is wrapped by the rear-flank outflow and
+// revolves cyclonically round the mesocyclone it formed under (counterclockwise seen from above;
+// clockwise under a left-mover), as a vortex inside its larger tornado cyclone does (Kellerville:
+// a trochoidal track; Lee & Finley: rear-flank surges turn tornadoes left and about double their
+// speed). The ground track is the storm's motion plus that revolution: a hook when the revolution
+// is slower than the storm, a LOOP when it is faster - a strong tornado under a slow storm
+// (Bennington KS 2013, a slow EF4 that crossed its own path). ORBIT.share of the tornado's wind
+// above fromMph is how fast it revolves (km/h) at full occlusion: about 34 km/h for an EF3, 48 for
+// an EF4, 62 for an EF5, against storms moving a median 55 km/h, so loops come only from intense
+// to violent tornadoes, and mostly under slower storms. minRadiusKm keeps the turn rate finite
+// close in; substeps resolve a fast revolution within the 5-minute step.
+const ORBIT = { share: 0.25, fromMph: 65, minRadiusKm: 1, substeps: 10 };
+const KPH_PER_MPH = 1.609344;
 // The occlusion's offset of the tornado from the wall cloud (km, east and south) after a step:
-// the difference between the tornado's turned, slowed motion and the storm's, added up.
+// the difference between the tornado's turned, slowed motion and the storm's, added up, plus its
+// revolution round the mesocyclone. Sets tornado.orbitRadPerS (the revolution's rate now, for the
+// game) and adds to tornado.loopTurnRad the turning done while revolving faster than the storm
+// moves (each 2 pi of it is one loop on the ground).
 function occlusionStep(storm, before, dtHours) {
+  const tornado = storm.tornado;
+  if (tornado) tornado.orbitRadPerS = 0;
   const occlusion = clamp(storm.occlusion ?? 0, 0, 1), v = storm.velocityKph ?? {}, east = v.east ?? 0, north = v.north ?? 0;
-  if (!(occlusion > 0) || !(Math.hypot(east, north) > 0.5)) return before;
+  const speedKph = Math.hypot(east, north);
+  if (!(occlusion > 0) || !(speedKph > 0.5)) return before;
   const turn = OCCLUSION_TRACK.turnDeg * occlusion * Math.PI / 180, keep = 1 - OCCLUSION_TRACK.slowShare * occlusion;
   // Turned left (counterclockwise seen from above), in east and north; the offset is east and south.
   const te = keep * (east * Math.cos(turn) - north * Math.sin(turn)), tn = keep * (east * Math.sin(turn) + north * Math.cos(turn));
-  const next = { x: before.x + (te - east) * dtHours, y: before.y - (tn - north) * dtHours };
-  const cap = OCCLUSION_TRACK.capRadii * (storm.geometry?.updraught?.radiusKm ?? 5), size = Math.hypot(next.x, next.y);
-  return size > cap ? { x: next.x * cap / size, y: next.y * cap / size } : next;
+  const cap = OCCLUSION_TRACK.capRadii * (storm.geometry?.updraught?.radiusKm ?? 5);
+  const orbitKph = ORBIT.share * Math.max(0, ((tornado?.windSpeedMph ?? 0) - ORBIT.fromMph) * KPH_PER_MPH) * occlusion;
+  const spin = storm.leftMover ? -1 : 1, h = dtHours / ORBIT.substeps;
+  let x = before.x, y = before.y, rate = 0;
+  for (let i = 0; i < ORBIT.substeps; i++) {
+    x += (te - east) * h; y -= (tn - north) * h;
+    const size = Math.hypot(x, y);
+    if (size > cap) { x *= cap / size; y *= cap / size; }
+    // the revolution: rad/h, at the tornado's distance from the mesocyclone
+    rate = spin * orbitKph / Math.max(Math.hypot(x, y), ORBIT.minRadiusKm);
+    const a = rate * h, c = Math.cos(a), s = Math.sin(a);
+    // (counterclockwise seen from above, with y south)
+    const nx = x * c + y * s, ny = -x * s + y * c;
+    x = nx; y = ny;
+    // a loop on the ground: the revolution's speed there beats the storm's
+    if (tornado && Math.abs(rate) * Math.max(Math.hypot(x, y), 1e-6) > speedKph) tornado.loopTurnRad = (tornado.loopTurnRad ?? 0) + Math.abs(a);
+  }
+  if (tornado) tornado.orbitRadPerS = rate / 3600;
+  return { x, y };
 }
 function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0) * 180 / Math.PI + 360) % 360; }
 // Wind above 65 mph = scale x (-ln(1 - quantile))^tail, the scale rising with the storm's

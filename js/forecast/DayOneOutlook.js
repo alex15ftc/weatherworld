@@ -1,6 +1,6 @@
 // The convective outlooks for Days 1 to 3, laid out as the Storm Prediction Center lays out its
 // own (as changed in March 2026):
-//   - the chance of each hazard within 25 miles of a point, given only at fixed contour
+//   - the chance of each hazard within 10 miles of a point (RISK_RADIUS_MILES), given only at fixed contour
 //     levels (tornado 2, 5, 10, 15, 30, 45, 60%; wind 5 to 90%; hail 5 to 60%), never as an
 //     exact figure; Day 3 gives one chance, of any severe weather (5 to 60%);
 //   - conditional intensity groups (CIG1 to CIG3; two for hail), hatched over the chances:
@@ -21,16 +21,22 @@
 // agree (OUTLOOK.agreement). The day that then happens is one more such draw. One run of the
 // members serves every day it reaches: each member reports each outlook day separately.
 import v8 from 'node:v8';
+import { RISK_RADIUS_MILES } from './spcOutlookRules.js';
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { captureTruth, aggregateTruth, practicallyPerfectChance, CHANCE_FIELDS } from '../verification/truth.js';
 import { contourRings, softenArea } from './contourShapes.js';
 import { timingErrorMs, perturbUpstream, perturbMesoscale, mesoscaleShare } from './ensemblePerturbation.js';
 import { diagnoseInitiation } from '../storms/InitiationEngine.js';
+import { advanceStormEngine } from '../storms/StormEngine.js';
+import { updraftHelicity } from './ShortRangeModel.js';
 import { CALIBRATION, CIG_SHARE, calibrateChance } from './outlookCalibration.js';
 import { WORLD_RISK_ORDER, WORLD_RISK_LABELS, WORLD_HAZARDS, WORLD_MAX_CIG, CIG_MEANING, PROBABILITY_LEVELS, probabilityLevel, worldCategory, worldCategoryFromHazard, drawnCig, contourCigAreas, highestCigAt, CIG_TIERS } from './worldRiskCategories.js';
 
 export const OUTLOOK = Object.freeze({
   members: 8, stepHours: 0.5, dayStartUtc: 12,
+  // Cheap runs each member carries on the days it runs with storms (runOutlookMemberSet): Day 1 is
+  // 8 full + 24 cheap, Day 2 4 + 12. (2026-10-28, the user's request for more runs per outlook.)
+  cheapPerMember: 3,
   // The outlooks, how often each is issued afresh (hours, counted from 12Z), and what each
   // gives a chance of.
   days: ['day1', 'day2', 'day3'],
@@ -64,7 +70,7 @@ export const OUTLOOK = Object.freeze({
   // day with half the runs; none with all of them, 1.7 times as far with a quarter).
   spreadKm: 40,
   hazards: { day1: WORLD_HAZARDS, day2: WORLD_HAZARDS, day3: ['severe'] },
-  // The general thunderstorm area: this chance (0-1) of a thunderstorm within 25 miles.
+  // The general thunderstorm area: this chance (0-1) of a thunderstorm within RISK_RADIUS_MILES.
   thunderShare: 0.1,
   // A higher risk only where the runs agree (agenda step 11; the user's rule, 2026-10-16): a
   // contour level is drawn at a place only where this share of the runs had the hazard near it
@@ -74,19 +80,23 @@ export const OUTLOOK = Object.freeze({
   agreement: [0.125, 0.75],
   // The same for the intensity groups, from the first group to the highest a hazard has: they
   // say how strong the weather will be where it happens, which needs most of the runs behind it.
-  groupAgreement: [0.5, 0.75],
+  // (2026-10-28, the user's choice, with the higher category tables: [0.5, 0.75] to [0.625, 0.875].)
+  groupAgreement: [0.625, 0.875],
   // ...except on a day at least highRunShare of whose runs each made a High day of their own: the top
   // levels and groups then need no more than that share of the runs (2026-10-24, the user's choice: the
   // runs' mean peak is lower than any one day's, and High was issued on 4% of 100 mornings against 13%
   // verified, while the areas at Enhanced and Moderate or more matched).
-  highRunShare: 0.75,
+  highRunShare: 0.875,   // (0.75 until 2026-10-28)
   // The share of the runs each category needs (2026-10-24, chosen with the user): a contour level needs
   // that of the category it makes with the first intensity group (worldCategoryFromHazard at CIG1), so a
   // level asks for as much agreement as what it stands for: Marginal one run in eight, Slight two,
   // Enhanced three, Moderate five and High six, the Storm Prediction Center's care rising with the
   // stakes (Moderate was issued on 44% of 100 mornings against 30% verified, Enhanced on 14% against 24%).
   // In place of OUTLOOK.agreement's even steps when no agreement is given.
-  categoryAgreement: { MRGN: 0.125, SLGT: 0.25, ENH: 0.375, MDT: 0.625, HIGH: 0.75 },
+  // 2026-10-28 (the user's choice, with the higher category tables of worldRiskCategories.js): every category
+  // needs one run in eight more than before, so the forecast must be surer before it draws one: Marginal two runs,
+  // Slight three, Enhanced four, Moderate six and High seven.
+  categoryAgreement: { MRGN: 0.25, SLGT: 0.375, ENH: 0.5, MDT: 0.75, HIGH: 0.875 },
   levels: PROBABILITY_LEVELS
 });
 const rank = category => WORLD_RISK_ORDER.indexOf(category);
@@ -103,7 +113,7 @@ export function stormDaysFor(member, members = OUTLOOK.members, lead = 0) { retu
 // a place adds the rate at which storms would start there (InitiationEngine's diagnoseInitiation: lift
 // against inhibition) times how severe one could get: none below capeJkg[0] of MLCAPE, all of it from
 // capeJkg[1], scaled from severeShareWeakShear at shearKt[0] of 0-6 km shear to all of it from
-// shearKt[1]. Summed within 25 miles over the day, that is the number of severe storms to expect near
+// shearKt[1]. Summed within RISK_RADIUS_MILES over the day, that is the number of severe storms to expect near
 // it, and its chance is that of at least one (the outlook's calibration then sets what it is worth).
 // Thunder is the same without the severity, from thunderShare.
 // (capeJkg [250, 2500] to [200, 1900] on 2026-10-26: the sounding's CAPE fell by about a quarter when its heights and mixed
@@ -148,7 +158,16 @@ export function stateFromBytes(bytes) { return v8.deserialize(Buffer.from(bytes)
 // at each 12Z). `state` must be this member's own copy (see stateFromBytes).
 // placesFor(world): the towns its hail and wind reports are made from (server/CountyLayer.js), so
 // that a run's hail and wind are reports, as the outlook is verified; without it, the storms' cores.
-export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity } = {}) {
+export function runOutlookMemberDays(state, member, hours, options = {}) { return runOutlookMemberSet(state, member, hours, { ...options, cheapRuns: 0 }).days; }
+
+// A member and the cheap runs it carries (cheapRuns of them): { days, cheap: [days, ...] }. A cheap
+// run is a storm layer of its own (its own storms and its own chances, seeded apart) moved through
+// this member's air each step; it does not change that air (its outflow and stabilisation are not
+// put back), so it costs about a twentieth of a full run. It reports the days this member runs
+// with storms, and none after. (2026-10-28: tmp/ens tests, 8 seeds: 8 full runs + 24 cheap scored
+// like 32 full runs for severe weather and tornadoes, at about 15% more than the 8 alone; cheap runs
+// on air without the host's storms scored worse, so the host keeps its storms and its outflow.)
+export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity, cheapRuns = 0 } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
   const places = placesFor?.(atmosphere.world) ?? null;
@@ -165,19 +184,26 @@ export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, ups
   // ...and the air over the map: the cap, the moisture coming back, the lift that starts storms.
   // (in pairs: runs 2k and 2k+1 have opposite errors).
   perturbMesoscale(atmosphere, `${state.seed}|${world.validHourUtc}|pair${Math.floor(member / 2)}`, mesoscale ?? mesoscaleShare(world.validHourUtc), undefined, member % 2 ? -1 : 1);
+  const fresh = (ingredients, cheap = null) => ({
+    ingredients: ingredients ? { starts: new Float64Array(n), severe: new Float64Array(n) } : null,
+    frames: [], seen: new Set(), initiations: [], startHour: world.validHourUtc, before: total(),
+    byHour: { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0) }, steps: 0, stormy: new Uint8Array(n),
+    result: { member, ...(cheap === null ? {} : { cheap }), maxHailInches: 0, maxGustMph: 0, strongestTornadoMph: 0, environment: null, lines: [], ongoing: 0, stormTrack: [] }
+  });
   const open = () => {
     // Past its storm days the run goes on without storms (see INGREDIENTS).
     if (days.length >= stormDays && atmosphere.stormsEnabled) { atmosphere.stormsEnabled = false; for (const storm of world.storms ?? []) storm.active = false; }
-    return {
-    ingredients: atmosphere.stormsEnabled ? null : { starts: new Float64Array(n), severe: new Float64Array(n) },
-    frames: [], seen: new Set(), initiations: [], startHour: world.validHourUtc, before: total(),
-    byHour: { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0) }, steps: 0, stormy: new Uint8Array(n),
-    result: { member, maxHailInches: 0, maxGustMph: 0, strongestTornadoMph: 0, environment: null, lines: [], ongoing: 0 }
-    };
+    return fresh(!atmosphere.stormsEnabled);
   };
-  // A day without storms: its chances from the ingredients summed within 25 miles.
+  // The cheap runs' storm layers, each from a copy of the storms at the start, with its own chances.
+  const LAYER = ['storms', 'stormEngine', 'stormArchive', 'stormHistory', 'evolution'];
+  const layers = Array.from({ length: Math.max(0, cheapRuns | 0) }, (_, j) => ({
+    j, days: [], day: null, open: true,
+    state: { ...structuredClone({ storms: world.storms ?? [], stormEngine: world.stormEngine }), stormArchive: [], stormHistory: [], evolution: { ...world.evolution, config: { ...world.evolution.config, seed: `${state.seed}|outlook|${member}|cheap${j}` } } }
+  }));
+  // A day without storms: its chances from the ingredients summed within RISK_RADIUS_MILES.
   const fromIngredients = day => {
-    const { width, height } = world, reach = 25 / world.cellSizeMiles, r = Math.ceil(reach), near = (field, i) => {
+    const { width, height } = world, reach = RISK_RADIUS_MILES / world.cellSizeMiles, r = Math.ceil(reach), near = (field, i) => {
       const x = i % width, y = Math.floor(i / width); let sum = 0;
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (dx * dx + dy * dy > reach * reach) continue; const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < width && yy < height) sum += field[yy * width + xx]; }
       return sum;
@@ -192,7 +218,7 @@ export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, ups
   };
   const close = day => {
     if (day.ingredients) return fromIngredients(day);
-    const truth = aggregateTruth(day.frames, day.initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+    const truth = aggregateTruth(day.frames, day.initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
     const chance = Object.fromEntries(CHANCE_FIELDS.map(field => [field, truth.chance[field]]));
     // Any severe weather (Day 3's one chance), and its tiers: a report of any of the three kinds.
     // The reports themselves (1 where there was one) go with the chances: the intensity groups are judged from them.
@@ -226,14 +252,42 @@ export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, ups
       });
       if (!day.result.environment && (utcNow === 22 || hour + OUTLOOK.stepHours >= hours - 1e-9 || hoursToDayEnd(world.validHourUtc) > 24 - 1e-6)) { day.result.environment = describeEnvironment(world, null); day.result.lines = describeLines(atmosphere); }
       if (hour + OUTLOOK.stepHours >= hours - 1e-9 || hoursToDayEnd(world.validHourUtc) > 24 - 1e-6) { days.push(close(day)); day = null; }
+      // (the cheap runs stop with the host's storms)
+      for (const layer of layers) layer.open = false;
       continue;
     }
+    const last = hour + OUTLOOK.stepHours >= hours - 1e-9, dayEnds = hoursToDayEnd(world.validHourUtc) > 24 - 1e-6;
+    track(day, last, dayEnds);
+    if (last || dayEnds) { days.push(close(day)); day = null; }
+    // Each cheap run: its storms swapped in, moved through this step's air, tracked, swapped out.
+    if (layers.length) {
+      const host = Object.fromEntries(LAYER.map(key => [key, world[key]]));
+      for (const layer of layers) {
+        if (!layer.open) continue;
+        Object.assign(world, layer.state);
+        layer.day ??= fresh(false, layer.j);
+        advanceStormEngine(world, OUTLOOK.stepHours, { applyFeedback: false });
+        track(layer.day, last, dayEnds);
+        if (last || dayEnds) { layer.days.push(close(layer.day)); layer.day = null; }
+        for (const key of LAYER) layer.state[key] = world[key];
+      }
+      Object.assign(world, host);
+    }
+  }
+  return { days, cheap: layers.map(layer => layer.days) };
+
+  // One step's storms (those in the world now) into a day's record.
+  function track(day, last, dayEnds) {
     const { result, byHour, seen } = day, known = seen.size, frame = captureTruth(world, day.frames, seen, day.initiations, places), utc = Math.floor(((world.validHourUtc % 24) + 24) % 24);
     byHour.storms[utc] += seen.size - known;
     // Each hour's counts (2026-10-20; until then whether there was any, which on a busy day put
     // every hour at the top and the outlook's window over the whole day): new storms, severe
     // storms and tornadoes on the ground at each step; and the storms going at the start.
     byHour.tornado[utc] += frame.tornadoes;
+    // Where this run's storms are, for the model page's ensemble products (2026-10-29): [hour UTC, storm
+    // number, x km, y km, reflectivity dBZ, updraft helicity, tornado 0/1] for each storm at each step.
+    const at = Math.round((world.stormEngine?.validHourUtc ?? world.validHourUtc) * 100) / 100;
+    for (const storm of world.storms) if (storm.active && (storm.intensity ?? 0) >= 0.15) result.stormTrack.push([at, Number(String(storm.id).replace(/\D/g, '')) || 0, Math.round(storm.positionKm.x * 10) / 10, Math.round(storm.positionKm.y * 10) / 10, Math.round(storm.radar?.maxReflectivityDbz ?? 0), updraftHelicity(storm), storm.tornado?.onGround ? 1 : 0]);
     for (let i = 0; i < n; i++) if (frame.storm[i]) day.stormy[i] = 1;
     let severe = 0;
     for (const storm of world.storms) {
@@ -250,12 +304,9 @@ export function runOutlookMemberDays(state, member, hours, { timingSpreadMs, ups
     for (let i = 0; i < n; i++) if (frame.hail[i] || frame.wind[i] || frame.tornado[i]) severe++;
     byHour.severe[utc] += severe;
     if (day.steps++ === 0) result.ongoing = world.storms.filter(storm => storm.active && storm.intensity >= 0.3).length;
-    const last = hour + OUTLOOK.stepHours >= hours - 1e-9, dayEnds = hoursToDayEnd(world.validHourUtc) > 24 - 1e-6;
     // The air the storms will have: taken in the late afternoon, or at the last step of a short day.
     if (!result.environment && (utc === 22 || last || dayEnds)) { result.environment = describeEnvironment(world, day.stormy); result.lines = describeLines(atmosphere); }
-    if (last || dayEnds) { days.push(close(day)); day = null; }
   }
-  return days;
 }
 
 // One member for one outlook day (hours must not run past the next 12Z).

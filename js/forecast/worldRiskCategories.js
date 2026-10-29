@@ -1,8 +1,8 @@
 // Risk categories, as the Storm Prediction Center gives them (as changed in March 2026): the
-// chance of each hazard within 25 miles of a point is only ever given at fixed contour
+// chance of each hazard within 10 miles of a point (25 in the centre's own; RISK_RADIUS_MILES) is only ever given at fixed contour
 // levels, the expected intensity is given as a conditional intensity group (CIG1 to CIG3;
 // hail has two), and the two together give the category through the centre's own tables
-// (spcOutlookRules.js). Nothing in the tables is this world's own.
+// (spcOutlookRules.js). Nothing in the tables is this world's own; since 2026-10-28 its chances are within 10 miles, not 25 (RISK_RADIUS_MILES).
 //
 //   contour levels   tornado 2, 5, 10, 15, 30, 45, 60%; wind 5, 15, 30, 45, 60, 75, 90%;
 //                    hail 5, 15, 30, 45, 60%; all severe weather (Day 3) 5, 15, 30, 45, 60%
@@ -47,7 +47,11 @@ export const WORLD_CATEGORY_TABLES = CATEGORY_TABLES;
 // groups verified on 3% of 40 days. A fifth of an area's reports at 75 mph, four times the usual share, now
 // marks it: CIG1 on 13% of days, CIG2 on 3% (scripts/cig-climate.mjs data, judged offline). The frequency
 // fit wanted bars of 0.02, which would mark any area with one 75 mph report.)
-export const CIG_BOUNDS = Object.freeze({ tornado: [0.14, 0.24, 0.02], wind: [0.2, 0.08, 0.03], hail: [0.2, 0.02], severe: [0.3] });
+// (2026-10-28, the user's choice, with the 10-mile chances: tornado [0.14, 0.24, 0.02] to [0.25, 0.35, 0.06] and hail
+// [0.2, 0.02] to [0.35, 0.05], so hatching takes a larger share of strong tornadoes or big hail in an area. Wind as
+// before; its groups were already rare. With them, on 80 days of the outbreak climate: Marginal 9%, Slight 36%,
+// Enhanced 36%, Moderate 15%, High 4%, the user's aim of 40 / 40 / 15 / 5 among Slight and above.)
+export const CIG_BOUNDS = Object.freeze({ tornado: [0.25, 0.35, 0.06], wind: [0.2, 0.08, 0.03], hail: [0.35, 0.05], severe: [0.3] });
 // (Day 3's one hazard, any severe weather: CIG1 only, on the significant tier. Not fitted: Day 3
 // outlooks have so far drawn no group at all.)
 // The fields of the verification's chances behind each hazard's tiers, one for each group.

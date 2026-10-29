@@ -7,6 +7,7 @@
 //   node scripts/risk-climate.mjs --from file      re-read a saved run (after editing the tables)
 // A day is 12Z to 12Z; the chances are the practically perfect ones outlooks are verified against.
 import { fork } from 'node:child_process';
+import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
@@ -29,7 +30,7 @@ async function worker(seed) {
   for (let day = 0; day < days; day++) {
     const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;
     for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations); }
-    const truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+    const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
     // For each hazard and contour level: the highest intensity group found inside it (-1: the level was not reached).
     const reached = Object.fromEntries(WORLD_HAZARDS.map(h => [h, PROBABILITY_LEVELS[h].map(() => -1)]));
     for (let i = 0; i < n; i++) for (const h of WORLD_HAZARDS) { const k = PROBABILITY_LEVELS[h].indexOf(truth.observedProbability[h][i]); if (k >= 0) reached[h][k] = Math.max(reached[h][k], truth.observedCig[h][i]); }

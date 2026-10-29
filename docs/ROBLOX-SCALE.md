@@ -10,7 +10,7 @@ Make chasing possible by **scaling space, not by changing the clock**.
 - One Roblox place covers about **50 x 50 engine miles** (5 x 5 weather cells), not one
   10 x 10 mile cell. The 500 x 500 mile map is then about 100 places, not 2,500.
 - A place still takes about **5 real minutes to drive across**.
-- The clock is **fixed at 12x** (a simulated day in 2 real hours) at every hour of the day.
+- The clock is **fixed at 8x** (a simulated day in 3 real hours) at every hour of the day. It was 12x (2 real hours) until 2026-10-29, when the game was slowed to give chasers more time with each storm; the 12x figures below are from then, and at 8x every real time in them is 1.5 times longer and every storm speed in studs a second two thirds as fast.
   It never speeds up or slows down, so a tornado someone is watching is never fast-forwarded.
 - Place size and clock rate are **settings**, not constants, so they can be tuned in play.
 

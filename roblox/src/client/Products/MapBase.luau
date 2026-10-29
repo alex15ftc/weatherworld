@@ -46,7 +46,9 @@ local ROAD_STYLE = {
 }
 local RIVER = { 58, 104, 170 }
 local RAMP = { 235, 150, 90 }
-local SECTION_COLOURS = { [1] = { 150, 120, 88 }, [2] = { 214, 204, 178 }, [3] = { 244, 244, 240 } }
+local SECTION_COLOURS = { [1] = { 170, 135, 95 }, [2] = { 226, 212, 176 }, [3] = { 250, 250, 246 } }
+-- Full width in studs of the dirt, gravel and county roads (RoadNet.SPECS pavement x 2).
+local SECTION_STUDS = { [1] = 13, [2] = 20, [3] = 26 }
 
 -- Each cover's surfaces in map colours: the terrain's colour of each, times the cover's map
 -- colour over the average terrain colour of the cover (sampled over its surfaces' patterns),
@@ -222,9 +224,15 @@ function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: num
 		end
 	end
 	local right, bottom = left + pw * step, top + ph * step
-	-- Section-line roads once zoomed in (paved from 12 pixels a mile, all from 40).
-	if m < 1 / 12 then
-		local minClass = if m < 1 / 40 then 1 else 3
+	-- Section-line roads once zoomed in (paved from 5 pixels a mile, gravel from 14, dirt from
+	-- 40), as wide as the world's road once that is wider than the least width, so a player on a
+	-- road is seen on it (2026-10-28: they were 1 pixel and read as fields).
+	if m < 1 / 5 then
+		local minClass = if m < 1 / 40 then 1 elseif m < 1 / 14 then 2 else 3
+		local studsWide = SECTION_STUDS
+		local function width(class: number): number
+			return math.max(if class == 3 then 1.8 else 1.3, studsWide[class] / d.studsPerMile / m)
+		end
 		local size = d.sectionSize
 		local I0, I1 = math.max(0, math.floor(left) - 1), math.min(size - 1, math.ceil(right))
 		local J0, J1 = math.max(0, math.floor(top) - 1), math.min(size - 1, math.ceil(bottom))
@@ -233,10 +241,10 @@ function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: num
 				local v = buffer.readu8(d.sections, J * size + I)
 				local east, south = v % 4, (v // 4) % 4
 				if east >= minClass then
-					line(I, J, I + 1, J, if east == 3 then 1.5 else 1, SECTION_COLOURS[east])
+					line(I, J, I + 1, J, width(east), SECTION_COLOURS[east])
 				end
 				if south >= minClass then
-					line(I, J, I, J + 1, if south == 3 then 1.5 else 1, SECTION_COLOURS[south])
+					line(I, J, I, J + 1, width(south), SECTION_COLOURS[south])
 				end
 			end
 		end

@@ -49,7 +49,9 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // degrees, where the engine had 175 / 207 / 233. The low-level shear ran nearly along the deep shear (17 degrees apart against
   // 52), the critical angle was 51 against 78, and 0-1 km helicity at a given deep shear about half the real. The cuts of
   // 2026-10-16 had been made, against no observations, to bring helicity down. Now 159 / 196 / 236.)
-  leeTroughFlowHpa: 8, leeTroughColumn: 0.39, leeTroughWidthKm: 450, leeFlowMs: 15,
+  // (leeTroughFlowHpa 8 to 11 on 2026-10-28, the outbreak climate: a deeper lee trough backs the low-level wind and
+  // strengthens the low-level jet, so the warm sector has strong low-level helicity on most days.)
+  leeTroughFlowHpa: 11, leeTroughColumn: 0.39, leeTroughWidthKm: 450, leeFlowMs: 15,
   // Lee cyclogenesis: where the outer model's ascent (an approaching trough) crosses the lee
   // trough, air descending the slope is stretched and the trough deepens there, by up to
   // leeCycloneGain of its depth at leeCycloneAscentKh, into a closed low.
@@ -138,7 +140,9 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // moisture coming back north is modest at first, and shallow (moistReturnShallowM) while it is
   // still near gulfScouredMixingRatio. The Gulf's air is at most gulfMixingRatio + gulfMoistMoreGkg
   // (1.5 gave warm sectors at 17.5 g/kg, a CAPE 90th of 4,100 and Moderate on 28% of days).
-  gulfScouredMixingRatio: 8.5, gulfMoistMoreGkg: 0.5,
+  // (2026-10-28, the outbreak climate: scoured to 12, not 8.5. The Gulf is never dried out, so the
+  // moisture is back within a day of a front and no day goes without a moist warm sector.)
+  gulfScouredMixingRatio: 12, gulfMoistMoreGkg: 0.5,
   // How strongly each level follows the outer model's tropospheric temperature. Cold air
   // masses are shallow and sharpest near the ground. Warm ones are not: the moist air under a
   // warm pattern comes off the sea and keeps close to the sea's temperature, and the warmth
@@ -168,7 +172,8 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // (moistLayerTopM 2100 to 1700 m on 2026-10-25: 1.3-1.4 km of moist air over the low plains, as under a lid,
   // against 1.7-1.8 km; a deep afternoon mixed layer then takes in dry air above it, where before it carried
   // the ground's moisture up through 850 mb at 17.5-17.9 C dewpoints; third review round.)
-  gulfMixingRatio: 14.75, continentalMixingRatio: 7, continentalHumidity: 0.45, dryMixingRatio: 3.5, moistLayerTopM: 1700,
+  // (14.75 to 16 on 2026-10-28, the outbreak climate: low cloud bases and strong instability in the warm sector.)
+  gulfMixingRatio: 16, continentalMixingRatio: 7, continentalHumidity: 0.45, dryMixingRatio: 3.5, moistLayerTopM: 1700,
   // Boundary layer.
   // Peak heating of the air by the ground: moist, vegetated ground puts most of the sun's
   // energy into evaporation, dry ground into heating the air.

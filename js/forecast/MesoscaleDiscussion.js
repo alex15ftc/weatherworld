@@ -17,6 +17,7 @@
 // lines); its "Areas affected" names the parts of the regions it covers, and it carries the
 // counties at least half inside it for the pages (js/forecast/counties.js).
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
+import { RISK_RADIUS_MILES } from './spcOutlookRules.js';
 import { captureTruth, aggregateTruth } from '../verification/truth.js';
 import { regionRings, solidRegion } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
@@ -124,7 +125,7 @@ export function runMesoscaleMember(state, member, hours = MESOSCALE.hoursAhead, 
       for (const past of storm.tornadoHistory ?? []) if (past.startedHourUtc >= start) note(`${storm.id}|${past.cycle}`, past.peakWindSpeedMph ?? 0, storm.positionKm);
     }
   }
-  const truth = aggregateTruth(frames, initiations, world.width, world.height, 25 / world.cellSizeMiles, world.cellSizeMiles);
+  const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
   const any = (...fields) => Uint8Array.from({ length: n }, (_, i) => (fields.some(field => truth[field][i]) ? 1 : 0));
   return {
     member, width: world.width, height: world.height, cellMiles: world.cellSizeMiles, hours,

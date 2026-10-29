@@ -158,7 +158,12 @@ function DebrisView.new(ctx: any): any
 					tc = {}
 					torC[nT] = tc
 				end
-				tc.x, tc.y, tc.k = t.x, t.y, C.scaleAbout(t.x, t.y)
+				-- about the smoothed centre the funnel is drawn at (Tornado/StateAdapter), not the
+				-- raw ~15 Hz snapshot: the drawing scales about this point, so each snapshot step
+				-- moved every piece several times that step on screen (2026-10-28)
+				local e = ctx.tornadoAdapter and ctx.tornadoAdapter.entries[t.id]
+				local x, y = if e then e.x else t.x, if e then e.y else t.y
+				tc.x, tc.y, tc.k = x, y, C.scaleAbout(x, y)
 			end
 		end
 		-- fly everything

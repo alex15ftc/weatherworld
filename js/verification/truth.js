@@ -2,12 +2,12 @@
 // tracks, hail >= 1 in, wind gusts >= 58 mph, with significant tiers (EF2+, 2 in, 75 mph) and
 // the extreme/violent tiers used for conditional intensity groups. The same definitions serve
 // the authoritative verification and the forecast ensemble members.
-import { RISK_ORDER, HAZARDS, categoryFromHazard } from '../forecast/spcOutlookRules.js';
+import { RISK_ORDER, HAZARDS, categoryFromHazard, RISK_RADIUS_MILES } from '../forecast/spcOutlookRules.js';
 import { worldCategory, contourCig, CIG_TIERS } from '../forecast/worldRiskCategories.js';
 import { logStormTick } from '../reports/stormLog.js';
 
 export const TRUTH_FIELDS = ['storm', 'tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme', 'windViolent'];
-// The fields whose chance within 25 miles is worked out unrounded (result.chance): each hazard
+// The fields whose chance within the outlook radius (RISK_RADIUS_MILES) is worked out unrounded (result.chance): each hazard
 // and the tiers its intensity groups are defined by (EF2+, EF3+, EF4+; 2 in, 3.5 in hail;
 // 75, 85, 96 mph wind, which are the SPC's 65, 74 and 83 kt).
 export const CHANCE_FIELDS = ['tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hail', 'hailSig', 'hailExtreme', 'wind', 'windSig', 'windExtreme', 'windViolent'];
@@ -192,7 +192,7 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
     hail: practicallyPerfectProbability(result.hailExact, width, height, cellKm, [5, 15, 30, 45, 60]),
     wind: practicallyPerfectProbability(result.windExact, width, height, cellKm, [5, 15, 30, 45, 60, 75, 90])
   };
-  // The same chances unrounded (percent within 25 miles), for each hazard and each intensity tier.
+  // The same chances unrounded (percent within the radius given), for each hazard and each intensity tier.
   result.chance = Object.fromEntries(CHANCE_FIELDS.map(field => [field, practicallyPerfectChance(result[`${field}Exact`], width, height, cellKm)]));
   // Conditional intensity groups: for each area inside a contour, the highest tier that a
   // large enough share of the reports in it reached (worldRiskCategories.js).
@@ -209,7 +209,10 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
 }
 
 // SPC's practically perfect forecast: reports on an 80 km grid, Gaussian-smoothed (sigma 120 km).
-const PP_GRID_KM = 80, PP_SIGMA_KM = 120;
+// The grid is the size that goes with the chance's radius: SPC's 80 km for its 25 miles, scaled to this world's
+// RISK_RADIUS_MILES (2026-10-28: 10 miles, a 32 km grid; reports in one 80 km box spread over several of them, and
+// each counts for a sixth as much, so scattered reports give a lower chance than before and only dense ones a high one).
+const PP_GRID_KM = 80 * RISK_RADIUS_MILES / 25, PP_SIGMA_KM = 120;
 // The chance (percent, 0-100) of a report within radiusMiles of each cell, from one day's
 // reports: the share of the country round about (the practically perfect chance's own 120 km
 // Gaussian) that had a report within that radius. At 25 miles it is close to the practically

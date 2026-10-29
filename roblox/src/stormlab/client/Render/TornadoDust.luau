@@ -210,7 +210,12 @@ function TornadoDust.new(ctx: any): any
 				tc = {}
 				self.torPool[t.id] = tc
 			end
-			tc.x, tc.y, tc.k = t.x, t.y, C.scaleAbout(t.x, t.y)
+			-- about the smoothed centre the funnel is drawn at (Tornado/StateAdapter), not the
+			-- raw ~15 Hz snapshot: the dust is drawn scaled about this point, so each snapshot
+			-- step threw the whole cloud ~3x that step on screen (2026-10-28)
+			local e = ctx.tornadoAdapter and ctx.tornadoAdapter.entries[t.id]
+			local x, y = if e then e.x else t.x, if e then e.y else t.y
+			tc.x, tc.y, tc.k = x, y, C.scaleAbout(x, y)
 			tors[t.id] = tc
 		end
 		for i, p in self.puffs do

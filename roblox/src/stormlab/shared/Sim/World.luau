@@ -81,7 +81,8 @@ function World.new(data: any, opts: { [string]: any }?): World
 	-- storms from the engine
 	self.storms = {}
 	for _, e in data.storms do
-		local s = Storm.fromEngine(e)
+		-- (o.followEngine: the engine drives these storms - Sim/EngineFollow)
+		local s = Storm.fromEngine(e, o.followEngine)
 		Storm.environment(s, self)
 		table.insert(self.storms, s)
 	end
@@ -239,15 +240,27 @@ function World.updateSurface(self: World)
 	end
 end
 
+-- How far (s) the clock has run past a storm's or vortex's last step (they step in the slow part,
+-- every few seconds or more; tornadoes every frame): its circulation is carried on by its motion
+-- for that long, so a tornado following it moves smoothly, not in a step every slow step.
+local function sinceStep(self: World, o: any): number
+	return math.clamp(self.time - (o.validAt or self.time), 0, 60)
+end
+
 function World.parentOf(self: World, t: any): any?
 	if t.parentKind == "cell" then
 		for _, s in self.storms do
 			if s.id == t.parentId then
 				local lx, ly = Storm.lowMesoAt(s)
+				-- (held still: no motion to carry it on by, and none for the tornado to follow)
+				local held = (self :: any).holdStill
+				local lead = if held then 0 else sinceStep(self, s)
+				lx += s.u * lead
+				ly += s.v * lead
 				local fW = Storm.wprofAt(s, 1000)
 				return {
 					id = s.id, kind = "cell", seed = s.seed,
-					x = lx, y = ly, u = s.u, v = s.v,
+					x = lx, y = ly, u = if held then 0 else s.u, v = if held then 0 else s.v,
 					vlow = s.vlow, rlow = 0.3 * s.Ru, wLow = s.W * fW + 0.5 * math.abs(s.vmid),
 					rfdDeficit = s.rfdDeficit or 0, cloudBase = s.wallBase or s.base, occl = s.occl,
 					dead = s.dead or s.vlow < 3,
@@ -257,8 +270,9 @@ function World.parentOf(self: World, t: any): any?
 	else
 		for _, v in self.systems.vortices do
 			if v.id == t.parentId then
+				local lead = sinceStep(self, v)
 				return {
-					id = v.id, kind = v.kind, seed = v.seed, x = v.x, y = v.y, u = v.u, v = v.v,
+					id = v.id, kind = v.kind, seed = v.seed, x = v.x + (v.u or 0) * lead, y = v.y + (v.v or 0) * lead, u = v.u, v = v.v,
 					vlow = v.vlow, rlow = v.rlow * 0.5, wLow = v.wLow or 8, rfdDeficit = v.rfdDeficit or 0,
 					cloudBase = v.cloudBase or 700, occl = 0, dead = v.dead,
 				}
@@ -336,6 +350,7 @@ local function stepStorms(self: World, dt: number)
 			self:pause()
 		end
 		Storm.step(s, dt, self)
+		s.validAt = self.slowTime -- (the clock its new position is for: World.parentOf)
 		s.ffdX, s.ffdY = s.cFfdX, s.cFfdY
 		s.rfdX, s.rfdY = s.cRfdX, s.cRfdY
 		local child = Storm.maybeSplit(s, self)
@@ -444,7 +459,7 @@ end
 
 -- Everything at once (offline tests, spin-up).
 function World.step(self: World, dt: number)
-	self:stepSlow(dt)
+	self:stepSlow(dt, self.time + dt)
 	self:stepFast(dt)
 end
 
@@ -465,7 +480,10 @@ end
 
 -- The slow part: storms, precipitation, cold pool, systems, initiation, environment. dt: time
 -- since the last call. May yield (World.pause) between and inside the heavy pieces.
-function World.stepSlow(self: World, dt: number)
+function World.stepSlow(self: World, dt: number, validAt: number?)
+	-- the clock this step brings the storms up to (the host steps the fast part first and runs
+	-- this after, often over several frames: the clock at its start)
+	self.slowTime = validAt or self.time
 	local T = self.timers
 	for k, v in T do
 		T[k] = v + dt
@@ -561,6 +579,9 @@ function World.stepSlow(self: World, dt: number)
 		local d = T.systems
 		T.systems = 0
 		Systems.analyse(self.systems, self, d)
+		for _, v in self.systems.vortices do
+			v.validAt = self.slowTime -- (World.parentOf)
+		end
 		self:pause()
 	end
 	if T.init >= 60 then
