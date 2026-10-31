@@ -102,6 +102,49 @@ function Util.hazeF(d: number): number
 	return math.floor(f * 40 + 0.5) / 40
 end
 
+-- The clear slot: where the rear-flank downdraft dries the base out, a band curving round the low
+-- meso from the RFD cyclonically (counter-clockwise), longer as the RFD gust front wraps round it
+-- (occlusion). All from the storm's fields: positions of the low meso and RFD, RFD strength, the
+-- cold pool under it, occlusion. Points are storm-relative (m). nil when the storm has no RFD.
+function Util.slotParams(s: any): any?
+	if not s.rfdX or not s.lowX then
+		return nil
+	end
+	local lx, ly = s.lowX - s.x, s.lowY - s.y
+	local vx, vy = s.rfdX - s.lowX, s.rfdY - s.lowY
+	local k = Util.ramp(s.rfd or 0, 1, 6) * (0.4 + 0.6 * Util.ramp(s.rfdDeficit or 0, 0.5, 4))
+	if k < 0.02 then
+		return nil
+	end
+	local rr = math.max(400, math.sqrt(vx * vx + vy * vy))
+	return {
+		lx = lx, ly = ly, rr = rr, k = k,
+		a0 = math.atan2(vy, vx) - 0.5, -- (from a little behind the RFD...)
+		span = 1.1 + 1.6 * math.clamp(s.occl or 0, 0, 1), -- (...round the front as it wraps)
+		w = math.clamp(0.4 * rr, 300, 1500) * (0.6 + 0.4 * k),
+	}
+end
+
+-- 0 (cloud) .. 1 (clear) at storm-relative (px, py)
+function Util.slotAt(sl: any?, px: number, py: number): number
+	if not sl then
+		return 0
+	end
+	local dx, dy = px - sl.lx, py - sl.ly
+	local r = math.sqrt(dx * dx + dy * dy)
+	local band = (r - sl.rr) / sl.w
+	if band * band > 6 then
+		return 0
+	end
+	local a = (math.atan2(dy, dx) - sl.a0) % (2 * math.pi)
+	if a > sl.span + 0.6 then
+		return 0
+	end
+	-- (soft ends: a frayed start, a long thinning tail where it wraps)
+	local ends = math.min(Util.ramp(a, 0, 0.35), 1 - Util.ramp(a, sl.span - 0.3, sl.span + 0.6))
+	return sl.k * math.exp(-band * band) * ends
+end
+
 -- a cloud's colour from its albedo and how much direct sun reaches it (0..1)
 function Util.cloudColour(albedo: number, sunLit: number): Color3
 	local L = Util.light

@@ -14,7 +14,7 @@ for step = 1, 8 do
 	local line = {}
 	for _, s in world.storms do
 		if not s.dead and (s.rot or 0) > 0.25 then
-			table.insert(line, string.format("%s rot %.2f base %4.0f lowering %4.0f wall %4.0f m vlow %4.1f", tostring(s.id), s.rot, s.base, s.lowering, s.wallBase, s.vlow))
+			table.insert(line, string.format("%s rot %.2f base %4.0f lowering %4.0f wall %4.0f m vlow %4.1f | mix %4.0f dyn %4.0f dF %.1f share %.2f NB %3.0f lift %3.0f", tostring(s.id), s.rot, s.base, s.lowering, s.wallBase, s.vlow, s.lowMix or 0, s.lowDyn or 0, s.lowDF or 0, s.lowShare or 0, s.lowNB or 0, s.lowLift or 0))
 		end
 	end
 	print(string.format("t=%3d min  %s", math.floor(world.time / 60), table.concat(line, " | ")))

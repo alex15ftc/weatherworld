@@ -264,6 +264,7 @@ function World.parentOf(self: World, t: any): any?
 					vlow = s.vlow, rlow = 0.3 * s.Ru, wLow = s.W * fW + 0.5 * math.abs(s.vmid),
 					rfdDeficit = s.rfdDeficit or 0, cloudBase = s.wallBase or s.base, occl = s.occl,
 					dead = s.dead or s.vlow < 3,
+					storm = s, -- (Tornado.step: the RFD outflow that pushes its contact)
 				}
 			end
 		end
@@ -359,10 +360,11 @@ local function stepStorms(self: World, dt: number)
 			table.insert(new, child)
 		end
 		-- tornadogenesis
-		if self.genesis and not s.dead and not s.tornado and s.G >= 1 and s.rot > 0.25 then
+		if self.genesis and not s.dead and not s.tornado and s.G >= 1 and s.rot > 0.25 and Storm.genesisTry(s) then
 			local pv = self:parentOf({ parentKind = "cell", parentId = s.id })
 			if pv then
 				startTornado(self, pv, s)
+				s.tryOk = false
 			end
 		end
 	end
@@ -558,7 +560,7 @@ function World.stepSlow(self: World, dt: number, validAt: number?)
 		local day = env:heatingRate(0) > 0
 		self.coldPool:downdrafts(self.precip.rainRate, env.fields.ddDeficit, d, function()
 			self:pause()
-		end)
+		end, self.precip.rainRateR, if self.coldPool.SATURATED then nil else env.fields)
 		self:pause()
 		self.coldPool:step(d, low, if day then 5400 else 10800, function()
 			self:pause()
@@ -628,6 +630,9 @@ function World.labScene(self: World, scene: any, site: { x: number, y: number })
 		end
 	end
 	local p = table.clone(scene.storm)
+	-- (an evolving storm is built held like the others; it starts evolving with its tornado)
+	local evolve = p.evolve
+	p.evolve = nil
 	local s = Storm.new({ x = site.x, y = site.y, u = p.u, v = p.v, W = p.W, Ru = p.Ru, vmid = p.vmid, vlow = p.vlow, seed = p.seed, age = 3600 })
 	s.id = "LAB" .. tostring(p.seed)
 	s.lab = true
@@ -648,6 +653,9 @@ function World.labScene(self: World, scene: any, site: { x: number, y: number })
 	end
 	self.genesis, self.initiation = g, i
 	p.t = 0
+	if scene.noTornado then
+		return nil -- (a storm-structure scene: the storm alone)
+	end
 	local t = self:forceTornado(s)
 	if not t then
 		return nil
@@ -657,13 +665,40 @@ function World.labScene(self: World, scene: any, site: { x: number, y: number })
 	-- fixed identity: the same scene always draws the same tornado
 	t.seed = (p.seed or 1) * 7 + 11
 	t.quality = 1
-	local dt = 0.5
-	for _ = 1, math.floor((scene.run or 60) / dt) do
-		s.x += s.u * dt
-		s.y += s.v * dt
-		Storm.applyPin(s, dt)
-		Storm.prepare(s)
-		Tornado.step(t, dt, self:parentOf(t), self)
+	if evolve then
+		p.evolve = true
+		-- an evolving storm: the world runs (the storm, its rain and cold pool, the tornado), so
+		-- the stage is the one the storm brought it to; then that state is pinned for the hold
+		self.genesis, self.initiation = false, false
+		local n = 0
+		local left = scene.run or 60
+		while left > 0 do
+			local d = math.min(5, left)
+			self:step(d)
+			left -= d
+			n += 1
+			local y = (self :: any).yield
+			if y and n % 4 == 0 then
+				y()
+			end
+			if t.ended then
+				break
+			end
+		end
+		self.genesis, self.initiation = g, i
+		if scene.hold then
+			p.evolve = false
+			p.vlow, p.occl, p.rfdDeficit = s.vlow, s.occl, s.rfdDeficit
+		end
+	else
+		local dt = 0.5
+		for _ = 1, math.floor((scene.run or 60) / dt) do
+			s.x += s.u * dt
+			s.y += s.v * dt
+			Storm.applyPin(s, dt)
+			Storm.prepare(s)
+			Tornado.step(t, dt, self:parentOf(t), self)
+		end
 	end
 	t.params = Vortex.params(t :: any)
 	t.hold = scene.hold == true

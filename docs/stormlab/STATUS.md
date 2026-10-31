@@ -448,3 +448,1225 @@ See `REALISM-REVIEW-2026-10-29.md`.
 - **Scenarios re-exported** from the current engine via `js/game/LabWindow.js` (Supercell: seed 8181, tornado on S0008 at 22:25 UTC; SquallLine: seed 2112, S0068). Old files in git history.
 - **Test:** `luau tools/stormlab/test_engine_follow.luau -a Supercell 45`.
 - Not yet seen in Studio.
+
+## Ground gaps + funnel scale fix (2026-10-29)
+
+- **Funnel drawn at six scales (fixed).** Since 2026-10-28 `Render/TornadoCards` named the tornado's draw scale `k`, and the ring loop `for k = 0, RING` shadowed it: the centre card was drawn at scale 0 (size 0, on the ground) and ring card i at i studs/m instead of ~3.57, so the funnel was six mismatched copies. The scale is now `ks`. The main game uses the same renderer. Seen in Studio after the fix: cone, stovepipe and wedge scenes draw one coherent funnel.
+- **Farmland tiles left gaps (fixed).** `GROUND.tile` was 2048 m = 7314 studs, but a Part is at most 2048 studs a side, so each tile was clamped and ~5000 studs of nothing lay between them. Tiles are now 512 m (`Render/Ground` caps them at 2048 studs and covers `LIMITS.partRange`). The town's ground plate and roads (1800 / 1600 / 900 m) were clamped the same way; `Town` now splits big flat parts (`tiled`).
+- **Terrain (server/Terrain) rebuilt:** chunks of 64 columns, nearest the town first, 6 ms a frame. Each chunk lays a solid sheet just under the datum (top -0.08 m: under the town plate, over the tiles, which moved to -0.3 m) so near-empty voxels can no longer leave holes, fills the solid part of its hills with FillBlock and writes voxels only for the layers its surface crosses (heights on a 4-column grid, interpolated). A rebuild clears each chunk's own box, then erases what is left of the old area outside the new one; `Terrain:Clear()` on the full area hit the script timeout and froze "Town ahead". The town no longer waits for the terrain. First full build: 66 M hill voxels in ~4 min, in the background.
+- F4 panel: "go to town" (camera 1.5 km off the town).
+
+## Funnel top and edges (2026-10-29)
+
+- **Top bulb removed.** The drawn radius was capped at 3 core radii all the way up, so the flare stopped widening and the stack of wide round cards read as a dark ball under the base. Now the cap widens toward the base (3 -> 8 core radii over the top 40%: the condensed radius runs away there), the flare cards get much flatter (height down to 0.2 of width), thin by up to half toward the base, and fade only at 0.9-1.02 H, so the funnel hangs from the base and spreads into the lowering.
+- **Defined edge.** The centre card holds a second ImageLabel, `sliceFlat` (a horizontal slice of a column: crisp sides 0.86 of the frame wide, gaussian top and bottom), sized to the condensed diameter and 16 layer gaps tall at up to 0.5 opacity, so several faint slices blend at every point and the edge follows the taper without steps (8 gaps / 0.95 opacity drew steps). Its weight `def` = smooth(0.2, 0.5, condensed radius / core radius) x (1 - smooth(0.5 H, 0.85 H, z)): crisp where well condensed, soft at a marginal tip (rope) and where the funnel becomes the lowering; the soft puffs step back where it is crisp. Still ~200 billboards.
+- Seen in Studio: stovepipe (no bulb, smooth crisp sides), cone (defined cone flaring into a broad lowering), rope (soft stub). Wedge not rechecked.
+
+## Round 1 checks (2026-10-29)
+
+- New F4 toggle **camera: close** films any scene from 600 m (with the rain-wrap and night toggles).
+- Cone from 600 m: crisp funnel, dust moves; the funnel itself shows no spin or striations.
+- Multi-vortex (rc ~330 m): one flat grey wall from 1.5 km and from 600 m; no sub-vortices visible.
+- Town hills: smooth, no holes. The town's 1800 m ground plate rendered as a darker square whose corners stuck into the hills (a ragged "quarry" rim); the plate is now only built when the lab has no hills (the terrain sheet is the ground).
+- Frame rate 11-40 fps in Studio while the lab's scripts take < 1 ms; cause not found (the profiler had no frames).
+
+## Round 2: tornado look (2026-10-29)
+
+Checked against docs/tornado-reference (NOTES.md, frame sheets) and docs/storm-reference/real: funnels are smooth and nearly featureless; spin reads from features crossing the silhouette (debris-cloud blobs, sub-vortices, edge wisps). So **no striped/scrolling funnel texture**.
+
+- Wedge: the flare toward the cloud base is kept within half the lowering's reach (StormCards now publishes `stormBase[id].r`, the wall layer's radius); it spread to ~3.8 km and drew one dark wall. Ring puffs stay inside a crisp edge (size x (1 - 0.25 def)). The scene's wedge is squat (cloud base ~350 m): from 3.5 km it is a dark band under the lowering, low contrast against it (round 3, light/contrast).
+- Multi-vortex: the parent thins where the core is two-celled (`thin` from subCount and twoCell: density x (1 - 0.7 thin), no crisp edge); sub-vortices are darker, bluer and also show low down where their wind (0.6 vc + own) beats the dust pickup. Seen: a dark sub-vortex column moving across a translucent parent.
+- Dust: tornado puffs ~2x bigger, ~half the spawn rate, 0.7x opacity, the wisp sheet instead of the dirt-grain sheet, wider than tall near the ground. Reads as a faint skirt, not a ring of balls. The lab has no ground-type map, so no per-ground dust colour yet.
+- Night: storm cards reshade when the sky/sun light changes (night toggle was day-grey until the next re-plan). Rain shafts still stay light at night.
+- Ground: Terrain heights measured from the true datum (the rounded one put the sheet up to 0.56 m low); client farmland tiles wholly inside the terrain area sink 2 m. At ground level the town's surroundings are continuous; from ~1 km up the pad still shows tile patches (likely terrain LOD dropping the thin sheet).
+
+## Round 3: light, flat deck, clear slot, wedge edges, perf (2026-10-29)
+- Perf (wedge scene, "perf sweep" button in F4): 25.7 ms/frame (39 fps) with every layer on, 22.3 ms
+  with every layer off - the storm layers cost ~3.4 ms; the rest is Studio, the in-process server,
+  terrain and the engine. Scripts 2.3 ms in all (StormCards 0.6, TornadoDust 0.5, TornadoCards 0.4,
+  Scud 0.2, RainShafts 0.2, Lightning 0.1). Turning clouds off saves 1.4 ms, dust 0.6, funnel 0.1.
+  Scene builds drop to 2-11 fps while the server rebuilds the terrain (TerrainBuilding attribute).
+- Light (3a): backlit rain brightens toward the sun (Shafts), backlit scud darkens (Scud), the base
+  is darker from below (StormCards sky term by the card normal).
+- Clear slot (3c): Util.slotParams / slotAt - a band behind the RFD round the low, from the RFD's
+  strength and the occlusion; deck, rim and lump cards thin in it, frayed wisps along its lips.
+- Flat deck (3b): BaseDeck.luau built (2048-stud tiles, SurfaceGui on the bottom face split into
+  4x4 cells - UIGradient does nothing on these images - MaxDistance 0) but **OFF**
+  (LabConfig.DECK.enabled = false): Roblox sorts see-through GUIs per object, so a tile nearer than
+  a billboard draws over all of it (lowering, scud, funnel top) with straight outlines.
+- Wedge edges: the veil was mostly cloud, not rain. Down-facing deck/lump billboards were drawn at
+  full height (a 4.6 km card ~2.5 km tall) and hung to the ground in front of the funnel. CardPlan
+  now foreshortens them (seenH: cw sin e + t cos e from the camera). Also: condensation tags sized
+  to the core, not the envelope; the multi-vortex "shell" thinning only inside 0.7 core radii; rain
+  shafts at the field's 1 km columns within 4 km of a tornado, 1.1 km wide. Result: dark wedge with
+  a clear edge against lit rain; the edge against the dark rear-flank side is still soft.
+- Follow-up (same day): the funnel's albedo now falls with its debris load (Sim/Tornado
+  debrisLoft/debrisTop: soil mixed into the condensation, most near the ground), so a debris-laden
+  wedge is the dark mass the references show. Foreshortened base cards also can't drop below the
+  sight line to their own far edge (a lump near overhead still hung to the ground). Result: dark
+  wedge with both edges clear. Still open: the base lumps (lumpyFlat, "under" lobe sheets) read as
+  bright ovals under the base - the baked under-lobe texture looks lit; and lumps ~4.5 km wide are
+  drawn at their centre's distance, so the far half of one can sit in front of a funnel.
+  Clear slot not yet checked visually.
+
+## Round 4: rope, multi-vortex, funnel card heights (2026-10-29)
+
+Done (engine):
+- Tornado contact is pushed by the parent storm's rear-flank outflow (`Storm.rfdOutflow`, used in
+  `Tornado.step`; the parent summary from `World.parentOf` now carries `storm`). Ropes and dying
+  tornadoes now lean (tilt 55 m -> 90-120 m as decay grows; mature ones 110-170 m).
+- Dissipating core wind = circulation / narrowing radius (`vT ... / (1 - 0.45 decay)`), so a
+  roping-out funnel stays condensed longer.
+- Rope waves: three travelling waves 1 : 0.62 : 0.41 and a loose foot (`Vortex.axisAt`).
+- Sub-vortices: orbit 0.6-0.9 rc (was 0.9 +- 0.12) and a helix (one core radius of height per
+  radian) in both the drawn tubes and the wind field.
+- Scenes: rope_day vlow 38, run 165 (a real rope-out, not a weak funnel); multivortex base 700
+  (cloud base 550: the parent condenses only aloft), camera 2.6 km.
+
+Done (renderer, TornadoCards):
+- Cards spaced along the curved axis (segment length) and tall cards lie along the axis as seen;
+  the crisp core slice turns with the lean. Narrow tubes (rc < 60 m) keep a crisp edge.
+- Sub-vortex tubes: crisp slice texture, ~0.24 rc wide, rotated along their helix, heights spaced
+  ~1.5 tube widths.
+- Two-celled parent = hollow shell (centre card x0.05, ring x0.1 at full thinning).
+- Card height limited by the taper below it (`hangMax`), opacity raised to keep the sight-line
+  depth (`kOv`). Wide flare slices used to hang to the ground as an opaque dome.
+- StormCards: a card leaving the sky-only lobe bake no longer keeps "amb" as its pass (nil image
+  error every frame -> 11 fps).
+- F4 counter shows "N subs op x".
+
+Seen in Studio: rope leans, kinks and tapers (still a soft half-condensed funnel at decay 0.44);
+multi-vortex is now a broad funnel aloft over a narrower base with sky beside it.
+
+Open:
+- Sub-vortex tubes still not clearly visible in the multivortex scene (18 drawn at 0.8 opacity).
+- Wedge sides still soft from the 2.6 km scene camera; bright patches under the base remain.
+- Not started: wall cloud size/occlusion/ragged RFD side, mothership striations, storm
+  life-cycle looks (LP/HP, weakening, orphan anvil), lifecycle test scenes.
+
+## Round 5 (2026-10-29): one tornado, aged by its storm
+
+Asked for: every tornado built the same way, its look only from its life stage, the stage from
+the storm's evolution. Research (NWS spotter guide "tornado life cycle"; UCI ESS 124 lecture 19):
+organizing (dust whirl, funnel partway) -> mature (widest, near vertical) -> shrinking -> rope
+(the RFD undercuts and tilts it; thin, snake-like, still damaging) -> gone.
+
+Done (engine):
+- A lab storm can evolve (`pin.evolve`, `pin.occl` = where its occlusion cycle starts):
+  `World.labScene` then runs the world itself (storm, rain, cold pool, tornado) for `run` s and
+  pins what it reached for the hold. Pre-run stays frozen. `Storm.occlusionFactor` shared.
+- Tornado cut off once its parent has occluded (occl >= 0.8, the point where the storm's own
+  low meso is cut off) - it used to fade in place for ~10 min as a "mature" EF0.
+- Stretching: tilt lengthens the vortex, core narrows as 1/sqrt(length) (`stretchK`); the spin-up
+  comes through vT's (rlow/rc)^0.4 (dividing vT too fed a 115 m/s runaway).
+- Dissipating circulation spent late: x (1 - decay^2) - ropes stay spun up and condensed.
+- Outer flow spins down first when cut off: `Vortex.profile` / `deficitIntegral` blend the fed
+  Wood-White profile (R^-0.6 outside) toward a free vortex (R^-1) with decay. Ropes condense no
+  wider than ~1.5 core radii (was ~3).
+- Rope scene = a life stage: rope_day storm evolves from occl 0.15; its tornado forms, peaks
+  (~70 m/s, 2.5 min), the RFD tilts it past twice the cloud base, held at ~4 min (decay 0.7).
+  vlowLater scripted cut removed from it.
+
+Done (renderer, all funnels by the same rules):
+- Removed the rope-only rules (narrow-tube puff fade, narrow-tube crispness): they also changed
+  the cone's foot.
+- Cards on a piece of axis pointing at the camera are shortened by the share that shows (long
+  dark sticks); flattened cards stay level (starburst at the funnel top); lean not capped at 75.
+- Core slices turned and sized by the chord of the span they cover, at least 4 gaps (local lean
+  fanned them into bars across a rope; 2-gap slices banded a bend).
+
+Seen in Studio: rope = smooth tilted condensed tube to the ground; stovepipe and cone smooth, no
+spikes where they meet the lowering, no banding.
+
+Open: multi-vortex scene still its own environment (wide circulation) - sub-vortices come from the
+swirl ratio, so a tornado that widens at its peak goes multi-vortex by itself; not yet shown as a
+life stage. Wall cloud, mothership, storm life-cycle looks still to do.
+
+## Round 6 (2026-10-29): banding, rope, tornadogenesis
+
+Asked for: no banding on the stovepipe/cone/rope, no translucent sheath on the rope, less rope
+tilt, different kinds of tornadogenesis (research), the open items.
+
+Done:
+- Banding: each core slice's opacity is its share of a 16-slice stack (`card.coreN`, its span in
+  layer gaps): slices shortened on a bend no longer pale (TornadoCards). Seen: stovepipe smooth.
+- Rope tilt: the foot is pushed by the RFD outflow only as far as it has wrapped round the vortex
+  (`wrap` = occlusion 0.4-0.8, or half the decay) and follow 50 + 50 decay (was 2000 decay^3);
+  the rope stage starts at 1 cloud-base height of tilt (was 2.2). Max lean ~0.5-1.8 H, was 3.3 H.
+- Rope from the storm: cut off at occlusion 0.6 (was 0.8); once cut off the tornado keeps the
+  circulation it had (`t.cut`) instead of following its weakening parent, so it narrows into a
+  strong thin rope rather than fading as a weak "mature" vortex. Stage named by narrowing
+  (shrinking < 0.3 decay, rope < 0.85, dissipating). rope_day: base 700 (200 m condensed a wide
+  translucent cone - the "sheath"), occl 0.5, run 300: rope ~16-60 m condensed round a 33 m core.
+- Genesis: a new tornado starts as its parent's circulation (`Tornado.swirlOf(parent, O)`: swirl
+  x2 before it organises, contracting as O -> 1; core from that swirl), not a fixed 40 m vortex.
+  Four live scenes (keypad . / * +, pinned storms, not held), each only different fields:
+  G1 thin funnel lowers (narrow, base 650): funnel hangs from the base at 1 min, ground at 1.5-2;
+  G2 broad bowl lowers (wide, base 750 / wall 500): bowl at the base, wedge to the ground ~2 min;
+  G3 ground whirl, then condenses (base 1100): dust only ~1 min, partial, ground at ~5.5 min;
+  G4 several vortices draw together (wide, slow): swirl 1.7 -> <1 at ~3.5 min.
+  Seen in Studio: G1 (good), G2 (wedge soft-edged against the grey), G4 (no separate whirls seen).
+- Dust: sub-vortices lift their own narrow dust columns (TornadoDust) - not yet visible under
+  the broad skirt.
+
+Research: debris whirl usually before the condensation reaches the ground; funnel from within
+and under the wall cloud; wall cloud contracts and lowers before genesis (VORTEX2); top-down vs
+non-descending genesis both observed (rapid-scan radar).
+
+Open (unchanged or partly): sub-vortex visibility (dust skirt hides them), wedge contrast, wall
+cloud shape/occlusion, mothership striations, storm life-cycle looks, bright base lumps, clear slot.
+
+## Round 7 (2026-10-29): forming funnel, mothership, wall cloud
+
+- Forming funnel (TornadoCards): soft ring cards now reach at least 3 layer gaps (`hs >= 3 segL`,
+  was 1.4) and keep their aspect (`kOv`), so they overlap instead of stacking into horizontal ribs;
+  ring envelope 0.7 + 0.3 sin^0.7 (was 0.35 + 0.65); core slices sized rc (1.35 - 0.45 def), inside
+  the crisp edge (past it they scalloped it); dark "tag" specks min 15 m, aspect 0.45, opacity <= 0.4.
+  Seen in Studio (G1, orbit view, 1:13): smooth taper, no ribs or specks.
+- Mothership (CardPlan striations): one field `ms` = rotation x mesocyclone strength x how little
+  rain veils the updraft (`1 - ramp(efficiency, 0.35, 0.7)`: LP / dry mid-levels). With it the
+  banded zone deepens (0.5 -> 5 km above the base), gains tiers (+5), flares toward the base (bell,
+  +45%), alternate tiers stand proud (stacked-plate lips), each tier is a flattened shaded lens
+  (soft lobe: lit lip, dark underside) with the fibre banding below it, and the tower's lobes in the
+  zone go smooth (laminar). Ring cards on the silhouette (seen side-on) are narrowed and faded:
+  face-on billboards there stuck out as smeared streaks. HP storms (high efficiency) keep a short,
+  faint banded zone.
+- Wall cloud: shrinks with occlusion (x 1 - 0.35 occl); the rim facing the RFD is eaten (pulled in,
+  thinner, torn `shredFlat`, foot lifted) - some always, more as it occludes: a horseshoe open
+  toward the clear slot.
+- Scene M (keypad Enter): `mothership`, an LP storm (pinned air mass `rhMid` 0.12, `pw` 16 ->
+  efficiency 0.39). Pins can now set `rhMid` / `pw` (Storm.environment). Seen in Studio: a flared
+  stack of shaded plates from 14 km. Its weak low-level spin (vlow 9) still makes an EF0.
+- Main game scale: all of this is in sim metres relative to the storm's own size; the game draws
+  each storm whole at Config.skyScaleAt about its centre, so proportions carry over. Not yet seen
+  in the main game.
+
+Sources: [NWS spotter guide - supercells](https://www.weather.gov/spotterguide/supercell2),
+[NWS storm spotter's dictionary](https://www.weather.gov/media/fwd/skywarn/StormSpottersDictionary.pdf),
+[StormTrack: typical vs mothership supercell](https://stormtrack.org/threads/typical-supercell-vs-mothership-supercell.4842/),
+[StormTrack: horizontal striations](https://stormtrack.org/threads/horizontal-striations-on-storms.12457),
+[COMET: low-precipitation supercells](https://courses.comet.ucar.edu/pluginfile.php/3757/mod_imscp/content/1/low_precipitation_lp.html),
+[DTN: three types of supercells](https://www.dtn.com/there-are-three-types-of-supercells-can-you-name-them/),
+[Wall cloud (Wikipedia)](https://en.wikipedia.org/wiki/Wall_cloud).
+
+### Round 7b (same day)
+
+- The base is part of the storm's shadow: StormShape now carries the rain-free base deck
+  (`sh.deck`, the geometry CardPlan draws) and `sunLit` adds the sun ray's path through its slab
+  (e-folding 250 m; open where the clear slot cuts it). Before, anything under the base near its
+  edge counted as fully sunlit: the wall cloud drew paler than the base above it and the
+  hanging lumps glowed.
+- Hanging lumps under the base, seen from below toward the sun, use the sky-only bake (no
+  backlit rim: the sun behind them is behind the base). Their tone is now near the deck's
+  (alpha 0.25-0.4, albedo 0.98-1.04 of it): seen in Studio they read as the base's own soft
+  structure, not a grid of dark or glowing ovals.
+- Scenes can set `noTornado` (storm-structure views; the camera focuses the storm). New scene
+  W (keypad =): `wall_cloud`, occlusion 0.5, no tornado, from the south-east at 4.5 km. M is now
+  tornado-free too. A scripted shot keeps its distance whatever it focuses (it was reset to
+  18 km on a storm).
+- Seen in Studio: W shows a dark continuous base, rain shafts, a lowered ragged area with the
+  sunlit, torn edge of the clear slot beside it; M's plates hold, lower ones shaded by the base.
+
+Open: the wall cloud is still not a crisp, distinct lowering at chase range (it merges with the
+base's far underside); sub-vortex visibility; storm decay looks; plate card cost (up to ~8 tiers
+x 14 x 2 cards on an LP storm, not profiled).
+
+## Round 8 (2026-10-29): near-field VFX clouds (prototype)
+
+User asked for clouds made another way ("maybe vfx?"). Roblox draws no particles past ~800 studs
+(measured 2026-10-22), ~220 m at the standard scale, so particles can't carry a storm; the user
+chose the hybrid: VFX up close, cards beyond.
+- `Render/NearVfx.luau`: every 2 s it lists the cloud billboards (StormCards, TornadoCards, Scud,
+  TornadoDust folders only); every 0.2 s the nearest within reach (card centre + half its size
+  < 720 studs), up to 64. Each gets a pooled box-volume ParticleEmitter: the looping 4x4 smoke
+  flipbook (`TEXTURES.smokeLoop`, uploaded 2026-10-22), facing the camera, locked to its card,
+  tinted the card's colour, per-puff opacity set so the stack matches the card. Hand-off weight
+  1 inside 520 studs, 0 at 720: the card's transparency is scaled by (1 - k) after the
+  renderers write it (`post`, called last by init.client). `LabConfig.NEAR_VFX`.
+- Keys: B toggles it; I / O zoom the chase camera in / out (as the mouse wheel).
+- Seen in Studio (cone, camera ~100 m): 35 cards -> ~770 particles. The funnel reads darker and
+  more textured than the cards; some straight, boxy edges; ~2.4 ms a frame. First pass had the
+  stack ~2x too opaque (dust became a brown wall) - fixed by counting the real overlap.
+- Open: the boxy edges (flipbook frame bleed or half-faded cards), cost, a scene that starts close.
+- Shelved 2026-10-29 (user: "shelve vfx, lets use billboards and shaders"): `NEAR_VFX.enabled = false`,
+  code kept (B still toggles it).
+
+## Round 9 (2026-10-29): clouds carried by the wind field
+
+User: clouds and storms should "behave via physics". The moving cards (scud, tail cloud, inflow
+filaments, rising billows: CardPlan `c.mv` "in"/"up") no longer follow scripted pull/rise/swirl
+loops: `Render/CloudParts/Flow.luau` traces each through the client's copy of the server wind
+field (`ctx.cw:windAt`, no tornado), storm-relative; in the wall layer at its turning angle with
+the solid turn taken out. One loop = born at its planned spot, carried for P s (the time the
+air takes to move it its travel), then faded and reborn; P kept per card so re-traces don't jump.
+Opacity follows the parcel: lifted -> condenses (x1.25 max below the base), sunk -> evaporates
+(gone within ~120 m below the base, ~250 m in cloud), scud lifted through the base merges into it.
+Traces are queued as plans are written and run 0.6 ms a frame at most (attribute
+`StormCardsFlow`). `LabConfig.CLOUD_FLOW = false` restores the scripted loops. The mesocyclone
+"spin" rings are unchanged.
+- Seen in Studio (wall_cloud scene): 610 traced, ~0.15 ms a frame, the scud under the wall cloud
+  drifts and the base stays whole. Not yet judged in motion by the user.
+- Next (user chose "live-lit cloud sprites"): a Luau pixel shader relighting cloud textures into
+  EditableImages from density + depth for the sun and view; needs density/depth bakes per texture.
+
+## Round 10 (2026-10-29): the lobe "shader" (light computed in Luau)
+
+Roblox has no custom GPU shaders, so `Render/CloudParts/LobeShader.luau` computes the light inside
+the cumuliform cards in Luau and writes it into EditableImages, replacing the three fixed Blender
+bakes (front / side / back) with sheets for 5 sun tilts (`LabConfig.LOBE_SHADER.bins`). Each lobe
+is the Blender bake's sphere-cluster shape seen as front + back depth per pixel; per pixel a march
+toward the sun through the soft-edged body (self-shadowing; through the body when back lit),
+Beer-Lambert + multiple-scattering tail, Henyey-Greenstein phase (silver lining), soft facing term,
+sky light less in creases. Toned to the old sheets' mean (0.88), contrast 0.6 of the light's own
+variation (the storm-scale light stays in the card colour). The card is still turned so the
+sheet's top faces the sun on screen. Built once in the background (~3 ms a frame, 13 s), cards
+keep the bakes until ready; attribute `LobeShader`. Prototype (numpy, previews):
+`tools/lobe_shader_proto.py`.
+- Seen in Studio (Supercell scene, default view): the tower now shows distinct rounded billows lit
+  on top and shaded beneath, against the old flat haze (`docs/stormlab/detail/lobe_shader_ab.png`).
+- Open: ~27 MB of EditableImages (watch on low-end devices); the near sheets (256 px lobes) not
+  yet checked up close; maybe more bins or an in-between blend; tuning MEAN / CONTRAST / SIGMA.
+
+## Round 11 (2026-10-29): billboards only; spiral-stream tornado
+
+User: the references use billboards only - shaders off (`LOBE_SHADER.enabled = false`). Researched
+BillboardGui sprites and a Discord recipe (sprites spiralling up round a tracker, bigger higher up,
+dot-product shading); write-up and build notes in docs/stormlab/BILLBOARD-TORNADO-PLAN.md. Built
+the funnel as a spiral stream (default; T switches to the old rings for comparison).
+
+## Round 12 (2026-10-29): wall cloud + tail as a puff stream (Render/WallStream)
+
+Reference: a user-supplied recording of a billboard-only wall cloud + tail
+(docs/stormlab/detail/wallstream_reference.png): dense round puffs with a feathery rim, heavily
+overlapped (solid lobes), a constant-width tail tube with a rounded tip, the tail wrapping into a
+turning wall cloud. Built `Render/WallStream.luau` (default; key **Y** switches back to the old
+cards, `LabConfig.WALL_STYLE`):
+- body: 64 puffs circling the low-level meso at the sim's own Rankine speed at their radius
+  (core 0.3 Ru, vlow): shear, not a rigid plate; core puffs also roll (seen from below);
+- tail: 48 puffs on a path traced from the FFD side with the storm-relative inflow speed in and
+  the same vortex turning it - straight far out, wrapping round the wall cloud close in, rising
+  and merging into the base; born at the tip, so the tail feeds the wall cloud;
+- new texture `featherFlat` (tools/feather_puff.py, roblox/assets/clouds/feather_puff.png);
+- light, haze, rain fog and the storm's smoothed centre are StormCards' own (ctx.stormShade);
+  CardPlan drops its wall body/banding/filaments/tail when the stream is on (scud stays).
+112 billboards, ~0.2 ms a storm (nearest 2). First tail was a thin saw-toothed ribbon: thicker
+(max(1.3 D, 0.3 R)), ~4x overlap, per-puff size/turn jitter fixed it (wallstream_v1.png).
+Also: spiral tornado opacity raised (user: it read translucent).
+Open: not yet seen from the ground at a distance (the lab's chase camera sits under the base);
+lowering depth comes from the sim (wall cloud -150..-350 m), so the body is flatter than the
+reference's cartoon bulb.
+
+### Round 12b: wall cloud joined to the tornado; isolate view (key U)
+- Key **U** (Render/WallStream): only the wall cloud, its scud and the tornado - the parent storm's
+  body (StormCards main layer re-planned empty) and rain hidden; U again restores them.
+- With a tornado under it (its parentId, else the nearest within 1.2 R) the wall cloud turns about
+  the funnel's top (the low-level circulation is centred on the tornado) and its middle hangs in a
+  bowl round the funnel (up to ~150 m + 0.1 H lower), so the funnel flares into a lowering.
+- WallStream publishes the lowering's reach and underside colour (ctx.wallStreamBase ->
+  ctx.stormBase): TornadoCards keeps its flare inside it and takes its light at the top (the old
+  measurement read the cards the stream replaced, so the funnel had fallen back to 1.5 km / no colour).
+- Fixes found in the isolated view: body opacity no longer x q (pale blotches), puffs 0.5 R wide and
+  no taller than the underside-to-base gap (they stuck up past the base as splashes), flattened
+  puffs lie level (random turns drew spokes).
+Images: detail/wall_tornado_isolated_near.png, _far.png. Open: the sim's wall cloud is ~2 km wide
+but 150 m deep, so isolated it reads as a flat lowering, not the reference's bulb.
+
+### Round 12c: wisps, depth, and the wall cloud from below (untested in Studio)
+- Textures: tools/smooth_puff.py (smoothPuffFlat, no grain - the feather puff read as sandpaper)
+  and tools/wisp_sheet.py (wispSheetFlat, 2x2 fibrous wisps). Wisps lie along the flow on screen
+  (wall cloud's outer body, tail, tornado strands) instead of round sprites turning on the spot.
+- Wall cloud depth: body runs from the underside to base + 0.4 R; bowl round a funnel up to 300 m.
+- From below (detail/wall_from_below_before.png, old code): a ring of blobs with sky through the
+  middle and gaps, a uniform tube of a tail, flat grey. Added: an underside disc (10 level discs
+  drawn foreshortened by the viewing angle, darker in the middle, turning with the flow), body
+  filled to the middle, tail as a flat band ~2.5x wider than deep tapering to its tip.
+- Key P: free-camera views of the wall cloud from the ground (rim, under the middle straight up,
+  2 R out, 0.5 R steeply up).
+- Tested 2026-10-30 (keys U, P): from below the wall cloud is now solid (no hole). Straight up it
+  was a featureless dark ball (detail/wall_below_up_before.png); the underside pieces are now
+  wisp bands along the turn (screen angle of the flow's tangent from beneath, level side-on),
+  patchy +-15% in light, 16 of them: curved bands swirl round the middle (wall_below_up_after.png).
+  Wisp sheet re-made softer and broader (the fine fibres read as fur up close): asset
+  132403693605015. From 2 R out (wall_below_far_after.png) a few sky gaps remain in the body.
+
+### Round 12d (2026-10-30): wall cloud from the photos, tornado toggle, motion research
+- Key L / F4 "tornado" button: rebuild the scene with or without a tornado (server testScene
+  `tornado` flag; added tornadoes held mature).
+- Wall cloud body rebuilt from docs/storm-reference/real/04_*: a step below the base only, solid
+  round core over the full step depth + level streaked tiers round it (one `band` helper: level
+  discs drawn foreshortened by the viewing angle); isolate mode draws a base deck (NC 24); tail
+  alternates round puffs and wisps. Images: detail/wall_tiers_under_storm.png, _with_tornado.png.
+- Still wrong: tiers read as stacked plates; storm base too light round it; isolate deck is
+  blobs; with a tornado the bowl (dip up to 300 m) hides the funnel's condensed top.
+- Motion research: RESEARCH-ROTATION-MOTION.md (turn periods, scud ascent, tail flow, funnel
+  pattern speed, collar, sub-vortices, rendering rules).
+
+## Round 12e (2026-10-30): wall cloud + inflow as one volume (isolate view, key U)
+
+Following the user's notes (one density/velocity model drawn through billboards):
+- Body: one filled volume between the underside and the base; outline = coherent noise turning
+  with the circulation; 20 big inside pieces, 45 medium outline lumps (soft edge-free puff,
+  softFlat, 1.4x larger), 25 small fringe wisps rising ~3 m/s. Shaded as one volume (volShade:
+  side vs underside normal, darker with depth; sides ~2x the underside, as photos).
+- Tail: slices 3 across (a soft lump on top, two feathered wisps lower = flat underside), wide
+  far out narrowing into the wall cloud, denser at the join. Was a single file of puffs (beads).
+- Solid base discs (BaseDeck) ON in full scenes; gain 1.7; base cards beside them still too light.
+- Images: detail/wall_iso_hardpuffs_before.png, detail/wall_iso_softvolume_after.png.
+- Open: from directly below it is one featureless dark disc; no sunlit side yet.
+
+## Round 12f (2026-10-30): wall cloud drawn as the tornado is (user: tornado visuals are fine, the wall cloud adopts them)
+
+- Body = TornadoCards' spiral-stream logic: fibre wisps lying along the flow on screen (turn +
+  rise), a rising stream with fades at both ends (no fixed pieces), opacity 1-exp(-density),
+  big soft (softFlat) pieces for the dense middle; volume/sun shading as before.
+- Motion from the user's notes: noise-shaped outline turning with the circulation; slower than
+  the tornado (low-meso profile, inner faster); outline wisps rise 1.5 m/s, fringe 3 m/s;
+  coherent turbulence (math.noise radius/height wobble); within ~4 rc of the funnel top, low
+  down, the turn blends into the tornado's own (Vortex.profile about its top core radius).
+- Image: detail/wall_iso_flowwisps_tornado.png (isolate U + tornado L, far side view).
+- Open: outline still reads a little like brush strokes; the EF2 test funnel is mostly
+  uncondensed so only its dust shows under the wall cloud.
+
+## Round 13 (2026-10-30): tornado body rebuilt as three layers (style "volume", key T: rings)
+
+The density-sampled body (336 faint soft puffs scattered through the funnel, each at most
+~0.2 x the column's optical depth, no core) read as fragmented, wispy smoke near and far: their
+projected images barely overlapped and nothing set a minimum opacity where the air is condensed.
+Now `Render/TornadoCards` draws the same engine radius, wind and lifecycle as three layers, 200 cards:
+- **Body (40):** crisp-sided `sliceFlat` slices at fixed heights up the axis, each 16 gaps tall
+  and at least as tall as wide (halved on a bend, >= 4 gaps), so every point is covered by many
+  (7 gaps cut to ~2 by a taper rule drew each slice's soft ends as stripes). One target opacity per height, A = max(1 - exp(-2 beta rc), 0.92) x condensed share
+  (smooth 0.08-0.3 of rc/core radius) x top fade x sight x (fades over zAt 0.55-0.92, where the
+  envelope takes over, as the rings' core) x (1 - 0.85 two-cell shell), shared out as
+  1 - (1 - A)^(1/overlap). Lit as the column's middle (sun spent crossing it); half-lit drew a pale
+  column with the shadowed puffs as dark spots.
+- **Envelope (120):** soft puffs ~0.85 rc wide at 0.74-0.96 rc riding the flow (turn at omega(z), rise 0.15 vc).
+  Lumps (radius +-16%, size, opacity, light) come from one noise field read at each puff's carried
+  angle and height label, so neighbours bulge together and the bulges travel round. Opacity
+  <= 0.7; shows from a lower condensed share than the body, so a marginal tip stays ragged.
+- **Wisps (40):** `wispSheetFlat` streaks just outside the surface, turned along the on-screen flow
+  (turn + 1.6x rise), fading in and out as they climb; faint (<= 0.35), none in the flare.
+Seen in Studio (stovepipe, close camera 600 m): one continuous dark funnel, softly lumpy, rising
+into the lowering; no stripes, spots or gaps. Cone scene: currently condensed only as a short stub
+under the base in both styles (scene state, not the renderer).
+Open: the wall cloud (WallStream) is a huge near-opaque dark mass with long dark spikes round its
+rim (present in both funnel styles) and swallows the funnel top: next, separately.
+
+### Round 13b (2026-10-30): open items
+- **Body translucent (fixed):** the slice texture's density is a bell ~0.16 of its frame tall
+  (smoke_flipbook.py --slice), but the overlap count assumed half the frame, so each slice was ~3x
+  too faint. Overlap now 0.16 x drawn height / on-screen gap; the body's target opacity is cut by
+  rain only x(0.85 + 0.15 sight) (rain greys its colour instead), cap 0.985.
+- **Wedge a faint smudge (fixed):** the two-celled shell thinned the body by a flat x(1 - 0.85 thin)
+  (A 0.52). Now by the optical depth of the condensed ring round the dry middle (~0.7 core radii):
+  a wedge's ~160 m ring is opaque (A 0.98). Slices are no longer forced as tall as wide (a wide
+  slice's lower bell hung over the narrower funnel and blurred the sides); envelope puffs reach
+  ~1.15 rc (was ~1.4).
+- **Rope drawn as blocks (fixed):** slices stopped halving at 8 gaps, so on a wavy rope they were
+  straight sticks across the waves. Now down to 2 gaps; a slice under 6 gaps uses the soft round
+  puff (the bell can't overlap enough there; cropping the slice drew hard-edged tiles).
+  Seen: one continuous snaking rope from the wall cloud to its dust.
+- **Wall cloud spikes (fixed, WallStream):** medium flow wisps kept full length where the flow
+  points at the camera, so the rise turned them into long steep dark streaks round the rim. Length
+  now follows the on-screen share of the flow; tilt limited to +-18 deg side-on (free from beneath).
+- **Wall cloud swallowing the funnel (fixed):** the lowering's bowl round a funnel hung up to 300 m
+  (half a 600 m funnel) over rDip >= 6 core radii. Now <= min(0.3 depth, 0.12 H, 100 m) over
+  max(0.2 R, 3 rc).
+- **Wall cloud too opaque (eased):** per-piece density 3 / 2+1.5d / 1.1 -> 1.8 / 1.1+1.2d / 0.7.
+- **Cone scene stub (fixed):** cone_partial vlow 20 -> 27: condensed 28 m at the ground to ~590 m
+  under the base (was nothing below ~250 m of 520).
+- Wall cloud fringe wisps shorter and plumper (0.13-0.23 R, 0.6 thick): they drew a sawtooth from below.
+- F4 counters (TornadoCards attribute) now show the body at two heights (A, overlap, sizes, shell).
+- Seen in Studio: stovepipe solid with a defined edge, emerging below the wall cloud; cone condensed
+  to the ground flaring into the lowering; rope continuous; wedge a dark mass under the lowering.
+- Still open (not from this work): multi-vortex sub-vortices barely visible in both funnel styles
+  (sub-vortex columns op ~0.3, behind the dust skirt); wall cloud's level wisps read as horizontal
+  brush strokes; BaseDeck discs' hard edges and light colour (from 2026-10-29).
+
+## Round 13c (2026-10-30): ground contact, multi-vortex, dust, rope tube
+
+User asks: stovepipe wider at ground, cone condensed to ground, cards pinwheeling off the side,
+wedge too soft, multi-vortex = bowl + erratic sub-vortices round a clear centre, wall brush
+strokes, dust/wind field too large, rope like a caterpillar, sub-vortices only when multi-vortex,
+a sub-vortex-like opaque "tube" look for ropes.
+
+- **Stovepipe scene** vlow 30 -> 36: condensed 53 m wide at the ground (was a point above ~20 m).
+- **Body condensed share** by the condensed radius itself (smooth 0.3-2 m), not rc/core: a cone's
+  25 m tip and a rope's few-metre foot count as cloud.
+- **Body opacity:** no longer cut for rain (rain greys the colour; cutting alpha too counted it
+  twice: a rain-wrapped rope drew pale and see-through); floor 0.95.
+- **Rope tube:** where body slices are short (bends: under 6 gaps) each is the slice cropped to
+  the middle of its bell (|v| < 0.12, mean density 0.61) laid along the axis: crisp walls, soft
+  ends - the sub-vortex tube look. Round puffs there drew a caterpillar. Where the funnel widens
+  fast over a slice (the flare) it is a soft puff (crisp slices stacked into tiles there).
+- **Wisps:** on the surface (0.9-0.98 rc), shortened where the flow points at the camera and only
+  on the side facing it - they pinwheeled off the funnel's edge.
+- **Envelope:** puffs on the funnel's sides fade (x0.25 at the limb): they blurred the wedge's edge.
+- **Wall cloud:** medium outline lumps are soft round puffs (level fibre wisps read as brush
+  strokes); underside bands fade when seen from the side (edge-on they were level streaks).
+- **Wind field (Sim/Vortex.sample):** the tornado's own swirl + inflow hand over to the storm's
+  beyond 3 rc (exp(-((R-3)/2.5)^2)); kept to 60 rc an EF2's dust-lifting wind reached ~9 km.
+  Pressure deficit / condensation and peakWind (<= 1.2 rc) unchanged.
+- **Dust:** puffs spread at 1.5-4.5 m/s (turbulence), not a share of their size per second (a
+  160 m puff swelled to ~1 km and hid the tornado).
+- **Sub-vortices** only above swirl 1.0 (the multi-vortex stage label; DEBRIS-CLOUD.md), count
+  (S - 1) x 10: a cone (S 0.79) had a stray one orbiting it. Paths more erratic (+0.45 rad wander
+  at t/6, orbit radius jitter at t/2.5). Tubes cropped as above (the full slice drew dashes); below
+  the condensation shown by dust lifted to their updraft's height (max(100, 1.5 rc)), standing out
+  by the (speed/V)^3 pickup contrast against the skirt, soil-grey.
+- Seen in Studio: multi-vortex = dark bowl, 3+ curving tubes to the ground, low skirt, clear
+  middle; wedge a dark wedge with defined sides; stovepipe column with broad ground contact;
+  cone condensed to the ground, no orbiting tube; rope a continuous opaque tube to its dust.
+- Open: hard horizontal stripes in the storm base / wall cloud above the funnels (StormCards /
+  WallStream, not the funnel); BaseDeck disc edges (from 2026-10-29).
+
+## Round 13d (2026-10-30): opaque rope, sub-vortex depth, tube scene, sharper funnel edges
+
+User asks: rope still translucent; multi-vortex sub-vortices should rise from the ground and not reach
+the bowl; a tube tornado like the old cone sub-vortex (opaque); sharper cone/stovepipe/wedge edges;
+blue (wisp) cards streaking off the side.
+
+- **Whole body as tube pieces** (TornadoCards): every body slice is now a cropped-slice piece
+  (|v| < 0.2 of sliceFlat, so its ends are Gaussian), ~5 gaps long, spanning 2.5 gaps of sim rows
+  (was 16, which averaged the taper and blurred the edge). Neighbours of different widths blend into a
+  smooth taper: no steps (cone/tube, seen close) and no visible bands. Puffs only where the radius
+  jumps (> 0.35 rc between ends: flare).
+- **Opacity**: overlap count uses the cropped piece's density (mBar 0.39) and the rain factor is no
+  longer applied twice; floor 0.95 where condensed. Rope is a solid dark tube (rain in front still greys it).
+- **Envelope pulled in** (0.45-0.65 rc, puffs turned edge-on fade out) so it no longer softens the edge.
+- **Wisps** (the blue debug cards that streaked off the side): only on the near face (facing > 0.55),
+  length capped at min(0.9 rc + 15, 1.2 rc x facing), opacity <= 0.35.
+- **Sub-vortex depth** (engine Vortex.subDepth = max(60, 2.5 h)): the sub-vortex wind decays with
+  exp(-z/depth); their dust columns fade with exp(-(z/depth)^2) and a visibility threshold, so they
+  stand from the ground and end ragged ~1/3 of the way to the base, under the bowl (photo research:
+  0.2-0.35 of cloud base). Seen in Studio.
+- **Tube scene** (key K with the panel open): Ru 1500, vlow 30, base 700 -> rc 39 m, swirl 0.46, no
+  sub-vortices, condensed ~50 m wide at the ground, ~80 m at 150 m. Narrow columns to the ground come
+  out EF4 in this model.
+- Engine changes (subDepth, subCount from swirl 1.0, outer taper beyond 3 rc) also apply to main-game storms.
+- Still open: BaseDeck disc edges; hard stripes in the storm base (StormCards/WallStream).
+- **Reverted (user, same day):** the edge-sharpening body change (2.5-gap tube pieces everywhere,
+  Gaussian ends, longer overlap, envelope pulled in to 0.45-0.65 rc) drew bands across every condensed
+  funnel. Body is back to 16-gap slices (halved to follow bends), tube pieces only on short rope bends
+  (crop 0.12, 2.2 gaps), envelope 0.6-0.84 rc. Kept: rope opacity (mBar 0.45, no double rain), wisp
+  limits, sub-vortex depth, tube scene (key K). Edges are as soft as before Round 13d; sharpening them
+  needs another method that doesn't band.
+
+### Round 13e (2026-10-30): sharper funnel edges without bands; wall cloud + tail diagnosis
+
+- **Why the edge was soft** (colour-coded cards: body red, envelope green, wisps blue): the body
+  slices themselves. The "puff or crisp slice" test (radius change > 0.35 rc) was judged over each
+  slice's whole 16-gap span, so on any tapering cone/stovepipe nearly every slice counted as "widening
+  fast" and was drawn as a soft round puff. Now judged over the part of the slice that shows (its bell,
+  +-0.09 of the span): cone and stovepipe sides are crisp slices, only the flare into the lowering is
+  puffs. No short pieces, so no bands. Envelope puffs pulled in to 0.45-0.65 rc (size 0.5-0.68 rc) so
+  they stay inside the edge. Seen in Studio: stovepipe, cone, tube crisp, no banding.
+- **Wall cloud + inflow tail diagnosis** (WallStream colour-coded: large inside pieces magenta, outline
+  lumps cyan, small fringe wisps yellow, tail orange, underside bands white; scene W, isolate U, P views):
+  1. The wall cloud reads as a loose cluster, not one lowered block: sky shows between the cyan
+     outline lumps on top, and the magenta core is an irregular blob inside them.
+  2. Fringe wisps (yellow) float detached above and around it like confetti: placed at 0.9-1.15 of
+     the rim radius, i.e. outside the body.
+  3. From below, a big flat white underside disc fills the middle and the underside bands radiate
+     as long pinwheel blades; from the side (2 R out, 14 deg up) the bands still show as horizontal
+     light strokes across the body.
+  4. Tail: same-size round puffs in a straight double row at the wall cloud's bottom level - a string
+     of beads with gaps at the far end; no taper, no visible wrap into the wall cloud, and on the
+     full-storm view the elongated puffs all lean the same way (hatched look).
+  5. At the scene distance (4.5 km) the wall cloud is small and washed out under the storm base.
+  6. Isolate-only base deck discs float beside/below it with sky between - the wall cloud doesn't hang
+     from a base.
+
+### Round 13f (2026-10-30): tornado seen from beneath; wall cloud + tail fixes (not joined to the base yet)
+
+- **Stripes looking up a funnel** (TornadoCards): seen end-on a body slice is a thin bar (its bell
+  over a >= 1.4-gap card), and 40 bars of different widths stacked drew stripes. Where the slice is
+  seen end-on (proj < ~0.6, endOn = 1 - smooth(0.45, 0.8, proj)) it is a round soft puff as tall as it
+  is wide - the funnel's cross-section, a disc. Seen from beneath and at 60 deg up: smooth, no stripes.
+  The hard horizontal steps still visible looking up are the storm base (StormCards), an open item.
+- **Wall cloud** (WallStream): dense middle out to 0.72 of the rim (was 0.55); outline lumps on the rim
+  (0.62-0.86, were 0.7-0.95), denser (1.5 + 1.2 depth), fading only in the last 8% of their rise and
+  stopping at 0.88 of the depth (no sky between them, no bumps standing up past the top); fringe wisps
+  on the rim (0.8-0.98, were 0.9-1.15 - floating outside). Underside streaks half as long, opacity 0.6,
+  darker, gone sooner side-on (no pinwheel blades). Seen: one solid mass side-on, solid dark disc from
+  beneath with faint curved streaks.
+- **Tail**: puff sizes vary 0.7-1.3, ~2.8 gaps long (overlap), thickness and width taper to the far
+  tip, side wisps hug the core (offsets roughly halved, thicker), each puff its own lean (+-15 deg plus
+  noise). Seen: continuous core tapering to the tip; the last change (length no longer tapered, so the
+  tip doesn't break into beads) is not yet seen in Studio.
+- Not done (user: later): joining the wall cloud to the cloud base.
+
+### Round 13g (2026-10-30): banding removed; wall cloud drawn like the funnel's junction
+
+- **Survey key X** (WallStream): 16 camera views round the focused wall cloud and any tornado under it
+  (4 directions x 3 R out / 1.2 R out / 0.4 R under the rim / 2 R out at half the wall's height),
+  printed to the output. Run in real colours and colour-coded (stovepipe scene).
+- **The bands were the flat overhead deck** (BaseDeck): its solid discs write depth, so every billboard
+  reaching up through them - the funnel's top, the wall cloud, the storm's cards - was cut along a
+  straight level line, and the discs' few heights drew parallel bands. No discs now within
+  1.15 R (+ a disc radius) of a wall cloud; the lowering covers that patch from below.
+- **Fine stripes in the funnel body near the ground / at some angles**: spans shortened at the ground,
+  the top or on bends made a slice's bell thinner than the gap between slices. Crisp slices now keep
+  hc >= 13 dz proj (bell >= ~1.2 gaps as seen).
+- **Wall cloud like the junction** (user: the texture where the funnel meets the wall cloud is the
+  look): every body piece, the tail and the middle underside disc use softFlat (the fringe and tail
+  sides were fibre wisps - chips); outline lumps bigger (0.6-0.95 R) and fainter (0.9 + 1.2 depth) so
+  they pile up and blend; fringe opacity 0.45. Tail puffs up to 3.5x as long as thick, flatter when
+  seen side-on, turned along the path only as far as it shows across the screen (end-on they stood up
+  as spikes).
+- Seen in real colours from 1.2 R, mid-height 2 R, east 1.2 R and 0.4 R under the rim: no cuts or bands,
+  the wall cloud one soft dark mass running into the funnel. Not re-surveyed: rope and tube scenes.
+- Still open: the wall cloud not joined to the base (user: later); behind it the storm's lighter cards
+  show through the deck's hole.
+
+### Round 13h (2026-10-30): last funnel banding, denser tail, softer underside
+
+- **Shift+X** (WallStream): elevation sweep - the funnel's middle from the ground at 15-80 deg up,
+  one step per press, printed. The user's leftover banding was at ~35 deg up, low in the funnel
+  against bright sky.
+- **Cause:** not colour, not the rain behind (both ruled out: flat grey body, forced-opaque body),
+  and every slice there was a normal crisp slice (printed). With slices ~13 gaps tall only ~2
+  covered each point, so the residual see-through varied once per slice - ~2 grey levels against
+  the sky. Crisp slices now >= 18 dz proj (measured row ripple 2.1 -> 0.3 grey levels). Also: tube
+  pieces cropped to |v| < 0.2 (cut at 0.7%, was 0.12 = a hard 17% edge per piece; mBar 0.4) and at
+  least 5.5 gaps; round puffs at least 4 gaps.
+- **Tail:** the puff spacing was counted over all 80 puffs, but 5 share each cross-section, so
+  each lane's puffs were ~0.7 spacings long - rows of dots. Spacing is now per lane; puffs 2.6 lane
+  spacings long (up to 6 tT, 6x thick); tube thicker (1.5 D / 0.35 R); opacities 1 / 0.95 / 0.7.
+  Reads as one continuous band from below and side-on.
+- **Underside:** the 15 streak cards are soft puffs (were fibre wisps darkened 30% extra - the long
+  high-contrast cards seen from below), 0.6 wide, 0.45 opacity, darkened like the disc.
+- Still open: through the deck's hole over the wall cloud, the storm's own flat oval base cards
+  show from below (isolated, the wall cloud alone is smooth). Goes with joining the wall cloud to
+  the base.
+- **Opaque funnel** (user: still translucent). Each crisp slice's opacity was shared as
+  (1 - A)^(1/nOv), which ignores how the bells overlap: the stack let through ~2.5x the intended
+  light (3.6% of the sky where 1.5% was meant). Now each slice's opacity is solved (12-step
+  bisection over its ~10 neighbours' bells) so the stack lets through exactly 1 - A midway between
+  slices, and the cap is 0.997. Measured on the stovepipe: the funnel is 46/51/57 at every height
+  whatever is behind it (before: 54-60 / 62-68 / 68-79, tinted by the sky). Tube pieces and puffs
+  (ropes, the flare) keep the shared formula; partial condensation still thins A, by design.
+- **Rope: see-through and banded** (user). Two fixes. (1) The opacity solve now covers every body
+  piece - crisp slice, tube piece (|v| < 0.2 of the bell) and round puff (softFlat's measured
+  column) - via `stackAlpha(kind, height in gaps, 1 - A)`. (2) The gap between pieces was taken as
+  dz x proj, ignoring the axis leaning: where a rope runs sideways the next piece is several dz
+  away on screen, so pieces were sized and faded for a far smaller gap - light bands across the
+  bend. Now `gapS` = the chord's on-screen length per metre of height x dz, used for every minimum
+  length and the opacity solve. Tube pieces at least 7 gaps, puffs 5. Rope scene: solid and dark,
+  no bands, far and close.
+- Seen in the rope's close view: a straight level cut through the storm's grey cards away from
+  the wall cloud - the overhead deck discs again (outside the hole). Not the tornado; open.
+- **Rope bends: jagged corners** (user: the big cards poke out of the rope where it bends).
+  - Slices are spread evenly along the funnel's *length* (arc-length table of the axis, 48 samples),
+    not its height: a sideways run gets as many pieces as an upright one. Upright funnels unchanged.
+  - Bend test tightened: a piece may sag 0.2 core radii off the curve (was 0.33), down to 1-gap
+    pieces (was 2); a soft tube piece is no longer than 1.8x the span that passed.
+  - New texture `capsuleFlat` (tools/smoke/capsule.py, rbxassetid://122340939095171): crisp sides
+    0.86 wide, elliptical round ends. Opaque rope pieces (A >= 0.97, hysteresis 0.95) use it whole -
+    round joins, so pieces meeting at an angle stay inside the tube - and are at least 3.2 gaps long
+    (shorter, only their round ends overlapped: a row of beads). Fading pieces keep the |v| < 0.2
+    bell crop (solid pieces stacked see-through double up where they overlap: stripes).
+  - A condensed funnel's floor raised 0.95 -> 0.995 (the user wants it solid).
+  - Rope scene, far and close: solid, smooth curves, no corners or bands. Left: a faint ribbed edge
+    near the top where the rope fades into the cloud (still see-through there, so soft pieces).
+
+## Round 13i - "gas" tornado style (2026-10-30)
+
+User: the cards looked like solid objects, not condensed gas; build a version with cloud-like
+billboards that matches the references, with no visible banding.
+
+- New style `gas`, now the default (`LabConfig.TORNADO_STYLE`). **T** cycles gas -> volume -> rings
+  and prints the style to the output.
+- Body = 200 soft cloud puffs (164 body + 36 faint surface tatters). There are no crisp slices,
+  capsules or fixed rows. Puffs are spread along the funnel by arc length (a golden-ratio
+  sequence, so a leaning rope gets as many as an upright stovepipe) and across it (an R2
+  sequence). They all rise with the surface flow and each turns at the flow speed at its height.
+  Nothing sits at fixed heights, so there is no periodic stacking to band.
+- Body puffs sit inside 0.42 rc and are about 2.1 rc wide, so their soft edges meet at about rc.
+  At 0.55 rc and 1.6 rc wide each puff bulged the outline (cauliflower).
+- Opacity per puff: the funnel's target A (the same condensed floor, two-celled thinning and life
+  as volume) is shared among the puffs that cover a point. That count comes from their area over
+  (2 rc x the arc spacing x on-screen foreshortening), with GAS_K = 1.8 for random overlap.
+- Shading is even (sun by the outward normal, a little darker inside). Per-puff brightness spread
+  made light blotches.
+- Texture: `gasPuffSheet` (rbxassetid://95569256182807), a 2x2 sheet of soft puffs with broad
+  billowy edges and only broad inner variation (a grainy sheet drew a blotchy column before).
+  Generator: `tools/smoke/gas_puff.py`. Each puff keeps one frame for life (no image swaps).
+- Seen in Studio: stovepipe (25 degrees up), rope and cone. All are soft-edged and opaque, with
+  no bands; the rope bends smoothly.
+- Not yet checked: the full X / Shift+X surveys, close range, night lighting, and frame cost
+  against volume.
+
+## Round 13j - open-items pass (2026-10-30)
+
+Gas tornado checks:
+- Elevation sweep on the stovepipe at 35 degrees (the old banding angle): ripple 0.27 grey levels even
+  with the contrast pushed hard, so no bands. 58 and 74 degrees are smooth too.
+- Close view under the rim: soft, with no square card edges.
+- Night (new **F6** key = the panel's night setting): a soft dark silhouette. A lightning flash was
+  not caught; it uses the same colour path as daylight.
+- Frame cost (script time): gas 0.58 ms vs volume 0.88 ms, both 200 cards.
+- Fix: the 36 surface tatters showed as light dots where the funnel flares into the dark lowering.
+  They now fade out with the flare, and their shade is capped at the body's.
+
+Overhead deck (BaseDeck + CardPlan):
+- The discs now only cover the steep patch over the camera: out to `DECK.steep` (1.7) times the
+  base's height, about 30 degrees up, where billboards stand up as walls. Out to the full 5.5 km
+  range they showed as hard-edged flat plates from outside the base.
+- The patch's outer grid step is soft edge discs: see-through parts with an unlit SurfaceGui on the
+  underside showing `deckEdge` (rbxassetid://115445826136912, `tools/smoke/deck_edge.py`). They
+  sit lowest, so the soft edge draws over the solid discs' rims.
+- Base grid cards are judged against the patch by their centre (`m` in CardPlan). Well inside:
+  left out. Inside, past the soft ring: lifted above (hidden). Just outside the edge: hung wholly
+  below, so they draw in front of it.
+- The wall-cloud hole (no discs within 1.15 R + half a disc) now reaches CardPlan through
+  `CardPlan.planHole`, set by StormCards before each re-plan. Base cards were being left out
+  there as if discs covered it.
+- The small lumps under the base shrank to 350 m out to the whole deck range and read as crisp dark
+  ovals. Now they shrink only in the patch and fade out over 0.45-0.85 of it.
+
+Still open:
+- Blue sky right behind the wall cloud (view 6 of the X survey). It is probably the RFD clear slot,
+  which is meant to be there. Whether the wall cloud should look joined to the base around it is
+  for the user to decide.
+- Directly under the base away from a wall cloud was not looked at after the patch change.
+- Disc vs card colour mismatch: much less visible now that the discs are a small overhead patch with
+  a soft edge; not measured.
+- Follow-up: hanging the patch-edge base cards below the deck (part of 13j) put km-wide cards under
+  the base, and from a distance they drew a cloud wall in front of the tornado (user report).
+  Removed. Cards that reach the solid discs sit above them, the rest stay at base height, and the
+  soft edge discs hide the patch's edge.
+- Follow-up 2: the stovepipe was still hidden at spawn (user). Cause: limiting the discs to the steep
+  patch overhead brought the big billboard base cards back 1-5 km from the camera, hanging under the
+  base as a wall. The discs cover the full deck range again, with the soft edge ring kept. Only the
+  small base lumps stay limited to overhead: they fade out over 0.45-0.85 of DECK.steep x the base
+  height, so the dark ovals don't return. Checked at spawn, +8 s and +18 s: the funnel stays clear.
+
+### Round 14a: precipitation released by fall-out physics (positioning plan item 1, 2026-10-30)
+
+`Storm.emitPrecip` no longer paints where precipitation leaves the storm. Removed: the release
+direction (downshear + 0.3 rad ± N(0.4) at 1.1-1.8 ru), the ±1.75 rad V-notch spread aloft and the
+prescribed hook spiral. Now (docs/stormlab/research/POSITIONING-PLAN.md 3.1):
+- a particle crosses the updraft on the storm-relative wind at its height and falls out where the
+  updraft drops to its fall speed, r* = ru sqrt(ln(W f / vt)) (rain farther out than big hail);
+  the chord it crosses on is weighted by the updraft's mass flux, so the exits form a crescent;
+- nothing falls out inside the vault (BWER): r* >= 1.1 ru. Measured: from 0.6 ru, 4 cm hail fell on
+  the low-level updraft, melting chilled the inflow (CAPE 0 at the inflow point) and the storm
+  collapsed within 5 min;
+- while crossing, the mesocyclone's rotation carries it round by v_theta/r x crossing time. Not
+  for the low-level share: the low meso's own winds wrap that one as it falls (the hook).
+- The old release is kept for A/B as `Storm.PRECIP_RELEASE = "angles"`; `tools/stormlab/diag_release.luau`
+  prints storm C001 every 5 min (W, CAPE, rain-core and hail-core bearing and distance from the LLM).
+  `diag_layout.luau` gained hail-core, neighbour-storm and near-core rows, and is pinned to C001.
+
+Results (Supercell scenario, C001, 1 h; bearing from motion, - = left):
+
+| | before | after | research |
+|---|---|---|---|
+| rain core within 15 km of the updraft | -1..-24 deg, 8-10 km | -20..-32 deg, 6-9 km | -60..+10, 5-20 km |
+| hail core (>= 1 cm, low level) | -9..+15 deg, 7-10 km | -23..-41 deg, 3-6 km | -100..-20, 2-4 km |
+| updraft W | 55-56 m/s | 55-59 m/s | |
+| largest hail | 4.2-4.5 cm | 4.2-5.1 cm | |
+
+The "28 deg right at 12.9 km" rain core in the old layout run was mostly a neighbour's rain inside the
+30 km box (C002 and later C004), not this storm's rain on the wrong side. Not checked in Studio yet.
+
+Studio check of 14a (2026-10-30): Supercell scenario and the stovepipe scene run with no errors;
+rain shafts sit behind and beside the tornado, the funnel stays clear, the storm holds steady.
+
+### Round 14b: wall-cloud lowering from physics, not the cap (positioning plan item 2, 2026-10-30)
+
+The lowering formula (mixed-parcel LCL + vlow^2/g) was already physical, but it came out at
+~0.6 x the base every time. Cause: once the outflow was over 2.5 K it was taken in at the full 0.6
+share, and being saturated, the lowering was 0.6 x 125 x spread = 0.6 x the base.
+- **Ingestion now depends on lift** (`Storm.luau`, wall-cloud block). Outflow air is negatively
+  buoyant: NB ~ 1/2 g (dF/theta) h over the cold pool's depth (`ColdPool.depthOf`). The lift
+  against it is the low meso's pressure deficit (vlow^2) plus the updraft's pull at the base (w_b^2/2);
+  share = 0.6 x ramp(dF) x lift/(lift + NB). A cold, deep outflow is undercut; a 1-3 K one is taken
+  in ("intermediate cold pools are best"; tornadic storms <~ 2-4 K near the meso, Markowski 2002).
+- **The updraft's pull at the base** uses the inflow's arrival speed at the base (s.fBase, smooth).
+  The profile itself has a break there: in the cloud the speed restarts from zero (0.22 -> 0.04 across
+  the base). Making it continuous (w^2 = w_base^2 + 2 int B) was tried and reverted: it doubled the
+  squall line's tornadoes (17 -> 56 in 2 h, most EF5), because the tornado supply (World.parentOf,
+  wLow = W f(1000)) is calibrated on the broken profile. Marked KNOWN ISSUE in Storm.luau; fix it with
+  the tornado refit (plan item 5).
+- The 0.6 x base cap is now a 0.85 x base safety limit.
+- `diag_wallcloud.luau` prints the terms (mix, dyn, dF, share, NB, lift); `Storm` keeps them as
+  s.lowMix/lowDyn/lowDF/lowShare/lowNB/lowLift.
+
+| | before | after | research |
+|---|---|---|---|
+| Supercell C001 lowering | 800-990 m (~0.6 base) | 400-580 m, steady | 100-800 m (~0.5 km example) |
+| Squall-line day (bases 150-700 m) | | 10-490 m, wall 20-680 m AGL | moist day: hangs near the ground |
+| Supercell C001 W / rain / hail | | unchanged (50-60 m/s, -20..-33 deg, -21..-36 deg) | |
+
+Lab scenes that pin `lowering` (VisualTests) are unaffected. Not yet looked at in Studio.
+
+### Round 14c: funnel base and pressure factor checked (positioning plan item 3, 2026-10-30)
+
+No change needed. `tools/stormlab/diag_funnel.luau` (new) prints each free-running tornado's strength,
+core, cloud base and how far its condensation funnel reaches down.
+- **Funnel base:** already the local wall-cloud base. World.parentOf passes s.wallBase, the tornado
+  relaxes to it over 60 s, and the client draws the funnel up to it, where the wall cloud's underside
+  is.
+- **Pressure factor 2.06 rho vc^2:** it is the exact integral of the sim's own wind profile (Wood-White,
+  fed tail R^-0.6). The research's 1.33 is a different profile, and swapping only the pressure would
+  break cyclostrophic balance with the winds.
+- **Funnels are not too long.** Squall line, 2 h, 23 tornadoes; average share of the way down from the
+  base: EF0 6%, EF1 19%, EF2 74%, EF3 89%, EF4-5 98%. That is weak tornadoes as partial funnels over
+  dust, strong ones condensed to the ground, as in the research.
+- **They can be fat at low bases:** the ground condensation radius is typically ~2 rc, but up to 4-8 rc
+  for the strongest tornadoes under ~150-300 m bases. Observed funnels are usually no wider than the
+  core. The client already caps the drawn funnel at 3 rc (StateAdapter), so this is not visible.
+- The free-running Supercell scenario makes no tornadoes in 2 h, with or without today's changes
+  (low-level meso only 5-10 m/s). In Studio its tornadoes come from the scenes.
+
+Studio check of 14b/14c (2026-10-30): no errors, but not visible there. Every test scene pins its
+own lowering (VisualTests storm.lowering, applied each step), and the default engine-driven storms
+are far off and barely rotating.
+
+### Round 14d: item 4 started, blocked by the cold pool (2026-10-30)
+
+Stage 1 done: **rear-flank air tracer.** Precipitation from the storm's low-level (hook) share
+carries origin 1 (Precip.po). Its evaporation, melting and downdrafts mark the cold air they make
+(ColdPool.R, 0..1: the share of the cold air that came down at the rear), and R is carried with
+the pool. Precip.rainRateR is the rear share of the surface rain. Nothing reads R yet.
+`tools/stormlab/diag_fronts.luau` maps the cold pool round C001 (f forward-flank air, r rear-flank
+air, U updraft, L low meso), with the motion up the page.
+
+Stopped before stage 2 (the low meso placed at the triple point), because the map shows **the storm
+inside its own cold pool**:
+- by 40 min every cell within 15 km is cold air, the updraft included; the deficit at the low meso is
+  5-6 K (tornadic storms: <~ 2 K), which caps vlow at 5-6 m/s (fCold) - the reason the free
+  Supercell scenario never makes a tornado. The same happens with the old precipitation release;
+- **no sharp front:** from the LLM toward the inflow the deficit falls 5.7 -> 4.7 -> 3.3 -> 1.9 -> 0.9 K
+  over 8 km, where a gust front is a 1-2 km edge with warm air at the updraft;
+- **the cause:** the downdraft target (ColdPool.downdrafts) is the environment's DCAPE parcel
+  (Thermo ddDeficit: saturated descent from the lowest theta-e level, no mixing) = 13-20 K below
+  the surface air here (mean 17 K), applied in full at 30 mm/h and a quarter of it at 4 mm/h. Real
+  downdrafts are subsaturated and entrain, so observed outflows are 2-6 K (max ~10). The pool reaches
+  9-10 K, and the 2 km grid's smoothing (0.04 Laplacian a step) spreads it under the updraft.
+
+Proposed next (needs the user's go-ahead: it changes every lab storm, the squall line's gust front
+and bowing too):
+1. Downdraft arrival temperature from a subsaturated, entraining descent instead of the saturated
+   parcel (evaporation limited by the rain water present, Srivastava 1985/1987; Kamburova & Ludlam
+   1966), targeting 2-6 K forward-flank outflow;
+2. a sharper front: less smoothing, or a 1 km pool near storms;
+3. then stage 2: the low meso at the triple point, occlusion from the rear-flank air wrapping round it.
+
+## Round 14e (2026-10-30): cold pool step 1 done, step 2 tried
+
+**Downdrafts (step 1, in).** `Thermo.downdraftArrival` (subsaturated, entraining descent from the
+lowest-θe level, Klemp-Wilhelmson evaporation) sets the pool's target, stored as `dd5/dd20/dd60`
+and interpolated in rain rate. `ColdPool.SATURATED = true` restores the old saturated target.
+Supercell pool max 5-6 K (was 8-10), deficit at the low meso 3-4 K (was 5-6); squall line max
+4-4.6 K (was 6-7).
+
+**Parcel bug found and fixed (Thermo.lift).** A surface parcel that was already buoyant below its
+LCL (a hot superadiabatic surface layer) never got an LFC: CAPE 0 and CIN ~-3400 J/kg, flipping
+to ~3900 J/kg CAPE under a 0.05 K change. This was C001's "collapse" at 22-40 min (W 60 -> 10).
+Now the LFC is the LCL in that case. C001 holds W 56-60 for the whole hour.
+Side effect: surface CAPE now shows that layer, so the Supercell day started 10-16 storms. Initiation
+and squall-line regeneration now use the mixed-layer parcel (`mlcape`/`mlcin`, matching the `lfc`
+field, which was already mixed-layer): back to 5 storms.
+
+**Sharper gust front (step 2, not solved).** Measured with `diag_fronts.luau` (now prints the
+deficit in K) and `diag_coldpool.luau`:
+- smoothing as a diffusivity (`ColdPool.MIX_K`, m²/s; default 8000 = the old 0.04/step): 2000 and
+  500 change nothing visible;
+- a 1 km grid (`ColdPool.DX`): no sharper, 4x the cost;
+- the pool carried by the full low-level wind (`ColdPool.ENV_K` 1, default 0.5): the pool moves off
+  the storm (deficit at the low meso 1.7 K at 20 min) but neighbours' pools then fill the inflow
+  side with 2-3 K by 40 min, and the Supercell day starts 9 storms.
+Conclusion: the broad 4-5 K blob comes from where the cooling is laid down (rain spread 6-9 km
+round the core), not from smoothing or grid size. A sharp edge needs the gust front carried as a
+density current with its own head, not a smeared field. Defaults left as before.
+
+**Side effect still open:** squall-line tornadoes 64 in 2 h vs 26 with saturated downdrafts (the
+tornado tuning was done against the over-cold pool). Goes with item 5's refit.
+
+Tools: `diag_coldpool.luau` (pool stats, MODE new/old), `diag_fronts.luau` (deficit map).
+
+**Round 14e, continued (same day): two more gust-front tries, neither changes the picture.**
+- Bounded Catmull-Rom resampling for moving the pool (`Grid.sampleCubic`, `ColdPool.CUBIC`):
+  bilinear resampling a tenth of a cell per 20 s step smears like ~9000 m²/s, so this should have
+  sharpened the edge. Edges went from ~10 km to ~8 km wide; the low meso still sits in 3-4 K air.
+  Left off (option kept).
+- Front speed from the local depth instead of the pool behind it (deep air catching up with the
+  head, as in a real density current): no visible change. Removed.
+Reading of all five tries: the edge is about 1 K per 2 km cell, not unrealistic for a forward-flank
+gust front. The low meso sits in 3-4 K air because rain falls 6-9 km ahead-left of the updraft and
+the updraft's track runs through the edge of that rain swath. Observed tornadic supercells mostly
+have rear-flank deficits under ~3 K (Markowski et al. 2002), so 3-4 K is at the cold end, not
+wildly off. Recommendation: stop chasing the front's sharpness and move to item 4 stage 2 (triple
+point from the existing 1 K contour plus the R field).
+
+## Round 14f (2026-10-30): item 4 stage 2 - rear-flank air in, triple-point placement not adopted
+
+**Rear-flank downdraft air into the cold pool (in).** Before, the RFD only made wind; the pool had
+no rear-flank air at all. Now `Storm.step` sends it down through `Thermo.downdraftArrival` (new
+optional args: forced descent speed, dry start) from 1.5 km at the RFD's speed, cooled only by the
+hook's rain, and `ColdPool.addDowndraft` replaces the pool's air under it (warmer or colder,
+R -> 1). `Storm.RFD_AIR = false` turns it off.
+Result: the RFD air arrives at 0-0.2 K (dry-adiabatic from a well-mixed boundary layer, hook rain
+1.5-10 mm/h): a slightly warmer (~2 K) slot and trail behind the low meso inside the 3-4 K
+forward-flank air, as observed (tornadic RFDs <= 2 K, Markowski et al. 2002). Deficit at the low
+meso 3.0 K (was 3.6), vlow 12 (was 10). Squall-line tornadoes 78 in 2 h (was 64): warmer RFDs help
+genesis - for item 5's refit.
+
+**Field-placed low meso (tested, not adopted).** `tools/stormlab/diag_triple.luau` scores points
+round C001 by baroclinity x updraft footprint x warmth. The best point is always just right of the
+updraft (bearing -90 deg, 0.15-0.3 Ru: the inflow-side pool edge), not at the rear (observed and
+current: ~150-160 deg). The rear-flank gust front is a wind boundary (the RFD's momentum), not a
+temperature one, so baroclinity can't find the triple point.
+Checked instead: the mid-level storm-relative wind (where the RFD comes from) blows from 175-180 deg
+on both lab days; the fixed lowAngle is 158 deg (rear, slightly left), within ~20 deg of it and of
+the research. Recommendation: keep lowAngle; if it must come from fields, tie it to that wind's
+bearing. Occlusion stays RFD-driven as before.
+
+## Round 15a (2026-10-30): item 5 measured - core size already on target
+
+`tools/stormlab/diag_core.luau` (2 h of each lab day, all free tornadoes): squall line 84 tornadoes,
+median core radius 99 m (per-tornado life medians 78-145 m, peaks 127-183 m). The target was a
+100-150 m median, so the physics is about there; any "too small" look is in the drawing (the
+condensation funnel is narrower than the core), not the sim. The problems the run does show:
+- counts: 84 in 2 h on the squall line, many with peak core wind 9-13 m/s (below EF0's ~29 m/s);
+- extremes: peaks up to 117 m/s;
+- the Supercell day makes no tornado of its own in 2 h.
+These are the refit (counts, strengths, the updraft profile break and wLow), not the core size.
+
+## Round 15b (2026-10-30): tornado refit - counts and strengths
+
+Lab-only (free-running storms; engine-led tornadoes keep the engine's rating). Measured with
+`diag_genesis.luau` (genesis terms per storm) and `diag_core.luau` (now also EF counts and peak
+ground wind / parent vlow).
+
+**Why the Supercell day makes no tornado: correct.** Its own data has median LCL 2000 m and
+median STP 0; the genesis drive stays 0.1-0.7 (needs 0.8). The day's only tornado is the engine's.
+
+**Counts: one chance per occlusion cycle (`Storm.genesisTry`).** Before, every circulation that
+organised (G >= 1) made a tornado: on the squall-line day all ~35 rotating cells did, 84 in 2 h.
+Now each gets one draw per cycle with odds from its strength, `Storm.genesisChance` = 0.6 x
+ramp(vlow, 10, 35) (~12% at 15 m/s, 36% at 25, 60% at 35). The shape follows Trapp et al. 2005
+(about a quarter of mesocyclones tornadic) and Smith et al. 2015 / Thompson et al. 2017 (odds rise
+with low-level Vrot); approximate, because the papers' tables could not be read here. Draws are
+seeded by storm and cycle. Squall line: 7 tornadoes in 2 h. `Storm.GENESIS_ODDS = false` restores
+the old rule.
+
+**Strength: `Tornado.VC_EFF` 0.42.** The core ran to 2.2x the parent's low-level spin (80-117 m/s
+at vlow 20-27), and 30 of 84 tornadoes rated EF5. An efficiency on the contraction spin-up,
+calibrated to the radar relation (peak ground wind ~2x Vrot, Thompson et al. 2017, approximate).
+All-tornado sample (old genesis rule, 86): EF0 47%, EF1 19%, EF2 21%, EF3 8%, EF4 5%, EF5 0
+(was EF5 36%); median peak wind / vlow 1.7. With the new rule, 7 tornadoes: 3 EF0, 2 EF1, 2 EF2.
+
+**Visual cost:** weaker cores mean shallower pressure drops, so condensation funnels reach less far
+down. Squall line: EF0 ~5%, EF1 15-24%, EF2 37-61%, EF3 80% of the way down. Before, most lab
+tornadoes were violent and funnels reached 94-99%. Weak tornadoes often show only partial funnels
+over a debris whirl in reality, but on this low-LCL day more would usually reach the ground.
+Engine-led tornadoes (the main game) are not affected.
+
+## Round 13k (2026-10-30): gas tornado at 500 billboards
+
+User: raise the tornado budget from ~200 to 500 billboards to make it look better.
+`Render/TornadoCards` gas style now draws 500 a tornado:
+- body puffs 164 -> 250, edge tatters 36 -> 52 (`NGAS` 302 incl. tatters). The opacity share per puff
+  scales with the count, so the funnel is just as opaque but smoother and less blotchy;
+- **surface lumps** (`NLUMP` 110, new): smaller gas puffs just under the surface (0.7 rc), carried
+  round by the flow and bulging together on one noise field read at the flow's own coordinates.
+  Shaded about the body's own shade (bulges lighter, hollows darker) and faded toward the sides,
+  so they add rolling relief without bumping the outline. (Lit brighter than the body on average,
+  the first try drew pale round blotches.)
+- **striations** (`NSTRI` 70, new): faint `wispSheetFlat` streaks along the flow (turn + rise) on
+  the middle of the near face, the volume style's wisps in the gas body;
+- condensation tags 18, unchanged. Detail layers hide beyond 9 km (a few pixels each).
+- **Shift+T** turns the two detail layers on/off for A/B.
+- Seen in Studio (stovepipe and cone): the layers give the upper funnel visible rolling relief;
+  the striations are subtle at scene range. Script time ~1.4 ms a frame (was 0.58 ms at 200).
+- Studio check needed a temporary `Tornado.VC_EFF = 1` (removed after): since the item 5 refit
+  (VC_EFF 0.42) the stovepipe/wedge/tube scenes come out at vc 21-26 m/s and barely condense, so
+  scenes 3, 4 and K show almost no funnel. Their pins (vlow) predate the refit.
+- Pale grainy blotches on the funnel (stovepipe and cone) show with the detail layers off too:
+  another layer (wall cloud, scud or dust), not the funnel cards. Not chased.
+
+## Round 13l (2026-10-30): less murk - directional sky light, thinner edges, dust hidden in the funnel
+
+From a pasted review of the 500-card tornado: shape is right, but it is murky - one even dark grey
+with no separation between funnel, wall cloud and inflow band. Geometry left alone; changes are to
+light and optical depth:
+- **`SceneLight.skyDir(ctx, x, y, z)`** (new): where the sky light comes from. Marches the storm
+  shapes (as the sun test) along 16 headings at 4 and 15 degrees up, each weighted by the rain the
+  low light crosses in the first 8 km (`Precip.surface`, `C.rainExtinction`). Returns the light's
+  heading and how one-sided it is (aniso). The storm shapes alone gave aniso 0.04 (discs round each
+  storm: even all round); with the rain, 0.58 on the stovepipe scene (dark toward the rain core,
+  bright toward the clear rear).
+- **Funnel** (TornadoCards gas): sky light x (1 + 0.85 aniso (n . d)) on body, lumps and striations;
+  lumps have more light/dark range (darker masses, lit turbulent regions); the outer body
+  (q 0.26-0.42) is up to 35% thinner on a noise field turning with the flow (translucent,
+  irregular edges, dense core kept). The F4 counter shows `sky side` (aniso) and `sun`.
+- **Wall cloud** (WallStream): outline pieces 0.55 + 1.5 depth (were 0.9 + 1.2), fringe 0.32 (was
+  0.45): thinner outer region, dark middle kept; sides lit by the sky direction (fading inward).
+- **Inflow band** (WallStream tail): lobes from a noise read at each puff's place in the inflow air
+  (fixed for life, so lobes travel in with the air): thickness 0.65-1.35x, lobes bulge up and sag
+  under, gaps where the noise is low (closed in the last 25% before the wall cloud), lit by the
+  sky direction, lobe tops lighter.
+- **Dust** (TornadoDust): the grainy pale patches on the funnel were dust (gone with the dust layer
+  off). Dust whose centre is inside the condensed funnel at its height is now hidden (faded over
+  a quarter of the puff's size either side of the condensed radius). Lofted dust outside the
+  funnel still shows as lighter puffs beside it (the debris cloud).
+- Seen in Studio (stovepipe, VC_EFF now off by default): dark core, lighter rolling lobes, a lit
+  side, softer edges. Open: a few lobes near the top still read as separate round blobs; the
+  inflow band was not looked at closely; the review's sunlit-vs-dark-storm question not tested
+  (scene sun share 0.08 here).
+
+## Round 13m (2026-10-30): sunlit tornado test
+
+New scene **S "Stovepipe, low sun"** (key **G** with the F4 panel open): the stovepipe storm at
+18:24 local (sun ~7 deg up; the lab scenario's sunset is 19:00, not 20:00), camera west of the
+tornado (yaw 180) with the sun behind it. Higher suns are blocked by SceneLight's storm shapes.
+Result (direct-sun share on the funnel 0.25, sky side 0.57):
+- the dust and the inflow band / outer clouds take the low sun well: warm tan dust, lit cloud edges;
+- the wall cloud and the base round the funnel stay a near-black mass, and the funnel's top blends
+  into that colour (TornadoCards lerps toward `stormBase.col` near the base), so the upper funnel
+  is lost in it. Murk in sun = lighting, not opacity.
+- Cause: SceneLight / Render/Sky shade storms with a symmetric base disc of 2.5 Ru (~6.5 km) round
+  each storm at base+200 m. A low sun reaching the lowering from the rear crosses that disc, so
+  `lit` at the wall cloud is ~0. Real supercells have a short, often clear rear side (RFD clear
+  slot) through which a low sun lights the wall cloud's sides.
+- Proposed next: make the base disc's extent follow the storm's fields (downshear/forward-flank
+  long, rear side short, cut by the RFD), in SceneLight and Render/Sky together. Not done.
+
+**Round 15b, revised the same day (user: the lab should make tornadoes; realism of counts and
+strengths doesn't matter there; the lab work is about visible storm structure).**
+- Both trims are now OFF by default, kept as options: `Storm.GENESIS_ODDS = true` (one draw per
+  cycle) and `Tornado.VC_EFF = 0.42` (calibrated strength). Strong lab tornadoes keep their full
+  funnels.
+- New lab genesis boost, `LabConfig.GENESIS_EASE` = 3, set as `Storm.GENESIS_EASE` by the lab
+  server. It lifts weak genesis drives (x3, up to 1.5) and leaves strong ones alone.
+  "Own" mode, 2 h: Supercell 5 tornadoes (was 0; 2 rated EF5), squall line 99 (was 84).
+  "Engine" mode (the default) is unchanged: the engine's tornadoes.
+
+### Round 13m fix (same day): storm base footprint from the storm's fields
+`SceneLight.baseCover(s, px, py, k)`: the base runs forward past the rain core (ffd), ends ~0.45 Ru
+behind the low-level mesocyclone at the rear, and the RFD (rfdX/rfdY, strength `rfd`) cuts a clear
+slot. Used for the base level of SceneLight's sun test and Render/Sky's sun ray + overhead cover
+(the tower and anvil shapes are unchanged; StormCards' own deck already had a slot).
+- Low-sun scene (G): sun on the funnel 0.25 -> 0.97; funnel and wall cloud now lit warm brown,
+  the base's underside still dark (right).
+- Afternoon stovepipe (3): sun 0.61, sky side 0.69, looks as before with lit gaps in the base.
+
+## Round 13n (2026-10-30): murk fixes - shade gradient, fewer body layers, top blend, backlit rim
+Diagnosis: each of the 250 body puffs spans the whole funnel and was shaded by its own centre's
+angle, so lit and shadowed puffs overlapped everywhere into flat grey; many faint layers also
+averaged away texture and used only the bottom alpha steps.
+- Each gas body card carries a UIGradient (7 points across it, along the axis-perpendicular on
+  screen): the column's light profile - cylinder normal vs sun, directional sky, and a forward-
+  scatter rim when backlit. ImageColor3 = brightest point, gradient = ratios (1/32, shared seqs).
+- Budget split: body 250 -> 150 (+52 tatters), lumps 110 -> 160, striations 70 -> 120 (482 total).
+- Upper-funnel blend toward the lowering's colour 0.9 -> 0.5.
+- Result: a lit and a shadowed side read on the afternoon stovepipe (3) and the low-sun scene (G);
+  TornadoCards ~2.1-2.3 ms (was ~1.6).
+- Not done: new detailed / pre-lit puff texture (needs a Blender bake + upload); dust 256 px frames.
+
+### Round 13n part 2: detailed puff textures + dust sheet
+- tools/smoke/gas_puff2.py: four separate 1024 px puffs (gasPuff2A-D in LabConfig): blended
+  gaussian billows, a frayed multi-octave fringe, direction-free relief (AO from thickness). Used
+  by the gas body + lumps via setPuffTex (falls back to gasPuffSheet).
+- tools/smoke/dust_wisp2.py: 2x2 x 512 broad smooth dust wisps (dustWisp2), replacing the 4x4
+  wispFlat (256 px frames, the grainy patches) for tornado dust in TornadoDust.
+- Studio (3 and G): funnel more defined and textured, lit/shadow sides kept; dust smooth, no grain.
+  TornadoCards ~2.4 ms. Not rechecked: cone, rope, wedge.
+
+## Round 13o (2026-10-30): scene-by-scene fixes (multi-vortex, wedge, cone)
+Review of all scenes: rope + stovepipe good; multi-vortex drew its sub-vortices as straight glassy
+planks, the wedge was invisible in rain (sight 0.09), the cone had a pale crown and no edge.
+- Sub-vortices: soft gas puffs (setPuffTex) instead of the crisp slice; 8-24 short pieces up the
+  helix (was 6-16 long ones); each piece overlaps the next, opacity shared over the overlap,
+  target x1.5 and darker colour. Now dark smoky tubes curving up through the dust.
+- Wedge scene (4): Ru 6000 -> 4500, pinned pw 12 / rhMid 0.2 (drier: less rain), camera 3 km.
+  Sight 0.09 -> 0.44: a broad dark wedge under the lowering (low contrast still).
+- Cone: surface lumps fully faded in the flare (was 30% left) and their bulges no brighter than the
+  body: the pale crown is gone, a clean dark cone.
+- Pale ring-shaped blobs seen beside the multi-vortex are storm inflow puffs (not tornado cards).
+Open: storm-cloud renderer look (hard blobs, speckled edges, blue streaks, star-like dots seen on
+dark cloud and ground in the wedge scene); dust not wrapping the funnel foot; rope lighting.
+
+## Round 13p (2026-10-30): tornado outline - transparency cut at the funnel edge
+Cause (measured, tmp sim): the body puffs' summed soft falloffs spread the edge from 0.6 to 1.1 rc
+(90%->10% opacity); a real condensation funnel (optical depth ~13 across) goes clear within ~0.02 rc.
+- Each gas body card's UIGradient now also carries Transparency: clear outside the funnel's edges
+  x = +-1 (as seen, across the axis), ramp half-width EDGE_FADE 0.035 rc, softened where the
+  funnel is thin (+0.35 (1-A)) and where it widens into the lowering (+0.6 flare). Edge wobble
+  EDGE_WOB 0.1 rc, two octaves along the funnel, drifting in time.
+- Body cards 2.8 rc wide (dense where they reach the edge), 0.62-0.78 as tall; the image turns
+  with the axis (0/180 deg) so the gradient maps exactly across the card.
+- Outer 35% noise thinning removed (it smeared the edge).
+- Studio: stovepipe (3) and cone (2) show a defined, slightly ragged outline; top dissolves into
+  the base. TornadoCards ~2.3-2.7 ms. Rope not rechecked.
+
+## Round 13q (2026-10-30): outline contrast against what is behind + rope/wedge/multi-vortex review
+- TornadoCards gas body: per row and side, bgBehind() follows the sight line past the edge -
+  into the parent storm's base where SceneLight.baseCover reaches (base.col luminance), else the
+  horizon haze (Lighting.Atmosphere colour), or the ground. The outer rim (|x| > 0.62) is kept
+  EDGE_SEP 0.25 apart in brightness from it (darker against bright sky, lighter against the
+  base); off where the funnel flares into the lowering. No errors; stovepipe edges read darker.
+- Review (no changes):
+  - Rope: clean S silhouette; flat grey hose (no lit side), jagged at the sharp low bend, beaded
+    tip, dust off to one side instead of at the tip.
+  - Wedge: nearly invisible up close - same tone as base and rain haze (rain grey 0.44, sight
+    0.57), sides soft (flare softening covers most of a squat wedge), no ground contact but a
+    dust strip. White specks on dark cloud/ground persist.
+  - Multi-vortex: sub-vortices invisible (50 subs at op 0.22, dark on a dark, sunless scene
+    SkyDirect 0.04); parent shell gone; reads as a dust curtain under a dark lump.
+
+## Round 13r (2026-10-31): high-angle "stamp roll" + wedge/multi-vortex/rope fixes
+High (C/orbit) view of the stovepipe showed two things:
+- Dust broke into strips with hard horizontal edges. Cause: a billboard is a flat camera-facing
+  card; seen from above, the part below the ground is hidden along a straight screen line, at a
+  different height per card. Fix (TornadoDust): each dust card fades out (UIGradient, 0.22 of
+  the card) above the line where its plane meets the ground, (height above ground)/camUp.Y below
+  its centre; wisps kept near level (0/180 +-12 deg) so the fade runs down the card as seen.
+- Pale dashes stacked up the funnel like a loosened roll of stamps = the striation detail
+  layer (gone with Shift+T): straight lenses lit paler than the body. Fix: body's own light with
+  a +-13% relief (half ridges, half grooves), opacity cap 0.35 -> 0.22, thinner (0.16 of length)
+  and longer.
+Other fixes (TornadoCards unless noted):
+- bgBehind/sepFrom moved up so the sub-vortices share them; background now seen through rain
+  and haze (e.wrap extinction + 0.04/km) both toward the base and toward the ground (a dipping
+  sight line meets far ground = haze). Wedge's lower funnel now a dark column against the rain
+  haze (rain grey 0.63, sight 0.31 there - still a heavily rain-wrapped wedge).
+- Multi-vortex: sub-vortex tubes kept EDGE_SEP from their background (dark columns now show);
+  parent shell floor A >= 0.3 thin (faint envelope).
+- Rope: body cards >= 2.4 puff spacings along the axis (tip no longer beads) and no longer than
+  the on-screen bend allows (edge cut off the curve <= 0.1 rc); TornadoDust lifts dust at the
+  vortex but places it about the drawn foot (Vortex.axisAt(e, 0)): dust now round the tip.
+Open: rope sides slightly furry (tatters at small rc); sub-vortex tubes soft smudges; the
+lowering above the wedge is StormCards' lumpy mass.
+
+## Round 13s (2026-10-31): funnel shape + tornado dust
+Funnel "loosened stamp roll" and uneven widening, seen up close: each body card was ~0.6-0.8 of
+its width tall with a straight edge cut, so a sloping or bending outline became a stack of
+straight steps (silhouette test: 2 rc cards mean edge error 0.41 rc, max 2.4 rc; 0.4 rc cards
+0.05 / 0.37). Fixes (TornadoCards):
+- Body cards short: height rc*(0.32+0.14 sd), but at least 5 puff spacings along the axis (at
+  2.4 a thin section showed separate plates) and no taller than the on-screen bend allows.
+- Edge wobble 0.1 -> 0.06; lumps toned down (opacity 0.24 -> 0.15, cap 0.35 -> 0.2, shading
+  nearer the body's) and narrowed to ~0.5 rc (at ~1 rc they showed as dark plates past a
+  narrowing funnel's outline).
+Dust (TornadoDust), from photo/radar studies of the debris cloud: hollow ring, 2-6 funnel
+widths, densest at the ground, bell/collar shape, dark when backlit.
+- Skirt puffs (70%): 1-2.5 rc, big (1.1 rc, 20-260), low. Collar puffs (30%): on the rim
+  0.9-1.3 rc, 0.6 rc, lifted up to ~1/4 of the cloud base (scaled by vc), faster rise.
+- Tornado dust denser low (x1.5, thinning with height over 0.08 of the cloud base), cap 0.55
+  -> 0.8.
+- Colour by sun view: gain 1.1 + 1.3*front (was always 2.4): tan front-lit, dark backlit.
+Seen in Studio: stovepipe (chase + high orbit) and cone outlines smooth, no steps or shoulder,
+fine streaks; dust a wide tan skirt round the base. Open: a soft dark bulge can still show on
+one side of the lower stovepipe (body cards, not lumps); collar could rise more visibly.
+
+## Round 13t (2026-10-31): outline ribbons - the funnel's banding fixed by design
+Diagnosis (user: 13s banded worse; "maybe we shouldn't be using wide band cards"): every gas body
+card spanned the whole funnel (2.8 rc) and cut its own piece of the outline, so card height was
+the only knob and both ends banded - tall cards stepped on a taper or bend (13r "stamp roll"),
+short ones needed ~95% opacity each (vs 76%: ~2 effective overlaps) so each showed as a stripe
+and its end as a tooth on the edge (a comb, worst from the high C view). The same root sat under
+the earlier banding rounds (13g, 13h, rope, rings, looking up). The flat slabs low on the 13s
+funnel were the dust collar's streaky wisps (gone with dust off), not the funnel.
+Redesign (TornadoCards; same 202-card body budget):
+- Outline: NEDGE = 52 ribbons, 26 down each side. Each is tilted to its own side's slope on
+  screen (edge points with wobble at both ends of its stretch), so the edge follows tapers and
+  bends. Flat across: the gradient cuts the edge sharply outside and fades softly 0.15-0.35 rc
+  past the axis, under the other side's ribbon. New texture funnel_ribbon.png
+  (tools/smoke/funnel_ribbon.py, LabConfig funnelRibbon): full over the middle third, linear fade
+  over the outer thirds; ribbons spaced a third of their length apart, each 1 - sqrt(1 - A), so
+  cover is ~A everywhere. At the axis's depth; they fade out where the funnel is seen end-on
+  (projL 0.2-0.45), where the fill takes back the edge.
+- Fill: 98 cards (NGAS 150 incl. 52 tatters), tall (1.2-1.6 rc), faint (<= 0.35 each), cut softly
+  at 0.75 of the edge - never touching the outline.
+- Light-across-funnel code shared (frameAt / shadeX / edgesAt / opacityAt) so ribbons and fill
+  agree; cutSeq takes separate left/right ramp widths.
+- Dust collar (TornadoDust): 20% of puffs (was 30), up to 0.12 of cloud base (was 0.25), round
+  soft texture, half opacity.
+Seen in Studio: stovepipe chase and high orbit - clean continuous edge, no bands/comb/slabs; cone
+- smooth taper, no steps; rope - one continuous strand; multi-vortex tubes still show.
+Open: the body can read smooth/tube-like up close (texture now from fill + detail layers only);
+slight corners where ribbon chords meet on the rope's tightest bends.
+
+## Round 13u (2026-10-31): seam/dust/rope fixes, then the "smoke" style
+After 13t: ribbon cost-spacing (jitter, an "inner core" from widened ribbons) and straight ribbon
+chords on rope bends were diagnosed; the user then asked why texture was lost and how to match the
+reference games. Diagnosis: the references (docs/tornado-reference) get texture and soft edges from
+many faint fibrous smoke sprites riding the flow, not from cut outlines; our near-opaque blank
+outline ribbons hid all texture, and every band/seam/jitter bug came from that outline geometry.
+Built (TornadoCards style "smoke", now LabConfig.TORNADO_STYLE; T cycles smoke -> gas -> volume ->
+rings; no inner core, per user):
+- NSMB = 320 body sprites (wispyFlat 4x4 fibrous puffs), a stratified place along the funnel's
+  length, rising with the surface flow (0.15 vc) and turning at the flow's rate; within 0.45 rc of
+  the axis, ~2-2.4 rc wide (the puff fills ~0.7 of its frame, mean alpha 0.1), stretched along the
+  axis up to 4:1 where the funnel is long (ropes). Opacity share 1-(1-A)^(10/nEff), nEff = sprites
+  over a point (capped at all of them: a wedge is shorter than its sprites), at most 0.85. Each
+  one flat colour: the column's light at its screen x, its normal turned 30% toward its own place
+  round the axis (turning masses lighter/darker), +-7%.
+- NSME = 100 edge sprites (strandsFlat), 50 a side at the silhouette, climbing 1.3x the body,
+  wandering in/out by noise, faint (0.3 A), rim tone with a light sepFrom (0.3; 0.7 drew a solid
+  dark stripe). Gone where their spacing would leave gaps (ropes) or the axis is end-on.
+- Dust (TornadoDust): tornado puffs use the fibrous wispyFlat sheet (skirt and collar), darker
+  grey-brown soil (104,94,80 -> 70,70,70 lofted), gain 0.85+0.95 front (was 1.1+1.3), collar
+  opacity 0.75, skirt cap 0.2 of the puff size (0.12 made a smooth dome).
+Seen in Studio: cone/stovepipe - fibrous soft-edged smoke with a lit and a shadow side; wedge -
+solid dark mass with soft edges (as clip 11-01-22); rope - a smooth frayed chain of puffs, no
+corners. Open: motion (jitter/sort flicker) not judged from stills; multi-vortex not checked; the
+lower cone is still slightly see-through against the bright slot; dust still dome-shaped.
+
+## Round 13v (2026-10-31): smoke style - edges out, tighter body, rope, dust
+User review of 13u: edge funnels not needed, the core puffs too spread, the rope could be better.
+Done one at a time, each checked in Studio:
+1. Edge strands removed (they drew a dark band on the shadow side like a separate tube); 60 of their
+   billboards went to the body: NSMB 380 (+18 tags = 398).
+2. Tighter body: puff centres within 0.2 rc of the axis (was 0.45), puffs 1.6-1.85 rc wide (was
+   2-2.4) so the fringe lands at the edge (it reached ~1.3 rc: a broad haze, no outline on the lit
+   side). Tone across the funnel from each puff's screen side (x = offset / 0.2 rc), so the lit and
+   shadow sides remain. Result: a clear frayed taper on both sides.
+3. Rope: a puff's random tilt shrinks with its stretch ((h/w)^-1.5: ~3 deg at 4:1; 25 deg made a
+   knobbly outline); thin funnels (rc < 8-30 m) take one even tone across (the per-puff place-round-
+   axis tint and +-7% alternated as blotches). Result: a smooth, even, tapering frayed tube.
+4. Dust (TornadoDust): 40% collar (more where the funnel is much thinner than the core), skirt within
+   0.8-1.8 rc (was 1-2.5), sideways stretch 1+0.4 (was 0.8), per-puff height cap 0.15-0.4 of its size
+   (one shared cap drew a flat top), size floor 6 m (was 20) and growth scaled by rc/60 (a rope's
+   dust was a wide disc); the collar rings the funnel's condensed radius at 0.05 Hb, not the core
+   (on a rope-out its few puffs floated round the core as specks). Result: cone - a taller lumpy
+   ball wrapping the foot (sides still a little straight); rope - a small ragged mound at its tip.
+Open: motion/sort flicker still to be judged live; multi-vortex and wedge not rechecked after the
+tighter spread.
+
+## Round 13w - smooth Severity body (2026-10-31)
+
+User: the smoke was coarse, the rope looked like a snake; match the Severity references. Reference study:
+their funnels and ropes are smooth, near one-tone soft blobs (fine texture 0.0008 on ref1); only the debris
+ball is rough. Ours (fibrous wispyFlat puffs, full lit/shadow shading) measured 0.0092 on the cone body.
+- Body texture: new soft haze puff (tools/haze_puff.py -> hazePuffFlat rbxassetid://72760570308893): flat
+  white, gaussian falloff, broad lobing, no disc or rim. The smooth cloud puff (smoothPuffFlat) was tried
+  first: its dense disc + darker rim drew arcs - a rope in rings.
+- Sprites 3.4-3.8 rc wide, K 6, cap 0.45, ~8 over each point of the length, stretch at most 3:1.
+- Shading near flat: 0.3 of the lit/shadow swing, no per-puff tint, ~8% darker off-axis (edge band).
+- Result: cone body texture 0.0015, rope a smooth even tube. Dust not yet changed (next step).
+- Follow-up (user: haze made the cone and stovepipe cloudy; the step-2 look was better): each body sprite
+  picks its puff from how rope-like the funnel is where it sits (rc / funnel length, 0.04-0.1, each sprite
+  changing over at its own point). Thick: smooth puff, 2.7-3 rc, K 3.5, cap 0.6, full lit/shadow shading
+  and +-7% tint (the step-2 look). Rope: haze puff and near-flat shading. Checked cone, stovepipe, rope.
+
+## Round 13x - ascending condensation filaments (2026-10-31)
+
+User's research: cloud rising along the funnel's periphery on helical paths, upward speed varying
+with radius and height. 
+- Vortex.updraftAt(p, r, z): the steady axisymmetric updraft of Vortex.sample (no sub-vortices,
+  gusts, translation). TornadoCards keeps it per row at 0.9 x the condensed radius (row.wUp).
+  Typical w/vc at the edge: ~0.01-0.16 on a wide cone's flare (R 1.5-3), ~0.3-0.5 on a narrow
+  rope/tip (R 0.3-1); ~0 in the lowest ~3h (corner flow) and above the cloud base.
+- Smoke body climbs at the column's mean updraft (one rate: per-height rates would bunch puffs).
+- 80 filaments (streakSoft rbxassetid://115060594741751, tools/streak_puff.py): each rides its own
+  helix for 3-7 s (turn at the row's omega, climb at its wUp), ~1.3-1.8 rc long, body's shade +-6%,
+  opacity <= 0.2, near face only (fade before the outline), 75% weaker on ropes. Shift+T toggles.
+  Budget 380 + 80 + 18 = 478.
+- Seen in Studio: soft spiral ribbons on the cone (flat on the wide upper part, steeper low down);
+  rope stays smooth. Live motion not yet judged by the user.

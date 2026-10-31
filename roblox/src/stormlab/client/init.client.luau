@@ -164,6 +164,15 @@ RunService.RenderStepped:Connect(function(dt)
 			end
 		end
 	end
+	-- last: the near-field VFX re-draws the cards the renderers just wrote (Render/NearVfx)
+	local nv = ctx.nearVfx
+	if nv and not nv.broken then
+		local ok, err = pcall(nv.post, nv, dt)
+		if not ok then
+			nv.broken = true
+			warn("[StormLab] NearVfx.post: " .. tostring(err))
+		end
+	end
 end)
 
 print(string.format("[StormLab] client ready: scenario %s, %d modules", info.scenario, #running))

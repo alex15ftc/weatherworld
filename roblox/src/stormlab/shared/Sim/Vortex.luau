@@ -47,6 +47,7 @@ export type State = {
 	topX: number, topY: number, -- axis top (at the cloud base) relative to the contact
 	bendX: number, bendY: number, -- mid-height S-bend offset
 	wave: number, -- helical wave amplitude (m)
+	decay: number?, -- 0-1: how far it has dissipated (its outer flow spun down: Vortex.profile)
 	seed: number,
 	time: number, -- seconds (wrapped by the owner)
 }
@@ -61,40 +62,63 @@ export type Params = State & {
 	pressureScale: number,
 }
 
--- Wood-White normalised tangential profile
-local function ww(R: number): number
+-- Wood-White normalised tangential profile (fed: outside the core the swirl falls as R^-0.6)
+local function wwFed(R: number): number
 	return R / sqrt(0.375 + 0.625 * R ^ 3.2)
+end
+-- cut off from its inflow (dissipating): the outer flow is no longer spun up by the converging
+-- inflow and spins down first while the core holds on (a free vortex outside, R^-1) - why a
+-- roping-out tornado is thin, condenses no wider than its core and damages a narrow path. With the
+-- fed profile kept to the end a rope condensed out to ~3 core radii, 2026-10-29
+local function wwCut(R: number): number
+	return R / sqrt(0.375 + 0.625 * R ^ 4)
+end
+-- k: how far the outer flow has spun down (the tornado's decay, 0-1)
+local function ww(R: number, k: number?): number
+	local c = k or 0
+	if c <= 0 then
+		return wwFed(R)
+	end
+	return wwFed(R) * (1 - c) + wwCut(R) * c
 end
 Vortex.profile = ww
 
--- the cyclostrophic deficit integral I(R) = int_R^inf f(R')^2 / R' dR' (tabulated)
-local I_TAB: { number } = {}
+-- the cyclostrophic deficit integral I(R) = int_R^inf f(R')^2 / R' dR' (tabulated), for each
+-- outer profile (a blend between them: the blend of the two)
 local I_DR = 0.02
 local I_MAX = 40
-do
+local function tabulate(f: (number) -> number, tail: number): { number }
+	local tab: { number } = {}
 	local n = math.floor(I_MAX / I_DR)
-	local acc = 0
-	-- tail beyond I_MAX: f ~ 1.265 R^-0.6, f^2/R ~ 1.6 R^-2.2 -> integral 1.6/1.2 R^-1.2
-	local tail = 1.6 / 1.2 * I_MAX ^ -1.2
-	I_TAB[n + 1] = tail
-	acc = tail
+	local acc = tail
+	tab[n + 1] = tail
 	for i = n, 1, -1 do
 		local R0, R1 = (i - 1) * I_DR, i * I_DR
 		local m = 0.5 * (R0 + R1)
-		local f = ww(m)
-		acc += f * f / math.max(1e-6, m) * I_DR
-		I_TAB[i] = acc
+		local v = f(m)
+		acc += v * v / math.max(1e-6, m) * I_DR
+		tab[i] = acc
 	end
+	return tab
 end
+-- tails beyond I_MAX: fed f ~ 1.265 R^-0.6, f^2/R ~ 1.6 R^-2.2 -> 1.6/1.2 R^-1.2; cut f ~ 1.265
+-- R^-1, f^2/R ~ 1.6 R^-3 -> 1.6/2 R^-2
+local I_FED = tabulate(wwFed, 1.6 / 1.2 * I_MAX ^ -1.2)
+local I_CUT = tabulate(wwCut, 1.6 / 2 * I_MAX ^ -2)
 
-local function deficitIntegral(R: number): number
+local function deficitIntegral(R: number, k: number?): number
+	local c = k or 0
+	local a, b
 	if R >= I_MAX then
-		return 1.6 / 1.2 * R ^ -1.2
+		a, b = 1.6 / 1.2 * R ^ -1.2, 1.6 / 2 * R ^ -2
+	else
+		local g = R / I_DR + 1
+		local i = math.floor(g)
+		local f = g - i
+		a = I_FED[i] * (1 - f) + I_FED[i + 1] * f
+		b = I_CUT[i] * (1 - f) + I_CUT[i + 1] * f
 	end
-	local g = R / I_DR + 1
-	local i = math.floor(g)
-	local f = g - i
-	return I_TAB[i] * (1 - f) + I_TAB[i + 1] * f
+	return a * (1 - c) + b * c
 end
 Vortex.deficitIntegral = deficitIntegral
 Vortex.CENTRAL_DEFICIT = deficitIntegral(0) -- ~2.06 (times rho vc^2)
@@ -108,7 +132,10 @@ function Vortex.params(s: State): Params
 	local S = s.swirl
 	p.twoCell = 1.2 * ramp(S, 0.3, 0.8)
 	p.jet = 0.25 - 0.12 * ramp(S, 0.2, 1.0)
-	p.subCount = math.clamp((S - 0.7) * 7, 0, 6)
+	-- (sub-vortices only in the multi-vortex stage, swirl > 1.0 as Tornado's stage label and
+	-- docs/tornado-physics/DEBRIS-CLOUD.md; from 0.7 a cone or stovepipe had one stray sub-vortex
+	-- orbiting it, 2026-10-30. Steeper, so a multi-vortex keeps ~5)
+	p.subCount = math.clamp((S - 1.0) * 10, 0, 6)
 	p.h = math.max(8, 0.15 * s.rc)
 	local d = p.twoCell
 	local sw = 0.7 -- downdraft width (in rc units) of the two-cell term
@@ -148,11 +175,22 @@ local function subList(p: Params): { { number } }
 	for i = 1, math.ceil(p.subCount) do
 		local ang, w = subvortex(p, i, p.time)
 		if w > 0.01 then
-			table.insert(list, { cos(ang), sin(ang), w, 0.9 + 0.12 * Noise.value1(p.time / 7 + i, p.seed + 11), i })
+			-- (orbit radius wanders 0.6-0.9 of the core radius: NOTES.md; it was 0.9 +- 0.12, a
+			-- regular ring on the parent's edge)
+			local ro = 0.75 + 0.1 * Noise.value1(p.time / 7 + i, p.seed + 11) + 0.06 * Noise.value1(p.time / 2.5 + i * 2.3, p.seed + 13)
+			table.insert(list, { ang, 0, w, ro, i })
 		end
 	end
 	;(p :: any).subs = list
 	return list
+end
+
+-- How deep the sub-vortices reach (m): they live in the corner flow, the inflow layer where the
+-- air turns up (depth h), and weaken with height above it (Lewellen LES). Seen, they rise from the
+-- ground and fade ~20-35% of the way to the cloud base, under the bowl. (At max(100, 1.5 rc), ~750 m
+-- for a multi-vortex, they ran up into the bowl, 2026-10-30)
+function Vortex.subDepth(p: any): number
+	return math.max(60, 2.5 * (p.h or 0.15 * p.rc))
 end
 
 -- core radius at height z: grows 30% from the ground to the cloud base
@@ -172,14 +210,24 @@ function Vortex.axisAt(p: State, z: number): (number, number)
 	local ox = p.topX * h + p.bendX * bend
 	local oy = p.topY * h + p.bendY * bend
 	if p.wave > 0 then
-		-- two helical travelling waves running up the axis (rope contortion), deterministic
+		-- three helical travelling waves running up the axis (rope contortion), deterministic:
+		-- wavelengths 1 : 0.62 : 0.41, the shorter faster (docs/tornado-reference/NOTES.md)
 		local t = p.time
-		local k1, w1 = 2 * math.pi / math.max(80, zb * 0.55), 0.35
-		local k2, w2 = 2 * math.pi / math.max(50, zb * 0.23), 0.8
+		local l1 = math.max(80, zb * 0.55)
+		local k1, w1 = 2 * math.pi / l1, 0.35
+		local k2, w2 = 2 * math.pi / (0.62 * l1), 0.55
+		local k3, w3 = 2 * math.pi / (0.41 * l1), 0.8
 		local ph = (p.seed % 97) * 0.37
-		local env = sin(math.pi * math.min(u, 1)) ^ 0.7 -- pinned at both ends
-		ox += p.wave * env * (cos(k1 * z - w1 * t + ph) + 0.45 * cos(k2 * z - w2 * t + 2 * ph))
-		oy += p.wave * env * (sin(k1 * z - w1 * t + ph) + 0.45 * sin(k2 * z - w2 * t + 2 * ph))
+		-- pinned at the cloud base; the foot is loose (a rope's foot swings about its contact)
+		local um = math.min(u, 1)
+		local env = math.max(sin(math.pi * um) ^ 0.7, 0.35 * (1 - um) ^ 2)
+		-- (each wave at most a fifth of its wavelength: steeper, the axis zig-zagged tens of metres
+		-- every few metres of height and the funnel drew as a star of spikes, 2026-10-29)
+		local a1 = math.min(p.wave, 0.2 * l1) * env
+		local a2 = math.min(0.55 * p.wave, 0.2 * 0.62 * l1) * env
+		local a3 = math.min(0.35 * p.wave, 0.2 * 0.41 * l1) * env
+		ox += a1 * cos(k1 * z - w1 * t + ph) + a2 * cos(k2 * z - w2 * t + 2 * ph) + a3 * cos(k3 * z - w3 * t + 3 * ph)
+		oy += a1 * sin(k1 * z - w1 * t + ph) + a2 * sin(k2 * z - w2 * t + 2 * ph) + a3 * sin(k3 * z - w3 * t + 3 * ph)
 	end
 	return ox, oy
 end
@@ -192,7 +240,10 @@ function subvortex(p: Params, i: number, t: number): (number, number)
 	-- (the orbit angle: integrated by the owner when it keeps one - p.orbit - since a rate x time
 	-- product jumps whenever vc or rc changes)
 	local orbit = (p :: any).orbit or p.sOrbit * t
+	-- (plus a quicker wander: they speed up, stall and loop back - 0-79 m/s on looping paths at
+	-- El Reno, docs/tornado-physics/DEBRIS-CLOUD.md; a steady orbit read as a turning ring)
 	local ang = phase0 + orbit * (0.85 + 0.3 * Noise.hash(i, 2, 0, p.seed)) + 0.6 * Noise.value1(t / 23 + i * 3.1, seed)
+		+ 0.45 * Noise.value1(t / 6 + i * 5.3, seed + 7)
 	-- life: each sub-vortex waxes and wanes over 10-40 s
 	local life = 0.5 + 0.5 * Noise.value1(t / (10 + 30 * Noise.hash(i, 3, 0, p.seed)) + i * 1.7, seed + 3)
 	local present = math.clamp(p.subCount - (i - 1), 0, 1)
@@ -203,9 +254,14 @@ end
 function Vortex.subvortices(p: Params, z: number): { { number } }
 	local out = {}
 	local rc = rcAt(p, z)
+	-- each sub-vortex is a tube wrapped round the parent as a helix: the air at its orbit turns
+	-- about vc while it rises at about vc too (two-celled core), so it climbs about one core radius
+	-- per radian (straight vertical columns read as blobs, not vortex tubes, 2026-10-29)
+	local twist = z / math.max(30, p.rc)
 	for _, sv in subList(p) do
 		local ro = rc * sv[4]
-		table.insert(out, { ro * sv[1], ro * sv[2], sv[3], sv[5] }) -- {dx, dy, weight, stable id}
+		local a = sv[1] + twist
+		table.insert(out, { ro * cos(a), ro * sin(a), sv[3], sv[5] }) -- {dx, dy, weight, stable id}
 	end
 	return out
 end
@@ -235,7 +291,7 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	local jet = 1 + p.jet * (z / zj) * exp(1 - z / zj) * exp(-(R * 0.5) ^ 2)
 	-- above the cloud base the vortex hands over to the storm's circulation
 	local aloft = 1 - ramp(z, p.cloudBase, p.cloudBase + 400)
-	local vt = p.vc * ww(R) * surface * jet * aloft
+	local vt = p.vc * ww(R, p.decay) * surface * jet * aloft
 	-- radial and vertical from the streamfunction
 	local h = p.h
 	local rb = R -- r / rm with rm = rc
@@ -256,11 +312,21 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	end
 	w *= aloft
 	ur *= aloft
+	-- the tornado's own outer flow hands over to the storm's: the R^-0.6 profile is measured out
+	-- to a few core radii (DOW); beyond that the swirl and inflow are the parent mesocyclone's,
+	-- which Storm.windAt already adds. Kept to 60 rc the circulation grew without bound and an
+	-- EF2's 8 m/s dust-lifting wind reached ~19 rc (9 km), 2026-10-30. (The pressure deficit,
+	-- Vortex.deficit, keeps the whole profile: the meso's swirl lowers the pressure too.)
+	if R > 3 then
+		local out = exp(-((R - 3) / 2.5) ^ 2)
+		vt *= out
+		ur *= out
+	end
 	local u = ur * er_x - vt * er_y
 	local v = ur * er_y + vt * er_x
 	-- sub-vortices on the radius of maximum wind
 	if p.subCount > 0 and R < 3 then
-		local hs = math.max(100, 1.5 * rc)
+		local hs = Vortex.subDepth(p)
 		local fz = surface * exp(-z / hs)
 		if fz > 0.02 then
 			local rs = 0.12 * rc
@@ -269,7 +335,8 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 				local wgt = sv[3]
 				do
 					local ro = rc * sv[4]
-					local sx, sy = dx - ro * sv[1], dy - ro * sv[2]
+					local sa = sv[1] + z / math.max(30, p.rc) -- (the helix: Vortex.subvortices)
+					local sx, sy = dx - ro * cos(sa), dy - ro * sin(sa)
 					local rr = sqrt(sx * sx + sy * sy)
 					local Rs = rr / rs
 					local vsub = vs * wgt * fz * 1.41421 * Rs / sqrt(1 + Rs ^ 4)
@@ -314,6 +381,29 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	return u, v, w
 end
 
+-- The steady upward wind (m/s) at radius r (m) from the axis, height z: the axisymmetric part of
+-- Vortex.sample's w only - no sub-vortices, gusts or translation. (For the renderer's ascending
+-- condensation filaments, 2026-10-31: they climb at this and turn at the swirl.)
+function Vortex.updraftAt(p: Params, r: number, z: number): number
+	z = math.max(z, 0)
+	local rc = rcAt(p, z)
+	local R = math.max(r, 0.5) / rc
+	if R > 60 then
+		return 0
+	end
+	local d, sw = p.twoCell, (p :: any).sw :: number
+	local e2 = exp(-(R * R) / (sw * sw))
+	local Fp = 2 * R / (1 + R * R) ^ 2 - d * (2 * R * e2 - R * R * (2 * R / (sw * sw)) * e2)
+	local zh = z / p.h
+	local Gz = 1 - (1 + zh) * exp(-zh)
+	local w = p.psi0 * Gz * Fp / (rc * math.max(r, 0.5))
+	w *= 1 - ramp(z, p.cloudBase, p.cloudBase + 400)
+	if R > 3 then
+		w *= exp(-((R - 3) / 2.5) ^ 2)
+	end
+	return w
+end
+
 -- Pressure deficit (Pa, positive = lower than ambient) at radius r from the axis, height z.
 -- The deficit comes from the swirl above the surface layer (vc), impressed down through that thin
 -- layer (pressure is near hydrostatic there): neither the wind's drop to zero at the ground nor the
@@ -323,7 +413,7 @@ function Vortex.deficit(p: State, r: number, z: number): number
 	local rc = rcAt(p :: any, z)
 	local aloft = 1 - ramp(z, p.cloudBase, p.cloudBase + 400)
 	local v = p.vc * aloft
-	return RHO * v * v * deficitIntegral(r / rc)
+	return RHO * v * v * deficitIntegral(r / rc, p.decay)
 end
 
 -- The condensation funnel's radius (m) at height z, or 0 if the funnel does not reach that low.
@@ -341,14 +431,15 @@ function Vortex.condensationRadius(p: State, z: number): number
 		return 0
 	end
 	local target = need / scale
-	if target >= Vortex.CENTRAL_DEFICIT then
+	local k = (p :: any).decay
+	if target >= deficitIntegral(0, k) then
 		return 0
 	end
 	-- I(R) decreases with R: bisect
 	local lo, hi = 0, I_MAX
 	for _ = 1, 24 do
 		local mid = 0.5 * (lo + hi)
-		if deficitIntegral(mid) > target then
+		if deficitIntegral(mid, k) > target then
 			lo = mid
 		else
 			hi = mid

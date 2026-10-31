@@ -46,6 +46,7 @@ export type Precip = typeof(setmetatable({} :: {
 	dbz: { [number]: number }, hailShare: { [number]: number },
 	columns: { [number]: boolean },
 	rainRate: any, hailSize: any, rainAcc: any,
+	po: { number }, rainRateR: any, rainAccR: any, evapAccR: { [number]: number }, meltAccR: { [number]: number },
 	stats: { [string]: number },
 	evapAcc: { [number]: number }, meltAcc: { [number]: number }, rhAcc: { [number]: number },
 }, Precip))
@@ -56,6 +57,10 @@ function Precip.new(env: any, coldPool: any, maxParcels: number?): Precip
 	self.max = maxParcels or 32000
 	self.n = 0
 	self.px, self.py, self.pz, self.pm, self.pk, self.pd = {}, {}, {}, {}, {}, {}
+	-- origin: 1 = rear-flank precipitation (the storm's low-level share that wraps round the low
+	-- meso, Storm.emitPrecip), 0 = the rest. Its cooling marks the cold pool's rear-flank air
+	-- (ColdPool.R), so the two gust fronts can be told apart (2026-10-30)
+	self.po = {}
 	self.alive = {}
 	self.free = {}
 	self.nxv = math.ceil(2 * env.extent / VOX)
@@ -67,6 +72,10 @@ function Precip.new(env: any, coldPool: any, maxParcels: number?): Precip
 	self.rainRate = Grid.new(self.nxv, self.nxv, VOX, self.x0, self.x0, 0)
 	self.hailSize = Grid.new(self.nxv, self.nxv, VOX, self.x0, self.x0, 0)
 	self.rainAcc = Grid.new(self.nxv, self.nxv, VOX, self.x0, self.x0, 0)
+	-- (the rear-flank precipitation's share of them)
+	self.rainRateR = Grid.new(self.nxv, self.nxv, VOX, self.x0, self.x0, 0)
+	self.rainAccR = Grid.new(self.nxv, self.nxv, VOX, self.x0, self.x0, 0)
+	self.evapAccR, self.meltAccR = {}, {}
 	self.evapAcc, self.meltAcc, self.rhAcc = {}, {}, {}
 	self.stats = { emitted = 0, landed = 0, evaporated = 0, melted = 0, count = 0 }
 	return self :: Precip
@@ -82,7 +91,7 @@ function Precip.parcelMass(self: Precip): number
 	return 6e4 * (1 + 30 * math.max(0, fill - 0.5) ^ 2)
 end
 
-function Precip.emit(self: Precip, x: number, y: number, z: number, mass: number, kind: number, size: number)
+function Precip.emit(self: Precip, x: number, y: number, z: number, mass: number, kind: number, size: number, origin: number?)
 	if self.n >= self.max then
 		return
 	end
@@ -91,6 +100,7 @@ function Precip.emit(self: Precip, x: number, y: number, z: number, mass: number
 		i = #self.px + 1
 	end
 	self.px[i], self.py[i], self.pz[i], self.pm[i], self.pk[i], self.pd[i] = x, y, z, mass, kind, size
+	self.po[i] = origin or 0
 	self.alive[i] = true
 	self.n += 1
 	self.stats.emitted += mass
@@ -139,6 +149,8 @@ function Precip.step(self: Precip, dt: number, airWind: (number, number, number)
 	local px, py, pz, pm, pk, pd, alive = self.px, self.py, self.pz, self.pm, self.pk, self.pd, self.alive
 	local lclF, fzF = env.fields.lcl, env.fields.freezing
 	local evapAcc, meltAcc, rhAcc = self.evapAcc, self.meltAcc, self.rhAcc
+	local evapAccR, meltAccR, po = self.evapAccR, self.meltAccR, self.po
+	local rainAccR = self.rainAccR
 	local cpD = self.coldPool.D
 	local rainAcc = self.rainAcc
 	local hail = self.hailSize
@@ -182,6 +194,9 @@ function Precip.step(self: Precip, dt: number, airWind: (number, number, number)
 					local ck = ci + (cj - 1) * cpD.nx
 					evapAcc[ck] = (evapAcc[ck] or 0) + dm
 					rhAcc[ck] = (rhAcc[ck] or 0) + dm * rh
+					if po[i] == 1 then
+						evapAccR[ck] = (evapAccR[ck] or 0) + dm
+					end
 				end
 				self.stats.evaporated += dm
 			elseif kind == 3 then
@@ -199,6 +214,9 @@ function Precip.step(self: Precip, dt: number, airWind: (number, number, number)
 				if ci >= 1 and cj >= 1 and ci <= cpD.nx and cj <= cpD.ny then
 					local ck = ci + (cj - 1) * cpD.nx
 					meltAcc[ck] = (meltAcc[ck] or 0) + dm
+					if po[i] == 1 then
+						meltAccR[ck] = (meltAccR[ck] or 0) + dm
+					end
 				end
 				self.stats.melted += dm
 				-- soft graupel and snow aggregates melt to rain within a few hundred metres
@@ -211,6 +229,9 @@ function Precip.step(self: Precip, dt: number, airWind: (number, number, number)
 				if gi >= 1 and gj >= 1 and gi <= nx and gj <= nx then
 					local k = gi + (gj - 1) * nx
 					rainAcc.v[k] += m
+					if po[i] == 1 then
+						rainAccR.v[k] += m
+					end
 					if kind == 2 and size > hail.v[k] then
 						hail.v[k] = size
 					end
@@ -233,26 +254,33 @@ function Precip.step(self: Precip, dt: number, airWind: (number, number, number)
 		local cj = (ck - 1) // cpD.nx + 1
 		local cx, cy = cpD:centre(ci, cj)
 		local rh = (rhAcc[ck] or 0) / math.max(1e-6, dm)
-		self.coldPool:addCooling(cx, cy, dm, meltAcc[ck] or 0, rh)
+		local mm = meltAcc[ck] or 0
+		local rear = ((evapAccR[ck] or 0) + (meltAccR[ck] or 0)) / math.max(1e-6, dm + mm)
+		self.coldPool:addCooling(cx, cy, dm, mm, rh, rear)
 		meltAcc[ck] = nil
 	end
 	for ck, dm in meltAcc do
 		local ci = (ck - 1) % cpD.nx + 1
 		local cj = (ck - 1) // cpD.nx + 1
 		local cx, cy = cpD:centre(ci, cj)
-		self.coldPool:addCooling(cx, cy, 0, dm, 0.8)
+		self.coldPool:addCooling(cx, cy, 0, dm, 0.8, (meltAccR[ck] or 0) / math.max(1e-6, dm))
 	end
 	table.clear(evapAcc)
 	table.clear(meltAcc)
 	table.clear(rhAcc)
+	table.clear(evapAccR)
+	table.clear(meltAccR)
 	-- surface rate: the landed mass per second, smoothed over ~3 minutes; hail marks fade
 	local rr = self.rainRate.v
+	local rrR = self.rainRateR.v
 	local area = VOX * VOX
 	local keep = math.exp(-dt / 180)
 	for k = 1, #rr do
 		local flux = rainAcc.v[k] / (area * dt) -- kg/m2/s = mm/s
 		rr[k] = rr[k] * keep + flux * 3600 * (1 - keep)
 		rainAcc.v[k] = 0
+		rrR[k] = rrR[k] * keep + rainAccR.v[k] / (area * dt) * 3600 * (1 - keep)
+		rainAccR.v[k] = 0
 		hail.v[k] *= math.exp(-dt / 600)
 	end
 	self.stats.count = self.n

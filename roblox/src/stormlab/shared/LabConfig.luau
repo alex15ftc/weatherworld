@@ -117,6 +117,9 @@ LabConfig.DEFAULT_TIME_SCALE = 1
 -- the scenario storms: "engine" = driven by the engine's 5-minute updates, as in the game
 -- (Sim/EngineFollow); "own" = the lab's own dynamics (F4 panel: Storms button)
 LabConfig.DEFAULT_STORMS = "engine"
+-- the lab's own storms ("own" mode): a boost on the tornado genesis drive, so every scenario makes
+-- tornadoes to look at (Storm.GENESIS_EASE; 1 = the physics as it is)
+LabConfig.GENESIS_EASE = 3
 LabConfig.SPIN_UP_SECONDS = 600 -- simulated before anyone watches (fills rain and cold pools)
 
 -- Network: remotes live in ReplicatedStorage.StormLabNet (made by the server)
@@ -158,10 +161,44 @@ LabConfig.LIMITS = {
 	farDraw = 4500,
 }
 
+-- The flat overhead deck (client/Render/BaseDeck): the rain-free base near the camera as flat
+-- down-facing tiles with the seamless ceiling texture (an approved exception to billboards-only,
+-- 2026-10-29). range: m from the camera (inside LIMITS.partRange); beyond it the billboard deck.
+-- OFF (2026-10-29): Roblox sorts see-through GUIs per object, not per pixel, so a tile nearer
+-- than a billboard is drawn over all of it - even the lowering, scud and funnel top under the deck -
+-- and its outline shows as straight lines across them. Kept for a try with smaller tiles or a
+-- different primitive.
+-- ON again 2026-10-30 as solid discs (BaseDeck): opaque parts write depth, so nothing sorts.
+-- thick/lump: m; gain: colour factor against the engine lighting the solid parts get;
+-- material: Enum.Material for the discs.
+LabConfig.DECK = { enabled = true, range = 5500, thick = 60, lump = 30, gain = 1.7, material = Enum.Material.Neon }
+
 -- Already-uploaded assets (ATGuardian, ids from roblox/src/shared/Tornado/Config.luau and
 -- roblox/src/shared/World/Config.luau). Flat* textures are white alpha-only (tint with Color).
 LabConfig.TEXTURES = {
+	ceiling = "rbxassetid://125850054637818", -- seamless cloud cover (tools/smoke/ceiling_tile.py), the flat deck
 	softFlat = "rbxassetid://116883477687095", -- soft featureless puff
+	featherFlat = "rbxassetid://95121739839387", -- dense round puff, feathery rim (tools/feather_puff.py; read as sandpaper)
+	wispSheetFlat = "rbxassetid://132403693605015", -- 2x2 soft broad wisps (2026-10-30; the fine-fibre sheet 77462082475988 read as fur), streaks along x (tools/wisp_sheet.py; WallStream, TornadoCards strands)
+	smoothPuffFlat = "rbxassetid://94176229700995", -- smooth dense puff, broad lobes, no grain (tools/smooth_puff.py; Render/WallStream)
+	streakSoft = "rbxassetid://115060594741751", -- soft condensation streak: gaussian across, tapered (tools/streak_puff.py; tornado filaments)
+	hazePuffFlat = "rbxassetid://72760570308893", -- soft haze puff: slow falloff, no disc or rim, one tone (tools/haze_puff.py; tornado smoke body)
+	-- a horizontal slice of a column: crisp sides (0.86 of the frame wide), soft top and bottom
+	-- (smoke_flipbook.py --variant firm --single --flat --slice): the funnel's crisp core
+	sliceFlat = "rbxassetid://78396908460708",
+	gasPuffSheet = "rbxassetid://95569256182807", -- 2x2 soft cloud puffs, broad billowy edges (tools/smoke/gas_puff.py; TornadoCards style "gas", 2026-10-30)
+	-- four separate 1024 px detailed puffs (tools/smoke/gas_puff2.py, 2026-10-30): soft billows, a
+	-- frayed fringe and gentle relief; the 2x2 sheet gave 512 px a puff (low-res close up)
+	gasPuff2A = "rbxassetid://96068099493528",
+	gasPuff2B = "rbxassetid://133325231519630",
+	gasPuff2C = "rbxassetid://75810324244346",
+	gasPuff2D = "rbxassetid://105561077458853",
+	-- tornado dust: 2x2 broad smooth wisps of 512 (tools/smoke/dust_wisp2.py, 2026-10-30; the 4x4
+	-- wispFlat's 256 px frames drew grainy patches near the ground)
+	dustWisp2 = "rbxassetid://118297975010401",
+	funnelRibbon = "rbxassetid://116798715876728", -- funnel outline ribbon: flat across, faded ends (tools/smoke/funnel_ribbon.py, 2026-10-31)
+	capsuleFlat = "rbxassetid://122340939095171",
+	deckEdge = "rbxassetid://115445826136912", -- soft round cloud, opaque to 0.3 of the frame (tools/smoke/deck_edge.py; BaseDeck's edge discs, 2026-10-30) -- tube piece with crisp sides and round ends (tools/smoke/capsule.py; TornadoCards opaque rope pieces, 2026-10-30)
 	softSheetFlat = "rbxassetid://75569785912211", -- 4x4 flipbook of soft puffs
 	wispFlat = "rbxassetid://77502166035387", -- 4x4 streaky wisps
 	shredFlat = "rbxassetid://91728136123515", -- 4x4 torn stretched shreds (scud)
@@ -183,7 +220,28 @@ LabConfig.TEXTURES = {
 	-- (uploaded 2026-10-25; empty: the renderers fall back to softFlat / shredFlat)
 	dirtGrainFlat = "rbxassetid://118568148658026", -- tornado dust as dirt: dense grains thinning to a speckled edge
 	fractusFlat = "rbxassetid://73789623374463", -- scud: ragged pieces with torn, fibrous ends
+	-- a seamless looping 4x4 smoke flipbook (main game tools/smoke/smoke_flipbook.py --variant body,
+	-- uploaded 2026-10-22 for the particle tornado): the near-field VFX clouds (Render/NearVfx)
+	smokeLoop = "rbxassetid://107651069089548",
 }
+-- Near-field VFX (Render/NearVfx): cards within particle reach (~800 studs) are re-drawn as
+-- particle smoke volumes. Key B toggles it. Shelved 2026-10-29 (user: billboards and shaders instead): off.
+LabConfig.NEAR_VFX = { enabled = false, maxSlots = 64, nearEnd = 720, nearFull = 520 }
+-- Moving cloud pieces (scud, tail cloud, inflow filaments, rising billows) carried by the wind
+-- field and condensing / evaporating with their lift (Render/CloudParts/Flow). false: the old
+-- scripted loops.
+LabConfig.CLOUD_FLOW = true
+-- The funnel's body (Render/TornadoCards): "spiral" - sprites spiralling up round the axis, shaded
+-- by facing the sun (docs/stormlab/BILLBOARD-TORNADO-PLAN.md); "rings" - the stacked rings and core
+-- slices. Key T switches.
+-- the wall cloud and tail: "stream" (Render/WallStream: puffs carried by the rotation and the
+-- inflow) or "cards" (StormCards' rings); key Y switches
+LabConfig.WALL_STYLE = "stream" -- volumetric five-slot inflow cross-sections
+LabConfig.TORNADO_STYLE = "smoke" -- (T cycles smoke -> gas -> volume -> rings; smoke = fibrous sprites riding the flow, 2026-10-31; gas = soft cloud puffs, 2026-10-30)
+-- (Off 2026-10-29: user ditched shaders for performance; billboards only.) Lobe light computed in Luau (Render/CloudParts/LobeShader) into EditableImages, one sheet per
+-- sun tilt in bins (-1 front lit .. 1 back lit), replacing the three Blender bakes in LOBES once
+-- built (~budgetMs a frame in the background). frame / nearFrame: px a lobe.
+LabConfig.LOBE_SHADER = { enabled = false, bins = { -0.8, -0.4, 0, 0.4, 0.8 }, frame = 128, nearFrame = 256, budgetMs = 3 }
 -- Soft lit lobe sheets for cumuliform storm cards (tools/blender/lobe_bake.py renders the Cycles
 -- passes, tools/blender/lobe_post.py makes these; Render/StormCards, docs/stormlab/CONDENSATION-DETAIL.md).
 -- Smooth billows with the light baked in from the frame's top at low contrast, one image per card:
@@ -195,8 +253,8 @@ LabConfig.TEXTURES = {
 LabConfig.LOBES = {
 	tower = { front = "rbxassetid://121941071753311", side = "rbxassetid://123698015739299", back = "rbxassetid://133464692085506" },
 	tower_near = { front = "rbxassetid://118622919688191", side = "rbxassetid://117517128675674", back = "rbxassetid://76294320666128" },
-	under = { front = "rbxassetid://82982592888881", side = "rbxassetid://112805512722810", back = "rbxassetid://108262916366484" },
-	under_near = { front = "rbxassetid://125993815200044", side = "rbxassetid://120087859182739", back = "rbxassetid://88140543973231" },
+	under = { front = "rbxassetid://82982592888881", side = "rbxassetid://112805512722810", back = "rbxassetid://108262916366484", amb = "rbxassetid://112155991454430" },
+	under_near = { front = "rbxassetid://125993815200044", side = "rbxassetid://120087859182739", back = "rbxassetid://88140543973231", amb = "rbxassetid://79628402846435" },
 	soft = { front = "rbxassetid://73475574790419", side = "rbxassetid://100505461413407", back = "rbxassetid://120730874862236" },
 }
 -- Dynamic scud (client/Render/Scud): fragments that condense in lifted, nearly saturated air under
@@ -217,8 +275,8 @@ LabConfig.SOUNDS = {
 
 -- The lab's ground: tiles that follow the camera (plain flat farmland), and the test town.
 LabConfig.GROUND = {
-	tile = 2048, -- m, a farmland tile
-	radius = 3, -- tiles each way around the camera
+	tile = 512, -- m, a farmland tile (at most 2048 studs: a Part's largest size)
+	radius = 4, -- tiles each way around the camera (at least enough to reach LIMITS.partRange)
 	colour = { 104, 128, 72 },
 	material = "Grass",
 	-- the lab's uneven ground: rolling hills round the play area (the town site), so the renderers

@@ -11,6 +11,9 @@
 --   * its edge contours are the gust fronts (ColdPool.contours).
 -- M (0..1) is how moist the cold air is (evaporatively cooled air nearly saturated): it lowers
 -- the LCL of air the storms take in from it (wall clouds, shelf clouds, scud).
+-- R (0..1) is how much of the cold air came down in the rear-flank downdraft (cooled by the
+-- rear-flank precipitation, Precip origin 1) rather than the forward flank's: it tells the two
+-- outflows' gust fronts apart - the occlusion, the triple point (2026-10-30).
 local function dep(name: string): any
 	if script then
 		return require((script :: any).Parent:FindFirstChild(name))
@@ -40,19 +43,19 @@ function ColdPool.speedOf(d: number): number
 end
 
 export type ColdPool = typeof(setmetatable({} :: {
-	D: any, M: any, SU: any, SV: any, VU: any, VV: any, EDGE: any,
+	D: any, M: any, R: any, SU: any, SV: any, VU: any, VV: any, EDGE: any,
 	dx: number,
 	env: any,
 }, ColdPool))
 
 function ColdPool.new(env: any, dx: number?): ColdPool
-	local d = dx or 2000
+	local d = dx or ColdPool.DX or 2000
 	local n = math.ceil(2 * env.extent / d)
 	local x0 = -n * d / 2
 	local function g(v: number?)
 		return Grid.new(n, n, d, x0, x0, v or 0)
 	end
-	local self = setmetatable({ D = g(), M = g(0.7), SU = g(), SV = g(), VU = g(), VV = g(), EDGE = g(), dx = d, env = env }, ColdPool)
+	local self = setmetatable({ D = g(), M = g(0.7), R = g(), SU = g(), SV = g(), VU = g(), VV = g(), EDGE = g(), dx = d, env = env }, ColdPool)
 	return self :: ColdPool
 end
 
@@ -76,7 +79,7 @@ end
 
 -- Water mass (kg) evaporated (or hail melted) into the column at (x, y). rh: the relative
 -- humidity of the air it evaporated into (moistness of the cooled air).
-function ColdPool.addCooling(self: ColdPool, x: number, y: number, evapKg: number, meltKg: number, rh: number)
+function ColdPool.addCooling(self: ColdPool, x: number, y: number, evapKg: number, meltKg: number, rh: number, rear: number?)
 	local i, j = self.D:cellOf(x, y)
 	if i < 1 or j < 1 or i > self.D.nx or j > self.D.ny then
 		return
@@ -90,6 +93,8 @@ function ColdPool.addCooling(self: ColdPool, x: number, y: number, evapKg: numbe
 	-- the cooled air ends near saturation; mix its moistness in by the share of new cooling
 	local share = dD / math.max(0.1, d + dD)
 	self.M.v[k] += (math.clamp(0.55 + 0.45 * rh, 0, 1) - self.M.v[k]) * share
+	-- (and where the new cold air came down)
+	self.R.v[k] += (math.clamp(rear or 0, 0, 1) - self.R.v[k]) * share
 end
 
 -- Rain-driven downdrafts: where rain reaches the ground, saturated downdraft air arrives with the
@@ -97,8 +102,8 @@ end
 -- level). The pool there is replaced by that air at the downdraft's mass flux: w_dd ~ 1.2 m/s
 -- (from 5 mm/h) + 0.12 m/s per mm/h (cap 10 m/s); light rain can't keep a downdraft saturated, so
 -- it arrives warmer.
-function ColdPool.downdrafts(self: ColdPool, rainRate: any, ddField: any, dt: number, yieldFn: (() -> ())?)
-	local D, M = self.D, self.M
+function ColdPool.downdrafts(self: ColdPool, rainRate: any, ddField: any, dt: number, yieldFn: (() -> ())?, rainRateR: any?, ddArrival: any?)
+	local D, M, R = self.D, self.M, self.R
 	for j = 1, D.ny do
 		if yieldFn and j % 5 == 0 then
 			yieldFn()
@@ -113,14 +118,58 @@ function ColdPool.downdrafts(self: ColdPool, rainRate: any, ddField: any, dt: nu
 				-- tied to surface rain alone, the forward flank's pool took ~20 min to form while
 				-- the storm moved on ~20 km, and there was no forward-flank gust front)
 				local wdd = math.min(10, 1.2 * math.clamp(r / 5, 0, 1) + 0.12 * r)
-				local target = ddField:sample(x, y) * math.clamp(r / 30, 0.25, 1)
+				local target
+				if ddArrival then
+					-- (the real downdraft's arrival deficit at this rain rate, Thermo.downdraftArrival:
+					-- interpolated in log rain rate between 5, 20 and 60 mm/h)
+					local a5, a20, a60 = ddArrival.dd5:sample(x, y), ddArrival.dd20:sample(x, y), ddArrival.dd60:sample(x, y)
+					local lr = math.log(math.clamp(r, 0.5, 120))
+					if lr < math.log(5) then
+						target = a5 * math.clamp(r / 5, 0, 1)
+					elseif lr < math.log(20) then
+						target = a5 + (a20 - a5) * (lr - math.log(5)) / math.log(4)
+					else
+						target = a20 + (a60 - a20) * math.clamp((lr - math.log(20)) / math.log(3), 0, 1.3)
+					end
+				else
+					target = ddField:sample(x, y) * math.clamp(r / 30, 0.25, 1)
+				end
 				local d = D.v[k]
 				if target > d then
 					local h = math.max(500, depthOf(d))
 					local f = 1 - math.exp(-wdd / h * dt)
 					D.v[k] = d + (target - d) * f
 					M.v[k] += (0.9 - M.v[k]) * f
+					if rainRateR then
+						-- (the downdraft air takes the origin of the rain driving it)
+						local rear = math.clamp(rainRateR:sample(x, y) / r, 0, 1)
+						R.v[k] += (rear - R.v[k]) * f * math.clamp((target - d) / math.max(0.3, target), 0, 1)
+					end
 				end
+			end
+		end
+	end
+end
+
+-- A downdraft reaching the ground at (x, y) over radius r (Gaussian): its air replaces the pool's
+-- at the downdraft's mass flux w (m/s), warmer or colder - a dynamically forced rear-flank
+-- downdraft is often warmer than the rain-cooled forward-flank air it pushes aside. target: its
+-- arrival deficit (K); rear: its origin (1 rear flank); moist: its moistness (2026-10-30)
+function ColdPool.addDowndraft(self: ColdPool, x: number, y: number, r: number, target: number, w: number, dt: number, rear: number, moist: number)
+	local D, M, R = self.D, self.M, self.R
+	local i0, j0 = D:cellOf(x - 2 * r, y - 2 * r)
+	local i1, j1 = D:cellOf(x + 2 * r, y + 2 * r)
+	for j = math.max(1, j0), math.min(D.ny, j1) do
+		for i = math.max(1, i0), math.min(D.nx, i1) do
+			local cx, cy = D:centre(i, j)
+			local gs = math.exp(-((cx - x) ^ 2 + (cy - y) ^ 2) / (r * r))
+			if gs > 0.02 then
+				local k = D:index(i, j)
+				local h = math.max(500, depthOf(math.max(D.v[k], target)))
+				local f = (1 - math.exp(-w / h * dt)) * gs
+				D.v[k] += (target - D.v[k]) * f
+				R.v[k] += (rear - R.v[k]) * f
+				M.v[k] += (moist - M.v[k]) * f
 			end
 		end
 	end
@@ -200,7 +249,8 @@ function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> 
 			local gm = math.sqrt(gx * gx + gy * gy)
 			local eu, ev = lowWind(x, y)
 			local su, sv = self.SU.v[k], self.SV.v[k]
-			local u, v, e = 0.5 * eu, 0.5 * ev, 0
+			local ek = ColdPool.ENV_K or 0.5
+			local u, v, e = ek * eu, ek * ev, 0
 			if gm > 1e-7 then
 				local nxv, nyv = -gx / gm, -gy / gm -- outward
 				-- the deficit of the pool behind this point drives the front
@@ -220,7 +270,7 @@ function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> 
 			u += su
 			v += sv
 			-- what the cold pool does to the surface wind (relative to the environment)
-			VU.v[k], VV.v[k] = u - eu * (if D.v[k] > 0.3 then 0.5 else 0), v - ev * (if D.v[k] > 0.3 then 0.5 else 0)
+			VU.v[k], VV.v[k] = u - eu * (if D.v[k] > 0.3 then ek else 0), v - ev * (if D.v[k] > 0.3 then ek else 0)
 			EDGE.v[k] = e
 			-- (advection uses the full ground-relative spreading velocity)
 			self.SU.v[k] = su * math.exp(-dt / 900)
@@ -232,12 +282,17 @@ function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> 
 	if yieldFn then
 		yieldFn()
 	end
-	Grid.advect(D, AU, AV, dt)
-	Grid.advect(self.M, AU, AV, dt)
+	-- (ColdPool.CUBIC: sharper bounded-cubic resampling. Tried 2026-10-30 for a sharper gust
+	-- front: little change, so off - the pool's breadth is where the rain lays the cooling down)
+	local cubic = ColdPool.CUBIC == true
+	Grid.advect(D, AU, AV, dt, nil, cubic)
+	Grid.advect(self.M, AU, AV, dt, nil, cubic)
+	Grid.advect(self.R, AU, AV, dt, nil, cubic)
 	if yieldFn then
 		yieldFn()
 	end
 	-- dilution by spreading, recovery, a touch of smoothing
+	local mixK = math.min(0.2, (ColdPool.MIX_K or 8000) * dt / (dx * dx))
 	local out = table.create(nx * ny, 0)
 	for j = 1, ny do
 		for i = 1, nx do
@@ -245,7 +300,7 @@ function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> 
 			local div = (AU:get(i + 1, j) - AU:get(i - 1, j) + AV:get(i, j + 1) - AV:get(i, j - 1)) / (2 * dx)
 			local d = D.v[k]
 			local lap = D:get(i + 1, j) + D:get(i - 1, j) + D:get(i, j + 1) + D:get(i, j - 1) - 4 * d
-			d += 0.04 * lap
+			d += mixK * lap
 			-- spreading thins the pool (its depth, and with it the deficit we carry)
 			d *= math.exp(-0.25 * math.max(0, div) * dt)
 			d -= d * dt / recovery

@@ -18,6 +18,7 @@ local CP = 1005.7
 local LV = 2.501e6
 local EPS = 0.622
 local K0 = 273.15
+local RV = 461.5
 
 Thermo.G, Thermo.RD, Thermo.CP, Thermo.LV = G, RD, CP, LV
 
@@ -68,6 +69,7 @@ export type Analysis = {
 	scp: number,
 	stp: number,
 	ddDeficit: number, -- K: how much colder than the surface air a saturated downdraft arrives
+	dd5: number, dd20: number, dd60: number, -- K: how much colder a real (subsaturated, entraining) one arrives at 5 / 20 / 60 mm/h
 }
 
 Thermo.STEP = 100 -- m, the ascent step and the buoyancy profile spacing
@@ -157,6 +159,62 @@ local function moistLapse(tC: number, p: number): number
 	return G * (1 + LV * w / (RD * tk)) / (CP + LV * LV * w * EPS / (RD * tk * tk))
 end
 
+-- How much colder than the surface air a rain-driven downdraft arrives (K), for a surface rain
+-- rate (mm/h). (2026-10-30: the saturated DCAPE parcel - wet-bulb at the lowest theta-e level,
+-- descending moist-adiabatically - is the coldest air that can arrive, 13-20 K on the lab
+-- supercell's day; real downdrafts are subsaturated and entrain, and observed outflows are 2-6 K
+-- (max ~10 K). So: air at the source level, saturated by the rain at its wet-bulb temperature
+-- (Kamburova & Ludlam 1966; Srivastava 1987), descends at the downdraft's speed, warming
+-- dry-adiabatically, cooled by evaporating rain at the Klemp & Wilhelmson (1978) rate (rain water
+-- content from the rain rate, ventilated; stops at saturation) and mixing with the environment
+-- as it goes (0.1 /km). Lab supercell day: 6-7 K mean at 20 mm/h; squall line: up to ~5 K.
+-- (Tried: starting unsaturated, or mixing at 0.2 /km, gave the squall line almost no cold
+-- pool, <= 3 K.)
+local wetBulb: (number, number) -> number -- (defined below)
+-- (wddIn: the descent speed when something other than the rain drives it - the rear-flank
+-- downdraft is forced down by the low-level circulation's pressure field; dryStart: the air starts
+-- as it is at srcZ, not at its wet-bulb temperature, 2026-10-30)
+local function downdraftArrival(profile: any, srcZ: number, rate: number, wddIn: number?, dryStart: boolean?): number
+	local rhoQr = rate / 3600 / 6 -- kg/m3: rain water content (falling at ~6 m/s)
+	local wdd = wddIn or math.min(10, 1.2 * math.clamp(rate / 5, 0, 1) + 0.12 * rate) -- as ColdPool.downdrafts
+	wdd = math.max(0.3, wdd)
+	local t = Thermo.at(profile, "t", srcZ)
+	local p0 = Thermo.at(profile, "p", srcZ)
+	local q = Thermo.mixingRatio(Thermo.at(profile, "td", srcZ), p0)
+	if not dryStart then
+		t = wetBulb(t, Thermo.at(profile, "td", srcZ))
+		q = Thermo.mixingRatio(t, p0)
+	end
+	local DZ = 50
+	local z = srcZ
+	local cg = rhoQr * 1e-3 -- g/cm3
+	local vent = 1.6 + 124.9 * cg ^ 0.2046
+	while z > 0 do
+		z -= DZ
+		local p = Thermo.at(profile, "p", math.max(z, 0))
+		t += G / CP * DZ
+		local qs = Thermo.mixingRatio(t, p)
+		if q < qs and cg > 0 then
+			local rho = p * 100 / (RD * (t + K0)) * 1e-3 -- g/cm3
+			local e = (1 / rho) * (1 - q / qs) * vent * cg ^ 0.525 / (5.4e5 + 2.55e6 / (p * qs))
+			local dq = math.min(e * DZ / wdd, qs - q)
+			-- (evaporating cools the air, which lowers qs: take the step in two halves)
+			for _ = 1, 2 do
+				local qs2 = Thermo.mixingRatio(t, p)
+				local d = math.max(0, math.min(dq / 2, (qs2 - q) / (1 + LV * LV * qs2 / (CP * RV * (t + K0) ^ 2))))
+				q += d
+				t -= LV / CP * d
+			end
+		end
+		local ze = math.max(z, 0)
+		local lam = 1e-4 * DZ
+		t += (Thermo.at(profile, "t", ze) - t) * lam
+		q += (Thermo.mixingRatio(Thermo.at(profile, "td", ze), p) - q) * lam
+	end
+	return math.max(0, profile.t[1] - t)
+end
+Thermo.downdraftArrival = downdraftArrival
+
 -- Lift a parcel from height z0 with temperature t0 and dewpoint td0 (C). Returns its analysis.
 function Thermo.lift(profile: Profile, kind: string, z0: number, t0: number, td0: number): Parcel
 	local STEP = Thermo.STEP
@@ -199,6 +257,12 @@ function Thermo.lift(profile: Profile, kind: string, z0: number, t0: number, td0
 					if lfc == nil and z >= lclZ - STEP then
 						lfc = z
 					end
+				elseif lfc == nil and z >= lclZ - STEP then
+					-- (already buoyant below its LCL - a superadiabatic surface layer - and still at
+					-- it: the LFC is the LCL. Before 2026-10-30 only a new positive layer set the LFC,
+					-- so such a parcel found none: CAPE 0 and the whole column's negative area above
+					-- the EL as CIN, ~-3400 J/kg, flipping to ~3900 J/kg CAPE under 0.05 K changes)
+					lfc = z
 				end
 				if lfc ~= nil then
 					cape += a
@@ -336,7 +400,7 @@ local function levelOf(profile: Profile, value: number, field: string): number
 	return if arr[1] < value then 0 else zs[#zs]
 end
 
-local function wetBulb(tC: number, tdC: number): number
+function wetBulb(tC: number, tdC: number): number
 	-- Stull's one-third rule is too rough; iterate the psychrometric balance instead
 	local tw = (tC + tdC) / 2
 	for _ = 1, 8 do
@@ -378,7 +442,7 @@ function Thermo.analyse(profile: Profile): Analysis
 	-- downdraft parcel: from the lowest theta-e level 1.5-5 km up, at its wet-bulb temperature,
 	-- descending saturated (pseudo-adiabatically) to the ground: how cold rain-driven
 	-- downdraft air arrives (the DCAPE parcel); ddDeficit = surface T minus that
-	local ddDeficit = 0
+	local ddDeficit, dd5, dd20, dd60 = 0, 0, 0, 0
 	do
 		local srcZ, minTe = 3000, math.huge
 		for z = 1500, 5000, 250 do
@@ -396,6 +460,9 @@ function Thermo.analyse(profile: Profile): Analysis
 			z -= 100
 		end
 		ddDeficit = math.max(0, profile.t[1] - tp)
+		dd5 = downdraftArrival(profile, srcZ, 5)
+		dd20 = downdraftArrival(profile, srcZ, 20)
+		dd60 = downdraftArrival(profile, srcZ, 60)
 	end
 	-- display composites (Thompson et al. 2003/2004 forms)
 	local scp = (mu.cape / 1000) * (srh3 / 50) * math.clamp((shear6 - 10) / 10, 0, 1.5)
@@ -429,6 +496,7 @@ function Thermo.analyse(profile: Profile): Analysis
 		scp = math.max(0, scp),
 		stp = math.max(0, stp),
 		ddDeficit = ddDeficit,
+		dd5 = dd5, dd20 = dd20, dd60 = dd60,
 	}
 end
 

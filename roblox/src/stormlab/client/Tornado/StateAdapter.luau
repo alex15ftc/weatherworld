@@ -47,12 +47,21 @@ local function obscuration(ctx: any, x: number, y: number): (number, number)
 		local r = Precip.surface(vol, cx + (x - cx) * f, cy + (y - cy) * f) or 0
 		tau += C.rainExtinction(r) * step
 	end
-	-- rain wrapped round the vortex: the heaviest rain within ~1.5 km
+	-- rain wrapped round the vortex: the heaviest rain within ~1.5 km on the camera's side of it
+	-- (rain behind or beside the funnel isn't in the way; counting it - the forward-flank core is
+	-- usually that close - greyed every tornado toward rain grey and took its edges, 2026-10-29)
 	local wrap = 0
+	local ux, uy = cx - x, cy - y
+	local ul = math.max(1, sqrt(ux * ux + uy * uy))
+	ux, uy = ux / ul, uy / ul
 	for a = 0, 7 do
-		for _, rr in { 400, 900, 1500 } do
-			local r = Precip.surface(vol, x + rr * math.cos(a * 0.785), y + rr * math.sin(a * 0.785)) or 0
-			wrap = math.max(wrap, r)
+		local ca, sa = math.cos(a * 0.785), math.sin(a * 0.785)
+		local facing = math.clamp((ca * ux + sa * uy - 0.2) / 0.5, 0, 1)
+		if facing > 0 then
+			for _, rr in { 400, 900, 1500 } do
+				local r = Precip.surface(vol, x + rr * ca, y + rr * sa) or 0
+				wrap = math.max(wrap, r * facing)
+			end
 		end
 	end
 	return exp(-tau), wrap

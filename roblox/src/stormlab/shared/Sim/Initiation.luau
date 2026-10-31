@@ -60,8 +60,12 @@ function Initiation.run(world: any, dt: number): { any }
 			local wConv = math.max(0, conv) * 1500
 			local wGust = 0.7 * edge * c
 			local lift = 0.5 * wGust * wGust + wConv * 1500 * 0.05
-			local cape = env:field("sbcape", x, y)
-			local cin = -env:field("sbcin", x, y)
+			-- (the mixed-layer parcel, as the LFC below: the operational one for whether towers can
+			-- start - a surface parcel overstates a hot, superadiabatic surface layer. Since the
+			-- 2026-10-30 parcel fix, Thermo.lift, the surface parcel shows that layer's CAPE: with it
+			-- the lab supercell day started 10-16 storms in 2 h instead of 2-4)
+			local cape = env:field("mlcape", x, y)
+			local cin = -env:field("mlcin", x, y)
 			local lfc = env:field("lfc", x, y)
 			-- displacement needed: from the top of the boundary layer to the LFC
 			local reach = (wConv * 1200 + wGust * 400) - math.max(0, lfc - 1500)

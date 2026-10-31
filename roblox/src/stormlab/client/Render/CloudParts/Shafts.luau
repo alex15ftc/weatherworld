@@ -3,7 +3,7 @@
 -- replicated 1 km surface rain / hail columns), not from the cloud: the clear inflow region and the
 -- RFD slot stay clear wherever the field has no rain.
 --   binning   every rainy column (> 0.5 mm/h) goes into a 4 km cell (2 km within 14 km of the
---             camera); a cell with rain becomes one shaft at the rain-weighted centroid of its
+--             camera, the field's 1 km columns within 4 km of a tornado); a cell with rain becomes one shaft at the rain-weighted centroid of its
 --             columns, as wide as the rainy share of the cell
 --   opacity   from the cell's mean rain rate (log), less with distance haze
 --   colour    rain grey, whiter with hail (cm), brighter when the sun is behind the shaft
@@ -117,18 +117,40 @@ function Shafts:rebin()
 	end
 	local nx, x0 = vol.nxv, vol.x0
 	local VOX = -2 * x0 / nx
-	-- fine 2 km bins
+	-- fine 2 km bins; round a tornado the field's own 1 km columns (review 10-29: a 2 km bin
+	-- smeared the forward-flank and hook rain into a ~2.8 km curtain standing across the funnel,
+	-- which hid a wedge's sides even with almost no rain wrapped round it)
 	local FINE = 2000
+	local NEAR_TOR = 4000
+	local tors = {}
+	for _, t in cw.tornadoes or {} do
+		if not t.ended then
+			table.insert(tors, t)
+		end
+	end
 	local bins = {}
 	for col, rr in vol.rain do
 		if rr > 0.5 then
 			local cx, cy = col % nx, col // nx
 			local x, y = x0 + (cx + 0.5) * VOX, x0 + (cy + 0.5) * VOX
-			local bx, by = math.floor(x / FINE), math.floor(y / FINE)
-			local key = bx * 100000 + by
+			local nearTor = false
+			for _, t in tors do
+				if (x - t.x) ^ 2 + (y - t.y) ^ 2 < NEAR_TOR * NEAR_TOR then
+					nearTor = true
+					break
+				end
+			end
+			local bx, by, key
+			if nearTor then
+				bx, by = cx, cy
+				key = -1 - col
+			else
+				bx, by = math.floor(x / FINE), math.floor(y / FINE)
+				key = bx * 100000 + by
+			end
 			local b = bins[key]
 			if not b then
-				b = { bx = bx, by = by, n = 0, rain = 0, hail = 0, sx = 0, sy = 0 }
+				b = { bx = bx, by = by, n = 0, rain = 0, hail = 0, sx = 0, sy = 0, vox = nearTor }
 				bins[key] = b
 			end
 			local hl = vol.hail[col] or 0
@@ -143,6 +165,11 @@ function Shafts:rebin()
 	local cells = {}
 	local coarse = {}
 	for _, b in bins do
+		if b.vox then
+			b.cell = VOX
+			table.insert(cells, b)
+			continue
+		end
 		local ccx, ccy = (b.bx // 2) * 2 * FINE + FINE, (b.by // 2) * 2 * FINE + FINE
 		local d = math.sqrt((ccx - cx0) ^ 2 + (ccy - cy0) ^ 2)
 		if d < NEAR_FINE then
@@ -204,20 +231,23 @@ function Shafts:rebin()
 				-- as a share of open-sky daylight. Rain in the storm's shadow is lit only by the sky
 				-- round it, so it is darker than a sunlit shaft, but less so than the base (light
 				-- reaches it from the sides)
-				local share = 1
+				local share, sunS = 1, 1
 				local SL = ctx.Tornado and ctx.Tornado.SceneLight
 				if SL then
 					local ok, Ls = pcall(SL.sample, ctx, x, y, base * 0.5)
 					if ok and Ls then
 						share = math.clamp((0.75 * Ls.sky + 0.5 * Ls.sun) / 1.03, 0, 1)
+						sunS = math.clamp(Ls.sun / 0.6, 0, 1)
 					end
 				end
 				table.insert(out, {
-					su = su, sv = sv, light = 0.45 + 0.55 * share,
+					su = su, sv = sv, light = 0.45 + 0.55 * share, sun = sunS,
 					x = x, y = y,
 					vx = if bs and best < 40000 * 40000 then bs.u else 0,
 					vy = if bs and best < 40000 * 40000 then bs.v else 0,
-					w = c.cell * (0.7 + 0.5 * math.sqrt(frac)) * 1.15,
+					-- (a tornado's own 1 km columns overlap their neighbours only a little: at 1.38 km a
+					-- column beside the funnel spilled across its edge, 2026-10-29)
+					w = if c.vox then 1.1 * c.cell else c.cell * (0.7 + 0.5 * math.sqrt(frac)) * 1.15,
 					h = base + 150,
 					a = a,
 					hail = math.clamp((c.hail / c.n) / 2.5, 0, 1),
@@ -350,9 +380,13 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		-- colour: rain under a storm is in its shadow: a dark blue-grey, silvery when the sun is
 		-- behind it, whiter with hail; hazed by true distance
 		local view = (P - camM).Unit
-		local fwd = math.max(0, view:Dot(sunV)) ^ 3 * L.sunUp
+		local fwd = math.max(0, view:Dot(sunV)) ^ 2 * L.sunUp
 		-- (hail scatters much more light: a hail shaft is a pale, whitish curtain)
-		local g = (0.4 + 0.35 * fwd + 0.45 * sh.hail) * (sh.light or 1)
+		-- rain the sun reaches, seen with the sun behind it, scatters that sunlight forward: the
+		-- brightest thing in the scene, behind dark scud (the backlit-curtain look). The boost is
+		-- the sun reaching the rain (sh.sun), not the shadowed sky light that dims the rest
+		-- (2026-10-29: it was 0.35 fwd^3 x the shadowed light, so backlit rain stayed grey)
+		local g = (0.4 + 0.45 * sh.hail) * (sh.light or 1) + 0.75 * fwd * (sh.sun or 1)
 		local col = Color3.new(math.min(1, g * 0.97), math.min(1, g), math.min(1, g * 1.04))
 		col = Color3.new(col.R * (0.35 + 0.65 * L.day), col.G * (0.35 + 0.65 * L.day), col.B * (0.35 + 0.65 * L.day))
 		local f = Util.hazeF(d)

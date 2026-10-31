@@ -200,6 +200,7 @@ function Sky.new(ctx)
 
 	-- the 10 Hz analysis: direct sun, sky light, overcast and the green tint
 	local function analyse()
+		local SL = ctx.Tornado.SceneLight -- (the storm base's footprint, shared with the scene light)
 		local cx, cy, cz = ctx.Config.fromWorld(ctx.camera.CFrame.Position) -- (metres)
 		local d = Lighting:GetSunDirection()
 		local sx, sy, sz = d.X, -d.Z, d.Y
@@ -223,7 +224,7 @@ function Sky.new(ctx)
 			local rt = 1.5 * ru
 			local ha = el - 1000
 			-- quick reject: too far to cover the camera or its sun ray
-			local reach = (s.anvilLen or 0) + 4 * ru + (if sunUp then math.min(80000, top / math.max(0.12, sz)) else 0)
+			local reach = (s.anvilLen or 0) + 5 * ru + (if sunUp then math.min(80000, top / math.max(0.12, sz)) else 0)
 			local dx0, dy0 = cx - s.x, cy - s.y
 			if dx0 * dx0 + dy0 * dy0 < reach * reach then
 				-- the sun ray
@@ -237,7 +238,7 @@ function Sky.new(ctx)
 					end
 					if base > cz then
 						local px, py = rayAt(base)
-						tauS += 2.5 * aTower * disc(px - s.x, py - s.y, 2.2 * ru)
+						tauS += 2.5 * aTower * SL.baseCover(s, px, py) -- (the storm's own footprint: SceneLight.baseCover, 2026-10-30)
 						tauS += (1 + 3 * core) * aTower * disc(px - fx, py - fy, 1.8 * ru)
 					end
 					if base * 0.5 > cz then
@@ -255,7 +256,7 @@ function Sky.new(ctx)
 					local tower = disc(dx0, dy0, rt * 1.2) * aTower
 					tauD += 1.5 * tower
 					if base > cz then
-						tauD += (1.2 + deep) * disc(dx0, dy0, 2.5 * ru) * aTower
+						tauD += (1.2 + deep) * SL.baseCover(s, cx, cy, 1.1) * aTower
 						local inCore = disc(cx - fx, cy - fy, 2 * ru) * aTower
 						tauD += 1.5 * core * (0.5 + deep) * inCore
 						greenCore = math.max(greenCore, inCore * core * deep)

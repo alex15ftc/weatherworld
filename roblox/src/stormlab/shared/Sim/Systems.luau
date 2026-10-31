@@ -163,7 +163,7 @@ function Systems.analyse(S: { [string]: any }, world: any, dt: number)
 			-- runs of segments with convection riding them (or advancing fast into unstable air),
 			-- allowing single-segment gaps.
 			for _, seg in segs do
-				local cape = env:field("sbcape", seg.x + seg.nx * 10000, seg.y + seg.ny * 10000)
+				local cape = env:field("mlcape", seg.x + seg.nx * 10000, seg.y + seg.ny * 10000)
 				seg.leading = seg.active > 0 or (seg.speed > 8 and cape > 500)
 			end
 			local runs, cur = {}, {}

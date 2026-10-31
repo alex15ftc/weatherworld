@@ -21,6 +21,13 @@ local Util = require(script.Parent:WaitForChild("Util"))
 local StormShape = require(script.Parent:WaitForChild("StormShape"))
 
 local CardPlan = {}
+-- the flat deck's reach round the camera (m; set by Render/BaseDeck when it runs): under the base,
+-- billboard deck cards are left out there, the flat tiles are the ceiling
+CardPlan.flatDeckRange = 0
+CardPlan.flatDeckReach = 0 -- (m: how far the flat tiles reach at all)
+CardPlan.flatDeckDisc = 0 -- (m: a disc's width)
+CardPlan.flatDeckSteep = 0 -- (the discs' patch over the camera reaches this x the base's height above it)
+CardPlan.planHole = nil -- (the storm being planned: its wall cloud's base { x, y, r } (sim m) - no discs round it)
 
 local ramp, hash = Util.ramp, Util.hash
 local sqrt, cos, sin, max, min, clamp = math.sqrt, math.cos, math.sin, math.max, math.min, math.clamp
@@ -42,8 +49,12 @@ local function scudTex(h: number): string
 	return if h < 0.5 then "shredFlat" else "wispFlat"
 end
 
--- (camDx, camDy: the camera from the storm's centre, m; it picks how the base deck is drawn)
-function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy: number?): ({ any }, any?, any?)
+-- (camDx, camDy: the camera from the storm's centre, m; it picks how the base deck is drawn.
+-- camZ: its height, m, for the deck cards' foreshortening)
+-- (set by Render/StormCards: Render/WallStream draws the wall cloud's body and tail)
+CardPlan.wallStream = false
+
+function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy: number?, camZ: number?): ({ any }, any?, any?, any?)
 	local out = {}
 	local sh = StormShape.build(s, Storm)
 	if not sh then
@@ -335,26 +346,42 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 	-- of scud hanging under it (rising moist inflow condensing below the base), denser toward the
 	-- lowering where the inflow converges into the updraft
 	local lowX, lowY = (s.lowX or s.x) - s.x, (s.lowY or s.y) - s.y
+	-- the clear slot (Util.slotAt): the base, its lumps and rim are thinned there, with a frayed lip
+	local sl = Util.slotParams(s)
+	local deckInfo = nil -- (the rain-free base for Render/BaseDeck: centre, radius, height, slot)
+	local function slot(px: number, py: number): number
+		return Util.slotAt(sl, px, py)
+	end
 	if fade < 0.6 and maturity > 0.2 then
-		local _, tx, ty = Storm.wprofAt(s, base)
-		local Rb = clamp(2.2 * Storm.updraftRadiusAt(s, base), 1500, 15000) * (1 - 0.6 * fade) * (0.55 + 0.45 * ramp(W, 3, 15))
 		-- the rain-free base reaches from the wall cloud (on its rear edge, by the rain) out toward
 		-- the storm's right flank and flanking line: its centre sits beyond the updraft, away from
-		-- the low meso (docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md)
-		do
-			local ddx, ddy = tx - lowX, ty - lowY
-			local dl = sqrt(ddx * ddx + ddy * ddy)
-			if dl > 100 and (s.rot or 0) > 0.25 then
-				local k = 0.3 * Rb * ramp(s.rot or 0, 0.25, 0.6)
-				tx += ddx / dl * k
-				ty += ddy / dl * k
-			end
-		end
-		local thick = 380 + 0.02 * Rb
+		-- the low meso (StormShape: the same deck shades what hangs under it)
+		local D = sh.deck :: any
+		local tx, ty, Rb, thick = D.x, D.y, D.r, D.thick
 		local albedo = 0.72 - 0.12 * ramp(top - base, 6000, 13000)
 		-- the deck: one continuous sheet, not a carpet of puffs. A few large soft cards overlap
 		-- heavily (their edges fall under their neighbours), darker toward the updraft where the
 		-- cloud above is thickest (the sun march through the tower and anvil already says so)
+		-- a flat card's height as the camera sees it: a level sheet cw across and t thick at
+		-- elevation e shows cw sin e + t cos e tall. A billboard is always drawn upright at full
+		-- height, so a km-wide piece of the base seen low on the horizon hung a soft curtain down
+		-- to the ground in front of everything beyond it - it veiled a wedge 3.5 km away until it
+		-- had no sides (2026-10-29). Overhead the card keeps its full height.
+		local function seenH(px: number, py: number, z: number, cw: number, ch: number, t: number): number
+			if camDx == nil or camDy == nil then
+				return ch
+			end
+			local dx, dy, dz = px - camDx, py - camDy, math.abs(z - (camZ or 2))
+			local Dh = sqrt(dx * dx + dy * dy)
+			local Ls = math.max(1, sqrt(Dh * Dh + dz * dz))
+			local sinE, cosE = dz / Ls, Dh / Ls
+			-- (and its lower edge stands for the sheet's far edge, which is still at cloud height:
+			-- it can't drop below that edge's sight line, dz (cw/2) / (Dh + cw/2) under the card's
+			-- centre. Without this a lump near overhead still hung to the ground)
+			local drop = dz * 0.5 * cw / (Dh + 0.5 * cw)
+			local fit = 2 * drop / math.max(cosE, 0.05) + t
+			return clamp(math.min(cw * sinE + t * cosE, fit), math.min(t, ch), ch)
+		end
 		local function deck(px: number, py: number, z: number, cw: number, a: number, alb: number)
 			add(px, py, z, cw, max(0.38 * cw, thick), a, "softSheetFlat", alb, sunLit(px, py, base - 80) * 0.6, 0.5, nil, 0, 0, -1)
 		end
@@ -363,6 +390,7 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 		-- the base the deck is a grid of medium cards; from outside it, a few big ones.
 		local cdx, cdy = (camDx or 1e9) - tx, (camDy or 1e9) - ty
 		local under = cdx * cdx + cdy * cdy < (1.7 * Rb) ^ 2
+		deckInfo = { x = tx, y = ty, r = Rb, z = base, slot = sl }
 		if under then
 			local sp = clamp(Rb / (3 + 2 * dk), 600, 2500)
 			local n = math.ceil(Rb / sp)
@@ -370,10 +398,40 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				for j = -n, n do
 					local h1, h2 = hash(seed, 700 + i * 61 + j, 11), hash(seed, 700 + i * 61 + j, 12)
 					local ox, oy = (i + (h1 - 0.5) * 0.6) * sp, (j + (h2 - 0.5) * 0.6) * sp
-					if ox * ox + oy * oy < (0.95 * Rb) ^ 2 then
-						local px, py = tx + ox, ty + oy
-						local cw = 2.4 * sp * (0.9 + 0.2 * h1)
-						add(px, py, base + 0.45 * thick, cw, max(0.55 * cw, thick), 1, "softSheetFlat",
+					local px, py = tx + ox, ty + oy
+					-- where the card's centre is against the solid discs' patch (Render/BaseDeck: disc
+					-- centres within 0.75 of the base's radius and within the steep patch over the
+					-- camera, each disc reaching ~0.4 of its width past its centre): m > 0 inside
+					local dCam = sqrt((px - (camDx or 1e9)) ^ 2 + (py - (camDy or 1e9)) ^ 2)
+					local rCam = CardPlan.flatDeckReach
+					local m = min(0.75 * Rb - sqrt(ox * ox + oy * oy), rCam - dCam)
+					-- (and no discs round the wall cloud: Render/BaseDeck leaves out discs whose centre
+					-- is within 1.15 R + half a disc of it. Without this the cards were left out there
+					-- too, and the sky showed round the wall cloud, 2026-10-30)
+					local hole = CardPlan.planHole
+					if hole and hole.x and hole.r then
+						m = min(m, sqrt((px - (hole.x - s.x)) ^ 2 + (py - (hole.y - s.y)) ^ 2) - (1.15 * hole.r + 0.5 * CardPlan.flatDeckDisc))
+					end
+					m += 0.4 * CardPlan.flatDeckDisc
+					local cw = 2.4 * sp * (0.9 + 0.2 * h1)
+					local deckOn = CardPlan.flatDeckReach > 0 and rCam > 0
+					-- (the patch's outer grid step is soft see-through edge discs: a card above them
+					-- would show through, so "inside" starts past them)
+					local solid = 1.2 * CardPlan.flatDeckDisc
+					-- (left out well inside the patch: the solid discs are the base there)
+					local nearCam = deckOn and m > 0.35 * cw + solid
+					local ca = 1 - slot(px, py)
+					if ox * ox + oy * oy < (0.95 * Rb) ^ 2 and not nearCam and ca > 0.15 then
+						local z = base + 0.45 * thick
+						local ch = seenH(px, py, z, cw, max(0.55 * cw, thick), thick)
+						if deckOn and m > solid - 0.5 * cw then
+							-- (a card reaching the solid discs sits wholly above their plane, or the plane
+							-- cuts it along a straight line. Never hung below it: a km-wide card hung
+							-- under the base drew a cloud wall in front of distant tornadoes, 2026-10-30;
+							-- the soft see-through edge discs hide the patch's edge instead)
+							z = max(z, base + 0.5 * ch + 10)
+						end
+						add(px, py, z, cw, ch, ca, "softSheetFlat",
 							albedo * (0.92 + 0.06 * h2), sunLit(px, py, base - 80) * 0.6, 0.5, nil, 0, 0, -1)
 					end
 				end
@@ -399,7 +457,7 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 			local rr = Rb * (0.88 + 0.1 * h2)
 			local px, py = tx + cos(a) * rr, ty + sin(a) * rr
 			local cw = Rb * (0.32 + 0.15 * h2)
-			add(px, py, base + 0.25 * thick, cw, cw * 0.42, 0.9, "lumpyFlat", albedo * 1.02, sunLit(px, py, base - 80) * 0.7, 0.55, nil, cos(a), sin(a), -0.4)
+			add(px, py, base + 0.25 * thick, cw, cw * 0.42, 0.9 * (1 - slot(px, py)), "lumpyFlat", albedo * 1.02, sunLit(px, py, base - 80) * 0.7, 0.55, nil, cos(a), sin(a), -0.4)
 		end
 		-- texture underneath: lumps hanging just below the deck on a loose grid (the deck's
 		-- structure; they also hide its card edges and cover the top of a funnel)
@@ -410,12 +468,75 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				local h1, h2, h3 = hash(seed, 500 + i * 61 + j, 11), hash(seed, 500 + i * 61 + j, 12), hash(seed, 500 + i * 61 + j, 13)
 				local ox, oy = (i + (h1 - 0.5) * 0.8) * sp, (j + (h2 - 0.5) * 0.8) * sp
 				local d = sqrt(ox * ox + oy * oy)
-				if d < 0.92 * Rb then
-					local px, py = tx + ox, ty + oy
-					local cw = 1.5 * sp * (0.8 + 0.4 * h3)
-					add(px, py, base - 0.02 * thick, cw, cw * 0.38, 0.6 - 0.2 * h3, "lumpyFlat",
-						albedo * (0.9 + 0.1 * h2), sunLit(px, py, base - 80) * 0.5, 0.5, nil, 0, 0, -1)
+				local px, py = tx + ox, ty + oy
+				local ca = 1 - slot(px, py)
+				if d < 0.92 * Rb and ca > 0.15 then
+					-- near the camera the lumps are drawn at their own size: a base's lumps are the
+					-- boundary layer's eddies, about as wide as the base is high (~1.2 base). A grid
+					-- lump 3-6 km wide drawn at its centre's distance stood up as a lone oval whose
+					-- far half sat in front of the funnel (2026-10-29); far off, one big card is fine
+					-- (it is small on screen and foreshortened to a strip)
+					local fineSp = clamp(1.2 * base, 500, sp)
+					local m = 1
+					local dcam2 = (px - (camDx or 1e9)) ^ 2 + (py - (camDy or 1e9)) ^ 2
+					if dcam2 < (2.5 * sp) ^ 2 then
+						m = clamp(math.ceil(sp / fineSp), 1, 3)
+					end
+					local sub = sp / m
+					for a2 = 0, m - 1 do
+						for b2 = 0, m - 1 do
+							local hk = 500 + i * 61 + j + (a2 * 3 + b2) * 7919
+							local g1, g2, g3 = h1, h2, h3
+							local qx, qy = px, py
+							if m > 1 then
+								g1, g2, g3 = hash(seed, hk, 14), hash(seed, hk, 15), hash(seed, hk, 16)
+								qx = px + ((a2 + 0.5) / m - 0.5) * sp + (g1 - 0.5) * 0.6 * sub
+								qy = py + ((b2 + 0.5) / m - 0.5) * sp + (g2 - 0.5) * 0.6 * sub
+							end
+							local cq = 1 - slot(qx, qy)
+							if cq > 0.15 then
+								local cw = 1.5 * sub * (0.8 + 0.4 * g3)
+								local z = base - 0.02 * thick
+								-- (under the flat deck a lump hangs wholly below it: a km-wide card crossing the
+								-- deck's plane was cut by it along a straight line, 2026-10-29)
+								-- (where the discs are, shrunk and hung below them; faded out past the steep patch
+								-- overhead - seen low in the sky the shrunken lumps read as crisp dark ovals, 2026-10-30)
+								local rCam = CardPlan.flatDeckReach
+								local rFade = CardPlan.flatDeckSteep * max(0, base - (camZ or 2))
+								local reachQ = 0.4 * CardPlan.flatDeckDisc + 0.5 * cw
+								local fadeQ = 1
+								if rCam > 0 and (qx - (camDx or 1e9)) ^ 2 + (qy - (camDy or 1e9)) ^ 2 < (rCam + reachQ) ^ 2
+									and (qx - tx) ^ 2 + (qy - ty) ^ 2 < (0.75 * Rb + reachQ) ^ 2 then
+									cw = min(cw, 350 * (0.8 + 0.4 * g3))
+									z = base - 0.19 * cw - 15
+									-- (and they fade out toward the patch's edge: seen low in the sky the small
+									-- lumps were crisp dark ovals; overhead they mottle the ceiling)
+									local dq = sqrt((qx - (camDx or 1e9)) ^ 2 + (qy - (camDy or 1e9)) ^ 2)
+									fadeQ = 1 - ramp(dq, 0.45 * rFade, 0.85 * rFade)
+								end
+								-- (a lump hangs ~0.25 of the deck's depth below it)
+								-- (low contrast: the deck's own structure, not dots on it. At 0.6 alpha and 0.9-1.0 of
+								-- its albedo they read as a grid of dark ovals from under the base, 2026-10-29)
+								add(qx, qy, z, cw, seenH(qx, qy, z, cw, cw * 0.38, 0.5 * thick), (0.4 - 0.15 * g3) * cq * fadeQ, "lumpyFlat",
+									albedo * (0.98 + 0.06 * g2), sunLit(qx, qy, base - 80) * 0.5, 0.5, nil, 0, 0, -1)
+							end
+						end
+					end
 				end
+			end
+		end
+		-- the slot's lip: torn wisps along both edges of the clear band, where the drying cloud frays
+		if sl and sl.k > 0.15 then
+			local nLip = math.floor(14 * dk * sl.k)
+			for k = 1, nLip do
+				local h1, h2 = hash(seed, 560 + k, 11), hash(seed, 560 + k, 12)
+				local a = sl.a0 + 0.2 + (k - 0.5 + 0.5 * (h1 - 0.5)) / nLip * sl.span
+				local side = if k % 2 == 0 then 1 else -1
+				local rr = sl.rr + side * sl.w * (0.85 + 0.3 * h2)
+				local px, py = sl.lx + cos(a) * rr, sl.ly + sin(a) * rr
+				local cw = sl.w * (0.6 + 0.5 * h2)
+				add(px, py, base - 0.23 * cw - 15, cw, cw * 0.45, 0.55 * sl.k, if h1 < 0.5 then "wispFlat" else "shredFlat",
+					albedo * 1.05, sunLit(px, py, base - 80) * 0.8, 0.55, nil, 0, 0, -1)
 			end
 		end
 		-- scud under the deck's edge where rain-cooled outflow meets it (the forward flank side,
@@ -485,25 +606,71 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 	-- the banded, ribbed updraft base of a rotating storm: stacked rings of wide banded cards
 	-- round the updraft just above the cloud base, turning with the mid-level rotation. Shown
 	-- where the storm rotates (rot) and the mesocyclone is strong (vmid), as the wall cloud.
+	-- The "mothership" (stacked-plates) look is the same structure seen clearly: a strongly rotating
+	-- updraft (rot, vmid) that little rain hides. Low precipitation efficiency (dry mid-levels,
+	-- LP / classic storms) leaves the updraft visible from base to anvil; an HP storm's is wrapped
+	-- in rain (NWS spotter guide; Moller et al. 1994). So the banded zone's depth, its flare and
+	-- its tier count all grow with `ms`, and the tower's lobes in that zone go smooth (laminar).
 	local vmid = math.abs(s.vmid or 0)
 	local qs = ramp(s.rot or 0, 0.25, 0.7) * ramp(vmid, 10, 25) * (1 - fade) * maturity
+	local dryUp = 1 - ramp(s.efficiency or 0.5, 0.35, 0.7) -- (how little rain veils the updraft)
+	local ms = qs * ramp(s.rot or 0, 0.5, 0.9) * ramp(vmid, 15, 30) * (0.35 + 0.65 * dryUp)
+	local striZ = base + (500 + 4500 * ms) -- (top of the banded zone)
 	if CardPlan.available.striationFlat and not s.dead and qs > 0.05 then
-		local _, tx, ty = Storm.wprofAt(s, base + 600)
-		local nT = if dk > 0.7 then 4 else 3
+		local nT = (if dk > 0.7 then 4 else 3) + math.floor(5 * ms * dk + 0.5)
+		local Hs = striZ - base - 120
+		local dz = Hs / nT
 		for t = 0, nT - 1 do
-			local z = base + 120 + t * 340
-			local Rr = clamp(1.1 * Storm.updraftRadiusAt(s, z), 1200, 9000) * (1 - 0.06 * t)
-			local nR = clamp(math.floor(2 * math.pi * Rr / 1100 * dk), 8, 16)
+			local z = base + 120 + (t + 0.5) * dz
+			local zf = (z - base) / max(Hs, 1) -- (0 at the base, 1 at the zone's top)
+			local rT, tx, ty = cloudR(z)
+			-- each tier a plate on the tower's surface, flaring out toward the base (the bell of a
+			-- mothership), alternate tiers a little proud: the stacked-plate lips
+			local lip = if t % 2 == 0 then 1.06 else 0.98
+			local Rr = clamp(max(rT, 0.9 * Storm.updraftRadiusAt(s, z)) * (1 + 0.45 * ms * (1 - zf)) * lip, 1000, 12000)
+			local nR = clamp(math.floor(2 * math.pi * Rr / 1100 * dk), 8, 14)
 			local omega = vmid / Rr -- (rad/s: the ring turns with the mesocyclone)
 			for k = 1, nR do
 				local a = (k - 1 + 0.5 * (t % 2)) / nR * TAU + hash(seed, 800 + t * 31 + k, 11) * 0.3
 				local px, py = tx + cos(a) * Rr, ty + sin(a) * Rr
 				local cw = 2 * math.pi * Rr / nR * 1.9
-				local c = add(px, py, z, cw, min(0.45 * cw, 700), 0.8 * qs, "striationFlat", 0.72,
-					sunLit(px, py, z), 0.7, nil, cos(a), sin(a), -0.15)
+				-- a billboard on the ring's silhouette is seen side-on but drawn face-on: its full
+				-- width stuck out past the outline as a smeared streak (2026-10-29). There it is
+				-- narrowed and faded; facing the camera it keeps its width
+				local fa = 1
+				if camDx and camDy then
+					local vx, vy = (camDx :: number) - px, (camDy :: number) - py
+					local vl = max(sqrt(vx * vx + vy * vy), 1)
+					fa = math.abs(cos(a) * vx / vl + sin(a) * vy / vl)
+				end
+				cw *= 0.45 + 0.55 * fa
+				-- (tall enough that neighbouring tiers touch: one banded wall, not floating rings)
+				local hT = clamp(1.35 * dz, 0.2 * cw, 0.6 * cw)
+				local litP = sunLit(px, py, z)
+				-- the plate: a flattened, shaded lens (a lit, rounded lip; the renderer's lobe
+				-- shading darkens its underside: the groove under each plate). The more mothership,
+				-- the more of the tier is plate rather than soft banding
+				if ms > 0.2 then
+					local p = add(px, py, z, cw, min(hT, 0.42 * cw), (0.55 + 0.4 * ms) * qs * (0.3 + 0.7 * fa), "lumpyFlat",
+						0.8, litP, 0.8, nil, cos(a), sin(a), 0.25)
+					p.lobe = "soft"
+					p.mv = { k = "spin", tx = tx, ty = ty, omega = omega, P = 1 }
+				end
+				-- the banding over it (fibres along the flow), a little below: the shaded groove
+				local c = add(px, py, z - 0.3 * dz, cw, hT, (0.75 - 0.35 * ms) * qs * (0.35 + 0.65 * fa), "striationFlat",
+					0.66 + 0.06 * ms * (1 - zf), litP * (1 - 0.4 * ms), 0.6, nil, cos(a), sin(a), -0.3)
 				if c then
 					c.mv = { k = "spin", tx = tx, ty = ty, omega = omega, P = 1 }
 				end
+			end
+		end
+	end
+	-- (the tower's lobes in the banded zone are smooth: laminar, rotating inflow, not boiling)
+	if ms > 0.15 then
+		for _, c in out do
+			if c.tex == "lumpyFlat" and c.lobe == nil and (c.nz or 0) > -0.3 and c.z < striZ and c.z > base
+				and hash(seed, math.floor(c.x + c.z), 61) < 0.25 + 0.75 * ms then
+				c.lobe = "soft"
 			end
 		end
 	end
@@ -526,7 +693,10 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 		local q = ramp(lowering, 30, 400) * ramp(rot, 0.25, 0.6)
 		local Ru = max(s.Ru or 1500, 300)
 		local lx, ly = lowX, lowY
-		local R = 0.5 * clamp(0.9 * Ru, 1000, 3500) * (0.7 + 0.3 * q)
+		-- (as the storm occludes the RFD wraps round it and erodes it: it shrinks and its rear side
+		-- goes ragged, a horseshoe open toward the clear slot; RESEARCH-WALLCLOUD-HV.md, NWS spotter guide)
+		local occl = clamp(s.occl or 0, 0, 1)
+		local R = 0.5 * clamp(0.9 * Ru, 1000, 3500) * (0.7 + 0.3 * q) * (1 - 0.35 * occl)
 		local zb = max(s.wallBase, 60)
 		local D = max(base - zb, 30)
 		-- the underside: flat across most of it, rising steeply to the base at the rim
@@ -550,8 +720,27 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 		local litW = sunLit(lx, ly, zb)
 		-- (a little darker than the base around it - deeper cloud above it - not a black patch)
 		local albW = 0.62
+		local ffx, ffy = 1, 0
+		if s.ffdX then
+			local fx0, fy0 = s.ffdX - s.lowX, s.ffdY - s.lowY
+			local fl = max(sqrt(fx0 * fx0 + fy0 * fy0), 1)
+			ffx, ffy = fx0 / fl, fy0 / fl
+		end
+		local rrx, rry = -ffx, -ffy
+		if s.rfdX then
+			local rx0, ry0 = s.rfdX - s.lowX, s.rfdY - s.lowY
+			local rl = max(sqrt(rx0 * rx0 + ry0 * ry0), 1)
+			rrx, rry = rx0 / rl, ry0 / rl
+		end
+		-- (how much of the rim facing the RFD is eaten: some always ragged, more as it occludes)
+		local function eaten(ca: number, sa: number): number
+			return clamp((ca * rrx + sa * rry - 0.2) / 0.6, 0, 1) * (0.3 + 0.6 * occl)
+		end
+		-- (style "stream": Render/WallStream draws the body, the banding, the filaments and the tail
+		-- as puffs carried by the rotation and the inflow; only the scud stays here)
+		local streamed = CardPlan.wallStream == true
 		-- the body: rings of smooth opaque cards, each filling from the underside up into the base
-		for ri, fr in { 0, 0.4, 0.72, 0.93 } do
+		for ri, fr in (if streamed then {} else { 0, 0.4, 0.72, 0.93 }) :: { number } do
 			local r = fr * R
 			local nR = if ri == 1 then 1 else clamp(math.floor((4 + 6 * fr) * dk + 0.5), 4, 10)
 			for k = 1, nR do
@@ -560,12 +749,18 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				local zl = zbot(r)
 				local hgt = base + 80 - zl
 				local cw = if ri == 1 then 1.3 * R else max(2 * math.pi * r / nR * 1.7, 0.5 * R)
-				addWall(ox, oy, zl + 0.45 * hgt, cw, max(hgt * 1.25, 0.3 * cw), 1, litW * 0.5, 0.5,
-					"softSheetFlat", albW, if ri == 1 then 0 else cos(a), if ri == 1 then 0 else sin(a), -0.5)
+				local e = if ri == 1 then 0 else eaten(cos(a), sin(a)) * fr
+				if e < 0.85 then
+					-- (an eaten card is pulled in and torn: shred texture, thinner, its foot lifted)
+					local tex = if e > 0.35 then "shredFlat" else "softSheetFlat"
+					local pull = 1 - 0.3 * e
+					addWall(ox * pull, oy * pull, zl + 0.45 * hgt + 0.25 * e * hgt, cw * (1 - 0.3 * e), max(hgt * 1.25, 0.3 * cw) * (1 - 0.4 * e),
+						1 - 0.6 * e, litW * 0.5, 0.5, tex, albW * (1 + 0.1 * e), if ri == 1 then 0 else cos(a), if ri == 1 then 0 else sin(a), -0.5)
+				end
 			end
 		end
 		-- texture underneath: a few lumps hanging from the flat underside
-		local nU = math.floor(10 * dk)
+		local nU = if streamed then 0 else math.floor(10 * dk)
 		for k = 1, nU do
 			local h1, h2, h3 = hash(seed, 670 + k, 11), hash(seed, 670 + k, 12), hash(seed, 670 + k, 13)
 			local r = 0.8 * R * sqrt(h1)
@@ -575,7 +770,7 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				"lumpyFlat", albW, 0, 0, -1)
 		end
 		-- banding: horizontal striations wrapping round its side (they turn with the layer)
-		if CardPlan.available.striationFlat then
+		if CardPlan.available.striationFlat and not streamed then
 			for t, fz in { 0.3, 0.68 } do
 				local nB = clamp(math.floor(8 * dk), 6, 10)
 				for k = 1, nB do
@@ -588,7 +783,7 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 			end
 		end
 		-- condensation filaments: thin wisps spiralling in from the inflow side and rising into it
-		local nF = math.floor(16 * dk * q)
+		local nF = if streamed then 0 else math.floor(16 * dk * q)
 		for k = 1, nF do
 			local h1, h2, h3 = hash(seed, 700 + k, 11), hash(seed, 700 + k, 12), hash(seed, 700 + k, 13)
 			local a = h1 * TAU
@@ -603,18 +798,6 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 		-- is: rising lumps on the side facing the forward-flank inflow (moist air lifted into it),
 		-- ragged tatters toward the rear flank (outflow), streamers round the rest of the
 		-- turning rim. They hang 20-300 m pieces down to a few hundred metres below it.
-		local ffx, ffy = 1, 0
-		if s.ffdX then
-			local fx0, fy0 = s.ffdX - s.lowX, s.ffdY - s.lowY
-			local fl = max(sqrt(fx0 * fx0 + fy0 * fy0), 1)
-			ffx, ffy = fx0 / fl, fy0 / fl
-		end
-		local rrx, rry = -ffx, -ffy
-		if s.rfdX then
-			local rx0, ry0 = s.rfdX - s.lowX, s.rfdY - s.lowY
-			local rl = max(sqrt(rx0 * rx0 + ry0 * ry0), 1)
-			rrx, rry = rx0 / rl, ry0 / rl
-		end
 		local nC = math.floor(12 * dk * (0.4 + 0.6 * q))
 		for k = 1, nC do
 			local h1, h2 = hash(seed, 650 + k, 34), hash(seed, 650 + k, 35)
@@ -630,7 +813,7 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 		end
 		-- tail cloud: a band at the wall cloud's base streaming in from the forward-flank rain
 		-- (wherever there is a wall cloud at all: the same ingested outflow air that lowers it)
-		if s.ffdX and q > 0.1 then
+		if s.ffdX and q > 0.1 and not streamed then
 			local fx, fy = s.ffdX - s.lowX, s.ffdY - s.lowY
 			local dl = sqrt(fx * fx + fy * fy)
 			if dl > 800 then
@@ -657,7 +840,7 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 			end
 		end
 	end
-	return out, sh, wall
+	return out, sh, wall, deckInfo
 end
 
 -- Cards filling kit-style pieces ({ cf = unit box bottom-middle, Roblox axis order but metres;

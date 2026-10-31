@@ -28,6 +28,13 @@ for _, st in world.storms do
 		end
 	end
 end
+-- (the same storm every run when it is there, so before/after compare like with like)
+for _, st in world.storms do
+	if st.id == "C001" and not st.dead and (st.rot or 0) > 0.5 then
+		s = st
+	end
+end
+print(string.format("updraft terms: cape %.0f, loading %.2f, rkw %.2f, cin %.0f, W %.1f", s.cape or 0, s.loading or 0, s.rkw or 0, s.cin or 0, s.W or 0))
 local hx, hy = Storm.heading(s)
 local lx, ly = Storm.lowMesoAt(s)
 local function rel(x: number, y: number): (number, number)
@@ -92,6 +99,50 @@ for i = 1, nTop do
 	sm += list[i].m
 end
 row("low-level rain core (top 10%)", sx / sm, sy / sm, "-60..+10, 5-20 km")
+-- (the other storms, for telling a neighbour's rain from this storm's)
+for _, st in world.storms do
+	if st ~= s and not st.dead then
+		row("other storm " .. tostring(st.id), st.x, st.y, "(a neighbour: its rain can pull the core)")
+	end
+end
+-- the same rain core within 15 km of the updraft only
+do
+	local _, u5x, u5y = Storm.wprofAt(s, 5000)
+	local cx5, cy5 = s.x + u5x, s.y + u5y
+	local qx, qy, qm = 0, 0, 0
+	for i = 1, nTop do
+		local c = list[i]
+		if (c.x - cx5) ^ 2 + (c.y - cy5) ^ 2 < 2.25e8 then
+			qx += c.x * c.m
+			qy += c.y * c.m
+			qm += c.m
+		end
+	end
+	if qm > 0 then
+		row("rain core within 15 km of the updraft", qx / qm, qy / qm, "-60..+10, 5-20 km")
+	end
+end
+-- the hail core: mass centroid of stones >= 2 cm below 2 km, and where the largest stones are
+do
+	local hx2, hy2, hm2, big, bx, by = 0, 0, 0, 0, 0, 0
+	for i = 1, #p.px do
+		if p.alive[i] and p.pk[i] == 2 and p.pd[i] >= 2 and p.pz[i] < 2000
+			and (p.px[i] - s.x) ^ 2 + (p.py[i] - s.y) ^ 2 < 9e8 then
+			hx2 += p.px[i] * p.pm[i]
+			hy2 += p.py[i] * p.pm[i]
+			hm2 += p.pm[i]
+			if p.pd[i] > big then
+				big, bx, by = p.pd[i], p.px[i], p.py[i]
+			end
+		end
+	end
+	if hm2 > 0 then
+		row("hail core (>= 2 cm, z < 2 km)", hx2 / hm2, hy2 / hm2, "-100..-20 (left-front), 2-4 km")
+		row(string.format("largest stone (%.1f cm)", big), bx, by, "beside the updraft, 1-4 km")
+	else
+		print("hail core: no stones >= 2 cm below 2 km")
+	end
+end
 -- the nearest heavy low-level rain to the LLM, and the rain right over it
 local near = math.huge
 for i = 1, nTop do

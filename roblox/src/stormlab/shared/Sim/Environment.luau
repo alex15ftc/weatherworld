@@ -39,6 +39,7 @@ local ANALYSIS_FIELDS = {
 	"sbcape", "sbcin", "mlcape", "mlcin", "mucape", "lcl", "lfc", "el",
 	"srh01", "srh03", "shear01", "shear06", "rightU", "rightV", "meanU", "meanV",
 	"pw", "freezing", "wbz", "lapse75", "lapse03", "stp", "scp", "thetaE", "ddDeficit",
+	"dd5", "dd20", "dd60",
 }
 Environment.ANALYSIS_FIELDS = ANALYSIS_FIELDS
 
@@ -327,6 +328,7 @@ local function writeAnalysis(self: Environment, k: number, a: any)
 	F.scp.v[k] = a.scp
 	F.thetaE.v[k] = a.thetaE
 	F.ddDeficit.v[k] = a.ddDeficit
+	F.dd5.v[k], F.dd20.v[k], F.dd60.v[k] = a.dd5 or 0, a.dd20 or 0, a.dd60 or 0
 end
 
 -- Analyse `count` analysis cells (round robin); all of them when count is nil.

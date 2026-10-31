@@ -48,6 +48,8 @@ This document maps the tornado visual implementation plan (`docs/stormlab/GUIDE-
 
 ## Deterministic tests
 
+Every scene starts dry and in daylight (2026-10-29). Two F4 toggles apply to any scene and carry over to the next one: **rain-wrap** rebuilds the scene with `VisualTests.RAIN_WRAP_SHARE` (0.7) of its rain released round the rear flank, and **night** sets the visual clock to `VisualTests.NIGHT_HOUR` (22:30) at once (off: the scene's own daytime hour).
+
 Press **F4** in the lab for the test panel. Scenes live in `shared/VisualTests`. Each builds a pinned lab storm at a fixed site, with fixed seeds, 10 minutes of its rain, and its tornado run to a stage and held there (it keeps animating):
 
 | Scene | What it checks |
@@ -55,10 +57,10 @@ Press **F4** in the lab for the test panel. Scenes live in `shared/VisualTests`.
 | 1 Rope, daylight | rope weight, a thin contorted funnel, roping out |
 | 2 Cone, partial condensation | condensation down to ~100 m, broken segments below |
 | 3 Stovepipe, daylight | a near-uniform condensed column |
-| 4 Wedge, rain-wrapped | wedge weight 1, the rain curtain veil, obscuration |
+| 4 Wedge | wedge weight 1 (with rain-wrap on: the rain curtain veil, obscuration) |
 | 5 Nearly uncondensed | EF2 winds with no condensation; dust shows the circulation |
 | 6 Multi-vortex | 4-5 physical sub-vortices with independent visibility |
-| 7, 8, 9, 0 Night | none, near IC, far CG, burst; uses the visual clock override (22:30) |
+| 7, 8, 9, 0 Lightning | none, near IC, far CG, burst (best with night on) |
 | - LOD dolly | the camera dollies geometrically from 300 m to 30 km |
 
 The **debug views** are geometry, condensation heatmap, centreline + profile control points, sub-vortex ids + trails, ground radius, LOD readout, physics check, and flash markers.

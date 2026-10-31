@@ -116,7 +116,37 @@ end
 
 -- Semi-Lagrangian advection of `field` by the velocity grids (u, v sampled at each centre) over dt.
 -- edge: the value flowing in from outside (nil: clamp)
-function Grid.advect(field: Grid, u: Grid, v: Grid, dt: number, scale: number?)
+-- Catmull-Rom (bicubic) sample, clamped to the four surrounding values so it never makes new
+-- extremes. Moving a field a fraction of a cell each step, bilinear resampling smears it like a
+-- diffusivity of ~u dx / 2 (~9000 m2/s for a 10 m/s gust front on the 2 km cold pool: it never
+-- kept a sharp edge, 2026-10-30); this keeps edges sharp.
+function Grid.sampleCubic(self: Grid, x: number, y: number): number
+	local nx, ny = self.nx, self.ny
+	if nx < 4 or ny < 4 then
+		return self:sample(x, y)
+	end
+	local gx = math.clamp((x - self.x0) / self.dx + 0.5, 1, nx)
+	local gy = math.clamp((y - self.y0) / self.dx + 0.5, 1, ny)
+	local i, j = math.min(nx - 1, math.floor(gx)), math.min(ny - 1, math.floor(gy))
+	local fx, fy = gx - i, gy - j
+	local v = self.v
+	local function at(ii: number, jj: number): number
+		return v[math.clamp(ii, 1, nx) + (math.clamp(jj, 1, ny) - 1) * nx]
+	end
+	local function cr(a: number, b: number, c: number, d: number, t: number): number
+		return b + 0.5 * t * (c - a + t * (2 * a - 5 * b + 4 * c - d + t * (3 * (b - c) + d - a)))
+	end
+	local r0 = cr(at(i - 1, j - 1), at(i, j - 1), at(i + 1, j - 1), at(i + 2, j - 1), fx)
+	local r1 = cr(at(i - 1, j), at(i, j), at(i + 1, j), at(i + 2, j), fx)
+	local r2 = cr(at(i - 1, j + 1), at(i, j + 1), at(i + 1, j + 1), at(i + 2, j + 1), fx)
+	local r3 = cr(at(i - 1, j + 2), at(i, j + 2), at(i + 1, j + 2), at(i + 2, j + 2), fx)
+	local val = cr(r0, r1, r2, r3, fy)
+	local a, b, c, d = at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1)
+	return math.clamp(val, math.min(a, b, c, d), math.max(a, b, c, d))
+end
+
+-- cubic: resample with Grid.sampleCubic (sharp edges) instead of bilinear
+function Grid.advect(field: Grid, u: Grid, v: Grid, dt: number, scale: number?, cubic: boolean?)
 	local s = scale or 1
 	local out = table.create(#field.v, 0)
 	local nx = field.nx
@@ -127,7 +157,7 @@ function Grid.advect(field: Grid, u: Grid, v: Grid, dt: number, scale: number?)
 			-- midpoint back-trajectory
 			local xm, ym = x - 0.5 * uu * dt, y - 0.5 * vv * dt
 			uu, vv = u:sample(xm, ym) * s, v:sample(xm, ym) * s
-			out[i + (j - 1) * nx] = field:sample(x - uu * dt, y - vv * dt)
+			out[i + (j - 1) * nx] = if cubic then Grid.sampleCubic(field, x - uu * dt, y - vv * dt) else field:sample(x - uu * dt, y - vv * dt)
 		end
 	end
 	field.v = out

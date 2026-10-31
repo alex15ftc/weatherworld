@@ -48,6 +48,22 @@ local function part(parent: Instance, size: Vector3, cf: CFrame, colour: Color3,
 	return p
 end
 
+-- A flat part bigger than a Part may be (2048 studs a side) as a grid of pieces that are not:
+-- one Part that size is clamped (the town's ground and roads came out short, 2026-10-29).
+local function tiled(parent: Instance, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material): { BasePart }
+	local maxM = 2000 / K
+	local ni, nj = math.ceil(size.X / maxM), math.ceil(size.Z / maxM)
+	local w, d = size.X / ni, size.Z / nj
+	local out = {}
+	for i = 1, ni do
+		for j = 1, nj do
+			local off = CFrame.new((i - 0.5) * w - size.X / 2, 0, (j - 0.5) * d - size.Z / 2)
+			table.insert(out, part(parent, Vector3.new(w, size.Y, d), cf * off, colour, material))
+		end
+	end
+	return out
+end
+
 local function wedge(parent: Instance, size: Vector3, cf: CFrame, colour: Color3, material: Enum.Material, group: string?): BasePart
 	local p = Instance.new("WedgePart")
 	p.Anchored = true
@@ -216,15 +232,22 @@ function Town.new(cx: number, cy: number, bearing: number?, seed: number?): any
 	local ground = Instance.new("Model")
 	ground.Name = "TownGround"
 	ground.Parent = self.model
-	local gsize = 1800
-	local gc = part(ground, Vector3.new(gsize, 2, gsize), CFrame.new(mspace(cx, cy, gz - 1)) * CFrame.Angles(0, yaw, 0), rgb(106, 128, 76), Enum.Material.Grass)
-	gc.CustomPhysicalProperties = PhysicalProperties.new(2, 0.8, 0.1, 1, 1)
-	gc.CastShadow = false
+	-- (only on flat ground: with hills, server/Terrain lays solid ground under the town first, and a
+	-- part here rendered as a darker square whose corners stuck into the hills - 2026-10-29)
+	local relief = LabConfig.GROUND.relief
+	if not relief or relief.amp <= 0 then
+		local gsize = 1800
+		for _, gc in tiled(ground, Vector3.new(gsize, 2, gsize), CFrame.new(mspace(cx, cy, gz - 1)) * CFrame.Angles(0, yaw, 0), rgb(106, 128, 76), Enum.Material.Grass) do
+			gc.CustomPhysicalProperties = PhysicalProperties.new(2, 0.8, 0.1, 1, 1)
+			gc.CastShadow = false
+		end
+	end
 	for _, road in { { 0, 0, 1600, 9 }, { 0, 0, 9, 1600 }, { -300, 0, 9, 900 }, { 300, 0, 9, 900 } } do
 		local rx, ry = at(road[1], road[2])
-		local r = part(ground, Vector3.new(road[3], 0.1, road[4]), CFrame.new(mspace(rx, ry, gz + 0.05)) * CFrame.Angles(0, yaw, 0), rgb(78, 76, 74), Enum.Material.Asphalt)
-		r.CastShadow = false
-		r.CustomPhysicalProperties = PhysicalProperties.new(2, 0.8, 0.1, 1, 1)
+		for _, r in tiled(ground, Vector3.new(road[3], 0.1, road[4]), CFrame.new(mspace(rx, ry, gz + 0.05)) * CFrame.Angles(0, yaw, 0), rgb(78, 76, 74), Enum.Material.Asphalt) do
+			r.CastShadow = false
+			r.CustomPhysicalProperties = PhysicalProperties.new(2, 0.8, 0.1, 1, 1)
+		end
 	end
 	local function add(di: string, dx: number, dy: number, rot: number, quality: number?)
 		local x, y = at(dx, dy)

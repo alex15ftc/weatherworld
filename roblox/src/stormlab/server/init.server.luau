@@ -23,6 +23,8 @@ local LabConfig = require(lab:WaitForChild("LabConfig"))
 local Json = require(Sim:WaitForChild("Json"))
 local World = require(Sim:WaitForChild("World"))
 local Storm = require(Sim:WaitForChild("Storm"))
+-- (the lab's tornado genesis boost: its scenarios should make tornadoes to look at)
+Storm.GENESIS_EASE = LabConfig.GENESIS_EASE or 1
 local EngineFollow = require(Sim:WaitForChild("EngineFollow"))
 local Town = require(script:WaitForChild("Town"))
 local Vehicles = require(script:WaitForChild("Vehicles"))
@@ -119,12 +121,19 @@ local function placeTown(x: number, y: number, bearing: number)
 	end
 	vehicles:clear()
 	debris:clear()
-	-- the uneven ground round the town (LabConfig.GROUND.relief; the town sits on a flat pad)
-	local t0 = os.clock()
-	local voxels = LabTerrain.build(LabConfig, x, y, function()
-		task.wait()
+	-- the uneven ground round the town (LabConfig.GROUND.relief; the town sits on a flat pad).
+	-- Built in the background, nearest the town first (a newer build stops this one); the town
+	-- doesn't wait for it: every height comes from LabConfig.groundAt, not the voxels.
+	LabConfig.groundCentre = { x = x, y = y }
+	task.defer(function() -- (deferred: none of the build runs inside the caller, e.g. a panel command)
+		local t0 = os.clock()
+		Workspace:SetAttribute("TerrainBuilding", true) -- (the F4 perf sweep reports it)
+		local voxels = LabTerrain.build(LabConfig, x, y, function()
+			task.wait()
+		end)
+		Workspace:SetAttribute("TerrainBuilding", false)
+		log("terrain: %d hill voxels in %.1f s", voxels, os.clock() - t0)
 	end)
-	log("terrain: %d voxels in %.1f s", voxels, os.clock() - t0)
 	town = Town.new(x, y, bearing, 7)
 	-- cars and pickups parked along the main street
 	local cb, sb = math.cos(bearing), math.sin(bearing)
@@ -364,10 +373,24 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 		-- a deterministic visual test scene (shared/VisualTests): blocks the server a few seconds
 		local scene = VisualTests.byId(cmd.id)
 		if scene then
+			-- the rain-wrap toggle: the same scene with its rain wrapped round the tornado
+			if cmd.rainWrap then
+				scene = table.clone(scene)
+				scene.storm = table.clone(scene.storm)
+				scene.storm.rearShare = VisualTests.RAIN_WRAP_SHARE
+			end
+			-- the tornado toggle: the same storm with a tornado added (held mature) or taken away
+			if type(cmd.tornado) == "boolean" and cmd.tornado == (scene.noTornado == true) then
+				scene = table.clone(scene)
+				scene.noTornado = not cmd.tornado
+				if cmd.tornado then
+					scene.run = math.max(scene.run or 60, 150)
+				end
+			end
 			local t0 = os.clock()
 			local t = world:labScene(scene, VisualTests.SITE)
 			log("visual test %s built in %.1f s: %s", scene.id, os.clock() - t0, if t then string.format("%s %s vc %.0f rc %.0f S %.2f", t.id, t.stage, t.vc, t.rc, t.swirl) else "no tornado")
-			pub:send("event", { kind = "labScene", id = scene.id, tornado = t and t.id, x = t and t.x, y = t and t.y })
+			pub:send("event", { kind = "labScene", id = scene.id, rainWrap = cmd.rainWrap == true, tornado = t and t.id, x = t and t.x, y = t and t.y })
 		end
 	elseif c == "clearScene" then
 		for _, s in world.storms do

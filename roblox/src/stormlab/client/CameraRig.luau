@@ -61,6 +61,9 @@ function CameraRig.new(ctx: any): any
 			-- chase view: tilt the look up or down (anvils, tower tops)
 			local step = math.rad(6) * (if input.KeyCode == Enum.KeyCode.PageUp then 1 else -1)
 			self.tilt = math.clamp((self.tilt or 0) + step, math.rad(-20), math.rad(70))
+		elseif (input.KeyCode == Enum.KeyCode.I or input.KeyCode == Enum.KeyCode.O) and self.mode ~= "free" then
+			-- zoom in (I) / out (O) from the keyboard, as the mouse wheel
+			self.dist = math.clamp(self.dist * (if input.KeyCode == Enum.KeyCode.I then 0.7 else 1.4), 60, 90000)
 		elseif input.KeyCode == Enum.KeyCode.Tab then
 			-- next focus: tornadoes first, then storms by strength
 			local list = {}
@@ -144,7 +147,7 @@ function CameraRig.new(ctx: any): any
 	end
 
 	-- a scripted shot (UI/VisualTests): { dist, yaw (deg), height, dollyTo, dollyTime }
-	local function applyPreset(dt: number)
+	local function applyPreset(dt: number, kind: string)
 		local p = ctx.state.cameraPreset
 		if not p then
 			return
@@ -157,7 +160,7 @@ function CameraRig.new(ctx: any): any
 			self.dist = p.dist or self.dist
 			self.yaw = math.rad(p.yaw or -50)
 			self.pitch = math.rad(p.pitch or 12)
-			self.lastKind = "tornado"
+			self.lastKind = kind -- (the shot sets the distance for what it looks at)
 			self.target = nil
 		end
 		if p.dollyTo and p.dollyTime then
@@ -179,7 +182,7 @@ function CameraRig.new(ctx: any): any
 			self.free.pitch = math.rad(go.pitch or 8)
 		end
 		local x, y, lookZ, kind = focusInfo()
-		applyPreset(dt)
+		applyPreset(dt, kind)
 		if kind ~= self.lastKind then
 			-- a sensible distance for what we look at
 			if kind == "storm" then

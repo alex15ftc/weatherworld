@@ -105,6 +105,25 @@ function StormShape.build(s: any, Storm: any): any?
 		return false
 	end
 
+	-- the rain-free base (the deck CardPlan draws): reaching ~2.2 Ru(base) round the updraft, its
+	-- centre beyond the updraft away from the low-level meso (docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md),
+	-- 400-700 m thick, open where the clear slot cuts it. It is part of the storm's own shadow:
+	-- without it a lowering, scud or lump under the base near its edge was fully sunlit and drew
+	-- paler than the base above it (2026-10-29)
+	if fade < 0.6 and maturity > 0.2 then
+		local _, tx, ty = Storm.wprofAt(s, base)
+		local Rb = clamp(2.2 * Storm.updraftRadiusAt(s, base), 1500, 15000) * (1 - 0.6 * fade) * (0.55 + 0.45 * ramp(W, 3, 15))
+		local lowX, lowY = (s.lowX or s.x) - s.x, (s.lowY or s.y) - s.y
+		local ddx, ddy = tx - lowX, ty - lowY
+		local dl = sqrt(ddx * ddx + ddy * ddy)
+		if dl > 100 and (s.rot or 0) > 0.25 then
+			local k = 0.3 * Rb * ramp(s.rot or 0, 0.25, 0.6)
+			tx += ddx / dl * k
+			ty += ddy / dl * k
+		end
+		sh.deck = { x = tx, y = ty, r = Rb, thick = 380 + 0.02 * Rb, slot = Util.slotParams(s) }
+	end
+
 	local maxZ = max(top, el + 400)
 	function sh.sunLit(x: number, y: number, z: number): number
 		local L = Util.light
@@ -123,7 +142,20 @@ function StormShape.build(s: any, Storm: any): any?
 				inside += step
 			end
 		end
-		return exp(-inside / 1800)
+		-- the base deck: the ray's path through its slab (a base is optically thick: ~250 m of it
+		-- dims the sun by e; the 1800 m above is the tower's softer, sparser cloud as drawn)
+		local D = sh.deck
+		local deckPath = 0
+		if D and z < base + D.thick then
+			local t0 = max(0, (base - z) / sz)
+			local t1 = (base + D.thick - z) / sz
+			local tm = 0.5 * (t0 + t1)
+			local mx, my = x + sx * tm, y + sy * tm
+			if (mx - D.x) ^ 2 + (my - D.y) ^ 2 < D.r * D.r then
+				deckPath = (t1 - t0) * (1 - Util.slotAt(D.slot, mx, my))
+			end
+		end
+		return exp(-inside / 1800 - deckPath / 250)
 	end
 	return sh
 end

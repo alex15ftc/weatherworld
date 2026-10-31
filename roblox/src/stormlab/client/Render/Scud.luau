@@ -19,6 +19,7 @@
 -- Drawn with its storm: about the storm's centre at its scale (LabConfig.scaleAbout / toWorldAbout).
 -- Debug attribute on ctx.root: Scud ("fragments · ms").
 local Workspace = game:GetService("Workspace")
+local Util = require(script.Parent:WaitForChild("CloudParts"):WaitForChild("Util"))
 
 local Scud = {}
 
@@ -207,6 +208,13 @@ function Scud.new(ctx: any): any
 					lightCache[id] = lc
 				end
 				lc.at, lc.col = now, SceneLight.shade(L, 0.72, 0.15)
+				-- seen toward the sun, a fragment shows its own shadowed side: a dark ragged shape
+				-- against the bright backlit rain or slot behind it (the review's "scud darker than
+				-- what is behind it"); the sun's place, not a set colour
+				local sun = Util.light.sunSim
+				local vx, vy, vz = (s.lowX or s.x) - camX, (s.lowY or s.y) - camY, (s.base or 1000) * 0.8
+				local vl = math.max(1, math.sqrt(vx * vx + vy * vy + vz * vz))
+				lc.back = math.max(0, (vx * sun[1] + vy * sun[2] + vz * sun[3]) / vl) * Util.light.sunUp
 			end
 		end
 		local fogCol = ctx.rainFogColour or Color3.new(0.5, 0.52, 0.56)
@@ -336,6 +344,11 @@ function Scud.new(ctx: any): any
 				local col = lightCache[f.storm] and lightCache[f.storm].col or Color3.new(0.45, 0.48, 0.53)
 				if base then
 					col = col:Lerp(base.col, 0.85)
+				end
+				local back = lightCache[f.storm] and lightCache[f.storm].back or 0
+				if back > 0 then
+					local kb = 1 - 0.35 * back
+					col = Color3.new(col.R * kb, col.G * kb, col.B * kb)
 				end
 				col = col:Lerp(fogCol, f.fog)
 				local pc = f.col0

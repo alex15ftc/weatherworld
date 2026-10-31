@@ -3,8 +3,9 @@
 -- the lab has ground anywhere in its ~240 km domain. The town's own ground (server, physical)
 -- sits a little higher where it exists. Fields vary a little in colour (seeded per tile) like
 -- Plains section-line farmland.
--- The tiles lie at the datum (their top ~0.15 m below it): the server's Terrain hills
--- (LabConfig.GROUND.relief, never below the datum) cover them where the ground rises. Tile sizes
+-- The tiles lie at the datum (their top 0.3 m below it, under the terrain's base sheet): the server's Terrain
+-- (LabConfig.GROUND.relief) covers them out to its radius. A tile is at most 2048 studs (a Part's
+-- largest size: bigger tiles were clamped and left gaps between them, 2026-10-29). Tile sizes
 -- are metres, crossed to studs through Config (docs/stormlab/SCALE-RULES.md).
 local Workspace = game:GetService("Workspace")
 
@@ -17,13 +18,16 @@ function Ground.new(ctx: any): any
 	local folder = Instance.new("Folder")
 	folder.Name = "Ground"
 	folder.Parent = ctx.root
-	local n = 2 * G.radius + 1
+	-- (a Part is at most 2048 studs a side; the tiles reach past the part draw range)
+	local tile = math.min(G.tile, C.metres(2048))
+	local radius = math.max(G.radius, math.ceil(C.studs(C.LIMITS.partRange) / C.studs(tile)) + 1)
+	local n = 2 * radius + 1
 	local tiles = {}
 	for _ = 1, n * n do
 		local p = Instance.new("Part")
 		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
 		p.CastShadow = false
-		p.Size = Vector3.new(C.studs(G.tile), C.studs(2), C.studs(G.tile))
+		p.Size = Vector3.new(C.studs(tile), C.studs(2), C.studs(tile))
 		p.Material = Enum.Material[G.material] or Enum.Material.Grass
 		p.TopSurface = Enum.SurfaceType.Smooth
 		p.Parent = folder
@@ -33,16 +37,22 @@ function Ground.new(ctx: any): any
 	local parts, cfs = {}, {}
 	function self:update(_dt: number)
 		local cx, cy = ctx:simCamera()
-		local ti, tj = math.floor(cx / G.tile + 0.5), math.floor(cy / G.tile + 0.5)
-		if ti == self.lastI and tj == self.lastJ then
+		local ti, tj = math.floor(cx / tile + 0.5), math.floor(cy / tile + 0.5)
+		local gc = C.groundCentre
+		if ti == self.lastI and tj == self.lastJ and gc == self.lastC then
 			return
 		end
-		self.lastI, self.lastJ = ti, tj
+		self.lastI, self.lastJ, self.lastC = ti, tj, gc
+		-- tiles wholly inside the terrain's area sink 2 m under it: the terrain is the ground there,
+		-- and its base sheet (on a 1.1 m voxel grid) can't sit reliably 0.2 m above a tile, so the
+		-- tiles showed through round the town (2026-10-29)
+		local R = G.relief
+		local inR = if gc and R and R.amp > 0 then R.radius - 0.75 * tile else -1
 		table.clear(parts)
 		table.clear(cfs)
 		local k = 0
-		for di = -G.radius, G.radius do
-			for dj = -G.radius, G.radius do
+		for di = -radius, radius do
+			for dj = -radius, radius do
 				k += 1
 				local p = tiles[k]
 				local i, j = ti + di, tj + dj
@@ -56,7 +66,15 @@ function Ground.new(ctx: any): any
 					p.Color = Color3.fromRGB(math.floor(base[1] * f), math.floor(base[2] * f), math.floor(base[3] * f))
 				end
 				table.insert(parts, p)
-				table.insert(cfs, CFrame.new(C.toWorld(i * G.tile, j * G.tile, -1.15)))
+				local z = -1.3
+				if inR > 0 then
+					local fx = math.abs(i * tile - gc.x) + 0.5 * tile
+					local fy = math.abs(j * tile - gc.y) + 0.5 * tile
+					if fx * fx + fy * fy < inR * inR then
+						z = -3.3
+					end
+				end
+				table.insert(cfs, CFrame.new(C.toWorld(i * tile, j * tile, z)))
 			end
 		end
 		Workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
