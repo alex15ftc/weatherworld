@@ -14,6 +14,7 @@ import { WarningRuntime } from './WarningRuntime.js';
 import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
 import { RadarPool } from './RadarPool.js';
+import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
 // Set WEATHER_PRIORITY=normal to leave the process priority alone.
@@ -34,6 +35,12 @@ const radarPool = process.env.WEATHER_RADAR_WORKERS === '0' ? null : new RadarPo
 // WEATHER_DAY_REVIEW_DAYS (14) are kept.
 const dayReviews = process.env.WEATHER_DAY_REVIEWS === 'off' ? null : { dir: path.resolve(ROOT, process.env.WEATHER_DAY_REVIEW_DIR ?? 'data/day-reviews/live'), png: process.env.WEATHER_DAY_REVIEW_PNG === 'on', keepDays: Number(process.env.WEATHER_DAY_REVIEW_DAYS) || 14 };
 const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool, dayReviews });
+// The cloud model workers for the storms players are near (js/game/StormWorkers.js;
+// WEATHER_STORM_WORKERS sets how many may run, 0 turns them off).
+if (process.env.WEATHER_STORM_WORKERS !== '0') {
+  runtime.stormWorkers = new StormWorkers({ clockRate: SIM_HOURS_PER_REAL_MINUTE * 60 });
+  for (const signal of ['exit', 'SIGINT', 'SIGTERM']) process.once(signal, () => { runtime.stormWorkers?.close(); if (signal !== 'exit') process.exit(0); });
+}
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine, simHoursPerRealMinute: SIM_HOURS_PER_REAL_MINUTE });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
@@ -65,7 +72,11 @@ const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
 function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace.started; perf.totals.requests++; const stat=perf.endpoints[trace.pathname]??={count:0,totalMs:0,maxMs:0}; stat.count++;stat.totalMs+=totalMs;stat.maxMs=Math.max(stat.maxMs,totalMs);perf.recent.unshift({path:trace.pathname,totalMs:+totalMs.toFixed(2),...detail,at:new Date().toISOString()});if(perf.recent.length>50)perf.recent.length=50; return totalMs; }
 function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null}; }
-setInterval(() => { if (runtime.advanceOnTimer()) { surface.capture(); warnings?.update(); runtime.prewarmRadar(); } }, ADVANCE_POLL_MS).unref();
+// (In turns: requests are answered between the storm ticks and atmosphere steps of a catch-up.)
+setInterval(async () => {
+  try { if (await runtime.advanceOnTimerInTurns()) { surface.capture(); warnings?.update(); runtime.prewarmRadar(); } }
+  catch (error) { console.error('[weather-authority] advance failed:', error); }
+}, ADVANCE_POLL_MS).unref();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -112,7 +123,13 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/game/v1/frames') return sendText(req, res, 200, runtime.gameFeed.poll(url.searchParams.get('after')), trace);
   // The products the game draws (GameProducts.js): the manifest of versions, and each product's text.
   if (url.pathname === '/api/game/v1/lab/window') return sendJson(req, res, 200, runtime.labWindow(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half')), { cacheable: false, trace });
-  if (url.pathname === '/api/game/v1/lab/storms') return sendJson(req, res, 200, runtime.labStormsAt(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half')), { cacheable: false, trace });
+  if (url.pathname === '/api/game/v1/lab/storms') return sendJson(req, res, 200, runtime.labStormsAt(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half'), url.searchParams.get('inflow') === '1'), { cacheable: false, trace });
+  // The cloud model's storms (js/game/StormWorkers.js): a Roblox server reports where its players
+  // are (POST { server, players: [[xKm, yKm], ...] }, map km, y south) and fetches the frames newer
+  // than it holds (?have=id:seq,... &parts=full,near,far: a binary bundle).
+  if (url.pathname === '/api/game/v1/storm/players' && req.method === 'POST') { const body = await readJsonBody(req); return sendJson(req, res, 200, runtime.stormWorkers?.reportPlayers(body.server, body.players) ?? { detailed: [], off: true }, { cacheable: false, trace }); }
+  if (url.pathname === '/api/game/v1/storm/frames') { const parts = (url.searchParams.get('parts') ?? 'full,near,far').split(','); const bundle = runtime.stormWorkers?.frames(url.searchParams.get('have'), parts, { paused: !runtime.autoAdvance }) ?? EMPTY_FRAMES; finishRequest(trace, { status: 200, rawBytes: bundle.length, sentBytes: bundle.length }); res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': bundle.length, 'cache-control': 'no-store' }); return res.end(bundle); }
+  if (url.pathname === '/api/game/v1/storm/workers') return sendJson(req, res, 200, runtime.stormWorkers?.status() ?? { off: true }, { cacheable: false, trace });
   if (url.pathname === '/api/game/v1/manifest') return sendJson(req, res, 200, gameProducts.manifest(), { cacheable: false, trace });
   const gameProduct = url.pathname.match(/^\/api\/game\/v1\/product\/([A-Za-z0-9._-]+)$/);
   if (gameProduct) { const entry = await gameProducts.productAsync(gameProduct[1]); return entry ? sendText(req, res, 200, entry.text, trace, { 'x-product-version': entry.version }) : sendJson(req, res, 404, { error: 'Unknown product' }, { cacheable: false, trace }); }

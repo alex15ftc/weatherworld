@@ -77,11 +77,13 @@ function VisualTestsUI.new(ctx: any): any
 	-- the scene's toggles (kept from scene to scene): rain wrapped round the tornado (the server
 	-- rebuilds the scene: the wrap is its rain), and night (the visual clock only)
 	self.rainWrap, self.night = false, false
+	-- hills: the scene rebuilt with hills laid across its tornado's path (shared/VisualTests HILLS)
+	self.hills = false
 	-- tornado: nil = as the scene has it, true = add one under its storm, false = none
 	self.tornado = nil
 	local function runScene(scene: any)
-		status.Text = "building " .. scene.label .. (if self.rainWrap then ", rain-wrapped" else "") .. " on the server…"
-		ctx:command({ cmd = "testScene", id = scene.id, rainWrap = self.rainWrap, tornado = self.tornado })
+		status.Text = "building " .. scene.label .. (if self.rainWrap then ", rain-wrapped" else "") .. (if self.hills then ", over hills" else "") .. " on the server…"
+		ctx:command({ cmd = "testScene", id = scene.id, rainWrap = self.rainWrap, tornado = self.tornado, hills = self.hills })
 		self.pending = scene
 	end
 	-- the visual clock: the night hour, else the current scene's daytime hour (none: the sim's)
@@ -133,6 +135,14 @@ function VisualTestsUI.new(ctx: any): any
 		self.night = not self.night
 		applyClock()
 	end)
+	-- (F2 too) rebuild the scene on screen over hills (or back on the flat)
+	local function toggleHills()
+		self.hills = not self.hills
+		if self.current then
+			runScene(self.current)
+		end
+	end
+	local hillsB = button(rs, "hills: off", 100, toggleHills)
 	local rw = row()
 	local closeB = button(rw, "camera: scene", 150, function()
 		self.close = not self.close
@@ -333,7 +343,16 @@ function VisualTestsUI.new(ctx: any): any
 		end
 		applyCamera()
 		self.schedule = if cl.flashes then { list = cl.flashes, every = cl.flashEvery, start = os.clock(), done = {} } else nil
-		status.Text = string.format("<b>%s</b>%s · tornado %s · local %s h", scene.label, if e.rainWrap then ", rain-wrapped" else "", tostring(e.tornado), tostring(ctx.state.clockOverride or "sim"))
+		status.Text = string.format("<b>%s</b>%s · tornado %s · local %s h", scene.label, (if e.rainWrap then ", rain-wrapped" else "") .. (if e.hills then ", over hills" else ""), tostring(e.tornado), tostring(ctx.state.clockOverride or "sim"))
+		-- a reference shot: name the photo to compare against
+		local ref = scene.ref
+		for _, sh in Scenes.SHOTS do
+			if sh.id == scene.id then
+				ref = sh.ref or ref
+				status.Text ..= "\n<b>" .. sh.tag .. "</b> compare: " .. tostring(ref)
+				print("[shot] " .. sh.tag .. " " .. scene.id .. " ref " .. tostring(ref))
+			end
+		end
 	end)
 
 	UserInputService.InputBegan:Connect(function(input, processed)
@@ -344,11 +363,70 @@ function VisualTestsUI.new(ctx: any): any
 			root.Visible = not root.Visible
 			return
 		end
+		if input.KeyCode == Enum.KeyCode.F2 then
+			toggleHills()
+			return
+		end
 		if input.KeyCode == Enum.KeyCode.F6 then
 			-- (F6: the night setting, as its button - for scripted checks)
 			self.night = not self.night
 			applyClock()
 			print("[visual tests] night " .. tostring(self.night))
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.F8 then
+			-- (F8: a dusk sweep - the visual clock 17.5 -> 21 h local over 90 s, steady, to check
+			-- that the storms' light changes smoothly from day to night; again to stop)
+			if self.duskConn then
+				self.duskConn:Disconnect()
+				self.duskConn = nil
+				print("[visual tests] dusk sweep stopped")
+				return
+			end
+			local t0, last = os.clock(), -1
+			self.duskConn = game:GetService("RunService").Heartbeat:Connect(function()
+				local f = math.clamp((os.clock() - t0) / 90, 0, 1)
+				ctx.state.clockOverride = 17.5 + 3.5 * f
+				local step = math.floor((os.clock() - t0) / 5)
+				if step ~= last then
+					last = step
+					print(string.format("[dusk] t %d s  local %.2f h  sunY %.3f", step * 5, ctx.state.clockOverride, game:GetService("Lighting"):GetSunDirection().Y))
+				end
+				if f >= 1 and self.duskConn then
+					self.duskConn:Disconnect()
+					self.duskConn = nil
+				end
+			end)
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.F7 or input.KeyCode == Enum.KeyCode.Comma then
+			-- (F7 or comma: the next reference shot, P1..P5, panel open or shut; Studio keeps F7)
+			self.shot = (self.shot or 0) % #Scenes.SHOTS + 1
+			local sc = Scenes.byId(Scenes.SHOTS[self.shot].id)
+			if sc then
+				self.close = false
+				runScene(sc)
+			end
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Backquote then
+			-- (` : a cell merging into a supercell, panel open or shut; / is the chat key)
+			local sc = Scenes.byId("merger")
+			if sc then
+				self.close = false
+				runScene(sc)
+			end
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Quote then
+			-- (' : the supercell lifecycle, panel open or shut)
+			local UIS = game:GetService("UserInputService")
+			local low = UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift)
+			local sc = Scenes.byId(if low then "life_supercell_low" else "life_supercell")
+			if sc then
+				self.close = false
+				runScene(sc)
+			end
 			return
 		end
 		if input.KeyCode == Enum.KeyCode.L and self.current then
@@ -365,8 +443,30 @@ function VisualTestsUI.new(ctx: any): any
 			Enum.KeyCode.KeypadSix, Enum.KeyCode.KeypadSeven, Enum.KeyCode.KeypadEight, Enum.KeyCode.KeypadNine, Enum.KeyCode.KeypadZero, Enum.KeyCode.KeypadMinus,
 			Enum.KeyCode.KeypadPeriod, Enum.KeyCode.KeypadDivide, Enum.KeyCode.KeypadMultiply, Enum.KeyCode.KeypadPlus, Enum.KeyCode.KeypadEnter, Enum.KeyCode.KeypadEquals }
 		local n = table.find(digits, input.KeyCode) or table.find(pad, input.KeyCode)
+		-- Shift + a scene's key: its lifecycle counterpart (SC2-SCK), so they run without the mouse
+		do
+			local UIS = game:GetService("UserInputService")
+			if UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift) then
+				local src = if input.KeyCode == Enum.KeyCode.K then Scenes.byId("tube") elseif n then Scenes.SCENES[n] else nil
+				local sc = src and Scenes.byId("life_to_" .. src.id)
+				if sc then
+					self.close = false
+					runScene(sc)
+					return
+				end
+			end
+		end
 		if input.KeyCode == Enum.KeyCode.G then
 			local sc = Scenes.byId("stovepipe_sun")
+			if sc then
+				runScene(sc)
+			end
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Semicolon then
+			local UIS = game:GetService("UserInputService")
+			local shift = UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift)
+			local sc = Scenes.byId(if shift then "life_landspout" else "life_wrapped")
 			if sc then
 				runScene(sc)
 			end
@@ -387,6 +487,26 @@ function VisualTestsUI.new(ctx: any): any
 	local acc = 0
 	function self:update(dt: number)
 		self.frameMs = self.frameMs * 0.95 + dt * 1000 * 0.05
+		-- a storm lifecycle scene films its storm, and its tornado while it has one (2026-11-03:
+		-- the camera stayed on the storm's centre while the tornado sat under the low meso, 0.6 Ru
+		-- out - ~3 km for the wedge - so every lifecycle tornado was seen small through the rain,
+		-- washed out and "not fully condensed", the farther as the meso broadened, user)
+		local cur = self.current
+		if cur and cur.life and cur.noTornado and cur.storm then
+			local sid = "LAB" .. tostring(cur.storm.seed)
+			local live = nil
+			for _, t in ctx.cw.tornadoes do
+				if t.parentId == sid and (not t.ended or (t.endedFor or 0) < 60) then
+					live = t
+				end
+			end
+			local st = ctx.state
+			if live and st.focusId ~= live.id then
+				st.focusKind, st.focusId = "tornado", live.id
+			elseif not live and st.focusKind == "tornado" and st.focusId ~= nil and string.sub(tostring(st.focusId), 1, 1) == "T" then
+				st.focusKind, st.focusId = "storm", sid
+			end
+		end
 		-- scheduled flashes (relative to the focus tornado)
 		local sch = self.schedule
 		if sch then
@@ -409,6 +529,7 @@ function VisualTestsUI.new(ctx: any): any
 		moonB.Text = "moon: " .. (if (ctx.state.moonlight or 0) > 0 then "on" else "off")
 		qualB.Text = "quality: " .. (if (ctx.state.quality or 1) >= 1 then "full" else "low")
 		nightB.Text = "night: " .. (if self.night then "on" else "off")
+		hillsB.Text = "hills (F2): " .. (if self.hills then "on" else "off")
 		closeB.Text = "camera: " .. (if self.close then "close (600 m)" else "scene")
 		wrapB.Text = "rain-wrap: " .. (if self.rainWrap then "on" else "off")
 		torB.Text = "tornado (L): " .. (if self.tornado == nil then "scene" elseif self.tornado then "on" else "off")

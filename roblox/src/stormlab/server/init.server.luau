@@ -23,6 +23,7 @@ local LabConfig = require(lab:WaitForChild("LabConfig"))
 local Json = require(Sim:WaitForChild("Json"))
 local World = require(Sim:WaitForChild("World"))
 local Storm = require(Sim:WaitForChild("Storm"))
+local Vortex = require(Sim:WaitForChild("Vortex"))
 -- (the lab's tornado genesis boost: its scenarios should make tornadoes to look at)
 Storm.GENESIS_EASE = LabConfig.GENESIS_EASE or 1
 local EngineFollow = require(Sim:WaitForChild("EngineFollow"))
@@ -94,6 +95,108 @@ local function log(fmt: string, ...)
 	print("[StormLab] " .. string.format(fmt, ...))
 end
 
+-- the lifecycle scenes' log (shared/VisualTests life_*): every 10 sim s the reference phase next to
+-- the tornado's stage and numbers. tip: the lowest height its funnel reaches (0 = to the ground,
+-- "-" = no funnel); tilt: of its axis, degrees from vertical; dust: its debris loading
+local lifeLog: any = nil
+local sceneBuilding: string? = nil -- the visual test scene being built (one at a time)
+local function logLife()
+	local L = lifeLog
+	local t = L.t
+	local el = world.time - L.start
+	if el < L.next then
+		return
+	end
+	L.next += 10
+	local phase = ""
+	for _, ph in L.scene.phases or {} do
+		if el >= ph[1] then
+			phase = ph[2]
+		end
+	end
+	if L.storm then
+		-- a storm lifecycle: the storm's own numbers, every 60 s (every 10 s while it has a tornado)
+		local s = L.storm
+		if not s.tornado then
+			L.next += 50
+		end
+		-- (its tornado, if genesis gave it one: stage, core speed and radius; else the genesis build-up)
+		-- (the gust front: how far its leading ray runs ahead of the updraft, and the strongest RKW
+		-- ratio at the front among rays ahead of the updraft - over ~1 a shelf cloud is drawn there)
+		local lead, kMax = 0, 0
+		for k, r in s.gustR or {} do
+			local l = r - 1.2 * Storm.updraftRadiusAt(s, s.base or 1000)
+			lead = math.max(lead, l)
+			if l > 0 then
+				kMax = math.max(kMax, (s.gustK and s.gustK[k]) or 0)
+			end
+		end
+		local tor = string.format("gust lead %4.0f m RKW %.2f | G %.2f drive %.2f", lead, kMax, s.G or 0, s.genesisDrive or 0)
+		-- (a merger: the boost it gets, and the cells being drawn into it - their updraft share left)
+		if s.mergeBoost then
+			tor ..= string.format(" | merge boost %.2f", s.mergeBoost)
+		end
+		for _, o in world.storms do
+			if o.mergeInto == s.id then
+				local d = math.sqrt((o.x - s.x) ^ 2 + (o.y - s.y) ^ 2)
+				tor ..= string.format(" | %s in at %.0f m, W %.0f, left %.2f%s", o.id, d, o.W or 0, o.mergeF or 0, if o.dead then " MERGED" else "")
+			end
+		end
+		for _, tt in world.tornadoes do
+			if tt.parentId == s.id or (s.tornado ~= nil and tt.id == s.tornado) then
+				-- (the tornado's full state, as a held scene's would be read: why a counterpart's
+				-- tornado differs from its scene's under the same storm, 2026-11-03)
+				local tip = "-"
+				if not tt.ended and (tt.vc or 0) > 1 and tt.params then
+					local cb = math.max(50, tt.cloudBase or 1000)
+					for k = 0, 40 do
+						local z = cb * k / 40
+						if Vortex.condensationRadius(tt, z) > 1 then
+							tip = string.format("%.0f", z)
+							break
+						end
+					end
+				end
+				local lean = math.sqrt((tt.topX or 0) ^ 2 + (tt.topY or 0) ^ 2)
+				tor = string.format("%s %s vc %.0f rc %.0f S %.2f O %.2f decay %.2f cut %s tip %s/%.0f lean %.0f m wet %.2f",
+					tt.id, if tt.ended then "ENDED" else tostring(tt.stage), tt.vc or 0, tt.rc or 0, tt.swirl or 0, tt.O or 0,
+					tt.decay or 0, tostring(tt.cut ~= nil), tip, tt.cloudBase or 0, lean, tt.coreWet or 0)
+			end
+		end
+		print(string.format("[Life] %s %5.0fs | %-36s | W %2.0f Ru %4.0f top %5.0f anvil %3.0f km vmid %2.0f vlow %2.0f occl %.2f rfd %.1f rain %4.0f t/s | %s",
+			L.scene.id, el, phase, s.W or 0, s.Ru or 0, s.top or 0, (s.anvilLen or 0) / 1000, s.vmid or 0, s.vlow or 0, s.occl or 0, s.rfd or 0, (s.precipRate or 0) / 1000, tor))
+		if el > (L.scene.life or 0) or s.dead or not table.find(world.storms, s) then
+			print(string.format("[Life] %s done at %.0f s%s", L.scene.id, el, if s.dead or not table.find(world.storms, s) then " (storm removed)" else ""))
+			lifeLog = nil
+		end
+		return
+	end
+	local tip = "-"
+	if not t.ended and (t.vc or 0) > 1 then
+		local cb = math.max(50, t.cloudBase or 1000)
+		for k = 0, 40 do
+			local z = cb * k / 40
+			if Vortex.condensationRadius(t, z) > 1 then
+				tip = string.format("%.0f", z)
+				break
+			end
+		end
+	end
+	local tilt = math.deg(math.atan2(math.sqrt((t.topX or 0) ^ 2 + (t.topY or 0) ^ 2), math.max(50, t.cloudBase or 1000)))
+	local subs = if t.sv then #t.sv.list else 0
+	local amax = 0
+	for _, sb in (if t.sv then t.sv.list else {}) do
+		amax = math.max(amax, sb.a)
+	end
+	print(string.format("[Life] %s %4.0fs | %-38s | %-24s vc %3.0f rc %4.0f S %.2f O %.2f decay %.2f tip %s/%0.f tilt %2.0f subs %d a%.2f dust %.2f",
+		L.scene.id, el, phase, if t.ended then "ENDED" else tostring(t.stage), t.vc or 0, t.rc or 0, t.swirl or 0, t.O or 0, t.decay or 0,
+		tip, t.cloudBase or 0, tilt, subs, amax, t.debrisLoft or 0))
+	if el > (L.scene.life or 0) or (t.ended and (t.endedFor or 0) > 120) then
+		print(string.format("[Life] %s done at %.0f s", L.scene.id, el))
+		lifeLog = nil
+	end
+end
+
 -- Where to put the town: on the engine's own tornado track (the scenario's `track`) a few
 -- minutes into its life, else ahead of the focus storm.
 local function townSite(): (number, number, number)
@@ -115,7 +218,13 @@ local function townSite(): (number, number, number)
 	return 0, 0, 0
 end
 
-local function placeTown(x: number, y: number, bearing: number)
+-- the relief the lab starts with (the hills toggle swaps in VisualTests.HILLS, a scene at a time)
+local DEFAULT_RELIEF = table.clone(LabConfig.GROUND.relief)
+
+-- (relief: the ground's relief round the town, nil: the default; fast: build the terrain at a
+-- higher budget - the hills toggle, its tornado already on its way)
+local function placeTown(x: number, y: number, bearing: number, relief: any?, fast: boolean?)
+	LabConfig.GROUND.relief = relief or DEFAULT_RELIEF
 	if town then
 		town:destroy()
 	end
@@ -128,9 +237,10 @@ local function placeTown(x: number, y: number, bearing: number)
 	task.defer(function() -- (deferred: none of the build runs inside the caller, e.g. a panel command)
 		local t0 = os.clock()
 		Workspace:SetAttribute("TerrainBuilding", true) -- (the F4 perf sweep reports it)
-		local voxels = LabTerrain.build(LabConfig, x, y, function()
+		local R = LabConfig.GROUND.relief
+		local voxels = LabTerrain.build(LabConfig, R.cx or x, R.cy or y, function()
 			task.wait()
-		end)
+		end, if fast then 0.012 else nil)
 		Workspace:SetAttribute("TerrainBuilding", false)
 		log("terrain: %d hill voxels in %.1f s", voxels, os.clock() - t0)
 	end)
@@ -147,7 +257,7 @@ local function placeTown(x: number, y: number, bearing: number)
 		return town:groundAt(gx, gy)
 	end
 	log("town of %d structures at (%.1f, %.1f) km", #town.structures, x / 1000, y / 1000)
-	pub:send("event", { kind = "town", x = x, y = y, bearing = bearing })
+	pub:send("event", { kind = "town", x = x, y = y, bearing = bearing, relief = LabConfig.GROUND.relief })
 end
 
 local function loadScenario(name: string)
@@ -205,7 +315,7 @@ remotes.hello.OnServerInvoke = function(player)
 		settings = settings,
 		source = source,
 		frameVersion = Frames.VERSION,
-		town = if town then { x = town.cx, y = town.cy } else nil, -- (the ground's relief centre)
+		town = if town then { x = town.cx, y = town.cy, relief = LabConfig.GROUND.relief } else nil, -- (the ground's relief centre)
 	}
 end
 
@@ -261,7 +371,7 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 		-- the client's listeners are connected: from now on it gets broadcasts, and the full state
 		pub:join(player)
 		if town then
-			pub:sendTo(player, "event", { kind = "town", x = town.cx, y = town.cy })
+			pub:sendTo(player, "event", { kind = "town", x = town.cx, y = town.cy, relief = LabConfig.GROUND.relief })
 		end
 		return
 	end
@@ -351,7 +461,7 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 			placeTown(townSite())
 		end
 	elseif c == "resetTown" then
-		placeTown(town.cx, town.cy, 0)
+		placeTown(town.cx, town.cy, 0, LabConfig.GROUND.relief) -- (keeps the hills toggle's relief)
 	elseif c == "genesis" then
 		settings.genesis = not settings.genesis
 		world.genesis = settings.genesis
@@ -372,7 +482,14 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 	elseif c == "testScene" and type(cmd.id) == "string" then
 		-- a deterministic visual test scene (shared/VisualTests): blocks the server a few seconds
 		local scene = VisualTests.byId(cmd.id)
+		if scene and sceneBuilding then
+			-- (one build at a time: overlapping builds each ran ~4x slower and stalled the server,
+			-- 2026-10-31)
+			log("visual test %s ignored: %s is still building", scene.id, sceneBuilding)
+			scene = nil
+		end
 		if scene then
+			sceneBuilding = scene.id
 			-- the rain-wrap toggle: the same scene with its rain wrapped round the tornado
 			if cmd.rainWrap then
 				scene = table.clone(scene)
@@ -388,9 +505,46 @@ remotes.command.OnServerEvent:Connect(function(player, cmd)
 				end
 			end
 			local t0 = os.clock()
-			local t = world:labScene(scene, VisualTests.SITE)
-			log("visual test %s built in %.1f s: %s", scene.id, os.clock() - t0, if t then string.format("%s %s vc %.0f rc %.0f S %.2f", t.id, t.stage, t.vc, t.rc, t.swirl) else "no tornado")
-			pub:send("event", { kind = "labScene", id = scene.id, rainWrap = cmd.rainWrap == true, tornado = t and t.id, x = t and t.x, y = t and t.y })
+			local ok, t = pcall(world.labScene, world, scene, VisualTests.SITE)
+			sceneBuilding = nil
+			if not ok then
+				warn("[StormLab] visual test " .. scene.id .. " failed: " .. tostring(t))
+				t = nil
+			end
+			-- a lifecycle scene: its [Life] log (stage against the reference phase, every 10 s)
+			lifeLog = if scene.life and t then { scene = scene, t = t, next = 0, start = world.time } else nil
+			if scene.life and not t then
+				-- a storm lifecycle scene: log its storm
+				for _, s in world.storms do
+					if s.lab and s.id == "LAB" .. tostring(scene.storm.seed) and not s.dead then
+						lifeLog = { scene = scene, storm = s, next = 0, start = world.time }
+					end
+				end
+			end
+			log("visual test %s built in %.1f s: %s", scene.id, os.clock() - t0, if t then string.format("%s %s vc %.0f rc %.0f S %.2f O %.2f decay %.2f base %.0f lean %.0f m wet %.2f", t.id, t.stage, t.vc, t.rc, t.swirl, t.O or 0, t.decay or 0, t.cloudBase or 0, math.sqrt((t.topX or 0) ^ 2 + (t.topY or 0) ^ 2), t.coreWet or 0) else "no tornado")
+			-- the hills toggle: the relief laid across the tornado's path (VisualTests.HILLS), the
+			-- town on its flat pad beside the track
+			if cmd.hills then
+				local Hh = VisualTests.HILLS
+				local u, v = scene.storm.u or 10, scene.storm.v or 0
+				local m = math.max(math.sqrt(u * u + v * v), 0.1)
+				local dx, dy = u / m, v / m
+				local ax, ay, ahead
+				if t then
+					ax, ay, ahead = t.x, t.y, Hh.ahead
+				else
+					local site = VisualTests.SITE
+					ax, ay, ahead = site.x, site.y, m * (scene.hillsLead or 0)
+				end
+				-- the hills centred on the track; the town (its flat pad) `side` m to the track's
+				-- left, away from the hook (a tornado forms right of its storm's centre: with the
+				-- town on the right the lifecycle scene's tornado crossed the flat pad, 2026-11-02)
+				local cx, cy = ax + dx * ahead, ay + dy * ahead
+				local relief = { amp = Hh.amp, wavelength = Hh.wavelength, radius = Hh.radius, flat = Hh.flat, voxel = Hh.voxel, cx = cx, cy = cy }
+				placeTown(cx - dy * Hh.side, cy + dx * Hh.side, math.atan2(dy, dx), relief, true)
+				log("hills: relief amp %d m on the track %.1f km ahead, the town %.1f km to its left", Hh.amp, ahead / 1000, Hh.side / 1000)
+			end
+			pub:send("event", { kind = "labScene", id = scene.id, rainWrap = cmd.rainWrap == true, hills = cmd.hills == true, tornado = t and t.id, x = t and t.x, y = t and t.y })
 		end
 	elseif c == "clearScene" then
 		for _, s in world.storms do
@@ -428,9 +582,54 @@ local timers = { tornado = 0, state = 0, cold = 0, precip = 0, precipFull = 0 }
 local townAcc = 0
 local stats = { slowMs = 0, fastMs = 0, frames = 0 }
 
+-- debug (2026-11-03): the newest live tornado's full state and its parent's supply, as a Workspace
+-- attribute every 2 s - the server's prints can't be read from tools; compares a scene's held
+-- tornado with its lifecycle counterpart field by field
+local dumpAt = 0
+local function dumpTornado()
+	local tt = nil
+	for _, t in world.tornadoes do
+		if not t.ended then
+			tt = t
+		end
+	end
+	if not tt then
+		workspace:SetAttribute("TorDump", "none")
+		return
+	end
+	local keys = {}
+	for k, v in tt do
+		if type(v) == "number" or type(v) == "boolean" or type(v) == "string" then
+			table.insert(keys, k)
+		end
+	end
+	table.sort(keys)
+	local parts = {}
+	for _, k in keys do
+		local v = tt[k]
+		table.insert(parts, k .. "=" .. (if type(v) == "number" then string.format("%.3g", v) else tostring(v)))
+	end
+	local pv = world:parentOf(tt)
+	if pv then
+		local pp = {}
+		for k, v in pv do
+			if type(v) == "number" then
+				table.insert(pp, k .. "=" .. string.format("%.3g", v))
+			end
+		end
+		table.sort(pp)
+		table.insert(parts, "|| parent " .. table.concat(pp, " "))
+	end
+	workspace:SetAttribute("TorDump", string.format("time %.0f ", world.time) .. table.concat(parts, " "))
+end
+
 RunService.Heartbeat:Connect(function(dt)
 	if not ready then
 		return
+	end
+	if os.clock() > dumpAt then
+		dumpAt = os.clock() + 2
+		pcall(dumpTornado)
 	end
 	if relay then
 		relay:step(math.min(dt, 0.1), settings.timeScale, settings.paused)
@@ -453,6 +652,12 @@ RunService.Heartbeat:Connect(function(dt)
 	if simDt > 0 then
 		-- the tornadoes, finely: substeps no longer than 0.5 s (stepFast does that itself)
 		world:stepFast(simDt)
+		-- the storms, every frame (World.stepStormCells: in the slow step they jumped)
+		world.stormsApart = true
+		world:stepStormCells(simDt)
+		if lifeLog then
+			logLife()
+		end
 		slowPending += simDt
 		vehicles:update(world)
 		debris:update(world, simDt)

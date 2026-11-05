@@ -30,6 +30,10 @@ Frames.STORM_FIELDS = {
 	"lowX", "lowY", "ffdX", "ffdY", "rfdX", "rfdY", "lowering", "wallBase", "precipRate",
 	"srU", "srV", "anvilLen", "anvilU", "anvilV", "upperU", "upperV", "profVersion",
 }
+-- Optional (Round 38; renderers fall back without them): the remembered cloud - cmR (m) and cmQn
+-- (its water over what the updraft brings, 0..1) per Storm.CM_DZ level from the ground - cmVis,
+-- anvilGap, anvilRootR, stratRate, and the gust front's lift gustL and feedback ratio gustRkw
+Frames.STORM_OPTIONAL = { "cmR", "cmQn", "cmVis", "anvilGap", "anvilRootR", "stratRate", "gustL", "gustRkw" }
 Frames.PROFILE_FIELDS = { "id", "version", "wprof", "tiltX", "tiltY" }
 Frames.TORNADO_FIELDS = {
 	"id", "parentId", "x", "y", "ut", "vt", "envU", "envV", "vc", "rc", "swirl", "inflow",

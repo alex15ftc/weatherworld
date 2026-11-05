@@ -8,6 +8,7 @@ local Explore = require(script.Explore)
 local PlayerCars = require(script.PlayerCars)
 local StormHost = require(script.StormHost)
 local ProductFeed = require(script.ProductFeed)
+local LiveStorms = require(script.LiveStorms)
 
 print(`[WeatherWorld] server up: {Config.MAP_STUDS} studs across, {Config.STUDS_PER_MILE} studs/mile`)
 
@@ -18,5 +19,7 @@ TestDrive.start()
 -- the storms: the storm lab's atmosphere run here for this place, kept in step with the weather
 -- engine, published as storm frames v2 (server/StormHost, docs/stormlab/SYNC-PLAN.md)
 StormHost.start()
+-- the cloud model's storms, live (off unless workspace LiveStorms = true; server/LiveStorms)
+LiveStorms.start()
 ProductFeed.start()
 Explore.start()

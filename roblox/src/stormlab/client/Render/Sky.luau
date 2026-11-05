@@ -46,7 +46,10 @@ local Util = require(script.Parent:WaitForChild("FxParts"):WaitForChild("Util"))
 local Sky = {}
 
 local CLEAR_VISIBILITY = 50000 -- m
-local DIFFUSE_FLOOR = 0.35
+-- the least sky light under the deepest cloud, as a share of the open sky's: a thick
+-- cumulonimbus lets ~2-10% through (0.35 was the old flat floor - photos taken from round a storm,
+-- not under it - and kept the ground under a base lit like a dull overcast day, 2026-11-02)
+local DIFFUSE_FLOOR = 0.12
 local OVERCAST_FILL = Color3.fromRGB(150, 153, 160)
 local SHADE_TINT = Color3.fromRGB(216, 226, 252)
 local COOL_TOP = Color3.fromRGB(150, 160, 182)
@@ -58,6 +61,29 @@ local DUST_COLOUR = Color3.fromRGB(176, 150, 116)
 
 local ramp = Util.ramp
 local TOWER_LEVELS = { 0.2, 0.5, 0.8 } -- where the sun ray is tested against a tower (share of its depth)
+
+-- Sky cover (2026-10-31, docs/stormlab/SHOTS.md): how much of the visible sky dome the storms'
+-- cloud fills, from rays over the dome (8 bearings x 5 elevations + the zenith, each weighted by
+-- the share of the view it stands for). It greys the whole sky (Atmosphere haze) and drives the
+-- Terrain Clouds layer, so the sky round a storm is the storm's overcast, not a clear blue dome.
+-- Key \ turns it off (A/B).
+local SKY_ELEV = { 5, 14, 28, 48, 72 }
+local SKY_DIRS = {}
+do
+	for i, e in SKY_ELEV do
+		local lo = if i == 1 then 0 else (SKY_ELEV[i - 1] + e) / 2
+		local hi = if i == #SKY_ELEV then 84 else (SKY_ELEV[i + 1] + e) / 2
+		local w = (math.sin(math.rad(hi)) - math.sin(math.rad(lo))) / 8 -- (solid angle share per bearing)
+		for a = 0, 7 do
+			local az = a * math.pi / 4
+			local ce = math.cos(math.rad(e))
+			table.insert(SKY_DIRS, { math.cos(az) * ce, math.sin(az) * ce, math.sin(math.rad(e)), w })
+		end
+	end
+	table.insert(SKY_DIRS, { 0, 0, 1, 1 - math.sin(math.rad(84)) })
+end
+local SKY_REACH = 90000 -- m: cloud farther than this along the ground is lost in the haze anyway
+local CLOUD_DECK = Color3.fromRGB(132, 138, 148) -- the overcast deck in full daylight
 
 -- 1 well inside a disc of radius r, 0 outside, soft across the edge (0.75 r .. 1.25 r)
 local function disc(dx: number, dy: number, r: number): number
@@ -149,6 +175,7 @@ function Sky.new(ctx)
 		ShadowSoftness = Lighting.ShadowSoftness,
 		EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale,
 		EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale,
+		FogColor = Lighting.FogColor,
 	}
 	local defAtmo = {
 		Density = atmosphere.Density,
@@ -159,14 +186,34 @@ function Sky.new(ctx)
 		Haze = atmosphere.Haze,
 	}
 	local kDefault = Util.extinctionForDensity(defAtmo.Density)
+
+	-- the Terrain Clouds layer (the overcast deck); made here if the place has none
+	local terrain = workspace.Terrain
+	local clouds = terrain:FindFirstChildOfClass("Clouds")
+	local madeClouds = false
+	if not clouds then
+		clouds = Instance.new("Clouds")
+		clouds.Enabled = false
+		clouds.Parent = terrain
+		madeClouds = true
+	end
+	local defClouds = { Enabled = clouds.Enabled, Cover = clouds.Cover, Density = clouds.Density, Color = clouds.Color }
+	-- key \: the storm-owned sky on / off (A/B against the reference shots)
+	ctx.state.skyOwn = if ctx.state.skyOwn == nil then true else ctx.state.skyOwn
+	game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == Enum.KeyCode.BackSlash then
+			ctx.state.skyOwn = not ctx.state.skyOwn
+			print("[sky] storm-owned sky " .. (if ctx.state.skyOwn then "on" else "off"))
+		end
+	end)
 	local kClear = 3.912 / ctx.Config.studs(CLEAR_VISIBILITY) -- (1/stud)
 
 	local st = {
 		ready = false, at = -1, clock = 0,
 		-- targets
-		tS = 1, tD = 1, tOc = 0, tGreen = 0,
+		tS = 1, tD = 1, tOc = 0, tGreen = 0, tCover = 0,
 		-- eased
-		S = 1, D = 1, oc = 0, green = 0, wet = 0, dust = 0, kPrecip = 0,
+		S = 1, D = 1, oc = 0, green = 0, wet = 0, dust = 0, kPrecip = 0, cover = 0,
 		latitude = nil :: number?, rise = 6, set = 18,
 		wasOn = true,
 		published = -1,
@@ -276,9 +323,67 @@ function Sky.new(ctx)
 			tauD += 0.02 * rain ^ 0.8
 			greenCore = math.max(greenCore, ramp(rain, 10, 60) * 0.6)
 		end
+		-- the sky cover: each dome ray, at the storms' base, mid-tower and anvil heights
+		local cover, wSum = 0, 0
+		local coverI, wI = 0, 0 -- (as light on the ground: each ray by its height, sin(elev))
+		for _, r in SKY_DIRS do
+			local rx, ry, rz = r[1], r[2], r[3]
+			local hit = 0
+			for _, s in cw.storms do
+				local ru = s.Ru or 3000
+				local base = s.base or 1200
+				local top = math.max(base + 500, s.top or s.el or 10000)
+				local ha = (s.el or top) - 1000
+				local aT = if s.dead then math.exp(-(s.deadFor or 0) / 600) else 1
+				local aA = if s.dead then math.exp(-(s.deadFor or 0) / 1800) else 1
+				local function at(h: number): (number?, number?)
+					if h <= cz then
+						return nil, nil
+					end
+					local k = (h - cz) / rz
+					if k * math.sqrt(rx * rx + ry * ry) > SKY_REACH then
+						return nil, nil
+					end
+					return cx + rx * k, cy + ry * k
+				end
+				local px, py = at(base)
+				if px then
+					hit = math.max(hit, aT * SL.baseCover(s, px, py))
+					-- the forward flank: cloud over the storm's rain (CardPlan draws it there, Round 17)
+					local vol = cw.vol
+					if vol and vol.nxv and hit < 1 then
+						hit = math.max(hit, ramp(Precip.surface(vol, px, py) or 0, 0.5, 5))
+					end
+				end
+				px, py = at(base + 0.5 * (top - base))
+				if px then
+					hit = math.max(hit, aT * disc(px - s.x, py - s.y, 1.5 * ru))
+				end
+				px, py = at(ha)
+				if px then
+					hit = math.max(hit, aA * (anvilIn(s, px, py)))
+				end
+				if hit >= 1 then
+					break
+				end
+			end
+			cover += r[4] * math.min(1, hit)
+			wSum += r[4]
+			coverI += r[4] * rz * math.min(1, hit)
+			wI += r[4] * rz
+		end
+		st.tCover = if wSum > 0 then cover / wSum else 0
+
 		local oc = 1 - math.exp(-0.55 * tauD)
 		st.tS = if sunUp then math.exp(-tauS) else 1
-		st.tD = DIFFUSE_FLOOR + (1 - DIFFUSE_FLOOR) * (1 - oc)
+		-- the sky light reaching the ground: the open part of the dome (weighted as it lights a level
+		-- surface: the zenith most, the horizon least) plus what comes through the cloud over the
+		-- rest (the overhead optical depth). Under a base only the bright low sky past its edge and a
+		-- little through the cloud light the ground - a dark scene, brighter toward a clear slot or
+		-- the base's edge; beside a storm the open dome keeps it light
+		local openI = 1 - (if wI > 0 then coverI / wI else 0)
+		local through = math.max(DIFFUSE_FLOOR, 1 - oc)
+		st.tD = math.clamp(openI + (1 - openI) * through, DIFFUSE_FLOOR, 1)
 		st.tOc = oc
 		-- green: light from a low sun scattered through a deep, heavily precipitating core
 		local elev = math.deg(math.asin(math.clamp(sz, -1, 1)))
@@ -295,6 +400,10 @@ function Sky.new(ctx)
 		end
 		grade.TintColor = Color3.new(1, 1, 1)
 		grade.Saturation, grade.Contrast = 0, 0
+		for k, v in defClouds do
+			(clouds :: any)[k] = v
+		end
+		st.cover = 0
 		st.ready = false
 		st.latitude = nil
 		st.published = -1
@@ -351,18 +460,23 @@ function Sky.new(ctx)
 		local nightFloor = 0.05 + 0.2 * (ctx.state.moonlight or 0)
 		local dayK = 1 - nightT * (1 - nightFloor)
 		Lighting.Brightness = def.Brightness * (0.05 + 0.95 * S) * (1 - nightT)
-		Lighting.OutdoorAmbient = Util.scale(def.OutdoorAmbient:Lerp(OVERCAST_FILL, 1 - S), (0.45 + 0.55 * D) * dayK)
-		Lighting.Ambient = Util.scale(def.Ambient, (0.5 + 0.5 * D) * dayK)
+		-- (the fills follow the sky light down. At a 0.35 floor the ground under a base drew near
+		-- black (~20/255) under a cloud base at ~80: the ground takes the same sky light the base's
+		-- cards are shaded with, so with a field's albedo it shows at about half the base's value.
+		-- The storm's shadow on ground away from the camera is Render/Ground's, 2026-11-02)
+		Lighting.OutdoorAmbient = Util.scale(def.OutdoorAmbient:Lerp(OVERCAST_FILL, 1 - S), (0.7 + 0.3 * D) * dayK)
+		Lighting.Ambient = Util.scale(def.Ambient, (0.35 + 0.65 * D) * dayK)
 		Lighting.EnvironmentDiffuseScale = def.EnvironmentDiffuseScale * (0.35 + 0.65 * D) * dayK
 		Lighting.EnvironmentSpecularScale = def.EnvironmentSpecularScale * (0.3 + 0.7 * S) * dayK
 		Lighting.ColorShift_Top = def.ColorShift_Top:Lerp(COOL_TOP, 1 - S)
 		-- the eye adapts part of the way to the darkness (never the whole way)
-		Lighting.ExposureCompensation = def.ExposureCompensation + math.clamp(-0.3 * math.log(math.max(0.05, light), 2), 0, 0.8) * (1 - 0.7 * nightT)
+		-- (at most half a stop: up to 0.8 the adaptation gave back most of the darkness under a base)
+		Lighting.ExposureCompensation = def.ExposureCompensation + math.clamp(-0.2 * math.log(math.max(0.05, light), 2), 0, 0.5) * (1 - 0.7 * nightT)
 		Lighting.ShadowSoftness = def.ShadowSoftness + (1 - def.ShadowSoftness) * (1 - S)
 		local sunY = Lighting:GetSunDirection().Y
 		local daylight = math.clamp(sunY * 4, 0, 1)
 		grade.TintColor = Color3.new(1, 1, 1):Lerp(SHADE_TINT, 0.5 * (1 - S) * daylight):Lerp(GREEN_TINT, st.green)
-		grade.Saturation = -0.25 * (1 - light)
+		grade.Saturation = -0.15 * (1 - light)
 		grade.Contrast = -0.1 * (1 - S)
 
 		-- the haze
@@ -371,11 +485,46 @@ function Sky.new(ctx)
 		local dustTarget = ramp(kPkm, 0.2, 3) * dustShare
 		st.wet += (wetTarget - st.wet) * k
 		st.dust += (dustTarget - st.dust) * k
-		local tint = HAZE_COLOUR:Lerp(STORM_GREY, oc):Lerp(RAIN_COLOUR, st.wet):Lerp(DUST_COLOUR, st.dust)
-		atmosphere.Color = Util.scale(tint, 0.45 + 0.55 * D)
-		atmosphere.Decay = Util.scale(tint:Lerp(STORM_GREY, 0.5), 0.35 + 0.45 * D)
-		atmosphere.Haze = math.clamp(defAtmo.Haze + 4 * oc + 3 * st.wet + 2 * st.dust, 0, 10)
-		atmosphere.Glare = math.clamp(defAtmo.Glare * S * (1 - oc), 0, 10)
+		-- the storm-owned sky: the dome's cover greys and darkens the open sky too
+		st.cover += ((if ctx.state.skyOwn then st.tCover else 0) - st.cover) * k
+		local cv = st.cover
+		local grey = math.max(oc, 0.85 * cv)
+		local tint = HAZE_COLOUR:Lerp(STORM_GREY, grey):Lerp(RAIN_COLOUR, st.wet):Lerp(DUST_COLOUR, st.dust)
+		-- (dayK: at night the haze is lit by the skyglow only. Roblox hazes the storm billboards
+		-- too, so with a day-grey haze a night storm 10-20 km off drew light grey against a black
+		-- sky whatever its cards' colour - pure-red cards showed pale pink, 2026-11-01)
+		atmosphere.Color = Util.scale(tint, (0.45 + 0.55 * D) * (1 - 0.3 * cv) * dayK)
+		atmosphere.Decay = Util.scale(tint:Lerp(STORM_GREY, 0.5), (0.35 + 0.45 * D) * (1 - 0.3 * cv) * dayK)
+		-- Roblox's legacy distance fog still greys BillboardGuis under an Atmosphere: the place's
+		-- fixed light-grey FogColor drew a night storm 10 km off at ~170/255 on a black sky (pure
+		-- red cards showed (200,166,166) = 87% fog). A distant storm is mostly this fog, so its
+		-- light must be the cards' sky light (StormCards light(): 0.32 + 0.38 smooth(0, 0.5, sun)
+		-- by day, the skyglow at night), as a share of noon's. On dayK alone it held noon grey
+		-- through dusk, then fell to black at sunset in ~0.05 of sun height (dusk sweep F8,
+		-- 2026-11-01); now the storm dims with its own cards. Noon is unchanged
+		local sunT = math.clamp(sunY0 / 0.5, 0, 1)
+		local daySky = (0.32 + 0.38 * sunT * sunT * (3 - 2 * sunT)) / 0.70
+		Lighting.FogColor = Util.scale(def.FogColor, daySky * (1 - nightT) + nightFloor * nightT)
+		atmosphere.Haze = math.clamp(defAtmo.Haze + 4 * oc + 6 * cv + 3 * st.wet + 2 * st.dust, 0, 10)
+		atmosphere.Glare = math.clamp(defAtmo.Glare * S * (1 - oc) * (1 - cv), 0, 10)
+		-- the overcast deck (Terrain Clouds): fuller and darker with the cover and the light.
+		-- Off by default (LabConfig.SKY_CLOUD_DECK): the layer is one even sheet over the whole
+		-- sky, so it greyed the sunny side as much as the storm's, ended at the horizon in a
+		-- stepped edge and drew dark masses and a ring under the base (2026-11-01 shots P2/P3).
+		-- The storm's own cards (forward flank, anvil) cover the sky where it really is cloud
+		if cv > 0.03 and ctx.Config.SKY_CLOUD_DECK == true then
+			clouds.Enabled = true
+			clouds.Cover = math.clamp(0.45 + 0.55 * cv, 0, 1)
+			clouds.Density = math.clamp(0.25 + 0.6 * cv, 0, 1)
+			clouds.Color = Util.scale(CLOUD_DECK, (0.35 + 0.65 * D) * dayK)
+		elseif clouds.Enabled ~= defClouds.Enabled then
+			clouds.Enabled = defClouds.Enabled
+			clouds.Cover, clouds.Density, clouds.Color = defClouds.Cover, defClouds.Density, defClouds.Color
+		end
+		if st.clock - (st.coverLog or -10) > 5 then
+			st.coverLog = st.clock
+			ctx.root:SetAttribute("SkyCover", math.floor(cv * 100 + 0.5) / 100)
+		end
 		atmosphere.Offset = defAtmo.Offset
 		atmosphere.Density = math.clamp(Util.densityForExtinction(kClear + kP), 0, 0.9)
 	end
@@ -383,6 +532,9 @@ function Sky.new(ctx)
 	function self:destroy()
 		restore()
 		grade:Destroy()
+		if madeClouds then
+			clouds:Destroy()
+		end
 	end
 
 	return self

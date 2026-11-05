@@ -326,6 +326,9 @@ local function heartbeat(dt: number)
 	local simDt = math.min(dt, 0.1) * settings.timeScale
 	-- (the engine's storms are placed by Storm.followEngine; its updates' jumps eased there)
 	w:stepFast(simDt)
+	-- the storms, every frame (World.stepStormCells: in the slow step they jumped)
+	w.stormsApart = true
+	w:stepStormCells(simDt)
 	slowPending += simDt
 	deadline = os.clock() + SLOW_BUDGET
 	w.yieldFn = yieldFn

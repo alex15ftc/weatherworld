@@ -40,6 +40,9 @@ local ctx = Context.new(cw)
 ctx.scenario = info.scenario
 if info.town then
 	LabConfig.groundCentre = { x = info.town.x, y = info.town.y }
+	if info.town.relief then
+		LabConfig.GROUND.relief = info.town.relief -- (the hills toggle's, else the default)
+	end
 end
 ctx.source = info.source or "sim"
 ctx.scenarioData = data
@@ -105,6 +108,9 @@ ctx.signals.event:Connect(function(e)
 	if e.kind == "town" and e.x then
 		-- the ground's relief is centred on the town (LabConfig.groundAt; the server built it)
 		LabConfig.groundCentre = { x = e.x, y = e.y }
+		if e.relief then
+			LabConfig.GROUND.relief = e.relief -- (the hills toggle's, else the default)
+		end
 	end
 	if e.kind == "scenario" then
 		local d = scenarioData(e.scenario, e.data)

@@ -135,12 +135,49 @@ function Panel.new(ctx: any): any
 	local eventText = label("", 11, DIM)
 	label("Keys: Tab next focus · C camera mode · right-drag look · wheel zoom · WASD/E/Q fly (free) · R radar · M map · J wind arrows, [ ] height, K scale · H hide panel", 11, DIM)
 
+	-- debug (F3, 2026-11-03): the server's dump of the newest live tornado's full state (Workspace
+	-- attribute TorDump), full screen - to compare a scene's held tornado with its counterpart
+	local dump = Instance.new("TextLabel")
+	dump.Name = "TorDump"
+	dump.Size = UDim2.new(1, -40, 1, -40)
+	dump.Position = UDim2.fromOffset(20, 20)
+	dump.BackgroundColor3 = Color3.new(0, 0, 0)
+	dump.BackgroundTransparency = 0.15
+	dump.TextColor3 = Color3.new(1, 1, 1)
+	dump.Font = Enum.Font.Code
+	dump.TextSize = 15
+	dump.TextWrapped = true
+	dump.TextXAlignment = Enum.TextXAlignment.Left
+	dump.TextYAlignment = Enum.TextYAlignment.Top
+	dump.Visible = false
+	dump.ZIndex = 50
+	dump.Parent = ctx.ui
+	local function showDump()
+		if dump.Visible then
+			dump.Text = tostring(workspace:GetAttribute("TorDump") or "no dump") .. "\n\nclient: " .. tostring(ctx.root:GetAttribute("TornadoRain") or "") .. " · sight line " .. tostring(ctx.root:GetAttribute("SightRain") or "")
+		end
+	end
+	workspace:GetAttributeChangedSignal("TorDump"):Connect(showDump)
+
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or UserInputService:GetFocusedTextBox() then
 			return
 		end
 		if input.KeyCode == Enum.KeyCode.H then
 			root.Visible = not root.Visible
+		elseif input.KeyCode == Enum.KeyCode.F3 then
+			dump.Visible = not dump.Visible
+			showDump()
+		-- (speed from the keyboard: Home 1x, Delete 15x, End 60x, Insert pause - the panel's buttons don't
+		-- take clicks in some Studio layouts, 2026-11-03)
+		elseif input.KeyCode == Enum.KeyCode.Home then
+			ctx:command({ cmd = "timeScale", value = 1 })
+		elseif input.KeyCode == Enum.KeyCode.Delete then
+			ctx:command({ cmd = "timeScale", value = 15 })
+		elseif input.KeyCode == Enum.KeyCode.End then
+			ctx:command({ cmd = "timeScale", value = 60 })
+		elseif input.KeyCode == Enum.KeyCode.Insert then
+			ctx:command({ cmd = "pause" })
 		end
 	end)
 
@@ -292,10 +329,12 @@ function Panel.new(ctx: any): any
 		end
 		if tt then
 			tornadoText.Text = string.format(
-				"<b>%s</b> %s · age %d:%02d\nvc %.0f m/s · core radius %.0f m · swirl %.2f\npeak 10 m wind %.0f m/s (%.0f mph) → <b>EF%d</b> (peak EF%d)\nmoving %.0f m/s · cloud base %.0f m · funnel at ground %s\ndebris lofted %.2f to %.0f m · path %.1f km",
+				"<b>%s</b> %s · age %d:%02d\nvc %.0f m/s · core radius %.0f m · swirl %.2f\npeak 10 m wind %.0f m/s (%.0f mph) → <b>EF%d</b> (peak EF%d)\nmoving %.0f m/s · cloud base %.0f m (core air %.0f m) · funnel at ground %s\ndebris lofted %.2f to %.0f m · path %.1f km\norganised %.2f · decay %.2f · lean %.0f m",
 				tt.id, tt.stage, math.floor(tt.age / 60), math.floor(tt.age % 60), tt.vc, tt.rc, tt.swirl, tt.peakWind or 0, (tt.peakWind or 0) * 2.237,
-				math.max(0, tt.ef or -1), math.max(0, tt.peakEf or -1), math.sqrt(tt.ut ^ 2 + tt.vt ^ 2), tt.cloudBase,
-				if (tt.funnelGround or 0) > 0.5 then string.format("%.0f m", tt.funnelGround) else "no (dust whirl)", tt.debrisLoft or 0, tt.debrisTop or 0, (tt.pathLength or 0) / 1000)
+				math.max(0, tt.ef or -1), math.max(0, tt.peakEf or -1), math.sqrt(tt.ut ^ 2 + tt.vt ^ 2), tt.cloudBase, tt.coreZb or tt.cloudBase * (1 - 0.7 * math.clamp(tt.coreWet or 0, 0, 1)),
+				if (tt.funnelGround or 0) > 0.5 then string.format("%.0f m", tt.funnelGround) else "no (dust whirl)", tt.debrisLoft or 0, tt.debrisTop or 0, (tt.pathLength or 0) / 1000,
+				tt.O or 0, tt.decay or 0, math.sqrt((tt.topX or 0) ^ 2 + (tt.topY or 0) ^ 2))
+				.. "\n" .. tostring(ctx.root:GetAttribute("TornadoRain") or "")
 		else
 			tornadoText.Text = "none"
 		end

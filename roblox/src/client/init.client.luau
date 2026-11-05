@@ -75,4 +75,6 @@ end
 require(script:WaitForChild("Products")).start()
 -- the storms: the storm lab's billboard renderers on the server's storm frames (client/Weather)
 require(script:WaitForChild("WeatherClient")).start()
+-- the cloud model's storms, live (off unless workspace LiveStorms = true; client/LiveStorms)
+require(script:WaitForChild("LiveStorms")).start()
 require(script:WaitForChild("DebugPage")).start()

@@ -132,7 +132,7 @@ function DebrisCloud.new(ctx: any): any
 		local c = card(used)
 		setTex(c, tex, frame)
 		-- (z: m above the ground there)
-		c.att.WorldPosition = C.toWorldAbout(x, y, z + C.groundAt(x, y), curX, curY, curK)
+		c.att.WorldPosition = C.toWorldAbout(x, y, z + C.groundIn(x, y, curX, curY, curK), curX, curY, curK) -- (the ground at full scale)
 		-- (size, colour and opacity only when they change enough to see: fewer writes)
 		if math.abs(w - (c.w or 0)) > 0.03 * w or math.abs(h - (c.h or 0)) > 0.03 * h or c.k ~= curK then
 			c.w, c.h, c.k = w, h, curK
@@ -224,6 +224,34 @@ function DebrisCloud.new(ctx: any): any
 		end
 	end
 
+	-- The horizontal vortex tubes' wind at (x, y, z above ground): a Rankine swirl round each tube's
+	-- axis (an arc at r0 round its tornado, height zc), tapering toward its ends. The inflow jet is
+	-- fastest lowest, so under a tube the air moves in and over it out: air rises on the side toward
+	-- the tornado. Shared by everything that moves with the air near a violent tornado's foot - the
+	-- dust (Render/TornadoDust) and the funnel's lower body (Render/TornadoCards).
+	local function hvWindAt(x: number, y: number, z: number): (number, number, number)
+		local u, v, w = 0, 0, 0
+		for _, hv in field do
+			local rx, ry = x - hv.x, y - hv.y
+			local rp = math.sqrt(rx * rx + ry * ry)
+			if rp > 1 then
+				local dth = (math.atan2(ry, rx) - hv.th + math.pi) % (2 * math.pi) - math.pi
+				if math.abs(dth) < hv.half then
+					local dr, dz = rp - hv.r0, math.max(1, z) - hv.zc
+					local d = math.sqrt(dr * dr + dz * dz)
+					if d < 5 * hv.a and d > 0.5 then
+						local V = hv.vh * (if d < hv.a then d / hv.a else hv.a / d)
+						V *= 1 - (math.abs(dth) / hv.half) ^ 4
+						local vr, vz = V * dz / d, -V * dr / d
+						u += rx / rp * vr
+						v += ry / rp * vr
+						w += vz
+					end
+				end
+			end
+		end
+		return u, v, w
+	end
 	local statAt, statN = -math.huge, -1
 	local list = {}
 	local entryPool = {}
@@ -239,6 +267,7 @@ function DebrisCloud.new(ctx: any): any
 		table.clear(field)
 		nTubes = 0
 		ctx.hvField = field
+		ctx.hvWindAt = hvWindAt
 		if adapter and show then
 			local cam = Workspace.CurrentCamera
 			local camPos = cam.CFrame.Position

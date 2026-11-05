@@ -1,0 +1,71 @@
+{
+  "name": "CloudLab",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "CloudLab": {
+        "$className": "Folder",
+        "Model": {
+          "$path": "src/cloudlab/shared/Model"
+        }
+      }
+    },
+    "ServerStorage": {
+      "CloudLabData": {
+        "$path": "src/stormlab/data"
+      }
+    },
+    "ServerScriptService": {
+      "CloudLab": {
+        "$path": "src/cloudlab/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "CloudLab": {
+          "$path": "src/cloudlab/client"
+        }
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
+      },
+      "Floor": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Size": [
+            2048,
+            2,
+            2048
+          ],
+          "Position": [
+            0,
+            -3,
+            3400
+          ],
+          "Transparency": 1,
+          "CanCollide": true
+        }
+      },
+      "Spawn": {
+        "$className": "SpawnLocation",
+        "$properties": {
+          "Anchored": true,
+          "Size": [
+            12,
+            1,
+            12
+          ],
+          "Position": [
+            0,
+            -1.5,
+            3400
+          ],
+          "Neutral": true
+        }
+      }
+    }
+  }
+}

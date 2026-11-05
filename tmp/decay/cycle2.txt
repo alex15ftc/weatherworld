@@ -1,0 +1,74 @@
+m 13 T01 cell     organizing vc 21.7 rc 108 dec0.00 base 371 cut-
+m 14 T01 cell     mature    vc 56.6 rc  95 dec0.00 base 389 cut-
+m 15 T01 cell     mature    vc 78.0 rc  84 dec0.00 base 408 cut-
+m 16 T01 cell     mature    vc 85.7 rc  79 dec0.00 base 427 cut-
+m 17 T01 cell     mature    vc 92.1 rc  76 dec0.00 base 444 cut-
+m 18 T01 cell     mature    vc 90.4 rc  76 dec0.00 base 461 cut-
+m 19 T01 cell     mature    vc 83.9 rc  76 dec0.00 base 479 cut-
+m 20 T01 cell     mature    vc 76.9 rc  76 dec0.00 base 493 cut-
+m 21 T01 cell     mature    vc 72.2 rc  75 dec0.00 base 505 cut-
+m 22 T01 cell     mature    vc 74.2 rc  75 dec0.00 base 520 cut-
+m 22 storm C002 occl0.58 cycle0 vlow23.6 low850
+m 23 T01 occluded shrinking vc 81.4 rc  71 dec0.14 base 533 cut(vl23.5 wl28.0) occ vl22.7 wl28.0 occl0.63 cb543 base1397
+m 24 T01 occluded rope      vc 93.0 rc  53 dec0.54 base 547 cut(vl22.9 wl27.9) occ vl20.6 wl27.4 occl0.70 cb568 base1403
+m 24 storm C001 occl0.56 cycle0 vlow17.4 low846
+m 25 T01 occluded dissipating vc 85.4 rc  33 dec0.94 base 577 cut(vl21.9 wl27.6) occ vl18.6 wl26.0 occl0.75 cb619 base1414
+m 25 storm C001 occl0.59 cycle0 vlow17.4 low833
+m 26 T01 occluded dissipating vc 44.8 rc  22 dec1.00 base 631 cut(vl20.7 wl26.9) occ vl16.8 wl24.0 occl0.80 cb697 base1428
+m 26 storm C001 occl0.62 cycle0 vlow17.2 low822
+m 27 T01 occluded dissipating vc 23.0 rc  20 dec1.00 base 709 cut(vl19.4 wl25.6) occ vl15.2 wl21.2 occl0.83 cb797 base1443
+m 27 storm C001 occl0.64 cycle0 vlow17.0 low820
+m 28 T01 occluded dissipating vc 11.8 rc  19 dec1.00 base 807 cut(vl18.0 wl23.9) occ vl13.8 wl17.8 occl0.86 cb913 base1456
+m 28 storm C001 occl0.67 cycle0 vlow16.8 low808
+m 29 T01 occluded ended     vc  9.0 rc  19 dec1.00 base 851 cut(vl17.4 wl23.0) occ vl13.2 wl16.3 occl0.87 cb963 base1461
+m 29 storm C001 occl0.70 cycle0 vlow16.6 low791
+m 30 storm C001 occl0.73 cycle0 vlow16.4 low788
+m 31 storm C001 occl0.75 cycle0 vlow16.1 low790
+m 32 storm C001 occl0.78 cycle0 vlow15.7 low767
+m 33 storm C001 occl0.81 cycle0 vlow15.2 low761
+m 34 storm C001 occl0.84 cycle0 vlow14.6 low755
+m 35 storm C001 occl0.86 cycle0 vlow13.8 low726
+m 36 storm C001 occl0.89 cycle0 vlow12.8 low708
+m 36 storm C003 occl0.55 cycle0 vlow10.8 low769
+m 37 storm C001 occl0.92 cycle0 vlow11.7 low700
+m 37 storm C003 occl0.57 cycle0 vlow10.6 low764
+m 38 storm C001 occl0.94 cycle0 vlow10.5 low672
+m 38 storm C003 occl0.60 cycle0 vlow10.3 low751
+m 39 storm C001 occl0.97 cycle0 vlow9.3 low651
+m 39 storm C003 occl0.62 cycle0 vlow10.0 low741
+m 40 storm C001 occl0.99 cycle0 vlow8.1 low633
+m 40 storm C003 occl0.64 cycle0 vlow9.8 low739
+m 41 storm C003 occl0.66 cycle0 vlow9.5 low739
+m 42 storm C003 occl0.68 cycle0 vlow9.2 low722
+m 43 storm C003 occl0.70 cycle0 vlow9.0 low717
+m 44 storm C002 occl0.58 cycle1 vlow17.6 low697
+m 44 storm C003 occl0.72 cycle0 vlow8.9 low717
+m 45 storm C002 occl0.61 cycle1 vlow17.5 low689
+m 45 storm C003 occl0.74 cycle0 vlow8.7 low712
+m 46 storm C002 occl0.63 cycle1 vlow17.2 low679
+m 46 storm C003 occl0.76 cycle0 vlow8.4 low705
+m 47 storm C002 occl0.66 cycle1 vlow16.9 low675
+m 47 storm C003 occl0.78 cycle0 vlow8.2 low704
+m 48 storm C002 occl0.69 cycle1 vlow16.6 low677
+m 48 storm C003 occl0.80 cycle0 vlow7.8 low695
+m 49 storm C002 occl0.72 cycle1 vlow16.2 low675
+m 49 storm C003 occl0.82 cycle0 vlow7.4 low682
+m 50 storm C002 occl0.75 cycle1 vlow15.9 low675
+m 50 storm C003 occl0.84 cycle0 vlow7.0 low675
+m 51 storm C002 occl0.78 cycle1 vlow15.4 low671
+m 51 storm C003 occl0.86 cycle0 vlow6.5 low670
+m 52 storm C002 occl0.80 cycle1 vlow14.9 low670
+m 52 storm C003 occl0.88 cycle0 vlow6.0 low655
+m 53 storm C002 occl0.83 cycle1 vlow14.3 low663
+m 53 storm C003 occl0.90 cycle0 vlow5.4 low644
+m 54 storm C002 occl0.86 cycle1 vlow13.4 low654
+m 54 storm C003 occl0.92 cycle0 vlow4.9 low636
+m 55 storm C002 occl0.89 cycle1 vlow12.3 low643
+m 55 storm C003 occl0.94 cycle0 vlow4.3 low625
+m 56 storm C002 occl0.91 cycle1 vlow11.1 low621
+m 56 storm C003 occl0.96 cycle0 vlow3.8 low615
+m 57 storm C002 occl0.94 cycle1 vlow9.9 low607
+m 57 storm C003 occl0.98 cycle0 vlow3.4 low611
+m 58 storm C002 occl0.97 cycle1 vlow8.8 low593
+m 58 storm C003 occl1.00 cycle0 vlow2.9 low603
+m 59 storm C002 occl0.99 cycle1 vlow7.6 low577

@@ -205,6 +205,42 @@ function SceneLight.skyDir(ctx: any, x: number, y: number, z: number): (number, 
 	return vx / m, vy / m, aniso
 end
 
+-- The light on level ground at (x, y), 2026-11-02: direct sun through the storms plus the sky
+-- light left by the cloud bases over it (each storm's own footprint, SceneLight.baseCover, a
+-- little wider than the sun test's, as the overhead cover in Render/Sky). sample()'s sky light is
+-- the camera's (Render/Sky's dome), the same everywhere: this one is local, so the ground under a
+-- storm away from the camera can be shaded against the camera's own - the storm's shadow on the
+-- land as seen from outside it. floor: the sky light a fully covered point keeps.
+function SceneLight.groundLight(ctx: any, x: number, y: number, z: number, floor: number?): number
+	if os.clock() - cacheAt > CACHE_S then
+		SceneLight.sample(ctx, x, y, z) -- (refreshes the per-frame cache)
+	end
+	local sun = cacheSun
+	local elev = sun.Y
+	local night = smooth(0.05, -0.17, elev)
+	local cover = 0
+	local cw = ctx.cw
+	if cw and cw.storms then
+		for _, s in cw.storms do
+			local ru = s.Ru or 3000
+			local dx, dy = x - s.x, y - s.y
+			-- (the footprint reaches ~5 Ru forward at most)
+			if dx * dx + dy * dy < (6 * ru) ^ 2 then
+				local c = SceneLight.baseCover(s, x, y, 1.15)
+				if s.dead then
+					c *= exp(-(s.deadFor or 0) / 600)
+				end
+				cover = 1 - (1 - cover) * (1 - c)
+			end
+		end
+	end
+	local f = floor or 0.12
+	local open = f + (1 - f) * (1 - cover)
+	local skyL = (0.32 + 0.38 * smooth(0, 0.5, elev)) * open
+	local direct = if elev > 0 then (if cw and cw.storms then sunThrough(cw, x, y, z, sun) else 1) * smooth(0, 0.15, elev) * elev else 0
+	return (skyL + direct) * (1 - night) + (0.035 + 0.12 * (ctx.state.moonlight or 0)) * night
+end
+
 -- a grey cloud colour under that light: albedo x (sky + sun x facing) + flash (bluish white)
 function SceneLight.shade(L: any, albedo: number, facing: number): Color3
 	local warm = smooth(0.4, 0.05, L.sunDir.Y) * (1 - L.night)

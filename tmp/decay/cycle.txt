@@ -1,0 +1,176 @@
+m 13 T01 cell     organizing vc 21.7 rc 108 dec0.00 base 371 cut-
+m 14 T01 cell     mature    vc 56.6 rc  95 dec0.00 base 389 cut-
+m 15 T01 cell     mature    vc 78.0 rc  84 dec0.00 base 408 cut-
+m 16 T01 cell     mature    vc 85.7 rc  79 dec0.00 base 427 cut-
+m 17 T01 cell     mature    vc 92.1 rc  76 dec0.00 base 444 cut-
+m 18 T01 cell     mature    vc 90.4 rc  76 dec0.00 base 461 cut-
+m 19 T01 cell     mature    vc 83.9 rc  76 dec0.00 base 479 cut-
+m 20 T01 cell     mature    vc 76.9 rc  76 dec0.00 base 493 cut-
+m 21 T01 cell     mature    vc 72.2 rc  75 dec0.00 base 505 cut-
+m 22 T01 cell     mature    vc 74.2 rc  75 dec0.00 base 520 cut-
+m 22 storm C002 occl0.58 cycle0 vlow23.6 low850
+m 23 T01 occluded shrinking vc 81.4 rc  71 dec0.14 base 542 cut(vl23.5 wl28.0) occ vl22.7 occl0.63 cb601 base1397
+m 24 T01 occluded rope      vc 92.9 rc  53 dec0.54 base 637 cut(vl22.9 wl27.9) occ vl20.6 occl0.70 cb751 base1403
+m 24 storm C001 occl0.56 cycle0 vlow17.4 low846
+m 25 T01 occluded dissipating vc 85.2 rc  33 dec0.94 base 758 cut(vl21.9 wl27.6) occ vl18.6 occl0.75 cb880 base1414
+m 25 storm C001 occl0.59 cycle0 vlow17.4 low833
+m 26 T01 occluded dissipating vc 44.6 rc  23 dec1.00 base 878 cut(vl20.7 wl26.9) occ vl16.8 occl0.80 cb991 base1428
+m 26 storm C001 occl0.62 cycle0 vlow17.2 low822
+m 27 T01 occluded dissipating vc 22.9 rc  21 dec1.00 base 986 cut(vl19.4 wl25.6) occ vl15.2 occl0.83 cb1086 base1443
+m 27 storm C001 occl0.64 cycle0 vlow17.0 low820
+m 28 T01 occluded dissipating vc 11.8 rc  20 dec1.00 base1078 cut(vl18.0 wl23.9) occ vl13.8 occl0.86 cb1163 base1456
+m 28 storm C001 occl0.67 cycle0 vlow16.8 low808
+m 29 T01 occluded ended     vc  9.0 rc  19 dec1.00 base1112 cut(vl17.4 wl23.0) occ vl13.2 occl0.87 cb1192 base1461
+m 29 storm C001 occl0.70 cycle0 vlow16.6 low791
+m 30 storm C001 occl0.73 cycle0 vlow16.4 low788
+m 31 storm C001 occl0.75 cycle0 vlow16.1 low790
+m 32 storm C001 occl0.78 cycle0 vlow15.7 low767
+m 33 storm C001 occl0.81 cycle0 vlow15.2 low761
+m 34 storm C001 occl0.84 cycle0 vlow14.6 low755
+m 35 storm C001 occl0.86 cycle0 vlow13.8 low726
+m 36 storm C001 occl0.89 cycle0 vlow12.8 low708
+m 36 storm C003 occl0.55 cycle0 vlow10.8 low769
+m 37 storm C001 occl0.92 cycle0 vlow11.7 low700
+m 37 storm C003 occl0.57 cycle0 vlow10.6 low764
+m 38 storm C001 occl0.94 cycle0 vlow10.5 low672
+m 38 storm C003 occl0.60 cycle0 vlow10.3 low751
+m 39 storm C001 occl0.97 cycle0 vlow9.3 low651
+m 39 storm C003 occl0.62 cycle0 vlow10.0 low741
+m 40 storm C001 occl0.99 cycle0 vlow8.1 low633
+m 40 storm C003 occl0.64 cycle0 vlow9.8 low739
+m 41 storm C003 occl0.66 cycle0 vlow9.5 low739
+m 42 storm C003 occl0.68 cycle0 vlow9.2 low722
+m 43 storm C003 occl0.70 cycle0 vlow9.0 low717
+m 44 storm C002 occl0.58 cycle1 vlow17.6 low697
+m 44 storm C003 occl0.72 cycle0 vlow8.9 low717
+m 45 storm C002 occl0.61 cycle1 vlow17.5 low689
+m 45 storm C003 occl0.74 cycle0 vlow8.7 low712
+m 46 storm C002 occl0.63 cycle1 vlow17.2 low679
+m 46 storm C003 occl0.76 cycle0 vlow8.4 low705
+m 47 storm C002 occl0.66 cycle1 vlow16.9 low675
+m 47 storm C003 occl0.78 cycle0 vlow8.2 low704
+m 48 storm C002 occl0.69 cycle1 vlow16.6 low677
+m 48 storm C003 occl0.80 cycle0 vlow7.8 low695
+m 49 storm C002 occl0.72 cycle1 vlow16.2 low675
+m 49 storm C003 occl0.82 cycle0 vlow7.4 low682
+m 50 storm C002 occl0.75 cycle1 vlow15.9 low675
+m 50 storm C003 occl0.84 cycle0 vlow7.0 low675
+m 51 storm C002 occl0.78 cycle1 vlow15.4 low671
+m 51 storm C003 occl0.86 cycle0 vlow6.5 low670
+m 52 storm C002 occl0.80 cycle1 vlow14.9 low670
+m 52 storm C003 occl0.88 cycle0 vlow6.0 low655
+m 53 storm C002 occl0.83 cycle1 vlow14.3 low663
+m 53 storm C003 occl0.90 cycle0 vlow5.4 low644
+m 54 storm C002 occl0.86 cycle1 vlow13.4 low654
+m 54 storm C003 occl0.92 cycle0 vlow4.9 low636
+m 55 storm C002 occl0.89 cycle1 vlow12.3 low643
+m 55 storm C003 occl0.94 cycle0 vlow4.3 low625
+m 56 storm C002 occl0.91 cycle1 vlow11.1 low621
+m 56 storm C003 occl0.96 cycle0 vlow3.8 low615
+m 57 storm C002 occl0.94 cycle1 vlow9.9 low607
+m 57 storm C003 occl0.98 cycle0 vlow3.4 low611
+m 58 storm C002 occl0.97 cycle1 vlow8.8 low593
+m 58 storm C003 occl1.00 cycle0 vlow2.9 low603
+m 59 storm C002 occl0.99 cycle1 vlow7.6 low577
+m 65 storm C001 occl0.57 cycle1 vlow17.8 low753
+m 66 storm C001 occl0.60 cycle1 vlow17.9 low755
+m 67 storm C001 occl0.63 cycle1 vlow17.9 low763
+m 68 storm C001 occl0.66 cycle1 vlow17.8 low759
+m 69 storm C001 occl0.68 cycle1 vlow17.7 low761
+m 70 storm C001 occl0.71 cycle1 vlow17.5 low764
+m 71 storm C001 occl0.74 cycle1 vlow17.2 low760
+m 72 storm C001 occl0.77 cycle1 vlow16.9 low767
+m 73 storm C001 occl0.80 cycle1 vlow16.6 low757
+m 74 storm C001 occl0.83 cycle1 vlow16.1 low745
+m 75 storm C001 occl0.86 cycle1 vlow15.2 low728
+m 76 storm C001 occl0.89 cycle1 vlow14.1 low706
+m 77 storm C001 occl0.92 cycle1 vlow12.9 low688
+m 78 storm C001 occl0.95 cycle1 vlow11.6 low668
+m 79 storm C001 occl0.97 cycle1 vlow10.2 low639
+m 86 storm C002 occl0.57 cycle2 vlow12.0 low646
+m 87 storm C002 occl0.59 cycle2 vlow11.8 low648
+m 88 storm C002 occl0.62 cycle2 vlow11.7 low649
+m 89 storm C002 occl0.64 cycle2 vlow11.5 low642
+m 90 storm C002 occl0.66 cycle2 vlow11.3 low643
+m 91 storm C002 occl0.69 cycle2 vlow11.1 low640
+m 91 storm C003 occl0.57 cycle1 vlow8.9 low718
+m 92 storm C002 occl0.71 cycle2 vlow10.8 low646
+m 92 storm C003 occl0.59 cycle1 vlow8.9 low719
+m 93 storm C002 occl0.73 cycle2 vlow10.6 low650
+m 93 storm C003 occl0.61 cycle1 vlow9.0 low720
+m 94 storm C002 occl0.76 cycle2 vlow10.2 low642
+m 94 storm C003 occl0.63 cycle1 vlow9.0 low729
+m 95 storm C002 occl0.78 cycle2 vlow9.9 low625
+m 95 storm C003 occl0.65 cycle1 vlow9.0 low710
+m 96 storm C002 occl0.80 cycle2 vlow9.5 low622
+m 96 storm C003 occl0.67 cycle1 vlow9.0 low706
+m 97 storm C002 occl0.82 cycle2 vlow9.0 low611
+m 97 storm C003 occl0.69 cycle1 vlow9.0 low702
+m 98 storm C002 occl0.85 cycle2 vlow8.5 low607
+m 98 storm C003 occl0.71 cycle1 vlow9.0 low707
+m 99 storm C002 occl0.87 cycle2 vlow8.0 low597
+m 99 storm C003 occl0.73 cycle1 vlow8.9 low711
+m100 storm C002 occl0.89 cycle2 vlow7.4 low586
+m100 storm C003 occl0.75 cycle1 vlow8.7 low712
+m101 storm C002 occl0.91 cycle2 vlow6.7 low572
+m101 storm C003 occl0.77 cycle1 vlow8.5 low706
+m102 storm C002 occl0.93 cycle2 vlow6.0 low559
+m102 storm C003 occl0.79 cycle1 vlow8.3 low696
+m103 storm C002 occl0.95 cycle2 vlow5.4 low555
+m103 storm C003 occl0.81 cycle1 vlow8.2 low691
+m104 storm C001 occl0.57 cycle2 vlow17.6 low783
+m104 storm C002 occl0.97 cycle2 vlow4.8 low553
+m104 storm C003 occl0.83 cycle1 vlow7.9 low686
+m105 storm C001 occl0.60 cycle2 vlow17.5 low778
+m105 storm C002 occl0.99 cycle2 vlow4.2 low541
+m105 storm C003 occl0.85 cycle1 vlow7.5 low679
+m106 storm C001 occl0.63 cycle2 vlow17.3 low766
+m106 storm C003 occl0.87 cycle1 vlow7.1 low671
+m107 storm C001 occl0.65 cycle2 vlow17.0 low771
+m107 storm C003 occl0.89 cycle1 vlow6.7 low656
+m108 storm C001 occl0.68 cycle2 vlow16.7 low771
+m108 storm C003 occl0.91 cycle1 vlow6.2 low641
+m109 storm C001 occl0.71 cycle2 vlow16.4 low767
+m109 storm C003 occl0.93 cycle1 vlow5.7 low642
+m110 storm C001 occl0.74 cycle2 vlow16.2 low759
+m110 storm C003 occl0.95 cycle1 vlow5.2 low629
+m111 storm C001 occl0.76 cycle2 vlow15.8 low752
+m111 storm C003 occl0.97 cycle1 vlow4.6 low620
+m112 storm C001 occl0.79 cycle2 vlow15.4 low749
+m112 storm C003 occl0.99 cycle1 vlow4.1 low609
+m113 storm C001 occl0.82 cycle2 vlow15.0 low743
+m114 storm C001 occl0.84 cycle2 vlow14.4 low733
+m115 storm C001 occl0.87 cycle2 vlow13.5 low715
+m116 storm C001 occl0.90 cycle2 vlow12.4 low692
+m117 storm C001 occl0.92 cycle2 vlow11.1 low665
+m118 storm C001 occl0.95 cycle2 vlow9.9 low632
+m119 storm C001 occl0.98 cycle2 vlow8.6 low606
+m136 storm C002 occl0.55 cycle3 vlow9.7 low692
+m137 storm C002 occl0.57 cycle3 vlow9.7 low707
+m138 storm C002 occl0.59 cycle3 vlow9.6 low707
+m139 storm C002 occl0.61 cycle3 vlow9.4 low698
+m140 storm C002 occl0.63 cycle3 vlow9.2 low689
+m141 storm C002 occl0.65 cycle3 vlow9.1 low678
+m142 storm C002 occl0.67 cycle3 vlow9.1 low666
+m143 storm C002 occl0.70 cycle3 vlow9.1 low655
+m143 storm C003 occl0.56 cycle2 vlow9.6 low716
+m144 storm C002 occl0.72 cycle3 vlow9.1 low645
+m144 storm C003 occl0.58 cycle2 vlow9.5 low713
+m145 storm C001 occl0.55 cycle3 vlow15.0 low744
+m145 storm C002 occl0.74 cycle3 vlow9.2 low633
+m145 storm C003 occl0.60 cycle2 vlow9.5 low707
+m146 storm C001 occl0.58 cycle3 vlow14.8 low745
+m146 storm C002 occl0.76 cycle3 vlow9.3 low622
+m146 storm C003 occl0.62 cycle2 vlow9.4 low705
+m147 storm C001 occl0.60 cycle3 vlow14.7 low743
+m147 storm C002 occl0.78 cycle3 vlow9.3 low610
+m147 storm C003 occl0.64 cycle2 vlow9.4 low695
+m148 storm C001 occl0.63 cycle3 vlow14.6 low733
+m148 storm C002 occl0.80 cycle3 vlow9.3 low600
+m148 storm C003 occl0.66 cycle2 vlow9.3 low693
+m149 storm C001 occl0.66 cycle3 vlow14.4 low724
+m149 storm C002 occl0.82 cycle3 vlow9.3 low588
+m149 storm C003 occl0.68 cycle2 vlow9.2 low695
+m150 storm C001 occl0.68 cycle3 vlow14.2 low723
+m150 storm C002 occl0.84 cycle3 vlow9.0 low575
+m150 storm C003 occl0.70 cycle2 vlow9.0 low682

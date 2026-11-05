@@ -61,15 +61,90 @@ end
 -- sizes - at scaleAbout(cx, cy) studs a metre. The lab: SCALE everywhere (the same as toWorld).
 -- The game: true scale near the camera, less far away (Config.skyScaleAt: client/WeatherClient),
 -- so a near storm is true against the houses and a far one stands at a believable angle.
+-- Storms drawn as meshes (client/Render/StormVolume) are scaled copies pulled toward the camera: a
+-- point P is drawn at cam + (P - cam) * kv, which looks the same from the camera and fits a whole
+-- storm inside one part (2048 studs at most, drawn only within ~7000 studs). Everything drawn
+-- about a point of that storm (its wall cloud, scud, tornado, dust, rain shafts, flashes) is pulled
+-- by the same kv through scaleAbout / toWorldAbout, so it keeps its depth order against the mesh.
+-- LabConfig.pull: { { x, y (m), r2 (m^2: the storm's reach), k (kv) } }, set each frame by
+-- StormVolume; empty on the server and with the mesh style off.
+LabConfig.pull = {}
+-- Far pull (the lab only, on clients): Roblox stops drawing billboards ~100000 studs (~28 km)
+-- from the camera, so at true scale a storm farther than that lost its cloud while its rain
+-- shafts and flashes (pulled in by their own renderers) still drew - rain and bolts out of a clear
+-- sky, and a mature supercell gone from 34 km (SC check, 2026-11-01). Everything drawn about a
+-- point beyond FAR_PULL studs is drawn as a copy pulled toward the camera (the same angular size
+-- and direction), as the mesh bodies' pull does. The game sets F.sky (its own far scale) instead.
+-- (Not onto one shell: until 2026-11-02 every point past FAR_PULL was drawn AT FAR_PULL, so a storm at
+-- 20 km and one at 35 km behind it stood at the same distance and their billboards sorted against
+-- each other - the far storm showed through the near one, user. The drawn distance now still grows
+-- with the true one - FAR_PULL + FAR_SPAN (1 - e^-(d - FAR_PULL)/FAR_SPAN), continuous at FAR_PULL,
+-- under FAR_PULL + FAR_SPAN - so storms keep their depth order: 20 vs 35 km are drawn ~2 km apart)
+local FAR_PULL = 60000 -- studs (~17 km): where the pull starts
+local FAR_SPAN = 15000 -- studs: the drawn distances past it, up to 75000 (room for a storm's reach)
+local IS_CLIENT = game:GetService("RunService"):IsClient()
+local camPos: Vector3? = nil
+if IS_CLIENT then
+	game:GetService("RunService"):BindToRenderStep("LabConfigFarPull", Enum.RenderPriority.Camera.Value + 1, function()
+		local cam = workspace.CurrentCamera
+		camPos = if cam then cam.CFrame.Position else nil
+	end)
+end
+local function farPull(cx: number, cy: number): number
+	if not camPos or F.sky then
+		return 1
+	end
+	local dx, dz = F.ox + cx * F.kh - camPos.X, F.oz - cy * F.kh - camPos.Z
+	local d2 = dx * dx + dz * dz
+	if d2 <= FAR_PULL * FAR_PULL then
+		return 1
+	end
+	local d = math.sqrt(d2)
+	return (FAR_PULL + FAR_SPAN * (1 - math.exp(-(d - FAR_PULL) / FAR_SPAN))) / d
+end
+
+function LabConfig.pullAt(cx: number, cy: number): number
+	local best, k = math.huge, nil
+	for _, p in LabConfig.pull do
+		local d2 = (cx - p.x) ^ 2 + (cy - p.y) ^ 2
+		if d2 < p.r2 and d2 < best then
+			best, k = d2, p.k
+		end
+	end
+	return k or farPull(cx, cy)
+end
+
 function LabConfig.scaleAbout(cx: number, cy: number): number
 	local f = F.sky
-	return if f then f(cx, cy) else F.ks
+	local s = if f then f(cx, cy) else F.ks
+	return s * LabConfig.pullAt(cx, cy)
 end
 
 function LabConfig.toWorldAbout(x: number, y: number, z: number, cx: number, cy: number, s: number?): Vector3
 	local k = s or LabConfig.scaleAbout(cx, cy)
 	local d = F.datum
-	return Vector3.new(F.ox + cx * F.kh + (x - cx) * k, (if d then d(cx, cy) else 0) + z * k, F.oz - cy * F.kh - (y - cy) * k)
+	local G = Vector3.new(F.ox + cx * F.kh, if d then d(cx, cy) else 0, F.oz - cy * F.kh)
+	local kv = LabConfig.pullAt(cx, cy)
+	if kv < 1 then
+		local cam = camPos or workspace.CurrentCamera.CFrame.Position
+		G = cam + (G - cam) * kv
+	end
+	return G + Vector3.new((x - cx) * k, z * k, -(y - cy) * k)
+end
+
+-- The ground under (x, y), in metres at scale k about the centre (cx, cy): what to add to a height
+-- above the ground so toWorldAbout puts it on the true ground. Heights above the ground scale with
+-- the thing drawn (a far storm in the game is drawn small: Config.skyScaleAt), but the ground does
+-- not - the terrain is at full scale. Scaling the ground with the storm sank a far tornado's foot
+-- and dust into hills and floated them over valleys (2026-11-02). In the lab k = the true scale x
+-- the pull, so this is groundAt.
+function LabConfig.groundIn(x: number, y: number, cx: number, cy: number, k: number): number
+	return LabConfig.groundAt(x, y) * LabConfig.groundScale(cx, cy, k)
+end
+
+-- the factor groundIn applies (1 in the lab): for a renderer converting many ground heights at once
+function LabConfig.groundScale(cx: number, cy: number, k: number): number
+	return F.kv * LabConfig.pullAt(cx, cy) / math.max(k, 1e-6)
 end
 
 -- an offset from an anchor at the centre, at the centre's scale s
@@ -118,8 +193,10 @@ LabConfig.DEFAULT_TIME_SCALE = 1
 -- (Sim/EngineFollow); "own" = the lab's own dynamics (F4 panel: Storms button)
 LabConfig.DEFAULT_STORMS = "engine"
 -- the lab's own storms ("own" mode): a boost on the tornado genesis drive, so every scenario makes
--- tornadoes to look at (Storm.GENESIS_EASE; 1 = the physics as it is)
-LabConfig.GENESIS_EASE = 3
+-- tornadoes to look at (Storm.GENESIS_EASE; 1 = the physics as it is). 1 since 2026-11-03: with the
+-- meso re-forming at the updraft after a cycle and the cloud-base factor counted once, the Supercell
+-- day makes 5-6 tornadoes in 2 h and the SquallLine day 27 unboosted (3 gave 43)
+LabConfig.GENESIS_EASE = 1
 LabConfig.SPIN_UP_SECONDS = 600 -- simulated before anyone watches (fills rain and cold pools)
 
 -- Network: remotes live in ReplicatedStorage.StormLabNet (made by the server)
@@ -169,9 +246,39 @@ LabConfig.LIMITS = {
 -- and its outline shows as straight lines across them. Kept for a try with smaller tiles or a
 -- different primitive.
 -- ON again 2026-10-30 as solid discs (BaseDeck): opaque parts write depth, so nothing sorts.
+-- solid: opaque discs inside the soft edge band (off 2026-10-31: they drew as hard dark ovals);
 -- thick/lump: m; gain: colour factor against the engine lighting the solid parts get;
 -- material: Enum.Material for the discs.
-LabConfig.DECK = { enabled = true, range = 5500, thick = 60, lump = 30, gain = 1.7, material = Enum.Material.Neon }
+-- Storm bodies as meshes (client/Render/StormVolume, 2026-10-31): the tower (with its top and
+-- overshooting top), the anvil and the rain-free base of the most prominent storms as one opaque,
+-- self-lit EditableMesh each, shaped from the same fields as the cards (CloudParts/StormShape);
+-- their wall cloud, inflow band, scud, rain and tornado stay billboards. Key F: mesh / cards.
+--   maxStorms   storms drawn as meshes (EditableMesh memory is tight on clients: ~3-6 meshes)
+--   tower, anvil, base   grid rows x columns of each body (all three share one mesh, 20000 triangles max)
+--   rebuildEvery   s between reshapes of a storm; buildMs: script time a frame for reshapes and shading
+LabConfig.STORM_MESH = {
+	enabled = true,
+	-- the body at start: "cards" since 2026-10-31 (Round 17: the mesh read as dark rock and a black
+	-- slab anvil in every reference shot; key F still cycles mesh / meshOnly / cards)
+	defaultStyle = "cards",
+	maxStorms = 3,
+	tower = { 64, 56 },
+	anvil = { 48, 36 },
+	base = { 26, 72 },
+	rebuildEvery = 3,
+	buildMs = 2.5,
+	lobe = 0.12, -- tower lobes: radius share
+	normalSmooth = 1, -- normal smoothing passes (3 flattened the lobes' shading into a plain cone)
+	lobeSize = 0.55, -- lobe wavelength as a share of the tower's radius
+	detailEdgeOnly = true, -- detail cards mainly where the mesh meets the sky (its silhouette); faint over its face
+	detailAlpha = 0.7, -- their opacity over a mesh (cards alone: 0.92-0.95)
+	detailCards = true, -- the tower's lobe, billow and dome cards kept over the mesh as detail
+	exposure = 0.6, -- mesh colour scale (Neon draws brighter than an unlit card of the same colour)
+}
+-- Render/Sky: also drive the Terrain Clouds layer from the storms' sky cover. Off: one even sheet
+-- over the whole sky, it greyed the sunny side too and drew a stepped horizon edge (2026-11-01)
+LabConfig.SKY_CLOUD_DECK = false
+LabConfig.DECK = { enabled = true, range = 5500, thick = 60, lump = 30, gain = 1.7, material = Enum.Material.Neon, solid = false }
 
 -- Already-uploaded assets (ATGuardian, ids from roblox/src/shared/Tornado/Config.luau and
 -- roblox/src/shared/World/Config.luau). Flat* textures are white alpha-only (tint with Color).
@@ -181,7 +288,12 @@ LabConfig.TEXTURES = {
 	featherFlat = "rbxassetid://95121739839387", -- dense round puff, feathery rim (tools/feather_puff.py; read as sandpaper)
 	wispSheetFlat = "rbxassetid://132403693605015", -- 2x2 soft broad wisps (2026-10-30; the fine-fibre sheet 77462082475988 read as fur), streaks along x (tools/wisp_sheet.py; WallStream, TornadoCards strands)
 	smoothPuffFlat = "rbxassetid://94176229700995", -- smooth dense puff, broad lobes, no grain (tools/smooth_puff.py; Render/WallStream)
+	wallTierFlat = "rbxassetid://112138404673588", -- a wall-cloud tier side-on: soft top, crisp flat bottom edge at 0.70 of the frame (tools/smoke/wall_tier.py; Render/WallStream, 2026-11-01)
 	streakSoft = "rbxassetid://115060594741751", -- soft condensation streak: gaussian across, tapered (tools/streak_puff.py; tornado filaments)
+	-- the smooth puff with its edge ramp 1/2 and 1/4 as wide (tools/smooth_puff_sharp.py, 2026-11-03):
+	-- a wide funnel's body, so its edge stays ~25-35 m thick in metres as the cone's is
+	smoothPuffSharp2 = "rbxassetid://138534512646957",
+	smoothPuffSharp4 = "rbxassetid://95258316119524",
 	hazePuffFlat = "rbxassetid://72760570308893", -- soft haze puff: slow falloff, no disc or rim, one tone (tools/haze_puff.py; tornado smoke body)
 	-- a horizontal slice of a column: crisp sides (0.86 of the frame wide), soft top and bottom
 	-- (smoke_flipbook.py --variant firm --single --flat --slice): the funnel's crisp core
@@ -198,6 +310,7 @@ LabConfig.TEXTURES = {
 	dustWisp2 = "rbxassetid://118297975010401",
 	funnelRibbon = "rbxassetid://116798715876728", -- funnel outline ribbon: flat across, faded ends (tools/smoke/funnel_ribbon.py, 2026-10-31)
 	capsuleFlat = "rbxassetid://122340939095171",
+	deckSoft = "rbxassetid://138862961385378", -- round soft disc, opaque to 0.20 of the frame, clear by 0.48 (tools/smoke/deck_soft.py; BaseDeck when every disc is soft, 2026-10-31)
 	deckEdge = "rbxassetid://115445826136912", -- soft round cloud, opaque to 0.3 of the frame (tools/smoke/deck_edge.py; BaseDeck's edge discs, 2026-10-30) -- tube piece with crisp sides and round ends (tools/smoke/capsule.py; TornadoCards opaque rope pieces, 2026-10-30)
 	softSheetFlat = "rbxassetid://75569785912211", -- 4x4 flipbook of soft puffs
 	wispFlat = "rbxassetid://77502166035387", -- 4x4 streaky wisps
@@ -238,6 +351,7 @@ LabConfig.CLOUD_FLOW = true
 -- inflow) or "cards" (StormCards' rings); key Y switches
 LabConfig.WALL_STYLE = "stream" -- volumetric five-slot inflow cross-sections
 LabConfig.TORNADO_STYLE = "smoke" -- (T cycles smoke -> gas -> volume -> rings; smoke = fibrous sprites riding the flow, 2026-10-31; gas = soft cloud puffs, 2026-10-30)
+LabConfig.SMOKE_SURFACE = false -- (off until it reads well on a wedge: bubbles or too faint so far) (the smoke body's cards on the funnel's surface, one rule from rope to wedge; Ctrl+T: by radius, the old layout. 2026-11-03)
 -- (Off 2026-10-29: user ditched shaders for performance; billboards only.) Lobe light computed in Luau (Render/CloudParts/LobeShader) into EditableImages, one sheet per
 -- sun tilt in bins (-1 front lit .. 1 back lit), replacing the three Blender bakes in LOBES once
 -- built (~budgetMs a frame in the background). frame / nearFrame: px a lobe.
@@ -249,13 +363,14 @@ LabConfig.LOBE_SHADER = { enabled = false, bins = { -0.8, -0.4, 0, 0.4, 0.8 }, f
 -- 4x4 sheets of 256 px; *_near are 2x2 sheets of 512 px (the first four lobes) for big near cards.
 -- A family with any id empty is not used (cards keep lumpyFlat). (2026-10-25, second look: the
 -- first, cauliflower bake was replaced; v3 adds firmer edges + rim wisps: lobe_post.py defaults;
--- texture ids, not the decal ids)
+-- texture ids, not the decal ids. v4 2026-10-31: no rim wisps, raw passes denoised - lobe_post.py
+-- --wisps 0 --denoise 3 - the speckled rim drew a grainy outline on cards big on screen)
 LabConfig.LOBES = {
-	tower = { front = "rbxassetid://121941071753311", side = "rbxassetid://123698015739299", back = "rbxassetid://133464692085506" },
-	tower_near = { front = "rbxassetid://118622919688191", side = "rbxassetid://117517128675674", back = "rbxassetid://76294320666128" },
-	under = { front = "rbxassetid://82982592888881", side = "rbxassetid://112805512722810", back = "rbxassetid://108262916366484", amb = "rbxassetid://112155991454430" },
-	under_near = { front = "rbxassetid://125993815200044", side = "rbxassetid://120087859182739", back = "rbxassetid://88140543973231", amb = "rbxassetid://79628402846435" },
-	soft = { front = "rbxassetid://73475574790419", side = "rbxassetid://100505461413407", back = "rbxassetid://120730874862236" },
+	tower = { front = "rbxassetid://84014312486340", side = "rbxassetid://95586533131436", back = "rbxassetid://81705183469665" },
+	tower_near = { front = "rbxassetid://130507213899235", side = "rbxassetid://75604749825126", back = "rbxassetid://72524462222991" },
+	under = { front = "rbxassetid://121651235590542", side = "rbxassetid://93248647927015", back = "rbxassetid://80472779592124", amb = "rbxassetid://127369441479854" },
+	under_near = { front = "rbxassetid://78423612799463", side = "rbxassetid://71189308176184", back = "rbxassetid://122617935129173", amb = "rbxassetid://105165090577329" },
+	soft = { front = "rbxassetid://128994249792191", side = "rbxassetid://131961352586350", back = "rbxassetid://95460841583476" },
 }
 -- Dynamic scud (client/Render/Scud): fragments that condense in lifted, nearly saturated air under
 -- the base and ride World.windAt. max: fragments in all; range: m from the camera; spawnTries:
@@ -282,8 +397,10 @@ LabConfig.GROUND = {
 	-- the lab's uneven ground: rolling hills round the play area (the town site), so the renderers
 	-- and physics are tested on ground that is not flat. Built as Terrain by the server
 	-- (server/Terrain) out to `radius`; hills only (never below the datum), fading to flat by the
-	-- edge, with a flat pad of `flat` m round the town. amp = 0: flat everywhere.
-	relief = { amp = 35, wavelength = 3500, radius = 9000, flat = 900, voxel = 4 },
+	-- edge, with a flat pad of `flat` m round the town. amp = 0: flat everywhere. cx, cy (optional):
+	-- the hills' own centre, the town's pad elsewhere (the scene hills toggle: hills on a tornado's
+	-- track, the town beside it).
+	relief = { amp = 35, wavelength = 3500, radius = 9000, flat = 900, voxel = 4 } :: any,
 }
 
 -- Where the relief is centred (the town site): set when the town is placed (server) or announced
@@ -296,21 +413,26 @@ function LabConfig.groundAt(x: number, y: number): number
 		return F.ground(x, y)
 	end
 	local R = LabConfig.GROUND.relief
-	local c = LabConfig.groundCentre
-	if not c or not R or R.amp <= 0 then
+	local c = LabConfig.groundCentre -- (the town: the flat pad)
+	if not R or R.amp <= 0 or not (c or R.cx) then
 		return 0
 	end
-	local dx, dy = x - c.x, y - c.y
+	local hx, hy = R.cx or c.x, R.cy or c.y -- (the hills' centre)
+	local dx, dy = x - hx, y - hy
 	local r = math.sqrt(dx * dx + dy * dy)
 	if r >= R.radius then
 		return 0
+	end
+	local rp = r -- (from the pad's centre)
+	if R.cx then
+		rp = if c then math.sqrt((x - c.x) ^ 2 + (y - c.y) ^ 2) else math.huge
 	end
 	local k = 2 * math.pi / R.wavelength
 	-- a few smooth waves (0..1), hills only
 	local h = 0.5 + 0.25 * math.sin(x * k) * math.cos(y * k * 0.8)
 		+ 0.15 * math.sin((x * 0.6 + y) * k * 1.7 + 1.3)
 		+ 0.1 * math.cos((x - y * 0.7) * k * 3.1)
-	local t = math.clamp((r - R.flat) / math.max(1, R.flat), 0, 1) -- (up from the town's pad)
+	local t = math.clamp((rp - R.flat) / math.max(1, R.flat), 0, 1) -- (up from the town's pad)
 	local fade = math.clamp((R.radius - r) / (0.3 * R.radius), 0, 1) -- (down to flat by the edge)
 	t = t * t * (3 - 2 * t)
 	fade = fade * fade * (3 - 2 * fade)

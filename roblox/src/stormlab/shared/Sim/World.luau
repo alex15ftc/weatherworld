@@ -31,6 +31,7 @@ local Vortex = dep("Vortex")
 local Initiation = dep("Initiation")
 local Lightning = dep("Lightning")
 local Boundaries = dep("Boundaries")
+local Landspouts = dep("Landspouts")
 local Grid = dep("Grid")
 
 local World = {}
@@ -68,6 +69,7 @@ function World.new(data: any, opts: { [string]: any }?): World
 	self.env.coldPool = self.coldPool
 	self.precip = Precip.new(self.env, self.coldPool, o.maxParcels)
 	self.systems = Systems.new()
+	self.landspouts = Landspouts.new() -- (misocyclones on boundaries: non-supercell tornadoes)
 	self.tornadoes = {}
 	self.flashes = {}
 	self.events = {}
@@ -243,11 +245,21 @@ end
 -- How far (s) the clock has run past a storm's or vortex's last step (they step in the slow part,
 -- every few seconds or more; tornadoes every frame): its circulation is carried on by its motion
 -- for that long, so a tornado following it moves smoothly, not in a step every slow step.
+-- (up to 600 s: at 60x the slow step can fall 80-150 s behind, and a 60 s cap froze the meso for
+-- the rest of each cycle while the tornado's contact moved on - its tilt swung 2 -> 50 deg and back,
+-- 2026-10-31)
 local function sinceStep(self: World, o: any): number
-	return math.clamp(self.time - (o.validAt or self.time), 0, 60)
+	return math.clamp(self.time - (o.validAt or self.time), 0, 600)
 end
 
 function World.parentOf(self: World, t: any): any?
+	if t.parentKind == "occluded" then
+		return t.occParent
+	end
+	if t.parentKind == "misocyclone" then
+		local m = Landspouts.byId(self.landspouts, t.parentId)
+		return if m then Landspouts.parentView(m) else nil
+	end
 	if t.parentKind == "cell" then
 		for _, s in self.storms do
 			if s.id == t.parentId then
@@ -257,12 +269,13 @@ function World.parentOf(self: World, t: any): any?
 				local lead = if held then 0 else sinceStep(self, s)
 				lx += s.u * lead
 				ly += s.v * lead
-				local fW = Storm.wprofAt(s, 1000)
+				local fW = s.fW1k or Storm.wprofAt(s, 1000) -- (Storm: the closures' 1 km speed)
 				return {
 					id = s.id, kind = "cell", seed = s.seed,
 					x = lx, y = ly, u = if held then 0 else s.u, v = if held then 0 else s.v,
 					vlow = s.vlow, rlow = 0.3 * s.Ru, wLow = s.W * fW + 0.5 * math.abs(s.vmid),
 					rfdDeficit = s.rfdDeficit or 0, cloudBase = s.wallBase or s.base, occl = s.occl,
+					updraftBase = s.base, -- (the inflow's own LCL, under the wall cloud's moist lowering: Tornado.step's core air)
 					dead = s.dead or s.vlow < 3,
 					storm = s, -- (Tornado.step: the RFD outflow that pushes its contact)
 				}
@@ -276,6 +289,7 @@ function World.parentOf(self: World, t: any): any?
 					id = v.id, kind = v.kind, seed = v.seed, x = v.x + (v.u or 0) * lead, y = v.y + (v.v or 0) * lead, u = v.u, v = v.v,
 					vlow = v.vlow, rlow = v.rlow * 0.5, wLow = v.wLow or 8, rfdDeficit = v.rfdDeficit or 0,
 					cloudBase = v.cloudBase or 700, occl = 0, dead = v.dead,
+					updraftBase = (v.cloudBase or 700) / 0.85,
 				}
 			end
 		end
@@ -285,7 +299,7 @@ end
 
 local function startTornado(self: World, parentView: any, owner: any)
 	local t = Tornado.new(parentView, self)
-	t.parentKind = if parentView.kind == "cell" then "cell" else "vortex"
+	t.parentKind = if parentView.kind == "cell" then "cell" elseif parentView.kind == "misocyclone" then "misocyclone" else "vortex"
 	table.insert(self.tornadoes, t)
 	owner.tornado = t.id
 	owner.G = 0
@@ -310,9 +324,86 @@ function World.forceTornado(self: World, storm: any): any?
 	return startTornado(self, pv, storm)
 end
 
+-- An occluded low-level circulation carried on by itself (2026-11-03; docs/stormlab/research/
+-- TORNADO-MORPH-RESEARCH.md P2). Once the RFD has wrapped round a storm's low-level circulation
+-- (occl 0.6, where Tornado.step cuts its tornado off) that circulation has separated from the
+-- updraft: its tornado follows it, not the storm, and the storm is free to organise its next one
+-- (cyclic supercells: the old tornado ropes out while a new lowering forms to its right, Burgess
+-- et al. 1982). Without its storm's propagation it drifts on the wind of its own layer (~1.5 km) -
+-- left of and behind the storm, as occluded mesocyclones do - spins down, and loses its stretching
+-- as the updraft moves away. (Before, the tornado kept following the storm's low meso, which
+-- jumped ~1.5-2 km back to the rear edge when the occlusion completed)
+local function detachOccluded(self: World, t: any, parent: any)
+	local s = parent.storm
+	local o = table.clone(parent)
+	o.kind = "occluded"
+	-- (carried on from where it was cut off, not set to 1: at 1 the RFD's push on the contact
+	-- jumped from half to all of it - a kink in the track, 2026-11-03; stepOccluded wraps it on)
+	o.occl = math.max(parent.occl or 0.6, 0.6)
+	o.wLow0 = parent.wLow
+	o.dead = false
+	-- its wall cloud: the lowering it had under the storm's base. That is mostly the moist inflow
+	-- the updraft draws in under it (Storm: the inflow's spread and moistness; the spin's own
+	-- pressure fall is only ~vlow^2/g, tens of metres), so it rises as the circulation leaves
+	-- the updraft's reach - its stretching, wLow, against what it had
+	o.base = (s and s.base) or parent.updraftBase or parent.cloudBase
+	o.lower0 = math.max(0, o.base - (parent.cloudBase or o.base))
+	t.occParent = o
+	t.parentKind = "occluded"
+	if s then
+		if s.tornado == t.id then
+			s.tornado = nil
+		end
+		s.detached = true -- (Storm.step: an own storm's occlusion completes here)
+	end
+	table.insert(self.events, { kind = "occluded", id = t.id, parent = parent.id, time = self.time, x = o.x, y = o.y })
+end
+
+local function stepOccluded(self: World, o: any, dt: number)
+	local s = o.storm
+	if not self.holdStill then
+		local eu, ev = self.env:windAt(o.x, o.y, 1500)
+		local k = 1 - exp(-dt / 300)
+		o.u += (eu - o.u) * k
+		o.v += (ev - o.v) * k
+		o.x += o.u * dt
+		o.y += o.v * dt
+	else
+		o.u, o.v = 0, 0
+	end
+	-- spinning down unstretched (~10 min), stretched only as far as its storm's updraft still
+	-- reaches it (it started at 0.6 Ru from the centre)
+	o.vlow *= exp(-dt / 600)
+	if s and not s.dead then
+		local d2 = ((o.x - s.x) ^ 2 + (o.y - s.y) ^ 2) / math.max(s.Ru, 500) ^ 2
+		o.wLow = (o.wLow0 or 10) * math.min(1, exp(-(d2 - 0.36)))
+		o.rfdDeficit = s.rfdDeficit or o.rfdDeficit
+	else
+		o.wLow *= exp(-dt / 300)
+	end
+	-- the RFD wrapping on round it (~5 min), and its lowering rising with its spin (the funnel's
+	-- top hung from the storm's lowered wall base while the storm's own lowering moved on: the
+	-- roping funnel ended in clear air under the deck, 2026-11-03)
+	o.occl += (1 - o.occl) * (1 - exp(-dt / 300))
+	if s and not s.dead and s.base then
+		o.base += (s.base - o.base) * (1 - exp(-dt / 120))
+	end
+	if o.base and o.lower0 then
+		o.cloudBase = o.base - o.lower0 * math.clamp(o.wLow / math.max(o.wLow0 or 1, 1), 0, 1)
+	end
+	o.dead = o.vlow < 3
+end
+
 local function stepTornadoes(self: World, dt: number)
 	for _, t in self.tornadoes do
 		local parent = self:parentOf(t)
+		if t.parentKind == "cell" and parent and not t.ended and not t.eng and (parent.occl or 0) >= 0.6 then
+			detachOccluded(self, t, parent)
+			parent = t.occParent
+		end
+		if t.parentKind == "occluded" and t.occParent and not t.ended then
+			stepOccluded(self, t.occParent, dt)
+		end
 		local sub = math.max(1, math.ceil(dt / 0.5))
 		for _ = 1, sub do
 			Tornado.step(t, dt / sub, parent, self)
@@ -330,6 +421,12 @@ local function stepTornadoes(self: World, dt: number)
 			for _, v in self.systems.vortices do
 				if v.tornado == t.id then
 					v.tornado = nil
+				end
+			end
+			for _, m in self.landspouts.list do
+				if m.tornado == t.id then
+					m.tornado = nil
+					m.G = 0
 				end
 			end
 		end
@@ -351,7 +448,12 @@ local function stepStorms(self: World, dt: number)
 			self:pause()
 		end
 		Storm.step(s, dt, self)
-		s.validAt = self.slowTime -- (the clock its new position is for: World.parentOf)
+		-- (the clock its new position is for: World.parentOf, World.snapshot. The sub-step's own
+		-- clock, not the slow step's end: the server runs the sub-steps over several frames, and
+		-- stamping a part-moved storm with the end time drew it up to a minute of motion behind,
+		-- then caught it up a sub-step at a time - the steady shove at 60x, the rope stretched
+		-- between its smooth contact and the jerking storm, 2026-11-02)
+		s.validAt = self.stormClock or self.slowTime
 		s.ffdX, s.ffdY = s.cFfdX, s.cFfdY
 		s.rfdX, s.rfdY = s.cRfdX, s.cRfdY
 		local child = Storm.maybeSplit(s, self)
@@ -359,26 +461,49 @@ local function stepStorms(self: World, dt: number)
 			Storm.environment(child, self)
 			table.insert(new, child)
 		end
-		-- tornadogenesis
-		if self.genesis and not s.dead and not s.tornado and s.G >= 1 and s.rot > 0.25 and Storm.genesisTry(s) then
+		-- tornadogenesis (a lab storm whose scene asks for it - pin.genesis, the lifecycle - makes
+		-- its own even in an engine-driven world, where the engine owns the other storms' tornadoes)
+		local gen = self.genesis or (s.pin ~= nil and s.pin.genesis == true and s.eng == nil)
+		if gen and not s.dead and not s.tornado and s.G >= 1 and s.rot > 0.25 and Storm.genesisTry(s) then
 			local pv = self:parentOf({ parentKind = "cell", parentId = s.id })
 			if pv then
-				startTornado(self, pv, s)
+				local t = startTornado(self, pv, s)
 				s.tryOk = false
+				-- (a lab storm's own tornado gets the identity its scene's forced one has - the same
+				-- seed, so a lifecycle counterpart touches down as the same tornado, 2026-11-02)
+				if s.lab and s.pin then
+					t.lab = true
+					t.seed = (s.pin.seed or 1) * 7 + 11
+					t.quality = 1
+				end
 			end
 		end
 	end
 	for _, c in new do
 		table.insert(self.storms, c)
 	end
-	-- mergers: two updrafts closer than 0.6 (Ru1 + Ru2) become one (the stronger keeps its
-	-- identity; a flanking tower feeding a supercell strengthens it)
+	-- mergers: an updraft within 0.6 (Ru1 + Ru2) of a stronger one is drawn into it - carried in
+	-- on the stronger one's inflow - and hands over its updraft over ~10 min (mergeF 1 -> 0) while
+	-- the one it feeds strengthens and widens (mergeBoost, up to 0.3, fading over ~15 min after).
+	-- Their towers, anvils and cold pools join as they close; the cell is gone once it has given
+	-- its updraft up or sits inside the other's core. (Before 2026-11-01 the smaller one vanished in
+	-- one step - its tower popped out of the sky - and the bigger one jumped.)
+	local byId = {}
+	for _, s in self.storms do
+		byId[s.id] = s
+		if s.mergeBoost then
+			s.mergeBoost *= math.exp(-dt / 900)
+			if s.mergeBoost < 0.005 then
+				s.mergeBoost = nil
+			end
+		end
+	end
 	for a = 1, #self.storms do
 		local A = self.storms[a]
-		if not A.dead then
+		if not A.dead and not A.mergeInto then
 			for b = a + 1, #self.storms do
 				local B = self.storms[b]
-				if not B.dead and A.leftMover == B.leftMover then
+				if not B.dead and not B.mergeInto and (A.leftMover == true) == (B.leftMover == true) then
 					local d2 = (A.x - B.x) ^ 2 + (A.y - B.y) ^ 2
 					local lim = 0.6 * (A.Ru + B.Ru)
 					if d2 < lim * lim then
@@ -386,14 +511,43 @@ local function stepStorms(self: World, dt: number)
 						if B.W * B.Ru > A.W * A.Ru then
 							big, small = B, A
 						end
-						big.W = math.max(big.W, small.W) + 0.15 * math.min(big.W, small.W)
-						big.Ru = math.min(8000, sqrt(big.Ru * big.Ru + 0.5 * small.Ru * small.Ru))
-						big.anvilLen = math.max(big.anvilLen, small.anvilLen)
-						small.dead = true
-						small.mergedInto = big.id
-						small.W = 0
-						table.insert(self.events, { kind = "merge", into = big.id, from = small.id, time = self.time })
+						small.mergeInto, small.mergeF = big.id, small.mergeF or 1
+						table.insert(self.events, { kind = "mergeStart", into = big.id, from = small.id, time = self.time })
+						if small == A then
+							break
+						end
 					end
+				end
+			end
+		end
+	end
+	for _, small in self.storms do
+		local big = small.mergeInto and byId[small.mergeInto]
+		if small.mergeInto and not small.dead then
+			if not big or big.dead then
+				small.mergeInto, small.mergeF = nil, nil -- (what it was joining is gone)
+			else
+				small.mergeF = math.max(0, small.mergeF - dt / 600)
+				-- (drawn in gently - its own motion does most of it - and once inside the other's core it
+				-- rides with it: pulled at 400 s it was inside in ~2 min with 80% of its updraft left, and
+				-- vanished - the old pop, 2026-11-01)
+				local ex, ey = small.x - big.x, small.y - big.y
+				local de = math.sqrt(ex * ex + ey * ey)
+				local hold = 0.35 * big.Ru
+				local k = 1 - math.exp(-dt / 1500)
+				small.x -= ex * k
+				small.y -= ey * k
+				if de < hold then
+					small.x, small.y = big.x + ex, big.y + ey
+					small.u, small.v = big.u, big.v
+				end
+				big.mergeBoost = math.max(big.mergeBoost or 0, 0.3 * math.min(1, small.Ru / big.Ru) * (1 - small.mergeF))
+				big.anvilLen = math.max(big.anvilLen or 0, small.anvilLen or 0)
+				if small.mergeF <= 0.05 then
+					small.dead = true
+					small.mergedInto = big.id
+					small.W = 0
+					table.insert(self.events, { kind = "merge", into = big.id, from = small.id, time = self.time })
 				end
 			end
 		end
@@ -407,10 +561,23 @@ local function stepStorms(self: World, dt: number)
 			end
 		end
 	end
-	-- forget storms long dead whose anvil and rain are gone
+	-- landspouts: a misocyclone stretched by a growing cell's updraft (Sim/Landspouts)
+	for _, m in self.landspouts.list do
+		if self.genesis and not m.dead and not m.tornado and (m.G or 0) >= 1 then
+			local t = startTornado(self, Landspouts.parentView(m), m)
+			if m.lab then
+				t.lab = true
+				t.quality = 1
+				t.seed = m.seed
+			end
+		end
+	end
+	-- forget storms long dead whose anvil and rain are gone (Round 38: and whose remembered cloud has
+	-- evaporated - Storm.stepCloud's cmVis - at most 4 h after: an orphan anvil can outlive the hour)
 	local keep = {}
 	for _, s in self.storms do
-		if not s.dead or s.deadFor < 3600 or s.tornado then
+		local remains = ((s.cmVis or 0) > 0.02 or (s.anvilLen or 0) > 5000) and s.deadFor < 14400
+		if not s.dead or s.deadFor < 3600 or s.tornado or remains then
 			table.insert(keep, s)
 		end
 	end
@@ -426,7 +593,7 @@ function World.rebuildBuckets(self: World)
 	local off = self.env.extent + 200000
 	local cells = {}
 	for _, s in self.storms do
-		local reach = 4.5 * s.Ru + 5000
+		local reach = Storm.reachOf(s)
 		local i0, i1 = math.floor((s.x - reach + off) / size), math.floor((s.x + reach + off) / size)
 		local j0, j1 = math.floor((s.y - reach + off) / size), math.floor((s.y + reach + off) / size)
 		for i = i0, i1 do
@@ -463,6 +630,32 @@ end
 function World.step(self: World, dt: number)
 	self:stepSlow(dt, self.time + dt)
 	self:stepFast(dt)
+	if self.stormsApart then
+		self:stepStormCells(dt)
+	end
+end
+
+-- The storms on their own, every frame, outside the slow step (hosts: set world.stormsApart and
+-- call this after stepFast, before the slow step's coroutine). Inside the slow step they were
+-- stepped once a cycle, and at 60x a cycle (rain, cold pool, binning) takes 2-3 real s: ~150
+-- sim s between storm steps. The motion was carried on in between, but everything else - an
+-- engine update's eased jump, the low-level circulation's shift, the storm's own turns and
+-- growth - landed at once: the whole storm shoved every few seconds and the tornado's rope,
+-- its top on the storm, stretched (2026-11-02). Cheap: a few storms every 2 sim s. Never
+-- yields (World.pause is a no-op outside the coroutine).
+function World.stepStormCells(self: World, dt: number)
+	self.stormAcc = (self.stormAcc or 0) + dt
+	if self.stormAcc < 2 then
+		return
+	end
+	local d = self.stormAcc
+	self.stormAcc = 0
+	local sub = math.max(1, math.ceil(d / 4))
+	for k = 1, sub do
+		self.stormClock = self.time - d + k * d / sub
+		stepStorms(self, d / sub)
+	end
+	self.stormClock = nil
 end
 
 -- The fast part, every server frame: tornadoes (smooth replication) and the clock.
@@ -490,13 +683,17 @@ function World.stepSlow(self: World, dt: number, validAt: number?)
 	for k, v in T do
 		T[k] = v + dt
 	end
-	if T.storm >= 2 then
+	if self.stormsApart then
+		T.storm = 0 -- (stepped on their own: World.stepStormCells)
+	elseif T.storm >= 2 then
 		local d = T.storm
 		T.storm = 0
 		local sub = math.max(1, math.ceil(d / 4))
-		for _ = 1, sub do
+		for k = 1, sub do
+			self.stormClock = self.slowTime - d + k * d / sub
 			stepStorms(self, d / sub)
 		end
+		self.stormClock = nil
 		self:pause()
 	end
 	if T.precip >= 5 then
@@ -552,10 +749,50 @@ function World.stepSlow(self: World, dt: number, validAt: number?)
 		local d = T.cold
 		T.cold = 0
 		local env = self.env
-		local function low(x: number, y: number): (number, number)
+		-- the 0-1 km wind the pool spreads in: the environment's, and the storms' own (their inflow,
+		-- lift and spin - not their downdrafts, whose air is the pool's own)
+		local bucket = self.bucket
+		local function low(x: number, y: number): (number, number, number, number)
 			local u0, v0 = env:windAt(x, y, 10)
 			local u1, v1 = env:windAt(x, y, 1000)
-			return 0.5 * (u0 + u1), 0.5 * (v0 + v1)
+			local su, sv = 0, 0
+			local list = self.storms
+			if bucket then
+				local bi = math.floor((x + bucket.off) / bucket.size)
+				local bj = math.floor((y + bucket.off) / bucket.size)
+				list = bucket.cells[bi * 4096 + bj] or bucket.empty
+			end
+			for _, s in list do
+				local a, b = Storm.windAt(s, x, y, 10, false, nil, true)
+				local c, d = Storm.windAt(s, x, y, 1000, false, nil, true)
+				su += 0.5 * (a + c)
+				sv += 0.5 * (b + d)
+			end
+			return 0.5 * (u0 + u1), 0.5 * (v0 + v1), su, sv
+		end
+		-- the environment's and the storms' wind (not their downdrafts) averaged over 0..h: what the
+		-- pool's own wind is set against (ColdPool.step)
+		local hs = ColdPool.depthMeanHeights
+		local function depthWind(x: number, y: number, h: number): (number, number)
+			local list = self.storms
+			if bucket then
+				local bi = math.floor((x + bucket.off) / bucket.size)
+				local bj = math.floor((y + bucket.off) / bucket.size)
+				list = bucket.cells[bi * 4096 + bj] or bucket.empty
+			end
+			local u, v = 0, 0
+			for _, f in hs do
+				local z = f * h
+				local a, b = env:windAt(x, y, z)
+				for _, s in list do
+					local c, d = Storm.windAt(s, x, y, z, false, nil, true)
+					a += c
+					b += d
+				end
+				u += a / #hs
+				v += b / #hs
+			end
+			return u, v
 		end
 		local day = env:heatingRate(0) > 0
 		self.coldPool:downdrafts(self.precip.rainRate, env.fields.ddDeficit, d, function()
@@ -564,7 +801,7 @@ function World.stepSlow(self: World, dt: number, validAt: number?)
 		self:pause()
 		self.coldPool:step(d, low, if day then 5400 else 10800, function()
 			self:pause()
-		end)
+		end, depthWind)
 		self:pause()
 	end
 	if T.env >= 60 then
@@ -584,6 +821,7 @@ function World.stepSlow(self: World, dt: number, validAt: number?)
 		for _, v in self.systems.vortices do
 			v.validAt = self.slowTime -- (World.parentOf)
 		end
+		Landspouts.step(self.landspouts, self, d)
 		self:pause()
 	end
 	if T.init >= 60 then
@@ -615,6 +853,29 @@ end
 -- a few minutes of its rain and outflow, then its tornado run for scene.run seconds and held.
 -- Any earlier lab scene is retired first. Returns the tornado.
 function World.labScene(self: World, scene: any, site: { x: number, y: number }): any?
+	-- the scene before's rain and wet ground go with its storms (2026-11-03: a static scene built
+	-- after another stood in the old one's rain - its funnel greyed into a solid mass by rain that
+	-- was not its storm's, and its core air moistened by ground that storm had wet - and the same
+	-- scene looked different by what ran before it)
+	local spots = { { site.x, site.y } }
+	for _, s in self.storms do
+		if s.lab then
+			table.insert(spots, { s.x, s.y })
+		end
+	end
+	local R = 40000
+	for _, sp in spots do
+		self.precip:clearNear(sp[1], sp[2], R)
+		local wg = self.wetness
+		for j = 1, wg.ny do
+			for i = 1, wg.nx do
+				local x, y = wg.x0 + (i - 0.5) * wg.dx, wg.y0 + (j - 0.5) * wg.dx
+				if (x - sp[1]) ^ 2 + (y - sp[2]) ^ 2 < R * R then
+					wg.v[wg:index(i, j)] = 0
+				end
+			end
+		end
+	end
 	for _, s in self.storms do
 		if s.lab then
 			s.pin = nil
@@ -633,14 +894,51 @@ function World.labScene(self: World, scene: any, site: { x: number, y: number })
 	-- (an evolving storm is built held like the others; it starts evolving with its tornado)
 	local evolve = p.evolve
 	p.evolve = nil
-	local s = Storm.new({ x = site.x, y = site.y, u = p.u, v = p.v, W = p.W, Ru = p.Ru, vmid = p.vmid, vlow = p.vlow, seed = p.seed, age = 3600 })
+	-- (fresh: a storm born in view, the supercell lifecycle scene - its tower grows from the base)
+	local fresh = p.fresh
+	p.fresh = nil
+	local s = Storm.new({ x = site.x, y = site.y, u = p.u, v = p.v, W = p.W, Ru = p.Ru, vmid = p.vmid, vlow = p.vlow, seed = p.seed, age = if fresh then 0 else 3600 })
 	s.id = "LAB" .. tostring(p.seed)
 	s.lab = true
 	s.pin = p
 	Storm.environment(s, self)
 	Storm.applyPin(s, 0)
 	Storm.prepare(s)
+	-- the anvil an hour-old storm has (Storm's own spread rule, 0.8 x the anvil-level
+	-- storm-relative wind, over the age it was built with): the 10-minute warm-up below alone
+	-- left mature scene storms with a 5-10 km anvil (2026-10-31)
+	do
+		local au, av = (s.upperU or 20) - s.u, (s.upperV or 0) - s.v
+		local am = math.sqrt(au * au + av * av)
+		if am > 0.5 then
+			s.anvilU, s.anvilV = au / am, av / am
+		end
+		if not fresh then
+			s.anvilLen = math.min(160000, math.max(s.anvilLen or 0, 0.8 * am * 3000))
+		end
+	end
 	table.insert(self.storms, s)
+	-- a misocyclone on a boundary under the storm (scene.miso: the landspout scene) - it is the
+	-- storm's updraft stretching it that makes the tornado, if any (Sim/Landspouts)
+	if scene.miso then
+		Landspouts.labMiso(self.landspouts, site.x + (scene.miso.dx or 0), site.y + (scene.miso.dy or 0), scene.miso, s.id)
+	else
+		Landspouts.labMiso(self.landspouts, 0, 0, { dv = 0 }, "").dead = true -- (clears the last scene's)
+	end
+	-- a second storm (scene.storm2: the merger scene): pinned the same way, placed (dx, dy) m from
+	-- the first, a mature cell; World stepStorms merges them when they close
+	local s2
+	if scene.storm2 then
+		local q = table.clone(scene.storm2)
+		s2 = Storm.new({ x = site.x + (q.dx or 0), y = site.y + (q.dy or 0), u = q.u, v = q.v, W = q.W, Ru = q.Ru, vmid = q.vmid, vlow = q.vlow, seed = q.seed, age = 2400 })
+		s2.id = "LAB" .. tostring(q.seed)
+		s2.lab = true
+		s2.pin = q
+		Storm.environment(s2, self)
+		Storm.applyPin(s2, 0)
+		Storm.prepare(s2)
+		table.insert(self.storms, s2)
+	end
 	-- its rain shafts, cold pool and anvil, as a few minutes of the world
 	local g, i = self.genesis, self.initiation
 	self.genesis, self.initiation = false, false
@@ -653,6 +951,16 @@ function World.labScene(self: World, scene: any, site: { x: number, y: number })
 	end
 	self.genesis, self.initiation = g, i
 	p.t = 0
+	if s2 then
+		s2.pin.t = 0
+	end
+	if fresh then
+		-- born now: a cumulus tower from the base, no anvil yet (the warm-up above only made the
+		-- ground state - its cold pool and rain - round the storm)
+		s.age, s.anvilLen = 0, 0
+		s.cloudTop = s.base + 500
+		s.top = s.cloudTop
+	end
 	if scene.noTornado then
 		return nil -- (a storm-structure scene: the storm alone)
 	end
@@ -691,14 +999,24 @@ function World.labScene(self: World, scene: any, site: { x: number, y: number })
 			p.vlow, p.occl, p.rfdDeficit = s.vlow, s.occl, s.rfdDeficit
 		end
 	else
-		local dt = 0.5
-		for _ = 1, math.floor((scene.run or 60) / dt) do
+		-- (1 s steps: the tornado's time constants are 45 s and up; a settled scene runs 600 s)
+		local dt = 1
+		local sx0, sy0 = s.x, s.y
+		for i = 1, math.floor((scene.run or 60) / dt) do
+			local y = (self :: any).yield
+			if y and i % 40 == 0 then
+				y()
+			end
 			s.x += s.u * dt
 			s.y += s.v * dt
 			Storm.applyPin(s, dt)
 			Storm.prepare(s)
 			Tornado.step(t, dt, self:parentOf(t), self)
 		end
+		-- its rain moves with it (2026-11-03: the 600 s settle carried the storm ~9 km on and left
+		-- its warm-up rain behind, which then fell round the held tornado and greyed it into a
+		-- solid mass - a veil its lifecycle counterpart, its rain under it, never had)
+		self.precip:shiftNear(sx0, sy0, 40000, s.x - sx0, s.y - sy0)
 	end
 	t.params = Vortex.params(t :: any)
 	t.hold = scene.hold == true
@@ -737,8 +1055,25 @@ end
 -- What clients receive ~2 Hz (tornadoes separately, faster)
 function World.snapshot(self: World): { [string]: any }
 	local storms = {}
+	local held = (self :: any).holdStill
 	for _, s in self.storms do
-		table.insert(storms, Storm.snapshot(s))
+		local snap = Storm.snapshot(s)
+		-- (positions carried on to the snapshot's time: a storm's are from its last slow step, which
+		-- at 60x is up to ~150 s old; sent as current, clients glided ahead on its motion and were
+		-- pulled back by the next stale one - the view juddered, 2026-10-31)
+		local lead = if held then 0 else sinceStep(self, s)
+		if lead > 0 then
+			local du, dv = (s.u or 0) * lead, (s.v or 0) * lead
+			snap.x += du
+			snap.y += dv
+			snap.lowX += du
+			snap.lowY += dv
+			snap.ffdX += du
+			snap.ffdY += dv
+			snap.rfdX += du
+			snap.rfdY += dv
+		end
+		table.insert(storms, snap)
 	end
 	local bnd = {}
 	for _, b in self.boundaries do
@@ -776,7 +1111,7 @@ function World.tornadoSnapshot(self: World): { any }
 	return out
 end
 
--- The cold pool packed for clients: deficit (0.1 K), outflow u, v (0.25 m/s), edge (0..255)
+-- The cold pool packed for clients: deficit (0.01 K), its wind WU, WV (0.25 m/s; ColdPool.windAt), edge (0..255)
 function World.packColdPool(self: World): buffer
 	local cp = self.coldPool
 	local n = #cp.D.v
@@ -784,8 +1119,8 @@ function World.packColdPool(self: World): buffer
 	for k = 1, n do
 		local o = (k - 1) * 5
 		buffer.writeu16(b, o, math.clamp(math.floor(cp.D.v[k] * 100 + 0.5), 0, 65535))
-		buffer.writei8(b, o + 2, math.clamp(math.floor(cp.VU.v[k] * 4 + 0.5), -127, 127))
-		buffer.writei8(b, o + 3, math.clamp(math.floor(cp.VV.v[k] * 4 + 0.5), -127, 127))
+		buffer.writei8(b, o + 2, math.clamp(math.floor(cp.WU.v[k] * 4 + 0.5), -127, 127))
+		buffer.writei8(b, o + 3, math.clamp(math.floor(cp.WV.v[k] * 4 + 0.5), -127, 127))
 		buffer.writeu8(b, o + 4, math.clamp(math.floor(cp.EDGE.v[k] * 255 + 0.5), 0, 255))
 	end
 	return b
@@ -799,8 +1134,8 @@ function World.unpackColdPool(cp: any, b: buffer)
 	for k = 1, n do
 		local o = (k - 1) * 5
 		cp.D.v[k] = buffer.readu16(b, o) / 100
-		cp.VU.v[k] = buffer.readi8(b, o + 2) / 4
-		cp.VV.v[k] = buffer.readi8(b, o + 3) / 4
+		cp.WU.v[k] = buffer.readi8(b, o + 2) / 4
+		cp.WV.v[k] = buffer.readi8(b, o + 3) / 4
 		cp.EDGE.v[k] = buffer.readu8(b, o + 4) / 255
 	end
 end

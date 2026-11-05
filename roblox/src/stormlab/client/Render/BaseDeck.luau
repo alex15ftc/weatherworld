@@ -50,7 +50,6 @@ function BaseDeck.new(ctx: any): any
 	folder.Name = "BaseDeck"
 	folder.Parent = ctx.root
 	local far = CFrame.new(0, -1e5, 0)
-	local pool, used = {}, 0
 	-- (2026-10-30: solid discs instead of see-through GUI tiles. An opaque part writes depth, so
 	-- the billboards under the base - the lowering, scud, funnel top - draw over it per pixel and
 	-- the storm's cards above it are hidden by it, as a real base hides the cloud above. Round
@@ -59,18 +58,28 @@ function BaseDeck.new(ctx: any): any
 	-- mottled rather than one plane)
 	local DISC_STUDS = 2000
 	local Dm = C.metres(DISC_STUDS)
-	local S = 0.8 * Dm -- (grid spacing, m)
+	-- (grid spacing, m. Soft discs sit on the grid exactly (JIT 0) and draw deck_soft (opaque to 0.20
+	-- of the frame, clear by 0.48), so their overlapping layer adds up nearly even. Modelled (coverage
+	-- of overlapping discs on the hex grid, mean 0.7): deck_edge (opaque to 0.30) at 0.8 left the
+	-- point between three discs clear; at 0.67 with each disc 0.3 of a step off the grid, spots down
+	-- to 0.08 - round shapes and paler gaps from below; at 0.70 on the grid, 0.60-0.80 - darker spots
+	-- where three discs overlap. deck_soft at 0.60: 0.68-0.73, 2026-10-31)
+	local S = (if D.solid then 0.8 else 0.60) * Dm
+	local JIT = if D.solid then 0.3 else 0
+	local SOFT_TEX = if D.solid then (C.TEXTURES.deckEdge or "") else (C.TEXTURES.deckSoft or C.TEXTURES.deckEdge or "")
+	-- (how many soft discs deep the layer is on average: the texture's mean opacity over its frame -
+	-- deck_edge ~0.5, deck_soft ~0.375 - over a grid cell)
+	local MEAN_A = if D.solid or not C.TEXTURES.deckSoft then 0.5 else 0.375
+	local LAYERS = MEAN_A * Dm * Dm / (S * S * math.sqrt(3) / 2)
 	CardPlan.flatDeckDisc = Dm
+	CardPlan.flatDeckSolid = D.solid == true
 	local ROWH = S * math.sqrt(3) / 2
 	local function hash(i: number, j: number, k: number): number
 		local h = math.sin(i * 127.1 + j * 311.7 + k * 74.7) * 43758.5453
 		return h - math.floor(h)
 	end
-	local function tile(i: number): any
-		local p = pool[i]
-		if p then
-			return p
-		end
+	-- a disc part (pooled: free discs are parked far below)
+	local function newTile(): any
 		local part = Instance.new("Part")
 		part.Anchored, part.CanCollide, part.CanQuery, part.CanTouch = true, false, false, false
 		part.CastShadow = false
@@ -94,19 +103,64 @@ function BaseDeck.new(ctx: any): any
 		local img = Instance.new("ImageLabel")
 		img.BackgroundTransparency = 1
 		img.Size = UDim2.fromScale(1, 1)
-		img.Image = C.TEXTURES.deckEdge or ""
+		img.Image = SOFT_TEX
 		img.Parent = gui
 		gui.Parent = part
 		part.Parent = folder
-		p = { part = part, gui = gui, img = img, on = false, edge = false }
-		pool[i] = p
-		return p
+		return { part = part, gui = gui, img = img }
+	end
+	-- a down-facing base card standing in at a point (storm-local m): the light, sky light, albedo
+	-- and opacity of the cards nearest it, weighted by distance beyond the nearest card's (so
+	-- the nearest always count, however far - the cards start only where the discs stop); light
+	-- fields by each card's opacity too. Shaded by StormCards' own card function, so a disc is what
+	-- a base card in its place would be (nil: no cards to go by)
+	local SIG = 1500
+	local stand = { nx = 0, ny = 0, nz = -1, lit = 1, sky = 1, albedo = 1, z = 0 }
+	local function standIn(d: any, lx: number, ly: number): (any, number)
+		local smp = d.samples
+		if not smp or #smp == 0 then
+			return nil, 1
+		end
+		local m = math.huge
+		for _, s in smp do
+			local q = (s[1] - lx) ^ 2 + (s[2] - ly) ^ 2
+			if q < m then
+				m = q
+			end
+		end
+		local k2 = 1 / (2 * SIG * SIG)
+		local lit, sky, alb, kw, a, k = 0, 0, 0, 0, 0, 0
+		for _, s in smp do
+			local w = math.exp(-((s[1] - lx) ^ 2 + (s[2] - ly) ^ 2 - m) * k2)
+			local wa = w * s[6]
+			lit += s[3] * wa
+			sky += s[4] * wa
+			alb += s[5] * wa
+			kw += wa
+			a += s[6] * w
+			k += w
+		end
+		if kw <= 0 then
+			return nil, 1
+		end
+		stand.lit, stand.sky, stand.albedo, stand.z = lit / kw, sky / kw, alb / kw, d.z -- (at the disc's own height)
+		return stand, math.clamp(a / math.max(k, 1e-6), 0, 1)
 	end
 	local parts, cfs = {}, {}
+	-- discs by grid cell (storm id, i, j): a cell keeps its disc while it stays in the patch, and
+	-- discs fade in and out (FADE s). (Dealt from a pool in order each frame, they popped and swapped
+	-- colour whenever one ahead of them in the list came or went, 2026-10-31)
+	local live, free = {}, {}
+	local FADE = 0.8
 	local self = {}
 	local styleAt = -math.huge
 	local UPRIGHT = CFrame.Angles(0, 0, math.pi / 2) -- (a cylinder's axis is its x: stand it up)
-	function self:update(_dt: number)
+	local function setType(p: any, edge: boolean)
+		p.edge = edge
+		p.gui.Enabled = edge
+		p.tr = nil
+	end
+	function self:update(dt: number)
 		local decks = ctx.stormDeck
 		local cx, cy, cz = ctx:simCamera()
 		local show = ctx.state.show.clouds ~= false and decks ~= nil
@@ -115,90 +169,134 @@ function BaseDeck.new(ctx: any): any
 		if restyle then
 			styleAt = os.clock()
 		end
-		local n = 0
+		local fadeStep = math.min(dt or 0, 0.25) / FADE
 		table.clear(parts)
 		table.clear(cfs)
+		for _, p in live do
+			p.seen = false
+		end
 		if show then
-			for _, d in decks do
+			for id, d in decks do
 				if cz < d.z then
 					-- the grid rides with the storm (extrapolated between updates)
-					local dt = math.clamp(now - (d.at or now), 0, 5)
-					local ox, oy = d.ox + d.u * dt, d.oy + d.v * dt
-					local dx, dy = d.x + d.u * dt, d.y + d.v * dt
+					-- (StormCards republishes every 0.25 s real: 15 s of sim at 60x. Capped at 5 s the
+					-- grid stood still 2/3 of the time and jumped ~110 m, 2026-10-31)
+					local dt2 = math.clamp(now - (d.at or now), 0, 120)
+					local ox, oy = d.ox + d.u * dt2, d.oy + d.v * dt2
+					local dx, dy = d.x + d.u * dt2, d.y + d.v * dt2
 					local reach = math.min(range, math.sqrt((cx - dx) ^ 2 + (cy - dy) ^ 2) + d.r)
+					-- this storm's live wall cloud (Render/WallStream), for the hole below
+					local wsAll = ctx.wallStreamBase
+					local wb = wsAll and wsAll[tostring(id)]
+					if not wb and wsAll then
+						local best = (1.5 * d.r) ^ 2
+						for _, b in wsAll do
+							local d2 = (b.x - dx) ^ 2 + (b.y - dy) ^ 2
+							if b.r and d2 < best then
+								best, wb = d2, b
+							end
+						end
+					end
+					if wb and not wb.r then
+						wb = nil
+					end
 					local j0, j1 = math.floor((cy - reach - oy) / ROWH), math.ceil((cy + reach - oy) / ROWH)
 					for j = j0, j1 do
 						local shift = if j % 2 == 0 then 0 else 0.5 * S
 						local i0, i1 = math.floor((cx - reach - ox - shift) / S), math.ceil((cx + reach - ox - shift) / S)
 						for i = i0, i1 do
 							local h1, h2, h3 = hash(i, j, 1), hash(i, j, 2), hash(i, j, 3)
-							-- (each disc a little off the grid)
-							local px = ox + shift + (i + 0.3 * (h1 - 0.5)) * S
-							local py = oy + (j + 0.3 * (h2 - 0.5)) * ROWH
+							-- (solid discs a little off the grid; soft ones on it, JIT)
+							local px = ox + shift + (i + JIT * (h1 - 0.5)) * S
+							local py = oy + (j + JIT * (h2 - 0.5)) * ROWH
 							local dc = math.sqrt((px - dx) ^ 2 + (py - dy) ^ 2)
 							local dcam = math.sqrt((px - cx) ^ 2 + (py - cy) ^ 2)
-							-- (the base out to ~0.85 of its radius - the billboard rim softens its edge
-							-- beyond - within range, and not in the clear slot)
-							-- (2026-10-30: and only in the steep patch over the camera - up to ~30 deg above the
-							-- horizon, D.steep x the base's height out - where billboards stand up as walls.
-							-- Out to the whole range the discs' hard edges and flat colour showed as solid
-							-- plates from outside the base; lower in the sky the billboard deck reads fine)
-							-- (the whole range again: limited to the steep patch overhead, the billboard deck
-							-- cards came back 1-5 km out and hung under the base as a wall hiding the
-							-- tornado, 2026-10-30. The outer ring of soft edge discs hides the hard edge)
+							-- (the base out to ~0.75 of its radius - the billboard rim softens its edge
+							-- beyond - within range, and not in the clear slot. 2026-10-30: limited to the
+							-- steep patch overhead, the billboard deck cards came back 1-5 km out and hung
+							-- under the base as a wall hiding the tornado; the outer ring of soft edge discs
+							-- hides the hard edge)
 							local rCam = range
 							local inside = dc < 0.75 * d.r and dcam < rCam
-							-- (how far inside the patch's edge the disc is: within one grid step it is an
+							-- (how far inside the patch's edge the disc is: within two grid steps it is an
 							-- edge disc, drawn soft)
 							local mEdge = math.min(0.75 * d.r - dc, rCam - dcam)
 							-- (none over a wall cloud: its lowering, the funnel's top and their cards
 							-- reach up to the base, and a solid disc there hides everything above its
-							-- plane - each card cut along a straight level line, the discs' few heights
-							-- drawing bands across the funnel and the wall cloud, 2026-10-30. The
+							-- plane - each card cut along a straight level line, 2026-10-30. The
 							-- lowering covers that patch from below)
-							if inside and ctx.wallStreamBase then
-								for _, b in ctx.wallStreamBase do
-									if b.x and b.r then
-										local hole = math.sqrt((px - b.x) ^ 2 + (py - b.y) ^ 2) - (1.15 * b.r + 0.5 * Dm)
-										if hole < 0 then
-											inside = false
-											break
-										end
-										mEdge = math.min(mEdge, hole)
-									end
+							-- (the hole the storm's card plan left - StormCards' g.hole, riding with the
+							-- storm as its cards do - so the cards fill exactly where the discs are not)
+							-- (and only where the live wall cloud is under it too: the cards re-plan every few
+							-- seconds, the wall cloud moves at once - onto the funnel at touchdown, back off it
+							-- when the tornado lifts - and the part of the planned hole it had left showed sky,
+							-- a pale crescent under the base, 2026-11-02. Cut where both leave room, the deck
+							-- covers wherever the cards or the lowering don't)
+							local hb = d.hole
+							if inside and hb then
+								local hole = math.sqrt((px - (ox + hb.dx)) ^ 2 + (py - (oy + hb.dy)) ^ 2) - (1.15 * hb.r + 0.5 * Dm)
+								if wb then
+									hole = math.max(hole, math.sqrt((px - wb.x) ^ 2 + (py - wb.y) ^ 2) - (1.15 * wb.r + 0.5 * Dm))
 								end
+								if hole < 0 then
+									inside = false
+								end
+								mEdge = math.min(mEdge, hole)
 							end
-							if inside and Util.slotAt(d.slot, px - ox, py - oy) < 0.4 then
-								n += 1
-								local p = tile(n)
-								p.on = true
-								-- (lumpy: up to ~30 m lower than the base plane, never above it)
-								local edge = mEdge < S and (C.TEXTURES.deckEdge or "") ~= ""
-								local z = d.z - (D.lump or 30) * h3 + 0.5 * (D.thick or 60)
-								if edge then
-									-- (edge discs lowest, so their soft underside draws in front of the solid
-									-- discs' rims beside them)
-									z = d.z - (D.lump or 30) - 5 + 0.5 * (D.thick or 60)
+							local sv = if inside then Util.slotAt(d.slot, px - ox, py - oy) else 1
+							if inside and sv < 0.4 then
+								-- (beside the clear slot too: a solid disc there ended the base in a hard
+								-- many-sided outline against the slot's paler sky, 2026-10-31)
+								-- (two discs deep: one ring let the outer solid discs' rims show between its soft discs as
+								-- a hard scalloped outline, 2026-10-31)
+								-- (DECK.solid false: every disc soft - the solid ones met the see-through cards
+								-- round them as hard dark ovals however their colour matched, 2026-10-31)
+								local edge = (not D.solid or mEdge < 2 * S or sv > 0.12) and SOFT_TEX ~= ""
+								local key = tostring(id) .. ":" .. i .. ":" .. j
+								local p = live[key]
+								if not p then
+									p = table.remove(free) or newTile()
+									live[key] = p
+									p.fade, p.col, p.alpha = 0, nil, nil
+									setType(p, edge)
 								end
-								if p.edge ~= edge then
-									p.edge = edge
-									p.part.Transparency = if edge then 1 else 0
-									p.gui.Enabled = edge
-									p.img.ImageColor3 = p.part.Color
-								end
-								table.insert(parts, p.part)
-								table.insert(cfs, CFrame.new(C.toWorld(px, py, z)) * UPRIGHT)
-								local key = i * 65536 + j
-								if restyle or p.deck ~= d or p.key ~= key then
-									p.deck, p.key = d, key
-									-- (darker toward the middle where the cloud is thickest; mottled;
-									-- hazed by true distance)
-									local col = d.col
-									local k = (0.8 + 0.2 * math.clamp(dc / d.r, 0, 1)) * (0.92 + 0.16 * h1) * (D.gain or 1)
-									col = Color3.new(math.min(col.R * k, 1), math.min(col.G * k, 1), math.min(col.B * k, 1))
-									local dz = d.z - cz
-									col = Util.quant(Util.mix(col, Util.light.haze, Util.hazeF(math.sqrt(dcam * dcam + dz * dz))))
-									if p.col ~= col then
+								p.seen = true
+								p.wantEdge = edge
+								-- (lumpy: up to ~30 m lower than the base plane, never above it; edge discs
+								-- lowest, so their soft underside draws in front of the solid discs' rims)
+								local z = if p.edge
+									then d.z - (D.lump or 30) - 5 + 0.5 * (D.thick or 60)
+									else d.z - (D.lump or 30) * h3 + 0.5 * (D.thick or 60)
+								p.cf = CFrame.new(C.toWorld(px, py, z)) * UPRIGHT
+								local shade = ctx.stormShade
+								if (restyle or not p.col) and shade and shade.card then
+									-- shaded as a base card in its place (ctx.stormShade.card: light, haze,
+									-- rain fog) and as see-through as the cards near it. Solid discs (lit
+									-- Neon parts) keep their brightness factor and stay opaque
+									-- (and the disc layer as opaque as the card layer near it: A, the cards' opacity,
+									-- is what the overlapping discs add up to, ~LAYERS deep, so each disc is
+									-- 1 - (1 - A)^(1 / LAYERS). Each at A drew its outline where discs overlapped;
+									-- each opaque, a black plate against the see-through cards, 2026-10-31)
+									local card, A = standIn(d, px - ox, py - oy)
+									local alpha = 1 - (1 - math.min(A, 0.98)) ^ (1 / LAYERS)
+									local col
+									if card then
+										local camPos = Vector3.new(cx, cy, cz)
+										col = shade.card(card, px, py, camPos, shade.light(), 0, d.fog or 0, d.base or d.z, d.dist or 1e4)
+									else
+										col = d.col
+									end
+									if not p.edge then
+										local k = (D.gain or 1) * (0.92 + 0.16 * h1)
+										col = Color3.new(math.min(col.R * k, 1), math.min(col.G * k, 1), math.min(col.B * k, 1))
+										alpha = 1
+									end
+									p.alpha = if p.alpha then p.alpha + 0.35 * (alpha - p.alpha) else alpha
+									-- (eased: the cards near it come and go, and the colour followed them in steps)
+									if p.col then
+										col = p.col:Lerp(col, 0.35)
+									end
+									if not p.col or (col.R - p.col.R) ^ 2 + (col.G - p.col.G) ^ 2 + (col.B - p.col.B) ^ 2 > 1e-6 then
 										p.col = col
 										p.part.Color = col
 										p.img.ImageColor3 = col
@@ -210,17 +308,41 @@ function BaseDeck.new(ctx: any): any
 				end
 			end
 		end
-		-- park the discs not in use
-		for k = n + 1, used do
-			local p = pool[k]
-			if p and p.on then
-				p.on = false
-				p.deck = nil
+		-- fade in what is wanted and out what is not (a disc changing kind fades out, switches, fades
+		-- back in); park the ones gone
+		local n = 0
+		for key, p in live do
+			local want = p.seen
+			if p.seen and p.wantEdge ~= p.edge then
+				want = false
+				if p.fade <= 0 then
+					setType(p, p.wantEdge)
+					want = true
+				end
+			end
+			p.fade = math.clamp(p.fade + (if want then fadeStep else -fadeStep), 0, 1)
+			if p.fade <= 0 and not p.seen then
+				live[key] = nil
+				table.insert(free, p)
+				p.gui.Enabled = false
 				table.insert(parts, p.part)
 				table.insert(cfs, far)
+			else
+				n += 1
+				local tr = 1 - p.fade * (if p.edge then (p.alpha or 1) else 1)
+				if math.abs((p.tr or -1) - tr) > 0.004 then
+					p.tr = tr
+					if p.edge then
+						p.part.Transparency = 1
+						p.img.ImageTransparency = tr
+					else
+						p.part.Transparency = tr
+					end
+				end
+				table.insert(parts, p.part)
+				table.insert(cfs, p.cf or far)
 			end
 		end
-		used = n
 		if #parts > 0 then
 			Workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
 		end
@@ -232,6 +354,7 @@ function BaseDeck.new(ctx: any): any
 		CardPlan.flatDeckRange = 0
 		CardPlan.flatDeckReach = 0
 		CardPlan.flatDeckDisc = 0
+		CardPlan.flatDeckSolid = false
 		folder:Destroy()
 	end
 	return self

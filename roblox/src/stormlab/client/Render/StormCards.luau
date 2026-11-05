@@ -44,6 +44,7 @@ local CardPlan = require(Parts:WaitForChild("CardPlan"))
 local Flow = require(Parts:WaitForChild("Flow"))
 local LobeShader = require(Parts:WaitForChild("LobeShader"))
 local ShelfPlan = require(Parts:WaitForChild("ShelfPlan"))
+local ramp = Util.ramp
 
 local StormCards = {}
 
@@ -58,6 +59,7 @@ local CULL_REFRESH = 8 -- an off-screen storm's anchors still move every 8th fra
 local MAX_RANGE = 150000
 local FRAME = 256 -- px a frame of a 4 x 4 sheet (1024 px)
 local FADE = 1.2 -- s for a card to fade in or out
+local MOVE_T = 2.5 -- s for a kept card to ease to its new place and size after a re-plan (2026-11-03)
 local BUDGET = 200 -- card writes a frame for pending plans
 local NEAR_BUDGET = 400 -- cards a frame checked for the near-camera fade
 local LOBE_SOFT_PX = 40 -- a lobe card smaller than this on screen draws the soft family
@@ -119,7 +121,7 @@ function StormCards.new(ctx: any): any
 	-- k: the layer's scale (studs a metre: its cards' offsets, heights and sizes); mapH: offsets
 	-- across at the map's own scale (a squall line's shelf)
 	local function newLayer(anchor: BasePart): any
-		return { anchor = anchor, byKey = {}, free = {}, fades = {}, anim = {}, count = 0, k = C.studs(1), mapH = false }
+		return { anchor = anchor, byKey = {}, free = {}, fades = {}, anim = {}, moves = {}, count = 0, k = C.studs(1), mapH = false }
 	end
 	-- a card's place on its layer's anchor (studs)
 	local function cardPos(layer: any, x: number, y: number, z: number): Vector3
@@ -206,11 +208,34 @@ function StormCards.new(ctx: any): any
 			inst.img.ImageRectOffset = off
 		end
 	end
+	-- A card's colour can pass 1 (a sunlit face: albedo x (sky + sun) ~1.3). ImageColor3 stops
+	-- at 1, so the rest goes into the billboard's Brightness (it scales a self-lit gui): clipped at
+	-- 1, then dimmed by the lobe texture and the card's shading, the sunny side of the tower drew
+	-- ~195 against a ~188 sky (2026-10-31). inst.col stays the clipped colour (what the base discs
+	-- and the wall cloud sample)
+	local HDR_MAX = 2.6
+	-- direct sun against sky light on a card's sunny face. Clear-day sun gives ~5-10x the
+	-- diffuse sky's light; at 1 (sun 1 : sky ~0.7) a sunlit tower drew no brighter than the sky
+	-- round it. Roblox's tone mapping squeezes what passes 1 (Brightness x2 lifted the tower
+	-- 197 -> 215 of 255), so the sun's share is raised rather than everything scaled: faces the
+	-- sun cannot reach (the base from below, the shadowed flank) keep their light (2026-10-31)
+	local SUN_GAIN = 2.2
 	local function setCol(inst: any, col: Color3)
-		local last = inst.col
-		if not last or math.abs(col.R - last.R) > 0.002 or math.abs(col.G - last.G) > 0.002 or math.abs(col.B - last.B) > 0.002 then
-			inst.col = col
-			inst.img.ImageColor3 = col
+		local k = math.max(col.R, col.G, col.B)
+		local b = if k > 1 then math.min(math.ceil(k * 20) / 20, HDR_MAX) else 1
+		if inst.bright ~= b then
+			inst.bright = b
+			inst.bb.Brightness = b
+		end
+		local shown = col
+		if b > 1 then
+			shown = Color3.new(math.min(col.R / b, 1), math.min(col.G / b, 1), math.min(col.B / b, 1))
+		end
+		local last = inst.shown
+		if not last or math.abs(shown.R - last.R) > 0.002 or math.abs(shown.G - last.G) > 0.002 or math.abs(shown.B - last.B) > 0.002 then
+			inst.shown = shown
+			inst.col = if k > 1 then Color3.new(math.min(col.R, 1), math.min(col.G, 1), math.min(col.B, 1)) else col
+			inst.img.ImageColor3 = shown
 		end
 	end
 	local function release(layer: any, inst: any)
@@ -219,6 +244,9 @@ function StormCards.new(ctx: any): any
 		layer.byKey[inst.key] = nil
 		layer.fades[inst] = nil
 		layer.anim[inst] = nil
+		if layer.moves then
+			layer.moves[inst] = nil
+		end
 		layer.count -= 1
 		inst.key, inst.card, inst.flowP = nil, nil, nil
 		table.insert(layer.free, inst)
@@ -230,7 +258,7 @@ function StormCards.new(ctx: any): any
 			inst.key, inst.card, inst.flowP = nil, nil, nil
 			table.insert(layer.free, inst)
 		end
-		layer.byKey, layer.fades, layer.anim, layer.count = {}, {}, {}, 0
+		layer.byKey, layer.fades, layer.anim, layer.moves, layer.count = {}, {}, {}, {}, 0
 	end
 
 	local groupSeq = 0 -- (staggers the off-screen anchor refreshes)
@@ -328,19 +356,45 @@ function StormCards.new(ctx: any): any
 	end
 	-- vx, vy, vz: the unit view direction from the camera to the card (sim frame)
 	-- shift: the part of the card's surface tilted toward (+) or away from (-) the sun
-	local function colour(card: any, L: any, flash: number, hazeF: number, vx: number, vy: number, vz: number, shift: number): Color3
+	-- (hdr: let the colour pass 1, up to HDR_MAX - the cards' own colour; others stop at 1)
+	local function colour(card: any, L: any, flash: number, hazeF: number, vx: number, vy: number, vz: number, shift: number, hdr: boolean?): Color3
 		local sky = L.sky * card.sky * (1 + 0.12 * shift)
-		local s = L.direct * card.lit * 0.9
+		local s = L.direct * card.lit * 0.9 * (if hdr then SUN_GAIN else 1)
 		local nx = card.nx
+		-- seen steeply from below (over ~27 deg up), a card shows its underside: the side facing
+		-- the camera, away from a high sun. `lit` is the sun reaching the card's outer surface, so
+		-- the tower's sunny lobes and the anvil seen from under the base drew 0.9-0.96 (near
+		-- white) beside base discs at ~0.12 (2026-10-31)
+		local up = math.clamp((vz - 0.45) / 0.3, 0, 1)
+		-- (wrapped Lambert: clouds scatter light round their edges; the share that reaches a face
+		-- turned away from the sun shrinks as it turns further away - through more cloud)
+		local function wrapped(facing: number): number
+			local floor = 0.3 * math.clamp(1 + facing, 0.3, 1)
+			return floor + (1 - floor) * math.max(0, 0.25 + 0.75 * facing)
+		end
 		if not nx then
-			s *= math.clamp(0.65 + 0.45 * shift, 0.2, 1.1)
+			local side = math.clamp(0.65 + 0.45 * shift, 0.2, 1.1)
+			-- (a column's core card - CardPlan's c.core - shows the face toward the camera from
+			-- every side: lit with the sun behind the viewer, shadowed when the sun is behind it)
+			local kv = if card.core then 1 else up
+			if kv > 0 then
+				side += (wrapped(math.clamp(-(vx * L.sx + vy * L.sy + vz * L.sz) + shift, -1, 1)) - side) * kv
+			end
+			s *= side
 		end
 		if nx then
 			local ny, nz = card.ny, card.nz
+			-- (a card standing for a cloud's top face, seen from below, is seen through the cloud
+			-- under it: its light is that of the face toward the camera - the anvil's sunlit top
+			-- drew 0.86 through the anvil's see-through lower layers, 2026-10-31)
+			if up > 0 and nz > 0 then
+				nz -= 2 * nz * up
+			end
 			local rim = 1 - math.abs(nx * vx + ny * vy + nz * vz) -- (the card's own edge-on-ness)
 			-- what the camera sees of a lump is the side facing it: the card's normal leans toward
 			-- the camera (seen from below through a gap, a tower shows its shadowed underside)
-			nx, ny, nz = nx - 0.7 * vx, ny - 0.7 * vy, nz - 0.7 * vz
+			local lean = 0.7 + 1.6 * up
+			nx, ny, nz = nx - lean * vx, ny - lean * vy, nz - lean * vz
 			local nm = math.sqrt(nx * nx + ny * ny + nz * nz)
 			if nm > 1e-3 then
 				nx, ny, nz = nx / nm, ny / nm, nz / nm
@@ -348,7 +402,7 @@ function StormCards.new(ctx: any): any
 			-- the surface's own orientation to the sun (wrapped Lambert: clouds scatter light
 			-- round their edges), on top of the storm's shadow already in `lit`
 			local facing = math.clamp(nx * L.sx + ny * L.sy + nz * L.sz + shift, -1, 1)
-			s *= 0.3 + 0.7 * math.max(0, 0.25 + 0.75 * facing)
+			s *= wrapped(facing)
 			-- an up-facing surface sees the whole sky, a down-facing one mostly the ground (dark
 			-- farmland under the storm's own shadow): the base from below ~0.4 of the sky light
 			-- (it was 0.8: the base sat at ~0.5 of the sunlit tower; photos ~0.14, review 10-29;
@@ -356,9 +410,13 @@ function StormCards.new(ctx: any): any
 			-- docs/storm-reference/real/04_*, so the wall cloud read pasted on)
 			sky *= 0.22 + 0.78 * (0.5 + 0.5 * nz) ^ 1.5
 			-- forward scatter: an edge seen toward the sun glows (the silver lining)
-			local fwd = math.max(0, vx * L.sx + vy * L.sy + vz * L.sz) ^ 4
+			-- (not looking steeply up: under a deck the light comes through kilometres of cloud)
+			-- (and not on the base's underside: a down-facing card seen low toward the sun glowed as a
+			-- pale patch inside the dark base, SC check 2026-11-01)
+			local fwd = math.max(0, vx * L.sx + vy * L.sy + vz * L.sz) ^ 4 * (1 - up)
+				* (1 - math.clamp((-(card.nz or 0) - 0.5) / 0.4, 0, 1))
 			if fwd > 0.01 then
-				s += L.direct * card.lit * 0.9 * fwd * rim * rim
+				s += L.direct * card.lit * 0.9 * (if hdr then SUN_GAIN else 1) * fwd * rim * rim
 			end
 		end
 		local alb = card.albedo
@@ -372,7 +430,8 @@ function StormCards.new(ctx: any): any
 		local r = alb * (sky * sr + s * cr) + 0.85 * flash
 		local g = alb * (sky * sg + s * cg) + 0.88 * flash
 		local b = alb * (sky * sb + s * cb) + flash
-		local c = Color3.new(math.min(r, 1), math.min(g, 1), math.min(b, 1))
+		local cap = if hdr then HDR_MAX else 1
+		local c = Color3.new(math.min(r, cap), math.min(g, cap), math.min(b, cap))
 		if hazeF > 0.01 then
 			c = Util.mix(c, Util.light.haze, hazeF * (1 - L.night))
 		end
@@ -419,28 +478,44 @@ function StormCards.new(ctx: any): any
 			return groups[id]
 		end,
 	}
-	local function shadeCard(inst: any, c: any, wx: number, wy: number, camPos: Vector3, L: any, flashes: boolean, full: boolean)
-		local ff = ctx.flashField
-		local flash = if flashes and ff then ctx.Tornado.FlashField.at(ff, wx, wy, c.z) else 0
+	-- the colour a card is drawn in (its sunward side) and the rain fog in it, for a card at world
+	-- (wx, wy, c.z); fog, base, dist: its storm's rain fog, cloud base and distance from the camera.
+	-- One function for the cards and for Render/BaseDeck's discs (ctx.stormShade.card), so a disc is
+	-- shaded as a base card in its place would be (2026-10-31)
+	local function cardColour(c: any, wx: number, wy: number, camPos: Vector3, L: any, flash: number, fog: number, base: number, dist: number, hdr: boolean?)
 		local rel = Vector3.new(wx, wy, c.z) - camPos
 		local d = math.max(rel.Magnitude, 1)
 		local vx, vy, vz, hf = rel.X / d, rel.Y / d, rel.Z / d, Util.hazeF(d)
 		-- a lobe is bright across most of its sunward face and dark only in the crease on the far
 		-- side: lit over the first half, the card's own light in the middle, shadow at the edge
-		local lit = colour(c, L, flash, hf, vx, vy, vz, 0.3)
+		local lit = colour(c, L, flash, hf, vx, vy, vz, 0.3, hdr)
 		-- rain fog: rain lies below the cloud base, so a line of sight from near the ground to a
 		-- card at height z spends only base / z of its length in it
 		local f = 0
-		if fogNow > 0.01 then
+		if fog > 0.01 then
 			-- (and the rain it crosses grows with its distance: the storm's fog is for its centre)
-			local tau = -math.log(1 - math.min(fogNow, 0.97)) * math.min(1, baseNow / math.max(c.z, 1)) * math.min(1, d / distNow)
+			local tau = -math.log(1 - math.min(fog, 0.97)) * math.min(1, base / math.max(c.z, 1)) * math.min(1, d / dist)
 			f = 1 - math.exp(-tau)
 			lit = Util.mix(lit, L.fog, f)
 		end
+		return lit, f, vx, vy, vz, hf
+	end
+	ctx.stormShade.card = cardColour
+	local function shadeCard(inst: any, c: any, wx: number, wy: number, camPos: Vector3, L: any, flashes: boolean, full: boolean)
+		local ff = ctx.flashField
+		local flash = if flashes and ff then ctx.Tornado.FlashField.at(ff, wx, wy, c.z) else 0
+		local lit, f, vx, vy, vz, hf = cardColour(c, wx, wy, camPos, L, flash, fogNow, baseNow, distNow, true)
+		-- (a down-facing card's colour before haze and rain fog: Render/BaseDeck's discs take the
+		-- deck's average of it and add their own fog and haze for their own distance. The average
+		-- of the fogged colours was the far cards' pale fog, and the discs overhead drew a pale
+		-- plate in a dark rain-wrapped base, 2026-10-31)
+		if (c.nz or 0) < -0.5 then
+			inst.raw = colour(c, L, 0, 0, vx, vy, vz, 0.3)
+		end
 		setCol(inst, lit)
 		if full then
-			local mid = colour(c, L, 0, hf, vx, vy, vz, 0)
-			local dark = colour(c, L, 0, hf, vx, vy, vz, -0.4)
+			local mid = colour(c, L, 0, hf, vx, vy, vz, 0, true)
+			local dark = colour(c, L, 0, hf, vx, vy, vz, -0.4, true)
 			if f > 0 then
 				mid = Util.mix(mid, L.fog, f)
 				dark = Util.mix(dark, L.fog, f)
@@ -487,6 +562,7 @@ function StormCards.new(ctx: any): any
 		end
 		return math.clamp(1 - math.exp(-tau), 0, 0.97)
 	end
+	ctx.stormShade.rainFog = rainFog -- (Render/WallStream: the rain in front of its wall cloud)
 
 	-- a card's lobe family (nil: it keeps its own texture). Cumuliform cards (lumpyFlat) are tower
 	-- lobes, or hanging `under` lobes when they face down; CardPlan can name one (c.lobe). Small on
@@ -504,7 +580,7 @@ function StormCards.new(ctx: any): any
 		if not fam or not LOBES[fam] then
 			return nil
 		end
-		local at = C.toWorld(cx, cy, 0) + cardPos(layer, c.x, c.y, c.z)
+		local at = C.toWorldAbout(cx, cy, 0, cx, cy) + cardPos(layer, c.x, c.y, c.z)
 		local px = math.max(c.w, c.h) * layer.k * fpxNow / math.max((at - camSNow).Magnitude, layer.k)
 		if px < LOBE_SOFT_PX and fam ~= "soft" and LOBES.soft then
 			return "soft"
@@ -541,6 +617,10 @@ function StormCards.new(ctx: any): any
 		local windAt = function(x: number, y: number, z: number): (number, number, number)
 			return ctx.cw:windAt(x, y, z, true)
 		end
+		local env = ctx.cw.env
+		local envAt = if env then function(x: number, y: number, z: number): (number, number)
+			return env:windAt(x, y, z)
+		end else nil
 		while flowN > 0 and os.clock() - t0 < FLOW_MS / 1000 do
 			local item = flowQ[flowN]
 			flowQ[flowN] = nil
@@ -552,7 +632,7 @@ function StormCards.new(ctx: any): any
 				if layer.isWall and g and g.wall then
 					spin, phase = g.wall.spin or 0, g.wallPhase or 0
 				end
-				local fl = Flow.trace(windAt, s, item[5], item[6], spin, phase, vT, c, inst.flowP)
+				local fl = Flow.trace(windAt, s, item[5], item[6], spin, phase, vT, c, inst.flowP, envAt)
 				c.flow = fl or false
 				inst.flowP = fl and fl.P
 				flowStat.n += 1
@@ -588,8 +668,18 @@ function StormCards.new(ctx: any): any
 		inst.stamp = stamp
 		layer.anim[inst] = if c.mv then true else nil
 		local k = layer.k
-		setPos(inst, cardPos(layer, c.x, c.y, c.z))
-		setSize(inst, math.max(c.w, 5) * k, math.max(c.h, 5) * k)
+		-- (a kept card eases to its new place and size over MOVE_T, 2026-11-03: set at once, a re-plan
+		-- moved every kept card in one step every few seconds. Moving cards are placed by animate)
+		local pNew = cardPos(layer, c.x, c.y, c.z)
+		local wNew, hNew = math.max(c.w, 5) * k, math.max(c.h, 5) * k
+		if not isNew and not c.mv and layer.easeOn and inst.pos and inst.sw then
+			inst.mvP0, inst.mvP1, inst.mvW0, inst.mvH0, inst.mvW1, inst.mvH1, inst.mvT = inst.pos, pNew, inst.sw, inst.sh, wNew, hNew, 0
+			layer.moves[inst] = true
+		else
+			layer.moves[inst] = nil
+			setPos(inst, pNew)
+			setSize(inst, wNew, hNew)
+		end
 		-- lobe family: by the card's kind and its size on screen
 		local wx, wy = s.x + ox + c.x, s.y + oy + c.y
 		local fam = lobeFamily(c, layer, s.x + ox, s.y + oy, camPos)
@@ -713,6 +803,16 @@ function StormCards.new(ctx: any): any
 	-- cards are animated this frame (animate writes their opacity, so it is not written twice)
 	local function stepFades(layer: any, dt: number, vis: boolean, animOn: boolean)
 		local k = dt / FADE
+		layer.easeOn = true
+		for inst in layer.moves do
+			inst.mvT = math.min(1, inst.mvT + dt / MOVE_T)
+			local f = inst.mvT * inst.mvT * (3 - 2 * inst.mvT)
+			setPos(inst, inst.mvP0:Lerp(inst.mvP1, f))
+			setSize(inst, inst.mvW0 + (inst.mvW1 - inst.mvW0) * f, inst.mvH0 + (inst.mvH1 - inst.mvH0) * f)
+			if inst.mvT >= 1 then
+				layer.moves[inst] = nil
+			end
+		end
 		for inst in layer.fades do
 			local t = inst.target
 			if inst.a < t then
@@ -909,7 +1009,7 @@ function StormCards.new(ctx: any): any
 		end
 		local km, kw, kh = g.main.k, g.wallL.k, C.frame.kh
 		local kmax, kmin = math.max(km, kw, kh), math.min(km, kw, kh)
-		local centre = C.toWorld(g.px, g.py, 0) + cardPos(g.main, g.bx, g.by, g.bz)
+		local centre = C.toWorldAbout(g.px, g.py, 0, g.px, g.py) + cardPos(g.main, g.bx, g.by, g.bz)
 		local radS = rad * (2 * kmax - kmin)
 		return centre, radS, (centre - camSNow).Magnitude
 	end
@@ -997,7 +1097,9 @@ function StormCards.new(ctx: any): any
 			local d2 = (s.x - camX) ^ 2 + (s.y - camY) ^ 2
 			if d2 < MAX_RANGE * MAX_RANGE then
 				live[tostring(s.id)] = s
-				inRange += 1
+				if not s.dead then
+					inRange += 1 -- (live storms only: the dead ones' remnants are few cards)
+				end
 			end
 		end
 		-- squall-line systems: shelf clouds along their leading edges
@@ -1031,6 +1133,12 @@ function StormCards.new(ctx: any): any
 			g.isSystem = string.sub(id, 1, 2) == "y:"
 			g.storm = if g.isSystem then ORIGIN else s
 			g.obj = s
+			-- (drawn as a mesh now, or no longer - Render/StormVolume: re-plan it at once)
+			local meshed = not g.isSystem and ctx.meshStorms ~= nil and ctx.meshStorms[id] == true
+			if meshed ~= (g.meshed or false) then
+				g.meshed = meshed
+				g.plannedAt = -math.huge
+			end
 			-- its scale about its centre (a shelf: about the middle of its cards), and the wall
 			-- layer's about the wall's centre
 			local px, py = g.px or s.x, g.py or s.y
@@ -1051,9 +1159,14 @@ function StormCards.new(ctx: any): any
 		-- (the wall style switched - key Y, Render/WallStream: re-plan every storm now)
 		local wallStream = (ctx.state.wallStyle or C.WALL_STYLE or "stream") == "stream"
 		local iso = ctx.state.isolateWall == true
-		if CardPlan.wallStream ~= wallStream or self.iso ~= iso then
+		local style = ctx.state.stormStyle -- (Render/StormVolume, key F: mesh detail cards on or off)
+		local hideSec = ctx.state.hideSection -- (debug key Period: one plan section left out)
+		CardPlan.hideSection = hideSec
+		if CardPlan.wallStream ~= wallStream or self.iso ~= iso or self.style ~= style or self.hideSec ~= hideSec then
+			self.hideSec = hideSec
 			CardPlan.wallStream = wallStream
 			self.iso = iso
+			self.style = style
 			for _, g in groups do
 				g.plannedAt = -math.huge
 			end
@@ -1069,20 +1182,109 @@ function StormCards.new(ctx: any): any
 				if ck then
 					pieces, vx, vy = ShelfPlan.plan(g.obj, cw.storms, ck, camX, camY, 1)
 				end
-				plan = CardPlan.fromPieces(pieces, 4241, 1)
+				plan = CardPlan.fromPieces(pieces, 4241, 1, camX, camY, camPos.Z)
 				g.vx, g.vy, g.t0 = vx, vy, cw.time or simT
 			else
 				local d = math.sqrt((s.x - camX) ^ 2 + (s.y - camY) ^ 2)
 				-- (fewer cards with distance and with many storms in range: the whole sky's card
 				-- count, not each storm's, is what the frame pays for)
-				local detail = math.clamp(1 - (d - 15000) / 90000, 0.25, 1) * math.clamp(5 / math.max(inRange, 1), 0.3, 1)
+				local rawDetail = math.clamp(1 - (d - 15000) / 90000, 0.25, 1) * math.clamp(5 / math.max(inRange, 1), 0.3, 1)
+				-- (in steps of 1/8 with a margin, 2026-11-03: it sets ring counts, level spacing and grid
+				-- spacing, so every small change - the camera moving, a cell starting anywhere in range -
+				-- re-laid the whole storm)
+				if not g.detailQ or math.abs(rawDetail - g.detailQ) > 0.1 then
+					g.detailQ = math.floor(rawDetail * 8 + 0.5) / 8
+				end
+				local detail = g.detailQ
 				local cp0 = os.clock()
 				-- (the hole Render/BaseDeck leaves in its discs over this storm's wall cloud: the
 				-- card plan must not leave out the base cards there)
 				CardPlan.planHole = ctx.wallStreamBase and ctx.wallStreamBase[stalest] or nil
+				CardPlan.meshBody = g.meshed == true
+				-- the rain this storm drops (surface rain where it is the nearest live storm): the
+				-- plan puts its forward-flank cloud over it (Round 17)
+				local vol = ctx.cw.vol
+				if vol and vol.nxv then
+					local others = {}
+					for _, o in ctx.cw.storms do
+						if o ~= s and not o.dead then
+							table.insert(others, o)
+						end
+					end
+					CardPlan.rainAt = function(x: number, y: number): number
+						local d0 = (x - s.x) ^ 2 + (y - s.y) ^ 2
+						for _, o in others do
+							if (x - o.x) ^ 2 + (y - o.y) ^ 2 < d0 then
+								return 0
+							end
+						end
+						return (ctx.Sim.Precip.surface(vol, x, y)) or 0
+					end
+				else
+					CardPlan.rainAt = nil
+				end
+				-- the beaver tail's path: its air's, traced through the wind (Sim/InflowCloud), cached
+				-- for a few seconds - the plan itself is cached and re-laid only now and then
+				local IC = ctx.Sim.InflowCloud
+				if IC then
+					local bc = g.bandAt and os.clock() - g.bandAt < 3
+					if not bc then
+						g.bandAt = os.clock()
+						g.bandPath = IC.band(ctx.cw, s, s.base or 1000)
+					end
+					CardPlan.bandPath = g.bandPath
+				end
 				plan, _, wall, g.deck = CardPlan.plan(s, Storm, detail, camX - s.x, camY - s.y, camPos.Z)
+				CardPlan.bandPath = nil
+				-- the hole this plan left for Render/BaseDeck (storm-relative, as the cards): the deck
+				-- cuts its discs there and only there. Cut at the wall cloud's live centre, the deck's hole
+				-- moved when the lowering re-centred on a new tornado's funnel while the cards still
+				-- covered the old one - sky through the base over the touchdown until the re-plan,
+				-- 2026-11-02
+				local ph = CardPlan.planHole
+				g.hole = if ph and ph.x and ph.r then { dx = ph.x - s.x, dy = ph.y - s.y, r = ph.r } else nil
+				CardPlan.meshBody = false
+				-- an outflow-dominant storm's shelf cloud: along its own gust front where that runs out
+				-- ahead of the updraft (Storm: gustR / gustD, rays across its forward half). The inflow
+				-- lifted there condenses before it reaches the storm - a shelf; with the front at the
+				-- updraft (a balanced storm) the lifted air feeds the updraft itself, no shelf
+				-- (Round 38: the lift at a shelf is the gust front's - Storm gustL, the pool's depth
+				-- against the inflow's condensation level x the front's speed - not the updraft's, so
+				-- the shelf outlives a dying updraft and a dead storm keeps its while its pool lasts.
+				-- Was gated off for dead storms and scaled by W: it faded just as it should grow)
+				local ck = s.gustR and cloudKit() or nil
+				if ck then
+					local Ru0 = Storm.updraftRadiusAt(s, s.base or 1000)
+					local lifts = s.gustL
+					local segs = {}
+					for k, r in s.gustR do
+						local a = (s.gustDir or 0) + (k - 5) * math.pi / 8
+						-- (outflow-dominant along this ray: the RKW ratio at the front itself, Storm gustK)
+						local od = ramp((s.gustK and s.gustK[k]) or 0, 0.9, 1.6)
+						local lead = ramp(r - 1.2 * Ru0, 0, 4000)
+						local feed = if lifts then 0.4 + 0.6 * math.clamp(lifts[k] or 0, 0, 1) else 0.4 + 0.6 * ramp(s.W or 0, 5, 25)
+						if r > 0 and od * lead > 0.05 then
+							local cx, cy = math.cos(a), math.sin(a)
+							table.insert(segs, { x = s.x + cx * r, y = s.y + cy * r, nx = cx, ny = cy, c = 0,
+								active = 60 * od * lead * feed, deficit = (s.gustD and s.gustD[k]) or 0, len = 1.2 * r * math.pi / 8 })
+						end
+					end
+					if #segs > 0 then
+						local pieces = ShelfPlan.plan({ id = s.id, segments = segs }, { s }, ck, camX, camY, detail)
+						local sc = CardPlan.fromPieces(pieces, (s.seed or 1) * 13 + 7, detail * 0.6, camX, camY, camPos.Z)
+						for _, c in sc do
+							c.x -= s.x
+							c.y -= s.y
+							c.key = "shelf" .. c.key
+							table.insert(plan, c)
+						end
+					end
+				end
+				CardPlan.rainAt = nil
 				-- (debug: what a re-plan costs - one storm every PLAN_EVERY / storms seconds)
 				ctx.root:SetAttribute("StormCardsPlanMs", math.floor((os.clock() - cp0) * 10000 + 0.5) / 10)
+				ctx.root:SetAttribute("StormCardsSkyMs", math.floor((CardPlan.lastSkyMs or 0) * 10 + 0.5) / 10)
+				ctx.root:SetAttribute("StormCardsCount", #plan)
 			end
 			g.plan, g.wall = plan, wall
 			g.plannedAt = t0
@@ -1279,7 +1481,8 @@ function StormCards.new(ctx: any): any
 			-- turn of the wall layer at its outermost card), off screen only every 8th frame
 			local refresh = vis or (frameN + (g.n or 0)) % CULL_REFRESH == 0
 			if refresh then
-				local p = C.toWorld(g.px, g.py, 0)
+				-- (pulled toward the camera with a storm drawn as a mesh: LabConfig.toWorldAbout)
+				local p = C.toWorldAbout(g.px, g.py, 0, g.px, g.py)
 				local last = g.mainCF
 				if last == nil or (p - last).Magnitude > thrS then
 					g.mainCF = p
@@ -1289,7 +1492,7 @@ function StormCards.new(ctx: any): any
 				local w = g.wall
 				if w then
 					-- turning cyclonically (counter-clockwise seen from above) at the low-level rotation
-					local wp = C.toWorld(g.px + w.x, g.py + w.y, 0)
+					local wp = C.toWorldAbout(g.px + w.x, g.py + w.y, 0, g.px + w.x, g.py + w.y)
 					local ang = g.wallPhase or 0
 					local lastW = g.wallCF
 					local rS = math.max((g.wallRad or 0) * g.wallL.k, 1)
@@ -1391,25 +1594,40 @@ function StormCards.new(ctx: any): any
 			for id, g in groups do
 				local d = g.deck
 				local col
+				local samples
 				if d and not g.isSystem then
+					-- (and each card where it is, storm-local, weighted by how opaque it is: a disc takes
+					-- the colour of the cards nearest it, not the whole base's average - one colour for
+					-- every disc drew each as a dark circle against the cards beside it, 2026-10-31)
 					local r, gg, b, k = 0, 0, 0, 0
+					samples = {}
 					for _, inst in g.main.byKey do
 						local c = inst.card
-						if c and (c.nz or 0) < -0.5 and inst.a > 0.3 then
-							local cc = inst.col or inst.img.ImageColor3
-							r += cc.R
-							gg += cc.G
-							b += cc.B
-							k += 1
+						-- (the base's own sheets only: the half-transparent hanging lumps and the tower's
+						-- core cards under the base averaged the discs down to ~0.5 opaque, and the sky
+						-- and the sunlit tower showed through as bright holes, SC check 2026-11-01)
+						if c and (c.nz or 0) < -0.5 and c.sec == "base" and c.tex == "softSheetFlat" and inst.a > 0.05 then
+							local cc = inst.raw or inst.col or inst.img.ImageColor3
+							local w = inst.a
+							r += cc.R * w
+							gg += cc.G * w
+							b += cc.B * w
+							k += w
+							-- (what ctx.stormShade.card needs of the card: light, sky light, albedo; and
+							-- how opaque it is)
+							table.insert(samples, { c.x, c.y, c.lit or 1, c.sky or 1, c.albedo or 1, w })
 						end
 					end
-					if k > 0 then
+					if k > 0.3 then
 						col = Color3.new(r / k, gg / k, b / k)
 					end
 				end
 				if col then
-					ctx.stormDeck[id] = { x = g.px + d.x, y = g.py + d.y, r = d.r, z = d.z, ox = g.px, oy = g.py, slot = d.slot, col = col,
-						u = g.storm.u or 0, v = g.storm.v or 0, at = ctx:simTime() }
+					-- (col: before haze and fog; fog, fogCol, dist: the storm's rain fog, its colour and
+					-- the camera's distance it is for - shadeCard's fog, applied per disc)
+					ctx.stormDeck[id] = { x = g.px + d.x, y = g.py + d.y, r = d.r, z = d.z, ox = g.px, oy = g.py, slot = d.slot, col = col, samples = samples, base = g.storm.base or d.z,
+						fog = g.fog or 0, fogCol = L.fog, dist = math.max(g.dCam or 1e4, 500),
+						u = g.storm.u or 0, v = g.storm.v or 0, at = ctx:simTime(), hole = g.hole }
 				else
 					ctx.stormDeck[id] = nil
 				end

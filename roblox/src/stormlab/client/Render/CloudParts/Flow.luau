@@ -52,8 +52,12 @@ end
 -- Returns { P, x = {...}, y, z, f } (N + 1 points, layer frame) or nil (the air barely moves).
 -- (A turning layer: the air is looked up where the card is on the map at each moment of its
 -- current loop - the layer's angle then - and its turn taken out of the motion.)
+-- envAt(x, y, z) -> u, v: the environment's own wind (optional). A billow on the tower is part of
+-- the column, whose drift downshear is already its tilt: it moves with the storm's own air (the
+-- wind less the environment's) - carried by the full wind as well it drifted km off the column as
+-- a lone puff, SC check 2026-11-01.
 function Flow.trace(windAt: (number, number, number) -> (number, number, number), s: any, ox: number, oy: number,
-	spin: number, phase: number, t: number, c: any, P: number?): any?
+	spin: number, phase: number, t: number, c: any, P: number?, envAt: ((number, number, number) -> (number, number))?): any?
 	local m = c.mv
 	if not m then
 		return nil
@@ -62,9 +66,14 @@ function Flow.trace(windAt: (number, number, number) -> (number, number, number)
 	local su, sv = s.u or 0, s.v or 0
 	local base = s.base or 1000
 	local tauNow = 0 -- (time into the current loop; set once P is known)
+	local own = m.k == "up" and envAt ~= nil
 	local function vel(x: number, y: number, z: number, tau: number): (number, number, number)
 		if spin == 0 then
 			local u, v, w = windAt(cx + x, cy + y, z)
+			if own then
+				local eu, ev = (envAt :: any)(cx + x, cy + y, z)
+				return u - eu, v - ev, w
+			end
 			return u - su, v - sv, w
 		end
 		local a = phase + spin * (tau - tauNow)
@@ -95,6 +104,16 @@ function Flow.trace(windAt: (number, number, number) -> (number, number, number)
 		u0, v0, w0 = vel(x, y, z, 0)
 	end
 	local dt = Pn / N
+	-- cloud carried out of the tower mixes with the dry air round it and evaporates: within a
+	-- few hundred metres of the edge in dry mid-levels, further in moist air (a billow carried
+	-- km downshear by the environment's wind floated off as a lone puff, SC check 2026-11-01)
+	local edge = m.edge
+	local rh = clamp(s.rhMid or 0.5, 0.05, 0.95)
+	local Lev = clamp(150 * rh / (1 - rh), 60, 400) -- (entrainment: never more than a few hundred m)
+	local function outside(qx: number, qy: number, qz: number): number
+		local rc, ex, ey = edge(qz)
+		return exp(-max(0, sqrt((ox + qx - ex) ^ 2 + (oy + qy - ey) ^ 2) - rc) / Lev)
+	end
 	local px, py, pz, pf = { x }, { y }, { z }, { 1 }
 	local travelled, stopped = 0, false
 	local u, v, w = u0, v0, w0
@@ -115,7 +134,7 @@ function Flow.trace(windAt: (number, number, number) -> (number, number, number)
 			end
 		end
 		px[i + 1], py[i + 1], pz[i + 1] = x, y, z
-		pf[i + 1] = condense(c.z, z, base)
+		pf[i + 1] = condense(c.z, z, base) * (if edge then outside(x, y, z) else 1)
 	end
 	return { P = P, n = N, x = px, y = py, z = pz, f = pf }
 end

@@ -112,6 +112,35 @@ local function kill(self: Precip, i: number)
 	table.insert(self.free, i)
 end
 
+-- Remove every parcel within r m of (x, y) (a lab scene rebuilt in place: the scene before's rain
+-- is not its storm's, 2026-11-03)
+function Precip.clearNear(self: Precip, x: number, y: number, r: number)
+	local r2 = r * r
+	for i = 1, #self.px do
+		if self.alive[i] then
+			local dx, dy = self.px[i] - x, self.py[i] - y
+			if dx * dx + dy * dy < r2 then
+				kill(self, i)
+			end
+		end
+	end
+end
+
+-- Move every parcel within r m of (x, y) by (dx, dy) (a lab scene's storm moved on while its
+-- tornado settled without the world stepping: its rain goes with it)
+function Precip.shiftNear(self: Precip, x: number, y: number, r: number, dx: number, dy: number)
+	local r2 = r * r
+	for i = 1, #self.px do
+		if self.alive[i] then
+			local ex, ey = self.px[i] - x, self.py[i] - y
+			if ex * ex + ey * ey < r2 then
+				self.px[i] += dx
+				self.py[i] += dy
+			end
+		end
+	end
+end
+
 local function fallSpeed(kind: number, size: number, z: number): number
 	local thin = 1 + z / 20000 -- thinner air aloft
 	if kind == 1 then

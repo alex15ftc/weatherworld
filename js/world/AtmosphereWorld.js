@@ -142,6 +142,9 @@ export class AtmosphereWorld {
       this.prepare(stepHours);
       if (this.stormsEnabled) this.withStormEffects(() => (advanceStorms ? advanceStormEngine(this.world, stepHours) : applyStormFeedback(this.world, stepHours)));
       if (advanceStorms && this.stormsEnabled) this.onStormTick?.();
+      // (Counts the steps that rewrote the cells: the game feed keeps what it reads from them
+      // until the next one, StormPrecipGrid.js. Storm ticks between steps leave the cells alone.)
+      this.world.cellsVersion = (this.world.cellsVersion ?? 0) + 1;
       onStep?.();
     }
   }

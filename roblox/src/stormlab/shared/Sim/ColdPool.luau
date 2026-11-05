@@ -21,6 +21,7 @@ local function dep(name: string): any
 	return (require :: any)("./" .. name)
 end
 local Grid = dep("Grid")
+local Thermo = dep("Thermo")
 
 local ColdPool = {}
 ColdPool.__index = ColdPool
@@ -34,6 +35,27 @@ local function depthOf(d: number): number
 	return math.clamp(350 + 190 * d, 0, 3000)
 end
 ColdPool.depthOf = depthOf
+
+-- The depth the pool's wind profile spans (m) for a deficit d, and its slope dh/dd: depthOf with a
+-- floor at 1 K, the floor rounded off (softplus over ~0.25 K). With a sharp max(d, 1) the depth's
+-- slope jumped from 0 to 190 m/K on the 1 K line, and the vertical wind with it - a sheet of
+-- sudden ascent, 0.001 -> 0.32 m/s in 2 m (test_wind_physics' 0.54 W/Ru divergence, 2026-11-04)
+local SOFT = 4
+function ColdPool.windDepth(d: number): (number, number)
+	local a = SOFT * (d - 1)
+	local de, sig
+	if a > 30 then
+		de, sig = d, 1
+	else
+		local e = math.exp(a)
+		de, sig = 1 + math.log(1 + e) / SOFT, e / (1 + e)
+	end
+	local h = 350 + 190 * de
+	if h >= 3000 then
+		return 3000, 0
+	end
+	return h, 190 * sig
+end
 
 function ColdPool.speedOf(d: number): number
 	if d <= 0 then
@@ -55,7 +77,7 @@ function ColdPool.new(env: any, dx: number?): ColdPool
 	local function g(v: number?)
 		return Grid.new(n, n, d, x0, x0, v or 0)
 	end
-	local self = setmetatable({ D = g(), M = g(0.7), R = g(), SU = g(), SV = g(), VU = g(), VV = g(), EDGE = g(), dx = d, env = env }, ColdPool)
+	local self = setmetatable({ D = g(), M = g(0.7), R = g(), SU = g(), SV = g(), VU = g(), VV = g(), WU = g(), WV = g(), EDGE = g(), dx = d, env = env }, ColdPool)
 	return self :: ColdPool
 end
 
@@ -117,7 +139,7 @@ function ColdPool.downdrafts(self: ColdPool, rainRate: any, ddField: any, dt: nu
 				-- the whole column above, not only in proportion to the rain reaching the ground:
 				-- tied to surface rain alone, the forward flank's pool took ~20 min to form while
 				-- the storm moved on ~20 km, and there was no forward-flank gust front)
-				local wdd = math.min(10, 1.2 * math.clamp(r / 5, 0, 1) + 0.12 * r)
+				local wdd = Thermo.rainDowndraftSpeed(r)
 				local target
 				if ddArrival then
 					-- (the real downdraft's arrival deficit at this rain rate, Thermo.downdraftArrival:
@@ -202,34 +224,110 @@ function ColdPool.deficitAt(self: ColdPool, x: number, y: number): (number, numb
 	return d, self.M:sample(x, y), depthOf(d)
 end
 
--- The cold pool's own wind perturbation (relative to the environment) at (x, y, z):
--- the spreading outflow inside the pool, rising air over its head.
+-- The cold pool's wind profile (Pof: the share of the spreading speed at height z; Qof: its
+-- integral from the ground) for a pool h deep: outflow in the pool, (1 - s^2)(1 - e^(-z/25 m)) -
+-- strongest a little above the ground, gone at its top - and above it, over h..3h, the ambient air
+-- flowing back over it, -k (s - 1)(3 - s) with k set so the two carry the same air: the column's
+-- net sideways flux is zero, so the air the outflow spreads is replaced from above, not from nowhere.
+local ZA = 25
+local function qLow(z: number, h: number): number
+	local e = math.exp(-z / ZA)
+	local h2 = h * h
+	return z - z * z * z / (3 * h2) - (ZA * (1 - e) - ZA * ZA * ZA / h2 * (2 - e * (z * z / (ZA * ZA) + 2 * z / ZA + 2)))
+end
+local function Pof(z: number, h: number): number
+	local s = z / h
+	if s <= 1 then
+		return (1 - s * s) * (1 - math.exp(-z / ZA))
+	elseif s < 3 then
+		local k = 3 * qLow(h, h) / (4 * h)
+		return -k * (s - 1) * (3 - s)
+	end
+	return 0
+end
+local function Qof(z: number, h: number): number
+	local s = z / h
+	if s <= 1 then
+		return qLow(z, h)
+	elseif s < 3 then
+		local qh = qLow(h, h)
+		local k = 3 * qh / (4 * h)
+		return qh - k * h * (-s * s * s / 3 + 2 * s * s - 3 * s + 4 / 3)
+	end
+	return 0
+end
+-- (both scaled so the outflow averages 1 over the pool's depth: the pool's air as a whole moves
+-- with the pool, its lowest few hundred metres ~1.5 times as fast - the current's air behind the
+-- head outruns the front, Simpson & Britter 1979 - and its top slower)
+local function meanOf(h: number): number
+	return qLow(h, h) / h
+end
+local function PofN(z: number, h: number): number
+	return Pof(z, h) / meanOf(h)
+end
+local function QofN(z: number, h: number): number
+	return Qof(z, h) / meanOf(h)
+end
+-- d(QofN)/dh at fixed z, exactly (windAt: the vertical motion where the pool's depth changes. A
+-- numeric difference straddled the return flow's top and broke continuity there, 2026-11-03)
+local function dqLowDh(z: number, h: number): number
+	local e = math.exp(-z / ZA)
+	local h3 = h * h * h
+	return 2 * z * z * z / (3 * h3) - 2 * ZA * ZA * ZA / h3 * (2 - e * (z * z / (ZA * ZA) + 2 * z / ZA + 2))
+end
+local function dQofNdh(z: number, h: number): number
+	local s = z / h
+	if s >= 3 then
+		return 0
+	end
+	local qh = qLow(h, h)
+	local dqh = dqLowDh(h, h) -- (the z-slope of qLow is 0 at z = h)
+	local Q, dQ
+	if s <= 1 then
+		Q, dQ = qLow(z, h), dqLowDh(z, h)
+	else
+		local G = -s * s * s / 3 + 2 * s * s - 3 * s + 4 / 3
+		local dG = -(s - 1) * (s - 3)
+		Q = qh * (1 - 0.75 * G)
+		dQ = dqh * (1 - 0.75 * G) + qh * 0.75 * dG * s / h
+	end
+	local m = qh / h
+	local dm = (dqh * h - qh) / (h * h)
+	return dQ / m - Q * dm / (m * m)
+end
+ColdPool.depthMeanHeights = { 0.1, 0.3, 0.5, 0.7, 0.9 }
+
+-- The cold pool's own wind perturbation (relative to the environment) at (x, y, z): the spreading
+-- outflow inside the pool (the grid's WU, WV: the pool's own motion) with its return flow above,
+-- and the vertical motion continuity makes of them, w = -div(V Q(z; h)) - rising where the
+-- outflow piles up behind the gust front's head, sinking where it spreads apart. (2026-11-03: it
+-- was the outflow alone plus a lift drawn at the head, so air spread out of nowhere and rose
+-- from nowhere: docs/stormlab/PHYSICS-AUDIT-2026-11-03.md.)
 function ColdPool.windAt(self: ColdPool, x: number, y: number, z: number): (number, number, number)
-	local d = self.D:sample(x, y)
-	local edge = self.EDGE:sample(x, y)
-	if d < 0.1 and edge < 0.02 then
+	local vu, vux, vuy = self.WU:sampleGrad(x, y)
+	local vv, vvx, vvy = self.WV:sampleGrad(x, y)
+	if math.abs(vu) + math.abs(vv) + 2000 * (math.abs(vux) + math.abs(vuy) + math.abs(vvx) + math.abs(vvy)) < 1e-3 then
 		return 0, 0, 0
 	end
-	local h = depthOf(math.max(d, 1))
-	local vu, vv = self.VU:sample(x, y), self.VV:sample(x, y)
-	local u, v, w = 0, 0, 0
-	if z < h then
-		-- outflow strongest a little above the ground, gone at the top of the pool
-		local s = z / h
-		local prof = math.min(1, (z + 5) / 60) * (1 - s * s)
-		u, v = vu * prof, vv * prof
+	local d, ddx, ddy = self.D:sampleGrad(x, y)
+	local h, dh = ColdPool.windDepth(d)
+	if z >= 3 * h or z < 0 then
+		return 0, 0, 0
 	end
-	-- lifting over the head of the gust front: strongest around the pool depth
-	if edge > 0.02 then
-		local c = math.sqrt(vu * vu + vv * vv)
-		local zz = z / math.max(200, h)
-		w = 0.8 * c * edge * zz * math.exp(1 - zz)
+	local P = PofN(z, h)
+	local Q = QofN(z, h)
+	local w = -(vux + vvy) * Q
+	if dh ~= 0 then
+		local dQ = dQofNdh(z, h) * dh -- (dQ/dd)
+		w -= (vu * ddx + vv * ddy) * dQ
 	end
-	return u, v, w
+	return vu * P, vv * P, w
 end
 
--- Advance dt seconds. lowWind(x, y) -> u, v: the environment's mean 0-1 km wind.
-function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> (number, number), recovery: number, yieldFn: (() -> ())?)
+-- Advance dt seconds. lowWind(x, y) -> u, v: the environment's mean 0-1 km wind, and (optionally)
+-- the storms' own there (their inflow and spin: the pool spreads in that air too). depthWind(x, y, h)
+-- -> u, v: the environment's and storms' wind averaged over 0..h (the pool's wind is set against it).
+function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> (number, number, number?, number?), recovery: number, yieldFn: (() -> ())?, depthWind: ((number, number, number) -> (number, number))?)
 	local D, VU, VV, EDGE = self.D, self.VU, self.VV, self.EDGE
 	local nx, ny = D.nx, D.ny
 	local dx = self.dx
@@ -247,10 +345,11 @@ function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> 
 			local gx = (D:get(i + 1, j) - D:get(i - 1, j)) / (2 * dx)
 			local gy = (D:get(i, j + 1) - D:get(i, j - 1)) / (2 * dx)
 			local gm = math.sqrt(gx * gx + gy * gy)
-			local eu, ev = lowWind(x, y)
+			local eu, ev, stu, stv = lowWind(x, y)
+			stu, stv = stu or 0, stv or 0
 			local su, sv = self.SU.v[k], self.SV.v[k]
 			local ek = ColdPool.ENV_K or 0.5
-			local u, v, e = ek * eu, ek * ev, 0
+			local u, v, e = ek * (eu + stu), ek * (ev + stv), 0
 			if gm > 1e-7 then
 				local nxv, nyv = -gx / gm, -gy / gm -- outward
 				-- the deficit of the pool behind this point drives the front
@@ -270,14 +369,37 @@ function ColdPool.step(self: ColdPool, dt: number, lowWind: (number, number) -> 
 			u += su
 			v += sv
 			-- what the cold pool does to the surface wind (relative to the environment)
-			VU.v[k], VV.v[k] = u - eu * (if D.v[k] > 0.3 then ek else 0), v - ev * (if D.v[k] > 0.3 then ek else 0)
+			VU.v[k], VV.v[k] = u - (eu + stu) * (if D.v[k] > 0.3 then ek else 0), v - (ev + stv) * (if D.v[k] > 0.3 then ek else 0)
 			EDGE.v[k] = e
 			-- (advection uses the full ground-relative spreading velocity)
 			self.SU.v[k] = su * math.exp(-dt / 900)
 			self.SV.v[k] = sv * math.exp(-dt / 900)
 			AU.v[k], AV.v[k] = u, v
+			-- the pool's wind (windAt): its cold air moves with the pool, so on top of the
+			-- environment's and the storms' low-level wind (World.windAt adds both) it is the pool's
+			-- own motion less those - in the cold air only (faded in over 0.1-0.5 K, and at its head,
+			-- where the cold air is still thin on the grid but already running at the front's speed),
+			-- none outside
+			local ph = math.clamp((D.v[k] - 0.1) / 0.4, 0, 1)
+			ph = math.max(ph * ph * (3 - 2 * ph), e)
+			if ph > 0 then
+				-- (against the air World.windAt adds: by default the 0-1 km wind the pool moves in,
+				-- so its air moves with the pool on that wind's terms. ColdPool.DEPTH_MEAN: against
+				-- that air averaged over the pool's own depth instead - the pool's air then matches
+				-- its motion at every depth (test_wind_physics' head check: 0.98-1.01 against
+				-- 0.62-1.23), but the rain's last kilometre drifts differently and the squall line's
+				-- tornadoes doubled (37 -> 80 in 2 h, cells and line vortices both), 2026-11-03)
+				local bu, bv = eu + stu, ev + stv
+				if depthWind and ColdPool.DEPTH_MEAN then
+					bu, bv = depthWind(x, y, (ColdPool.windDepth(D.v[k])))
+				end
+				self.WU.v[k], self.WV.v[k] = ph * (u - bu), ph * (v - bv)
+			else
+				self.WU.v[k], self.WV.v[k] = 0, 0
+			end
 		end
 	end
+	self.AU, self.AV = AU, AV -- (test_wind_physics: the pool's motion against its wind)
 	-- move the pool (and its moistness) with the spreading velocity
 	if yieldFn then
 		yieldFn()

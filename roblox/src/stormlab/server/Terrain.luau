@@ -66,7 +66,8 @@ local function eraseOutside(terrain: Terrain, A: any, B: any?, res: number, pace
 	return true
 end
 
-function Terrain.build(C: any, cx: number, cy: number, yieldFn: (() -> ())?): number
+-- (budget: s of work a frame, default BUDGET; the hills toggle builds faster - its tornado is near)
+function Terrain.build(C: any, cx: number, cy: number, yieldFn: (() -> ())?, budget: number?): number
 	generation += 1
 	local myGen = generation
 	local R = C.GROUND.relief
@@ -76,7 +77,7 @@ function Terrain.build(C: any, cx: number, cy: number, yieldFn: (() -> ())?): nu
 		if generation ~= myGen then
 			return false
 		end
-		if os.clock() - t0 > BUDGET then
+		if os.clock() - t0 > (budget or BUDGET) then
 			if yieldFn then
 				yieldFn()
 			end
@@ -100,7 +101,10 @@ function Terrain.build(C: any, cx: number, cy: number, yieldFn: (() -> ())?): nu
 	-- match the farmland tiles' colour (Render/Ground) so the edge between them doesn't show
 	local gc = C.GROUND.colour
 	terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(gc[1], gc[2], gc[3]))
-	C.groundCentre = { x = cx, y = cy }
+	-- (cx, cy: the hills' centre - the town's, unless the relief has its own, R.cx)
+	if not R.cx then
+		C.groundCentre = { x = cx, y = cy }
+	end
 	local K = C.SCALE
 	local half = R.radius * K
 	local x0 = math.floor((cx * K - half) / res) * res
@@ -136,7 +140,9 @@ function Terrain.build(C: any, cx: number, cy: number, yieldFn: (() -> ())?): nu
 	table.sort(chunks, function(a, b)
 		return a[3] < b[3]
 	end)
-	local flatR = R.flat * K / res -- the pad and beyond the edge are flat: no hills there
+	-- the pad and beyond the edge are flat: no hills there (the pad is elsewhere when the hills
+	-- have their own centre: no skip)
+	local flatR = if R.cx then 0 else R.flat * K / res
 	local edgeR = R.radius * K / res
 	local sheetH = sheetTop - sheetBottom
 	local filled = 0

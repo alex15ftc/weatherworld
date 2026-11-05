@@ -1,0 +1,51 @@
+built life_supercell in 4.6s
+    0 false W 19.3 Ru 1733 cape 3586 rkw 0.28 gustK 0.00 gRkw 0.00 | km live/mem 3: 2.5/ 1.9 6: 4.6/ 1.2 9: 5.9/ 0.0 vis 0.54 | anvil   0 km gap  0.0 root 6.8 | rain    87 strat    0 t/s
+  300 false W 13.7 Ru 1467 cape 3619 rkw 0.23 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.6/ 1.1 6: 3.6/ 0.0 9: 4.6/ 0.0 vis 0.13 | anvil   0 km gap  0.0 root 5.8 | rain     2 strat    0 t/s
+  600 false W 19.3 Ru 1733 cape 3661 rkw 0.28 gustK 0.00 gRkw 0.00 | km live/mem 3: 2.5/ 2.0 6: 4.6/ 1.2 9: 5.8/ 0.0 vis 0.59 | anvil   0 km gap  0.0 root 4.9 | rain    88 strat    0 t/s
+  900 false W 25.0 Ru 2000 cape 3677 rkw 0.23 gustK 0.00 gRkw 0.00 | km live/mem 3: 3.3/ 2.8 6: 5.7/ 4.5 9: 7.1/ 3.5 vis 1.00 | anvil   0 km gap  0.0 root 4.1 | rain   153 strat    0 t/s
+ 1200 false W 28.3 Ru 2200 cape 3660 rkw 0.02 gustK 0.16 gRkw 0.00 | km live/mem 3: 3.9/ 3.5 6: 6.4/ 5.8 9: 8.0/ 6.9 vis 1.00 | anvil   3 km gap  0.0 root 9.3 | rain   210 strat    0 t/s
+ 1500 false W 31.7 Ru 2400 cape 3638 rkw 0.12 gustK 0.19 gRkw 0.00 | km live/mem 3: 4.4/ 4.1 6: 7.1/ 6.7 9: 8.9/ 8.2 vis 1.00 | anvil   7 km gap  0.0 root 10.4 | rain   280 strat    0 t/s
+ 1800 false W 35.0 Ru 2600 cape 3626 rkw 0.13 gustK 0.23 gRkw 0.00 | km live/mem 3: 4.9/ 4.6 6: 7.9/ 7.4 9: 9.8/ 9.2 vis 1.00 | anvil  11 km gap  0.0 root 11.4 | rain   364 strat    0 t/s
+ 2100 false W 37.3 Ru 2733 cape 3610 rkw 0.17 gustK 0.29 gRkw 0.01 | km live/mem 3: 5.3/ 5.0 6: 8.4/ 8.1 9:10.4/10.0 vis 1.00 | anvil  15 km gap  0.0 root 12.1 | rain   430 strat    0 t/s
+ 2400 false W 39.7 Ru 2867 cape 3602 rkw 0.20 gustK 0.37 gRkw 0.02 | km live/mem 3: 5.6/ 5.4 6: 8.9/ 8.6 9:11.0/10.6 vis 1.00 | anvil  19 km gap  0.0 root 12.8 | rain   504 strat    0 t/s
+ 2700 false W 42.0 Ru 3000 cape 3627 rkw 0.21 gustK 0.39 gRkw 0.05 | km live/mem 3: 6.0/ 5.8 6: 9.4/ 9.1 9:11.6/11.2 vis 1.00 | anvil  23 km gap  0.0 root 13.5 | rain   587 strat    0 t/s
+ 3000 false W 41.9 Ru 3000 cape 3630 rkw 0.19 gustK 0.35 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.4/ 9.3 9:11.6/11.5 vis 1.00 | anvil  27 km gap  0.0 root 13.5 | rain   592 strat    0 t/s
+ 3300 false W 41.7 Ru 3000 cape 3661 rkw 0.18 gustK 0.34 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.4/ 9.4 9:11.6/11.6 vis 1.00 | anvil  31 km gap  0.0 root 13.5 | rain   594 strat    0 t/s
+ 3600 false W 41.6 Ru 3000 cape 3691 rkw 0.19 gustK 0.36 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.4/ 9.4 9:11.6/11.6 vis 1.00 | anvil  35 km gap  0.0 root 13.5 | rain   595 strat    0 t/s
+ 3900 false W 41.4 Ru 3000 cape 3720 rkw 0.21 gustK 0.35 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.4/ 9.4 9:11.6/11.6 vis 1.00 | anvil  38 km gap  0.0 root 13.5 | rain   597 strat    1 t/s
+ 4200 false W 41.3 Ru 3000 cape 3743 rkw 0.18 gustK 0.34 gRkw 0.06 | km live/mem 3: 6.0/ 6.0 6: 9.3/ 9.4 9:11.5/11.6 vis 1.00 | anvil  42 km gap  0.0 root 13.5 | rain   597 strat    3 t/s
+ 4500 false W 41.1 Ru 3000 cape 3752 rkw 0.17 gustK 0.35 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.3/ 9.4 9:11.5/11.6 vis 1.00 | anvil  46 km gap  0.0 root 13.5 | rain   598 strat    3 t/s
+ 4800 false W 41.0 Ru 3000 cape 3757 rkw 0.20 gustK 0.37 gRkw 0.06 | km live/mem 3: 6.0/ 6.0 6: 9.3/ 9.4 9:11.5/11.6 vis 1.00 | anvil  50 km gap  0.0 root 13.5 | rain   599 strat    4 t/s
+ 5100 false W 40.9 Ru 3000 cape 3773 rkw 0.18 gustK 0.36 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.3/ 9.4 9:11.5/11.6 vis 1.00 | anvil  54 km gap  0.0 root 13.5 | rain   600 strat    4 t/s
+ 5400 false W 40.7 Ru 3000 cape 3782 rkw 0.17 gustK 0.36 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.3/ 9.3 9:11.5/11.6 vis 1.00 | anvil  58 km gap  0.0 root 13.5 | rain   601 strat    5 t/s
+ 5700 false W 40.6 Ru 3000 cape 3840 rkw 0.18 gustK 0.36 gRkw 0.05 | km live/mem 3: 5.9/ 6.0 6: 9.3/ 9.3 9:11.4/11.6 vis 1.00 | anvil  61 km gap  0.0 root 13.5 | rain   599 strat    6 t/s
+ 6000 false W 40.4 Ru 3000 cape 3866 rkw 0.19 gustK 0.36 gRkw 0.05 | km live/mem 3: 6.0/ 6.0 6: 9.3/ 9.3 9:11.4/11.6 vis 1.00 | anvil  65 km gap  0.0 root 13.5 | rain   603 strat    6 t/s
+ 6300 false W 40.3 Ru 3000 cape 3912 rkw 0.18 gustK 0.35 gRkw 0.05 | km live/mem 3: 5.9/ 5.9 6: 9.2/ 9.3 9:11.4/11.6 vis 1.00 | anvil  69 km gap  0.0 root 13.5 | rain   605 strat    7 t/s
+ 6600 false W 40.1 Ru 3000 cape 3986 rkw 0.17 gustK 0.36 gRkw 0.04 | km live/mem 3: 5.9/ 5.9 6: 9.2/ 9.3 9:11.4/11.6 vis 1.00 | anvil  73 km gap  0.0 root 13.5 | rain   604 strat    7 t/s
+ 6900 false W 40.0 Ru 3000 cape 4009 rkw 0.19 gustK 0.38 gRkw 0.05 | km live/mem 3: 5.9/ 5.9 6: 9.2/ 9.3 9:11.4/11.6 vis 1.00 | anvil  77 km gap  0.0 root 13.5 | rain   607 strat    9 t/s
+ 7200 false W 32.5 Ru 3000 cape 4087 rkw 0.19 gustK 0.37 gRkw 0.04 | km live/mem 3: 5.5/ 5.8 6: 8.8/ 9.2 9:11.0/11.5 vis 1.00 | anvil  80 km gap  0.0 root 13.5 | rain   498 strat   40 t/s
+ 7500 false W 25.0 Ru 3000 cape 4130 rkw 0.18 gustK 0.36 gRkw 0.04 | km live/mem 3: 4.9/ 5.5 6: 8.4/ 9.1 9:10.5/11.5 vis 1.00 | anvil  84 km gap  0.0 root 13.5 | rain   387 strat   89 t/s
+ 7800 false W 20.0 Ru 2733 cape 4147 rkw 0.18 gustK 0.36 gRkw 0.03 | km live/mem 3: 4.0/ 5.0 6: 7.2/ 8.9 9: 9.1/11.5 vis 1.00 | anvil  88 km gap  0.0 root 13.5 | rain   261 strat  151 t/s
+ 8100 false W 15.0 Ru 2467 cape 4219 rkw 0.17 gustK 0.36 gRkw 0.03 | km live/mem 3: 3.0/ 4.3 6: 6.0/ 8.6 9: 7.7/11.4 vis 1.00 | anvil  92 km gap  0.0 root 13.5 | rain   161 strat  196 t/s
+ 8400 false W 10.0 Ru 2200 cape 4259 rkw 0.15 gustK 0.33 gRkw 0.02 | km live/mem 3: 1.5/ 3.2 6: 4.7/ 8.1 9: 6.2/11.3 vis 1.00 | anvil  95 km gap  0.0 root 13.5 | rain    87 strat  225 t/s
+ 8700 false W  7.0 Ru 2000 cape 4308 rkw 0.14 gustK 0.30 gRkw 0.00 | km live/mem 3: 1.1/ 1.8 6: 3.7/ 7.4 9: 5.0/11.2 vis 1.00 | anvil  97 km gap  0.1 root 13.4 | rain    52 strat  227 t/s
+ 9000 false W  4.0 Ru 1800 cape 4351 rkw 0.12 gustK 0.26 gRkw 0.00 | km live/mem 3: 1.0/ 1.1 6: 2.1/ 6.7 9: 3.5/11.1 vis 1.00 | anvil  96 km gap  2.6 root 13.2 | rain    25 strat  221 t/s
+ 9300 false W  4.0 Ru 1800 cape 4397 rkw 0.07 gustK 0.24 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 5.8 9: 3.5/10.9 vis 1.00 | anvil  95 km gap  6.8 root 12.9 | rain    25 strat  190 t/s
+ 9600 false W  4.0 Ru 1800 cape 4440 rkw 0.06 gustK 0.22 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 5.0 9: 3.5/10.8 vis 1.00 | anvil  93 km gap 11.1 root 12.7 | rain    25 strat  168 t/s
+ 9900 false W  4.0 Ru 1800 cape 4481 rkw 0.14 gustK 0.19 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 4.2 9: 3.5/10.6 vis 1.00 | anvil  91 km gap 15.3 root 12.4 | rain    25 strat  152 t/s
+10200 false W  4.0 Ru 1800 cape 4516 rkw 0.30 gustK 0.14 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 3.5 9: 3.5/10.4 vis 1.00 | anvil  90 km gap 19.5 root 12.2 | rain    25 strat  140 t/s
+10500 false W  4.0 Ru 1800 cape 4552 rkw 0.19 gustK 0.14 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 3.0 9: 3.4/10.3 vis 1.00 | anvil  88 km gap 23.8 root 12.0 | rain    25 strat  131 t/s
+10800 false W  4.0 Ru 1800 cape 4574 rkw 0.30 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.6 9: 3.4/10.1 vis 1.00 | anvil  86 km gap 28.0 root 11.7 | rain    25 strat  123 t/s
+11100 false W  4.0 Ru 1800 cape 4594 rkw 0.31 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.4 9: 3.4/ 9.9 vis 1.00 | anvil  85 km gap 32.2 root 11.5 | rain    25 strat  116 t/s
+11400 false W  4.0 Ru 1800 cape 4615 rkw 0.26 gustK 0.13 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.2 9: 3.4/ 9.8 vis 1.00 | anvil  83 km gap 36.4 root 11.3 | rain    25 strat  111 t/s
+11700 false W  4.0 Ru 1800 cape 4633 rkw 0.31 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.2 9: 3.4/ 9.6 vis 1.00 | anvil  82 km gap 40.6 root 11.0 | rain    25 strat  106 t/s
+12000 false W  4.0 Ru 1800 cape 4649 rkw 0.32 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 9.4 vis 1.00 | anvil  80 km gap 44.8 root 10.8 | rain    25 strat  102 t/s
+12300 false W  4.0 Ru 1800 cape 4668 rkw 0.32 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 9.2 vis 1.00 | anvil  79 km gap 49.0 root 10.6 | rain    25 strat   98 t/s
+12600 false W  4.0 Ru 1800 cape 4684 rkw 0.32 gustK 0.13 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 9.1 vis 1.00 | anvil  78 km gap 53.2 root 10.4 | rain    25 strat   95 t/s
+12900 false W  4.0 Ru 1800 cape 4699 rkw 0.32 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 8.9 vis 1.00 | anvil  76 km gap 57.4 root 10.2 | rain    25 strat   92 t/s
+13200 false W  4.0 Ru 1800 cape 4704 rkw 0.33 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 8.7 vis 1.00 | anvil  75 km gap 61.5 root 10.0 | rain    25 strat   89 t/s
+13500 false W  4.0 Ru 1800 cape 4716 rkw 0.33 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 8.6 vis 1.00 | anvil  74 km gap 65.7 root 9.8 | rain    25 strat   86 t/s
+13800 false W  4.0 Ru 1800 cape 4730 rkw 0.32 gustK 0.13 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 8.4 vis 1.00 | anvil  72 km gap 69.9 root 9.6 | rain    25 strat   84 t/s
+14100 false W  4.0 Ru 1800 cape 4744 rkw 0.33 gustK 0.00 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 8.2 vis 1.00 | anvil  71 km gap 71.2 root 9.4 | rain    25 strat   82 t/s
+14400 false W  4.0 Ru 1800 cape 4759 rkw 0.33 gustK 0.15 gRkw 0.00 | km live/mem 3: 1.0/ 1.0 6: 2.1/ 2.1 9: 3.4/ 8.1 vis 1.00 | anvil  70 km gap 69.9 root 9.2 | rain    25 strat   79 t/s
+done in 188.1s

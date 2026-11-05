@@ -104,51 +104,10 @@ export function buildStormEcho({ storm, top, freezing, su, sv, inflowVapourGm3, 
   return buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh }, options);
 }
 
-export function radarSceneInputs(world) {
+// reuseEnv: the env of an earlier call on the same cells (it depends on the cells alone).
+export function radarSceneInputs(world, { reuseEnv = null } = {}) {
   const w = world.width, h = world.height, cs = world.cellSizeKm, n = w * h;
-  const env = {
-    w, h, cs,
-    terrain: new Float32Array(n), freezing: new Float32Array(n), top: new Float32Array(n), blDepth: new Float32Array(n),
-    // Height of the -20 °C level above the ground (m), where hail grows fastest.
-    minus20: new Float32Array(n),
-    // Virtual temperature at the surface (K): how dense the air is, for the boundaries.
-    virtualK: new Float32Array(n),
-    // How fast the air's refractivity falls with height between the ground and 850 hPa (N units
-    // per km): how much the air near the ground bends a radar beam down.
-    refractivityGradient: new Float32Array(n),
-    // Wind profile per cell at surface, 850, 700, 500, 250 hPa: heights AGL (m) and u/v (m/s, east/north).
-    levelHeight: Array.from({ length: 5 }, () => new Float32Array(n)),
-    levelU: Array.from({ length: 5 }, () => new Float32Array(n)),
-    levelV: Array.from({ length: 5 }, () => new Float32Array(n))
-  };
-  world.forEachCell((cell, x, y) => {
-    const i = y * w + x, elev = Number(cell.terrain?.elevationM) || 0;
-    env.terrain[i] = elev;
-    const levels = [
-      { hMsl: elev + 10, dir: cell.surface.wind.direction, spd: cell.surface.wind.speed, t: (cell.surface.temperature - 32) * 5 / 9 },
-      { hMsl: 1500, ...levelWind(cell.levels[850]) },
-      { hMsl: 3010, ...levelWind(cell.levels[700]) },
-      { hMsl: (cell.levels[500].heightDm || 570) * 10, ...levelWind(cell.levels[500]) },
-      { hMsl: (cell.levels[250].heightDm || 1040) * 10, ...levelWind(cell.levels[250]) }
-    ];
-    let previousH = 0;
-    levels.forEach((level, k) => {
-      const hAgl = Math.max(previousH + 50, level.hMsl - elev);
-      previousH = hAgl;
-      env.levelHeight[k][i] = hAgl;
-      env.levelU[k][i] = -Math.sin(level.dir * DEG) * level.spd * KT_TO_MS;
-      env.levelV[k][i] = -Math.cos(level.dir * DEG) * level.spd * KT_TO_MS;
-    });
-    env.freezing[i] = freezingLevelAgl(levels.map((level, k) => ({ h: env.levelHeight[k][i], t: level.t })));
-    env.minus20[i] = Math.max(env.freezing[i] + 500, temperatureLevelAgl(levels.map((level, k) => ({ h: env.levelHeight[k][i], t: level.t })), -20, 7000));
-    const elAgl = Number(cell.derived?.sounding?.elM) - elev;
-    env.top[i] = Number.isFinite(elAgl) && elAgl > 0 ? clamp(elAgl, 3000, 16500) : 11000;
-    env.blDepth[i] = clamp(Number(cell.mesoscaleFields?.boundaryLayerDepthM) || 1200, 300, 3000);
-    env.virtualK[i] = virtualTemperatureK(levels[0].t, (Number(cell.surface.dewpoint) - 32) * 5 / 9);
-    const surfaceN = refractivity(Number(cell.surface.pressure) || 1000, levels[0].t, (Number(cell.surface.dewpoint) - 32) * 5 / 9);
-    const aloftN = refractivity(850, Number(cell.levels[850]?.temperature), Number(cell.levels[850]?.dewpoint));
-    env.refractivityGradient[i] = Number.isFinite(surfaceN) && Number.isFinite(aloftN) ? (aloftN - surfaceN) / Math.max(0.3, (env.levelHeight[1][i] - env.levelHeight[0][i]) / 1000) : CLUTTER.standardDnDh;
-  });
+  const env = reuseEnv ?? sceneEnv(world, w, h, cs, n);
 
   const storms = [], wind = { u: 0, v: 0 };
   for (const storm of world.storms ?? []) {
@@ -195,6 +154,54 @@ export function radarSceneInputs(world) {
   }
 
   return { validHourUtc, localHour, domainWidthKm: w * cs, domainHeightKm: h * cs, env, storms, boundaries };
+}
+
+// What the scene reads from each cell.
+function sceneEnv(world, w, h, cs, n) {
+  const env = {
+    w, h, cs,
+    terrain: new Float32Array(n), freezing: new Float32Array(n), top: new Float32Array(n), blDepth: new Float32Array(n),
+    // Height of the -20 °C level above the ground (m), where hail grows fastest.
+    minus20: new Float32Array(n),
+    // Virtual temperature at the surface (K): how dense the air is, for the boundaries.
+    virtualK: new Float32Array(n),
+    // How fast the air's refractivity falls with height between the ground and 850 hPa (N units
+    // per km): how much the air near the ground bends a radar beam down.
+    refractivityGradient: new Float32Array(n),
+    // Wind profile per cell at surface, 850, 700, 500, 250 hPa: heights AGL (m) and u/v (m/s, east/north).
+    levelHeight: Array.from({ length: 5 }, () => new Float32Array(n)),
+    levelU: Array.from({ length: 5 }, () => new Float32Array(n)),
+    levelV: Array.from({ length: 5 }, () => new Float32Array(n))
+  };
+  world.forEachCell((cell, x, y) => {
+    const i = y * w + x, elev = Number(cell.terrain?.elevationM) || 0;
+    env.terrain[i] = elev;
+    const levels = [
+      { hMsl: elev + 10, dir: cell.surface.wind.direction, spd: cell.surface.wind.speed, t: (cell.surface.temperature - 32) * 5 / 9 },
+      { hMsl: 1500, ...levelWind(cell.levels[850]) },
+      { hMsl: 3010, ...levelWind(cell.levels[700]) },
+      { hMsl: (cell.levels[500].heightDm || 570) * 10, ...levelWind(cell.levels[500]) },
+      { hMsl: (cell.levels[250].heightDm || 1040) * 10, ...levelWind(cell.levels[250]) }
+    ];
+    let previousH = 0;
+    levels.forEach((level, k) => {
+      const hAgl = Math.max(previousH + 50, level.hMsl - elev);
+      previousH = hAgl;
+      env.levelHeight[k][i] = hAgl;
+      env.levelU[k][i] = -Math.sin(level.dir * DEG) * level.spd * KT_TO_MS;
+      env.levelV[k][i] = -Math.cos(level.dir * DEG) * level.spd * KT_TO_MS;
+    });
+    env.freezing[i] = freezingLevelAgl(levels.map((level, k) => ({ h: env.levelHeight[k][i], t: level.t })));
+    env.minus20[i] = Math.max(env.freezing[i] + 500, temperatureLevelAgl(levels.map((level, k) => ({ h: env.levelHeight[k][i], t: level.t })), -20, 7000));
+    const elAgl = Number(cell.derived?.sounding?.elM) - elev;
+    env.top[i] = Number.isFinite(elAgl) && elAgl > 0 ? clamp(elAgl, 3000, 16500) : 11000;
+    env.blDepth[i] = clamp(Number(cell.mesoscaleFields?.boundaryLayerDepthM) || 1200, 300, 3000);
+    env.virtualK[i] = virtualTemperatureK(levels[0].t, (Number(cell.surface.dewpoint) - 32) * 5 / 9);
+    const surfaceN = refractivity(Number(cell.surface.pressure) || 1000, levels[0].t, (Number(cell.surface.dewpoint) - 32) * 5 / 9);
+    const aloftN = refractivity(850, Number(cell.levels[850]?.temperature), Number(cell.levels[850]?.dewpoint));
+    env.refractivityGradient[i] = Number.isFinite(surfaceN) && Number.isFinite(aloftN) ? (aloftN - surfaceN) / Math.max(0.3, (env.levelHeight[1][i] - env.levelHeight[0][i]) / 1000) : CLUTTER.standardDnDh;
+  });
+  return env;
 }
 
 // echoes: buildStormEcho's result for each of inputs.storms, in order.

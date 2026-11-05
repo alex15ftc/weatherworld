@@ -158,6 +158,7 @@ local function moistLapse(tC: number, p: number): number
 	local w = Thermo.mixingRatio(tC, p)
 	return G * (1 + LV * w / (RD * tk)) / (CP + LV * LV * w * EPS / (RD * tk * tk))
 end
+Thermo.moistLapse = moistLapse
 
 -- How much colder than the surface air a rain-driven downdraft arrives (K), for a surface rain
 -- rate (mm/h). (2026-10-30: the saturated DCAPE parcel - wet-bulb at the lowest theta-e level,
@@ -171,12 +172,25 @@ end
 -- (Tried: starting unsaturated, or mixing at 0.2 /km, gave the squall line almost no cold
 -- pool, <= 3 K.)
 local wetBulb: (number, number) -> number -- (defined below)
+
+-- How fast a rain-driven downdraft descends (m/s) for a surface rain rate (mm/h): ~1-3 m/s from
+-- evaporation and melting through the whole column, plus 0.12 m/s per mm/h, capped at 10 m/s -
+-- the observed range for forward-flank and rain-core downdrafts. One rule for every part of the
+-- model that has one: the cold pool's replacement rate (ColdPool.downdrafts), the arrival deficit
+-- (downdraftArrival) and the storm's forward-flank downdraft in the wind (Storm.step's s.ffd).
+-- (2026-11-04: the descending parcel's own negative buoyancy, B = g (Tv'/Tv - q_r) summed over the
+-- fall, gives sqrt(2E) = 19-27 m/s on the lab supercell day even at 5 mm/h - parcel theory
+-- overstates downdrafts 3-5x, as it is known to - so a closure fitted to observations stays.)
+local function rainDowndraftSpeed(rate: number): number
+	return math.min(10, 1.2 * math.clamp(rate / 5, 0, 1) + 0.12 * rate)
+end
+Thermo.rainDowndraftSpeed = rainDowndraftSpeed
 -- (wddIn: the descent speed when something other than the rain drives it - the rear-flank
 -- downdraft is forced down by the low-level circulation's pressure field; dryStart: the air starts
 -- as it is at srcZ, not at its wet-bulb temperature, 2026-10-30)
 local function downdraftArrival(profile: any, srcZ: number, rate: number, wddIn: number?, dryStart: boolean?): number
 	local rhoQr = rate / 3600 / 6 -- kg/m3: rain water content (falling at ~6 m/s)
-	local wdd = wddIn or math.min(10, 1.2 * math.clamp(rate / 5, 0, 1) + 0.12 * rate) -- as ColdPool.downdrafts
+	local wdd = wddIn or rainDowndraftSpeed(rate)
 	wdd = math.max(0.3, wdd)
 	local t = Thermo.at(profile, "t", srcZ)
 	local p0 = Thermo.at(profile, "p", srcZ)

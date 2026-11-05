@@ -27,7 +27,7 @@ function StateAdapter.new(ctx: any): any
 	return setmetatable(self, { __index = StateAdapter })
 end
 
-local FIELDS = { "vc", "rc", "swirl", "cloudBase", "topX", "topY", "bendX", "bendY", "wave", "decay", "O", "envU", "envV", "inflow", "debrisLoft", "debrisTop" }
+local FIELDS = { "vc", "rc", "swirl", "cloudBase", "topX", "topY", "bendX", "bendY", "wave", "decay", "O", "envU", "envV", "inflow", "debrisLoft", "debrisTop", "coreWet", "coreZb" }
 
 local function obscuration(ctx: any, x: number, y: number): (number, number)
 	local cw = ctx.cw
@@ -42,11 +42,15 @@ local function obscuration(ctx: any, x: number, y: number): (number, number)
 	local tau = 0
 	local C = ctx.Config
 	local step = C.sightPath(d / n) / 1000 -- (km of drawn sight line a sample)
+	local dbg = {}
 	for i = 1, n do
 		local f = (i - 0.5) / n
 		local r = Precip.surface(vol, cx + (x - cx) * f, cy + (y - cy) * f) or 0
 		tau += C.rainExtinction(r) * step
+		table.insert(dbg, string.format("%.0f", r))
 	end
+	-- (debug: the rain along the sight line, camera first, mm/h)
+	ctx.root:SetAttribute("SightRain", string.format("%.0f m: ", d) .. table.concat(dbg, " "))
 	-- rain wrapped round the vortex: the heaviest rain within ~1.5 km on the camera's side of it
 	-- (rain behind or beside the funnel isn't in the way; counting it - the forward-flank core is
 	-- usually that close - greyed every tornado toward rain grey and took its edges, 2026-10-29)
@@ -70,6 +74,7 @@ end
 function StateAdapter.update(self: any, dt: number)
 	local ctx = self.ctx
 	local Vortex = ctx.Sim.Vortex
+	local SubVortices = ctx.Sim.SubVortices
 	local Profiles = ctx.Tornado.ProfileLibrary
 	local simNow = ctx:simTime()
 	local simDt = if ctx.state.paused then 0 else dt * (ctx.state.timeScale or 1)
@@ -96,6 +101,7 @@ function StateAdapter.update(self: any, dt: number)
 				e.weights = Profiles.weights(t, e.R)
 				self.entries[t.id] = e
 			end
+			local fresh = e.snap ~= t
 			e.snap = t
 			e.age += dt
 			-- position: the extrapolated snapshot, with any correction eased away. The target's
@@ -137,9 +143,22 @@ function StateAdapter.update(self: any, dt: number)
 			if ctx.state.visualScale == nil and t.orbit and math.abs(t.orbit + sOrbit * since - e.orbit) > 0.3 then
 				e.orbit = t.orbit + sOrbit * since -- (the lab: the server's sub-vortices, as its debris sees them)
 			end
+			-- the sub-vortices (Sim/SubVortices): stepped here on the visual clock between snapshots;
+			-- in the lab nudged toward the server's at each new one (its debris and winds see those);
+			-- in the game (a faster sim clock) only taken from it at first, their place is local motion
+			if e.sv == nil then
+				e.sv = SubVortices.new()
+				SubVortices.adopt(e.sv, t.svp, 1)
+			elseif fresh and ctx.state.visualScale == nil then
+				SubVortices.adopt(e.sv, t.svp, 0.35)
+			end
+			SubVortices.step(e, vDt)
 			e.stage, e.ef, e.peakWind, e.hold = t.stage, t.ef, t.peakWind, t.hold
-			-- life: organising in, dissipating out, stale updates fade
-			local lifeTarget = math.clamp(0.25 + 0.75 * (t.O or 1), 0, 1)
+			-- life: stale updates fade, and a new entry comes in over ~1 s. (Not organisation any
+			-- more, 2026-11-03: 0.25 + 0.75 O drew every forming tornado as a see-through ghost on top
+			-- of what O already does in the sim - it scales the core wind, so a young vortex condenses
+			-- a narrow funnel, and its debris)
+			local lifeTarget = 1
 			if stale > 3 then
 				lifeTarget = 0
 			end
@@ -178,6 +197,42 @@ function StateAdapter.update(self: any, dt: number)
 			local ko = 1 - exp(-dt / 0.6)
 			e.trans = (e.trans or e.transT) + (e.transT - (e.trans or e.transT)) * ko
 			e.wrap = (e.wrap or e.wrapT) + (e.wrapT - (e.wrap or e.wrapT)) * ko
+		elseif self.entries[t.id] and (t.endedFor or 0) < 1e8 then
+			-- Ended (2026-11-03). The sim ends a tornado once its core wind is under ~9 m/s; it stays
+			-- in the list ~120 s. Its funnel has mostly lifted by then, but the last of its spin and
+			-- its lofted dust don't stop at once: the core spins down and the dust settles on the
+			-- sim clock, and the entry goes only when nothing of it shows. (It used to fade over
+			-- 0.7 s of real time with its dust and debris: the last whirl popped out at 1x.)
+			-- (endedFor 1e9: a lab scene change ended it - cleared at once, below)
+			local e = self.entries[t.id]
+			seen[t.id] = true
+			e.snap = t
+			e.age += dt
+			local vDt = ctx:visualDt(dt)
+			local kv = exp(-simDt / 25)
+			local kd = exp(-simDt / 40)
+			-- (its motion slows with its spin: it drifts on with the low-level wind)
+			e.ox *= exp(-dt / 0.4)
+			e.oy *= exp(-dt / 0.4)
+			e.ut0, e.vt0 = (e.ut0 or 0) * kv, (e.vt0 or 0) * kv
+			e.tx, e.ty = (e.tx or e.x) + e.ut0 * simDt, (e.ty or e.y) + e.vt0 * simDt
+			e.x, e.y = e.tx + e.ox, e.ty + e.oy
+			e.ut, e.vt = e.ut0, e.vt0
+			e.vc = (e.vc or 0) * kv
+			e.peakWind = (e.peakWind or 0) * kv
+			e.debrisLoft = (e.debrisLoft or 0) * kd
+			e.time = (e.time + vDt) % 8192
+			e.stage = "ended"
+			SubVortices.step(e, vDt)
+			e.params = Vortex.params(e)
+			-- gone once spun down and settled
+			-- (a whirl of ~4 m/s still turns dust over; the sim ends it at ~9)
+			local left = math.max((e.vc or 0) / 4, (e.debrisLoft or 0) / 0.03)
+			local lifeTarget = if left > 1 and stale <= 3 then 1 else 0
+			e.fade += (lifeTarget - e.fade) * (1 - exp(-dt / 2))
+			if lifeTarget == 0 and e.fade < 0.01 then
+				self.entries[t.id] = nil
+			end
 		end
 	end
 	-- tornadoes that ended or left: fade, then drop

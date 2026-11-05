@@ -42,11 +42,18 @@ export const PRECIP_GRID = Object.freeze({
 const r1 = v => Math.round(v * 10) / 10;
 const dbzOf = z => (z > 0 ? 10 * Math.log10(z) : -99);
 
+// What the scene reads from the cells, kept per world until its next atmosphere step
+// (cellsVersion, AtmosphereWorld.js): the storm ticks between steps leave the cells as they are.
+const envKept = new WeakMap();
+
 // Map of storm id -> precip block (or null) for every active storm with a structure.
 export function buildStormPrecipGrids(world, settings = PRECIP_GRID) {
   const out = new Map();
   if (!(world.storms ?? []).some(storm => storm.active !== false && storm.structure)) return out;
-  for (const input of radarSceneInputs(world).storms) out.set(input.storm.id, stormPrecipGrid(input, settings));
+  const version = world.cellsVersion, kept = Number.isFinite(version) ? envKept.get(world) : null;
+  const inputs = radarSceneInputs(world, { reuseEnv: kept?.version === version ? kept.env : null });
+  if (Number.isFinite(version)) envKept.set(world, { version, env: inputs.env });
+  for (const input of inputs.storms) out.set(input.storm.id, stormPrecipGrid(input, settings));
   return out;
 }
 
@@ -56,7 +63,9 @@ export function stormPrecipGrid(input, settings = PRECIP_GRID) {
   if (!echo?.grid) return null;
   const { cols, rows, cellKm, lowM, leastDbz, columnDbz, perCell, edgeKm } = settings, fz = input.freezing;
   const sample = { zh: 0, zv: 0, cc: 0, hail: 0 };
-  const lowZ = (dx, dy) => { sample.zh = 0; const snow = precipitationEcho(echo, fz, dx, dy, lowM, sample); return { z: sample.zh, snow }; };
+  // (One object for every call: each caller reads it before the next.)
+  const lowSample = { z: 0, snow: 0 };
+  const lowZ = (dx, dy) => { sample.zh = 0; lowSample.snow = precipitationEcho(echo, fz, dx, dy, lowM, sample); lowSample.z = sample.zh; return lowSample; };
   // The middle of the low-level echo (weighted by Z, so the cores count most), on a lattice a cell apart.
   const least = 10 ** (leastDbz / 10);
   let sx = 0, sy = 0, sw = 0;

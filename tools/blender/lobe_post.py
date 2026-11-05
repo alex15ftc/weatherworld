@@ -20,11 +20,16 @@ import argparse
 import os
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
-def load(path):
-    return np.asarray(Image.open(path).convert("RGBA"), np.float32) / 255.0
+def load(path, denoise=0.0):
+    im = Image.open(path).convert("RGBA")
+    if denoise > 0:
+        # (Cycles' volume noise: the thin rim is a fine speckle; magnified on a card that fills
+        # the screen it drew a grainy outline, 2026-10-31)
+        im = im.filter(ImageFilter.GaussianBlur(denoise))
+    return np.asarray(im, np.float32) / 255.0
 
 
 def save(px, path):
@@ -55,8 +60,8 @@ def cells(n_px, grid):
             yield (slice(r * c, (r + 1) * c), slice(k * c, (k + 1) * c))
 
 
-def process(raw_dir, name, out, edge, contrast, feather, wisps=0.0):
-    raw = {w: load(os.path.join(raw_dir, "%s_%s.png" % (name, w))) for w in ("amb", "front", "side", "back")}
+def process(raw_dir, name, out, edge, contrast, feather, wisps=0.0, denoise=0.0):
+    raw = {w: load(os.path.join(raw_dir, "%s_%s.png" % (name, w)), denoise) for w in ("amb", "front", "side", "back")}
     al = raw["amb"][..., 3]
     # a wider, more gradual fade at the rim (alpha ^ feather), so cards of different colour blend
     # into each other instead of showing their edges
@@ -125,11 +130,12 @@ def main():
     ap.add_argument("--contrast", type=float, default=0.45)
     ap.add_argument("--feather", type=float, default=1.6)
     ap.add_argument("--wisps", type=float, default=0.6)
+    ap.add_argument("--denoise", type=float, default=0.0, help="Gaussian blur (px) on the raw passes")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     for name in a.names.split(","):
         if os.path.exists(os.path.join(a.raw, name + "_amb.png")):
-            process(a.raw, name, a.out, a.edge, a.contrast, a.feather, a.wisps)
+            process(a.raw, name, a.out, a.edge, a.contrast, a.feather, a.wisps, a.denoise)
 
 
 if __name__ == "__main__":

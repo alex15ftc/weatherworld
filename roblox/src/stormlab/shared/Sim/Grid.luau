@@ -120,6 +120,36 @@ end
 -- extremes. Moving a field a fraction of a cell each step, bilinear resampling smears it like a
 -- diffusivity of ~u dx / 2 (~9000 m2/s for a 10 m/s gust front on the 2 km cold pool: it never
 -- kept a sharp edge, 2026-10-30); this keeps edges sharp.
+-- Grid.sample and its exact gradient (per m) - the same bilinear surface's slopes (ColdPool.windAt:
+-- the vertical motion continuity makes of the outflow's spreading)
+function Grid.sampleGrad(self: Grid, x: number, y: number): (number, number, number)
+	local gx = (x - self.x0) / self.dx + 0.5
+	local gy = (y - self.y0) / self.dx + 0.5
+	local nx, ny = self.nx, self.ny
+	local inX = gx >= 1 and gx <= nx
+	local inY = gy >= 1 and gy <= ny
+	gx = math.clamp(gx, 1, nx)
+	gy = math.clamp(gy, 1, ny)
+	local i, j = math.min(nx - 1, math.floor(gx)), math.min(ny - 1, math.floor(gy))
+	if nx == 1 then
+		i = 1
+	end
+	if ny == 1 then
+		j = 1
+	end
+	local fx, fy = gx - i, gy - j
+	local v = self.v
+	local k = i + (j - 1) * nx
+	local a = v[k]
+	local b = v[math.min(k + 1, #v)]
+	local c = v[math.min(k + nx, #v)]
+	local d = v[math.min(k + nx + 1, #v)]
+	local val = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
+	local dvx = if inX then ((b - a) * (1 - fy) + (d - c) * fy) / self.dx else 0
+	local dvy = if inY then ((c - a) * (1 - fx) + (d - b) * fx) / self.dx else 0
+	return val, dvx, dvy
+end
+
 function Grid.sampleCubic(self: Grid, x: number, y: number): number
 	local nx, ny = self.nx, self.ny
 	if nx < 4 or ny < 4 then

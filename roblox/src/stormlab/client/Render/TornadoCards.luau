@@ -51,11 +51,25 @@ local NLUMP, NSTRI = 160, 120
 -- (380 + 18 tags = 398 of the 500. 2026-10-31: the 100 edge strands at the silhouette went - on
 -- the shadow side they drew a dark band like a separate tube, user; 60 of them went to the body)
 local NSMB = 380
--- ascending condensation filaments (2026-10-31, user's research): soft streaks on the funnel's
--- surface, each riding its own helix - turning at the swirl and climbing at the vortex's own
--- updraft there (Vortex.updraftAt), so they wind flat near the ground and on a wide funnel's
--- edge and steep up a narrow one. 380 + 80 + 18 tags = 478 of the 500.
-local NFIL = 80
+-- (2026-11-03: the last NSKIN of them are the skin - soft puffs on the funnel's face as seen, each
+-- the shade of its place across it, so a wide funnel has a lit side and a shadow side. Every body
+-- card is one flat colour as wide as the funnel, so ~130 of them stacked drew a wedge one even tone:
+-- a grey smudge. Narrow funnels don't take them - see RC_EDGE)
+local NSKIN = 60
+local NSB = NSMB - NSKIN
+-- The radius past which a funnel's edge and shading are kept in metres (2026-11-03). A body card's
+-- edge ramp and its spread round the axis are shares of the radius: a cone's edge (rc 120) ~25 m
+-- thick, a 450 m wedge's ~100 m - "large tornadoes look hazy", user. Past it the cards sit closer
+-- to the axis and take the sharper puffs, so the edge stays ~25-35 m at any size, and the skin
+-- shades the face. At and under it nothing changes: the cone and stovepipe are the approved look.
+local RC_EDGE = 120
+-- ascending condensation filaments (2026-10-31, user's research: density concentrations in the
+-- condensation, carried by the flow - not laid-out helices, which read as a barber pole). One
+-- turbulence field rides the flow (see turb in the smoke style): the body sprites take their
+-- density and tone from it, and NFIL material lines of 3 points each, carried by the same flow
+-- plus its eddies, are drawn where it is dense - 2 streaks a line. 380 + 80 + 18 tags = 478.
+local NFIL = 40
+local TURB_T = 10 -- (s: the field's memory - two copies cross-faded, so the shear never runs away)
 local SM_OPMAX = 0.45 -- (a body sprite's most opacity: the soft haze puff, ~8 stacked over each point of the
 -- funnel. Higher, a rope's few layers each showed - rings stacked up it)
 -- (the body cards' shade across their width: sample points of the gradient, and their colours)
@@ -129,6 +143,16 @@ function TornadoCards.new(ctx: any): any
 	game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.T then
 			local UIS = game:GetService("UserInputService")
+			if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.RightControl) then
+				-- Ctrl+T: the smoke body's card layout - on the funnel's surface, or by its radius (the old)
+				local cur = ctx.state.smokeSurface
+				if cur == nil then
+					cur = C.SMOKE_SURFACE ~= false
+				end
+				ctx.state.smokeSurface = not cur
+				print("[tornado] smoke layout " .. (if ctx.state.smokeSurface then "surface" else "radius"))
+				return
+			end
 			if UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift) then
 				-- Shift+T: the gas body's detail layers (surface lumps, striations) on/off, for A/B
 				ctx.state.tornadoDetail = ctx.state.tornadoDetail == false
@@ -401,6 +425,42 @@ function TornadoCards.new(ctx: any): any
 			g.Rotation = rot
 		end
 	end
+	-- The ground cut (2026-11-02): a card is see-through below the ground's line across it. Its
+	-- sprites start under the ground and climb out (the smoke body), and the lab's ground tiles
+	-- reach only ~2 km from the camera (parts aren't drawn past ~7000 studs), so beyond that the
+	-- funnel went on below the ground - clipped through it, user. Where the ground is drawn it is
+	-- hidden anyway. key: the line's place down the card in 1/128ths; a short soft edge above it.
+	local cutGSeqs: { [number]: NumberSequence } = {}
+	local function groundCutSeq(key: number, fwKey: number): NumberSequence
+		local ck = key * 64 + fwKey
+		local seq = cutGSeqs[ck]
+		if seq then
+			return seq
+		end
+		local t1, fw = key / 128, fwKey / 128
+		local a = math.clamp(t1 - fw, 0, 1)
+		local b = math.clamp(t1, 0, 1)
+		if b <= 0 then
+			seq = NumberSequence.new(1)
+		elseif a >= 1 then
+			seq = NumberSequence.new(0)
+		else
+			-- opaque to a, see-through from b (the line), a straight ramp between
+			local kps = { NumberSequenceKeypoint.new(0, 0) }
+			if a > 1e-3 then
+				table.insert(kps, NumberSequenceKeypoint.new(a, 0))
+			end
+			if b < 1 - 1e-3 then
+				table.insert(kps, NumberSequenceKeypoint.new(math.max(b, a + 1e-3), 1))
+				table.insert(kps, NumberSequenceKeypoint.new(1, 1))
+			else
+				table.insert(kps, NumberSequenceKeypoint.new(1, math.clamp((1 - a) / math.max(b - a, 1e-3), 0, 1)))
+			end
+			seq = NumberSequence.new(kps)
+		end
+		cutGSeqs[ck] = seq
+		return seq
+	end
 	-- (a turn shows as the card's edge moving: half a pixel at its half-size)
 	local function setRot(c: any, rot: number)
 		local half = 0.5 * math.max(c.sw or 1, c.sh or 1)
@@ -456,8 +516,11 @@ function TornadoCards.new(ctx: any): any
 
 	-- the drawn altitude (m above the datum) of height z above the ground: the funnel's foot on the
 	-- ground there (g), its top at the cloud base H
+	-- (g x gK: the ground at full scale whatever the tornado is drawn at - LabConfig.groundScale;
+	-- set per tornado in draw. 1 in the lab)
+	local gK = 1
 	local function altitude(z: number, g: number, H: number): number
-		return z + g * max(0, 1 - z / H)
+		return z + g * gK * max(0, 1 - z / H)
 	end
 
 	-- is any part of the column (base, middle, top, a radius either side) on screen?
@@ -486,13 +549,25 @@ function TornadoCards.new(ctx: any): any
 
 	local function draw(set: any, e: any, dt: number, cam: Camera, camPos: Vector3)
 		local H = max(100, e.cloudBase)
-		local top = H * 1.07 + 30
+		-- the lowering's floor over the funnel (Render/WallStream): the funnel is the same cloud
+		-- surface lowered further by its core's pressure deficit, so it rises into that floor. The
+		-- tornado's cloud base (its inflow air's condensation level) and the storm's wall-cloud base
+		-- are separate fields; with the floor above H the funnel faded out by 1.1 H and ~60 m of clear
+		-- air ran between them - the tornado floating under the wall cloud, user 2026-11-03
+		local Hj = H
+		for _, v in ctx.wallStreamBase or {} do
+			if v.floor and v.r and (v.x - e.x) ^ 2 + (v.y - e.y) ^ 2 < (1.2 * v.r) ^ 2 then
+				Hj = max(Hj, min(v.floor, H + 300))
+			end
+		end
+		local top = Hj + 0.07 * H + 30
 		local p = e.params
 		local rcBase = Vortex.rcAt(p, H)
 		local g0 = C.groundAt(e.x, e.y)
 		-- the whole tornado is drawn at one scale about its ground point (LabConfig.scaleAbout)
 		local ex, ey = e.x, e.y
 		local ks = C.scaleAbout(ex, ey) -- (studs a metre; not `k`: the ring loop below uses k)
+		gK = C.groundScale(ex, ey, ks)
 		-- (m: from the camera to the column's middle, true distance)
 		local camX, camY, camZ = C.fromWorld(camPos)
 		local d = sqrt((ex - camX) ^ 2 + (ey - camY) ^ 2 + (altitude(top * 0.5, g0, H) - camZ) ^ 2)
@@ -571,7 +646,13 @@ function TornadoCards.new(ctx: any): any
 		-- multi-vortex: the core goes two-celled (a downdraft down the middle dries and warms it),
 		-- so the parent funnel thins to a translucent shell and loses its crisp edge, and the
 		-- sub-vortices show through it (docs/tornado-reference/NOTES.md: separate darker, bluer blobs)
-		local thin = smooth(0.3, 2.5, p.subCount or 0) * clamp((p.twoCell or 0) / 1.2, 0, 1)
+		-- (from the swirl's expected sub-vortex count, (S - 1) x 10 - Vortex.params' own rule - not
+		-- the live count: sub-vortices are born and die every few seconds, so the live count swung
+		-- the shell 0.4 <-> 0.9 and the funnel's cards jumped between the axis and the shell ring - a
+		-- forming or broadening wedge, still condensed inside its core, pumped in and out, "a lot of
+		-- wobbling", user 2026-11-03. The swirl settles over ~90 s, so the shell follows the vortex)
+		local subE = clamp(((p.swirl or 0) - 1.0) * 10, 0, 6)
+		local thin = smooth(0.3, 2.5, subE) * clamp((p.twoCell or 0) / 1.2, 0, 1)
 		local wallR = if base and base.r and base.r > 0 then base.r else 1500
 		-- how far below the cloud base the funnel merges into the lowering scales with its shape: a
 		-- tall narrow funnel over its top ~half, a squat wedge (height ~ its width) only over its
@@ -580,6 +661,14 @@ function TornadoCards.new(ctx: any): any
 		local squat = clamp((H / max(1, 2 * rcBase)) / 3, 0.3, 1)
 		local function zAt(f: number): number
 			return H * (1 - (1 - f) * squat)
+		end
+		-- where the funnel widens into the lowering: the shape rule above. (2026-11-02: held under
+		-- the lowering's floor, WallStream's, it widened from ~150 m to ~560 m radius in its last
+		-- 80 m - a smoke-puff mushroom on a column, its squeezed sprites set out in a ring with no
+		-- core, user. The see-through skirt that hold was for came from the flare fading the
+		-- funnel; the smoke body no longer fades there, so it tapers solid up to the base)
+		local function mergeAt(f: number): number
+			return zAt(f)
 		end
 		local softLobe = C.LOBES and C.LOBES.soft and C.LOBES.soft.side
 		set.thin, set.thinMax = thin, 0
@@ -697,13 +786,13 @@ function TornadoCards.new(ctx: any): any
 				seed[i] = sd
 				seed2[i] = (sin(i * 269.5 + 183.3) * 43758.5453) % 1
 				-- stratified start along the funnel, golden-angle start round it
-				phase[i] = ((i - 0.5 + 0.8 * (sd - 0.5)) / NSMB) % 1
+				-- (the body and the skin each stratified over the whole funnel)
+				phase[i] = if i <= NSB then ((i - 0.5 + 0.8 * (sd - 0.5)) / NSB) % 1 else ((i - NSB - 0.5 + 0.8 * (sd - 0.5)) / NSKIN) % 1
 				th[i] = (i * 2.399963229728653 + 0.6 * sd) % (2 * math.pi)
 			end
 			-- the filaments (after the body in the same list, so a style change hides them too)
 			local ftex = if (C.TEXTURES.streakSoft or "") ~= "" then C.TEXTURES.streakSoft else tex
-			local fs, fth, fage, flife = {}, {}, {}, {}
-			for j = 1, NFIL do
+			for j = 1, 2 * NFIL do
 				local c = newCardAt(j + 3000)
 				c.img.AnchorPoint = Vector2.new(0.5, 0.5)
 				c.img.Position = UDim2.fromScale(0.5, 0.5)
@@ -711,13 +800,16 @@ function TornadoCards.new(ctx: any): any
 				c.tex = ftex
 				cards[NSMB + j] = c
 				seed[NSMB + j] = (sin(j * 311.7 + 41.9) * 43758.5453) % 1
-				fs[j], fth[j] = math.random() * 0.85, math.random() * 2 * math.pi
-				flife[j] = 3 + 4 * math.random()
-				fage[j] = math.random() * flife[j] -- (staggered, so they don't all start together)
+			end
+			local fl = {}
+			for j = 1, NFIL do
+				-- (born on its first draw, staggered so they don't all start together)
+				fl[j] = { th = { 0, 0, 0 }, s = { 0, 0, 0 }, age = 0, life = 1, dead = true, stagger = 6 * math.random() }
 			end
 			set.sm = { cards = cards, seed = seed, seed2 = seed2, phase = phase, th = th, rise = 0, cur = {},
 				texH = tex, texS = if (C.TEXTURES.smoothPuffFlat or "") ~= "" then C.TEXTURES.smoothPuffFlat else tex,
-				fs = fs, fth = fth, fage = fage, flife = flife }
+				texS2 = C.TEXTURES.smoothPuffSharp2 or "", texS4 = C.TEXTURES.smoothPuffSharp4 or "",
+				fl = fl, tN = 0 }
 		end
 		if style == "gas" and not set.gs then
 			-- the gas body (2026-10-30): soft cloud puffs only - no crisp slices or capsules (they read
@@ -841,9 +933,24 @@ function TornadoCards.new(ctx: any): any
 				local z = (i / NZ) ^ 1.15 * top
 				local zc = min(z, H)
 				local rcz = Vortex.rcAt(p, zc)
-				local cap = rcz * 3 + min(5 * rcz, max(0, 0.5 * wallR - rcz * 3)) * smooth(zAt(0.6), H, z)
-				local rc = if z >= H * 0.995 then cap else min(Vortex.condensationRadius(e, min(z, H * 0.995)), cap)
+				local cap = rcz * 3 + min(5 * rcz, max(0, 0.5 * wallR - rcz * 3)) * smooth(mergeAt(0.6), H, z)
 				local ax, ay = Vortex.axisAt(e, zc)
+				-- A decaying rope's core is not uniform along its axis: turbulence and uneven stretching
+				-- leave stretches of it weaker, and as the whole core spins down its condensation fails
+				-- first there - the rope breaks into segments that fade (NWS spotter guide: rope-out;
+				-- LIFECYCLE-RESEARCH.md). The core wind fluctuates along the axis by up to 8% x how far
+				-- it has decayed, more where the axis lies flat (stretched along it, not up it): a
+				-- slowly drifting noise along its length. Only the condensation reads it. (20% from
+				-- decay 0.3 erased most of a rope still condensed to the ground, 2026-10-31)
+				local vk = 1
+				local dk = smooth(0.5, 1, e.decay or 0)
+				if dk > 0 then
+					local bx, by = Vortex.axisAt(e, min(zc + 0.05 * H, H))
+					local slope = sqrt((bx - ax) ^ 2 + (by - ay) ^ 2) / max(0.05 * H, 1)
+					local amp = 0.08 * dk * (0.6 + 0.4 * clamp(slope, 0, 1))
+					vk = 1 + amp * clamp(1.8 * math.noise((e.seed or 0) % 97 + 0.37, z / max(0.18 * H, 40), nowL * 0.07), -1, 1)
+				end
+				local rc = if z >= H * 0.995 then cap else min(Vortex.condensationRadius(e, min(z, H * 0.995), vk), cap)
 				local row = tab[i]
 				if not row then
 					row = {}
@@ -851,10 +958,41 @@ function TornadoCards.new(ctx: any): any
 				end
 				row.z, row.rc, row.rcz, row.ax, row.ay = z, rc, rcz, ax, ay
 				row.gz = C.groundAt(e.x + ax, e.y + ay)
-				local fadeTop = 1 - smooth(H * 0.9, H * 1.02, z)
-				local flare = smooth(zAt(0.55), H, z)
-				local thinH = thin * clamp(0.7 * rcz / max(rc, 1), 0, 1)
+				-- (solid up into the lowering, fading only inside it: from 0.9 H it was half gone below
+				-- the lowering's soft floor and side-on, with the lowering's under-disc faded, sky showed
+				-- between funnel and wall cloud - low-base scene, user 2026-11-02. From 0.98 H it was
+				-- still at ~0.5 by H: a pale band just under the base in the orbit view, user. Now it
+				-- starts fading at the base)
+				local fadeTop = 1 - smooth(Hj, Hj + 0.1 * H, z)
+				local flare = smooth(mergeAt(0.55), H, z)
+				local thinH = thin * exp(-2 * BETA * max(0, rc - 0.7 * rcz)) -- (the cloud shell outside the dry
+			-- two-celled core, through its extinction: a linear 0.7 core/condensed left a 950 m-wide wedge
+			-- half see-through with its sub-vortices showing - "a multi-vortex, not a wedge", user 2026-11-03)
 				row.flare, row.fadeTop, row.thinH = flare, fadeTop, thinH
+				-- (debug, F4 counters: the funnel's top rows against the lowering's floor)
+				if i == NZ then
+					local parts = {}
+					for _, fz in { 0.8, 0.9, 0.95, 1.0 } do
+						local zz = fz * H
+						local bestR, bd = nil, math.huge
+						for ii = 0, NZ do
+							local rr = tab[ii]
+							if rr and rr.z and math.abs(rr.z - zz) < bd then
+								bestR, bd = rr, math.abs(rr.z - zz)
+							end
+						end
+						if bestR then
+							table.insert(parts, string.format("%.2fH rc%.0f c%.2f f%.2f fl%.2f", fz, bestR.rc, bestR.cond or 0, bestR.fadeTop or 0, bestR.flare or 0))
+						end
+					end
+					local wb = nil
+					for _, v in ctx.wallStreamBase or {} do
+						if v.floor and (not wb or (v.x - e.x) ^ 2 + (v.y - e.y) ^ 2 < (wb.x - e.x) ^ 2 + (wb.y - e.y) ^ 2) then
+							wb = v
+						end
+					end
+					sp.joinDbg = string.format("H%.0f top%.0f floor%s zb%s · ", H, top, if wb then string.format("%.0f", wb.floor) else "-", if wb then string.format("%.0f", wb.z) else "-") .. table.concat(parts, " | ")
+				end
 				-- how condensed: the body needs a good share of the core radius (a marginal tip or rope
 				-- end fades), the envelope shows from less (fragments past the solid body's end)
 				-- (by the condensed radius itself: a narrow tip is still condensed cloud, opaque
@@ -1124,10 +1262,10 @@ function TornadoCards.new(ctx: any): any
 					local nOv = max(1, mBar * hc / max(gapS, 1))
 					local kind = if puff then 3 elseif capsule then 4 elseif soft then 2 else 1
 					setTr(c, 1 - stackAlpha(kind, hc / max(gapS, 1e-3), 1 - A, crop))
-					if j == 8 or j == 20 then
+					if j == 4 or j == 8 or j == 14 or j == 20 then
 						-- (debug, shown in the F4 counters: the body at two heights)
 						set.bodyDbg = set.bodyDbg or {}
-						set.bodyDbg[j] = string.format("z%.0f rc%.0f A%.2f cond%.2f thin%.2f n%.1f hc%.0f wc%.0f", z, rc, A, cond, thinH, nOv, hc, wc)
+						set.bodyDbg[j] = string.format("z%.0f rc%.0f A%.2f %s n%.1f hc%.0f wc%.0f", z, rc, A, if puff then "PUFF" elseif capsule then "caps" elseif soft then "soft" else "slice", nOv, hc, wc)
 					end
 					-- (turned, the slice needs a box that holds it)
 					local sA, cA = math.abs(math.sin(math.rad(lean))), math.abs(math.cos(math.rad(lean)))
@@ -1729,6 +1867,65 @@ function TornadoCards.new(ctx: any): any
 				end
 			end
 			if style == "smoke" then
+				-- the ground cut for a sprite at (px, py), w x hs m (groundCutSeq): the ground's line
+				-- across it from the ground under it and under its left and right edges (a slope tilts it)
+				local cfG = cam.CFrame
+				local gUY = max(cfG.UpVector.Y, 0.05)
+				local grx, gry = cfG.RightVector.X, -cfG.RightVector.Z
+				do
+					local l = sqrt(grx * grx + gry * gry)
+					if l > 1e-3 then
+						grx, gry = grx / l, gry / l
+					else
+						grx, gry = 1, 0
+					end
+				end
+				local function groundY(px: number, py: number): number
+					return C.toWorldAbout(px, py, altitude(0, C.groundAt(px, py), H), ex, ey, ks).Y
+				end
+				local function groundCut(c: any, px: number, py: number, w: number, hs: number)
+					local P = c.wp
+					local wS, hS = w * ks, hs * ks
+					local yc = if P then (P.Y - groundY(px, py)) / gUY else 1e9
+					-- (wholly above the ground: no cut)
+					if yc > 0.5 * (wS + hS) then
+						if c.gcut and c.gcutKey ~= -1 then
+							c.gcutKey = -1
+							c.gcut.Enabled = false
+						end
+						return
+					end
+					local hw = 0.5 * w
+					local gL = groundY(px - grx * hw, py - gry * hw)
+					local gR = groundY(px + grx * hw, py + gry * hw)
+					local tilt = math.atan((gR - gL) / gUY / max(wS, 1e-3))
+					local phi = math.rad(90 - (c.rot0 or 0)) - tilt
+					local ext = hS * math.abs(sin(phi)) + wS * math.abs(cos(phi))
+					local t1 = 0.5 + yc * cos(tilt) / max(ext, 1e-3)
+					-- (a soft edge ~6 m deep above the line, a pixel at least)
+					local fw = clamp(max(6 * ks, pxK * ((P or camS) - camS).Magnitude) / max(ext, 1e-3), 0.008, 0.15)
+					local key = math.floor(clamp(t1, -0.1, 1.2) * 128 + 0.5)
+					local fwKey = math.floor(fw * 128 + 0.5)
+					local g = c.gcut
+					if not g then
+						g = Instance.new("UIGradient")
+						g.Parent = c.img
+						c.gcut = g
+					end
+					if not g.Enabled then
+						g.Enabled = true
+					end
+					local gRot = math.deg(phi)
+					if math.abs(gRot - (c.gcutRot or 1e9)) > 0.5 then
+						c.gcutRot = gRot
+						g.Rotation = gRot
+					end
+					local ck = key * 64 + fwKey
+					if c.gcutKey ~= ck then
+						c.gcutKey = ck
+						g.Transparency = groundCutSeq(key, fwKey)
+					end
+				end
 				-- The smoke body (see NSMB): body sprites at a stratified place along the funnel's
 				-- length, carried up it with the surface flow and round it at the flow's turn at their
 				-- height, within ~0.55 rc of the axis and ~1.4 rc wide, so their frayed fringes make the
@@ -1802,14 +1999,104 @@ function TornadoCards.new(ctx: any): any
 					local skyAmt = L.sky * 0.72 * (1 + SKY_K * sdA * (nx_ * sdx + ny_ * sdy)) * (0.86 + 0.14 * ny)
 					return colour(L, sunAmt, skyAmt, z)
 				end
-				for i = 1, NSMB do
+				-- The turbulence field (filaments as density concentrations, see NFIL): smooth noise
+				-- round the funnel and along it, carried by the flow - at a point, look back to where
+				-- its air was (turned back by the swirl there, down by the updraft there) and read the
+				-- noise at that place. Where the swirl changes with height the pattern shears into
+				-- slanting streaks; where the updraft does it stretches. No shape is laid out. Two
+				-- copies, each restarted with a new pattern every TURB_T s and cross-faded, so the
+				-- shear never winds it into fine stripes. -1 .. 1, about +-0.5 typical.
+				sm.tN += vDt
+				local tN = sm.tN
+				-- a low-swirl vortex is laminar - one-celled, smooth-sided, finely striated - and
+				-- turbulent past the two-cell transition (swirl ~0.45: Church et al. 1979): the body's
+				-- turbulent lumps fade toward low swirl, as they do on a thin rope (ropeK)
+				local laminar = 1 - smooth(0.2, 0.45, e.swirl or 0.5)
+				local hvOn = ctx.hvWindAt ~= nil and ctx.hvField ~= nil and #ctx.hvField > 0
+				local function turb(th: number, sq: number, omega: number, wUp: number, rcz: number): number
+					local tot, wsum = 0, 0
+					for k = 0, 1 do
+						local tk = tN + 0.5 * k * TURB_T
+						local a = tk % TURB_T
+						local ep = tk // TURB_T
+						local wk = sin(math.pi * a / TURB_T) ^ 2
+						local th0 = th - omega * a
+						local y0 = (sq * arcL - wUp * a) / max(1.2 * rcz, 15)
+						tot += wk * math.noise(1.6 * cos(th0) + 31.7 * ep, 1.6 * sin(th0) + 7.1 * k, y0)
+						wsum += wk * wk
+					end
+					return clamp(2.2 * tot / sqrt(max(wsum, 1e-3)), -1, 1)
+				end
+				-- The surface layout (Ctrl+T; 2026-11-03, "a standardized way to morph from stovepipe
+				-- to wedge", user): every card keeps its slot on the funnel's surface - a place along it
+				-- by surface area (so a wide part gets more cards) and an angle round it - and its rim
+				-- sits on that surface. Its size is one rule for every shape: the cone's ~2.7-3 radii,
+				-- but no more than ~0.45 of the funnel's length (so a squat funnel's cards stay round
+				-- and its outline follows the radius) nor than the surface area shares out. A narrow
+				-- funnel's cards are wider than it and sit near the axis - the cone and stovepipe as
+				-- they were; a wide one's sit out on the surface, the side ones making the outline and
+				-- the front and back ones filling it. No shell push, no squat cap: the morph is smooth.
+				local surf = ctx.state.smokeSurface
+				if surf == nil then
+					surf = C.SMOKE_SURFACE ~= false
+				end
+				local areaS = sm.areaS or {}
+				sm.areaS = areaS
+				local aTot = 0
+				local zOfArea = zOfArc
+				if surf then
+					areaS[1] = 0
+					local rFl = nil
+					for k = 1, NA do
+						local zm = 0.5 * (arcZ[k] + arcZ[k + 1])
+						local rk, _, _, _, a0, a1, fk = rowAt(zm)
+						local flk = a0.flare + (a1.flare - a0.flare) * fk
+						-- (the flare into the lowering counts little: there the funnel is ~km wide and
+						-- its cards are the radius layout's few broad ones, below. At 0.4 of its area
+						-- it still took most of the cards - round grey bubbles all over the base, 2026-11-03)
+						-- (the flare counts as the funnel where it starts to flare: as many cards as
+						-- before there, the radius layout's broad ones)
+						local sf = smooth(0, 0.2, flk)
+						if sf < 0.01 or not rFl then
+							rFl = max(rk, 1)
+						end
+						areaS[k + 1] = areaS[k] + 2 * math.pi * (max(rk, 1) * (1 - sf) + rFl * sf) * (arcS[k + 1] - arcS[k])
+					end
+					aTot = max(areaS[NA + 1], 1)
+					sm.rFl = rFl or 1
+					zOfArea = function(fr: number): number
+						local sT = clamp(fr, 0, 1) * aTot
+						local lo, hi = 1, NA + 1
+						while hi - lo > 1 do
+							local mid = (lo + hi) // 2
+							if areaS[mid] <= sT then
+								lo = mid
+							else
+								hi = mid
+							end
+						end
+						return arcZ[lo] + (arcZ[hi] - arcZ[lo]) * (sT - areaS[lo]) / max(areaS[hi] - areaS[lo], 1e-6)
+					end
+				end
+				-- (the area-shared card size: ~80 cards over each point of the surface - large enough
+				-- that a cone's or stovepipe's own rule, ~2.7 radii, is the smaller)
+				local wArea = sqrt(80 * aTot / (NSB * 0.9))
+				-- how squat the funnel is as a whole: its radius a quarter of the way up against its
+				-- length (a cone ~0.15, a stovepipe ~0.1, a wedge ~0.9). Its cards flatten with this, not
+				-- with their own width: by their own width a cone's flared top went flat too - a thin
+				-- column under a broad cap, "squashed", user 2026-11-03. Smooth in the funnel's shape,
+				-- so a tornado wedging out or narrowing back changes over gradually
+				local rcQ = rowAt(zOfArc(0.25))
+				local squatK = smooth(0.3, 0.8, rcQ / max(arcL, 1))
+				local hsAsp = 1.8 + 4.2 * squatK
+				for i = 1, NSB do
 					local c = sm.cards[i]
 					local sd, sd2 = sm.seed[i], sm.seed2[i]
 					-- the place along the funnel: from a little under the ground (where each one starts
 					-- its climb, unseen) to just past the top (where it fades into the lowering)
 					local su = (sm.phase[i] + sm.rise) % 1
 					local sq = -0.05 + 1.1 * su
-					local z = zOfArc(clamp(sq, 0, 1))
+					local z = if surf then zOfArea(clamp(sq, 0, 1)) else zOfArc(clamp(sq, 0, 1))
 					local rc, ax, ay, gz, r0, r1, f = rowAt(z)
 					-- (the frame row nearest z)
 					local q = sm.fr[clamp(math.floor((clamp(z / top, 0, 1) ^ (1 / 1.15)) * NZ + 0.5), 0, NZ)]
@@ -1839,7 +2126,39 @@ function TornadoCards.new(ctx: any): any
 						-- stovepipe cloudy, user)
 						local ropeK = 1 - smooth(0.04, 0.1, rc / max(arcL, 1))
 						local haze = ropeK > 0.15 + 0.7 * sd2
-						local want = if haze then sm.texH else sm.texS
+						-- (surface layout, how far out on the surface the smooth cards sit: 0 for a cone or
+						-- stovepipe, whose cards are wider than it and on the axis; ~1 on a wedge. Out on the
+						-- surface, the smooth puff's rim would show wherever a card faced the camera - round
+						-- bubbles over a wedge's face, user 2026-11-03. So there ~60% of them are the rimless
+						-- haze puff (the fill), and the smooth ones show only on the sides as seen (the
+						-- outline, their rims on it, as a cone's are))
+						local gS = 0
+						if surf then
+							local sK0 = 1 - smooth(0, 0.2, flare)
+							local wS0 = max(3, min(rc * (2.7 + 0.3 * sd), 0.45 * arcL, wArea))
+							gS = smooth(0.3, 0.7, 1 - 0.34 * wS0 / max(rc, 1)) * sK0
+							if not haze and (sd * 3.71) % 1 < 0.6 * gS then
+								haze = true
+							end
+						end
+						-- (the edge in metres, see RC_EDGE: sE 1 up to the cone's radius, then RC_EDGE/rc. The
+						-- smooth puff's edge ramp is ~0.11 of its width, so past it each card takes the puff
+						-- whose ramp is nearest RC_EDGE's - 1/2 or 1/4 as wide - by its own seed between the
+						-- two nearest, so a funnel wedging out changes over card by card)
+						local sE = min(1, RC_EDGE / max(rc, 1))
+						local want = sm.texH
+						if not haze then
+							want = sm.texS
+							local lv = clamp(math.log(1 / sE, 2), 0, 2)
+							local lo = math.floor(lv)
+							local sd3 = (sin(i * 57.31 + 11.13) * 43758.5453) % 1
+							local lvl = if sd3 < lv - lo then lo + 1 else lo
+							if lvl == 1 and sm.texS2 ~= "" then
+								want = sm.texS2
+							elseif lvl >= 2 and sm.texS4 ~= "" then
+								want = sm.texS4
+							end
+						end
 						if sm.cur[i] ~= want then
 							sm.cur[i] = want
 							c.img.Image = want
@@ -1849,31 +2168,115 @@ function TornadoCards.new(ctx: any): any
 						-- 3.4-3.8 rc wide, its alpha ~0.17 at rc, so the stacked layers fade out round the
 						-- edge. (2026-10-31: within 0.45 rc and 2-2.4 rc wide, the
 						-- side puffs' fringes reached ~1.3 rc - a broad haze with no outline, user)
-						local rf = 0.2 * sqrt(sd2)
-						rf += (0.7 + 0.25 * sd2 - rf) * thin
+						local rf = 0.2 * sqrt(sd2) * sE -- (the spread in metres past RC_EDGE: it softened the edge as much as the ramp)
+						-- (out to the shell only as far as the funnel is see-through there: condensed well
+						-- past its dry two-celled core - a wedge - it is one opaque mass, drawn as a cone is.
+						-- With the shell pushed out at any swirl, every broadening tornado drew as a ring of
+						-- puffs, user 2026-11-03)
+						local thinS = thin * exp(-2 * BETA * max(0, rc - 0.7 * rcz))
+						local wSurf = 0
+						if surf then
+							-- its rim (~0.34 of its width out) on the surface
+							-- (blended back to the radius layout through the flare: broad cards on the axis
+							-- that merge into the cloud, as before)
+							local sK = 1 - smooth(0, 0.2, flare) -- (from the flare's start: from 0.1-0.6 its lower part, already ~km wide, was strewn with round cards)
+							local wRad = max(3, rc * (if haze then 3.4 + 0.4 * sd else 2.7 + 0.3 * sd))
+							wSurf = max(3, min(wRad, 0.45 * arcL, wArea))
+							wSurf = wRad + (wSurf - wRad) * sK
+							rf += (max(rf, 1 - 0.34 * wSurf / max(rc, 1)) - rf) * sK
+						else
+							rf += (0.7 + 0.25 * sd2 - rf) * thinS
+						end
 						local rr = rf * rc
-						setPos(c, C.toWorldAbout(e.x + ax + cs * rr, e.y + ay + sn * rr, alt, ex, ey, ks))
-						local w = max(3, rc * (if haze then 3.4 + 0.4 * sd else 2.7 + 0.3 * sd))
+						-- horizontal vortices (Render/DebrisCloud, violent tornadoes): the outer part of the
+						-- lower funnel is carried by a passing tube's roll - out over its top, down and in
+						-- under it - for about a second and a half of its wind, at most 0.4 rc; it shows as
+						-- the foot's edge rolling over, no shape drawn. Only sprites out from the axis
+						-- (the dense middle stays put) and low down (the tubes stay under ~200 m).
+						local hdx, hdy, hdz = 0, 0, 0
+						if hvOn and z < 260 and rf > 0.35 then
+							local px, py = e.x + ax + cs * rr, e.y + ay + sn * rr
+							local hu, hv_, hw = ctx.hvWindAt(px, py, z)
+							local hm = sqrt(hu * hu + hv_ * hv_ + hw * hw)
+							if hm > 0.1 then
+								local kk = min(1.5, 0.4 * rc / hm) * smooth(0.35, 0.6, rf)
+								hdx, hdy, hdz = hu * kk, hv_ * kk, hw * kk
+							end
+						end
+						local function place(rr_: number)
+							setPos(c, C.toWorldAbout(e.x + ax + cs * rr_ + hdx, e.y + ay + sn * rr_ + hdy, alt + hdz, ex, ey, ks))
+						end
+						place(rr)
+						-- (the smooth puff's width spread, +-5%, is kept in metres past RC_EDGE too)
+						local w = if surf then wSurf else max(3, rc * (if haze then 3.4 + 0.4 * sd else 2.85 + 0.3 * (sd - 0.5) * sE))
+						-- (no taller than a third of the funnel, so its outline follows the radius up it;
+						-- where that would flatten a puff past 2.5:1 it is narrowed and set out from the
+						-- axis, its rim (~0.34 of its width out) still at the edge. 2026-10-31: on a wedge
+						-- ~350 m tall each puff was taller than the funnel - its outline an average of rims
+						-- at every height, a soft blur, user)
+						-- (spread across the funnel, not only out at its edge: the outer ones' rims make the
+						-- outline, the rest fill the middle - a wedge is a cone's cards, more of them across
+						-- its width. Set out in a ring only, the middle was a hole, user 2026-11-03)
+						-- (2026-11-03, later: no squat branch. A squat funnel's cards keep the cone's rule - as
+						-- wide as the funnel, on the axis - and only flatten, down to 1:6. Narrowed and spread
+						-- across the funnel (the old 2.5:1 / 1.8:1 cap) their rims showed over its face as
+						-- bubbles and feathers, user; a wedge photo is one smooth dark mass with soft sides.
+						-- One rule from rope to wedge, so a broadening tornado morphs smoothly. How flat:
+						-- hsAsp, from the whole funnel's squatness - 1.8:1 on a cone, 6:1 on a wedge)
+						local hsMax = max(0.35 * arcL, 3)
+						local spread = 0
 						-- (long enough that each point of the funnel's length has ~8 over it; a rope is many
 						-- radii long, so its sprites stretch along it, at most 3 x as long as wide so the
 						-- smooth puff's ends stay round. 2026-10-31: with ~3 over each point, each near the
 						-- opacity cap, every puff's rim showed - a rope in rings like a caterpillar)
-						local hs = if haze then min(max(0.9 * w, 8 * arcL / NSMB), 3 * w) else min(max(0.9 * w, 3 * arcL / NSMB), 4 * w)
+						local hs = if haze then min(max(0.9 * w, 8 * arcL / NSB), 3 * w) elseif surf then min(max(0.9 * w, 3 * arcL / NSB), 4 * w) else min(max(0.9 * w, 3 * arcL / NSB), 4 * w, max(hsMax, w / hsAsp))
 						setSize(c, w * ks, hs * ks)
 						-- (how many overlap a point: never more than all of them - a wedge is shorter than
 						-- its sprites. K 6: the haze puff's alpha averages ~0.15 of its card, so each card
 						-- takes ~6 x the plain share; the fibrous sheet, ~0.1, took 10)
-						local nEff = max(1, NSMB * min(hs, arcL) / max(arcL, 1))
+						local nEff = max(1, NSB * min(hs, arcL) / max(arcL, 1))
+						if surf then
+							-- (the cards in its height band: its share of the surface area there)
+							local sf = smooth(0, 0.2, flare)
+							nEff = NSB * 2 * math.pi * (max(rc, 1) * (1 - sf) + (sm.rFl or 1) * sf) * min(hs, arcL) / aTot
+						end
+						-- (and only the share of them that covers a point: sprites set out round a ring
+						-- of radius rr, w wide, cover the middle of the funnel as seen only while their
+						-- place across it, rr cos(theta), is within w/2 - (2/pi) asin(w / 2rr) of them.
+						-- Counted as all, a funnel whose sprites sit out on a ring - a squat wedge (the
+						-- 2.5:1 cap) or any high-swirl, two-celled, broadening one - drew see-through,
+						-- in blotches, never one condensed mass, user 2026-11-03)
+						local cov = if rr <= 0.5 * w then 1 else (2 / math.pi) * math.asin(0.5 * w / rr)
+						if spread > 0 and not surf then
+							-- (spread over a disc out to rEdge: about w / (2 rEdge rc + w) of them cover a point)
+							cov = min(1, w / (2 * spread * rc + w))
+						end
+						nEff = max(1, nEff * cov)
 						-- (K 3.5 and cap 0.6 for the smooth puff, ~0.3 of its card covered)
 						local op = if haze then min(SM_OPMAX, 1 - (1 - A) ^ (6 / nEff)) else min(0.6, 1 - (1 - A) ^ (3.5 / nEff))
-						op *= env * (1 - 0.6 * flare)
+						-- (not thinned where it flares: the lowering and the deck are cut away over the
+						-- funnel, so up to the base it is the only cloud there, and thinned by its flare
+						-- (to 0.4 at the base) sky showed through its top - a pale band under the base
+						-- and no core, user 2026-11-02. It fades inside the base, fadeTop)
+						op *= env
+						-- (denser and thinner patches of the condensation, from the field; less on a rope -
+						-- the Severity ropes are smooth)
+						local wUp = r0.wUp + (r1.wUp - r0.wUp) * f
+						local tb = turb(theta, sq, omega, wUp, rcz) * (1 - 0.7 * max(ropeK, laminar)) * (1 - flare)
+						op = clamp(op * (1 + 0.35 * tb), 0, 0.75)
+						if gS > 0 and not haze then
+							-- (a smooth card out on the surface: seen only on the sides, its rim the outline)
+							local xp = math.abs(cs * q.ahx + sn * q.ahy)
+							op *= 1 - gS * (1 - smooth(0.5, 0.85, xp))
+						end
 						setTr(c, 1 - op)
 						-- up along the axis on screen, each sprite turned a little its own way, drifting -
 						-- less the more it is stretched (2026-10-31: a 4:1 rope sprite tilted 25 deg stuck
 						-- out sideways, a knobbly outline; now ~3 deg at 4:1)
-						local tw = (hs / w) ^ -1.5
+						local tw = min(1, (max(hs, w) / max(min(hs, w), 1e-3)) ^ -1.5) -- (by how stretched it is either way: as (hs/w)^-1.5 a flat wedge card, 0.4 tall, was turned 4x as far - up to 100 deg, giant feathers every way, user 2026-11-03)
 						local rot = math.deg(math.atan2(q.ux, q.uy)) + ((sd - 0.5) * 50 + 8 * sin(nowL * 0.15 + 6.28 * sd2)) * tw
 						setRot(c, rot)
+						groundCut(c, e.x + ax + cs * rr + hdx, e.y + ay + sn * rr + hdy, w, hs)
 						-- (near one tone, as the Severity funnels: its side of the axis on screen shifts it a
 						-- little toward the lit or the shadow side, and a puff off to the side is ~8% darker -
 						-- their darker band inside the edge. 2026-10-31: the full lit/shadow swing and a
@@ -1885,86 +2288,206 @@ function TornadoCards.new(ctx: any): any
 						local col, var
 						if haze then
 							col = shadeAt(L, q, 0.3 * xs, 0, 0, 0, z)
-							var = 1 - 0.08 * math.abs(xs)
+							var = 1 - 0.08 * math.abs(xs) + 0.03 * tb
 						else
 							local thick = smooth(8, 30, rc)
 							col = shadeAt(L, q, 0.85 * xs, cs, sn, 0.3 * thick, z)
-							var = 1 + (0.14 * sd - 0.07) * thick
+							-- (the turning masses: tone from the field, where it was a fixed +-7% each)
+							var = 1 + (0.04 * sd - 0.02 + 0.08 * tb) * thick
 						end
 						setCol(c, Color3.new(min(1, col.R * var), min(1, col.G * var), min(1, col.B * var)))
 					end
 					n += 1
 				end
-				-- the ascending filaments: each rides its own helix on the surface for a few seconds -
-				-- turning at the swirl, climbing at the updraft where it is - then starts again elsewhere.
-				-- Soft streaks along the flow in the body's own shade (+-6%), faint, on the near face
-				-- only (fading before the outline: edge strands drew a dark stripe there), fewer on a
-				-- rope (the Severity ropes are smooth). Shift+T hides them (the detail toggle).
-				local detail = d < 9000 and ctx.state.tornadoDetail ~= false
-				for j = 1, NFIL do
-					local c = sm.cards[NSMB + j]
-					local sd = sm.seed[NSMB + j]
-					local age = sm.fage[j] + vDt
-					if age >= sm.flife[j] or sm.fs[j] > 0.97 then
-						age = 0
-						sm.fs[j] = math.random() * 0.85
-						sm.fth[j] = math.random() * 2 * math.pi
-						sm.flife[j] = 3 + 4 * math.random()
-					end
-					sm.fage[j] = age
-					local s = sm.fs[j]
-					local z = zOfArc(s)
-					local rc, ax, ay, gz, r0, r1, f = rowAt(z)
-					local wUp = r0.wUp + (r1.wUp - r0.wUp) * f
-					local omega = r0.omega + (r1.omega - r0.omega) * f
-					sm.fs[j] = s + wUp * vDt / max(arcL, 50)
-					local theta = (sm.fth[j] + omega * vDt) % (2 * math.pi)
-					sm.fth[j] = theta
-					local cond = r0.cond + (r1.cond - r0.cond) * f
-					local fadeTop = r0.fadeTop + (r1.fadeTop - r0.fadeTop) * f
-					local rcz = r0.rcz + (r1.rcz - r0.rcz) * f
-					local flare = r0.flare + (r1.flare - r0.flare) * f
-					local ring = rc - thin * min(0.7 * rcz, rc)
-					local A = clamp(max(1 - exp(-2 * BETA * rc), 0.995) * cond * fadeTop * life
-						* (1 - exp(-2 * BETA * ring)) / max(1 - exp(-2 * BETA * rc), 1e-3), 0, 1)
-					local u = age / sm.flife[j]
-					local lf = smooth(0, 0.2, u) * (1 - smooth(0.6, 1, u))
-					local env = smooth(0, 0.03, s) * (1 - smooth(0.85, 0.97, s)) * (1 - flare)
-					local ropeK = 1 - smooth(0.04, 0.1, rc / max(arcL, 1))
-					local k0 = A * lf * env * (1 - 0.75 * ropeK)
-					if not detail or k0 < 0.01 or rc < 2 then
-						setTr(c, 1)
-					else
-						local cs, sn = cos(theta), sin(theta)
-						local rr = rc * 0.92
-						local x0, y0 = e.x + ax + cs * rr, e.y + ay + sn * rr
-						local alt = altitude(z, gz, H)
-						local Pw = C.toWorldAbout(x0, y0, alt, ex, ey, ks)
-						setPos(c, Pw)
-						-- the flow's direction here (counter-clockwise turn + the updraft), as seen
-						local vt = max(omega * rr, 0.1)
-						local st = 0.05 * max(rr, 1)
-						local Pt = C.toWorldAbout(x0 - sn * st, y0 + cs * st, alt + st * wUp / vt, ex, ey, ks)
-						local d3 = Pt - Pw
-						local sx, sy = d3:Dot(camR), d3:Dot(camU)
-						local onS = sqrt(sx * sx + sy * sy) / max(d3.Magnitude, 1e-4)
-						local outV = C.toWorldAbout(x0 + cs, y0 + sn, alt, ex, ey, ks) - Pw
-						local fd = outV.Unit:Dot((camPos - Pw).Unit)
-						local front = clamp((fd - 0.15) / 0.45, 0, 1)
-						-- long ribbons, not dashes (short separate streaks read as a roll of stamps)
-						local len = (1.3 + 0.5 * sd) * rc + 10
-						local wid = 0.22 * len
-						setSize(c, max(wid * 1.2, len * (0.3 + 0.7 * onS)) * ks, wid * ks)
-						setRot(c, -math.deg(math.atan2(sy, sx)))
-						setTr(c, 1 - clamp(0.2 * k0 * front, 0, 0.2))
+				-- The skin (see NSKIN, 2026-11-03): soft haze puffs on the funnel's face as seen, each the
+				-- light of the surface at its place across it (shadeAt: lit side, shadow side), its tone
+				-- varied by the turbulence field where that surface is - so the face's masses turn with
+				-- the flow. Set on the near surface, in front of the body (all of whose cards sit within
+				-- 0.2 rc of the axis). Kept inside the edge: their soft tails stay off the outline the
+				-- body cards make. Only past RC_EDGE, fading in as the funnel widens; not where it flares
+				-- into the lowering, not from close to or inside the funnel.
+				do
+					local hsMaxS = max(0.3 * arcL, 3)
+					for k = 1, NSKIN do
+						local i = NSB + k
+						local c = sm.cards[i]
+						local sd, sd2 = sm.seed[i], sm.seed2[i]
+						local su = (sm.phase[i] + sm.rise) % 1
+						local sq = -0.05 + 1.1 * su
+						local z = zOfArc(clamp(sq, 0, 1))
+						local rc, ax, ay, gz, r0, r1, f = rowAt(z)
 						local q = sm.fr[clamp(math.floor((clamp(z / top, 0, 1) ^ (1 / 1.15)) * NZ + 0.5), 0, NZ)]
-						local L = if f < 0.5 then r0.L else r1.L
-						local xs = clamp(cs * q.ahx + sn * q.ahy, -1, 1)
-						local col = shadeAt(L, q, 0.85 * xs, cs, sn, 0.3 * smooth(8, 30, rc), z)
-						local var = if sd < 0.5 then 0.94 else 1.06
-						setCol(c, Color3.new(min(1, col.R * var), min(1, col.G * var), min(1, col.B * var)))
+						local cond = r0.cond + (r1.cond - r0.cond) * f
+						local fadeTop = r0.fadeTop + (r1.fadeTop - r0.fadeTop) * f
+						local flare = r0.flare + (r1.flare - r0.flare) * f
+						local rcz = r0.rcz + (r1.rcz - r0.rcz) * f
+						local omega = r0.omega + (r1.omega - r0.omega) * f
+						local wUp = r0.wUp + (r1.wUp - r0.wUp) * f
+						local sE = min(1, RC_EDGE / max(rc, 1))
+						local ropeK = 1 - smooth(0.04, 0.1, rc / max(arcL, 1))
+						-- (from close up or inside, the face as seen is not a cylinder's)
+						local cd = sqrt((camX - e.x - ax) ^ 2 + (camY - e.y - ay) ^ 2)
+						local kS = smooth(0, 0.6, 1 - sE) * (1 - flare) * (1 - ropeK) * smooth(1.3 * rc, 2.2 * rc, cd)
+						local env = 1 - smooth(1, 1.05, sq)
+						local AF = 0.75 * kS * cond * fadeTop * life * env * (1 - thin)
+						if AF < 0.01 or rc < 1 or not q then
+							setTr(c, 1)
+						else
+							if sm.cur[i] ~= sm.texH then
+								sm.cur[i] = sm.texH
+								c.img.Image = sm.texH
+							end
+							-- its place across the face (-1 .. 1 of rc): the haze puff's alpha is ~0.04 at 0.75
+							-- of its half-width, kept inside 0.97 rc
+							local ws = rc * (0.5 + 0.2 * sd2)
+							local xm = max(0, 0.97 - 0.75 * 0.5 * ws / rc)
+							local x = (2 * sd - 1) * xm
+							local ny = sqrt(max(0, 1 - x * x))
+							local nX, nY = x * q.ahx + ny * q.tcx, x * q.ahy + ny * q.tcy
+							local px = e.x + ax + rc * 0.9 * nX
+							local py = e.y + ay + rc * 0.9 * nY
+							setPos(c, C.toWorldAbout(px, py, altitude(z, gz, H) + min(sq, 0) * arcL, ex, ey, ks))
+							local hs = clamp(hsMaxS, 0.5 * ws, 1.4 * ws)
+							setSize(c, ws * ks, hs * ks)
+							-- (how many overlap a point: across the face and along the funnel; the haze puff
+							-- takes ~6 x the plain share, as the body's)
+							local nS = max(1, NSKIN * (ws / (2 * xm * rc + ws)) * min(hs, arcL) / max(arcL, 1))
+							local op = min(SM_OPMAX, 1 - (1 - min(AF, 0.95)) ^ (6 / nS))
+							local th = math.atan2(nY, nX)
+							local tb = turb(th, sq, omega, wUp, rcz) * (1 - 0.7 * laminar)
+							op = clamp(op * (1 + 0.25 * tb), 0, 0.6)
+							setTr(c, 1 - op)
+							setRot(c, math.deg(math.atan2(q.ux, q.uy)))
+							groundCut(c, px, py, ws, hs)
+							local col = shadeAt(if f < 0.5 then r0.L else r1.L, q, x, 0, 0, 0, z)
+							local var = 1 + 0.08 * tb
+							setCol(c, Color3.new(min(1, col.R * var), min(1, col.G * var), min(1, col.B * var)))
+						end
+						n += 1
 					end
-					n += 1
+				end
+				-- the ascending filaments (see NFIL): material lines carried by the flow. Each point turns
+				-- at the swirl and climbs at the updraft where it is, plus eddies (the field's gradient
+				-- across and along, ~12% of the swirl); the differences between its points stretch, lean
+				-- and bend the line - no shape is laid out. Born short in a random direction and carried
+				-- 6 s before showing, so they appear already drawn out; thinner as they stretch; seen only
+				-- where the field is dense; fading with age, gone once wrapped ~1.2 rad round. The body's
+				-- shade +-6%, faint, near face only, weaker on a rope. Shift+T hides them.
+				local detail = d < 9000 and ctx.state.tornadoDetail ~= false
+				local function flowAt(sq: number): (number, number, number, number)
+					local z = zOfArc(clamp(sq, 0, 1))
+					local rc, _, _, _, r0, r1, f = rowAt(z)
+					return r0.omega + (r1.omega - r0.omega) * f, r0.wUp + (r1.wUp - r0.wUp) * f,
+						r0.rcz + (r1.rcz - r0.rcz) * f, max(0.92 * rc, 1)
+				end
+				local function carry(th: number, sq: number, dt: number): (number, number)
+					local omega, wUp, rcz, rr = flowAt(sq)
+					local vt = omega * rr
+					local e1 = turb(th + 0.7, sq, omega, wUp, rcz)
+					local e2 = turb(th, sq + 0.6 * rcz / max(arcL, 50), omega, wUp, rcz)
+					return th + (omega + 0.12 * vt * e1 / rr) * dt, sq + (wUp + 0.12 * vt * e2) * dt / max(arcL, 50)
+				end
+				for j = 1, NFIL do
+					local F = sm.fl[j]
+					local cA, cB = sm.cards[NSMB + 2 * j - 1], sm.cards[NSMB + 2 * j]
+					if F.dead then
+						F.stagger -= vDt
+						if F.stagger <= 0 then
+							local s0 = 0.03 + 0.7 * math.random()
+							local th0 = math.random() * 2 * math.pi
+							local _, _, _, rr0 = flowAt(s0)
+							local a = math.random() * 2 * math.pi
+							local dl = 0.3 * max(rr0, 5)
+							local dth, dsq = cos(a) * dl / rr0, sin(a) * dl / max(arcL, 50)
+							for k = 1, 3 do
+								local th, sq = th0 + (k - 2) * dth, s0 + (k - 2) * dsq
+								for _ = 1, 6 do
+									th, sq = carry(th, sq, 1)
+								end
+								F.th[k], F.s[k] = th, sq
+							end
+							F.dead, F.age, F.life, F.len0 = false, 0, 6 + 6 * math.random(), 2 * dl
+						end
+					end
+					local show = false
+					if not F.dead then
+						F.age += vDt
+						for k = 1, 3 do
+							F.th[k], F.s[k] = carry(F.th[k], F.s[k], vDt)
+						end
+						local span = math.abs(((F.th[3] - F.th[1] + math.pi) % (2 * math.pi)) - math.pi)
+						if F.age >= F.life or span > 1.2 or max(F.s[1], F.s[2], F.s[3]) > 0.97 then
+							F.dead, F.stagger = true, 0.5 * math.random()
+						else
+							show = detail
+						end
+					end
+					local k0, P, z2, rc2, r0m, r1m, fm = 0, {}, 0, 0, nil, nil, 0
+					if show then
+						for k = 1, 3 do
+							local z = zOfArc(clamp(F.s[k], 0, 1))
+							local rc, ax, ay, gz, r0, r1, f = rowAt(z)
+							local rr = 0.92 * rc
+							P[k] = C.toWorldAbout(e.x + ax + cos(F.th[k]) * rr, e.y + ay + sin(F.th[k]) * rr, altitude(z, gz, H), ex, ey, ks)
+							if k == 2 then
+								z2, rc2, r0m, r1m, fm = z, rc, r0, r1, f
+							end
+						end
+						local cond = r0m.cond + (r1m.cond - r0m.cond) * fm
+						local fadeTop = r0m.fadeTop + (r1m.fadeTop - r0m.fadeTop) * fm
+						local rcz = r0m.rcz + (r1m.rcz - r0m.rcz) * fm
+						local flare = r0m.flare + (r1m.flare - r0m.flare) * fm
+						local omega = r0m.omega + (r1m.omega - r0m.omega) * fm
+						local wUp = r0m.wUp + (r1m.wUp - r0m.wUp) * fm
+						local ring = rc2 - thin * min(0.7 * rcz, rc2)
+						local A = clamp(max(1 - exp(-2 * BETA * rc2), 0.995) * cond * fadeTop * life
+							* (1 - exp(-2 * BETA * ring)) / max(1 - exp(-2 * BETA * rc2), 1e-3), 0, 1)
+						local u = F.age / F.life
+						local lf = smooth(0, 0.2, u) * (1 - smooth(0.6, 1, u))
+						local s2 = F.s[2]
+						local env = smooth(0, 0.03, s2) * (1 - smooth(0.85, 0.97, s2)) * (1 - flare)
+						local ropeK = 1 - smooth(0.04, 0.1, rc2 / max(arcL, 1))
+						local len = ((P[2] - P[1]).Magnitude + (P[3] - P[2]).Magnitude) / ks
+						F.stretch = clamp((F.len0 or len) / max(len, 1), 0.15, 1)
+						local dense = smooth(-0.1, 0.4, turb(F.th[2], s2, omega, wUp, rcz))
+						-- (a laminar tube keeps fine, even striations: less broken up, less faded on a rope)
+						dense += (1 - dense) * 0.5 * laminar
+						k0 = A * lf * env * (1 - 0.75 * ropeK * (1 - 0.5 * laminar)) * sqrt(F.stretch) * dense
+						if rc2 < 2 then
+							k0 = 0
+						end
+					end
+					if k0 < 0.01 then
+						setTr(cA, 1)
+						setTr(cB, 1)
+					else
+						local thm = F.th[2]
+						local cs, sn = cos(thm), sin(thm)
+						local outV = C.toWorldAbout(e.x + cs, e.y + sn, 0, ex, ey, ks) - C.toWorldAbout(e.x, e.y, 0, ex, ey, ks)
+						local fd = outV.Unit:Dot((camPos - P[2]).Unit)
+						local front = clamp((fd - 0.15) / 0.45, 0, 1)
+						local wid = max(2, 0.3 * rc2 * sqrt(F.stretch))
+						local q = sm.fr[clamp(math.floor((clamp(z2 / top, 0, 1) ^ (1 / 1.15)) * NZ + 0.5), 0, NZ)]
+						local L = if fm < 0.5 then r0m.L else r1m.L
+						local xs = clamp(cs * q.ahx + sn * q.ahy, -1, 1)
+						local col = shadeAt(L, q, 0.85 * xs, cs, sn, 0.3 * smooth(8, 30, rc2), z2)
+						local var = if sm.seed[NSMB + 2 * j] < 0.5 then 0.94 else 1.06
+						local colV = Color3.new(min(1, col.R * var), min(1, col.G * var), min(1, col.B * var))
+						local tr = 1 - clamp(0.2 * k0 * front, 0, 0.2)
+						for g = 1, 2 do
+							local c = if g == 1 then cA else cB
+							local d3 = P[g + 1] - P[g]
+							local sx, sy = d3:Dot(camR), d3:Dot(camU)
+							local Ls = sqrt(sx * sx + sy * sy) / ks
+							setPos(c, (P[g] + P[g + 1]) * 0.5)
+							-- (each piece overlaps the next by ~0.6 of its width: the soft ends join)
+							setSize(c, max(1.2 * wid, Ls + 0.6 * wid) * ks, wid * ks)
+							setRot(c, -math.deg(math.atan2(sy, sx)))
+							setTr(c, tr)
+							setCol(c, colV)
+						end
+					end
+					n += 2
 				end
 			end
 		end
@@ -1983,7 +2506,7 @@ function TornadoCards.new(ctx: any): any
 			-- (the extra spread is kept within half the lowering it hangs from: a wedge's 5 core radii
 			-- were ~1 km more each side, wider than the wall cloud, and drew one dark wall - real
 			-- funnels stay narrow next to their lowering, docs/storm-reference/real/06_*)
-			local cap = rcz * 3 + min(5 * rcz, max(0, 0.5 * wallR - rcz * 3)) * smooth(zAt(0.6), H, z)
+			local cap = rcz * 3 + min(5 * rcz, max(0, 0.5 * wallR - rcz * 3)) * smooth(mergeAt(0.6), H, z)
 			local rc = if z >= H * 0.995 then cap else min(Vortex.condensationRadius(e, min(z, H * 0.995)), cap)
 			-- a card may hang only as far as the funnel stays at least half this wide: the taper
 			-- (radius gained a metre of height) from the height below. Without it a 2 km wide slice
@@ -2015,18 +2538,20 @@ function TornadoCards.new(ctx: any): any
 			local row = set.cards[h]
 			-- (inside the cloud base the funnel is lost in the cloud: it reaches the base, so it
 			-- hangs from it, and is gone just above)
-			local fadeTop = 1 - smooth(H * 0.9, H * 1.02, z)
+			local fadeTop = 1 - smooth(Hj, Hj + 0.1 * H, z) -- (as the rows above, 2026-11-02; to the lowering's floor 2026-11-03)
 			-- where it flares into the lowering the funnel spreads sideways (cards much wider than
 			-- tall), so it meets the cloud as a broad skirt, not a round bulb; and it thins there,
 			-- toward the lowering's own cover, so it merges into the cloud rather than standing
 			-- in front of it as a darker mass
-			local flare = smooth(zAt(0.55), H * 1.0, z)
+			local flare = smooth(mergeAt(0.55), H * 1.0, z)
 			local flat = 1 - 0.8 * flare
 			-- (the two-celled core is dry only inside ~0.7 core radii: a funnel condensed far past
 			-- that - a wedge - is a thick shell, still opaque, and a shell keeps crisp sides (the
 			-- sight line grazing its edge runs through the most cloud). With the whole funnel
 			-- thinned, an EF4 wedge drew as a soft see-through mound with no sides, 2026-10-29)
-			local thinH = thin * clamp(0.7 * rcz / max(rc, 1), 0, 1)
+			local thinH = thin * exp(-2 * BETA * max(0, rc - 0.7 * rcz)) -- (the cloud shell outside the dry
+			-- two-celled core, through its extinction: a linear 0.7 core/condensed left a 950 m-wide wedge
+			-- half see-through with its sub-vortices showing - "a multi-vortex, not a wedge", user 2026-11-03)
 			set.thinMax = max(set.thinMax or 0, thinH)
 			local dens = (1 - exp(-2 * BETA * rc)) * fadeTop * life * (0.6 + 0.4 * trans) * (1 - 0.5 * flare)
 			-- 2. how defined the edge is: crisp where the funnel is well condensed (its condensed
@@ -2264,6 +2789,34 @@ function TornadoCards.new(ctx: any): any
 				set.Ls = SceneLight.sample(ctx, e.x, e.y, altitude(H * 0.3, g0, H))
 			end
 			local Ls = set.Ls
+			-- (each sub-vortex keeps a slot 1..6 for its life: its cards are reused by the next one
+			-- in that slot. Sim/SubVortices numbers them up to 250, 2026-10-31)
+			set.subSlot = set.subSlot or {}
+			local slotOf, used = set.subSlot, {}
+			local cur = Vortex.subvortices(p, 0)
+			local alive = {}
+			for _, sv in cur do
+				alive[sv[4] or 1] = true
+			end
+			for id in slotOf do
+				if not alive[id] then
+					slotOf[id] = nil
+				end
+			end
+			for _, sl in slotOf do
+				used[sl] = true
+			end
+			for _, sv in cur do
+				local id = sv[4] or 1
+				if not slotOf[id] then
+					for sl = 1, 6 do
+						if not used[sl] then
+							slotOf[id], used[sl] = sl, true
+							break
+						end
+					end
+				end
+			end
 			for hs = 1, NSV do
 				local z = (hs - 0.5) * dzs
 				local list = Vortex.subvortices(p, z)
@@ -2275,9 +2828,22 @@ function TornadoCards.new(ctx: any): any
 				-- and its own wind fades with height as the wind field's does: exp(-z / hs))
 				local dth = dzs / max(30, p.rc)
 				local cth, sth = math.cos(dth), math.sin(dth)
-				local fz = exp(-z / Vortex.subDepth(p))
+				local fz = Vortex.subFz(p, z)
+				local Rh = Vortex.hollowR(e)
+				local rsz = Vortex.SUB_R * rcz
+				-- the parent's condensed radius here: a sub-vortex inside it is inside the cloud of a
+				-- wedge and unseen (2026-11-03, user: a 950 m-wide wedge with swirl 1.24 "looks like a
+				-- multi-vortex" - its tubes drawn as dark legs inside the condensed funnel)
+				local rCondP = Vortex.condensationRadius(e, z)
+				local depth = Vortex.subDepth(p)
+				-- a wisp wanders off its centre more the higher it reaches (the foot stays on the
+				-- ground): unresolved turbulence, a few sub-vortex cores, drifting with time
+				local function wob(id: number, zz: number): (number, number)
+					local k = rsz * 1.6 * smooth(0, 0.6 * depth, zz)
+					return k * math.noise(id * 5.13, zz / 70, nowL * 0.35), k * math.noise(id * 5.13 + 40, zz / 70, nowL * 0.35)
+				end
 				for _, sv in list do
-					local id = sv[4] or 1
+					local id = slotOf[sv[4] or 1] or 1
 					local key = hs * 10 + id
 					local card = set.subs[key]
 					if not card then
@@ -2292,16 +2858,32 @@ function TornadoCards.new(ctx: any): any
 					end
 					live[key] = true
 					local w = sv[3]
-					local vs = 0.45 * e.vc * w * fz
-					local dp = 1.15 * vs * vs * Vortex.CENTRAL_DEFICIT + 1.15 * e.vc * e.vc * Vortex.deficitIntegral(0.95)
-					local Cs = clamp((dp / need - 0.85) / 0.35, 0, 1) * smooth(0, 0.25, w)
+					-- Condensed where its own pressure fall plus the parent's where it sits reaches the
+					-- fall to the cloud base (Vortex.condensationRadius's rule). Its own is deepest at
+					-- the ground and gone above the corner flow (Vortex.subFz), so it condenses from the
+					-- ground up; where the parent alone condenses, the parent's lowering is drawn and
+					-- the tube is hidden inside it. Between them clear air: wisps under a broad
+					-- lowering, not meeting it (user 2026-10-31; a hollow two-celled parent, whose
+					-- centre no longer condenses to the ground: Vortex.hollowR).
+					local ro = sqrt(sv[1] * sv[1] + sv[2] * sv[2]) / max(rcz, 1)
+					local Ppar = 1.15 * e.vc * e.vc * Vortex.deficitIntegral(max(ro, Rh), e.decay)
+					local Dn = need - Ppar
+					local vs = Vortex.SUB_V * e.vc * w * fz
+					-- (its own fall at q sub-vortex cores from its centre: 2 rho vs^2 / (1 + q^2) for
+					-- the smooth profile 2q / (1 + q^2): condensed out to q*^2 = 2 rho vs^2 / Dn - 1)
+					local q2 = if Dn > 0 then 1.15 * 2 * vs * vs / Dn - 1 else -1
+					local Cs = smooth(0, 0.6, q2) * smooth(0, 0.25, w)
+					-- broken into wisps by the turbulence it spins in (drifting up its core)
+					local id0 = slotOf[sv[4] or 1] or 1
+					local nb = math.noise(id0 * 3.17 + 0.5, z / max(8, 1.2 * rsz) - nowL * 0.6, nowL * 0.25)
+					Cs *= smooth(-0.3, 0.2, nb)
 					-- below the condensation a sub-vortex shows by the dust its ground wind lifts (the
 					-- parent's swirl plus its own, against the dust module's 8 m/s pickup), carried up
 					-- its core by its own updraft and thinning as it rises: as high as that updraft
 					-- reaches, exp(-z / Vortex.subDepth) in Vortex.sample. (Cut off at a fixed 0.35 H
 					-- it stopped in mid-air under a multi-vortex's bowl; lifted for "updraft x 40 s" a
 					-- cone's one weak sub-vortex drew as a rope orbiting it, 2026-10-30)
-					local vs0 = 0.45 * e.vc * w
+					local vs0 = Vortex.SUB_V * e.vc * w
 					local Ug = 0.6 * e.vc + vs0
 					local lift = Vortex.subDepth(p)
 					-- (seen against the dust skirt the parent's own swirl lifts: pickup goes as
@@ -2318,8 +2900,14 @@ function TornadoCards.new(ctx: any): any
 					-- the tube's condensed width: about its own core (0.12 rc) each side - Mulhall's
 					-- had half their shear inside 50 m (docs/tornado-physics/DEBRIS-CLOUD.md). At
 					-- 0.4 rc wide they overlapped into a column of round blobs (2026-10-29)
-					local rt = 0.12 * rcz * (0.7 + 0.5 * w)
-					local sx, sy = e.x + ax + sv[1], e.y + ay + sv[2]
+					-- its width: the condensed core (out to q*, tapering to nothing at its top; at most
+					-- its core - out to 2 cores near the ground it drew round mounds ~150 m wide under a
+					-- 450 m parent, 2026-10-31), or for a dust tube a little inside its core (the dust is
+					-- carried up its core's updraft; at 0.7-1.2 cores, with Vortex.SUB_V 0.8, dust
+					-- mounds ~200 m wide)
+					local rt = if dustShare < 0.5 then rsz * clamp(sqrt(max(q2, 0)), 0.3, 1) else rsz * (0.4 + 0.3 * w)
+					local wx, wy = wob(id0, z)
+					local sx, sy = e.x + ax + sv[1] + wx, e.y + ay + sv[2] + wy
 					local gzs = C.groundAt(sx, sy)
 					local P1 = C.toWorldAbout(sx, sy, altitude(z, gzs, H), ex, ey, ks)
 					setPos(card, P1)
@@ -2328,6 +2916,9 @@ function TornadoCards.new(ctx: any): any
 						local sw = max(2 * rt, 2) / 0.6
 						-- the next stretch of its helix: the card spans it, lying along it on screen
 						local nx, ny = sv[1] * cth - sv[2] * sth, sv[1] * sth + sv[2] * cth
+						local wx2, wy2 = wob(id0, z + dzs)
+						nx += wx2
+						ny += wy2
 						local P2 = C.toWorldAbout(e.x + ax2 + nx, e.y + ay2 + ny, altitude(min(z + dzs, H), gzs, H), ex, ey, ks)
 						local d3 = P2 - P1
 						local cf = cam.CFrame
@@ -2338,6 +2929,9 @@ function TornadoCards.new(ctx: any): any
 						-- (a point of the tube is covered by ~sh*0.6/seg pieces: they share its opacity)
 						local nCov = max(1, 0.6 * sh / max(seg, 1))
 						local target = clamp(1.5 * Cs * life * (0.6 + 0.4 * trans), 0, 0.92) -- (x1.5: soft tubes at the bare share were barely seen in the dusty bowl, 2026-10-30)
+						-- (hidden as far as the tube lies inside the parent's condensed funnel)
+						local ro = sqrt(sv[1] * sv[1] + sv[2] * sv[2])
+						target *= smooth(rCondP - 2 * rt, rCondP + rt, ro)
 						local op = 1 - (1 - target) ^ (1 / nCov)
 						setTr(card, 1 - op)
 						set.subOp = (set.subOp or 0) + op
@@ -2445,7 +3039,8 @@ function TornadoCards.new(ctx: any): any
 	function self:update(dt: number)
 		local t0 = os.clock()
 		local adapter = ctx.tornadoAdapter
-		local active = adapter and ctx.state.show.funnel ~= false
+		-- (stands down while the physical low cloud draws the funnel: Render/VolumeCards, Backspace)
+		local active = adapter and ctx.state.show.funnel ~= false and not ctx.state.physVolume
 		-- the nearest tornadoes get the sets
 		local cam = Workspace.CurrentCamera
 		local camPos = cam.CFrame.Position
@@ -2521,9 +3116,25 @@ function TornadoCards.new(ctx: any): any
 		if t0 - statAt > 0.5 then
 			statAt = t0
 			local rk = ""
+			-- (the focused tornado's set first: the readout followed whichever set came first)
+			local order = {}
 			for _, s in sets do
+				if s.id == ctx.state.focusId then
+					table.insert(order, 1, s)
+				else
+					table.insert(order, s)
+				end
+			end
+			for _, s in order do
 				if s.id and s.rainK then
-					rk = string.format(" · rain grey %.2f (sight %.2f, wrap %.0f mm/h) · shell %.2f→%.2f · sky side %.2f sun %.2f", s.rainK, s.trans or 1, s.wrap or 0, s.thin or 0, s.thinMax or 0, s.sdA or 0, (s.L0 and s.L0.sun) or 0) .. " · " .. (s.subOpShow or "") .. (if s.bodyDbg then " · body " .. (s.bodyDbg[8] or "-") .. " | " .. (s.bodyDbg[20] or "-") else "")
+					local jd = nil
+					for _, s2 in sets do
+						if s2.id and s2.sp and s2.sp.joinDbg then
+							jd = s2.sp.joinDbg
+						end
+					end
+					ctx.root:SetAttribute("TornadoRain", string.format("%s rain grey %.2f · sight %.2f · wrap %.0f mm/h · shell %.2f→%.2f · light sky %.2f sun %.2f side %.2f", tostring(s.id), s.rainK, s.trans or 1, s.wrap or 0, s.thin or 0, s.thinMax or 0, (s.L0 and s.L0.sky) or 0, (s.L0 and s.L0.sun) or 0, s.sdA or 0) .. (if s.bodyDbg then "\nbody " .. (s.bodyDbg[4] or "-") .. " | " .. (s.bodyDbg[8] or "-") .. " | " .. (s.bodyDbg[14] or "-") .. " | " .. (s.bodyDbg[20] or "-") else ""))
+					rk = (if jd then " · JOIN " .. jd else "") .. string.format(" · rain grey %.2f (sight %.2f, wrap %.0f mm/h) · shell %.2f→%.2f · sky side %.2f sun %.2f", s.rainK, s.trans or 1, s.wrap or 0, s.thin or 0, s.thinMax or 0, s.sdA or 0, (s.L0 and s.L0.sun) or 0) .. " · " .. (s.subOpShow or "") .. (if s.bodyDbg then " · body " .. (s.bodyDbg[8] or "-") .. " | " .. (s.bodyDbg[20] or "-") else "")
 					break
 				end
 			end

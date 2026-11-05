@@ -22,11 +22,36 @@ const windUv = (dirFrom, speedKt) => {
   return [-Math.sin(r) * speedKt * KT, -Math.cos(r) * speedKt * KT];
 };
 
+// The engine's sounding of the air flowing into a storm (rows as the window's: p hPa, t C, td C,
+// u, v m/s, v north): the cell INFLOW_KM back along the 0-1 km storm-relative wind at the storm's
+// own cell - the air the storm is about to ingest, which the cloud model's environment follows
+// (roblox/src/cloudlab/shared/Model/EngineRun.luau).
+export const INFLOW_KM = 24;
+export function inflowSounding(world, storm) {
+  const cellKm = world.cellSizeKm;
+  const at = (xKm, yKm) => world.getCell(Math.min(world.width - 1, Math.max(0, Math.floor(xKm / cellKm))), Math.min(world.height - 1, Math.max(0, Math.floor(yKm / cellKm))));
+  const here = buildSounding(at(storm.positionKm.x, storm.positionKm.y)).profile;
+  const base = here[0].heightM;
+  const low = here.filter(r => r.heightM - base <= 1000);
+  const mu = low.reduce((a, r) => a + r.u, 0) / low.length * KT, mv = low.reduce((a, r) => a + r.v, 0) / low.length * KT;
+  const sru = mu - storm.velocityKph.east / 3.6, srv = mv - storm.velocityKph.north / 3.6;
+  const sr = Math.hypot(sru, srv) || 1;
+  // upstream: against the storm-relative wind (the map's y is south: north = -y)
+  const x = storm.positionKm.x - sru / sr * INFLOW_KM, y = storm.positionKm.y + srv / sr * INFLOW_KM;
+  return buildSounding(at(x, y)).profile.map(row => [r1(row.p), r1(row.t), r1(row.td), r1(row.u * KT), r1(row.v * KT)]);
+}
+
 // The storms inside a window, in the lab's frame (also used alone for the game server's nudging).
-export function labStorms(world, centre, half, feed = []) {
+// withInflow: each storm also carries its inflow sounding (about 1 KB a storm).
+export function labStorms(world, centre, half, feed = [], { withInflow = false } = {}) {
   const lab = (xKm, yKm) => [Math.round((xKm - centre.x) * 1000), Math.round(-(yKm - centre.y) * 1000)];
   const inside = p => Math.abs(p.x - centre.x) <= half && Math.abs(p.y - centre.y) <= half;
-  return (world.storms ?? []).filter(s => s.active && inside(s.positionKm)).map(s => ({
+  return (world.storms ?? []).filter(s => s.active && inside(s.positionKm)).map(s => labStorm(world, s, lab, feed, { withInflow }));
+}
+
+// One storm in a lab frame (lab: map km -> [x east, y north] metres).
+export function labStorm(world, s, lab, feed = [], { withInflow = false } = {}) {
+  return {
     id: s.id,
     pos: lab(s.positionKm.x, s.positionKm.y),
     motion: [r1(s.velocityKph.east / 3.6), r1(s.velocityKph.north / 3.6)],
@@ -34,13 +59,14 @@ export function labStorms(world, centre, half, feed = []) {
     intensity: r2(s.intensity ?? 0), updraftMs: r1(s.updraughtMs ?? 0),
     meso: r2(s.mesocycloneStrength ?? 0), lowRotation: r2(s.lowRotation ?? 0), occlusion: r2(s.occlusion ?? 0),
     rotating: r2(rotatingShare(s)), line: r2(lineShare(s)), lineHalfKm: r1(s.lineHalfLengthKm ?? 0), rearInflow: r2(s.rearInflow ?? 0),
-    coldPool: r2(s.coldPoolStrength ?? 0), coldPoolKm: r1(s.coldPoolRadiusKm ?? 0), leftMover: !!s.leftMover,
+    coldPool: r2(s.coldPoolStrength ?? 0), coldPoolKm: r1(s.coldPoolRadiusKm ?? 0), coldPoolK: r2((s.coldPoolTemperatureDeficitF ?? 0) / 1.8), leftMover: !!s.leftMover,
     maxDbz: Math.round(s.radar?.maxReflectivityDbz ?? 0), hailIn: r2(s.currentHailSizeInches ?? 0),
     // (orbit: rad/s, counterclockwise seen from above, while an occluding tornado revolves round
     // its mesocyclone - the storm's position; TornadoEngine occlusionStep)
     tornado: s.tornado?.onGround ? { mph: Math.round(s.tornado.windSpeedMph), yards: Math.round(s.tornado.widthYards ?? 0), ef: s.tornado.estimatedEf ?? null, pos: lab(s.tornado.positionKm.x, s.tornado.positionKm.y), orbit: +((s.tornado.orbitRadPerS ?? 0).toFixed(5)) } : null,
     feed: feed.find(f => f.id === s.id) ?? null,
-  }));
+    ...(withInflow ? { inflow: inflowSounding(world, s) } : {}),
+  };
 }
 
 export function buildLabWindow(world, { centreKm, half: HALF = 7, boundaries = [], feed = [], meta = {} }) {

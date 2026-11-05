@@ -103,10 +103,16 @@ export class WeatherAuthorityRuntime {
     this.lightning = new LightningLog({ seed: engine.seed });
     // The meteorologist's day packages (DayReviewRecorder.js), from the next 12Z on.
     this.dayReview = this.dayReviews ? createDayRecorder({ engine, outDir: this.dayReviews.dir, places, png: Boolean(this.dayReviews.png), keepDays: this.dayReviews.keepDays ?? null, outlookFor: (from, to) => this.dayReviewOutlook?.(from, to) ?? null }) : null;
-    engine.onStormTick = () => { logStormTick(world, places); this.lightning.record(world); this.dayReview?.stormTick(); };
+    engine.onStormTick = () => {
+      logStormTick(world, places); this.lightning.record(world); this.dayReview?.stormTick();
+      // The cloud model workers (js/game/StormWorkers.js, set by server/index.js): they only read
+      // the world, and a fault in them never stops it.
+      try { this.stormWorkers?.stormTick(world); } catch (error) { console.error('[storm-workers]', error); }
+    };
   }
 
   reset(seed = this.seed) {
+    this.finishPieces();
     this.build(seed);
     this.radarHistory = Object.fromEntries(MOSAIC_KINDS.map(kind => [kind, []]));
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
@@ -120,6 +126,7 @@ export class WeatherAuthorityRuntime {
   advance(hours = 0.5, onStep) {
     const amount = Math.max(0, Math.min(72, Number(hours) || 0));
     if (amount < ATMOSPHERE_STEP_HOURS) return this.metadata();
+    this.finishPieces();
     // Storms may have been ticked ahead of the atmosphere; bring both to the same time first.
     // The storms move in the same five-minute ticks as on the clock (in half-hour steps tornadoes
     // came and went unseen and storms jumped past the towns that would report them).
@@ -144,6 +151,7 @@ export class WeatherAuthorityRuntime {
   }
 
   setAutoAdvance(enabled) {
+    this.finishPieces();
     this.autoAdvance = Boolean(enabled);
     this.lastAdvancedAt = Date.now();
     this.lastStormAdvancedAt = this.lastAdvancedAt;
@@ -164,7 +172,44 @@ export class WeatherAuthorityRuntime {
     }
   }
 
+  // Moves the world on to the clock, all at once (true when anything moved).
   advanceOnTimer(now = Date.now()) {
+    this.finishPieces();
+    const pieces = this.advancePieces(now);
+    for (;;) { const next = pieces.next(); if (next.done) return next.value; }
+  }
+
+  // The same, a piece at a time (a storm tick with its frame, or an atmosphere step), each in its
+  // own turn of the event loop, so requests are answered between them rather than waiting for
+  // the whole catch-up. The pieces are the same and run in the same order, so the world goes
+  // exactly as with advanceOnTimer; between them it is as it is between two calls of that.
+  // Resolves to true when anything moved (false when a run is already under way).
+  async advanceOnTimerInTurns(now = Date.now()) {
+    if (this.pieces) return false;
+    const pieces = this.pieces = this.advancePieces(now);
+    this.piecesResult = false;
+    try {
+      for (;;) {
+        const next = pieces.next();
+        if (next.done) return next.value;
+        // What was worked out from the world as it was is out of date.
+        this.revision += 1; this.invalidateProducts();
+        await new Promise(resolve => setImmediate(resolve));
+        // (advance or reset ran the rest meanwhile: finishPieces)
+        if (this.pieces !== pieces) return this.piecesResult;
+      }
+    } finally { if (this.pieces === pieces) this.pieces = null; }
+  }
+
+  // Runs what is left of a run in turns at once (before anything else moves the world).
+  finishPieces() {
+    const pieces = this.pieces;
+    if (!pieces) return;
+    this.pieces = null;
+    for (;;) { const next = pieces.next(); if (next.done) { this.piecesResult = next.value; return; } }
+  }
+
+  *advancePieces(now) {
     if (!this.autoAdvance) return false;
     const world = this.atmosphere;
     let changed = false;
@@ -172,15 +217,20 @@ export class WeatherAuthorityRuntime {
     const room = Math.round((world.validHourUtc + ATMOSPHERE_STEP_HOURS - (world.stormEngine?.validHourUtc ?? world.validHourUtc)) / STORM_CADENCE_HOURS);
     const due = Math.floor(Math.max(0, now - this.lastStormAdvancedAt) / REAL_MS_PER_STORM_TICK), ticks = Math.max(0, Math.min(due, room));
     // One tick at a time, so the game gets a frame for each, stamped with when it fell due.
-    for (let tick = 1; tick <= ticks; tick++) { this.engine.advanceStormLayer(STORM_CADENCE_HOURS); this.gameFeed.capture(world, this.lastStormAdvancedAt + tick * REAL_MS_PER_STORM_TICK); changed = true; }
+    for (let tick = 1; tick <= ticks; tick++) {
+      this.engine.advanceStormLayer(STORM_CADENCE_HOURS); this.gameFeed.capture(world, this.lastStormAdvancedAt + tick * REAL_MS_PER_STORM_TICK); changed = true;
+      if (tick < ticks) yield;
+    }
     if (due > 0) this.lastStormAdvancedAt += due * REAL_MS_PER_STORM_TICK;
     const steps = Math.min(MAX_STEPS_PER_TICK, Math.floor((Math.max(0, now - this.lastAdvancedAt) / 60000 * SIM_HOURS_PER_REAL_MINUTE) / ATMOSPHERE_STEP_HOURS));
     if (steps > 0) {
+      if (changed) yield;
       for (let step = 0; step < steps; step++) {
         const ahead = (world.stormEngine?.validHourUtc ?? world.validHourUtc) - world.validHourUtc;
         if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) { this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS); this.gameFeed.capture(world, now); }
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
         this.dayReview?.afterStep();
+        if (step < steps - 1) yield;
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.
       if (steps === MAX_STEPS_PER_TICK) this.gameFeed.restart(world, now);
@@ -323,7 +373,7 @@ export class WeatherAuthorityRuntime {
     const sky = buildSkyAppearance(world);
     return buildLabWindow(world, { centreKm, half: h, boundaries: this.engine.boundaries ?? world.mesoscale?.boundaries ?? [], feed: buildStormFeedList(world, new Map()), meta: { name: 'live', seed: this.seed, sun: sky?.sun ?? null, revision: this.revision, paused: !this.autoAdvance } });
   }
-  labStormsAt(xKm, yKm, half = 7) {
+  labStormsAt(xKm, yKm, half = 7, withInflow = false) {
     const world = this.atmosphere;
     const cellKm = world.cellSizeKm, h = Math.max(2, Math.min(12, Math.round(Number(half) || 7)));
     // (the same centre snapping as the window)
@@ -331,7 +381,7 @@ export class WeatherAuthorityRuntime {
     const cy = Math.min(world.height - 1 - h, Math.max(h, Math.floor((Number(yKm) || 0) / cellKm)));
     const centre = { x: (cx + 0.5) * cellKm, y: (cy + 0.5) * cellKm };
     // paused: the authority's clock is stopped (the game holds its storms still, Roblox StormHost)
-    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), paused: !this.autoAdvance, centreMapKm: centre, storms: labStorms(world, centre, (h + 0.5) * cellKm, buildStormFeedList(world, new Map())) };
+    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), paused: !this.autoAdvance, centreMapKm: centre, storms: labStorms(world, centre, (h + 0.5) * cellKm, buildStormFeedList(world, new Map()), { withInflow }) };
   }
   storms() { return this.cached('storms', () => ({
     schemaVersion: 3,

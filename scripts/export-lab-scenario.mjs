@@ -17,7 +17,9 @@
 //   polls      the engine's storms in the window every 5 minutes (as /api/game/v1/lab/storms
 //              serves them): the lab's engine mode follows them like the game (Sim/EngineFollow)
 //   track      what the engine then did with the focus storm (and its tornado) every 5 minutes,
-//              for comparing the lab's own evolution against it
+//              for comparing the lab's own evolution against it (and for the cloud model to follow:
+//              motion m/s, cold pool deficit K; every 15 minutes `inflow`, the engine's sounding
+//              where the storm draws its low-level air from: LabWindow.inflowSounding)
 // Lab frame: x east, y NORTH, metres, (0, 0) = the window centre (the engine's map has y south).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -27,7 +29,7 @@ import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { buildStormFeedList } from '../js/storms/StormAppearance.js';
 import { lineShare, rotatingShare } from '../js/storms/StormModeEngine.js';
 import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
-import { buildLabWindow, labStorms } from '../js/game/LabWindow.js';
+import { buildLabWindow, labStorms, inflowSounding } from '../js/game/LabWindow.js';
 
 avoidBackgroundThrottling();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -120,7 +122,9 @@ run((world, hour, atmosphere) => {
   if (focus) {
     const lab = (xKm, yKm) => [Math.round((xKm - centre.x) * 1000), Math.round(-(yKm - centre.y) * 1000)];
     const t = focus.tornado?.onGround ? focus.tornado : null;
-    track.push({ min, pos: lab(focus.positionKm.x, focus.positionKm.y), intensity: r2(focus.intensity ?? 0), meso: r2(focus.mesocycloneStrength ?? 0), lowRotation: r2(focus.lowRotation ?? 0), coldPool: r2(focus.coldPoolStrength ?? 0), line: r2(lineShare(focus)),
+    track.push({ min, pos: lab(focus.positionKm.x, focus.positionKm.y), intensity: r2(focus.intensity ?? 0), meso: r2(focus.mesocycloneStrength ?? 0), lowRotation: r2(focus.lowRotation ?? 0), coldPool: r2(focus.coldPoolStrength ?? 0), coldPoolK: r2((focus.coldPoolTemperatureDeficitF ?? 0) / 1.8), line: r2(lineShare(focus)),
+      motion: [r1(focus.velocityKph.east / 3.6), r1(focus.velocityKph.north / 3.6)], active: !!focus.active,
+      inflow: min % 15 === 0 ? inflowSounding(world, focus) : undefined,
       tornado: t ? { mph: Math.round(t.windSpeedMph), yards: Math.round(t.widthYards ?? 0), ef: t.estimatedEf ?? null, pos: lab(t.positionKm.x, t.positionKm.y) } : null });
   }
   return true;

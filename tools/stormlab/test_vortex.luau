@@ -10,7 +10,19 @@ local function state(vc, rc, S)
 		cloudBase = 900, topX = 150, topY = 60, bendX = 30, bendY = -20, wave = 0, seed = 7, time = 12.3 }
 end
 check("profile peaks at R=1", math.abs(Vortex.profile(1) - 1) < 1e-9, string.format("%.4f", Vortex.profile(1)))
-check("central deficit ~2.06 rho vc^2", math.abs(Vortex.CENTRAL_DEFICIT - 2.06) < 0.1, string.format("%.3f", Vortex.CENTRAL_DEFICIT))
+-- (the central deficit is the cyclostrophic integral of the wind the vortex has - its R^-0.6 outer
+-- profile handed over to the storm's past 3 rc (Vortex.outerTaper): ~1.84 rho vc^2; 2.06 for the
+-- untapered profile, Vortex.DEFICIT_AS_WIND off)
+do
+	local acc, dR = 0, 0.001
+	local R = dR / 2
+	while R < 40 do
+		local f = Vortex.profile(R) * Vortex.outerTaper(R)
+		acc += f * f / R * dR
+		R += dR
+	end
+	check("central deficit = the wind's own integral", math.abs(Vortex.CENTRAL_DEFICIT - acc) < 0.01, string.format("%.3f vs %.3f", Vortex.CENTRAL_DEFICIT, acc))
+end
 -- divergence of the vortex-relative field (no turbulence: the speed check makes noise; measure with S low, translation 0)
 local s = state(60, 100, 0.5); s.ut, s.vt, s.envU, s.envV = 0, 0, 0, 0; s.turbulence = 0; s.cloudBase = 1e7; s.topX, s.topY, s.bendX, s.bendY = 0, 0, 0, 0
 local p = Vortex.params(s)

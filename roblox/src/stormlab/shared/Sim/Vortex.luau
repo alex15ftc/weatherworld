@@ -27,10 +27,12 @@ local function dep(name: string): any
 	return (require :: any)("./" .. name)
 end
 local Noise = dep("Noise")
+local SubVortices = dep("SubVortices")
 
 local Vortex = {}
 
 local RHO = 1.15
+Vortex.RHO = RHO -- (tools/stormlab/test_wind_physics: its balance check uses the same air)
 local G = 9.81
 local exp, sqrt, sin, cos, atan2 = math.exp, math.sqrt, math.sin, math.cos, math.atan2
 
@@ -106,9 +108,60 @@ end
 local I_FED = tabulate(wwFed, 1.6 / 1.2 * I_MAX ^ -1.2)
 local I_CUT = tabulate(wwCut, 1.6 / 2 * I_MAX ^ -2)
 
+-- The tornado's own outer flow hands over to the storm's past a few core radii (Vortex.sample).
+local function outerTaper(R: number): number
+	if R <= 3 then
+		return 1
+	end
+	return exp(-((R - 3) / 2.5) ^ 2)
+end
+Vortex.outerTaper = outerTaper
+-- ...and the same integral of the wind the vortex actually has (the profile with that taper):
+-- the pressure its own wind holds in cyclostrophic balance. (The parent meso's share is not added:
+-- the base the funnel is measured from - the wall cloud's - is already lowered by the meso's own
+-- low pressure.)
+local I_FED_W = tabulate(function(R)
+	return wwFed(R) * outerTaper(R)
+end, 0)
+local I_CUT_W = tabulate(function(R)
+	return wwCut(R) * outerTaper(R)
+end, 0)
+-- (the cross term: a decaying tornado's wind is the blend (1 - c) fed + c cut, and its pressure goes
+-- as that wind squared - (1-c)^2 I_fed + 2c(1-c) I_x + c^2 I_cut, not the blend of the two
+-- integrals, which overstated it ~5% mid-decay, 2026-11-04)
+local I_X_W: { number } = {}
+do
+	local n = math.floor(I_MAX / I_DR)
+	local acc = 0
+	I_X_W[n + 1] = 0
+	for i = n, 1, -1 do
+		local m = (i - 0.5) * I_DR
+		local t = outerTaper(m)
+		acc += wwFed(m) * wwCut(m) * t * t / math.max(1e-6, m) * I_DR
+		I_X_W[i] = acc
+	end
+end
+-- Vortex.DEFICIT_AS_WIND (2026-11-03, default on): the pressure is the wind's own (I_*_W). Off: the
+-- whole R^-0.6 profile to infinity, as before - 11% more at the centre, 40-60% more at 2-3 rc,
+-- than the wind it was drawn with holds (docs/stormlab/PHYSICS-AUDIT-2026-11-03.md); funnels from it
+-- are wider (a weak one's edge ~4 rc against ~2.4 rc).
+Vortex.DEFICIT_AS_WIND = true
+
 local function deficitIntegral(R: number, k: number?): number
 	local c = k or 0
 	local a, b
+	if Vortex.DEFICIT_AS_WIND then
+		if R >= I_MAX then
+			return 0
+		end
+		local g = R / I_DR + 1
+		local i = math.floor(g)
+		local f = g - i
+		a = I_FED_W[i] * (1 - f) + I_FED_W[i + 1] * f
+		b = I_CUT_W[i] * (1 - f) + I_CUT_W[i + 1] * f
+		local x = I_X_W[i] * (1 - f) + I_X_W[i + 1] * f
+		return (1 - c) * (1 - c) * a + 2 * c * (1 - c) * x + c * c * b
+	end
 	if R >= I_MAX then
 		a, b = 1.6 / 1.2 * R ^ -1.2, 1.6 / 2 * R ^ -2
 	else
@@ -121,10 +174,30 @@ local function deficitIntegral(R: number, k: number?): number
 	return a * (1 - c) + b * c
 end
 Vortex.deficitIntegral = deficitIntegral
-Vortex.CENTRAL_DEFICIT = deficitIntegral(0) -- ~2.06 (times rho vc^2)
+Vortex.CENTRAL_DEFICIT = deficitIntegral(0) -- ~1.84 (times rho vc^2; ~2.06 with DEFICIT_AS_WIND off)
 
 local function ramp(x: number, a: number, b: number): number
 	return math.clamp((x - a) / (b - a), 0, 1)
+end
+
+-- Sub-vortices (multi-vortex): core radius and peak own wind, as shares of the parent's rc and vc
+-- (Sim/SubVortices keeps its own copy of SUB_V for their mutual winds). SUB_V 0.8 (was 0.45,
+-- 2026-10-31): a strong sub-vortex's own swirl rivals the parent's - its ground-relative peak, its
+-- own plus the parent's at its orbit, ~1.5-2x the parent's mean peak (Lewellen LES; El Reno 2013
+-- DOW, sub-vortices > 115 m/s inside a ~55 m/s parent). At 0.45 none could condense on its own
+-- under a parent that did not. Its strength share (SubVortices' a, 0..1.3) scales it.
+Vortex.SUB_R = 0.12
+Vortex.SUB_V = 0.8
+
+-- The hollow core of a two-celled vortex (core radii): past touchdown, rising swirl widens the
+-- central downdraft into a near-calm eye and the central pressure fall weakens - the deepest low
+-- is at vortex touchdown (swirl ~0.5) and the near-ground central deficit drops beyond it (Snow,
+-- Church & Barnhart 1980 lab; Lewellen et al. 2000 LES). Inside it the swirl is weak (Vortex.sample)
+-- and the deficit is the eye wall's (deficitIntegral at hollowR): why a multi-vortex tornado is a
+-- broad lowering whose sub-vortices, not its centre, condense near the ground. Organised vortices
+-- only (O): a young, broad, high-swirl circulation is not two-celled.
+function Vortex.hollowR(p: any): number
+	return 0.75 * ramp(p.swirl or 0, 0.9, 1.4) * math.clamp(p.O or 1, 0, 1)
 end
 
 function Vortex.params(s: State): Params
@@ -136,7 +209,13 @@ function Vortex.params(s: State): Params
 	-- docs/tornado-physics/DEBRIS-CLOUD.md; from 0.7 a cone or stovepipe had one stray sub-vortex
 	-- orbiting it, 2026-10-30. Steeper, so a multi-vortex keeps ~5)
 	p.subCount = math.clamp((S - 1.0) * 10, 0, 6)
+	-- (with its own sub-vortex state - Sim/SubVortices, stepped by the server and each client -
+	-- the count is theirs: the sum of their strengths)
+	if (s :: any).sv then
+		p.subCount = SubVortices.count((s :: any).sv)
+	end
 	p.h = math.max(8, 0.15 * s.rc)
+	p.hollowR = Vortex.hollowR(s)
 	local d = p.twoCell
 	local sw = 0.7 -- downdraft width (in rc units) of the two-cell term
 	local F1 = 0.5 - d * exp(-1 / (sw * sw))
@@ -172,6 +251,17 @@ local function subList(p: Params): { { number } }
 		return cached
 	end
 	local list = {}
+	local sv = (p :: any).sv
+	if sv then
+		-- the sub-vortex system's own centres (Sim/SubVortices): carried by the flow, not laid out
+		for _, s in sv.list do
+			if s.a > 0.01 then
+				table.insert(list, { s.th, 0, s.a, s.r, s.id })
+			end
+		end
+		;(p :: any).subs = list
+		return list
+	end
 	for i = 1, math.ceil(p.subCount) do
 		local ang, w = subvortex(p, i, p.time)
 		if w > 0.01 then
@@ -190,7 +280,13 @@ end
 -- ground and fade ~20-35% of the way to the cloud base, under the bowl. (At max(100, 1.5 rc), ~750 m
 -- for a multi-vortex, they ran up into the bowl, 2026-10-30)
 function Vortex.subDepth(p: any): number
-	return math.max(60, 2.5 * (p.h or 0.15 * p.rc))
+	return math.max(60, 0.4 * p.rc)
+end
+-- the share of a sub-vortex's wind left at height z: ~uniform through the corner flow, then gone
+-- (Gaussian, 2026-10-31; was exp(-z / 0.375 rc), which thinned from the ground up. Deeper, at
+-- 0.7 rc, a condensed sub-vortex reached the parent's lowering: no clear air between them)
+function Vortex.subFz(p: any, z: number): number
+	return exp(-(z / Vortex.subDepth(p)) ^ 2)
 end
 
 -- core radius at height z: grows 30% from the ground to the cloud base
@@ -292,6 +388,11 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	-- above the cloud base the vortex hands over to the storm's circulation
 	local aloft = 1 - ramp(z, p.cloudBase, p.cloudBase + 400)
 	local vt = p.vc * ww(R, p.decay) * surface * jet * aloft
+	-- the hollow core's near-calm eye (Vortex.hollowR)
+	local Rh = (p :: any).hollowR or 0
+	if Rh > 0 and R < Rh then
+		vt *= (R / Rh) ^ 2
+	end
 	-- radial and vertical from the streamfunction
 	local h = p.h
 	local rb = R -- r / rm with rm = rc
@@ -316,9 +417,9 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	-- to a few core radii (DOW); beyond that the swirl and inflow are the parent mesocyclone's,
 	-- which Storm.windAt already adds. Kept to 60 rc the circulation grew without bound and an
 	-- EF2's 8 m/s dust-lifting wind reached ~19 rc (9 km), 2026-10-30. (The pressure deficit,
-	-- Vortex.deficit, keeps the whole profile: the meso's swirl lowers the pressure too.)
+	-- Vortex.deficit, is this wind's own: Vortex.DEFICIT_AS_WIND.)
 	if R > 3 then
-		local out = exp(-((R - 3) / 2.5) ^ 2)
+		local out = outerTaper(R)
 		vt *= out
 		ur *= out
 	end
@@ -326,11 +427,10 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	local v = ur * er_y + vt * er_x
 	-- sub-vortices on the radius of maximum wind
 	if p.subCount > 0 and R < 3 then
-		local hs = Vortex.subDepth(p)
-		local fz = surface * exp(-z / hs)
+		local fz = surface * Vortex.subFz(p, z)
 		if fz > 0.02 then
-			local rs = 0.12 * rc
-			local vs = 0.45 * p.vc
+			local rs = Vortex.SUB_R * rc
+			local vs = Vortex.SUB_V * p.vc
 			for _, sv in subList(p) do
 				local wgt = sv[3]
 				do
@@ -339,8 +439,11 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 					local sx, sy = dx - ro * cos(sa), dy - ro * sin(sa)
 					local rr = sqrt(sx * sx + sy * sy)
 					local Rs = rr / rs
-					local vsub = vs * wgt * fz * 1.41421 * Rs / sqrt(1 + Rs ^ 4)
-					if rr > 1e-3 then
+					-- (a smooth vortex, peak at its core radius, tapered beyond a few cores so it stays
+					-- a local perturbation of the parent's flow - user's research 2026-10-31; skipped
+					-- beyond 6 cores)
+					local vsub = vs * wgt * fz * 2 * Rs / (1 + Rs * Rs) * exp(-(Rs / 4) ^ 2)
+					if rr > 1e-3 and Rs < 6 then
 						u += -vsub * sy / rr
 						v += vsub * sx / rr
 						-- a sub-vortex is a little suction column: strong updraft in its core
@@ -409,30 +512,52 @@ end
 -- layer (pressure is near hydrostatic there): neither the wind's drop to zero at the ground nor the
 -- near-ground swirl jet of the corner flow (Vortex.sample) changes it. (Letting the jet deepen it
 -- made condensation reappear at the ground under a clear gap: a detached "teardrop".)
+-- The base the core's own air condenses at: the cloud base, lowered where the air drawn in has
+-- been moistened by rain (coreWet 0..1). Evaporating rain cools it toward its wet-bulb and wets it,
+-- and saturated rain-cooled air's condensation level is near the ground; the dry budget against the
+-- full base needed ~200 hPa under a 1.8 km base - twice the deepest measured - and a violent
+-- tornado's funnel hung half way up (SC check 2026-11-02).
+-- (2026-11-03: coreZb when the tornado has one - Tornado.step's condensation level of the air the
+-- core takes in, a mix of the wall cloud's air and the cold-pool air at the contact)
+local function coreBase(p: any): number
+	if p.coreZb and p.coreZb > 1 then -- (the client interpolates a missing field as 0)
+		return p.coreZb
+	end
+	return p.cloudBase * (1 - 0.7 * math.clamp(p.coreWet or 0, 0, 1))
+end
+Vortex.coreBase = coreBase
+
 function Vortex.deficit(p: State, r: number, z: number): number
 	local rc = rcAt(p :: any, z)
 	local aloft = 1 - ramp(z, p.cloudBase, p.cloudBase + 400)
 	local v = p.vc * aloft
-	return RHO * v * v * deficitIntegral(r / rc, p.decay)
+	return RHO * v * v * deficitIntegral(math.max(r / rc, Vortex.hollowR(p)), p.decay)
 end
 
 -- The condensation funnel's radius (m) at height z, or 0 if the funnel does not reach that low.
 -- humidity: 0..1 extra lowering (air in the core moistened by rain/RFD; 0 = dry adiabatic only)
-function Vortex.condensationRadius(p: State, z: number): number
-	local zb = p.cloudBase
+-- vk: optional factor on the core wind there (the renderer's along-axis fluctuation of a decaying
+-- rope's core, Render/TornadoCards)
+function Vortex.condensationRadius(p: State, z: number, vk: number?): number
+	local zb = coreBase(p)
+	local rc = rcAt(p :: any, z)
 	if z >= zb then
-		return 0
+		-- (between the moistened core air's own base and the storm's: that air is past its
+		-- condensation level, so the funnel is fully condensed there - the limit of the solve below as
+		-- z reaches zb; callers cap it. It returned 0, a band of clear air 80+ m deep between the
+		-- funnel and the lowering - the funnel ending short of the wall cloud, user 2026-11-03)
+		return if z < p.cloudBase then I_MAX * rc else 0
 	end
 	local need = RHO * G * (zb - z) -- Pa: the pressure fall from z to the cloud base
-	local rc = rcAt(p :: any, z)
-	local v = p.vc -- (the swirl above the surface layer, impressed to the ground: Vortex.deficit)
+	local v = p.vc * (vk or 1) -- (the swirl above the surface layer, impressed to the ground: Vortex.deficit)
 	local scale = RHO * v * v
 	if scale <= 0 then
 		return 0
 	end
 	local target = need / scale
 	local k = (p :: any).decay
-	if target >= deficitIntegral(0, k) then
+	-- (a hollow core's deficit is its eye wall's: Vortex.hollowR - the funnel no wider, less deep)
+	if target >= deficitIntegral(Vortex.hollowR(p), k) then
 		return 0
 	end
 	-- I(R) decreases with R: bisect

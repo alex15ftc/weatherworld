@@ -3,7 +3,9 @@
 -- A storm's cloud volume from its fields (the same rules as CloudParts/StormPlan, for the billboard
 -- clouds in CloudParts/CardPlan): storm-local sim metres (x east, y north, z up) from (s.x, s.y).
 --   cloudR(z)   the cloud's radius at height z: where the updraft still rises at ~1.5 m/s,
---               Ru(z) sqrt(ln(W f(z) / 1.5)), round the TILTED updraft centre (Storm.wprofAt)
+--               Ru(z) sqrt(ln(W f(z) / 1.5)), round the TILTED updraft centre (Storm.wprofAt), or the
+--               remembered cloud the updraft built before (Storm.memAt, Round 38), whichever is wider
+--   freshAt     the share of that cloud still fed by the updraft (crisp turrets) vs left over (soft)
 --   anvil       downstream along (anvilU, anvilV) for anvilLen at about el, widening with distance
 --               and thinning downstream (nil while the tower hasn't reached el)
 --   inCloud     inside the tower column or the anvil slab
@@ -13,7 +15,7 @@ local Util = require(script.Parent:WaitForChild("Util"))
 local StormShape = {}
 
 local ramp = Util.ramp
-local sqrt, log, exp, max, min, clamp = math.sqrt, math.log, math.exp, math.max, math.min, math.clamp
+local sqrt, exp, max, min, clamp = math.sqrt, math.exp, math.max, math.min, math.clamp
 
 function StormShape.build(s: any, Storm: any): any?
 	if not s.wprof or not s.tiltX then
@@ -24,20 +26,46 @@ function StormShape.build(s: any, Storm: any): any?
 	local base = s.base or 1200
 	local el = max(s.el or (base + 6000), base + 600)
 	local top = max(s.top or el, el)
-	local age = s.age or 0
-	local fade = if s.dead then ramp(s.deadFor or 0, 0, 1500) else 0
-	local maturity = if s.dead then 1 else clamp(age * 0.4 * max(W, 3) / max(top - base, 500), 0.1, 1)
-	local visTop = base + (top - base) * maturity
+	-- (a dead storm fades as its remembered cloud goes - Storm.stepCloud's cmVis - and at most as
+	-- fast as before Round 38, over 25 min from its death)
+	local fade = 0
+	if s.dead then
+		fade = ramp(s.deadFor or 0, 0, 1500)
+		if s.cmVis then
+			fade = min(fade, 1 - s.cmVis)
+		end
+	end
+	local visTop, maturity = Storm.towerTop(s)
 	local colTop = min(visTop, el)
 	sh.W, sh.base, sh.el, sh.top, sh.fade, sh.maturity, sh.visTop, sh.colTop = W, base, el, top, fade, maturity, visTop, colTop
 
+	-- Round 38: the cloud is what the updraft makes now (Storm.liveCloudR) or what it built before
+	-- and has not yet evaporated or rained out (Storm.memAt: the remembered cloud), whichever is
+	-- wider - a dying storm keeps the width it built, eroding from the edges, instead of shrinking
+	-- to its updraft
+	local liveR, memAt = Storm.liveCloudR, Storm.memAt
+	local function liveAt(z: number): (number, number, number)
+		local r, tx, ty = liveR(s, z)
+		return r * (1 - 0.45 * fade), tx, ty
+	end
 	function sh.cloudR(z: number): (number, number, number)
-		local f, tx, ty = Storm.wprofAt(s, z)
-		local ru = Storm.updraftRadiusAt(s, z)
-		local Wz = max(W, 3) * max(f, 0.05)
-		local r = ru * sqrt(max(0.12, log(max(1.05, Wz / 1.5))))
-		r = clamp(r, 0.35 * ru, 2 * ru) * (1 - 0.45 * fade)
-		return r, tx, ty
+		local r, tx, ty = liveAt(z)
+		return max(r, (memAt(s, z))), tx, ty
+	end
+	-- the share of the drawn cloud at z that the updraft still feeds (its area: 1 = all fresh
+	-- turrets, 0 = all left over), and the left-over cloud's water (0..1 of what the updraft
+	-- brought: it thins as it rains out). Above ~freezing + 3-6 km the cloud has glaciated (iceAt)
+	function sh.freshAt(z: number): (number, number)
+		local r = liveAt(z)
+		local m, q = memAt(s, z)
+		if m <= r or m < 1 then
+			return 1, 1
+		end
+		return (r / m) ^ 2, q
+	end
+	local freezing = s.freezing or 4000
+	function sh.iceAt(z: number): number
+		return ramp(z, freezing + 3000, freezing + 6000)
 	end
 
 	-- the column, every 500 m (for the inside test)
@@ -67,9 +95,16 @@ function StormShape.build(s: any, Storm: any): any?
 		end
 		dx, dy = dx / m, dy / m
 	end
-	if anvilLen > 0.4 * rootR and visTop >= el - 800 then
+	-- (Round 38: the root keeps the width of the tower top that fed it - Storm s.anvilRootR - and an
+	-- unfed anvil is left behind, carried off on the anvil-level wind: s.anvilGap from the tower)
+	local rr = max(rootR * 1.05, s.anvilRootR or 0)
+	-- (a: its presence, CardPlan's card opacity x it - in as it outgrows its root, 2026-11-03: it
+	-- appeared whole at 0.4 of the root's radius, at 0.95)
+	if anvilLen > 0.2 * rr and visTop >= el - 800 then
 		local th0 = clamp(0.2 * (el - base), 1100, 2000) * (1 - 0.5 * fade)
-		sh.anvil = { rx = rootX, ry = rootY, dx = dx, dy = dy, len = anvilLen, rr = rootR * 1.05, top0 = el + 250, th0 = th0 }
+		local gap = s.anvilGap or 0
+		sh.anvil = { rx = rootX + dx * gap, ry = rootY + dy * gap, dx = dx, dy = dy, len = anvilLen, rr = rr, top0 = el + 250, th0 = th0, gap = gap,
+			a = ramp(anvilLen, 0.2 * rr, 0.6 * rr) }
 	end
 	function sh.anvilAt(along: number): (number, number, number)
 		local A = sh.anvil
@@ -81,6 +116,10 @@ function StormShape.build(s: any, Storm: any): any?
 	end
 
 	function sh.inCloud(x: number, y: number, z: number): boolean
+		-- (the forward flank's cloud over the rain, when CardPlan has laid it out: sh.ffAt)
+		if sh.ffAt and sh.ffAt(x, y, z) then
+			return true
+		end
 		local n = #lv
 		if n > 0 and z >= base and z <= colTop then
 			local k = clamp(math.floor((z - base) / 500) + 1, 1, n)
@@ -110,9 +149,16 @@ function StormShape.build(s: any, Storm: any): any?
 	-- 400-700 m thick, open where the clear slot cuts it. It is part of the storm's own shadow:
 	-- without it a lowering, scud or lump under the base near its edge was fully sunlit and drew
 	-- paler than the base above it (2026-10-29)
-	if fade < 0.6 and maturity > 0.2 then
+	-- (a: its presence - in with the storm's maturity, out with its fade and as it shrinks under
+	-- 900 m; it came at maturity 0.2 and went at fade 0.6 or radius 600 m in one step, 2026-11-03)
+	if fade < 0.6 and maturity > 0.1 then
 		local _, tx, ty = Storm.wprofAt(s, base)
-		local Rb = clamp(2.2 * Storm.updraftRadiusAt(s, base), 1500, 15000) * (1 - 0.6 * fade) * (0.55 + 0.45 * ramp(W, 3, 15))
+		-- (the updraft's base needs an updraft - Round 38: with the remembered cloud a dead storm no
+		-- longer fades out by the clock, and kept a rain-free base with nothing feeding it - and is at
+		-- least the remembered cloud's foot: a decaying storm's base is the underside of what it
+		-- built, not of its shrinking updraft)
+		local Rb = clamp(2.2 * Storm.updraftRadiusAt(s, base), 1500, 15000) * (0.55 + 0.45 * ramp(W, 3, 15)) * ramp(W, 0.5, 3)
+		Rb = max(Rb, min(1.1 * (memAt(s, base + 500)), 15000)) * (1 - 0.6 * fade)
 		local lowX, lowY = (s.lowX or s.x) - s.x, (s.lowY or s.y) - s.y
 		local ddx, ddy = tx - lowX, ty - lowY
 		local dl = sqrt(ddx * ddx + ddy * ddy)
@@ -121,7 +167,10 @@ function StormShape.build(s: any, Storm: any): any?
 			tx += ddx / dl * k
 			ty += ddy / dl * k
 		end
-		sh.deck = { x = tx, y = ty, r = Rb, thick = 380 + 0.02 * Rb, slot = Util.slotParams(s) }
+		if Rb >= 300 then
+			sh.deck = { x = tx, y = ty, r = Rb, thick = 380 + 0.02 * Rb, slot = Util.slotParams(s),
+				a = ramp(maturity, 0.1, 0.3) * (1 - ramp(fade, 0.4, 0.6)) * ramp(Rb, 300, 900) }
+		end
 	end
 
 	local maxZ = max(top, el + 400)

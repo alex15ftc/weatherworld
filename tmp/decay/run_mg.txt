@@ -1,0 +1,17 @@
+built merger in 5.8s
+    0 false W 25.0 Ru 1800 cape 3610 rkw 0.19 gustK 0.00 gRkw 0.00 | km live/mem 3: 3.0/ 3.0 6: 5.1/ 5.2 9: 6.4/ 6.5 vis 1.00 | anvil   4 km gap  0.0 root 7.5 | rain   124 strat    3 t/s | tor nil wait 0 free 0.00
+  300 false W 25.0 Ru 1800 cape 3569 rkw 0.01 gustK 0.38 gRkw 0.01 | km live/mem 3: 3.0/ 3.0 6: 5.1/ 5.2 9: 6.4/ 6.5 vis 1.00 | anvil   7 km gap  0.0 root 7.5 | rain   126 strat    2 t/s | tor nil wait 0 free 0.00
+  600 false W 25.0 Ru 1800 cape 3481 rkw 0.06 gustK 0.39 gRkw 0.17 | km live/mem 3: 3.0/ 3.0 6: 5.1/ 5.1 9: 6.4/ 6.5 vis 1.00 | anvil   9 km gap  0.0 root 7.5 | rain   129 strat    2 t/s | tor nil wait 0 free 0.00
+  900 false W 16.1 Ru 1800 cape 3445 rkw 0.12 gustK 0.36 gRkw 0.27 | km live/mem 3: 2.3/ 2.8 6: 4.6/ 5.1 9: 5.9/ 6.5 vis 1.00 | anvil  11 km gap  0.0 root 7.5 | rain    83 strat   25 t/s | tor nil wait 0 free 0.00
+ 1200 false W  3.6 Ru 1800 cape 3479 rkw 0.15 gustK 0.41 gRkw 0.23 | km live/mem 3: 1.0/ 1.7 6: 2.0/ 4.8 9: 3.4/ 6.4 vis 1.00 | anvil  14 km gap  0.9 root 7.4 | rain    19 strat   94 t/s | tor nil wait 0 free 0.00
+ 1500 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.45 gRkw 0.20 | km live/mem 3: 0.0/ 0.1 6: 0.0/ 4.0 9: 0.0/ 6.3 vis 1.00 | anvil  13 km gap  5.8 root 7.3 | rain     7 strat   73 t/s | tor nil wait 0 free 0.00
+ 1800 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.41 gRkw 0.18 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 3.0 9: 0.0/ 6.1 vis 1.00 | anvil  13 km gap 10.7 root 7.1 | rain     7 strat   56 t/s | tor nil wait 0 free 0.00
+ 2100 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.37 gRkw 0.16 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 2.0 9: 0.0/ 6.0 vis 1.00 | anvil  13 km gap 12.9 root 7.0 | rain     7 strat   44 t/s | tor nil wait 0 free 0.00
+ 2400 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.36 gRkw 0.13 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 0.9 9: 0.0/ 5.8 vis 1.00 | anvil  13 km gap 12.7 root 6.8 | rain     7 strat   35 t/s | tor nil wait 0 free 0.00
+ 2700 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.38 gRkw 0.10 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 0.0 9: 0.0/ 5.6 vis 1.00 | anvil  12 km gap 12.4 root 6.7 | rain     7 strat   29 t/s | tor nil wait 0 free 0.00
+ 3000 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.34 gRkw 0.07 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 0.0 9: 0.0/ 5.4 vis 1.00 | anvil  12 km gap 12.2 root 6.5 | rain     7 strat   24 t/s | tor nil wait 0 free 0.00
+ 3300 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.34 gRkw 0.05 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 0.0 9: 0.0/ 5.1 vis 1.00 | anvil  12 km gap 11.9 root 6.4 | rain     7 strat   20 t/s | tor nil wait 0 free 0.00
+ 3600 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.34 gRkw 0.04 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 0.0 9: 0.0/ 4.9 vis 1.00 | anvil  12 km gap 11.7 root 6.3 | rain     7 strat   17 t/s | tor nil wait 0 free 0.00
+ 3900 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.34 gRkw 0.03 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 0.0 9: 0.0/ 4.6 vis 1.00 | anvil  11 km gap 11.4 root 6.1 | rain     7 strat   14 t/s | tor nil wait 0 free 0.00
+ 4200 true  W  0.0 Ru 1800 cape 3482 rkw 0.16 gustK 0.33 gRkw 0.03 | km live/mem 3: 0.0/ 0.0 6: 0.0/ 0.0 9: 0.0/ 4.3 vis 1.00 | anvil  11 km gap 11.1 root 6.0 | rain     7 strat   11 t/s | tor nil wait 0 free 0.00
+done in 71.0s

@@ -2,6 +2,15 @@
 -- gamma (stretching x spin), warm RFD, RFD help, LCL factor, drive (needs > 0.8 to build G), G.
 local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
 local World = require("../../roblox/src/stormlab/shared/Sim/World")
+local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+-- (args: "front" [mesoK] - the gust-front occlusion, Storm.GUST_FRONT; "clock" - the old one)
+local args = { ... }
+if args[1] == "front" then
+	Storm.GUST_FRONT = true
+	Storm.GF_MESO_K = tonumber(args[2]) or Storm.GF_MESO_K
+elseif args[1] == "clock" then
+	Storm.GUST_FRONT = false
+end
 for _, name in { "Supercell", "SquallLine" } do
 	local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/" .. name)))
 	world:spinUp(600)

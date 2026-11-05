@@ -24,12 +24,11 @@ local Util = require(script.Parent:WaitForChild("CloudParts"):WaitForChild("Util
 
 local WallStream = {}
 
-local NB, NT, NU, NC = 90, 80, 16, 24 -- a storm: body, tail, underside, base (isolate only) (178 billboards)
+local NB, NT, NU, NC = 90, 80, 16, 24 -- a storm: body, tail, underside, base collar (wide in isolate) (210 billboards)
 local TAIL_SLOTS = 5 -- cross-section: core, two shoulders, two feathered edges
 local NLARGE, NMED = 20, 45 -- of the body: big inside pieces, medium outline lumps; the rest small wisps
-local MAXS = 2 -- storms drawn (nearest with a wall cloud)
-local RANGE = 40000 -- m
-local STEP = 2 -- s: the tail path's integration step
+local MAXS = 3 -- lowerings drawn (those with a tornado first, then nearest): 2 storms' wall clouds, or a storm's and its detached old one
+local RANGE = 40000 -- m (not for a lowering with a tornado drawn under it: the tornado has no range)
 local TAU = 2 * math.pi
 local exp, sqrt, cos, sin, max, min, clamp, abs = math.exp, math.sqrt, math.cos, math.sin, math.max, math.min, math.clamp, math.abs
 
@@ -134,6 +133,7 @@ function WallStream.new(ctx: any): any
 	end)
 	local TEX = (C.TEXTURES.smoothPuffFlat ~= "" and C.TEXTURES.smoothPuffFlat) or C.TEXTURES.softFlat
 	local WISP = C.TEXTURES.wispSheetFlat or ""
+	local TIER = C.TEXTURES.wallTierFlat or ""
 	-- (a wisp: one frame of the 2x2 fibre sheet, streaks along its x; fixed for the sprite's life)
 	local function makeWisp(c: any, i: number)
 		if WISP == "" then
@@ -214,7 +214,9 @@ function WallStream.new(ctx: any): any
 		local set = { body = {}, tail = {}, under = {}, ceil = {}, th = {}, uth = {}, phase = 0 }
 		for i = 1, NB do
 			set.body[i] = newPuff(i)
-			set.th[i] = rnd(i, 1) * TAU
+			-- (the dense middle starts on a sunflower spiral, the golden angle apart: see its radius
+			-- in update)
+			set.th[i] = if i <= NLARGE then (i * 2.39996) % TAU else rnd(i, 1) * TAU
 			-- (the small fringe pieces are wisps; the big and medium ones round puffs that blend
 			-- into one mass)
 			-- (as the tornado: the dense middle soft edge-free puffs, the rest fibre wisps lying
@@ -271,15 +273,26 @@ function WallStream.new(ctx: any): any
 	-- one puff's colour: StormCards' card colour (sun reaching the wall, sky, the surface's
 	-- facing, haze), then the rain between the camera and it
 	local card = { albedo = 0.62, lit = 0.5, sky = 0.5, nx = 0, ny = 0, nz = -1 }
+	local fogW, distW = nil, nil -- (this storm's rain in front of its wall cloud: set per storm in update)
+	local fogC, distC = nil, nil -- (and in front of its middle, where the funnel is)
 	local function shade(sh: any, L: any, g: any, wx: number, wy: number, z: number, nx: number, ny: number, nz: number, cx: number, cy: number, cz: number, base: number): Color3
 		local nm = sqrt(nx * nx + ny * ny + nz * nz)
 		card.nx, card.ny, card.nz = nx / nm, ny / nm, nz / nm
 		local rx, ry, rz = wx - cx, wy - cy, z - cz
 		local d = max(sqrt(rx * rx + ry * ry + rz * rz), 1)
 		local col = sh.colour(card, L, 0, Util.hazeF(d), rx / d, ry / d, rz / d, 0)
-		local fog = g and g.fog or 0
+		local fog = fogW or (g and g.fog) or 0
 		if fog > 0.01 and L.fog then
-			local tau = -math.log(1 - min(fog, 0.97)) * min(1, base / max(z, 1)) * min(1, d / max(g.dCam or 1e4, 500))
+			local tau = -math.log(1 - min(fog, 0.97)) * min(1, d / (distW or max(g and g.dCam or 1e4, 500)))
+			if fogW and fogC and distC and distW and d > distW then
+				-- (past the near edge, the rain toward the middle too - the same march the funnel is
+				-- fogged by (StateAdapter.obscuration). Capped at the near edge's, the lowering by the
+				-- funnel took ~0.1 of the rain grey against the funnel's ~0.6: a pale funnel under a dark
+				-- wall cloud, two objects, user 2026-11-03)
+				local tauC = -math.log(1 - min(fogC, 0.97))
+				tau += max(0, tauC - tau) * clamp((d - distW) / max(distC - distW, 1), 0, 1.3)
+			end
+			tau *= min(1, base / max(z, 1))
 			col = col:Lerp(L.fog, 1 - exp(-tau))
 		end
 		return col
@@ -291,7 +304,7 @@ function WallStream.new(ctx: any): any
 		local sh = ctx.stormShade
 		local cw = ctx.cw
 		local style = ctx.state.wallStyle or C.WALL_STYLE or "stream"
-		local on = style == "stream" and sh and cw and cw.storms and ctx.state.show.clouds ~= false
+		local on = style == "stream" and sh and cw and cw.storms and ctx.state.show.clouds ~= false and not ctx.state.physVolume
 		local cam = Workspace.CurrentCamera
 		local camPos = cam.CFrame.Position
 		camS = camPos
@@ -299,15 +312,93 @@ function WallStream.new(ctx: any): any
 		local camX, camY, camZ = C.fromWorld(camPos)
 		table.clear(list)
 		if on then
-			for _, s in cw.storms do
-				if not s.dead and (s.lowering or 0) > 30 and (s.rot or 0) > 0.25 and s.lowX and s.wallBase then
-					local d = sqrt((s.lowX - camX) ^ 2 + (s.lowY - camY) ^ 2)
-					if d < RANGE then
-						table.insert(list, { s = s, d = d })
+			-- (a storm's wall cloud while it has one - and, after it, while its set fades out:
+			-- presence, below. It used to go in one frame when the storm died or its lowering or
+			-- spin passed a gate, even with a tornado still under it, 2026-11-03)
+			local byId = {}
+			-- (storms with a tornado drawn under them: their wall cloud is drawn at any distance and
+			-- first. The tornado has no range, so past RANGE - or behind 3 nearer storms - it hung
+			-- under its storm with sky between its top and the base, where the base's card plan had
+			-- left a hole for the wall cloud, user 2026-11-03)
+			local torOf = {}
+			local adT = ctx.tornadoAdapter
+			if adT and ctx.state.show.funnel ~= false then
+				for _, e in adT.entries do
+					local t = e.snap
+					if e.params and (e.fade or 1) > 0.05 and t and t.parentId ~= nil and t.pk ~= "occluded" then
+						torOf[tostring(t.parentId)] = true
 					end
 				end
 			end
+			for _, s in cw.storms do
+				byId[tostring(s.id)] = s
+				if s.lowX and s.wallBase then
+					local want = not s.dead and (s.lowering or 0) > 30 and (s.rot or 0) > 0.25
+					local st = sets[tostring(s.id)]
+					if want or (st and st.live and (st.pres or 0) > 0.01) then
+						local d = sqrt((s.lowX - camX) ^ 2 + (s.lowY - camY) ^ 2)
+						local tor = torOf[tostring(s.id)] == true
+						if d < RANGE or tor then
+							table.insert(list, { s = s, d = d, want = want, tor = tor })
+						end
+					end
+				end
+			end
+			-- A detached (occluded) circulation's own lowering (2026-11-03): once its tornado is cut
+			-- off and carried on by it (Sim/World detachOccluded), the storm organises a new
+			-- lowering at its rear while the old one goes with the roping tornado, rising and
+			-- shrinking with its spin. A stand-in storm for it, from the tornado's snapshot, the rest
+			-- from its storm. (Before, the storm's one lowering followed the old tornado, then slid
+			-- 1.5-2 km to the new circulation when it ended.)
+			local ad = ctx.tornadoAdapter
+			if ad then
+				for _, e in ad.entries do
+					local t = e.snap
+					if t and t.pk == "occluded" and t.ovl and t.obase and e.params then
+						local id = "occ" .. tostring(t.id)
+						local parent = byId[tostring(t.parentId)]
+						local st = sets[id]
+						local H = max(100, e.cloudBase or 600)
+						local ax, ay = ctx.Sim.Vortex.axisAt(e, H)
+						local lowering = max(0, t.obase - H)
+						local rot0 = (st and st.occRot0) or 0.6
+						local vl0 = (st and st.occVlow0) or max(t.ovl, 1)
+						local rot = rot0 * min(1, t.ovl / max(vl0, 1))
+						local want = not t.ended and lowering > 30 and rot > 0.25
+						if want or (st and st.live and (st.pres or 0) > 0.01) then
+							local o = {
+								id = id, x = e.x + ax, y = e.y + ay, lowX = e.x + ax, lowY = e.y + ay,
+								lowering = lowering, wallBase = H, base = t.obase, rot = rot,
+								vlow = t.ovl, occl = t.oocl or 1, noTail = true, dead = false, occOf = t.parentId,
+								occEntry = e,
+							}
+							local s = if parent then setmetatable(o, { __index = parent }) else o
+							local d = sqrt((o.lowX - camX) ^ 2 + (o.lowY - camY) ^ 2)
+							-- (its own tornado drawn under it: at any distance, as a storm's above)
+							local tor = want and (e.fade or 1) > 0.05
+							if d < RANGE or tor then
+								table.insert(list, { s = s, d = d, want = want, tor = tor })
+							end
+						end
+					end
+				end
+			end
+			-- a storm's old lowering after it cycled with no tornado to carry it (see the hand-over
+			-- below): left where it was, drifting with its storm, fading out
+			for _, st in sets do
+				local g = st.ghostS
+				if g and st.live and (st.pres or 0) > 0.01 then
+					local d = sqrt((g.lowX - camX) ^ 2 + (g.lowY - camY) ^ 2)
+					if d < RANGE then
+						table.insert(list, { s = g, d = d, want = false })
+					end
+				end
+			end
+			-- (lowerings with a tornado under them take the MAXS slots first, nearest first)
 			table.sort(list, function(a, b)
+				if (a.tor == true) ~= (b.tor == true) then
+					return a.tor == true
+				end
 				return a.d < b.d
 			end)
 		end
@@ -322,10 +413,55 @@ function WallStream.new(ctx: any): any
 		local cf = cam.CFrame
 		local Vortex = ctx.Sim.Vortex
 		ctx.wallStreamBase = ctx.wallStreamBase or {}
+		local function moveSet(from: string, to: string)
+			local st = sets[from]
+			if sets[to] and sets[to] ~= st then
+				hide(sets[to])
+				sets[to].live = false
+				sets[to].ghostS = nil
+			end
+			sets[from] = nil
+			sets[to] = st
+			ctx.wallStreamBase[to] = ctx.wallStreamBase[from]
+			ctx.wallStreamBase[from] = nil
+		end
+		-- Hand-overs (2026-11-03). A detached circulation takes over the lowering its storm had
+		-- drawn round its tornado (it was already centred on it), so the old wall cloud goes on with
+		-- the roping tornado and the storm's next one starts new.
+		for _, it in list do
+			local s = it.s
+			if s.occOf then
+				local id, sid = tostring(s.id), tostring(s.occOf)
+				local from = if sets[sid] and sets[sid].live then sid elseif sets["ghost" .. sid] and sets["ghost" .. sid].live then "ghost" .. sid else nil
+				if not sets[id] and from then
+					local st = sets[from]
+					moveSet(from, id)
+					st.ghostS = nil
+					st.occRot0 = st.lastRot or s.rot
+					st.occVlow0 = st.lastVlow or s.vlow
+				end
+			end
+		end
 		for i = 1, min(MAXS, #list) do
 			local s = list[i].s
 			local id = tostring(s.id)
 			local set = sets[id]
+			-- a storm that cycled (its low-level circulation re-formed at its rear, Sim/Storm) with
+			-- its old lowering not taken by a detached tornado: the old one becomes a ghost that
+			-- fades where it was, and the new one grows from nothing - not one lowering sliding
+			-- 1.5-2 km across the sky
+			if set and set.live and not s.occOf and not s.ghost and s.cycle ~= nil and set.cycle ~= nil and set.cycle ~= s.cycle then
+				local gid = "ghost" .. id
+				moveSet(id, gid)
+				set.ghostS = setmetatable({
+					id = gid, ghost = true, x = set.lastCx, y = set.lastCy, lowX = set.lastCx, lowY = set.lastCy,
+					lowering = set.lastLowering or 0, wallBase = set.lastZb or s.wallBase, base = s.base,
+					rot = set.lastRot or 0, vlow = set.lastVlow or 0, occl = set.lastOccl or 0,
+					u = s.u or 0, v = s.v or 0, noTail = true, dead = false,
+				}, { __index = s })
+				used[gid] = true -- (drawn from the next frame; kept as it is this one)
+				set = nil
+			end
 			if not set then
 				-- (reuse a set a storm left)
 				for k, o in sets do
@@ -338,9 +474,25 @@ function WallStream.new(ctx: any): any
 				set = set or newSet()
 				sets[id] = set
 				set.path = nil
+				-- (a fresh lowering: grows in from nothing, its place and size not eased from another's)
+				set.pres, set.eox, set.eoy, set.eR, set.ezb = 0, nil, nil, nil, nil
+				set.ghostS, set.occRot0, set.occVlow0, set.cycle = nil, nil, nil, nil
 			end
 			used[id] = true
 			set.live = true
+			if s.ghost then
+				-- (drifting on with its storm)
+				local simDt = if ctx.state.paused then 0 else dt * (ctx.state.timeScale or 1)
+				rawset(s, "lowX", s.lowX + (s.u or 0) * simDt)
+				rawset(s, "lowY", s.lowY + (s.v or 0) * simDt)
+				rawset(s, "x", s.lowX)
+				rawset(s, "y", s.lowY)
+			end
+			if not s.occOf and not s.ghost then
+				set.cycle = s.cycle
+			end
+			-- presence: in over ~20 s while it has a wall cloud, out over ~20 s once it hasn't (sim time)
+			set.pres = (set.pres or 0) + ((if list[i].want then 1 else 0) - (set.pres or 0)) * (1 - exp(-vDt / 20))
 			local g = sh.group(id)
 			local px, py = (g and g.px) or s.x, (g and g.py) or s.y
 			-- the wall cloud's shape: CardPlan's rules (keep them in step)
@@ -348,23 +500,60 @@ function WallStream.new(ctx: any): any
 			local q = ramp(lowering, 30, 400) * ramp(rot, 0.25, 0.6)
 			local Ru = max(s.Ru or 1500, 300)
 			local occl = clamp(s.occl or 0, 0, 1)
-			local R = 0.5 * clamp(0.9 * Ru, 1000, 3500) * (0.7 + 0.3 * q) * (1 - 0.35 * occl)
+			-- (a young lowering is a small one: from 0.3 of its full width, not 0.7 - it appeared at
+			-- 70% width, 2026-11-03; CardPlan keeps the same rule)
+			local R = 0.5 * clamp(0.9 * Ru, 1000, 3500) * (0.3 + 0.7 * q) * (1 - 0.35 * occl)
 			local base = s.base or 1000
 			local zb = max(s.wallBase, 60)
+			-- (eased over ~2 s: the storm's snapshot comes twice a second, and its size and depth
+			-- stepped with it)
+			local ke = 1 - exp(-dt / 2)
+			set.eR = if set.eR then set.eR + (R - set.eR) * ke else R
+			set.ezb = if set.ezb then set.ezb + (zb - set.ezb) * ke else zb
+			R, zb = set.eR, set.ezb
+			set.lastRot, set.lastVlow, set.lastLowering, set.lastZb, set.lastOccl = rot, s.vlow or 0, lowering, zb, occl
 			local D = max(base - zb, 30)
 			local Rl = 0.3 * Ru
 			local sign = if s.leftMover then -1 else 1
 			local vlow = s.vlow or 0
-			local cx, cy = px + (s.lowX - s.x), py + (s.lowY - s.y)
+			-- (its offset from the storm eased over ~2 s, as its size; a cycle starts a new set)
+			local ox, oy = s.lowX - s.x, s.lowY - s.y
+			set.eox = if set.eox then set.eox + (ox - set.eox) * ke else ox
+			set.eoy = if set.eoy then set.eoy + (oy - set.eoy) * ke else oy
+			local cx, cy = px + set.eox, py + set.eoy
+			-- the rain between the camera and the wall cloud's near edge: the hook's rain wraps round
+			-- the wall beside and behind it, not in front. (Fogged by the line to the storm's centre it
+			-- took the core's rain or missed it by chance; to the wall's centre, the hook's rain at the
+			-- wall itself, and it drew pale, 2026-10-31)
+			fogW, distW = nil, nil
+			fogC, distC = nil, nil
+			if sh.rainFog then
+				local ex, ey = cx - camX, cy - camY
+				local dc = max(sqrt(ex * ex + ey * ey), 1)
+				local back = min(R, 0.9 * dc)
+				if not set.fogAt or os.clock() - set.fogAt > 0.5 then
+					set.fogAt = os.clock()
+					set.fogW = sh.rainFog(cx - ex / dc * back, cy - ey / dc * back, camX, camY)
+					set.distW = max(dc - back, 500)
+					set.fogC = sh.rainFog(cx, cy, camX, camY)
+					set.distC = max(dc, set.distW + 1)
+				end
+				fogW, distW = set.fogW, set.distW
+				fogC, distC = set.fogC, set.distC
+			end
 			-- a tornado under it: the low-level circulation is centred on the funnel (the tornado is
 			-- its core tightened), so the wall cloud turns about the funnel's top and its middle
 			-- lowers toward it - the funnel flares into a lowering, not into a flat underside
 			local tor, tRc = nil, 0
 			local ad = ctx.tornadoAdapter
-			if ad and ctx.state.show.funnel ~= false then
+			if s.occEntry then
+				-- (a detached circulation's own lowering: its own tornado)
+				tor = if (s.occEntry.fade or 1) > 0.05 then s.occEntry else nil
+			elseif ad and ctx.state.show.funnel ~= false and not s.ghost then
 				local best = (1.2 * R) ^ 2
 				for _, e in ad.entries do
-					if e.params and (e.fade or 1) > 0.05 then
+					-- (a detached tornado has its own lowering: the storm's new one doesn't follow it)
+					if e.params and (e.fade or 1) > 0.05 and not (e.snap and e.snap.pk == "occluded") then
 						local mine = e.snap and e.snap.parentId ~= nil and tostring(e.snap.parentId) == id
 						local d2 = (e.x - cx) ^ 2 + (e.y - cy) ^ 2
 						if mine or d2 < best then
@@ -385,6 +574,7 @@ function WallStream.new(ctx: any): any
 				-- funnel looking like a thin stub under a black mass, 2026-10-30)
 				dip = k * min(0.3 * (base - zb), 0.12 * H, 100)
 			end
+			set.lastCx, set.lastCy = cx, cy
 			-- the underside: flat, rising to the base at the rim; round a funnel it hangs lower in a
 			-- broad bowl that narrows onto the funnel's top
 			local rDip = max(0.2 * R, 3 * tRc)
@@ -414,7 +604,7 @@ function WallStream.new(ctx: any): any
 			end
 			-- (q sets its size, as CardPlan; it is there - opaque - once it has formed at all: a
 			-- wall cloud is a dense lowering, its opacity x q drew pale scattered blotches)
-			local fadeIn = ramp(q, 0.02, 0.12)
+			local fadeIn = ramp(q, 0.02, 0.12) * set.pres
 			-- body ---------------------------------------------------------------------------
 			-- (what a wall cloud looks like, docs/storm-reference/real/04_*: an abrupt step down from
 			-- a broad flat base, 3-5x wider than deep, flat-bottomed, its sides laminated into level
@@ -460,7 +650,19 @@ function WallStream.new(ctx: any): any
 			-- it) or the underside (facing down: the dim light from below) - and darker the deeper
 			-- inside it sits, so pieces seen through gaps read as the cloud's interior. Light
 			-- falls off over ~0.3 of the lowering's depth (or 0.15 R across).
+			-- the rain-free base it hangs under (CardPlan's deck: storm-relative centre and radius)
+			local dk = g and g.deck
+			local dkx, dky, dkr = px + ((dk and dk.x) or 0), py + ((dk and dk.y) or 0), (dk and dk.r) or 2 * R
 			local function volShade(j: number, r: number, th: number, z: number, rMax: number, zl: number): Color3
+				-- (its sides see the sky only below the base's edge: from depth h under the base with
+				-- the base reaching O past it, a side sees sky up to atan(h / O) - a vertical face's
+				-- share sin of that. Lit as open-sky sides, the wall took ~2x the base underside's sky
+				-- light and drew as the base's grey (0.58 vs 0.57) with a lighter bottom (0.61); the
+				-- photo's wall is darker than its base, 0.51 vs 0.57, 2026-11-01)
+				local wx, wy = cx + cos(th) * r, cy + sin(th) * r
+				local O = max(150, dkr - sqrt((wx - dkx) ^ 2 + (wy - dky) ^ 2))
+				local hU = max(30, base - z)
+				card.sky = 0.5 * (0.55 + 0.45 * hU / sqrt(hU * hU + O * O))
 				local dSide = max(0, rMax - r)
 				local dBot = max(0, z - zl)
 				local side = smooth(-0.5, 0.5, (dBot / max(D, 1)) - (dSide / max(0.5 * R, 1)))
@@ -468,10 +670,14 @@ function WallStream.new(ctx: any): any
 				local nx, ny, nz = cos(th) * side, sin(th) * side, -(1 - side) - 0.2 * side
 				local depth = min(dSide / max(0.15 * R, 1), dBot / max(0.3 * D, 1))
 				local col = shade(sh, L, g, cx + cos(th) * r, cy + sin(th) * r, z, nx, ny, nz, camX, camY, camZ, base)
-				-- (sides ~2x the underside, as photos: sides 125-145, underside 20-60, 04_wall_cloud_a)
-				local k = (0.55 + 0.45 * math.exp(-depth)) * (0.85 + 0.85 * side) * (0.95 + 0.1 * rnd(j, 9))
+				-- (the side's own facing - sky and sun round it - is already in shade(). A 1.7x side boost
+				-- here, from a misread of 04_wall_cloud_a, made the wall as bright as the base above it
+				-- (0.67 vs 0.66 of the bright sky; the photo: body 0.51, lower band 0.40, base 0.57), so it
+				-- vanished into it seen from outside, 2026-11-01)
+				local k = (0.55 + 0.45 * math.exp(-depth)) * (0.85 + 0.15 * side) * (0.95 + 0.1 * rnd(j, 9))
 				-- (the side facing open sky lighter; the interior keeps its darkness)
 				k *= 1 + 0.6 * sdA * side * math.exp(-depth) * (cos(th) * sdx + sin(th) * sdy)
+				card.sky = 0.5
 				return Color3.new(min(col.R * k, 1), min(col.G * k, 1), min(col.B * k, 1))
 			end
 			-- The lowering drawn as the tornado is drawn (TornadoCards' spiral stream, 2026-10-30):
@@ -540,15 +746,39 @@ function WallStream.new(ctx: any): any
 			end
 			local sr, sg, sb, sk = 0, 0, 0, 0
 			set.f = set.f or {}
+			local nTier = clamp(math.floor(D / 120 + 0.5), 2, 4)
+			local tierH = D / nTier
 			for k = 1, NB do
 				local c = set.body[k]
 				local u, v = rnd(k, 2), rnd(k, 4)
+				if k <= NLARGE then
+					-- (the dense middle spread evenly over the disc - a sunflower spiral, equal area per
+					-- piece. By the sin hash, 18 of the 20 sat at 0.42-0.70 of the rim, a ring with ~700 m
+					-- round the funnel nearly empty: from above the funnel flared into a hole, user
+					-- 2026-11-03. Odd and even pieces - the low and mid layers - interleave, so each
+					-- layer spans the disc too)
+					u = (k - 0.5) / NLARGE
+				end
 				local cls = if k <= NLARGE then 1 elseif k <= NLARGE + NMED then 2 else 3
 				-- the stream: the outline wisps rise ~1.5 m/s through the whole depth, the fringe
 				-- ~3 m/s through its lower part (scud); the dense middle holds its height
 				local f, env, rise = 0.5, 1, 0
-				if cls ~= 1 then
-					rise = if cls == 2 then 1.5 else 3
+				local tier = nil
+				if cls == 1 and k % 2 == 1 then
+					-- (half the dense middle lower down: all at mid-depth, the lowering's lower ~150 m round
+					-- the axis was filled only by the underside discs, which hide unless seen from below -
+					-- from level or above the funnel's top ended under the body with the horizon showing
+					-- between them, user 2026-11-03. A soft band 1.05 of the depth tall centred at 0.3
+					-- and 0.6 of it tall fills it down to the floor, as one cloud with the body above it)
+					f = 0.3
+				elseif cls == 2 then
+					-- the outline as level tiers (04_wall_cloud_a: sides laminated into steps, each a
+					-- little wider than the one under it, the lowest ending in a defined flat bottom).
+					-- One tier per ~120 m of the lowering's depth; the lumps hold their level and turn.
+					tier = (k - NLARGE - 1) % nTier
+					f = (tier + 0.5) / nTier
+				elseif cls == 3 then
+					rise = 3
 					-- (the outline lumps stop at 0.88 of the depth: reaching the top they stood up past it
 					-- as round bumps, 2026-10-30)
 					local span0 = if cls == 2 then 0.88 else 0.6
@@ -565,7 +795,7 @@ function WallStream.new(ctx: any): any
 				-- lumps at 0.7-0.95 and the fringe at 0.9-1.15 left gaps inside and fringe wisps floating
 				-- outside the cloud like confetti, 2026-10-30)
 				local r = if cls == 1 then 0.72 * rMax * sqrt(u)
-					elseif cls == 2 then rMax * (0.62 + 0.24 * u)
+					elseif cls == 2 then rMax * math.max(0.6, (tier / nTier) ^ 0.25) * (0.95 + 0.08 * u)
 					else rMax * (0.8 + 0.18 * u)
 				-- coherent turbulence: eddies ~0.3 R across, turning over in a few minutes
 				if cls ~= 1 then
@@ -579,7 +809,7 @@ function WallStream.new(ctx: any): any
 				local zl = zbot(r)
 				local span = max(0, base - zl)
 				local z = zl + f * span
-				if cls ~= 1 then
+				if cls == 3 then
 					z += 0.06 * span * math.noise(1.5 * cos(th0) - 9, 1.5 * sin(th0) + 6, 2 * f + 0.006 * tNow + 5)
 				end
 				-- opacity from the density where it is: deep inside opaque, thinning to the outline
@@ -591,18 +821,62 @@ function WallStream.new(ctx: any): any
 				-- joins: at 1.5+ each drew its own round outline - scallops, 2026-10-30)
 				-- (outer region thinner, the dark middle kept: overlapping outline pieces at 0.9 summed
 				-- to a near-solid grey from the core to the rim - murky, review 2026-10-30)
-				local dens = if cls == 1 then 1.8 elseif cls == 2 then 0.55 + 1.5 * depthIn else 0.32
+				local dens = if cls == 1 then 1.8 elseif cls == 2 then 0.55 + 1.5 * depthIn else 0.24
+				-- (side-on the tiers are the wall's solid outline: opaque, so the sky no longer shows
+				-- through its lower edge - it drew as the base's grey, 0.66 against the photo's 0.40-0.51,
+				-- 2026-11-01. From beneath they keep the thinner outline the 10-30 review asked for.)
+				local sideOn = 0
+				if cls == 2 then
+					local hx, hy = cx + cos(th) * r - camX, cy + sin(th) * r - camY
+					local el = (z - camZ) / max(sqrt(hx * hx + hy * hy + (z - camZ) ^ 2), 1e-3)
+					sideOn = 1 - smooth(0.3, 0.55, el)
+					dens += (3.0 - dens) * sideOn
+				end
 				local a = (1 - exp(-dens)) * env
 				if cls == 1 then
-					band(c, cx + ox, cy + oy, z, R * (0.75 + 0.25 * rnd(k, 3)), 1, span * 1.05, th, r)
+					-- (the lower half 0.6 of the depth tall: its bottom on the floor, not hanging under it)
+					band(c, cx + ox, cy + oy, z, R * (0.75 + 0.25 * rnd(k, 3)), 1, span * (if f < 0.5 then 0.6 else 1.05), th, r)
 				elseif cls == 2 then
 					local w = R * (0.6 + 0.35 * rnd(k, 3))
-					flowCard(c, cx + ox, cy + oy, z, w, 0.6 * span + 0.15 * w, th, r, om, rise, 1.7)
+					if sideOn > 0.5 and TIER ~= "" then
+						-- a level tier: the texture's crisp bottom edge (0.70 of the frame) on the tier's
+						-- floor, its soft top up into the tier above
+						if c.img.Image ~= TIER then
+							c.img.Image = TIER
+						end
+						-- (a tier sits where the floor is at its radius - zbot rises toward the rim, so the
+						-- lowest tier is the inner flat floor and each one above steps out: narrower at the
+						-- foot. Card 3 tierH tall: its edge 0.2 of that under its centre)
+						-- (1.7x wide: the texture's flat bottom spans its middle ~40%, so tiers as wide as the
+						-- outline lumps drew as separate small lenses, 2026-11-01)
+						-- (the floor from the tier's own radius, not the piece's: zbot rises as r^4 toward the
+						-- rim, so the pieces' 8% radius jitter and eddies put neighbouring lenses' flat
+						-- bottoms up to a third of the depth apart - a scalloped edge, 2026-11-01)
+						-- One piece the lowering's whole depth, not a tier per ~120 m: side-on each tier
+						-- showed only its texture's 40% lens - ~7:1 with pointed tips - and the opaque tiers
+						-- stacked as flat discs, SC check 2026-11-01. The crisp bottom (0.70 of the frame) sits
+						-- on the floor at the piece's radius, the visible band reaching the base: the frame is
+						-- the depth / 0.4 tall, and no wider than ~2.5 x its depth (a wall, not a blade).
+						local _ = tier
+						local zf = zbot(r)
+						local dep = max(base - zf, 0.5 * D)
+						local hT = dep / 0.4
+						local wA = min(1.7 * w, 2.5 * dep)
+						band(c, cx + ox, cy + oy, zf + 0.2 * hT, wA, 0, hT, th, r)
+						setSize(c, wA * ks, hT * ks) -- (band caps a level band at 0.72 of its width)
+					else
+						if c.img.Image ~= TEX then
+							c.img.Image = TEX
+						end
+						flowCard(c, cx + ox, cy + oy, z, w, 0.6 * span + 0.15 * w, th, r, om, rise, 1.7)
+					end
 				else
 					-- (short and plump: 0.4 thick, the fringe drew as a sawtooth of dark teeth round the
 					-- rim seen from below, 2026-10-30)
-					local w = R * (0.13 + 0.1 * rnd(k, 3))
-					flowCard(c, cx + ox, cy + oy, z, w, 0.6 * w, th, r, om, rise)
+					-- (wider, flatter, fainter: at 0.13-0.23 R and 0.6 tall each read as a dark round bead
+					-- round the lowering's edge - a ring of balls with the base hidden, SC check 2026-11-02)
+					local w = R * (0.22 + 0.14 * rnd(k, 3))
+					flowCard(c, cx + ox, cy + oy, z, w, 0.35 * w, th, r, om, rise)
 				end
 				setTr(c, 1 - clamp(a * fadeIn, 0, 1))
 				local rf = r / R
@@ -635,7 +909,9 @@ function WallStream.new(ctx: any): any
 				-- long level streaks across the lowering, 2026-10-30: they fade as the view flattens)
 				local hx, hy = cx + ox - camX, cy + oy - camY
 				local upE = (zl - camZ) / max(sqrt(hx * hx + hy * hy + (zl - camZ) ^ 2), 1e-3)
-				local seen = if c.wisp then smooth(0.35, 0.7, upE) else 1
+				-- (the central disc too, from lower: side-on it drew a separate dark flat ellipse under the
+				-- wall - the lowest of the stacked discs, SC check 2026-11-01)
+				local seen = if c.wisp then smooth(0.35, 0.7, upE) else smooth(0.12, 0.4, upE)
 				setTr(c, 1 - clamp((if c.wisp then 0.45 else 0.96) * fadeIn * seen, 0, 1))
 				local rf = r / R
 				local col = shade(sh, L, g, cx + ox, cy + oy, zl, cos(th) * rf, sin(th) * rf, -1, camX, camY, camZ, base)
@@ -660,6 +936,23 @@ function WallStream.new(ctx: any): any
 					setCol(c, patchy(col, j, 18))
 					setOn(c, true)
 					n += 1
+				elseif fadeIn > 0.02 then
+					-- (outside isolate: the base right over the lowering, where BaseDeck cuts its discs
+					-- (within 1.15 R) and the storm's cards are soft-bottomed. The body's cards fade over
+					-- their top third, so the lowering ended ~100-150 m under the base's visible bottom and
+					-- from the side a band of horizon sky ran between them - the wall cloud and funnel
+					-- floated as one blob under the deck, user 2026-11-03. A collar from 0.29 D under the
+					-- base to just above it, out to 1.3 R, joins the two as one cloud)
+					local r = if j == 1 then 0.2 * R else R * (0.45 + 0.85 * sqrt(rnd(j, 15)))
+					local th = rnd(j, 16) * TAU
+					local ox, oy = cos(th) * r, sin(th) * r
+					local a = R * (0.9 + 0.4 * rnd(j, 17))
+					band(c, cx + ox, cy + oy, base - 0.12 * D, a, 1, 0.5 * D, th, r)
+					setTr(c, 1 - clamp(0.9 * fadeIn, 0, 1))
+					local col = shade(sh, L, g, cx + ox, cy + oy, base - 0.12 * D, 0, 0, -1, camX, camY, camZ, base)
+					setCol(c, patchy(col, j, 18))
+					setOn(c, true)
+					n += 1
 				else
 					setOn(c, false)
 				end
@@ -670,58 +963,68 @@ function WallStream.new(ctx: any): any
 				local b = ctx.wallStreamBase[id] or {}
 				b.col = Color3.new(sr / sk, sg / sk, sb / sk)
 				b.x, b.y, b.z, b.r = cx, cy, zb, R
+				b.floor, b.dip = zbot(0), dip -- (the lowering's floor over the funnel)
 				ctx.wallStreamBase[id] = b
+				-- (readouts for the light review: the middle's mean colour, the sun reaching it, the scene light)
+				if i == 1 and now - (set.dbgAt or 0) > 1 then
+					set.dbgAt = now
+					folder:SetAttribute("WallMidCol", string.format("%.2f %.2f %.2f", b.col.R, b.col.G, b.col.B))
+					folder:SetAttribute("WallLit", set.lit)
+					folder:SetAttribute("WallSkyDirect", string.format("%.2f %.2f", L.sky, L.direct))
+					folder:SetAttribute("WallR", R)
+					folder:SetAttribute("WallFog", string.format("%.2f %.0f", fogW or -1, distW or -1))
+					for _, part in { "body", "under" } do
+						local wr, wg, wb, wa, cnt = 0, 0, 0, 0, 0
+						for _, pc in set[part] do
+							if pc.on then
+								local al = 1 - pc.img.ImageTransparency
+								local cc = pc.img.ImageColor3
+								wr += cc.R * al
+								wg += cc.G * al
+								wb += cc.B * al
+								wa += al
+								cnt += 1
+							end
+						end
+						folder:SetAttribute("Wall_" .. part, string.format("n%d a%.2f col %.2f %.2f %.2f", cnt, wa / max(cnt, 1), wr / max(wa, 1e-3), wg / max(wa, 1e-3), wb / max(wa, 1e-3)))
+					end
+				end
 			end
 			-- tail ---------------------------------------------------------------------------
+			-- (the path its air takes: Sim/InflowCloud traces the storm-relative wind back from the
+			-- wall cloud's rim and keeps the run of condensed forward-flank air attached to it, so the
+			-- tail can't cross the rain core or the rear flank. Until 2026-11-03 it was a spiral aimed
+			-- at the forward-flank core point, and its far half hung inside the rain)
 			local tailOn = false
-			if s.ffdX and q > 0.1 then
-				local fx, fy = s.ffdX - s.lowX, s.ffdY - s.lowY
-				local dl = sqrt(fx * fx + fy * fy)
-				if dl > 800 then
-					tailOn = true
-					-- the path (relative to the low), re-traced once a second: storm-relative
-					-- inflow speed in, the mesocyclone's turn round
-					if not set.path or now - (set.pathAt or 0) > 1 then
-						set.pathAt = now
-						local len = min(0.8 * dl, 4000)
-						local r0 = 0.9 * R + len
-						local srm = sqrt((s.srU or 0) ^ 2 + (s.srV or 0) ^ 2)
-						local vin = clamp(0.6 * srm, 4, 15)
-						local r, th = r0, math.atan2(fy, fx)
-						local P = set.path or {}
-						local m = 0
-						while r > 0.45 * R and m < 600 do
-							m += 1
-							-- (height: at the wall's base level far out, rising into the base as it
-							-- wraps inside the wall cloud)
-							local z = zb + D * (0.35 + 0.25 * ramp(r, R, r0))
-							z += (base - 40 - z) * ramp(r, R, 0.5 * R)
-							local pt = P[m]
-							if not pt then
-								pt = {}
-								P[m] = pt
-							end
-							pt[1], pt[2], pt[3] = cos(th) * r, sin(th) * r, z
-							th += sign * vtAt(vlow, r, Rl) / max(r, 1) * STEP
-							r -= vin * STEP
+			local IC = ctx.Sim.InflowCloud
+			if IC and not s.noTail and q > 0.1 and s.lowX then
+				if not set.pathAt or now - set.pathAt > 2 then
+					set.pathAt = now
+					local path, _, _, travel = IC.tail(cw, s, s.lowX, s.lowY, R, zb, base)
+					if path and #path >= 3 then
+						set.path, set.pathN, set.pathT, set.pathMiss = path, #path, max(travel, 30), 0
+						local Lp = 0
+						for k2 = 2, #path do
+							local a, b = path[k2 - 1], path[k2]
+							Lp += sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2 + (b[3] - a[3]) ^ 2)
 						end
-						for k2 = m + 1, #P do
-							P[k2] = nil
-						end
-						set.path, set.pathN = P, m
 						-- (the spacing between puffs in one lane: the path's length over the slices.
 						-- Counted over all NT - 5 puffs share each slice - puffs were sized ~0.7 lane
 						-- spacings long and the tail drew as rows of separate dots, 2026-10-30)
-						local Lp = 0
-						for k2 = 2, m do
-							local a, b = P[k2 - 1], P[k2]
-							Lp += sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2 + (b[3] - a[3]) ^ 2)
-						end
 						set.gap = Lp / (NT // TAIL_SLOTS)
+					else
+						-- (one miss keeps the last path: the air's state is sampled, not switched)
+						set.pathMiss = (set.pathMiss or 0) + 1
+						if set.pathMiss > 1 then
+							set.path, set.pathN = nil, 0
+						end
 					end
+				end
+				if set.path then
+					tailOn = true
 					local P, m = set.path, set.pathN
 					if m >= 3 then
-						set.phase = (set.phase + vDt / (m * STEP)) % 1
+						set.phase = (set.phase + vDt / set.pathT) % 1
 						-- (a thick tube: the reference tail is about a third of the wall cloud's depth across)
 						local tT = max(1.5 * D, 0.35 * R) -- (from 1.3 D / 0.3 R: too thin and see-through, user 2026-10-30)
 						local NS = NT // TAIL_SLOTS

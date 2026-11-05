@@ -24,6 +24,7 @@ local function dep(name: string): any
 end
 local Noise = dep("Noise")
 local Vortex = dep("Vortex")
+local SubVortices = dep("SubVortices")
 local Storm = dep("Storm") -- (Storm.rfdOutflow; Storm does not require Tornado)
 
 local Tornado = {}
@@ -147,6 +148,10 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	t.time = (t.time + dt) % 8192
 	-- the sub-vortices' orbit angle, integrated (Vortex: p.orbit)
 	t.orbit = (t.orbit or 0) + (if t.params then t.params.sOrbit else 0) * dt
+	-- the sub-vortices (Sim/SubVortices): formed, carried, merged and dissipated by the flow
+	if not t.ended then
+		SubVortices.step(t, dt)
+	end
 	if t.ended then
 		t.endedFor += dt
 		return
@@ -169,7 +174,56 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	if parent then
 		vlow, rlow, wLow, rfdDef, cloudBase = Tornado.supply(parent)
 	end
+	-- the condensation level of the air the core takes in (2026-11-03; docs/stormlab/research/
+	-- TORNADO-MORPH-RESEARCH.md P1): the wall cloud's air (cloudBase: the inflow moistened by the
+	-- forward flank's outflow), mixed with the cold-pool air at the contact as far as the core draws
+	-- it in - the more the RFD has wrapped round it (occlusion, decay), the more. That air's LCL is
+	-- ~125 m per K of dewpoint depression: the inflow's own (updraftBase / 125), less its cooling D,
+	-- the rest closed by its moistness M (rain-cooled air near saturated). Warm, dry RFD air raises
+	-- the base - the funnel lifts and narrows, a wedge goes back to a cone or rope; moist outflow
+	-- lowers it - the funnel fills in, wedges on moist days. Continuous in the mixing share
+	-- (its own field, coreLcl, read by Vortex.coreBase for the funnel's radius only: the cloud
+	-- base the funnel hangs from, t.cloudBase, stays the wall cloud's)
+	-- (how far the RFD's gust front has wrapped round the contact: Storm.rfdWrapAt - 0 without one)
+	local frontWrap = 0
+	if parent and parent.storm and not t.eng then
+		frontWrap = Storm.rfdWrapAt(parent.storm, t.x, t.y)
+	end
+	t.frontWrap = frontWrap
+	-- (and how much of the air it draws in is the outflow's, over the last couple of minutes:
+	-- Storm.coldInflowAt. The partly wrapped RFD comes and goes round a tornado; what it ingests adds up)
+	local coldIn = 0
+	if parent and parent.storm and not t.eng then
+		coldIn = Storm.coldInflowAt(parent.storm, t.x, t.y)
+	end
+	t.coldIn = (t.coldIn or 0) + (coldIn - (t.coldIn or 0)) * (1 - exp(-dt / 120))
+	local zCore = cloudBase
+	local poolF = 0
+	local pool = world and world.coldPool
+	if parent and pool and not t.eng then
+		local d, m = pool:deficitAt(t.x, t.y)
+		if d > 0.05 then
+			local zUp = math.max(cloudBase, parent.updraftBase or cloudBase)
+			local zPool = 125 * math.max(0, zUp / 125 - d) * (1 - math.clamp(m, 0, 1))
+			local wrapK = math.max(ramp(parent.occl or 0, 0.3, 0.8), t.decay, frontWrap)
+			local f = ramp(d, 0.2, 2.0) * (0.25 + 0.65 * wrapK)
+			zCore += (zPool - zCore) * f
+			poolF = f
+		end
+	end
 	t.cloudBase += (math.clamp(cloudBase, 150, 2500) - t.cloudBase) * (1 - exp(-dt / 60))
+	t.coreLcl = (t.coreLcl or zCore) + (math.clamp(zCore, 30, 2500) - (t.coreLcl or zCore)) * (1 - exp(-dt / 60))
+	t.poolF = (t.poolF or 0) + (poolF - (t.poolF or 0)) * (1 - exp(-dt / 60))
+	-- (the funnel's condensation level, sent as one number: the ground-wetness lowering counts only
+	-- for the share not already counted as pool air)
+	t.coreZb = t.coreLcl * (1 - 0.7 * math.clamp(t.coreWet or 0, 0, 1) * (1 - math.clamp(t.poolF, 0, 1)))
+	-- the air the core draws in, moistened by the rain it passes through (0..1: recent rain at the
+	-- contact, 8 mm saturating): rain-cooled air's condensation level is far below the storm's base
+	-- (Vortex.condensationRadius)
+	if world and world.groundAt then
+		local _, wet = world:groundAt(t.x, t.y)
+		t.coreWet = (t.coreWet or 0) + (wet - (t.coreWet or 0)) * (1 - exp(-dt / 60))
+	end
 	-- an engine tornado (Tornado.setEngine): on the ground while the engine says so, as strong and
 	-- as wide as it says, where it says; its shape (tilt, bend, rope, sub-vortices) is drawn here
 	local eng = t.eng
@@ -185,7 +239,9 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- (at 0.6: the RFD has wrapped round the low-level circulation by then. At 0.8 the tornado had
 	-- followed its parent's weakening spin down for ~10 min and was a weak uncondensed vortex by
 	-- the time it was cut off: no rope stage, 2026-10-29)
-	local cutOff = parent ~= nil and (parent.occl or 0) >= 0.6
+	-- (or, with the storm's gust front, once its cold air has wrapped round the contact itself:
+	-- frontWrap 1 - the tornado's own circulation wraps it there, Storm.step)
+	local cutOff = parent ~= nil and ((parent.occl or 0) >= 0.6 or frontWrap >= 1)
 	local supplyOk = alive and vlow > 6 and warm > 0.15 and not cutOff
 	local tiltM = sqrt(t.topX * t.topX + t.topY * t.topY)
 	local tiltLen = tiltM
@@ -196,12 +252,23 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- heights behind the circulation aloft it is cut off from the updraft - NWS spotter guide:
 	-- the RFD "undercuts the surface circulation" and the rope stage begins. At 2.2 every rope was
 	-- already tilted past twice the base height when it began, 2026-10-29)
-	if supplyOk and tiltM < 1.0 * t.cloudBase then
+	local recovering = false
+	-- (fed, it recovers at its warm inflow's share and decays at its cold share: the stable outflow
+	-- air it ingests can't be stretched in the updraft. A third cold and it holds; more and it
+	-- weakens as the RFD wraps further - a tornado under a storm that never fully occluded lived
+	-- for an hour before, its partly wrapped cold air pushed back out each time, 2026-11-03)
+	local cold = math.clamp(t.coldIn or 0, 0, 1)
+	local net = cold / 300 - (1 - cold) / 600
+	if supplyOk and tiltM < 1.0 * t.cloudBase and net <= 0 then
 		t.O = math.min(1, t.O + dt / 90)
-		t.decay = math.max(0, t.decay - dt / 600)
+		t.decay = math.max(0, t.decay + net * dt)
+		recovering = true
 		if t.decay <= 0 then
 			t.cut = nil
 		end
+	elseif supplyOk and tiltM < 1.0 * t.cloudBase then
+		-- (still fed, so not cut off: weakening only)
+		t.decay = math.min(1, t.decay + net * dt)
 	else
 		t.decay = math.min(1, t.decay + dt / 150)
 		-- cut off, the vortex carries the circulation it had: its parent's low-level spin, still
@@ -213,8 +280,28 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		end
 	end
 	if t.cut then
-		vlow = math.max(vlow, t.cut.vlow)
-		rlow, wLow = t.cut.rlow, t.cut.wLow
+		-- (2026-11-03) What the cut-off vortex carries still spins down: detached, its circulation
+		-- is its own parent (World detachOccluded), so it follows that one's spin-down and loss of
+		-- stretching (frozen, the occluded circulation's decay never reached it); with no parent
+		-- left it spins its own down. Over ~3 min, on top of vc's own 90 s fall.
+		local cut = t.cut
+		if not alive then
+			local kr = exp(-dt / 180)
+			cut.vlow *= kr
+			cut.wLow *= kr
+			vlow, wLow = 0, cut.wLow
+		elseif parent and parent.kind == "occluded" then
+			local kr = 1 - exp(-dt / 180)
+			cut.vlow += (math.min(vlow, cut.vlow) - cut.vlow) * kr
+			cut.wLow += (math.min(wLow, cut.wLow) - cut.wLow) * kr
+		end
+		-- (and a vortex fed again goes back to its parent's supply over the last 0.3 of its decay,
+		-- ~3 min: the cut was dropped at decay 0 in one step, onto a parent that had broadened or
+		-- weakened meanwhile - a sudden widen or narrow, 2026-11-03)
+		local b = if recovering then math.clamp(t.decay / 0.3, 0, 1) else 1
+		vlow += (math.max(vlow, cut.vlow) - vlow) * b
+		rlow += (cut.rlow - rlow) * b
+		wLow += (cut.wLow - wLow) * b
 	end
 	-- strength from the parent circulation
 	local S = Tornado.swirlOf({ vlow = vlow, rlow = rlow, wLow = wLow }, t.O)
@@ -232,7 +319,12 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		-- the engine's damage-path width is about four core radii across
 		rcT = 0.25 * eng.yards * 0.9144 * (1 - 0.6 * t.decay) * stretchK
 	end
-	t.rc += (math.clamp(rcT, 15, 900) - t.rc) * (1 - exp(-dt / 60))
+	-- (contracting fast, ~20 s - angular-momentum spin-up, the corner flow collapsing inward; broadening
+	-- slowly, ~60 s. Observed core swings take 30 s - 1 min (Canadian TX 2015, Wurman et al.;
+	-- docs/stormlab/research/TORNADO-MORPH-RESEARCH.md P3), and a wedge narrowing back to a cone while
+	-- still strong needs the faster one)
+	local rcT2 = math.clamp(rcT, 15, 900)
+	t.rc += (rcT2 - t.rc) * (1 - exp(-dt / (if rcT2 < t.rc then 20 else 60)))
 	local pulse = 1 + 0.12 * Noise.value1(t.age / 40, t.seed) + 0.2 * Noise.value1(t.age / 240, t.seed + 3)
 	-- (Tornado.VC_EFF: how much of the contraction's ideal spin-up the near-ground inflow delivers -
 	-- friction, the corner flow's losses. Calibrated 2026-10-30 to the radar relation between the
@@ -257,8 +349,8 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- until late, then lifts (NWS spotter guide: the rope "can still be dangerous"). With the
 	-- circulation x (1 - decay) the rope had ~20 m/s and no condensed funnel, 2026-10-29
 	vT *= (0.25 + 0.75 * t.O) * (1 - t.decay * t.decay) / (1 - 0.6 * t.decay)
-	if not alive then
-		vT = 0
+	if not alive and not t.cut then
+		vT = 0 -- (with a cut held, it spins down with what it carries, above)
 	end
 	t.vc += (vT - t.vc) * (1 - exp(-dt / (if vT > t.vc then 45 else 90)))
 	t.inflow = 0.6 - 0.15 * ramp(t.swirl, 0.3, 1.2)
@@ -307,16 +399,22 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 			-- vortex losing its hold as it decays. The full outflow leaned tornadoes 1.5 cloud-base
 			-- heights during genesis, and with the storm's whole wind - whose inflow converges on
 			-- the updraft, not the tornado - too, 2026-10-29)
-			local wrap = math.max(0.5 * t.decay, ramp(parent.occl or 0, 0.4, 0.8))
+			local wrap = math.max(0.5 * t.decay, ramp(parent.occl or 0, 0.4, 0.8), frontWrap)
 			local uu, vv = Storm.rfdOutflow(parent.storm, t.x, t.y)
 			ou, ov = wrap * uu, wrap * vv
 		end
 		local nx = t.x + (du + ou) * dt + (cx - t.x) * (1 - exp(-dt / follow))
 		local ny = t.y + (dv + ov) * dt + (cy - t.y) * (1 - exp(-dt / follow))
-		-- a little trochoidal wobble of the contact (the vortex's own wandering)
+		-- a little trochoidal wobble of the contact (the vortex's own wandering), on the vortex's
+		-- own clock: its phase advances with the core's turn rate, vc / rc (a 60 m core at
+		-- 60 m/s wanders over ~17 s as before; a 315 m wedge over ~90 s). On a fixed 17 s clock a
+		-- wedge's ~80 m wander swung the whole mass back and forth as it formed and broadened,
+		-- user 2026-11-03. The phase is integrated, so a changing core never jumps it
 		local wob = 0.25 * t.rc
-		nx += wob * (Noise.value1(t.age / 17, t.seed + 21) - Noise.value1((t.age - dt) / 17, t.seed + 21))
-		ny += wob * (Noise.value1(t.age / 19, t.seed + 23) - Noise.value1((t.age - dt) / 19, t.seed + 23))
+		local wph0 = t.wobPh or t.age
+		t.wobPh = wph0 + dt * math.clamp(math.max(t.vc, 5) / math.max(t.rc, 10), 0.15, 1)
+		nx += wob * (Noise.value1(t.wobPh / 17, t.seed + 21) - Noise.value1(wph0 / 17, t.seed + 21))
+		ny += wob * (Noise.value1(t.wobPh / 19, t.seed + 23) - Noise.value1(wph0 / 19, t.seed + 23))
 		t.x, t.y = nx, ny
 		t.topX += ((cx - t.x) - t.topX) * (1 - exp(-dt / 20))
 		t.topY += ((cy - t.y) - t.topY) * (1 - exp(-dt / 20))
@@ -397,7 +495,15 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	if #t.track == 0 or t.age - t.track[#t.track][1] >= 5 then
 		table.insert(t.track, { t.age, t.x, t.y, t.peakWind, t.rc })
 	end
-	if t.decay >= 1 or (t.age > 60 and t.vc < 9 and t.decay > 0.4) then
+	-- ended once it has spun down, not when the decay reaches 1: cut off, the core wind falls over
+	-- minutes (vc's 90 s fall above), so the funnel lifts as the deficit drops under what condensing
+	-- needs and the debris whirl outlives it by a minute or more (NWS spotter guide; Rozel 2013).
+	-- (Ending at decay 1, 2026-10-31 lifecycle scene L1: a fully condensed 65 m/s rope vanished at
+	-- once.) decayFor: a backstop, 10 min after the decay is complete
+	if t.decay >= 1 then
+		t.decayFor = (t.decayFor or 0) + dt
+	end
+	if (t.age > 60 and t.vc < 9 and t.decay > 0.4) or (t.decayFor or 0) > 600 then
 		t.ended = true
 		t.stage = "ended"
 	end
@@ -414,12 +520,19 @@ end
 function Tornado.snapshot(t: Tornado): { [string]: any }
 	return {
 		id = t.id, parentId = t.parentId, x = t.x, y = t.y, ut = t.ut, vt = t.vt, envU = t.envU, envV = t.envV,
-		vc = t.vc, rc = t.rc, swirl = t.swirl, inflow = t.inflow, cloudBase = t.cloudBase,
+		vc = t.vc, rc = t.rc, swirl = t.swirl, inflow = t.inflow, cloudBase = t.cloudBase, coreZb = t.coreZb,
 		topX = t.topX, topY = t.topY, bendX = t.bendX, bendY = t.bendY, wave = t.wave,
 		seed = t.seed, time = t.time, orbit = t.orbit, age = t.age, O = t.O, decay = t.decay, stage = t.stage,
 		ef = t.ef, peakEf = t.peakEf, peakWind = t.peakWind, ended = t.ended, endedFor = t.endedFor,
 		funnelGround = t.funnelGround, pathLength = t.pathLength, hold = t.hold, lab = t.lab,
 		debrisLoft = t.debrisLoft, debrisTop = t.debrisTop, peak = t.peak,
+		svp = SubVortices.pack(t.sv), -- (4 bytes a sub-vortex)
+		-- (2026-11-03: a detached circulation's own lowering - Render/WallStream draws it apart from
+		-- its storm's new one: its spin, the base it hangs from, its occlusion)
+		pk = t.parentKind,
+		ovl = if t.occParent then t.occParent.vlow else nil,
+		obase = if t.occParent then t.occParent.base else nil,
+		oocl = if t.occParent then t.occParent.occl else nil,
 	}
 end
 

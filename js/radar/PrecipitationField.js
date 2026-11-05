@@ -395,13 +395,21 @@ function finish(grid, winds, alloc = plainAlloc) {
     for (const name of ['rain', 'size', 'snow']) {
       const a = from[name], b = to[name];
       // Each copy is smoothed over its own cells first, so a wide patch trails off rather than ending at a cell's edge.
+      // (Only the rows holding anything, and two either side, are worked on: the rest are zero
+      // before and after, and adding them in adds nothing; the answer is the same to the last digit.)
+      const { nx, ny } = from, first = new Int32Array(LEVELS), last = new Int32Array(LEVELS);
       for (let k = 0; k < LEVELS; k++) {
-        const level = a.subarray(k * from.plane, (k + 1) * from.plane), { nx, ny } = from;
-        for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const at = j * nx + i; row[at] = 0.25 * level[at - (i > 0 ? 1 : 0)] + 0.5 * level[at] + 0.25 * level[at + (i < nx - 1 ? 1 : 0)]; }
-        for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const at = j * nx + i; level[at] = 0.25 * row[at - (j > 0 ? nx : 0)] + 0.5 * row[at] + 0.25 * row[at + (j < ny - 1 ? nx : 0)]; }
+        const level = a.subarray(k * from.plane, (k + 1) * from.plane);
+        let r0 = ny, r1 = -1;
+        for (let j = 0; j < ny; j++) for (let i = 0, at = j * nx; i < nx; i++) if (level[at + i] !== 0) { if (j < r0) r0 = j; r1 = j; break; }
+        first[k] = r0 - 1; last[k] = r1 + 1;
+        if (r1 < 0) continue;
+        for (let j = Math.max(0, r0 - 2); j <= Math.min(ny - 1, r1 + 2); j++) for (let i = 0; i < nx; i++) { const at = j * nx + i; row[at] = 0.25 * level[at - (i > 0 ? 1 : 0)] + 0.5 * level[at] + 0.25 * level[at + (i < nx - 1 ? 1 : 0)]; }
+        for (let j = Math.max(0, r0 - 1); j <= Math.min(ny - 1, r1 + 1); j++) for (let i = 0; i < nx; i++) { const at = j * nx + i; level[at] = 0.25 * row[at - (j > 0 ? nx : 0)] + 0.5 * row[at] + 0.25 * row[at + (j < ny - 1 ? nx : 0)]; }
       }
       for (let k = 0; k < LEVELS; k++) for (let j = 0; j < to.ny; j++) {
         const j0 = Math.min(from.ny - 1, j >> 1), j1 = Math.min(from.ny - 1, j0 + (j & 1)), rowA = k * from.plane + j0 * from.nx, rowB = k * from.plane + j1 * from.nx, out = k * to.plane + j * to.nx;
+        if (j1 < first[k] || j0 > last[k]) continue;
         for (let i = 0; i < to.nx; i++) {
           const i0 = Math.min(from.nx - 1, i >> 1), i1 = Math.min(from.nx - 1, i0 + (i & 1));
           b[out + i] += 0.25 * (a[rowA + i0] + a[rowA + i1] + a[rowB + i0] + a[rowB + i1]);

@@ -63,7 +63,9 @@ function CameraRig.new(ctx: any): any
 			self.tilt = math.clamp((self.tilt or 0) + step, math.rad(-20), math.rad(70))
 		elseif (input.KeyCode == Enum.KeyCode.I or input.KeyCode == Enum.KeyCode.O) and self.mode ~= "free" then
 			-- zoom in (I) / out (O) from the keyboard, as the mouse wheel
-			self.dist = math.clamp(self.dist * (if input.KeyCode == Enum.KeyCode.I then 0.7 else 1.4), 60, 90000)
+			local zf = if input.KeyCode == Enum.KeyCode.I then 0.7 else 1.4
+			self.dist = math.clamp(self.dist * zf, 60, 90000)
+			self.zoom = (self.zoom or 1) * zf -- (kept on top of a scripted shot's keyed distance)
 		elseif input.KeyCode == Enum.KeyCode.Tab then
 			-- next focus: tornadoes first, then storms by strength
 			local list = {}
@@ -118,7 +120,9 @@ function CameraRig.new(ctx: any): any
 			if self.mode == "free" then
 				self.free.speed = math.clamp(self.free.speed * (if z > 0 then 1.25 else 0.8), 5, 4000)
 			else
-				self.dist = math.clamp(self.dist * (if z > 0 then 0.85 else 1.18), 60, 90000)
+				local zf = if z > 0 then 0.85 else 1.18
+				self.dist = math.clamp(self.dist * zf, 60, 90000)
+				self.zoom = (self.zoom or 1) * zf
 			end
 		end
 	end)
@@ -139,14 +143,15 @@ function CameraRig.new(ctx: any): any
 		elseif kind == "storm" then
 			for _, s in ctx.cw.storms do
 				if s.id == id then
-					lookZ = s.base + 1500
+					local p = ctx.state.cameraPreset
+					lookZ = s.base + (if p and p.lookUp then p.lookUp else 1500) -- (a reference shot aims lower)
 				end
 			end
 		end
 		return x, y, lookZ, kind
 	end
 
-	-- a scripted shot (UI/VisualTests): { dist, yaw (deg), height, dollyTo, dollyTime }
+	-- a scripted shot (UI/VisualTests): { dist, yaw (deg), height, dollyTo, dollyTime, lookUp (m above the base) }
 	local function applyPreset(dt: number, kind: string)
 		local p = ctx.state.cameraPreset
 		if not p then
@@ -158,12 +163,45 @@ function CameraRig.new(ctx: any): any
 			self.mode = p.mode or "chase"
 			ctx.state.cameraMode = self.mode
 			self.dist = p.dist or self.dist
+			self.zoom = 1
 			self.yaw = math.rad(p.yaw or -50)
 			self.pitch = math.rad(p.pitch or 12)
 			self.lastKind = kind -- (the shot sets the distance for what it looks at)
 			self.target = nil
 		end
-		if p.dollyTo and p.dollyTime then
+		-- keys: { {t = sim s since the shot began, dist, lookUp, yaw?} } eased between (a lifecycle
+		-- moving in for its tornado and back out for its decay; follows the sim clock, so any speed)
+		if p.keys then
+			p.simStart = p.simStart or ctx:simTime()
+			local el = ctx:simTime() - p.simStart
+			-- (a lifecycle whose storm waited for its tornado at waitAt - Storm.applyPin: the keys
+			-- after it run late by the wait, so the close-up meets the tornado)
+			if p.waitAt and p.stormId and el > p.waitAt then
+				for _, s in ctx.cw.storms do
+					if s.id == p.stormId then
+						el = math.max(p.waitAt, el - (s.pinWait or 0))
+					end
+				end
+			end
+			local k = p.keys
+			local a, b = k[1], k[#k]
+			for i = 1, #k - 1 do
+				if el >= k[i].t and el < k[i + 1].t then
+					a, b = k[i], k[i + 1]
+				end
+			end
+			local f = if b.t > a.t then math.clamp((el - a.t) / (b.t - a.t), 0, 1) else 1
+			if el < k[1].t then
+				f = 0
+			end
+			f = f * f * (3 - 2 * f)
+			-- (geometric, as the dolly; times the viewer's own zoom, or I / O and the wheel did nothing)
+			self.dist = math.clamp(a.dist * (b.dist / a.dist) ^ f * (self.zoom or 1), 60, 90000)
+			p.lookUp = (a.lookUp or 1500) + ((b.lookUp or 1500) - (a.lookUp or 1500)) * f
+			if a.yaw and b.yaw then
+				self.yaw = math.rad(a.yaw + (b.yaw - a.yaw) * f)
+			end
+		elseif p.dollyTo and p.dollyTime then
 			local f = math.clamp((os.clock() - p.started) / p.dollyTime, 0, 1)
 			self.dist = p.dist * (p.dollyTo / p.dist) ^ f -- (geometric: even through the LOD ranges)
 		end
@@ -184,8 +222,11 @@ function CameraRig.new(ctx: any): any
 		local x, y, lookZ, kind = focusInfo()
 		applyPreset(dt, kind)
 		if kind ~= self.lastKind then
-			-- a sensible distance for what we look at
-			if kind == "storm" then
+			-- a sensible distance for what we look at (not under a keyed shot: its keys set it)
+			local keyed = ctx.state.cameraPreset and ctx.state.cameraPreset.keys
+			if keyed then
+				-- (nothing: the lifecycle shot's keys hold the distance)
+			elseif kind == "storm" then
 				self.dist = math.max(self.dist, 18000)
 			elseif kind == "tornado" and self.dist > 6000 then
 				self.dist = 900

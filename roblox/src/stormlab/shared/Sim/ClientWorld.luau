@@ -14,6 +14,7 @@ local Environment = dep("Environment")
 local ColdPool = dep("ColdPool")
 local Precip = dep("Precip")
 local Vortex = dep("Vortex")
+local SubVortices = dep("SubVortices")
 local Storm = dep("Storm")
 
 local ClientWorld = {}
@@ -80,6 +81,11 @@ function ClientWorld.applyTornadoes(cw: any, list: any)
 	local out = {}
 	for _, t in list do
 		if not t.ended then
+			if t.svp then
+				-- (the server's sub-vortices: Sim/SubVortices)
+				t.sv = SubVortices.new()
+				SubVortices.adopt(t.sv, t.svp, 1)
+			end
 			t.params = Vortex.params(t)
 		end
 		table.insert(out, t)

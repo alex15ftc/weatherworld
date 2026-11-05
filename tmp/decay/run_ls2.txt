@@ -1,0 +1,12 @@
+    0 storms 3 bounds 1 (dryline 1) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 0.0 tornadoes 0
+  600 storms 3 bounds 18 (dryline 6, warm 1, stationary 2, outflow 2, cold 7) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 3.4 tornadoes 0
+ 1200 storms 3 bounds 18 (outflow 3, dryline 5, stationary 3, cold 7) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 3.2 tornadoes 0
+  tornado T01 parent C002 (cell) at 1690 s rc 112 vc 10 base 523
+ 1800 storms 3 bounds 18 (outflow 3, dryline 5, stationary 3, cold 7) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 2.8 tornadoes 1
+  tornado T01 ended at 2340 s, peak EF5, path 9.2 km, parent kind occluded
+ 2400 storms 3 bounds 17 (dryline 4, outflow 3, stationary 3, warm 1, cold 6) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 2.4 tornadoes 1
+ 3000 storms 3 bounds 16 (outflow 3, dryline 2, stationary 4, cold 7) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 3.0 tornadoes 0
+ 3600 storms 3 bounds 13 (outflow 3, dryline 3, stationary 2, cold 5) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 2.6 tornadoes 0
+ 4200 storms 3 bounds 15 (outflow 3, dryline 3, stationary 2, cold 7) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 2.6 tornadoes 0
+ 4800 storms 3 bounds 12 (outflow 3, dryline 3, stationary 1, cold 5) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 2.1 tornadoes 0
+ 5400 storms 3 bounds 13 (outflow 5, dryline 2, stationary 1, cold 5) miso 0 G 0.00 drive 0.00 wLow 0.0 vlow 0.0 maxShear 2.4 tornadoes 0

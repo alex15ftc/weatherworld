@@ -4,7 +4,19 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "Shared": {
-        "$path": "src/shared"
+        "$path": "src/shared",
+        "CloudModel": {
+          "$className": "Folder",
+          "ClientFrame": {
+            "$path": "src/cloudlab/shared/Model/ClientFrame.luau"
+          },
+          "StormFrames": {
+            "$path": "src/cloudlab/shared/Model/StormFrames.luau"
+          },
+          "FrameView": {
+            "$path": "src/cloudlab/shared/Model/FrameView.luau"
+          }
+        }
       },
       "StormLab": {
         "$className": "Folder",

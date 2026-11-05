@@ -249,6 +249,7 @@ function Shafts:rebin()
 					-- column beside the funnel spilled across its edge, 2026-10-29)
 					w = if c.vox then 1.1 * c.cell else c.cell * (0.7 + 0.5 * math.sqrt(frac)) * 1.15,
 					h = base + 150,
+					vox = c.vox,
 					a = a,
 					hail = math.clamp((c.hail / c.n) / 2.5, 0, 1),
 					prio = a / math.max(d, 3000),
@@ -346,10 +347,20 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		-- on screen? (a cone round the view, widened by the curtain's own angular size: the curtain
 		-- and its cap in one sphere round the curtain's middle)
 		local k = C.scaleAbout(x, y)
+		-- (its foot on the true ground: the ground at full scale whatever the storm is drawn at -
+		-- LabConfig.groundScale, 1 in the lab)
+		gz *= C.groundScale(x, y, k)
+		hh = math.max(sh.h - gz, 50)
 		local wp = C.toWorldAbout(x, y, gz + hh * 0.5, x, y, k)
 		local capH = math.clamp(sh.w * 0.2, 300, 900)
+		-- (the card's width over the rain's: the curtain sheet's column is ~0.56 of its frame wide
+		-- at half opacity, so at 1.25 a partly rainy cell drew ~0.7 of its rain's width and
+		-- neighbouring curtains left gaps - their soft tops read as a row of beads under the base
+		-- from afar, 2026-10-31. A tornado's own 1 km columns stay narrow: wider, one spilled
+		-- across the funnel, 2026-10-29)
+		local wK = if sh.vox then 1.25 else 1.6
 		local cwp = C.toWorldAbout(x, y, sh.h + 0.2 * capH, x, y, k)
-		local radS = (0.5 * math.sqrt((sh.w * 1.25) ^ 2 + (hh * 1.3) ^ 2) + 0.5 * capH + 0.2 * capH) * k
+		local radS = (0.5 * math.sqrt((sh.w * wK) ^ 2 + (hh * 1.3) ^ 2) + 0.5 * capH + 0.2 * capH) * k
 		local rel = wp - cam
 		local distS = rel.Magnitude
 		local vis = distS <= radS
@@ -405,7 +416,7 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 			p.wp = wp
 			p.att.WorldPosition = wp
 		end
-		local bw, bh = sh.w * 1.25 * k, hh * 1.3 * k
+		local bw, bh = sh.w * wK * k, hh * 1.3 * k
 		if not p.bw or math.abs(bw - p.bw) > thr or math.abs(bh - p.bh) > thr then
 			p.bw, p.bh = bw, bh
 			p.bb.Size = UDim2.fromScale(bw, bh)

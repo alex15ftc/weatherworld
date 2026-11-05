@@ -180,11 +180,14 @@ function Context:focus(): (number, number, string, string?)
 	if st.focusKind ~= "storm" then
 		local best, bestV = nil, -1
 		for _, t in cw.tornadoes do
+			-- (the chosen one even once it has ended - its debris whirl lingers there; the world
+			-- keeps it ~120 s. Jumping to the most intense storm instead lost a lifecycle scene's
+			-- end, 2026-10-31)
+			if t.id == st.focusId and st.focusId ~= nil then
+				best = t
+				break
+			end
 			if not t.ended then
-				if t.id == st.focusId then
-					best = t
-					break
-				end
 				if t.vc > bestV then
 					best, bestV = t, t.vc
 				end

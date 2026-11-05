@@ -369,7 +369,12 @@ function LightningFx.new(ctx)
 			local t = f.t or now
 			if t <= now or (t - now) / scale > 2 then
 				table.remove(pending, i)
-				if (now - t) / scale < 2 then
+				-- fast-forward: only a real-time share of the flashes (1 in `scale`, picked by the
+				-- flash's seed). Each flash lights the clouds for ~1 real second, so at 60x a storm's
+				-- 20-30 flashes a minute arrived 20-30 a real second and their light merged into a
+				-- steady glow: the night supercell drew mid-grey against a black sky (2026-11-01)
+				local keep = scale <= 1 or ((f.seed or i) * 0.6180339887) % 1 < 1 / scale
+				if (now - t) / scale < 2 and keep then
 					startBolt(f)
 				end
 			else

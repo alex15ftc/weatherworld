@@ -1,0 +1,40 @@
+built life_supercell in 4.5s
+    0 false W 19.3 Ru 1733 cape 3585 cin    0 sb true rkw 0.28 gustK 0.00 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil   0 gap  0.0 | rain    87 strat     0 t/s | tor nil
+  300 false W 13.7 Ru 1467 cape 3618 cin    0 sb true rkw 0.28 gustK 0.00 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil   0 gap  0.0 | rain     2 strat     0 t/s | tor nil
+  600 false W 19.3 Ru 1733 cape 3661 cin    0 sb true rkw 0.28 gustK 0.00 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil   0 gap  0.0 | rain    88 strat     0 t/s | tor nil
+  900 false W 25.0 Ru 2000 cape 3677 cin    0 sb true rkw 0.22 gustK 0.00 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil   0 gap  0.0 | rain   153 strat     0 t/s | tor nil
+ 1200 false W 28.3 Ru 2200 cape 3660 cin    0 sb true rkw 0.01 gustK 0.13 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil   3 gap  0.0 | rain   210 strat     0 t/s | tor nil
+ 1500 false W 31.7 Ru 2400 cape 3639 cin    0 sb true rkw 0.11 gustK 0.18 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil   7 gap  0.0 | rain   280 strat     0 t/s | tor nil
+ 1800 false W 35.0 Ru 2600 cape 3626 cin    0 sb true rkw 0.13 gustK 0.23 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  11 gap  0.0 | rain   364 strat     0 t/s | tor nil
+ 2100 false W 37.3 Ru 2733 cape 3611 cin    0 sb true rkw 0.16 gustK 0.30 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  15 gap  0.0 | rain   430 strat     0 t/s | tor nil
+ 2400 false W 39.7 Ru 2867 cape 3602 cin    0 sb true rkw 0.21 gustK 0.36 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  18 gap  0.0 | rain   504 strat     0 t/s | tor nil
+ 2700 false W 42.0 Ru 3000 cape 3627 cin    0 sb true rkw 0.21 gustK 0.38 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  22 gap  0.0 | rain   587 strat     0 t/s | tor nil
+ 3000 false W 41.9 Ru 3000 cape 3630 cin    0 sb true rkw 0.19 gustK 0.35 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  26 gap  0.0 | rain   592 strat     0 t/s | tor nil
+ 3300 false W 41.7 Ru 3000 cape 3660 cin    0 sb true rkw 0.19 gustK 0.34 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  30 gap  0.0 | rain   594 strat     0 t/s | tor nil
+ 3600 false W 41.6 Ru 3000 cape 3691 cin    0 sb true rkw 0.19 gustK 0.36 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  34 gap  0.0 | rain   595 strat     0 t/s | tor nil
+ 3900 false W 41.4 Ru 3000 cape 3719 cin    0 sb true rkw 0.20 gustK 0.35 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  38 gap  0.0 | rain   597 strat     0 t/s | tor nil
+ 4200 false W 41.3 Ru 3000 cape 3743 cin    0 sb true rkw 0.17 gustK 0.33 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  42 gap  0.0 | rain   597 strat     0 t/s | tor nil
+ 4500 false W 41.1 Ru 3000 cape 3754 cin    0 sb true rkw 0.17 gustK 0.35 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  46 gap  0.0 | rain   598 strat     0 t/s | tor nil
+ 4800 false W 41.0 Ru 3000 cape 3759 cin    0 sb true rkw 0.20 gustK 0.37 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  49 gap  0.0 | rain   599 strat     0 t/s | tor nil
+ 5100 false W 40.9 Ru 3000 cape 3775 cin    0 sb true rkw 0.18 gustK 0.36 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  53 gap  0.0 | rain   600 strat     0 t/s | tor nil
+ 5400 false W 40.7 Ru 3000 cape 3783 cin    0 sb true rkw 0.18 gustK 0.35 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  57 gap  0.0 | rain   601 strat     0 t/s | tor nil
+ 5700 false W 40.6 Ru 3000 cape 3816 cin    0 sb true rkw 0.18 gustK 0.36 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  61 gap  0.0 | rain   602 strat     0 t/s | tor nil
+ 6000 false W 40.4 Ru 3000 cape 3867 cin    0 sb true rkw 0.19 gustK 0.36 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  65 gap  0.0 | rain   603 strat     0 t/s | tor nil
+ 6300 false W 40.3 Ru 3000 cape 3913 cin    0 sb true rkw 0.18 gustK 0.35 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  69 gap  0.0 | rain   605 strat     0 t/s | tor nil
+ 6600 false W 40.1 Ru 3000 cape 3986 cin    0 sb true rkw 0.17 gustK 0.36 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  72 gap  0.0 | rain   604 strat     0 t/s | tor nil
+ 6900 false W 40.0 Ru 3000 cape 4009 cin    0 sb true rkw 0.19 gustK 0.38 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  76 gap  0.0 | rain   607 strat     0 t/s | tor nil
+FREE at	6900
+ 7200 false W 50.1 Ru 3273 cape 4088 cin    0 sb true rkw 0.19 gustK 0.37 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  80 gap  0.0 | rain   916 strat     0 t/s | tor nil
+ 7500 false W 55.7 Ru 3494 cape 4133 cin    0 sb true rkw 0.19 gustK 0.37 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  83 gap  0.0 | rain  1169 strat     0 t/s | tor nil
+ 7800 false W 58.8 Ru 3651 cape 4177 cin    0 sb true rkw 0.21 gustK 0.40 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  86 gap  0.0 | rain  1360 strat     0 t/s | tor nil
+ 8100 false W 59.7 Ru 3762 cape 4224 cin    0 sb true rkw 0.23 gustK 0.43 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  89 gap  0.0 | rain  1479 strat     0 t/s | tor nil
+ 8400 false W 59.2 Ru 3840 cape 4269 cin    0 sb true rkw 0.20 gustK 0.41 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  92 gap  0.0 | rain  1538 strat     0 t/s | tor nil
+ 8700 false W 57.9 Ru 3895 cape 4318 cin    0 sb true rkw 0.23 gustK 0.43 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  95 gap  0.0 | rain  1554 strat     0 t/s | tor nil
+ 9000 false W 58.8 Ru 3933 cape 4368 cin    0 sb true rkw 0.25 gustK 0.46 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil  98 gap  0.0 | rain  1617 strat     0 t/s | tor nil
+ 9300 false W 58.1 Ru 3958 cape 4417 cin    0 sb true rkw 0.24 gustK 0.47 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil 101 gap  0.0 | rain  1625 strat     0 t/s | tor nil
+ 9600 false W 57.7 Ru 3974 cape 4468 cin    0 sb true rkw 0.22 gustK 0.44 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil 104 gap  0.0 | rain  1634 strat     0 t/s | tor nil
+ 9900 false W 56.8 Ru 3984 cape 4494 cin    0 sb true rkw 0.24 gustK 0.47 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil 107 gap  0.0 | rain  1616 strat     0 t/s | tor nil
+10200 false W 56.0 Ru 3989 cape 4514 cin    0 sb true rkw 0.26 gustK 0.49 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil 110 gap  0.0 | rain  1599 strat     0 t/s | tor nil
+10500 false W 54.6 Ru 3992 cape 4536 cin    0 sb true rkw 0.23 gustK 0.47 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil 113 gap  0.0 | rain  1560 strat     0 t/s | tor nil
+10800 false W 54.5 Ru 3992 cape 4557 cin    0 sb true rkw 0.22 gustK 0.46 gRkw 0.00 | live/mem km 3:0.0/0.0 6:0.0/0.0 9:0.0/0.0 | anvil 115 gap  0.0 | rain  1560 strat     0 t/s | tor nil
+done in 147.3s

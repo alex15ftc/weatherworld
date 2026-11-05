@@ -1,0 +1,46 @@
+    0 cell W 10.0 base 1700 rain    35 | miso S01 rlow  756 vlow  6.0 wLow  3.5 def 0.0 drive 0.32 G 0.00 | tor -
+   60 cell W  3.7 base 1700 rain     0 | miso S01 rlow  764 vlow  5.9 wLow  1.3 def 0.0 drive 0.12 G 0.00 | tor -
+  120 cell W  4.4 base 1700 rain     0 | miso S01 rlow  767 vlow  5.9 wLow  1.5 def 0.0 drive 0.14 G 0.00 | tor -
+  180 cell W  5.1 base 1700 rain     0 | miso S01 rlow  767 vlow  5.9 wLow  1.8 def 0.0 drive 0.16 G 0.00 | tor -
+  240 cell W  5.8 base 1700 rain     0 | miso S01 rlow  764 vlow  5.9 wLow  2.0 def 0.0 drive 0.18 G 0.00 | tor -
+  300 cell W  6.5 base 1700 rain     0 | miso S01 rlow  758 vlow  5.9 wLow  2.3 def 0.0 drive 0.21 G 0.00 | tor -
+  360 cell W  7.2 base 1700 rain     0 | miso S01 rlow  750 vlow  6.0 wLow  2.5 def 0.0 drive 0.24 G 0.00 | tor -
+  420 cell W  7.9 base 1700 rain     0 | miso S01 rlow  739 vlow  6.1 wLow  2.8 def 0.0 drive 0.27 G 0.00 | tor -
+  480 cell W  8.6 base 1700 rain     0 | miso S01 rlow  728 vlow  6.2 wLow  3.0 def 0.0 drive 0.30 G 0.00 | tor -
+  540 cell W  9.3 base 1700 rain     0 | miso S01 rlow  714 vlow  6.3 wLow  3.2 def 0.0 drive 0.34 G 0.00 | tor -
+  600 cell W 10.0 base 1700 rain     2 | miso S01 rlow  700 vlow  6.4 wLow  3.5 def 0.0 drive 0.38 G 0.00 | tor -
+  660 cell W 10.8 base 1700 rain     7 | miso S01 rlow  685 vlow  6.6 wLow  3.8 def 0.0 drive 0.42 G 0.00 | tor -
+  720 cell W 11.6 base 1700 rain    14 | miso S01 rlow  669 vlow  6.7 wLow  4.0 def 0.0 drive 0.48 G 0.00 | tor -
+  780 cell W 12.4 base 1700 rain    23 | miso S01 rlow  653 vlow  6.9 wLow  4.3 def 0.0 drive 0.54 G 0.00 | tor -
+  840 cell W 13.2 base 1700 rain    33 | miso S01 rlow  636 vlow  7.1 wLow  4.6 def 0.0 drive 0.60 G 0.00 | tor -
+  900 cell W 14.0 base 1700 rain    46 | miso S01 rlow  619 vlow  7.3 wLow  4.9 def 0.0 drive 0.67 G 0.00 | tor -
+  960 cell W 14.8 base 1700 rain    62 | miso S01 rlow  603 vlow  7.5 wLow  5.2 def 0.0 drive 0.75 G 0.00 | tor -
+ 1020 cell W 15.6 base 1700 rain    71 | miso S01 rlow  586 vlow  7.7 wLow  5.4 def 0.0 drive 0.84 G 0.00 | tor -
+ 1080 cell W 16.4 base 1700 rain    77 | miso S01 rlow  570 vlow  7.9 wLow  5.7 def 0.0 drive 0.93 G 0.00 | tor -
+ 1140 cell W 17.2 base 1700 rain    84 | miso S01 rlow  554 vlow  8.1 wLow  6.0 def 0.0 drive 1.03 G 0.00 | tor -
+ 1200 cell W 18.0 base 1700 rain    90 | miso S01 rlow  539 vlow  8.3 wLow  6.3 def 0.1 drive 1.14 G 0.00 | tor -
+ 1260 cell W 18.0 base 1700 rain    91 | miso S01 rlow  526 vlow  8.6 wLow  6.3 def 0.1 drive 1.20 G 0.02 | tor -
+ 1320 cell W 18.0 base 1700 rain    91 | miso S01 rlow  516 vlow  8.7 wLow  6.3 def 0.1 drive 1.25 G 0.06 | tor -
+ 1380 cell W 18.0 base 1700 rain    91 | miso S01 rlow  508 vlow  8.9 wLow  6.3 def 0.1 drive 1.28 G 0.11 | tor -
+ 1440 cell W 18.0 base 1700 rain    91 | miso S01 rlow  501 vlow  9.0 wLow  6.3 def 0.1 drive 1.32 G 0.17 | tor -
+ 1500 cell W 18.0 base 1700 rain    91 | miso S01 rlow  496 vlow  9.1 wLow  6.3 def 0.1 drive 1.34 G 0.26 | tor -
+ 1560 cell W 18.0 base 1700 rain    91 | miso S01 rlow  492 vlow  9.1 wLow  6.3 def 0.1 drive 1.37 G 0.40 | tor -
+ 1620 cell W 18.0 base 1700 rain    91 | miso S01 rlow  489 vlow  9.2 wLow  6.3 def 0.2 drive 1.39 G 0.55 | tor -
+ 1680 cell W 18.1 base 1700 rain    91 | miso S01 rlow  486 vlow  9.3 wLow  6.3 def 0.2 drive 1.40 G 0.70 | tor -
+ 1740 cell W 18.1 base 1700 rain    92 | miso S01 rlow  484 vlow  9.3 wLow  6.3 def 0.2 drive 1.42 G 0.84 | tor -
+ 1800 cell W 18.1 base 1700 rain    92 | miso S01 rlow  482 vlow  9.3 wLow  6.3 def 0.2 drive 1.43 G 0.98 | tor -
+ 1860 cell W 18.1 base 1700 rain    92 | miso S01 rlow  480 vlow  9.4 wLow  6.3 def 0.2 drive 1.44 G 0.00 | tor T02 vc 9 rc 39 S 0.49 funnel@ground 0 base 1700 core 1698 decay 0.00 EF-1
+ 1920 cell W 18.2 base 1700 rain    92 | miso S01 rlow  479 vlow  9.4 wLow  6.3 def 0.2 drive 1.44 G 0.00 | tor T02 vc 17 rc 35 S 0.40 funnel@ground 0 base 1700 core 1696 decay 0.00 EF-1
+ 1980 cell W 18.2 base 1700 rain    93 | miso S01 rlow  478 vlow  9.4 wLow  6.3 def 0.2 drive 1.44 G 0.00 | tor T02 vc 22 rc 30 S 0.33 funnel@ground 0 base 1700 core 1695 decay 0.00 EF0
+ 2040 cell W 18.3 base 1700 rain    93 | miso S01 rlow  477 vlow  9.4 wLow  6.3 def 0.1 drive 1.44 G 0.00 | tor T02 vc 22 rc 28 S 0.29 funnel@ground 0 base 1700 core 1695 decay 0.00 EF0
+ 2100 cell W 18.4 base 1700 rain    94 | miso S01 rlow  476 vlow  9.5 wLow  6.4 def 0.1 drive 1.44 G 0.00 | tor T02 vc 22 rc 27 S 0.27 funnel@ground 0 base 1700 core 1696 decay 0.00 EF0
+ 2160 cell W 18.5 base 1700 rain    95 | miso S01 rlow  475 vlow  9.5 wLow  6.4 def 0.1 drive 1.44 G 0.00 | tor T02 vc 22 rc 26 S 0.26 funnel@ground 0 base 1700 core 1696 decay 0.00 EF0
+ 2220 cell W 18.7 base 1700 rain    96 | miso S01 rlow  473 vlow  9.5 wLow  6.5 def 0.1 drive 1.44 G 0.00 | tor T02 vc 21 rc 25 S 0.26 funnel@ground 0 base 1700 core 1696 decay 0.00 EF0
+ 2280 cell W 19.1 base 1700 rain    98 | miso S01 rlow  471 vlow  9.6 wLow  6.6 def 0.1 drive 1.44 G 0.00 | tor T02 vc 22 rc 25 S 0.25 funnel@ground 0 base 1700 core 1696 decay 0.00 EF0
+ 2340 cell W 19.8 base 1700 rain   103 | miso S01 rlow  468 vlow  9.6 wLow  6.9 def 0.1 drive 1.44 G 0.00 | tor T02 vc 23 rc 25 S 0.25 funnel@ground 0 base 1700 core 1696 decay 0.00 EF0
+ 2400 cell W 21.8 base 1700 rain   116 | miso S01 rlow  461 vlow  9.8 wLow  7.5 def 0.1 drive 1.44 G 0.00 | tor T02 vc 23 rc 24 S 0.24 funnel@ground 0 base 1700 core 1696 decay 0.00 EF0
+ 2460 cell W 24.7 base 1700 rain   138 | miso S01 rlow  448 vlow 10.0 wLow  8.6 def 0.1 drive 1.44 G 0.00 | tor T02 vc 24 rc 23 S 0.22 funnel@ground 0 base 1700 core 1697 decay 0.00 EF0
+ 2520 cell W 27.2 base 1700 rain   160 | miso S01 rlow  431 vlow 10.4 wLow  9.5 def 0.2 drive 1.44 G 0.00 | tor T02 vc 25 rc 21 S 0.20 funnel@ground 0 base 1700 core 1697 decay 0.00 EF1
+ 2580 cell W 29.4 base 1700 rain   180 | miso S01 rlow  413 vlow 10.9 wLow 10.2 def 0.2 drive 1.44 G 0.00 | tor T02 vc 26 rc 19 S 0.18 funnel@ground 0 base 1700 core 1698 decay 0.00 EF1
+ 2640 cell W 31.4 base 1700 rain   202 | miso S01 rlow  395 vlow 11.4 wLow 10.9 def 0.2 drive 1.44 G 0.00 | tor T02 vc 28 rc 18 S 0.17 funnel@ground 0 base 1700 core 1699 decay 0.00 EF1
+ 2700 cell W 33.2 base 1700 rain   228 | miso S01 rlow  377 vlow 11.9 wLow 11.6 def 0.2 drive 1.44 G 0.00 | tor T02 vc 30 rc 16 S 0.16 funnel@ground 0 base 1700 core 1697 decay 0.00 EF2

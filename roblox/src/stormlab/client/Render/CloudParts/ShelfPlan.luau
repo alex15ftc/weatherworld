@@ -73,16 +73,18 @@ function ShelfPlan.plan(sys: any, storms: { any }, CloudKit: any, camX: number, 
 		-- the cloud base the edge feeds: the nearest storm's
 		local base, best = 1200, math.huge
 		for _, s in storms do
-			if not s.dead then
+			-- (a dead storm's too, live ones first: a decaying storm's own shelf - Render/StormCards -
+			-- feeds its remnant's base, Round 38)
+			do
 				local ex, ey = s.x - x, s.y - y
-				local d2 = ex * ex + ey * ey
+				local d2 = (ex * ex + ey * ey) * (if s.dead then 4 else 1)
 				if d2 < best and d2 < 40000 * 40000 then
 					best, base = d2, s.base or 1200
 				end
 			end
 		end
 		local h1, h2, h3 = hash(seed, i, 1), hash(seed, i, 2), hash(seed, i, 3)
-		local len = 6200 * (0.95 + 0.12 * h1)
+		local len = (tonumber(seg.len) or 6200) * (0.95 + 0.12 * h1) -- (seg.len: a storm's own arc, Render/StormCards)
 		local depth = 1300 + 700 * q
 		local zb = math.max(150, base * (0.72 - 0.35 * q))
 		local zt = base + 300 + 500 * q

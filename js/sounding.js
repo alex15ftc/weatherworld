@@ -1,6 +1,9 @@
 const LEVELS = [1000,975,950,925,900,875,850,825,800,775,750,725,700,675,650,625,600,575,550,525,500,475,450,425,400,375,350,325,300,275,250,225,200,175,150,125,100];
 const RD=287.05, RV=461.5, CP=1004, G=9.80665, EPS=RD/RV, KNOT_TO_MS=.514444;
 const LOG_LEVELS=LEVELS.map(p=>Math.log(p));
+// (Each standard level's Exner factor and its inverse, as Math.pow gives them: worked out once,
+// not for every cell at every step.)
+const EXNER_LEVELS=LEVELS.map(p=>Math.pow(p/1000,RD/CP)), INVERSE_EXNER_LEVELS=LEVELS.map(p=>Math.pow(1000/p,RD/CP));
 
 export function buildSounding(cell) {
   const surfaceP = Math.min(1000, cell.surface.pressure);
@@ -12,7 +15,7 @@ export function buildSounding(cell) {
   // worked out once and kept alongside the profile (`work`).
   for(const a of anchors){a.logP=Math.log(a.p);const r=a.dir*Math.PI/180;a.sin=Math.sin(r);a.cos=Math.cos(r)}
   const first=LEVELS.findIndex(p=>p<surfaceP), count=first<0?1:LEVELS.length-first+1;
-  const profile=new Array(count), logP=new Float64Array(count), exner=new Float64Array(count), vapour=new Float64Array(count), envTv=new Float64Array(count);
+  const profile=new Array(count), logP=new Float64Array(count), exner=new Float64Array(count), inverseExner=new Float64Array(count), vapour=new Float64Array(count), envTv=new Float64Array(count);
   for(let i=0;i<count;i++){
     const p=i?LEVELS[first+i-1]:surfaceP, lp=i?LOG_LEVELS[first+i-1]:Math.log(surfaceP), row=interpolateAnchorAt(anchors,p,lp);
     const r=row.dir*Math.PI/180; row.u=-Math.sin(r)*row.spd; row.v=-Math.cos(r)*row.spd;
@@ -24,10 +27,11 @@ export function buildSounding(cell) {
     // (2026-10-26: until then the whole column was taken at the surface temperature, which put 500 mb
     // about 300 m and 200 mb about 1.8 km too high, inflating CAPE by 15-20% and every "6 km" layer.)
     row.heightM = i ? profile[i-1].heightM + RD * .5 * (envTv[i-1] + envTv[i]) / G * (logP[i-1] - lp) : cell.terrain.elevationM;
-    profile[i]=row; logP[i]=lp; exner[i]=Math.pow(p/1000,RD/CP); vapour[i]=e;
+    profile[i]=row; logP[i]=lp; vapour[i]=e;
+    exner[i]=i?EXNER_LEVELS[first+i-1]:Math.pow(p/1000,RD/CP); inverseExner[i]=i?INVERSE_EXNER_LEVELS[first+i-1]:Math.pow(1000/p,RD/CP);
   }
   for(const a of anchors){delete a.logP;delete a.sin;delete a.cos}
-  const work={logP,exner,vapour};
+  const work={logP,exner,inverseExner,vapour};
   const surfaceResult = parcelDiagnosticsForSource(profile, 0, cell.terrain.elevationM, envTv, work);
   const mixedSource = mixedLayerSource(profile, 100, work);
   const mixedResult = parcelDiagnosticsForState(profile, mixedSource, cell.terrain.elevationM, envTv, work);
@@ -362,7 +366,7 @@ function parcelDiagnosticsForSource(profile,index,elevation,envTv,work){
 // under the first standard level: the parcel came out 0.6 g/kg too moist.)
 function mixedLayerSource(profile,depthHpa,work){
  const surfaceP=profile[0].p, top=surfaceP-depthHpa;
- const thetaOf=i=>(profile[i].t+273.15)*Math.pow(1000/profile[i].p,RD/CP), wOf=i=>{const e=Math.min(profile[i].p*.99,work.vapour[i]);return EPS*e/(profile[i].p-e)};
+ const thetaOf=i=>(profile[i].t+273.15)*work.inverseExner[i], wOf=i=>{const e=Math.min(profile[i].p*.99,work.vapour[i]);return EPS*e/(profile[i].p-e)};
  let theta=0,w=0,weight=0;
  for(let i=0;i<profile.length-1;i++){
    const a=profile[i].p,b=profile[i+1].p;if(a<=top)break;
@@ -397,7 +401,7 @@ function mostUnstableParcel(profile,elevation,depthHpa,envTv,surfaceResult,work)
 // source: the profile row the parcel starts from (its p, t and td); start: that row's index.
 function parcelCape(profile,source,start,envTv,work){
  const last=profile.length-1,logP=work.logP,exner=work.exner;
- const tlclK=lclTemperatureK(source.t,source.td), theta=(source.t+273.15)*Math.pow(1000/source.p,RD/CP);
+ const tlclK=lclTemperatureK(source.t,source.td), theta=(source.t+273.15)*work.inverseExner[start];
  const pLcl=source.p*Math.pow(tlclK/(source.t+273.15),CP/RD);
  const e0=Math.min(source.p*.99,work.vapour[start]), w0=EPS*e0/(source.p-e0);
  // Height of the condensation level, as heightAtPressure finds it in the profile from the source up.
@@ -435,10 +439,12 @@ function parcelDiagnosticsForState(profile,source,elevation,envTv=null,work=null
  return {parcel,thermo:diagnoseParcel(env,aligned,elevation,source,envTv?envTv.subarray(start):null)};
 }
 function buildParcelFromState(profile,source,work=null){
- const tlclK=lclTemperatureK(source.t,source.td), theta=(source.t+273.15)*Math.pow(1000/source.p,RD/CP);
+ // (The source is at a level of the profile when its pressure is that level's.)
+ const at=source.index||0, inverse=work&&profile[at]?.p===source.p?work.inverseExner[at]:Math.pow(1000/source.p,RD/CP);
+ const tlclK=lclTemperatureK(source.t,source.td), theta=(source.t+273.15)*inverse;
  const pLcl=source.p*Math.pow(tlclK/(source.t+273.15),CP/RD);
  const w0=mixingRatioFromDewpoint(source.td,source.p);
- let previous={p:source.p,t:source.t}, adiabat;
+ let previousP=source.p, previousT=source.t, adiabat;
  return profile.map((r,i)=>{
    if(i<(source.index||0)) return {p:r.p,heightM:r.heightM,t:r.t,td:r.td};
    let t,td;
@@ -446,10 +452,10 @@ function buildParcelFromState(profile,source,work=null){
    else {
      if(adiabat===undefined)adiabat=pseudoAdiabatThroughPoint(tlclK-273.15,pLcl);
      if(adiabat!==null)t=pseudoAdiabatTemperature(adiabat,r.p);
-     else {if(previous.p>pLcl)previous={p:pLcl,t:tlclK-273.15};t=moistLift(previous.t,previous.p,r.p);}
+     else {if(previousP>pLcl){previousP=pLcl;previousT=tlclK-273.15}t=moistLift(previousT,previousP,r.p);}
      td=t;
    }
-   previous={p:r.p,t};return {p:r.p,heightM:r.heightM,t,td};
+   previousP=r.p;previousT=t;return {p:r.p,heightM:r.heightM,t,td};
  });
 }
 function diagnoseParcel(env,parcel,elevation,source,envTv=null){

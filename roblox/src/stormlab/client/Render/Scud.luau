@@ -290,7 +290,9 @@ function Scud.new(ctx: any): any
 			local sx, sy = wv:Dot(right), wv:Dot(up)
 			local onScreen = sqrt(sx * sx + sy * sy)
 			local along = clamp(onScreen / max(sp, 0.1), 0, 1) -- (how side-on we see the drift)
-			local stretch = 1.6 + clamp(sp / 8, 0, 1.8) * along
+			-- (at most ~4:1: drawn up to 3.4 x long and 0.32 x deep, ~10:1, each wisp read as a thin
+			-- dark dash, SC check 2026-11-01)
+			local stretch = 1.3 + clamp(sp / 8, 0, 1) * along
 			local size = f.size * (0.7 + 0.5 * f.a) * (1 + min(f.age / 300, 0.8))
 			local tilt = 0
 			if onScreen > 0.5 then
@@ -308,7 +310,7 @@ function Scud.new(ctx: any): any
 			end
 			local k = f.sk
 			local wp = C.toWorldAbout(f.x, f.y, f.z, f.cx, f.cy, k)
-			local sw, sh = size * stretch * k, size * 0.32 * k
+			local sw, sh = size * stretch * k, size * 0.55 * k
 			-- on screen? (a cone round the view, widened by the wisp's own angular size)
 			local rel = wp - camS
 			local dist = rel.Magnitude
