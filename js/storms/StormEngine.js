@@ -12,6 +12,7 @@ import { initializeStormStructure, evolveStormStructure } from './StormStructure
 import { tornadoGeometry } from './StormGeometry.js';
 import { environmentParcel } from './UpdraughtParcel.js';
 import { updateStormColumn } from './StormColumn.js';
+import { stepGustFront } from './GustFront.js';
 import { sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStormColdPool } from './StormEnvironmentCoupling.js';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
 
@@ -151,6 +152,7 @@ function updateStorm(world, storm, dtHours) {
     storm.lineHalfLengthKm = Math.min(MAX_LINE_HALF_LENGTH_KM, lineHalfLengthKm(storm) + spreadKph * dtHours);
   }
   storm.coldPoolRadiusKm = clamp(5 + storm.ageHours * 5 + storm.coldPoolStrength * 24, 5, 52);
+  stepGustFront(storm, environment, dtHours); // how far its gust front leads it (GustFront.js)
   updateStormColdPool(world, storm, environment, dtHours);
   updateLifecycleEvolution(storm, environment, dtHours);
   updateStormConfidence(storm, environment, dtHours);

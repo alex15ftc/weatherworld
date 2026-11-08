@@ -647,3 +647,17 @@ Job tmp/gust (*.pool-tried.js, *.pool-tried2.js, StormOutflow.pool-tried2.js, wo
   - (a) the tracker alone, with a new regression baseline;
   - (b) a physical downdraught mass flux or evaporation rate in StormBudgets, then the pool on top;
   - (c) the lead model alone, on the existing radius.
+
+### Boundary tracker and gust-front lead (2026-11-07)
+
+- **Tracker** (tools/regression/worker.mjs): gap-tolerant line matching (nearest points under 60 km, up to 2 missing analyses). Baseline tracker-base against gust-boost, same engine:
+  - outflow boundary life median 1.0 → 2.0 h;
+  - 6 h+ 4.5 → 15.1%.
+  - Measuring only.
+- **Gust-front lead** (js/storms/GustFront.js, from StormEngine; StormGeometry reads storm.gustFrontLeadKm):
+  - dL/dt = Fr·√(g′h)·(r0/L)^(1/3) + (u_low − motion)·along: a constant-flux axisymmetric gravity current (Huppert 1982);
+  - smooth bounds between the updraught radius and the pool radius.
+  - Results (p10 / p50 / p90):
+    - supercells 3.6 / 17.9 / 38.2 → 9.0 / 16.0 / 29.1 km;
+    - lines 18.9 / 36.7 / 52.0 → 9.8 / 18.9 / 42.0 km.
+  - Regression lead against tracker-base: no regressions, nothing moved (it is display only). Storm 13/13, radar 3/3.

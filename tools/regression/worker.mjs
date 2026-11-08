@@ -33,7 +33,26 @@ const looks = new Map(), stormInfo = new Map(), daily = [];
 const csv = fs.createWriteStream(path.join(outDir, `coldpool-${seed}.csv`));
 csv.write('seed,id,hourUtc,ageHours,intensity,coldPoolStrength,coldPoolDeficitF,lineShare,rotating,mode,lclM,outflowContrastK,bulkShearKt,coldPoolRadiusKm\n');
 const r3 = v => (Number.isFinite(v) ? Math.round(v * 1000) / 1000 : '');
-let outflowTracks = [];
+const outflowTracks = {};
+
+// Outflow boundary tracking (2026-11-07): a line continues a track whose points lie near its own (the
+// mean distance from the shorter of the two to the other under 60 km, so a line that grows, shrinks
+// or splits keeps its track), and a track survives up to two analyses in which the line is not drawn
+// (it can drop under the analysis's length or contrast for an hour and still be there). Life is from
+// the first analysis that drew it to the last, plus one half-hour. (Until then: centroids within
+// 80 km from one analysis to the next, ending at the first analysis that missed it.)
+function trackOutflowLines(state, lines, lifeOut) {
+  state.n = (state.n ?? 0) + 1; state.list ??= [];
+  const pick = p => { const step = Math.max(1, Math.floor(p.length / 12)); return p.filter((_, i) => i % step === 0); };
+  const meanNear = (a, b) => a.reduce((s, q) => s + Math.min(...b.map(r => Math.hypot(q.x - r.x, q.y - r.y))), 0) / a.length;
+  const now = lines.map(l => pick(l.pointsKm)), pairs = [];
+  now.forEach((p, i) => state.list.forEach((t, j) => { const d = p.length <= t.points.length ? meanNear(p, t.points) : meanNear(t.points, p); if (d < 60) pairs.push({ i, j, d }); }));
+  pairs.sort((a, b) => a.d - b.d);
+  const usedLine = new Set(), usedTrack = new Set();
+  for (const { i, j } of pairs) { if (usedLine.has(i) || usedTrack.has(j)) continue; usedLine.add(i); usedTrack.add(j); Object.assign(state.list[j], { points: now[i], last: state.n }); }
+  now.forEach((p, i) => { if (!usedLine.has(i)) state.list.push({ points: p, born: state.n, last: state.n }); });
+  state.list = state.list.filter(t => { if (state.n - t.last <= 2) return true; lifeOut.push(0.5 * (t.last - t.born + 1)); return false; });
+}
 
 // Is a point within NEAR_KM of a line of this type in the latest analysis?
 function nearLine(p, type) {
@@ -103,11 +122,7 @@ for (let day = 0; day < days; day++) {
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const X = cx + dx, Y = cy + dy; if (X >= 0 && Y >= 0 && X < world.width && Y < world.height) best = Math.max(best, pool[Y * world.width + X]); }
         rec.outflowPoolK.push(Math.round(best * 100) / 100);
       }
-      const now = outflows.map(l => ({ x: l.pointsKm.reduce((a, q) => a + q.x, 0) / l.pointsKm.length, y: l.pointsKm.reduce((a, q) => a + q.y, 0) / l.pointsKm.length }));
-      const next = [];
-      for (const o of now) { const t = outflowTracks.find(t => Math.hypot(t.x - o.x, t.y - o.y) < 80 && !t.taken); if (t) { t.taken = true; next.push({ ...o, age: t.age + 0.5 }); } else next.push({ ...o, age: 0.5 }); }
-      for (const t of outflowTracks) if (!t.taken) (rec.outflowLife ??= []).push(t.age);
-      outflowTracks = next.map(t => ({ ...t, taken: false }));
+      trackOutflowLines(outflowTracks, outflows, (rec.outflowLife ??= []));
     }
   }
   const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);

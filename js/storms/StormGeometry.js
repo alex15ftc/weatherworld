@@ -23,7 +23,7 @@
 //   line        how far the storm is part of a line, and the line's length, axis and bow
 //   tornado     where it is and how wide, while one is down
 import { clamp } from '../scenarios/math.js';
-import { rotatingShare, lineShare, outflowDominance } from './StormModeEngine.js';
+import { rotatingShare, lineShare } from './StormModeEngine.js';
 import { stormColumnOf } from './StormColumn.js';
 import { stormFallout } from './StormFallout.js';
 
@@ -109,7 +109,7 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
     // (the hail: where the largest precipitation lands, hail and the biggest drops)
     hail: { ...place(hailCentre.east, hailCentre.north), radiusKm: hailInches > 0.25 ? 1.5 + 1.6 * hailInches : 0, sizeInches: hailInches },
     rearFlank: { wrap: clamp(storm.occlusion ?? 0, 0, 1), strength: clamp((storm.coldPoolStrength ?? 0) * (0.4 + 0.6 * rotating), 0, 1) },
-    gustFront: { radiusKm: storm.coldPoolRadiusKm ?? 0, strength: clamp(storm.coldPoolStrength ?? 0, 0, 1), leadKm: (storm.coldPoolRadiusKm ?? 0) * (0.3 + 0.7 * outflowDominance(storm, environment)), gustMph: storm.surfaceWind?.gustMph ?? 0 },
+    gustFront: { radiusKm: storm.coldPoolRadiusKm ?? 0, strength: clamp(storm.coldPoolStrength ?? 0, 0, 1), leadKm: storm.gustFrontLeadKm ?? 0, gustMph: storm.surfaceWind?.gustMph ?? 0 },
     anvil: { lengthKm: clamp(relativeSpeed * G.anvilSpeedShare * Math.min(storm.ageHours ?? 0, G.anvilHours), G.anvilKm[0], G.anvilKm[1]), widthKm: 20 + 60 * clamp(storm.intensity ?? 0, 0, 1), bearingDeg: bearing(downwind.east, downwind.north), topM: tops.anvil },
     line: { share: linear, halfLengthKm: linear > 0.2 ? (storm.lineHalfLengthKm ?? storm.radar?.radiusXKm ?? 20) : 0, axisBearingDeg: bearing(right.east, right.north), bow: clamp(storm.rearInflow ?? 0, 0, 1) },
     tornado: null
