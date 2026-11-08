@@ -20,9 +20,10 @@ const CLOUD = 1e-4;
 //   wind and width by vortex physics; the cloud base from the model)
 //   u8 the model's ground gust (m/s)   u8 its spin, 0-1 km mean (0.005 /s)   i8 change since the
 //   minute before (0.005 /s)   u16 its own pressure drop (Pa)   u8 level count
+//   u16 the core's condensation level (m: the surface air it draws in, at or under the cloud base)
 //   per level: u16 height (m), i16 dx, dy (m, from the ground point: the vortex's lean), u16 funnel
 //   radius (m; 0 clear air) with bit 15 set where the model's vortex reaches that high
-export const TORNADO = 28;
+export const TORNADO = 30;
 const TOR_LEVEL = 8;
 const u16 = x => Math.min(65535, Math.max(0, Math.floor(x + 0.5)));
 const i16 = x => Math.min(32767, Math.max(-32767, Math.floor(x + 0.5)));
@@ -46,6 +47,7 @@ export function encodeTornado(run) {
   b.setInt8(24, i8(t.dzeta / 0.005));
   b.setUint16(25, u16(t.modelDrop), true);
   b.setUint8(27, t.levels.length);
+  b.setUint16(28, u16(t.coreBase ?? t.base), true);
   t.levels.forEach((l, q) => {
     const o = TORNADO + TOR_LEVEL * q;
     b.setUint16(o, u16(l.z), true);
@@ -68,7 +70,7 @@ export function decodeTornado(bytes, o) {
   return { found: (flags & 1) !== 0, cloud: (flags & 2) !== 0, ef: ef === 255 ? null : ef, mph: b.getUint16(o + 2, true), yards: b.getUint16(o + 4, true),
     x: b.getFloat32(o + 6, true), y: b.getFloat32(o + 10, true), R: b.getUint16(o + 14, true), drop: b.getUint16(o + 16, true),
     base: b.getUint16(o + 18, true), tip: b.getUint16(o + 20, true), gust: b.getUint8(o + 22), zeta: b.getUint8(o + 23) * 0.005,
-    dzeta: b.getInt8(o + 24) * 0.005, modelDrop: b.getUint16(o + 25, true), levels, length: TORNADO + TOR_LEVEL * n };
+    dzeta: b.getInt8(o + 24) * 0.005, modelDrop: b.getUint16(o + 25, true), coreBase: b.getUint16(o + 28, true), levels, length: TORNADO + TOR_LEVEL * n };
 }
 
 const u8 = x => Math.min(255, Math.max(0, Math.floor(x + 0.5)));

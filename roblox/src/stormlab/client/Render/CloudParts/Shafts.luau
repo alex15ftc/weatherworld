@@ -334,7 +334,10 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		local P = Vector3.new(x, y, gz + hh * 0.5) -- (sim frame, metres)
 		local dh = math.sqrt((x - cx) ^ 2 + (y - cy) ^ 2)
 		-- fading as you drive in (fully drawn from ~3 km out, gone at its edge): inside, the
-		-- rain is the Atmosphere fog from its extinction (Render/NearPrecip), not a curtain
+		-- rain is the Atmosphere fog from its extinction (Render/NearPrecip), not a curtain. (Fully
+		-- drawn from 1 km out instead, the near curtains laid over a tornado the rain its own sight
+		-- already dims for (TornadoCards' rainK) and hid it from a few km, 2026-11-08; the sky
+		-- that showed between them is Render/Sky's Offset now)
 		local near = Util.ramp(dh, 0.6 * sh.w + 300, 0.6 * sh.w + 3000)
 		if near < 0.02 then
 			continue

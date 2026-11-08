@@ -26,7 +26,7 @@ local Scud = {}
 local FRAME = 256
 local MARGIN = 0.1 -- rad beyond the view's half-diagonal before a wisp counts as off screen
 local CULL_REFRESH = 8 -- an off-screen wisp's position is still moved every 8th frame (staggered)
-local exp, sqrt, max, min, clamp, random = math.exp, math.sqrt, math.max, math.min, math.clamp, math.random
+local exp, sqrt, max, min, clamp = math.exp, math.sqrt, math.max, math.min, math.clamp
 
 local function smooth(a: number, b: number, x: number): number
 	local t = clamp((x - a) / (b - a), 0, 1)
@@ -116,6 +116,17 @@ function Scud.new(ctx: any): any
 	end
 
 	local acc = {} -- spawn accumulators per storm
+	-- (the game: spawns numbered on the shared clock, each one's draws seeded by its storm and
+	-- number, so every client makes the same fragments - docs same-storm-every-server; the lab keeps
+	-- its own accumulator)
+	local lastN = {}
+	local function idSeed(id: string): number
+		local h = 5381
+		for i = 1, #id do
+			h = (h * 33 + string.byte(id, i)) % 2147483647
+		end
+		return h
+	end
 	local stormList = {}
 	local centres = {} -- storm id -> { x, y, k }: this frame's centre and scale of each storm
 	local lightCache = {}
@@ -152,12 +163,30 @@ function Scud.new(ctx: any): any
 		end
 		for _, s in storms do
 			local id = tostring(s.id)
-			acc[id] = (acc[id] or 0) + SPAWN * simDt
+			local rng: Random? = nil
+			local nNow = 0
+			if ctx.frameFed then
+				nNow = math.floor(workspace:GetServerTimeNow() * SPAWN)
+				local n0 = lastN[id] or nNow
+				acc[id] = min(nNow - n0, 5)
+				lastN[id] = nNow
+			else
+				acc[id] = (acc[id] or 0) + SPAWN * simDt
+			end
+			local function random(lo: number?, hi: number?): number
+				if not rng then
+					return if lo then math.random(lo, hi :: number) else math.random()
+				end
+				return if lo then rng:NextInteger(lo, hi :: number) else rng:NextNumber()
+			end
 			local base = s.base or 1000
 			local lx, ly = s.lowX or s.x, s.lowY or s.y
 			local R = max(1500, 1.4 * (s.Ru or 3000))
 			while acc[id] >= 1 and #live < MAX do
 				acc[id] -= 1
+				if ctx.frameFed then
+					rng = Random.new((idSeed(id) * 7919 + (nNow - acc[id]) * 104729) % 2147483647)
+				end
 				-- (most of it round the lowering, where the inflow converges into the updraft)
 				local a = random() * 2 * math.pi
 				local r = R * random() ^ 1.6

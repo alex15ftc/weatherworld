@@ -65,7 +65,27 @@ local function windNear(cw: any, Vortex: any, x: number, y: number, z: number): 
 	return u, v, w
 end
 local DUST_TAU = 0.15 -- s: how fast a puff's velocity takes the air's (see the motion step)
-local sqrt, exp, random = math.sqrt, math.exp, math.random
+local sqrt, exp = math.sqrt, math.exp
+-- the dice: math.random, or in the game while a tornado's pickup runs, a generator seeded by the
+-- tornado and a tick of the shared clock - every client lifts the same dust (same storm every
+-- server, 2026-11-07)
+local rng: Random? = nil
+local function random(lo: number?, hi: number?): number
+	local g = rng
+	if not g then
+		return if lo then math.random(lo, hi :: number) else math.random()
+	end
+	return if lo then g:NextInteger(lo, hi :: number) else g:NextNumber()
+end
+local PICKUP_HZ = 20 -- (the game's pickup ticks a second)
+local function idSeed(id: any): number
+	local h = 5381
+	local str = tostring(id)
+	for i = 1, #str do
+		h = (h * 33 + string.byte(str, i)) % 2147483647
+	end
+	return h
+end
 local function smooth(a: number, b: number, x: number): number
 	local t = math.clamp((x - a) / (b - a), 0, 1)
 	return t * t * (3 - 2 * t)
@@ -243,7 +263,9 @@ function TornadoDust.new(ctx: any): any
 		-- 128, 112, 92 read as a pale tan disc)
 		local soil = Color3.fromRGB(104, 94, 80)
 		if t and (t.debrisLoft or 0) > 0.3 then
-			soil = soil:Lerp(Color3.fromRGB(70, 70, 70), math.clamp((t.debrisLoft - 0.3) * 1.2, 0, 0.7))
+			-- (lofted debris greys it, but no darker than a mid grey-brown: toward 70 grey at up to 0.7
+			-- it drew charcoal plumes like fire smoke, regrade 2026-11-07)
+			soil = soil:Lerp(Color3.fromRGB(88, 84, 78), math.clamp((t.debrisLoft - 0.3) * 1.2, 0, 0.5))
 		end
 		return soil
 	end
@@ -286,195 +308,213 @@ function TornadoDust.new(ctx: any): any
 		local simDt = ctx:visualDt(dt) -- (dust is local motion: real speed in the game)
 		local camX, camY, camZ = ctx:simCamera()
 		if show and simDt > 0 then
-			-- pickup around each tornado (more tries where the wind is strongest)
-			for _, t in cw.tornadoes do
-				if not t.ended then
-					local d = sqrt((t.x - camX) ^ 2 + (t.y - camY) ^ 2)
-					if d < 9000 then
-						local col = dustColour(t)
-						local tries = math.clamp(math.floor(6 + t.vc / 6), 4, 16)
-						-- (the drawn funnel's foot: a rope's foot swings about its contact
-						-- (Vortex.axisAt's waves) and the funnel is drawn about the smoothed position.
-						-- Dust is lifted where the vortex's wind is, then placed about the foot as
-						-- drawn - at the bare contact it sat off to one side of the rope's tip, 2026-10-31)
-						local e0 = ctx.tornadoAdapter and ctx.tornadoAdapter.entries[t.id]
-						local fox, foy = 0, 0
-						if e0 and e0.params then
-							local fx0, fy0 = Vortex.axisAt(e0, 0)
-							fox, foy = (e0.x or t.x) + fx0 - t.x, (e0.y or t.y) + fy0 - t.y
-						end
-						-- The debris cloud's shape (2026-10-31, from radar and photo studies - Wakimoto et al.
-						-- 2022, Dowell et al. 2005, NWS spotter guides): a ring, not a disc - the spin flings
-						-- debris out of the core, so it is hollow with a dense rim - 2-6 funnel widths
-						-- across, densest at the ground, and a bell: a wide low skirt pinching into a collar
-						-- that hugs the lower funnel. Skirt puffs: big (0.8-1.4 core radii), low, over
-						-- 1-2.5 rc; collar puffs: smaller, on the rim (0.9-1.3 rc), lifted up to ~1/4 of the
-						-- cloud base by the rim's updraft. (It was a flat, pale scatter of small puffs out
-						-- to 3.5 rc: speckle with no shape)
-						local Hb = if e0 then math.max(100, e0.cloudBase or 1000) else 1000
-						-- the collar hugs the funnel as drawn: its condensed radius low down, not the
-						-- core's (2026-10-31: on a rope-out the core is far wider than the thin funnel, and
-						-- the collar's few puffs floated round it as scattered specks)
-						local rv = t.rc
-						-- Not condensed near the ground (a high base, a weak or broad vortex): the
-						-- debris annulus round the core (radar: debris just outside the visible funnel,
-						-- at about the core radius - LaGrange 2009, Wakimoto et al. 2011) is lifted by
-						-- the core's updraft into a see-through dust tube toward the funnel aloft, as
-						-- high as the updraft carries it (the puffs ride Vortex.sample's wind). Without
-						-- it the collar fell back to 0.15 rc and a dust skirt sat under empty air
-						-- (lifecycle scene L3, 2026-10-31).
-						-- (the tube's share of the puffs, 2026-11-03: by how far the funnel is from
-						-- condensing at the ground, 1 uncondensed .. 0 condensed 3 m wide. A yes/no on
-						-- "condensed at all" switched the spawn radius, collar share and rate at once, and
-						-- a cone pulsing about that point flipped its dust between tube and skirt)
-						local kT, tipZ, rvN = 0, Hb, rv
-						local rgFoot = 0 -- (the condensed funnel's radius near the ground)
-						if e0 and e0.params then
-							local rg = Vortex.condensationRadius(e0, 0.05 * Hb)
-							rgFoot = rg
-							-- (a multi-vortex's too: the parent's debris annulus rises round its broad core
-							-- as well as the sub-vortices' own columns - without it a mature tornado under a
-							-- high base was a funnel aloft over clear air, SC check 2026-11-01)
-							kT = 1 - smooth(0.5, 3, rg)
-							if kT > 0 then
-								-- (in 40 steps: in 10, ~200 m under a 2 km base, the column stopped short of the tip)
-								for kz = 1, 40 do
-									if Vortex.condensationRadius(e0, Hb * kz / 40) > 1 then
-										tipZ = Hb * kz / 40
-										break
-									end
-								end
+			-- pickup around each tornado (more tries where the wind is strongest). In the game on
+			-- PICKUP_HZ ticks of the shared clock, its dice seeded per tornado and tick; in the lab
+			-- once a frame
+			local function tornadoPickup(simDt: number, tick: number?)
+				for _, t in cw.tornadoes do
+					if tick then
+						rng = Random.new((idSeed(t.id) * 7919 + tick * 104729) % 2147483647)
+					end
+					if not t.ended then
+						local d = sqrt((t.x - camX) ^ 2 + (t.y - camY) ^ 2)
+						if d < 9000 then
+							local col = dustColour(t)
+							local tries = math.clamp(math.floor(6 + t.vc / 6), 4, 16)
+							-- (the drawn funnel's foot: a rope's foot swings about its contact
+							-- (Vortex.axisAt's waves) and the funnel is drawn about the smoothed position.
+							-- Dust is lifted where the vortex's wind is, then placed about the foot as
+							-- drawn - at the bare contact it sat off to one side of the rope's tip, 2026-10-31)
+							local e0 = ctx.tornadoAdapter and ctx.tornadoAdapter.entries[t.id]
+							local fox, foy = 0, 0
+							if e0 and e0.params then
+								local fx0, fy0 = Vortex.axisAt(e0, 0)
+								fox, foy = (e0.x or t.x) + fx0 - t.x, (e0.y or t.y) + fy0 - t.y
 							end
-							rvN = math.clamp(rg, 0.15 * t.rc, t.rc)
-						end
-						for _ = 1, tries do
-							local tube = kT > 0 and random() < kT
-							local rv = if tube then 0.95 * t.rc else rvN
-							-- the skirt's scale: halfway between the funnel's foot and the core. (2026-11-02:
-							-- from the core alone a cone 46 m wide at the ground - core 120 m - stood in ~400 m
-							-- of dust, huge from the scene cameras, user. Not condensed at the ground the dust
-							-- is all there is to see of the vortex: the core's then)
-							local rk = if tube then t.rc else 0.5 * (rv + t.rc)
-							local a = random() * 2 * math.pi
-							-- (2026-10-31, the references' debris ball: about as tall as it is wide round the
-							-- foot. Was 20% collar over a skirt to 2.5 rc - a wide low dome, and on a rope a
-							-- wide flat disc)
-							-- (more of it in the whirl round the foot where the funnel is much thinner than
-							-- the core - a rope-out's skirt alone drew a flat slab)
-							local collar = random() < (if tube then 0.6 else 0.4 + 0.4 * (1 - rv / math.max(t.rc, 1)))
-							-- (skirt within 0.7-1.3 rc: out to 1.8 rc it drew a wide dense dust field, user 2026-10-31)
-							local rr = if collar then rv * (0.9 + 0.4 * random()) else rk * (0.7 + 0.6 * random() ^ 1.5)
-							-- Round a funnel condensed to the ground (a cone or wedge whose foot is about a
-							-- core wide) that skirt lay inside or behind the funnel and nothing showed
-							-- (2026-11-07, engine-fed game tornado: a 185 mph wedge with no debris cloud).
-							-- There the skirt is tried from the funnel's foot out to 3 core radii, denser
-							-- near the foot; the pickup below keeps only where the ground wind lifts dust,
-							-- so how far it reaches is the vortex's wind (Rankine, ~1/r outside the core)
-							-- and the background wind it drifts in, not a set width.
-							if not collar and not tube and rgFoot > 0.5 * t.rc then
-								local r0 = 0.9 * rgFoot
-								local r1 = math.max(r0 + 20, 3 * t.rc)
-								rr = r0 + (r1 - r0) * random() ^ 1.6
-								rk = math.max(rk, 0.5 * rr)
-							end
-							local x, y = t.x + rr * math.cos(a), t.y + rr * math.sin(a)
-							local s, u, v, w = pickup(x, y)
-							if self.dbgOn then -- (debug, EngineStormsDebugCam: what the pickups find)
-								local st = self.dbgStats or { n = 0, hit = 0, U = 0, wet = 0, rr = 0, at = os.clock() }
-								self.dbgStats = st
-								st.n += 1
-								if s > 0 then st.hit += 1 end
-								st.U += sqrt(u * u + v * v)
-								st.wet += wetness(x, y)
-								st.rr += rr / math.max(t.rc, 1)
-							end
-							if s > 0 and random() < math.min(1, s * 0.3 * simDt * 6 * (if collar and tube then 2 else 1)) then -- (0.4: too dense, user 2026-10-31)
-								local size, z0, w0
-								-- Every puff starts at the ground and is carried up by the vortex's own
-								-- updraft (ClientWorld windAt includes Vortex.sample): the tube and collar
-								-- were placed up to 0.55 of the tube / 0.12 of the base above the ground
-								-- at birth - dust appearing in midair, guessed (user 2026-11-02).
-								local life = nil
-								if collar and tube then
-									-- (puffs about a core wide spread up the tube, toward the funnel's tip. At
-									-- 0.35 rc, with frayed wisps, it drew a scatter of specks, 2026-10-31)
-									-- (2 cores wide: at 0.9 the column drew as a trail of dark dots under a high
-									-- funnel from a few km, SC check 2026-11-01)
-									size = math.clamp(2.8 * t.rc, 30, 420) * (0.7 + 0.6 * random()) -- (2 rc: too few overlapped, 2026-11-02)
-									z0 = 1 + 3 * random()
-									w0 = w + 3 + 3 * random()
-									-- (long enough to ride the updraft up the tube: its climb time at the
-									-- updraft half way up, so the column fills from the ground up)
-									local _, _, wm = ctx.cw:windAt(x, y, 0.5 * tipZ)
-									life = math.clamp(0.8 * tipZ / math.max(wm, 3), 8, 45) * (0.7 + 0.6 * random())
-								elseif collar then
-									size = math.clamp(0.6 * rv, 4, 160) * (0.7 + 0.6 * random())
-									z0 = 1 + 3 * random()
-									w0 = w + 4 + 4 * random()
-								else
-									size = math.clamp(0.8 * rk, 6, 200) * (0.7 + 0.6 * random()) -- (1.1 rc: too widespread, user 2026-10-31) -- (floor 20 m: a rope's dust a wide disc)
-									z0 = 1 + 3 * random()
-									w0 = w + 2
-								end
-								local pp = spawn(x + fox, y + foy, z0, u * 0.5, v * 0.5, w0, s * (0.4 + 0.6 * (t.debrisLoft or 0.3) + 0.3), col, size, t.x, t.y, t.id)
-								if pp then
-									pp.zH = Hb
-									if life then
-										pp.life = life
-									end
-									pp.capK = 0.15 + 0.25 * random() -- (its own height cap: one shared cap drew a flat top)
-									-- (spreads with its tornado's size: a thin one's whirl stays narrow)
-									pp.grow *= 0.6 * math.clamp(rk / 60, 0.2, 1) -- (x0.6, 2026-10-31: spread too wide)
-									if collar then
-										-- (2026-10-31: the streaky wisp sheet lifted beside the funnel drew flat
-										-- slabs across its lower part; now the fibrous puff, as the skirt)
-										pp.collar = true
-										pp.tube = tube or nil
-										pp.tipZ = tipZ
-										if tube then
-											-- (the plain soft puff: the smooth lumpy one drew a stack of
-											-- round bubbles with visible rims up the tube, 2026-10-31)
-											pp.smooth = true
-											pp.img.Image = C.TEXTURES.softFlat
-											pp.img.ImageRectSize = Vector2.zero
-											pp.img.ImageRectOffset = Vector2.zero
+							-- The debris cloud's shape (2026-10-31, from radar and photo studies - Wakimoto et al.
+							-- 2022, Dowell et al. 2005, NWS spotter guides): a ring, not a disc - the spin flings
+							-- debris out of the core, so it is hollow with a dense rim - 2-6 funnel widths
+							-- across, densest at the ground, and a bell: a wide low skirt pinching into a collar
+							-- that hugs the lower funnel. Skirt puffs: big (0.8-1.4 core radii), low, over
+							-- 1-2.5 rc; collar puffs: smaller, on the rim (0.9-1.3 rc), lifted up to ~1/4 of the
+							-- cloud base by the rim's updraft. (It was a flat, pale scatter of small puffs out
+							-- to 3.5 rc: speckle with no shape)
+							local Hb = if e0 then math.max(100, e0.cloudBase or 1000) else 1000
+							-- the collar hugs the funnel as drawn: its condensed radius low down, not the
+							-- core's (2026-10-31: on a rope-out the core is far wider than the thin funnel, and
+							-- the collar's few puffs floated round it as scattered specks)
+							local rv = t.rc
+							-- Not condensed near the ground (a high base, a weak or broad vortex): the
+							-- debris annulus round the core (radar: debris just outside the visible funnel,
+							-- at about the core radius - LaGrange 2009, Wakimoto et al. 2011) is lifted by
+							-- the core's updraft into a see-through dust tube toward the funnel aloft, as
+							-- high as the updraft carries it (the puffs ride Vortex.sample's wind). Without
+							-- it the collar fell back to 0.15 rc and a dust skirt sat under empty air
+							-- (lifecycle scene L3, 2026-10-31).
+							-- (the tube's share of the puffs, 2026-11-03: by how far the funnel is from
+							-- condensing at the ground, 1 uncondensed .. 0 condensed 3 m wide. A yes/no on
+							-- "condensed at all" switched the spawn radius, collar share and rate at once, and
+							-- a cone pulsing about that point flipped its dust between tube and skirt)
+							local kT, tipZ, rvN = 0, Hb, rv
+							local rgFoot = 0 -- (the condensed funnel's radius near the ground)
+							if e0 and e0.params then
+								local rg = Vortex.condensationRadius(e0, 0.05 * Hb)
+								rgFoot = rg
+								-- (a multi-vortex's too: the parent's debris annulus rises round its broad core
+								-- as well as the sub-vortices' own columns - without it a mature tornado under a
+								-- high base was a funnel aloft over clear air, SC check 2026-11-01)
+								kT = 1 - smooth(0.5, 3, rg)
+								if kT > 0 then
+									-- (in 40 steps: in 10, ~200 m under a 2 km base, the column stopped short of the tip)
+									for kz = 1, 40 do
+										if Vortex.condensationRadius(e0, Hb * kz / 40) > 1 then
+											tipZ = Hb * kz / 40
+											break
 										end
+									end
+								end
+								rvN = math.clamp(rg, 0.15 * t.rc, t.rc)
+							end
+							for _ = 1, tries do
+								local tube = kT > 0 and random() < kT
+								local rv = if tube then 0.95 * t.rc else rvN
+								-- the skirt's scale: halfway between the funnel's foot and the core. (2026-11-02:
+								-- from the core alone a cone 46 m wide at the ground - core 120 m - stood in ~400 m
+								-- of dust, huge from the scene cameras, user. Not condensed at the ground the dust
+								-- is all there is to see of the vortex: the core's then)
+								local rk = if tube then t.rc else 0.5 * (rv + t.rc)
+								local a = random() * 2 * math.pi
+								-- (2026-10-31, the references' debris ball: about as tall as it is wide round the
+								-- foot. Was 20% collar over a skirt to 2.5 rc - a wide low dome, and on a rope a
+								-- wide flat disc)
+								-- (more of it in the whirl round the foot where the funnel is much thinner than
+								-- the core - a rope-out's skirt alone drew a flat slab)
+								local collar = random() < (if tube then 0.6 else 0.4 + 0.4 * (1 - rv / math.max(t.rc, 1)))
+								-- (skirt within 0.7-1.3 rc: out to 1.8 rc it drew a wide dense dust field, user 2026-10-31)
+								local rr = if collar then rv * (0.9 + 0.4 * random()) else rk * (0.7 + 0.6 * random() ^ 1.5)
+								-- Round a funnel condensed to the ground (a cone or wedge whose foot is about a
+								-- core wide) that skirt lay inside or behind the funnel and nothing showed
+								-- (2026-11-07, engine-fed game tornado: a 185 mph wedge with no debris cloud).
+								-- There the skirt is tried from the funnel's foot out to 3 core radii, denser
+								-- near the foot; the pickup below keeps only where the ground wind lifts dust,
+								-- so how far it reaches is the vortex's wind (Rankine, ~1/r outside the core)
+								-- and the background wind it drifts in, not a set width.
+								if not collar and not tube and rgFoot > 0.5 * t.rc then
+									local r0 = 0.9 * rgFoot
+									local r1 = math.max(r0 + 20, 3 * t.rc)
+									rr = r0 + (r1 - r0) * random() ^ 1.6
+									rk = math.max(rk, 0.5 * rr)
+								end
+								local x, y = t.x + rr * math.cos(a), t.y + rr * math.sin(a)
+								local s, u, v, w = pickup(x, y)
+								if self.dbgOn then -- (debug, EngineStormsDebugCam: what the pickups find)
+									local st = self.dbgStats or { n = 0, hit = 0, U = 0, wet = 0, rr = 0, at = os.clock() }
+									self.dbgStats = st
+									st.n += 1
+									if s > 0 then st.hit += 1 end
+									st.U += sqrt(u * u + v * v)
+									st.wet += wetness(x, y)
+									st.rr += rr / math.max(t.rc, 1)
+								end
+								if s > 0 and random() < math.min(1, s * 0.3 * simDt * 6 * (if collar and tube then 2 else 1)) then -- (0.4: too dense, user 2026-10-31)
+									local size, z0, w0
+									-- Every puff starts at the ground and is carried up by the vortex's own
+									-- updraft (ClientWorld windAt includes Vortex.sample): the tube and collar
+									-- were placed up to 0.55 of the tube / 0.12 of the base above the ground
+									-- at birth - dust appearing in midair, guessed (user 2026-11-02).
+									local life = nil
+									if collar and tube then
+										-- (puffs about a core wide spread up the tube, toward the funnel's tip. At
+										-- 0.35 rc, with frayed wisps, it drew a scatter of specks, 2026-10-31)
+										-- (2 cores wide: at 0.9 the column drew as a trail of dark dots under a high
+										-- funnel from a few km, SC check 2026-11-01)
+										size = math.clamp(2.8 * t.rc, 30, 420) * (0.7 + 0.6 * random()) -- (2 rc: too few overlapped, 2026-11-02)
+										z0 = 1 + 3 * random()
+										w0 = w + 3 + 3 * random()
+										-- (long enough to ride the updraft up the tube: its climb time at the
+										-- updraft half way up, so the column fills from the ground up)
+										local _, _, wm = ctx.cw:windAt(x, y, 0.5 * tipZ)
+										life = math.clamp(0.8 * tipZ / math.max(wm, 3), 8, 45) * (0.7 + 0.6 * random())
+									elseif collar then
+										size = math.clamp(0.6 * rv, 4, 160) * (0.7 + 0.6 * random())
+										z0 = 1 + 3 * random()
+										w0 = w + 4 + 4 * random()
 									else
-										-- (skirt puffs exactly level: a tilted card's corner dips below the
-										-- ground, and the fade allowed for it by lifting the whole card's foot)
-										local r0 = if pp.img.Rotation > 90 then 180 else 0
-										pp.img.Rotation = r0
-										pp.grad.Rotation = 90 - r0
-										pp.gRot = nil
+										size = math.clamp(0.8 * rk, 6, 200) * (0.7 + 0.6 * random()) -- (1.1 rc: too widespread, user 2026-10-31) -- (floor 20 m: a rope's dust a wide disc)
+										z0 = 1 + 3 * random()
+										w0 = w + 2
+									end
+									local pp = spawn(x + fox, y + foy, z0, u * 0.5, v * 0.5, w0, s * (0.4 + 0.6 * (t.debrisLoft or 0.3) + 0.3), col, size, t.x, t.y, t.id)
+									if pp then
+										pp.zH = Hb
+										if life then
+											pp.life = life
+										end
+										pp.capK = 0.15 + 0.25 * random() -- (its own height cap: one shared cap drew a flat top)
+										-- (spreads with its tornado's size: a thin one's whirl stays narrow)
+										pp.grow *= 0.6 * math.clamp(rk / 60, 0.2, 1) -- (x0.6, 2026-10-31: spread too wide)
+										if collar then
+											-- (2026-10-31: the streaky wisp sheet lifted beside the funnel drew flat
+											-- slabs across its lower part; now the fibrous puff, as the skirt)
+											pp.collar = true
+											pp.tube = tube or nil
+											pp.tipZ = tipZ
+											if tube then
+												-- (the plain soft puff: the smooth lumpy one drew a stack of
+												-- round bubbles with visible rims up the tube, 2026-10-31)
+												pp.smooth = true
+												pp.img.Image = C.TEXTURES.softFlat
+												pp.img.ImageRectSize = Vector2.zero
+												pp.img.ImageRectOffset = Vector2.zero
+											end
+										else
+											-- (skirt puffs exactly level: a tilted card's corner dips below the
+											-- ground, and the fade allowed for it by lifting the whole card's foot)
+											local r0 = if pp.img.Rotation > 90 then 180 else 0
+											pp.img.Rotation = r0
+											pp.grad.Rotation = 90 - r0
+											pp.gRot = nil
+										end
 									end
 								end
 							end
-						end
-						-- multi-vortex: each sub-vortex is a whirl of its own, a few tens of metres
-						-- across, its wind well above the parent's (Vortex.subvortices), so it lifts its
-						-- own narrow column. Picked up only over the parent's whole area, with puffs
-						-- sized to the parent (up to 160 m), they merged into one broad cloud and a
-						-- multi-vortex start showed no separate vortices (2026-10-29)
-						local e = ctx.tornadoAdapter and ctx.tornadoAdapter.entries[t.id]
-						local prm = e and e.params
-						if prm and (prm.subCount or 0) > 0.3 then
-							local ex, ey = e.x or t.x, e.y or t.y
-							local rs = Vortex.SUB_R * t.rc
-							for _, sv in Vortex.subvortices(prm, 3) do
-								local x = ex + sv[1] + rs * (random() - 0.5)
-								local y = ey + sv[2] + rs * (random() - 0.5)
-								local s, u, v, w = pickup(x, y)
-								if s > 0 and random() < math.min(1, s * sv[3] * simDt * 3) then
-									local size = math.clamp(2 * rs, 8, 50) * (0.7 + 0.6 * random())
-									-- (risen fast in the whirl's own updraft: a column, not a skirt)
-									spawn(x, y, 1 + 3 * random(), u * 0.5, v * 0.5, w + 6 + 4 * random(), s * 0.6 * sv[3] + 0.2, col, size, t.x, t.y, t.id)
+							-- multi-vortex: each sub-vortex is a whirl of its own, a few tens of metres
+							-- across, its wind well above the parent's (Vortex.subvortices), so it lifts its
+							-- own narrow column. Picked up only over the parent's whole area, with puffs
+							-- sized to the parent (up to 160 m), they merged into one broad cloud and a
+							-- multi-vortex start showed no separate vortices (2026-10-29)
+							local e = ctx.tornadoAdapter and ctx.tornadoAdapter.entries[t.id]
+							local prm = e and e.params
+							if prm and (prm.subCount or 0) > 0.3 then
+								local ex, ey = e.x or t.x, e.y or t.y
+								local rs = Vortex.SUB_R * t.rc
+								for _, sv in Vortex.subvortices(prm, 3) do
+									local x = ex + sv[1] + rs * (random() - 0.5)
+									local y = ey + sv[2] + rs * (random() - 0.5)
+									local s, u, v, w = pickup(x, y)
+									if s > 0 and random() < math.min(1, s * sv[3] * simDt * 3) then
+										local size = math.clamp(2 * rs, 8, 50) * (0.7 + 0.6 * random())
+										-- (risen fast in the whirl's own updraft: a column, not a skirt)
+										spawn(x, y, 1 + 3 * random(), u * 0.5, v * 0.5, w + 6 + 4 * random(), s * 0.6 * sv[3] + 0.2, col, size, t.x, t.y, t.id)
+									end
 								end
 							end
 						end
 					end
 				end
+				-- outflow surges, ground circulations, dust fronts: near the camera and the focus
+				rng = nil
 			end
-			-- outflow surges, ground circulations, dust fronts: near the camera and the focus
+			if ctx.frameFed then
+				local n = math.floor(Workspace:GetServerTimeNow() * PICKUP_HZ)
+				local n0 = self.pickupTick or (n - 1)
+				for k = math.max(n0 + 1, n - 5), n do
+					tornadoPickup(1 / PICKUP_HZ, k)
+				end
+				self.pickupTick = n
+			else
+				tornadoPickup(simDt, nil)
+			end
 			local fx, fy = ctx:focus()
 			for ci = 1, 2 do
 				local ccx, ccy, cr = camX, camY, 1500
@@ -617,7 +657,8 @@ function TornadoDust.new(ctx: any): any
 						p.u += (u - p.u) * k
 						p.v += (v - p.v) * k
 						-- turbulent lift keeps raising dust near the ground; settling slowly
-						local lift = 0.25 * U * (random() - 0.35) * exp(-p.z / 250)
+						-- (smooth noise along its path, not a fresh die each frame: the same on every client)
+						local lift = 0.25 * U * (0.5 + 0.5 * math.noise(p.x * 0.02, p.y * 0.02, p.age * 0.7) - 0.35) * exp(-p.z / 250)
 						p.w += (w + lift - 0.3 - p.w) * k
 					end
 					p.x += p.u * simDt
@@ -781,7 +822,10 @@ function TornadoDust.new(ctx: any): any
 							if p.zH or p.drift then
 								local toCam = camS - (p.wp or camS)
 								local front = if toCam.Magnitude > 1 then 0.5 * (1 + toCam.Unit:Dot(sunDir)) else 0.5
-								gain = 0.85 + 0.95 * front -- (darker, 2026-10-31: the references' debris ball is a dark mass)
+								-- (darker, 2026-10-31: the references' debris ball is a dark mass; but from 0.85 it
+								-- went black under the storm and read as fire smoke, regrade 2026-11-07: dust is
+								-- lit by the sky it scatters, a grey-tan even backlit)
+								gain = 1.25 + 0.75 * front
 							end
 							local cr, cg, cb = math.min(1, b.R * lf.R * gain), math.min(1, b.G * lf.G * gain), math.min(1, b.B * lf.B * gain)
 							local pc = p.col

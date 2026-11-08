@@ -195,7 +195,8 @@ function Ground.new(ctx: any): any
 		local cf = cam.CFrame
 		local camP = cf.Position
 		local hc = math.max(2, cz - C.groundAt(cx, cy)) -- (m above the ground)
-		local hcS = math.max(5, camP.Y - C.toWorld(cx, cy, C.groundAt(cx, cy)).Y) -- (studs: the game's card heights)
+		local gStuds = C.toWorld(cx, cy, C.groundAt(cx, cy)).Y -- (the ground under the camera, studs)
+		local hcS = math.max(5, camP.Y - gStuds) -- (studs: the game's card heights)
 		local recolour = os.clock() - colAt > 0.25
 		if recolour then
 			colAt = os.clock()
@@ -218,6 +219,16 @@ function Ground.new(ctx: any): any
 				-- sky light of sample() is the camera's everywhere, so from under a base the sunny
 				-- land past its edge came out as dark as the ground underfoot)
 				local fr0, fg0, fb0 = litGround()
+				-- the haze Roblox puts on the land in front of the ring (Atmosphere: extinction
+				-- 0.188 x Density^4.15 a stud, roblox-render-limits), which billboards don't get -
+				-- unhazed, the rings stood as a dark wall over the fading terrain at the horizon,
+				-- "the horizon is too high", user 2026-11-08
+				local atmo = Lighting:FindFirstChildOfClass("Atmosphere")
+				local tr, hz = 1, nil
+				if atmo then
+					tr = math.exp(-0.188 * atmo.Density ^ 4.15 * across(dR))
+					hz = atmo.Color
+				end
 				local refG = if SceneLight and SceneLight.groundLight then math.max(1e-3, SceneLight.groundLight(ctx, cx, cy, C.groundAt(cx, cy) + 2)) else nil
 				for k = 1, FAR.sectors do
 					local a = (k - 0.5) / FAR.sectors * 2 * math.pi
@@ -226,7 +237,8 @@ function Ground.new(ctx: any): any
 					if refG then
 						r = math.min(2, (SceneLight.groundLight(ctx, sx, sy, C.groundAt(sx, sy) + 2) / refG) ^ (1 / 2.2))
 					end
-					ring.sec[k] = Color3.new(math.clamp(fr0 * r, 0, 1), math.clamp(fg0 * r, 0, 1), math.clamp(fb0 * r, 0, 1))
+					local col = Color3.new(math.clamp(fr0 * r, 0, 1), math.clamp(fg0 * r, 0, 1), math.clamp(fb0 * r, 0, 1))
+					ring.sec[k] = if hz then hz:Lerp(col, tr) else col
 				end
 			end
 			-- (down from the ground line to below the tiles' edge seen from this height: ~1.5 km)
@@ -256,6 +268,22 @@ function Ground.new(ctx: any): any
 				end
 				local gx, gy = cx + math.cos(c.a) * dR, cy + math.sin(c.a) * dR
 				local top = C.toWorld(gx, gy, C.groundAt(gx, gy))
+				local drop = 0
+				if inGame then
+					-- (in the game the land's heights are at the near vertical scale over the map's
+					-- squeezed distances, ~10x the true slope: a rise of 30 m 4 km off stood 3.4 deg over
+					-- the eye, truly 0.4 - "the horizon is too high", user 2026-11-08; easing to the
+					-- storms' far scale past 3000 studs left the near rings as high, user. Past the
+					-- streamed terrain the land is seen at its true angle from the eye: its height over
+					-- the eye (m) at the map's scale across, less the earth's curve (4/3 radius for
+					-- refraction). Where the near terrain's own edge stands higher, it covers the ring)
+					local rel = (top.Y - gStuds) / F.kv - dR * dR / (2 * 8.5e6) - hcS / F.kv
+					local y = camP.Y + rel * F.kh
+					-- (where the land falls away the card reaches down past the terrain's own,
+					-- steeper edge: no sky between)
+					drop = math.max(0, y - top.Y)
+					top = Vector3.new(top.X, y, top.Z)
+				end
 				-- (only the half of the ring in front: cards behind the camera are skipped)
 				local ray = top - camP
 				local vis = on and ray:Dot(cf.LookVector) > -0.2 * ray.Magnitude
@@ -270,7 +298,7 @@ function Ground.new(ctx: any): any
 					-- off-centre while the spacing of the cards' centres grows as 1/cos², so past ~30° the
 					-- cards parted and the farther, paler ring showed through in seams)
 					local cosA = math.max(0.35, ray:Dot(cf.LookVector) / ray.Magnitude)
-					c.bb.Size = UDim2.fromScale(wS / (cosA * cosA), hS)
+					c.bb.Size = UDim2.fromScale(wS / (cosA * cosA), hS + drop)
 					-- (blended between the two nearest sectors: snapped, the cards showed as blocks)
 					local fs = ((c.a % (2 * math.pi)) / (2 * math.pi)) * FAR.sectors - 0.5
 					local k0 = math.floor(fs)

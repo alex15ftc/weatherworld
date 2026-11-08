@@ -88,29 +88,6 @@ function StormCards.new(ctx: any): any
 	local MIRROR = C.LOBE_MIRROR ~= false
 	local Storm = ctx.Sim.Storm
 	local self = {}
-	-- Period (debug, in the game - ctx.frameFed; the lab's Render/StormVolume owns the key there):
-	-- leave out one part of the card plan at a time, to find which part draws an artefact
-	do
-		local order = { "tower", "anvil", "forwardFlank", "base", "inflowBand", "striations", "wallScud" }
-		local conn = game:GetService("UserInputService").InputBegan:Connect(function(input: InputObject)
-			if input.KeyCode ~= Enum.KeyCode.Period then return end
-			if not ctx.frameFed then
-				print("[cards] Period: not frame-fed, the lab's key handles it")
-				return
-			end
-			local cur, nxt = ctx.state.hideSection, nil
-			if cur == nil then
-				nxt = order[1]
-			else
-				for k, n in order do
-					if n == cur then nxt = order[k + 1] end
-				end
-			end
-			ctx.state.hideSection = nxt
-			print("[cards] hiding section:", nxt or "none")
-		end)
-		self.periodConn = conn
-	end
 	local folder = Instance.new("Folder")
 	folder.Name = "StormCards"
 	folder.Parent = ctx.root

@@ -112,6 +112,18 @@ export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.2],[2.7,3],[
 // Day 3 right 48 -> 52%, too high 10%. Day 2 kept: the fitted hail 0.375 / tornado CIG2 0.375 lowered Day 2 to 51%.)
 export const CIG_SHARE = Object.freeze({"day1":{"wind":[1.01,1.01,1.01],"hail":[0.5,0.875],"tornado":[0.25,0.25,0.25]},"day2":{"wind":[0.625,0.75,0.875],"hail":[1.01,1.01],"tornado":[0.25,0.25,0.75]},"day3":{"severe":[1.0]}});
 
+// The intensity groups of hail and wind weighed with the environment (2026-11-08; DayOneOutlook.js significantHailParameter and
+// derechoCompositeParameter): for each day, hazard and group, [a, b, c, field] of a logistic fit of whether the group verified
+// in a contour area on the share of the runs reaching it there and ln(1 + the area's composite) (scripts/fit-cig-environment.mjs
+// from outlook-verify --cig-rows). A group with an entry is drawn where the fit gives one half or more and a run reaches it;
+// without one, CIG_SHARE as before. Tornado groups never take one.
+// Fitted 2026-11-08 on tmp/d23/fit-sig (seeds 1-20 x 5) and not installed: the environment lowered the deviance only a little
+// (Day 1 hail CIG1 176.7 -> 172.7, wind CIG1 45.6 -> 42.8, Day 2 hail 148.7 -> 146.0; hail CIG2 and wind CIG2-3 too rare to fit).
+// With it, Day 1 right 70 -> 69% (seeds 1-20) and 57 -> 57% (41-50), but Moderate went the wrong way on 41-50 (33 -> 37%, 20%
+// verified) and hail CIG1 was drawn on 33% of them against 17% verified. The fit was
+// {"day1":{"hail":[[-6.341,6.012,2.256,"envMax"]],"wind":[[-9.938,7.222,1.826,"envMax"]]},"day2":{"hail":[[-6.011,4.402,2.395,"envMax"]]}}.
+export const CIG_ENVIRONMENT = Object.freeze({});
+
 import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 
 // The calibrated chance (percent) for a raw one. It may lower a chance as far as the record says,

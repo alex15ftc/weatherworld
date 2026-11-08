@@ -889,7 +889,14 @@ function WallStream.new(ctx: any): any
 						if c.img.Image ~= TEX then
 							c.img.Image = TEX
 						end
-						flowCard(c, cx + ox, cy + oy, z, w, 0.6 * span + 0.15 * w, th, r, om, rise, if TIER ~= "" then 1.7 else 1.3)
+						-- (no lower than the floor: the floor is where the air condenses, so no cloud hangs
+						-- under it. The soft puff fills ~3/4 of its frame, so its visible foot is 0.375 of
+						-- the card under its centre; the lowest tier's centre is a quarter of the depth up
+						-- and its 0.6-deep puffs hung round bottoms under the flat floor - the scalloped,
+						-- bubbly rim, lifecycle review 2026-11-08. Clipped, they are wider than tall and
+						-- overlap into one flat-bottomed band)
+						local thick = min(0.6 * span + 0.15 * w, max(2.6 * (z - zl), 0.1 * span))
+						flowCard(c, cx + ox, cy + oy, z, w, thick, th, r, om, rise, if TIER ~= "" then 1.7 else 2.4)
 					end
 				else
 					-- (short and plump: 0.4 thick, the fringe drew as a sawtooth of dark teeth round the

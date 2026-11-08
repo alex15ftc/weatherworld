@@ -699,3 +699,17 @@ Packs: data/day-reviews/review-2026-11-07 (seeds 2112 and 41, 3 days each). Scor
   - **Day 3:** right 50% (50), within one 70% (80).
   - Probability skill unchanged.
   - Mixed, inside the refit rule (more than 15 points right or 10 within one). Kept, with a refit to batch with the next engine change.
+- **Refit check after the mean wind** (fit set tmp/fc/fit-meanwind, seeds 1-20 × 5):
+  - **Current tables, 100 Day 1 outlooks:** right 70%, within one 97%; HIGH forecast 7% against 4% verified, MDT 12% against 23%. So HIGH is not gone: the unseen set's 0% was 2 of 30 days.
+  - **Chances-only refit,** scored on the unseen set: right 53% (57), within one 100% (97), MDT 37% against 20% verified, HIGH still 0%. Not kept; restored. The tried table is tmp/fc/outlookCalibration.refit3-tried.js.
+- **Day 1 guard test** (tmp/fc/guardtest.sh; fit set 100 outlooks / unseen 30):
+  - **Current:** right 70% / 57%; too high 12% / 13%; MDT 12% against 23% verified; HIGH 7% against 4%.
+  - **Hail and wind unguarded:** right 67% / 57%; too high 23% / 20%; MDT 14%. It mostly turned SLGT into ENH (53% against 34% verified).
+  - **All unguarded:** right 58% / 60%; HIGH 13% against 4% verified (HIGH+ FAR 0.87).
+  - **Guard kept.** The under-called MDT is limited by hatching: hail CIG2 and wind CIG are never drawn, because the runs seldom agree on significant hail or wind. It is not limited by the chances.
+- **Environment signal for Day 1-2 hail and wind hatching** (SHIP, DCP; tmp/d23/fit-sig, check-sig):
+  - Built, fitted, **off** (CIG_ENVIRONMENT = {}).
+  - It lowered the deviance only slightly (Day 1 hail CIG1 176.7 → 172.7, wind CIG1 45.6 → 42.8).
+  - On the unseen set MDT moved further from verified (33 → 37% against 20%), and hail CIG1 was over-drawn (33% against 17%).
+  - The groups MDT needs (hail CIG2, wind CIG2+) are reached in under 1% of run areas, so too rare to fit. The Moderate shortfall is in the runs' significant hail and wind, not in the forecast rules.
+  - Runs now save the composites, so a future fit is one line.

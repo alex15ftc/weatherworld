@@ -92,7 +92,11 @@ export function contourCig(hazard, chance, amount, significant, width, height, b
 // the runs whose own reports there reach group g, and is given the group the median run reaches, or
 // with cigShare (calibrated, outlookCalibration.js CIG_SHARE) the highest group whose share reaches
 // cigShare[g - 1].
-export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard], runs = null, cigShare = null) {
+// environment: a grid of the environment's own signal for the hazard's significant tier (the runs' mean significant hail or
+// derecho composite, DayOneOutlook.js); each area then records env (its mean over the area's ring) and envMax. cigModel (fitted,
+// outlookCalibration.js CIG_ENVIRONMENT): for each group [a, b, c, field], drawn where 1 / (1 + exp(-(a + b share + c ln(1 + env))))
+// reaches one half and at least one run reaches the group there (field 'env' or 'envMax'); in place of cigShare for that group.
+export function contourCigAreas(hazard, chance, amount, significant, width, height, bounds = CIG_BOUNDS[hazard], runs = null, cigShare = null, environment = null, cigModel = null) {
   const tiers = ArrayBuffer.isView(significant) ? [significant] : significant;
   const n = width * height, out = new Uint8Array(n), mark = new Int32Array(n), owner = new Int32Array(n).fill(-1), stack = [], areas = [];
   let pass = 0;
@@ -118,7 +122,8 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
       // An area is never given a lower group than the area around it: that one was judged with
       // these cells in it, and the few reports inside a small core are too few to overrule it
       // (it would leave a hole in the hatching where the chance is highest).
-      let judged = conditionalCig(total, reaching, bounds);
+      let judged = conditionalCig(total, reaching, bounds), env = null, envMax = null;
+      if (environment) { let sum = 0, count = 0, top = 0, all = 0, allCount = 0; for (const i of cells) { all += environment[i]; allCount++; if (!inRing(i)) continue; sum += environment[i]; count++; top = Math.max(top, environment[i]); } env = count ? sum / count : all / Math.max(1, allCount); envMax = count ? top : env; }
       if (runs?.length) {
         const groups = [];
         for (const run of runs) {
@@ -129,12 +134,19 @@ export function contourCigAreas(hazard, chance, amount, significant, width, heig
         }
         groups.sort((a, b) => a - b);
         var shares = bounds.map((_, g) => groups.filter(v => v >= g + 1).length / runs.length);
-        if (cigShare) { judged = 0; shares.forEach((s, g) => { if (s >= (cigShare[g] ?? Infinity) - 1e-9) judged = g + 1; }); }
+        if (cigShare || cigModel) {
+          judged = 0;
+          for (let g = 0; g < shares.length; g++) {
+            const model = cigModel?.[g], s = shares[g];
+            const drawn = model && env !== null ? s > 0 && 1 / (1 + Math.exp(-(model[0] + model[1] * s + model[2] * Math.log1p(Math.max(0, model[3] === 'envMax' ? envMax : env))))) >= 0.5 : s >= (cigShare?.[g] ?? Infinity) - 1e-9;
+            if (drawn) judged = g + 1;
+          }
+        }
         else judged = groups.length ? groups[Math.floor((groups.length - 1) / 2)] : 0;
       }
       const parent = owner[start], group = Math.max(judged, parent >= 0 ? areas[parent].group : 0);
       for (const i of cells) { out[i] = group; owner[i] = areas.length; }
-      areas.push({ level, cells: Int32Array.from(cells), group, parent, shares: runs?.length ? shares : null });
+      areas.push({ level, cells: Int32Array.from(cells), group, parent, shares: runs?.length ? shares : null, env, envMax });
       shares = undefined;
     }
   }

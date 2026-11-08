@@ -36,7 +36,8 @@ local SKIP = { WindViz = true } -- (Ground draws only its far-land rings in the 
 -- user 2026-11-07; VolumeCards with Backspace)
 SKIP.StormVolume = true
 SKIP.VolumeCards = true
-SKIP.RainShafts = true -- (no rain curtains in the game, user 2026-11-07)
+SKIP.RainShafts = true -- (no rain curtains in the game, user 2026-11-07; on again with the frame-fed cards, user 2026-11-08)
+local RAIN_FROM_FRAMES = true -- (the rain round the camera is the engine frames': ctx.precipAt, below)
 -- With workspace StormVisuals = "engine" the storms' cloud and tornadoes are drawn from the engine's
 -- frames (client/EngineStorms), so the lab sim's cloud, tornado and rain-shaft renderers are left
 -- out. The rest reads the frames: the rain round the camera (ctx.precipAt, Render/NearPrecip), the
@@ -64,7 +65,10 @@ local FRAME_CARDS = ENGINE_VISUALS and not NEAR_LAB and workspace:GetAttribute("
 if ENGINE_VISUALS then
 	local off = { "BaseDeck", "StormVolume", "VolumeCards", "RainShafts" }
 	if FRAME_CARDS then
-		off = { "NearVfx", "StormVolume", "VolumeCards", "DebrisView", "DebrisCloud", "RainShafts" }
+		-- (the curtains read the frames' rain as 1 km columns: client/FrameWorld; "a dark curtain under
+		-- the storm that hides the bright horizon", the lifecycle review 2026-11-08)
+		off = { "NearVfx", "StormVolume", "VolumeCards", "DebrisView", "DebrisCloud" }
+		SKIP.RainShafts = nil
 	elseif not NEAR_LAB then
 		off = { "BaseDeck", "NearVfx", "Scud", "StormCards", "StormVolume", "VolumeCards", "WallStream", "TornadoCards", "TornadoDust", "DebrisView", "DebrisCloud", "RainShafts" }
 	end
@@ -164,8 +168,10 @@ local function setFrame(C: any, info: any)
 	C.setFrame({
 		kh = kh, kv = kv, ks = kv, ox = ox, oz = oz,
 		-- (the engine draws the storm body at the map's scale: the lab's wall cloud and scud ease to
-		-- it away from a funnel, LabConfig.radial. Off with the lab's own body)
-		radialMap = ENGINE_VISUALS,
+		-- it away from a funnel, LabConfig.radial. Off with the lab's own body - the storm cards draw
+		-- it at the storm's one scale, and a squeezed wall cloud kept its full depth at a third of its
+		-- width: a round bulb hanging into the funnel, regrade 2026-11-07)
+		radialMap = ENGINE_VISUALS and not FRAME_CARDS and not NEAR_LAB,
 		precipVisibility = Config.PRECIP_VISIBILITY,
 		datum = datumStuds,
 		-- a storm's scale from its centre's distance (studs across) to the camera
@@ -269,7 +275,7 @@ function Weather.start()
 		end
 	end
 	-- (engine storms: the rain round the camera from their frames, Render/NearPrecip)
-	if SKIP.RainShafts then
+	if RAIN_FROM_FRAMES then
 		local EngineStorms = require(script.Parent:WaitForChild("EngineStorms")) :: any
 		ctx.precipAt = EngineStorms.precipAt
 		-- (the sky's light from the frames' cloud: Render/Sky; sim metres -> world studs)

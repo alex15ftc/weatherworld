@@ -58,7 +58,8 @@ export const STRUCTURE = Object.freeze({
   coldPoolTauS: 900,                   // how long the outflow spreads before it is the storm's
   mixOutflow: [0.3, 0.5],              // outflow share of the air rising: everywhere it lies, plus in the updraught
   levels: [0.04, 0.12, 0.25, 0.4, 0.55, 0.7, 0.85, 1], // (tornado levels, shares of the wall cloud's base, with the funnel's tip at the ground)
-  funnelCapM: 500, ef0Mph: 65
+  funnelCapM: 500, ef0Mph: 65,
+  coreAirR: 3,                         // how far out (core radii) the core draws its surface air in: the corner flow's condensed annulus (as stormlab Render/TornadoCards caps it)
 });
 
 const wetBulb = (tc, q, p) => { let tw = tc; for (let n = 0; n < 20; n++) { const qs = qsat(tw, p); tw -= (tw - tc + LV / CP * (qs - q)) / (1 + LV / CP * qs * 17.67 * 243.5 / (tw + 243.5) ** 2); } return Math.min(tc, tw); };
@@ -417,14 +418,27 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   let torBytes = null, torInfo = null;
   if (T) {
     const lm = baseUnlowered(T.x, T.y), dm = mesoDrop(T.x, T.y), Bt = Math.max(0, lm - dm / rhoG);
-    const tip = Math.max(0, Bt - T.drop / rhoG);
+    // The core's own condensation level (Bc). The updraught over the wall cloud lifts a deep layer,
+    // mostly inflow air (mixAt); the core draws in only the surface layer at its contact, which is
+    // the outflow's wherever the rain-cooled pool lies (outAt) and, as the rear-flank downdraught
+    // wraps round it, more of it (the storm's occlusion). Air cooled toward its wet bulb condenses
+    // far lower (lclMix), so the funnel reaches down to the ground in a moist hook while the wall
+    // cloud stays up. (Until 2026-11-08 the core condensed at the wall cloud's base: a 130 mph
+    // tornado under a 650 m base hung a funnel only to ~430 m - Vc^2 >= g H needs ~80 m/s there.)
+    const coreOut = 1 - (1 - outAt(T.x, T.y)) * (1 - clamp(storm.occlusion ?? 0, 0, 1));
+    const Bc = Math.min(Bt, Math.max(0, lclMix(coreOut) - dm / rhoG));
+    const tip = Math.max(0, Bc - T.drop / rhoG);
+    // (between the core's level and the wall cloud's, the core's air is past its condensation level:
+    // condensed as far out as the core draws it in, coreAirR core radii)
     const funnel = z => {
       if (T.R <= 0) return 0;
       if (z >= Bt) return S.funnelCapM;
-      const need = rhoG * (Bt - z), P = T.drop;
+      const cap = Math.min(S.funnelCapM, S.coreAirR * T.R);
+      if (z >= Bc) return cap;
+      const need = rhoG * (Bc - z), P = T.drop;
       if (need >= P) return 0;
       const r = need >= P / 2 ? T.R * Math.sqrt(2 * (1 - need / P)) : T.R * Math.sqrt(P / (2 * need));
-      return Math.min(S.funnelCapM, r);
+      return Math.min(cap, r);
     };
     // upright at the ground, curving into the mesocyclone (the storm's position) at the base
     // (half the levels below the funnel's tip, for the lean; half in the condensed funnel, for its shape)
@@ -441,9 +455,9 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     b.setFloat32(6, T.x + anchorX, true); b.setFloat32(10, T.y + anchorY, true);
     b.setUint16(14, u16(T.R), true); b.setUint16(16, u16(T.drop), true); b.setUint16(18, u16(Bt), true); b.setUint16(20, u16(tip), true);
     b.setUint8(22, u8(T.Vg)); b.setUint8(23, u8(zetaLow / 0.005)); b.setInt8(24, 0); b.setUint16(25, u16(dm), true);
-    b.setUint8(27, levels.length);
+    b.setUint8(27, levels.length); b.setUint16(28, u16(Bc), true);
     levels.forEach((l, q) => { const o = TORNADO + 8 * q; b.setUint16(o, u16(l.z), true); b.setInt16(o + 2, i16(l.dx), true); b.setInt16(o + 4, i16(l.dy), true); b.setUint16(o + 6, Math.min(32767, u16(l.funnel)) | 32768, true); });
-    torInfo = { R: Math.round(T.R), dropHpa: +(T.drop / 100).toFixed(1), wallBaseM: Math.round(Bt), tipM: Math.round(tip), mesoDropHpa: +(dm / 100).toFixed(1), at: [Math.round(T.x), Math.round(T.y)] };
+    torInfo = { R: Math.round(T.R), dropHpa: +(T.drop / 100).toFixed(1), wallBaseM: Math.round(Bt), coreBaseM: Math.round(Bc), coreOutflow: +coreOut.toFixed(2), tipM: Math.round(tip), mesoDropHpa: +(dm / 100).toFixed(1), at: [Math.round(T.x), Math.round(T.y)] };
   }
 
   // The updraught block (FrameCodec UPDRAUGHT, flags bit 4): what the views need of the rising air to

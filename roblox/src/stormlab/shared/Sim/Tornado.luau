@@ -142,7 +142,7 @@ function Tornado.setEngine(t: Tornado, et: any?, x: number, y: number, u: number
 	t.eng = { on = true, mph = et.mph or 0, yards = et.yards or 100, x = x, y = y, u = u, v = v, at = at, ox = ox, oy = oy,
 		omega = if cx then et.orbit or 0 else 0, cx = cx, cy = cy,
 		-- (optional, client/FrameWorld: the engine's core radius, swirl and cloud base, m and m/s)
-		R = et.R, swirl = et.swirl, base = et.base, leanX = et.leanX, leanY = et.leanY }
+		R = et.R, swirl = et.swirl, base = et.base, coreZb = et.coreZb, leanX = et.leanX, leanY = et.leanY }
 end
 
 function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
@@ -216,6 +216,10 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- (the engine's cloud base over its tornado, when given: client/FrameWorld)
 	if t.eng and t.eng.base then
 		cloudBase = t.eng.base
+	end
+	-- (and its core's condensation level: the engine's, from the surface air at the contact)
+	if t.eng and t.eng.coreZb then
+		zCore = t.eng.coreZb
 	end
 	t.cloudBase += (math.clamp(cloudBase, 150, 2500) - t.cloudBase) * (1 - exp(-dt / 60))
 	t.coreLcl = (t.coreLcl or zCore) + (math.clamp(zCore, 30, 2500) - (t.coreLcl or zCore)) * (1 - exp(-dt / 60))

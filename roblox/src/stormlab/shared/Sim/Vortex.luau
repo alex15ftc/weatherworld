@@ -35,6 +35,8 @@ local RHO = 1.15
 Vortex.RHO = RHO -- (tools/stormlab/test_wind_physics: its balance check uses the same air)
 local G = 9.81
 local exp, sqrt, sin, cos, atan2 = math.exp, math.sqrt, math.sin, math.cos, math.atan2
+local Z0_SURF = 0.03 -- (m: the ground's roughness length, short grass and crops)
+local LOG_SURF = math.log(1 + 10 / Z0_SURF)
 
 -- the replicated tornado state the field is built from (Tornado.luau owns and evolves it)
 export type State = {
@@ -383,7 +385,11 @@ function Vortex.sample(p: Params, x: number, y: number, z: number): (number, num
 	end
 	-- tangential: counter-clockwise (cyclonic) in the north-up frame: e_theta = (-er_y, er_x)
 	local zj = 30
-	local surface = 1 - exp(-z / 3)
+	-- the surface layer: the log law over grass and crops (roughness Z0_SURF), reaching the swirl
+	-- above at 10 m - the 2 m wind 0.73 of it, as measured (FAO-56's 4.87 / ln(67.8 z - 5.42)).
+	-- (Was 1 - exp(-z / 3): 0.49 at 2 m, so a 35 m/s swirl lifted no debris off wet ground,
+	-- lifecycle review 2026-11-08)
+	local surface = math.clamp(math.log(1 + z / Z0_SURF) / LOG_SURF, 0, 1)
 	local jet = 1 + p.jet * (z / zj) * exp(1 - z / zj) * exp(-(R * 0.5) ^ 2)
 	-- above the cloud base the vortex hands over to the storm's circulation
 	local aloft = 1 - ramp(z, p.cloudBase, p.cloudBase + 400)

@@ -556,9 +556,14 @@ function TornadoCards.new(ctx: any): any
 		-- are separate fields; with the floor above H the funnel faded out by 1.1 H and ~60 m of clear
 		-- air ran between them - the tornado floating under the wall cloud, user 2026-11-03
 		local Hj = H
+		local wallOver = nil -- (the lowering over it: the tone its underside is drawn with)
 		for _, v in ctx.wallStreamBase or {} do
 			if v.floor and v.r and (v.x - e.x) ^ 2 + (v.y - e.y) ^ 2 < (1.2 * v.r) ^ 2 then
-				Hj = max(Hj, min(v.floor, H + 300))
+				wallOver = v
+				-- (and a floor below H brings it down: above the floor the funnel is inside the
+				-- lowering's cloud and has no edge to see, 2026-11-07; its width at the floor stays its
+				-- own, so it leaves the floor narrower than the lowering)
+				Hj = max(0.3 * H, min(v.floor, H + 300))
 			end
 		end
 		local top = Hj + 0.07 * H + 30
@@ -993,6 +998,32 @@ function TornadoCards.new(ctx: any): any
 						end
 					end
 					sp.joinDbg = string.format("H%.0f top%.0f floor%s zb%s · ", H, top, if wb then string.format("%.0f", wb.floor) else "-", if wb then string.format("%.0f", wb.z) else "-") .. table.concat(parts, " | ")
+					-- the look audit (tools/stormlab/look-audit): what is drawn beside the physics it is
+					-- drawn from, machine-readable - the drawn funnel's radius at fifths of its height,
+					-- the core and condensation it comes from, the lowering it joins
+					local prof = {}
+					for _, fz in { 0, 0.1, 0.25, 0.5, 0.75, 1 } do
+						local zz = fz * Hj
+						local bestR, bd = nil, math.huge
+						for ii = 0, NZ do
+							local rr = tab[ii]
+							if rr and rr.z and math.abs(rr.z - zz) < bd then
+								bestR, bd = rr, math.abs(rr.z - zz)
+							end
+						end
+						if bestR then
+							table.insert(prof, { f = fz, z = math.floor(bestR.z + 0.5), rc = math.floor(bestR.rc + 0.5),
+								core = math.floor(bestR.rcz + 0.5), cond = math.floor((bestR.cond or 0) * 100 + 0.5) / 100 })
+						end
+					end
+					sp.audit = {
+						id = tostring(e.id), vc = math.floor((e.vc or 0) * 10 + 0.5) / 10, coreR = math.floor(rcBase + 0.5),
+						H = math.floor(H + 0.5), Hj = math.floor(Hj + 0.5), top = math.floor(top + 0.5),
+						wallFloor = if wb then math.floor(wb.floor + 0.5) else nil, wallR = if wb then math.floor(wb.r + 0.5) else nil,
+						wallCol = if wb and wb.col then { wb.col.R, wb.col.G, wb.col.B } else nil,
+						decay = e.decay, debrisLoft = e.debrisLoft, debrisTop = e.debrisTop, wrap = e.wrap, prof = prof,
+						coreZb = math.floor(Vortex.coreBase(e) + 0.5), -- (the level the core's own air condenses at)
+					}
 				end
 				-- how condensed: the body needs a good share of the core radius (a marginal tip or rope
 				-- end fades), the envelope shows from less (fragments past the solid body's end)
@@ -1044,14 +1075,31 @@ function TornadoCards.new(ctx: any): any
 				local alb = 0.74 * (1 - 0.5 * dirt)
 				local deep = (1 - clamp(L.sun / 0.6, 0, 1)) * (1 - L0.night)
 				local fl = L.flash or 0
-				local r = alb * (skyAmt * (0.93 - 0.2 * deep) + sunAmt * 1.04) + 0.85 * fl
-				local g = alb * (skyAmt * (0.99 - 0.04 * deep) + sunAmt * (1 - 0.18 * warm)) + 0.88 * fl
-				local b = alb * (skyAmt * (1.1 + 0.04 * deep) + sunAmt * (0.9 - 0.36 * warm)) + fl
+				-- (sky light's tint: near neutral, a little blue in deep shadow - it was R/B 0.64 there and
+				-- drew a saturated blue cone inside a grey wall cloud; funnels photograph near-neutral
+				-- grey, regrade 2026-11-07)
+				local r = alb * (skyAmt * (0.96 - 0.06 * deep) + sunAmt * 1.04) + 0.85 * fl
+				local g = alb * (skyAmt * (0.98 - 0.02 * deep) + sunAmt * (1 - 0.18 * warm)) + 0.88 * fl
+				local b = alb * (skyAmt * 1.02 + sunAmt * (0.9 - 0.36 * warm)) + fl
 				local col = Color3.new(min(r, 1), min(g, 1), min(b, 1)):Lerp(rainCol, rainK)
 				if base then
 					-- (0.9 -> 0.5, 2026-10-30: the upper funnel took the lowering's flat colour and
 					-- vanished into it; it keeps its own light and shade now, meeting the base in tone)
 					col = col:Lerp(base.col, 0.5 * smooth(zAt(0.4), zAt(0.95), z))
+				end
+				-- (at the join it is the lowering's own underside, in its shadow: the tone the wall
+				-- cloud is drawn with there, reached at the lowering's floor Hj where the funnel ends -
+				-- the side light comes in only over the lower half. Blended up to the storm's base H
+				-- instead, it was only half done at the floor and the top stayed a paler bell inside
+				-- the wall cloud, regrade 2026-11-07)
+				-- (at the join it is the lowering's own underside, in its shadow: the tone the wall
+				-- cloud is drawn with there, reached at the lowering's floor Hj where the funnel ends -
+				-- the side light comes in only over the lower half. Blended up to the storm's base H
+				-- instead, it was only half done at the floor and the top stayed a paler bell inside
+				-- the wall cloud, regrade 2026-11-07. Keeping each point's own side light through the
+				-- blend brought the pale bell back on the lit side - tried and dropped)
+				if wallOver and wallOver.col then
+					col = col:Lerp(wallOver.col, 0.9 * smooth(0.5 * Hj, Hj, z))
 				end
 				return col
 			end
@@ -1279,7 +1327,27 @@ function TornadoCards.new(ctx: any): any
 					-- (half-lit 0.42 drew a pale column with the shadowed puffs as dark spots, 2026-10-30)
 					local L = if f < 0.5 then r0.L else r1.L
 					local path = rc / max(cosEl, 0.2)
-					setCol(c, colour(L, L.sun * 0.5 * exp(-BETA_SUN * path), L.sky * 0.72, z))
+					-- (and the sky light across it: a slice spans the whole funnel, so one colour drew the
+					-- body flat - up close one dark mass with no lit side, regrade 2026-11-07. Across its
+					-- width it takes the cylinder's normal as seen against the directional sky light, as
+					-- the body puffs do; the gradient turns with the card, its x across the axis)
+					local sunS = L.sun * 0.5 * exp(-BETA_SUN * path)
+					local lk = cf.LookVector
+					local tcx, tcy = -lk.X, lk.Z -- (toward the camera, x east, y north)
+					local tl = max(sqrt(tcx * tcx + tcy * tcy), 1e-3)
+					tcx, tcy = tcx / tl, tcy / tl
+					local ahx, ahy = tcy, -tcx -- (across, to screen right)
+					local mr, mg, mb = 0, 0, 0
+					for k = 1, GN do
+						local x = 2 * GT[k] - 1
+						local ny = sqrt(max(0, 1 - x * x))
+						local dirS = (x * ahx + ny * tcx) * sdx + (x * ahy + ny * tcy) * sdy
+						local col = colour(L, sunS, L.sky * 0.72 * (1 + SKY_K * sdA * dirS) * (0.86 + 0.14 * ny), z)
+						gcol[k] = col
+						mr, mg, mb = max(mr, col.R), max(mg, col.G), max(mb, col.B)
+					end
+					setCol(c, Color3.new(mr, mg, mb))
+					setGrad(c, mr, mg, mb, 0)
 				end
 				n += 1
 			end
@@ -3132,6 +3200,27 @@ function TornadoCards.new(ctx: any): any
 					for _, s2 in sets do
 						if s2.id and s2.sp and s2.sp.joinDbg then
 							jd = s2.sp.joinDbg
+						end
+					end
+					local au = nil
+					for _, s2 in sets do
+						if s2.id == s.id and s2.sp and s2.sp.audit then
+							au = s2.sp.audit
+						end
+					end
+					if au and os.clock() - (s.auditAt or 0) > 0.5 then
+						s.auditAt = os.clock()
+						au.rainK, au.sight, au.sdA = s.rainK, s.trans, s.sdA
+						au.sky, au.sun = s.L0 and s.L0.sky, s.L0 and s.L0.sun
+						au.t = workspace:GetServerTimeNow()
+						local ok, js = pcall(game:GetService("HttpService").JSONEncode, game:GetService("HttpService"), au)
+						if ok then
+							ctx.root:SetAttribute("TornadoAudit", js)
+							-- (in the output too, every 5 s: tools read it there - a client runs no Luau)
+							if os.clock() - (s.auditPrintAt or 0) > 5 then
+								s.auditPrintAt = os.clock()
+								print("[TornadoAudit] " .. js)
+							end
 						end
 					end
 					ctx.root:SetAttribute("TornadoRain", string.format("%s rain grey %.2f · sight %.2f · wrap %.0f mm/h · shell %.2f→%.2f · light sky %.2f sun %.2f side %.2f", tostring(s.id), s.rainK, s.trans or 1, s.wrap or 0, s.thin or 0, s.thinMax or 0, (s.L0 and s.L0.sky) or 0, (s.L0 and s.L0.sun) or 0, s.sdA or 0) .. (if s.bodyDbg then "\nbody " .. (s.bodyDbg[4] or "-") .. " | " .. (s.bodyDbg[8] or "-") .. " | " .. (s.bodyDbg[14] or "-") .. " | " .. (s.bodyDbg[20] or "-") else ""))

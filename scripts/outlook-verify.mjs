@@ -124,7 +124,7 @@ async function worker(seed) {
         if (!area.shares) continue;
         let total = 0; const reach = CIG_TIERS[h].map(() => 0);
         for (const i of area.cells) { total += exactOf(h)[i]; CIG_TIERS[h].forEach((field, t) => { reach[t] += exactOf(field)[i]; }); }
-        if (total > 0) cigData.push({ h, shares: area.shares, verified: conditionalCig(total, reach, CIG_BOUNDS[h]) });
+        if (total > 0) cigData.push({ h, shares: area.shares, env: area.env, envMax: area.envMax, verified: conditionalCig(total, reach, CIG_BOUNDS[h]) });
       }
       // I7 scores (2026-11-05), summed over the cells and pooled over the outlooks in main(): the Brier score of the
       // runs' raw chance, of the calibrated chance and of the contour level issued (each as a probability of the
@@ -234,6 +234,8 @@ async function main() {
       const b = bins[Math.round(share * 8)]; b.areas++; if (verified >= g + 1) b.hits++;
     });
     console.log('CIG_DATA ' + JSON.stringify(data));
+    // (each area as it is, with the environment's signal there, for scripts/fit-cig-environment.mjs)
+    console.log('CIG_ROWS ' + JSON.stringify(results.flat().flatMap(row => (row.cigData ?? []).map(({ h, shares, env, envMax, verified }) => ({ day: `day${row.lead}`, h, shares, env, envMax, verified })))));
   }
   if (CATEGORY_DATA) console.log('CATEGORY_DATA ' + JSON.stringify(results.flat().filter(row => row.categoryData).map(({ seed, day, lead, forecast, verified, categoryData }) => ({ seed, day, lead, forecast, verified, ...categoryData }))));
   if (CAL_DATA) {

@@ -82,6 +82,7 @@ do
 	end
 	table.insert(SKY_DIRS, { 0, 0, 1, 1 - math.sin(math.rad(84)) })
 end
+local NEAR_RAIN_KM = 3 -- (the rain round the camera no curtain draws: CloudParts/Shafts' near fade, ~3.6 km half-drawn at 1 km columns)
 local LOW_RAY_Z = math.sin(math.rad(SKY_ELEV[1] + 1)) -- (the lowest ring's rays: the horizon)
 -- a lighting property, written only when it changes visibly (each write makes Roblox redo its
 -- lighting; ~20 were written every frame whatever they held, 2026-11-07)
@@ -666,7 +667,13 @@ function Sky.new(ctx)
 			st.coverLog = st.clock
 			ctx.root:SetAttribute("SkyCover", math.floor(cv * 100 + 0.5) / 100)
 		end
-		put(atmosphere, "Offset", defAtmo.Offset)
+		-- the sky behind the rain the camera stands in: Roblox fogs the ground by Density but shows
+		-- the sky background by Offset, so from inside heavy rain the bright clear sky glowed
+		-- along the horizon between the far curtains (cyan patches, lifecycle review 2026-11-08).
+		-- The rain the curtains leave to the fog is the camera's own column, out to where they are
+		-- mostly drawn (~3 km: CloudParts/Shafts' near fade); the sky shows by its transmittance
+		local skyT = math.exp(-kPkm * NEAR_RAIN_KM)
+		put(atmosphere, "Offset", defAtmo.Offset + (1 - defAtmo.Offset) * (1 - skyT))
 		put(atmosphere, "Density", math.clamp(Util.densityForExtinction(kClear + kP), 0, 0.9))
 		-- (debug, EngineStormsDebugCam: what the haze is made of where the camera is)
 		if st.clock - (st.dbgLog or -10) > 5 and workspace:GetAttribute("EngineStormsDebugCam") == true then

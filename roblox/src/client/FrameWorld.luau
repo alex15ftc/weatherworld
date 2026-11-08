@@ -58,12 +58,54 @@ function FrameWorld.attach(ctx: any, LiveStorms: any, EngineStorms: any, sim: (n
 	cw.coldPool = ColdPool.new(cw.env)
 	cw.tornadoes = {}
 
+	-- ...and as 1 km surface columns round the camera (Sim/Precip's VOX), for the rain curtains
+	-- (Render/RainShafts bins vol.rain by column; every other reader takes surfaceAt). The column
+	-- numbers span a 1000 km square about the sim origin; only those within RAIN_KM of the camera
+	-- with rain are kept, refilled every RAIN_S from the frames.
+	local VOXM, HALF_COLS, RAIN_KM, RAIN_S = 1000, 500, 30, 10
+	local nxv = 2 * HALF_COLS
+	cw.vol.nxv, cw.vol.x0 = nxv, -HALF_COLS * VOXM
+	cw.vol.rain, cw.vol.hail = {}, {}
+	task.spawn(function()
+		while true do
+			local cam = workspace.CurrentCamera
+			if cam then
+				local cx, cy = ctx.Config.fromWorld(cam.CFrame.Position)
+				local x0 = cw.vol.x0
+				local i0, j0 = math.floor((cx - x0) / VOXM), math.floor((cy - x0) / VOXM)
+				local rain, hail = {}, {}
+				local n = 0
+				for dj = -RAIN_KM, RAIN_KM do
+					for di = -RAIN_KM, RAIN_KM do
+						local i, j = i0 + di, j0 + dj
+						if di * di + dj * dj <= RAIN_KM * RAIN_KM and i >= 0 and j >= 0 and i < nxv and j < nxv then
+							local r, h = EngineStorms.precipAt(ctx.Config.toWorld(x0 + (i + 0.5) * VOXM, x0 + (j + 0.5) * VOXM, 0))
+							if r > 0.5 then
+								rain[i + j * nxv] = r
+								hail[i + j * nxv] = h * HAIL_CM
+							end
+							n += 1
+							if n % 500 == 0 then
+								task.wait()
+							end
+						end
+					end
+				end
+				cw.vol.rain, cw.vol.hail = rain, hail
+			end
+			task.wait(RAIN_S)
+		end
+	end)
+
 	-- a private world for the warm-ups: the environment only
 	local function warmWorld(): any
 		return setmetatable({
 			env = cw.env, coldPool = ColdPool.new(cw.env), storms = {}, tornadoes = {}, boundaries = {},
 			systems = { vortices = {}, systems = {}, fronts = {} }, systemsSnap = { systems = {}, vortices = {}, fronts = {} },
 			wetness = { sample = function() return 0 end }, events = {}, landspouts = {},
+			-- (no boundary convergence on a client: Storm's lift through an inflow's CIN reads it, and
+			-- without it a storm over capped air failed to build - "index nil with 'sample'", 2026-11-08)
+			conv = { sample = function() return 0 end },
 			time = 0, clockUtc = cw.clockUtc, isClient = true,
 			-- (the rain its downdraughts feel: the frames', as the cards see it; Storm.step samples it)
 			precip = { rainRate = { sample = function(_, x: number, y: number): number
@@ -84,7 +126,7 @@ function FrameWorld.attach(ctx: any, LiveStorms: any, EngineStorms: any, sim: (n
 	local function lookKey(look: any, tor: any?): string
 		local k = ("%.2f,%.3f,%.3f,%.3f,%.1f,%.2f,%.1f,%.1f,%.0f,%.0f"):format(look.updraftMs, look.meso, look.lowRotation, look.occlusion, look.ageMin, look.radiusKm, look.anvilKm, look.tornadoMph, look.baseM or 0, look.loweringM or 0)
 		if tor then
-			k ..= ("|%.0f,%.0f,%.0f"):format((tor.R or 0) / 10, (tor.swirl or 0) / 2, (tor.base or 0) / 50)
+			k ..= ("|%.0f,%.0f,%.0f,%.0f"):format((tor.R or 0) / 10, (tor.swirl or 0) / 2, (tor.base or 0) / 50, (tor.coreZb or 0) / 50)
 		end
 		return k
 	end
@@ -129,7 +171,8 @@ function FrameWorld.attach(ctx: any, LiveStorms: any, EngineStorms: any, sim: (n
 			-- the debug overlay's: the swirl is the engine's rating less the tornado's own motion)
 			local vx = VA.vortexFrom(f)
 			tor = { x = tx, y = ty, mph = ft.mph, yards = math.max(ft.yards or 0, 20),
-				R = vx and vx.R or nil, swirl = vx and vx.V or nil, base = if vx and vx.Bt > 0 then vx.Bt else nil }
+				R = vx and vx.R or nil, swirl = vx and vx.V or nil, base = if vx and vx.Bt > 0 then vx.Bt else nil,
+				coreZb = if vx and vx.Bc > 0 then vx.Bc else nil }
 			-- its lean: where the engine's funnel meets the cloud base, from its ground point (the
 			-- frame's levels, m east and north - the overlay's "lean at base"), in lab metres
 			if vx and vx.Bt > 0 then
@@ -190,7 +233,7 @@ function FrameWorld.attach(ctx: any, LiveStorms: any, EngineStorms: any, sim: (n
 				t.bendPhase = rng:range(0, 6.28)
 				-- (where it will be at the warm-up's end is the frame's place: started that far back)
 				local lx, ly = Storm.lowMesoAt(s)
-				Tornado.setEngine(t, { mph = tor.mph, yards = tor.yards, orbit = 0, R = tor.R, swirl = tor.swirl, base = tor.base, leanX = tor.leanX, leanY = tor.leanY }, tor.x - u * tWarm, tor.y - v * tWarm, u, v, w.time, lx, ly)
+				Tornado.setEngine(t, { mph = tor.mph, yards = tor.yards, orbit = 0, R = tor.R, swirl = tor.swirl, base = tor.base, coreZb = tor.coreZb, leanX = tor.leanX, leanY = tor.leanY }, tor.x - u * tWarm, tor.y - v * tWarm, u, v, w.time, lx, ly)
 				-- (it is already down in the engine: started at its size, wind and base, not spun up)
 				t.rc = tor.R or t.rc
 				t.vc = tor.swirl or t.vc

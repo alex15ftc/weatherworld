@@ -37,13 +37,14 @@ export type Nest = { nx: number, ny: number, dx: number, X0: number, Y0: number,
 -- ef (nil none), mph, yards: the engine's; x, y: box m at the ground; R core radius (m), drop core
 -- pressure drop (Pa), base cloud base over it (m), tip funnel tip (m above the ground); gust (m/s),
 -- zeta (0-1 km mean, 1/s), dzeta (since the minute before), modelDrop (Pa): the model's own;
+-- coreBase: the core's condensation level (m: the surface air it draws in; at or under base);
 -- levels: z (m), dx, dy (m from the ground point), funnel radius (m; 0 clear air), found (the
 -- model's vortex reaches that high)
 export type Level = { z: number, dx: number, dy: number, funnel: number, found: boolean }
 export type Tornado = {
 	found: boolean, cloud: boolean, ef: number?, mph: number, yards: number, x: number, y: number,
 	R: number, drop: number, base: number, tip: number, gust: number, zeta: number, dzeta: number,
-	modelDrop: number, levels: { Level }, length: number,
+	modelDrop: number, coreBase: number, levels: { Level }, length: number,
 }
 -- levels: height (m) and the storm-relative wind summed from the ground to it (m2/s, x east, y north)
 export type Drift = { hailFallMs: number, levels: { { number } } }
@@ -54,7 +55,7 @@ export type Frame = {
 	nest: Nest?, tornado: Tornado?, drift: Drift?, updraught: Updraught?,
 }
 
-local TORNADO, TOR_LEVEL = 28, 8
+local TORNADO, TOR_LEVEL = 30, 8
 -- The tornado block at byte o (full and client frames alike).
 function ClientFrame.readTornado(b: buffer, o: number): Tornado
 	local flags, n = buffer.readu8(b, o), buffer.readu8(b, o + 27)
@@ -70,7 +71,7 @@ function ClientFrame.readTornado(b: buffer, o: number): Tornado
 		mph = buffer.readu16(b, o + 2), yards = buffer.readu16(b, o + 4), x = buffer.readf32(b, o + 6), y = buffer.readf32(b, o + 10),
 		R = buffer.readu16(b, o + 14), drop = buffer.readu16(b, o + 16), base = buffer.readu16(b, o + 18), tip = buffer.readu16(b, o + 20),
 		gust = buffer.readu8(b, o + 22), zeta = buffer.readu8(b, o + 23) * 0.005, dzeta = buffer.readi8(b, o + 24) * 0.005,
-		modelDrop = buffer.readu16(b, o + 25), levels = levels, length = TORNADO + TOR_LEVEL * n,
+		modelDrop = buffer.readu16(b, o + 25), coreBase = buffer.readu16(b, o + 28), levels = levels, length = TORNADO + TOR_LEVEL * n,
 	}
 end
 

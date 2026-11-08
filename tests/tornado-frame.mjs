@@ -27,7 +27,7 @@ const shape = {
 };
 const want = {
   found: true, cloud: true, ef: 4, mph: 185, yards: 705, x: 31234.5, y: 28765.25, R: 113, drop: 4300, base: 812, tip: 418,
-  gust: 44, zeta: 0.455, dzeta: -0.06, modelDrop: 370, levels: shape.levels.map(l => ({ z: l.z, dx: l.dx, dy: l.dy, funnel: l.funnel, found: l.found })), length: 92,
+  gust: 44, zeta: 0.455, dzeta: -0.06, modelDrop: 370, coreBase: 812, levels: shape.levels.map(l => ({ z: l.z, dx: l.dx, dy: l.dy, funnel: l.funnel, found: l.found })), length: 94,
 };
 const near = t => ({ ...t, zeta: +t.zeta.toFixed(3), dzeta: +t.dzeta.toFixed(3) });
 run.torShape = shape;
@@ -53,4 +53,4 @@ if (i > 0) {
   for (const [k, c] of Object.entries(checks)) for (const [n, b] of Object.entries(c)) fs.writeFileSync(path.join(dir, `${k}-${n}.bin`), b);
   fs.writeFileSync(path.join(dir, 'expect.json'), JSON.stringify(want));
 }
-console.log('tornado frame: ok (92-byte block, full, near and far frames, with and without a nest)');
+console.log('tornado frame: ok (94-byte block, full, near and far frames, with and without a nest)');

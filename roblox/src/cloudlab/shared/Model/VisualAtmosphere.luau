@@ -114,7 +114,7 @@ end
 -- The vortex -------------------------------------------------------------------------------------
 export type Vortex = {
 	x: number, y: number, -- box m at the ground
-	R: number, P: number, Bt: number, tip: number, rhoG: number, rho: number,
+	R: number, P: number, Bt: number, Bc: number, tip: number, rhoG: number, rho: number,
 	V: number, mph: number, wTor: number, r0: number, S: number,
 	levels: { any },
 	mesoV: number, mesoR: number, -- the low-level mesocyclone (m/s, m), for the wall cloud's turn
@@ -125,7 +125,10 @@ function VisualAtmosphere.vortexFrom(f: any): Vortex?
 	local t = f.tornado
 	if not t or t.mph <= 0 or t.R <= 0 then return nil end
 	local Bt = math.max(0, t.base)
-	local rhoG = if t.tip > 0 and Bt > t.tip then t.drop / (Bt - t.tip) else P_("RHO_G_DEFAULT")
+	-- (the core condenses at its own level, the surface air it draws in - at or under the wall
+	-- cloud's: the funnel's solve, tip = Bc - drop / (rho g), is against that)
+	local Bc = if (t.coreBase or 0) > 0 then math.min(Bt, t.coreBase) else Bt
+	local rhoG = if t.tip > 0 and Bc > t.tip then t.drop / (Bc - t.tip) else P_("RHO_G_DEFAULT")
 	local rho = rhoG / G
 	local V = math.sqrt(math.max(0, t.drop) / rho)
 	local up = f.updraught
@@ -136,13 +139,13 @@ function VisualAtmosphere.vortexFrom(f: any): Vortex?
 	local mesoV = math.sqrt(math.max(0, t.modelDrop) / rho)
 	local mesoR = if t.zeta > 0 then 2 * mesoV / t.zeta else 1500
 	return {
-		x = t.x, y = t.y, R = t.R, P = t.drop, Bt = Bt, tip = t.tip, rhoG = rhoG, rho = rho, V = V, mph = t.mph,
+		x = t.x, y = t.y, R = t.R, P = t.drop, Bt = Bt, Bc = Bc, tip = t.tip, rhoG = rhoG, rho = rho, V = V, mph = t.mph,
 		wTor = wTor, r0 = r0, S = t.R * V / (r0 * wTor), levels = t.levels, mesoV = mesoV, mesoR = math.clamp(mesoR, 300, 5000),
 	}
 end
 
 -- Ease a drawn vortex toward the frame's (exponential, per step: no jumps when a frame comes).
-local EASED: { [string]: string } = { x = "TAU_SHAPE", y = "TAU_SHAPE", R = "TAU_SHAPE", P = "TAU_SHAPE", Bt = "TAU_SHAPE", tip = "TAU_TIP", rhoG = "TAU_SHAPE", V = "TAU_SHAPE", wTor = "TAU_S", S = "TAU_S", mesoV = "TAU_S", mesoR = "TAU_S", mph = "TAU_SHAPE" }
+local EASED: { [string]: string } = { x = "TAU_SHAPE", y = "TAU_SHAPE", R = "TAU_SHAPE", P = "TAU_SHAPE", Bt = "TAU_SHAPE", Bc = "TAU_SHAPE", tip = "TAU_TIP", rhoG = "TAU_SHAPE", V = "TAU_SHAPE", wTor = "TAU_S", S = "TAU_S", mesoV = "TAU_S", mesoR = "TAU_S", mph = "TAU_SHAPE" }
 function VisualAtmosphere.ease(cur: Vortex?, want: Vortex, dt: number): Vortex
 	if not cur then return table.clone(want) end
 	local out = table.clone(want)

@@ -29,7 +29,7 @@ import { contourRings, softenArea } from './contourShapes.js';
 import { timingErrorMs, perturbUpstream, perturbMesoscale, mesoscaleShare, flowDisagreement, flowSpreadFactor, FLOW, TIMING, UPSTREAM } from './ensemblePerturbation.js';
 import { diagnoseInitiation } from '../storms/InitiationEngine.js';
 import { updraftHelicity } from './ShortRangeModel.js';
-import { CALIBRATION, CIG_SHARE, calibrateChance } from './outlookCalibration.js';
+import { CALIBRATION, CIG_SHARE, CIG_ENVIRONMENT, calibrateChance } from './outlookCalibration.js';
 import { WORLD_RISK_ORDER, WORLD_RISK_LABELS, WORLD_HAZARDS, WORLD_MAX_CIG, CIG_MEANING, PROBABILITY_LEVELS, probabilityLevel, worldCategory, worldCategoryFromHazard, drawnCig, contourCigAreas, highestCigAt, CIG_TIERS } from './worldRiskCategories.js';
 
 export const OUTLOOK = Object.freeze({
@@ -154,6 +154,33 @@ export function stormDaysFor(member, members = OUTLOOK.members, lead = 0) { retu
 // share x (1 - exp(-index / scale)): a seventh of them at index 1, a quarter at 2 and over a third at 4. The intense tier the same with
 // a larger scale.
 const INGREDIENTS = { capeJkg: [200, 1900], shearKt: [25, 50], severeShareWeakShear: 0.35, thunderShare: 0.5, significant: { share: 0.5, scale: 3 }, intense: { share: 0.3, scale: 6 } };
+// The environment's own signal for significant hail and wind (2026-11-08), each run's highest over its day at every cell, so that
+// the intensity groups of hail and wind can weigh it with the runs' own reports (outlookCalibration.js CIG_ENVIRONMENT):
+//   hail: SPC's significant hail parameter, SHIP = MUCAPE x MU mixing ratio (11-13.6 g/kg) x 700-500 mb lapse rate x -T500 (to
+//     -5.5 C) x 0-6 km shear (7-27 m/s) / 42e6, scaled down below 1300 J/kg, below 5.8 C/km and where the freezing level (here the
+//     wet-bulb zero) is under 2400 m (SPC mesoanalysis help; sounding.js diagnoseSoundingDisplay). The ground's mixing ratio
+//     stands for the most unstable parcel's.
+//   wind: SPC's derecho composite, DCP = DCAPE/980 x MUCAPE/2000 x 0-6 km shear/20 kt x 0-6 km mean wind/16 kt (Evans and Doswell
+//     2001; SPC mesoanalysis help), the mean wind from the 850, 700 and 500 mb winds.
+export function significantHailParameter(cell) {
+  const s = cell.derived?.sounding ?? {}, mucape = Math.max(0, Number(s.mucape) || 0), lapse = Number(s.lapseRate700500) || 0, t500 = Number(cell.levels?.[500]?.temperature);
+  if (!(mucape > 0) || !(lapse > 0) || !Number.isFinite(t500)) return 0;
+  const dewC = ((Number(cell.surface?.dewpoint) || 0) - 32) * 5 / 9, pressure = Number(cell.surface?.pressure) || 1000, e = 6.112 * Math.exp(17.67 * dewC / (dewC + 243.5));
+  const mixing = 622 * e / Math.max(1, pressure - e), shearMs = (Number(s.shear06) || 0) * 0.514444, freezing = Number(s.wetBulbZeroAglM);
+  let ship = mucape * Math.min(13.6, Math.max(11, mixing)) * lapse * -Math.min(t500, -5.5) * Math.min(27, Math.max(7, shearMs)) / 42e6;
+  if (mucape < 1300) ship *= mucape / 1300;
+  if (lapse < 5.8) ship *= lapse / 5.8;
+  if (Number.isFinite(freezing) && freezing < 2400) ship *= Math.max(0, freezing) / 2400;
+  return Math.max(0, ship);
+}
+export function derechoCompositeParameter(cell) {
+  const s = cell.derived?.sounding ?? {}, dcape = Math.max(0, Number(cell.derived?.dcape) || 0), mucape = Math.max(0, Number(s.mucape) || 0), shear = Math.max(0, Number(s.shear06) || 0);
+  let u = 0, v = 0, count = 0;
+  for (const level of [850, 700, 500]) { const l = cell.levels?.[level]; if (!l || !Number.isFinite(l.windSpeed)) continue; const d = (Number(l.windDirection) || 0) * Math.PI / 180; u -= l.windSpeed * Math.sin(d); v -= l.windSpeed * Math.cos(d); count++; }
+  const meanKt = count ? Math.hypot(u, v) / count : 0;
+  return (dcape / 980) * (mucape / 2000) * (shear / 20) * (meanKt / 16);
+}
+
 // The composite index of a cell (see INGREDIENTS).
 function severeComposite(cell) {
   const s = cell.derived?.sounding ?? {}, stp = Math.max(0, Number(cell.derived?.stp) || 0);
@@ -242,6 +269,8 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
   const fresh = (ingredients, cheap = null) => ({
     ingredients: ingredients ? { starts: new Float64Array(n), severe: new Float64Array(n), significant: new Float64Array(n), intense: new Float64Array(n) } : null,
     expected: ingredients ? null : (grids => { addOngoingTornadoes(world, grids); return grids; })(expectedTornadoGrids(n)),
+    // (a storm day's highest significant hail and wind composites at each cell; cheap runs share their host's air and take none)
+    environment: ingredients || cheap !== null ? null : { hail: new Float32Array(n), wind: new Float32Array(n) },
     frames: [], seen: new Set(), initiations: [], startHour: world.validHourUtc, before: total(),
     byHour: { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0) }, steps: 0, stormy: new Uint8Array(n),
     result: { member, ...(cheap === null ? {} : { cheap }), flowSpread: flow, maxHailInches: 0, maxGustMph: 0, strongestTornadoMph: 0, environment: null, lines: [], ongoing: 0, stormTrack: [] }
@@ -288,6 +317,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       ...day.result, width: world.width, height: world.height, cellMiles: world.cellSizeMiles, fromHourUtc: day.startHour, toHourUtc: world.validHourUtc,
       // The category the run's own day reached, judged as a day is verified.
       dayCategory: truth.worldRisk.reduce((best, c) => (rank(c) > rank(best) ? c : best), 'NONE'),
+      ...(day.environment ? { environmentSignal: day.environment } : {}),
       chance, reports, thunder: truth.storm, storms: day.seen.size,
       // The tornadoes the run's storms were expected to put down, per cell, and their sum (I2, 2026-11-05).
       expected: day.expected, expectedTornadoes: day.expected.tornado.reduce((a, v) => a + v, 0),
@@ -317,6 +347,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       Object.assign(world, host);
     }
     atmosphere.advanceLikeServer(OUTLOOK.stepHours, { onTick: hours => addExpectedTornadoes(world, day.expected, hours) });
+    if (day.environment) { const { hail, wind } = day.environment; world.forEachCell((cell, x, y) => { const k = y * world.width + x; hail[k] = Math.max(hail[k], significantHailParameter(cell)); wind[k] = Math.max(wind[k], derechoCompositeParameter(cell)); }); }
     if (day.ingredients) {
       const dt = OUTLOOK.stepHours, { starts, severe, significant, intense } = day.ingredients, utcNow = Math.floor(((world.validHourUtc % 24) + 24) % 24);
       world.forEachCell((cell, x, y) => {
@@ -448,7 +479,7 @@ function describeLines(atmosphere) {
 // maxCategory: the highest category this issue may give (see OUTLOOK.leadCaps; the runtime adds
 // the one-step limit from the last issue). regions: names the map's regions an area covers (the
 // counties' place names), or null for compass parts.
-export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issuedHourUtc, validToHourUtc, seed = null, day = 'day1', agreement: explicitAgreement = null, groupAgreement = OUTLOOK.groupAgreement, calibration = CALIBRATION, maxCategory = null, regions = null, previous = null, continuity = 0, cigCalibration = CIG_SHARE, ensemble = OUTLOOK.ensemble, categoryCutoffs = OUTLOOK.categoryCutoffs } = {}) {
+export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issuedHourUtc, validToHourUtc, seed = null, day = 'day1', agreement: explicitAgreement = null, groupAgreement = OUTLOOK.groupAgreement, calibration = CALIBRATION, maxCategory = null, regions = null, previous = null, continuity = 0, cigCalibration = CIG_SHARE, cigEnvironment = CIG_ENVIRONMENT, ensemble = OUTLOOK.ensemble, categoryCutoffs = OUTLOOK.categoryCutoffs } = {}) {
   if (!members.length) throw new Error('an outlook needs at least one member');
   // The chance as the category reads it (OUTLOOK.categoryCutoffs): the highest contour level whose cutoff it reaches.
   const cutoffs = categoryCutoffs?.[day] ?? null;
@@ -549,7 +580,14 @@ export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issu
   for (const m of members) for (const field of fields) { const from = (m.fromIngredients ? null : m.reports?.[field]) ?? m.chance[field]; for (let i = 0; i < n; i++) amount[field][i] += from[i] / count; }
   // Each run's own reports, for judging the groups by the typical run (contourCigAreas).
   const own = (m, field) => (m.fromIngredients ? null : m.reports?.[field]) ?? m.chance[field] ?? zero;
-  const judged = Object.fromEntries(hazards.map(hazard => [hazard, contourCigAreas(hazard, chance[hazard], amount[hazard], CIG_TIERS[hazard].map(field => amount[field] ?? zero), width, height, (members.every(m => m.fromIngredients) ? OUTLOOK.ingredientCigBounds[day]?.[hazard] : undefined), members.map(m => ({ amount: own(m, hazard), significant: CIG_TIERS[hazard].map(field => own(m, field)) })), cigCalibration?.[day]?.[hazard] ?? null)]));
+  // The environment's signal for each hazard's significant tier: the mean of the runs that carry one (the full runs).
+  const environmentFor = hazard => {
+    const carrying = members.filter(m => m.environmentSignal?.[hazard]);
+    if (!carrying.length) return null;
+    const grid = new Float32Array(n); for (const m of carrying) { const e = m.environmentSignal[hazard]; for (let i = 0; i < n; i++) grid[i] += e[i] / carrying.length; }
+    return grid;
+  };
+  const judged = Object.fromEntries(hazards.map(hazard => [hazard, contourCigAreas(hazard, chance[hazard], amount[hazard], CIG_TIERS[hazard].map(field => amount[field] ?? zero), width, height, (members.every(m => m.fromIngredients) ? OUTLOOK.ingredientCigBounds[day]?.[hazard] : undefined), members.map(m => ({ amount: own(m, hazard), significant: CIG_TIERS[hazard].map(field => own(m, field)) })), cigCalibration?.[day]?.[hazard] ?? null, environmentFor(hazard), cigEnvironment?.[day]?.[hazard] ?? null)]));
   const intensity = Object.fromEntries(hazards.map(hazard => [hazard, judged[hazard].cig])), cigAreas = Object.fromEntries(hazards.map(hazard => [hazard, judged[hazard].areas]));
   // The intensity groups raise the category too, so they also need the runs to agree: a group
   // only where enough runs had its tier near (their own chance of it at least the hazard's
