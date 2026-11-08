@@ -10,8 +10,10 @@
 --             (server/WeatherFeed.luau).
 --   snapshot  ServerStorage.WorldData.ProductSnapshot (scripts/export-product-snapshot.mjs).
 --
--- A single radar's scan (radar.site.<ID>.<product>) is fetched the first time a player asks for
--- it, and kept up to date while some player has asked for it in the last SITE_KEEP_SECONDS.
+-- A radar product (a site's tilt radar.site.<ID>.<product>.<T>, or a mosaic radar.mosaic.<kind>)
+-- is fetched the first time a player asks for it, and kept up to date while some player has asked
+-- for it in the last SITE_KEEP_SECONDS. An earlier scan of one (<id>.h<seconds>, for a loop) never
+-- changes: it is fetched once and let go when no longer asked for.
 --
 -- The storm reports and damage surveys (reports.*, survey.*) are also handed to ReportArchive,
 -- which keeps the finished days in a DataStore; a report product the weather server no longer
@@ -45,7 +47,16 @@ local function isReport(id: string): boolean
 end
 
 local SITE_KEEP_SECONDS = 90
-local SITE_PATTERN = "^radar%.site%.[%w]+%.[%w]+$"
+-- Radar and satellite products made only when asked for, and their loops' earlier scans.
+local function onDemand(id: string): boolean
+	return string.match(id, "^radar%.site%.[%w]+%.[%w]+[%.%w]*$") ~= nil
+		or string.match(id, "^radar%.mosaic%.[%w]+[%.%w]*$") ~= nil
+		or string.match(id, "^radar%.rotation%.[%w]+$") ~= nil
+		or string.match(id, "^satellite%.[%w]+[%.%w]*$") ~= nil
+end
+local function isFrame(id: string): boolean
+	return onDemand(id) and string.match(id, "%.h%d+$") ~= nil
+end
 local siteAsked: { [string]: number } = {} -- site product id -> when a player last asked for it
 local fetchOnDemand: ((id: string) -> ())? = nil -- set by the http source
 local fetchDirect: ((id: string) -> Product?)? = nil -- a product straight from the weather server (http source)
@@ -81,7 +92,7 @@ local function announce(changed: { [string]: string | boolean })
 end
 
 -- A player may ask for at most GET_BURST products in any GET_WINDOW seconds.
-local GET_BURST, GET_WINDOW = 30, 10
+local GET_BURST, GET_WINDOW = 60, 10 -- (a radar loop is ten products)
 local asked: { [Player]: { number } } = {}
 Players.PlayerRemoving:Connect(function(player: Player)
 	asked[player] = nil
@@ -101,7 +112,7 @@ getFunction.OnServerInvoke = function(player: Player, id: unknown, haveVersion: 
 		return nil
 	end
 	table.insert(times, now)
-	if string.match(id, SITE_PATTERN) then
+	if onDemand(id) then
 		siteAsked[id] = now
 		if not products[id] and fetchOnDemand then
 			(fetchOnDemand :: (string) -> ())(id)
@@ -193,7 +204,7 @@ local function runHttp(url: string)
 			local changed: { [string]: string | boolean } = {}
 			local listed = (manifest :: any).products
 			for id, entry in listed do
-				local site = string.match(id, SITE_PATTERN) ~= nil
+				local site = onDemand(id)
 				local held = products[id]
 				-- A site scan is kept current only while someone still asks for it.
 				local wanted = not site or (siteAsked[id] ~= nil and now - siteAsked[id] < SITE_KEEP_SECONDS)
@@ -214,14 +225,16 @@ local function runHttp(url: string)
 			-- Let go what is no longer listed (old radar frames) or no longer asked for; a site
 			-- scan still asked for but dropped from the list (no new scan for a while) is asked again.
 			for id in products do
-				local site = string.match(id, SITE_PATTERN) ~= nil
+				local site = onDemand(id)
 				local stillAsked = site and siteAsked[id] ~= nil and now - siteAsked[id] < SITE_KEEP_SECONDS
 				if site and not stillAsked then
 					products[id] = nil
 					siteAsked[id] = nil
 					changed[id] = false
 				elseif listed[id] == nil and not fetching[id] then
-					if stillAsked then
+					if stillAsked and isFrame(id) then
+						-- an earlier scan is never listed and never changes: keep it as it is
+					elseif stillAsked then
 						task.spawn(fetchOnDemand :: (string) -> (), id)
 					else
 						products[id] = nil

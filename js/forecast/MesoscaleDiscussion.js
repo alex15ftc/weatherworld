@@ -22,6 +22,7 @@ import { captureTruth, aggregateTruth } from '../verification/truth.js';
 import { regionRings, solidRegion } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
 import { cellCounties, countiesIn, countyNames, describeRegions } from './counties.js';
+import { addExpectedTornadoes, addOngoingTornadoes, poissonAtLeast } from './expectedHazards.js';
 
 export const MESOSCALE = Object.freeze({
   members: 4, hoursAhead: 5, stepHours: 0.5,
@@ -111,10 +112,16 @@ export function runMesoscaleMember(state, member, hours = MESOSCALE.hoursAhead, 
   const frames = [], seen = new Set(), initiations = [];
   const hail = new Float32Array(n), gust = new Float32Array(n), tornadoMph = new Float32Array(n), firstHour = new Float32Array(n).fill(Infinity), stormHour = new Float32Array(n).fill(Infinity), tornadoes = new Map();
   const cellOf = at => Math.min(world.height - 1, Math.max(0, Math.floor(at.y / world.cellSizeKm))) * world.width + Math.min(world.width - 1, Math.max(0, Math.floor(at.x / world.cellSizeKm)));
+  // The tornadoes the run's storms are expected to put down (expectedHazards.js; I2, 2026-11-05), and the strong ones
+  // (wind of strongTornadoMph or more), per cell: those on the ground at the start, then each tick's rate.
+  const expected = { tornado: new Float32Array(n), tornadoSig: new Float32Array(n) };
+  addOngoingTornadoes(world, expected);
   // Each tornado once, where it was first seen, with the strongest it got.
   const note = (key, mph, at) => { const cell = cellOf(at), known = tornadoes.get(key); tornadoMph[cell] = Math.max(tornadoMph[cell], mph); if (known) known.mph = Math.max(known.mph, mph); else tornadoes.set(key, { cell, mph }); };
   for (let hour = 0; hour < hours - 1e-9; hour += MESOSCALE.stepHours) {
-    atmosphere.advance(MESOSCALE.stepHours);
+    // (stepped as the server steps the live world: the storms in 5-minute ticks, then the air; until 2026-11-05 advance(),
+    // whose storms moved in 30-minute jumps and made about half the tornadoes the live world makes)
+    atmosphere.advanceLikeServer(MESOSCALE.stepHours, { onTick: tick => addExpectedTornadoes(world, expected, tick) });
     const frame = captureTruth(world, frames, seen, initiations, places), ahead = world.validHourUtc - start;
     for (let i = 0; i < n; i++) { if ((frame.tornado[i] || frame.wind[i] || frame.hail[i]) && firstHour[i] === Infinity) firstHour[i] = ahead; if (frame.storm[i] && stormHour[i] === Infinity) stormHour[i] = ahead; }
     for (const storm of world.storms) {
@@ -132,7 +139,8 @@ export function runMesoscaleMember(state, member, hours = MESOSCALE.hoursAhead, 
     near: any('tornado', 'wind', 'hail'), reports: any('windExact', 'hailExact'), windReports: truth.windExact, hailReports: truth.hailExact, windSignificant: truth.windSigExact,
     significant: any('tornadoSigExact', 'windSigExact', 'hailSigExact'),
     // tornadoes: the cell of each; tornadoPeaks: the strongest each got (mph), in the same order.
-    hail, gust, tornadoMph, firstHour, stormHour, tornadoes: [...tornadoes.values()].map(t => t.cell), tornadoPeaks: [...tornadoes.values()].map(t => t.mph)
+    hail, gust, tornadoMph, firstHour, stormHour, tornadoes: [...tornadoes.values()].map(t => t.cell), tornadoPeaks: [...tornadoes.values()].map(t => t.mph),
+    expectedTornado: expected.tornado, expectedStrong: expected.tornadoSig
   };
 }
 
@@ -149,7 +157,10 @@ export function areaOutcome(m, inside) {
   let tornadoes = 0, strong = 0;
   m.tornadoes.forEach((cell, k) => { if (inside[cell]) { tornadoes++; if (m.tornadoPeaks[k] >= MESOSCALE.strongTornadoMph) strong++; } });
   const tornadoCase = Math.min(1, Math.max(tornadoes / MESOSCALE.watchTornadoes, strong ? 1 : 0)), severeCase = Math.min(1, reports / MESOSCALE.watchSevereCells);
-  return { reports, wind, hailCells, windSignificant, significant, hail, gust, tornadoMph, tornadoes, strong, first, storm, tornadoCase, toward: Math.max(tornadoCase, severeCase) };
+  // The tornadoes and strong tornadoes the run's storms were expected to put down there (null for a run without them).
+  let expectedTornadoes = null, expectedStrong = null;
+  if (m.expectedTornado) { expectedTornadoes = 0; expectedStrong = 0; for (let i = 0; i < inside.length; i++) if (inside[i]) { expectedTornadoes += m.expectedTornado[i]; expectedStrong += m.expectedStrong[i]; } }
+  return { reports, wind, hailCells, windSignificant, significant, hail, gust, tornadoMph, tornadoes, strong, expectedTornadoes, expectedStrong, first, storm, tornadoCase, toward: Math.max(tornadoCase, severeCase) };
 }
 
 // What the air over the map is like now, cell by cell, and the storms on it: all a discussion
@@ -216,13 +227,13 @@ export function assessArea(members, now, cells) {
   const withTornado = perMember.filter(m => m.tornadoes > 0);
   const peak = { tornadoMph: median(withTornado.map(m => m.tornadoMph)), gustMph: median(perMember.map(m => m.gust)), hailInches: median(perMember.map(m => m.hail)), membersWithTornado: withTornado.length };
   const peakText = { tornado: withTornado.length * 2 >= count ? peakRange('tornado', peak.tornadoMph) : null, wind: peakRange('wind', peak.gustMph), hail: peakRange('hail', peak.hailInches) };
-  // The chances the watch would give of 2 or more tornadoes and of a strong one.
-  const several = watchStep(mean(m => (m.tornadoes >= 2 ? 1 : 0))), strong = watchStep(mean(m => (m.strong >= 1 ? 1 : 0)));
+  // The chances the watch would give of 2 or more tornadoes and of a strong one (tornadoChances).
+  const { several, strong, any } = tornadoChances(perMember);
   const tornadoWatch = several > MESOSCALE.tornadoChanceLow || strong >= MESOSCALE.tornadoChanceStrong || (Boolean(peakText.tornado) && peak.tornadoMph >= MESOSCALE.strongTornadoMph);
   // Where the tornadoes alone call for a tornado watch, the chance of one is at least the share of
   // runs with a tornado there. (Until 2026-10-20 it counted only runs with a watch's worth of
   // reports, and half the runs could put a 120-150 mph tornado in an area said to be "watch unlikely".)
-  if (tornadoWatch) percent = Math.max(percent, watchStep(withTornado.length / count));
+  if (tornadoWatch) percent = Math.max(percent, any);
   const here = describeHere(now, inside), firstSevere = perMember.map(m => m.first).filter(Number.isFinite), firstStorm = perMember.map(m => m.storm).filter(Number.isFinite);
   // When the runs bring severe weather to each cell (the median run's hours ahead; never: after the look's end).
   const firstAt = new Float32Array(inside.length).fill(Infinity);
@@ -230,6 +241,20 @@ export function assessArea(members, now, cells) {
   return {
     cells, inside, perMember, members: count, percent, tornadoWatch, peak, peakText, here, firstAt,
     stormsInHours: here.storms ? 0 : (firstStorm.length ? median(firstStorm) : null), startsInHours: here.severeNow ? 0 : (firstSevere.length ? median(firstSevere) : null)
+  };
+}
+
+// The chances (MD steps) of 2 or more tornadoes, of a strong one and of any, over the runs (areaOutcome's): from the
+// tornadoes each run's storms were expected to put down there, each run's count taken as Poisson (I2, 2026-11-05; with 4
+// runs the share of runs whose draws made them came in steps of 25%, and a tornado watch needed two runs in four); from the
+// tornadoes the draws made where a run has no expected ones.
+export function tornadoChances(perMember) {
+  const mean = pick => perMember.reduce((a, m) => a + pick(m), 0) / Math.max(1, perMember.length);
+  const has = m => Number.isFinite(m.expectedTornadoes);
+  return {
+    several: watchStep(mean(m => (has(m) ? poissonAtLeast(m.expectedTornadoes, 2) : m.tornadoes >= 2 ? 1 : 0))),
+    strong: watchStep(mean(m => (has(m) ? poissonAtLeast(m.expectedStrong, 1) : m.strong >= 1 ? 1 : 0))),
+    any: watchStep(mean(m => (has(m) ? poissonAtLeast(m.expectedTornadoes, 1) : m.tornadoes >= 1 ? 1 : 0)))
   };
 }
 

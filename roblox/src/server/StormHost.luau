@@ -38,6 +38,7 @@ local World = require(Sim:WaitForChild("World"))
 local EngineFollow = require(Sim:WaitForChild("EngineFollow"))
 local Frames = require(Sim:WaitForChild("Frames"))
 local Publisher = require(script.Parent:WaitForChild("StormPublisher"))
+local LiveStorms = require(script.Parent:WaitForChild("LiveStorms")) :: any
 
 local StormHost = {}
 
@@ -79,9 +80,42 @@ groundFn.Name = "WeatherGround"
 groundFn.Parent = net
 net.Parent = ReplicatedStorage
 
-local pub = Publisher.new(remotes, Frames, function(): number
+-- Frame-fed cards (2026-11-07): the clients build every storm from the engine's shared frames
+-- (client/FrameWorld) and take from this server only hello, the window's data (cw.env), the ground
+-- grid, and the state message's time, clockUtc and settings (stormlab/client/Net with ctx.frameFed).
+-- Then (engine mode only) no lab world is built, spun up or stepped, and only those are sent:
+-- state.lite. The same attributes as client/WeatherClient's FRAME_CARDS; anything else (the lab,
+-- StormNearLab, StormBody puff/mesh, Studio without an engine) keeps the full sim.
+local function frameFedCards(): boolean
+	if workspace:GetAttribute("StormVisuals") ~= "engine" or workspace:GetAttribute("LiveStorms") ~= true then
+		return false
+	end
+	if workspace:GetAttribute("StormNearLab") == true then
+		return false
+	end
+	local body = workspace:GetAttribute("StormBody")
+	return body ~= "puff" and body ~= "mesh"
+end
+
+-- the sim clock (s; the lab world's, or in lite mode this server's own, never set back)
+local function simTime(): number
+	if state.lite then
+		return state.time or 0
+	end
 	return if state.world then state.world.time else 0
-end)
+end
+
+-- lite mode's UTC hour: the engine's shared clock (server/LiveStorms, the same on every server)
+-- once it has a tick, else the window's hour carried on at the game's clock
+local function liteClockUtc(): number
+	local shared = LiveStorms.clockUtc()
+	if shared then
+		return shared
+	end
+	return (state.utc0 or 12) + (simTime() - (state.utcAt or 0)) / 3600
+end
+
+local pub = Publisher.new(remotes, Frames, simTime)
 local settings = { timeScale = TIME_SCALE, paused = false }
 
 -- the place's start point in map miles (Explore's rule), then km
@@ -159,7 +193,7 @@ remotes.hello.OnServerInvoke = function()
 		task.wait(0.2)
 	end
 	return {
-		scenario = state.scenarioName or "live", time = state.world.time, settings = settings, source = state.mode,
+		scenario = state.scenarioName or "live", time = simTime(), settings = settings, source = state.mode,
 		frameVersion = Frames.VERSION, data = state.dataJson, centreKm = state.centreKm,
 	}
 end
@@ -211,6 +245,16 @@ local function adopt(data: any, mode: string, shiftX: number?, shiftY: number?)
 	log("%s window: %d storms, spun up in %.1f s", mode, #w.storms, os.clock() - t0)
 end
 
+-- lite mode: the window's data and clock only (no world: the clients build the storms)
+local function adoptLite(data: any)
+	state.utc0 = data.meta and data.meta.simHourUtc or liteClockUtc()
+	state.utcAt = simTime()
+	state.dataJson = state.dataJsonNext
+	pub:reset()
+	pub:send("event", { kind = "scenario", scenario = state.scenarioName or "live", source = "engine", data = state.dataJson })
+	log("engine window (frame-fed cards: no lab sim), clock %.2f UTC", liteClockUtc())
+end
+
 -- keep the lab's storms in step with the engine's (Sim/EngineFollow.apply)
 local function nudge(list: { any }, stampUtc: number?, paused: boolean?)
 	if state.world then
@@ -257,7 +301,11 @@ local function runEngine(cx: number, cy: number)
 		local shiftX, shiftY = (was.x - c.x) * 1000, -(was.y - c.y) * 1000
 		state.centreKm = c
 		state.dataJsonNext = HttpService:JSONEncode(data)
-		adopt(data, "engine", shiftX, shiftY)
+		if state.lite then
+			adoptLite(data)
+		else
+			adopt(data, "engine", shiftX, shiftY)
+		end
 		cx, cy = x, y
 		return true
 	end
@@ -279,7 +327,8 @@ local function runEngine(cx: number, cy: number)
 			window(px :: number, py :: number)
 			since = 0
 		else
-			local r = get(string.format("/api/game/v1/lab/storms?x=%.2f&y=%.2f&half=7", cx, cy))
+			-- (lite: no lab storms to keep in step)
+			local r = if state.lite then nil else get(string.format("/api/game/v1/lab/storms?x=%.2f&y=%.2f&half=7", cx, cy))
 			if r and r.storms then
 				nudge(r.storms, r.simHourUtc, r.paused)
 			end
@@ -318,7 +367,26 @@ local function yieldFn()
 	end
 end
 
+-- lite mode, every frame: the clock, and the state message's clock at stateHz (the shape the
+-- clients read: time, clockUtc; no storms - theirs are the frames')
+local EMPTY_SYSTEMS = { systems = {}, vortices = {}, fronts = {} }
+local function heartbeatLite(dt: number)
+	if not state.ready then
+		return
+	end
+	state.time = (state.time or 0) + math.min(dt, 0.1) * settings.timeScale
+	timers.state += dt
+	if timers.state >= 1 / LabConfig.RATES.stateHz then
+		timers.state = 0
+		pub:send("state", { time = state.time, clockUtc = liteClockUtc(), storms = {}, systems = EMPTY_SYSTEMS, boundaries = {}, parcels = 0 }, settings)
+	end
+end
+
 local function heartbeat(dt: number)
+	if state.lite then
+		heartbeatLite(dt)
+		return
+	end
 	local w = state.world
 	if not state.ready or not w then
 		return
@@ -381,7 +449,10 @@ local function heartbeat(dt: number)
 		timers.precipFull = 0
 		pub:send("precip", w.precip:pack())
 	end
-	if #w.flashes > 0 then
+	-- (in engine mode the lightning is the engine storms', server/LiveStorms)
+	if #w.flashes > 0 and workspace:GetAttribute("StormVisuals") == "engine" then
+		w.flashes = {}
+	elseif #w.flashes > 0 then
 		pub:send("flash", w.flashes)
 		w.flashes = {}
 	end
@@ -401,7 +472,8 @@ function StormHost.start()
 	end)
 	local cx, cy = startKm()
 	state.mode = if source == "lab" or url == "" then "lab" else "engine"
-	log("storms from the %s (round map km %.0f, %.0f)", state.mode, cx, cy)
+	state.lite = state.mode == "engine" and frameFedCards()
+	log("storms from the %s (round map km %.0f, %.0f)%s", state.mode, cx, cy, if state.lite then ", frame-fed cards: no lab sim" else "")
 	task.spawn(function()
 		if state.mode == "engine" then
 			runEngine(cx, cy)

@@ -3,9 +3,12 @@
 -- client frame (Shared.CloudModel.ClientFrame), unpacked, with where the storm is and how it moves.
 -- This is the store the game's storm visuals will draw from (which visuals is still to be chosen):
 --   LiveStorms.storms[id]  { frame, near, xKm, yKm (map km, y south, when it came), ue, ve (m a
---                          real second, east and north), at (os.clock) }
+--                          real second, east and north), at (os.clock), look (the engine's
+--                          numbers, StormFrames.Look, its xKm/yKm when it came; or nil) }
 --   LiveStorms.positionKm(id)  where the storm is now (moved on at its motion)
 --   LiveStorms.changed     an event fired with the storm's id on each new frame, and on "gone"
+--   LiveStorms.flash       an event fired with each list of the engine storms' flashes (map km,
+--                          y south; heights m): { kind, seed, current, x0, y0, z0, x1, y1, z1 }
 -- With workspace attribute LiveStormsDebug = true each storm is also drawn as plain grey boxes at
 -- full scale (Shared.CloudModel.FrameView: cloud runs, rain shafts, the nest's lowest cloud), at
 -- the sky's height scale for its distance (Config.skyScaleAt), with a line of numbers on screen.
@@ -22,10 +25,12 @@ local FrameView = require(CloudModel:WaitForChild("FrameView")) :: any
 
 local LiveStorms = {}
 
-export type Storm = { frame: any, near: boolean, xKm: number, yKm: number, ue: number, ve: number, at: number }
+export type Storm = { frame: any, near: boolean, xKm: number, yKm: number, ue: number, ve: number, at: number, look: any? }
 LiveStorms.storms = {} :: { [string]: Storm }
 local changed = Instance.new("BindableEvent")
 LiveStorms.changed = changed.Event
+local flash = Instance.new("BindableEvent")
+LiveStorms.flash = flash.Event
 
 local H = Config.STUDS_PER_MILE / (Config.KM_PER_MILE * 1000) -- studs per metre across
 
@@ -106,17 +111,23 @@ end
 function LiveStorms.start()
 	if workspace:GetAttribute("LiveStorms") ~= true then return end
 	local remote = ReplicatedStorage:WaitForChild("LiveStormNet"):WaitForChild("Frame") :: RemoteEvent
-	remote.OnClientEvent:Connect(function(kind: string, id: string, xKm: number?, yKm: number?, frame: buffer?, near: boolean?, ue: number?, ve: number?)
-		if kind == "gone" then
+	remote.OnClientEvent:Connect(function(kind: string, id: string, xKm: number?, yKm: number?, frame: buffer?, near: boolean?, ue: number?, ve: number?, look: any?)
+		if kind == "flash" then
+			flash:Fire(id :: any)
+			return
+		elseif kind == "gone" then
 			LiveStorms.storms[id] = nil
 			local d = debugViews[id]
 			if d then d.folder:Destroy(); debugViews[id] = nil end
 			changed:Fire(id)
 		elseif kind == "frame" and frame and xKm and yKm then
 			received += buffer.len(frame)
+			if workspace:GetAttribute("EngineStormsDebugCam") == true then
+				print(("[LiveStorms] frame %s %d bytes at %.1f, %.1f km"):format(id, buffer.len(frame), xKm, yKm))
+			end
 			local ok, err = pcall(function()
 				local f = ClientFrame.decode(EncodingService:DecompressBuffer(frame, Enum.CompressionAlgorithm.Zstd))
-				local s: Storm = { frame = f, near = near == true, xKm = xKm, yKm = yKm, ue = ue or 0, ve = ve or 0, at = os.clock() }
+				local s: Storm = { frame = f, near = near == true, xKm = xKm, yKm = yKm, ue = ue or 0, ve = ve or 0, at = os.clock(), look = look }
 				LiveStorms.storms[id] = s
 				drawDebug(id, s)
 				changed:Fire(id)

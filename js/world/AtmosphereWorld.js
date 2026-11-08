@@ -19,6 +19,8 @@ import { RegionSteering } from './RegionSteering.js';
 const ramp = (value, low, high) => clamp((value - low) / (high - low), 0, 1);
 
 const STATE_VERSION = 4;
+// How often the live server moves the storms (server/WeatherAuthorityRuntime.js STORM_CADENCE_HOURS).
+export const STORM_TICK_HOURS = 1 / 12;
 const ISENTROPIC_STABILITY = 0.003;   // K per m: the least stability isentropic lift is worked out with
 
 export const STORM_COUPLING = Object.freeze({
@@ -154,6 +156,36 @@ export class AtmosphereWorld {
   // each move of the storms.
   advanceStormLayer(hours = 1 / 12) {
     if (this.stormsEnabled && hours > 0) { advanceStormEngine(this.world, hours, { applyFeedback: false, initiate: true }); this.onStormTick?.(); }
+  }
+
+  // The storms (whatever set is in this.world.storms now) moved in ticks of tickHours up to hourUtc,
+  // as the live server moves them (WeatherAuthorityRuntime.stormTicksTo). The storm clock is rounded
+  // at each tick; a sliver left over is not a tick, and the clock is set to the hour. onTick(hours) is
+  // called after each tick.
+  stormTicksTo(hourUtc, { tickHours = STORM_TICK_HOURS, onTick } = {}) {
+    if (!this.stormsEnabled) return;
+    const world = this.world;
+    for (let guard = 0; guard < 64; guard++) {
+      const left = hourUtc - (world.stormEngine?.validHourUtc ?? world.validHourUtc);
+      if (left <= 1e-3) { if (left > 0 && world.stormEngine) world.stormEngine.validHourUtc = hourUtc; return; }
+      const hours = Math.min(tickHours, left);
+      this.advanceStormLayer(hours);
+      onTick?.(hours);
+    }
+  }
+
+  // advance() as the live server steps the world: before each atmosphere step the storms move in
+  // 5-minute ticks up to it, then the air takes the step with the storms' effect on it. Every copy
+  // that forecasts or checks the live world steps this way (2026-11-05): advance() with its storms
+  // moves them in one 30-minute jump, and their chances (drawn per tick) then make about half the
+  // tornadoes and hail the live world makes from the same air.
+  advanceLikeServer(hours = 0.5, { tickHours = STORM_TICK_HOURS, onTick, onStep } = {}) {
+    const stepHours = this.regional.params.stepSeconds / 3600, steps = Math.max(1, Math.round(hours / stepHours));
+    for (let step = 0; step < steps; step++) {
+      this.stormTicksTo(this.world.validHourUtc + stepHours, { tickHours, onTick });
+      this.advance(stepHours, { advanceStorms: false });
+      onStep?.();
+    }
   }
 
   // Storms warm the air aloft and dry their inflow layer. The regional layer rewrites the

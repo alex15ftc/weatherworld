@@ -166,4 +166,19 @@ function Util.mix(a: Color3, b: Color3, f: number): Color3
 	return Color3.new(a.R + (b.R - a.R) * f, a.G + (b.G - a.G) * f, a.B + (b.B - a.B) * f)
 end
 
+-- The wall cloud's radius (m) - Render/WallStream and CardPlan both. From the low-level meso's
+-- radius Ru, and at least WALL_ASPECT x its depth D (the engine's base less the lowering's) - the
+-- references are 3-5x wider than deep (docs/visuals/WALLCLOUD-LOOK-SPEC); at ~1 R per depth it drew
+-- from afar as a round mushroom of stacked discs, regrade 2026-11-07. A young lowering is small (q),
+-- an occluding one eroded (occl).
+Util.WALL_ASPECT = 1.6
+-- the lowering's underside: flat across most of it, stepping up to the base at the rim -
+-- zb + D (r/R)^WALL_FLOOR_P. At 4 its sides curved up like a bowl and the lowering read as a bulb
+-- hanging into the funnel; the references show an abrupt step, regrade 2026-11-07
+Util.WALL_FLOOR_P = 8
+function Util.wallRadius(Ru: number, D: number, q: number, occl: number): number
+	local full = math.max(0.5 * math.clamp(0.9 * Ru, 1000, 3500), math.min(Util.WALL_ASPECT * D, 2500))
+	return full * (0.3 + 0.7 * q) * (1 - 0.35 * occl)
+end
+
 return Util

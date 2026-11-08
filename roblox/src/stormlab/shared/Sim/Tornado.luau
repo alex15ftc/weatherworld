@@ -140,7 +140,9 @@ function Tornado.setEngine(t: Tornado, et: any?, x: number, y: number, u: number
 		t.x, t.y = x, y
 	end
 	t.eng = { on = true, mph = et.mph or 0, yards = et.yards or 100, x = x, y = y, u = u, v = v, at = at, ox = ox, oy = oy,
-		omega = if cx then et.orbit or 0 else 0, cx = cx, cy = cy }
+		omega = if cx then et.orbit or 0 else 0, cx = cx, cy = cy,
+		-- (optional, client/FrameWorld: the engine's core radius, swirl and cloud base, m and m/s)
+		R = et.R, swirl = et.swirl, base = et.base, leanX = et.leanX, leanY = et.leanY }
 end
 
 function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
@@ -210,6 +212,10 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 			zCore += (zPool - zCore) * f
 			poolF = f
 		end
+	end
+	-- (the engine's cloud base over its tornado, when given: client/FrameWorld)
+	if t.eng and t.eng.base then
+		cloudBase = t.eng.base
 	end
 	t.cloudBase += (math.clamp(cloudBase, 150, 2500) - t.cloudBase) * (1 - exp(-dt / 60))
 	t.coreLcl = (t.coreLcl or zCore) + (math.clamp(zCore, 30, 2500) - (t.coreLcl or zCore)) * (1 - exp(-dt / 60))
@@ -318,6 +324,10 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	if eng then
 		-- the engine's damage-path width is about four core radii across
 		rcT = 0.25 * eng.yards * 0.9144 * (1 - 0.6 * t.decay) * stretchK
+		if eng.R then
+			-- (the engine's own core radius, when given: client/FrameWorld, as its frames draw it)
+			rcT = eng.R * (1 - 0.6 * t.decay)
+		end
 	end
 	-- (contracting fast, ~20 s - angular-momentum spin-up, the corner flow collapsing inward; broadening
 	-- slowly, ~60 s. Observed core swings take 30 s - 1 min (Canadian TX 2015, Wurman et al.;
@@ -342,13 +352,23 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		local peak = t.peakWind or 0
 		local scale = if peak > 1 then math.clamp(target / peak, 0.5, 2) else 2
 		vT = math.max(8, t.vc) * scale
+		if eng.swirl then
+			-- (the engine's swirl, when given: its rating less the tornado's motion, as its frames
+			-- have it - js/cloudmodel/EngineRun tornadoShape; client/FrameWorld)
+			vT = eng.swirl
+		end
 	end
 	-- dissipating: the core narrows (rcT x (1 - 0.6 decay), stretched) while the circulation it
 	-- carries is spent late - cut off, a vortex spins down over minutes, slower than it narrows -
 	-- and the core wind is circulation / radius: a roping-out funnel stays spun up and condensed
 	-- until late, then lifts (NWS spotter guide: the rope "can still be dangerous"). With the
 	-- circulation x (1 - decay) the rope had ~20 m/s and no condensed funnel, 2026-10-29
-	vT *= (0.25 + 0.75 * t.O) * (1 - t.decay * t.decay) / (1 - 0.6 * t.decay)
+	-- (not with the engine's word: its rating already carries the tornado's life - spin-up, roping out.
+	-- Applied after the feedback above it settled the core at that share of the engine's: a rain-wrapped
+	-- 84 mph tornado held at 13.7 m/s against its 37.5, no condensed funnel, 2026-11-07)
+	if not eng then
+		vT *= (0.25 + 0.75 * t.O) * (1 - t.decay * t.decay) / (1 - 0.6 * t.decay)
+	end
 	if not alive and not t.cut then
 		vT = 0 -- (with a cut held, it spins down with what it carries, above)
 	end
@@ -372,8 +392,14 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		local wx, wy = engineAt(eng, world.time - eng.at)
 		t.x = wx + eng.ox
 		t.y = wy + eng.oy
-		-- the top stays under the parent's circulation at the cloud base (the tilt)
-		if parent then
+		-- the top stays under the parent's circulation at the cloud base (the tilt) - or, when the
+		-- engine's lean is given (client/FrameWorld: its funnel's offset at the cloud base, from
+		-- the frame's levels), where the engine's funnel meets its base: the drawn funnel leans as
+		-- the engine's does, not toward this sim's own circulation, which stands elsewhere
+		if eng.leanX then
+			t.topX += (eng.leanX - t.topX) * (1 - exp(-dt / 20))
+			t.topY += (eng.leanY - t.topY) * (1 - exp(-dt / 20))
+		elseif parent then
 			t.topX += ((parent.x - t.x) - t.topX) * (1 - exp(-dt / 20))
 			t.topY += ((parent.y - t.y) - t.topY) * (1 - exp(-dt / 20))
 		end

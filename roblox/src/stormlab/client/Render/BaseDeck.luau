@@ -184,7 +184,14 @@ function BaseDeck.new(ctx: any): any
 					local dt2 = math.clamp(now - (d.at or now), 0, 120)
 					local ox, oy = d.ox + d.u * dt2, d.oy + d.v * dt2
 					local dx, dy = d.x + d.u * dt2, d.y + d.v * dt2
-					local reach = math.min(range, math.sqrt((cx - dx) ^ 2 + (cy - dy) ^ 2) + d.r)
+					-- (the game: drawn about the storm's anchor at its scale, LabConfig.stormAnchor; the
+					-- discs over the camera are those drawn over it - the camera's place brought into
+					-- the storm's own metres, kh / k nearer the anchor. The lab: as it is)
+					local aX, aY = C.stormAnchor(id, dx, dy)
+					local ka = C.scaleAbout(aX, aY)
+					local fk = if C.anchorFn then C.frame.kh / ka else 1
+					local ccx, ccy = aX + (cx - aX) * fk, aY + (cy - aY) * fk
+					local reach = math.min(range, math.sqrt((ccx - dx) ^ 2 + (ccy - dy) ^ 2) + d.r)
 					-- this storm's live wall cloud (Render/WallStream), for the hole below
 					local wsAll = ctx.wallStreamBase
 					local wb = wsAll and wsAll[tostring(id)]
@@ -200,17 +207,17 @@ function BaseDeck.new(ctx: any): any
 					if wb and not wb.r then
 						wb = nil
 					end
-					local j0, j1 = math.floor((cy - reach - oy) / ROWH), math.ceil((cy + reach - oy) / ROWH)
+					local j0, j1 = math.floor((ccy - reach - oy) / ROWH), math.ceil((ccy + reach - oy) / ROWH)
 					for j = j0, j1 do
 						local shift = if j % 2 == 0 then 0 else 0.5 * S
-						local i0, i1 = math.floor((cx - reach - ox - shift) / S), math.ceil((cx + reach - ox - shift) / S)
+						local i0, i1 = math.floor((ccx - reach - ox - shift) / S), math.ceil((ccx + reach - ox - shift) / S)
 						for i = i0, i1 do
 							local h1, h2, h3 = hash(i, j, 1), hash(i, j, 2), hash(i, j, 3)
 							-- (solid discs a little off the grid; soft ones on it, JIT)
 							local px = ox + shift + (i + JIT * (h1 - 0.5)) * S
 							local py = oy + (j + JIT * (h2 - 0.5)) * ROWH
 							local dc = math.sqrt((px - dx) ^ 2 + (py - dy) ^ 2)
-							local dcam = math.sqrt((px - cx) ^ 2 + (py - cy) ^ 2)
+							local dcam = math.sqrt((px - ccx) ^ 2 + (py - ccy) ^ 2)
 							-- (the base out to ~0.75 of its radius - the billboard rim softens its edge
 							-- beyond - within range, and not in the clear slot. 2026-10-30: limited to the
 							-- steep patch overhead, the billboard deck cards came back 1-5 km out and hung
@@ -267,7 +274,7 @@ function BaseDeck.new(ctx: any): any
 								local z = if p.edge
 									then d.z - (D.lump or 30) - 5 + 0.5 * (D.thick or 60)
 									else d.z - (D.lump or 30) * h3 + 0.5 * (D.thick or 60)
-								p.cf = CFrame.new(C.toWorld(px, py, z)) * UPRIGHT
+								p.cf = CFrame.new(C.toWorldAbout(px, py, z, aX, aY, ka)) * UPRIGHT
 								local shade = ctx.stormShade
 								if (restyle or not p.col) and shade and shade.card then
 									-- shaded as a base card in its place (ctx.stormShade.card: light, haze,

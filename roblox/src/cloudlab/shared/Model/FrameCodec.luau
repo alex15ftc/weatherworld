@@ -14,7 +14,7 @@
 --   then the nest's own header and columns if bit 0 (nx, ny u16, dx f32, X0, Y0 f32: its corner
 --   in the box, m)
 -- Box columns, row by row from the south-west, FIELDS bytes each (BOX_FIELDS: name, scale):
---   base1, top1     lowest cloud run (cloud water + snow + 0.3 rain/hail), 100 m units
+--   base1, top1     lowest cloud run (cloud water + snow; falling rain and hail are not cloud), 100 m units
 --   base2, top2     the next run up (the anvil over a gap), 100 m units
 --   rain            ground rain + hail, log: byte = 40 log10(1 + mm/h)   (255 = 2400 mm/h)
 --   hail            the hail part, same scale
@@ -26,6 +26,16 @@
 -- Nest columns (NEST_FIELDS): cloud base below 3 km (25 m units; 0 none), ground wind u, v
 -- (0.5 m/s signed), ground vorticity (signed, 0.002 /s), pressure drop (10 Pa units).
 local FrameCodec = {}
+
+-- (the tornado block's reader is ClientFrame's; loaded when first needed. In Roblox the sibling
+-- module, on the command line the file beside this one)
+local clientFrame: any = nil
+local function ClientFrame(): any
+	if not clientFrame then
+		clientFrame = if script then require((script :: any).Parent:FindFirstChild("ClientFrame")) else (require :: any)("./ClientFrame")
+	end
+	return clientFrame
+end
 
 FrameCodec.VERSION = 1
 FrameCodec.BOX_FIELDS = 12
@@ -124,7 +134,7 @@ function FrameCodec.encode(run: any, seq: number): buffer
 	buffer.writef32(b, 34, m.umove)
 	buffer.writef32(b, 38, m.vmove)
 	local nz = m.nz
-	local qc, qr, qh, qsn, th, w, u, v = m.qc, m.qr, m.qh, m.qsn, m.th, m.w, m.u, m.v
+	local qc, qsn, th, w, u, v = m.qc, m.qsn, m.th, m.w, m.u, m.v
 	local zf, th0, rho0, dzc, zc = m.zf, m.th0, m.rho0, m.dzc, m.zc
 	local SX, SXY = m.SX, m.SXY
 	local k1, k5 = m:levelAt(1000), m:levelAt(5000)
@@ -137,7 +147,8 @@ function FrameCodec.encode(run: any, seq: number): buffer
 			local snowCol = 0
 			for k = 1, nz do
 				local n = col + k * SXY
-				local c = qc[n] + qsn[n] + 0.3 * (qr[n] + qh[n])
+				-- (cloud: droplets and the anvil's ice; falling rain and hail are not cloud - js/cloudmodel/FrameCodec.js)
+				local c = qc[n] + qsn[n]
 				if c > CLOUD then
 					if not inside then
 						nr += 1
@@ -185,6 +196,9 @@ export type Frame = {
 	seq: number, time: number, simHour: number, ended: boolean,
 	nx: number, ny: number, dx: number, anchorX: number, anchorY: number, um: number, vm: number,
 	nest: { nx: number, ny: number, dx: number, X0: number, Y0: number, offset: number }?,
+	-- (flags bit 2: the tornado, after the nest; ClientFrame.Tornado; js/cloudmodel/FrameCodec.js
+	-- writes it)
+	tornado: any,
 	buf: buffer,
 }
 
@@ -196,11 +210,16 @@ function FrameCodec.decodeHeader(b: buffer): Frame
 		ended = bit32.band(flags, 2) ~= 0,
 		nx = buffer.readu16(b, 18), ny = buffer.readu16(b, 20), dx = buffer.readf32(b, 22),
 		anchorX = buffer.readf32(b, 26), anchorY = buffer.readf32(b, 30),
-		um = buffer.readf32(b, 34), vm = buffer.readf32(b, 38), nest = nil, buf = b,
+		um = buffer.readf32(b, 34), vm = buffer.readf32(b, 38), nest = nil, tornado = nil, buf = b,
 	}
+	local o = HEADER + f.nx * f.ny * FrameCodec.BOX_FIELDS
 	if bit32.band(flags, 1) ~= 0 then
-		local o = HEADER + f.nx * f.ny * FrameCodec.BOX_FIELDS
-		f.nest = { nx = buffer.readu16(b, o), ny = buffer.readu16(b, o + 2), dx = buffer.readf32(b, o + 4), X0 = buffer.readf32(b, o + 8), Y0 = buffer.readf32(b, o + 12), offset = o + NEST_HEADER }
+		local nnx, nny = buffer.readu16(b, o), buffer.readu16(b, o + 2)
+		f.nest = { nx = nnx, ny = nny, dx = buffer.readf32(b, o + 4), X0 = buffer.readf32(b, o + 8), Y0 = buffer.readf32(b, o + 12), offset = o + NEST_HEADER }
+		o += NEST_HEADER + nnx * nny * FrameCodec.NEST_FIELDS
+	end
+	if bit32.band(flags, 4) ~= 0 then
+		f.tornado = ClientFrame().readTornado(b, o)
 	end
 	return f
 end

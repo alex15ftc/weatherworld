@@ -19,7 +19,7 @@
 //   }
 // A storm with no echo of leastDbz near the ground has precip = null.
 import { radarSceneInputs, buildStormEcho, precipitationEcho, meshInches } from './RadarSimulator.js';
-import { PRECIP_LEVELS_M } from './PrecipitationField.js';
+import { PRECIP_LEVELS_M } from '../storms/PrecipitationField.js';
 
 export const PRECIP_GRID = Object.freeze({
   cols: 20, rows: 20, cellKm: 2,

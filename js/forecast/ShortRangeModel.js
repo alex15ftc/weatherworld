@@ -88,8 +88,8 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
   };
   keepFields(); keepStorms();
   let nextStorms = SHORT_RANGE.stormEvery;
-  const tick = hoursAhead => {
-    atmosphere.advanceStormLayer(hoursAhead);
+  // After each storm tick (the tick itself is AtmosphereWorld.stormTicksTo's).
+  const tick = () => {
     const into = stormHour() - initHourUtc;
     if (shared && into >= shareHours - 1e-3) { shared = false; setSeed(ownSeed); }
     keepTracks();
@@ -97,14 +97,8 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
   };
   const steps = Math.round(hours / SHORT_RANGE.atmosphereStepHours);
   for (let step = 0; step < steps; step++) {
-    // The storms up to the next atmosphere step, in ticks (as WeatherAuthorityRuntime.stormTicksTo).
-    const target = world.validHourUtc + SHORT_RANGE.atmosphereStepHours;
-    for (let guard = 0; guard < 64; guard++) {
-      const left = target - stormHour();
-      if (left <= 1e-3) { if (left > 0 && world.stormEngine) world.stormEngine.validHourUtc = target; break; }
-      tick(Math.min(SHORT_RANGE.stormTickHours, left));
-    }
-    atmosphere.advance(SHORT_RANGE.atmosphereStepHours, { advanceStorms: false });
+    // The storms up to the next atmosphere step, in ticks, then the air (as WeatherAuthorityRuntime steps the live world).
+    atmosphere.advanceLikeServer(SHORT_RANGE.atmosphereStepHours, { tickHours: SHORT_RANGE.stormTickHours, onTick: tick });
     if (Math.abs((world.validHourUtc - initHourUtc) % 1) < 1e-6) keepFields();
   }
   return {

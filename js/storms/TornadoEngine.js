@@ -97,9 +97,12 @@ export function updateTornadoState(world, storm, environment, dtHours) {
 
   const wasDown = tornado.onGround;
   if (!tornado.onGround) {
-    const tick = Math.round(((world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0) + storm.ageHours) * 12);
+    const now = world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0;
+    const tick = Math.round((now + storm.ageHours) * 12);
     const draw = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|tor|${tick}`);
     if (draw < 1 - Math.exp(-ratePerHour * dtHours)) {
+      // (a world saved while the cloud model's hints were in use may carry these: 2026-11-06)
+      delete tornado.armed; delete tornado.timing; delete tornado.atModel;
       beginTornado(world, storm, tornado);
       drawTornadoCharacter(world, storm, tornado);
       // It is counted on the ground for the whole of this step, and the storm has already

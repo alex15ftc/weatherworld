@@ -16,7 +16,7 @@ const FIELDS = ['u', 'v', 'w', 'p', 'th', 'qv', 'qc', 'qr', 'qh', 'qsn'];
 const GRID_ID = { B: 30, rainSfc: 31, hailSfc: 32 };
 FIELDS.forEach((f, q) => { GRID_ID[f] = q; GRID_ID[f + 'S'] = 10 + q; GRID_ID['R' + f] = 20 + q; });
 const LEV_ID = { zf: 40, zc: 41, dzc: 42, dzw: 43, th0: 44, qv0: 45, u0: 46, v0: 47, pi0: 48, p0: 49, rho0: 50, rhow: 51, lapTh: 52, lapQv: 53, lapU: 54, lapV: 55, envTh: 56, envQv: 57, envU: 58, envV: 59 };
-const SCALAR = { time: 0, umove: 1, vmove: 2, ox: 3, oy: 4, stormI: 5, stormJ: 6, uhMax: 7, cpRate: 8, psfc: 9, dx: 10, dt: 11, nx: 12, ny: 13, nz: 14, SX: 15, SXY: 16, N: 17, X0: 18, Y0: 19, i0: 20, j0: 21, ztop: 22, zdamp: 23, cd: 24, driveOn: 25, drive2On: 26, K: 27, Kh: 28, ratio: 29 };
+const SCALAR = { time: 0, umove: 1, vmove: 2, ox: 3, oy: 4, stormI: 5, stormJ: 6, uhMax: 7, cpRate: 8, psfc: 9, dx: 10, dt: 11, nx: 12, ny: 13, nz: 14, SX: 15, SXY: 16, N: 17, X0: 18, Y0: 19, i0: 20, j0: 21, ztop: 22, zdamp: 23, cd: 24, driveOn: 25, drive2On: 26, K: 27, Kh: 28, ratio: 29, n0h: 41, cpTop: 42 };
 
 let shared = null;
 // One module instance per thread (a worker runs one storm; several models can share it).
@@ -32,6 +32,26 @@ export function loadModule() {
   inst.exports._initialize?.();
   shared = inst.exports;
   return shared;
+}
+
+// Snapshots: every model's state lives in the module's memory (fields, levels, scalars and the
+// allocator's own records), so a copy of the memory is the whole state, and a fresh module given
+// that copy carries on bit for bit (EngineRun.snapshot / restore). A restore must come before any
+// model is made in this thread (a worker restores as it starts).
+let made = 0;
+export function memorySnapshot() {
+  return new Uint8Array(loadModule().memory.buffer).slice();
+}
+export function restoreMemory(bytes) {
+  if (made > 0) throw new Error('restoreMemory: models already made in this thread');
+  const ex = loadModule();
+  const page = 65536, have = ex.memory.buffer.byteLength;
+  if (bytes.length % page !== 0) throw new Error('restoreMemory: not a memory image');
+  if (bytes.length > have) ex.memory.grow((bytes.length - have) / page);
+  const mem = new Uint8Array(ex.memory.buffer);
+  mem.set(bytes);
+  mem.fill(0, bytes.length);
+  made++;
 }
 
 export function satMix(p, T) {
@@ -66,7 +86,11 @@ export class CloudModel {
   }
 
   // CloudModel.new: cfg as the Luau's Config; snd a sounding (Sounding.fromProfile)
+  // a model already in the module's memory (after restoreMemory)
+  static wrap(ptr) { return new CloudModel(loadModule(), ptr); }
+
   static create(cfg, snd) {
+    made++;
     const ex = loadModule();
     const zf = faceHeights(cfg);
     const nz = zf.length - 2;
@@ -162,12 +186,23 @@ export class CloudModel {
   coldPoolRate(targetK, tau) { return this.ex.cm_cold_pool_rate(this.ptr, targetK, tau); }
   set cpRate(x) { this.ex.cm_set(this.ptr, 8, x); }
   get cpRate() { return this.get('cpRate'); }
+  // the cold pool's top (m): the layer applyColdPool scales (the engine's depth; 1,500 m until set)
+  get cpTop() { return this.get('cpTop'); }
+  set cpTop(x) { this.ex.cm_set(this.ptr, 42, x); }
+  // the hail size distribution's intercept (m^-4; smaller: fewer, bigger stones)
+  get n0h() { return this.get('n0h'); }
+  set n0h(x) { this.ex.cm_set(this.ptr, 41, x); }
+  // mixing (m^2/s): K vertical, Kh horizontal
+  get K() { return this.get('K'); }
+  set K(x) { this.ex.cm_set(this.ptr, 27, x); }
+  get Kh() { return this.get('Kh'); }
+  set Kh(x) { this.ex.cm_set(this.ptr, 28, x); }
 
   // a drive (CloudModel.applyDrive's table; null turns it off); which 1 or 2
   setDrive(which, d) {
-    if (!d) { this.ex.cm_set_drive(this.ptr, which, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0); return; }
+    if (!d) { this.ex.cm_set_drive(this.ptr, which, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0); return; }
     const hasO = d.ox != null || d.oy != null;
-    this.ex.cm_set_drive(this.ptr, which, 1, d.x, d.y, hasO ? 1 : 0, d.ox ?? 0, d.oy ?? 0, d.inBox ? 1 : 0, d.r, d.z, d.rz, d.w, d.tau, d.t1, d.ramp);
+    this.ex.cm_set_drive(this.ptr, which, 1, d.x, d.y, hasO ? 1 : 0, d.ox ?? 0, d.oy ?? 0, d.inBox ? 1 : 0, d.r, d.z, d.rz, d.w, d.tau, d.t1, d.ramp, d.push ? 1 : 0);
   }
 
   step() { this.ex.cm_step(this.ptr); }

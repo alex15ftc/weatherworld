@@ -50,6 +50,7 @@ local StormCards = {}
 
 local PLAN_EVERY = 3 -- s, a storm within PLAN_NEAR_M
 local PLAN_FAR = 20 -- s, a storm beyond PLAN_FAR_M (in between: linear)
+local PLAN_IDLE = 30 -- s, a frame-fed storm not built again and the camera not moved (planEvery)
 local PLAN_NEAR_M, PLAN_FAR_M = 10000, 40000
 local RECOLOUR_BUDGET = 300 -- fog recolours a frame
 local RESCALE_BUDGET = 400 -- card rewrites a frame after a layer's scale moved
@@ -87,6 +88,29 @@ function StormCards.new(ctx: any): any
 	local MIRROR = C.LOBE_MIRROR ~= false
 	local Storm = ctx.Sim.Storm
 	local self = {}
+	-- Period (debug, in the game - ctx.frameFed; the lab's Render/StormVolume owns the key there):
+	-- leave out one part of the card plan at a time, to find which part draws an artefact
+	do
+		local order = { "tower", "anvil", "forwardFlank", "base", "inflowBand", "striations", "wallScud" }
+		local conn = game:GetService("UserInputService").InputBegan:Connect(function(input: InputObject)
+			if input.KeyCode ~= Enum.KeyCode.Period then return end
+			if not ctx.frameFed then
+				print("[cards] Period: not frame-fed, the lab's key handles it")
+				return
+			end
+			local cur, nxt = ctx.state.hideSection, nil
+			if cur == nil then
+				nxt = order[1]
+			else
+				for k, n in order do
+					if n == cur then nxt = order[k + 1] end
+				end
+			end
+			ctx.state.hideSection = nxt
+			print("[cards] hiding section:", nxt or "none")
+		end)
+		self.periodConn = conn
+	end
 	local folder = Instance.new("Folder")
 	folder.Name = "StormCards"
 	folder.Parent = ctx.root
@@ -324,6 +348,7 @@ function StormCards.new(ctx: any): any
 
 	-- the scene's light for clouds (as Tornado/SceneLight, but the sun unshadowed: the card's own
 	-- `lit` carries the storm's shadow)
+	local SIDE_HORIZON = 0.45 -- (colour(): the sky light a side face takes from an open horizon)
 	local fogLightAt, fogLight = -math.huge, 0.5
 	local Lnow = {} -- (light()'s result: one table, rewritten each frame)
 	local function light(): any
@@ -408,7 +433,11 @@ function StormCards.new(ctx: any): any
 			-- (it was 0.8: the base sat at ~0.5 of the sunlit tower; photos ~0.14, review 10-29;
 			-- 0.4 -> 0.22 on 2026-10-30: the base drew 175-187 grey against photos' 50-100 slate,
 			-- docs/storm-reference/real/04_*, so the wall cloud read pasted on)
-			sky *= 0.22 + 0.78 * (0.5 + 0.5 * nz) ^ 1.5
+			-- a face turned sideways also sees the low sky past the base's edge (Render/Sky's horizon
+			-- openness, ctx.skyHorizon): the wall cloud's sides drew 0.05 - near black - under a
+			-- storm whose horizon was 0.88 open, the photos' wall ~0.40 of the bright sky, regrade
+			-- 2026-11-07. Down-facing undersides keep their dark ground-lit value
+			sky *= 0.22 + 0.78 * (0.5 + 0.5 * nz) ^ 1.5 + SIDE_HORIZON * (ctx.skyHorizon or 0) * (1 - nz * nz)
 			-- forward scatter: an edge seen toward the sun glows (the silver lining)
 			-- (not looking steeply up: under a deck the light comes through kilometres of cloud)
 			-- (and not on the base's underside: a down-facing card seen low toward the sun glowed as a
@@ -743,9 +772,10 @@ function StormCards.new(ctx: any): any
 			local size = Vector2.new(if mirror then -fs else fs, fs)
 			local off = Vector2.new(if mirror then fx + fs else fx, fy)
 			setRect(inst, size, off)
-			-- the frame's top faces the sun on screen (squashed cards stay level: the light is
-			-- from above anyway)
-			setRot(inst, if square then gradAngle - 90 else 0)
+			-- upright: the lobes are baked lit from above, and the light's side on screen is the
+			-- gradient's (turned to the sun at plan time, a card kept the angle of that moment and
+			-- flipped at the next re-plan as the camera turned, 2026-11-07)
+			setRot(inst, 0)
 		else
 			setImage(inst, C.TEXTURES[c.tex] or C.TEXTURES.softFlat)
 			if c.frame >= 0 then
@@ -843,6 +873,23 @@ function StormCards.new(ctx: any): any
 			inst.att.Position = v
 		end
 	end
+	-- A card's place on its loop (0..1), carried on from its last step at the loop's present rate
+	-- (2026-11-07, the jitter the user saw: the place was (clock / period + phase) % 1, so every
+	-- re-plan or re-trace that changed a period by a little - each engine nudge - jumped every card
+	-- along its loop, the more so the longer the clock had run). From the clock only when it starts
+	-- (or has not been stepped for LOOP_GAP_S: off screen).
+	local LOOP_GAP_S = 5
+	local function loopAt(inst: any, t: number, P: number, ph: number): number
+		local last, v = inst.lpT, inst.lpV
+		if v == nil or last == nil or t < last or t - last > LOOP_GAP_S then
+			v = (t / P + ph) % 1
+		else
+			v = (v + (t - last) / P) % 1
+		end
+		inst.lpT, inst.lpV = t, v
+		return v
+	end
+
 	local function animate(inst: any, t: number, gain: number, layer: any)
 		local c = inst.card
 		local m = c and c.mv
@@ -857,7 +904,14 @@ function StormCards.new(ctx: any): any
 				return
 			end
 			inst.spinAt = now + 0.18 + 0.04 * c.ph
-			local th = m.omega * t
+			-- (the turn carried on at the present rate, as the loops: loopAt)
+			local th
+			if inst.spTh == nil or inst.spT == nil or t < inst.spT or t - inst.spT > LOOP_GAP_S then
+				th = m.omega * t
+			else
+				th = inst.spTh + m.omega * (t - inst.spT)
+			end
+			inst.spTh, inst.spT = th % (2 * math.pi), t
 			local cs, sn = math.cos(th), math.sin(th)
 			local dx, dy = c.x - m.tx, c.y - m.ty
 			movePos(inst, cardPos(layer, m.tx + dx * cs - dy * sn, m.ty + dx * sn + dy * cs, c.z))
@@ -873,7 +927,7 @@ function StormCards.new(ctx: any): any
 				setAlpha(inst, inst.a * gain)
 				return
 			end
-			local phi = (t / fl.P + c.ph) % 1
+			local phi = loopAt(inst, t, fl.P, c.ph)
 			local env = math.min(1, phi / 0.15) * math.min(1, (1 - phi) / 0.2)
 			local x, y, z, fc = Flow.at(fl, phi)
 			if m.k == "up" then
@@ -887,7 +941,7 @@ function StormCards.new(ctx: any): any
 			setAlpha(inst, math.min(1, inst.a * env * gain * fc))
 			return
 		end
-		local phi = (t / m.P + c.ph) % 1
+		local phi = loopAt(inst, t, m.P, c.ph)
 		-- fade in and out at the cycle's ends (no card pops on its loop)
 		local env = math.min(1, phi / 0.15) * math.min(1, (1 - phi) / 0.2)
 		local x, y, z = c.x, c.y, c.z
@@ -996,6 +1050,15 @@ function StormCards.new(ctx: any): any
 		end
 		local s = g.storm
 		local d = g.dCam or math.sqrt((s.x - camXNow) ^ 2 + (s.y - camYNow) ^ 2)
+		-- (a storm built from the engine's frames - client/FrameWorld's buildId - is the same until
+		-- it is built again: re-planned only then, or when the camera has moved a tenth of the way
+		-- to it; PLAN_IDLE as a floor. It re-planned every 3 s near, ~200 cards re-put each time)
+		if s.buildId and s.buildId == g.planBuild and g.planCamX then
+			local moved = math.sqrt((camXNow - g.planCamX) ^ 2 + (camYNow - g.planCamY) ^ 2)
+			if moved < 0.1 * math.max(d, 1000) then
+				return PLAN_IDLE
+			end
+		end
 		local k = math.clamp((d - PLAN_NEAR_M) / (PLAN_FAR_M - PLAN_NEAR_M), 0, 1)
 		return PLAN_EVERY + (PLAN_FAR - PLAN_EVERY) * k
 	end
@@ -1009,7 +1072,7 @@ function StormCards.new(ctx: any): any
 		end
 		local km, kw, kh = g.main.k, g.wallL.k, C.frame.kh
 		local kmax, kmin = math.max(km, kw, kh), math.min(km, kw, kh)
-		local centre = C.toWorldAbout(g.px, g.py, 0, g.px, g.py) + cardPos(g.main, g.bx, g.by, g.bz)
+		local centre = C.toWorldAbout(g.px, g.py, 0, g.ax or g.px, g.ay or g.py) + cardPos(g.main, g.bx, g.by, g.bz)
 		local radS = rad * (2 * kmax - kmin)
 		return centre, radS, (centre - camSNow).Magnitude
 	end
@@ -1032,6 +1095,23 @@ function StormCards.new(ctx: any): any
 			return
 		end
 		Util.refreshLight()
+		if ctx.state.cardsShadeOnly then
+			-- (the game's engine mode, client/WeatherClient: the body is the engine's. Only the light
+			-- and the lowering's colour for the near renderers - WallStream measures it, the tornado
+			-- takes it, as with style "stream" below)
+			for _, g in groups do
+				hideGroup(g)
+			end
+			light()
+			ctx.stormBase = ctx.stormBase or {}
+			table.clear(ctx.stormBase)
+			for id, wsb in ctx.wallStreamBase or {} do
+				if wsb.col then
+					ctx.stormBase[id] = { col = wsb.col, x = wsb.x, y = wsb.y, z = wsb.z, r = wsb.r, tR = wsb.tR }
+				end
+			end
+			return
+		end
 		local cw = ctx.cw
 		-- (the camera in the sim frame, metres)
 		local camera = Workspace.CurrentCamera
@@ -1059,16 +1139,17 @@ function StormCards.new(ctx: any): any
 		if FLOW_ON and flowN > 0 then
 			runTraces(vT)
 		end
-		-- the shading's direction follows the camera (only when it has turned noticeably)
+		-- the shading's direction follows the camera: the sun's direction on screen, every card's
+		-- gradient brought to the current angle in a rolling batch (2026-11-07, the user: fast camera
+		-- turns caused a lot of issues. It was re-aimed only after a 5 degree turn, in a wave of 250
+		-- cards a frame at that turn's angle, and tall lobe images were turned with it - turning the
+		-- camera spun the cloud. Now the images keep their own turn and the light's direction moves
+		-- with the view a little at a time)
 		local tAim = os.clock()
 		do
-			-- (when the camera has turned more than 5 degrees, every card's gradient is turned -
-			-- spread over frames, 250 cards a frame, so a chase camera that keeps turning costs
-			-- little)
 			local ang = sunScreenAngle(L)
 			local diff = (ang - gradAngle + 180) % 360 - 180
-			if math.abs(diff) > 5 and #aimQueue == 0 then
-				gradAngle = ang
+			if math.abs(diff) > 0.5 and #aimQueue == 0 then
 				for _, g in groups do
 					for _, inst in g.main.byKey do
 						table.insert(aimQueue, inst)
@@ -1078,13 +1159,10 @@ function StormCards.new(ctx: any): any
 					end
 				end
 			end
-			local nA = math.min(#aimQueue, 250)
+			gradAngle = ang
+			local nA = math.min(#aimQueue, 400)
 			for _ = 1, nA do
 				local inst = table.remove(aimQueue)
-				local c = inst.card
-				if inst.fam and c and c.h >= c.w * 0.8 then
-					setRot(inst, gradAngle - 90)
-				end
 				setGradRot(inst, gradAngle - inst.irot)
 			end
 		end
@@ -1146,10 +1224,22 @@ function StormCards.new(ctx: any): any
 				g.main.mapH = true
 				px, py = (g.px or 0) + (g.bx or 0), (g.py or 0) + (g.by or 0)
 			end
-			setScale(g.main, C.scaleAbout(px, py))
-			local w = g.wall
-			if w then
-				setScale(g.wallL, C.scaleAbout((g.px or s.x) + w.x, (g.py or s.y) + w.y))
+			-- (the game: the whole storm, wall layer too, at one scale about its anchor -
+			-- LabConfig.stormAnchor - so it stays over its tornado)
+			if C.anchorFn and not g.isSystem then
+				g.ax, g.ay = C.stormAnchor(id, px, py)
+				local ka = C.scaleAbout(g.ax, g.ay)
+				setScale(g.main, ka)
+				if g.wall then
+					setScale(g.wallL, ka)
+				end
+			else
+				g.ax, g.ay = nil, nil
+				setScale(g.main, C.scaleAbout(px, py))
+				local w = g.wall
+				if w then
+					setScale(g.wallL, C.scaleAbout((g.px or s.x) + w.x, (g.py or s.y) + w.y))
+				end
 			end
 			local od = (t0 - g.plannedAt) - planEvery(g)
 			if od > overdue then
@@ -1234,7 +1324,13 @@ function StormCards.new(ctx: any): any
 					end
 					CardPlan.bandPath = g.bandPath
 				end
-				plan, _, wall, g.deck = CardPlan.plan(s, Storm, detail, camX - s.x, camY - s.y, camPos.Z)
+				-- (the camera where this storm's cards see it: in the game the storm is drawn about its
+				-- anchor at the sky's scale, not the map's - LabConfig.fromWorldAbout)
+				local pcx, pcy, pcz = camX, camY, camPos.Z
+				if C.anchorFn and g.ax then
+					pcx, pcy, pcz = C.fromWorldAbout(camCF.Position, g.ax, g.ay)
+				end
+				plan, _, wall, g.deck = CardPlan.plan(s, Storm, detail, pcx - s.x, pcy - s.y, pcz)
 				CardPlan.bandPath = nil
 				-- the hole this plan left for Render/BaseDeck (storm-relative, as the cards): the deck
 				-- cuts its discs there and only there. Cut at the wall cloud's live centre, the deck's hole
@@ -1288,6 +1384,8 @@ function StormCards.new(ctx: any): any
 			end
 			g.plan, g.wall = plan, wall
 			g.plannedAt = t0
+			g.planBuild = s and s.buildId
+			g.planCamX, g.planCamY = camX, camY
 			bound(g)
 			stamp += 1
 			g.jobs = {
@@ -1482,7 +1580,7 @@ function StormCards.new(ctx: any): any
 			local refresh = vis or (frameN + (g.n or 0)) % CULL_REFRESH == 0
 			if refresh then
 				-- (pulled toward the camera with a storm drawn as a mesh: LabConfig.toWorldAbout)
-				local p = C.toWorldAbout(g.px, g.py, 0, g.px, g.py)
+				local p = C.toWorldAbout(g.px, g.py, 0, g.ax or g.px, g.ay or g.py)
 				local last = g.mainCF
 				if last == nil or (p - last).Magnitude > thrS then
 					g.mainCF = p
@@ -1492,7 +1590,7 @@ function StormCards.new(ctx: any): any
 				local w = g.wall
 				if w then
 					-- turning cyclonically (counter-clockwise seen from above) at the low-level rotation
-					local wp = C.toWorldAbout(g.px + w.x, g.py + w.y, 0, g.px + w.x, g.py + w.y)
+					local wp = C.toWorldAbout(g.px + w.x, g.py + w.y, 0, g.ax or (g.px + w.x), g.ay or (g.py + w.y))
 					local ang = g.wallPhase or 0
 					local lastW = g.wallCF
 					local rS = math.max((g.wallRad or 0) * g.wallL.k, 1)
@@ -1562,7 +1660,7 @@ function StormCards.new(ctx: any): any
 				local wsb = CardPlan.wallStream and ctx.wallStreamBase and ctx.wallStreamBase[id]
 				if wsb then
 					-- (style "stream": Render/WallStream measured the lowering itself)
-					ctx.stormBase[id] = { col = wsb.col, x = wsb.x, y = wsb.y, z = wsb.z, r = wsb.r }
+					ctx.stormBase[id] = { col = wsb.col, x = wsb.x, y = wsb.y, z = wsb.z, r = wsb.r, tR = wsb.tR }
 				elseif w and not g.isSystem then
 					local r, gg, b, k = 0, 0, 0, 0
 					for _, inst in g.wallL.byKey do

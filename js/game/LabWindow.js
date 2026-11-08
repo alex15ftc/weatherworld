@@ -13,6 +13,8 @@
 //   -> { meta, cells, boundaries, storms }  (meta also says where the window sits on the map)
 import { buildSounding } from '../sounding.js';
 import { lineShare, rotatingShare } from '../storms/StormModeEngine.js';
+import { maintenanceLift } from '../storms/StormMaintenance.js';
+import { coldPoolDepthM } from '../storms/ColdPool.js';
 
 const KT = 0.514444;
 const r1 = x => Math.round(x * 10) / 10;
@@ -28,18 +30,15 @@ const windUv = (dirFrom, speedKt) => {
 // (roblox/src/cloudlab/shared/Model/EngineRun.luau).
 export const INFLOW_KM = 24;
 export function inflowSounding(world, storm) {
-  const cellKm = world.cellSizeKm;
-  const at = (xKm, yKm) => world.getCell(Math.min(world.width - 1, Math.max(0, Math.floor(xKm / cellKm))), Math.min(world.height - 1, Math.max(0, Math.floor(yKm / cellKm))));
-  const here = buildSounding(at(storm.positionKm.x, storm.positionKm.y)).profile;
-  const base = here[0].heightM;
-  const low = here.filter(r => r.heightM - base <= 1000);
-  const mu = low.reduce((a, r) => a + r.u, 0) / low.length * KT, mv = low.reduce((a, r) => a + r.v, 0) / low.length * KT;
-  const sru = mu - storm.velocityKph.east / 3.6, srv = mv - storm.velocityKph.north / 3.6;
-  const sr = Math.hypot(sru, srv) || 1;
-  // upstream: against the storm-relative wind (the map's y is south: north = -y)
-  const x = storm.positionKm.x - sru / sr * INFLOW_KM, y = storm.positionKm.y + srv / sr * INFLOW_KM;
-  return buildSounding(at(x, y)).profile.map(row => [r1(row.p), r1(row.t), r1(row.td), r1(row.u * KT), r1(row.v * KT)]);
+  return buildSounding(inflowCell(world, storm)).profile.map(row => [r1(row.p), r1(row.t), r1(row.td), r1(row.u * KT), r1(row.v * KT)]);
 }
+// The surface convergence there (1e-5 /s; negative: divergence): the large-scale rising air the
+// cloud model's box can't make itself (EngineRun liftRows).
+export function inflowConvergence(world, storm) {
+  return Number(((inflowCell(world, storm).dynamics?.surfaceConvergenceS1 ?? 0) * 1e5).toFixed(2));
+}
+import { inflowCell } from '../storms/UpdraughtParcel.js';
+export { inflowCell };
 
 // The storms inside a window, in the lab's frame (also used alone for the game server's nudging).
 // withInflow: each storm also carries its inflow sounding (about 1 KB a storm).
@@ -59,13 +58,16 @@ export function labStorm(world, s, lab, feed = [], { withInflow = false } = {}) 
     intensity: r2(s.intensity ?? 0), updraftMs: r1(s.updraughtMs ?? 0),
     meso: r2(s.mesocycloneStrength ?? 0), lowRotation: r2(s.lowRotation ?? 0), occlusion: r2(s.occlusion ?? 0),
     rotating: r2(rotatingShare(s)), line: r2(lineShare(s)), lineHalfKm: r1(s.lineHalfLengthKm ?? 0), rearInflow: r2(s.rearInflow ?? 0),
-    coldPool: r2(s.coldPoolStrength ?? 0), coldPoolKm: r1(s.coldPoolRadiusKm ?? 0), coldPoolK: r2((s.coldPoolTemperatureDeficitF ?? 0) / 1.8), leftMover: !!s.leftMover,
+    coldPool: r2(s.coldPoolStrength ?? 0), coldPoolKm: r1(s.coldPoolRadiusKm ?? 0), coldPoolK: r2((s.coldPoolTemperatureDeficitF ?? 0) / 1.8), coldPoolDepthM: Math.round(coldPoolDepthM(s.coldPoolStrength)), leftMover: !!s.leftMover,
     maxDbz: Math.round(s.radar?.maxReflectivityDbz ?? 0), hailIn: r2(s.currentHailSizeInches ?? 0),
     // (orbit: rad/s, counterclockwise seen from above, while an occluding tornado revolves round
     // its mesocyclone - the storm's position; TornadoEngine occlusionStep)
     tornado: s.tornado?.onGround ? { mph: Math.round(s.tornado.windSpeedMph), yards: Math.round(s.tornado.widthYards ?? 0), ef: s.tornado.estimatedEf ?? null, pos: lab(s.tornado.positionKm.x, s.tornado.positionKm.y), orbit: +((s.tornado.orbitRadPerS ?? 0).toFixed(5)) } : null,
+    // (the chance of a tornado in the next half hour)
+    tornadoChance: r2(s.tornado?.probability ?? 0),
     feed: feed.find(f => f.id === s.id) ?? null,
-    ...(withInflow ? { inflow: inflowSounding(world, s) } : {}),
+    // (maintenanceConvergence: the engine's maintenance lift as rising air, 1e-5 /s; StormMaintenance.js)
+    ...(withInflow ? { inflow: inflowSounding(world, s), inflowConvergence: inflowConvergence(world, s), maintenanceConvergence: r2(maintenanceLift(world, s).convergence) } : {}),
   };
 }
 

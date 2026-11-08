@@ -58,6 +58,7 @@ do
 	local f = focusOf(w)
 	check(f ~= nil and f.eng ~= nil, "scenario storms are engine-driven")
 	local nextPoll, worst, worstTor, torAgree, torPolls, lastTor = 1, 0, 0, 0, 0, -1e9
+	local mphN, mphErr = 0, 0
 	for m = 1, minutes do
 		for _ = 1, 60 do
 			while nextPoll <= #data.polls and w.time >= data.polls[nextPoll].min * 60 do
@@ -95,8 +96,15 @@ do
 				if labTor == (e.tornado ~= nil) then
 					torAgree += 1
 				end
+				-- (the lab's rating against the engine's, once it has had 5 min with the engine's word)
+				local labMph = if f.tornado then (f.tornado.peakWind or 0) / 0.44704 else nil
+				if labMph and e.tornado and (f.tornado.age or 0) > 300 then
+					mphN += 1
+					mphErr += math.abs(labMph - e.tornado.mph) / e.tornado.mph
+				end
 				print(string.format("    t+%3d  circulation %.2f km off  W %.0f vmid %.1f vlow %.1f occl %.2f  engine tor %s  lab tor %s",
-					m, d / 1000, f.W, f.vmid, f.vlow, f.occl, if e.tornado then e.tornado.mph .. " mph" else "-", tostring(labTor)))
+					m, d / 1000, f.W, f.vmid, f.vlow, f.occl, if e.tornado then e.tornado.mph .. " mph" else "-",
+					if labMph then string.format("%.0f mph (vc %.1f)", labMph, f.tornado.vc) else tostring(labTor)))
 			end
 		end
 	end
@@ -107,6 +115,7 @@ do
 	check(worstTor < 6000, string.format("the engine's tornado stays near its mesocyclone (worst %.1f km)", worstTor / 1000))
 	-- (a sample can fall between a poll and its tornado starting, and a lab tornado winds down
 	-- after the engine's lifts: allow two updates of lag)
+	check(mphN == 0 or mphErr / mphN < 0.2, string.format("the lab tornado's rating follows the engine's (mean off %.0f%% over %d updates)", if mphN > 0 then 100 * mphErr / mphN else 0, mphN))
 	check(torPolls == 0 or torAgree >= torPolls - 2, string.format("tornado on/off agrees with the engine (%d of %d updates)", torAgree, torPolls))
 end
 print(if fails == 0 then "all passed" else fails .. " failed")

@@ -7,6 +7,7 @@
 // The type name ("isolated supercell", "QLCS", ...) is only a description of those properties
 // for the pages, the radar depiction and statistics. Nothing in the physics reads it.
 import { clamp } from '../scenarios/math.js';
+import { coldPoolSpeedMs } from './ColdPool.js';
 
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
@@ -16,7 +17,6 @@ const ROTATION_RANGE = [0.15, 0.35];
 // holds the updraft over its inflow (discrete cells); above about 1.3 the cold pool runs ahead
 // and organizes the convection along its leading edge.
 const COLD_POOL_BALANCE_RANGE = [0.7, 1.3];
-const COLD_POOL_SPEED_MS = 38;      // gust-front speed of the strongest cold pool, m/s
 // 0-3 km share of the 0-6 km bulk shear in the balance the storm's outflow, rotation and occlusion
 // are set against (their ranges were calibrated on it).
 const LOW_LEVEL_SHEAR_SHARE = 0.5;
@@ -30,7 +30,7 @@ export const lineShare = storm => clamp(Number(storm.lineOrganization) || 0, 0, 
 // Ratio of cold-pool speed to low-level shear (dimensionless). measured: against the air's own
 // 0-3 km shear (where known) rather than the share of the 0-6 km.
 export function coldPoolBalance(storm, environment, measured = false) {
-  const coldPoolSpeed = COLD_POOL_SPEED_MS * Math.sqrt(clamp(storm.coldPoolStrength ?? 0, 0, 1));
+  const coldPoolSpeed = coldPoolSpeedMs(storm.coldPoolStrength); // its one cold pool (ColdPool.js)
   const shear03 = (measured && Number(environment.shear03)) || LOW_LEVEL_SHEAR_SHARE * (Number(environment.bulkShear) || 0);
   const lowLevelShear = Math.max(4, shear03 * KT_TO_MS);
   return coldPoolSpeed / lowLevelShear;

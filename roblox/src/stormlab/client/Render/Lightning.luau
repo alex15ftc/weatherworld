@@ -46,6 +46,8 @@ local SEG_PER_BOLT = 140
 local PARK = CFrame.new(0, -1e5, 0)
 local BOLT_COLOUR = Color3.fromRGB(226, 222, 255)
 local GLOW_COLOUR = Color3.fromRGB(196, 190, 236)
+local NIGHT_GAIN = 0.45 -- the scene flash at a dark sky, over the day's (see the scene response below)
+local SCENE_GAIN = 2 -- (the whole scene flash, doubled 2026-11-07 after a night play-test)
 local PIXEL = 0.0011 -- ~one pixel (rad) at 1080p and a 70 degree field of view
 
 function LightningFx.new(ctx)
@@ -413,15 +415,20 @@ function LightningFx.new(ctx)
 				j += 1
 			end
 		end
-		-- the scene response is local: only the light reaching the camera's surroundings, small
-		-- and capped (the flash field adds overlapping flashes softly) - never a daylight pulse.
-		-- Clouds, funnel and dust take their own local flash light from the field.
+		-- the scene response is local: only the light reaching the camera's surroundings (the flash
+		-- field adds overlapping flashes softly). Against daylight a flash is nothing, so by day it
+		-- stays small and capped; as the sky darkens (Lighting SkyLight, Render/Sky) the same flash
+		-- counts for more against what the eye has adapted to, and a strike within a few km lights the
+		-- surroundings strongly for its strokes (NIGHT_GAIN more, at a dark sky). Clouds, funnel and
+		-- dust take their own local flash light from the field.
 		local camFlash = 0
 		if ctx.flashField then
 			local cx, cy, cz = Config.fromWorld(ctx.camera.CFrame.Position)
 			camFlash = ctx.Tornado.FlashField.camera(ctx.flashField, cx, cy, cz)
 		end
-		flashFx.Brightness = math.clamp(0.12 * camFlash, 0, 0.15)
+		local skyLight = Lighting:GetAttribute("SkyLight")
+		local dark = 1 - (if type(skyLight) == "number" then math.clamp(skyLight, 0, 1) else 1)
+		flashFx.Brightness = SCENE_GAIN * math.clamp((0.12 + NIGHT_GAIN * dark) * camFlash, 0, 0.15 + NIGHT_GAIN * dark)
 		local _ = flash
 
 		-- thunder

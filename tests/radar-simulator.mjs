@@ -8,7 +8,8 @@ import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { Storm } from '../js/storms/Storm.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
-import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_PRODUCT_KEYS, decodeRadarValue, radarColorTable } from '../js/radar/RadarFormat.js';
+import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, decodeRadarValue, radarColorTable } from '../js/radar/RadarFormat.js';
+import { detectRotation, lowLevelShearGrid } from '../js/radar/RotationDetection.js';
 
 const previewIndex = process.argv.indexOf('--preview');
 const previewDir = previewIndex > 0 ? process.argv[previewIndex + 1] : null;
@@ -38,10 +39,12 @@ assert.ok(leadDbz >= 20, `the strongest in-domain storm should produce a precipi
 const again = scanRadarTilt(buildRadarScene(world), leadSite, 0.5);
 for (const key of RADAR_PRODUCT_KEYS) assert.ok(Buffer.compare(Buffer.from(scan.products[key]), Buffer.from(again.products[key])) === 0, `${key} not deterministic`);
 
-// The network mosaic shows every in-domain storm with rain falling, without choosing a radar (a
-// storm started this step has no rain yet, and no echo).
+// The network mosaic shows every in-domain storm with rain falling that some radar reaches,
+// without choosing a radar (a storm started this step has no rain yet, and no echo; one past every
+// radar's range, in a gap at the map's edge, has none either).
 const mosaic = buildRadarMosaic(scene, sites);
-for (const storm of storms.filter(s => (s.precipitation ?? 0) >= 0.05)) {
+const inRange = s => sites.some(r => Math.hypot(r.xKm - s.positionKm.x, r.yKm - s.positionKm.y) <= RADAR_RANGE_KM);
+for (const storm of storms.filter(s => (s.precipitation ?? 0) >= 0.05 && inRange(s))) {
   let best = 0;
   for (let dy = -20; dy <= 20; dy++) for (let dx = -20; dx <= 20; dx++) {
     const i = Math.floor((storm.positionKm.x + dx) / mosaic.resKm), j = Math.floor((storm.positionKm.y + dy) / mosaic.resKm);
@@ -86,9 +89,34 @@ assert.ok(tdsCc <= 0.85, `tornado debris signature should drop CC to <=0.85, got
 const ffdCc = valueAt(scScan, site, 'correlationCoefficient', warm.x + echo.mx * 12, warm.y + echo.my * 12);
 assert.ok(ffdCc === null || ffdCc >= 0.9, `forward-flank rain should have CC >=0.9, got ${ffdCc}`);
 
+// The volume scan's rotation detections (RotationDetection.js): a TVS on the tornado and a
+// mesocyclone round it, from the scanned velocity alone.
+const volume = RADAR_TILTS_DEG.slice(0, 9).map(tilt => (tilt === 0.5 ? scScan : scanRadarTilt(scScene, site, tilt)));
+const found = detectRotation(site, volume);
+const tvs = found.tvs.find(d => d.kind === 'TVS' && Math.hypot(d.xKm - torX, d.yKm - torY) < 3);
+assert.ok(tvs, `the tornado should be detected as a TVS: ${JSON.stringify(found.tvs)}`);
+const meso = found.meso.find(d => Math.hypot(d.xKm - torX, d.yKm - torY) < 6);
+assert.ok(meso, `the mesocyclone should be detected: ${JSON.stringify(found.meso)}`);
+// (and none far from the one storm in this scene)
+for (const d of [...found.tvs, ...found.meso]) assert.ok(Math.hypot(d.xKm - warm.x, d.yKm - warm.y) < 30, `a detection away from the storm: ${JSON.stringify(d)}`);
+// Low-level azimuthal shear (the rotation tracks' measure): strong and cyclonic at the tornado,
+// far stronger than anywhere away from the storm.
+{
+  const width = Math.ceil(scScene.domainWidthKm), height = Math.ceil(scScene.domainHeightKm), grid = new Float32Array(width * height);
+  lowLevelShearGrid(grid, width, height, 1, site, scScan);
+  let atTornado = 0, away = 0;
+  for (let j = 0; j < height; j++) for (let i = 0; i < width; i++) {
+    const v = grid[j * width + i], d = Math.hypot(i + 0.5 - torX, j + 0.5 - torY);
+    if (d < 4) atTornado = Math.max(atTornado, v); else if (Math.hypot(i + 0.5 - warm.x, j + 0.5 - warm.y) > 30) away = Math.max(away, v);
+  }
+  assert.ok(atTornado >= 0.008, `low-level shear at the tornado should be strong, got ${atTornado}`);
+  assert.ok(away < atTornado / 2, `shear away from the storm should be far weaker: ${away} vs ${atTornado}`);
+  console.log(`low-level shear: ${atTornado.toFixed(4)} /s at the tornado, ${away.toFixed(4)} /s at most away from the storm`);
+}
+
 console.log(JSON.stringify({
   seed, hours, storms: storms.length, lead: { id: lead.id, mode: lead.mode, site: leadSite.id, dbz: leadDbz }, scanMs: Math.round(scan.buildMs),
-  syntheticSupercell: { site: site.id, rangeKm: Math.round(Math.hypot(warm.x - site.xKm, warm.y - site.yKm)), maxDbz: scMax, deltaV: outbound - inbound, tdsCc: +tdsCc.toFixed(3) }
+  syntheticSupercell: { site: site.id, rangeKm: Math.round(Math.hypot(warm.x - site.xKm, warm.y - site.yKm)), maxDbz: scMax, deltaV: outbound - inbound, tdsCc: +tdsCc.toFixed(3), tvs, meso }
 }, null, 2));
 
 if (previewDir) {

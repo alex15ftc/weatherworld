@@ -41,8 +41,25 @@ export type Labels = {
 	-- A boxed label centred on a map point, if it is in view and clear of the others.
 	at: (text: string, mx: number, my: number, border: Colour) -> boolean,
 }
+-- A byte grid laid over the map as an image the GPU scales (the satellite, a radar mosaic):
+-- width x height cells of cellMiles from the map's north-west corner, coloured by a 256-entry
+-- RGBA table (lut[byte * 4 + 1 .. 4]; byte 0 clear). key names its bytes (a product's id and
+-- time): its colours are worked out once a key. smooth: blended between cells, else blocky.
+export type Grid = {
+	key: string,
+	bytes: buffer,
+	width: number,
+	height: number,
+	cellMiles: number,
+	lut: { number },
+	alpha: number,
+	smooth: boolean?,
+}
 export type Overlay = {
 	muted: boolean?,
+	-- Byte grids (at most MAX_RES cells a side), bottom first, under the raster image: drawn
+	-- once each and only moved and scaled with the view.
+	grids: (() -> { Grid })?,
 	-- Shapes, drawn into the product tiles (sharp at every zoom), over the raster products.
 	draw: ((Draw) -> ())?,
 	-- Shapes drawn under the raster products (the outlook's fill, so radar shows over it).
@@ -50,6 +67,11 @@ export type Overlay = {
 	-- Raster products (radar), drawn into one image of the view.
 	drawRaster: ((Draw) -> ())?,
 	labels: ((Labels) -> ())?,
+	-- Names what drawRaster would draw now (a radar scan's id and time): images drawn are kept
+	-- under it while the view stays put, so a radar loop's frames are drawn once a view.
+	rasterKey: (() -> string?)?,
+	-- What is at the map point under the cursor (a radar gate's value), shown in the readout.
+	hover: ((mx: number, my: number) -> string?)?,
 }
 
 local player = Players.LocalPlayer
@@ -65,6 +87,10 @@ local LEVEL_STEP = math.sqrt(2) -- so a tile is shown between 0.84 and 1.19 of i
 local MAX_TILE_PIXELS = 44 * 256 * 256
 local FRAME_BUDGET = 0.010 -- seconds of tile drawing a frame (at least one tile)
 local SETTLE_SECONDS = 0.25 -- the radar image is drawn again once the view has been still this long
+-- The whole map as one image under the tiles (BACKDROP pixels square), drawn once a few rows a
+-- frame and kept: a zoom shows it, scaled, wherever the new level's tiles are not drawn yet.
+local BACKDROP = 1024
+local BACKDROP_ROWS = 32
 -- A muted map keeps this share of its colour, the rest going to MUTE_TO.
 local MUTE_KEEP, MUTE_TO = 0.38, { 22, 26, 32 }
 
@@ -127,7 +153,9 @@ local rasterImage: ImageLabel -- the raster products (radar)
 local underLayer: Frame -- the product's tiles under the raster products
 local overLayer: Frame -- the product's tiles over them
 local labelLayer: Frame
+local gridLayer: Frame -- the byte grids (satellite, radar mosaics), under the raster image
 local readout: TextLabel? = nil
+local hoverAt: Vector2? = nil -- the map point (miles) under the cursor
 local markers: { [Player]: Frame } = {}
 local labels: { TextLabel } = {}
 local overlay: Overlay? = nil
@@ -474,6 +502,10 @@ end
 -- before tiles. It is drawn for one view, and moved and scaled with the map until the view
 -- settles and it is drawn again.
 local rasterEditable: any = nil
+-- Raster images already drawn for this view, by the overlay's rasterKey (a radar loop's frames):
+-- plain buffers, not EditableImages, so they cost no image budget; let go when the view moves.
+local RASTER_CACHE_IMAGES = 12
+local rasterCache: { view: string?, images: { [string]: { pixels: buffer, drawn: boolean } }, count: number } = { view = nil, images = {}, count = 0 }
 local rasterSize = Vector2.zero
 local rasterView = { left = 0, top = 0, right = 0, bottom = 0 }
 
@@ -498,16 +530,35 @@ local function drawRaster()
 	local size = viewport.AbsoluteSize
 	local scale = math.min(1, MAX_RES / math.max(size.X, size.Y, 1))
 	local pw, ph = math.max(1, math.floor(size.X * scale)), math.max(1, math.floor(size.Y * scale))
-	local pixels = buffer.create(pw * ph * 4)
 	local cx, cy, m = centreX, centreY, mpp
-	local raster = Raster.new(pixels, pw, ph, function(mx: number, my: number)
-		return (mx - cx) / m + size.X / 2, (my - cy) / m + size.Y / 2
-	end, scale, 0, 0, Config.MAP_MILES)
-	local ok, problem = pcall(current.drawRaster :: (Draw) -> (), raster)
-	if not ok then
-		warn(`[MapCanvas] raster product drawing failed: {problem}`)
+	local viewKey = string.format("%.9g %.9g %.9g %d %d", cx, cy, m, pw, ph)
+	if rasterCache.view ~= viewKey then
+		rasterCache.view, rasterCache.images, rasterCache.count = viewKey, {}, 0
 	end
-	if not raster.drawn() then
+	local key = if current.rasterKey then (current.rasterKey :: () -> string?)() else nil
+	local held = if key then rasterCache.images[key] else nil
+	local pixels: buffer, drawn: boolean
+	if held then
+		pixels, drawn = held.pixels, held.drawn
+	else
+		pixels = buffer.create(pw * ph * 4)
+		local raster = Raster.new(pixels, pw, ph, function(mx: number, my: number)
+			return (mx - cx) / m + size.X / 2, (my - cy) / m + size.Y / 2
+		end, scale, 0, 0, Config.MAP_MILES)
+		local ok, problem = pcall(current.drawRaster :: (Draw) -> (), raster)
+		if not ok then
+			warn(`[MapCanvas] raster product drawing failed: {problem}`)
+		end
+		drawn = raster.drawn()
+		if key then
+			if rasterCache.count >= RASTER_CACHE_IMAGES then
+				rasterCache.images, rasterCache.count = {}, 0
+			end
+			rasterCache.images[key] = { pixels = pixels, drawn = drawn }
+			rasterCache.count += 1
+		end
+	end
+	if not drawn then
 		rasterImage.Visible = false
 		return
 	end
@@ -523,6 +574,169 @@ local function drawRaster()
 	rasterView = { left = cx - size.X / 2 * m, top = cy - size.Y / 2 * m, right = cx + size.X / 2 * m, bottom = cy + size.Y / 2 * m }
 	rasterImage.Visible = true
 	placeRaster()
+end
+
+-- Backdrop ------------------------------------------------------------------------------------
+
+local backdropImage: ImageLabel
+local backdropPixels: buffer? = nil -- kept while the game runs (plain memory, not image memory)
+local backdropEditable: any = nil -- let go when the map closes
+local backdropRows = 0 -- rows drawn so far
+local backdropShown = 0 -- rows written into the image
+
+local function placeBackdrop()
+	local x0, y0 = toScreen(0, 0)
+	backdropImage.Position = UDim2.fromOffset(x0, y0)
+	backdropImage.Size = UDim2.fromOffset(data.miles / mpp, data.miles / mpp)
+end
+
+-- Draws the next rows (and puts what is drawn into the image); true if it did anything.
+local function stepBackdrop(): boolean
+	if not backdropEditable then
+		local ok, made = pcall(function()
+			return (AssetService :: any):CreateEditableImage({ Size = Vector2.new(BACKDROP, BACKDROP) })
+		end)
+		if not ok or not made then
+			return false
+		end
+		backdropEditable = made
+		backdropImage.ImageContent = Content.fromObject(made)
+		backdropShown = 0
+	end
+	local pixels = backdropPixels
+	if not pixels then
+		pixels = buffer.create(BACKDROP * BACKDROP * 4)
+		backdropPixels = pixels
+	end
+	local did = false
+	if backdropRows < BACKDROP then
+		local rows = math.min(BACKDROP_ROWS, BACKDROP - backdropRows)
+		local step = data.miles / BACKDROP
+		local strip = buffer.create(BACKDROP * rows * 4)
+		MapBase.draw(base, strip, BACKDROP, rows, 0, backdropRows * step, step, 1)
+		buffer.copy(pixels :: buffer, backdropRows * BACKDROP * 4, strip)
+		backdropRows += rows
+		did = true
+	end
+	if backdropShown < backdropRows then
+		local from = backdropShown
+		local rows = backdropRows - from
+		local part = buffer.create(BACKDROP * rows * 4)
+		buffer.copy(part, 0, pixels :: buffer, from * BACKDROP * 4, BACKDROP * rows * 4)
+		backdropEditable:WritePixelsBuffer(Vector2.new(0, from), Vector2.new(BACKDROP, rows), part)
+		backdropShown = backdropRows
+		did = true
+	end
+	return did
+end
+
+-- Grids ---------------------------------------------------------------------------------------
+
+type GridSlot = { image: ImageLabel, editable: any?, size: Vector2, key: string?, miles: Vector2 }
+local gridSlots: { GridSlot } = {}
+local gridsDue = false
+-- Each grid's pixels by key (a loop's frames come round again), let go all at once when full.
+local GRID_CACHE = 16
+local gridCache: { images: { [string]: buffer }, count: number } = { images = {}, count = 0 }
+-- Each colour table packed as 256 little-endian RGBA words.
+local packed: { [{ number }]: { number } } = setmetatable({}, { __mode = "k" }) :: any
+
+local function packedOf(lut: { number }): { number }
+	local held = packed[lut]
+	if held then
+		return held
+	end
+	local words = table.create(256, 0)
+	for byte = 1, 255 do
+		local k = byte * 4
+		words[byte + 1] = bit32.bor(lut[k + 1], bit32.lshift(lut[k + 2], 8), bit32.lshift(lut[k + 3], 16), bit32.lshift(lut[k + 4], 24))
+	end
+	packed[lut] = words
+	return words
+end
+
+local function pixelsOf(g: Grid): buffer
+	local held = gridCache.images[g.key]
+	if held then
+		return held
+	end
+	local words, n = packedOf(g.lut), g.width * g.height
+	local pixels = buffer.create(n * 4)
+	for k = 0, n - 1 do
+		local byte = buffer.readu8(g.bytes, k)
+		if byte ~= 0 then
+			buffer.writeu32(pixels, k * 4, words[byte + 1])
+		end
+	end
+	if gridCache.count >= GRID_CACHE then
+		gridCache.images, gridCache.count = {}, 0
+	end
+	gridCache.images[g.key] = pixels
+	gridCache.count += 1
+	return pixels
+end
+
+local function placeGrids()
+	local x0, y0 = toScreen(0, 0)
+	for _, slot in gridSlots do
+		if slot.image.Visible then
+			slot.image.Position = UDim2.fromOffset(x0, y0)
+			slot.image.Size = UDim2.fromOffset(slot.miles.X / mpp, slot.miles.Y / mpp)
+		end
+	end
+end
+
+-- Puts the overlay's grids on show, making each grid's image only when its key is new.
+local function updateGrids()
+	gridsDue = false
+	local current = overlay
+	local list: { Grid } = {}
+	if current and current.grids then
+		local ok, got = pcall(current.grids :: () -> { Grid })
+		if ok then
+			list = got
+		else
+			warn(`[MapCanvas] grids failed: {got}`)
+		end
+	end
+	for n, g in list do
+		local slot = gridSlots[n]
+		if not slot then
+			local image = Instance.new("ImageLabel")
+			image.BackgroundTransparency = 1
+			image.Parent = gridLayer
+			slot = { image = image, editable = nil, size = Vector2.zero, key = nil, miles = Vector2.zero }
+			gridSlots[n] = slot
+		end
+		local s = slot :: GridSlot
+		local size = Vector2.new(g.width, g.height)
+		if s.key ~= g.key or not s.editable then
+			if not s.editable or s.size ~= size then
+				if s.editable then
+					s.editable:Destroy()
+				end
+				local ok, made = pcall(function()
+					return (AssetService :: any):CreateEditableImage({ Size = size })
+				end)
+				s.editable = if ok then made else nil
+				s.size = size
+				s.image.ImageContent = if s.editable then Content.fromObject(s.editable) else Content.none
+			end
+			if s.editable then
+				s.editable:WritePixelsBuffer(Vector2.zero, size, pixelsOf(g))
+			end
+			s.key = g.key
+		end
+		s.image.ImageTransparency = 1 - g.alpha
+		s.image.ResampleMode = if g.smooth then Enum.ResamplerMode.Default else Enum.ResamplerMode.Pixelated
+		s.image.ZIndex = n
+		s.image.Visible = s.editable ~= nil
+		s.miles = Vector2.new(g.width * g.cellMiles, g.height * g.cellMiles)
+	end
+	for n = #list + 1, #gridSlots do
+		gridSlots[n].image.Visible = false
+	end
+	placeGrids()
 end
 
 -- Labels --------------------------------------------------------------------------------------
@@ -787,7 +1001,9 @@ local function updateMarkers()
 				best, distance = s, d
 			end
 		end
-		out.Text = string.format("You: %.1f mi east, %.1f mi south  ·  region %d, %d", mx, my, mx // Config.REGION_MILES, my // Config.REGION_MILES)
+		local hovered = overlay and overlay.hover and hoverAt and (overlay.hover :: any)(hoverAt.X, hoverAt.Y)
+		out.Text = (if hovered then hovered .. "  ·  " else "")
+			.. string.format("You: %.1f mi east, %.1f mi south  ·  region %d, %d", mx, my, mx // Config.REGION_MILES, my // Config.REGION_MILES)
 			.. (if best then string.format("  ·  %s %.1f mi", best.name, distance) else "")
 			.. string.format("  ·  %s", if mpp < 0.1 then string.format("%.0f studs/px", mpp * MILE) else string.format("%.2f mi/px", mpp))
 	end
@@ -828,6 +1044,11 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	viewport.Parent = parent
 
 	baseLayer = layerFrame("Map", 1)
+	backdropImage = Instance.new("ImageLabel")
+	backdropImage.Name = "Backdrop"
+	backdropImage.BackgroundTransparency = 1
+	backdropImage.ZIndex = 0 -- under every tile
+	backdropImage.Parent = baseLayer
 	veil = layerFrame("Veil", 2)
 	underLayer = layerFrame("ProductUnder", 3)
 	veil.BackgroundColor3 = Color3.fromRGB(MUTE_TO[1], MUTE_TO[2], MUTE_TO[3])
@@ -837,10 +1058,11 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	rasterImage = Instance.new("ImageLabel")
 	rasterImage.Name = "Raster"
 	rasterImage.BackgroundTransparency = 1
-	rasterImage.ZIndex = 4
+	rasterImage.ZIndex = 5
 	rasterImage.Visible = false
 	rasterImage.Parent = viewport
-	overLayer = layerFrame("Product", 5)
+	overLayer = layerFrame("Product", 6)
+	gridLayer = layerFrame("Grids", 4)
 	labelLayer = layerFrame("Labels", 8)
 	baseTiles = newLayer(baseLayer)
 	underTiles = newLayer(underLayer)
@@ -884,6 +1106,13 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if visible and not dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local size = viewSize()
+			local at = Vector2.new(input.Position.X, input.Position.Y) - viewport.AbsolutePosition
+			hoverAt = if at.X >= 0 and at.Y >= 0 and at.X <= size.X and at.Y <= size.Y
+				then Vector2.new(centreX + (at.X - size.X / 2) * mpp, centreY + (at.Y - size.Y / 2) * mpp)
+				else nil
+		end
 		if visible and dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 			centreX -= (input.Position.X - dragging.X) * mpp
 			centreY -= (input.Position.Y - dragging.Y) * mpp
@@ -900,6 +1129,7 @@ end
 function MapCanvas.setOverlay(value: Overlay?, _quick: boolean?)
 	overlay = value
 	overlayVersion += 1
+	gridsDue = true
 	veil.Visible = value ~= nil and value.muted == true
 	rasterDue = true
 	labelsDue = true
@@ -909,6 +1139,22 @@ end
 -- Draw the product again (its data changed).
 function MapCanvas.redraw()
 	MapCanvas.setOverlay(overlay)
+end
+
+-- Draw only the raster image again, at once (a radar loop's next frame); the shapes stay.
+function MapCanvas.redrawRaster()
+	gridsDue = true
+	rasterDue = true
+	lastChange = 0
+end
+
+-- Draw the raster image and the labels again, at once; the product tiles stay (a layer's
+-- refresh that changed only its raster image or its labels).
+function MapCanvas.refresh()
+	gridsDue = true
+	rasterDue = true
+	labelsDue = true
+	lastChange = 0
 end
 
 -- Called with the map point (miles) of a click on the map; nil to stop.
@@ -941,6 +1187,21 @@ function MapCanvas.setVisible(on: boolean)
 			for _, key in keys do
 				dropTile(layer, key)
 			end
+		end
+		for _, slot in gridSlots do
+			if slot.editable then
+				slot.editable:Destroy()
+				slot.editable = nil
+				slot.key = nil
+				slot.image.ImageContent = Content.none
+				slot.image.Visible = false
+			end
+		end
+		gridsDue = true
+		if backdropEditable then
+			backdropEditable:Destroy()
+			backdropEditable = nil
+			backdropImage.ImageContent = Content.none
 		end
 		if rasterEditable then
 			rasterEditable:Destroy()
@@ -981,10 +1242,17 @@ function MapCanvas.step()
 		level = levelOf(mpp)
 		findWanted()
 	end
+	-- (the backdrop's rows first while it is not all shown: they are what fills a gap at once)
+	local drewBackdrop = (backdropRows < BACKDROP or backdropShown < backdropRows or not backdropEditable) and stepBackdrop()
 	local drew = drawTiles()
-	if moved or drew or labelsDue then
+	if moved or drew or labelsDue or drewBackdrop then
 		placeTiles()
 		placeRaster()
+		placeBackdrop()
+		placeGrids()
+	end
+	if gridsDue then
+		updateGrids()
 	end
 	if labelsDue and now - lastLabels > 0.07 then
 		labelsDue = false

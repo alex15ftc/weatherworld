@@ -56,12 +56,22 @@ const outlooks = {
   nextUpdateHourUtc: () => 16.5
 };
 // A small radar: two sites, and scans made when asked for.
+const satelliteMade = { width: 3, height: 2, resKm: 2, validHourUtc: 18.5, sun: { elevationDeg: 30.123, azimuthDeg: 250.44, localHour: 15.5 }, ir: new Uint8Array(6).fill(40), visible: new Uint8Array(6).fill(200) };
+const rotationFound = {
+  siteId: 'KAAA', validHourUtc: 13, tilts: [0.5, 0.9],
+  tvs: [{ kind: 'TVS', xKm: 160.9344, yKm: 321.8688, tiltDeg: 0.5, lowDvKt: 60, maxDvKt: 80, baseKft: 1.2, topKft: 9 }],
+  meso: [{ kind: 'meso', xKm: 161, yKm: 322, tiltDeg: 0.5, lowVrotKt: 41, maxVrotKt: 50, diameterKm: 5, baseKft: 1.2, topKft: 20 }]
+};
 const scanCalls = [];
 const runtime = {
   gameFeed: { epoch: 42 }, engine: { world: { validHourUtc: 13 } },
   radarCatalog: () => ({ sites: [{ id: 'KAAA', name: 'Alpha', xKm: 160.9344, yKm: 321.8688 }, { id: 'KBBB', name: 'Bravo', xKm: 0, yKm: 0 }] }),
-  radarScan: async (siteId, tilt) => { scanCalls.push([siteId, tilt]); return { siteId, tiltDeg: tilt, validHourUtc: 13, stormMotion: { u: 1, v: 2 }, products: { reflectivity: new Uint8Array(720 * 460).fill(7), velocity: new Uint8Array(720 * 460).fill(9), stormRelativeVelocity: new Uint8Array(720 * 460) } }; }
+  radarScan: async (siteId, tilt) => { scanCalls.push([siteId, tilt]); return { siteId, tiltDeg: tilt, validHourUtc: scanHour, stormMotion: { u: 1, v: 2 }, products: { reflectivity: new Uint8Array(720 * 460).fill(7), velocity: new Uint8Array(720 * 460).fill(9), stormRelativeVelocity: new Uint8Array(720 * 460), correlationCoefficient: new Uint8Array(720 * 460).fill(11) } }; },
+  radarMosaic: async kind => ({ kind, width: 4, height: 3, resKm: 1, validHourUtc: scanHour, bytes: new Uint8Array(12).fill(5) }),
+  radarRotation: async siteId => (siteId === 'KAAA' ? rotationFound : null),
+  satellite: async () => satelliteMade
 };
+let scanHour = 13;
 const products = new GameProducts({ runtime, outlooks });
 const first = products.manifest();
 assert.equal(first.epoch, 42); assert.equal(first.simHourUtc, 13);
@@ -98,6 +108,57 @@ const t0 = Date.now();
 assert.equal(products.manifest(t0).products['radar.site.KAAA.velocity'].version, scanEntry.version);
 assert.equal(products.manifest(t0 + GAME_PRODUCTS.siteWantedMs + 1).products['radar.site.KAAA.velocity'], undefined);
 assert.equal(products.manifest(t0 + GAME_PRODUCTS.siteWantedMs + 2).products['radar.site.KAAA.velocity'], undefined);
+
+// Higher tilts and the dual-pol products, with the beam's height over each gate.
+assert.deepEqual(sites.tilts.slice(0, 3), [0.5, 0.9, 1.3]);
+assert.ok(sites.siteProducts.includes('correlationCoefficient') && sites.mosaics.some(m => m.kind === 'mesh'));
+assert.equal(await products.productAsync('radar.site.KAAA.velocity.99'), null);
+const cc = JSON.parse((await products.productAsync('radar.site.KAAA.correlationCoefficient.3')).text);
+assert.deepEqual(scanCalls.at(-1), ['KAAA', 1.8]);
+assert.equal(cc.tiltIndex, 3); assert.equal(cc.beamKft.length, 460);
+assert.ok(cc.beamKft[459] > 32 && cc.beamKft[459] < 36, String(cc.beamKft[459])); // 1.8° at 230 km: 7.2 km up the tilt + 3.1 km of earth curve
+assert.ok(zlib.zstdDecompressSync(Buffer.from(cc.data, 'base64')).every(b => b === 11));
+
+// A loop: each new scan is kept under its own id, and the product lists them, oldest first.
+const loopId = 'radar.site.KAAA.reflectivity.0';
+await products.productAsync(loopId);
+scanHour = 13 + 5 / 60;
+const looped = JSON.parse((await products.productAsync(loopId)).text);
+assert.deepEqual(looped.loop.map(f => f.validHourUtc), [13, 13 + 5 / 60]);
+const older = JSON.parse((await products.productAsync(looped.loop[0].id)).text);
+assert.equal(older.validHourUtc, 13); assert.equal(older.id, looped.loop[0].id); assert.equal(older.loop, undefined);
+assert.equal(await products.productAsync(`${loopId}.h1`), null);
+for (let k = 0; k < 12; k++) { scanHour += 5 / 60; await products.productAsync(loopId); }
+assert.equal(JSON.parse(products.kept.get(loopId).text).loop.length, GAME_PRODUCTS.radarLoopFrames);
+
+// Every radar together, asked for the same way.
+assert.equal(await products.productAsync('radar.mosaic.bogus'), null);
+const mosaic = JSON.parse((await products.productAsync('radar.mosaic.mesh')).text);
+assert.equal(mosaic.kind, 'radar-grid'); assert.equal(mosaic.product, 'mesh'); assert.equal(mosaic.width, 4);
+assert.ok(Math.abs(mosaic.cellMiles - 1 / 1.609344) < 1e-12);
+assert.ok(products.manifest().products['radar.mosaic.mesh']);
+// A radar's rotation detections, in map miles, kept while the detections are the same.
+assert.equal(await products.productAsync('radar.rotation.KZZZ'), null);
+const rotation = JSON.parse((await products.productAsync('radar.rotation.KAAA')).text);
+assert.equal(rotation.kind, 'radar-rotation');
+assert.equal(rotation.tvs[0].kind, 'TVS');
+assert.ok(Math.abs(rotation.tvs[0].xMiles - 100) < 0.01 && Math.abs(rotation.tvs[0].yMiles - 200) < 0.01, 'TVS in map miles');
+assert.equal(rotation.meso[0].lowVrotKt, 41);
+assert.ok(Math.abs(rotation.meso[0].diameterMiles - 3.11) < 0.01);
+assert.equal(rotation.vrotByEf.EF2, 51);
+assert.ok(products.manifest().products['radar.rotation.KAAA']);
+assert.equal(await products.productAsync('radar.rotation.KAAA'), await products.productAsync('radar.rotation.KAAA'));
+
+// The satellite's images: one product a kind, asked for like a mosaic, with the sun and a loop.
+assert.equal(await products.productAsync('satellite.radio'), null);
+const ir = JSON.parse((await products.productAsync('satellite.ir')).text), vis = JSON.parse((await products.productAsync('satellite.visible')).text);
+assert.equal(ir.kind, 'satellite-grid'); assert.equal(ir.product, 'ir'); assert.equal(vis.product, 'visible');
+assert.ok(Math.abs(ir.cellMiles - 2 / 1.609344) < 1e-9 && ir.width === 3 && ir.height === 2);
+assert.equal(ir.sun.elevationDeg, 30.12);
+assert.deepEqual([...zlib.zstdDecompressSync(Buffer.from(vis.data, 'base64'))], Array(6).fill(200));
+assert.equal(ir.loop.length, 1);
+assert.ok(products.manifest().products['satellite.ir'] && products.manifest().products['satellite.visible']);
+assert.equal(JSON.parse((await products.productAsync(ir.loop[0].id)).text).id, ir.loop[0].id);
 
 // Watches and discussions in effect (shares of the map to miles), with their colour keys and text;
 // expired ones left out. Off when there is no mesoscale runtime.

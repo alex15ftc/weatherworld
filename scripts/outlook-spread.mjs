@@ -20,7 +20,7 @@ async function worker() {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { OUTLOOK, runOutlookMemberDays, combineOutlook, stateFromBytes } = await import('../js/forecast/DayOneOutlook.js');
   const seed = Number(flag('--seed')), spread = flag('--spread'), [timingSpreadMs, upstreamShare] = spread.split(':').map(Number), members = Number(flag('--members', 8)), day = Number(flag('--day', 6));
-  const atmosphere = new AtmosphereWorld({ seed }); atmosphere.advance(24 * day);
+  const atmosphere = new AtmosphereWorld({ seed }); atmosphere.advanceLikeServer(24 * day);
   const bytes = v8.serialize(atmosphere.saveState()), issued = atmosphere.world.validHourUtc;
   const runs = Array.from({ length: members }, (_, k) => runOutlookMemberDays(stateFromBytes(bytes), k, 72, { timingSpreadMs, upstreamShare }));
   const rows = OUTLOOK.days.map((name, index) => {

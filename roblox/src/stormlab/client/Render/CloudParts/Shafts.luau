@@ -179,7 +179,7 @@ function Shafts:rebin()
 			local key = (b.bx // 2) * 100000 + (b.by // 2)
 			local c = coarse[key]
 			if not c then
-				c = { n = 0, rain = 0, hail = 0, sx = 0, sy = 0, cell = 2 * FINE }
+				c = { n = 0, rain = 0, hail = 0, sx = 0, sy = 0, cell = 2 * FINE, bx = b.bx // 2, by = b.by // 2 }
 				coarse[key] = c
 				table.insert(cells, c)
 			end
@@ -243,6 +243,12 @@ function Shafts:rebin()
 				table.insert(out, {
 					su = su, sv = sv, light = 0.45 + 0.55 * share, sun = sunS,
 					x = x, y = y,
+					sid = if bs and best < 40000 * 40000 then bs.id else nil, -- (its storm: drawn about its anchor)
+					-- (its texture frames, from its own cell: by the drawing order, a shaft skipped or
+					-- come back shifted every later one onto another's frames - the curtains swapped
+					-- and jumped as the camera moved, 2026-11-07)
+					fr = ((c.bx or 0) * 7 + (c.by or 0) * 13 + c.cell // 1000) % 16,
+					fc = ((c.bx or 0) * 5 + (c.by or 0) * 11 + 3) % 16,
 					vx = if bs and best < 40000 * 40000 then bs.u else 0,
 					vy = if bs and best < 40000 * 40000 then bs.v else 0,
 					-- (a tornado's own 1 km columns overlap their neighbours only a little: at 1.38 km a
@@ -346,12 +352,15 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		end
 		-- on screen? (a cone round the view, widened by the curtain's own angular size: the curtain
 		-- and its cap in one sphere round the curtain's middle)
-		local k = C.scaleAbout(x, y)
+		-- (the game: about its storm's anchor at the storm's scale, LabConfig.stormAnchor, so the curtain
+		-- stays under the base it falls from; the lab: about its own column)
+		local acx, acy = C.stormAnchor(sh.sid, x, y)
+		local k = C.scaleAbout(acx, acy)
 		-- (its foot on the true ground: the ground at full scale whatever the storm is drawn at -
 		-- LabConfig.groundScale, 1 in the lab)
-		gz *= C.groundScale(x, y, k)
+		gz *= C.groundScale(acx, acy, k)
 		hh = math.max(sh.h - gz, 50)
-		local wp = C.toWorldAbout(x, y, gz + hh * 0.5, x, y, k)
+		local wp = C.toWorldAbout(x, y, gz + hh * 0.5, acx, acy, k)
 		local capH = math.clamp(sh.w * 0.2, 300, 900)
 		-- (the card's width over the rain's: the curtain sheet's column is ~0.56 of its frame wide
 		-- at half opacity, so at 1.25 a partly rainy cell drew ~0.7 of its rain's width and
@@ -359,7 +368,7 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		-- from afar, 2026-10-31. A tornado's own 1 km columns stay narrow: wider, one spilled
 		-- across the funnel, 2026-10-29)
 		local wK = if sh.vox then 1.25 else 1.6
-		local cwp = C.toWorldAbout(x, y, sh.h + 0.2 * capH, x, y, k)
+		local cwp = C.toWorldAbout(x, y, sh.h + 0.2 * capH, acx, acy, k)
 		local radS = (0.5 * math.sqrt((sh.w * wK) ^ 2 + (hh * 1.3) ^ 2) + 0.5 * capH + 0.2 * capH) * k
 		local rel = wp - cam
 		local distS = rel.Magnitude
@@ -386,6 +395,10 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 				p.bb.Enabled, p.cbb.Enabled = true, true
 			end
 			continue
+		end
+		if p.sh ~= sh then
+			p.cimg.ImageRectOffset = Vector2.new((sh.fr % 4) * 256, (sh.fr // 4) * 256)
+			p.img.ImageRectOffset = Vector2.new((sh.fc % 4) * 256, (sh.fc // 4) * 256)
 		end
 		p.sh = sh
 		-- colour: rain under a storm is in its shadow: a dark blue-grey, silvery when the sun is

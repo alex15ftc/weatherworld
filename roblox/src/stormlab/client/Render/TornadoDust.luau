@@ -22,6 +22,49 @@ local Workspace = game:GetService("Workspace")
 local TornadoDust = {}
 
 local MAX_PUFFS = 280
+-- The air the puffs ride: the storm's own (environment, cold pool, storm winds - smooth over
+-- hundreds of metres) from a 100 m grid kept for BG_S, plus each tornado's vortex exactly at the
+-- puff. Every near puff ran the full World.windAt each frame (~200 calls a frame, 2026-11-07)
+local BG_CELL, BG_S = 100, 0.2
+local bgCache: { [number]: { number } } = {}
+local bgAt, bgWorld = -1, nil
+local function bgBand(z: number): (number, number)
+	if z < 30 then return 0, 10 end
+	if z < 100 then return 1, 60 end
+	if z < 300 then return 2, 200 end
+	local b = math.floor(z / 500)
+	return 3 + b, 500 * b + 250
+end
+local function windNear(cw: any, Vortex: any, x: number, y: number, z: number): (number, number, number)
+	local now = os.clock()
+	if now - bgAt > BG_S or bgWorld ~= cw then
+		table.clear(bgCache)
+		bgAt, bgWorld = now, cw
+	end
+	local i, j = math.floor(x / BG_CELL), math.floor(y / BG_CELL)
+	local kb, zc = bgBand(z)
+	local key = ((i + 1e5) * 2e5 + (j + 1e5)) * 64 + kb
+	local c = bgCache[key]
+	if not c then
+		local bu, bv, bw = cw:windAt((i + 0.5) * BG_CELL, (j + 0.5) * BG_CELL, zc, true)
+		c = { bu, bv, bw }
+		bgCache[key] = c
+	end
+	local u, v, w = c[1], c[2], c[3]
+	for _, t in cw.tornadoes do
+		if not t.ended and t.params then
+			local dx, dy = x - t.x, y - t.y
+			if dx * dx + dy * dy < (60 * t.rc + 1500) ^ 2 then
+				local tu, tv, tw = Vortex.sample(t.params, x, y, z)
+				u += tu
+				v += tv
+				w += tw
+			end
+		end
+	end
+	return u, v, w
+end
+local DUST_TAU = 0.15 -- s: how fast a puff's velocity takes the air's (see the motion step)
 local sqrt, exp, random = math.sqrt, math.exp, math.random
 local function smooth(a: number, b: number, x: number): number
 	local t = math.clamp((x - a) / (b - a), 0, 1)
@@ -115,6 +158,7 @@ function TornadoDust.new(ctx: any): any
 		p.x, p.y, p.z = x, y, z
 		p.u, p.v, p.w = u, v, w
 		p.age = 0
+		p.since = 0
 		p.life = 8 + 14 * random()
 		p.size = size
 		-- (spreads at the turbulence's speed, a few m/s: grown by a share of its size every
@@ -216,14 +260,27 @@ function TornadoDust.new(ctx: any): any
 		local u, v, w = ctx.cw:windAt(x, y, 2)
 		local U = sqrt(u * u + v * v)
 		local th = 8 * (1 + 2.5 * wetness(x, y))
-		if U <= th then
+		-- debris: past ~25 m/s the wind tears up crops, soil clods and wreckage whether the ground is
+		-- wet or not, so a strong tornado over rain-soaked ground still has a debris cloud
+		-- (2026-11-07: a 185 mph tornado under the frames' heavy rain had its dust held to ~0.25
+		-- strength by the wet threshold, 28 m/s, and its skirt drew nearly see-through)
+		local debris = math.clamp((U - 25) / 20, 0, 2)
+		if U <= th and debris <= 0 then
 			return 0, u, v, w
 		end
-		return math.clamp(U / th - 1, 0, 3), u, v, w
+		return math.max(math.clamp(U / th - 1, 0, 3), debris), u, v, w
 	end
 
 	function self:update(dt: number)
 		self.frame += 1
+		self.dbgOn = Workspace:GetAttribute("EngineStormsDebugCam") == true
+		local st = self.dbgStats
+		if st and os.clock() - st.at > 5 and self.dbgOn then
+			local alive = 0
+			for _, p in self.puffs do if p.alive then alive += 1 end end
+			print(("[TornadoDust] 5 s: %d tries, %.0f%% lift dust, ground wind %.1f m/s, wet %.2f, at %.2f rc | %d puffs alive"):format(st.n, 100 * st.hit / math.max(st.n, 1), st.U / math.max(st.n, 1), st.wet / math.max(st.n, 1), st.rr / math.max(st.n, 1), alive))
+			self.dbgStats = nil
+		end
 		local show = ctx.state.show.dust
 		local cw = ctx.cw
 		local simDt = ctx:visualDt(dt) -- (dust is local motion: real speed in the game)
@@ -271,8 +328,10 @@ function TornadoDust.new(ctx: any): any
 						-- "condensed at all" switched the spawn radius, collar share and rate at once, and
 						-- a cone pulsing about that point flipped its dust between tube and skirt)
 						local kT, tipZ, rvN = 0, Hb, rv
+						local rgFoot = 0 -- (the condensed funnel's radius near the ground)
 						if e0 and e0.params then
 							local rg = Vortex.condensationRadius(e0, 0.05 * Hb)
+							rgFoot = rg
 							-- (a multi-vortex's too: the parent's debris annulus rises round its broad core
 							-- as well as the sub-vortices' own columns - without it a mature tornado under a
 							-- high base was a funnel aloft over clear air, SC check 2026-11-01)
@@ -305,8 +364,30 @@ function TornadoDust.new(ctx: any): any
 							local collar = random() < (if tube then 0.6 else 0.4 + 0.4 * (1 - rv / math.max(t.rc, 1)))
 							-- (skirt within 0.7-1.3 rc: out to 1.8 rc it drew a wide dense dust field, user 2026-10-31)
 							local rr = if collar then rv * (0.9 + 0.4 * random()) else rk * (0.7 + 0.6 * random() ^ 1.5)
+							-- Round a funnel condensed to the ground (a cone or wedge whose foot is about a
+							-- core wide) that skirt lay inside or behind the funnel and nothing showed
+							-- (2026-11-07, engine-fed game tornado: a 185 mph wedge with no debris cloud).
+							-- There the skirt is tried from the funnel's foot out to 3 core radii, denser
+							-- near the foot; the pickup below keeps only where the ground wind lifts dust,
+							-- so how far it reaches is the vortex's wind (Rankine, ~1/r outside the core)
+							-- and the background wind it drifts in, not a set width.
+							if not collar and not tube and rgFoot > 0.5 * t.rc then
+								local r0 = 0.9 * rgFoot
+								local r1 = math.max(r0 + 20, 3 * t.rc)
+								rr = r0 + (r1 - r0) * random() ^ 1.6
+								rk = math.max(rk, 0.5 * rr)
+							end
 							local x, y = t.x + rr * math.cos(a), t.y + rr * math.sin(a)
 							local s, u, v, w = pickup(x, y)
+							if self.dbgOn then -- (debug, EngineStormsDebugCam: what the pickups find)
+								local st = self.dbgStats or { n = 0, hit = 0, U = 0, wet = 0, rr = 0, at = os.clock() }
+								self.dbgStats = st
+								st.n += 1
+								if s > 0 then st.hit += 1 end
+								st.U += sqrt(u * u + v * v)
+								st.wet += wetness(x, y)
+								st.rr += rr / math.max(t.rc, 1)
+							end
 							if s > 0 and random() < math.min(1, s * 0.3 * simDt * 6 * (if collar and tube then 2 else 1)) then -- (0.4: too dense, user 2026-10-31)
 								local size, z0, w0
 								-- Every puff starts at the ground and is carried up by the vortex's own
@@ -424,6 +505,18 @@ function TornadoDust.new(ctx: any): any
 			self.lightC = SceneLight.shade(SceneLight.sample(ctx, camX, camY, 60 + C.groundAt(camX, camY)), 1, 0.4)
 		end
 		local lightF, lightC = self.lightF, self.lightC
+		-- (dust near the ground under the base is lit from the side by the open low sky past the
+		-- base's edge - Render/Sky's horizon openness, ctx.skyHorizon - not only by the dark light
+		-- straight under the cloud: there it drew as black smoke, regrade 2026-11-07. A light floor of
+		-- 0.45 of daylight, scaled by how much of the low sky is open)
+		local ho = ctx.skyHorizon or 0
+		if ho > 0 then
+			local fl = 0.45 * ho * (ctx.skyDay or 1)
+			local function lift(c: Color3): Color3
+				return Color3.new(math.max(c.R, fl), math.max(c.G, fl), math.max(c.B, fl))
+			end
+			lightF, lightC = lift(lightF), lift(lightC)
+		end
 	-- motion: a quarter of the puffs sample the wind each frame (they relax toward it over
 		-- ~0.75 s, so a sample every 4 frames is plenty), the rest coast on their velocity
 		local quarter = self.frame % 4
@@ -471,6 +564,15 @@ function TornadoDust.new(ctx: any): any
 			local x, y = if e then e.x else t.x, if e then e.y else t.y
 			tc.x, tc.y, tc.k = x, y, C.scaleAbout(x, y)
 			tc.e = if e and e.params then e else nil
+			tc.rc = t.rc
+			-- the drawn foot less the vortex's own centre (the puffs are placed about the drawn
+			-- foot, as at spawn; their wind is the vortex's, so it is sampled that far back)
+			if tc.e then
+				local fx0, fy0 = Vortex.axisAt(e, 0)
+				tc.fox, tc.foy = e.x + fx0 - t.x, e.y + fy0 - t.y
+			else
+				tc.fox, tc.foy = 0, 0
+			end
 			tors[t.id] = tc
 		end
 		for i, p in self.puffs do
@@ -479,8 +581,26 @@ function TornadoDust.new(ctx: any): any
 				if p.age > p.life or not show then
 					kill(p)
 				else
-					if i % 4 == quarter and simDt > 0 then
-						local u, v, w = cw:windAt(p.x, p.y, math.max(1, p.z))
+					-- (puffs near a tornado sample the air every frame, the rest every 4th. Fine dust
+					-- follows the air within hundredths of a second; relaxing once every 4 frames over
+					-- ~0.75 s, a puff's velocity lagged the vortex's turning and pointed off the circle,
+					-- and coasting straight between samples did the same: round a 185 mph wedge they
+					-- were flung out at ~30 m/s and the storm's winds drew them off in streaks, user
+					-- 2026-11-07. Now it relaxes over DUST_TAU of the time since its last sample)
+					local tcN = p.tid ~= nil and tors[p.tid]
+					local near = false
+					if tcN and tcN.e then
+						local dxN, dyN = p.x - tcN.x, p.y - tcN.y
+						local rN = 4 * math.max(30, tcN.rc or 0)
+						near = dxN * dxN + dyN * dyN < rN * rN
+					end
+					p.since = (p.since or 0) + simDt
+					if (near or i % 4 == quarter) and simDt > 0 then
+						-- (in the vortex's frame: the puffs sit about the drawn foot, the wind about the
+						-- sim's centre - sampled where they were, the skirt fed on the wind beside the
+						-- vortex and drifted off to one side of the funnel, user 2026-11-07)
+						local ox, oy = if tcN then tcN.fox or 0 else 0, if tcN then tcN.foy or 0 else 0
+						local u, v, w = windNear(cw, ctx.Sim.Vortex, p.x - ox, p.y - oy, math.max(1, p.z))
 						wcount += 1
 						-- horizontal vortex tubes round violent tornadoes (Render/DebrisCloud): dust
 						-- rolls over round them
@@ -492,7 +612,8 @@ function TornadoDust.new(ctx: any): any
 							w += hw
 						end
 						local U = sqrt(u * u + v * v)
-						local k = 1 - exp(-simDt * 4 * 2 / 1.5)
+						local k = 1 - exp(-p.since / DUST_TAU)
+						p.since = 0
 						p.u += (u - p.u) * k
 						p.v += (v - p.v) * k
 						-- turbulent lift keeps raising dust near the ground; settling slowly

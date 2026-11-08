@@ -35,10 +35,14 @@ const radarPool = process.env.WEATHER_RADAR_WORKERS === '0' ? null : new RadarPo
 // WEATHER_DAY_REVIEW_DAYS (14) are kept.
 const dayReviews = process.env.WEATHER_DAY_REVIEWS === 'off' ? null : { dir: path.resolve(ROOT, process.env.WEATHER_DAY_REVIEW_DIR ?? 'data/day-reviews/live'), png: process.env.WEATHER_DAY_REVIEW_PNG === 'on', keepDays: Number(process.env.WEATHER_DAY_REVIEW_DAYS) || 14 };
 const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool, dayReviews });
-// The cloud model workers for the storms players are near (js/game/StormWorkers.js;
-// WEATHER_STORM_WORKERS sets how many may run, 0 turns them off).
+// The storms players are near, in detail (js/game/StormWorkers.js): engine-built frames
+// (WEATHER_ENGINE_FRAMES, default "only"; "model" brings back the cloud model workers, "side"
+// runs both). WEATHER_STORM_WORKERS sets how many model workers may run, 0 turns it all off.
 if (process.env.WEATHER_STORM_WORKERS !== '0') {
-  runtime.stormWorkers = new StormWorkers({ clockRate: SIM_HOURS_PER_REAL_MINUTE * 60 });
+  // (the models are saved beside the world's state, and only carried on in the same world)
+  // (the frames' rain fields are worked out on the radar's threads, and the radar's scene uses them)
+  runtime.stormWorkers = new StormWorkers({ clockRate: SIM_HOURS_PER_REAL_MINUTE * 60, params: { engineFrames: process.env.WEATHER_ENGINE_FRAMES ?? 'only' }, saveDir: statePath ? path.join(path.dirname(statePath), 'storm-models') : null, worldTag: () => `${runtime.codeVersion}:${runtime.seed}`,
+    rainFields: radarPool ? (world, storms) => radarPool.stormFields(world, storms) : null });
   for (const signal of ['exit', 'SIGINT', 'SIGTERM']) process.once(signal, () => { runtime.stormWorkers?.close(); if (signal !== 'exit') process.exit(0); });
 }
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine, simHoursPerRealMinute: SIM_HOURS_PER_REAL_MINUTE });

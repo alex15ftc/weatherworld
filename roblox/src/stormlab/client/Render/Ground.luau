@@ -19,10 +19,20 @@ function Ground.new(ctx: any): any
 	local folder = Instance.new("Folder")
 	folder.Name = "Ground"
 	folder.Parent = ctx.root
+	-- In the game (2026-11-07, the user: the lab's horizon, so the land doesn't just stop) the
+	-- terrain is the ground: no tiles, the far rings only. The game's frame is at the map's scale
+	-- across (LabConfig.frame kh, ~0.37 studs/m) and true up, so the rings are placed and sized in
+	-- its studs: they fill in wherever the streamed terrain has run out, and nothing nearer is
+	-- covered (a ring's cards hang below its own ground line).
+	local F = C.frame
+	local inGame = F ~= nil and F.kh ~= nil and F.ks ~= nil and F.kh < 0.99 * F.ks
+	local function across(m: number): number
+		return if inGame then m * F.kh else C.studs(m)
+	end
 	-- (a Part is at most 2048 studs a side; the tiles reach past the part draw range)
 	local tile = math.min(G.tile, C.metres(2048))
 	local radius = math.max(G.radius, math.ceil(C.studs(C.LIMITS.partRange) / C.studs(tile)) + 1)
-	local n = 2 * radius + 1
+	local n = if inGame then 0 else 2 * radius + 1
 	local tiles = {}
 	for _ = 1, n * n do
 		local p = Instance.new("Part")
@@ -38,6 +48,9 @@ function Ground.new(ctx: any): any
 	local parts, cfs = {}, {}
 	local tileIJ = {}
 	function self:update(_dt: number)
+		if inGame then
+			return
+		end
 		local cx, cy = ctx:simCamera()
 		local ti, tj = math.floor(cx / tile + 0.5), math.floor(cy / tile + 0.5)
 		local gc = C.groundCentre
@@ -101,6 +114,19 @@ function Ground.new(ctx: any): any
 	-- haze does the rest.
 	local SceneLight = ctx.Tornado and ctx.Tornado.SceneLight
 	local FAR = G.far or { rings = { 2400, 3200, 4300, 5800, 8000, 11000, 15000 }, cards = 96, sectors = 16, kA = 0.25, kS = 0.2 }
+	if inGame then
+		-- (metres of map: 1,500 to 18,000 studs, from about the streamed terrain's edge to as far
+		-- as storms are drawn)
+		FAR = table.clone(FAR)
+		FAR.rings = { 4000, 5500, 7500, 10000, 13500, 18000, 24000, 32000, 42000, 50000 }
+	end
+	-- (in the game: how far the terrain is reliably drawn, studs - a ring's card reaches down to
+	-- the ground line there)
+	-- (a client can't read StreamingTargetRadius: Roblox's default, 1024)
+	local okR, radiusS = pcall(function()
+		return Workspace.StreamingTargetRadius
+	end)
+	local INNER = math.max(600, 0.8 * (if okR and type(radiusS) == "number" then radiusS else 1024))
 	-- The field's colour as Roblox draws a tile at the camera (2026-11-02): the tiles are lit by
 	-- Roblox (OutdoorAmbient, and the sun by Brightness - both set by Render/Sky from the camera's
 	-- sky), the far cards are not (LightInfluence 0), so they take the same light in linear terms:
@@ -169,6 +195,7 @@ function Ground.new(ctx: any): any
 		local cf = cam.CFrame
 		local camP = cf.Position
 		local hc = math.max(2, cz - C.groundAt(cx, cy)) -- (m above the ground)
+		local hcS = math.max(5, camP.Y - C.toWorld(cx, cy, C.groundAt(cx, cy)).Y) -- (studs: the game's card heights)
 		local recolour = os.clock() - colAt > 0.25
 		if recolour then
 			colAt = os.clock()
@@ -182,7 +209,7 @@ function Ground.new(ctx: any): any
 			-- (twice the spacing: each point under two cards of the ring alike. At 1.15x the
 			-- feathered tops stacked only where neighbours overlapped, and the band showed vertical
 			-- stripes a card wide, 2026-11-02)
-			local wS = C.studs(2 * dR * math.tan(math.pi / FAR.cards) * 2)
+			local wS = across(2 * dR * math.tan(math.pi / FAR.cards) * 2)
 			-- the light by sector (sampled a few times a ring, not per card)
 			if recolour or not ring.sec then
 				ring.sec = ring.sec or {}
@@ -205,13 +232,20 @@ function Ground.new(ctx: any): any
 			-- (down from the ground line to below the tiles' edge seen from this height: ~1.5 km)
 			local hM = hc * dR / 1000 + 100 -- (generous: the part below the tiles is hidden by them)
 			local hS = C.studs(hM)
+			local fe0 = hc * (1 - dR / (ring.next or 1.4 * dR)) / hM
+			if inGame then
+				-- (down to the ground line at INNER, with a margin)
+				local dS = across(dR)
+				hS = dS * (hcS / INNER + 0.03)
+				fe0 = hcS * (1 - dR / (ring.next or 1.4 * dR)) / hS
+			end
 			-- (the top feathered across the whole band between this ring's ground line and the next
 			-- farther ring's, so the hazier ring behind fades into this one: a 3% feather left each
 			-- ring a flat band of its own haze, and from a raised camera the land stepped down in
 			-- terraces, 2026-11-02. The gap on screen is hc (1/dR - 1/dN) radians, the card hM/dR)
 			-- (the farthest ring as if one more stood 40% beyond: with a hard top its straight card
 			-- edges sawed along the horizon against the sky)
-			local fe = math.clamp(hc * (1 - dR / (ring.next or 1.4 * dR)) / hM, 0.03, 0.6)
+			local fe = math.clamp(fe0, 0.03, 0.6)
 			fe = math.floor(fe * 200 + 0.5) / 200
 			local newFe = ring.fe ~= fe
 			ring.fe = fe
@@ -263,9 +297,12 @@ function Ground.new(ctx: any): any
 	local AssetService = game:GetService("AssetService")
 	local P = SHADE.px
 	local W = n * P
-	local okEI, ei = pcall(function()
-		return AssetService:CreateEditableImage({ Size = Vector2.new(W, W) })
-	end)
+	local okEI, ei = true, nil -- (no tiles in the game: nothing to shade)
+	if not inGame then
+		okEI, ei = pcall(function()
+			return AssetService:CreateEditableImage({ Size = Vector2.new(W, W) })
+		end)
+	end
 	if okEI and ei and SceneLight and SceneLight.groundLight then
 		local content = Content.fromObject(ei)
 		local labels = {}

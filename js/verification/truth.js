@@ -249,6 +249,27 @@ export function practicallyPerfectChance(exact, width, height, cellKm) {
   return out;
 }
 
+// The same from expected counts per cell (a forecast run's expected tornadoes, forecast/expectedHazards.js): each box
+// counts with its chance of a report, 1 - exp(-the count expected in it), in place of whether it had one. The chance
+// adds the boxes up, so below its 100% cap this is its expected value over the counts' draws.
+export function practicallyPerfectExpected(expected, width, height, cellKm) {
+  const box = Math.max(1, Math.round(PP_GRID_KM / cellKm)), boxes = new Map(), out = new Float32Array(expected.length);
+  for (let i = 0; i < expected.length; i++) if (expected[i] > 0) {
+    const bx = Math.floor((i % width) / box), by = Math.floor(Math.floor(i / width) / box), key = `${bx},${by}`;
+    const known = boxes.get(key) ?? { x: (bx + 0.5) * box * cellKm, y: (by + 0.5) * box * cellKm, count: 0 };
+    known.count += expected[i]; boxes.set(key, known);
+  }
+  if (!boxes.size) return out;
+  const weight = (PP_GRID_KM * PP_GRID_KM) / (2 * Math.PI * PP_SIGMA_KM * PP_SIGMA_KM), centers = [...boxes.values()].map(c => ({ ...c, p: 1 - Math.exp(-c.count) })).filter(c => c.p > 1e-6);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const px = (x + 0.5) * cellKm, py = (y + 0.5) * cellKm;
+    let p = 0;
+    for (const c of centers) p += weight * c.p * Math.exp(-((px - c.x) ** 2 + (py - c.y) ** 2) / (2 * PP_SIGMA_KM * PP_SIGMA_KM));
+    out[y * width + x] = 100 * Math.min(1, p);
+  }
+  return out;
+}
+
 export function practicallyPerfectProbability(exact, width, height, cellKm, levels) {
   const box = Math.max(1, Math.round(PP_GRID_KM / cellKm));
   const boxes = new Map();

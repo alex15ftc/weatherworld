@@ -2,6 +2,7 @@
 // The storm engine uses these each step; the sounding's hazard outlook (SoundingHazards.js)
 // runs the same functions on the air at a point, so the two cannot disagree.
 import { clamp } from '../scenarios/math.js';
+import { coldPoolSpeedMs } from './ColdPool.js';
 
 // Hail. The largest stone an updraught can hold up grows steeply with its speed, so size goes
 // as a power of the updraught speed the storm realises (parcel theory less entrainment,
@@ -63,8 +64,8 @@ export const HAIL = Object.freeze({ scaleInches: 3.15, referenceUpdraftMs: 60, p
 // half the 500 mb wind added 15-20 m/s; reported severe gusts run at a median near 60-65 mph, and
 // 80 mph or more is perhaps one in twenty. 40% of the severe thunderstorm warnings were DESTRUCTIVE.)
 // The outflow's surge (2026-10-23): the gust front of a deep, cold outflow runs at the speed a
-// density current of its strength spreads at (coldPoolSpeedMs times the square root of its
-// strength, as StormModeEngine's), and its gusts with it; with a share of the storm's motion that
+// density current of its strength spreads at (the storm's one cold pool, ColdPool.js: 38 m/s
+// times the square root of its strength), and its gusts with it; with a share of the storm's motion that
 // is a storm's gust where it is more than the downdraught's. Organized storms and lines, whose
 // outflows are strong, bring damaging wind this way; a pulse storm's weak outflow does not. (Until
 // then the outflow did not enter the gust: on days of lines and clusters in 800-900 J/kg of DCAPE
@@ -76,7 +77,7 @@ export const HAIL = Object.freeze({ scaleInches: 3.15, referenceUpdraftMs: 60, p
 // organized outflow: motionLineShare of it for a discrete storm.)
 // (downdraughtShare 0.5 to 0.6, 2026-10-26: a 1,000 J/kg DCAPE wet downburst then reaches about 60 mph, where observed
 // downbursts in that DCAPE are commonly severe; at 0.5 under 10% of weak-shear storms reached 58 mph at any DCAPE.)
-export const GUST = Object.freeze({ stableLoss: 0.7, stableCinJkg: [50, 250], rainFullShare: 0.5, motionLineShare: 0.4, downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.25, coldPoolSpeedMs: 38, surgeShare: 0.85, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
+export const GUST = Object.freeze({ stableLoss: 0.7, stableCinJkg: [50, 250], rainFullShare: 0.5, motionLineShare: 0.4, downdraughtShare: 0.6, matureShare: 0.65, motionShare: 0.3, rearInflowShare: 0.25, surgeShare: 0.85, rearInflowColdPool: [0.15, 0.5], rearInflowHours: 1 });
 // Bow echoes (2026-10-25): a line segment bows where all of what long-lived bows need is there together (Weisman 1993;
 // Evans and Doswell 2001; Cohen et al. 2007, docs/storm-reference/squall-lines-mcs-wind-2026-10-25.md): CAPE (cape), 0-3 km
 // shear (shearKt), a fast line (speedMs) with strong low-level inflow relative to it (inflowMs), and a cold pool to drive it
@@ -115,7 +116,7 @@ export function hailSizeInches(storm, environment) {
 export function gustMph(storm, environment, motionSpeedKph) {
   const downdraughtMs = Math.sqrt(2 * Math.max(0, Number(environment.dcape) || 0)) * GUST.downdraughtShare * (1 - GUST.matureShare + GUST.matureShare * clamp((storm.precipitation ?? 0) / GUST.rainFullShare, 0, 1));
   const motionMs = motionSpeedKph / 3.6 * GUST.motionShare * (GUST.motionLineShare + (1 - GUST.motionLineShare) * clamp(Number(storm.lineOrganization) || 0, 0, 1));
-  const surgeMs = GUST.surgeShare * GUST.coldPoolSpeedMs * Math.sqrt(clamp(storm.coldPoolStrength ?? 0, 0, 1));
+  const surgeMs = GUST.surgeShare * coldPoolSpeedMs(storm.coldPoolStrength); // its one cold pool (ColdPool.js)
   // A storm fed from above a stable layer must push its downdraught through that layer to reach the ground: its downdraught and
   // outflow keep 1 - GUST.stableLoss of their strength at stableCinJkg[1] of the surface parcel's inhibition, all of it at [0]
   // (elevated storms are mostly hail producers; Horgan et al. 2007). (2026-10-27: elevated supercells under an EML made 63

@@ -133,7 +133,10 @@ function WallStream.new(ctx: any): any
 	end)
 	local TEX = (C.TEXTURES.smoothPuffFlat ~= "" and C.TEXTURES.smoothPuffFlat) or C.TEXTURES.softFlat
 	local WISP = C.TEXTURES.wispSheetFlat or ""
-	local TIER = C.TEXTURES.wallTierFlat or ""
+	-- (the side-on tier texture: off by LabConfig.WALL_TIER. Its crisp lens, rotated with each
+	-- piece, drew the lowering's outline as a ring of dark pointed teeth seen from 3 km - the game
+	-- regrade's worst fault, 2026-11-07; the soft puffs alone read as one smooth lowering)
+	local TIER = if C.WALL_TIER == true then (C.TEXTURES.wallTierFlat or "") else ""
 	-- (a wisp: one frame of the 2x2 fibre sheet, streaks along its x; fixed for the sprite's life)
 	local function makeWisp(c: any, i: number)
 		if WISP == "" then
@@ -502,9 +505,9 @@ function WallStream.new(ctx: any): any
 			local occl = clamp(s.occl or 0, 0, 1)
 			-- (a young lowering is a small one: from 0.3 of its full width, not 0.7 - it appeared at
 			-- 70% width, 2026-11-03; CardPlan keeps the same rule)
-			local R = 0.5 * clamp(0.9 * Ru, 1000, 3500) * (0.3 + 0.7 * q) * (1 - 0.35 * occl)
 			local base = s.base or 1000
 			local zb = max(s.wallBase, 60)
+			local R = Util.wallRadius(Ru, max(base - max(s.wallBase, 60), 30), q, occl)
 			-- (eased over ~2 s: the storm's snapshot comes twice a second, and its size and depth
 			-- stepped with it)
 			local ke = 1 - exp(-dt / 2)
@@ -579,13 +582,24 @@ function WallStream.new(ctx: any): any
 			-- broad bowl that narrows onto the funnel's top
 			local rDip = max(0.2 * R, 3 * tRc)
 			local function zbot(r: number): number
-				local z = zb + D * min(r / R, 1) ^ 4
+				local z = zb + D * min(r / R, 1) ^ Util.WALL_FLOOR_P
 				if dip > 0 then
 					z -= dip * (1 - smooth(0, rDip, r))
 				end
 				return z
 			end
-			local ks = C.scaleAbout(cx, cy)
+			-- (the game: drawn about its storm's anchor, LabConfig.stormAnchor - the funnel's foot - at
+			-- the storm's one scale; the lab: about its own centre)
+			local acx, acy = C.stormAnchor(if s.ghost then nil else s.id, cx, cy)
+			local ks = C.scaleAbout(acx, acy)
+			-- (across at ks out to 3 core radii of a tornado under it, easing to the map's beyond -
+			-- the game draws the storm body across at its map's scale: LabConfig.radial, as
+			-- Shared.CloudModel.WallCloudView. A drawn width takes kA, the scale across there; a
+			-- height the vertical ks side-on, kA seen from beneath (sinE). In the lab kA = ks.)
+			local trueR = 3 * tRc
+			local function kUp(kA: number, sinE: number): number
+				return ks + (kA - ks) * sinE
+			end
 			-- the sun reaching the wall cloud (marched through the storm; twice a second)
 			local now = os.clock()
 			if not set.litAt or now - set.litAt > 0.5 then
@@ -615,10 +629,12 @@ function WallStream.new(ctx: any): any
 			-- streaks along the turn; it orbits at the circulation's speed at its radius.
 			local camP = cf.Position
 			local function band(c: any, x: number, y: number, z: number, a: number, wideK: number, thick: number, th: number, rr: number): number
-				local Pw = C.toWorldAbout(x, y, z, cx, cy, ks)
+				local Pw, kR, kT = C.toWorldRadial(x, y, z, acx, acy, ks, trueR)
+				local kA = max(kR, kT) -- (across: the ring's scale, not the radial squeeze)
 				setPos(c, Pw)
 				local ray = Pw - camP
 				local sinE = abs(ray.Y) / max(ray.Magnitude, 1e-3)
+				local kH = kUp(kA, sinE)
 				local across = ray:Cross(Vector3.yAxis)
 				local lv = 0
 				if across.Magnitude > 1e-3 then
@@ -628,18 +644,18 @@ function WallStream.new(ctx: any): any
 					-- (streaks: from beneath along the flow's tangent on screen, side-on level; the two
 					-- blended as line directions - angles doubled)
 					local e = 0.05 * max(rr, 0.1 * R)
-					local Pt = C.toWorldAbout(x - sign * sin(th) * e, y + sign * cos(th) * e, z, cx, cy, ks)
+					local Pt = C.toWorldRadial(x - sign * sin(th) * e, y + sign * cos(th) * e, z, acx, acy, ks, trueR)
 					local d3 = Pt - Pw
 					local tg = math.atan2(d3:Dot(cf.UpVector), d3:Dot(cf.RightVector))
 					local wt = smooth(0.3, 0.8, sinE)
 					local ang = 0.5 * math.atan2((1 - wt) * sin(2 * lv) + wt * sin(2 * tg), (1 - wt) * cos(2 * lv) + wt * cos(2 * tg))
-					setSize(c, a * ks, min(a * 0.82, (thick + max(0, wideK * a - thick) * sinE) * 1.1) * ks)
+					setSize(c, a * kA, min(a * 0.82, (thick + max(0, wideK * a - thick) * sinE) * 1.1) * kH)
 					setRot(c, -math.deg(ang))
 				else
-					setSize(c, a * ks, min(a * 0.72, thick + max(0, wideK * a - thick) * sinE) * ks)
+					setSize(c, a * kA, min(a * 0.72, thick + max(0, wideK * a - thick) * sinE) * kH)
 					setRot(c, -math.deg(lv))
 				end
-				return sinE
+				return sinE, kA
 			end
 			local function patchy(col: Color3, j: number, salt: number): Color3
 				local p = 0.85 + 0.3 * rnd(j, salt)
@@ -717,14 +733,15 @@ function WallStream.new(ctx: any): any
 			-- a fibre lying along its flow on screen (round the centre at its turn, up at its rise),
 			-- foreshortened as a level band is: a thin streak side-on, broad from beneath
 			local function flowCard(c: any, x: number, y: number, z: number, w: number, thick: number, th: number, r: number, om: number, rise: number, aspect: number?)
-				local Pw = C.toWorldAbout(x, y, z, cx, cy, ks)
+				local Pw, kR, kT = C.toWorldRadial(x, y, z, acx, acy, ks, trueR)
+				local kA = max(kR, kT) -- (across: the ring's scale, not the radial squeeze)
 				setPos(c, Pw)
 				local ray = Pw - camP
 				local sinE = abs(ray.Y) / max(ray.Magnitude, 1e-3)
 				local sg = if om >= 0 then 1 else -1
 				local e = 0.05 * max(r, 0.1 * R)
 				local vt = max(abs(om) * max(r, 1), 1)
-				local Pt = C.toWorldAbout(x - sg * sin(th) * e, y + sg * cos(th) * e, z + rise / vt * e, cx, cy, ks)
+				local Pt = C.toWorldRadial(x - sg * sin(th) * e, y + sg * cos(th) * e, z + rise / vt * e, acx, acy, ks, trueR)
 				local d3 = Pt - Pw
 				local sx, sy = d3:Dot(cf.RightVector), d3:Dot(cf.UpVector)
 				local sl = sqrt(sx * sx + sy * sy)
@@ -740,7 +757,7 @@ function WallStream.new(ctx: any): any
 				if aspect then
 					len = min(len, aspect * hh)
 				end
-				setSize(c, len * ks, hh * ks)
+				setSize(c, len * kA, hh * kUp(kA, sinE))
 				local tiltMax = 18 + 72 * smooth(0.25, 0.7, sinE)
 				setRot(c, clamp(ang, -tiltMax, tiltMax))
 			end
@@ -830,7 +847,11 @@ function WallStream.new(ctx: any): any
 					local hx, hy = cx + cos(th) * r - camX, cy + sin(th) * r - camY
 					local el = (z - camZ) / max(sqrt(hx * hx + hy * hy + (z - camZ) ^ 2), 1e-3)
 					sideOn = 1 - smooth(0.3, 0.55, el)
-					dens += (3.0 - dens) * sideOn
+					-- (opaque side-on only with the tier texture: as soft puffs they drew as dark
+					-- leaves round the lowering, regrade 2026-11-07)
+					if TIER ~= "" then
+						dens += (3.0 - dens) * sideOn
+					end
 				end
 				local a = (1 - exp(-dens)) * env
 				if cls == 1 then
@@ -862,13 +883,13 @@ function WallStream.new(ctx: any): any
 						local dep = max(base - zf, 0.5 * D)
 						local hT = dep / 0.4
 						local wA = min(1.7 * w, 2.5 * dep)
-						band(c, cx + ox, cy + oy, zf + 0.2 * hT, wA, 0, hT, th, r)
-						setSize(c, wA * ks, hT * ks) -- (band caps a level band at 0.72 of its width)
+						local _, kA = band(c, cx + ox, cy + oy, zf + 0.2 * hT, wA, 0, hT, th, r)
+						setSize(c, wA * kA, hT * ks) -- (band caps a level band at 0.72 of its width)
 					else
 						if c.img.Image ~= TEX then
 							c.img.Image = TEX
 						end
-						flowCard(c, cx + ox, cy + oy, z, w, 0.6 * span + 0.15 * w, th, r, om, rise, 1.7)
+						flowCard(c, cx + ox, cy + oy, z, w, 0.6 * span + 0.15 * w, th, r, om, rise, if TIER ~= "" then 1.7 else 1.3)
 					end
 				else
 					-- (short and plump: 0.4 thick, the fringe drew as a sawtooth of dark teeth round the
@@ -876,7 +897,9 @@ function WallStream.new(ctx: any): any
 					-- (wider, flatter, fainter: at 0.13-0.23 R and 0.6 tall each read as a dark round bead
 					-- round the lowering's edge - a ring of balls with the base hidden, SC check 2026-11-02)
 					local w = R * (0.22 + 0.14 * rnd(k, 3))
-					flowCard(c, cx + ox, cy + oy, z, w, 0.35 * w, th, r, om, rise)
+					-- (at most 1.6 x as long as tall: uncapped, the rise and swirl drew them as dark
+					-- leaves round the lowering once the tiers were off, 2026-11-07)
+					flowCard(c, cx + ox, cy + oy, z, w, 0.35 * w, th, r, om, rise, 1.6)
 				end
 				setTr(c, 1 - clamp(a * fadeIn, 0, 1))
 				local rf = r / R
@@ -962,7 +985,10 @@ function WallStream.new(ctx: any): any
 			if sk > 0 then
 				local b = ctx.wallStreamBase[id] or {}
 				b.col = Color3.new(sr / sk, sg / sk, sb / sk)
-				b.x, b.y, b.z, b.r = cx, cy, zb, R
+				-- (its reach as drawn, in metres at the tornado's true scale: the funnel's flare stays
+				-- inside the lowering as drawn, LabConfig.radial)
+				b.x, b.y, b.z, b.r = cx, cy, zb, (C.radial(R, trueR, ks, cx, cy)) / ks
+				b.tR = trueR -- (Render/Scud: drawn about this centre by the same rule)
 				b.floor, b.dip = zbot(0), dip -- (the lowering's floor over the funnel)
 				ctx.wallStreamBase[id] = b
 				-- (readouts for the light review: the middle's mean colour, the sun reaching it, the scene light)
@@ -1060,8 +1086,8 @@ function WallStream.new(ctx: any): any
 							local lobe = clamp(2.2 * math.noise(mc * 7 + 0.37, 1.7, 0.002 * tNow), -1, 1)
 							thick *= 0.65 + 0.7 * smooth(-0.6, 0.6, lobe)
 							local gapK = 1 - (1 - smooth(-0.8, -0.35, lobe)) * (1 - smooth(0.6, 0.85, sP))
-							local P1 = C.toWorldAbout(cx + a[1], cy + a[2], a[3], cx, cy, ks)
-							local P2 = C.toWorldAbout(cx + b[1], cy + b[2], b[3], cx, cy, ks)
+							local P1 = C.toWorldRadial(cx + a[1], cy + a[2], a[3], acx, acy, ks, trueR)
+							local P2 = C.toWorldRadial(cx + b[1], cy + b[2], b[3], acx, acy, ks, trueR)
 							-- (stretched along the path as the camera sees it)
 							local d3 = P2 - P1
 							local sx, sy = d3:Dot(cf.RightVector), d3:Dot(cf.UpVector)
@@ -1090,13 +1116,14 @@ function WallStream.new(ctx: any): any
 							-- (lobes bulge up on top; the underside sags under them: an uneven base)
 							lift += (if slot == 0 then 0.3 else -0.12) * max(0, lobe) * tT * grow
 							ox, oy, z = ox + nx / pl * lat, oy + ny / pl * lat, z + lift
-							local Pc = C.toWorldAbout(cx + ox, cy + oy, z, cx, cy, ks)
+							local Pc, kR, kT = C.toWorldRadial(cx + ox, cy + oy, z, acx, acy, ks, trueR)
+							local kA = max(kR, kT) -- (across: the ring's scale, not the radial squeeze)
 							setPos(c, Pc)
 							local ray = Pc - cf.Position
 							local sinE = abs(ray.Y) / max(ray.Magnitude, 1e-3)
 							local bandW = (if slot == 0 then 0.52 else if slot <= 2 then 0.38 else 0.27) * wNow * vj
 							local deep = thick * (0.6 + 0.4 * sP) * (if slot == 0 then 1.65 else 1.4)
-							setSize(c, wv * ks, min(max(0.55, 1 - 0.45 * onScreen) * wv, deep + max(0, bandW - deep) * sinE) * ks)
+							setSize(c, wv * kA, min(max(0.55, 1 - 0.45 * onScreen) * wv, deep + max(0, bandW - deep) * sinE) * kUp(kA, sinE))
 							if sl > 1e-4 then
 								-- (each its own lean: +-5 deg, all along the path, drew a hatched band, 2026-10-30)
 								-- (along the path only as far as the path shows across the screen: seen from

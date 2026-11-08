@@ -20,6 +20,8 @@
 --   CloudLabLiveCentre  "x,y": the map km the table's middle stands for; "" (default) puts it at
 --                       the engine's strongest storm when live mode starts
 --   CloudLabLiveEvery   seconds between frames sent to a client per storm (default 7.5)
+--   CloudLabEngineSideKm  how far east of its storm the engine-built copy ("<id>~engine", the
+--                       server's WEATHER_ENGINE_FRAMES=side) is drawn (default 20)
 --   CloudLabLiveWalk    true: a player is where they stand on the table; otherwise (the default)
 --                       every player counts as at the table's middle: they watch the table from
 --                       its edge (the spawn is 34 km south of the middle) and stand for a chaser
@@ -35,7 +37,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Folder = ReplicatedStorage:WaitForChild("CloudLab")
 local StormFrames = require(Folder:WaitForChild("Model"):WaitForChild("StormFrames")) :: any
 
-local SCALE = 0.1 -- studs per metre (the tabletop's: 1 km = 100 studs; init.client.luau)
+-- studs per metre across: the live game's map scale (its Config, CloudLab.GameConfig), as the
+-- client draws it (LiveView.client.luau)
+local GameConfig = require(Folder:WaitForChild("GameConfig")) :: any
+local SCALE = GameConfig.STUDS_PER_MILE / (GameConfig.KM_PER_MILE * 1000)
 local POLL_S = 3
 local NEAR_KM = 30
 local CLOCK = 8 -- game seconds a real second (the fixed 8x clock)
@@ -152,10 +157,14 @@ local function poll()
 		-- (the window's centre is snapped to a cell: positions are from that centre)
 		local sx, sy = data.centreMapKm.x - c.x, data.centreMapKm.y - c.y
 		for _, s in data.storms do
-			local h = held[tostring(s.id)]
-			if h then
-				h.east, h.north = s.pos[1] + sx * 1000, s.pos[2] - sy * 1000
-				h.ue, h.ve, h.hour = s.motion[1], s.motion[2], data.simHourUtc
+			-- (the engine-built copy, "<id>~engine", side by side: CloudLabEngineSideKm east of it)
+			for _, key in { tostring(s.id), tostring(s.id) .. "~engine" } do
+				local h = held[key]
+				if h then
+					local side = if key == tostring(s.id) then 0 else 1000 * (workspace:GetAttribute("CloudLabEngineSideKm") or 20)
+					h.east, h.north = s.pos[1] + sx * 1000 + side, s.pos[2] - sy * 1000
+					h.ue, h.ve, h.hour = s.motion[1], s.motion[2], data.simHourUtc
+				end
 			end
 		end
 	end

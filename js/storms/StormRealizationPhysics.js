@@ -1,4 +1,5 @@
 import { clamp } from '../scenarios/math.js';
+import { COLD_POOL_SHAPE, coldPoolSpeedMs as poolSpeedMs, coldPoolDepthM as poolDepthM } from './ColdPool.js';
 
 const G = 9.80665;
 const KNOT_TO_MS = 0.514444;
@@ -13,7 +14,10 @@ function ramp(value, low, high) {
  * Values are normalized for storm evolution, but retain physically meaningful
  * dimensional diagnostics for verification and tuning.
  */
-export function diagnoseStormRealizationPhysics(environment, storm = null) {
+// parcel: the storm's entraining parcel (UpdraughtParcel.js), whose kept share of parcel theory is its
+// entrainment efficiency; without one (no storm in a world, or no free convection to measure the
+// mixing against) the efficiency falls back to the environment's rule below.
+export function diagnoseStormRealizationPhysics(environment, storm = null, parcel = null) {
   const cape = Math.max(0, Number(environment.cape) || 0);
   const cin = Math.max(0, Number(environment.cin) || 0);
   const shearKt = Math.max(0, Number(environment.bulkShear) || 0);
@@ -36,7 +40,11 @@ export function diagnoseStormRealizationPhysics(environment, storm = null) {
   // (Base 0.42 to 0.48 on 2026-10-26, when the sounding's heights and mixed-layer parcel were corrected and CAPE fell by about
   // a quarter (warm-sector median 2,260 to 1,735 J/kg, real 1,370): the same storms keep the same updraughts, about 0.5-0.8 of
   // parcel theory's, as observed. It had been set against the inflated CAPE.)
-  const entrainmentEfficiency = clamp(0.48 + 0.25 * ramp(shearKt, 15, 50) + 0.18 * ramp(cape, 500, 3000) - 0.16 * ramp(lcl, 1200, 2600) + ENTRAINMENT_CONVERGENCE * convergence, 0.25, 0.90);
+  // (with a parcel: its mixed peak over this parcel theory, so the potential is the parcel's own
+  // speed. Its kept share alone, applied to sqrt(2 CAPE) here, discounted twice: the parcel rises from
+  // the inflow's sounding, which holds more CAPE than the storm's own cell - 69 against 60 m/s for
+  // supercells - and supercells fell to 31 m/s, 2026-11-07)
+  const entrainmentEfficiency = parcel ? parcel.dilution : clamp(0.48 + 0.25 * ramp(shearKt, 15, 50) + 0.18 * ramp(cape, 500, 3000) - 0.16 * ramp(lcl, 1200, 2600) + ENTRAINMENT_CONVERGENCE * convergence, 0.25, 0.90);
   const precipitationEfficiency = clamp(0.92 - 0.22 * ramp(cape, 2500, 5000) - 0.18 * ramp(environment.stormCoverage ?? 0, 0.55, 1), 0.48, 0.95);
   // A running updraught spends the inhibition's energy lifting its inflow through the cap, so it
   // keeps CAPE - CIN of it: speed as sqrt(1 - CIN / CAPE). (Until 2026-10-16 it was
@@ -55,11 +63,9 @@ export function diagnoseStormRealizationPhysics(environment, storm = null) {
   const initiationProbability = clamp(1 / (1 + Math.exp(-(initiationMarginJkg - 5) / 38)), 0, 1);
 
   const shearMs = shearKt * KNOT_TO_MS;
-  const coldPoolDeficitK = Math.max(0.2, Number(storm?.coldPoolTemperatureDeficitF || 0) / 1.8);
-  const coldPoolDepthM = clamp(500 + (storm?.coldPoolStrength ?? 0.15) * 1900, 400, 2600);
-  const referenceThetaV = 300;
-  const reducedGravity = G * coldPoolDeficitK / referenceThetaV;
-  const coldPoolSpeedMs = Math.sqrt(2 * reducedGravity * coldPoolDepthM);
+  // the storm's one cold pool (ColdPool.js); before there is a storm, the weakest pool at a young
+  // storm's depth
+  const coldPoolSpeedMs = storm ? poolSpeedMs(storm.coldPoolStrength) : Math.sqrt(2 * G * COLD_POOL_SHAPE.minDeficitK / COLD_POOL_SHAPE.thetaK * poolDepthM(0.15));
   const lowLevelShearMs = Math.max(2, shearMs * 0.58);
   const shearColdPoolRatio = clamp(coldPoolSpeedMs / lowLevelShearMs, 0, 3);
   const balanceSupport = Math.exp(-Math.pow((shearColdPoolRatio - 1) / 0.65, 2));

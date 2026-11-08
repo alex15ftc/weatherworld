@@ -12,7 +12,11 @@ import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
 import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
-import { buildRadarScene, scanRadarTilt, buildRadarMosaic, MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
+import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, MOSAIC_KINDS, MOSAIC_RES_KM } from '../js/radar/RadarSimulator.js';
+import { buildSatellite, satelliteInputs } from '../js/satellite/Satellite.js';
+import { AnvilField } from '../js/satellite/AnvilField.js';
+import { rainFieldInputs, rainFieldOf } from '../js/storms/StormRainFields.js';
+import { detectRotation, lowLevelShearGrid } from '../js/radar/RotationDetection.js';
 import { radarSitesFor } from './RadarSites.js';
 import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { GameFeed } from './GameFeed.js';
@@ -23,7 +27,7 @@ import { countiesFor, placesFor } from './CountyLayer.js';
 import { logStormTick } from '../js/reports/stormLog.js';
 import { createDayRecorder } from './DayReviewRecorder.js';
 import { LightningLog } from '../js/storms/Lightning.js';
-import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_BEAMWIDTH_DEG } from '../js/radar/RadarFormat.js';
+import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_FINE_GATE_KM, RADAR_BEAMWIDTH_DEG, encodeRadarValue } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 1000;
 const START_HOUR_UTC = 12;
@@ -36,6 +40,12 @@ const STORM_CADENCE_HOURS = 1 / 12, ATMOSPHERE_STEP_HOURS = 0.5;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const MAX_STEPS_PER_TICK = 4;
 const RADAR_PREWARM_MS = 60_000;
+// The tilts a radar's rotation detections look through: its lowest nine, 0.5-6.4 deg (from 1 to 6 km
+// up a storm at 50 km, enough for the TDA's 1.5 km and the MDA's 3 km depths at most ranges).
+const RADAR_ROTATION_TILTS = 9;
+// Rotation tracks: the greatest low-level shear of the scans of the last hour (sim time), as the
+// MRMS rotation tracks (60 min). Made from the scans of while they were asked for.
+const ROTATION_TRACK_HOURS = 1;
 // Mosaics kept for the radar page's loop (one per scan time: an hour's worth).
 const RADAR_HISTORY_FRAMES = 12;
 const RISK_CODES = { NONE: 0, TSTM: 1, MRGN: 2, SLGT: 3, ENH: 4, MDT: 5, HIGH: 6 };
@@ -101,10 +111,13 @@ export class WeatherAuthorityRuntime {
     this.places = places;
     // The last half hour's lightning (js/storms/Lightning.js), added to after each storm tick.
     this.lightning = new LightningLog({ seed: engine.seed });
+    // The storms' anvils for the satellite (js/satellite/AnvilField.js): a puff from each storm each tick.
+    this.anvils = new AnvilField().update(world);
     // The meteorologist's day packages (DayReviewRecorder.js), from the next 12Z on.
     this.dayReview = this.dayReviews ? createDayRecorder({ engine, outDir: this.dayReviews.dir, places, png: Boolean(this.dayReviews.png), keepDays: this.dayReviews.keepDays ?? null, outlookFor: (from, to) => this.dayReviewOutlook?.(from, to) ?? null }) : null;
     engine.onStormTick = () => {
       logStormTick(world, places); this.lightning.record(world); this.dayReview?.stormTick();
+      try { this.anvils.update(world); } catch (error) { console.error('[anvils]', error); }
       // The cloud model workers (js/game/StormWorkers.js, set by server/index.js): they only read
       // the world, and a fault in them never stops it.
       try { this.stormWorkers?.stormTick(world); } catch (error) { console.error('[storm-workers]', error); }
@@ -115,6 +128,7 @@ export class WeatherAuthorityRuntime {
     this.finishPieces();
     this.build(seed);
     this.radarHistory = Object.fromEntries(MOSAIC_KINDS.map(kind => [kind, []]));
+    this.rotationScans = [];
     this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision += 1;
     this.invalidateProducts();
@@ -493,9 +507,15 @@ export class WeatherAuthorityRuntime {
   }
 
   // The radar's products are worked out on the radar pool's threads when there is one (the same
-  // bytes either way), so they are all asynchronous.
+  // bytes either way), so they are all asynchronous. The scene's storms are the engine's rain
+  // fields (js/storms/StormRainFields.js), the ones the frames of storms near players read too.
   radarScene() {
-    return this.cachedAsync('radar:scene', () => (this.radarPool ? this.radarPool.buildScene(this.atmosphere) : buildRadarScene(this.atmosphere)));
+    return this.cachedAsync('radar:scene', async () => {
+      const world = this.atmosphere;
+      if (this.radarPool) return this.radarPool.buildScene(world);
+      const inputs = rainFieldInputs(world);
+      return assembleRadarScene(inputs, inputs.storms.map(input => rainFieldOf(world, input.storm)));
+    });
   }
 
   // Reflectivity from every site combined on a 1 km grid: composite (the strongest echo above
@@ -503,12 +523,49 @@ export class WeatherAuthorityRuntime {
   radarMosaic(kind = 'composite') {
     kind = MOSAIC_KINDS.includes(kind) ? kind : 'composite';
     this.radarWanted.set('mosaic|' + kind, Date.now());
+    if (kind === 'rotationTrack') return this.radarRotationTrack();
     const revision = this.revision, sites = this.radarCatalog().sites;
     return this.cachedAsync('radar:mosaic:' + kind, async () => {
       const scene = await this.radarScene();
       const mosaic = { ...(this.radarPool ? await this.radarPool.mosaic(scene, sites, kind) : buildRadarMosaic(scene, sites, { kind })), revision };
       this.rememberMosaic(kind, mosaic);
       return mosaic;
+    });
+  }
+
+  // Each radar's lowest scan (on the radar pool's threads), its low-level shear laid on the
+  // mosaic grid, and the greatest of the last hour's scans kept (one byte grid per scan time).
+  radarRotationTrack() {
+    const revision = this.revision, sites = this.radarCatalog().sites;
+    return this.cachedAsync('radar:mosaic:rotationTrack', async () => {
+      const scene = await this.radarScene(), { width, height } = mosaicSize(scene);
+      const scans = await Promise.all(sites.map(site => this.radarScan(site.id, RADAR_TILTS_DEG[0])));
+      const shear = new Float32Array(width * height);
+      sites.forEach((site, k) => { if (scans[k]) lowLevelShearGrid(shear, width, height, MOSAIC_RES_KM, site, scans[k]); });
+      const now = scene.validHourUtc, bytes = new Uint8Array(width * height);
+      for (let i = 0; i < shear.length; i++) if (shear[i] > 0) bytes[i] = encodeRadarValue('azShear', shear[i]);
+      const kept = (this.rotationScans ?? []).filter(s => s.width === width && s.height === height && now - s.validHourUtc < ROTATION_TRACK_HOURS - 1e-6 && Math.abs(now - s.validHourUtc) > 1e-6 && s.validHourUtc < now);
+      kept.push({ validHourUtc: now, width, height, bytes });
+      this.rotationScans = kept;
+      const track = new Uint8Array(width * height);
+      for (const s of kept) for (let i = 0; i < track.length; i++) if (s.bytes[i] > track[i]) track[i] = s.bytes[i];
+      const mosaic = { width, height, rows: [0, height], resKm: MOSAIC_RES_KM, kind: 'rotationTrack', product: 'azShear', composite: false, validHourUtc: now,
+        fromHourUtc: kept[0].validHourUtc, scans: kept.length, bytes: track, revision };
+      this.rememberMosaic('rotationTrack', mosaic);
+      return mosaic;
+    });
+  }
+
+  // The satellite's images of the whole map (js/satellite/Satellite.js: clean IR and visible, made
+  // together), worked out once a revision while asked for. What it is made from is read from the
+  // world here (~15 ms); the images are drawn on a radar thread when there are some (~0.7 s).
+  satellite() {
+    this.radarWanted.set('satellite', Date.now());
+    const revision = this.revision;
+    return this.cachedAsync('satellite', async () => {
+      const options = { seed: this.seed, regional: this.engine.regional, anvils: this.anvils };
+      const images = this.radarPool ? await this.radarPool.satellite(satelliteInputs(this.atmosphere, options)) : buildSatellite(this.atmosphere, options);
+      return { ...images, revision };
     });
   }
 
@@ -523,16 +580,32 @@ export class WeatherAuthorityRuntime {
   radarMosaicFrames(kind = 'composite') { return { kind, frames: (this.radarHistory[kind] ?? []).map(({ validHourUtc, mosaic }) => ({ validHourUtc, revision: mosaic.revision })) }; }
   radarMosaicAt(validHourUtc, kind = 'composite') { return (this.radarHistory[kind] ?? []).find(frame => Math.abs(frame.validHourUtc - validHourUtc) < 1e-6)?.mosaic ?? null; }
 
-  // One tilt of one site; all products are simulated together and cached per revision.
-  async radarScan(siteId, tiltDeg) {
+  // One tilt of one site; all products are simulated together and cached per revision. fine: with
+  // the 250 m gates of a close look (RADAR_FINE_GATE_KM) rather than the usual.
+  async radarScan(siteId, tiltDeg, { fine = false } = {}) {
     const site = this.radarCatalog().sites.find(s => s.id === siteId);
     if (!site) return null;
     const tilt = RADAR_TILTS_DEG.reduce((a, b) => (Math.abs(b - tiltDeg) < Math.abs(a - tiltDeg) ? b : a));
-    this.radarWanted.set(`${site.id}|${tilt}`, Date.now());
+    const gateKm = fine ? RADAR_FINE_GATE_KM : RADAR_GATE_KM, tag = fine ? '|fine' : '';
+    this.radarWanted.set(`${site.id}|${tilt}${tag}`, Date.now());
     const revision = this.revision;
-    return this.cachedAsync(`radar:scan:${site.id}:${tilt}`, async () => {
+    return this.cachedAsync(`radar:scan:${site.id}:${tilt}${tag}`, async () => {
       const scene = await this.radarScene();
-      return { ...(this.radarPool ? await this.radarPool.scan(scene, site, tilt) : scanRadarTilt(scene, site, tilt)), revision };
+      return { ...(this.radarPool ? await this.radarPool.scan(scene, site, tilt, gateKm) : scanRadarTilt(scene, site, tilt, { gateKm })), revision };
+    });
+  }
+
+  // The rotation one radar's volume scan shows (js/radar/RotationDetection.js): its lowest tilts
+  // scanned (on the radar pool's threads), the detections worked out from them here.
+  radarRotation(siteId) {
+    const site = this.radarCatalog().sites.find(s => s.id === siteId);
+    if (!site) return Promise.resolve(null);
+    this.radarWanted.set(`rotation|${site.id}`, Date.now());
+    const revision = this.revision, tilts = RADAR_TILTS_DEG.slice(0, RADAR_ROTATION_TILTS);
+    return this.cachedAsync(`radar:rotation:${site.id}`, async () => {
+      const scans = (await Promise.all(tilts.map(tilt => this.radarScan(site.id, tilt)))).filter(Boolean);
+      if (!scans.length) return null;
+      return { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...detectRotation(site, scans), revision };
     });
   }
 
@@ -544,9 +617,11 @@ export class WeatherAuthorityRuntime {
     for (const [key, at] of this.radarWanted) {
       if (now - at > RADAR_PREWARM_MS) { this.radarWanted.delete(key); continue; }
       if (key.startsWith('mosaic|')) { this.radarMosaic(key.slice(7)).catch(() => {}); this.radarWanted.set(key, at); continue; }
+      if (key === 'satellite') { this.satellite().catch(() => {}); this.radarWanted.set(key, at); continue; }
+      if (key.startsWith('rotation|')) { this.radarRotation(key.slice(9)).catch(() => {}); this.radarWanted.set(key, at); continue; }
       if (now - at > RADAR_PREWARM_MS) { this.radarWanted.delete(key); continue; }
-      const [site, tilt] = key.split('|');
-      (key === 'mosaic' ? this.radarMosaic() : this.radarScan(site, Number(tilt))).catch(() => {});
+      const [site, tilt, fine] = key.split('|');
+      (key === 'mosaic' ? this.radarMosaic() : this.radarScan(site, Number(tilt), { fine: fine === 'fine' })).catch(() => {});
       this.radarWanted.set(key, at);
     }
   }
@@ -606,7 +681,9 @@ export class WeatherAuthorityRuntime {
     this.lastSavedHour = Math.floor(this.atmosphere.validHourUtc);
     if (this.savingState) { this.saveQueued = true; return; }
     const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, revision: this.revision, engine: this.engine.saveState() });
+    // (the cloud model storms are saved with the world, so a restart resumes both from the same moment)
     this.savingState = this.writeFile(this.statePath, bytes)
+      .then(() => this.stormWorkers?.saveModels?.())
       .catch(error => console.warn('[authority] state not saved:', error.message))
       .finally(() => { this.savingState = null; if (this.saveQueued) { this.saveQueued = false; this.saveState(); } });
   }

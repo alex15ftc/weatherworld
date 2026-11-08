@@ -5,12 +5,14 @@
 import {
   buildStormPrecipitation, samplePrecipitation, hasPrecipitation, sampleDebris, sampleHeaviness, heavinessGradient,
   RAIN_REFLECTIVITY, HAIL_REFLECTIVITY, DEBRIS_REFLECTIVITY, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, MESOCYCLONE_LEAN_M, FRONT_TO_REAR_BASE_M, frontToRearShare
-} from './PrecipitationField.js';
+} from '../storms/PrecipitationField.js';
 import {
   RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, RADAR_BEAMWIDTH_DEG, RADAR_ANTENNA_HEIGHT_M,
   RADAR_PRODUCT_KEYS, beamHeightKm, groundRangeKm, encodeRadarValue, RANGE_FOLDED
 } from './RadarFormat.js';
 import { buildSounding } from '../sounding.js';
+import { updraughtProfile, STRUCTURE as FRAME } from '../storms/StormStructure.js';
+import { coldPoolSpeedMs, coldPoolDepthM } from '../storms/ColdPool.js';
 
 const KT_TO_MS = 0.514444;
 const STORM_BIN_KM = 10;
@@ -44,7 +46,7 @@ const BEAM_OFFSETS = [[-1, 0.25], [0, 0.5], [1, 0.25]], BEAM_CENTRE = [[0, 1]];
 const ACROSS_SHARE = 0.35 * RADAR_BEAMWIDTH_DEG / (360 / RADAR_RADIALS);
 const NEIGHBOUR_WEIGHT = BEAM_OFFSETS[0][1] * Math.min(1, ACROSS_SHARE), OWN_WEIGHT = 1 - 2 * NEIGHBOUR_WEIGHT;
 // Per-gate sums of one scan before blending and noise (reused between scans).
-const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, stormRadial2: null, envRadial: null, hail: null, spike: null, spikeRadial: null, clutter: null };
+const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, stormRadial2: null, envRadial: null, hail: null, spike: null, spikeRadial: null, clutter: null, fall: null, rise: null, measured: null, guess: null, raw: null, dealiased: null };
 // Ground clutter left after the radar's clutter filter: buildings, trees and power lines the
 // lowest part of the beam grazes. Echo this strong (dBZ, varying by this much from one target to
 // the next) where the beam's lower edge reaches the ground, fading as it rises over this height
@@ -55,7 +57,37 @@ const CLUTTER = { residualDbz: 12, varyDb: 8, fadeM: 40, targets: 0.4, standardD
 // Doppler: echoes from beyond this range (km) fold over the gates this much nearer. The lowest
 // tilts (split cuts, phase coded) can tell the two apart unless the nearer echo is this much
 // (dB) weaker; the others only where the nearer is this much stronger.
-const DOPPLER = { unambiguousKm: 117, phaseCodedUpToDeg: 1.8, phaseCodedDb: -10, plainDb: 5 };
+// The Doppler range and the fastest motion the radar can tell apart are one choice of pulse rate
+// (the Doppler dilemma): Vn x Rmax = c x wavelength / 8, so with the S band's 10.7 cm and a 117 km
+// Doppler range Vn is 34.3 m/s (WSR-88D: 25-34 m/s on the low tilts of VCP 12/212). Faster motion
+// toward or away folds over into the other sign (aliasing); the radar unfolds it (dealiasing).
+// pulses: how many pulses each velocity is estimated from (the WSR-88D's 40-200; the fewest, as on
+// the fast low tilts of a convective scan).
+const DOPPLER = { unambiguousKm: 117, phaseCodedUpToDeg: 1.8, phaseCodedDb: -10, plainDb: 5, wavelengthM: 0.107, pulses: 40 };
+export const NYQUIST_MS = 3e8 * DOPPLER.wavelengthM / (8 * DOPPLER.unambiguousKm * 1000);
+// How far a velocity estimate strays (standard deviation, m/s) with a spectrum width sigma (m/s), at
+// high signal to noise: var = lambda sigma / (8 sqrt(pi) M Ts) for contiguous pulse pairs and a
+// Gaussian spectrum (Zrnic 1977; NCAR TN-331, eq. 3.25), the pulse spacing Ts = lambda / (4 Vn).
+// 0.98 m/s at a 4 m/s width, as the WSR-88D's under 1 m/s.
+const PULSE_SPACING_S = DOPPLER.wavelengthM / (4 * NYQUIST_MS);
+const velocityErrorMs = sigma => Math.sqrt(DOPPLER.wavelengthM * sigma / (8 * Math.sqrt(Math.PI) * DOPPLER.pulses * PULSE_SPACING_S));
+// Dealiasing (as the WSR-88D's 2-D velocity dealiasing, VDA, does it in outline): each gate is first
+// unfolded to lie nearest the environment's wind along the beam (the VDA's first guess, from the
+// radar's own VAD wind), then, this many times over, nearest the median of the gates round it
+// (radials either side, gates along the beam), so a patch that differs from the environment by
+// more than Vn - a mesocyclone, a tornado's couplet - is unfolded with its neighbours. Where a
+// couplet is tighter than the gates round it, it can still be unfolded wrongly, as real ones are.
+// (alongKm: how far along the beam the neighbours reach, 2 gates of 500 m)
+const DEALIAS = { passes: 2, radials: 1, alongKm: 1, least: 4 };
+// Fall speed (m/s) of what reflects Z (mm6/m3) at a height (m above the ground) with the freezing
+// level there: rain by Vt = 2.6 Z^0.107 (Joss and Waldvogel 1970), snow and graupel aloft about 1 m/s
+// (Locatelli and Hobbs 1974), faster in the thinner air aloft by (rho0 / rho)^0.4 (Foote and du Toit
+// 1969; density scale height 8.5 km). Along a beam raised by the tilt it shows as motion toward the
+// radar, Vt sin(tilt).
+const fallSpeedMs = (z, agl, freezingM) => {
+  const frozen = smoothstep(freezingM - 300, freezingM + 700, agl);
+  return ((1 - frozen) * 2.6 * z ** 0.107 + frozen) * Math.exp(0.4 * agl / 8500);
+};
 // Spread of motion within a beam volume besides what the echoes' own winds give (m/s): the
 // turbulence of the air in precipitation and in clear air.
 const TURBULENCE_MS = { precipitation: 2, clearAir: 1 };
@@ -65,16 +97,21 @@ const TURBULENCE_MS = { precipitation: 2, clearAir: 1 };
 // this much weaker than the hail's own echo (dB), fades over this distance (km), and has the
 // hail's motion; a spray off the ground, it has high ZDR (dB) and low ρhv.
 const THREE_BODY = { lossDb: 48, fadeKm: 8, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
-const NOISE = { dbz: 0.8, velocityMs: 0.9, correlation: 0.008, zdrDb: 0.18 };
+// (the velocity's own error: velocityErrorMs)
+const NOISE = { dbz: 0.8, correlation: 0.008, zdrDb: 0.18 };
 // A tornado's wind is as deep as the tornado is strong: a weak one is seen only in the lowest
 // kilometre; a violent one reaches several kilometres.
 const tornadoDepthM = windMs => clamp(800 + 36 * (windMs - 30), 700, 3500);
-// Outflow near the ground and at the anvil (m/s per unit change of rain heaviness in a km), and
-// the rear-inflow jet behind a line at its strongest (m/s).
-const STORM_WINDS = { outflow: 110, anvil: 90, rearInflowMs: 24 };
+// Outflow at the anvil (m/s per unit change of rain heaviness in a km), and the rear-inflow jet
+// behind a line at its strongest (m/s). Near the ground the outflow is the cold pool's (coldPoolOf).
+const STORM_WINDS = { anvil: 90, rearInflowMs: 24 };
 // Flow into a boundary (m/s) that doubles the insects along it, how much (dB) they vary along it,
 // and the depth of the denser air pushing under the other (m).
-const FINE_LINE_INFLOW_MS = 0.4, FINE_LINE_PATCHY_DB = 4, DENSITY_CURRENT_DEPTH_M = 1000;
+// FINE_LINE_KM: how wide the insects gather along the line (a Gaussian's e-folding half-width).
+const FINE_LINE_INFLOW_MS = 0.4, FINE_LINE_PATCHY_DB = 4, DENSITY_CURRENT_DEPTH_M = 1000, FINE_LINE_KM = 1.2;
+// Where a storm's gust front is: the pool's lower edge as the frame eases it (StormStructure: from
+// 0.15 to 0.45 of the most of its spread footprint), its leading edge at the first.
+const POOL_EDGE = [0.15, 0.45];
 
 // layout: { id, name, fx, fy } with fx, fy shares of the domain's width and height. The server
 // passes the radars at the world map's airports and air base (server/RadarSites.js); SITE_LAYOUT
@@ -120,7 +157,7 @@ export function radarSceneInputs(world, { reuseEnv = null } = {}) {
     // The wind through the storm's depth, relative to the storm: what carries its rain.
     const su = new Float32Array(WIND_PROFILE_LEVELS), sv = new Float32Array(WIND_PROFILE_LEVELS);
     for (let k = 0; k < WIND_PROFILE_LEVELS; k++) { envWindAt(env, x, y, k * WIND_PROFILE_STEP_M, wind); su[k] = wind.u - motion.u; sv[k] = wind.v - motion.v; }
-    storms.push({ storm, x, y, motion, top, freezing, minus20, su, sv, ...stormMoisture(world, x, y), seed: hashString(String(storm.id)), weight: clamp(Number(storm.intensity) || 0, 0, 1) });
+    storms.push({ storm, x, y, motion, top, freezing, minus20, su, sv, ...stormMoisture(world, x, y), ...riseOf(world, storm), poolRadiusKm: Number(storm.coldPoolRadiusKm) || 10, seed: hashString(String(storm.id)), weight: clamp(Number(storm.intensity) || 0, 0, 1) });
   }
 
   const validHourUtc = Number(world.stormEngine?.validHourUtc ?? world.validHourUtc), localHour = mod24(validHourUtc - 6);
@@ -149,11 +186,107 @@ export function radarSceneInputs(world, { reuseEnv = null } = {}) {
       const inflow = Math.max(windShift, densityCurrent);
       if (!(inflow > 0)) continue;
       const z = insectZ * inflow / FINE_LINE_INFLOW_MS * 10 ** (FINE_LINE_PATCHY_DB * patchy / 10);
-      boundaries.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, z, widthKm: 1.2 * (1 + 0.4 * fbm(seed + 5, along / 30, 0.5, 0)) });
+      boundaries.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, z, widthKm: FINE_LINE_KM * (1 + 0.4 * fbm(seed + 5, along / 30, 0.5, 0)) });
     }
   }
 
   return { validHourUtc, localHour, domainWidthKm: w * cs, domainHeightKm: h * cs, env, storms, boundaries };
+}
+
+// How the storm's updraught varies with height (shares of its fastest, every riseDzM from the
+// ground): the entraining parcel the in-world frame draws it with (StormStructure.updraughtProfile).
+function riseOf(world, storm) {
+  const profile = updraughtProfile(world, storm), peak = Math.max(1e-6, ...profile.w);
+  return { rise: Float32Array.from(profile.w, w => Math.max(0, w) / peak), riseDzM: profile.dz };
+}
+
+// The storm's cold pool as the in-world frame draws it (StormStructure.buildStormFrame): the rain's
+// footprint at the ground (log10(1 + mm/h) / 2), spread by the density current - a Gaussian of
+// sigma L / 2, L the distance the pool's speed carries it in coldPoolTauS, at most 0.7 of the
+// engine's coldPoolRadiusKm - and left behind by half that time's motion; its edge eased from
+// 0.15 to 0.45 of the most. out: 0 outside the pool, 1 well inside; its edge is the gust front.
+// edgeKm: how wide the edge is where it is sharpest (1 / the steepest change), so the outflow
+// there is the pool's own speed. Null without a cold pool.
+const poolSample = {};
+function coldPoolOf(echo, motion, poolRadiusKm) {
+  const strength = clamp(Number(echo.coldPool) || 0, 0, 1);
+  if (!(strength > 0) || !echo.grid) return null;
+  const tau = FRAME.coldPoolTauS, spreadKm = Math.max(1.5, Math.min(coldPoolSpeedMs(strength) * tau, 0.7 * 1000 * Math.max(2, poolRadiusKm))) / 1000;
+  // (cells a quarter of the spread wide at most: the pool is smooth on that scale)
+  const res = Math.max(1, echo.grid.res, spreadKm / 2 / 4), sigma = spreadKm / 2 / res, reach = Math.ceil(2.5 * sigma);
+  const shiftX = -motion.u * tau / 2 / 1000 / res, shiftY = motion.v * tau / 2 / 1000 / res;   // (cells; y runs south)
+  const margin = reach + Math.ceil(Math.abs(shiftX) + Math.abs(shiftY));
+  const x0 = echo.minX - margin * res, y0 = echo.minY - margin * res;
+  const nx = Math.ceil((echo.maxX - echo.minX) / res) + 1 + 2 * margin, ny = Math.ceil((echo.maxY - echo.minY) / res) + 1 + 2 * margin;
+  const mask = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    if (!samplePrecipitation(echo, x0 + i * res, y0 + j * res, 0, poolSample)) continue;
+    const mmh = (RAIN_REFLECTIVITY * poolSample.rain / 200) ** (1 / 1.6);
+    mask[j * nx + i] = clamp(Math.log10(1 + mmh) / 2, 0, 1);
+  }
+  // (the Gaussian as three running box sums each way, Wells 1986: the same spread, at a cost that does
+  // not grow with it; shifted back along the motion as it goes)
+  const blurred = boxBlur3(mask, nx, ny, sigma, Math.round(shiftX), Math.round(shiftY));
+  let most = 0;
+  for (let k = 0; k < blurred.length; k++) if (blurred[k] > most) most = blurred[k];
+  if (!(most > 0)) return null;
+  const share = Float32Array.from(blurred, b => b / most), out = Float32Array.from(share, b => smoothstep(POOL_EDGE[0], POOL_EDGE[1], b));
+  let steepest = 0;
+  for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+    const k = j * nx + i, g = Math.hypot(out[k + 1] - out[k - 1], out[k + nx] - out[k - nx]) / (2 * res);
+    if (g > steepest) steepest = g;
+  }
+  if (!(steepest > 0)) return null;
+  // Each cell as the scan reads it, once: the footprint's share, how fast it changes (per km, east
+  // and south) and how fast the pool's eased edge does - five values side by side.
+  const cells = new Float32Array(5 * nx * ny), slope = (field, k, i, n, step) =>
+    (field[i < n - 1 ? k + step : k] - field[i > 0 ? k - step : k]) / ((i > 0 && i < n - 1 ? 2 : 1) * res);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const k = j * nx + i, c = 5 * k;
+    cells[c] = share[k]; cells[c + 1] = slope(share, k, i, nx, 1); cells[c + 2] = slope(share, k, j, ny, nx);
+    cells[c + 3] = slope(out, k, i, nx, 1); cells[c + 4] = slope(out, k, j, ny, nx);
+  }
+  return { strength, x0, y0, res, nx, ny, cells, edgeKm: 1 / steepest };
+}
+// A Gaussian blur of sigma (cells) as three box blurs of width sqrt(4 sigma^2 + 1) each way (three
+// boxes of width w have the variance 3 (w^2 - 1) / 12), the field moved by shift cells (x, y).
+function boxBlur3(field, nx, ny, sigma, shiftX, shiftY) {
+  const r = Math.max(0, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2)), width = 2 * r + 1;
+  let a = Float32Array.from(field), b = new Float32Array(field.length);
+  const pass = (from, to, n, m, step, line, shift) => {
+    for (let l = 0; l < m; l++) {
+      const base = l * line;
+      let sum = 0;
+      for (let q = -r; q <= r; q++) { const i = q - shift; if (i >= 0 && i < n) sum += from[base + i * step]; }
+      for (let i = 0; i < n; i++) {
+        to[base + i * step] = sum / width;
+        const enter = i + r + 1 - shift, leave = i - r - shift;
+        if (enter >= 0 && enter < n) sum += from[base + enter * step];
+        if (leave >= 0 && leave < n) sum -= from[base + leave * step];
+      }
+    }
+  };
+  for (let k = 0; k < 3; k++) { pass(a, b, nx, ny, 1, nx, k === 0 ? shiftX : 0); [a, b] = [b, a]; }
+  for (let k = 0; k < 3; k++) { pass(a, b, ny, nx, nx, 1, k === 0 ? shiftY : 0); [a, b] = [b, a]; }
+  return a;
+}
+
+// The pool at a place (lx, ly km from the storm), bilinear, into POOL_AT: share (the spread
+// footprint as a share of its most), shareX / shareY (its change per km east and south) and edgeX /
+// edgeY (the eased edge's). False off its grid.
+const POOL_AT = { share: 0, shareX: 0, shareY: 0, edgeX: 0, edgeY: 0 };
+function poolAt(p, lx, ly) {
+  const fx = (lx - p.x0) / p.res, fy = (ly - p.y0) / p.res;
+  if (!(fx >= 0 && fy >= 0 && fx <= p.nx - 1 && fy <= p.ny - 1)) return false;
+  const i = Math.min(p.nx - 2, fx | 0), j = Math.min(p.ny - 2, fy | 0), tx = fx - i, ty = fy - j, c = p.cells;
+  const a = 5 * (j * p.nx + i), b = a + 5, d = a + 5 * p.nx, e = d + 5;
+  const wa = (1 - tx) * (1 - ty), wb = tx * (1 - ty), wd = (1 - tx) * ty, we = tx * ty;
+  POOL_AT.share = c[a] * wa + c[b] * wb + c[d] * wd + c[e] * we;
+  POOL_AT.shareX = c[a + 1] * wa + c[b + 1] * wb + c[d + 1] * wd + c[e + 1] * we;
+  POOL_AT.shareY = c[a + 2] * wa + c[b + 2] * wb + c[d + 2] * wd + c[e + 2] * we;
+  POOL_AT.edgeX = c[a + 3] * wa + c[b + 3] * wb + c[d + 3] * wd + c[e + 3] * we;
+  POOL_AT.edgeY = c[a + 4] * wa + c[b + 4] * wb + c[d + 4] * wd + c[e + 4] * we;
+  return true;
 }
 
 // What the scene reads from each cell.
@@ -207,13 +340,20 @@ function sceneEnv(world, w, h, cs, n) {
 // echoes: buildStormEcho's result for each of inputs.storms, in order.
 export function assembleRadarScene(inputs, echoes) {
   const { validHourUtc, localHour, domainWidthKm, domainHeightKm, env, boundaries } = inputs, storms = [];
-  inputs.storms.forEach(({ x, y, motion, top, freezing, seed, weight }, k) => {
+  inputs.storms.forEach(({ x, y, motion, top, freezing, seed, weight, rise, riseDzM, poolRadiusKm }, k) => {
     const echo = echoes[k];
-    if (echo) storms.push({ x, y, echo, motion, top, freezing, seed, tornadoDepthM: tornadoDepthM(echo.tornado?.windMs ?? 0), weight });
+    if (!echo) return;
+    const pool = coldPoolOf(echo, motion, poolRadiusKm);
+    storms.push({
+      x, y, echo, motion, top, freezing, seed, tornadoDepthM: tornadoDepthM(echo.tornado?.windMs ?? 0), weight, rise, riseDzM, pool,
+      gustDepthM: pool ? coldPoolDepthM(pool.strength) : 0, gustSpeedMs: pool ? coldPoolSpeedMs(pool.strength) : 0
+    });
   });
   const scene = {
-    validHourUtc, localHour, domainWidthKm, domainHeightKm, env, storms, boundaries,
-    stormBins: binItems(storms, STORM_BIN_KM, domainWidthKm, domainHeightKm, s => [s.x + s.echo.minX, s.y + s.echo.minY, s.x + s.echo.maxX, s.y + s.echo.maxY]),
+    validHourUtc, localHour, insectZ: 10 ** (biologicalDbz(localHour) / 10), domainWidthKm, domainHeightKm, env, storms, boundaries,
+    stormBins: binItems(storms, STORM_BIN_KM, domainWidthKm, domainHeightKm, s => [
+      s.x + Math.min(s.echo.minX, s.pool?.x0 ?? Infinity), s.y + Math.min(s.echo.minY, s.pool?.y0 ?? Infinity),
+      s.x + Math.max(s.echo.maxX, s.pool ? s.pool.x0 + (s.pool.nx - 1) * s.pool.res : -Infinity), s.y + Math.max(s.echo.maxY, s.pool ? s.pool.y0 + (s.pool.ny - 1) * s.pool.res : -Infinity)]),
     boundaryBins: binItems(boundaries, BOUNDARY_BIN_KM, domainWidthKm, domainHeightKm, b =>
       [Math.min(b.ax, b.bx) - 4, Math.min(b.ay, b.by) - 4, Math.max(b.ax, b.bx) + 4, Math.max(b.ay, b.by) + 4]),
     stormMotion: meanStormMotion(storms, env, domainWidthKm / 2, domainHeightKm / 2, Infinity)
@@ -224,19 +364,22 @@ export function assembleRadarScene(inputs, echoes) {
 // ---------------------------------------------------------------------------
 // Scan: one tilt of one site, all products at once.
 
-export function scanRadarTilt(scene, site, tiltDeg) {
+// gateKm: the length of the gates (GATE_KM, or the finer gates a close look asks for, as the
+// WSR-88D's 250 m); the scan reaches RADAR_RANGE_KM either way, so it has RADAR_RANGE_KM / gateKm gates.
+export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } = {}) {
+  const GATE_KM = gateKm, GATES = Math.round(RADAR_RANGE_KM / gateKm);
   const started = globalThis.performance?.now?.() ?? Date.now();
-  const total = RADAR_RADIALS * RADAR_GATES;
+  const total = RADAR_RADIALS * GATES;
   const products = Object.fromEntries(RADAR_PRODUCT_KEYS.map(key => [key, new Uint8Array(total)]));
   const ref = products.reflectivity, vel = products.velocity, srv = products.stormRelativeVelocity;
   const cc = products.correlationCoefficient, zdr = products.differentialReflectivity;
-  const sample = { zh: 0, zv: 0, cc: 0, hail: 0 }, wind = { u: 0, v: 0 }, stormWind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
+  const sample = { zh: 0, zv: 0, cc: 0, hail: 0, zhOnly: false }, wind = { u: 0, v: 0 }, stormWind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const cosTilt = Math.cos(tiltDeg * DEG);
   const siteHeightM = site.elevationM + RADAR_ANTENNA_HEIGHT_M;
   const leastHail = 10 ** (THREE_BODY.leastHailDbz / 10), threeBodyShare = 10 ** (-THREE_BODY.lossDb / 10), threeBodyZv = 10 ** (THREE_BODY.zdrDb / 10);
-  const sw = products.spectrumWidth, foldGates = Math.round(DOPPLER.unambiguousKm / RADAR_GATE_KM), phaseCoded = tiltDeg <= DOPPLER.phaseCodedUpToDeg;
+  const sw = products.spectrumWidth, foldGates = Math.round(DOPPLER.unambiguousKm / GATE_KM), phaseCoded = tiltDeg <= DOPPLER.phaseCodedUpToDeg;
   // How far down the air near the ground bends the beam at this radar (effective earth radius, km).
   const dNdh = envSample(scene.env, scene.env.refractivityGradient, site.xKm, site.yKm);
   const lowEarthKm = CLUTTER.earthKm / Math.max(0.02, 1 + CLUTTER.earthKm * Math.max(dNdh, CLUTTER.ductingDnDh) * 1e-6), sinTilt = Math.sin(tiltDeg * DEG);
@@ -245,22 +388,24 @@ export function scanRadarTilt(scene, site, tiltDeg) {
   const stormMotion = meanStormMotion(scene.storms, scene.env, site.xKm, site.yKm, RADAR_RANGE_KM), su = stormMotion.u, sv = stormMotion.v;
   // Noise differs from scan to scan and from product to product.
   const noiseSalt = tiltDeg + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
-  const gateGeometry = Array.from({ length: RADAR_GATES }, (_, g) => {
-    const range = (g + 0.5) * RADAR_GATE_KM;
+  const gateGeometry = Array.from({ length: GATES }, (_, g) => {
+    const range = (g + 0.5) * GATE_KM;
     // (lowEdgeM: the beam's lower edge above the antenna, bent as the air near the ground bends it.)
     const lowEdgeM = (Math.sqrt(range * range + lowEarthKm * lowEarthKm + 2 * range * lowEarthKm * sinTilt) - lowEarthKm) * 1000 - range * 0.5 * RADAR_BEAMWIDTH_DEG * DEG * 1000;
     return { range, ground: groundRangeKm(range, tiltDeg), heightM: beamHeightKm(range, tiltDeg) * 1000, spreadM: range * beamHalfWidth * 1000, minDbz: -32 + 20 * Math.log10(range), lowEdgeM };
   });
 
-  for (const key of Object.keys(gateSums)) (gateSums[key] ??= new Float32Array(total)).fill(0);
+  for (const key of Object.keys(gateSums)) { if (gateSums[key]?.length !== total) gateSums[key] = new Float32Array(total); gateSums[key].fill(0); }
   const sumZh = gateSums.zh, sumZv = gateSums.zv, sumCc = gateSums.cc, sumStorm = gateSums.stormRadial, envRadial = gateSums.envRadial;
   const sumHail = gateSums.hail, spike = gateSums.spike, spikeRadial = gateSums.spikeRadial, clutter = gateSums.clutter, sumStorm2 = gateSums.stormRadial2;
+  const sumFall = gateSums.fall, sumRise = gateSums.rise, measured = gateSums.measured, guess = gateSums.guess;
+  measured.fill(NaN);
 
   // 1. Each radial on its own: the beam's depth (three samples up through it), and what the
   // echoes in it are doing. Velocity is weighted by how strongly each part reflects.
   for (let r = 0; r < RADAR_RADIALS; r++) {
     const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, sinAz = Math.sin(az), cosAz = Math.cos(az);
-    for (let g = 0; g < RADAR_GATES; g++) {
+    for (let g = 0; g < GATES; g++) {
       const geo = gateGeometry[g];
       const x = site.xKm + geo.ground * sinAz, y = site.yKm - geo.ground * cosAz;
       if (x < 0 || y < 0 || x >= scene.domainWidthKm || y >= scene.domainHeightKm) continue;
@@ -270,15 +415,15 @@ export function scanRadarTilt(scene, site, tiltDeg) {
       clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
       clearAir.bioZ = centerAgl - geo.spreadM < clearAir.bl * 1.3
         ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
-      const index = r * RADAR_GATES + g;
+      const index = r * GATES + g;
       // What the lowest part of the beam picks up off the ground (a target or not, fixed in place).
       const edgeAgl = siteHeightM + geo.lowEdgeM - terrain;
       if (edgeAgl < 8 * CLUTTER.fadeM) {
         const spot = gateNoise(Math.floor(x * 2) * 7919 + Math.floor(y * 2), 0.5);
         if (spot < CLUTTER.targets) clutter[index] = clutterZ * 10 ** (CLUTTER.varyDb * (2 * spot / CLUTTER.targets - 1) / 10) * Math.exp(-Math.max(0, edgeAgl) / CLUTTER.fadeM);
       }
-      const inStorm = binAt(scene.stormBins, x, y) !== null;
-      let zh = 0, zv = 0, ccw = 0, stormRadial = 0, stormRadial2 = 0, hail = 0;
+      const bin = binAt(scene.stormBins, x, y), inStorm = bin !== null, freezingM = inStorm ? envSample(scene.env, scene.env.freezing, x, y) : 0;
+      let zh = 0, zv = 0, ccw = 0, stormRadial = 0, stormRadial2 = 0, hail = 0, fall = 0, rising = 0;
       for (const [k, wgt] of BEAM_OFFSETS) {
         const agl = centerAgl + k * geo.spreadM;
         if (agl < 0) continue;
@@ -288,18 +433,20 @@ export function scanRadarTilt(scene, site, tiltDeg) {
           stormWindAt(scene, x, y, agl, stormWind);
           const along = stormWind.u * sinAz + stormWind.v * cosAz;
           stormRadial += sample.zh * wgt * along; stormRadial2 += sample.zh * wgt * along * along;
+          fall += sample.zh * wgt * fallSpeedMs(sample.zh, agl, freezingM);
+          rising += sample.zh * wgt * updraughtAt(bin, x, y, agl);
         }
       }
       if (zh <= 0) continue;
-      sumZh[index] = zh; sumZv[index] = zv; sumCc[index] = ccw; sumStorm[index] = stormRadial; sumStorm2[index] = stormRadial2;
+      sumZh[index] = zh; sumZv[index] = zv; sumCc[index] = ccw; sumStorm[index] = stormRadial; sumStorm2[index] = stormRadial2; sumFall[index] = fall; sumRise[index] = rising;
       envWindAt(scene.env, x, y, centerAgl, wind);
       envRadial[index] = wind.u * sinAz + wind.v * cosAz;
       if (hail >= leastHail) {
         // Three-body scattering from this gate's hail, spread over the gates beyond it (with the hail's motion).
         const offsetKm = centerAgl / 1000, source = hail * threeBodyShare, motion = envRadial[index] + stormRadial / zh;
-        const first = Math.ceil(g + offsetKm / RADAR_GATE_KM), last = Math.min(RADAR_GATES - 1, Math.floor(g + (offsetKm + THREE_BODY.reachFades * THREE_BODY.fadeKm) / RADAR_GATE_KM));
+        const first = Math.ceil(g + offsetKm / GATE_KM), last = Math.min(GATES - 1, Math.floor(g + (offsetKm + THREE_BODY.reachFades * THREE_BODY.fadeKm) / GATE_KM));
         for (let k = first; k <= last; k++) {
-          const z = source * Math.exp(-((k - g) * RADAR_GATE_KM - offsetKm) / THREE_BODY.fadeKm), at = r * RADAR_GATES + k;
+          const z = source * Math.exp(-((k - g) * GATE_KM - offsetKm) / THREE_BODY.fadeKm), at = r * GATES + k;
           spike[at] += z; spikeRadial[at] += z * motion;
         }
       }
@@ -308,17 +455,17 @@ export function scanRadarTilt(scene, site, tiltDeg) {
 
   // 2. The beam's width: each gate takes in part of its neighbours on either side, a wider
   // strip of the storm the farther out it is. Then range folding, and the measurement's own noise.
-  const power = new Float32Array(RADAR_GATES);
+  const power = new Float32Array(GATES);
   for (let r = 0; r < RADAR_RADIALS; r++) {
     const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, sinAz = Math.sin(az), cosAz = Math.cos(az);
-    const left = ((r + RADAR_RADIALS - 1) % RADAR_RADIALS) * RADAR_GATES, right = ((r + 1) % RADAR_RADIALS) * RADAR_GATES;
+    const left = ((r + RADAR_RADIALS - 1) % RADAR_RADIALS) * GATES, right = ((r + 1) % RADAR_RADIALS) * GATES;
     // Every gate's echo first: the Doppler products need the one a Doppler range farther out.
-    for (let g = 0; g < RADAR_GATES; g++) {
-      const index = r * RADAR_GATES + g, l = left + g, n = right + g;
+    for (let g = 0; g < GATES; g++) {
+      const index = r * GATES + g, l = left + g, n = right + g;
       power[g] = OWN_WEIGHT * (sumZh[index] + spike[index] + clutter[index]) + NEIGHBOUR_WEIGHT * (sumZh[l] + sumZh[n] + spike[l] + spike[n] + clutter[l] + clutter[n]);
     }
-    for (let g = 0; g < RADAR_GATES; g++) {
-      const index = r * RADAR_GATES + g, l = left + g, n = right + g;
+    for (let g = 0; g < GATES; g++) {
+      const index = r * GATES + g, l = left + g, n = right + g;
       const echo = OWN_WEIGHT * sumZh[index] + NEIGHBOUR_WEIGHT * (sumZh[l] + sumZh[n]);
       const scattered = OWN_WEIGHT * spike[index] + NEIGHBOUR_WEIGHT * (spike[l] + spike[n]);
       const ground = OWN_WEIGHT * clutter[index] + NEIGHBOUR_WEIGHT * (clutter[l] + clutter[n]);
@@ -326,7 +473,7 @@ export function scanRadarTilt(scene, site, tiltDeg) {
       const snr = zh > 0 ? 10 * Math.log10(zh) - gateGeometry[g].minDbz : -1;
       // Range folding: an echo a Doppler range farther out, strong enough to be seen there, comes
       // back with this one; the motion here is lost where the two cannot be told apart.
-      const far = g + foldGates < RADAR_GATES ? power[g + foldGates] : 0;
+      const far = g + foldGates < GATES ? power[g + foldGates] : 0;
       let folded = false;
       if (far > 0 && 10 * Math.log10(far) >= gateGeometry[g + foldGates].minDbz) {
         const ratio = snr >= 0 ? 10 * Math.log10(zh / far) + 20 * Math.log10(gateGeometry[g + foldGates].range / gateGeometry[g].range) : -Infinity;
@@ -354,25 +501,83 @@ export function scanRadarTilt(scene, site, tiltDeg) {
       const lowSnr = Math.exp(-snr / 6);
       const noise = gateNoise(index, noiseSalt) * 2 - 1, velocityNoise = gateNoise(index, noiseSalt + 0.003) * 2 - 1, polarNoise = gateNoise(index, noiseSalt + 0.006) * 2 - 1;
       ref[index] = encodeRadarValue('reflectivity', 10 * Math.log10(zh) + noise * (NOISE.dbz + 1.6 * lowSnr));
-      const radial = (air + stormRadial / zh) * cosTilt + velocityNoise * (NOISE.velocityMs + 1.2 * lowSnr);
-      if (!folded) {
-        vel[index] = encodeRadarValue('velocity', radial);
-        srv[index] = encodeRadarValue('stormRelativeVelocity', radial - (su * sinAz + sv * cosAz) * cosTilt);
-      }
+      // Along a raised beam the targets' vertical motion shows too: the air's rise less their fall.
+      const falling = OWN_WEIGHT * sumFall[index] + NEIGHBOUR_WEIGHT * (sumFall[l] + sumFall[n]);
+      const rise = OWN_WEIGHT * sumRise[index] + NEIGHBOUR_WEIGHT * (sumRise[l] + sumRise[n]);
+      // Spectrum width: how much the motion varies among what the beam holds, and the air's own
+      // turbulence; the estimate strays more the wider it is (velocityErrorMs), and where the echo is weak.
+      const mean = stormRadial / zh, spread = Math.max(0, stormRadial2 / zh - mean * mean);
+      const turbulence = echo > 0 && sumStorm2[index] > 0 ? TURBULENCE_MS.precipitation : TURBULENCE_MS.clearAir;
+      const width = Math.sqrt(spread * cosTilt * cosTilt + turbulence * turbulence);
+      // (the noise is even over -1..1, a standard deviation of 1 / sqrt 3 of its reach)
+      const radial = (air + stormRadial / zh) * cosTilt + (rise - falling) / zh * sinTilt + velocityNoise * (Math.sqrt(3) * velocityErrorMs(width) + 1.2 * lowSnr);
+      // (encoded below, folded and dealiased)
+      if (!folded) { measured[index] = radial; guess[index] = air * cosTilt; }
       cc[index] = encodeRadarValue('correlationCoefficient', ccw / zh - Math.abs(polarNoise) * (NOISE.correlation + 0.22 * lowSnr));
       zdr[index] = encodeRadarValue('differentialReflectivity', 10 * Math.log10(zh / Math.max(1e-12, zv)) + polarNoise * (NOISE.zdrDb + 0.9 * lowSnr));
       if (folded) continue;
-      // Spectrum width: how much the motion varies among what the beam holds, the air's own
-      // turbulence, and the noise of the estimate (more where the echo is weak).
-      const mean = stormRadial / zh, spread = Math.max(0, stormRadial2 / zh - mean * mean);
-      const turbulence = echo > 0 && sumStorm2[index] > 0 ? TURBULENCE_MS.precipitation : TURBULENCE_MS.clearAir;
-      sw[index] = encodeRadarValue('spectrumWidth', Math.sqrt(spread * cosTilt * cosTilt + turbulence * turbulence) + Math.abs(velocityNoise) * (0.4 + 2 * lowSnr));
+      sw[index] = encodeRadarValue('spectrumWidth', width + Math.abs(velocityNoise) * (0.4 + 2 * lowSnr));
+    }
+  }
+
+  // 3. Velocity as the radar has it: folded into +-Vn (rawVelocity), then dealiased (velocity and
+  // storm-relative velocity).
+  dealias(measured, guess, gateSums.raw, gateSums.dealiased, GATES, GATE_KM);
+  const rawVel = products.rawVelocity, raw = gateSums.raw, dealiased = gateSums.dealiased;
+  for (let r = 0; r < RADAR_RADIALS; r++) {
+    const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, toward = (su * Math.sin(az) + sv * Math.cos(az)) * cosTilt;
+    for (let g = 0, index = r * GATES; g < GATES; g++, index++) {
+      if (vel[index] === RANGE_FOLDED) { rawVel[index] = RANGE_FOLDED; continue; }
+      if (Number.isNaN(raw[index])) continue;
+      rawVel[index] = encodeRadarValue('rawVelocity', raw[index]);
+      vel[index] = encodeRadarValue('velocity', dealiased[index]);
+      srv[index] = encodeRadarValue('stormRelativeVelocity', dealiased[index] - toward);
     }
   }
   return {
-    siteId: site.id, tiltDeg, validHourUtc: scene.validHourUtc, stormMotion, products,
+    siteId: site.id, tiltDeg, validHourUtc: scene.validHourUtc, stormMotion, products, gates: GATES, gateKm: GATE_KM,
     buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started
   };
+}
+
+// measured: each gate's radial motion (m/s, NaN with none); guess: the environment's there. Fills
+// raw (folded into +-Vn) and dealiased (see DEALIAS).
+const DEALIAS_MARGIN_MS = 1e-6;
+// (room for the neighbours of the finest gates, 125 m)
+const NEIGHBOURS = new Float64Array((2 * DEALIAS.radials + 1) * (2 * Math.round(DEALIAS.alongKm / 0.125) + 1));
+function dealias(measured, guess, raw, dealiased, GATES = RADAR_GATES, gateKm = RADAR_GATE_KM) {
+  const along = Math.max(1, Math.round(DEALIAS.alongKm / gateKm));
+  const twoVn = 2 * NYQUIST_MS, total = measured.length;
+  for (let i = 0; i < total; i++) {
+    const v = measured[i];
+    if (Number.isNaN(v)) { raw[i] = NaN; dealiased[i] = NaN; continue; }
+    const f = v - twoVn * Math.round(v / twoVn);
+    raw[i] = f; dealiased[i] = f + twoVn * Math.round((guess[i] - f) / twoVn);
+  }
+  for (let pass = 0; pass < DEALIAS.passes; pass++) for (let r = 0; r < RADAR_RADIALS; r++) for (let g = 0; g < GATES; g++) {
+    const i = r * GATES + g, f = raw[i];
+    if (Number.isNaN(f)) continue;
+    // (Where every neighbour lies within Vn of this gate, so does their median, and the gate stays
+    // as it is: the median is then not worked out. The margin keeps clear of rounding at Vn itself.)
+    const now = dealiased[i], low = now - NYQUIST_MS + DEALIAS_MARGIN_MS, high = now + NYQUIST_MS - DEALIAS_MARGIN_MS;
+    let n = 0, near = true;
+    for (let dr = -DEALIAS.radials; dr <= DEALIAS.radials; dr++) {
+      const row = ((r + dr + RADAR_RADIALS) % RADAR_RADIALS) * GATES;
+      for (let dg = -along; dg <= along; dg++) {
+        const gg = g + dg;
+        if ((dr === 0 && dg === 0) || gg < 0 || gg >= GATES) continue;
+        const v = dealiased[row + gg];
+        if (Number.isNaN(v)) continue;
+        NEIGHBOURS[n++] = v;
+        if (v <= low || v >= high) near = false;
+      }
+    }
+    if (n < DEALIAS.least || near) continue;
+    // (in order, for the median)
+    for (let a = 1; a < n; a++) { const v = NEIGHBOURS[a]; let k = a; while (k > 0 && NEIGHBOURS[k - 1] > v) { NEIGHBOURS[k] = NEIGHBOURS[k - 1]; k--; } NEIGHBOURS[k] = v; }
+    const median = n % 2 ? NEIGHBOURS[(n - 1) / 2] : 0.5 * (NEIGHBOURS[n / 2 - 1] + NEIGHBOURS[n / 2]);
+    dealiased[i] = f + twoVn * Math.round((median - f) / twoVn);
+  }
 }
 
 // Network mosaic of reflectivity on a Cartesian grid. Composite: the strongest echo any tilt of
@@ -388,8 +593,10 @@ export const mosaicSize = scene => ({ width: Math.ceil(scene.domainWidthKm / MOS
 // rows: [first, end) builds only those rows (bytes then holds just them), so threads can share the work.
 // Echo tops, VIL and hail size are worked out from the same tilts: what the nearest radar that
 // sees a storm finds at each height above each place.
-export const MOSAIC_KINDS = ['composite', 'base', 'echoTops', 'vil', 'mesh'];
-export const MOSAIC_PRODUCT = { composite: 'reflectivity', base: 'reflectivity', echoTops: 'echoTops', vil: 'vil', mesh: 'mesh' };
+// (rotationTrack is not built here: the authority lays the radars' own low-level shear on this grid
+// and keeps the greatest of the last hour, WeatherAuthorityRuntime.radarRotationTrack.)
+export const MOSAIC_KINDS = ['composite', 'base', 'echoTops', 'vil', 'mesh', 'rotationTrack'];
+export const MOSAIC_PRODUCT = { composite: 'reflectivity', base: 'reflectivity', echoTops: 'echoTops', vil: 'vil', mesh: 'mesh', rotationTrack: 'azShear' };
 const STRUCTURE = { echoTopDbz: 18, leastVil: 0.5, leastMeshIn: 0.25 };
 export function buildRadarMosaic(scene, sites, { rows = null, kind = 'composite' } = {}) {
   const base = kind === 'base', structure = kind === 'echoTops' || kind === 'vil' || kind === 'mesh';
@@ -397,7 +604,8 @@ export function buildRadarMosaic(scene, sites, { rows = null, kind = 'composite'
   const started = globalThis.performance?.now?.() ?? Date.now();
   const { width, height } = mosaicSize(scene), [firstRow, endRow] = rows ?? [0, height];
   const bytes = new Uint8Array(width * (endRow - firstRow));
-  const sample = { zh: 0, zv: 0, cc: 0, hail: 0 }, clearAir = { bl: 0, bioZ: 0 };
+  // (zhOnly: the mosaics use the reflectivity alone, so ZDR's and CC's sums are not worked out)
+  const sample = { zh: 0, zv: 0, cc: 0, hail: 0, zhOnly: true }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const tilts = RADAR_TILTS_DEG.map(deg => ({ deg, cos: Math.cos(deg * DEG) }));
   const maxGround = groundRangeKm(RADAR_RANGE_KM, tilts[0].deg), beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
@@ -417,6 +625,8 @@ export function buildRadarMosaic(scene, sites, { rows = null, kind = 'composite'
     if (!candidates.length) continue;
     const terrain = envSample(scene.env, scene.env.terrain, x, y);
     clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
+    // (MESH counts echo above the freezing level only: below it the beam need not be sampled.)
+    const skipBelowM = kind === 'mesh' ? envSample(scene.env, scene.env.freezing, x, y) : -Infinity;
     // Only where a storm stands is there anything for the higher tilts to find.
     const bin = binAt(scene.stormBins, x, y);
     let ceiling = 0;
@@ -438,6 +648,7 @@ export function buildRadarMosaic(scene, sites, { rows = null, kind = 'composite'
           if (structure) { heights[samples] = agl; echoes[samples++] = 0; }
           break;
         }
+        if (agl <= skipBelowM) { heights[samples] = agl; echoes[samples++] = 0; continue; }
         clearAir.bioZ = (base || t === 0) && agl - spread < clearAir.bl * 1.3 ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
         // The same beam volume as the single-site scans, once the beam is wider than a cell or deeper than a level of the storm.
         const across = stormBin && spreadKm > MOSAIC_RES_KM ? BEAM_OFFSETS : BEAM_CENTRE, up = spread > 400 ? BEAM_OFFSETS : BEAM_CENTRE;
@@ -526,7 +737,9 @@ function sampleVolume(scene, x, y, agl, out, clearAir) {
 
 function addEcho(out, zh, zdrDb, rho) {
   if (!(zh > 0)) return;
-  out.zh += zh; out.zv += zh / 10 ** (zdrDb / 10); out.cc += zh * rho;
+  out.zh += zh;
+  if (out.zhOnly) return;
+  out.zv += zh / 10 ** (zdrDb / 10); out.cc += zh * rho;
 }
 
 // A storm's precipitation at one place, as a radar sees it: rain below the freezing level, ice
@@ -551,7 +764,7 @@ export function precipitationEcho(e, fz, lx, ly, z, out) {
     if (tmp.rain > 0) {
       const zh = RAIN_REFLECTIVITY * tmp.rain;
       // Large wet snowflakes just below the freezing level reflect like giant drops.
-      const melting = tmp.snow * Math.exp(-(((z - fz + 150) / 350) ** 2));
+      const melting = tmp.snow !== 0 ? tmp.snow * Math.exp(-(((z - fz + 150) / 350) ** 2)) : 0;
       // Rain carried above the freezing level in a strong updraught: large drops among the ice.
       const column = frozen > 0 ? liquidAloft(e, lx, ly, z - fz) : 0;
       if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), clamp(0.8 * tmp.sizeMm - 0.5, 0.15, 4.5) + melting, 0.992 - 0.06 * melting);
@@ -590,6 +803,39 @@ function clearAirEchoes(scene, x, y, z, out, { bl, bioZ }) {
     if (d < 4) addEcho(out, b.z * Math.exp(-((d / b.widthKm) ** 2)) * depth, 4.5, 0.45);
   }
   addEcho(out, bioZ * depth, 5.5, 0.38);
+  // And along each storm's gust front, where its outflow runs into the air ahead: as along a
+  // boundary, the insects go with the flow into it, here the cold pool's own density-current speed,
+  // gathered FINE_LINE_KM either side of the front - the pool's leading edge, how far from it told
+  // by how fast the spread footprint changes there.
+  const storms = binAt(scene.stormBins, x, y);
+  if (storms) for (const s of storms) {
+    const p = s.pool;
+    if (!p || z >= s.gustDepthM) continue;
+    if (!poolAt(p, x - s.x, y - s.y)) continue;
+    const slope = Math.hypot(POOL_AT.shareX, POOL_AT.shareY);
+    if (!(slope > 0)) continue;
+    const d = (POOL_AT.share - POOL_EDGE[0]) / slope;
+    if (Math.abs(d) > 3 * FINE_LINE_KM) continue;
+    addEcho(out, scene.insectZ * s.gustSpeedMs / FINE_LINE_INFLOW_MS * Math.exp(-((d / FINE_LINE_KM) ** 2)) * depth * (1 - z / s.gustDepthM), 4.5, 0.45);
+  }
+}
+
+// How fast the air rises (m/s) at a place in the storms of a bin: each storm's strongest updraughts
+// (PrecipitationField's cores: where, radius R km, peak speed w) with the storm's own profile in
+// height, falling off across as exp(-(r/R)^2), as the frame draws it. The fastest there.
+function updraughtAt(bin, x, y, z) {
+  let w = 0;
+  for (const s of bin) {
+    const lx = x - s.x, ly = y - s.y, e = s.echo;
+    if (!s.rise || !e.cores || lx < e.minX || ly < e.minY || lx > e.maxX || ly > e.maxY) continue;
+    const k = Math.round(z / s.riseDzM);
+    if (k < 0 || k >= s.rise.length || !(s.rise[k] > 0)) continue;
+    for (const c of e.cores) {
+      const dx = lx - c.x, dy = ly - c.y, r2 = (dx * dx + dy * dy) / (c.R * c.R);
+      if (r2 < 9) { const rising = c.w * s.rise[k] * Math.exp(-r2); if (rising > w) w = rising; }
+    }
+  }
+  return w;
 }
 
 // What storms add to the environmental wind: mesocyclone and tornado vortices, outflow away
@@ -603,11 +849,20 @@ function stormWindAt(scene, x, y, z, out) {
   out.u = 0; out.v = 0;
   const bin = binAt(scene.stormBins, x, y);
   if (!bin) return;
+  // Mesocyclone: strongest at mid levels, present down to the ground in mature supercells.
+  let mesoDepth = -1;
   for (const s of bin) {
     const lx = x - s.x, ly = y - s.y, e = s.echo;
+    if (s.pool && z < s.gustDepthM) {
+      // Rain-cooled air spreads out from under the storm, fastest at the gust front: the pool's
+      // speed where its edge is sharpest, less where the edge is gentler, none well inside it.
+      if (poolAt(s.pool, lx, ly)) {
+        const k = s.gustSpeedMs * s.pool.edgeKm * (1 - z / s.gustDepthM);
+        out.u += -k * POOL_AT.edgeX; out.v += k * POOL_AT.edgeY;
+      }
+    }
     if (lx < e.minX || ly < e.minY || lx > e.maxX || ly > e.maxY) continue;
-    // Mesocyclone: strongest at mid levels, present down to the ground in mature supercells.
-    const mesoDepth = 0.55 + 0.45 * Math.exp(-(((z - 4500) / 2600) ** 2));
+    if (mesoDepth < 0) mesoDepth = 0.55 + 0.45 * Math.exp(-(((z - 4500) / 2600) ** 2));
     const lean = clamp(z / MESOCYCLONE_LEAN_M, 0, 1), meso = e.mesocyclone;
     // Near the ground a strengthening low-level circulation is tighter and spins faster than the
     // mesocyclone above it (2026-10-21: one radius at all heights, so the couplet at the lowest tilt
@@ -615,12 +870,7 @@ function stormWindAt(scene, x, y, z, out) {
     const tight = (meso.low ?? 0) * clamp((LOW_MESO.depthM - z) / (LOW_MESO.depthM - LOW_MESO.fullBelowM), 0, 1);
     addVortex(out, lx - meso.x - (meso.aloftX - meso.x) * lean, ly - meso.y - (meso.aloftY - meso.y) * lean, meso.radiusKm * (1 - LOW_MESO.tighten * tight), e.spin * e.mesocyclone.vmaxMs * mesoDepth * (1 + LOW_MESO.spinUp * tight) * (z > s.top ? 0.2 : 1), true);
     if (e.tornado && z < s.tornadoDepthM) addVortex(out, lx - e.tornado.x, ly - e.tornado.y, e.tornado.radiusKm, e.spin * e.tornado.vmaxMs * (1 - z / s.tornadoDepthM * 0.6));
-    if (z < 1500) {
-      // Rain-cooled air spreads away from the heavy rain: gust fronts, and the surge behind a hook.
-      heavinessGradient(e, 'low', lx, ly, gradient);
-      const k = STORM_WINDS.outflow * e.coldPool * (1 - z / 1500);
-      out.u += -k * gradient.x; out.v += k * gradient.y;
-    } else if (z > 0.7 * s.top) {
+    if (z > 0.7 * s.top) {
       heavinessGradient(e, 'aloft', lx, ly, gradient);
       const k = STORM_WINDS.anvil * clamp((z - 0.7 * s.top) / (0.3 * s.top), 0, 1);
       out.u += -k * gradient.x; out.v += k * gradient.y;
@@ -642,6 +892,9 @@ function stormWindAt(scene, x, y, z, out) {
 // mesocyclone's wind fades beyond about three of its radii (it is one storm's rotation, not the air's).
 function addVortex(out, dx, dy, radiusKm, vmax, fades = false) {
   if (!vmax) return;
+  // (far beyond it: no square root needed to tell)
+  const reach = radiusKm * 12 * (1 + 1e-9);
+  if (dx * dx + dy * dy > reach * reach) return;
   const rho = Math.hypot(dx, dy);
   if (rho < 1e-3 || rho > radiusKm * 12) return;
   const vt = vmax * (rho < radiusKm ? rho / radiusKm : (radiusKm / rho) ** 0.8) / (fades ? 1 + (rho / (3 * radiusKm)) ** 3 : 1);

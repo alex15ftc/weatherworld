@@ -1,0 +1,9 @@
+# Matches the existing Luau style. Not run automatically: formatting whole files would
+# churn the working tree. Use: stylua --check <file>   or   stylua <file>
+column_width = 150
+line_endings = "Windows"
+indent_type = "Tabs"
+indent_width = 4
+quote_style = "AutoPreferDouble"
+call_parentheses = "Always"
+syntax = "Luau"

@@ -232,7 +232,8 @@ function NearVfx.new(ctx: any): any
 		if processed or UserInputService:GetFocusedTextBox() then
 			return
 		end
-		if input.KeyCode == Enum.KeyCode.B then
+		-- (not with LeftAlt held: the game's engine-mode debug keys, client/EngineStorms)
+		if input.KeyCode == Enum.KeyCode.B and not UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
 			self.enabled = not self.enabled
 		end
 	end)

@@ -14,10 +14,22 @@
 //   mesoscale                       the watches and mesoscale discussions in effect
 //   warnings                        the tornado and severe thunderstorm warnings in effect
 //   radar.sites                     the radars: id, name, place in map miles, range
-//   radar.site.<ID>.<product>       one radar's lowest tilt (reflectivity, velocity or
-//                                   stormRelativeVelocity), one byte a gate as js/radar/RadarFormat.js
-//                                   encodes it, zstd then base64 in `data`; made when asked for, and
-//                                   listed in the manifest while asked for in the last SITE_WANTED_MS
+//   radar.site.<ID>.<product>.<T>   one radar's tilt T (an index into radar.sites `tilts`; left out:
+//                                   the lowest) of a product (radar.sites `siteProducts`), one byte
+//                                   a gate as js/radar/RadarFormat.js encodes it, zstd then base64 in
+//                                   `data`, with the beam's height over each gate; made when asked
+//                                   for, and listed in the manifest while asked for in the last
+//                                   SITE_WANTED_MS
+//   radar.mosaic.<kind>             every radar together on a 1 km grid (radar.sites `mosaics`:
+//                                   composite, base, echo tops, VIL, hail size), asked for the same way
+//   satellite.<kind>                the satellite's image of the whole map (js/satellite/Satellite.js):
+//                                   ir (clean IR, 10.3 um) or visible, one byte a pixel as
+//                                   js/satellite/SatelliteFormat.js encodes it on a 2 km grid, zstd then
+//                                   base64 in `data`, with the sun it was taken under; asked for and
+//                                   looped like the radar's mosaics
+//   <radar id>.h<seconds>           an earlier scan of a radar product still asked for, as it was
+//                                   (never changes); the product's `loop` lists the ones held, oldest
+//                                   first, for an animation
 //   lightning                       the last half hour's lightning (js/storms/Lightning.js): each
 //                                   strike as 6 bytes (u16 x, u16 y in hundredths of a map mile,
 //                                   u8 age in quarter minutes, u8 kind: 0 in the cloud, 1 negative
@@ -36,7 +48,10 @@
 import crypto from 'node:crypto';
 import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';
 import zlib from 'node:zlib';
-import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, groundRangeKm } from '../js/radar/RadarFormat.js';
+import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_FINE_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, groundRangeKm, beamHeightKm } from '../js/radar/RadarFormat.js';
+import { MOSAIC_KINDS, MOSAIC_PRODUCT } from '../js/radar/RadarSimulator.js';
+import { TDA, SMITH_2015_VROT_KT } from '../js/radar/RotationDetection.js';
+import { SATELLITE_PRODUCTS, SATELLITE_KINDS } from '../js/satellite/SatelliteFormat.js';
 import { discussionColourKey, warningColourKey, warningRank } from '../js/forecast/productColours.js';
 import { cutCorners } from '../js/forecast/contourShapes.js';
 import { DAMAGE_INDICATORS } from '../js/reports/damageIndicators.js';
@@ -51,7 +66,8 @@ const KM_PER_MILE = 1.609344;
 // day's tracks are drawn zoomed out and keep 0.05 mi.
 export const GAME_PRODUCTS = Object.freeze({
   version: 1, outlookDays: ['day1', 'day2', 'day3'], ringDecimals: 1, toleranceMiles: 0.3,
-  radarSiteProducts: ['reflectivity', 'velocity', 'stormRelativeVelocity'], siteWantedMs: 120_000,
+  radarSiteProducts: ['reflectivity', 'velocity', 'rawVelocity', 'stormRelativeVelocity', 'correlationCoefficient', 'differentialReflectivity', 'spectrumWidth'],
+  siteWantedMs: 120_000, radarLoopFrames: 10,
   survey: { decimals: 2, toleranceMiles: 0.01 }, trackToleranceMiles: 0.05,
   // Contours (outlooks and mesoscale discussions, traced on the 10-mile grid, their corners
   // already cut twice) get this many more cuts, so they stay curves when the map is zoomed in to
@@ -187,23 +203,77 @@ export function gameWarnings(list) {
   };
 }
 
+const FEET_PER_KM = 3280.84;
+const MOSAIC_LABELS = { composite: 'Composite reflectivity', base: 'Base reflectivity', echoTops: 'Echo tops', vil: 'VIL', mesh: 'Hail size (MESH)', rotationTrack: 'Rotation tracks (60 min)' };
+
+// The height of the beam's centre above the radar over each gate of a tilt, in thousands of feet
+// (what radar viewers show beside a gate's value).
+const beamKft = new Map();
+function beamHeightsKft(tiltDeg, gateKm = RADAR_GATE_KM) {
+  const key = `${tiltDeg}|${gateKm}`, gates = Math.round(RADAR_RANGE_KM / gateKm);
+  if (!beamKft.has(key)) beamKft.set(key, Array.from({ length: gates }, (_, g) => round(beamHeightKm((g + 0.5) * gateKm, tiltDeg) * FEET_PER_KM / 1000, 2)));
+  return beamKft.get(key);
+}
+
 // One radar's tilt as the game draws it: radials clockwise from north, gates outward. A point
 // at ground distance d miles is in gate floor(d / gateGroundMiles).
-export function gameScan(site, scan, product) {
-  const cosTilt = Math.cos(scan.tiltDeg * Math.PI / 180);
+// (a fine scan, of the 250 m gates of a close look, is radar.site.<ID>.<product>.<T>.fine)
+export function gameScan(site, scan, product, tiltIndex = 0) {
+  const cosTilt = Math.cos(scan.tiltDeg * Math.PI / 180), gateKm = scan.gateKm ?? RADAR_GATE_KM, fine = gateKm < RADAR_GATE_KM;
   return {
-    v: GAME_PRODUCTS.version, id: `radar.site.${site.id}.${product}`, kind: 'radar-polar', site: site.id, siteName: site.name, product,
-    tiltDeg: scan.tiltDeg, validHourUtc: scan.validHourUtc, xMiles: site.xKm / KM_PER_MILE, yMiles: site.yKm / KM_PER_MILE,
-    radials: RADAR_RADIALS, gates: RADAR_GATES, gateGroundMiles: RADAR_GATE_KM * cosTilt / KM_PER_MILE,
-    stormMotion: scan.stormMotion ?? null, data: pack(scan.products[product])
+    v: GAME_PRODUCTS.version, id: `radar.site.${site.id}.${product}.${tiltIndex}${fine ? '.fine' : ''}`, kind: 'radar-polar', site: site.id, siteName: site.name, product,
+    tiltIndex, tiltDeg: scan.tiltDeg, validHourUtc: scan.validHourUtc, xMiles: site.xKm / KM_PER_MILE, yMiles: site.yKm / KM_PER_MILE, fine,
+    radials: RADAR_RADIALS, gates: scan.gates ?? RADAR_GATES, gateGroundMiles: gateKm * cosTilt / KM_PER_MILE, gateKm,
+    beamKft: beamHeightsKft(scan.tiltDeg, gateKm), stormMotion: scan.stormMotion ?? null, data: pack(scan.products[product])
   };
 }
 
-// The radars, in map miles.
+// Every radar together (RadarSimulator buildRadarMosaic): a grid of cellMiles squares from the
+// map's north-west corner, row by row, its bytes coloured as `product` (a radar colour table).
+export function gameMosaic(mosaic) {
+  return {
+    v: GAME_PRODUCTS.version, id: `radar.mosaic.${mosaic.kind}`, kind: 'radar-grid', mosaic: mosaic.kind, label: MOSAIC_LABELS[mosaic.kind] ?? mosaic.kind,
+    product: MOSAIC_PRODUCT[mosaic.kind], validHourUtc: mosaic.validHourUtc, width: mosaic.width, height: mosaic.height,
+    cellMiles: mosaic.resKm / KM_PER_MILE, data: pack(mosaic.bytes),
+    // (rotation tracks: the scans taken into it, from fromHourUtc, while it has been asked for)
+    ...(mosaic.scans ? { scans: mosaic.scans, fromHourUtc: mosaic.fromHourUtc } : {})
+  };
+}
+
+// The satellite's image of one kind (ir, visible): a grid of cellMiles squares from the map's
+// north-west corner, row by row; sun: its height and bearing (degrees) and the local hour.
+export function gameSatellite(sat, kind) {
+  return {
+    v: GAME_PRODUCTS.version, id: 'satellite.' + kind, kind: 'satellite-grid', product: kind, label: SATELLITE_PRODUCTS[kind].label,
+    validHourUtc: sat.validHourUtc, width: sat.width, height: sat.height, cellMiles: sat.resKm / KM_PER_MILE,
+    sun: { elevationDeg: +sat.sun.elevationDeg.toFixed(2), azimuthDeg: +sat.sun.azimuthDeg.toFixed(1), localHour: +sat.sun.localHour.toFixed(3) },
+    data: pack(sat[kind])
+  };
+}
+
+// One radar's rotation detections (RotationDetection.js), places in map miles: tvs (kind TVS or
+// ETVS, elevated: its base above the lowest tilt and 600 m) with the gate-to-gate delta-V on its
+// lowest tilt and at most (kt), meso with its rotational velocity (kt) and diameter (miles); both
+// with their base and top (kft above the radar). vrotByEf: the mean 0.5 deg Vrot of tornadoes of
+// each rating (Smith et al. 2015), to read a couplet's strength against.
+export function gameRotation(site, found) {
+  const at = d => ({ xMiles: +(d.xKm / KM_PER_MILE).toFixed(3), yMiles: +(d.yKm / KM_PER_MILE).toFixed(3), tiltDeg: d.tiltDeg, baseKft: d.baseKft, topKft: d.topKft });
+  return {
+    v: GAME_PRODUCTS.version, id: `radar.rotation.${site.id}`, kind: 'radar-rotation', site: site.id, validHourUtc: found.validHourUtc, tilts: found.tilts,
+    tdaRangeMiles: +(TDA.rangeKm / KM_PER_MILE).toFixed(1), vrotByEf: SMITH_2015_VROT_KT,
+    tvs: found.tvs.map(d => ({ kind: d.kind, ...at(d), lowDvKt: d.lowDvKt, maxDvKt: d.maxDvKt })),
+    meso: found.meso.map(d => ({ ...at(d), lowVrotKt: d.lowVrotKt, maxVrotKt: d.maxVrotKt, diameterMiles: +(d.diameterKm / KM_PER_MILE).toFixed(2) }))
+  };
+}
+
+// The radars, in map miles, and what can be asked of them.
 export function gameRadarSites(catalog) {
   return {
-    v: GAME_PRODUCTS.version, id: 'radar.sites', kind: 'radar-sites', tiltDeg: RADAR_TILTS_DEG[0],
+    v: GAME_PRODUCTS.version, id: 'radar.sites', kind: 'radar-sites', tiltDeg: RADAR_TILTS_DEG[0], tilts: RADAR_TILTS_DEG,
     rangeMiles: groundRangeKm(RADAR_RANGE_KM, RADAR_TILTS_DEG[0]) / KM_PER_MILE, siteProducts: GAME_PRODUCTS.radarSiteProducts,
+    gateKm: RADAR_GATE_KM, fineGateKm: RADAR_FINE_GATE_KM,
+    mosaics: MOSAIC_KINDS.map(kind => ({ kind, label: MOSAIC_LABELS[kind] ?? kind, product: MOSAIC_PRODUCT[kind] })),
+    loopFrames: GAME_PRODUCTS.radarLoopFrames,
     sites: catalog.sites.map(site => ({ id: site.id, name: site.name, xMiles: site.xKm / KM_PER_MILE, yMiles: site.yKm / KM_PER_MILE }))
   };
 }
@@ -286,7 +356,20 @@ export function gameSurveyIndicators() {
   return { v: GAME_PRODUCTS.version, id: 'survey.indicators', kind: 'survey-indicators', indicators: DAMAGE_INDICATORS };
 }
 
-const SITE_ID = /^radar\.site\.([A-Z0-9]+)\.([A-Za-z]+)$/;
+const SITE_ID = /^radar\.site\.([A-Z0-9]+)\.([A-Za-z]+)(?:\.(\d{1,2}))?(\.fine)?(?:\.h(\d+))?$/;
+const MOSAIC_ID = /^radar\.mosaic\.([A-Za-z]+)(?:\.h(\d+))?$/;
+const ROTATION_ID = /^radar\.rotation\.([A-Z0-9]+)$/;
+const SATELLITE_ID = /^satellite\.([a-z]+)(?:\.h(\d+))?$/;
+const isRadarId = id => SITE_ID.test(id) || MOSAIC_ID.test(id) || ROTATION_ID.test(id) || SATELLITE_ID.test(id);
+// The loop a product id belongs to (the same for a radar's lowest tilt with or without ".0").
+function radarBase(id) {
+  const site = SITE_ID.exec(id);
+  if (site) return `radar.site.${site[1]}.${site[2]}.${Number(site[3] ?? 0)}${site[4] ?? ''}`;
+  const mosaic = MOSAIC_ID.exec(id);
+  if (mosaic) return `radar.mosaic.${mosaic[1]}`;
+  const satellite = SATELLITE_ID.exec(id);
+  return satellite ? 'satellite.' + satellite[1] : null;
+}
 const REPORT_DAY_ID = /^reports\.day\.(\d+)$/, SURVEY_ID = /^survey\.(.+)$/;
 
 export class GameProducts {
@@ -297,7 +380,8 @@ export class GameProducts {
     this.reports = reports;
     this.producers = new Map();
     this.kept = new Map();       // id -> { source, ref, version, text }
-    this.siteWanted = new Map(); // site product id -> when it was last asked for
+    this.siteWanted = new Map(); // radar product id (a site's tilt or a mosaic) -> when it was last asked for
+    this.history = new Map();    // radar loop (radarBase) -> its last scans [{ key, id, validHourUtc, entry }], oldest first
     for (const day of GAME_PRODUCTS.outlookDays) {
       this.producers.set(`outlook.${day}`, {
         // The issued product object changes only at an issue; the running flag shows "being prepared".
@@ -404,24 +488,98 @@ export class GameProducts {
   async siteProduct(id, { ask = true } = {}) {
     const match = SITE_ID.exec(id);
     if (!match || !GAME_PRODUCTS.radarSiteProducts.includes(match[2])) return null;
+    const tiltIndex = Number(match[3] ?? 0);
+    if (!(tiltIndex < RADAR_TILTS_DEG.length)) return null;
+    const site = this.runtime.radarCatalog().sites.find(s => s.id === match[1]);
+    if (!site) return null;
+    if (match[5]) return this.frame(radarBase(id), match[5]);
+    if (ask) this.siteWanted.set(id, Date.now());
+    const scan = await this.runtime.radarScan(site.id, RADAR_TILTS_DEG[tiltIndex], { fine: Boolean(match[4]) });
+    return scan ? this.keepLoop(id, scan, () => gameScan(site, scan, match[2], tiltIndex)) : null;
+  }
+
+  // Every radar together, asked for and kept like a radar's scan.
+  async mosaicProduct(id, { ask = true } = {}) {
+    const match = MOSAIC_ID.exec(id);
+    if (!match || !MOSAIC_KINDS.includes(match[1]) || !this.runtime.radarMosaic) return null;
+    if (match[2]) return this.frame(radarBase(id), match[2]);
+    if (ask) this.siteWanted.set(id, Date.now());
+    const mosaic = await this.runtime.radarMosaic(match[1]);
+    return mosaic ? this.keepLoop(id, mosaic, () => gameMosaic(mosaic)) : null;
+  }
+
+  // A radar's rotation detections (radar.rotation.<site>), asked for and kept like its scans.
+  async rotationProduct(id, { ask = true } = {}) {
+    const match = ROTATION_ID.exec(id);
+    if (!match || !this.runtime.radarRotation) return null;
     const site = this.runtime.radarCatalog().sites.find(s => s.id === match[1]);
     if (!site) return null;
     if (ask) this.siteWanted.set(id, Date.now());
-    const scan = await this.runtime.radarScan(site.id, RADAR_TILTS_DEG[0]);
-    return scan ? this.keep(id, { source: () => '', sourceRef: () => scan, build: () => gameScan(site, scan, match[2]) }) : null;
+    const found = await this.runtime.radarRotation(site.id);
+    if (!found) return null;
+    const kept = this.kept.get(id);
+    if (kept && kept.ref === found) return kept;
+    const text = JSON.stringify(gameRotation(site, found));
+    const entry = { source: '', ref: found, version: hashOf(text), text };
+    this.kept.set(id, entry);
+    return entry;
   }
 
-  // Any product, the site scans included (they may take a moment to work out).
-  async productAsync(id) { return SITE_ID.test(id) ? this.siteProduct(id) : this.product(id); }
+  // The satellite's image, asked for and kept like the radar's mosaics.
+  async satelliteProduct(id, { ask = true } = {}) {
+    const match = SATELLITE_ID.exec(id);
+    if (!match || !SATELLITE_KINDS.includes(match[1]) || !this.runtime.satellite) return null;
+    if (match[2]) return this.frame(radarBase(id), match[2]);
+    if (ask) this.siteWanted.set(id, Date.now());
+    const sat = await this.runtime.satellite();
+    return sat ? this.keepLoop(id, sat, () => gameSatellite(sat, match[1])) : null;
+  }
+
+  radarProduct(id, options) {
+    if (SITE_ID.test(id)) return this.siteProduct(id, options);
+    if (ROTATION_ID.test(id)) return this.rotationProduct(id, options);
+    if (SATELLITE_ID.test(id)) return this.satelliteProduct(id, options);
+    return this.mosaicProduct(id, options);
+  }
+
+  // A radar product kept while its scan (ref) is the newest; each new scan is also remembered,
+  // as it is, under its own id (radarBase.h<seconds>), and the product lists those (`loop`).
+  keepLoop(id, ref, build) {
+    const kept = this.kept.get(id);
+    if (kept && kept.ref === ref) return kept;
+    const body = build(), base = radarBase(id), key = Math.round(body.validHourUtc * 3600);
+    const frameId = `${base}.h${key}`, frameText = JSON.stringify({ ...body, id: frameId });
+    const frames = (this.history.get(base) ?? []).filter(f => f.key !== key);
+    frames.push({ key, id: frameId, validHourUtc: body.validHourUtc, entry: { source: '', ref: null, version: hashOf(frameText), text: frameText } });
+    frames.sort((a, b) => a.key - b.key);
+    const held = frames.slice(-GAME_PRODUCTS.radarLoopFrames);
+    this.history.set(base, held);
+    const text = JSON.stringify({ ...body, id, loop: held.map(f => ({ id: f.id, validHourUtc: f.validHourUtc })) });
+    const entry = { source: '', ref, version: hashOf(text), text };
+    this.kept.set(id, entry);
+    return entry;
+  }
+
+  // An earlier scan of a radar loop, while it is held (null: let go).
+  frame(base, keyText) { return this.history.get(base)?.find(f => f.key === Number(keyText))?.entry ?? null; }
+
+  // Any product, the radar's included (they may take a moment to work out).
+  async productAsync(id) { return isRadarId(id) ? this.radarProduct(id) : this.product(id); }
 
   manifest(now = Date.now()) {
     const products = {};
     for (const [id, producer] of this.producers) { const entry = this.keep(id, producer); products[id] = { version: entry.version, bytes: entry.text.length }; }
     for (const id of this.reportIds()) { const entry = this.product(id); if (entry) products[id] = { version: entry.version, bytes: entry.text.length }; }
-    // The site scans still asked for: the one held, while the next scan's is worked out.
+    // The radar products still asked for: the one held, while the next scan's is worked out. A
+    // loop is let go with the last of its products.
     for (const [id, at] of this.siteWanted) {
-      if (now - at > GAME_PRODUCTS.siteWantedMs) { this.siteWanted.delete(id); this.kept.delete(id); continue; }
-      this.siteProduct(id, { ask: false }).catch(() => {});
+      if (now - at > GAME_PRODUCTS.siteWantedMs) {
+        this.siteWanted.delete(id); this.kept.delete(id);
+        const base = radarBase(id);
+        if (![...this.siteWanted.keys()].some(other => radarBase(other) === base)) this.history.delete(base);
+        continue;
+      }
+      this.radarProduct(id, { ask: false }).catch(() => {});
       const entry = this.kept.get(id);
       if (entry) products[id] = { version: entry.version, bytes: entry.text.length };
     }

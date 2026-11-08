@@ -1,0 +1,46 @@
+{
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true,
+    "clangd-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "hookify@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "mcp__romcp__studio_capture_window",
+      "mcp__romcp__dominus_status",
+      "mcp__romcp__studio_get_output",
+      "mcp__romcp__studio_get_metadata",
+      "mcp__romcp__studio_inspect",
+      "mcp__romcp__studio_get_tree",
+      "mcp__romcp__studio_read_script",
+      "mcp__romcp__roblox_get_api",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Select-Object *)",
+      "PowerShell(Where-Object *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Get-CimInstance Win32_Process *)",
+      "PowerShell(Format-List *)",
+      "PowerShell(Format-Table *)",
+      "Bash(tasklist *)",
+      "Bash(selene *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

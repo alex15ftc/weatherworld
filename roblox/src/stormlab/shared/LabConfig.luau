@@ -132,6 +132,81 @@ function LabConfig.toWorldAbout(x: number, y: number, z: number, cx: number, cy:
 	return G + Vector3.new((x - cx) * k, z * k, -(y - cy) * k)
 end
 
+-- The inverse of toWorldAbout: a world point (the camera, say) in the frame of a storm drawn about
+-- (cx, cy) at scale s - metres as that storm's cards see it. In the game a storm is drawn ~10x the
+-- map's scale about its anchor, so fromWorld's map metres put the camera ~10x too far from it and
+-- too low: CardPlan foreshortened its base cards as if seen edge-on - flat saucers along the
+-- horizon, regrade 2026-11-07
+function LabConfig.fromWorldAbout(v: Vector3, cx: number, cy: number, s: number?): (number, number, number)
+	local k = math.max(s or LabConfig.scaleAbout(cx, cy), 1e-6)
+	local d = F.datum
+	local G = Vector3.new(F.ox + cx * F.kh, if d then d(cx, cy) else 0, F.oz - cy * F.kh)
+	local kv = LabConfig.pullAt(cx, cy)
+	if kv < 1 then
+		local cam = camPos or workspace.CurrentCamera.CFrame.Position
+		G = cam + (G - cam) * kv
+	end
+	local r = v - G
+	return cx + r.X / k, cy - r.Z / k, r.Y / k
+end
+
+-- Across about a centre, for the parts drawn beside a storm body that the game draws across at its
+-- map's scale (F.kh; client/EngineStorms): the scale k out to trueR metres from the centre (round a
+-- funnel), easing to the map's over one more trueR, so a wall cloud or scud sits under the base it
+-- hangs from (as Shared.CloudModel.WallCloudView). Returns the drawn distance (studs) and the scale
+-- across there (studs a metre). In the lab (kh = ks) it is r * k.
+-- (only while the game draws the storm body at its map's scale - F.radialMap, set by the game when
+-- the engine draws the body: client/WeatherClient. With the lab's own body every part of a storm
+-- is at k about its anchor, LabConfig.stormAnchor, as in the lab)
+function LabConfig.radial(r: number, trueR: number, k: number, cx: number, cy: number): (number, number)
+	local H = math.min(k, F.kh * LabConfig.pullAt(cx, cy))
+	if not F.radialMap or r <= trueR or H >= k then
+		return r * k, k
+	end
+	local R = math.max(1, trueR)
+	local function ease(x: number): number
+		local w = math.clamp((x - trueR) / R, 0, 1)
+		return k + (H - k) * w * w * (3 - 2 * w)
+	end
+	-- (the scale integrated from trueR out to r: two steps, enough for a smooth map)
+	return trueR * k + (r - trueR) * ease(0.5 * (trueR + r)), ease(r)
+end
+
+-- The point a storm is drawn about (2026-11-07). The game's map is at its own scale across (F.kh,
+-- ~0.37 studs/m) while a storm is drawn at Config.skyScaleAt (3.57 near): a storm's parts drawn
+-- about different centres - the body about the storm's centre, the tornado about its own foot, the
+-- wall cloud about the circulation - came apart by their distance x (k - kh): a tornado 2.7 km from
+-- its storm's centre stood ~8,600 studs from the cloud it hangs from, and its funnel ran off at a
+-- slant to a lowering that wasn't over it (user). So every part of a storm is drawn about one
+-- point, the game's anchorFn(id): its tornado's foot, else its low-level circulation - the place on
+-- the map that matters to a player - and the rest of the storm about it at one scale, as the lab
+-- draws it. In the lab (no anchorFn; kh = ks) it is the centre the caller gives.
+LabConfig.anchorFn = nil :: ((id: string) -> (number?, number?))?
+function LabConfig.stormAnchor(id: any, x: number, y: number): (number, number)
+	local f = LabConfig.anchorFn
+	if f and id ~= nil then
+		local ax, ay = f(tostring(id))
+		if ax then
+			return ax, ay :: number
+		end
+	end
+	return x, y
+end
+
+-- toWorldAbout with the across distances from (cx, cy) through LabConfig.radial; also returns the
+-- scale across at the point (for the drawn width of what is there)
+function LabConfig.toWorldRadial(x: number, y: number, z: number, cx: number, cy: number, k: number, trueR: number): (Vector3, number)
+	local dx, dy = x - cx, y - cy
+	local r = math.sqrt(dx * dx + dy * dy)
+	local rs, kA = LabConfig.radial(r, trueR, k, cx, cy)
+	local f = if r > 1e-6 then rs / r else k
+	local P = LabConfig.toWorldAbout(cx, cy, z, cx, cy, k)
+	-- (third: the scale round the ring, rs / r - how far apart neighbours along it are drawn. A card
+	-- sized across by kA alone, the radial squeeze, drew ~10x narrower than tall past trueR in the
+	-- game: tall dark leaves round the wall cloud, regrade 2026-11-07)
+	return P + Vector3.new(dx * f, 0, -dy * f), kA, f
+end
+
 -- The ground under (x, y), in metres at scale k about the centre (cx, cy): what to add to a height
 -- above the ground so toWorldAbout puts it on the true ground. Heights above the ground scale with
 -- the thing drawn (a far storm in the game is drawn small: Config.skyScaleAt), but the ground does
@@ -349,6 +424,7 @@ LabConfig.CLOUD_FLOW = true
 -- slices. Key T switches.
 -- the wall cloud and tail: "stream" (Render/WallStream: puffs carried by the rotation and the
 -- inflow) or "cards" (StormCards' rings); key Y switches
+LabConfig.WALL_TIER = false -- (Render/WallStream: the side-on tier texture - off, it drew a sawtooth rim, 2026-11-07)
 LabConfig.WALL_STYLE = "stream" -- volumetric five-slot inflow cross-sections
 LabConfig.TORNADO_STYLE = "smoke" -- (T cycles smoke -> gas -> volume -> rings; smoke = fibrous sprites riding the flow, 2026-10-31; gas = soft cloud puffs, 2026-10-30)
 LabConfig.SMOKE_SURFACE = false -- (off until it reads well on a wedge: bubbles or too faint so far) (the smoke body's cards on the funnel's surface, one rule from rope to wedge; Ctrl+T: by radius, the old layout. 2026-11-03)

@@ -141,6 +141,10 @@ function Context:visualTime(): number
 	if self.state.visualScale == nil then
 		return self:simTime()
 	end
+	-- (the game's frame-fed storms: the shared clock, the same on every server - client/FrameWorld)
+	if self.sharedClock then
+		return self.sharedClock.day() * self.state.visualScale
+	end
 	return os.clock() * self.state.visualScale
 end
 

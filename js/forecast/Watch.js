@@ -41,8 +41,9 @@
 //   - A watch over severe weather that is still going is followed without a gap: at the last
 //     look before it expires, a new watch is made ready for the moment it does, and a
 //     discussion about the old one says so.
-import { MESOSCALE, watchStep, concernOf, concernAreas, assessArea, makeDiscussion, discussedLately, withinLead, describeSetting, stamp, list } from './MesoscaleDiscussion.js';
+import { MESOSCALE, watchStep, tornadoChances, concernOf, concernAreas, assessArea, makeDiscussion, discussedLately, withinLead, describeSetting, stamp, list } from './MesoscaleDiscussion.js';
 import { solidRegion, connectedPieces } from './contourShapes.js';
+import { poissonAtLeast } from './expectedHazards.js';
 import { describeArea } from './DayOneOutlook.js';
 import { cellCounties, countiesIn, countiesUnder, cellsOfCounties, countyRings, describeRegions, countyNames, nearestTown } from './counties.js';
 
@@ -80,14 +81,15 @@ const title = watch => `${watch.type === 'tornado' ? 'Tornado' : 'Severe Thunder
 // that weather could give: it is taken as the mean of a Poisson count, and the chance is the runs'
 // average chance of reaching the number. (Until 2026-10-20 the plain share of runs reaching it:
 // with 4-8 runs, a watch could read 5% for 10 hail and for 10 wind events beside 95% for 6
-// combined.) The tornado rows, where the counts are small and the runs themselves are the spread,
-// and the peak gust and hail rows are the share of runs reaching them.
+// combined.) The tornado rows take each run's expected tornadoes (and strong ones) the same way (tornadoChances; until
+// 2026-11-05 the share of runs whose draws made them), and the peak gust and hail rows are the share of runs reaching them.
 const atLeast = (mean, k) => { if (!(mean > 0)) return 0; let term = Math.exp(-mean), below = 0; for (let i = 0; i < k; i++) { below += term; term *= mean / (i + 1); } return Math.max(0, 1 - below); };
 export function watchProbabilities(perMember) {
   const p = test => watchStep(perMember.filter(test).length / perMember.length);
   const count = (key, k) => watchStep(perMember.reduce((a, m) => a + atLeast(Number(m[key]) || 0, k), 0) / perMember.length);
   return {
-    tornadoes2: p(m => m.tornadoes >= 2), strongTornado: p(m => m.strong >= 1),
+    // (the tornado rows from the tornadoes the runs' storms were expected to put down, as the discussion's: tornadoChances)
+    tornadoes2: tornadoChances(perMember).several, strongTornado: tornadoChances(perMember).strong,
     wind10: count('wind', 10), wind75: p(m => m.gust >= 75),
     hail10: count('hailCells', 10), hail2: p(m => m.hail >= 2), combined6: count('reports', 6)
   };
@@ -96,7 +98,7 @@ export function watchProbabilities(perMember) {
 // peakTornadoMph: the most probable peak tornado intensity (assessArea's).
 export function particularlyDangerous(type, perMember, peakTornadoMph = 0) {
   const chance = test => watchStep(perMember.filter(test).length / perMember.length);
-  if (type === 'tornado') return chance(m => m.strong >= WATCH.pdsStrongTornadoes) >= WATCH.pdsPercent && peakTornadoMph >= WATCH.pdsTornadoMph;
+  if (type === 'tornado') return watchStep(perMember.reduce((a, m) => a + (Number.isFinite(m.expectedStrong) ? poissonAtLeast(m.expectedStrong, WATCH.pdsStrongTornadoes) : m.strong >= WATCH.pdsStrongTornadoes ? 1 : 0), 0) / perMember.length) >= WATCH.pdsPercent && peakTornadoMph >= WATCH.pdsTornadoMph;
   return chance(m => m.gust >= WATCH.pdsGustMph && m.windSignificant >= WATCH.pdsWindCells) >= WATCH.pdsPercent;
 }
 

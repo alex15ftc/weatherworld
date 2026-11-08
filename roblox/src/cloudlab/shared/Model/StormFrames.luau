@@ -10,12 +10,24 @@
 -- far frames (0: not asked for); then u16 count of every storm shown in detail now, each u8
 -- length + id, and in version 2 also u8 flags (bit 0 warming up), f32 x, y (map km, y south, as
 -- of the engine's storm tick), f32 east, north motion (m/s); version 2 ends with f64 the tick's
--- sim hour and u8 1 if the engine's clock is paused.
+-- sim hour and u8 1 if the engine's clock is paused. Version 3 adds, after each shown storm's
+-- motion, f32 its flashes a minute (sim time), the share reaching the ground and the share of
+-- those that are positive (js/storms/Lightning.js; zeros for a cloud model worker's storm).
+-- Version 4 adds, after those, u8 look flags (bit 0 a look record follows, bit 1 a left mover)
+-- and with bit 0 the look record, LOOK_FIELDS f32 (js/game/StormWorkers.js lookOf): the storm's
+-- position (map km, y south: its low-level mesocyclone), updraught m/s, mesocyclone strength,
+-- low-level rotation, occlusion, age (min), updraught radius km, anvil length km and bearing deg,
+-- intensity, tornado mph (0 none) - what a client builds its drawn storm from (client/FrameWorld).
+-- Version 5: the look record also has the cloud base (m) and the wall cloud's lowering (m).
+-- Version 4 also ends with f64 the storm tick's wall-clock time (Unix ms), after the paused byte.
 local StormFrames = {}
 
+local LOOK_FIELDS = { [4] = 12, [5] = 14 }
+export type Look = { xKm: number, yKm: number, updraftMs: number, meso: number, lowRotation: number, occlusion: number, ageMin: number, radiusKm: number, anvilKm: number, anvilDeg: number, intensity: number, tornadoMph: number, baseM: number?, loweringM: number?, leftMover: boolean }
+
 export type Entry = { seq: number, ended: boolean, nest: boolean, full: buffer?, near: buffer?, far: buffer? }
-export type Where = { xKm: number, yKm: number, ue: number, ve: number, warming: boolean }
-export type Bundle = { frames: { [string]: Entry }, live: { string }, where: { [string]: Where }, tickHour: number?, paused: boolean }
+export type Where = { xKm: number, yKm: number, ue: number, ve: number, warming: boolean, flashesPerMin: number, groundShare: number, positiveShare: number, look: Look? }
+export type Bundle = { frames: { [string]: Entry }, live: { string }, where: { [string]: Where }, tickHour: number?, paused: boolean, tickAtMs: number? }
 
 local function sub(b: buffer, o: number, n: number): buffer
 	local out = buffer.create(n)
@@ -25,7 +37,7 @@ end
 
 function StormFrames.parse(b: buffer): Bundle
 	local version = buffer.readu8(b, 0)
-	assert(version == 1 or version == 2, "storm frames version")
+	assert(version >= 1 and version <= 5, "storm frames version")
 	local o, frames, live, where = 1, {}, {}, {}
 	local count = buffer.readu16(b, o); o += 2
 	for _ = 1, count do
@@ -48,8 +60,23 @@ function StormFrames.parse(b: buffer): Bundle
 		table.insert(live, id)
 		if version >= 2 then
 			local flags = buffer.readu8(b, o)
-			where[id] = { warming = bit32.btest(flags, 1), xKm = buffer.readf32(b, o + 1), yKm = buffer.readf32(b, o + 5), ue = buffer.readf32(b, o + 9), ve = buffer.readf32(b, o + 13) }
+			local w: Where = { warming = bit32.btest(flags, 1), xKm = buffer.readf32(b, o + 1), yKm = buffer.readf32(b, o + 5), ue = buffer.readf32(b, o + 9), ve = buffer.readf32(b, o + 13), flashesPerMin = 0, groundShare = 0, positiveShare = 0 }
 			o += 17
+			if version >= 3 then
+				w.flashesPerMin, w.groundShare, w.positiveShare = buffer.readf32(b, o), buffer.readf32(b, o + 4), buffer.readf32(b, o + 8)
+				o += 12
+			end
+			if version >= 4 then
+				local lf = buffer.readu8(b, o); o += 1
+				if bit32.btest(lf, 1) then
+					local nf = LOOK_FIELDS[version] or LOOK_FIELDS[5]
+					local v = table.create(nf, 0)
+					for k = 1, nf do v[k] = buffer.readf32(b, o + 4 * (k - 1)) end
+					o += 4 * nf
+					w.look = { xKm = v[1], yKm = v[2], updraftMs = v[3], meso = v[4], lowRotation = v[5], occlusion = v[6], ageMin = v[7], radiusKm = v[8], anvilKm = v[9], anvilDeg = v[10], intensity = v[11], tornadoMph = v[12], baseM = v[13], loweringM = v[14], leftMover = bit32.btest(lf, 2) }
+				end
+			end
+			where[id] = w
 		end
 	end
 	local tickHour, paused = nil, false
@@ -57,7 +84,11 @@ function StormFrames.parse(b: buffer): Bundle
 		tickHour = buffer.readf64(b, o)
 		paused = buffer.readu8(b, o + 8) == 1
 	end
-	return { frames = frames, live = live, where = where, tickHour = tickHour, paused = paused }
+	local tickAtMs = nil
+	if version >= 4 then
+		tickAtMs = buffer.readf64(b, o + 9)
+	end
+	return { frames = frames, live = live, where = where, tickHour = tickHour, paused = paused, tickAtMs = tickAtMs }
 end
 
 -- The ?have= text for the frames held (id -> seq).

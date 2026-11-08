@@ -1,15 +1,17 @@
 // Writes the products' colours (js/forecast/productColours.js) into the Roblox place, so the
 // game and the web developer views share one source: roblox/src/shared/Weather/Palettes.luau.
-// Radar colour tables come from js/radar/RadarFormat.js (radarColorTable, as the web radar draws them).
+// Radar colour tables come from js/radar/RadarFormat.js (radarColorTable, as the web radar draws them),
+// the satellite's from js/satellite/SatelliteFormat.js.
 // Run after changing a colour: node scripts/export-palettes.mjs
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CATEGORY_COLOURS, CATEGORY_SHORT, CHANCE_COLOURS, WATCH_COLOURS, DISCUSSION_COLOURS, WARNING_COLOURS, REPORT_COLOURS, EF_COLOURS, EFU_COLOUR } from '../js/forecast/productColours.js';
 import { RADAR_PRODUCTS, radarColorTable, RANGE_FOLDED } from '../js/radar/RadarFormat.js';
+import { SATELLITE_PRODUCTS, SATELLITE_KINDS, satelliteColorTable } from '../js/satellite/SatelliteFormat.js';
 
-// The radar products the game shows (server/GameProducts.js): a single site's lowest tilt, and the mosaics.
-const RADAR_SHOWN = ['reflectivity', 'velocity', 'stormRelativeVelocity', 'echoTops', 'vil', 'mesh'];
+// The radar products the game shows (server/GameProducts.js): a single site's tilts, and the mosaics.
+const RADAR_SHOWN = ['reflectivity', 'velocity', 'rawVelocity', 'stormRelativeVelocity', 'correlationCoefficient', 'differentialReflectivity', 'spectrumWidth', 'echoTops', 'vil', 'mesh', 'azShear'];
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'roblox/src/shared/Weather/Palettes.luau');
@@ -25,6 +27,18 @@ const radarEntry = key => {
     `\t\tlabel = "${spec.label}", short = "${spec.short}", units = "${spec.units}", min = ${spec.min}, step = ${spec.step}, decimals = ${spec.decimals},`,
     `\t\tdoppler = ${Boolean(spec.doppler)}, legend = { ${spec.legend.join(', ')} },`,
     `\t\tlut = { ${Array.from(radarColorTable(key)).join(', ')} },`,
+    '\t},'
+  ].join('\n');
+};
+
+// One satellite image kind as a Luau table entry.
+const satelliteEntry = key => {
+  const spec = SATELLITE_PRODUCTS[key];
+  return [
+    `\t${key} = {`,
+    `\t\tlabel = "${spec.label}", short = "${spec.short}", units = "${spec.units}", sqrt = ${Boolean(spec.sqrt)}, min = ${spec.min ?? 0}, step = ${spec.step ?? 0}, decimals = ${spec.decimals},`,
+    `\t\tlegend = { ${spec.legend.join(', ')} },`,
+    `\t\tlut = { ${Array.from(satelliteColorTable(key)).join(', ')} },`,
     '\t},'
   ].join('\n');
 };
@@ -59,6 +73,12 @@ Palettes.WARNING = ${table(Object.entries(WARNING_COLOURS).map(([k, v]) => [k, r
 -- Doppler products ${RANGE_FOLDED} is range folded) and its colour: lut[byte * 4 + 1 .. 4] = r, g, b, a.
 Palettes.RADAR = {
 ${RADAR_SHOWN.map(radarEntry).join('\n')}
+}
+
+-- Satellite images (js/satellite/SatelliteFormat.js): how a byte reads (0 no data; IR: degrees C =
+-- min + (byte - 1) * step; visible, sqrt: reflectance = ((byte - 1) / 254)^2, shown in %) and its colour.
+Palettes.SATELLITE = {
+${SATELLITE_KINDS.map(satelliteEntry).join('\n')}
 }
 
 return Palettes

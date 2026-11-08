@@ -778,6 +778,10 @@ end
 
 -- surface rain rate (mm/h) and hail (cm) at a point from an unpacked volume (or the live field)
 function Precip.surface(vol: any, x: number, y: number): (number, number)
+	if vol.surfaceAt then
+		-- (the game's frame-fed storms: the rain is the engine frames', client/FrameWorld)
+		return vol.surfaceAt(x, y)
+	end
 	local nx, x0 = vol.nxv, vol.x0
 	local cx = math.floor((x - x0) / VOX)
 	local cy = math.floor((y - x0) / VOX)

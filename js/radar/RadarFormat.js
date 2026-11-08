@@ -5,6 +5,8 @@ export const RADAR_RADIALS = 720;            // 0.5° super-resolution azimuths
 export const RADAR_GATE_KM = 0.5;
 export const RADAR_RANGE_KM = 230;
 export const RADAR_GATES = Math.round(RADAR_RANGE_KM / RADAR_GATE_KM);
+// The finer gates of a close look (the WSR-88D's super-resolution: 250 m by 0.5 deg), to the same range.
+export const RADAR_FINE_GATE_KM = 0.25;
 export const RADAR_BEAMWIDTH_DEG = 0.95;
 // The tilts of a deep-convection volume scan (as VCP 12/212): close to the radar the higher
 // ones see a storm's upper parts, so the cone above the radar with no view is small.
@@ -39,6 +41,12 @@ export const RADAR_PRODUCTS = {
       [0, 115, 110, 110, 255], [1, 80, 35, 40, 255], [10, 140, 0, 15, 255], [25, 215, 0, 25, 255], [40, 255, 70, 70, 255], [63.5, 255, 210, 170, 255]],
     legend: [-50, -25, 0, 25, 50]
   },
+  // What the radar measures before dealiasing: motion faster than the Nyquist speed folds over.
+  rawVelocity: {
+    label: 'Base velocity (raw, aliased)', short: 'RAW', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5, doppler: true,
+    stops: null, // shares the velocity table
+    legend: [-30, -15, 0, 15, 30]
+  },
   stormRelativeVelocity: {
     label: 'Storm-relative velocity', short: 'SRV', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5, doppler: true,
     stops: null, // shares the velocity table
@@ -65,6 +73,7 @@ export const RADAR_PRODUCTS = {
   }
 };
 RADAR_PRODUCTS.stormRelativeVelocity.stops = RADAR_PRODUCTS.velocity.stops;
+RADAR_PRODUCTS.rawVelocity.stops = RADAR_PRODUCTS.velocity.stops;
 // What the network works out from the radars' volume scans (mosaics only, not one radar's scan).
 Object.assign(RADAR_PRODUCTS, {
   echoTops: {
@@ -84,6 +93,15 @@ Object.assign(RADAR_PRODUCTS, {
     stops: [[0.25, 40, 190, 80, 255], [0.75, 230, 220, 40, 255], [1, 250, 140, 30, 255], [1.5, 230, 40, 40, 255], [2, 250, 120, 220, 255],
       [3, 255, 255, 255, 255], [5.1, 255, 255, 255, 255]],
     legend: [0.25, 1, 2, 3, 4]
+  },
+  // Cyclonic low-level azimuthal shear (s^-1), the rotation tracks' measure (RotationDetection.js).
+  // Below about 0.003 /s it is the scan's own noise and the broad shear of the wind (the top 1% of
+  // cells away from storms), so it is left clear.
+  azShear: {
+    label: 'Low-level azimuthal shear (0-2 km)', short: 'AzSh', units: '/s', min: 0, step: 0.0002, decimals: 3, band: 0.002, mosaicOnly: true,
+    stops: [[0, 0, 0, 0, 0], [0.003, 90, 100, 120, 0], [0.004, 110, 130, 160, 200], [0.006, 40, 190, 80, 255], [0.008, 230, 220, 40, 255],
+      [0.010, 250, 140, 30, 255], [0.014, 230, 40, 40, 255], [0.020, 250, 120, 220, 255], [0.030, 255, 255, 255, 255], [0.051, 255, 255, 255, 255]],
+    legend: [0.004, 0.006, 0.008, 0.01, 0.014, 0.02]
   }
 });
 export const RADAR_PRODUCT_KEYS = Object.keys(RADAR_PRODUCTS).filter(key => !RADAR_PRODUCTS[key].mosaicOnly);

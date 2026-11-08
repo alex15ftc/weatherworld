@@ -9,7 +9,8 @@
 //   WEATHER_RADAR_IDLE_SECONDS sets how long a thread with nothing to do is kept.
 import os from 'node:os';
 import { Worker } from 'node:worker_threads';
-import { radarSceneInputs, assembleRadarScene, mosaicSize } from '../js/radar/RadarSimulator.js';
+import { assembleRadarScene, mosaicSize } from '../js/radar/RadarSimulator.js';
+import { rainFieldInputs, rainFieldsFor } from '../js/storms/StormRainFields.js';
 
 const WORKER_SCRIPT = new URL('./radarWorker.js', import.meta.url);
 const defaultSize = () => Number(process.env.WEATHER_RADAR_WORKERS) || Math.max(2, Math.min(8, Math.floor(os.availableParallelism() / 3)));
@@ -26,10 +27,12 @@ export class RadarPool {
     this.stats = { tasks: 0, busyMs: 0 };
   }
 
-  // The scene for a world as it is now (the world is read before this returns).
+  // The scene for a world as it is now (the world is read before this returns). Its storms' fields
+  // are the engine's (js/storms/StormRainFields.js): those already worked out this storm tick are
+  // used as they are, the rest worked out here and kept for the engine.
   async buildScene(world) {
-    const inputs = radarSceneInputs(world);
-    const echoes = await Promise.all(inputs.storms.map(input => this.run({ kind: 'echo', input: { ...input, storm: stormToSend(input.storm) } })));
+    const inputs = rainFieldInputs(world);
+    const echoes = await rainFieldsFor(world, inputs.storms, input => this.field(input));
     const scene = assembleRadarScene(inputs, echoes);
     // Threads are given the scene with their first task for it, and keep it.
     Object.defineProperty(scene, 'poolId', { value: ++this.sceneCount });
@@ -48,7 +51,21 @@ export class RadarPool {
     return { ...rest, bytes, buildMs: performance.now() - started };
   }
 
-  scan(scene, site, tiltDeg) { return this.run({ kind: 'scan', site, tiltDeg }, scene); }
+  // These storms' fields (as above), worked out on the threads: Map of storm id -> field or null.
+  async stormFields(world, storms) {
+    const ids = new Set(storms.map(s => s.id)), inputs = rainFieldInputs(world).storms.filter(input => ids.has(input.storm.id));
+    const fields = await rainFieldsFor(world, inputs, input => this.field(input));
+    return new Map(inputs.map((input, k) => [input.storm.id, fields[k]]));
+  }
+
+  field(input) { return this.run({ kind: 'echo', input: { ...input, storm: stormToSend(input.storm) } }); }
+
+  // (gateKm: the gates' length, RADAR_GATE_KM unless a close look asks for finer)
+  scan(scene, site, tiltDeg, gateKm = undefined) { return this.run({ kind: 'scan', site, tiltDeg, gateKm }, scene); }
+
+  // The satellite's images from satelliteInputs (js/satellite/Satellite.js), on a thread: the same
+  // bytes renderSatellite gives here.
+  satellite(inputs) { return this.run({ kind: 'satellite', inputs }); }
 
   run(message, scene = null) {
     return new Promise((resolve, reject) => { this.queue.push({ message, scene, resolve, reject }); this.pump(); });

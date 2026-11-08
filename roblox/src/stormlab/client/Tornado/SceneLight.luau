@@ -124,6 +124,8 @@ end
 -- not per sample - many samples are taken a frame)
 local cacheAt, cacheRoot, cacheSun, cacheOvercast = -math.huge, nil, Vector3.yAxis, 1
 local CACHE_S = 1 / 120
+local HORIZON_K = 0.35
+local HORIZON_TOP = 1800 -- (m: where the open-horizon light is gone)
 
 -- (the returned table is the caller's: several callers keep it and change its flash)
 function SceneLight.sample(ctx: any, x: number, y: number, z: number): any
@@ -141,6 +143,15 @@ function SceneLight.sample(ctx: any, x: number, y: number, z: number): any
 	local overcast = cacheOvercast
 	local moon = ctx.state.moonlight or 0
 	local skyglow = 0.035 + 0.12 * moon
+	-- (low down, the sky light also comes in sideways from the open horizon past the base's edge -
+	-- Render/Sky's horizon openness, ctx.skyHorizon - however overcast it is overhead: with the
+	-- overhead diffuse alone the funnel and lowering drew flat black seen from under the forward
+	-- flank, regrade 2026-11-07. Up to HORIZON_K of the missing light. A point lower down sees more of
+	-- the open gap between the ground and the base's edge, so the light falls off with height to
+	-- ~a quarter at a typical base (1.2 km) and nothing by HORIZON_TOP: the funnel was one flat colour
+	-- from foot to base, regrade 2026-11-07)
+	local ho = (ctx.skyHorizon or 0) * (1 - smooth(0, HORIZON_TOP, z))
+	overcast += (1 - overcast) * HORIZON_K * ho
 	local daySky = (0.32 + 0.38 * smooth(0, 0.5, elev)) * overcast
 	local sky = daySky * (1 - night) + skyglow * night
 	local direct = if elev > 0 then sunThrough(ctx.cw, x, y, z, sun) * smooth(0, 0.15, elev) else 0

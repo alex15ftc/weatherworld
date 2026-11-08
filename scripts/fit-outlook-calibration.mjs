@@ -4,14 +4,20 @@
 // bins with how often the hazard then came within 25 miles. Bins with too few places are merged
 // with the next, and the chance that verified is made never to fall as the raw chance rises
 // (pooling adjacent bins that would). Prints the table to paste into outlookCalibration.js.
-//   node scripts/fit-outlook-calibration.mjs data.txt [--least 400]
+//   node scripts/fit-outlook-calibration.mjs data.txt [--least 400] [--target near|pp]
+// --target pp (2026-11-05): fit to the practically perfect chance the day then had there (its mean in each bin) in place of
+// the share of places that had the hazard within the radius: the issued chance then estimates the practically perfect
+// analysis that the contours and categories are verified against (truth.js), rather than the chance within 10 miles.
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2), file = args.find(a => !a.startsWith('--')), least = Number(args.includes('--least') ? args[args.indexOf('--least') + 1] : 400);
+const TARGET = args.includes('--target') ? args[args.indexOf('--target') + 1] : 'near';
 const line = readFileSync(file, 'utf8').split('\n').find(l => l.startsWith('CALIBRATION_DATA '));
 if (!line) throw new Error('no CALIBRATION_DATA line in ' + file);
 const data = JSON.parse(line.slice('CALIBRATION_DATA '.length)), table = {};
-for (const [day, hazards] of Object.entries(data)) for (const [hazard, bins] of Object.entries(hazards)) {
+for (const [day, hazards] of Object.entries(data)) for (const [hazard, rawBins] of Object.entries(hazards)) {
+  // (with --target pp each bin's "hits" are its practically perfect chance summed, as hundredths of a place)
+  const bins = TARGET === 'pp' ? rawBins.map(b => ({ ...b, hits: (b.pp ?? 0) / 100 })) : rawBins;
   // Merge thin bins forward; the empty and near-empty bottom bin (no chance at all) is left out.
   const groups = [];
   let acc = { cells: 0, hits: 0, raw: 0 };

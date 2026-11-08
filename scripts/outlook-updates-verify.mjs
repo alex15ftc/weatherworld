@@ -57,7 +57,7 @@ async function worker(seed) {
   const { WORLD_RISK_ORDER } = await import('../js/forecast/worldRiskCategories.js');
   const { placesFor } = await import('../server/CountyLayer.js');
   const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, n = world.width * world.height, rows = [];
-  atmosphere.advance(24);   // a day for the storms to get going
+  atmosphere.advanceLikeServer(24);   // a day for the storms to get going (stepped as the server steps; 2026-11-05)
   const places = placesFor(world);
   for (let day = 0; day < days; day++) {
     const dayEnd = world.validHourUtc + 24, frames = [], seen = new Set(), initiations = [], issued = [];
@@ -75,7 +75,7 @@ async function worker(seed) {
         last = combineOutlook(runs, { day: 'day1', issuedHourUtc: now, validFromHourUtc: now, validToHourUtc: dayEnd, seed, maxCategory, previous: last, continuity: last ? OUTLOOK.continuity[underWay ? 'underWay' : 'before'] : 0 });
         issued.push({ after, outlook: last, from: frames.length });
       }
-      atmosphere.advance(0.5);
+      atmosphere.advanceLikeServer(0.5);   // (5-minute storm ticks, as the live world; until 2026-11-05 30-minute jumps)
       captureTruth(world, frames, seen, initiations, places);
     }
     // Each issue against what happened from its issue to the day's end.

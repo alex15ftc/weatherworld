@@ -1,6 +1,7 @@
 import { clamp } from '../scenarios/math.js';
 import { sampleStormEnvironment, diagnoseStormMotion } from './environmentSampling.js';
 import { rotatingShare, lineShare } from './StormModeEngine.js';
+import { coldPoolDeficitK } from './ColdPool.js';
 
 // The air a storm ingests: sampled upstream of it along the storm-relative low-level inflow,
 // beyond its own rain-cooled outflow (sampling at the storm itself measured its cold pool).
@@ -71,10 +72,8 @@ export function updateCoupledStormMotion(world, storm, environment, dtHours) {
 
 export function updateStormColdPool(world, storm, environment, dtHours) {
   const linear = lineShare(storm) >= 0.5;
-  const dryness = clamp(((environment.lcl ?? 1000)-750)/1700,0,1);
-  const targetDeficitF = clamp(1.2 + 8.5*storm.intensity*(0.65 + 0.35*dryness), 0.5, 12);
-  storm.coldPoolTemperatureDeficitF ??= 0;
-  storm.coldPoolTemperatureDeficitF += (targetDeficitF-storm.coldPoolTemperatureDeficitF)*clamp(dtHours*0.9,0,1);
+  // the deficit (°F) of the storm's one cold pool (ColdPool.js), from its strength
+  storm.coldPoolTemperatureDeficitF = coldPoolDeficitK(storm.coldPoolStrength) * 1.8;
   const motion = Math.hypot(storm.velocityKph.east, storm.velocityKph.north)||1;
   const propagationSpeed = clamp(5+storm.coldPoolStrength*(linear?28:18),4,34);
   storm.coldPoolPropagation = { east: storm.velocityKph.east/motion*propagationSpeed, north: storm.velocityKph.north/motion*propagationSpeed };

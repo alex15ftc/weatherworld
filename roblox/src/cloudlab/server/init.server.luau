@@ -116,6 +116,11 @@ task.spawn(function()
 				if nest then
 					nest.yieldFn = yieldFn
 				end
+				-- (the run starts its own 62.5 m nest while the engine has a tornado down)
+				if run.fine and fine ~= run.fine then
+					fine = run.fine
+					fine.yieldFn = yieldFn
+				end
 			elseif not nest and nestStart >= 0 and model.time >= nestStart * 60 then
 				local i0, j0 = Nest.place(model, 48, 4)
 				nest = Nest.new(model, { nx = 48, ny = 48, ratio = 4, steps = 2, i0 = i0, j0 = j0 })
@@ -130,6 +135,9 @@ task.spawn(function()
 					local j0 = math.clamp(d.j - 3, 3, nest.ny - 10)
 					fine = Nest.new(nest, { nx = 32, ny = 32, ratio = 4, steps = 4, i0 = i0, j0 = j0, vortex = 0.03 })
 					fine.yieldFn = yieldFn
+					if run then
+						run.fine = fine
+					end
 				end
 			end
 			if run then

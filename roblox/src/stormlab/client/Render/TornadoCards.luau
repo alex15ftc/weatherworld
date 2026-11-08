@@ -141,7 +141,8 @@ function TornadoCards.new(ctx: any): any
 	folder.Name = "TornadoCards"
 	-- T switches the funnel body: the spiral stream or the ring stack (for comparing)
 	game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
-		if not processed and input.KeyCode == Enum.KeyCode.T then
+		-- (not with LeftAlt held: the game's engine-mode debug keys, client/EngineStorms)
+		if not processed and input.KeyCode == Enum.KeyCode.T and not game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.LeftAlt) then
 			local UIS = game:GetService("UserInputService")
 			if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.RightControl) then
 				-- Ctrl+T: the smoke body's card layout - on the funnel's surface, or by its radius (the old)

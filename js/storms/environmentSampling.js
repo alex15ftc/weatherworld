@@ -152,16 +152,28 @@ export function diagnoseStormMotion(environment, character = {}) {
   const shearEast = environment.wind500.eastKt - environment.surfaceWind.eastKt;
   const shearNorth = environment.wind500.northKt - environment.surfaceWind.northKt;
   const shearMagnitude = Math.hypot(shearEast, shearNorth) || 1;
-  // A rotating updraft deviates from the mean wind; an organized line moves with its cold pool.
-  const deviation = (character.leftMover ? -1 : 1) * rotating * (1 - linear) * BUNKERS_DEVIATION_KT;
-  let east = meanEast + deviation * shearNorth / shearMagnitude;
-  let north = meanNorth - deviation * shearEast / shearMagnitude;
+  // An organized line moves with its cold pool (Corfidi), the rest with the mean wind.
+  let east = meanEast, north = meanNorth;
   const cloudEast = environment.wind850.eastKt * CLOUD_LAYER_WEIGHTS[850] + environment.wind500.eastKt * CLOUD_LAYER_WEIGHTS[500];
   const cloudNorth = environment.wind850.northKt * CLOUD_LAYER_WEIGHTS[850] + environment.wind500.northKt * CLOUD_LAYER_WEIGHTS[500];
   const k = LINE_PROPAGATION_K[0] + (LINE_PROPAGATION_K[1] - LINE_PROPAGATION_K[0]) * ramp(character.coldPool, LINE_COLD_POOL[0], LINE_COLD_POOL[1]);
   east += linear * (cloudEast + k * (cloudEast - environment.wind850.eastKt) - east);
   north += linear * (cloudNorth + k * (cloudNorth - environment.wind850.northKt) - north);
-  const coldPoolShare = 0.1 + 0.25 * linear;
+  // A rotating updraught propagates off the mean wind, 7.5 m/s along the 0-6 km shear normal (Bunkers et al. 2000:
+  // the deviation fit to observed supercells, cold-pool-driven propagation and all). It is added after the line's
+  // share, by how far the storm rotates and how far it is still a discrete storm rather than part of a line (asLine,
+  // the 0.25-0.7 ramp of the line share StormGeometry and PrecipitationField use), so a discrete supercell takes all
+  // of it. (Until 2026-11-07 it was scaled by rotating x (1 - line) before the line blend took (1 - line) of it again:
+  // (1 - line)^2. Mature supercells have rotating = 1 but a line share of 0.17 (0.01-0.42), from crowding, so they
+  // deviated 6.0 m/s (4.2-7.3) where Bunkers gives 7.5, and the storm-relative wind above 3 km blew to the right of
+  // their motion, the inflow side, so their hail fell in the inflow notch: notch median 46 dBZ at 2 km;
+  // docs/research/ENGINE-PHYSICS-PLAN.md, Phase 2 step 3.)
+  const asSupercell = rotating * (1 - ramp(linear, 0.25, 0.7));
+  const deviation = (character.leftMover ? -1 : 1) * asSupercell * BUNKERS_DEVIATION_KT;
+  east += deviation * shearNorth / shearMagnitude;
+  north -= deviation * shearEast / shearMagnitude;
+  // The cold pool pushes the storm along its motion: in the supercell's share Bunkers' deviation already holds it.
+  const coldPoolShare = (0.1 + 0.25 * linear) * (1 - asSupercell);
   east = east * KT_TO_KPH + (environment.coldPoolPropagation?.east ?? 0) * coldPoolShare;
   north = north * KT_TO_KPH + (environment.coldPoolPropagation?.north ?? 0) * coldPoolShare;
   return { east, north };

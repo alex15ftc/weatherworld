@@ -17,6 +17,7 @@
 import { Atmosphere } from '../atmosphere.js';
 import { updateCellDiagnostics } from '../sounding.js';
 import { clamp } from '../scenarios/math.js';
+import { coldPoolDepthForDeficitK } from '../storms/ColdPool.js';
 
 const KT = 1.943844, KAPPA = 0.2857, RD = 287, GRAVITY = 9.81, DAY = 86400, RHO_AIR = 1.2, LATENT_HEAT = 2.5e6;
 const kelvinToF = k => (k - 273.15) * 9 / 5 + 32;
@@ -114,11 +115,25 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // whatever its coldness, and every dome jumped to 4.5 km deep, or back, as the last warm cell
   // left or came onto the map: 6-10 hPa in an hour.
   domeSlope: 1 / 120, domeMinM: 300, domeMaxM: 4500, domeWarmK: 1.5, domeDeficitKPerM: 0.0035,
-  // Air cooled by storms' rain (cold pools): how deep it is, and how long it takes to warm back up
-  // at night (by day the sun warms it; see fill).
-  coldPoolDepthM: 800, coldPoolRecoveryHoursNight: 8,
-  // ...and how fast the wind over it mixes it out (the wind's run, km, for one e-folding), and
-  // the least deficit kept (K; fainter is mixed in with its air mass). Its air: evaporating rain
+  // Air cooled by storms' rain (cold pools). (2026-11-07, Phase 2 step 4: until then it was 800 m deep
+  // whatever its coldness, pushed as part of the air masses' push (0.4 x sqrt(g 1200 m dT / T), 4-5 m/s
+  // at its edges against observed gust fronts' 5-15), and warmed back up at night on a set 8-hour
+  // e-folding. A storm's pool left below 2 K within half an hour, and outflow boundaries lasted a median
+  // half hour against observed 6-24 hours.) Now:
+  //   depth   the depth a storm's pool of its coldness has (ColdPool.js coldPoolDepthForDeficitK,
+  //           about 0.55 km at 1 K to 1.4 km at 7 K);
+  //   spread  a density current of its own, Fr sqrt(g h dT / T) down the slope of its weight h dT
+  //           (coldPoolFroude: Fr 0.7-1.1 observed and simulated, Benjamin 1968, Simpson and Britter
+  //           1979, Bryan and Rotunno 2008), on top of the low-level wind it sits in, so it spreads
+  //           slower against that wind than with it;
+  //   warming the sun's heating through its own depth by day (a thin pool goes fast), nothing at night;
+  //   mixing  see coldPoolMixingKm.
+  coldPoolFroude: 0.9,
+  // ...and how fast the wind over it mixes it out (the wind's run, km, for one e-folding, in neutral
+  // air), held back by the pool's own stability: by Ric / (Ri + Ric), Ri = g h dT / (T U^2) its bulk
+  // Richardson number and Ric = nightRichardson (stable stratification damps the turbulence that
+  // entrains warm air into it; 2026-11-07). And the least deficit kept (K; fainter is mixed in with
+  // its air mass). Its air: evaporating rain
   // cools it toward the wet bulb and adds the vapour (at most coldPoolEvaporationShare of the way),
   // and the air that came down in the downdraught arrives below saturation, warmed by its descent
   // faster than the rain could keep it saturated: at most coldPoolHumidity relative humidity
@@ -685,11 +700,12 @@ export class RegionalAtmosphere {
 
   // Flow of cold air toward the warmer air beside it (see coldPushFactor). Works on the
   // air-mass temperature with the standing warmth of the high ground taken out, so the slope
-  // of the terrain is not mistaken for a front.
+  // of the terrain is not mistaken for a front. Storms' rain-cooled air spreads as a density
+  // current of its own (coldPoolSpread), added to it.
   coldPush() {
     const { nx, ny, dx } = this, p = this.params, n = nx * ny, reach = p.coldPushReachCells;
     const air = new Float64Array(n);
-    this.world.forEachCell((cell, x, y) => { air[y * nx + x] = this.theta[y * nx + x] - p.plateauWarmthK * this.plateau(cell.terrain.elevationM) - this.coldPool[y * nx + x]; });
+    this.world.forEachCell((cell, x, y) => { air[y * nx + x] = this.theta[y * nx + x] - p.plateauWarmthK * this.plateau(cell.terrain.elevationM); });
     // Warmest air within reach, in two sweeps (rows, then columns).
     const rowMax = new Float64Array(n), warmest = new Float64Array(n);
     for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) { let m = -Infinity; for (let xx = Math.max(0, x - reach); xx <= Math.min(nx - 1, x + reach); xx++) m = Math.max(m, air[y * nx + xx]); rowMax[y * nx + x] = m; }
@@ -700,6 +716,29 @@ export class RegionalAtmosphere {
       // No push where the air is the same all around (deep inside an air mass).
       const speed = p.coldPushFactor * Math.sqrt(GRAVITY * p.coldAirDepthM * Math.max(0, warmest[k] - air[k]) / this.theta[k]) * ramp(size * 1e5, p.coldPushGradient[0], p.coldPushGradient[1]);
       this.coldPushU[k] = size > 0 ? speed * gx / size : 0; this.coldPushV[k] = size > 0 ? speed * gy / size : 0;
+    }
+    this.coldPoolSpread();
+  }
+
+  // Depth (m) of the rain-cooled air in a cell: the depth a storm's pool of its coldness has.
+  coldPoolDepthAt(k) { return coldPoolDepthForDeficitK(this.coldPool[k]); }
+
+  // Storms' rain-cooled air spreads as a density current: at Fr sqrt(g h dT / T) (coldPoolFroude),
+  // down the slope of its weight h dT (the pressure it adds at the ground). The pool's edge moves at
+  // that speed where its weight falls away within the cell's neighbours; inside the pool, where it is
+  // even, the air hardly moves (the gravity current's own flow grows from its middle to its head).
+  coldPoolSpread() {
+    const { nx, ny, dx } = this, p = this.params, n = nx * ny, weight = new Float64Array(n);
+    for (let k = 0; k < n; k++) weight[k] = this.coldPool[k] > 0 ? this.coldPool[k] * this.coldPoolDepthAt(k) : 0;
+    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+      const k = y * nx + x, e = Math.min(nx - 1, x + 1), w = Math.max(0, x - 1), north = Math.max(0, y - 1), south = Math.min(ny - 1, y + 1);
+      let most = 0;
+      for (let yy = north; yy <= south; yy++) for (let xx = w; xx <= e; xx++) most = Math.max(most, weight[yy * nx + xx]);
+      if (!(most > 0)) continue;
+      const gx = (weight[y * nx + e] - weight[y * nx + w]) / ((e - w) * dx), gy = (weight[north * nx + x] - weight[south * nx + x]) / ((south - north) * dx), size = Math.hypot(gx, gy);
+      if (!(size > 0)) continue;
+      const speed = p.coldPoolFroude * Math.sqrt(GRAVITY * most / this.theta[k]) * Math.min(1, size * 2 * dx / most);
+      this.coldPushU[k] -= speed * gx / size; this.coldPushV[k] -= speed * gy / size;
     }
   }
 
@@ -906,14 +945,17 @@ export class RegionalAtmosphere {
         this.lidTheta[k] = Math.min(p.lidMaxThetaK, this.lidTheta[k] - p.lidCoolingKPerDay * dt / DAY);
         if (daytime) {
           // The sun warms the rain-cooled layer at the rate the ground heats the air there (less over
-          // wet ground), through its depth: a 4 K pool 800 m deep goes in about five hours of full
-          // sun, a deeper or colder one takes longer. (2026-10-16; it faded over 3 hours whatever
-          // its size, and outflow boundaries lasted 1.5 hours.)
+          // wet ground), through its depth: a 4 K pool (about 750 m deep) goes in about five hours of
+          // full sun, a deeper or colder one takes longer. (2026-10-16; it faded over 3 hours whatever
+          // its size, and outflow boundaries lasted 1.5 hours.) At night nothing warms it but mixing.
           const dryHere = 1 - ramp(this.surfaceMixingRatio[k] || this.moisture[k], p.dryMixingRatio + 1, p.gulfMixingRatio - 3);
           const heating = (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryHere) * (1 - p.wetGroundHeatingCut * this.wetGround[k]) * sunHere;
-          this.coldPool[k] = Math.max(0, this.coldPool[k] - heating * dt / (RHO_AIR * 1005 * p.coldPoolDepthM));
-        } else this.coldPool[k] *= Math.exp(-dt / 3600 / p.coldPoolRecoveryHoursNight);
-        this.coldPool[k] *= Math.exp(-stir * dt / (p.coldPoolMixingKm * 1000));
+          if (this.coldPool[k] > 0) this.coldPool[k] = Math.max(0, this.coldPool[k] - heating * dt / (RHO_AIR * 1005 * this.coldPoolDepthAt(k)));
+        }
+        if (this.coldPool[k] > 0) {
+          const richardson = GRAVITY * this.coldPool[k] * this.coldPoolDepthAt(k) / this.theta[k] / Math.max(1, stir * stir);
+          this.coldPool[k] *= Math.exp(-stir * dt / (p.coldPoolMixingKm * 1000) * p.nightRichardson / (richardson + p.nightRichardson));
+        }
         if (this.coldPool[k] < p.coldPoolLeastK) this.coldPool[k] = 0;
         const mesoLift = Math.min(p.mesoLiftMaxMs, Math.max(0, Number(cell.features?.isentropicLiftMs) || 0) + Math.max(0, Number(cell.features?.jetConvergenceLiftMs) || 0));
         this.capLift[k] = this.capLift[k] * Math.exp(-dt / (p.capLiftHours * 3600)) + (p.capLiftRatio - 1) * outer.ascentKh * dt / 3600 + p.mesoCapLiftShare * mesoLift * p.capLapseGapKPerM * dt;
@@ -922,7 +964,7 @@ export class RegionalAtmosphere {
       }
       const leePressureHpa = this.leeHpa[k], leeU = this.leeU[k], leeV = this.leeV[k];
       // Rain-cooled air is heavier: the pressure under it is higher (the storm's mesohigh).
-      const coldPoolHpa = RHO_AIR * GRAVITY * p.coldPoolDepthM * this.coldPool[k] / this.theta[k] / 100;
+      const coldPoolHpa = this.coldPool[k] > 0 ? RHO_AIR * GRAVITY * this.coldPoolDepthAt(k) * this.coldPool[k] / this.theta[k] / 100 : 0;
       const surfacePressure = (1013 + leePressureHpa + this.thermalHpa[k] + coldPoolHpa + this.balancedPressureHpa(outer)) * Math.exp(-terrain / 8434.5);
       const seaLevelPressure = surfacePressure / Math.exp(-terrain / 8434.5);
       const anomaly = outer.layerK - this.referenceLayerK;

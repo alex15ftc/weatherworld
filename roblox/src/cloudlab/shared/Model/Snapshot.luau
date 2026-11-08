@@ -1,6 +1,6 @@
 --!native
 -- What the client draws, per model column, packed into one buffer:
---   cloud runs: the lowest two contiguous runs of cloud (qc + qsn + 0.3 (qr + qh) above CLOUD, kg/kg: snow is
+--   cloud runs: the lowest two contiguous runs of cloud (qc + qsn above CLOUD, kg/kg: snow is
 --   the anvil's visible cloud), base and top
 --   (m; 0 = none) - the storm's body and an anvil above a clear gap
 --   rain at the ground (mm/h, hail included), surface temperature perturbation (K), vertical vorticity at the
@@ -24,7 +24,7 @@ function Snapshot.pack(m: any): buffer
 	buffer.writei32(b, 12, m.ox)
 	buffer.writei32(b, 16, m.oy)
 	buffer.writef32(b, 20, m.uhMax or 0)
-	local qc, qr, qh, qsn, th, w, u, v = m.qc, m.qr, m.qh, m.qsn, m.th, m.w, m.u, m.v
+	local qc, qsn, th, w, u, v = m.qc, m.qsn, m.th, m.w, m.u, m.v
 	local zf, th0 = m.zf, m.th0
 	local k1, k5 = m:levelAt(1000), m:levelAt(5000)
 	local CL = Snapshot.CLOUD
@@ -37,7 +37,8 @@ function Snapshot.pack(m: any): buffer
 			local nr, inside = 0, false
 			for k = 1, nz do
 				local n = col + k * SXY
-				local c = qc[n] + qsn[n] + 0.3 * (qr[n] + qh[n])
+				-- (cloud: droplets and the anvil's ice; falling rain and hail are not cloud - js/cloudmodel/FrameCodec.js)
+				local c = qc[n] + qsn[n]
 				if c > CL then
 					if not inside then
 						nr += 1

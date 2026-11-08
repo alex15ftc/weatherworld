@@ -100,6 +100,23 @@ function FlashField.at(field: any, x: number, y: number, z: number): number
 	return 2 * (1 - exp(-sum / 2))
 end
 
+-- The same light at a box round (x, y, z), half hx across and hz up (m), each flash taken at the
+-- box's nearest point to it: for what stands for a region (a cloud puff for its block of cloud), so
+-- a flash inside or beside the region lights it fully however large the region is.
+function FlashField.atBox(field: any, x: number, y: number, z: number, hx: number, hz: number): number
+	local sum = 0
+	for _, fl in field.flashes do
+		local b = fl.now or 0
+		if b > 0.001 then
+			local dx = math.max(0, math.abs(x - fl.x) - hx)
+			local dy = math.max(0, math.abs(y - fl.y) - hx)
+			local dz = math.max(0, math.abs(z - fl.z) - hz)
+			sum += b / (1 + (dx * dx + dy * dy + dz * dz) / (fl.radius * fl.radius))
+		end
+	end
+	return 2 * (1 - exp(-sum / 2))
+end
+
 function FlashField.camera(field: any, cx: number, cy: number, cz: number): number
 	return FlashField.at(field, cx, cy, math.max(cz, 300))
 end

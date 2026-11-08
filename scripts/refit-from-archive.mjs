@@ -3,6 +3,8 @@
 // --calibration-data and --cig-data, fits the tables (fit-outlook-calibration.mjs, fit-cig-calibration.mjs),
 // and re-scores a check set if one is given.
 //   node scripts/refit-from-archive.mjs <fit dir> [--days 5] [--seeds 1-20] [--check <dir> --check-days 3 --check-seeds 21-30] [--install]
+// --chances-only (with --install): install the chances' table alone and keep CIG_SHARE as it is.
+// --jobs N: at most N scoring workers at once (default 6). OUTLOOK_ENSEMBLE (outlook-verify.mjs) reaches the scoring too.
 // --install writes the tables into js/forecast/outlookCalibration.js: the chances' table as fitted (a Day 1
 // update table, day1update, is kept from before when the fit has none), and the intensity groups as fitted
 // except that, by the user's choice (2026-10-23), a tornado group the fit would never draw is drawn as
@@ -19,7 +21,7 @@ const range = text => { const [a, b] = text.split('-').map(Number); return Array
 const fitDir = args[0], node = process.execPath, here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 if (!fitDir || !fs.existsSync(fitDir)) { console.error('usage: node scripts/refit-from-archive.mjs <fit dir> [--check <dir>] [--install]'); process.exit(1); }
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'refit-'));
-const run = (script, list) => execFileSync(node, [path.join(here, script), ...list], { encoding: 'utf8', maxBuffer: 1 << 28 });
+const run = (script, list) => execFileSync(node, [path.join(here, script), ...list, '--jobs', flag('--jobs', '6')], { encoding: 'utf8', maxBuffer: 1 << 28 });
 
 // 1. The fitting mornings, scored again with the fitting data.
 const scored = run('outlook-verify.mjs', [flag('--days', '5'), '--seeds', range(flag('--seeds', '1-20')), '--from', fitDir, '--calibration-data', '--cig-data']);
@@ -35,7 +37,8 @@ if (args.includes('--install')) {
   let source = fs.readFileSync(file, 'utf8');
   const before = JSON.parse(source.match(/^export const CALIBRATION = Object\.freeze\((.*)\);$/m)[1]);
   const fitted = JSON.parse(calLine.match(/Object\.freeze\((.*)\);$/)[1]);
-  if (!fitted.day1update && before.day1update) fitted.day1update = before.day1update;
+  // A table the fit has no data for (day1update; Day 3 from an archive saved with --outlooks 2) is kept from before.
+  for (const [table, rows] of Object.entries(before)) if (!fitted[table]) fitted[table] = rows;
   const shares = JSON.parse(cigLine.match(/Object\.freeze\((.*)\);$/)[1]);
   for (const day of Object.keys(shares)) {
     const t = shares[day].tornado;
@@ -44,7 +47,7 @@ if (args.includes('--install')) {
   }
   const stamp = new Date().toISOString().slice(0, 10);
   source = source.replace(/^export const CALIBRATION = .*$/m, `// (Refitted ${stamp} from ${fitDir} by scripts/refit-from-archive.mjs.)\nexport const CALIBRATION = Object.freeze(${JSON.stringify(fitted)});`);
-  source = source.replace(/^export const CIG_SHARE = .*$/m, `// (Refitted ${stamp} from ${fitDir} by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)\nexport const CIG_SHARE = Object.freeze(${JSON.stringify(shares)});`);
+  if (!args.includes('--chances-only')) source = source.replace(/^export const CIG_SHARE = .*$/m, `// (Refitted ${stamp} from ${fitDir} by scripts/refit-from-archive.mjs, with the user's tornado-group rule.)\nexport const CIG_SHARE = Object.freeze(${JSON.stringify(shares)});`);
   fs.writeFileSync(file, source);
   console.log(`installed in ${file}`);
 }

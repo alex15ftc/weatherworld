@@ -1,0 +1,10 @@
+# Luau linter (selene, installed globally by aftman). roblox.yml is the Roblox API
+# definition, regenerate with: selene generate-roblox-std
+std = "roblox"
+
+[lints]
+# The sim code shadows short names (x, y, dt) on purpose and keeps unused args in callbacks.
+shadowing = "allow"
+unused_variable = "warn"
+multiple_statements = "allow"
+mixed_table = "allow"

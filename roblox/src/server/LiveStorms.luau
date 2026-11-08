@@ -7,8 +7,15 @@
 --   engine's last storm tick), how it moves, the tick's hour and whether the engine is paused.
 --   every SEND_S (a game minute at the 8x clock): each player gets each storm's newest client
 --   frame, near within NEAR_KM of them and far beyond, as a RemoteEvent buffer (still Zstd), with
---   where the storm is now and its motion (client/LiveStorms.luau).
+--   where the storm is now, its motion and the engine's look record (client/LiveStorms.luau).
 -- The full frames are kept here (for the winds and damage to come) but not used yet.
+-- Lightning (the engine's own storms): each storm's flashes a minute and how many reach the ground
+-- and are positive come with the bundle (js/storms/Lightning.js); where they go comes from its
+-- near frame, as the engine's rule: ground strikes about the precipitation core (columns weighted
+-- by their rain and hail), positive ones from the anvil (cloud only aloft) where there is one,
+-- cloud flashes through the deep cloud (columns weighted by their depth). Drawn a game second at a
+-- time, each seeded by the storm and the second, so every server makes the same flashes; sent to
+-- every client as ("flash", list in map km) for the lab's lightning to draw (client/WeatherClient).
 -- Off unless workspace attribute LiveStorms = true (the engine then runs a model a storm near
 -- players: up to WEATHER_STORM_WORKERS of them). Uses StormHost's engine: WeatherFeedUrl or
 -- Config.WEATHER_FEED_URL, with the weather_feed_key secret. Status in workspace LiveStormsStatus.
@@ -19,6 +26,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.World.Config)
 local WorldMap = require(ReplicatedStorage.Shared.World.WorldMap)
 local StormFrames = require(ReplicatedStorage.Shared.CloudModel.StormFrames) :: any
+local ClientFrame = require(ReplicatedStorage.Shared.CloudModel.ClientFrame) :: any
+local EncodingService = game:GetService("EncodingService")
 
 local LiveStorms = {}
 
@@ -26,6 +35,10 @@ local POLL_S = 3
 local SEND_S = 7.5
 local NEAR_KM = 30
 local CLOCK = 8 -- game seconds a real second (StormHost TIME_SCALE; the engine's SIM_HOURS_PER_REAL_MINUTE)
+local FLASH_STEP_S = 1 -- game seconds one draw of flashes covers
+local FLASH_CATCH_UP = 40 -- at most this many steps drawn at once (after a stall)
+local ANVIL_BASE_M = 5000 -- a column whose cloud starts this high is anvil (cloud only aloft)
+local CHARGE_TOP_M = 5000 -- cloud flashes stay in columns whose cloud reaches this high (the charge region)
 
 type Held = { seq: number, nest: boolean, ended: boolean, full: buffer?, near: buffer?, far: buffer? }
 local held: { [string]: Held } = {}
@@ -35,10 +48,23 @@ local sentBytes: { [Player]: number } = {}
 local startedAt = os.clock()
 -- the engine's storm clock: the tick hour last seen and when it was first seen (os.clock)
 local tickHour, tickSeenAt, paused = -1, 0, false
+-- the tick's wall-clock time (server time s, the bundle's tickAtMs): when the engine's clock and
+-- this server's agree (within CLOCK_TRUST_S), storms are moved on from it - the same moment on
+-- every server (from when this server first saw the tick, servers polling 3 s apart placed the
+-- same storm up to ~400 m apart, and drew its flashes at different moments)
+local tickAt: number? = nil
+local CLOCK_TRUST_S = 300
 local url, key = "", nil :: string?
 local remote: RemoteEvent
 
+local lastPrinted = ""
 local function status(text: string)
+	-- (debug: printed when it changes, the rate left out of the comparison)
+	local key = string.gsub(text, "up to [%d%.]+ KB/s", "")
+	if workspace:GetAttribute("EngineStormsDebugCam") == true and key ~= lastPrinted then
+		lastPrinted = key
+		print("[LiveStorms] " .. text)
+	end
 	workspace:SetAttribute("LiveStormsStatus", text)
 end
 
@@ -63,7 +89,139 @@ end
 -- Game seconds since the engine's storm tick at `hour` (none while paused).
 local function gameSince(hour: number): number
 	if paused then return 0 end
+	if tickAt then
+		return (tickHour - hour) * 3600 + math.max(0, workspace:GetServerTimeNow() - tickAt) * CLOCK
+	end
 	return (tickHour - hour) * 3600 + (os.clock() - tickSeenAt) * CLOCK
+end
+
+-- The engine's UTC hour now, the same on every server (its storm tick moved on from the tick's
+-- wall-clock time; held while the engine is paused), or nil until a trusted tick has come.
+-- (server/StormHost's clock in frame-fed cards mode)
+function LiveStorms.clockUtc(): number?
+	if not tickAt or tickHour < 0 then return nil end
+	return tickHour + gameSince(tickHour) / 3600
+end
+
+-- Where a storm's flashes can go, from its newest near frame: per column the weight of a ground
+-- strike (rain + hail, mm/h), of a positive anvil strike and of a cloud flash (cloud depth, m),
+-- and its cloud's base and top (m).
+type Sites = { seq: number, f: any, core: { number }, anvil: { number }, cloud: { number }, base: { number }, top: { number }, sums: { number } }
+local sites: { [string]: Sites } = {}
+local lastSlot: { [string]: number } = {}
+
+local function sitesOf(id: string, h: Held): Sites?
+	local s = sites[id]
+	if s and s.seq == h.seq then return s end
+	if not h.near then return nil end
+	local f = ClientFrame.decode(EncodingService:DecompressBuffer(h.near :: buffer, Enum.CompressionAlgorithm.Zstd))
+	local n = f.nx * f.ny
+	local core, anvil, cloud, base, top = table.create(n, 0), table.create(n, 0), table.create(n, 0), table.create(n, 0), table.create(n, 0)
+	local sums = { 0, 0, 0 }
+	for j = 1, f.ny do
+		for i = 1, f.nx do
+			local c = (j - 1) * f.nx + i
+			local b1, t1 = ClientFrame.cloudM(ClientFrame.byte(f, "base1", i, j)), ClientFrame.cloudM(ClientFrame.byte(f, "top1", i, j))
+			local b2, t2 = ClientFrame.cloudM(ClientFrame.byte(f, "base2", i, j)), ClientFrame.cloudM(ClientFrame.byte(f, "top2", i, j))
+			local depth = math.max(0, t1 - b1) + math.max(0, t2 - b2)
+			local hi = math.max(t1, t2)
+			base[c], top[c] = if t1 > b1 then b1 else b2, hi
+			core[c] = ClientFrame.rateMmh(ClientFrame.byte(f, "rain", i, j)) + ClientFrame.rateMmh(ClientFrame.byte(f, "hail", i, j))
+			anvil[c] = if t1 > b1 and b1 >= ANVIL_BASE_M then depth else 0
+			cloud[c] = if hi >= CHARGE_TOP_M then depth else 0
+			sums[1] += core[c]
+			sums[2] += anvil[c]
+			sums[3] += cloud[c]
+		end
+	end
+	s = { seq = h.seq, f = f, core = core, anvil = anvil, cloud = cloud, base = base, top = top, sums = sums }
+	sites[id] = s
+	return s
+end
+
+local function pick(w: { number }, sum: number, rng: Random): number
+	local x, acc = rng:NextNumber() * sum, 0
+	for c, v in w do
+		acc += v
+		if acc >= x and v > 0 then return c end
+	end
+	return #w
+end
+
+local function poisson(rng: Random, mean: number): number
+	local k, p, limit = 0, 1, math.exp(-mean)
+	repeat
+		k += 1
+		p *= rng:NextNumber()
+	until p <= limit or k > 50
+	return k - 1
+end
+
+local function normal(rng: Random): number
+	return math.sqrt(-2 * math.log(1 - rng:NextNumber())) * math.cos(2 * math.pi * rng:NextNumber())
+end
+
+local function hash(text: string): number
+	local h = 2166136261
+	for i = 1, #text do h = (bit32.bxor(h, string.byte(text, i)) * 16777619) % 4294967296 end
+	return h
+end
+
+-- The flashes of storm id in game-second slot (map km across, y south; heights m above the
+-- ground), with the storm at (xKm, yKm) now.
+local function flashesIn(id: string, s: Sites, w: any, slot: number, xKm: number, yKm: number, out: { any })
+	local rng = Random.new((hash(id) + slot * 7919) % 2147483647)
+	local n = poisson(rng, (w.flashesPerMin or 0) / 60 * FLASH_STEP_S)
+	local f = s.f
+	local function km(c: number): (number, number)
+		local i, j = (c - 1) % f.nx + 1, (c - 1) // f.nx + 1
+		local xm, ym = (i - 1 + rng:NextNumber()) * f.dx, (j - 1 + rng:NextNumber()) * f.dx
+		return xKm + (xm - f.anchorX) / 1000, yKm - (ym - f.anchorY) / 1000
+	end
+	for _ = 1, n do
+		local e: any = { seed = rng:NextInteger(1, 1e9), current = 0 }
+		if rng:NextNumber() < (w.groundShare or 0) and s.sums[1] > 0 then
+			local positive = rng:NextNumber() < (w.positiveShare or 0)
+			local c = if positive and s.sums[2] > 0 then pick(s.anvil, s.sums[2], rng) else pick(s.core, s.sums[1], rng)
+			e.kind = if positive then "+cg" else "cg"
+			e.x1, e.y1 = km(c)
+			e.z1 = 0
+			e.x0, e.y0 = e.x1 + normal(rng) * 1.5, e.y1 + normal(rng) * 1.5
+			local top = math.max(s.top[c], 6000)
+			e.z0 = if positive then math.min(top, 8000 + 3000 * rng:NextNumber()) else math.min(top - 500, 4500 + 3000 * rng:NextNumber())
+			e.current = if positive then 40 + 160 * rng:NextNumber() else math.exp(normal(rng) * 0.5) * 25
+		elseif s.sums[3] > 0 then
+			local c = pick(s.cloud, s.sums[3], rng)
+			local lo = math.max(s.base[c] + 1000, 5500)
+			local hi = math.max(s.top[c] - 1000, lo)
+			local len, a = 3 + 9 * rng:NextNumber(), 2 * math.pi * rng:NextNumber()
+			e.kind = "ic"
+			e.x0, e.y0 = km(c)
+			e.z0 = lo + (hi - lo) * rng:NextNumber()
+			e.x1, e.y1, e.z1 = e.x0 + len * math.cos(a), e.y0 + len * math.sin(a), e.z0 + 1500 * (2 * rng:NextNumber() - 1)
+		end
+		if e.kind then table.insert(out, e) end
+	end
+end
+
+local function lightning()
+	if paused or tickHour < 0 then return end
+	local now = math.floor((tickHour * 3600 + gameSince(tickHour)) / FLASH_STEP_S)
+	local out = {}
+	for id, h in held do
+		local w = where[id]
+		if w and (w.flashesPerMin or 0) > 0 and not h.ended then
+			local s = sitesOf(id, h)
+			if s then
+				local from = math.max((lastSlot[id] or now - 1) + 1, now - FLASH_CATCH_UP)
+				local dt = gameSince(tickHour)
+				local xKm, yKm = w.xKm + w.ue * dt / 1000, w.yKm - w.ve * dt / 1000
+				for slot = from, now do flashesIn(id, s, w, slot, xKm, yKm, out) end
+			end
+		end
+		lastSlot[id] = now
+	end
+	if #out > 0 then remote:FireAllClients("flash", out) end
 end
 
 local function poll()
@@ -86,6 +244,8 @@ local function poll()
 	end
 	paused = bundle.paused
 	if bundle.tickHour and bundle.tickHour ~= tickHour then tickHour, tickSeenAt = bundle.tickHour, os.clock() end
+	local at = if bundle.tickAtMs and bundle.tickAtMs > 0 then bundle.tickAtMs / 1000 else nil
+	tickAt = if at and math.abs(workspace:GetServerTimeNow() - at) < CLOCK_TRUST_S then at else nil
 	where = bundle.where
 	-- storms no longer shown in detail are dropped (the clients are told)
 	local live = {}
@@ -93,6 +253,7 @@ local function poll()
 	for id in held do
 		if not live[id] then
 			held[id] = nil
+			sites[id], lastSlot[id] = nil, nil
 			for _, m in sent do m[id] = nil end
 			remote:FireAllClients("gone", id)
 		end
@@ -123,8 +284,14 @@ local function send()
 				local frame = if near then h.near else h.far
 				if frame then
 					local rate = if paused then 0 else CLOCK
-					-- motion in m a real second, east and north
-					remote:FireClient(p, "frame", id, xKm, yKm, frame, near, w.ue * rate, w.ve * rate)
+					-- motion in m a real second, east and north; the engine's look record (StormFrames
+					-- version 4) moved on to now like the storm, for the client's drawn storm (FrameWorld)
+					local look = nil
+					if w.look then
+						look = table.clone(w.look) :: any
+						look.xKm, look.yKm = w.look.xKm + w.ue * dt / 1000, w.look.yKm - w.ve * dt / 1000
+					end
+					remote:FireClient(p, "frame", id, xKm, yKm, frame, near, w.ue * rate, w.ve * rate, look)
 					mine[id] = h.seq
 					sentBytes[p] = (sentBytes[p] or 0) + buffer.len(frame)
 				end
@@ -156,6 +323,13 @@ function LiveStorms.start()
 			local ok, err = pcall(poll)
 			if not ok then status("poll failed: " .. tostring(err)) end
 			task.wait(POLL_S)
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+			local ok, err = pcall(lightning)
+			if not ok then warn("[LiveStorms] lightning failed: " .. tostring(err)) end
 		end
 	end)
 	task.spawn(function()

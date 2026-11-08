@@ -1,4 +1,5 @@
 --!strict
+--!native
 -- Drawing into an RGBA pixel buffer (a map tile, or the radar's image): lines, and areas given
 -- as rings of map miles (flat lists x1, y1, x2, y2...) filled by the even-odd rule, hatched or
 -- outlined. The buffer may start clear (a product tile over the map): colours are laid over
@@ -35,6 +36,36 @@ export type Raster = {
 
 -- Hatch lines in screen pixels, so they keep their spacing at every zoom.
 local SPACING, WIDTH, DASH, GAP = 11, 1.4, 9, 6
+-- Each ring's (or polyline's) extent in map miles { x0, y0, x1, y1 }, worked out once: product
+-- rings are kept as they came, and every tile they are drawn into asks.
+local extents: { [{ number }]: { number } } = setmetatable({}, { __mode = "k" }) :: any
+local function extentOf(points: { number }): { number }
+	local held = extents[points]
+	if held then
+		return held
+	end
+	local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+	for i = 1, #points - 1, 2 do
+		local x, y = points[i], points[i + 1]
+		if x < x0 then
+			x0 = x
+		end
+		if x > x1 then
+			x1 = x
+		end
+		if y < y0 then
+			y0 = y
+		end
+		if y > y1 then
+			y1 = y
+		end
+	end
+	local e = { x0, y0, x1, y1 }
+	extents[points] = e
+	return e
+end
+-- The gate under each pixel of the last radar drawn polar, for the view it was drawn in.
+local polarCache: { key: string?, index: buffer? } = { key = nil, index = nil }
 
 -- pixels: pw x ph RGBA; toScreen: map miles to screen pixels; scale: image pixels per screen
 -- pixel; originX, originY: where this image's top-left pixel is in a larger picture made of
@@ -161,7 +192,25 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 		end
 	end
 
+	-- The image in map miles (it is a plain scale and shift of the map), and whether points with
+	-- an extent could reach it within pad screen pixels. (A ring wholly off the image changes no
+	-- pixel of it, fill, hatch or outline: by the even-odd rule a ring off to one side crosses a
+	-- row of it an even number of times to the left of every pixel, or none.)
+	local sx0, sy0 = toScreen(0, 0)
+	local sx1, sy1 = toScreen(1, 1)
+	local milesX, milesY = 1 / ((sx1 - sx0) * scale), 1 / ((sy1 - sy0) * scale) -- per image pixel
+	local leftMi, topMi = -sx0 * scale * milesX, -sy0 * scale * milesY
+	local rightMi, bottomMi = leftMi + pw * milesX, topMi + ph * milesY
+	local function reaches(points: { number }, pad: number): boolean
+		local e = extentOf(points)
+		local px, py = pad * scale * math.abs(milesX) + math.abs(milesX), pad * scale * math.abs(milesY) + math.abs(milesY)
+		return e[3] >= math.min(leftMi, rightMi) - px and e[1] <= math.max(leftMi, rightMi) + px and e[4] >= math.min(topMi, bottomMi) - py and e[2] <= math.max(topMi, bottomMi) + py
+	end
+
 	local function polyline(points: { number }, width: number, c: Colour)
+		if not reaches(points, width / 2 + 2) then
+			return
+		end
 		for i = 3, #points, 2 do
 			line(points[i - 2], points[i - 1], points[i], points[i + 1], width, c)
 		end
@@ -173,11 +222,14 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 	-- only visits the rows it crosses, so the cost goes with the outlines and the area's width.
 	local SUB = 4
 	local cover: { number } = table.create(pw + 2, 0)
+	-- (the whole pixels inside each span, added once a row as a running sum: run[x] is how much
+	-- the coverage steps up at pixel x - 1)
+	local run: { number } = table.create(pw + 2, 0)
 	local function coverage(rings: Rings, each: (py: number, x0: number, x1: number, cover: { number }) -> ())
 		local rows: { [number]: { number } } = {}
 		local lines = ph * SUB
 		for _, ring in rings do
-			local n = #ring
+			local n = if reaches(ring, 1) then #ring else 0
 			for i = 1, n - 1, 2 do
 				local j = if i + 2 > n then 1 else i + 2
 				local ax, ay = toScreen(ring[i], ring[i + 1])
@@ -220,8 +272,9 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 								cover[fa + 1] += (b - a) * share
 							else
 								cover[fa + 1] += (fa + 1 - a) * share
-								for x = fa + 1, fb - 1 do
-									cover[x + 1] += share
+								if fb > fa + 1 then
+									run[fa + 2] += share
+									run[fb + 1] -= share
 								end
 								cover[fb + 1] += (b - fb) * share
 							end
@@ -230,6 +283,12 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 				end
 			end
 			if lo <= hi then
+				local inside = 0
+				for x = lo, hi do
+					inside += run[x + 1]
+					run[x + 1] = 0
+					cover[x + 1] += inside
+				end
 				each(py, lo, hi, cover)
 				for x = lo, hi do
 					cover[x + 1] = 0
@@ -246,7 +305,15 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 				local a = cov[x + 1]
 				if a > 0.001 then
 					touched = true
-					over(o, r, g, b, alpha * math.min(1, a))
+					if a >= 1 and buffer.readu8(pixels, o + 3) == 0 then
+						-- (a whole pixel over a clear one, as over() would lay it)
+						buffer.writeu8(pixels, o, r)
+						buffer.writeu8(pixels, o + 1, g)
+						buffer.writeu8(pixels, o + 2, b)
+						buffer.writeu8(pixels, o + 3, alpha * 255 + 0.5)
+					else
+						over(o, r, g, b, alpha * math.min(1, a))
+					end
 				end
 				o += 4
 			end
@@ -255,27 +322,40 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 
 	local function hatch(rings: Rings, kind: string, c: Colour)
 		local inv = 1 / scale
+		-- How many pixels after one whose stripe phase is q (q >= on, off the stripe) are surely
+		-- off it too: the phase grows by inv a pixel and comes back on only at period. (Kept a
+		-- hair short, so a pixel near the turn is tested as it is.)
+		local function offFor(q: number, on: number, period: number): number
+			if q < on then
+				return 0
+			end
+			return math.max(0, math.floor((period - 1e-6 - q) / inv))
+		end
 		coverage(rings, function(py, x0, x1, cov)
 			local sy = (py + oy + 0.5) * inv
-			local o = (py * pw + x0) * 4
-			for px = x0, x1 do
+			local px = x0
+			while px <= x1 do
+				local skip = 0
 				local a = cov[px + 1]
-				if a > 0.001 then
-					local sx = (px + ox + 0.5) * inv
-					local on
-					if kind == "dashLeft" then
-						on = (sx + sy) % SPACING < WIDTH and (sx - sy) % (DASH + GAP) < DASH
-					elseif kind == "right" then
-						on = (sx - sy) % SPACING < WIDTH
-					else
-						on = (sx - sy) % SPACING < WIDTH or (sx + sy) % SPACING < WIDTH
-					end
-					if on then
-						touched = true
-						over(o, c[1], c[2], c[3], math.min(1, a))
-					end
+				local sx = (px + ox + 0.5) * inv
+				local on
+				local down, up = (sx - sy) % SPACING, (sx + sy) % SPACING
+				if kind == "dashLeft" then
+					local dash = (sx - sy) % (DASH + GAP)
+					on = up < WIDTH and dash < DASH
+					skip = math.max(offFor(up, WIDTH, SPACING), offFor(dash, DASH, DASH + GAP))
+				elseif kind == "right" then
+					on = down < WIDTH
+					skip = offFor(down, WIDTH, SPACING)
+				else
+					on = down < WIDTH or up < WIDTH
+					skip = math.min(offFor(down, WIDTH, SPACING), offFor(up, WIDTH, SPACING))
 				end
-				o += 4
+				if on and a > 0.001 then
+					touched = true
+					over((py * pw + px) * 4, c[1], c[2], c[3], math.min(1, a))
+				end
+				px += 1 + skip
 			end
 		end)
 	end
@@ -294,7 +374,7 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 	local function stroke(rings: Rings, width: number, c: Colour)
 		for _, ring in rings do
 			local n = #ring
-			if n >= 4 then
+			if n >= 4 and reaches(ring, width / 2 + 2) then
 				for i = 1, n - 1, 2 do
 					local j = if i + 2 > n then 1 else i + 2
 					local ax, ay, bx, by = ring[i], ring[i + 1], ring[j], ring[j + 1]
@@ -355,28 +435,53 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 	end
 
 	local TAU = 2 * math.pi
+	-- Which gate each pixel shows depends only on the view and the radar, so it is worked out
+	-- once (polarCache, kept between images) and a radar loop's frames are drawn by lookup.
 	local function polar(bytes: buffer, radials: number, gates: number, gateMiles: number, cx: number, cy: number, lut: { number }, alpha: number)
 		local reach = gates * gateMiles
 		local x0, x1 = pixelRange(cx - reach, cx + reach, mppx, offX, pw)
 		local y0, y1 = pixelRange(cy - reach, cy + reach, mppy, offY, ph)
-		local perRadial = radials / TAU
-		for py = y0, y1 do
-			local dy = (py + 0.5) * mppy + offY - cy
-			local o = (py * pw + x0) * 4
-			for px = x0, x1 do
-				local dx = (px + 0.5) * mppx + offX - cx
-				local gate = math.floor(math.sqrt(dx * dx + dy * dy) / gateMiles)
-				if gate < gates then
-					local az = math.atan2(dx, -dy)
-					if az < 0 then
-						az += TAU
+		if x1 < x0 or y1 < y0 then
+			return
+		end
+		local bw = x1 - x0 + 1
+		local key = string.format("%d %d %d %d %d %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %d %d", pw, ph, x0, x1, y0, y1, mppx, mppy, offX, offY, cx, cy, gateMiles, radials, gates)
+		if polarCache.key ~= key then
+			local index = buffer.create(bw * (y1 - y0 + 1) * 4)
+			local perRadial = radials / TAU
+			local k = 0
+			for py = y0, y1 do
+				local dy = (py + 0.5) * mppy + offY - cy
+				for px = x0, x1 do
+					local dx = (px + 0.5) * mppx + offX - cx
+					local gate = math.floor(math.sqrt(dx * dx + dy * dy) / gateMiles)
+					local at = -1
+					if gate < gates then
+						local az = math.atan2(dx, -dy)
+						if az < 0 then
+							az += TAU
+						end
+						at = (math.floor(az * perRadial) % radials) * gates + gate
 					end
-					local radial = math.floor(az * perRadial) % radials
-					local byte = buffer.readu8(bytes, radial * gates + gate)
+					buffer.writei32(index, k, at)
+					k += 4
+				end
+			end
+			polarCache.key, polarCache.index = key, index
+		end
+		local index = polarCache.index :: buffer
+		local k = 0
+		for py = y0, y1 do
+			local o = (py * pw + x0) * 4
+			for _ = x0, x1 do
+				local at = buffer.readi32(index, k)
+				if at >= 0 then
+					local byte = buffer.readu8(bytes, at)
 					if byte ~= 0 then
 						putLut(o, lut, byte, alpha)
 					end
 				end
+				k += 4
 				o += 4
 			end
 		end

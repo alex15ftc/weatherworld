@@ -176,6 +176,11 @@ function Storm.environment(s: Storm, world: any)
 	s.cin = par.cin
 	s.lcl = sb.lclZ
 	s.base = math.clamp(par.lclZ, 150, 4000)
+	-- (the engine's cloud base when it is given - client/FrameWorld: the game's drawn storm stands
+	-- on the engine's base, so its wall cloud and tornado meet the engine's at the same height)
+	if s.eng and s.eng.base then
+		s.base = math.clamp(s.eng.base, 150, 4000)
+	end
 	s.el = par.elZ or (s.base + 2000)
 	s.lfc = par.lfcZ or 6000
 	local a = Thermo.analyse(prof)
@@ -1559,6 +1564,10 @@ function Storm.step(s: Storm, dt: number, world: any)
 	-- physics sets it, 0.3-0.6 km on the Supercell scenario, 2026-10-30; the old 0.6 cap was
 	-- what set it before)
 	s.lowering = math.clamp(125 * spread - lclMix + dynLower, 0, 0.85 * s.base) * s.rot
+	if s.eng and s.eng.lowering then
+		-- (the engine's wall cloud, when it is given: client/FrameWorld)
+		s.lowering = math.clamp(s.eng.lowering, 0, 0.85 * s.base)
+	end
 	s.wallBase = s.base - s.lowering
 
 	-- anvil: spreads downstream at the anvil-level storm-relative wind
@@ -2235,6 +2244,9 @@ function Storm.setEngine(s: any, e: any, x: number, y: number, at: number)
 		-- stands over it
 		torDX = if e.tornado and e.tornado.pos then e.tornado.pos[1] - e.pos[1] else nil,
 		torDY = if e.tornado and e.tornado.pos then e.tornado.pos[2] - e.pos[2] else nil,
+		-- the engine's cloud base and wall-cloud lowering (m), when given (client/FrameWorld; the
+		-- server's lab sim keeps its own from its sounding)
+		base = e.baseM, lowering = e.loweringM,
 	}
 	s.leftMover = e.leftMover
 end

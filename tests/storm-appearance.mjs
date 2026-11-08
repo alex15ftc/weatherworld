@@ -10,7 +10,7 @@ import { buildStormGeometry } from '../js/storms/StormGeometry.js';
 import { GameFeed, GAME_FEED } from '../server/GameFeed.js';
 import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
 import { stormPrecipGrid, PRECIP_GRID } from '../js/radar/StormPrecipGrid.js';
-import { WIND_PROFILE_LEVELS, WIND_PROFILE_STEP_M } from '../js/radar/PrecipitationField.js';
+import { WIND_PROFILE_LEVELS, WIND_PROFILE_STEP_M } from '../js/storms/PrecipitationField.js';
 import { Storm } from '../js/storms/Storm.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 

@@ -10,6 +10,8 @@ import { createStormInternalField, evolveStormInternalField } from './StormInter
 import { initializeTornadoState, updateTornadoState } from './TornadoEngine.js';
 import { initializeStormStructure, evolveStormStructure } from './StormStructureEngine.js';
 import { tornadoGeometry } from './StormGeometry.js';
+import { environmentParcel } from './UpdraughtParcel.js';
+import { updateStormColumn } from './StormColumn.js';
 import { sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStormColdPool } from './StormEnvironmentCoupling.js';
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
 
@@ -58,6 +60,9 @@ function createStorm(world, candidate, environment, modeHint = null, parentId = 
   // The inner fields are the storm's picture for radar; nothing in its behaviour reads them,
   // so a world that draws no radar (a forecast run) leaves them out (world.withoutStormPictures).
   if (!world.withoutStormPictures) createStormInternalField(storm, environment, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
+  // The column its rain falls through (StormColumn.js), for its geometry's rain and hail cores; a world
+  // that draws no storm pictures (a forecast run) places them by the older rule.
+  if (!world.withoutStormPictures) updateStormColumn(world, storm);
   initializeStormStructure(storm, environment, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   initializeStormDiagnostics(storm, environment);
   storm.mode = describeStormMode(storm, environment);
@@ -116,7 +121,15 @@ function updateStorm(world, storm, dtHours) {
   const { fuelCape, elevatedFeed, feedEnvironment, starving } = stormFuel(environment);
   storm.fuelCape = fuelCape; storm.elevatedFeed = elevatedFeed;
 
-  const physics = diagnoseStormRealizationPhysics(feedEnvironment, storm);
+  // (Earlier tries: a core sized by the updraught itself ran weaker updraughts narrower and weaker
+  // still, supercells 26 m/s, 2026-11-06; the drawn parcel's own peak as the potential stacked drag and
+  // the dragged-along air on Peters' ECAPE, 35 m/s against 40 and big hail halved, 2026-11-07.)
+// Phase 2 step 2, second try (2026-11-07): the entrainment is the environment-set parcel's
+  // dilution, sqrt(ECAPE / CAPE) (Peters et al. 2023; UpdraughtParcel.js environmentParcel), on the
+  // engine's own CAPE; its top the parcel's overshoot, scaled by the updraught against this potential.
+  const parcel = environmentParcel(world, storm, { elevated: elevatedFeed });
+  const physics = diagnoseStormRealizationPhysics(feedEnvironment, storm, parcel);
+  storm.parcel = parcel ? { peakMs: physics.theoreticalUpdraftMs * parcel.dilution * physics.inhibitionEfficiency, topM: parcel.topM, elM: parcel.elM } : null;
   storm.physics = physics;
   // A rotating updraft draws its inflow from farther out and is less disturbed by worked-over
   // air and by its neighbours.
@@ -143,6 +156,7 @@ function updateStorm(world, storm, dtHours) {
   updateStormConfidence(storm, environment, dtHours);
   stepStormRotation(storm, environment, dtHours);
   if (!world.withoutStormPictures) evolveStormInternalField(storm, environment, dtHours);
+  if (!world.withoutStormPictures) updateStormColumn(world, storm);
   evolveStormStructure(storm, environment, dtHours, `${world.evolution?.config?.seed ?? 1}|${storm.id}`);
   diagnoseObservedStorm(storm, environment);
   storm.mode = describeStormMode(storm, environment);

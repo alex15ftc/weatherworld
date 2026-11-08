@@ -1,4 +1,5 @@
 --!strict
+--!native
 -- The world map itself, drawn into one piece of an image (a tile of the map screen,
 -- MapCanvas.luau): land cover with hill-shading, the section-line roads once zoomed in,
 -- rivers, interchange ramps and the main roads. Pure Luau with no Roblox services (the data

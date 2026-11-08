@@ -1205,13 +1205,13 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 		-- (as the storm occludes the RFD wraps round it and erodes it: it shrinks and its rear side
 		-- goes ragged, a horseshoe open toward the clear slot; RESEARCH-WALLCLOUD-HV.md, NWS spotter guide)
 		local occl = clamp(s.occl or 0, 0, 1)
-		local R = 0.5 * clamp(0.9 * Ru, 1000, 3500) * (0.3 + 0.7 * q) * (1 - 0.35 * occl) -- (young lowerings small, as WallStream, 2026-11-03)
 		local zb = max(s.wallBase, 60)
 		local D = max(base - zb, 30)
+		local R = Util.wallRadius(Ru, D, q, occl) -- (the same as WallStream)
 		-- the underside: flat across most of it, rising steeply to the base at the rim
 		local function zbot(r: number): number
 			local f = math.min(r / R, 1)
-			return zb + D * f ^ 4
+			return zb + D * f ^ Util.WALL_FLOOR_P
 		end
 		wall = { x = lx, y = ly, spin = (s.vlow or 0) / (0.3 * Ru), cards = {} }
 		local function addWall(ox: number, oy: number, z: number, cw: number, ch: number, a: number, lit: number, sky: number, tex: string?, albedo: number?, nx: number?, ny: number?, nz: number?)

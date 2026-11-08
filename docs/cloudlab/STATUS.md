@@ -564,6 +564,259 @@ The same live loop in the main game. The storm visuals are still to be chosen, s
   - Lune reads the same bundle with StormFrames.luau.
   - The proxy passes the two routes and refuses the rest, bad bodies (400) and large bodies (413).
   - The cloudlab live mode still works on the shared FrameView.
+- **Studio, main game ("plains" place, seed 8181, StartMiles 420,340):**
+  - The player was reported, and S0001 got a worker with its nest. It warmed up to 52 model minutes in about 50 s.
+  - The client then showed it 10 km away, which matches the engine's stud positions (3,835 studs apart).
+  - Model 54 min, 419 cloud columns, 140 mm/h. The existing StormHost storms ran alongside, and no errors appeared.
+- **Open:** the visuals (to be chosen).
+
+## Live loop hardening (2026-11-05)
+
+- **Restarts (PLAN A5, rest):** the storm models are saved each time the world is (the runtime's saveState calls StormWorkers.saveModels), so a restart resumes both from the same moment.
+  - Each worker writes its own file, data/cache/storm-models/<id>.cms: "CMS1", a JSON head (meta, the worker's clock, EngineRun's fields), then the module memory, Zstd level 1.
+  - A mature storm with its nest is 110 MB of memory, about 54 MB saved, in about 0.25 s.
+  - When a storm gets a worker and a save exists, it carries on from the save. The save must have the same world tag (code version and seed, read fresh each time) and be within restoreKm (15 km) plus the storm's motion since. Otherwise the storm warms up as before.
+  - Saves are removed when a storm ends; any older than a day are cleared at start. WEATHER_PERSIST=off saves nothing.
+  - The restore is bit for bit: tests/cloudmodel-restore.mjs (a 35-minute storm, 40 steps after the restore, the whole memory equal).
+- **Frame numbers** now start at the Unix time in seconds. A storm's new worker (after a restart, or when shown again) used to start at 1, below what the Roblox servers held, so they ignored its frames.
+- **tests/storm-workers.mjs** covers the restart: the model is saved (26 MB young), every worker is closed, and new workers restore it with its nest and higher frame numbers.
+- **Load test** (tools/cloudlab/loadtest.mjs; seed 2, 9 to 18 storms, a player beside each, 6 workers, every nest on, 4 minutes):
+  - Five old storms warmed up together to 57 model minutes in about 85 s.
+  - Then every model kept pace: steps of 160-220 ms against the 750 ms the clock allows, about a quarter of a core each.
+  - Storms beyond 6 got no worker and keep the engine's look. The machine's CPU was about 30% of 24 threads, Studio included.
+- **Tunnel:** the main game (plains) through cloudflared and the proxy showed the storm as before (423 cloud columns, 140 mm/h).
+  - With WEATHER_GAME_KEY set, both storm routes return 401 through the tunnel without the key and 200 with it.
+  - Studio can't read the weather_feed_key secret in local runs, so the game sending the key is still untested; it uses the same header as StormHost.
+
+## Model storms dying after about 2 hours: the lift's fallback (2026-11-05)
+
+- **Seen:** on seed 2, a 3-hour run of S0001 fed the engine's record every tick lost its updraft (5 km w from 25 to 1-3 m/s) from about 110 minutes, while the engine kept the storm at intensity 0.73-0.79.
+- **Not the cold pool:** the same storm with tight, weaken-only or no cold-pool steering, and S0002 with and without steering, lived or died without pattern. The cold pool's size or steering didn't decide it.
+- **The cause:** the lift froze. liftSpot only moved the lift when it found an updraft over 3 m/s at 3 km. After a dip it stayed at a stale spot, likely in the outflow, where no new cell could start.
+- **Fix** (js/cloudmodel/EngineRun.js and the Luau lab's EngineRun.luau, liftSpot):
+  - With no updraft, the walk into the low-level inflow starts from the middle of the cold pool (weighted by its coldness, ground air more than COLD_K = 1 K below the environment).
+  - So the lift goes to the gust front's warm side, where a new cell starts. With no cold pool either, it stays as before.
+- **After the fix:** all six runs (S0001 normal, tight, weaken-only and none; S0002 normal and none) reached 3 hours. Each recovered after its dips, e.g. S0001 normal went from 4 m/s at 110-120 min back to 29 m/s.
+
+## Painting audit of the cloud model (2026-11-05, read-only; nothing changed yet)
+
+Most player-visible first:
+1. **Main lift** (EngineRun.js setDrive 1; cloudmodel.c applyDrive):
+   - A 10 km cos² ball at 1.5 km pulls w up to 8 m/s × the engine's intensity within 5 s, forever.
+   - It is an analytic shape written onto w, and the 8 stands in for the record's updraftMs.
+   - Alternative: drive it through buoyancy or low-level convergence, with its strength set from the gap between the model's measured updraft and updraftMs.
+2. **Tornado lift** (EngineRun.js setDrive 2):
+   - Keyed on the engine's tornado label: a 2.5 km ball at 700 m, w = 6 × min(1, mph/100), switched on above 0.005 /s spin at 1 km.
+   - The nest's pressure drop, and so any drawn funnel, comes mostly from it. This belongs with the model-driven tornado work.
+3. **Cold-pool steering** (cloudmodel.c cm_cold_pool_rate / applyColdPool):
+   - It scales every cool anomaly below 1.5 km by one factor toward the engine's coldPoolK.
+   - Alternative: steer the process that makes the cold air (evaporation and melting) instead.
+4. **Environment easing** (cloudmodel.c relaxEnvironment, borderline):
+   - The same increment is added to every cell of a level, inside the storm too.
+   - Alternative: ease only the inflow edge and let the wind bring the new air in.
+5. **Frame thresholds** (FrameCodec.js, borderline): rain and hail weighted 0.3 in what counts as cloud; the 1e-4 cloud cut; snow only above a fixed 6 km; the nest's cloud base only below 3 km; the pressure drop measured against the nest's own mean.
+6. **Debug drawing only** (FrameView.luau): the 2 km rain top where there's no cloud, the 200 m wall box, the constant 12 Pa per m.
+7. **Start-up lift** (EngineRun constructor): start-up only.
+
+Checked and fine: dynamics, boundaries, sponge, drag, microphysics (a fixed hail intercept is a normal simplification), box following, the nest (placement, feedback, blending), setMotion, soundings, and the engine record itself.
+
+## Engine against model: sync check (2026-11-05)
+
+Tool: `node tools/cloudlab/synccheck.mjs [seed=2] [storms=3] [hours=3]`. It runs young storms through 3 game hours with the nest on and the engine's record every tick, then scores how closely each engine/model pair moves together (r).
+
+Seed 2, S0001-S0003:
+- **Cold pool:** r 0.43-0.49. It tracks, within about 1 K after the first hour.
+- **Strength and updraft:** r 0.39-0.61. The engine eases smoothly from 1.0 to about 0.7, but the model pulses between 2 and 36 m/s at 5 km. S0003's model storm was nearly gone twice, for 30-40 minutes each (60-90 and 140-160 min), while the engine had it at 0.67-0.73.
+- **Rain:** r 0.32-0.59. It follows the pulses; the engine holds 60-75 dBZ throughout.
+- **Hail:** r -0.06 to 0.40. The model only puts hail on the ground in its first hour or so; after about 100 minutes it has none, while the engine says 0.8-1.2 inch.
+- **Rotation:** 1 km r 0.16-0.25; 50 m r -0.23 to 0.44. Unrelated: the engine's mesocyclone is steady at 0.4-0.6.
+- **Tornadoes:** the engine had none in these runs, so tornado timing is untested.
+
+## The lift as a push (2026-11-05; painting audit item 1)
+
+- **Was:** a 10 km cos² ball at 1.5 km that pulled w up to 8 m/s × the engine's intensity within 5 s. It overwrote the wind, and the 8 stood in for the record's updraftMs.
+- **Now** (js/cloudmodel/EngineRun.js steerPush, the Luau lab's EngineRun.luau, and a push mode for drives in cloudmodel.c and CloudModel.luau):
+  - The lift is an upward acceleration in an 8 km ball (PUSH_R) at 0-3 km, added to the wind, which the pressure and buoyancy answer. Nothing is overwritten.
+  - Its strength is up to PUSH_MAX = 0.2 m/s² at the middle. Once a model minute it is set from the gap between the model's peak updraft (within 16 km of the storm point) and the engine's updraftMs. A whole gap swings it from none to full in PUSH_TAU = 8 min.
+  - The spot is still liftSpot's.
+  - The old pull stays as opts.lift = a number (synccheck: SYNC_LIFT=8).
+- **Tuning** (S0001 and S0003, seed 2):
+  - A 0.05 push let every storm die by 50 min: a wide, flat push is mostly cancelled by the pressure it builds.
+  - Narrow 4 km balls at 0.1-0.2 died too.
+  - 0.3-0.4, or a 5 min reaction, swung between nothing and full and overshot (66 m/s against the engine's 34-46).
+- **Sync check against the old pull** (3 storms, 3 h):
+  - 10-minute readings with the model storm nearly gone (peak w < 10 m/s) fell from 8 to 1.
+  - S0003's two 30-40 minute gaps are gone.
+  - Hail reached the ground in 33 readings, up from 22. S0001 and S0002 keep some hail late; S0003 still has little.
+  - The r scores fell (strength 0.21-0.49): the engine barely changes after the first hour, so r mostly measures the first hour's fall, which the model now doesn't copy as closely. The gap count is the better measure.
+- **tests/cloudmodel-restore.mjs** now leaves out the first 16 MB (Zig's call stack, which holds only what the last calls left behind). Since the 17-argument drive call, 8 bytes there differ between the two processes; model state is unchanged.
+- **Not done:** Studio check of the lab with the push. Next: hail and rotation steering (audit items 2-3, the tornado lift with the tornado discussion).
+
+## Hail steered by the engine; rotation left to the shear (2026-11-05)
+
+- **Hail** (EngineRun.js and EngineRun.luau hailSize / steerHail; cm_get/cm_set id 41 n0h; the worker record now carries hailIn):
+  - Once a model minute the model's biggest stone at the ground is measured. It is the size at which about one stone that large or larger reaches a square metre in 10 minutes, from the model's own exponential size distribution and fall speed (c √D), in the column with the most ground hail.
+  - That size is compared with the engine's hail size, and the hail intercept n0h is moved by up to a factor-of-e gap in 10 minutes (n0h ∝ size⁻⁴), in both the model and its nest. Its range is 1e2-4e5 m⁻⁴, about 0.4-4.5 inch stones.
+  - Hail held aloft but melting before the ground counts as too small, so the stones grow.
+  - Sync check (seed 2, 3 storms, 3 h):
+    - Model stones follow the engine's size. S0001 from 70 min was within about 0.1-0.3 inch (1.29 against 1.2, 1.00 against 1.0); S0002 and S0003 were within about 0.5-1 inch. Stone-size r 0.40-0.69.
+    - Readings with ground hail: 47, against 33 with the push alone and 22 with the old pull.
+    - Near-gone storms stayed at 0-1 readings each.
+  - Open: early ground hail peaks of 330-500 mm/h (liquid) at single cells look high.
+- **Rotation:** not steered.
+  - The engine's mesocyclone strength comes from the inflow's helicity and shear times its updraft (js/storms/StormRotation.js). The model gets the same inflow winds and now follows the engine's updraft, so its rotation grows from the same ingredients.
+  - Across storms they agree: the engine's two more rotating storms (0.5-0.6) have model 1 km spin mostly at 0.01-0.035 /s, and its weakest (0.39) has the weakest, mostly under 0.01.
+  - The low r within a life comes from the engine's number barely changing. Steering spin toward the engine's index would be painting.
+
+## Tornado physics, step 1: the model makes the engine's tornado (2026-11-05; audit item 2)
+
+- **The old tornado lift did nothing.** On SupercellB, runs with it and without it (torLift 0) were near identical. While the engine had 141-185 mph down, the 250 m nest had 25-27 mph and its spin was weakening. 250 m is too coarse to hold a tornado.
+- **Now** (js/cloudmodel/EngineRun.js and EngineRun.luau steerTornado; the C core and Nest.luau):
+  - **The 62.5 m nest** (FINE: 32², 2 km across, 4 steps a 250 m step) starts in the 250 m nest on its strongest 50 m spin when the engine has a tornado down. There is no way to free a nest, so it then stays until the storm ends.
+    - The lab server and the run share it (the lab still starts its own at 0.04 /s, and the run takes it).
+    - It doubles the step cost: 125 → 250 ms on SupercellB, against a 750 ms budget.
+  - **A push** under the finest nest's strongest 50 m spin, which stretches it into a tornado:
+    - A 1 km ball (TOR_R) over 0-800 m (TOR_Z 400), up to 2 m/s² (TOR_PUSH_MAX).
+    - Set each model minute from the gap between that nest's peak ground wind and the engine's tornado wind, so a whole gap reaches full push in 2 min.
+    - Off once the engine's tornado lifts, so the model's vortex winds down by itself. The old pull is still available as opts.torLift = a number.
+  - **Nests keep their place over the ground** when their parent's grid moves (keepPlace), and follow their own vortex by recentring.
+    - Before, a nest moved with its parent: the 1 km box jumping 2 km to a new updraft cell took the 2 km fine nest off its tornado, which then "died" in a minute.
+    - Recentring now moves up to RECENTRE_MAX = 4 parent cells a minute (was 1, which is 4 m/s for the fine nest), with or without a vortex of its own. Where staying would leave the parent's grid, a nest moves with it as before.
+- **Tuning** (tornado time):
+  - 0.25-1 m/s² made no tornado, nor did a 500 m ball.
+  - 2 in a 1 km ball at 0-1.5 km made 76-85 mph but lost it once the box jumped.
+  - With the nests keeping their place, low (0-800 m) beat 0-1.5 km and stronger (3-4) or narrower (700 m) pushes.
+- **Result:**
+  - SupercellB: 10 min of tornado at 60-93 mph (engine 141-185), 50 m spin up to 0.86 /s, a 14 hPa low.
+  - SupercellLife: 12 min of spin over 0.1 /s at 48-61 mph (engine 78-83), a low of only about 2.4 hPa.
+  - Both are weaker than the engine: 62.5 m can't hold its strongest winds.
+- **Checks:**
+  - JS and Luau identical over SupercellB to 40 min with the nest and a forced 100 mph tornado from 30 min (per-minute values and the box, nest and fine checksums).
+  - The restore and storm-workers tests pass.
+  - Sync check (seed 2, 3 storms, no tornadoes): 0-1 near-gone readings and 46 hail readings, as before.
+- **Not done:** the fine nest isn't in the frames yet (step 3), and it isn't Studio-tested.
+
+## Tornado strength: gusts, mixing and who decides what (2026-11-05)
+
+- **Gust comparison (TOR_GUST 1.4):** the engine's tornado mph is an EF-scale peak gust; the model's is its strongest cell mean at the lowest level. The push now compares the engine's mph with 1.4 × the model's (peak gusts over land run 1.3-1.5 × the mean), and run.torWind is that gust.
+  - SupercellLife: model gust 73-86 mph against the engine's 78-83. In step.
+  - SupercellB: 72-80 mph against 141-185. 62.5 m can't hold an EF3+ core.
+- **Lighter mixing in the fine nest was tried and rejected:** 19 and 4.7 m²/s, against the box's 75, made weaker, shorter tornadoes on both storms (spin over 0.1 /s for 2-8 min, against 6-11). The setter stays (model.K / model.Kh, cm_set 27/28; ENGINE_RUN.FINE.K) but is unused.
+- **No 31 m nest for now:** it would take the tornado step to about 500 ms of the 750 ms budget. Revisit only if tornadoes look too broad up close.
+- **Who decides what:**
+  - The cloud model decides the tornado's look and place: position, size, shape, track, funnel (pressure drop, condensation) and the local wind pattern.
+  - The engine's mph decides its strength for damage, reports, surveys and warnings, as for every other storm product.
+  - Where the model's wind is weaker than the engine's (strong tornadoes), ground winds for damage are to be scaled to the engine's mph (step 4), not taken raw.
+- **Checks:** JS and Luau identical (SupercellB to 40 min, nest and forced tornado); restore and storm-workers tests pass.
+
+## Tornado physics, step 3: the tornado in the frames (2026-11-05)
+
+- **The block:** while the engine has a tornado down, every frame carries a 92-byte tornado block: full frames flags bit 2, client frames bit 3, near and far alike.
+  - Layout: js/cloudmodel/FrameCodec.js TORNADO.
+  - Written from EngineRun.tornadoShape once a model minute. It only reads the model, so the model's state is untouched.
+  - Read by FrameCodec.decodeHeader and decodeClientFrame (JS), and FrameCodec.decodeHeader and ClientFrame.decode / readTornado (Luau).
+- **From the model** (where and how it looks):
+  - The vortex at the ground: the finest nest's strongest spin averaged over 0-1 km (TOR_COLUMN), a column joining the ground to the storm.
+  - Its centre at 8 heights (50 m to 3 km), each the strongest spin within a 45° lean of the height below, and where it leaves the nest.
+  - The cloud base over it: the lowest cloud within 500 m, the wall cloud.
+  - Its own gust, spin, spin trend and pressure drop.
+- **From the engine's wind and damage width, by vortex physics** (what 62.5 m can't hold):
+  - Core: a Rankine core whose wind falls to EF0's 65 mph at the edge of the damage path, so R = (width/2) × 65 / mph.
+  - Swirl: the engine's peak wind less the storm's motion.
+  - Pressure drop: cyclostrophic, ρv² at the centre.
+  - Condensation funnel: where the core's drop reaches what condenses at that height, ρg(base − z). That gives the funnel tip and its radius at each height.
+  - Examples:
+    - 185 mph, 705 yd: core 113 m, drop 43 hPa, funnel from an 812 m base down to 418 m.
+    - 80 mph, 67 yd: core 25 m, 5 hPa, about 50 m of funnel under a 1.75 km base. A weak tornado under a high base shows only a short funnel, as in reality; the debris whirl will come from the ground winds (step 4).
+- **Steering changes found on the way** (these change the model, in C, JS and Luau):
+  - The push now goes under the column spin, not the strongest 50 m spin. On SupercellB that was inflow at the fine nest's edge from the coarser grid, with the real column elsewhere.
+  - Nests recentre on a vortex from the second cell in, not the third. A vortex drifting to the edge was missed.
+  - Results:
+    - SupercellB: the model's gust went from 72-80 to 30-44 m/s (up to 98 mph), and the column is upright to 1 km, leaning 300-800 m above.
+    - SupercellLife: 28-44 m/s (engine 78-83 mph), with model drops up to 7 hPa.
+- **Checks:**
+  - tests/tornado-frame.mjs: a known shape round-trips through full, near and far frames, with and without a nest. With --luau <dir> it writes frames for a Lune check of the Luau readers, which passed.
+  - JS and Luau identical over SupercellB to 40 min with a forced tornado.
+  - The restore and storm-workers tests pass.
+  - Sync check (seed 2, 3 storms, no tornadoes) unchanged to the digit.
+- **Open:**
+  - On SupercellB the 250 m nest ended against the box's west edge (i0 3). The box was following a newer updraft cell east while the tornado's storm was west of it. If the box leaves the tornado behind, the tornado is lost. Look at this in step 5.
+  - Not Studio-tested.
+
+## Nests tethered to the updraft; the model's missing mesocyclone (2026-11-05)
+
+- **What looked like the box leaving the tornado wasn't.** The box stays on the storm's updraft, where the engine puts the storm.
+  - On SupercellB from minute 60, the 250 m nest followed a low-level spin carried south-west on the gust front at about 7 m/s relative to the storm.
+  - At minute 86 the model's tornado formed there, 20-25 km from the updraft. The engine has its tornado at the storm's centre.
+- **Fix: TETHER = 8 parent cells** (cloudmodel.c recentre, Nest.luau). A nest follows a vortex of its own only within 8 cells (8 km for the 250 m nest) of its parent's storm centre, the same reach place() searches; beyond that it goes back to the spin near the updraft. Nests whose parent has no storm centre (the fine nest) are untethered.
+- **Results:**
+  - SupercellLife: tornado 3-6 km from the updraft, spin to 0.52 /s, gust to 36 m/s.
+  - SupercellB: 10 km away, weak (spin 0.07 /s or less, gust 32 m/s or less).
+  - JS and Luau identical. Sync check (seed 2): strength r 0.44 / 0.26 / 0.33 (was 0.49 / -0.01 / 0.31), hail 0.72 / 0.47 / 0.68 (was 0.73 / 0.70 / 0.76), near-gone readings 0 / 2 / 1. Within three storms' scatter.
+- **The real gap: the model's storms often have no mesocyclone when the engine's do.**
+  - SupercellB 60-96 min and SupercellLife 122-140 min: the model's updraft helicity (2-5 km) is at the follow floor, 50 m²/s², while the engine's meso is 0.9.
+  - The sync check's rotation pair is r -0.31 to 0.32.
+  - Rotation was left to the shear (the same SRH and shear the engine uses), but that isn't enough at 1 km: the tornado push then works on whatever spin is near the updraft.
+  - Next decision: steer the mesocyclone by a field, the way the lift, hail and tornado are steered.
+
+## The mesocyclone: convergence lift, a stronger push, drawn at the updraught (2026-11-05)
+
+- **Why the model had no mesocyclone:** its updraught didn't last. With all steering off, SupercellB was a supercell by 16 min (w5 21 m/s, UH 855) and dead by 40; SupercellLife died by about 100 min. When the updraught was strong the 250 m nest rotated (UH to 1,800), so rotation followed the updraught.
+- **What it wasn't:**
+  - The wind profile: helicity 230-280 (B) and 200-400 (Life) m²/s² against the box's motion.
+  - The box's motion: bare runs at the Bunkers right-mover motion died the same way.
+  - Mixing (K 10-25), ice.
+  - The inflow air: box edges stay environmental, and cold air covers 10% or less.
+  - The core physics: tools/cloudlab/wk82.luau, unsteered, holds its supercell the full 120 min (w 45-56 m/s, UH 400-500).
+  - The exported soundings: they match the engine's numbers (CAPE 1,900-2,800, CIN -50 to -100 J/kg).
+- **What it was:** the cap. Cooling the 850-700 hPa layer 3 K, or lifting the soundings by the engine's own surface convergence, made SupercellLife a self-sustaining supercell for 140 min unsteered. The model's box has a uniform environment with none of the mesoscale rising air the engine's convergence implies.
+- **Built (EngineRun.js and .luau, liftRows; JS and Luau identical):**
+  - The inflow (and start) sounding is lifted by the engine's surface convergence at the inflow point: LabWindow inflowConvergence, record.convergence; scenarios use the nearest exported cell.
+  - Each level takes the air from w(z) × LIFT_S (1 h) below, where w = C·z to 1.5 km, falling to 0 at 6 km; divergence sinks it.
+  - The feed gains a field (inflowConvergence); the engine and world are untouched.
+- **Most live storms sit in weak convergence** (0-3 × 10⁻⁵ /s; they move away from the boundaries that started them), so they still need the push.
+  - PUSH_MAX 0.2 → 0.35. Sync check (seed 2, 3 storms, 3 h): no near-gone readings (was 0/2/1), rotating 14/17/9 of 18 readings (15/11/6), rotation r with the engine's meso 0.45/0.57/0.25 (-0.05/0.21/0.29), low-spin r 0.20/0.20/0.03 (-0.40/-0.47/-0.25). Hail r 0.72/0.55/0.18 (0.73/0.70/0.76): worse for one storm.
+  - Narrower pushes (3-5 km) were worse.
+- **Drawn at the engine's updraught:** the box follows the model's updraught, but frames were drawn at the engine storm's position, its low-level mesocyclone, 1-5 km behind the updraught in a rotating storm. Now js/game/StormWorkers.js drawnAt uses storm.geometry.updraught (and the save check uses the same point).
+- **Engine placement checked against docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md:**
+  - The engine puts the low-level mesocyclone and wall cloud directly behind the updraught: 165-180° from the motion, 1-2 km, the updraught leaning along the storm-relative mid-level wind.
+  - The tornado forms under it and drifts left-rear as the storm occludes (at most 0.4 updraught radii).
+  - That matches the research: the BWER is 2-6 km ahead within ±30° of the motion, and the tornado is at the occlusion point on the rear edge. The engine's 1-2 km is at the short end.
+- **The model's mesocyclone sits elsewhere:** 2-3 km to the right of its updraught (south for these east-moving storms), the median 3 km from the engine's once both are drawn from the updraught. Open: which point to pin when drawing (see Next).
+- **Tools:** sync check columns "meso from updraught (km): engine / model"; scratch diagnostics in the job folder (mesodiag, mesovar, capecheck, convcheck).
+
+## Hook check and pinning the mesocyclone (2026-11-05)
+
+- **Hook check** (scratch hookcheck.mjs; seed 2, S0001/S0002 at 60, 100, 140 min; ground rain as dBZ):
+  - At the 250 m nest the model makes a crude hook: S0002 at 140 min has an appendage curling south from the rear of the core, with the model's mesocyclone inside the curl.
+  - At the 1 km box it is only a blob with a notch.
+  - The model's rain core sits on its updraught. The engine's rain-core centre (the radar's) is 6-10 km downwind. Sky rain and radar core will not coincide; the radar is the engine's either way.
+  - The nest's rain is not in the frames (2 bytes a nest column more if wanted).
+- **Pinning:** StormWorkers drawnPos shifts the drawn position from the engine's updraught so that the model's pin point (worker status pin: EngineRun pinPoint, the model's tornado else its strongest 0-1 km spin) lands on the engine's tornado, else its wall cloud.
+  - The shift scales with the engine's mesocyclone (0.2-0.5) × the model's spin (zeta 0.005-0.01, or 1 with a tornado).
+  - It eases over 10 game min, drifts at most 0.1 km a game minute, and drops out if it would exceed 8 km.
+  - The model and engine are untouched (sync numbers identical).
+- **Result** (sync check, new column "miss km: unpinned / pinned"; median distance from the model's pin point to the engine's): S0001 3.0 → 0.8 km, S0002 2.6 → 0.5 km, S0003 3.1 → 1.9 km (weak, jumpy model meso).
+
+## First tornado on the ground in the cloudlab debug view (2026-11-05)
+
+- **Drawn from the frame's tornado block only** (FrameView.luau drawTornado, live mode):
+  - The condensation funnel: upright cylinder slices from the cloud base to the funnel tip, each on the model's centre at that height, at the block's condensation radius.
+  - The wind core (radius R, faint red) below the tip, or up to 1 km when there is no cloud over the vortex.
+  - A flat ground ring out to the EF0 radius, R × mph / 65 (Rankine).
+  - A HUD line with the block's numbers.
+- **Close-up camera** (LiveView.client.luau): T frames the tornado; Left/Right orbit; Up/Down zoom; T again gives the camera back.
+- **Place:** cloudlab.project.json now sets HttpService.HttpEnabled. Built to roblox/build/cloudlab.rbxl; workspace CloudLabLive = true, CloudLabLiveCentre "x,y".
+- **How it was set up:** a fresh seed-2 world on port 3000, products off. A scratch keeper (job folder tornadokeeper2.mjs):
+  - stands a stand-in player at the likeliest tornado storm;
+  - pauses the engine's clock once a tornado is down and the model is caught up. The worker keeps the last record, tornado down, while paused.
+- **Seen (S0016, 85 mph, 71 yd):**
+  - The engine's figures: core R 25 m, EF0 out to 33 m, drop 13 hPa.
+  - The model's cloud base came and went between 337 and 478 m. The funnel hung about 120 m below it; the core leaned down to the ground ring.
+  - Physically right: to reach the ground the funnel needs a drop of about 12 Pa per metre of cloud base (about 40-60 hPa here).
+- **Open:**
+  - The model's vortex flickers: spin 0.01-0.09 /s from frame to frame, sometimes with no cloud found over it (base 0).
+  - At tabletop scale (1 km = 100 studs) the tornado is about 5 studs across.
 
 ## Next
 
@@ -595,3 +848,99 @@ The same live loop in the main game. The storm visuals are still to be chosen, s
    - surface heat and moisture fluxes;
    - ice and hail microphysics (or a better rain scheme) to temper the Kessler cold pool.
 4. **Roblox:** run on the server, split across parallel Actors. Barebones visuals drawn straight from the fields: a cloud surface from qc, rain shading from qr, the funnel where the pressure falls enough to condense.
+
+## Vortex flicker fixed (2026-11-05)
+
+The model tornado kept collapsing and jumping, measured with tmp/flicker.mjs: a forced engine tornado, recording each minute the gust, the 0-1 km spin, and the ground point in ground metres. The ground point is box metres plus the box's shift; the apparent jumps at box shifts were a measuring artefact. There were two causes and one overshoot:
+- **The 250 m nest wandered off.** It searched its own grid, jumped about 4 km to another spin and dragged the 62.5 m nest, which must stay inside it, off the tornado. Now a nest whose child holds a vortex (`holding`) follows the child's middle instead (C recentre, Nest.luau).
+- **The tether snapped.** A held tornado drifting more than 8 km behind the storm point tripped it. There is now no tether while the child holds a vortex.
+- **The push overshot.** It steered by the gust now, so it peaked at 58 m/s against a target of 38 and rang. It now steers by the gust TOR_LEAD = 2 model minutes ahead (EngineRun.js/.luau).
+
+Results:
+
+| Test | Measure | Before | After |
+|---|---|---|---|
+| SupercellLife, 85 mph | minutes within 25% of the engine's wind | 20/36 | 29/36 |
+| | collapses | 1 | 0 |
+| | largest jump in a minute | 4.9 km | 0.66 km |
+| SupercellB, 110 mph | collapses | | 0 |
+| | largest jump in a minute | | 0.7 km |
+
+On SupercellB the model still tops out near 35 m/s against the engine's 49, a strength limit rather than flicker. JS/Luau parity2 matches; cloudmodel-restore, storm-workers and tornado-frame pass.
+
+## The engine's maintenance lift (M2, 2026-11-05)
+
+The engine keeps its storms alive under a cap almost regardless of the cap. The model's storms die there without lift, which is why most of the push was needed. js/storms/StormMaintenance.js `maintenanceLift` names the lift the engine is assuming. It is read-only: the engine's own behaviour is unchanged.
+
+How it works:
+- The deficit is the storm cell's ML CIN minus the storm's own lift. That lift is the gust front (½(a·c)²: the engine's cold-pool speed c and its RKW balance a) plus the low-level rotation's dynamic low ((0.01·lowRotation·2 km)²/2).
+- The deficit is turned into rising air at cloud base by inverting the engine's initiation lift (kainFritschLift), then into a convergence: w over the LCL height.
+- It reaches the model as `record.maintenance` (LabWindow labStorm `maintenanceConvergence` → StormWorkers workerRecord) and is added to the convergence lift (EngineRun liftRows, JS and Luau).
+- With it, the push ceiling is PUSH_MAX_M2 0.25. Records without it, such as lab scenarios, keep 0.35.
+
+Typical size: CIN 66 J/kg against 13-53 J/kg of lift gives 1-2.6 ×10⁻⁵/s. The deficit shrinks as the gust front builds.
+
+Tests (tools/cloudlab/synccheck.mjs, 3 storms × 3 h; `SYNC_M2=0` turns M2 off):
+
+| Seed | Setting | Survival (readings with model wmax < 8 m/s) | Strength r | Updraft r | Rotation r |
+|---|---|---|---|---|---|
+| 5150 | today, push 0.35 | 0/3/0 | 0.53/0.30/0.14 | 0.40/0.24/0.09 | 0.28/0.54/0.19 |
+| 5150 | M2 + push 0.25 | 1/2/0 | 0.49/0.41/0.16 | 0.53/0.33/0.27 | 0.37/0.66/0.26 |
+| 2 | M2 + push 0.2 | storms lived where push 0.2 alone had let them fade | 0.44/0.37/0.72 | | |
+| 2 | M2 + push 0.1 | 7/9/3 | | | |
+| 2 | push 0.1 without M2 | 7/10/11 | | | |
+
+On seed 2, M2 + push 0.2 tracked strength better (0.44/0.37/0.72 against 0.41/0.34/0.24 today) and rotation worse.
+
+Findings:
+- M2 explains part of the push, not most of it. The rest is likely the model's own: under-resolved updraughts at 1 km and strong cold pools.
+- E1 (Bunkers motion) was tested first and dropped: the model's storms don't move at the right-mover either (docs/research/PLAN.md).
+- JS/Luau parity matches on both paths (parity2 without M2; parity3 with maintenance 1.5 and pushMax 0.25). cloudmodel-restore, storm-workers and tornado-frame pass.
+
+## Puff storm prototype, first Studio look (2026-11-06)
+
+Live mode, seed 2, S0003; `CloudLabPuffs` true (shared/Model/PuffView.luau). T now frames the storm when there is no tornado.
+- Fixed: LiveView multiplied LiveFeed's metres by 1000 again (storms drawn about 1000x too far away, "9134 km from the camera").
+- Look: the first version was stacked bright beads, because light added to more than 1 and clipped white. With the light now normalised (sun 0.7 + sky 0.3 above a floor), larger fainter puffs (PUFF_GROW 2.6, opacity 0.2 + 0.5 x cover) and the texture flipped 0/180 per block, shading shows and the near cloud blends into a sheet. It is still lumpy and scalloped, not yet the smooth look wanted. Turning the texture to any angle makes feathers, because the texture is an oval.
+- Cost: about 420 puffs held 60 fps (16.6 ms); 936 puffs (CloudLabPuffMax 1200) fell to 66.7 ms (15 fps). The cost is overdraw from large see-through cards, not the build (16-24 ms once a frame, every 7.5 s). Keep the limit at 600 or below.
+- Next: a softer, rounder texture; fewer, larger puffs with the size from cover; then check from under the base and from far out.
+- Textures compared on the same storm (2026-11-06): `soft` (LabConfig softFlat) blends into one smooth tower and is now PuffView's default (attribute CloudLabPuffTexture: soft, smooth, haze, deck); `smooth` scallops, `haze` is speckled dots with no body, `deck` is smooth but harder-edged. Puff size now also scales with block cover (COVER_SIZE 0.5).
+- The flat "slab" above the tower looked the same with every texture, and its top sits at the HUD's bottom edge in every capture: most likely the storm's upper part half hidden behind the HUD, not a drawing fault. Check again with the storm framed lower.
+- While the engine clock is paused the model storm runs on and decays (S0003 near frame later: tops up to 2.1 km only, a low deck running off the frame's west edge), so look at a storm soon after warming it.
+- Re-measured with `soft`, two storms in detail (S0026 fresh, S0003), 14 node processes running: 1,104 puffs 18.8 ms (53 fps), 992 puffs 19.8 ms (51 fps). Earlier 936 puffs gave 66.7 ms with the old texture, full-size fringe puffs and a closer camera. The cost follows how much screen the puffs cover more than the count. Cloud showed through the HUD above both storms, supporting the HUD explanation for the "slab".
+
+### Puff storm, second Studio look: HUD, under the base, far (2026-11-06)
+- Place rebuilt (roblox/build/cloudlab-e2.rbxl) with E2's model scripts (the cold pool's depth) and two LiveView changes: the HUD sizes to its text (11 pt, faint; H hides it), and Q/E lower and raise the T camera's eye down to the ground.
+- Seed 2, 20-21Z, S0042 and S0031 (51-63 model minutes): 60 fps throughout, 164-479 puffs a storm, 2-5 ms to build.
+- With the small HUD the storm top is in clear sky: the earlier "slab" was the HUD.
+- From 80 km: a soft grey tower, reads well.
+- From under and low (7 and 29 km, eye near the ground): a pale, even grey mass with no darker flat base; it fades into the haze. Camera-facing billboards can't draw a flat underside, so this is the base sheet's job (stage 2, prototype 2). FrameView's rain box still shows as a grey block.
+
+## Base sheet, first Studio look (2026-11-06)
+
+`roblox/src/cloudlab/shared/Model/BaseView.luau`, switched on by the workspace attribute `CloudLabBaseSheet` (LiveView; near storms only). One vertex sits at each cloudy column's lowest base (base1). Neighbours make a triangle when their bases are within 300 m (JOIN_M). The shade comes from the column's rain and depth, and the edges fade.
+Seed 2, place roblox/build/cloudlab-base3.rbxl, S0026 at 3.4 km, eye under the storm: no errors, 54-60 fps, 85-120 ms to build each frame.
+
+What Roblox allows:
+- A mesh is at most 2,048 studs on each axis. Near the camera the sky is at game scale (3.6 studs/m up), so the sheet is cut into tiles across and bands up.
+- The client holds only about 6-8 editable meshes. Every mesh must be destroyed with its part, or they pile up and new ones come back nil. So the sheet draws the 6 groups nearest the camera.
+
+Result: it doesn't read as a base yet. There are a few dark spiky shards near the camera (128 of 4,926 triangles in 6 meshes, out of 220 groups). Neighbouring columns' lowest bases step by hundreds of metres, which is a 1,000-stud cliff at game scale.
+Next, one of:
+- the base from the nest's finer field (ClientFrame.nestBaseM) under the camera;
+- the base as the cloud's own lowest level over a neighbourhood, a field of its own sent in the frame;
+- the mid-band fallback the plan names (a row of dark puffs at the base).
+
+## Engine-built frames, first side-by-side (2026-11-06)
+
+See docs/research/ENGINE-PHYSICS-PLAN.md, "Phase 0 first results". Place roblox/build/cloudlab-eng.rbxl; lab server on 3001 with `WEATHER_ENGINE_FRAMES=side`; attributes CloudLabEngineSideKm (15), CloudLabPuffs. Y cycles the storm T frames (ids sorted; copies are "<id>~engine").
+- Romcp play tests end after about 2 minutes. Pass timeoutSeconds, or be quick.
+- A storm drifting more than 30 km from the table's centre (NEAR_KM) gets far frames (2 km columns). Re-centre on it to judge the near look.
+
+## Tornado and wall-cloud rendering from one visual model (2026-11-07)
+
+Full write-up: docs/visuals/RENDER-ARCHITECTURE.md.
+- New `Model/VisualAtmosphere.luau`: condensation from adiabatic liquid water above the pressure-lowered condensation level, swirl ratio from the new updraught block, subvortices from it, flow, dust, coherent noise, nest lowering.
+- `Model/TornadoView.luau` rewritten (body slices + flow tracers + subvortices + lagging dust; no rings). New `Model/WallCloudView.luau` draws the nest (never drawn in the game before). Both on in client/EngineStorms.
+- Frame (display only): low-level mesocyclone centred on the tornado while down (S0057 funnel lean 3.3 km -> 0); tornado core cloudy in the nest; updraught block (FrameCodec UPDRAUGHT, client flags bit 5).
+- Checks: tools/cloudlab/test_visual_atmosphere.luau (lune, all pass); tornado-frame, storm-appearance, storm-workers pass; runs clean in a standalone Studio test place. Not yet seen visually.

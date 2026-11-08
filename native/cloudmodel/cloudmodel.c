@@ -38,7 +38,12 @@
 #define KAPPA (RD / CP)
 static const double PI = 3.141592653589793;
 
-static double FOLLOW_Z = 4000, FOLLOW_W = 5, COLD_K = 1, COLD_TOP = 1500, FEED_MARGIN = 2;
+static double FOLLOW_Z = 4000, FOLLOW_W = 5, COLD_K = 1, COLD_TOP = 1500, FEED_MARGIN = 2, RECENTRE_MAX = 4;
+// a nest follows a vortex of its own only within TETHER parent cells of the parent's storm centre
+// (its followed updraft; place() searches as far): a low-level spin carried off by the gust front,
+// away from any updraft, is not the storm's (SupercellB's 250 m nest followed one 20-25 km from
+// the updraft, and the tornado formed there, 2026-11-05)
+static double TETHER = 8;
 
 enum { U, V, W, P, TH, QV, QC, QR, QH, QSN, NPROG };
 // field kinds (CloudModel.KINDS): 0 cell, 1 u-face, 2 v-face, 3 w-face
@@ -49,7 +54,7 @@ static const int FEED[9] = {U, V, W, TH, QV, QC, QR, QH, QSN};
 typedef struct {
   int on;
   double x, y, ox, oy;
-  int hasO, inBox;
+  int hasO, inBox, push;
   double r, z, rz, w, tau, t1, ramp;
 } Drive;
 
@@ -72,6 +77,7 @@ struct Model {
   double *zf, *zc, *dzc, *dzw, *th0, *qv0, *u0, *v0, *pi0, *p0, *rho0, *rhow, *lapTh, *lapQv, *lapU, *lapV;
   int *lo[4], *hi[4];
   double cpRate;
+  double cpTop; // the cold pool's top (m): the engine's depth (EngineRun), COLD_TOP until it sends one
   Drive drive, drive2;
   Env *env; // the root owns envStore; nests point at their parent's
   Env envStore;
@@ -82,6 +88,7 @@ struct Model {
   Model *parent, *child;
   int ratio, steps, feedback, i0, j0;
   double vortex, X0, Y0, bcA;
+  int holding; // this nest follows a vortex of its own (recentre), so its parent nest follows it too
   double *pOldP[NPROG]; // the parent's fields at the start of its step
   int nb[4];
   int *bOn[4], *bO[4];
@@ -107,6 +114,7 @@ EXPORT(cm_new) Model *cm_new(int nx, int ny, int nz, double dx, double dt, doubl
   Model *m = calloc(1, sizeof(Model));
   m->nx = nx; m->ny = ny; m->nz = nz; m->dx = dx; m->dt = dt; m->cs = cs; m->K = K; m->Kh = Kh;
   m->umove = umove; m->vmove = vmove; m->zdamp = zdamp; m->z0 = z0; m->follow = follow; m->hail = hail; m->n0h = n0h; m->autoToIce = autoToIce;
+  m->cpTop = COLD_TOP;
   m->SX = nx + 4;
   m->SXY = m->SX * (ny + 4);
   m->N = m->SXY * (nz + 5);
@@ -272,7 +280,7 @@ static void applyColdPool(Model *m, double dt) {
   double s = 1 + m->cpRate * dt;
   double *th = m->f[TH];
   for (int k = 1; k <= m->nz; k++) {
-    if (m->zc[k] > COLD_TOP) break;
+    if (m->zc[k] > m->cpTop) break;
     double t0 = m->th0[k];
     for (int j = 1; j <= m->ny; j++) {
       int n0 = 2 + (j + 1) * m->SX + (k + 1) * m->SXY;
@@ -285,10 +293,12 @@ static void applyColdPool(Model *m, double dt) {
   }
 }
 
-// a drive (CloudModel.applyDrive): which = 1 drive, 2 drive2; hasO 0 for no ox, oy
-EXPORT(cm_set_drive) void cm_set_drive(Model *m, int which, int on, double x, double y, int hasO, double ox, double oy, int inBox, double r, double z, double rz, double w, double tau, double t1, double ramp) {
+// a drive (CloudModel.applyDrive): which = 1 drive, 2 drive2; hasO 0 for no ox, oy. push 0: w is
+// eased up toward w (m/s) in the ball over tau; push 1: w is an upward acceleration (m/s^2) at the
+// ball's middle, added to the wind (the pressure and buoyancy answer it; nothing is overwritten)
+EXPORT(cm_set_drive) void cm_set_drive(Model *m, int which, int on, double x, double y, int hasO, double ox, double oy, int inBox, double r, double z, double rz, double w, double tau, double t1, double ramp, int push) {
   Drive *d = which == 2 ? &m->drive2 : &m->drive;
-  d->on = on; d->x = x; d->y = y; d->hasO = hasO; d->ox = ox; d->oy = oy; d->inBox = inBox;
+  d->on = on; d->x = x; d->y = y; d->hasO = hasO; d->ox = ox; d->oy = oy; d->inBox = inBox; d->push = push;
   d->r = r; d->z = z; d->rz = rz; d->w = w; d->tau = tau; d->t1 = t1; d->ramp = ramp;
 }
 
@@ -318,8 +328,9 @@ static int applyDrive(Model *m, const Drive *d, double dt) {
           double Rr = sqrt(sx * sx + sy * sy + sz * sz);
           if (Rr < 1) {
             double c = cos(0.5 * PI * Rr);
-            double target = d->w * (c * c);
             int n = (i + 2) + (j + 1) * SX + (k + 1) * SXY;
+            if (d->push) { w[n] += fade * d->w * (c * c) * dt; continue; }
+            double target = d->w * (c * c);
             if (w[n] < target) w[n] += mind(1, a) * (target - w[n]);
           }
         }
@@ -1101,6 +1112,25 @@ EXPORT(cm_nest_new) Model *cm_nest_new(Model *parent, int nx, int ny, int ratio,
   return nest;
 }
 
+static void shiftBy(Model *m, int di, int dj, int cells);
+
+// The parent's grid moved under a nest (its fields shifted di, dj cells cells times): the nest
+// stays where it is over the ground - only its corner changes, its fields are kept - and follows
+// its own vortex by recentring. (Moving with the parent lost the 62.5 m nest's tornado whenever
+// the box jumped to a new updraft cell, 2026-11-05.) Where staying would take it off the parent's
+// grid it moves with the parent as before.
+static void keepPlace(Model *parent, Model *nest, int di, int dj, int cells) {
+  int r = nest->ratio;
+  int i0 = nest->i0 - di * cells, j0 = nest->j0 - dj * cells;
+  if (i0 < 3 || i0 + (double)nest->nx / r > parent->nx - 2 || j0 < 3 || j0 + (double)nest->ny / r > parent->ny - 2) {
+    shiftBy(nest, di, dj, cells * r);
+    return;
+  }
+  nest->i0 = i0; nest->j0 = j0;
+  nest->X0 = (i0 - 1) * parent->dx; nest->Y0 = (j0 - 1) * parent->dx;
+  buildBoundary(nest, parent);
+}
+
 static void shiftBy(Model *m, int di, int dj, int cells) {
   for (int c = 0; c < cells; c++) shift(m, di, dj);
   Model *parent = m->parent;
@@ -1112,7 +1142,7 @@ static void shiftBy(Model *m, int di, int dj, int cells) {
     else if (dj < 0) sampleRegion(m, parent, -1, nx + 2, -1, r + 1);
     fill(m);
   }
-  if (m->child) shiftBy(m->child, di, dj, cells * m->child->ratio);
+  if (m->child) keepPlace(m, m->child, di, dj, cells);
 }
 
 static void feed(Model *parent, Model *nest) {
@@ -1199,36 +1229,69 @@ EXPORT(cm_nest_place) int cm_nest_place(Model *parent, int nxn, int ratio) {
 
 static void recentre(Model *parent, Model *nest) {
   int k = cm_level_at(nest, 250);
-  double best = 0;
-  int bi = 0, bj = 0;
-  for (int j = 3; j <= nest->ny - 2; j++)
-    for (int i = 3; i <= nest->nx - 2; i++) {
-      double z = zetaSmooth(nest, i, j, k);
-      if (z > best) { best = z; bi = i; bj = j; }
-    }
+  double best = 0, bi = 0, bj = 0;
+  Model *c = nest->child;
+  if (c && c->holding) {
+    // its own nest holds a vortex (the 62.5 m nest a tornado): this nest follows that, at its
+    // child's middle - searching on its own it jumped to another spin 4 km off and dragged the
+    // child, which has to stay inside it, off its tornado (2026-11-05)
+    best = nest->vortex;
+    bi = c->i0 - 0.5 + 0.5 * c->nx / c->ratio;
+    bj = c->j0 - 0.5 + 0.5 * c->ny / c->ratio;
+  } else {
+    // (from the second cell in: a vortex drifting to the edge was missed from the third, and the
+    // nest stayed on a weaker spin while its tornado sat half outside it, 2026-11-05)
+    for (int j = 2; j <= nest->ny - 1; j++)
+      for (int i = 2; i <= nest->nx - 1; i++) {
+        double z = zetaSmooth(nest, i, j, k);
+        if (z > best) { best = z; bi = i; bj = j; }
+      }
+  }
   int r = nest->ratio;
-  int di = 0, dj = 0;
-  if (best >= nest->vortex) {
+  int di = 0, dj = 0, ni = 1, nj = 1;
+  int tethered = 1;
+  // (not while its own nest holds a vortex: the tether is against wandering after weak spin, and a
+  // tornado the engine still has down drifts behind its storm - the model's formed 7 km from the
+  // updraught, drifted back past 8 km and the tether snapped both nests off it, 2026-11-05)
+  if (parent->stormI != 0 && best >= nest->vortex && !(c && c->holding)) {
+    double vi = nest->i0 - 0.5 + (bi - 0.5) / r, vj = nest->j0 - 0.5 + (bj - 0.5) / r;
+    double ei = vi - parent->stormI, ej = vj - parent->stormJ;
+    tethered = sqrt(ei * ei + ej * ej) <= TETHER;
+  }
+  nest->holding = best >= nest->vortex && tethered;
+  if (nest->holding) {
+    // a vortex of its own: back near the centre, up to RECENTRE_MAX parent cells a minute (one
+    // cell a minute let the 62.5 m nest lose a tornado drifting faster than 4 m/s, 2026-11-05)
     double off = 2 * r;
     double ci = nest->nx / 2.0, cj = nest->ny / 2.0;
     di = bi > ci + off ? 1 : (bi < ci - off ? -1 : 0);
     dj = bj > cj + off ? 1 : (bj < cj - off ? -1 : 0);
+    ni = (int)fmin(RECENTRE_MAX, ceil((fabs(bi - ci) - off) / r));
+    nj = (int)fmin(RECENTRE_MAX, ceil((fabs(bj - cj) - off) / r));
   } else {
     int ti, tj;
     place(parent, nest->nx, r, &ti, &tj);
     di = ti > nest->i0 ? 1 : (ti < nest->i0 ? -1 : 0);
     dj = tj > nest->j0 ? 1 : (tj < nest->j0 ? -1 : 0);
+    // (nests keep their place when the parent moves, so this is how they follow it: as fast as
+    // with a vortex)
+    ni = (int)fmin(RECENTRE_MAX, abs(ti - nest->i0));
+    nj = (int)fmin(RECENTRE_MAX, abs(tj - nest->j0));
   }
-  double half = (double)nest->nx / r;
-  if (nest->i0 + di < 3 || nest->i0 + di + half > parent->nx - 2) di = 0;
-  if (nest->j0 + dj < 3 || nest->j0 + dj + (double)nest->ny / r > parent->ny - 2) dj = 0;
-  if (di == 0 && dj == 0) return;
-  nest->i0 += di;
-  nest->j0 += dj;
-  nest->X0 += di * parent->dx;
-  nest->Y0 += dj * parent->dx;
-  buildBoundary(nest, parent);
-  shiftBy(nest, di, dj, r);
+  int n = ni > nj ? ni : nj;
+  for (int s = 0; s < n; s++) {
+    int mi = s < ni ? di : 0, mj = s < nj ? dj : 0;
+    double half = (double)nest->nx / r;
+    if (nest->i0 + mi < 3 || nest->i0 + mi + half > parent->nx - 2) mi = 0;
+    if (nest->j0 + mj < 3 || nest->j0 + mj + (double)nest->ny / r > parent->ny - 2) mj = 0;
+    if (mi == 0 && mj == 0) return;
+    nest->i0 += mi;
+    nest->j0 += mj;
+    nest->X0 += mi * parent->dx;
+    nest->Y0 += mj * parent->dx;
+    buildBoundary(nest, parent);
+    shiftBy(nest, mi, mj, r);
+  }
 }
 
 static void advance(Model *m) {
@@ -1240,6 +1303,7 @@ static void advance(Model *m) {
   if (child) {
     child->env = m->env;
     child->cpRate = m->cpRate;
+    child->cpTop = m->cpTop;
     child->drive = m->drive;
     child->drive2 = m->drive2;
     for (int s = 1; s <= child->steps; s++) {
@@ -1256,7 +1320,7 @@ EXPORT(cm_nest_step) void cm_nest_step(Model *parent) {
   int ox = parent->ox, oy = parent->oy;
   followStorm(parent);
   int di = parent->ox - ox, dj = parent->oy - oy;
-  if ((di != 0 || dj != 0) && parent->child) shiftBy(parent->child, di, dj, parent->child->ratio);
+  if ((di != 0 || dj != 0) && parent->child) keepPlace(parent, parent->child, di, dj, 1);
   advance(parent);
 }
 
@@ -1282,7 +1346,8 @@ EXPORT(cm_ptr) double *cm_ptr(Model *m, int id) {
 
 // scalars: 0 time, 1 umove, 2 vmove, 3 ox, 4 oy, 5 stormI, 6 stormJ, 7 uhMax, 8 cpRate, 9 psfc,
 // 10 dx, 11 dt, 12 nx, 13 ny, 14 nz, 15 SX, 16 SXY, 17 N, 18 X0, 19 Y0, 20 i0, 21 j0, 22 ztop,
-// 23 zdamp, 24 cd, 25 drive on, 26 drive2 on, 27 K, 28 Kh, 29 ratio, 30-39 feedJump (PROG order)
+// 23 zdamp, 24 cd, 25 drive on, 26 drive2 on, 27 K, 28 Kh, 29 ratio, 30-39 feedJump (PROG order),
+// 41 n0h, 42 cpTop
 EXPORT(cm_get) double cm_get(Model *m, int id) {
   switch (id) {
   case 0: return m->time;
@@ -1315,6 +1380,8 @@ EXPORT(cm_get) double cm_get(Model *m, int id) {
   case 27: return m->K;
   case 28: return m->Kh;
   case 29: return m->ratio;
+  case 41: return m->n0h;
+  case 42: return m->cpTop;
   }
   if (id >= 30 && id < 40) return m->feedJump[id - 30];
   return NAN;
@@ -1324,6 +1391,10 @@ EXPORT(cm_set) void cm_set(Model *m, int id, double x) {
   switch (id) {
   case 0: m->time = x; break;
   case 8: m->cpRate = x; break;
+  case 41: m->n0h = x; break; // the hail size distribution's intercept (EngineRun steerHail)
+  case 42: m->cpTop = x; break; // the cold pool's top (m; EngineRun, from the engine's depth)
+  case 27: m->K = x; break; // vertical mixing (m^2/s)
+  case 28: m->Kh = x; break; // horizontal mixing (m^2/s)
   }
 }
 

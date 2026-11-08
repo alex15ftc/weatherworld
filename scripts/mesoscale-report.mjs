@@ -22,7 +22,7 @@ async function worker(seed) {
   const { stateFromBytes } = await import('../js/forecast/DayOneOutlook.js');
   const { MESOSCALE, runMesoscaleMember, describeNow, areaOutcome, peakRange } = await import('../js/forecast/MesoscaleDiscussion.js');
   const { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc } = await import('../js/forecast/Watch.js');
-  const atmosphere = new AtmosphereWorld({ seed }); atmosphere.advance(24 * Number(flag('--from', 2)));
+  const atmosphere = new AtmosphereWorld({ seed }); atmosphere.advanceLikeServer(24 * Number(flag('--from', 2)));
   const world = atmosphere.world, rows = [], watchRows = [];
   let discussions = [], watches = [], pending = [], next = 1, nextWatch = 1, memberMs = 0, runs = 0, overlaps = 0, looks = 0, nextLook = -Infinity;
   const copy = () => v8.serialize(atmosphere.saveState({ forecast: true }));
@@ -43,7 +43,9 @@ async function worker(seed) {
   // The hour itself, a half hour at a time: a watch waiting for storms goes out when they fire.
   const liveHour = () => {
     for (let step = 0; step < MESOSCALE.everyHours / MESOSCALE.stepHours; step++) {
-      atmosphere.advance(MESOSCALE.stepHours);
+      // (as the server steps the live world, 5-minute storm ticks; until 2026-11-05 advance(), 30-minute jumps, so the
+      // check was of another world than the live one)
+      atmosphere.advanceLikeServer(MESOSCALE.stepHours);
       for (const waiting of pending.filter(p => readyHourUtc(p.draft, world) !== null)) {
         const watch = issueWatch(waiting.draft, nextWatch++, readyHourUtc(waiting.draft, world), stormsFiring(world, waiting.draft.cells) || waiting.draft.here.forming);
         pending = pending.filter(p => p !== waiting); watches = [watch, ...watches];
@@ -130,6 +132,19 @@ async function main() {
   line('PDS tornado watch: 2 or more strong tornadoes', tor.filter(w => w.pds), w => w.got.strong >= 2);
   line('other tornado watch: 2 or more strong tornadoes', tor.filter(w => !w.pds), w => w.got.strong >= 2);
   line('PDS severe thunderstorm watch: a gust of 100 mph or more', svr.filter(w => w.pds), w => w.got.gust >= 100);
+  // I7 (2026-11-05): the discussions' watch probability as a forecast of "what calls for a watch" (Brier skill against
+  // the sample's own rate), and the watches verified as SPC verifies them: a tornado watch fully with a tornado, in part
+  // with severe hail or wind only (Christenberry et al.); a severe thunderstorm watch with any report.
+  {
+    const o = md => (md.got.toward >= 1 ? 1 : 0), base = all.reduce((a, md) => a + o(md), 0) / Math.max(1, all.length);
+    const bs = all.reduce((a, md) => a + (md.percent / 100 - o(md)) ** 2, 0) / Math.max(1, all.length);
+    console.log(`\n6. Skill (I7): the discussions' watch probability, Brier score ${bs.toFixed(3)}, skill ${all.length && base > 0 && base < 1 ? Math.round(100 * (1 - bs / (base * (1 - base)))) + '%' : '-'} against the sample rate (${pc(base * all.length, all.length)} of discussions had what calls for a watch)`);
+    const none = w => w.got.reports === 0 && w.got.tornadoes === 0;
+    line('tornado watch verified fully (a tornado)', tor, w => w.got.tornadoes >= 1);
+    line('tornado watch verified in part (severe hail or wind, no tornado)', tor, w => w.got.tornadoes === 0 && w.got.reports > 0);
+    line('severe thunderstorm watch verified (any report)', svr, w => !none(w));
+    line('any watch with no reports at all', watches, none);
+  }
   const show = Number(flag('--show', 1));
   for (const md of [...all].sort((a, b) => (a.storms ? 1 : 0) - (b.storms ? 1 : 0) || b.percent - a.percent).slice(0, show)) console.log(`\n--- seed ${md.seed}, what then happened: ${md.got.reports} cells with severe hail or wind, ${md.got.tornadoes} tornadoes (strongest ${Math.round(md.got.tornadoMph)} mph), gust ${Math.round(md.got.gust)} mph, hail ${md.got.hailInches.toFixed(2)} in ---\n${md.text}`);
   for (const md of about.slice(0, show)) console.log(`\n--- seed ${md.seed}, a discussion about a watch ---\n${md.text}`);

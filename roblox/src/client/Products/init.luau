@@ -17,6 +17,7 @@ local Ui = require(script.Ui)
 local Layer = require(script.Layer)
 local Outlook = require(script.Layers.Outlook)
 local Radar = require(script.Layers.Radar)
+local Satellite = require(script.Layers.Satellite)
 local Areas = require(script.Layers.Areas)
 local Reports = require(script.Layers.Reports)
 local Damage = require(script.Layers.Damage)
@@ -76,6 +77,18 @@ local function compose(): MapCanvas.Overlay?
 				end
 			end
 		end,
+		-- Byte grids (satellite, radar mosaics), scaled by the GPU, bottom first.
+		grids = function(): { MapCanvas.Grid }
+			local out = {}
+			for _, layer in drawOrder do
+				if layer.enabled and layer.grids then
+					for _, g in (layer.grids :: any)(layer) do
+						table.insert(out, g)
+					end
+				end
+			end
+			return out
+		end,
 		-- Raster products (radar): one image between the two.
 		drawRaster = function(draw: MapCanvas.Draw)
 			for _, layer in drawOrder do
@@ -83,6 +96,33 @@ local function compose(): MapCanvas.Overlay?
 					(layer.drawRaster :: any)(layer, draw)
 				end
 			end
+		end,
+		-- What the raster layers would draw now (nil if any of them cannot say).
+		rasterKey = function(): string?
+			local parts = {}
+			for _, layer in drawOrder do
+				if layer.enabled and layer.drawRaster then
+					local key = if layer.rasterKey then (layer.rasterKey :: any)(layer) else nil
+					if not key then
+						return nil
+					end
+					table.insert(parts, key)
+				end
+			end
+			return table.concat(parts, "|")
+		end,
+		-- The top layer that says anything about the point under the cursor.
+		hover = function(mx: number, my: number): string?
+			for k = #drawOrder, 1, -1 do
+				local layer = drawOrder[k]
+				if layer.enabled and layer.hover then
+					local line = (layer.hover :: any)(layer, mx, my)
+					if line then
+						return line
+					end
+				end
+			end
+			return nil
 		end,
 		-- The top layers' labels first: they win the room.
 		labels = function(labels: MapCanvas.Labels)
@@ -105,9 +145,45 @@ local function renderLegend()
 	end
 end
 
+-- What the shapes (or legend) of the layers on show depend on: each layer's own key, or, for a
+-- layer that cannot say, a new value every time (so it is always drawn again).
+local unknown = 0
+local function keyOf(method: string): string
+	local parts = {}
+	for _, layer in drawOrder do
+		if layer.enabled then
+			local fn = (layer :: any)[method]
+			if fn then
+				table.insert(parts, `{layer.key}={fn(layer)}`)
+			else
+				unknown += 1
+				table.insert(parts, `{layer.key}#{unknown}`)
+			end
+		end
+	end
+	local open = detail
+	table.insert(parts, if open then `detail={open.layer}/{open.item}` else "")
+	return table.concat(parts, "|")
+end
+
+-- Draws what changed: the product tiles only when a layer's shapes changed (they are the
+-- costly part: every tile in view, every layer), else just the raster image and labels; the
+-- legend only when it would read differently.
+local shownShapes: string? = nil
+local shownLegend: string? = nil
 local function redraw()
-	MapCanvas.setOverlay(compose())
-	renderLegend()
+	local shapes = keyOf("shapeKey")
+	if shapes ~= shownShapes then
+		shownShapes = shapes
+		MapCanvas.setOverlay(compose())
+	else
+		MapCanvas.refresh()
+	end
+	local legend = keyOf("legendKey")
+	if legend ~= shownLegend then
+		shownLegend = legend
+		renderLegend()
+	end
 end
 
 local function renderDetail()
@@ -247,6 +323,8 @@ local function build(): ScreenGui
 	end
 	local outlookHeading = heading("Outlook")
 	local outlook = Outlook.new(context, column)
+	local satelliteHeading = heading("Satellite")
+	local satellite = Satellite.new(context, column)
 	local radarHeading = heading("Radar")
 	local radar = Radar.new(context, column)
 	local warningsHeading = heading("Warnings")
@@ -261,12 +339,12 @@ local function build(): ScreenGui
 	local damage = Damage.new(context, column)
 	legendBox = Ui.section(column)
 
-	layers = { outlook :: any, radar :: any, watches :: any, discussions :: any, warnings :: any, reports :: any, damage :: any }
+	layers = { outlook :: any, satellite :: any, radar :: any, watches :: any, discussions :: any, warnings :: any, reports :: any, damage :: any }
 	headings = {
-		outlook = outlookHeading, radar = radarHeading, warnings = warningsHeading, watches = watchesHeading, discussions = discussionsHeading,
+		outlook = outlookHeading, satellite = satelliteHeading, radar = radarHeading, warnings = warningsHeading, watches = watchesHeading, discussions = discussionsHeading,
 		reports = reportsHeading, damage = damageHeading,
 	}
-	drawOrder = { outlook :: any, radar :: any, discussions :: any, watches :: any, warnings :: any, damage :: any, reports :: any }
+	drawOrder = { outlook :: any, satellite :: any, radar :: any, discussions :: any, watches :: any, warnings :: any, damage :: any, reports :: any }
 	hitOrder = { radar :: any, reports :: any, damage :: any, warnings :: any, watches :: any, discussions :: any, outlook :: any }
 
 	for _, layer in layers do

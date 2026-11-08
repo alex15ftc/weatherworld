@@ -10,8 +10,8 @@
 --           ~DATUM_KM) that the clouds sit over; the ground's height for things on it (dust,
 --           debris, the tornado's foot, rain splashes, scud) from the server's 1 km ground grid,
 --           refined by raycasts near the camera
---   modules every module in Weather/Render except the lab-only ones (Ground: the game has its own
---           terrain; WindViz: a debug view)
+--   modules every module in Weather/Render except WindViz (a debug view); Ground draws only its
+--           far-land rings here (the game's terrain is the ground near the camera)
 --   storms  Weather.storms() lists them for DebugPage (map km, the old frame's field names)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -30,7 +30,48 @@ local Weather = {}
 local KH = Config.STUDS_PER_MILE / 1609.344
 Weather.WEATHER_STUDS_PER_METRE = Config.STUDS_PER_METRE
 local DATUM_KM = 20
-local SKIP = { Ground = true, WindViz = true }
+local SKIP = { WindViz = true } -- (Ground draws only its far-land rings in the game: the terrain is the ground near)
+-- (the lab's alternate bodies stay out of the game: the cards are its body. StormVolume's mesh body
+-- came on with the lab's F key - an ordinary key in the game - and drew far storms as dark rock,
+-- user 2026-11-07; VolumeCards with Backspace)
+SKIP.StormVolume = true
+SKIP.VolumeCards = true
+SKIP.RainShafts = true -- (no rain curtains in the game, user 2026-11-07)
+-- With workspace StormVisuals = "engine" the storms' cloud and tornadoes are drawn from the engine's
+-- frames (client/EngineStorms), so the lab sim's cloud, tornado and rain-shaft renderers are left
+-- out. The rest reads the frames: the rain round the camera (ctx.precipAt, Render/NearPrecip), the
+-- sky's light (ctx.cloudAt, Render/Sky) and the lightning (the engine storms' flashes from
+-- server/LiveStorms, drawn by Render/Lightning; StormHost stops sending the lab's own).
+-- Near the storm the tornado, its dust and the wall cloud are the engine's own (client/EngineStorms:
+-- TornadoView, WallCloudView), drawn only from the shared frames, the storm's seed and the shared
+-- clock, so every server and player sees the same storm (2026-11-07, the user). With workspace
+-- StormNearLab = true the lab sim's tornado, dust, debris, wall cloud, inflow tail and scud draw
+-- them instead (its billboards, but each server's own sim: they differ between servers). The lab sim follows the engine (Sim/EngineFollow: the engine's storms and
+-- tornadoes, where and as strong as the engine says), so it is still the one engine's weather.
+-- StormCards then runs only for their light, colour and rain fog (ctx.stormShade, ctx.stormBase;
+-- ctx.state.cardsShadeOnly): the body is the engine's (client/EngineStorms), which leaves out
+-- its own TornadoView and WallCloudView by the same rule.
+-- Cards (2026-11-07, the user's choice; default in engine mode unless StormBody is "puff" or
+-- "mesh"): the lab's card renderers - StormCards, WallStream, Scud, BaseDeck - draw the body,
+-- wall cloud, base and scud, but from storms this client builds from the engine's shared numbers
+-- (client/FrameWorld; the server's own lab sim is not taken: stormlab/client/Net), with the
+-- frames' rain; the tornado is the lab's TornadoCards and TornadoDust, fed the frame's tornado
+-- the same way (FrameWorld), with the painted TornadoView's wind overlay on TornadoDebug / J
+-- (client/EngineStorms). The same on every server.
+local ENGINE_VISUALS = workspace:GetAttribute("StormVisuals") == "engine" and workspace:GetAttribute("LiveStorms") == true
+local NEAR_LAB = ENGINE_VISUALS and workspace:GetAttribute("StormNearLab") == true
+local FRAME_CARDS = ENGINE_VISUALS and not NEAR_LAB and workspace:GetAttribute("StormBody") ~= "puff" and workspace:GetAttribute("StormBody") ~= "mesh"
+if ENGINE_VISUALS then
+	local off = { "BaseDeck", "StormVolume", "VolumeCards", "RainShafts" }
+	if FRAME_CARDS then
+		off = { "NearVfx", "StormVolume", "VolumeCards", "DebrisView", "DebrisCloud", "RainShafts" }
+	elseif not NEAR_LAB then
+		off = { "BaseDeck", "NearVfx", "Scud", "StormCards", "StormVolume", "VolumeCards", "WallStream", "TornadoCards", "TornadoDust", "DebrisView", "DebrisCloud", "RainShafts" }
+	end
+	for _, name in off do
+		SKIP[name] = true
+	end
+end
 
 local ctx = nil
 local frameInfo = nil
@@ -122,6 +163,9 @@ local function setFrame(C: any, info: any)
 	local cam = Workspace.CurrentCamera
 	C.setFrame({
 		kh = kh, kv = kv, ks = kv, ox = ox, oz = oz,
+		-- (the engine draws the storm body at the map's scale: the lab's wall cloud and scud ease to
+		-- it away from a funnel, LabConfig.radial. Off with the lab's own body)
+		radialMap = ENGINE_VISUALS,
 		precipVisibility = Config.PRECIP_VISIBILITY,
 		datum = datumStuds,
 		-- a storm's scale from its centre's distance (studs across) to the camera
@@ -175,8 +219,122 @@ function Weather.start()
 	-- the weather runs at the game's 8x clock (storms move and evolve with it), but local motion
 	-- - a tornado's spin, dust, debris, scud, cloud boiling, thunder's delay - at real speed
 	ctx.state.visualScale = 1
+	ctx.state.cardsShadeOnly = NEAR_LAB -- (StormCards: light and colour for the near renderers, no body)
 	ctx:noteServerTime(info.time or 0)
 	ctx.tornadoAdapter = ctx.Tornado.StateAdapter.new(ctx)
+	-- Each storm drawn about one point (LabConfig.stormAnchor, 2026-11-07): its tornado's foot as the
+	-- funnel is drawn (the adapter's smoothed position), else its low-level circulation. When that
+	-- point changes over (a tornado touching down or lifting) the storm glides to the new one over
+	-- ~2 s, so nothing jumps; otherwise it is exactly the tornado's, so funnel and cloud agree.
+	if not ENGINE_VISUALS or FRAME_CARDS then
+		local anchors = {}
+		ctx.Config.anchorFn = function(id: string): (number?, number?)
+			local s
+			for _, st in ctx.cw.storms do
+				if tostring(st.id) == id then
+					s = st
+					break
+				end
+			end
+			if not s then
+				return nil, nil
+			end
+			local tx, ty, kind = s.lowX or s.x, s.lowY or s.y, "low"
+			for tid, e in ctx.tornadoAdapter.entries do
+				local pid = e.snap and e.snap.parentId
+				if pid ~= nil and tostring(pid) == id and e.x and (e.fade or 1) > 0.05 then
+					tx, ty, kind = e.x, e.y, tostring(tid)
+					break
+				end
+			end
+			local now = os.clock()
+			local a = anchors[id]
+			if not a then
+				a = { x = tx, y = ty, rx = 0, ry = 0, kind = kind, t = now }
+				anchors[id] = a
+			end
+			if a.kind ~= kind then
+				-- (glide from where it was drawn about)
+				a.rx, a.ry, a.kind = a.x - tx, a.y - ty, kind
+			end
+			local keep = math.exp(-math.clamp(now - a.t, 0, 1) / 2)
+			a.t = now
+			a.rx *= keep
+			a.ry *= keep
+			if a.rx * a.rx + a.ry * a.ry > 8000 * 8000 then
+				a.rx, a.ry = 0, 0
+			end
+			a.x, a.y = tx + a.rx, ty + a.ry
+			return a.x, a.y
+		end
+	end
+	-- (engine storms: the rain round the camera from their frames, Render/NearPrecip)
+	if SKIP.RainShafts then
+		local EngineStorms = require(script.Parent:WaitForChild("EngineStorms")) :: any
+		ctx.precipAt = EngineStorms.precipAt
+		-- (the sky's light from the frames' cloud: Render/Sky; sim metres -> world studs)
+		ctx.cloudAt = function(x: number, y: number)
+			local v = ctx.Config.toWorld(x, y, 0)
+			return EngineStorms.cloudAt(v.X, v.Z)
+		end
+		-- (the engine storms' lightning, made by server/LiveStorms in map km: into the lab's
+		-- flash signal in sim metres, for Render/Lightning to draw, light and thunder)
+		-- (and the flashes' light on the engine storms' cloud: the lab's flash field, at a world place)
+		-- (x, z studs; hM metres up; hx, hz the region's half size across and up, m)
+		-- (the debug camera's target, EngineStorms: the nearest lab tornado drawn, half way up to its base)
+		EngineStorms.labTornadoAt = function(): Vector3?
+			local cam = Workspace.CurrentCamera
+			local best, bestD = nil, math.huge
+			for _, e in ctx.tornadoAdapter.entries do
+				if (e.fade or 0) > 0.05 then
+					local p = ctx.Config.toWorldAbout(e.x, e.y, 0.5 * math.max(e.cloudBase or 0, 200), e.x, e.y)
+					local d = if cam then (cam.CFrame.Position - p).Magnitude else 0
+					if d < bestD then best, bestD = p, d end
+				end
+			end
+			return best
+		end
+		EngineStorms.rainExtinction = ctx.Config.rainExtinction -- (the rain's fog on the storm's billboards)
+		EngineStorms.flashAt = function(x: number, z: number, hM: number, hx: number?, hz: number?): number
+			local ff = ctx.flashField
+			if not ff then return 0 end
+			local sx, sy = ctx.Config.fromWorld(Vector3.new(x, 0, z))
+			return ctx.Tornado.FlashField.atBox(ff, sx, sy, hM, hx or 0, hz or 0)
+		end
+		EngineStorms.flashLive = function(): boolean
+			local ff = ctx.flashField
+			return ff ~= nil and #ff.flashes > 0
+		end
+		local LiveStorms = require(script.Parent:WaitForChild("LiveStorms")) :: any
+		local WorldConfig = require(game:GetService("ReplicatedStorage").Shared.World.Config) :: any
+		local function sim(xKm: number, yKm: number): (number, number)
+			local half = WorldConfig.MAP_MILES / 2
+			local sx, sz = (xKm / WorldConfig.KM_PER_MILE - half) * WorldConfig.STUDS_PER_MILE, (yKm / WorldConfig.KM_PER_MILE - half) * WorldConfig.STUDS_PER_MILE
+			local x, y = ctx.Config.fromWorld(Vector3.new(sx, 0, sz))
+			return x, y
+		end
+		if FRAME_CARDS then
+			ctx.sharedClock = require(ReplicatedStorage.Shared:WaitForChild("CloudModel"):WaitForChild("SharedClock")) :: any
+			require(script.Parent:WaitForChild("FrameWorld")).attach(ctx, LiveStorms, EngineStorms, sim)
+		end
+		local seen, seenAt = { cg = 0, ["+cg"] = 0, ic = 0 }, os.clock()
+		LiveStorms.flash:Connect(function(list)
+			-- (debug: how many came, each 10 s)
+			if workspace:GetAttribute("EngineStormsDebugCam") == true then
+				for _, e in list do seen[e.kind] = (seen[e.kind] or 0) + 1 end
+				if os.clock() - seenAt > 10 then
+					print(("[Lightning] engine flashes in %.0f s: %d cg, %d +cg, %d ic (sky: sun %.2f, light %.2f, cover %.2f)"):format(os.clock() - seenAt, seen.cg, seen["+cg"], seen.ic,
+						ctx.root:GetAttribute("SkyDirect") or -1, ctx.root:GetAttribute("SkyDiffuse") or -1, ctx.root:GetAttribute("SkyCover") or -1))
+					seen, seenAt = { cg = 0, ["+cg"] = 0, ic = 0 }, os.clock()
+				end
+			end
+			for _, e in list do
+				local x0, y0 = sim(e.x0, e.y0)
+				local x1, y1 = sim(e.x1, e.y1)
+				ctx.signals.flash:Fire({ kind = e.kind, seed = e.seed, current = e.current, x0 = x0, y0 = y0, z0 = e.z0, x1 = x1, y1 = y1, z1 = e.z1 })
+			end
+		end)
+	end
 	Net.connect(ctx)
 	ctx:command({ cmd = "ready" })
 	-- (the environment's analysed fields, a few cells a frame: radar and labels use them)
@@ -202,8 +360,13 @@ function Weather.start()
 			local d = scenarioData(e.scenario, e.data)
 			ctx.scenarioData = d
 			local fresh = ClientWorld.new(d)
+			-- (frame-fed: the storms, tornadoes and rain are client/FrameWorld's, from the engine's
+			-- frames - a new window must not swap them for the empty lab ones)
+			local keep = if ctx.frameFed then { vol = true, storms = true, tornadoes = true } else {}
 			for k, v in fresh do
-				cw[k] = v
+				if not keep[k] then
+					cw[k] = v
+				end
 			end
 			ctx.signals.scenario:Fire(e.scenario)
 		end
@@ -240,6 +403,16 @@ function Weather.start()
 						r.off = true
 					end
 				end
+			end
+		end
+		-- last, as in the storm lab: the near-field VFX fades out the cards it has replaced with
+		-- particles (Render/NearVfx). Without this the near cards and their particles both drew.
+		local nv = ctx.nearVfx
+		if nv and not nv.broken then
+			local ok, err = pcall(nv.post, nv, dt)
+			if not ok then
+				nv.broken = true
+				warn("[Weather] NearVfx.post: " .. tostring(err))
 			end
 		end
 	end)

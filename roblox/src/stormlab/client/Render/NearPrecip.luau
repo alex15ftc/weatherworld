@@ -5,7 +5,8 @@
 -- rain, hail and dust). Nothing is keyed on a storm's type: everything comes from the fields at
 -- the camera's simulation position.
 --
---   Rain      Precip.surface(cw.vol, x, y): the surface rain rate (mm/h), bilinear between the
+--   Rain      Precip.surface(cw.vol, x, y) (or ctx.precipAt(camera position) when the game
+--             draws the engine's storms, client/EngineStorms): the surface rain rate (mm/h), bilinear between the
 --             1 km cells, faded out as the camera climbs above ~1.5 km (looking down on the
 --             storm, not standing in it). Drawn as curtains of the near-rain streak tile on
 --             camera-facing parts in three rings (9, 24, 60 m); opacity and how many curtains
@@ -198,7 +199,11 @@ function NearPrecip.new(ctx)
 	local function sample(cx: number, cy: number, cz: number, aboveGround: number)
 		local show = ctx.state.show.rain ~= false
 		local rain, hailCm = 0, 0
-		if show then
+		if show and ctx.precipAt then
+			-- (the game's engine storms: the rain from their frames at the camera; hail sizes are
+			-- not in the frames yet, so no stones)
+			rain = ctx.precipAt(ctx.camera.CFrame.Position)
+		elseif show then
 			rain, hailCm = surface(cx, cy)
 		end
 		-- high above the base one looks down on the storm instead of standing in its rain
@@ -408,6 +413,10 @@ function NearPrecip.new(ctx)
 			if sRate ~= st.sparkleRate then
 				st.sparkleRate = sRate
 				sparkle.Rate = sRate
+				-- (a glint is the sky's light off the ice: it glows by itself, so it dims with the sky -
+				-- Lighting SkyLight, set by Render/Sky - or it would sparkle as brightly at night)
+				local skyLight = game:GetService("Lighting"):GetAttribute("SkyLight")
+				sparkle.Brightness = if type(skyLight) == "number" then math.clamp(skyLight, 0, 1) else 1
 			end
 		end
 		if hailOn ~= st.hailOn then

@@ -23,8 +23,16 @@ function Net.connect(ctx: any)
 		ClientWorld.applyProfiles(cw, list)
 		ctx.signals.profiles:Fire(list)
 	end)
+	-- (ctx.frameFed, the game: the storms are built on the client from the engine's shared numbers -
+	-- client/FrameWorld - so this server's own storms, tornadoes, cold pool and rain are not taken;
+	-- its clock, settings and time of day still are)
 	net.state.OnClientEvent:Connect(function(snap, settings)
-		ClientWorld.applySnapshot(cw, snap)
+		if ctx.frameFed then
+			cw.clockUtc = snap.clockUtc
+			cw.env.clockUtc = snap.clockUtc
+		else
+			ClientWorld.applySnapshot(cw, snap)
+		end
 		ctx:noteServerTime(snap.time)
 		if settings then
 			ctx.state.timeScale = settings.timeScale
@@ -37,6 +45,10 @@ function Net.connect(ctx: any)
 	-- tornado not heard from for 1.5 s is gone from the list
 	local heard = {}
 	net.tornado.OnClientEvent:Connect(function(list, time)
+		if ctx.frameFed then
+			if time then ctx:noteServerTime(time) end
+			return
+		end
 		local now = os.clock()
 		for _, t in list do
 			-- (stamped with its server time: Tornado/StateAdapter extrapolates from it; one older
@@ -64,14 +76,17 @@ function Net.connect(ctx: any)
 		ctx.signals.tornado:Fire(merged)
 	end)
 	net.coldPool.OnClientEvent:Connect(function(b)
+		if ctx.frameFed then return end
 		ClientWorld.applyColdPool(cw, b)
 		ctx.signals.coldPool:Fire()
 	end)
 	net.precip.OnClientEvent:Connect(function(b)
+		if ctx.frameFed then return end
 		ClientWorld.applyPrecip(cw, b)
 		ctx.signals.precip:Fire()
 	end)
 	net.precipLite.OnClientEvent:Connect(function(b)
+		if ctx.frameFed then return end
 		ClientWorld.applyPrecipLite(cw, b)
 		ctx.signals.precip:Fire()
 	end)

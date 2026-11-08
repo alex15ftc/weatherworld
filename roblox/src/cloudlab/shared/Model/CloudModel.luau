@@ -300,7 +300,8 @@ end
 -- root model measures the mean temperature deficit of its cold-pool air (lowest level, colder
 -- than COLD_K) and sets a rate that scales the cold air's deficit (below COLD_TOP) toward the
 -- target over tau seconds; nests take the same rate (Nest.advance). Its shape, edges and gust
--- front stay the model's own. Returns the measured mean deficit (K).
+-- front stay the model's own. Returns the measured mean deficit (K). The layer's top is self.cpTop
+-- (the engine's cold-pool depth, set by EngineRun; COLD_TOP until then).
 CloudModel.COLD_K, CloudModel.COLD_TOP = 1, 1500
 function CloudModel.coldPoolRate(self: any, targetK: number, tau: number): number
 	local th, th0, SX, SXY = self.th, self.th0, self.SX, self.SXY
@@ -328,7 +329,7 @@ function CloudModel.applyColdPool(self: any, dt: number)
 	local s = 1 + self.cpRate * dt
 	local th, th0, SX, SXY, zc = self.th, self.th0, self.SX, self.SXY, self.zc
 	for k = 1, self.nz do
-		if zc[k] > CloudModel.COLD_TOP then
+		if zc[k] > (self.cpTop or CloudModel.COLD_TOP) then
 			break
 		end
 		local t0 = th0[k]
@@ -884,10 +885,16 @@ function CloudModel.applyDrive(self: any, d: any, dt: number): any
 					local sx = ((i - 0.5) * dx - xc) / d.r
 					local R = math.sqrt(sx * sx + sy * sy + sz * sz)
 					if R < 1 then
-						local target = d.w * math.cos(0.5 * math.pi * R) ^ 2
 						local n = (i + 2) + (j + 1) * SX + (k + 1) * SXY
-						if w[n] < target then
-							w[n] += min(1, a) * (target - w[n])
+						if d.push then
+							-- a push: d.w is an upward acceleration (m/s^2) at the ball's middle,
+							-- added to the wind (the pressure and buoyancy answer it)
+							w[n] += fade * d.w * math.cos(0.5 * math.pi * R) ^ 2 * dt
+						else
+							local target = d.w * math.cos(0.5 * math.pi * R) ^ 2
+							if w[n] < target then
+								w[n] += min(1, a) * (target - w[n])
+							end
 						end
 					end
 				end

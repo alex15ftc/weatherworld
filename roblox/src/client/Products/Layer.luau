@@ -39,11 +39,22 @@ export type Layer = {
 	refresh: (self: any) -> (),
 	-- Shapes, drawn into the map's product tiles (sharp at every zoom).
 	draw: (self: any, draw: MapCanvas.Draw) -> (),
+	-- Byte grids it shows (the satellite, a radar mosaic), as images the GPU scales (optional).
+	grids: ((self: any) -> { MapCanvas.Grid })?,
 	-- Raster products (radar), drawn into one image of the view under the shapes (optional).
 	drawRaster: ((self: any, draw: MapCanvas.Draw) -> ())?,
 	labels: (self: any, labels: MapCanvas.Labels) -> (),
 	-- The details of what is at a map point, if anything (milesPerPixel: the zoom).
 	hit: (self: any, mx: number, my: number, milesPerPixel: number) -> Detail?,
+	-- What its shapes (draw) depend on now (optional): while it stays the same, the map's
+	-- product tiles are not drawn again for this layer's refresh. Without it every refresh redraws them.
+	shapeKey: ((self: any) -> string)?,
+	-- What its legend depends on now (optional; without it the legend is rebuilt every refresh).
+	legendKey: ((self: any) -> string)?,
+	-- Names what drawRaster draws now, so a drawn image can be reused (optional).
+	rasterKey: ((self: any) -> string?)?,
+	-- A line about what is under the cursor (a radar gate's value), if anything (optional).
+	hover: ((self: any, mx: number, my: number) -> string?)?,
 	-- Its legend lines, if it has any.
 	legend: (self: any, parent: Instance) -> (),
 	-- Turned on or off (optional extra work).

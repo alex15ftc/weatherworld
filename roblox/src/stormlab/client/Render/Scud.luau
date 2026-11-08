@@ -227,7 +227,9 @@ function Scud.new(ctx: any): any
 				c = {}
 				centres[id] = c
 			end
-			c.x, c.y, c.k, c.at = s.x, s.y, C.scaleAbout(s.x, s.y), tick
+			-- (the game: its anchor, LabConfig.stormAnchor; the lab: its centre)
+			local ax, ay = C.stormAnchor(s.id, s.x, s.y)
+			c.x, c.y, c.k, c.at = ax, ay, C.scaleAbout(ax, ay), tick
 		end
 		for id, c in centres do
 			if c.at ~= tick then
@@ -294,13 +296,16 @@ function Scud.new(ctx: any): any
 			-- dark dash, SC check 2026-11-01)
 			local stretch = 1.3 + clamp(sp / 8, 0, 1) * along
 			local size = f.size * (0.7 + 0.5 * f.a) * (1 + min(f.age / 300, 0.8))
+			-- (the tilt follows the view at once - it is the drift's direction on screen, so eased over
+			-- 2 s it lagged every camera turn and the wisps swung after it, user 2026-11-07 - and it
+			-- fades out as the drift turns end-on rather than switching off)
 			local tilt = 0
-			if onScreen > 0.5 then
+			if onScreen > 1e-3 then
 				tilt = -math.deg(math.atan2(sy, sx))
 				tilt = (tilt + 90) % 180 - 90 -- (-90..90)
-				tilt = clamp(tilt, -18, 18)
+				tilt = clamp(tilt, -18, 18) * clamp(onScreen / 0.5, 0, 1)
 			end
-			f.rot += (tilt - f.rot) * (1 - exp(-dt / 2))
+			f.rot = tilt
 			-- (about its storm's centre at the storm's scale)
 			local sc = centres[f.storm]
 			if sc then
@@ -309,11 +314,22 @@ function Scud.new(ctx: any): any
 				f.sk = C.scaleAbout(f.cx, f.cy)
 			end
 			local k = f.sk
-			local wp = C.toWorldAbout(f.x, f.y, f.z, f.cx, f.cy, k)
-			local sw, sh = size * stretch * k, size * 0.55 * k
+			-- (under a wall cloud: about its centre by its rule - across at k near a funnel, the
+			-- map's scale beyond, LabConfig.radial - so the scud stays under the lowering as the game
+			-- draws it; a width at the scale across there, a height at k side-on, kA from beneath.
+			-- In the lab kA = k.)
+			local lw = ctx.stormBase and ctx.stormBase[f.storm]
+			local rcx, rcy, tR = f.cx, f.cy, 0
+			if lw and lw.tR and not C.anchorFn then
+				rcx, rcy, tR = lw.x, lw.y, lw.tR
+			end
+			local wp, kR, kT = C.toWorldRadial(f.x, f.y, f.z, rcx, rcy, k, tR)
+			local kA = math.max(kR, kT) -- (across: the ring's scale, not the radial squeeze)
 			-- on screen? (a cone round the view, widened by the wisp's own angular size)
 			local rel = wp - camS
 			local dist = rel.Magnitude
+			local sinE = math.abs(rel.Y) / max(dist, 1e-3)
+			local sw, sh = size * stretch * kA, size * 0.55 * (k + (kA - k) * sinE)
 			local vis = dist <= sw
 			if not vis then
 				local ang = math.acos(clamp(rel:Dot(look) / dist, -1, 1))

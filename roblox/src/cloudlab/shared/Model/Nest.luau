@@ -20,6 +20,12 @@ local Nest = {}
 
 local PROG = { "u", "v", "w", "p", "th", "qv", "qc", "qr", "qh", "qsn" }
 Nest.VORTEX = 0.01 -- 1/s: smoothed ~250 m vorticity that counts as the nest's own vortex
+Nest.RECENTRE_MAX = 4 -- most parent cells a nest with a vortex of its own moves in one recentring (a minute)
+-- a nest follows a vortex of its own only within TETHER parent cells of the parent's storm centre
+-- (its followed updraft; place searches as far): a low-level spin carried off by the gust front,
+-- away from any updraft, is not the storm's (SupercellB's 250 m nest followed one 20-25 km from the
+-- updraft, and the tornado formed there, 2026-11-05)
+Nest.TETHER = 8
 
 -- parent fractional index of a point x, y (m from the parent box's south-west corner) for a field
 -- of this kind: cell centres at (i - 0.5) dx, u faces at (i - 1) dx, v faces at (j - 1) dx
@@ -162,6 +168,23 @@ end
 -- A model's fields moved by `cells` of its own cells toward (di, dj) (each -1, 0 or 1): the strip
 -- that enters is re-sampled from its parent (if it is a nest), and its own nest, which keeps its
 -- place in it, moves `ratio` times as many of its cells - the whole chain stays matched.
+-- The parent's grid moved under a nest (its fields shifted di, dj cells cells times): the nest
+-- stays where it is over the ground - only its corner changes, its fields are kept - and follows
+-- its own vortex by recentring. (Moving with the parent lost the 62.5 m nest's tornado whenever
+-- the box jumped to a new updraft cell, 2026-11-05.) Where staying would take it off the parent's
+-- grid it moves with the parent as before.
+local function keepPlace(parent: any, nest: any, di: number, dj: number, cells: number)
+	local r = nest.ratio
+	local i0, j0 = nest.i0 - di * cells, nest.j0 - dj * cells
+	if i0 < 3 or i0 + nest.nx / r > parent.nx - 2 or j0 < 3 or j0 + nest.ny / r > parent.ny - 2 then
+		Nest.shiftBy(nest, di, dj, cells * r)
+		return
+	end
+	nest.i0, nest.j0 = i0, j0
+	nest.X0, nest.Y0 = (i0 - 1) * parent.dx, (j0 - 1) * parent.dx
+	buildBoundary(nest, parent)
+end
+
 function Nest.shiftBy(m: any, di: number, dj: number, cells: number)
 	for _ = 1, cells do
 		m:shift(di, dj)
@@ -182,7 +205,7 @@ function Nest.shiftBy(m: any, di: number, dj: number, cells: number)
 		m:fill()
 	end
 	if m.child then
-		Nest.shiftBy(m.child, di, dj, cells * m.child.ratio)
+		keepPlace(m, m.child, di, dj, cells)
 	end
 end
 
@@ -266,6 +289,7 @@ function Nest.advance(m: any)
 	if child then
 		-- the engine's steering reaches the nests too: the changing air, the cold pool rate, the lifts
 		child.env, child.cpRate, child.drive, child.drive2 = m.env, m.cpRate, m.drive, m.drive2
+		child.cpTop = m.cpTop
 	end
 	if child then
 		for s = 1, child.steps do
@@ -281,14 +305,14 @@ function Nest.advance(m: any)
 	end
 end
 
--- One step of the whole chain: the root follows the storm first (a whole-cell shift) and its
--- nests move with it, so they stay on the storm.
+-- One step of the whole chain: the root follows the storm first (a whole-cell shift); its nests
+-- stay where they are over the ground (keepPlace) and follow their own vortices by recentring.
 function Nest.step(parent: any, nest: any?)
 	local ox, oy = parent.ox, parent.oy
 	parent:followStorm()
 	local di, dj = parent.ox - ox, parent.oy - oy
 	if (di ~= 0 or dj ~= 0) and parent.child then
-		Nest.shiftBy(parent.child, di, dj, parent.child.ratio)
+		keepPlace(parent, parent.child, di, dj, 1)
 	end
 	Nest.advance(parent)
 end
@@ -333,45 +357,78 @@ end
 function Nest.recentre(parent: any, nest: any)
 	local k = nest:levelAt(250)
 	local best, bi, bj = 0, 0, 0
-	for j = 3, nest.ny - 2 do
-		for i = 3, nest.nx - 2 do
-			local z = zetaSmooth(nest, i, j, k)
-			if z > best then
-				best, bi, bj = z, i, j
+	local c = nest.child
+	if c and c.holding then
+		-- its own nest holds a vortex (the 62.5 m nest a tornado): this nest follows that, at its
+		-- child's middle - searching on its own it jumped to another spin 4 km off and dragged the
+		-- child, which has to stay inside it, off its tornado (2026-11-05)
+		best = nest.vortex
+		bi = c.i0 - 0.5 + 0.5 * c.nx / c.ratio
+		bj = c.j0 - 0.5 + 0.5 * c.ny / c.ratio
+	else
+		-- (from the second cell in: a vortex drifting to the edge was missed from the third, and the
+		-- nest stayed on a weaker spin while its tornado sat half outside it, 2026-11-05)
+		for j = 2, nest.ny - 1 do
+			for i = 2, nest.nx - 1 do
+				local z = zetaSmooth(nest, i, j, k)
+				if z > best then
+					best, bi, bj = z, i, j
+				end
 			end
 		end
 	end
 	local r = nest.ratio
-	local di, dj = 0, 0
-	if best >= nest.vortex then
-		-- a vortex of its own: keep it near the centre
+	local di, dj, ni, nj = 0, 0, 1, 1
+	local tethered = true
+	local si, sj = parent.stormI, parent.stormJ
+	-- (not while its own nest holds a vortex: the tether is against wandering after weak spin, and a
+	-- tornado the engine still has down drifts behind its storm - the model's formed 7 km from the
+	-- updraught, drifted back past 8 km and the tether snapped both nests off it, 2026-11-05)
+	if si and si ~= 0 and best >= nest.vortex and not (c and c.holding) then
+		local vi, vj = nest.i0 - 0.5 + (bi - 0.5) / r, nest.j0 - 0.5 + (bj - 0.5) / r
+		local ei, ej = vi - si, vj - sj
+		tethered = math.sqrt(ei * ei + ej * ej) <= Nest.TETHER
+	end
+	nest.holding = best >= nest.vortex and tethered
+	if nest.holding then
+		-- a vortex of its own: back near the centre, up to RECENTRE_MAX parent cells a minute (one
+		-- cell a minute let the 62.5 m nest lose a tornado drifting faster than 4 m/s, 2026-11-05)
 		local off = 2 * r
 		local ci, cj = nest.nx / 2, nest.ny / 2
 		di = if bi > ci + off then 1 elseif bi < ci - off then -1 else 0
 		dj = if bj > cj + off then 1 elseif bj < cj - off then -1 else 0
+		ni = math.min(Nest.RECENTRE_MAX, math.ceil((math.abs(bi - ci) - off) / r))
+		nj = math.min(Nest.RECENTRE_MAX, math.ceil((math.abs(bj - cj) - off) / r))
 	else
 		-- none yet: back toward the storm's low-level circulation on the parent grid (chasing the
 		-- nest's own weak maxima walked it off the storm, 2026-11-04)
 		local ti, tj = Nest.place(parent, nest.nx, r)
 		di = if ti > nest.i0 then 1 elseif ti < nest.i0 then -1 else 0
 		dj = if tj > nest.j0 then 1 elseif tj < nest.j0 then -1 else 0
+		-- (nests keep their place when the parent moves, so this is how they follow it: as fast as
+		-- with a vortex)
+		ni = math.min(Nest.RECENTRE_MAX, math.abs(ti - nest.i0))
+		nj = math.min(Nest.RECENTRE_MAX, math.abs(tj - nest.j0))
 	end
-	local half = nest.nx / r
-	if nest.i0 + di < 3 or nest.i0 + di + half > parent.nx - 2 then
-		di = 0
+	for s = 0, math.max(ni, nj) - 1 do
+		local mi, mj = if s < ni then di else 0, if s < nj then dj else 0
+		local half = nest.nx / r
+		if nest.i0 + mi < 3 or nest.i0 + mi + half > parent.nx - 2 then
+			mi = 0
+		end
+		if nest.j0 + mj < 3 or nest.j0 + mj + nest.ny / r > parent.ny - 2 then
+			mj = 0
+		end
+		if mi == 0 and mj == 0 then
+			return
+		end
+		nest.i0 += mi
+		nest.j0 += mj
+		nest.X0 += mi * parent.dx
+		nest.Y0 += mj * parent.dx
+		buildBoundary(nest, parent)
+		Nest.shiftBy(nest, mi, mj, r)
 	end
-	if nest.j0 + dj < 3 or nest.j0 + dj + nest.ny / r > parent.ny - 2 then
-		dj = 0
-	end
-	if di == 0 and dj == 0 then
-		return
-	end
-	nest.i0 += di
-	nest.j0 += dj
-	nest.X0 += di * parent.dx
-	nest.Y0 += dj * parent.dx
-	buildBoundary(nest, parent)
-	Nest.shiftBy(nest, di, dj, r)
 end
 
 -- Near-ground vortex diagnostics of the nest: strongest vertical vorticity at the lowest level

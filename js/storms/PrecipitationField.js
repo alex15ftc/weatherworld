@@ -9,9 +9,9 @@
 // flank, the hook, the overhang above the updraught, the anvil and the rain shield are where
 // the wind puts them. Nothing here reads what the storm is called.
 // Frame: x east and y south in km from the storm's centre; heights in metres above the ground.
-import { rotatingShare, lineShare } from '../storms/StormModeEngine.js';
-import { buildStormGeometry } from '../storms/StormGeometry.js';
-import { BUDGET } from '../storms/StormBudgets.js';
+import { rotatingShare, lineShare } from './StormModeEngine.js';
+import { buildStormGeometry } from './StormGeometry.js';
+import { BUDGET } from './StormBudgets.js';
 
 export const PRECIP_LEVELS_M = [0, 700, 1500, 2500, 3700, 5200, 7000, 9200, 12000, 15500];
 // The storm-relative wind profile the fallout is carried by: one value every 250 m.
@@ -31,7 +31,7 @@ const FOLLOWED = { updraught: [1100, 1100, 1000, 900, 750, 600], lineCell: [56, 
 // Hailstones as shares of the storm's largest stone, and the share of the hail's mass in each.
 const HAIL_SIZE_SHARE = [0.35, 0.6, 0.9], HAIL_MASS_SHARE = [0.5, 0.35, 0.15];
 
-const PHYSICS = {
+export const PHYSICS = {
   // Precipitation leaves an updraught on its flanks (where it rises at 8% to 70% of its full
   // speed), from a kilometre below the freezing level to this share of the way to the top.
   flank: [0.08, 0.7], formationBelowM: 1000, formationShare: 0.45,
@@ -42,6 +42,14 @@ const PHYSICS = {
   inflowM: 1000,               // an updraught carries the wind of the air it draws in: the lowest kilometre
   // Turbulence spreads the fallout as it goes: each followed particle stands for a patch that
   // widens at this speed (m/s, and more per m/s of updraught), half of it as the patch's own drift.
+  // The air it is in stretches or squeezes it too (2026-11-07): a patch in air flowing together narrows at
+  // the rate the air converges, and in air spreading apart widens at that rate (a tracer patch in a strain
+  // field; Batchelor 1952, Garrett 1983). Below an updraught the air converges as fast as the updraught
+  // speeds up with height (dw/dz, from RISE), so the inflow keeps the edge of the rain beside the
+  // updraught sharp and its foot, the inflow notch and the weak echo under it, clear of spread-out rain;
+  // in the outflow at the top the anvil's fallout spreads wider. (Until then every patch widened with
+  // its age alone, and the rain spread from the hook and the hail core filled the notch: on 3 seeds x 2 days
+  // only 3% of supercells had a hook beside a notch under 25 dBZ, 11% with this.)
   spreadMs: [1.2, 0.04],
   aggregationS: 1500, aggregateMm: 1.3,   // snow doubles its size in this time, up to this size
   // A mature line drives air from its front to its rear aloft: up to this fast (m/s) with a
@@ -182,7 +190,7 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
 // The storm's updraughts: the one at its centre, and the cells along its leading line. Each
 // gives rain in proportion to its area, the rain the storm holds and how fast it rises; a
 // stronger one makes larger drops.
-function updraughts(storm, structure, geometry, model, asLine, toMap) {
+export function updraughts(storm, structure, geometry, model, asLine, toMap) {
   const speed = clamp(Number(storm.updraughtMs) || 6, 3, 70), rain = clamp(Number(storm.precipitation) || 0, 0, 1.3);
   const steady = clamp(Number(storm.organization) || 0, 0, 1), hailMm = (Number(storm.currentHailSizeInches) || 0) * 25.4;
   const hailMass = hailMm > 6 ? PHYSICS.hailMass[0] + PHYSICS.hailMass[1] * clamp(hailMm / 63, 0, 1.2) : 0;
@@ -276,8 +284,10 @@ const scaleFor = (widthKm, perKm) => { const cells = widthKm * perKm; return cel
 
 // Follows the fallout of every updraught. With no grid it only measures how far the fallout
 // reaches (following one particle in every `stride`); with one it adds each particle's stay in
-// each place to the grid (and to the finer inner grid, where it is inside that).
-function follow(model, grid, inner, stride) {
+// each place to the grid (and to the finer inner grid, where it is inside that). landed (no grid):
+// { kinds(isHail, mm) -> sums, skip(class) } adds where each particle reached the ground, and how much of it, to
+// those sums, leaving out the classes skip says to (StormFallout.js).
+export function follow(model, grid, inner, stride, landed = null) {
   const { su, sv, topM, freezingM: fz, baseM, ageS, mesocyclone: meso, spin, inflowU, inflowV, mesoDepth } = model;
   // The line's front-to-rear current, east and north (m/s), at its strongest.
   const rearU = -model.mx * model.frontToRear, rearV = model.my * model.frontToRear;
@@ -298,6 +308,7 @@ function follow(model, grid, inner, stride) {
     const nearInner = inner && Math.abs(source.x) < INNER.halfKm + 40 && Math.abs(source.y) < INNER.halfKm + 40;
     for (let c = 0; c < source.classes.length; c++) {
       const cls = source.classes[c], isSnow = cls.snow, isHail = cls.hail, sublimates = sublimation / (cls.mm * cls.mm), least = cls.each * stride * 0.03;
+      if (landed?.skip?.(cls)) continue;
       for (let p = 0; p < cls.count; p += stride) {
         const random = mulberry32(hash3(source.seed, c, p));
         let z = Math.max(1200, fz + (isHail ? P.hailAboveM : -P.formationBelowM) + random() ** 1.5 * (formationTop - fz + (isHail ? -P.hailAboveM : P.formationBelowM)));
@@ -315,18 +326,19 @@ function follow(model, grid, inner, stride) {
         const side = ((((startAngle / (2 * Math.PI)) % 1) + 1) % 1 * PULSE_SIDES | 0) * PULSE_STEPS;
         const driftU = (random() + random() + random() - 1.5) * 2 * spread, driftV = (random() + random() + random() - 1.5) * 2 * spread;
         let along = (random() * 4294967296) >>> 0;
-        let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0;
+        let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0, patchKm = 0;
         for (let step = 0; step < MAX_STEPS; step++) {
           // The wind relative to the storm at this height.
           const zi = z <= 0 ? 0 : Math.min(WIND_PROFILE_LEVELS - 1, (z / WIND_PROFILE_STEP_M) | 0);
           let u = su[zi], v = sv[zi];
           // The updraught it formed in: rising air that carries its inflow's wind, flowing in below and out above.
           const dx = x - source.x, dy = y - source.y, r2 = dx * dx + dy * dy;
-          let rising = 0, inside = 0;
+          let rising = 0, inside = 0, spreading = 0;
           if (z < top && r2 < 400 * R2) {
             inside = r2 < 9 * R2 ? Math.exp(-r2 / R2) : 0;
             const hi = z <= 0 ? 0 : (100 * z / top) | 0, slope = RISE_SLOPE[hi];
             rising = wMax * RISE[hi] * inside;
+            spreading = -wMax * slope * inside / top;   // the air's spreading apart (1/s): -dw/dz in the updraught
             u += (inflowU - u) * inside; v += (inflowV - v) * inside;
             if (r2 > 1e-4) {
               // Air leaving (or entering) the column, from how the updraught changes with height.
@@ -348,7 +360,9 @@ function follow(model, grid, inner, stride) {
           const inInner = nearInner && x > -INNER.halfKm && x < INNER.halfKm && y > -INNER.halfKm && y < INNER.halfKm;
           const speed = Math.sqrt(u * u + v * v), climb = vertical < 0 ? -vertical : vertical;
           // A step is no longer than a grid cell, or half the width of the patch the particle stands for.
-          const widthKm = isHail ? 0 : spread * age / 1000, cellM = inInner ? innerStepM : stepM, patchM = 500 * widthKm;
+          // (the step's length still goes with the patch's width from its age alone, so the steps and the time
+          // they take are as they were)
+          const widthKm = isHail ? 0 : patchKm, cellM = inInner ? innerStepM : stepM, patchM = 500 * (isHail ? 0 : spread * age / 1000);
           let dt = Math.min((patchM > cellM ? patchM : cellM) / (speed > 1 ? speed : 1), 450 / (climb > 0.5 ? climb : 0.5));
           dt = dt < 5 ? 5 : dt > 240 ? 240 : dt;
           if (grid) {
@@ -366,6 +380,8 @@ function follow(model, grid, inner, stride) {
             if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
           }
           x += u * dt / 1000; y -= v * dt / 1000; z += vertical * dt; age += dt;
+          // the patch widens with the turbulence and is stretched or squeezed by the air (see PHYSICS.spreadMs)
+          patchKm = (spreading ? patchKm * Math.exp(spreading * dt) : patchKm) + spread * dt / 1000;
           if (!isHail) {
             if (frozen) {
               if (inside < 0.3) {
@@ -377,6 +393,7 @@ function follow(model, grid, inner, stride) {
           }
           if (z <= 0 || age > ageS || mass < least) break;
         }
+        if (landed && z <= 0) for (const m of landed.kinds(isHail, cls.mm)) { m.n += mass; m.x += mass * x; m.y += mass * y; m.xx += mass * x * x; m.yy += mass * y * y; m.xy += mass * x * y; }
       }
     }
   }
@@ -527,6 +544,13 @@ function addSample(grid, dx, dy, k, tz, weight, out) {
   if (f) out.hail += (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
 }
 
+// How fast a storm's hail falls (m/s): the mean over the stones its updraughts make
+// (HAIL_SIZE_SHARE of its largest stone, HAIL_MASS_SHARE of the mass each), by mass.
+export function hailFallSpeedMs(storm) {
+  const hailMm = (Number(storm?.currentHailSizeInches) || 0) * 25.4;
+  return HAIL_SIZE_SHARE.reduce((sum, share, c) => sum + HAIL_MASS_SHARE[c] * hailFallMs(Math.max(6, share * hailMm)), 0);
+}
+
 // Whether the storm has anything above a place (or right beside it).
 export function hasPrecipitation(echo, dx, dy) {
   if (dx < echo.minX || dy < echo.minY || dx > echo.maxX || dy > echo.maxY) return false;
@@ -580,7 +604,7 @@ function hash3(seed, a, b, c = 0) {
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return (h ^ (h >>> 16)) >>> 0;
 }
-function hashString(text) { let h = 2166136261; for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619); return h | 0; }
+export function hashString(text) { let h = 2166136261; for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619); return h | 0; }
 function mulberry32(a) {
   return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }

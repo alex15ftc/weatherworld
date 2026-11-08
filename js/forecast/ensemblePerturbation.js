@@ -105,3 +105,47 @@ export function perturbMesoscale(atmosphere, seed, share = 1, p = MESOSCALE, sig
   atmosphere.world.forecastLiftScale = lift;
   return atmosphere;
 }
+
+// How uncertain the flow itself is (2026-11-07, the user's request: Days 2-3 vaguer on uncertain days, sharper on
+// consistent ones). Two twins of the large-scale model are run leadHours ahead from the atmosphere as it is, one of
+// them with a run's upstream difference (perturbUpstream, at UPSTREAM.share); how far apart they then are over the
+// map (rms of the mid-level streamfunction within windowKm of its middle) against how far apart they are on a typical
+// morning (referenceRms) is how fast this flow spreads its errors. Each run's timing error and upstream difference
+// are scaled by that ratio to the power `exponent`, kept within [least, most]: the runs differ more where the flow
+// would make them differ and less where it would not, and about as much as before on a typical morning.
+// referenceRms: the median of 120 mornings (seeds 1-20, every 12 h of the large-scale model alone; 10th-90th percentiles
+// 0.57-1.61 times it), so the factor runs about 0.6-1.6 and averages 1.04.
+// Off (exponent 0) since 2026-11-07: tried on seeds 1-20 x 5 and 41-50 x 3 (tmp/d23 fit-new, check-new) with exponent 1, it moved
+// Day 2 right 59 -> 54% and 45 -> 55% (100 outlooks: 56 -> 54 right, too high 11 -> 15% on 1-20) and Day 1 on 41-50 53 -> 50%.
+export const FLOW = Object.freeze({ leadHours: 36, windowKm: 1200, draws: 2, referenceRms: 2.43e6, exponent: 0, least: 0.5, most: 1.6 });
+
+// The twins' rms difference over the map (m^2/s); model is not changed. mapCentre: { x, y } along and across the belt (m).
+export function flowDisagreement(model, mapCentre, p = FLOW, seed = 'flow') {
+  const twin = () => {
+    const copy = new model.constructor(model.params);
+    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) copy[key].set(model[key]);
+    copy.time = model.time; copy.fastTransforms = true; copy.invert();
+    return copy;
+  };
+  // (two upstream differences, drawn apart, so that one draw's chance fit to the flow does not decide it)
+  const a = twin(), others = Array.from({ length: p.draws ?? 2 }, (_, k) => perturbUpstream(twin(), `${seed}|${k}`, mapCentre.x));
+  for (const m of [a, ...others]) m.advance(p.leadHours * 3600);
+  const { nx, ny, d } = model, length = nx * d, reach = p.windowKm * 1000;
+  let sum = 0, count = 0;
+  for (const b of others) for (let j = 0; j < ny; j++) {
+    const dy = (j + 0.5) * d - mapCentre.y; if (Math.abs(dy) > reach) continue;
+    for (let i = 0; i < nx; i++) {
+      let dx = (((i + 0.5) * d - mapCentre.x) % length + length) % length; if (dx > length / 2) dx -= length;
+      if (dx * dx + dy * dy > reach * reach) continue;
+      const k = j * nx + i, diff = (a.psi1[k] + a.psi2[k] - b.psi1[k] - b.psi2[k]) / 2;
+      sum += diff * diff; count++;
+    }
+  }
+  return Math.sqrt(sum / Math.max(1, count));
+}
+
+// The factor for a run's timing error and upstream difference (see FLOW).
+export function flowSpreadFactor(disagreement, p = FLOW) {
+  if (!(disagreement > 0) || !(p.referenceRms > 0)) return 1;
+  return Math.min(p.most, Math.max(p.least, (disagreement / p.referenceRms) ** p.exponent));
+}

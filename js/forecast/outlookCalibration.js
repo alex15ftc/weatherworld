@@ -50,7 +50,11 @@
 // (Refitted 2026-10-27 from data/outlook-archive/fit-2026-10-27d by scripts/refit-from-archive.mjs.)
 // (Refitted 2026-10-29 from data/outlook-archive/fit-2026-10-28-cheap by scripts/refit-from-archive.mjs.)
 // (Refitted 2026-10-29 from data/outlook-archive/fit-2026-10-29 by scripts/refit-from-archive.mjs.)
-export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.4],[2.7,3.4],[4.2,6.2],[6.1,9.6],[8.7,14.8],[11.2,19.5],[13.7,24.8],[17.2,31.7],[22.3,43.6],[27.2,49.7],[33.8,64.3],[45.3,78.6]],"wind":[[1.5,0.5],[2.7,0.8],[4.2,1.1],[6.2,1.5],[8.7,2.1],[11.2,3.2],[13.7,4.4],[17.4,6.5],[22.5,9.5],[27.5,12.9],[34.8,19.1],[44.8,28.9],[54.8,39.3],[67.1,48],[81.7,64.6]],"hail":[[1.5,0.2],[2.7,0.3],[4.2,0.6],[6.2,1.4],[8.7,1.7],[11.2,2.3],[13.7,3.5],[17.4,5],[22.5,7.8],[27.4,11.7],[34.9,18.5],[44.9,29.8],[54.8,40.1],[67.1,52.2],[82.8,72.4]]},"day2":{"tornado":[[1.5,2],[2.7,4.3],[4.2,7.2],[6.1,10.4],[8.6,15.4],[11.1,18.3],[13.7,27],[17.2,38.2],[22.1,46.1],[27.1,58.9],[33.2,74.7]],"wind":[[1.5,0.2],[2.7,0.9],[4.3,1.3],[6.3,2.7],[8.7,3.4],[11.2,5],[13.7,6.7],[17.5,10.3],[22.4,14.2],[27.4,18.3],[34.8,24.4],[44.7,33.8],[54.6,43.6],[66.5,52.1],[80.2,63.4]],"hail":[[1.5,0.2],[2.7,0.7],[4.2,0.9],[6.2,2],[8.7,3.5],[11.2,4.9],[13.7,6],[17.4,8.7],[22.4,13.3],[27.4,17],[34.8,23.7],[44.8,34.8],[54.8,45.8],[66.7,56.6],[80.7,72.7]]},"day3":{"severe":[[0.5,3.4],[1.5,6.8],[2.8,10.4],[4.3,12.8],[6.2,16.9],[8.7,23.3],[11.2,29.6],[13.7,34.2],[17.2,38.7],[22.2,44.7],[27.1,55.5],[36.3,61.1]]},"day1update":{"tornado":[[1.4,0.8],[2.7,1],[4.2,2.2],[6.2,3.1],[8.7,5.2],[11.2,7.1],[13.7,8.5],[17.4,13.1],[22.4,22.7],[27.4,27.2],[34.5,32.9],[47,45.5],[63.3,65.7]],"wind":[[1.5,0],[2.7,0.2],[4.2,0.4],[6.2,0.9],[8.7,2.3],[11.2,4],[13.7,5.1],[17.4,7.5],[22.4,9.4],[27.5,16.5],[34.9,35.4],[45,65.3],[54.8,85.6],[67.3,95.1],[84.4,99.3]],"hail":[[1.5,0.1],[2.7,0.6],[4.2,1],[6.1,2.2],[8.7,4],[11.2,5.9],[13.7,6.6],[17.4,9.7],[22.5,16.9],[27.4,25.1],[34.8,38.5],[44.8,60.7],[54.8,79.5],[67.2,89.5],[84.5,97.4]]}});
+// (Refitted 2026-11-06 from C:/Users/alex1/.claude/jobs/f592f53b/tmp/stepfix/arch-after by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-11-06 from C:/Users/alex1/.claude/jobs/f592f53b/tmp/i2i3/arch-all by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-11-06 from C:/Users/alex1/.claude/jobs/f592f53b/tmp/refit2/arch by scripts/refit-from-archive.mjs.)
+// (Refitted 2026-11-07 from C:/Users/alex1/.claude/jobs/f592f53b/tmp/fc/fit-2026-11-07 by scripts/refit-from-archive.mjs.)
+export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.2],[2.7,3],[4.2,4.7],[6.1,8.6],[8.7,13.4],[11.2,19.4],[13.6,24.1],[17.2,29.4],[22.2,38.1],[27.3,50.3],[34.4,59.7],[44.6,70]],"wind":[[1.5,0.6],[2.7,1.3],[4.2,2.4],[6.2,3.7],[8.7,8.5],[11.2,12.2],[13.7,16],[17.4,23.9],[22.4,35.5],[27.4,44.8],[34.5,56.4],[44.4,70.9],[54.3,83.1],[65.7,90.4]],"hail":[[1.5,0.7],[2.7,1.6],[4.2,3.5],[6.2,5],[8.7,7.9],[11.2,10],[13.7,13.6],[17.4,19.5],[22.4,30.6],[27.4,42.4],[34.7,55],[44.6,70.1],[54.6,83],[66.2,92.1],[77.9,99.2]]},"day2":{"tornado":[[1.4,1.4],[2.7,3.5],[4.2,6.1],[6.1,10],[8.6,14.9],[11.1,17.2],[13.6,23.8],[17.2,30.2],[22.3,49.4],[27.3,51.8],[34.2,68.3]],"wind":[[1.5,1.4],[2.7,2.4],[4.2,4.6],[6.2,7.1],[8.7,9.5],[11.2,15.1],[13.7,19.8],[17.4,28.2],[22.4,38.1],[27.3,46.6],[33.9,55.8],[43.7,74.6],[53.6,86.4]],"hail":[[1.5,1.7],[2.7,3.3],[4.2,4.9],[6.2,6.2],[8.7,7.9],[11.2,11.6],[13.7,15.1],[17.4,23.2],[22.4,34.7],[27.4,43.2],[34.5,54.7],[44.3,68.6],[54.3,84.5],[65.2,93.6]]},"day3":{"severe":[[0.6,8.1],[1.5,10.3],[2.8,16],[4.2,16.9],[6.2,18.9],[8.7,26.9],[11.2,29.7],[13.7,35],[17.1,39.2],[22.3,41.9],[27.1,59.2],[33.6,72.6],[44.3,86.1]]},"day1update":{"tornado":[[1.4,0.8],[2.7,1],[4.2,2.2],[6.2,3.1],[8.7,5.2],[11.2,7.1],[13.7,8.5],[17.4,13.1],[22.4,22.7],[27.4,27.2],[34.5,32.9],[47,45.5],[63.3,65.7]],"wind":[[1.5,0],[2.7,0.2],[4.2,0.4],[6.2,0.9],[8.7,2.3],[11.2,4],[13.7,5.1],[17.4,7.5],[22.4,9.4],[27.5,16.5],[34.9,35.4],[45,65.3],[54.8,85.6],[67.3,95.1],[84.4,99.3]],"hail":[[1.5,0.1],[2.7,0.6],[4.2,1],[6.1,2.2],[8.7,4],[11.2,5.9],[13.7,6.6],[17.4,9.7],[22.5,16.9],[27.4,25.1],[34.8,38.5],[44.8,60.7],[54.8,79.5],[67.2,89.5],[84.5,97.4]]}});
 
 // Intensity groups (2026-10-21): for each outlook day and hazard, the share of the runs whose own
 // reports in a contour area reach group g that a group needs to be drawn there, set where the group
@@ -104,7 +108,9 @@ export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.4],[2.7,3.4]
 // truth stepped as the server steps the live world. On those 100 mornings Day 1 went from right on 48% of days
 // (37% too high) to 61% (23% too high). day1update is still the 2026-10-24 fit, made from 8 runs.)
 // (Kept 2026-10-29: the refit on fit-2026-10-29 asked 3/8 runs for Day 1 tornado CIG2/CIG3 and cut Day 1 Moderate+High from 25% to 18% of days, 24% verified.)
-export const CIG_SHARE = Object.freeze({"day1":{"wind":[1.01,1.01,1.01],"hail":[0.5,0.875],"tornado":[0.25,0.25,0.25]},"day2":{"wind":[0.625,0.75,0.875],"hail":[1.01,1.01],"tornado":[0.25,0.25,0.75]}});
+// (2026-11-07: Day 3 any severe hatched where all its runs reach CIG1, judged with OUTLOOK.ingredientCigBounds; fit-new seeds 1-20:
+// Day 3 right 48 -> 52%, too high 10%. Day 2 kept: the fitted hail 0.375 / tornado CIG2 0.375 lowered Day 2 to 51%.)
+export const CIG_SHARE = Object.freeze({"day1":{"wind":[1.01,1.01,1.01],"hail":[0.5,0.875],"tornado":[0.25,0.25,0.25]},"day2":{"wind":[0.625,0.75,0.875],"hail":[1.01,1.01],"tornado":[0.25,0.25,0.75]},"day3":{"severe":[1.0]}});
 
 import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 
@@ -113,7 +119,10 @@ import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 // all into a level from GUARD_LEVEL up (where Moderate and High come from): those the runs must
 // reach themselves (2026-10-17; uncapped, and with one level allowed everywhere, Day 1 issued High
 // on 10% of mornings against 5% that verified, and a false High costs players' trust).
-const GUARD_LEVEL = { tornado: 30, wind: 45, hail: 45, severe: 45 };
+// Any severe (Day 3) is guarded from 60 (2026-11-07; 45 until then): its Moderate needs 60 with CIG1 (45 with CIG2, which Day 3
+// never draws, WORLD_MAX_CIG), so a guard at 45 kept every Day 3 below Enhanced (seeds 1-20: SLGT on 97% of mornings,
+// with places at the 43% the guard held them to verifying 51%).
+const GUARD_LEVEL = { tornado: 30, wind: 45, hail: 45, severe: 60 };
 export function calibrateChance(day, hazard, raw, table = CALIBRATION) {
   const calibrated = curve(day, hazard, raw, table), levels = PROBABILITY_LEVELS[hazard];
   if (!(calibrated > raw) || !levels) return calibrated;
@@ -129,5 +138,16 @@ function curve(day, hazard, raw, table) {
   if (!points?.length || !(raw > 0)) return raw;
   if (raw <= points[0][0]) return raw * points[0][1] / Math.max(1e-6, points[0][0]);
   for (let k = 1; k < points.length; k++) if (raw <= points[k][0]) { const [x0, y0] = points[k - 1], [x1, y1] = points[k]; return y0 + (y1 - y0) * (raw - x0) / Math.max(1e-6, x1 - x0); }
-  return Math.min(100, points.at(-1)[1]);
+  // Past the fitted data the runs' own chance, never less than the last fitted value (2026-11-05: until then held at the
+  // last value, so a fit from days whose raw tornado chance never passed 23% capped the tornado chance at 26% for good).
+  return Math.min(100, Math.max(points.at(-1)[1], raw));
 }
+
+// The category cutoffs fitted for I3 (OUTLOOK.ensemble method 'nmep', sigmaKm day1 32 / day2 48, with its own chances' table)
+// on 2026-11-06 (scripts/fit-category-cutoffs.mjs; fit seeds 1-30, 84 Day 1 and 54 Day 2 outlooks; docs/research/OUTLOOKS-MDS-WATCHES.md
+// section 8): each contour level counts for the category only at about twice its chance (Day 1 x2.15-2.4, Day 2 x1.6-2.0).
+// Not in use: OUTLOOK.categoryCutoffs is null. To try I3 with it, set OUTLOOK.ensemble to { method: 'nmep', sigmaKm: { day1: 32,
+// day2: 48 } }, OUTLOOK.categoryCutoffs to CATEGORY_CUTOFFS_NMEP, and the calibration to CALIBRATION_NMEP below.
+export const CATEGORY_CUTOFFS_NMEP = Object.freeze({"day1":{"tornado":{"2":4.8,"5":12,"10":24,"15":36,"30":72,"45":108,"60":144},"wind":{"5":10.8,"15":32.3,"30":64.5,"45":96.8,"60":129,"75":161.3,"90":193.5},"hail":{"5":11.3,"15":33.8,"30":67.5,"45":101.3,"60":135}},"day2":{"tornado":{"2":3.2,"5":8,"10":16,"15":24,"30":48,"45":72,"60":96},"wind":{"5":8.5,"15":25.5,"30":51,"45":76.5,"60":102,"75":127.5,"90":153},"hail":{"5":10,"15":30,"30":60,"45":90,"60":120}}});
+// I3's own chances' table, fitted with it on the same 84 mornings (day1update and Day 3 as in CALIBRATION). Not in use.
+export const CALIBRATION_NMEP = Object.freeze({ ...CALIBRATION, ...{"day1":{"tornado":[[1.5,1.5],[2.7,2.5],[4.2,4.2],[6.2,6.4],[8.7,7.6],[11.2,10.9],[13.7,12.7],[17.4,17.4],[22.3,23.8],[27.4,27.5],[34.5,36.5],[44.6,49.9],[54.5,57.7],[68.4,74.2]],"wind":[[1.5,0.4],[2.7,1.4],[4.2,2.7],[6.2,3.9],[8.7,5.8],[11.2,7.8],[13.7,11.5],[17.4,16.8],[22.5,22.9],[27.5,27.8],[34.9,35.8],[45,48.6],[54.7,59.9],[66.9,72.8],[82.7,87.8]],"hail":[[1.5,0.7],[2.7,1],[4.2,2],[6.2,2.9],[8.7,5.4],[11.2,7.6],[13.7,11.5],[17.4,16.4],[22.5,22.3],[27.4,27.4],[35,36.3],[44.8,47.9],[55,59.9],[67.1,73.5],[86.4,91.4]]},"day2":{"tornado":[[1.5,1.5],[2.7,3],[4.2,4.7],[6.1,5.9],[8.7,8.7],[11.2,11.5],[13.7,14.9],[17.3,18.2],[22.3,24.9],[27.4,32.7],[34.3,44.7],[44.4,59.4],[55.1,67.6]],"wind":[[1.5,1.1],[2.7,1.8],[4.2,3.4],[6.2,5],[8.7,7.5],[11.2,9.8],[13.7,14.4],[17.4,18.5],[22.4,22.3],[27.4,28.9],[34.6,38.9],[44.7,52.4],[54.5,59.2],[65.6,69.3],[78.4,87.7]],"hail":[[1.5,1.2],[2.7,2.1],[4.2,3.4],[6.2,6.4],[8.7,7.4],[11.2,9.1],[13.7,12.6],[17.4,18],[22.4,20.8],[27.4,26.2],[34.8,35.5],[44.7,50],[54.8,62],[66.9,72.1],[81.6,92.1]]},"day3":{"severe":[[1.5,6.9],[3.6,9.4],[6.2,15.1],[8.7,21.8],[11.2,32.2],[13.7,38.8],[19,38.9],[27.1,59.2],[34.5,62]]}} });
