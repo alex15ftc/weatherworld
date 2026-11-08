@@ -15,6 +15,43 @@ const LINEAR_MODES = ['broken line', 'linear segment', 'QLCS with embedded super
 const UNDERCUTTING_RANGE_F = [1.5, 6];
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
+// The 0-6 km mean wind and the 0-6 km shear (kt, east and north) of one cell's column, as the sounding takes them
+// (sounding.js meanWindLayer and bunkers): the wind every 250 m from the ground to 6 km, between the surface, 850, 700,
+// 500 and 250 mb, the direction turned and the speed changed in proportion to the height between them, and the shear
+// from the ground to 6 km. (The sounding interpolates in log pressure; within a layer that is in proportion to height.)
+const MEAN_LAYER_M = 6000, MEAN_STEP_M = 250;
+// (kept per cell until the cells change: AtmosphereWorld counts that in cellsVersion; a world without it is worked out each time)
+const columnKept = new WeakMap();
+function keptColumnMeanAndShear(world, cell) {
+  const version = world.cellsVersion;
+  if (!Number.isFinite(version)) return columnMeanAndShear(cell);
+  const k = columnKept.get(cell);
+  if (k && k.version === version && k.hour === world.validHourUtc) return k.result;
+  const result = columnMeanAndShear(cell);
+  columnKept.set(cell, { version, hour: world.validHourUtc, result });
+  return result;
+}
+function columnMeanAndShear(cell) {
+  const elev = Number(cell.terrain?.elevationM) || 0, DEG = Math.PI / 180;
+  const anchors = [{ z: 0, dir: cell.surface.wind.direction, spd: cell.surface.wind.speed }];
+  for (const [p, fallbackM] of [[850, 1500], [700, 3010], [500, 5700], [250, 10400]]) {
+    const level = cell.levels[p], z = (Number(level.heightDm) * 10 || fallbackM) - elev;
+    if (z > anchors[anchors.length - 1].z + 50) anchors.push({ z, dir: level.windDirection, spd: level.windSpeed });
+  }
+  for (const a of anchors) { a.sin = Math.sin(a.dir * DEG); a.cos = Math.cos(a.dir * DEG); }
+  const at = z => {
+    let i = 0;
+    while (i < anchors.length - 2 && z > anchors[i + 1].z) i++;
+    const lo = anchors[i], hi = anchors[i + 1], f = clamp((z - lo.z) / (hi.z - lo.z), 0, 1);
+    const dir = Math.atan2((1 - f) * lo.sin + f * hi.sin, (1 - f) * lo.cos + f * hi.cos), spd = lo.spd + (hi.spd - lo.spd) * f;
+    return { u: -Math.sin(dir) * spd, v: -Math.cos(dir) * spd };
+  };
+  let u = 0, v = 0, n = 0;
+  for (let z = 0; z <= MEAN_LAYER_M; z += MEAN_STEP_M) { const w = at(z); u += w.u; v += w.v; n++; }
+  const bottom = at(0), top = at(MEAN_LAYER_M);
+  return { meanU: u / n, meanV: v / n, shearU: top.u - bottom.u, shearV: top.v - bottom.v };
+}
+
 export function sampleStormEnvironment(world, xKm, yKm) {
   const gx = clamp(xKm / world.cellSizeKm - 0.5, 0, world.width - 1);
   const gy = clamp(yKm / world.cellSizeKm - 0.5, 0, world.height - 1);
@@ -40,6 +77,9 @@ export function sampleStormEnvironment(world, xKm, yKm) {
     return { eastKt: vector.u / norm * speed, northKt: vector.v / norm * speed };
   };
   const surfaceWind = wind('surface'), wind850 = wind(850), wind500 = wind(500);
+  // The 0-6 km mean wind and shear from each cell's whole column, as the sounding has them (storm motion).
+  const columns = cells.map(cell => keptColumnMeanAndShear(world, cell)), layer = key => columns.reduce((sum, c, i) => sum + c[key] * weights[i], 0);
+  const meanWind06 = { eastKt: layer('meanU'), northKt: layer('meanV') }, shear06 = { eastKt: layer('shearU'), northKt: layer('shearV') };
   // How strongly the surface winds converge here (0-1): the only way a front, a dryline or
   // an outflow edge is felt.
   const boundaryInfluence = mean(cell => cell.features?.convergenceLift ?? 0);
@@ -67,7 +107,7 @@ export function sampleStormEnvironment(world, xKm, yKm) {
   const supercellEnvironment = ramp(bulkShear, 30, 50) * ramp(cape, 500, 1500);
   const tornadicEnvironment = ramp(srh, 100, 300) * ramp(1700 - lcl, 0, 800) * ramp(bulkShear, 25, 45);
   return {
-    cape, surfaceCape: cape,
+    cape, surfaceCape: cape, meanWind06, shear06,
     mostUnstableCape: mean(cell => cell.derived?.sounding?.mucape ?? cell.derived.cape),
     mostUnstableCin: mean(cell => Math.abs(cell.derived?.sounding?.mucin ?? cell.derived.cin ?? 0)),
     surfaceBasedCape: mean(cell => cell.derived?.sounding?.sbcape ?? cell.derived.cape),
@@ -145,12 +185,16 @@ function diagnoseOrganizationTendency(world, xKm, yKm, surfaceWind, wind500, bou
 // character: { rotating, linear, leftMover } (shares 0-1 from the storm's properties).
 export function diagnoseStormMotion(environment, character = {}) {
   const rotating = clamp(Number(character.rotating) || 0, 0, 1), linear = clamp(Number(character.linear) || 0, 0, 1);
-  // Mean wind of the lowest 6 km from the three levels carried (the surface, 850 mb near
-  // 1.5 km and 500 mb near 5.7 km), each weighted by the depth it stands for.
-  const meanEast = environment.surfaceWind.eastKt * MEAN_WIND_WEIGHTS.surface + environment.wind850.eastKt * MEAN_WIND_WEIGHTS[850] + environment.wind500.eastKt * MEAN_WIND_WEIGHTS[500];
-  const meanNorth = environment.surfaceWind.northKt * MEAN_WIND_WEIGHTS.surface + environment.wind850.northKt * MEAN_WIND_WEIGHTS[850] + environment.wind500.northKt * MEAN_WIND_WEIGHTS[500];
-  const shearEast = environment.wind500.eastKt - environment.surfaceWind.eastKt;
-  const shearNorth = environment.wind500.northKt - environment.surfaceWind.northKt;
+  // The 0-6 km mean wind and shear of the whole column, as the sounding takes them for its Bunkers motion
+  // (sampleStormEnvironment's meanWind06 and shear06). (Until 2026-11-07 the mean was the surface, 850 and 500 mb
+  // at 0.13 / 0.5 / 0.37 with no 700 mb, and the shear 500 mb less the surface: on big days the backed 850 mb jet
+  // turned the mean 15-20 degrees to the left of the sounding's, and tracks ran 31-47 degrees against its Bunkers
+  // 56-66.) An environment without them (built elsewhere) falls back to those three levels.
+  const m06 = environment.meanWind06, s06 = environment.shear06;
+  const meanEast = m06 ? m06.eastKt : environment.surfaceWind.eastKt * MEAN_WIND_WEIGHTS.surface + environment.wind850.eastKt * MEAN_WIND_WEIGHTS[850] + environment.wind500.eastKt * MEAN_WIND_WEIGHTS[500];
+  const meanNorth = m06 ? m06.northKt : environment.surfaceWind.northKt * MEAN_WIND_WEIGHTS.surface + environment.wind850.northKt * MEAN_WIND_WEIGHTS[850] + environment.wind500.northKt * MEAN_WIND_WEIGHTS[500];
+  const shearEast = s06 ? s06.eastKt : environment.wind500.eastKt - environment.surfaceWind.eastKt;
+  const shearNorth = s06 ? s06.northKt : environment.wind500.northKt - environment.surfaceWind.northKt;
   const shearMagnitude = Math.hypot(shearEast, shearNorth) || 1;
   // An organized line moves with its cold pool (Corfidi), the rest with the mean wind.
   let east = meanEast, north = meanNorth;

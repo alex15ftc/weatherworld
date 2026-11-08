@@ -661,3 +661,41 @@ Job tmp/gust (*.pool-tried.js, *.pool-tried2.js, StormOutflow.pool-tried2.js, wo
     - supercells 3.6 / 17.9 / 38.2 → 9.0 / 16.0 / 29.1 km;
     - lines 18.9 / 36.7 / 52.0 → 9.8 / 18.9 / 42.0 km.
   - Regression lead against tracker-base: no regressions, nothing moved (it is display only). Storm 13/13, radar 3/3.
+
+### Meteorologist review of today's engine (2026-11-07)
+
+Packs: data/day-reviews/review-2026-11-07 (seeds 2112 and 41, 3 days each). Scores 6-8 out of 10.
+1. **Major: supercells move along the real mean wind, not right of it.**
+   - The engine's mean wind (environmentSampling.js:150) is surface / 850 / 500 at 0.13 / 0.5 / 0.37, with no 700 mb. With a backed 850 mb jet (172-176°) under 230-241° at 700 mb, it backs the mean by about 15-20°.
+   - Tracks run 31-47°, against a full-profile Bunkers of 56-66°. The sounding's own Bunkers (sounding.js:579, full profile) disagrees with the storms.
+   - Fix: a full-column 0-6 km mean wind.
+2. **Major: a primed warm sector at dawn** (2112 d1): EF3 by 1530Z and EF4s by 1630Z; the outlook says storms "from about 17Z". It needs a real 12-15Z CIN (nocturnal inversion and BL recovery).
+3. **Moderate: violent tornadoes** 7% of all (10 of 137), against about 1% long-term and about 4% on 27 Apr 2011.
+4. **Moderate:** spurious analysed drylines under an upper low, and weak-shear cells typed as lines (41 d2).
+5. **Moderate:** the night LLJ and SRH tail is too large (850 mb 91 kt, SRH01 p90 about 1000 at 03-06Z).
+- **Also:** the gust front 9-16 km ahead of a mature supercell seems large to the reviewer, who expects a few km.
+- **Right:** Day 1 outlooks verified well; soundings are coherent; tracks curve right as storms mature; tornado widths and the 3-day variety look good.
+
+### Full-column mean wind for storm motion (2026-11-07)
+
+- **Change** (environmentSampling.js columnMeanAndShear, as sounding.js meanWindLayer and bunkers): the 0-6 km mean and shear from the surface / 850 / 700 / 500 / 250 anchors every 250 m. It reads only the cells, so forecast runs move the same way.
+- **Mature supercells:**
+  - bearing minus the sounding's Bunkers −8.6° → −0.7°;
+  - |V − Bunkers| 4.7 → 2.1 m/s;
+  - SRH01 ingested 196 → 266.
+- **Ring test:**
+  - notch median 40 → 29 dBZ;
+  - hook with a notch under 25 dBZ 18 → 38%;
+  - the echo at the mesocyclone 55 → 37 dBZ;
+  - false hooks on lines 0.4 → 2.3%.
+- **Cores:** the rain core is 8.2 km out, on the left (70% inside 5-15 km); hail miss 2.7 km.
+- **Regression** meanwind against tracker-base: no regressions.
+  - Hail CIG1+ days 10 → 20%; 3.5 in+ 0.17 → 0.61% (SPC 0.7).
+  - Hail 2 in+ share 19.1% (target 14.1); EF3 share 4.8% (near its limit).
+  - MDT+HIGH days 27.5% (20); EF2+ a day 3.17 (2.84).
+- **Forecast check** (seeds 41-50, --lead-caps, current tables; meanwind against motion-gust rescored):
+  - **Day 1:** right 57% (53), within one 97% (90), place by place 63% (68); forecast MDT 33%, HIGH 0% (verified 20% / 13%); MDT+ CSI 0.36 (0.41).
+  - **Day 2:** right 50% (45), within one 80% (90), place by place 46% (50).
+  - **Day 3:** right 50% (50), within one 70% (80).
+  - Probability skill unchanged.
+  - Mixed, inside the refit rule (more than 15 points right or 10 within one). Kept, with a refit to batch with the next engine change.
