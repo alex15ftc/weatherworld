@@ -445,7 +445,14 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				elseif belowBase(px, py, z, bx, by, rB) then
 					add(px, py, z, wc, wc, 0.92, "softSheetFlat", albedo, sunLit(px, py, base - 80) * 0.6, 0.5, baseZ, 0, 0, -1)
 				elseif hash(seed, lvl * 16 + k, 43) < fr then
-					add(px, py, z, wc, wc, if face then 0.4 * detA elseif meshBody then detA else 0.92, "lumpyFlat", albedo, lit, 1, baseZ, nx, ny, nz)
+					local lc = add(px, py, z, wc, wc, if face then 0.4 * detA elseif meshBody then detA else 0.92, "lumpyFlat", albedo, lit, 1, baseZ, nx, ny, nz)
+					-- (crisp, sphere-shaded turrets where fresh cloud still rises near the top; lower down
+					-- the sides are older, mixed cloud - soft. Every lobe sphere-shaded, the tower read as
+					-- a heap of balls from 4-8 km, supercell grade 2026-11-09)
+					local zf = (z - base) / max(colTop - base, 1)
+					if hash(seed, lvl * 16 + k, 45) >= ramp(zf, 0.45, 0.9) then
+						lc.lobe = "soft"
+					end
 				else
 					-- (left over: no updraft renews its turrets)
 					local tex = remnantTex(ice, hash(seed, lvl * 16 + k, 44))
@@ -478,6 +485,11 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 			local c = if belowBase(px, py, zb, bx, by, rB) or (meshBody and not onEdge(tx, ty, ox, oy)) then nil else add(px, py, zb, bs, bs, if meshBody then detA else 0.95, "lumpyFlat", 0.93, sunLit(px + ox * bs * 0.5, py + oy * bs * 0.5, zb), 1, baseZ, nx, ny, nz)
 			if c then
 				boil(c, W, bs, true)
+				-- (sphere-shaded only toward the crest, as the tower's lobes; a crisp billow low on the
+				-- sunny side read as one bright ball sitting on the base from far, judge 2026-11-09)
+				if hash(seed, 100 + b, 8) >= ramp(h1, 0.25, 0.85) then
+					c.lobe = "soft"
+				end
 			end
 		end
 		-- the top: a dome while rising (a cluster of cards), a cap under the anvil when mature
@@ -1248,7 +1260,8 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 		end
 		-- (style "stream": Render/WallStream draws the body, the banding, the filaments and the tail
 		-- as puffs carried by the rotation and the inflow; only the scud stays here)
-		local streamed = CardPlan.wallStream == true
+		-- (not for a lowering small on screen: StormCards' CardPlan.wallFar, WallStream's width test)
+		local streamed = CardPlan.wallStream == true and CardPlan.wallFar ~= true
 		-- the body: rings of smooth opaque cards, each filling from the underside up into the base
 		for ri, fr in (if streamed then {} else { 0, 0.4, 0.72, 0.93 }) :: { number } do
 			local r = fr * R

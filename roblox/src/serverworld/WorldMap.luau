@@ -3,13 +3,14 @@
 -- scripts/export-world-roblox.mjs; server only). Map coordinates are miles east and south of the
 -- map's north-west corner; the place is centred on the origin, so a stud position (x, z) is at
 -- map miles (x / STUDS_PER_MILE + MAP_MILES / 2, z / STUDS_PER_MILE + MAP_MILES / 2).
--- Tiles are decoded when first needed and kept (each actor holds its own copy). Loading one
--- requires its module, which is not allowed in a parallel phase: call WorldMap.ensure in serial
--- for the area about to be read first.
+-- Tiles are decoded when first needed and kept while in use (each actor holds its own copy):
+-- at most KEEP_TILES a Lua VM, the least recently ensured dropped when another loads. Loading one
+-- requires (a copy of) its module, which is not allowed in a parallel phase: call WorldMap.ensure
+-- in serial for the area about to be read first.
 
 local ServerStorage = game:GetService("ServerStorage")
 
-local Config = require(script.Parent.Config)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 local Base64 = require(script.Parent.Base64)
 
 local Data = ServerStorage:WaitForChild("WorldData", 10)
@@ -59,6 +60,31 @@ export type Tile = { data: buffer, rivers: { number }, roads: { number }, crossi
 local decode = Base64.decode
 
 local tiles: { [number]: Tile } = {}
+-- Tiles kept decoded a VM (a chunk's reads reach at most 4 of the 50-mile tiles; a few more
+-- spare for players far apart), and when each was last loaded or ensured.
+local KEEP_TILES = 8
+local tileCount = 0
+local useClock = 0
+local lastUse: { [number]: number } = {}
+
+-- Drops the least recently used tiles down to room for one more (serial: only when loading),
+-- never one marked by the current ensure().
+local function evict()
+	while tileCount >= KEEP_TILES do
+		local oldest, oldestUse = nil, useClock
+		for key, use in lastUse do
+			if use < oldestUse then
+				oldest, oldestUse = key, use
+			end
+		end
+		if oldest == nil then
+			return
+		end
+		tiles[oldest] = nil
+		lastUse[oldest] = nil
+		tileCount -= 1
+	end
+end
 
 function WorldMap.tile(ti: number, tj: number): Tile
 	ti = math.clamp(ti, 0, TILES - 1)
@@ -68,14 +94,22 @@ function WorldMap.tile(ti: number, tj: number): Tile
 	if not tile then
 		local module = TileModules:FindFirstChild(`T{ti}_{tj}`)
 		assert(module, `world tile T{ti}_{tj} is missing`)
+		-- A copy of the module is required, so the module's own (cached) result does not keep the
+		-- base64 text alive beside the decoded buffer, and a dropped tile can load again.
 		-- Outside the area loaded with ensure() in a parallel phase: an empty tile, not cached.
-		local ok, source = pcall(require, module)
+		local ok, source = pcall(function()
+			local copy: any = module:Clone()
+			return require(copy) :: any
+		end)
 		if not ok then
 			warn(`[WeatherWorld] map tile T{ti}_{tj} read outside the prepared area`)
 			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, roads = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
 		end
+		evict()
 		tile = { data = decode(source.data), rivers = source.rivers, roads = source.roads, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
 		tiles[key] = tile
+		tileCount += 1
+		lastUse[key] = useClock
 	end
 	return tile
 end
@@ -169,9 +203,21 @@ function WorldMap.tilesFor(mx0: number, my0: number, mx1: number, my1: number): 
 	return list
 end
 
--- Loads every tile within a mile and a half of a box (miles), so reads there can run in parallel.
+-- Loads every tile within a mile and a half of a box (miles), so reads there can run in parallel
+-- (and marks them used: they are the last a VM drops).
 function WorldMap.ensure(mx0: number, my0: number, mx1: number, my1: number)
-	WorldMap.tilesFor(mx0 - 1.5, my0 - 1.5, mx1 + 1.5, my1 + 1.5)
+	useClock += 1
+	mx0, my0, mx1, my1 = mx0 - 1.5, my0 - 1.5, mx1 + 1.5, my1 + 1.5
+	-- Mark the tiles already loaded first, so loading the others cannot drop them.
+	for tj = math.clamp(math.floor(my0 / TILE_MI), 0, TILES - 1), math.clamp(math.floor(my1 / TILE_MI), 0, TILES - 1) do
+		for ti = math.clamp(math.floor(mx0 / TILE_MI), 0, TILES - 1), math.clamp(math.floor(mx1 / TILE_MI), 0, TILES - 1) do
+			local key = tj * TILES + ti
+			if tiles[key] then
+				lastUse[key] = useClock
+			end
+		end
+	end
+	WorldMap.tilesFor(mx0, my0, mx1, my1)
 end
 
 -- The nearest settlement to a point (miles) and its distance.

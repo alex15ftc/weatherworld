@@ -25,7 +25,8 @@ mesoanalysis, performance and models pages.
 - `js/storms`, `js/world`, `js/atmosphere`, `js/mesoscale`: the engine. `js/forecast`: outlooks, watches, models.
 - `server/`: authority runtime and game feed API. `js/game/`: lab windows and storm workers for the game.
 - `native/cloudmodel/cloudmodel.c` -> `js/cloudmodel/cloudmodel.wasm` (`build-wasm` skill).
-- `roblox/src`: game (`client`, `server`, `shared`), `stormlab`, `cloudlab`; Rojo projects `default`, `stormlab`,
+- `roblox/src`: game (`client`, `server`, `shared`, `serverworld` = server-only world generator in
+  ServerStorage.World), `stormlab`, `cloudlab`; Rojo projects `default`, `stormlab`,
   `cloudlab`.
 - `tools/regression` (suite), `tools/engine/fingerprint.mjs`, `tools/stormlab` (offline Luau diag/test scripts),
   `tools/blender` (art, `blender-export` skill).

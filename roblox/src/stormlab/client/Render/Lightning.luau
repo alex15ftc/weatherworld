@@ -428,7 +428,10 @@ function LightningFx.new(ctx)
 		end
 		local skyLight = Lighting:GetAttribute("SkyLight")
 		local dark = 1 - (if type(skyLight) == "number" then math.clamp(skyLight, 0, 1) else 1)
-		flashFx.Brightness = SCENE_GAIN * math.clamp((0.12 + NIGHT_GAIN * dark) * camFlash, 0, 0.15 + NIGHT_GAIN * dark)
+		local fxB = SCENE_GAIN * math.clamp((0.12 + NIGHT_GAIN * dark) * camFlash, 0, 0.15 + NIGHT_GAIN * dark)
+		if flashFx.Brightness ~= fxB then -- (written only when it changes: 0 between flashes)
+			flashFx.Brightness = fxB
+		end
 		local _ = flash
 
 		-- thunder

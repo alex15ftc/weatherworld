@@ -1,0 +1,1449 @@
+[
+ {
+  "i": 0,
+  "hour": 18.5,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   277.7048567601986,
+   124.33085303889156
+  ],
+  "motion": [
+   5.631713271994833,
+   25.083841531724097
+  ],
+  "lightning": [
+   26.99665715583209,
+   0.12266565795693334,
+   0.07
+  ],
+  "look": {
+   "values": [
+    277.7048567601986,
+    124.33085303889156,
+    47.84223187476985,
+    0.3723562309935151,
+    0.11653021811947081,
+    0,
+    24.999999999999996,
+    8.78,
+    26.64,
+    41,
+    0.956844637495397,
+    0,
+    1184,
+    246
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 135.1,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.8,
+   "wScale": 1.12,
+   "zetaLow": 0.003,
+   "zetaMid": 0.0024,
+   "mesoR": 675,
+   "mesoV": 1,
+   "midV": 5.3,
+   "mesoDropHpa": 0,
+   "wallLclM": 830,
+   "lowestBaseM": 830,
+   "deepestLoweringM": 0,
+   "rainMax": 22,
+   "hailMax": 7,
+   "coldPoolK": 1.9,
+   "towerCols": 135,
+   "shelfCols": 0,
+   "anvilCols": 562,
+   "deckCols": 46,
+   "nestCloud": 2000,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 1,
+  "hour": 18.5833,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   279.69532407259817,
+   117.02920788913119
+  ],
+  "motion": [
+   6.6348910413318904,
+   24.3388171658679
+  ],
+  "lightning": [
+   30,
+   0.11824507220420291,
+   0.07
+  ],
+  "look": {
+   "values": [
+    279.69532407259817,
+    117.02920788913119,
+    51.23198292963375,
+    0.45055196345108206,
+    0.15932706847786884,
+    0,
+    29.999999999999996,
+    9.12,
+    31.81,
+    36,
+    1,
+    0,
+    1183,
+    295
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 197.7,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 43.4,
+   "wScale": 1.18,
+   "zetaLow": 0.0042,
+   "zetaMid": 0.0029,
+   "mesoR": 739,
+   "mesoV": 1.5,
+   "midV": 6.6,
+   "mesoDropHpa": 0,
+   "wallLclM": 732,
+   "lowestBaseM": 733,
+   "deepestLoweringM": 0,
+   "rainMax": 30,
+   "hailMax": 8,
+   "coldPoolK": 2.6,
+   "towerCols": 144,
+   "shelfCols": 0,
+   "anvilCols": 769,
+   "deckCols": 91,
+   "nestCloud": 2080,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 2,
+  "hour": 18.6667,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   281.9415001805838,
+   109.92580676317078
+  ],
+  "motion": [
+   7.487253693285397,
+   23.678003753201367
+  ],
+  "lightning": [
+   30,
+   0.11817447918893594,
+   0.07
+  ],
+  "look": {
+   "values": [
+    281.9415001805838,
+    109.92580676317078,
+    54.007249618178015,
+    0.5190530220059708,
+    0.2074088516102809,
+    0,
+    34.99999999999999,
+    9.4,
+    37.26,
+    32,
+    1,
+    0,
+    1185,
+    343
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 120.5,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 43.8,
+   "wScale": 1.23,
+   "zetaLow": 0.005,
+   "zetaMid": 0.0033,
+   "mesoR": 811,
+   "mesoV": 2,
+   "midV": 7.9,
+   "mesoDropHpa": 0,
+   "wallLclM": 637,
+   "lowestBaseM": 638,
+   "deepestLoweringM": 0,
+   "rainMax": 50,
+   "hailMax": 8,
+   "coldPoolK": 3.3,
+   "towerCols": 157,
+   "shelfCols": 110,
+   "anvilCols": 1013,
+   "deckCols": 147,
+   "nestCloud": 2164,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 3,
+  "hour": 18.75,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   284.40843207147776,
+   102.99970986860836
+  ],
+  "motion": [
+   8.223106302980012,
+   23.086989648541387
+  ],
+  "lightning": [
+   30,
+   0.11832570015376455,
+   0.07
+  ],
+  "look": {
+   "values": [
+    284.40843207147776,
+    102.99970986860836,
+    56.0752005008336,
+    0.5794174031294206,
+    0.25976053933649645,
+    0,
+    40,
+    9.61,
+    42.92,
+    29,
+    1,
+    0,
+    1180,
+    393
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 257.2,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 44.1,
+   "wScale": 1.27,
+   "zetaLow": 0.0066,
+   "zetaMid": 0.0039,
+   "mesoR": 890,
+   "mesoV": 2.9,
+   "midV": 9.4,
+   "mesoDropHpa": 0.1,
+   "wallLclM": 552,
+   "lowestBaseM": 552,
+   "deepestLoweringM": 1,
+   "rainMax": 40,
+   "hailMax": 9,
+   "coldPoolK": 3.9,
+   "towerCols": 171,
+   "shelfCols": 127,
+   "anvilCols": 1268,
+   "deckCols": 246,
+   "nestCloud": 2208,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 4,
+  "hour": 18.8333,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   287.0677888051167,
+   96.23550441354101
+  ],
+  "motion": [
+   8.864522445463122,
+   22.54735151689119
+  ],
+  "lightning": [
+   30,
+   0.11823815241031678,
+   0.07
+  ],
+  "look": {
+   "values": [
+    287.0677888051167,
+    96.23550441354101,
+    57.71383249490254,
+    0.6329108416025897,
+    0.3168125863139755,
+    0,
+    45,
+    9.77,
+    48.72,
+    27,
+    1,
+    0,
+    1183,
+    450
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 140.4,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 44,
+   "wScale": 1.31,
+   "zetaLow": 0.0076,
+   "zetaMid": 0.0048,
+   "mesoR": 975,
+   "mesoV": 3.7,
+   "midV": 11.7,
+   "mesoDropHpa": 0.1,
+   "wallLclM": 479,
+   "lowestBaseM": 479,
+   "deepestLoweringM": 1,
+   "rainMax": 47,
+   "hailMax": 9,
+   "coldPoolK": 4.4,
+   "towerCols": 173,
+   "shelfCols": 184,
+   "anvilCols": 1462,
+   "deckCols": 377,
+   "nestCloud": 2216,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 5,
+  "hour": 18.9167,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   289.8916979927196,
+   89.62291564687683
+  ],
+  "motion": [
+   9.413030625343021,
+   22.041962555547265
+  ],
+  "lightning": [
+   30,
+   0.11843755509923175,
+   0.07
+  ],
+  "look": {
+   "values": [
+    289.8916979927196,
+    89.62291564687683,
+    58.899881558044974,
+    0.6805654359050894,
+    0.3704146964573331,
+    0,
+    50,
+    9.89,
+    54.63,
+    25,
+    1,
+    0,
+    1177,
+    501
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 154.4,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 44.2,
+   "wScale": 1.33,
+   "zetaLow": 0.0089,
+   "zetaMid": 0.0057,
+   "mesoR": 1056,
+   "mesoV": 4.7,
+   "midV": 14.1,
+   "mesoDropHpa": 0.2,
+   "wallLclM": 414,
+   "lowestBaseM": 412,
+   "deepestLoweringM": 2,
+   "rainMax": 78,
+   "hailMax": 10,
+   "coldPoolK": 4.9,
+   "towerCols": 180,
+   "shelfCols": 221,
+   "anvilCols": 1610,
+   "deckCols": 545,
+   "nestCloud": 2224,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 6,
+  "hour": 19,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   292.850253713432,
+   83.15644128948303
+  ],
+  "motion": [
+   9.861852402374554,
+   21.55491452464602
+  ],
+  "lightning": [
+   30,
+   0.11907432445456242,
+   0.07
+  ],
+  "look": {
+   "values": [
+    292.850253713432,
+    83.15644128948303,
+    59.40588200256541,
+    0.7232262183533555,
+    0.41860744774316727,
+    0,
+    55.00000000000001,
+    9.94,
+    60.78,
+    23,
+    1,
+    0,
+    1159,
+    522
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 123,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 43.8,
+   "wScale": 1.36,
+   "zetaLow": 0.0125,
+   "zetaMid": 0.006,
+   "mesoR": 1128,
+   "mesoV": 7,
+   "midV": 14.9,
+   "mesoDropHpa": 0.5,
+   "wallLclM": 361,
+   "lowestBaseM": 357,
+   "deepestLoweringM": 5,
+   "rainMax": 66,
+   "hailMax": 12,
+   "coldPoolK": 5.2,
+   "towerCols": 180,
+   "shelfCols": 255,
+   "anvilCols": 1658,
+   "deckCols": 680,
+   "nestCloud": 2224,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 7,
+  "hour": 19.0833,
+  "tor": {
+   "state": "none",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 0,
+   "occlusion": 0,
+   "peakMph": 0
+  },
+  "pos": [
+   295.925557494618,
+   76.82369195217419
+  ],
+  "motion": [
+   10.251012603953384,
+   21.109164457696135
+  ],
+  "lightning": [
+   30,
+   0.11964855747872959,
+   0.07
+  ],
+  "look": {
+   "values": [
+    295.925557494618,
+    76.82369195217419,
+    59.23716267267903,
+    0.7615881704132383,
+    0.4589483603489822,
+    0,
+    60,
+    9.92,
+    67.08,
+    22,
+    1,
+    0,
+    1143,
+    514
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 121.3,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 43.5,
+   "wScale": 1.36,
+   "zetaLow": 0.0161,
+   "zetaMid": 0.0063,
+   "mesoR": 1188,
+   "mesoV": 9.6,
+   "midV": 15.6,
+   "mesoDropHpa": 1,
+   "wallLclM": 358,
+   "lowestBaseM": 350,
+   "deepestLoweringM": 9,
+   "rainMax": 55,
+   "hailMax": 14,
+   "coldPoolK": 5.5,
+   "towerCols": 180,
+   "shelfCols": 265,
+   "anvilCols": 1656,
+   "deckCols": 759,
+   "nestCloud": 2224,
+   "tornado": null
+  },
+  "stage": "pre"
+ },
+ {
+  "i": 8,
+  "hour": 19.1667,
+  "tor": {
+   "state": "on-ground",
+   "onGround": true,
+   "mph": 113,
+   "yards": 177,
+   "ageMin": 5,
+   "occlusion": 0,
+   "peakMph": 113
+  },
+  "pos": [
+   299.1159665039908,
+   70.59936746264128
+  ],
+  "motion": [
+   10.634696697909394,
+   20.747748298443028
+  ],
+  "lightning": [
+   30,
+   0.11999555314983706,
+   0.07
+  ],
+  "look": {
+   "values": [
+    299.1159665039908,
+    70.59936746264128,
+    59.058018621994876,
+    0.7962256634654674,
+    0.4847544497435132,
+    0,
+    65,
+    9.91,
+    73.05,
+    21,
+    1,
+    112.7591957942835,
+    1133,
+    510
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 163,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13100,
+   "wPeakParcel": 43.5,
+   "wScale": 1.36,
+   "zetaLow": 0.016,
+   "zetaMid": 0.0066,
+   "mesoR": 1227,
+   "mesoV": 9.8,
+   "midV": 16.3,
+   "mesoDropHpa": 1,
+   "wallLclM": 358,
+   "lowestBaseM": 275,
+   "deepestLoweringM": 15,
+   "rainMax": 68,
+   "hailMax": 15,
+   "coldPoolK": 5.8,
+   "towerCols": 180,
+   "shelfCols": 267,
+   "anvilCols": 1655,
+   "deckCols": 790,
+   "nestCloud": 2224,
+   "tornado": {
+    "R": 47,
+    "dropHpa": 8,
+    "wallBaseM": 350,
+    "coreBaseM": 166,
+    "coreOutflow": 1,
+    "tipM": 92,
+    "mesoDropHpa": 1,
+    "at": [
+     0,
+     0
+    ]
+   }
+  },
+  "stage": "touchdown"
+ },
+ {
+  "i": 9,
+  "hour": 19.25,
+  "tor": {
+   "state": "on-ground",
+   "onGround": true,
+   "mph": 138,
+   "yards": 353,
+   "ageMin": 10,
+   "occlusion": 0.05,
+   "peakMph": 138
+  },
+  "pos": [
+   302.4356108198283,
+   64.45237205848355
+  ],
+  "motion": [
+   11.065481052791664,
+   20.489984680525765
+  ],
+  "lightning": [
+   30,
+   0.12027829385176436,
+   0.07
+  ],
+  "look": {
+   "values": [
+    302.4356108198283,
+    64.45237205848355,
+    58.690884015848944,
+    0.8275727498128032,
+    0.49124610646109307,
+    0.05159982147993939,
+    69.99999999999999,
+    9.87,
+    78.43,
+    20,
+    1,
+    137.98999671801607,
+    1126,
+    507
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 206.1,
+   "rainField": true,
+   "lclM": 1000,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.8,
+   "wScale": 1.37,
+   "zetaLow": 0.016,
+   "zetaMid": 0.0068,
+   "mesoR": 1248,
+   "mesoV": 10,
+   "midV": 16.8,
+   "mesoDropHpa": 1.1,
+   "wallLclM": 342,
+   "lowestBaseM": 331,
+   "deepestLoweringM": 49,
+   "rainMax": 68,
+   "hailMax": 16,
+   "coldPoolK": 6,
+   "towerCols": 148,
+   "shelfCols": 271,
+   "anvilCols": 1655,
+   "deckCols": 732,
+   "nestCloud": 2112,
+   "tornado": {
+    "R": 76,
+    "dropHpa": 16.1,
+    "wallBaseM": 337,
+    "coreBaseM": 170,
+    "coreOutflow": 1,
+    "tipM": 20,
+    "mesoDropHpa": 1.1,
+    "at": [
+     -414,
+     -11
+    ]
+   }
+  },
+  "stage": "touchdown"
+ },
+ {
+  "i": 10,
+  "hour": 19.3333,
+  "tor": {
+   "state": "on-ground",
+   "onGround": true,
+   "mph": 150,
+   "yards": 480,
+   "ageMin": 15,
+   "occlusion": 0.11,
+   "peakMph": 150
+  },
+  "pos": [
+   305.90299103199175,
+   58.35356962581684
+  ],
+  "motion": [
+   11.55793404054482,
+   20.32934144222236
+  ],
+  "lightning": [
+   30,
+   0.12032581742149079,
+   0.07
+  ],
+  "look": {
+   "values": [
+    305.90299103199175,
+    58.35356962581684,
+    58.59297468719621,
+    0.855525749800661,
+    0.49252293794383467,
+    0.10806625257413406,
+    74.99999999999999,
+    9.86,
+    83.08,
+    19,
+    1,
+    149.55546241797992,
+    1124,
+    506
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 152.5,
+   "rainField": true,
+   "lclM": 1000,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.7,
+   "wScale": 1.37,
+   "zetaLow": 0.0162,
+   "zetaMid": 0.007,
+   "mesoR": 1272,
+   "mesoV": 10.3,
+   "midV": 17.3,
+   "mesoDropHpa": 1.2,
+   "wallLclM": 342,
+   "lowestBaseM": 337,
+   "deepestLoweringM": 59,
+   "rainMax": 83,
+   "hailMax": 15,
+   "coldPoolK": 6.3,
+   "towerCols": 147,
+   "shelfCols": 278,
+   "anvilCols": 1631,
+   "deckCols": 699,
+   "nestCloud": 2096,
+   "tornado": {
+    "R": 95,
+    "dropHpa": 20.6,
+    "wallBaseM": 362,
+    "coreBaseM": 169,
+    "coreOutflow": 1,
+    "tipM": 0,
+    "mesoDropHpa": 1.2,
+    "at": [
+     -1248,
+     -225
+    ]
+   }
+  },
+  "stage": "mature"
+ },
+ {
+  "i": 11,
+  "hour": 19.4167,
+  "tor": {
+   "state": "on-ground",
+   "onGround": true,
+   "mph": 154,
+   "yards": 552,
+   "ageMin": 20,
+   "occlusion": 0.17,
+   "peakMph": 154
+  },
+  "pos": [
+   309.5081202523319,
+   52.28059425708038
+  ],
+  "motion": [
+   12.017097401133858,
+   20.243251229121533
+  ],
+  "lightning": [
+   30,
+   0.12009613550636102,
+   0.07
+  ],
+  "look": {
+   "values": [
+    309.5081202523319,
+    52.28059425708038,
+    58.81828395368776,
+    0.8799049603450597,
+    0.49004976241144893,
+    0.16774776692963242,
+    79.99999999999999,
+    9.88,
+    87.15,
+    18,
+    1,
+    154.42835131721085,
+    1131,
+    509
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 154,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.6,
+   "wScale": 1.38,
+   "zetaLow": 0.0145,
+   "zetaMid": 0.0072,
+   "mesoR": 1298,
+   "mesoV": 9.4,
+   "midV": 17.7,
+   "mesoDropHpa": 1,
+   "wallLclM": 332,
+   "lowestBaseM": 332,
+   "deepestLoweringM": 91,
+   "rainMax": 70,
+   "hailMax": 13,
+   "coldPoolK": 6.5,
+   "towerCols": 179,
+   "shelfCols": 302,
+   "anvilCols": 1632,
+   "deckCols": 549,
+   "nestCloud": 2224,
+   "tornado": {
+    "R": 106,
+    "dropHpa": 22.6,
+    "wallBaseM": 446,
+    "coreBaseM": 135,
+    "coreOutflow": 1,
+    "tipM": 0,
+    "mesoDropHpa": 1,
+    "at": [
+     -2464,
+     -705
+    ]
+   }
+  },
+  "stage": "rope"
+ },
+ {
+  "i": 12,
+  "hour": 19.5,
+  "tor": {
+   "state": "on-ground",
+   "onGround": true,
+   "mph": 156,
+   "yards": 589,
+   "ageMin": 25,
+   "occlusion": 0.23,
+   "peakMph": 156
+  },
+  "pos": [
+   313.22698885511613,
+   46.22661480765519
+  ],
+  "motion": [
+   12.396228675947546,
+   20.17993149808398
+  ],
+  "lightning": [
+   30,
+   0.11985838449318999,
+   0.07
+  ],
+  "look": {
+   "values": [
+    313.22698885511613,
+    46.22661480765519,
+    59.372905454335815,
+    0.9007452290320614,
+    0.4867547136863849,
+    0.22827140047229308,
+    84.99999999999997,
+    9.94,
+    91.55,
+    17,
+    1,
+    156.40947065248102,
+    1137,
+    512
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 146.5,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.3,
+   "wScale": 1.4,
+   "zetaLow": 0.0123,
+   "zetaMid": 0.0064,
+   "mesoR": 1333,
+   "mesoV": 8.2,
+   "midV": 15.9,
+   "mesoDropHpa": 0.7,
+   "wallLclM": 332,
+   "lowestBaseM": 332,
+   "deepestLoweringM": 88,
+   "rainMax": 65,
+   "hailMax": 13,
+   "coldPoolK": 6.7,
+   "towerCols": 180,
+   "shelfCols": 313,
+   "anvilCols": 1668,
+   "deckCols": 608,
+   "nestCloud": 2224,
+   "tornado": {
+    "R": 112,
+    "dropHpa": 23.4,
+    "wallBaseM": 561,
+    "coreBaseM": 136,
+    "coreOutflow": 1,
+    "tipM": 0,
+    "mesoDropHpa": 0.7,
+    "at": [
+     -3748,
+     -1323
+    ]
+   }
+  },
+  "stage": "rope"
+ },
+ {
+  "i": 13,
+  "hour": 19.5833,
+  "tor": {
+   "state": "ended",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 30,
+   "occlusion": 0.29,
+   "peakMph": 157
+  },
+  "pos": [
+   317.0296910609932,
+   40.196835745067915
+  ],
+  "motion": [
+   12.675674019590204,
+   20.099263541957587
+  ],
+  "lightning": [
+   30,
+   0.11970261450016648,
+   0.07
+  ],
+  "look": {
+   "values": [
+    317.0296910609932,
+    40.196835745067915,
+    59.65350698560004,
+    0.9183748175857479,
+    0.09629412977104114,
+    0.28891588844496036,
+    89.99999999999997,
+    9.97,
+    96.01,
+    17,
+    1,
+    0,
+    1142,
+    514
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 123.3,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.4,
+   "wScale": 1.41,
+   "zetaLow": 0.0132,
+   "zetaMid": 0.0062,
+   "mesoR": 1372,
+   "mesoV": 9,
+   "midV": 15.3,
+   "mesoDropHpa": 0.9,
+   "wallLclM": 332,
+   "lowestBaseM": 324,
+   "deepestLoweringM": 8,
+   "rainMax": 75,
+   "hailMax": 12,
+   "coldPoolK": 6.8,
+   "towerCols": 181,
+   "shelfCols": 331,
+   "anvilCols": 1669,
+   "deckCols": 568,
+   "nestCloud": 2224,
+   "tornado": null
+  },
+  "stage": "post"
+ },
+ {
+  "i": 14,
+  "hour": 19.6667,
+  "tor": {
+   "state": "ended",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 30,
+   "occlusion": 0,
+   "peakMph": 157
+  },
+  "pos": [
+   320.88293406561104,
+   34.209846462589034
+  ],
+  "motion": [
+   12.844143348726138,
+   19.95663094159626
+  ],
+  "lightning": [
+   30,
+   0.1195431667069709,
+   0.07
+  ],
+  "look": {
+   "values": [
+    320.88293406561104,
+    34.209846462589034,
+    59.6197781117188,
+    0.9336216434877852,
+    0.2555676878108587,
+    0,
+    94.99999999999997,
+    9.96,
+    101.25,
+    17,
+    1,
+    0,
+    1146,
+    378
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 118.1,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10600,
+   "topM": 13100,
+   "wPeakParcel": 42.6,
+   "wScale": 1.4,
+   "zetaLow": 0.0151,
+   "zetaMid": 0.0067,
+   "mesoR": 1409,
+   "mesoV": 10.7,
+   "midV": 16.7,
+   "mesoDropHpa": 1.2,
+   "wallLclM": 315,
+   "lowestBaseM": 305,
+   "deepestLoweringM": 11,
+   "rainMax": 84,
+   "hailMax": 12,
+   "coldPoolK": 6.9,
+   "towerCols": 174,
+   "shelfCols": 340,
+   "anvilCols": 1670,
+   "deckCols": 628,
+   "nestCloud": 2200,
+   "tornado": null
+  },
+  "stage": "post"
+ },
+ {
+  "i": 15,
+  "hour": 19.75,
+  "tor": {
+   "state": "ended",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 30,
+   "occlusion": 0,
+   "peakMph": 157
+  },
+  "pos": [
+   324.7556486808625,
+   28.285133323882842
+  ],
+  "motion": [
+   12.90904871750495,
+   19.74904379568731
+  ],
+  "lightning": [
+   30,
+   0.11936937138595936,
+   0.07
+  ],
+  "look": {
+   "values": [
+    324.7556486808625,
+    28.285133323882842,
+    59.0047158653866,
+    0.9472002417065449,
+    0.37490150902898217,
+    0,
+    99.99999999999997,
+    9.9,
+    107.18,
+    18,
+    1,
+    0,
+    1151,
+    494
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 119.7,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.4,
+   "wScale": 1.39,
+   "zetaLow": 0.0189,
+   "zetaMid": 0.0077,
+   "mesoR": 1442,
+   "mesoV": 13.6,
+   "midV": 19,
+   "mesoDropHpa": 2,
+   "wallLclM": 372,
+   "lowestBaseM": 354,
+   "deepestLoweringM": 19,
+   "rainMax": 97,
+   "hailMax": 16,
+   "coldPoolK": 7,
+   "towerCols": 172,
+   "shelfCols": 325,
+   "anvilCols": 1625,
+   "deckCols": 730,
+   "nestCloud": 2208,
+   "tornado": null
+  },
+  "stage": "post"
+ },
+ {
+  "i": 16,
+  "hour": 19.8333,
+  "tor": {
+   "state": "ended",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 30,
+   "occlusion": 0,
+   "peakMph": 157
+  },
+  "pos": [
+   328.63713745053565,
+   22.427133855317628
+  ],
+  "motion": [
+   12.93829589891044,
+   19.52666489521739
+  ],
+  "lightning": [
+   30,
+   0.11934165590905399,
+   0.07
+  ],
+  "look": {
+   "values": [
+    328.63713745053565,
+    22.427133855317628,
+    58.30486235303466,
+    0.9592769266267219,
+    0.4583785870250173,
+    0,
+    104.99999999999996,
+    9.83,
+    113.51,
+    18,
+    1,
+    0,
+    1152,
+    518
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 115.9,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.3,
+   "wScale": 1.38,
+   "zetaLow": 0.0189,
+   "zetaMid": 0.0078,
+   "mesoR": 1462,
+   "mesoV": 13.8,
+   "midV": 19.1,
+   "mesoDropHpa": 2.1,
+   "wallLclM": 372,
+   "lowestBaseM": 354,
+   "deepestLoweringM": 19,
+   "rainMax": 114,
+   "hailMax": 18,
+   "coldPoolK": 7.1,
+   "towerCols": 168,
+   "shelfCols": 352,
+   "anvilCols": 1619,
+   "deckCols": 895,
+   "nestCloud": 2192,
+   "tornado": null
+  },
+  "stage": "post"
+ },
+ {
+  "i": 17,
+  "hour": 19.9167,
+  "tor": {
+   "state": "ended",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 30,
+   "occlusion": 0,
+   "peakMph": 157
+  },
+  "pos": [
+   332.54681406349124,
+   16.621955980020765
+  ],
+  "motion": [
+   13.032255376518702,
+   19.350592917656204
+  ],
+  "lightning": [
+   30,
+   0.11935401495873361,
+   0.07
+  ],
+  "look": {
+   "values": [
+    332.54681406349124,
+    16.621955980020765,
+    57.49507223061981,
+    0.9695390267824758,
+    0.5139133871470564,
+    0,
+    109.99999999999996,
+    9.75,
+    119.46,
+    19,
+    1,
+    0,
+    1151,
+    518
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 118.6,
+   "rainField": true,
+   "lclM": 1100,
+   "elM": 10500,
+   "topM": 13000,
+   "wPeakParcel": 42.2,
+   "wScale": 1.36,
+   "zetaLow": 0.0185,
+   "zetaMid": 0.0078,
+   "mesoR": 1469,
+   "mesoV": 13.6,
+   "midV": 19,
+   "mesoDropHpa": 2,
+   "wallLclM": 372,
+   "lowestBaseM": 354,
+   "deepestLoweringM": 19,
+   "rainMax": 105,
+   "hailMax": 17,
+   "coldPoolK": 7.2,
+   "towerCols": 164,
+   "shelfCols": 358,
+   "anvilCols": 1611,
+   "deckCols": 867,
+   "nestCloud": 2176,
+   "tornado": null
+  },
+  "stage": "post"
+ },
+ {
+  "i": 18,
+  "hour": 20,
+  "tor": {
+   "state": "ended",
+   "onGround": false,
+   "mph": 0,
+   "yards": 0,
+   "ageMin": 30,
+   "occlusion": 0,
+   "peakMph": 157
+  },
+  "pos": [
+   336.5091685653529,
+   10.850136230184994
+  ],
+  "motion": [
+   13.207848339538982,
+   19.23939916611924
+  ],
+  "lightning": [
+   30,
+   0.11910335515175997,
+   0.07
+  ],
+  "look": {
+   "values": [
+    336.5091685653529,
+    10.850136230184994,
+    57.05220805779963,
+    0.9777036007133292,
+    0.5537685570182338,
+    0,
+    114.99999999999996,
+    9.71,
+    125.24,
+    18,
+    1,
+    0,
+    1158,
+    521
+   ],
+   "leftMover": false
+  },
+  "info": {
+   "ms": 130.5,
+   "rainField": true,
+   "lclM": 1200,
+   "elM": 10600,
+   "topM": 13000,
+   "wPeakParcel": 42.2,
+   "wScale": 1.35,
+   "zetaLow": 0.0161,
+   "zetaMid": 0.0078,
+   "mesoR": 1474,
+   "mesoV": 11.8,
+   "midV": 18.8,
+   "mesoDropHpa": 1.5,
+   "wallLclM": 380,
+   "lowestBaseM": 368,
+   "deepestLoweringM": 14,
+   "rainMax": 98,
+   "hailMax": 17,
+   "coldPoolK": 7.3,
+   "towerCols": 172,
+   "shelfCols": 375,
+   "anvilCols": 1609,
+   "deckCols": 811,
+   "nestCloud": 2208,
+   "tornado": null
+  },
+  "stage": "post"
+ }
+]

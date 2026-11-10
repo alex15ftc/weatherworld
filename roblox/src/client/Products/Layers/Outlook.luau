@@ -127,9 +127,23 @@ function Outlook.renderOptions(self: any)
 end
 
 function Outlook.refresh(self: any)
-	self.product = ProductClient.get(`outlook.day{self.day}`)
+	local product = ProductClient.get(`outlook.day{self.day}`)
+	if product ~= self.product then
+		self.stamp = (self.stamp or 0) + 1 -- (ProductClient gives the same table until a new version)
+	end
+	self.product = product
 	self:renderOptions()
 	self.ctx.redraw()
+end
+
+-- What the shapes depend on: the product (its stamp), day and hazard shown, the area picked, and
+-- whether the radar is on (the fill is fainter under it).
+function Outlook.shapeKey(self: any): string
+	return `{self.stamp or 0}|{self.day}|{self.hazard}|{self.ctx.selected(self.key)}|{self.ctx.isOn("radar")}`
+end
+
+function Outlook.legendKey(self: any): string
+	return `{self.stamp or 0}|{self.day}|{self.hazard}`
 end
 
 function Outlook.setEnabled(self: any, on: boolean)

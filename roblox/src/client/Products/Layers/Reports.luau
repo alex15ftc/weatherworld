@@ -134,6 +134,16 @@ function Reports.draw(self: any, draw: MapCanvas.Draw)
 	end
 end
 
+-- What the shapes depend on: the day's product, the kinds shown and the report picked.
+function Reports.shapeKey(self: any): string
+	return `{ReportDays.stamp()}|{self.shown.tornado}|{self.shown.hail}|{self.shown.wind}|{self.ctx.selected(self.key)}`
+end
+
+-- The legend never changes.
+function Reports.legendKey(_self: any): string
+	return ""
+end
+
 function Reports.labels(_self: any, _labels: MapCanvas.Labels) end
 
 function Reports.hit(self: any, mx: number, my: number, milesPerPixel: number): Layer.Detail?

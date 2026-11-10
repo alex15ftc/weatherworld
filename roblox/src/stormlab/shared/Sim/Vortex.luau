@@ -202,6 +202,8 @@ function Vortex.hollowR(p: any): number
 	return 0.75 * ramp(p.swirl or 0, 0.9, 1.4) * math.clamp(p.O or 1, 0, 1)
 end
 
+local wavesBySeed: { [number]: { { number } } } = {}
+local wavesN = 0
 function Vortex.params(s: State): Params
 	local p = table.clone(s) :: any
 	local S = s.swirl
@@ -228,15 +230,27 @@ function Vortex.params(s: State): Params
 	if p.turbulence == nil then
 		p.turbulence = 1
 	end
-	-- gust waves: three seeded plane waves per component (cheap smooth turbulence)
-	local waves = {}
-	for c = 1, 3 do
-		for k = 1, 3 do
-			local h1 = Noise.hash(c, k, 1, s.seed)
-			local h2 = Noise.hash(c, k, 2, s.seed)
-			local h3 = Noise.hash(c, k, 3, s.seed)
-			local th, ph = h1 * 2 * math.pi, (h2 - 0.5) * math.pi
-			table.insert(waves, { cos(th) * cos(ph), sin(th) * cos(ph), sin(ph), h3 * 2 * math.pi, 0.6 + 0.8 * Noise.hash(c, k, 4, s.seed) })
+	-- gust waves: three seeded plane waves per component (cheap smooth turbulence); they depend on
+	-- the seed alone, so they are made once a seed and shared (read only)
+	local waves = if type(s.seed) == "number" then wavesBySeed[s.seed] else nil
+	if not waves then
+		waves = {}
+		for c = 1, 3 do
+			for k = 1, 3 do
+				local h1 = Noise.hash(c, k, 1, s.seed)
+				local h2 = Noise.hash(c, k, 2, s.seed)
+				local h3 = Noise.hash(c, k, 3, s.seed)
+				local th, ph = h1 * 2 * math.pi, (h2 - 0.5) * math.pi
+				table.insert(waves, { cos(th) * cos(ph), sin(th) * cos(ph), sin(ph), h3 * 2 * math.pi, 0.6 + 0.8 * Noise.hash(c, k, 4, s.seed) })
+			end
+		end
+		if type(s.seed) == "number" then
+			wavesN += 1
+			if wavesN > 256 then
+				table.clear(wavesBySeed)
+				wavesN = 1
+			end
+			wavesBySeed[s.seed] = waves
 		end
 	end
 	p.waves = waves
@@ -311,7 +325,10 @@ function Vortex.axisAt(p: State, z: number): (number, number)
 		-- three helical travelling waves running up the axis (rope contortion), deterministic:
 		-- wavelengths 1 : 0.62 : 0.41, the shorter faster (docs/tornado-reference/NOTES.md)
 		local t = p.time
-		local l1 = math.max(80, zb * 0.55)
+		-- (the long wave as long as the funnel is tall, the short ones a third as strong: ropes
+		-- bend in one or two long lazy loops - with 0.55 and shares 0.55 / 0.35 the rope coiled like
+		-- a corkscrew, "too curly", user 2026-11-08)
+		local l1 = math.max(80, zb * 0.9)
 		local k1, w1 = 2 * math.pi / l1, 0.35
 		local k2, w2 = 2 * math.pi / (0.62 * l1), 0.55
 		local k3, w3 = 2 * math.pi / (0.41 * l1), 0.8
@@ -322,8 +339,8 @@ function Vortex.axisAt(p: State, z: number): (number, number)
 		-- (each wave at most a fifth of its wavelength: steeper, the axis zig-zagged tens of metres
 		-- every few metres of height and the funnel drew as a star of spikes, 2026-10-29)
 		local a1 = math.min(p.wave, 0.2 * l1) * env
-		local a2 = math.min(0.55 * p.wave, 0.2 * 0.62 * l1) * env
-		local a3 = math.min(0.35 * p.wave, 0.2 * 0.41 * l1) * env
+		local a2 = math.min(0.2 * p.wave, 0.2 * 0.62 * l1) * env
+		local a3 = math.min(0.1 * p.wave, 0.2 * 0.41 * l1) * env
 		ox += a1 * cos(k1 * z - w1 * t + ph) + a2 * cos(k2 * z - w2 * t + 2 * ph) + a3 * cos(k3 * z - w3 * t + 3 * ph)
 		oy += a1 * sin(k1 * z - w1 * t + ph) + a2 * sin(k2 * z - w2 * t + 2 * ph) + a3 * sin(k3 * z - w3 * t + 3 * ph)
 	end

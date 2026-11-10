@@ -29,7 +29,13 @@ local hash = Builder.hash
 local rgb = Color3.fromRGB
 
 Roads.LIFT = 0.25 -- road top above the graded terrain
+-- Road strips are laid in straight pieces between breakpoints worked out once a segment (and
+-- shared by its pavement, edges and paint, so their seams line up): each piece as long as the
+-- grade stays within FIT_TOL studs of the straight line (sampled every FIT_STEP studs), from
+-- Roads.PIECE (the old fixed length, used wherever even that bends more) up to FIT_MAX, with a
+-- breakpoint at each end of the segment's part in the chunk and wherever another road crosses it.
 Roads.PIECE = 32
+local FIT_TOL, FIT_STEP, FIT_MAX = 0.02, 8, 128
 -- Road slabs are this thick, their tops on the grade: smooth terrain draws its surface a stud or
 -- two above the height written, so the ground is cut well below the road (see ChunkGen) and the
 -- slab's sides close the gap.
@@ -110,19 +116,131 @@ local function linesFor(s: RoadNet.Spec): { Line }
 	return lines
 end
 
+-- A segment's road top as straight pieces: breakpoints s (distances along it) and the grade top
+-- h at each.
+type Fit = { s: { number }, h: { number } }
+
+local function fitGrade(ctx: Ctx, g: RoadNet.Segment, t0: number, t1: number): Fit
+	local function top(t: number): number
+		return ctx.gradeTop(g.ax + g.ux * t, g.az + g.uz * t)
+	end
+	-- Fixed breakpoints: the chunk's edges (so pieces meet the next chunk's) and the crossings.
+	local fixed = { t0, t1 }
+	for _, o in ctx.net.segments do
+		if o ~= g then
+			local t: number? = nil
+			local wx, wz = o.ax - g.ax, o.az - g.az
+			if o.bulb then
+				if math.abs(wx * -g.uz + wz * g.ux) < o.spec.total + g.spec.total then
+					t = wx * g.ux + wz * g.uz
+				end
+			else
+				local den = g.ux * o.uz - g.uz * o.ux
+				if math.abs(den) > 0.05 then
+					local u = (wx * g.uz - wz * g.ux) / den -- along o
+					local pad = (o.spec.total + g.spec.total) / math.abs(den)
+					if u >= -pad and u <= o.length + pad then
+						t = (wx * o.uz - wz * o.ux) / den -- along g
+					end
+				end
+			end
+			if t and t > t0 + 1 and t < t1 - 1 then
+				table.insert(fixed, t)
+			end
+		end
+	end
+	table.sort(fixed)
+	local fit: Fit = { s = { t0 }, h = { top(t0) } }
+	local prevFixed = t0
+	for f = 2, #fixed do
+		local B = fixed[f]
+		if B - prevFixed >= 1 or f == #fixed then
+			local A = prevFixed
+			-- Samples every FIT_STEP studs from A to B (the last at B).
+			local n = math.max(1, math.ceil((B - A) / FIT_STEP))
+			local pos, hs = table.create(n + 1, 0), table.create(n + 1, 0)
+			pos[1], hs[1] = A, fit.h[#fit.h]
+			for k = 1, n do
+				local t = math.min(A + k * FIT_STEP, B)
+				pos[k + 1], hs[k + 1] = t, top(t)
+			end
+			local i = 1
+			while i <= n do
+				local best = math.min(n + 1, i + Roads.PIECE // FIT_STEP)
+				for _, len in { FIT_MAX, 96, 64 } do
+					local j = math.min(n + 1, i + len // FIT_STEP)
+					if j <= best then
+						break
+					end
+					local ok = true
+					local span = pos[j] - pos[i]
+					for k = i + 1, j - 1 do
+						local line = hs[i] + (hs[j] - hs[i]) * (pos[k] - pos[i]) / span
+						if math.abs(hs[k] - line) > FIT_TOL then
+							ok = false
+							break
+						end
+					end
+					if ok then
+						best = j
+						break
+					end
+				end
+				table.insert(fit.s, pos[best])
+				table.insert(fit.h, hs[best])
+				i = best
+			end
+			prevFixed = B
+		end
+	end
+	-- A little beyond the chunk's edge, for dashes that start inside it.
+	if t1 < g.length then
+		local te = math.min(g.length, t1 + DASH + 1)
+		table.insert(fit.s, te)
+		table.insert(fit.h, top(te))
+	end
+	return fit
+end
+
+-- The fitted road top at distance t along the segment (straight beyond the ends).
+local function fitAt(fit: Fit, t: number): number
+	local s, h = fit.s, fit.h
+	local n = #s
+	local k = 1
+	while k < n - 1 and t > s[k + 1] do
+		k += 1
+	end
+	local span = s[k + 1] - s[k]
+	return if span > 1e-6 then h[k] + (h[k + 1] - h[k]) * (t - s[k]) / span else h[k]
+end
+
 -- A flat strip along the road between distances a and b, at a sideways offset, its top raise
--- above the road top.
-local function strip(ctx: Ctx, g: RoadNet.Segment, a: number, b: number, offset: number, width: number, thickness: number, raise: number, colour: Color3, material: Enum.Material, collide: boolean?)
+-- above the road top: straight pieces between the segment's breakpoints, each (but the last)
+-- run on over the joint by over studs.
+local function strip(ctx: Ctx, g: RoadNet.Segment, fit: Fit, a: number, b: number, offset: number, width: number, thickness: number, raise: number, colour: Color3, material: Enum.Material, collide: boolean?, over: number?)
 	if b - a < 0.05 then
 		return
 	end
 	local rx, rz = -g.uz, g.ux -- right of travel
-	local ax, az = g.ax + g.ux * a + rx * offset, g.az + g.uz * a + rz * offset
-	local bx, bz = g.ax + g.ux * b + rx * offset, g.az + g.uz * b + rz * offset
-	local ca, cb = ctx.gradeTop(g.ax + g.ux * a, g.az + g.uz * a), ctx.gradeTop(g.ax + g.ux * b, g.az + g.uz * b)
-	local p0, p1 = Vector3.new(ax, ca + raise, az), Vector3.new(bx, cb + raise, bz)
-	local cf = CFrame.lookAt((p0 + p1) / 2, p1) * CFrame.new(0, -thickness / 2, 0)
-	Builder.block(ctx.props, cf, width, thickness, (p1 - p0).Magnitude, colour, material, collide)
+	local function piece(pa: number, pb: number, extra: number)
+		local p0 = Vector3.new(g.ax + g.ux * pa + rx * offset, fitAt(fit, pa) + raise, g.az + g.uz * pa + rz * offset)
+		local p1 = Vector3.new(g.ax + g.ux * pb + rx * offset, fitAt(fit, pb) + raise, g.az + g.uz * pb + rz * offset)
+		local length = (p1 - p0).Magnitude
+		if extra > 0 then
+			p1 += (p1 - p0) * (extra / length)
+			length += extra
+		end
+		local cf = CFrame.lookAt((p0 + p1) / 2, p1) * CFrame.new(0, -thickness / 2, 0)
+		Builder.block(ctx.props, cf, width, thickness, length, colour, material, collide)
+	end
+	local prev = a
+	for _, bp in fit.s do
+		if bp > prev + 0.05 and bp < b - 0.05 then
+			piece(prev, bp, over or 0)
+			prev = bp
+		end
+	end
+	piece(prev, b, 0)
 end
 
 -- The part of a segment inside the chunk, as distances along it.
@@ -274,6 +392,7 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 	local s = g.spec
 	local surface = SURFACE[s.surface]
 	local raise = 0.004 * s.priority
+	local fit = fitGrade(ctx, g, t0, t1)
 	-- Not over bridges, and not where a higher road runs along the same line (map roads often
 	-- share a corridor for a stretch).
 	local function shadowed(x: number, z: number): boolean
@@ -294,18 +413,13 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 	end)
 	for _, run in open do
 		local a0, a1 = run[1], run[2]
-		local count = math.max(1, math.ceil((a1 - a0) / Roads.PIECE))
-		for i = 0, count - 1 do
-			local a, b = a0 + (a1 - a0) * i / count, a0 + (a1 - a0) * (i + 1) / count
-			local over = if i < count - 1 then 0.4 else 0
-			if s.median > 0 then
-				local width = s.pavement - s.median
-				for _, side in { -1, 1 } do
-					strip(ctx, g, a, b + over, side * (s.median + width / 2), width, Roads.BED, raise, surface.colour, surface.material)
-				end
-			else
-				strip(ctx, g, a, b + over, 0, 2 * s.pavement, Roads.BED, raise, surface.colour, surface.material)
+		if s.median > 0 then
+			local width = s.pavement - s.median
+			for _, side in { -1, 1 } do
+				strip(ctx, g, fit, a0, a1, side * (s.median + width / 2), width, Roads.BED, raise, surface.colour, surface.material, nil, 0.4)
 			end
+		else
+			strip(ctx, g, fit, a0, a1, 0, 2 * s.pavement, Roads.BED, raise, surface.colour, surface.material, nil, 0.4)
 		end
 	end
 	-- Edges of town roads, each side: a gutter on the pavement, the curb, the verge and the
@@ -332,11 +446,7 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 					return not ctx.bridged(wx, wz, g) and not shadowed(x, z) and not edgeTaken(near, g, wx, wz, total)
 				end)
 				for _, run in walk do
-					local a0, a1 = run[1], run[2]
-					local count = math.max(1, math.ceil((a1 - a0) / Roads.PIECE))
-					for i = 0, count - 1 do
-						strip(ctx, g, a0 + (a1 - a0) * i / count, a0 + (a1 - a0) * (i + 1) / count, side * offset, width, thickness, top, colour, material, collide)
-					end
+					strip(ctx, g, fit, run[1], run[2], side * offset, width, thickness, top, colour, material, collide)
 				end
 			end
 			lay(s.pavement - GUTTER_W / 2, GUTTER_W, false, LINE_T, raise + LINE_T - 0.02, GUTTER, M.Concrete, false)
@@ -378,17 +488,13 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 				if a >= t0 and a < t1 then
 					local mid = (a + b) / 2
 					if free(g.ax + g.ux * mid, g.az + g.uz * mid) then
-						strip(ctx, g, a, math.min(b, g.length), line.offset, LINE_W, LINE_T, raise + LINE_T - 0.01, line.colour, M.SmoothPlastic, false)
+						strip(ctx, g, fit, a, math.min(b, g.length), line.offset, LINE_W, LINE_T, raise + LINE_T - 0.01, line.colour, M.SmoothPlastic, false)
 					end
 				end
 			end
 		else
 			for _, run in clearRuns do
-				local a0, a1 = run[1], run[2]
-				local count = math.max(1, math.ceil((a1 - a0) / Roads.PIECE))
-				for i = 0, count - 1 do
-					strip(ctx, g, a0 + (a1 - a0) * i / count, a0 + (a1 - a0) * (i + 1) / count, line.offset, LINE_W, LINE_T, raise + LINE_T - 0.01, line.colour, M.SmoothPlastic, false)
-				end
+				strip(ctx, g, fit, run[1], run[2], line.offset, LINE_W, LINE_T, raise + LINE_T - 0.01, line.colour, M.SmoothPlastic, false)
 			end
 		end
 	end

@@ -4,7 +4,7 @@
 -- dune crests in the Sandhills, rougher ground in the Red Hills and breaks. Rivers, lakes and
 -- roads are cut into this by ChunkGen. Server only (reads ServerStorage.WorldData).
 
-local Config = require(script.Parent.Config)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 local WorldMap = require(script.Parent.WorldMap)
 
 local Heightfield = {}

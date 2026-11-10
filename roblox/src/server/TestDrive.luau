@@ -11,7 +11,7 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
-local Heightfield = require(ReplicatedStorage.Shared.World.Heightfield)
+local Heightfield = require(game:GetService("ServerStorage").World.Heightfield)
 local ChunkManager = require(script.Parent.ChunkManager)
 local TestVehicle = require(script.Parent.TestVehicle)
 

@@ -179,7 +179,7 @@ function Storm.environment(s: Storm, world: any)
 	-- (the engine's cloud base when it is given - client/FrameWorld: the game's drawn storm stands
 	-- on the engine's base, so its wall cloud and tornado meet the engine's at the same height)
 	if s.eng and s.eng.base then
-		s.base = math.clamp(s.eng.base, 150, 4000)
+		s.base = math.clamp(s.eng.baseE or s.eng.base, 150, 4000)
 	end
 	s.el = par.elZ or (s.base + 2000)
 	s.lfc = par.lfcZ or 6000
@@ -1566,7 +1566,7 @@ function Storm.step(s: Storm, dt: number, world: any)
 	s.lowering = math.clamp(125 * spread - lclMix + dynLower, 0, 0.85 * s.base) * s.rot
 	if s.eng and s.eng.lowering then
 		-- (the engine's wall cloud, when it is given: client/FrameWorld)
-		s.lowering = math.clamp(s.eng.lowering, 0, 0.85 * s.base)
+		s.lowering = math.clamp(s.eng.loweringE or s.eng.lowering, 0, 0.85 * s.base)
 	end
 	s.wallBase = s.base - s.lowering
 
@@ -2235,6 +2235,8 @@ function Storm.setEngine(s: any, e: any, x: number, y: number, at: number)
 	end
 	s.eng = {
 		x = x, y = y, at = at, u = e.motion[1], v = e.motion[2],
+		-- (how long since the last update, sim s: Storm.followEngine eases over a third of it)
+		every = if old then math.clamp(at - old.at, 0, 1800) else 0,
 		W = math.clamp(e.updraftMs * 0.8, 5, 60),
 		Ru = if feed and feed.updraft then math.clamp(feed.updraft.radiusKm * 1000 * 0.45, 1500, 7000) else s.Ru,
 		vmid = 20 * math.clamp(e.meso, 0, 1.2),
@@ -2248,6 +2250,11 @@ function Storm.setEngine(s: any, e: any, x: number, y: number, at: number)
 		-- server's lab sim keeps its own from its sounding)
 		base = e.baseM, lowering = e.loweringM,
 	}
+	-- (the base and lowering the storm stands on: eased to the engine's in Storm.followEngine like
+	-- its other fields, carried over from the last update - set at once, the wall cloud jumped at
+	-- each engine moment, 2026-11-08)
+	s.eng.baseE = if old and old.baseE and e.baseM then old.baseE else e.baseM
+	s.eng.loweringE = if old and old.loweringE and e.loweringM then old.loweringE else e.loweringM
 	s.leftMover = e.leftMover
 end
 
@@ -2256,8 +2263,12 @@ end
 -- the engine's over ENGINE_EASE so an update never pops. Left movers spin the other way.
 function Storm.followEngine(s: any, dt: number, world: any)
 	local e = s.eng
-	local k = 1 - exp(-dt / ENGINE_EASE)
-	local keep = exp(-dt / ENGINE_EASE)
+	-- (eased over a third of the time between updates when that is longer: the game's frames come
+	-- every 300 sim s - 37.5 s at the 8x clock - and over ENGINE_EASE alone each new moment was
+	-- taken in its first 7.5 s, the storm changing shape in steps, 2026-11-08)
+	local tau = math.max(ENGINE_EASE, (e.every or 0) / 3)
+	local k = 1 - exp(-dt / tau)
+	local keep = exp(-dt / tau)
 	-- (the clock this step brings it to: the slow step's sub-step clock (World.stormClock), which
 	-- its validAt says - not world.time, already at the slow step's end while the sub-steps run
 	-- over later frames: placed at the end time but stamped earlier, it was drawn ahead, then
@@ -2299,6 +2310,12 @@ function Storm.followEngine(s: any, dt: number, world: any)
 	-- and the tornado under it - up to 2 km round the updraft in one step, 2026-11-02)
 	s.occl = (s.occl or e.occl) + (e.occl - (s.occl or e.occl)) * k
 	s.lowAngle = 2.75 - 1.0 * s.occl
+	if e.base and e.baseE then
+		e.baseE += (e.base - e.baseE) * k
+	end
+	if e.lowering and e.loweringE then
+		e.loweringE += (e.lowering - e.loweringE) * k
+	end
 end
 
 return Storm

@@ -27,8 +27,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
-local WorldMap = require(ReplicatedStorage.Shared.World.WorldMap)
-local ChunkGen = require(ReplicatedStorage.Shared.World.ChunkGen)
+local WorldMap = require(game:GetService("ServerStorage").World.WorldMap)
+local ChunkGen = require(game:GetService("ServerStorage").World.ChunkGen)
 
 local lab = ReplicatedStorage:WaitForChild("StormLab")
 local Sim = lab:WaitForChild("Sim")

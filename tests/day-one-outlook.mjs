@@ -175,13 +175,14 @@ assert.equal(second.status, 'issued'); assert.equal(second.day, 'day2'); assert.
 assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 4]); assert.equal(membersFor('day3', 2), 1); assert.deepEqual(['day1', 'day2', 'day3'].map(day => stormMembersFor(day)), [8, 4, 0]); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
 assert.equal(issued.nextUpdateHourUtc, 44); assert.equal(second.nextUpdateHourUtc, 54); assert.equal(outlooks.day('day3').status, 'off');
 assert.deepEqual(Object.keys(outlooks.status().days), ['day1', 'day2']);
-// The schedule: the centre's times (Day 1 at 06, 13, 1630, 20 and 01Z; Day 2 at 06 and 1730Z; Day 3 at 0730 and 1930Z).
+// The schedule: the centre's times (Day 1 at 06, 13, 1630, 20 and 01Z; Day 2 at 06 and 1730Z), with Day 3
+// issued with Day 2 from the same runs (2026-11-09; the centre's are at 0730 and 1930Z).
 const clockwork = { seed: 1, world: { validHourUtc: 36 } }, schedule = new OutlookRuntime({ runtime: { engine: clockwork }, pool });
 assert.deepEqual(schedule.due(), ['day1', 'day2', 'day3'], 'a new world is due all three');
 for (const day of schedule.days) schedule.products[day] = { slot: schedule.slot(day, 36), engine: clockwork };
-for (const [hour, due] of [[36, []], [36.9, []], [37, ['day1']], [41.4, ['day1']], [41.5, ['day1', 'day2']], [43.5, ['day1', 'day2', 'day3']]]) { clockwork.world.validHourUtc = hour; assert.deepEqual(schedule.due(), due, `due at hour ${hour}`); }
+for (const [hour, due] of [[36, []], [36.9, []], [37, ['day1']], [41.4, ['day1']], [41.5, ['day1', 'day2', 'day3']], [43.5, ['day1', 'day2', 'day3']]]) { clockwork.world.validHourUtc = hour; assert.deepEqual(schedule.due(), due, `due at hour ${hour}`); }
 for (const day of schedule.days) schedule.products[day].slot = schedule.slot(day, 48);
-clockwork.world.validHourUtc = 54; assert.deepEqual(schedule.due(), ['day1', 'day2'], 'at 06Z Day 1 and Day 2 are due again');
+clockwork.world.validHourUtc = 54; assert.deepEqual(schedule.due(), ['day1', 'day2', 'day3'], 'at 06Z all three are due again, in one issue');
 assert.equal(atmosphere.world.validHourUtc, before, 'the live world did not move while its outlook was made');
 // A new world on the server makes the old outlook stale.
 runtime.engine = new AtmosphereWorld({ seed: 4, spinUpDays: 4, storms: false });

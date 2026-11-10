@@ -27,13 +27,7 @@ local LOOP_STEP_SECONDS, LOOP_HOLD_SECONDS = 0.45, 1.5
 
 type Frame = { id: string, validHourUtc: number, product: any, bytes: buffer }
 
-local decoded: { [string]: { key: string, bytes: buffer } } = {}
-local function bytesOf(product: any): buffer?
-	local key = tostring(product.validHourUtc)
-	local held = decoded[product.id]
-	if held and held.key == key then
-		return held.bytes
-	end
+local function unpackBytes(product: any): buffer?
 	local ok, bytes = pcall(function()
 		return EncodingService:DecompressBuffer(EncodingService:Base64Decode(buffer.fromstring(product.data)), Enum.CompressionAlgorithm.Zstd)
 	end)
@@ -41,7 +35,24 @@ local function bytesOf(product: any): buffer?
 		warn(`[Satellite] {product.id}: could not unpack ({bytes})`)
 		return nil
 	end
-	decoded[product.id] = { key = key, bytes = bytes }
+	return bytes
+end
+
+-- The newest image of each kind, unpacked once an image (a loop's frames hold their own bytes):
+-- one entry a kind, so it never grows.
+local decoded: { [string]: { id: string, key: string, bytes: buffer } } = {}
+local function bytesOf(product: any): buffer?
+	local key = tostring(product.validHourUtc)
+	local slot = tostring(product.product)
+	local held = decoded[slot]
+	if held and held.id == product.id and held.key == key then
+		return held.bytes
+	end
+	local bytes = unpackBytes(product)
+	if not bytes then
+		return nil
+	end
+	decoded[slot] = { id = product.id, key = key, bytes = bytes }
 	return bytes
 end
 
@@ -174,18 +185,19 @@ function Satellite.startLoop(self: any)
 	local token = self.loopToken
 	task.spawn(function()
 		local have: { [string]: Frame } = {}
-		while self.looping and self.enabled and self.loopToken == token do
+		while self.looping and self.enabled and self.ctx.isOpen() and self.loopToken == token do
 			local shown = self.shown
 			local list = if shown and shown.loop then shown.loop else {}
 			local frames: { Frame } = {}
 			for _, entry in list do
 				local frame = have[entry.id]
 				if not frame then
-					local product = if shown and math.abs(entry.validHourUtc - shown.validHourUtc) < 1e-6 then shown else ProductClient.get(entry.id)
+					local newest = shown and math.abs(entry.validHourUtc - shown.validHourUtc) < 1e-6
+					local product = if newest then shown else ProductClient.get(entry.id)
 					if self.loopToken ~= token then
 						return
 					end
-					local bytes = if product and product.data then bytesOf(product) else nil
+					local bytes = if product and product.data then (if newest then bytesOf(product) else unpackBytes(product)) else nil
 					if product and bytes then
 						frame = { id = entry.id, validHourUtc = entry.validHourUtc, product = product, bytes = bytes }
 						have[entry.id] = frame
@@ -205,7 +217,7 @@ function Satellite.startLoop(self: any)
 				task.wait(1)
 			else
 				for k = 1, #frames do
-					if not (self.looping and self.enabled and self.loopToken == token) then
+					if not (self.looping and self.enabled and self.ctx.isOpen() and self.loopToken == token) then
 						return
 					end
 					self.frameAt = k
@@ -229,11 +241,12 @@ function Satellite.setEnabled(self: any, on: boolean)
 	if self.looping then
 		self:startLoop()
 	end
+	-- (stopped while the screen is closed; started again when it opens)
 	local token = self.keepaliveToken
 	task.spawn(function()
-		while self.enabled and self.keepaliveToken == token do
+		while self.enabled and self.ctx.isOpen() and self.keepaliveToken == token do
 			task.wait(KEEPALIVE_SECONDS)
-			if self.enabled and self.keepaliveToken == token then
+			if self.enabled and self.ctx.isOpen() and self.keepaliveToken == token then
 				ProductClient.touch(self:productId())
 			end
 		end

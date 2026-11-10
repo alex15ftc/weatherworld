@@ -44,6 +44,17 @@ function ReportDays.product(): any
 	return product
 end
 
+-- A number that changes whenever the chosen day's product does (for the layers' shape keys).
+local stamp = 0
+local stamped: any = nil
+function ReportDays.stamp(): number
+	if product ~= stamped then
+		stamped = product
+		stamp += 1
+	end
+	return stamp
+end
+
 function ReportDays.current(): Day?
 	local day = shownDay()
 	for _, d in days do

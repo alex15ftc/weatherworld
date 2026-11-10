@@ -47,9 +47,12 @@ local function isReport(id: string): boolean
 end
 
 local SITE_KEEP_SECONDS = 90
--- Radar and satellite products made only when asked for, and their loops' earlier scans.
+-- Radar and satellite products made only when asked for, and their loops' earlier scans; and the
+-- lightning (only the radar layer shows it, and it keeps asking while it does), so a server whose
+-- players have no radar on does not pull it every storm tick.
 local function onDemand(id: string): boolean
-	return string.match(id, "^radar%.site%.[%w]+%.[%w]+[%.%w]*$") ~= nil
+	return id == "lightning"
+		or string.match(id, "^radar%.site%.[%w]+%.[%w]+[%.%w]*$") ~= nil
 		or string.match(id, "^radar%.mosaic%.[%w]+[%.%w]*$") ~= nil
 		or string.match(id, "^radar%.rotation%.[%w]+$") ~= nil
 		or string.match(id, "^satellite%.[%w]+[%.%w]*$") ~= nil
@@ -60,6 +63,38 @@ end
 local siteAsked: { [string]: number } = {} -- site product id -> when a player last asked for it
 local fetchOnDemand: ((id: string) -> ())? = nil -- set by the http source
 local fetchDirect: ((id: string) -> Product?)? = nil -- a product straight from the weather server (http source)
+
+-- The requests made for players (on-demand products, report days and surveys not held) share the
+-- whole server's HTTP budget (500 a minute) with the manifest poll, the products it pulls and the
+-- storm frames (StormHost): they may spend at most ON_DEMAND_PER_MINUTE of it, in bursts of
+-- ON_DEMAND_BURST, so a few players looping radars cannot starve the rest.
+local ON_DEMAND_PER_MINUTE, ON_DEMAND_BURST = 180, 30
+local httpTokens, httpTokensAt = ON_DEMAND_BURST, os.clock()
+local function takeHttpToken(): boolean
+	local now = os.clock()
+	httpTokens = math.min(ON_DEMAND_BURST, httpTokens + (now - httpTokensAt) * ON_DEMAND_PER_MINUTE / 60)
+	httpTokensAt = now
+	if httpTokens < 1 then
+		return false
+	end
+	httpTokens -= 1
+	return true
+end
+-- A product the weather server did not give (not found, or an error) is not asked of it again
+-- for MISS_SECONDS.
+local MISS_SECONDS = 45
+local missed: { [string]: number } = {}
+local function recentlyMissed(id: string): boolean
+	local at = missed[id]
+	return at ~= nil and os.clock() - at < MISS_SECONDS
+end
+-- An earlier scan (<loop>.h<seconds>) is asked of the weather server only while the newest product
+-- of its loop, held here, lists it (its `loop`: {"id":"<loop>.h<seconds>",...}).
+local function frameListed(id: string): boolean
+	local base = string.match(id, "^(.+)%.h%d+$")
+	local held = if base then products[base] else nil
+	return held ~= nil and string.find(held.text, `"id":"{id}"`, 1, true) ~= nil
+end
 
 local folder = Instance.new("Folder")
 folder.Name = "Products"
@@ -93,28 +128,52 @@ end
 
 -- A player may ask for at most GET_BURST products in any GET_WINDOW seconds.
 local GET_BURST, GET_WINDOW = 60, 10 -- (a radar loop is ten products)
+-- Of those, at most HTTP_BURST may be products not held here (each one a request to the weather
+-- server): a radar loop and a satellite loop started together are about twenty.
+local HTTP_BURST = 24
 local asked: { [Player]: { number } } = {}
+local askedHttp: { [Player]: { number } } = {}
 Players.PlayerRemoving:Connect(function(player: Player)
 	asked[player] = nil
+	askedHttp[player] = nil
 end)
+
+-- Whether a player may ask once more within `burst` in any GET_WINDOW seconds (and counts it).
+local function withinRate(byPlayer: { [Player]: { number } }, player: Player, burst: number, now: number): boolean
+	local times = byPlayer[player] or {}
+	byPlayer[player] = times
+	while times[1] and now - times[1] > GET_WINDOW do
+		table.remove(times, 1)
+	end
+	if #times >= burst then
+		return false
+	end
+	table.insert(times, now)
+	return true
+end
 
 getFunction.OnServerInvoke = function(player: Player, id: unknown, haveVersion: unknown): any
 	if typeof(id) ~= "string" or #id > 80 then
 		return nil
 	end
 	local now = os.clock()
-	local times = asked[player] or {}
-	asked[player] = times
-	while times[1] and now - times[1] > GET_WINDOW do
-		table.remove(times, 1)
-	end
-	if #times >= GET_BURST then
+	if not withinRate(asked, player, GET_BURST, now) then
 		return nil
 	end
-	table.insert(times, now)
-	if onDemand(id) then
+	local demand = onDemand(id)
+	local holding = products[id] ~= nil or localProducts[id] ~= nil
+	if demand and not holding and isFrame(id) and not frameListed(id) then
+		return nil -- not a scan of a loop held here (or one let go)
+	end
+	if demand then
 		siteAsked[id] = now
-		if not products[id] and fetchOnDemand then
+	end
+	if not holding and (demand or isReport(id)) and fetchOnDemand then
+		-- Costs a request to the weather server (a report day may still come from the archive).
+		if (demand and recentlyMissed(id)) or not withinRate(askedHttp, player, HTTP_BURST, now) then
+			return nil
+		end
+		if demand then
 			(fetchOnDemand :: (string) -> ())(id)
 		end
 	end
@@ -158,6 +217,9 @@ local function runHttp(url: string)
 	end
 
 	fetchDirect = function(id: string): Product?
+		if not takeHttpToken() then
+			return nil -- over the players' share of the HTTP budget: asked again later
+		end
 		local got, text, responseHeaders = get(`/api/game/v1/product/{id}`)
 		if not got then
 			return nil
@@ -175,9 +237,13 @@ local function runHttp(url: string)
 			end
 			return
 		end
+		if recentlyMissed(id) or not takeHttpToken() then
+			return -- not found lately, or over the players' share of the HTTP budget: asked again later
+		end
 		fetching[id] = true
 		local got, text, responseHeaders = get(`/api/game/v1/product/{id}`)
 		if got then
+			missed[id] = nil
 			local version = versionOf(responseHeaders, HttpService:GenerateGUID(false))
 			products[id] = { version = version, text = text }
 			announce({ [id] = version })
@@ -185,6 +251,7 @@ local function runHttp(url: string)
 				ReportArchive.offer(id, products[id])
 			end
 		else
+			missed[id] = os.clock()
 			warn(`[ProductFeed] {id}: {text}`)
 		end
 		fetching[id] = nil
@@ -235,11 +302,24 @@ local function runHttp(url: string)
 					if stillAsked and isFrame(id) then
 						-- an earlier scan is never listed and never changes: keep it as it is
 					elseif stillAsked then
-						task.spawn(fetchOnDemand :: (string) -> (), id)
+						if not recentlyMissed(id) then
+							task.spawn(fetchOnDemand :: (string) -> (), id)
+						end
 					else
 						products[id] = nil
 						changed[id] = false
 					end
+				end
+			end
+			-- Asks that never got a product, and old misses, are let go.
+			for id, at in siteAsked do
+				if not products[id] and now - at >= SITE_KEEP_SECONDS then
+					siteAsked[id] = nil
+				end
+			end
+			for id, at in missed do
+				if os.clock() - at >= MISS_SECONDS then
+					missed[id] = nil
 				end
 			end
 			announce(changed)

@@ -56,7 +56,9 @@ export class AtmosphereWorld {
   // the map. (2026-10-28: without it a new world's first day began from the outer model's air alone,
   // far from the system aimed at, and went without a tornado on half the seeds.) Not for a restored world
   // or one without steering.
-  constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {}, plan = true, warmUpHours = 24 } = {}) {
+  // prepare: false leaves the fields the storm engine reads unworked (restore: the restored world
+  // replaces this one, and brings its own).
+  constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {}, plan = true, warmUpHours = 24, prepare = true } = {}) {
     this.seed = seed;
     // (A spin-up already run for this seed is read back from disk: spinUpCache.node.js.)
     this.model = model ?? spunUpModel({ seed }, spinUpDays * 86400);
@@ -82,7 +84,7 @@ export class AtmosphereWorld {
     this.boundaries = [];
     this.steering = steering ? new RegionSteering(this.regional, seed, steering) : null;
     if (plan) this.steering?.update();
-    this.prepare(0);
+    if (prepare) this.prepare(0);
     if (warmUp) this.advance(warmUp);
     this.stormsEnabled = storms;
     if (storms) initializeStormEngine(world);
@@ -115,7 +117,7 @@ export class AtmosphereWorld {
     const model = new QuasiGeostrophicModel(state.model.params);
     for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'ascentCooling', 'surfaceTheta', 'surfaceMoisture']) if (state.model[key]) model[key].set(state.model[key]);
     model.time = state.model.time; model.history = state.model.history;
-    const restored = new AtmosphereWorld({ seed: state.seed, model, regional: state.regional.params, storms: false, steering: state.steering ? state.steering.params : false, plan: false });
+    const restored = new AtmosphereWorld({ seed: state.seed, model, regional: state.regional.params, storms: false, steering: state.steering ? state.steering.params : false, plan: false, prepare: false });
     const regional = restored.regional;
     regional.origin.x = state.regional.originX; regional.slideMs = state.regional.slideMs;
     if (Number.isFinite(state.regional.originY)) { regional.origin.y = state.regional.originY; regional.homeY = state.regional.homeY; regional.slideNorthMs = state.regional.slideNorthMs ?? 0; }

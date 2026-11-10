@@ -19,7 +19,7 @@
 local Builder = require(script.Parent.Builder)
 local Trees = require(script.Parent.Trees)
 local Sites = require(script.Parent.Parent.Sites)
-local Config = require(script.Parent.Parent.Config)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 
 local Facilities = {}
 

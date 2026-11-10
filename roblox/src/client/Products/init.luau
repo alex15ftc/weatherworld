@@ -111,6 +111,27 @@ local function compose(): MapCanvas.Overlay?
 			end
 			return table.concat(parts, "|")
 		end,
+		-- Marks over the raster image (lightning, rotation), in their own image.
+		drawMarks = function(draw: MapCanvas.Draw)
+			for _, layer in drawOrder do
+				if layer.enabled and layer.drawMarks then
+					(layer.drawMarks :: any)(layer, draw)
+				end
+			end
+		end,
+		marksKey = function(): string?
+			local parts = {}
+			for _, layer in drawOrder do
+				if layer.enabled and layer.drawMarks then
+					local key = if layer.marksKey then (layer.marksKey :: any)(layer) else nil
+					if not key then
+						return nil
+					end
+					table.insert(parts, key)
+				end
+			end
+			return table.concat(parts, "|")
+		end,
 		-- The top layer that says anything about the point under the cursor.
 		hover = function(mx: number, my: number): string?
 			for k = #drawOrder, 1, -1 do
@@ -223,6 +244,9 @@ local context: Layer.Context = {
 		return if open and open.layer == layerKey then open.item else ""
 	end,
 	isOn = isOn,
+	isOpen = function(): boolean
+		return gui ~= nil and (gui :: ScreenGui).Enabled
+	end,
 }
 
 local function setEnabled(layer: Layer.Layer, on: boolean)
@@ -383,6 +407,15 @@ function Products.toggle()
 	MapCanvas.setVisible(screen.Enabled)
 	if screen.Enabled and first then
 		MapCanvas.centreOnMe()
+	elseif screen.Enabled then
+		-- Closed, the layers fetched nothing and their loops and keepalives stopped
+		-- (context.isOpen): each one on is brought up to date, and started again, once.
+		for _, layer in layers do
+			if layer.enabled then
+				layer:setEnabled(true)
+			end
+		end
+		redraw()
 	end
 end
 
@@ -401,8 +434,12 @@ function Products.start()
 		end
 	end)
 
-	-- A newer version of a product a layer shows is drawn as soon as it is out.
+	-- A newer version of a product a layer shows is drawn as soon as it is out, while the screen
+	-- is open (closed, it is fetched when it opens again: Products.toggle).
 	ProductClient.onChanged(function(id: string)
+		if not context.isOpen() then
+			return
+		end
 		for _, layer in layers do
 			if layer.enabled and layer:wants(id) then
 				task.spawn(layer.refresh, layer)

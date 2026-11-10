@@ -1,10 +1,12 @@
 --!strict
 -- Template worker (disabled; ChunkManager clones and enables it). Builds a chunk's voxels in a
--- parallel phase, then writes them to Terrain and places its props in serial, and reports timings.
+-- parallel phase, then writes them to Terrain and places its props in serial (spread over frames),
+-- and reports timings and the props model.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local ChunkGen = require(ReplicatedStorage.Shared.World.ChunkGen)
+local Config = require(ReplicatedStorage.Shared.World.Config)
+local ChunkGen = require(game:GetService("ServerStorage").World.ChunkGen)
 
 local actor = script:GetActor() :: Actor
 local terrain = workspace.Terrain
@@ -20,8 +22,11 @@ actor:BindToMessage("Build", function(cx: number, cz: number)
 	task.synchronize()
 	local t1 = os.clock()
 	terrain:WriteVoxels(chunk.region, ChunkGen.VOXEL, chunk.materials, chunk.occupancy)
-	ChunkGen.place(chunk.props, propsRoot, ChunkGen.key(cx, cz))
-	done:Fire(actor, cx, cz, chunk.yMin, chunk.yMax, buildMs, (os.clock() - t1) * 1000)
+	local writeMs = (os.clock() - t1) * 1000
+	-- The props over the next frames (the workers share PLACE_BUDGET_MS a frame), the model
+	-- parented last: the terrain is in before anything stands on it.
+	local model, placeMs = ChunkGen.place(chunk.props, propsRoot, ChunkGen.name(cx, cz), Config.PLACE_BUDGET_MS / math.max(1, Config.WORKERS))
+	done:Fire(actor, cx, cz, chunk.yMin, chunk.yMax, buildMs, writeMs + placeMs, model)
 end)
 
 actor:SetAttribute("Ready", true)

@@ -203,6 +203,9 @@ function Ground.new(ctx: any): any
 		end
 		local base = G.colour
 		local gr, gg, gb = base[1] / 255, base[2] / 255, base[3] / 255
+		-- (the light and haze the rings are recoloured with: the same for every ring, looked up once)
+		local fr0, fg0, fb0, atmo, refG
+		local lit = false
 		for _, ring in rings do
 			local dR = ring.d
 			-- (narrow cards: a card faces the screen, so its top is straight on screen while the
@@ -218,18 +221,21 @@ function Ground.new(ctx: any): any
 				-- against the camera's: SceneLight.groundLight, local sky light as well as sun. The
 				-- sky light of sample() is the camera's everywhere, so from under a base the sunny
 				-- land past its edge came out as dark as the ground underfoot)
-				local fr0, fg0, fb0 = litGround()
+				if not lit then
+					lit = true
+					fr0, fg0, fb0 = litGround()
+					atmo = Lighting:FindFirstChildOfClass("Atmosphere")
+					refG = if SceneLight and SceneLight.groundLight then math.max(1e-3, SceneLight.groundLight(ctx, cx, cy, C.groundAt(cx, cy) + 2)) else nil
+				end
 				-- the haze Roblox puts on the land in front of the ring (Atmosphere: extinction
 				-- 0.188 x Density^4.15 a stud, roblox-render-limits), which billboards don't get -
 				-- unhazed, the rings stood as a dark wall over the fading terrain at the horizon,
 				-- "the horizon is too high", user 2026-11-08
-				local atmo = Lighting:FindFirstChildOfClass("Atmosphere")
 				local tr, hz = 1, nil
 				if atmo then
 					tr = math.exp(-0.188 * atmo.Density ^ 4.15 * across(dR))
 					hz = atmo.Color
 				end
-				local refG = if SceneLight and SceneLight.groundLight then math.max(1e-3, SceneLight.groundLight(ctx, cx, cy, C.groundAt(cx, cy) + 2)) else nil
 				for k = 1, FAR.sectors do
 					local a = (k - 0.5) / FAR.sectors * 2 * math.pi
 					local sx, sy = cx + math.cos(a) * dR, cy + math.sin(a) * dR
@@ -293,12 +299,19 @@ function Ground.new(ctx: any): any
 				if vis then
 					-- (the top edge on the ground line, its feathered 3% inside the card: feathered about
 					-- the line, the soft top rose over the foot of a tornado just beyond the ring)
-					c.att.WorldPosition = top
+					if c.top ~= top then
+						c.top = top
+						c.att.WorldPosition = top
+					end
 					-- (wider off the view's centre: a facing card's screen width falls as cos of its angle
 					-- off-centre while the spacing of the cards' centres grows as 1/cos², so past ~30° the
 					-- cards parted and the farther, paler ring showed through in seams)
 					local cosA = math.max(0.35, ray:Dot(cf.LookVector) / ray.Magnitude)
-					c.bb.Size = UDim2.fromScale(wS / (cosA * cosA), hS + drop)
+					local sw, sh = wS / (cosA * cosA), hS + drop
+					if c.sw ~= sw or c.sh ~= sh then
+						c.sw, c.sh = sw, sh
+						c.bb.Size = UDim2.fromScale(sw, sh)
+					end
 					-- (blended between the two nearest sectors: snapped, the cards showed as blocks)
 					local fs = ((c.a % (2 * math.pi)) / (2 * math.pi)) * FAR.sectors - 0.5
 					local k0 = math.floor(fs)

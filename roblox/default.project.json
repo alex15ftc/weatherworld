@@ -1,5 +1,6 @@
 {
   "name": "WeatherWorld",
+  "globIgnorePaths": ["src/shared/Tornado", "src/shared/Tornado/**"],
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
@@ -58,6 +59,9 @@
     "ServerStorage": {
       "WorldData": {
         "$path": "src/worlddata"
+      },
+      "World": {
+        "$path": "src/serverworld"
       }
     },
     "ServerScriptService": {
@@ -105,6 +109,8 @@
     "Workspace": {
       "$properties": {
         "StreamingEnabled": true,
+        "StreamingTargetRadius": 1024,
+        "StreamingMinRadius": 512,
         "Gravity": 35.0357
       }
     },

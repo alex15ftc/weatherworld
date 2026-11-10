@@ -53,14 +53,8 @@ local MARK_OUTLINE = { 20, 20, 24 }
 type Strikes = { key: string, x: { number }, y: { number }, age: { number }, kind: { number } }
 type Frame = { id: string, validHourUtc: number, product: any, bytes: buffer }
 
--- The bytes of a radar product, unpacked once a scan (by id and scan time).
-local decoded: { [string]: { key: string, bytes: buffer } } = {}
-local function bytesOf(product: any): buffer?
-	local key = tostring(product.validHourUtc)
-	local held = decoded[product.id]
-	if held and held.key == key then
-		return held.bytes
-	end
+-- The bytes of a radar product.
+local function unpackBytes(product: any): buffer?
 	local ok, bytes = pcall(function()
 		return EncodingService:DecompressBuffer(EncodingService:Base64Decode(buffer.fromstring(product.data)), Enum.CompressionAlgorithm.Zstd)
 	end)
@@ -68,7 +62,43 @@ local function bytesOf(product: any): buffer?
 		warn(`[Radar] {product.id}: could not unpack ({bytes})`)
 		return nil
 	end
-	decoded[product.id] = { key = key, bytes = bytes }
+	return bytes
+end
+
+-- The newest scans' bytes, unpacked once a scan (by id and scan time); only the few last used are
+-- kept (a loop's frames hold their own bytes, and are let go with the loop).
+local DECODED_KEEP = 4
+local decoded: { [string]: { key: string, bytes: buffer, used: number } } = {}
+local decodedCount, decodedClock = 0, 0
+local function bytesOf(product: any): buffer?
+	local key = tostring(product.validHourUtc)
+	decodedClock += 1
+	local held = decoded[product.id]
+	if held and held.key == key then
+		held.used = decodedClock
+		return held.bytes
+	end
+	local bytes = unpackBytes(product)
+	if not bytes then
+		return nil
+	end
+	if not held then
+		while decodedCount >= DECODED_KEEP do
+			local oldest, oldestUsed = nil, math.huge
+			for id, entry in decoded do
+				if entry.used < oldestUsed then
+					oldest, oldestUsed = id, entry.used
+				end
+			end
+			if not oldest then
+				break
+			end
+			decoded[oldest] = nil
+			decodedCount -= 1
+		end
+		decodedCount += 1
+	end
+	decoded[product.id] = { key = key, bytes = bytes, used = decodedClock }
 	return bytes
 end
 
@@ -425,18 +455,19 @@ function Radar.startLoop(self: any)
 	local token = self.loopToken
 	task.spawn(function()
 		local have: { [string]: Frame } = {}
-		while self.looping and self.enabled and self.loopToken == token do
+		while self.looping and self.enabled and self.ctx.isOpen() and self.loopToken == token do
 			local shown = self.shown
 			local list = if shown and shown.loop then shown.loop else {}
 			local frames: { Frame } = {}
 			for _, entry in list do
 				local frame = have[entry.id]
 				if not frame then
-					local product = if shown and math.abs(entry.validHourUtc - shown.validHourUtc) < 1e-6 then shown else ProductClient.get(entry.id)
+					local newest = shown and math.abs(entry.validHourUtc - shown.validHourUtc) < 1e-6
+					local product = if newest then shown else ProductClient.get(entry.id)
 					if self.loopToken ~= token then
 						return
 					end
-					local bytes = if product and product.data then bytesOf(product) else nil
+					local bytes = if product and product.data then (if newest then bytesOf(product) else unpackBytes(product)) else nil
 					if product and bytes then
 						frame = { id = entry.id, validHourUtc = entry.validHourUtc, product = product, bytes = bytes }
 						have[entry.id] = frame
@@ -457,7 +488,7 @@ function Radar.startLoop(self: any)
 				task.wait(1)
 			else
 				for k = 1, #frames do
-					if not (self.looping and self.enabled and self.loopToken == token) then
+					if not (self.looping and self.enabled and self.ctx.isOpen() and self.loopToken == token) then
 						return
 					end
 					self.frameAt = k
@@ -481,17 +512,24 @@ function Radar.setEnabled(self: any, on: boolean)
 	if self.looping then
 		self:startLoop()
 	end
-	-- Keep the radar's product coming while it is on show.
+	-- Keep the radar's product (and the lightning, made only while asked for) coming while it is
+	-- on show; closing the screen stops this (it starts again when the screen opens).
 	local token = self.keepaliveToken
+	local function live(): boolean
+		return self.enabled and self.ctx.isOpen() and self.keepaliveToken == token
+	end
 	task.spawn(function()
-		while self.enabled and self.keepaliveToken == token do
+		while live() do
 			task.wait(KEEPALIVE_SECONDS)
 			local id, rotationId = self:productId(), self:rotationId()
-			if self.enabled and self.keepaliveToken == token and id then
+			if live() and id then
 				ProductClient.touch(id)
 			end
-			if self.enabled and self.keepaliveToken == token and rotationId then
+			if live() and rotationId then
 				ProductClient.touch(rotationId)
+			end
+			if live() and (self.showGround or self.showCloud) then
+				ProductClient.touch("lightning")
 			end
 		end
 	end)
@@ -513,9 +551,7 @@ function Radar.grids(self: any): { MapCanvas.Grid }
 	return { { key = `{product.id}@{product.validHourUtc}`, bytes = bytes, width = product.width, height = product.height, cellMiles = product.cellMiles, lut = spec.lut, alpha = RADAR_ALPHA } }
 end
 
--- The scan, and over it the lightning and rotation marks: they change with every storm tick,
--- as the scan does, so they are drawn with it rather than into the map's product tiles (which
--- would all be drawn again each time).
+-- The scan itself.
 function Radar.drawRaster(self: any, draw: MapCanvas.Draw)
 	local product, bytes = self:current()
 	local spec = if product then Palettes.RADAR[product.product] else nil
@@ -526,6 +562,13 @@ function Radar.drawRaster(self: any, draw: MapCanvas.Draw)
 			draw.grid(bytes, product.width, product.height, product.cellMiles, spec.lut, RADAR_ALPHA)
 		end
 	end
+end
+
+-- Over the scan, the lightning and rotation marks: they change with every storm tick, so they
+-- are drawn into their own image of the view (MapCanvas drawMarks) rather than into the map's
+-- product tiles (which would all be drawn again each time) or into the scan's image (whose
+-- loop frames would all be drawn again).
+function Radar.drawMarks(self: any, draw: MapCanvas.Draw)
 	self:drawLightning(draw)
 	self:drawRotation(draw)
 end
@@ -547,11 +590,16 @@ end
 function Radar.rasterKey(self: any): string?
 	self:checkFine()
 	local product, bytes = self:current()
-	local marks = `{if self.showGround or self.showCloud then tostring(self.lightning) else "-"}|{self.showGround}|{self.showCloud}|{tostring(self.rotation)}|{self.ctx.selected(self.key)}`
 	if not product or not bytes then
-		return `none|{marks}`
+		return "none"
 	end
-	return `{product.id}@{product.validHourUtc}|{marks}`
+	return `{product.id}@{product.validHourUtc}`
+end
+
+-- What drawMarks draws now: the lightning and rotation products on show (each a new table a
+-- version) and the marks asked for. (Their sizes are in screen pixels: a new view draws them again.)
+function Radar.marksKey(self: any): string?
+	return `{if self.showGround or self.showCloud then tostring(self.lightning) else "-"}|{self.showGround}|{self.showCloud}|{tostring(self.rotation)}|{self.network}`
 end
 
 -- The value under the cursor, with where it is from the radar and how high the beam is there.

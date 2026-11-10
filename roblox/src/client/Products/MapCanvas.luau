@@ -70,6 +70,10 @@ export type Overlay = {
 	-- Names what drawRaster would draw now (a radar scan's id and time): images drawn are kept
 	-- under it while the view stays put, so a radar loop's frames are drawn once a view.
 	rasterKey: (() -> string?)?,
+	-- Marks over the raster products (lightning, rotation), drawn into their own image of the view
+	-- and kept under marksKey, so a radar loop's frames are not drawn again when they change.
+	drawMarks: ((Draw) -> ())?,
+	marksKey: (() -> string?)?,
 	-- What is at the map point under the cursor (a radar gate's value), shown in the readout.
 	hover: ((mx: number, my: number) -> string?)?,
 }
@@ -150,6 +154,7 @@ local viewport: Frame
 local baseLayer: Frame -- the map's tiles
 local veil: Frame -- mutes the map under a product
 local rasterImage: ImageLabel -- the raster products (radar)
+local marksImage: ImageLabel -- the marks over them (lightning, rotation): a child of rasterImage
 local underLayer: Frame -- the product's tiles under the raster products
 local overLayer: Frame -- the product's tiles over them
 local labelLayer: Frame
@@ -502,10 +507,58 @@ end
 -- before tiles. It is drawn for one view, and moved and scaled with the map until the view
 -- settles and it is drawn again.
 local rasterEditable: any = nil
+
+-- A few drawn images kept by key, the least recently used let go first when full.
+type Lru<T> = { items: { [string]: { value: T, used: number } }, count: number, cap: number, clock: number }
+local function newLru<T>(cap: number): Lru<T>
+	return { items = {}, count = 0, cap = cap, clock = 0 }
+end
+local function lruGet<T>(lru: Lru<T>, key: string): T?
+	local item = lru.items[key]
+	if not item then
+		return nil
+	end
+	lru.clock += 1
+	item.used = lru.clock
+	return item.value
+end
+local function lruPut<T>(lru: Lru<T>, key: string, value: T)
+	lru.clock += 1
+	if lru.items[key] then
+		lru.items[key] = { value = value, used = lru.clock }
+		return
+	end
+	while lru.count >= lru.cap do
+		local oldest, oldestUsed = nil, math.huge
+		for k, item in lru.items do
+			if item.used < oldestUsed then
+				oldest, oldestUsed = k, item.used
+			end
+		end
+		if not oldest then
+			break
+		end
+		lru.items[oldest] = nil
+		lru.count -= 1
+	end
+	lru.items[key] = { value = value, used = lru.clock }
+	lru.count += 1
+end
+local function lruClear<T>(lru: Lru<T>)
+	table.clear(lru.items)
+	lru.count = 0
+end
+
 -- Raster images already drawn for this view, by the overlay's rasterKey (a radar loop's frames):
--- plain buffers, not EditableImages, so they cost no image budget; let go when the view moves.
+-- plain buffers, not EditableImages, so they cost no image budget; let go when the view moves
+-- or the map closes. (A loop is radarLoopFrames scans, 10, plus the newest.)
 local RASTER_CACHE_IMAGES = 12
-local rasterCache: { view: string?, images: { [string]: { pixels: buffer, drawn: boolean } }, count: number } = { view = nil, images = {}, count = 0 }
+type Drawn = { pixels: buffer, drawn: boolean }
+local rasterCache: { view: string?, images: Lru<Drawn> } = { view = nil, images = newLru(RASTER_CACHE_IMAGES) }
+-- The marks drawn for this view (lightning, rotation), by the overlay's marksKey.
+local marksHeld: { key: string, pixels: buffer, drawn: boolean }? = nil
+local marksEditable: any = nil
+local marksWritten: buffer? = nil -- the marks buffer last written into marksEditable
 local rasterSize = Vector2.zero
 local rasterView = { left = 0, top = 0, right = 0, bottom = 0 }
 
@@ -523,7 +576,7 @@ end
 local function drawRaster()
 	rasterDue = false
 	local current = overlay
-	if not current or not current.drawRaster then
+	if not current or not (current.drawRaster or current.drawMarks) then
 		rasterImage.Visible = false
 		return
 	end
@@ -533,32 +586,48 @@ local function drawRaster()
 	local cx, cy, m = centreX, centreY, mpp
 	local viewKey = string.format("%.9g %.9g %.9g %d %d", cx, cy, m, pw, ph)
 	if rasterCache.view ~= viewKey then
-		rasterCache.view, rasterCache.images, rasterCache.count = viewKey, {}, 0
+		rasterCache.view = viewKey
+		lruClear(rasterCache.images)
+		marksHeld = nil
 	end
-	local key = if current.rasterKey then (current.rasterKey :: () -> string?)() else nil
-	local held = if key then rasterCache.images[key] else nil
-	local pixels: buffer, drawn: boolean
-	if held then
-		pixels, drawn = held.pixels, held.drawn
-	else
-		pixels = buffer.create(pw * ph * 4)
+	local function paint(drawFn: (Draw) -> (), what: string): Drawn
+		local pixels = buffer.create(pw * ph * 4)
 		local raster = Raster.new(pixels, pw, ph, function(mx: number, my: number)
 			return (mx - cx) / m + size.X / 2, (my - cy) / m + size.Y / 2
 		end, scale, 0, 0, Config.MAP_MILES)
-		local ok, problem = pcall(current.drawRaster :: (Draw) -> (), raster)
+		local ok, problem = pcall(drawFn, raster)
 		if not ok then
-			warn(`[MapCanvas] raster product drawing failed: {problem}`)
+			warn(`[MapCanvas] {what} drawing failed: {problem}`)
 		end
-		drawn = raster.drawn()
-		if key then
-			if rasterCache.count >= RASTER_CACHE_IMAGES then
-				rasterCache.images, rasterCache.count = {}, 0
+		return { pixels = pixels, drawn = raster.drawn() }
+	end
+	local scan: Drawn? = nil
+	if current.drawRaster then
+		local key = if current.rasterKey then (current.rasterKey :: () -> string?)() else nil
+		scan = if key then lruGet(rasterCache.images, key) else nil
+		if not scan then
+			local made = paint(current.drawRaster :: (Draw) -> (), "raster product")
+			scan = made
+			if key then
+				lruPut(rasterCache.images, key, made)
 			end
-			rasterCache.images[key] = { pixels = pixels, drawn = drawn }
-			rasterCache.count += 1
 		end
 	end
-	if not drawn then
+	local marks: Drawn? = nil
+	if current.drawMarks then
+		local key = if current.marksKey then (current.marksKey :: () -> string?)() else nil
+		local held = marksHeld
+		if key and held and held.key == key then
+			marks = held
+		else
+			local made = paint(current.drawMarks :: (Draw) -> (), "marks")
+			marks = made
+			marksHeld = if key then { key = key, pixels = made.pixels, drawn = made.drawn } else nil
+		end
+	end
+	local scanDrawn = scan ~= nil and scan.drawn
+	local marksDrawn = marks ~= nil and marks.drawn
+	if not scanDrawn and not marksDrawn then
 		rasterImage.Visible = false
 		return
 	end
@@ -566,11 +635,38 @@ local function drawRaster()
 		if rasterEditable then
 			rasterEditable:Destroy()
 		end
+		if marksEditable then
+			marksEditable:Destroy()
+			marksEditable = nil
+			marksImage.ImageContent = Content.none
+		end
 		rasterEditable = (AssetService :: any):CreateEditableImage({ Size = Vector2.new(pw, ph) })
 		rasterSize = Vector2.new(pw, ph)
 		rasterImage.ImageContent = Content.fromObject(rasterEditable)
 	end
-	rasterEditable:WritePixelsBuffer(Vector2.zero, Vector2.new(pw, ph), pixels)
+	if scan and scanDrawn then
+		rasterEditable:WritePixelsBuffer(Vector2.zero, Vector2.new(pw, ph), scan.pixels)
+		rasterImage.ImageTransparency = 0
+	else
+		rasterImage.ImageTransparency = 1 -- only the marks show
+	end
+	if marks and marksDrawn then
+		if not marksEditable then
+			local ok, made = pcall(function()
+				return (AssetService :: any):CreateEditableImage({ Size = Vector2.new(pw, ph) })
+			end)
+			marksEditable = if ok then made else nil
+			marksWritten = nil
+			marksImage.ImageContent = if marksEditable then Content.fromObject(marksEditable) else Content.none
+		end
+		if marksEditable and marksWritten ~= marks.pixels then
+			marksEditable:WritePixelsBuffer(Vector2.zero, Vector2.new(pw, ph), marks.pixels)
+			marksWritten = marks.pixels
+		end
+		marksImage.Visible = marksEditable ~= nil
+	else
+		marksImage.Visible = false
+	end
 	rasterView = { left = cx - size.X / 2 * m, top = cy - size.Y / 2 * m, right = cx + size.X / 2 * m, bottom = cy + size.Y / 2 * m }
 	rasterImage.Visible = true
 	placeRaster()
@@ -635,9 +731,12 @@ end
 type GridSlot = { image: ImageLabel, editable: any?, size: Vector2, key: string?, miles: Vector2 }
 local gridSlots: { GridSlot } = {}
 local gridsDue = false
--- Each grid's pixels by key (a loop's frames come round again), let go all at once when full.
-local GRID_CACHE = 16
-local gridCache: { images: { [string]: buffer }, count: number } = { images = {}, count = 0 }
+-- Each grid's pixels by key (a loop's frames come round again), the least recently shown let go
+-- first: room for a radar mosaic's loop and the satellite's together (2 x radarLoopFrames, 10,
+-- and the newest of each), so playing both does not colour every frame again. Let go when the
+-- map closes.
+local GRID_CACHE = 24
+local gridCache: Lru<buffer> = newLru(GRID_CACHE)
 -- Each colour table packed as 256 little-endian RGBA words.
 local packed: { [{ number }]: { number } } = setmetatable({}, { __mode = "k" }) :: any
 
@@ -656,23 +755,14 @@ local function packedOf(lut: { number }): { number }
 end
 
 local function pixelsOf(g: Grid): buffer
-	local held = gridCache.images[g.key]
+	local held = lruGet(gridCache, g.key)
 	if held then
 		return held
 	end
-	local words, n = packedOf(g.lut), g.width * g.height
+	local n = g.width * g.height
 	local pixels = buffer.create(n * 4)
-	for k = 0, n - 1 do
-		local byte = buffer.readu8(g.bytes, k)
-		if byte ~= 0 then
-			buffer.writeu32(pixels, k * 4, words[byte + 1])
-		end
-	end
-	if gridCache.count >= GRID_CACHE then
-		gridCache.images, gridCache.count = {}, 0
-	end
-	gridCache.images[g.key] = pixels
-	gridCache.count += 1
+	Raster.colourGrid(g.bytes, n, packedOf(g.lut), pixels) -- (native code)
+	lruPut(gridCache, g.key, pixels)
 	return pixels
 end
 
@@ -1061,6 +1151,13 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	rasterImage.ZIndex = 5
 	rasterImage.Visible = false
 	rasterImage.Parent = viewport
+	-- (a child, so it moves and scales with the raster image and lies over it)
+	marksImage = Instance.new("ImageLabel")
+	marksImage.Name = "Marks"
+	marksImage.BackgroundTransparency = 1
+	marksImage.Size = UDim2.fromScale(1, 1)
+	marksImage.Visible = false
+	marksImage.Parent = rasterImage
 	overLayer = layerFrame("Product", 6)
 	gridLayer = layerFrame("Grids", 4)
 	labelLayer = layerFrame("Labels", 8)
@@ -1209,6 +1306,19 @@ function MapCanvas.setVisible(on: boolean)
 			rasterSize = Vector2.zero
 			rasterImage.Visible = false
 		end
+		if marksEditable then
+			marksEditable:Destroy()
+			marksEditable = nil
+			marksImage.ImageContent = Content.none
+			marksImage.Visible = false
+		end
+		marksWritten = nil
+		-- and the plain-memory images drawn for the view (a loop's frames, the grids' colours)
+		rasterCache.view = nil
+		lruClear(rasterCache.images)
+		marksHeld = nil
+		lruClear(gridCache)
+		rasterDue = true
 	end
 end
 

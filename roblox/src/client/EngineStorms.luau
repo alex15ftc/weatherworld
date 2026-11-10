@@ -68,6 +68,7 @@ end
 local RAIN_PUFFS = 600 -- (the rain and hail curtains, as puffs: 2026-11-07, in place of 160 curtains of world-fixed tiles)
 
 local H = Config.STUDS_PER_MILE / (Config.KM_PER_MILE * 1000) -- studs per metre across
+local RAIN_BLEND_S = 30 -- (real s a new frame's rain and cloud are faded in over: EngineStorms.precipAt)
 
 type View = { anchor: any, puffs: any, tornado: any, wall: any, rain: any, deck: any, folder: Folder, groundY: number, frame: any }
 local views: { [string]: View } = {}
@@ -112,19 +113,29 @@ end
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Include
 rayParams.FilterDescendantsInstances = { workspace.Terrain }
-local rayCache: { [number]: number | false }, rayCacheAt = {}, 0
+local rayCache: { [number]: number | false }, rayAt: { [number]: number }, rayCacheAt = {}, {}, 0
 local function terrainAt(x: number, z: number): number?
 	local now = os.clock()
-	if now - rayCacheAt > 3 then
-		table.clear(rayCache)
+	-- (each entry kept 3-4 s from its own ray, so they expire spread out, not all in one frame;
+	-- stale ones swept now and then)
+	if now - rayCacheAt > 10 then
 		rayCacheAt = now
+		for k, t in rayAt do
+			if now - t > 6 then
+				rayCache[k], rayAt[k] = nil, nil
+			end
+		end
 	end
 	local key = math.floor(x / 16) * 65536 + math.floor(z / 16)
 	local v = rayCache[key]
+	if v ~= nil and now - rayAt[key] > 3 + (key % 8) * 0.125 then
+		v = nil
+	end
 	if v == nil then
 		local hit = workspace:Raycast(Vector3.new(x, Config.RAY_TOP_STUDS, z), Vector3.new(0, -Config.RAY_TOP_STUDS - 200, 0), rayParams)
 		v = if hit then hit.Position.Y else false
 		rayCache[key] = v
+		rayAt[key] = now
 	end
 	return if v then v else nil
 end
@@ -229,6 +240,9 @@ end
 
 -- The rain (mm/h) and hail share at a world position (studs), from the storms' frames: for the
 -- rain round the camera (NearPrecip, through ctx.precipAt). The wettest storm there wins.
+-- (a new frame's rain is faded in over RAIN_BLEND_S real s from the last one's, each read where
+-- its own frame stands: the rain moves on between the engine's moments - every 37.5 s at the 8x
+-- clock - instead of jumping, 2026-11-08)
 function EngineStorms.precipAt(pos: Vector3): (number, number)
 	local now = os.clock()
 	local best, share = 0, 0
@@ -237,6 +251,22 @@ function EngineStorms.precipAt(pos: Vector3): (number, number)
 		if f then
 			local ax, az = v.anchor:anchorAt(now)
 			local r, h = v.rain:rainAt((pos.X - ax) / H + f.anchorX, -(pos.Z - az) / H + f.anchorY)
+			local va: any = v
+			local p = va.prev
+			if p then
+				local k = math.clamp((now - p.at) / RAIN_BLEND_S, 0, 1)
+				if k >= 1 then
+					va.prev = nil
+				else
+					k = k * k * (3 - 2 * k)
+					local age = now - p.at
+					local px, pz = p.x + p.ux * age, p.z + p.uz * age
+					local r0, h0 = p.rain:rainAt((pos.X - px) / H + p.frame.anchorX, -(pos.Z - pz) / H + p.frame.anchorY)
+					local rr0, rr1 = r0 * (1 - k), r * k
+					h = if rr0 + rr1 > 0 then (h0 * rr0 + h * rr1) / (rr0 + rr1) else 0
+					r = rr0 + rr1
+				end
+			end
 			if r > best then best, share = r, h end
 		end
 	end
@@ -246,17 +276,56 @@ end
 -- The cloud over a world position (studs): the two cloud layers' base and top (m above the
 -- ground; 0 where none), from the storms' frames - for the sky's light (Render/Sky, through
 -- ctx.cloudAt). nil where no storm's frame covers it.
+-- (one frame's layers at studs x, z with its anchor at ax, az; nil off the frame)
+local function layersAt(f: any, ax: number, az: number, x: number, z: number): (number?, number, number, number)
+	local i = math.floor(((x - ax) / H + f.anchorX) / f.dx) + 1
+	local j = math.floor((-(z - az) / H + f.anchorY) / f.dx) + 1
+	if i >= 1 and j >= 1 and i <= f.nx and j <= f.ny then
+		return ClientFrame.cloudM(ClientFrame.byte(f, "base1", i, j)), ClientFrame.cloudM(ClientFrame.byte(f, "top1", i, j)),
+			ClientFrame.cloudM(ClientFrame.byte(f, "base2", i, j)), ClientFrame.cloudM(ClientFrame.byte(f, "top2", i, j))
+	end
+	return nil, 0, 0, 0
+end
+-- (a layer faded from the last frame's to the new one's by k: where both have it its base and top
+-- move between them; where one has it, it thins from its middle as it goes)
+local function mixLayer(b0: number, t0: number, b1: number, t1: number, k: number): (number, number)
+	local on0, on1 = t0 > b0, t1 > b1
+	if on0 and on1 then
+		return b0 + (b1 - b0) * k, t0 + (t1 - t0) * k
+	elseif on0 then
+		local m, h = (b0 + t0) / 2, (t0 - b0) * (1 - k) / 2
+		return m - h, m + h
+	elseif on1 then
+		local m, h = (b1 + t1) / 2, (t1 - b1) * k / 2
+		return m - h, m + h
+	end
+	return 0, 0
+end
+-- (faded between frames as the rain is: EngineStorms.precipAt - the sky's light read the new
+-- frame's cloud at once and the whole scene stepped 10-17 grey levels each engine moment, 2026-11-08)
 function EngineStorms.cloudAt(x: number, z: number): (number?, number, number, number)
 	local now = os.clock()
 	for _, v in views do
 		local f = v.frame
 		if f then
 			local ax, az = v.anchor:anchorAt(now)
-			local i = math.floor(((x - ax) / H + f.anchorX) / f.dx) + 1
-			local j = math.floor((-(z - az) / H + f.anchorY) / f.dx) + 1
-			if i >= 1 and j >= 1 and i <= f.nx and j <= f.ny then
-				return ClientFrame.cloudM(ClientFrame.byte(f, "base1", i, j)), ClientFrame.cloudM(ClientFrame.byte(f, "top1", i, j)),
-					ClientFrame.cloudM(ClientFrame.byte(f, "base2", i, j)), ClientFrame.cloudM(ClientFrame.byte(f, "top2", i, j))
+			local b1, t1, b2, t2 = layersAt(f, ax, az, x, z)
+			local p = (v :: any).prev
+			local k = if p then math.clamp((now - p.at) / RAIN_BLEND_S, 0, 1) else 1
+			if k < 1 then
+				k = k * k * (3 - 2 * k)
+				local age = now - p.at
+				local c1, u1, c2, u2 = layersAt(p.frame, p.x + p.ux * age, p.z + p.uz * age, x, z)
+				if b1 or c1 then
+					-- (off a frame: no layers there)
+					local nb1, nb2 = b1 or 0, if b1 then b2 else 0
+					local ob1, ob2 = c1 or 0, if c1 then c2 else 0
+					local m1, n1 = mixLayer(ob1, u1, nb1, t1, k)
+					local m2, n2 = mixLayer(ob2, u2, nb2, t2, k)
+					return m1, n1, m2, n2
+				end
+			elseif b1 then
+				return b1, t1, b2, t2
 			end
 		end
 	end
@@ -314,6 +383,21 @@ function EngineStorms.start(LiveStorms: any)
 			local cam = workspace.CurrentCamera
 			local dist = if cam then math.sqrt((cam.CFrame.Position.X - x) ^ 2 + (cam.CFrame.Position.Z - z) ^ 2) else 0
 			local V = Config.skyScaleAt(dist)
+			-- (the last frame's rain kept for the fade: its rates, and where its anchor stands now
+			-- and moves on to - EngineStorms.precipAt)
+			-- (the server resends a storm's frame every ~7.5 s, the engine's moment changing only every
+			-- 37.5 s: a fade under way keeps the frame it started from, or a resend 7.5 s in dropped
+			-- the old moment three quarters unfaded)
+			local pv = (view :: any).prev
+			local fading = pv ~= nil and os.clock() - pv.at < RAIN_BLEND_S
+			if view.frame and s.frame ~= view.frame and not fading then
+				local now = os.clock()
+				local px, pz = view.anchor:anchorAt(now)
+				local vv: any = view
+				local old = vv.rain
+				vv.prev = { frame = view.frame, at = now, x = px, z = pz, ux = view.anchor.ux, uz = view.anchor.uz,
+					rain = { rainAt = old.rainAt, frame = old.frame, rain = old.rain, hail = old.hail } }
+			end
 			view.anchor:setAnchor(x, z, s.ue * H, -s.ve * H)
 			view.groundY = groundAt(x, z)
 			view.puffs.max = if getmetatable(view.puffs) == MeshView then meshBudget(LiveStorms.storms, id) elseif not s.near then FAR_PUFFS else NEAR_PUFFS

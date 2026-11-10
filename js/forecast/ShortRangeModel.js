@@ -30,8 +30,8 @@ export const SHORT_RANGE = Object.freeze({
   uhPerUpdraftMeso: 0.003 * 3000,
   // Track points are kept from this much updraft helicity.
   trackLeastUh: 25,
-  // Runs the server keeps.
-  keepRuns: 8
+  // Runs the server keeps (4 since 2026-11-10, for memory: ~9 MB each).
+  keepRuns: 4
 });
 
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;

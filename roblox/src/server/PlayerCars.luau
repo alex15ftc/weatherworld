@@ -1,7 +1,8 @@
 --!strict
--- Every player drives: when Explore puts a character on the ground (spawn, respawn, a debug
--- teleport), a car of their own is set down there and they are put in its driver's seat. One car
--- a player; the old one goes when a new one is made or the player leaves.
+-- Every player has a car: when Explore puts a character on the ground (spawn, respawn, a debug
+-- teleport), a car of their own is set down beside them; they start on foot and get in at its
+-- seat (user 2026-11-08: not put in the driver's seat on spawn). One car a player; the old one
+-- goes when a new one is made or the player leaves.
 --
 -- The car is the place's ServerStorage.CarTemplate (Roblox's endorsed car template; its scripts
 -- unsandboxed 2026-10-28). A Workspace.Car instead is copied there at start. Its top speed is its MaxSpeed attribute in mph
@@ -15,6 +16,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local PlayerCars = {}
 
 local CAR_MAX_MPH = 100
+local CAR_SIDE = 14 -- (studs from the character to the car's middle: clear of the ~8-stud-wide body)
 
 local template: Model? = nil
 local pivotAboveBottom = 0 -- studs from the car's lowest point up to its pivot
@@ -72,7 +74,7 @@ function PlayerCars.remove(player: Player)
 	end
 end
 
--- A new car on the ground where the character stands, with the character in the driver's seat.
+-- A new car on the ground beside the character, facing the way they face (CAR_SIDE studs to their right).
 function PlayerCars.give(player: Player, character: Model)
 	local t = template
 	if not t or character.Parent == nil then
@@ -84,24 +86,22 @@ function PlayerCars.give(player: Player, character: Model)
 	if not root or not humanoid then
 		return
 	end
-	local p = root.Position
+	local right = root.CFrame.RightVector
+	local p = root.Position + Vector3.new(right.X, 0, right.Z).Unit * CAR_SIDE
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
 	local hit = workspace:Raycast(p + Vector3.new(0, 40, 0), Vector3.new(0, -200, 0), params)
 	local groundY = if hit then hit.Position.Y else p.Y - 3
 	local car = t:Clone()
 	car.Name = "Car_" .. player.UserId
-	car:PivotTo(CFrame.new(p.X, groundY + pivotAboveBottom + 0.5, p.Z) * t:GetPivot().Rotation)
+	local look = root.CFrame.LookVector
+	local yaw = math.atan2(-look.X, -look.Z)
+	car:PivotTo(CFrame.new(p.X, groundY + pivotAboveBottom + 0.5, p.Z) * CFrame.Angles(0, yaw, 0) * t:GetPivot().Rotation)
 	-- (kept streamed in for its driver wherever they go: its client scripts need all of it)
 	car.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
 	car.Parent = workspace
 	car:AddPersistentPlayer(player)
 	cars[player] = car
-	local seat = car:FindFirstChild("Chassis") and (car :: any).Chassis:FindFirstChildOfClass("VehicleSeat")
-	task.wait(0.3) -- (the car settles and reaches the client first)
-	if seat and cars[player] == car and humanoid.Health > 0 and character.Parent then
-		seat:Sit(humanoid)
-	end
 end
 
 return PlayerCars

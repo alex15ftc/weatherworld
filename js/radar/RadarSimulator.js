@@ -40,11 +40,12 @@ const SITE_LAYOUT = [
 // average over a volume that grows with range: BEAM_OFFSETS are where that volume is sampled
 // (in units of 0.35 beamwidths, across and up) and with what weight. Every estimate also
 // carries measurement noise, more where the echo is weak.
-const BEAM_OFFSETS = [[-1, 0.25], [0, 0.5], [1, 0.25]], BEAM_CENTRE = [[0, 1]];
+// (offsets k and weights w as plain arrays: the inner loops index them rather than unpack pairs)
+const BEAM_OFFSETS = { k: [-1, 0, 1], w: [0.25, 0.5, 0.25] }, BEAM_CENTRE = { k: [0], w: [1] };
 // Across the beam a single-site scan gets the same three samples from its own neighbouring
 // radials: the outer samples lie this share of the way to the next radial.
 const ACROSS_SHARE = 0.35 * RADAR_BEAMWIDTH_DEG / (360 / RADAR_RADIALS);
-const NEIGHBOUR_WEIGHT = BEAM_OFFSETS[0][1] * Math.min(1, ACROSS_SHARE), OWN_WEIGHT = 1 - 2 * NEIGHBOUR_WEIGHT;
+const NEIGHBOUR_WEIGHT = BEAM_OFFSETS.w[0] * Math.min(1, ACROSS_SHARE), OWN_WEIGHT = 1 - 2 * NEIGHBOUR_WEIGHT;
 // Per-gate sums of one scan before blending and noise (reused between scans).
 const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, stormRadial2: null, envRadial: null, hail: null, spike: null, spikeRadial: null, clutter: null, fall: null, rise: null, measured: null, guess: null, raw: null, dealiased: null };
 // Ground clutter left after the radar's clutter filter: buildings, trees and power lines the
@@ -208,6 +209,10 @@ function riseOf(world, storm) {
 // edgeKm: how wide the edge is where it is sharpest (1 / the steepest change), so the outflow
 // there is the pool's own speed. Null without a cold pool.
 const poolSample = {};
+// One storm's (input: an entry of radarSceneInputs(world).storms; echo: its field). A thread that
+// works out a field works this out with it and keeps it on the field as radarColdPool, so that
+// putting the scene together (assembleRadarScene) need not.
+export const stormColdPool = (echo, input) => coldPoolOf(echo, input.motion, input.poolRadiusKm);
 function coldPoolOf(echo, motion, poolRadiusKm) {
   const strength = clamp(Number(echo.coldPool) || 0, 0, 1);
   if (!(strength > 0) || !echo.grid) return null;
@@ -343,7 +348,7 @@ export function assembleRadarScene(inputs, echoes) {
   inputs.storms.forEach(({ x, y, motion, top, freezing, seed, weight, rise, riseDzM, poolRadiusKm }, k) => {
     const echo = echoes[k];
     if (!echo) return;
-    const pool = coldPoolOf(echo, motion, poolRadiusKm);
+    const pool = echo.radarColdPool !== undefined ? echo.radarColdPool : coldPoolOf(echo, motion, poolRadiusKm);
     storms.push({
       x, y, echo, motion, top, freezing, seed, tornadoDepthM: tornadoDepthM(echo.tornado?.windMs ?? 0), weight, rise, riseDzM, pool,
       gustDepthM: pool ? coldPoolDepthM(pool.strength) : 0, gustSpeedMs: pool ? coldPoolSpeedMs(pool.strength) : 0
@@ -424,13 +429,14 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
       }
       const bin = binAt(scene.stormBins, x, y), inStorm = bin !== null, freezingM = inStorm ? envSample(scene.env, scene.env.freezing, x, y) : 0;
       let zh = 0, zv = 0, ccw = 0, stormRadial = 0, stormRadial2 = 0, hail = 0, fall = 0, rising = 0;
-      for (const [k, wgt] of BEAM_OFFSETS) {
-        const agl = centerAgl + k * geo.spreadM;
+      const boundaryBin = binAt(scene.boundaryBins, x, y);
+      for (let o = 0; o < 3; o++) {
+        const agl = centerAgl + BEAM_OFFSETS.k[o] * geo.spreadM, wgt = BEAM_OFFSETS.w[o];
         if (agl < 0) continue;
-        sampleVolume(scene, x, y, agl, sample, clearAir);
+        sampleVolume(scene, bin, boundaryBin, x, y, agl, sample, clearAir);
         zh += sample.zh * wgt; zv += sample.zv * wgt; ccw += sample.cc * wgt; hail += sample.hail * wgt;
         if (inStorm && sample.zh > 0) {
-          stormWindAt(scene, x, y, agl, stormWind);
+          stormWindAt(bin, x, y, agl, stormWind);
           const along = stormWind.u * sinAz + stormWind.v * cosAz;
           stormRadial += sample.zh * wgt * along; stormRadial2 += sample.zh * wgt * along * along;
           fall += sample.zh * wgt * fallSpeedMs(sample.zh, agl, freezingM);
@@ -470,7 +476,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
       const scattered = OWN_WEIGHT * spike[index] + NEIGHBOUR_WEIGHT * (spike[l] + spike[n]);
       const ground = OWN_WEIGHT * clutter[index] + NEIGHBOUR_WEIGHT * (clutter[l] + clutter[n]);
       const zh = echo + scattered + ground;
-      const snr = zh > 0 ? 10 * Math.log10(zh) - gateGeometry[g].minDbz : -1;
+      const dbz = zh > 0 ? 10 * Math.log10(zh) : 0, snr = zh > 0 ? dbz - gateGeometry[g].minDbz : -1;
       // Range folding: an echo a Doppler range farther out, strong enough to be seen there, comes
       // back with this one; the motion here is lost where the two cannot be told apart.
       const far = g + foldGates < GATES ? power[g + foldGates] : 0;
@@ -500,7 +506,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
       }
       const lowSnr = Math.exp(-snr / 6);
       const noise = gateNoise(index, noiseSalt) * 2 - 1, velocityNoise = gateNoise(index, noiseSalt + 0.003) * 2 - 1, polarNoise = gateNoise(index, noiseSalt + 0.006) * 2 - 1;
-      ref[index] = encodeRadarValue('reflectivity', 10 * Math.log10(zh) + noise * (NOISE.dbz + 1.6 * lowSnr));
+      ref[index] = encodeRadarValue('reflectivity', dbz + noise * (NOISE.dbz + 1.6 * lowSnr));
       // Along a raised beam the targets' vertical motion shows too: the air's rise less their fall.
       const falling = OWN_WEIGHT * sumFall[index] + NEIGHBOUR_WEIGHT * (sumFall[l] + sumFall[n]);
       const rise = OWN_WEIGHT * sumRise[index] + NEIGHBOUR_WEIGHT * (sumRise[l] + sumRise[n]);
@@ -598,87 +604,38 @@ export const mosaicSize = scene => ({ width: Math.ceil(scene.domainWidthKm / MOS
 export const MOSAIC_KINDS = ['composite', 'base', 'echoTops', 'vil', 'mesh', 'rotationTrack'];
 export const MOSAIC_PRODUCT = { composite: 'reflectivity', base: 'reflectivity', echoTops: 'echoTops', vil: 'vil', mesh: 'mesh', rotationTrack: 'azShear' };
 const STRUCTURE = { echoTopDbz: 18, leastVil: 0.5, leastMeshIn: 0.25 };
+// The mosaics of each kind: buildRadarMosaics for every kind but the base one.
 export function buildRadarMosaic(scene, sites, { rows = null, kind = 'composite' } = {}) {
-  const base = kind === 'base', structure = kind === 'echoTops' || kind === 'vil' || kind === 'mesh';
-  const heights = new Float64Array(RADAR_TILTS_DEG.length + 1), echoes = new Float64Array(RADAR_TILTS_DEG.length + 1);
+  if (kind !== 'base') { const { bytes, ...rest } = buildRadarMosaics(scene, sites, { rows, kinds: [kind] }); return { ...rest, bytes: bytes[kind] }; }
   const started = globalThis.performance?.now?.() ?? Date.now();
   const { width, height } = mosaicSize(scene), [firstRow, endRow] = rows ?? [0, height];
   const bytes = new Uint8Array(width * (endRow - firstRow));
   // (zhOnly: the mosaics use the reflectivity alone, so ZDR's and CC's sums are not worked out)
   const sample = { zh: 0, zv: 0, cc: 0, hail: 0, zhOnly: true }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
-  const tilts = RADAR_TILTS_DEG.map(deg => ({ deg, cos: Math.cos(deg * DEG) }));
-  const maxGround = groundRangeKm(RADAR_RANGE_KM, tilts[0].deg), beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
+  const tilts = mosaicTilts();
   const noiseSalt = 77 + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
   const candidates = [];
   for (let j = firstRow; j < endRow; j++) for (let i = 0; i < width; i++) {
     const x = (i + 0.5) * MOSAIC_RES_KM, y = (j + 0.5) * MOSAIC_RES_KM;
-    // Up to three in-range radars, nearest first (insertion into a short list).
-    candidates.length = 0;
-    for (const site of sites) {
-      const ground = Math.hypot(x - site.xKm, y - site.yKm);
-      if (ground > maxGround) continue;
-      let k = candidates.length;
-      while (k > 0 && candidates[k - 1].ground > ground) k--;
-      if (k < 3) { candidates.splice(k, 0, { site, ground }); if (candidates.length > 3) candidates.pop(); }
-    }
-    if (!candidates.length) continue;
+    if (!nearestSites(sites, x, y, tilts, candidates)) continue;
     const terrain = envSample(scene.env, scene.env.terrain, x, y);
     clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
-    // (MESH counts echo above the freezing level only: below it the beam need not be sampled.)
-    const skipBelowM = kind === 'mesh' ? envSample(scene.env, scene.env.freezing, x, y) : -Infinity;
-    // Only where a storm stands is there anything for the higher tilts to find.
-    const bin = binAt(scene.stormBins, x, y);
-    let ceiling = 0;
-    if (bin) for (const s of bin) if (hasPrecipitation(s.echo, x - s.x, y - s.y)) ceiling = Math.max(ceiling, s.top * 1.15);
-    const stormBin = ceiling > 0;
-    if (structure && !stormBin) continue;
+    const stormBin = stormCeiling(scene, x, y) > 0;
     for (const { site, ground } of candidates) {
       const tx = -(y - site.yKm) / Math.max(ground, 1e-6), ty = (x - site.xKm) / Math.max(ground, 1e-6);
-      let most = 0, mostSnr = 0, samples = 0;
-      // (The base mosaic goes up only past tilts the ground blocks.)
-      for (let t = 0; t < (stormBin || base ? tilts.length : 1); t++) {
+      let most = 0, mostSnr = 0;
+      // The lowest tilt the ground does not block is the base scan, whatever it finds.
+      for (let t = 0; t < tilts.length; t++) {
         const range = ground / tilts[t].cos;
         if (range > RADAR_RANGE_KM) break;
-        const spread = range * beamHalfWidth * 1000, spreadKm = spread / 1000;
+        const spread = range * tilts.beamHalfWidth * 1000;
         const agl = site.elevationM + RADAR_ANTENNA_HEIGHT_M + beamHeightKm(range, tilts[t].deg) * 1000 - terrain;
         if (agl < 0) continue;
-        if (!base && agl - spread > Math.min(MOSAIC_CEILING_M, Math.max(ceiling, clearAir.bl * 1.3))) {
-          // (Nothing is up there: the profile ends with an empty sample.)
-          if (structure) { heights[samples] = agl; echoes[samples++] = 0; }
-          break;
-        }
-        if (agl <= skipBelowM) { heights[samples] = agl; echoes[samples++] = 0; continue; }
-        clearAir.bioZ = (base || t === 0) && agl - spread < clearAir.bl * 1.3 ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
-        // The same beam volume as the single-site scans, once the beam is wider than a cell or deeper than a level of the storm.
-        const across = stormBin && spreadKm > MOSAIC_RES_KM ? BEAM_OFFSETS : BEAM_CENTRE, up = spread > 400 ? BEAM_OFFSETS : BEAM_CENTRE;
-        let zh = 0;
-        for (const [a, acrossWeight] of across) for (const [k, upWeight] of up) {
-          const z = agl + k * spread;
-          if (z < 0) continue;
-          sampleVolume(scene, x + a * spreadKm * tx, y + a * spreadKm * ty, z, sample, clearAir);
-          zh += sample.zh * acrossWeight * upWeight;
-        }
-        if (structure) {
-          const seen = zh > 0 && 10 * Math.log10(zh) >= -32 + 20 * Math.log10(Math.max(range, 0.5));
-          heights[samples] = agl; echoes[samples++] = seen ? zh : 0;
-          continue;
-        }
-        if (base) {
-          // The lowest tilt that clears the ground is the base scan, whatever it finds.
-          const snr = zh > 0 ? 10 * Math.log10(zh) - (-32 + 20 * Math.log10(Math.max(range, 0.5))) : -1;
-          if (snr >= 0) { most = zh; mostSnr = snr; }
-          break;
-        }
-        if (zh <= most) continue;
-        const snr = 10 * Math.log10(zh) - (-32 + 20 * Math.log10(Math.max(range, 0.5)));
-        if (snr < 0) continue;
-        most = zh; mostSnr = snr;
-      }
-      if (structure) {
-        const value = structureValue(kind, heights, echoes, samples, terrain, envSample(scene.env, scene.env.freezing, x, y), envSample(scene.env, scene.env.minus20, x, y));
-        if (!(value > 0)) continue;
-        bytes[(j - firstRow) * width + i] = encodeRadarValue(MOSAIC_PRODUCT[kind], value);
+        clearAir.bioZ = agl - spread < clearAir.bl * 1.3 ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
+        const zh = beamVolumeZh(scene, x, y, tx, ty, agl, spread, stormBin, sample, clearAir);
+        const snr = zh > 0 ? 10 * Math.log10(zh) - (-32 + 20 * Math.log10(Math.max(range, 0.5))) : -1;
+        if (snr >= 0) { most = zh; mostSnr = snr; }
         break;
       }
       if (most <= 0) continue;
@@ -687,7 +644,129 @@ export function buildRadarMosaic(scene, sites, { rows = null, kind = 'composite'
       break;
     }
   }
-  return { width, height, rows: [firstRow, endRow], resKm: MOSAIC_RES_KM, kind, product: MOSAIC_PRODUCT[kind], composite: kind === 'composite', validHourUtc: scene.validHourUtc, bytes, buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started };
+  return { width, height, rows: [firstRow, endRow], resKm: MOSAIC_RES_KM, kind: 'base', product: MOSAIC_PRODUCT.base, composite: false, validHourUtc: scene.validHourUtc, bytes, buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started };
+}
+
+// Composite, echo tops, VIL and hail size (kinds: any of these) in one pass: the tilts of each
+// radar above a place are sampled once, and every kind still wanting a value there is worked out
+// from them. bytes: { kind: Uint8Array }. Each kind's bytes are those a pass for it alone gives.
+export const STACKED_MOSAIC_KINDS = Object.freeze(['composite', 'echoTops', 'vil', 'mesh']);
+export function buildRadarMosaics(scene, sites, { rows = null, kinds = STACKED_MOSAIC_KINDS } = {}) {
+  if (!kinds.length || kinds.some(kind => !STACKED_MOSAIC_KINDS.includes(kind))) throw new Error(`buildRadarMosaics: kinds ${kinds} (the base mosaic is built alone)`);
+  const heights = new Float64Array(RADAR_TILTS_DEG.length + 1), echoes = new Float64Array(RADAR_TILTS_DEG.length + 1), aboveFreezing = new Float64Array(RADAR_TILTS_DEG.length + 1);
+  const started = globalThis.performance?.now?.() ?? Date.now();
+  const { width, height } = mosaicSize(scene), [firstRow, endRow] = rows ?? [0, height];
+  const bytes = Object.fromEntries(kinds.map(kind => [kind, new Uint8Array(width * (endRow - firstRow))]));
+  const composite = bytes.composite ?? null, structures = kinds.filter(kind => kind !== 'composite'), found = new Uint8Array(structures.length);
+  // (Hail size alone counts echo above the freezing level only: below it the beam need not be sampled.)
+  const meshAlone = !composite && structures.length === 1 && structures[0] === 'mesh';
+  // (zhOnly: the mosaics use the reflectivity alone, so ZDR's and CC's sums are not worked out)
+  const sample = { zh: 0, zv: 0, cc: 0, hail: 0, zhOnly: true }, clearAir = { bl: 0, bioZ: 0 };
+  const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
+  const tilts = mosaicTilts();
+  const noiseSalt = 77 + (Math.round(scene.validHourUtc * 12) % 4096) * 0.017;
+  const candidates = [];
+  for (let j = firstRow; j < endRow; j++) for (let i = 0; i < width; i++) {
+    const x = (i + 0.5) * MOSAIC_RES_KM, y = (j + 0.5) * MOSAIC_RES_KM, cell = (j - firstRow) * width + i;
+    if (!nearestSites(sites, x, y, tilts, candidates)) continue;
+    const terrain = envSample(scene.env, scene.env.terrain, x, y);
+    clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
+    // Only where a storm stands is there anything for the higher tilts to find (or any structure).
+    const ceiling = stormCeiling(scene, x, y), stormBin = ceiling > 0;
+    let compositeLeft = composite !== null, structuresLeft = stormBin ? structures.length : 0;
+    if (!compositeLeft && !structuresLeft) continue;
+    found.fill(0);
+    let freezing = meshAlone ? envSample(scene.env, scene.env.freezing, x, y) : NaN, minus20 = NaN;
+    // The nearest radar that sees something there gives each kind its value; where it sees
+    // nothing, the next one.
+    for (const { site, ground } of candidates) {
+      if (!compositeLeft && !structuresLeft) break;
+      const tx = -(y - site.yKm) / Math.max(ground, 1e-6), ty = (x - site.xKm) / Math.max(ground, 1e-6);
+      let most = 0, mostSnr = 0, samples = 0;
+      for (let t = 0; t < (stormBin ? tilts.length : 1); t++) {
+        const range = ground / tilts[t].cos;
+        if (range > RADAR_RANGE_KM) break;
+        const spread = range * tilts.beamHalfWidth * 1000;
+        const agl = site.elevationM + RADAR_ANTENNA_HEIGHT_M + beamHeightKm(range, tilts[t].deg) * 1000 - terrain;
+        if (agl < 0) continue;
+        // (Nothing is up there: the profile ends with an empty sample.)
+        if (agl - spread > Math.min(MOSAIC_CEILING_M, Math.max(ceiling, clearAir.bl * 1.3))) { heights[samples] = agl; echoes[samples++] = 0; break; }
+        if (meshAlone && agl <= freezing) { heights[samples] = agl; echoes[samples++] = 0; continue; }
+        clearAir.bioZ = t === 0 && agl - spread < clearAir.bl * 1.3 ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
+        const zh = beamVolumeZh(scene, x, y, tx, ty, agl, spread, stormBin, sample, clearAir);
+        const floor = -32 + 20 * Math.log10(Math.max(range, 0.5)), dbz = zh > 0 ? 10 * Math.log10(zh) : -Infinity;
+        heights[samples] = agl; echoes[samples++] = dbz >= floor ? zh : 0;
+        if (zh > most && dbz - floor >= 0) { most = zh; mostSnr = dbz - floor; }
+      }
+      if (compositeLeft && most > 0) {
+        const noise = gateNoise(j * width + i, noiseSalt) * 2 - 1;
+        composite[cell] = encodeRadarValue('reflectivity', 10 * Math.log10(most) + noise * (NOISE.dbz + 1.6 * Math.exp(-mostSnr / 6)));
+        compositeLeft = false;
+      }
+      if (!structuresLeft) continue;
+      if (Number.isNaN(minus20)) { freezing = envSample(scene.env, scene.env.freezing, x, y); minus20 = envSample(scene.env, scene.env.minus20, x, y); }
+      for (let n = 0; n < structures.length; n++) {
+        if (found[n]) continue;
+        const kind = structures[n];
+        // (MESH counts echo above the freezing level only.)
+        let column = echoes;
+        if (kind === 'mesh') { for (let k = 0; k < samples; k++) aboveFreezing[k] = heights[k] <= freezing ? 0 : echoes[k]; column = aboveFreezing; }
+        const value = structureValue(kind, heights, column, samples, terrain, freezing, minus20);
+        if (!(value > 0)) continue;
+        bytes[kind][cell] = encodeRadarValue(MOSAIC_PRODUCT[kind], value);
+        found[n] = 1; structuresLeft--;
+      }
+    }
+  }
+  const one = kinds.length === 1 ? kinds[0] : null;
+  return { width, height, rows: [firstRow, endRow], resKm: MOSAIC_RES_KM, kinds: [...kinds], kind: one, product: one ? MOSAIC_PRODUCT[one] : null, composite: one === 'composite', validHourUtc: scene.validHourUtc, bytes, buildMs: (globalThis.performance?.now?.() ?? Date.now()) - started };
+}
+
+// The tilts a mosaic samples, with the reach and beam width every place uses.
+function mosaicTilts() {
+  const tilts = RADAR_TILTS_DEG.map(deg => ({ deg, cos: Math.cos(deg * DEG) }));
+  tilts.maxGround = groundRangeKm(RADAR_RANGE_KM, tilts[0].deg); tilts.beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
+  // (a little over maxGround squared: a radar past it is out of reach without the exact distance)
+  tilts.outOfReach2 = tilts.maxGround * tilts.maxGround * (1 + 1e-9) + 1e-9;
+  return tilts;
+}
+// Up to three in-range radars, nearest first, into candidates ({ site, ground }); false with none.
+function nearestSites(sites, x, y, tilts, candidates) {
+  candidates.length = 0;
+  for (const site of sites) {
+    const dx = x - site.xKm, dy = y - site.yKm;
+    if (dx * dx + dy * dy > tilts.outOfReach2) continue;
+    const ground = Math.hypot(dx, dy);
+    if (ground > tilts.maxGround) continue;
+    let k = candidates.length;
+    while (k > 0 && candidates[k - 1].ground > ground) k--;
+    if (k < 3) { candidates.splice(k, 0, { site, ground }); if (candidates.length > 3) candidates.pop(); }
+  }
+  return candidates.length > 0;
+}
+// The highest any storm with precipitation over a place could echo (m above the ground), 0 with none.
+function stormCeiling(scene, x, y) {
+  const bin = binAt(scene.stormBins, x, y);
+  let ceiling = 0;
+  if (bin) for (const s of bin) if (hasPrecipitation(s.echo, x - s.x, y - s.y)) ceiling = Math.max(ceiling, s.top * 1.15);
+  return ceiling;
+}
+// Linear Z of one mosaic beam volume: the same volume as the single-site scans, once the beam is
+// wider than a cell (across, toward tx, ty) or deeper than a level of the storm (up).
+function beamVolumeZh(scene, x, y, tx, ty, agl, spread, stormBin, sample, clearAir) {
+  const spreadKm = spread / 1000, across = stormBin && spreadKm > MOSAIC_RES_KM ? BEAM_OFFSETS : BEAM_CENTRE, up = spread > 400 ? BEAM_OFFSETS : BEAM_CENTRE;
+  let zh = 0;
+  for (let ia = 0; ia < across.k.length; ia++) {
+    const sx = x + across.k[ia] * spreadKm * tx, sy = y + across.k[ia] * spreadKm * ty;
+    const sampleBin = binAt(scene.stormBins, sx, sy), boundaryBin = binAt(scene.boundaryBins, sx, sy);
+    for (let iu = 0; iu < up.k.length; iu++) {
+      const z = agl + up.k[iu] * spread;
+      if (z < 0) continue;
+      sampleVolume(scene, sampleBin, boundaryBin, sx, sy, z, sample, clearAir);
+      zh += sample.zh * across.w[ia] * up.w[iu];
+    }
+  }
+  return zh;
 }
 
 // What the tilts above a place give (heights m above the ground, lowest first; linear Z):
@@ -728,11 +807,11 @@ export const meshInches = (heights, echoes, count, freezingM, minus20M) => struc
 // Volume sampling: linear Zh, Zv (for ZDR) and Zh-weighted ρhv at one point.
 
 const tmp = {};
-function sampleVolume(scene, x, y, agl, out, clearAir) {
+// stormBin, boundaryBin: binAt(scene.stormBins / scene.boundaryBins, x, y), looked up once by the caller.
+function sampleVolume(scene, stormBin, boundaryBin, x, y, agl, out, clearAir) {
   out.zh = 0; out.zv = 0; out.cc = 0; out.hail = 0;
-  const stormBin = binAt(scene.stormBins, x, y);
   if (stormBin) for (const s of stormBin) stormHydrometeors(s, x - s.x, y - s.y, agl, out);
-  clearAirEchoes(scene, x, y, agl, out, clearAir);
+  clearAirEchoes(scene, stormBin, boundaryBin, x, y, agl, out, clearAir);
 }
 
 function addEcho(out, zh, zdrDb, rho) {
@@ -741,6 +820,14 @@ function addEcho(out, zh, zdrDb, rho) {
   if (out.zhOnly) return;
   out.zv += zh / 10 ** (zdrDb / 10); out.cc += zh * rho;
 }
+// The same with ZDR given as a linear ratio (for the fixed ZDR of clear-air echoes, worked out once).
+function addEchoRatio(out, zh, zdrRatio, rho) {
+  if (!(zh > 0)) return;
+  out.zh += zh;
+  if (out.zhOnly) return;
+  out.zv += zh / zdrRatio; out.cc += zh * rho;
+}
+const ZDR_4_5_DB = 10 ** (4.5 / 10), ZDR_5_5_DB = 10 ** (5.5 / 10);
 
 // A storm's precipitation at one place, as a radar sees it: rain below the freezing level, ice
 // above (which reflects a fifth as well), a bright band where snow melts, hail, and debris.
@@ -764,7 +851,8 @@ export function precipitationEcho(e, fz, lx, ly, z, out) {
     if (tmp.rain > 0) {
       const zh = RAIN_REFLECTIVITY * tmp.rain;
       // Large wet snowflakes just below the freezing level reflect like giant drops.
-      const melting = tmp.snow !== 0 ? tmp.snow * Math.exp(-(((z - fz + 150) / 350) ** 2)) : 0;
+      // (only below the ice: nothing reads it where the echo is all frozen)
+      const melting = tmp.snow !== 0 && frozen < 1 ? tmp.snow * Math.exp(-(((z - fz + 150) / 350) ** 2)) : 0;
       // Rain carried above the freezing level in a strong updraught: large drops among the ice.
       const column = frozen > 0 ? liquidAloft(e, lx, ly, z - fz) : 0;
       if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), clamp(0.8 * tmp.sizeMm - 0.5, 0.15, 4.5) + melting, 0.992 - 0.06 * melting);
@@ -792,22 +880,20 @@ function liquidAloft(e, lx, ly, aboveM) {
   return most;
 }
 
-function clearAirEchoes(scene, x, y, z, out, { bl, bioZ }) {
+function clearAirEchoes(scene, storms, bin, x, y, z, out, { bl, bioZ }) {
   if (z > bl * 1.3) return;
   const depth = 1 - z / (bl * 1.3);
   // Insects concentrate in boundary convergence zones: fine lines along fronts,
   // drylines and outflow boundaries.
-  const bin = binAt(scene.boundaryBins, x, y);
   if (bin) for (const b of bin) {
     const d = segmentDistance(x, y, b.ax, b.ay, b.bx, b.by);
-    if (d < 4) addEcho(out, b.z * Math.exp(-((d / b.widthKm) ** 2)) * depth, 4.5, 0.45);
+    if (d < 4) addEchoRatio(out, b.z * Math.exp(-((d / b.widthKm) ** 2)) * depth, ZDR_4_5_DB, 0.45);
   }
-  addEcho(out, bioZ * depth, 5.5, 0.38);
+  addEchoRatio(out, bioZ * depth, ZDR_5_5_DB, 0.38);
   // And along each storm's gust front, where its outflow runs into the air ahead: as along a
   // boundary, the insects go with the flow into it, here the cold pool's own density-current speed,
   // gathered FINE_LINE_KM either side of the front - the pool's leading edge, how far from it told
   // by how fast the spread footprint changes there.
-  const storms = binAt(scene.stormBins, x, y);
   if (storms) for (const s of storms) {
     const p = s.pool;
     if (!p || z >= s.gustDepthM) continue;
@@ -816,7 +902,7 @@ function clearAirEchoes(scene, x, y, z, out, { bl, bioZ }) {
     if (!(slope > 0)) continue;
     const d = (POOL_AT.share - POOL_EDGE[0]) / slope;
     if (Math.abs(d) > 3 * FINE_LINE_KM) continue;
-    addEcho(out, scene.insectZ * s.gustSpeedMs / FINE_LINE_INFLOW_MS * Math.exp(-((d / FINE_LINE_KM) ** 2)) * depth * (1 - z / s.gustDepthM), 4.5, 0.45);
+    addEchoRatio(out, scene.insectZ * s.gustSpeedMs / FINE_LINE_INFLOW_MS * Math.exp(-((d / FINE_LINE_KM) ** 2)) * depth * (1 - z / s.gustDepthM), ZDR_4_5_DB, 0.45);
   }
 }
 
@@ -845,9 +931,9 @@ function updraughtAt(bin, x, y, z) {
 // rotation, fading to the mesocyclone's own by depthM.
 const LOW_MESO = { fullBelowM: 1000, depthM: 3000, tighten: 0.55, spinUp: 0.4 };
 const gradient = {};
-function stormWindAt(scene, x, y, z, out) {
+// bin: binAt(scene.stormBins, x, y).
+function stormWindAt(bin, x, y, z, out) {
   out.u = 0; out.v = 0;
-  const bin = binAt(scene.stormBins, x, y);
   if (!bin) return;
   // Mesocyclone: strongest at mid levels, present down to the ground in mature supercells.
   let mesoDepth = -1;

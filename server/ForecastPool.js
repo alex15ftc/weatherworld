@@ -7,28 +7,41 @@
 // a look ahead does not wait behind an outlook's long ones. A thread that has run before has
 // its code compiled already, so the later runs of a batch start faster; but a thread keeps
 // about 450 MB after a run (measured: the memory is not handed back while it lives), so one
-// with nothing to do is let go after half a minute.
+// with nothing to do is let go after half a minute - except the last few (keepWarm), kept for
+// warmIdleMs: the short-range run and the mesoscale members come every hour of the clock (7.5
+// minutes), and a fresh thread took 1.3 s longer over each of them (2026-11-09).
 //   WEATHER_FORECAST_WORKERS sets the number of threads (default: a third of the cores, 1 to 8;
 //   on a 24-thread laptop 8 threads issued Day 1-3 in 33 s where 4 took 42, 2026-10-17).
 //   WEATHER_FORECAST_IDLE_SECONDS sets how long a thread with nothing to do is kept.
+//   WEATHER_FORECAST_HEAP_MB caps each thread's heap (default 512; a run's own world is 55-70 MB,
+//   and without a cap a thread's heap grew run after run, up to several GB on a 64 GB machine).
+//   WEATHER_FORECAST_GC_SECONDS: how long a thread waits idle before collecting (forecastWorker.js).
+//   WEATHER_FORECAST_WARM sets how many are kept longer (default 5, 0 for none) and
+//   WEATHER_FORECAST_WARM_SECONDS for how long (default 540).
 import os from 'node:os';
 import v8 from 'node:v8';
 import { Worker } from 'node:worker_threads';
+import { encodeCells } from '../js/world/compactCells.js';
 
 const WORKER_SCRIPT = new URL('./forecastWorker.js', import.meta.url);
 const defaultSize = () => Number(process.env.WEATHER_FORECAST_WORKERS) || Math.max(1, Math.min(8, Math.floor(os.availableParallelism() / 3)));
 
-// A world's saved state as bytes every thread can read (see AtmosphereWorld.saveState).
+// A world's saved state as bytes every thread can read (see AtmosphereWorld.saveState), its cells
+// in the compact form (js/world/compactCells.js; stateFromBytes reads them back as they were).
 export function shareState(state) {
-  const bytes = v8.serialize(state), shared = new Uint8Array(new SharedArrayBuffer(bytes.length));
+  const compact = state?.world?.cells ? { ...state, world: { ...state.world, cells: encodeCells(state.world.cells) } } : state;
+  const bytes = v8.serialize(compact), shared = new Uint8Array(new SharedArrayBuffer(bytes.length));
   shared.set(bytes);
   return shared;
 }
 
 export class ForecastPool {
-  // idleMs: a thread with nothing to do for this long is let go.
-  constructor({ size = defaultSize(), idleMs = (Number(process.env.WEATHER_FORECAST_IDLE_SECONDS) || 30) * 1000, workerScript = WORKER_SCRIPT } = {}) {
+  // idleMs: a thread with nothing to do for this long is let go, unless it is one of the last
+  // keepWarm, which are let go after warmIdleMs.
+  constructor({ size = defaultSize(), idleMs = (Number(process.env.WEATHER_FORECAST_IDLE_SECONDS) || 30) * 1000,
+    keepWarm = Number(process.env.WEATHER_FORECAST_WARM ?? 5), warmIdleMs = (Number(process.env.WEATHER_FORECAST_WARM_SECONDS) || 540) * 1000, workerScript = WORKER_SCRIPT } = {}) {
     this.size = Math.max(1, size); this.idleMs = idleMs; this.workerScript = workerScript;
+    this.keepWarm = Math.max(0, Math.min(this.size, Number.isFinite(keepWarm) ? keepWarm : 5)); this.warmIdleMs = Math.max(idleMs, warmIdleMs);
     // Threads the runs that are not urgent (priority 0) leave free.
     this.reserve = this.size > 1 ? 1 : 0;
     this.workers = new Set(); this.idle = []; this.queue = []; this.order = 0;
@@ -51,7 +64,7 @@ export class ForecastPool {
       if (free <= (this.queue[0].priority > 0 ? 0 : this.reserve)) return;
       const worker = this.idle.pop() ?? this.start();
       const task = this.queue.shift();
-      clearTimeout(worker.idleTimer);
+      clearTimeout(worker.idleTimer); worker.idleSince = null;
       task.startedAt = Date.now(); this.stats.longestWaitMs = Math.max(this.stats.longestWaitMs, task.startedAt - task.queuedAt);
       worker.task = task;
       // A thread at work keeps the process up; one with nothing to do does not.
@@ -60,12 +73,12 @@ export class ForecastPool {
   }
 
   start() {
-    const worker = new Worker(this.workerScript);
+    const worker = new Worker(this.workerScript, { resourceLimits: { maxOldGenerationSizeMb: Number(process.env.WEATHER_FORECAST_HEAP_MB) || 512 } });
     this.workers.add(worker);
     const settle = (fn, value) => { const task = worker.task; worker.task = null; if (task) { this.stats.runs++; this.stats.busyMs += Date.now() - task.startedAt; task[fn](value); } };
     worker.on('message', message => {
       settle(message?.ok ? 'resolve' : 'reject', message?.ok ? message.result : new Error(message?.error ?? 'forecast run failed'));
-      worker.unref(); this.idle.push(worker);
+      worker.unref(); this.idle.push(worker); worker.idleSince = Date.now();
       worker.idleTimer = setTimeout(() => this.retire(worker), this.idleMs); worker.idleTimer.unref();
       this.pump();
     });
@@ -77,12 +90,16 @@ export class ForecastPool {
   }
 
   retire(worker) {
-    if (worker.task || !this.workers.delete(worker)) return;
+    if (worker.task || !this.workers.has(worker)) return;
+    // One of the last few is kept warm a while longer.
+    const left = this.warmIdleMs - (Date.now() - (worker.idleSince ?? 0));
+    if (this.workers.size <= this.keepWarm && left > 0) { worker.idleTimer = setTimeout(() => this.retire(worker), left); worker.idleTimer.unref(); return; }
+    this.workers.delete(worker);
     this.idle = this.idle.filter(w => w !== worker); clearTimeout(worker.idleTimer);
     return worker.terminate();
   }
 
-  status() { return { threads: this.workers.size, size: this.size, busy: this.workers.size - this.idle.length, waiting: this.queue.length, ...this.stats }; }
+  status() { return { threads: this.workers.size, size: this.size, keepWarm: this.keepWarm, busy: this.workers.size - this.idle.length, waiting: this.queue.length, ...this.stats }; }
 
   // Ends every thread; runs under way or waiting fail.
   stop() {

@@ -11,7 +11,7 @@
 -- Also the superblocks: the areas town streets do not run through (campuses, airfields, malls and
 -- community centres, industrial parks, larger parks, middle and high school lots). Server only.
 
-local Config = require(script.Parent.Config)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 local WorldMap = require(script.Parent.WorldMap)
 
 local Sites = {}

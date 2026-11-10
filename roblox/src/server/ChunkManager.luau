@@ -1,7 +1,9 @@
 --!strict
 -- Minecraft-style chunk streaming: keeps terrain loaded within LOAD_RADIUS_STUDS of every
--- player's character, nearest chunks first, and clears chunks beyond the radius plus a margin.
--- Each chunk's props (trees, buildings) live in a folder named by its key under Workspace.WorldProps.
+-- player's character, nearest chunks first, and clears chunks beyond the radius plus a margin
+-- (queued, a few a frame within UNLOAD_BUDGET_MS). Chunks are keyed by ChunkGen.key (a number);
+-- each chunk's props (trees, buildings) live in a model named ChunkGen.name under
+-- Workspace.WorldProps.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,7 +11,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
-local ChunkGen = require(ReplicatedStorage.Shared.World.ChunkGen)
+local ChunkGen = require(game:GetService("ServerStorage").World.ChunkGen)
 
 local ChunkManager = {}
 
@@ -17,17 +19,22 @@ local SIZE = Config.CHUNK_STUDS
 local VOXEL = Config.VOXEL_STUDS
 local REFRESH_SECONDS = 0.25
 
-type Loaded = { cx: number, cz: number, yMin: number, yMax: number }
+type Loaded = { cx: number, cz: number, yMin: number, yMax: number, model: Instance? }
 type Want = { cx: number, cz: number, d2: number }
 
 local terrain = workspace.Terrain
 local propsRoot = workspace:FindFirstChild("WorldProps") or Instance.new("Folder")
 propsRoot.Name = "WorldProps"
 propsRoot.Parent = workspace
-local loaded: { [string]: Loaded } = {}
-local inFlight: { [string]: boolean } = {}
+local loaded: { [number]: Loaded } = {}
+local inFlight: { [number]: boolean } = {}
 local loadedCount = 0
 local pending: { Want } = {}
+-- Chunks out of range, waiting to be unloaded (FIFO); a chunk back in range before its turn is
+-- taken off (unloadQueued cleared) and stays loaded.
+local unloadList: { number } = {}
+local unloadQueued: { [number]: boolean } = {}
+local keepNow: { [number]: boolean } = {}
 local idleActors: { Actor } = {}
 
 local function newWindow()
@@ -45,21 +52,24 @@ local function record(buildMs: number, writeMs: number)
 	window.writeMax = math.max(window.writeMax, writeMs)
 end
 
-local function markLoaded(cx: number, cz: number, yMin: number, yMax: number)
+local function markLoaded(cx: number, cz: number, yMin: number, yMax: number, model: Instance?)
 	local key = ChunkGen.key(cx, cz)
 	inFlight[key] = nil
-	if not loaded[key] then
+	local old = loaded[key]
+	if not old then
 		loadedCount += 1
+	elseif old.model and old.model ~= model then
+		(old.model :: Instance):Destroy() -- (never expected: a chunk is not built twice)
 	end
-	loaded[key] = { cx = cx, cz = cz, yMin = yMin, yMax = yMax }
+	loaded[key] = { cx = cx, cz = cz, yMin = yMin, yMax = yMax, model = model }
 end
 
-local function unload(key: string, chunk: Loaded)
+local function unload(key: number, chunk: Loaded)
 	local t0 = os.clock()
 	local x0, z0 = chunk.cx * SIZE, chunk.cz * SIZE
 	local region = Region3.new(Vector3.new(x0, chunk.yMin, z0), Vector3.new(x0 + SIZE, chunk.yMax, z0 + SIZE))
 	terrain:FillRegion(region, VOXEL, Enum.Material.Air)
-	local props = propsRoot:FindFirstChild(key)
+	local props = chunk.model or propsRoot:FindFirstChild(ChunkGen.name(chunk.cx, chunk.cz))
 	if props then
 		props:Destroy()
 	end
@@ -82,8 +92,8 @@ local function playerPositions(): { Vector3 }
 end
 
 local function refresh()
-	local wanted: { [string]: Want } = {}
-	local keep: { [string]: boolean } = {}
+	local wanted: { [number]: Want } = {}
+	local keep: { [number]: boolean } = {}
 	local r = Config.LOAD_RADIUS_STUDS / SIZE
 	local rKeep = (Config.LOAD_RADIUS_STUDS + Config.UNLOAD_MARGIN_STUDS) / SIZE
 	for _, p in playerPositions() do
@@ -96,31 +106,61 @@ local function refresh()
 				if d2 <= rKeep * rKeep then
 					keep[key] = true
 				end
-				if d2 <= r * r then
+				if d2 <= r * r and not loaded[key] and not inFlight[key] then
 					local want = wanted[key]
-					if not want or d2 < want.d2 then
+					if not want then
 						wanted[key] = { cx = cx, cz = cz, d2 = d2 }
+					elseif d2 < want.d2 then
+						want.d2 = d2
 					end
 				end
 			end
 		end
 	end
 
-	for key, chunk in loaded do
-		if not keep[key] then
-			unload(key, chunk)
+	keepNow = keep
+	for key in loaded do
+		if not keep[key] and not unloadQueued[key] then
+			unloadQueued[key] = true
+			table.insert(unloadList, key)
+		end
+	end
+	for key in unloadQueued do
+		if keep[key] then
+			unloadQueued[key] = nil -- back in range: its stale entry in unloadList is skipped
 		end
 	end
 
 	pending = {}
-	for key, want in wanted do
-		if not loaded[key] and not inFlight[key] then
-			table.insert(pending, want)
-		end
+	for _, want in wanted do
+		table.insert(pending, want)
 	end
 	table.sort(pending, function(a, b)
 		return a.d2 > b.d2 -- nearest last, so table.remove pops it
 	end)
+end
+
+-- Unloads queued chunks, oldest first, within UNLOAD_BUDGET_MS (at least one a frame).
+local unloadHead = 1
+local function unloadSome()
+	local deadline = os.clock() + Config.UNLOAD_BUDGET_MS / 1000
+	local any = false
+	while unloadHead <= #unloadList and (not any or os.clock() < deadline) do
+		local key = unloadList[unloadHead]
+		unloadHead += 1
+		if unloadQueued[key] then
+			unloadQueued[key] = nil
+			local chunk = loaded[key]
+			if chunk and not keepNow[key] then
+				unload(key, chunk)
+				any = true
+			end
+		end
+	end
+	if unloadHead > #unloadList then
+		table.clear(unloadList)
+		unloadHead = 1
+	end
 end
 
 local function dispatchParallel()
@@ -141,9 +181,9 @@ local function buildSerial()
 		local chunk = ChunkGen.build(want.cx, want.cz)
 		local t1 = os.clock()
 		terrain:WriteVoxels(chunk.region, VOXEL, chunk.materials, chunk.occupancy)
-		ChunkGen.place(chunk.props, propsRoot, ChunkGen.key(want.cx, want.cz))
+		local model = ChunkGen.place(chunk.props, propsRoot, ChunkGen.name(want.cx, want.cz))
 		record((t1 - t0) * 1000, (os.clock() - t1) * 1000)
-		markLoaded(want.cx, want.cz, chunk.yMin, chunk.yMax)
+		markLoaded(want.cx, want.cz, chunk.yMin, chunk.yMax, model)
 	end
 end
 
@@ -155,9 +195,9 @@ local function startWorkers(template: Actor)
 	done.Parent = folder
 	folder.Parent = ServerScriptService
 
-	done.Event:Connect(function(actor: Actor, cx: number, cz: number, yMin: number, yMax: number, buildMs: number, writeMs: number)
+	done.Event:Connect(function(actor: Actor, cx: number, cz: number, yMin: number, yMax: number, buildMs: number, writeMs: number, model: Instance?)
 		record(buildMs, writeMs)
-		markLoaded(cx, cz, yMin, yMax)
+		markLoaded(cx, cz, yMin, yMax, model)
 		table.insert(idleActors, actor)
 	end)
 
@@ -186,6 +226,7 @@ function ChunkManager.start(template: Actor)
 			sinceRefresh = 0
 			refresh()
 		end
+		unloadSome()
 		if Config.WORKERS > 0 then
 			dispatchParallel()
 		else

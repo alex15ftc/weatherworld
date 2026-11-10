@@ -130,6 +130,9 @@ function Scud.new(ctx: any): any
 	local stormList = {}
 	local centres = {} -- storm id -> { x, y, k }: this frame's centre and scale of each storm
 	local lightCache = {}
+	local seenAt = {} -- storm id -> os.clock() it was last in the world's storms
+	local prunedAt = 0
+	local PRUNE_S = 60
 	local statAt, n = 0, 0
 	local tick = 0
 
@@ -161,6 +164,25 @@ function Scud.new(ctx: any): any
 				end
 			end
 		end
+		-- (storms gone from the world for PRUNE_S, with no fragment left: their entries let go)
+		local nowP = os.clock()
+		if nowP - prunedAt > 1 then
+			prunedAt = nowP
+			for _, s in cw.storms do
+				seenAt[tostring(s.id)] = nowP
+			end
+			local used = {}
+			for _, f in live do
+				if f.storm then
+					used[f.storm] = true
+				end
+			end
+			for id, at in seenAt do
+				if nowP - at > PRUNE_S and not used[id] then
+					seenAt[id], acc[id], lastN[id], lightCache[id] = nil, nil, nil, nil
+				end
+			end
+		end
 		for _, s in storms do
 			local id = tostring(s.id)
 			local rng: Random? = nil
@@ -182,7 +204,31 @@ function Scud.new(ctx: any): any
 			local base = s.base or 1000
 			local lx, ly = s.lowX or s.x, s.lowY or s.y
 			local R = max(1500, 1.4 * (s.Ru or 3000))
-			while acc[id] >= 1 and #live < MAX do
+			-- the lift under the lowering, where the inflow converges into the updraft: scud forms in
+			-- proportion to the lift against it, so the pool gathers where the air rises fastest
+			local _, _, wLow = cw:windAt(lx, ly, base - DEPTH0, true)
+			wLow = max(wLow, 3)
+			-- (a full pool: a piece forming takes the place of the faintest one past its first seconds.
+			-- Capped at the first 140, the old pieces drifted ~4 km off and up into the base held every
+			-- place, and none formed round the lowering where the lift is, regrade 17)
+			local function makeRoom(): boolean
+				if #live < MAX then
+					return true
+				end
+				local wi, wa = nil, 0.35
+				for i, g in live do
+					if g.age > 8 and g.a < wa then
+						wi, wa = i, g.a
+					end
+				end
+				if wi then
+					release(live[wi])
+					table.remove(live, wi)
+					return true
+				end
+				return false
+			end
+			while acc[id] >= 1 do
 				acc[id] -= 1
 				if ctx.frameFed then
 					rng = Random.new((idSeed(id) * 7919 + (nNow - acc[id]) * 104729) % 2147483647)
@@ -201,8 +247,14 @@ function Scud.new(ctx: any): any
 					-- (the air's motion without the tornado's own vortex: scud rides the inflow
 					-- and the storm's circulation, not the funnel's winds)
 					local u, v, w = cw:windAt(x, y, z, true)
+					self.dbgTry = (self.dbgTry or 0) + 1
+					self.dbgW = (self.dbgW or 0) + max(w, 0)
+					self.dbgLift = (self.dbgLift or 0) + (if w > 0.2 then 1 else 0)
 					-- condensation needs lift: the faster the air rises here, the likelier
-					if w > 0.2 and random() < clamp(w / 3, 0, 1) * (0.35 + 0.65 * max(sat, exp(-r / R * 2))) then
+					-- (against the lowering's lift, not a fixed 3 m/s: at 3 nearly every try under the base
+					-- passed and the 140 pieces spread evenly over it - a speckled sheet far off, none
+					-- round the wall cloud and funnel, regrade 17)
+					if w > 0.2 and random() < clamp(w / wLow, 0, 1) ^ 2 * (0.35 + 0.65 * max(sat, exp(-r / R * 2))) and makeRoom() then
 						local f = acquire()
 						f.x, f.y, f.z = x, y, z
 						f.u, f.v, f.w = u, v, w
@@ -303,7 +355,8 @@ function Scud.new(ctx: any): any
 			end
 			-- (condensing and evaporating take tens of seconds: it grows out of the cloud and
 			-- frays away, it does not pop)
-			local rate = if target > f.a then 1 / 25 else 1 / 15
+			-- (at the base it merges into the cloud in seconds: at 1/15 they lingered ~80 m up inside it)
+			local rate = if target > f.a then 1 / 25 elseif f.z >= f.base - 20 then 1 / 4 else 1 / 15
 			f.a += (target - f.a) * min(1, simDt * rate)
 			local far = (f.x - camX) ^ 2 + (f.y - camY) ^ 2 > (RANGE * 1.2) ^ 2
 			if (f.age > 8 and f.a < 0.02) or f.age > 900 or far then
@@ -317,10 +370,14 @@ function Scud.new(ctx: any): any
 			-- wisp reads the same turned half a circle, so the tilt never flips)
 			local wx, wy = f.su, f.sv
 			local sp = sqrt(wx * wx + wy * wy)
-			local wv = C.dirWorld(wx, wy) -- (a direction: no scaling)
+			-- (its drift with its rise: scud drawn up into the cloud leans up along its climb; level
+			-- only where the air drifts level, 2026-11-09)
+			local wv = C.dirWorld(wx, wy) + Vector3.new(0, f.sw, 0)
 			local sx, sy = wv:Dot(right), wv:Dot(up)
 			local onScreen = sqrt(sx * sx + sy * sy)
-			local along = clamp(onScreen / max(sp, 0.1), 0, 1) -- (how side-on we see the drift)
+			local sp3 = sqrt(sp * sp + f.sw * f.sw)
+			local along = clamp(onScreen / max(sp3, 0.1), 0, 1) -- (how side-on we see the drift)
+			local riseK = clamp(max(f.sw, 0) / max(sp3, 0.1), 0, 1) -- (how much of the drift is climb)
 			-- (at most ~4:1: drawn up to 3.4 x long and 0.32 x deep, ~10:1, each wisp read as a thin
 			-- dark dash, SC check 2026-11-01)
 			local stretch = 1.3 + clamp(sp / 8, 0, 1) * along
@@ -332,7 +389,8 @@ function Scud.new(ctx: any): any
 			if onScreen > 1e-3 then
 				tilt = -math.deg(math.atan2(sy, sx))
 				tilt = (tilt + 90) % 180 - 90 -- (-90..90)
-				tilt = clamp(tilt, -18, 18) * clamp(onScreen / 0.5, 0, 1)
+				local tMax = 18 + 52 * riseK
+				tilt = clamp(tilt, -tMax, tMax) * clamp(onScreen / 0.5, 0, 1)
 			end
 			f.rot = tilt
 			-- (about its storm's centre at the storm's scale)
@@ -365,6 +423,12 @@ function Scud.new(ctx: any): any
 				vis = ang < halfDiag + math.asin(min(1, 0.6 * sw / dist))
 			end
 			local thr = pxK * dist -- (studs: half a pixel there)
+			self.dbgN = (self.dbgN or 0) + 1
+			self.dbgVis = (self.dbgVis or 0) + (if vis then 1 else 0)
+			self.dbgA = (self.dbgA or 0) + f.a
+			self.dbgR = (self.dbgR or 0) + sqrt((f.x - rcx) ^ 2 + (f.y - rcy) ^ 2)
+			self.dbgDz = (self.dbgDz or 0) + (f.base - f.z)
+			self.dbgPx = (self.dbgPx or 0) + sw / max(dist, 1) * pxR
 			-- (only changes that show are written; a wisp off screen keeps only its position
 			-- roughly current, every 8th frame)
 			if f.wp == nil or vis or (tick + f.k) % CULL_REFRESH == 0 then
@@ -389,8 +453,11 @@ function Scud.new(ctx: any): any
 				-- shaded with) more than by the light at the fragment
 				local base = ctx.stormBase and ctx.stormBase[f.storm]
 				local col = lightCache[f.storm] and lightCache[f.storm].col or Color3.new(0.45, 0.48, 0.53)
+				-- (half: at 0.85 of the lowering's colour it was the same grey as the cloud behind it and
+				-- 140 fragments rising at 3-4 m/s didn't show at all, 2026-11-09. It hangs below the base
+				-- in the light under it, so it takes that light as much as the lowering's)
 				if base then
-					col = col:Lerp(base.col, 0.85)
+					col = col:Lerp(base.col, 0.5)
 				end
 				local back = lightCache[f.storm] and lightCache[f.storm].back or 0
 				if back > 0 then
@@ -398,12 +465,17 @@ function Scud.new(ctx: any): any
 					col = Color3.new(col.R * kb, col.G * kb, col.B * kb)
 				end
 				col = col:Lerp(fogCol, f.fog)
+				if workspace:GetAttribute("ScudTint") == true then
+					col = Color3.new(1, 0.1, 0.1) -- (debug: where the scud is)
+				end
 				local pc = f.col0
 				if not pc or math.abs(col.R - pc.R) > 0.002 or math.abs(col.G - pc.G) > 0.002 or math.abs(col.B - pc.B) > 0.002 then
 					f.col0 = col
 					f.img.ImageColor3 = col
 				end
-				local tr = 1 - clamp(f.a * 0.6, 0, 0.6)
+				-- (at 0.6 x its condensation - ~0.12 at the mean 0.2 - all 140 pieces in view showed
+				-- nothing, 2026-11-10: condensed scud is a solid ragged lump, translucent only as it frays)
+				local tr = 1 - clamp(f.a * 1.2, 0, 0.75)
 				if math.abs(tr - (f.tr or 2)) > 0.002 then
 					f.tr = tr
 					f.img.ImageTransparency = tr
@@ -414,6 +486,13 @@ function Scud.new(ctx: any): any
 		if t0 - statAt > 0.5 then
 			statAt = t0
 			ctx.root:SetAttribute("Scud", string.format("%d fragments · %.2f ms", n, (os.clock() - t0) * 1000))
+			if workspace:GetAttribute("EngineStormsDebugCam") == true and os.clock() - (self.dbgAt or -10) > 5 then
+				self.dbgAt = os.clock()
+				print(string.format("[Scud] %d fragments | tries %d, lifted %d, mean w %.2f | storms %d | vis %.0f%% mean a %.2f r %.0f below base %.0f px %.0f", n, self.dbgTry or 0, self.dbgLift or 0, (self.dbgW or 0) / math.max(self.dbgTry or 0, 1), #storms,
+					100 * (self.dbgVis or 0) / math.max(self.dbgN or 0, 1), (self.dbgA or 0) / math.max(self.dbgN or 0, 1), (self.dbgR or 0) / math.max(self.dbgN or 0, 1), (self.dbgDz or 0) / math.max(self.dbgN or 0, 1), (self.dbgPx or 0) / math.max(self.dbgN or 0, 1)))
+				self.dbgTry, self.dbgW, self.dbgLift = 0, 0, 0
+				self.dbgN, self.dbgVis, self.dbgA, self.dbgR, self.dbgDz, self.dbgPx = 0, 0, 0, 0, 0, 0
+			end
 		end
 	end
 

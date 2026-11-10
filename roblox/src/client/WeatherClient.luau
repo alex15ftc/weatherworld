@@ -139,19 +139,29 @@ end
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Include
 rayParams.FilterDescendantsInstances = { Workspace.Terrain }
-local rayCache, rayCacheAt = {}, 0
+local rayCache, rayAt, rayCacheAt = {}, {}, 0
 local function terrainStuds(sx: number, sz: number): number?
 	local now = os.clock()
-	if now - rayCacheAt > 3 then
-		table.clear(rayCache)
+	-- (each entry kept 3-4 s from its own ray, so they expire spread out, not all in one frame;
+	-- stale ones swept now and then)
+	if now - rayCacheAt > 10 then
 		rayCacheAt = now
+		for k, t in rayAt do
+			if now - t > 6 then
+				rayCache[k], rayAt[k] = nil, nil
+			end
+		end
 	end
 	local key = math.floor(sx / 16) * 65536 + math.floor(sz / 16)
 	local v = rayCache[key]
+	if v ~= nil and now - rayAt[key] > 3 + (key % 8) * 0.125 then
+		v = nil
+	end
 	if v == nil then
 		local hit = Workspace:Raycast(Vector3.new(sx, Config.RAY_TOP_STUDS, sz), Vector3.new(0, -Config.RAY_TOP_STUDS - 200, 0), rayParams)
 		v = if hit then hit.Position.Y else false
 		rayCache[key] = v
+		rayAt[key] = now
 	end
 	return if v then v else nil
 end
@@ -234,16 +244,38 @@ function Weather.start()
 	-- ~2 s, so nothing jumps; otherwise it is exactly the tornado's, so funnel and cloud agree.
 	if not ENGINE_VISUALS or FRAME_CARDS then
 		local anchors = {}
+		-- (where each storm was last found in cw.storms: checked, then scanned for as before when it
+		-- has moved; anchors not asked for in a minute let go)
+		local slotOf: { [string]: number } = {}
+		local sweptAt = os.clock()
 		ctx.Config.anchorFn = function(id: string): (number?, number?)
 			local s
-			for _, st in ctx.cw.storms do
-				if tostring(st.id) == id then
-					s = st
-					break
+			local storms = ctx.cw.storms
+			local i0 = slotOf[id]
+			local st0 = i0 and storms[i0]
+			if st0 and tostring(st0.id) == id then
+				s = st0
+			else
+				for i, st in storms do
+					if tostring(st.id) == id then
+						s = st
+						slotOf[id] = i
+						break
+					end
 				end
 			end
 			if not s then
+				slotOf[id] = nil
 				return nil, nil
+			end
+			if os.clock() - sweptAt > 10 then
+				sweptAt = os.clock()
+				for aid, a in anchors do
+					if sweptAt - a.t > 60 then
+						anchors[aid] = nil
+						slotOf[aid] = nil
+					end
+				end
 			end
 			local tx, ty, kind = s.lowX or s.x, s.lowY or s.y, "low"
 			for tid, e in ctx.tornadoAdapter.entries do
@@ -361,6 +393,9 @@ function Weather.start()
 			-- (the window may have moved with the players: a new frame round its new centre)
 			local g = folder:WaitForChild("WeatherGround"):InvokeServer()
 			if g and g.centreKm and frameInfo and (g.centreKm.x ~= frameInfo.cx or g.centreKm.y ~= frameInfo.cy) then
+				-- (lab metres from the old centre to the new, as StormHost's own: client/FrameWorld
+				-- carries its built storms over so they keep their map spot)
+				ctx.frameShift = { x = (frameInfo.cx - g.centreKm.x) * 1000, y = -(frameInfo.cy - g.centreKm.y) * 1000 }
 				setFrame(LabConfig, g)
 			end
 			local d = scenarioData(e.scenario, e.data)

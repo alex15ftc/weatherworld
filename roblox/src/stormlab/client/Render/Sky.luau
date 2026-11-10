@@ -228,7 +228,7 @@ function Sky.new(ctx)
 	local defClouds = { Enabled = clouds.Enabled, Cover = clouds.Cover, Density = clouds.Density, Color = clouds.Color }
 	-- key \: the storm-owned sky on / off (A/B against the reference shots)
 	ctx.state.skyOwn = if ctx.state.skyOwn == nil then true else ctx.state.skyOwn
-	game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
+	local keyConn = game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.BackSlash then
 			ctx.state.skyOwn = not ctx.state.skyOwn
 			print("[sky] storm-owned sky " .. (if ctx.state.skyOwn then "on" else "off"))
@@ -247,6 +247,13 @@ function Sky.new(ctx)
 		published = -1,
 	}
 
+	-- (the clock written when it has moved 1/1000 h - the sun 0.015 deg: each write redoes the
+	-- lighting, and at the game's clock it moved ~4e-5 h a frame)
+	local function setClockTime(h: number)
+		if math.abs(Lighting.ClockTime - h) > 1e-3 then
+			Lighting.ClockTime = h
+		end
+	end
 	local function setClock()
 		if not cw.clockUtc then
 			return
@@ -270,9 +277,9 @@ function Sky.new(ctx)
 			if type(override) == "number" then
 				solar = override % 24
 			end
-			Lighting.ClockTime = robloxClock(solar, rise, set, st.rise, st.set)
+			setClockTime(robloxClock(solar, rise, set, st.rise, st.set))
 		else
-			Lighting.ClockTime = if type(override) == "number" then override % 24 else hours % 24
+			setClockTime(if type(override) == "number" then override % 24 else hours % 24)
 		end
 	end
 
@@ -646,7 +653,10 @@ function Sky.new(ctx)
 		put(Lighting, "FogColor", Util.scale(def.FogColor, daySky * (1 - nightT) + nightFloor * nightT))
 		-- (the same sky light, as a share of noon's, for what lights itself by script - the engine
 		-- storms' billboards, Shared.CloudModel.PuffView.light - so they dim with the sky as the fog does)
-		Lighting:SetAttribute("SkyLight", math.floor((daySky * (1 - nightT) + nightFloor * nightT) * 200 + 0.5) / 200)
+		local skyLight = math.floor((daySky * (1 - nightT) + nightFloor * nightT) * 200 + 0.5) / 200
+		if Lighting:GetAttribute("SkyLight") ~= skyLight then
+			Lighting:SetAttribute("SkyLight", skyLight)
+		end
 		put(atmosphere, "Haze", math.clamp(defAtmo.Haze + 4 * oc + 6 * cv + 7 * st.wet + 5 * st.dust, 0, 10))
 		put(atmosphere, "Glare", math.clamp(defAtmo.Glare * S * (1 - oc) * (1 - cv), 0, 10))
 		-- the overcast deck (Terrain Clouds): fuller and darker with the cover and the light.
@@ -690,6 +700,7 @@ function Sky.new(ctx)
 	end
 
 	function self:destroy()
+		keyConn:Disconnect()
 		restore()
 		grade:Destroy()
 		if madeClouds then

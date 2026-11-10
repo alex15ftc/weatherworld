@@ -23,6 +23,7 @@
 import v8 from 'node:v8';
 import { RISK_RADIUS_MILES } from './spcOutlookRules.js';
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
+import { isCompactCells, decodeCells } from '../world/compactCells.js';
 import { captureTruth, aggregateTruth, practicallyPerfectChance, practicallyPerfectExpected, diskOffsets, CHANCE_FIELDS } from '../verification/truth.js';
 import { expectedTornadoGrids, addExpectedTornadoes, addOngoingTornadoes, chanceWithin } from './expectedHazards.js';
 import { contourRings, softenArea } from './contourShapes.js';
@@ -45,7 +46,10 @@ export const OUTLOOK = Object.freeze({
   // then every 6, 12 and 24 hours from 12Z): Day 1 at 06, 13, 1630, 20 and 01Z, Day 2 at 06 and
   // 1730Z, Day 3 at 0730 and 1930Z. An outlook issued less than leadHours before 12Z is for the
   // day that starts then (the 06Z Day 1 is for the coming 12Z-12Z day, as the centre's is).
-  issueTimesUtc: { day1: [1, 6, 13, 16.5, 20], day2: [6, 17.5], day3: [7.5, 19.5] }, leadHours: 6.5,
+  // (2026-11-09, the user's choice: Day 3 is issued with Day 2, at 06 and 1730Z, from the same runs.
+  // Its members are Day 2's, which already run to the end of Day 2; at its own times they ran the
+  // two days before it again, 32% of the outlooks' work. Each time picks the same days as before.)
+  issueTimesUtc: { day1: [1, 6, 13, 16.5, 20], day2: [6, 17.5], day3: [6, 17.5] }, leadHours: 6.5,
   // The most a day this far ahead is given, as the centre keeps its Day 2 and Day 3 (a High on
   // Day 2 has been issued only a handful of times), and how far one issue may raise the category
   // from the last for the same day (one step), until the day is under way (issues from
@@ -219,7 +223,13 @@ export function hoursToDayEnd(hourUtc, dayStartUtc = OUTLOOK.dayStartUtc) {
 // that come out of v8.deserialize can share memory with the bytes they were read from, and a
 // member advances them in place, so a second member read from the same bytes would start
 // from wherever the first one left off.
-export function stateFromBytes(bytes) { return v8.deserialize(Buffer.from(bytes)); }
+// (A copy of the bytes is read, never the shared bytes themselves: the typed arrays read back would be
+// views of them, written to by every thread. Cells in the compact form are rebuilt as they were.)
+export function stateFromBytes(bytes) {
+  const state = v8.deserialize(Buffer.from(bytes));
+  if (isCompactCells(state?.world?.cells)) state.world.cells = decodeCells(state.world.cells);
+  return state;
+}
 
 // One member: the saved world run ahead with its storms' chances drawn afresh, reported one
 // outlook day at a time (the first is what is left of the day in progress; a new one starts

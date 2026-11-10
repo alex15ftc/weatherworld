@@ -50,7 +50,15 @@ local function windNear(cw: any, Vortex: any, x: number, y: number, z: number): 
 		c = { bu, bv, bw }
 		bgCache[key] = c
 	end
-	local u, v, w = c[1], c[2], c[3]
+	local bu, bv = c[1], c[2]
+	local u, v, w = bu, bv, c[3]
+	-- (trapped debris: a vortex is carried by the air round it, and in the stream past it - the
+	-- ambient wind less its own motion - the fluid within its closed streamlines (the Rankine
+	-- oval, where the swirl beats that stream) goes with it; only outside does the stream carry
+	-- dust past. Taking the whole ambient wind, a 193 mph wedge's skirt sat ~50 m off its foot -
+	-- displaced, user 2026-11-08. The blend runs on the swirl against the relative stream, so the
+	-- oval's edge is soft)
+	local kMax, ux, uy = 0, 0, 0
 	for _, t in cw.tornadoes do
 		if not t.ended and t.params then
 			local dx, dy = x - t.x, y - t.y
@@ -59,10 +67,21 @@ local function windNear(cw: any, Vortex: any, x: number, y: number, z: number): 
 				u += tu
 				v += tv
 				w += tw
+				-- (only where its own motion is known: client/FrameWorld publishes it)
+				local rx, ry = bu - (t.u or 0), bv - (t.v or 0)
+				local ur = math.sqrt(rx * rx + ry * ry)
+				if t.u ~= nil and ur > 0.1 then
+					local q = math.sqrt(tu * tu + tv * tv) / ur
+					local k = math.clamp((q - 0.7) / 0.7, 0, 1)
+					k = k * k * (3 - 2 * k)
+					if k > kMax then
+						kMax, ux, uy = k, rx, ry
+					end
+				end
 			end
 		end
 	end
-	return u, v, w
+	return u - kMax * ux, v - kMax * uy, w
 end
 local DUST_TAU = 0.15 -- s: how fast a puff's velocity takes the air's (see the motion step)
 local sqrt, exp = math.sqrt, math.exp
@@ -179,6 +198,7 @@ function TornadoDust.new(ctx: any): any
 		p.u, p.v, p.w = u, v, w
 		p.age = 0
 		p.since = 0
+		p.tau = nil -- (fine dust's response time unless the skirt sets its material's)
 		p.life = 8 + 14 * random()
 		p.size = size
 		-- (spreads at the turbulence's speed, a few m/s: grown by a share of its size every
@@ -317,9 +337,19 @@ function TornadoDust.new(ctx: any): any
 						rng = Random.new((idSeed(t.id) * 7919 + tick * 104729) % 2147483647)
 					end
 					if not t.ended then
-						local d = sqrt((t.x - camX) ^ 2 + (t.y - camY) ^ 2)
+						-- (m: how far it looks - the drawn distance over the scale it is drawn at. The game
+						-- draws a storm larger than the map: a tornado 10 km off on the map filled the
+						-- follow camera's view and lifted no dust at all, "no debris collar", regrade 15.
+						-- In the lab the same as the map distance)
+						local ksT = C.scaleAbout(t.x, t.y)
+						local Pt = C.toWorld(t.x, t.y, 0)
+						local camP = workspace.CurrentCamera.CFrame.Position
+						local d = Vector3.new(Pt.X - camP.X, 0, Pt.Z - camP.Z).Magnitude / math.max(ksT, 1e-6)
 						if d < 9000 then
-							local col = dustColour(t)
+							-- (over rain-soaked ground what goes up is wet mud and wreckage, darker and greyer
+							-- than dry soil: the dry-soil brown under heavy rain washed the near view brown,
+							-- regrade 2026-11-10)
+							local col = dustColour(t):Lerp(Color3.fromRGB(76, 75, 72), 0.6 * wetness(t.x, t.y))
 							local tries = math.clamp(math.floor(6 + t.vc / 6), 4, 16)
 							-- (the drawn funnel's foot: a rope's foot swings about its contact
 							-- (Vortex.axisAt's waves) and the funnel is drawn about the smoothed position.
@@ -468,6 +498,16 @@ function TornadoDust.new(ctx: any): any
 												pp.img.ImageRectOffset = Vector2.zero
 											end
 										else
+											-- (the skirt's material: past ~25 m/s the wind lifts soil clods, crop and
+											-- wreckage as well as dust, falling at 5-20 m/s - a response time
+											-- tau = v_t / g of 0.5-2 s against fine dust's ~0.15. Lagging the swirl
+											-- they are flung out at ~tau V^2 / r against the inflow, so the debris
+											-- sits in a ring just outside the core, low down (radar debris rings:
+											-- Dowell et al. 2005). All riding the inflow as fine dust, the skirt was
+											-- drawn into the condensed funnel and hidden there - 26 of 278 puffs
+											-- showed round a 193 mph wedge, 2026-11-08)
+											local dK = math.clamp((sqrt(u * u + v * v) - 25) / 20, 0, 1)
+											pp.tau = DUST_TAU * 10 ^ (random() * dK)
 											-- (skirt puffs exactly level: a tilted card's corner dips below the
 											-- ground, and the fade allowed for it by lifting the whole card's foot)
 											local r0 = if pp.img.Rotation > 90 then 180 else 0
@@ -615,6 +655,14 @@ function TornadoDust.new(ctx: any): any
 			end
 			tors[t.id] = tc
 		end
+		-- (tornadoes gone: their entries let go - every field is set afresh each frame)
+		if self.torPool then
+			for id in self.torPool do
+				if not tors[id] then
+					self.torPool[id] = nil
+				end
+			end
+		end
 		for i, p in self.puffs do
 			if p.alive then
 				p.age += simDt
@@ -652,14 +700,15 @@ function TornadoDust.new(ctx: any): any
 							w += hw
 						end
 						local U = sqrt(u * u + v * v)
-						local k = 1 - exp(-p.since / DUST_TAU)
+						local tau = p.tau or DUST_TAU
+						local k = 1 - exp(-p.since / tau)
 						p.since = 0
 						p.u += (u - p.u) * k
 						p.v += (v - p.v) * k
 						-- turbulent lift keeps raising dust near the ground; settling slowly
 						-- (smooth noise along its path, not a fresh die each frame: the same on every client)
 						local lift = 0.25 * U * (0.5 + 0.5 * math.noise(p.x * 0.02, p.y * 0.02, p.age * 0.7) - 0.35) * exp(-p.z / 250)
-						p.w += (w + lift - 0.3 - p.w) * k
+						p.w += (w + lift - 0.3 - 9.8 * (tau - DUST_TAU) - p.w) * k -- (settling: g tau, past the fine dust's 0.3 m/s)
 					end
 					p.x += p.u * simDt
 					p.y += p.v * simDt

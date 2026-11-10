@@ -34,6 +34,15 @@ local Storm = dep("Storm")
 local InflowCloud = {}
 
 InflowCloud.RAIN_MAX = 4 -- mm/h: past this the air is in the rain shafts, not the inflow
+-- (for still air. Air being lifted carries more and is still inflow: the rain it may carry grows
+-- with its updraft, RAIN_MAX * (1 + w / LIFT_W). The game's rain comes from the cloud model's
+-- shared frames, which put 10-50 mm/h all round a mature meso at the wall cloud's rim, inflow side
+-- included, so with a still-air limit alone no tail ever formed in the game, user 2026-11-09)
+InflowCloud.LIFT_W = 0.5 -- m/s
+local function rainLimit(w: number): number
+	return InflowCloud.RAIN_MAX * (1 + math.max(w, 0) / InflowCloud.LIFT_W)
+end
+InflowCloud.rainLimit = rainLimit
 InflowCloud.SINK = -0.75 -- m/s: air sinking faster than this is downdraft air
 InflowCloud.BEARINGS = 12
 local sqrt, cos, sin, max, clamp = math.sqrt, math.cos, math.sin, math.max, math.clamp
@@ -72,7 +81,7 @@ local function backTrace(world: any, s: any, x: number, y: number, z: number, dt
 		local sp = sqrt(u * u + v * v)
 		local r = rain(px, py)
 		table.insert(pts, { px, py, w, r, sp })
-		if r > InflowCloud.RAIN_MAX then
+		if r > rainLimit(w) then
 			why = "rain"
 			break
 		end
@@ -129,19 +138,31 @@ function InflowCloud.tail(world: any, s: any, lx: number, ly: number, R: number,
 	local su, sv = s.u or 0, s.v or 0
 	local best, bestN, bestLen = nil, 0, 0
 	local K = InflowCloud.BEARINGS
+	-- (why a tail is missing: read by the renderers' debug prints)
+	local dg = { inb = 0, pts = 0, lclOk = 0, rainOk = 0, sinkOk = 0, minLcl = math.huge, base = base, vin = 0, minRain = math.huge, rains = {} }
+	InflowCloud.lastDiag = dg
 	for k = 0, K - 1 do
 		local a = k / K * 2 * math.pi
 		local ex, ey = cos(a), sin(a)
 		local x0, y0 = lx + ex * R, ly + ey * R
 		local u, v = world:windAt(x0, y0, zt, true)
+		dg.vin = math.min(dg.vin, (u - su) * ex + (v - sv) * ey)
 		-- (inbound air only: it must be on its way into the wall cloud)
 		if (u - su) * ex + (v - sv) * ey < -0.5 then
+			dg.inb += 1
 			local pts = backTrace(world, s, x0, y0, zt, 12, 900, 6000, rain)
 			local cond = {}
 			for i, p in pts do
 				local lcl = lclAt(world, p[1], p[2])
 				p[6] = lcl
-				cond[i] = lcl < base - 40 and p[4] <= InflowCloud.RAIN_MAX and p[3] >= InflowCloud.SINK
+				cond[i] = lcl < base - 40 and p[4] <= rainLimit(p[3]) and p[3] >= InflowCloud.SINK
+				dg.pts += 1
+				dg.minLcl = math.min(dg.minLcl, lcl)
+				if lcl < base - 40 then dg.lclOk += 1 end
+				if p[4] <= rainLimit(p[3]) then dg.rainOk += 1 end
+				dg.minRain = math.min(dg.minRain, p[4])
+				if i == 1 then table.insert(dg.rains, string.format("%d:%.0f/%.1f", k, p[4], p[3])) end
+				if p[3] >= InflowCloud.SINK then dg.sinkOk += 1 end
 			end
 			local n = attachedRun(cond, 2)
 			if n >= 2 then
@@ -154,6 +175,9 @@ function InflowCloud.tail(world: any, s: any, lx: number, ly: number, R: number,
 				end
 			end
 		end
+	end
+	if InflowCloud.lastDiag then
+		InflowCloud.lastDiag.len, InflowCloud.lastDiag.outN = bestLen, bestN
 	end
 	if not best or bestLen < 500 then
 		return nil, 0, 0, 0
@@ -204,7 +228,7 @@ function InflowCloud.band(world: any, s: any, base: number): { { number } }?
 			local pts = backTrace(world, s, x0, y0, zt, 30, 1500, 16000, rain)
 			local cond = {}
 			for i, p in pts do
-				cond[i] = lclAt(world, p[1], p[2]) < zt and p[4] <= InflowCloud.RAIN_MAX and p[3] >= InflowCloud.SINK
+				cond[i] = lclAt(world, p[1], p[2]) < zt and p[4] <= rainLimit(p[3]) and p[3] >= InflowCloud.SINK
 			end
 			local n = attachedRun(cond, 2)
 			if n >= 2 then

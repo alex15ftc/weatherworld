@@ -501,13 +501,23 @@ Config.REPORT_ARCHIVE_DAYS = 365
 -- Chunks (Minecraft-style): generated around players, unloaded beyond the radius plus a margin.
 Config.VOXEL_STUDS = 4
 Config.CHUNK_STUDS = 256
+-- The radius is twice the clients' streaming radius (default.project.json: StreamingTargetRadius
+-- 1024) on purpose: chunk props are StreamingMesh models (ChunkGen.place), which clients draw as
+-- low-detail imposters beyond their streamed area only while the model exists on the server.
+-- (1280, the streamed radius plus a chunk, would build ~40% of the area, without the far props.)
 Config.LOAD_RADIUS_STUDS = 2048
-Config.UNLOAD_MARGIN_STUDS = 512
+Config.UNLOAD_MARGIN_STUDS = 256 -- one chunk of hysteresis
+-- Unloading (clearing terrain, destroying props) is queued and done within this budget a frame
+-- (at least one chunk a frame), so leaving an area does not stall the server for a frame.
+Config.UNLOAD_BUDGET_MS = 3
 Config.FILL_DEPTH_STUDS = 12 -- solid ground kept below the lowest column of each chunk
 
 -- Chunk building: WORKERS parallel actors; 0 builds in serial within SERIAL_BUDGET_MS per frame.
 Config.WORKERS = 4
 Config.SERIAL_BUDGET_MS = 8
+-- Each worker places its chunk's parts within this budget a frame (all WORKERS share
+-- PLACE_BUDGET_MS between them), the chunk's model parented once it is complete.
+Config.PLACE_BUDGET_MS = 8
 
 -- Streaming and vehicle tests (turned on by the Workspace attribute TestDrive; see server/TestDrive).
 -- Workspace attributes TestOriginX, TestSpeed and TestSeconds override these defaults.

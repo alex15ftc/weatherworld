@@ -494,4 +494,15 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 	return { line = line, dot = dot, polyline = polyline, fill = fill, hatch = hatch, stroke = stroke, grid = grid, polar = polar, drawn = drawn }
 end
 
+-- A byte grid's n cells as RGBA pixels, one cell a pixel (MapCanvas's grids): each byte's packed
+-- little-endian word (words[byte + 1]), byte 0 left as the pixels have it (clear when new).
+function Raster.colourGrid(bytes: buffer, n: number, words: { number }, pixels: buffer)
+	for k = 0, n - 1 do
+		local byte = buffer.readu8(bytes, k)
+		if byte ~= 0 then
+			buffer.writeu32(pixels, k * 4, words[byte + 1])
+		end
+	end
+end
+
 return Raster

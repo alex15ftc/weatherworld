@@ -54,6 +54,9 @@ local index: Index? = nil
 local archiveProduct: Entry? = nil
 local cache: { [string]: Entry } = {}
 local cacheOrder: { string } = {}
+local MISS_SECONDS, MISSED_MAX = 45, 256
+local missed: { [string]: number } = {} -- products found nowhere, by when they were looked for
+local missedCount = 0
 local queue: { () -> () } = {}
 local queued: { [string]: boolean } = {}
 local working = false
@@ -316,13 +319,22 @@ local function setWorld(w: string?)
 	index = nil
 	table.clear(cache)
 	table.clear(cacheOrder)
+	table.clear(missed)
+	missedCount = 0
 	if w then
 		task.spawn(loadIndex)
 	end
 end
 
 -- A report product as the weather server sent it (from ProductFeed, whenever it gets one).
+-- Only the list of days is read on every server (it names the world); a day's own text only
+-- where this server keeps the days (the writer), and a survey's never (archiveDay fetches it).
 function ReportArchive.offer(id: string, entry: Entry)
+	local isDays = id == "reports.days"
+	local isDay = string.match(id, "^reports%.day%.%d+$") ~= nil
+	if not isDays and not (isDay and canWrite and isWriter) then
+		return
+	end
 	local decoded, product = pcall(HttpService.JSONDecode, HttpService, entry.text)
 	if not decoded or type(product) ~= "table" then
 		return
@@ -355,6 +367,12 @@ function ReportArchive.get(id: string): Entry?
 	if held then
 		return held
 	end
+	-- Found in neither lately: not looked for again for MISS_SECONDS (each look is a DataStore
+	-- read and a request to the weather server).
+	local missedAt = missed[id]
+	if missedAt and os.clock() - missedAt < MISS_SECONDS then
+		return nil
+	end
 	local key = keyOf(id)
 	local ds = store
 	if key and ds then
@@ -363,13 +381,25 @@ function ReportArchive.get(id: string): Entry?
 		end)
 		if ok and type(value) == "table" and type(value.t) == "string" then
 			local entry = { version = value.v, text = value.t }
+			missed[id] = nil
 			remember(id, entry)
 			return entry
 		end
 	end
 	local got = if fetch then (fetch :: (string) -> Entry?)(id) else nil
 	if got then
+		missed[id] = nil
 		remember(id, got)
+	else
+		-- (the oldest let go when there are many: ids come from players)
+		if not missed[id] then
+			missedCount += 1
+			if missedCount > MISSED_MAX then
+				table.clear(missed)
+				missedCount = 1
+			end
+		end
+		missed[id] = os.clock()
 	end
 	return got
 end

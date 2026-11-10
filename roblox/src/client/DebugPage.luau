@@ -204,6 +204,11 @@ local function stepFollow(dt: number)
 	end
 	local look, distance, side = framing(s)
 	distance *= f.zoom
+	if f.zoom > 1 then
+		-- (zoomed out, aim higher: the tower and anvil come into frame rather than the base filling it)
+		local gl = ground(look.X, look.Z, s.groundStuds or 0)
+		look = Vector3.new(look.X, gl + (look.Y - gl) * math.sqrt(f.zoom), look.Z)
+	end
 	local dir
 	if f.mode == "Orbit" then
 		f.angle += dt * 0.05
@@ -224,7 +229,10 @@ local function stepFollow(dt: number)
 	f.pos, f.look = pos, lookAt
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.CFrame = CFrame.lookAt(pos, lookAt)
-	-- The character rides along under the camera, so the world loads round it.
+	-- The character rides along under the camera, so the world loads round it. (Zoomed far out, that
+	-- moves the server's weather window with it - StormHost.RECENTRE, 35 km - as a player travelling
+	-- there would; back in close, the storm draws without its rain and haze until the window follows
+	-- back, a poll or two later. See the watch-scene skill.)
 	local character = player.Character
 	local root = if character then character:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 	if root and not root.Anchored then
@@ -455,12 +463,16 @@ function DebugPage.start()
 		elseif input.KeyCode == Enum.KeyCode.Backspace and follow then
 			stopFollow(true)
 			refresh()
+		elseif (input.KeyCode == Enum.KeyCode.Minus or input.KeyCode == Enum.KeyCode.Equals) and follow then
+			-- the scroll wheel's zoom from the keyboard: - out, = in
+			local f = follow :: Follow
+			f.zoom = math.clamp(f.zoom * (if input.KeyCode == Enum.KeyCode.Minus then 1.4 else 1 / 1.4), 0.25, 16)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input: InputObject, processed: boolean)
 		local f = follow
 		if f and not processed and input.UserInputType == Enum.UserInputType.MouseWheel then
-			f.zoom = math.clamp(f.zoom * (0.88 ^ input.Position.Z), 0.25, 4)
+			f.zoom = math.clamp(f.zoom * (0.88 ^ input.Position.Z), 0.25, 16)
 		end
 	end)
 	-- A respawn ends following (the new character is not hidden or carried).

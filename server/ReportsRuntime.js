@@ -7,12 +7,19 @@ import { surveyTornado } from '../js/reports/damageSurvey.js';
 import { surveyMap } from '../js/reports/surveyMap.node.js';
 
 export class ReportsRuntime {
-  constructor({ runtime }) { this.runtime = runtime; this.surveys = new Map(); this.engine = null; }
+  constructor({ runtime }) { this.runtime = runtime; this.surveys = new Map(); this.engine = null; this.surveyDay = null; }
 
   get log() {
     const engine = this.runtime.engine;
     if (engine !== this.engine) { this.engine = engine; this.surveys.clear(); }
-    return engine?.world?.reportLog ?? null;
+    const log = engine?.world?.reportLog ?? null;
+    // When the log starts a new day it has let its oldest go: their tornadoes' surveys go with them.
+    if (log && log.day !== this.surveyDay) {
+      this.surveyDay = log.day;
+      const known = new Set(Object.values(log.days ?? {}).flatMap(d => (d.tornadoes ?? []).map(t => t.id)));
+      for (const id of this.surveys.keys()) if (!known.has(id)) this.surveys.delete(id);
+    }
+    return log;
   }
 
   nowHourUtc() { const w = this.runtime.engine?.world; return w ? (w.stormEngine?.validHourUtc ?? w.validHourUtc) : null; }

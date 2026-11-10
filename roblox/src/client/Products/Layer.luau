@@ -25,6 +25,9 @@ export type Context = {
 	selected: (layerKey: string) -> string,
 	-- Whether another layer is turned on.
 	isOn: (layerKey: string) -> boolean,
+	-- Whether the weather screen is open: closed, layers fetch, loop and keep products alive no
+	-- more (each enabled layer is refreshed once when it opens again).
+	isOpen: () -> boolean,
 }
 
 export type Layer = {
@@ -53,6 +56,11 @@ export type Layer = {
 	legendKey: ((self: any) -> string)?,
 	-- Names what drawRaster draws now, so a drawn image can be reused (optional).
 	rasterKey: ((self: any) -> string?)?,
+	-- Marks that change on their own clock (lightning, rotation), drawn into an image of the view
+	-- over the raster image, so a new strike does not draw the radar loop's frames again (optional).
+	drawMarks: ((self: any, draw: MapCanvas.Draw) -> ())?,
+	-- Names what drawMarks draws now (optional; without it the marks are drawn every time).
+	marksKey: ((self: any) -> string?)?,
 	-- A line about what is under the cursor (a radar gate's value), if anything (optional).
 	hover: ((self: any, mx: number, my: number) -> string?)?,
 	-- Its legend lines, if it has any.

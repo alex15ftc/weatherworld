@@ -134,9 +134,23 @@ function Areas.renderOptions(self: any)
 end
 
 function Areas.refresh(self: any)
-	self.product = ProductClient.get(self.kind.productId)
+	local product = ProductClient.get(self.kind.productId)
+	if product ~= self.product then
+		self.stamp = (self.stamp or 0) + 1 -- (ProductClient gives the same table until a new version)
+	end
+	self.product = product
 	self:renderOptions()
 	self.ctx.redraw()
+end
+
+-- What the shapes depend on: the product (its stamp) and the item picked.
+function Areas.shapeKey(self: any): string
+	return `{self.stamp or 0}|{self.ctx.selected(self.key)}`
+end
+
+-- It has no legend.
+function Areas.legendKey(_self: any): string
+	return ""
 end
 
 function Areas.setEnabled(self: any, on: boolean)

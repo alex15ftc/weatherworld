@@ -28,8 +28,8 @@
 -- another road ends in a cul-de-sac (a bulb: a segment of no length whose pavement is the
 -- turning circle).
 
-local Interchanges = require(script.Parent.Parent.Interchanges)
-local Config = require(script.Parent.Parent.Config)
+local Interchanges = require(game:GetService("ReplicatedStorage").Shared.World.Interchanges)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 
 local MILE = Config.STUDS_PER_MILE
 

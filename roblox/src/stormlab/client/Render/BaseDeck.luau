@@ -98,7 +98,8 @@ function BaseDeck.new(ctx: any): any
 		gui.LightInfluence = 0
 		gui.MaxDistance = 0
 		gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
-		gui.CanvasSize = Vector2.new(256, 256)
+		-- (1024: at 256 a 2000-stud disc showed ~8 studs a texel, blurry overhead, user 2026-11-09)
+		gui.CanvasSize = Vector2.new(1024, 1024)
 		gui.Enabled = false
 		local img = Instance.new("ImageLabel")
 		img.BackgroundTransparency = 1
@@ -208,6 +209,12 @@ function BaseDeck.new(ctx: any): any
 						wb = nil
 					end
 					local j0, j1 = math.floor((ccy - reach - oy) / ROWH), math.ceil((ccy + reach - oy) / ROWH)
+					-- (no cell can be inside - within 0.75 of the radius and within range of the camera - when
+					-- the camera is farther than both from the centre: the rows are skipped)
+					if math.sqrt((ccx - dx) ^ 2 + (ccy - dy) ^ 2) >= range + 0.75 * d.r then
+						j0, j1 = 1, 0
+					end
+					local keyHead = tostring(id) .. ":"
 					for j = j0, j1 do
 						local shift = if j % 2 == 0 then 0 else 0.5 * S
 						local i0, i1 = math.floor((ccx - reach - ox - shift) / S), math.ceil((ccx + reach - ox - shift) / S)
@@ -259,7 +266,7 @@ function BaseDeck.new(ctx: any): any
 								-- (DECK.solid false: every disc soft - the solid ones met the see-through cards
 								-- round them as hard dark ovals however their colour matched, 2026-10-31)
 								local edge = (not D.solid or mEdge < 2 * S or sv > 0.12) and SOFT_TEX ~= ""
-								local key = tostring(id) .. ":" .. i .. ":" .. j
+								local key = keyHead .. i .. ":" .. j
 								local p = live[key]
 								if not p then
 									p = table.remove(free) or newTile()
@@ -332,6 +339,7 @@ function BaseDeck.new(ctx: any): any
 				live[key] = nil
 				table.insert(free, p)
 				p.gui.Enabled = false
+				p.cfW = far
 				table.insert(parts, p.part)
 				table.insert(cfs, far)
 			else
@@ -346,8 +354,12 @@ function BaseDeck.new(ctx: any): any
 						p.part.Transparency = tr
 					end
 				end
-				table.insert(parts, p.part)
-				table.insert(cfs, p.cf or far)
+				local cf = p.cf or far
+				if p.cfW ~= cf then -- (moved only when its place changed)
+					p.cfW = cf
+					table.insert(parts, p.part)
+					table.insert(cfs, cf)
+				end
 			end
 		end
 		if #parts > 0 then

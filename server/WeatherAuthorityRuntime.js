@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import v8 from 'node:v8';
 import { fileURLToPath } from 'node:url';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
@@ -12,7 +13,7 @@ import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
 import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
-import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, MOSAIC_KINDS, MOSAIC_RES_KM } from '../js/radar/RadarSimulator.js';
+import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, MOSAIC_KINDS, MOSAIC_RES_KM, STACKED_MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
 import { buildSatellite, satelliteInputs } from '../js/satellite/Satellite.js';
 import { AnvilField } from '../js/satellite/AnvilField.js';
 import { rainFieldInputs, rainFieldOf } from '../js/storms/StormRainFields.js';
@@ -85,7 +86,8 @@ export class WeatherAuthorityRuntime {
     this.autoAdvance = true;
     this.systemNumber = 1;
     // The storms as the game draws them, a frame each storm tick (GameFeed.js).
-    this.gameFeed = new GameFeed({ tickMs: REAL_MS_PER_STORM_TICK, regional });
+    // (Their rain grids are worked out on the radar's threads when there are some.)
+    this.gameFeed = new GameFeed({ tickMs: REAL_MS_PER_STORM_TICK, regional, precipGrids: radarPool ? world => radarPool.precipGrids(world) : null });
     const explicitSeed = seed !== undefined && seed !== null && seed !== '';
     if (explicitSeed || !this.restoreState()) { this.build(seed); this.saveState(); }
   }
@@ -362,7 +364,9 @@ export class WeatherAuthorityRuntime {
     this.productCache.set(cacheKey, pending);
     try {
       const value = await pending;
-      this.productCache.set(cacheKey, value);
+      // (Not when the cache was cleared meanwhile: a new revision has no use for it, and it would
+      // be kept until the next clear - a whole radar scene, 30-150 MB.)
+      if (this.productCache.get(cacheKey) === pending) this.productCache.set(cacheKey, value);
       const durationMs = performance.now() - started;
       const stat = this.performance.productBuilds[key] ??= { count: 0, totalMs: 0, maxMs: 0 };
       stat.count += 1; stat.totalMs += durationMs; stat.maxMs = Math.max(stat.maxMs, durationMs);
@@ -527,10 +531,23 @@ export class WeatherAuthorityRuntime {
     const revision = this.revision, sites = this.radarCatalog().sites;
     return this.cachedAsync('radar:mosaic:' + kind, async () => {
       const scene = await this.radarScene();
-      const mosaic = { ...(this.radarPool ? await this.radarPool.mosaic(scene, sites, kind) : buildRadarMosaic(scene, sites, { kind })), revision };
+      const built = !this.radarPool ? buildRadarMosaic(scene, sites, { kind })
+        : STACKED_MOSAIC_KINDS.includes(kind) ? (await this.radarStackedMosaics(scene, sites, kind))[kind] : await this.radarPool.mosaic(scene, sites, kind);
+      const mosaic = { ...built, revision };
       this.rememberMosaic(kind, mosaic);
       return mosaic;
     });
+  }
+
+  // Composite, echo tops, VIL and hail size sample the same beams: the ones looked at in the last
+  // minute (and kind) are built in one pass on the radar pool's threads (buildRadarMosaics, the same
+  // bytes as each alone), and every one of them asking for this revision shares it. (Kinds already
+  // built for the revision are left out; ones still being built are not, so that the kinds asked for
+  // together, as the prewarm asks, name the same pass.)
+  radarStackedMosaics(scene, sites, kind) {
+    const now = Date.now(), built = k => { const kept = this.productCache.get(`${this.revision}:radar:mosaic:${k}`); return kept !== undefined && typeof kept?.then !== 'function'; };
+    const kinds = STACKED_MOSAIC_KINDS.filter(k => k === kind || (now - (this.radarWanted.get('mosaic|' + k) ?? -Infinity) <= RADAR_PREWARM_MS && !built(k)));
+    return this.cachedAsync('radar:mosaics:' + kinds.join('+'), () => this.radarPool.mosaics(scene, sites, kinds));
   }
 
   // Each radar's lowest scan (on the radar pool's threads), its low-level shear laid on the
@@ -540,8 +557,9 @@ export class WeatherAuthorityRuntime {
     return this.cachedAsync('radar:mosaic:rotationTrack', async () => {
       const scene = await this.radarScene(), { width, height } = mosaicSize(scene);
       const scans = await Promise.all(sites.map(site => this.radarScan(site.id, RADAR_TILTS_DEG[0])));
-      const shear = new Float32Array(width * height);
-      sites.forEach((site, k) => { if (scans[k]) lowLevelShearGrid(shear, width, height, MOSAIC_RES_KM, site, scans[k]); });
+      let shear;
+      if (this.radarPool) shear = await this.radarPool.shearGrid(width, height, sites, scans);
+      else { shear = new Float32Array(width * height); sites.forEach((site, k) => { if (scans[k]) lowLevelShearGrid(shear, width, height, MOSAIC_RES_KM, site, scans[k]); }); }
       const now = scene.validHourUtc, bytes = new Uint8Array(width * height);
       for (let i = 0; i < shear.length; i++) if (shear[i] > 0) bytes[i] = encodeRadarValue('azShear', shear[i]);
       const kept = (this.rotationScans ?? []).filter(s => s.width === width && s.height === height && now - s.validHourUtc < ROTATION_TRACK_HOURS - 1e-6 && Math.abs(now - s.validHourUtc) > 1e-6 && s.validHourUtc < now);
@@ -569,16 +587,29 @@ export class WeatherAuthorityRuntime {
     });
   }
 
+  // The newest mosaic of a kind is kept as it is; the older ones with their grid deflated (a grid is
+  // 648 KB and deflates to 4-70 KB in a few ms: 47 MB for the whole history became ~3 MB, 2026-11-10).
   rememberMosaic(kind, mosaic) {
     const history = this.radarHistory[kind].filter(frame => Math.abs(frame.validHourUtc - mosaic.validHourUtc) > 1e-6);
     history.push({ validHourUtc: mosaic.validHourUtc, mosaic });
     history.sort((a, b) => a.validHourUtc - b.validHourUtc);
-    this.radarHistory[kind] = history.slice(-RADAR_HISTORY_FRAMES);
+    const kept = history.slice(-RADAR_HISTORY_FRAMES);
+    for (let i = 0; i < kept.length - 1; i++) {
+      const frame = kept[i];
+      if (frame.mosaic) { const { bytes, ...rest } = frame.mosaic; kept[i] = { validHourUtc: frame.validHourUtc, packed: { ...rest, deflated: deflateRawSync(bytes, { level: 1 }) } }; }
+    }
+    this.radarHistory[kind] = kept;
   }
 
   // The scan times of the mosaics of a kind kept, and one of them.
-  radarMosaicFrames(kind = 'composite') { return { kind, frames: (this.radarHistory[kind] ?? []).map(({ validHourUtc, mosaic }) => ({ validHourUtc, revision: mosaic.revision })) }; }
-  radarMosaicAt(validHourUtc, kind = 'composite') { return (this.radarHistory[kind] ?? []).find(frame => Math.abs(frame.validHourUtc - validHourUtc) < 1e-6)?.mosaic ?? null; }
+  radarMosaicFrames(kind = 'composite') { return { kind, frames: (this.radarHistory[kind] ?? []).map(({ validHourUtc, mosaic, packed }) => ({ validHourUtc, revision: (mosaic ?? packed).revision })) }; }
+  radarMosaicAt(validHourUtc, kind = 'composite') {
+    const frame = (this.radarHistory[kind] ?? []).find(f => Math.abs(f.validHourUtc - validHourUtc) < 1e-6);
+    if (!frame) return null;
+    if (frame.mosaic) return frame.mosaic;
+    const { deflated, ...rest } = frame.packed;
+    return { ...rest, bytes: new Uint8Array(inflateRawSync(deflated)) };
+  }
 
   // One tilt of one site; all products are simulated together and cached per revision. fine: with
   // the 250 m gates of a close look (RADAR_FINE_GATE_KM) rather than the usual.
@@ -596,7 +627,7 @@ export class WeatherAuthorityRuntime {
   }
 
   // The rotation one radar's volume scan shows (js/radar/RotationDetection.js): its lowest tilts
-  // scanned (on the radar pool's threads), the detections worked out from them here.
+  // scanned and the detections worked out from them (on the radar pool's threads when there is one).
   radarRotation(siteId) {
     const site = this.radarCatalog().sites.find(s => s.id === siteId);
     if (!site) return Promise.resolve(null);
@@ -605,7 +636,7 @@ export class WeatherAuthorityRuntime {
     return this.cachedAsync(`radar:rotation:${site.id}`, async () => {
       const scans = (await Promise.all(tilts.map(tilt => this.radarScan(site.id, tilt)))).filter(Boolean);
       if (!scans.length) return null;
-      return { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...detectRotation(site, scans), revision };
+      return { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...(this.radarPool ? await this.radarPool.rotation(site, scans) : detectRotation(site, scans)), revision };
     });
   }
 

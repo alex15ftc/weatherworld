@@ -56,8 +56,13 @@ local function card(anchor: BasePart, image: string): (Attachment, BillboardGui,
 	bb.Size = UDim2.fromScale(100, 100)
 	bb.Enabled = false
 	bb.ResetOnSpawn = false
+	-- (a turned curtain must not be cut by its box: clipped, its sides were ruler-straight slabs,
+	-- 2026-11-08; the box is sized to the turned image, which keeps its own size, centred)
+	bb.ClipsDescendants = false
 	local img = Instance.new("ImageLabel")
 	img.BackgroundTransparency = 1
+	img.AnchorPoint = Vector2.new(0.5, 0.5)
+	img.Position = UDim2.fromScale(0.5, 0.5)
 	img.Size = UDim2.fromScale(1, 1)
 	img.Image = image
 	img.ImageTransparency = 1
@@ -247,6 +252,8 @@ function Shafts:rebin()
 					-- (its texture frames, from its own cell: by the drawing order, a shaft skipped or
 					-- come back shifted every later one onto another's frames - the curtains swapped
 					-- and jumped as the camera moved, 2026-11-07)
+					-- (its cell: the card that draws it keeps to it - Shafts:draw)
+					key = (if c.vox then "v" else tostring(c.cell)) .. ":" .. tostring(c.bx or 0) .. "," .. tostring(c.by or 0),
 					fr = ((c.bx or 0) * 7 + (c.by or 0) * 13 + c.cell // 1000) % 16,
 					fc = ((c.bx or 0) * 5 + (c.by or 0) * 11 + 3) % 16,
 					vx = if bs and best < 40000 * 40000 then bs.u else 0,
@@ -281,6 +288,9 @@ function Shafts:hide()
 			p.bb.Enabled, p.cbb.Enabled = false, false
 		end
 	end
+	-- (every card free again: shown afresh, faded in, when drawn next)
+	self.byKey = {}
+	self.free = table.clone(self.parts)
 	self.count = 0
 end
 
@@ -326,6 +336,12 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 	local pxK = 0.5 * 2 * tanV / math.max(vp.Y, 1) -- (half a pixel per stud of distance)
 	self.tick = (self.tick or 0) + 1
 	local n = 0
+	self.byKey = self.byKey or {}
+	self.free = self.free or {}
+	local byKey = self.byKey
+	local nowC = os.clock()
+	local kFade = 1 - math.exp(-math.clamp(nowC - (self.drawAt or nowC), 0, 0.5) / 1.0)
+	self.drawAt = nowC
 	for _, sh in self.list do
 		local x, y = sh.x + sh.vx * dt, sh.y + sh.vy * dt
 		-- the curtain spans the local ground (gz) to the cloud base (sh.h, above the datum)
@@ -344,15 +360,21 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		end
 		local d = (P - camM).Magnitude
 		n += 1
-		local p = self.parts[n]
+		-- (each shaft keeps its own card, by its cell: by drawing order, one shaft dropped or added
+		-- moved every later card onto another shaft in one frame - curtains popping, 2026-11-08)
+		local p = byKey[sh.key]
 		if not p then
-			p = newShaft(self)
-			self.parts[n] = p
-			local fr = (n * 7) % 16
-			p.cimg.ImageRectOffset = Vector2.new((fr % 4) * 256, (fr // 4) * 256)
-			local fc = (n * 5 + 3) % 16
-			p.img.ImageRectOffset = Vector2.new((fc % 4) * 256, (fc // 4) * 256)
+			p = table.remove(self.free)
+			if not p then
+				p = newShaft(self)
+				table.insert(self.parts, p)
+			end
+			byKey[sh.key] = p
+			p.aS, p.sh, p.wp, p.cwp = 0, nil, nil, nil
+			p.cimg.ImageRectOffset = Vector2.new((sh.fr % 4) * 256, (sh.fr // 4) * 256)
+			p.img.ImageRectOffset = Vector2.new((sh.fc % 4) * 256, (sh.fc // 4) * 256)
 		end
+		p.seen = self.tick
 		-- on screen? (a cone round the view, widened by the curtain's own angular size: the curtain
 		-- and its cap in one sphere round the curtain's middle)
 		-- (the game: about its storm's anchor at the storm's scale, LabConfig.stormAnchor, so the curtain
@@ -419,7 +441,9 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		local f = Util.hazeF(d)
 		col = Util.quant(Util.mix(col, L.haze, f))
 		-- (haze is in the colour already; it only thins the curtain a little)
-		local a = sh.a * (1 - 0.4 * f) * near
+		-- (eased: a curtain comes and goes over ~1 s as the rain field changes, never at once)
+		p.aS = (p.aS or 0) + (sh.a * (1 - 0.4 * f) * near - (p.aS or 0)) * kFade
+		local a = p.aS
 		-- rain between the camera and the shaft fogs it (billboards ignore the Atmosphere)
 		-- (toward the storm cards' rain-fog colour: the light under the storm, Render/StormCards)
 		local fog = sh.fog or 0
@@ -433,10 +457,6 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 			p.att.WorldPosition = wp
 		end
 		local bw, bh = sh.w * wK * k, hh * 1.3 * k
-		if not p.bw or math.abs(bw - p.bw) > thr or math.abs(bh - p.bh) > thr then
-			p.bw, p.bh = bw, bh
-			p.bb.Size = UDim2.fromScale(bw, bh)
-		end
 		-- slant: the wind across the line of sight against the fall speed (hail falls faster).
 		-- Screen right for a view along (dx, dy) is (dy, -dx); the foot goes downwind, so the
 		-- image turns the other way (Rotation is clockwise)
@@ -447,8 +467,14 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 		local rot = -math.deg(math.clamp(math.atan2(across, fall), -0.6, 0.6))
 		-- (a turn shows as the curtain's foot moving: half a pixel at its half-height)
 		local rotThr = math.deg(thr / math.max(0.5 * bh, 1))
-		if not p.rot or math.abs(rot - p.rot) > rotThr then
-			p.rot = rot
+		local resize = not p.bw or math.abs(bw - p.bw) > thr or math.abs(bh - p.bh) > thr
+		if resize or not p.rot or math.abs(rot - p.rot) > rotThr then
+			p.bw, p.bh, p.rot = bw, bh, rot
+			-- the box round the turned curtain; the image its own size inside it
+			local cr, sr = math.abs(math.cos(math.rad(rot))), math.abs(math.sin(math.rad(rot)))
+			local BW, BH = bw * cr + bh * sr, bw * sr + bh * cr
+			p.bb.Size = UDim2.fromScale(BW, BH)
+			p.img.Size = UDim2.fromScale(bw / math.max(BW, 1e-6), bh / math.max(BH, 1e-6))
 			p.img.Rotation = rot
 		end
 		if p.col ~= col then
@@ -487,12 +513,25 @@ function Shafts:draw(cam: Vector3, simT: number, _D: number): number
 			p.bb.Enabled, p.cbb.Enabled = true, true
 		end
 	end
-	-- hide the unused ones
-	for j = n + 1, #self.parts do
-		local p = self.parts[j]
-		if p.on then
-			p.on = false
-			p.bb.Enabled, p.cbb.Enabled = false, false
+	-- shafts gone this frame: faded out, then their cards freed
+	for key, p in byKey do
+		if p.seen ~= self.tick then
+			p.aS = (p.aS or 0) * (1 - kFade)
+			if p.aS < 0.01 then
+				if p.on then
+					p.on = false
+					p.bb.Enabled, p.cbb.Enabled = false, false
+				end
+				byKey[key] = nil
+				table.insert(self.free, p)
+			else
+				local tr = 1 - p.aS
+				p.tr = tr
+				p.img.ImageTransparency = tr
+				local ctr = 1 - math.clamp(p.aS * 1.15, 0, 0.9)
+				p.ctr = ctr
+				p.cimg.ImageTransparency = ctr
+			end
 		end
 	end
 	self.count = n

@@ -24,7 +24,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
-local WorldMap = require(ReplicatedStorage.Shared.World.WorldMap)
+local WorldMap = require(game:GetService("ServerStorage").World.WorldMap)
 local StormFrames = require(ReplicatedStorage.Shared.CloudModel.StormFrames) :: any
 local ClientFrame = require(ReplicatedStorage.Shared.CloudModel.ClientFrame) :: any
 local EncodingService = game:GetService("EncodingService")

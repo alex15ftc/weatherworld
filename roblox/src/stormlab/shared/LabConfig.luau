@@ -369,7 +369,13 @@ LabConfig.TEXTURES = {
 	-- a wide funnel's body, so its edge stays ~25-35 m thick in metres as the cone's is
 	smoothPuffSharp2 = "rbxassetid://138534512646957",
 	smoothPuffSharp4 = "rbxassetid://95258316119524",
-	hazePuffFlat = "rbxassetid://72760570308893", -- soft haze puff: slow falloff, no disc or rim, one tone (tools/haze_puff.py; tornado smoke body)
+	-- (the firm-sided haze puff, 2026-11-09: firm across, soft along, no end - tools/haze_firm.py. The
+	-- haze puff, "rbxassetid://72760570308893", tools/haze_puff.py, fell off slowly every way: stacked,
+	-- a funnel with no outline - "very blurry even in close range", user)
+	hazePuffFlat = "rbxassetid://94850258356163", -- tornado smoke body
+	-- (the skin keeps the soft haze puff: its cards lie across a wide funnel's face, and the firm
+	-- one's sides drew each as a vertical band down the wedge, 2026-11-09)
+	hazeSoftFlat = "rbxassetid://72760570308893",
 	-- a horizontal slice of a column: crisp sides (0.86 of the frame wide), soft top and bottom
 	-- (smoke_flipbook.py --variant firm --single --flat --slice): the funnel's crisp core
 	sliceFlat = "rbxassetid://78396908460708",
@@ -412,6 +418,22 @@ LabConfig.TEXTURES = {
 	-- uploaded 2026-10-22 for the particle tornado): the near-field VFX clouds (Render/NearVfx)
 	smokeLoop = "rbxassetid://107651069089548",
 }
+-- Wide puffs for flattened cards (tools/smoke/wide_puff.py, 2026-11-10). A billboard is an upright
+-- rectangle; a card flattened as the camera sees a level sheet side-on (CardPlan seenHeight,
+-- WallStream's bands) drew its square puff squashed up to 1:6 - smeared billows, "stretched from
+-- certain angles", user 2026-11-10. A puff card wider than ~1.4:1 takes the texture made at the
+-- nearest width:height (2, 4 or 8), so it is stretched by at most ~1.4x and its billows stay
+-- round. detail: the gas-puff look (two each); haze: the same shape, no texture (small on screen).
+-- enabled=false: the old squashed textures (to compare).
+LabConfig.WIDE_PUFFS = {
+	enabled = true,
+	detail = {
+		[2] = { "rbxassetid://92609642181775", "rbxassetid://110194059910493" },
+		[4] = { "rbxassetid://106021577822620", "rbxassetid://119485533826314" },
+		[8] = { "rbxassetid://88187456794162", "rbxassetid://84795806300945" },
+	},
+	haze = { [2] = "rbxassetid://85091618545178", [4] = "rbxassetid://88617459363087", [8] = "rbxassetid://121121587707153" },
+}
 -- Near-field VFX (Render/NearVfx): cards within particle reach (~800 studs) are re-drawn as
 -- particle smoke volumes. Key B toggles it. Shelved 2026-10-29 (user: billboards and shaders instead): off.
 LabConfig.NEAR_VFX = { enabled = false, maxSlots = 64, nearEnd = 720, nearFull = 520 }
@@ -441,11 +463,29 @@ LabConfig.LOBE_SHADER = { enabled = false, bins = { -0.8, -0.4, 0, 0.4, 0.8 }, f
 -- first, cauliflower bake was replaced; v3 adds firmer edges + rim wisps: lobe_post.py defaults;
 -- texture ids, not the decal ids. v4 2026-10-31: no rim wisps, raw passes denoised - lobe_post.py
 -- --wisps 0 --denoise 3 - the speckled rim drew a grainy outline on cards big on screen)
+-- v5 2026-11-09, now the *_firm sets (tools/blender/lobe_firm.py --contrast 1.8 --lo 0.12 --hi 0.6 on the v4 sheets): firmer
+-- rims, ~1.8 x the shading inside each lobe - the storm read blurry at any range, user. v4 ids:
+--   tower front 84014312486340 side 95586533131436 back 81705183469665
+--   tower_near front 130507213899235 side 75604749825126 back 72524462222991
+--   under front 121651235590542 side 93248647927015 back 80472779592124 amb 127369441479854
+--   under_near front 78423612799463 side 71189308176184 back 122617935129173 amb 105165090577329
 LabConfig.LOBES = {
-	tower = { front = "rbxassetid://84014312486340", side = "rbxassetid://95586533131436", back = "rbxassetid://81705183469665" },
+	tower = { front = "rbxassetid://118195514095855", side = "rbxassetid://117760657263687", back = "rbxassetid://134967996624773" },
 	tower_near = { front = "rbxassetid://130507213899235", side = "rbxassetid://75604749825126", back = "rbxassetid://72524462222991" },
+	-- (the underside keeps v4: v5's firmer shading is the sun's on a lump, and a base is lit from the
+	-- sky and ground - as v5 the hanging lumps and the lowering drew as round grey bubbles from far,
+	-- grade 2026-11-09. v5 under: front 116850296978424 side 74941228897478 back 91883228394286
+	-- amb 113449256956605)
 	under = { front = "rbxassetid://121651235590542", side = "rbxassetid://93248647927015", back = "rbxassetid://80472779592124", amb = "rbxassetid://127369441479854" },
 	under_near = { front = "rbxassetid://78423612799463", side = "rbxassetid://71189308176184", back = "rbxassetid://122617935129173", amb = "rbxassetid://105165090577329" },
+	-- (v5's firm near sheets only on cards within a few km - StormCards.LOBE_FIRM_M: on every card big
+	-- on screen the tower read as cauliflower and the base as fish-scale lenses from 4-8 km,
+	-- supercell grade 2026-11-09; v4 near sheets above)
+	tower_firm = { front = "rbxassetid://73282268460785", side = "rbxassetid://91274583250452", back = "rbxassetid://129399246130311" },
+	-- (no under_firm: v5's firm rims and shading are a sunlit lump's; a base's underside is lit by the
+	-- sky and the ground only, and the firm sheet drew it overhead as dark hard-rimmed ovals - close
+	-- grade 2026-11-09. Its ids: front 72045382951777 side 124358417542767 back 130914096157647
+	-- amb 120648780133046)
 	soft = { front = "rbxassetid://128994249792191", side = "rbxassetid://131961352586350", back = "rbxassetid://95460841583476" },
 }
 -- Dynamic scud (client/Render/Scud): fragments that condense in lifted, nearly saturated air under

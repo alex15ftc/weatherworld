@@ -225,7 +225,32 @@ function NearPrecip.new(ctx)
 		-- extinction (1/km)
 		local ext, dust = 0, 0
 		-- (rain and hail through C.rainExtinction's precipitation-visibility factor; dust is not)
-		ext += C.rainExtinction(rain)
+		-- Render/Sky turns this into one Atmosphere density that Roblox applies at every distance, so
+		-- it is the mean of the rain's extinction along the view, out to where the camera's own rain
+		-- would hide everything (optical depth 3): the camera's value in wide rain, less in a small
+		-- patch. As the local value, a light shower round a camera 35 km from a storm hazed the storm
+		-- at depth ~2 behind rain grey (a dark slab under a blue sky) where the rain on the line to
+		-- it was ~0.25 (StormCards' rainFog), 2026-11-09
+		local ext0 = C.rainExtinction(rain)
+		if ext0 > 0 then
+			local look = ctx.camera.CFrame.LookVector
+			local lx, ly = look.X, -look.Z
+			local lh = math.sqrt(lx * lx + ly * ly)
+			if lh > 0.2 then
+				lx, ly = lx / lh, ly / lh
+				local reach = 3 / ext0 * 1000 / math.max(C.sightPath(1), 1e-6) -- (sim m: drawn depth 3)
+				reach = math.min(reach, 60000)
+				local n, sum = 10, 0
+				for i = 1, n do
+					local s = (i - 0.5) / n * reach
+					local px, py = cx + lx * s, cy + ly * s
+					local r = if ctx.precipAt then ctx.precipAt(C.toWorld(px, py, 0)) else (surface(px, py))
+					sum += C.rainExtinction((r or 0) * aloft)
+				end
+				ext0 = math.min(ext0, sum / n) -- (never more than the camera's own: the cards fog their own rain)
+			end
+		end
+		ext += ext0
 		if hailCm > 0.3 then
 			ext += 0.8 * hailCm * math.min(1, rain / 10 + 0.3) * C.frame.precipVisibility
 		end
@@ -347,16 +372,21 @@ function NearPrecip.new(ctx)
 		end
 
 		-- splashes and hail
+		-- (a particle rate written when it moves 2%, or to or from 0: each write is a property change)
+		local function rateMoved(old: number?, new: number): boolean
+			return old == nil or (old == 0) ~= (new == 0) or math.abs(new - old) > 0.02 * math.max(old, new)
+		end
 		local nearGround = above < SPLASH_RANGE
 		local groundPos = Vector3.new(camPos.X, st.groundY + S(0.15), camPos.Z)
 		-- (splashes only in heavy rain: lighter rain is the fog alone)
 		local splashRate = if nearGround and R > 8 then 900 * heavy ^ 1.5 * Util.ramp(R, 8, 20) else 0
 		local hailK = Util.ramp(st.hail, 0.4, 0.7)
 		local hailOn = hailK > 0
-		if nearGround or st.splashOn then
+		-- (moved only while something emits from it: splashes, or hail bouncing near the ground)
+		if (nearGround and (splashRate > 1 or hailOn)) or st.splashOn then
 			groundPart.CFrame = CFrame.new(groundPos)
 		end
-		if splashRate ~= st.splashRate then
+		if rateMoved(st.splashRate, splashRate) then
 			st.splashRate = splashRate
 			splash.Rate = splashRate
 		end
@@ -402,11 +432,11 @@ function NearPrecip.new(ctx)
 			end
 			local bRate = if nearGround then rate * 0.8 else 0
 			local sRate = if nearGround then rate * 0.35 else 0
-			if rate ~= st.hailRate then
+			if rateMoved(st.hailRate, rate) then
 				st.hailRate = rate
 				hail.Rate = rate
 			end
-			if bRate ~= st.bounceRate then
+			if rateMoved(st.bounceRate, bRate) then
 				st.bounceRate = bRate
 				bounce.Rate = bRate
 			end

@@ -9,7 +9,7 @@
 //   WEATHER_RADAR_IDLE_SECONDS sets how long a thread with nothing to do is kept.
 import os from 'node:os';
 import { Worker } from 'node:worker_threads';
-import { assembleRadarScene, mosaicSize } from '../js/radar/RadarSimulator.js';
+import { assembleRadarScene, mosaicSize, MOSAIC_RES_KM, MOSAIC_PRODUCT } from '../js/radar/RadarSimulator.js';
 import { rainFieldInputs, rainFieldsFor } from '../js/storms/StormRainFields.js';
 
 const WORKER_SCRIPT = new URL('./radarWorker.js', import.meta.url);
@@ -51,6 +51,29 @@ export class RadarPool {
     return { ...rest, bytes, buildMs: performance.now() - started };
   }
 
+  // Composite, echo tops, VIL and hail size together (buildRadarMosaics: one pass for all the kinds
+  // asked for, the same bytes as each alone): { kind: mosaic }.
+  async mosaics(scene, sites, kinds) {
+    const { height } = mosaicSize(scene), count = Math.min(height, this.size * STRIPS_PER_THREAD);
+    const started = performance.now();
+    const strips = await Promise.all(Array.from({ length: count }, (_, k) =>
+      this.run({ kind: 'mosaics', sites, kinds, rows: [Math.round(k * height / count), Math.round((k + 1) * height / count)] }, scene)));
+    const { width, validHourUtc } = strips[0], buildMs = performance.now() - started;
+    return Object.fromEntries(kinds.map(kind => {
+      const bytes = new Uint8Array(width * height);
+      for (const strip of strips) bytes.set(strip.bytes[kind], strip.rows[0] * width);
+      return [kind, { width, height, resKm: MOSAIC_RES_KM, kind, product: MOSAIC_PRODUCT[kind], composite: kind === 'composite', validHourUtc, bytes, buildMs }];
+    }));
+  }
+
+  // The rotation one radar's scans show (detectRotation), worked out on a thread. Only the
+  // velocity and reflectivity of each scan are sent.
+  rotation(site, scans) { return this.run({ kind: 'rotation', site, scans: scans.map(rotationInputs) }); }
+
+  // The radars' lowest scans' low-level shear laid on the mosaic grid (lowLevelShearGrid for each):
+  // a Float32Array of width * height.
+  shearGrid(width, height, sites, scans) { return this.run({ kind: 'shearGrid', width, height, sites, scans: scans.map(scan => scan && rotationInputs(scan)) }); }
+
   // These storms' fields (as above), worked out on the threads: Map of storm id -> field or null.
   async stormFields(world, storms) {
     const ids = new Set(storms.map(s => s.id)), inputs = rainFieldInputs(world).storms.filter(input => ids.has(input.storm.id));
@@ -59,6 +82,17 @@ export class RadarPool {
   }
 
   field(input) { return this.run({ kind: 'echo', input: { ...input, storm: stormToSend(input.storm) } }); }
+
+  // The game feed's rain grids (js/radar/StormPrecipGrid.js, buildStormPrecipGrids' Map) for the
+  // storms as they are now, worked out on the threads: the world is read before this returns, and
+  // the Promise gives the same grids buildStormPrecipGrids(world) would have then. (The storms'
+  // inputs are the ones the radar's fields are worked out from: rainFieldInputs.)
+  precipGrids(world) {
+    if (!(world.storms ?? []).some(storm => storm.active !== false && storm.structure)) return new Map();
+    const inputs = rainFieldInputs(world).storms;
+    return Promise.all(inputs.map(input => this.run({ kind: 'precipGrid', input: { ...input, storm: stormToSend(input.storm) } })))
+      .then(grids => new Map(inputs.map((input, k) => [input.storm.id, grids[k]])));
+  }
 
   // (gateKm: the gates' length, RADAR_GATE_KM unless a close look asks for finer)
   scan(scene, site, tiltDeg, gateKm = undefined) { return this.run({ kind: 'scan', site, tiltDeg, gateKm }, scene); }
@@ -115,6 +149,10 @@ export class RadarPool {
     const workers = [...this.workers]; this.workers.clear(); this.idle = [];
     return Promise.all(workers.map(worker => { clearTimeout(worker.idleTimer); const task = worker.task; worker.task = null; task?.reject(new Error('the radar pool was stopped')); return worker.terminate(); }));
   }
+}
+
+function rotationInputs(scan) {
+  return { tiltDeg: scan.tiltDeg, products: { velocity: scan.products.velocity, reflectivity: scan.products.reflectivity } };
 }
 
 function stormToSend(storm) {

@@ -10,6 +10,12 @@
 //   /life/goto?i=N   serve moment N (also ?stage=pre|touchdown|mature|decay|rope|post: its first)
 //   /life/next, /life/prev
 //   /life/now        the moment being served
+//   /life/play?from=A&to=B&move=1&pass=1.5&rate=1
+//                    play the life on the game's 8x clock (x rate) from moment A to B, the served
+//                    moment stepping on as game time passes it. move=1: the storm runs its recorded
+//                    track and motion, set so it passes the player pass km to the right of its path
+//                    (negative: left) halfway through; move=0: it stays where it was placed.
+//                    /life/stop ends it (the moment reached stays served)
 // Steps:
 //   1 search: run the day until a tornado of at least MIN_MPH has touched down and ended; its storm
 //     is the target (cached in OUT/target.json)
@@ -141,7 +147,33 @@ let seq = Math.floor(Date.now() / 1000);
 let near, far;
 // (the clock runs at the game's 8x from the moment's hour, as torserve4's: the storm stays as recorded)
 let loadedAt = Date.now();
-const simHour = () => frames[cur].hour + ((Date.now() - loadedAt) / 1000) * 8 / 3600;
+let lift = false
+let play = null; // { from, to, rate, move, t0, ref, anchor: [x, y] }
+const simHour = () => play
+  ? Math.min(frames[play.to].hour, frames[play.from].hour + ((Date.now() - play.t0) / 1000) * 8 * play.rate / 3600)
+  : frames[cur].hour + ((Date.now() - loadedAt) / 1000) * 8 / 3600;
+// (moving on its track now: playing with move=1 and not yet at its last moment)
+const moving = () => !!play?.move && simHour() < frames[play.to].hour - 1e-9;
+// the recorded track at game hour h (map km, y south): the moment before h, moved on at its motion
+function trackAt(h) {
+  let i = 0;
+  while (i + 1 < frames.length && frames[i + 1].hour <= h) i++;
+  const f = frames[i], dt = (h - f.hour) * 3600;
+  return [f.pos[0] + f.motion[0] * dt / 1000, f.pos[1] - f.motion[1] * dt / 1000];
+}
+// while playing: the moment for now, and where the storm is shown
+function playStep() {
+  if (!play) return;
+  const h = simHour();
+  let i = play.from;
+  while (i + 1 <= play.to && frames[i + 1].hour <= h + 1e-9) i++;
+  if (i !== cur) { const keep = loadedAt; load(i); loadedAt = keep; }
+  if (play.move) {
+    const p = trackAt(h);
+    shown.x = play.anchor[0] + p[0] - play.ref[0];
+    shown.y = play.anchor[1] + p[1] - play.ref[1];
+  }
+}
 function load(i) {
   cur = Math.max(0, Math.min(frames.length - 1, i));
   near = Buffer.from(frames[cur].near, 'base64');
@@ -179,6 +211,29 @@ http.createServer(async (req, res) => {
     console.log('storm placed at km', shown.x.toFixed(2), shown.y.toFixed(2));
     return json({ x: shown.x, y: shown.y });
   }
+  if (url.pathname === '/life/play') {
+    const from = Math.max(0, Math.min(frames.length - 1, Number(url.searchParams.get('from') ?? cur)));
+    const to = Math.max(from, Math.min(frames.length - 1, Number(url.searchParams.get('to') ?? frames.length - 1)));
+    const move = url.searchParams.get('move') === '1', rate = Number(url.searchParams.get('rate') ?? 1);
+    const pass = Number(url.searchParams.get('pass') ?? 1.5);
+    const hMid = 0.5 * (frames[from].hour + frames[to].hour);
+    const ref = trackAt(hMid);
+    // halfway through, the storm is pass km from the player, square to its path on the path's
+    // right: right of a heading (e, n) is (n, -e) east/north, i.e. (n, +e) in map km with y south
+    const m = frames[Math.round(0.5 * (from + to))].motion, ml = Math.hypot(m[0], m[1]) || 1;
+    const ex = m[0] / ml, ny = m[1] / ml;
+    const base = lastPlayer ?? [shown.x, shown.y];
+    const anchor = [base[0] + pass * ny, base[1] + pass * ex];
+    play = { from, to, rate, move, t0: Date.now(), ref, anchor };
+    load(from);
+    playStep();
+    console.log('play', from, '->', to, move ? `moving, passes ${pass} km` : 'held', 'rate', rate);
+    return json({ from, to, move, rate, hours: [frames[from].hour, frames[to].hour], realSeconds: (frames[to].hour - frames[from].hour) * 3600 / 8 / rate });
+  }
+  // /life/lift?on=1: the served storm's look says its tornado has lifted (look value 12, mph = 0), so the
+  // game's tornado ropes out on its own physics - the recorded ones end still wide and rain-wrapped
+  if (url.pathname === '/life/lift') { lift = url.searchParams.get('on') === '1'; seq++; return json({ lift }); }
+  if (url.pathname === '/life/stop') { play = null; return json(summary(frames[cur])); }
   if (url.pathname === '/life/next') { load(cur + 1); return json(summary(frames[cur])); }
   if (url.pathname === '/life/prev') { load(cur - 1); return json(summary(frames[cur])); }
   if (url.pathname === '/life/goto') {
@@ -186,6 +241,7 @@ http.createServer(async (req, res) => {
     load(st ? Math.max(0, frames.findIndex(f => f.stage === st)) : Number(url.searchParams.get('i') ?? cur));
     return json(summary(frames[cur]));
   }
+  playStep();
   const fr = frames[cur];
   if (url.pathname === '/api/game/v1/storm/players') {
     let body = '';
@@ -206,7 +262,8 @@ http.createServer(async (req, res) => {
     const chunks = fresh ? [...idB(key), u32(seq), u8(2), u32(0), u32(near.length), near, u32(far.length), far] : [];
     const tail = Buffer.alloc(17); tail.writeDoubleLE(simHour()); tail[8] = 0; tail.writeDoubleLE(Date.now(), 9);
     const v = fr.look.values.slice(); v[0] += shown.x - fr.pos[0]; v[1] += shown.y - fr.pos[1];
-    return send('application/octet-stream', Buffer.concat([u8(5), u16(fresh ? 1 : 0), ...chunks, u16(1), ...idB(key), u8(0), f32s(shown.x, shown.y, 0, 0, ...fr.lightning), u8(1 | (fr.look.leftMover ? 2 : 0)), f32s(...v), tail]));
+    if (lift) v[11] = 0;
+    return send('application/octet-stream', Buffer.concat([u8(5), u16(fresh ? 1 : 0), ...chunks, u16(1), ...idB(key), u8(0), f32s(shown.x, shown.y, moving() ? fr.motion[0] * play.rate : 0, moving() ? fr.motion[1] * play.rate : 0, ...fr.lightning), u8(1 | (fr.look.leftMover ? 2 : 0)), f32s(...v), tail]));
   }
   if (url.pathname === '/api/game/v1/lab/window') {
     const x = Number(url.searchParams.get('x')) - shown.x + fr.pos[0], y = Number(url.searchParams.get('y')) - shown.y + fr.pos[1];
@@ -223,7 +280,7 @@ http.createServer(async (req, res) => {
       const to = [(shown.x - c.x) * 1000, -(shown.y - c.y) * 1000];
       if (st.tornado?.pos) st.tornado.pos = [st.tornado.pos[0] + to[0] - st.pos[0], st.tornado.pos[1] + to[1] - st.pos[1]];
       st.pos = to;
-      st.motion = [0, 0];
+      st.motion = moving() ? fr.motion : [0, 0];
     }
     return json({ ...r, centreMapKm: c, simHourUtc: simHour(), paused: true });
   }

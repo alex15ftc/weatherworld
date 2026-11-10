@@ -14,7 +14,7 @@
 -- What stands on the land (Sites: land use, gas stations, schools, campuses, airfields, energy)
 -- is placed by Props/Buildings. Server only.
 
-local Config = require(script.Parent.Config)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 local WorldMap = require(script.Parent.WorldMap)
 local Heightfield = require(script.Parent.Heightfield)
 local Builder = require(script.Parent.Props.Builder)
@@ -23,9 +23,9 @@ local RoadNet = require(script.Parent.Props.RoadNet)
 local Roads = require(script.Parent.Props.Roads)
 local Bridges = require(script.Parent.Props.Bridges)
 local Buildings = require(script.Parent.Props.Buildings)
-local Interchanges = require(script.Parent.Interchanges)
+local Interchanges = require(game:GetService("ReplicatedStorage").Shared.World.Interchanges)
 local Sites = require(script.Parent.Sites)
-local LandSurface = require(script.Parent.LandSurface)
+local LandSurface = require(game:GetService("ReplicatedStorage").Shared.World.LandSurface)
 
 local ChunkGen = {}
 
@@ -101,7 +101,13 @@ function ChunkGen.prepare(cx: number, cz: number)
 	WorldMap.ensure(mx0, my0, mx1, my1)
 end
 
-function ChunkGen.key(cx: number, cz: number): string
+-- A chunk's numeric key (exact for |cx|, |cz| < 32768: far beyond the map), and the name of its
+-- props model.
+function ChunkGen.key(cx: number, cz: number): number
+	return (cx + 32768) * 65536 + (cz + 32768)
+end
+
+function ChunkGen.name(cx: number, cz: number): string
 	return `{cx},{cz}`
 end
 
@@ -680,14 +686,27 @@ end
 
 local CLASSES = { Block = "Part", Ball = "Part", Cylinder = "Part", Wedge = "WedgePart", CornerWedge = "CornerWedgePart" }
 
--- Creates a chunk's props (serial phase only) in a model under parent.
-function ChunkGen.place(props: Builder.Props, parent: Instance, name: string): Model
+-- Creates a chunk's props (serial phase only) in a model under parent. With budgetMs, the parts
+-- are made a slice at a time, yielding a frame whenever a slice has taken that long, so a big
+-- chunk does not stall one frame; the model is parented only once it is complete, so the chunk
+-- appears (and replicates) at once, after its terrain. Returns the model and the time spent on it
+-- (ms, without the frames waited).
+function ChunkGen.place(props: Builder.Props, parent: Instance, name: string, budgetMs: number?): (Model, number)
 	local model = Instance.new("Model")
 	model.Name = name
 	pcall(function()
 		model.LevelOfDetail = Enum.ModelLevelOfDetail.StreamingMesh
 	end)
-	for _, p in props do
+	local budget = if budgetMs then budgetMs / 1000 else math.huge
+	local sliceStart = os.clock()
+	local spent = 0
+	for i, p in props do
+		if i % 32 == 0 and os.clock() - sliceStart > budget then
+			spent += os.clock() - sliceStart
+			task.wait()
+			task.synchronize() -- (an actor's thread: stay in the serial phase)
+			sliceStart = os.clock()
+		end
 		local part = Instance.new(CLASSES[p.shape] or "Part") :: BasePart
 		if p.shape == "Ball" then
 			(part :: Part).Shape = Enum.PartType.Ball
@@ -719,7 +738,7 @@ function ChunkGen.place(props: Builder.Props, parent: Instance, name: string): M
 		part.Parent = model
 	end
 	model.Parent = parent
-	return model
+	return model, (spent + os.clock() - sliceStart) * 1000
 end
 
 -- Ground height (studs) at a point, without rivers, lakes or roads: for placing things before

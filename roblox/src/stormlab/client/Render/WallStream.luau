@@ -21,6 +21,7 @@
 -- StormCards' smoothed one, so the stream stays on the scud and the base around it.
 local Workspace = game:GetService("Workspace")
 local Util = require(script.Parent:WaitForChild("CloudParts"):WaitForChild("Util"))
+local WidePuff = require(script.Parent:WaitForChild("CloudParts"):WaitForChild("WidePuff"))
 
 local WallStream = {}
 
@@ -29,6 +30,7 @@ local TAIL_SLOTS = 5 -- cross-section: core, two shoulders, two feathered edges
 local NLARGE, NMED = 20, 45 -- of the body: big inside pieces, medium outline lumps; the rest small wisps
 local MAXS = 3 -- lowerings drawn (those with a tornado first, then nearest): 2 storms' wall clouds, or a storm's and its detached old one
 local RANGE = 40000 -- m (not for a lowering with a tornado drawn under it: the tornado has no range)
+local WALL_CARDS_PX = 200 -- a lowering narrower than this on screen is StormCards' card wall (ctx.wallFar)
 local TAU = 2 * math.pi
 local exp, sqrt, cos, sin, max, min, clamp, abs = math.exp, math.sqrt, math.cos, math.sin, math.max, math.min, math.clamp, math.abs
 
@@ -46,6 +48,7 @@ end
 
 function WallStream.new(ctx: any): any
 	local C = ctx.Config
+	WidePuff.init(C)
 	local self = {}
 	local folder = Instance.new("Folder")
 	folder.Name = "WallStream"
@@ -56,7 +59,7 @@ function WallStream.new(ctx: any): any
 	anchor.Transparency = 1
 	anchor.Size = Vector3.one
 	anchor.Parent = folder
-	game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
+	local keyConn = game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
 		if not processed and input.KeyCode == Enum.KeyCode.Y then
 			local cur = ctx.state.wallStyle or C.WALL_STYLE or "stream"
 			ctx.state.wallStyle = if cur == "stream" then "cards" else "stream"
@@ -136,6 +139,14 @@ function WallStream.new(ctx: any): any
 	-- (the side-on tier texture: off by LabConfig.WALL_TIER. Its crisp lens, rotated with each
 	-- piece, drew the lowering's outline as a ring of dark pointed teeth seen from 3 km - the game
 	-- regrade's worst fault, 2026-11-07; the soft puffs alone read as one smooth lowering)
+	-- (the body's puffs: the four detailed 1024 px gas puffs - soft billows with fine texture inside
+	-- and fuzzy, not firm, edges - else the featureless soft puff. With that one alone the whole
+	-- lowering read as one blur up close, user 2026-11-09)
+	local PUFF2 = { C.TEXTURES.gasPuff2A or "", C.TEXTURES.gasPuff2B or "", C.TEXTURES.gasPuff2C or "", C.TEXTURES.gasPuff2D or "" }
+	local function bodyTex(i: number): string
+		local t = PUFF2[i % 4 + 1]
+		return if t ~= "" then t else C.TEXTURES.softFlat
+	end
 	local TIER = if C.WALL_TIER == true then (C.TEXTURES.wallTierFlat or "") else ""
 	-- (a wisp: one frame of the 2x2 fibre sheet, streaks along its x; fixed for the sprite's life)
 	local function makeWisp(c: any, i: number)
@@ -144,12 +155,18 @@ function WallStream.new(ctx: any): any
 		end
 		local f = i % 4
 		c.img.Image = WISP
+		c.imgT = WISP
+		c.shown = WISP -- (the image written: read back from here, not from the instance)
 		c.img.ImageRectSize = Vector2.new(512, 512)
 		c.img.ImageRectOffset = Vector2.new((f % 2) * 512, (f // 2) * 512)
 		c.wisp = true
 	end
 
 	local camS, pxK = Vector3.zero, 0
+	local DETAIL_PX = 120
+	-- (small on screen, the soft haze puff - slow falloff, no disc: the smooth puff's round edge drew
+	-- the far tail and underside as a row of grey bubbles, judge 2026-11-09)
+	local FAR_TEX = if (C.TEXTURES.hazeSoftFlat or "") ~= "" then C.TEXTURES.hazeSoftFlat else TEX
 	local function newPuff(i: number): any
 		local att = Instance.new("Attachment")
 		att.Parent = anchor
@@ -168,7 +185,24 @@ function WallStream.new(ctx: any): any
 		img.ImageTransparency = 1
 		img.Parent = bb
 		bb.Parent = anchor
-		return { att = att, bb = bb, img = img, on = false, tr = 1, rot = rnd(i, 9) * 360 }
+		return { att = att, bb = bb, img = img, imgT = TEX, shown = TEX, vi = i, on = false, tr = 1, rot = rnd(i, 9) * 360 }
+	end
+	-- the image drawn: c.imgT (the square texture chosen), or its wide version when the card is
+	-- flattened past ~1.4:1 (CloudParts/WidePuff: squashed, a square puff smeared into streaks seen
+	-- side-on, user 2026-11-10). The wisp sheet and the tier texture keep their own frames.
+	local function showImg(c: any, wS: number, hS: number)
+		local want = c.imgT
+		if WidePuff.on() and want ~= WISP and want ~= TIER then
+			c.wb = WidePuff.bucket(wS, hS, c.wb)
+			local wide = WidePuff.texture(c.wb, want ~= FAR_TEX and want ~= TEX, c.vi or 0)
+			if wide then
+				want = wide
+			end
+		end
+		if c.shown ~= want then
+			c.shown = want
+			c.img.Image = want
+		end
 	end
 	-- (writes only for changes that show: half a pixel, 1/500 in colour or opacity)
 	local function setOn(c: any, v: boolean)
@@ -189,6 +223,17 @@ function WallStream.new(ctx: any): any
 			c.sw, c.sh = wS, hS
 			c.bb.Size = UDim2.fromScale(wS, hS)
 		end
+		-- the detailed puff only where it is big on screen (DETAIL_PX, a little hysteresis): small,
+		-- its fine texture inside drew the far lowering as a grainy clump (judge 2026-11-09)
+		if c.dTex then
+			local px = max(wS, hS) / max(2 * thr, 1e-6)
+			local want = if c.detailOn then px > 0.8 * DETAIL_PX else px > DETAIL_PX
+			if want ~= c.detailOn then
+				c.detailOn = want
+				c.imgT = if want then c.dTex else FAR_TEX
+			end
+		end
+		showImg(c, wS, hS)
 	end
 	local function setTr(c: any, tr: number)
 		if c.trW == nil or abs(tr - c.trW) > 0.002 or (tr >= 1 and c.trW ~= tr) then
@@ -228,14 +273,14 @@ function WallStream.new(ctx: any): any
 			-- horizontal brush strokes, 2026-10-30)
 			-- (all soft puffs, as where the funnel meets the lowering - the look the user wants for
 			-- the whole wall cloud, 2026-10-30; the fringe as fibre wisps read as loose chips)
-			set.body[i].img.Image = C.TEXTURES.softFlat
+			set.body[i].dTex = bodyTex(i)
 		end
 		for j = 1, NT do
 			set.tail[j] = newPuff(NB + j)
 			-- (the tail is a band of slices 3 across: a round lump on top, two wisps beside and
 			-- below it - the feathered flat underside, 04_wall_cloud_tail_cloud_d)
 			-- (all soft puffs: the side wisps read as chips beside the core, 2026-10-30)
-			set.tail[j].img.Image = C.TEXTURES.softFlat
+			set.tail[j].dTex = bodyTex(j)
 		end
 		for j = 1, NU do
 			set.under[j] = newPuff(NB + NT + j)
@@ -243,7 +288,7 @@ function WallStream.new(ctx: any): any
 			-- (all but the middle one are wisps: bands along the turn, so the rotation shows)
 			-- (drawn as soft puffs, still laid along the turn: the fibre-wisp streaks, darkened,
 			-- drew long high-contrast cards across the underside seen from below, 2026-10-30)
-			set.under[j].img.Image = C.TEXTURES.softFlat
+			set.under[j].dTex = bodyTex(j)
 			set.under[j].wisp = j > 1
 		end
 		for j = 1, NC do
@@ -302,8 +347,13 @@ function WallStream.new(ctx: any): any
 	end
 
 	local list, statAt = {}, 0
+	local dbgCam, dbgCamAt = false, -math.huge -- (workspace EngineStormsDebugCam, read once a second)
 	function self:update(dt: number)
 		local t0 = os.clock()
+		if t0 - dbgCamAt > 1 then
+			dbgCamAt = t0
+			dbgCam = Workspace:GetAttribute("EngineStormsDebugCam") == true
+		end
 		local sh = ctx.stormShade
 		local cw = ctx.cw
 		local style = ctx.state.wallStyle or C.WALL_STYLE or "stream"
@@ -333,10 +383,39 @@ function WallStream.new(ctx: any): any
 					end
 				end
 			end
+			ctx.wallFar = ctx.wallFar or {}
 			for _, s in cw.storms do
 				byId[tostring(s.id)] = s
 				if s.lowX and s.wallBase then
 					local want = not s.dead and (s.lowering or 0) > 30 and (s.rot or 0) > 0.25
+					-- Small on screen the puffs' round rims are the lowering's whole outline (a mushroom
+					-- cap of round lobes over the funnel, regrade 9): there StormCards draws it as its
+					-- card wall (one soft volume tapering into the funnel; CardPlan, ctx.wallFar) and the
+					-- stream fades out. Its width on screen, with a little hysteresis.
+					local idS = tostring(s.id)
+					local q0 = ramp(s.lowering or 0, 30, 400) * ramp(s.rot or 0, 0.25, 0.6)
+					local R0 = Util.wallRadius(max(s.Ru or 1500, 300), max((s.base or 1000) - max(s.wallBase, 60), 30), q0, clamp(s.occl or 0, 0, 1))
+					local Pw0 = C.toWorld(s.lowX, s.lowY, s.wallBase)
+					local wPx = 2 * R0 * C.scaleAbout(s.lowX, s.lowY) / max(2 * pxK * (Pw0 - camPos).Magnitude, 1e-6)
+					local far = if ctx.wallFar[idS] then wPx < 1.25 * WALL_CARDS_PX else wPx < WALL_CARDS_PX
+					ctx.wallFar[idS] = far or nil
+					if dbgCam and t0 - (self.dbgPick or -10) > 5 then
+						self.dbgPick = t0
+						local st0 = sets[idS]
+						print(("[WallStream] pick %s low %.0f rot %.2f dead %s R0 %.0f wPx %.0f far %s | d %.0f tor %s live %s pres %.2f | tail path %s miss %s noTail %s IC %s"):format(
+							idS, s.lowering or 0, s.rot or 0, tostring(s.dead), R0, wPx, tostring(far),
+							sqrt((s.lowX - camX) ^ 2 + (s.lowY - camY) ^ 2), tostring(torOf[idS] == true),
+							tostring(st0 and st0.live), st0 and st0.pres or -1,
+							tostring(st0 and st0.pathN), tostring(st0 and st0.pathMiss), tostring(s.noTail), tostring(ctx.Sim.InflowCloud ~= nil)))
+						local dg = ctx.Sim.InflowCloud and ctx.Sim.InflowCloud.lastDiag
+						if dg then
+							print(("[WallStream] tailDiag inbound %d (min vin %.1f) pts %d lclOk %d rainOk %d sinkOk %d minLcl %.0f base %.0f minRain %.1f seeds %s | len %.0f outN %d | drawn %d mean op %.2f fadeIn %.2f"):format(dg.inb, dg.vin, dg.pts, dg.lclOk, dg.rainOk, dg.sinkOk, dg.minLcl, dg.base, dg.minRain, table.concat(dg.rains, " "), dg.len or -1, dg.outN or -1, st0 and st0.dbgTailN or -1, st0 and (st0.dbgTailOp or 0) / math.max(st0.dbgTailN or 0, 1) or -1, st0 and st0.dbgFadeIn or -1))
+							if st0 then st0.dbgTailN, st0.dbgTailOp = 0, 0 end
+						end
+					end
+					if far then
+						want = false
+					end
 					local st = sets[tostring(s.id)]
 					if want or (st and st.live and (st.pres or 0) > 0.01) then
 						local d = sqrt((s.lowX - camX) ^ 2 + (s.lowY - camY) ^ 2)
@@ -345,6 +424,12 @@ function WallStream.new(ctx: any): any
 							table.insert(list, { s = s, d = d, want = want, tor = tor })
 						end
 					end
+				end
+			end
+			-- (storms gone from the world: their far flags let go)
+			for idS in ctx.wallFar do
+				if not byId[idS] then
+					ctx.wallFar[idS] = nil
 				end
 			end
 			-- A detached (occluded) circulation's own lowering (2026-11-03): once its tornado is cut
@@ -411,6 +496,10 @@ function WallStream.new(ctx: any): any
 		if L and L.sky == nil then
 			on, L = false, nil -- (StormCards has not lit a frame yet)
 			table.clear(list)
+		end
+		if dbgCam and t0 - (self.dbgList or -10) > 5 then
+			self.dbgList = t0
+			print(("[WallStream] list %d on %s L %s"):format(#list, tostring(on), tostring(L ~= nil)))
 		end
 		local vDt = ctx:visualDt(dt)
 		local cf = cam.CFrame
@@ -619,6 +708,7 @@ function WallStream.new(ctx: any): any
 			-- (q sets its size, as CardPlan; it is there - opaque - once it has formed at all: a
 			-- wall cloud is a dense lowering, its opacity x q drew pale scattered blotches)
 			local fadeIn = ramp(q, 0.02, 0.12) * set.pres
+			set.dbgFadeIn = fadeIn
 			-- body ---------------------------------------------------------------------------
 			-- (what a wall cloud looks like, docs/storm-reference/real/04_*: an abrupt step down from
 			-- a broad flat base, 3-5x wider than deep, flat-bottomed, its sides laminated into level
@@ -712,8 +802,10 @@ function WallStream.new(ctx: any): any
 			local function rEdge(th: number, f: number): number
 				local a = th - set.edgePh
 				local nz = math.noise(2.2 * cos(a) + 7.1, 2.2 * sin(a) + 3.3, 1.6 * f + 0.004 * tNow)
-				-- (a little narrower at its foot than where it meets the base)
-				return R * (0.82 + 0.18 * f) * (1 + 0.35 * nz)
+				-- (narrower at its foot than where it meets the base: one lowering tapering toward the
+				-- funnel. Its outline's eddies +-18%: at +-35%, with 0.82 at the foot, it drew as a cap
+				-- of big round lobes over the funnel - two of them read as eyes, regrades 12-15)
+				return R * (0.7 + 0.3 * f) * (1 + 0.18 * nz)
 			end
 			-- the tornado's turn at r (its own wind field: Wood-White profile about its top's core)
 			local vcT = if tor then (tor.vc or 0) else 0
@@ -844,8 +936,10 @@ function WallStream.new(ctx: any): any
 				-- 2026-11-01. From beneath they keep the thinner outline the 10-30 review asked for.)
 				local sideOn = 0
 				if cls == 2 then
-					local hx, hy = cx + cos(th) * r - camX, cy + sin(th) * r - camY
-					local el = (z - camZ) / max(sqrt(hx * hx + hy * hy + (z - camZ) ^ 2), 1e-3)
+					-- (the angle as drawn: in the game the storm is drawn larger than the map, so the
+					-- map's angle from a few km read a wall cloud overhead as nearly side-on, 2026-11-10)
+					local rel = C.toWorldRadial(cx + cos(th) * r, cy + sin(th) * r, z, acx, acy, ks, trueR) - camP
+					local el = rel.Y / max(rel.Magnitude, 1e-3)
 					sideOn = 1 - smooth(0.3, 0.55, el)
 					-- (opaque side-on only with the tier texture: as soft puffs they drew as dark
 					-- leaves round the lowering, regrade 2026-11-07)
@@ -855,6 +949,15 @@ function WallStream.new(ctx: any): any
 				end
 				local a = (1 - exp(-dens)) * env
 				if cls == 1 then
+					-- (the dense middle: its share of the column. ~NLARGE/4 of these pieces overlap
+					-- on a sight line (two layers, each piece ~0.9 R wide of a ~2 R silhouette), so each
+					-- at the whole column's 1 - e^-1.8 summed to opaque even at their soft edges -
+					-- seen from 2-4 km the middle ended in one hard dark ellipse inside the paler
+					-- outline lumps, a lens in a lens, user 2026-11-09. Each now takes the column's
+					-- optical depth over the pieces sharing it, the stack totalling 1 - e^-3.5)
+					a = (1 - exp(-3.5 / (0.25 * NLARGE))) * env
+				end
+				if cls == 1 then
 					-- (the lower half 0.6 of the depth tall: its bottom on the floor, not hanging under it)
 					band(c, cx + ox, cy + oy, z, R * (0.75 + 0.25 * rnd(k, 3)), 1, span * (if f < 0.5 then 0.6 else 1.05), th, r)
 				elseif cls == 2 then
@@ -862,8 +965,8 @@ function WallStream.new(ctx: any): any
 					if sideOn > 0.5 and TIER ~= "" then
 						-- a level tier: the texture's crisp bottom edge (0.70 of the frame) on the tier's
 						-- floor, its soft top up into the tier above
-						if c.img.Image ~= TIER then
-							c.img.Image = TIER
+						if c.imgT ~= TIER then
+							c.imgT = TIER
 						end
 						-- (a tier sits where the floor is at its radius - zbot rises toward the rim, so the
 						-- lowest tier is the inner flat floor and each one above steps out: narrower at the
@@ -886,8 +989,9 @@ function WallStream.new(ctx: any): any
 						local _, kA = band(c, cx + ox, cy + oy, zf + 0.2 * hT, wA, 0, hT, th, r)
 						setSize(c, wA * kA, hT * ks) -- (band caps a level band at 0.72 of its width)
 					else
-						if c.img.Image ~= TEX then
-							c.img.Image = TEX
+						c.dTex = nil -- (the outline lumps keep the smooth puff, as before the detail switch)
+						if c.imgT ~= TEX then
+							c.imgT = TEX
 						end
 						-- (no lower than the floor: the floor is where the air condenses, so no cloud hangs
 						-- under it. The soft puff fills ~3/4 of its frame, so its visible foot is 0.375 of
@@ -915,10 +1019,16 @@ function WallStream.new(ctx: any): any
 				setOn(c, a > 0.005)
 				n += 1
 				if rf < 0.5 then
-					sr += col.R
-					sg += col.G
-					sb += col.B
-					sk += 1
+					-- (the tone the funnel's top takes, so where it meets the floor it is the floor's:
+					-- weighted to the low pieces that hang there, by how much each shows. An even mean
+					-- of the whole middle took in the upper layer too, ~17 grey levels lighter than the
+					-- floor drawn round the funnel - its top a paler cylinder under a dark cap, the
+					-- low pieces' round bottoms drawing the line across it, regrade 2026-11-09)
+					local wk = a * (1 - smooth(0.2, 0.7, f))
+					sr += wk * col.R
+					sg += wk * col.G
+					sb += wk * col.B
+					sk += wk
 				end
 			end
 			-- underside --------------------------------------------------------------------
@@ -937,8 +1047,11 @@ function WallStream.new(ctx: any): any
 				band(c, cx + ox, cy + oy, zl + 0.08 * D, a, if c.wisp then 0.6 else 1, 0.2 * D + 0.04 * a, th, r)
 				-- (the bands show the turn seen from below; from the side they lie edge-on and drew
 				-- long level streaks across the lowering, 2026-10-30: they fade as the view flattens)
-				local hx, hy = cx + ox - camX, cy + oy - camY
-				local upE = (zl - camZ) / max(sqrt(hx * hx + hy * hy + (zl - camZ) ^ 2), 1e-3)
+				-- (the angle as drawn, not the map's: from the player's spawn ~2.7 km off on the map the
+				-- underside looked 12 deg up and drew ~30% opaque, while drawn it is ~380 m away and
+				-- steeply overhead - a translucent gap with sky above the funnel's top, user 2026-11-10)
+				local relU = C.toWorldRadial(cx + ox, cy + oy, zl, acx, acy, ks, trueR) - camP
+				local upE = relU.Y / max(relU.Magnitude, 1e-3)
 				-- (the central disc too, from lower: side-on it drew a separate dark flat ellipse under the
 				-- wall - the lowest of the stacked discs, SC check 2026-11-01)
 				local seen = if c.wisp then smooth(0.35, 0.7, upE) else smooth(0.12, 0.4, upE)
@@ -1150,6 +1263,10 @@ function WallStream.new(ctx: any): any
 							local lk = 0.92 + 0.14 * lobe * (if slot == 0 then 1 else 0.5)
 							setCol(c, Color3.new(min(col.R * lk, 1), min(col.G * lk, 1), min(col.B * lk, 1)))
 							setOn(c, env > 0.005)
+							if env > 0.005 then
+								set.dbgTailN = (set.dbgTailN or 0) + 1
+								set.dbgTailOp = (set.dbgTailOp or 0) + clamp(dens * fadeIn * env, 0, 1)
+							end
 							n += 1
 						end
 					end
@@ -1175,6 +1292,7 @@ function WallStream.new(ctx: any): any
 	end
 
 	function self:destroy()
+		keyConn:Disconnect()
 		folder:Destroy()
 	end
 	return self

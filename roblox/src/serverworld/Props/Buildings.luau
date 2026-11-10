@@ -25,7 +25,7 @@ local Trees = require(script.Parent.Trees)
 local RoadNet = require(script.Parent.RoadNet)
 local Facilities = require(script.Parent.Facilities)
 local Sites = require(script.Parent.Parent.Sites)
-local Config = require(script.Parent.Parent.Config)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 
 local Buildings = {}
 

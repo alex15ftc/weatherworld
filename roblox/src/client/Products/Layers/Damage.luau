@@ -200,6 +200,18 @@ function Damage.draw(self: any, draw: MapCanvas.Draw)
 	end
 end
 
+-- What the shapes depend on: the day's product, the item picked, and whether the open
+-- tornado's survey has come. (The zoom is each tile's own.)
+function Damage.shapeKey(self: any): string
+	local chosen = self:chosen()
+	return `{ReportDays.stamp()}|{self.ctx.selected(self.key)}|{tostring(self.surveys[chosen] ~= nil)}`
+end
+
+-- The legend never changes.
+function Damage.legendKey(_self: any): string
+	return ""
+end
+
 function Damage.labels(self: any, labels: MapCanvas.Labels)
 	for _, t in self:items() do
 		if #t.track >= 2 then

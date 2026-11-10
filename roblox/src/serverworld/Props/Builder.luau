@@ -21,7 +21,7 @@ export type Props = { Prop }
 local M = Enum.Material
 
 -- Uniform 0 to 1 from integers (the same everywhere for the same inputs).
-Builder.hash = require(script.Parent.Parent.LandSurface).hash
+Builder.hash = require(game:GetService("ReplicatedStorage").Shared.World.LandSurface).hash
 
 function Builder.add(props: Props, shape: string, cf: CFrame, size: Vector3, color: Color3, material: Enum.Material?, collide: boolean?): Prop
 	local p: Prop = { shape = shape, cf = cf, size = size, color = color, material = material or M.SmoothPlastic, collide = if collide == nil then true else collide }

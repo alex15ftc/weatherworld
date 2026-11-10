@@ -2420,3 +2420,53 @@ Game metrics and tornado strength (2026-10-17):
   them 11 in weak shear (under 30 kt), 11 moist and sheared with many storms but a weak cap
   (inhibition median 26 against 60 on the good days: storms form everywhere and grow into
   clusters and lines), 9 dry. A moderate cap keeps storms discrete.
+
+## Speed: radar, game feed and forecast threads (2026-11-09)
+
+Same output, less time; every change checked byte for byte (radar products, feed frames, mosaics,
+rotation, shear grid, cold pools, restored worlds) and the engine fingerprint is unchanged (seed
+1000, 14 h).
+- **Radar loops** (`RadarSimulator.js`): storm and boundary bins looked up once per gate and passed
+  down, beam offsets as plain arrays, a squared-distance test before `Math.hypot` in the mosaic,
+  fixed clear-air ZDR worked out once, melting only below the ice. Mosaics 7-30% faster, scans ~6%.
+- **Mosaics in one pass** (`buildRadarMosaics`): composite, echo tops, VIL and MESH share their beam
+  samples; the authority builds every kind looked at in the last minute together (1.5 s on the pool
+  against 3.1 s one by one; 3.7 s against 11 s on one thread). The base mosaic is still built alone.
+- **Off the authority's thread**: rotation detection, the rotation track's shear grid, each storm's
+  cold pool (now worked out with its field) and the game feed's rain grids. The feed puts its frame
+  together at once and gives it out when the grids come back from the radar threads, in order; its
+  main-thread time over 11 stormy hours went from 5.1 s to 0.4 s.
+- **Forecast threads**: the last 5 are kept 9 minutes (the short-range run and mesoscale members come
+  every 7.5), about 1.3 s saved per run, ~2.3 GB held. `WEATHER_FORECAST_WARM`, `..._WARM_SECONDS`.
+- **Restore** no longer works out the fields of the world it throws away: ~250 ms less per forecast run.
+- **Day 3 issued with Day 2** (06 and 17:30Z, the user's choice; it was 07:30 and 19:30Z): the same four
+  runs go on a storm-free day further, instead of separate issues re-running Days 1-2. About 15% of all
+  forecast work. (`OUTLOOK.issueTimesUtc`; the days each time picks are as before.)
+- **Memory** (2026-11-09): the live world is only ~25 MB; the threads held the rest. Forecast and radar
+  threads now collect their garbage when idle (`server/idleCollect.js`; 2 forecast threads 489 -> 171 MB,
+  4 radar threads 676 -> 505 MB and no longer growing), forecast threads' heaps are capped at 512 MB
+  (`WEATHER_FORECAST_HEAP_MB`; a run needs 55-70 MB), and a product finished after the cache was
+  cleared is no longer put back into it (a stale radar scene, 30-150 MB, was kept a tick).
+- **Memory, second batch** (2026-11-10, same output): the forecast copy of the world keeps its cells in a
+  compact form (`js/world/compactCells.js`: 13.7 -> 8.1 MB, read back in ~65 ms instead of ~165, read
+  back identical); the short-range model keeps 4 runs, not 8 (~35 MB); the radar history keeps all but
+  the newest mosaic of each kind deflated (47 -> ~3 MB); tornado surveys go when the storm log lets
+  their day go (they were kept for good).
+- **Roblox game speed and memory** (2026-11-10, not yet seen in Studio; pre-change copy in the job's tmp):
+  map layers idle while the map is closed, capped radar/satellite/grid caches (LRU, cleared on close),
+  lightning and rotation marks in their own image, pixel colouring native (`Raster.colourGrid`);
+  ProductFeed: server-wide budget for player-driven requests (180/min), 45 s miss cache, loop frames
+  only when listed, lightning on demand; ReportArchive decodes day texts only on the writer. World:
+  StreamingTargetRadius 1024 / Min 512 set in the project, unload margin 256, unloads and chunk
+  placing spread over frames, numeric chunk keys, tile cache capped at 8, road pieces fitted to the
+  grade (2.6x fewer on gentle land), generator moved to `roblox/src/serverworld` (ServerStorage.World).
+  LOAD_RADIUS stays 2048: the 1280-2048 band feeds the clients' StreamingMesh imposters (the user to
+  decide). Storms: per-storm build ids, warm-up on a 2 ms budget, eased cards write past half a pixel
+  only, a shared card pool, write-on-change far rings/sky/flash/precip, BaseDeck range skip, ray cache
+  expiring per entry, leaks pruned, the T style switch Studio-only, `shared/Tornado` left out of the
+  game build. Not done: tornado distance LOD, tree meshes, window textures, the 30 s storm plan rest
+  (needs a look-neutral 'shape unchanged' test).
+- Not done yet (they change output, the user to decide): mesoscale as 1 full member + cheap layers, reflectivity-only scans without Doppler, one radar build
+  per storm time. Larger, same output: per-cell soundings on threads, a disk cache of the warmed-up
+  world, the steering look-ahead cached by valid time.
+- `tests/short-range-model.mjs` fails at HEAD too (storms differ at +45 min), from before this work.

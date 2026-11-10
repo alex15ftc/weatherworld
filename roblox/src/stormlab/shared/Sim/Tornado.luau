@@ -133,13 +133,16 @@ function Tornado.setEngine(t: Tornado, et: any?, x: number, y: number, u: number
 	local ox, oy = 0, 0
 	if old then
 		local wx, wy = engineAt(old, at - old.at)
-		ox = old.ox + wx - x
-		oy = old.oy + wy - y
+		-- (with the outflow's push while it was let go, eased away like any other jump)
+		ox = old.ox + (old.dx or 0) + wx - x
+		oy = old.oy + (old.dy or 0) + wy - y
 	else
 		-- (a new tornado starts where the engine's is, not at its parent's centre)
 		t.x, t.y = x, y
 	end
 	t.eng = { on = true, mph = et.mph or 0, yards = et.yards or 100, x = x, y = y, u = u, v = v, at = at, ox = ox, oy = oy,
+		-- (sim s since the last update: Tornado.step follows over at least a third of it)
+		every = if old then math.clamp(at - old.at, 0, 1800) else 0,
 		omega = if cx then et.orbit or 0 else 0, cx = cx, cy = cy,
 		-- (optional, client/FrameWorld: the engine's core radius, swirl and cloud base, m and m/s)
 		R = et.R, swirl = et.swirl, base = et.base, coreZb = et.coreZb, leanX = et.leanX, leanY = et.leanY }
@@ -221,8 +224,11 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	if t.eng and t.eng.coreZb then
 		zCore = t.eng.coreZb
 	end
-	t.cloudBase += (math.clamp(cloudBase, 150, 2500) - t.cloudBase) * (1 - exp(-dt / 60))
-	t.coreLcl = (t.coreLcl or zCore) + (math.clamp(zCore, 30, 2500) - (t.coreLcl or zCore)) * (1 - exp(-dt / 60))
+	-- (the engine's word changes only at its updates: followed over at least a third of the time
+	-- between them - every 300 sim s in the game, where 60 s took each new moment in 7.5 real s)
+	local engT = if t.eng then (t.eng.every or 0) / 3 else 0
+	t.cloudBase += (math.clamp(cloudBase, 150, 2500) - t.cloudBase) * (1 - exp(-dt / math.max(60, engT)))
+	t.coreLcl = (t.coreLcl or zCore) + (math.clamp(zCore, 30, 2500) - (t.coreLcl or zCore)) * (1 - exp(-dt / math.max(60, engT)))
 	t.poolF = (t.poolF or 0) + (poolF - (t.poolF or 0)) * (1 - exp(-dt / 60))
 	-- (the funnel's condensation level, sent as one number: the ground-wetness lowering counts only
 	-- for the share not already counted as pool air)
@@ -240,6 +246,15 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	if eng then
 		alive = eng.on
 	end
+	-- (the engine's word withdrawn - its tornado lifted - the vortex goes on under its own physics,
+	-- cut off, carrying what it has: engOn is whether the engine still sets it)
+	local engOn = eng ~= nil and eng.on
+	-- (cut off, it spins down as surface friction drains its column's spin: e-folding over the
+	-- column's height / (Cd V), Cd ~0.015 for the rough surface under a tornado - ~11 min for a
+	-- 58 m/s core under a 600 m base, longer as it slows. At a flat 150 s every tornado roped out
+	-- in ~19 real s at the game's 8x clock and none was seen as a rope, user 2026-11-09; 150 s
+	-- stays the fastest)
+	local spinDown = math.max(150, t.cloudBase / (0.015 * math.max(t.vc, 5)))
 
 	-- organisation and dissipation
 	local warm = math.clamp(1 - (rfdDef - 1.5) / 3.5, 0, 1)
@@ -280,13 +295,21 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		-- (still fed, so not cut off: weakening only)
 		t.decay = math.min(1, t.decay + net * dt)
 	else
-		t.decay = math.min(1, t.decay + dt / 150)
+		t.decay = math.min(1, t.decay + dt / spinDown)
 		-- cut off, the vortex carries the circulation it had: its parent's low-level spin, still
 		-- weakening as the storm occludes, no longer sets it (it is no longer fed from there).
 		-- Tracking it, a cut-off tornado faded with its parent instead of narrowing into a rope
 		-- that "can still be dangerous" (NWS spotter guide, tornado life cycle), 2026-10-29
 		if not t.cut and alive and not eng then
 			t.cut = { vlow = vlow, rlow = rlow, wLow = wLow }
+		elseif not t.cut and eng and not eng.on then
+			-- (let go by the engine: the low-level spin that gives its present core wind through vT's
+			-- relation below - the engine, not this storm's own circulation, had set it. Without it
+			-- the wind target fell to 0 at the lift and a 58 m/s wedge spun down in ~30 real s,
+			-- wide, never a rope, 2026-11-09)
+			local qc = t.quality * (0.45 + 0.4 * warm) * (Tornado.VC_EFF or 1)
+			local r = math.max(rlow, 2 * t.rc)
+			t.cut = { vlow = t.vc / math.max(0.05, qc * (r / math.max(15, t.rc)) ^ 0.4), rlow = r, wLow = wLow }
 		end
 	end
 	if t.cut then
@@ -296,7 +319,9 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		-- left it spins its own down. Over ~3 min, on top of vc's own 90 s fall.
 		local cut = t.cut
 		if not alive then
-			local kr = exp(-dt / 180)
+			-- (its spin drained by friction at the column's rate, as the decay above; at a flat 3 min
+			-- it was gone before it had narrowed, 2026-11-09)
+			local kr = exp(-dt / math.max(180, spinDown))
 			cut.vlow *= kr
 			cut.wLow *= kr
 			vlow, wLow = 0, cut.wLow
@@ -330,7 +355,8 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 		rcT = 0.25 * eng.yards * 0.9144 * (1 - 0.6 * t.decay) * stretchK
 		if eng.R then
 			-- (the engine's own core radius, when given: client/FrameWorld, as its frames draw it)
-			rcT = eng.R * (1 - 0.6 * t.decay)
+			-- (let go, it stretches as it tilts like any cut-off vortex - the rope's thinness)
+			rcT = eng.R * (1 - 0.6 * t.decay) * (if engOn then 1 else stretchK)
 		end
 	end
 	-- (contracting fast, ~20 s - angular-momentum spin-up, the corner flow collapsing inward; broadening
@@ -338,7 +364,7 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- docs/stormlab/research/TORNADO-MORPH-RESEARCH.md P3), and a wedge narrowing back to a cone while
 	-- still strong needs the faster one)
 	local rcT2 = math.clamp(rcT, 15, 900)
-	t.rc += (rcT2 - t.rc) * (1 - exp(-dt / (if rcT2 < t.rc then 20 else 60)))
+	t.rc += (rcT2 - t.rc) * (1 - exp(-dt / math.max(if rcT2 < t.rc then 20 else 60, engT)))
 	local pulse = 1 + 0.12 * Noise.value1(t.age / 40, t.seed) + 0.2 * Noise.value1(t.age / 240, t.seed + 3)
 	-- (Tornado.VC_EFF: how much of the contraction's ideal spin-up the near-ground inflow delivers -
 	-- friction, the corner flow's losses. Calibrated 2026-10-30 to the radar relation between the
@@ -349,7 +375,7 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- tornadoes to look at, realism of strength doesn't matter there, user 2026-10-30)
 	local q = t.quality * (0.45 + 0.4 * warm) * (Tornado.VC_EFF or 1)
 	local vT = q * vlow * (rlow / math.max(15, t.rc)) ^ 0.4 * pulse
-	if eng then
+	if engOn then
 		-- core wind scaled until the vortex's peak ground wind (the rating below) is the engine's
 		-- (its translation and swirl are in that peak, so this is a feedback, not a formula)
 		local target = eng.mph * 0.44704
@@ -370,13 +396,13 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 	-- (not with the engine's word: its rating already carries the tornado's life - spin-up, roping out.
 	-- Applied after the feedback above it settled the core at that share of the engine's: a rain-wrapped
 	-- 84 mph tornado held at 13.7 m/s against its 37.5, no condensed funnel, 2026-11-07)
-	if not eng then
+	if not engOn then
 		vT *= (0.25 + 0.75 * t.O) * (1 - t.decay * t.decay) / (1 - 0.6 * t.decay)
 	end
 	if not alive and not t.cut then
 		vT = 0 -- (with a cut held, it spins down with what it carries, above)
 	end
-	t.vc += (vT - t.vc) * (1 - exp(-dt / (if vT > t.vc then 45 else 90)))
+	t.vc += (vT - t.vc) * (1 - exp(-dt / math.max(if vT > t.vc then 45 else 90, engT)))
 	t.inflow = 0.6 - 0.15 * ramp(t.swirl, 0.3, 1.2)
 
 	-- track: the contact follows the circulation; the top stays under it at the cloud base
@@ -390,19 +416,29 @@ function Tornado.step(t: Tornado, dt: number, parent: any?, world: any)
 			eng.cx, eng.omega = nil, 0
 			eng.at = world.time
 		end
-		local keep = exp(-dt / 60)
+		local keep = exp(-dt / math.max(60, engT)) -- (engT: over a third of the time between updates)
 		eng.ox *= keep
 		eng.oy *= keep
 		local wx, wy = engineAt(eng, world.time - eng.at)
-		t.x = wx + eng.ox
-		t.y = wy + eng.oy
+		-- (let go by the engine, its foot is pushed by the wrapped share of the RFD outflow as any
+		-- cut-off vortex's is (below) while its top stays under the storm: the lean that stretches it
+		-- into a rope. Carried on the engine's track alone it stood upright and drew up into the
+		-- cloud as a wide stub, 2026-11-09)
+		if not engOn and parent and parent.storm and not world.holdStill then
+			local wrap = math.max(0.5 * t.decay, ramp(parent.occl or 0, 0.4, 0.8), frontWrap)
+			local uu, vv = Storm.rfdOutflow(parent.storm, t.x, t.y)
+			eng.dx = (eng.dx or 0) + wrap * uu * dt
+			eng.dy = (eng.dy or 0) + wrap * vv * dt
+		end
+		t.x = wx + eng.ox + (eng.dx or 0)
+		t.y = wy + eng.oy + (eng.dy or 0)
 		-- the top stays under the parent's circulation at the cloud base (the tilt) - or, when the
 		-- engine's lean is given (client/FrameWorld: its funnel's offset at the cloud base, from
 		-- the frame's levels), where the engine's funnel meets its base: the drawn funnel leans as
 		-- the engine's does, not toward this sim's own circulation, which stands elsewhere
 		if eng.leanX then
-			t.topX += (eng.leanX - t.topX) * (1 - exp(-dt / 20))
-			t.topY += (eng.leanY - t.topY) * (1 - exp(-dt / 20))
+			t.topX += (eng.leanX - (eng.dx or 0) - t.topX) * (1 - exp(-dt / 20))
+			t.topY += (eng.leanY - (eng.dy or 0) - t.topY) * (1 - exp(-dt / 20))
 		elseif parent then
 			t.topX += ((parent.x - t.x) - t.topX) * (1 - exp(-dt / 20))
 			t.topY += ((parent.y - t.y) - t.topY) * (1 - exp(-dt / 20))
