@@ -4,11 +4,11 @@
 -- updraft core; the old placements (WallStream's tail aimed at the forward-flank core,
 -- CardPlan's straight band) are measured the same way for comparison.
 --   luau --codegen tools/stormlab/test_inflow_clearance.luau -a [minutes] [day]
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local Precip = require("../../roblox/src/stormlab/shared/Sim/Precip")
-local InflowCloud = require("../../roblox/src/stormlab/shared/Sim/InflowCloud")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local Precip = require("../../roblox/Shared/StormLab/Sim/Precip")
+local InflowCloud = require("../../roblox/Shared/StormLab/Sim/InflowCloud")
 
 local args = { ... }
 local times = {}
@@ -19,7 +19,7 @@ local day = args[2] or "Supercell"
 local sqrt, max, min, clamp = math.sqrt, math.max, math.min, math.clamp
 local RAIN_CORE = 10 -- mm/h: "in the core" for the report (the paths themselves stop at RAIN_MAX)
 
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/" .. day)))
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/" .. day)))
 world:spinUp(600)
 local function rain(x, y)
 	return (Precip.surface(world.precip, x, y)) or 0

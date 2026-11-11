@@ -1,4 +1,4 @@
-// One detailed storm's frame, byte for byte the format of roblox/src/cloudlab/shared/Model/FrameCodec.luau
+// One detailed storm's frame, byte for byte the format of roblox/Shared/CloudModel/FrameCodec.luau
 // (its header documents the layout; the Roblox side decodes with that module). Encoding only,
 // plus a header decode for checks.
 import { LOFF } from './CloudModel.js';

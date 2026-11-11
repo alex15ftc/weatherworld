@@ -5,16 +5,16 @@
 -- deficit; plus the conceptual-model points (updraft, BWER, low/mid meso, FFD, RFD, tornadoes,
 -- motion, anvil). tools/stormlab/structure_png.py draws them.
 --   luau --codegen tools/stormlab/diag_structure.luau -a 20,30,45 > structure.txt
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local Radar = require("../../roblox/src/stormlab/shared/Sim/Radar")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local Radar = require("../../roblox/Shared/StormLab/Sim/Radar")
 local args = { ... }
 local times = {}
 for t in string.gmatch(args[1] or "20,30,45", "[^,]+") do
 	table.insert(times, tonumber(t))
 end
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 
@@ -71,7 +71,7 @@ local function frame(tmin: number)
 	local ru, rv = s.upperU - s.u, s.upperV - s.v
 	print(string.format("VEC upperSR %.3f %.3f", ru, rv))
 	if s.prof then
-		local Thermo = require("../../roblox/src/stormlab/shared/Sim/Thermo")
+		local Thermo = require("../../roblox/Shared/StormLab/Sim/Thermo")
 		local parts = {}
 		for _, z in { 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 9000, 11000 } do
 			local eu, ev = Thermo.windAt(s.prof, z)

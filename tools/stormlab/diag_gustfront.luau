@@ -2,17 +2,17 @@
 -- coupled (Storm.GUST_FRONT on): per rotating storm each 2 min, the clock occlusion vs the front's,
 -- the meso-to-occlusion-point separation along the front, the front's size, where the meso sits.
 --   luau --codegen tools/stormlab/diag_gustfront.luau -a [minutes] [coupled]
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local GustFront = require("../../roblox/src/stormlab/shared/Sim/GustFront")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local GustFront = require("../../roblox/Shared/StormLab/Sim/GustFront")
 local args = { ... }
 local minutes = tonumber(args[1]) or 90
 local coupled = args[2] == "coupled"
 if coupled then
 	Storm.GUST_FRONT = true
 end
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/Supercell")))
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell")))
 world:spinUp(600)
 local env = world.env
 local fronts = {}

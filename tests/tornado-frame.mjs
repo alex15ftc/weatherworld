@@ -12,7 +12,7 @@ import { EngineRun, readScenarioText } from '../js/cloudmodel/EngineRun.js';
 import { encode, decodeHeader, clientFrame, decodeClientFrame } from '../js/cloudmodel/FrameCodec.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const run = EngineRun.fromScenario(readScenarioText(fs.readFileSync(path.join(root, 'roblox/src/stormlab/data/SupercellB.luau'), 'utf8')));
+const run = EngineRun.fromScenario(readScenarioText(fs.readFileSync(path.join(root, 'roblox/Shared/StormLab/Data/SupercellB.luau'), 'utf8')));
 const m = run.model;
 
 // no tornado: no block

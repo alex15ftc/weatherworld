@@ -2,7 +2,7 @@
 --   luau tools/windfield/dust.luau
 -- Prints, for a few tornadoes, how high and how far out the dust tracers get, so the pick-up
 -- and lag settings can be tuned without Studio.
-local WF = require("../../roblox/src/shared/Tornado/WindField")
+local WF = require("../../roblox/Labs/TornadoLab/Tornado/WindField")
 
 local EF = { 33.5, 43.8, 55.0, 67.0, 81.8, 98.3 }
 local function params(e, rc, top, S)

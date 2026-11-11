@@ -19,9 +19,9 @@
 # Then every piece:
 #   - ambient occlusion is baked per vertex by casting rays over the hemisphere (creases dark),
 #   - it is normalised to the unit box (x, z in -0.5..0.5, y in 0..1, game axes) per axis,
-#   - it is written as a Luau data module roblox/src/shared/Weather/CloudKit/Pieces/<name>.luau,
+#   - it is written as a Luau data module roblox/Shared/Weather/CloudKit/Pieces/<name>.luau,
 #   - a preview is rendered to roblox/assets/cloudkit/previews/<name>.png,
-# and the contact sheet (sheet.png) and roblox/src/shared/Weather/CloudKit/Index.luau are rebuilt
+# and the contact sheet (sheet.png) and roblox/Shared/Weather/CloudKit/Index.luau are rebuilt
 # from whatever pieces are on disk (so hand-made pieces are listed too).
 #
 # Axes. Model in Blender with Z up, X along the piece, and the FRONT of a directional piece (the
@@ -42,8 +42,8 @@ from mathutils import Matrix, Vector, noise
 from mathutils.bvhtree import BVHTree
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PIECES_DIR = os.path.join(ROOT, "roblox", "src", "shared", "Weather", "CloudKit", "Pieces")
-INDEX_PATH = os.path.join(ROOT, "roblox", "src", "shared", "Weather", "CloudKit", "Index.luau")
+PIECES_DIR = os.path.join(ROOT, "roblox", "Shared", "Weather", "CloudKit", "Pieces")
+INDEX_PATH = os.path.join(ROOT, "roblox", "Shared", "Weather", "CloudKit", "Index.luau")
 PREVIEW_DIR = os.path.join(ROOT, "roblox", "assets", "cloudkit", "previews")
 
 KINDS = ["tower_cap", "tower_body", "anvil", "base", "shelf", "wall_cloud", "mammatus"]

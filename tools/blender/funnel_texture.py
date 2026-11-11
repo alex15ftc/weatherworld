@@ -1,5 +1,5 @@
 # The cloud texture for a tornado funnel's shells in Roblox (the shells scroll it round and up to
-# show the rotation; see roblox/src/client/StormView.luau). Rendered by Blender, headless:
+# show the rotation; see roblox/Client/StormView.luau). Rendered by Blender, headless:
 #
 #   blender --background --factory-startup --python tools/blender/funnel_texture.py -- \
 #       --out roblox/assets/tornado --size 1024 --seed 3 --variant core

@@ -1,12 +1,12 @@
 -- Landspouts (2026-11-03): run a scenario's world with initiation and genesis on and report the
 -- boundaries, misocyclones (Sim/Landspouts) and the tornadoes by parent kind.
 --   luau --codegen tools/stormlab/diag_landspouts.luau -a [scenario] [seconds]
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
 local args = { ... }
 local name = args[1] or "Supercell"
 local T = tonumber(args[2]) or 10800
-local data = Json.decode(require("../../roblox/src/stormlab/data/" .. name))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/" .. name))
 local world = World.new(data)
 world.genesis, world.initiation = true, true
 local t, nextP = 0, 0

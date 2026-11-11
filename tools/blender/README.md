@@ -2,7 +2,7 @@
 
 Headless Blender scripts that make the tornado's art for the Roblox place. Outputs go to
 `roblox/assets/tornado/` and are uploaded to Roblox as images (Open Cloud; romcp's
-`roblox_upload_asset`), then referenced by asset id from `roblox/src/client/StormView.luau`.
+`roblox_upload_asset`), then referenced by asset id from `roblox/Client/StormView.luau`.
 
 Blender 5.2 is at `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`. Run each script
 with `--background --factory-startup --python <script> -- <options>`.
@@ -32,7 +32,7 @@ The pieces are tower caps, tower bodies, anvil sections, bases, shelf segments, 
 
 | Command | Makes | Time |
 |---|---|---|
-| `cloud_kit.py` | Every piece: `roblox/src/shared/Weather/CloudKit/Pieces/<name>.luau`, a preview each in `roblox/assets/cloudkit/previews/`, `sheet.png`, and `CloudKit/Index.luau` | ~2.5 min |
+| `cloud_kit.py` | Every piece: `roblox/Shared/Weather/CloudKit/Pieces/<name>.luau`, a preview each in `roblox/assets/cloudkit/previews/`, `sheet.png`, and `CloudKit/Index.luau` | ~2.5 min |
 | `cloud_kit.py --piece shelf_1[,base_2,...]` | Only those pieces (the index and sheet are still rebuilt) | ~10 s each |
 | `cloud_kit.py --from-blend FILE --object NAME --name PIECE [--kind KIND]` | Exports an artist's object to the same format, with the same normalising, AO bake and checks | ~10 s |
 | `py tools/blender/check_cloud_kit.py` | Checks every piece module and the index (plain Python, no Blender): counts, closed and consistently wound mesh, bounds, budget | ~2 s |

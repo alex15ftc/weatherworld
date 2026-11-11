@@ -15,7 +15,7 @@ avoidBackgroundThrottling();
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const [name = 'SupercellB', secs = '120', rate = '8', lune = 'node'] = process.argv.slice(2);
 const clockRate = Number(rate), realSeconds = Number(secs);
-const text = readFileSync(path.join(ROOT, 'roblox/src/stormlab/data', `${name}.luau`), 'utf8');
+const text = readFileSync(path.join(ROOT, 'roblox/Shared/StormLab/Data', `${name}.luau`), 'utf8');
 const data = JSON.parse(text.match(/\[(=*)\[([\s\S]*)\]\1\]/)[2]);
 const storm = data.storms.find(s => s.id === data.meta.focusStorm) ?? data.storms[0];
 let startRows = null, best = Infinity;

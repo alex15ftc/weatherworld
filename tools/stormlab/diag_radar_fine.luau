@@ -2,9 +2,9 @@
 -- level parcels (z < 1.5 km) round the strongest rotating storm at 250 m and 1 km and prints
 -- both as ASCII reflectivity maps (diagnostic for the lab radar).
 --   luau --codegen tools/stormlab/diag_radar_fine.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 for _ = 1, 240 do
@@ -52,7 +52,7 @@ local function map(dx: number, half: number)
 	local chars = " .:-=+*#%@"
 	print(string.format("-- %d m cells, %d km square, %d low parcels (north up, storm centre in the middle)", dx, 2 * half / 1000, count))
 	-- markers: L = low-level mesocyclone (Storm.lowMesoAt), T = a tornado of this storm
-	local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+	local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
 	local lx, ly = Storm.lowMesoAt(best)
 	local marks = {}
 	local function mark(x: number, y: number, ch: string)

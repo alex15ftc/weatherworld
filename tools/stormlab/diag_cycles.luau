@@ -5,9 +5,9 @@
 -- and end. Ends with a summary (cycles, tornadoes, lives, cut-offs).
 --   luau --codegen tools/stormlab/diag_cycles.luau -a [minutes] [quiet|-] [clock | front [mesoK]]
 -- (the gust front is the default since 2026-11-03; clock: the old occlusion clock)
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
 local args = { ... }
 local minutes = tonumber(args[1]) or 120
 local quiet = args[2] == "quiet"
@@ -19,7 +19,7 @@ elseif args[3] == "front" then
 		Storm.GF_MESO_K = tonumber(args[4]) -- (the meso spin share the cold air feels)
 	end
 end
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 local cp = world.coldPool

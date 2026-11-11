@@ -8,7 +8,7 @@
 // best to 1.5 h after, and Meta.luau carries line = { ... } (its tornado entry, kept for the
 // places that read it, is the line's storm with no tornado, starting the playback at frame 1).
 //   node scripts/export-storm-replay.mjs --seed 2112 --days 3 --focus line --out StormReplayLine
-// Writes roblox/src/worlddata/StormReplay/ (or --out's folder there; gitignored; Rojo syncs it):
+// Writes roblox/Server/WorldData/StormReplay/ (or --out's folder there; gitignored; Rojo syncs it):
 //   Meta.luau   { seed, frames, tickMs, focusMiles = { x, y }, tornado = { ... } }
 //   F001.luau ... each returns one frame as JSON text.
 // The place plays it when the Workspace attribute StormSource is "replay" (server/WeatherFeed.luau).
@@ -27,7 +27,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const flag = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
 const seed = Number(flag('--seed', 2)), days = Number(flag('--days', 2)), focusOn = flag('--focus', 'tornado');
-const OUT = path.join(ROOT, 'roblox/src/worlddata', path.basename(flag('--out', 'StormReplay')));
+const OUT = path.join(ROOT, 'roblox/Server/WorldData', path.basename(flag('--out', 'StormReplay')));
 const TICK_HOURS = 1 / 12, TICK_MS = 25_000, RADIUS_KM = 250, KM_PER_MILE = 1.609344;
 const BEFORE_HOURS = 1, AFTER_HOURS = 0.5, MAX_HOURS = 3;
 

@@ -1,10 +1,10 @@
 -- Each visual test scene's tornado, from the physics (tools for tuning shared/VisualTests).
 --   luau --codegen tools/stormlab/test_scenes.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Vortex = require("../../roblox/src/stormlab/shared/Sim/Vortex")
-local VisualTests = require("../../roblox/src/stormlab/shared/VisualTests")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Vortex = require("../../roblox/Shared/StormLab/Sim/Vortex")
+local VisualTests = require("../../roblox/Shared/StormLab/VisualTests")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 for _, scene in VisualTests.SCENES do
 	local t0 = os.clock()
@@ -19,7 +19,7 @@ for _, scene in VisualTests.SCENES do
 		scene.id, t.stage, t.vc, t.rc, t.swirl, p.subCount, t.cloudBase, math.sqrt(t.topX ^ 2 + t.topY ^ 2), t.wave, t.decay, t.O, t.ef, table.concat(cond, " "), rain, os.clock() - t0))
 end
 -- the profile family each scene's tornado draws as (StateAdapter's scale R + ProfileLibrary.weights)
-local Profiles = require("../../roblox/src/stormlab/client/Tornado/ProfileLibrary")
+local Profiles = require("../../roblox/Client/Modules/Weather/Tornado/ProfileLibrary")
 print("\nprofile weights per scene:")
 for _, scene in VisualTests.SCENES do
 	local t = world:labScene(scene, VisualTests.SITE)

@@ -1,4 +1,4 @@
-// One engine storm shown by the cloud model: a port of roblox/src/cloudlab/shared/Model/EngineRun.luau
+// One engine storm shown by the cloud model: a port of roblox/Shared/CloudModel/EngineRun.luau
 // (its header explains the steering) on the WebAssembly model. The nest runs in the same process:
 // the native model is fast enough that NestRemote's second process isn't needed.
 //   const run = new EngineRun(record, opts); run.update(record | null); run.step()
@@ -558,7 +558,7 @@ export class EngineRun {
   }
 }
 
-// a stormlab scenario file (roblox/src/stormlab/data/<name>.luau: JSON inside [==[ ]==])
+// a stormlab scenario file (roblox/Shared/StormLab/Data/<name>.luau: JSON inside [==[ ]==])
 export function readScenarioText(text) {
   return JSON.parse(text.match(/\[==\[([\s\S]*)\]==\]/)[1]);
 }

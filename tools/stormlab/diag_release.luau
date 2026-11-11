@@ -3,9 +3,9 @@
 --   luau --codegen tools/stormlab/diag_release.luau
 -- set mode below: "fallout" (the default release), "nocarry" (no rotation carry while crossing),
 -- "angles" (the painted release before 2026-10-30)
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
 local mode = "fallout"
 if mode == "angles" then
 	Storm.PRECIP_RELEASE = "angles"
@@ -13,7 +13,7 @@ elseif mode == "nocarry" then
 	Storm.PRECIP_CARRY = false
 end
 print("release mode: " .. mode)
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 local p = world.precip

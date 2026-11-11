@@ -1,45 +1,58 @@
 {
   "name": "StormLab",
+  "emitLegacyScripts": false,
   "tree": {
     "$className": "DataModel",
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
+      "Bootstrapper": {
+        "$path": "Client/Bootstrapper"
+      },
+      "Modules": {
+        "$path": "Client/Modules"
+      },
+      "Lab": {
+        "$path": "Labs/StormLab/Client"
+      }
+    },
     "ReplicatedStorage": {
-      "StormLab": {
+      "$className": "ReplicatedStorage",
+      "Assets": {
         "$className": "Folder",
-        "Sim": {
-          "$path": "src/stormlab/shared/Sim"
-        },
-        "LabConfig": {
-          "$path": "src/stormlab/shared/LabConfig.luau"
-        },
-        "VisualTests": {
-          "$path": "src/stormlab/shared/VisualTests.luau"
-        },
-        "Data": {
-          "$path": "src/stormlab/data"
-        }
+        "$ignoreUnknownInstances": true
+      },
+      "Config": {
+        "$path": "Config"
+      },
+      "Packages": {
+        "$path": "Packages"
+      },
+      "Shared": {
+        "$path": "Shared"
       }
     },
-    "ServerScriptService": {
-      "StormLab": {
-        "$path": "src/stormlab/server"
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+      "main": {
+        "$path": "Server/main.server.luau"
+      },
+      "Modules": {
+        "$path": "Server/Modules"
+      },
+      "Lab": {
+        "$path": "Labs/StormLab/Server"
       }
     },
-    "StarterPlayer": {
-      "StarterPlayerScripts": {
-        "StormLab": {
-          "$path": "src/stormlab/client"
-        }
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
       }
     },
     "Lighting": {
       "$properties": {
         "Technology": "Future",
         "GlobalShadows": true
-      }
-    },
-    "Workspace": {
-      "$properties": {
-        "StreamingEnabled": false
       }
     },
     "MaterialService": {

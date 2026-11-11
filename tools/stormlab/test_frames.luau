@@ -1,9 +1,9 @@
--- Storm frames v2 (roblox/src/stormlab/shared/Sim/Frames.luau): the lab's own output must meet
+-- Storm frames v2 (roblox/Shared/StormLab/Sim/Frames.luau): the lab's own output must meet
 -- the contract, and frames must survive encoding (buffers as base64) unchanged.
 --   luau --codegen tools/stormlab/test_frames.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Frames = require("../../roblox/src/stormlab/shared/Sim/Frames")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Frames = require("../../roblox/Shared/StormLab/Sim/Frames")
 
 local fails = 0
 local function check(ok: boolean, what: string)
@@ -24,7 +24,7 @@ for n = 0, 40 do
 end
 
 -- the lab's frames meet the contract
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 for _ = 1, 60 do
@@ -52,7 +52,7 @@ for _, k in kinds do
 end
 -- the light rain frame: much smaller, the same surface rain and hail, a usable profile
 do
-	local Precip = require("../../roblox/src/stormlab/shared/Sim/Precip")
+	local Precip = require("../../roblox/Shared/StormLab/Sim/Precip")
 	local full = Precip.unpack(world.precip:pack(), world.env.extent)
 	local liteB = world.precip:packLite()
 	local lite = Precip.unpackLite(liteB, world.env.extent)

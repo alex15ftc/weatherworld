@@ -1,8 +1,8 @@
 -- Weisman-Klemp supercell with two nests: 250 m under the low-level rotation, 62.5 m inside it.
 --   luau --codegen tools/cloudlab/nest2.luau -a [minutes] [nest1StartMin] [nest2StartMin; negative = start when the 250 m 50 m vorticity reaches -value] [nest1Steps] [nest2Cells] [nest2Steps] [hodoR] [hodoD] [kvScale 1] [dzmin] [feedback 0 = one-way]
-local CloudModel = require("../../roblox/src/cloudlab/shared/Model/CloudModel")
-local Sounding = require("../../roblox/src/cloudlab/shared/Model/Sounding")
-local Nest = require("../../roblox/src/cloudlab/shared/Model/Nest")
+local CloudModel = require("../../roblox/Shared/CloudModel/CloudModel")
+local Sounding = require("../../roblox/Shared/CloudModel/Sounding")
+local Nest = require("../../roblox/Shared/CloudModel/Nest")
 local a = { ... }
 local minutes = tonumber(a[1]) or 105
 local start1 = tonumber(a[2]) or 50

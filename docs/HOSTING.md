@@ -4,7 +4,7 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
 
 - Project `weatherworld`, service `engine`, environment `production` (workspace "alex15ftc's Projects").
 - URL: https://weatherworld.up.railway.app (set as `Config.WEATHER_FEED_URL` in
-  `roblox/src/shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
+  `roblox/Shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
 - Build: `Dockerfile` (node:22-slim, no npm packages; builds world map seed 1 into the image).
   `.railwayignore` / `.dockerignore` keep the upload under 1 MB.
 - Service settings: `.railway/railway.ts` (Railway infrastructure as code: Dockerfile build, health check

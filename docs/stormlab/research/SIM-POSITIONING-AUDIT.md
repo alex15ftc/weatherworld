@@ -9,14 +9,14 @@ This is a read-only audit; no code was changed. It is meant to be compared again
 - Unless a row says otherwise, distances are in km from the **low-level mesocyclone (LLM)**. The LLM is the wall cloud and tornado point.
 - Bearings are degrees clockwise from motion: 0 = front, +90 = right flank, 180 = rear, −90 = left flank. This matches `docs/stormlab/RESEARCH-SUPERCELL-LAYOUT.md`.
 
-**What the game draws.** It draws the **Roblox lab's** geometry (`roblox/src/stormlab/shared/Sim` and `client/Render`).
+**What the game draws.** It draws the **Roblox lab's** geometry (`roblox/Shared/StormLab/Sim` and `client/Render`).
 - In the main game, `server/StormHost.luau` runs the same lab simulation. It only nudges each storm's position, motion, updraft and rotation toward the JS engine's storm (`Sim/EngineFollow.luau`, `Storm.followEngine` at `Storm.luau:1111-1123`).
 - The JS engine's own geometry (section 4) drives the engine's radar, products and the older Roblox "look" feed. It does **not** shape the lab storms.
 
 **Scale.**
 - **Lab:** 1 stud = 0.28 m on every axis (`LabConfig.luau:17`).
-- **Game:** horizontal map distances are squashed to 600 studs/mile, about 0.104 of true (`roblox/src/client/WeatherClient.luau:114-130`).
-- **Each storm and tornado is drawn whole and unsquashed about its own centre.** The squash comes from `LabConfig.scaleAbout` (`:64-73`) and `World/Config.skyScaleAt` (`roblox/src/shared/World/Config.luau:56-69`). So every size and offset below is the true metre value in both places; only the distances *between* storms are squashed.
+- **Game:** horizontal map distances are squashed to 600 studs/mile, about 0.104 of true (`roblox/Client/Controllers/WeatherController.luau:114-130`).
+- **Each storm and tornado is drawn whole and unsquashed about its own centre.** The squash comes from `LabConfig.scaleAbout` (`:64-73`) and `World/Config.skyScaleAt` (`roblox/Shared/World/Config.luau:56-69`). So every size and offset below is the true metre value in both places; only the distances *between* storms are squashed.
 
 ## 1. Measured layout of the current code (lab Supercell scenario)
 
@@ -62,7 +62,7 @@ Forward is +, right is +, in km. Each cell gives the range over the t = 20 / 30 
 
 The lowerings are 55-58% of the base, so they sit right at the **0.6·base cap** (`Storm.luau:690`). The cap, not the physics, is setting the wall-cloud height.
 
-## 2. The lab simulation (`roblox/src/stormlab/shared/Sim/`)
+## 2. The lab simulation (`roblox/Shared/StormLab/Sim/`)
 
 The numbers assume a mature right-mover with Ru ≈ 4 km, W ≈ 40-55 m/s and EL ≈ 12 km. Left-movers mirror every angle.
 
@@ -145,7 +145,7 @@ The numbers assume a mature right-mover with Ru ≈ 4 km, W ≈ 40-55 m/s and EL
 | Tornado | x, y, rc, cloudBase, topX/Y, bendX/Y, wave, funnelGround, debrisTop (m); ut, vt, envU/V, vc, peakWind (m/s); swirl; inflow; O; decay; debrisLoft; ef; stage; orbit |
 | Fields | cold pool on a 2 km grid (deficit, u, v, edge); precipitation in 1 km voxels (dBZ, hail share; surface rain and hail) |
 
-## 3. The lab renderer (`roblox/src/stormlab/client/Render/`)
+## 3. The lab renderer (`roblox/Client/Modules/Weather/Render/`)
 
 Abbreviations: SS = `CloudParts/StormShape.luau`, CP = `CloudParts/CardPlan.luau`, WS = `WallStream.luau`. Sizes are in metres; at 1 stud = 0.28 m, studs = m × 3.57.
 

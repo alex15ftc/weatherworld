@@ -89,13 +89,14 @@ calibration/reports/*
 *.rbxl.lock
 *.rbxlx.lock
 roblox/sourcemap.json
+roblox/Packages/
 
 # Generated world maps (rebuild with scripts/build-world-map.mjs)
 data/worldmap/
 
 # Generated world data for the Roblox place (scripts/export-world-roblox.mjs)
-roblox/src/worlddata/
-roblox/src/shared/MapData/
+roblox/Server/WorldData/
+roblox/Shared/MapData/
 
 # Meteorologist day packages (scripts/day-review-pack.mjs)
 data/day-reviews/
@@ -103,3 +104,14 @@ data/outlook-archive/
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# ai_state evidence: binaries stay out of git (commit a MANIFEST.md with hashes; see ai_state/artifacts/README.md)
+ai_state/artifacts/**/*.png
+ai_state/artifacts/**/*.jpg
+ai_state/artifacts/**/*.jpeg
+ai_state/artifacts/**/*.gif
+ai_state/artifacts/**/*.webp
+ai_state/artifacts/**/*.mp4
+ai_state/artifacts/**/*.webm
+ai_state/artifacts/**/*.mov
+ai_state/artifacts/**/*.pdf

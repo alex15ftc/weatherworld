@@ -3,14 +3,14 @@
 -- at a given minute and follows it: its age, strength, decay, lean, and where its contact sits
 -- against the RFD gust front (depth: + inside the cold air, - on the warm side).
 --   luau --codegen tools/stormlab/diag_tordecay.luau -a [storm id] [force at min] [minutes]
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local GustFront = require("../../roblox/src/stormlab/shared/Sim/GustFront")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local GustFront = require("../../roblox/Shared/StormLab/Sim/GustFront")
 local args = { ... }
 local sid = args[1] or "C001"
 local at = tonumber(args[2]) or 10
 local minutes = tonumber(args[3]) or 70
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/Supercell")))
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell")))
 world.genesis = false
 local storm, tor
 for m = 1, minutes do

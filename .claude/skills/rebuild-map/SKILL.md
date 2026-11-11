@@ -8,7 +8,7 @@ description: Rebuild the WeatherWorld world map and export it to Roblox, includi
 ## Scale (only if changing it)
 Two settings, always kept equal:
 - `js/worldmap/scale.js`: `STUDS_PER_MILE` (and AT_1000, STUDS)
-- `roblox/src/shared/World/Config.luau`: `STUDS_PER_MILE`
+- `roblox/Shared/World/Config.luau`: `STUDS_PER_MILE`
 Character-scale things (roads, lots, blocks, interchanges) stay in studs; map-scale things (town spacing, section lines, counties) stay in miles. Suburb blocks (300 studs) must divide STUDS_PER_MILE.
 
 ## Build and export

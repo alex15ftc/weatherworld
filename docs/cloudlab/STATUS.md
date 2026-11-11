@@ -1,8 +1,8 @@
 # Cloud Lab: storms from the equations (started 2026-11-04)
 
-The Storm Lab rebuilt from scratch on a real 3-D cloud model, the user's option A from docs/stormlab/DIAGNOSIS-2026-11-04.md. The old lab (roblox/src/stormlab) is untouched.
+The Storm Lab rebuilt from scratch on a real 3-D cloud model, the user's option A from docs/stormlab/DIAGNOSIS-2026-11-04.md. The old lab (roblox/Labs/StormLab) is untouched.
 
-## Model (roblox/src/cloudlab/shared/Model)
+## Model (roblox/Shared/CloudModel)
 
 - **CloudModel.luau** solves the following, all on an Arakawa C grid:
   - quasi-compressible momentum with buoyancy;
@@ -136,7 +136,7 @@ Built:
   engine storm's motion. It lifts for 15 min at the start, then keeps lifting at
   `lift x engine intensity` for the rest of the life. Prints the model's storm next to the
   engine's track every 15 min.
-- `roblox/src/stormlab/data/SupercellLife.luau`: seed 8181, S0008 from age 10 min, 5 h of
+- `roblox/Shared/StormLab/Data/SupercellLife.luau`: seed 8181, S0008 from age 10 min, 5 h of
   engine track. It covers birth, a tornado at +140 min and decay to intensity 0.33.
 
 Results (S0008, 1 km box):
@@ -918,7 +918,7 @@ Live mode, seed 2, S0003; `CloudLabPuffs` true (shared/Model/PuffView.luau). T n
 
 ## Base sheet, first Studio look (2026-11-06)
 
-`roblox/src/cloudlab/shared/Model/BaseView.luau`, switched on by the workspace attribute `CloudLabBaseSheet` (LiveView; near storms only). One vertex sits at each cloudy column's lowest base (base1). Neighbours make a triangle when their bases are within 300 m (JOIN_M). The shade comes from the column's rain and depth, and the edges fade.
+`roblox/Shared/CloudModel/BaseView.luau`, switched on by the workspace attribute `CloudLabBaseSheet` (LiveView; near storms only). One vertex sits at each cloudy column's lowest base (base1). Neighbours make a triangle when their bases are within 300 m (JOIN_M). The shade comes from the column's rain and depth, and the edges fade.
 Seed 2, place roblox/build/cloudlab-base3.rbxl, S0026 at 3.4 km, eye under the storm: no errors, 54-60 fps, 85-120 ms to build each frame.
 
 What Roblox allows:

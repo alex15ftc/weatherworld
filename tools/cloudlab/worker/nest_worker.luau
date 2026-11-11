@@ -21,8 +21,8 @@ local function log(line: string)
 		fs.writeFile(DEBUG, logText)
 	end
 end
-local EngineRun = require("../../../roblox/src/cloudlab/shared/Model/EngineRun")
-local NestRemote = require("../../../roblox/src/cloudlab/shared/Model/NestRemote")
+local EngineRun = require("../../../roblox/Shared/CloudModel/EngineRun")
+local NestRemote = require("../../../roblox/Shared/CloudModel/NestRemote")
 local NestLink = require("./nestlink")
 
 local port = tonumber(process.args[1]) or 8890

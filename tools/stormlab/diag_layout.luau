@@ -3,10 +3,10 @@
 -- 180 rear, -90 left flank) and distance (km) from the low-level mesocyclone (LLM), next to
 -- the expected range.
 --   luau --codegen tools/stormlab/diag_layout.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 for _ = 1, 240 do

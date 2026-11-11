@@ -1,5 +1,5 @@
 -- Offline checks of the lab's tornado wind field.  luau tools/stormlab/test_vortex.luau
-local Vortex = require("../../roblox/src/stormlab/shared/Sim/Vortex")
+local Vortex = require("../../roblox/Shared/StormLab/Sim/Vortex")
 local fails = 0
 local function check(name, ok, detail)
 	print(string.format("%s  %-44s %s", ok and "PASS" or "FAIL", name, detail))

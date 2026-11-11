@@ -1,4 +1,4 @@
-// The storm lab's view of the engine's world (roblox/src/stormlab): a window of cells round a point
+// The storm lab's view of the engine's world (roblox/Labs/StormLab): a window of cells round a point
 // with each cell's full sounding, the analysed boundaries and the storms inside it, in the lab's
 // frame (x east, y NORTH, metres from the window centre; the engine's map has y south). The game
 // server rebuilds its atmosphere (Sim/World) from this and keeps its storms in step with the
@@ -27,7 +27,7 @@ const windUv = (dirFrom, speedKt) => {
 // The engine's sounding of the air flowing into a storm (rows as the window's: p hPa, t C, td C,
 // u, v m/s, v north): the cell INFLOW_KM back along the 0-1 km storm-relative wind at the storm's
 // own cell - the air the storm is about to ingest, which the cloud model's environment follows
-// (roblox/src/cloudlab/shared/Model/EngineRun.luau).
+// (roblox/Shared/CloudModel/EngineRun.luau).
 export const INFLOW_KM = 24;
 export function inflowSounding(world, storm) {
   return buildSounding(inflowCell(world, storm)).profile.map(row => [r1(row.p), r1(row.t), r1(row.td), r1(row.u * KT), r1(row.v * KT)]);

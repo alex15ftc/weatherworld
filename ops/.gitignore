@@ -1,0 +1,23 @@
+# Disposable local work
+scratch/*
+!scratch/README.md
+
+# Generated output inside work folders (keep the record, not the exhaust)
+**/runs/
+**/tmp/
+**/.tmp/
+*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+test-results/
+
+# Editor and office lock files
+.~lock.*
+~$*
+
+# Large media and archives: store outside git and point to it from the owning README
+*.mp4
+*.mov
+*.webm
+*.zip

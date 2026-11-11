@@ -1,6 +1,6 @@
 # The debris / dust cloud at the contact: types and causes
 
-Research brief (2026-10-23) behind `roblox/src/shared/Tornado/DebrisCloud.luau`.
+Research brief (2026-10-23) behind `roblox/Labs/TornadoLab/Tornado/DebrisCloud.luau`.
 
 Confidence:
 - **[E] established:** peer-reviewed, or several sources agree

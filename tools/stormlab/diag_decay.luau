@@ -4,11 +4,11 @@
 --   luau --codegen tools/stormlab/diag_decay.luau -a [scene id] [seconds] [keyed|-] [storm seed|-] [front[:mesoK]]
 -- keyed: put back the pre-Round-38 keyed decay (W 25 -> 10 -> 4 by 9000 s) to watch the remembered
 -- cloud erode under a collapsing updraft (the Supercell scenario's air never ends a freed storm)
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local VisualTests = require("../../roblox/src/stormlab/shared/VisualTests")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local VisualTests = require("../../roblox/Shared/StormLab/VisualTests")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local args = { ... }
 -- (a 5th argument "front" or "front:<mesoK>": the gust-front occlusion, Storm.GUST_FRONT)
 if args[5] and string.sub(args[5], 1, 5) == "front" then

@@ -2,13 +2,13 @@
 -- client rebuilds from precipLite (Precip.packLite -> unpackLite). Prints frames in the format
 -- tools/stormlab/radar_frames.py reads (REF row over SRV row).
 --   luau --codegen tools/radar_compare/lab_full_vs_lite.luau -a <minutes> > out.txt
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Radar = require("../../roblox/src/stormlab/shared/Sim/Radar")
-local Precip = require("../../roblox/src/stormlab/shared/Sim/Precip")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Radar = require("../../roblox/Shared/StormLab/Sim/Radar")
+local Precip = require("../../roblox/Shared/StormLab/Sim/Precip")
 local args = { ... }
 local minutes = tonumber(args[1] or "") or 60
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/Supercell")))
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell")))
 world:spinUp(600)
 for _ = 1, minutes * 12 do world:step(5) end
 local best, bestRot = nil, -1

@@ -1,6 +1,6 @@
 # Tornado lifecycle research (2026-10-31)
 
-Background for the lifecycle scenes (`roblox/src/stormlab/shared/VisualTests.luau`, `life_*`).
+Background for the lifecycle scenes (`roblox/Shared/StormLab/VisualTests.luau`, `life_*`).
 Marked *(std)* = standard textbook values not re-verified; *(anecdotal)* = chaser accounts.
 
 ## Condensation physics (what the funnel shows)

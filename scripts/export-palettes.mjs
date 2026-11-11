@@ -1,5 +1,5 @@
 // Writes the products' colours (js/forecast/productColours.js) into the Roblox place, so the
-// game and the web developer views share one source: roblox/src/shared/Weather/Palettes.luau.
+// game and the web developer views share one source: roblox/Shared/Weather/Palettes.luau.
 // Radar colour tables come from js/radar/RadarFormat.js (radarColorTable, as the web radar draws them),
 // the satellite's from js/satellite/SatelliteFormat.js.
 // Run after changing a colour: node scripts/export-palettes.mjs
@@ -14,7 +14,7 @@ import { SATELLITE_PRODUCTS, SATELLITE_KINDS, satelliteColorTable } from '../js/
 const RADAR_SHOWN = ['reflectivity', 'velocity', 'rawVelocity', 'stormRelativeVelocity', 'correlationCoefficient', 'differentialReflectivity', 'spectrumWidth', 'echoTops', 'vil', 'mesh', 'azShear'];
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'roblox/src/shared/Weather/Palettes.luau');
+const OUT = path.join(ROOT, 'roblox/Shared/Weather/Palettes.luau');
 
 const rgb = hex => `{ ${[1, 3, 5].map(k => parseInt(hex.slice(k, k + 2), 16)).join(', ')} }`;
 const table = (entries, key = k => k, indent = '\t') => `{\n${entries.map(([k, v]) => `${indent}\t${key(k)} = ${v},`).join('\n')}\n${indent}}`;

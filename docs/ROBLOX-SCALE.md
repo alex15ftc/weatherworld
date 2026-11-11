@@ -98,7 +98,7 @@ likely within N minutes" and projected tracks, was not chosen for now.)
 
 ## Standard scale in the main world (2026-10-27)
 
-The main world now uses Roblox's standard scale, 1 stud = 0.28 m (about 3.57 studs per metre), the same as the storm lab. Settings are in `roblox/src/shared/World/Config.luau`.
+The main world now uses Roblox's standard scale, 1 stud = 0.28 m (about 3.57 studs per metre), the same as the storm lab. Settings are in `roblox/Shared/World/Config.luau`.
 
 - **Map distance stays squashed**, at 1,000 studs per mile then (600 since 2026-10-28, below), about 5.75 times shorter than true. At true scale the map would be 2.9 million studs across, past float precision, and cars would need about 1,000 studs/s to keep up with storms on the 12x clock.
 - **Buildings, roads, trees and the car** were already built at character scale (12-stud lanes, 11-stud storeys), which is close to true at 0.28 m. They are unchanged.

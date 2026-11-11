@@ -1,8 +1,8 @@
 -- Tornado genesis terms per storm (Storm.step's genesis block), every 15 min, both lab days:
 -- gamma (stretching x spin), warm RFD, RFD help, LCL factor, drive (needs > 0.8 to build G), G.
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
 -- (args: "front" [mesoK] - the gust-front occlusion, Storm.GUST_FRONT; "clock" - the old one)
 local args = { ... }
 if args[1] == "front" then
@@ -12,7 +12,7 @@ elseif args[1] == "clock" then
 	Storm.GUST_FRONT = false
 end
 for _, name in { "Supercell", "SquallLine" } do
-	local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/" .. name)))
+	local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/" .. name)))
 	world:spinUp(600)
 	local tors = 0
 	local known = {}

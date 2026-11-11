@@ -1,12 +1,12 @@
 -- Offline run of the whole lab atmosphere from an engine scenario.
 --   luau tools/stormlab/test_world.luau -a Supercell 90
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Vortex = require("../../roblox/src/stormlab/shared/Sim/Vortex")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Vortex = require("../../roblox/Shared/StormLab/Sim/Vortex")
 local args = { ... }
 local name = args[1] or "Supercell"
 local minutes = tonumber(args[2]) or 60
-local scen = name == "SquallLine" and require("../../roblox/src/stormlab/data/SquallLine") or require("../../roblox/src/stormlab/data/Supercell")
+local scen = name == "SquallLine" and require("../../roblox/Shared/StormLab/Data/SquallLine") or require("../../roblox/Shared/StormLab/Data/Supercell")
 local data = Json.decode(scen)
 local t0 = os.clock()
 local world = World.new(data)

@@ -1,4 +1,4 @@
-"""Packs a relight grid (roblox/src/shared/Weather/CloudKit/Relight/<piece>.luau, 19 channels at
+"""Packs a relight grid (roblox/Shared/Weather/CloudKit/Relight/<piece>.luau, 19 channels at
 256x256) into one 1024x512 RGB PNG for upload as an image asset: 8 tiles of 256 (4 across, 2 down),
 tile t holding channels 3t, 3t+1, 3t+2 in R, G, B (tile 6: 18 = alpha, then padding). RGB only and
 fully opaque, so nothing in the upload touches the colours under a zero alpha. The game reads the
@@ -17,7 +17,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 # (the grids' Luau, moved out of the place once packed: the game reads the uploaded packs; new
 # bakes land in src/.../CloudKit/Relight and are packed from there too)
 SRC = os.path.join(ROOT, 'roblox', 'assets', 'cloudkit', 'relight', 'luau')
-NEW = os.path.join(ROOT, 'roblox', 'src', 'shared', 'Weather', 'CloudKit', 'Relight')
+NEW = os.path.join(ROOT, 'roblox', 'Shared', 'Weather', 'CloudKit', 'Relight')
 OUT = os.path.join(ROOT, 'roblox', 'assets', 'cloudkit', 'relight')
 
 

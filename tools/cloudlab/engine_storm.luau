@@ -3,13 +3,13 @@
 -- 5 minutes of its track, the model's storm printed next to the engine's every 15 min.
 --   luau --codegen tools/cloudlab/engine_storm.luau -a [scenario] [minutes] [nest 0/1] [lift m/s]
 --       [lift radius m] [env 0/1] [cold 0/1] [tornado lift m/s, 0 = off] [lift at: inflow / box] [n0h] [autoToIce 0/1]
-local EngineRun = require("../../roblox/src/cloudlab/shared/Model/EngineRun")
-local Nest = require("../../roblox/src/cloudlab/shared/Model/Nest")
+local EngineRun = require("../../roblox/Shared/CloudModel/EngineRun")
+local Nest = require("../../roblox/Shared/CloudModel/Nest")
 local decode = require("./json")
 local a = { ... }
 local name = a[1] or "SupercellLife"
 local minutes = tonumber(a[2]) or 300
-local data = decode((require :: any)("../../roblox/src/stormlab/data/" .. name))
+local data = decode((require :: any)("../../roblox/Shared/StormLab/Data/" .. name))
 local opts = {
 	nest = a[3] == "1", lift = tonumber(a[4]), liftR = tonumber(a[5]), env = (a[6] or "1") ~= "0",
 	cold = (a[7] or "1") ~= "0", torLift = tonumber(a[8]), liftAt = a[9], n0h = tonumber(a[10]), autoToIce = a[11] == "1",

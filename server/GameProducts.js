@@ -43,7 +43,7 @@
 // The manifest lists the report days and surveys of today and yesterday (yesterday's last
 // changes come in after 12Z); older ones are given when asked for while the log holds them.
 // Every report product carries `world` (the storm log's worldId): the game keeps the days it is
-// sent beyond what the weather server holds (roblox/src/server/ReportArchive.luau), and a new
+// sent beyond what the weather server holds (roblox/Server/Modules/ReportArchive.luau), and a new
 // world numbers its days from 1 again.
 import crypto from 'node:crypto';
 import { RISK_RADIUS_MILES } from '../js/forecast/spcOutlookRules.js';

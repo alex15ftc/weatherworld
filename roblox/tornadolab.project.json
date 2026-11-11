@@ -1,0 +1,56 @@
+{
+  "name": "TornadoLab",
+  "emitLegacyScripts": false,
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
+      "Bootstrapper": {
+        "$path": "Client/Bootstrapper"
+      },
+      "Modules": {
+        "$path": "Client/Modules"
+      },
+      "Lab": {
+        "$path": "Labs/TornadoLab/Client"
+      }
+    },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Assets": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      },
+      "Config": {
+        "$path": "Config"
+      },
+      "Packages": {
+        "$path": "Packages"
+      },
+      "Shared": {
+        "$path": "Shared",
+        "Tornado": {
+          "$path": "Labs/TornadoLab/Tornado"
+        }
+      }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+      "main": {
+        "$path": "Server/main.server.luau"
+      },
+      "Modules": {
+        "$path": "Server/Modules"
+      },
+      "Lab": {
+        "$path": "Labs/TornadoLab/Server"
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
+      }
+    }
+  }
+}

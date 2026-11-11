@@ -2,7 +2,7 @@
 // layer's cloud shares, the air at the ground, the wind, the soil), and where the
 // map lies and how its day runs, so the game puts the sun where the engine has it. Sent with each
 // game frame (server/GameFeed.js); the game turns it into light, haze and cloud
-// (roblox/src/client/SkyLight.luau). Nothing here decides how anything looks.
+// (roblox/Client/SkyLight.luau). Nothing here decides how anything looks.
 //
 // The grid averages blocks of `block` x `block` regional cells (10 miles each), row by row from
 // the north-west corner; values are whole numbers (temperatures to 0.1 F) to keep the frame small:

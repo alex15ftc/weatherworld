@@ -1,8 +1,8 @@
 local fs = require("@lune/fs")
 local serde = require("@lune/serde")
-local CM = require("../../../roblox/src/cloudlab/shared/Model/CloudModel")
-local EngineRun = require("../../../roblox/src/cloudlab/shared/Model/EngineRun")
-local Nest = require("../../../roblox/src/cloudlab/shared/Model/Nest")
+local CM = require("../../../roblox/Shared/CloudModel/CloudModel")
+local EngineRun = require("../../../roblox/Shared/CloudModel/EngineRun")
+local Nest = require("../../../roblox/Shared/CloudModel/Nest")
 local T = {}
 local cur = nil
 for _, name in { "slow", "fast", "micro", "fill", "relaxEnvironment", "applyColdPool", "applyDrive", "followStorm" } do
@@ -20,7 +20,7 @@ for _, name in { "feed", "recentre", "applyBoundary" } do
 	if f then Nest[name] = function(...) local t0 = os.clock(); local a = f(...); T["nest." .. name] = (T["nest." .. name] or 0) + os.clock() - t0; return a end end
 end
 EngineRun.NEST_START = 60
-local text = fs.readFile("roblox/src/stormlab/data/SupercellB.luau")
+local text = fs.readFile("roblox/Shared/StormLab/Data/SupercellB.luau")
 local run = EngineRun.fromScenario(serde.decode("json", string.match(text, "%[==%[(.*)%]==%]")), { nest = true })
 while run.model.time < 120 do run:replayStep() end
 T = {}

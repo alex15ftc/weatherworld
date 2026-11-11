@@ -9,7 +9,7 @@ Inputs, all in this folder:
 - `SIM-POSITIONING-AUDIT.md`: where the code puts each feature (file:line), measured on the
   Supercell scenario.
 
-The game draws the **lab** geometry (`roblox/src/stormlab/shared/Sim`). The JS engine only nudges
+The game draws the **lab** geometry (`roblox/Shared/StormLab/Sim`). The JS engine only nudges
 each storm's position, motion, W and rotation. The engine's own geometry drives its radar and products.
 
 ## 1. Frame

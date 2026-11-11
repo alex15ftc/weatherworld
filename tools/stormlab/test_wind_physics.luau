@@ -5,12 +5,12 @@
 --   luau --codegen tools/stormlab/test_wind_physics.luau -a [minutes] [Supercell|SquallLine]
 -- Each line PASS/FAIL with the measured value; ends with the count. Targets are from observations
 -- and theory (sources at each check), not from the sim's own numbers.
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local Vortex = require("../../roblox/src/stormlab/shared/Sim/Vortex")
-local ColdPool = require("../../roblox/src/stormlab/shared/Sim/ColdPool")
-local Thermo = require("../../roblox/src/stormlab/shared/Sim/Thermo")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local Vortex = require("../../roblox/Shared/StormLab/Sim/Vortex")
+local ColdPool = require("../../roblox/Shared/StormLab/Sim/ColdPool")
+local Thermo = require("../../roblox/Shared/StormLab/Sim/Thermo")
 
 local args = { ... }
 -- (args[3] "depth": ColdPool.DEPTH_MEAN, the pool's wind set against the depth-mean air)
@@ -30,7 +30,7 @@ local function check(name: string, ok: boolean, detail: string)
 	print(string.format("  %s  %-50s %s", if ok then "PASS" else "FAIL", name, detail))
 end
 
-local data = Json.decode(require("../../roblox/src/stormlab/data/" .. day))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/" .. day))
 local world = World.new(data)
 world:spinUp(600)
 for _ = 1, minutes do

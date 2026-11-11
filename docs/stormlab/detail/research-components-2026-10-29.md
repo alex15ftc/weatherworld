@@ -1,6 +1,6 @@
 # Visible severe-storm components vs. what the storm lab draws (2026-10-29)
 
-Paths are relative to `roblox/src/stormlab/`. CP = `client/Render/CloudParts/`. Status is judged from the code only; most of these features have not been looked at on screen. Builds on RESEARCH-SUPERCELL-LAYOUT, RESEARCH-WALLCLOUD-HV, storm-reference/NOTES.md and LIFECYCLE-AND-TYPES.md.
+Paths are relative to `roblox/Labs/StormLab/`. CP = `client/Render/CloudParts/`. Status is judged from the code only; most of these features have not been looked at on screen. Builds on RESEARCH-SUPERCELL-LAYOUT, RESEARCH-WALLCLOUD-HV, storm-reference/NOTES.md and LIFECYCLE-AND-TYPES.md.
 
 ## Inventory
 

@@ -1,11 +1,11 @@
 -- The client mirror evaluates the same wind as the server, and radar works from it.
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local ClientWorld = require("../../roblox/src/stormlab/shared/Sim/ClientWorld")
-local Radar = require("../../roblox/src/stormlab/shared/Sim/Radar")
-local Debris = require("../../roblox/src/stormlab/shared/Sim/Debris")
-local Damage = require("../../roblox/src/stormlab/shared/Sim/Damage")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local ClientWorld = require("../../roblox/Shared/StormLab/Sim/ClientWorld")
+local Radar = require("../../roblox/Shared/StormLab/Sim/Radar")
+local Debris = require("../../roblox/Shared/StormLab/Sim/Debris")
+local Damage = require("../../roblox/Shared/StormLab/Sim/Damage")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 for _ = 1, 600 do world:step(1) end

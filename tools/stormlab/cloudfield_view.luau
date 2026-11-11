@@ -4,15 +4,15 @@
 --   cd roblox && luau --codegen ../tools/stormlab/cloudfield_view.luau -a <sceneId> [step m] > out.txt
 --   python tools/stormlab/cloudfield_png.py out.txt <prefix>
 -- Prints "IMG name w h" then h rows of hex RGB.
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Vortex = require("../../roblox/src/stormlab/shared/Sim/Vortex")
-local CloudField = require("../../roblox/src/stormlab/shared/Sim/CloudField")
-local VisualTests = require("../../roblox/src/stormlab/shared/VisualTests")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Vortex = require("../../roblox/Shared/StormLab/Sim/Vortex")
+local CloudField = require("../../roblox/Shared/StormLab/Sim/CloudField")
+local VisualTests = require("../../roblox/Shared/StormLab/VisualTests")
 local args = { ... }
 local sceneId = args[1] or "wedge_rain"
 local STEP = tonumber(args[2] or "") or 40
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 local scene
 for _, sc in VisualTests.SCENES do

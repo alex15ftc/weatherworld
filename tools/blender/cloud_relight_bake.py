@@ -26,7 +26,7 @@
 # blows up in the faint backlit fringe), divided by one `scale` shared by every piece (brightest sun
 # value of all pieces -> ~250/255). The game mixes them, then divides by alpha for a straight sprite.
 #
-# Writes roblox/src/shared/Weather/CloudKit/Relight/<piece>.luau (8 bytes per pixel, base64) and
+# Writes roblox/Shared/Weather/CloudKit/Relight/<piece>.luau (8 bytes per pixel, base64) and
 # roblox/assets/cloudkit/relight/<piece>_basis.png (the 8 channels, 4 x 2: px nx py ny / pz nz sky
 # alpha, display-encoded) and <piece>_check.png (the basis mixed for the vapor bake's `lit` light |
 # the vapor bake's real `lit` cell, both over sky blue).
@@ -58,7 +58,7 @@ SUNS = {"px": (1, 0, 0), "nx": (-1, 0, 0), "py": (0, 0, 1), "ny": (0, 0, -1),
         "pz": (0, -1, 0), "nz": (0, 1, 0)}
 SKY_BASIS = 1.0      # uniform white world strength of the sky channel (the game weights it)
 TARGET = 250.0       # the brightest sun value of all pieces maps to this byte
-LUAU_DIR = os.path.join(ROOT, "roblox", "src", "shared", "Weather", "CloudKit", "Relight")
+LUAU_DIR = os.path.join(ROOT, "roblox", "Shared", "Weather", "CloudKit", "Relight")
 PNG_DIR = os.path.join(ROOT, "roblox", "assets", "cloudkit", "relight")
 VAPOR_DIR = os.path.join(ROOT, "roblox", "assets", "cloudkit", "vapor")
 

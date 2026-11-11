@@ -1,4 +1,4 @@
-"""Storm billboard sheets for the storm lab (roblox/src/stormlab, Render/StormCards and Shafts).
+"""Storm billboard sheets for the storm lab (roblox/Labs/StormLab, Render/StormCards and Shafts).
 
 Both are 1024 px, 4x4 frames of 256 px, white RGB with the shape in alpha (tinted in game),
 like the other *Flat sheets (docs/stormlab/TEXTURE-REVIEW.md, steps 3 and 5).

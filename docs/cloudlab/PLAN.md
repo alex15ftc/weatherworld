@@ -1,6 +1,6 @@
 # Cloud model in the game: plan (2026-11-05)
 
-Where the cloud model (roblox/src/cloudlab) goes from here, after the 2026-11-04/05 discussion.
+Where the cloud model (roblox/Labs/CloudLab) goes from here, after the 2026-11-04/05 discussion.
 Status and results so far: [STATUS.md](STATUS.md) (rounds 1-10). Review prompts point at
 [../REVIEWER-BRIEF.md](../REVIEWER-BRIEF.md).
 
@@ -17,7 +17,7 @@ Status and results so far: [STATUS.md](STATUS.md) (rounds 1-10). Review prompts 
    would see different storms) and not on each Roblox server (limited CPU, duplicated work).
 4. **Visuals are client-side only**, drawn with billboards (no parts, no shaders), from the
    frames. Art is the friend's; we do the placement code and the field-to-visual mapping.
-5. **The tornado comes from the tornado wind field** (roblox/src/shared/Tornado), not the cloud
+5. **The tornado comes from the tornado wind field** (roblox/Labs/TornadoLab/Tornado), not the cloud
    model. 250 m (even 62.5 m) can show the rotation that makes a tornado but not the tornado; a
    tornado needs 10-20 m. The engine says whether a tornado is down and how strong it is, and the
    cloud model's nest says where its rotation is.
@@ -84,7 +84,7 @@ Goal: the engine runs `EngineRun` for chosen storms and serves their frames.
 
 Goal: as little data as possible, enough for the visuals and the storm-scale winds.
 
-1. **Frame format:** `roblox/src/cloudlab/shared/Model/FrameCodec.luau` (encode and decode).
+1. **Frame format:** `roblox/Shared/CloudModel/FrameCodec.luau` (encode and decode).
    **Done 2026-11-05.**
    - 1 km box, 12 bytes a column: two cloud runs (base and top), ground rain and hail, cold pool,
      ground wind, 5 km updraft, 1 km rotation, anvil snow.

@@ -1,4 +1,4 @@
-# Soft smoke flipbooks for the particle tornado (roblox/src/shared/Tornado).
+# Soft smoke flipbooks for the particle tornado (roblox/Labs/TornadoLab/Tornado).
 #
 #   py -3.12 tools/smoke/smoke_flipbook.py --variant body --out roblox/assets/tornado2
 #   py -3.12 tools/smoke/smoke_flipbook.py --variant wisp --out roblox/assets/tornado2

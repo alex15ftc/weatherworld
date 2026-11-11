@@ -1,46 +1,67 @@
 # WeatherWorld — Roblox place
 
-Rojo 7.4.4 project for the single WeatherWorld place. The whole map is generated
-procedurally (seeded, chunk by chunk around players); see `src/shared/World/Config.luau`.
+Built on the [Roblox Boilerplate](https://github.com/robloxdeveloper2/Roblox-Boilerplate-Final)
+(Rojo 7.7 + Wally): a Service / Controller loader, typed `Shared/Network` events, PlayerData,
+Settings, ConVars, Trove, Signal, Promise and the Profiler. The whole map is generated
+procedurally (seeded, chunk by chunk around players); see `Shared/World/Config.luau`.
 
-| Folder        | In Studio                                   |
-|---------------|---------------------------------------------|
-| `src/shared`  | `ReplicatedStorage.Shared`                  |
-| `src/server`  | `ServerScriptService.Server`                |
-| `src/client`  | `StarterPlayer.StarterPlayerScripts.Client` |
+## Setup
 
-Live sync: run `rojo serve` in this folder, then press **Connect** in the Rojo plugin in Studio.
+```bash
+./setup.sh        # Windows PowerShell: .\setup.ps1   (tools, Wally packages, types)
+node ../scripts/export-world-roblox.mjs   # the world data (Server/WorldData, Shared/MapData; git-ignored)
+rojo serve        # then Connect in the Rojo plugin
+```
+
 Build a place file: `rojo build -o WeatherWorld.rbxl`.
 
-Weather screens (press **M**): the world map and the issued products, fed by
-`server/ProductFeed.luau`. Without a feed URL they show the recorded snapshot in
-`src/worlddata/ProductSnapshot`; see `docs/ROBLOX-UI-PLAN.md` for running them live through a
-cloudflared tunnel.
+## Layout
 
-## Particle tornado (new, 2026-10-22) and the tornado lab
+| Folder | In Studio | What |
+|---|---|---|
+| `Client/Bootstrapper` | ReplicatedFirst | boots every `*Controller` (Init, then Start) and the Shared modules |
+| `Client/Controllers` | | `WeatherController` (the storms), `EngineStormsController`, `LiveStormsController`, `ProductsController` (the M screen), `DebugPageController` (F2), `FlightController` (F), `TestDriveController`, `UIController` |
+| `Client/Modules` | | `Weather/` (the storm renderers, shared with the storm lab), `Products/`, `FrameWorld` |
+| `Client/UI` | | React UI (boilerplate): widgets in `UI/Widgets` mount themselves |
+| `Server/main.server.luau` | ServerStorage | boots every `*Service` (Init, then Start) |
+| `Server/Services` | | `ChunkService`, `ExploreService`, `CarService`, `StormHostService`, `LiveStormsService`, `ProductFeedService`, `TestDriveService` |
+| `Server/Modules` | | `StormPublisher`, `ReportArchive`, `TestVehicle`, `CarChassis`, `ChunkWorker` (Actor template) |
+| `Server/World` | ServerStorage.World | the server-only world generator |
+| `Shared` | ReplicatedStorage.Shared | boilerplate modules, plus `World/`, `Weather/`, `CloudModel/`, `StormLab/` (Sim, LabConfig, Data) and `Net/` |
+| `Labs/StormLab`, `Labs/CloudLab`, `Labs/TornadoLab` | | the lab places' Services and Controllers |
 
-A from-scratch tornado built from particle smoke (the old `client/TornadoArt.luau` is not used
-by it). Shared code in `src/shared/Tornado`:
+## Networking
 
-| Module | What |
+Every message is a `Shared/Network` event declared once in `Shared/Net/`:
+`StormNet` (storm frames, the Hello and Ground requests), `LiveStormNet`, `ProductNet`,
+`DebugNet` and `CloudLabNet`. There are no RemoteEvents or RemoteFunctions made by hand.
+`Network.Request(name, validator)` (Shared/Network/Request.luau) replaces RemoteFunctions:
+`req:Server():OnInvoke(handler)` and `req:Client():Invoke(...)` (a Promise) or `:Await(...)`.
+A Network event that arrives before its client listener is set is dropped, so every stream
+has a handshake: the storm frames' `ready` command, `LiveStormNet.Ready`, `CloudLabNet.Ready`.
+
+## Debug and settings
+
+- The debug page's teleport is for players tagged `Developer` (everyone in Studio; list
+  UserIds in `Shared/Settings/Backend/Admins.toml`), the place's owner, or group rank 254+.
+- `/debug_profiler 1` (ConVar) turns on the microprofiler labels (ChunkService,
+  StormHostService, Weather and each renderer, EngineStorms, ProductsMap).
+- Player settings: `Shared/Settings/Frontend/Flight.toml` (FlySpeed, FlyBoostSpeed).
+- The Workspace attributes (LiveStorms, StormVisuals, StormSource, TestDrive, ...) work as before.
+
+## Labs
+
+| Project | Place |
 |---|---|
-| `Config.luau` | every tunable: smoke textures, funnel rings, smoke layers, profiles, wind model |
-| `Shape.luau` | rope / cone / stovepipe / wedge radius curves, blended by weight |
-| `State.luau` | the tornado's network state (pack / unpack / lerp), centreline with seeded wobble |
-| `Vortex.luau` | wind field: Rankine vortex + inflow + updraft; EF <-> wind speed |
-| `FunnelView.luau` | client renderer: rings of spinning parts with LockedToPart smoke emitters; also the cloud base, foot and debris |
-| `PuffView.luau` | client renderer (default, `Config.render.mode = "puffs"`): the funnel body as a chain of round puffs along the bent centreline |
+| `stormlab.project.json` | the storm lab (`Labs/StormLab`): the lab sim and the game's storm renderers |
+| `cloudlab.project.json` | the cloud lab (`Labs/CloudLab`): the cloud model, live view, network test |
+| `tornadolab.project.json` | the particle tornado lab (`Labs/TornadoLab`, its library in `Labs/TornadoLab/Tornado`) |
 
-The lab is a separate place for look-dev (flat field, overcast sky, camera rig, debug panel):
+Each lab place gets the same Bootstrapper, `Shared` and Packages:
+`rojo build stormlab.project.json -o StormLab.rbxl`, or `rojo serve stormlab.project.json`.
+The tornado lab's old storm mode (key N) still needs the long-removed `GameClient` modules.
 
-    rojo build tornadolab.project.json -o TornadoLab.rbxl   # then open it in Studio and press Play
-    rojo serve tornadolab.project.json                      # or live-sync into an empty place
+## Offline checks
 
-In Play: right-drag / WASD / R F / Q E / Z X move the camera, H hides the panel, P freezes the
-smoke for a still frame, M switches the funnel renderer (puff chain / rings), 1-8 or [ ] (or the
-panel's look buttons) switch between tornado looks from
-`src/lab/client/Presets.luau` (Ref1 cone, White cone, Dark wedge, Green wedge, Sepia cone, Trunk,
-Rope, Rope-out; each names its reference in `docs/tornado-reference`), "Sky:" buttons set the
-storm light, "Print config" writes the tuned values to Output for pasting back into
-`Config.luau` / `src/lab/client/LabConfig.luau`. Smoke textures come from
-`tools/smoke/smoke_flipbook.py` (`py -3.12`, numpy).
+The pure simulation modules (`Shared/StormLab/Sim`, `Shared/CloudModel`) also run under Lune:
+`lune run tools/stormlab/test_frames.luau` and the rest of `tools/stormlab`, `tools/cloudlab`.

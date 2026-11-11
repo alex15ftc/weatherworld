@@ -2,12 +2,12 @@
 -- the cold pool's deficit, how liftable that air is, and the storm-relative low-level wind there
 -- (tangential: + carries the meso the way occlusion takes it). Phase 2 probe.
 --   luau --codegen tools/stormlab/diag_mesopath.luau -a [minute]
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
 local args = { ... }
 local at = tonumber(args[1]) or 30
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/Supercell")))
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell")))
 world:spinUp(600)
 for _ = 1, at * 60 do world:step(1) end
 local cp = world.coldPool

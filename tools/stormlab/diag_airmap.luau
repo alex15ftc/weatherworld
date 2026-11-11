@@ -2,13 +2,13 @@
 -- and how far its condensation level sits under the base: the wall cloud's air map
 -- (docs/stormlab/PHYSICAL-VOLUME-PLAN.md). Prints an ASCII map round the low meso.
 --   luau --codegen tools/stormlab/diag_airmap.luau -a <sceneId>
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local VisualTests = require("../../roblox/src/stormlab/shared/VisualTests")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local VisualTests = require("../../roblox/Shared/StormLab/VisualTests")
 local args = { ... }
 local sceneId = args[1] or "wedge_rain"
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/Supercell")))
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell")))
 local scene
 for _, sc in VisualTests.SCENES do if sc.id == sceneId then scene = sc end end
 local t = world:labScene(scene, VisualTests.SITE)

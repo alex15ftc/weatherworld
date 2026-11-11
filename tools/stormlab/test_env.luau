@@ -1,9 +1,9 @@
 -- Offline check: the lab's Thermo/Environment against the engine's own diagnostics.
 --   luau tools/stormlab/test_env.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local Environment = require("../../roblox/src/stormlab/shared/Sim/Environment")
-local Thermo = require("../../roblox/src/stormlab/shared/Sim/Thermo")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local Environment = require("../../roblox/Shared/StormLab/Sim/Environment")
+local Thermo = require("../../roblox/Shared/StormLab/Sim/Thermo")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local t0 = os.clock()
 local env = Environment.new(data)
 print(string.format("built in %.0f ms", (os.clock() - t0) * 1000))

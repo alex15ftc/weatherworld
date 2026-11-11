@@ -1,9 +1,9 @@
 -- The L6 landspout scene offline: the cell, its misocyclone and any tornado every minute.
 --   luau --codegen tools/stormlab/diag_landspout_scene.luau -a [seconds]
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local VisualTests = require("../../roblox/src/stormlab/shared/VisualTests")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local VisualTests = require("../../roblox/Shared/StormLab/VisualTests")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local args = { ... }
 local T = tonumber(args[1]) or 2700
 local world = World.new(data)
