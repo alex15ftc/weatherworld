@@ -32,6 +32,11 @@
         "CharacterJumpHeight": 7.2
       }
     },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": true
+      }
+    },
     "Lighting": {
       "$properties": {
         "Technology": "Future",

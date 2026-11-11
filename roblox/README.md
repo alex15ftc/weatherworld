@@ -20,15 +20,31 @@ Build a place file: `rojo build -o WeatherWorld.rbxl`.
 | Folder | In Studio | What |
 |---|---|---|
 | `Client/Bootstrapper` | ReplicatedFirst | boots every `*Controller` (Init, then Start) and the Shared modules |
-| `Client/Controllers` | | `WeatherController` (the storms), `EngineStormsController`, `LiveStormsController`, `ProductsController` (the M screen), `DebugPageController` (F2), `FlightController` (F), `TestDriveController`, `UIController` |
+| `Client/Controllers` | | `WeatherController` (the storms), `EngineStormsController`, `LiveStormsController`, `ProductsController` (the M screen), `DebugPageController` (F2), `FlightController` (F), `TestDriveController`, `UIController`, `FoliageController` (the skinned trees) |
 | `Client/Modules` | | `Weather/` (the storm renderers, shared with the storm lab), `Products/`, `FrameWorld` |
 | `Client/UI` | | React UI (boilerplate): widgets in `UI/Widgets` mount themselves |
 | `Server/main.server.luau` | ServerStorage | boots every `*Service` (Init, then Start) |
-| `Server/Services` | | `ChunkService`, `ExploreService`, `CarService`, `StormHostService`, `LiveStormsService`, `ProductFeedService`, `TestDriveService` |
+| `Server/Services` | | `ChunkService`, `ExploreService`, `CarService`, `StormHostService`, `LiveStormsService`, `ProductFeedService`, `TestDriveService`, `FoliageService` (tree breaking and its persistence) |
 | `Server/Modules` | | `StormPublisher`, `ReportArchive`, `TestVehicle`, `CarChassis`, `ChunkWorker` (Actor template) |
 | `Server/World` | ServerStorage.World | the server-only world generator |
 | `Shared` | ReplicatedStorage.Shared | boilerplate modules, plus `World/`, `Weather/`, `CloudModel/`, `StormLab/` (Sim, LabConfig, Data) and `Net/` |
 | `Labs/StormLab`, `Labs/CloudLab`, `Labs/TornadoLab` | | the lab places' Services and Controllers |
+
+## Foliage (skinned trees)
+
+- `Shared/Foliage`: `Kinds/` (generated rig data, `tools/blender/foliage_trees.py`), `Species` (wood and
+  roots), `Rig`, `Mechanics` (wind loads, breaking, fall rest poses), `Sway`, `Profiles` (looks, presets,
+  runtime settings), `Records` (the chunk attributes `Trees` and `TreeDamage`), `Assets` (uploaded ids;
+  `ready` switches the old part trees off).
+- Server: the chunk generator records trees (`Props/Trees.luau`); `FoliageService` breaks them
+  (`Modules/FoliageWind`: the gust over a point) and stores damage permanently (DataStore `FoliageDamage1`,
+  MessagingService topic `FoliageDamage1`); it also loads the tree models into
+  `ReplicatedStorage.FoliageTemplates`.
+- Client: `FoliageController` (mesh / impostor / pieces, sway, culling, LOD, batching).
+- Studio plugin `Plugins/FoliageTool`: `rojo build foliagetool.project.json --plugin FoliageTool.rbxm`
+  (wind, presets, profiles, runtime settings, rig validation, viewport preview, metrics).
+- Offline tests: `lune run tools/foliage/test_mechanics.luau` (against EF DI 27), `test_sway.luau`,
+  `test_records.luau`.
 
 ## Networking
 

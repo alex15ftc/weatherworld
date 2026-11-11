@@ -115,3 +115,8 @@ ai_state/artifacts/**/*.mp4
 ai_state/artifacts/**/*.webm
 ai_state/artifacts/**/*.mov
 ai_state/artifacts/**/*.pdf
+
+# Foliage generator output (tools/blender/foliage_trees.py): binaries stay out of git, the
+# manifest of their hashes is committed
+roblox/assets/foliage/**
+!roblox/assets/foliage/manifest.json

@@ -7,9 +7,45 @@
 --               pasture, where it spreads;
 --   yard        smaller planted shade trees in towns.
 
+-- Since 2026-11-11 each tree is also recorded (Trees.take) for the skinned, wind-driven trees
+-- (Shared/Foliage, FoliageService, FoliageController): one of the generated trees of its kind
+-- (tools/blender/foliage_trees.py), with its own scale and turn. Until the generated trees' meshes
+-- are uploaded (Foliage/Assets.ready), the part-built trees below are made as well.
+
 local Builder = require(script.Parent.Builder)
+local Foliage = game:GetService("ReplicatedStorage").Shared.Foliage
+local Rig = require(Foliage.Rig)
+local Assets = require(Foliage.Assets)
 
 local Trees = {}
+
+-- The trees recorded for each props list (weak: a chunk's list goes when the chunk is done).
+local recorded: { [any]: { any } } = setmetatable({}, { __mode = "k" }) :: any
+
+local function record(props: Builder.Props, kind: string, x: number, y: number, z: number, r: number)
+	local variants = Rig.variants(kind) or Rig.variants("hardwood")
+	if not variants then
+		return
+	end
+	local list = recorded[props]
+	if not list then
+		list = {}
+		recorded[props] = list
+	end
+	table.insert(list, {
+		x = x, y = y, z = z,
+		name = variants[1 + math.floor((r * 7.13) % 1 * #variants)],
+		scale = 0.85 + 0.3 * ((r * 3.71) % 1),
+		yaw = ((r * 13.7) % 1) * 2 * math.pi,
+	})
+end
+
+-- The trees recorded for a props list (Shared/Foliage/Records.Tree), taken off it.
+function Trees.take(props: Builder.Props): { any }
+	local list = recorded[props] or {}
+	recorded[props] = nil
+	return list
+end
 
 local M = Enum.Material
 local hash = Builder.hash
@@ -57,6 +93,10 @@ end
 export type Kind = "cottonwood" | "hardwood" | "cedar" | "yard"
 
 function Trees.add(props: Builder.Props, kind: Kind, x: number, y: number, z: number, r: number)
+	record(props, kind, x, y, z, r)
+	if Assets.ready then
+		return
+	end
 	if kind == "cedar" then
 		cedar(props, x, y, z, 0.8 + 0.5 * r, (r * 9.7) % 1)
 	elseif kind == "cottonwood" then

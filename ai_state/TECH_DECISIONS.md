@@ -16,6 +16,24 @@
 
 ## Decisions
 
+### 2026-11-11 — Trees are chunk records drawn by clients; their breaking is the server's and permanent
+
+- Status: active
+- Decision: The chunk generator records its trees on each chunk's props model (`Trees` attribute) instead of
+  building them from parts; clients draw them (skinned mesh near, 8-view impostor far, rigid pieces once broken)
+  and sway them from the lab wind field. The server alone decides breaks, from the shared weather
+  (`FoliageWind`: lab world, or the window's environment plus the engine's full frames) through wood mechanics
+  checked against EF DI 27, writes them to the chunk (`TreeDamage`), and keeps them permanently in a DataStore
+  shared by all servers (MessagingService for live servers). The fall's rest pose is not stored: `Mechanics.rest`
+  computes it alike everywhere (flat ground at the foot).
+- Rationale: the owner asked for persistent, shared blowdowns and seamless breaking. Replicating thousands of
+  skinned trees and physics debris from the server would cost far more; records plus deterministic poses keep
+  every client identical. The skinned mesh stays whole until a break, then is swapped for pieces cut from the
+  same faces at the current pose (no seams while whole).
+- Follow-up: upload the generated trees (`Foliage/Assets.ready`); until then the old part trees stay. Damage
+  only happens near players (loaded chunks); tornado tracks where nobody was could come from the engine's damage
+  surveys.
+
 ### 2026-11-11 — Workspace follows the project template, adapted to one repo
 
 - Status: active

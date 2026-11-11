@@ -30,6 +30,7 @@ local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.World.Config)
 local LiveStormNet = require(Shared.Net.LiveStormNet)
 local StormFrames = require(Shared.CloudModel.StormFrames) :: any
+local FrameCodec = require(Shared.CloudModel.FrameCodec) :: any
 local ClientFrame = require(Shared.CloudModel.ClientFrame) :: any
 local WorldMap = require(ServerStorage.World.WorldMap)
 
@@ -107,6 +108,39 @@ end
 function LiveStormsService.clockUtc(): number?
 	if not tickAt or tickHour < 0 then return nil end
 	return tickHour + gameSince(tickHour) / 3600
+end
+
+-- The engine's storms as this server holds them, for their winds (FoliageService's blowdowns):
+-- each one's place now (map km, y south) and its newest full frame (FrameCodec.decodeHeader: the
+-- ground wind of every column and the tornado), decoded once a frame.
+local decoded: { [string]: { seq: number, frame: any } } = {}
+function LiveStormsService.stormsNow(): { { id: string, xKm: number, yKm: number, frame: any } }
+	local out = {}
+	local dt = if tickHour >= 0 then gameSince(tickHour) else 0
+	for id, h in held do
+		local w = where[id]
+		if w and h.full and not h.ended then
+			local d = decoded[id]
+			if not d or d.seq ~= h.seq then
+				local ok, f = pcall(function()
+					local b = h.full :: buffer
+					local okz, raw = pcall(EncodingService.DecompressBuffer, EncodingService, b, Enum.CompressionAlgorithm.Zstd)
+					return FrameCodec.decodeHeader(if okz then raw else b)
+				end)
+				d = { seq = h.seq, frame = if ok then f else nil }
+				decoded[id] = d
+			end
+			if d.frame then
+				table.insert(out, { id = id, xKm = w.xKm + w.ue * dt / 1000, yKm = w.yKm - w.ve * dt / 1000, frame = d.frame })
+			end
+		end
+	end
+	for id in decoded do
+		if not held[id] then
+			decoded[id] = nil
+		end
+	end
+	return out
 end
 
 -- Where a storm's flashes can go, from its newest near frame: per column the weight of a ground

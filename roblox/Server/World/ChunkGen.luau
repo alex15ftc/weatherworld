@@ -19,6 +19,7 @@ local WorldMap = require(script.Parent.WorldMap)
 local Heightfield = require(script.Parent.Heightfield)
 local Builder = require(script.Parent.Props.Builder)
 local Trees = require(script.Parent.Props.Trees)
+local FoliageRecords = require(game:GetService("ReplicatedStorage").Shared.Foliage.Records)
 local RoadNet = require(script.Parent.Props.RoadNet)
 local Roads = require(script.Parent.Props.Roads)
 local Bridges = require(script.Parent.Props.Bridges)
@@ -736,6 +737,11 @@ function ChunkGen.place(props: Builder.Props, parent: Instance, name: string, bu
 			mesh.Parent = part
 		end
 		part.Parent = model
+	end
+	-- the chunk's trees, for the skinned trees (Shared/Foliage/Records)
+	local trees = Trees.take(props)
+	if #trees > 0 then
+		model:SetAttribute("Trees", FoliageRecords.encodeTrees(trees))
 	end
 	model.Parent = parent
 	return model, (spent + os.clock() - sliceStart) * 1000

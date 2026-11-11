@@ -66,3 +66,23 @@ Each cell covers the unit box plus a margin M = 0.15 on every side (game x -0.65
 seen from game +Z looking toward -Z (image right = +X). Light directions, layout and placement are in
 `roblox/assets/cloudkit/vapor/README.md`. Look settings (`LOOKS`, `SUN_ENERGY`, `SKY_*`, `ANISOTROPY`)
 are at the top of the script.
+
+## Skinned trees (`foliage_trees.py`)
+
+The trees of the foliage system (`roblox/Shared/Foliage`, `FoliageService`, `FoliageController`):
+Sapling Tree Gen grows each tree's stems, the script builds a small rig over them (trunk up to 4
+bones, limbs 1-2, the largest side branches 1, by what they carry, to a budget of 21-44 bones),
+meshes the bark itself (so every vertex is weighted across joints: one seamless skinned surface),
+adds alpha leaf cards, and cuts one break piece a rig bone from the same faces. Blender **5.1**
+(where Sapling is installed); run **without** `--factory-startup` (it drops the extension).
+
+| Command | Makes | Time |
+|---|---|---|
+| `foliage_trees.py -- --kind all` | Every kind and variant: `roblox/assets/foliage/<kind>_<n>/` (`tree.fbx`: armature, skinned `Tree`, `Piece_<bone>` meshes; `atlas.png`; `impostor_0..7.png`), the rig data `roblox/Shared/Foliage/Kinds/<kind>_<n>.luau` and `Kinds/init.luau`, and `roblox/assets/foliage/manifest.json` | ~35 s |
+| `foliage_trees.py -- --kind hardwood --variant 1 --no-render` | One tree, no impostors | ~3 s |
+
+Kinds (`KINDS` at the top): hardwood, cottonwood, yard, cedar, two variants each, 3.7k-9.9k
+triangles. The binaries stay out of git (`manifest.json` holds their hashes). After a change, run the
+mechanics tests (`lune run tools/foliage/test_mechanics.luau`: the trees against the EF scale's
+hardwood-tree indicator), then upload the FBX files as Models and the PNGs as images and record the
+ids in `roblox/Shared/Foliage/Assets.luau`.

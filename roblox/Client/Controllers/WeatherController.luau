@@ -480,6 +480,24 @@ end
 
 -- The storms for DebugPageController, in the old frame's terms (map km east and south of the north-west
 -- corner, kph, metres)
+-- The wind (m/s at 10 m: the lab's field, cw:windAt) over a world point and the way it blows
+-- (unit, world X and Z), for the trees' sway (FoliageController); 0 before the weather is up.
+function Weather.windAtStuds(x: number, z: number): (number, number, number)
+	if not ctx or not ctx.cw then
+		return 0, 1, 0
+	end
+	local lx, ly = ctx.Config.fromWorld(Vector3.new(x, 0, z))
+	local ok, u, v = pcall(ctx.cw.windAt, ctx.cw, lx, ly, 10)
+	if not ok then
+		return 0, 1, 0
+	end
+	local s = math.sqrt(u * u + v * v)
+	if s < 1e-6 then
+		return 0, 1, 0
+	end
+	return s, u / s, -v / s
+end
+
 function Weather.storms(): { any }
 	local out = {}
 	if not ctx or not frameInfo then
