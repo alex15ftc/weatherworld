@@ -49,7 +49,7 @@ if (process.env.WEATHER_STORM_WORKERS !== '0') {
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine, simHoursPerRealMinute: SIM_HOURS_PER_REAL_MINUTE });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
-const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined });
+const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined, file: statePath ? path.join(path.dirname(statePath), 'outlooks.bin') : null });
 // The day packages take the day's first Day 1 outlook issued once the day has begun.
 runtime.dayReviewOutlook = (from, to) => { const outlook = outlooks?.current('day1')?.outlook; return outlook && outlook.validToHourUtc === to && outlook.issuedHourUtc >= from ? outlook : null; };
 // Mesoscale discussions and watches: the world is looked at once in each of its hours, and a
@@ -153,8 +153,10 @@ async function serveApi(url, req, res) {
     if (!hit) return sendJson(req, res, 404, { error: 'Outlooks are off' }, { cacheable: false, trace });
     if (!outlookDay[2]) return sendText(req, res, 200, hit.text, trace, { 'x-product-version': hit.version });
     const hazard = OUTLOOK_HAZARDS.includes(url.searchParams.get('hazard')) ? url.searchParams.get('hazard') : 'categorical';
-    if (!hit.svgs.has(hazard)) hit.svgs.set(hazard, outlookSvg(hit.product, countiesFor(runtime.engine?.world), hazard));
-    return sendText(req, res, 200, hit.svgs.get(hazard), trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache', 'x-product-version': hit.version });
+    // ?times=1 adds the issue and valid times under the key (the Discord posts; the page shows them itself).
+    const times = url.searchParams.get('times') === '1', key = `${hazard}${times ? ':times' : ''}`;
+    if (!hit.svgs.has(key)) hit.svgs.set(key, outlookSvg(hit.product, countiesFor(runtime.engine?.world), hazard, { times }));
+    return sendText(req, res, 200, hit.svgs.get(key), trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache', 'x-product-version': hit.version });
   }
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });

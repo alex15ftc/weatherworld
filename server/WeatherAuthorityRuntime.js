@@ -94,6 +94,8 @@ export class WeatherAuthorityRuntime {
 
   build(seed) {
     const number = Number(seed), given = seed !== undefined && seed !== null && seed !== '' && Number.isFinite(number);
+    // A new world: things saved beside it (the outlooks, OutlookRuntime.js) are kept only for the world they came from.
+    this.worldId = crypto.randomUUID();
     this.adoptEngine(new AtmosphereWorld({ seed: given ? Math.trunc(number) : DEFAULT_SEED, spinUpDays: this.spinUpDays, regional: this.regionalSettings ?? {} }));
   }
 
@@ -711,7 +713,7 @@ export class WeatherAuthorityRuntime {
     if (!this.statePath) return;
     this.lastSavedHour = Math.floor(this.atmosphere.validHourUtc);
     if (this.savingState) { this.saveQueued = true; return; }
-    const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, revision: this.revision, engine: this.engine.saveState() });
+    const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, revision: this.revision, worldId: this.worldId, engine: this.engine.saveState() });
     // (the cloud model storms are saved with the world, so a restart resumes both from the same moment)
     this.savingState = this.writeFile(this.statePath, bytes)
       .then(() => this.stormWorkers?.saveModels?.())
@@ -746,6 +748,8 @@ export class WeatherAuthorityRuntime {
       const engine = AtmosphereWorld.restore(state.engine);
       if (!engine) return false;
       this.revision = state.revision;
+      // (saves from before 2026-11-11 have no id: the seed stands in, and is saved from then on)
+      this.worldId = state.worldId ?? `seed-${state.engine?.seed ?? this.seed}`;
       this.adoptEngine(engine);
       console.log(`[authority] resumed seed ${this.seed} at hour ${this.atmosphere.validHourUtc}${otherCode ? ' (carried over from other code)' : ''}`);
       return true;

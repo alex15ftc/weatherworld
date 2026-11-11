@@ -18,7 +18,8 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
   `railway config plan` and `railway config apply` (see Windows note below). Needs the `railway` dev package
   (`npm install`).
 - Volume `engine-volume` at `/data`: world state (`/data/atmosphere-state.bin`, saved every sim hour),
-  spin-up cache, storm models, day reviews (newest 14 days); the engine writes about 17 MB (Railway shows
+  spin-up cache, storm models, day reviews (newest 14 days), the issued outlooks (`/data/outlooks.bin`, put back
+  after a restart in the same world, so the pages keep the last issue); the engine writes about 18 MB (Railway shows
   ~0.8 GB used, the disk's own overhead).
 - The world carries on through restarts and deploys, engine changes included (`WEATHER_KEEP_WORLD=on`): a
   copy of the saved world is first stepped half an hour under the new code, and if that throws or gives

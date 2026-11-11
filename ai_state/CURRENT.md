@@ -24,7 +24,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`outlook.html`) show each outlook's categorical and tornado/wind/hail maps (SVG from
   `server/OutlookPublic.js`) and discussion; `/api/outlook/index` lists the issues. The Discord bot
   (`weatherworldbot` service on Railway, code outside this repo) posts each new issue to the High Risk
-  server's `#📋outlooks`.
+  server's `#📋outlooks`. The issued outlooks are saved beside the world (`outlooks.bin`, matched by the
+  runtime's `worldId`) and put back after a restart, so a deploy no longer blanks the pages for the ~15-minute
+  re-run; only a new world starts with none.
 - Branch `roblox/boilerplate` (committed and merged to `main` 2026-11-11) moves `roblox/src` onto the Roblox Boilerplate: Services and
   Controllers, all remotes replaced by `Shared/Net` Network events and `Network.Request`, Trove, Signal,
   Profiler, Settings (`roblox/README.md`).

@@ -7,6 +7,9 @@
 // and Day 3 (OUTLOOK.memberShare), but only the days in OUTLOOK.stormShare are run with storms (8 for
 // Day 1, 4 for Day 2, none for Day 3): the Day 2 members run on to Day 3 with the atmosphere alone, and
 // Day 3 comes from the ingredients for storms. The longest runs are started first.
+import fs from 'node:fs';
+import path from 'node:path';
+import v8 from 'node:v8';
 import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd, membersFor, stormDaysFor } from '../js/forecast/DayOneOutlook.js';
 import { WORLD_RISK_ORDER } from '../js/forecast/worldRiskCategories.js';
 import { countiesIn, describeRegions } from '../js/forecast/counties.js';
@@ -23,9 +26,44 @@ export class OutlookRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). days: which
   // outlooks to issue (a prefix of OUTLOOK.days). pool: the threads that do the runs.
   // cheapPerMember: cheap runs each full run carries (OUTLOOK.cheapPerMember).
-  constructor({ runtime, members = OUTLOOK.members, cheapPerMember = OUTLOOK.cheapPerMember, days = OUTLOOK.days, pool = sharedForecastPool() } = {}) {
-    this.runtime = runtime; this.members = members; this.cheapPerMember = cheapPerMember; this.days = days; this.pool = pool;
+  // file: where the issued outlooks are saved (null: not saved). After a restart in the same world
+  // they are put back, so the last issue stays up until the next one is ready, and an issue whose
+  // slot has not passed is not run again; a new world starts with none.
+  constructor({ runtime, members = OUTLOOK.members, cheapPerMember = OUTLOOK.cheapPerMember, days = OUTLOOK.days, pool = sharedForecastPool(), file = null } = {}) {
+    this.runtime = runtime; this.members = members; this.cheapPerMember = cheapPerMember; this.days = days; this.pool = pool; this.file = file;
     this.products = {}; this.history = new Map(); this.ensembles = []; this.running = null; this.lastError = null; this.lastRunMs = null; this.failedKey = null;
+    this.restore();
+  }
+
+  // The issued outlooks of this world, written in the background after each issue.
+  save() {
+    if (!this.file) return;
+    const engine = this.runtime.engine, products = {};
+    for (const day of this.days) { const product = this.current(day, engine); if (product) products[day] = { slot: product.slot, outlook: product.outlook, public: product.public }; }
+    const bytes = v8.serialize({ version: 1, worldId: this.runtime.worldId, seed: engine.seed, products, history: [...this.history] });
+    fs.promises.mkdir(path.dirname(this.file), { recursive: true })
+      .then(() => fs.promises.writeFile(`${this.file}.tmp`, bytes))
+      .then(() => fs.promises.rename(`${this.file}.tmp`, this.file))
+      .catch(error => console.warn('[outlooks] not saved:', error.message));
+  }
+
+  restore() {
+    const engine = this.runtime.engine;
+    if (!this.file || !engine || !fs.existsSync(this.file)) return;
+    try {
+      const saved = v8.deserialize(fs.readFileSync(this.file)), now = engine.world.validHourUtc;
+      if (saved.version !== 1 || saved.worldId !== this.runtime.worldId || saved.seed !== engine.seed) return;
+      for (const [day, product] of Object.entries(saved.products)) {
+        // An issue from later than the world's clock, or for a day already over, is not put back.
+        if (!this.days.includes(day) || product.outlook.issuedHourUtc > now + 1e-6 || product.outlook.validToHourUtc <= now) continue;
+        this.products[day] = { ...product, engine };
+      }
+      this.history = new Map(saved.history.filter(([validTo]) => validTo > now));
+      const kept = Object.keys(this.products);
+      if (kept.length) console.log(`[outlooks] put back ${kept.join(', ')} from before the restart`);
+    } catch (error) {
+      console.warn('[outlooks] saved outlooks unreadable:', error.message);
+    }
   }
 
   // The issue an outlook belongs to at an hour: its update slot, counted from 12Z.
@@ -88,6 +126,7 @@ export class OutlookRuntime {
         this.ensembles.push({ engine, issuedHourUtc, hours, runs: sets.map(({ member, cheap, days }) => ({ member, cheap, track: days.filter(Boolean).flatMap(d => d.stormTrack ?? []) })) });
         while (this.ensembles.length > ENSEMBLES_KEPT) this.ensembles.shift();
         this.lastError = null; this.failedKey = null;
+        this.save();
       }
       this.lastRunMs = Date.now() - started;
       return due.map(day => this.current(day, engine)?.outlook ?? null);

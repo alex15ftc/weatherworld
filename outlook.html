@@ -44,7 +44,7 @@
     <button data-hazard="wind">Wind</button>
     <button data-hazard="hail">Hail</button>
   </div>
-  <div class="map"><img id="map" alt="Outlook map" width="1000" height="1244" /></div>
+  <div class="map"><img id="map" alt="Outlook map" width="1000" height="1098" /></div>
   <p class="status" id="status"></p>
   <section class="discussion"><h2>Forecast discussion</h2><pre id="discussion"></pre></section>
 </main>
@@ -72,7 +72,8 @@ async function load() {
     const risk = document.querySelector('#risk');
     risk.hidden = !COLOURS[o.highest]; risk.textContent = (o.headline ?? '').toUpperCase(); risk.style.background = COLOURS[o.highest] ?? '';
     document.querySelector('#discussion').textContent = o.discussion ?? '';
-    document.querySelector('#status').textContent = o.updating ? 'An update is being prepared.' : o.nextUpdateHourUtc != null ? `Next update ${stamp(o.nextUpdateHourUtc)}.` : '';
+    // While an update runs the page keeps showing this issue; it changes when the new one is out.
+    document.querySelector('#status').textContent = o.nextUpdateHourUtc != null ? `Next update ${stamp(o.nextUpdateHourUtc)}.` : '';
     if (changed) showMap();
   } catch (error) {
     document.querySelector('#status').textContent = `Could not reach the weather server (${error.message}).`;
