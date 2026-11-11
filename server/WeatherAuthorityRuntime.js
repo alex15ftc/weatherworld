@@ -725,17 +725,29 @@ export class WeatherAuthorityRuntime {
     await fs.promises.rename(`${file}.tmp`, file);
   }
 
-  // Resumes the saved world. A state written by different simulation code is not resumed.
+  // Resumes the saved world. A state written by different simulation code is not resumed, unless
+  // WEATHER_KEEP_WORLD=on (the hosted game): then the world is carried on under the new code when
+  // a throwaway copy of it steps cleanly, and otherwise a new world starts and the old save is kept
+  // as <state>.old. (Bump STATE_VERSION when the saved layout changes in a way that cannot carry on.)
   restoreState() {
     if (!this.statePath || !fs.existsSync(this.statePath)) return false;
     try {
-      const state = v8.deserialize(fs.readFileSync(this.statePath));
-      if (state.version !== STATE_VERSION || state.code !== this.codeVersion) { console.log('[authority] saved state is from other code; starting a new world'); return false; }
+      const bytes = fs.readFileSync(this.statePath), state = v8.deserialize(bytes);
+      const otherCode = state.code !== this.codeVersion, keep = process.env.WEATHER_KEEP_WORLD === 'on';
+      if (state.version !== STATE_VERSION || (otherCode && !keep)) { console.log('[authority] saved state is from other code; starting a new world'); return false; }
+      if (otherCode) {
+        const problem = carryOverProblem(v8.deserialize(bytes).engine);
+        if (problem) {
+          console.warn(`[authority] saved world does not carry on under the new code (${problem}); starting a new world, old save kept as .old`);
+          fs.copyFileSync(this.statePath, `${this.statePath}.old`);
+          return false;
+        }
+      }
       const engine = AtmosphereWorld.restore(state.engine);
       if (!engine) return false;
       this.revision = state.revision;
       this.adoptEngine(engine);
-      console.log(`[authority] resumed seed ${this.seed} at hour ${this.atmosphere.validHourUtc}`);
+      console.log(`[authority] resumed seed ${this.seed} at hour ${this.atmosphere.validHourUtc}${otherCode ? ' (carried over from other code)' : ''}`);
       return true;
     } catch (error) {
       console.warn('[authority] saved state unreadable:', error.message);
@@ -845,8 +857,22 @@ function levelWind(cell, pressure) {
   return{direction:(Math.atan2(u,v)*180/Math.PI+360)%360,speed:Math.hypot(u,v)};
 }
 
-// Fingerprint of the simulation source: saved states and cached forecasts from other code are
-// not reused.
+// Why a saved world from other code would not carry on, or null: a copy restored and stepped
+// half an hour must not throw, and its large-scale and regional fields must stay numbers.
+function carryOverProblem(engineState) {
+  try {
+    const probe = AtmosphereWorld.restore(engineState);
+    if (!probe) return 'old layout';
+    probe.advance(0.5);
+    const finite = values => { for (let i = 0; i < values.length; i++) if (!Number.isFinite(values[i])) return false; return true; };
+    for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) if (probe.model[key] && !finite(probe.model[key])) return `model ${key} not finite`;
+    for (const [key, values] of Object.entries(probe.regional)) if ((values instanceof Float32Array || values instanceof Float64Array) && !finite(values)) return `regional ${key} not finite`;
+    return null;
+  } catch (error) { return error?.message ?? String(error); }
+}
+
+// Fingerprint of the simulation source (file contents, so a fresh checkout or image build of the
+// same code matches): saved states and cached forecasts from other code are not reused.
 function sourceVersion() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const hash = crypto.createHash('sha1');
@@ -854,7 +880,7 @@ function sourceVersion() {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) visit(full);
-      else if (entry.name.endsWith('.js')) { const stat = fs.statSync(full); hash.update(`${full}|${stat.size}|${stat.mtimeMs}`); }
+      else if (entry.name.endsWith('.js')) hash.update(`${path.relative(root, full)}|`).update(fs.readFileSync(full));
     }
   };
   visit(path.join(root, 'js'));

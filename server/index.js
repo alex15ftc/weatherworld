@@ -94,6 +94,8 @@ async function serveApi(url, req, res) {
   const trace=beginRequest(url.pathname);
   if (url.pathname === '/api/health') return sendJson(req, res, 200, runtime.metadata(), { trace });
   if (url.pathname === '/api/authority/state') return sendJson(req, res, 200, runtime.authorityState(), { cacheable: false, trace });
+  // Resetting, stepping or stopping the world: on a public host set WEATHER_ADMIN_KEY (sent in x-admin-key).
+  if (url.pathname.startsWith('/api/authority/') && process.env.WEATHER_ADMIN_KEY && req.headers['x-admin-key'] !== process.env.WEATHER_ADMIN_KEY) return sendJson(req, res, 401, { error: 'Bad key' }, { cacheable: false, trace });
   if (url.pathname === '/api/authority/reset' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.reset(body.seed);return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours,()=>surface.capture());return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/seek' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.seek(body.validHourUtc);return sendJson(req,res,200,value,{cacheable:false,trace}); }

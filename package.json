@@ -17,5 +17,8 @@
     "inspect:risk": "node scripts/risk-climate.mjs",
     "inspect:mesoscale": "node scripts/mesoscale-report.mjs",
     "inspect:outlook": "node scripts/outlook-verify.mjs"
+  },
+  "devDependencies": {
+    "railway": "^3.16.0"
   }
 }

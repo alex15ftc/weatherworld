@@ -1,0 +1,21 @@
+# Leave out what the engine image does not need (railway up; .dockerignore is the same list).
+.git
+.claude
+.playwright-mcp
+node_modules
+data
+docs
+roblox
+tests
+tmp
+training
+calibration
+native
+*.bin
+*.txt
+roblox.yml
+.railway
+tools/*
+!tools/cloudlab
+tools/cloudlab/*
+!tools/cloudlab/worker

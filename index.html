@@ -46,7 +46,19 @@
     .meso-table b { text-align: right; }
     .meso-key { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; color: var(--muted); }
     .meso-key b { color: var(--text); }
-    @media (max-width: 900px) { body, body.with-sounding { grid-template-columns: 1fr; grid-template-rows: auto 70vh auto; height: auto; overflow: auto; } .meso-map { padding-top: 0; } }
+    /* Phones and narrow windows: the map first (full width, square), then the sounding, then the controls; the page scrolls as a whole. */
+    @media (max-width: 900px) {
+      body, body.with-sounding { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
+      .product-nav { order: 0; }
+      .meso-map { order: 1; padding: 8px 8px 0; width: 100%; aspect-ratio: 1; max-height: 92vh; flex: none; }
+      .meso-sounding { order: 2; padding: 16px; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+      .meso-side { order: 3; padding: 16px; border-right: 0; overflow: visible; }
+      .meso-row button, .meso-styles button { padding: 10px 6px; }
+      .meso-side label { padding: 4px 0; }
+      #surfaceTip { white-space: normal; max-width: calc(100vw - 32px); }
+      #soundingTitle { scroll-margin-top: 64px; }
+    }
+    @media (max-width: 420px) { .snd-tables { grid-template-columns: 1fr; } .meso-table { grid-template-columns: 1fr auto; } }
   </style>
 </head>
 <body data-page="live">

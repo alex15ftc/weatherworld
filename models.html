@@ -46,7 +46,19 @@
     #hourStrip button.on { background: #2563eb; border-color: #2563eb; color: white; }
     #hourStrip button.shared { border-bottom: 2px solid #22c55e; }
     .mdl-note { font-size: 12px; color: var(--muted); line-height: 1.45; }
-    @media (max-width: 900px) { body { grid-template-columns: 1fr; height: auto; overflow: auto; } .mdl-side { padding-top: 12px; } .mdl-main { padding-top: 12px; grid-template-rows: auto 80vw auto auto; } }
+    /* Phones and narrow windows: the map and its time controls first, then the model and product choices; the page scrolls as a whole. */
+    @media (max-width: 900px) {
+      body { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
+      .mdl-main { order: 1; padding: 12px 8px 8px; width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; }
+      .mdl-time-row small { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .mdl-map { width: 100%; aspect-ratio: 1; max-height: 92vh; }
+      .mdl-side { order: 2; padding: 16px; border-right: 0; border-top: 1px solid var(--line); overflow: visible; }
+      .mdl-products button { padding: 9px 8px; }
+      .mdl-card label { padding: 4px 0; }
+      .mdl-time-row button { padding: 9px 12px; }
+      #hourStrip button { min-width: 40px; padding: 6px 4px; }
+      #modelTip { white-space: normal; max-width: calc(100vw - 32px); }
+    }
   </style>
 </head>
 <body data-page="models">
@@ -68,9 +80,9 @@
     </div>
     <div class="mdl-card">
       <span>Show</span>
-      <label><input type="checkbox" id="overlayRefl" checked /> Reflectivity over the fields</label>
       <label><input type="checkbox" id="showCounties" checked /> Counties and towns</label>
       <label><input type="checkbox" id="showContours" checked /> Contours on the fields</label>
+      <label title="For Composite reflectivity + UH tracks">UH tracks above <select id="uhLeast" style="width:auto;flex:1"></select></label>
     </div>
     <div class="mdl-card">
       <span>About these models</span>

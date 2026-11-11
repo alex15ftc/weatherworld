@@ -486,7 +486,8 @@ Config.TORNADO_ART = {
 -- is needed), or a recorded replay (Workspace attribute StormSource = "replay";
 -- scripts/export-storm-replay.mjs). The key, if the server wants one, is the experience secret
 -- "weather_feed_key".
-Config.WEATHER_FEED_URL = ""
+-- The hosted engine (Railway, docs/HOSTING.md); a Workspace WeatherFeedUrl attribute still overrides it.
+Config.WEATHER_FEED_URL = "https://weatherworld.up.railway.app"
 Config.WEATHER_POLL_SECONDS = 5
 -- The products (outlooks, and later radar, warnings...): the manifest is polled this often, on
 -- the same URL and key (server/ProductFeed.luau). Workspace attribute ProductSource = "snapshot"

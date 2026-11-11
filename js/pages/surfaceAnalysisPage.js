@@ -323,6 +323,8 @@ async function showSounding(at) {
   document.body.classList.add('with-sounding');
   $('soundingTitle').textContent = 'Loading…';
   resize();
+  // (on a phone the sounding sits under the map: bring it into view)
+  if (window.matchMedia('(max-width: 900px)').matches) $('soundingTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
   try {
     const sounding = await getJson(`/api/live/sounding?row=${at.row}&column=${at.column}`);
     if (selected !== at) return;

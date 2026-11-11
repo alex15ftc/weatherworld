@@ -292,3 +292,5 @@ select:disabled { opacity: .5; }
 .warning-tabs button { width: auto; padding: 4px 9px; font-size: 12px; }
 .warning-text pre { margin: 0; overflow: auto; white-space: pre-wrap; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--text); }
 @media (max-width: 980px) { .warning-text { top: auto; height: 60%; } }
+/* Performance page on phones: long names wrap so the numbers stay in view. */
+@media (max-width: 600px) { .perf-page { padding: 12px 8px; gap: 12px; } .perf-page .panel { padding: 14px 12px; } .perf-table { font-size: 12px; } .perf-table td { padding: 6px 4px; } .perf-table td:first-child { word-break: break-all; } .perf-table td:nth-child(2) { white-space: nowrap; } }

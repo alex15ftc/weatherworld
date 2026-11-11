@@ -100,3 +100,6 @@ roblox/src/shared/MapData/
 # Meteorologist day packages (scripts/day-review-pack.mjs)
 data/day-reviews/
 data/outlook-archive/
+
+# Playwright MCP scratch output
+.playwright-mcp/
