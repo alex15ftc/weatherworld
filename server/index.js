@@ -13,6 +13,7 @@ import { countiesFor } from './CountyLayer.js';
 import { WarningRuntime } from './WarningRuntime.js';
 import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
+import { OUTLOOK_DAYS, OUTLOOK_HAZARDS, outlookSvg, outlookIndex } from './OutlookPublic.js';
 import { RadarPool } from './RadarPool.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
@@ -86,6 +87,8 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
     if (url.pathname.startsWith('/api/')) return await serveApi(url, req, res);
+    // The public outlook pages (OutlookPublic.js): one page for Days 1-3.
+    if (/^\/outlook(\/day[123])?\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'outlook.html'), res);
     return serveStatic(url.pathname, res);
   } catch (error) { sendJson(req, res, 500, { error: error?.message ?? 'Internal server error' }, { cacheable: false }); }
 });
@@ -139,6 +142,20 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/game/v1/manifest') return sendJson(req, res, 200, gameProducts.manifest(), { cacheable: false, trace });
   const gameProduct = url.pathname.match(/^\/api\/game\/v1\/product\/([A-Za-z0-9._-]+)$/);
   if (gameProduct) { const entry = await gameProducts.productAsync(gameProduct[1]); return entry ? sendText(req, res, 200, entry.text, trace, { 'x-product-version': entry.version }) : sendJson(req, res, 404, { error: 'Unknown product' }, { cacheable: false, trace }); }
+  // The public outlooks (OutlookPublic.js): the index, a day's product, and its map as an SVG.
+  if (url.pathname === '/api/outlook/index') {
+    const list = await Promise.all(OUTLOOK_DAYS.map(async day => { const hit = await outlookProduct(day); return { day, product: hit?.product, version: hit?.version }; }));
+    return sendJson(req, res, 200, { nowHourUtc: runtime.engine?.world?.validHourUtc ?? null, ...outlookIndex(list) }, { cacheable: false, trace });
+  }
+  const outlookDay = url.pathname.match(/^\/api\/outlook\/(day[123])(\.svg)?$/);
+  if (outlookDay) {
+    const hit = await outlookProduct(outlookDay[1]);
+    if (!hit) return sendJson(req, res, 404, { error: 'Outlooks are off' }, { cacheable: false, trace });
+    if (!outlookDay[2]) return sendText(req, res, 200, hit.text, trace, { 'x-product-version': hit.version });
+    const hazard = OUTLOOK_HAZARDS.includes(url.searchParams.get('hazard')) ? url.searchParams.get('hazard') : 'categorical';
+    if (!hit.svgs.has(hazard)) hit.svgs.set(hazard, outlookSvg(hit.product, countiesFor(runtime.engine?.world), hazard));
+    return sendText(req, res, 200, hit.svgs.get(hazard), trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache', 'x-product-version': hit.version });
+  }
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
@@ -156,6 +173,16 @@ async function readJsonBody(req) {
   for await (const chunk of req) { size += chunk.length; if (size > 64*1024) throw new Error('Request body too large'); chunks.push(chunk); }
   if (!chunks.length) return {};
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new Error('Invalid JSON request body'); }
+}
+
+// An outlook day's game product, parsed once a version, with its maps (OutlookPublic.js) kept beside it.
+const outlookCache = new Map();
+async function outlookProduct(day) {
+  const entry = await gameProducts.productAsync(`outlook.${day}`);
+  if (!entry) return null;
+  let hit = outlookCache.get(day);
+  if (hit?.version !== entry.version) { hit = { version: entry.version, text: entry.text, product: JSON.parse(entry.text), svgs: new Map() }; outlookCache.set(day, hit); }
+  return hit;
 }
 
 function serveStatic(pathname, res) {

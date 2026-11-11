@@ -8,7 +8,7 @@ COPY server ./server
 COPY js ./js
 COPY tools/cloudlab/worker ./tools/cloudlab/worker
 COPY scripts/build-world-map.mjs ./scripts/build-world-map.mjs
-COPY index.html models.html performance.html ./
+COPY index.html models.html performance.html outlook.html ./
 COPY css ./css
 # The world map the products and damage surveys read (gitignored locally; a few seconds to build).
 RUN node scripts/build-world-map.mjs --seed 1 > /dev/null

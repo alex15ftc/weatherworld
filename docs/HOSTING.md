@@ -4,8 +4,10 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
 
 - Project `weatherworld`, service `engine`, environment `production` (workspace "alex15ftc's Projects").
 - The same project also runs service `weatherworldbot`, the Discord bot (code in
-  `../DiscordBots/weatherworldbot`, outside this repo). It only reads the public `/api/health`,
-  `/api/live/storms` and `/api/map/counties`, so engine deploys don't need it changed.
+  `../DiscordBots/weatherworldbot`, outside this repo). It posts each new Day 1-3 outlook to the High Risk
+  server's `#📋outlooks` channel from the public `/api/outlook/index` and `/api/outlook/dayN.svg`
+  (`server/OutlookPublic.js`), linking to the public pages `/outlook/day1` .. `day3` (`outlook.html`), and
+  reads `/api/health`, `/api/live/storms` and `/api/map/counties`. Keep those routes when changing the server.
 - URL: https://weatherworld.up.railway.app (set as `Config.WEATHER_FEED_URL` in
   `roblox/Shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
 - Build: `Dockerfile` (node:22-slim, no npm packages; builds world map seed 1 into the image).

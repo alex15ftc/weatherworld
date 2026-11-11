@@ -20,6 +20,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 - The engine runs on Railway at https://weatherworld.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
+- Public outlook pages (branch `outlook-posts`, 2026-11-11): `/outlook/day1` .. `day3` (`outlook.html`) show
+  each outlook's categorical and tornado/wind/hail maps (SVG from `server/OutlookPublic.js`) and discussion;
+  `/api/outlook/index` lists the issues. The Discord bot (`weatherworldbot` service on Railway, code outside
+  this repo) posts each new issue to the High Risk server's `#📋outlooks`. Not yet deployed to the engine.
 - Branch `roblox/boilerplate` (committed and merged to `main` 2026-11-11) moves `roblox/src` onto the Roblox Boilerplate: Services and
   Controllers, all remotes replaced by `Shared/Net` Network events and `Network.Request`, Trove, Signal,
   Profiler, Settings (`roblox/README.md`).
