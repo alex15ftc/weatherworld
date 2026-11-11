@@ -35,12 +35,14 @@ export class OutlookRuntime {
     this.restore();
   }
 
-  // The issued outlooks of this world, written in the background after each issue.
+  // The issued outlooks of this world and the ensemble runs behind them (the model page), written in the
+  // background after each issue.
   save() {
     if (!this.file) return;
     const engine = this.runtime.engine, products = {};
     for (const day of this.days) { const product = this.current(day, engine); if (product) products[day] = { slot: product.slot, outlook: product.outlook, public: product.public }; }
-    const bytes = v8.serialize({ version: 1, worldId: this.runtime.worldId, seed: engine.seed, products, history: [...this.history] });
+    const ensembles = this.ensembles.filter(e => e.engine === engine).map(({ engine: _, ...e }) => e);
+    const bytes = v8.serialize({ version: 1, worldId: this.runtime.worldId, seed: engine.seed, products, history: [...this.history], ensembles });
     fs.promises.mkdir(path.dirname(this.file), { recursive: true })
       .then(() => fs.promises.writeFile(`${this.file}.tmp`, bytes))
       .then(() => fs.promises.rename(`${this.file}.tmp`, this.file))
@@ -59,8 +61,10 @@ export class OutlookRuntime {
         this.products[day] = { ...product, engine };
       }
       this.history = new Map(saved.history.filter(([validTo]) => validTo > now));
+      // (saves from before 2026-11-11 evening have no ensembles)
+      this.ensembles = (saved.ensembles ?? []).filter(e => e.issuedHourUtc <= now + 1e-6).map(e => ({ ...e, engine })).slice(-ENSEMBLES_KEPT);
       const kept = Object.keys(this.products);
-      if (kept.length) console.log(`[outlooks] put back ${kept.join(', ')} from before the restart`);
+      if (kept.length) console.log(`[outlooks] put back ${kept.join(', ')} and ${this.ensembles.length} ensemble issues from before the restart`);
     } catch (error) {
       console.warn('[outlooks] saved outlooks unreadable:', error.message);
     }
