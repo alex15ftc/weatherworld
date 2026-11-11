@@ -97,6 +97,8 @@ data/worldmap/
 # Generated world data for the Roblox place (scripts/export-world-roblox.mjs)
 roblox/Server/WorldData/
 roblox/Shared/MapData/
+# The same data where the pre-boilerplate layout wrote it (roblox/src); nothing reads it now.
+roblox/src/
 
 # Meteorologist day packages (scripts/day-review-pack.mjs)
 data/day-reviews/
