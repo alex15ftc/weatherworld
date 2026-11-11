@@ -27,7 +27,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   server's `#📋outlooks`. The issued outlooks are saved beside the world (`outlooks.bin`, matched by the
   runtime's `worldId`) and put back after a restart, so a deploy no longer blanks the pages for the ~15-minute
   re-run; only a new world starts with none.
-- Watch, mesoscale discussion and warning posts (2026-11-11): `server/ProductArchive.js` keeps every watch and
+- Watch, mesoscale discussion and warning posts (2026-11-11, deployed to the engine from `c3a86a4`, bot posting
+  live): `server/ProductArchive.js` keeps every watch and
   discussion of the world (saved in `products.bin`; the mesoscale runtime in `mesoscale.bin`) and the last 3 hours
   of warnings, and serves `/api/products/feed`, maps (`server/AreaMap.js`) and the pages `/watch/N`, `/md/N`
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
