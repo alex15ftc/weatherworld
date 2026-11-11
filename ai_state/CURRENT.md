@@ -24,7 +24,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`outlook.html`) show each outlook's categorical and tornado/wind/hail maps (SVG from
   `server/OutlookPublic.js`) and discussion; `/api/outlook/index` lists the issues. The Discord bot
   (`weatherworldbot` service on Railway, code outside this repo) posts each new issue to the High Risk
-  server's `#📋outlooks`. The issued outlooks are saved beside the world (`outlooks.bin`, matched by the
+  server's `#📋outlooks`. The issued outlooks and their ensemble runs (the models page, since `344a505`) are saved beside the world (`outlooks.bin`, matched by the
   runtime's `worldId`) and put back after a restart, so a deploy no longer blanks the pages for the ~15-minute
   re-run; only a new world starts with none.
 - Watch, mesoscale discussion and warning posts (2026-11-11, deployed to the engine from `c3a86a4`, bot posting
