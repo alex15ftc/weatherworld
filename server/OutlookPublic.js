@@ -14,8 +14,9 @@ export const OUTLOOK_HAZARDS = ['categorical', 'tornado', 'wind', 'hail'];
 
 // The world's clock: hours from the start of the world, UTC; local time is CDT, five hours behind
 // (js/reports/reportText.js).
-const dayOf = hour => Math.floor((hour + 1e-6) / 24) + 1;
-export const utcStamp = hour => { const z = (((hour % 24) + 24) % 24) + 1e-6, h = Math.floor(z), m = Math.floor((z - h) * 60); return `${String(h).padStart(2, '0')}${String(m).padStart(2, '0')} UTC Day ${dayOf(hour)}`; };
+// The date is the real one the hour falls on (js/forecast/calendar.js), not the world's day number.
+export { utcStamp } from '../js/forecast/calendar.js';
+import { utcStamp } from '../js/forecast/calendar.js';
 export const localStamp = hour => { const l = hour - 5, z = (((l % 24) + 24) % 24) + 1e-6, h = Math.floor(z), m = Math.floor((z - h) * 60); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'} CDT`; };
 
 const escapeXml = text => String(text).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
@@ -41,7 +42,8 @@ const RISK_NAMES = { TSTM: 'Thunderstorms', MRGN: '1 - Marginal', SLGT: '2 - Sli
 // ({ miles, counties: [{ rings: [[[x, y], ...]] }], towns: [{ name, kind, x, y, population }] }).
 // times: add the issue and valid times under the key.
 export function outlookSvg(product, layer, hazard = 'categorical', { times = false } = {}) {
-  if (!OUTLOOK_HAZARDS.includes(hazard)) hazard = 'categorical';
+  // (Day 3 has no hazard maps: GameProducts.gameOutlook)
+  if (!OUTLOOK_HAZARDS.includes(hazard) || !product.hazards?.[hazard]) hazard = 'categorical';
   times = times && product.status === 'issued';
   const mapMiles = product.mapMiles ?? layer?.miles ?? 500, scale = W / mapMiles, top = 0, height = W + legendHeight(hazard) + (times ? TIMES : 0);
   const px = (x, y) => `${(x * scale).toFixed(1)} ${(top + y * scale).toFixed(1)}`;

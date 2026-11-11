@@ -220,4 +220,16 @@ function Ui.clock(hour: number): string
 	return string.format("%02dZ", math.round(hour) % 24)
 end
 
+-- "11/11/26 Day 3": the real UTC date a world hour falls on and the world day's place in it (8 to a
+-- real day), from the weather server's locked clock (js/forecast/calendar.js); nil without one.
+function Ui.dateText(hour: number, calendar: any): string?
+	if type(calendar) ~= "table" or type(calendar.offset) ~= "number" then
+		return nil
+	end
+	local seconds = (hour + 1e-6 - calendar.offset) / (calendar.simHoursPerRealHour or 8) * 3600
+	local t = os.date("!*t", math.floor(seconds)) :: any
+	local day = math.floor((seconds % 86400) / 10800) + 1
+	return string.format("%02d/%02d/%02d Day %d", t.month, t.day, t.year % 100, day)
+end
+
 return Ui

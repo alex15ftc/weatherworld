@@ -23,6 +23,8 @@ const FEED_HOURS = { watches: 24, discussions: 24, warnings: 3 };
 
 export const warningKey = w => `${w.id}-${Math.round(w.issuedHourUtc * 60)}`;
 // "Tornado Warning", "PDS Tornado Warning", "Tornado Emergency", "Severe Thunderstorm Warning (destructive)".
+// A stored watch or discussion with its issue and end times written out, for the pages.
+const withTimes = x => (x ? { ...x, issuedText: `${utcStamp(x.issuedHourUtc)} (${localStamp(x.issuedHourUtc)})`, untilText: `${utcStamp(x.validToHourUtc)} (${localStamp(x.validToHourUtc)})` } : null);
 export function warningName(w) {
   if (w.type === 'tornado') return w.emergency ? 'Tornado Emergency' : `${w.pds ? 'PDS ' : ''}Tornado Warning`;
   const tag = w.label?.match(/\(([^)]+)\)/)?.[1];
@@ -124,7 +126,7 @@ export class ProductArchive {
   feed() {
     this.sync();
     const now = this.runtime.engine?.world?.validHourUtc ?? 0, recent = (items, hours) => [...items].filter(x => x.issuedHourUtc >= now - hours).sort((a, b) => b.issuedHourUtc - a.issuedHourUtc);
-    const times = x => ({ issued: `${utcStamp(x.issuedHourUtc)} (${localStamp(x.issuedHourUtc)})`, issuedLocal: localStamp(x.issuedHourUtc), untilLocal: localStamp(x.validToHourUtc) });
+    const times = x => ({ issued: `${utcStamp(x.issuedHourUtc)} (${localStamp(x.issuedHourUtc)})`, until: `${utcStamp(x.validToHourUtc)} (${localStamp(x.validToHourUtc)})`, issuedLocal: localStamp(x.issuedHourUtc), untilLocal: localStamp(x.validToHourUtc) });
     return {
       worldId: this.worldId, nowHourUtc: now,
       watches: recent(this.watches.values(), FEED_HOURS.watches).map(w => ({ number: w.number, type: w.type, pds: w.pds, title: w.title, where: w.where, issuedHourUtc: w.issuedHourUtc, validToHourUtc: w.validToHourUtc, ...times(w), ...watchLines(w) })),
@@ -133,8 +135,9 @@ export class ProductArchive {
     };
   }
 
-  watch(number) { this.sync(); return this.watches.get(Number(number)) ?? null; }
-  discussion(number) { this.sync(); return this.discussions.get(Number(number)) ?? null; }
+  // One watch or discussion, with its times written out (the pages show them as given).
+  watch(number) { this.sync(); return withTimes(this.watches.get(Number(number))); }
+  discussion(number) { this.sync(); return withTimes(this.discussions.get(Number(number))); }
 
   // The maps. times: the footer line with the issue and end times (the Discord posts).
   watchSvg(number, { times = false } = {}) {

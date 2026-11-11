@@ -34,6 +34,21 @@
   only happens near players (loaded chunks); tornado tracks where nobody was could come from the engine's damage
   surveys.
 
+### 2026-11-11 — The world's clock is locked to real UTC time; products name days "11/11/26 Day 3"
+
+- Status: active
+- Decision: the hosted engine's clock (`WeatherAuthorityRuntime.startClocks`, `clockLock`) puts each world hour
+  at a fixed real time: world hour = 8 x real hours since 1970 + `clockOffset` (whole world days, saved with the
+  world). Each real UTC day holds world days 1-8 (Day 1 from 00 UTC, Day 2 from 03 UTC ... Day 8 from 21 UTC).
+  Every public label (products, pages, maps, Discord posts, the game's report days, `/status`) names an hour by
+  `js/forecast/calendar.js`: "2330 UTC 11/11/26 Day 3"; DDHHMMZ stamps use the real day of the month. The
+  world is never ahead of the clock and catches up when behind (less than a world day); a new world, a pause
+  longer than 3 real hours or a manual advance picks a new offset. `WEATHER_CLOCK_LOCK=off` turns it off.
+- Rationale: the owner wanted the world's age (its own day count) kept out of public view, with a date that
+  matches the real one.
+- Follow-up: the raw hours in the public APIs (`nowHourUtc`, `/api/health`) still give the world's age to
+  anyone who reads the JSON.
+
 ### 2026-11-11 — Workspace follows the project template, adapted to one repo
 
 - Status: active

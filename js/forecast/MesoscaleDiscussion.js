@@ -18,6 +18,7 @@
 // counties at least half inside it for the pages (js/forecast/counties.js).
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { RISK_RADIUS_MILES } from './spcOutlookRules.js';
+import { dayOfMonth } from './calendar.js';
 import { captureTruth, aggregateTruth } from '../verification/truth.js';
 import { regionRings, solidRegion } from './contourShapes.js';
 import { describeArea } from './DayOneOutlook.js';
@@ -323,7 +324,8 @@ function describeHere(now, inside) {
   };
 }
 
-export const stamp = hourUtc => { const day = Math.floor(hourUtc / 24) + 1, h = ((hourUtc % 24) + 24) % 24, hh = Math.floor(h + 1e-9), mm = Math.round((h - hh) * 60); return `${String(day).padStart(2, '0')}${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}Z`; };
+// DDHHMMZ; DD is the real day of the month (calendar.js; the world day without the locked clock).
+export const stamp = hourUtc => { const day = dayOfMonth(hourUtc), h = ((hourUtc % 24) + 24) % 24, hh = Math.floor(h + 1e-9), mm = Math.round((h - hh) * 60); return `${String(day).padStart(2, '0')}${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}Z`; };
 export const list = words => (words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`);
 const FEATURE = { cold: 'a cold front', warm: 'a warm front', stationary: 'a stationary front', dryline: 'a dryline', outflow: 'an outflow boundary' };
 

@@ -14,6 +14,8 @@ export type Day = { day: number, startHourUtc: number, tornadoes: number, report
 
 local days: { Day } = {}
 local currentDay: number? = nil
+-- The weather server's locked clock (reports.days), for the days' names (Ui.dateText).
+local calendar: any = nil
 local chosen: number? = nil -- nil: the current day
 local product: any = nil
 local listeners: { () -> () } = {}
@@ -100,6 +102,7 @@ function ReportDays.refresh()
 		end)
 		days = list
 		currentDay = live and live.currentDay
+		calendar = live and live.calendar
 		local day = shownDay()
 		product = if day then ProductClient.get(`reports.day.{day}`) else nil
 	until not again
@@ -124,14 +127,15 @@ function ReportDays.step(older: number)
 	end
 end
 
--- "Day 12 (today) · 3 tornadoes · 4 hail · 20 wind"
+-- "11/11/26 Day 3 (today) · 3 tor · 4 hail · 20 wind" (the day it starts on; the world's own count without the clock)
 function ReportDays.label(): string
 	local d = ReportDays.current()
 	if not d then
 		return if #days == 0 then "No report days yet" else "Loading…"
 	end
 	local r = d.reports
-	return `Day {d.day}{if d.day == currentDay then " (today)" else ""} · {r.tornado} tor · {r.hail} hail · {r.wind} wind`
+	local name = Ui.dateText(d.startHourUtc, calendar) or `Day {d.day}`
+	return `{name}{if d.day == currentDay then " (today)" else ""} · {r.tornado} tor · {r.hail} hail · {r.wind} wind`
 end
 
 -- The day picker: older and newer, and which day is shown (12Z to 12Z).

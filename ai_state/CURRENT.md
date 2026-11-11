@@ -34,6 +34,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
   warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
   warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
+- World clock locked to real UTC (2026-11-11, not deployed yet): 8 world days to each real day, and every public
+  label names the day "11/11/26 Day 3" instead of the world's own count (`js/forecast/calendar.js`; decision in
+  `TECH_DECISIONS.md`). The first deploy fast-forwards the live world by up to 24 world hours to get in step.
 - Branch `roblox/boilerplate` (committed and merged to `main` 2026-11-11) moves `roblox/src` onto the Roblox Boilerplate: Services and
   Controllers, all remotes replaced by `Shared/Net` Network events and `Network.Request`, Trove, Signal,
   Profiler, Settings (`roblox/README.md`).

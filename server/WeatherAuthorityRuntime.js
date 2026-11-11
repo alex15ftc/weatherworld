@@ -28,6 +28,7 @@ import { countiesFor, placesFor } from './CountyLayer.js';
 import { logStormTick } from '../js/reports/stormLog.js';
 import { createDayRecorder } from './DayReviewRecorder.js';
 import { LightningLog } from '../js/storms/Lightning.js';
+import { dateText } from '../js/forecast/calendar.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_FINE_GATE_KM, RADAR_BEAMWIDTH_DEG, encodeRadarValue } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 1000;
@@ -37,6 +38,7 @@ const START_HOUR_UTC = 12;
 // every five simulated minutes; the atmosphere steps every half hour and then takes account
 // of what the storms did meanwhile.
 export const SIM_HOURS_PER_REAL_MINUTE = 24 / 180;
+const SIM_HOURS_PER_REAL_HOUR = SIM_HOURS_PER_REAL_MINUTE * 60;
 const STORM_CADENCE_HOURS = 1 / 12, ATMOSPHERE_STEP_HOURS = 0.5;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const MAX_STEPS_PER_TICK = 4;
@@ -62,7 +64,11 @@ export class WeatherAuthorityRuntime {
   // regional: settings for the regional layer (RegionalAtmosphere's), for audits that try them.
   // dayReviews: { dir, png, keepDays } to write a review package for each finished day
   // (DayReviewRecorder.js), or null; dayReviewOutlook(from, to) gives it that day's Day 1 outlook.
-  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null, regional = {}, dayReviews = null } = {}) {
+  // clockLock: the world's clock follows real UTC time (startClocks; the hosted engine turns it on).
+  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null, regional = {}, dayReviews = null, clockLock = false } = {}) {
+    this.clockLock = clockLock;
+    // World hour = SIM_HOURS_PER_REAL_HOUR x real hours since 1970 + clockOffset (whole world days), when locked.
+    this.clockOffset = null;
     this.regionalSettings = regional;
     this.dayReviews = dayReviews;
     this.dayReviewOutlook = null;
@@ -96,6 +102,7 @@ export class WeatherAuthorityRuntime {
     const number = Number(seed), given = seed !== undefined && seed !== null && seed !== '' && Number.isFinite(number);
     // A new world: things saved beside it (the outlooks, OutlookRuntime.js) are kept only for the world they came from.
     this.worldId = crypto.randomUUID();
+    this.clockOffset = null;
     this.adoptEngine(new AtmosphereWorld({ seed: given ? Math.trunc(number) : DEFAULT_SEED, spinUpDays: this.spinUpDays, regional: this.regionalSettings ?? {} }));
   }
 
@@ -108,8 +115,8 @@ export class WeatherAuthorityRuntime {
     this.seed = engine.seed;
     this.assertSpatialIntegrity();
     // The clocks run from now, not from before the world took its time to build.
-    this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
-    this.gameFeed?.restart(world, this.lastStormAdvancedAt);
+    this.startClocks();
+    this.gameFeed?.restart(world, Date.now());
     // The day's storm reports and tornado tracks (js/reports/stormLog.js), after each storm tick.
     const places = placesFor(world);
     this.places = places;
@@ -133,7 +140,7 @@ export class WeatherAuthorityRuntime {
     this.build(seed);
     this.radarHistory = Object.fromEntries(MOSAIC_KINDS.map(kind => [kind, []]));
     this.rotationScans = [];
-    this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.startClocks();
     this.revision += 1;
     this.invalidateProducts();
     this.saveState();
@@ -154,7 +161,7 @@ export class WeatherAuthorityRuntime {
       this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep });
       this.dayReview?.afterStep();
     }
-    this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.startClocks();
     this.gameFeed.restart(world);
     this.revision += 1;
     this.invalidateProducts();
@@ -171,10 +178,26 @@ export class WeatherAuthorityRuntime {
   setAutoAdvance(enabled) {
     this.finishPieces();
     this.autoAdvance = Boolean(enabled);
-    this.lastAdvancedAt = Date.now();
-    this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.startClocks();
     return this.metadata();
   }
+
+  // Where the clocks start from. Unlocked: now. Locked (clockLock): from the real time the world's hour
+  // falls on, so each real UTC day holds exactly 8 world days, Day 1 from 00 UTC, Day 2 from 03 UTC ... Day 8
+  // from 21 UTC (js/forecast/calendar.js names them "11/11/26 Day 3"). The world is never ahead of that
+  // clock and less than a world day behind it, and catches up; when it would be further off (a new world,
+  // a long pause, a manual advance) a new offset is picked, a whole number of world days.
+  startClocks(now = Date.now()) {
+    const world = this.atmosphere;
+    if (!this.clockLock || !world) { this.lastAdvancedAt = now; this.lastStormAdvancedAt = now; return; }
+    const hour = world.validHourUtc, base = now / 3600000 * SIM_HOURS_PER_REAL_HOUR;
+    const behind = this.clockOffset === null ? -1 : base + this.clockOffset - hour;
+    if (!(behind >= 0 && behind < 24)) this.clockOffset = 24 * Math.ceil((hour - base) / 24 - 1e-9);
+    this.lastAdvancedAt = this.realMsOf(hour);
+    this.lastStormAdvancedAt = this.realMsOf(world.stormEngine?.validHourUtc ?? hour);
+  }
+  // The real time (ms) a world hour falls on, on the locked clock.
+  realMsOf(hour) { return (hour - this.clockOffset) / SIM_HOURS_PER_REAL_HOUR * 3600000; }
 
   invalidateProducts() { this.productCache.clear(); }
 
@@ -252,9 +275,11 @@ export class WeatherAuthorityRuntime {
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.
       if (steps === MAX_STEPS_PER_TICK) this.gameFeed.restart(world, now);
-      // After a long pause the clock restarts from now instead of racing to catch up.
-      this.lastAdvancedAt = steps === MAX_STEPS_PER_TICK ? now : this.lastAdvancedAt + steps * ATMOSPHERE_STEP_HOURS / SIM_HOURS_PER_REAL_MINUTE * 60000;
-      if (steps === MAX_STEPS_PER_TICK) this.lastStormAdvancedAt = now;
+      // After a long pause the clock restarts from now instead of racing to catch up; the locked clock
+      // catches up (less than a world day; startClocks), MAX_STEPS_PER_TICK steps a turn.
+      const restart = steps === MAX_STEPS_PER_TICK && !this.clockLock;
+      this.lastAdvancedAt = restart ? now : this.lastAdvancedAt + steps * ATMOSPHERE_STEP_HOURS / SIM_HOURS_PER_REAL_MINUTE * 60000;
+      if (restart) this.lastStormAdvancedAt = now;
       changed = true;
     }
     if (!changed) return false;
@@ -276,6 +301,8 @@ export class WeatherAuthorityRuntime {
       stormCount: this.atmosphere.storms?.length ?? 0, activeTornadoes: this.atmosphere.stormEngine?.activeTornadoes ?? 0, totalTornadoes: this.atmosphere.stormEngine?.totalTornadoes ?? 0,
       atmosphereValidHourUtc: this.atmosphere.validHourUtc, stormValidHourUtc: this.atmosphere.stormEngine?.validHourUtc ?? this.atmosphere.validHourUtc,
       stormCadenceMinutes: 5, atmosphereCadenceMinutes: 30, autoAdvance: this.autoAdvance,
+      // The world day now, by the locked clock ("11/11/26 Day 3", js/forecast/calendar.js).
+      worldDate: dateText(this.atmosphere.stormEngine?.validHourUtc ?? this.atmosphere.validHourUtc),
       spatialIntegrity: this.spatialIntegrity(),
       uptimeSeconds: Math.round((Date.now() - this.startedAt) / 1000), tilePyramid: TILE_PYRAMID,
       outlookStatus: this.outlookStatus(),
@@ -713,7 +740,7 @@ export class WeatherAuthorityRuntime {
     if (!this.statePath) return;
     this.lastSavedHour = Math.floor(this.atmosphere.validHourUtc);
     if (this.savingState) { this.saveQueued = true; return; }
-    const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, revision: this.revision, worldId: this.worldId, engine: this.engine.saveState() });
+    const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, revision: this.revision, worldId: this.worldId, clockOffset: this.clockOffset, engine: this.engine.saveState() });
     // (the cloud model storms are saved with the world, so a restart resumes both from the same moment)
     this.savingState = this.writeFile(this.statePath, bytes)
       .then(() => this.stormWorkers?.saveModels?.())
@@ -750,6 +777,7 @@ export class WeatherAuthorityRuntime {
       this.revision = state.revision;
       // (saves from before 2026-11-11 have no id: the seed stands in, and is saved from then on)
       this.worldId = state.worldId ?? `seed-${state.engine?.seed ?? this.seed}`;
+      this.clockOffset = state.clockOffset ?? null;
       this.adoptEngine(engine);
       console.log(`[authority] resumed seed ${this.seed} at hour ${this.atmosphere.validHourUtc}${otherCode ? ' (carried over from other code)' : ''}`);
       return true;

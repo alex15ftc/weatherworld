@@ -51,7 +51,9 @@
 <script type="module">
 const COLOURS = { TSTM: '#c1e9c1', MRGN: '#66a366', SLGT: '#ffe066', ENH: '#ffa366', MDT: '#e06666', HIGH: '#ee99ee' };
 const day = (location.pathname.match(/day[123]/) ?? ['day1'])[0], n = day.slice(3);
-let hazard = new URLSearchParams(location.search).get('hazard') ?? 'categorical', version = null;
+// Day 3 is categorical only (no hazard maps), as SPC's Day 3.
+let hazard = n === '3' ? 'categorical' : new URLSearchParams(location.search).get('hazard') ?? 'categorical', version = null;
+if (n === '3') document.querySelector('#tabs').style.display = 'none';
 document.querySelectorAll('nav a[data-day]').forEach(a => a.classList.toggle('active', a.dataset.day === day));
 document.title = `Day ${n} Convective Outlook · WeatherWorld`;
 document.querySelector('#title').textContent = `Day ${n} Convective Outlook`;
@@ -60,7 +62,9 @@ document.querySelectorAll('#tabs button').forEach(b => {
   b.classList.toggle('on', b.dataset.hazard === hazard);
   b.onclick = () => { hazard = b.dataset.hazard; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b)); history.replaceState(null, '', hazard === 'categorical' ? location.pathname : `?hazard=${hazard}`); showMap(); };
 });
-const stamp = h => { const z = ((h % 24) + 24) % 24; return `${String(Math.floor(z)).padStart(2, '0')}${String(Math.round((z % 1) * 60)).padStart(2, '0')} UTC Day ${Math.floor(h / 24) + 1}`; };
+// World hours are shown with the real date they fall on, from the server's clock (js/pageCalendar.js).
+const { loadCalendar, dateText } = await import('/js/pageCalendar.js');
+const stamp = h => { const z = (((h % 24) + 24) % 24) + 1e-6; return `${String(Math.floor(z)).padStart(2, '0')}${String(Math.floor((z % 1) * 60)).padStart(2, '0')} UTC ${dateText(h)}`.trim(); };
 async function load() {
   try {
     const res = await fetch(`/api/outlook/${day}`, { cache: 'no-store' });
@@ -79,7 +83,7 @@ async function load() {
     document.querySelector('#status').textContent = `Could not reach the weather server (${error.message}).`;
   }
 }
-load();
+loadCalendar().then(load);
 setInterval(load, 60_000);
 </script>
 </body>

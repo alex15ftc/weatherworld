@@ -15,6 +15,7 @@ import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
 import { OUTLOOK_DAYS, OUTLOOK_HAZARDS, outlookSvg, outlookIndex } from './OutlookPublic.js';
 import { ProductArchive } from './ProductArchive.js';
+import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
@@ -36,7 +37,9 @@ const radarPool = process.env.WEATHER_RADAR_WORKERS === '0' ? null : new RadarPo
 // off, WEATHER_DAY_REVIEW_PNG=on adds PNG copies (a headless Chrome or Edge), and the newest
 // WEATHER_DAY_REVIEW_DAYS (14) are kept.
 const dayReviews = process.env.WEATHER_DAY_REVIEWS === 'off' ? null : { dir: path.resolve(ROOT, process.env.WEATHER_DAY_REVIEW_DIR ?? 'data/day-reviews/live'), png: process.env.WEATHER_DAY_REVIEW_PNG === 'on', keepDays: Number(process.env.WEATHER_DAY_REVIEW_DAYS) || 14 };
-const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool, dayReviews });
+const runtime = new WeatherAuthorityRuntime({ seed: process.env.WEATHER_SEED, statePath, radarPool, dayReviews, clockLock: process.env.WEATHER_CLOCK_LOCK !== 'off' });
+// The clock is locked to real UTC time, 8 world days a real day; products name hours "11/11/26 Day 3" (js/forecast/calendar.js).
+setCalendar({ offset: () => (runtime.clockLock ? runtime.clockOffset : null) });
 // The storms players are near, in detail (js/game/StormWorkers.js): engine-built frames
 // (WEATHER_ENGINE_FRAMES, default "only"; "model" brings back the cloud model workers, "side"
 // runs both). WEATHER_STORM_WORKERS sets how many model workers may run, 0 turns it all off.
@@ -164,6 +167,8 @@ async function serveApi(url, req, res) {
     return sendText(req, res, 200, hit.svgs.get(key), trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache', 'x-product-version': hit.version });
   }
   // The watches, discussions and warnings (ProductArchive.js): the feed, each one, and their maps (?times=1: with the times line).
+  // What a page needs to date world hours itself (calendar.js).
+  if (url.pathname === '/api/calendar') return sendJson(req, res, 200, calendarFor(), { cacheable: false, trace });
   if (url.pathname === '/api/products/feed') return sendJson(req, res, 200, archive.feed(), { cacheable: false, trace });
   const archived = url.pathname.match(/^\/api\/(watch|md)\/(\d+)(\.svg)?$/);
   if (archived) {

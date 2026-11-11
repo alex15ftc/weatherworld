@@ -1,3 +1,4 @@
+import { loadCalendar, dateText } from '../pageCalendar.js';
 // The model page (2026-10-29), laid out like Pivotal Weather's model pages. Two models:
 //   Short range  one run from the live world at each simulated hour (server/ShortRangeRuntime.js): a
 //                simulated composite reflectivity (3 km grid, as the HRRR's) drawn from its storms every
@@ -63,14 +64,17 @@ const stepMinutes = () => (isField() ? 60 : product()?.step ?? 15);
 const maxMinutes = () => (modelKind === 'short' ? (S.meta?.hours ?? 0) * 60 : Math.round((E.data?.hours ?? 0) * 60));
 const startHour = () => (modelKind === 'short' ? S.meta?.initHourUtc : E.data?.issuedHourUtc) ?? 0;
 
+// Dates: the real date a world hour falls on (js/pageCalendar.js), never the world's day number.
+loadCalendar();
+
 // --- Time words.
 const pad = n => String(n).padStart(2, '0');
 function clock(hourUtc) {
-  const minutes = Math.round(hourUtc * 60), day = Math.floor(minutes / 1440) + 1, z = ((minutes % 1440) + 1440) % 1440;
+  const minutes = Math.round(hourUtc * 60), z = ((minutes % 1440) + 1440) % 1440;
   const local = (((z + localOffset * 60) % 1440) + 1440) % 1440, h12 = Math.floor(local / 60) % 12 || 12;
-  return `Day ${day} ${pad(Math.floor(z / 60))}:${pad(z % 60)}Z (${h12}:${pad(local % 60)} ${local < 720 ? 'AM' : 'PM'} local)`;
+  return `${dateText(hourUtc)} ${pad(Math.floor(z / 60))}:${pad(z % 60)}Z (${h12}:${pad(local % 60)} ${local < 720 ? 'AM' : 'PM'} local)`;
 }
-const runName = hourUtc => { const z = ((Math.round(hourUtc) % 24) + 24) % 24; return `Day ${Math.floor(Math.round(hourUtc) / 24) + 1} ${pad(z)}Z`; };
+const runName = hourUtc => { const z = ((Math.round(hourUtc) % 24) + 24) % 24; return `${dateText(hourUtc)} ${pad(z)}Z`.trim(); };
 const fLabel = minutes => `F${String(Math.floor(minutes / 60)).padStart(3, '0')}${minutes % 60 ? `:${pad(minutes % 60)}` : ''}`;
 
 // --- Loading.

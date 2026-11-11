@@ -45,7 +45,7 @@ function describe() {
   const time = $('surfaceTime'), status = $('surfaceStatus');
   if (data.status !== 'ready') { time.textContent = '—'; status.textContent = 'Server not reachable. Start it with npm start (a first start takes about a minute).'; return; }
   if (!controls.parameter.dataset.filled) fillParameters();
-  time.textContent = `Day ${data.day} · ${clock(data.hourUtc)} UTC`;
+  time.textContent = data.date ? `${data.date} · ${clock(data.hourUtc)} UTC` : `${clock(data.hourUtc)} UTC`;
   const behind = data.frames.at(-1) - data.frameHour;
   status.textContent = `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`} · seed ${data.seed}`;
   const slider = $('frameSlider'); slider.max = data.frames.length - 1; slider.value = data.frames.indexOf(data.frameHour);

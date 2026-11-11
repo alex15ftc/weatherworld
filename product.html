@@ -39,7 +39,6 @@
 <script type="module">
 const [, kind, number] = location.pathname.match(/^\/(watch|md)\/(\d+)/) ?? [];
 const COLOURS = { tornado: '#ef4444', severe: '#3b82f6', watchTornado: '#ef4444', watchSevere: '#3b82f6', likely: '#f97316', possible: '#f59e0b', unlikely: '#94a3b8' };
-const stamp = h => { const z = ((h % 24) + 24) % 24; return `${String(Math.floor(z)).padStart(2, '0')}${String(Math.round((z % 1) * 60)).padStart(2, '0')} UTC Day ${Math.floor(h / 24) + 1}`; };
 async function load() {
   const res = await fetch(`/api/${kind}/${number}`, { cache: 'no-store' });
   if (!res.ok) { document.querySelector('#title').textContent = kind === 'watch' ? `Watch ${number} not found` : `Mesoscale Discussion ${number} not found`; return; }
@@ -47,7 +46,7 @@ async function load() {
   const title = kind === 'watch' ? p.title : `Mesoscale Discussion ${String(p.number).padStart(4, '0')}`;
   document.title = `${title} · WeatherWorld`;
   document.querySelector('#title').textContent = title;
-  document.querySelector('#times').textContent = `Issued ${stamp(p.issuedHourUtc)} · ${kind === 'watch' ? 'Until' : 'Valid until'} ${stamp(p.validToHourUtc)} · ${p.where ?? ''}`;
+  document.querySelector('#times').textContent = `Issued ${p.issuedText} · ${kind === 'watch' ? 'Until' : 'Valid until'} ${p.untilText} · ${p.where ?? ''}`;
   const badge = document.querySelector('#badge'), concerning = kind === 'md' ? (p.concerning || (p.watchPercent != null ? `Probability of watch issuance ${p.watchPercent}%` : '')) : (p.pds ? 'PARTICULARLY DANGEROUS SITUATION' : '');
   badge.hidden = !concerning; badge.textContent = concerning; badge.style.background = COLOURS[kind === 'watch' ? p.type : p.colourKey] ?? '#475569';
   document.querySelector('#text').textContent = p.text ?? '';

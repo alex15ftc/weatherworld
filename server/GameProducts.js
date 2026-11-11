@@ -58,6 +58,7 @@ import { DAMAGE_INDICATORS } from '../js/reports/damageIndicators.js';
 import { logDays } from '../js/reports/stormLog.js';
 import { LIGHTNING, STRIKE_KIND } from '../js/storms/Lightning.js';
 import { reportTitle, reportText, significantReport, surveyTitle, surveySummary } from '../js/reports/reportText.js';
+import { calendarFor } from '../js/forecast/calendar.js';
 
 const KM_PER_MILE = 1.609344;
 
@@ -148,8 +149,10 @@ export function gameOutlook(day, published, { nextUpdateHourUtc = null } = {}) {
   const head = { v: GAME_PRODUCTS.version, id: `outlook.${day}`, kind: 'outlook', day: Number(day.slice(3)) };
   if (!published || published.status !== 'issued') return { ...head, status: published?.status ?? 'off', error: published?.error ?? null };
   const o = published, mapMiles = o.width * o.cellMiles, miles = rings => contourMiles(rings, mapMiles);
+  // Day 3 is categorical only, and its key has no High risk (none is ever issued that far out).
+  const day3 = head.day === 3, hazardOrder = day3 ? [] : o.hazards, categories = day3 ? o.categories.filter(key => key !== "HIGH") : o.categories;
   const hazards = {};
-  for (const hazard of o.hazards) {
+  for (const hazard of hazardOrder) {
     const shapes = o.shapes[hazard];
     hazards[hazard] = {
       levels: shapes.levels.map(entry => ({ level: entry.level, rings: miles(entry.rings) })),
@@ -161,10 +164,10 @@ export function gameOutlook(day, published, { nextUpdateHourUtc = null } = {}) {
     ...head, status: 'issued', seed: o.seed, mapMiles,
     issuedHourUtc: o.issuedHourUtc, validFromHourUtc: o.validFromHourUtc, validToHourUtc: o.validToHourUtc, nextUpdateHourUtc,
     updating: Boolean(o.running), // an update to this day is being prepared now
-    highest: o.highest, headline: o.labels[o.highest], categories: o.categories, labels: o.labels,
+    highest: o.highest, headline: o.labels[o.highest], categories, labels: o.labels,
     thunderLevel: o.thunderLevel, radiusMiles: o.radiusMiles ?? RISK_RADIUS_MILES,
     category: o.shapes.category.map(entry => ({ key: entry.key, rings: miles(entry.rings) })),
-    hazardOrder: o.hazards, hazards, discussion: o.discussion
+    hazardOrder, hazards, discussion: o.discussion
   };
 }
 
@@ -306,9 +309,10 @@ export function gameLightning(log, mapMiles = 500) {
   return { ...head, nowHourUtc: +now.toFixed(4), count: kept.length, ground, data: kept.length ? pack(bytes) : '' };
 }
 
-// The days of storm reports the log holds, newest first, from ReportsRuntime.days().
+// The days of storm reports the log holds, newest first, from ReportsRuntime.days(). calendar: the locked
+// clock's offset, so the game names each day by its start hour, "11/11/26 Day 3" (js/forecast/calendar.js).
 export function gameReportDays(log) {
-  return { v: GAME_PRODUCTS.version, id: 'reports.days', kind: 'report-days', world: log?.worldId ?? null, currentDay: log?.day ?? null, days: logDays(log) };
+  return { v: GAME_PRODUCTS.version, id: 'reports.days', kind: 'report-days', world: log?.worldId ?? null, currentDay: log?.day ?? null, calendar: calendarFor(), days: logDays(log) };
 }
 
 const efOf = rating => (rating === 'EFU' ? -1 : Number(rating.slice(2)));
