@@ -216,3 +216,24 @@ painted values.
 Source gaps: there is no rendering write-up for Twisted, Severity, Helicity, Storm Chasers (Little Cloud Games), GTA or
 Sea of Thieves. The Nubis and Sea of Thieves PDFs could not be read, so those points come from abstracts. The 100k-stud
 draw limit and the particle caps (~16k on PC, ~3.6k on mobile) come from community reports.
+
+## 7. Rain and hail without billboards (2026-11-10)
+**What the other games do.** None of the developers has written up their method; these are changelogs.
+- **Twisted:**
+  - 1.17: rain shafts change with hail density, and storms are tinted by hail.
+  - 1.18: rain curtains fade as you approach and "shroud visibility"; less rain in big hail cores; hail of varying shapes; adjustable render distance.
+  - 1.20: reworked bouncing hail.
+  - Most likely (inferred, not stated): large textured curtains that fade near the player, handing over to particles and fog.
+  - Sources: devforum 1610076, 1988107, 2480485, 2956061.
+- **Helicity 1.8:** "remade hail GFX", rain with varying intensity and wind (devforum 2778001).
+- **Duvall Drive** (Roblox's own write-up, the only stated technique): rain is a grid of invisible-Part particle volumes over the play area, using Squash so the texture can stay small.
+
+**Engine facts.**
+- **ParticleEmitter:** emits only within about 1,000 studs of the camera, so it can't draw a shaft 5-30 km out (18k-107k studs). There are limits on rate per emitter and on total particles.
+- **Beam:** a ribbon with no such distance limit. Our own test (render-plan memory, 2026-11-07) drew Beams to 20k+ studs, steady while orbiting. With FaceCamera it never goes edge-on. Wrap plus TextureSpeed scrolls the texture, which reads as falling rain.
+- **Big transparent meshes:** they sort per object, so standing inside one sorts wrongly against particles and billboards. Many small pieces work better.
+
+**Plan.**
+- **Far and mid (1-30 km):** each shaft is 3-6 FaceCamera Beams at different depths through the rain, curved with the wind's drift (CurveSize), over a streaky scrolling texture. Width, opacity and tint come from the rain and hail fields. They fade near the camera.
+- **Inside (0-1 km):** NearPrecip's emitters, plus fog from the rain rate.
+- **Hail:** brighter, whiter-green, firmer-edged ribbons, blended in by the hail field; tumbling ice sprites near the camera.

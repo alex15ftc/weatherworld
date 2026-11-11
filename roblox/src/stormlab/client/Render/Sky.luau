@@ -348,6 +348,29 @@ function Sky.new(ctx)
 	local function analyse()
 		local SL = ctx.Tornado.SceneLight -- (the storm base's footprint, shared with the scene light)
 		local cx, cy, cz = ctx.Config.fromWorld(ctx.camera.CFrame.Position) -- (metres)
+		-- (the game draws each storm about its anchor at the sky's scale - ~3.7x the map's 8 km from
+		-- the tornado - so the cloud drawn over the camera is not the field's at its map place. 8 km
+		-- south of a tornado the field had no cloud within 2 km while the drawn base reached past
+		-- the zenith: the sun shone through the drawn cloud, user 2026-11-10. So the rays start from
+		-- the camera in the nearest storm's own frame, LabConfig.fromWorldAbout: the field sampled
+		-- where that storm is drawn. A uniform scale about a point keeps directions, so the sun's
+		-- ray is the same)
+		local C = ctx.Config
+		if ctx.cloudAt and C.anchorFn then
+			local best, bax, bay = math.huge, nil, nil
+			for _, st in cw.storms do
+				if not st.dead then
+					local ax, ay = C.stormAnchor(tostring(st.id), st.x, st.y)
+					local d2 = (ax - cx) ^ 2 + (ay - cy) ^ 2
+					if d2 < best then
+						best, bax, bay = d2, ax, ay
+					end
+				end
+			end
+			if bax then
+				cx, cy, cz = C.fromWorldAbout(ctx.camera.CFrame.Position, bax, bay)
+			end
+		end
 		local d = Lighting:GetSunDirection()
 		local sx, sy, sz = d.X, -d.Z, d.Y
 		local sunUp = sz > 0.01

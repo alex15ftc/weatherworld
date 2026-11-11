@@ -1,8 +1,9 @@
 // The model page (2026-10-29), laid out like Pivotal Weather's model pages. Two models:
 //   Short range  one run from the live world at each simulated hour (server/ShortRangeRuntime.js): a
-//                simulated composite reflectivity drawn from its storms every 15 minutes, updraft
+//                simulated composite reflectivity (3 km grid, as the HRRR's) drawn from its storms every
+//                15 minutes, alone or with UH > 75 tracks over the last hour (as the HRRR pages show it), updraft
 //                helicity (1 h max and run-total tracks), tornado tracks, and the mesoanalysis fields
-//                each hour.
+//                each hour (shown on their own: reflectivity is a product, not an overlay).
 //   Ensemble     the runs behind the latest outlook (server/OutlookRuntime.js, full and cheap runs):
 //                paintball, chances of a rotating-storm track or a tornado near each place, and every
 //                run's tracks.
@@ -11,6 +12,8 @@ const canvas = $('modelCanvas'), ctx = canvas.getContext('2d'), tip = $('modelTi
 const REFRESH_MS = 20000, PLAY_MS = 450, MILE_KM = 1.609344;
 const NEAR_KM = 25 * MILE_KM;          // "within 25 miles", as the outlooks' neighbourhood
 const UH_TRACK = 75;                   // updraft helicity that marks a rotating storm's track (m²/s²)
+const UH_LEASTS = [100, 200, 300, 400, 500]; // thresholds offered for the reflectivity + UH tracks product
+let reflUhLeast = UH_LEASTS[0];
 
 // --- Colour tables.
 const REFL = [[15, '#0300f4'], [20, '#02fd02'], [25, '#01c501'], [30, '#008e00'], [35, '#fdf802'], [40, '#e5bc00'], [45, '#fd9500'], [50, '#fd0000'], [55, '#d40000'], [60, '#bc0000'], [65, '#f800fd'], [70, '#9854c6'], [75, '#fdfdfd']];
@@ -24,6 +27,7 @@ const runColour = (i, alpha = 1) => `hsla(${(i * 137.508) % 360}, 85%, 60%, ${al
 // --- Products.
 const STORM_PRODUCTS = [
   { key: 'refl', group: 'Storms', label: 'Composite reflectivity (simulated)', step: 15, table: REFL, unit: 'dBZ' },
+  { key: 'reflUh', group: 'Storms', get label() { return `Composite reflectivity + UH > ${reflUhLeast} tracks`; }, step: 15, table: REFL, unit: 'dBZ' },
   { key: 'uh1', group: 'Storms', label: 'Updraft helicity, 1 h max (2-5 km)', step: 15, table: UH, unit: 'm²/s²' },
   { key: 'uhTotal', group: 'Storms', label: 'Updraft helicity tracks, run total', step: 15, table: UH, unit: 'm²/s²' },
   { key: 'torTracks', group: 'Storms', label: 'Tornado tracks, run total', step: 15, unit: 'EF' }
@@ -181,7 +185,9 @@ $('hourStrip').onclick = event => { const h = event.target.dataset?.hour; if (h 
 $('stepBack').onclick = () => { stopPlay(); setTime(t - stepMinutes()); };
 $('stepNext').onclick = () => { stopPlay(); setTime(t + stepMinutes()); };
 $('play').onclick = () => (playing ? stopPlay() : startPlay());
-for (const id of ['overlayRefl', 'showCounties', 'showContours']) $(id).onchange = () => render();
+for (const id of ['showCounties', 'showContours']) $(id).onchange = () => render();
+$('uhLeast').innerHTML = UH_LEASTS.map(v => `<option value="${v}">UH > ${v} m²/s²</option>`).join('');
+$('uhLeast').onchange = event => { reflUhLeast = Number(event.target.value); fillProducts(); render(); };
 window.addEventListener('keydown', event => {
   if (event.target.tagName === 'SELECT' || event.target.tagName === 'INPUT' && event.target.type !== 'range' && event.target.type !== 'checkbox') return;
   if (event.key === 'ArrowLeft') { event.preventDefault(); stopPlay(); setTime(t - stepMinutes()); }
@@ -201,10 +207,9 @@ async function render() {
   shown = { field: null, storms: null };
   if (modelKind === 'short' && S.meta) {
     const hour = Math.floor(t / 60);
-    const wantsStorms = productKey === 'refl' || (isField() && $('overlayRefl').checked);
     const [field, storms] = await Promise.all([
       isField() ? getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${productKey}`) : null,
-      wantsStorms || !isField() ? getJson(`/api/models/short-range/storms?init=${S.init}&minute=${isField() ? hour * 60 : t}`) : null
+      isField() ? null : getJson(`/api/models/short-range/storms?init=${S.init}&minute=${t}`)
     ]);
     if (mine !== token) return;
     shown = { field: field ? { ...field, meta: product() } : null, storms: storms?.storms ?? null };
@@ -212,7 +217,7 @@ async function render() {
     const ahead = t + stepMinutes();
     if (ahead <= maxMinutes()) {
       if (isField()) getJson(`/api/models/short-range/field?init=${S.init}&hour=${Math.floor(ahead / 60)}&key=${productKey}`);
-      if (wantsStorms) getJson(`/api/models/short-range/storms?init=${S.init}&minute=${isField() ? Math.floor(ahead / 60) * 60 : ahead}`);
+      else getJson(`/api/models/short-range/storms?init=${S.init}&minute=${ahead}`);
     }
   }
   draw();
@@ -276,13 +281,17 @@ function drawShort() {
   drawBaseLines();
   if (field && $('showContours').checked) { drawContours(field.values, field.meta.levels ?? [], 'rgba(255,255,255,.75)', field.meta.decimals ?? 0); if (field.second) drawContours(field.second, field.meta.second?.levels ?? [], field.meta.second?.colour ?? '#ffd166', 0, [6, 4]); }
   if (field?.barbs) for (const b of field.barbs) { const [x, y] = px(b.xKm, b.yKm); drawBarb(x, y, b.windKt, b.windFromDeg); }
-  if (shown.storms && (productKey === 'refl' || (field && $('overlayRefl').checked))) drawRaster(reflRaster(shown.storms, `${S.init}:${isField() ? Math.floor(t / 60) * 60 : t}`), field ? 0.9 : 1);
+  if (shown.storms && showsRefl()) drawRaster(reflRaster(shown.storms, `${S.init}:${t}`));
+  // As the HRRR's "reflectivity + UH > 75": the 1 h max swaths behind each storm, over the echoes (light grey: the map is dark).
+  if (productKey === 'reflUh') drawUhTracks(t - 60, t, { least: reflUhLeast, colour: 'rgba(214,222,232,.5)', width: 5 });
   if (productKey === 'uh1') drawUhTracks(t - 60, t);
   if (productKey === 'uhTotal') drawUhTracks(-1, t);
-  if (productKey === 'torTracks') { drawUhTracks(-1, t, 0.35); drawTornadoTracks(t); }
+  if (productKey === 'torTracks') { drawUhTracks(-1, t, { alpha: 0.35 }); drawTornadoTracks(t); }
   drawTowns();
   if (!isField() && shown.storms) for (const s of shown.storms) if (s.tornado) { const [x, y] = px(s.tornado.x, s.tornado.y); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke(); }
 }
+
+const showsRefl = () => productKey === 'refl' || productKey === 'reflUh';
 
 function colourAt(meta, value) {
   const stops = meta.shade;
@@ -346,7 +355,7 @@ function drawBarb(x, y, speed, fromDeg) {
 // Simulated composite reflectivity: each storm's rain area as the radar would see it from above, its
 // core near the updraft, a hook where the rain wraps round a rotating storm, and a line's leading edge
 // with rain trailing behind. A small grain that moves with each storm keeps the edges from looking drawn.
-const REFL_KM = 2;
+const REFL_KM = 3;
 function hash(i, j, s) { let h = Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(s, 2246822519); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
 function noise(x, y, s) { const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy); const a = hash(i, j, s), b = hash(i + 1, j, s), c = hash(i, j + 1, s), d = hash(i + 1, j + 1, s); return (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * 2 - 1; }
 function stormDbz(s, x, y, seed) {
@@ -405,17 +414,19 @@ function reflRaster(storms, id) {
 }
 
 // Updraft helicity swaths: each storm's 5-minute points joined, the strongest drawn last.
-function drawUhTracks(from, to, alpha = 1) {
+function drawUhTracks(from, to, { alpha = 1, least = UH[0][0], colour = null, width = 7 } = {}) {
   const segments = [];
   for (const points of S.byStorm?.values() ?? []) for (let i = 1; i < points.length; i++) {
     const a = points[i - 1], b = points[i];
     if (b.minute <= from || b.minute > to || b.minute - a.minute > 6) continue;
     const uh = Math.max(a.uh, b.uh);
-    if (uh >= UH[0][0]) segments.push([a, b, uh]);
+    if (uh >= least) segments.push([a, b, uh]);
   }
   segments.sort((p, q) => p[2] - q[2]);
-  ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(3, 7 * view.k);
-  for (const [a, b, uh] of segments) { ctx.strokeStyle = stepColour(UH, uh); ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke(); }
+  ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(3, width * view.k);
+  // One colour: one path, so overlapping pieces don't stack darker.
+  if (colour) { ctx.strokeStyle = colour; ctx.beginPath(); for (const [a, b] of segments) { ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); } ctx.stroke(); }
+  else for (const [a, b, uh] of segments) { ctx.strokeStyle = stepColour(UH, uh); ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke(); }
   ctx.restore();
 }
 function drawTornadoTracks(to) {
@@ -502,14 +513,14 @@ function drawLegend() {
     g.fillStyle = '#121a23'; g.fillRect(0, 0, bar.width, bar.height);
     for (let x = 0; x < bar.width; x++) { const [r, gr, b, a] = colourAt(meta, from + (to - from) * x / (bar.width - 1)); g.fillStyle = `rgba(${r | 0},${gr | 0},${b | 0},${Math.max(0.12, a)})`; g.fillRect(x, 0, 1, bar.height); }
     for (const f of [0, 0.25, 0.5, 0.75, 1]) tick(Number((from + (to - from) * f).toFixed(meta.decimals)).toLocaleString(), f);
-    note.textContent = `${meta.label}${meta.unit ? ` (${meta.unit})` : ''}${meta.second ? ` · dashed: ${meta.second.label} (${meta.second.unit})` : ''}${$('overlayRefl').checked ? ' · with simulated reflectivity' : ''}`;
+    note.textContent = `${meta.label}${meta.unit ? ` (${meta.unit})` : ''}${meta.second ? ` · dashed: ${meta.second.label} (${meta.second.unit})` : ''}`;
     return;
   }
   const table = p.table ?? (p.key === 'torTracks' ? EF.map((c, i) => [i, c]) : null);
   if (table) {
     const w = bar.width / table.length;
     table.forEach(([at, c], i) => { g.fillStyle = c; g.fillRect(i * w, 0, w + 1, bar.height); tick(p.key === 'torTracks' ? `EF${at}` : String(at), (i + 0.5) / table.length); });
-    note.textContent = `${p.label}${p.unit && p.key !== 'torTracks' ? ` (${p.unit})` : ''}${p.key === 'torTracks' ? ' · faint: updraft helicity tracks' : ''}`;
+    note.textContent = `${p.label}${p.unit && p.key !== 'torTracks' ? ` (${p.unit})` : ''}${p.key === 'torTracks' ? ' · faint: updraft helicity tracks' : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
   } else if (p.key === 'paint' || p.key === 'spaghetti') {
     const runs = E.byRun?.length ?? 0, w = bar.width / Math.max(1, runs);
     for (let r = 0; r < runs; r++) { g.fillStyle = runColour(r); g.fillRect(r * w, 0, w + 1, bar.height); }
@@ -527,8 +538,8 @@ canvas.addEventListener('mousemove', event => {
   const lines = [];
   if (modelKind === 'short') {
     if (shown.field) { const v = fieldAt(shown.field.values, x, y), m = shown.field.meta; lines.push(`${m.label}: <b>${Number(v.toFixed(m.decimals)).toLocaleString()}</b> ${m.unit ?? ''}`); }
-    const image = rasters.get(`refl:${S.init}:${isField() ? Math.floor(t / 60) * 60 : t}`);
-    if (image && (productKey === 'refl' || (isField() && $('overlayRefl').checked))) { const v = image.dbz[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0; if (v >= 15) lines.push(`Reflectivity: <b>${Math.round(v)}</b> dBZ`); }
+    const image = rasters.get(`refl:${S.init}:${t}`);
+    if (image && showsRefl()) { const v = image.dbz[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0; if (v >= 15) lines.push(`Reflectivity: <b>${Math.round(v)}</b> dBZ`); }
     const near = (shown.storms ?? []).map(s => [s, Math.hypot(s.x - x, s.y - y)]).filter(([, d]) => d < 15).sort((a, b) => a[1] - b[1])[0]?.[0];
     if (near) lines.push(`<b>${near.id}</b> · ${near.mode ?? 'storm'} · ${near.dbz} dBZ · UH ${near.uh}${near.hailIn >= 0.75 ? ` · hail ${near.hailIn.toFixed(2)} in` : ''}${near.tornado ? ` · <b style="color:#ff6b6b">tornado</b> ${near.tornado.mph} mph` : ''}`);
   } else if (!['paint', 'spaghetti'].includes(productKey)) {
@@ -554,6 +565,7 @@ fillProducts(); setTimeRange();
   const ask = new URLSearchParams(location.search);
   await loadBase();
   if (ask.get('model') === 'ensemble') await switchModel('ensemble'); else await loadRuns();
+  if (UH_LEASTS.includes(Number(ask.get('uh')))) { reflUhLeast = Number(ask.get('uh')); $('uhLeast').value = String(reflUhLeast); }
   if (ask.get('product')) { productKey = ask.get('product'); fillProducts(); setTimeRange(); }
   if (ask.get('t')) setTime(Number(ask.get('t'))); else render();
   draw();

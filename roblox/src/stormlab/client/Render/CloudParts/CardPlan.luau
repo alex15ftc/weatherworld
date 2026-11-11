@@ -544,7 +544,8 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 	if A and not meshBody then
 		local total = A.len + A.rr
 		local sp = clamp(A.th0 * 1.2, 1200, 3500) / dk
-		local cap = math.floor(80 * detail) -- (x3 layers)
+		-- (x3 layers; at least 40, so a far anvil's width comes from more cards, not wider ones)
+		local cap = math.max(40, math.floor(80 * detail))
 		-- (coarser spacing if the slab would take more than its share of cards)
 		local function count(spacing: number): number
 			local c = 0
@@ -581,6 +582,13 @@ function CardPlan.plan(s: any, Storm: any, detail: number, camDx: number?, camDy
 				-- three layers: the lit top, the body, the shaded underside (what is seen from below)
 				local litTop = sunLit(px, py, tp + 60)
 				local ch = max(th * 1.3, 0.4 * cw)
+				-- (seen from outside, a plate: its thickness and as much of its width as the view's
+				-- elevation shows - seenHeight, as the deck. Drawn upright at full height, the far
+				-- anvil's km-wide cards were a white ellipse tens of km tall round the tower, judge
+				-- 2026-11-10; from below, overhead, it keeps its full height)
+				if camDx then
+					ch = seenHeight(px - camDx, py - (camDy or 0), pz - (camZ or 2), cw, ch, th)
+				end
 				local at = add(px, py, tp - 0.25 * th, cw, ch, a, "lumpyFlat", 0.92, litTop, 0.9, nil, 0, 0, 1)
 				at.lobe = "soft" -- (an anvil's top is smooth ice cloud)
 				add(px - cxv * 0.25 * sp, py - cyv * 0.25 * sp, tp - 0.5 * th, cw, ch, a, "softSheetFlat", 0.88, litTop * 0.6, 0.75)

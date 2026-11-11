@@ -17,8 +17,9 @@ function WidePuff.init(C: any)
 	if cfg and cfg.enabled == false then
 		cfg = nil
 	end
-	-- Pause: switch the wide puffs off and on (this client only), to compare from one camera
-	if cfg and not keyBound then
+	-- Pause (in Studio only): switch the wide puffs off and on on this client, to compare from one
+	-- camera. (StormCards picks a card's texture when it re-plans: wait ~5 s before a capture.)
+	if cfg and not keyBound and game:GetService("RunService"):IsStudio() then
 		keyBound = true
 		game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
 			if not processed and input.KeyCode == Enum.KeyCode.Pause then
@@ -84,6 +85,16 @@ function WidePuff.texture(b: number, detail: boolean, i: number): string?
 		end
 	end
 	return cfg.haze and cfg.haze[b] or nil
+end
+
+-- the funnel's smooth puff for bucket b at edge sharpness level lvl (0, 1, 2: the square smooth
+-- puff, its 1/2 and 1/4 ramps); nil for bucket 1 or when off
+function WidePuff.funnel(b: number, lvl: number): string?
+	if not WidePuff.on() or b <= 1 then
+		return nil
+	end
+	local set = cfg.funnel and cfg.funnel[b]
+	return set and set[math.clamp(lvl, 0, 2) + 1] or nil
 end
 
 return WidePuff

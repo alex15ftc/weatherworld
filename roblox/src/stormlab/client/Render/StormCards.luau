@@ -1061,6 +1061,23 @@ function StormCards.new(ctx: any): any
 			end
 		end
 	end
+	-- the camera where a storm's cards see it: in the game each storm is drawn about its anchor at the
+	-- sky's scale (LabConfig.fromWorldAbout), so its haze, view angle and detail go by the distance it is
+	-- drawn at, not its map distance. (By the map's, a storm drawn as if 35 km off was hazed as at 95 km:
+	-- two thirds haze colour, no shaded sides or slate base - a white fair-weather cumulus, judge
+	-- 2026-11-10.) Once a frame a storm; the lab (no anchor) keeps the camera as it is
+	local camCFNow: CFrame? = nil
+	local camFrameN = 0
+	local function camOf(g: any, camPos: Vector3): Vector3
+		if not (C.anchorFn and g.ax and camCFNow) then
+			return camPos
+		end
+		if g.camN ~= camFrameN then
+			g.camN = camFrameN
+			g.camP = Vector3.new(C.fromWorldAbout((camCFNow :: CFrame).Position, g.ax, g.ay))
+		end
+		return g.camP
+	end
 	local function runRecolours(camPos: Vector3, L: any)
 		local n = math.min(rqN, RECOLOUR_BUDGET)
 		for _ = 1, n do
@@ -1081,7 +1098,7 @@ function StormCards.new(ctx: any): any
 				fogNow = g.fog or 0
 				baseNow = s.base or 1000
 				distNow = math.max(g.dCam or 1e4, 500)
-				shadeCard(inst, c, s.x + ox + c.x, s.y + oy + c.y, camPos, L, false, full)
+				shadeCard(inst, c, s.x + ox + c.x, s.y + oy + c.y, camOf(g, camPos), L, false, full)
 			end
 		end
 	end
@@ -1170,6 +1187,8 @@ function StormCards.new(ctx: any): any
 		local camera = Workspace.CurrentCamera
 		local camCF = camera.CFrame
 		local camPos = Vector3.new(C.fromWorld(camCF.Position))
+		camCFNow = camCF
+		camFrameN += 1
 		local camX, camY = camPos.X, camPos.Y
 		camXNow, camYNow = camX, camY
 		frameN += 1
@@ -1344,7 +1363,8 @@ function StormCards.new(ctx: any): any
 				plan = CardPlan.fromPieces(pieces, 4241, 1, camX, camY, camPos.Z)
 				g.vx, g.vy, g.t0 = vx, vy, cw.time or simT
 			else
-				local d = math.sqrt((s.x - camX) ^ 2 + (s.y - camY) ^ 2)
+				local cg = camOf(g, camPos)
+				local d = math.sqrt((s.x - cg.X) ^ 2 + (s.y - cg.Y) ^ 2) -- (as drawn: see camOf)
 				-- (fewer cards with distance and with many storms in range: the whole sky's card
 				-- count, not each storm's, is what the frame pays for)
 				local rawDetail = math.clamp(1 - (d - 15000) / 90000, 0.25, 1) * math.clamp(5 / math.max(inRange, 1), 0.3, 1)
@@ -1520,7 +1540,7 @@ function StormCards.new(ctx: any): any
 					local fl = if flashes and ff then ctx.Tornado.FlashField.at(ff, wx, wy, c.z) else 0
 					if math.abs(fl - (inst.flash or 0)) > 0.02 then
 						inst.flash = fl
-						shadeCard(inst, c, wx, wy, camPos, L, flashes, false)
+						shadeCard(inst, c, wx, wy, camOf(g, camPos), L, flashes, false)
 					end
 				end
 			end
@@ -1545,7 +1565,7 @@ function StormCards.new(ctx: any): any
 							fogNow = g.fog or 0
 							baseNow = (g.storm and g.storm.base) or 1000
 							distNow = math.max(g.dCam or 1e4, 500)
-							budget = runJob(job, g.storm, camPos, L, flashes, budget)
+							budget = runJob(job, g.storm, camOf(g, camPos), L, flashes, budget)
 						end
 					end
 				end

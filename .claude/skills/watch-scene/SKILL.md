@@ -30,8 +30,13 @@ Capture the same angles before and after the change when possible.
    a play test, then `curl "localhost:3029/life/place?bearing=0&km=2"`.
 2. On the client: E, activate "Orbit", activate "Follow <storm>~engine", E. Keep each input batch under 30 s of
    waits. `-` zooms the follow camera out (x1.4 a press, up to 4x), `=` in. U spawns a car and ends the follow.
-3. Tornado set: 4-6 close orbit shots, both the rain side and the clear side. Supercell set: `-` x4 (~4 km), 4-5
-   orbit shots, plus a close clear-side and rain-side shot.
+3. Tornado set: 4-6 close orbit shots, both the rain side and the clear side. Supercell set: NOT the `-` zoom -
+   the storm is drawn ~3.6x wider than the map about its tornado, so a 4x zoom stays under the base (2026-11-10).
+   Instead: `curl "localhost:3029/life/place?bearing=0&km=18"` for the ground-level far view (player camera, no
+   follow), and the place's temporary VTCam poses (PageUp/PageDown step poses round the tornado: "whole 25000 up",
+   "whole west 25000 up"; End returns the camera - but End/Home/Insert/Delete are also the lab's speed keys,
+   press Home after End). Poses nearer than ~20000 studs see past the terrain built round the player (sky arcs).
+   VTCam's Insert hides one storm layer at a time (prints `[VTCam] lab layer hidden: <name>`).
    `py tools/stormlab/grab_window.py "plains - Roblox" <out> --crop 430,130,1490,925 --n <N> --dt <s>`
    Take the close set FIRST, the far set last. The character rides under the follow camera, so a far
    zoom moves the server's one weather window (StormHost, 35 km) as a travelling player would - the far

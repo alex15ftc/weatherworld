@@ -26,6 +26,8 @@ import { clamp } from '../scenarios/math.js';
 import { rotatingShare, lineShare } from './StormModeEngine.js';
 import { stormColumnOf } from './StormColumn.js';
 import { stormFallout } from './StormFallout.js';
+import { spinBudget, SPIN } from './SpinBudget.js';
+import { coldPoolDepthM } from './ColdPool.js';
 
 const KPH_PER_KT = 1.852;
 const GEOMETRY = {
@@ -52,6 +54,46 @@ function stormTops(storm, updraughtMs) {
   const p = storm.parcel, G = GEOMETRY;
   if (!p || !(p.peakMs > 0)) { const top = clamp(G.topM[0] + G.topPerMs * updraughtMs, G.topM[0], G.topM[1]); return { top, anvil: top - 1500 }; }
   return { top: p.elM + Math.max(0, p.topM - p.elM) * clamp(updraughtMs / p.peakMs, 0, 1.5), anvil: p.elM };
+}
+
+// The wall cloud's lowering below the rain-free base (m), from the air it condenses in: most of what
+// enters the wall cloud's base is the forward flank's rain-cooled, moister outflow, whose lower LCL
+// lowers the cloud (Atkins, Glidden and Nicholson 2013, VORTEX2). The lab sim's rule (Storm.luau, the lowering) with the
+// engine's fields: the inflow's dew-point spread from its LCL (125 m/K); the outflow cooled by the
+// cold pool's deficit toward its wet bulb (T - Tw ~ spread / 3) and moistened as far; only the share
+// the lift can raise through the pool's negative buoyancy (1/2 g dT/T h) joins the updraught - so a
+// cold, deep pool is mostly undercut and a weak one taken in ("intermediate cold pools are best",
+// Markowski et al. 2002) - and that share mixed into the inflow sets the wall cloud's LCL. Strength:
+// how organised the low-level circulation drawing it in is (wallStrength). (Not the mesocyclone's
+// pressure fall, v^2 / g: that lowers only its centre, a core radius across - the funnel's top and
+// the renderer's dip toward it - not the 2-4 km wall cloud; added to the whole lowering, under a
+// 150 mph tornado it hung 815 m under a 1,133 m base.) Until 2026-11-10 it was
+// 150 + 450 m x strength, capped at 15-45% of the base in StormAppearance: every strong wall cloud
+// hung 600 m, whatever the air (research: 100-1000 m, often 200-500 - docs/stormlab/
+// RESEARCH-WALLCLOUD-HV.md), and drew too tall, user.
+export function wallLoweringM(storm, environment, lclM, strength, updraughtMs) {
+  if (!(strength > 0)) return 0;
+  const spread = Math.max(0, lclM / 125);
+  const dF = Math.max(0, (Number(storm.coldPoolTemperatureDeficitF) || 0) / 1.8);
+  const wetGap = Math.max(spread / 3, 0.3);
+  const sat = clamp(dF / wetGap, 0, 1);
+  // (temperatures relative to the inflow's: the outflow dF colder, its dew point raised toward its wet bulb)
+  const tO = -dF, tdO = Math.min(tO, -spread + sat * (spread - wetGap));
+  const NB = 0.5 * 9.81 * dF / 300 * coldPoolDepthM(storm.coldPoolStrength ?? 0);
+  // the low-level mesocyclone's wind at its edge (SpinBudget's stretched low-level spin, zeta R / 2),
+  // as organised as the storm's low-level rotation is
+  const sb = spinBudget(storm, environment);
+  const low = clamp(Math.max(storm.lowRotation ?? 0, storm.lowRotationFree ?? 0), 0, 1);
+  const v = sb ? low * sb.zetaLow * SPIN.lowRadiusM / 2 : 0;
+  const wb = 0.2 * Math.max(0, updraughtMs);
+  const lift = v * v + 0.5 * wb * wb;
+  const share = 0.6 * ramp(dF, 0.2, 2.5) * (lift / (lift + NB + 1)) * strength;
+  const tM = share * tO, tdM = Math.min(tM, -spread + share * (tdO + spread));
+  const lclMix = 125 * (tM - tdM);
+  // (strength once, in the share drawn in: the lab's rule also scaled the sum by it - a
+  // half-organised wall cloud took a quarter of its air's lowering, 128 m under tornadoes on seed 9.
+  // 0.85 of the base: only so it never reaches the ground)
+  return clamp(lclM - lclMix, 0, 0.85 * lclM);
 }
 
 export function buildStormGeometry(storm, environment = storm.environment ?? {}) {
@@ -104,7 +146,7 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
     // At the mesocyclone, the origin: on the updraught's rear (upshear) edge, where the inflow meets
     // the wrapping rear-flank outflow. A tornado forms here (TornadoEngine), and the radar's hook
     // and couplet curl round it.
-    wallCloud: { ...place(0, 0), strength: wallStrength, radiusKm: 1 + 3 * lowFree, loweringM: wallStrength > 0 ? 150 + 450 * wallStrength : 0, rotation: low },
+    wallCloud: { ...place(0, 0), strength: wallStrength, radiusKm: 1 + 3 * lowFree, loweringM: wallLoweringM(storm, environment, Number(environment.lcl) || 1200, wallStrength, updraughtMs), rotation: low },
     rain: { ...place(rainCentre.east, rainCentre.north), alongKm: 8 + 26 * rain + 10 * linear, acrossKm: 6 + 16 * rain, bearingDeg: bearing(downwind.east, downwind.north), intensity: rain },
     // (the hail: where the largest precipitation lands, hail and the biggest drops)
     hail: { ...place(hailCentre.east, hailCentre.north), radiusKm: hailInches > 0.25 ? 1.5 + 1.6 * hailInches : 0, sizeInches: hailInches },

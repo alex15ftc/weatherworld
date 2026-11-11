@@ -409,7 +409,9 @@ LabConfig.TEXTURES = {
 	wideFlat = "rbxassetid://101986960654906",
 	-- tools/smoke/storm_sheets.py (4x4 sheets, white alpha; uploaded 2026-10-25). Empty: the
 	-- renderers fall back to softSheetFlat (curtain) or draw no band (striation)
-	curtainFlat = "rbxassetid://79610318303479", -- rain shaft: fine vertical fibres, soft sides and top, feathered foot
+	-- (v2 2026-11-10: each frame's top and bottom rows faded to zero - the noise had left 0.19 / 0.32
+	-- there, and a slanted shaft ended in a straight hard line across the base; v1 79610318303479)
+	curtainFlat = "rbxassetid://92396738829507", -- rain shaft: fine vertical fibres, soft sides and top, feathered foot
 	striationFlat = "rbxassetid://114024701514552", -- mesocyclone band: a lens of long horizontal ribs
 	-- (uploaded 2026-10-25; empty: the renderers fall back to softFlat / shredFlat)
 	dirtGrainFlat = "rbxassetid://118568148658026", -- tornado dust as dirt: dense grains thinning to a speckled edge
@@ -425,14 +427,46 @@ LabConfig.TEXTURES = {
 -- nearest width:height (2, 4 or 8), so it is stretched by at most ~1.4x and its billows stay
 -- round. detail: the gas-puff look (two each); haze: the same shape, no texture (small on screen).
 -- enabled=false: the old squashed textures (to compare).
+-- Rain and hail shafts as Beams, not billboards (2026-11-10, user: "a different solution for rain
+-- and hail besides billboards"; docs/visuals-research/TORNADO-GAMES-RESEARCH.md section 7). Each
+-- shaft (CloudParts/Shafts' bins of the rain field) is perShaft camera-facing ribbons through its
+-- depth plus hailPerShaft for its hail, hung from the cloud base to the ground along the wind's drift,
+-- their textures scrolling down at the fall speed (tools/smoke/rain_beam.py). enabled = false: the
+-- billboard curtains. In Studio, Scroll Lock switches between the two on the client.
+-- NEAR ONLY (2026-11-10). Beams are parts, drawn only within LIMITS.partRange (~6500 studs, under
+-- 2 km of map at the game's scale). Pulled in from the storm's 13k+ studs, a shaft sorted in front of
+-- every storm card beyond it (the rain behind the tornado drew a grey wall over it). Now a shaft takes
+-- Beams only where its true place is in range, blending from its card over the outer quarter
+-- (CloudParts/Shafts: bS); far shafts stay cards.
+LabConfig.RAIN_BEAMS = {
+	enabled = true,
+	rain = "rbxassetid://106068821128086", -- (70385017359407: uploaded with no Studio selected, never loads)
+	hail = "rbxassetid://96811168010482", -- (121552743909792: the same)
+	perShaft = 6,
+	hailPerShaft = 2,
+}
+
 LabConfig.WIDE_PUFFS = {
 	enabled = true,
+	-- (v2 2026-11-10: lit from the top with shaded undersides, broader relief - v1, the square
+	-- puff's flat relief, drew the base as a flat haze: 2x 92609642181775 110194059910493, 4x
+	-- 106021577822620 119485533826314, 8x 88187456794162 84795806300945)
 	detail = {
-		[2] = { "rbxassetid://92609642181775", "rbxassetid://110194059910493" },
-		[4] = { "rbxassetid://106021577822620", "rbxassetid://119485533826314" },
-		[8] = { "rbxassetid://88187456794162", "rbxassetid://84795806300945" },
+		[2] = { "rbxassetid://105417825281363", "rbxassetid://98784999054732" },
+		[4] = { "rbxassetid://92927739584921", "rbxassetid://115709628836370" },
+		[8] = { "rbxassetid://92170928133029", "rbxassetid://109124262747635" },
 	},
-	haze = { [2] = "rbxassetid://85091618545178", [4] = "rbxassetid://88617459363087", [8] = "rbxassetid://121121587707153" },
+	-- (v2 2026-11-10: a fuller middle; the first, a gaussian - 2x 85091618545178, 4x 88617459363087,
+	-- 8x 121121587707153 - drew a storm's flank as a featureless fade)
+	-- the tornado funnel's smooth puff, flattened on a wedge's cards (TornadoCards smoke body), at
+	-- each edge sharpness s1 / s2 / s4 (smoothPuffFlat, smoothPuffSharp2, smoothPuffSharp4):
+	-- tools/smoke/wide_funnel_puff.py, mean alpha matched to the square ones
+	funnel = {
+		[2] = { "rbxassetid://100720958909946", "rbxassetid://129049397093455", "rbxassetid://72126502164804" },
+		[4] = { "rbxassetid://98415367640961", "rbxassetid://127293120408605", "rbxassetid://94460056838339" },
+		[8] = { "rbxassetid://75470066716483", "rbxassetid://124147068477518", "rbxassetid://97819017246244" },
+	},
+	haze = { [2] = "rbxassetid://127203466484652", [4] = "rbxassetid://80072171540423", [8] = "rbxassetid://120322983115951" },
 }
 -- Near-field VFX (Render/NearVfx): cards within particle reach (~800 studs) are re-drawn as
 -- particle smoke volumes. Key B toggles it. Shelved 2026-10-29 (user: billboards and shaders instead): off.

@@ -98,8 +98,17 @@ def detail(h, w, seed):
     s1, s2 = 18 * ref, 60 * ref  # relief scales: the square puff's, by the same size as the noise
     ao = dens - blur(dens, max(s1, 2))
     ao2 = dens - blur(dens, max(s2, 4))
-    val = 0.9 + 0.55 * np.clip(ao, -0.15, 0.15) + 0.3 * np.clip(ao2, -0.2, 0.2)
+    # broad relief ~1.5x the square puff's, and lit from the top as the lobe bakes are (a level sheet's
+    # billow tops catch the sky, their undersides are shaded): with the square puff's flat relief
+    # the flattened base cards lost the hanging lumps' light and shade - a flat haze, judge
+    # 2026-11-10. The card's own gradient still adds the sun's side.
+    val = 0.86 + 0.45 * np.clip(ao, -0.15, 0.15) + 0.45 * np.clip(ao2, -0.2, 0.2)  # (fine relief at 0.85: dark speckle)
     val += 0.03 * fbm(h, w, 3, 12, seed + 3)
+    # (v: -0.5 top .. 0.5 bottom; each billow's own lower side darker too, from the relief's slope)
+    top = np.clip(-v / 0.3, -1, 1)
+    # + where density grows downward: a billow's upper side, lit; its lower side shaded
+    slope = np.gradient(blur(dens, max(0.6 * s2, 6)), axis=0) * h  # (billow scale: finer, it lit the fraying noise as speckle)
+    val += 0.10 * top + 0.12 * np.tanh(slope / 3)
     return np.clip(alpha, 0, 1), np.clip(val, 0, 1)
 
 

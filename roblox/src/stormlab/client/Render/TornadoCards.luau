@@ -21,6 +21,7 @@
 -- (docs/stormlab/SCALE-RULES.md). Heights z are above the ground (the vortex's frame); the
 -- drawn altitude blends from the local ground (z = 0) to the cloud base (z = H, above the datum).
 local Workspace = game:GetService("Workspace")
+local WidePuff = require(script.Parent:WaitForChild("CloudParts"):WaitForChild("WidePuff"))
 
 local TornadoCards = {}
 
@@ -150,6 +151,7 @@ end
 
 function TornadoCards.new(ctx: any): any
 	local C = ctx.Config
+	WidePuff.init(C)
 	local Vortex = ctx.Sim.Vortex
 	local Storm = ctx.Sim.Storm
 	-- A card's length along the funnel as seen: a piece hs long and w across, its axis near
@@ -2290,22 +2292,21 @@ function TornadoCards.new(ctx: any): any
 						-- two nearest, so a funnel wedging out changes over card by card)
 						local sE = min(1, RC_EDGE / max(rc, 1))
 						local want = sm.texH
+						local lvl = 0
 						if not haze then
 							want = sm.texS
 							local lv = clamp(math.log(1 / sE, 2), 0, 2)
 							local lo = math.floor(lv)
 							local sd3 = (sin(i * 57.31 + 11.13) * 43758.5453) % 1
-							local lvl = if sd3 < lv - lo then lo + 1 else lo
+							lvl = if sd3 < lv - lo then lo + 1 else lo
 							if lvl == 1 and sm.texS2 ~= "" then
 								want = sm.texS2
 							elseif lvl >= 2 and sm.texS4 ~= "" then
 								want = sm.texS4
 							end
 						end
-						if sm.cur[i] ~= want then
-							sm.cur[i] = want
-							c.img.Image = want
-						end
+						-- (written once the card's shape is known, below: a flattened smooth card takes
+						-- the wide copy at its width:height, WidePuff)
 						-- body: within 0.2 rc of the axis (a shell in a two-celled core). Each smooth puff
 						-- 2.7-3 rc wide, its rim (~0.3 of the frame out) at the edge; each haze puff
 						-- 3.4-3.8 rc wide, its alpha ~0.17 at rc, so the stacked layers fade out round the
@@ -2387,7 +2388,19 @@ function TornadoCards.new(ctx: any): any
 						-- smooth puff's ends stay round. 2026-10-31: with ~3 over each point, each near the
 						-- opacity cap, every puff's rim showed - a rope in rings like a caterpillar)
 						local hs = if haze then min(max(0.9 * w, 8 * arcL / NSB), 3 * w) elseif surf then min(max(0.9 * w, 3 * arcL / NSB), 4 * w) else min(max(0.9 * w, 3 * arcL / NSB), 4 * w, max(hsMax, w / hsAsp))
-						setSize(c, w * ks, (if c.Pb then alongSeen(c.Pb, camPos, hs, w) else hs) * ks)
+						local hsSeen = if c.Pb then alongSeen(c.Pb, camPos, hs, w) else hs
+						setSize(c, w * ks, hsSeen * ks)
+						-- (a smooth card flattened on a wedge, down to 6:1: the square puff squashed that
+						-- far drew pointed lens ends down its sides and its rim shading as thin dark lines
+						-- stacked into bands - the wide copy at the card's shape, same edge and cover)
+						if not haze then
+							c.wb = WidePuff.bucket(w, hsSeen, c.wb)
+							want = WidePuff.funnel(c.wb, lvl) or want
+						end
+						if sm.cur[i] ~= want then
+							sm.cur[i] = want
+							c.img.Image = want
+						end
 						-- (how many overlap a point: never more than all of them - a wedge is shorter than
 						-- its sprites. K 6: the haze puff's alpha averages ~0.15 of its card, so each card
 						-- takes ~6 x the plain share; the fibrous sheet, ~0.1, took 10)
@@ -2683,7 +2696,9 @@ function TornadoCards.new(ctx: any): any
 						local ropeK = 1 - smooth(0.04, 0.1, rc2 / max(arcL, 1))
 						local len = ((P[2] - P[1]).Magnitude + (P[3] - P[2]).Magnitude) / ks
 						F.stretch = clamp((F.len0 or len) / max(len, 1), 0.15, 1)
-						local dense = smooth(-0.1, 0.4, turb(F.th[2], s2, omega, wUp, rcz))
+						local tbF = turb(F.th[2], s2, omega, wUp, rcz)
+						F.tb = tbF
+						local dense = smooth(-0.1, 0.4, tbF)
 						-- (a laminar tube keeps fine, even striations: less broken up, less faded on a rope)
 						dense += (1 - dense) * 0.5 * laminar
 						k0 = A * lf * env * (1 - 0.75 * ropeK * (1 - 0.5 * laminar)) * sqrt(F.stretch) * dense
@@ -2704,10 +2719,17 @@ function TornadoCards.new(ctx: any): any
 						local q = sm.fr[clamp(math.floor((clamp(z2 / top, 0, 1) ^ (1 / 1.15)) * NZ + 0.5), 0, NZ)]
 						local L = if fm < 0.5 then r0m.L else r1m.L
 						local xs = clamp(cs * q.ahx + sn * q.ahy, -1, 1)
-						local col = shadeAt(L, q, 0.85 * xs, cs, sn, 0.3 * smooth(8, 30, rc2), z2)
-						local var = if sm.seed[NSMB + 2 * j] < 0.5 then 0.94 else 1.06
+						-- (a filament is denser cloud on the face: more of the light it is in is scattered or
+						-- blocked, so it is lighter than the face on the lit side and darker on the shadow
+						-- side - the face's own lit/shadow swing, deepened - and its tone carries the eddy
+						-- field's density there by the eddies' strength, uI ~0.05 laminar .. 0.17 turbulent.
+						-- Was one fixed +-6% at 0.2 opacity: the filaments carried round by the flow never
+						-- showed, so a narrow funnel gave no cue it turns, judge 2026-11-10)
+						local col = shadeAt(L, q, clamp(1.25 * xs, -1, 1), cs, sn, 0.3 * smooth(8, 30, rc2), z2)
+						local uIF = 0.05 + 0.12 * (1 - laminar)
+						local var = 1 + 0.6 * uIF * (F.tb or 0) + (if sm.seed[NSMB + 2 * j] < 0.5 then -0.03 else 0.03)
 						local colV = Color3.new(min(1, col.R * var), min(1, col.G * var), min(1, col.B * var))
-						local tr = 1 - clamp(0.2 * k0 * front, 0, 0.2)
+						local tr = 1 - clamp(0.35 * k0 * front, 0, 0.35)
 						for g = 1, 2 do
 							local c = if g == 1 then cA else cB
 							local d3 = P[g + 1] - P[g]

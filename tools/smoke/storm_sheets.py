@@ -63,7 +63,11 @@ def curtain(rng):
     foot = 1 - smooth(0.86, 1.0, Y + 0.02 * strands + 0.02 * wobble)  # (a soft, feathered foot)
     body = 0.78 + 0.22 * smooth(0.3, 0.9, Y)  # (more rain in the lower part of the column)
     tex = 0.8 + 0.12 * np.tanh(fib * 0.8) + 0.1 * np.tanh(strands)
-    return np.clip(side * top * foot * body * tex, 0, 1)
+    # (and gone at the frame's top and bottom rows whatever the noise: the noise moved the fades past
+    # them - 0.19 at the top, 0.32 at the foot - and a slanted shaft card ended in a straight hard
+    # line across the storm base, 2026-11-10)
+    ends = smooth(0.0, 0.05, Y) * (1 - smooth(0.95, 1.0, Y))
+    return np.clip(side * top * foot * body * tex * ends, 0, 1)
 
 
 def striation(rng):

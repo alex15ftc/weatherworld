@@ -6,6 +6,7 @@ import { buildStormGeometry } from '../js/storms/StormGeometry.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 import { gustMph, stepRearInflow, stepBow } from '../js/storms/StormHazards.js';
 import { leftSplitShare, shouldSplitStorm } from '../js/storms/StormModeEngine.js';
+import { coldPoolDeficitK } from '../js/storms/ColdPool.js';
 
 // A storm moving north-east at 50 km/h under a 60 kt westerly aloft.
 const air = { cape: 3000, cin: 20, lcl: 900, srh: 250, bulkShear: 50, dcape: 900, dewpoint: 66, wind500: { eastKt: 60, northKt: 0 }, surfaceWind: { eastKt: -5, northKt: 15 } };
@@ -13,6 +14,8 @@ function storm(state = {}) {
   const s = new Storm({ id: 'S1', xKm: 300, yKm: 300, velocityEastKph: 35, velocityNorthKph: 35, sourceCell: { x: 18, y: 18 }, createdHourUtc: 20 });
   setUpdraught(s, 42);
   Object.assign(s, { ageHours: 2, organization: 0.8, precipitation: 0.8, coldPoolStrength: 0.2, coldPoolRadiusKm: 25, mesocycloneStrength: 0.7, lowRotation: 0.4, lowRotationFree: 0.45, occlusion: 0.1, orientationDeg: 135, ...state });
+  // (the cold pool's deficit as StormEnvironmentCoupling sets it from its strength)
+  if (s.coldPoolTemperatureDeficitF === 0) s.coldPoolTemperatureDeficitF = coldPoolDeficitK(s.coldPoolStrength) * 1.8;
   return s;
 }
 
@@ -21,7 +24,11 @@ const supercell = storm(), g = buildStormGeometry(supercell, air);
 // Wind aloft relative to the storm: 111 - 35 = 76 km/h east, -35 north: the rain falls east-south-east.
 assert.ok(g.rain.xKm > g.updraught.xKm + 5 && g.rain.yKm > g.updraught.yKm, `the rain core lies downwind of the updraught (${(g.rain.xKm - g.updraught.xKm).toFixed(0)} km east, ${(g.rain.yKm - g.updraught.yKm).toFixed(0)} km south)`);
 assert.ok(Math.abs(g.anvil.bearingDeg - 115) < 10, `the anvil spreads the same way (toward ${g.anvil.bearingDeg.toFixed(0)} degrees)`);
-assert.ok(g.wallCloud.strength > 0.5 && g.wallCloud.loweringM > 300, 'low-level rotation shows as a lowering under the updraught');
+assert.ok(g.wallCloud.strength > 0.5 && g.wallCloud.loweringM > 100 && g.wallCloud.loweringM < 0.5 * air.lcl, `low-level rotation shows as a lowering under the updraught (${g.wallCloud.loweringM.toFixed(0)} m)`);
+// (from the air it takes in: the rain-cooled outflow condenses lower under a higher, drier base; a
+// cold, deep pool is undercut rather than taken in)
+assert.ok(buildStormGeometry(storm(), { ...air, lcl: 1500 }).wallCloud.loweringM > g.wallCloud.loweringM, 'a higher base lowers further');
+assert.ok(buildStormGeometry(storm({ coldPoolStrength: 0.5 }), air).wallCloud.loweringM < g.wallCloud.loweringM, 'and a cold, deep outflow less');
 assert.equal(buildStormGeometry(storm({ lowRotation: 0, lowRotationFree: 0 }), air).wallCloud.loweringM, 0, 'and there is none without it');
 assert.ok(g.updraught.topM > 12000 && g.updraught.baseM === 900, 'cloud base is the lifting level; the top rises with the updraught');
 assert.ok(buildStormGeometry(storm({ ageHours: 0.5 }), air).anvil.lengthKm < g.anvil.lengthKm, 'the anvil grows with the storm\'s age');

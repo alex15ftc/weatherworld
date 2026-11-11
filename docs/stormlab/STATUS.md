@@ -2730,3 +2730,165 @@ User: the tornado looked disconnected from the wall cloud from a higher orbit an
   - Peak vc is often 100-110 m/s, as before.
 - **Checks:** `test_world` and `test_engine_follow` pass. Engine storms are unaffected: the gust front, the cycle and genesis are own-only.
 - **Not yet seen in Studio.**
+
+## 2026-11-10: wide puffs for flattened cards (no more squashed textures)
+- **Problem (user):** cards "get stretched from certain angles and don't look good with texture". A billboard is an upright rectangle, and the renderers flatten cloud-base, anvil and wall-cloud cards by the camera's elevation (`CardPlan.seenHeight`, WallStream's bands: up to ~1:6 side-on). A square puff or lobe texture on those cards was squashed into smeared, scalloped lenses.
+- **Fix:** `Render/CloudParts/WidePuff.luau`. A soft-puff card wider than ~1.4:1 draws a texture made at the nearest width:height (2, 4 or 8), so it is never stretched more than ~1.4x. Bounds sit at √2, 2√2 and 4√2, with 12% hysteresis.
+  - Textures come from `tools/smoke/wide_puff.py` (`roblox/assets/clouds/wide/`), with ids in `LabConfig.WIDE_PUFFS`.
+    - **detail**: two billowed variants per width. It is the gas-puff look, lit from the top with shaded undersides.
+    - **haze**: a soft sheet for the plain soft textures.
+  - **StormCards.put:** lobe families and `lumpyFlat` / `mediumFlat` / `smoothPuffFlat` take detail. `softFlat` / `softSheetFlat` / `hazeSoftFlat` take haze. The card's sun gradient still shades them, and half of them are mirrored.
+  - **WallStream.showImg:** every image write goes through it. Gas puffs take detail; the smooth and far puffs take haze. The wisp sheet and the tier texture are unchanged.
+  - Streak textures (shreds, wisps, striations, curtains, fractus) keep their stretch.
+- **Switches:** `LabConfig.WIDE_PUFFS.enabled = false` brings the old textures back. In Studio, **Pause** flips it on the client. StormCards re-picks a card's texture at its next re-plan, so wait ~5 s.
+- **Seen in Studio** (game, replay `lifecycle-serve` moment 10, supercell follow at 2-4x): on/off/on shots taken seconds apart.
+  - Captures: `docs/storm-visuals/captures/2026-11-10_wide_puffs_*.png`.
+  - The scalloped, squashed lenses along the base edge are gone. The edge is now a soft taper with lit tufts.
+  - **First version:** a gaussian haze and flat-relief detail, which drew the flank as a featureless fade (visual-judge). Fixed by v2: billows on every lobe card, top light, and a fuller haze.
+  - **A hard diagonal line** on the left of the base is in the "off" shots too, so it is not this change. It is probably a rain-shaft card edge; not traced.
+- **Open:**
+  - Not yet checked from directly under the base. Cards there are near square, so they are unchanged.
+  - The lowering is still a round dome on the horizon in both versions (judge).
+- **Research behind this:** `docs/visuals-research/TORNADO-GAMES-RESEARCH.md`.
+- **Tornado funnel too (2026-11-10, later):** a wedge's smooth body cards flatten down to 6:1 (`hsAsp`). The square smooth puff squashed that far drew pointed lens ends down the sides (a scalloped, onion-bulb foot) and its rim shading as thin lines.
+  - `tools/smoke/wide_funnel_puff.py` writes wide copies at 2:1/4:1/8:1 for each edge sharpness (smoothPuffFlat, Sharp2, Sharp4) to `roblox/assets/tornado2/wide/`.
+    - The end edge keeps the same ramp in half-widths, so the RC_EDGE rule still holds. Each mean alpha matches its square original (0.27/0.33/0.36), so the opacity rule still holds.
+    - The top and bottom fade as a bell to zero by 0.95, with no rim shading there, so stacked cards merge with no bands.
+    - The ids are in `LabConfig.WIDE_PUFFS.funnel`.
+  - In TornadoCards' smoke body, the texture is now written after `setSize`: `WidePuff.bucket(w, hsSeen)` then `WidePuff.funnel(bucket, lvl)`. Haze and skin cards are unchanged.
+  - **Seen in Studio** (replay moment 12, a 589-yd wedge; on/off seconds apart; captures `2026-11-10_wide_funnel_*.png`). Visual-judge verdict: keep. The onion-bulb foot and the scalloped rim are gone; the sides stay soft, with no new hard lines.
+  - **Open (judge):**
+    - Dark horizontal ovals inside the body: the skin cards' field tone, which were there before but stand out more on the smoother body.
+    - The wedge reads as an even, straight-sided slab: no flare into the wall cloud, and nothing on its face shows the turn.
+- **Dust (TornadoDust):** left as it is. Its cards flatten only to ~1.7:1, except drifting dust at ~5:1, which uses streaky wisp sheets meant to stretch.
+- **Rotation, measured:** the game draws local motion at real speed (`visualScale = 1`; at 8x it read as fast-forward). The wall cloud turns at the low meso's Rankine speed: for vlow ~30 m/s and Ru ~2 km, the edge takes ~8 min per turn and the core ~2 min. That is realistic and visible on screen (~2-3 px/s at 5 km) if the cloud has features to follow. So "can't see rotation" comes from the low-contrast, soft surfaces, not the speed. Next step: moving features with contrast (scud tags and rising ragged pieces at the wall cloud's rim, streaks on the funnel's face, and inflow dust), judged from short videos rather than stills.
+
+## 2026-11-10 (later): wall-cloud depth from its air, rain-shaft edge line
+- **Wall cloud too tall (user).** The engine gave every strong wall cloud a fixed 600 m (`150 + 450 × strength`, capped at 15-45% of the base in StormAppearance), whatever the air. That was a painted value; the research gives 100-1000 m, often 200-500 (`docs/stormlab/RESEARCH-WALLCLOUD-HV.md`).
+  - Now `StormGeometry.wallLoweringM` sets it. It is the drop in condensation level when the forward flank's rain-cooled outflow (cooled toward its wet bulb and moistened) mixes into the inflow, using the lab sim's rule with the engine's fields. The share taken in is limited by the lift (SpinBudget's low-level spin and the updraught) against the cold pool's negative buoyancy, so a cold, deep pool is undercut. The wall cloud's strength is counted once; the lab's rule counted it twice.
+  - The mesocyclone's pressure fall (v²/g) is left out, because it lowers only the centre, which the funnel and WallStream's dip already draw. Added across the whole wall cloud, it made a 150 mph storm's wall cloud hang 815 m under a 1,133 m base.
+  - **Seed 9** (456 storm-steps with a wall cloud): the median went 451 → 273 m (19% of the base), and 374 → 233 m under tornadoes; the 10th-90th percentile range went from 267-600 m to 47-648 m.
+  - **The replay storm** (S0036, a 150 mph tornado under a 1,124 m base, 8 K cold pool) gets deeper: 506 → 635 m. Its strong lift takes in the full share of nearly saturated outflow. Real violent-tornado wall clouds do hang that low; tell me if this one should still look shallower.
+  - **Checks:** the regression suite (8 seeds, 10 days) was identical to its baseline in every value but the run time, so storm behaviour is unchanged (the lowering is display only). `storm-shape-and-interactions` was updated: its storm now carries its cold pool's deficit, and it checks that the lowering deepens under a higher base and shrinks with a cold, deep pool. `storm-appearance`, `warnings` and `radar-simulator` pass.
+  - The lab sim's own storms (`Storm.luau`) keep their old rule.
+  - The default replay cache `tools/stormlab/out/life-9-17-100` still has the old lowering. The re-recorded one is in the job scratch folder; delete the cache's `frames.json` to re-record.
+- **Hard diagonal line on the storm base.** The rain-shaft sheet `curtainFlat` (`tools/smoke/storm_sheets.py`) had alpha 0.19 at the top row of each 256 px frame and 0.32 at its foot, because the noise pushed the fades past the frame edges. A slanted shaft card therefore ended in a straight line. Each frame now fades to zero at both ends; the middle is byte-identical. The new id is in `LabConfig.TEXTURES.curtainFlat`. (`rain_curtain.png`, used by `shared/Tornado/RainCurtains`, has the same edge but isn't in the game path.)
+- **Not changed:**
+  - The funnel's dark skin ovals: single skin cards darker than the now-smoother body. Their tone was tuned over regrades 11-14 on 2026-11-09.
+  - The slab-like wedge: its shape is the engine's funnel profile, whose top moves with the new lowering.
+
+## 2026-11-10 (late): rain and hail shafts as Beams - built, tested, OFF in the game
+- User: "find a different solution for rain and hail besides billboards, look at what twisted does".
+  Research is in `docs/visuals-research/TORNADO-GAMES-RESEARCH.md` section 7.
+- Built in `CloudParts/Shafts` (`LabConfig.RAIN_BEAMS`; Scroll Lock switches Beams and cards in Studio).
+  - Per shaft: 4 camera-facing ribbons through its depth, 2 paler hail ribbons in the core.
+  - Hung from the cloud base, upwind of the rain's column; the texture scrolls down at the fall speed.
+  - Textures: `tools/smoke/rain_beam.py` writes rain_beam 106068821128086 and hail_beam
+    96811168010482. The first upload (70385017359407, 121552743909792) was made with no Studio
+    selected and never loads.
+- Fixed on the way:
+  - Beams under the camera (ctx.root) did not draw; they now sit in `Workspace.RainBeams`.
+  - With Segments 1 the length fade was read only at the two clear ends, so no ribbon showed; now 12.
+  - The foot feather from 70 % hid the only part seen against the bright sky.
+- **Why it is off.** Beams are parts, drawn only within LIMITS.partRange (~6500 studs, under 2 km of
+  map at 0.28 m a stud). The game draws the storm and its shafts 13k+ studs out.
+  - Pulled toward the camera to draw at all (as the bolts are), the shafts sorted in front of every
+    storm card beyond them: a light grey wall over the tornado.
+  - The cards (billboards: any distance, true depth) keep the wedge seen through the rain.
+  - Near the camera, where a Beam could stand at its true place, the shafts already fade into the
+    rain fog (NearPrecip).
+  - So in Roblox the far shafts can only be billboards. Better cards are the way: wide curtain
+    textures as with the base, and a scrolling streak layer.
+
+## 2026-11-10 (late): open, user reports from the game
+- **Gap overhead and the sun through the clouds: one cause, the sun part fixed.**
+  - Measured 8 km south of S0036 (tick 10), engine frames: no cloud above the player or within
+    1 km; the cloud starts ~2 km north. The game draws the storm about its tornado at 1.37
+    studs/m, ~3.7x the map's 0.37, so the drawn base reaches over the player and ends just past
+    the zenith. That drawn edge against the sky is the "gap".
+  - `Render/Sky` traced the sun's ray and the overhead cloud through the field at the camera's map
+    place, so it found clear sky where the drawn cloud was: the sun showed through.
+  - Fix in `Render/Sky` analyse(): with `anchorFn` (the game), the rays start from the camera in
+    the nearest storm's own frame (`fromWorldAbout`), so the sky samples the cloud where it is drawn.
+    Same spot, before -> after: sun tau 0.00 -> 5.40 (hidden past 4), overhead tau 0.01 -> 5.09,
+    cover 31 % -> 76 %. 8 km east: sun tau 0 -> ~4. The scene now lights as under the storm.
+  - Angle check (8 km south, fix off vs on, same steps): the default view and orbit left/right
+    lose the sunlit ground under the dark base (mean brightness 128-140 -> 84-89). Far views with
+    the storm on a sunny horizon are unchanged (154/157 vs 151/154).
+  - Tried and reverted: cutting BaseDeck's reach to LIMITS.partRange. Discs draw to 7.5k studs, so
+    that limit isn't the cause.
+  - The "gap" (step 2, same day): not a hole. Hiding renderers one at a time showed that
+    StormCards draws both the base and the towers. With the clear slot switched off (CardPlan
+    `slot`) the view did not change. The player stands ~2 km outside the drawn base's south edge
+    (base centre 8.8 km, radius 6.9 km), so looking north the base fills the low sky and above
+    ~30 deg you see past its edge to open sky and the sunlit towers. The engine has no cloud
+    overhead there too. The edge is soft once the cards settle (~10 s); the hard straight line
+    shows only in the first seconds after a teleport while the cards fade in.
+  - Tools for next time: Home/End/Insert/Delete are the lab's speed keys and BackSlash is
+    Sky's storm-owned sky switch; don't bind them for diagnostics.
+
+### Short-range rain Beams (2026-11-10, on)
+- Beams are back on (LabConfig.RAIN_BEAMS.enabled = true), near only. A shaft takes Beams while its
+  drawn middle is inside 3/4 of LIMITS.partRange (6500 studs), blending from its card out to
+  partRange - 500 (Shafts: bS). Beyond that it stays a card. Nothing is pulled toward the camera any
+  more, which removes the grey wall the pulled far Beams drew over the tornado.
+- Range is judged by the shaft's middle, not its whole size: drawn at the storm's scale (k ~3.6), a
+  1 km shaft is ~4500 studs across and never fit wholly inside the range (first try: 0 Beams).
+- The card curtain still fades out as you drive in (near: gone at 0.6 w + 300 m). The Beams stay
+  until the shaft's edge (nearB: 0.5 w to 0.5 w + 600 m), then the rain is the Atmosphere fog.
+- Seen 1 km east of the replay tornado (tick 10): 7 of 89 shafts on Beams, soft streaked curtains
+  under the base; Scroll Lock A/B shows the change; looking into the core both are just dark.
+- Judge round (same day, tick 10, follow camera ~2 km): tornado overall 3/10, supercell structure
+  1/10. The near Beams draw large straight-edged see-through slabs over the upper half of every
+  close shot. Confirmed by Scroll Lock A/B at the same pose: with Beams off the slabs are gone and
+  the base is soft. From 1 km east of the tornado they looked fine; the trouble is ribbons ~2700
+  studs wide (sh.w x 0.7 x k 3.6) seen from nearby. Sun-through-base: fixed (base dark in every
+  shot). Bright cyan-white glow on the horizon beside the funnel's foot (4/10) still open. The 4x
+  "supercell" zoom stays under the drawn base (k ~3.6), so that set showed no tower or anvil;
+  the far set needs ~15 km of map.
+- Beam fix (same day): ribbons 0.35 of the shaft's width (was 0.7), 6 a shaft (was 4), faded out
+  while a ribbon would look wider than ~1/3 of its distance (bS x (1 - ramp(w*0.35*k/dist, 0.3,
+  0.6))), top fade over 20 % of the length. Judge regrade: slabs gone in all 8 shots incl. the
+  settling period; tornado overall 3 -> 4, rain near funnel 2 -> 4, nothing regressed. At ~2 km
+  the Beams are faded out (the cards carry it); from 1 km east of the core they still show.
+- Shafts: the forward-scattered light of backlit rain is now the sun's colour (L.sunColour), not
+  the shadowed rain's cool grey. It did NOT change the cyan glow (brightest horizon pixels 141,167,
+  201 vs 142,167,202), so that glow is not the rain's forward scatter. Haze is ruled out too (70 km
+  visibility: ~6 % at 5 km). The glow sits only at the feet of rain curtains near the horizon,
+  ~(160,184,201). Next: a reliable per-renderer hide (an attribute set in the edit place before the
+  test, one test per renderer: keys F10 = Studio's device bar, and the Output is flooded by
+  TornadoAudit).
+- Supercell framing (same day): the follow zoom never leaves the drawn storm; far set now = storm placed 18 km
+  from the player (ground view) + VTCam "whole 25000 up" / "whole west" (watch-scene skill updated). First real
+  far grade: structure 2/10 - from far it reads as fair-weather cumulus: white round puffs lit alike on every
+  side in a white haze ellipse, short tower, no anvil, base as 2-3 thin lens strips, nothing under the base from
+  far (no rain shaft, wall cloud or funnel); from 18 km on the ground the whole sky is one grey lid. Judge's top
+  fixes: shade the far storm by depth (dark base, white crest), one dark flat base deck, a flat anvil, an opaque
+  forward-flank rain shaft.
+- Horizon "cyan glow": hiding each of the 10 storm layers in turn (VTCam Insert) did not remove it - it is the
+  sky's own horizon band under the base (Sky.luau atmosphere Color from HAZE_COLOUR toward STORM_GREY by cover),
+  seen past the rain; the "rays" are the rain curtains' fibres against it. A bright horizon under the base is
+  real; whether to grey it by the rain along the line of sight is open.
+- CORRECTION to the "gap" finding above: the PageUp presses used to "look up" were stepping VTCam poses
+  (whole 25000 up / whole west), not tilting the player's camera. The gap captures were far test-camera views,
+  so that conclusion is not valid; recheck with a real first-person look-up (mouse look; send_input mouseDelta
+  fails with an unlocked cursor).
+- Funnel: judge wants rotation cues (striations, debris skirt) and a separate wall-cloud step; striations
+  conflict with the no-bands rule, so waiting on the user.
+- Funnel rotation without stripes (same day, user chose "a"): the skin (turning tone patches) stays off on
+  narrow funnels by the user's 2026-11-09 call (onion layers on a 145 m cone); this EF2's core is 95-160 m.
+  The filaments (flow-carried density streaks) now take the face's lit/shadow swing deepened (x1.25) and a tone
+  from the eddy field by the eddies' strength (1 + 0.6 uI tb), up to 0.35 opacity (was a fixed +-6% at 0.2).
+  Measured on a 10-frame 1 s sequence (VTCam south 6000): frame-to-frame change 0.62 -> 0.68 grey levels,
+  local contrast 0.60 -> 0.64. Small: the face is ~56/255 and made of many stacked body cards. Kept (field-driven).
+- Far supercell (user chose "c"): root cause per a code read - StormCards hazed, angled and detailed every
+  storm by its MAP distance, while the game draws it at the sky scale (a storm drawn as if 35 km off was hazed
+  as at 95 km: 2/3 haze colour, detail at its 0.25 floor). Now StormCards uses the camera in each storm's
+  drawn frame (camOf: fromWorldAbout about the storm's anchor) for card colour, haze, lobe family and detail;
+  the lab (no anchor) is unchanged. Anvil cards are foreshortened as a plate (seenHeight, as the deck) and the
+  anvil card cap is at least 40. Result: the west far view went from a white cumulus row to a dark slate base
+  with grey cloud; the south far view's towers have grey sides but the white ellipse remains. Near view
+  unchanged. Not done from the plan: one continuous dark base from outside (CardPlan base section albedos and
+  seenH skirt), rain columns filled round storms not the camera (FrameWorld FAR_KM), WallStream.RANGE and
+  Shafts haze by drawn distance, lowering/funnel visible far.
+
