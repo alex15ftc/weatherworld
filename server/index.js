@@ -14,6 +14,7 @@ import { WarningRuntime } from './WarningRuntime.js';
 import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
 import { OUTLOOK_DAYS, OUTLOOK_HAZARDS, outlookSvg, outlookIndex } from './OutlookPublic.js';
+import { ProductArchive } from './ProductArchive.js';
 import { RadarPool } from './RadarPool.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
@@ -54,7 +55,7 @@ const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRunti
 runtime.dayReviewOutlook = (from, to) => { const outlook = outlooks?.current('day1')?.outlook; return outlook && outlook.validToHourUtc === to && outlook.issuedHourUtc >= from ? outlook : null; };
 // Mesoscale discussions and watches: the world is looked at once in each of its hours, and a
 // watch waiting for its storms goes out when they fire (WEATHER_MESOSCALE=off turns them off).
-const mesoscale = process.env.WEATHER_MESOSCALE === 'off' ? null : new MesoscaleRuntime({ runtime });
+const mesoscale = process.env.WEATHER_MESOSCALE === 'off' ? null : new MesoscaleRuntime({ runtime, file: statePath ? path.join(path.dirname(statePath), 'mesoscale.bin') : null });
 // Tornado and severe thunderstorm warnings: worked out at every volume scan from the storms as
 // the radar sees them (WEATHER_WARNINGS=off turns them off).
 const warnings = process.env.WEATHER_WARNINGS === 'off' ? null : new WarningRuntime({ runtime });
@@ -65,9 +66,11 @@ const shortRange = process.env.WEATHER_SHORT_RANGE === 'off' ? null : new ShortR
 const reports = new ReportsRuntime({ runtime });
 // The products as the Roblox place draws them (GameProducts.js).
 const gameProducts = new GameProducts({ runtime, outlooks, mesoscale, warnings, reports });
+// Every watch, discussion and warning issued, for the public pages and the Discord posts (ProductArchive.js).
+const archive = new ProductArchive({ runtime, products: gameProducts, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'products.bin') : null });
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
-const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); };
+const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); try { archive.sync(); } catch (error) { console.warn('[products]', error.message); } };
 outlooks?.maybeIssue();
 setInterval(issueProducts, 5_000).unref();
 // Often enough that a storm tick is worked out within a couple of seconds of falling due: the
@@ -89,6 +92,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return await serveApi(url, req, res);
     // The public outlook pages (OutlookPublic.js): one page for Days 1-3.
     if (/^\/outlook(\/day[123])?\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'outlook.html'), res);
+    // A watch's or a mesoscale discussion's page (ProductArchive.js).
+    if (/^\/(watch|md)\/\d+\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'product.html'), res);
     return serveStatic(url.pathname, res);
   } catch (error) { sendJson(req, res, 500, { error: error?.message ?? 'Internal server error' }, { cacheable: false }); }
 });
@@ -157,6 +162,19 @@ async function serveApi(url, req, res) {
     const times = url.searchParams.get('times') === '1', key = `${hazard}${times ? ':times' : ''}`;
     if (!hit.svgs.has(key)) hit.svgs.set(key, outlookSvg(hit.product, countiesFor(runtime.engine?.world), hazard, { times }));
     return sendText(req, res, 200, hit.svgs.get(key), trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache', 'x-product-version': hit.version });
+  }
+  // The watches, discussions and warnings (ProductArchive.js): the feed, each one, and their maps (?times=1: with the times line).
+  if (url.pathname === '/api/products/feed') return sendJson(req, res, 200, archive.feed(), { cacheable: false, trace });
+  const archived = url.pathname.match(/^\/api\/(watch|md)\/(\d+)(\.svg)?$/);
+  if (archived) {
+    const [, kind, number, svg] = archived, times = url.searchParams.get('times') === '1';
+    const value = svg ? (kind === 'watch' ? archive.watchSvg(number, { times }) : archive.discussionSvg(number, { times })) : (kind === 'watch' ? archive.watch(number) : archive.discussion(number));
+    if (!value) return sendJson(req, res, 404, { error: 'Not found' }, { cacheable: false, trace });
+    return svg ? sendText(req, res, 200, value, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 200, value, { cacheable: false, trace });
+  }
+  if (url.pathname === '/api/warnings.svg') {
+    const value = archive.warningsSvg((url.searchParams.get('keys') ?? '').split(',').filter(Boolean).slice(0, 40), { times: url.searchParams.get('times') === '1' });
+    return value ? sendText(req, res, 200, value, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 404, { error: 'Not found' }, { cacheable: false, trace });
   }
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });

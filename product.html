@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WeatherWorld</title>
+  <!-- One watch (/watch/<n>) or mesoscale discussion (/md/<n>), from server/ProductArchive.js. -->
+  <style>
+    :root { color-scheme: dark; --bg: #0b1017; --panel: #141b24; --panel-2: #1b2531; --line: #2c3948; --text: #f4f7fb; --muted: #96a5b7; --accent: #2563eb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    nav.product-nav { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #0f172a; }
+    nav.product-nav a { color: #cbd5e1; text-decoration: none; padding: 7px 12px; border-radius: 8px; font-size: .85rem; font-weight: 700; }
+    nav.product-nav a:hover { background: var(--accent); color: #fff; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+    header h1 { margin: 0 0 4px; font-size: 1.6rem; }
+    header p { margin: 0; color: var(--muted); }
+    .badge { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 6px; font-weight: 800; color: #fff; letter-spacing: .03em; }
+    .map { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+    .map img { display: block; width: 100%; height: auto; border-radius: 6px; background: #fff; }
+    .text { margin-top: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+    .text pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font: 14px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; color: #dbe4ee; }
+  </style>
+</head>
+<body>
+<nav class="product-nav" aria-label="Weather products">
+  <a href="/outlook/day1">Day 1</a><a href="/outlook/day2">Day 2</a><a href="/outlook/day3">Day 3</a>
+  <a href="/index.html">Live analysis</a><a href="/models.html">Models</a>
+</nav>
+<main>
+  <header>
+    <h1 id="title">Loading…</h1>
+    <p id="times"></p>
+    <span id="badge" class="badge" hidden></span>
+  </header>
+  <div class="map"><img id="map" alt="Map" width="1000" height="1064" /></div>
+  <section class="text"><pre id="text"></pre></section>
+</main>
+<script type="module">
+const [, kind, number] = location.pathname.match(/^\/(watch|md)\/(\d+)/) ?? [];
+const COLOURS = { tornado: '#ef4444', severe: '#3b82f6', watchTornado: '#ef4444', watchSevere: '#3b82f6', likely: '#f97316', possible: '#f59e0b', unlikely: '#94a3b8' };
+const stamp = h => { const z = ((h % 24) + 24) % 24; return `${String(Math.floor(z)).padStart(2, '0')}${String(Math.round((z % 1) * 60)).padStart(2, '0')} UTC Day ${Math.floor(h / 24) + 1}`; };
+async function load() {
+  const res = await fetch(`/api/${kind}/${number}`, { cache: 'no-store' });
+  if (!res.ok) { document.querySelector('#title').textContent = kind === 'watch' ? `Watch ${number} not found` : `Mesoscale Discussion ${number} not found`; return; }
+  const p = await res.json();
+  const title = kind === 'watch' ? p.title : `Mesoscale Discussion ${String(p.number).padStart(4, '0')}`;
+  document.title = `${title} · WeatherWorld`;
+  document.querySelector('#title').textContent = title;
+  document.querySelector('#times').textContent = `Issued ${stamp(p.issuedHourUtc)} · ${kind === 'watch' ? 'Until' : 'Valid until'} ${stamp(p.validToHourUtc)} · ${p.where ?? ''}`;
+  const badge = document.querySelector('#badge'), concerning = kind === 'md' ? (p.concerning || (p.watchPercent != null ? `Probability of watch issuance ${p.watchPercent}%` : '')) : (p.pds ? 'PARTICULARLY DANGEROUS SITUATION' : '');
+  badge.hidden = !concerning; badge.textContent = concerning; badge.style.background = COLOURS[kind === 'watch' ? p.type : p.colourKey] ?? '#475569';
+  document.querySelector('#text').textContent = p.text ?? '';
+  document.querySelector('#map').src = `/api/${kind}/${number}.svg?v=${encodeURIComponent(p.validToHourUtc + ':' + (p.text ?? '').length)}`;
+}
+load();
+setInterval(load, 120_000);
+</script>
+</body>
+</html>

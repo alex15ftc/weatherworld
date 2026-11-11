@@ -4,6 +4,9 @@
 // (js/forecast/MesoscaleDiscussion.js); those that call for a watch get one as soon as storms
 // are firing in them (js/forecast/Watch.js), which is checked every time this is called, not
 // only at the hourly look. The live world keeps running meanwhile.
+import fs from 'node:fs';
+import path from 'node:path';
+import v8 from 'node:v8';
 import { MESOSCALE, describeNow, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
 import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, publicWatch } from '../js/forecast/Watch.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
@@ -11,11 +14,40 @@ import { countiesFor } from './CountyLayer.js';
 
 export class MesoscaleRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). pool: the
-  // threads that do the runs.
-  constructor({ runtime, members = MESOSCALE.members, pool = sharedForecastPool() } = {}) {
-    this.runtime = runtime; this.members = members; this.pool = pool;
+  // threads that do the runs. file: where the series is saved (null: not saved); after a restart
+  // in the same world it carries on (its numbers, the watches and discussions in effect, the
+  // watches waiting), so a watch or discussion keeps its number and its page.
+  constructor({ runtime, members = MESOSCALE.members, pool = sharedForecastPool(), file = null } = {}) {
+    this.runtime = runtime; this.members = members; this.pool = pool; this.file = file;
     this.running = null; this.lastError = null; this.lastRunMs = null;
     this.adopt(null);
+    this.restore();
+  }
+
+  save() {
+    if (!this.file || !this.engine) return;
+    let bytes;
+    try {
+      bytes = v8.serialize({ version: 1, worldId: this.runtime.worldId, seed: this.engine.seed, discussions: this.discussions, watches: this.watches, pending: this.pending, next: this.next, nextWatch: this.nextWatch, lastSlot: this.lastSlot, nextLookHourUtc: this.nextLookHourUtc });
+    } catch (error) { console.warn('[mesoscale] not saved:', error.message); return; }
+    fs.promises.mkdir(path.dirname(this.file), { recursive: true })
+      .then(() => fs.promises.writeFile(`${this.file}.tmp`, bytes))
+      .then(() => fs.promises.rename(`${this.file}.tmp`, this.file))
+      .catch(error => console.warn('[mesoscale] not saved:', error.message));
+  }
+
+  restore() {
+    const engine = this.runtime.engine;
+    if (!this.file || !engine || !fs.existsSync(this.file)) return;
+    try {
+      const saved = v8.deserialize(fs.readFileSync(this.file));
+      if (saved.version !== 1 || saved.worldId !== this.runtime.worldId || saved.seed !== engine.seed) return;
+      this.adopt(engine);
+      Object.assign(this, { discussions: saved.discussions, watches: saved.watches, pending: saved.pending, next: saved.next, nextWatch: saved.nextWatch, lastSlot: saved.lastSlot, nextLookHourUtc: saved.nextLookHourUtc });
+      console.log(`[mesoscale] carried on from before the restart (next watch ${this.nextWatch}, next discussion ${this.next})`);
+    } catch (error) {
+      console.warn('[mesoscale] saved series unreadable:', error.message);
+    }
   }
 
   // A new world starts its own series.
@@ -49,7 +81,7 @@ export class MesoscaleRuntime {
     if (!world || !this.pending.length) return [];
     const issued = [];
     this.pending = this.pending.filter(draft => { const hour = readyHourUtc(draft, world); if (hour !== null) issued.push(issueWatch(draft, this.nextWatch++, hour, stormsFiring(world, draft.cells) || draft.here.forming)); return hour === null; });
-    if (issued.length) this.watches = [...issued.reverse(), ...this.watches].slice(0, WATCH.kept);
+    if (issued.length) { this.watches = [...issued.reverse(), ...this.watches].slice(0, WATCH.kept); this.save(); }
     return issued;
   }
 
@@ -71,6 +103,7 @@ export class MesoscaleRuntime {
       this.pending = found.pending;
       this.nextLookHourUtc = nextLookHourUtc(found, now.hourUtc, this.watches);
       this.lastError = null; this.lastRunMs = Date.now() - started;
+      this.save();
       return found;
     } catch (error) {
       this.lastError = String(error?.message ?? error);

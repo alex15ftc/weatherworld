@@ -7,7 +7,10 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
   `../DiscordBots/weatherworldbot`, outside this repo). It posts each new Day 1-3 outlook to the High Risk
   server's `#📋outlooks` channel from the public `/api/outlook/index` and `/api/outlook/dayN.svg`
   (`server/OutlookPublic.js`), linking to the public pages `/outlook/day1` .. `day3` (`outlook.html`), and
-  reads `/api/health`, `/api/live/storms` and `/api/map/counties`. Keep those routes when changing the server.
+  posts each new watch, mesoscale discussion and warning to `#⚠️watches`, `#📝discussions` and `#🚨warnings` from
+  `/api/products/feed`, `/api/watch/N.svg`, `/api/md/N.svg` and `/api/warnings.svg?keys=` (`server/ProductArchive.js`),
+  linking watches and discussions to `/watch/N` and `/md/N` (`product.html`), and reads `/api/health`,
+  `/api/live/storms` and `/api/map/counties`. Keep those routes when changing the server.
 - URL: https://weatherworld.up.railway.app (set as `Config.WEATHER_FEED_URL` in
   `roblox/Shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
 - Build: `Dockerfile` (node:22-slim, no npm packages; builds world map seed 1 into the image).
@@ -18,8 +21,9 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
   `railway config plan` and `railway config apply` (see Windows note below). Needs the `railway` dev package
   (`npm install`).
 - Volume `engine-volume` at `/data`: world state (`/data/atmosphere-state.bin`, saved every sim hour),
-  spin-up cache, storm models, day reviews (newest 14 days), the issued outlooks (`/data/outlooks.bin`, put back
-  after a restart in the same world, so the pages keep the last issue); the engine writes about 18 MB (Railway shows
+  spin-up cache, storm models, day reviews (newest 14 days), the issued outlooks (`/data/outlooks.bin`), the mesoscale
+  runtime (`/data/mesoscale.bin`) and the watch/discussion archive (`/data/products.bin`), each put back after a
+  restart in the same world, so the pages keep the last issue and the numbers carry on; the engine writes about 18 MB (Railway shows
   ~0.8 GB used, the disk's own overhead).
 - The world carries on through restarts and deploys, engine changes included (`WEATHER_KEEP_WORLD=on`): a
   copy of the saved world is first stepped half an hour under the new code, and if that throws or gives
