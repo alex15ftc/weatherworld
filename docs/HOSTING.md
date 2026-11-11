@@ -3,6 +3,9 @@
 The weather engine (`server/index.js`) runs on Railway for the game. One instance serves every Roblox server.
 
 - Project `weatherworld`, service `engine`, environment `production` (workspace "alex15ftc's Projects").
+- The same project also runs service `weatherworldbot`, the Discord bot (code in
+  `../DiscordBots/weatherworldbot`, outside this repo). It only reads the public `/api/health`,
+  `/api/live/storms` and `/api/map/counties`, so engine deploys don't need it changed.
 - URL: https://weatherworld.up.railway.app (set as `Config.WEATHER_FEED_URL` in
   `roblox/src/shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
 - Build: `Dockerfile` (node:22-slim, no npm packages; builds world map seed 1 into the image).
