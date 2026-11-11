@@ -4,10 +4,10 @@ The game builds storm clouds from a small set of reusable cloud mesh pieces. It 
 
 The pieces are made in Blender by `tools/blender/cloud_kit.py`. An artist can replace any piece with a hand-made one, or add new variants. This page explains how.
 
-- **Data:** `roblox/src/shared/Weather/CloudKit/Pieces/<name>.luau`, one module per piece.
-- **List:** `roblox/src/shared/Weather/CloudKit/Index.luau` lists the pieces by kind. The script rebuilds it.
+- **Data:** `roblox/Shared/Weather/CloudKit/Pieces/<name>.luau`, one module per piece.
+- **List:** `roblox/Shared/Weather/CloudKit/Index.luau` lists the pieces by kind. The script rebuilds it.
 - **Previews:** `roblox/assets/cloudkit/previews/<name>.png` and `sheet.png`, the contact sheet of every piece.
-- **Loader in game:** `roblox/src/shared/Weather/CloudKit/init.luau` builds each piece into an EditableMesh and a MeshPart.
+- **Loader in game:** `roblox/Shared/Weather/CloudKit/init.luau` builds each piece into an EditableMesh and a MeshPart.
 
 ## Pieces (v1)
 
@@ -131,7 +131,7 @@ runs out. After making or changing any piece:
    That is one mesh per piece, named after it, with its normals and AO as vertex colour.
 2. Upload that file to Roblox as a **Model** asset under the game's owner. Claude uses romcp's
    `roblox_upload_asset`; Studio's importer also works.
-3. Put the new asset id in `Config.STORM_KIT.meshAsset` (`roblox/src/shared/World/Config.luau`).
+3. Put the new asset id in `Config.STORM_KIT.meshAsset` (`roblox/Shared/World/Config.luau`).
 
 At startup the server loads the asset (`CloudKit.serverLoad`) into
 `ReplicatedStorage.CloudKitMeshes`, and clients copy the pieces from there. A piece missing from

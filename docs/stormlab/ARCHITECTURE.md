@@ -1,6 +1,6 @@
 # Storm lab: architecture and interfaces
 
-The storm lab (`roblox/src/stormlab`, Rojo project `roblox/stormlab.project.json`) rebuilds the tornado lab from scratch around the guide *Building a Maximum-Realism Tornado in Roblox* (both parts: the tornado, and thunderstorms / supercells / squall lines). One shared, physically informed simulation drives every visual, the radar, the damage and the debris. Nothing is painted or keyed on storm-type labels.
+The storm lab (`roblox/Labs/StormLab`, Rojo project `roblox/stormlab.project.json`) rebuilds the tornado lab from scratch around the guide *Building a Maximum-Realism Tornado in Roblox* (both parts: the tornado, and thunderstorms / supercells / squall lines). One shared, physically informed simulation drives every visual, the radar, the damage and the debris. Nothing is painted or keyed on storm-type labels.
 
 The weather engine (the Node.js server in this repo) supplies the starting state: `scripts/export-lab-scenario.mjs` dumps a 15×15-cell window (16 km cells, about 240 km square) of the engine's own soundings, surface fields, boundaries and storms around one storm at one moment, plus what the engine then did with that storm (`track`, for comparison).
 
@@ -11,7 +11,7 @@ node scripts/export-lab-scenario.mjs --seed 2112 --days 3 --focus line --name Sq
 
 ## Layout
 
-| Path (under `roblox/src/stormlab`) | In the place | What |
+| Path (under `roblox/Labs/StormLab`) | In the place | What |
 |---|---|---|
 | `shared/Sim/*.luau` | `ReplicatedStorage.StormLab.Sim` | Pure simulation (no Roblox APIs). Runs in Roblox and in the plain Luau CLI. |
 | `shared/LabConfig.luau` | `ReplicatedStorage.StormLab.LabConfig` | Coordinates, remotes, asset ids, draw limits. |

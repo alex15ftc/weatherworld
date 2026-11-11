@@ -1,12 +1,12 @@
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
 -- Cold-pool size and strength every 30 min on both lab days. Set MODE = "old" for the saturated
 -- (pre-2026-10-30) downdrafts.
 local MODE = "new"
-if MODE == "old" then require("../../roblox/src/stormlab/shared/Sim/ColdPool").SATURATED = true end
+if MODE == "old" then require("../../roblox/Shared/StormLab/Sim/ColdPool").SATURATED = true end
 print("== " .. MODE)
 for _, name in { "SquallLine", "Supercell" } do
-	local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/" .. name)))
+	local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/" .. name)))
 	world:spinUp(600)
 	for k = 1, 4 do
 		for _ = 1, 360 do world:step(5) end

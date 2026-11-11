@@ -2,7 +2,7 @@
 
 Headless Blender scripts that make the tornado's art for the Roblox place. Outputs go to
 `roblox/assets/tornado/` and are uploaded to Roblox as images (Open Cloud; romcp's
-`roblox_upload_asset`), then referenced by asset id from `roblox/src/client/StormView.luau`.
+`roblox_upload_asset`), then referenced by asset id from `roblox/Client/StormView.luau`.
 
 Blender 5.2 is at `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`. Run each script
 with `--background --factory-startup --python <script> -- <options>`.
@@ -32,7 +32,7 @@ The pieces are tower caps, tower bodies, anvil sections, bases, shelf segments, 
 
 | Command | Makes | Time |
 |---|---|---|
-| `cloud_kit.py` | Every piece: `roblox/src/shared/Weather/CloudKit/Pieces/<name>.luau`, a preview each in `roblox/assets/cloudkit/previews/`, `sheet.png`, and `CloudKit/Index.luau` | ~2.5 min |
+| `cloud_kit.py` | Every piece: `roblox/Shared/Weather/CloudKit/Pieces/<name>.luau`, a preview each in `roblox/assets/cloudkit/previews/`, `sheet.png`, and `CloudKit/Index.luau` | ~2.5 min |
 | `cloud_kit.py --piece shelf_1[,base_2,...]` | Only those pieces (the index and sheet are still rebuilt) | ~10 s each |
 | `cloud_kit.py --from-blend FILE --object NAME --name PIECE [--kind KIND]` | Exports an artist's object to the same format, with the same normalising, AO bake and checks | ~10 s |
 | `py tools/blender/check_cloud_kit.py` | Checks every piece module and the index (plain Python, no Blender): counts, closed and consistently wound mesh, bounds, budget | ~2 s |
@@ -66,3 +66,23 @@ Each cell covers the unit box plus a margin M = 0.15 on every side (game x -0.65
 seen from game +Z looking toward -Z (image right = +X). Light directions, layout and placement are in
 `roblox/assets/cloudkit/vapor/README.md`. Look settings (`LOOKS`, `SUN_ENERGY`, `SKY_*`, `ANISOTROPY`)
 are at the top of the script.
+
+## Skinned trees (`foliage_trees.py`)
+
+The trees of the foliage system (`roblox/Shared/Foliage`, `FoliageService`, `FoliageController`):
+Sapling Tree Gen grows each tree's stems, the script builds a small rig over them (trunk up to 4
+bones, limbs 1-2, the largest side branches 1, by what they carry, to a budget of 21-44 bones),
+meshes the bark itself (so every vertex is weighted across joints: one seamless skinned surface),
+adds alpha leaf cards, and cuts one break piece a rig bone from the same faces. Blender **5.1**
+(where Sapling is installed); run **without** `--factory-startup` (it drops the extension).
+
+| Command | Makes | Time |
+|---|---|---|
+| `foliage_trees.py -- --kind all` | Every kind and variant: `roblox/assets/foliage/<kind>_<n>/` (`tree.fbx`: armature, skinned `Tree`, `Piece_<bone>` meshes; `atlas.png`; `impostor_0..7.png`), the rig data `roblox/Shared/Foliage/Kinds/<kind>_<n>.luau` and `Kinds/init.luau`, and `roblox/assets/foliage/manifest.json` | ~35 s |
+| `foliage_trees.py -- --kind hardwood --variant 1 --no-render` | One tree, no impostors | ~3 s |
+
+Kinds (`KINDS` at the top): hardwood, cottonwood, yard, cedar, two variants each, 3.7k-9.9k
+triangles. The binaries stay out of git (`manifest.json` holds their hashes). After a change, run the
+mechanics tests (`lune run tools/foliage/test_mechanics.luau`: the trees against the EF scale's
+hardwood-tree indicator), then upload the FBX files as Models and the PNGs as images and record the
+ids in `roblox/Shared/Foliage/Assets.luau`.

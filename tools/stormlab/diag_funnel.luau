@@ -5,13 +5,13 @@
 --   luau --codegen tools/stormlab/diag_funnel.luau   (scenario: first line below)
 local name = "Supercell"
 local QUIET = true
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Vortex = require("../../roblox/src/stormlab/shared/Sim/Vortex")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Vortex = require("../../roblox/Shared/StormLab/Sim/Vortex")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
 local MODE = "now"
 if MODE == "angles" then Storm.PRECIP_RELEASE = "angles" end
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/" .. name)))
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/" .. name)))
 world:spinUp(600)
 local reach, n, seen, nSeen = {}, {}, {}, 0
 for step = 1, 24 do

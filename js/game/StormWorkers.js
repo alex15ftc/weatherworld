@@ -69,7 +69,7 @@ export function drawnAt(s) {
 }
 
 // The engine's numbers a game client builds its drawn storm from (the bundle's version 4 look
-// record; roblox/src/client/FrameWorld.luau): the same numbers the lab window's storms carry
+// record; roblox/Client/Modules/FrameWorld.luau): the same numbers the lab window's storms carry
 // (LabWindow labStorm, Storm.fromEngine / setEngine), so every game server's clients draw the
 // same storm from them. Map km, y south.
 export const LOOK_FIELDS = 14;

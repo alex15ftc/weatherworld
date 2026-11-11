@@ -1,0 +1,354 @@
+{
+ "cedar_1/atlas.png": {
+  "bytes": 729400,
+  "sha256": "e898c0c653edfe969d7fddf657c4d608205463eef4fb71654478eed1d9e49aa6"
+ },
+ "cedar_1/impostor_0.png": {
+  "bytes": 104123,
+  "sha256": "f0e9ff91b4bae23c507ffc11a251ac663187b2068ef8fa14593c82463b78a7b9"
+ },
+ "cedar_1/impostor_1.png": {
+  "bytes": 103769,
+  "sha256": "2c0d652790fbe137d158e0d91c6a8e98cf5ee9ec332eda07782ea6a6a2cd0568"
+ },
+ "cedar_1/impostor_2.png": {
+  "bytes": 104300,
+  "sha256": "7dc22bee5fc9bde204f80cdfc8da57b6e0e7caef67260359ef18eb4f3fc26151"
+ },
+ "cedar_1/impostor_3.png": {
+  "bytes": 103090,
+  "sha256": "88499c62afa82d5fae68a8e5a44b5462198609b7afb2c5fa72039145a282d364"
+ },
+ "cedar_1/impostor_4.png": {
+  "bytes": 103397,
+  "sha256": "652c91389bc136a5e7876fd7a0a805148ef240881ad5b76015ddb23d2ea7046d"
+ },
+ "cedar_1/impostor_5.png": {
+  "bytes": 105260,
+  "sha256": "0fef4d00f4d7f7c72af61fe8857496a652b9b2152a845234e8afea669dabcff6"
+ },
+ "cedar_1/impostor_6.png": {
+  "bytes": 103861,
+  "sha256": "7c959113933931105b57cdf6d6dacb4a3db84157339663822d24db0e9e15e01e"
+ },
+ "cedar_1/impostor_7.png": {
+  "bytes": 103674,
+  "sha256": "911e3cc99c8c82f68624776fdf8efc7f674bc3e77ffe277bfa87fe9eba6a3c8a"
+ },
+ "cedar_1/tree.fbm/atlas.png": {
+  "bytes": 729400,
+  "sha256": "e898c0c653edfe969d7fddf657c4d608205463eef4fb71654478eed1d9e49aa6"
+ },
+ "cedar_1/tree.fbx": {
+  "bytes": 1748332,
+  "sha256": "da6de2815adfd09eb8d51d9e55630a163c6cc45945f72f289a6e625608011250"
+ },
+ "cedar_2/atlas.png": {
+  "bytes": 715183,
+  "sha256": "26d9895671262092f2b49ae45f0c7545fde318ee0bd0c28ae6125b3f3c7f6d34"
+ },
+ "cedar_2/impostor_0.png": {
+  "bytes": 104143,
+  "sha256": "be167c786f127ef0f42f2a53c0c1b2203247085794f0ceed68fe18512c93c1e1"
+ },
+ "cedar_2/impostor_1.png": {
+  "bytes": 102636,
+  "sha256": "2e24a0b404a38e70dcb4aefc590b1e2acb6eaceaee4fbffcf73059828424399e"
+ },
+ "cedar_2/impostor_2.png": {
+  "bytes": 103802,
+  "sha256": "dfa7beb276b8b765fb3016bafb6417bb2be67ac779cfb25f3a952baa8b68cc3a"
+ },
+ "cedar_2/impostor_3.png": {
+  "bytes": 105727,
+  "sha256": "902c25e2605c458b2ce5ad7610bc1e10c5e764ebd4b3f3ceb3d9bc76113924e5"
+ },
+ "cedar_2/impostor_4.png": {
+  "bytes": 102968,
+  "sha256": "58f46163b7bf0760e9b97a6a562bd71431c3d6f3a7e4ca414ecf1e08c735397f"
+ },
+ "cedar_2/impostor_5.png": {
+  "bytes": 102368,
+  "sha256": "e85ea7dfdd6df304e6db9dec6e68d886b4745e90dee2b35f7a19224a938931e7"
+ },
+ "cedar_2/impostor_6.png": {
+  "bytes": 102619,
+  "sha256": "91fefcb08d0cb761c7937d68e38b47d39fb02242f8c41cc783cf3c69883f5f12"
+ },
+ "cedar_2/impostor_7.png": {
+  "bytes": 104244,
+  "sha256": "e2ff863990e693a068b56b9a2775b8bd042a63068fa86f3bdc1628a88ec06862"
+ },
+ "cedar_2/tree.fbm/atlas.png": {
+  "bytes": 715183,
+  "sha256": "26d9895671262092f2b49ae45f0c7545fde318ee0bd0c28ae6125b3f3c7f6d34"
+ },
+ "cedar_2/tree.fbx": {
+  "bytes": 1784012,
+  "sha256": "f3086e5167feb496831e6693c83f50b0034d924ec9259e6fa9f4c4595ef5b894"
+ },
+ "cottonwood_1/atlas.png": {
+  "bytes": 832797,
+  "sha256": "62c7450fa7c2050b4c29a576d0cb57af016b98baa1dcb5fcf2473990c204f547"
+ },
+ "cottonwood_1/impostor_0.png": {
+  "bytes": 98987,
+  "sha256": "be1a0d852686f4e82bac57bdb904e74163b801e3661d10db66bbaf7b91bdeaed"
+ },
+ "cottonwood_1/impostor_1.png": {
+  "bytes": 99221,
+  "sha256": "9a64f3214aef437a3ff0fabceff03a8f9c0b5b6e0fe823d8f5ab4b928f014b43"
+ },
+ "cottonwood_1/impostor_2.png": {
+  "bytes": 99865,
+  "sha256": "5ec0041fe09f4e319bb2cd6418f6867cc921d3b9ca77eb4d2cf26ea2fb32847f"
+ },
+ "cottonwood_1/impostor_3.png": {
+  "bytes": 101439,
+  "sha256": "615595f146d1f4d24c6e7c6616b1b3d96531832f61d0ebfca1fcf90809e272f4"
+ },
+ "cottonwood_1/impostor_4.png": {
+  "bytes": 99713,
+  "sha256": "8089b9c415bce3a5df8dc6f0aa025849d469ad950ae721ba46808b250444ea3a"
+ },
+ "cottonwood_1/impostor_5.png": {
+  "bytes": 98664,
+  "sha256": "abe30dd288b92a3f688a05a100b81d89bc0a3f2342c8ab3f7a65ea3b60309935"
+ },
+ "cottonwood_1/impostor_6.png": {
+  "bytes": 99672,
+  "sha256": "1d84cbe04455cca4cc964e9c5578cedc924fb2fc2cdd636d7594201238e84bf4"
+ },
+ "cottonwood_1/impostor_7.png": {
+  "bytes": 101297,
+  "sha256": "5821120c885010e01fd88d9c182b1c80846a39b379a321d70ff736adaec87c40"
+ },
+ "cottonwood_1/tree.fbm/atlas.png": {
+  "bytes": 832797,
+  "sha256": "62c7450fa7c2050b4c29a576d0cb57af016b98baa1dcb5fcf2473990c204f547"
+ },
+ "cottonwood_1/tree.fbx": {
+  "bytes": 2262076,
+  "sha256": "ab7886935400cdf1fa5a267167e4f93143d01161f591c3bbc7a3eaf7af309aea"
+ },
+ "cottonwood_2/atlas.png": {
+  "bytes": 838351,
+  "sha256": "1f87056f8ef7a802187464f9e324834e669117491596c3734a58e9c4e6d179d7"
+ },
+ "cottonwood_2/impostor_0.png": {
+  "bytes": 94397,
+  "sha256": "229e84a0e097cefd57678232422aee0552c03ef8553086069891018e5a7bbe7f"
+ },
+ "cottonwood_2/impostor_1.png": {
+  "bytes": 98475,
+  "sha256": "bc2f47beccf5bab0e24a16822d18176ab7bd46acf9f56419a1ceb0a175906677"
+ },
+ "cottonwood_2/impostor_2.png": {
+  "bytes": 92972,
+  "sha256": "0f265e238714c2672810d65a6a17080e9a3e2f92776bee9aaf7287c28a6665ab"
+ },
+ "cottonwood_2/impostor_3.png": {
+  "bytes": 95885,
+  "sha256": "ece0e2d86347085847e2931cf41cb2a6ebfb8464cec8e25d4c58c79d4f3f0c80"
+ },
+ "cottonwood_2/impostor_4.png": {
+  "bytes": 94495,
+  "sha256": "5af3d5c50a0b2cfd061fdf132a430f92a766e1ed13d0e4e8140750e5ec95c5ea"
+ },
+ "cottonwood_2/impostor_5.png": {
+  "bytes": 97642,
+  "sha256": "589c6e2e6c3a50a3ed62be6bce36100d9c8e4c26ae3521255f571c9ea18d1e68"
+ },
+ "cottonwood_2/impostor_6.png": {
+  "bytes": 93964,
+  "sha256": "02122771fa8273b1bbae4ef4779bde90705568166acea89737dfdb7ce54c37c4"
+ },
+ "cottonwood_2/impostor_7.png": {
+  "bytes": 96485,
+  "sha256": "280c3887b678cf8cc03d9a73e964f462aa619665754fb26a4e8a139b437ef6cd"
+ },
+ "cottonwood_2/tree.fbm/atlas.png": {
+  "bytes": 838351,
+  "sha256": "1f87056f8ef7a802187464f9e324834e669117491596c3734a58e9c4e6d179d7"
+ },
+ "cottonwood_2/tree.fbx": {
+  "bytes": 2259772,
+  "sha256": "abaf3ccbc0c2bd5c956e807547352e4a726dfa890ab3609db0200aeaecd56568"
+ },
+ "hardwood_1/atlas.png": {
+  "bytes": 757224,
+  "sha256": "874cae34f14712627e62a2889ea6a0a0e2c21321b873aaabbc0709d95419fea0"
+ },
+ "hardwood_1/impostor_0.png": {
+  "bytes": 81772,
+  "sha256": "d87995ba3587d5f6445e956b9d36626298e8dabeb562e9b5ff10e96437ce23c8"
+ },
+ "hardwood_1/impostor_1.png": {
+  "bytes": 81561,
+  "sha256": "e46a3f94cd298c20fb7174aa5511cf47e43d7ef62af5aa833eccd186b024319b"
+ },
+ "hardwood_1/impostor_2.png": {
+  "bytes": 80638,
+  "sha256": "ac12d6f488295258c1b47d654b49c0c04c9e6585d73045412934b9d8ff575941"
+ },
+ "hardwood_1/impostor_3.png": {
+  "bytes": 75871,
+  "sha256": "88f81999e6c98b82416a66d5e56aa0180fc1603ad71e0123d39e23971b64e922"
+ },
+ "hardwood_1/impostor_4.png": {
+  "bytes": 81256,
+  "sha256": "501567188d04a716faa6d2bbc7ce176632dfc03b888ae81281ce73ab7752017e"
+ },
+ "hardwood_1/impostor_5.png": {
+  "bytes": 81054,
+  "sha256": "021c249f3c6758f0ecb8e158c8306489b51341055303375aea4349676c2ffb26"
+ },
+ "hardwood_1/impostor_6.png": {
+  "bytes": 81824,
+  "sha256": "e672702e1539e6417087ee79a310a2c7518a9efe59f8f9bcc929afbc9d6a2d90"
+ },
+ "hardwood_1/impostor_7.png": {
+  "bytes": 75856,
+  "sha256": "255a911f4f79fc09090de182b8b9a45e6b2080704d3d5bde945783d85662f09d"
+ },
+ "hardwood_1/tree.fbm/atlas.png": {
+  "bytes": 757224,
+  "sha256": "874cae34f14712627e62a2889ea6a0a0e2c21321b873aaabbc0709d95419fea0"
+ },
+ "hardwood_1/tree.fbx": {
+  "bytes": 1854028,
+  "sha256": "96f1050376087bdf3a6cca82d8bb903999d23d7130f07b4ad61aa684b5d67a01"
+ },
+ "hardwood_2/atlas.png": {
+  "bytes": 780902,
+  "sha256": "b0eb9d628b244655f09515979a0c996161bc890ff86812dccc27e62ac1ce0cda"
+ },
+ "hardwood_2/impostor_0.png": {
+  "bytes": 90387,
+  "sha256": "0c84f25f08988559aa8d66b6433ef8883f05aa487a0f3a2552d9e2b483b41d36"
+ },
+ "hardwood_2/impostor_1.png": {
+  "bytes": 91293,
+  "sha256": "1c2b678406f920aa3b6e25bdfd5f0aaa92fe4a10fc0023b5f7cdecc361fbdac8"
+ },
+ "hardwood_2/impostor_2.png": {
+  "bytes": 87607,
+  "sha256": "fd9ff7a7549362f2a333774b5d4325b8ab413b77cd82114c119676074b72dbb1"
+ },
+ "hardwood_2/impostor_3.png": {
+  "bytes": 84216,
+  "sha256": "c47540392d75cb37b2dd41b8a9bdd0fad030fa901fb5d977490426581bc8f4f6"
+ },
+ "hardwood_2/impostor_4.png": {
+  "bytes": 90310,
+  "sha256": "ae5fbfac59b944e072a659078f9ce20ddefe11c51c8ded9b5e1e25f71c679724"
+ },
+ "hardwood_2/impostor_5.png": {
+  "bytes": 90656,
+  "sha256": "c98db2dd2dbf4bc5e21bfac2d45733fb4603c1b5545a5d4ac2836d0a5dbca004"
+ },
+ "hardwood_2/impostor_6.png": {
+  "bytes": 87209,
+  "sha256": "7832a84c1ccfa6c8e01f8a805f9ebe6d47b69a6bfad5e2923b601046ead1d951"
+ },
+ "hardwood_2/impostor_7.png": {
+  "bytes": 84268,
+  "sha256": "c15354f36d163daa0e9d0cee7836d9ce9e8f2dd68b3064d410ae1ea0f4193867"
+ },
+ "hardwood_2/tree.fbm/atlas.png": {
+  "bytes": 780902,
+  "sha256": "b0eb9d628b244655f09515979a0c996161bc890ff86812dccc27e62ac1ce0cda"
+ },
+ "hardwood_2/tree.fbx": {
+  "bytes": 1883628,
+  "sha256": "0d070cbe0ecc1ee47b272e7cc81d1ccfb38bd4abc87304751a0762510b083bb7"
+ },
+ "yard_1/atlas.png": {
+  "bytes": 760866,
+  "sha256": "0ef1d9280a431081f04dc9d92875a64a5dd0e9f0d765d468f85c06c887ded3ec"
+ },
+ "yard_1/impostor_0.png": {
+  "bytes": 89520,
+  "sha256": "b773b83210a10acd57047487fdd1587d0c6a18c7a27f5834d425b745f4d04a48"
+ },
+ "yard_1/impostor_1.png": {
+  "bytes": 84560,
+  "sha256": "367b03842ec5516e082cd41d83d5cbc1cb8df38a4f1e8a03740816d06cc32eaf"
+ },
+ "yard_1/impostor_2.png": {
+  "bytes": 80423,
+  "sha256": "d12a6af2cee0768c52a7b88b156d40ee251a34f6993db1edaec43b29374b6420"
+ },
+ "yard_1/impostor_3.png": {
+  "bytes": 84559,
+  "sha256": "34dc7a9e7e8e962799fad97f2dc9697a1f63f3c757b9e2f4b106997fbf42bcf1"
+ },
+ "yard_1/impostor_4.png": {
+  "bytes": 89161,
+  "sha256": "0e1fdebd322398dd309edff3cb9b04a25d85521f6190504e0ac6ad7993e6e2ff"
+ },
+ "yard_1/impostor_5.png": {
+  "bytes": 84929,
+  "sha256": "99fd279e6a5fd3167e376043caafffc043693ea8b2d73acebde92c4ee1ad198b"
+ },
+ "yard_1/impostor_6.png": {
+  "bytes": 81483,
+  "sha256": "f1be9dc8295982d9572999491512ead77526ccee9ca9c08d9b78c1775356e122"
+ },
+ "yard_1/impostor_7.png": {
+  "bytes": 84303,
+  "sha256": "ed45534eb375172cdd818e60e42ca7e978877685084d92bff4952595c68096a5"
+ },
+ "yard_1/tree.fbm/atlas.png": {
+  "bytes": 760866,
+  "sha256": "0ef1d9280a431081f04dc9d92875a64a5dd0e9f0d765d468f85c06c887ded3ec"
+ },
+ "yard_1/tree.fbx": {
+  "bytes": 1393804,
+  "sha256": "7651486c5c4d27f302957aa97ac16647e8aac3887e6a287e0d81b00b97c5d0f7"
+ },
+ "yard_2/atlas.png": {
+  "bytes": 767428,
+  "sha256": "158e0a63f98ae96d3371e0a5f94373fca3950c165a47f8ad3d89428fe8933261"
+ },
+ "yard_2/impostor_0.png": {
+  "bytes": 79497,
+  "sha256": "1748663fb27e201e9f3f69b9b01585d2375ed4516d3d27e0099f677211e3ef33"
+ },
+ "yard_2/impostor_1.png": {
+  "bytes": 80129,
+  "sha256": "975bdda284299d8f912a495bcd4a7cae0489b5d2ffbd1217d37140758569612a"
+ },
+ "yard_2/impostor_2.png": {
+  "bytes": 80935,
+  "sha256": "c8a92af7d5507642cddb4ecddd3c94131f154b7f467ee329c0d8ee544946eb34"
+ },
+ "yard_2/impostor_3.png": {
+  "bytes": 84361,
+  "sha256": "eca225e59b535a64742c13c09b0a2b7f3300c02a75df62e3d61cfdb1ea191dd9"
+ },
+ "yard_2/impostor_4.png": {
+  "bytes": 78563,
+  "sha256": "97ab6c88d35d519e9ea464415bcb7363cf5ffcf760cbbd6b0a49da9bb1488086"
+ },
+ "yard_2/impostor_5.png": {
+  "bytes": 80066,
+  "sha256": "074479a69315d128be3fe617828210d570c33d9bdaab4f1c1665f8e7a073a41c"
+ },
+ "yard_2/impostor_6.png": {
+  "bytes": 82442,
+  "sha256": "00becda2c4f5f37eb8d3b6a4833be1c00dbe45c6142f4968bf86686a46773505"
+ },
+ "yard_2/impostor_7.png": {
+  "bytes": 83644,
+  "sha256": "b0a1abc96ea1724817ce4f910e1a50a35e7881815901ebe0a5d0898d5efba080"
+ },
+ "yard_2/tree.fbm/atlas.png": {
+  "bytes": 767428,
+  "sha256": "158e0a63f98ae96d3371e0a5f94373fca3950c165a47f8ad3d89428fe8933261"
+ },
+ "yard_2/tree.fbx": {
+  "bytes": 1455644,
+  "sha256": "2a23969d6a08f316e1e5d08a8a15bc7c5733f93ea84c46a5e152121129282c35"
+ }
+}

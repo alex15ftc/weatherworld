@@ -1,33 +1,47 @@
 {
   "name": "CloudLab",
+  "emitLegacyScripts": false,
   "tree": {
     "$className": "DataModel",
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
+      "Bootstrapper": {
+        "$path": "Client/Bootstrapper"
+      },
+      "Modules": {
+        "$path": "Client/Modules"
+      },
+      "Lab": {
+        "$path": "Labs/CloudLab/Client"
+      }
+    },
     "ReplicatedStorage": {
-      "CloudLab": {
+      "$className": "ReplicatedStorage",
+      "Assets": {
         "$className": "Folder",
-        "Model": {
-          "$path": "src/cloudlab/shared/Model"
-        },
-        "GameConfig": {
-          "$path": "src/shared/World/Config.luau"
-        }
+        "$ignoreUnknownInstances": true
+      },
+      "Config": {
+        "$path": "Config"
+      },
+      "Packages": {
+        "$path": "Packages"
+      },
+      "Shared": {
+        "$path": "Shared"
       }
     },
     "ServerStorage": {
-      "CloudLabData": {
-        "$path": "src/stormlab/data"
-      }
-    },
-    "ServerScriptService": {
-      "CloudLab": {
-        "$path": "src/cloudlab/server"
-      }
-    },
-    "StarterPlayer": {
-      "StarterPlayerScripts": {
-        "CloudLab": {
-          "$path": "src/cloudlab/client"
-        }
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+      "main": {
+        "$path": "Server/main.server.luau"
+      },
+      "Modules": {
+        "$path": "Server/Modules"
+      },
+      "Lab": {
+        "$path": "Labs/CloudLab/Server"
       }
     },
     "Workspace": {

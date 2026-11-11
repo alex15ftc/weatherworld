@@ -1,8 +1,8 @@
 -- Weisman-Klemp supercell with a fine nest under its low-level rotation.
 --   luau --codegen tools/cloudlab/nest.luau -a [minutes] [nestStartMin] [ratio] [nestCells] [z0] [hodoR] [hodoD]
-local CloudModel = require("../../roblox/src/cloudlab/shared/Model/CloudModel")
-local Sounding = require("../../roblox/src/cloudlab/shared/Model/Sounding")
-local Nest = require("../../roblox/src/cloudlab/shared/Model/Nest")
+local CloudModel = require("../../roblox/Shared/CloudModel/CloudModel")
+local Sounding = require("../../roblox/Shared/CloudModel/Sounding")
+local Nest = require("../../roblox/Shared/CloudModel/Nest")
 local a = { ... }
 local minutes = tonumber(a[1]) or 120
 local start = tonumber(a[2]) or 50

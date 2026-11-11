@@ -1,11 +1,11 @@
-// Engine data for the storm lab (roblox/src/stormlab): a window of the weather engine's world
+// Engine data for the storm lab (roblox/Labs/StormLab): a window of the weather engine's world
 // around one storm at one moment, so the lab can rebuild its environment and storms from real
 // fields instead of made-up numbers.
 //   node scripts/export-lab-scenario.mjs --seed 8181 --days 2 --name Supercell
 //   node scripts/export-lab-scenario.mjs --seed 2112 --days 3 --focus line --name SquallLine
 // Finds the moment like scripts/export-storm-replay.mjs (the strongest tornado, or the best line
 // in daylight), runs the same world again to LEAD_HOURS before it and writes
-// roblox/src/stormlab/data/<name>.luau, a module returning JSON text:
+// roblox/Shared/StormLab/Data/<name>.luau, a module returning JSON text:
 //   meta       seed, sim hour (UTC), sun, window size, cell size, map position of the window centre
 //   cells      per engine cell in the window: lab position (m east / north of the window centre),
 //              terrain, surface T/Td (C), wind (m/s), MSLP, cold pool (K), convergence, the
@@ -41,7 +41,7 @@ const HALF = Number(flag('--half', 7)); // cells each way from the centre cell: 
 const LEAD_HOURS = Number(flag('--lead', focusOn === 'line' ? 1.5 : 1));
 const TRACK_HOURS = Number(flag('--track', 2.5));
 const TICK_HOURS = 1 / 12, KT = 0.514444;
-const OUT = path.join(ROOT, 'roblox/src/stormlab/data', `${name}.luau`);
+const OUT = path.join(ROOT, 'roblox/Shared/StormLab/Data', `${name}.luau`);
 
 function run(onTick) {
   const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world;

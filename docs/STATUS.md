@@ -2459,7 +2459,7 @@ rotation, shear grid, cold pools, restored worlds) and the engine fingerprint is
   only when listed, lightning on demand; ReportArchive decodes day texts only on the writer. World:
   StreamingTargetRadius 1024 / Min 512 set in the project, unload margin 256, unloads and chunk
   placing spread over frames, numeric chunk keys, tile cache capped at 8, road pieces fitted to the
-  grade (2.6x fewer on gentle land), generator moved to `roblox/src/serverworld` (ServerStorage.World).
+  grade (2.6x fewer on gentle land), generator moved to `roblox/Server/World` (ServerStorage.World).
   LOAD_RADIUS stays 2048: the 1280-2048 band feeds the clients' StreamingMesh imposters (the user to
   decide). Storms: per-storm build ids, warm-up on a 2 ms budget, eased cards write past half a pixel
   only, a shared card pool, write-on-change far rings/sky/flash/precip, BaseDeck range skip, ray cache

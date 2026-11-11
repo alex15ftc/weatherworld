@@ -1,6 +1,6 @@
 -- Funnel shapes the wind field holds: condensation where the pressure deficit (x condense)
 -- reaches the fall from the ground to the cloud base. luau tools/windfield/shapes.luau
-local WF = require("../../roblox/src/shared/Tornado/WindField")
+local WF = require("../../roblox/Labs/TornadoLab/Tornado/WindField")
 
 local EF = { 33.5, 43.8, 55.0, 67.0, 81.8, 98.3 }
 local RC = { 30, 45, 70, 100, 150, 250 }

@@ -4,16 +4,16 @@
 local fs = require("@lune/fs")
 local serde = require("@lune/serde")
 local process = require("@lune/process")
-local EngineRun = require("../../../roblox/src/cloudlab/shared/Model/EngineRun")
-local Nest = require("../../../roblox/src/cloudlab/shared/Model/Nest")
+local EngineRun = require("../../../roblox/Shared/CloudModel/EngineRun")
+local Nest = require("../../../roblox/Shared/CloudModel/Nest")
 local NestLink = require("./nestlink")
 local a = process.args
 local name, minutes = a[1] or "SupercellB", tonumber(a[2]) or 12
 EngineRun.NEST_START = (tonumber(a[3]) or 6) * 60
-local data = serde.decode("json", string.match(fs.readFile("roblox/src/stormlab/data/" .. name .. ".luau"), "%[==%[(.*)%]==%]"))
+local data = serde.decode("json", string.match(fs.readFile("roblox/Shared/StormLab/Data/" .. name .. ".luau"), "%[==%[(.*)%]==%]"))
 local A = EngineRun.fromScenario(data, { nest = true })
 local B = EngineRun.fromScenario(data, { nest = true })
-require("../../../roblox/src/cloudlab/shared/Model/NestRemote").GAIN = tonumber(a[4]) or 1
+require("../../../roblox/Shared/CloudModel/NestRemote").GAIN = tonumber(a[4]) or 1
 local link = NestLink.start(8891, B.initRecord, B.initOpts)
 B.nestLink = link
 local function stats(m)

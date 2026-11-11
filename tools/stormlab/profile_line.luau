@@ -1,19 +1,19 @@
 -- Where the time goes in a busy world (squall line after 30 sim min).
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
 local mods = {
-	Storm = require("../../roblox/src/stormlab/shared/Sim/Storm"),
-	Systems = require("../../roblox/src/stormlab/shared/Sim/Systems"),
-	Initiation = require("../../roblox/src/stormlab/shared/Sim/Initiation"),
-	Boundaries = require("../../roblox/src/stormlab/shared/Sim/Boundaries"),
-	Lightning = require("../../roblox/src/stormlab/shared/Sim/Lightning"),
-	Tornado = require("../../roblox/src/stormlab/shared/Sim/Tornado"),
-	Precip = require("../../roblox/src/stormlab/shared/Sim/Precip"),
-	ColdPool = require("../../roblox/src/stormlab/shared/Sim/ColdPool"),
-	Environment = require("../../roblox/src/stormlab/shared/Sim/Environment"),
+	Storm = require("../../roblox/Shared/StormLab/Sim/Storm"),
+	Systems = require("../../roblox/Shared/StormLab/Sim/Systems"),
+	Initiation = require("../../roblox/Shared/StormLab/Sim/Initiation"),
+	Boundaries = require("../../roblox/Shared/StormLab/Sim/Boundaries"),
+	Lightning = require("../../roblox/Shared/StormLab/Sim/Lightning"),
+	Tornado = require("../../roblox/Shared/StormLab/Sim/Tornado"),
+	Precip = require("../../roblox/Shared/StormLab/Sim/Precip"),
+	ColdPool = require("../../roblox/Shared/StormLab/Sim/ColdPool"),
+	Environment = require("../../roblox/Shared/StormLab/Sim/Environment"),
 	World = World,
 }
-local data = Json.decode(require("../../roblox/src/stormlab/data/SquallLine"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/SquallLine"))
 local world = World.new(data)
 world:spinUp(600)
 for _ = 1, 1800 do world:step(1) end

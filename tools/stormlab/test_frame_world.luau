@@ -1,17 +1,17 @@
 -- A storm built only from the engine's record (client/FrameWorld, 2026-11-07): warmed up from
 -- nothing in a world holding only the environment, every client builds the same storm.
 --   luau tools/stormlab/test_frame_world.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local e = data.polls[math.floor(#data.polls / 2)].storms[1]
 for _, es in data.polls[math.floor(#data.polls / 2)].storms do
 	if es.id == data.meta.focusStorm then e = es end
 end
 print("engine storm", e.id, "W", e.updraftMs, "meso", e.meso, "low", e.lowRotation, "occl", e.occlusion)
-local Environment = require("../../roblox/src/stormlab/shared/Sim/Environment")
-local ColdPool = require("../../roblox/src/stormlab/shared/Sim/ColdPool")
+local Environment = require("../../roblox/Shared/StormLab/Sim/Environment")
+local ColdPool = require("../../roblox/Shared/StormLab/Sim/ColdPool")
 -- the same private world as client/FrameWorld's warm-ups: the environment only, the rain a stub
 local env = Environment.new(data)
 local function privateWorld(): any
@@ -48,8 +48,8 @@ end
 
 -- the tornado (client/FrameWorld): started under the warmed storm, following the engine's
 -- (where it is, how strong and wide), warmed TOR_S more
-local Tornado = require("../../roblox/src/stormlab/shared/Sim/Tornado")
-local Vortex = require("../../roblox/src/stormlab/shared/Sim/Vortex")
+local Tornado = require("../../roblox/Shared/StormLab/Sim/Tornado")
+local Vortex = require("../../roblox/Shared/StormLab/Sim/Vortex")
 for _, cfg in { { 180, 2 }, { 240, 4 }, { 300, 5 } } do
 	local TOR_S, DT = cfg[1], cfg[2]
 	local w = privateWorld()

@@ -1,4 +1,4 @@
-// Look-development for roblox/src/client/CloudVolume.luau: the same density and lighting, rendered
+// Look-development for roblox/Client/CloudVolume.luau: the same density and lighting, rendered
 // in Node to a PNG from a replay frame and a camera, so the look can be tuned in seconds instead of
 // a Studio playtest. Keep the maths in step with the Luau.
 //
@@ -179,7 +179,7 @@ function png(w, h, rgb) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const frameNo = Number(flag('--frame', 13)), W = Number(flag('--w', 480)), H = Number(flag('--h', 300));
   const out = flag('--out', path.join(process.env.CLAUDE_JOB_DIR || '.', 'tmp', 'cloudvolume.png'));
-  const text = fs.readFileSync(path.join(ROOT, 'roblox/src/worlddata/StormReplay', `F${String(frameNo).padStart(3, '0')}.luau`), 'utf8');
+  const text = fs.readFileSync(path.join(ROOT, 'roblox/Server/WorldData/StormReplay', `F${String(frameNo).padStart(3, '0')}.luau`), 'utf8');
   const frame = JSON.parse(text.slice(text.indexOf('[==[') + 4, text.lastIndexOf(']==]')));
   const ground = 590;
   // --from "east,south" km offset from the tornadic storm's updraught (default: the Studio test spot);

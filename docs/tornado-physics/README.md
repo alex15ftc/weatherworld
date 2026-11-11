@@ -7,10 +7,10 @@ This document gathers three research passes (2026-10-22) and records how each fi
 3. What wind does to objects, people and buildings.
 
 **Code:**
-- `roblox/src/shared/Tornado/WindField.luau`: the wind maths, as plain numbers.
+- `roblox/Labs/TornadoLab/Tornado/WindField.luau`: the wind maths, as plain numbers.
 - `Vortex.luau`: builds the field's parameters from a tornado's state.
 - `WindPhysics.luau`: pickup, flight and damage.
-- `roblox/src/lab/client/WindLab.luau`: the lab view. J shows the wind arrows; G scatters test objects.
+- `roblox/Labs/TornadoLab/client/WindLab.luau`: the lab view. J shows the wind arrows; G scatters test objects.
 
 **Offline checks:** `luau tools/windfield/test.luau`, which runs without Studio.
 

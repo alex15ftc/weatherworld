@@ -551,7 +551,7 @@ The current reported baseline is promising: the supercell scenario produced a to
 
 ### 14.1 First action: inspect the real implementation before changing architecture
 
-Before coding, read `docs/stor/stormlab/STATUS.md`, the shared helper-agent interface document, and the existing visual scripts under `roblox/src/stormlab`. Identify:
+Before coding, read `docs/stor/stormlab/STATUS.md`, the shared helper-agent interface document, and the existing visual scripts under `roblox/Labs/StormLab`. Identify:
 
 - Which storm-cloud, sky/lighting, lightning, funnel, dust, rain, and hail renderers already exist.
 - The actual state/event schemas and update cadence used by the shared interface.

@@ -1,4 +1,4 @@
-# Checks the cloud kit's piece modules (roblox/src/shared/Weather/CloudKit/Pieces/*.luau) and
+# Checks the cloud kit's piece modules (roblox/Shared/Weather/CloudKit/Pieces/*.luau) and
 # Index.luau without Blender or Roblox. Plain Python:
 #
 #   py tools/blender/check_cloud_kit.py [piece.luau ...]
@@ -16,7 +16,7 @@ import re
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-KIT = os.path.join(ROOT, "roblox", "src", "shared", "Weather", "CloudKit")
+KIT = os.path.join(ROOT, "roblox", "Shared", "Weather", "CloudKit")
 
 
 def numbers(text, key):

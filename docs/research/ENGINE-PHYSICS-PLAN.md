@@ -142,7 +142,7 @@ Run it on paired cases. Fit the engine's constants: the entrainment rate, the fa
 - The engine frame draws the whole storm in the game: cloud puffs, wall-cloud base and tornado. The lab sim's storm visuals go behind a setting.
 - The tornado is built from scratch, the way the cloud-lab storm was. It does not reuse TornadoCards or the old billboard tornado.
 
-**Built:** `roblox/src/cloudlab/shared/Model/TornadoView.luau`, soft lit billboard puffs taken entirely from the frame's tornado block.
+**Built:** `roblox/Shared/CloudModel/TornadoView.luau`, soft lit billboard puffs taken entirely from the frame's tornado block.
 - **Funnel:** cloud where the Rankine core's drop takes the condensation level down to that height. Its radius at height z is where the drop equals ρg(Bt − z). ρg comes from the frame's own tip, so the view and the engine share one surface.
 - **The join:** near the base the radius grows, up to 4 core radii, so the funnel widens into the wall cloud.
 - **Lean:** from the frame's levels.
@@ -167,7 +167,7 @@ Run it on paired cases. Fit the engine's constants: the entrainment rate, the fa
 ### Phase 1, step 1b: the game draws engine storms (2026-11-06)
 
 **Built:**
-- `roblox/src/client/EngineStorms.luau`: each storm in client LiveStorms is drawn with PuffView for the body and TornadoView for the tornado, from its engine frame. Positions are at map scale and heights at `Config.skyScaleAt`. FrameView is used only for its moving anchor, and its debug boxes are not drawn.
+- `roblox/Client/Controllers/EngineStormsController.luau`: each storm in client LiveStorms is drawn with PuffView for the body and TornadoView for the tornado, from its engine frame. Positions are at map scale and heights at `Config.skyScaleAt`. FrameView is used only for its moving anchor, and its debug boxes are not drawn.
   - Storms whose frame arrived before it started are drawn on start. In the first game test the frame came 2 ms before it began listening, and a frozen feed never sends another.
   - Budget: 600 puffs for a near storm, 200 far, 300 for a tornado.
 - **Switch:** workspace `StormVisuals = "engine"`, plus `LiveStorms = true`.
@@ -190,7 +190,7 @@ Run it on paired cases. Fit the engine's constants: the entrainment rate, the fa
 ### Phase 1, step 1c: rain and hail shafts from the frame (2026-11-06)
 
 **Built:**
-- `roblox/src/cloudlab/shared/Model/RainView.luau` draws the frame's rain and hail planes as soft, overlapping billboard curtains. It follows the research in `docs/visuals-research/RAIN-AND-HAIL-AT-DISTANCE.md`:
+- `roblox/Shared/CloudModel/RainView.luau` draws the frame's rain and hail planes as soft, overlapping billboard curtains. It follows the research in `docs/visuals-research/RAIN-AND-HAIL-AT-DISTANCE.md`:
   - The rate field is smoothed, and curtains sit on a jittered lattice, 2.5 spacings wide.
   - Opacity is rate × path, from the lidar fit 0.16 R^0.74 per km. Hail gets a fifth of rain's extinction. Each curtain is capped at 0.3 so its soft edges survive the overlaps.
   - The light is the light under the deepest cloud within 3 columns, dimmed by the rain itself.

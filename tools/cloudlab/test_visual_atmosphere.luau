@@ -1,11 +1,11 @@
--- Offline checks of the visual atmosphere (roblox/src/cloudlab/shared/Model/VisualAtmosphere.luau),
+-- Offline checks of the visual atmosphere (roblox/Shared/CloudModel/VisualAtmosphere.luau),
 -- pass/fail, a second or two. With a near client frame (a .bin from js/cloudmodel/FrameCodec.js
 -- clientFrame) it also reads that frame's tornado and nest.
 --   lune run tools/cloudlab/test_visual_atmosphere.luau [near.bin]
 local fs = require("@lune/fs")
 local process = require("@lune/process")
-local ClientFrame = require("../../roblox/src/cloudlab/shared/Model/ClientFrame")
-local VA = require("../../roblox/src/cloudlab/shared/Model/VisualAtmosphere")
+local ClientFrame = require("../../roblox/Shared/CloudModel/ClientFrame")
+local VA = require("../../roblox/Shared/CloudModel/VisualAtmosphere")
 VA.ClientFrame = ClientFrame
 
 local fails = 0

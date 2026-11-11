@@ -1,15 +1,15 @@
 -- How much the precipitation parcel count costs the server: spin-up + 20 sim minutes of the
 -- supercell scenario with a given parcel mass (kg).
 --   luau --codegen tools/stormlab/time_parcels.luau -a <mass>
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local Precip = require("../../roblox/src/stormlab/shared/Sim/Precip")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local Precip = require("../../roblox/Shared/StormLab/Sim/Precip")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
 local mass = tonumber((...) or "") or 3e4
 Precip.parcelMass = function(self)
 	local fill = self.n / self.max
 	return mass * (1 + 6 * math.max(0, fill - 0.5) ^ 2)
 end
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local t0 = os.clock()
 local world = World.new(data)
 world:spinUp(600)

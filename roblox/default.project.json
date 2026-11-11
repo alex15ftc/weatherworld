@@ -1,101 +1,40 @@
 {
   "name": "WeatherWorld",
-  "globIgnorePaths": ["src/shared/Tornado", "src/shared/Tornado/**"],
+  "emitLegacyScripts": false,
   "tree": {
     "$className": "DataModel",
+    "ReplicatedFirst": {
+      "$path": "Client"
+    },
     "ReplicatedStorage": {
-      "Shared": {
-        "$path": "src/shared",
-        "CloudModel": {
-          "$className": "Folder",
-          "SharedClock": {
-            "$path": "src/cloudlab/shared/Model/SharedClock.luau"
-          },
-          "ClientFrame": {
-            "$path": "src/cloudlab/shared/Model/ClientFrame.luau"
-          },
-          "VisualAtmosphere": {
-            "$path": "src/cloudlab/shared/Model/VisualAtmosphere.luau"
-          },
-          "WallCloudView": {
-            "$path": "src/cloudlab/shared/Model/WallCloudView.luau"
-          },
-          "StormFrames": {
-            "$path": "src/cloudlab/shared/Model/StormFrames.luau"
-          },
-          "FrameView": {
-            "$path": "src/cloudlab/shared/Model/FrameView.luau"
-          },
-          "PuffView": {
-            "$path": "src/cloudlab/shared/Model/PuffView.luau"
-          },
-          "MeshView": {
-            "$path": "src/cloudlab/shared/Model/MeshView.luau"
-          },
-          "TornadoView": {
-            "$path": "src/cloudlab/shared/Model/TornadoView.luau"
-          },
-          "RainView": {
-            "$path": "src/cloudlab/shared/Model/RainView.luau"
-          },
-          "DeckView": {
-            "$path": "src/cloudlab/shared/Model/DeckView.luau"
-          }
-        }
-      },
-      "StormLab": {
+      "$className": "ReplicatedStorage",
+      "Assets": {
         "$className": "Folder",
-        "Sim": {
-          "$path": "src/stormlab/shared/Sim"
-        },
-        "LabConfig": {
-          "$path": "src/stormlab/shared/LabConfig.luau"
-        },
-        "Data": {
-          "$path": "src/stormlab/data"
-        }
+        "$ignoreUnknownInstances": true
+      },
+      "Config": {
+        "$path": "Config"
+      },
+      "Packages": {
+        "$path": "Packages"
+      },
+      "Shared": {
+        "$path": "Shared"
       }
     },
     "ServerStorage": {
-      "WorldData": {
-        "$path": "src/worlddata"
-      },
-      "World": {
-        "$path": "src/serverworld"
-      }
-    },
-    "ServerScriptService": {
-      "Server": {
-        "$path": "src/server",
-        "StormPublisher": {
-          "$path": "src/stormlab/server/Publisher.luau"
-        }
-      }
+      "$path": "Server",
+      "$ignoreUnknownInstances": true
     },
     "StarterPlayer": {
       "$properties": {
         "CharacterUseJumpPower": false,
         "CharacterJumpHeight": 7.2
-      },
-      "StarterPlayerScripts": {
-        "Client": {
-          "$path": "src/client",
-          "Weather": {
-            "$className": "Folder",
-            "Context": {
-              "$path": "src/stormlab/client/Context.luau"
-            },
-            "Net": {
-              "$path": "src/stormlab/client/Net.luau"
-            },
-            "Render": {
-              "$path": "src/stormlab/client/Render"
-            },
-            "Tornado": {
-              "$path": "src/stormlab/client/Tornado"
-            }
-          }
-        }
+      }
+    },
+    "Players": {
+      "$properties": {
+        "CharacterAutoLoads": true
       }
     },
     "Lighting": {

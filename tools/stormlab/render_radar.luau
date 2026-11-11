@@ -3,14 +3,14 @@
 -- rotating storm, from a site 30 km SW of it - with the same Radar.gate the game's radar uses.
 -- Prints the frames as hex rows; tools/stormlab/radar_frames.py turns them into PNG sheets.
 --   luau --codegen tools/stormlab/render_radar.luau -a <minutes> <every> > frames.txt
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local Radar = require("../../roblox/src/stormlab/shared/Sim/Radar")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local Radar = require("../../roblox/Shared/StormLab/Sim/Radar")
 local args = { ... }
 local minutes = tonumber(args[1] or "") or 120
 local every = tonumber(args[2] or "") or 10
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 world:step(5)

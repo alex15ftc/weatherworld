@@ -3,7 +3,7 @@
 Camera-facing images of the cloud kit's puffy pieces rendered as real volumes (Cycles), to replace
 the solid meshes for tower caps, tower bodies, anvils and mammatus. Bases, shelves and the wall
 cloud stay meshes. Made by `tools/blender/cloud_vapor_bake.py` from the piece meshes in
-`roblox/src/shared/Weather/CloudKit/Pieces/`.
+`roblox/Shared/Weather/CloudKit/Pieces/`.
 
 | File | What |
 |---|---|

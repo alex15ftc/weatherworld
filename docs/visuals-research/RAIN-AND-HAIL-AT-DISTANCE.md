@@ -1,6 +1,6 @@
 # Rain and hail shafts seen from 2-40 km (research, 2026-11-06)
 
-This guides how the game draws precipitation shafts from engine frames (`roblox/src/cloudlab/shared/Model/RainView.luau`).
+This guides how the game draws precipitation shafts from engine frames (`roblox/Shared/CloudModel/RainView.luau`).
 - **Physical facts** come from spotter guides, NSSL, chaser reports and optics papers, linked below.
 - **Rendering advice** is inference from that physics. None of the game talks checked (Nubis, the Horizon Forbidden West superstorms talk, RDR2, Flight Simulator) explain their rain-shaft method in anything that could be read.
 

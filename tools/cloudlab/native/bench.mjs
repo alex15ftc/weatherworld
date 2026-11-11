@@ -10,7 +10,7 @@ avoidBackgroundThrottling();
 const a = process.argv.slice(2);
 const name = a[0] ?? 'SupercellB', minutes = Number(a[1] ?? 10), nest = a[2] === '1';
 ENGINE_RUN.NEST_START = Number(a[3] ?? 30) * 60;
-const run = EngineRun.fromScenario(readScenarioText(readFileSync(`roblox/src/stormlab/data/${name}.luau`, 'utf8')), { nest });
+const run = EngineRun.fromScenario(readScenarioText(readFileSync(`roblox/Shared/StormLab/Data/${name}.luau`, 'utf8')), { nest });
 const m = run.model;
 while (m.time < Number(a[4] ?? 0) * 60) run.replayStep();
 const t0 = performance.now(), tstart = m.time;

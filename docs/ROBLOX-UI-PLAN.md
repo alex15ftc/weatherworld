@@ -19,7 +19,7 @@ source of truth for every game server, which the shared-weather MMO depends on.
 | Forecast and products | `server/OutlookRuntime.js`, `MesoscaleRuntime.js`, `WarningRuntime.js`, `ReportsRuntime.js`, `js/forecast`, `js/reports` | product text written here |
 | Analysis | `server/SurfaceAnalysisRuntime.js`, `analysisOverlays.js`, `mesoanalysisParameters.js` | **new:** contours and isobars are traced here (the web page traces them in the browser now) |
 | Verification, audits, tests | `js/verification`, `scripts`, `tests` | unchanged |
-| World map generation | `js/worldmap`, exports to `roblox/src/worlddata` | unchanged |
+| World map generation | `js/worldmap`, exports to `roblox/Server/WorldData` | unchanged |
 | **New: game product API** | `server/GameProducts.js` (new) | compact, versioned products for game servers (below) |
 | Web pages | `*.html`, `js/pages` | kept as **developer views** for checking the engine; not the player product. Frozen: no new features. |
 
@@ -35,7 +35,7 @@ source of truth for every game server, which the shared-weather MMO depends on.
 | Storm visuals | `client/StormView.luau` | already there; the user's friend owns the visuals |
 
 Colour tables (radar palettes, outlook colours, warning colours) are **generated** from the
-JS definitions into `roblox/src/shared/Weather/Palettes.luau` by a script, so there is a
+JS definitions into `roblox/Shared/Weather/Palettes.luau` by a script, so there is a
 single source for them.
 
 ## The game product API
@@ -111,8 +111,8 @@ Steps 0 and 1 done 2026-10-21; not yet seen in Studio (no Studio was connected).
 |---|---|---|
 | Node | `server/GameProducts.js` | manifest + products, versioned by a hash of the text; outlook rings simplified to 0.3 mi (Day 2 98 KB to 17 KB) |
 | Node | `js/forecast/productColours.js` | the outlook colours (the web page imports them too) |
-| Node | `scripts/export-palettes.mjs` | writes `roblox/src/shared/Weather/Palettes.luau` |
-| Node | `scripts/export-product-snapshot.mjs` | records a running server's products into `roblox/src/worlddata/ProductSnapshot` |
+| Node | `scripts/export-palettes.mjs` | writes `roblox/Shared/Weather/Palettes.luau` |
+| Node | `scripts/export-product-snapshot.mjs` | records a running server's products into `roblox/Server/WorldData/ProductSnapshot` |
 | Node | `tests/game-products.mjs` | rings, versions, unissued outlooks |
 | Roblox | `server/ProductFeed.luau` | http (manifest every 15 s) or snapshot; remotes `ReplicatedStorage.Products` (Get, Manifest, Changed), at most 20 gets per player per 10 s |
 | Roblox | `client/Products/init.luau` | the M screen and its tabs |

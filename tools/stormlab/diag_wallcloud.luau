@@ -1,10 +1,10 @@
 -- Wall cloud lowering over a lab run (Storm.update's wet-bulb mixing): per rotating storm, the
 -- cloud base, the lowering and the wall cloud's base above the ground, every 5 sim minutes.
 --   luau --codegen tools/stormlab/diag_wallcloud.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
 local name = "Supercell"
-local data = Json.decode(require("../../roblox/src/stormlab/data/" .. name))
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/" .. name))
 local world = World.new(data)
 world:spinUp(600)
 for step = 1, 8 do

@@ -4,11 +4,11 @@
 local fs = require("@lune/fs")
 local serde = require("@lune/serde")
 local process = require("@lune/process")
-local EngineRun = require("../../../roblox/src/cloudlab/shared/Model/EngineRun")
+local EngineRun = require("../../../roblox/Shared/CloudModel/EngineRun")
 local a = process.args
 local name, minutes, nest = a[1] or "SupercellB", tonumber(a[2]) or 10, a[3] == "1"
 EngineRun.NEST_START = (tonumber(a[4]) or 30) * 60
-local text = fs.readFile("roblox/src/stormlab/data/" .. name .. ".luau")
+local text = fs.readFile("roblox/Shared/StormLab/Data/" .. name .. ".luau")
 local json = string.match(text, "%[==%[(.*)%]==%]")
 local run = EngineRun.fromScenario(serde.decode("json", json), { nest = nest })
 local m = run.model
@@ -51,7 +51,7 @@ if run.nest then
 	local s2, z2 = sum(run.nest)
 	print(string.format("nest checksum %.10e, qr zero %.0f%%", s2, 100 * z2))
 end
-local d = if run.nest then require("../../../roblox/src/cloudlab/shared/Model/Nest").diag(run.nest) elseif run.nestInfo then run.nestInfo.diag else nil
+local d = if run.nest then require("../../../roblox/Shared/CloudModel/Nest").diag(run.nest) elseif run.nestInfo then run.nestInfo.diag else nil
 if d then
 	print(string.format("nest: zeta %.4f /s, pressure drop %.0f Pa, wind %.1f m/s, cloud base %.0f m; box UH %.0f", d.zeta, d.pdrop, d.vmax, d.cloudBase, m.uhMax or 0))
 end

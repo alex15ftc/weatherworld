@@ -5,10 +5,10 @@
 --   x warm enough to be stretched (1 - ramp(D, 1.5, 5))
 -- Prints the best point's bearing from motion (deg, CCW positive = left) and distance (Ru),
 -- and a score map (0-9, U updraft, L current low meso, * best), up = motion.
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/Supercell")))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell")))
 world:spinUp(600)
 local function ramp(x, a, b) return math.clamp((x - a) / (b - a), 0, 1) end
 for step = 1, 720 do

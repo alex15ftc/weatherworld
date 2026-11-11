@@ -30,7 +30,7 @@ if (process.argv[2] === 'child') {
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const data = readScenarioText(fs.readFileSync(path.join(root, 'roblox/src/stormlab/data/SupercellB.luau'), 'utf8'));
+const data = readScenarioText(fs.readFileSync(path.join(root, 'roblox/Shared/StormLab/Data/SupercellB.luau'), 'utf8'));
 const run = EngineRun.fromScenario(data, { nest: true });
 while (run.model.time < 35 * 60) run.replayStep();
 assert.ok(run.nest, 'the nest has started');

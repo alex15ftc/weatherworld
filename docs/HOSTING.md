@@ -7,7 +7,7 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
   `../DiscordBots/weatherworldbot`, outside this repo). It only reads the public `/api/health`,
   `/api/live/storms` and `/api/map/counties`, so engine deploys don't need it changed.
 - URL: https://weatherworld.up.railway.app (set as `Config.WEATHER_FEED_URL` in
-  `roblox/src/shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
+  `roblox/Shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
 - Build: `Dockerfile` (node:22-slim, no npm packages; builds world map seed 1 into the image).
   `.railwayignore` / `.dockerignore` keep the upload under 1 MB.
 - Service settings: `.railway/railway.ts` (Railway infrastructure as code: Dockerfile build, health check

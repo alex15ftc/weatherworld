@@ -1,15 +1,15 @@
 -- Tornado core radius (rc, m) from the fields on both lab days: per-tornado peak rc, its swirl,
 -- the parent's rlow, wLow and vlow, and the median of rc over each tornado's life.
 -- Target (positioning plan item 5): median core radius 100-150 m.
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
 local function median(t)
 	if #t == 0 then return 0 end
 	table.sort(t)
 	return t[(#t + 1) // 2]
 end
 for _, name in { "SquallLine", "Supercell" } do
-	local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/" .. name)))
+	local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/" .. name)))
 	world:spinUp(600)
 	local seen = {}
 	local all = {}

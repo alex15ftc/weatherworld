@@ -1,5 +1,5 @@
 // The Roblox map's scale, which the generator's character-scale sizes depend on. Map distance is
-// squashed (STUDS_PER_MILE, roblox/src/shared/World/Config.luau, keep the two equal); things built
+// squashed (STUDS_PER_MILE, roblox/Shared/World/Config.luau, keep the two equal); things built
 // at character scale (road cross-sections, lots, buildings, interchange ramps, airfield layouts)
 // keep their size in studs, so in map miles they grow as the map is squashed.
 //   AT_1000(mi)  a size first written in map miles at 1000 studs a mile, kept at the same studs

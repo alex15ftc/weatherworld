@@ -1,0 +1,10 @@
+# Wally packages (reinstall with ./setup.sh or ./setup.ps1)
+Packages/
+
+# Generated
+sourcemap.json
+globalTypes.d.luau
+
+# Generated world data (scripts/export-world-roblox.mjs, export-product-snapshot.mjs, export-storm-replay.mjs)
+Server/WorldData/
+Shared/MapData/

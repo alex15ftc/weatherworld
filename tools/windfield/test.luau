@@ -1,8 +1,8 @@
 -- Offline checks of the tornado wind field and wind physics (no Roblox needed):
 --   luau tools/windfield/test.luau
 -- Prints each check with PASS/FAIL and the numbers behind it.
-local WF = require("../../roblox/src/shared/Tornado/WindField")
-local WP = require("../../roblox/src/shared/Tornado/WindPhysics")
+local WF = require("../../roblox/Labs/TornadoLab/Tornado/WindField")
+local WP = require("../../roblox/Labs/TornadoLab/Tornado/WindPhysics")
 
 local fails = 0
 local function check(name: string, ok: boolean, detail: string)

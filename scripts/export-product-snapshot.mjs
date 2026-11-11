@@ -1,5 +1,5 @@
 // Records the game products from a running weather server into the Roblox place, so the
-// product screens work in Studio with no server: roblox/src/worlddata/ProductSnapshot.
+// product screens work in Studio with no server: roblox/Server/WorldData/ProductSnapshot.
 //   Meta.luau   { recordedAt, simHourUtc, epoch, products = { [id] = { version, module } } }
 //   P001.luau   ... each returns one product's JSON text, as a list of parts (joined in order).
 // The place uses it when no feed URL is set (server/ProductFeed.luau).
@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'roblox/src/worlddata/ProductSnapshot');
+const OUT = path.join(ROOT, 'roblox/Server/WorldData/ProductSnapshot');
 const arg = name => { const k = process.argv.indexOf(name); return k > 0 ? process.argv[k + 1] : undefined; };
 const FROM = (arg('--from') ?? 'http://localhost:3000').replace(/\/+$/, '');
 const KEY = arg('--key') ?? process.env.WEATHER_GAME_KEY;

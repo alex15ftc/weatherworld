@@ -156,7 +156,7 @@ Engine inventory (what exists, what is sent, what Roblox draws today): section 5
 ## 6. Progress
 
 **2026-10-23: storm mode, and the first storm shells**
-- **Storm mode in TornadoLab:** key N (`roblox/src/lab/client/StormStage.luau`).
+- **Storm mode in TornadoLab:** key N (`roblox/Labs/TornadoLab/client/StormStage.luau`).
   - Plays the engine's storm replay (seed 8181, `src/worlddata/StormReplay`) through the game's own `StormView` and `SkyLight`.
   - Puts the replay's tornado touchdown at the lab's origin. This uses `Config.VIEW_ORIGIN_KM`, read from the ReplicatedStorage attribute `ViewOriginMiles`.
   - Keys: `,` `.` step frames; `/` sets speed; `;` `'` shift the time of day; U/Y step the storm shots (`Shots.STORM`, 9 framings from 40 km to under the base).

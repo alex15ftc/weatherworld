@@ -1,6 +1,6 @@
 # Tornado look references (saved 2026-10-22)
 
-The target for the particle tornado (`roblox/src/shared/Tornado`). All five are Roblox scenes
+The target for the particle tornado (`roblox/Labs/TornadoLab/Tornado`). All five are Roblox scenes
 (Severity and Severity-like builds), so this look is reachable with Roblox particles.
 
 | File | What it shows |

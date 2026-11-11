@@ -1,0 +1,3 @@
+// Example command script. Run with /exec example, or list it in Config/AutoExec.toml.
+// One command per line. "wait <seconds>" pauses between commands.
+sv_cheats 1

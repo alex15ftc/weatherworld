@@ -4,14 +4,14 @@
 --   engine  the scenario's polls drive them as the game's StormHost does (Sim/EngineFollow): the
 --           focus storm must stay on the engine's track and have a tornado when the engine does
 --   luau tools/stormlab/test_engine_follow.luau -a Supercell 60
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local EngineFollow = require("../../roblox/src/stormlab/shared/Sim/EngineFollow")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local EngineFollow = require("../../roblox/Shared/StormLab/Sim/EngineFollow")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
 local args = { ... }
 local name = args[1] or "Supercell"
 local minutes = tonumber(args[2]) or 60
-local scen = name == "SquallLine" and require("../../roblox/src/stormlab/data/SquallLine") or require("../../roblox/src/stormlab/data/Supercell")
+local scen = name == "SquallLine" and require("../../roblox/Shared/StormLab/Data/SquallLine") or require("../../roblox/Shared/StormLab/Data/Supercell")
 local data = Json.decode(scen)
 assert(data.polls and #data.polls > 0, "scenario has no polls: re-export it")
 local SPIN = 600

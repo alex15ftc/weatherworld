@@ -4,10 +4,10 @@
 local fs = require("@lune/fs")
 local serde = require("@lune/serde")
 local process = require("@lune/process")
-local EngineRun = require("../../../roblox/src/cloudlab/shared/Model/EngineRun")
+local EngineRun = require("../../../roblox/Shared/CloudModel/EngineRun")
 local a = process.args
 local out, name, minutes = a[1], a[2] or "SupercellB", tonumber(a[3]) or 40
-local data = serde.decode("json", string.match(fs.readFile("roblox/src/stormlab/data/" .. name .. ".luau"), "%[==%[(.*)%]==%]"))
+local data = serde.decode("json", string.match(fs.readFile("roblox/Shared/StormLab/Data/" .. name .. ".luau"), "%[==%[(.*)%]==%]"))
 local run = EngineRun.fromScenario(data, { nest = false })
 local m = run.model
 while m.time < minutes * 60 do

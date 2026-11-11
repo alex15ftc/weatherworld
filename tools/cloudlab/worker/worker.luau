@@ -19,8 +19,8 @@ local net = require("@lune/net")
 local serde = require("@lune/serde")
 local process = require("@lune/process")
 local task = require("@lune/task")
-local EngineRun = require("../../../roblox/src/cloudlab/shared/Model/EngineRun")
-local FrameCodec = require("../../../roblox/src/cloudlab/shared/Model/FrameCodec")
+local EngineRun = require("../../../roblox/Shared/CloudModel/EngineRun")
+local FrameCodec = require("../../../roblox/Shared/CloudModel/FrameCodec")
 local NestLink = require("./nestlink")
 
 local port = tonumber(process.args[1]) or 8790

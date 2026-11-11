@@ -1,11 +1,11 @@
 -- Times each part of one World step.  luau tools/stormlab/profile_world.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Systems = require("../../roblox/src/stormlab/shared/Sim/Systems")
-local Initiation = require("../../roblox/src/stormlab/shared/Sim/Initiation")
-local Boundaries = require("../../roblox/src/stormlab/shared/Sim/Boundaries")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Systems = require("../../roblox/Shared/StormLab/Sim/Systems")
+local Initiation = require("../../roblox/Shared/StormLab/Sim/Initiation")
+local Boundaries = require("../../roblox/Shared/StormLab/Sim/Boundaries")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local function time(label, f)
 	local t0 = os.clock(); f(); print(string.format("%-28s %8.1f ms", label, (os.clock() - t0) * 1000))
 end

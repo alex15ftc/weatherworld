@@ -1,4 +1,4 @@
-"""Packs every cloud kit piece (roblox/src/shared/Weather/CloudKit/Pieces/*.luau) into one .glb
+"""Packs every cloud kit piece (roblox/Shared/Weather/CloudKit/Pieces/*.luau) into one .glb
 for upload to Roblox as a Model asset: one mesh node per piece, named after it, with its normals
 and its ambient occlusion as vertex colour. Uploaded meshes don't use the EditableMesh memory
 budget the runtime-built pieces need.
@@ -8,7 +8,7 @@ budget the runtime-built pieces need.
 import json, os, re, struct, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
-PIECES = os.path.join(ROOT, 'roblox', 'src', 'shared', 'Weather', 'CloudKit', 'Pieces')
+PIECES = os.path.join(ROOT, 'roblox', 'Shared', 'Weather', 'CloudKit', 'Pieces')
 OUT = os.path.join(ROOT, 'roblox', 'assets', 'cloudkit', 'cloud_kit.glb')
 MASK = os.path.join(ROOT, 'roblox', 'assets', 'cloudkit', 'white_mask.png')
 # --emissive: each piece gets a material with a white emissive texture, so the import gives it a

@@ -1,0 +1,23 @@
+"$CategoryOrder" = 0
+
+[FlySpeed]
+Order = 1
+Title = "Flying speed"
+Description = """
+How fast you fly (F toggles flying), in studs a second.
+"""
+Default = 150
+Min = 50
+Max = 600
+Inc = 10
+
+[FlyBoostSpeed]
+Order = 2
+Title = "Flying speed with Shift"
+Description = """
+How fast you fly while holding Shift, in studs a second.
+"""
+Default = 900
+Min = 200
+Max = 3000
+Inc = 50

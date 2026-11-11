@@ -1,6 +1,6 @@
 // The cloud model for the storm workers: the C core (native/cloudmodel/cloudmodel.c, built to
 // cloudmodel.wasm) with the base state, soundings and field access in JavaScript. A port of
-// roblox/src/cloudlab/shared/Model/CloudModel.luau, Nest.luau and Sounding.luau, which stay the
+// roblox/Shared/CloudModel/CloudModel.luau, Nest.luau and Sounding.luau, which stay the
 // reference and the Studio lab's model (docs/cloudlab/STATUS.md round 15).
 //
 // Fields are read straight from the module's memory, 1-based and laid out like the Luau's:

@@ -7,10 +7,10 @@
 -- forward- or rear-flank air: the junction is the triple point.
 --   luau --codegen tools/stormlab/diag_fronts.luau
 local name = "Supercell"
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local Storm = require("../../roblox/src/stormlab/shared/Sim/Storm")
-local world = World.new(Json.decode(require("../../roblox/src/stormlab/data/" .. name)))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local Storm = require("../../roblox/Shared/StormLab/Sim/Storm")
+local world = World.new(Json.decode(require("../../roblox/Shared/StormLab/Data/" .. name)))
 world:spinUp(600)
 local cp = world.coldPool
 local HALF = 15

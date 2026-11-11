@@ -1,5 +1,5 @@
 // Colours of the issued products, shared by the web developer views and the Roblox place
-// (scripts/export-palettes.mjs writes them into roblox/src/shared/Weather/Palettes.luau).
+// (scripts/export-palettes.mjs writes them into roblox/Shared/Weather/Palettes.luau).
 
 // Colours as the real outlooks use them (the 75% and 90% wind levels, added in 2026, are our own choice).
 export const CATEGORY_COLOURS = { TSTM: '#c1e9c1', MRGN: '#66a366', SLGT: '#ffe066', ENH: '#ffa366', MDT: '#e06666', HIGH: '#ee99ee' };

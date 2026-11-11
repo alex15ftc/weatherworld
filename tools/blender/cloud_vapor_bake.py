@@ -1,5 +1,5 @@
 # Bakes the cloud kit's puffy pieces (tower caps and bodies, anvils, mammatus) into camera-facing
-# "vapor" sprites: each piece's mesh (roblox/src/shared/Weather/CloudKit/Pieces/<name>.luau) is
+# "vapor" sprites: each piece's mesh (roblox/Shared/Weather/CloudKit/Pieces/<name>.luau) is
 # turned into a cloud VOLUME and rendered with Cycles under four suns. Run headless:
 #
 #   blender --background --factory-startup --python tools/blender/cloud_vapor_bake.py -- \
@@ -40,7 +40,7 @@ import numpy as np
 from mathutils import Vector
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PIECES_DIR = os.path.join(ROOT, "roblox", "src", "shared", "Weather", "CloudKit", "Pieces")
+PIECES_DIR = os.path.join(ROOT, "roblox", "Shared", "Weather", "CloudKit", "Pieces")
 DEFAULT_PIECES = ["tower_cap_1", "tower_cap_2", "tower_cap_3", "tower_body_1", "tower_body_2",
                   "anvil_1", "anvil_2", "mammatus_1"]
 M = 0.15                              # margin round the unit box, in unit-box sizes

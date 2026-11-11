@@ -1,6 +1,6 @@
 # Storm frames v2: the weather contract for the billboard renderers
 
-The renderers (`roblox/src/stormlab/client/Render/*`) draw whatever arrives as **storm frames**. The lab's own simulation is one producer. A recording, the engine, or the main game's server are others. Code: `shared/Sim/Frames.luau` (kinds, required fields, encoding, `Frames.check`). Test: `tools/stormlab/test_frames.luau`.
+The renderers (`roblox/Client/Modules/Weather/Render/*`) draw whatever arrives as **storm frames**. The lab's own simulation is one producer. A recording, the engine, or the main game's server are others. Code: `shared/Sim/Frames.luau` (kinds, required fields, encoding, `Frames.check`). Test: `tools/stormlab/test_frames.luau`.
 
 ## Frames
 

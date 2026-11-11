@@ -2,9 +2,9 @@
 -- emitted / landed / evaporated, the strongest storm's precipitation rate, and the field's
 -- strongest reflectivity, every 5 sim minutes.
 --   luau --codegen tools/stormlab/diag_precip_budget.luau
-local Json = require("../../roblox/src/stormlab/shared/Sim/Json")
-local World = require("../../roblox/src/stormlab/shared/Sim/World")
-local data = Json.decode(require("../../roblox/src/stormlab/data/Supercell"))
+local Json = require("../../roblox/Shared/StormLab/Sim/Json")
+local World = require("../../roblox/Shared/StormLab/Sim/World")
+local data = Json.decode(require("../../roblox/Shared/StormLab/Data/Supercell"))
 local world = World.new(data)
 world:spinUp(600)
 local p = world.precip

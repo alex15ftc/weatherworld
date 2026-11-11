@@ -1,7 +1,7 @@
 # How tornado games build storms and tornadoes, and what it means for WeatherWorld on Roblox
 
 *2026-11-10. Web research on Roblox storm games, non-Roblox games, VFX and papers, and the current Roblox toolset,
-checked against what `roblox/src/stormlab/client/Render/` already draws. It follows on from
+checked against what `roblox/Client/Modules/Weather/Render/` already draws. It follows on from
 [VOLUMETRIC-RESEARCH.md](VOLUMETRIC-RESEARCH.md) (2026-11-05), which covers Roblox technique by technique. This file
 adds what other games do, a plan for each structure, and what changed in Roblox since then. Labels: **C** = a developer
 or the docs say so; **I** = inferred from footage or community advice.*

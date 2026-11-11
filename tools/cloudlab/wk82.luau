@@ -1,7 +1,7 @@
 -- Weisman-Klemp (1982) supercell test for the cloud model: speed and physics check.
 --   luau --codegen tools/cloudlab/wk82.luau -a [minutes] [nx] [dx] [dzmin] [dt] [z0] [follow 1/0] [hodoR] [hodoD] [hail 1/0] [n0h]
-local CloudModel = require("../../roblox/src/cloudlab/shared/Model/CloudModel")
-local Sounding = require("../../roblox/src/cloudlab/shared/Model/Sounding")
+local CloudModel = require("../../roblox/Shared/CloudModel/CloudModel")
+local Sounding = require("../../roblox/Shared/CloudModel/Sounding")
 local a = { ... }
 local minutes = tonumber(a[1]) or 30
 local nx = tonumber(a[2]) or 64
