@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WeatherAuthorityRuntime, SIM_HOURS_PER_REAL_MINUTE } from './WeatherAuthorityRuntime.js';
 import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
+import { SynopticRuntime } from './SynopticRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
 import { ShortRangeRuntime } from './ShortRangeRuntime.js';
@@ -52,6 +53,8 @@ if (process.env.WEATHER_STORM_WORKERS !== '0') {
   for (const signal of ['exit', 'SIGINT', 'SIGTERM']) process.once(signal, () => { runtime.stormWorkers?.close(); if (signal !== 'exit') process.exit(0); });
 }
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine, simHoursPerRealMinute: SIM_HOURS_PER_REAL_MINUTE });
+// The whole large-scale model with the map's place in it, for the synoptic page (SynopticRuntime.js).
+const synoptic = new SynopticRuntime({ atmosphere: runtime.engine });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
 const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined, file: statePath ? path.join(path.dirname(statePath), 'outlooks.bin') : null });
@@ -91,7 +94,7 @@ function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace
 function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null}; }
 // (In turns: requests are answered between the storm ticks and atmosphere steps of a catch-up.)
 setInterval(async () => {
-  try { if (await runtime.advanceOnTimerInTurns()) { surface.capture(); warnings?.update(); runtime.prewarmRadar(); } }
+  try { if (await runtime.advanceOnTimerInTurns()) { surface.capture(); synoptic.capture(); warnings?.update(); runtime.prewarmRadar(); } }
   catch (error) { console.error('[weather-authority] advance failed:', error); }
 }, ADVANCE_POLL_MS).unref();
 
@@ -103,6 +106,8 @@ const server = http.createServer(async (req, res) => {
     if (/^\/outlook(\/day[123])?\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'outlook.html'), res);
     // The chaser network page: one page, its view set by the viewer's role (ChaserArchive.js).
     if (/^\/chasers\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'chasers.html'), res);
+    // The synoptic page: the whole large-scale model and the map's place in it (SynopticRuntime.js).
+    if (/^\/synoptic\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'synoptic.html'), res);
     // A watch's or a mesoscale discussion's page (ProductArchive.js).
     if (/^\/(watch|md)\/\d+\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'product.html'), res);
     return serveStatic(url.pathname, res);
@@ -117,10 +122,16 @@ async function serveApi(url, req, res) {
   // WEATHER_ADMIN_KEY in x-admin-key, or, with no key set (a local engine), a request from this machine.
   if (url.pathname.startsWith('/api/authority/') && !isAdmin(req)) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
   if (url.pathname === '/api/authority/reset' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.reset(body.seed);return sendJson(req,res,200,value,{cacheable:false,trace}); }
-  if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours,()=>surface.capture());return sendJson(req,res,200,value,{cacheable:false,trace}); }
+  if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours,()=>{ surface.capture(); synoptic.capture(); });return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/seek' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.seek(body.validHourUtc);return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/clock' && req.method === 'POST') { const body=await readJsonBody(req); return sendJson(req,res,200,runtime.setAutoAdvance(body.enabled),{cacheable:false,trace}); }
   if (url.pathname.startsWith('/api/atmosphere/') && surface.atmosphere !== runtime.engine) surface.attach(runtime.engine);
+  if (url.pathname.startsWith('/api/synoptic/')) {
+    if (synoptic.atmosphere !== runtime.engine) synoptic.attach(runtime.engine);
+    if (url.pathname === '/api/synoptic/frame') return sendJson(req, res, 200, synoptic.summary(url.searchParams.get('frame')), { cacheable: false, trace });
+    if (url.pathname === '/api/synoptic/field') { const field = synoptic.field(url.searchParams.get('key') ?? '', url.searchParams.get('frame')); return sendJson(req, res, field ? 200 : 404, field ?? { error: 'Unknown field' }, { cacheable: Boolean(field), trace }); }
+    return sendJson(req, res, 404, { error: 'Unknown API endpoint' }, { cacheable: false, trace });
+  }
   if (url.pathname === '/api/atmosphere/surface') return sendJson(req, res, 200, { ...surface.analysis(url.searchParams.get('frame')), clockRunning: runtime.autoAdvance }, { cacheable: false, trace });
   if (url.pathname === '/api/atmosphere/parameter') { const field = surface.parameter(url.searchParams.get('key'), url.searchParams.get('frame')); return sendJson(req, res, field ? 200 : 404, field ?? { error: 'Unknown parameter' }, { cacheable: Boolean(field), trace }); }
   // The short range model's runs (ShortRangeRuntime.js): the list; a run's description (?init=, the newest

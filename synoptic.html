@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Synoptic · Fake Plains Weather</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+  <style>
+    body { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100vh; overflow: hidden; }
+    .syn-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; }
+    .syn-side label { display: flex; align-items: center; justify-content: flex-start; gap: 8px; cursor: pointer; text-align: left; font-weight: 600; }
+    .syn-side label input { flex: none; width: auto; margin: 0; }
+    .syn-side select, .syn-side button { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
+    .syn-side button { cursor: pointer; font-weight: 700; }
+    .syn-side button:hover { border-color: var(--accent); }
+    .syn-side button.on { background: #2563eb; border-color: #2563eb; }
+    .syn-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
+    .syn-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
+    .syn-card strong { font-size: 19px; }
+    .syn-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .syn-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .syn-presets button { font-size: 12.5px; padding: 6px 6px; text-align: left; }
+    .syn-pick { display: grid; grid-template-columns: 64px 1fr; gap: 6px 8px; align-items: center; font-size: 12.5px; color: var(--muted); }
+    #legendBar { width: 100%; height: 12px; border-radius: 3px; display: block; }
+    #legendTicks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+    .syn-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12.5px; }
+    .syn-facts span { color: var(--muted); } .syn-facts b { text-align: right; font-weight: 600; }
+    .syn-map { position: relative; min-width: 0; min-height: 0; padding-top: 58px; }
+    #synCanvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+    #synCanvas.dragging { cursor: grabbing; }
+    #synTip { position: absolute; pointer-events: none; background: rgba(15, 23, 42, .95); border: 1px solid #374151; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; white-space: nowrap; display: none; z-index: 5; line-height: 1.45; }
+    .syn-zoom { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 6px; }
+    .syn-zoom button { background: rgba(20, 27, 36, .92); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-weight: 700; cursor: pointer; }
+    .syn-zoom button:hover { border-color: var(--accent); }
+    @media (max-width: 900px) {
+      body { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
+      .product-nav { order: 0; }
+      .syn-map { order: 1; padding: 8px 8px 0; width: 100%; height: 70vh; flex: none; }
+      .syn-side { order: 2; padding: 16px; border-right: 0; overflow: visible; }
+      .syn-row button, .syn-presets button { padding: 10px 6px; }
+      #synTip { white-space: normal; max-width: calc(100vw - 32px); }
+    }
+  </style>
+</head>
+<body data-page="synoptic">
+<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="synoptic" class="active" href="./synoptic.html">Synoptic</a><a data-nav-page="models" href="./models.html">Models</a><a href="/outlook/day1">Outlooks</a><a href="/chasers">Chasers</a><a class="perf-link" href="./performance.html">Performance</a></nav>
+  <aside class="panel syn-side">
+    <div class="syn-card">
+      <span>Synoptic analysis · whole large-scale model</span>
+      <strong id="synTime">—</strong>
+      <small class="muted" id="synStatus">Connecting…</small>
+      <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Analysis time" />
+      <div class="syn-row">
+        <button id="framePrev" title="Half an hour earlier">◀</button>
+        <button id="framePlay" title="Loop the last hours">Loop</button>
+        <button id="frameNext" title="Half an hour later">▶</button>
+        <button id="frameLatest" title="Follow the current time" class="on">Now</button>
+      </div>
+    </div>
+    <div class="syn-card">
+      <span>Charts</span>
+      <div class="syn-presets" id="presets"></div>
+    </div>
+    <div class="syn-card">
+      <span>Layers</span>
+      <div class="syn-pick">
+        <span>Shading</span><select id="shadeField" aria-label="Shaded field"></select>
+        <span>Contours</span><select id="contourField" aria-label="Contoured field"></select>
+        <span>Barbs</span><select id="windField" aria-label="Wind barbs"></select>
+      </div>
+      <canvas id="legendBar" width="280" height="12"></canvas>
+      <div id="legendTicks"></div>
+      <small class="muted" id="legendNote"></small>
+    </div>
+    <div class="syn-card">
+      <span>Show</span>
+      <label><input type="checkbox" id="showMap" checked /> The game map and its drift</label>
+      <label><input type="checkbox" id="showCentres" checked /> Highs and lows</label>
+      <label><input type="checkbox" id="showGrid" checked /> 1,000 km grid</label>
+    </div>
+    <div class="syn-card">
+      <span>The map in the model</span>
+      <div class="syn-facts" id="synFacts"><span>Waiting…</span><b></b></div>
+      <small class="muted">The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km north-south,
+        with the jet stream's core along its middle. The game map (the box) reads its weather from wherever it sits and drifts along the wave train to
+        meet the day's weather. These are the large-scale fields: the map's own analysis adds daytime heating, the lee trough,
+        cold pools and storms. <a href="./index.html">Open the map's mesoanalysis</a>.</small>
+    </div>
+  </aside>
+  <main class="syn-map">
+    <canvas id="synCanvas"></canvas>
+    <div id="synTip"></div>
+    <div class="syn-zoom">
+      <button id="zoomIn" title="Zoom in">+</button>
+      <button id="zoomOut" title="Zoom out">−</button>
+      <button id="zoomMap" title="Centre on the game map, zoomed in">Map</button>
+      <button id="zoomAll" title="The whole model, centred on the map">Whole model</button>
+    </div>
+  </main>
+  <script type="module" src="./js/pages/synopticPage.js"></script>
+</body>
+</html>
