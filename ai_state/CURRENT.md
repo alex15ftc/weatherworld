@@ -34,14 +34,17 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
   warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
   warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
-- Chaser network (2026-11-12, branch `chaser-network`, not committed or deployed): one page `/chasers`
+- Chaser network (2026-11-12, on `main`, engine deployed; place "plains" published as version 493): one page `/chasers`
   (`chasers.html`) whose view comes from the viewer's role (`server/ChaserArchive.js` roleOf): public sees dots and
   unnamed day tracks; admin (the `WEATHER_ADMIN_KEY`, entered on the page) sees names, user ids, servers and a speed
   check that flags legs above a set mph (teleports). Live dots plus a loop of each world day with that day's storm
   reports; tracks saved in `chasers.bin`, 24 world days kept. The game servers now add UserId, DisplayName and
   Name to their player reports (`LiveStormsService`). Checked with `tests/chaser-archive.mjs` and a local engine fed
   by two fake servers (both roles, phone width). An in-game per-server layer on the M map (names, this server
-  only: `ChaserNetService`, `Layers/Chasers.luau`) is not yet seen in Studio.
+  only: `ChaserNetService`, `Layers/Chasers.luau`) is not yet seen running. Version 493 is also the first publish of the
+  boilerplate place: the live place plus the Rojo build and a fresh map export, old scripts removed (merged with
+  Lune; the version before is saved in `roblox/build/published-before-chasers.rbxl`, not in git). Publishing through
+  romcp fails with 409 while Studio has the place open (Team Create): close Studio first.
 - World clock locked to real UTC (2026-11-11, deployed from `75ad4ac`; the live world came up in step): 8 world days
   to each real day, and every public label names the day "11/11/26 Day 3" instead of the world's own count
   (`js/forecast/calendar.js`; decision in `TECH_DECISIONS.md`). Day 3 outlooks are categorical only, with no High
@@ -77,8 +80,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).
 2. Foliage: after step 1 brings real chunks in, look at the billboards (view order) and a storm's breaks; after
    any generator change, re-upload through Studio's MCP and update `Foliage/Assets.luau`.
-3. Chaser network (branch `chaser-network`): commit when asked, deploy the engine, open `/chasers` as public and
-   admin; in Studio, turn on the M map's Chasers layer and check dots, names and trails (`ChaserNet.Ready` handshake).
+3. Chaser network: open `/chasers` on the hosted engine as public and admin; join "plains" (version 493, the first
+   boilerplate publish) and check it boots and storms arrive; then turn on the M map's Chasers layer and check dots, names and trails (`ChaserNet.Ready` handshake).
 4. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
 
 ## Blockers

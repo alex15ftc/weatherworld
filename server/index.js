@@ -253,10 +253,12 @@ function serveStatic(pathname, res) {
   return sendFile(filename, res);
 }
 function sendFile(filename, res) {
+  // (a page missing from the image is a 404, never an unhandled stream error that takes the engine down)
+  if (!fs.existsSync(filename)) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('Not found'); }
   const ext = path.extname(filename).toLowerCase();
   const types = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.svg':'image/svg+xml' };
   res.writeHead(200, { 'content-type': types[ext] ?? 'application/octet-stream', 'cache-control': (ext === '.html' || ext === '.js' || ext === '.css') ? 'no-cache' : 'public, max-age=3600' });
-  fs.createReadStream(filename).pipe(res);
+  fs.createReadStream(filename).on('error', () => res.destroy()).pipe(res);
 }
 
 function sendBinary(req,res,status,body,contentType,{trace=null}={}){
