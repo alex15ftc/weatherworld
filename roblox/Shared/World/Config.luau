@@ -486,8 +486,14 @@ Config.TORNADO_ART = {
 -- is needed), or a recorded replay (Workspace attribute StormSource = "replay";
 -- scripts/export-storm-replay.mjs). The key, if the server wants one, is the experience secret
 -- "weather_feed_key".
--- The hosted engine (Railway, docs/HOSTING.md); a Workspace WeatherFeedUrl attribute still overrides it.
+-- The hosted engine (Railway, docs/HOSTING.md). A Workspace WeatherFeedUrl attribute overrides it in
+-- Studio only: a live server always takes the hosted engine, so a URL left in the place (an old
+-- tunnel) cannot cut the live game off its weather.
 Config.WEATHER_FEED_URL = "https://weatherworld.up.railway.app"
+function Config.feedUrl(): string
+	local override = if game:GetService("RunService"):IsStudio() then workspace:GetAttribute("WeatherFeedUrl") :: string? else nil
+	return (string.gsub(override or Config.WEATHER_FEED_URL, "/+$", ""))
+end
 Config.WEATHER_POLL_SECONDS = 5
 -- The products (outlooks, and later radar, warnings...): the manifest is polled this often, on
 -- the same URL and key (ProductFeedService). Workspace attribute ProductSource = "snapshot"

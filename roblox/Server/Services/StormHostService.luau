@@ -466,7 +466,7 @@ end
 
 function StormHostService.Start()
 	local source = workspace:GetAttribute("StormSource")
-	url = string.gsub((workspace:GetAttribute("WeatherFeedUrl") :: string?) or Config.WEATHER_FEED_URL, "/+$", "")
+	url = Config.feedUrl()
 	pcall(function()
 		key = HttpService:GetSecret("weather_feed_key")
 	end)

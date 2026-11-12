@@ -344,7 +344,7 @@ end
 
 function LiveStormsService.Start()
 	if workspace:GetAttribute("LiveStorms") ~= true then return end
-	url = string.gsub((workspace:GetAttribute("WeatherFeedUrl") :: string?) or Config.WEATHER_FEED_URL, "/+$", "")
+	url = Config.feedUrl()
 	if url == "" then
 		status("off: no engine (WeatherFeedUrl)")
 		return

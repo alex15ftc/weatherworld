@@ -45,6 +45,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   boilerplate place: the live place plus the Rojo build and a fresh map export, old scripts removed (merged with
   Lune; the version before is saved in `roblox/build/published-before-chasers.rbxl`, not in git). Publishing through
   romcp fails with 409 while Studio has the place open (Team Create): close Studio first.
+- Live servers take the hosted engine (2026-11-12): the place carried a `WeatherFeedUrl` attribute pointing at a dead
+  Cloudflare tunnel, which overrode `Config.WEATHER_FEED_URL`. `Config.feedUrl()` now honours that attribute in Studio
+  only, and the attribute is cleared in the published place. The engine wants the experience secret
+  `weather_feed_key` (= Railway's `WEATHER_GAME_KEY`; 401 without it); whether it is set in Creator Hub is not
+  checked (no API for secrets): a joined server's requests show on `/api/performance` if it is.
 - World clock locked to real UTC (2026-11-11, deployed from `75ad4ac`; the live world came up in step): 8 world days
   to each real day, and every public label names the day "11/11/26 Day 3" instead of the world's own count
   (`js/forecast/calendar.js`; decision in `TECH_DECISIONS.md`). Day 3 outlooks are categorical only, with no High
