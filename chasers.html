@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chaser Network</title>
+  <!-- The chaser network (server/ChaserArchive.js): every server's chasers, live and through each world
+       day. One page; what it shows comes from the viewer's role, which the server decides on every
+       request: "public" sees dots and unnamed tracks, "admin" (the admin key) sees names, user ids,
+       servers and speed checks. -->
+  <style>
+    :root { color-scheme: dark; --bg: #0b1017; --panel: #141b24; --panel-2: #1b2531; --line: #2c3948; --text: #f4f7fb; --muted: #96a5b7; --accent: #2563eb; --warn: #ef4444; --dot: #fbbf24; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    nav.product-nav { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #0f172a; }
+    nav.product-nav a { color: #cbd5e1; text-decoration: none; padding: 7px 12px; border-radius: 8px; font-size: .85rem; font-weight: 700; }
+    nav.product-nav a:hover, nav.product-nav a.on { background: var(--accent); color: #fff; }
+    main { max-width: 1300px; margin: 0 auto; padding: 16px 16px 40px; }
+    header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; justify-content: space-between; }
+    header h1 { margin: 0; font-size: 1.5rem; }
+    .muted { color: var(--muted); }
+    .role { padding: 3px 10px; border-radius: 6px; font-size: .78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; background: var(--panel-2); border: 1px solid var(--line); }
+    .role.admin { background: #7f1d1d; border-color: #b91c1c; }
+    button, select, input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+    button { cursor: pointer; font-weight: 700; }
+    button.on { background: var(--accent); border-color: var(--accent); }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+    .mapbox { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; aspect-ratio: 1 / 1; touch-action: none; width: min(100%, max(320px, calc(100vh - 290px))); margin: 0 auto; }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    .overlay { position: absolute; left: 10px; top: 10px; padding: 4px 10px; border-radius: 6px; background: rgba(11, 16, 23, .8); font-weight: 700; font-size: .9rem; pointer-events: none; }
+    .zoom { position: absolute; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 4px; }
+    .zoom button { width: 34px; padding: 4px 0; }
+    aside { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; max-height: 80vh; overflow: auto; }
+    aside h2 { margin: 0 0 8px; font-size: 1rem; }
+    .row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+    .row:hover, .row.sel { background: var(--panel-2); }
+    .row .flag { color: var(--warn); font-weight: 800; }
+    .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .timebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+    .timebar input[type=range] { flex: 1 1 240px; padding: 0; }
+    .key { display: flex; gap: 14px; flex-wrap: wrap; font-size: .85rem; margin-top: 8px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<nav class="product-nav" aria-label="Weather products">
+  <a href="/outlook/day1">Day 1</a><a href="/outlook/day2">Day 2</a><a href="/outlook/day3">Day 3</a>
+  <a href="/chasers" class="on">Chasers</a><a href="/index.html">Live analysis</a><a href="/models.html">Models</a>
+</nav>
+<main>
+  <header>
+    <div>
+      <h1>Chaser Network</h1>
+      <div class="muted" id="sub">Every chaser in every server.</div>
+    </div>
+    <div class="bar" style="margin:0">
+      <span class="role" id="role">public</span>
+      <button id="signin">Admin sign-in</button>
+    </div>
+  </header>
+
+  <div class="bar">
+    <button id="modeLive" class="on">Live</button>
+    <button id="modeDay">Day loop</button>
+    <select id="daySel" hidden aria-label="World day"></select>
+    <label id="threshBox" hidden class="muted">Flag above <input id="thresh" type="number" min="10" step="10" value="120" style="width:80px"> mph</label>
+  </div>
+
+  <div class="layout">
+    <div>
+      <div class="mapbox" id="mapbox">
+        <canvas id="map"></canvas>
+        <div class="overlay" id="status">Loading…</div>
+        <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button><button id="zreset" aria-label="Reset view">⤢</button></div>
+      </div>
+      <div class="timebar" id="timebar" hidden>
+        <button id="play">▶</button>
+        <select id="speed" aria-label="Loop speed">
+          <option value="10">10 min/s</option><option value="30" selected>30 min/s</option><option value="60">1 h/s</option><option value="180">3 h/s</option>
+        </select>
+        <select id="trail" aria-label="Trail length">
+          <option value="30">30 min trail</option><option value="120" selected>2 h trail</option><option value="1440">Whole day</option>
+        </select>
+        <input id="time" type="range" min="0" max="1440" step="1" value="0" aria-label="Time of day" />
+        <span id="clock" class="muted" style="min-width:90px">00:00 UTC</span>
+      </div>
+      <div class="key" id="key" hidden>
+        <span><span class="swatch" style="background:#ef4444"></span>Tornado report</span>
+        <span><span class="swatch" style="background:#3b82f6"></span>Wind report</span>
+        <span><span class="swatch" style="background:#22c55e"></span>Hail report</span>
+      </div>
+    </div>
+    <aside id="side">
+      <h2 id="sideTitle">Chasers</h2>
+      <div id="list" class="muted">—</div>
+    </aside>
+  </div>
+</main>
+<script type="module">
+const $ = id => document.getElementById(id);
+const KEY = 'wwAdminKey';
+const store = { get() { try { return sessionStorage.getItem(KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(KEY, v) : sessionStorage.removeItem(KEY); } catch {} } };
+let role = 'public', mode = 'live', base = null, live = null, day = null, selected = null;
+const view = { x: 0, y: 0, size: 500 };          // map miles shown (square)
+const loop = { t: 0, playing: false, last: 0 };
+
+async function api(path) {
+  const key = store.get(), res = await fetch(path, { headers: key ? { 'x-admin-key': key } : {}, cache: 'no-store' });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+function setRole(r) {
+  role = r;
+  $('role').textContent = r; $('role').classList.toggle('admin', r === 'admin');
+  $('signin').textContent = store.get() ? 'Sign out' : 'Admin sign-in';
+  $('threshBox').hidden = !(r === 'admin' && mode === 'day');
+  $('sub').textContent = r === 'admin' ? 'Admin view: names, user ids, servers and speed checks.' : 'Every chaser in every server.';
+}
+$('signin').onclick = async () => {
+  if (store.get()) { store.set(null); setRole((await api('/api/chasers/role')).role); return refresh(); }
+  const key = prompt('Admin key');
+  if (!key) return;
+  store.set(key);
+  const { role: r } = await api('/api/chasers/role');
+  if (r !== 'admin') { store.set(null); alert('That key was not accepted.'); }
+  setRole(r); refresh();
+};
+
+// ---- map ----
+const canvas = $('map'), ctx = canvas.getContext('2d');
+function fit() { const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1; canvas.width = Math.round(r.width * d); canvas.height = Math.round(r.height * d); draw(); }
+const sx = x => (x - view.x) / view.size * canvas.width, sy = y => (y - view.y) / view.size * canvas.height;
+function zoom(f, cx = view.x + view.size / 2, cy = view.y + view.size / 2) {
+  const size = Math.min(500, Math.max(8, view.size * f));
+  view.x = cx - (cx - view.x) * size / view.size; view.y = cy - (cy - view.y) * size / view.size; view.size = size; draw();
+}
+$('zin').onclick = () => zoom(0.6); $('zout').onclick = () => zoom(1 / 0.6); $('zreset').onclick = () => { Object.assign(view, { x: 0, y: 0, size: base?.miles ?? 500 }); draw(); };
+canvas.addEventListener('wheel', e => { e.preventDefault(); const r = canvas.getBoundingClientRect(); zoom(e.deltaY < 0 ? 0.8 : 1.25, view.x + (e.clientX - r.left) / r.width * view.size, view.y + (e.clientY - r.top) / r.height * view.size); }, { passive: false });
+let drag = null;
+canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => { if (!drag) return; const r = canvas.getBoundingClientRect(), k = view.size / r.width; if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) drag.moved = true; view.x = drag.vx - (e.clientX - drag.x) * k; view.y = drag.vy - (e.clientY - drag.y) * k; draw(); });
+canvas.addEventListener('pointerup', () => { drag = null; });
+new ResizeObserver(fit).observe($('mapbox'));
+
+const PALETTE = ['#f59e0b', '#38bdf8', '#a78bfa', '#f472b6', '#34d399', '#fb7185', '#facc15', '#60a5fa', '#c084fc', '#2dd4bf'];
+const colourOf = k => PALETTE[Math.abs([...String(k)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)) % PALETTE.length];
+const REPORT = { tornado: '#ef4444', wind: '#3b82f6', hail: '#22c55e' };
+
+function drawBase() {
+  const d = devicePixelRatio || 1;
+  ctx.fillStyle = '#0e151e'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const m = base?.miles ?? 500;
+  ctx.fillStyle = '#18222e'; ctx.fillRect(sx(0), sy(0), sx(m) - sx(0), sy(m) - sy(0));
+  if (!base) return;
+  ctx.strokeStyle = 'rgba(150,165,183,.28)'; ctx.lineWidth = d;
+  ctx.beginPath();
+  for (const c of base.counties) for (const ring of c.rings) { ring.forEach(([x, y], i) => (i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y)))); ctx.closePath(); }
+  ctx.stroke();
+  const n = view.size > 300 ? 12 : view.size > 120 ? 30 : 80;
+  ctx.font = `${11 * d}px system-ui, sans-serif`; ctx.fillStyle = 'rgba(203,213,225,.7)';
+  for (const t of base.towns.slice(0, n)) {
+    if (t.x < view.x || t.x > view.x + view.size || t.y < view.y || t.y > view.y + view.size) continue;
+    ctx.fillRect(sx(t.x) - 1.5 * d, sy(t.y) - 1.5 * d, 3 * d, 3 * d); ctx.fillText(t.name, sx(t.x) + 4 * d, sy(t.y) - 3 * d);
+  }
+}
+function dot(x, y, colour, r = 4, ring = false) {
+  const d = devicePixelRatio || 1;
+  ctx.beginPath(); ctx.arc(sx(x), sy(y), r * d, 0, Math.PI * 2); ctx.fillStyle = colour; ctx.fill();
+  ctx.lineWidth = (ring ? 2.5 : 1.2) * d; ctx.strokeStyle = ring ? '#fff' : 'rgba(0,0,0,.6)'; ctx.stroke();
+}
+function label(x, y, text) {
+  const d = devicePixelRatio || 1;
+  ctx.font = `600 ${12 * d}px system-ui, sans-serif`; ctx.lineWidth = 3 * d; ctx.strokeStyle = 'rgba(0,0,0,.75)';
+  ctx.strokeText(text, sx(x) + 7 * d, sy(y) + 4 * d); ctx.fillStyle = '#fff'; ctx.fillText(text, sx(x) + 7 * d, sy(y) + 4 * d);
+}
+
+function draw() {
+  if (!canvas.width) return;
+  drawBase();
+  if (mode === 'live') drawLive(); else drawDay();
+}
+
+// ---- live ----
+function drawLive() {
+  if (!live) return;
+  if (live.role === 'admin') {
+    for (const p of live.players) { const k = p.userId ?? p.name; dot(p.x, p.y, colourOf(live.servers[p.server]), 5, k === selected); label(p.x, p.y, p.name ?? p.user ?? '?'); }
+  } else for (const [x, y] of live.dots) dot(x, y, getComputedStyle(document.documentElement).getPropertyValue('--dot').trim(), 4.5);
+  $('status').textContent = `${live.count} chaser${live.count === 1 ? '' : 's'} live`;
+}
+function listLive() {
+  if (!live) return;
+  if (live.role !== 'admin') { $('sideTitle').textContent = 'Live'; $('list').innerHTML = `<p>${live.count} chasers on the road right now, across every server.</p><p>Names are shown only inside each game server.</p>`; return; }
+  $('sideTitle').textContent = `Live · ${live.servers.length} server${live.servers.length === 1 ? '' : 's'}`;
+  $('list').innerHTML = '';
+  for (const p of [...live.players].sort((a, b) => a.server - b.server || String(a.name).localeCompare(String(b.name)))) {
+    const el = document.createElement('div'), k = p.userId ?? p.name;
+    el.className = `row${k === selected ? ' sel' : ''}`;
+    el.innerHTML = `<span><span class="swatch" style="background:${colourOf(live.servers[p.server])}"></span>${esc(p.name ?? '?')} <span class="muted">@${esc(p.user ?? '?')}</span></span><span class="muted">${esc(live.servers[p.server])}</span>`;
+    el.title = `UserId ${p.userId ?? '—'}`;
+    el.onclick = () => { selected = k; Object.assign(view, { size: Math.min(view.size, 80) }); view.x = p.x - view.size / 2; view.y = p.y - view.size / 2; listLive(); draw(); };
+    $('list').append(el);
+  }
+}
+const esc = s => String(s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
+
+// ---- day loop ----
+// Each track's points as objects, with the speed (world mph) of the leg ending there.
+function prepareDay(d) {
+  const S = d.stride;
+  d.tracks.forEach(t => {
+    t.key = t.userId ?? t.id; t.colour = colourOf(t.key); t.pts = [];
+    let maxMph = 0, flags = 0;
+    for (let k = 0; k < t.points.length; k += S) {
+      const p = { t: t.points[k], x: t.points[k + 1], y: t.points[k + 2], s: S === 4 ? t.points[k + 3] : 0, mph: 0, cut: false };
+      const q = t.pts[t.pts.length - 1];
+      if (q) {
+        const dt = (p.t - q.t) / 60;
+        // A server change or a long gap is not a leg (the chaser joined elsewhere, or was away).
+        p.cut = p.s !== q.s || dt > 0.25;
+        if (!p.cut && dt > 0) { p.mph = Math.hypot(p.x - q.x, p.y - q.y) / dt; maxMph = Math.max(maxMph, p.mph); }
+      }
+      t.pts.push(p);
+    }
+    t.maxMph = maxMph; t.flags = flags;
+  });
+}
+function countFlags() { const lim = Number($('thresh').value) || Infinity; for (const t of day?.tracks ?? []) t.flags = t.pts.filter(p => p.mph > lim).length; }
+function drawDay() {
+  if (!day) { $('status').textContent = 'No chaser days yet'; return; }
+  const d = devicePixelRatio || 1, now = loop.t, from = now - Number($('trail').value), admin = day.role === 'admin', lim = admin ? Number($('thresh').value) || Infinity : Infinity;
+  for (const r of day.reports) {
+    const m = (r.hourUtc - day.startHourUtc) * 60;
+    if (m > now) break;
+    ctx.globalAlpha = Math.max(0.35, 1 - (now - m) / 720); dot(r.x, r.y, REPORT[r.type] ?? '#999', 3.5); ctx.globalAlpha = 1;
+  }
+  let shown = 0;
+  for (const t of day.tracks) {
+    const solo = selected && t.key !== selected;
+    let head = null;
+    ctx.lineCap = 'round';
+    for (let k = 1; k < t.pts.length; k++) {
+      const p = t.pts[k], q = t.pts[k - 1];
+      if (p.t > now) break;
+      if (p.t < from || p.cut) continue;
+      const age = (now - p.t) / Math.max(1, now - from);
+      ctx.globalAlpha = (solo ? 0.15 : 1) * (0.15 + 0.85 * (1 - age));
+      ctx.strokeStyle = p.mph > lim ? '#ef4444' : (admin ? t.colour : '#fbbf24'); ctx.lineWidth = (p.mph > lim ? 3.5 : 2) * d;
+      ctx.beginPath(); ctx.moveTo(sx(q.x), sy(q.y)); ctx.lineTo(sx(p.x), sy(p.y)); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (const p of t.pts) { if (p.t > now) break; head = p; }
+    // A chaser is shown while seen in the last 15 minutes of the loop.
+    if (head && now - head.t <= 15) { shown++; ctx.globalAlpha = solo ? 0.3 : 1; dot(head.x, head.y, admin ? t.colour : '#fbbf24', 4.5, t.key === selected); if (admin && !solo) label(head.x, head.y, t.name ?? t.user ?? '?'); ctx.globalAlpha = 1; }
+  }
+  const hh = Math.floor(now / 60), mm = Math.floor(now % 60);
+  $('clock').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} UTC`;
+  $('status').textContent = `${day.label} · ${shown} on the road`;
+}
+function listDay() {
+  if (!day) { $('list').textContent = 'No days recorded yet.'; return; }
+  const admin = day.role === 'admin';
+  $('sideTitle').textContent = `${day.label} · ${day.tracks.length} chaser${day.tracks.length === 1 ? '' : 's'}`;
+  if (!admin) { $('list').innerHTML = `<p>Where every chaser drove on ${esc(day.label)}, with the day's storm reports. Press play, or drag the time bar.</p>`; return; }
+  countFlags();
+  $('list').innerHTML = '';
+  for (const t of [...day.tracks].sort((a, b) => b.flags - a.flags || b.maxMph - a.maxMph)) {
+    const el = document.createElement('div');
+    el.className = `row${t.key === selected ? ' sel' : ''}`;
+    el.innerHTML = `<span><span class="swatch" style="background:${t.colour}"></span>${esc(t.name ?? '?')} <span class="muted">@${esc(t.user ?? '?')}</span></span><span>${t.flags ? `<span class="flag">${t.flags}⚑</span> ` : ''}<span class="muted">${Math.round(t.maxMph)} mph</span></span>`;
+    el.title = `UserId ${t.userId} · ${t.pts.length} points · top leg ${Math.round(t.maxMph)} mph (world)`;
+    el.onclick = () => { selected = selected === t.key ? null : t.key; listDay(); draw(); };
+    $('list').append(el);
+  }
+}
+$('thresh').oninput = () => { listDay(); draw(); };
+$('trail').onchange = draw;
+$('time').oninput = () => { loop.t = Number($('time').value); draw(); };
+$('play').onclick = () => { loop.playing = !loop.playing; $('play').textContent = loop.playing ? '❚❚' : '▶'; if (loop.playing) { if (loop.t >= 1440) loop.t = 0; loop.last = performance.now(); requestAnimationFrame(tick); } };
+function tick(now) {
+  if (!loop.playing || mode !== 'day') return;
+  loop.t += (now - loop.last) / 1000 * Number($('speed').value); loop.last = now;
+  const end = day?.endMinute ?? 1440;
+  if (loop.t >= end) { loop.t = 0; }
+  $('time').value = loop.t; draw(); requestAnimationFrame(tick);
+}
+
+async function loadDays() {
+  const list = await api('/api/chasers/days');
+  setRole(list.role);
+  $('daySel').innerHTML = list.days.map(d => `<option value="${d.day}">${esc(d.label)}${d.day === list.currentDay ? ' (now)' : ''} · ${d.chasers}</option>`).join('') || '<option value="">No days yet</option>';
+  return list;
+}
+async function loadDay(n) {
+  if (n === '' || n == null) { day = null; listDay(); draw(); return; }
+  day = await api(`/api/chasers/day?day=${n}`);
+  setRole(day.role);
+  prepareDay(day);
+  day.endMinute = Math.max(60, ...day.tracks.map(t => t.pts.at(-1)?.t ?? 0)) + 10;
+  loop.t = Math.min(loop.t, day.endMinute); $('time').max = Math.ceil(Math.min(1440, day.endMinute)); $('time').value = loop.t;
+  selected = null; listDay(); draw();
+}
+$('daySel').onchange = () => loadDay($('daySel').value);
+
+function setMode(m) {
+  mode = m; selected = null;
+  $('modeLive').classList.toggle('on', m === 'live'); $('modeDay').classList.toggle('on', m === 'day');
+  $('daySel').hidden = $('timebar').hidden = $('key').hidden = m !== 'day';
+  setRole(role);
+  if (m === 'day') { loop.playing = false; $('play').textContent = '▶'; loadDays().then(() => loadDay($('daySel').value)).catch(e => { $('status').textContent = `Could not load days (${e.message})`; }); }
+  else refresh();
+}
+$('modeLive').onclick = () => setMode('live'); $('modeDay').onclick = () => setMode('day');
+
+async function refresh() {
+  if (mode === 'day') return setMode('day');
+  try { live = await api('/api/chasers/live'); setRole(live.role); listLive(); draw(); }
+  catch (e) { $('status').textContent = `Could not reach the engine (${e.message})`; }
+}
+setInterval(() => { if (mode === 'live' && !document.hidden) refresh(); }, 5000);
+
+api('/api/map/counties').then(b => { base = b; base.towns.sort((a, c) => c.population - a.population); view.size = b.miles; draw(); }).catch(() => {});
+api('/api/chasers/role').then(r => setRole(r.role)).catch(() => {});
+fit(); refresh();
+</script>
+</body>
+</html>

@@ -37,7 +37,7 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
 | Variable | Value |
 |---|---|
 | `WEATHER_GAME_KEY` | key for `/api/game/v1/*` (header `x-api-key`); Roblox secret `weather_feed_key` |
-| `WEATHER_ADMIN_KEY` | key for `/api/authority/*` (header `x-admin-key`): reset, advance, seek, clock |
+| `WEATHER_ADMIN_KEY` | key for `/api/authority/*` (header `x-admin-key`): reset, advance, seek, clock; also the admin role on `/chasers` (names, servers; unset, only this machine is admin) |
 | `WEATHER_KEEP_WORLD` | `on`: carry the world over engine-code changes |
 | `WEATHER_CLOCK_LOCK` | (unset: on) the world's clock follows real UTC, 8 world days a real day, so products name days "11/11/26 Day 3" (`js/forecast/calendar.js`); after a restart the world races to catch up (under a world day); `off`: the free-running clock |
 | `WEATHER_STATE_PATH`, `WEATHER_SPINUP_CACHE`, `WEATHER_DAY_REVIEW_DIR` | under `/data` |

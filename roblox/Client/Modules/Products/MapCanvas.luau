@@ -161,10 +161,17 @@ local labelLayer: Frame
 local gridLayer: Frame -- the byte grids (satellite, radar mosaics), under the raster image
 local readout: TextLabel? = nil
 local hoverAt: Vector2? = nil -- the map point (miles) under the cursor
-local markers: { [Player]: Frame } = {}
+local markers: { [Player]: Marker } = {}
 local labels: { TextLabel } = {}
 local overlay: Overlay? = nil
 local visible = false
+-- Where to mark players whose characters are not streamed in, and whether to name them (a layer
+-- sets it while it is on: the Chasers layer).
+export type MarkerSource = {
+	position: (Player) -> (number?, number?, number?), -- map miles and heading (degrees from north)
+	names: boolean,
+}
+local markerSource: MarkerSource? = nil
 
 local centreX, centreY = HALF, HALF -- map miles at the middle of the view
 local mpp = math.huge -- map miles per screen pixel (the whole map to start with)
@@ -1023,34 +1030,60 @@ end
 
 -- Markers and readout ------------------------------------------------------------------------
 
-local function marker(p: Player): Frame
+-- A player's mark: a dot pointing the way they face (dot, rotated), and their display name
+-- beside it while a layer asks for names (name, kept upright). Made once a player, then moved.
+type Marker = { holder: Frame, dot: Frame, name: TextLabel }
+
+local function marker(p: Player): Marker
 	local m = markers[p]
 	if m then
 		return m
 	end
-	m = Instance.new("Frame")
-	m.AnchorPoint = Vector2.new(0.5, 0.5)
-	m.Size = UDim2.fromOffset(14, 14)
-	m.BackgroundColor3 = if p == player then Color3.fromRGB(230, 50, 50) else Color3.fromRGB(60, 140, 255)
-	m.ZIndex = 10
+	local mine = p == player
+	local holder = Instance.new("Frame")
+	holder.Name = "Marker"
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Size = UDim2.fromOffset(14, 14)
+	holder.BackgroundTransparency = 1
+	holder.ZIndex = if mine then 11 else 10 -- your own on top
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.fromScale(1, 1)
+	dot.BackgroundColor3 = if mine then Color3.fromRGB(230, 50, 50) else Color3.fromRGB(60, 140, 255)
+	dot.ZIndex = 2
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(1, 0)
-	c.Parent = m
+	c.Parent = dot
 	local s = Instance.new("UIStroke")
-	s.Color = Color3.new(1, 1, 1)
-	s.Thickness = 2
-	s.Parent = m
+	s.Color = if mine then Color3.fromRGB(255, 226, 120) else Color3.new(1, 1, 1)
+	s.Thickness = if mine then 3 else 2
+	s.Parent = dot
 	local pointer = Instance.new("Frame")
 	pointer.AnchorPoint = Vector2.new(0.5, 1)
 	pointer.Position = UDim2.fromScale(0.5, 0.5)
 	pointer.Size = UDim2.fromOffset(3, 16)
 	pointer.BackgroundColor3 = Color3.new(1, 1, 1)
 	pointer.BorderSizePixel = 0
-	pointer.ZIndex = 9
-	pointer.Parent = m
-	m.Parent = labelLayer
-	markers[p] = m
-	return m
+	pointer.ZIndex = 1
+	pointer.Parent = dot
+	dot.Parent = holder
+	local name = Instance.new("TextLabel")
+	name.AnchorPoint = Vector2.new(0, 0.5)
+	name.Position = UDim2.new(1, 8, 0.5, 0)
+	name.Size = UDim2.fromOffset(0, 16)
+	name.AutomaticSize = Enum.AutomaticSize.X
+	name.BackgroundTransparency = 1
+	name.Font = if mine then Enum.Font.GothamBold else Enum.Font.GothamMedium
+	name.TextSize = 13
+	name.TextColor3 = if mine then Color3.fromRGB(255, 226, 120) else Color3.fromRGB(236, 240, 245)
+	name.TextStrokeTransparency = 0.25
+	name.TextXAlignment = Enum.TextXAlignment.Left
+	name.ZIndex = 3
+	name.Visible = false
+	name.Parent = holder
+	holder.Parent = labelLayer
+	local made: Marker = { holder = holder, dot = dot, name = name }
+	markers[p] = made
+	return made
 end
 
 local function myMiles(): (number?, number?)
@@ -1063,21 +1096,38 @@ local function myMiles(): (number?, number?)
 end
 
 local function updateMarkers()
+	local source = markerSource
+	local size = viewSize()
 	for _, p in Players:GetPlayers() do
 		local character = p.Character
 		local root = if character then character:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+		-- Where the character is here, else (one not streamed in) where the source says.
+		local mx: number?, my: number?, heading: number? = nil, nil, nil
 		if root then
-			local m = marker(p)
-			local x, y = toScreen(root.Position.X / MILE + HALF, root.Position.Z / MILE + HALF)
-			m.Position = UDim2.fromOffset(x, y)
-			m.Visible = x >= 0 and y >= 0 and x <= viewSize().X and y <= viewSize().Y
 			local look = root.CFrame.LookVector
-			m.Rotation = math.deg(math.atan2(look.X, -look.Z))
+			mx, my, heading = root.Position.X / MILE + HALF, root.Position.Z / MILE + HALF, math.deg(math.atan2(look.X, -look.Z))
+		elseif source then
+			mx, my, heading = source.position(p)
+		end
+		local m = markers[p]
+		if mx and my then
+			m = marker(p)
+			local x, y = toScreen(mx, my)
+			m.holder.Position = UDim2.fromOffset(x, y)
+			m.holder.Visible = x >= 0 and y >= 0 and x <= size.X and y <= size.Y
+			m.dot.Rotation = heading or 0
+			local named = source ~= nil and source.names
+			m.name.Visible = named
+			if named and m.name.Text ~= p.DisplayName then
+				m.name.Text = p.DisplayName
+			end
+		elseif m then
+			m.holder.Visible = false
 		end
 	end
 	for p, m in markers do
 		if not p.Parent then
-			m:Destroy()
+			m.holder:Destroy()
 			markers[p] = nil
 		end
 	end
@@ -1320,6 +1370,18 @@ function MapCanvas.setVisible(on: boolean)
 		lruClear(gridCache)
 		rasterDue = true
 	end
+end
+
+-- Where to mark players whose characters are not streamed in, and whether to name every
+-- player's mark; nil: only characters streamed in, unnamed.
+function MapCanvas.setMarkerSource(source: MarkerSource?)
+	markerSource = source
+end
+
+-- Centres the view on a map point (miles).
+function MapCanvas.centreOn(mx: number, my: number)
+	centreX, centreY = mx, my
+	changed()
 end
 
 function MapCanvas.centreOnMe()

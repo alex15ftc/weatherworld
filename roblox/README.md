@@ -24,7 +24,7 @@ Build a place file: `rojo build -o WeatherWorld.rbxl`.
 | `Client/Modules` | | `Weather/` (the storm renderers, shared with the storm lab), `Products/`, `FrameWorld` |
 | `Client/UI` | | React UI (boilerplate): widgets in `UI/Widgets` mount themselves |
 | `Server/main.server.luau` | ServerStorage | boots every `*Service` (Init, then Start) |
-| `Server/Services` | | `ChunkService`, `ExploreService`, `CarService`, `StormHostService`, `LiveStormsService`, `ProductFeedService`, `TestDriveService`, `FoliageService` (tree breaking and its persistence) |
+| `Server/Services` | | `ChunkService`, `ExploreService`, `CarService`, `StormHostService`, `LiveStormsService`, `ProductFeedService`, `ChaserNetService` (every player's map point and trail, for the map's Chasers layer), `TestDriveService`, `FoliageService` (tree breaking and its persistence) |
 | `Server/Modules` | | `StormPublisher`, `ReportArchive`, `TestVehicle`, `CarChassis`, `ChunkWorker` (Actor template) |
 | `Server/World` | ServerStorage.World | the server-only world generator |
 | `Shared` | ReplicatedStorage.Shared | boilerplate modules, plus `World/`, `Weather/`, `CloudModel/`, `StormLab/` (Sim, LabConfig, Data) and `Net/` |
@@ -49,12 +49,12 @@ Build a place file: `rojo build -o WeatherWorld.rbxl`.
 ## Networking
 
 Every message is a `Shared/Network` event declared once in `Shared/Net/`:
-`StormNet` (storm frames, the Hello and Ground requests), `LiveStormNet`, `ProductNet`,
+`StormNet` (storm frames, the Hello and Ground requests), `LiveStormNet`, `ProductNet`, `ChaserNet`,
 `DebugNet` and `CloudLabNet`. There are no RemoteEvents or RemoteFunctions made by hand.
 `Network.Request(name, validator)` (Shared/Network/Request.luau) replaces RemoteFunctions:
 `req:Server():OnInvoke(handler)` and `req:Client():Invoke(...)` (a Promise) or `:Await(...)`.
 A Network event that arrives before its client listener is set is dropped, so every stream
-has a handshake: the storm frames' `ready` command, `LiveStormNet.Ready`, `CloudLabNet.Ready`.
+has a handshake: the storm frames' `ready` command, `LiveStormNet.Ready`, `CloudLabNet.Ready`, `ChaserNet.Ready`.
 
 ## Debug and settings
 

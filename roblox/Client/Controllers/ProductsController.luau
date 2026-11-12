@@ -2,7 +2,8 @@
 -- The weather screen, opened and closed with M (docs/ROBLOX-UI-PLAN.md): the world map with the
 -- products the weather server issues as layers over it, each turned on or off with its button
 -- in the side panel: the convective outlook, one radar, the watches, the mesoscale discussions
--- and the warnings; and the storm reports and damage surveys of a day. A click on the map opens
+-- and the warnings; the storm reports and damage surveys of a day; and the chaser network (every
+-- player in this server, named, with their trails). A click on the map opens
 -- the details of what is there (a report or a damage survey first, then a warning, a watch, a
 -- discussion, the outlook); a click on a radar's label picks that radar.
 -- Scroll or +/− to zoom, drag to pan, C to centre on yourself.
@@ -24,6 +25,7 @@ local Satellite = require(ProductModules.Layers.Satellite)
 local Areas = require(ProductModules.Layers.Areas)
 local Reports = require(ProductModules.Layers.Reports)
 local Damage = require(ProductModules.Layers.Damage)
+local Chasers = require(ProductModules.Layers.Chasers)
 
 local Products = {}
 
@@ -364,15 +366,17 @@ local function build(): ScreenGui
 	local reports = Reports.new(context, column)
 	local damageHeading = heading("Damage surveys")
 	local damage = Damage.new(context, column)
+	local chasersHeading = heading("Chasers")
+	local chasers = Chasers.new(context, column)
 	legendBox = Ui.section(column)
 
-	layers = { outlook :: any, satellite :: any, radar :: any, watches :: any, discussions :: any, warnings :: any, reports :: any, damage :: any }
+	layers = { outlook :: any, satellite :: any, radar :: any, watches :: any, discussions :: any, warnings :: any, reports :: any, damage :: any, chasers :: any }
 	headings = {
 		outlook = outlookHeading, satellite = satelliteHeading, radar = radarHeading, warnings = warningsHeading, watches = watchesHeading, discussions = discussionsHeading,
-		reports = reportsHeading, damage = damageHeading,
+		reports = reportsHeading, damage = damageHeading, chasers = chasersHeading,
 	}
-	drawOrder = { outlook :: any, satellite :: any, radar :: any, discussions :: any, watches :: any, warnings :: any, damage :: any, reports :: any }
-	hitOrder = { radar :: any, reports :: any, damage :: any, warnings :: any, watches :: any, discussions :: any, outlook :: any }
+	drawOrder = { outlook :: any, satellite :: any, radar :: any, discussions :: any, watches :: any, warnings :: any, damage :: any, reports :: any, chasers :: any }
+	hitOrder = { chasers :: any, radar :: any, reports :: any, damage :: any, warnings :: any, watches :: any, discussions :: any, outlook :: any }
 
 	for _, layer in layers do
 		layerButtons[layer.key] = Ui.button(buttonRow, layer.name, function()

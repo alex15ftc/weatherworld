@@ -9,12 +9,13 @@ import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
 import { ShortRangeRuntime } from './ShortRangeRuntime.js';
-import { countiesFor } from './CountyLayer.js';
+import { countiesFor, placesFor } from './CountyLayer.js';
 import { WarningRuntime } from './WarningRuntime.js';
 import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
 import { OUTLOOK_DAYS, OUTLOOK_HAZARDS, outlookSvg, outlookIndex } from './OutlookPublic.js';
 import { ProductArchive } from './ProductArchive.js';
+import { ChaserArchive, roleOf } from './ChaserArchive.js';
 import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
@@ -71,6 +72,11 @@ const reports = new ReportsRuntime({ runtime });
 const gameProducts = new GameProducts({ runtime, outlooks, mesoscale, warnings, reports });
 // Every watch, discussion and warning issued, for the public pages and the Discord posts (ProductArchive.js).
 const archive = new ProductArchive({ runtime, products: gameProducts, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'products.bin') : null });
+// The chaser network (ChaserArchive.js): every server's players, live and through each world day.
+// The world hour now: on the locked clock from real time (8 world hours a real hour), else the world's own.
+const worldHourNow = () => (runtime.clockLock && runtime.clockOffset != null ? runtime.clockOffset + Date.now() * 8 / 3600000 : Number(runtime.engine?.world?.validHourUtc));
+const chasers = new ChaserArchive({ runtime, hourNow: worldHourNow, milesPerKm: () => (runtime.engine?.world ? placesFor(runtime.engine.world).milesPerKm : 0.621371), file: statePath ? path.join(path.dirname(statePath), 'chasers.bin') : null });
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => chasers.save(true));
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
 const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); try { archive.sync(); } catch (error) { console.warn('[products]', error.message); } };
@@ -95,6 +101,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return await serveApi(url, req, res);
     // The public outlook pages (OutlookPublic.js): one page for Days 1-3.
     if (/^\/outlook(\/day[123])?\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'outlook.html'), res);
+    // The chaser network page: one page, its view set by the viewer's role (ChaserArchive.js).
+    if (/^\/chasers\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'chasers.html'), res);
     // A watch's or a mesoscale discussion's page (ProductArchive.js).
     if (/^\/(watch|md)\/\d+\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'product.html'), res);
     return serveStatic(url.pathname, res);
@@ -144,7 +152,7 @@ async function serveApi(url, req, res) {
   // The cloud model's storms (js/game/StormWorkers.js): a Roblox server reports where its players
   // are (POST { server, players: [[xKm, yKm], ...] }, map km, y south) and fetches the frames newer
   // than it holds (?have=id:seq,... &parts=full,near,far: a binary bundle).
-  if (url.pathname === '/api/game/v1/storm/players' && req.method === 'POST') { const body = await readJsonBody(req); return sendJson(req, res, 200, runtime.stormWorkers?.reportPlayers(body.server, body.players) ?? { detailed: [], off: true }, { cacheable: false, trace }); }
+  if (url.pathname === '/api/game/v1/storm/players' && req.method === 'POST') { const body = await readJsonBody(req); try { chasers.report(body.server, body.players); } catch (error) { console.warn('[chasers]', error.message); } return sendJson(req, res, 200, runtime.stormWorkers?.reportPlayers(body.server, body.players) ?? { detailed: [], off: true }, { cacheable: false, trace }); }
   if (url.pathname === '/api/game/v1/storm/frames') { const parts = (url.searchParams.get('parts') ?? 'full,near,far').split(','); const bundle = runtime.stormWorkers?.frames(url.searchParams.get('have'), parts, { paused: !runtime.autoAdvance }) ?? EMPTY_FRAMES; finishRequest(trace, { status: 200, rawBytes: bundle.length, sentBytes: bundle.length }); res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': bundle.length, 'cache-control': 'no-store' }); return res.end(bundle); }
   if (url.pathname === '/api/game/v1/storm/workers') return sendJson(req, res, 200, runtime.stormWorkers?.status() ?? { off: true }, { cacheable: false, trace });
   if (url.pathname === '/api/game/v1/manifest') return sendJson(req, res, 200, gameProducts.manifest(), { cacheable: false, trace });
@@ -168,6 +176,20 @@ async function serveApi(url, req, res) {
   }
   // The watches, discussions and warnings (ProductArchive.js): the feed, each one, and their maps (?times=1: with the times line).
   // What a page needs to date world hours itself (calendar.js).
+  // The chaser network (ChaserArchive.js). Each answer is the view of the asker's role: "admin"
+  // (x-admin-key) sees names, user ids and servers; "public" sees dots and unnamed tracks.
+  if (url.pathname.startsWith('/api/chasers/')) {
+    const role = roleOf(req), admin = role === 'admin';
+    if (url.pathname === '/api/chasers/role') return sendJson(req, res, 200, { role }, { cacheable: false, trace });
+    if (url.pathname === '/api/chasers/live') return sendJson(req, res, 200, { role, ...(admin ? chasers.adminLive() : chasers.publicLive()) }, { cacheable: false, trace });
+    if (url.pathname === '/api/chasers/days') return sendJson(req, res, 200, { role, ...chasers.dayList() }, { cacheable: false, trace });
+    if (url.pathname === '/api/chasers/day') {
+      const value = chasers.dayTracks(url.searchParams.get('day'), { admin });
+      if (!value) return sendJson(req, res, 404, { error: 'No such day' }, { cacheable: false, trace });
+      return sendJson(req, res, 200, { role, ...value, reports: reportsBetween(value.startHourUtc, value.startHourUtc + 24) }, { cacheable: false, trace });
+    }
+    return sendJson(req, res, 404, { error: 'Unknown API endpoint' }, { cacheable: false, trace });
+  }
   if (url.pathname === '/api/calendar') return sendJson(req, res, 200, calendarFor(), { cacheable: false, trace });
   if (url.pathname === '/api/products/feed') return sendJson(req, res, 200, archive.feed(), { cacheable: false, trace });
   const archived = url.pathname.match(/^\/api\/(watch|md)\/(\d+)(\.svg)?$/);
@@ -198,6 +220,20 @@ async function readJsonBody(req) {
   for await (const chunk of req) { size += chunk.length; if (size > 64*1024) throw new Error('Request body too large'); chunks.push(chunk); }
   if (!chunks.length) return {};
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new Error('Invalid JSON request body'); }
+}
+
+// The storm reports made between two world hours (the report days run 12Z to 12Z), for the chaser loops.
+function reportsBetween(from, to) {
+  const out = [];
+  try {
+    const days = JSON.parse(gameProducts.product('reports.days')?.text ?? '{}').days ?? [];
+    for (const d of days) {
+      if (d.startHourUtc >= to || d.startHourUtc + 24 <= from) continue;
+      const entry = gameProducts.product(`reports.day.${d.day}`);
+      for (const r of (entry ? JSON.parse(entry.text).reports : [])) if (r.hourUtc >= from && r.hourUtc < to) out.push({ type: r.type, hourUtc: r.hourUtc, x: r.x, y: r.y, title: r.title });
+    }
+  } catch (error) { console.warn('[chasers] reports:', error.message); }
+  return out.sort((a, b) => a.hourUtc - b.hourUtc);
 }
 
 // An outlook day's game product, parsed once a version, with its maps (OutlookPublic.js) kept beside it.

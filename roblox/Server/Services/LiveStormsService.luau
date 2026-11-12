@@ -268,7 +268,8 @@ local function poll()
 	local list = {}
 	for _, p in Players:GetPlayers() do
 		local x, y = playerKm(p)
-		if x and y then table.insert(list, { x, y }) end
+		-- (who it is, for the chaser network: server/ChaserArchive.js; the public view drops it)
+		if x and y then table.insert(list, { x, y, tostring(p.UserId), p.DisplayName, p.Name }) end
 	end
 	request("POST", "/api/game/v1/storm/players", HttpService:JSONEncode({ server = if game.JobId ~= "" then game.JobId else "studio", players = list }))
 	local seqs = {}
