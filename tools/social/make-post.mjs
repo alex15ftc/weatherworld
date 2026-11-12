@@ -35,7 +35,8 @@ if (!issues.length) throw new Error(`No recorded outlook in ${RAW}`);
 const asked = flag('issue', null);
 const outlook = asked != null ? issues.find(o => o.issuedHourUtc === Number(asked)) : issues.reduce((best, o) => (RANK.indexOf(o.highest) > RANK.indexOf(best.highest) ? o : best), issues[0]);
 if (!outlook) throw new Error(`No issue at hour ${asked}`);
-const dayEnd = Math.max(...issues.map(o => o.validToHourUtc)), dayStart = outlook.validFromHourUtc;
+// The day is the chosen issue's own valid period (a later issue recorded with it can be the next day's).
+const dayEnd = outlook.validToHourUtc, dayStart = outlook.validFromHourUtc;
 
 // --- The day's tornadoes: every storm's tornado history, from every recorded storm tick (the last word on
 // each wins), plus those still on the ground at the last tick.
@@ -204,7 +205,7 @@ Nothing here is scripted. The outlook is made from an ensemble of forecast runs,
 
 ## 3. The loops (\`3-*.mp4\`, from make-loop.mjs)
 
-The large-scale pattern behind the outbreak: the whole simulated atmosphere, with the game map as the white box.${watches.filter(w => w.pds).length ? ` ${watches.filter(w => w.pds).length} of the day's ${watches.length} watches were "particularly dangerous situation" tornado watches.` : ''}
+The large-scale pattern behind the outbreak: the whole simulated atmosphere, with the game map as the white box.${watches.filter(w => w.pds).length ? ` ${watches.filter(w => w.pds).length} of the day's ${watches.length} watches ${watches.filter(w => w.pds).length === 1 ? 'was a' : 'were'} "particularly dangerous situation" tornado watch${watches.filter(w => w.pds).length === 1 ? '' : 'es'}.` : ''}
 
 ## Numbers
 
