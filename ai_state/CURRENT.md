@@ -57,7 +57,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   `weather_feed_key` (= Railway's `WEATHER_GAME_KEY`; 401 without it); whether it is set in Creator Hub is not
   checked (no API for secrets). A version 494 server reached the engine and got 401 on every request: the secret
   is missing or wrong in Creator Hub (owner action), so the live game has no weather until it is set.
-- Synoptic page (2026-11-12, on `main`): `/synoptic` (`synoptic.html`, `js/pages/synopticPage.js`, linked from every
+- Synoptic page (2026-11-12, deployed to the engine from `85c9a9b`): `/synoptic` (`synoptic.html`, `js/pages/synopticPage.js`, linked from every
   page's menu) shows the whole large-scale model (the 10,240 x 5,120 km QG channel, wrapping east-west) with the game
   map's box and drift, H/L centres and chart presets (250 mb jet, 500 mb vorticity, 850 mb jet, surface, dewpoint,
   moisture transport and advection, temperature advection, large-scale lift and rain, deep shear), looping the last

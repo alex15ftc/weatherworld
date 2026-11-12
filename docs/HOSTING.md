@@ -47,7 +47,11 @@ Read the keys with `railway variables --kv`. They are never kept in the repo.
 
 ## Commands (from the repo root, project already linked)
 - Deploy the working copy: `railway up --ci --service engine` (in Git Bash set `MSYS_NO_PATHCONV=1`,
-  or `/data/...` values get rewritten into Windows paths)
+  or `/data/...` values get rewritten into Windows paths). The link is kept for the repo root's path, so
+  run from a worktree (or any subfolder) it still uploads the root checkout, uncommitted edits and all.
+  To deploy a clean worktree of a commit, name it: `railway up "$(pwd -W)" --path-as-root --ci --service
+  engine` from inside it. After a deploy, check a changed file's hash against the commit
+  (`curl -s .../<file> | md5sum`): the engine serves the repo's files.
 - Logs: `railway logs --deployment` (plain `railway logs` streams and never returns)
 - Restart: `railway restart --yes`
 - Service settings (Windows): the `railway` command is an npm wrapper and the IaC version check cannot
