@@ -34,6 +34,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
   warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
   warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
+- World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,
+  +30 min / +1 day, seek, pause clock) needs the `WEATHER_ADMIN_KEY` (`server/ChaserArchive.js` isAdmin; with no
+  key set only the local machine). The mesoanalysis World card has an Admin sign-in; the key is kept per tab
+  (`wwAdminKey`, shared with `/chasers`). Checked on the hosted engine: no key gives 401, the key gives 200.
 - Chaser network (2026-11-12, on `main`, engine deployed; place "plains" published as version 493): one page `/chasers`
   (`chasers.html`) whose view comes from the viewer's role (`server/ChaserArchive.js` roleOf): public sees dots and
   unnamed day tracks; admin (the `WEATHER_ADMIN_KEY`, entered on the page) sees names, user ids, servers and a speed
