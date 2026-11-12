@@ -15,7 +15,7 @@ import { ReportsRuntime } from './ReportsRuntime.js';
 import { GameProducts } from './GameProducts.js';
 import { OUTLOOK_DAYS, OUTLOOK_HAZARDS, outlookSvg, outlookIndex } from './OutlookPublic.js';
 import { ProductArchive } from './ProductArchive.js';
-import { ChaserArchive, roleOf } from './ChaserArchive.js';
+import { ChaserArchive, roleOf, isAdmin } from './ChaserArchive.js';
 import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
@@ -113,8 +113,9 @@ async function serveApi(url, req, res) {
   const trace=beginRequest(url.pathname);
   if (url.pathname === '/api/health') return sendJson(req, res, 200, runtime.metadata(), { trace });
   if (url.pathname === '/api/authority/state') return sendJson(req, res, 200, runtime.authorityState(), { cacheable: false, trace });
-  // Resetting, stepping or stopping the world: on a public host set WEATHER_ADMIN_KEY (sent in x-admin-key).
-  if (url.pathname.startsWith('/api/authority/') && process.env.WEATHER_ADMIN_KEY && req.headers['x-admin-key'] !== process.env.WEATHER_ADMIN_KEY) return sendJson(req, res, 401, { error: 'Bad key' }, { cacheable: false, trace });
+  // Resetting, stepping, seeking or stopping the world is admin only (ChaserArchive.js isAdmin): the
+  // WEATHER_ADMIN_KEY in x-admin-key, or, with no key set (a local engine), a request from this machine.
+  if (url.pathname.startsWith('/api/authority/') && !isAdmin(req)) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
   if (url.pathname === '/api/authority/reset' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.reset(body.seed);return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours,()=>surface.capture());return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/seek' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.seek(body.validHourUtc);return sendJson(req,res,200,value,{cacheable:false,trace}); }

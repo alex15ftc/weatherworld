@@ -360,25 +360,56 @@ function showSoundingTables(sounding) {
 canvas.addEventListener('click', event => { const at = pointer(event); if (at) showSounding(at); });
 $('soundingClose').addEventListener('click', () => { selected = null; document.body.classList.remove('with-sounding'); resize(); });
 
-// --- The world: move it on, stop its clock, or start another one.
-async function post(url, body) { const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); if (!response.ok) throw new Error(String(response.status)); return response.json(); }
+// --- The world: move it on, stop its clock, or start another one. Admin only: the admin key is kept for
+// this tab under the same name as on the chasers page (a local engine with no key set lets this machine in).
+const ADMIN_KEY = 'wwAdminKey';
+const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch {} } };
+const keyHeader = () => { const key = adminKey.get(); return key ? { 'x-admin-key': key } : {}; };
+const WORLD_BUTTONS = ['worldAdvance', 'worldAdvanceDay', 'worldClock', 'worldNew'];
+let worldAdmin = false;
+function setWorldAdmin(admin) {
+  worldAdmin = admin;
+  for (const id of WORLD_BUTTONS) $(id).disabled = !admin;
+  $('worldSignin').textContent = adminKey.get() ? 'Sign out' : 'Admin sign-in';
+  $('worldSignin').parentElement.style.display = admin && !adminKey.get() ? 'none' : '';
+}
+async function checkWorldAdmin() {
+  try { const response = await fetch('/api/chasers/role', { headers: keyHeader(), cache: 'no-store' }); setWorldAdmin(response.ok && (await response.json()).role === 'admin'); } catch { setWorldAdmin(false); }
+  return worldAdmin;
+}
+async function post(url, body) {
+  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...keyHeader() }, body: JSON.stringify(body) });
+  if (response.status === 401) { setWorldAdmin(false); throw new Error('admin'); }
+  if (!response.ok) throw new Error(String(response.status));
+  return response.json();
+}
 const worldNote = text => { $('worldNote').textContent = text; };
+const failed = (error, text) => worldNote(error?.message === 'admin' ? 'The world controls need the admin key.' : text);
+$('worldSignin').addEventListener('click', async () => {
+  if (adminKey.get()) { adminKey.set(null); await checkWorldAdmin(); worldNote('Signed out.'); return; }
+  const key = window.prompt('Admin key');
+  if (!key) return;
+  adminKey.set(key);
+  if (await checkWorldAdmin()) worldNote('Signed in as admin.');
+  else { adminKey.set(null); setWorldAdmin(false); worldNote('That key was not accepted.'); }
+});
+checkWorldAdmin();
 // The server works a day through in half-hour steps before it answers, so the buttons are held until it does.
 async function advanceWorld(hours, working, done) {
   const buttons = [$('worldAdvance'), $('worldAdvanceDay')];
   for (const button of buttons) button.disabled = true;
   worldNote(working);
-  try { await post('/api/authority/advance', { hours }); frameHour = null; await load(); worldNote(done); } catch { worldNote('Could not advance.'); }
-  for (const button of buttons) button.disabled = false;
+  try { await post('/api/authority/advance', { hours }); frameHour = null; await load(); worldNote(done); } catch (error) { failed(error, 'Could not advance.'); }
+  for (const button of buttons) button.disabled = !worldAdmin;
 }
 $('worldAdvance').addEventListener('click', () => advanceWorld(0.5, 'Advancing…', 'Moved on half an hour.'));
 $('worldAdvanceDay').addEventListener('click', () => advanceWorld(24, 'Advancing a full day. This can take a little while…', 'Moved on a full day.'));
-$('worldClock').addEventListener('click', async () => { try { await post('/api/authority/clock', { enabled: !data?.clockRunning }); await load(); } catch { worldNote('Could not change the clock.'); } });
+$('worldClock').addEventListener('click', async () => { try { await post('/api/authority/clock', { enabled: !data?.clockRunning }); await load(); } catch (error) { failed(error, 'Could not change the clock.'); } });
 $('worldNew').addEventListener('click', async () => {
   const answer = window.prompt('Starting number for the new world (any whole number). The current world is replaced.', String((data?.seed ?? 1) + 1));
   if (answer === null || !Number.isFinite(Number(answer))) return;
   worldNote('Building a new world. This takes about a minute…');
-  try { await post('/api/authority/reset', { seed: Math.trunc(Number(answer)) }); frameHour = null; fieldCache.clear(); await load(); worldNote('New world started.'); } catch { worldNote('The new world could not be started.'); }
+  try { await post('/api/authority/reset', { seed: Math.trunc(Number(answer)) }); frameHour = null; fieldCache.clear(); await load(); worldNote('New world started.'); } catch (error) { failed(error, 'The new world could not be started.'); }
 });
 
 // --- Controls.

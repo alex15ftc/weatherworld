@@ -1,6 +1,9 @@
 import { profiler } from '../performance/PerformanceProfiler.js';
 const DEFAULT_TIMEOUT_MS = 8000;
 
+// The admin key the pages keep for this tab (chasers.html, the surface page): the world controls need it.
+function adminHeader() { try { const key = sessionStorage.getItem('wwAdminKey'); return key ? { 'x-admin-key': key } : {}; } catch { return {}; } }
+
 export class WeatherProductClient {
   constructor({ baseUrl = '', timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
@@ -69,7 +72,7 @@ export class WeatherProductClient {
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: 'POST', signal: controller.signal, cache: 'no-store',
-        headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {})
+        headers: { 'content-type': 'application/json', ...adminHeader() }, body: JSON.stringify(body ?? {})
       });
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
       const value = await response.json();
