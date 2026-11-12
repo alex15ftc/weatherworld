@@ -26,10 +26,10 @@
     body.share { display: flex; flex-direction: column; height: 100vh; min-height: 0; padding: 0; background: #0a0f15; }
     body.share .site-header, body.share .site-footer, body.share .skip, body.share .bench__side, body.share .crumbs, body.share .tool-head, body.share .tool-rule, body.share .chart__zoom, body.share #synTip { display: none !important; }
     body.share main { flex: 1; min-height: 0; max-width: none; padding: 0; display: flex; flex-direction: column; }
-    body.share .bench { flex: 1; min-height: 0; display: flex; margin: 0; }
+    body.share .bench { flex: 1; min-height: 0; display: flex; align-items: stretch; margin: 0; }
     body.share .bench__main { flex: 1; min-height: 0; position: static; display: flex; flex-direction: column; }
     body.share .chart { flex: 1; min-height: 0; height: auto; aspect-ratio: auto; max-height: none; border: 0; }
-    body.share #synCanvas { cursor: default; }
+    body.share #synCanvas { position: absolute; inset: 0; cursor: default; }
     .share-strip { display: none; }
     body.share .share-strip { display: flex; align-items: center; justify-content: space-between; gap: 3vh; padding: 1.6vh 2.4vh; background: #0b3a57; color: #fff; font: 600 3vh/1.2 "Public Sans", system-ui, sans-serif; }
     body.share .share-strip.top { border-bottom: .45vh solid #f2b632; }
