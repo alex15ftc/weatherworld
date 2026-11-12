@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WeatherWorld</title>
+  <!-- The lists of watches (/watches), mesoscale discussions (/discussions) and warnings (/warnings), from the
+       product feed (server/ProductArchive.js, /api/products/feed). -->
+  <!--site:head-->
+</head>
+<body class="doc">
+<!--site:header-->
+<main id="content" class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span id="crumb"></span></nav>
+  <header class="page-head">
+    <h1 id="title"></h1>
+    <p class="lede" id="lede"></p>
+    <p class="stamp" id="times"></p>
+  </header>
+  <figure class="map" id="mapBox" hidden style="max-width:760px;margin-bottom:26px">
+    <a id="mapLink"><img id="map" alt="Map of the warnings in effect" width="1000" height="1064" /></a>
+    <figcaption id="mapNote"></figcaption>
+  </figure>
+  <section>
+    <div class="table-scroll"><table class="list" id="list"></table></div>
+    <p class="empty" id="empty" hidden></p>
+  </section>
+</main>
+<!--site:footer-->
+<script type="module">
+import { $, getJson, loadCalendar, utcText, localText, escapeHtml } from '/js/site.js';
+const kind = location.pathname.match(/watches|discussions|warnings/)[0];
+const PAGES = {
+  watches: { title: 'Watches', lede: 'Tornado and severe thunderstorm watches: areas where storms are expected to turn severe over the next several hours.', none: 'No watches have been issued lately.' },
+  discussions: { title: 'Mesoscale Discussions', lede: 'Short-term notes on where severe storms are developing, and whether a watch is likely.', none: 'No mesoscale discussions have been issued lately.' },
+  warnings: { title: 'Warnings', lede: 'Warnings from the local offices for storms that are severe or tornadic right now.', none: 'No warnings are in effect.' }
+};
+const page = PAGES[kind];
+document.title = `${page.title} · WeatherWorld`;
+$('#title').textContent = page.title; $('#crumb').textContent = page.title; $('#lede').textContent = page.lede;
+const state = (item, now) => (item.validToHourUtc > now ? '' : '<span class="tag tag--ended">Ended</span>');
+const row = (cells, ended) => `<tr${ended ? ' class="ended"' : ''}>${cells.map(([cls, html]) => `<td${cls ? ` class="${cls}"` : ''}>${html}</td>`).join('')}</tr>`;
+const head = names => `<thead><tr>${names.map(n => `<th>${n}</th>`).join('')}</tr></thead>`;
+let mapKeys = '';
+async function load() {
+  let feed;
+  try { feed = await getJson('/api/products/feed'); } catch (error) { $('#times').textContent = `Could not reach the weather server (${error.message}).`; return; }
+  const now = feed.nowHourUtc;
+  $('#times').innerHTML = `<b>As of</b> ${escapeHtml(utcText(now))} (${localText(now)}). Times in the list are local (CDT).`;
+  let html = '', count = 0;
+  if (kind === 'watches') {
+    const list = [...(feed.watches ?? [])].sort((a, b) => b.number - a.number); count = list.length;
+    html = head(['Watch', 'Type', 'Area', 'Issued', 'Until', '']) + '<tbody>' + list.map(w => row([
+      ['num', `<a href="/watch/${w.number}">${w.number}</a>`],
+      ['', `<span class="tag tag--${w.type === 'tornado' ? 'tornado' : 'severe'}">${w.type === 'tornado' ? 'Tornado' : 'Severe'}</span>${w.pds ? ' <span class="tag tag--pds">PDS</span>' : ''}`],
+      ['', escapeHtml(w.where)], ['time', escapeHtml(w.issuedLocal)], ['time', escapeHtml(w.untilLocal)], ['', state(w, now)]], w.validToHourUtc <= now)).join('') + '</tbody>';
+  } else if (kind === 'discussions') {
+    const list = [...(feed.discussions ?? [])].sort((a, b) => b.number - a.number); count = list.length;
+    html = head(['Number', 'Concerning', 'Area', 'Issued', 'Until', '']) + '<tbody>' + list.map(d => row([
+      ['num', `<a href="/md/${d.number}">${String(d.number).padStart(4, '0')}</a>`],
+      ['', escapeHtml(d.concerning ? d.concerning[0] + d.concerning.slice(1).toLowerCase().replace(/\bwatch (\d+)/, 'Watch $1') : d.watchPercent != null ? `Watch chance ${d.watchPercent}%` : 'Severe potential')],
+      ['', escapeHtml(d.where)], ['time', escapeHtml(d.issuedLocal)], ['time', escapeHtml(d.untilLocal)], ['', state(d, now)]], d.validToHourUtc <= now)).join('') + '</tbody>';
+  } else {
+    const list = (feed.warnings ?? []).filter(w => w.validToHourUtc > now).sort((a, b) => (b.topRank ?? 0) - (a.topRank ?? 0) || b.issuedHourUtc - a.issuedHourUtc); count = list.length;
+    html = head(['Warning', 'Area', 'Office', 'Issued', 'Until']) + '<tbody>' + list.map(w => row([
+      ['', `<span class="tag tag--${w.type === 'tornado' ? 'tornado' : w.type === 'severe' ? 'severe' : 'other'}">${escapeHtml(w.emergency ? 'Tornado emergency' : w.name)}</span>${w.pds ? ' <span class="tag tag--pds">PDS</span>' : ''}`],
+      ['', `${escapeHtml(w.where)}<br><span class="muted" style="font-size:14.5px">${escapeHtml(w.situation ?? '')}</span>`],
+      ['', escapeHtml(w.office ?? '')], ['time', escapeHtml(w.issuedLocal)], ['time', escapeHtml(w.untilLocal)]])).join('') + '</tbody>';
+    const keys = list.slice(0, 40).map(w => w.key).join(',');
+    $('#mapBox').hidden = !keys;
+    if (keys && keys !== mapKeys) { mapKeys = keys; $('#map').src = `/api/warnings.svg?keys=${encodeURIComponent(keys)}`; $('#mapLink').href = `/api/warnings.svg?times=1&keys=${encodeURIComponent(keys)}`; }
+    $('#mapNote').textContent = list.length > 40 ? `The 40 most serious of ${list.length} warnings in effect.` : `${list.length} warning${list.length === 1 ? '' : 's'} in effect.`;
+  }
+  $('#list').innerHTML = count ? html : ''; $('#empty').hidden = count > 0; $('#empty').textContent = page.none;
+}
+loadCalendar().then(load);
+setInterval(load, 60_000);
+</script>
+</body>
+</html>

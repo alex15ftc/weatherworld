@@ -129,16 +129,29 @@ export class SynopticRuntime {
   // The frame's description for the page (the newest frame when none is named).
   summary(hour) {
     this.capture();
-    const frame = this.frame(hour), m = this.model, regional = this.regional, hours = frame.hour;
+    const frame = this.frame(hour);
+    return this.describe(frame, this.frames.map(f => f.hour), frame === this.frames.at(-1));
+  }
+
+  // A frame's description: one of this runtime's, or one kept elsewhere from the same model grid (a short
+  // range run's, ShortRangeRuntime.js). frames: the hours the page can step through.
+  describe(frame, frames, latest) {
+    const m = this.model, regional = this.regional, hours = frame.hour;
     return {
       status: 'ready', seed: this.seed,
       date: calendarOn() ? dateText(hours) : null, hourUtc: ((hours % 24) + 24) % 24, localOffsetHours: regional.params.utcOffsetHours,
-      frameHour: frame.hour, latest: frame === this.frames.at(-1), frames: this.frames.map(f => f.hour),
+      frameHour: frame.hour, latest, frames,
       grid: { nx: m.nx, ny: m.ny, km: m.d / 1000, periodicX: true },
       map: { ...frame.box, km: regional.nx * regional.dx / 1000 },
       slide: frame.slide, centres: frame.centres,
       fields: SYNOPTIC_FIELDS.map(({ key, group, label, unit }) => ({ key, group, label, unit })), winds: SYNOPTIC_WINDS
     };
+  }
+
+  // One field of a frame kept elsewhere (not cached here).
+  fieldOf(frame, key) {
+    const value = this.compute(frame, key);
+    return value ? { key, frameHour: frame.hour, nx: this.model.nx, ny: this.model.ny, ...value } : null;
   }
 
   // One scalar field ({ values }) or wind ({ u, v } in kt) of a frame, or null for an unknown name.

@@ -77,4 +77,19 @@ export class ShortRangeRuntime {
     const run = this.run(init);
     return run ? { initHourUtc: run.initHourUtc, tracks: run.tracks } : null;
   }
+
+  // The large-scale view of a run (the newest when none is named), for the model page: its frames are the
+  // whole large-scale model every few forecast hours, described and computed by the live world's synoptic
+  // runtime (the same grid). hour: the valid hour of the frame wanted (the run's start when left out).
+  synopticRuns() { return this.runs.filter(run => !run.failed && run.synoptic?.length); }
+  synopticRun(init) { return (init === undefined || init === null || init === '' ? this.synopticRuns().at(-1) : this.synopticRuns().find(run => run.initHourUtc === Number(init))) ?? null; }
+  synopticFrame(synoptic, init, hour) {
+    const run = this.synopticRun(init); if (!run) return null;
+    const frame = run.synoptic.find(f => f.hour === Number(hour)) ?? run.synoptic[0];
+    return { ...synoptic.describe(frame, run.synoptic.map(f => f.hour), false), run: { initHourUtc: run.initHourUtc, hours: run.hours, forecastHour: frame.forecastHour, runs: this.synopticRuns().map(r => ({ initHourUtc: r.initHourUtc, hours: r.hours })) } };
+  }
+  synopticField(synoptic, init, hour, key) {
+    const run = this.synopticRun(init); if (!run) return null;
+    return synoptic.fieldOf(run.synoptic.find(f => f.hour === Number(hour)) ?? run.synoptic[0], key ?? '');
+  }
 }

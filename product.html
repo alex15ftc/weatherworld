@@ -5,52 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WeatherWorld</title>
   <!-- One watch (/watch/<n>) or mesoscale discussion (/md/<n>), from server/ProductArchive.js. -->
-  <style>
-    :root { color-scheme: dark; --bg: #0b1017; --panel: #141b24; --panel-2: #1b2531; --line: #2c3948; --text: #f4f7fb; --muted: #96a5b7; --accent: #2563eb; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-    nav.product-nav { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #0f172a; }
-    nav.product-nav a { color: #cbd5e1; text-decoration: none; padding: 7px 12px; border-radius: 8px; font-size: .85rem; font-weight: 700; }
-    nav.product-nav a:hover { background: var(--accent); color: #fff; }
-    main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
-    header h1 { margin: 0 0 4px; font-size: 1.6rem; }
-    header p { margin: 0; color: var(--muted); }
-    .badge { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 6px; font-weight: 800; color: #fff; letter-spacing: .03em; }
-    .map { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
-    .map img { display: block; width: 100%; height: auto; border-radius: 6px; background: #fff; }
-    .text { margin-top: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
-    .text pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font: 14px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; color: #dbe4ee; }
-  </style>
+  <!--site:head-->
 </head>
-<body>
-<nav class="product-nav" aria-label="Weather products">
-  <a href="/outlook/day1">Day 1</a><a href="/outlook/day2">Day 2</a><a href="/outlook/day3">Day 3</a>
-  <a href="/chasers">Chasers</a><a href="/index.html">Live analysis</a><a href="/synoptic">Synoptic</a><a href="/models.html">Models</a>
-</nav>
-<main>
-  <header>
+<body class="doc">
+<!--site:header-->
+<main id="content" class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span><a id="crumbList" href="/watches">Watches</a></span><span id="crumb"></span></nav>
+  <header class="page-head">
     <h1 id="title">Loading…</h1>
-    <p id="times"></p>
-    <span id="badge" class="badge" hidden></span>
+    <p id="badge"></p>
+    <p class="stamp" id="times"></p>
   </header>
-  <div class="map"><img id="map" alt="Map" width="1000" height="1064" /></div>
-  <section class="text"><pre id="text"></pre></section>
+  <div class="split split--map">
+    <figure class="map">
+      <a id="mapLink"><img id="map" alt="Map of the area" width="1000" height="1064" /></a>
+      <figcaption>Select the map to open it on its own, ready to share.</figcaption>
+    </figure>
+    <div>
+      <dl class="facts" id="facts"></dl>
+      <section class="section">
+        <h2 id="textTitle">Bulletin</h2>
+        <pre class="bulletin" id="text"></pre>
+      </section>
+      <nav class="pager" id="pager"></nav>
+    </div>
+  </div>
 </main>
+<!--site:footer-->
 <script type="module">
-const [, kind, number] = location.pathname.match(/^\/(watch|md)\/(\d+)/) ?? [];
-const COLOURS = { tornado: '#ef4444', severe: '#3b82f6', watchTornado: '#ef4444', watchSevere: '#3b82f6', likely: '#f97316', possible: '#f59e0b', unlikely: '#94a3b8' };
+import { $, getJson, escapeHtml } from '/js/site.js';
+const [, kind, number] = location.pathname.match(/^\/(watch|md)\/(\d+)/) ?? [], n = Number(number);
+const watch = kind === 'watch', listName = watch ? 'Watches' : 'Discussions', listHref = watch ? '/watches' : '/discussions';
+$('#crumbList').textContent = listName; $('#crumbList').href = listHref;
+$('#pager').innerHTML = `${n > 1 ? `<a href="/${kind}/${n - 1}">‹ ${watch ? 'Watch' : 'Discussion'} ${n - 1}</a>` : '<span></span>'}<a href="${listHref}">All ${listName.toLowerCase()}</a><a href="/${kind}/${n + 1}">${watch ? 'Watch' : 'Discussion'} ${n + 1} ›</a>`;
 async function load() {
-  const res = await fetch(`/api/${kind}/${number}`, { cache: 'no-store' });
-  if (!res.ok) { document.querySelector('#title').textContent = kind === 'watch' ? `Watch ${number} not found` : `Mesoscale Discussion ${number} not found`; return; }
-  const p = await res.json();
-  const title = kind === 'watch' ? p.title : `Mesoscale Discussion ${String(p.number).padStart(4, '0')}`;
+  let p;
+  try { p = await getJson(`/api/${kind}/${number}`); }
+  catch { $('#title').textContent = watch ? `Watch ${number} has not been issued` : `Mesoscale Discussion ${number} has not been issued`; $('#crumb').textContent = number; return; }
+  const title = watch ? p.title : `Mesoscale Discussion ${String(p.number).padStart(4, '0')}`;
   document.title = `${title} · WeatherWorld`;
-  document.querySelector('#title').textContent = title;
-  document.querySelector('#times').textContent = `Issued ${p.issuedText} · ${kind === 'watch' ? 'Until' : 'Valid until'} ${p.untilText} · ${p.where ?? ''}`;
-  const badge = document.querySelector('#badge'), concerning = kind === 'md' ? (p.concerning || (p.watchPercent != null ? `Probability of watch issuance ${p.watchPercent}%` : '')) : (p.pds ? 'PARTICULARLY DANGEROUS SITUATION' : '');
-  badge.hidden = !concerning; badge.textContent = concerning; badge.style.background = COLOURS[kind === 'watch' ? p.type : p.colourKey] ?? '#475569';
-  document.querySelector('#text').textContent = p.text ?? '';
-  document.querySelector('#map').src = `/api/${kind}/${number}.svg?v=${encodeURIComponent(p.validToHourUtc + ':' + (p.text ?? '').length)}`;
+  $('#title').textContent = title; $('#crumb').textContent = watch ? `Watch ${p.number}` : `Discussion ${p.number}`;
+  $('#times').innerHTML = `<b>Issued</b> ${escapeHtml(p.issuedText)}<br><b>${watch ? 'In effect until' : 'Valid until'}</b> ${escapeHtml(p.untilText)}`;
+  const tags = [];
+  if (watch) { tags.push(`<span class="tag tag--${p.type === 'tornado' ? 'tornado' : 'severe'}">${p.type === 'tornado' ? 'Tornado watch' : 'Severe thunderstorm watch'}</span>`); if (p.pds) tags.push('<span class="tag tag--pds">Particularly dangerous situation</span>'); }
+  else tags.push(`<span class="tag tag--md">${escapeHtml(p.concerning || (p.watchPercent != null ? `Watch chance ${p.watchPercent}%` : 'Mesoscale discussion'))}</span>`);
+  $('#badge').innerHTML = tags.join(' ');
+  const facts = [['Area', p.where]];
+  if (!watch && p.watchPercent != null) facts.push(['Chance of a watch', `${p.watchPercent}%`]);
+  if (!watch && p.watchNumber != null) facts.push(['Watch', `<a href="/watch/${p.watchNumber}">Watch ${p.watchNumber}</a>`]);
+  $('#facts').innerHTML = facts.filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${k === 'Watch' ? v : escapeHtml(v)}</dd>`).join('');
+  $('#text').textContent = p.text ?? '';
+  const v = encodeURIComponent(p.validToHourUtc + ':' + (p.text ?? '').length);
+  $('#map').src = `/api/${kind}/${number}.svg?v=${v}`; $('#mapLink').href = `/api/${kind}/${number}.svg?times=1`;
 }
 load();
 setInterval(load, 120_000);

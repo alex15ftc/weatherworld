@@ -53,22 +53,40 @@ const shadeImage = { canvas: null, key: '' };
 // The view: centre (grid units, x east, y north), zoom over the fit-to-window scale; it follows the
 // map until dragged.
 const view = { cx: 0, cy: 0, zoom: 1, follow: true, scale: 1, width: 0, height: 0 };
+// Share view (?share=1): only the chart with its title, time and key in the frame, for pictures and loops
+// (tools/social/make-loop.mjs). ?frame=<hour> picks the analysis, ?zoom=<n> the zoom, and ?cx=&cy= hold the
+// view on one place (grid units) so a loop does not slide along with the map.
+const query = new URLSearchParams(location.search), SHARE = query.get('share') === '1';
+if (SHARE) document.body.classList.add('share');
+if (query.get('frame') !== null && Number.isFinite(Number(query.get('frame')))) frameHour = Number(query.get('frame'));
+if (Number(query.get('zoom')) > 0) view.zoom = Math.max(1, Math.min(10, Number(query.get('zoom'))));
+if (query.get('cx') !== null) { view.follow = false; view.cx = Number(query.get('cx')); view.cy = Number(query.get('cy') ?? 32); }
+const queryZoom = Number(query.get('zoom')) > 0;
+// Where the frames come from: the analysis of the last hours (/synoptic), or a short range model run
+// every few forecast hours (/models/large-scale; ?run=<init hour> names the run, else the newest).
+const MODEL = location.pathname.startsWith('/models');
+let runInit = MODEL && query.get('run') !== null && Number.isFinite(Number(query.get('run'))) ? Number(query.get('run')) : null;
+document.body.dataset.source = MODEL ? 'model' : 'analysis';
+if (MODEL) { $('synHeading').textContent = 'Large-scale view'; document.title = 'Large-scale view · Models · WeatherWorld'; }
+const api = MODEL
+  ? { frame: hour => `/api/models/short-range/synoptic/frame?init=${runInit ?? ''}${hour === null ? '' : `&frame=${hour}`}`, field: (key, hour) => `/api/models/short-range/synoptic/field?init=${runInit ?? ''}&frame=${hour}&key=${encodeURIComponent(key)}` }
+  : { frame: hour => `/api/synoptic/frame${hour === null ? '' : `?frame=${hour}`}`, field: (key, hour) => `/api/synoptic/field?key=${encodeURIComponent(key)}&frame=${hour}` };
 
 // --- Loading.
 async function getJson(url) { const response = await fetch(url, { cache: 'no-store' }); if (!response.ok) throw new Error(String(response.status)); return response.json(); }
 async function getField(key) {
   if (!key) return null;
-  const id = `${key}:${data.frameHour}`;
-  if (!fieldCache.has(id)) { fieldCache.set(id, await getJson(`/api/synoptic/field?key=${encodeURIComponent(key)}&frame=${data.frameHour}`)); if (fieldCache.size > 160) fieldCache.delete(fieldCache.keys().next().value); }
+  const id = `${data.run?.initHourUtc ?? ''}:${key}:${data.frameHour}`;
+  if (!fieldCache.has(id)) { fieldCache.set(id, await getJson(api.field(key, data.frameHour))); if (fieldCache.size > 160) fieldCache.delete(fieldCache.keys().next().value); }
   return fieldCache.get(id);
 }
 async function load() {
   try {
-    data = await getJson(`/api/synoptic/frame${frameHour === null ? '' : `?frame=${frameHour}`}`);
+    data = await getJson(api.frame(frameHour));
     if (!$('shadeField').dataset.filled) fillSelects();
     const [shade, contour, wind] = await Promise.all([getField($('shadeField').value), getField($('contourField').value), getField($('windField').value ? `wind:${$('windField').value}` : '')]);
     layers = { shade, contour, wind };
-  } catch { data = { status: 'offline' }; layers = { shade: null, contour: null, wind: null }; }
+  } catch (error) { data = { status: 'offline', missing: error.message === '404' }; layers = { shade: null, contour: null, wind: null }; }
   describe();
   draw();
 }
@@ -95,10 +113,15 @@ function fillSelects() {
 
 function describe() {
   const time = $('synTime'), status = $('synStatus');
-  if (data.status !== 'ready') { time.textContent = '—'; status.textContent = 'Server not reachable. Start it with npm start (a first start takes about a minute).'; return; }
+  if (data.status !== 'ready') {
+    time.textContent = '—';
+    status.textContent = MODEL && data.missing ? 'No model run with a large-scale view yet. The short range model makes one at each whole hour of the world.' : 'Server not reachable. Start it with npm start (a first start takes about a minute).';
+    return;
+  }
   time.textContent = data.date ? `${data.date} · ${clock(data.hourUtc)} UTC` : `${clock(data.hourUtc)} UTC`;
+  if (MODEL) describeRun();
   const behind = data.frames.at(-1) - data.frameHour;
-  status.textContent = `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`} · seed ${data.seed}`;
+  status.textContent = MODEL ? `forecast hour ${data.run.forecastHour} of the ${clock(data.run.initHourUtc).slice(0, 2)}Z short range run · seed ${data.seed}` : `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`} · seed ${data.seed}`;
   const slider = $('frameSlider'); slider.max = data.frames.length - 1; slider.value = data.frames.indexOf(data.frameHour);
   $('frameLatest').classList.toggle('on', frameHour === null && !looping);
   $('framePlay').classList.toggle('on', Boolean(looping)); $('framePlay').textContent = looping ? 'Stop' : 'Loop';
@@ -114,7 +137,33 @@ function describe() {
     ['Nearest low', nearest ? `${nearest.c.hpa} hPa, ${mi(nearest.km)} mi ${compass(bearing(centre, nearest.c))}` : 'none']
   ].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
   drawLegend();
+  if (SHARE) describeShare();
   for (const button of document.querySelectorAll('#presets button')) { const p = PRESETS.find(x => x.key === button.dataset.preset); button.classList.toggle('on', p.shade === $('shadeField').value && p.contour === $('contourField').value && p.wind === $('windField').value); }
+}
+
+// The share view's title, time and key.
+function describeShare() {
+  const preset = PRESETS.find(p => p.shade === $('shadeField').value && p.contour === $('contourField').value && p.wind === $('windField').value);
+  const parts = [layers.shade?.label, layers.contour && `${layers.contour.label.replace(/ \(.*\)$/, '')} (${layers.contour.unit})`].filter(Boolean);
+  $('shareTitle').textContent = (MODEL ? `Model F${String(data.run.forecastHour).padStart(3, '0')} · ` : '') + (preset ? `${preset.label} · ${parts.slice(1).concat(layers.wind ? ['wind barbs (kt)'] : []).join(', ')}` : parts.join(' · '));
+  $('shareTime').textContent = `${clock(data.hourUtc).replace(':', '')} UTC ${data.date ?? ''}`.trim();
+  const bar = $('shareBar'), g = bar.getContext('2d'), scale = layers.shade && SCALES[layers.shade.key];
+  g.clearRect(0, 0, bar.width, bar.height);
+  if (!scale) { for (const id of ['shareFrom', 'shareTo', 'shareUnit']) $(id).textContent = ''; return; }
+  const from = scale.stops[0][0], to = scale.stops.at(-1)[0];
+  g.fillStyle = BACKGROUND; g.fillRect(0, 0, bar.width, bar.height);
+  for (let x = 0; x < bar.width; x++) { const [r, gr, b, a] = colourAt(scale, from + (to - from) * x / (bar.width - 1)); g.fillStyle = `rgba(${r | 0},${gr | 0},${b | 0},${Math.max(0.12, a)})`; g.fillRect(x, 0, 1, bar.height); }
+  $('shareFrom').textContent = from; $('shareTo').textContent = to; $('shareUnit').textContent = layers.shade.unit;
+}
+
+// The model run's list (large-scale view of the models): the runs the server holds, the newest first.
+function describeRun() {
+  const select = $('runSelect'), runs = [...data.run.runs].reverse(), key = runs.map(r => r.initHourUtc).join(',');
+  if (select.dataset.key !== key) {
+    select.dataset.key = key;
+    select.innerHTML = runs.map(r => `<option value="${r.initHourUtc}">${clock(r.initHourUtc).slice(0, 2)}Z run · ${r.hours} h${r === runs[0] ? ' (newest)' : ''}</option>`).join('');
+  }
+  select.value = String(data.run.initHourUtc);
 }
 
 function applyPreset(preset, reload = true) {
@@ -174,7 +223,7 @@ function resize() {
   canvas.width = Math.max(1, Math.round(box.width * ratio)); canvas.height = Math.max(1, Math.round(box.height * ratio));
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   // Narrow screens open zoomed in around the map (the whole channel is a thin strip there).
-  if (!view.width && box.width < 700) view.zoom = 3;
+  if (!view.width && box.width < 700 && !queryZoom) view.zoom = 3;
   view.width = box.width; view.height = box.height;
   draw();
 }
@@ -409,7 +458,8 @@ for (const preset of PRESETS) { const button = document.createElement('button');
 for (const id of ['shadeField', 'contourField', 'windField']) $(id).addEventListener('change', load);
 for (const id of ['showMap', 'showCentres', 'showGrid']) $(id).addEventListener('change', draw);
 function stopLoop() { if (looping) { clearInterval(looping); looping = null; } }
-function showFrame(index) { if (!data?.frames) return null; const i = Math.max(0, Math.min(data.frames.length - 1, index)); frameHour = i === data.frames.length - 1 ? null : data.frames[i]; return load(); }
+// (the analysis follows the newest frame when the last one is chosen; a model run's frames are all named)
+function showFrame(index) { if (!data?.frames) return null; const i = Math.max(0, Math.min(data.frames.length - 1, index)); frameHour = !MODEL && i === data.frames.length - 1 ? null : data.frames[i]; return load(); }
 $('frameSlider').addEventListener('input', event => { stopLoop(); showFrame(Number(event.target.value)); });
 $('framePrev').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) - 1); });
 $('frameNext').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) + 1); });
@@ -420,5 +470,6 @@ $('framePlay').addEventListener('click', () => {
   looping = setInterval(async () => { if (busy || !data?.frames) return; busy = true; frameHour = data.frames[index % data.frames.length]; index++; await load(); busy = false; }, LOOP_MS);
 });
 
+$('runSelect').addEventListener('change', event => { stopLoop(); runInit = Number(event.target.value); frameHour = null; const url = new URL(location.href); url.searchParams.set('run', runInit); history.replaceState(null, '', url); load(); });
 new ResizeObserver(resize).observe(canvas);
 refresh();

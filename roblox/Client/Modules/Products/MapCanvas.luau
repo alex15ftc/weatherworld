@@ -1384,6 +1384,17 @@ function MapCanvas.centreOn(mx: number, my: number)
 	changed()
 end
 
+-- Shows a box of the map (map miles) with room around it: a chosen warning or watch. Never closer than
+-- leastMiles across, so a small warning still shows the towns around it.
+function MapCanvas.frame(x0: number, y0: number, x1: number, y1: number, leastMiles: number?)
+	local size = viewSize()
+	local across = math.max(leastMiles or 60, (x1 - x0) * 1.9, (y1 - y0) * 1.9)
+	centreX, centreY = (x0 + x1) / 2, (y0 + y1) / 2
+	mpp = across / math.max(1, math.min(size.X, size.Y))
+	clampView()
+	changed()
+end
+
 function MapCanvas.centreOnMe()
 	local mx, my = myMiles()
 	if mx and my then

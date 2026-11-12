@@ -10,7 +10,7 @@
 import { CATEGORY_COLOURS, CATEGORY_SHORT, CHANCE_COLOURS } from '../js/forecast/productColours.js';
 
 export const OUTLOOK_DAYS = ['day1', 'day2', 'day3'];
-export const OUTLOOK_HAZARDS = ['categorical', 'tornado', 'wind', 'hail'];
+export const OUTLOOK_HAZARDS = ['categorical', 'tornado', 'wind', 'hail', 'severe'];
 
 // The world's clock: hours from the start of the world, UTC; local time is CDT, five hours behind
 // (js/reports/reportText.js).
@@ -27,7 +27,7 @@ function darker(hex, by = 0.45) {
   return `#${f(n >> 16)}${f((n >> 8) & 255)}${f(n & 255)}`;
 }
 
-const HAZARD_TITLES = { categorical: 'Categorical Outlook', tornado: 'Probabilistic Tornado Outlook', wind: 'Probabilistic Damaging Wind Outlook', hail: 'Probabilistic Large Hail Outlook' };
+const HAZARD_TITLES = { categorical: 'Categorical Outlook', tornado: 'Probabilistic Tornado Outlook', wind: 'Probabilistic Damaging Wind Outlook', hail: 'Probabilistic Large Hail Outlook', severe: 'Probabilistic Severe Weather Outlook' };
 const FONT = "DejaVu Sans, Segoe UI, Arial, Helvetica, sans-serif";
 
 // The map's layout in pixels: the 500-mile map, the key under it, and (for the Discord posts, which
@@ -42,7 +42,7 @@ const RISK_NAMES = { TSTM: 'Thunderstorms', MRGN: '1 - Marginal', SLGT: '2 - Sli
 // ({ miles, counties: [{ rings: [[[x, y], ...]] }], towns: [{ name, kind, x, y, population }] }).
 // times: add the issue and valid times under the key.
 export function outlookSvg(product, layer, hazard = 'categorical', { times = false } = {}) {
-  // (Day 3 has no hazard maps: GameProducts.gameOutlook)
+  // (a day has only its own hazards' maps: Days 1 and 2 tornado, wind and hail; Day 3 any severe weather)
   if (!OUTLOOK_HAZARDS.includes(hazard) || !product.hazards?.[hazard]) hazard = 'categorical';
   times = times && product.status === 'issued';
   const mapMiles = product.mapMiles ?? layer?.miles ?? 500, scale = W / mapMiles, top = 0, height = W + legendHeight(hazard) + (times ? TIMES : 0);
@@ -101,7 +101,7 @@ export function outlookSvg(product, layer, hazard = 'categorical', { times = fal
 
   // The key: "Risk Level" with each category's name, or the hazard's chances and its CIG hatching.
   const ly = W + 22;
-  out.push(`<text x="24" y="${ly + 14}" font-size="15" font-weight="700" fill="#222">${hazard === 'categorical' ? 'Risk Level' : `${HAZARD_TITLES[hazard].replace(/^Probabilistic | Outlook$/g, '')} Probability`}</text>`);
+  out.push(`<text x="24" y="${ly + 14}" font-size="15" font-weight="700" fill="#222">${hazard === 'categorical' ? 'Risk Level' : `${HAZARD_TITLES[hazard].replace(/^Probabilistic | Outlook$/g, '')} Probability${hazard === 'severe' ? ' (tornado, damaging wind or large hail)' : ''}`}</text>`);
   const chips = [];
   if (hazard === 'categorical') {
     for (const key of (product.categories ?? []).filter(k => CATEGORY_COLOURS[k])) chips.push({ colour: CATEGORY_COLOURS[key], text: RISK_NAMES[key] ?? CATEGORY_SHORT[key] });

@@ -66,7 +66,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   These are the large-scale fields only (no daytime heating, lee trough, cold pools or storms).
 - World clock locked to real UTC (2026-11-11, deployed from `75ad4ac`; the live world came up in step): 8 world days
   to each real day, and every public label names the day "11/11/26 Day 3" instead of the world's own count
-  (`js/forecast/calendar.js`; decision in `TECH_DECISIONS.md`). Day 3 outlooks are categorical only, with no High
+  (`js/forecast/calendar.js`; decision in `TECH_DECISIONS.md`). Day 3 outlooks had no High
   risk in the key. The Roblox report-day names need the place synced and published to show.
 - Branch `roblox/boilerplate` (committed and merged to `main` 2026-11-11) moves `roblox/src` onto the Roblox Boilerplate: Services and
   Controllers, all remotes replaced by `Shared/Net` Network events and `Network.Request`, Trove, Signal,
@@ -92,6 +92,39 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   Success: look at them in game. The engine still answers this Studio server with HTTP 401: add the Studio local
   secret `weather_feed_key` (docs/HOSTING.md) for real weather and storm damage.
 
+- Site redesign and social post kit (2026-11-12, on `main`): the engine's pages
+  are one website (`site/README.md`): a front page at `/`, `/outlooks`, `/watches`, `/discussions`, `/warnings`,
+  `/about`, a real 404, and the map tools as document pages in the same look: `/analysis` (mesoanalysis;
+  `/index.html` still works), `/synoptic`, `/models` and `/models/large-scale`. Every page takes its header (hover
+  menus for Outlooks, Mesoanalysis and Models; the world's clock in a strip above) and footer from `site/*.html`
+  (filled in by `server/SitePages.js`); the look is `css/site.css` (light document pages, charts drawn dark,
+  self-hosted Public Sans and IBM Plex Mono in `fonts/`).
+  - `/warnings` (`warnings.html`): a map and list from the new `/api/warnings/active` (polygons and bulletins);
+    choosing a warning zooms to it and shows its details.
+  - `/models/large-scale`: each short range run now keeps a frame of the whole large-scale model every 3 forecast
+    hours (`SHORT_RANGE.synopticEvery`, about 0.5 MB a frame, taken in the forecast worker by `SynopticRuntime`);
+    the synoptic page draws them from `/api/models/short-range/synoptic/frame|field`. `/synoptic?share=1` (and the
+    model view's) is a picture view with title, time, key and "simulated weather" in the frame.
+  - Day 3 outlooks now send their one chance of any severe weather (`GameProducts.gameOutlook` no longer drops
+    it): the page and the Roblox Outlook layer show Categorical and Severe for Day 3 (owner's request 2026-11-12,
+    replacing "categorical only").
+  - Roblox products screen (not yet seen in Studio; no Studio was connected): the site's look in `Ui.luau`
+    (charcoal, square corners, brand band with a gold line), details with a hazard tag, named lines and the
+    bulletin on a block, and the map goes to a chosen warning, watch or discussion (`MapCanvas.frame`, "Zoom to
+    it"). Checked only by `luau-compile`, selene and a Rojo build. Not published.
+  - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
+    and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
+    `data/social/high-risk-2026-11-12/` (not in git).
+  - Checked: `tests/site-pages.mjs`, `tests/short-range-synoptic.mjs` (the frames change nothing in a run), the
+    static page and game-products tests, and each page at desktop and phone width against the hosted engine
+    (`node scripts/site-preview.mjs`) and a local one (warnings, model large-scale view, hover menus in a browser).
+    `tests/short-range-model.mjs` fails on `main` with or without these changes ("the same storms in the same
+    places at +45 min while the dice are shared"; it failed on `3dea3bb` too): open. The `Dockerfile` copies the
+    new pages, `site/` and `fonts/`.
+  - The engine itself (`js/storms`, `js/world`, `js/atmosphere`, `js/mesoscale`, `js/sounding.js`) is as it was on
+    `main` at the start of 2026-11-12 (owner's decision that day): the storm environment batch and the removal of
+    live storm reports are on the branch `engine/storm-relative-separation` only, not merged.
+
 ## Next
 
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
@@ -101,7 +134,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    any generator change, re-upload through Studio's MCP and update `Foliage/Assets.luau`.
 3. Chaser network: open `/chasers` on the hosted engine as public and admin; join "plains" (version 493, the first
    boilerplate publish) and check it boots and storms arrive; then turn on the M map's Chasers layer and check dots, names and trails (`ChaserNet.Ready` handshake).
-4. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
+4. Site: look at the Roblox products screen in Studio (restyle and zoom-to-warning are unseen), then publish the
+   place. Open choices: a `/day/N` page that keeps each day's outlook and tornado tracks on the engine, so the daily
+   "forecast, then what happened" pair needs no recording; redrawing the map tools' charts for a light ground.
+5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
 
 ## Blockers
 

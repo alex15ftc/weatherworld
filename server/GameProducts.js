@@ -149,8 +149,9 @@ export function gameOutlook(day, published, { nextUpdateHourUtc = null } = {}) {
   const head = { v: GAME_PRODUCTS.version, id: `outlook.${day}`, kind: 'outlook', day: Number(day.slice(3)) };
   if (!published || published.status !== 'issued') return { ...head, status: published?.status ?? 'off', error: published?.error ?? null };
   const o = published, mapMiles = o.width * o.cellMiles, miles = rings => contourMiles(rings, mapMiles);
-  // Day 3 is categorical only, and its key has no High risk (none is ever issued that far out).
-  const day3 = head.day === 3, hazardOrder = day3 ? [] : o.hazards, categories = day3 ? o.categories.filter(key => key !== "HIGH") : o.categories;
+  // Day 3 carries one chance, of any severe weather (its hazards are ['severe'], DayOneOutlook.js), beside the
+  // categorical map, as the real Day 3 does; its key has no High risk (none is ever issued that far out).
+  const day3 = head.day === 3, hazardOrder = o.hazards, categories = day3 ? o.categories.filter(key => key !== "HIGH") : o.categories;
   const hazards = {};
   for (const hazard of hazardOrder) {
     const shapes = o.shapes[hazard];

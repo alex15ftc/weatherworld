@@ -1,0 +1,47 @@
+<a class="skip" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="site-top">
+    <div class="site-top__bar">
+      <span class="site-top__note">Simulated weather for the WeatherWorld game. Not a real forecast.</span>
+      <span class="site-clock" id="siteClock" aria-live="off"></span>
+    </div>
+  </div>
+  <div class="site-header__bar">
+    <a class="site-brand" href="/">
+      <img src="/site/mark.svg" alt="" width="30" height="30" />
+      <span><b>WeatherWorld</b><small>Storm Prediction Center</small></span>
+    </a>
+    <button class="site-menu" type="button" aria-expanded="false" aria-controls="siteNav">Menu</button>
+    <nav class="site-nav" id="siteNav" aria-label="Site">
+      <ul>
+        <li class="has-menu">
+          <a href="/outlooks" data-match="^/outlooks?(/|$)" aria-haspopup="true">Outlooks</a>
+          <ul class="site-sub" aria-label="Outlooks">
+            <li><a href="/outlook/day1">Day 1 outlook</a></li>
+            <li><a href="/outlook/day2">Day 2 outlook</a></li>
+            <li><a href="/outlook/day3">Day 3 outlook</a></li>
+          </ul>
+        </li>
+        <li><a href="/watches" data-match="^/watch(es)?(/|$)">Watches</a></li>
+        <li><a href="/discussions" data-match="^/(discussions|md)(/|$)">Discussions</a></li>
+        <li><a href="/warnings" data-match="^/warnings(/|$)">Warnings</a></li>
+        <li class="has-menu site-nav__gap">
+          <a href="/analysis" data-match="^/(analysis|index\.html|synoptic)" aria-haspopup="true">Mesoanalysis</a>
+          <ul class="site-sub" aria-label="Mesoanalysis">
+            <li><a href="/analysis">Surface analysis and soundings</a></li>
+            <li><a href="/synoptic">Synoptic charts</a></li>
+          </ul>
+        </li>
+        <li class="has-menu">
+          <a href="/models" data-match="^/models" aria-haspopup="true">Models</a>
+          <ul class="site-sub" aria-label="Models">
+            <li><a href="/models">Short range and ensemble</a></li>
+            <li><a href="/models/large-scale">Large-scale view</a></li>
+          </ul>
+        </li>
+        <li class="site-nav__gap"><a href="/chasers" data-match="^/chasers">Chasers</a></li>
+        <li><a href="/about" data-match="^/about">About</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>

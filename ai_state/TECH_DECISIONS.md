@@ -16,6 +16,36 @@
 
 ## Decisions
 
+### 2026-11-12 — Day 3 outlooks show one chance of any severe weather beside the categorical map
+
+- Status: `active` (replaces "Day 3 outlooks categorical only", 2026-11-11)
+- Decision: the Day 3 product carries its `severe` hazard (5 to 60%, with its hatching), as the forecast already
+  makes it (`DayOneOutlook.js` hazards.day3); the website and the Roblox Outlook layer offer Categorical and Severe
+  for Day 3. No tornado, wind or hail maps on Day 3. The key still has no High risk.
+- Rationale: the owner's request; the real Day 3 outlook is a categorical map and one probabilistic map of any
+  severe weather.
+
+### 2026-11-12 — The engine's pages are one website with shared parts and a light, plain look
+
+- Status: `active`
+- Decision: every page takes its header and footer from `site/*.html`, put in by the server when it sends the page
+  (`server/SitePages.js`, which also holds the address list); no build step, no client-side templating. Document
+  pages are light by default (dark when the reader's system is), with square corners, rules and tables instead of
+  boxed cards, and colour kept for hazards; the map tools stay dark. Type is Public Sans and IBM Plex Mono, served
+  from `fonts/`. Pictures meant for sharing carry their title, time and "simulated weather, not a real forecast" in
+  the frame.
+- Rationale: the owner asked for a proper website that does not look machine-made. Real forecast sites (SPC,
+  weather.gov, Tropical Tidbits) are light, dense and text-first with every product stamped with its times; the old
+  pages' dark navy, rounded cards, pill buttons and default Inter are the commonly named marks of generated pages.
+  Rejected: a header written by script in the browser (flashes, and each page still needs its own copy for readers
+  without script); fonts from Google's servers (a third-party request, and the pictures the tools make need the
+  same files locally); a static site generator (the image has no npm packages).
+- Consequences: a new page needs a row in `server/SitePages.js` and its file in the `Dockerfile` (`tests/site-pages.mjs`
+  checks both). `/` is now the front page; an unknown address is a 404, no longer the mesoanalysis page. The map
+  tools are document pages with a controls column and a chart; their charts stay dark because their colours are
+  chosen for a dark ground (redrawing them light is a separate, larger job). The Roblox products screen takes the
+  same colours and square corners in `Ui.luau`.
+
 ### 2026-11-11 — Trees are chunk records drawn by clients; their breaking is the server's and permanent
 
 - Status: active

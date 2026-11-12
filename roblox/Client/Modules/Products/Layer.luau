@@ -13,6 +13,12 @@ export type Detail = {
 	-- Which item it is (the layer outlines it while its details are open).
 	layer: string,
 	item: string,
+	-- A short line under the title in the item's colour (a warning's kind), if any.
+	tag: string?,
+	-- Named lines above the text ({ name, value }): the area, when it is in effect.
+	facts: { { string } }?,
+	-- The box around it (west, north, east, south, map miles): the map goes to it when its details open.
+	bounds: { number }?,
 }
 
 -- What the screen gives each layer.

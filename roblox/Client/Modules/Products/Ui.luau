@@ -1,15 +1,21 @@
 --!strict
--- Plain building blocks for the product screens' side panels (functional first; the look can
--- be redone later in one place).
+-- Plain building blocks for the product screens' side panels; their look is set here, in one place.
 
 local TextService = game:GetService("TextService")
 
 local Ui = {}
 
-Ui.TEXT = Color3.fromRGB(226, 232, 240)
-Ui.MUTED = Color3.fromRGB(148, 160, 178)
-Ui.PANEL = Color3.fromRGB(28, 34, 44)
-Ui.ACCENT = Color3.fromRGB(37, 99, 235)
+-- The website's look (css/site.css), for a dark screen over the game: neutral charcoal, square corners, the
+-- brand's blue for what is chosen, colour otherwise kept for the hazards.
+Ui.TEXT = Color3.fromRGB(233, 234, 231)
+Ui.MUTED = Color3.fromRGB(155, 161, 166)
+Ui.PAGE = Color3.fromRGB(20, 23, 26)
+Ui.PANEL = Color3.fromRGB(33, 38, 43)
+Ui.LINE = Color3.fromRGB(54, 60, 66)
+Ui.ACCENT = Color3.fromRGB(31, 95, 139)
+Ui.BRAND = Color3.fromRGB(11, 58, 87)
+Ui.GOLD = Color3.fromRGB(242, 182, 50)
+Ui.CORNER = UDim.new(0, 2)
 
 function Ui.rgb(c: { number }): Color3
 	return Color3.fromRGB(c[1], c[2], c[3])
@@ -109,8 +115,12 @@ function Ui.button(parent: Instance, text: string, onClick: () -> ()): TextButto
 	button.Text = text
 	button:SetAttribute("TestId", text) -- for automated play tests (romcp activate)
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
+	corner.CornerRadius = Ui.CORNER
 	corner.Parent = button
+	local edge = Instance.new("UIStroke")
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.Color = Ui.LINE
+	edge.Parent = button
 	button.Activated:Connect(onClick)
 	button.Parent = parent
 	return button
@@ -176,7 +186,7 @@ function Ui.listButton(parent: Instance, text: string, mark: Color3?, onClick: (
 	pad.PaddingRight = UDim.new(0, 6)
 	pad.Parent = button
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 5)
+	corner.CornerRadius = Ui.CORNER
 	corner.Parent = button
 	if mark then
 		local box = Instance.new("Frame")
@@ -189,6 +199,75 @@ function Ui.listButton(parent: Instance, text: string, mark: Color3?, onClick: (
 	button.Activated:Connect(onClick)
 	button.Parent = parent
 	return button
+end
+
+-- A thin line across the column.
+function Ui.rule(parent: Instance): Frame
+	local line = Instance.new("Frame")
+	line.LayoutOrder = nextOrder()
+	line.Size = UDim2.new(1, 0, 0, 1)
+	line.BackgroundColor3 = Ui.LINE
+	line.BorderSizePixel = 0
+	line.Parent = parent
+	return line
+end
+
+-- A hazard's name on its colour (a warning's kind), as wide as its text.
+function Ui.tag(parent: Instance, text: string, colour: Color3): TextLabel
+	local label = Instance.new("TextLabel")
+	label.LayoutOrder = nextOrder()
+	label.AutomaticSize = Enum.AutomaticSize.XY
+	label.BackgroundColor3 = colour
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 12
+	-- Dark text on the light hazard colours (yellow, orange), white on the rest.
+	label.TextColor3 = if colour.R * 0.299 + colour.G * 0.587 + colour.B * 0.114 > 0.6 then Color3.fromRGB(17, 17, 17) else Color3.fromRGB(255, 255, 255)
+	label.TextWrapped = true
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = text
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft, pad.PaddingRight, pad.PaddingTop, pad.PaddingBottom = UDim.new(0, 7), UDim.new(0, 7), UDim.new(0, 3), UDim.new(0, 3)
+	pad.Parent = label
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = Ui.CORNER
+	corner.Parent = label
+	label.Parent = parent
+	return label
+end
+
+-- A named line: the name in the muted colour, then its value, wrapped.
+function Ui.fact(parent: Instance, name: string, value: string): TextLabel
+	local label = Ui.text(parent, "", { size = 13 })
+	label.RichText = true
+	local safe = string.gsub(string.gsub(string.gsub(value, "&", "&amp;"), "<", "&lt;"), ">", "&gt;")
+	label.Text = `<font color="#9ba1a6">{name}</font>  {safe}`
+	return label
+end
+
+-- A product's text as issued: fixed-width, on a darker block with a line down its left side.
+function Ui.bulletin(parent: Instance, text: string): Frame
+	local block = Instance.new("Frame")
+	block.LayoutOrder = nextOrder()
+	block.Size = UDim2.new(1, 0, 0, 0)
+	block.AutomaticSize = Enum.AutomaticSize.Y
+	block.BackgroundColor3 = Color3.fromRGB(13, 18, 24)
+	block.BorderSizePixel = 0
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(0, 3, 1, 0)
+	bar.BackgroundColor3 = Ui.LINE
+	bar.BorderSizePixel = 0
+	bar.Parent = block
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft, pad.PaddingRight, pad.PaddingTop, pad.PaddingBottom = UDim.new(0, 12), UDim.new(0, 8), UDim.new(0, 8), UDim.new(0, 8)
+	pad.Parent = block
+	local layout = Instance.new("UIListLayout")
+	layout.Parent = block
+	bar.Position = UDim2.fromOffset(-12, -8)
+	bar.Size = UDim2.new(0, 3, 1, 16)
+	Ui.longText(block, text, { size = 13, mono = true })
+	block.Parent = parent
+	return block
 end
 
 -- Removes what a panel section holds (for redrawing it).

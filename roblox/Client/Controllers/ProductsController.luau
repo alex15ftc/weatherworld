@@ -219,20 +219,36 @@ local function renderDetail()
 	if not open then
 		return
 	end
-	local title = Ui.text(detailBox, open.title, { size = 17, bold = true })
-	if open.colour then
+	Ui.rule(detailBox)
+	if open.tag then
+		Ui.tag(detailBox, open.tag, if open.colour then Ui.rgb(open.colour) else Ui.ACCENT)
+	end
+	local title = Ui.text(detailBox, open.title, { size = 18, bold = true })
+	if open.colour and not open.tag then
 		title.TextColor3 = Ui.rgb(open.colour)
 	end
 	if open.subtitle then
 		Ui.text(detailBox, open.subtitle, { size = 12, colour = Ui.MUTED })
 	end
+	for _, fact in open.facts or {} do
+		Ui.fact(detailBox, fact[1], fact[2])
+	end
 	local row = Ui.buttons(detailBox, 26)
+	local bounds = open.bounds
+	if bounds then
+		Ui.button(row, "Zoom to it", function()
+			MapCanvas.frame(bounds[1], bounds[2], bounds[3], bounds[4])
+		end)
+	end
 	Ui.button(row, "Close", function()
 		detail = nil
 		renderDetail()
 		redraw()
 	end)
-	Ui.longText(detailBox, open.body, { size = 13, mono = true })
+	if open.body ~= "" then
+		Ui.bulletin(detailBox, open.body)
+	end
+	Ui.rule(detailBox)
 end
 
 local context: Layer.Context = {
@@ -240,6 +256,12 @@ local context: Layer.Context = {
 		redraw()
 	end,
 	showDetail = function(d: Layer.Detail)
+		-- The map goes to a newly chosen area (not again when the same one is refreshed or clicked).
+		local was = detail
+		local bounds = d.bounds
+		if bounds and not (was and was.layer == d.layer and was.item == d.item) then
+			MapCanvas.frame(bounds[1], bounds[2], bounds[3], bounds[4])
+		end
 		detail = d
 		renderDetail()
 		redraw()
@@ -283,37 +305,49 @@ local function build(): ScreenGui
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.new(1, -24, 1, -16)
-	panel.BackgroundColor3 = Color3.fromRGB(20, 24, 30)
+	panel.BackgroundColor3 = Ui.PAGE
+	panel.BorderSizePixel = 0
 	panel.Parent = screen
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 12)
-	corner.Parent = panel
+	-- The title band, as the website's header: the brand colour over a gold line.
+	local band = Instance.new("Frame")
+	band.Size = UDim2.new(1, 0, 0, 40)
+	band.BackgroundColor3 = Ui.BRAND
+	band.BorderSizePixel = 0
+	band.Parent = panel
+	local line = Instance.new("Frame")
+	line.Position = UDim2.new(0, 0, 1, 0)
+	line.Size = UDim2.new(1, 0, 0, 3)
+	line.BackgroundColor3 = Ui.GOLD
+	line.BorderSizePixel = 0
+	line.Parent = band
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Position = UDim2.fromOffset(16, 8)
+	title.Position = UDim2.fromOffset(16, 6)
 	title.Size = UDim2.new(0.4, 0, 0, 28)
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 20
+	title.TextSize = 19
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.TextColor3 = Color3.fromRGB(236, 240, 245)
-	title.Text = "Weather"
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.RichText = true
+	title.Text = 'WeatherWorld  <font size="12" color="#b9d3e3">STORM PREDICTION CENTER</font>'
 	title.Parent = panel
 	local hint = title:Clone()
 	hint.AnchorPoint = Vector2.new(1, 0)
-	hint.Position = UDim2.new(1, -16, 0, 8)
+	hint.Position = UDim2.new(1, -16, 0, 6)
 	hint.Size = UDim2.new(0.6, -16, 0, 28)
 	hint.Font = Enum.Font.Gotham
-	hint.TextSize = 14
+	hint.TextSize = 13
+	hint.RichText = false
 	hint.TextXAlignment = Enum.TextXAlignment.Right
-	hint.TextColor3 = Color3.fromRGB(150, 160, 175)
+	hint.TextColor3 = Color3.fromRGB(185, 211, 227)
 	hint.Text = "M close  ·  click an area for details  ·  scroll or +/− zoom  ·  drag pan  ·  C centre on you"
 	hint.Parent = panel
 
 	local body = Instance.new("Frame")
 	body.BackgroundTransparency = 1
-	body.Position = UDim2.fromOffset(12, 44)
-	body.Size = UDim2.new(1, -24, 1, -84)
+	body.Position = UDim2.fromOffset(12, 53)
+	body.Size = UDim2.new(1, -24, 1, -93)
 	body.Parent = panel
 
 	local mapHolder = Instance.new("Frame")

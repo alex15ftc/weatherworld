@@ -19,6 +19,7 @@ import { ProductArchive } from './ProductArchive.js';
 import { ChaserArchive, roleOf, isAdmin } from './ChaserArchive.js';
 import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
+import { sitePage, renderPage, NOT_FOUND_PAGE, CONTENT_TYPES } from './SitePages.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
@@ -102,14 +103,9 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
     if (url.pathname.startsWith('/api/')) return await serveApi(url, req, res);
-    // The public outlook pages (OutlookPublic.js): one page for Days 1-3.
-    if (/^\/outlook(\/day[123])?\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'outlook.html'), res);
-    // The chaser network page: one page, its view set by the viewer's role (ChaserArchive.js).
-    if (/^\/chasers\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'chasers.html'), res);
-    // The synoptic page: the whole large-scale model and the map's place in it (SynopticRuntime.js).
-    if (/^\/synoptic\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'synoptic.html'), res);
-    // A watch's or a mesoscale discussion's page (ProductArchive.js).
-    if (/^\/(watch|md)\/\d+\/?$/.test(url.pathname)) return sendFile(path.resolve(ROOT, 'product.html'), res);
+    // The site's pages (site/README.md): every page shares the header and footer in site/.
+    const page = sitePage(url.pathname);
+    if (page) return sendFile(path.resolve(ROOT, page), res);
     return serveStatic(url.pathname, res);
   } catch (error) { sendJson(req, res, 500, { error: error?.message ?? 'Internal server error' }, { cacheable: false }); }
 });
@@ -139,7 +135,9 @@ async function serveApi(url, req, res) {
   if (url.pathname.startsWith('/api/models/short-range/')) {
     const q = name => url.searchParams.get(name), part = url.pathname.slice('/api/models/short-range/'.length);
     if (!shortRange) return sendJson(req, res, 404, { error: 'The short range model is off' }, { cacheable: false, trace });
-    const value = part === 'runs' ? shortRange.list() : part === 'run' ? shortRange.meta(q('init')) : part === 'field' ? shortRange.field(q('init'), q('hour'), q('key')) : part === 'storms' ? shortRange.storms(q('init'), q('minute')) : part === 'tracks' ? shortRange.tracks(q('init')) : undefined;
+    const value = part === 'runs' ? shortRange.list() : part === 'run' ? shortRange.meta(q('init')) : part === 'field' ? shortRange.field(q('init'), q('hour'), q('key')) : part === 'storms' ? shortRange.storms(q('init'), q('minute')) : part === 'tracks' ? shortRange.tracks(q('init'))
+      // (the run's large-scale view: the frames and fields the synoptic page reads, from the run)
+      : part === 'synoptic/frame' ? shortRange.synopticFrame(synoptic, q('init'), q('frame')) : part === 'synoptic/field' ? shortRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
     return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
   }
   // The outlook runs as an ensemble (OutlookRuntime.js): the issues kept, and one issue's storm tracks (?issued=).
@@ -211,6 +209,8 @@ async function serveApi(url, req, res) {
     if (!value) return sendJson(req, res, 404, { error: 'Not found' }, { cacheable: false, trace });
     return svg ? sendText(req, res, 200, value, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 200, value, { cacheable: false, trace });
   }
+  // The warnings in effect, each with its polygon and bulletin, for the warnings page.
+  if (url.pathname === '/api/warnings/active') return sendJson(req, res, 200, archive.activeWarnings(), { cacheable: false, trace });
   if (url.pathname === '/api/warnings.svg') {
     const value = archive.warningsSvg((url.searchParams.get('keys') ?? '').split(',').filter(Boolean).slice(0, 40), { times: url.searchParams.get('times') === '1' });
     return value ? sendText(req, res, 200, value, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 404, { error: 'Not found' }, { cacheable: false, trace });
@@ -259,17 +259,18 @@ async function outlookProduct(day) {
 }
 
 function serveStatic(pathname, res) {
-  const relative = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '');
+  const relative = decodeURIComponent(pathname).replace(/^\/+/, '');
   const filename = path.resolve(ROOT, relative);
-  if (!filename.startsWith(ROOT) || !fs.existsSync(filename) || fs.statSync(filename).isDirectory()) return sendFile(path.resolve(ROOT, 'index.html'), res);
+  if (!filename.startsWith(ROOT) || !fs.existsSync(filename) || fs.statSync(filename).isDirectory()) return sendFile(path.resolve(ROOT, NOT_FOUND_PAGE), res, 404);
   return sendFile(filename, res);
 }
-function sendFile(filename, res) {
+function sendFile(filename, res, status = 200) {
   // (a page missing from the image is a 404, never an unhandled stream error that takes the engine down)
   if (!fs.existsSync(filename)) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('Not found'); }
   const ext = path.extname(filename).toLowerCase();
-  const types = { '.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.svg':'image/svg+xml' };
-  res.writeHead(200, { 'content-type': types[ext] ?? 'application/octet-stream', 'cache-control': (ext === '.html' || ext === '.js' || ext === '.css') ? 'no-cache' : 'public, max-age=3600' });
+  const types = CONTENT_TYPES;
+  res.writeHead(status, { 'content-type': types[ext] ?? 'application/octet-stream', 'cache-control': (ext === '.html' || ext === '.js' || ext === '.css') ? 'no-cache' : 'public, max-age=3600' });
+  if (ext === '.html') return res.end(renderPage(ROOT, filename));
   fs.createReadStream(filename).on('error', () => res.destroy()).pipe(res);
 }
 

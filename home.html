@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WeatherWorld Storm Prediction Center</title>
+  <meta name="description" content="Live forecasts for a simulated world: convective outlooks, watches, warnings and analysis from the WeatherWorld engine." />
+  <!-- The site's front page: today's outlook, what is in effect now, and the way into the analysis tools. -->
+  <!--site:head-->
+  <style>
+    .lead { padding-top: 26px; }
+    .now { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); margin-top: 34px; }
+    .now a { display: block; padding: 14px 16px 14px 0; color: var(--ink); text-decoration: none; border-left: 1px solid var(--rule-soft); padding-left: 16px; }
+    .now a:first-child { border-left: 0; padding-left: 0; }
+    .now a:hover span:last-child { text-decoration: underline; }
+    .now .alert { color: var(--alert); }
+    @media (max-width: 860px) { .now { grid-template-columns: 1fr 1fr; } .now a:nth-child(3) { border-left: 0; padding-left: 0; } .now a:nth-child(n+3) { border-top: 1px solid var(--rule-soft); } }
+    .tools li { padding: 10px 0; border-bottom: 1px solid var(--rule-soft); }
+    .tools { list-style: none; margin: 0; padding: 0; }
+    .tools a { font-weight: 700; }
+    .tools span { display: block; color: var(--ink-2); font-size: 15.5px; }
+  </style>
+</head>
+<body class="doc">
+<!--site:header-->
+<main id="content" class="wrap">
+  <section class="lead split split--map">
+    <figure class="map">
+      <a href="/outlook/day1"><img id="leadMap" alt="Day 1 categorical outlook map" width="1000" height="1098" /></a>
+      <figcaption id="leadTimes"></figcaption>
+    </figure>
+    <div>
+      <p class="kicker">Day 1 convective outlook</p>
+      <p id="leadRisk"></p>
+      <h1 class="lead-head" id="leadSentence">Loading the outlook…</h1>
+      <dl class="facts" id="leadFacts"></dl>
+      <p style="margin-top:16px"><a href="/outlook/day1"><b>Read the full outlook and discussion</b></a></p>
+      <div class="cols-3" style="grid-template-columns:1fr 1fr;margin-top:26px" id="later"></div>
+    </div>
+  </section>
+
+  <nav class="now" aria-label="In effect now" id="now">
+    <a href="/watches"><span class="count" id="nWatch">–</span><span>watches in effect</span></a>
+    <a href="/warnings"><span class="count" id="nTor">–</span><span>tornado warnings</span></a>
+    <a href="/warnings"><span class="count" id="nSvr">–</span><span>other warnings</span></a>
+    <a href="/analysis"><span class="count" id="nStorm">–</span><span>storms on the map</span></a>
+  </nav>
+
+  <div class="split" style="margin-top:6px">
+    <section class="section">
+      <h2>Watches <a href="/watches">All watches</a></h2>
+      <div class="table-scroll"><table class="list" id="watches"></table></div>
+      <p class="empty" id="noWatches" hidden>No watches are in effect.</p>
+    </section>
+    <section class="section">
+      <h2>Latest discussions <a href="/discussions">All discussions</a></h2>
+      <div class="table-scroll"><table class="list" id="discussions"></table></div>
+      <p class="empty" id="noDiscussions" hidden>No mesoscale discussions have been issued lately.</p>
+    </section>
+  </div>
+
+  <div class="split">
+    <section class="section">
+      <h2>Look at the atmosphere</h2>
+      <ul class="tools">
+        <li><a href="/analysis">Mesoanalysis and soundings</a><span>Surface observations, instability, shear and a sounding for any point on the map.</span></li>
+        <li><a href="/synoptic">Synoptic charts</a><span>The jet stream, 500 mb vorticity, fronts and moisture across the whole large-scale model, as a loop.</span></li>
+        <li><a href="/models">Model runs</a><span>The short-range model and the ensemble behind each outlook.</span></li>
+        <li><a href="/chasers">Chaser network</a><span>Where every chaser in every server is right now, and where they drove on past days.</span></li>
+      </ul>
+    </section>
+    <section class="section">
+      <h2>One sky for everyone</h2>
+      <p>WeatherWorld is a storm-chasing world with weather that is simulated, not scripted. A single engine runs the
+        atmosphere for every server, so every player sees the same storms at the same moment, and the forecasts on
+        this site are made for that sky before the storms form.</p>
+      <p>The world runs eight days to each real day. <a href="/about">How it works</a></p>
+    </section>
+  </div>
+</main>
+<!--site:footer-->
+<script type="module">
+import { $, getJson, loadCalendar, utcText, localText, riskTag, escapeHtml } from '/js/site.js';
+let version = null;
+async function outlooks() {
+  const index = await getJson('/api/outlook/index');
+  const [d1, ...rest] = index.days;
+  if (d1.status === 'issued') {
+    $('#leadRisk').innerHTML = riskTag(d1.highest);
+    $('#leadSentence').textContent = d1.sentence ?? d1.headline;
+    $('#leadFacts').innerHTML = [['Main hazards', d1.mainHazards], ['Issued', `${utcText(d1.issuedHourUtc)} (${localText(d1.issuedHourUtc)})`], ['Valid until', utcText(d1.validToHourUtc)]]
+      .filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${escapeHtml(v)}</dd>`).join('');
+    $('#leadTimes').textContent = `Categorical outlook, issued ${utcText(d1.issuedHourUtc)}.`;
+  } else $('#leadSentence').textContent = d1.status === 'running' ? 'The Day 1 outlook is being prepared.' : 'No Day 1 outlook has been issued yet.';
+  if (d1.version !== version) { version = d1.version; $('#leadMap').src = `/api/outlook/day1.svg?v=${version ?? ''}`; }
+  $('#later').innerHTML = rest.map(d => `<div class="entry"><h3><a href="/outlook/${d.day}">Day ${d.day.slice(3)} outlook</a></h3>${d.status === 'issued' ? `${riskTag(d.highest)}<p>${escapeHtml(d.sentence ?? '')}</p>` : '<p>Not issued yet.</p>'}</div>`).join('');
+}
+async function products() {
+  const [feed, health] = await Promise.all([getJson('/api/products/feed'), getJson('/api/health')]);
+  const now = feed.nowHourUtc, live = list => (list ?? []).filter(x => x.validToHourUtc > now);
+  const watches = live(feed.watches).sort((a, b) => b.number - a.number), warnings = live(feed.warnings), tornado = warnings.filter(w => w.type === 'tornado').length;
+  $('#nWatch').textContent = watches.length; $('#nTor').textContent = tornado; $('#nSvr').textContent = warnings.length - tornado; $('#nStorm').textContent = health.stormCount;
+  $('#nTor').classList.toggle('alert', tornado > 0);
+  $('#watches').innerHTML = watches.length ? '<thead><tr><th>Watch</th><th>Area</th><th>Until</th></tr></thead><tbody>' + watches.map(w =>
+    `<tr><td><a href="/watch/${w.number}">${w.type === 'tornado' ? 'Tornado' : 'Severe'} ${w.number}</a>${w.pds ? ' <span class="tag tag--pds">PDS</span>' : ''}</td><td>${escapeHtml(w.where)}</td><td class="time">${escapeHtml(w.untilLocal)}</td></tr>`).join('') + '</tbody>' : '';
+  $('#noWatches').hidden = watches.length > 0;
+  const mds = [...(feed.discussions ?? [])].sort((a, b) => b.number - a.number).slice(0, 6);
+  $('#discussions').innerHTML = mds.length ? '<thead><tr><th>Number</th><th>Area</th><th>Issued</th></tr></thead><tbody>' + mds.map(d =>
+    `<tr${d.validToHourUtc <= now ? ' class="ended"' : ''}><td class="num"><a href="/md/${d.number}">${String(d.number).padStart(4, '0')}</a></td><td>${escapeHtml(d.where)}</td><td class="time">${escapeHtml(d.issuedLocal)}</td></tr>`).join('') + '</tbody>' : '';
+  $('#noDiscussions').hidden = mds.length > 0;
+}
+async function load() { await Promise.allSettled([outlooks(), products()]); }
+loadCalendar().then(load);
+setInterval(load, 60_000);
+</script>
+</body>
+</html>

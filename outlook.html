@@ -4,83 +4,92 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Convective Outlook · WeatherWorld</title>
-  <!-- The public Day 1-3 outlook page (server/OutlookPublic.js); /outlook/day1, /outlook/day2, /outlook/day3. -->
+  <!-- The public Day 1-3 outlook page (server/OutlookPublic.js): /outlooks, /outlook/day1, /outlook/day2, /outlook/day3. -->
+  <!--site:head-->
   <style>
-    :root { color-scheme: dark; --bg: #0b1017; --panel: #141b24; --panel-2: #1b2531; --line: #2c3948; --text: #f4f7fb; --muted: #96a5b7; --accent: #2563eb; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-    nav.product-nav { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #0f172a; }
-    nav.product-nav a { color: #cbd5e1; text-decoration: none; padding: 7px 12px; border-radius: 8px; font-size: .85rem; font-weight: 700; }
-    nav.product-nav a:hover, nav.product-nav a.active { background: var(--accent); color: #fff; }
-    main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
-    header h1 { margin: 0 0 4px; font-size: 1.6rem; }
-    header p { margin: 0; color: var(--muted); }
-    .risk { display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 6px; font-weight: 800; color: #111; letter-spacing: .03em; }
-    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 18px 0 12px; }
-    .tabs button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
-    .tabs button.on { background: var(--accent); border-color: var(--accent); }
-    .map { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
-    .map img { display: block; width: 100%; height: auto; border-radius: 6px; background: #fff; }
-    .discussion { margin-top: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
-    .discussion h2 { margin: 0 0 10px; font-size: 1.1rem; }
-    .discussion pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font: 14px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; color: #dbe4ee; }
-    .status { color: var(--muted); font-size: .9rem; margin-top: 8px; }
+    .outlook-map { position: sticky; top: 16px; }
+    @media (max-width: 860px) { .outlook-map { position: static; } }
+    .summary { font-size: 20px; line-height: 1.4; font-weight: 600; margin: 0 0 14px; }
   </style>
 </head>
-<body>
-<nav class="product-nav" aria-label="Weather products">
-  <a href="/outlook/day1" data-day="day1">Day 1</a><a href="/outlook/day2" data-day="day2">Day 2</a><a href="/outlook/day3" data-day="day3">Day 3</a>
-  <a href="/chasers">Chasers</a><a href="/index.html">Live analysis</a><a href="/synoptic">Synoptic</a><a href="/models.html">Models</a>
-</nav>
-<main>
-  <header>
+<body class="doc">
+<!--site:header-->
+<main id="content" class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span><a href="/outlooks">Outlooks</a></span><span id="crumb">Day 1</span></nav>
+  <header class="page-head">
     <h1 id="title">Convective Outlook</h1>
-    <p id="times">Loading…</p>
-    <span id="risk" class="risk" hidden></span>
+    <p class="stamp" id="times">Loading…</p>
   </header>
-  <div class="tabs" id="tabs">
-    <button data-hazard="categorical" class="on">Categorical</button>
-    <button data-hazard="tornado">Tornado</button>
-    <button data-hazard="wind">Wind</button>
-    <button data-hazard="hail">Hail</button>
+  <nav class="tabs" aria-label="Outlook day">
+    <a href="/outlook/day1" data-day="day1">Day 1</a><a href="/outlook/day2" data-day="day2">Day 2</a><a href="/outlook/day3" data-day="day3">Day 3</a>
+  </nav>
+  <div class="split split--map">
+    <div class="outlook-map">
+      <div class="tabs tabs--small" id="tabs" role="tablist" aria-label="Hazard"></div>
+      <figure class="map">
+        <a id="mapLink"><img id="map" alt="Outlook map" width="1000" height="1098" /></a>
+        <figcaption id="status"></figcaption>
+      </figure>
+    </div>
+    <div>
+      <p id="risk"></p>
+      <p class="summary" id="sentence"></p>
+      <dl class="facts" id="facts"></dl>
+      <section class="section">
+        <h2>Forecast discussion</h2>
+        <pre class="bulletin" id="discussion"></pre>
+      </section>
+      <nav class="pager" id="pager"></nav>
+    </div>
   </div>
-  <div class="map"><img id="map" alt="Outlook map" width="1000" height="1098" /></div>
-  <p class="status" id="status"></p>
-  <section class="discussion"><h2>Forecast discussion</h2><pre id="discussion"></pre></section>
 </main>
+<!--site:footer-->
 <script type="module">
-const COLOURS = { TSTM: '#c1e9c1', MRGN: '#66a366', SLGT: '#ffe066', ENH: '#ffa366', MDT: '#e06666', HIGH: '#ee99ee' };
-const day = (location.pathname.match(/day[123]/) ?? ['day1'])[0], n = day.slice(3);
-// Day 3 is categorical only (no hazard maps), as SPC's Day 3.
-let hazard = n === '3' ? 'categorical' : new URLSearchParams(location.search).get('hazard') ?? 'categorical', version = null;
-if (n === '3') document.querySelector('#tabs').style.display = 'none';
-document.querySelectorAll('nav a[data-day]').forEach(a => a.classList.toggle('active', a.dataset.day === day));
+import { $, getJson, loadCalendar, utcText, localText, riskTag, escapeHtml } from '/js/site.js';
+const day = (location.pathname.match(/day[123]/) ?? ['day1'])[0], n = Number(day.slice(3));
+// The maps a day has: its categorical outlook and one for each of its hazards (Days 1 and 2: tornado, wind and
+// hail; Day 3: one chance of any severe weather, as the real Day 3).
+const HAZARD_NAMES = { categorical: 'Categorical', tornado: 'Tornado', wind: 'Wind', hail: 'Hail', severe: 'Severe' };
+let hazard = new URLSearchParams(location.search).get('hazard') ?? 'categorical', version = null, shown = '';
+document.querySelectorAll('.tabs a[data-day]').forEach(a => { if (a.dataset.day === day) a.setAttribute('aria-current', 'page'); });
 document.title = `Day ${n} Convective Outlook · WeatherWorld`;
-document.querySelector('#title').textContent = `Day ${n} Convective Outlook`;
-const showMap = () => { document.querySelector('#map').src = `/api/outlook/${day}.svg?hazard=${hazard}&v=${version ?? ''}`; };
-document.querySelectorAll('#tabs button').forEach(b => {
-  b.classList.toggle('on', b.dataset.hazard === hazard);
-  b.onclick = () => { hazard = b.dataset.hazard; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b)); history.replaceState(null, '', hazard === 'categorical' ? location.pathname : `?hazard=${hazard}`); showMap(); };
-});
-// World hours are shown with the real date they fall on, from the server's clock (js/pageCalendar.js).
-const { loadCalendar, dateText } = await import('/js/pageCalendar.js');
-const stamp = h => { const z = (((h % 24) + 24) % 24) + 1e-6; return `${String(Math.floor(z)).padStart(2, '0')}${String(Math.floor((z % 1) * 60)).padStart(2, '0')} UTC ${dateText(h)}`.trim(); };
+$('#title').textContent = `Day ${n} Convective Outlook`;
+$('#crumb').textContent = `Day ${n}`;
+$('#pager').innerHTML = `${n > 1 ? `<a href="/outlook/day${n - 1}">‹ Day ${n - 1} outlook</a>` : '<span></span>'}${n < 3 ? `<a href="/outlook/day${n + 1}">Day ${n + 1} outlook ›</a>` : '<span></span>'}`;
+const showMap = () => { const src = `/api/outlook/${day}.svg?hazard=${hazard}&v=${version ?? ''}`; $('#map').src = src; $('#mapLink').href = `/api/outlook/${day}.svg?hazard=${hazard}&times=1`; };
+const mark = () => document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.hazard === hazard)));
+function showTabs(order) {
+  const list = ['categorical', ...order.filter(h => HAZARD_NAMES[h])];
+  if (!list.includes(hazard)) hazard = 'categorical';
+  if (shown !== list.join()) {
+    shown = list.join();
+    $('#tabs').innerHTML = list.map(h => `<button role="tab" data-hazard="${h}">${HAZARD_NAMES[h]}</button>`).join('');
+    document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => { hazard = b.dataset.hazard; mark(); history.replaceState(null, '', hazard === 'categorical' ? location.pathname : `?hazard=${hazard}`); showMap(); }; });
+  }
+  mark();
+}
+showTabs(n === 3 ? ['severe'] : ['tornado', 'wind', 'hail']);
 async function load() {
   try {
-    const res = await fetch(`/api/outlook/${day}`, { cache: 'no-store' });
-    const o = await res.json();
-    if (o.status !== 'issued') { document.querySelector('#times').textContent = o.status === 'running' ? 'The outlook is being prepared.' : 'No outlook has been issued yet.'; showMap(); return; }
-    const changed = res.headers.get('x-product-version') !== version;
-    version = res.headers.get('x-product-version');
-    document.querySelector('#times').textContent = `Issued ${stamp(o.issuedHourUtc)} · Valid ${stamp(o.validFromHourUtc)} to ${stamp(o.validToHourUtc)}`;
-    const risk = document.querySelector('#risk');
-    risk.hidden = !COLOURS[o.highest]; risk.textContent = (o.headline ?? '').toUpperCase(); risk.style.background = COLOURS[o.highest] ?? '';
-    document.querySelector('#discussion').textContent = o.discussion ?? '';
-    // While an update runs the page keeps showing this issue; it changes when the new one is out.
-    document.querySelector('#status').textContent = o.nextUpdateHourUtc != null ? `Next update ${stamp(o.nextUpdateHourUtc)}.` : '';
+    const o = await getJson(`/api/outlook/${day}`);
+    if (o.status !== 'issued') { $('#times').textContent = o.status === 'running' ? 'The outlook is being prepared.' : 'No outlook has been issued yet.'; showMap(); return; }
+    const was = hazard;
+    showTabs(o.hazardOrder ?? []);
+    const changed = o.__version !== version || was !== hazard;
+    version = o.__version;
+    $('#times').innerHTML = `<b>Issued</b> ${escapeHtml(utcText(o.issuedHourUtc))} (${localText(o.issuedHourUtc)})<br><b>Valid</b> ${escapeHtml(utcText(o.validFromHourUtc))} to ${escapeHtml(utcText(o.validToHourUtc))}`;
+    $('#risk').innerHTML = riskTag(o.highest);
+    const text = o.discussion ?? '';
+    const summary = text.match(/\.\.\.SUMMARY\.\.\.\n([\s\S]*?)(?:\n\n|$)/)?.[1]?.replace(/\n/g, ' ') ?? '';
+    $('#sentence').textContent = summary.split(/(?<=\.)\s/)[0] ?? '';
+    const hazards = summary.match(/The main hazards: (.*?)\.(?:\s|$)/)?.[1], greatest = summary.match(/The greatest risk is (.*?)\.(?:\s|$)/)?.[1];
+    $('#facts').innerHTML = [['Main hazards', hazards], ['Greatest risk', greatest], ['Next update', o.nextUpdateHourUtc != null ? `${utcText(o.nextUpdateHourUtc)} (${localText(o.nextUpdateHourUtc)})` : null]]
+      .filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${escapeHtml(v)}</dd>`).join('');
+    $('#discussion').textContent = text;
+    $('#status').textContent = o.updating ? 'An update is being prepared; this is the latest issue.' : 'Select the map to open it with its issue and valid times, ready to share.';
     if (changed) showMap();
   } catch (error) {
-    document.querySelector('#status').textContent = `Could not reach the weather server (${error.message}).`;
+    $('#status').textContent = `Could not reach the weather server (${error.message}).`;
   }
 }
 loadCalendar().then(load);

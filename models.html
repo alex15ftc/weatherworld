@@ -3,107 +3,104 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Models · Fake Plains Weather</title>
-  <link rel="stylesheet" href="./css/styles.css" />
+  <title>Models · WeatherWorld</title>
+  <!-- The model page (/models, js/pages/modelPage.js): the short range model's runs and the ensemble behind
+       each outlook, on the game map. The same runs across the whole large-scale model are at
+       /models/large-scale (synoptic.html). Laid out as the site's other map tools are (css/site.css). -->
+  <!--site:head-->
   <style>
-    body { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100vh; overflow: hidden; }
-    .mdl-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; }
-    .mdl-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
-    .mdl-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
-    .mdl-card select, .mdl-card button { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
-    .mdl-card button { cursor: pointer; font-weight: 700; }
-    .mdl-card button:hover { border-color: var(--accent); }
-    .mdl-models { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .mdl-models button.on { background: #2563eb; border-color: #2563eb; }
-    .mdl-card label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
-    .mdl-card label input { width: auto; margin: 0; }
     .mdl-products { display: flex; flex-direction: column; gap: 1px; }
-    .mdl-products h4 { margin: 9px 0 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .mdl-products h4 { margin: 10px 0 3px; color: var(--ink-2); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
     .mdl-products h4:first-child { margin-top: 0; }
-    .mdl-products button { text-align: left; background: none; border: 0; border-radius: 6px; padding: 4px 8px; font-weight: 500; font-size: 13px; color: #cbd5e1; }
-    .mdl-products button:hover { background: var(--panel); }
-    .mdl-products button.on { background: #2563eb; color: white; }
-    .mdl-main { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; min-width: 0; min-height: 0; padding: 58px 16px 10px; gap: 8px; }
-    .mdl-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; }
-    .mdl-title strong { font-size: 16px; }
-    .mdl-title small { color: var(--muted); font-size: 13px; }
-    .mdl-map { position: relative; min-height: 0; }
-    #modelCanvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
-    #modelTip { position: absolute; pointer-events: none; background: rgba(15, 23, 42, .95); border: 1px solid #374151; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; white-space: nowrap; display: none; z-index: 5; }
+    .bench .mdl-products button { text-align: left; background: none; border: 0; border-left: 3px solid transparent; padding: 4px 8px; font-weight: 500; font-size: 14.5px; color: var(--ink); }
+    .bench .mdl-products button:hover { background: var(--band); }
+    .bench .mdl-products button.on { background: var(--band); border-left-color: var(--brand); color: var(--ink); font-weight: 700; }
+    @media (prefers-color-scheme: dark) { .bench .mdl-products button.on { border-left-color: var(--link); } }
+    .mdl-main { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 8px; height: calc(100vh - 235px); min-height: 600px; }
+    .mdl-main .chart { height: auto; min-height: 0; }
+    #modelCanvas { cursor: crosshair; }
     .mdl-legend { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-    #legendBar { width: min(640px, 100%); height: 14px; border-radius: 3px; display: block; }
-    #legendTicks { position: relative; width: min(640px, 100%); height: 14px; font-size: 11px; color: var(--muted); }
+    #legendBar { width: min(640px, 100%); height: 14px; display: block; }
+    #legendTicks { position: relative; width: min(640px, 100%); height: 15px; font: 400 12px var(--mono); color: var(--ink-2); }
     #legendTicks span { position: absolute; transform: translateX(-50%); }
-    #legendNote { font-size: 12px; color: var(--muted); }
+    #legendNote { font-size: 13px; color: var(--ink-2); }
     .mdl-time { display: flex; flex-direction: column; gap: 6px; }
     .mdl-time-row { display: flex; align-items: center; gap: 8px; }
     .mdl-time-row input[type=range] { flex: 1; width: auto; min-width: 0; }
-    .mdl-time-row button, #hourStrip button, .mdl-products button { width: auto; flex: none; margin: 0; }
-    .mdl-time-row button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font: inherit; font-weight: 700; cursor: pointer; }
-    .mdl-time-row button.on { background: #2563eb; border-color: #2563eb; }
+    .mdl-time-row small { font: 400 13.5px var(--mono); color: var(--ink-2); min-width: 70px; text-align: right; }
     #hourStrip { display: flex; flex-wrap: wrap; gap: 3px; }
-    #hourStrip button { min-width: 34px; background: var(--panel-2); color: #cbd5e1; border: 1px solid var(--line); border-radius: 5px; padding: 2px 4px; font: 11.5px ui-monospace, Consolas, monospace; cursor: pointer; }
-    #hourStrip button.on { background: #2563eb; border-color: #2563eb; color: white; }
-    #hourStrip button.shared { border-bottom: 2px solid #22c55e; }
-    .mdl-note { font-size: 12px; color: var(--muted); line-height: 1.45; }
-    /* Phones and narrow windows: the map and its time controls first, then the model and product choices; the page scrolls as a whole. */
+    .bench #hourStrip button { min-width: 36px; padding: 2px 4px; font: 400 12.5px var(--mono); color: var(--ink-2); }
+    .bench #hourStrip button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .bench #hourStrip button.shared { border-bottom: 2px solid #2e9e55; }
     @media (max-width: 900px) {
-      body { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
-      .mdl-main { order: 1; padding: 12px 8px 8px; width: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto auto; }
-      .mdl-time-row small { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .mdl-map { width: 100%; aspect-ratio: 1; max-height: 92vh; }
-      .mdl-side { order: 2; padding: 16px; border-right: 0; border-top: 1px solid var(--line); overflow: visible; }
-      .mdl-products button { padding: 9px 8px; }
-      .mdl-card label { padding: 4px 0; }
-      .mdl-time-row button { padding: 9px 12px; }
-      #hourStrip button { min-width: 40px; padding: 6px 4px; }
-      #modelTip { white-space: normal; max-width: calc(100vw - 32px); }
+      .mdl-main { height: auto; min-height: 0; grid-template-rows: auto auto auto auto; }
+      .mdl-main .chart { aspect-ratio: 1; }
+      .mdl-time-row small { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .bench #hourStrip button { min-width: 42px; padding: 6px 4px; }
+      .bench .mdl-products button { padding: 9px 8px; }
     }
   </style>
 </head>
-<body data-page="models">
-<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="synoptic" href="./synoptic.html">Synoptic</a><a data-nav-page="models" class="active" href="./models.html">Models</a><a href="/outlook/day1">Outlooks</a><a href="/chasers">Chasers</a><a class="perf-link" href="./performance.html">Performance</a></nav>
-  <aside class="panel mdl-side">
-    <div class="mdl-card">
-      <span>Model</span>
-      <div class="mdl-models">
-        <button id="modelShort" class="on" title="One run from the live world each hour">Short range</button>
-        <button id="modelEnsemble" title="The runs behind the latest outlook">Ensemble</button>
+<body class="doc" data-page="models">
+<!--site:header-->
+<main id="content" class="wrap wrap--wide">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>Models</span></nav>
+  <div class="tool-head">
+    <div>
+      <h1>Models</h1>
+      <p class="stamp">Forecast runs of the same engine that runs the world</p>
+    </div>
+    <nav class="tabs" aria-label="Models">
+      <a href="/models" aria-current="page">Short range and ensemble</a><a href="/models/large-scale">Large-scale view</a>
+    </nav>
+  </div>
+  <hr class="tool-rule" />
+  <div class="bench">
+    <aside class="bench__side" aria-label="Controls">
+      <section class="group">
+        <h2>Model</h2>
+        <div class="row-2">
+          <button id="modelShort" class="on" title="One run from the live world each hour">Short range</button>
+          <button id="modelEnsemble" title="The runs behind the latest outlook">Ensemble</button>
+        </div>
+        <select id="runSelect" aria-label="Run"></select>
+        <label><input type="checkbox" id="followLatest" checked /> Follow the newest run</label>
+        <small id="runNote">Connecting…</small>
+        <small><a href="/models/large-scale">See a run across the whole large-scale model</a></small>
+      </section>
+      <section class="group">
+        <h2>Products</h2>
+        <div class="mdl-products" id="productList"></div>
+      </section>
+      <section class="group">
+        <h2>Show</h2>
+        <label><input type="checkbox" id="showCounties" checked /> Counties and towns</label>
+        <label><input type="checkbox" id="showContours" checked /> Contours on the fields</label>
+        <label title="For Composite reflectivity + UH tracks">UH tracks above <select id="uhLeast" style="width:auto;flex:1"></select></label>
+      </section>
+      <section class="group">
+        <h2>About these models</h2>
+        <p class="note" id="aboutNote" style="margin:0"></p>
+      </section>
+    </aside>
+    <div class="bench__main mdl-main">
+      <div class="chart-title"><strong id="mapTitle">—</strong><small id="mapValid">—</small></div>
+      <div class="chart"><canvas id="modelCanvas"></canvas><div id="modelTip" class="chart__tip"></div></div>
+      <div class="mdl-legend"><canvas id="legendBar" width="640" height="14"></canvas><div id="legendTicks"></div><div id="legendNote"></div></div>
+      <div class="mdl-time">
+        <div class="mdl-time-row">
+          <button id="stepBack" title="Earlier (←)">◀</button>
+          <button id="play" title="Play (space)">Play</button>
+          <button id="stepNext" title="Later (→)">▶</button>
+          <input type="range" id="timeSlider" min="0" max="0" value="0" step="15" aria-label="Forecast time" />
+          <small id="timeLabel">F000</small>
+        </div>
+        <div id="hourStrip"></div>
       </div>
-      <select id="runSelect" aria-label="Run"></select>
-      <label><input type="checkbox" id="followLatest" checked /> Follow the newest run</label>
-      <small class="mdl-note" id="runNote">Connecting…</small>
     </div>
-    <div class="mdl-card">
-      <span>Products</span>
-      <div class="mdl-products" id="productList"></div>
-    </div>
-    <div class="mdl-card">
-      <span>Show</span>
-      <label><input type="checkbox" id="showCounties" checked /> Counties and towns</label>
-      <label><input type="checkbox" id="showContours" checked /> Contours on the fields</label>
-      <label title="For Composite reflectivity + UH tracks">UH tracks above <select id="uhLeast" style="width:auto;flex:1"></select></label>
-    </div>
-    <div class="mdl-card">
-      <span>About these models</span>
-      <p class="mdl-note" id="aboutNote"></p>
-    </div>
-  </aside>
-  <main class="mdl-main">
-    <div class="mdl-title"><strong id="mapTitle">—</strong><small id="mapValid">—</small></div>
-    <div class="mdl-map"><canvas id="modelCanvas"></canvas><div id="modelTip"></div></div>
-    <div class="mdl-legend"><canvas id="legendBar" width="640" height="14"></canvas><div id="legendTicks"></div><div id="legendNote"></div></div>
-    <div class="mdl-time">
-      <div class="mdl-time-row">
-        <button id="stepBack" title="Earlier (←)">◀</button>
-        <button id="play" title="Play (space)">Play</button>
-        <button id="stepNext" title="Later (→)">▶</button>
-        <input type="range" id="timeSlider" min="0" max="0" value="0" step="15" aria-label="Forecast time" />
-        <small id="timeLabel" class="muted" style="min-width: 70px; text-align: right">F000</small>
-      </div>
-      <div id="hourStrip"></div>
-    </div>
-  </main>
-  <script type="module" src="./js/pages/modelPage.js"></script>
+  </div>
+</main>
+<!--site:footer-->
+<script type="module" src="./js/pages/modelPage.js"></script>
 </body>
 </html>

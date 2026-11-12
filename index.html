@@ -3,37 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mesoanalysis · Fake Plains Weather</title>
-  <link rel="stylesheet" href="./css/styles.css" />
+  <title>Mesoanalysis · WeatherWorld</title>
+  <!-- The mesoanalysis page (/analysis, js/pages/surfaceAnalysisPage.js): surface observations, an overlay
+       field, the analysed fronts and storms, and a sounding for any point. Laid out as the site's other map
+       tools are (css/site.css, "The map tools"). -->
+  <!--site:head-->
   <style>
-    body { display: grid; grid-template-columns: 310px minmax(0, 1fr) 0; height: 100vh; overflow: hidden; }
-    body.with-sounding { grid-template-columns: 310px minmax(0, 1fr) 560px; }
-    .meso-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; }
-    .meso-side label { display: flex; align-items: center; justify-content: flex-start; gap: 8px; cursor: pointer; text-align: left; font-weight: 600; }
-    .meso-side label input { flex: none; width: auto; margin: 0; }
-    .meso-side select, .meso-side button { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
-    .meso-side button { cursor: pointer; font-weight: 700; }
-    .meso-side button:hover { border-color: var(--accent); }
-    .meso-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
-    .meso-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
-    .meso-card strong { font-size: 19px; }
-    .meso-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-    .meso-styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    .meso-styles button.on, .meso-row button.on { background: #2563eb; border-color: #2563eb; }
-    .meso-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-    .meso-list i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 8px; vertical-align: middle; }
-    #legendBar { width: 100%; height: 12px; border-radius: 3px; display: block; }
-    #legendTicks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
-    .meso-map { position: relative; min-width: 0; min-height: 0; padding-top: 58px; }
-    #surfaceCanvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
-    #surfaceTip { position: absolute; pointer-events: none; background: rgba(15, 23, 42, .95); border: 1px solid #374151; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; white-space: nowrap; display: none; z-index: 5; }
-    .meso-sounding { border-left: 1px solid var(--line); padding-top: 64px; display: none; flex-direction: column; gap: 10px; overflow: auto; }
+    body.with-sounding .bench { grid-template-columns: 300px minmax(0, 1fr) minmax(420px, 560px); }
+    .meso-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+    .meso-list i { display: inline-block; width: 20px; height: 3px; margin-right: 8px; vertical-align: middle; }
+    #surfaceCanvas { cursor: crosshair; }
+    .meso-key { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13.5px; color: var(--ink-2); }
+    .meso-key b { color: var(--ink); font-family: var(--mono); }
+    .meso-sounding { display: none; flex-direction: column; gap: 10px; position: sticky; top: 10px; max-height: calc(100vh - 20px); overflow: auto; }
     body.with-sounding .meso-sounding { display: flex; }
-    .meso-sounding canvas { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #0b1119; }
-    .meso-table { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 3px 10px; font-size: 12.5px; }
-    .meso-table span { color: var(--muted); }
-    .snd-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font: 11.5px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
-    .snd-tables section { border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: #05080d; }
+    .meso-sounding header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .meso-sounding header strong { font-size: 17px; }
+    .meso-sounding canvas { width: 100%; border: 1px solid #363c42; background: #05080d; }
+    .snd-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font: 12px/1.45 var(--mono); }
+    .snd-tables section { border: 1px solid #363c42; padding: 7px 9px; background: #05080d; }
     .snd-tables section.wide { grid-column: 1 / -1; }
     .snd-tables table { width: 100%; border-collapse: collapse; }
     .snd-tables th { color: var(--muted); font-weight: 600; text-align: right; }
@@ -41,109 +29,118 @@
     .snd-tables th:first-child, .snd-tables td:first-child { text-align: left; color: var(--muted); }
     .snd-tables dl { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; margin: 0; }
     .snd-tables dt { color: var(--muted); } .snd-tables dd { margin: 0; text-align: right; }
-    .snd-hazard { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; margin-top: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; }
+    .snd-hazard { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; margin-top: 8px; padding: 6px; border: 1px solid #363c42; }
     .snd-hazard small { color: var(--muted); } .snd-hazard b { font-size: 17px; letter-spacing: .04em; }
-    .meso-table b { text-align: right; }
-    .meso-key { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; color: var(--muted); }
-    .meso-key b { color: var(--text); }
-    /* Phones and narrow windows: the map first (full width, square), then the sounding, then the controls; the page scrolls as a whole. */
-    @media (max-width: 900px) {
-      body, body.with-sounding { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
-      .product-nav { order: 0; }
-      .meso-map { order: 1; padding: 8px 8px 0; width: 100%; aspect-ratio: 1; max-height: 92vh; flex: none; }
-      .meso-sounding { order: 2; padding: 16px; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
-      .meso-side { order: 3; padding: 16px; border-right: 0; overflow: visible; }
-      .meso-row button, .meso-styles button { padding: 10px 6px; }
-      .meso-side label { padding: 4px 0; }
-      #surfaceTip { white-space: normal; max-width: calc(100vw - 32px); }
-      #soundingTitle { scroll-margin-top: 64px; }
+    details.group > summary { cursor: pointer; font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+    details.group[open] > summary { margin-bottom: 4px; }
+    /* Phones and narrow windows: the map first, then the sounding, then the controls. */
+    @media (max-width: 1250px) {
+      body.with-sounding .bench { grid-template-columns: 300px minmax(0, 1fr); }
+      .meso-sounding { grid-column: 1 / -1; position: static; max-height: none; }
     }
-    @media (max-width: 420px) { .snd-tables { grid-template-columns: 1fr; } .meso-table { grid-template-columns: 1fr auto; } }
+    @media (max-width: 900px) {
+      body.with-sounding .bench { grid-template-columns: minmax(0, 1fr); }
+      .meso-sounding { order: -1; }
+      .bench__main { order: -2; }
+      #soundingTitle { scroll-margin-top: 12px; }
+    }
+    @media (max-width: 420px) { .snd-tables { grid-template-columns: 1fr; } }
   </style>
 </head>
-<body data-page="live">
-<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" class="active" href="./index.html">Live analysis</a><a data-nav-page="synoptic" href="./synoptic.html">Synoptic</a><a data-nav-page="models" href="./models.html">Models</a><a href="/outlook/day1">Outlooks</a><a href="/chasers">Chasers</a><a class="perf-link" href="./performance.html">Performance</a></nav>
-  <aside class="panel meso-side">
-    <div class="meso-card">
-      <span>Surface observations and mesoanalysis</span>
-      <strong id="surfaceTime">—</strong>
-      <small class="muted" id="surfaceStatus">Connecting…</small>
-      <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Analysis time" />
-      <div class="meso-row">
-        <button id="framePrev" title="Half an hour earlier">◀</button>
-        <button id="framePlay" title="Loop the last hours">Loop</button>
-        <button id="frameNext" title="Half an hour later">▶</button>
-        <button id="frameLatest" title="Follow the current time" class="on">Now</button>
-      </div>
+<body class="doc" data-page="live">
+<!--site:header-->
+<main id="content" class="wrap wrap--wide">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>Mesoanalysis</span></nav>
+  <div class="tool-head">
+    <div>
+      <h1>Mesoanalysis</h1>
+      <p class="stamp"><b id="surfaceTime">—</b> · <span id="surfaceStatus">Connecting…</span></p>
     </div>
-    <div class="meso-card">
-      <span>Overlay</span>
-      <select id="parameter" aria-label="Overlay field"><option value="">None (observations only)</option></select>
-      <div class="meso-styles">
-        <button data-style="both" class="on">Both</button>
-        <button data-style="shade">Shading</button>
-        <button data-style="contours">Contours</button>
-      </div>
-      <canvas id="legendBar" width="260" height="12"></canvas>
-      <div id="legendTicks"></div>
-      <small class="muted" id="legendNote">Pick a field to lay over the map.</small>
+    <nav class="tabs" aria-label="Mesoanalysis">
+      <a href="/analysis" aria-current="page">Surface analysis and soundings</a><a href="/synoptic">Synoptic charts</a>
+    </nav>
+  </div>
+  <hr class="tool-rule" />
+  <div class="bench">
+    <aside class="bench__side" aria-label="Controls">
+      <section class="group">
+        <h2>Analysis time</h2>
+        <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Analysis time" />
+        <div class="row-4">
+          <button id="framePrev" title="Half an hour earlier">◀</button>
+          <button id="framePlay" title="Loop the last hours">Loop</button>
+          <button id="frameNext" title="Half an hour later">▶</button>
+          <button id="frameLatest" title="Follow the current time" class="on">Now</button>
+        </div>
+      </section>
+      <section class="group">
+        <h2>Overlay</h2>
+        <select id="parameter" aria-label="Overlay field"><option value="">None (observations only)</option></select>
+        <div class="row-3 meso-styles">
+          <button data-style="both" class="on">Both</button>
+          <button data-style="shade">Shading</button>
+          <button data-style="contours">Contours</button>
+        </div>
+        <canvas id="legendBar" class="legend-bar" width="260" height="12"></canvas>
+        <div id="legendTicks" class="legend-ticks"></div>
+        <small id="legendNote">Pick a field to lay over the map.</small>
+      </section>
+      <section class="group">
+        <h2>Show</h2>
+        <label><input type="checkbox" id="showStations" checked /> Station observations</label>
+        <label><input type="checkbox" id="showIsobars" checked /> Isobars and pressure centres</label>
+        <label><input type="checkbox" id="showFronts" checked /> Fronts, dryline, outflow boundaries</label>
+        <label><input type="checkbox" id="showStorms" checked /> Storms</label>
+      </section>
+      <section class="group">
+        <h2>Analysed lines</h2>
+        <ul class="meso-list" id="surfaceLines"><li class="muted">None yet.</li></ul>
+      </section>
+      <section class="group">
+        <h2>Storms</h2>
+        <div id="surfaceStorms" class="note">None right now.</div>
+      </section>
+      <section class="group">
+        <h2>Reading a station</h2>
+        <div class="meso-key">
+          <b style="color:#c0392b">72</b><span>temperature (°F), upper left</span>
+          <b style="color:#1e8449">61</b><span>dewpoint (°F), lower left</span>
+          <b>132</b><span>sea-level pressure: tenths of a hPa, last three digits (132 = 1013.2)</span>
+          <b>barb</b><span>points to where the wind comes from; half barb 5 kt, full 10, flag 50</span>
+        </div>
+        <small>Select any point on the map for the sounding there.</small>
+      </section>
+      <details class="group">
+        <summary>World controls (admin)</summary>
+        <div class="row-2">
+          <button id="worldAdvance" title="Move the weather on by half an hour now">+30 min</button>
+          <button id="worldAdvanceDay" title="Move the weather on by a full day now">+1 day</button>
+        </div>
+        <div class="row-2">
+          <button id="worldClock" title="Stop or restart the world's clock">Pause clock</button>
+          <button id="worldNew" title="Start a different world from another starting number">New world…</button>
+        </div>
+        <div class="row-2" style="grid-template-columns: 1fr">
+          <button id="worldSignin" title="The world controls need the admin key">Admin sign-in</button>
+        </div>
+        <small id="worldNote">A simulated day takes 3 real hours.</small>
+      </details>
+    </aside>
+    <div class="bench__main">
+      <div class="chart"><canvas id="surfaceCanvas"></canvas><div id="surfaceTip" class="chart__tip"></div></div>
     </div>
-    <div class="meso-card">
-      <span>Show</span>
-      <label><input type="checkbox" id="showStations" checked /> Station observations</label>
-      <label><input type="checkbox" id="showIsobars" checked /> Isobars and pressure centres</label>
-      <label><input type="checkbox" id="showFronts" checked /> Fronts, dryline, outflow boundaries</label>
-      <label><input type="checkbox" id="showStorms" checked /> Storms</label>
-    </div>
-    <div class="meso-card">
-      <span>Analysed lines</span>
-      <ul class="meso-list" id="surfaceLines"><li class="muted">None yet.</li></ul>
-    </div>
-    <div class="meso-card">
-      <span>Storms</span>
-      <div id="surfaceStorms" class="muted">None right now.</div>
-    </div>
-    <div class="meso-card">
-      <span>World</span>
-      <div class="meso-row" style="grid-template-columns: 1fr 1fr">
-        <button id="worldAdvance" title="Move the weather on by half an hour now">+30 min</button>
-        <button id="worldAdvanceDay" title="Move the weather on by a full day now">+1 day</button>
-      </div>
-      <div class="meso-row" style="grid-template-columns: 1fr 1fr">
-        <button id="worldClock" title="Stop or restart the world's clock">Pause clock</button>
-        <button id="worldNew" title="Start a different world from another starting number">New world…</button>
-      </div>
-      <div class="meso-row" style="grid-template-columns: 1fr">
-        <button id="worldSignin" title="The world controls need the admin key">Admin sign-in</button>
-      </div>
-      <small class="muted" id="worldNote">A simulated day takes 3 real hours.</small>
-    </div>
-    <div class="meso-card">
-      <span>Reading a station</span>
-      <div class="meso-key">
-        <b style="color:#ff8a80">72</b><span>temperature (°F), upper left</span>
-        <b style="color:#69db7c">61</b><span>dewpoint (°F), lower left</span>
-        <b>132</b><span>sea-level pressure: tenths of a hPa, last three digits (132 = 1013.2)</span>
-        <b>barb</b><span>points to where the wind comes from; half barb 5 kt, full 10, flag 50</span>
-      </div>
-      <small class="muted">Click anywhere on the map for the sounding there.</small>
-    </div>
-  </aside>
-  <main class="meso-map">
-    <canvas id="surfaceCanvas"></canvas>
-    <div id="surfaceTip"></div>
-  </main>
-  <aside class="panel meso-sounding">
-    <div class="meso-card">
-      <span>Sounding</span>
-      <strong id="soundingTitle">—</strong>
-      <small class="muted" id="soundingNote"></small>
-      <button id="soundingClose">Close</button>
-    </div>
-    <canvas id="skewTCanvas" width="640" height="620"></canvas>
-    <canvas id="hodoCanvas" width="640" height="540"></canvas>
-    <div class="snd-tables" id="soundingTables"></div>
-  </aside>
-  <script type="module" src="./js/pages/surfaceAnalysisPage.js"></script>
+    <aside class="meso-sounding instrument" aria-label="Sounding">
+      <header>
+        <div><strong id="soundingTitle">—</strong><br /><small class="muted" id="soundingNote"></small></div>
+        <button id="soundingClose">Close</button>
+      </header>
+      <canvas id="skewTCanvas" width="640" height="620"></canvas>
+      <canvas id="hodoCanvas" width="640" height="540"></canvas>
+      <div class="snd-tables" id="soundingTables"></div>
+    </aside>
+  </div>
+</main>
+<!--site:footer-->
+<script type="module" src="./js/pages/surfaceAnalysisPage.js"></script>
 </body>
 </html>

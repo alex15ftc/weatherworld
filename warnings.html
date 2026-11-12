@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Warnings · WeatherWorld</title>
+  <!-- The warnings in effect (/warnings), from /api/warnings/active (server/ProductArchive.js activeWarnings):
+       a map of every polygon and a list. Selecting a warning, on the map or in the list, zooms the map to it
+       and shows its details and bulletin; the address then names it (#key), so it can be linked to. -->
+  <!--site:head-->
+  <style>
+    .warn-map { position: relative; border: 1px solid var(--rule); background: #dfe3e8; aspect-ratio: 1; }
+    .warn-map svg { display: block; width: 100%; height: 100%; touch-action: manipulation; }
+    .warn-map .county { fill: none; stroke: #6f6a5f; stroke-opacity: .5; vector-effect: non-scaling-stroke; stroke-width: 1; }
+    .warn-map .polygon { vector-effect: non-scaling-stroke; stroke-width: 2.5; fill-opacity: .28; cursor: pointer; stroke-linejoin: round; }
+    .warn-map .polygon:hover, .warn-map .polygon:focus { fill-opacity: .5; outline: none; }
+    .warn-map .polygon.sel { stroke-width: 4.5; fill-opacity: .4; }
+    .warn-map .polygon.dim { fill-opacity: .1; stroke-opacity: .45; }
+    .warn-map text { paint-order: stroke; stroke: #fff; stroke-linejoin: round; fill: #111; pointer-events: none; }
+    .warn-map text.county-name { fill: #6b6457; stroke: none; font-style: italic; letter-spacing: .06em; }
+    .warn-tools { position: absolute; left: 10px; top: 10px; }
+    .warn-tools button, .detail button { appearance: none; background: #fff; color: #1b1b1b; border: 1px solid #9aa0a6; border-radius: 2px; padding: 6px 11px; font: 600 14px var(--sans); cursor: pointer; }
+    .warn-tools button:hover, .detail button:hover { border-color: #1b1b1b; }
+    .warn-key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--ink-2); padding-top: 8px; }
+    .warn-key i { display: inline-block; width: 22px; height: 14px; margin-right: 6px; vertical-align: -2px; border: 2px solid; }
+    .detail { min-height: 220px; }
+    .detail h2 { font-size: 24px; margin: 8px 0 4px; }
+    .detail .banner { color: var(--alert); font-weight: 750; letter-spacing: .03em; margin: 8px 0 0; }
+    .detail .bulletin { margin-top: 14px; max-height: 420px; overflow: auto; }
+    .detail-empty { color: var(--ink-2); border-top: 2px solid var(--ink); padding-top: 12px; }
+    table.list tbody tr { cursor: pointer; }
+    table.list tbody tr:hover td { background: var(--band); }
+    table.list tbody tr.sel td { background: var(--band); box-shadow: inset 0 2px 0 var(--ink), inset 0 -2px 0 var(--ink); }
+    table.list tbody tr td:first-child { padding-left: 8px; }
+    @media (prefers-reduced-motion: reduce) { .warn-map svg { transition: none; } }
+  </style>
+</head>
+<body class="doc">
+<!--site:header-->
+<main id="content" class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>Warnings</span></nav>
+  <header class="page-head">
+    <h1>Warnings</h1>
+    <p class="lede">Warnings from the local offices for storms that are severe or tornadic right now. Select one, on the map or in the list, for its details.</p>
+    <p class="stamp" id="times">Loading…</p>
+  </header>
+  <div class="split split--map">
+    <div>
+      <div class="warn-map" id="mapBox">
+        <svg id="map" viewBox="0 0 500 500" role="group" aria-label="Map of the warnings in effect"></svg>
+        <div class="warn-tools"><button id="showAll" hidden>Show all warnings</button></div>
+      </div>
+      <div class="warn-key" id="key"></div>
+    </div>
+    <section class="detail" id="detail" aria-live="polite"></section>
+  </div>
+  <section class="section">
+    <h2 id="listTitle">In effect</h2>
+    <div class="table-scroll"><table class="list" id="list"></table></div>
+    <p class="empty" id="empty" hidden>No warnings are in effect.</p>
+  </section>
+</main>
+<!--site:footer-->
+<script type="module">
+import { $, getJson, loadCalendar, utcText, localText, escapeHtml } from '/js/site.js';
+import { WARNING_COLOURS } from '/js/forecast/productColours.js';
+
+const SVG = 'http://www.w3.org/2000/svg', map = $('#map');
+const el = (name, attrs = {}, text = null) => { const node = document.createElementNS(SVG, name); for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v); if (text != null) node.textContent = text; return node; };
+const layers = { land: el('g'), counties: el('g'), polygons: el('g'), labels: el('g') };
+map.append(...Object.values(layers));
+let layer = null, warnings = [], selected = decodeURIComponent(location.hash.slice(1)) || null, mapMiles = 500;
+// The part of the map shown (map miles): eased toward its target when a warning is chosen.
+const view = { x: 0, y: 0, size: 500 };
+let moving = null;
+
+const pathOf = rings => rings.map(flat => { let d = `M${flat[0]} ${flat[1]}`; for (let k = 2; k < flat.length; k += 2) d += `L${flat[k]} ${flat[k + 1]}`; return `${d}Z`; }).join('');
+const tagOf = w => `<span class="tag tag--${w.type === 'tornado' ? 'tornado' : w.type === 'severe' ? 'severe' : 'other'}">${escapeHtml(w.emergency ? 'Tornado emergency' : w.name)}</span>`;
+
+// The square to show for a warning: its polygon with room around it, at least 60 miles across, kept on the map.
+function frameOf(w) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const flat of w.rings) for (let k = 0; k < flat.length; k += 2) { x0 = Math.min(x0, flat[k]); x1 = Math.max(x1, flat[k]); y0 = Math.min(y0, flat[k + 1]); y1 = Math.max(y1, flat[k + 1]); }
+  if (!Number.isFinite(x0)) return { x: 0, y: 0, size: mapMiles };
+  const size = Math.min(mapMiles, Math.max(60, (x1 - x0) * 1.9, (y1 - y0) * 1.9)), inside = v => Math.min(Math.max(v, 0), mapMiles - size);
+  return { x: inside((x0 + x1) / 2 - size / 2), y: inside((y0 + y1) / 2 - size / 2), size };
+}
+function setView(v) { Object.assign(view, v); map.setAttribute('viewBox', `${view.x} ${view.y} ${view.size} ${view.size}`); }
+function moveTo(target) {
+  cancelAnimationFrame(moving);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { setView(target); drawLabels(); return; }
+  const from = { ...view }, started = performance.now(), ms = 450;
+  const step = now => {
+    const t = Math.min(1, (now - started) / ms), e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+    setView({ x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e, size: from.size + (target.size - from.size) * e });
+    if (t < 1) moving = requestAnimationFrame(step); else drawLabels();
+  };
+  drawLabels(target);
+  moving = requestAnimationFrame(step);
+}
+
+// Towns (and, close in, county names) for the view being shown; sizes are in map miles, so they are set for the view.
+function drawLabels(at = view) {
+  layers.labels.replaceChildren();
+  if (!layer) return;
+  const s = at.size / 500, seen = t => t.x >= at.x && t.x <= at.x + at.size && t.y >= at.y && t.y <= at.y + at.size;
+  if (at.size <= 150) for (const c of layer.counties) {
+    const ring = c.rings[0]; if (!ring?.length) continue;
+    const cx = ring.reduce((a, p) => a + p[0], 0) / ring.length, cy = ring.reduce((a, p) => a + p[1], 0) / ring.length;
+    if (seen({ x: cx, y: cy })) layers.labels.append(el('text', { x: cx, y: cy, 'font-size': 8 * s, 'text-anchor': 'middle', class: 'county-name' }, c.name.toUpperCase()));
+  }
+  const taken = [];
+  for (const t of layer.towns.filter(seen).sort((a, b) => b.population - a.population).slice(0, at.size <= 150 ? 14 : 10)) {
+    const big = t.kind === 'metro' || t.kind === 'city', size = (big ? 10.5 : 8.5) * s, box = [t.x - 3 * s, t.y - size, t.x + 6 * s + t.name.length * size * 0.58, t.y + 4 * s];
+    if (taken.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
+    taken.push(box);
+    layers.labels.append(el('circle', { cx: t.x, cy: t.y, r: (big ? 2.6 : 2) * s, fill: '#222', stroke: '#fff', 'stroke-width': 0.8 * s }));
+    layers.labels.append(el('text', { x: t.x + 4.5 * s, y: t.y + 2.8 * s, 'font-size': size, 'font-weight': big ? 700 : 400, 'stroke-width': 2 * s }, t.name));
+  }
+}
+
+function drawMap() {
+  layers.polygons.replaceChildren();
+  // (the most serious are drawn last, on top)
+  for (const w of [...warnings].reverse()) {
+    const colour = WARNING_COLOURS[w.colourKey] ?? '#f5c518';
+    const shape = el('path', { d: pathOf(w.rings), fill: colour, stroke: colour, class: `polygon${w.key === selected ? ' sel' : selected ? ' dim' : ''}`, tabindex: 0, role: 'button', 'aria-label': `${w.name}, ${w.where}` });
+    shape.addEventListener('click', () => select(w.key));
+    shape.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(w.key); } });
+    layers.polygons.append(shape);
+  }
+  const kinds = [...new Map(warnings.map(w => [w.colourKey, w.name])).entries()];
+  $('#key').innerHTML = kinds.map(([key, name]) => `<span><i style="background:${WARNING_COLOURS[key]}47;border-color:${WARNING_COLOURS[key]}"></i>${escapeHtml(name)}</span>`).join('');
+}
+
+function drawDetail() {
+  const w = warnings.find(x => x.key === selected), box = $('#detail');
+  $('#showAll').hidden = !selected;
+  if (!w) {
+    box.innerHTML = `<p class="detail-empty">${selected ? 'That warning is no longer in effect.' : warnings.length ? 'Select a warning on the map or in the list below to see what it says and where it is.' : 'No warnings are in effect.'}</p>`;
+    return;
+  }
+  box.innerHTML = `${tagOf(w)}${w.pds ? ' <span class="tag tag--pds">Particularly dangerous situation</span>' : ''}
+    <h2>${escapeHtml(w.title)}</h2>
+    ${w.banner ? `<p class="banner">${escapeHtml(w.banner)}</p>` : ''}
+    <dl class="facts">
+      <dt>Area</dt><dd>${escapeHtml(w.where)}</dd>
+      <dt>In effect</dt><dd>${escapeHtml(w.issuedLocal)} until ${escapeHtml(w.untilLocal)}</dd>
+      ${w.office ? `<dt>Office</dt><dd>${escapeHtml(w.office)}</dd>` : ''}
+      ${w.situation ? `<dt>Situation</dt><dd>${escapeHtml(w.situation)}</dd>` : ''}
+      ${w.hazard ? `<dt>Hazard</dt><dd>${escapeHtml(w.hazard)}</dd>` : ''}
+    </dl>
+    ${w.text ? `<pre class="bulletin">${escapeHtml(w.text)}</pre>` : ''}
+    <p style="margin-top:12px"><a href="/api/warnings.svg?times=1&keys=${encodeURIComponent(w.key)}">Open this warning's map on its own, ready to share</a></p>`;
+}
+
+function drawList() {
+  $('#listTitle').textContent = `In effect: ${warnings.length} warning${warnings.length === 1 ? '' : 's'}`;
+  $('#empty').hidden = warnings.length > 0;
+  $('#list').innerHTML = warnings.length ? '<thead><tr><th>Warning</th><th>Area</th><th>Office</th><th>Issued</th><th>Until</th></tr></thead><tbody>' + warnings.map(w =>
+    `<tr data-key="${escapeHtml(w.key)}" tabindex="0"${w.key === selected ? ' class="sel" aria-selected="true"' : ''}><td>${tagOf(w)}${w.pds ? ' <span class="tag tag--pds">PDS</span>' : ''}</td><td>${escapeHtml(w.where)}</td><td>${escapeHtml(w.office ?? '')}</td><td class="time">${escapeHtml(w.issuedLocal)}</td><td class="time">${escapeHtml(w.untilLocal)}</td></tr>`).join('') + '</tbody>' : '';
+}
+$('#list').addEventListener('click', event => { const row = event.target.closest('tr[data-key]'); if (row) select(row.dataset.key, true); });
+$('#list').addEventListener('keydown', event => { const row = event.target.closest('tr[data-key]'); if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); select(row.dataset.key, true); } });
+
+// Choosing a warning (null: none): the map goes to it, its details are shown, and the address names it.
+function select(key, fromList = false) {
+  selected = key;
+  history.replaceState(null, '', key ? `#${encodeURIComponent(key)}` : location.pathname);
+  const w = warnings.find(x => x.key === key);
+  drawMap(); drawDetail(); drawList();
+  moveTo(w ? frameOf(w) : { x: 0, y: 0, size: mapMiles });
+  if (w && fromList) $('#mapBox').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+}
+$('#showAll').addEventListener('click', () => select(null));
+
+async function load(first = false) {
+  let data;
+  try { data = await getJson('/api/warnings/active'); } catch (error) { $('#times').textContent = `Could not reach the weather server (${error.message}).`; return; }
+  warnings = data.warnings;
+  $('#times').innerHTML = `<b>As of</b> ${escapeHtml(utcText(data.nowHourUtc))} (${localText(data.nowHourUtc)}). Times in the list are local (CDT).`;
+  drawMap(); drawDetail(); drawList();
+  if (first) { const w = warnings.find(x => x.key === selected); setView(w ? frameOf(w) : { x: 0, y: 0, size: mapMiles }); drawLabels(); }
+}
+async function start() {
+  await loadCalendar();
+  try {
+    layer = await getJson('/api/map/counties'); mapMiles = layer.miles ?? 500;
+    layers.land.append(el('rect', { x: 0, y: 0, width: mapMiles, height: mapMiles, fill: '#f4f1e8' }));
+    layers.counties.append(el('path', { class: 'county', d: layer.counties.map(c => c.rings.map(ring => `M${ring.map(([x, y]) => `${x} ${y}`).join('L')}Z`).join('')).join('') }));
+  } catch { layer = null; }
+  await load(true);
+  setInterval(load, 60_000);
+}
+start();
+</script>
+</body>
+</html>

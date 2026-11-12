@@ -3,100 +3,131 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Synoptic · Fake Plains Weather</title>
-  <link rel="stylesheet" href="./css/styles.css" />
+  <title>Synoptic charts · WeatherWorld</title>
+  <!-- The whole large-scale model with the game map's place in it (js/pages/synopticPage.js), at two addresses:
+       /synoptic               the analysis of the last 18 hours (server/SynopticRuntime.js)
+       /models/large-scale     the same charts from a short range model run, every 3 forecast hours
+                               (server/ShortRangeRuntime.js synopticFrame)
+       ?share=1 shows only the chart, with its title, time, key and the site's name in the frame, for
+       pictures and loops (tools/social/make-loop.mjs). -->
+  <!--site:head-->
   <style>
-    body { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100vh; overflow: hidden; }
-    .syn-side { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); padding-top: 64px; }
-    .syn-side label { display: flex; align-items: center; justify-content: flex-start; gap: 8px; cursor: pointer; text-align: left; font-weight: 600; }
-    .syn-side label input { flex: none; width: auto; margin: 0; }
-    .syn-side select, .syn-side button { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }
-    .syn-side button { cursor: pointer; font-weight: 700; }
-    .syn-side button:hover { border-color: var(--accent); }
-    .syn-side button.on { background: #2563eb; border-color: #2563eb; }
-    .syn-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
-    .syn-card > span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
-    .syn-card strong { font-size: 19px; }
-    .syn-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
     .syn-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .syn-presets button { font-size: 12.5px; padding: 6px 6px; text-align: left; }
-    .syn-pick { display: grid; grid-template-columns: 64px 1fr; gap: 6px 8px; align-items: center; font-size: 12.5px; color: var(--muted); }
-    #legendBar { width: 100%; height: 12px; border-radius: 3px; display: block; }
-    #legendTicks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
-    .syn-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12.5px; }
-    .syn-facts span { color: var(--muted); } .syn-facts b { text-align: right; font-weight: 600; }
-    .syn-map { position: relative; min-width: 0; min-height: 0; padding-top: 58px; }
-    #synCanvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+    .syn-presets button { font-size: 13.5px; padding: 6px 7px; text-align: left; }
+    .syn-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; }
+    .syn-facts span { color: var(--ink-2); } .syn-facts b { text-align: right; font-weight: 600; }
+    #synCanvas { cursor: grab; touch-action: none; }
     #synCanvas.dragging { cursor: grabbing; }
-    #synTip { position: absolute; pointer-events: none; background: rgba(15, 23, 42, .95); border: 1px solid #374151; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; white-space: nowrap; display: none; z-index: 5; line-height: 1.45; }
-    .syn-zoom { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 6px; }
-    .syn-zoom button { background: rgba(20, 27, 36, .92); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-weight: 700; cursor: pointer; }
-    .syn-zoom button:hover { border-color: var(--accent); }
-    @media (max-width: 900px) {
-      body { display: flex; flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
-      .product-nav { order: 0; }
-      .syn-map { order: 1; padding: 8px 8px 0; width: 100%; height: 70vh; flex: none; }
-      .syn-side { order: 2; padding: 16px; border-right: 0; overflow: visible; }
-      .syn-row button, .syn-presets button { padding: 10px 6px; }
-      #synTip { white-space: normal; max-width: calc(100vw - 32px); }
-    }
+    body[data-source="analysis"] [data-mode="model"], body[data-source="model"] [data-mode="analysis"] { display: none !important; }
+    body[data-source="model"] #frameLatest { display: none; }
+    body[data-source="model"] #frameRow { grid-template-columns: repeat(3, 1fr); }
+    @media (max-width: 900px) { .chart { aspect-ratio: auto; height: 70vh; } }
+    /* Share view: only the chart, labelled in the frame. */
+    body.share { display: flex; flex-direction: column; height: 100vh; min-height: 0; padding: 0; background: #0a0f15; }
+    body.share .site-header, body.share .site-footer, body.share .skip, body.share .bench__side, body.share .crumbs, body.share .tool-head, body.share .tool-rule, body.share .chart__zoom, body.share #synTip { display: none !important; }
+    body.share main { flex: 1; min-height: 0; max-width: none; padding: 0; display: flex; flex-direction: column; }
+    body.share .bench { flex: 1; min-height: 0; display: flex; margin: 0; }
+    body.share .bench__main { flex: 1; min-height: 0; position: static; display: flex; flex-direction: column; }
+    body.share .chart { flex: 1; min-height: 0; height: auto; aspect-ratio: auto; max-height: none; border: 0; }
+    body.share #synCanvas { cursor: default; }
+    .share-strip { display: none; }
+    body.share .share-strip { display: flex; align-items: center; justify-content: space-between; gap: 3vh; padding: 1.6vh 2.4vh; background: #0b3a57; color: #fff; font: 600 3vh/1.2 "Public Sans", system-ui, sans-serif; }
+    body.share .share-strip.top { border-bottom: .45vh solid #f2b632; }
+    body.share .share-strip.top b { font-size: 3.7vh; font-weight: 750; }
+    body.share .share-strip .time { font: 600 3.1vh "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+    body.share .share-strip.bottom { background: #10161d; font-size: 2.5vh; font-weight: 500; color: #cfd6dc; }
+    body.share .share-key { display: flex; align-items: center; gap: 1.4vh; font-family: "IBM Plex Mono", ui-monospace, monospace; }
+    body.share .share-key canvas { width: 34vh; height: 2.2vh; display: block; }
+    body.share .share-mark { text-align: right; white-space: nowrap; }
+    body.share .share-mark b { color: #fff; }
   </style>
 </head>
-<body data-page="synoptic">
-<nav class="product-nav" aria-label="Weather products"><a data-nav-page="live" href="./index.html">Live analysis</a><a data-nav-page="synoptic" class="active" href="./synoptic.html">Synoptic</a><a data-nav-page="models" href="./models.html">Models</a><a href="/outlook/day1">Outlooks</a><a href="/chasers">Chasers</a><a class="perf-link" href="./performance.html">Performance</a></nav>
-  <aside class="panel syn-side">
-    <div class="syn-card">
-      <span>Synoptic analysis · whole large-scale model</span>
-      <strong id="synTime">—</strong>
-      <small class="muted" id="synStatus">Connecting…</small>
-      <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Analysis time" />
-      <div class="syn-row">
-        <button id="framePrev" title="Half an hour earlier">◀</button>
-        <button id="framePlay" title="Loop the last hours">Loop</button>
-        <button id="frameNext" title="Half an hour later">▶</button>
-        <button id="frameLatest" title="Follow the current time" class="on">Now</button>
+<body class="doc" data-page="synoptic" data-source="analysis">
+<!--site:header-->
+<main id="content" class="wrap wrap--wide">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span data-mode="analysis"><a href="/analysis">Mesoanalysis</a></span><span data-mode="analysis">Synoptic charts</span>
+    <span data-mode="model"><a href="/models">Models</a></span><span data-mode="model">Large-scale view</span>
+  </nav>
+  <div class="tool-head">
+    <div>
+      <h1 id="synHeading">Synoptic charts</h1>
+      <p class="stamp"><b id="synTime">—</b> · <span id="synStatus">Connecting…</span></p>
+    </div>
+    <nav class="tabs" aria-label="Mesoanalysis" data-mode="analysis">
+      <a href="/analysis">Surface analysis and soundings</a><a href="/synoptic" aria-current="page">Synoptic charts</a>
+    </nav>
+    <nav class="tabs" aria-label="Models" data-mode="model">
+      <a href="/models">Short range and ensemble</a><a href="/models/large-scale" aria-current="page">Large-scale view</a>
+    </nav>
+  </div>
+  <hr class="tool-rule" />
+  <div class="bench">
+    <aside class="bench__side" aria-label="Controls">
+      <section class="group" data-mode="model">
+        <h2>Model run</h2>
+        <select id="runSelect" aria-label="Run"></select>
+        <small id="runNote">The short range model, shown across the whole large-scale model every 3 forecast hours.</small>
+      </section>
+      <section class="group">
+        <h2 data-mode="analysis">Analysis time</h2>
+        <h2 data-mode="model">Forecast time</h2>
+        <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Chart time" />
+        <div class="row-4" id="frameRow">
+          <button id="framePrev" title="Earlier">◀</button>
+          <button id="framePlay" title="Loop through the times">Loop</button>
+          <button id="frameNext" title="Later">▶</button>
+          <button id="frameLatest" title="Follow the current time" class="on">Now</button>
+        </div>
+      </section>
+      <section class="group">
+        <h2>Charts</h2>
+        <div class="syn-presets" id="presets"></div>
+      </section>
+      <section class="group">
+        <h2>Layers</h2>
+        <div class="pick">
+          <span>Shading</span><select id="shadeField" aria-label="Shaded field"></select>
+          <span>Contours</span><select id="contourField" aria-label="Contoured field"></select>
+          <span>Barbs</span><select id="windField" aria-label="Wind barbs"></select>
+        </div>
+        <canvas id="legendBar" class="legend-bar" width="280" height="12"></canvas>
+        <div id="legendTicks" class="legend-ticks"></div>
+        <small id="legendNote"></small>
+      </section>
+      <section class="group">
+        <h2>Show</h2>
+        <label><input type="checkbox" id="showMap" checked /> The game map and its drift</label>
+        <label><input type="checkbox" id="showCentres" checked /> Highs and lows</label>
+        <label><input type="checkbox" id="showGrid" checked /> 1,000 km grid</label>
+      </section>
+      <section class="group">
+        <h2>The map in the model</h2>
+        <div class="syn-facts" id="synFacts"><span>Waiting…</span><b></b></div>
+        <small>The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km north-south,
+          with the jet stream's core along its middle. The game map (the box) reads its weather from wherever it sits and
+          drifts along the wave train to meet the day's weather. These are the large-scale fields: the map's own analysis
+          adds daytime heating, the lee trough, cold pools and storms.</small>
+      </section>
+    </aside>
+    <div class="bench__main">
+      <div class="share-strip top"><b id="shareTitle"></b><span class="time" id="shareTime"></span></div>
+      <div class="chart">
+        <canvas id="synCanvas"></canvas>
+        <div id="synTip" class="chart__tip"></div>
+        <div class="chart__zoom">
+          <button id="zoomIn" title="Zoom in">+</button>
+          <button id="zoomOut" title="Zoom out">−</button>
+          <button id="zoomMap" title="Centre on the game map, zoomed in">Map</button>
+          <button id="zoomAll" title="The whole model, centred on the map">Whole model</button>
+        </div>
       </div>
+      <div class="share-strip bottom"><span class="share-key"><span id="shareFrom"></span><canvas id="shareBar" width="400" height="24"></canvas><span id="shareTo"></span><span id="shareUnit"></span></span><span class="share-mark"><b>WeatherWorld</b> · simulated weather, not a real forecast</span></div>
     </div>
-    <div class="syn-card">
-      <span>Charts</span>
-      <div class="syn-presets" id="presets"></div>
-    </div>
-    <div class="syn-card">
-      <span>Layers</span>
-      <div class="syn-pick">
-        <span>Shading</span><select id="shadeField" aria-label="Shaded field"></select>
-        <span>Contours</span><select id="contourField" aria-label="Contoured field"></select>
-        <span>Barbs</span><select id="windField" aria-label="Wind barbs"></select>
-      </div>
-      <canvas id="legendBar" width="280" height="12"></canvas>
-      <div id="legendTicks"></div>
-      <small class="muted" id="legendNote"></small>
-    </div>
-    <div class="syn-card">
-      <span>Show</span>
-      <label><input type="checkbox" id="showMap" checked /> The game map and its drift</label>
-      <label><input type="checkbox" id="showCentres" checked /> Highs and lows</label>
-      <label><input type="checkbox" id="showGrid" checked /> 1,000 km grid</label>
-    </div>
-    <div class="syn-card">
-      <span>The map in the model</span>
-      <div class="syn-facts" id="synFacts"><span>Waiting…</span><b></b></div>
-      <small class="muted">The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km north-south,
-        with the jet stream's core along its middle. The game map (the box) reads its weather from wherever it sits and drifts along the wave train to
-        meet the day's weather. These are the large-scale fields: the map's own analysis adds daytime heating, the lee trough,
-        cold pools and storms. <a href="./index.html">Open the map's mesoanalysis</a>.</small>
-    </div>
-  </aside>
-  <main class="syn-map">
-    <canvas id="synCanvas"></canvas>
-    <div id="synTip"></div>
-    <div class="syn-zoom">
-      <button id="zoomIn" title="Zoom in">+</button>
-      <button id="zoomOut" title="Zoom out">−</button>
-      <button id="zoomMap" title="Centre on the game map, zoomed in">Map</button>
-      <button id="zoomAll" title="The whole model, centred on the map">Whole model</button>
-    </div>
-  </main>
-  <script type="module" src="./js/pages/synopticPage.js"></script>
+  </div>
+</main>
+<!--site:footer-->
+<script type="module" src="/js/pages/synopticPage.js"></script>
 </body>
 </html>

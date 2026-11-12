@@ -122,3 +122,6 @@ ai_state/artifacts/**/*.pdf
 # manifest of their hashes is committed
 roblox/assets/foliage/**
 !roblox/assets/foliage/manifest.json
+
+# Recorded days and post pictures of the social kit (tools/social)
+data/social/

@@ -135,6 +135,17 @@ export class ProductArchive {
     };
   }
 
+  // The warnings in effect now, the most serious first, each with its polygon (rings in map miles) and
+  // its bulletin, for the warnings page (the feed's entries carry neither).
+  activeWarnings() {
+    const feed = this.feed(), now = feed.nowHourUtc;
+    return {
+      worldId: this.worldId, nowHourUtc: now,
+      warnings: feed.warnings.filter(w => w.validToHourUtc > now).sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0) || b.issuedHourUtc - a.issuedHourUtc)
+        .map(w => { const full = this.warnings.get(w.key); return { ...w, rings: full?.rings ?? [], text: full?.text ?? '' }; })
+    };
+  }
+
   // One watch or discussion, with its times written out (the pages show them as given).
   watch(number) { this.sync(); return withTimes(this.watches.get(Number(number))); }
   discussion(number) { this.sync(); return withTimes(this.discussions.get(Number(number))); }
