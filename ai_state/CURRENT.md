@@ -92,7 +92,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   Success: look at them in game. The engine still answers this Studio server with HTTP 401: add the Studio local
   secret `weather_feed_key` (docs/HOSTING.md) for real weather and storm damage.
 
-- Site redesign and social post kit (2026-11-12, deployed to the engine from `741a984`; the world carried over): the engine's pages
+- Site redesign and social post kit (2026-11-12, deployed to the engine from `19c88cd`; the world carried over): the engine's pages
   are one website (`site/README.md`): a front page at `/`, `/outlooks`, `/watches`, `/discussions`, `/warnings`,
   `/about`, a real 404, and the map tools as document pages in the same look: `/analysis` (mesoanalysis;
   `/index.html` still works), `/synoptic`, `/models` and `/models/large-scale`. Every page takes its header (hover
