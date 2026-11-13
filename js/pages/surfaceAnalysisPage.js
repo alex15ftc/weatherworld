@@ -351,8 +351,9 @@ canvas.addEventListener('mousemove', event => {
 canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
 
 async function showSounding(at) {
-  // (a replay keeps the hour's analysis and fields, not the columns a sounding is drawn from)
-  if (REPLAY) return;
+  // (a replay keeps the hour's analysis and fields, not the columns a sounding is drawn from; the live world's
+  // soundings are an admin's only: the server refuses anyone else)
+  if (REPLAY || !worldAdmin) return;
   selected = at;
   document.body.classList.add('with-sounding');
   $('soundingTitle').textContent = 'Loading…';
@@ -403,6 +404,8 @@ const WORLD_BUTTONS = ['worldAdvance', 'worldAdvanceDay', 'worldClock', 'worldNe
 let worldAdmin = false;
 function setWorldAdmin(admin) {
   worldAdmin = admin;
+  for (const note of document.querySelectorAll('[data-admin-sounding]')) note.hidden = !admin;
+  if (!admin) { selected = null; document.body.classList.remove('with-sounding'); }
   for (const id of WORLD_BUTTONS) $(id).disabled = !admin;
 }
 async function checkWorldAdmin() {
@@ -476,4 +479,4 @@ $('saveGif').addEventListener('click', async () => {
 // ?sounding=row,column opens the page with that sounding shown (after the first load).
 const wantedSounding = new URLSearchParams(location.search).get('sounding');
 new ResizeObserver(resize).observe(canvas);
-refresh().then(() => { if (wantedSounding && data?.status === 'ready') { const [row, column] = wantedSounding.split(',').map(Number), cellKm = data.domain.cellKm; showSounding({ row, column, xKm: (column + 0.5) * cellKm, yKm: (row + 0.5) * cellKm }); } });
+refresh().then(async () => { if (wantedSounding) await checkWorldAdmin(); if (wantedSounding && data?.status === 'ready') { const [row, column] = wantedSounding.split(',').map(Number), cellKm = data.domain.cellKm; showSounding({ row, column, xKm: (column + 0.5) * cellKm, yKm: (row + 0.5) * cellKm }); } });

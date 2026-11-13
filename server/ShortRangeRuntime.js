@@ -2,6 +2,7 @@
 // simulated hour, 18 hours ahead (48 at 00, 06, 12 and 18Z), done on the forecast pool's threads from a
 // copy of the world taken at that hour; the last SHORT_RANGE.keepRuns are kept for the model page.
 import { SHORT_RANGE, shortRangeHours } from '../js/forecast/ShortRangeModel.js';
+import { cellOf, soundingAnswer } from '../js/forecast/soundingColumns.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
 
 export class ShortRangeRuntime {
@@ -72,6 +73,14 @@ export class ShortRangeRuntime {
   storms(init, minute) {
     const run = this.run(init), frame = run?.storms.find(f => f.minute === Number(minute));
     return frame ? { minute: frame.minute, storms: frame.list } : null;
+  }
+  // The run's sounding at a cell of the map and a forecast hour (the newest run when none is named; the nearest
+  // kept hour at or before the one asked for).
+  sounding(init, hour, row, column) {
+    const run = init === undefined || init === null || init === '' ? this.latest() : this.run(init);
+    const frame = run?.soundings?.filter(f => f.hour <= Number(hour) + 1e-6).at(-1) ?? run?.soundings?.[0];
+    if (!frame) return null;
+    return soundingAnswer(cellOf(frame, Number(row), Number(column)), { row: Number(row), column: Number(column), initHourUtc: run.initHourUtc, forecastHour: frame.hour, validHourUtc: run.initHourUtc + frame.hour });
   }
   tracks(init) {
     const run = this.run(init);

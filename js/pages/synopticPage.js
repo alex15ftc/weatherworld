@@ -17,6 +17,7 @@
 // ?frame=<hour>, ?zoom=<n>, ?chart=<key>; ?follow=0&cx=<x>&cy=<y> holds the view on a place (grid units) so the
 // map's box moves; ?view=public shows an admin what the public is told.
 import { saveLoop, drawChartFrame } from '/js/gif.js';
+import { openSounding } from '/js/pages/soundingPanel.js';
 
 const canvas = document.getElementById('synCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('synTip');
 const $ = id => document.getElementById(id);
@@ -126,7 +127,7 @@ const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/synoptic/)?.[1] ??
 let runInit = MODEL && query.get('run') !== null && Number.isFinite(Number(query.get('run'))) ? Number(query.get('run')) : null;
 document.body.dataset.source = REPLAY ? 'replay' : MODEL ? 'model' : 'analysis';
 if (MODEL) { $('synHeading').textContent = LONG ? 'Long range model' : 'Large-scale view'; document.title = `${LONG ? 'Long range model' : 'Large-scale view'} · Models · WeatherWorld`; }
-if (LONG) { $('crumbModel').textContent = 'Long range'; $('tabLargeScale').removeAttribute('aria-current'); $('tabLongRange').setAttribute('aria-current', 'page'); $('runNote').textContent = 'The long range model: a 7-day run from each 0600 UTC, every 3 forecast hours, without storms. Like a real forecast it has a timing error: systems reach the map a little early or late, more so with each day ahead.'; }
+if (LONG) { $('crumbModel').textContent = 'Long range'; $('tabLargeScale').removeAttribute('aria-current'); $('tabLongRange').setAttribute('aria-current', 'page'); $('runNote').textContent = 'Select a point inside the game map\'s box for the run\'s sounding there. The long range model: a 7-day run from each 0600 UTC, every 3 forecast hours, without storms. Like a real forecast it has a timing error: systems reach the map a little early or late, more so with each day ahead.'; }
 if (REPLAY) { $('synHeading').textContent = 'Large-scale charts: replay'; document.title = 'Large-scale replay · Past days · WeatherWorld'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
 const api = REPLAY
   ? { frame: hour => `/api/day/${DAY}/replay/synoptic/frame${hour === null ? '' : `?frame=${hour}`}`, field: (key, hour) => `/api/day/${DAY}/replay/synoptic/field?frame=${hour}&key=${encodeURIComponent(key)}` }
@@ -548,7 +549,20 @@ canvas.addEventListener('pointermove', event => {
   drag.moved = true; view.follow = false; canvas.classList.add('dragging'); tip.style.display = 'none';
   view.cx = drag.cx - dx / view.scale; view.cy = drag.cy + dy / view.scale; draw();
 });
-canvas.addEventListener('pointerup', () => { drag = null; canvas.classList.remove('dragging'); });
+canvas.addEventListener('pointerup', event => {
+  const pressed = drag; drag = null; canvas.classList.remove('dragging');
+  // The long range model: a press on the game map that was not a drag opens the run's sounding at that place.
+  if (!LONG || !pressed || pressed.moved || !data || data.status !== 'ready') return;
+  const box = canvas.getBoundingClientRect(), here = inMap(toGrid(event.clientX - box.left, event.clientY - box.top));
+  if (!here) return;
+  const cells = 50, row = Math.min(cells - 1, Math.floor(here.fy * cells)), column = Math.min(cells - 1, Math.floor(here.fx * cells)), miles = data.map.km / 1.609344, round = v => (Number.isFinite(Number(v)) ? Math.round(v) : '—');
+  if (looping) $('framePlay').click();
+  openSounding({
+    title: `${Math.round(here.fx * miles)} mi east, ${Math.round(here.fy * miles)} mi south on the game map`,
+    load: () => getJson(`${MODEL_API}/sounding?init=${data.run.initHourUtc}&hour=${data.run.forecastHour}&row=${row}&column=${column}`),
+    note: s => `${round(s.context?.surface?.temperatureF)}°F / ${round(s.context?.surface?.dewpointF)}°F at the ground · long range model, day ${Math.floor(s.forecastHour / 24) + 1}, forecast hour ${s.forecastHour} · no storms in the run, and less sure with each day`
+  });
+});
 canvas.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
 function zoomAt(factor, sx = view.width / 2, sy = view.height / 2) {
   if (!data || data.status !== 'ready') return;

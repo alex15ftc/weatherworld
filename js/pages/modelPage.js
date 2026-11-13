@@ -1,4 +1,5 @@
 import { loadCalendar, dateText } from '../pageCalendar.js';
+import { openSounding } from './soundingPanel.js';
 // The model page (2026-10-29), laid out like Pivotal Weather's model pages. Two models:
 //   Short range  one run from the live world at each simulated hour (server/ShortRangeRuntime.js): a
 //                simulated composite reflectivity (3 km grid, as the HRRR's) drawn from its storms every
@@ -555,6 +556,19 @@ canvas.addEventListener('mousemove', event => {
   tip.style.left = `${Math.min(mx + 14, rect.width - tip.offsetWidth - 4)}px`; tip.style.top = `${Math.min(my + 14, rect.height - tip.offsetHeight - 4)}px`;
 });
 canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+// A point of the map: the short range run's sounding there at the forecast hour on show.
+canvas.addEventListener('click', event => {
+  if (!view || modelKind !== 'short' || !S.meta) return;
+  const rect = canvas.getBoundingClientRect(), x = (event.clientX - rect.left - view.left) / view.k, y = (event.clientY - rect.top - view.top) / view.k;
+  if (x < 0 || y < 0 || x >= domain.widthKm || y >= domain.heightKm) return;
+  const row = Math.floor(y / domain.cellKm), column = Math.floor(x / domain.cellKm), hour = Math.floor(t / 60), round = v => (Number.isFinite(Number(v)) ? Math.round(v) : '—');
+  stopPlay();
+  openSounding({
+    title: `${Math.round(x / MILE_KM)} mi east, ${Math.round(y / MILE_KM)} mi south`,
+    load: async () => { const sounding = await getJson(`/api/models/short-range/sounding?init=${S.init}&hour=${hour}&row=${row}&column=${column}`); if (!sounding) throw new Error('none'); return sounding; },
+    note: s => `${round(s.context?.surface?.temperatureF)}°F / ${round(s.context?.surface?.dewpointF)}°F at the ground · short range model, ${runName(s.initHourUtc)} run, ${fLabel(s.forecastHour * 60)} · valid ${clock(s.validHourUtc)}`
+  });
+});
 function fieldAt(values, x, y) {
   const { columns, rows, cellKm } = domain, fx = Math.max(0, Math.min(columns - 1.001, x / cellKm - 0.5)), fy = Math.max(0, Math.min(rows - 1.001, y / cellKm - 0.5));
   const i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j, v = (ii, jj) => values[jj * columns + ii];

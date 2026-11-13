@@ -66,7 +66,10 @@ engine with no key treats this machine as admin). The server decides the role on
   across the whole model: the game map's own values in its box; for about 1,000 miles around it the map's kind
   of low-level weather worked out on a coarser grid (the wide window, ready 24 world hours after it is first
   made); beyond that the large-scale model alone, where the composites read low. The legend says which.
-- Mesoanalysis (`/analysis`) draws county lines and the larger cities under "Show".
+- Mesoanalysis (`/analysis`) draws county lines and the larger cities under "Show". The live world's soundings
+  (select a point on the map) are an admin's only: `/api/live/sounding` refuses anyone else (the owner, 2026-11-13).
+- Soundings for everyone come from the models: select a point on the Models map (short range, the forecast hour on
+  show) or inside the game map's box on the long range page; `js/pages/soundingPanel.js` shows it over the page.
 - A day has no page, for anyone, until it has ended.
 - Day summaries (`/days`): saved days are public; recent days, saving and removing are admin only.
 - Chasers and the mesoanalysis page's world controls: as before.

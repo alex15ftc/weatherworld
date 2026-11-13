@@ -13,8 +13,11 @@
 //   storms   every STORM_EVERY hours: each storm, compact (position, motion, reflectivity, rain
 //            area, hail, updraft, rotation, updraft helicity, tornado)
 //   tracks   every storm tick: the points of storms with updraft helicity, and of tornadoes
+//   soundings each hour: what a sounding is made from, for every cell (soundingColumns.js), so the model page
+//            can show the run's sounding at any point (the public's soundings: the live world's are an admin's)
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { buildStormAppearance } from '../storms/StormAppearance.js';
+import { packColumns } from './soundingColumns.js';
 
 export const SHORT_RANGE = Object.freeze({
   hours: 18, longHours: 48, longAtUtc: [0, 6, 12, 18],
@@ -70,9 +73,10 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
   let shared = shareHours > 0;
   if (!shared) setSeed(ownSeed);
 
-  const parameters = [], fields = [], storms = [], tracks = [], synoptic = [];
+  const parameters = [], fields = [], storms = [], tracks = [], synoptic = [], soundings = [];
   const keepSynoptic = () => { if (synopticOf) synoptic.push({ forecastHour: r2(world.validHourUtc - initHourUtc), ...synopticOf(atmosphere) }); };
   const keepFields = () => {
+    soundings.push({ hour: r2(world.validHourUtc - initHourUtc), ...packColumns(world) });
     if (!fieldsOf) return;
     const all = fieldsOf(world), frame = {};
     for (const [key, field] of Object.entries(all)) {
@@ -110,7 +114,7 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
   }
   return {
     seed: state.seed, initHourUtc, hours, shareHours, cellKm: world.cellSizeKm, width: world.width, height: world.height,
-    parameters, fields, storms, tracks, synoptic, ms: Math.round(performance.now() - started)
+    parameters, fields, storms, tracks, synoptic, soundings, ms: Math.round(performance.now() - started)
   };
 }
 

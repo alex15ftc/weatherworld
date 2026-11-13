@@ -170,6 +170,14 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     frame's large-scale columns are asked for. Engine fingerprint identical to HEAD (seed 1000, 8 h).
   - Fixed (same date): the mesoanalysis replay of a day not yet saved did not send the admin key, so it stayed
     empty for a signed-in admin.
+  - Soundings (2026-11-13): the live world's are admin only (`/api/live/sounding` answers 401 without the key; the
+    mesoanalysis page opens none for the public). The public's come from the models: each short range run (every
+    hour) and long range run (every 3 h) keeps what a sounding is made from for every cell
+    (`js/forecast/soundingColumns.js`, 33 numbers a cell, 322 KB a frame; `tests/sounding-columns.mjs`: the
+    figures are the cell's own). `/api/models/{short-range,long-range}/sounding?init&hour&row&column`; a point
+    selected on the Models map, or inside the map's box on the long range page, opens it
+    (`js/pages/soundingPanel.js`). About 6 to 16 MB more a short range run and 18 MB a long range run; 0.08 ms
+    an answer.
   - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
     and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
     `data/social/high-risk-2026-11-12/` (not in git).

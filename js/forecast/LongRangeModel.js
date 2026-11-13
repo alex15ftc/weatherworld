@@ -11,9 +11,11 @@
 // storms do not feed back into them (checked 2026-11-13: a storm-free copy matched the live world's map position
 // and large-scale fields to the bit over 5 days). The map's steering in the run plans from where the run thinks
 // the map is, so its later days can also choose differently from the world.
-// What a run keeps: the large-scale model's frame (server/SynopticRuntime.js) every LONG_RANGE.synopticEvery hours.
+// What a run keeps, every LONG_RANGE.synopticEvery hours: the large-scale model's frame (server/SynopticRuntime.js),
+// and what a sounding is made from for every cell of the map (soundingColumns.js).
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { timingErrorMs, TIMING } from './ensemblePerturbation.js';
+import { packColumns } from './soundingColumns.js';
 
 export const LONG_RANGE = Object.freeze({
   hours: 168,
@@ -24,7 +26,7 @@ export const LONG_RANGE = Object.freeze({
   atmosphereStepHours: 0.5,
   // How much a run's systems differ in speed from the world's (m/s, standard deviation): the outlook runs' own.
   timingSpreadMs: TIMING.spreadMs,
-  // Runs the server keeps (about 28 MB each).
+  // Runs the server keeps (about 45 MB each: the large-scale frames and the map's columns for soundings).
   keepRuns: 4
 });
 
@@ -44,8 +46,8 @@ export function runLongRange(state, { hours = LONG_RANGE.hours, synopticOf = nul
   const error = timingMs ?? timingErrorMs(`${state.seed}|long-range|${initHourUtc}`, LONG_RANGE.timingSpreadMs);
   atmosphere.regional.timingErrorMs = error;
 
-  const synoptic = [];
-  const keep = () => { if (synopticOf) synoptic.push({ forecastHour: Math.round((world.validHourUtc - initHourUtc) * 100) / 100, ...synopticOf(atmosphere) }); };
+  const synoptic = [], soundings = [];
+  const keep = () => { soundings.push({ hour: Math.round((world.validHourUtc - initHourUtc) * 100) / 100, ...packColumns(world) }); if (synopticOf) synoptic.push({ forecastHour: Math.round((world.validHourUtc - initHourUtc) * 100) / 100, ...synopticOf(atmosphere) }); };
   keep();
   const steps = Math.round(hours / LONG_RANGE.atmosphereStepHours);
   for (let step = 0; step < steps; step++) {
@@ -53,7 +55,7 @@ export function runLongRange(state, { hours = LONG_RANGE.hours, synopticOf = nul
     if (Math.abs((world.validHourUtc - initHourUtc) % LONG_RANGE.synopticEvery) < 1e-6) keep();
   }
   return {
-    seed: state.seed, initHourUtc, hours, timingErrorMs: Math.round(error * 1000) / 1000, synoptic,
+    seed: state.seed, initHourUtc, hours, timingErrorMs: Math.round(error * 1000) / 1000, synoptic, soundings,
     // (where the run ends with the map, for checks: metres along and across the large-scale model)
     endOrigin: { x: atmosphere.regional.origin.x, y: atmosphere.regional.origin.y },
     ms: Math.round(performance.now() - started)

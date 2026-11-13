@@ -158,7 +158,7 @@ async function serveApi(url, req, res) {
   if (url.pathname.startsWith('/api/models/short-range/')) {
     const q = name => url.searchParams.get(name), part = url.pathname.slice('/api/models/short-range/'.length);
     if (!shortRange) return sendJson(req, res, 404, { error: 'The short range model is off' }, { cacheable: false, trace });
-    const value = part === 'runs' ? shortRange.list() : part === 'run' ? shortRange.meta(q('init')) : part === 'field' ? shortRange.field(q('init'), q('hour'), q('key')) : part === 'storms' ? shortRange.storms(q('init'), q('minute')) : part === 'tracks' ? shortRange.tracks(q('init'))
+    const value = part === 'runs' ? shortRange.list() : part === 'run' ? shortRange.meta(q('init')) : part === 'field' ? shortRange.field(q('init'), q('hour'), q('key')) : part === 'storms' ? shortRange.storms(q('init'), q('minute')) : part === 'sounding' ? shortRange.sounding(q('init'), q('hour'), q('row'), q('column')) : part === 'tracks' ? shortRange.tracks(q('init'))
       // (the run's large-scale view: the frames and fields the synoptic page reads, from the run)
       : part === 'synoptic/frame' ? forRole(req, shortRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? shortRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
     return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
@@ -167,7 +167,7 @@ async function serveApi(url, req, res) {
   if (url.pathname.startsWith('/api/models/long-range/')) {
     const q = name => url.searchParams.get(name), part = url.pathname.slice('/api/models/long-range/'.length);
     if (!longRange) return sendJson(req, res, 404, { error: 'The long range model is off' }, { cacheable: false, trace });
-    const value = part === 'runs' ? longRange.list() : part === 'synoptic/frame' ? forRole(req, longRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? longRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
+    const value = part === 'runs' ? longRange.list() : part === 'sounding' ? longRange.sounding(q('init'), q('hour'), q('row'), q('column')) : part === 'synoptic/frame' ? forRole(req, longRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? longRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
     return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
   }
   // The outlook runs as an ensemble (OutlookRuntime.js): the issues kept, and one issue's storm tracks (?issued=).
@@ -277,6 +277,8 @@ async function serveApi(url, req, res) {
   }
   if (url.pathname === '/api/live/storms') return sendJson(req, res, 200, runtime.storms(), { trace });
   if (url.pathname === '/api/live/cell') return sendJson(req, res, 200, runtime.cellSummary(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
+  // The live world's sounding at a cell: for an admin only (the owner, 2026-11-13: the live air's columns are not for the public; the models are).
+  if (url.pathname === '/api/live/sounding' && !isAdmin(req)) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   // The radar, outlook, mesoscale, warning, storm report and damage survey pages were retired
   // on 2026-10-22: those products are drawn in Roblox from /api/game/v1/* (GameProducts.js).
