@@ -30,9 +30,9 @@
     #synCanvas.pan.dragging { cursor: grabbing; }
     /* What only an admin sees: the map's drift, and that the view can leave the map. */
     body:not([data-role="admin"]) [data-role-only="admin"], body[data-role="admin"] [data-role-only="public"] { display: none !important; }
-    body[data-source="analysis"] [data-mode="model"], body[data-source="model"] [data-mode="analysis"] { display: none !important; }
-    body[data-source="model"] #frameLatest { display: none; }
-    body[data-source="model"] #frameRow { grid-template-columns: repeat(3, 1fr); }
+    body:not([data-source="analysis"]) [data-mode="analysis"], body:not([data-source="model"]) [data-mode="model"], body:not([data-source="replay"]) [data-mode="replay"] { display: none !important; }
+    body:not([data-source="analysis"]) #frameLatest { display: none; }
+    body:not([data-source="analysis"]) #frameRow { grid-template-columns: repeat(3, 1fr); }
     @media (max-width: 900px) { .chart { aspect-ratio: auto; height: 70vh; } }
     /* Share view: only the chart, labelled in the frame. */
     body.share { display: flex; flex-direction: column; height: 100vh; min-height: 0; padding: 0; background: #0a0f15; }
@@ -61,6 +61,7 @@
     <a href="/">Home</a>
     <span data-mode="analysis"><a href="/analysis">Mesoanalysis</a></span><span data-mode="analysis">Synoptic charts</span>
     <span data-mode="model"><a href="/models">Models</a></span><span data-mode="model">Large-scale view</span>
+    <span data-mode="replay"><a href="/days">Past days</a></span><span data-mode="replay"><a data-day-link href="/days">The day</a></span><span data-mode="replay">Large-scale replay</span>
   </nav>
   <div class="tool-head">
     <div>
@@ -85,6 +86,7 @@
       <section class="group">
         <h2 data-mode="analysis">Analysis time</h2>
         <h2 data-mode="model">Forecast time</h2>
+        <h2 data-mode="replay">Replay time</h2>
         <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Chart time" />
         <div class="row-4" id="frameRow">
           <button id="framePrev" title="Earlier">◀</button>
@@ -92,6 +94,8 @@
           <button id="frameNext" title="Later">▶</button>
           <button id="frameLatest" title="Follow the current time" class="on">Now</button>
         </div>
+        <button id="saveGif" title="Save every time on the slider as one animated picture">Save loop as GIF</button>
+        <small id="gifNote"></small>
       </section>
       <section class="group">
         <h2>Charts</h2>

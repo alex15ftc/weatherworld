@@ -14,6 +14,7 @@ The engine serves one public website (`server/index.js`, addresses in `server/Si
 | `/days`, `/day/<id>` | `days.html` | Day summaries: the forecast and what happened, as two pictures for posting. The public sees saved days; an admin sees recent days and saves them (`server/DayArchive.js`) |
 | `/models` (also `/models.html`) | `models.html` | Short range runs and the outlook ensemble, on the game map |
 | `/models/large-scale` | `synoptic.html` | A short range run across the whole large-scale model (`?run=<init hour>`) |
+| `/day/<id>/analysis`, `/day/<id>/synoptic` | `index.html`, `synoptic.html` | A day's replay on the mesoanalysis and large-scale pages: the hours `server/ReplayArchive.js` kept |
 | `/chasers` | `chasers.html` | Chaser network |
 | `/about` | `about.html` | What the site is, the clock, image use |
 | anything else | `404.html` | Not found (status 404) |
@@ -60,6 +61,17 @@ engine with no key treats this machine as admin). The server decides the role on
   view; the share view is always the public one.
 - Day summaries (`/days`): saved days are public; recent days, saving and removing are admin only.
 - Chasers and the mesoanalysis page's world controls: as before.
+
+## Replays and GIFs
+
+A day's replay (`server/ReplayArchive.js`) is kept for 16 world days (two real days) after the day: the hourly
+mesoanalysis and large-scale frames and every warning. The day page (`/day/<id>`) links to the two replay
+pages and plays the warnings on a time slider. Selecting a tornado's track on the "What happened" picture opens
+its panel: its path and its survey's damage indicators (kept with the saved summary, for good).
+
+"Save loop as GIF" (`js/gif.js`) makes the animated picture in the browser from whatever the page is showing: on
+the mesoanalysis and large-scale pages (live or replay) and the warnings replay. A GIF of the large-scale charts
+is always of the public view.
 
 ## Looking at changes
 

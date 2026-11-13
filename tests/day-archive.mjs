@@ -67,7 +67,8 @@ assert.deepEqual(long[0], [250, 250]); assert.deepEqual(long.at(-1).map(Math.rou
 assert.match(days.mapSvg('live-1', 'outlook', 'categorical'), /Risk Level/);
 const tracks = days.mapSvg('live-1', 'tracks');
 assert.match(tracks, /height="1000" viewBox="0 0 1000 1000"/, 'the track map is the map alone');
-assert.equal((tracks.match(/stroke-linecap="round"/g) ?? []).length, 10, 'two strokes for each of the five tracks');
+assert.equal((tracks.match(/stroke-linecap="round"/g) ?? []).length, 15, 'two strokes and a wide unseen one for each of the five tracks');
+assert.equal((tracks.match(/data-tornado="S\d-T1"/g) ?? []).length, 5, 'each track names its tornado');
 assert.equal(days.mapSvg('nothing', 'tracks'), null);
 
 // The lists: nothing is public until a day is saved.

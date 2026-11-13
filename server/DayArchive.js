@@ -51,8 +51,8 @@ function inside(rings, x, y) {
 export class DayArchive {
   // runtime: the weather authority. products: GameProducts (the Day 1 outlook). reports: ReportsRuntime (the
   // storm log and surveys). archive: ProductArchive (watches, warnings). layer(): the county layer.
-  constructor({ runtime, products, reports, archive, layer, file = null }) {
-    Object.assign(this, { runtime, products, reports, archive, layer, file });
+  constructor({ runtime, products, reports, archive, layer, replays = null, file = null }) {
+    Object.assign(this, { runtime, products, reports, archive, layer, replays, file });
     this.worldId = runtime.worldId; this.days = new Map(); this.saved = new Map(); this.version = null; this.dirty = false;
     this.restore();
   }
@@ -125,6 +125,8 @@ export class DayArchive {
       return {
         id: t.id, rating: t.rating, ef: efOf(t.rating), peakWindMph: t.peakWindMph ?? null, lengthMi: t.lengthMi, minutes: t.durationMinutes, startHourUtc: t.startHourUtc,
         startPlace: t.startPlace ?? null, endPlace: t.endPlace ?? null, ongoing: Boolean(t.ongoing), track: thin(t.centreline),
+        // The survey's damage, by indicator (js/reports/damageSurvey.js), for the tornado's own panel.
+        widthYards: t.maxWidthYards ?? null, towns: t.towns ?? [], counties: t.counties ?? [], indicators: (t.indicators ?? []).map(({ di, name, count, maxEf }) => ({ di, name, count, maxEf })),
         category: areas.find(area => inside(area.rings, first[0], first[1]))?.key ?? 'NONE'
       };
     }).sort((a, b) => a.ef - b.ef);
@@ -184,7 +186,7 @@ export class DayArchive {
     const found = this.find(id);
     if (!found) return null;
     const { product, ...rest } = found;
-    return rest;
+    return { ...rest, replay: this.replays?.contents(found.day, found.worldId) ?? { available: false } };
   }
 
   keep(day) {
@@ -229,8 +231,10 @@ export class DayArchive {
     for (const t of found.tornadoes) {
       if (!t.track.length) continue;
       const colour = t.ef < 0 ? EFU_COLOUR : EF_COLOURS[t.ef], width = 3.5 + Math.max(0, t.ef) * 1.6, d = t.track.map(([x, y], k) => `${k ? 'L' : 'M'}${px(x)} ${px(y)}`).join('');
-      parts.push(`<path d="${d}" fill="none" stroke="#111" stroke-width="${width + 2.4}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${colour}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`);
+      // (each track carries its tornado's id, under a wide unseen stroke that makes it easy to pick on the page)
+      parts.push(`<g data-tornado="${t.id}"><path d="${d}" fill="none" stroke="#111" stroke-width="${width + 2.4}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${colour}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`);
       if (t.track.length < 3 || t.lengthMi < 4) parts.push(`<circle cx="${px(t.track[0][0])}" cy="${px(t.track[0][1])}" r="${3 + Math.max(0, t.ef)}" fill="${colour}" stroke="#111" stroke-width="1.3"/>`);
+      parts.push(`<path d="${d}" fill="none" stroke="#000" stroke-opacity="0" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/></g>`);
     }
     return outlookSvg(product, layer, 'categorical', { key: false, overlay: parts.join('') });
   }

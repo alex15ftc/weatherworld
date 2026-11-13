@@ -124,6 +124,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
     page has the two post pictures (PNG made in the browser, or opened alone), the numbers and draft post
     text. Days before this was deployed have no outlook kept.
+  - Day replays (2026-11-12, `server/ReplayArchive.js`, `tests/replay-archive.mjs`): each world day's hourly
+    mesoanalysis and large-scale frames and every warning are kept in `replays/<world>-<day>.bin.gz` beside the
+    world's state (about 13 MB a day) for 16 world days. A day's page links to `/day/<id>/analysis` and
+    `/day/<id>/synoptic` (the live pages on the kept hours), plays the warnings on a slider, and opens a tornado's
+    panel (path, damage indicators) when its track is selected. "Save loop as GIF" (`js/gif.js`, made in the
+    browser) is on the two replay pages, the warnings replay and the live pages. Seen working on a local engine
+    (two days run; pages and GIFs checked in a browser).
+    Left out for now (owner, 2026-11-12): a radar loop of each tornado. It was built and measured (branch
+    `web/tornado-radar`, commit `28aeabe`: about 2 s of radar thread per scan kept, 290 to 850 s a world day).
   - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
     and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
     `data/social/high-risk-2026-11-12/` (not in git).

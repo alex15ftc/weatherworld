@@ -14,8 +14,12 @@ node tools/social/make-loop.mjs  data/social/<day>          # 3-<chart>.mp4, .gi
 For a day that has just been played, the site makes the same two pictures without any recording: sign in as
 admin on `/days`, open the day and press Save. The saved day's page has both pictures (Save as PNG, or Open
 alone for a screenshot), the day's numbers and draft post text. The engine keeps what a day needs for about
-two weeks; a saved day is kept for good. The loops below still need a recording, because the engine holds
-only the last 18 hours of large-scale frames.
+two weeks; a saved day is kept for good.
+
+For 16 world days (two real days) after a day, its page also has replays: the mesoanalysis and the large-scale
+charts hour by hour and the warnings on a time slider. Each has a "Save as GIF"
+button that makes the picture in the browser. The recording below is still the way to keep a day's loops longer
+than that, or as MP4.
 
 ## What each step does
 

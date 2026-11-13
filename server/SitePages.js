@@ -19,6 +19,9 @@ const SITE_PAGES = [
   [/^\/models\/large-scale\/?$/, 'synoptic.html'],
   [/^\/days\/?$/, 'days.html'],
   [/^\/day\/[A-Za-z0-9-]+\/?$/, 'days.html'],
+  // A saved day's replays: the mesoanalysis and large-scale pages on the day's kept hours.
+  [/^\/day\/[A-Za-z0-9-]+\/analysis\/?$/, 'index.html'],
+  [/^\/day\/[A-Za-z0-9-]+\/synoptic\/?$/, 'synoptic.html'],
   [/^\/about\/?$/, 'about.html']
 ];
 export const NOT_FOUND_PAGE = '404.html';

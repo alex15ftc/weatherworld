@@ -16,6 +16,23 @@
 
 ## Decisions
 
+### 2026-11-12 — Day replays are kept 16 world days and played by the live pages; GIFs are made in the browser
+
+- Status: `active`
+- Decision: a day's replay (hourly mesoanalysis and large-scale frames, every warning) is a file per day beside
+  the world's state, let go after 16 world days; a saved day summary outlives its replay. The mesoanalysis and
+  large-scale pages play a replay through the same routes' answers they get live. Loops are made into GIFs in the
+  reader's browser.
+- Rationale: the owner's requests (replays on the day reports, expiry after two real days). The frames are ones
+  the live pages' runtimes have already worked out, so keeping them costs the engine nothing. Rejected: whole-map
+  radar mosaics through the day (a build every one or two real minutes, dropped for performance in October);
+  making GIFs on the engine (its image has no browser or image libraries, and the charts are drawn by page code).
+- Left out for now by the owner: a radar loop of each tornado (built on branch `web/tornado-radar`). If it comes
+  back, scan only once a tornado exists, from a rolling copy of the storm's radar inputs: scanning every storm
+  that might produce one measured about twenty times the cost.
+- Consequences: a replay cannot be made for a day after the fact; while the world is stepped by hand in bursts
+  the warnings between steps are missed (the live clock keeps them all).
+
 ### 2026-11-12 — The public is not shown that the game map moves; day summaries are kept only when an admin saves them
 
 - Status: `active`

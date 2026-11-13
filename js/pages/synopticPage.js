@@ -2,15 +2,19 @@
 // place in it, drawn as forecast-model charts are: one field in filled colour bands, another as labelled
 // contours, a wind as barbs, on the dark ground the site's other charts have. The charts on offer are the usual ones, by level.
 //
-// Two sources (the page is served at two addresses, synoptic.html):
+// Three sources (the page is served at three addresses, synoptic.html):
 //   /synoptic              the analysis of the last 18 hours (server/SynopticRuntime.js)
 //   /models/large-scale    a short range model run, every few forecast hours (?run=<init hour>)
+//   /day/<id>/synoptic     a past day's replay, hour by hour (server/ReplayArchive.js)
+// "Save loop as GIF" steps through the frames on show and saves them as one picture (js/gif.js).
 // Two views, set by the viewer's role (the server sends it with each frame):
 //   public   the game map is held in the middle of the chart; nothing shows that the map moves
 //   admin    the view can be dragged, and the map's drift (its arrow, speed and aim) is shown
 // ?share=1: only the chart, with its title, time, key and the site's name in the frame, always the public
 // view (tools/social/make-loop.mjs). ?frame=<hour>, ?zoom=<n>, ?chart=<key>; ?view=public shows an admin
 // the public view.
+import { saveLoop, drawChartFrame } from '/js/gif.js';
+
 const canvas = document.getElementById('synCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('synTip');
 const $ = id => document.getElementById(id);
 const REFRESH_MS = 10000, LOOP_MS = 450;
@@ -94,9 +98,10 @@ view.zoom = queryZoom ? Math.max(1, Math.min(10, Number(query.get('zoom')))) : 2
 // Who is looking. The admin key is the one the site's top bar keeps for this tab (js/site.js); the server answers with the role it gives the request, and leaves the map's drift out for the public.
 const ADMIN_KEY = 'wwAdminKey', FORCE_PUBLIC = SHARE || query.get('view') === 'public';
 const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage: the key lasts until the page is left */ } } };
-let admin = false;
+// (capturing: a GIF is being saved, which is always of the public view)
+let admin = false, capturing = false;
 function setRole(role) {
-  const now = role === 'admin' && !FORCE_PUBLIC;
+  const now = role === 'admin' && !FORCE_PUBLIC && !capturing;
   if (now !== admin && !now) view.follow = true;
   admin = now;
   document.body.dataset.role = admin ? 'admin' : 'public';
@@ -106,10 +111,15 @@ function setRole(role) {
 // Where the frames come from: the analysis of the last hours (/synoptic), or a short range model run
 // every few forecast hours (/models/large-scale; ?run=<init hour> names the run, else the newest).
 const MODEL = location.pathname.startsWith('/models');
+// (a past day's replay: its kept hours, named like a model run's frames)
+const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/synoptic/)?.[1] ?? null, REPLAY = Boolean(DAY), STEPPED = MODEL || REPLAY;
 let runInit = MODEL && query.get('run') !== null && Number.isFinite(Number(query.get('run'))) ? Number(query.get('run')) : null;
-document.body.dataset.source = MODEL ? 'model' : 'analysis';
+document.body.dataset.source = REPLAY ? 'replay' : MODEL ? 'model' : 'analysis';
 if (MODEL) { $('synHeading').textContent = 'Large-scale view'; document.title = 'Large-scale view · Models · WeatherWorld'; }
-const api = MODEL
+if (REPLAY) { $('synHeading').textContent = 'Large-scale charts: replay'; document.title = 'Large-scale replay · Past days · WeatherWorld'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
+const api = REPLAY
+  ? { frame: hour => `/api/day/${DAY}/replay/synoptic/frame${hour === null ? '' : `?frame=${hour}`}`, field: (key, hour) => `/api/day/${DAY}/replay/synoptic/field?frame=${hour}&key=${encodeURIComponent(key)}` }
+  : MODEL
   ? { frame: hour => `/api/models/short-range/synoptic/frame?init=${runInit ?? ''}${hour === null ? '' : `&frame=${hour}`}`, field: (key, hour) => `/api/models/short-range/synoptic/field?init=${runInit ?? ''}&frame=${hour}&key=${encodeURIComponent(key)}` }
   : { frame: hour => `/api/synoptic/frame${hour === null ? '' : `?frame=${hour}`}`, field: (key, hour) => `/api/synoptic/field?key=${encodeURIComponent(key)}&frame=${hour}` };
 
@@ -162,13 +172,13 @@ function describe() {
   const time = $('synTime'), status = $('synStatus');
   if (data.status !== 'ready') {
     time.textContent = '—';
-    status.textContent = MODEL && data.missing ? 'No model run with a large-scale view yet. The short range model makes one at each whole hour of the world.' : 'Server not reachable. Start it with npm start (a first start takes about a minute).';
+    status.textContent = REPLAY && data.missing ? 'This day has no replay (a replay is kept for 16 world days, about two real days).' : MODEL && data.missing ? 'No model run with a large-scale view yet. The short range model makes one at each whole hour of the world.' : 'Server not reachable. Start it with npm start (a first start takes about a minute).';
     return;
   }
   time.textContent = data.date ? `${data.date} · ${clock(data.hourUtc)} UTC` : `${clock(data.hourUtc)} UTC`;
   if (MODEL) describeRun();
   const behind = data.frames.at(-1) - data.frameHour;
-  status.textContent = MODEL ? `forecast hour ${data.run.forecastHour} of the ${clock(data.run.initHourUtc).slice(0, 2)}Z short range run` : `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`}`;
+  status.textContent = REPLAY ? `replay, hour ${data.frames.indexOf(data.frameHour) + 1} of ${data.frames.length}` : MODEL ? `forecast hour ${data.run.forecastHour} of the ${clock(data.run.initHourUtc).slice(0, 2)}Z short range run` : `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`}`;
   const slider = $('frameSlider'); slider.max = data.frames.length - 1; slider.value = data.frames.indexOf(data.frameHour);
   $('frameLatest').classList.toggle('on', frameHour === null && !looping);
   $('framePlay').classList.toggle('on', Boolean(looping)); $('framePlay').textContent = looping ? 'Stop' : 'Loop';
@@ -526,17 +536,34 @@ for (const id of ['shadeField', 'contourField', 'windField']) $(id).addEventList
 for (const id of ['showMap', 'showCentres', 'showGrid']) $(id).addEventListener('change', draw);
 function stopLoop() { if (looping) { clearInterval(looping); looping = null; } }
 // (the analysis follows the newest frame when the last one is chosen; a model run's frames are all named)
-function showFrame(index) { if (!data?.frames) return null; const i = Math.max(0, Math.min(data.frames.length - 1, index)); frameHour = !MODEL && i === data.frames.length - 1 ? null : data.frames[i]; return load(); }
+function showFrame(index) { if (!data?.frames) return null; const i = Math.max(0, Math.min(data.frames.length - 1, index)); frameHour = !STEPPED && i === data.frames.length - 1 ? null : data.frames[i]; return load(); }
 $('frameSlider').addEventListener('input', event => { stopLoop(); showFrame(Number(event.target.value)); });
 $('framePrev').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) - 1); });
 $('frameNext').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) + 1); });
 $('frameLatest').addEventListener('click', () => { stopLoop(); frameHour = null; load(); });
 $('framePlay').addEventListener('click', () => {
-  if (looping) { stopLoop(); if (!MODEL) frameHour = null; load(); return; }
+  if (looping) { stopLoop(); if (!STEPPED) frameHour = null; load(); return; }
   let index = 0, busy = false;
   looping = setInterval(async () => { if (busy || !data?.frames) return; busy = true; frameHour = data.frames[index % data.frames.length]; index++; await load(); busy = false; }, LOOP_MS);
 });
 $('runSelect').addEventListener('change', event => { stopLoop(); runInit = Number(event.target.value); frameHour = null; const url = new URL(location.href); url.searchParams.set('run', runInit); history.replaceState(null, '', url); load(); });
+// The loop on show as a GIF: every frame the time control steps through, each with its title and time.
+$('saveGif').addEventListener('click', async () => {
+  if (data?.status !== 'ready') return;
+  stopLoop();
+  const frames = data.frames, was = frameHour, button = $('saveGif'), chart = presetNow();
+  const width = 960, height = Math.round(Math.min(640, width * canvas.height / canvas.width)) + 66;
+  button.disabled = true; capturing = true;
+  try {
+    await saveLoop({
+      count: frames.length, width, height, delayMs: 350, name: `weatherworld-${chart?.key ?? 'chart'}${REPLAY ? `-${DAY}` : ''}.gif`,
+      show: async k => { frameHour = frames[k]; await load(); },
+      draw: g => drawChartFrame(g, canvas, { title: (MODEL ? `Model F${String(data.run.forecastHour).padStart(3, '0')} · ` : '') + (chart?.label ?? layers.shade?.label ?? 'Large-scale chart'), time: `${clock(data.hourUtc).replace(':', '')} UTC ${data.date ?? ''}`.trim() }),
+      onProgress: text => { $('gifNote').textContent = text; }
+    });
+  } catch (error) { $('gifNote').textContent = `The GIF could not be made (${error.message}).`; }
+  button.disabled = false; capturing = false; frameHour = STEPPED ? was ?? frames[0] : was; load();
+});
 // The fonts the chart's labels use may arrive after the first drawing.
 document.fonts?.ready.then(() => { if (data) { describe(); draw(); } });
 new ResizeObserver(resize).observe(canvas);

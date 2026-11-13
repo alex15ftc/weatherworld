@@ -9,7 +9,10 @@
        /day/<id>     one day: the forecast as issued and what happened, as two pictures made for posting
                      (1600 x 900, each can be saved as a PNG), with the day's numbers and draft post text.
                      <id> is a saved day's, or live-<n> for an admin looking at a day not yet saved.
-       /day/<id>?card=outlook|tracks shows one picture alone, filling the window (for a screenshot). -->
+       /day/<id>?card=outlook|tracks shows one picture alone, filling the window (for a screenshot).
+       For 16 world days after a day its page also has replays (server/ReplayArchive.js): links to the mesoanalysis
+       and large-scale pages on the day's hours, and the warnings on a time slider. Selecting a tornado's track on
+       the "What happened" picture opens its panel: its path and its survey's damage indicators. -->
   <!--site:head-->
   <style>
     .day-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -25,6 +28,21 @@
     table.list td.act button { appearance: none; background: var(--page); color: var(--ink); border: 1px solid var(--rule); border-radius: 2px; padding: 4px 10px; font: 600 14px var(--sans); cursor: pointer; }
     table.list td.act button:hover { border-color: var(--ink); }
     #adminNote { font-size: 15px; color: var(--ink-2); }
+    /* Replays: the day played again. The pictures are drawn dark, as the site's other charts are. */
+    .replay-links { list-style: none; margin: 0; padding: 0; }
+    .replay-links li { padding: 10px 0; border-bottom: 1px solid var(--rule-soft); }
+    .replay-links a { font-weight: 700; }
+    .replay-links span { display: block; color: var(--ink-2); font-size: 15.5px; }
+    .player { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 26px; align-items: start; }
+    @media (max-width: 860px) { .player { grid-template-columns: minmax(0, 1fr); } }
+    .player canvas { display: block; width: 100%; height: auto; background: #0a0f15; border: 1px solid var(--rule); }
+    .player .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+    .player .bar input[type=range] { flex: 1 1 180px; accent-color: var(--brand); }
+    .player .bar .time { font: 400 14px var(--mono); color: var(--ink-2); min-width: 150px; }
+    .card-frame [data-tornado] { cursor: pointer; }
+    #tornadoBox h3 { margin-top: 0; }
+    .card-frame [data-tornado]:hover path:not(:last-child), .card-frame [data-tornado].sel path:not(:last-child) { stroke-width: 9; }
+    body.share #replayBox, body.share #tornadoBox { display: none !important; }
     /* One picture alone, filling the window. */
     body.share { background: #fff; min-height: 0; height: 100vh; overflow: hidden; }
     body.share .site-header, body.share .site-footer, body.share .skip, body.share .crumbs, body.share .page-head, body.share #listView, body.share .section > h2, body.share .day-more, body.share #dayAdmin { display: none !important; }
@@ -97,6 +115,43 @@
       <h2>What happened <span class="day-tools"><button data-png="tracks">Save as PNG</button><a class="button" data-alone="tracks">Open alone</a></span></h2>
       <div class="card-frame"><div class="card" id="cardTracks"></div></div>
     </section>
+    <section class="section day-more" id="tornadoBox" hidden>
+      <h2 id="tornadoTitle">Tornado</h2>
+      <div class="split">
+        <div>
+          <dl class="facts" id="tornadoFacts"></dl>
+          <p style="margin-top:14px"><label>Another tornado: <select id="tornadoPick" style="font:inherit;padding:4px 8px;max-width:100%"></select></label></p>
+        </div>
+        <div>
+          <h3>Damage indicators</h3>
+          <div class="table-scroll"><table class="list" id="tornadoDamage"></table></div>
+          <p class="empty" id="tornadoNoDamage" hidden>The survey found no damage points along this track.</p>
+        </div>
+      </div>
+    </section>
+    <section class="section day-more" id="replayBox" hidden>
+      <h2>Replays <span class="muted" id="replayNote" style="font-size:15px;font-weight:400"></span></h2>
+      <div class="split">
+        <ul class="replay-links">
+          <li><a id="replayMeso">Mesoanalysis replay</a><span>The surface analysis and every overlay field, hour by hour. Its page has "Save loop as GIF".</span></li>
+          <li><a id="replaySynoptic">Large-scale replay</a><span>The jet, 500 mb charts, surface and moisture across the whole large-scale model, hour by hour, with "Save loop as GIF".</span></li>
+        </ul>
+        <div>
+          <h3>Warnings through the day</h3>
+          <div class="player" style="grid-template-columns:minmax(0,1fr)">
+            <div>
+              <canvas id="warnCanvas" width="640" height="640" aria-label="Warnings in effect"></canvas>
+              <div class="bar day-tools">
+                <button id="warnPlay">Play</button>
+                <input type="range" id="warnSlider" min="0" max="144" value="0" aria-label="Time of day" />
+                <span class="time" id="warnTime"></span>
+              </div>
+              <div class="bar day-tools"><button id="warnGif">Save as GIF</button><span class="muted" id="warnNote" style="font-size:14.5px"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     <div class="split day-more">
       <section class="section">
         <h2>The day in numbers</h2>
@@ -112,8 +167,9 @@
 </main>
 <!--site:footer-->
 <script type="module">
-import { $, escapeHtml, RISK_NAMES, riskTag } from '/js/site.js';
-import { CATEGORY_COLOURS, EF_COLOURS } from '/js/forecast/productColours.js';
+import { $, escapeHtml, RISK_NAMES, riskTag, loadCalendar, utcText, localText } from '/js/site.js';
+import { CATEGORY_COLOURS, EF_COLOURS, WARNING_COLOURS } from '/js/forecast/productColours.js';
+import { saveLoop, drawChartFrame } from '/js/gif.js';
 
 // The admin key is kept for this tab under the same name as on the other pages.
 const ADMIN_KEY = 'wwAdminKey';
@@ -233,6 +289,8 @@ async function showDay() {
   $('#postFirst').value = o ? `${o.headline} ${sentence(o.mainHazards ?? '')}${o.mainHazards ? '.' : ''}\n\nThis is not a real forecast. It is the Day 1 outlook for WeatherWorld, a storm-chasing world where one weather engine runs the same sky for every server. The storms had not formed when this was issued.` : '';
   $('#postSecond').value = `What happened: ${n.tornadoes ? `${count(n.tornadoes)}${n.strongest ? `, the strongest rated ${n.strongest.rating}${n.strongest.peakWindMph ? ` with ${Math.round(n.strongest.peakWindMph)} mph winds` : ''}` : ''}.` : 'no tornadoes.'}${verify ? ` ${verify}` : ''}${n.longest && n.tornadoes ? ` The longest track ran ${Math.round(n.longest.lengthMi)} miles.` : ''}\n\nNothing here is scripted. The outlook is made from an ensemble of forecast runs, then the world plays out.`;
 
+  showReplays(day);
+
   // Admin: save a live day, or remove a saved one.
   const live = id.startsWith('live-');
   let admin = live;
@@ -251,6 +309,104 @@ $('#removeDay').addEventListener('click', async () => {
   try { await ask(`/api/day/${id}/remove`, { method: 'POST' }); location.href = '/days'; } catch (error) { alert(`That did not work (${error.message}).`); }
 });
 for (const [button, box] of [['#copyFirst', '#postFirst'], ['#copySecond', '#postSecond']]) $(button).addEventListener('click', async () => { try { await navigator.clipboard.writeText($(box).value); $(button).textContent = 'Copied'; } catch { $(box).select(); } });
+
+// ---- Replays (server/ReplayArchive.js): kept for 16 world days after the day.
+let theDay = null, counties = null;
+async function showReplays(day) {
+  theDay = day;
+  const replay = day.replay ?? { available: false };
+  $('#replayBox').hidden = !replay.available || Boolean(alone);
+  // A tornado's panel needs no replay: its survey's damage is kept with the summary.
+  const pick = $('#tornadoPick'), list = [...day.tornadoes].sort((a, b) => b.ef - a.ef || b.lengthMi - a.lengthMi);
+  pick.innerHTML = list.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.rating)} · ${t.lengthMi.toFixed(1)} mi${t.startPlace ? ` · ${escapeHtml(t.startPlace)}` : ''}</option>`).join('');
+  for (const group of document.querySelectorAll('#cardTracks [data-tornado]')) group.addEventListener('click', () => showTornado(group.dataset.tornado, true));
+  if (!replay.available) return;
+  await loadCalendar();
+  $('#replayNote').textContent = `kept until ${utcText(replay.expiresHourUtc)}`;
+  $('#replayMeso').href = `/day/${id}/analysis`; $('#replaySynoptic').href = `/day/${id}/synoptic`;
+  if (!replay.mesoHours.length) $('#replayMeso').closest('li').hidden = true;
+  if (!replay.synopticHours.length) $('#replaySynoptic').closest('li').hidden = true;
+  try { counties = await ask('/api/map/counties'); } catch { counties = null; }
+  try { warnings = (await ask(`/api/day/${id}/replay/warnings`)).warnings; } catch { warnings = []; }
+  drawWarnings();
+}
+$('#tornadoPick').addEventListener('change', event => showTornado(event.target.value, false));
+
+// The county lines and biggest towns on a square canvas showing a box of the map (miles): the ground both
+// replays are drawn on.
+function drawGround(g, size, box) {
+  const k = size / box.size, X = x => (x - box.x) * k, Y = y => (y - box.y) * k;
+  g.fillStyle = '#10161d'; g.fillRect(0, 0, size, size);
+  if (!counties) return { X, Y, k };
+  g.strokeStyle = 'rgba(150,165,183,.28)'; g.lineWidth = 1; g.beginPath();
+  for (const c of counties.counties) for (const ring of c.rings) { ring.forEach(([x, y], n) => (n ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.closePath(); }
+  g.stroke();
+  const towns = counties.towns.filter(t => t.x >= box.x && t.x <= box.x + box.size && t.y >= box.y && t.y <= box.y + box.size).sort((a, b) => b.population - a.population).slice(0, 9);
+  g.textAlign = 'left'; g.textBaseline = 'middle';
+  for (const t of towns) {
+    g.fillStyle = '#e9eae7'; g.beginPath(); g.arc(X(t.x), Y(t.y), 2.5, 0, Math.PI * 2); g.fill();
+    g.font = '500 12.5px "Public Sans", system-ui, sans-serif'; g.lineWidth = 3; g.strokeStyle = 'rgba(8,12,18,.9)'; g.strokeText(t.name, X(t.x) + 6, Y(t.y)); g.fillText(t.name, X(t.x) + 6, Y(t.y));
+  }
+  return { X, Y, k };
+}
+
+// ---- The day's warnings on a time slider (every 10 minutes of the day).
+let warnings = [], warnTimer = null;
+const warnHour = () => theDay.startHourUtc + Number($('#warnSlider').value) / 6;
+function drawWarnings() {
+  const canvas = $('#warnCanvas'), g = canvas.getContext('2d'), hour = warnHour(), { X, Y } = drawGround(g, canvas.width, { x: 0, y: 0, size: counties?.miles ?? 500 });
+  const live = warnings.filter(w => w.issuedHourUtc <= hour + 1e-6 && w.validToHourUtc > hour);
+  for (const w of [...live].sort((a, b) => (a.type === 'tornado') - (b.type === 'tornado'))) {
+    const colour = WARNING_COLOURS[w.colourKey] ?? '#f5c518';
+    g.beginPath();
+    for (const flat of w.rings) { for (let n = 0; n < flat.length; n += 2) (n ? g.lineTo(X(flat[n]), Y(flat[n + 1])) : g.moveTo(X(flat[n]), Y(flat[n + 1]))); g.closePath(); }
+    g.fillStyle = `${colour}44`; g.fill(); g.strokeStyle = colour; g.lineWidth = 2; g.stroke();
+  }
+  const tornado = live.filter(w => w.type === 'tornado').length;
+  $('#warnTime').textContent = `${utcText(hour)} · ${tornado} tornado, ${live.length - tornado} severe`;
+  return { hour, tornado, other: live.length - tornado };
+}
+$('#warnSlider').addEventListener('input', () => { stopWarn(); drawWarnings(); });
+function stopWarn() { clearInterval(warnTimer); warnTimer = null; $('#warnPlay').textContent = 'Play'; }
+$('#warnPlay').addEventListener('click', () => {
+  if (warnTimer) return stopWarn();
+  $('#warnPlay').textContent = 'Stop';
+  warnTimer = setInterval(() => { const slider = $('#warnSlider'); slider.value = (Number(slider.value) + 1) % 145; drawWarnings(); }, 160);
+});
+$('#warnGif').addEventListener('click', async () => {
+  stopWarn();
+  const button = $('#warnGif'), slider = $('#warnSlider'), was = slider.value, canvas = $('#warnCanvas');
+  button.disabled = true;
+  // (every 20 minutes: 73 pictures of the day)
+  await saveLoop({ count: 73, width: 560, height: 626, delayMs: 180, name: `weatherworld-${id}-warnings.gif`,
+    show: k => { slider.value = k * 2; drawWarnings(); },
+    draw: g => { const now = drawWarnings(); drawChartFrame(g, canvas, { title: `Warnings · ${now.tornado} tornado, ${now.other} severe`, time: utcText(now.hour) }); },
+    onProgress: text => { $('#warnNote').textContent = text; } }).catch(error => { $('#warnNote').textContent = `The GIF could not be made (${error.message}).`; });
+  button.disabled = false; slider.value = was; drawWarnings();
+});
+
+// ---- One tornado, opened from its track on the picture: where it went and what its survey found damaged.
+function showTornado(tid, scroll) {
+  const t = theDay.tornadoes.find(x => x.id === tid);
+  if (!t) return;
+  for (const group of document.querySelectorAll('#cardTracks [data-tornado]')) group.classList.toggle('sel', group.dataset.tornado === tid);
+  $('#tornadoBox').hidden = false; $('#tornadoPick').value = tid;
+  $('#tornadoTitle').textContent = `${t.rating === 'EFU' ? 'Unrated' : t.rating} tornado${t.startPlace ? `, ${t.startPlace}` : ''}`;
+  $('#tornadoFacts').innerHTML = [
+    ['Rating', t.rating === 'EFU' ? 'Unrated (no damage to rate it by)' : `${t.rating}${t.peakWindMph ? `, estimated ${Math.round(t.peakWindMph)} mph` : ''}`],
+    ['Began', t.startHourUtc != null ? `${utcText(t.startHourUtc)} (${localText(t.startHourUtc)})${t.startPlace ? `, ${t.startPlace}` : ''}` : null],
+    ['Ended', t.endPlace ? t.endPlace : null],
+    ['Path', `${t.lengthMi.toFixed(1)} miles in ${Math.round(t.minutes)} minutes${t.widthYards ? `, up to ${t.widthYards} yards wide` : ''}`],
+    ['Counties', (t.counties ?? []).join(', ') || null], ['Towns on the path', (t.towns ?? []).join(', ') || null],
+    ['Forecast area', t.category === 'NONE' ? 'outside the severe risk areas' : `began in the ${RISK_NAMES[t.category] ?? t.category} risk area`]
+  ].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${escapeHtml(v)}</dd>`).join('');
+  const damage = [...(t.indicators ?? [])].sort((a, b) => b.maxEf - a.maxEf || b.count - a.count);
+  $('#tornadoDamage').innerHTML = damage.length ? '<thead><tr><th>Damaged</th><th>Points</th><th>Worst</th></tr></thead><tbody>' + damage.map(d =>
+    `<tr><td>${escapeHtml(d.name)}</td><td class="num">${d.count}</td><td class="num">${d.maxEf >= 0 ? `EF${d.maxEf}` : '–'}</td></tr>`).join('') + '</tbody>' : '';
+  $('#tornadoNoDamage').hidden = damage.length > 0;
+  if (scroll) $('#tornadoBox').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+
+}
 
 // The pictures are laid out at 1600 x 900 and scaled to their frames.
 function fit() { for (const box of document.querySelectorAll('.card-frame')) { const k = alone ? Math.min(innerWidth / 1600, innerHeight / 900) : box.clientWidth / 1600; box.style.setProperty('--k', k); } }

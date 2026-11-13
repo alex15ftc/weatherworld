@@ -31,6 +31,10 @@
     .snd-tables dt { color: var(--muted); } .snd-tables dd { margin: 0; text-align: right; }
     .snd-hazard { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; margin-top: 8px; padding: 6px; border: 1px solid #363c42; }
     .snd-hazard small { color: var(--muted); } .snd-hazard b { font-size: 17px; letter-spacing: .04em; }
+    body[data-source="replay"] :is(#frameLatest, [data-live]) { display: none !important; }
+    body:not([data-source="replay"]) [data-replay] { display: none !important; }
+    body[data-source="replay"] #frameRow { grid-template-columns: repeat(3, 1fr); }
+    body[data-source="replay"] #surfaceCanvas { cursor: default; }
     details.group > summary { cursor: pointer; font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
     details.group[open] > summary { margin-bottom: 4px; }
     /* Phones and narrow windows: the map first, then the sounding, then the controls. */
@@ -50,13 +54,13 @@
 <body class="doc" data-page="live">
 <!--site:header-->
 <main id="content" class="wrap wrap--wide">
-  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>Mesoanalysis</span></nav>
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span data-live>Mesoanalysis</span><span data-replay><a href="/days">Past days</a></span><span data-replay><a data-day-link href="/days">The day</a></span><span data-replay>Mesoanalysis replay</span></nav>
   <div class="tool-head">
     <div>
-      <h1>Mesoanalysis</h1>
+      <h1><span data-live>Mesoanalysis</span><span data-replay>Mesoanalysis: replay</span></h1>
       <p class="stamp"><b id="surfaceTime">—</b> · <span id="surfaceStatus">Connecting…</span></p>
     </div>
-    <nav class="tabs" aria-label="Mesoanalysis">
+    <nav class="tabs" aria-label="Mesoanalysis" data-live>
       <a href="/analysis" aria-current="page">Surface analysis and soundings</a><a href="/synoptic">Synoptic charts</a>
     </nav>
   </div>
@@ -66,12 +70,14 @@
       <section class="group">
         <h2>Analysis time</h2>
         <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Analysis time" />
-        <div class="row-4">
+        <div class="row-4" id="frameRow">
           <button id="framePrev" title="Half an hour earlier">◀</button>
           <button id="framePlay" title="Loop the last hours">Loop</button>
           <button id="frameNext" title="Half an hour later">▶</button>
           <button id="frameLatest" title="Follow the current time" class="on">Now</button>
         </div>
+        <button id="saveGif" title="Save every time on the slider as one animated picture">Save loop as GIF</button>
+        <small id="gifNote"></small>
       </section>
       <section class="group">
         <h2>Overlay</h2>
@@ -108,9 +114,9 @@
           <b>132</b><span>sea-level pressure: tenths of a hPa, last three digits (132 = 1013.2)</span>
           <b>barb</b><span>points to where the wind comes from; half barb 5 kt, full 10, flag 50</span>
         </div>
-        <small>Select any point on the map for the sounding there.</small>
+        <small data-live>Select any point on the map for the sounding there.</small>
       </section>
-      <details class="group">
+      <details class="group" data-live>
         <summary>World controls (admin)</summary>
         <div class="row-2">
           <button id="worldAdvance" title="Move the weather on by half an hour now">+30 min</button>
@@ -138,6 +144,6 @@
   </div>
 </main>
 <!--site:footer-->
-<script type="module" src="./js/pages/surfaceAnalysisPage.js"></script>
+<script type="module" src="/js/pages/surfaceAnalysisPage.js"></script>
 </body>
 </html>
