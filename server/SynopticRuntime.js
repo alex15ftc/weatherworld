@@ -27,14 +27,20 @@ const LEVELS = { sfc: 1000, 850: 850, 500: 500, 250: 250 };
 //                  low-level winds the composites need. Kept with the frame once the window is ready.
 //   beyond that    the large-scale model's own columns through the engine's sounding code. They have none of the
 //                  above (low-level winds that do not turn with height, no cap), so CAPE there is sound but the
-//                  composites read low. The window is faded into them over its outer WIDE_BLEND cells.
+//                  composites read low. The window is faded into them by distance from the map's middle, in a
+//                  rounded shape (WIDE_FADE): the two disagree most to the west, where the window has the high
+//                  dry ground and these columns do not, and a straight edge or a corner between them showed as a
+//                  box on the chart (the owner, 2026-11-13).
 const MAP_FIELDS = [
   { key: 'mapcape', from: 'mlcape', label: 'CAPE, mixed layer', unit: 'J/kg', digits: 0 },
   { key: 'mapcin', from: 'mlcin', label: 'Inhibition (CIN), mixed layer', unit: 'J/kg', digits: 0 },
   { key: 'mapscp', from: 'scp', label: 'Supercell composite', unit: '', digits: 1 },
   { key: 'mapstp', from: 'stp', label: 'Significant tornado parameter', unit: '', digits: 1 }
 ].map(field => ({ ...field, group: 'Severe weather', map: true, read: MESOANALYSIS_PARAMETERS.find(p => p.key === field.from).read }));
-const WIDE_BLEND = 6, KAPPA = 0.2857;
+// How far from the map's middle the window is shown, as shares of its half-width: all of it out to `full` of the
+// way, none from the edge; to the west it reaches only `west` of the way (the high ground is taken to go on for
+// ever that way, and the window need not say so for 1,600 km).
+const WIDE_FADE = { full: 0.5, west: 0.5 }, KAPPA = 0.2857;
 const smooth = t => { const c = Math.min(1, Math.max(0, t)); return c * c * (3 - 2 * c); };
 
 // The fields the page can ask for (digits: decimals sent).
@@ -251,7 +257,9 @@ export class SynopticRuntime {
       // Where the grid point is in the window, in its cells from its western and northern edges (the domain wraps east-west).
       const gx = ((((i - w.x) % nx) + nx) % nx) / w.cell, gy = (w.y + w.ny * w.cell - j) / w.cell;
       if (gx < 0 || gx > w.nx || gy < 0 || gy > w.ny) continue;
-      const weight = smooth(Math.min(gx, w.nx - gx, gy, w.ny - gy) / WIDE_BLEND);
+      // (east and south of the window's middle, as shares of its half-width; the reach is shorter to the west)
+      const east = (gx - w.nx / 2) / (w.nx / 2), south = (gy - w.ny / 2) / (w.ny / 2), radius = Math.hypot(east < 0 ? east / WIDE_FADE.west : east, south);
+      const weight = smooth((1 - radius) / (1 - WIDE_FADE.full));
       if (!(weight > 0)) continue;
       const x = Math.max(0, Math.min(w.nx - 1, gx - 0.5)), y = Math.max(0, Math.min(w.ny - 1, gy - 0.5)), i0 = Math.min(w.nx - 2, Math.floor(x)), j0 = Math.min(w.ny - 2, Math.floor(y)), tx = x - i0, ty = y - j0;
       const value = (from[j0 * w.nx + i0] * (1 - tx) + from[j0 * w.nx + i0 + 1] * tx) * (1 - ty) + (from[(j0 + 1) * w.nx + i0] * (1 - tx) + from[(j0 + 1) * w.nx + i0 + 1] * tx) * ty;

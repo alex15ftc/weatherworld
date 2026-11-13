@@ -162,7 +162,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     low-level winds or cap). Measured over a week on seeds 1000 and 7: the ring of window cells round the box follows the
     map's edge strips on the south, east and north (CAPE mostly within a quarter); to the west the window is dry
     (the dryline at the foot of the high ground) where the map's western columns are sometimes still moist, so a
-    step can show on the box's west edge. Cost: about 35 ms a step for the window, about 80 ms for its soundings a frame, about 0.2 s the first time a
+    step can show on the box's west edge. 2026-11-13 later (the owner: a square block of no CAPE south-west of
+    the box): the window is faded out by distance from the map's middle
+    in a rounded shape, all of it to half its half-width and none at its edge, reaching only half as far west
+    (`WIDE_FADE` in `SynopticRuntime.js`), and the map's feed now carries the storms' cold pools, wet ground and
+    anvils, so the box's edge is a gradient across a window cell. Cost: about 35 ms a step for the window, about 80 ms for its soundings a frame, about 0.2 s the first time a
     frame's large-scale columns are asked for. Engine fingerprint identical to HEAD (seed 1000, 8 h).
   - Fixed (same date): the mesoanalysis replay of a day not yet saved did not send the admin key, so it stayed
     empty for a signed-in admin.
