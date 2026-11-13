@@ -9,15 +9,27 @@
        /models/large-scale     the same charts from a short range model run, every 3 forecast hours
                                (server/ShortRangeRuntime.js synopticFrame)
        ?share=1 shows only the chart, with its title, time, key and the site's name in the frame, for
-       pictures and loops (tools/social/make-loop.mjs). -->
+       pictures and loops (tools/social/make-loop.mjs).
+       The public view holds the game map in the middle of the chart and shows nothing of its drift; an admin
+       (the admin key, as on the chasers page) can drag the view and sees the drift. -->
   <!--site:head-->
   <style>
-    .syn-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .syn-presets button { font-size: 13.5px; padding: 6px 7px; text-align: left; }
+    #presets h3 { font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); margin: 8px 0 4px; }
+    #presets h3:first-child { margin-top: 0; }
+    .syn-presets { display: flex; flex-direction: column; gap: 1px; }
+    .bench .syn-presets button { text-align: left; background: none; border: 0; border-left: 3px solid transparent; padding: 4px 8px; font-weight: 500; font-size: 14.5px; color: var(--ink); }
+    .bench .syn-presets button:hover { background: var(--band); }
+    .bench .syn-presets button.on { background: var(--band); border-left-color: var(--brand); color: var(--ink); font-weight: 700; }
+    @media (prefers-color-scheme: dark) { .bench .syn-presets button.on { border-left-color: var(--link); } }
+    .chart--light { background: #dde0dd; }
+    #legendBar { width: 100%; height: 34px; background: none; }
     .syn-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; }
     .syn-facts span { color: var(--ink-2); } .syn-facts b { text-align: right; font-weight: 600; }
-    #synCanvas { cursor: grab; touch-action: none; }
-    #synCanvas.dragging { cursor: grabbing; }
+    #synCanvas { cursor: crosshair; touch-action: none; }
+    #synCanvas.pan { cursor: grab; }
+    #synCanvas.pan.dragging { cursor: grabbing; }
+    /* What only an admin sees: the map's drift, and that the view can leave the map. */
+    body:not([data-role="admin"]) [data-role-only="admin"], body[data-role="admin"] [data-role-only="public"] { display: none !important; }
     body[data-source="analysis"] [data-mode="model"], body[data-source="model"] [data-mode="analysis"] { display: none !important; }
     body[data-source="model"] #frameLatest { display: none; }
     body[data-source="model"] #frameRow { grid-template-columns: repeat(3, 1fr); }
@@ -35,9 +47,9 @@
     body.share .share-strip.top { border-bottom: .45vh solid #f2b632; }
     body.share .share-strip.top b { font-size: 3.7vh; font-weight: 750; }
     body.share .share-strip .time { font: 600 3.1vh "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
-    body.share .share-strip.bottom { background: #10161d; font-size: 2.5vh; font-weight: 500; color: #cfd6dc; }
-    body.share .share-key { display: flex; align-items: center; gap: 1.4vh; font-family: "IBM Plex Mono", ui-monospace, monospace; }
-    body.share .share-key canvas { width: 34vh; height: 2.2vh; display: block; }
+    body.share .share-strip.bottom { background: #10161d; font-size: 2.4vh; font-weight: 500; color: #cfd6dc; padding-top: 1.2vh; padding-bottom: 1.2vh; }
+    body.share .share-key { display: flex; align-items: center; gap: 1.4vh; font: 400 2.1vh "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+    body.share .share-key canvas { width: 62vh; height: 5.2vh; display: block; }
     body.share .share-mark { text-align: right; white-space: nowrap; }
     body.share .share-mark b { color: #fff; }
   </style>
@@ -83,7 +95,7 @@
       </section>
       <section class="group">
         <h2>Charts</h2>
-        <div class="syn-presets" id="presets"></div>
+        <div id="presets"></div>
       </section>
       <section class="group">
         <h2>Layers</h2>
@@ -92,28 +104,35 @@
           <span>Contours</span><select id="contourField" aria-label="Contoured field"></select>
           <span>Barbs</span><select id="windField" aria-label="Wind barbs"></select>
         </div>
-        <canvas id="legendBar" class="legend-bar" width="280" height="12"></canvas>
-        <div id="legendTicks" class="legend-ticks"></div>
+        <canvas id="legendBar" width="560" height="68"></canvas>
         <small id="legendNote"></small>
       </section>
       <section class="group">
         <h2>Show</h2>
-        <label><input type="checkbox" id="showMap" checked /> The game map and its drift</label>
+        <label><input type="checkbox" id="showMap" checked /> <span data-role-only="public">The game map</span><span data-role-only="admin">The game map and its drift</span></label>
         <label><input type="checkbox" id="showCentres" checked /> Highs and lows</label>
         <label><input type="checkbox" id="showGrid" checked /> 1,000 km grid</label>
       </section>
       <section class="group">
         <h2>The map in the model</h2>
         <div class="syn-facts" id="synFacts"><span>Waiting…</span><b></b></div>
-        <small>The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km north-south,
-          with the jet stream's core along its middle. The game map (the box) reads its weather from wherever it sits and
-          drifts along the wave train to meet the day's weather. These are the large-scale fields: the map's own analysis
-          adds daytime heating, the lee trough, cold pools and storms.</small>
+        <small data-role-only="public">The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km
+          north-south, with the jet stream's core along its middle. The game map is the box in the middle of the chart. These
+          are the large-scale fields: the map's own analysis adds daytime heating, the lee trough, cold pools and storms.</small>
+        <small data-role-only="admin">The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km
+          north-south, with the jet stream's core along its middle. The game map (the box) reads its weather from wherever it
+          sits and drifts along the wave train to meet the day's weather; the arrow is its next 6 hours. The public view holds
+          the map in the middle of the chart and shows none of this.</small>
       </section>
+      <details class="group">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)">Admin</summary>
+        <button id="synSignin" style="margin-top:6px">Admin sign-in</button>
+        <small>An admin can drag the view and sees the map's drift. <a href="?view=public" data-role-only="admin">See the public view</a></small>
+      </details>
     </aside>
     <div class="bench__main">
       <div class="share-strip top"><b id="shareTitle"></b><span class="time" id="shareTime"></span></div>
-      <div class="chart">
+      <div class="chart chart--light">
         <canvas id="synCanvas"></canvas>
         <div id="synTip" class="chart__tip"></div>
         <div class="chart__zoom">
@@ -123,7 +142,7 @@
           <button id="zoomAll" title="The whole model, centred on the map">Whole model</button>
         </div>
       </div>
-      <div class="share-strip bottom"><span class="share-key"><span id="shareFrom"></span><canvas id="shareBar" width="400" height="24"></canvas><span id="shareTo"></span><span id="shareUnit"></span></span><span class="share-mark"><b>WeatherWorld</b> · simulated weather, not a real forecast</span></div>
+      <div class="share-strip bottom"><span class="share-key"><canvas id="shareBar" width="930" height="78"></canvas><span id="shareUnit"></span></span><span class="share-mark"><b>WeatherWorld</b> · simulated weather, not a real forecast</span></div>
     </div>
   </div>
 </main>

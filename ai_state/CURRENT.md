@@ -112,6 +112,17 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     (charcoal, square corners, brand band with a gold line), details with a hazard tag, named lines and the
     bulletin on a block, and the map goes to a chosen warning, watch or discussion (`MapCanvas.frame`, "Zoom to
     it"). Checked only by `luau-compile`, selene and a Rojo build. Not published.
+  - Large-scale charts redrawn as model charts (2026-11-12, owner's request): filled colour bands, labelled
+    contours and barbs on a light ground, the charts listed by level (250 mb wind, 500 mb wind, 500 mb
+    vorticity, 500 mb temperature, 850 mb charts, surface, lift, shear) in `js/pages/synopticPage.js`. Public
+    view: the game map is held in the middle and nothing shows that it moves (the server leaves the drift out
+    of a public frame, `forRole` in `server/index.js`); an admin (key, sign-in on the page) can drag the view
+    and sees the drift. The share view and the loops are the public view.
+  - Day summaries (`/days`, `/day/<id>`, `server/DayArchive.js`, `tests/day-archive.mjs`): each day's
+    highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
+    which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
+    page has the two post pictures (PNG made in the browser, or opened alone), the numbers and draft post
+    text. Days before this was deployed have no outlook kept.
   - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
     and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
     `data/social/high-risk-2026-11-12/` (not in git).

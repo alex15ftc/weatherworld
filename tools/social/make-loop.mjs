@@ -3,12 +3,11 @@
 // frame), and the pictures are joined into an MP4 (what X, Bluesky and Reddit play) and a small GIF (Discord).
 //   node tools/social/make-loop.mjs <day dir> [--charts vort,jet] [--zoom 1.7] [--fps 5] [--size 1600x900]
 // <day dir>/raw is a day recorded by record-live.mjs. Needs Chrome or Edge, and ffmpeg.
-// The view is held on where the game map sits in the middle of the loop, so the map box drifts through
-// the weather. Charts: jet, vort, llj, surface, moisture (js/pages/synopticPage.js PRESETS; the fields
-// recorded are listed in record-live.mjs).
+// The share view is the public one: the game map is held in the middle of the picture and nothing shows
+// that it moves, so the weather is seen passing over the map. Charts: jet, wind500, vort, llj, surface,
+// moisture (js/pages/synopticPage.js PRESETS; the fields recorded are listed in record-live.mjs).
 import fs from 'node:fs';
 import path from 'node:path';
-import zlib from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { screenshot } from './chrome.mjs';
@@ -16,7 +15,7 @@ import { screenshot } from './chrome.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2), DAY = path.resolve(args[0] ?? '.'), RAW = path.join(DAY, 'raw'), OUT = path.join(DAY, 'post');
 const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i < 0 ? fallback : args[i + 1]; };
-const CHARTS = flag('charts', 'vort,jet').split(','), ZOOM = Number(flag('zoom', 1.7)), FPS = Number(flag('fps', 5)), PORT = Number(flag('port', 8097));
+const CHARTS = flag('charts', 'vort,wind500,jet').split(','), ZOOM = Number(flag('zoom', 1.7)), FPS = Number(flag('fps', 5)), PORT = Number(flag('port', 8097));
 const [WIDTH, HEIGHT] = flag('size', '1600x900').split('x').map(Number);
 // ffmpeg: FFMPEG=path, else the one on PATH, else winget's copy (not on PATH in every shell on Windows).
 function findFfmpeg() {
@@ -30,12 +29,10 @@ function findFfmpeg() {
   throw new Error('ffmpeg not found; set FFMPEG to its path.');
 }
 const FFMPEG = findFfmpeg();
-const NAMES = { vort: 'vorticity-500mb', jet: 'jet-250mb', llj: 'low-level-jet-850mb', surface: 'surface', moisture: 'dewpoint' };
+const NAMES = { vort: 'vorticity-500mb', wind500: 'wind-500mb', jet: 'wind-250mb', llj: 'low-level-jet-850mb', surface: 'surface-temperature', moisture: 'surface-dewpoint' };
 
 const hours = fs.readdirSync(path.join(RAW, 'synoptic')).filter(f => f.endsWith('.json.gz')).map(f => Number(f.replace('.json.gz', ''))).sort((a, b) => a - b);
 if (hours.length < 2) throw new Error(`Fewer than two recorded analyses in ${RAW}/synoptic`);
-const middle = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(RAW, 'synoptic', `${hours[hours.length >> 1].toFixed(3).padStart(9, '0')}.json.gz`)))).summary.map;
-const cx = (middle.x + middle.width / 2).toFixed(2), cy = (middle.y + middle.height / 2).toFixed(2);
 
 const server = spawn(process.execPath, [path.join(ROOT, 'scripts/site-preview.mjs'), '--port', String(PORT), '--replay', RAW], { stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((resolve, reject) => { server.stdout.once('data', resolve); server.once('exit', () => reject(new Error('The preview server did not start'))); });
@@ -44,7 +41,7 @@ try {
     const frames = path.join(OUT, 'frames', chart), name = `3-${NAMES[chart] ?? chart}`;
     fs.rmSync(frames, { recursive: true, force: true });
     hours.forEach((hour, k) => {
-      screenshot(`http://localhost:${PORT}/synoptic?share=1&chart=${chart}&frame=${hour}&zoom=${ZOOM}&cx=${cx}&cy=${cy}`, path.join(frames, `${String(k).padStart(3, '0')}.png`), { width: WIDTH, height: HEIGHT, waitMs: 4000 });
+      screenshot(`http://localhost:${PORT}/synoptic?share=1&chart=${chart}&frame=${hour}&zoom=${ZOOM}`, path.join(frames, `${String(k).padStart(3, '0')}.png`), { width: WIDTH, height: HEIGHT, waitMs: 4000 });
       process.stdout.write(`\r${chart}: ${k + 1}/${hours.length}`);
     });
     // The last analysis is held for a moment before the loop starts again.

@@ -20,6 +20,7 @@ import { ChaserArchive, roleOf, isAdmin } from './ChaserArchive.js';
 import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
 import { sitePage, renderPage, NOT_FOUND_PAGE, CONTENT_TYPES } from './SitePages.js';
+import { DayArchive } from './DayArchive.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
@@ -83,7 +84,9 @@ const chasers = new ChaserArchive({ runtime, hourNow: worldHourNow, milesPerKm: 
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => chasers.save(true));
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
-const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); try { archive.sync(); } catch (error) { console.warn('[products]', error.message); } };
+// Each day's forecast and what happened, for the day summaries an admin can save (DayArchive.js).
+const days = new DayArchive({ runtime, products: gameProducts, reports, archive, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'days.bin') : null });
+const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); try { archive.sync(); days.sync(); } catch (error) { console.warn('[products]', error.message); } };
 outlooks?.maybeIssue();
 setInterval(issueProducts, 5_000).unref();
 // Often enough that a storm tick is worked out within a couple of seconds of falling due: the
@@ -124,7 +127,7 @@ async function serveApi(url, req, res) {
   if (url.pathname.startsWith('/api/atmosphere/') && surface.atmosphere !== runtime.engine) surface.attach(runtime.engine);
   if (url.pathname.startsWith('/api/synoptic/')) {
     if (synoptic.atmosphere !== runtime.engine) synoptic.attach(runtime.engine);
-    if (url.pathname === '/api/synoptic/frame') return sendJson(req, res, 200, synoptic.summary(url.searchParams.get('frame')), { cacheable: false, trace });
+    if (url.pathname === '/api/synoptic/frame') return sendJson(req, res, 200, forRole(req, synoptic.summary(url.searchParams.get('frame'))), { cacheable: false, trace });
     if (url.pathname === '/api/synoptic/field') { const field = synoptic.field(url.searchParams.get('key') ?? '', url.searchParams.get('frame')); return sendJson(req, res, field ? 200 : 404, field ?? { error: 'Unknown field' }, { cacheable: Boolean(field), trace }); }
     return sendJson(req, res, 404, { error: 'Unknown API endpoint' }, { cacheable: false, trace });
   }
@@ -137,7 +140,7 @@ async function serveApi(url, req, res) {
     if (!shortRange) return sendJson(req, res, 404, { error: 'The short range model is off' }, { cacheable: false, trace });
     const value = part === 'runs' ? shortRange.list() : part === 'run' ? shortRange.meta(q('init')) : part === 'field' ? shortRange.field(q('init'), q('hour'), q('key')) : part === 'storms' ? shortRange.storms(q('init'), q('minute')) : part === 'tracks' ? shortRange.tracks(q('init'))
       // (the run's large-scale view: the frames and fields the synoptic page reads, from the run)
-      : part === 'synoptic/frame' ? shortRange.synopticFrame(synoptic, q('init'), q('frame')) : part === 'synoptic/field' ? shortRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
+      : part === 'synoptic/frame' ? forRole(req, shortRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? shortRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
     return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
   }
   // The outlook runs as an ensemble (OutlookRuntime.js): the issues kept, and one issue's storm tracks (?issued=).
@@ -209,6 +212,25 @@ async function serveApi(url, req, res) {
     if (!value) return sendJson(req, res, 404, { error: 'Not found' }, { cacheable: false, trace });
     return svg ? sendText(req, res, 200, value, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 200, value, { cacheable: false, trace });
   }
+  // The day summaries (DayArchive.js): saved days are public; the recent days, saving and removing are admin only.
+  if (url.pathname === '/api/days') { days.sync(); return sendJson(req, res, 200, days.list(isAdmin(req)), { cacheable: false, trace }); }
+  const dayRoute = url.pathname.match(/^\/api\/day\/([A-Za-z0-9-]+)(?:\/(map\.svg|save|remove))?$/);
+  if (dayRoute) {
+    const [, id, part] = dayRoute, admin = isAdmin(req), live = id.startsWith('live-');
+    if ((live || part === 'save' || part === 'remove') && !admin) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
+    days.sync();
+    if (part === 'save' || part === 'remove') {
+      if (req.method !== 'POST') return sendJson(req, res, 405, { error: 'POST only' }, { cacheable: false, trace });
+      const value = part === 'save' ? (live ? days.keep(id.slice(5)) : null) : (days.remove(id) ? { removed: id } : null);
+      return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No such day' }, { cacheable: false, trace });
+    }
+    if (part === 'map.svg') {
+      const svg = days.mapSvg(id, url.searchParams.get('kind') === 'tracks' ? 'tracks' : 'outlook', OUTLOOK_HAZARDS.includes(url.searchParams.get('hazard')) ? url.searchParams.get('hazard') : 'categorical');
+      return svg ? sendText(req, res, 200, svg, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 404, { error: 'No such day' }, { cacheable: false, trace });
+    }
+    const value = days.summary(id);
+    return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No such day' }, { cacheable: false, trace });
+  }
   // The warnings in effect, each with its polygon and bulletin, for the warnings page.
   if (url.pathname === '/api/warnings/active') return sendJson(req, res, 200, archive.activeWarnings(), { cacheable: false, trace });
   if (url.pathname === '/api/warnings.svg') {
@@ -246,6 +268,15 @@ function reportsBetween(from, to) {
     }
   } catch (error) { console.warn('[chasers] reports:', error.message); }
   return out.sort((a, b) => a.hourUtc - b.hourUtc);
+}
+
+// A large-scale frame as the asker may see it: the public is not told that the map moves (its drift and the
+// day's aim are left out; the pages then hold the map in the middle of the chart), an admin is.
+function forRole(req, frame) {
+  if (!frame) return frame;
+  if (isAdmin(req)) return { ...frame, role: 'admin' };
+  const { slide, ...rest } = frame;
+  return { ...rest, role: 'public' };
 }
 
 // An outlook day's game product, parsed once a version, with its maps (OutlookPublic.js) kept beside it.

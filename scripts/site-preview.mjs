@@ -24,8 +24,18 @@ const replay = REPLAY ? (() => {
   return {
     answer(url) {
       if (url.pathname === '/api/calendar') return fs.readFileSync(path.resolve(REPLAY, 'calendar.json'), 'utf8');
-      if (url.pathname === '/api/synoptic/frame') { const h = pick(url.searchParams.get('frame')); return JSON.stringify({ ...frame(h).summary, frames: hours, latest: h === hours.at(-1) }); }
-      if (url.pathname === '/api/synoptic/field') return JSON.stringify(frame(pick(url.searchParams.get('frame'))).fields[url.searchParams.get('key')] ?? { error: 'Not recorded' });
+      // (as the public sees a frame: without the map's drift)
+      if (url.pathname === '/api/synoptic/frame') { const h = pick(url.searchParams.get('frame')), { slide, ...summary } = frame(h).summary; return JSON.stringify({ ...summary, role: 'public', frames: hours, latest: h === hours.at(-1) }); }
+      if (url.pathname === '/api/synoptic/field') {
+        const fields = frame(pick(url.searchParams.get('frame'))).fields, key = url.searchParams.get('key') ?? '';
+        // (a wind speed that was not recorded is worked out from its recorded wind)
+        const speed = key.match(/^wspd(\d+)$/), wind = speed && fields[`wind:${speed[1]}`];
+        if (!fields[key] && wind) {
+          const values = wind.u.map((u, k) => Math.round(Math.hypot(u, wind.v[k])));
+          return JSON.stringify({ key, frameHour: wind.frameHour, nx: wind.nx, ny: wind.ny, label: `${speed[1]} mb wind speed`, unit: 'kt', values, min: Math.min(...values), max: Math.max(...values) });
+        }
+        return JSON.stringify(fields[key] ?? { error: 'Not recorded' });
+      }
       return null;
     }
   };

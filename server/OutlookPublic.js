@@ -40,12 +40,14 @@ const RISK_NAMES = { TSTM: 'Thunderstorms', MRGN: '1 - Marginal', SLGT: '2 - Sli
 
 // One outlook day's map as an SVG. product: gameOutlook's JSON; layer: the county layer
 // ({ miles, counties: [{ rings: [[[x, y], ...]] }], towns: [{ name, kind, x, y, population }] }).
-// times: add the issue and valid times under the key.
-export function outlookSvg(product, layer, hazard = 'categorical', { times = false } = {}) {
+// times: add the issue and valid times under the key. key: false leaves the key out (the map alone, square).
+// overlay: SVG drawn over the areas and counties, under the town names, in the map's pixels (1000 across; a
+// day summary's tornado tracks, DayArchive.js).
+export function outlookSvg(product, layer, hazard = 'categorical', { times = false, key = true, overlay = null } = {}) {
   // (a day has only its own hazards' maps: Days 1 and 2 tornado, wind and hail; Day 3 any severe weather)
   if (!OUTLOOK_HAZARDS.includes(hazard) || !product.hazards?.[hazard]) hazard = 'categorical';
   times = times && product.status === 'issued';
-  const mapMiles = product.mapMiles ?? layer?.miles ?? 500, scale = W / mapMiles, top = 0, height = W + legendHeight(hazard) + (times ? TIMES : 0);
+  const mapMiles = product.mapMiles ?? layer?.miles ?? 500, scale = W / mapMiles, top = 0, keyHeight = key ? legendHeight(hazard) : 0, height = W + keyHeight + (times ? TIMES : 0);
   const px = (x, y) => `${(x * scale).toFixed(1)} ${(top + y * scale).toFixed(1)}`;
   const flatPath = rings => rings.map(flat => { let d = `M${px(flat[0], flat[1])}`; for (let k = 2; k < flat.length; k += 2) d += `L${px(flat[k], flat[k + 1])}`; return `${d}Z`; }).join('');
   const nestedPath = rings => rings.map(ring => `M${ring.map(([x, y]) => px(x, y)).join('L')}Z`).join('');
@@ -88,6 +90,7 @@ export function outlookSvg(product, layer, hazard = 'categorical', { times = fal
     }
   }
   if (layer?.counties?.length) out.push(`<path d="${layer.counties.map(c => nestedPath(c.rings)).join('')}" fill="none" stroke="#7d786c" stroke-opacity="0.45" stroke-width="0.8"/>`);
+  if (overlay) out.push(overlay);
   out.push('</g>');
   out.push(`<rect x="0.75" y="${top + 0.75}" width="${W - 1.5}" height="${W - 1.5}" fill="none" stroke="#333" stroke-width="1.5"/>`);
   // The biggest towns, so a reader can tell where the areas are.
@@ -100,6 +103,7 @@ export function outlookSvg(product, layer, hazard = 'categorical', { times = fal
   if (product.status !== 'issued') out.push(`<text x="${W / 2}" y="${top + W / 2}" font-size="26" fill="#555" text-anchor="middle">${product.status === 'running' ? 'Outlook being prepared' : 'No outlook issued yet'}</text>`);
 
   // The key: "Risk Level" with each category's name, or the hazard's chances and its CIG hatching.
+  if (key) {
   const ly = W + 22;
   out.push(`<text x="24" y="${ly + 14}" font-size="15" font-weight="700" fill="#222">${hazard === 'categorical' ? 'Risk Level' : `${HAZARD_TITLES[hazard].replace(/^Probabilistic | Outlook$/g, '')} Probability${hazard === 'severe' ? ' (tornado, damaging wind or large hail)' : ''}`}</text>`);
   const chips = [];
@@ -123,8 +127,9 @@ export function outlookSvg(product, layer, hazard = 'categorical', { times = fal
       out.push(`<text x="${x + 42}" y="${y + 16}" font-size="12" fill="#222">CIG${k + 1}: ${escapeXml(text.replace(/ where it happens$/, ''))}</text>`);
     });
   }
+  }
   if (times) {
-    const y = W + legendHeight(hazard);
+    const y = W + keyHeight;
     out.push(`<rect x="0" y="${y}" width="${W}" height="${TIMES}" fill="#f1f3f6"/><line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#d5d9e0"/>`);
     out.push(`<text x="24" y="${y + 26}" font-size="15" fill="#222"><tspan font-weight="700">Day ${product.day} ${escapeXml(hazard === 'categorical' ? 'Convective Outlook' : HAZARD_TITLES[hazard])}</tspan> · Issued ${escapeXml(utcStamp(product.issuedHourUtc))} (${escapeXml(localStamp(product.issuedHourUtc))}) · Valid ${escapeXml(utcStamp(product.validFromHourUtc))} to ${escapeXml(utcStamp(product.validToHourUtc))}</text>`);
   }

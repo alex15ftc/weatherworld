@@ -16,6 +16,18 @@
 
 ## Decisions
 
+### 2026-11-12 — The public is not shown that the game map moves; day summaries are kept only when an admin saves them
+
+- Status: `active`
+- Decision: on the large-scale charts the public view holds the game map in the middle of the chart, and the
+  server leaves the map's drift (speed, direction, the day's aim) out of the frames it sends the public; an admin
+  (the admin key) gets them and the draggable view. Pictures and loops made for sharing use the public view.
+  A day's summary (its highest-risk Day 1 outlook, tornado tracks and numbers) is public only once an admin has
+  saved it; a saved day is a full copy kept for good.
+- Rationale: the owner's requests. The drift is how the world is steered to its weather, not something a
+  player should read off a chart; hiding it in the page alone would leave it in the data. Saving by hand keeps
+  the public list to days worth showing and keeps the file small (the log lets days go after about two weeks).
+
 ### 2026-11-12 — Day 3 outlooks show one chance of any severe weather beside the categorical map
 
 - Status: `active` (replaces "Day 3 outlooks categorical only", 2026-11-11)

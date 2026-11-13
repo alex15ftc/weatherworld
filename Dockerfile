@@ -8,7 +8,7 @@ COPY server ./server
 COPY js ./js
 COPY tools/cloudlab/worker ./tools/cloudlab/worker
 COPY scripts/build-world-map.mjs ./scripts/build-world-map.mjs
-COPY index.html models.html performance.html outlook.html product.html chasers.html synoptic.html home.html products.html warnings.html about.html 404.html ./
+COPY index.html models.html performance.html outlook.html product.html chasers.html synoptic.html home.html products.html warnings.html days.html about.html 404.html ./
 COPY css ./css
 COPY site ./site
 COPY fonts ./fonts

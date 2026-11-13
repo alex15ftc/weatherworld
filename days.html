@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Past days · WeatherWorld</title>
+  <!-- Day summaries (server/DayArchive.js), at two addresses:
+       /days         the saved days; for an admin, the recent days too, each with a Save button
+       /day/<id>     one day: the forecast as issued and what happened, as two pictures made for posting
+                     (1600 x 900, each can be saved as a PNG), with the day's numbers and draft post text.
+                     <id> is a saved day's, or live-<n> for an admin looking at a day not yet saved.
+       /day/<id>?card=outlook|tracks shows one picture alone, filling the window (for a screenshot). -->
+  <!--site:head-->
+  <style>
+    .day-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .day-tools button, .day-tools a.button { appearance: none; background: var(--page); color: var(--ink); border: 1px solid var(--rule); border-radius: 2px; padding: 6px 12px; font: 600 14.5px var(--sans); cursor: pointer; text-decoration: none; }
+    .day-tools button:hover, .day-tools a.button:hover { border-color: var(--ink); }
+    .day-tools button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .day-tools button:disabled { opacity: .55; cursor: default; }
+    .card-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--rule); background: #fff; }
+    .card-frame .card { position: absolute; left: 0; top: 0; transform-origin: 0 0; transform: scale(var(--k, 1)); }
+    .section > h2 .day-tools { font-weight: 400; }
+    textarea.post { width: 100%; min-height: 150px; padding: 12px 14px; font: 400 16px/1.5 var(--sans); color: var(--ink); background: var(--band); border: 0; border-left: 3px solid var(--rule); resize: vertical; }
+    table.list td.act { white-space: nowrap; text-align: right; }
+    table.list td.act button { appearance: none; background: var(--page); color: var(--ink); border: 1px solid var(--rule); border-radius: 2px; padding: 4px 10px; font: 600 14px var(--sans); cursor: pointer; }
+    table.list td.act button:hover { border-color: var(--ink); }
+    #adminNote { font-size: 15px; color: var(--ink-2); }
+    /* One picture alone, filling the window. */
+    body.share { background: #fff; min-height: 0; height: 100vh; overflow: hidden; }
+    body.share .site-header, body.share .site-footer, body.share .skip, body.share .crumbs, body.share .page-head, body.share #listView, body.share .section > h2, body.share .day-more, body.share #dayAdmin { display: none !important; }
+    body.share main { padding: 0; max-width: none; }
+    body.share .section { margin: 0; }
+    body.share .card-frame { position: fixed; inset: 0; width: auto; aspect-ratio: auto; border: 0; }
+    body.share .section[data-card]:not(.shown) { display: none; }
+  </style>
+  <style id="cardCss">
+    /* The pictures: drawn 1600 x 900 and scaled to fit. This sheet goes into the saved PNG as it is. */
+    .card { width: 1600px; height: 900px; display: flex; flex-direction: column; background: #fff; color: #1b1b1b; font: 400 25px/1.4 "Public Sans", sans-serif; text-align: left; }
+    .card * { box-sizing: border-box; margin: 0; }
+    .card .top { display: flex; justify-content: space-between; align-items: center; gap: 30px; padding: 14px 30px; background: #0b3a57; color: #fff; border-bottom: 5px solid #f2b632; }
+    .card .top b { font-size: 35px; font-weight: 750; }
+    .card .top span { font: 600 25px "IBM Plex Mono", monospace; white-space: nowrap; }
+    .card .body { flex: 1; min-height: 0; display: flex; gap: 34px; padding: 22px 30px 16px; }
+    .card .map { flex: none; height: 100%; }
+    .card .map svg { display: block; height: 100%; width: auto; border: 1px solid #9aa0a6; }
+    .card .text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .card .kicker { font-size: 20px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #5c5f62; }
+    .card .risk { align-self: flex-start; margin: 10px 0 12px; padding: 4px 16px; font-size: 27px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; border: 2px solid rgba(0, 0, 0, .4); color: #111; }
+    .card .headline { font-size: 39px; line-height: 1.17; font-weight: 750; letter-spacing: -.01em; }
+    .card .hazards { margin-top: 14px; padding-top: 12px; border-top: 2px solid #1b1b1b; font-size: 24px; }
+    .card .hazards b { display: block; font-size: 18px; letter-spacing: .08em; text-transform: uppercase; color: #5c5f62; }
+    .card .minis { margin-top: auto; display: flex; gap: 16px; }
+    .card .minis figure { flex: 1; min-width: 0; max-width: 270px; }
+    .card .minis svg { display: block; width: 100%; height: auto; border: 1px solid #9aa0a6; }
+    .card .minis figcaption { font-size: 19px; font-weight: 700; padding-top: 5px; }
+    .card .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; margin-top: 14px; border-top: 2px solid #1b1b1b; }
+    .card .stats div { padding: 10px 0 9px; border-bottom: 1px solid #c9cccf; font-size: 21px; color: #45484b; line-height: 1.25; }
+    .card .stats b { display: block; font: 600 38px/1.1 "IBM Plex Mono", monospace; color: #1b1b1b; }
+    .card .verify { margin-top: 14px; font-size: 25px; font-weight: 600; }
+    .card .key { margin-top: auto; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 20px; align-items: center; }
+    .card .key i { display: inline-block; width: 34px; height: 9px; margin-right: 7px; border: 1.5px solid #111; vertical-align: middle; }
+    .card .key .area i { height: 20px; width: 26px; border: 1.5px solid rgba(0, 0, 0, .45); }
+    .card .foot { display: flex; justify-content: space-between; padding: 9px 30px 11px; background: #f3f4f2; border-top: 1px solid #c9cccf; font-size: 20px; color: #45484b; }
+    .card .foot b { color: #1b1b1b; }
+  </style>
+</head>
+<body class="doc">
+<!--site:header-->
+<main id="content" class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span id="crumbList">Past days</span><span id="crumbDay" hidden></span></nav>
+  <header class="page-head">
+    <h1 id="title">Past days</h1>
+    <p class="lede" id="lede">The forecast for a day, and what the storms then did.</p>
+    <p class="stamp" id="stamp"></p>
+  </header>
+
+  <div id="listView" hidden>
+    <section>
+      <h2 style="border-bottom:2px solid var(--ink);padding-bottom:8px">Saved days</h2>
+      <div class="table-scroll"><table class="list" id="savedList"></table></div>
+      <p class="empty" id="savedEmpty" hidden>No day has been saved yet.</p>
+    </section>
+    <section class="section" id="recentBox" hidden>
+      <h2>Recent days <span id="adminNote" style="font-weight:400">Admin: save a day to keep its summary; the world's log lets days go after about two weeks.</span></h2>
+      <div class="table-scroll"><table class="list" id="recentList"></table></div>
+    </section>
+    <p class="day-tools" style="margin-top:26px"><button id="signin">Admin sign-in</button></p>
+  </div>
+
+  <div id="dayView" hidden>
+    <p class="day-tools" id="dayAdmin" hidden><button id="saveDay" class="primary">Save this summary</button><button id="removeDay">Remove this saved day</button><span class="muted" id="dayNote"></span></p>
+    <section class="section" data-card="outlook" style="margin-top:18px">
+      <h2>The forecast <span class="day-tools"><button data-png="outlook">Save as PNG</button><a class="button" data-alone="outlook">Open alone</a></span></h2>
+      <div class="card-frame"><div class="card" id="cardOutlook"></div></div>
+    </section>
+    <section class="section" data-card="tracks">
+      <h2>What happened <span class="day-tools"><button data-png="tracks">Save as PNG</button><a class="button" data-alone="tracks">Open alone</a></span></h2>
+      <div class="card-frame"><div class="card" id="cardTracks"></div></div>
+    </section>
+    <div class="split day-more">
+      <section class="section">
+        <h2>The day in numbers</h2>
+        <dl class="facts" id="numbers"></dl>
+      </section>
+      <section class="section">
+        <h2>Post text <span class="day-tools"><button id="copyFirst">Copy the forecast post</button><button id="copySecond">Copy the outcome post</button></span></h2>
+        <textarea class="post" id="postFirst" aria-label="Post text for the forecast"></textarea>
+        <textarea class="post" id="postSecond" aria-label="Post text for the outcome" style="margin-top:10px"></textarea>
+      </section>
+    </div>
+  </div>
+</main>
+<!--site:footer-->
+<script type="module">
+import { $, escapeHtml, RISK_NAMES, riskTag } from '/js/site.js';
+import { CATEGORY_COLOURS, EF_COLOURS } from '/js/forecast/productColours.js';
+
+// The admin key is kept for this tab under the same name as on the other pages.
+const ADMIN_KEY = 'wwAdminKey';
+const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage */ } } };
+const headers = () => { const key = adminKey.get(); return key ? { 'x-admin-key': key } : {}; };
+async function ask(url, options = {}) {
+  const response = await fetch(url, { cache: 'no-store', ...options, headers: { ...headers(), ...(options.headers ?? {}) } });
+  if (!response.ok) throw Object.assign(new Error(String(response.status)), { status: response.status });
+  return response.headers.get('content-type')?.includes('json') ? response.json() : response.text();
+}
+const id = decodeURIComponent(location.pathname.match(/^\/day\/([A-Za-z0-9-]+)/)?.[1] ?? ''), alone = new URLSearchParams(location.search).get('card');
+const count = n => (n === 1 ? '1 tornado' : `${n} tornadoes`);
+const sentence = text => (text ? text[0].toUpperCase() + text.slice(1) : '');
+
+// ---- The list.
+async function showList() {
+  $('#listView').hidden = false;
+  let list;
+  try { list = await ask('/api/days'); } catch (error) { $('#stamp').textContent = `Could not reach the weather server (${error.message}).`; return; }
+  const admin = list.role === 'admin';
+  $('#signin').textContent = adminKey.get() ? 'Sign out' : 'Admin sign-in';
+  const risk = d => (d.highest ? riskTag(d.highest) : '<span class="muted">no outlook kept</span>');
+  $('#savedList').innerHTML = list.saved.length ? '<thead><tr><th>Day</th><th>Forecast</th><th>Tornadoes</th><th>Strongest</th><th></th></tr></thead><tbody>' + list.saved.map(d =>
+    `<tr><td><a href="/day/${d.id}">${escapeHtml(d.label)}</a></td><td>${risk(d)}</td><td class="num">${d.tornadoes}${d.strong ? ` (${d.strong} strong)` : ''}</td><td class="num">${escapeHtml(d.strongest ?? '–')}</td><td class="act">${admin ? `<button data-remove="${d.id}">Remove</button>` : ''}</td></tr>`).join('') + '</tbody>' : '';
+  $('#savedEmpty').hidden = list.saved.length > 0;
+  $('#recentBox').hidden = !admin;
+  if (admin) $('#recentList').innerHTML = '<thead><tr><th>Day</th><th>Forecast</th><th>Tornadoes</th><th>State</th><th></th></tr></thead><tbody>' + list.recent.map(d =>
+    `<tr><td><a href="/day/${d.id}">${escapeHtml(d.label)}</a></td><td>${risk(d)}</td><td class="num">${d.tornadoes}</td><td>${d.ended ? 'ended' : 'under way'}${d.savedId ? ` · <a href="/day/${d.savedId}">saved</a>` : ''}</td><td class="act"><button data-save="${d.id}">${d.savedId ? 'Save again' : 'Save'}</button></td></tr>`).join('') + '</tbody>';
+}
+$('#listView').addEventListener('click', async event => {
+  const save = event.target.dataset?.save, remove = event.target.dataset?.remove;
+  if (!save && !remove) return;
+  event.target.disabled = true;
+  try {
+    if (save) { const saved = await ask(`/api/day/${save}/save`, { method: 'POST' }); location.href = `/day/${saved.id}`; return; }
+    if (confirm('Remove this saved day? Its summary cannot be made again once the world has let the day go.')) await ask(`/api/day/${remove}/remove`, { method: 'POST' });
+  } catch (error) { alert(error.status === 401 ? 'The admin key is needed for that.' : `That did not work (${error.message}).`); }
+  showList();
+});
+$('#signin').addEventListener('click', () => {
+  if (adminKey.get()) adminKey.set(null);
+  else { const key = prompt('Admin key'); if (!key) return; adminKey.set(key.trim()); }
+  showList();
+});
+
+// ---- One day.
+const RISK_COLOUR = CATEGORY_COLOURS;
+// A map from the server as its SVG text (so it can sit in the picture and go into the saved PNG); cropped to
+// the map alone when its key is not wanted.
+const mapSvg = async (kind, hazard, square) => {
+  const text = await ask(`/api/day/${id}/map.svg?kind=${kind}&hazard=${hazard ?? 'categorical'}`);
+  return square ? text.replace(/(<svg[^>]*?) height="\d+" viewBox="0 0 1000 \d+"/, '$1 height="1000" viewBox="0 0 1000 1000"').replace(/<text x="24" y="10\d\d[\s\S]*<\/svg>$/, '</svg>') : text;
+};
+const frame = (title, time, body) => `<div class="top"><b>${escapeHtml(title)}</b><span>${escapeHtml(time)}</span></div><div class="body">${body}</div>
+  <div class="foot"><span><b>WeatherWorld</b> Storm Prediction Center</span><span>Simulated weather for the game world. Not a real forecast.</span></div>`;
+
+async function showDay() {
+  $('#dayView').hidden = false;
+  if (alone) { document.body.classList.add('share'); document.querySelector(`.section[data-card="${alone === 'tracks' ? 'tracks' : 'outlook'}"]`).classList.add('shown'); }
+  let day;
+  try { day = await ask(`/api/day/${id}`); }
+  catch (error) { $('#title').textContent = error.status === 401 ? 'This day has not been saved' : 'No such day'; $('#lede').textContent = error.status === 401 ? 'Only saved days are public. Sign in as admin on the Past days page to see recent days.' : 'There is no summary at this address.'; $('#dayView').hidden = true; return; }
+  const o = day.outlook, n = day.numbers, top = o?.highest;
+  document.title = `${day.label} · Past days · WeatherWorld`;
+  $('#title').textContent = `${day.label}${o ? `: ${o.risk}` : ''}`;
+  $('#lede').textContent = o ? o.headline : 'No outlook was kept for this day.';
+  $('#stamp').innerHTML = `<b>Day</b> ${escapeHtml(day.label)}, 1200 UTC to 1200 UTC${day.ended ? '' : ' · <b>still under way</b>'}${day.saved ? ` · <b>saved</b> ${new Date(day.savedAtMs).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ' · <b>not saved</b>'}`;
+  $('#crumbList').innerHTML = '<a href="/days">Past days</a>'; $('#crumbDay').hidden = false; $('#crumbDay').textContent = day.label;
+  for (const link of document.querySelectorAll('[data-alone]')) link.href = `/day/${id}?card=${link.dataset.alone}`;
+
+  // The forecast as issued.
+  const hazards = (o?.hazards ?? []).slice(0, 3);
+  const [categorical, tracks, ...minis] = await Promise.all([mapSvg('outlook', 'categorical', false), mapSvg('tracks', null, true), ...hazards.map(h => mapSvg('outlook', h, true))]);
+  const HAZARD = { tornado: 'Tornado', wind: 'Wind', hail: 'Hail', severe: 'Severe weather' };
+  $('#cardOutlook').innerHTML = frame('Day 1 Convective Outlook', o ? `Issued ${o.issued}` : day.label, `
+    <div class="map">${categorical}</div>
+    <div class="text">
+      <p class="kicker">${escapeHtml(o ? `Valid ${o.valid}` : day.label)}</p>
+      ${o ? `<span class="risk" style="background:${RISK_COLOUR[top] ?? '#ddd'}">${escapeHtml(o.risk)}</span>` : ''}
+      <p class="headline">${escapeHtml(o?.headline ?? 'No outlook was kept for this day.')}</p>
+      ${o?.mainHazards ? `<p class="hazards"><b>Main hazards</b>${escapeHtml(sentence(o.mainHazards))}.</p>` : ''}
+      <div class="minis">${minis.map((svg, k) => `<figure>${svg}<figcaption>${HAZARD[hazards[k]] ?? hazards[k]} probability</figcaption></figure>`).join('')}</div>
+    </div>`);
+
+  // What happened.
+  const stat = (value, label) => `<div><b>${escapeHtml(value)}</b>${escapeHtml(label)}</div>`;
+  const areas = ['SLGT', 'ENH', 'MDT', 'HIGH'].filter(key => RISK_NAMES[key] && (day.tornadoes.some(t => t.category === key) || key === top || (top && ['SLGT', 'ENH', 'MDT', 'HIGH'].indexOf(key) <= ['SLGT', 'ENH', 'MDT', 'HIGH'].indexOf(top))));
+  const verify = n.topAreaName && n.tornadoes ? `${n.inTop} of ${n.tornadoes} began inside the ${n.topAreaName}${n.strong ? `, including ${n.strongInTop} of the ${n.strong} rated EF2 or stronger` : ''}.` : '';
+  $('#cardTracks').innerHTML = frame('What happened: Day 1 tornado tracks', `${day.label} · 1200 to 1200 UTC`, `
+    <div class="map">${tracks}</div>
+    <div class="text">
+      <p class="kicker">${escapeHtml(o ? `Forecast: ${o.risk} · issued ${o.issued.replace(/ \(.*\)$/, '')}` : 'No outlook kept')}</p>
+      <p class="headline" style="margin-top:10px">${n.tornadoes ? `${escapeHtml(count(n.tornadoes))}${n.strongest ? `, the strongest rated ${escapeHtml(n.strongest.rating)}` : ''}.` : 'No tornadoes.'}</p>
+      ${verify ? `<p class="verify">${escapeHtml(verify)}</p>` : ''}
+      <div class="stats">
+        ${stat(n.strong, 'strong tornadoes (EF2+)')}
+        ${n.violent ? stat(n.violent, 'violent tornadoes (EF4+)') : stat(`${n.trackMiles} mi`, 'of tornado track in all')}
+        ${stat(n.longest ? `${Math.round(n.longest.lengthMi)} mi` : '–', `longest track${n.longest ? ` (${n.longest.rating}, ${Math.round(n.longest.minutes)} min)` : ''}`)}
+        ${stat(n.strongest?.peakWindMph ? `${Math.round(n.strongest.peakWindMph)} mph` : '–', 'highest tornado wind')}
+        ${stat(n.largestHailInches ? `${n.largestHailInches.toFixed(1)} in` : '–', 'largest hail')}
+        ${stat(n.tornadoWatches, `tornado watches issued${n.pdsWatches ? ` (${n.pdsWatches} PDS)` : ''}`)}
+      </div>
+      <div class="key">
+        ${[0, 1, 2, 3, 4, 5].filter(ef => n.byEf[ef]).map(ef => `<span><i style="background:${EF_COLOURS[ef]}"></i>EF${ef} (${n.byEf[ef]})</span>`).join('')}${n.unrated ? `<span><i style="background:#9ca3af"></i>Unrated (${n.unrated})</span>` : ''}
+        ${o ? areas.map(key => `<span class="area"><i style="background:${RISK_COLOUR[key]}"></i>${RISK_NAMES[key]}</span>`).join('') : ''}
+      </div>
+    </div>`);
+  fit();
+
+  $('#numbers').innerHTML = [
+    ['Forecast', o ? `${o.risk}, issued ${o.issued}` : 'none kept'],
+    ['Outlook issues that day', o ? o.issues.map(i => `${i.risk} (${i.issued.replace(/ UTC.*/, 'Z')})`).join(', ') : null],
+    ['Tornadoes', n.tornadoes ? `${n.tornadoes} (${[0, 1, 2, 3, 4, 5].map(ef => `EF${ef}: ${n.byEf[ef]}`).join(', ')}${n.unrated ? `, unrated: ${n.unrated}` : ''})` : '0'],
+    [n.topAreaName ? `In the ${n.topAreaName}` : null, `${n.inTop} of ${n.tornadoes}; EF2+: ${n.strongInTop} of ${n.strong}`],
+    ['Longest track', n.longest ? `${n.longest.lengthMi.toFixed(1)} mi, ${n.longest.rating}, ${Math.round(n.longest.minutes)} min` : null],
+    ['Highest tornado wind', n.strongest?.peakWindMph ? `${Math.round(n.strongest.peakWindMph)} mph (${n.strongest.rating})` : null],
+    ['Largest hail', n.largestHailInches ? `${n.largestHailInches.toFixed(1)} in` : null],
+    ['Watches', `${n.watches} (${n.tornadoWatches} tornado, ${n.pdsWatches} PDS)`],
+    ['Warnings counted', `${n.tornadoWarnings} tornado, ${n.severeWarnings} severe thunderstorm`]
+  ].filter(([k, v]) => k && v).map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
+
+  $('#postFirst').value = o ? `${o.headline} ${sentence(o.mainHazards ?? '')}${o.mainHazards ? '.' : ''}\n\nThis is not a real forecast. It is the Day 1 outlook for WeatherWorld, a storm-chasing world where one weather engine runs the same sky for every server. The storms had not formed when this was issued.` : '';
+  $('#postSecond').value = `What happened: ${n.tornadoes ? `${count(n.tornadoes)}${n.strongest ? `, the strongest rated ${n.strongest.rating}${n.strongest.peakWindMph ? ` with ${Math.round(n.strongest.peakWindMph)} mph winds` : ''}` : ''}.` : 'no tornadoes.'}${verify ? ` ${verify}` : ''}${n.longest && n.tornadoes ? ` The longest track ran ${Math.round(n.longest.lengthMi)} miles.` : ''}\n\nNothing here is scripted. The outlook is made from an ensemble of forecast runs, then the world plays out.`;
+
+  // Admin: save a live day, or remove a saved one.
+  const live = id.startsWith('live-');
+  let admin = live;
+  if (!live) { try { admin = (await ask('/api/days')).role === 'admin'; } catch { admin = false; } }
+  $('#dayAdmin').hidden = !admin;
+  $('#saveDay').hidden = !live; $('#removeDay').hidden = live;
+  $('#dayNote').innerHTML = live ? (day.savedId ? `Already saved as <a href="/day/${day.savedId}">${day.savedId}</a>; saving again replaces it.` : `Not saved. ${day.ended ? '' : 'The day is still under way: a summary saved now will be of the day so far.'}`) : '';
+}
+$('#saveDay').addEventListener('click', async () => {
+  $('#saveDay').disabled = true;
+  try { const saved = await ask(`/api/day/${id}/save`, { method: 'POST' }); location.href = `/day/${saved.id}`; }
+  catch (error) { $('#saveDay').disabled = false; alert(error.status === 401 ? 'The admin key is needed for that.' : `That did not work (${error.message}).`); }
+});
+$('#removeDay').addEventListener('click', async () => {
+  if (!confirm('Remove this saved day? Its summary cannot be made again once the world has let the day go.')) return;
+  try { await ask(`/api/day/${id}/remove`, { method: 'POST' }); location.href = '/days'; } catch (error) { alert(`That did not work (${error.message}).`); }
+});
+for (const [button, box] of [['#copyFirst', '#postFirst'], ['#copySecond', '#postSecond']]) $(button).addEventListener('click', async () => { try { await navigator.clipboard.writeText($(box).value); $(button).textContent = 'Copied'; } catch { $(box).select(); } });
+
+// The pictures are laid out at 1600 x 900 and scaled to their frames.
+function fit() { for (const box of document.querySelectorAll('.card-frame')) { const k = alone ? Math.min(innerWidth / 1600, innerHeight / 900) : box.clientWidth / 1600; box.style.setProperty('--k', k); } }
+addEventListener('resize', fit);
+
+// A picture as a PNG: the card's own markup and style sheet inside an SVG, with the fonts put in as data, drawn
+// to a canvas. (Nothing in it is fetched while it is drawn: the maps are already in the markup.)
+let fontCss = null;
+async function fonts() {
+  const data = async file => { const bytes = new Uint8Array(await (await fetch(`/fonts/${file}`)).arrayBuffer()); let text = ''; for (let k = 0; k < bytes.length; k += 0x8000) text += String.fromCharCode(...bytes.subarray(k, k + 0x8000)); return `data:font/woff2;base64,${btoa(text)}`; };
+  const [sans, mono, monoBold] = await Promise.all(['public-sans.woff2', 'plex-mono-400.woff2', 'plex-mono-600.woff2'].map(data));
+  return `@font-face{font-family:"Public Sans";src:url(${sans}) format("woff2");font-weight:100 900}@font-face{font-family:"IBM Plex Mono";src:url(${mono}) format("woff2");font-weight:400}@font-face{font-family:"IBM Plex Mono";src:url(${monoBold}) format("woff2");font-weight:600}`;
+}
+async function pngOf(card) {
+  fontCss ??= await fonts();
+  const markup = new XMLSerializer().serializeToString(card);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><foreignObject width="1600" height="900"><div xmlns="http://www.w3.org/1999/xhtml"><style>${fontCss}${$('#cardCss').textContent}</style>${markup}</div></foreignObject></svg>`;
+  const image = new Image();
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await image.decode();
+  // (drawn twice: the first drawing can come before the picture's own fonts are ready)
+  const canvas = document.createElement('canvas'); canvas.width = 1600; canvas.height = 900;
+  const g = canvas.getContext('2d');
+  g.drawImage(image, 0, 0); await new Promise(resolve => setTimeout(resolve, 250)); g.fillStyle = '#fff'; g.fillRect(0, 0, 1600, 900); g.drawImage(image, 0, 0);
+  return new Promise((resolve, reject) => canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('no picture'))), 'image/png'));
+}
+window.cardPng = pngOf; // (for checks from outside the page)
+for (const button of document.querySelectorAll('[data-png]')) button.addEventListener('click', async () => {
+  const kind = button.dataset.png, was = button.textContent;
+  button.disabled = true; button.textContent = 'Making the picture…';
+  try {
+    const blob = await pngOf($(kind === 'tracks' ? '#cardTracks' : '#cardOutlook')), link = document.createElement('a');
+    link.href = URL.createObjectURL(blob); link.download = `weatherworld-${id}-${kind === 'tracks' ? 'what-happened' : 'outlook'}.png`; link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+  } catch (error) { alert(`The picture could not be made here (${error.message}). Use "Open alone" and take a screenshot instead.`); }
+  button.disabled = false; button.textContent = was;
+});
+
+if (id) showDay(); else showList();
+</script>
+</body>
+</html>

@@ -10,7 +10,8 @@ The engine serves one public website (`server/index.js`, addresses in `server/Si
 | `/warnings` | `warnings.html` | Map and list from `/api/warnings/active`; choosing one zooms to it and shows its details (`#key` in the address) |
 | `/watch/N`, `/md/N` | `product.html` | One watch or mesoscale discussion |
 | `/analysis` (also `/index.html`) | `index.html` | Mesoanalysis and soundings |
-| `/synoptic` | `synoptic.html` | Synoptic charts (analysis); `?share=1` is the picture view |
+| `/synoptic` | `synoptic.html` | Large-scale charts (analysis), drawn as model charts are; `?share=1` is the picture view |
+| `/days`, `/day/<id>` | `days.html` | Day summaries: the forecast and what happened, as two pictures for posting. The public sees saved days; an admin sees recent days and saves them (`server/DayArchive.js`) |
 | `/models` (also `/models.html`) | `models.html` | Short range runs and the outlook ensemble, on the game map |
 | `/models/large-scale` | `synoptic.html` | A short range run across the whole large-scale model (`?run=<init hour>`) |
 | `/chasers` | `chasers.html` | Chaser network |
@@ -45,6 +46,18 @@ Change the menu or footer here, once. A new page needs a row in `server/SitePage
   focus; on a phone the pages are listed under the section. The strip above it holds the world's clock.
 - Type: Public Sans for text, IBM Plex Mono for bulletins and times; both are in `fonts/` (SIL Open Font
   License), so nothing is fetched from another site.
+
+## Public and admin views
+
+Some pages show more to an admin (the `WEATHER_ADMIN_KEY`, entered once on a page and kept for the tab; a local
+engine with no key treats this machine as admin). The server decides the role on every request.
+
+- Large-scale charts (`/synoptic`, `/models/large-scale`): the public view holds the game map in the middle of
+  the chart and shows nothing of its drift (the server leaves the drift out of a public frame). An admin can
+  drag the view and sees the drift arrow, speed and the day's aim. `?view=public` shows an admin the public
+  view; the share view is always the public one.
+- Day summaries (`/days`): saved days are public; recent days, saving and removing are admin only.
+- Chasers and the mesoanalysis page's world controls: as before.
 
 ## Looking at changes
 

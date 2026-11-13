@@ -87,7 +87,7 @@ body.doc main { flex: 1; padding-bottom: 56px; }
 body.doc h1 { font-size: 34px; line-height: 1.15; font-weight: 750; letter-spacing: -.012em; margin: 0; }
 body.doc h2 { font-size: 21px; line-height: 1.25; font-weight: 700; margin: 0 0 10px; }
 body.doc h3 { font-size: 17px; font-weight: 700; margin: 0 0 6px; }
-body.doc p { margin: 0 0 14px; }
+:where(body.doc) p { margin: 0 0 14px; }
 .crumbs { font-size: 14px; color: var(--ink-2); padding: 14px 0 0; }
 .crumbs a { color: var(--ink-2); }
 .crumbs span::before { content: "›"; margin: 0 7px; }

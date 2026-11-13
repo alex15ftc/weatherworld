@@ -17,6 +17,8 @@ const SITE_PAGES = [
   [/^\/synoptic\/?$/, 'synoptic.html'],
   [/^\/models\/?$/, 'models.html'],
   [/^\/models\/large-scale\/?$/, 'synoptic.html'],
+  [/^\/days\/?$/, 'days.html'],
+  [/^\/day\/[A-Za-z0-9-]+\/?$/, 'days.html'],
   [/^\/about\/?$/, 'about.html']
 ];
 export const NOT_FOUND_PAGE = '404.html';

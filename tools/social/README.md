@@ -9,6 +9,14 @@ node tools/social/make-post.mjs  data/social/<day>          # 1-outlook.png, 2-w
 node tools/social/make-loop.mjs  data/social/<day>          # 3-<chart>.mp4, .gif and a still, per chart
 ```
 
+## On the site instead
+
+For a day that has just been played, the site makes the same two pictures without any recording: sign in as
+admin on `/days`, open the day and press Save. The saved day's page has both pictures (Save as PNG, or Open
+alone for a screenshot), the day's numbers and draft post text. The engine keeps what a day needs for about
+two weeks; a saved day is kept for good. The loops below still need a recording, because the engine holds
+only the last 18 hours of large-scale frames.
+
 ## What each step does
 
 - **record-live.mjs** saves, as the world runs: each Day 1 outlook issue (text and maps), every 5-minute
@@ -20,7 +28,8 @@ node tools/social/make-loop.mjs  data/social/<day>          # 3-<chart>.mp4, .gi
   1600x900 pictures: the outlook as issued, and the same areas with the day's tornado tracks, their
   ratings and how many began inside the top risk area. `captions.md` has draft text and every number used.
 - **make-loop.mjs** draws each recorded analysis with the site's synoptic page in its share view
-  (`/synoptic?share=1`), then joins them with ffmpeg. `--charts vort,jet,llj,surface,moisture`,
+  (`/synoptic?share=1`: the public view, the game map held in the middle and nothing of its drift shown),
+  then joins them with ffmpeg. `--charts vort,wind500,jet,llj,surface,moisture`,
   `--zoom 1.7`, `--fps 5`, `--size 1600x900` (use `1080x1350` for a 4:5 picture).
 
 Needs Chrome or Edge (`CHROME=path` to choose) and ffmpeg (`FFMPEG=path` if it is not found).
