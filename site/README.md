@@ -71,7 +71,10 @@ A day's replay (`server/ReplayArchive.js`) is kept for 16 world days (two real d
 mesoanalysis and large-scale frames and every warning. The day page (`/day/<id>`) links to the two replay
 pages and plays the warnings on a time slider. Selecting a tornado's track on the "What happened" picture opens
 its panel: a map zoomed to its path with the survey's swath and damage points as diamonds coloured by rating
-(select one for what was damaged), and its damage indicators (kept with the saved summary, for good).
+(select one for what was damaged), its damage indicators (kept with the saved summary, for good), and its radar
+loop: reflectivity, storm-relative velocity and correlation coefficient from before touchdown until after it lifted
+(kept with the replay; scanned after the event when the radar threads are free, so a new tornado's loop can be
+some minutes behind, and the panel says how many scans are still to come).
 
 "Save loop as GIF" (`js/gif.js`) makes the animated picture in the browser from whatever the page is showing: on
 the mesoanalysis and large-scale pages (live or replay) and the warnings replay. A GIF of the large-scale charts

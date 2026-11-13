@@ -13,7 +13,8 @@
        For 16 world days after a day its page also has replays (server/ReplayArchive.js): links to the mesoanalysis
        and large-scale pages on the day's hours, and the warnings on a time slider. Selecting a tornado's track on
        the "What happened" picture opens its panel: a map zoomed to its path with the survey's swath and damage
-       points as diamonds (/api/day/<id>/tornado/<tid>), and its damage indicators. A day has no page until it
+       points as diamonds (/api/day/<id>/tornado/<tid>), its damage indicators, and its radar loop
+       (/api/day/<id>/replay/tornado/<tid>, scanned after the event; kept with the replay). A day has no page until it
        has ended. -->
   <!--site:head-->
   <style>
@@ -150,6 +151,23 @@
           <p class="empty" id="tornadoNoDamage" hidden>The survey found no damage points along this track.</p>
         </div>
       </div>
+      <h3>Radar <span class="muted" id="radarNote" style="font-size:14.5px;font-weight:400"></span></h3>
+      <p class="empty" id="radarNone" hidden></p>
+      <div class="player" id="radarBox">
+        <div>
+          <canvas id="radarCanvas" width="640" height="640" aria-label="Radar around the tornado"></canvas>
+        </div>
+        <div>
+          <div class="bar day-tools" id="radarBar" style="margin-top:0">
+            <button id="radarPlay">Play</button>
+            <input type="range" id="radarSlider" min="0" max="0" value="0" aria-label="Radar scan" />
+          </div>
+          <p class="time" id="radarTime" style="font:400 14px var(--mono);color:var(--ink-2);margin:10px 0"></p>
+          <div class="bar day-tools" id="radarProducts"></div>
+          <div class="bar day-tools"><button id="radarGif">Save as GIF</button></div>
+          <p class="muted" id="radarWaiting" style="font-size:14.5px;margin-top:12px" hidden></p>
+        </div>
+      </div>
     </section>
     <section class="section day-more" id="replayBox" hidden>
       <h2>Replays <span class="muted" id="replayNote" style="font-size:15px;font-weight:400"></span></h2>
@@ -157,6 +175,7 @@
         <ul class="replay-links">
           <li><a id="replayMeso">Mesoanalysis replay</a><span>The surface analysis and every overlay field, hour by hour. Its page has "Save loop as GIF".</span></li>
           <li><a id="replaySynoptic">Large-scale replay</a><span>The jet, 500 mb charts, surface and moisture across the whole large-scale model, hour by hour, with "Save loop as GIF".</span></li>
+          <li><b>Tornado radar</b><span>Select a tornado's track on the "What happened" picture: its radar scans from before touchdown until after it lifted, with its damage survey.</span></li>
         </ul>
         <div>
           <h3>Warnings through the day</h3>
@@ -192,6 +211,7 @@
 import { $, escapeHtml, RISK_NAMES, riskTag, loadCalendar, utcText, localText } from '/js/site.js';
 import { CATEGORY_COLOURS, EF_COLOURS, WARNING_COLOURS } from '/js/forecast/productColours.js';
 import { saveLoop, drawChartFrame } from '/js/gif.js';
+import { RADAR_PRODUCTS, radarColorTable } from '/js/radar/RadarFormat.js';
 
 // The admin key is kept for this tab under the same name as on the other pages.
 const ADMIN_KEY = 'wwAdminKey';
@@ -491,9 +511,13 @@ function pickPoint(k) {
   $('#surveyOut').addEventListener('click', () => zoom(1.5));
   $('#surveyAll').addEventListener('click', () => { if (survey.home) { survey.view = { ...survey.home }; drawSurvey(); } });
 }
+const RADAR_NAMES = { reflectivity: 'Reflectivity', stormRelativeVelocity: 'Storm-relative velocity', correlationCoefficient: 'Correlation coefficient' };
+const radar = { id: null, meta: null, frames: new Map(), product: 'reflectivity', timer: null, tables: {} };
+const bytesOf = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
 async function showTornado(tid, scroll) {
   const t = theDay.tornadoes.find(x => x.id === tid);
   if (!t) return;
+  stopRadar();
   for (const group of document.querySelectorAll('#cardTracks [data-tornado]')) group.classList.toggle('sel', group.dataset.tornado === tid);
   $('#tornadoBox').hidden = false; $('#tornadoPick').value = tid;
   $('#tornadoTitle').textContent = `${t.rating === 'EFU' ? 'Unrated' : t.rating} tornado${t.startPlace ? `, ${t.startPlace}` : ''}`;
@@ -521,7 +545,82 @@ async function showTornado(tid, scroll) {
   const counts = [0, 1, 2, 3, 4, 5].map(ef => data.points.filter(q => q.ef === ef).length);
   $('#surveyKey').innerHTML = data.points.length ? counts.map((n, ef) => (n ? `<span><i style="background:${EF_COLOURS[ef]}"></i>EF${ef} damage (${n})</span>` : '')).join('') + '<span>Shaded: where the wind reached each rating</span>' : '<span>No damage points: the survey found nothing along this track to rate it by.</span>';
   drawSurvey();
+  showRadar(tid);
 }
+
+// ---- Its radar: the nearest radar's lowest scan around it, from before touchdown until after it lifted. The scans
+// are worked out after the event, when the engine's radar threads have nothing live to do, so some may still be
+// on their way; they are kept with the day's replay.
+async function showRadar(tid) {
+  radar.id = tid; radar.meta = null; radar.frames = new Map();
+  const none = text => { $('#radarBox').hidden = true; $('#radarNone').hidden = false; $('#radarNone').textContent = text; $('#radarNote').textContent = ''; };
+  const replay = theDay.replay ?? {}, ready = replay.tornadoRadar?.[tid] ?? 0, waiting = replay.radarWaiting?.[tid] ?? 0;
+  if (!replay.available) return none('This day\'s replay is no longer kept, so there is no radar to show.');
+  if (!ready) return none(waiting ? `This tornado's ${waiting} radar scans are still being worked out. Look again in a few minutes.` : 'No radar scans were kept for this tornado.');
+  try { radar.meta = await ask(`/api/day/${id}/replay/tornado/${encodeURIComponent(tid)}`); } catch { return none('The radar scans could not be read.'); }
+  if (radar.id !== tid) return;
+  $('#radarBox').hidden = false; $('#radarNone').hidden = true;
+  $('#radarWaiting').hidden = !radar.meta.waiting; $('#radarWaiting').textContent = radar.meta.waiting ? `${radar.meta.waiting} more scans of this tornado are still being worked out.` : '';
+  const first = Math.max(0, radar.meta.frames.findIndex(f => f.onGround));
+  $('#radarSlider').max = radar.meta.frames.length - 1; $('#radarSlider').value = first;
+  $('#radarProducts').innerHTML = radar.meta.products.map(key => `<button data-product="${key}"${key === radar.product ? ' class="primary"' : ''}>${RADAR_NAMES[key] ?? key}</button>`).join('');
+  await drawRadar();
+}
+async function radarFrame(k) {
+  if (!radar.frames.has(k)) { const got = await ask(`/api/day/${id}/replay/tornado/${encodeURIComponent(radar.id)}?frame=${k}`); radar.frames.set(k, Object.fromEntries(Object.entries(got.products).map(([key, text]) => [key, bytesOf(text)]))); }
+  return radar.frames.get(k);
+}
+// One scan: the product's colours over the county lines and towns of the box, the tornado's place marked.
+async function drawRadar() {
+  const meta = radar.meta, k = Number($('#radarSlider').value), frame = meta.frames[k], tid = radar.id, bytes = (await radarFrame(k))[radar.product];
+  if (radar.id !== tid) return null;
+  const canvas = $('#radarCanvas'), g = canvas.getContext('2d'), n = meta.size, boxMiles = meta.boxKm / 1.609344;
+  drawGround(g, canvas.width, { x: frame.xKm / 1.609344 - boxMiles / 2, y: frame.yKm / 1.609344 - boxMiles / 2, size: boxMiles });
+  const table = radar.tables[radar.product] ??= radarColorTable(radar.product), small = document.createElement('canvas'); small.width = small.height = n;
+  const image = small.getContext('2d').createImageData(n, n);
+  for (let p = 0; p < n * n; p++) { const b = bytes[p] * 4, o = p * 4; image.data[o] = table[b]; image.data[o + 1] = table[b + 1]; image.data[o + 2] = table[b + 2]; image.data[o + 3] = table[b + 3]; }
+  small.getContext('2d').putImageData(image, 0, 0);
+  g.imageSmoothingEnabled = false; g.globalAlpha = 0.92; g.drawImage(small, 0, 0, canvas.width, canvas.height); g.globalAlpha = 1;
+  // The tornado (or, before touchdown, the storm's rotation) is at the middle of the box.
+  const c = canvas.width / 2;
+  g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath();
+  if (frame.onGround) { g.moveTo(c - 9, c - 9); g.lineTo(c + 9, c - 9); g.lineTo(c, c + 9); g.closePath(); } else g.arc(c, c, 9, 0, Math.PI * 2);
+  g.stroke();
+  const tenKm = 10 / meta.boxKm * canvas.width;
+  g.beginPath(); g.moveTo(14, canvas.height - 14); g.lineTo(14 + tenKm, canvas.height - 14); g.stroke();
+  g.fillStyle = '#fff'; g.font = '600 12px "Public Sans", system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText('10 km', 14, canvas.height - 18);
+  const first = meta.frames.findIndex(f => f.onGround), last = meta.frames.findLastIndex(f => f.onGround);
+  const when = frame.onGround ? `on the ground${frame.windMph ? `, ${frame.windMph} mph` : ''}` : first < 0 ? 'no tornado on the ground' : k < first ? `${Math.round((meta.frames[first].hourUtc - frame.hourUtc) * 60)} min before touchdown` : `${Math.round((frame.hourUtc - meta.frames[last].hourUtc) * 60)} min after it lifted`;
+  $('#radarTime').textContent = `${utcText(frame.hourUtc).replace(/ UTC.*/, 'Z')} · ${when}`;
+  $('#radarNote').textContent = `${meta.siteName} radar, ${meta.tiltDeg}° scan, ${meta.cellKm * 1000} m cells`;
+  return { frame, when };
+}
+function stopRadar() { clearInterval(radar.timer); radar.timer = null; $('#radarPlay').textContent = 'Play'; }
+$('#radarSlider').addEventListener('input', () => { stopRadar(); drawRadar(); });
+$('#radarPlay').addEventListener('click', () => {
+  if (radar.timer) return stopRadar();
+  if (!radar.meta) return;
+  $('#radarPlay').textContent = 'Stop';
+  radar.timer = setInterval(() => { const slider = $('#radarSlider'); slider.value = (Number(slider.value) + 1) % radar.meta.frames.length; drawRadar(); }, 550);
+});
+$('#radarProducts').addEventListener('click', event => {
+  const key = event.target.dataset?.product; if (!key) return;
+  radar.product = key;
+  for (const button of document.querySelectorAll('#radarProducts button')) button.classList.toggle('primary', button.dataset.product === key);
+  drawRadar();
+});
+$('#radarGif').addEventListener('click', async () => {
+  if (!radar.meta) return;
+  stopRadar();
+  const button = $('#radarGif'), slider = $('#radarSlider'), was = slider.value, canvas = $('#radarCanvas'), t = theDay.tornadoes.find(x => x.id === radar.id), note = $('#radarNote').textContent;
+  let shown = null;
+  button.disabled = true;
+  await saveLoop({ count: radar.meta.frames.length, width: 560, height: 626, delayMs: 550, name: `weatherworld-${id}-${radar.id}-${RADAR_PRODUCTS[radar.product]?.short ?? radar.product}.gif`,
+    show: async k => { slider.value = k; shown = await drawRadar(); },
+    draw: g => drawChartFrame(g, canvas, { title: `${t.rating} tornado · ${RADAR_NAMES[radar.product]}`, time: `${utcText(shown.frame.hourUtc)} · ${shown.when}` }),
+    onProgress: text => { if (text) $('#radarNote').textContent = text; } }).catch(error => { $('#radarNote').textContent = `The GIF could not be made (${error.message}).`; });
+  button.disabled = false; slider.value = was; $('#radarNote').textContent = note; drawRadar();
+});
 
 // The pictures are laid out at 1600 x 900 and scaled to their frames.
 function fit() { for (const box of document.querySelectorAll('.card-frame')) { const k = alone ? Math.min(innerWidth / 1600, innerHeight / 900) : box.clientWidth / 1600; box.style.setProperty('--k', k); } }

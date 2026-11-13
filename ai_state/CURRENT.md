@@ -135,8 +135,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     A day has no report (list, page, save) until it has ended. A tornado's panel has a map zoomed to its track
     with the survey's swath and damage points as diamonds (`/api/day/<id>/tornado/<tid>`; the points are kept
     with the day's summary). The mesoanalysis map draws county lines and the larger cities (a tick box).
-    Left out for now (owner, 2026-11-12): a radar loop of each tornado. It was built and measured (branch
-    `web/tornado-radar`, commit `28aeabe`: about 2 s of radar thread per scan kept, 290 to 850 s a world day).
+    Tornado radar (2026-11-12 late): each tornado's radar loop is back, off the
+    live path. A storm tick only records what the radar picture is made from (1.8 to 2.7 ms on the main thread);
+    the scans wait on the day's list (kept in its file) and are worked out one at a time in the radar pool's low
+    lane (`RadarPool.run(..., low)`: only when nothing live waits and another thread stays free). Measured on a
+    local engine with 2 radar threads: 27 scans, 2.3 s of radar thread and 15 to 19 ms of main thread each, none
+    failed; a day that ended with scans waiting finished them afterwards. `/api/replays/status` (admin) and
+    `/api/performance` (`tornadoRadar`, `host`) show the cost, the waiting count and the container's CPU limit.
+    The hosted plan's CPU limit is still unread (shell access to the container was not allowed); the hosted radar
+    threads were about 1% busy. Not measured: live radar response while the list drains.
   - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
     and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
     `data/social/high-risk-2026-11-12/` (not in git).

@@ -17,7 +17,7 @@ alone for a screenshot), the day's numbers and draft post text. The engine keeps
 two weeks; a saved day is kept for good.
 
 For 16 world days (two real days) after a day, its page also has replays: the mesoanalysis and the large-scale
-charts hour by hour and the warnings on a time slider. Each has a "Save as GIF"
+charts hour by hour, the warnings on a time slider, and each tornado's radar loop. Each has a "Save as GIF"
 button that makes the picture in the browser. The recording below is still the way to keep a day's loops longer
 than that, or as MP4.
 

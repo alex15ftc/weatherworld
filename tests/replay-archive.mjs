@@ -1,10 +1,12 @@
 // Day replays (server/ReplayArchive.js): the hour's mesoanalysis and large-scale frames and the day's warnings
 // are kept as the day runs, written to the day's file, read back after a restart, answered as the live pages'
-// own routes answer, and let go after REPLAY.keepDays world days.
+// own routes answer, and let go after REPLAY.keepDays world days. The tornado radar's waiting list is checked
+// with a stand-in for the scan itself (a real scan needs a whole world and the radar: checked by running an engine).
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { ReplayArchive, REPLAY } from '../server/ReplayArchive.js';
 
 const world = { validHourUtc: 12 };
@@ -54,6 +56,24 @@ assert.deepEqual([list.startHourUtc, list.endHourUtc], [12, 36]);
 assert.deepEqual(replays.contents(1, 'another-world'), { available: false });
 assert.deepEqual(replays.contents(7, runtime.worldId), { available: false });
 
+// A tornado's kept scans: what each shows, and one scan's products as bytes.
+const n = Math.round(REPLAY.boxKm / REPLAY.cellKm) ** 2, boxes = REPLAY.products.map((_, k) => Buffer.alloc(n, k + 1)), packed = zlib.deflateSync(Buffer.concat(boxes));
+replays.current.tornadoes['S1-T1'] = { stormId: 'S1', site: 'KCPL', siteName: 'Central Plains', frames: [
+  { hourUtc: 19.25, onGround: false, windMph: 0, xKm: 100, yKm: 200, packed }, { hourUtc: 19.333, onGround: true, windMph: 120, xKm: 101, yKm: 199, packed }] };
+const meta = replays.tornadoRadar(1, runtime.worldId, 'S1-T1');
+assert.deepEqual(meta.frames.map(f => [f.onGround, f.windMph]), [[false, 0], [true, 120]]);
+assert.deepEqual([meta.boxKm, meta.cellKm, meta.size, meta.siteName, meta.waiting], [40, 0.25, 160, 'Central Plains', 0]);
+assert.equal(meta.frames[0].packed, undefined, 'the list of scans does not carry their bytes');
+const scan = replays.tornadoRadar(1, runtime.worldId, 'S1-T1', '1');
+for (const [k, key] of REPLAY.products.entries()) { const bytes = Buffer.from(scan.products[key], 'base64'); assert.equal(bytes.length, n); assert.ok(bytes.every(b => b === k + 1), `${key} comes back as it was kept`); }
+assert.equal(replays.tornadoRadar(1, runtime.worldId, 'S1-T1', '9'), null);
+assert.equal(replays.tornadoRadar(1, runtime.worldId, 'S9-T1'), null);
+
+// Scans still to be worked out wait on the day's list, which is kept in its file.
+for (const hour of [20, 20.083, 20.167]) replays.current.queue.push({ snap: { hour, onGround: true, windMph: 100, at: { x: 1, y: 2 } }, tornado: 'S2-T1', stormId: 'S2' });
+assert.deepEqual(replays.contents(1, runtime.worldId).radarWaiting, { 'S2-T1': 3 });
+assert.equal(replays.radarCost().waiting, 3);
+
 // The day is a file: a restart reads it back and carries on with it.
 step(replays, 21); await settle(replays);
 assert.ok(fs.existsSync(replays.fileOf(1)), 'the day\'s file is written as the hours go by');
@@ -61,12 +81,39 @@ const again = make();
 step(again, 21.5);
 held = again.contents(1, runtime.worldId);
 assert.deepEqual(held.mesoHours, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21], 'the hours kept before the restart are there');
-assert.equal(held.warnings, 2);
+assert.equal(held.warnings, 2); assert.equal(held.tornadoRadar['S1-T1'], 2);
+// The waiting list came back with it, and is worked through in order, one scan at a time, once there are radar threads.
+assert.deepEqual(held.radarWaiting, { 'S2-T1': 3 });
+let atOnce = 0, most = 0;
+const standIn = async (day, job) => {
+  most = Math.max(most, ++atOnce); await new Promise(resolve => setTimeout(resolve, 5)); atOnce--;
+  (day.tornadoes[job.tornado] ??= { stormId: job.stormId, site: 'KCPL', siteName: 'Central Plains', frames: [] }).frames.push({ hourUtc: job.snap.hour, onGround: true, windMph: 100, xKm: 1, yKm: 2, packed });
+};
+again.scan = standIn; runtime.radarPool = {};
+await again.drain();
+held = again.contents(1, runtime.worldId);
+assert.deepEqual([held.tornadoRadar['S2-T1'], held.radarWaiting, most], [3, {}, 1]);
+assert.deepEqual(again.tornadoRadar(1, runtime.worldId, 'S2-T1').frames.map(f => f.hourUtc), [20, 20.083, 20.167]);
+assert.equal(again.radarCost().scans, 3);
+// A scan that fails is counted and let go; the rest carry on.
+again.current.queue.push({ snap: { hour: 21.6 }, tornado: 'S3-T1', stormId: 'S3' }, { snap: { hour: 21.7 }, tornado: 'S2-T1', stormId: 'S2' });
+again.scan = async (day, job) => { if (job.tornado === 'S3-T1') throw new Error('test: a scan that fails'); return standIn(day, job); };
+const quiet = console.warn; console.warn = () => {};
+await again.drain(); console.warn = quiet;
+assert.deepEqual([again.radarCost().failed, again.radarCost().waiting, again.contents(1, runtime.worldId).tornadoRadar['S2-T1']], [1, 0, 4]);
+// A day that ends with scans waiting keeps them: they are done after it, and its file is written again.
+let release; const held35 = new Promise(resolve => { release = resolve; });
+again.scan = async (day, job) => { await held35; return standIn(day, job); };
+step(again, 35); again.current.queue.push({ snap: { hour: 35.5 }, tornado: 'S2-T1', stormId: 'S2' }); const late = again.drain();
 
 // The next day begins: yesterday is written and can still be asked for; today starts empty.
 for (let hour = 22; hour <= 37; hour += 0.5) step(again, hour);
 await settle(again);
 assert.deepEqual(again.contents(2, runtime.worldId).mesoHours, [36, 37]);
+assert.deepEqual(again.contents(1, runtime.worldId).radarWaiting, { 'S2-T1': 1 }, 'yesterday still has a scan waiting');
+release(); await late; await settle(again);
+assert.deepEqual([again.contents(1, runtime.worldId).tornadoRadar['S2-T1'], again.contents(1, runtime.worldId).radarWaiting], [5, {}]);
+assert.equal(make().contents(1, runtime.worldId).tornadoRadar['S2-T1'], 5, 'and its file has the late scan');
 assert.equal(again.contents(1, runtime.worldId).mesoHours.length, 24, 'a whole day is 24 hourly frames (12Z to 11Z)');
 assert.equal(make().contents(1, runtime.worldId).mesoHours.length, 24, 'a past day is read from its file');
 

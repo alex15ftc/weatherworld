@@ -1,5 +1,6 @@
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
@@ -85,9 +86,11 @@ const chasers = new ChaserArchive({ runtime, hourNow: worldHourNow, milesPerKm: 
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => chasers.save(true));
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
-// Each day's replay: its mesoanalysis, large-scale charts and warnings (ReplayArchive.js), let go after 16 world days.
+// Each day's replay: its mesoanalysis, large-scale charts, warnings and tornado radar (ReplayArchive.js), let go
+// after 16 world days. The tornado radar is only recorded on a storm tick; it is scanned later, as work that waits.
 const replays = new ReplayArchive({ runtime, surface, synoptic, archive, dir: statePath ? path.join(path.dirname(statePath), 'replays') : null });
 const keepReplays = () => { try { replays.capture(); } catch (error) { console.warn('[replays]', error.message); } };
+runtime.afterStormTick = () => { try { replays.tick(); } catch (error) { console.warn('[replays]', error.message); } };
 keepReplays();
 // Each day's forecast and what happened, for the day summaries an admin can save (DayArchive.js).
 const days = new DayArchive({ runtime, products: gameProducts, reports, archive, replays, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'days.bin') : null });
@@ -100,7 +103,15 @@ const ADVANCE_POLL_MS = 2_000;
 const perf = { startedAt: Date.now(), totals:{requests:0,cacheHits:0,cacheMisses:0}, endpoints:{}, recent:[] };
 function beginRequest(pathname){ return { pathname, started: performance.now() }; }
 function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace.started; perf.totals.requests++; const stat=perf.endpoints[trace.pathname]??={count:0,totalMs:0,maxMs:0}; stat.count++;stat.totalMs+=totalMs;stat.maxMs=Math.max(stat.maxMs,totalMs);perf.recent.unshift({path:trace.pathname,totalMs:+totalMs.toFixed(2),...detail,at:new Date().toISOString()});if(perf.recent.length>50)perf.recent.length=50; return totalMs; }
-function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null}; }
+// What the machine gives this process: the cores it sees and, in a container, the share of them and the memory it may use.
+function hostLimits() {
+  const read = file => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return null; } };
+  const [quota, period] = (read('/sys/fs/cgroup/cpu.max') ?? '').split(' ');
+  const memory = Number(read('/sys/fs/cgroup/memory.max'));
+  return { coresSeen: os.availableParallelism(), cpuLimit: Number(quota) > 0 && Number(period) > 0 ? Math.round(Number(quota) / Number(period) * 100) / 100 : null,
+    memoryLimitMb: Number.isFinite(memory) && memory > 0 ? Math.round(memory / 1048576) : null, rssMb: Math.round(process.memoryUsage().rss / 1048576), load: os.loadavg().map(v => Math.round(v * 100) / 100) };
+}
+function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null,host:hostLimits(),tornadoRadar:replays.radarCost()}; }
 // (In turns: requests are answered between the storm ticks and atmosphere steps of a catch-up.)
 setInterval(async () => {
   try { if (await runtime.advanceOnTimerInTurns()) { surface.capture(); synoptic.capture(); keepReplays(); warnings?.update(); runtime.prewarmRadar(); } }
@@ -239,7 +250,7 @@ async function serveApi(url, req, res) {
       if (!found) return sendJson(req, res, 404, { error: 'No such day' }, { cacheable: false, trace });
       const value = what === 'surface' ? replays.surface(found.day, found.worldId, q('frame')) : what === 'parameter' ? replays.parameter(found.day, found.worldId, q('key'), q('frame'))
         : what === 'synoptic/frame' ? forRole(req, replays.synopticFrame(synoptic, found.day, found.worldId, q('frame'))) : what === 'synoptic/field' ? replays.synopticField(synoptic, found.day, found.worldId, q('frame'), q('key'))
-        : what === 'warnings' ? replays.warningList(found.day, found.worldId) : null;
+        : what === 'warnings' ? replays.warningList(found.day, found.worldId) : what.startsWith('tornado/') ? replays.tornadoRadar(found.day, found.worldId, what.slice(8), q('frame')) : null;
       return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No replay of that' }, { cacheable: Boolean(value) && found.ended, trace });
     }
     // One tornado's survey (its damage points and swath), for its map on the day page.
@@ -258,6 +269,8 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/live/sounding') return sendJson(req, res, 200, runtime.sounding(url.searchParams.get('row'), url.searchParams.get('column'), url.searchParams.get('day') ?? 'day1'), { cacheable: false, trace });
   // The radar, outlook, mesoscale, warning, storm report and damage survey pages were retired
   // on 2026-10-22: those products are drawn in Roblox from /api/game/v1/* (GameProducts.js).
+  // What the tornado radar of the day replays is costing and how much is waiting.
+  if (url.pathname === '/api/replays/status') return isAdmin(req) ? sendJson(req, res, 200, { radar: replays.radarCost(), radarPool: radarPool?.status() ?? null, host: hostLimits(), today: replays.current ? replays.contents(replays.current.day, replays.worldId) : null }, { cacheable: false, trace }) : sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
   if (url.pathname === '/api/performance') return sendJson(req,res,200,performanceSnapshot(),{cacheable:false,trace});
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);

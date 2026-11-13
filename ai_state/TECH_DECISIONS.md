@@ -27,9 +27,12 @@
   the live pages' runtimes have already worked out, so keeping them costs the engine nothing. Rejected: whole-map
   radar mosaics through the day (a build every one or two real minutes, dropped for performance in October);
   making GIFs on the engine (its image has no browser or image libraries, and the charts are drawn by page code).
-- Left out for now by the owner: a radar loop of each tornado (built on branch `web/tornado-radar`). If it comes
-  back, scan only once a tornado exists, from a rolling copy of the storm's radar inputs: scanning every storm
-  that might produce one measured about twenty times the cost.
+- Tornado radar (owner asked for it back without a cost to the live game, 2026-11-12): recorded on the storm
+  tick, scanned later as low-priority work on the radar threads (one piece at a time, never the last free
+  thread), the waiting list kept in the day's file. Scan only once a tornado exists, from the rolling copy of the
+  storm's inputs: scanning every storm that might produce one measured about twenty times the cost. Rejected:
+  a thread of its own (needs a spare core the plan may not give); scanning on first view (the wait lands on a
+  reader, and on the live path); other products on request (one scan makes every product in the same pass).
 - Consequences: a replay cannot be made for a day after the fact; while the world is stepped by hand in bursts
   the warnings between steps are missed (the live clock keeps them all).
 

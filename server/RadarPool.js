@@ -5,6 +5,9 @@
 // in strips, and each scan on one thread. The results are the same bytes the single-thread
 // functions in RadarSimulator.js give. A thread holds the scene it was last given (about
 // 150 MB, shared), so one with nothing to do is let go after a minute.
+// Work that can wait (the day replays' tornado radar, ReplayArchive.js) is given with low = true: it is started
+// only when nothing else is waiting, one piece at a time, and never on the last free thread, so the live radar
+// and the game feed are never behind it.
 //   WEATHER_RADAR_WORKERS sets the number of threads (default: a third of the cores, 2 to 8).
 //   WEATHER_RADAR_IDLE_SECONDS sets how long a thread with nothing to do is kept.
 import os from 'node:os';
@@ -23,8 +26,8 @@ const NOT_SENT = new Set(['trackPoints', 'internalField', 'children', 'mergedSto
 export class RadarPool {
   constructor({ size = defaultSize(), idleMs = (Number(process.env.WEATHER_RADAR_IDLE_SECONDS) || 60) * 1000, workerScript = WORKER_SCRIPT } = {}) {
     this.size = Math.max(1, size); this.idleMs = idleMs; this.workerScript = workerScript;
-    this.workers = new Set(); this.idle = []; this.queue = []; this.sceneCount = 0;
-    this.stats = { tasks: 0, busyMs: 0 };
+    this.workers = new Set(); this.idle = []; this.queue = []; this.low = []; this.lowRunning = 0; this.sceneCount = 0;
+    this.stats = { tasks: 0, busyMs: 0, lowTasks: 0, lowBusyMs: 0 };
   }
 
   // The scene for a world as it is now (the world is read before this returns). Its storms' fields
@@ -81,7 +84,7 @@ export class RadarPool {
     return new Map(inputs.map((input, k) => [input.storm.id, fields[k]]));
   }
 
-  field(input) { return this.run({ kind: 'echo', input: { ...input, storm: stormToSend(input.storm) } }); }
+  field(input, low = false) { return this.run({ kind: 'echo', input: { ...input, storm: stormToSend(input.storm) } }, null, low); }
 
   // The game feed's rain grids (js/radar/StormPrecipGrid.js, buildStormPrecipGrids' Map) for the
   // storms as they are now, worked out on the threads: the world is read before this returns, and
@@ -95,34 +98,39 @@ export class RadarPool {
   }
 
   // (gateKm: the gates' length, RADAR_GATE_KM unless a close look asks for finer)
-  scan(scene, site, tiltDeg, gateKm = undefined) { return this.run({ kind: 'scan', site, tiltDeg, gateKm }, scene); }
+  scan(scene, site, tiltDeg, gateKm = undefined, low = false) { return this.run({ kind: 'scan', site, tiltDeg, gateKm }, scene, low); }
 
   // The satellite's images from satelliteInputs (js/satellite/Satellite.js), on a thread: the same
   // bytes renderSatellite gives here.
   satellite(inputs) { return this.run({ kind: 'satellite', inputs }); }
 
-  run(message, scene = null) {
-    return new Promise((resolve, reject) => { this.queue.push({ message, scene, resolve, reject }); this.pump(); });
+  run(message, scene = null, low = false) {
+    return new Promise((resolve, reject) => { (low ? this.low : this.queue).push({ message, scene, resolve, reject, low }); this.pump(); });
   }
 
   pump() {
-    while (this.queue.length && (this.idle.length || this.workers.size < this.size)) {
-      const task = this.queue.shift();
-      // A thread that already holds the task's scene is preferred.
-      const index = this.idle.findIndex(w => task.scene && w.sceneId === task.scene.poolId);
-      const worker = index >= 0 ? this.idle.splice(index, 1)[0] : this.idle.pop() ?? this.start();
-      clearTimeout(worker.idleTimer);
-      const message = { ...task.message };
-      if (task.scene && worker.sceneId !== task.scene.poolId) { message.scene = task.scene; message.sceneId = task.scene.poolId; worker.sceneId = task.scene.poolId; }
-      worker.task = task; task.startedAt = performance.now();
-      worker.ref(); worker.postMessage(message);
-    }
+    const room = () => this.idle.length || this.workers.size < this.size;
+    while (this.queue.length && room()) this.give(this.queue.shift());
+    // Work that can wait: one piece at a time, and only while another thread stays free for the rest.
+    const busy = () => this.workers.size - this.idle.length;
+    while (this.low.length && !this.queue.length && !this.lowRunning && busy() < Math.max(1, this.size - 1) && room()) { this.lowRunning++; this.give(this.low.shift()); }
+  }
+
+  give(task) {
+    // A thread that already holds the task's scene is preferred.
+    const index = this.idle.findIndex(w => task.scene && w.sceneId === task.scene.poolId);
+    const worker = index >= 0 ? this.idle.splice(index, 1)[0] : this.idle.pop() ?? this.start();
+    clearTimeout(worker.idleTimer);
+    const message = { ...task.message };
+    if (task.scene && worker.sceneId !== task.scene.poolId) { message.scene = task.scene; message.sceneId = task.scene.poolId; worker.sceneId = task.scene.poolId; }
+    worker.task = task; task.startedAt = performance.now();
+    worker.ref(); worker.postMessage(message);
   }
 
   start() {
     const worker = new Worker(this.workerScript);
     this.workers.add(worker);
-    const settle = (fn, value) => { const task = worker.task; worker.task = null; if (task) { this.stats.tasks++; this.stats.busyMs += performance.now() - task.startedAt; task[fn](value); } };
+    const settle = (fn, value) => { const task = worker.task; worker.task = null; if (task) { const ms = performance.now() - task.startedAt; if (task.low) { this.lowRunning--; this.stats.lowTasks++; this.stats.lowBusyMs += ms; } else { this.stats.tasks++; this.stats.busyMs += ms; } task[fn](value); } };
     worker.on('message', message => {
       settle(message?.ok ? 'resolve' : 'reject', message?.ok ? message.result : new Error(message?.error ?? 'radar task failed'));
       worker.unref(); this.idle.push(worker);
@@ -141,10 +149,10 @@ export class RadarPool {
     return worker.terminate();
   }
 
-  status() { return { threads: this.workers.size, size: this.size, busy: this.workers.size - this.idle.length, waiting: this.queue.length, ...this.stats }; }
+  status() { return { threads: this.workers.size, size: this.size, busy: this.workers.size - this.idle.length, waiting: this.queue.length, lowWaiting: this.low.length, ...this.stats }; }
 
   stop() {
-    const waiting = this.queue; this.queue = [];
+    const waiting = [...this.queue, ...this.low]; this.queue = []; this.low = [];
     for (const task of waiting) task.reject(new Error('the radar pool was stopped'));
     const workers = [...this.workers]; this.workers.clear(); this.idle = [];
     return Promise.all(workers.map(worker => { clearTimeout(worker.idleTimer); const task = worker.task; worker.task = null; task?.reject(new Error('the radar pool was stopped')); return worker.terminate(); }));
@@ -155,7 +163,8 @@ function rotationInputs(scan) {
   return { tiltDeg: scan.tiltDeg, products: { velocity: scan.products.velocity, reflectivity: scan.products.reflectivity } };
 }
 
-function stormToSend(storm) {
+// (also what the day replays keep of a storm for a later scan: ReplayArchive.js)
+export function stormToSend(storm) {
   const out = {};
   for (const key of Object.keys(storm)) if (!NOT_SENT.has(key)) out[key] = storm[key];
   return out;

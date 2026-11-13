@@ -132,6 +132,8 @@ export class WeatherAuthorityRuntime {
       // The cloud model workers (js/game/StormWorkers.js, set by server/index.js): they only read
       // the world, and a fault in them never stops it.
       try { this.stormWorkers?.stormTick(world); } catch (error) { console.error('[storm-workers]', error); }
+      // Whatever else follows each tick (set by server/index.js: the day replays' tornado radar); it only reads the world.
+      try { this.afterStormTick?.(world); } catch (error) { console.error('[storm-tick]', error); }
     };
   }
 

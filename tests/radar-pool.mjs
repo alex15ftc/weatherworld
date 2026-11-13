@@ -34,5 +34,12 @@ try {
     const [a, b] = [await pool.scan(pooled, site, tilt), scanRadarTilt(scene, site, tilt)];
     for (const key of Object.keys(b.products)) assert.ok(same(a.products[key], b.products[key]), `${key} at ${tilt}°`);
   }
+  // Work that can wait (low) gives the same bytes, one piece at a time, and is counted apart.
+  const waits = [pool.scan(pooled, site, 0.5, undefined, true), pool.scan(pooled, site, 0.5, undefined, true)];
+  assert.ok(pool.lowRunning <= 1 && pool.status().lowWaiting >= 1, 'only one piece of waiting work is started');
+  const live = pool.scan(pooled, site, 0.5);
+  const [low, , now] = await Promise.all([...waits, live]), want = scanRadarTilt(scene, site, 0.5);
+  for (const key of Object.keys(want.products)) { assert.ok(same(low.products[key], want.products[key]), `${key}, low`); assert.ok(same(now.products[key], want.products[key]), `${key}, live beside low`); }
+  assert.equal(pool.status().lowTasks, 2);
 } finally { await pool.stop(); }
 console.log(`radar pool passed (${scene.storms.length} storms, ${pool.size} threads)`);
