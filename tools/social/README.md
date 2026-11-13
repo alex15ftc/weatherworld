@@ -32,7 +32,8 @@ than that, or as MP4.
   1600x900 pictures: the outlook as issued, and the same areas with the day's tornado tracks, their
   ratings and how many began inside the top risk area. `captions.md` has draft text and every number used.
 - **make-loop.mjs** draws each recorded analysis with the site's synoptic page in its share view
-  (`/synoptic?share=1`: the public view, the game map held in the middle and nothing of its drift shown),
+  (`/synoptic?share=1`: the chart following the game map east-west; `--hold` holds the view still instead so the map's box
+  moves through the weather; no drift arrow either way),
   then joins them with ffmpeg. `--charts vort,wind500,jet,llj,surface,moisture`,
   `--zoom 1.7`, `--fps 5`, `--size 1600x900` (use `1080x1350` for a 4:5 picture).
 

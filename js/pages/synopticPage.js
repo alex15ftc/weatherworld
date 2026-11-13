@@ -7,12 +7,14 @@
 //   /models/large-scale    a short range model run, every few forecast hours (?run=<init hour>)
 //   /day/<id>/synoptic     a past day's replay, hour by hour (server/ReplayArchive.js)
 // "Save loop as GIF" steps through the frames on show and saves them as one picture (js/gif.js).
-// Two views, set by the viewer's role (the server sends it with each frame):
-//   public   the game map is held in the middle of the chart; nothing shows that the map moves
-//   admin    the view can be dragged, and the map's drift (its arrow, speed and aim) is shown
-// ?share=1: only the chart, with its title, time, key and the site's name in the frame, always the public
-// view (tools/social/make-loop.mjs). ?frame=<hour>, ?zoom=<n>, ?chart=<key>; ?view=public shows an admin
-// the public view.
+// The view, for everyone, as it first was: it follows the game map east-west as the map drifts, so the map's box
+// moves north and south in the chart; dragging or zooming with the wheel lets go of the map, and the box then
+// moves freely through the frames ("Map" and "Whole model" take hold of it again). No page draws an arrow for
+// the map's drift. An admin (the server sends the role with each frame) is also told the drift's speed and the
+// day's aim, in the facts beside the chart.
+// ?share=1: only the chart, with its title, time, key and the site's name in the frame (tools/social/make-loop.mjs).
+// ?frame=<hour>, ?zoom=<n>, ?chart=<key>; ?follow=0&cx=<x>&cy=<y> holds the view on a place (grid units) so the
+// map's box moves; ?view=public shows an admin what the public is told.
 import { saveLoop, drawChartFrame } from '/js/gif.js';
 
 const canvas = document.getElementById('synCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('synTip');
@@ -86,26 +88,23 @@ let frameHour = null, looping = null;
 const fieldCache = new Map();   // `${run}:${key}:${frameHour}` -> field
 const contourCache = new Map(); // `${key}:${frameHour}` -> segments by level
 const shadeImage = { canvas: null, key: '' };
-// The view: centre (grid units, x east, y north), zoom over the fit-to-window scale. The public view is
-// always centred on the game map; an admin's follows the map until it is dragged.
+// The view: centre (grid units, x east, y north), zoom over the fit-to-window scale; it follows the map
+// east-west until it is dragged or zoomed with the wheel.
 const view = { cx: 0, cy: 0, zoom: 1, follow: true, scale: 1, width: 0, height: 0 };
 const query = new URLSearchParams(location.search), SHARE = query.get('share') === '1';
 if (SHARE) document.body.classList.add('share');
 if (query.get('frame') !== null && Number.isFinite(Number(query.get('frame')))) frameHour = Number(query.get('frame'));
 const queryZoom = Number(query.get('zoom')) > 0;
-view.zoom = queryZoom ? Math.max(1, Math.min(10, Number(query.get('zoom')))) : 2;
+if (queryZoom) view.zoom = Math.max(1, Math.min(10, Number(query.get('zoom'))));
+if (query.get('follow') === '0') { view.follow = false; view.held = query.get('cx') !== null ? { cx: Number(query.get('cx')), cy: Number(query.get('cy') ?? 32) } : null; }
 
 // Who is looking. The admin key is the one the site's top bar keeps for this tab (js/site.js); the server answers with the role it gives the request, and leaves the map's drift out for the public.
 const ADMIN_KEY = 'wwAdminKey', FORCE_PUBLIC = SHARE || query.get('view') === 'public';
 const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage: the key lasts until the page is left */ } } };
-// (capturing: a GIF is being saved, which is always of the public view)
-let admin = false, capturing = false;
+let admin = false;
 function setRole(role) {
-  const now = role === 'admin' && !FORCE_PUBLIC && !capturing;
-  if (now !== admin && !now) view.follow = true;
-  admin = now;
+  admin = role === 'admin' && !FORCE_PUBLIC;
   document.body.dataset.role = admin ? 'admin' : 'public';
-  canvas.classList.toggle('pan', admin);
 }
 
 // Where the frames come from: the analysis of the last hours (/synoptic), or a short range model run
@@ -186,7 +185,7 @@ function describe() {
   const centre = mapCentre(), offNorth = (centre.y - (data.grid.ny - 1) / 2) * data.grid.km;
   const lows = data.centres.filter(c => c.type === 'L'), nearest = lows.map(c => ({ c, km: distanceKm(centre, c) })).sort((a, b) => a.km - b.km)[0];
   const facts = [['Map size', `${mi(data.map.km)} mi square`], ['From the jet axis', `${mi(Math.abs(offNorth))} mi ${offNorth >= 0 ? 'north' : 'south'}`], ['Nearest low', nearest ? `${nearest.c.hpa} hPa, ${mi(nearest.km)} mi ${compass(bearing(centre, nearest.c))}` : 'none']];
-  // (the map's own movement is for an admin only: the server leaves it out of a public frame)
+  // (how fast the map moves and what it is aiming for are for an admin only: the server leaves them out of a public frame)
   if (admin && data.slide) {
     const s = data.slide, speed = Math.hypot(s.eastKmh, s.northKmh);
     facts.splice(1, 0, ['Map drift', speed < 1 ? 'holding still' : `${mi(speed)} mph toward the ${compass(Math.atan2(s.eastKmh, s.northKmh) * 180 / Math.PI)}`], ['Today\'s aim', s.plan ? words(s.plan.kind) : '—']);
@@ -275,16 +274,11 @@ function copies(margin = 0) {
 function fitView() {
   const { nx, ny } = data.grid, fit = Math.min(view.width / nx, view.height / (ny + 1));
   view.scale = fit * view.zoom;
-  const whole = ny * view.scale + view.scale <= view.height;
-  if (!admin) {
-    // Public: the map in the middle of the chart, both ways, at every zoom (the ground past the channel's
-    // northern or southern edge is then in view when zoomed far out).
-    view.cx = mapCentre().x; view.cy = mapCentre().y;
-    return;
-  }
+  // (a view asked for by address starts on its place; otherwise a view that stops following stays where it was)
+  if (view.held) { view.cx = view.held.cx; view.cy = view.held.cy; view.held = null; }
   if (view.follow) view.cx = mapCentre().x;
   const half = view.height / 2 / view.scale;
-  view.cy = whole ? (ny - 1) / 2 : Math.min(ny - 0.5 - half, Math.max(half - 0.5, view.follow ? mapCentre().y : view.cy));
+  view.cy = ny * view.scale + view.scale <= view.height ? (ny - 1) / 2 : Math.min(ny - 0.5 - half, Math.max(half - 0.5, view.follow ? mapCentre().y : view.cy));
 }
 
 // --- Drawing.
@@ -449,9 +443,9 @@ function drawGrid() {
   for (let y = -0.5 + step; y < ny - 0.5; y += step) { const [, sy] = toScreen(0, y); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(view.width, sy); ctx.stroke(); }
   ctx.restore();
 }
-// The game map's box and its name; for an admin, an arrow for the next 6 hours of its drift as well.
+// The game map's box and its name. (No arrow for its drift, on any page: owner, 2026-11-12.)
 function drawMapBox() {
-  const m = data.map, s = admin ? data.slide : null, hours = 6, dx = s ? s.eastKmh * hours / data.grid.km : 0, dy = s ? s.northKmh * hours / data.grid.km : 0;
+  const m = data.map;
   for (const offset of copies(m.width)) {
     const [x0, y0] = toScreen(m.x + offset, m.y + m.height), [x1, y1] = toScreen(m.x + m.width + offset, m.y);
     if (x1 < -40 || x0 > view.width + 40) continue;
@@ -459,12 +453,6 @@ function drawMapBox() {
     ctx.lineWidth = 5; ctx.strokeStyle = HALO; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.lineWidth = 2.2; ctx.strokeStyle = '#ffffff'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; outlinedText('Game map', x0 + 1, y0 - 4, '#ffffff', '800 12.5px "Public Sans", system-ui, sans-serif');
-    if (Math.hypot(dx, dy) > 0.15) {
-      const [cx, cy] = toScreen(m.x + m.width / 2 + offset, m.y + m.height / 2), [ex, ey] = toScreen(m.x + m.width / 2 + dx + offset, m.y + m.height / 2 + dy), a = Math.atan2(ey - cy, ex - cx);
-      ctx.strokeStyle = ctx.fillStyle = '#ffe066'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - 9 * Math.cos(a - 0.45), ey - 9 * Math.sin(a - 0.45)); ctx.lineTo(ex - 9 * Math.cos(a + 0.45), ey - 9 * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill();
-    }
     ctx.restore();
   }
 }
@@ -499,7 +487,7 @@ function showTip(event) {
   tip.style.left = `${Math.min(left, parent.width - w - 8)}px`; tip.style.top = `${event.clientY - parent.top + 14}px`;
 }
 let drag = null;
-canvas.addEventListener('pointerdown', event => { if (!admin) return; drag = { x: event.clientX, y: event.clientY, cx: view.cx, cy: view.cy, moved: false }; canvas.setPointerCapture(event.pointerId); });
+canvas.addEventListener('pointerdown', event => { drag = { x: event.clientX, y: event.clientY, cx: view.cx, cy: view.cy, moved: false }; canvas.setPointerCapture(event.pointerId); });
 canvas.addEventListener('pointermove', event => {
   if (!drag) return showTip(event);
   const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
@@ -514,8 +502,8 @@ function zoomAt(factor, sx = view.width / 2, sy = view.height / 2) {
   const before = toGrid(sx, sy);
   view.zoom = Math.max(1, Math.min(10, view.zoom * factor));
   view.scale = Math.min(view.width / data.grid.nx, view.height / (data.grid.ny + 1)) * view.zoom;
-  // (an admin's view zooms about the pointer once it has left the map; the public view stays on the map)
-  if (admin && (!view.follow || factor !== 1)) { view.follow = false; view.cx = before.x - (sx - view.width / 2) / view.scale; view.cy = before.y + (sy - view.height / 2) / view.scale; }
+  // (the wheel and the buttons zoom about the pointer and let go of the map)
+  if (!view.follow || factor !== 1) { view.follow = false; view.cx = before.x - (sx - view.width / 2) / view.scale; view.cy = before.y + (sy - view.height / 2) / view.scale; }
   draw();
 }
 canvas.addEventListener('wheel', event => { event.preventDefault(); const box = canvas.getBoundingClientRect(); zoomAt(event.deltaY < 0 ? 1.2 : 1 / 1.2, event.clientX - box.left, event.clientY - box.top); }, { passive: false });
@@ -553,7 +541,7 @@ $('saveGif').addEventListener('click', async () => {
   stopLoop();
   const frames = data.frames, was = frameHour, button = $('saveGif'), chart = presetNow();
   const width = 960, height = Math.round(Math.min(640, width * canvas.height / canvas.width)) + 66;
-  button.disabled = true; capturing = true;
+  button.disabled = true;
   try {
     await saveLoop({
       count: frames.length, width, height, delayMs: 350, name: `weatherworld-${chart?.key ?? 'chart'}${REPLAY ? `-${DAY}` : ''}.gif`,
@@ -562,7 +550,7 @@ $('saveGif').addEventListener('click', async () => {
       onProgress: text => { $('gifNote').textContent = text; }
     });
   } catch (error) { $('gifNote').textContent = `The GIF could not be made (${error.message}).`; }
-  button.disabled = false; capturing = false; frameHour = STEPPED ? was ?? frames[0] : was; load();
+  button.disabled = false; frameHour = STEPPED ? was ?? frames[0] : was; load();
 });
 // The fonts the chart's labels use may arrive after the first drawing.
 document.fonts?.ready.then(() => { if (data) { describe(); draw(); } });

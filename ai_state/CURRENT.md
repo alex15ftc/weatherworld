@@ -114,10 +114,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     it"). Checked only by `luau-compile`, selene and a Rojo build. Not published.
   - Large-scale charts redrawn as model charts (2026-11-12, owner's request): filled colour bands, labelled
     contours and barbs on the charts' dark ground, the charts listed by level (250 mb wind, 500 mb wind, 500 mb
-    vorticity, 500 mb temperature, 850 mb charts, surface, lift, shear) in `js/pages/synopticPage.js`. Public
-    view: the game map is held in the middle and nothing shows that it moves (the server leaves the drift out
-    of a public frame, `forRole` in `server/index.js`); an admin (key, sign-in on the page) can drag the view
-    and sees the drift. The share view and the loops are the public view. Admin sign-in is in the site's top
+    vorticity, 500 mb temperature, 850 mb charts, surface, lift, shear) in `js/pages/synopticPage.js`. The
+    view (everyone, since 2026-11-12 late): as it first was: the chart follows the game map east-west (the box moves
+    north-south); dragged or wheel-zoomed, the view holds still and the map's box moves freely. No page
+    draws a drift arrow. The drift's speed and the day's aim are still admin only (`forRole` in
+    `server/index.js` leaves them out of a public frame). Admin sign-in is in the site's top
     bar only (`js/site.js`, kept for the tab); no page has its own sign-in button.
   - Day summaries (`/days`, `/day/<id>`, `server/DayArchive.js`, `tests/day-archive.mjs`): each day's
     highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
@@ -131,6 +132,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     panel (path, damage indicators) when its track is selected. "Save loop as GIF" (`js/gif.js`, made in the
     browser) is on the two replay pages, the warnings replay and the live pages. Seen working on a local engine
     (two days run; pages and GIFs checked in a browser).
+    A day has no report (list, page, save) until it has ended. A tornado's panel has a map zoomed to its track
+    with the survey's swath and damage points as diamonds (`/api/day/<id>/tornado/<tid>`; the points are kept
+    with the day's summary). The mesoanalysis map draws county lines and the larger cities (a tick box).
     Left out for now (owner, 2026-11-12): a radar loop of each tornado. It was built and measured (branch
     `web/tornado-radar`, commit `28aeabe`: about 2 s of radar thread per scan kept, 290 to 850 s a world day).
   - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card

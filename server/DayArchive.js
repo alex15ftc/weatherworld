@@ -7,19 +7,22 @@
 // The log and the outlook issues are let go after about two weeks, so a summary lasts only if an admin saves
 // it: a saved summary is a copy of everything its page and maps need, kept for good (in days.bin, beside the
 // world's state; a new world keeps the old world's saved days). The public sees only saved days; an admin
-// also sees the recent days and can save or remove them.
+// also sees the recent days and can save or remove them. A day has no report, for anyone, until it has ended.
 //
 // GET  /api/days                     the saved days; for an admin, the recent days as well
 // GET  /api/day/<id>                 one summary: a saved day's id, or, for an admin, live-<day number>
+// GET  /api/day/<id>/tornado/<tid>   one tornado's survey: its damage points and swath
 // GET  /api/day/<id>/map.svg         its maps: ?kind=outlook (&hazard=categorical|tornado|wind|hail|severe) or tracks
 // POST /api/day/<id>/save            admin: keep the live day <id> = live-<n>
 // POST /api/day/<id>/remove          admin: let a saved day go
 import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
+import zlib from 'node:zlib';
 import { convectiveDay } from '../js/reports/stormLog.js';
 import { dateText, utcStamp, worldDate } from '../js/forecast/calendar.js';
 import { EF_COLOURS, EFU_COLOUR } from '../js/forecast/productColours.js';
+import { DAMAGE_INDICATORS } from '../js/reports/damageIndicators.js';
 import { outlookSvg, outlookHeadline, localStamp } from './OutlookPublic.js';
 
 const RANK = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
@@ -36,6 +39,21 @@ function thin(points, least = 0.4) {
   for (const p of points.slice(1, -1)) { const q = out.at(-1); if (Math.hypot(p[0] - q[0], p[1] - q[1]) >= least) out.push(p); }
   out.push(points.at(-1));
   return out.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]);
+}
+
+// A tornado's survey as it is kept with its day: its damage points (where, which indicator, how bad) and the
+// swath's outline at each EF wind, deflated (a day of many tornadoes is a few hundred KB of these otherwise).
+// The points' columns: x, y (map miles), EF, estimated mph, degree of damage, and the indicator's place in DI_KEYS.
+const DI_KEYS = Object.keys(DAMAGE_INDICATORS);
+function packSurvey(t) {
+  const points = (t.points ?? []).map(p => [p.x, p.y, p.ef, Math.round(p.estimatedMph ?? p.windMph ?? 0), p.dod ?? 0, DI_KEYS.indexOf(p.di)]);
+  const contours = (t.contours ?? []).map(c => ({ ef: c.ef, polygons: c.polygons.map(ring => thin(ring, 0.05)) }));
+  return zlib.deflateSync(v8.serialize({ points, contours }));
+}
+function unpackSurvey(packed) {
+  if (!packed) return { points: [], contours: [] };
+  const { points, contours } = v8.deserialize(zlib.inflateSync(packed));
+  return { points: points.map(([x, y, ef, mph, dod, k]) => ({ x, y, ef, mph, dod, di: DI_KEYS[k] ?? null })), contours };
 }
 
 // Whether a point (map miles) is inside rings given as flat lists, by the even-odd rule.
@@ -127,6 +145,8 @@ export class DayArchive {
         startPlace: t.startPlace ?? null, endPlace: t.endPlace ?? null, ongoing: Boolean(t.ongoing), track: thin(t.centreline),
         // The survey's damage, by indicator (js/reports/damageSurvey.js), for the tornado's own panel.
         widthYards: t.maxWidthYards ?? null, towns: t.towns ?? [], counties: t.counties ?? [], indicators: (t.indicators ?? []).map(({ di, name, count, maxEf }) => ({ di, name, count, maxEf })),
+        // (its damage points and swath, for its own map: kept here, sent only when that tornado is asked for)
+        survey: packSurvey(t),
         category: areas.find(area => inside(area.rings, first[0], first[1]))?.key ?? 'NONE'
       };
     }).sort((a, b) => a.ef - b.ef);
@@ -178,6 +198,8 @@ export class DayArchive {
     const live = String(id).match(/^live-(\d+)$/);
     if (!live) return this.saved.get(String(id)) ?? null;
     const summary = this.build(Number(live[1]));
+    // (a day has no report until it has ended: its outlook can still be updated and its storms are still going)
+    if (summary && !summary.ended) return null;
     return summary ? { ...summary, id: `live-${summary.day}`, saved: false, savedId: this.saved.has(this.idOf(summary.day)) ? this.idOf(summary.day) : null } : null;
   }
 
@@ -185,13 +207,21 @@ export class DayArchive {
   summary(id) {
     const found = this.find(id);
     if (!found) return null;
-    const { product, ...rest } = found;
-    return { ...rest, replay: this.replays?.contents(found.day, found.worldId) ?? { available: false } };
+    const { product, tornadoes, ...rest } = found;
+    return { ...rest, tornadoes: tornadoes.map(({ survey, ...t }) => t), replay: this.replays?.contents(found.day, found.worldId) ?? { available: false } };
+  }
+
+  // One tornado's survey: its damage points and swath, with the indicators' names.
+  tornado(id, tornadoId) {
+    const t = this.find(id)?.tornadoes.find(x => x.id === tornadoId);
+    if (!t) return null;
+    const { points, contours } = unpackSurvey(t.survey);
+    return { id: t.id, rating: t.rating, track: t.track, points, contours, indicators: Object.fromEntries([...new Set(points.map(p => p.di))].filter(Boolean).map(di => [di, DAMAGE_INDICATORS[di]?.name ?? di])) };
   }
 
   keep(day) {
     const summary = this.build(Number(day));
-    if (!summary) return null;
+    if (!summary || !summary.ended) return null;
     const id = this.idOf(summary.day);
     this.saved.set(id, { ...summary, id, saved: true, savedAtMs: Date.now() });
     while (this.saved.size > KEPT_SAVED) this.saved.delete(this.saved.keys().next().value);
@@ -212,7 +242,9 @@ export class DayArchive {
     if (!admin) return { role: 'public', saved };
     const logged = Object.keys(this.reports?.log?.days ?? {}).map(Number), known = [...new Set([...this.days.keys(), ...logged])].sort((a, b) => b - a);
     // (a recent day's line is counted from the log, not surveyed: its ratings are worked out when it is opened)
-    const recent = known.map(day => {
+    // (only days that have ended: a day under way has no report yet)
+    const hourNow = this.runtime.engine?.world?.validHourUtc ?? 0;
+    const recent = known.filter(day => hourNow >= dayStart(day) + 24).map(day => {
       const record = this.days.get(day), log = this.reports?.log?.days?.[day], now = this.runtime.engine?.world?.validHourUtc ?? 0, id = this.idOf(day);
       return { id: `live-${day}`, day, label: dateText(dayStart(day)), ended: now >= dayStart(day) + 24, highest: record?.best?.highest ?? null, risk: record?.best ? RISK[record.best.highest] : null,
         tornadoes: (log?.tornadoes ?? []).filter(t => t.points.length).length, issues: record?.issues.length ?? 0, savedId: this.saved.has(id) ? id : null };

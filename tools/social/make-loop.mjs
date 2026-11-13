@@ -1,13 +1,15 @@
 // Makes loops of the synoptic charts for a recorded day (tools/social/README.md): each analysis of the day
 // is drawn by the site's own synoptic page in its share view (title, time, key and the site's name in the
 // frame), and the pictures are joined into an MP4 (what X, Bluesky and Reddit play) and a small GIF (Discord).
-//   node tools/social/make-loop.mjs <day dir> [--charts vort,jet] [--zoom 1.7] [--fps 5] [--size 1600x900]
+//   node tools/social/make-loop.mjs <day dir> [--charts vort,jet] [--zoom 1.7] [--fps 5] [--size 1600x900] [--hold]
 // <day dir>/raw is a day recorded by record-live.mjs. Needs Chrome or Edge, and ffmpeg.
-// The share view is the public one: the game map is held in the middle of the picture and nothing shows
-// that it moves, so the weather is seen passing over the map. Charts: jet, wind500, vort, llj, surface,
+// By default the game map is held in the middle of the picture, so the weather is seen passing over the map.
+// --hold instead holds the view on where the map is in the middle of the loop, so the map's box moves through
+// the weather. Neither draws an arrow for the map's drift. Charts: jet, wind500, vort, llj, surface,
 // moisture (js/pages/synopticPage.js PRESETS; the fields recorded are listed in record-live.mjs).
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { screenshot } from './chrome.mjs';
@@ -33,6 +35,12 @@ const NAMES = { vort: 'vorticity-500mb', wind500: 'wind-500mb', jet: 'wind-250mb
 
 const hours = fs.readdirSync(path.join(RAW, 'synoptic')).filter(f => f.endsWith('.json.gz')).map(f => Number(f.replace('.json.gz', ''))).sort((a, b) => a - b);
 if (hours.length < 2) throw new Error(`Fewer than two recorded analyses in ${RAW}/synoptic`);
+// --hold: the view stays on the map's place in the middle of the loop.
+let hold = '';
+if (args.includes('--hold')) {
+  const middle = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(RAW, 'synoptic', `${hours[hours.length >> 1].toFixed(3).padStart(9, '0')}.json.gz`)))).summary.map;
+  hold = `&follow=0&cx=${(middle.x + middle.width / 2).toFixed(2)}&cy=${(middle.y + middle.height / 2).toFixed(2)}`;
+}
 
 const server = spawn(process.execPath, [path.join(ROOT, 'scripts/site-preview.mjs'), '--port', String(PORT), '--replay', RAW], { stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((resolve, reject) => { server.stdout.once('data', resolve); server.once('exit', () => reject(new Error('The preview server did not start'))); });
@@ -41,7 +49,7 @@ try {
     const frames = path.join(OUT, 'frames', chart), name = `3-${NAMES[chart] ?? chart}`;
     fs.rmSync(frames, { recursive: true, force: true });
     hours.forEach((hour, k) => {
-      screenshot(`http://localhost:${PORT}/synoptic?share=1&chart=${chart}&frame=${hour}&zoom=${ZOOM}`, path.join(frames, `${String(k).padStart(3, '0')}.png`), { width: WIDTH, height: HEIGHT, waitMs: 4000 });
+      screenshot(`http://localhost:${PORT}/synoptic?share=1&chart=${chart}&frame=${hour}&zoom=${ZOOM}${hold}`, path.join(frames, `${String(k).padStart(3, '0')}.png`), { width: WIDTH, height: HEIGHT, waitMs: 4000 });
       process.stdout.write(`\r${chart}: ${k + 1}/${hours.length}`);
     });
     // The last analysis is held for a moment before the loop starts again.

@@ -219,7 +219,7 @@ async function serveApi(url, req, res) {
   }
   // The day summaries (DayArchive.js): saved days are public; the recent days, saving and removing are admin only.
   if (url.pathname === '/api/days') { days.sync(); return sendJson(req, res, 200, days.list(isAdmin(req)), { cacheable: false, trace }); }
-  const dayRoute = url.pathname.match(/^\/api\/day\/([A-Za-z0-9-]+)(?:\/(map\.svg|save|remove|replay\/[A-Za-z0-9/._-]+))?$/);
+  const dayRoute = url.pathname.match(/^\/api\/day\/([A-Za-z0-9-]+)(?:\/(map\.svg|save|remove|replay\/[A-Za-z0-9/._-]+|tornado\/[A-Za-z0-9._-]+))?$/);
   if (dayRoute) {
     const [, id, part] = dayRoute, admin = isAdmin(req), live = id.startsWith('live-');
     if ((live || part === 'save' || part === 'remove') && !admin) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
@@ -242,8 +242,10 @@ async function serveApi(url, req, res) {
         : what === 'warnings' ? replays.warningList(found.day, found.worldId) : null;
       return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No replay of that' }, { cacheable: Boolean(value) && found.ended, trace });
     }
+    // One tornado's survey (its damage points and swath), for its map on the day page.
+    if (part?.startsWith('tornado/')) { const survey = days.tornado(id, part.slice(8)); return sendJson(req, res, survey ? 200 : 404, survey ?? { error: 'No such tornado' }, { cacheable: false, trace }); }
     const value = days.summary(id);
-    return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No such day' }, { cacheable: false, trace });
+    return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No such day, or the day has not ended yet' }, { cacheable: false, trace });
   }
   // The warnings in effect, each with its polygon and bulletin, for the warnings page.
   if (url.pathname === '/api/warnings/active') return sendJson(req, res, 200, archive.activeWarnings(), { cacheable: false, trace });

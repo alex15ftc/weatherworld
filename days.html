@@ -12,7 +12,9 @@
        /day/<id>?card=outlook|tracks shows one picture alone, filling the window (for a screenshot).
        For 16 world days after a day its page also has replays (server/ReplayArchive.js): links to the mesoanalysis
        and large-scale pages on the day's hours, and the warnings on a time slider. Selecting a tornado's track on
-       the "What happened" picture opens its panel: its path and its survey's damage indicators. -->
+       the "What happened" picture opens its panel: a map zoomed to its path with the survey's swath and damage
+       points as diamonds (/api/day/<id>/tornado/<tid>), and its damage indicators. A day has no page until it
+       has ended. -->
   <!--site:head-->
   <style>
     .day-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -40,7 +42,21 @@
     .player .bar input[type=range] { flex: 1 1 180px; accent-color: var(--brand); }
     .player .bar .time { font: 400 14px var(--mono); color: var(--ink-2); min-width: 150px; }
     .card-frame [data-tornado] { cursor: pointer; }
-    #tornadoBox h3 { margin-top: 0; }
+    #tornadoBox h3 { margin-top: 20px; }
+    /* A tornado's survey map: its swath and damage points, as a damage survey viewer draws them. */
+    .survey { position: relative; border: 1px solid var(--rule); background: #dfe3e8; aspect-ratio: 1; }
+    .survey svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+    .survey svg.dragging { cursor: grabbing; }
+    .survey text { paint-order: stroke; stroke: #fff; stroke-linejoin: round; fill: #111; pointer-events: none; }
+    .survey text.county { fill: #6b6457; stroke: none; font-style: italic; letter-spacing: .06em; }
+    .survey .di { cursor: pointer; }
+    .survey .di:hover, .survey .di.sel { stroke: #fff; }
+    .survey-tools { position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; }
+    .survey-tools button { appearance: none; background: #fff; color: #1b1b1b; border: 1px solid #9aa0a6; border-radius: 2px; padding: 5px 10px; font: 600 14px var(--sans); cursor: pointer; }
+    .survey-tools button:hover { border-color: #1b1b1b; }
+    .survey-key { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: var(--ink-2); padding-top: 8px; }
+    .survey-key i { display: inline-block; width: 11px; height: 11px; margin-right: 7px; transform: rotate(45deg); border: 1px solid #111; }
+    #surveyPick { min-height: 3em; font-size: 15.5px; margin: 8px 0 0; }
     .card-frame [data-tornado]:hover path:not(:last-child), .card-frame [data-tornado].sel path:not(:last-child) { stroke-width: 9; }
     body.share #replayBox, body.share #tornadoBox { display: none !important; }
     /* One picture alone, filling the window. */
@@ -99,7 +115,7 @@
       <p class="empty" id="savedEmpty" hidden>No day has been saved yet.</p>
     </section>
     <section class="section" id="recentBox" hidden>
-      <h2>Recent days <span id="adminNote" style="font-weight:400">Admin: save a day to keep its summary; the world's log lets days go after about two weeks.</span></h2>
+      <h2>Recent days <span id="adminNote" style="font-weight:400">Admin: save a day to keep its summary; the world's log lets days go after about two weeks. A day is listed once it has ended.</span></h2>
       <div class="table-scroll"><table class="list" id="recentList"></table></div>
     </section>
     <p class="muted" id="publicNote" style="margin-top:22px;font-size:15px" hidden>An admin (sign in at the top of the page) also sees the recent days here and can save them.</p>
@@ -117,12 +133,18 @@
     </section>
     <section class="section day-more" id="tornadoBox" hidden>
       <h2 id="tornadoTitle">Tornado</h2>
-      <div class="split">
+      <div class="split split--map">
+        <div>
+          <div class="survey">
+            <svg id="surveyMap" viewBox="0 0 10 10" role="group" aria-label="The tornado's track, swath and damage points"></svg>
+            <div class="survey-tools"><button id="surveyIn" title="Zoom in">+</button><button id="surveyOut" title="Zoom out">−</button><button id="surveyAll">Whole track</button></div>
+          </div>
+          <div class="survey-key" id="surveyKey"></div>
+          <p id="surveyPick" class="muted">Each diamond is a damage point of the survey, coloured by its EF rating. Select one for what was damaged.</p>
+        </div>
         <div>
           <dl class="facts" id="tornadoFacts"></dl>
           <p style="margin-top:14px"><label>Another tornado: <select id="tornadoPick" style="font:inherit;padding:4px 8px;max-width:100%"></select></label></p>
-        </div>
-        <div>
           <h3>Damage indicators</h3>
           <div class="table-scroll"><table class="list" id="tornadoDamage"></table></div>
           <p class="empty" id="tornadoNoDamage" hidden>The survey found no damage points along this track.</p>
@@ -197,7 +219,7 @@ async function showList() {
   $('#savedEmpty').hidden = list.saved.length > 0;
   $('#recentBox').hidden = !admin;
   if (admin) $('#recentList').innerHTML = '<thead><tr><th>Day</th><th>Forecast</th><th>Tornadoes</th><th>State</th><th></th></tr></thead><tbody>' + list.recent.map(d =>
-    `<tr><td><a href="/day/${d.id}">${escapeHtml(d.label)}</a></td><td>${risk(d)}</td><td class="num">${d.tornadoes}</td><td>${d.ended ? 'ended' : 'under way'}${d.savedId ? ` · <a href="/day/${d.savedId}">saved</a>` : ''}</td><td class="act"><button data-save="${d.id}">${d.savedId ? 'Save again' : 'Save'}</button></td></tr>`).join('') + '</tbody>';
+    `<tr><td><a href="/day/${d.id}">${escapeHtml(d.label)}</a></td><td>${risk(d)}</td><td class="num">${d.tornadoes}</td><td>${d.savedId ? `<a href="/day/${d.savedId}">saved</a>` : 'not saved'}</td><td class="act"><button data-save="${d.id}">${d.savedId ? 'Save again' : 'Save'}</button></td></tr>`).join('') + '</tbody>';
 }
 $('#listView').addEventListener('click', async event => {
   const save = event.target.dataset?.save, remove = event.target.dataset?.remove;
@@ -226,12 +248,12 @@ async function showDay() {
   if (alone) { document.body.classList.add('share'); document.querySelector(`.section[data-card="${alone === 'tracks' ? 'tracks' : 'outlook'}"]`).classList.add('shown'); }
   let day;
   try { day = await ask(`/api/day/${id}`); }
-  catch (error) { $('#title').textContent = error.status === 401 ? 'This day has not been saved' : 'No such day'; $('#lede').textContent = error.status === 401 ? 'Only saved days are public. Sign in as admin at the top of the page to see recent days.' : 'There is no summary at this address.'; $('#dayView').hidden = true; return; }
+  catch (error) { $('#title').textContent = error.status === 401 ? 'This day has not been saved' : 'No report for this day'; $('#lede').textContent = error.status === 401 ? 'Only saved days are public. Sign in as admin at the top of the page to see recent days.' : 'There is no report at this address. A day has one only once it has ended (1200 UTC).'; $('#dayView').hidden = true; return; }
   const o = day.outlook, n = day.numbers, top = o?.highest;
   document.title = `${day.label} · Past days · WeatherWorld`;
   $('#title').textContent = `${day.label}${o ? `: ${o.risk}` : ''}`;
   $('#lede').textContent = o ? o.headline : 'No outlook was kept for this day.';
-  $('#stamp').innerHTML = `<b>Day</b> ${escapeHtml(day.label)}, 1200 UTC to 1200 UTC${day.ended ? '' : ' · <b>still under way</b>'}${day.saved ? ` · <b>saved</b> ${new Date(day.savedAtMs).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ' · <b>not saved</b>'}`;
+  $('#stamp').innerHTML = `<b>Day</b> ${escapeHtml(day.label)}, 1200 UTC to 1200 UTC${day.saved ? ` · <b>saved</b> ${new Date(day.savedAtMs).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ' · <b>not saved</b>'}`;
   $('#crumbList').innerHTML = '<a href="/days">Past days</a>'; $('#crumbDay').hidden = false; $('#crumbDay').textContent = day.label;
   for (const link of document.querySelectorAll('[data-alone]')) link.href = `/day/${id}?card=${link.dataset.alone}`;
 
@@ -297,7 +319,7 @@ async function showDay() {
   if (!live) { try { admin = (await ask('/api/days')).role === 'admin'; } catch { admin = false; } }
   $('#dayAdmin').hidden = !admin;
   $('#saveDay').hidden = !live; $('#removeDay').hidden = live;
-  $('#dayNote').innerHTML = live ? (day.savedId ? `Already saved as <a href="/day/${day.savedId}">${day.savedId}</a>; saving again replaces it.` : `Not saved. ${day.ended ? '' : 'The day is still under way: a summary saved now will be of the day so far.'}`) : '';
+  $('#dayNote').innerHTML = live ? (day.savedId ? `Already saved as <a href="/day/${day.savedId}">${day.savedId}</a>; saving again replaces it.` : 'Not saved.') : '';
 }
 $('#saveDay').addEventListener('click', async () => {
   $('#saveDay').disabled = true;
@@ -320,13 +342,13 @@ async function showReplays(day) {
   const pick = $('#tornadoPick'), list = [...day.tornadoes].sort((a, b) => b.ef - a.ef || b.lengthMi - a.lengthMi);
   pick.innerHTML = list.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.rating)} · ${t.lengthMi.toFixed(1)} mi${t.startPlace ? ` · ${escapeHtml(t.startPlace)}` : ''}</option>`).join('');
   for (const group of document.querySelectorAll('#cardTracks [data-tornado]')) group.addEventListener('click', () => showTornado(group.dataset.tornado, true));
-  if (!replay.available) return;
   await loadCalendar();
+  try { counties = await ask('/api/map/counties'); } catch { counties = null; }
+  if (!replay.available) return;
   $('#replayNote').textContent = `kept until ${utcText(replay.expiresHourUtc)}`;
   $('#replayMeso').href = `/day/${id}/analysis`; $('#replaySynoptic').href = `/day/${id}/synoptic`;
   if (!replay.mesoHours.length) $('#replayMeso').closest('li').hidden = true;
   if (!replay.synopticHours.length) $('#replaySynoptic').closest('li').hidden = true;
-  try { counties = await ask('/api/map/counties'); } catch { counties = null; }
   try { warnings = (await ask(`/api/day/${id}/replay/warnings`)).warnings; } catch { warnings = []; }
   drawWarnings();
 }
@@ -385,8 +407,91 @@ $('#warnGif').addEventListener('click', async () => {
   button.disabled = false; slider.value = was; drawWarnings();
 });
 
-// ---- One tornado, opened from its track on the picture: where it went and what its survey found damaged.
-function showTornado(tid, scroll) {
+// ---- One tornado, opened from its track on the picture: a map zoomed to its path with the survey's swath and
+// damage points (diamonds, coloured by rating, as a damage survey viewer shows them), and what was damaged.
+const survey = { id: null, data: null, view: null, home: null, picked: null };
+const EFU = '#9ca3af', efColour = ef => (ef >= 0 ? EF_COLOURS[Math.min(5, ef)] : EFU);
+// The square of the map (miles) that holds the track, swath and points, with room around them.
+function surveyHome(data) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const take = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
+  for (const [x, y] of data.track) take(x, y);
+  for (const p of data.points) take(p.x, p.y);
+  for (const c of data.contours) for (const ring of c.polygons) for (const [x, y] of ring) take(x, y);
+  if (!Number.isFinite(x0)) return { x: 0, y: 0, size: counties?.miles ?? 500 };
+  const size = Math.max(3, (x1 - x0) * 1.25, (y1 - y0) * 1.25);
+  return { x: (x0 + x1) / 2 - size / 2, y: (y0 + y1) / 2 - size / 2, size };
+}
+function drawSurvey() {
+  const { data, view: v } = survey, map = $('#surveyMap'), u = v.size / 100, parts = [], miles = counties?.miles ?? 500;
+  const seen = (x, y, pad = 0) => x >= v.x - pad && x <= v.x + v.size + pad && y >= v.y - pad && y <= v.y + v.size + pad;
+  map.setAttribute('viewBox', `${v.x} ${v.y} ${v.size} ${v.size}`);
+  parts.push(`<rect x="0" y="0" width="${miles}" height="${miles}" fill="#f4f1e8"/>`);
+  if (counties) {
+    parts.push(`<path d="${counties.counties.map(c => c.rings.map(ring => `M${ring.map(([x, y]) => `${x} ${y}`).join('L')}Z`).join('')).join('')}" fill="none" stroke="#6f6a5f" stroke-opacity=".5" stroke-width="${u * 0.18}"/>`);
+    if (v.size <= 90) for (const c of counties.counties) {
+      const ring = c.rings[0]; if (!ring?.length) continue;
+      const cx = ring.reduce((a, q) => a + q[0], 0) / ring.length, cy = ring.reduce((a, q) => a + q[1], 0) / ring.length;
+      if (seen(cx, cy)) parts.push(`<text class="county" x="${cx}" y="${cy}" font-size="${u * 2.3}" text-anchor="middle">${escapeHtml(c.name.toUpperCase())}</text>`);
+    }
+  }
+  // The swath: where the wind reached each rating's speed, the weakest outermost.
+  for (const c of [...data.contours].sort((a, b) => a.ef - b.ef)) parts.push(`<path d="${c.polygons.map(ring => `M${ring.map(([x, y]) => `${x} ${y}`).join('L')}Z`).join('')}" fill="${efColour(c.ef)}" fill-opacity=".3" stroke="${efColour(c.ef)}" stroke-width="${u * 0.2}"/>`);
+  if (data.track.length > 1) parts.push(`<path d="M${data.track.map(([x, y]) => `${x} ${y}`).join('L')}" fill="none" stroke="#111" stroke-width="${u * 0.3}" stroke-dasharray="${u * 1.2} ${u * 0.9}"/>`);
+  if (counties) {
+    const taken = [];
+    for (const t of counties.towns.filter(t => seen(t.x, t.y)).sort((a, b) => b.population - a.population).slice(0, 12)) {
+      const size = u * 2.6, box = [t.x - u, t.y - size, t.x + u * 2 + t.name.length * size * 0.58, t.y + u];
+      if (taken.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
+      taken.push(box);
+      parts.push(`<circle cx="${t.x}" cy="${t.y}" r="${u * 0.7}" fill="#222" stroke="#fff" stroke-width="${u * 0.25}"/><text x="${t.x + u * 1.4}" y="${t.y + u * 0.9}" font-size="${size}" stroke-width="${u * 0.6}">${escapeHtml(t.name)}</text>`);
+    }
+  }
+  // The damage points: a diamond each, the worst drawn last so it is on top.
+  const r = u * 1.0;
+  data.points.map((q, k) => ({ q, k })).filter(({ q }) => seen(q.x, q.y, r)).sort((a, b) => a.q.ef - b.q.ef).forEach(({ q, k }) => {
+    parts.push(`<path class="di${survey.picked === k ? ' sel' : ''}" data-point="${k}" d="M${q.x} ${q.y - r}L${q.x + r} ${q.y}L${q.x} ${q.y + r}L${q.x - r} ${q.y}Z" fill="${efColour(q.ef)}" stroke="#111" stroke-width="${u * (survey.picked === k ? 0.5 : 0.22)}"><title>${escapeHtml(data.indicators[q.di] ?? 'Damage')} · EF${q.ef} · about ${q.mph} mph</title></path>`);
+  });
+  // A scale: one mile, or five when the view is wide.
+  const bar = v.size > 30 ? 5 : 1;
+  parts.push(`<path d="M${v.x + u * 3} ${v.y + v.size - u * 3}h${bar}" stroke="#111" stroke-width="${u * 0.5}"/><text x="${v.x + u * 3}" y="${v.y + v.size - u * 4.2}" font-size="${u * 2.4}" stroke-width="${u * 0.6}">${bar} mile${bar === 1 ? '' : 's'}</text>`);
+  map.innerHTML = parts.join('');
+}
+function pickPoint(k) {
+  survey.picked = k;
+  const q = survey.data.points[k];
+  $('#surveyPick').className = '';
+  $('#surveyPick').innerHTML = `<b>${escapeHtml(survey.data.indicators[q.di] ?? 'Damage')}</b> · EF${q.ef} · wind estimated at ${q.mph} mph${q.dod ? ` · degree of damage ${q.dod}` : ''}`;
+  drawSurvey();
+}
+{
+  const map = $('#surveyMap');
+  let drag = null;
+  const zoom = (factor, fx = 0.5, fy = 0.5) => {
+    const v = survey.view; if (!v) return;
+    const size = Math.max(0.6, Math.min((counties?.miles ?? 500), v.size * factor));
+    survey.view = { x: v.x + (v.size - size) * fx, y: v.y + (v.size - size) * fy, size }; drawSurvey();
+  };
+  map.addEventListener('wheel', event => { event.preventDefault(); const box = map.getBoundingClientRect(); zoom(event.deltaY < 0 ? 1 / 1.25 : 1.25, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height); }, { passive: false });
+  map.addEventListener('pointerdown', event => { if (survey.view) drag = { x: event.clientX, y: event.clientY, view: { ...survey.view }, moved: false, target: event.target }; });
+  map.addEventListener('pointermove', event => {
+    if (!drag) return;
+    const box = map.getBoundingClientRect(), dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true; map.classList.add('dragging');
+    survey.view = { ...drag.view, x: drag.view.x - dx / box.width * drag.view.size, y: drag.view.y - dy / box.height * drag.view.size }; drawSurvey();
+  });
+  addEventListener('pointerup', () => {
+    if (!drag) return;
+    // (a press that did not move is a pick of the diamond under it)
+    if (!drag.moved && drag.target?.dataset?.point !== undefined) pickPoint(Number(drag.target.dataset.point));
+    drag = null; map.classList.remove('dragging');
+  });
+  $('#surveyIn').addEventListener('click', () => zoom(1 / 1.5));
+  $('#surveyOut').addEventListener('click', () => zoom(1.5));
+  $('#surveyAll').addEventListener('click', () => { if (survey.home) { survey.view = { ...survey.home }; drawSurvey(); } });
+}
+async function showTornado(tid, scroll) {
   const t = theDay.tornadoes.find(x => x.id === tid);
   if (!t) return;
   for (const group of document.querySelectorAll('#cardTracks [data-tornado]')) group.classList.toggle('sel', group.dataset.tornado === tid);
@@ -406,6 +511,16 @@ function showTornado(tid, scroll) {
   $('#tornadoNoDamage').hidden = damage.length > 0;
   if (scroll) $('#tornadoBox').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 
+  // Its map: zoomed to the path, with the swath and every damage point.
+  survey.id = tid; survey.picked = null;
+  $('#surveyPick').className = 'muted'; $('#surveyPick').textContent = 'Each diamond is a damage point of the survey, coloured by its EF rating. Select one for what was damaged.';
+  let data;
+  try { data = await ask(`/api/day/${id}/tornado/${encodeURIComponent(tid)}`); } catch { data = { track: t.track, points: [], contours: [], indicators: {} }; }
+  if (survey.id !== tid) return;
+  survey.data = data; survey.home = surveyHome(data); survey.view = { ...survey.home };
+  const counts = [0, 1, 2, 3, 4, 5].map(ef => data.points.filter(q => q.ef === ef).length);
+  $('#surveyKey').innerHTML = data.points.length ? counts.map((n, ef) => (n ? `<span><i style="background:${EF_COLOURS[ef]}"></i>EF${ef} damage (${n})</span>` : '')).join('') + '<span>Shaded: where the wind reached each rating</span>' : '<span>No damage points: the survey found nothing along this track to rate it by.</span>';
+  drawSurvey();
 }
 
 // The pictures are laid out at 1600 x 900 and scaled to their frames.

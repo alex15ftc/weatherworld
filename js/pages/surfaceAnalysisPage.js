@@ -10,7 +10,7 @@ import { saveLoop, drawChartFrame } from '/js/gif.js';
 
 const canvas = document.getElementById('surfaceCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('surfaceTip');
 const $ = id => document.getElementById(id);
-const controls = { stations: $('showStations'), isobars: $('showIsobars'), fronts: $('showFronts'), storms: $('showStorms'), parameter: $('parameter') };
+const controls = { stations: $('showStations'), isobars: $('showIsobars'), fronts: $('showFronts'), storms: $('showStorms'), counties: $('showCounties'), parameter: $('parameter') };
 const COLOURS = { cold: '#3d8bff', warm: '#ff4d5e', stationary: '#b06cff', dryline: '#d98a2b', outflow: '#e8d44d' };
 const NAMES = { cold: 'Cold front', warm: 'Warm front', stationary: 'Stationary front', dryline: 'Dryline', outflow: 'Outflow boundary' };
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
@@ -27,6 +27,10 @@ const fieldCache = new Map();  // `${key}:${frameHour}` -> field (a frame's fiel
 
 // --- Loading.
 async function getJson(url) { const response = await fetch(url, { cache: 'no-store' }); if (!response.ok) throw new Error(String(response.status)); return response.json(); }
+
+// The map's county lines and larger cities (map miles), asked for once.
+let base = null;
+getJson('/api/map/counties').then(c => { base = { miles: c.miles, counties: c.counties, towns: c.towns.filter(t => t.kind !== 'town' || t.population >= 20000).sort((a, b) => b.population - a.population).slice(0, 14) }; draw(); }).catch(() => {});
 
 async function load() {
   try {
@@ -125,6 +129,7 @@ function draw() {
   ctx.beginPath(); ctx.rect(left, top, size, size); ctx.clip();
   ctx.fillStyle = '#101822'; ctx.fillRect(left, top, size, size);
   if (field && style !== 'contours') drawShading(left, top, size);
+  if (base && controls.counties.checked) drawCounties(px);
   if (controls.isobars.checked) drawIsobars(px);
   if (field && style !== 'shade') drawContours(field.values, field.levels, 'rgba(255,255,255,.82)', px, field.decimals);
   if (field?.second) drawContours(field.second.values, field.second.levels, field.second.colour, px, 0, [6, 4]);
@@ -133,6 +138,7 @@ function draw() {
   if (controls.isobars.checked) drawCentres(px);
   if (controls.stations.checked) drawStations(px);
   if (controls.storms.checked) drawStorms(px);
+  if (base && controls.counties.checked) drawCities(px);
   if (selected) { const [x, y] = px(selected.xKm, selected.yKm); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y); ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke(); }
   ctx.restore();
   ctx.strokeStyle = '#2c3948'; ctx.lineWidth = 1; ctx.strokeRect(left + 0.5, top + 0.5, size - 1, size - 1);
@@ -240,6 +246,24 @@ function drawBoundaries(px) {
     }
     ctx.restore();
   }
+}
+
+// County lines under the analysis, and the larger cities named over it.
+function drawCounties(px) {
+  const k = data.domain.widthKm / base.miles;
+  ctx.save(); ctx.strokeStyle = 'rgba(148,163,184,.3)'; ctx.lineWidth = 0.7; ctx.beginPath();
+  for (const c of base.counties) for (const ring of c.rings) ring.forEach(([x, y], i) => { const [a, b] = px(x * k, y * k); i ? ctx.lineTo(a, b) : ctx.moveTo(a, b); });
+  ctx.stroke(); ctx.restore();
+}
+function drawCities(px) {
+  const k = data.domain.widthKm / base.miles;
+  ctx.save(); ctx.font = '600 11px "Public Sans", system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  for (const t of base.towns) {
+    const [x, y] = px(t.x * k, t.y * k);
+    ctx.fillStyle = '#ffd98a'; ctx.strokeStyle = '#0b1118'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, t.kind === 'metro' ? 3.5 : 2.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeText(t.name, x + 6, y); ctx.fillText(t.name, x + 6, y);
+  }
+  ctx.restore();
 }
 
 function drawStations(px) {
@@ -411,7 +435,7 @@ $('worldNew').addEventListener('click', async () => {
 });
 
 // --- Controls.
-for (const control of [controls.stations, controls.isobars, controls.fronts, controls.storms]) control.addEventListener('change', draw);
+for (const control of [controls.stations, controls.isobars, controls.fronts, controls.storms, controls.counties]) control.addEventListener('change', draw);
 controls.parameter.addEventListener('change', load);
 for (const button of document.querySelectorAll('[data-style]')) button.addEventListener('click', () => { style = button.dataset.style; for (const other of document.querySelectorAll('[data-style]')) other.classList.toggle('on', other === button); draw(); });
 

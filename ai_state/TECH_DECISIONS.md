@@ -35,7 +35,9 @@
 
 ### 2026-11-12 — The public is not shown that the game map moves; day summaries are kept only when an admin saves them
 
-- Status: `active`
+- Status: `active`, changed the same day by the owner: the view is as it first was for everyone (it follows the map east-west;
+  dragged or zoomed, the map's box moves through the frames), and no page draws the drift arrow. The drift's speed and the
+  day's aim stay admin only. A day has no report until it has ended.
 - Decision: on the large-scale charts the public view holds the game map in the middle of the chart, and the
   server leaves the map's drift (speed, direction, the day's aim) out of the frames it sends the public; an admin
   (the admin key) gets them and the draggable view. Pictures and loops made for sharing use the public view.

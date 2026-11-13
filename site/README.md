@@ -54,11 +54,14 @@ Some pages show more to an admin. The sign-in is in the top bar of every page an
 the `WEATHER_ADMIN_KEY`, kept for the tab; signing in or out loads the page again with the new role; a local
 engine with no key treats this machine as admin). The server decides the role on every request.
 
-- Large-scale charts (`/synoptic`, `/models/large-scale`): the public view holds the game map in the middle of
-  the chart, east-west and north-south at every zoom, and shows nothing of its drift (the server leaves the
-  drift out of a public frame). The charts are drawn on a dark ground (owner's choice). An admin can
-  drag the view and sees the drift arrow, speed and the day's aim. `?view=public` shows an admin the public
-  view; the share view is always the public one.
+- Large-scale charts (`/synoptic`, `/models/large-scale`): the chart follows the game map east-west, so the
+  box moves north and south; once the chart is dragged or zoomed with the wheel the view holds still and the
+  map's box moves through the frames (for everyone; "Map" and "Whole model" follow it again). No page draws
+  an arrow for the drift; its speed and the day's aim are told to an admin only (the server leaves them out of a
+  public frame). The charts are drawn on a dark ground (owner's choice). `?view=public` shows an admin what the
+  public is told; `?follow=0&cx=&cy=` holds the view on a place.
+- Mesoanalysis (`/analysis`) draws county lines and the larger cities under "Show".
+- A day has no page, for anyone, until it has ended.
 - Day summaries (`/days`): saved days are public; recent days, saving and removing are admin only.
 - Chasers and the mesoanalysis page's world controls: as before.
 
@@ -67,11 +70,12 @@ engine with no key treats this machine as admin). The server decides the role on
 A day's replay (`server/ReplayArchive.js`) is kept for 16 world days (two real days) after the day: the hourly
 mesoanalysis and large-scale frames and every warning. The day page (`/day/<id>`) links to the two replay
 pages and plays the warnings on a time slider. Selecting a tornado's track on the "What happened" picture opens
-its panel: its path and its survey's damage indicators (kept with the saved summary, for good).
+its panel: a map zoomed to its path with the survey's swath and damage points as diamonds coloured by rating
+(select one for what was damaged), and its damage indicators (kept with the saved summary, for good).
 
 "Save loop as GIF" (`js/gif.js`) makes the animated picture in the browser from whatever the page is showing: on
 the mesoanalysis and large-scale pages (live or replay) and the warnings replay. A GIF of the large-scale charts
-is always of the public view.
+is of the view on show.
 
 ## Looking at changes
 

@@ -10,8 +10,8 @@
                                (server/ShortRangeRuntime.js synopticFrame)
        ?share=1 shows only the chart, with its title, time, key and the site's name in the frame, for
        pictures and loops (tools/social/make-loop.mjs).
-       The public view holds the game map in the middle of the chart and shows nothing of its drift; an admin
-       (the admin key, as on the chasers page) can drag the view and sees the drift. -->
+       The chart follows the game map east-west until it is dragged or zoomed, when the map's box moves freely. No arrow is drawn for the map's drift;
+       an admin (signed in at the top of the page) is told its speed and the day's aim. -->
   <!--site:head-->
   <style>
     #presets h3 { font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); margin: 8px 0 4px; }
@@ -25,10 +25,9 @@
     #legendBar { width: 100%; height: 34px; background: none; }
     .syn-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; }
     .syn-facts span { color: var(--ink-2); } .syn-facts b { text-align: right; font-weight: 600; }
-    #synCanvas { cursor: crosshair; touch-action: none; }
-    #synCanvas.pan { cursor: grab; }
-    #synCanvas.pan.dragging { cursor: grabbing; }
-    /* What only an admin sees: the map's drift, and that the view can leave the map. */
+    #synCanvas { cursor: grab; touch-action: none; }
+    #synCanvas.dragging { cursor: grabbing; }
+    /* What only an admin sees: how fast the map moves and what it is aiming for. */
     body:not([data-role="admin"]) [data-role-only="admin"], body[data-role="admin"] [data-role-only="public"] { display: none !important; }
     body:not([data-source="analysis"]) [data-mode="analysis"], body:not([data-source="model"]) [data-mode="model"], body:not([data-source="replay"]) [data-mode="replay"] { display: none !important; }
     body:not([data-source="analysis"]) #frameLatest { display: none; }
@@ -113,22 +112,19 @@
       </section>
       <section class="group">
         <h2>Show</h2>
-        <label><input type="checkbox" id="showMap" checked /> <span data-role-only="public">The game map</span><span data-role-only="admin">The game map and its drift</span></label>
+        <label><input type="checkbox" id="showMap" checked /> The game map's box</label>
         <label><input type="checkbox" id="showCentres" checked /> Highs and lows</label>
         <label><input type="checkbox" id="showGrid" checked /> 1,000 km grid</label>
       </section>
       <section class="group">
         <h2>The map in the model</h2>
         <div class="syn-facts" id="synFacts"><span>Waiting…</span><b></b></div>
-        <small data-role-only="public">The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km
-          north-south, with the jet stream's core along its middle. The game map is the box in the middle of the chart. These
-          are the large-scale fields: the map's own analysis adds daytime heating, the lee trough, cold pools and storms.</small>
-        <small data-role-only="admin">The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km
-          north-south, with the jet stream's core along its middle. The game map (the box) reads its weather from wherever it
-          sits and drifts along the wave train to meet the day's weather; the arrow is its next 6 hours. The public view holds
-          the map in the middle of the chart and shows none of this.</small>
+        <small>The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km north-south, with the
+          jet stream's core along its middle. The game map is the box: the chart follows it east-west; drag or zoom the
+          chart and the box moves through the times ("Map" follows it again). These are the
+          large-scale fields: the map's own analysis adds daytime heating, the lee trough, cold pools and storms.</small>
       </section>
-      <p class="note" data-role-only="admin" style="font-size:13.5px;color:var(--ink-2);margin:10px 0 0">Admin view: the chart can be dragged and the map's drift is shown. <a href="?view=public">See the public view</a></p>
+      <p class="note" data-role-only="admin" style="font-size:13.5px;color:var(--ink-2);margin:10px 0 0">Admin view: the map's speed and the day's aim are listed above. <a href="?view=public">See what the public is told</a></p>
     </aside>
     <div class="bench__main">
       <div class="share-strip top"><b id="shareTitle"></b><span class="time" id="shareTime"></span></div>

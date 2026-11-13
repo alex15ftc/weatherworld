@@ -15,7 +15,7 @@ const outlook = (issuedHourUtc, highest) => ({
   category: [{ key: 'SLGT', rings: [square(50, 50, 450, 450)] }, { key: 'MDT', rings: [square(150, 150, 350, 350)] }, ...(highest === 'HIGH' ? [{ key: 'HIGH', rings: [square(200, 200, 300, 300)] }] : [])],
   discussion: `Day 1 Convective Outlook\n\n...THERE IS A ${highest === 'HIGH' ? 'HIGH' : 'MODERATE'} RISK OF SEVERE THUNDERSTORMS OVER THE FLINT HILLS...\n\n...SUMMARY...\nSevere thunderstorms are expected today over the Flint Hills. The main hazards: several tornadoes; large hail. The greatest risk is over the Flint Hills.\n`
 });
-const tornado = (id, rating, x, y, lengthMi) => ({ id, rating, peakWindMph: rating === 'EFU' ? null : 80 + 30 * Number(rating[2]), lengthMi, durationMinutes: lengthMi * 1.5, startHourUtc: 22, startPlace: 'A', endPlace: 'B', ongoing: false,
+const tornado = (id, rating, x, y, lengthMi) => ({ id, rating, points: rating === 'EFU' ? [] : [{ di: 'TH', x, y, ef: Number(rating[2]), estimatedMph: 100, dod: 3 }, { di: 'FR12', x: x + 1, y: y - 0.5, ef: 0, estimatedMph: 70, dod: 1 }], contours: [{ ef: 0, polygons: [[[x, y - 0.1], [x + lengthMi, y - lengthMi / 2 - 0.1], [x + lengthMi, y - lengthMi / 2 + 0.1], [x, y + 0.1]]] }], peakWindMph: rating === 'EFU' ? null : 80 + 30 * Number(rating[2]), lengthMi, durationMinutes: lengthMi * 1.5, startHourUtc: 22, startPlace: 'A', endPlace: 'B', ongoing: false,
   centreline: Array.from({ length: 200 }, (_, k) => [x + k * lengthMi / 200, y - k * lengthMi / 400]) });
 const surveyed = [tornado('S1-T1', 'EF3', 250, 250, 40), tornado('S2-T1', 'EF2', 160, 160, 12), tornado('S3-T1', 'EF0', 60, 60, 2), tornado('S4-T1', 'EF1', 10, 10, 3), tornado('S5-T1', 'EFU', 400, 400, 1)];
 
@@ -42,6 +42,12 @@ assert.deepEqual(record.issues.map(i => [i.issuedHourUtc, i.highest]), [[12, 'MD
 assert.equal(record.best.issuedHourUtc, 20, 'the High risk issue is the one kept');
 assert.deepEqual([...record.warnings.values()].sort(), ['severe', 'tornado'], 'each warning of the day once');
 
+// A day has no report until it has ended: not listed, not answered, not saved.
+world.validHourUtc = 30;
+assert.equal(days.summary('live-1'), null, 'no report of a day under way');
+assert.deepEqual(days.list(true).recent, [], 'nor is it listed');
+assert.equal(days.keep(1), null, 'nor can it be saved');
+
 // The live summary: for an admin's eyes until it is saved.
 world.validHourUtc = 37;
 const live = days.summary('live-1'), n = live.numbers;
@@ -63,6 +69,15 @@ const long = live.tornadoes.find(t => t.id === 'S1-T1').track;
 assert.ok(long.length < 120 && long.length > 20, `a long track is thinned (${long.length} points)`);
 assert.deepEqual(long[0], [250, 250]); assert.deepEqual(long.at(-1).map(Math.round), [290, 230], 'its ends are kept');
 
+// One tornado's survey: its damage points (with what was damaged) and swath; the summary itself does not carry them.
+assert.equal(live.tornadoes[0].survey, undefined, 'the surveys are not sent with the summary');
+const survey = days.tornado('live-1', 'S1-T1');
+assert.deepEqual(survey.points, [{ x: 250, y: 250, ef: 3, mph: 100, dod: 3, di: 'TH' }, { x: 251, y: 249.5, ef: 0, mph: 70, dod: 1, di: 'FR12' }]);
+assert.equal(survey.indicators.TH, 'Hardwood tree'); assert.ok(survey.indicators.FR12);
+assert.equal(survey.contours[0].ef, 0); assert.equal(survey.contours[0].polygons[0].length, 4);
+assert.deepEqual(days.tornado('live-1', 'S5-T1').points, [], 'an unrated tornado has no damage points');
+assert.equal(days.tornado('live-1', 'S9-T9'), null);
+
 // The maps: the outlook as issued, and the tracks over its areas.
 assert.match(days.mapSvg('live-1', 'outlook', 'categorical'), /Risk Level/);
 const tracks = days.mapSvg('live-1', 'tracks');
@@ -73,8 +88,8 @@ assert.equal(days.mapSvg('nothing', 'tracks'), null);
 
 // The lists: nothing is public until a day is saved.
 assert.deepEqual(days.list(false), { role: 'public', saved: [] });
-// (day 2 is there as well: a warning of it has been counted)
-assert.deepEqual(days.list(true).recent.map(d => [d.id, d.ended, d.highest, d.tornadoes, d.savedId]), [['live-2', false, null, 0, null], ['live-1', true, 'HIGH', 5, null]]);
+// (day 2, under way, is not listed)
+assert.deepEqual(days.list(true).recent.map(d => [d.id, d.ended, d.highest, d.tornadoes, d.savedId]), [['live-1', true, 'HIGH', 5, null]]);
 assert.equal(days.summary('day-1'), null);
 
 // Saved: a full copy under its own id, public, kept across a restart and after the world has let the day go.
@@ -89,6 +104,7 @@ const later = make();
 assert.equal(later.saved.size, 1, 'the saved day came back from the file');
 assert.equal(later.summary('day-1').numbers.tornadoes, 5);
 assert.match(later.mapSvg('day-1', 'tracks'), /stroke-linecap="round"/, 'its maps can still be drawn');
+assert.equal(later.tornado('day-1', 'S1-T1').points.length, 2, 'and its tornadoes\' surveys are kept with it');
 assert.equal(later.days.get(1).best.highest, 'HIGH', 'the days being gathered come back too (the same world)');
 runtime.worldId = 'world-2';
 const other = make();
