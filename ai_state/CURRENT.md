@@ -20,7 +20,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
-- Public name is "High Risk" (2026-11-13, not deployed yet): the site's pages, saved pictures and GIFs (files
+- Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files
   `highrisk-...`), watch text and the social kit say High Risk. The repo, engine internals, service names and
   the Roblox place still say WeatherWorld.
 - Public outlook pages (2026-11-11, deployed to the engine from `5da98f7`): `/outlook/day1` .. `day3`
@@ -127,7 +127,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
     which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
     page has the two post pictures (PNG made in the browser, or opened alone), the numbers, and the tornado tracks alone on a time slider (GIF or PNG, from the summary, so any
-    saved day has it; not deployed yet). Days before this was deployed have no outlook kept.
+    saved day has it). Days before this was deployed have no outlook kept.
   - Day replays (2026-11-12, `server/ReplayArchive.js`, `tests/replay-archive.mjs`): each world day's hourly
     mesoanalysis and large-scale frames and every warning are kept in `replays/<world>-<day>.bin.gz` beside the
     world's state (about 13 MB a day) for 16 world days. A day's page links to `/day/<id>/analysis` and
