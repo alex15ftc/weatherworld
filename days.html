@@ -452,8 +452,7 @@ function drawTracks() {
     begun++; seen.add(Math.max(-1, t.ef));
     // The track as far as the tornado had gone by now (by length along it).
     const points = [t.track[0]];
-    let head = t.track[0];
-    if (part >= 1) { points.push(...t.track.slice(1)); head = t.track[t.track.length - 1]; }
+    if (part >= 1) points.push(...t.track.slice(1));
     else {
       live++;
       let total = 0;
@@ -461,16 +460,16 @@ function drawTracks() {
       let left = total * part;
       for (let n = 1; n < t.track.length && left > 0; n++) {
         const a = t.track[n - 1], b = t.track[n], d = Math.hypot(b[0] - a[0], b[1] - a[1]), f = d > 0 ? Math.min(1, left / d) : 1;
-        head = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; points.push(head); left -= d;
+        points.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]); left -= d;
       }
     }
     const colour = efColour(t.ef), width = 2.4 + Math.max(0, t.ef) * 0.9;
+    // One solid line a tornado, with nothing marking where it touched down or where it is now. (A track that
+    // has no length yet is drawn to its own start, so the round ends still show it.)
+    if (points.length < 2) points.push(points[0]);
     const line = () => { g.beginPath(); points.forEach(([x, y], n) => (n ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.stroke(); };
     g.strokeStyle = '#05080c'; g.lineWidth = width + 2.4; line();
     g.strokeStyle = colour; g.lineWidth = width; line();
-    // (a dot where it began, so a short track still shows)
-    g.fillStyle = colour; g.strokeStyle = '#05080c'; g.lineWidth = 1.2; g.beginPath(); g.arc(X(t.track[0][0]), Y(t.track[0][1]), 2.2 + Math.max(0, t.ef) * 0.5, 0, Math.PI * 2); g.fill(); g.stroke();
-    if (part < 1) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(X(head[0]), Y(head[1]), 6, 0, Math.PI * 2); g.stroke(); }
   }
   // The key, on the picture so that it goes into the GIF: the ratings drawn so far.
   const keys = [5, 4, 3, 2, 1, 0, -1].filter(ef => seen.has(ef));
