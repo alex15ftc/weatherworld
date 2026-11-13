@@ -9,7 +9,8 @@ assert.match(html, /^<!doctype html>/i);
 // (the stylesheet, icon and shared script come with the site's shared head: site/head.html)
 assert.match(html, /<!--site:head-->/);
 assert.match(html, /<body class="doc" data-page="live">/);
-assert.match(html, /<script type="module" src="\.\/js\/pages\/surfaceAnalysisPage\.js/);
+// (an address from the site's root: the page is also served under a past day's address, /day/<id>/analysis)
+assert.match(html, /<script type="module" src="\/js\/pages\/surfaceAnalysisPage\.js/);
 // Every element the page script looks up exists on the page.
 for (const [, id] of script.matchAll(/\$\('([A-Za-z]+)'\)/g)) assert.match(html, new RegExp(`id="${id}"`), `#${id} is on the page`);
 // The live page links only to pages that are still there.

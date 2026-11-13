@@ -22,7 +22,7 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
   (`npm install`).
 - Volume `engine-volume` at `/data`: world state (`/data/atmosphere-state.bin`, saved every sim hour),
   spin-up cache, storm models, day reviews (newest 14 days), the issued outlooks (`/data/outlooks.bin`), the mesoscale
-  runtime (`/data/mesoscale.bin`), the watch/discussion archive (`/data/products.bin`) and the day summaries (`/data/days.bin`: the recent days' outlooks and the days an admin saved), each put back after a
+  runtime (`/data/mesoscale.bin`), the watch/discussion archive (`/data/products.bin`) the day summaries (`/data/days.bin`: the recent days' outlooks and the days an admin saved) and the day replays (`/data/replays/`: one file a world day, 18 to 22 MB, kept 16 world days, about 350 MB in all), each put back after a
   restart in the same world, so the pages keep the last issue and the numbers carry on; the engine writes about 18 MB (Railway shows
   ~0.8 GB used, the disk's own overhead).
 - The world carries on through restarts and deploys, engine changes included (`WEATHER_KEEP_WORLD=on`): a
@@ -41,6 +41,7 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
 | `WEATHER_KEEP_WORLD` | `on`: carry the world over engine-code changes |
 | `WEATHER_CLOCK_LOCK` | (unset: on) the world's clock follows real UTC, 8 world days a real day, so products name days "11/11/26 Day 3" (`js/forecast/calendar.js`); after a restart the world races to catch up (under a world day); `off`: the free-running clock |
 | `WEATHER_STATE_PATH`, `WEATHER_SPINUP_CACHE`, `WEATHER_DAY_REVIEW_DIR` | under `/data` |
+| `WEATHER_TORNADO_RADAR` | (unset: on) the day replays' radar scans of each tornado, on the radar threads (`server/ReplayArchive.js`; cost at `/api/replays/status`, admin); `off` leaves them out |
 | `WEATHER_RADAR_WORKERS`, `WEATHER_FORECAST_WORKERS`, `WEATHER_STORM_WORKERS` | 2 each (the container sees the host's CPU count, which would start up to 8 threads per pool) |
 
 Read the keys with `railway variables --kv`. They are never kept in the repo.

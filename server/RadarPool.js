@@ -155,7 +155,8 @@ function rotationInputs(scan) {
   return { tiltDeg: scan.tiltDeg, products: { velocity: scan.products.velocity, reflectivity: scan.products.reflectivity } };
 }
 
-function stormToSend(storm) {
+// (also what the day replays keep of a storm for a later scan: ReplayArchive.js)
+export function stormToSend(storm) {
   const out = {};
   for (const key of Object.keys(storm)) if (!NOT_SENT.has(key)) out[key] = storm[key];
   return out;

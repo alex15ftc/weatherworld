@@ -16,6 +16,22 @@
 
 ## Decisions
 
+### 2026-11-12 — Day replays are kept 16 world days; tornado radar is scanned only once a tornado exists
+
+- Status: `active`
+- Decision: a day's replay (hourly mesoanalysis and large-scale frames, warnings, tornado radar) is a file per day
+  beside the world's state, let go after 16 world days; a saved day summary outlives its replay. Radar is kept
+  only for tornadoes, at the radar's finest gates around the storm: a few ticks before touchdown, each tick on
+  the ground, a few after. The ticks before touchdown come from a rolling copy of each possibly tornadic storm's
+  radar inputs, scanned after the fact. Loops are made into GIFs in the reader's browser.
+- Rationale: the owner's requests (replays on the day reports; radar only around confirmed tornadoes, at higher
+  resolution; expiry after two real days). Rejected: scanning every storm that might produce a tornado each tick
+  (measured: about 9 s of radar thread a tick on a 50-storm day, twenty times the tornadoes' own scans); whole-map
+  radar mosaics through the day (a build every one or two real minutes, dropped for performance in October);
+  making GIFs on the engine (its image has no browser or image libraries, and the charts are drawn by page code).
+- Consequences: a replay cannot be made for a day after the fact; while the world is stepped by hand in bursts
+  the warnings between steps are missed (the live clock keeps them all).
+
 ### 2026-11-12 — The public is not shown that the game map moves; day summaries are kept only when an admin saves them
 
 - Status: `active`

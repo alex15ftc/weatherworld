@@ -21,6 +21,7 @@ import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
 import { sitePage, renderPage, NOT_FOUND_PAGE, CONTENT_TYPES } from './SitePages.js';
 import { DayArchive } from './DayArchive.js';
+import { ReplayArchive } from './ReplayArchive.js';
 import { StormWorkers, EMPTY_FRAMES } from '../js/game/StormWorkers.js';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 
@@ -84,9 +85,15 @@ const chasers = new ChaserArchive({ runtime, hourNow: worldHourNow, milesPerKm: 
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => chasers.save(true));
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
+// Each day's replay: its mesoanalysis, large-scale charts, warnings and tornado radar (ReplayArchive.js), let go
+// after 16 world days.
+const replays = new ReplayArchive({ runtime, surface, synoptic, archive, dir: statePath ? path.join(path.dirname(statePath), 'replays') : null });
+const keepReplays = () => { try { replays.capture(); } catch (error) { console.warn('[replays]', error.message); } };
+runtime.afterStormTick = () => { try { replays.tick(); } catch (error) { console.warn('[replays]', error.message); } };
+keepReplays();
 // Each day's forecast and what happened, for the day summaries an admin can save (DayArchive.js).
-const days = new DayArchive({ runtime, products: gameProducts, reports, archive, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'days.bin') : null });
-const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); try { archive.sync(); days.sync(); } catch (error) { console.warn('[products]', error.message); } };
+const days = new DayArchive({ runtime, products: gameProducts, reports, archive, replays, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'days.bin') : null });
+const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); try { archive.sync(); days.sync(); replays.warnings(); } catch (error) { console.warn('[products]', error.message); } };
 outlooks?.maybeIssue();
 setInterval(issueProducts, 5_000).unref();
 // Often enough that a storm tick is worked out within a couple of seconds of falling due: the
@@ -98,7 +105,7 @@ function finishRequest(trace, detail={}) { const totalMs=performance.now()-trace
 function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null}; }
 // (In turns: requests are answered between the storm ticks and atmosphere steps of a catch-up.)
 setInterval(async () => {
-  try { if (await runtime.advanceOnTimerInTurns()) { surface.capture(); synoptic.capture(); warnings?.update(); runtime.prewarmRadar(); } }
+  try { if (await runtime.advanceOnTimerInTurns()) { surface.capture(); synoptic.capture(); keepReplays(); warnings?.update(); runtime.prewarmRadar(); } }
   catch (error) { console.error('[weather-authority] advance failed:', error); }
 }, ADVANCE_POLL_MS).unref();
 
@@ -121,7 +128,7 @@ async function serveApi(url, req, res) {
   // WEATHER_ADMIN_KEY in x-admin-key, or, with no key set (a local engine), a request from this machine.
   if (url.pathname.startsWith('/api/authority/') && !isAdmin(req)) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
   if (url.pathname === '/api/authority/reset' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.reset(body.seed);return sendJson(req,res,200,value,{cacheable:false,trace}); }
-  if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours,()=>{ surface.capture(); synoptic.capture(); });return sendJson(req,res,200,value,{cacheable:false,trace}); }
+  if (url.pathname === '/api/authority/advance' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.advance(body.hours,()=>{ surface.capture(); synoptic.capture(); keepReplays(); });return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/seek' && req.method === 'POST') { const body=await readJsonBody(req); const value=runtime.seek(body.validHourUtc);return sendJson(req,res,200,value,{cacheable:false,trace}); }
   if (url.pathname === '/api/authority/clock' && req.method === 'POST') { const body=await readJsonBody(req); return sendJson(req,res,200,runtime.setAutoAdvance(body.enabled),{cacheable:false,trace}); }
   if (url.pathname.startsWith('/api/atmosphere/') && surface.atmosphere !== runtime.engine) surface.attach(runtime.engine);
@@ -213,8 +220,14 @@ async function serveApi(url, req, res) {
     return svg ? sendText(req, res, 200, value, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 200, value, { cacheable: false, trace });
   }
   // The day summaries (DayArchive.js): saved days are public; the recent days, saving and removing are admin only.
+  // What the day replays hold and what the tornado radar is costing (admin).
+  if (url.pathname === '/api/replays/status') {
+    if (!isAdmin(req)) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
+    await replays.keeping;
+    return sendJson(req, res, 200, { tornadoRadar: replays.radarOn, cost: replays.radarCost(), today: replays.current ? replays.contents(replays.current.day, replays.worldId) : null }, { cacheable: false, trace });
+  }
   if (url.pathname === '/api/days') { days.sync(); return sendJson(req, res, 200, days.list(isAdmin(req)), { cacheable: false, trace }); }
-  const dayRoute = url.pathname.match(/^\/api\/day\/([A-Za-z0-9-]+)(?:\/(map\.svg|save|remove))?$/);
+  const dayRoute = url.pathname.match(/^\/api\/day\/([A-Za-z0-9-]+)(?:\/(map\.svg|save|remove|replay\/[A-Za-z0-9/._-]+))?$/);
   if (dayRoute) {
     const [, id, part] = dayRoute, admin = isAdmin(req), live = id.startsWith('live-');
     if ((live || part === 'save' || part === 'remove') && !admin) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
@@ -227,6 +240,16 @@ async function serveApi(url, req, res) {
     if (part === 'map.svg') {
       const svg = days.mapSvg(id, url.searchParams.get('kind') === 'tracks' ? 'tracks' : 'outlook', OUTLOOK_HAZARDS.includes(url.searchParams.get('hazard')) ? url.searchParams.get('hazard') : 'categorical');
       return svg ? sendText(req, res, 200, svg, trace, { 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'no-cache' }) : sendJson(req, res, 404, { error: 'No such day' }, { cacheable: false, trace });
+    }
+    // The day's replay (ReplayArchive.js): the same answers the live pages get, from the hours kept.
+    if (part?.startsWith('replay/')) {
+      const found = days.find(id), what = part.slice(7), q = name => url.searchParams.get(name);
+      if (!found) return sendJson(req, res, 404, { error: 'No such day' }, { cacheable: false, trace });
+      const tornado = what.match(/^tornado\/([A-Za-z0-9._-]+)$/);
+      const value = what === 'surface' ? replays.surface(found.day, found.worldId, q('frame')) : what === 'parameter' ? replays.parameter(found.day, found.worldId, q('key'), q('frame'))
+        : what === 'synoptic/frame' ? forRole(req, replays.synopticFrame(synoptic, found.day, found.worldId, q('frame'))) : what === 'synoptic/field' ? replays.synopticField(synoptic, found.day, found.worldId, q('frame'), q('key'))
+        : what === 'warnings' ? replays.warningList(found.day, found.worldId) : tornado ? replays.tornadoRadar(found.day, found.worldId, tornado[1], q('frame')) : null;
+      return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No replay of that' }, { cacheable: Boolean(value) && found.ended, trace });
     }
     const value = days.summary(id);
     return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No such day' }, { cacheable: false, trace });

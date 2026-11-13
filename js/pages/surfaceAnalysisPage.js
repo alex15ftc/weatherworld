@@ -3,7 +3,10 @@
 // boundaries and storms. Over it goes one diagnosed field at a time, as shading, labelled
 // contours or both. Nothing is drawn as grid cells. A click gives the sounding at that spot;
 // the time controls step back through the analyses the server has kept.
+// The page also replays a past day (/day/<id>/analysis: the hours server/ReplayArchive.js kept; no soundings or world
+// controls there), and "Save loop as GIF" saves the frames on the slider as one picture (js/gif.js).
 import { drawSounding, drawHodograph } from '../sounding.js';
+import { saveLoop, drawChartFrame } from '/js/gif.js';
 
 const canvas = document.getElementById('surfaceCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('surfaceTip');
 const $ = id => document.getElementById(id);
@@ -13,6 +16,9 @@ const NAMES = { cold: 'Cold front', warm: 'Warm front', stationary: 'Stationary 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 const REFRESH_MS = 10000, LOOP_MS = 450;
 
+const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/analysis/)?.[1] ?? null, REPLAY = Boolean(DAY);
+const API = REPLAY ? { surface: `/api/day/${DAY}/replay/surface`, parameter: `/api/day/${DAY}/replay/parameter` } : { surface: '/api/atmosphere/surface', parameter: '/api/atmosphere/parameter' };
+if (REPLAY) { document.body.dataset.source = 'replay'; document.title = 'Mesoanalysis replay · Past days · WeatherWorld'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
 let data = null, field = null, view = null, style = 'both', selected = null;
 let frameHour = null;          // null follows the current time
 let looping = null;
@@ -24,15 +30,15 @@ async function getJson(url) { const response = await fetch(url, { cache: 'no-sto
 
 async function load() {
   try {
-    data = await getJson(`/api/atmosphere/surface${frameHour === null ? '' : `?frame=${frameHour}`}`);
+    data = await getJson(`${API.surface}${frameHour === null ? '' : `?frame=${frameHour}`}`);
     const key = controls.parameter.value;
     if (!key) field = null;
     else {
       const id = `${key}:${data.frameHour}`;
-      if (!fieldCache.has(id)) { fieldCache.set(id, await getJson(`/api/atmosphere/parameter?key=${key}&frame=${data.frameHour}`)); if (fieldCache.size > 80) fieldCache.delete(fieldCache.keys().next().value); }
+      if (!fieldCache.has(id)) { fieldCache.set(id, await getJson(`${API.parameter}?key=${key}&frame=${data.frameHour}`)); if (fieldCache.size > 80) fieldCache.delete(fieldCache.keys().next().value); }
       field = fieldCache.get(id);
     }
-  } catch { data = { status: 'offline' }; field = null; }
+  } catch (error) { data = { status: 'offline', missing: error.message === '404' }; field = null; }
   describe();
   draw();
 }
@@ -43,11 +49,11 @@ const clock = hours => { const h = ((hours % 24) + 24) % 24; return `${String(Ma
 
 function describe() {
   const time = $('surfaceTime'), status = $('surfaceStatus');
-  if (data.status !== 'ready') { time.textContent = '—'; status.textContent = 'Server not reachable. Start it with npm start (a first start takes about a minute).'; return; }
+  if (data.status !== 'ready') { time.textContent = '—'; status.textContent = REPLAY && data.missing ? 'This day has no replay (a replay is kept for 16 world days, about two real days).' : 'Server not reachable. Start it with npm start (a first start takes about a minute).'; return; }
   if (!controls.parameter.dataset.filled) fillParameters();
   time.textContent = data.date ? `${data.date} · ${clock(data.hourUtc)} UTC` : `${clock(data.hourUtc)} UTC`;
   const behind = data.frames.at(-1) - data.frameHour;
-  status.textContent = `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`} · seed ${data.seed}`;
+  status.textContent = REPLAY ? `replay, hour ${data.frames.indexOf(data.frameHour) + 1} of ${data.frames.length}` : `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`}`;
   const slider = $('frameSlider'); slider.max = data.frames.length - 1; slider.value = data.frames.indexOf(data.frameHour);
   $('frameLatest').classList.toggle('on', frameHour === null && !looping);
   $('worldClock').textContent = data.clockRunning ? 'Pause clock' : 'Resume clock';
@@ -319,6 +325,8 @@ canvas.addEventListener('mousemove', event => {
 canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
 
 async function showSounding(at) {
+  // (a replay keeps the hour's analysis and fields, not the columns a sounding is drawn from)
+  if (REPLAY) return;
   selected = at;
   document.body.classList.add('with-sounding');
   $('soundingTitle').textContent = 'Loading…';
@@ -408,15 +416,35 @@ controls.parameter.addEventListener('change', load);
 for (const button of document.querySelectorAll('[data-style]')) button.addEventListener('click', () => { style = button.dataset.style; for (const other of document.querySelectorAll('[data-style]')) other.classList.toggle('on', other === button); draw(); });
 
 function stopLoop() { if (looping) { clearInterval(looping); looping = null; } }
-function showFrame(index) { if (!data?.frames) return null; const i = Math.max(0, Math.min(data.frames.length - 1, index)); frameHour = i === data.frames.length - 1 ? null : data.frames[i]; return load(); }
+// (the live page follows the newest analysis when the last one is chosen; a replay's hours are all named)
+function showFrame(index) { if (!data?.frames) return null; const i = Math.max(0, Math.min(data.frames.length - 1, index)); frameHour = !REPLAY && i === data.frames.length - 1 ? null : data.frames[i]; return load(); }
 $('frameSlider').addEventListener('input', event => { stopLoop(); showFrame(Number(event.target.value)); });
 $('framePrev').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) - 1); });
 $('frameNext').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) + 1); });
 $('frameLatest').addEventListener('click', () => { stopLoop(); frameHour = null; load(); });
 $('framePlay').addEventListener('click', () => {
-  if (looping) { stopLoop(); frameHour = null; load(); return; }
+  if (looping) { stopLoop(); if (!REPLAY) frameHour = null; load(); return; }
   let index = 0, busy = false;
   looping = setInterval(async () => { if (busy || !data?.frames) return; busy = true; frameHour = data.frames[index % data.frames.length]; index++; await load(); busy = false; }, LOOP_MS);
+});
+
+// The loop on show as a GIF: every analysis the time control steps through, with what is overlaid and its time.
+$('saveGif').addEventListener('click', async () => {
+  if (data?.status !== 'ready') return;
+  stopLoop();
+  const frames = data.frames, was = frameHour, button = $('saveGif'), overlay = controls.parameter.selectedOptions[0]?.textContent ?? '';
+  // (the map is a square in the middle of the canvas: the picture is of that square)
+  const width = 700, height = 700 + 66;
+  button.disabled = true;
+  try {
+    await saveLoop({
+      count: frames.length, width, height, delayMs: 350, name: `weatherworld-mesoanalysis${REPLAY ? `-${DAY}` : ''}.gif`,
+      show: async k => { frameHour = frames[k]; await load(); },
+      draw: g => drawChartFrame(g, canvas, { square: true, title: controls.parameter.value ? `Mesoanalysis · ${overlay}` : 'Surface analysis', time: `${clock(data.hourUtc).replace(':', '')} UTC ${data.date ?? ''}`.trim() }),
+      onProgress: text => { $('gifNote').textContent = text; }
+    });
+  } catch (error) { $('gifNote').textContent = `The GIF could not be made (${error.message}).`; }
+  button.disabled = false; frameHour = REPLAY ? was ?? frames[0] : was; load();
 });
 
 // ?sounding=row,column opens the page with that sounding shown (after the first load).

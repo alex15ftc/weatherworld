@@ -8,7 +8,7 @@ import { sitePage, renderPage, NOT_FOUND_PAGE } from '../server/SitePages.js';
 // every link in the menu and footer leads somewhere, and the engine image ships all of it.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ADDRESSES = { '/': 'home.html', '/outlooks': 'outlook.html', '/outlook/day1': 'outlook.html', '/outlook/day3/': 'outlook.html', '/watches': 'products.html', '/discussions': 'products.html',
-  '/warnings': 'warnings.html', '/days': 'days.html', '/day/2026-11-12-7': 'days.html', '/day/live-3': 'days.html', '/models/large-scale': 'synoptic.html', '/watch/43': 'product.html', '/md/97': 'product.html', '/chasers': 'chasers.html', '/analysis': 'index.html', '/synoptic': 'synoptic.html', '/models': 'models.html', '/about': 'about.html' };
+  '/warnings': 'warnings.html', '/days': 'days.html', '/day/2026-11-12-7': 'days.html', '/day/live-3': 'days.html', '/day/2026-11-12-7/analysis': 'index.html', '/day/2026-11-12-7/synoptic': 'synoptic.html', '/models/large-scale': 'synoptic.html', '/watch/43': 'product.html', '/md/97': 'product.html', '/chasers': 'chasers.html', '/analysis': 'index.html', '/synoptic': 'synoptic.html', '/models': 'models.html', '/about': 'about.html' };
 for (const [address, page] of Object.entries(ADDRESSES)) assert.equal(sitePage(address), page, address);
 for (const address of ['/nope', '/outlook/day4', '/watch/x', '/api/health', '/css/site.css']) assert.equal(sitePage(address), null, address);
 
