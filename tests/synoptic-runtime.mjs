@@ -16,6 +16,9 @@ assert.ok(summary.map.x >= 0 && summary.map.x < nx && summary.map.y >= 0 && summ
 for (const { key } of SYNOPTIC_FIELDS) {
   const field = synoptic.field(key);
   assert.equal(field.values.length, nx * ny, key);
+  // (the severe-weather fields carry the game map's own values as well, on the map's grid, for its box)
+  assert.equal(Boolean(field.mapGrid), Boolean(summary.fields.find(f => f.key === key).map), `${key} carries the map's values`);
+  if (field.mapGrid) { assert.equal(field.mapValues.length, field.mapGrid.nx * field.mapGrid.ny); assert.equal(field.wide, false, 'the wide window is not ready in a new world'); }
   assert.ok(field.values.every(Number.isFinite), `${key} finite`);
 }
 for (const level of ['sfc', '850', '500', '250', 'shear']) assert.equal(synoptic.field(`wind:${level}`).u.length, nx * ny);

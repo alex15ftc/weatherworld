@@ -26,7 +26,9 @@ const shade = { canvas: null, key: '' };
 const fieldCache = new Map();  // `${key}:${frameHour}` -> field (a frame's fields never change)
 
 // --- Loading.
-async function getJson(url) { const response = await fetch(url, { cache: 'no-store' }); if (!response.ok) throw new Error(String(response.status)); return response.json(); }
+// (the admin's key, when this tab is signed in, js/site.js: a day that is not saved yet answers only an admin)
+function signedIn() { try { const key = sessionStorage.getItem('wwAdminKey'); return key ? { 'x-admin-key': key } : {}; } catch { return {}; } }
+async function getJson(url) { const response = await fetch(url, { cache: 'no-store', headers: signedIn() }); if (!response.ok) throw new Error(String(response.status)); return response.json(); }
 
 // The map's county lines and larger cities (map miles), asked for once.
 let base = null;
@@ -42,7 +44,7 @@ async function load() {
       if (!fieldCache.has(id)) { fieldCache.set(id, await getJson(`${API.parameter}?key=${key}&frame=${data.frameHour}`)); if (fieldCache.size > 80) fieldCache.delete(fieldCache.keys().next().value); }
       field = fieldCache.get(id);
     }
-  } catch (error) { data = { status: 'offline', missing: error.message === '404' }; field = null; }
+  } catch (error) { data = { status: 'offline', missing: error.message === '404', locked: error.message === '401' }; field = null; }
   describe();
   draw();
 }
@@ -53,7 +55,7 @@ const clock = hours => { const h = ((hours % 24) + 24) % 24; return `${String(Ma
 
 function describe() {
   const time = $('surfaceTime'), status = $('surfaceStatus');
-  if (data.status !== 'ready') { time.textContent = '—'; status.textContent = REPLAY && data.missing ? 'This day has no replay (a replay is kept for 16 world days, about two real days).' : 'Server not reachable. Start it with npm start (a first start takes about a minute).'; return; }
+  if (data.status !== 'ready') { time.textContent = '—'; status.textContent = REPLAY && data.locked ? 'This day has not been saved, so only an admin can replay it. Sign in at the top of the page.' : REPLAY && data.missing ? 'This day has no replay (a replay is kept for 16 world days, about two real days).' : 'Server not reachable. Start it with npm start (a first start takes about a minute).'; return; }
   if (!controls.parameter.dataset.filled) fillParameters();
   time.textContent = data.date ? `${data.date} · ${clock(data.hourUtc)} UTC` : `${clock(data.hourUtc)} UTC`;
   const behind = data.frames.at(-1) - data.frameHour;

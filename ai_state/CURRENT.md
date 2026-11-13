@@ -144,6 +144,28 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `/api/performance` (`tornadoRadar`, `host`) show the cost, the waiting count and the container's CPU limit.
     The hosted container reports a limit of 32 vCPU and 30 GB (`host` in `/api/performance`); the hosted radar
     threads were about 1% busy. Not measured: live radar response while the list drains.
+  - Long range model (2026-11-13; `js/forecast/LongRangeModel.js`,
+    `server/LongRangeRuntime.js`, `tests/long-range-model.mjs`): a 7-day run at each 06Z (and one at the first
+    whole hour after a start), no storms, with one timing error drawn per run (`ensemblePerturbation.js`, 1.2 m/s
+    sd: about 100 km a day). Shown at `/models/long-range` (the large-scale page), 57 frames every 3 h, 4 runs
+    kept. About 100 s a run on this machine. `WEATHER_LONG_RANGE=off` turns it off. Checked first: a storm-free
+    copy follows the world's steering and large-scale model exactly (5 days, zero difference), so without the
+    error the run would be exact.
+  - Severe-weather charts on every large-scale page (same date): CAPE, CIN,
+    supercell composite and significant tornado parameter across the whole large-scale model, joined from three
+    sources in `server/SynopticRuntime.js` (`severe()`): the game map's own cells in its box (`mapFields`); the
+    wide window around it (`js/world/WideRegion.js`, `tests/wide-region.mjs`: the regional layer again at 80 km
+    over 3,200 km, display only, stepped after the map, saved with the world, shown once 24 h old; each step its
+    cells under the map take the map's own air, and its air is drawn to the entering-air values in a quarter of a
+    day, as the map's effectively is from its edges); and beyond
+    that the large-scale model's own columns through the sounding code (CAPE sound, composites low: no backed
+    low-level winds or cap). Measured over a week on seeds 1000 and 7: the ring of window cells round the box follows the
+    map's edge strips on the south, east and north (CAPE mostly within a quarter); to the west the window is dry
+    (the dryline at the foot of the high ground) where the map's western columns are sometimes still moist, so a
+    step can show on the box's west edge. Cost: about 35 ms a step for the window, about 80 ms for its soundings a frame, about 0.2 s the first time a
+    frame's large-scale columns are asked for. Engine fingerprint identical to HEAD (seed 1000, 8 h).
+  - Fixed (same date): the mesoanalysis replay of a day not yet saved did not send the admin key, so it stayed
+    empty for a signed-in admin.
   - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
     and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
     `data/social/high-risk-2026-11-12/` (not in git).

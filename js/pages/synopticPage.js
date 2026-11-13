@@ -5,6 +5,7 @@
 // Three sources (the page is served at three addresses, synoptic.html):
 //   /synoptic              the analysis of the last 18 hours (server/SynopticRuntime.js)
 //   /models/large-scale    a short range model run, every few forecast hours (?run=<init hour>)
+//   /models/long-range     a long range model run: 7 days from 06Z, every 3 hours (js/forecast/LongRangeModel.js)
 //   /day/<id>/synoptic     a past day's replay, hour by hour (server/ReplayArchive.js)
 // "Save loop as GIF" steps through the frames on show and saves them as one picture (js/gif.js).
 // The view, for everyone, as it first was: it follows the game map east-west as the map drifts, so the map's box
@@ -63,7 +64,13 @@ const SCALES = {
   qadv: banded([-3, -2, -1, -0.5, -0.2, 0.2, 0.5, 1, 2, 3], DIVERGING_DRY_MOIST, { under: true, blank: [-0.2, 0.2], contour: { interval: 0.5, skipZero: true } }),
   tadv: banded([-6, -4, -2, -1, -0.5, 0.5, 1, 2, 4, 6], DIVERGING_COLD_WARM, { under: true, blank: [-0.5, 0.5], contour: { interval: 1, skipZero: true } }),
   ascent: banded([-0.6, -0.4, -0.2, -0.1, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8], ['#8a5a2a', '#c79a5e', '#ead9b0', '#cfe9d0', '#74c79a', '#2f9aa0', '#3a5fc0', '#6a2f9c'], { under: true, blank: [-0.1, 0.05], contour: { interval: 0.1, from: 0.1 } }),
-  rain: banded([0.05, 0.1, 0.25, 0.5, 1, 2, 4], ['#bfe6b0', '#62c36b', '#1f8a4c', '#f4de3a', '#f59a2a', '#d9302b', '#a3207a'], { contour: { levels: [0.05, 0.1, 0.25, 0.5, 1] } })
+  rain: banded([0.05, 0.1, 0.25, 0.5, 1, 2, 4], ['#bfe6b0', '#62c36b', '#1f8a4c', '#f4de3a', '#f59a2a', '#d9302b', '#a3207a'], { contour: { levels: [0.05, 0.1, 0.25, 0.5, 1] } }),
+  // Severe weather: across the whole model (the wide window about the map, the large-scale columns beyond it),
+  // with the game map's own readings laid in its box (the field's mapValues on mapGrid).
+  mapcape: banded([250, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 5000], ['#f6efb0', '#f4de3a', '#f6a827', '#ea5a24', '#cf2a2a', '#b0207a', '#7a2a9c']),
+  mapcin: banded([10, 25, 50, 75, 100, 150, 200, 300], ['#cfe6f5', '#8fc3ea', '#4f8fd6', '#3a5fc0', '#4a3aa8', '#2a1f6a']),
+  mapscp: banded([1, 2, 4, 6, 8, 12, 16, 20, 30], ['#f6efb0', '#f4de3a', '#f6a827', '#ea5a24', '#cf2a2a', '#b0207a', '#7a2a9c']),
+  mapstp: banded([0.5, 1, 2, 3, 4, 5, 6, 8, 10], ['#f6efb0', '#f4de3a', '#f6a827', '#ea5a24', '#cf2a2a', '#b0207a', '#7a2a9c'])
 };
 
 // The charts, as a model site lists them: by level. Each is a shaded field, a contoured one and a wind.
@@ -80,14 +87,18 @@ const PRESETS = [
   { key: 'moisture', group: 'Surface', label: 'Dewpoint, pressure and wind', shade: 'td', contour: 'mslp', wind: 'sfc' },
   { key: 'rain', group: 'Surface', label: 'Precipitation rate and pressure', shade: 'rain', contour: 'mslp', wind: 'sfc' },
   { key: 'lift', group: 'Forcing and shear', label: 'Large-scale lift and 500 mb heights', shade: 'ascent', contour: 'z500', wind: '500' },
-  { key: 'shear', group: 'Forcing and shear', label: 'Deep-layer shear (surface to 500 mb)', shade: 'shear', contour: 'z500', wind: 'shear' }
+  { key: 'shear', group: 'Forcing and shear', label: 'Deep-layer shear (surface to 500 mb)', shade: 'shear', contour: 'z500', wind: 'shear' },
+  { key: 'cape', group: 'Severe weather', label: 'CAPE, pressure and wind', shade: 'mapcape', contour: 'mslp', wind: 'sfc' },
+  { key: 'cin', group: 'Severe weather', label: 'Inhibition (CIN), pressure and wind', shade: 'mapcin', contour: 'mslp', wind: 'sfc' },
+  { key: 'scp', group: 'Severe weather', label: 'Supercell composite and shear', shade: 'mapscp', contour: 'z500', wind: 'shear' },
+  { key: 'stp', group: 'Severe weather', label: 'Significant tornado parameter', shade: 'mapstp', contour: 'mslp', wind: 'sfc' }
 ];
 
 let data = null, layers = { shade: null, contour: null, wind: null };
 let frameHour = null, looping = null;
 const fieldCache = new Map();   // `${run}:${key}:${frameHour}` -> field
 const contourCache = new Map(); // `${key}:${frameHour}` -> segments by level
-const shadeImage = { canvas: null, key: '' };
+const shadeImage = { canvas: null, key: '' }, mapImage = { canvas: null, key: '' };
 // The view: centre (grid units, x east, y north), zoom over the fit-to-window scale; it follows the map
 // east-west until it is dragged or zoomed with the wheel.
 const view = { cx: 0, cy: 0, zoom: 1, follow: true, scale: 1, width: 0, height: 0 };
@@ -109,17 +120,18 @@ function setRole(role) {
 
 // Where the frames come from: the analysis of the last hours (/synoptic), or a short range model run
 // every few forecast hours (/models/large-scale; ?run=<init hour> names the run, else the newest).
-const MODEL = location.pathname.startsWith('/models');
+const MODEL = location.pathname.startsWith('/models'), LONG = location.pathname.startsWith('/models/long-range'), MODEL_API = `/api/models/${LONG ? 'long-range' : 'short-range'}`;
 // (a past day's replay: its kept hours, named like a model run's frames)
 const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/synoptic/)?.[1] ?? null, REPLAY = Boolean(DAY), STEPPED = MODEL || REPLAY;
 let runInit = MODEL && query.get('run') !== null && Number.isFinite(Number(query.get('run'))) ? Number(query.get('run')) : null;
 document.body.dataset.source = REPLAY ? 'replay' : MODEL ? 'model' : 'analysis';
-if (MODEL) { $('synHeading').textContent = 'Large-scale view'; document.title = 'Large-scale view · Models · WeatherWorld'; }
+if (MODEL) { $('synHeading').textContent = LONG ? 'Long range model' : 'Large-scale view'; document.title = `${LONG ? 'Long range model' : 'Large-scale view'} · Models · WeatherWorld`; }
+if (LONG) { $('crumbModel').textContent = 'Long range'; $('tabLargeScale').removeAttribute('aria-current'); $('tabLongRange').setAttribute('aria-current', 'page'); $('runNote').textContent = 'The long range model: a 7-day run from each 0600 UTC, every 3 forecast hours, without storms. Like a real forecast it has a timing error: systems reach the map a little early or late, more so with each day ahead.'; }
 if (REPLAY) { $('synHeading').textContent = 'Large-scale charts: replay'; document.title = 'Large-scale replay · Past days · WeatherWorld'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
 const api = REPLAY
   ? { frame: hour => `/api/day/${DAY}/replay/synoptic/frame${hour === null ? '' : `?frame=${hour}`}`, field: (key, hour) => `/api/day/${DAY}/replay/synoptic/field?frame=${hour}&key=${encodeURIComponent(key)}` }
   : MODEL
-  ? { frame: hour => `/api/models/short-range/synoptic/frame?init=${runInit ?? ''}${hour === null ? '' : `&frame=${hour}`}`, field: (key, hour) => `/api/models/short-range/synoptic/field?init=${runInit ?? ''}&frame=${hour}&key=${encodeURIComponent(key)}` }
+  ? { frame: hour => `${MODEL_API}/synoptic/frame?init=${runInit ?? ''}${hour === null ? '' : `&frame=${hour}`}`, field: (key, hour) => `${MODEL_API}/synoptic/field?init=${runInit ?? ''}&frame=${hour}&key=${encodeURIComponent(key)}` }
   : { frame: hour => `/api/synoptic/frame${hour === null ? '' : `?frame=${hour}`}`, field: (key, hour) => `/api/synoptic/field?key=${encodeURIComponent(key)}&frame=${hour}` };
 
 // --- Loading.
@@ -131,7 +143,8 @@ async function getJson(url) {
 async function getField(key) {
   if (!key) return null;
   const id = `${data.run?.initHourUtc ?? ''}:${key}:${data.frameHour}`;
-  if (!fieldCache.has(id)) { fieldCache.set(id, await getJson(api.field(key, data.frameHour))); if (fieldCache.size > 160) fieldCache.delete(fieldCache.keys().next().value); }
+  // (a field this frame does not have, as a replay kept before the field existed, is no layer: the rest are drawn)
+  if (!fieldCache.has(id)) { fieldCache.set(id, await getJson(api.field(key, data.frameHour)).catch(error => { if (error.message === '404') return null; throw error; })); if (fieldCache.size > 160) fieldCache.delete(fieldCache.keys().next().value); }
   return fieldCache.get(id);
 }
 async function load() {
@@ -157,8 +170,9 @@ function fillSelects() {
   const fill = (select, none) => {
     select.innerHTML = `<option value="">${none}</option>`;
     const groups = new Map();
-    for (const f of data.fields) { if (!groups.has(f.group)) groups.set(f.group, []); groups.get(f.group).push(f); }
-    for (const [name, list] of groups) { const group = document.createElement('optgroup'); group.label = name; for (const f of list) group.append(new Option(`${f.label} (${f.unit})`, f.key)); select.append(group); }
+    // (the severe-weather fields are shaded only)
+    for (const f of data.fields) { if (f.map && select !== $('shadeField')) continue; if (!groups.has(f.group)) groups.set(f.group, []); groups.get(f.group).push(f); }
+    for (const [name, list] of groups) { const group = document.createElement('optgroup'); group.label = name; for (const f of list) group.append(new Option(f.unit ? `${f.label} (${f.unit})` : f.label, f.key)); select.append(group); }
   };
   fill($('shadeField'), 'None'); fill($('contourField'), 'None');
   $('windField').innerHTML = '<option value="">None</option>' + data.winds.map(w => `<option value="${w.key}">${w.label}</option>`).join('');
@@ -171,13 +185,13 @@ function describe() {
   const time = $('synTime'), status = $('synStatus');
   if (data.status !== 'ready') {
     time.textContent = '—';
-    status.textContent = REPLAY && data.missing ? 'This day has no replay (a replay is kept for 16 world days, about two real days).' : MODEL && data.missing ? 'No model run with a large-scale view yet. The short range model makes one at each whole hour of the world.' : 'Server not reachable. Start it with npm start (a first start takes about a minute).';
+    status.textContent = REPLAY && data.missing ? 'This day has no replay (a replay is kept for 16 world days, about two real days).' : MODEL && data.missing ? (LONG ? 'No long range run yet. One is made at each 0600 UTC of the world (and soon after the engine starts); it takes a few minutes.' : 'No model run with a large-scale view yet. The short range model makes one at each whole hour of the world.') : 'Server not reachable. Start it with npm start (a first start takes about a minute).';
     return;
   }
   time.textContent = data.date ? `${data.date} · ${clock(data.hourUtc)} UTC` : `${clock(data.hourUtc)} UTC`;
   if (MODEL) describeRun();
   const behind = data.frames.at(-1) - data.frameHour;
-  status.textContent = REPLAY ? `replay, hour ${data.frames.indexOf(data.frameHour) + 1} of ${data.frames.length}` : MODEL ? `forecast hour ${data.run.forecastHour} of the ${clock(data.run.initHourUtc).slice(0, 2)}Z short range run` : `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`}`;
+  status.textContent = REPLAY ? `replay, hour ${data.frames.indexOf(data.frameHour) + 1} of ${data.frames.length}` : MODEL ? (LONG ? `day ${Math.floor(data.run.forecastHour / 24) + 1}, forecast hour ${data.run.forecastHour} of the 7-day run · less sure with each day` : `forecast hour ${data.run.forecastHour} of the ${clock(data.run.initHourUtc).slice(0, 2)}Z short range run`) : `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`}`;
   const slider = $('frameSlider'); slider.max = data.frames.length - 1; slider.value = data.frames.indexOf(data.frameHour);
   $('frameLatest').classList.toggle('on', frameHour === null && !looping);
   $('framePlay').classList.toggle('on', Boolean(looping)); $('framePlay').textContent = looping ? 'Stop' : 'Loop';
@@ -202,7 +216,9 @@ function describeRun() {
   const select = $('runSelect'), runs = [...data.run.runs].reverse(), key = runs.map(r => r.initHourUtc).join(',');
   if (select.dataset.key !== key) {
     select.dataset.key = key;
-    select.innerHTML = runs.map(r => `<option value="${r.initHourUtc}">${clock(r.initHourUtc).slice(0, 2)}Z run · ${r.hours} h${r === runs[0] ? ' (newest)' : ''}</option>`).join('');
+    // (the long range runs are a day apart, all from the same hour: each is named by how old it is)
+    const age = r => { const days = Math.round((runs[0].initHourUtc - r.initHourUtc) / 24); return r === runs[0] ? ' (newest)' : LONG ? ` · ${days} day${days === 1 ? '' : 's'} older` : ''; };
+    select.innerHTML = runs.map(r => `<option value="${r.initHourUtc}">${clock(r.initHourUtc).slice(0, 2)}Z run · ${LONG ? `${Math.round(r.hours / 24)} days` : `${r.hours} h`}${age(r)}</option>`).join('');
   }
   select.value = String(data.run.initHourUtc);
 }
@@ -251,7 +267,7 @@ function drawKey(bar, field, dark = false) {
 function drawLegend() {
   const note = $('legendNote'), parts = [];
   drawKey($('legendBar'), layers.shade);
-  if (layers.shade) parts.push(`Shaded: ${layers.shade.label} (${layers.shade.unit})`);
+  if (layers.shade) parts.push(`Shaded: ${layers.shade.label}${layers.shade.unit ? ` (${layers.shade.unit})` : ''}${data.fields.find(f => f.key === layers.shade.key)?.map ? (layers.shade.wide ? ': the game map\'s own values in its box, the map\'s kind of low-level weather worked out for 1,000 miles around it, the large-scale model alone beyond (its composites read low)' : ': the large-scale model alone outside the game map (its composites read low; the wider view around the map is not ready for this time)') : ''}`);
   if (layers.contour) parts.push(`Lines: ${layers.contour.label} (${layers.contour.unit})`);
   if (layers.wind) parts.push(`Barbs: ${data.winds.find(w => `wind:${w.key}` === layers.wind.key)?.label.toLowerCase() ?? 'wind'} (kt; half barb 5, full 10, flag 50)`);
   note.textContent = parts.join(' · ') || 'Pick a chart or a layer.';
@@ -336,6 +352,42 @@ function drawShading(field) {
     if (x1 < 0 || x0 > view.width) continue;
     ctx.drawImage(shadeImage.canvas, x0, topY, nx * view.scale, ny * view.scale);
   }
+  if (field.mapGrid) drawMapShading(field);
+}
+
+// The game map's own values of a field (field.mapValues on field.mapGrid, row 0 at the map's northern edge), in the
+// same filled bands, laid inside the map's box over the coarser picture around it.
+function drawMapShading(field) {
+  const { nx, ny } = field.mapGrid, scale = SCALES[field.key], id = `${field.key}:${field.frameHour}:${data.run?.initHourUtc ?? ''}`, fine = 4;
+  if (mapImage.key !== id) {
+    const c = mapImage.canvas ??= document.createElement('canvas'); c.width = nx * fine; c.height = ny * fine;
+    const g = c.getContext('2d'), image = g.createImageData(c.width, c.height);
+    // (opaque, on the chart's ground: what is under the box is the same field, coarser)
+    for (let o = 0; o < image.data.length; o += 4) { image.data[o] = 16; image.data[o + 1] = 22; image.data[o + 2] = 29; image.data[o + 3] = 255; }
+    for (let py = 0; py < c.height; py++) for (let px = 0; px < c.width; px++) {
+      const colour = colourOf(scale, sampleMap(field, (px + 0.5) / c.width, (py + 0.5) / c.height)), o = (py * c.width + px) * 4;
+      if (colour) { image.data[o] = Math.round(colour[0] * 0.92 + 16 * 0.08); image.data[o + 1] = Math.round(colour[1] * 0.92 + 22 * 0.08); image.data[o + 2] = Math.round(colour[2] * 0.92 + 29 * 0.08); }
+    }
+    g.putImageData(image, 0, 0); mapImage.key = id;
+  }
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const m = data.map;
+  for (const offset of copies(m.width)) {
+    const [x0, y0] = toScreen(m.x + offset, m.y + m.height), [x1, y1] = toScreen(m.x + m.width + offset, m.y);
+    if (x1 < 0 || x0 > view.width) continue;
+    ctx.drawImage(mapImage.canvas, x0, y0, x1 - x0, y1 - y0);
+  }
+}
+// A map field's value at a place in the box (fx east, fy south, each 0 to 1), between its cells' middles.
+function sampleMap(field, fx, fy) {
+  const { nx, ny } = field.mapGrid, x = Math.max(0, Math.min(nx - 1, fx * nx - 0.5)), y = Math.max(0, Math.min(ny - 1, fy * ny - 0.5));
+  const i0 = Math.min(nx - 2, Math.floor(x)), j0 = Math.min(ny - 2, Math.floor(y)), tx = x - i0, ty = y - j0, v = (i, j) => field.mapValues[j * nx + i];
+  return (v(i0, j0) * (1 - tx) + v(i0 + 1, j0) * tx) * (1 - ty) + (v(i0, j0 + 1) * (1 - tx) + v(i0 + 1, j0 + 1) * tx) * ty;
+}
+// Where a grid place is in the map's box (fx, fy as above), or null outside it.
+function inMap(at) {
+  const m = data.map, nx = data.grid.nx, dx = (((at.x - m.x) % nx) + nx) % nx, fy = (m.y + m.height - at.y) / m.height;
+  return dx <= m.width && fy >= 0 && fy <= 1 ? { fx: dx / m.width, fy } : null;
 }
 
 function contourLevels(field) {
@@ -476,7 +528,8 @@ function showTip(event) {
   const box = canvas.getBoundingClientRect(), sx = event.clientX - box.left, sy = event.clientY - box.top, at = toGrid(sx, sy);
   if (at.y < -0.5 || at.y > data.grid.ny - 0.5) { tip.style.display = 'none'; return; }
   const lines = [], fmt = (f, v) => `${f.label}: <b>${Number(v.toFixed(Math.abs(v) < 10 ? 2 : 1)).toLocaleString()}</b> ${f.unit}`;
-  if (layers.shade) lines.push(fmt(layers.shade, sample(layers.shade.values, at)));
+  const here = layers.shade?.mapGrid ? inMap(at) : null;
+  if (layers.shade) lines.push(fmt(layers.shade, here ? sampleMap(layers.shade, here.fx, here.fy) : sample(layers.shade.values, at)));
   if (layers.contour && layers.contour.key !== layers.shade?.key) lines.push(fmt(layers.contour, sample(layers.contour.values, at)));
   if (layers.wind) { const u = sample(layers.wind.u, at), v = sample(layers.wind.v, at); lines.push(`Wind: <b>${Math.round((Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360)}° ${Math.round(Math.hypot(u, v))} kt</b>`); }
   const centre = mapCentre(), km = distanceKm(centre, at);

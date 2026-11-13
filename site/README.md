@@ -60,6 +60,12 @@ engine with no key treats this machine as admin). The server decides the role on
   an arrow for the drift; its speed and the day's aim are told to an admin only (the server leaves them out of a
   public frame). The charts are drawn on a dark ground (owner's choice). `?view=public` shows an admin what the
   public is told; `?follow=0&cx=&cy=` holds the view on a place.
+- Long range model (`/models/long-range`, the same page): a 7-day run from each 0600 UTC, every 3 forecast hours,
+  without storms and with a timing error (systems reach the map early or late, more with each day).
+- Severe weather charts on every large-scale page (CAPE, CIN, supercell composite, significant tornado parameter),
+  across the whole model: the game map's own values in its box; for about 1,000 miles around it the map's kind
+  of low-level weather worked out on a coarser grid (the wide window, ready 24 world hours after it is first
+  made); beyond that the large-scale model alone, where the composites read low. The legend says which.
 - Mesoanalysis (`/analysis`) draws county lines and the larger cities under "Show".
 - A day has no page, for anyone, until it has ended.
 - Day summaries (`/days`): saved days are public; recent days, saving and removing are admin only.

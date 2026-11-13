@@ -11,6 +11,7 @@ import { SynopticRuntime } from './SynopticRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
 import { ShortRangeRuntime } from './ShortRangeRuntime.js';
+import { LongRangeRuntime } from './LongRangeRuntime.js';
 import { countiesFor, placesFor } from './CountyLayer.js';
 import { WarningRuntime } from './WarningRuntime.js';
 import { ReportsRuntime } from './ReportsRuntime.js';
@@ -73,6 +74,9 @@ const warnings = process.env.WEATHER_WARNINGS === 'off' ? null : new WarningRunt
 // The short range model: a run at each whole simulated hour, for the model page (ShortRangeRuntime.js;
 // WEATHER_SHORT_RANGE=off turns it off).
 const shortRange = process.env.WEATHER_SHORT_RANGE === 'off' ? null : new ShortRangeRuntime({ runtime });
+// The long range model: a 7-day run at each 06Z, with a timing error of its own, for the model pages' large-scale
+// view (LongRangeRuntime.js; WEATHER_LONG_RANGE=off turns it off).
+const longRange = process.env.WEATHER_LONG_RANGE === 'off' ? null : new LongRangeRuntime({ runtime });
 // Storm reports and damage surveys, from the live world's daily storm log (ReportsRuntime.js).
 const reports = new ReportsRuntime({ runtime });
 // The products as the Roblox place draws them (GameProducts.js).
@@ -94,7 +98,7 @@ runtime.afterStormTick = () => { try { replays.tick(); } catch (error) { console
 keepReplays();
 // Each day's forecast and what happened, for the day summaries an admin can save (DayArchive.js).
 const days = new DayArchive({ runtime, products: gameProducts, reports, archive, replays, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'days.bin') : null });
-const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); try { archive.sync(); days.sync(); replays.warnings(); } catch (error) { console.warn('[products]', error.message); } };
+const issueProducts = () => { warnings?.update(); mesoscale?.maybeIssue(); outlooks?.maybeIssue(); shortRange?.maybeRun(); longRange?.maybeRun(); try { archive.sync(); days.sync(); replays.warnings(); } catch (error) { console.warn('[products]', error.message); } };
 outlooks?.maybeIssue();
 setInterval(issueProducts, 5_000).unref();
 // Often enough that a storm tick is worked out within a couple of seconds of falling due: the
@@ -157,6 +161,13 @@ async function serveApi(url, req, res) {
     const value = part === 'runs' ? shortRange.list() : part === 'run' ? shortRange.meta(q('init')) : part === 'field' ? shortRange.field(q('init'), q('hour'), q('key')) : part === 'storms' ? shortRange.storms(q('init'), q('minute')) : part === 'tracks' ? shortRange.tracks(q('init'))
       // (the run's large-scale view: the frames and fields the synoptic page reads, from the run)
       : part === 'synoptic/frame' ? forRole(req, shortRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? shortRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
+    return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
+  }
+  // The long range model's runs (LongRangeRuntime.js): the list, and a run's large-scale frames and fields.
+  if (url.pathname.startsWith('/api/models/long-range/')) {
+    const q = name => url.searchParams.get(name), part = url.pathname.slice('/api/models/long-range/'.length);
+    if (!longRange) return sendJson(req, res, 404, { error: 'The long range model is off' }, { cacheable: false, trace });
+    const value = part === 'runs' ? longRange.list() : part === 'synoptic/frame' ? forRole(req, longRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? longRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
     return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
   }
   // The outlook runs as an ensemble (OutlookRuntime.js): the issues kept, and one issue's storm tracks (?issued=).

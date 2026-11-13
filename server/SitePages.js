@@ -17,6 +17,7 @@ const SITE_PAGES = [
   [/^\/synoptic\/?$/, 'synoptic.html'],
   [/^\/models\/?$/, 'models.html'],
   [/^\/models\/large-scale\/?$/, 'synoptic.html'],
+  [/^\/models\/long-range\/?$/, 'synoptic.html'],
   [/^\/days\/?$/, 'days.html'],
   [/^\/day\/[A-Za-z0-9-]+\/?$/, 'days.html'],
   // A saved day's replays: the mesoanalysis and large-scale pages on the day's kept hours.

@@ -2470,3 +2470,42 @@ rotation, shear grid, cold pools, restored worlds) and the engine fingerprint is
   per storm time. Larger, same output: per-cell soundings on threads, a disk cache of the warmed-up
   world, the steering look-ahead cached by valid time.
 - `tests/short-range-model.mjs` fails at HEAD too (storms differ at +45 min), from before this work.
+
+## 2026-11-13 — Wide window against the map (severe-weather charts on the large-scale pages)
+
+The regional layer run again at 80 km over 3,200 km about the map (`js/world/WideRegion.js`), started cold with the
+world and compared under the map (mean of the map's 2,500 cells / mean of the window's middle 10 x 10 cells):
+
+| after | seed 1000: CAPE, SRH 0-1, SCP, STP | seed 7: CAPE, SRH 0-1, SCP, STP |
+|---|---|---|
+| 12 h | 1915/211, 101/87, 9.5/1.6, 0.25/0.09 | 2031/542, 91/73, 7.9/1.4, 0.44/0.13 |
+| 48 h | 469/103, 150/144, 4.7/1.7, 0.04/0 | 1009/104, 154/167, 5.6/1.8, 0.91/0.14 |
+| 60 h | 1717/1829, 64/70, 6.5/7.8, 0.71/0.98 | 1655/1791, 208/197, 13.8/14.3, 2.0/2.35 |
+| 84 h | 1594/1427, 185/156, 11.6/8.8, 1.68/1.36 | 1643/1302, 169/146, 11.9/7.0, 1.12/0.52 |
+| 108 h | 1766/1275, 167/159, 9.8/5.7, 0.88/0.55 | 1706/259, 247/256, 16.1/1.6, 0.52/0.03 |
+| 132 h | 1348/1047, 165/158, 7.4/5.1, 0.42/0.24 | 1643/602, 236/189, 14.3/4.9, 1.24/0.06 |
+| 156 h | 186/113, 109/69, 1.9/0.3, 0/0 | 1815/1412, 145/136, 8.6/6.9, 0.87/0.41 |
+
+The winds agree from the first step; the moist layer and cap take about 60 h to arrive from the window's edges, and
+on some later days lag the map's by a day. The large-scale model's own columns under the map at the same kind of
+hour: CAPE 2058 against 1863, SRH 0-1 4 against 118, SCP 1.5 against 10.5, STP 0.01 against 0.34.
+
+### The same day, later: the window fed by the map, and refreshed in a quarter of a day
+
+With the window's cells under the map given the map's air each step, the middle matches by construction but the ring
+of cells just outside the box did not: south of the box the window's air was the high ground's (3.7 g/kg, moist layer
+770 m, no CAPE) where the map's southern strip had 15.9 g/kg and 1,650 J/kg, though the entering-air value there was
+16.3. On the map, air crossing an edge is given that value and no place is far from an edge; the window's interior is
+days of wind from one. With the window's `airMassRelaxationDays` and `moistTopDays` at 0.25 (map's edge strip /
+window's ring, CAPE at 00Z):
+
+| after | seed 1000: W, E, N, S | seed 7: W, E, N, S |
+|---|---|---|
+| 36 h | 908/340, 1858/1839, 1683/1070, 1474/1229 | 702/4, 935/822, 1539/1450, 1643/1449 |
+| 60 h | 617/0, 1547/1449, 1501/1071, 1694/1886 | 706/0, 1031/1028, 1727/1795, 1553/1735 |
+| 84 h | 706/235, 1516/1658, 987/826, 1536/1595 | 1430/112, 845/716, 1574/1506, 1507/1622 |
+| 108 h | 1466/0, 1293/1467, 2037/2027, 1621/2094 | 280/1, 1447/1621, 1379/2360, 1653/1191 |
+| 132 h | 1091/75, 1113/531, 942/687, 1467/2058 | 643/6, 1460/1115, 1915/2041, 1658/1884 |
+
+(With 2 days the south ring read 0 against 1,653 at 108 h on seed 7, and with half a day 37.) The west stays dry:
+the window carries the high ground's air east, where the map's western edge is given moister entering air.

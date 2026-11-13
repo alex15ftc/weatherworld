@@ -16,6 +16,21 @@
 
 ## Decisions
 
+### 2026-11-13 — The long range model is a storm-free copy with one timing error; severe-weather charts are the map's own
+
+- Status: `active`
+- Decision: 7-day runs at each 06Z, stepped without storms, each with a timing error drawn once (the outlook
+  members' mechanism and spread). On the large-scale pages CAPE, CIN, SCP and STP cover the whole model (the
+  owner's choice): the map's cells in its box, a display-only wide copy of the regional layer around it
+  (`WideRegion.js`), the large-scale model's own columns beyond. Rejected: spreading the map's values outward by
+  distance (painted); the regional layer over the whole channel (its geography is the map's, not a continent's).
+- Rationale: the owner asked for the timing error rather than an exact run. A copy is otherwise exact (steering
+  and the large-scale model are deterministic and storms do not feed back into them; measured over 5 days), which
+  would be a spoiler. The composites need the regional layer's low-level air (backed winds from the lee trough,
+  the cap): from large-scale columns alone they read far too low (SCP 1 against the map's 10).
+- Consequences: a run's large-scale fields are the world's own; what differs is where the map sits in them, and
+  from that the map's weather. Storms are not forecast beyond the short range model.
+
 ### 2026-11-12 — Day replays are kept 16 world days and played by the live pages; GIFs are made in the browser
 
 - Status: `active`

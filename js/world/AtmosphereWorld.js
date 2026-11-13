@@ -15,6 +15,7 @@ import { initializeStormEngine, advanceStormEngine, applyStormFeedback } from '.
 import { snapshotWorld, hydrateWorld } from './worldSnapshot.js';
 import { clamp } from '../scenarios/math.js';
 import { RegionSteering } from './RegionSteering.js';
+import { createWide, stepWide, saveWide } from './WideRegion.js';
 
 const ramp = (value, low, high) => clamp((value - low) / (high - low), 0, 1);
 
@@ -92,6 +93,11 @@ export class AtmosphereWorld {
 
   get hourUtc() { return this.regional.hourUtc; }
 
+  // The wide window (WideRegion.js): the regional layer again on a wider, coarser grid about the map, for the
+  // large-scale pages. For display only: nothing here reads it. It is made when first asked for (from what a
+  // saved state kept of it, if anything) and then stepped with the map.
+  enableWide() { if (!this.wide) { this.wide = createWide(this.regional, this.wideState ?? null); this.wideState = null; } return this.wide; }
+
   // Everything needed to carry on later from exactly here (safe to serialize; the arrays are
   // the live ones, so serialize before advancing again).
   // forecast: the smaller copy a forecast run starts from (worldSnapshot.js). A run from it
@@ -107,7 +113,9 @@ export class AtmosphereWorld {
       // (The last step's 850 mb potential temperature: the next step's warm-air lift is worked out
       // from its change, and that lift works on the cap. Saved since 2026-10-23.)
       ascent: this.ascent, stormAir: this.stormAir, stormsEnabled: this.stormsEnabled, previousTheta850: this.previousTheta850 ?? null,
-      world: snapshotWorld(this.world, { full: !forecast })
+      world: snapshotWorld(this.world, { full: !forecast }),
+      // (the wide window, when there is one: display only)
+      ...(this.wide || this.wideState ? { wide: this.wide ? saveWide(this.wide) : this.wideState } : {})
     };
   }
 
@@ -130,6 +138,7 @@ export class AtmosphereWorld {
     restored.ascent = state.ascent; restored.stormAir = state.stormAir; restored.stormsEnabled = state.stormsEnabled;
     if (state.previousTheta850) restored.previousTheta850 = state.previousTheta850;
     restored.boundaries = world.mesoscale?.boundaries ?? [];
+    restored.wideState = state.wide ?? null;
     return restored;
   }
 
@@ -141,6 +150,7 @@ export class AtmosphereWorld {
     const stepHours = this.regional.params.stepSeconds / 3600, steps = Math.max(1, Math.round(hours / stepHours));
     for (let step = 0; step < steps; step++) {
       this.regional.step();
+      if (this.wide) stepWide(this.wide, this.regional);
       if (this.regional.geographyVersion !== this.slopeVersion) this.updateSlopes();
       this.steering?.update();
       this.prepare(stepHours);

@@ -7,6 +7,7 @@
   <!-- The whole large-scale model with the game map's place in it (js/pages/synopticPage.js), at two addresses:
        /synoptic               the analysis of the last 18 hours (server/SynopticRuntime.js)
        /models/large-scale     the same charts from a short range model run, every 3 forecast hours
+       /models/long-range      the same from the long range model's 7-day runs (one at each 06Z, with a timing error)
                                (server/ShortRangeRuntime.js synopticFrame)
        ?share=1 shows only the chart, with its title, time, key and the site's name in the frame, for
        pictures and loops (tools/social/make-loop.mjs).
@@ -59,7 +60,7 @@
   <nav class="crumbs" aria-label="Breadcrumb">
     <a href="/">Home</a>
     <span data-mode="analysis"><a href="/analysis">Mesoanalysis</a></span><span data-mode="analysis">Synoptic charts</span>
-    <span data-mode="model"><a href="/models">Models</a></span><span data-mode="model">Large-scale view</span>
+    <span data-mode="model"><a href="/models">Models</a></span><span data-mode="model" id="crumbModel">Large-scale view</span>
     <span data-mode="replay"><a href="/days">Past days</a></span><span data-mode="replay"><a data-day-link href="/days">The day</a></span><span data-mode="replay">Large-scale replay</span>
   </nav>
   <div class="tool-head">
@@ -71,7 +72,7 @@
       <a href="/analysis">Surface analysis and soundings</a><a href="/synoptic" aria-current="page">Synoptic charts</a>
     </nav>
     <nav class="tabs" aria-label="Models" data-mode="model">
-      <a href="/models">Short range and ensemble</a><a href="/models/large-scale" aria-current="page">Large-scale view</a>
+      <a href="/models">Short range and ensemble</a><a href="/models/large-scale" id="tabLargeScale" aria-current="page">Large-scale view</a><a href="/models/long-range" id="tabLongRange">Long range</a>
     </nav>
   </div>
   <hr class="tool-rule" />
