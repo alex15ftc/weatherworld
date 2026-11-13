@@ -127,7 +127,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
     which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
     page has the two post pictures (PNG made in the browser, or opened alone), the numbers, and the tornado tracks alone on a time slider (GIF or PNG, from the summary, so any
-    saved day has it; one solid line a tornado, deployed from `ef59400`). Every loop the site saves as a GIF can also be saved as an MP4 (`js/mp4.js`: the browser's H.264 encoder and a small MP4 writer; not deployed yet). Days before this was deployed have no outlook kept.
+    saved day has it; one solid line a tornado, deployed from `ef59400`). Every loop the site saves as a GIF can also be saved as an MP4 (`js/mp4.js`: the browser's H.264 encoder and a small MP4 writer; deployed from `ed58a63`). Days before this was deployed have no outlook kept.
   - Day replays (2026-11-12, `server/ReplayArchive.js`, `tests/replay-archive.mjs`): each world day's hourly
     mesoanalysis and large-scale frames and every warning are kept in `replays/<world>-<day>.bin.gz` beside the
     world's state (about 13 MB a day) for 16 world days. A day's page links to `/day/<id>/analysis` and
