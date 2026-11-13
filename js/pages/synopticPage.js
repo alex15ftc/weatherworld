@@ -126,9 +126,9 @@ const MODEL = location.pathname.startsWith('/models'), LONG = location.pathname.
 const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/synoptic/)?.[1] ?? null, REPLAY = Boolean(DAY), STEPPED = MODEL || REPLAY;
 let runInit = MODEL && query.get('run') !== null && Number.isFinite(Number(query.get('run'))) ? Number(query.get('run')) : null;
 document.body.dataset.source = REPLAY ? 'replay' : MODEL ? 'model' : 'analysis';
-if (MODEL) { $('synHeading').textContent = LONG ? 'Long range model' : 'Large-scale view'; document.title = `${LONG ? 'Long range model' : 'Large-scale view'} · Models · WeatherWorld`; }
+if (MODEL) { $('synHeading').textContent = LONG ? 'Long range model' : 'Large-scale view'; document.title = `${LONG ? 'Long range model' : 'Large-scale view'} · Models · High Risk`; }
 if (LONG) { $('crumbModel').textContent = 'Long range'; $('tabLargeScale').removeAttribute('aria-current'); $('tabLongRange').setAttribute('aria-current', 'page'); $('runNote').textContent = 'Select a point inside the game map\'s box for the run\'s sounding there. The long range model: a 7-day run from each 0600 UTC, every 3 forecast hours, without storms. Like a real forecast it has a timing error: systems reach the map a little early or late, more so with each day ahead.'; }
-if (REPLAY) { $('synHeading').textContent = 'Large-scale charts: replay'; document.title = 'Large-scale replay · Past days · WeatherWorld'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
+if (REPLAY) { $('synHeading').textContent = 'Large-scale charts: replay'; document.title = 'Large-scale replay · Past days · High Risk'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
 const api = REPLAY
   ? { frame: hour => `/api/day/${DAY}/replay/synoptic/frame${hour === null ? '' : `?frame=${hour}`}`, field: (key, hour) => `/api/day/${DAY}/replay/synoptic/field?frame=${hour}&key=${encodeURIComponent(key)}` }
   : MODEL
@@ -611,7 +611,7 @@ $('saveGif').addEventListener('click', async () => {
   button.disabled = true;
   try {
     await saveLoop({
-      count: frames.length, width, height, delayMs: 350, name: `weatherworld-${chart?.key ?? 'chart'}${REPLAY ? `-${DAY}` : ''}.gif`,
+      count: frames.length, width, height, delayMs: 350, name: `highrisk-${chart?.key ?? 'chart'}${REPLAY ? `-${DAY}` : ''}.gif`,
       show: async k => { frameHour = frames[k]; await load(); },
       draw: g => drawChartFrame(g, canvas, { title: (MODEL ? `Model F${String(data.run.forecastHour).padStart(3, '0')} · ` : '') + (chart?.label ?? layers.shade?.label ?? 'Large-scale chart'), time: `${clock(data.hourUtc).replace(':', '')} UTC ${data.date ?? ''}`.trim() }),
       onProgress: text => { $('gifNote').textContent = text; }

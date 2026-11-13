@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Convective Outlook · WeatherWorld</title>
+  <title>Convective Outlook · High Risk</title>
   <!-- The public Day 1-3 outlook page (server/OutlookPublic.js): /outlooks, /outlook/day1, /outlook/day2, /outlook/day3. -->
   <!--site:head-->
   <style>
@@ -52,7 +52,7 @@ const day = (location.pathname.match(/day[123]/) ?? ['day1'])[0], n = Number(day
 const HAZARD_NAMES = { categorical: 'Categorical', tornado: 'Tornado', wind: 'Wind', hail: 'Hail', severe: 'Severe' };
 let hazard = new URLSearchParams(location.search).get('hazard') ?? 'categorical', version = null, shown = '';
 document.querySelectorAll('.tabs a[data-day]').forEach(a => { if (a.dataset.day === day) a.setAttribute('aria-current', 'page'); });
-document.title = `Day ${n} Convective Outlook · WeatherWorld`;
+document.title = `Day ${n} Convective Outlook · High Risk`;
 $('#title').textContent = `Day ${n} Convective Outlook`;
 $('#crumb').textContent = `Day ${n}`;
 $('#pager').innerHTML = `${n > 1 ? `<a href="/outlook/day${n - 1}">‹ Day ${n - 1} outlook</a>` : '<span></span>'}${n < 3 ? `<a href="/outlook/day${n + 1}">Day ${n + 1} outlook ›</a>` : '<span></span>'}`;

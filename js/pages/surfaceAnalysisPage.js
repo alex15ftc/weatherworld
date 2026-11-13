@@ -18,7 +18,7 @@ const REFRESH_MS = 10000, LOOP_MS = 450;
 
 const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/analysis/)?.[1] ?? null, REPLAY = Boolean(DAY);
 const API = REPLAY ? { surface: `/api/day/${DAY}/replay/surface`, parameter: `/api/day/${DAY}/replay/parameter` } : { surface: '/api/atmosphere/surface', parameter: '/api/atmosphere/parameter' };
-if (REPLAY) { document.body.dataset.source = 'replay'; document.title = 'Mesoanalysis replay · Past days · WeatherWorld'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
+if (REPLAY) { document.body.dataset.source = 'replay'; document.title = 'Mesoanalysis replay · Past days · High Risk'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
 let data = null, field = null, view = null, style = 'both', selected = null;
 let frameHour = null;          // null follows the current time
 let looping = null;
@@ -467,7 +467,7 @@ $('saveGif').addEventListener('click', async () => {
   button.disabled = true;
   try {
     await saveLoop({
-      count: frames.length, width, height, delayMs: 350, name: `weatherworld-mesoanalysis${REPLAY ? `-${DAY}` : ''}.gif`,
+      count: frames.length, width, height, delayMs: 350, name: `highrisk-mesoanalysis${REPLAY ? `-${DAY}` : ''}.gif`,
       show: async k => { frameHour = frames[k]; await load(); },
       draw: g => drawChartFrame(g, canvas, { square: true, title: controls.parameter.value ? `Mesoanalysis · ${overlay}` : 'Surface analysis', time: `${clock(data.hourUtc).replace(':', '')} UTC ${data.date ?? ''}`.trim() }),
       onProgress: text => { $('gifNote').textContent = text; }

@@ -96,7 +96,7 @@ export async function saveLoop({ count, show, draw, width, height, delayMs = 400
 // A chart's picture for a loop: a title strip (what it is, and its time), the chart itself fitted under it, and the
 // site's name along the bottom. chart: the page's canvas; square: only the square in the middle of it (a square map
 // drawn in a wide canvas).
-export function drawChartFrame(g, chart, { title, time, square = false, note = 'WeatherWorld · simulated weather, not a real forecast' }) {
+export function drawChartFrame(g, chart, { title, time, square = false, note = 'High Risk · simulated weather, not a real forecast' }) {
   const width = g.canvas.width, height = g.canvas.height, top = 40, bottom = 26;
   g.fillStyle = '#0a0f15'; g.fillRect(0, 0, width, height);
   // (the chart keeps its shape, centred in the room between the strips)

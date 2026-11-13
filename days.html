@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Past days · WeatherWorld</title>
+  <title>Past days · High Risk</title>
   <!-- Day summaries (server/DayArchive.js), at two addresses:
        /days         the saved days; for an admin, the recent days too, each with a Save button
        /day/<id>     one day: the forecast as issued and what happened, as two pictures made for posting
-                     (1600 x 900, each can be saved as a PNG), with the day's numbers and draft post text.
+                     (1600 x 900, each can be saved as a PNG), with the day's numbers.
                      <id> is a saved day's, or live-<n> for an admin looking at a day not yet saved.
        /day/<id>?card=outlook|tracks shows one picture alone, filling the window (for a screenshot).
+       A day with tornadoes also has "Tornado tracks": its tracks alone, without the forecast areas, growing on a
+       time slider, saved as a GIF or PNG. It is drawn from the summary, so it needs no replay.
        For 16 world days after a day its page also has replays (server/ReplayArchive.js): links to the mesoanalysis
        and large-scale pages on the day's hours, and the warnings on a time slider. Selecting a tornado's track on
        the "What happened" picture opens its panel: a map zoomed to its path with the survey's swath and damage
@@ -26,7 +28,6 @@
     .card-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--rule); background: #fff; }
     .card-frame .card { position: absolute; left: 0; top: 0; transform-origin: 0 0; transform: scale(var(--k, 1)); }
     .section > h2 .day-tools { font-weight: 400; }
-    textarea.post { width: 100%; min-height: 150px; padding: 12px 14px; font: 400 16px/1.5 var(--sans); color: var(--ink); background: var(--band); border: 0; border-left: 3px solid var(--rule); resize: vertical; }
     table.list td.act { white-space: nowrap; text-align: right; }
     table.list td.act button { appearance: none; background: var(--page); color: var(--ink); border: 1px solid var(--rule); border-radius: 2px; padding: 4px 10px; font: 600 14px var(--sans); cursor: pointer; }
     table.list td.act button:hover { border-color: var(--ink); }
@@ -169,6 +170,23 @@
         </div>
       </div>
     </section>
+    <section class="section day-more" id="tracksBox" hidden>
+      <h2>Tornado tracks <span class="muted" style="font-size:15px;font-weight:400">the day's tracks alone, without the forecast areas</span></h2>
+      <div class="player">
+        <div>
+          <canvas id="trackCanvas" width="640" height="640" aria-label="The day's tornado tracks"></canvas>
+        </div>
+        <div>
+          <div class="bar day-tools" style="margin-top:0">
+            <button id="trackPlay">Play</button>
+            <input type="range" id="trackSlider" min="0" max="144" value="144" aria-label="Time of day" />
+          </div>
+          <p class="time" id="trackTime" style="font:400 14px var(--mono);color:var(--ink-2);margin:10px 0"></p>
+          <div class="bar day-tools"><button id="trackGif">Save as GIF</button><button id="trackPng">Save as PNG</button></div>
+          <p class="muted" id="trackNote" style="font-size:14.5px;margin-top:12px">With the slider at its end the map shows every track of the day. Play, or move the slider, to watch them form. The GIF plays the day and ends on the whole map.</p>
+        </div>
+      </div>
+    </section>
     <section class="section day-more" id="replayBox" hidden>
       <h2>Replays <span class="muted" id="replayNote" style="font-size:15px;font-weight:400"></span></h2>
       <div class="split">
@@ -193,17 +211,10 @@
         </div>
       </div>
     </section>
-    <div class="split day-more">
-      <section class="section">
-        <h2>The day in numbers</h2>
-        <dl class="facts" id="numbers"></dl>
-      </section>
-      <section class="section">
-        <h2>Post text <span class="day-tools"><button id="copyFirst">Copy the forecast post</button><button id="copySecond">Copy the outcome post</button></span></h2>
-        <textarea class="post" id="postFirst" aria-label="Post text for the forecast"></textarea>
-        <textarea class="post" id="postSecond" aria-label="Post text for the outcome" style="margin-top:10px"></textarea>
-      </section>
-    </div>
+    <section class="section day-more">
+      <h2>The day in numbers</h2>
+      <dl class="facts" id="numbers"></dl>
+    </section>
   </div>
 </main>
 <!--site:footer-->
@@ -261,7 +272,7 @@ const mapSvg = async (kind, hazard, square) => {
   return square ? text.replace(/(<svg[^>]*?) height="\d+" viewBox="0 0 1000 \d+"/, '$1 height="1000" viewBox="0 0 1000 1000"').replace(/<text x="24" y="10\d\d[\s\S]*<\/svg>$/, '</svg>') : text;
 };
 const frame = (title, time, body) => `<div class="top"><b>${escapeHtml(title)}</b><span>${escapeHtml(time)}</span></div><div class="body">${body}</div>
-  <div class="foot"><span><b>WeatherWorld</b> Storm Prediction Center</span><span>Simulated weather for the game world. Not a real forecast.</span></div>`;
+  <div class="foot"><span><b>High Risk</b> Storm Prediction Center</span><span>Simulated weather for the game world. Not a real forecast.</span></div>`;
 
 async function showDay() {
   $('#dayView').hidden = false;
@@ -270,7 +281,7 @@ async function showDay() {
   try { day = await ask(`/api/day/${id}`); }
   catch (error) { $('#title').textContent = error.status === 401 ? 'This day has not been saved' : 'No report for this day'; $('#lede').textContent = error.status === 401 ? 'Only saved days are public. Sign in as admin at the top of the page to see recent days.' : 'There is no report at this address. A day has one only once it has ended (1200 UTC).'; $('#dayView').hidden = true; return; }
   const o = day.outlook, n = day.numbers, top = o?.highest;
-  document.title = `${day.label} · Past days · WeatherWorld`;
+  document.title = `${day.label} · Past days · High Risk`;
   $('#title').textContent = `${day.label}${o ? `: ${o.risk}` : ''}`;
   $('#lede').textContent = o ? o.headline : 'No outlook was kept for this day.';
   $('#stamp').innerHTML = `<b>Day</b> ${escapeHtml(day.label)}, 1200 UTC to 1200 UTC${day.saved ? ` · <b>saved</b> ${new Date(day.savedAtMs).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ' · <b>not saved</b>'}`;
@@ -328,9 +339,6 @@ async function showDay() {
     ['Warnings counted', `${n.tornadoWarnings} tornado, ${n.severeWarnings} severe thunderstorm`]
   ].filter(([k, v]) => k && v).map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
 
-  $('#postFirst').value = o ? `${o.headline} ${sentence(o.mainHazards ?? '')}${o.mainHazards ? '.' : ''}\n\nThis is not a real forecast. It is the Day 1 outlook for WeatherWorld, a storm-chasing world where one weather engine runs the same sky for every server. The storms had not formed when this was issued.` : '';
-  $('#postSecond').value = `What happened: ${n.tornadoes ? `${count(n.tornadoes)}${n.strongest ? `, the strongest rated ${n.strongest.rating}${n.strongest.peakWindMph ? ` with ${Math.round(n.strongest.peakWindMph)} mph winds` : ''}` : ''}.` : 'no tornadoes.'}${verify ? ` ${verify}` : ''}${n.longest && n.tornadoes ? ` The longest track ran ${Math.round(n.longest.lengthMi)} miles.` : ''}\n\nNothing here is scripted. The outlook is made from an ensemble of forecast runs, then the world plays out.`;
-
   showReplays(day);
 
   // Admin: save a live day, or remove a saved one.
@@ -350,7 +358,6 @@ $('#removeDay').addEventListener('click', async () => {
   if (!confirm('Remove this saved day? Its summary cannot be made again once the world has let the day go.')) return;
   try { await ask(`/api/day/${id}/remove`, { method: 'POST' }); location.href = '/days'; } catch (error) { alert(`That did not work (${error.message}).`); }
 });
-for (const [button, box] of [['#copyFirst', '#postFirst'], ['#copySecond', '#postSecond']]) $(button).addEventListener('click', async () => { try { await navigator.clipboard.writeText($(box).value); $(button).textContent = 'Copied'; } catch { $(box).select(); } });
 
 // ---- Replays (server/ReplayArchive.js): kept for 16 world days after the day.
 let theDay = null, counties = null;
@@ -364,6 +371,8 @@ async function showReplays(day) {
   for (const group of document.querySelectorAll('#cardTracks [data-tornado]')) group.addEventListener('click', () => showTornado(group.dataset.tornado, true));
   await loadCalendar();
   try { counties = await ask('/api/map/counties'); } catch { counties = null; }
+  $('#tracksBox').hidden = Boolean(alone) || !day.tornadoes.some(t => t.track?.length);
+  if (!$('#tracksBox').hidden) drawTracks();
   if (!replay.available) return;
   $('#replayNote').textContent = `kept until ${utcText(replay.expiresHourUtc)}`;
   $('#replayMeso').href = `/day/${id}/analysis`; $('#replaySynoptic').href = `/day/${id}/synoptic`;
@@ -420,11 +429,93 @@ $('#warnGif').addEventListener('click', async () => {
   const button = $('#warnGif'), slider = $('#warnSlider'), was = slider.value, canvas = $('#warnCanvas');
   button.disabled = true;
   // (every 20 minutes: 73 pictures of the day)
-  await saveLoop({ count: 73, width: 560, height: 626, delayMs: 180, name: `weatherworld-${id}-warnings.gif`,
+  await saveLoop({ count: 73, width: 560, height: 626, delayMs: 180, name: `highrisk-${id}-warnings.gif`,
     show: k => { slider.value = k * 2; drawWarnings(); },
     draw: g => { const now = drawWarnings(); drawChartFrame(g, canvas, { title: `Warnings · ${now.tornado} tornado, ${now.other} severe`, time: utcText(now.hour) }); },
     onProgress: text => { $('#warnNote').textContent = text; } }).catch(error => { $('#warnNote').textContent = `The GIF could not be made (${error.message}).`; });
   button.disabled = false; slider.value = was; drawWarnings();
+});
+
+// ---- The day's tornado tracks alone (no forecast areas), on a time slider: each track grows while its tornado
+// is on the ground, and the slider's end shows the whole day. All of it comes from the day's summary, so it needs
+// no replay and works for any saved day.
+let trackTimer = null;
+function drawTracks() {
+  const canvas = $('#trackCanvas'), g = canvas.getContext('2d'), step = Number($('#trackSlider').value), whole = step >= 144, hour = theDay.startHourUtc + step / 6;
+  const { X, Y } = drawGround(g, canvas.width, { x: 0, y: 0, size: counties?.miles ?? 500 });
+  const list = theDay.tornadoes.filter(t => t.track?.length), seen = new Set();
+  let begun = 0, live = 0;
+  g.lineCap = g.lineJoin = 'round';
+  for (const t of [...list].sort((a, b) => a.ef - b.ef)) {
+    const hours = Math.max(1 / 60, (t.minutes ?? 0) / 60), part = whole || t.startHourUtc == null ? 1 : (hour - t.startHourUtc) / hours;
+    if (part < 0) continue;
+    begun++; seen.add(Math.max(-1, t.ef));
+    // The track as far as the tornado had gone by now (by length along it).
+    const points = [t.track[0]];
+    let head = t.track[0];
+    if (part >= 1) { points.push(...t.track.slice(1)); head = t.track[t.track.length - 1]; }
+    else {
+      live++;
+      let total = 0;
+      for (let n = 1; n < t.track.length; n++) total += Math.hypot(t.track[n][0] - t.track[n - 1][0], t.track[n][1] - t.track[n - 1][1]);
+      let left = total * part;
+      for (let n = 1; n < t.track.length && left > 0; n++) {
+        const a = t.track[n - 1], b = t.track[n], d = Math.hypot(b[0] - a[0], b[1] - a[1]), f = d > 0 ? Math.min(1, left / d) : 1;
+        head = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; points.push(head); left -= d;
+      }
+    }
+    const colour = efColour(t.ef), width = 2.4 + Math.max(0, t.ef) * 0.9;
+    const line = () => { g.beginPath(); points.forEach(([x, y], n) => (n ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.stroke(); };
+    g.strokeStyle = '#05080c'; g.lineWidth = width + 2.4; line();
+    g.strokeStyle = colour; g.lineWidth = width; line();
+    // (a dot where it began, so a short track still shows)
+    g.fillStyle = colour; g.strokeStyle = '#05080c'; g.lineWidth = 1.2; g.beginPath(); g.arc(X(t.track[0][0]), Y(t.track[0][1]), 2.2 + Math.max(0, t.ef) * 0.5, 0, Math.PI * 2); g.fill(); g.stroke();
+    if (part < 1) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(X(head[0]), Y(head[1]), 6, 0, Math.PI * 2); g.stroke(); }
+  }
+  // The key, on the picture so that it goes into the GIF: the ratings drawn so far.
+  const keys = [5, 4, 3, 2, 1, 0, -1].filter(ef => seen.has(ef));
+  if (keys.length) {
+    const x = 12, row = 19, y = canvas.height - 12 - keys.length * row;
+    g.fillStyle = 'rgba(8,12,18,.78)'; g.fillRect(x - 6, y - 6, 78, keys.length * row + 10);
+    g.font = '600 13px "Public Sans", system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+    keys.forEach((ef, n) => { g.fillStyle = efColour(ef); g.fillRect(x, y + n * row + 5, 24, 6); g.fillStyle = '#e9eae7'; g.fillText(ef < 0 ? 'EFU' : `EF${ef}`, x + 32, y + n * row + 8.5); });
+  }
+  const text = whole ? `the whole day · ${count(list.length)}` : `${begun} of ${list.length} begun${live ? `, ${live} on the ground` : ''}`;
+  $('#trackTime').textContent = whole ? `${theDay.label} · ${count(list.length)}` : `${utcText(hour)} · ${text}`;
+  return { hour, whole, text };
+}
+$('#trackSlider').addEventListener('input', () => { stopTracks(); drawTracks(); });
+function stopTracks() { clearInterval(trackTimer); trackTimer = null; $('#trackPlay').textContent = 'Play'; }
+$('#trackPlay').addEventListener('click', () => {
+  if (trackTimer) return stopTracks();
+  $('#trackPlay').textContent = 'Stop';
+  // (plays to the end of the day and stops there, on the whole map)
+  const slider = $('#trackSlider'); if (Number(slider.value) >= 144) slider.value = 0;
+  trackTimer = setInterval(() => { slider.value = Number(slider.value) + 1; drawTracks(); if (Number(slider.value) >= 144) stopTracks(); }, 160);
+});
+const trackFrame = (g, now) => drawChartFrame(g, $('#trackCanvas'), { title: `Tornado tracks · ${now.text}`, time: now.whole ? theDay.label : utcText(now.hour) });
+$('#trackGif').addEventListener('click', async () => {
+  stopTracks();
+  const button = $('#trackGif'), slider = $('#trackSlider'), was = slider.value, note = $('#trackNote'), text = note.textContent;
+  // From just before the first tornado to just after the last, every 20 minutes, then held on the whole map.
+  const timed = theDay.tornadoes.filter(t => t.track?.length && t.startHourUtc != null), at = hour => (hour - theDay.startHourUtc) * 6;
+  const from = timed.length ? Math.max(0, Math.floor(Math.min(...timed.map(t => at(t.startHourUtc)))) - 3) : 144;
+  const to = timed.length ? Math.min(143, Math.ceil(Math.max(...timed.map(t => at(t.startHourUtc + (t.minutes ?? 0) / 60)))) + 1) : 143;
+  const steps = []; for (let k = from; k <= to; k += 2) steps.push(k);
+  for (let k = 0; k < 10; k++) steps.push(144);
+  button.disabled = true;
+  await saveLoop({ count: steps.length, width: 560, height: 626, delayMs: 180, name: `highrisk-${id}-tornado-tracks.gif`,
+    show: k => { slider.value = steps[k]; },
+    draw: g => trackFrame(g, drawTracks()),
+    onProgress: t => { note.textContent = t || text; } }).catch(error => { note.textContent = `The GIF could not be made (${error.message}).`; });
+  button.disabled = false; slider.value = was; drawTracks(); if (!note.textContent.startsWith('The GIF could not')) note.textContent = text;
+});
+// The map as it is shown now, as one picture.
+$('#trackPng').addEventListener('click', () => {
+  // (the map at its own size, with the title and note strips above and below it)
+  const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 706;
+  trackFrame(canvas.getContext('2d'), drawTracks());
+  canvas.toBlob(blob => { if (!blob) return; const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `highrisk-${id}-tornado-tracks.png`; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 5000); }, 'image/png');
 });
 
 // ---- One tornado, opened from its track on the picture: a map zoomed to its path with the survey's swath and
@@ -615,7 +706,7 @@ $('#radarGif').addEventListener('click', async () => {
   const button = $('#radarGif'), slider = $('#radarSlider'), was = slider.value, canvas = $('#radarCanvas'), t = theDay.tornadoes.find(x => x.id === radar.id), note = $('#radarNote').textContent;
   let shown = null;
   button.disabled = true;
-  await saveLoop({ count: radar.meta.frames.length, width: 560, height: 626, delayMs: 550, name: `weatherworld-${id}-${radar.id}-${RADAR_PRODUCTS[radar.product]?.short ?? radar.product}.gif`,
+  await saveLoop({ count: radar.meta.frames.length, width: 560, height: 626, delayMs: 550, name: `highrisk-${id}-${radar.id}-${RADAR_PRODUCTS[radar.product]?.short ?? radar.product}.gif`,
     show: async k => { slider.value = k; shown = await drawRadar(); },
     draw: g => drawChartFrame(g, canvas, { title: `${t.rating} tornado · ${RADAR_NAMES[radar.product]}`, time: `${utcText(shown.frame.hourUtc)} · ${shown.when}` }),
     onProgress: text => { if (text) $('#radarNote').textContent = text; } }).catch(error => { $('#radarNote').textContent = `The GIF could not be made (${error.message}).`; });
@@ -653,7 +744,7 @@ for (const button of document.querySelectorAll('[data-png]')) button.addEventLis
   button.disabled = true; button.textContent = 'Making the picture…';
   try {
     const blob = await pngOf($(kind === 'tracks' ? '#cardTracks' : '#cardOutlook')), link = document.createElement('a');
-    link.href = URL.createObjectURL(blob); link.download = `weatherworld-${id}-${kind === 'tracks' ? 'what-happened' : 'outlook'}.png`; link.click();
+    link.href = URL.createObjectURL(blob); link.download = `highrisk-${id}-${kind === 'tracks' ? 'what-happened' : 'outlook'}.png`; link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 5000);
   } catch (error) { alert(`The picture could not be made here (${error.message}). Use "Open alone" and take a screenshot instead.`); }
   button.disabled = false; button.textContent = was;

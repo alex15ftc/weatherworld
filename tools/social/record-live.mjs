@@ -9,7 +9,7 @@ import zlib from 'node:zlib';
 
 const args = process.argv.slice(2), out = path.resolve(args[0] ?? 'data/social/live');
 const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i < 0 ? fallback : args[i + 1]; };
-const BASE = flag('base', 'https://weatherworld.up.railway.app');
+const BASE = flag('base', 'https://highrisk.up.railway.app');
 let until = flag('until', null) == null ? null : Number(flag('until'));
 const SYNOPTIC_KEYS = ['wspd250', 'z250', 'wind:250', 'vort500', 'z500', 'wind:500', 'wspd850', 'wind:850', 'tair', 'td', 'mslp', 'wind:sfc'];
 const HAZARDS = ['categorical', 'tornado', 'wind', 'hail'];

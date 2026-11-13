@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WeatherWorld</title>
+  <title>High Risk</title>
   <!-- One watch (/watch/<n>) or mesoscale discussion (/md/<n>), from server/ProductArchive.js. -->
   <!--site:head-->
 </head>
@@ -43,7 +43,7 @@ async function load() {
   try { p = await getJson(`/api/${kind}/${number}`); }
   catch { $('#title').textContent = watch ? `Watch ${number} has not been issued` : `Mesoscale Discussion ${number} has not been issued`; $('#crumb').textContent = number; return; }
   const title = watch ? p.title : `Mesoscale Discussion ${String(p.number).padStart(4, '0')}`;
-  document.title = `${title} · WeatherWorld`;
+  document.title = `${title} · High Risk`;
   $('#title').textContent = title; $('#crumb').textContent = watch ? `Watch ${p.number}` : `Discussion ${p.number}`;
   $('#times').innerHTML = `<b>Issued</b> ${escapeHtml(p.issuedText)}<br><b>${watch ? 'In effect until' : 'Valid until'}</b> ${escapeHtml(p.untilText)}`;
   const tags = [];

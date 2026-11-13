@@ -11,7 +11,7 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
   `/api/products/feed`, `/api/watch/N.svg`, `/api/md/N.svg` and `/api/warnings.svg?keys=` (`server/ProductArchive.js`),
   linking watches and discussions to `/watch/N` and `/md/N` (`product.html`), and reads `/api/health`,
   `/api/live/storms` and `/api/map/counties`. Keep those routes when changing the server.
-- URL: https://weatherworld.up.railway.app (set as `Config.WEATHER_FEED_URL` in
+- URL: https://highrisk.up.railway.app (set as `Config.WEATHER_FEED_URL` in
   `roblox/Shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
 - Build: `Dockerfile` (node:22-slim, no npm packages; builds world map seed 1 into the image).
   `.railwayignore` / `.dockerignore` keep the upload under 1 MB.
@@ -60,11 +60,11 @@ Read the keys with `railway variables --kv`. They are never kept in the repo.
 - Service settings (Windows): the `railway` command is an npm wrapper and the IaC version check cannot
   launch it, so run the real binary from PowerShell:
   `$exe="$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"; $env:_=$exe; & $exe config plan`
-- Check: `curl https://weatherworld.up.railway.app/api/health`
+- Check: `curl https://highrisk.up.railway.app/api/health`
 
 ## Roblox side
 - Game settings > Security: Allow HTTP Requests on.
 - Creator Dashboard > the experience > Secrets: add `weather_feed_key` = the `WEATHER_GAME_KEY` value, domain
-  `weatherworld.up.railway.app`. For Studio, add the same secret under Game Settings > Security
+  `highrisk.up.railway.app`. For Studio, add the same secret under Game Settings > Security
   (local secrets).
 

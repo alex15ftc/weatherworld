@@ -59,7 +59,7 @@ async function readClock() {
     const [calendar, health] = await Promise.all([loadCalendar(), getJson('/api/health')]);
     clockAt = { hour: health.validHourUtc, read: Date.now(), speed: health.autoAdvance ? (calendar?.simHoursPerRealHour ?? 8) : 0 };
     const engine = $('#siteEngine');
-    if (engine) engine.textContent = `WeatherWorld engine ${health.version} · world ${health.seed} · ${health.stormCount} storms, ${health.activeTornadoes} tornado${health.activeTornadoes === 1 ? '' : 'es'} on the ground`;
+    if (engine) engine.textContent = `High Risk engine ${health.version} · world ${health.seed} · ${health.stormCount} storms, ${health.activeTornadoes} tornado${health.activeTornadoes === 1 ? '' : 'es'} on the ground`;
   } catch { clockAt = null; }
   tick();
 }

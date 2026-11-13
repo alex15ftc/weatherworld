@@ -345,7 +345,7 @@ export function writeWatch(watch) {
   const name = title(watch), kind = name.toLowerCase().replace(' watch', ''), e = watch.here, main = threats(watch);
   const hazards = [watch.type === 'tornado' ? (watch.peak.tornadoMph >= 136 ? 'tornadoes, some of them intense' : 'tornadoes, some of them strong') : null, watch.peak.gustMph >= 58 ? 'damaging winds' : null, watch.peak.hailInches >= 1 ? 'large hail' : null].filter(Boolean);
   const lines = [
-    'URGENT - IMMEDIATE BROADCAST REQUESTED', `${name} Number ${watch.number}`, 'NWS Storm Prediction Center WeatherWorld', '',
+    'URGENT - IMMEDIATE BROADCAST REQUESTED', `${name} Number ${watch.number}`, 'NWS Storm Prediction Center High Risk', '',
     `A ${kind} watch is in effect for ${watch.where ?? 'part of the region'}`, `from ${stamp(watch.issuedHourUtc)} until ${stamp(watch.validToHourUtc)}.`, ''
   ];
   if (watch.pds) lines.push('...THIS IS A PARTICULARLY DANGEROUS SITUATION...', '');

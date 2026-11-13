@@ -1,7 +1,7 @@
 // Serves the site's pages from this checkout without starting an engine: the pages and their files come
 // from here (server/SitePages.js, as the engine serves them) and every /api/ request is passed to a running
 // engine, the hosted one by default. For looking at page changes against real data.
-//   node scripts/site-preview.mjs [--port 8090] [--api https://weatherworld.up.railway.app] [--replay <recorded day>]
+//   node scripts/site-preview.mjs [--port 8090] [--api https://highrisk.up.railway.app] [--replay <recorded day>]
 // --replay <dir>: answer /api/synoptic/* and /api/calendar from a day recorded by tools/social/record-live.mjs
 // (its raw folder), so a past day's charts can be drawn again (tools/social/make-loop.mjs).
 import http from 'node:http';
@@ -13,7 +13,7 @@ import { sitePage, renderPage, NOT_FOUND_PAGE, CONTENT_TYPES } from '../server/S
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2), flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i < 0 ? fallback : args[i + 1]; };
-const PORT = Number(flag('port', 8090)), API = flag('api', 'https://weatherworld.up.railway.app'), REPLAY = flag('replay', null);
+const PORT = Number(flag('port', 8090)), API = flag('api', 'https://highrisk.up.railway.app'), REPLAY = flag('replay', null);
 
 // A recorded day's synoptic frames: { hour -> { summary, fields } }, read as they are asked for.
 const replay = REPLAY ? (() => {

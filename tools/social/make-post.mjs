@@ -140,7 +140,7 @@ h1 { font-size: 39px; line-height: 1.17; font-weight: 750; letter-spacing: -.01e
 `;
 const page = (title, time, body) => `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body>
 <div class="top"><b>${esc(title)}</b><span>${esc(time)}</span></div><div class="body">${body}</div>
-<div class="foot"><span><b>WeatherWorld</b> Storm Prediction Center</span><span>Simulated weather for the game world. Not a real forecast.</span></div></body></html>`;
+<div class="foot"><span><b>High Risk</b> Storm Prediction Center</span><span>Simulated weather for the game world. Not a real forecast.</span></div></body></html>`;
 const sentence = text => (text ? text[0].toUpperCase() + text.slice(1) : '');
 const validLine = `Valid ${utcStamp(outlook.validFromHourUtc)} to ${utcStamp(outlook.validToHourUtc)}`;
 
@@ -195,7 +195,7 @@ ${partial ? `\nNote: storm ticks were recorded from world hour ${recordedFrom} t
 
 ${headline} ${sentence(hazards)}.
 
-This is not a real forecast. It is the Day 1 outlook for WeatherWorld, a storm-chasing world where one weather engine runs the same sky for every server. The storms had not formed when this was issued.
+This is not a real forecast. It is the Day 1 outlook for High Risk, a storm-chasing world where one weather engine runs the same sky for every server. The storms had not formed when this was issued.
 
 ## 2. What happened (\`2-what-happened.png\`), as a reply once the day ends
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WeatherWorld</title>
+  <title>High Risk</title>
   <!-- The lists of watches (/watches), mesoscale discussions (/discussions) and warnings (/warnings), from the
        product feed (server/ProductArchive.js, /api/products/feed). -->
   <!--site:head-->
@@ -36,7 +36,7 @@ const PAGES = {
   warnings: { title: 'Warnings', lede: 'Warnings from the local offices for storms that are severe or tornadic right now.', none: 'No warnings are in effect.' }
 };
 const page = PAGES[kind];
-document.title = `${page.title} · WeatherWorld`;
+document.title = `${page.title} · High Risk`;
 $('#title').textContent = page.title; $('#crumb').textContent = page.title; $('#lede').textContent = page.lede;
 const state = (item, now) => (item.validToHourUtc > now ? '' : '<span class="tag tag--ended">Ended</span>');
 const row = (cells, ended) => `<tr${ended ? ' class="ended"' : ''}>${cells.map(([cls, html]) => `<td${cls ? ` class="${cls}"` : ''}>${html}</td>`).join('')}</tr>`;

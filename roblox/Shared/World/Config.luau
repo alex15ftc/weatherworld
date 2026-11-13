@@ -489,7 +489,7 @@ Config.TORNADO_ART = {
 -- The hosted engine (Railway, docs/HOSTING.md). A Workspace WeatherFeedUrl attribute overrides it in
 -- Studio only: a live server always takes the hosted engine, so a URL left in the place (an old
 -- tunnel) cannot cut the live game off its weather.
-Config.WEATHER_FEED_URL = "https://weatherworld.up.railway.app"
+Config.WEATHER_FEED_URL = "https://highrisk.up.railway.app"
 function Config.feedUrl(): string
 	local override = if game:GetService("RunService"):IsStudio() then workspace:GetAttribute("WeatherFeedUrl") :: string? else nil
 	return (string.gsub(override or Config.WEATHER_FEED_URL, "/+$", ""))
