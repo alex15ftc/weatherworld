@@ -92,7 +92,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   Success: look at them in game. The engine still answers this Studio server with HTTP 401: add the Studio local
   secret `weather_feed_key` (docs/HOSTING.md) for real weather and storm damage.
 
-- Site redesign and social post kit (2026-11-12, deployed to the engine from `378dbd3`; the world carried over): the engine's pages
+- Site redesign and social post kit (2026-11-12, deployed to the engine from `ead7a5d`; the world carried over): the engine's pages
   are one website (`site/README.md`): a front page at `/`, `/outlooks`, `/watches`, `/discussions`, `/warnings`,
   `/about`, a real 404, and the map tools as document pages in the same look: `/analysis` (mesoanalysis;
   `/index.html` still works), `/synoptic`, `/models` and `/models/large-scale`. Every page takes its header (hover
@@ -142,7 +142,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     local engine with 2 radar threads: 27 scans, 2.3 s of radar thread and 15 to 19 ms of main thread each, none
     failed; a day that ended with scans waiting finished them afterwards. `/api/replays/status` (admin) and
     `/api/performance` (`tornadoRadar`, `host`) show the cost, the waiting count and the container's CPU limit.
-    The hosted plan's CPU limit is still unread (shell access to the container was not allowed); the hosted radar
+    The hosted container reports a limit of 32 vCPU and 30 GB (`host` in `/api/performance`); the hosted radar
     threads were about 1% busy. Not measured: live radar response while the list drains.
   - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
     and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
