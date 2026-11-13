@@ -113,11 +113,12 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     bulletin on a block, and the map goes to a chosen warning, watch or discussion (`MapCanvas.frame`, "Zoom to
     it"). Checked only by `luau-compile`, selene and a Rojo build. Not published.
   - Large-scale charts redrawn as model charts (2026-11-12, owner's request): filled colour bands, labelled
-    contours and barbs on a light ground, the charts listed by level (250 mb wind, 500 mb wind, 500 mb
+    contours and barbs on the charts' dark ground, the charts listed by level (250 mb wind, 500 mb wind, 500 mb
     vorticity, 500 mb temperature, 850 mb charts, surface, lift, shear) in `js/pages/synopticPage.js`. Public
     view: the game map is held in the middle and nothing shows that it moves (the server leaves the drift out
     of a public frame, `forRole` in `server/index.js`); an admin (key, sign-in on the page) can drag the view
-    and sees the drift. The share view and the loops are the public view.
+    and sees the drift. The share view and the loops are the public view. Admin sign-in is in the site's top
+    bar only (`js/site.js`, kept for the tab); no page has its own sign-in button.
   - Day summaries (`/days`, `/day/<id>`, `server/DayArchive.js`, `tests/day-archive.mjs`): each day's
     highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
     which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
@@ -147,7 +148,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    boilerplate publish) and check it boots and storms arrive; then turn on the M map's Chasers layer and check dots, names and trails (`ChaserNet.Ready` handshake).
 4. Site: look at the Roblox products screen in Studio (restyle and zoom-to-warning are unseen), then publish the
    place. Open choices: a `/day/N` page that keeps each day's outlook and tornado tracks on the engine, so the daily
-   "forecast, then what happened" pair needs no recording; redrawing the map tools' charts for a light ground.
+   "forecast, then what happened" pair needs no recording. (The charts stay dark: owner, 2026-11-12.)
 5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
 
 ## Blockers

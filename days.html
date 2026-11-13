@@ -84,7 +84,7 @@
       <h2>Recent days <span id="adminNote" style="font-weight:400">Admin: save a day to keep its summary; the world's log lets days go after about two weeks.</span></h2>
       <div class="table-scroll"><table class="list" id="recentList"></table></div>
     </section>
-    <p class="day-tools" style="margin-top:26px"><button id="signin">Admin sign-in</button></p>
+    <p class="muted" id="publicNote" style="margin-top:22px;font-size:15px" hidden>An admin (sign in at the top of the page) also sees the recent days here and can save them.</p>
   </div>
 
   <div id="dayView" hidden>
@@ -134,7 +134,7 @@ async function showList() {
   let list;
   try { list = await ask('/api/days'); } catch (error) { $('#stamp').textContent = `Could not reach the weather server (${error.message}).`; return; }
   const admin = list.role === 'admin';
-  $('#signin').textContent = adminKey.get() ? 'Sign out' : 'Admin sign-in';
+  $('#publicNote').hidden = admin;
   const risk = d => (d.highest ? riskTag(d.highest) : '<span class="muted">no outlook kept</span>');
   $('#savedList').innerHTML = list.saved.length ? '<thead><tr><th>Day</th><th>Forecast</th><th>Tornadoes</th><th>Strongest</th><th></th></tr></thead><tbody>' + list.saved.map(d =>
     `<tr><td><a href="/day/${d.id}">${escapeHtml(d.label)}</a></td><td>${risk(d)}</td><td class="num">${d.tornadoes}${d.strong ? ` (${d.strong} strong)` : ''}</td><td class="num">${escapeHtml(d.strongest ?? '–')}</td><td class="act">${admin ? `<button data-remove="${d.id}">Remove</button>` : ''}</td></tr>`).join('') + '</tbody>' : '';
@@ -151,11 +151,6 @@ $('#listView').addEventListener('click', async event => {
     if (save) { const saved = await ask(`/api/day/${save}/save`, { method: 'POST' }); location.href = `/day/${saved.id}`; return; }
     if (confirm('Remove this saved day? Its summary cannot be made again once the world has let the day go.')) await ask(`/api/day/${remove}/remove`, { method: 'POST' });
   } catch (error) { alert(error.status === 401 ? 'The admin key is needed for that.' : `That did not work (${error.message}).`); }
-  showList();
-});
-$('#signin').addEventListener('click', () => {
-  if (adminKey.get()) adminKey.set(null);
-  else { const key = prompt('Admin key'); if (!key) return; adminKey.set(key.trim()); }
   showList();
 });
 
@@ -175,7 +170,7 @@ async function showDay() {
   if (alone) { document.body.classList.add('share'); document.querySelector(`.section[data-card="${alone === 'tracks' ? 'tracks' : 'outlook'}"]`).classList.add('shown'); }
   let day;
   try { day = await ask(`/api/day/${id}`); }
-  catch (error) { $('#title').textContent = error.status === 401 ? 'This day has not been saved' : 'No such day'; $('#lede').textContent = error.status === 401 ? 'Only saved days are public. Sign in as admin on the Past days page to see recent days.' : 'There is no summary at this address.'; $('#dayView').hidden = true; return; }
+  catch (error) { $('#title').textContent = error.status === 401 ? 'This day has not been saved' : 'No such day'; $('#lede').textContent = error.status === 401 ? 'Only saved days are public. Sign in as admin at the top of the page to see recent days.' : 'There is no summary at this address.'; $('#dayView').hidden = true; return; }
   const o = day.outlook, n = day.numbers, top = o?.highest;
   document.title = `${day.label} · Past days · WeatherWorld`;
   $('#title').textContent = `${day.label}${o ? `: ${o.risk}` : ''}`;

@@ -35,6 +35,11 @@ body.doc *, .site-header *, .site-footer * { box-sizing: border-box; }
 .site-top { background: #072a40; font-size: 12.5px; color: var(--brand-soft); }
 .site-top__bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; max-width: 1240px; margin: 0 auto; padding: 0 20px; min-height: 26px; }
 .site-top__note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.site-top__right { display: flex; align-items: center; gap: 16px; flex: none; }
+/* Admin sign-in: here and nowhere else (js/site.js). Every page that shows more to an admin reads the key it keeps. */
+.site-admin { appearance: none; background: none; border: 0; border-radius: 0; padding: 0; width: auto; color: var(--brand-soft); font: 500 12.5px var(--sans); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.site-admin:hover { color: #fff; }
+.site-admin.on { color: var(--gold); font-weight: 700; }
 .site-clock { flex: none; font: 400 12.5px/1.2 var(--mono); white-space: nowrap; }
 .site-clock b { color: #fff; font-weight: 600; }
 @media (max-width: 720px) { .site-top__note { display: none; } .site-top__bar { justify-content: flex-end; } }

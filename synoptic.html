@@ -21,7 +21,7 @@
     .bench .syn-presets button:hover { background: var(--band); }
     .bench .syn-presets button.on { background: var(--band); border-left-color: var(--brand); color: var(--ink); font-weight: 700; }
     @media (prefers-color-scheme: dark) { .bench .syn-presets button.on { border-left-color: var(--link); } }
-    .chart--light { background: #dde0dd; }
+    .chart--light { background: #0a0f15; }
     #legendBar { width: 100%; height: 34px; background: none; }
     .syn-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; }
     .syn-facts span { color: var(--ink-2); } .syn-facts b { text-align: right; font-weight: 600; }
@@ -124,11 +124,7 @@
           sits and drifts along the wave train to meet the day's weather; the arrow is its next 6 hours. The public view holds
           the map in the middle of the chart and shows none of this.</small>
       </section>
-      <details class="group">
-        <summary style="cursor:pointer;font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)">Admin</summary>
-        <button id="synSignin" style="margin-top:6px">Admin sign-in</button>
-        <small>An admin can drag the view and sees the map's drift. <a href="?view=public" data-role-only="admin">See the public view</a></small>
-      </details>
+      <p class="note" data-role-only="admin" style="font-size:13.5px;color:var(--ink-2);margin:10px 0 0">Admin view: the chart can be dragged and the map's drift is shown. <a href="?view=public">See the public view</a></p>
     </aside>
     <div class="bench__main">
       <div class="share-strip top"><b id="shareTitle"></b><span class="time" id="shareTime"></span></div>

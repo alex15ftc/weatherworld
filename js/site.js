@@ -26,6 +26,31 @@ for (const link of document.querySelectorAll('.site-sub a')) if (new URL(link.hr
 const menu = $('.site-menu'), nav = $('.site-nav');
 menu?.addEventListener('click', () => { const open = nav.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });
 
+// Admin sign-in: the one place for it. The key is kept for this tab (wwAdminKey); the pages that show more to
+// an admin (chasers, the world controls, the large-scale charts, past days) send it with their requests and the
+// server decides the role each time. Signing in or out loads the page again, so everything on it is asked for
+// with the new role.
+const ADMIN_KEY = 'wwAdminKey';
+export const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage here */ } } };
+const roleNow = async () => { try { const key = adminKey.get(); return (await (await fetch('/api/chasers/role', { cache: 'no-store', headers: key ? { 'x-admin-key': key } : {} })).json()).role; } catch { return 'public'; } };
+const adminButton = $('#siteAdmin');
+if (adminButton) {
+  roleNow().then(role => {
+    // (a local engine with no key set treats this machine as admin: there is nothing to sign in to)
+    adminButton.textContent = adminKey.get() ? (role === 'admin' ? 'Admin: sign out' : 'Admin key not accepted: sign out') : role === 'admin' ? 'Admin (this machine)' : 'Admin sign-in';
+    adminButton.classList.toggle('on', role === 'admin');
+    adminButton.hidden = false;
+  });
+  adminButton.addEventListener('click', async () => {
+    if (adminKey.get()) { adminKey.set(null); location.reload(); return; }
+    const key = prompt('Admin key');
+    if (!key) return;
+    adminKey.set(key.trim());
+    if (await roleNow() === 'admin') location.reload();
+    else { adminKey.set(null); alert('That key was not accepted.'); }
+  });
+}
+
 // The world's clock: read once a minute, and run forward between reads at the world's speed.
 const clock = $('#siteClock');
 let clockAt = null;

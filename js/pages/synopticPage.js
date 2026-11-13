@@ -1,6 +1,6 @@
 // The large-scale charts: the whole large-scale model (a channel that wraps east-west) with the game map's
 // place in it, drawn as forecast-model charts are: one field in filled colour bands, another as labelled
-// contours, a wind as barbs, on a light ground. The charts on offer are the usual ones, by level.
+// contours, a wind as barbs, on the dark ground the site's other charts have. The charts on offer are the usual ones, by level.
 //
 // Two sources (the page is served at two addresses, synoptic.html):
 //   /synoptic              the analysis of the last 18 hours (server/SynopticRuntime.js)
@@ -14,7 +14,7 @@
 const canvas = document.getElementById('synCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('synTip');
 const $ = id => document.getElementById(id);
 const REFRESH_MS = 10000, LOOP_MS = 450;
-const GROUND = '#f7f7f3', OUTSIDE = '#dde0dd', INK = '#1b1b1b';
+const GROUND = '#10161d', OUTSIDE = '#0a0f15', INK = 'rgba(255,255,255,.9)', LABEL = '#f2f4f5', HALO = 'rgba(8,12,18,.92)';
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 
 // --- How each field is drawn.
@@ -33,8 +33,9 @@ function ramp(stops, n) {
 }
 const steps = (from, to, by) => { const out = []; for (let v = from; v <= to + 1e-9; v += by) out.push(Number(v.toFixed(4))); return out; };
 const banded = (levels, stops, extra = {}) => ({ levels, colours: ramp(stops, levels.length), ...extra });
-// Wind speed (isotachs): pale blue, blue, green, yellow, orange, red, magenta, as the jet charts run.
-const ISOTACH = ['#cfe8f6', '#7fc0ea', '#3f8fd8', '#2ea05a', '#9bcf3c', '#f4de3a', '#f6a827', '#ea5a24', '#cf2a2a', '#b0207a', '#e7a3d6'];
+// Wind speed (isotachs): deep blue (the weakest band, so it sits back on the dark ground), blue, green, yellow,
+// orange, red, magenta, as the jet charts run.
+const ISOTACH = ['#234a73', '#2f6fb0', '#4a9fe0', '#2ea05a', '#9bcf3c', '#f4de3a', '#f6a827', '#ea5a24', '#cf2a2a', '#b0207a', '#e7a3d6'];
 const TEMPERATURE = ['#7b3fa6', '#3b4cc0', '#4f9be0', '#57c7c2', '#62c36b', '#c9dc4a', '#f6d03a', '#f59a2a', '#e2532a', '#b81f2a', '#7a1436'];
 const MOISTURE = ['#8a6a43', '#b89a66', '#dcc99a', '#e9efc9', '#b5e0a0', '#6ec574', '#2f9e58', '#1f8a87', '#2a6fc4', '#5a44b8', '#8b2fa0'];
 const DIVERGING_DRY_MOIST = ['#7a4f1e', '#b98a4e', '#e3cf9f', '#cfe8c4', '#6fc27a', '#1f8a4c'];
@@ -47,10 +48,10 @@ const SCALES = {
   vort500: banded([10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40], ['#fff3a6', '#fbd24a', '#f6a12b', '#e9602a', '#cf2b2b', '#a3207a', '#6a2a9c'], { contour: { interval: 4, from: 12 } }),
   z250: banded(steps(1000, 1100, 10), ['#5b4aa0', '#4f86c6', '#7fc3b0', '#e6d38a', '#d98850', '#b5482f'], { under: true, contour: { interval: 12 } }),
   z500: banded(steps(534, 606, 6), ['#5b4aa0', '#4f86c6', '#7fc3b0', '#e6d38a', '#d98850', '#b5482f'], { under: true, contour: { interval: 6 } }),
-  t500: banded(steps(-40, 0, 2), TEMPERATURE, { under: true, contour: { interval: 2, line: '#b3261e', dash: true } }),
-  tair: banded(steps(0, 110, 5), TEMPERATURE, { under: true, contour: { interval: 10, line: '#b3261e', dash: true } }),
-  td: banded(steps(20, 80, 5), MOISTURE, { under: true, contour: { interval: 5, from: 45, line: '#1b6e3c', dash: true } }),
-  q: banded(steps(2, 20, 2), MOISTURE, { under: true, contour: { interval: 2, from: 6, line: '#1b6e3c', dash: true } }),
+  t500: banded(steps(-40, 0, 2), TEMPERATURE, { under: true, contour: { interval: 2, line: '#ff9a8f', dash: true } }),
+  tair: banded(steps(0, 110, 5), TEMPERATURE, { under: true, contour: { interval: 10, line: '#ff9a8f', dash: true } }),
+  td: banded(steps(20, 80, 5), MOISTURE, { under: true, contour: { interval: 5, from: 45, line: '#7fe08f', dash: true } }),
+  q: banded(steps(2, 20, 2), MOISTURE, { under: true, contour: { interval: 2, from: 6, line: '#7fe08f', dash: true } }),
   mslp: banded(steps(980, 1040, 4), ['#6a3fa0', '#4f7fd0', '#a9d3e8', '#f3f0dc', '#f2c078', '#d96a3a'], { under: true, contour: { interval: 4 } }),
   qtrans: banded([100, 150, 200, 250, 300, 400, 500, 600, 800], ['#d9f0c8', '#8fd18a', '#3fae8a', '#2f86c6', '#4a52b8', '#8a2fa0'], { contour: { interval: 100, from: 100 } }),
   qadv: banded([-3, -2, -1, -0.5, -0.2, 0.2, 0.5, 1, 2, 3], DIVERGING_DRY_MOIST, { under: true, blank: [-0.2, 0.2], contour: { interval: 0.5, skipZero: true } }),
@@ -90,8 +91,7 @@ if (query.get('frame') !== null && Number.isFinite(Number(query.get('frame')))) 
 const queryZoom = Number(query.get('zoom')) > 0;
 view.zoom = queryZoom ? Math.max(1, Math.min(10, Number(query.get('zoom')))) : 2;
 
-// Who is looking. The admin key is kept for this tab under the same name as on the chasers and mesoanalysis
-// pages; the server answers with the role it gives the request, and leaves the map's drift out for the public.
+// Who is looking. The admin key is the one the site's top bar keeps for this tab (js/site.js); the server answers with the role it gives the request, and leaves the map's drift out for the public.
 const ADMIN_KEY = 'wwAdminKey', FORCE_PUBLIC = SHARE || query.get('view') === 'public';
 const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage: the key lasts until the page is left */ } } };
 let admin = false;
@@ -101,7 +101,6 @@ function setRole(role) {
   admin = now;
   document.body.dataset.role = admin ? 'admin' : 'public';
   canvas.classList.toggle('pan', admin);
-  $('synSignin').textContent = adminKey.get() ? 'Sign out' : 'Admin sign-in';
 }
 
 // Where the frames come from: the analysis of the last hours (/synoptic), or a short range model run
@@ -232,11 +231,11 @@ function drawKey(bar, field, dark = false) {
   const n = scale.levels.length, block = w / n, barH = Math.round(h * 0.52), size = Math.round(h * 0.36);
   for (let k = 0; k < n; k++) {
     const blank = scale.blank && scale.levels[k] >= scale.blank[0] && scale.levels[k] < scale.blank[1], [r, gr, b] = scale.colours[k];
-    g.fillStyle = blank ? (dark ? '#2a3038' : GROUND) : `rgb(${r},${gr},${b})`;
+    g.fillStyle = blank ? GROUND : `rgb(${r},${gr},${b})`;
     g.fillRect(Math.round(k * block), 0, Math.ceil(block), barH);
   }
   g.strokeStyle = dark ? '#5a636d' : '#8a8f94'; g.lineWidth = 1; g.strokeRect(0.5, 0.5, w - 1, barH - 1);
-  g.fillStyle = dark ? '#dfe5ea' : '#45484b'; g.font = `${size}px "IBM Plex Mono", ui-monospace, monospace`; g.textBaseline = 'alphabetic';
+  g.fillStyle = dark ? '#dfe5ea' : '#6b7075'; g.font = `${size}px "IBM Plex Mono", ui-monospace, monospace`; g.textBaseline = 'alphabetic';
   const every = n > 9 ? 2 : 1;
   for (let k = 0; k < n; k += every) { g.textAlign = k === 0 ? 'left' : 'center'; g.fillText(String(scale.levels[k]), k === 0 ? 1 : k * block, h - 2); }
 }
@@ -268,8 +267,9 @@ function fitView() {
   view.scale = fit * view.zoom;
   const whole = ny * view.scale + view.scale <= view.height;
   if (!admin) {
-    // Public: the map in the middle, both ways (when the whole channel is in view, its middle north-south).
-    view.cx = mapCentre().x; view.cy = whole ? (ny - 1) / 2 : mapCentre().y;
+    // Public: the map in the middle of the chart, both ways, at every zoom (the ground past the channel's
+    // northern or southern edge is then in view when zoomed far out).
+    view.cx = mapCentre().x; view.cy = mapCentre().y;
     return;
   }
   if (view.follow) view.cx = mapCentre().x;
@@ -291,7 +291,7 @@ function resize() {
 function draw() {
   ctx.clearRect(0, 0, view.width, view.height);
   ctx.fillStyle = OUTSIDE; ctx.fillRect(0, 0, view.width, view.height);
-  if (!data || data.status !== 'ready') { ctx.fillStyle = '#5c5f62'; ctx.font = '15px "Public Sans", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(data?.missing ? 'No model run to show yet.' : 'Waiting for the server…', view.width / 2, view.height / 2); return; }
+  if (!data || data.status !== 'ready') { ctx.fillStyle = '#9ba1a6'; ctx.font = '15px "Public Sans", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(data?.missing ? 'No model run to show yet.' : 'Waiting for the server…', view.width / 2, view.height / 2); return; }
   fitView();
   const { ny } = data.grid, [, top] = toScreen(0, ny - 0.5), [, bottom] = toScreen(0, -0.5);
   ctx.save();
@@ -305,7 +305,7 @@ function draw() {
   if ($('showMap').checked) drawMapBox();
   ctx.restore();
   // The channel's northern and southern edges (the weather wraps east-west; it ends north and south).
-  ctx.strokeStyle = '#6f757b'; ctx.lineWidth = 1;
+  ctx.strokeStyle = '#3a424b'; ctx.lineWidth = 1;
   for (const y of [top, bottom]) { ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(view.width, y + 0.5); ctx.stroke(); }
   drawScale(bottom);
 }
@@ -388,7 +388,7 @@ function drawContours(field) {
     if (best) {
       const text = Number(level.toFixed(decimals)).toLocaleString('en-US', { useGrouping: false }), w = ctx.measureText(text).width + 6;
       ctx.setLineDash([]);
-      for (const [mx, my] of best) { ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.fillRect(mx - w / 2, my - 7.5, w, 15); ctx.fillStyle = colour; ctx.fillText(text, mx, my + 0.5); }
+      for (const [mx, my] of best) { ctx.fillStyle = HALO; ctx.fillRect(mx - w / 2, my - 7.5, w, 15); ctx.fillStyle = colour; ctx.fillText(text, mx, my + 0.5); }
       ctx.setLineDash(dash);
     }
   }
@@ -401,7 +401,7 @@ function drawBarbs(wind) {
     const [x, y] = toScreen(i + offset, j);
     if (x < -30 || x > view.width + 30 || y < -30 || y > view.height + 30) continue;
     const u = wind.u[j * nx + i], v = wind.v[j * nx + i];
-    drawBarb(x, y, Math.hypot(u, v), Math.atan2(-u, -v) * 180 / Math.PI, 'rgba(30,34,38,.78)');
+    drawBarb(x, y, Math.hypot(u, v), Math.atan2(-u, -v) * 180 / Math.PI, 'rgba(225,238,250,.8)');
   }
 }
 // Points to where the wind comes from; half barb 5 kt, full 10, flag 50 (as on the mesoanalysis page).
@@ -418,14 +418,14 @@ function drawBarb(x, y, speed, fromDeg, colour) {
 }
 
 function outlinedText(text, x, y, colour, font) {
-  ctx.font = font; ctx.lineWidth = 3.5; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.setLineDash([]); ctx.strokeText(text, x, y); ctx.fillStyle = colour; ctx.fillText(text, x, y);
+  ctx.font = font; ctx.lineWidth = 3.5; ctx.lineJoin = 'round'; ctx.strokeStyle = HALO; ctx.setLineDash([]); ctx.strokeText(text, x, y); ctx.fillStyle = colour; ctx.fillText(text, x, y);
 }
 function drawCentres() {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const offset of copies(1)) for (const c of data.centres) {
     const [x, y] = toScreen(c.x + offset, c.y);
     if (x < -20 || x > view.width + 20) continue;
-    const colour = c.type === 'L' ? '#c81e1e' : '#1d4ed8';
+    const colour = c.type === 'L' ? '#ff5d6c' : '#6fb2ff';
     outlinedText(c.type, x, y, colour, '800 24px "Public Sans", system-ui, sans-serif');
     outlinedText(String(c.hpa), x, y + 18, colour, '700 11.5px "Public Sans", system-ui, sans-serif');
   }
@@ -433,7 +433,7 @@ function drawCentres() {
 // Lines every 1,000 km.
 function drawGrid() {
   const { ny, km } = data.grid, step = 1000 / km;
-  ctx.save(); ctx.strokeStyle = 'rgba(60,66,72,.16)'; ctx.lineWidth = 1;
+  ctx.save(); ctx.strokeStyle = 'rgba(150,165,183,.16)'; ctx.lineWidth = 1;
   const left = toGrid(0, 0).x, right = toGrid(view.width, 0).x;
   for (let x = Math.ceil(left / step) * step; x <= right; x += step) { const [sx, sy0] = toScreen(x, ny - 0.5), [, sy1] = toScreen(x, -0.5); ctx.beginPath(); ctx.moveTo(sx, sy0); ctx.lineTo(sx, sy1); ctx.stroke(); }
   for (let y = -0.5 + step; y < ny - 0.5; y += step) { const [, sy] = toScreen(0, y); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(view.width, sy); ctx.stroke(); }
@@ -446,12 +446,12 @@ function drawMapBox() {
     const [x0, y0] = toScreen(m.x + offset, m.y + m.height), [x1, y1] = toScreen(m.x + m.width + offset, m.y);
     if (x1 < -40 || x0 > view.width + 40) continue;
     ctx.save();
-    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-    ctx.lineWidth = 2.2; ctx.strokeStyle = '#111'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; outlinedText('Game map', x0 + 1, y0 - 4, '#111', '800 12.5px "Public Sans", system-ui, sans-serif');
+    ctx.lineWidth = 5; ctx.strokeStyle = HALO; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.lineWidth = 2.2; ctx.strokeStyle = '#ffffff'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; outlinedText('Game map', x0 + 1, y0 - 4, '#ffffff', '800 12.5px "Public Sans", system-ui, sans-serif');
     if (Math.hypot(dx, dy) > 0.15) {
       const [cx, cy] = toScreen(m.x + m.width / 2 + offset, m.y + m.height / 2), [ex, ey] = toScreen(m.x + m.width / 2 + dx + offset, m.y + m.height / 2 + dy), a = Math.atan2(ey - cy, ex - cx);
-      ctx.strokeStyle = ctx.fillStyle = '#111'; ctx.lineWidth = 2.5;
+      ctx.strokeStyle = ctx.fillStyle = '#ffe066'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex - 9 * Math.cos(a - 0.45), ey - 9 * Math.sin(a - 0.45)); ctx.lineTo(ex - 9 * Math.cos(a + 0.45), ey - 9 * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill();
     }
@@ -461,9 +461,9 @@ function drawMapBox() {
 function drawScale(bottom) {
   const miles = view.scale * (1000 / 1.609344) / data.grid.km < 60 ? 1000 : 500, length = miles * 1.609344 / data.grid.km * view.scale;
   const x = 14, y = Math.min(view.height - 14, bottom - 12);
-  ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + length, y); ctx.stroke();
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; outlinedText(`${miles.toLocaleString()} miles`, x, y - 7, '#111', '600 11.5px "Public Sans", system-ui, sans-serif');
-  ctx.textAlign = 'right'; ctx.textBaseline = 'top'; const [, topY] = toScreen(0, data.grid.ny - 0.5); outlinedText('N ↑', view.width - 12, Math.max(8, topY + 8), '#111', '600 11.5px "Public Sans", system-ui, sans-serif');
+  ctx.save(); ctx.strokeStyle = LABEL; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + length, y); ctx.stroke();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; outlinedText(`${miles.toLocaleString()} miles`, x, y - 7, LABEL, '600 11.5px "Public Sans", system-ui, sans-serif');
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top'; const [, topY] = toScreen(0, data.grid.ny - 0.5); outlinedText('N ↑', view.width - 12, Math.max(8, topY + 8), LABEL, '600 11.5px "Public Sans", system-ui, sans-serif');
   ctx.restore();
 }
 
@@ -537,12 +537,6 @@ $('framePlay').addEventListener('click', () => {
   looping = setInterval(async () => { if (busy || !data?.frames) return; busy = true; frameHour = data.frames[index % data.frames.length]; index++; await load(); busy = false; }, LOOP_MS);
 });
 $('runSelect').addEventListener('change', event => { stopLoop(); runInit = Number(event.target.value); frameHour = null; const url = new URL(location.href); url.searchParams.set('run', runInit); history.replaceState(null, '', url); load(); });
-// Admin sign-in: the key is asked for once and kept for this tab; signing out drops it.
-$('synSignin').addEventListener('click', () => {
-  if (adminKey.get()) adminKey.set(null);
-  else { const key = prompt('Admin key'); if (!key) return; adminKey.set(key.trim()); }
-  fieldCache.clear(); load();
-});
 // The fonts the chart's labels use may arrive after the first drawing.
 document.fonts?.ready.then(() => { if (data) { describe(); draw(); } });
 new ResizeObserver(resize).observe(canvas);

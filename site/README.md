@@ -49,11 +49,13 @@ Change the menu or footer here, once. A new page needs a row in `server/SitePage
 
 ## Public and admin views
 
-Some pages show more to an admin (the `WEATHER_ADMIN_KEY`, entered once on a page and kept for the tab; a local
+Some pages show more to an admin. The sign-in is in the top bar of every page and nowhere else (`js/site.js`:
+the `WEATHER_ADMIN_KEY`, kept for the tab; signing in or out loads the page again with the new role; a local
 engine with no key treats this machine as admin). The server decides the role on every request.
 
 - Large-scale charts (`/synoptic`, `/models/large-scale`): the public view holds the game map in the middle of
-  the chart and shows nothing of its drift (the server leaves the drift out of a public frame). An admin can
+  the chart, east-west and north-south at every zoom, and shows nothing of its drift (the server leaves the
+  drift out of a public frame). The charts are drawn on a dark ground (owner's choice). An admin can
   drag the view and sees the drift arrow, speed and the day's aim. `?view=public` shows an admin the public
   view; the share view is always the public one.
 - Day summaries (`/days`): saved days are public; recent days, saving and removing are admin only.

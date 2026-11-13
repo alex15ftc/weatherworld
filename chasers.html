@@ -55,7 +55,6 @@
     </div>
     <div class="bar" style="margin:0">
       <span class="role" id="role">public</span>
-      <button id="signin">Admin sign-in</button>
     </div>
   </header>
 
@@ -112,19 +111,9 @@ async function api(path) {
 function setRole(r) {
   role = r;
   $('role').textContent = r; $('role').classList.toggle('admin', r === 'admin');
-  $('signin').textContent = store.get() ? 'Sign out' : 'Admin sign-in';
   $('threshBox').hidden = !(r === 'admin' && mode === 'day');
   $('sub').textContent = r === 'admin' ? 'Admin view: names, user ids, servers and speed checks.' : 'Every chaser in every server.';
 }
-$('signin').onclick = async () => {
-  if (store.get()) { store.set(null); setRole((await api('/api/chasers/role')).role); return refresh(); }
-  const key = prompt('Admin key');
-  if (!key) return;
-  store.set(key);
-  const { role: r } = await api('/api/chasers/role');
-  if (r !== 'admin') { store.set(null); alert('That key was not accepted.'); }
-  setRole(r); refresh();
-};
 
 // ---- map ----
 const canvas = $('map'), ctx = canvas.getContext('2d');

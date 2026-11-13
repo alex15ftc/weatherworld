@@ -370,8 +370,6 @@ let worldAdmin = false;
 function setWorldAdmin(admin) {
   worldAdmin = admin;
   for (const id of WORLD_BUTTONS) $(id).disabled = !admin;
-  $('worldSignin').textContent = adminKey.get() ? 'Sign out' : 'Admin sign-in';
-  $('worldSignin').parentElement.style.display = admin && !adminKey.get() ? 'none' : '';
 }
 async function checkWorldAdmin() {
   try { const response = await fetch('/api/chasers/role', { headers: keyHeader(), cache: 'no-store' }); setWorldAdmin(response.ok && (await response.json()).role === 'admin'); } catch { setWorldAdmin(false); }
@@ -384,15 +382,7 @@ async function post(url, body) {
   return response.json();
 }
 const worldNote = text => { $('worldNote').textContent = text; };
-const failed = (error, text) => worldNote(error?.message === 'admin' ? 'The world controls need the admin key.' : text);
-$('worldSignin').addEventListener('click', async () => {
-  if (adminKey.get()) { adminKey.set(null); await checkWorldAdmin(); worldNote('Signed out.'); return; }
-  const key = window.prompt('Admin key');
-  if (!key) return;
-  adminKey.set(key);
-  if (await checkWorldAdmin()) worldNote('Signed in as admin.');
-  else { adminKey.set(null); setWorldAdmin(false); worldNote('That key was not accepted.'); }
-});
+const failed = (error, text) => worldNote(error?.message === 'admin' ? 'The world controls need the admin key: sign in at the top of the page.' : text);
 checkWorldAdmin();
 // The server works a day through in half-hour steps before it answers, so the buttons are held until it does.
 async function advanceWorld(hours, working, done) {
