@@ -7,7 +7,7 @@
 //   /models/large-scale    a short range model run, every few forecast hours (?run=<init hour>)
 //   /models/long-range     a long range model run: 7 days from 06Z, every 3 hours (js/forecast/LongRangeModel.js)
 //   /day/<id>/synoptic     a past day's replay, hour by hour (server/ReplayArchive.js)
-// "Save loop as GIF" steps through the frames on show and saves them as one picture (js/gif.js).
+// "Save loop as GIF" and "Save loop as MP4" steps through the frames on show and saves them as one picture (js/gif.js).
 // The view, for everyone, as it first was: it follows the game map east-west as the map drifts, so the map's box
 // moves north and south in the chart; dragging or zooming with the wheel lets go of the map, and the box then
 // moves freely through the frames ("Map" and "Whole model" take hold of it again). No page draws an arrow for
@@ -603,20 +603,20 @@ $('framePlay').addEventListener('click', () => {
 });
 $('runSelect').addEventListener('change', event => { stopLoop(); runInit = Number(event.target.value); frameHour = null; const url = new URL(location.href); url.searchParams.set('run', runInit); history.replaceState(null, '', url); load(); });
 // The loop on show as a GIF: every frame the time control steps through, each with its title and time.
-$('saveGif').addEventListener('click', async () => {
+for (const format of ['gif', 'mp4']) $(format === 'mp4' ? 'saveMp4' : 'saveGif').addEventListener('click', async event => {
   if (data?.status !== 'ready') return;
   stopLoop();
-  const frames = data.frames, was = frameHour, button = $('saveGif'), chart = presetNow();
+  const frames = data.frames, was = frameHour, button = event.currentTarget, chart = presetNow();
   const width = 960, height = Math.round(Math.min(640, width * canvas.height / canvas.width)) + 66;
   button.disabled = true;
   try {
     await saveLoop({
-      count: frames.length, width, height, delayMs: 350, name: `highrisk-${chart?.key ?? 'chart'}${REPLAY ? `-${DAY}` : ''}.gif`,
+      count: frames.length, width, height, delayMs: 350, name: `highrisk-${chart?.key ?? 'chart'}${REPLAY ? `-${DAY}` : ''}.gif`, format,
       show: async k => { frameHour = frames[k]; await load(); },
       draw: g => drawChartFrame(g, canvas, { title: (MODEL ? `Model F${String(data.run.forecastHour).padStart(3, '0')} · ` : '') + (chart?.label ?? layers.shade?.label ?? 'Large-scale chart'), time: `${clock(data.hourUtc).replace(':', '')} UTC ${data.date ?? ''}`.trim() }),
       onProgress: text => { $('gifNote').textContent = text; }
     });
-  } catch (error) { $('gifNote').textContent = `The GIF could not be made (${error.message}).`; }
+  } catch (error) { $('gifNote').textContent = `The ${format === 'mp4' ? 'MP4' : 'GIF'} could not be made (${error.message}).`; }
   button.disabled = false; frameHour = STEPPED ? was ?? frames[0] : was; load();
 });
 // The fonts the chart's labels use may arrive after the first drawing.

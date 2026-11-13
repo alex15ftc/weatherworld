@@ -6,6 +6,7 @@
 // One palette of up to 255 colours serves the whole loop: the commonest colours of all the frames (at 5 bits a
 // channel), every other colour taking the nearest of them. Charts are flat colours and lines, so this is close
 // to exact; a photograph would need more.
+import { mp4Recorder } from '/js/mp4.js';
 
 function paletteOf(frames) {
   const counts = new Uint32Array(32768);
@@ -74,7 +75,13 @@ export function download(bytes, name, type = 'image/gif') {
 
 // Steps through a loop and saves it. show(k): make the page show frame k (may be async). draw(g, k): draw the
 // picture of what is shown onto the canvas context g (width x height).
-export async function saveLoop({ count, show, draw, width, height, delayMs = 400, name = 'loop.gif', onProgress = () => {} }) {
+// format 'mp4' saves the same loop as an MP4 video instead (js/mp4.js; the name's .gif becomes .mp4): the same
+// frames and times, the last one held, in full colour. It throws where the browser has no H.264 encoder.
+export async function saveLoop({ count, show, draw, width, height, delayMs = 400, name = 'loop.gif', format = 'gif', holdMs = 1500, onProgress = () => {} }) {
+  const mp4 = format === 'mp4';
+  // (H.264 wants an even width and height)
+  if (mp4) { width += width % 2; height += height % 2; }
+  const video = mp4 ? await mp4Recorder(width, height, delayMs) : null;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   const g = canvas.getContext('2d', { willReadFrequently: true }), frames = [];
   for (let k = 0; k < count; k++) {
@@ -83,12 +90,12 @@ export async function saveLoop({ count, show, draw, width, height, delayMs = 400
     await new Promise(resolve => requestAnimationFrame(resolve));
     g.fillStyle = '#0a0f15'; g.fillRect(0, 0, width, height);
     draw(g, k);
-    frames.push(g.getImageData(0, 0, width, height).data);
+    if (video) video.add(canvas, k === count - 1 ? holdMs : delayMs); else frames.push(g.getImageData(0, 0, width, height).data);
   }
-  onProgress('Putting the GIF together…');
+  onProgress(`Putting the ${mp4 ? 'MP4' : 'GIF'} together…`);
   await new Promise(resolve => setTimeout(resolve, 30));
-  const bytes = encodeGif(frames, width, height, delayMs);
-  download(bytes, name);
+  const bytes = video ? await video.finish() : encodeGif(frames, width, height, delayMs, holdMs);
+  download(bytes, mp4 ? name.replace(/\.gif$/, '.mp4') : name, mp4 ? 'video/mp4' : 'image/gif');
   onProgress('');
   return bytes;
 }

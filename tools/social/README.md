@@ -15,12 +15,12 @@ For a day that has just been played, the site makes the same two pictures withou
 admin on `/days`, open the day and press Save. The saved day's page has both pictures (Save as PNG, or Open
 alone for a screenshot) and the day's numbers. The engine keeps what a day needs for about
 two weeks; a saved day is kept for good. A day with tornadoes also has "Tornado tracks": the tracks alone
-(no forecast areas) on a time slider, with Save as GIF and Save as PNG. It works for any saved day.
+(no forecast areas) on a time slider, with Save as GIF, MP4 and PNG. It works for any saved day.
 
 For 16 world days (two real days) after a day, its page also has replays: the mesoanalysis and the large-scale
-charts hour by hour, the warnings on a time slider, and each tornado's radar loop. Each has a "Save as GIF"
-button that makes the picture in the browser. The recording below is still the way to keep a day's loops longer
-than that, or as MP4.
+charts hour by hour, the warnings on a time slider, and each tornado's radar loop. Each has "Save as GIF" and
+"Save as MP4" buttons that make the loop in the browser (the MP4 needs a browser with an H.264 encoder:
+Chrome, Edge or Safari). The recording below is still the way to keep a day's loops longer than that.
 
 ## What each step does
 

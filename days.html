@@ -11,7 +11,7 @@
                      <id> is a saved day's, or live-<n> for an admin looking at a day not yet saved.
        /day/<id>?card=outlook|tracks shows one picture alone, filling the window (for a screenshot).
        A day with tornadoes also has "Tornado tracks": its tracks alone, without the forecast areas, growing on a
-       time slider, saved as a GIF or PNG. It is drawn from the summary, so it needs no replay.
+       time slider, saved as a GIF, MP4 or PNG. It is drawn from the summary, so it needs no replay.
        For 16 world days after a day its page also has replays (server/ReplayArchive.js): links to the mesoanalysis
        and large-scale pages on the day's hours, and the warnings on a time slider. Selecting a tornado's track on
        the "What happened" picture opens its panel: a map zoomed to its path with the survey's swath and damage
@@ -165,7 +165,7 @@
           </div>
           <p class="time" id="radarTime" style="font:400 14px var(--mono);color:var(--ink-2);margin:10px 0"></p>
           <div class="bar day-tools" id="radarProducts"></div>
-          <div class="bar day-tools"><button id="radarGif">Save as GIF</button></div>
+          <div class="bar day-tools"><button id="radarGif">Save as GIF</button><button id="radarMp4">Save as MP4</button></div>
           <p class="muted" id="radarWaiting" style="font-size:14.5px;margin-top:12px" hidden></p>
         </div>
       </div>
@@ -182,8 +182,8 @@
             <input type="range" id="trackSlider" min="0" max="144" value="144" aria-label="Time of day" />
           </div>
           <p class="time" id="trackTime" style="font:400 14px var(--mono);color:var(--ink-2);margin:10px 0"></p>
-          <div class="bar day-tools"><button id="trackGif">Save as GIF</button><button id="trackPng">Save as PNG</button></div>
-          <p class="muted" id="trackNote" style="font-size:14.5px;margin-top:12px">With the slider at its end the map shows every track of the day. Play, or move the slider, to watch them form. The GIF plays the day and ends on the whole map.</p>
+          <div class="bar day-tools"><button id="trackGif">Save as GIF</button><button id="trackMp4">Save as MP4</button><button id="trackPng">Save as PNG</button></div>
+          <p class="muted" id="trackNote" style="font-size:14.5px;margin-top:12px">With the slider at its end the map shows every track of the day. Play, or move the slider, to watch them form. The GIF or MP4 plays the day and ends on the whole map.</p>
         </div>
       </div>
     </section>
@@ -191,8 +191,8 @@
       <h2>Replays <span class="muted" id="replayNote" style="font-size:15px;font-weight:400"></span></h2>
       <div class="split">
         <ul class="replay-links">
-          <li><a id="replayMeso">Mesoanalysis replay</a><span>The surface analysis and every overlay field, hour by hour. Its page has "Save loop as GIF".</span></li>
-          <li><a id="replaySynoptic">Large-scale replay</a><span>The jet, 500 mb charts, surface and moisture across the whole large-scale model, hour by hour, with "Save loop as GIF".</span></li>
+          <li><a id="replayMeso">Mesoanalysis replay</a><span>The surface analysis and every overlay field, hour by hour. Its page has "Save loop as GIF" and "Save loop as MP4".</span></li>
+          <li><a id="replaySynoptic">Large-scale replay</a><span>The jet, 500 mb charts, surface and moisture across the whole large-scale model, hour by hour, with "Save loop as GIF" and "Save loop as MP4".</span></li>
           <li><b>Tornado radar</b><span>Select a tornado's track on the "What happened" picture: its radar scans from before touchdown until after it lifted, with its damage survey.</span></li>
         </ul>
         <div>
@@ -205,7 +205,7 @@
                 <input type="range" id="warnSlider" min="0" max="144" value="0" aria-label="Time of day" />
                 <span class="time" id="warnTime"></span>
               </div>
-              <div class="bar day-tools"><button id="warnGif">Save as GIF</button><span class="muted" id="warnNote" style="font-size:14.5px"></span></div>
+              <div class="bar day-tools"><button id="warnGif">Save as GIF</button><button id="warnMp4">Save as MP4</button><span class="muted" id="warnNote" style="font-size:14.5px"></span></div>
             </div>
           </div>
         </div>
@@ -424,15 +424,16 @@ $('#warnPlay').addEventListener('click', () => {
   $('#warnPlay').textContent = 'Stop';
   warnTimer = setInterval(() => { const slider = $('#warnSlider'); slider.value = (Number(slider.value) + 1) % 145; drawWarnings(); }, 160);
 });
-$('#warnGif').addEventListener('click', async () => {
+// (each loop below is saved as a GIF or as an MP4 by the same steps: js/gif.js)
+for (const format of ['gif', 'mp4']) $(format === 'mp4' ? '#warnMp4' : '#warnGif').addEventListener('click', async event => {
   stopWarn();
-  const button = $('#warnGif'), slider = $('#warnSlider'), was = slider.value, canvas = $('#warnCanvas');
+  const button = event.currentTarget, slider = $('#warnSlider'), was = slider.value, canvas = $('#warnCanvas');
   button.disabled = true;
   // (every 20 minutes: 73 pictures of the day)
-  await saveLoop({ count: 73, width: 560, height: 626, delayMs: 180, name: `highrisk-${id}-warnings.gif`,
+  await saveLoop({ count: 73, width: 560, height: 626, delayMs: 180, name: `highrisk-${id}-warnings.gif`, format,
     show: k => { slider.value = k * 2; drawWarnings(); },
     draw: g => { const now = drawWarnings(); drawChartFrame(g, canvas, { title: `Warnings · ${now.tornado} tornado, ${now.other} severe`, time: utcText(now.hour) }); },
-    onProgress: text => { $('#warnNote').textContent = text; } }).catch(error => { $('#warnNote').textContent = `The GIF could not be made (${error.message}).`; });
+    onProgress: text => { $('#warnNote').textContent = text; } }).catch(error => { $('#warnNote').textContent = `The ${format === 'mp4' ? 'MP4' : 'GIF'} could not be made (${error.message}).`; });
   button.disabled = false; slider.value = was; drawWarnings();
 });
 
@@ -481,7 +482,8 @@ function drawTracks() {
   }
   const text = whole ? `the whole day · ${count(list.length)}` : `${begun} of ${list.length} begun${live ? `, ${live} on the ground` : ''}`;
   $('#trackTime').textContent = whole ? `${theDay.label} · ${count(list.length)}` : `${utcText(hour)} · ${text}`;
-  return { hour, whole, text };
+  // (short: for a picture's title strip, which shares its width with the time)
+  return { hour, whole, text, short: whole ? count(list.length) : `${begun} of ${list.length}` };
 }
 $('#trackSlider').addEventListener('input', () => { stopTracks(); drawTracks(); });
 function stopTracks() { clearInterval(trackTimer); trackTimer = null; $('#trackPlay').textContent = 'Play'; }
@@ -492,10 +494,10 @@ $('#trackPlay').addEventListener('click', () => {
   const slider = $('#trackSlider'); if (Number(slider.value) >= 144) slider.value = 0;
   trackTimer = setInterval(() => { slider.value = Number(slider.value) + 1; drawTracks(); if (Number(slider.value) >= 144) stopTracks(); }, 160);
 });
-const trackFrame = (g, now) => drawChartFrame(g, $('#trackCanvas'), { title: `Tornado tracks · ${now.text}`, time: now.whole ? theDay.label : utcText(now.hour) });
-$('#trackGif').addEventListener('click', async () => {
+const trackFrame = (g, now) => drawChartFrame(g, $('#trackCanvas'), { title: `Tornado tracks · ${now.short}`, time: now.whole ? theDay.label : utcText(now.hour) });
+for (const format of ['gif', 'mp4']) $(format === 'mp4' ? '#trackMp4' : '#trackGif').addEventListener('click', async event => {
   stopTracks();
-  const button = $('#trackGif'), slider = $('#trackSlider'), was = slider.value, note = $('#trackNote'), text = note.textContent;
+  const button = event.currentTarget, slider = $('#trackSlider'), was = slider.value, note = $('#trackNote'), text = note.textContent;
   // From just before the first tornado to just after the last, every 20 minutes, then held on the whole map.
   const timed = theDay.tornadoes.filter(t => t.track?.length && t.startHourUtc != null), at = hour => (hour - theDay.startHourUtc) * 6;
   const from = timed.length ? Math.max(0, Math.floor(Math.min(...timed.map(t => at(t.startHourUtc)))) - 3) : 144;
@@ -503,11 +505,11 @@ $('#trackGif').addEventListener('click', async () => {
   const steps = []; for (let k = from; k <= to; k += 2) steps.push(k);
   for (let k = 0; k < 10; k++) steps.push(144);
   button.disabled = true;
-  await saveLoop({ count: steps.length, width: 560, height: 626, delayMs: 180, name: `highrisk-${id}-tornado-tracks.gif`,
+  await saveLoop({ count: steps.length, width: 560, height: 626, delayMs: 180, name: `highrisk-${id}-tornado-tracks.gif`, format,
     show: k => { slider.value = steps[k]; },
     draw: g => trackFrame(g, drawTracks()),
-    onProgress: t => { note.textContent = t || text; } }).catch(error => { note.textContent = `The GIF could not be made (${error.message}).`; });
-  button.disabled = false; slider.value = was; drawTracks(); if (!note.textContent.startsWith('The GIF could not')) note.textContent = text;
+    onProgress: t => { note.textContent = t || text; } }).catch(error => { note.textContent = `The ${format === 'mp4' ? 'MP4' : 'GIF'} could not be made (${error.message}).`; });
+  button.disabled = false; slider.value = was; drawTracks(); if (!note.textContent.includes('could not be made')) note.textContent = text;
 });
 // The map as it is shown now, as one picture.
 $('#trackPng').addEventListener('click', () => {
@@ -699,17 +701,18 @@ $('#radarProducts').addEventListener('click', event => {
   for (const button of document.querySelectorAll('#radarProducts button')) button.classList.toggle('primary', button.dataset.product === key);
   drawRadar();
 });
-$('#radarGif').addEventListener('click', async () => {
+for (const format of ['gif', 'mp4']) $(format === 'mp4' ? '#radarMp4' : '#radarGif').addEventListener('click', async event => {
   if (!radar.meta) return;
   stopRadar();
-  const button = $('#radarGif'), slider = $('#radarSlider'), was = slider.value, canvas = $('#radarCanvas'), t = theDay.tornadoes.find(x => x.id === radar.id), note = $('#radarNote').textContent;
-  let shown = null;
+  const button = event.currentTarget, slider = $('#radarSlider'), was = slider.value, canvas = $('#radarCanvas'), t = theDay.tornadoes.find(x => x.id === radar.id), note = $('#radarNote').textContent;
+  let shown = null, failed = '';
   button.disabled = true;
-  await saveLoop({ count: radar.meta.frames.length, width: 560, height: 626, delayMs: 550, name: `highrisk-${id}-${radar.id}-${RADAR_PRODUCTS[radar.product]?.short ?? radar.product}.gif`,
+  await saveLoop({ count: radar.meta.frames.length, width: 560, height: 626, delayMs: 550, name: `highrisk-${id}-${radar.id}-${RADAR_PRODUCTS[radar.product]?.short ?? radar.product}.gif`, format,
     show: async k => { slider.value = k; shown = await drawRadar(); },
-    draw: g => drawChartFrame(g, canvas, { title: `${t.rating} tornado · ${RADAR_NAMES[radar.product]}`, time: `${utcText(shown.frame.hourUtc)} · ${shown.when}` }),
-    onProgress: text => { if (text) $('#radarNote').textContent = text; } }).catch(error => { $('#radarNote').textContent = `The GIF could not be made (${error.message}).`; });
-  button.disabled = false; slider.value = was; $('#radarNote').textContent = note; drawRadar();
+    draw: g => drawChartFrame(g, canvas, { title: `${t.rating} tornado · ${RADAR_NAMES[radar.product]}`, time: `${utcText(shown.frame.hourUtc).replace(/ UTC.*/, 'Z')} · ${shown.when}` }),
+    onProgress: text => { if (text) $('#radarNote').textContent = text; } }).catch(error => { failed = `The ${format === 'mp4' ? 'MP4' : 'GIF'} could not be made (${error.message}).`; });
+  // (drawRadar writes the note; a failure is put back after it)
+  button.disabled = false; slider.value = was; await drawRadar(); if (failed) $('#radarNote').textContent = failed;
 });
 
 // The pictures are laid out at 1600 x 900 and scaled to their frames.

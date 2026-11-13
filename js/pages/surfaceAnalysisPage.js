@@ -4,7 +4,7 @@
 // contours or both. Nothing is drawn as grid cells. A click gives the sounding at that spot;
 // the time controls step back through the analyses the server has kept.
 // The page also replays a past day (/day/<id>/analysis: the hours server/ReplayArchive.js kept; no soundings or world
-// controls there), and "Save loop as GIF" saves the frames on the slider as one picture (js/gif.js).
+// controls there), and "Save loop as GIF" and "Save loop as MP4" saves the frames on the slider as one picture (js/gif.js).
 import { drawSounding, drawHodograph } from '../sounding.js';
 import { saveLoop, drawChartFrame } from '/js/gif.js';
 
@@ -458,21 +458,21 @@ $('framePlay').addEventListener('click', () => {
 });
 
 // The loop on show as a GIF: every analysis the time control steps through, with what is overlaid and its time.
-$('saveGif').addEventListener('click', async () => {
+for (const format of ['gif', 'mp4']) $(format === 'mp4' ? 'saveMp4' : 'saveGif').addEventListener('click', async event => {
   if (data?.status !== 'ready') return;
   stopLoop();
-  const frames = data.frames, was = frameHour, button = $('saveGif'), overlay = controls.parameter.selectedOptions[0]?.textContent ?? '';
+  const frames = data.frames, was = frameHour, button = event.currentTarget, overlay = controls.parameter.selectedOptions[0]?.textContent ?? '';
   // (the map is a square in the middle of the canvas: the picture is of that square)
   const width = 700, height = 700 + 66;
   button.disabled = true;
   try {
     await saveLoop({
-      count: frames.length, width, height, delayMs: 350, name: `highrisk-mesoanalysis${REPLAY ? `-${DAY}` : ''}.gif`,
+      count: frames.length, width, height, delayMs: 350, name: `highrisk-mesoanalysis${REPLAY ? `-${DAY}` : ''}.gif`, format,
       show: async k => { frameHour = frames[k]; await load(); },
       draw: g => drawChartFrame(g, canvas, { square: true, title: controls.parameter.value ? `Mesoanalysis · ${overlay}` : 'Surface analysis', time: `${clock(data.hourUtc).replace(':', '')} UTC ${data.date ?? ''}`.trim() }),
       onProgress: text => { $('gifNote').textContent = text; }
     });
-  } catch (error) { $('gifNote').textContent = `The GIF could not be made (${error.message}).`; }
+  } catch (error) { $('gifNote').textContent = `The ${format === 'mp4' ? 'MP4' : 'GIF'} could not be made (${error.message}).`; }
   button.disabled = false; frameHour = REPLAY ? was ?? frames[0] : was; load();
 });
 
