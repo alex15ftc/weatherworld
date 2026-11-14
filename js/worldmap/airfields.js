@@ -69,9 +69,10 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   // the radar and the forecast office beside it go, after the gap offices are placed (so none is
   // put back in its place); the airport stays and the neighbouring offices take its counties.
   // Seed 1, 2026-11-14 (the user's choice, on the map as the terrain change of 2026-11-13 left
-  // it): KSTG (22 mi from the air base's KCRW) and KRUC (67 from the metro's KSMF), leaving 11.
+  // it): KSTG (22 mi from the air base's KCRW) and KRUC (67 from the metro's KSMF), then KMRR
+  // (the Morriston office), leaving 10.
   // (The four taken out on 2026-10-28, KPLM, KDGL, KWAP and KGRG, were on the map before that.)
-  removedRadars: { 1: ['KSTG', 'KRUC'] }
+  removedRadars: { 1: ['KSTG', 'KRUC', 'KMRR'] }
 });
 
 const BASE_NAMES = ['Tolliver', 'Calloway', 'Prewitt', 'Brackett', 'Dunmore', 'Garrity', 'Hollister', 'Wendell', 'Ashby', 'Corwin'];

@@ -51,6 +51,20 @@ export function outlookSvg(product, layer, hazard = 'categorical', { times = fal
   const px = (x, y) => `${(x * scale).toFixed(1)} ${(top + y * scale).toFixed(1)}`;
   const flatPath = rings => rings.map(flat => { let d = `M${px(flat[0], flat[1])}`; for (let k = 2; k < flat.length; k += 2) d += `L${px(flat[k], flat[k + 1])}`; return `${d}Z`; }).join('');
   const nestedPath = rings => rings.map(ring => `M${ring.map(([x, y]) => px(x, y)).join('L')}Z`).join('');
+  // An area's outline without the sides that run along the map edge (as the game leaves them out, Raster.luau alongEdge):
+  // where an area runs off the map its border ends at the edge, and is not drawn along the frame (2026-11-14).
+  const EDGE = 0.011, far = mapMiles - EDGE;
+  const alongEdge = (ax, ay, bx, by) => (ax <= EDGE && bx <= EDGE) || (ax >= far && bx >= far) || (ay <= EDGE && by <= EDGE) || (ay >= far && by >= far);
+  const outlinePath = rings => rings.map(flat => {
+    const n = flat.length / 2; let d = '', open = false;
+    for (let k = 0; k < n; k++) {
+      const a = 2 * k, b = 2 * ((k + 1) % n);
+      if (alongEdge(flat[a], flat[a + 1], flat[b], flat[b + 1])) { open = false; continue; }
+      if (!open) { d += `M${px(flat[a], flat[a + 1])}`; open = true; }
+      d += `L${px(flat[b], flat[b + 1])}`;
+    }
+    return d;
+  }).join('');
   const out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}" font-family="${FONT}">`);
   out.push('<defs>',
@@ -70,13 +84,13 @@ export function outlookSvg(product, layer, hazard = 'categorical', { times = fal
     if (hazard === 'categorical') {
       for (const entry of product.category ?? []) {
         const colour = CATEGORY_COLOURS[entry.key];
-        if (colour && entry.rings.length) out.push(`<path d="${flatPath(entry.rings)}" fill="${colour}" fill-rule="evenodd" stroke="${darker(colour)}" stroke-width="2.2" stroke-linejoin="round"/>`);
+        if (colour && entry.rings.length) out.push(`<path d="${flatPath(entry.rings)}" fill="${colour}" fill-rule="evenodd"/><path d="${outlinePath(entry.rings)}" fill="none" stroke="${darker(colour)}" stroke-width="2.2" stroke-linejoin="round"/>`);
       }
     } else {
       const h = product.hazards?.[hazard], colours = CHANCE_COLOURS[hazard] ?? {};
       for (const entry of h?.levels ?? []) {
         const colour = colours[entry.level] ?? '#888888';
-        if (entry.rings.length) out.push(`<path d="${flatPath(entry.rings)}" fill="${colour}" fill-opacity="0.78" fill-rule="evenodd" stroke="${darker(colour, 0.3)}" stroke-width="2.2" stroke-linejoin="round"/>`);
+        if (entry.rings.length) out.push(`<path d="${flatPath(entry.rings)}" fill="${colour}" fill-opacity="0.78" fill-rule="evenodd"/><path d="${outlinePath(entry.rings)}" fill="none" stroke="${darker(colour, 0.3)}" stroke-width="2.2" stroke-linejoin="round"/>`);
       }
       // The CIG areas nest (level 2 inside level 1), so each is hatched only where no higher level is:
       // a mask cuts the higher areas out, and every place shows a single pattern. Outlines go on top.
@@ -86,7 +100,7 @@ export function outlookSvg(product, layer, hazard = 'categorical', { times = fal
         out.push(`<mask id="cigMask${k}" maskUnits="userSpaceOnUse" x="0" y="${top}" width="${W}" height="${W}"><path d="${flatPath(entry.rings)}" fill="#fff" fill-rule="evenodd"/>${higher ? `<path d="${higher}" fill="#000"/>` : ''}</mask>`);
         out.push(`<rect x="0" y="${top}" width="${W}" height="${W}" fill="url(#cig${Math.min(3, entry.group)})" mask="url(#cigMask${k})"/>`);
       });
-      for (const entry of groups) out.push(`<path d="${flatPath(entry.rings)}" fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.8" stroke-dasharray="10 6" stroke-linejoin="round"/>`);
+      for (const entry of groups) out.push(`<path d="${outlinePath(entry.rings)}" fill="none" fill-rule="evenodd" stroke="#000" stroke-width="1.8" stroke-dasharray="10 6" stroke-linejoin="round"/>`);
     }
   }
   if (layer?.counties?.length) out.push(`<path d="${layer.counties.map(c => nestedPath(c.rings)).join('')}" fill="none" stroke="#7d786c" stroke-opacity="0.45" stroke-width="0.8"/>`);

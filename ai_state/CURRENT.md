@@ -259,7 +259,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   stands in water. Each chunk first plans the lots just beyond its edge (`NEIGHBOUR_LOTS` in `ChunkGen`);
   buildings stand at most 5 studs above the lowest ground under them on a foundation, and are not built where
   the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
-  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
+  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed, then KMRR with its Morriston office (10 radars, 9 offices; map rebuilt and exported, not yet published); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
 
 - Map, third round (2026-11-14; merged to `main`, place published as version 499 and engine deployed from `72fdf47`, the world resumed at hour 606; the products-screen restyle went out with it; none of it seen in game yet;
   towns and airfields unmoved): creek beds (the generator's `creeks`, 1,479 streams of 25 to 1,000 mi2 of
@@ -335,6 +335,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    place. Open choices: a `/day/N` page that keeps each day's outlook and tornado tracks on the engine, so the daily
    "forecast, then what happened" pair needs no recording. (The charts stay dark: owner, 2026-11-12.)
 5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
+6. Outlooks (2026-11-14, deployed from `8ca782e`; decision in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas,
+   discussion text fixes, live scoring (`/api/outlook/scores`, the performance page). After a few live days read the
+   scoreboard (High false alarms; Day 3 too low). Then Day 3 with storm runs, a sharper method with one refit, and
+   Day 1 updates from the short-range model.
 
 ## Blockers
 

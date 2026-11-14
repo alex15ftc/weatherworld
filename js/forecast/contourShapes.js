@@ -190,3 +190,61 @@ export function softenArea(inside, width, height, passes = 2) {
   }
   return field;
 }
+
+// --- Tidying a forecast's areas before they are drawn (2026-11-14), as a forecaster tidies a chart: no specks, no
+// pinholes, and each category ringed by the one below it.
+
+// The pieces of a 0/1 grid joined across sides and corners (as the softened outline joins them), each a list of cells.
+export function piecesAcrossCorners(inside, width, height) {
+  const mark = new Uint8Array(width * height), pieces = [];
+  for (let start = 0; start < inside.length; start++) {
+    if (!inside[start] || mark[start]) continue;
+    const piece = [], stack = [start]; mark[start] = 1;
+    while (stack.length) {
+      const i = stack.pop(), x = i % width, y = (i - x) / width; piece.push(i);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy, j = Y * width + X; if (X >= 0 && Y >= 0 && X < width && Y < height && inside[j] && !mark[j]) { mark[j] = 1; stack.push(j); } }
+    }
+    pieces.push(piece);
+  }
+  return pieces;
+}
+
+// Ranked areas (rank[i]: 0 for none, higher nested inside lower, as categories or contour levels are), tidied in place:
+//   - a piece of rank k or more smaller than minCells goes down to k - 1, unless it is the largest of rank k or more (the main
+//     area stays, however small: a small core is a forecast, a speck beside it is noise); a hole in it smaller than minCells
+//     comes up to k (from the highest rank down, so a speck of High inside a speck of Moderate goes with it);
+//   - with gapCells, each rank from `ringFrom` up is ringed by at least that many cells of the rank below, so no two
+//     borders touch (the lower rank grows outward; nothing is lowered).
+export function tidyRanks(rank, width, height, { top, minCells = 4, gapCells = 0, ringFrom = 1 } = {}) {
+  const n = width * height;
+  for (let k = top; k >= 1; k--) {
+    const inside = Uint8Array.from(rank, r => (r >= k ? 1 : 0));
+    // (The largest; between equals, the one set deepest in the ranks around it, a core rather than a speck beside it.)
+    const around = piece => { let sum = 0; for (const i of piece) { const x = i % width, y = (i - x) / width; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < width && Y < height) sum += rank[Y * width + X]; } } return sum; };
+    const pieces = piecesAcrossCorners(inside, width, height), size = piece => piece.length * 1e6 + around(piece);
+    const largest = pieces.reduce((best, piece) => (!best || size(piece) > size(best) ? piece : best), null);
+    for (const piece of pieces) if (piece !== largest && piece.length < minCells) for (const i of piece) { rank[i] = k - 1; inside[i] = 0; }
+    for (const hole of enclosedHoles(inside, width, height)) if (hole.length < minCells) for (const i of hole) rank[i] = Math.max(rank[i], k);
+  }
+  if (gapCells > 0) for (let k = top; k >= Math.max(1, ringFrom); k--) {
+    const ring = [];
+    for (let i = 0; i < n; i++) {
+      if (rank[i] >= k - 1) continue;
+      const x = i % width, y = (i - x) / width;
+      search: for (let dy = -gapCells; dy <= gapCells; dy++) for (let dx = -gapCells; dx <= gapCells; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < width && Y < height && rank[Y * width + X] >= k) { ring.push(i); break search; } }
+    }
+    for (const i of ring) rank[i] = k - 1;
+  }
+  return rank;
+}
+
+// Rings with their slivers left out (2026-11-14): a hole smaller than minArea (shares of the map squared) is filled, and an
+// outer ring smaller than it goes unless it is the largest outer ring (the main area is drawn, however small). Softening a
+// tidied grid can still leave a sliver where cells meet at a corner.
+export function dropSlivers(rings, minArea) {
+  if (!(minArea > 0) || rings.length < 2) return rings;
+  const depth = rings.map((ring, k) => rings.filter((other, j) => j !== k && insideRings([other], ring[0][0], ring[0][1])).length);
+  const size = rings.map(ring => Math.abs(ringArea(ring)));
+  let largest = -1; rings.forEach((ring, k) => { if (depth[k] % 2 === 0 && (largest < 0 || size[k] > size[largest])) largest = k; });
+  return rings.filter((ring, k) => size[k] >= minArea || (depth[k] % 2 === 0 && k === largest));
+}

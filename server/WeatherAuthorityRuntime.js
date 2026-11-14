@@ -162,6 +162,7 @@ export class WeatherAuthorityRuntime {
       this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS);
       this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep });
       this.dayReview?.afterStep();
+      try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
     }
     this.startClocks();
     this.gameFeed.restart(world);
@@ -273,6 +274,7 @@ export class WeatherAuthorityRuntime {
         if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) { this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS); this.gameFeed.capture(world, now); }
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
         this.dayReview?.afterStep();
+        try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
         if (step < steps - 1) yield;
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.

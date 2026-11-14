@@ -16,6 +16,26 @@
 
 ## Decisions
 
+### 2026-11-14 — Outlooks: gates off, truth corrected at the map edge, areas tidied, scored live
+
+- Status: `active`
+- Decision: the hand-set gates over the calibrated chance (run agreement, the calibration's one-level guard, the
+  High-day easing) are off (`OUTLOOK.gates`, switchable for scoring with `OUTLOOK_GATES`). The practically perfect
+  sums are divided by the share of their 120 km Gaussian that lies on the map (`truth.js onMapShare`), so chances
+  no longer sag toward the edge (the borders that ran along the edge). σ stays 120 km. Issued areas are tidied
+  (`contourShapes.js tidyRanks`, `OUTLOOK.tidy`: pieces and holes under 1600 sq mi go, except a level's largest
+  piece; each category ringed by one cell of the one below), and the web maps draw no outline along the map edge.
+  Every live outlook is scored at its day's end (`server/OutlookScoreboard.js`, `/api/outlook/scores`, the
+  performance page).
+- Rationale: 30 unseen mornings (seeds 41-50) re-scored from one archive (`outlook-verify --from`, `REPP=1`
+  re-smooths saved runs and truth). Gates off: issued Brier skill up on every hazard and day (Day 1 tornado
+  14→18, wind 32→38, hail 39→41; Day 2 hail 20→28; Day 3 -17→-6); Day 1 highest right 53→63%, too low 37→7%,
+  too high 10→30% (nearly all one category). highRun changed nothing. Edge correction: issued skill up on all
+  hazards (Day 1 hail 34→39). Tidying: no score change. σ 48 km was rejected (verified ENH/MDT/HIGH a third each).
+  Calibration not stale: calibrated skill 19/36/45 against 17/39/46 on 2026-11-07, a refit in sample gains ≤3 points.
+- Follow-up: watch High's false alarms on the live scoreboard (forecast on 27% of days, verified 17%); Day 3 still
+  under-forecasts (too low 70%).
+
 ### 2026-11-14 — A storm's winds are one description, read by everything that shows them
 
 - Status: active (branch `engine/one-storm-wind`, not merged)

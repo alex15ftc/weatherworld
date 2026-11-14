@@ -9,6 +9,7 @@ import { WeatherAuthorityRuntime, SIM_HOURS_PER_REAL_MINUTE } from './WeatherAut
 import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
 import { SynopticRuntime } from './SynopticRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
+import { OutlookScoreboard } from './OutlookScoreboard.js';
 import { MesoscaleRuntime } from './MesoscaleRuntime.js';
 import { ShortRangeRuntime } from './ShortRangeRuntime.js';
 import { LongRangeRuntime } from './LongRangeRuntime.js';
@@ -63,6 +64,10 @@ const synoptic = new SynopticRuntime({ atmosphere: runtime.engine });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
 // WEATHER_OUTLOOK_MEMBERS sets how many forecast runs go into it).
 const outlooks = process.env.WEATHER_OUTLOOK === 'off' ? null : new OutlookRuntime({ runtime, members: Number(process.env.WEATHER_OUTLOOK_MEMBERS) || undefined, file: statePath ? path.join(path.dirname(statePath), 'outlooks.bin') : null });
+// The live record of how the outlooks verify (OutlookScoreboard.js): each issued outlook scored at the end of its day,
+// saved beside the world and served at /api/outlook/scores (the performance page).
+const outlookScores = outlooks ? new OutlookScoreboard({ runtime, file: statePath ? path.join(path.dirname(statePath), 'outlook-scores.bin') : null }) : null;
+if (outlooks) { outlooks.onIssued = outlook => outlookScores.issued(outlook); runtime.outlookScores = outlookScores; }
 // The day packages take the day's first Day 1 outlook issued once the day has begun.
 runtime.dayReviewOutlook = (from, to) => { const outlook = outlooks?.current('day1')?.outlook; return outlook && outlook.validToHourUtc === to && outlook.issuedHourUtc >= from ? outlook : null; };
 // Mesoscale discussions and watches: the world is looked at once in each of its hours, and a
@@ -199,6 +204,7 @@ async function serveApi(url, req, res) {
   const gameProduct = url.pathname.match(/^\/api\/game\/v1\/product\/([A-Za-z0-9._-]+)$/);
   if (gameProduct) { const entry = await gameProducts.productAsync(gameProduct[1]); return entry ? sendText(req, res, 200, entry.text, trace, { 'x-product-version': entry.version }) : sendJson(req, res, 404, { error: 'Unknown product' }, { cacheable: false, trace }); }
   // The public outlooks (OutlookPublic.js): the index, a day's product, and its map as an SVG.
+  if (url.pathname === '/api/outlook/scores') return sendJson(req, res, outlookScores ? 200 : 404, outlookScores ? outlookScores.report() : { error: 'Outlooks are off' }, { cacheable: false, trace });
   if (url.pathname === '/api/outlook/index') {
     const list = await Promise.all(OUTLOOK_DAYS.map(async day => { const hit = await outlookProduct(day); return { day, product: hit?.product, version: hit?.version }; }));
     return sendJson(req, res, 200, { nowHourUtc: runtime.engine?.world?.validHourUtc ?? null, ...outlookIndex(list) }, { cacheable: false, trace });
