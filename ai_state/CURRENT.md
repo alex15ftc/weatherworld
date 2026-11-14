@@ -230,7 +230,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
   lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
 
-- Map, third round (2026-11-14;
+- Map, third round (2026-11-14; merged to `main`, place published as version 499 and engine deployed from `72fdf47`, the world resumed at hour 606; the products-screen restyle went out with it; none of it seen in game yet;
   towns and airfields unmoved): creek beds (the generator's `creeks`, 1,479 streams of 25 to 1,000 mi2 of
   drainage, in the tiles as point runs; `ChunkGen` cuts a dry bed along each); town streets on the M map
   (`MapVector.streets`, drawn by `MapBase` from 60 px a mile; `tools/worldmap/check-map-streets.mjs`); tile
@@ -242,7 +242,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-0. Map (published as 498, unseen): join the place or play it in Studio and look at roads (interchanges, overpass ramps with a
+0. Map (published as 499, unseen): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
