@@ -337,7 +337,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
 6. Outlooks (2026-11-14, deployed from `8ca782e`; decision in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas,
    discussion text fixes, live scoring (`/api/outlook/scores`, the performance page). After a few live days read the
-   scoreboard (High false alarms; Day 3 too low). Then Day 3 with storm runs, a sharper method with one refit, and
+   scoreboard (High false alarms; Day 3 too low). Day 3 with storm runs waits for the owner on branch
+   `forecast/day3-storm-runs` (skill -5 -> +10, area CSI .11 -> .47, but highest right 40% -> 10%: never Moderate). Then a sharper method with one refit, and
    Day 1 updates from the short-range model.
 
 ## Blockers

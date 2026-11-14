@@ -40,6 +40,8 @@ const GATES = process.env.OUTLOOK_GATES ? JSON.parse(process.env.OUTLOOK_GATES) 
 // REPP=1 (with --from): the saved runs' chances and the saved truth smoothed again from their reports with the code as it is now
 // (truth.js smoothTruth), to score a change in the practically perfect smoothing without running the days again.
 const REPP = process.env.REPP === '1';
+// OUTLOOK_STORMS='{"day3":0.5}': the share of members that run each day with their storms (OUTLOOK.stormShare), for runs made here.
+const STORMS = process.env.OUTLOOK_STORMS ? JSON.parse(process.env.OUTLOOK_STORMS) : null;
 const ENSEMBLE = process.env.OUTLOOK_ENSEMBLE ? JSON.parse(process.env.OUTLOOK_ENSEMBLE) : null;
 // OUTLOOK_CALIBRATION=file: the chances' table from that file (fit-outlook-calibration.mjs's output, its CALIBRATION line) in
 // place of the one installed, to score a fit on other mornings without installing it.
@@ -79,6 +81,7 @@ async function worker(seed) {
     return { ...run, chance, dayCategory: day.worldRisk.reduce((best, c) => (ORDER.indexOf(c) > ORDER.indexOf(best) ? c : best), 'NONE') };
   };
   const { OUTLOOK, runOutlookMemberSet, combineOutlook, stateFromBytes, membersFor, stormDaysFor } = await import('../js/forecast/DayOneOutlook.js');
+  if (STORMS) Object.assign(OUTLOOK.stormShare, STORMS);
   const { CIG_TIERS, CIG_BOUNDS, contourCig, conditionalCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
   // Hail and wind as reports, in the runs and in what happened (truth.js captureTruth).
   const { placesFor } = await import('../server/CountyLayer.js');

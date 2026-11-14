@@ -188,7 +188,7 @@ assert.equal(outlooks.maybeIssue(), false, 'nothing is issued again before its n
 const second = outlooks.day('day2');
 assert.equal(second.status, 'issued'); assert.equal(second.day, 'day2'); assert.equal(second.members, 1 + OUTLOOK.cheapPerMember, 'half the runs go on to Day 2, with their cheap runs');
 // (Day 3 from the ingredients of the four Day 2 runs since 2026-10-24: none of them with storms.)
-assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 4]); assert.equal(membersFor('day3', 2), 1); assert.deepEqual(['day1', 'day2', 'day3'].map(day => stormMembersFor(day)), [8, 4, 0]); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
+assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 4]); assert.equal(membersFor('day3', 2), 1); assert.deepEqual(['day1', 'day2', 'day3'].map(day => stormMembersFor(day)), [8, 4, 4]); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
 assert.equal(issued.nextUpdateHourUtc, 44); assert.equal(second.nextUpdateHourUtc, 54); assert.equal(outlooks.day('day3').status, 'off');
 assert.deepEqual(Object.keys(outlooks.status().days), ['day1', 'day2']);
 // The schedule: the centre's times (Day 1 at 06, 13, 1630, 20 and 01Z; Day 2 at 06 and 1730Z), with Day 3
