@@ -338,7 +338,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 6. Outlooks (2026-11-14, deployed from `8ca782e`; decision in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas,
    discussion text fixes, live scoring (`/api/outlook/scores`, the performance page). After a few live days read the
    scoreboard (High false alarms; Day 3 too low). Day 3 with storm runs waits for the owner on branch
-   `forecast/day3-storm-runs` (skill -5 -> +10, area CSI .11 -> .47, but highest right 40% -> 10%: never Moderate). Then a sharper method with one refit, and
+   `forecast/day3-storm-runs` (skill -5 -> +10, area CSI .11 -> .47, but highest right 40% -> 10%: never Moderate). A refit is not worth it now: on 30 mornings (current engine) a sharper method (nmep 32/48 or 64/80) gains
+   3-6 points of probability skill but drops Day 1 right 67% -> 43-50%; category cutoffs, fitted either way, did not help.
+   Next refit: Day 3 alone (its Moderate setting) once there are more Day 3 mornings. Then
    Day 1 updates from the short-range model.
 
 ## Blockers
