@@ -37,6 +37,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
   warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
   warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
+- Storm sentences in discussions about a watch (2026-11-13, in the working tree, not committed or deployed): at
+  each look ahead `MesoscaleRuntime.radarLooks` has the nearest radar (2 radars at most) look at the rotating
+  storms under the watches in effect, and a discussion about a watch then speaks of its leading storm
+  (`describeStorm` in `js/forecast/MesoscaleDiscussion.js`): the radar's low-level rotational velocity, a tornadic
+  vortex signature, a debris signature (`debrisSignature` in `js/radar/RotationDetection.js`), the significant
+  tornado parameter around it and its motion. Measured on this machine: a radar's 9-tilt volume is about 3.5 s
+  of one radar thread and the detection 0.1 s. Checked by `tests/mesoscale-discussion.mjs`,
+  `tests/radar-simulator.mjs` and real scans of a made supercell; not yet seen on a running engine. This is the
+  first step toward SPC-style storm-scale ("meso-gamma") discussions; the full product (its own discussion for
+  an ongoing strong tornado, with a wind estimate from rotational velocity and the tornado parameter fitted on
+  our own world) is proposed, not scoped. For it: over 4 saved days EF3+ tornadoes lasted a median 74 world
+  minutes (9 real minutes) and EF2+ 25, so it suits EF3-class storms with about a 60-minute valid time.
 - World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,
   +30 min / +1 day, seek, pause clock) needs the `WEATHER_ADMIN_KEY` (`server/ChaserArchive.js` isAdmin; with no
   key set only the local machine). The mesoanalysis World card has an Admin sign-in; the key is kept per tab
@@ -127,7 +139,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
     which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
     page has the two post pictures (PNG made in the browser, or opened alone), the numbers, and the tornado tracks alone on a time slider (GIF or PNG, from the summary, so any
-    saved day has it; one solid line a tornado, deployed from `ef59400`). Every loop the site saves as a GIF can also be saved as an MP4 (`js/mp4.js`: the browser's H.264 encoder and a small MP4 writer; deployed from `ed58a63`). Days before this was deployed have no outlook kept.
+    saved day has it; one solid line a tornado, deployed from `ef59400`). Every loop the site saves as a GIF can also be saved as an MP4 (`js/mp4.js`: the browser's encoder and a small MP4 writer; deployed from `ed58a63` as H.264. Not yet deployed: AV1 first, at a constant quantizer of 18 above 1080 lines, else a constant 8000 kbit/s, H.264 where the browser has no AV1 encoder; `tools/social/make-loop.mjs` the same through ffmpeg, `--codec h264` to go back). Days before this was deployed have no outlook kept.
   - Day replays (2026-11-12, `server/ReplayArchive.js`, `tests/replay-archive.mjs`): each world day's hourly
     mesoanalysis and large-scale frames and every warning are kept in `replays/<world>-<day>.bin.gz` beside the
     world's state (about 13 MB a day) for 16 world days. A day's page links to `/day/<id>/analysis` and
@@ -194,7 +206,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `main` at the start of 2026-11-12 (owner's decision that day): the storm environment batch and the removal of
     live storm reports are on the branch `engine/storm-relative-separation` only, not merged.
 
-- World map terrain and roads (2026-11-13, branch `map/terrain-and-roads`, pushed; place published as version 497 from `a92556d` with `tools/worldmap/patch-place.luau` (the published place with the new `ServerStorage.World`, `WorldData` and `Shared.MapData`, 9.86 MiB of the 10 MiB limit; the version before is `roblox/build/published-before-map-09a4e5a.rbxl`, not in git); engine not deployed, so the engine's radars and counties are still the old map's while the game shows the new one; not seen
+- World map terrain and roads (2026-11-13, branch `map/terrain-and-roads`, pushed; place published as version 497 from `a92556d` with `tools/worldmap/patch-place.luau` (the published place with the new `ServerStorage.World`, `WorldData` and `Shared.MapData`, 9.86 MiB of the 10 MiB limit; the version before is `roblox/build/published-before-map-09a4e5a.rbxl`, not in git); merged to `main` and the engine deployed from `9e927f8` the same day (the world resumed at hour 585; it serves the new map's 332 counties and 12 radars; watches, discussions and day summaries kept from before name the old map's counties and towns); not seen
   in Studio): the map has real relief (hill regions 22 to 34 m per 5 miles, every stream in a valley, a
   meandering big river, wandering region borders; `WorldMapGenerator.js`), so towns, roads, counties and radars
   all moved. The road graph is one connected network with no stacked edges and ramps joined at both ends
@@ -204,8 +216,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   bends keep their median. Checked: `tests/world-map.mjs` passes, `tools/worldmap/check-graph-export.mjs` 11 of
   11, `tools/worldmap/audit-map.mjs`, selene, luau-lsp (fewer errors than `main`), `rojo build`. Open: seed 1's
   hand-removed radar list is empty (those radars no longer exist; the map has 12 radars) until the owner
-  chooses again; the engine's Docker image rebuilds the map, so deploying this branch changes the live world's
-  radars and counties; the M map still draws section roads from `sections.u8`, which differs from the graph in
+  chooses again; the M map still draws section roads from `sections.u8`, which differs from the graph in
   places, and has no streets.
 
 ## Next
