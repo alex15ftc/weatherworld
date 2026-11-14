@@ -68,14 +68,14 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
   warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
   warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
-- Storm sentences in discussions about a watch (2026-11-13, committed on branch `forecast/storm-sentences`, not merged or deployed): at
+- Storm sentences in discussions about a watch (2026-11-13; on `main` and deployed to the engine from `e72faca` on 2026-11-14): at
   each look ahead `MesoscaleRuntime.radarLooks` has the nearest radar (2 radars at most) look at the rotating
   storms under the watches in effect, and a discussion about a watch then speaks of its leading storm
   (`describeStorm` in `js/forecast/MesoscaleDiscussion.js`): the radar's low-level rotational velocity, a tornadic
   vortex signature, a debris signature (`debrisSignature` in `js/radar/RotationDetection.js`), the significant
   tornado parameter around it and its motion. Measured on this machine: a radar's 9-tilt volume is about 3.5 s
   of one radar thread and the detection 0.1 s. Checked by `tests/mesoscale-discussion.mjs`,
-  `tests/radar-simulator.mjs` and real scans of a made supercell; not yet seen on a running engine. Re-checked
+  `tests/radar-simulator.mjs` and real scans of a made supercell; not yet seen in a live discussion (the engine came up clean after the deploy). Re-checked
   2026-11-14 on top of `origin/main`'s new radar (patch applies cleanly; both tests pass; no false debris
   signature with 2.5 to 5 inch hail). On that radar the rotational velocity no longer grows with the tornado's
   wind (62 kt for a made 165 mph tornado, 63 kt for a 120 mph one), so the wind estimate below cannot rest
