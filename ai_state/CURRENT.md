@@ -194,7 +194,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `main` at the start of 2026-11-12 (owner's decision that day): the storm environment batch and the removal of
     live storm reports are on the branch `engine/storm-relative-separation` only, not merged.
 
-- World map terrain and roads (2026-11-13, branch `map/terrain-and-roads`, engine not deployed, not seen
+- World map terrain and roads (2026-11-13, branch `map/terrain-and-roads`, pushed; place published as version 497 from `a92556d` with `tools/worldmap/patch-place.luau` (the published place with the new `ServerStorage.World`, `WorldData` and `Shared.MapData`, 9.86 MiB of the 10 MiB limit; the version before is `roblox/build/published-before-map-09a4e5a.rbxl`, not in git); engine not deployed, so the engine's radars and counties are still the old map's while the game shows the new one; not seen
   in Studio): the map has real relief (hill regions 22 to 34 m per 5 miles, every stream in a valley, a
   meandering big river, wandering region borders; `WorldMapGenerator.js`), so towns, roads, counties and radars
   all moved. The road graph is one connected network with no stacked edges and ramps joined at both ends
@@ -210,7 +210,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-0. Map branch: play the place in Studio on the new export and look at roads (interchanges, overpass ramps with a
+0. Map branch (published as 497, unseen): join the place or play it in Studio and look at roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
