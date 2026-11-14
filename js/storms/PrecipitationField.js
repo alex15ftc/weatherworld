@@ -11,7 +11,7 @@
 // Frame: x east and y south in km from the storm's centre; heights in metres above the ground.
 import { rotatingShare, lineShare } from './StormModeEngine.js';
 import { buildStormGeometry } from './StormGeometry.js';
-import { BUDGET } from './StormBudgets.js';
+import { BUDGET, stormUndercut } from './StormBudgets.js';
 import { stormVortices, addMesoWind, addTornadoWind } from './StormVortices.js';
 
 export const PRECIP_LEVELS_M = [0, 700, 1500, 2500, 3700, 5200, 7000, 9200, 12000, 15500];
@@ -27,8 +27,11 @@ const LEVEL_DEPTH_KM = PRECIP_LEVELS_M.map((z, k) => ((PRECIP_LEVELS_M[Math.min(
 // Drop sizes carried (melted diameter, mm), the width of the size range each stands for, and
 // how many of each are followed from a single updraught and from one cell of a line. The two
 // smallest leave the updraught as snow; the rest as graupel.
-const DROP_MM = [0.5, 1.0, 1.8, 2.8, 4.0, 5.5], DROP_RANGE_MM = [0.5, 0.65, 0.9, 1.1, 1.35, 1.5], SNOW_SIZES = 2;
-const FOLLOWED = { updraught: [1100, 1100, 1000, 900, 750, 600], lineCell: [56, 56, 44, 36, 28, 20], hail: [350, 20], debris: 2600 };
+// (7 mm since 2026-11-14: the largest raindrops there are, from melted small hail and big graupel - few of
+// them by the size law, but where they fall alone a radar reads 3 dB and more of differential reflectivity,
+// a supercell's ZDR arc. With 5.5 mm the largest, nothing in the model could read over 2.6 dB.)
+const DROP_MM = [0.5, 1.0, 1.8, 2.8, 4.0, 5.5, 7.0], DROP_RANGE_MM = [0.5, 0.65, 0.9, 1.1, 1.35, 1.5, 1.5], SNOW_SIZES = 2;
+const FOLLOWED = { updraught: [1100, 1100, 1000, 900, 750, 600, 400], lineCell: [56, 56, 44, 36, 28, 20, 14], hail: [350, 20], debris: 2600 };
 // Hailstones as shares of the storm's largest stone, and the share of the hail's mass in each.
 const HAIL_SIZE_SHARE = [0.35, 0.6, 0.9], HAIL_MASS_SHARE = [0.5, 0.35, 0.15];
 
@@ -60,6 +63,15 @@ export const PHYSICS = {
   // when a 5 mm graupel went up to the anvil's outflow like the air and was thrown 25 km out) 30 dBZ was
   // 43 km wide with 4-5 mm drops at its far edge; at 0 there is no forward flank at all. Snow rises with the air.
   relofted: 0.4,
+  // Turbulence spreads what falls slowly far more than what falls fast: a heavy particle drops through
+  // each eddy before the eddy has carried it far (the crossing-trajectories effect, Csanady 1963), so its
+  // spread is 1 / sqrt(1 + (fall speed / turbulent speed)^2) of the air's. crossingMs is the turbulent
+  // speed round a storm, about 2.5 m/s: snow keeps 0.9 of the spread, 1.8 mm graupel 0.56, 5.5 mm 0.27 (hail
+  // has none). Until 2026-11-14 every size spread alike, and the largest graupel, hovering longest in the
+  // updraught's flank, was smeared into a fringe of 13-21 dBZ made of 5 mm drops 20 km wide on the
+  // storm's inflow side (seed 7's S0226), where a real storm has a ZDR arc a kilometre or two across;
+  // with it the forward flank is a streamer of cells rather than one smooth tongue.
+  crossingMs: 2.5,
   // The rear-flank downdraught (the storm's structure says where: StormStructureEngine's rearFlank, behind
   // the rotation and a little to its left, as strong as the cold pool): there the air sinks instead of
   // rising, at up to downdraughtShare of what the environment's downdraught energy allows (sqrt(2 DCAPE);
@@ -222,6 +234,8 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
     grid, inner, debris, cores: model.cores, mx, my, rx, ry,
     // (the storm-relative wind of the inflow layer, east and north m/s: what carries the cold pool, ColdPool.js HEAD_WIND)
     inflow: { u: model.inflowU, v: model.inflowV },
+    // (how far the engine has the storm's outflow ahead of its updraught, 0-1: StormBudgets.js stormUndercut)
+    undercut: (u => u.cell + u.line)(stormUndercut(storm, environment)),
     hailMm: (Number(storm.currentHailSizeInches) || 0) * 25.4,
     vortices: model.vortices, mesocyclone: model.mesocyclone, tornado: model.tornado, spin: model.spin, coldPool: model.coldPool, rearInflow: model.rearInflow, frontToRear: model.frontToRear,
     // Extent on the map, from the storm's centre (km).
@@ -373,7 +387,8 @@ export function follow(model, grid, inner, stride, landed = null) {
         const startR = R * Math.sqrt(-Math.log(clamp(share, 0.02, 0.95))), startAngle = Math.atan2(-throughV, throughU) + Math.PI * (1 - 0.6 * oneSided) * (random() + random() - 1);
         let x = source.x + startR * Math.cos(startAngle), y = source.y + startR * Math.sin(startAngle);
         const side = ((((startAngle / (2 * Math.PI)) % 1) + 1) % 1 * PULSE_SIDES | 0) * PULSE_STEPS;
-        const driftU = (random() + random() + random() - 1.5) * 2 * spread, driftV = (random() + random() + random() - 1.5) * 2 * spread;
+        const crossing = 1 / Math.sqrt(1 + (cls.fallMs / P.crossingMs) ** 2);   // (PHYSICS.crossingMs)
+        const driftU = (random() + random() + random() - 1.5) * 2 * spread * crossing, driftV = (random() + random() + random() - 1.5) * 2 * spread * crossing;
         let along = (random() * 4294967296) >>> 0;
         let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0, patchKm = 0;
         for (let step = 0; step < MAX_STEPS; step++) {
@@ -436,7 +451,7 @@ export function follow(model, grid, inner, stride, landed = null) {
           }
           x += u * dt / 1000; y -= v * dt / 1000; z += vertical * dt; age += dt;
           // the patch widens with the turbulence and is stretched or squeezed by the air (see PHYSICS.spreadMs)
-          patchKm = (spreading ? patchKm * Math.exp(spreading * dt) : patchKm) + spread * eddy * dt / 1000;
+          patchKm = (spreading ? patchKm * Math.exp(spreading * dt) : patchKm) + spread * crossing * eddy * dt / 1000;
           if (!isHail) {
             if (frozen) {
               if (inside < 0.3) {

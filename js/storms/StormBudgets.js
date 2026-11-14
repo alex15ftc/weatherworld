@@ -38,6 +38,19 @@ export const COLD_POOL = Object.freeze({ base: 0.25, dryness: 0.45, strongDcape:
 
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
+// How far a storm's outflow has got ahead of its updraught (each 0-1): as a lone cell, the cold pool's speed
+// against the low-level shear, less what a rotating updraught resists; as part of a line, the same balance on
+// the line's wider range. What the updraught's budget weighs (advanceStormBudget), and what the radar and the
+// frames draw the gust front by (ColdPool.js poolDriftMs): where this says the storm holds its inflow, its gust
+// front stands at the storm.
+export function stormUndercut(storm, environment) {
+  const linear = lineShare(storm);
+  return {
+    cell: outflowDominance(storm, environment) * (1 - BUDGET.rotationLift * rotatingShare(storm)) * (1 - linear),
+    line: ramp(coldPoolBalance(storm, environment), BUDGET.lineUndercutBalance[0], BUDGET.lineUndercutBalance[1]) * linear
+  };
+}
+
 // Strength (0-1) and the older updraught scale are what the radar, the hazards and the maps read.
 export function setUpdraught(storm, ms) {
   storm.updraughtMs = Math.max(0, Number(ms) || 0);
@@ -65,7 +78,7 @@ export function stepStormBudgets(storm, environment, physics, dtHours, { starvin
   // Cold outflow that outruns the updraught cuts off its inflow; a rotating updraught resists
   // it. A line stands a stronger cold pool, but not one that far outruns the shear: then the
   // gust front leaves it behind too.
-  const undercutCell = outflowDominance(storm, environment) * (1 - BUDGET.rotationLift * rotatingShare(storm)) * (1 - linear), undercutLine = ramp(coldPoolBalance(storm, environment), BUDGET.lineUndercutBalance[0], BUDGET.lineUndercutBalance[1]) * linear;
+  const { cell: undercutCell, line: undercutLine } = stormUndercut(storm, environment);
   const undercut = undercutCell + undercutLine;
   // What the inflow can support (parcel theory less entrainment and inhibition), less the
   // weight of the rain, the undercutting, and inflow spoiled by other storms.

@@ -36,14 +36,19 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   deep as its mesocyclone; the hail spike fades in 4 km and no spectrum width reads past Vn / sqrt 3. The cold
   pool's outflow goes as the square root of its local depth within its own spreading length (the first rule blew
   30 m/s across a cluster's whole pool) and the pool is carried by 0.62 of the inflow layer's storm-relative wind.
-  The TDA flags 12 of 58 engine tornadoes (12 seeds x a day, no false alarms; 8 at the start; real TDA about
-  40-50%): 8 of 10 at 140 mph and more, none under 115 mph. Loops and stills: `tmp/one-storm-wind/` (untracked).
+  Where the engine has a storm holding its inflow (`StormBudgets.js` stormUndercut) its gust front stands at the
+  storm (`ColdPool.js` poolDriftMs; it stood 17-24 km out). Heavy particles spread less than light ones
+  (`PHYSICS.crossingMs`) and there is a 7 mm drop class: no 20 km fringe of giant drops, a 2-3.5 dB ZDR band
+  5-8 km wide on the inflow side (a real arc is 1-3 km and up to 5 dB), and a forward flank of cells; both move
+  the engine's cores (valid regression run: none; hail CIG1+ days 17.5 to 18.8%). The TDA flags 11 of 58 engine
+  tornadoes (12 seeds x a day, no false alarms; 8 at the start; real TDA about 40-50%): 8 of 10 at 140 mph and
+  more, none under 115 mph. Loops and stills: `tmp/one-storm-wind/` (untracked).
   Open: the hook does not evolve (the engine's rotation barely changes for hours: needs the owner's word, it
-  touches tornado lives); a storm's gust-front fine line stands about 17 km out on its inflow side because the
-  engine's pools are as cold and fast on tornadic storms as on any (median 6.5 K, 22 m/s against 22 m/s of
-  inflow: an engine question, left by the owner 2026-11-14); the ZDR arc is weak and broad (no drops over
-  5.5 mm); weak tornadoes undetected. Audits of tornadoes near radars must step like the server
-  (`advanceLikeServer`): a 30-minute-step search found a storm whose tornado did not happen under 5-minute ticks.
+  touches tornado lives); weak tornadoes undetected. Not to do: warming the engine's pools in moist air
+  (`COLD_POOL` base 0.25 to 0.08, dryness 0.45 to 0.62) made 17% more tornadoes over 8 seeds x 10 days for half
+  a kelvin at tornado start. Audits of tornadoes near radars must step like the server (`advanceLikeServer`).
+  The regression suite ran the MAIN checkout from any worktree until 2026-11-14 (`1ae25d6`): a scorecard
+  identical to its baseline after an engine change is a failed run, not a pass.
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
 - Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files

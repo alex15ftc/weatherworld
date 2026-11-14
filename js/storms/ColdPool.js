@@ -42,6 +42,21 @@ export const outflowShare = (present, depth, slope, spread) => (depth > 0 && slo
 // motion (half the spreading time of it): the fine line of an isolated tornadic supercell with 20 m/s of
 // inflow stood 20-25 km out into that inflow (seed 23's S0221), where it would have cut the storm off.
 export const HEAD_WIND = 0.62;
+// How fast the pool is carried, east and north (m/s), for the time it has been spreading: HEAD_WIND of the
+// inflow's wind, and, where the engine says the storm holds its inflow (undercut 0: StormBudgets.js
+// stormUndercut - the pool's speed against the shear, less what a rotating updraught resists), as much more
+// along that wind as the front would otherwise have run out into it (speed - HEAD_WIND x the wind), so its
+// edge on the inflow's side stands at the storm; with the outflow fully ahead (undercut 1) only the wind's
+// share. speedMs: the pool's (coldPoolSpeedMs); inflow: the inflow layer's storm-relative wind. Until
+// 2026-11-14 the gust front of a tornadic supercell the engine counted as holding its inflow stood 17 km out
+// into it: the engine's pools are as fast on such storms as on any (median 22 m/s against 22 m/s of inflow),
+// and making them slower in the engine made 17% more tornadoes.
+export function poolDriftMs(speedMs, inflow, undercut) {
+  const wind = Math.hypot(inflow.u, inflow.v);
+  if (!(wind > 1e-6)) return { u: 0, v: 0 };
+  const k = HEAD_WIND + (1 - clamp(undercut, 0, 1)) * Math.max(0, speedMs - HEAD_WIND * wind) / wind;
+  return { u: k * inflow.u, v: k * inflow.v };
+}
 
 export const coldPoolSpeedMs = strength => COLD_POOL_SHAPE.speedMs * Math.sqrt(share(strength));
 export const coldPoolDepthM = strength => clamp(COLD_POOL_SHAPE.depthM[0] + COLD_POOL_SHAPE.depthM[1] * share(strength), COLD_POOL_SHAPE.depthRangeM[0], COLD_POOL_SHAPE.depthRangeM[1]);

@@ -35,7 +35,8 @@
 // buildStormFrame(world, storm, { seq, rainField }) -> { bytes (Uint8Array, full frame), info (numbers for checks) }.
 // rainField: the storm's field if already in hand (null: none; left out: StormRainFields.js's).
 import { inflowCell, soundingProfile, liftParcel as liftParcelAt, qsat, dewFromQ, lclM, G, CP, LV, RV, RD } from './UpdraughtParcel.js';
-import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK, outflowShare, HEAD_WIND } from './ColdPool.js';
+import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK, outflowShare, poolDriftMs } from './ColdPool.js';
+import { stormUndercut } from './StormBudgets.js';
 import { clamp, smoothstep } from '../scenarios/math.js';
 import { spinBudget } from './SpinBudget.js';
 import { stormVortices, mesoLevel, addMesoWind, addTornadoWind, rankineDrop, rankineDropRadius } from './StormVortices.js';
@@ -239,9 +240,10 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   const sigma = L / 2 / dx, rad = Math.ceil(2.5 * sigma), ker = [];
   for (let q = -rad; q <= rad; q++) ker.push(Math.exp(-0.5 * (q / sigma) ** 2));
   const ks = ker.reduce((a, b) => a + b, 0);
-  // (carried by the inflow layer's storm-relative wind, as the radar's pool is: ColdPool.js HEAD_WIND)
+  // (carried by the inflow layer's storm-relative wind and held at the storm as the engine has it, as the radar's pool is: ColdPool.js poolDriftMs)
   const carried = field?.inflow ?? (() => { let u = 0, v = 0, n = 0; for (let z = 0; z <= 1000; z += 250) { const w = srAt(z); u += w[0]; v += w[1]; n++; } return { u: u / n, v: v / n }; })();
-  const shI = Math.round(HEAD_WIND * carried.u * S.coldPoolTauS / dx), shJ = Math.round(HEAD_WIND * carried.v * S.coldPoolTauS / dx);
+  const poolDrift = poolDriftMs(cpSpeed, carried, field?.undercut ?? (u => u.cell + u.line)(stormUndercut(storm, env)));
+  const shI = Math.round(poolDrift.u * S.coldPoolTauS / dx), shJ = Math.round(poolDrift.v * S.coldPoolTauS / dx);
   const tmp = new Float64Array(N), blurred = new Float64Array(N);
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const ii = i + q - shI; if (ii >= 1 && ii <= nx) s += mask[col(ii, j)] * ker[q + rad]; } tmp[col(i, j)] = s / ks; }
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const jj = j + q - shJ; if (jj >= 1 && jj <= ny) s += tmp[col(i, jj)] * ker[q + rad]; } blurred[col(i, j)] = s / ks; }

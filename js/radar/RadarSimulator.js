@@ -12,7 +12,7 @@ import {
 } from './RadarFormat.js';
 import { buildSounding } from '../sounding.js';
 import { updraughtProfile, STRUCTURE as FRAME } from '../storms/StormStructure.js';
-import { coldPoolSpeedMs, coldPoolDepthM, outflowShare, HEAD_WIND } from '../storms/ColdPool.js';
+import { coldPoolSpeedMs, coldPoolDepthM, outflowShare, poolDriftMs } from '../storms/ColdPool.js';
 import { addMesoWind, addTornadoWind } from '../storms/StormVortices.js';
 
 const KT_TO_MS = 0.514444;
@@ -238,9 +238,9 @@ function coldPoolOf(echo, motion, poolRadiusKm) {
   const tau = FRAME.coldPoolTauS, spreadKm = Math.max(1.5, Math.min(coldPoolSpeedMs(strength) * tau, 0.7 * 1000 * Math.max(2, poolRadiusKm))) / 1000;
   // (cells a quarter of the spread wide at most: the pool is smooth on that scale)
   const res = Math.max(1, echo.grid.res, spreadKm / 2 / 4), sigma = spreadKm / 2 / res, reach = Math.ceil(2.5 * sigma);
-  // (carried by the inflow layer's storm-relative wind, ColdPool.js HEAD_WIND; cells, y runs south)
-  const drift = echo.inflow ?? { u: -motion.u, v: -motion.v };
-  const shiftX = HEAD_WIND * drift.u * tau / 1000 / res, shiftY = -HEAD_WIND * drift.v * tau / 1000 / res;
+  // (carried by the inflow layer's storm-relative wind and held at the storm as the engine has it, ColdPool.js poolDriftMs; cells, y runs south)
+  const drift = poolDriftMs(coldPoolSpeedMs(strength), echo.inflow ?? { u: -motion.u, v: -motion.v }, echo.undercut ?? 1);
+  const shiftX = drift.u * tau / 1000 / res, shiftY = -drift.v * tau / 1000 / res;
   const margin = reach + Math.ceil(Math.abs(shiftX) + Math.abs(shiftY));
   const x0 = echo.minX - margin * res, y0 = echo.minY - margin * res;
   const nx = Math.ceil((echo.maxX - echo.minX) / res) + 1 + 2 * margin, ny = Math.ceil((echo.maxY - echo.minY) / res) + 1 + 2 * margin;
