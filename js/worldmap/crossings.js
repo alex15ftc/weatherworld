@@ -309,15 +309,16 @@ export function planCrossings(map, options = {}) {
             if (serves || !sectionClass(I, J, east)) continue;
             let hit = false;
             for (let k = 1; k < ramp.length && !hit; k++) hit = segSeg(ramp[k - 1], ramp[k], a, e) < INTERCHANGE.rampHalf + AT_1000(0.012);
-            if (hit) sections.roads[J * secSize + I] &= east ? ~3 : ~12;
+            if (hit) { sections.roads[J * secSize + I] &= east ? ~3 : ~12; (sections.closed ??= new Set()).add((J * secSize + I) * 4 + (east ? 0 : 2)); }
           }
         }
       }
     }
   }
-  // Pieces of the grid the ramps (or the airfields before them) cut off from the rest are left
-  // out, as are paved roads' ends between an interstate with no bridge for them and nothing else.
-  sections.cutOff = connectSectionRoads(sections, map, undefined, { link: false, crossings: kept });
+  // Pieces of the grid the ramps (or the airfields before them) cut off from the rest, and
+  // those reached only by a paved road the interstate has no bridge for, are joined up again or
+  // left out (no road goes back where a ramp or an airfield took one: sections.closed).
+  sections.cutOff = connectSectionRoads(sections, map, undefined, { crossings: kept });
   kept.stats = { downgraded, dropped };
   return kept;
 }

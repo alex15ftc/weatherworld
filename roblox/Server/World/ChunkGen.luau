@@ -73,6 +73,9 @@ local STREET_BRIDGE_HALF = 30
 -- Bridges are planned from the roads this far beyond the network's pad: the longest reach of a
 -- bridge from its crossing (half the widest span, the longest ramp and a margin).
 local BRIDGE_REACH = 420
+-- Buildings are planned this far beyond the chunk (see the two passes in build): further than
+-- half the largest footprint a lot or parcel takes.
+local NEIGHBOUR_LOTS = 130
 -- Beside a bridge's ramp the grade falls back to the land's over this many studs a stud of rise
 -- (about an 8% climb for a road meeting the ramp).
 local APPROACH_RUN = 12
@@ -701,16 +704,29 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		return share > 0.3
 	end
 
+	-- Buildings, in two passes, so that chunks agree at their edges. A chunk builds the lots whose
+	-- middles lie in it and knows only the footprints it has placed itself, so two chunks could
+	-- each stand a building where their lots overlap across the edge. First the lots just beyond
+	-- the chunk (within NEIGHBOUR_LOTS studs) are placed as their own chunks would place them,
+	-- their footprints kept and their parts thrown away; then this chunk's lots are placed round
+	-- them. Where a lot here and a lot next door overlap, each chunk finds the other's first and
+	-- leaves its own out: neither is built, and nothing overlaps.
 	local occupied: { { cf: CFrame, hx: number, hz: number } } = {}
-	Buildings.build({
-		x0 = x0, z0 = z0, x1 = x1, z1 = z1, props = props, net = net, inside = inside, ground = ground,
-		coverKey = coverKeyAt, busy = isBusy, water = function(x: number, z: number): boolean
-			return water(x, z) or onBridge(x, z, 6)
-		end, settlements = settlements, occupied = occupied, sites = sites, blocks = WorldMap.blocks(x0, z0, x1, z1),
-		pavedTop = function(levelM: number): number
-			return toStuds(levelM + ROAD_RAISE_M) + Roads.LIFT
-		end,
-	})
+	local function nextDoor(x: number, z: number): boolean
+		return not inside(x, z) and x >= x0 - NEIGHBOUR_LOTS and x < x1 + NEIGHBOUR_LOTS and z >= z0 - NEIGHBOUR_LOTS and z < z1 + NEIGHBOUR_LOTS
+	end
+	local blocks = WorldMap.blocks(x0 - NEIGHBOUR_LOTS, z0 - NEIGHBOUR_LOTS, x1 + NEIGHBOUR_LOTS, z1 + NEIGHBOUR_LOTS)
+	for _, pass in { { props = {} :: Builder.Props, owns = nextDoor, pad = NEIGHBOUR_LOTS }, { props = props, owns = inside, pad = 0 } } do
+		Buildings.build({
+			x0 = x0 - pass.pad, z0 = z0 - pass.pad, x1 = x1 + pass.pad, z1 = z1 + pass.pad, props = pass.props, net = net, inside = pass.owns, ground = ground,
+			coverKey = coverKeyAt, busy = isBusy, water = function(x: number, z: number): boolean
+				return water(x, z) or onBridge(x, z, 6)
+			end, settlements = settlements, occupied = occupied, sites = sites, blocks = blocks,
+			pavedTop = function(levelM: number): number
+				return toStuds(levelM + ROAD_RAISE_M) + Roads.LIFT
+			end,
+		})
+	end
 	local function inBuilding(x: number, z: number, margin: number): boolean
 		for _, o in occupied do
 			local p = o.cf:PointToObjectSpace(Vector3.new(x, o.cf.Y, z))

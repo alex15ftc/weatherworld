@@ -434,18 +434,47 @@ local function parking(props: Builder.Props, frame: CFrame, w: number, d: number
 	end
 end
 
--- A frame at (x, z) turned by yaw, standing on the lowest ground under a footprint of sx by sz
--- (so on a slope the uphill side sinks into the ground rather than the downhill side floating).
-local function seat(ctx: Ctx, x: number, z: number, yaw: number, sx: number, sz: number): CFrame
-	local base = CFrame.new(x, 0, z) * CFrame.Angles(0, yaw, 0)
-	local y = math.huge
+-- Buildings on sloping ground. The land has real hills and valley sides, and lots do not level
+-- it, so a building is fitted to the slope it stands on:
+--   it stands no more than STEP studs above the lowest ground under its footprint (on a gentle
+--   slope: on the highest, with nothing buried);
+--   a foundation carries it down to that lowest ground (footing), so no side floats;
+--   where the ground falls more than STEEP studs across the footprint nothing is built.
+local STEP, STEEP = 5, 14
+local FOUNDATION = rgb(150, 146, 138)
+
+-- The lowest and highest ground under a footprint of sx by sz at a frame.
+local function groundUnder(ctx: Ctx, frame: CFrame, sx: number, sz: number): (number, number)
+	local lo, hi = math.huge, -math.huge
 	for _, fx in { -0.5, 0, 0.5 } do
 		for _, fz in { -0.5, 0, 0.5 } do
-			local p = base * Vector3.new(fx * sx, 0, fz * sz)
-			y = math.min(y, ctx.ground(p.X, p.Z))
+			local p = frame * Vector3.new(fx * sx, 0, fz * sz)
+			local y = ctx.ground(p.X, p.Z)
+			lo, hi = math.min(lo, y), math.max(hi, y)
 		end
 	end
-	return CFrame.new(x, y, z) * CFrame.Angles(0, yaw, 0)
+	return lo, hi
+end
+
+-- A frame at (x, z) turned by yaw, standing on the ground under a footprint of sx by sz.
+local function seat(ctx: Ctx, x: number, z: number, yaw: number, sx: number, sz: number): CFrame
+	local lo, hi = groundUnder(ctx, CFrame.new(x, 0, z) * CFrame.Angles(0, yaw, 0), sx, sz)
+	return CFrame.new(x, math.min(hi, lo + STEP), z) * CFrame.Angles(0, yaw, 0)
+end
+
+-- Whether the ground under a footprint is too steep to build on.
+local function steep(ctx: Ctx, frame: CFrame, sx: number, sz: number): boolean
+	local lo, hi = groundUnder(ctx, frame, sx, sz)
+	return hi - lo > STEEP
+end
+
+-- The foundation under a footprint whose frame stands above the lowest ground there.
+local function footing(ctx: Ctx, frame: CFrame, sx: number, sz: number)
+	local lo = groundUnder(ctx, frame, sx, sz)
+	local drop = frame.Y - lo
+	if drop > 0.4 then
+		Builder.block(ctx.props, CFrame.new(frame.X, frame.Y - (drop + 1) / 2, frame.Z) * frame.Rotation, sx, drop + 1, sz, FOUNDATION, M.Concrete)
+	end
 end
 
 local function farmstead(props: Builder.Props, ctx: Ctx, x: number, z: number, rnd: () -> number)
@@ -585,8 +614,9 @@ end
 
 local function fits(ctx: Ctx, frame: CFrame, sx: number, sz: number): number?
 	for _, scale in { 1, 0.85, 0.7 } do
-		if ctx.net:clearBox(frame, sx * scale, sz * scale, 2) and dry(ctx, frame, sx * scale, sz * scale) and unoccupied(ctx, frame, sx * scale, sz * scale) then
+		if ctx.net:clearBox(frame, sx * scale, sz * scale, 2) and dry(ctx, frame, sx * scale, sz * scale) and unoccupied(ctx, frame, sx * scale, sz * scale) and not steep(ctx, frame, sx * scale, sz * scale) then
 			table.insert(ctx.occupied, { cf = frame, hx = sx * scale / 2, hz = sz * scale / 2 })
+			footing(ctx, frame, sx * scale, sz * scale)
 			return scale
 		end
 	end
@@ -782,8 +812,10 @@ local function houseRow(ctx: Ctx, block: Rect, side: string, seedX: number, seed
 		if not empty and ctx.inside(x, z) and not ctx.busy(x, z) and not otherUse(ctx, x, z) then
 			local rnd = stream(seedX * 64 + i, seedZ * 4 + sideIndex, 405)
 			local frame = seat(ctx, x, z, yaw, math.min(lot - 4, 50), 28)
-			if ctx.net:clearBox(frame, math.min(lot - 4, 56), 26, 2) and dry(ctx, frame, math.min(lot - 4, 56), 30) and unoccupied(ctx, frame, math.min(lot - 4, 56), 30) then
+			-- (the whole footprint the house claims is tested, so none of it is on a road or in water)
+			if ctx.net:clearBox(frame, math.min(lot - 4, 56), 32, 0) and dry(ctx, frame, math.min(lot - 4, 56), 32) and unoccupied(ctx, frame, math.min(lot - 4, 56), 32) and not steep(ctx, frame, math.min(lot - 4, 56), 32) then
 				table.insert(ctx.occupied, { cf = frame, hx = math.min(lot - 4, 56) / 2, hz = 16 })
+				footing(ctx, frame, math.min(lot - 4, 56) - 2, 30)
 				house(props, frame, rnd, set, ctx.ground)
 				-- A back fence along the rear of the lot, now and then.
 				local back = (if alongX then (block.z1 - block.z0) else (block.x1 - block.x0)) / 2 - (set + 12)
@@ -894,7 +926,8 @@ function Buildings.build(ctx: Ctx)
 				local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
 				local use = zoneAt(ctx, s, mx, mz)
 				if ctx.inside(mx, mz) and use ~= "houses" and use ~= "apartments" then
-					parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), rnd, use)
+					-- (a stream of the parcel's own, so it is built alike whichever chunk builds it)
+					parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), stream(math.round(mx), math.round(mz), 408), use)
 				end
 			end
 		elseif zone == "main" then
@@ -920,7 +953,7 @@ function Buildings.build(ctx: Ctx)
 				local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
 				local use = zoneAt(ctx, s, mx, mz)
 				if ctx.inside(mx, mz) and use ~= "houses" and use ~= "main" then
-					parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), rnd, use)
+					parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), stream(math.round(mx), math.round(mz), 408), use)
 				end
 			end
 		end

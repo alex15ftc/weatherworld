@@ -163,11 +163,15 @@ function NetMethods.clear(self: Net, x: number, z: number, margin: number): bool
 end
 
 -- True when a box (centre frame, size across x and z) stands clear of every road by margin:
--- its corners, edge midpoints and centre are tested.
+-- tested at its corners and across it at points no more than CLEAR_STEP studs apart (closer than
+-- the narrowest road is wide, so none can pass between them: a slanted road, a dead-end stub or a
+-- cul-de-sac reaching into a block).
+local CLEAR_STEP = 12
 function NetMethods.clearBox(self: Net, frame: CFrame, sx: number, sz: number, margin: number): boolean
-	for _, fx in { -0.5, 0, 0.5 } do
-		for _, fz in { -0.5, 0, 0.5 } do
-			local p = frame * Vector3.new(fx * sx, 0, fz * sz)
+	local nx, nz = math.max(2, math.ceil(sx / CLEAR_STEP)), math.max(2, math.ceil(sz / CLEAR_STEP))
+	for i = 0, nx do
+		for j = 0, nz do
+			local p = frame * Vector3.new((i / nx - 0.5) * sx, 0, (j / nz - 0.5) * sz)
 			if not self:clear(p.X, p.Z, margin) then
 				return false
 			end

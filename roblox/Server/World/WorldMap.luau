@@ -62,7 +62,7 @@ for _, lake in Meta.lakes do
 	lakeSurface[lake.id] = lake.surfaceM
 end
 
-export type Tile = { data: buffer, rivers: { number }, roads: { number }, crossings: { number }, sites: any, ti: number, tj: number }
+export type Tile = { data: buffer, rivers: { number }, crossings: { number }, sites: any, ti: number, tj: number }
 
 -- A record string of the export: base64 of zstd-compressed bytes.
 local function unpack(text: string): buffer
@@ -116,10 +116,10 @@ function WorldMap.tile(ti: number, tj: number): Tile
 		end)
 		if not ok then
 			warn(`[WeatherWorld] map tile T{ti}_{tj} read outside the prepared area`)
-			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, roads = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
+			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
 		end
 		evict()
-		tile = { data = unpack(source.data), rivers = source.rivers, roads = source.roads, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
+		tile = { data = unpack(source.data), rivers = source.rivers, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
 		tiles[key] = tile
 		tileCount += 1
 		lastUse[key] = useClock

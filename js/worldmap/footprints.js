@@ -83,7 +83,7 @@ export function findConflicts(map, options = {}) {
   }
   for (const r of rivers) { const reach = r.half + p.bankMi + p.valleyMi; index(r, Math.min(r.a[0], r.b[0]) - reach, Math.min(r.a[1], r.b[1]) - reach, Math.max(r.a[0], r.b[0]) + reach, Math.max(r.a[1], r.b[1]) + reach); }
   const lots = [];
-  const lot = (what, poly) => { const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]); const it = { kind: 'lot', what, poly, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] }; lots.push(it); index(it, ...it.box); };
+  const lot = (what, poly, own = null) => { const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]); const it = { kind: 'lot', what, poly, own, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] }; lots.push(it); index(it, ...it.box); };
   for (const g of fac.gasStations) lot('gas station', g.lot);
   for (const s of fac.schools) lot('school', s.lot);
   for (const c of fac.campuses) lot('campus', c.area);
@@ -91,14 +91,15 @@ export function findConflicts(map, options = {}) {
     const xs = z.poly.map(q => q[0]), ys = z.poly.map(q => q[1]), small = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
     if (z.kind === 'mall' || z.kind === 'travel' || z.tier === 'community' || z.kind === 'industrial' || (z.kind === 'park' && small > AT_1000(0.15))) lot(z.kind, z.poly);
   }
-  for (const a of map.airfields ?? []) { lot('airfield', a.fence); for (const poly of [a.nws?.building, a.radar?.compound]) if (poly) lot('NWS office', poly); }
+  for (const a of map.airfields ?? []) { lot('airfield', a.fence, a.code); for (const poly of [a.nws?.building, a.radar?.compound]) if (poly) lot('NWS office', poly); }
 
   const crossings = map.crossings ?? [];
   const inInterchange = (x, y) => crossings.some(c => c.type === 'interchange' && Math.hypot(c.x - x, c.y - y) < p.interchangeMi);
   const crosses = (r, o) => segmentDistance(r.a, r.b, o.a, o.b) === 0;
   // Whether two roads cross here: these two edges, or either and the next edge of the other road
   // (a bridge over a road's bend spans the chords either side of it).
-  const pieces = e => [e, ...[e.a, e.b].flatMap(n => n.edges.filter(f => f !== e && f.kind === e.kind))];
+  // (A ramp's pieces take in the interstate it merges onto: what bridges that bridges the merge.)
+  const pieces = e => [e, ...[e.a, e.b].flatMap(n => n.edges.filter(f => f !== e && (f.kind === e.kind || (e.kind === 'ramp' && f.kind === 'interstate'))))];
   const seg = e => ({ a: [e.a.x, e.a.y], b: [e.b.x, e.b.y] });
   const crossesNear = (r, o) => crosses(r, o) || pieces(r.e).some(e => pieces(o.e).some(f => (e !== r.e || f !== o.e) && crosses(seg(e), seg(f))));
   // The junctions: nodes where roads of different kinds or routes meet. Two roads overlapping
@@ -164,8 +165,12 @@ export function findConflicts(map, options = {}) {
         if (inJunction(r, o, mx, my)) continue;
         report('road', `${e.kind} / ${f.kind}`, mx, my);
       } else if (o.kind === 'lot') {
-        if (r.e.kind === 'local' && (o.what === 'airfield' || o.what === 'campus')) continue;   // the airfield's or campus's own roads
-        if (segmentPolyDistance(r.a, r.b, o.poly) < r.half) {
+        if (r.e.kind === 'local' && (o.what === 'airfield' || o.what === 'campus' || o.what === 'NWS office')) continue;   // the airfield's or campus's own roads, the office's drive
+        if (o.own && map.roads[r.e.road]?.airport === o.own) continue;   // the airport's own expressway, at its gate
+        // (A road's strip is square-ended: at a junction it stops at the road it meets, so a lot
+        // facing the junction from across that road is not reached.)
+        const l = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]), back = (n, from) => (n.edges.length > 1 && l > 2 * r.half ? [from[0] + (n === r.e.a ? 1 : -1) * (r.b[0] - r.a[0]) / l * r.half, from[1] + (n === r.e.a ? 1 : -1) * (r.b[1] - r.a[1]) / l * r.half] : from);
+        if (segmentPolyDistance(back(r.e.a, r.a), back(r.e.b, r.b), o.poly) < r.half) {
           const [x, y] = [(r.a[0] + r.b[0]) / 2, (r.a[1] + r.b[1]) / 2];
           report('lot', `${r.e.kind} into ${o.what}`, x, y);
         }

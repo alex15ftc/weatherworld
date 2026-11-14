@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-13
+Updated: 2026-11-14
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -218,6 +218,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   hand-removed radar list is empty (those radars no longer exist; the map has 12 radars) until the owner
   chooses again; the M map still draws section roads from `sections.u8`, which differs from the graph in
   places, and has no streets.
+
+- Map follow-up (2026-11-14, branch `map/open-items`, not committed, not published, not deployed): towns did
+  not move. Roads: highway curves turn at most 12 degrees a joint, sharp corners rounded, close junction pairs
+  182 to 19, footprint conflicts 28 road / 13 lot / 3 river to 4 / 0 / 2, section roads thinned where the land
+  is grass or woods (gravel miles down 21%; raise `density` in `sectionRoads.js` to bring them back).
+  Buildings: `tools/worldmap/run-chunks.luau` runs the place's own chunk generator under Lune and checks
+  footprints; over 300 chunks none reaches a road, overlaps another (in a chunk or across chunk edges) or
+  stands in water. Each chunk first plans the lots just beyond its edge (`NEIGHBOUR_LOTS` in `ChunkGen`);
+  buildings stand at most 5 studs above the lowest ground under them on a foundation, and are not built where
+  the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
+  lists (patched place 9.61 MiB). Live place 497 and the engine still have the map of `9e927f8`: publishing
+  and deploying this branch changes roads (not towns, counties or radars).
 
 ## Next
 

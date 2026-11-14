@@ -45,6 +45,7 @@
 import { makeRandom, hashText, clamp } from './noise.js';
 import { interchangeRamps } from './interchanges.js';
 import { AT_1000, STUDS } from './scale.js';
+import { roundCorners, CURVE_DEFAULTS } from './curves.js';
 
 const FT = AT_1000(1 / 5280);   // a layout foot in map miles
 const HALF_MI_EXPRESSWAY = AT_1000(0.04);   // an airport expressway's half-width and a little (streets.js HALF_MI.expressway)
@@ -570,7 +571,10 @@ export function planAirfields(map, options = {}) {
     // The spur joins the map's roads (an expressway: crossings.js gives it its exit, the section
     // roads meet it at signals or stop short of it), named for the airport and the interstate.
     if (freeway) {
-      const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: field.access.points };
+      // (Its corners rounded as the other expressways' are, curves.js; but for the turn out of the
+      // gate, at the end of the airport's own stub beside the office.)
+      const [gate, ...rest] = field.access.points;
+      const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: [gate, ...roundCorners(rest, CURVE_DEFAULTS.radiusMi.expressway, () => false, { maxStepDeg: CURVE_DEFAULTS.maxStepDeg.expressway })] };
       roads.push(road);
       for (let i = 1; i < road.points.length; i++) {
         const seg = { type: 'road', road, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: HALF_MI_EXPRESSWAY };
@@ -707,6 +711,9 @@ export function planAirfields(map, options = {}) {
 
 // The section-line roads where the airfields are: none inside a fence, and paved along any mile
 // line an access road follows. Changes sections.roads in place.
+// A mile of mile line goes where it runs inside a fence or within GRAZE_MI of one (a road's
+// half-width and a little: an arterial there would clip the field).
+const GRAZE_MI = STUDS(36);
 export function fitSectionRoads(sections, airfields) {
   const { size, roads } = sections;
   // Paved first (a mile the access road runs part of is paved whole), then cut at the fences.
@@ -714,12 +721,16 @@ export function fitSectionRoads(sections, airfields) {
     const [K, shift] = miles;
     roads[K] = (roads[K] & ~(3 << shift)) | (3 << shift);
   }
-  const inside = (x, y) => airfields.some(a => pointInPoly(x, y, a.fence));
-  for (let J = 0; J < size; J++) for (let I = 0; I < size; I++) {
+  // (Inside one, or within a road's half-width of its fence.)
+  const fences = airfields.map(a => ({ poly: a.fence, x0: Math.min(...a.fence.map(q => q[0])) - 1, y0: Math.min(...a.fence.map(q => q[1])) - 1, x1: Math.max(...a.fence.map(q => q[0])) + 1, y1: Math.max(...a.fence.map(q => q[1])) + 1 }));
+  const inside = (x, y) => fences.some(f => x > f.x0 && x < f.x1 && y > f.y0 && y < f.y1 && (pointInPoly(x, y, f.poly) || f.poly.some(([ax, ay], k) => { const [bx, by] = f.poly[(k + 1) % f.poly.length]; return distToSeg(x, y, { ax, ay, bx, by }) < GRAZE_MI; })));
+  // (Each such mile is recorded in sections.closed, as corner index * 4 + bit shift: no road is
+  // put back there, sectionRoads.js.)
+  sections.closed ??= new Set();
+  for (const f of fences) for (let J = Math.max(0, Math.floor(f.y0)); J <= Math.min(size - 1, Math.ceil(f.y1)); J++) for (let I = Math.max(0, Math.floor(f.x0)); I <= Math.min(size - 1, Math.ceil(f.x1)); I++) {
     const K = J * size + I;
     for (const [shift, dx, dy] of [[0, 1, 0], [2, 0, 1]]) {
-      if (!((roads[K] >> shift) & 3)) continue;
-      for (let t = 0; t <= 1; t += 0.125) if (inside(I + dx * t, J + dy * t)) { roads[K] &= ~(3 << shift); break; }
+      for (let t = 0; t <= 1; t += 0.03125) if (inside(I + dx * t, J + dy * t)) { roads[K] &= ~(3 << shift); sections.closed.add(K * 4 + shift); break; }
     }
   }
 }

@@ -44,6 +44,12 @@ export const SECTION_DEFAULTS = Object.freeze({
   // Every second mile line is the more travelled one (the half-section lines get fewer roads).
   evenLine: 1.3, oddLine: 0.6,
   gravelBusy: 0.45,      // where density is below this share, roads are dirt rather than gravel
+  // The land under a mile line counts too: fewer roads through range, woods and breaks than through
+  // cropland, so the districts' edges follow the fields and the pasture, not a line on the map.
+  coverShare: { grassland: 0.55, forest: 0.45, riparian: 0.7, breaks: 0.4 },
+  // A through line carries a road all its way only in well-roaded country: elsewhere it comes
+  // and goes, in stretches of about throughRunMi, over throughBase + throughGain x density of it.
+  throughBase: 0.2, throughGain: 1.6, throughRunMi: 18,
   // Through county roads: mile lines picked at random gaps of pavedGapMi miles (each way). Along
   // one, a mile is paved where a noise of about pavedRunMi along the line falls below
   // pavedShare for the region, raised in busy districts and near towns; the rest of the line is
@@ -60,7 +66,7 @@ export const SECTION_DEFAULTS = Object.freeze({
   // town's, by up to linkPavedMi); pieces of up to dropMi miles that nothing reaches are left
   // out (paved ones only where an interstate, an airfield or an interchange's ramps cut them off).
   // (A pocket the interstates shut in with no bridge goes up to cutOffDropMi.)
-  linkSmallMi: 2, linkMi: 3, linkFarMi: 8, linkPavedMi: 10, dropMi: 8, cutOffDropMi: 16,
+  linkSmallMi: 2, linkMi: 3, linkFarMi: 14, linkPavedMi: 14, dropMi: 8, cutOffDropMi: 16,
   // How near a corner a road must pass to be met there: a two-lane highway (its curve's middle),
   // an expressway (paved roads only), and how near an interstate or expressway stops the gravel
   // and dirt roads short of the corner (their gap, from its centre line).
@@ -122,13 +128,16 @@ export function planSectionRoads(map, options = {}) {
     }
     const key = regionKeys[coverRegion[cellsOn[0]]], line = horizontal ? J : I;
     if (town) return 3;
+    // The density of the land along the mile: each cell's region, and what grows there.
+    let land = 0;
+    for (const k of cellsOn) land += p.density[regionKeys[coverRegion[k]]] * (p.coverShare[coverKeys[cover[k]]] ?? 1);
     const busy = (p.farmLow + (p.farmHigh - p.farmLow) * clamp(0.5 + 1.1 * fbm(farm, I / p.farmMi, J / p.farmMi, 3), 0, 1))
-      * (1 + p.townBoost * Math.exp(-townMi[J * size + I] / p.townReachMi)), district = p.density[key] * busy;
+      * (1 + p.townBoost * Math.exp(-townMi[J * size + I] / p.townReachMi)), district = land / cellsOn.length * busy;
     if ((horizontal ? throughEW : throughNS)[line] && steep < p.pavedMaxSlope) {
       const along = (horizontal ? I + 0.5 : J + 0.5) / p.pavedRunMi, across = line * 2.71 + (horizontal ? 0.4 : 900.2);
       if (clamp(0.5 + 1.3 * fbm(pave, along, across, 1), 0, 1) < p.pavedShare[key] * Math.sqrt(busy)) return 3;
       if (crossing > p.bridgeMi2) return 0;
-      return steep < p.gravelSlope && key !== 'sandhills' ? 2 : 1;
+      if (clamp(0.5 + 1.3 * fbm(pave, along * p.pavedRunMi / p.throughRunMi + 311.7, across - 57.3, 1), 0, 1) < p.throughBase + p.throughGain * district) return steep < p.gravelSlope && key !== 'sandhills' ? 2 : 1;
     }
     if (crossing > p.bridgeMi2) return 0;
     const keep = district * (line % 2 === 0 ? p.evenLine : p.oddLine) * Math.exp(-steep / p.roughSlope);
@@ -201,8 +210,9 @@ export function planSectionRoads(map, options = {}) {
 // the road rules will build it (streets.js, roadNetwork.js): gravel and dirt roads meet two-lane
 // highways and each other, and stop short of interstates and expressways; paved roads meet the
 // expressways too and stop only at an interstate (unless carried over it: crossings, once
-// they are planned). link: false only leaves out (after the airfields and ramps have taken their
-// miles, when a new mile could run through one; then a small paved piece goes too).
+// they are planned: then no new mile crosses one, and a small paved piece cut off goes too). No
+// mile is put where sections.closed has one (taken by an airfield or a ramp). link: false only
+// leaves out.
 export function connectSectionRoads(sections, map, options = {}, { link = true, crossings = null } = {}) {
   const p = { ...SECTION_DEFAULTS, ...options };
   const { size, roads } = sections, miles = size - 1;
@@ -256,7 +266,7 @@ export function connectSectionRoads(sections, map, options = {}, { link = true, 
   // Whether a new mile may run there: dry, off the rivers and their corners, inside the map.
   const open = (east, I, J) => {
     if (east ? J < 1 || J >= miles || I < 0 || I >= miles : I < 1 || I >= miles || J < 0 || J >= miles) return false;
-    if (wet[J * size + I] || wet[(east ? J : J + 1) * size + (east ? I + 1 : I)]) return false;
+    if (wet[J * size + I] || wet[(east ? J : J + 1) * size + (east ? I + 1 : I)] || sections.closed?.has((J * size + I) * 4 + (east ? 0 : 2))) return false;
     for (let t = 0; t < per; t++) for (const side of [-1, 0]) {
       const i = east ? I * per + t : I * per + side, j = east ? J * per + side : J * per + t;
       if (i < 0 || j < 0 || i >= n || j >= n || cover[j * n + i] === water || river[j * n + i]) return false;
@@ -321,7 +331,7 @@ export function connectSectionRoads(sections, map, options = {}, { link = true, 
       const cls = Math.max(...piece.miles.map(h => classAt(h[0], h[1])));
       for (let c = goal; from.get(c); c = from.get(c)[0]) { const [, east, K] = from.get(c); roads[K] |= east ? cls : cls << 2; stats.linkMiles++; }
       join([...piece.corners][0], MAIN); stats.joined++;
-    } else if (link ? !piece.paved && size0 <= p.dropMi : size0 <= p.cutOffDropMi) {
+    } else if (crossings || !link ? size0 <= p.cutOffDropMi : !piece.paved && size0 <= p.dropMi) {
       for (const [east, K] of piece.miles) if (classAt(east, K)) { clear(east, K); stats.dropMiles++; }
       stats.dropped++;
     } else stats.left++;

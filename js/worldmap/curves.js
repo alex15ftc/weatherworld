@@ -7,7 +7,8 @@
 // already gentler than that is left as it is (a beltway's ring of short straights).
 // A corner keeps its point where another road meets it (within keepMi of one of its points, or on
 // its line where it runs straight through: a junction stays a junction, and a road joining nearby
-// still finds the road where it was); where the straight runs either side are too short for the
+// still finds the road where it was; but two routes turning the same corner on one road are both
+// rounded, on one curve); where the straight runs either side are too short for the
 // full radius, the curve is as wide as they allow. Near an interstate (where another road may
 // cross it at an interchange or overpass, planned for straight roads) a curve keeps clearMi from
 // it, shrinking or leaving the corner sharp.
@@ -24,12 +25,16 @@
 import { AT_1000, STUDS } from './scale.js';
 
 export const CURVE_DEFAULTS = Object.freeze({
-  radiusMi: { interstate: 0.6, expressway: 0.35, highway: 0.17 },
+  // (Highways on the expressways' radius: two routes sharing a road round a corner share its curve,
+  // and at 40-stud chords a 45-degree turn then has four joints of about 11 degrees.)
+  radiusMi: { interstate: 0.6, expressway: 0.35, highway: 0.35 },
   mustRadiusMi: { interstate: 0.34 }, // these always curve, on at least this radius where their runs allow
   maxShare: 0.45,      // a curve takes at most this share of each straight run beside the corner
   stepDeg: 6,          // the arc is drawn in chords turning at most this much, where they are long enough
   minChordMi: STUDS(40), // and no shorter than this
-  maxStepDeg: { interstate: 12, expressway: 15, highway: 23 }, // unless a joint would turn more than this
+  // No joint turns more than this: where the radius gives shorter chords than minChordMi at that
+  // turn, the curve is drawn on a wider radius, as far as its runs have room.
+  maxStepDeg: { interstate: 12, expressway: 12, highway: 12 },
   minDeg: 2,           // corners turning less than this are left as they are
   keepMi: 0.15,        // corners this near a point of another road stay sharp
   onLineMi: 0.05,      // and those this near the line of one running through
@@ -50,11 +55,12 @@ export function roundCorners(points, radius, keep = () => false, options = {}, r
     const l0 = Math.hypot(x - px, y - py), l1 = Math.hypot(nx - x, ny - y);
     const ux = (x - px) / l0, uy = (y - py) / l0, vx = (nx - x) / l1, vy = (ny - y) / l1;
     const turn = Math.acos(Math.max(-1, Math.min(1, ux * vx + uy * vy)));
-    if (turn < p.minDeg * Math.PI / 180 || turn <= maxStep || keep(x, y) || !l0 || !l1) { out.push([x, y]); continue; }
+    if (turn < p.minDeg * Math.PI / 180 || turn <= maxStep || !l0 || !l1 || keep(x, y, [ux, uy], [vx, vy])) { out.push([x, y]); continue; }
     // The tangent length for the radius, shortened to fit the runs either side (each shared with
     // the next corner, hence the share) and the room there is.
     const tanHalf = Math.tan(turn / 2);
-    const tangent = Math.min(radius * tanHalf, p.maxShare * l0, p.maxShare * l1, Math.max(room(x, y), must * tanHalf));
+    const wide = Math.max(radius, p.minChordMi * Math.ceil(turn / maxStep - 1e-9) / turn);
+    const tangent = Math.min(wide * tanHalf, p.maxShare * l0, p.maxShare * l1, Math.max(room(x, y), must * tanHalf));
     if (tangent < 0.01) { out.push([x, y]); continue; }
     const r = tangent / tanHalf;
     const ax = x - ux * tangent, ay = y - uy * tangent;
@@ -104,23 +110,35 @@ function meetings(a, b, slackMi = 0.05) {
 export function curveRoads(roads, options = {}) {
   const p = { ...CURVE_DEFAULTS, ...options };
   const cells = new Map(), key = (X, Y) => X * 8192 + Y;
-  roads.forEach((road, i) => road.points.forEach(([x, y]) => {
+  roads.forEach((road, i) => road.points.forEach(([x, y], j) => {
     const k = key(Math.floor(x), Math.floor(y));
     if (!cells.has(k)) cells.set(k, []);
-    cells.get(k).push({ x, y, i });
+    cells.get(k).push({ x, y, i, j });
   }));
   const boxes = roads.map(r => r.points.reduce((b, q) => [Math.min(b[0], q[0]), Math.min(b[1], q[1]), Math.max(b[2], q[0]), Math.max(b[3], q[1])], [Infinity, Infinity, -Infinity, -Infinity]));
   return roads.map((road, i) => {
     const radius = p.radiusMi[road.kind];
     if (!radius) return road;
     const interstate = road.kind === 'interstate';
-    const keep = (x, y) => {
+    // (u, v: the road's headings into and out of the corner.)
+    const keep = (x, y, u, v) => {
       if (interstate) return false;
+      // A road turning the same corner the same way (two routes on one road) is no junction:
+      // both are rounded, on the same curve.
+      const along = new Set();
       for (let X = Math.floor(x - p.keepMi); X <= Math.floor(x + p.keepMi); X++) for (let Y = Math.floor(y - p.keepMi); Y <= Math.floor(y + p.keepMi); Y++) {
-        if ((cells.get(key(X, Y)) ?? []).some(q => q.i !== i && Math.hypot(q.x - x, q.y - y) < p.keepMi)) return true;
+        for (const q of cells.get(key(X, Y)) ?? []) {
+          if (q.i === i || Math.hypot(q.x - x, q.y - y) >= p.keepMi) continue;
+          const pts = roads[q.i].points, a = pts[q.j - 1], b = pts[q.j + 1];
+          const heads = (from, to, w) => { const l = Math.hypot(to[0] - from[0], to[1] - from[1]); return l > 0 && ((to[0] - from[0]) * w[0] + (to[1] - from[1]) * w[1]) / l > 0.999; };
+          const same = Math.hypot(q.x - x, q.y - y) < 1e-6 && a && b && roads[q.i].kind !== 'interstate'
+            && ((heads(a, [x, y], u) && heads([x, y], b, v)) || (heads(b, [x, y], u) && heads([x, y], a, v)));
+          if (!same) return true;
+          along.add(q.i);
+        }
       }
       // Another road running straight through the corner (interstates pass over or under).
-      return roads.some((o, k) => k !== i && o.kind !== 'interstate' && x > boxes[k][0] - p.onLineMi && x < boxes[k][2] + p.onLineMi && y > boxes[k][1] - p.onLineMi && y < boxes[k][3] + p.onLineMi
+      return roads.some((o, k) => k !== i && !along.has(k) && o.kind !== 'interstate' && x > boxes[k][0] - p.onLineMi && x < boxes[k][2] + p.onLineMi && y > boxes[k][1] - p.onLineMi && y < boxes[k][3] + p.onLineMi
         && o.points.some((q, j) => j > 0 && distToLine(x, y, o.points[j - 1], q) < p.onLineMi));
     };
     // Room for the curve: an interstate's, before the ramps where it meets another interstate;

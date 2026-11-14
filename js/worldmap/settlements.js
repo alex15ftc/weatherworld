@@ -411,6 +411,17 @@ function planRoads(map, p, settlements, grid) {
       }
     }
   }
+  // An interstate's end moved along the one it meets can leave a hook (its last corner, then a
+  // short leg doubling back to the new end): the corner goes, and the road runs straight in.
+  for (const road of roads.filter(r => r.kind === 'interstate')) for (const turn of [0, 1]) {
+    road.points.reverse();
+    while (road.points.length > 2) {
+      const [a, q, c] = road.points, u = [q[0] - a[0], q[1] - a[1]], v = [c[0] - q[0], c[1] - q[1]];
+      if (Math.hypot(...u) >= 1.5 || (u[0] * v[0] + u[1] * v[1]) / ((Math.hypot(...u) * Math.hypot(...v)) || 1) >= -0.2) break;
+      road.points.splice(1, 1);
+    }
+    void turn;
+  }
 
   // Beltways and bypasses: built as smooth rings round the centre, bridging whatever rivers they
   // meet (as real ones are), stepped outward where the ring would run into a lake.
