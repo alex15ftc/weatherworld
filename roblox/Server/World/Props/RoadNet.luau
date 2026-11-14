@@ -24,6 +24,15 @@
 -- Town roads with sidewalks have a CURB-stud curb at the pavement's edge; the sidewalk lies at
 -- the back of the verge.
 --
+-- Curves. The graph's roads are straight edges, and a curve in one is a run of chords meeting at
+-- joints of up to 12 degrees. Here each road (a chain of edges of one kind through the nodes
+-- where it only bends) is drawn as a smooth curve through its nodes instead: at a bend the
+-- road's direction is that from the node before to the node after (a Catmull-Rom spline), and an
+-- edge that turns between its ends is laid as up to CURVE_PIECES shorter pieces along that
+-- curve, so that no joint turns more than about CURVE_STEP. Junction nodes stay where the graph
+-- has them, a straight edge stays one straight piece, and the curve stays within a stud or so of
+-- the graph's chords (which the map planned with).
+--
 -- A road's end comes from its node in the graph: a cul-de-sac (a bulb: a segment of no length
 -- whose pavement is the turning circle), a dead end, or a barrier where a paved road stops at an
 -- interstate. Junction controls (stop signs, signals) come from the nodes as well.
@@ -107,6 +116,7 @@ export type Segment = {
 	controlB: number,
 	degreeA: number, -- how many roads meet at each end (2: the road only bends or carries on)
 	degreeB: number,
+	chain: number, -- the road it is a piece of (edges of one kind joined through plain bends)
 	key: string,
 }
 
@@ -125,7 +135,7 @@ local function segment(s: Spec, ax: number, az: number, bx: number, bz: number, 
 		spec = s, ax = ax, az = az, bx = bx, bz = bz, length = length,
 		ux = if length > 0 then (bx - ax) / length else 1, uz = if length > 0 then (bz - az) / length else 0,
 		axis = axis, main = main, key = `{s.key}{ax},{az},{bx},{bz}`,
-		controlA = 0, controlB = 0, degreeA = 2, degreeB = 2,
+		controlA = 0, controlB = 0, degreeA = 2, degreeB = 2, chain = 0,
 	}
 end
 
@@ -213,13 +223,101 @@ export type Ctx = {
 }
 
 local END_BULB, END_BARRIER = 1, 3
+local CURVE_STEP, CURVE_PIECES = math.rad(3), 10
 
 -- Builds the network from the graph's edges: `segments` holds those within pad studs of the box.
 function RoadNet.build(ctx: Ctx, pad: number): Net
 	local segments: { Segment }, all: { Segment } = {}, {}
 	local x0, z0, x1, z1 = ctx.x0 - pad, ctx.z0 - pad, ctx.x1 + pad, ctx.z1 + pad
 	local bulbs: { [string]: boolean } = {}
-	for _, e in ctx.edges do
+
+	-- The edges at each node, to follow a road through its bends.
+	local edges = ctx.edges
+	local at: { [string]: { number } } = {}
+	for index, e in edges do
+		for _, key in { `{e.ax},{e.az}`, `{e.bx},{e.bz}` } do
+			local list = at[key]
+			if not list then
+				list = {}
+				at[key] = list
+			end
+			table.insert(list, index)
+		end
+	end
+	-- The edge a road carries on as beyond one end of edge `index` (the node there only bends
+	-- the road: two roads meet at it, both of this kind), and that edge's far point.
+	local function onward(index: number, x: number, z: number, degree: number): (number?, number, number)
+		local list = at[`{x},{z}`]
+		if degree ~= 2 or not list or #list ~= 2 then
+			return nil, 0, 0
+		end
+		local other = if list[1] == index then list[2] else list[1]
+		local o = edges[other]
+		if o.kind ~= edges[index].kind then
+			return nil, 0, 0
+		end
+		if o.ax == x and o.az == z then
+			return other, o.bx, o.bz
+		end
+		return other, o.ax, o.az
+	end
+	-- Chains: edges joined through plain bends share a number.
+	local chainOf: { number } = table.create(#edges, 0)
+	local function chain(index: number): number
+		while chainOf[index] ~= 0 and chainOf[index] ~= index do
+			index = chainOf[index]
+		end
+		return index
+	end
+	for index, e in edges do
+		if chainOf[index] == 0 then
+			chainOf[index] = index
+		end
+		for _, tip in { { e.ax, e.az, e.degreeA }, { e.bx, e.bz, e.degreeB } } do
+			local other = onward(index, tip[1], tip[2], tip[3])
+			if other then
+				if chainOf[other] == 0 then
+					chainOf[other] = other
+				end
+				local a, b = chain(index), chain(other)
+				if a ~= b then
+					chainOf[math.max(a, b)] = math.min(a, b)
+				end
+			end
+		end
+	end
+
+	local function add(s: Spec, kind: string, chainId: number, ax: number, az: number, bx: number, bz: number, endA: number, endB: number, controlA: number, controlB: number, degreeA: number, degreeB: number)
+		local main = MAIN[kind] == true
+		-- (The main roads take no axis, as they never did: their junctions are worked out
+		-- where they cross, Roads.build, and their paint is measured from their starts.)
+		local axis = if main then nil elseif ax == bx then "z" elseif az == bz then "x" else nil
+		local g = segment(s, ax, az, bx, bz, main, axis)
+		g.mapLocal = not main and axis == nil
+		g.controlA, g.controlB, g.degreeA, g.degreeB, g.chain = controlA, controlB, degreeA, degreeB, chainId
+		g.terminal = kind == "ramp" and controlB > 0
+		if endA > END_BULB then
+			g.deadEnd, g.barrier = "a", endA == END_BARRIER
+		elseif endB > END_BULB then
+			g.deadEnd, g.barrier = "b", endB == END_BARRIER
+		end
+		table.insert(all, g)
+		if math.max(ax, bx) >= x0 and math.min(ax, bx) <= x1 and math.max(az, bz) >= z0 and math.min(az, bz) <= z1 then
+			table.insert(segments, g)
+		end
+		-- Cul-de-sacs at the street ends the graph marks.
+		for _, tip in { { endA, ax, az }, { endB, bx, bz } } do
+			local x, z = tip[2], tip[3]
+			if tip[1] == END_BULB and s.town and not bulbs[`{x},{z}`] and x >= x0 and x <= x1 and z >= z0 and z <= z1 then
+				bulbs[`{x},{z}`] = true
+				local b = segment(RoadNet.bulbSpec(s), x, z, x, z, false)
+				b.bulb = true
+				table.insert(segments, b)
+			end
+		end
+	end
+
+	for index, e in edges do
 		local s = RoadNet.KINDS[e.kind]
 		if s then
 			-- A ramp runs towards its controlled end (where it meets the crossing road).
@@ -230,32 +328,46 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 				ax, az, bx, bz = bx, bz, ax, az
 				endA, endB, controlA, controlB, degreeA, degreeB = endB, endA, controlB, controlA, degreeB, degreeA
 			end
-			local main = MAIN[e.kind] == true
-			-- (The main roads take no axis, as they never did: their junctions are worked out
-			-- where they cross, Roads.build, and their paint is measured from their starts.)
-			local axis = if main then nil elseif ax == bx then "z" elseif az == bz then "x" else nil
-			local g = segment(s, ax, az, bx, bz, main, axis)
-			g.mapLocal = not main and axis == nil
-			g.controlA, g.controlB, g.degreeA, g.degreeB = controlA, controlB, degreeA, degreeB
-			g.terminal = e.kind == "ramp" and controlB > 0
-			if endA > END_BULB then
-				g.deadEnd, g.barrier = "a", endA == END_BARRIER
-			elseif endB > END_BULB then
-				g.deadEnd, g.barrier = "b", endB == END_BARRIER
+			local dx, dz = bx - ax, bz - az
+			local length = math.sqrt(dx * dx + dz * dz)
+			-- The road's direction at each end: along the edge, or at a bend from the node
+			-- before to the node after.
+			local tax, taz, tbx, tbz = dx, dz, dx, dz
+			local before, px, pz = onward(index, ax, az, degreeA)
+			if before then
+				tax, taz = bx - px, bz - pz
 			end
-			local near = math.max(ax, bx) >= x0 and math.min(ax, bx) <= x1 and math.max(az, bz) >= z0 and math.min(az, bz) <= z1
-			table.insert(all, g)
-			if near then
-				table.insert(segments, g)
+			local after, qx, qz = onward(index, bx, bz, degreeB)
+			if after then
+				tbx, tbz = qx - ax, qz - az
 			end
-			-- Cul-de-sacs at the street ends the graph marks.
-			for _, tip in { { endA, ax, az }, { endB, bx, bz } } do
-				local x, z = tip[2], tip[3]
-				if tip[1] == END_BULB and s.town and not bulbs[`{x},{z}`] and x >= x0 and x <= x1 and z >= z0 and z <= z1 then
-					bulbs[`{x},{z}`] = true
-					local b = segment(RoadNet.bulbSpec(s), x, z, x, z, false)
-					b.bulb = true
-					table.insert(segments, b)
+			local la, lb = math.sqrt(tax * tax + taz * taz), math.sqrt(tbx * tbx + tbz * tbz)
+			local pieces = 1
+			if length > 1 and la > 0 and lb > 0 then
+				tax, taz, tbx, tbz = tax / la, taz / la, tbx / lb, tbz / lb
+				local turnA = math.acos(math.clamp((tax * dx + taz * dz) / length, -1, 1))
+				local turnB = math.acos(math.clamp((tbx * dx + tbz * dz) / length, -1, 1))
+				pieces = math.clamp(math.ceil((turnA + turnB) / CURVE_STEP), 1, math.min(CURVE_PIECES, math.max(1, length // 5)))
+			end
+			local chainId = chain(index)
+			if pieces == 1 then
+				add(s, e.kind, chainId, ax, az, bx, bz, endA, endB, controlA, controlB, degreeA, degreeB)
+			else
+				-- Along the curve from a to b (a cubic with those end directions, each as long as
+				-- the edge), in equal steps of its parameter.
+				local lastX, lastZ = ax, az
+				for i = 1, pieces do
+					local t = i / pieces
+					local x, z = bx, bz
+					if i < pieces then
+						local t2, t3 = t * t, t * t * t
+						local h00, h10, h01, h11 = 2 * t3 - 3 * t2 + 1, t3 - 2 * t2 + t, -2 * t3 + 3 * t2, t3 - t2
+						x = h00 * ax + h10 * tax * length + h01 * bx + h11 * tbx * length
+						z = h00 * az + h10 * taz * length + h01 * bz + h11 * tbz * length
+					end
+					add(s, e.kind, chainId, lastX, lastZ, x, z, if i == 1 then endA else 0, if i == pieces then endB else 0,
+						if i == 1 then controlA else 0, if i == pieces then controlB else 0, if i == 1 then degreeA else 2, if i == pieces then degreeB else 2)
+					lastX, lastZ = x, z
 				end
 			end
 		end

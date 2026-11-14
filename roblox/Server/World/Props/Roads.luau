@@ -337,7 +337,7 @@ end
 local function crossingRoad(ctx: Ctx, g: RoadNet.Segment, x: number, z: number, total: boolean, pad: number): RoadNet.Segment?
 	for _, o in ctx.net.segments do
 		if o ~= g and not o.bulb then
-			local sameLine = math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1
+			local sameLine = o.chain == g.chain or (math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1)
 			if not sameLine and RoadNet.toSegment(o, x, z) < (if total then o.spec.total else o.spec.pavement) + pad then
 				return o
 			end
@@ -359,7 +359,8 @@ local function edgeTaken(near: { RoadNet.Segment }, g: RoadNet.Segment, x: numbe
 					return true
 				end
 			else
-				local sameLine = math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1
+				-- (the same road: another piece of its chain, or one carrying on along its line)
+				local sameLine = o.chain == g.chain or (math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1)
 				if not sameLine then
 					local along = (x - o.ax) * o.ux + (z - o.az) * o.uz
 					local across = math.abs((x - o.ax) * -o.uz + (z - o.az) * o.ux)
@@ -408,8 +409,20 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 		if ctx.bridged(x, z, g) or shadowed(x, z) then
 			return false
 		end
-		local other = crossingRoad(ctx, g, x, z, false, -2.5)
-		return not (other and other.spec.priority > s.priority)
+		-- Where it meets a higher road its surface runs on under that road until its whole
+		-- width is inside the higher road's (at a slant its square end would leave a wedge
+		-- of bare ground beside the higher road otherwise), or to that road's middle.
+		for _, o in ctx.net.segments do
+			if o ~= g and not o.bulb and o.chain ~= g.chain and o.spec.priority > s.priority then
+				local cos = math.abs(o.ux * g.ux + o.uz * g.uz)
+				local sin = math.sqrt(math.max(0, 1 - cos * cos))
+				local inside = 2.5 + (if sin > 0.15 then s.pavement * cos / sin else 0)
+				if RoadNet.toSegment(o, x, z) < o.spec.pavement - math.min(inside, o.spec.pavement - 1) then
+					return false
+				end
+			end
+		end
+		return true
 	end)
 	for _, run in open do
 		local a0, a1 = run[1], run[2]
@@ -750,7 +763,7 @@ function Roads.build(ctx: Ctx)
 				local first = joints[key]
 				if not first then
 					joints[key] = { g = g, ux = ux, uz = uz }
-				elseif first.g ~= g and math.abs(first.ux * uz - first.uz * ux) > 0.004 and ctx.inside(x, z) and not ctx.bridged(x, z, g) then
+				elseif first.g ~= g and math.abs(first.ux * uz - first.uz * ux) > 0.02 and ctx.inside(x, z) and not ctx.bridged(x, z, g) then
 					local top = ctx.gradeTop(x, z) + 0.004 * s.priority - 0.003
 					local surface = SURFACE[s.surface]
 					if s.median > 0 then

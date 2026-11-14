@@ -160,6 +160,9 @@ export function findConflicts(map, options = {}) {
         const separated = e.kind === 'interstate' || f.kind === 'interstate' || e.kind === 'ramp' || f.kind === 'ramp';
         if (separated && crossesNear(r, o)) continue;
         if ((e.kind === 'ramp' && f.kind === 'interstate') || (f.kind === 'ramp' && e.kind === 'interstate')) continue;   // merging
+        // (As onto the road an interstate ends on: a ramp whose last few pieces run in beside that road to a node of it.)
+        const joins = (ramp, road) => { if (ramp.kind !== 'ramp') return false; let front = [ramp]; const seen = new Set(front); for (let step = 0; step < 4; step++) { const next = []; for (const q of front) for (const n of [q.a, q.b]) { if (n.edges.some(w => w.kind === road.kind && w.road === road.road)) return true; for (const w of n.edges) if (w.kind === 'ramp' && !seen.has(w)) { seen.add(w); next.push(w); } } front = next; } return false; };
+        if (joins(e, f) || joins(f, e)) continue;
         const d = segmentDistance(r.a, r.b, o.a, o.b);
         if (d >= r.half + o.half) continue;
         const { x: mx, y: my } = between(r, o);

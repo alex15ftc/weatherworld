@@ -17,6 +17,14 @@
 // to the rest by the shortest run of missing miles, or, where it is small and nothing is near,
 // left out (connectSectionRoads). Dead ends stay; islands do not.
 //
+// Nor does a road just stop in a field (connectSectionRoads, the dead ends): a road that ends
+// with the next road on its line a mile off (two, for a dirt road) is carried on to it; one that
+// cannot be is taken back to its last junction (but never past the centre of a place, which keeps
+// a road to it: a road may end in a town), but for a field track: a mile of dirt road off a
+// gravel or paved road or a highway. A gravel or dirt road an interstate or expressway would stop
+// (they do not meet) is left out up to its last junction too. A paved road still ends where an
+// interstate has no bridge for it, at an airfield it serves, and at the map's edge.
+//
 // In towns, cities and suburbs every mile line is a paved arterial. The streets between them are
 // not on this map: Roblox lays them per chunk inside each settlement's extent, at the
 // settlement's streetBlockMi (a dense grid in town and city cores, curving residential streets
@@ -70,7 +78,10 @@ export const SECTION_DEFAULTS = Object.freeze({
   // How near a corner a road must pass to be met there: a two-lane highway (its curve's middle),
   // an expressway (paved roads only), and how near an interstate or expressway stops the gravel
   // and dirt roads short of the corner (their gap, from its centre line).
-  highwayAtMi: 0.1, expresswayAtMi: 0.16, barrierMi: STUDS(51) + AT_1000(0.04)
+  highwayAtMi: 0.1, expresswayAtMi: 0.16, barrierMi: STUDS(51) + AT_1000(0.04),
+  // Dead ends: how many missing miles a road is carried on over to reach the next road on its
+  // line, by class (dirt, gravel, paved); and the field track left of a dirt road that cannot be.
+  carryOnMi: [0, 2, 1, 1], townCarryOnMi: 3, trackMi: 1, besideMi: 0.3
 });
 
 export function planSectionRoads(map, options = {}) {
@@ -253,7 +264,9 @@ export function connectSectionRoads(sections, map, options = {}, { link = true, 
         if (near(x1, y1, sg) < p.barrierMi) out.b = true;
       } else {
         const at = sg.kind === 'expressway' ? p.expresswayAtMi : p.highwayAtMi;
-        if (crossAt(I, J, x1, y1, sg)) out.met = true;
+        // (Met between the corners: a crossing right at a corner is that corner's.)
+        const hit = crossAt(I, J, x1, y1, sg);
+        if (hit && Math.hypot(hit[0] - I, hit[1] - J) > at && Math.hypot(hit[0] - x1, hit[1] - y1) > at) out.met = true;
         if (near(I, J, sg) < at) out.metA = true;
         if (near(x1, y1, sg) < at) out.metB = true;
       }
@@ -336,6 +349,86 @@ export function connectSectionRoads(sections, map, options = {}, { link = true, 
       stats.dropped++;
     } else stats.left++;
   }
+
+  // The dead ends (see the top). Each round: what every mile reaches; the gravel and dirt miles
+  // a barrier stops go; then each road end with nothing else at its corner is carried on, or its
+  // spur (back to the first corner where another road, or a highway, is met) is taken out.
+  const built = new Set([coverKeys.indexOf('urban'), coverKeys.indexOf('suburban')]);
+  const inTown = (east, I, J) => { for (let t = 0; t < per; t++) for (const side of [-1, 0]) { const i = east ? I * per + t : I * per + side, j = east ? J * per + side : J * per + t; if (i >= 0 && j >= 0 && i < n && j < n && built.has(cover[j * n + i])) return true; } return false; };
+  const byBarrier = c => { const I = c % size, J = (c / size) | 0; return (segs.get(I * 8192 + J) ?? []).some(sg => (sg.kind === 'interstate' || sg.kind === 'expressway') && near(I, J, sg) < p.besideMi); };
+  // The centres of the places (kept on the grid between the two passes: the second has no list of them).
+  const centres = sections.centres ??= new Set((map.settlements ?? []).map(st => Math.round(st.y) * size + Math.round(st.x)));
+  const DIRS = [[true, 0, 0, 1, 0], [true, -1, 0, -1, 0], [false, 0, 0, 0, 1], [false, 0, -1, 0, -1]];   // east, the mile's corner, the corner beyond (from a corner, by direction)
+  const step = (c, d) => { const I = c % size, J = (c / size) | 0, [east, mi, mj, fi, fj] = DIRS[d], KI = I + mi, KJ = J + mj, oI = I + fi, oJ = J + fj; return KI < 0 || KJ < 0 || oI < 0 || oJ < 0 || oI >= size || oJ >= size ? null : { east, KI, KJ, K: KJ * size + KI, o: oJ * size + oI, first: d % 2 === 0 }; };
+  const edge = c => { const I = c % size, J = (c / size) | 0; return I < 1 || J < 1 || I >= miles || J >= miles; };
+  const ends = { carried: 0, carriedMiles: 0, trimmed: 0, trimmedMiles: 0, stopped: 0, tracks: 0 };
+  for (let round = 0; round < 12; round++) {
+    let changed = 0;
+    // What each mile reaches (from: its first corner, to: its other; through: both, uncut), and
+    // each corner: how many miles come to it, and whether a road of the map's is met there.
+    const info = new Map(), degree = new Uint8Array(size * size), anchored = new Uint8Array(size * size), closedBy = new Uint8Array(size * size);
+    for (const id of sections.closed ?? []) { const K = id >> 2; closedBy[K] = 1; closedBy[(id & 3) === 0 ? K + 1 : K + size] = 1; }
+    for (let J = 0; J < size; J++) for (let I = 0; I < size; I++) for (const east of [true, false]) {
+      const K = J * size + I, cls = classAt(east, K);
+      if (!cls) continue;
+      const K1 = east ? K + 1 : K + size, at = look(east, I, J, cls);
+      // (A barrier stops the gravel and dirt roads: such a mile is a dead end by itself.)
+      if (cls < 3 && (at.cut || at.a || at.b)) { clear(east, K); ends.stopped++; changed++; continue; }
+      const m = { east, K, K1, cls, from: !at.a, to: !at.b, through: !at.cut && !at.a && !at.b, met: at.met };
+      info.set(K * 2 + (east ? 0 : 1), m);
+      if (m.from) { degree[K]++; if (at.metA) anchored[K] = 1; }
+      if (m.to) { degree[K1]++; if (at.metB) anchored[K1] = 1; }
+    }
+    const mileFrom = (c, d) => { const q = step(c, d); if (!q) return null; const m = info.get(q.K * 2 + (q.east ? 0 : 1)); return m && (q.first ? m.from : m.to) ? { ...q, m } : null; };
+    for (let c = 0; c < size * size; c++) {
+      if (degree[c] !== 1 || anchored[c] || edge(c) || centres.has(c)) continue;   // (a road may end in a town)
+      const d = [0, 1, 2, 3].find(q => { const o = mileFrom(c, q); return o && classAt(o.east, o.K) === o.m.cls; });
+      if (d === undefined) continue;   // a corner a road was carried on to this round
+      const own = mileFrom(c, d), cls = own.m.cls, ahead = d ^ 1;
+      if (cls === 3 && closedBy[c]) continue;   // a paved road's end at the airfield it serves
+      if (classAt(own.east, own.K) !== cls) continue;   // changed already this round
+      // Carried on along its line, over missing miles, to the next corner a road comes to.
+      const path = [];
+      let at = c, reached = false;
+      for (let k = 0; k < (inTown(own.east, own.KI, own.KJ) ? p.townCarryOnMi : p.carryOnMi[cls]) && !reached; k++) {
+        const q = step(at, ahead);
+        if (!q || classAt(q.east, q.K) || !open(q.east, q.KI, q.KJ)) break;
+        const there = look(q.east, q.KI, q.KJ, cls, true);
+        if (there.cut || there.a || there.b) break;
+        path.push(q); at = q.o;
+        reached = degree[q.o] > 0 || there.met || there.metA || there.metB || edge(q.o);
+      }
+      if (reached) {
+        // (Paved, through a town.)
+        for (const q of path) { const laid = inTown(q.east, q.KI, q.KJ) ? 3 : cls; roads[q.K] |= q.east ? laid : laid << 2; degree[q.o]++; }
+        degree[c]++; ends.carried++; ends.carriedMiles += path.length; changed++;
+        continue;
+      }
+      // Else its spur, back to the first corner where something else is met.
+      const spur = [own];
+      for (let here = own; here.m.through && !here.m.met && degree[here.o] === 2 && !anchored[here.o] && !edge(here.o);) {
+        const next = [0, 1, 2, 3].map(q => mileFrom(here.o, q)).find(q => q && q.K * 2 + (q.east ? 0 : 1) !== here.K * 2 + (here.east ? 0 : 1));
+        if (!next || spur.length > 400) break;
+        spur.push(next); here = next;
+      }
+      // (A dirt road leaves a field track off the better road it came from: its last trackMi.)
+      // (A spur that ends on a highway between two corners keeps that last mile: the road is the
+      // highway's side road there.)
+      const last = spur.at(-1), onRoad = last.m.met ? 1 : 0, root = last.m.through && !onRoad ? last.o : -1;
+      const better = onRoad || root >= 0 && (anchored[root] || [0, 1, 2, 3].some(q => { const o = mileFrom(root, q); return o && o.m.cls > 1 && o.K * 2 + (o.east ? 0 : 1) !== last.K * 2 + (last.east ? 0 : 1); }));
+      // (A town keeps its last road: the spur goes only as far as a mile that comes to the centre
+      // of a place with nothing else. No track is left beside an interstate or expressway it could
+      // not cross.)
+      const lone = k => centres.has(k) && !anchored[k];
+      const town = root >= 0 && lone(root) && degree[root] <= 1 ? 0 : spur.findIndex((q, i) => i > 0 && lone(spur[i - 1].o) && degree[spur[i - 1].o] <= 2);
+      const keep = town >= 0 ? spur.length - town : Math.max(onRoad, cls === 1 && better && !byBarrier(c) && spur.slice(-p.trackMi).every(q => q.m.cls === 1) ? p.trackMi : 0);
+      if (spur.length <= keep) { ends.tracks++; continue; }
+      for (const q of spur.slice(0, spur.length - keep)) { clear(q.east, q.K); ends.trimmedMiles++; if (q.m.from) degree[q.m.K]--; if (q.m.to) degree[q.m.K1]--; }
+      ends.trimmed++; changed++;
+    }
+    if (!changed) break;
+  }
+  stats.ends = ends;
   return stats;
 }
 

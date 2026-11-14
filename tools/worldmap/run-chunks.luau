@@ -217,6 +217,7 @@ local function note(kind: string, text: string)
 end
 local falls: { number }, buried: { number } = {}, {}
 local roadGaps: { number } = {}
+local bends: { number } = {}
 local roadSamples, roadPokes, roadFloats = 0, 0, 0
 local function miles(x: number, z: number): string
 	return string.format("(%.3f, %.3f) mi", x / MILE + HALF, z / MILE + HALF)
@@ -250,6 +251,27 @@ for _, placeAt in places do
 			-- the road's top shows through it; ground below the slab's underside leaves it in the air.
 			local rc = seenRoads
 			if rc then
+				-- Bends: the turn where two pieces of one road meet end to end.
+				local ends: { [string]: any } = {}
+				for _, g in rc.net.segments do
+					if not g.bulb and g.length > 0.5 then
+						for _, e in { { g.ax, g.az, g.ux, g.uz }, { g.bx, g.bz, -g.ux, -g.uz } } do
+							local key = g.chain .. "," .. math.round(e[1] * 20) .. "," .. math.round(e[2] * 20)
+							local first = ends[key]
+							if not first then
+								ends[key] = e
+							elseif rc.inside(e[1], e[2]) then
+								local turn = math.deg(math.acos(math.clamp(-(first[3] * e[3] + first[4] * e[4]), -1, 1)))
+								if turn > 0.3 then
+									table.insert(bends, turn)
+									if turn > 6 then
+										note("sharpBend", string.format("%s: a %s turns %.0f degrees at %s", placeAt.name, g.spec.key, turn, miles(e[1], e[2])))
+									end
+								end
+							end
+						end
+					end
+				end
 				for _, g in rc.net.segments do
 					if not g.bulb and g.length > 1 then
 						for t = 4, g.length - 4, 8 do
@@ -395,6 +417,14 @@ table.sort(roadGaps)
 if #roadGaps > 0 then
 	print(string.format("roads against the ground: %d samples; road top above the ground (studs) 1%% %.1f, median %.1f, 99%% %.1f; ground through the road at %d (%.2f%%), road in the air at %d (%.2f%%)",
 		roadSamples, roadGaps[math.max(1, math.floor(0.01 * #roadGaps))], roadGaps[math.ceil(0.5 * #roadGaps)], roadGaps[math.ceil(0.99 * #roadGaps)], roadPokes, 100 * roadPokes / roadSamples, roadFloats, 100 * roadFloats / roadSamples))
+end
+table.sort(bends)
+if #bends > 0 then
+	local over = 0
+	for _, v in bends do
+		over += if v > 4 then 1 else 0
+	end
+	print(string.format("bends where a road's pieces meet: %d; turn (degrees) median %.1f, 90%% %.1f, most %.1f; %d over 4 degrees", #bends, bends[math.ceil(0.5 * #bends)], bends[math.ceil(0.9 * #bends)], bends[#bends], over))
 end
 table.sort(buried)
 if #buried > 0 then

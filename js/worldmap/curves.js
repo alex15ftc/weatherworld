@@ -259,3 +259,48 @@ export function clearOfRivers(roads, rivers, options = {}) {
   }
   return done;
 }
+
+// Finishes the routes that stop in a field (after the airfields are sited, like clearOfRivers).
+//   an interstate ending short of the map's edge (within edgeMi) is carried on to the edge; one
+//   ending inland, on no other interstate, is carried straight on to the first highway or
+//   expressway ahead (within aheadMi), where it ends at an interchange (crossings.js);
+// (An expressway ending on no road, a bypass's arm, is taken back to its last junction once the
+// road graph knows its junctions: streets.js.)
+// The roads are changed in place; returns what was done.
+export function finishRoutes(roads, miles, { edgeMi = 1.5, aheadMi = 8 } = {}) {
+  const done = { toEdge: 0, carriedOn: 0, left: 0 };
+  const others = road => roads.filter(o => o !== road && o.kind !== 'interstate');
+  // Where the segment a-b first meets a road of the list (the share of a-b, or null).
+  const firstHit = (a, b, list) => {
+    let best = null;
+    for (const o of list) for (let i = 1; i < o.points.length; i++) {
+      const [cx, cy] = o.points[i - 1], [dx, dy] = o.points[i], rx = b[0] - a[0], ry = b[1] - a[1], sx = dx - cx, sy = dy - cy, den = rx * sy - ry * sx;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((cx - a[0]) * sy - (cy - a[1]) * sx) / den, u = ((cx - a[0]) * ry - (cy - a[1]) * rx) / den;
+      if (t > 1e-6 && t <= 1 && u >= 0 && u <= 1 && (best === null || t < best)) best = t;
+    }
+    return best;
+  };
+  const touches = (q, list, within) => list.some(o => o.points.some((w, i) => i > 0 && distToLine(q[0], q[1], o.points[i - 1], w) < within));
+  for (const road of roads) {
+    if (road.kind !== 'interstate') continue;
+    if (Math.hypot(road.points[0][0] - road.points.at(-1)[0], road.points[0][1] - road.points.at(-1)[1]) < 0.05) continue;   // a ring
+    for (const atEnd of [false, true]) {
+      const pts = road.points, end = atEnd ? pts.at(-1) : pts[0], before = atEnd ? pts.at(-2) : pts[1];
+      if (!before) continue;
+      const l = Math.hypot(end[0] - before[0], end[1] - before[1]), hx = (end[0] - before[0]) / l, hy = (end[1] - before[1]) / l;
+      const put = q => { if (atEnd) pts.push(q); else pts.unshift(q); };
+      {
+        if (touches(end, roads.filter(o => o !== road && o.kind === 'interstate'), 0.6)) continue;
+        // To the map's edge, where that is near along its heading.
+        const reach = Math.min(...[hx > 0 ? (miles - end[0]) / hx : hx < 0 ? -end[0] / hx : Infinity, hy > 0 ? (miles - end[1]) / hy : hy < 0 ? -end[1] / hy : Infinity]);
+        if (reach < 1e-6) continue;
+        if (reach <= edgeMi) { put([end[0] + hx * reach, end[1] + hy * reach]); done.toEdge++; continue; }
+      }
+      const far = [end[0] + hx * aheadMi, end[1] + hy * aheadMi], t = firstHit(end, far, others(road));
+      if (t !== null) { put([end[0] + (far[0] - end[0]) * t, end[1] + (far[1] - end[1]) * t]); done.carriedOn++; } else done.left++;
+    }
+    if (road.corners) road.corners = road.corners.filter(([, , mx, my]) => road.points.some((q, i) => i > 0 && distToLine(mx, my, road.points[i - 1], q) < 1e-6));
+  }
+  return done;
+}

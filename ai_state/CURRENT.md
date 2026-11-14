@@ -252,6 +252,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   they do show every foliage model failing to load ("User is not authorized to access Asset"): no trees in
   the live game until the experience may use those assets (owner).
 
+- Map, fifth round (2026-11-14; towns
+  and airfields unmoved). The owner reported, from 498/499: ground through roads, gaps or floating roads, kinks
+  at bends, wrong connections; and asked for the method of a Studio plugin a friend sent (TerrainPaths: hand-drawn
+  spline paths pressed into terrain; it cannot run in the game and its code is not used) to be applied: he chose
+  spline-smoothed curves. Done: `RoadNet.build` draws each road (a chain of edges through plain bends) as a
+  Catmull-Rom curve in pieces turning about 3 degrees (`CURVE_STEP`, `CURVE_PIECES`); pieces of one road are
+  known by `chain`, so paint and sidewalks are no longer cut at curve joints; a lower road's surface runs on
+  under a higher one until all its width is covered (no wedge of bare ground at slanted junctions). Dead ends
+  (seed 1): interstates and expressways 10 to 0, paved county and arterial 823 to 16, gravel 12,991 to 1,557,
+  dirt spurs 62% of dirt miles to 7%; I-135 carried on to Russell Center's bypass; the audit prints the table.
+  Harness over 300 chunks: no building conflicts, ground through a road at 4 samples, road in the air at 10.
+
 ## Next
 
 0. Map (published as 500; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a

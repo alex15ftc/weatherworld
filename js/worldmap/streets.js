@@ -982,6 +982,18 @@ export function planStreets(map, options = {}) {
         if (u[0] * v[0] + u[1] * v[1] < -0.9995) { const n0 = q.a === at ? q.b : q.a, n1 = w.a === at ? w.b : w.a, { a: qa, b: qb, kind: k, alive: al, id: qi, ...ex } = q; void qa; void qb; void al; void qi; g.removeEdge(q); g.removeEdge(w); const one = g.addEdge(n0, n1, k, ex); if (!q.wide !== !w.wide) widen(one); }
       }
     }
+    // A collector leading nowhere (stopped by a ramp, a river or an airfield, with no street on
+    // it since its last junction) goes, back to that junction; one stopped at a lot stays (it
+    // serves the lot).
+    for (const n of g.nodes) {
+      if (n.edges.length !== 1 || n.edges[0].kind !== 'collector' || inObstacle(n.x, n.y, HALF_MI.collector + STUDS(30))) continue;
+      const chain = [];
+      let on = false;   // whether it runs on as another kind of road
+      for (let at = n, e = n.edges[0]; ;) { chain.push(e); const next = e.a === at ? e.b : e.a; if (next.edges.length !== 2) break; at = next; e = next.edges.find(q => q !== e); if (e.kind !== 'collector') { on = true; break; } }
+      if (on) continue;
+      for (const e of chain) g.removeEdge(e);
+      stats.collectorEnds = (stats.collectorEnds ?? 0) + 1;
+    }
     // A dead end shorter than its road is wide (what a lot or a ramp left of a collector, the
     // last of a frontage road) is no road: it goes.
     for (const e of g.edges) {
@@ -1001,6 +1013,22 @@ export function planStreets(map, options = {}) {
       }
       return null;
     };
+    // An expressway that ends on no road (a bypass's arm beyond the last road it meets; not an
+    // airport's own road, which ends at its gate) is taken back to its last junction, and its
+    // route (map.roads) with it.
+    for (const node of g.nodes) {
+      const own = node.edges[0], road = roads[own?.road];
+      if (node.edges.length !== 1 || own.kind !== 'expressway' || !road || road.airport || Math.min(node.x, node.y, n * cellMiles - node.x, n * cellMiles - node.y) < 0.3) continue;
+      const chain = [];
+      let at = node, e = own;
+      for (;;) { chain.push(e); at = e.a === at ? e.b : e.a; if (at.edges.length !== 2) break; e = at.edges.find(q => q !== e); if (e.kind !== 'expressway') break; }
+      if (at.edges.length < 3) continue;   // nothing met: left as it is
+      for (const q of chain) g.removeEdge(q);
+      const pts = road.points, fromEnd = Math.hypot(node.x - pts.at(-1)[0], node.y - pts.at(-1)[1]) < Math.hypot(node.x - pts[0][0], node.y - pts[0][1]);
+      const line = fromEnd ? [...pts].reverse() : [...pts], k = line.findIndex((q, i) => i > 0 && distToSeg(at.x, at.y, { ax: line[i - 1][0], ay: line[i - 1][1], bx: q[0], by: q[1] }) < 1e-4);
+      if (k > 0) { const kept = [[at.x, at.y], ...line.slice(k)]; road.points = fromEnd ? kept.reverse() : kept; }
+      stats.expresswayEnds = (stats.expresswayEnds ?? 0) + 1;
+    }
     for (const node of g.nodes) {
       if (node.edges.length !== 1 || !['gravel', 'dirt', 'county', 'arterial', 'highway', 'expressway'].includes(node.edges[0].kind)) continue;
       const e = nearHighwayEdge(node), own = node.edges[0], k = own.kind;
@@ -1186,7 +1214,7 @@ export function planStreets(map, options = {}) {
         if (Math.abs(den) < 1e-12) continue;
         const t = ((e.a.x - p0.x) * sy - (e.a.y - p0.y) * sx) / den, u = ((e.a.x - p0.x) * ry - (e.a.y - p0.y) * rx) / den;
         if (t > 1e-6 && t < 1 - 1e-4 && u > -1e-6 && u < 1 + 1e-6) return true;
-        if (HIGHWAYS.has(e.kind) && k === 'street' && distToSeg(x, y, g.seg(e)) < HALF_MI[e.kind] + p.wideBulbMi) return true;
+        if (HIGHWAYS.has(e.kind) && k === 'street' && rule('street', e, x, y, 1) !== 'node' && distToSeg(x, y, g.seg(e)) < HALF_MI[e.kind] + p.wideBulbMi) return true;
       }
       return false;
     };

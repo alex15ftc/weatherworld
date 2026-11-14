@@ -507,6 +507,19 @@ export function planFacilities(map, options = {}) {
             path = atWest ? [[line, y], ...run] : [...run, [line, y]];
             break;
           }
+          // (And at each end, on to the mile line beyond it where that has a road within four
+          // miles: a string is a road through the farm, not a spur into it.)
+          if (path) for (const atWest of [true, false]) {
+            const tip = atWest ? path[0][0] : path.at(-1)[0];
+            if (Number.isInteger(tip) && sectionClass(tip, J, false)) continue;
+            for (let k = 0; k < 4; k++) {
+              const line = atWest ? Math.floor(tip) - k : Math.ceil(tip) + k;
+              if (!sectionClass(line, J, false)) continue;
+              const longer = atWest ? [[line, y], ...path] : [...path, [line, y]];
+              if (pathClearOfRoads(longer)) path = longer;
+              break;
+            }
+          }
           if (path && pathClearOfRoads(path)) roadsOut.push(path);
         }
         run = [];

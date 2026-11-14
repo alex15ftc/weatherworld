@@ -196,6 +196,26 @@ for (let v = 0; v < N; v++) {
 result.dead = show('road ends', deadBy.t, 20);
 result.nearMiss = show('ends that stop at another road without joining it (within its width + 25 studs)', nearMiss.t, 20);
 
+// 4b. Dead ends away from the map's edge, by kind: how many, and the miles of road that lead only
+// to them (the spur: from the dead end back to its first junction), by the spur's length.
+{
+  const rows = {}, EDGE = 0.3;
+  for (let v = 0; v < N; v++) {
+    if (nodeEdges[v].length !== 1) continue;
+    const x = xy[2 * v], y = xy[2 * v + 1];
+    if (x < EDGE || y < EDGE || x > n * cellMi - EDGE || y > n * cellMi - EDGE) continue;
+    let at = v, e = nodeEdges[v][0], miles = 0;
+    for (;;) { miles += len(e); const o = pairs[2 * e] === at ? pairs[2 * e + 1] : pairs[2 * e]; if (nodeEdges[o].length !== 2) break; at = o; e = nodeEdges[o][0] === e ? nodeEdges[o][1] : nodeEdges[o][0]; }
+    const r = rows[KIND[kinds[nodeEdges[v][0]]]] ??= { n: 0, miles: 0, quarter: 0, mile: 0, longer: 0, longest: 0, at: [] };
+    r.n++; r.miles += miles; r[miles <= 0.25 ? 'quarter' : miles <= 1 ? 'mile' : 'longer']++; if (miles > r.longest) { r.longest = miles; r.at = [x, y]; }
+  }
+  const total = {}; for (let e = 0; e < E; e++) total[KIND[kinds[e]]] = (total[KIND[kinds[e]]] ?? 0) + len(e);
+  console.log('dead ends away from the map edge, and the road leading only to them (spur: back to the first junction):');
+  console.log('  kind         dead ends   up to 1/4 mi   up to 1 mi   longer   spur miles   of all miles   longest spur');
+  for (const k of KIND) { const r = rows[k]; if (!r) continue; console.log(`  ${k.padEnd(11)} ${String(r.n).padStart(9)} ${String(r.quarter).padStart(14)} ${String(r.mile).padStart(12)} ${String(r.longer).padStart(8)} ${r.miles.toFixed(0).padStart(12)} ${(100 * r.miles / total[k]).toFixed(1).padStart(13)}%   ${r.longest.toFixed(1)} mi at (${r.at.map(q => q.toFixed(2)).join(', ')})`); }
+  result.deadEnds = Object.fromEntries(Object.entries(rows).map(([k, r]) => [k, { ...r, share: r.miles / total[k] }]));
+}
+
 // 5. Short edges and stubs (a piece of a curve, with a plain bend at each end, counted apart).
 const short = tally();
 for (let e = 0; e < E; e++) { const l = len(e) * SPM; if (l < 2 * studsOf(e)) { const a = pairs[2 * e], b = pairs[2 * e + 1], bend = v => nodeEdges[v].length === 2 && nodeEdges[v].every(o => kinds[o] === kinds[e]); short.add(`${KIND[kinds[e]]}${nodeEdges[a].length === 1 || nodeEdges[b].length === 1 ? ' stub (dead end)' : bend(a) && bend(b) ? ' curve piece' : ''} shorter than its own width`, [ex0(e), ey0(e)]); } }
