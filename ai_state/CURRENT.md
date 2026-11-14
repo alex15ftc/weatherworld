@@ -335,6 +335,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    place. Open choices: a `/day/N` page that keeps each day's outlook and tornado tracks on the engine, so the daily
    "forecast, then what happened" pair needs no recording. (The charts stay dark: owner, 2026-11-12.)
 5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
+6. Outlooks (2026-11-14, deployed; decision in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas,
+   discussion text fixes, live scoring (`/api/outlook/scores`, the performance page). After a few live days read the
+   scoreboard (High false alarms; Day 3 too low). Then Day 3 with storm runs, a sharper method with one refit, and
+   Day 1 updates from the short-range model.
 
 ## Blockers
 

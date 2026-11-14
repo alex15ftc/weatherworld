@@ -35,6 +35,11 @@ const OUTLOOKS = Number(flag('--outlooks') ?? 3);
 const JOBS = Math.max(1, Number(flag('--jobs') ?? 6));
 // OUTLOOK_ENSEMBLE='{"expected":true,"method":"nmep","sigmaKm":{"day1":40,"day2":60}}': combine the runs another way than
 // OUTLOOK.ensemble (DayOneOutlook.js), to compare from one archive (--from) without changing the code.
+// OUTLOOK_GATES='{"agreement":false,"guard":false,"highRun":false}': the hand-set gates over the calibrated chance to use (OUTLOOK.gates).
+const GATES = process.env.OUTLOOK_GATES ? JSON.parse(process.env.OUTLOOK_GATES) : null;
+// REPP=1 (with --from): the saved runs' chances and the saved truth smoothed again from their reports with the code as it is now
+// (truth.js smoothTruth), to score a change in the practically perfect smoothing without running the days again.
+const REPP = process.env.REPP === '1';
 const ENSEMBLE = process.env.OUTLOOK_ENSEMBLE ? JSON.parse(process.env.OUTLOOK_ENSEMBLE) : null;
 // OUTLOOK_CALIBRATION=file: the chances' table from that file (fit-outlook-calibration.mjs's output, its CALIBRATION line) in
 // place of the one installed, to score a fit on other mornings without installing it.
@@ -64,7 +69,15 @@ if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else awai
 
 async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
-  const { captureTruth, aggregateTruth, practicallyPerfectChance } = await import('../js/verification/truth.js');
+  const { captureTruth, aggregateTruth, practicallyPerfectChance, smoothTruth } = await import('../js/verification/truth.js');
+  // (REPP: a run's day smoothed again from its reports, as close() in DayOneOutlook.js smooths it)
+  const resmooth = run => {
+    if (!run || run.fromIngredients || !run.reports) return run;
+    const day = smoothTruth({ width: run.width, height: run.height, cellMiles: run.cellMiles, storm: run.thunder, ...Object.fromEntries(Object.entries(run.reports).map(([field, grid]) => [`${field}Exact`, grid])) });
+    const km = run.cellMiles * 1.609344, chance = { ...run.chance, ...day.chance };
+    for (const name of ['severe', 'severeSig', 'severeExtreme']) if (run.reports[name]) chance[name] = practicallyPerfectChance(run.reports[name], run.width, run.height, km);
+    return { ...run, chance, dayCategory: day.worldRisk.reduce((best, c) => (ORDER.indexOf(c) > ORDER.indexOf(best) ? c : best), 'NONE') };
+  };
   const { OUTLOOK, runOutlookMemberSet, combineOutlook, stateFromBytes, membersFor, stormDaysFor } = await import('../js/forecast/DayOneOutlook.js');
   const { CIG_TIERS, CIG_BOUNDS, contourCig, conditionalCig, worldCategory, probabilityLevel } = await import('../js/forecast/worldRiskCategories.js');
   // Hail and wind as reports, in the runs and in what happened (truth.js captureTruth).
@@ -78,13 +91,14 @@ async function worker(seed) {
     // A saved morning, when scoring again.
     let kept = null;
     if (FROM) { const file = saved(FROM, seed, day); if (!fs.existsSync(file)) break; kept = v8.deserialize(zlib.gunzipSync(fs.readFileSync(file))); n = kept.map.width * kept.map.height; }
+    if (kept && REPP) { kept.runs = kept.runs.map(run => (Array.isArray(run) ? run.map(resmooth) : { ...run, days: run.days.map(resmooth), cheap: run.cheap.map(days => days.map(resmooth)) })); smoothTruth(kept.truth); }
     const map = kept ? kept.map : { width: world.width, height: world.height, cellSizeKm: world.cellSizeKm, cellSizeMiles: world.cellSizeMiles };
     // The morning's outlooks: each run goes as far as the last day it is one of the runs for.
     const now = kept ? kept.now : world.validHourUtc, runs = kept ? kept.runs : [];
     if (!kept) { const bytes = v8.serialize(atmosphere.saveState()); for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberSet(stateFromBytes(bytes), m, 24 * OUTLOOK.days.slice(0, OUTLOOKS).filter(name => m < membersFor(name, memberCount)).length, { placesFor, stormDays: stormDaysFor(m, memberCount), cheapRuns: CHEAP, ...(OLD ? { mesoscale: 0 } : {}) })); }
     // (only the days the runs reach: an archive saved with --outlooks 2 has no Day 3)
     const made = Math.min(OUTLOOKS, Math.max(...runs.map(run => (Array.isArray(run) ? run : run.days).length)));
-    issued[day] = OUTLOOK.days.slice(0, made).map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).flatMap(run => (Array.isArray(run) ? [run[index]] : [run.days[index], ...run.cheap.map(days => days[index]).filter(Boolean)])), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : CALIBRATION_FILE ? { calibration: CALIBRATION_FILE } : {}), ...(ENSEMBLE ? { ensemble: ENSEMBLE } : {}), ...(CUTOFFS ? { categoryCutoffs: CUTOFFS } : {}), ...(LEAD_CAPS ? { maxCategory: OUTLOOK.leadCaps[name] ?? null } : {}) }));
+    issued[day] = OUTLOOK.days.slice(0, made).map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).flatMap(run => (Array.isArray(run) ? [run[index]] : [run.days[index], ...run.cheap.map(days => days[index]).filter(Boolean)])), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : CALIBRATION_FILE ? { calibration: CALIBRATION_FILE } : {}), ...(ENSEMBLE ? { ensemble: ENSEMBLE } : {}), ...(GATES ? { gates: { ...OUTLOOK.gates, ...GATES } } : {}), ...(CUTOFFS ? { categoryCutoffs: CUTOFFS } : {}), ...(LEAD_CAPS ? { maxCategory: OUTLOOK.leadCaps[name] ?? null } : {}) }));
     // What then happened.
     let truth, happened, truthTornadoes;
     if (kept) ({ truth, happened, truthTornadoes = happened } = kept);

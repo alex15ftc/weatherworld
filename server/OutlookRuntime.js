@@ -121,6 +121,8 @@ export class OutlookRuntime {
           const runs = members.slice(0, count(day)).flatMap(member => [member.days[index], ...member.cheap.map(days => days[index]).filter(Boolean)]);
           const outlook = combineOutlook(runs, { day, issuedHourUtc, validFromHourUtc, validToHourUtc, seed: engine.seed, maxCategory, regions, previous: lastOutlook, continuity: lastOutlook ? OUTLOOK.continuity[underWay ? 'underWay' : 'before'] : 0 });
           this.history.set(validToHourUtc, outlook);
+          // (the live record of how the outlooks verify, OutlookScoreboard.js; it only reads the outlook)
+          try { this.onIssued?.(outlook); } catch (error) { console.warn('[outlooks] onIssued:', error.message); }
           for (const ended of [...this.history.keys()]) if (ended <= issuedHourUtc) this.history.delete(ended);
           this.products[day] = { slot: this.slot(day, issuedHourUtc), engine, outlook, public: publicOutlook(outlook) };
         }

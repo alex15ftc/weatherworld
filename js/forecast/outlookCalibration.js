@@ -135,9 +135,10 @@ import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 // never draws, WORLD_MAX_CIG), so a guard at 45 kept every Day 3 below Enhanced (seeds 1-20: SLGT on 97% of mornings,
 // with places at the 43% the guard held them to verifying 51%).
 const GUARD_LEVEL = { tornado: 30, wind: 45, hail: 45, severe: 60 };
-export function calibrateChance(day, hazard, raw, table = CALIBRATION) {
+// guard: false lifts both limits (for scoring the outlooks without them, DayOneOutlook.js OUTLOOK.gates).
+export function calibrateChance(day, hazard, raw, table = CALIBRATION, { guard = true } = {}) {
   const calibrated = curve(day, hazard, raw, table), levels = PROBABILITY_LEVELS[hazard];
-  if (!(calibrated > raw) || !levels) return calibrated;
+  if (!(calibrated > raw) || !levels || !guard) return calibrated;
   const reached = levels.filter(level => raw >= level - 1e-9).length;   // contour levels the raw chance reaches
   let next = reached;   // the index of the next level up, which the chance may reach
   if (next < levels.length && levels[next] >= (GUARD_LEVEL[hazard] ?? Infinity)) next = reached - 1;   // stay within the level reached
