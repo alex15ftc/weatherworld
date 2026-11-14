@@ -7,7 +7,10 @@
 // boundaries, tornado source and report counts.
 import fs from 'node:fs';
 import path from 'node:path';
-const REPO = 'file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/';
+// (the checkout this script is in: run from a worktree, it measures that worktree's engine. Until 2026-11-14 it
+// named the main checkout, so a run from a worktree measured the main checkout's code and its scorecard
+// came out identical to the baseline whatever the worktree had changed.)
+const REPO = new URL('../../', import.meta.url).href;
 const { avoidBackgroundThrottling } = await import(REPO + 'js/runtime/processPriority.node.js');
 avoidBackgroundThrottling();
 const { AtmosphereWorld } = await import(REPO + 'js/world/AtmosphereWorld.js');
