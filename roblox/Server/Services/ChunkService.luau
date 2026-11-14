@@ -19,7 +19,7 @@ local ChunkGen = require(ServerStorage.World.ChunkGen)
 
 local ChunkService = {}
 
-local SIZE = Config.CHUNK_STUDS
+local SIZE = Config.CHUNK_WORLD_STUDS -- a chunk's side in the place (its indices are the generator's)
 local VOXEL = Config.VOXEL_STUDS
 local REFRESH_SECONDS = 0.25
 

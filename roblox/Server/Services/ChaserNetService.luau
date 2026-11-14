@@ -107,7 +107,7 @@ local function sample()
 			end
 			continue
 		end
-		local mx, my = WorldMap.milesAt(root.Position.X, root.Position.Z)
+		local mx, my = WorldMap.worldMilesAt(root.Position.X, root.Position.Z)
 		if c.lastX and c.lastY then
 			local dt = math.max(now - c.lastAt, 0.001)
 			local miles = math.sqrt((mx - c.lastX) ^ 2 + (my - c.lastY) ^ 2)

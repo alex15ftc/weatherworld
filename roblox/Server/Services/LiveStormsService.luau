@@ -89,7 +89,7 @@ end
 local function playerKm(p: Player): (number?, number?)
 	local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then return nil, nil end
-	local mx, my = WorldMap.milesAt(root.Position.X, root.Position.Z)
+	local mx, my = WorldMap.worldMilesAt(root.Position.X, root.Position.Z)
 	return mx * Config.KM_PER_MILE, my * Config.KM_PER_MILE
 end
 

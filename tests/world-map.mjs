@@ -74,6 +74,14 @@ const beltway = map.roads.find(r => r.name === 'I-435');
 assert.ok(beltway && beltway.points.every(([x, y]) => Math.hypot(x - metro.x, y - metro.y) < metro.extentMi + 3), 'the metro has a beltway');
 assert.ok(map.roads.filter(r => r.kind === 'expressway' && Math.hypot(r.points[0][0] - metro.x, r.points[0][1] - metro.y) < 3).length >= 2, 'expressways leave the metro');
 assert.ok(map.settlements.every(s => s.streetBlockMi > 0 && s.suburbanMi >= 0), 'every place says how its streets are laid');
+// Footprints (townShapes.js): cells of an eighth of a mile, the centre built, no two alike; a
+// reserve along each axis with nothing built on it; the cover as it was before the towns.
+assert.ok(map.settlements.every(s => s.shape.cellMi === 0.125 && s.shape.cells.length === s.shape.w * s.shape.h && typeof s.form === 'string' && Math.abs(Math.hypot(s.axis.ux, s.axis.uy) - 1) < 1e-9), 'every place has a footprint, a form and an axis');
+assert.ok(map.settlements.every(s => map.built(s.x, s.y) === 2), 'the middle of every place is built');
+assert.ok(map.settlements.every(s => { const sh = s.shape; for (let j = 0; j < sh.h; j++) for (let i = 0; i < sh.w; i++) if (sh.cells[j * sh.w + i] > map.built(sh.x0 + (i + 0.5) * sh.cellMi, sh.y0 + (j + 0.5) * sh.cellMi)) return false; return true; }), 'the map is built wherever a place is');
+assert.equal(new Set(map.settlements.map(s => `${Math.round((s.x - s.shape.x0) * 8)},${Math.round((s.y - s.shape.y0) * 8)},${s.shape.w},${s.shape.cells.join('')}`)).size, map.settlements.length, 'no two footprints are the same');
+assert.ok(map.settlements.every(s => { const { x, y, ux, uy } = s.axis, r = s.reserve; for (let t = -0.25; t <= 0.25; t += 0.05) if (map.built(x + ux * t + r.nx * r.widthMi / 2, y + uy * t + r.ny * r.widthMi / 2)) return false; return true; }), 'nothing is built on a reserve');
+assert.ok(map.coverBase.length === map.cover.length && !map.coverBase.some(c => map.coverKeys[c] === 'urban' || map.coverKeys[c] === 'suburban') && map.cover.some(c => map.coverKeys[c] === 'urban'), 'the cover before the towns is kept');
 
 // A reservoir: about the area asked for, behind a dam of a usual height, all of it water, and
 // no river drawn across it.

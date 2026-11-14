@@ -29,7 +29,8 @@
     "StarterPlayer": {
       "$properties": {
         "CharacterUseJumpPower": false,
-        "CharacterJumpHeight": 7.2
+        "CharacterJumpHeight": 3.6,
+        "CharacterWalkSpeed": 8
       }
     },
     "Players": {
@@ -50,7 +51,7 @@
         "StreamingEnabled": true,
         "StreamingTargetRadius": 1024,
         "StreamingMinRadius": 512,
-        "Gravity": 35.0357
+        "Gravity": 17.5179
       }
     },
     "MaterialService": {

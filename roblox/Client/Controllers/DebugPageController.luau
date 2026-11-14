@@ -31,7 +31,7 @@ local DebugPage = {}
 local KM = Config.STUDS_PER_MILE / Config.KM_PER_MILE
 local SKY = Config.SKY_STUDS_PER_METRE -- (near)
 local HALF = Config.MAP_MILES / 2 * Config.STUDS_PER_MILE
-local EDGE = HALF - 600
+local EDGE = HALF - 600 * Config.WORLD_SCALE
 local WIDTH = 380
 local ROW = 76
 

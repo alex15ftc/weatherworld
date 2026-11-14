@@ -35,7 +35,7 @@ end
 
 -- the point in lab metres (x east, y north of the window's centre) and map km (y south)
 local function toLab(xStuds: number, zStuds: number): (number?, number?, number, number)
-	local mx, my = WorldMap.milesAt(xStuds, zStuds)
+	local mx, my = WorldMap.worldMilesAt(xStuds, zStuds)
 	local kx, ky = mx * Config.KM_PER_MILE, my * Config.KM_PER_MILE
 	local c = host and host.state.centreKm
 	if not c then

@@ -1007,7 +1007,7 @@ function Buildings.build(ctx: Ctx)
 	-- stud as at 1000 studs a mile (one in five of its 500-stud quarter sections; 2026-10-28): the
 	-- farmsteads are built at character scale, so where the mile is squashed fewer of its quarter
 	-- sections have one.
-	local QUARTER = Config.STUDS_PER_MILE / 2
+	local QUARTER = Config.DESIGN_STUDS_PER_MILE / 2
 	local FARMSTEAD_SHARE = 0.2 * (QUARTER / 500) ^ 2
 	for qx = math.floor(ctx.x0 / QUARTER) - 1, math.floor(ctx.x1 / QUARTER) do
 		for qz = math.floor(ctx.z0 / QUARTER) - 1, math.floor(ctx.z1 / QUARTER) do

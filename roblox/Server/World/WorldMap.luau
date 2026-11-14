@@ -31,9 +31,9 @@ WorldMap.meta = Meta
 -- The scale the map was generated for (js/worldmap/scale.js, written by the export; older exports
 -- lack it): the generator sizes roads, lots, buildings and airfields in studs at that scale, so a
 -- map made for another drifts against everything built here.
-if Meta.studsPerMile ~= nil and Meta.studsPerMile ~= Config.STUDS_PER_MILE then
+if Meta.studsPerMile ~= nil and Meta.studsPerMile ~= Config.DESIGN_STUDS_PER_MILE then
 	-- (each actor loading the map says it too: hard to miss in the output)
-	warn(`[WeatherWorld] SCALE MISMATCH: the world map (ServerStorage.WorldData) was exported at {Meta.studsPerMile} studs a mile, but Config.STUDS_PER_MILE is {Config.STUDS_PER_MILE}. Set js/worldmap/scale.js and roblox/Shared/World/Config.luau to the same value and re-run node scripts/export-world-roblox.mjs.`)
+	warn(`[WeatherWorld] SCALE MISMATCH: the world map (ServerStorage.WorldData) was exported at {Meta.studsPerMile} studs a mile, but Config.DESIGN_STUDS_PER_MILE is {Config.DESIGN_STUDS_PER_MILE}. Set js/worldmap/scale.js and Config.DESIGN_STUDS_PER_MILE (roblox/Shared/World/Config.luau) to the same value and re-run node scripts/export-world-roblox.mjs.`)
 end
 
 local CELL = Meta.cellMiles :: number
@@ -44,10 +44,10 @@ local S = Meta.tileCells :: number
 local CORNERS = Meta.corners :: number
 local TILE_CELLS = TILE_MI / CELL
 local HALF = Config.MAP_MILES / 2
-local MILE = Config.STUDS_PER_MILE
+local MILE = Config.DESIGN_STUDS_PER_MILE -- (the generator's studs: see Config.WORLD_SCALE)
 local BASE_M = Meta.baseM :: number
 
-local COVER_OFF, REGION_OFF, LAKE_OFF, SECTION_OFF = S * S * 2, S * S * 3, S * S * 4, S * S * 5
+local COVER_OFF, REGION_OFF, LAKE_OFF, BASE_OFF, SECTION_OFF = S * S * 2, S * S * 3, S * S * 4, S * S * 5, S * S * 6
 
 WorldMap.cover = {} :: { [string]: number }
 for i, key in Meta.cover do
@@ -157,7 +157,7 @@ function WorldMap.tile(ti: number, tj: number): Tile
 		end)
 		if not ok then
 			warn(`[WeatherWorld] map tile T{ti}_{tj} read outside the prepared area`)
-			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, creeks = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
+			return { data = buffer.create(S * S * 6 + CORNERS * CORNERS), rivers = {}, creeks = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
 		end
 		evict()
 		-- (The elevations are stored as differences from the cell before: add them back up.)
@@ -182,6 +182,16 @@ end
 
 function WorldMap.studsAt(mx: number, my: number): (number, number)
 	return (mx - HALF) * MILE, (my - HALF) * MILE
+end
+
+-- The same two for positions in the place (its own studs, Config.STUDS_PER_MILE): what anything
+-- outside the generator wants (a character's position, a spawn point, a storm's place).
+function WorldMap.worldMilesAt(x: number, z: number): (number, number)
+	return x / Config.STUDS_PER_MILE + HALF, z / Config.STUDS_PER_MILE + HALF
+end
+
+function WorldMap.worldStudsAt(mx: number, my: number): (number, number)
+	return (mx - HALF) * Config.STUDS_PER_MILE, (my - HALF) * Config.STUDS_PER_MILE
 end
 
 -- The tile holding global cell (gi, gj) and the cell's index within that tile's rasters.
@@ -217,10 +227,41 @@ function WorldMap.elevationM(mx: number, my: number): number
 	return catmull(rows[1], rows[2], rows[3], rows[4], fy)
 end
 
--- Land cover, cover region and lake id of the cell at a point.
+-- The towns' footprints (WorldData.Built, written by the export): finer than the cover's cells.
+-- builtSquares holds, for each mile square with built land, where its 8 x 8 cells start.
+local BuiltModule = Data:FindFirstChild("Built")
+local builtSource = if BuiltModule then require(BuiltModule) :: any else nil
+local builtUnit: number = if builtSource then builtSource.unit else 0.125
+local builtData = if builtSource then unpack(builtSource.data) else buffer.create(0)
+local builtSquares: { [number]: number } = {}
+for at = 0, buffer.len(builtData) - 20, 20 do
+	builtSquares[buffer.readu16(builtData, at + 2) * 4096 + buffer.readu16(builtData, at)] = at + 4
+end
+local BUILT_PER = math.round(1 / builtUnit)
+
+-- How a point is built: 0 not, 1 newer and low (suburban), 2 the old plat (urban).
+function WorldMap.builtAt(mx: number, my: number): number
+	local I, J = math.floor(mx), math.floor(my)
+	local at = builtSquares[J * 4096 + I]
+	if not at then
+		return 0
+	end
+	local c = math.min(BUILT_PER - 1, math.floor((my - J) / builtUnit)) * BUILT_PER + math.min(BUILT_PER - 1, math.floor((mx - I) / builtUnit))
+	return bit32.extract(buffer.readu8(builtData, at + c // 4), (c % 4) * 2, 2)
+end
+
+-- Land cover, cover region and lake id of the cell at a point. Where the cover's cell is town,
+-- the town's footprint says which of it is built: the old plat is urban, the newer land
+-- suburban, and the rest is the land's own cover (as it was before the towns).
+local URBAN, SUBURBAN = WorldMap.cover.urban, WorldMap.cover.suburban
 function WorldMap.cellAt(mx: number, my: number): (number, number, number)
 	local tile, o = cell(math.floor(mx / CELL), math.floor(my / CELL))
-	return buffer.readu8(tile.data, COVER_OFF + o), buffer.readu8(tile.data, REGION_OFF + o), buffer.readu8(tile.data, LAKE_OFF + o)
+	local cover = buffer.readu8(tile.data, COVER_OFF + o)
+	if builtSource and (cover == URBAN or cover == SUBURBAN) then
+		local built = WorldMap.builtAt(mx, my)
+		cover = if built == 2 then URBAN elseif built == 1 then SUBURBAN else buffer.readu8(tile.data, BASE_OFF + o)
+	end
+	return cover, buffer.readu8(tile.data, REGION_OFF + o), buffer.readu8(tile.data, LAKE_OFF + o)
 end
 
 -- How much of the neighbourhood is lake (0 to 1, bilinear between cell centres) and the lake there.

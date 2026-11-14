@@ -36,26 +36,68 @@ local function startPoint(): (number, number)
 	if typeof(text) == "string" then
 		local x, y = string.match(text, "^%s*([%d%.%-]+)%s*,%s*([%d%.%-]+)%s*$")
 		if x and y then
-			return WorldMap.studsAt(tonumber(x) :: number, tonumber(y) :: number)
+			return WorldMap.worldStudsAt(tonumber(x) :: number, tonumber(y) :: number)
 		end
 	end
-	return WorldMap.studsAt(WorldMap.meta.start.x, WorldMap.meta.start.y)
+	return WorldMap.worldStudsAt(WorldMap.meta.start.x, WorldMap.meta.start.y)
+end
+
+-- Characters at the world's scale (Config.WORLD_SCALE: half size), walking and jumping to match
+-- (16 studs a second and the 7.2-stud jump of the full-size place, scaled). The body is scaled
+-- once its appearance has loaded, so its accessories are scaled with it.
+local WALK_SPEED, JUMP_HEIGHT = 16, 7.2
+-- The camera to match: Roblox starts it 12.5 studs behind a full-size character and lets it come
+-- no nearer than half a stud. A player's camera starts at the same distance against the smaller
+-- body (set once, when they first appear: the zoom is theirs after that) and may come as near.
+-- How far out it may go is left as the place has it.
+local CAMERA_START, CAMERA_NEAREST = 12.5, 0.5
+local framed: { [Player]: boolean } = {}
+local function frame(player: Player)
+	if framed[player] then
+		return
+	end
+	framed[player] = true
+	local farthest = player.CameraMaxZoomDistance
+	-- (the zoom is held at the start distance for a moment, then freed: there is no property for
+	-- the distance itself)
+	player.CameraMinZoomDistance = CAMERA_START * Config.WORLD_SCALE
+	player.CameraMaxZoomDistance = CAMERA_START * Config.WORLD_SCALE
+	task.wait(1)
+	if player.Parent then
+		player.CameraMinZoomDistance = CAMERA_NEAREST * Config.WORLD_SCALE
+		player.CameraMaxZoomDistance = farthest
+	end
+end
+local function size(player: Player, character: Model)
+	if not player:HasAppearanceLoaded() then
+		player.CharacterAppearanceLoaded:Wait()
+	end
+	if character.Parent and math.abs(character:GetScale() - Config.WORLD_SCALE) > 1e-3 then
+		character:ScaleTo(Config.WORLD_SCALE)
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.WalkSpeed = WALK_SPEED * Config.WORLD_SCALE
+		humanoid.UseJumpPower = false
+		humanoid.JumpHeight = JUMP_HEIGHT * Config.WORLD_SCALE
+	end
+	frame(player)
 end
 
 -- Puts a character on the ground at (x, z) studs, held in the air until the ground has loaded.
 local function placeAt(character: Model, x: number, z: number)
 	local root = character:WaitForChild("HumanoidRootPart") :: BasePart
 	root.Anchored = true
-	character:PivotTo(CFrame.new(x, ChunkGen.groundStudsAt(x, z) + 60, z))
+	character:PivotTo(CFrame.new(x, ChunkGen.groundStudsAt(x, z) + 60 * Config.WORLD_SCALE, z))
 	local position = Vector3.new(x, 0, z)
-	while ChunkService.missingWithin(position, 600) > 0 do
+	while ChunkService.missingWithin(position, 600 * Config.WORLD_SCALE) > 0 do
 		task.wait(0.2)
 	end
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
 	local hit = workspace:Raycast(Vector3.new(x, Config.RAY_TOP_STUDS, z), Vector3.new(0, -2 * Config.RAY_TOP_STUDS, 0), params)
 	local y = if hit then hit.Position.Y else ChunkGen.groundStudsAt(x, z)
-	character:PivotTo(CFrame.new(x, y + 5, z))
+	character:PivotTo(CFrame.new(x, y + 5 * Config.WORLD_SCALE, z))
 	root.Anchored = false
 end
 
@@ -86,7 +128,7 @@ end
 
 local busy: { [Player]: boolean } = {}
 local function listenForTeleports()
-	local edge = Config.MAP_STUDS / 2 - 600
+	local edge = Config.MAP_STUDS / 2 - 600 * Config.WORLD_SCALE
 	-- (x and z are finite numbers: DebugNet's validator)
 	DebugNet.Teleport:Server():On(function(player: Player, x: number, z: number)
 		if busy[player] or not mayDebug(player) then
@@ -112,6 +154,8 @@ function ExploreService.Init()
 	for material, colour in COLOURS do
 		workspace.Terrain:SetMaterialColor(material, colour)
 	end
+	-- Gravity at the world's scale (9.81 m/s2 in studs; the place file may hold the old value).
+	workspace.Gravity = Config.GRAVITY
 	workspace.Terrain.WaterColor = Color3.fromRGB(62, 92, 96)
 	if not Lighting:FindFirstChildOfClass("Atmosphere") then
 		local atmosphere = Instance.new("Atmosphere")
@@ -131,14 +175,19 @@ function ExploreService.Start()
 	local function added(player: Player)
 		local trove = Trove.new()
 		troves[player] = trove
-		trove:Connect(player.CharacterAdded, place)
+		trove:Connect(player.CharacterAdded, function(character: Model)
+			task.spawn(size, player, character)
+			place(character)
+		end)
 		if player.Character then
+			task.spawn(size, player, player.Character)
 			task.spawn(place, player.Character)
 		end
 	end
 	Players.PlayerAdded:Connect(added)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		busy[player] = nil
+		framed[player] = nil
 		local trove = troves[player]
 		troves[player] = nil
 		if trove then

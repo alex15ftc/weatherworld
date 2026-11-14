@@ -10,7 +10,7 @@ local WorldMap = require(script.Parent.WorldMap)
 local Heightfield = {}
 
 local SEED_Z = Config.SEED * 17.31 + 0.5 -- math.noise is zero on integer lattice points
-local VERTICAL = Config.STUDS_PER_METRE_VERTICAL
+local VERTICAL = Config.DESIGN_STUDS_PER_METRE
 local BASE_M = WorldMap.meta.baseM :: number
 local R = WorldMap.regions
 -- Vehicle jitter test: dead-flat ground, so any bounce of a car at steady speed is precision noise.

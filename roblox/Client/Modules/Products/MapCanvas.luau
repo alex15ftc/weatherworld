@@ -79,7 +79,9 @@ export type Overlay = {
 }
 
 local player = Players.LocalPlayer
-local MILE = Config.STUDS_PER_MILE
+local MILE = Config.STUDS_PER_MILE -- the place's studs to a mile (where the player stands)
+-- The map's roads, ramps and rivers are sized in the generator's studs (Config.WORLD_SCALE).
+local DESIGN_MILE = Config.DESIGN_STUDS_PER_MILE
 local HALF = Config.MAP_MILES / 2
 local MAX_RES = 1024 -- the raster products' image (an EditableImage is at most 1024 square)
 local MIN_MPP = 0.01 -- miles per pixel when fully zoomed in (6 studs a pixel at 600 studs a mile)
@@ -122,14 +124,14 @@ local function loadData()
 	for _, c in data.crossings or {} do
 		if c.type == "interchange" then
 			local rec = {
-				interchange = true, road = 0, x = (c.x - HALF) * MILE, z = (c.y - HALF) * MILE,
+				interchange = true, road = 0, x = (c.x - HALF) * DESIGN_MILE, z = (c.y - HALF) * DESIGN_MILE,
 				ux = c.ux, uz = c.uy, vx = c.vx, vz = c.vy, exit = c.exit, uEnd = c.uEnd or 0, vEnd = c.vEnd or 0,
 			}
 			for _, ramp in Interchanges.ramps(rec :: any) do
 				local line = {}
 				for _, p in ramp.points do
-					table.insert(line, p.X / MILE + HALF)
-					table.insert(line, p.Y / MILE + HALF)
+					table.insert(line, p.X / DESIGN_MILE + HALF)
+					table.insert(line, p.Y / DESIGN_MILE + HALF)
 				end
 				table.insert(rampLines, line)
 			end
@@ -145,7 +147,7 @@ local function loadData()
 		miles = data.miles, cells = data.cells, cellMiles = data.miles / data.cells,
 		land = unpack(data.land), sections = unpack(data.sections), sectionSize = data.sectionSize,
 		streets = if data.streets then unpack(data.streets) else nil, -- (a map exported before it had them)
-		coverKeys = coverKeys, coverRGB = coverRGB, rivers = data.rivers, roads = data.roads, rampLines = rampLines, studsPerMile = MILE,
+		coverKeys = coverKeys, coverRGB = coverRGB, rivers = data.rivers, roads = data.roads, rampLines = rampLines, studsPerMile = DESIGN_MILE,
 	}
 end
 

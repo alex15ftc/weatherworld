@@ -114,7 +114,7 @@ Roads.build = function(ctx)
 	return buildRoads(ctx)
 end
 
-local SIZE, MILE, HALF = Config.CHUNK_STUDS, Config.STUDS_PER_MILE, Config.MAP_MILES / 2
+local SIZE, MILE, HALF = Config.CHUNK_STUDS, Config.DESIGN_STUDS_PER_MILE, Config.MAP_MILES / 2
 local meta = WorldMap.meta
 
 -- Places to visit: the largest of each kind of settlement, more towns, an interchange and open land.

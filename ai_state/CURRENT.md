@@ -264,6 +264,28 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   dirt spurs 62% of dirt miles to 7%; I-135 carried on to Russell Center's bypass; the audit prints the table.
   Harness over 300 chunks: no building conflicts, ground through a road at 4 samples, road in the air at 10.
 
+- Map, sixth round (2026-11-14; settlements and airfields unmoved):
+  - Towns have footprints by form, not discs (`js/worldmap/townShapes.js`; forms after Hudson's railroad-town
+    plats, Schmiedeler on county seats, the Encyclopedia of the Great Plains): T-town, symmetric, orthogonal,
+    parallel, courthouse square, linear, river town, hamlet, regional city. Each settlement has `shape` (cells of
+    0.125 mi: 0 none, 1 newer, 2 old plat), `form`, `axis` and `reserve` (a clear strip along the founding
+    line, for the railway the owner wants next); `map.built`, `map.reserved`, `map.coverBase`. Streets, land
+    use, facilities and section roads use the footprint. No two footprints alike; the metro still reads as a
+    round blob. The export writes `WorldData/Built` and the cover before towns; `WorldMap.cellAt` reads urban
+    or suburban from the footprint.
+  - Half-size world (owner, 2026-11-14): `Config.WORLD_SCALE = 0.5`; 300 studs a mile, 0.56 m a stud. The
+    generator still works in design studs (`DESIGN_*`, voxel 8) and what it makes enters the place scaled
+    (`ChunkGen` region, parts, tree records; `WorldMap.worldMilesAt` / `worldStudsAt` for positions outside
+    it). Characters, walk speed, jump, the camera's start distance, gravity (set in `ExploreService`), the car
+    template and its top speed, flying speeds, sky distances and far-land rings are scaled. Not seen in game:
+    the car's suspension and camera are in the place, terrain is half as fine, materials keep their texture
+    size, and the unchanged load radius holds about four times the props. Tree damage uses a new store
+    (`FoliageDamage2`).
+  - Roads: junctions are level (`JUNCTION_EASE`), the grade beside a bridge's ramp rises only where a road
+    joins the ramp, curve pieces go down to 2.5 studs. `patch-place.luau` now syncs every script the build
+    has. Harness over 300 chunks at half size: no building conflicts; ground through a road at 14 samples and
+    road in the air at 11 of 42,000 (the coarser terrain).
+
 ## Next
 
 0. Map (published as 501; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a

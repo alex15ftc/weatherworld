@@ -8,14 +8,16 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.World.Config)
-local Heightfield = require(game:GetService("ServerStorage").World.Heightfield)
+local ChunkGen = require(game:GetService("ServerStorage").World.ChunkGen)
 local ChunkService = require(game:GetService("ServerStorage").Services.ChunkService)
 
 local TestVehicle = {}
 
-local WHEEL_RADIUS = 2
-local CHASSIS_SIZE = Vector3.new(14, 1.5, 8)
-local WHEEL_OFFSETS = { Vector3.new(5, 0, 6), Vector3.new(5, 0, -6), Vector3.new(-5, 0, 6), Vector3.new(-5, 0, -6) }
+-- (sizes at the world's scale, Config.WORLD_SCALE)
+local WS = Config.WORLD_SCALE
+local WHEEL_RADIUS = 2 * WS
+local CHASSIS_SIZE = Vector3.new(14, 1.5, 8) * WS
+local WHEEL_OFFSETS = { Vector3.new(5, 0, 6) * WS, Vector3.new(5, 0, -6) * WS, Vector3.new(-5, 0, 6) * WS, Vector3.new(-5, 0, -6) * WS }
 local ACCEL_SECONDS = 6
 local MEASURE_SECONDS = 10
 -- Hinge attachment whose primary (X) axis points along the car's Z axis, so wheels roll along X.
@@ -103,14 +105,14 @@ end
 
 local function driveAt(character: Model, root: BasePart, humanoid: Humanoid, x: number, speed: number): string
 	local z = 0
-	local ground = Heightfield.studsAt(x, z)
+	local ground = ChunkGen.groundStudsAt(x, z)
 	root.Anchored = true
-	character:PivotTo(CFrame.new(x, ground + 12, z))
-	while ChunkService.missingWithin(root.Position, 768) > 0 do
+	character:PivotTo(CFrame.new(x, ground + 12 * WS, z))
+	while ChunkService.missingWithin(root.Position, 768 * WS) > 0 do
 		task.wait(0.1)
 	end
 
-	local car = buildCar(Vector3.new(x, ground + WHEEL_RADIUS + 0.25, z))
+	local car = buildCar(Vector3.new(x, ground + WHEEL_RADIUS + 0.25 * WS, z))
 	root.Anchored = false
 	car.seat:Sit(humanoid)
 	task.wait(0.5)

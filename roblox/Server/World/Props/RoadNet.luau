@@ -223,7 +223,7 @@ export type Ctx = {
 }
 
 local END_BULB, END_BARRIER = 1, 3
-local CURVE_STEP, CURVE_PIECES = math.rad(3), 10
+local CURVE_STEP, CURVE_PIECES = math.rad(3), 12
 
 -- Builds the network from the graph's edges: `segments` holds those within pad studs of the box.
 function RoadNet.build(ctx: Ctx, pad: number): Net
@@ -347,7 +347,7 @@ function RoadNet.build(ctx: Ctx, pad: number): Net
 				tax, taz, tbx, tbz = tax / la, taz / la, tbx / lb, tbz / lb
 				local turnA = math.acos(math.clamp((tax * dx + taz * dz) / length, -1, 1))
 				local turnB = math.acos(math.clamp((tbx * dx + tbz * dz) / length, -1, 1))
-				pieces = math.clamp(math.ceil((turnA + turnB) / CURVE_STEP), 1, math.min(CURVE_PIECES, math.max(1, length // 5)))
+				pieces = math.clamp(math.ceil((turnA + turnB) / CURVE_STEP), 1, math.min(CURVE_PIECES, math.max(1, length // 2.5)))
 			end
 			local chainId = chain(index)
 			if pieces == 1 then

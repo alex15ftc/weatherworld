@@ -40,8 +40,9 @@ local HOT_MS = 17 -- m/s (38 mph) 3-s gust at a chunk's middle: below this no tr
 local BUDGET_TREES = 2500
 local REGION = 16 -- chunks a side
 local FLUSH = 30 -- s
-local STORE = "FoliageDamage1"
-local TOPIC = "FoliageDamage1"
+-- (2: the half-size world of 2026-11-14 changed which trees a chunk has, and so their numbers)
+local STORE = "FoliageDamage2"
+local TOPIC = "FoliageDamage2"
 
 type Chunk = {
 	model: Model,
@@ -244,9 +245,9 @@ local function hotspots(): { { x: number, z: number, reach: number } }
 	local st = host and host.state
 	local c = st and st.centreKm
 	local function add(kx: number, ky: number, reachM: number)
-		local sx, sz = WorldMap.studsAt(kx / Config.KM_PER_MILE, ky / Config.KM_PER_MILE)
+		local sx, sz = WorldMap.worldStudsAt(kx / Config.KM_PER_MILE, ky / Config.KM_PER_MILE)
 		local studsPerM = Config.STUDS_PER_MILE / (Config.KM_PER_MILE * 1000)
-		table.insert(out, { x = sx, z = sz, reach = reachM * studsPerM + Config.CHUNK_STUDS })
+		table.insert(out, { x = sx, z = sz, reach = reachM * studsPerM + Config.CHUNK_WORLD_STUDS })
 	end
 	if st and st.world and c then
 		for _, t in st.world.tornadoes or {} do
@@ -277,7 +278,7 @@ local function tick()
 		if not c.model.Parent then
 			continue
 		end
-		local mx, mz = (c.cx + 0.5) * Config.CHUNK_STUDS, (c.cz + 0.5) * Config.CHUNK_STUDS
+		local mx, mz = (c.cx + 0.5) * Config.CHUNK_WORLD_STUDS, (c.cz + 0.5) * Config.CHUNK_WORLD_STUDS
 		local near = false
 		for _, s in spots do
 			if (s.x - mx) ^ 2 + (s.z - mz) ^ 2 < s.reach * s.reach then

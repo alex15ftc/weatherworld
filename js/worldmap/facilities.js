@@ -47,6 +47,7 @@ import { makeNoise, makeRandom, hashText, fbm, clamp } from './noise.js';
 import { interchangeRamps } from './interchanges.js';
 import { pointInPoly, nearestOnSegment, distToSeg, segmentIntersection } from './airfields.js';
 import { planPlaceLandUse, planNeighborhoods, polysNear, COMMERCIAL } from './landUse.js';
+import { townMile } from './townShapes.js';
 import { HALF_MI, STREET_DEFAULTS } from './streets.js';
 import { AT_1000, K, STUDS } from './scale.js';
 
@@ -142,7 +143,34 @@ export function planFacilities(map, options = {}) {
   const segsNear = (x0, y0, x1, y1) => { const found = new Set(); for (const key of cellsOf(x0 - AT_1000(0.1), y0 - AT_1000(0.1), x1 + AT_1000(0.1), y1 + AT_1000(0.1), 1)) for (const s of index.get(key) ?? []) found.add(s); return found; };
   // Section roads as wide as Roblox builds them: paved ones are arterials in town.
   const SECTION_HALF = [0, HALF_MI.dirt, HALF_MI.gravel, HALF_MI.county];
-  const sectionHalf = (cls, x, y) => (cls === 3 && townCover.has(cover[cellAt(x, y)]) ? HALF_MI.arterial : SECTION_HALF[cls]);
+  // (A paved mile is an arterial through town, as the streets lay it: x, y its middle.)
+  const built = map.built ?? ((x, y) => (townCover.has(cover[cellAt(x, y)]) ? 1 : 0)), reserved = map.reserved ?? (() => 0);
+  const inTownMile = (x, y) => (map.built ? (Number.isInteger(x) ? townMile(map, x, y - 0.5, x, y + 0.5) : townMile(map, x - 0.5, y, x + 0.5, y)) : townCover.has(cover[cellAt(x, y)]));
+  const sectionHalf = (cls, x, y) => (cls === 3 && inTownMile(x, y) ? HALF_MI.arterial : SECTION_HALF[cls]);
+  // A place's footprint: how far it reaches from its centre, its cells' middles, and the share
+  // of a mile square it has built.
+  const shapeInfo = new Map();
+  const infoOf = st => {
+    if (shapeInfo.has(st)) return shapeInfo.get(st);
+    const sh = st.shape, cells = [];
+    let far = Math.max(st.extentMi, 0.6);
+    if (sh) for (let j = 0; j < sh.h; j++) for (let i = 0; i < sh.w; i++) if (sh.cells[j * sh.w + i]) { const x = sh.x0 + (i + 0.5) * sh.cellMi, y = sh.y0 + (j + 0.5) * sh.cellMi; cells.push([x, y]); far = Math.max(far, Math.hypot(x - st.x, y - st.y) + sh.cellMi); }
+    const info = { far, cells };
+    shapeInfo.set(st, info);
+    return info;
+  };
+  const reachOf = st => infoOf(st).far;
+  // (A place's own ground: its neighbour's footprint is not its town.)
+  const ownAt = (st, x, y) => { const sh = st.shape; if (!sh) return built(x, y); const i = Math.floor((x - sh.x0) / sh.cellMi), j = Math.floor((y - sh.y0) / sh.cellMi); return i < 0 || j < 0 || i >= sh.w || j >= sh.h ? 0 : sh.cells[j * sh.w + i]; };
+  const builtShare = (st, I, J) => { let hit = 0; for (let b = 0; b < 8; b++) for (let a = 0; a < 8; a++) if (ownAt(st, I + (a + 0.5) / 8, J + (b + 0.5) / 8)) hit++; return hit / 64; };
+  const townAt = (st, x, y, by = 0.03) => [[-by, -by], [by, -by], [-by, by], [by, by]].some(([dx, dy]) => ownAt(st, x + dx, y + dy) > 0);
+  // Whether any of a polygon's outline or middle is on a reserve.
+  const onReserve = poly => {
+    for (let i = 0; i < poly.length; i++) { const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length], steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.04)); for (let k = 0; k < steps; k++) if (reserved(x0 + (x1 - x0) * k / steps, y0 + (y1 - y0) * k / steps)) return true; }
+    const box = bboxOf(poly);
+    for (let y = box[1] + 0.03; y < box[3]; y += 0.06) for (let x = box[0] + 0.03; x < box[2]; x += 0.06) if (reserved(x, y) && pointInPoly(x, y, poly)) return true;
+    return false;
+  };
   const sectionClass = (I, J, east) => { if (I < 0 || J < 0 || I >= sections.size || J >= sections.size) return 0; const v = sections.roads[J * sections.size + I]; return east ? v & 3 : (v >> 2) & 3; };
   const fences = airfields.map(a => ({ poly: a.fence, box: bboxOf(a.fence) }));
   const taken = new Map();   // 0.25-mile cells -> boxes of what is placed
@@ -163,6 +191,8 @@ export function planFacilities(map, options = {}) {
     const box = bboxOf(poly);
     if (box[0] < 1 || box[1] < 1 || box[2] > miles - 1 || box[3] > miles - 1) return false;
     for (const q of [...poly, [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]]) if (cover[cellAt(q[0], q[1])] === water) return false;
+    // (Nothing stands on a place's reserve.)
+    if (onReserve(poly)) return false;
     for (const s of segsNear(...box)) if (segPolyDist(s, poly) < s.half + pad) return false;
     // Section roads on the mile lines near the lot.
     for (let I = Math.ceil(box[0] - m); I <= Math.floor(box[2] + m); I++) for (let J = Math.floor(box[1] - m); J <= Math.floor(box[3] + m); J++) {
@@ -238,12 +268,31 @@ export function planFacilities(map, options = {}) {
     return null;
   };
   const nearestTown = (x, y) => settlements.reduce((best, s) => (Math.hypot(s.x - x, s.y - y) < Math.hypot(best.x - x, best.y - y) ? s : best));
-  const pointInPlace = (st, rng, spread = 1, from = 0) => { const r = st.extentMi * (from + (spread - from) * Math.sqrt(rng())), t = 2 * Math.PI * rng(); return [st.x + r * Math.cos(t), st.y + r * Math.sin(t)]; };
+  // A point in a place: the middle of one of its built cells (from..spread: how far out, as shares of its extent; past 1 the point is pushed out beyond the cell).
+  const pointInPlace = (st, rng, spread = 1, from = 0) => {
+    const { cells } = infoOf(st);
+    if (!cells.length) { const r = st.extentMi * (from + (spread - from) * Math.sqrt(rng())), t = 2 * Math.PI * rng(); return [st.x + r * Math.cos(t), st.y + r * Math.sin(t)]; }
+    let q = cells[Math.floor(rng() * cells.length)];
+    for (let k = 0; k < 12; k++) { const d = Math.hypot(q[0] - st.x, q[1] - st.y); if (d >= from * st.extentMi * 0.7 && (spread >= 1 || d <= spread * st.extentMi * 1.2)) break; q = cells[Math.floor(rng() * cells.length)]; }
+    const push = Math.max(1, spread);
+    return [st.x + (q[0] - st.x) * push + (rng() - 0.5) * 0.1, st.y + (q[1] - st.y) * push + (rng() - 0.5) * 0.1];
+  };
+  // Ground a place left open: a cell it did not build with built ground on two sides or more.
+  const openIn = (st, rng) => {
+    const sh = st.shape;
+    if (!sh) return null;
+    for (let k = 0; k < 40; k++) {
+      const x = sh.x0 + (Math.floor(rng() * sh.w) + 0.5) * sh.cellMi, y = sh.y0 + (Math.floor(rng() * sh.h) + 0.5) * sh.cellMi;
+      if (built(x, y) || reserved(x, y) || cover[cellAt(x, y)] === water) continue;
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([a, b]) => built(x + a * sh.cellMi, y + b * sh.cellMi)).length >= 2) return [x, y];
+    }
+    return null;
+  };
 
   // Land use (landUse.js): the areas every place is divided into, and the neighbourhoods of the
   // cities with their collectors (kept clear as roads are).
   const areas = [], neighborhoods = [];
-  const helpers = { seed, areas, campuses: null, crossings, clear, lotFt: mi => mi / FT, sectionClass, segsNear, distToSeg, placeLot, linesIn: (st, reach) => linesIn(st, reach), isWater: (x, y) => cover[cellAt(x, y)] === water };
+  const helpers = { seed, areas, built, reserved, town: townAt, own: ownAt, onReserve, reachOf, builtShare, pointIn: pointInPlace, openIn, campuses: null, crossings, clear, lotFt: mi => mi / FT, sectionClass, segsNear, distToSeg, placeLot, linesIn: (st, reach) => linesIn(st, reach), isWater: (x, y) => cover[cellAt(x, y)] === water };
   // A lot lies inside an area (its corners within the area, a few feet given).
   const inside = (lot, zone, tol = AT_1000(0.004)) => lot.every(([x, y]) => pointInPoly(x, y, zone.poly) || [[tol, 0], [-tol, 0], [0, tol], [0, -tol]].some(([dx, dy]) => pointInPoly(x + dx, y + dy, zone.poly)));
   const nearUse = (lot, kinds, gap) => areas.some(z => kinds.has(z.kind) && polysNear(lot, z, gap));
@@ -297,10 +346,10 @@ export function planFacilities(map, options = {}) {
   };
   const campusAt = (st, tier, name, rng, dims, fit, inset) => {
     const cells = [];
-    const r = Math.ceil(st.extentMi);
+    const r = Math.ceil(reachOf(st));
     for (let J = Math.floor(st.y - r); J <= st.y + r; J++) for (let I = Math.floor(st.x - r); I <= st.x + r; I++) {
       const d = Math.hypot(I + 0.5 - st.x, J + 0.5 - st.y);
-      if (d < st.extentMi * 0.85) cells.push({ I, J, d: d + rng() * st.extentMi * 0.5 });
+      if (map.built ? builtShare(st, I, J) >= 0.6 : d < st.extentMi * 0.85) cells.push({ I, J, d: d + rng() * st.extentMi * 0.5 });
     }
     cells.sort((a, b) => a.d - b.d);
     for (const { I, J } of cells) {
@@ -334,7 +383,7 @@ export function planFacilities(map, options = {}) {
   // The places, the largest first (they have the most to fit).
   const places = [...settlements].sort((a, b) => b.population - a.population);
   for (const st of places) {
-    const rng = makeRandom(hashText(`${seed}|place|${st.name}`)), reach = Math.max(st.extentMi, 0.6);
+    const rng = makeRandom(hashText(`${seed}|place|${st.name}`)), reach = reachOf(st);
     const lines = linesIn(st, reach + 0.2);
     if (!lines.length) { if (st.population >= p.gasMinPopulation) gasMissing.push(st.name); continue; }
     // Land use first: downtown, shopping, highway strips, industry and parks.
@@ -383,9 +432,10 @@ export function planFacilities(map, options = {}) {
           let f = null, lay = null;
           for (let tries = 0; tries < 24 && !f; tries++) {
             // (Lots are bigger on the squashed map: later tries reach further out.)
-            const target = town ? pointInPlace(st, rng, tries < 8 ? 1 : tries < 14 ? 1.25 : 1.5, 0.4) : pointInPlace(st, rng, tries < 7 ? 0.9 : 1.1);
+            const target = town ? pointInPlace(st, rng, tries < 14 ? 1 : tries < 20 ? 1.25 : 1.5, tries < 8 ? 0.4 : 0) : pointInPlace(st, rng, tries < 7 ? 0.9 : 1.1);
             if (tries < 10 && same.some(([x, y]) => Math.hypot(x - target[0], y - target[1]) < apart)) continue;
-            for (const l of lays) if (!f && (f = placeLot(schoolLines, target, l.W, l.D, () => 1, schoolOk))) lay = l;
+            const inTown = lot => { const b = bboxOf(lot); return tries >= 16 || townAt(st, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2, 0.1); };
+            for (const l of lays) if (!f && (f = placeLot(schoolLines, target, l.W, l.D, () => 1, lot => schoolOk(lot) && inTown(lot)))) lay = l;
           }
           if (f) { buildSchool(f, level, name, st.name, lay); same.push(f.front); } else if (k === 0) schoolMissing.push(`${st.name} ${level}`);
         }
@@ -420,7 +470,7 @@ export function planFacilities(map, options = {}) {
       let f = null;
       for (let tries = 0; tries < 14 && !f; tries++) {
         const target = tries < 4 ? [st.x + (rng() - 0.5) * 0.4, st.y + (rng() - 0.5) * 0.4] : pointInPlace(st, rng);
-        f = placeLot(lines, target, lay.W, lay.D, line => (line.kind === 'road' ? 2.5 : 1), lot => spaced(lot) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, AT_1000(0.004))) && !neighborhoods.some(nb => nb.town === st.name && inside(lot, { poly: [[nb.poly[0][0] + 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[2][1] - 0.1], [nb.poly[0][0] + 0.1, nb.poly[2][1] - 0.1]] }, 0)));
+        f = placeLot(lines, target, lay.W, lay.D, line => (line.kind === 'road' ? 2.5 : 1), lot => spaced(lot) && !schools.some(s => polysNear(lot, s.lot, p.schoolGapMi)) && !areas.some(z => z.kind === 'park' && polysNear(lot, z, AT_1000(0.004))) && !neighborhoods.some(nb => nb.town === st.name && inside(lot, { poly: [[nb.poly[0][0] + 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[0][1] + 0.1], [nb.poly[2][0] - 0.1, nb.poly[2][1] - 0.1], [nb.poly[0][0] + 0.1, nb.poly[2][1] - 0.1]] }, 0)));
       }
       if (f) {
         const z = { kind: 'shopping', tier: 'corner', name: null, town: st.name, poly: f.lot, box: bboxOf(f.lot) };
@@ -489,7 +539,7 @@ export function planFacilities(map, options = {}) {
         const edge = ((x - site.x) / (width / 2)) ** 2 + ((y - site.y) / (depth / 2)) ** 2;
         if (edge > 1 || random() > 0.88) continue;
         if (!openCover.has(cover[cellAt(x, y)]) || slopeAt(x, y) > 0.04 || !pointClear(x, y, 0.08, 0.07)) continue;
-        if (settlements.some(s => Math.hypot(s.x - x, s.y - y) < s.extentMi + wp.townClearMi)) continue;
+        if (built(x, y) || settlements.some(s => Math.hypot(s.x - x, s.y - y) < s.extentMi + wp.townClearMi)) continue;
         if (airfields.some(a => Math.hypot(a.x - x, a.y - y) < wp.airfieldClearMi) || radars.some(r => Math.hypot(r.x - x, r.y - y) < wp.radarClearMi)) continue;
         row.push([r4(x), r4(y)]);
       }
@@ -497,6 +547,7 @@ export function planFacilities(map, options = {}) {
       // with a road on it, it is carried on, from its west end or its east, to the nearest mile
       // line that has one (up to three miles on; a string no road comes near has none).
       let run = [];
+      const cut = new Set();
       const flush = () => {
         if (run.length) {
           const west = Math.floor(run[0][0]), east = Math.ceil(run.at(-1)[0]);
@@ -507,12 +558,12 @@ export function planFacilities(map, options = {}) {
             path = atWest ? [[line, y], ...run] : [...run, [line, y]];
             break;
           }
-          // (And at each end, on to the mile line beyond it where that has a road within four
+          // (And at each end, on to the mile line beyond it where that has a road within six
           // miles: a string is a road through the farm, not a spur into it.)
           if (path) for (const atWest of [true, false]) {
             const tip = atWest ? path[0][0] : path.at(-1)[0];
             if (Number.isInteger(tip) && sectionClass(tip, J, false)) continue;
-            for (let k = 0; k < 4; k++) {
+            for (let k = 0; k < 6; k++) {
               const line = atWest ? Math.floor(tip) - k : Math.ceil(tip) + k;
               if (!sectionClass(line, J, false)) continue;
               const longer = atWest ? [[line, y], ...path] : [...path, [line, y]];
@@ -520,14 +571,25 @@ export function planFacilities(map, options = {}) {
               break;
             }
           }
-          if (path && pathClearOfRoads(path)) roadsOut.push(path);
+          // (An end no road could be carried on from is not left as a long spur: the string stops
+          // within a mile of the last mile line with a road, and the turbines beyond it are not built.)
+          if (path && pathClearOfRoads(path)) {
+            const joined = [];
+            for (let line = Math.floor(path[0][0]); line <= Math.ceil(path.at(-1)[0]); line++) if (sectionClass(line, J, false)) joined.push(line);
+            if (joined.length) {
+              const kept = path.filter(([x]) => x >= joined[0] - 1 && x <= joined.at(-1) + 1);
+              for (const t of path) if (!kept.includes(t)) cut.add(t);
+              path = kept;
+            }
+            if (path.length > 1) roadsOut.push(path);
+          }
         }
         run = [];
       };
       for (const t of row) { if (run.length && t[0] - run.at(-1)[0] > wp.alongMi * 2.2) flush(); run.push(t); }
       flush();
       const tr = AT_1000(0.02);
-      for (const t of row) { turbines.push(t); take([t[0] - tr, t[1] - tr, t[0] + tr, t[1] + tr]); }
+      for (const t of row) { if (cut.has(t)) continue; turbines.push(t); take([t[0] - tr, t[1] - tr, t[0] + tr, t[1] + tr]); }
     }
     if (turbines.length < 20) continue;
     let substation = null;

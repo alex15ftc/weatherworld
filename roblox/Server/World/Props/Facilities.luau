@@ -36,7 +36,7 @@ local DARK_GLASS = rgb(40, 52, 60)
 local TURF = rgb(96, 140, 70)
 local TRACK = rgb(150, 70, 56)
 local BED = 4 -- slab thickness under paved tops (as road slabs)
-local MILE = Config.STUDS_PER_MILE -- the mile lines lie on multiples of this (stud 0 is on one)
+local MILE = Config.DESIGN_STUDS_PER_MILE -- the mile lines lie on multiples of this (stud 0 is on one)
 local PIECE = 480 -- runways, taxiways and fences are laid in pieces no longer than this
 
 export type Kit = {

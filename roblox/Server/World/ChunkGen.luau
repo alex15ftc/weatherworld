@@ -31,16 +31,17 @@ local LandSurface = require(game:GetService("ReplicatedStorage").Shared.World.La
 local ChunkGen = {}
 
 local SIZE = Config.CHUNK_STUDS
-local VOXEL = Config.VOXEL_STUDS
+local VOXEL = Config.DESIGN_VOXEL_STUDS -- (design studs, as everything in the generator)
+local WORLD = Config.WORLD_SCALE -- the place's studs to a design stud: applied to what build and place hand out
 local N = SIZE // VOXEL
-local MILE = Config.STUDS_PER_MILE
+local MILE = Config.DESIGN_STUDS_PER_MILE
 local toStuds = Heightfield.toStuds
 local C = WorldMap.cover
 local COVER_KEYS = WorldMap.meta.cover :: { string }
 local REGION_KEYS = WorldMap.meta.regions :: { string }
 local hash = Builder.hash
 
-ChunkGen.VOXEL = VOXEL
+ChunkGen.VOXEL = Config.VOXEL_STUDS -- the resolution the terrain is written at (the place's studs)
 
 local M = Enum.Material
 local AIR, WATER = M.Air, M.Water
@@ -53,7 +54,7 @@ local SHOULDER, SHOULDER_MAX, SHOULDER_PER_STUD = 18, 64, 2.5
 -- The world's own cuts and fills (road beds, ditches, river channels and banks, lake shores) are
 -- sized in studs to fit the props (Roads.BED is 4 studs), so they are written as studs / VERTICAL
 -- metres and keep their size whatever the ground's vertical scale.
-local VERTICAL = Config.STUDS_PER_METRE_VERTICAL
+local VERTICAL = Config.DESIGN_STUDS_PER_METRE
 local ROAD_RAISE_M = 0.3 / VERTICAL -- graded road top above the ground under its centre line
 -- The ground is cut this far (m) below a road's grade under the road and its sidewalks (hidden by
 -- the road slabs), and lies this far below it at the road's edge (a ditch in the country), rising
@@ -82,6 +83,8 @@ local CREEK_DEPTH_M = 0.55
 -- Buildings are planned this far beyond the chunk (see the two passes in build): further than
 -- half the largest footprint a lot or parcel takes.
 local NEIGHBOUR_LOTS = 130
+-- Round a junction the grade eases from the junction's level back to the land's over this many studs.
+local JUNCTION_EASE = 48
 -- Beside a bridge's ramp the grade falls back to the land's over this many studs a stud of rise
 -- (about an 8% climb for a road meeting the ramp).
 local APPROACH_RUN = 12
@@ -278,19 +281,65 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	local sites = Sites.near(x0, z0, x1, z1, SITES_PAD)
 	-- The grade roads are built to (m) at a point, before bridges: the land's smoothed grade, or an
 	-- airfield's level.
-	local function baseGradeM(x: number, z: number): number
+	local function landGradeM(x: number, z: number): number
 		local grade = Heightfield.gradeM(WorldMap.milesAt(x, z))
 		local f, w = fieldAt(sites, x, z)
 		return if f then grade + (f.levelM - grade) * w else grade
-	end
-	local function baseTop(x: number, z: number): number
-		return toStuds(baseGradeM(x, z) + ROAD_RAISE_M) + Roads.LIFT
 	end
 	-- The roads: the graph's edges within the network's pad of the chunk, and those further out
 	-- (net.all) that a bridge reaching the chunk could stand on.
 	local NET_PAD = RoadNet.MAX_TOTAL + SHOULDER_MAX + 30
 	local far = NET_PAD + BRIDGE_REACH
 	local net = RoadNet.build({ x0 = x0, z0 = z0, x1 = x1, z1 = z1, edges = WorldMap.roadEdges(x0 - far, z0 - far, x1 + far, z1 + far) }, NET_PAD)
+	-- Junctions are level. Each road is a flat ribbon at the grade along its own centre line, so
+	-- where two meet on sloping ground their surfaces would stand a stud or two apart at the
+	-- corners. Round every junction (a node three or more roads meet at, none of them an
+	-- interstate: those take only ramps, which merge along them) the grade is the node's own out
+	-- to the widest road's pavement, easing back to the land's over JUNCTION_EASE studs.
+	local junctions: { { x: number, z: number, r: number, m: number } } = {}
+	do
+		local at: { [string]: { x: number, z: number, r: number, skip: boolean } } = {}
+		for _, g in net.all do
+			if not g.bulb then
+				for _, tip in { { g.ax, g.az, g.degreeA }, { g.bx, g.bz, g.degreeB } } do
+					if tip[3] >= 3 then
+						local key = `{tip[1]},{tip[2]}`
+						local node = at[key]
+						if not node then
+							node = { x = tip[1], z = tip[2], r = 0, skip = false }
+							at[key] = node
+						end
+						node.r = math.max(node.r, g.spec.pavement)
+						node.skip = node.skip or g.spec.key == "interstate"
+					end
+				end
+			end
+		end
+		for _, node in at do
+			if not node.skip then
+				table.insert(junctions, { x = node.x, z = node.z, r = node.r, m = landGradeM(node.x, node.z) })
+			end
+		end
+	end
+	local function baseGradeM(x: number, z: number): number
+		local grade = landGradeM(x, z)
+		local level, most = grade, 0
+		for _, j in junctions do
+			local dx, dz = x - j.x, z - j.z
+			local reach = j.r + JUNCTION_EASE
+			if math.abs(dx) < reach and math.abs(dz) < reach then
+				local f = math.clamp((math.sqrt(dx * dx + dz * dz) - j.r) / JUNCTION_EASE, 0, 1)
+				local w = 1 - f * f * (3 - 2 * f)
+				if w > most then
+					level, most = j.m, w
+				end
+			end
+		end
+		return grade + (level - grade) * most
+	end
+	local function baseTop(x: number, z: number): number
+		return toStuds(baseGradeM(x, z) + ROAD_RAISE_M) + Roads.LIFT
+	end
 
 	local settlements = settlementsNear(x0 + SIZE / 2, z0 + SIZE / 2)
 
@@ -305,7 +354,8 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	--   over rivers: wherever a road crosses one (town streets only over creeks; at a wider river
 	--     they stop at the bank), most important roads first; a bridge that would run into one
 	--     already placed is not built, and its road stops at the bank.
-	type Planned = { crossing: Bridges.Crossing, footprint: Bridges.Footprint, underX: number?, underZ: number? }
+	-- (joinedA, joinedB: whether another road crosses or ends on the ramp at that end of the bridge.)
+	type Planned = { crossing: Bridges.Crossing, footprint: Bridges.Footprint, underX: number?, underZ: number?, joinedA: boolean, joinedB: boolean }
 	local planned: { Planned } = {}
 	local function footprintsMeet(a: Bridges.Footprint, b: Bridges.Footprint): boolean
 		for i = 0, 6 do
@@ -324,7 +374,27 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 				return false
 			end
 		end
-		table.insert(planned, { crossing = crossing, footprint = footprint, underX = underX, underZ = underZ })
+		-- Which of its ramps another road crosses or ends on (only those raise the grade beside
+		-- them, see approachLift: a road that merely runs past a ramp stays on the land's grade).
+		local f = footprint
+		local length = math.sqrt((f.bx - f.ax) ^ 2 + (f.bz - f.az) ^ 2)
+		local fx, fz = (f.bx - f.ax) / length, (f.bz - f.az) / length
+		local joined = { false, false }
+		for index, ramp in { { 0, f.rampA }, { length - f.rampB, length } } do
+			if ramp[2] - ramp[1] > 1 then
+				local sx, sz, ex, ez = f.ax + fx * ramp[1], f.az + fz * ramp[1], f.ax + fx * ramp[2], f.az + fz * ramp[2]
+				for _, g in net.all do
+					if not g.bulb and math.abs(g.ux * fx + g.uz * fz) < 0.7 then
+						local hit = Bridges.intersect(g.ax, g.az, g.bx, g.bz, sx, sz, ex, ez)
+						if hit or toSegment(g.ax, g.az, sx, sz, ex, ez) < f.half + 2 or toSegment(g.bx, g.bz, sx, sz, ex, ez) < f.half + 2 then
+							joined[index] = true
+							break
+						end
+					end
+				end
+			end
+		end
+		table.insert(planned, { crossing = crossing, footprint = footprint, underX = underX, underZ = underZ, joinedA = joined[1], joinedB = joined[2] })
 		return true
 	end
 	local function kindOf(spec: RoadNet.Spec): number
@@ -460,9 +530,9 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 				local d, t = toSegment(x, z, f.ax, f.az, f.bx, f.bz)
 				local along = t * length
 				local farX, farZ, share
-				if along < f.rampA then
+				if along < f.rampA and b.joinedA then
 					farX, farZ, share = f.ax, f.az, along / f.rampA
-				elseif along > length - f.rampB then
+				elseif along > length - f.rampB and b.joinedB then
 					farX, farZ, share = f.bx, f.bz, (length - along) / f.rampB
 				end
 				if share and share > 0 and d < f.half + APPROACH_RUN * 60 then
@@ -807,11 +877,12 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	end
 
 	return {
-		region = Region3.new(Vector3.new(x0, yMin, z0), Vector3.new(x1, yMax, z1)),
+		-- (the region and its heights in the place's studs: where the voxels are written)
+		region = Region3.new(Vector3.new(x0, yMin, z0) * WORLD, Vector3.new(x1, yMax, z1) * WORLD),
 		materials = materials,
 		occupancy = occupancy,
-		yMin = yMin,
-		yMax = yMax,
+		yMin = yMin * WORLD,
+		yMax = yMax * WORLD,
 		props = props,
 	}
 end
@@ -845,8 +916,9 @@ function ChunkGen.place(props: Builder.Props, parent: Instance, name: string, bu
 		elseif p.shape == "Cylinder" then
 			(part :: Part).Shape = Enum.PartType.Cylinder
 		end
-		part.Size = p.size
-		part.CFrame = p.cf
+		-- (described in design studs: into the place at the world's scale)
+		part.Size = p.size * WORLD
+		part.CFrame = p.cf.Rotation + p.cf.Position * WORLD
 		part.Color = p.color
 		part.Material = p.material
 		part.Anchored = true
@@ -871,6 +943,9 @@ function ChunkGen.place(props: Builder.Props, parent: Instance, name: string, bu
 	end
 	-- the chunk's trees, for the skinned trees (Shared/Foliage/Records)
 	local trees = Trees.take(props)
+	for _, tree in trees do
+		tree.x, tree.y, tree.z = tree.x * WORLD, tree.y * WORLD, tree.z * WORLD
+	end
 	if #trees > 0 then
 		model:SetAttribute("Trees", FoliageRecords.encodeTrees(trees))
 	end
@@ -880,8 +955,9 @@ end
 
 -- Ground height (studs) at a point, without rivers, lakes or roads: for placing things before
 -- their chunk is built.
+-- The ground's height at a point, both in the place's studs (before rivers, lakes and roads).
 function ChunkGen.groundStudsAt(x: number, z: number): number
-	return Heightfield.studsAt(x, z)
+	return Heightfield.studsAt(x / WORLD, z / WORLD) * WORLD
 end
 
 return ChunkGen
