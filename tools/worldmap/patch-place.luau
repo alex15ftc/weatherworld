@@ -110,6 +110,18 @@ local after = #place:GetDescendants()
 print(`place: {before} -> {after} instances (expected {before + delta})`)
 assert(after == before + delta, "the instance count is not what the changes account for")
 
+-- Terrain grass: its blade length is a setting of the place file (not scriptable in a running
+-- game, and the Rojo build has no Terrain), so it is set here. The world is at half size
+-- (Config.WORLD_SCALE 0.5), so the blades are half the 0.7 the place was made with.
+local GRASS_LENGTH = 0.35
+do
+	local terrain = place:GetService("Workspace"):FindFirstChildOfClass("Terrain")
+	if terrain then
+		local was = (terrain :: any).GrassLength;
+		(terrain :: any).GrassLength = GRASS_LENGTH
+		print(`terrain grass length: {string.format("%.2f", was)} -> {string.format("%.2f", (terrain :: any).GrassLength)}`)
+	end
+end
 local bytes = roblox.serializePlace(place)
 fs.writeFile(outPath, bytes)
 print(`wrote {outPath}: {#bytes} bytes ({string.format("%.2f", #bytes / 1048576)} MiB; the upload limit is 10 MiB)`)

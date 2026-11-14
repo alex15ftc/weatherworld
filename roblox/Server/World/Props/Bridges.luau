@@ -27,7 +27,7 @@ Bridges.BANK_EXTRA = 18 -- the bridge reaches this far past each side of the wat
 
 -- A crossing of a river, or (overpass) of a road the bridge's road passes over: riverHalf is then
 -- that road's half-width along the bridge, water its surface, clearance the headroom over it.
-export type Crossing = { x: number, z: number, ux: number, uz: number, riverHalf: number, water: number, roadHalf: number, kind: number, surface: string?, priority: number?, overpass: boolean?, clearance: number?, belowDivided: boolean? }
+export type Crossing = { x: number, z: number, ux: number, uz: number, riverHalf: number, water: number, roadHalf: number, kind: number, surface: string?, priority: number?, overpass: boolean?, clearance: number?, belowDivided: boolean?, deck: number?, chain: any?, ford: any? }
 -- What a bridge occupies, ramps included: a centre line and a half-width; the deck's height and
 -- the length of the ramp at each end (0 where the road meets the deck level).
 export type Footprint = { ax: number, az: number, bx: number, bz: number, half: number, deck: number, rampA: number, rampB: number }
@@ -74,7 +74,8 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 		local p = along(c, f * halfSpan, 0, 0)
 		banks = math.max(banks, ctx.ground(p.X, p.Z) + 1.5)
 	end
-	local deck = math.max(gA, gB, c.water + clear, banks)
+	-- (c.deck: at least this high, to stand level with a bridge beside it)
+	local deck = math.max(gA, gB, c.water + clear, banks, c.deck or -math.huge)
 	local bed = if c.overpass then c.water - 2 else c.water - 10
 	local r = hash(math.floor(c.x), math.floor(c.z), 91)
 	local timber = c.surface == "gravel" or c.surface == "dirt"

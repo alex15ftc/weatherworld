@@ -99,7 +99,15 @@ local function path(props: Builder.Props, ground: ((number, number) -> number)?,
 end
 
 -- A house facing -z in its frame, setback studs back from the street edge of its lot.
-local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, setback: number, ground: ((number, number) -> number)?)
+-- (across: the width of ground it may take, centred on its frame: the footprint its lot was tested
+-- with. The house is no wider, and a wing is built only where it fits, so no part of a house
+-- stands outside the ground that was found clear of roads, water and other buildings.)
+-- (free: whether a box of ground beside the house is clear of roads, water and other buildings.
+-- The garage, the shed and the mailbox stand outside the house's own footprint, so each is built
+-- only on ground that is: a garage moves to the other side, or is left out.)
+type Free = (CFrame, number, number) -> boolean
+local freeIn: (any) -> Free
+local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, setback: number, ground: ((number, number) -> number)?, across: number?, free: Free?)
 	local depthAvailable = setback
 	local style = rnd()
 	local siding = pick(SIDING, rnd())
@@ -116,6 +124,32 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 	elseif style < 0.62 then -- cape: steep roof with a dormer
 		rise = 12
 	end
+	if across then
+		w = math.min(w, across)
+	end
+	-- Garage: attached at one side, or none. With a footprint given, the house and its garage
+	-- share it: the house is narrowed and set to one side, so the garage needs no ground beyond
+	-- what the lot tested. Without one (a farmstead), the garage goes where the ground is free.
+	local side = if rnd() < 0.5 then -1 else 1
+	local garage = rnd() < 0.75
+	local shift = 0
+	if garage and across then
+		if across - 15 >= 22 then
+			w = math.min(w, across - 15)
+			shift = -side * 7.5
+			frame = frame * CFrame.new(shift, 0, 0)
+		else
+			garage = false
+		end
+	elseif garage and free then
+		local function clear(to: number): boolean
+			return free(frame * CFrame.new(to * (w / 2 + 7.5), 0, 1), 17, d)
+		end
+		if not clear(side) then
+			side = -side
+			garage = clear(side)
+		end
+	end
 	at(props, frame, 0, -3, 0, w, wall + 3, d, siding)
 	local top = frame * CFrame.new(0, wall, 0)
 	Builder.gable(props, top.X, top.Y, top.Z, w, d, rise, roof, yawOf(frame))
@@ -123,7 +157,7 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 		at(props, frame, 0, wall + 2, -d / 2 + 2, 7, 6, 5, siding)
 		at(props, frame, 0, wall + 3.5, -d / 2 - 0.55, 4, 3.5, 0.3, GLASS, M.Glass, false)
 	end
-	if style >= 0.62 and style < 0.78 then -- split-level: a raised wing
+	if style >= 0.62 and style < 0.78 and not (garage and side > 0) and (not across or shift + w / 2 + 18 <= across / 2) then -- split-level: a raised wing
 		local wx = w / 2 + 9
 		at(props, frame, wx, -3, 2, 18, wall + 8, d - 4, siding)
 		local wt = frame * CFrame.new(wx, wall + 5, 2)
@@ -154,10 +188,8 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 	if rnd() < 0.35 then
 		at(props, frame, w * (rnd() - 0.5) * 0.6, wall + 1, d * 0.2, 2.5, rise + 3, 2.5, pick(BRICK, rnd()), M.Brick)
 	end
-	-- Garage: attached at one side, or none; a drive to the street.
-	local g = rnd()
-	if g < 0.75 then
-		local side = if rnd() < 0.5 then -1 else 1
+	-- The garage and a drive to the street.
+	if garage then
 		local gx = side * (w / 2 + 7.5)
 		at(props, frame, gx, -3, 1, 15, 13, d - 2, siding)
 		at(props, frame, gx, 10, 1, 16, 0.8, d - 1, roof, M.Slate, false)
@@ -169,8 +201,11 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 		-- Mailbox at the curb by the drive.
 		local mb = frame * CFrame.new(gx + side * 8, 0, -d / 2 - depthAvailable - 1)
 		local my = if ground then ground(mb.X, mb.Z) else frame.Y
-		Builder.block(props, CFrame.new(mb.X, my + 2, mb.Z) * frame.Rotation, 0.4, 4, 0.4, rgb(90, 80, 70), M.Wood)
-		Builder.block(props, CFrame.new(mb.X, my + 4.3, mb.Z) * frame.Rotation, 1, 1, 1.8, pick({ rgb(30, 30, 30), rgb(200, 200, 200), rgb(40, 60, 120) }, rnd()), M.Metal)
+		local boxColour = pick({ rgb(30, 30, 30), rgb(200, 200, 200), rgb(40, 60, 120) }, rnd())
+		if not free or free(mb, 3, 3) then
+			Builder.block(props, CFrame.new(mb.X, my + 2, mb.Z) * frame.Rotation, 0.4, 4, 0.4, rgb(90, 80, 70), M.Wood)
+			Builder.block(props, CFrame.new(mb.X, my + 4.3, mb.Z) * frame.Rotation, 1, 1, 1.8, boxColour, M.Metal)
+		end
 	else
 		-- No garage: a drive at the side, a walk from the door to the street.
 		local dx = (if rnd() < 0.5 then -1 else 1) * (w / 2 + 6)
@@ -181,7 +216,11 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 		path(props, ground, frame, -w * 0.2, d / 2 + 1, -w * 0.2, d / 2 + 11, 14, rgb(186, 180, 170), M.Concrete)
 	end
 	if rnd() < 0.25 then -- shed out back
-		at(props, frame, (rnd() - 0.5) * w, -1, d / 2 + 14, 8, 8, 8, pick(SIDING, rnd()), M.WoodPlanks)
+		local sx = (rnd() - 0.5) * w
+		local shedColour = pick(SIDING, rnd())
+		if not free or free(frame * CFrame.new(sx, 0, d / 2 + 14), 10, 10) then
+			at(props, frame, sx, -1, d / 2 + 14, 8, 8, 8, shedColour, M.WoodPlanks)
+		end
 	end
 end
 
@@ -481,7 +520,7 @@ local function farmstead(props: Builder.Props, ctx: Ctx, x: number, z: number, r
 	local y = ctx.ground(x, z)
 	local yaw = math.floor(rnd() * 4) * math.pi / 2
 	local frame = CFrame.new(x, y, z) * CFrame.Angles(0, yaw, 0)
-	house(props, frame, rnd, 30, ctx.ground)
+	house(props, frame, rnd, 30, ctx.ground, nil, freeIn(ctx, frame))
 	-- Barn: red, white or grey, set off at a random spot, on the lowest ground under it.
 	local bx, bz = x + 50 + 20 * rnd(), z + (rnd() - 0.4) * 50
 	local barnYaw = math.floor(rnd() * 2) * math.pi / 2
@@ -591,10 +630,10 @@ end
 -- Whether a footprint keeps clear of everything placed so far: none of its corners, edge
 -- midpoints or centre inside another's, nor theirs inside it.
 local PROBES = { { -0.5, -0.5 }, { 0.5, -0.5 }, { -0.5, 0.5 }, { 0.5, 0.5 }, { 0, 0 }, { 0, -0.5 }, { 0, 0.5 }, { -0.5, 0 }, { 0.5, 0 } }
-local function unoccupied(ctx: Ctx, frame: CFrame, sx: number, sz: number): boolean
+local function unoccupied(ctx: Ctx, frame: CFrame, sx: number, sz: number, skip: CFrame?): boolean
 	for _, o in ctx.occupied do
 		local reach = math.max(o.hx, o.hz) * 1.5 + math.max(sx, sz) * 0.75
-		if (o.cf.X - frame.X) ^ 2 + (o.cf.Z - frame.Z) ^ 2 < reach * reach then
+		if o.cf ~= skip and (o.cf.X - frame.X) ^ 2 + (o.cf.Z - frame.Z) ^ 2 < reach * reach then
 			for _, f in PROBES do
 				local p = frame * Vector3.new(f[1] * sx, 0, f[2] * sz)
 				local a = o.cf:PointToObjectSpace(Vector3.new(p.X, o.cf.Y, p.Z))
@@ -612,8 +651,17 @@ local function unoccupied(ctx: Ctx, frame: CFrame, sx: number, sz: number): bool
 	return true
 end
 
-local function fits(ctx: Ctx, frame: CFrame, sx: number, sz: number): number?
-	for _, scale in { 1, 0.85, 0.7 } do
+-- (shrink: the caller builds at the scale returned, so a smaller footprint may be tried. Without
+-- it only the full footprint is tested: a builder that builds full size must not be told it fits
+-- when only a smaller one did, or it stands past the ground that was found clear.)
+-- (own: the footprint the house itself claimed, which its shed and mailbox adjoin.)
+function freeIn(ctx: any, own: CFrame?): Free
+	return function(cf: CFrame, sx: number, sz: number): boolean
+		return ctx.net:clearBox(cf, sx, sz, 1) and dry(ctx, cf, sx, sz) and unoccupied(ctx, cf, sx, sz, own)
+	end
+end
+local function fits(ctx: Ctx, frame: CFrame, sx: number, sz: number, shrink: boolean?): number?
+	for _, scale in (if shrink then { 1, 0.85, 0.7 } else { 1 }) do
 		if ctx.net:clearBox(frame, sx * scale, sz * scale, 2) and dry(ctx, frame, sx * scale, sz * scale) and unoccupied(ctx, frame, sx * scale, sz * scale) and not steep(ctx, frame, sx * scale, sz * scale) then
 			table.insert(ctx.occupied, { cf = frame, hx = sx * scale / 2, hz = sz * scale / 2 })
 			footing(ctx, frame, sx * scale, sz * scale)
@@ -657,7 +705,7 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 		end
 		height = 12 * math.floor(height / 12)
 		local fw, fd = math.min(across - 6, 40 + 50 * rnd()), math.min(deep - 6, 40 + 50 * rnd())
-		local scale = fits(ctx, frame, fw, fd)
+		local scale = fits(ctx, frame, fw, fd, true)
 		if scale then
 			tower(props, frame, fw * scale, fd * scale, height, rnd)
 		end
@@ -672,7 +720,7 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 		-- On a deep parcel the building stands at the back with its parking lot in front.
 		local lot = if deep > 100 and rnd() < 0.6 then math.min(60, deep * 0.4) else 0
 		local bf = frame * CFrame.new(0, 0, lot / 2)
-		local scale = fits(ctx, bf, fw, fd - lot)
+		local scale = fits(ctx, bf, fw, fd - lot, true)
 		if scale then
 			if roll < 0.75 then
 				midrise(props, bf, fw * scale, (fd - lot) * scale, 3 + math.floor(7 * rnd() * rnd() + 2 * (1 - distance / s.core)), rnd)
@@ -688,7 +736,7 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 		-- small offices with their parking.
 		local scale
 		if roll < 0.3 then
-			scale = fits(ctx, frame, across - 4, 74)
+			scale = fits(ctx, frame, across - 4, 74, true)
 			if scale then
 				stripMall(props, frame, math.min(across - 6, 110) * scale, rnd)
 			end
@@ -700,7 +748,7 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 			-- A store or offices at the back of the lot, parking in front.
 			local lot = math.min(70, (deep - 8) * 0.45)
 			local bf = frame * CFrame.new(0, 0, lot / 2)
-			scale = fits(ctx, bf, across - 8, deep - 8 - lot)
+			scale = fits(ctx, bf, across - 8, deep - 8 - lot, true)
 			if scale then
 				if roll < 0.7 then
 					storefront(props, bf, (across - 8) * scale, (deep - 8 - lot) * scale, rnd)
@@ -719,7 +767,7 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 				grainElevator(props, frame, rnd)
 			end
 		elseif roll < 0.9 then
-			local scale = fits(ctx, frame, across - 4, deep - 4)
+			local scale = fits(ctx, frame, across - 4, deep - 4, true)
 			if scale then
 				warehouse(props, frame, (across - 4) * scale, (deep - 4) * scale, rnd)
 			end
@@ -737,12 +785,12 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 			local set = 10 + 10 * rnd()
 			local hf = frame * CFrame.new((rnd() - 0.5) * (across - hw) * 0.5, 0, -deep / 2 + set + hd / 2)
 			if fits(ctx, hf, hw + 18, hd) then
-				house(props, hf, rnd, set, ctx.ground)
+				house(props, hf, rnd, set, ctx.ground, hw + 18, freeIn(ctx, hf))
 			end
 		else
 			local lot = math.min(60, (deep - 8) * 0.4)
 			local bf = frame * CFrame.new(0, 0, lot / 2)
-			local scale = fits(ctx, bf, across - 8, deep - 8 - lot)
+			local scale = fits(ctx, bf, across - 8, deep - 8 - lot, true)
 			if scale then
 				midrise(props, bf, (across - 8) * scale, (deep - 8 - lot) * scale, 2 + math.floor(4 * rnd()), rnd)
 				parking(props, frame * CFrame.new(0, 0, -deep / 2 + lot / 2 + 3), across - 10, lot - 4, ctx.ground)
@@ -754,7 +802,7 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 		if roll < 0.08 then
 			return -- a vacant lot
 		end
-		local scale = fits(ctx, sf, fw, fd)
+		local scale = fits(ctx, sf, fw, fd, true)
 		if scale then
 			storefront(props, sf, fw * scale, fd * scale, rnd)
 		end
@@ -816,10 +864,13 @@ local function houseRow(ctx: Ctx, block: Rect, side: string, seedX: number, seed
 			if ctx.net:clearBox(frame, math.min(lot - 4, 56), 32, 0) and dry(ctx, frame, math.min(lot - 4, 56), 32) and unoccupied(ctx, frame, math.min(lot - 4, 56), 32) and not steep(ctx, frame, math.min(lot - 4, 56), 32) then
 				table.insert(ctx.occupied, { cf = frame, hx = math.min(lot - 4, 56) / 2, hz = 16 })
 				footing(ctx, frame, math.min(lot - 4, 56) - 2, 30)
-				house(props, frame, rnd, set, ctx.ground)
-				-- A back fence along the rear of the lot, now and then.
+				house(props, frame, rnd, set, ctx.ground, math.min(lot - 4, 56), freeIn(ctx, frame))
+				-- A back fence along the rear of the lot, now and then (not across a road that
+				-- cuts through the block, nor into water).
 				local back = (if alongX then (block.z1 - block.z0) else (block.x1 - block.x0)) / 2 - (set + 12)
-				if rnd() < 0.45 and back > 20 then
+				local fenced = rnd() < 0.45 and back > 20
+				local line = frame * CFrame.new(0, 0, back - 1)
+				if fenced and ctx.net:clearBox(line, lot - 2, 1, 2) and dry(ctx, line, lot - 2, 1) then
 					local wood = rnd() < 0.7
 					local fence = if wood then pick({ rgb(150, 120, 90), rgb(230, 228, 220) }, rnd()) else rgb(110, 110, 112)
 					local a, b = frame * Vector3.new(-lot / 2 + 1, 0, back - 1), frame * Vector3.new(lot / 2 - 1, 0, back - 1)
@@ -868,7 +919,7 @@ local function slantRows(ctx: Ctx, g: RoadNet.Segment)
 					if ctx.net:clearBox(frame, w, 32, 0) and dry(ctx, frame, w, 32) and unoccupied(ctx, frame, w, 32) and not steep(ctx, frame, w, 32) then
 						table.insert(ctx.occupied, { cf = frame, hx = w / 2, hz = 16 })
 						footing(ctx, frame, w - 2, 30)
-						house(props, frame, stream(seedX * 64 + i, seedZ * 4 + sideIndex, 410), set, ctx.ground)
+						house(props, frame, stream(seedX * 64 + i, seedZ * 4 + sideIndex, 410), set, ctx.ground, w, freeIn(ctx, frame))
 					end
 				end
 			end
@@ -1016,7 +1067,7 @@ function Buildings.build(ctx: Ctx)
 				local fx = qx * QUARTER + 50 + 120 * rnd()
 				local fz = qz * QUARTER + 60 + 120 * rnd()
 				local key = ctx.coverKey(fx, fz)
-				if ctx.inside(fx, fz) and (key == "cropland" or key == "irrigated" or key == "grassland" or key == "tallgrass" or key == "redRange") and not ctx.busy(fx, fz) and ctx.net:clear(fx, fz, 90) and unoccupied(ctx, CFrame.new(fx + 50, 0, fz), 220, 140) then
+				if ctx.inside(fx, fz) and (key == "cropland" or key == "irrigated" or key == "grassland" or key == "tallgrass" or key == "redRange") and not ctx.busy(fx, fz) and ctx.net:clear(fx, fz, 90) and ctx.net:clearBox(CFrame.new(fx + 55, 0, fz), 240, 140, 2) and unoccupied(ctx, CFrame.new(fx + 50, 0, fz), 220, 140) then
 					farmstead(props, ctx, fx, fz, rnd)
 					table.insert(ctx.occupied, { cf = CFrame.new(fx + 50, 0, fz), hx = 110, hz = 70 })
 				end

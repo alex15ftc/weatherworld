@@ -4,7 +4,9 @@
 -- place's own modules, loaded from the file), and the buildings' footprints are tested against
 -- the roads, each other (within a chunk and across chunk edges), water and bridges.
 --   cd roblox && rojo build default.project.json -o build/harness.rbxl
---   lune run tools/worldmap/run-chunks.luau roblox/build/harness.rbxl [out.json] [groups] [radius]
+--   lune run tools/worldmap/run-chunks.luau roblox/build/harness.rbxl [out.json] [groups] [radius] [mode]
+-- mode: "places" (default), "crossings" (interchanges and overpasses across the map) or
+-- "at:x,z;x,z" (map miles). DEBUG_PARTS=1 lists the parts around each hole in a road.
 -- groups: how many places to visit (default 8); radius: chunks either side of each (default 1).
 -- A chunk that throws is reported with its error: this is also the offline check that the
 -- generator runs at all.
@@ -14,9 +16,12 @@ local process = require("@lune/process")
 local roblox = require("@lune/roblox")
 local serde = require("@lune/serde")
 local task = require("@lune/task")
+local Vector3 = (roblox :: any).Vector3
 
 local placePath, outPath = process.args[1], process.args[2]
 local GROUPS, RADIUS = tonumber(process.args[3]) or 8, tonumber(process.args[4]) or 1
+-- mode "crossings": visit interchanges and overpasses across the whole map instead of the towns.
+local MODE = process.args[5] or "places"
 assert(placePath, "usage: run-chunks.luau <place.rbxl> [out.json] [groups] [radius]")
 -- (Everything is already in a place read from a file.)
 roblox.implementMethod("Instance", "WaitForChild", function(self: any, name: string)
@@ -105,15 +110,20 @@ local Roads = requireModule(World.Props.Roads)
 -- What each chunk's builders were handed (their contexts hold the network and the footprints).
 local seenBuildings, seenRoads
 local buildBuildings, buildRoads = Buildings.build, Roads.build
+local buildingRuns: { { props: any, from: number, to: number } } = {}
 Buildings.build = function(ctx)
 	seenBuildings = ctx
-	return buildBuildings(ctx)
+	local from = #ctx.props
+	local result = buildBuildings(ctx)
+	table.insert(buildingRuns, { props = ctx.props, from = from + 1, to = #ctx.props })
+	return result
 end
 Roads.build = function(ctx)
 	seenRoads = ctx
 	return buildRoads(ctx)
 end
 
+local WORLD = Config.WORLD_SCALE or 1
 local SIZE, MILE, HALF = Config.CHUNK_STUDS, Config.DESIGN_STUDS_PER_MILE, Config.MAP_MILES / 2
 local meta = WorldMap.meta
 
@@ -151,6 +161,42 @@ do
 		end
 	end
 	addPlace("open country", city.x + 40.5, city.y + 30.5)
+	-- More open country, beside towns across the map (farmsteads, wells and field roads).
+	local towns = byKind.town or {}
+	for _, at in { 0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95 } do
+		local s = towns[math.clamp(math.round(at * #towns), 1, #towns)]
+		if s then
+			addPlace(`country by {s.name}`, s.x + s.extentMi + 1.3, s.y + 0.7)
+		end
+	end
+end
+if string.sub(MODE, 1, 3) == "at:" then
+	-- at:x,z[;x,z...]: the places at these map miles.
+	table.clear(places)
+	for pair in string.gmatch(string.sub(MODE, 4), "[^;]+") do
+		local mx, my = string.match(pair, "([%d.]+),([%d.]+)")
+		addPlace("at " .. pair, tonumber(mx) :: number, tonumber(my) :: number)
+	end
+end
+if MODE == "crossings" then
+	table.clear(places)
+	local seen = 0
+	for step = 0, 399 do
+		local index = (step * 37) % 400
+		local ti, tj = index % 20, index // 20
+		local tile = WorldMap.tilesFor(ti * 25 + 1, tj * 25 + 1, ti * 25 + 2, tj * 25 + 2)[1]
+		local found = {}
+		if tile then
+			for i = 1, #tile.crossings, 11 do
+				local kind = tile.crossings[i]
+				if not found[kind] and #places < GROUPS then
+					found[kind] = true
+					seen += 1
+					addPlace((if kind == 1 then "interchange " else "overpass ") .. seen, tile.crossings[i + 2], tile.crossings[i + 3])
+				end
+			end
+		end
+	end
 end
 while #places > GROUPS do
 	table.remove(places)
@@ -211,7 +257,7 @@ local totals = report.totals
 local examples: { [string]: { string } } = {}
 local function note(kind: string, text: string)
 	examples[kind] = examples[kind] or {}
-	if #examples[kind] < 12 then
+	if #examples[kind] < 400 then
 		table.insert(examples[kind], text)
 	end
 end
@@ -219,6 +265,15 @@ local falls: { number }, buried: { number } = {}, {}
 local roadGaps: { number } = {}
 local bends: { number } = {}
 local roadSamples, roadPokes, roadFloats = 0, 0, 0
+local buildingParts, partsOnRoads = 0, 0
+local surfaceSamples, surfaceHoles, surfaceSteps, surfaceOff, trenches = 0, 0, 0, 0, 0
+local drops: { number } = {}
+local bridgeViews, bridgeMissing, bridgeDiffers = 0, 0, 0
+-- (a road's top this far above the columns around it is clear of the drawn terrain: half a voxel
+-- of the place's 4-stud voxels, in design studs)
+local CLEAR_MIN = 2 / WORLD
+local clearGrade: { number }, clearRamp: { number } = {}, {}
+local buriedGrade, buriedRamp = 0, 0
 local function miles(x: number, z: number): string
 	return string.format("(%.3f, %.3f) mi", x / MILE + HALF, z / MILE + HALF)
 end
@@ -227,9 +282,11 @@ for _, placeAt in places do
 	local cx0, cz0 = math.floor(placeAt.x / SIZE), math.floor(placeAt.z / SIZE)
 	local group = { name = placeAt.name, chunks = 0, failed = 0, footprints = 0, intoRoad = 0, overlapInChunk = 0, overlapAcross = 0, inWater = 0, props = 0, segments = 0, errors = {} }
 	local feet: { Foot } = {}
+	local built: { { rc: any, props: any, inner: boolean, columns: { number }, cx: number, cz: number } } = {}
 	for cx = cx0 - RADIUS, cx0 + RADIUS do
 		for cz = cz0 - RADIUS, cz0 + RADIUS do
 			seenBuildings, seenRoads = nil, nil
+			table.clear(buildingRuns)
 			local started = os.clock()
 			local ok, result = pcall(function()
 				ChunkGen.prepare(cx, cz)
@@ -245,6 +302,9 @@ for _, placeAt in places do
 				continue
 			end
 			group.props += #result.props
+				if seenRoads then
+					table.insert(built, { rc = seenRoads, props = result.props, columns = result.columns, bridges = result.bridges, cx = cx, cz = cz, inner = math.max(math.abs(cx - cx0), math.abs(cz - cz0)) < math.max(RADIUS, 1) or RADIUS == 0 })
+				end
 			-- Roads against the ground under them: a road's slab is BED studs thick with its top
 			-- on the grade along its centre line, and the ground is cut to just inside it. Sampled
 			-- along every road piece in the chunk, at its middle and near both edges: ground above
@@ -294,16 +354,51 @@ for _, placeAt in places do
 											local gap = top - rc.ground(x, z)
 											roadSamples += 1
 											table.insert(roadGaps, gap)
-											if gap < 0.3 then
+											if gap < 0.3 / WORLD then
 												roadPokes += 1
 												note("groundThroughRoad", string.format("%s: the ground stands %.1f studs above a %s's top at %s", placeAt.name, 0.3 - gap + 0.0, g.spec.key, miles(x, z)))
-											elseif gap > 5.5 then
+											elseif gap > Roads.BED + 1.5 / WORLD then
 												roadFloats += 1
 												local nearest, nd = rc.net:near(x, z, 64)
 												note("roadInTheAir", string.format("%s: a %s's top is %.1f studs above the ground at %s (nearest road there: %s at %.0f studs; a bridge or ramp stands there: %s; natural grade there would put the top at %.1f)", placeAt.name, g.spec.key, gap, miles(x, z), if nearest then nearest.spec.key else "none", nd, tostring(rc.bridged(x, z)), rc.ground(x, z) + 3.5 - top))
 											end
 										end
 									end
+								end
+							end
+						end
+					end
+				end
+			end
+			-- Buildings against the roads, by their parts (not the footprints they claim): every
+			-- upright block the building pass made, sampled across its base, against every road's
+			-- pavement. Flat things (paths, drives, lots, fences' rails) and roofs are left out.
+			if rc then
+				for _, run in buildingRuns do
+					if run.props == result.props then
+						for index = run.from, run.to do
+							local part = run.props[index]
+							if part and part.shape == "Block" and part.size.Y >= 4 and math.abs(part.cf.UpVector.Y) > 0.99 then
+								local sx, sz = part.size.X, part.size.Z
+								local worst, road = 0, nil
+								local nx, nz = math.max(1, math.ceil(sx / 4)), math.max(1, math.ceil(sz / 4))
+								for i = 0, nx do
+									for j = 0, nz do
+										local p = part.cf * Vector3.new((i / nx - 0.5) * sx, 0, (j / nz - 0.5) * sz)
+										for _, g in rc.net.segments do
+											if not g.bulb then
+												local inside = g.spec.pavement - RoadNet.toSegment(g, p.X, p.Z)
+												if inside > worst and not rc.bridged(p.X, p.Z, g) then
+													worst, road = inside, g
+												end
+											end
+										end
+									end
+								end
+								buildingParts += 1
+								if worst > 1 and road then
+									partsOnRoads += 1
+									note("partOnRoad", string.format("%s: a part %.0f x %.0f x %.0f high at %s stands %.1f studs into a %s's pavement", placeAt.name, sx, sz, part.size.Y, miles(part.cf.X, part.cf.Z), worst, road.spec.key))
 								end
 							end
 						end
@@ -375,6 +470,248 @@ for _, placeAt in places do
 			end
 		end
 	end
+	-- The surface a car drives on, along every road of the inner chunks (bridges, ramps and
+	-- junctions included): the tops of the flat parts all the place's chunks laid, every 4 studs
+	-- along each carriageway. No part under a point is a hole in the road; two points 4 studs
+	-- apart with no tops within STEP of each other are a step (a deck that does not meet its
+	-- road, a ramp that ends in the air); and off a bridge the top must be near the road's grade.
+	do
+		local CELL, STEP = 64, 1.2
+		local grid: { [number]: { any } } = {}
+		for _, b in built do
+			for _, part in b.props do
+				if part.shape == "Block" and part.collide ~= false and part.cf.UpVector.Y > 0.9 and math.min(part.size.X, part.size.Z) >= 2 and math.max(part.size.X, part.size.Z) >= 8 and part.size.Y <= 12 then
+					local r = math.sqrt(part.size.X ^ 2 + part.size.Z ^ 2) / 2
+					for gx = math.floor((part.cf.X - r) / CELL), math.floor((part.cf.X + r) / CELL) do
+						for gz = math.floor((part.cf.Z - r) / CELL), math.floor((part.cf.Z + r) / CELL) do
+							local key = gx * 100003 + gz
+							grid[key] = grid[key] or {}
+							table.insert(grid[key], part)
+						end
+					end
+				end
+			end
+		end
+		local function tops(x: number, z: number): { number }
+			local out = {}
+			for _, part in grid[math.floor(x / CELL) * 100003 + math.floor(z / CELL)] or {} do
+				local cf = part.cf
+				local l0 = cf:PointToObjectSpace(Vector3.new(x, 0, z))
+				local u = cf:VectorToObjectSpace(Vector3.new(0, 1, 0))
+				local y = (part.size.Y / 2 - l0.Y) / u.Y
+				local l = l0 + u * y
+				if math.abs(l.X) <= part.size.X / 2 + 0.05 and math.abs(l.Z) <= part.size.Z / 2 + 0.05 then
+					table.insert(out, y)
+				end
+			end
+			return out
+		end
+		-- Bridges: every chunk plans the bridges around it for itself, and the chunk a bridge's
+		-- crossing lies in builds it. A bridge one chunk reckons with (it leaves the road off
+		-- there) that its owner does not plan, or plans at another height, is a hole or a step.
+		do
+			local byChunk: { [number]: any } = {}
+			for _, b in built do
+				byChunk[b.cx * 100003 + b.cz] = b
+			end
+			for _, b in built do
+				for _, plan in b.bridges or {} do
+					local c = plan.crossing
+					local owner = byChunk[math.floor(c.x / SIZE) * 100003 + math.floor(c.z / SIZE)]
+					if owner and owner ~= b then
+						bridgeViews += 1
+						local same = nil
+						for _, other in owner.bridges or {} do
+							if (other.crossing.x - c.x) ^ 2 + (other.crossing.z - c.z) ^ 2 < 4 then
+								same = other
+								break
+							end
+						end
+						if not same then
+							bridgeMissing += 1
+							note("bridgeNotBuilt", string.format("%s: chunk %d,%d reckons with a bridge at %s (priority %s, overpass %s) that its own chunk %d,%d does not plan", placeAt.name, b.cx, b.cz, miles(c.x, c.z), tostring(c.priority), tostring(c.overpass), owner.cx, owner.cz))
+						elseif math.abs(same.footprint.deck - plan.footprint.deck) > 0.2 or math.abs(same.footprint.rampA - plan.footprint.rampA) > 2 or math.abs(same.footprint.rampB - plan.footprint.rampB) > 2 then
+							bridgeDiffers += 1
+							note("bridgeDiffers", string.format("%s: chunks %d,%d and %d,%d see the bridge at %s differently (deck %.1f / %.1f, ramps %.0f+%.0f / %.0f+%.0f)", placeAt.name, b.cx, b.cz, owner.cx, owner.cz, miles(c.x, c.z), plan.footprint.deck, same.footprint.deck, plan.footprint.rampA, plan.footprint.rampB, same.footprint.rampA, same.footprint.rampB))
+						end
+					end
+				end
+			end
+		end
+		-- The terrain against the driving surface. Roblox draws smooth terrain from columns VOXEL
+		-- apart and its surface can stand up to about half a voxel above the heights written, so a
+		-- road is safely clear of it only where its top is well above the highest column around
+		-- the point. Across each road's width, bridges' ramps included.
+		local VOX = Config.DESIGN_VOXEL_STUDS
+		local NV = SIZE // VOX
+		local columnsOf: { [number]: any } = {}
+		for _, b in built do
+			columnsOf[b.cx * 100003 + b.cz] = b
+		end
+		local function terrainAround(x: number, z: number): number?
+			local high = -math.huge
+			for _, o in { { -0.5, -0.5 }, { 0.5, -0.5 }, { -0.5, 0.5 }, { 0.5, 0.5 } } do
+				local px, pz = x + o[1] * VOX, z + o[2] * VOX
+				local b = columnsOf[math.floor(px / SIZE) * 100003 + math.floor(pz / SIZE)]
+				if not b or not b.columns then
+					return nil
+				end
+				local ix, iz = math.floor((px - b.cx * SIZE) / VOX) + 1, math.floor((pz - b.cz * SIZE) / VOX) + 1
+				high = math.max(high, b.columns[(ix - 1) * NV + iz])
+			end
+			return high
+		end
+		for _, b in built do
+			if b.inner then
+				local rc = b.rc
+				for _, g in rc.net.segments do
+					if not g.bulb and g.length > 1 then
+						local lanes = if g.spec.median > 0 then { g.spec.median + 2, (g.spec.median + g.spec.pavement) / 2, g.spec.pavement - 2 } else { 0, g.spec.pavement - 2 }
+						for t = 2, g.length - 2, 6 do
+							for _, lane in lanes do
+								for _, side in (if lane == 0 then { 1 } else { -1, 1 }) do
+									local x, z = g.ax + g.ux * t - g.uz * side * lane, g.az + g.uz * t + g.ux * side * lane
+									if rc.inside(x, z) then
+										local here = tops(x, z)
+										local around = terrainAround(x, z)
+										if #here > 0 and around then
+											local onBridge = rc.bridged(x, z, g)
+											local top = -math.huge
+											if onBridge then
+												for _, y in here do
+													top = math.max(top, y)
+												end
+											else
+												local grade = rc.gradeTop(g.ax + g.ux * t, g.az + g.uz * t)
+												for _, y in here do
+													if math.abs(y - grade) < math.abs(top - grade) then
+														top = y
+													end
+												end
+											end
+											local clear = top - around
+											table.insert(if onBridge then clearRamp else clearGrade, clear)
+											if clear < CLEAR_MIN then
+												if onBridge then
+													buriedRamp += 1
+												else
+													buriedGrade += 1
+												end
+												note(if onBridge then "terrainOverRamp" else "terrainOverRoad", string.format("%s: the terrain's columns reach %.1f studs %s a %s's surface, %d studs from its centre line at %s", placeAt.name, math.abs(clear), if clear < 0 then "above" else "below (too little)", g.spec.key, lane, miles(x, z)))
+											end
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		for _, b in built do
+			if b.inner then
+				local rc = b.rc
+				for _, g in rc.net.segments do
+					if not g.bulb and g.length > 1 then
+						local offsets = if g.spec.median > 0 then { -(g.spec.median + g.spec.pavement) / 2, (g.spec.median + g.spec.pavement) / 2 } else { 0 }
+						for _, across in offsets do
+							local before: { number }? = nil
+							local n = math.max(1, math.ceil(g.length / 4))
+							for i = 0, n do
+								local t = g.length * i / n
+								local x, z = g.ax + g.ux * t - g.uz * across, g.az + g.uz * t + g.ux * across
+								if not rc.inside(x, z) then
+									before = nil
+									continue
+								end
+								local here = tops(x, z)
+								surfaceSamples += 1
+								local onBridge = rc.bridged(x, z, g) or rc.bridged(x, z)
+								if #here == 0 then
+									surfaceHoles += 1
+									note("hole", string.format("%s: no road surface under a %s at %s (on a bridge or ramp: %s; the ground is %.1f below the grade; %s)", placeAt.name, g.spec.key, miles(x, z), tostring(onBridge), rc.gradeTop(x, z) - rc.ground(x, z), (function()
+										local text = string.format("piece %.0f long, %.0f along, chain %s, kept off as carried or stopped: %s", g.length, t, tostring(g.chain), tostring(rc.bridged(x, z, g)))
+										if process.env.DEBUG_PARTS then
+											local n = 0
+											for _, bb in built do
+												for _, part in bb.props do
+													if n < 6 and part.shape == "Block" and math.max(part.size.X, part.size.Z) >= 8 and (part.cf.X - x) ^ 2 + (part.cf.Z - z) ^ 2 < (math.max(part.size.X, part.size.Z) / 2 + 4) ^ 2 then
+														n += 1
+														text ..= string.format(" [part %.0fx%.1fx%.0f up %.2f y %.1f at %.0f,%.0f off]", part.size.X, part.size.Y, part.size.Z, part.cf.UpVector.Y, part.cf.Y, part.cf.X - x, part.cf.Z - z)
+													end
+												end
+											end
+											text ..= string.format(" centre kept off %s;", tostring(rc.bridged(g.ax + g.ux * t, g.az + g.uz * t, g)))
+											for _, o in rc.net.segments do
+												if o ~= g and RoadNet.toSegment(o, g.ax + g.ux * t, g.az + g.uz * t) < o.spec.pavement then
+													text ..= string.format(" centre in %s chain %s prio %s cos %.2f;", o.spec.key, tostring(o.chain), tostring(o.spec.priority), math.abs(o.ux * g.ux + o.uz * g.uz))
+												end
+											end
+											text ..= string.format(" grade %.1f inside %s seg (%.0f,%.0f)->(%.0f,%.0f) rel", rc.gradeTop(x, z), tostring(rc.inside(g.ax + g.ux * t, g.az + g.uz * t)), g.ax - x, g.az - z, g.bx - x, g.bz - z)
+										end
+										for _, o in rc.net.segments do
+											if o ~= g and o.chain ~= g.chain and RoadNet.toSegment(o, x, z) < o.spec.total then
+												text ..= string.format("; %.0f studs from a %s's centre (median %d, pavement %d, cos %.2f)", RoadNet.toSegment(o, x, z), o.spec.key, o.spec.median, o.spec.pavement, math.abs(o.ux * g.ux + o.uz * g.uz))
+											end
+										end
+										return text
+									end)()))
+								else
+									if not onBridge then
+										local grade, nearest = rc.gradeTop(x, z), math.huge
+										for _, y in here do
+											nearest = math.min(nearest, math.abs(y - grade))
+										end
+										if nearest > 1.5 then
+											surfaceOff += 1
+											note("offGrade", string.format("%s: a %s's surface is %.1f studs from its grade at %s", placeAt.name, g.spec.key, nearest, miles(x, z)))
+										end
+									end
+									if before then
+										local least = math.huge
+										for _, y in here do
+											for _, y0 in before do
+												least = math.min(least, math.abs(y - y0))
+											end
+										end
+										if least > STEP then
+											surfaceSteps += 1
+											note("step", string.format("%s: a %s's surface steps %.1f studs at %s (on a bridge or ramp: %s)", placeAt.name, g.spec.key, least, miles(x, z), tostring(onBridge)))
+										end
+									end
+								end
+								before = if #here > 0 then here else nil
+							end
+						end
+						-- The ground beside the road: how far it lies below the road's top, out to
+						-- 60 studs past the pavement (a ditch is a stud or two; more is a trench).
+						if g.spec.priority >= 7 then
+							for t = 4, g.length - 4, 16 do
+								local cx1, cz1 = g.ax + g.ux * t, g.az + g.uz * t
+								if rc.inside(cx1, cz1) and not rc.bridged(cx1, cz1) then
+									local top = rc.gradeTop(cx1, cz1)
+									for _, side in { -1, 1 } do
+										for d = 0, g.spec.pavement + 60, 4 do
+											local x, z = cx1 - g.uz * side * d, cz1 + g.ux * side * d
+											if (d < g.spec.median - 2 or d > g.spec.pavement + 1) and rc.inside(x, z) and not rc.bridged(x, z) and not (rc.water and rc.water(x, z)) then
+												local other = rc.net:near(x, z, 80)
+												local drop = top - rc.ground(x, z)
+												table.insert(drops, drop)
+												if drop > 9 and (other == nil or other == g or other.chain == g.chain) then
+													trenches += 1
+													note("trench", string.format("%s: the ground lies %.1f studs below a %s's top, %d studs from its centre line at %s", placeAt.name, drop, g.spec.key, d, miles(x, z)))
+												end
+											end
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 	-- Across chunks: footprints built by different chunks.
 	for i = 1, #feet do
 		for j = i + 1, #feet do
@@ -417,6 +754,20 @@ table.sort(roadGaps)
 if #roadGaps > 0 then
 	print(string.format("roads against the ground: %d samples; road top above the ground (studs) 1%% %.1f, median %.1f, 99%% %.1f; ground through the road at %d (%.2f%%), road in the air at %d (%.2f%%)",
 		roadSamples, roadGaps[math.max(1, math.floor(0.01 * #roadGaps))], roadGaps[math.ceil(0.5 * #roadGaps)], roadGaps[math.ceil(0.99 * #roadGaps)], roadPokes, 100 * roadPokes / roadSamples, roadFloats, 100 * roadFloats / roadSamples))
+end
+print(string.format("building parts against roads: %d upright parts, %d standing in a road's pavement", buildingParts, partsOnRoads))
+for _, e in { { "roads on the ground", clearGrade, buriedGrade }, { "bridges and ramps", clearRamp, buriedRamp } } do
+	local list = e[2] :: { number }
+	table.sort(list)
+	if #list > 0 then
+		print(string.format("terrain under %s: %d samples; surface above the highest column around it (studs) least %.1f, 1%% %.1f, median %.1f; %d (%.1f%%) with less than %.1f", e[1] :: string, #list, list[1], list[math.max(1, math.floor(0.01 * #list))], list[math.ceil(0.5 * #list)], e[3] :: number, 100 * (e[3] :: number) / #list, CLEAR_MIN))
+	end
+end
+print(string.format("bridges seen from a neighbouring chunk: %d; %d not planned by their own chunk, %d planned differently", bridgeViews, bridgeMissing, bridgeDiffers))
+table.sort(drops)
+print(string.format("driving surface: %d samples; %d holes, %d steps, %d off the grade", surfaceSamples, surfaceHoles, surfaceSteps, surfaceOff))
+if #drops > 0 then
+	print(string.format("ground beside main roads, below the road's top (studs): median %.1f, 99%% %.1f, most %.1f; %d trench samples", drops[math.ceil(0.5 * #drops)], drops[math.ceil(0.99 * #drops)], drops[#drops], trenches))
 end
 table.sort(bends)
 if #bends > 0 then
