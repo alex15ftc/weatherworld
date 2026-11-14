@@ -33,7 +33,7 @@ export type Set = {
 	blocks: { { poly: Poly, box: { number } } },
 }
 
-local MILE = Config.STUDS_PER_MILE
+local MILE = Config.DESIGN_STUDS_PER_MILE
 
 local function poly(flat: { number }): Poly
 	local out = table.create(#flat // 2)

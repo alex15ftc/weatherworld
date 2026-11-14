@@ -39,10 +39,15 @@ mkdirSync(out, { recursive: true });
 const { trunkU, elevation, region, coverRegion, cover, lake, sections, drainageMi2, counties, streets, ...rest } = map;
 void trunkU; void drainageMi2; void coverRegion;
 const sectionMiles = sectionRoadMiles(sections);
+const shapeOffsets = new Map(), shapeParts = [];
+{ let at = 0; for (const s of rest.settlements) if (s.shape) { shapeOffsets.set(s, at); shapeParts.push(Buffer.from(s.shape.cells.buffer, s.shape.cells.byteOffset, s.shape.cells.byteLength)); at += s.shape.cells.length; } }
+writeFileSync(path.join(out, 'shapes.u8'), Buffer.concat(shapeParts));
+if (map.coverBase) writeFileSync(path.join(out, 'coverBase.u8'), Buffer.from(map.coverBase.buffer));
 writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
   seed, size: map.size, cellMiles: map.cellMiles, params: rest.params, regions: REGIONS, cover: COVER,
   inflows: rest.inflows, lakes: rest.lakes, sectionGrid: { size: sections.size, miles: sections.miles, classes: SECTION_CLASSES, roadMiles: sectionMiles }, rivers: rest.rivers.map(r => ({ name: r.name, points: r.points.map(v => Math.round(v * 100) / 100), widthsM: r.widthsM.map(Math.round), mouthDrainageMi2: Math.round(r.mouthDrainageMi2) })),
-  settlements: rest.settlements.map(s => ({ ...s, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 })),
+  // (each place's footprint cells are in shapes.u8, w * h bytes from shape.offset, row by row from the north)
+  settlements: rest.settlements.map(s => ({ ...s, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, shape: s.shape && { cellMi: s.shape.cellMi, x0: s.shape.x0, y0: s.shape.y0, w: s.shape.w, h: s.shape.h, offset: shapeOffsets.get(s) } })),
   roads: rest.roads.map(r => ({ kind: r.kind, name: r.name, points: r.points.map(([x, y]) => [Math.round(x * 100) / 100, Math.round(y * 100) / 100]) })),
   crossings: rest.crossings.map(c => ({ ...c, x: Math.round(c.x * 100) / 100, y: Math.round(c.y * 100) / 100 })),
   airfields: rest.airfields, radars: rest.radars,

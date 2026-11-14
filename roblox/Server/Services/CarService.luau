@@ -13,10 +13,12 @@
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
 
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
+
 local CarService = {}
 
 local CAR_MAX_MPH = 100
-local CAR_SIDE = 14 -- (studs from the character to the car's middle: clear of the ~8-stud-wide body)
+local CAR_SIDE = 14 * Config.WORLD_SCALE -- (studs from the character to the car's middle: clear of its body)
 
 local template: Model? = nil
 local pivotAboveBottom = 0 -- studs from the car's lowest point up to its pivot
@@ -42,7 +44,13 @@ function CarService.Init()
 		return
 	end
 	local t = template :: Model
-	t:SetAttribute("MaxSpeed", CAR_MAX_MPH)
+	-- The template in the place was built full size: to the world's scale (Config.WORLD_SCALE).
+	if math.abs(t:GetScale() - Config.WORLD_SCALE) > 1e-3 then
+		t:ScaleTo(Config.WORLD_SCALE)
+	end
+	-- (the template turns its MaxSpeed into studs a second as if a stud were 0.28 m: scaled, so the
+	-- top speed is CAR_MAX_MPH on the map at the world's scale)
+	t:SetAttribute("MaxSpeed", CAR_MAX_MPH * Config.WORLD_SCALE)
 	-- (the speed fix: Modules/CarChassis wraps the template's own Chassis module)
 	local scripts = t:FindFirstChild("Scripts")
 	local base = scripts and scripts:FindFirstChild("Chassis")
@@ -91,12 +99,12 @@ function CarService.give(player: Player, character: Model)
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
 	local hit = workspace:Raycast(p + Vector3.new(0, 40, 0), Vector3.new(0, -200, 0), params)
-	local groundY = if hit then hit.Position.Y else p.Y - 3
+	local groundY = if hit then hit.Position.Y else p.Y - 3 * Config.WORLD_SCALE
 	local car = t:Clone()
 	car.Name = "Car_" .. player.UserId
 	local look = root.CFrame.LookVector
 	local yaw = math.atan2(-look.X, -look.Z)
-	car:PivotTo(CFrame.new(p.X, groundY + pivotAboveBottom + 0.5, p.Z) * CFrame.Angles(0, yaw, 0) * t:GetPivot().Rotation)
+	car:PivotTo(CFrame.new(p.X, groundY + pivotAboveBottom + 0.5 * Config.WORLD_SCALE, p.Z) * CFrame.Angles(0, yaw, 0) * t:GetPivot().Rotation)
 	-- (kept streamed in for its driver wherever they go: its client scripts need all of it)
 	car.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
 	car.Parent = workspace

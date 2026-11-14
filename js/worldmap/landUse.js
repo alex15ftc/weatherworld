@@ -1,6 +1,8 @@
 // What each part of a place is for, so that shops, gas stations, schools and houses stand where
 // they would in a Plains town or suburb (facilities.js places the lots inside these areas).
-//   - Downtown: the old centre round the place's middle (main street in a town).
+//   - Downtown: the old centre, laid by the place's form (townShapes.js): in a railroad town the
+//     business street running from the reserve up past the middle; round the square in a
+//     courthouse town; along the road in a Main Street town; up from the landing in a river town.
 //   - Shopping at the arterial corners, by tier, as suburban retail is planned: a regional mall
 //     near an interstate exit for about every 250,000 people (Wichita has two); a community
 //     centre (big-box stores) for about every 35,000; a neighbourhood centre (a grocery-anchored
@@ -9,9 +11,11 @@
 //     paved approaches and highways, near an exit, nearer the middle) go first.
 //   - Highway strips: where a highway enters a town or small city, frontage on both sides from
 //     a little outside downtown to just past the edge (motels, gas, fast food, farm supply).
-//   - Industry beside a highway or arterial towards the edge: a co-op and grain elevator in a
-//     town, industrial parks in the cities.
-//   - Parks: a town park in each place of 1,000, more in the cities.
+//   - Industry: a co-op and grain elevator (a warehouse district in a city) in the band along the
+//     far edge of the place's reserve, across from town; industrial parks beside a highway or
+//     arterial towards the edge of the cities.
+//   - Parks: a town park in each place of 1,000, more in the cities: first on the ground the
+//     town left open (a gap or notch in its footprint), then inside the residential blocks.
 //   - Neighbourhoods (the cities and small cities): each square mile between the arterials,
 //     as Perry's neighbourhood unit: houses on its streets, a collector across it on the half-mile
 //     lines, an elementary school inside it named for it, shopping only at its corners.
@@ -74,19 +78,34 @@ export function polysNear(za, zb, gap = 0) {
 // far on the map (this place's are added to it).
 export function planPlaceLandUse(st, h, options = {}) {
   const p = { ...LAND_USE_DEFAULTS, ...options };
-  const rng = makeRandom(hashText(`${h.seed}|land-use|${st.name}`)), R = Math.max(st.extentMi, 0.6);
+  const rng = makeRandom(hashText(`${h.seed}|land-use|${st.name}`)), R = Math.max(st.extentMi, 0.6), far = h.reachOf(st);
   const zones = [], r4 = v => Math.round(v * 1e4) / 1e4;
   const add = zone => { zone.town = st.name; zone.poly = zone.poly.map(([x, y]) => [r4(x), r4(y)]); zone.box = bboxOf(zone.poly); zones.push(zone); h.areas.push(zone); return zone; };
   const free = (poly, gap = p.gapMi, except = () => false) => !h.areas.some(z => z.kind !== 'corridor' && !except(z) && polysNear(poly, z, gap));
 
-  // Downtown: a square at the middle, from main street in a small town to two miles across in the metro.
+  // Downtown, from main street in a small town to two miles across in the metro: as long again
+  // as it is wide where the form has a business street (across the axis in the railroad and
+  // river forms, stopping short of the reserve; along it in a Main Street town), a square
+  // round the middle in a courthouse town or a city.
   const side = Math.min(2, p.downtownMinMi + 0.35 * Math.sqrt(st.population / 40000)), half = side / 2;
-  const downtown = add({ kind: 'downtown', name: st.kind === 'town' ? `${st.name} Main Street` : `Downtown ${st.name}`, poly: rect(st.x - half, st.y - half, st.x + half, st.y + half) });
+  const along = st.axis && st.form === 'linear' ? [st.axis.ux, st.axis.uy] : st.axis && st.form !== 'courthouse' && st.form !== 'regional' ? [st.reserve.nx, st.reserve.ny] : null;
+  const vertical = along && Math.abs(along[1]) > Math.abs(along[0]), hx = along ? (vertical ? 0.75 : 1.3) * half : half, hy = along ? (vertical ? 1.3 : 0.75) * half : half;
+  // (towards the reserve, as far as leaves the middle inside and the reserve outside)
+  let dcx = st.x, dcy = st.y;
+  if (along && st.form !== 'linear') { const gap = (st.axis.x - st.x) * st.reserve.nx + (st.axis.y - st.y) * st.reserve.ny, slide = Math.max(0, Math.min(0.3 * half, gap - 1.3 * half - 0.02)) * Math.sign(vertical ? along[1] : along[0]); if (vertical) dcy += slide; else dcx += slide; }
+  // (Off the reserve: moved back from it, the middle still inside, then made smaller.)
+  let hx2 = hx, hy2 = hy;
+  if (st.axis) for (let k = 0; k < 40 && h.onReserve(rect(dcx - hx2, dcy - hy2, dcx + hx2, dcy + hy2)); k++) {
+    const mx = dcx - Math.sign(st.reserve.nx) * 0.02 * (Math.abs(st.reserve.nx) > 0.3), my = dcy - Math.sign(st.reserve.ny) * 0.02 * (Math.abs(st.reserve.ny) > 0.3);
+    if (Math.abs(mx - st.x) < hx2 - 0.02 && Math.abs(my - st.y) < hy2 - 0.02) { dcx = mx; dcy = my; } else { hx2 *= 0.9; hy2 *= 0.9; dcx += (st.x - dcx) * 0.1; dcy += (st.y - dcy) * 0.1; }
+  }
+  const inDowntownAt = (x, y, pad = 0) => Math.abs(x - dcx) < hx2 + pad && Math.abs(y - dcy) < hy2 + pad;
+  const downtown = add({ kind: 'downtown', name: st.kind === 'town' ? `${st.name} Main Street` : `Downtown ${st.name}`, poly: rect(dcx - hx2, dcy - hy2, dcx + hx2, dcy + hy2) });
 
-  // Highway strips at the town's edges.
+  // Highway strips: along the roads through the built ground outside downtown (the fingers).
   if (st.population < p.corridor.maxPopulation) {
     const seen = new Set();
-    for (const s of h.segsNear(st.x - R * 1.1, st.y - R * 1.1, st.x + R * 1.1, st.y + R * 1.1)) {
+    for (const s of h.segsNear(st.x - far, st.y - far, st.x + far, st.y + far)) {
       if (s.type !== 'road' || s.kind === 'interstate' || seen.has(s)) continue;
       seen.add(s);
       const len = Math.hypot(s.bx - s.ax, s.by - s.ay), steps = Math.max(2, Math.ceil(len / 0.02));
@@ -100,8 +119,9 @@ export function planPlaceLandUse(st, h, options = {}) {
       };
       for (let k = 0; k <= steps; k++) {
         const t = k / steps, x = s.ax + (s.bx - s.ax) * t, y = s.ay + (s.by - s.ay) * t, d = Math.hypot(x - st.x, y - st.y);
-        const inDowntown = Math.abs(x - st.x) < half + 0.03 && Math.abs(y - st.y) < half + 0.03;
-        if (d >= p.corridor.from * R && d <= p.corridor.to * R && !inDowntown && !h.isWater(x, y)) { if (run) { run[2] = x; run[3] = y; } else run = [x, y, x, y]; } else flush();
+        const inDowntown = inDowntownAt(x, y, 0.03), w = s.half + p.corridor.depthMi, ox = -(s.by - s.ay) / len, oy = (s.bx - s.ax) / len, onTown = h.own(st, x + ox * 0.07, y + oy * 0.07) || h.own(st, x - ox * 0.07, y - oy * 0.07);
+        const kept = [-1, -0.5, 0, 0.5, 1].some(a => h.reserved(x + ox * w * a, y + oy * w * a));
+        if (d >= p.corridor.from * R && onTown && !kept && !inDowntown && !h.isWater(x, y)) { if (run) { run[2] = x; run[3] = y; } else run = [x, y, x, y]; } else flush();
       }
       flush();
     }
@@ -109,14 +129,14 @@ export function planPlaceLandUse(st, h, options = {}) {
 
   // Shopping at the arterial corners.
   const corners = [];
-  for (let I = Math.floor(st.x - R); I <= Math.ceil(st.x + R); I++) for (let J = Math.floor(st.y - R); J <= Math.ceil(st.y + R); J++) {
+  for (let I = Math.floor(st.x - far); I <= Math.ceil(st.x + far); I++) for (let J = Math.floor(st.y - far); J <= Math.ceil(st.y + far); J++) {
     const d = Math.hypot(I - st.x, J - st.y);
-    if (d > R * 0.95 || (Math.abs(I - st.x) < half && Math.abs(J - st.y) < half)) continue;
+    if (!h.town(st, I, J) || inDowntownAt(I, J)) continue;
     const paved = [h.sectionClass(I, J, true), h.sectionClass(I - 1, J, true), h.sectionClass(I, J, false), h.sectionClass(I, J - 1, false)].filter(c => c === 3).length;
     const highways = new Set([...h.segsNear(I, J, I, J)].filter(s => s.type === 'road' && s.kind !== 'interstate' && h.distToSeg(I, J, s) < AT_1000(0.06)).map(s => s.road)).size;
     if (paved + 2 * highways < 3) continue;
     const exit = h.crossings.some(c => c.type === 'interchange' && Math.hypot(c.x - I, c.y - J) < 1.2);
-    corners.push({ I, J, d, exit, score: paved + 2 * highways + 2 * (1 - d / R) + 1.5 * rng() });
+    corners.push({ I, J, d, exit, score: paved + 2 * highways + 2 * Math.max(0, 1 - d / R) + 1.5 * rng() });
   }
   const nodes = [];
   const count = {
@@ -140,7 +160,7 @@ export function planPlaceLandUse(st, h, options = {}) {
       for (const [a, b] of quads) {
         if (taken >= p.corners[tier]) break;
         const [qw, ql] = rng() < 0.5 ? [w, l] : [l, w], poly = rect(c.I + a * set, c.J + b * set, c.I + a * (set + qw), c.J + b * (set + ql));
-        if (poly.some(([x, y]) => Math.hypot(x - st.x, y - st.y) > R * 1.05) || !h.clear(poly) || !free(poly)) continue;
+        if (!h.town(st, (poly[0][0] + poly[2][0]) / 2, (poly[0][1] + poly[2][1]) / 2) || !h.clear(poly) || !free(poly)) continue;
         add({ kind: tier === 'mall' ? 'mall' : 'shopping', tier, name, corner: [c.I, c.J], poly });
         taken++;
       }
@@ -148,13 +168,27 @@ export function planPlaceLandUse(st, h, options = {}) {
     }
   }
 
-  // Industry towards the edge, on a highway or arterial.
+  // Industry. First the co-op and elevator (a city's warehouse district) across the reserve from
+  // town: a lot along the reserve's far edge, as near the middle as there is room.
   const ind = p.industrial;
+  let coop = false;
+  if (st.axis) {
+    const { ux, uy } = st.axis, { nx, ny, widthMi, industryMi } = st.reserve, [w0] = ind.sizeMi[st.kind === 'town' ? 'town' : st.kind === 'smallCity' ? 'smallCity' : 'city'];
+    const len = st.kind === 'town' ? w0 : w0 * 1.6, at0 = (st.x - st.axis.x) * ux + (st.y - st.axis.y) * uy, near = widthMi + p.gapMi, deep = widthMi + industryMi - 0.005;
+    for (let k = 0; k < 30 && !coop; k++) {
+      const t = at0 + (k >> 1) * (k & 1 ? -1 : 1) * 0.6 * len, q = (a, b) => [st.axis.x + ux * a + nx * b, st.axis.y + uy * a + ny * b];
+      const poly = [q(t - len / 2, near), q(t + len / 2, near), q(t + len / 2, deep), q(t - len / 2, deep)];
+      if (!h.clear(poly) || !free(poly)) continue;
+      add({ kind: 'industrial', name: st.kind === 'town' ? `${st.name} Co-op` : `${st.name} Warehouse District`, reserve: true, poly });
+      coop = true;
+    }
+  }
+  // Then industrial parks towards the edge, on a highway or arterial.
   if (st.population >= ind.minPopulation) {
-    const want = 1 + Math.floor(st.population / ind.peoplePer), [w, d] = ind.sizeMi[st.kind === 'town' ? 'town' : st.kind === 'smallCity' ? 'smallCity' : 'city'];
-    const lines = h.linesIn(st, R * 1.15), sites = [];
+    const want = (coop && st.kind === 'town' ? 0 : 1) + Math.floor(st.population / ind.peoplePer), [w, d] = ind.sizeMi[st.kind === 'town' ? 'town' : st.kind === 'smallCity' ? 'smallCity' : 'city'];
+    const lines = h.linesIn(st, far + 0.15), sites = [];
     for (let tries = 0; tries < want * 8 && sites.length < want; tries++) {
-      const r = R * (ind.from + (ind.to - ind.from) * rng()), t = 2 * Math.PI * rng(), target = [st.x + r * Math.cos(t), st.y + r * Math.sin(t)];
+      const target = h.pointIn(st, rng, ind.to, ind.from);
       if (sites.some(q => Math.hypot(q[0] - target[0], q[1] - target[1]) < Math.max(1, R / 3))) continue;
       const f = h.placeLot(lines, target, h.lotFt(w), h.lotFt(d), () => 1, lot => free(lot, 0.12, z => z.kind === 'industrial'));
       if (!f) continue;
@@ -163,18 +197,21 @@ export function planPlaceLandUse(st, h, options = {}) {
     }
   }
 
-  // Parks inside the residential blocks (a quarter section's middle in the cities).
+  // Parks: on ground the town left open (a cell not built with built ground on two sides or
+  // more: a gap or a notch), then inside the residential blocks (a quarter section's middle in
+  // the cities).
   if (st.population >= p.parks.minPopulation) {
     const want = Math.max(1, Math.round(st.population / p.parks.peoplePer));
     let made = 0;
     for (let tries = 0; tries < want * 10 && made < want; tries++) {
       let cx, cy, size;
-      if (st.kind === 'town') {
-        const r = R * 0.5 * Math.sqrt(rng()), t = 2 * Math.PI * rng();
-        cx = st.x + r * Math.cos(t); cy = st.y + r * Math.sin(t); size = p.parks.sizeMi.town[0] + p.parks.sizeMi.town[1] * rng();
+      const open = tries < want * 5 ? h.openIn(st, rng) : null;
+      if (open) { [cx, cy] = open; size = Math.min(0.11, st.kind === 'town' ? p.parks.sizeMi.town[0] + p.parks.sizeMi.town[1] * rng() : p.parks.sizeMi.city[0] + p.parks.sizeMi.city[1] * rng() ** 2); }
+      else if (st.kind === 'town') {
+        [cx, cy] = h.pointIn(st, rng, 0.6); size = p.parks.sizeMi.town[0] + p.parks.sizeMi.town[1] * rng();
       } else {
-        const r = R * 0.9 * Math.sqrt(rng()), t = 2 * Math.PI * rng();
-        cx = Math.floor(st.x + r * Math.cos(t)) + (rng() < 0.5 ? 0.25 : 0.75); cy = Math.floor(st.y + r * Math.sin(t)) + (rng() < 0.5 ? 0.25 : 0.75); size = p.parks.sizeMi.city[0] + p.parks.sizeMi.city[1] * rng() ** 2;
+        const [qx, qy] = h.pointIn(st, rng);
+        cx = Math.floor(qx) + (rng() < 0.5 ? 0.25 : 0.75); cy = Math.floor(qy) + (rng() < 0.5 ? 0.25 : 0.75); size = p.parks.sizeMi.city[0] + p.parks.sizeMi.city[1] * rng() ** 2;
       }
       const poly = rect(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2);
       if (!h.clear(poly) || !free(poly)) continue;
@@ -185,16 +222,16 @@ export function planPlaceLandUse(st, h, options = {}) {
   return zones;
 }
 
-// The neighbourhoods of a city or small city: each square mile between the arterials whose
-// middle is in the place, outside downtown and any campus, with its collectors on the half-mile
+// The neighbourhoods of a city or small city: each square mile between the arterials at least
+// two fifths built by the place, outside downtown and any campus, with its collectors on the half-mile
 // lines. Named once each in the place.
 export function planNeighborhoods(st, h) {
   if (st.kind === 'town') return [];
-  const R = st.extentMi, out = [], names = new Set(), downtown = h.areas.find(z => z.kind === 'downtown' && z.town === st.name);
+  const R = h.reachOf(st), out = [], names = new Set(), downtown = h.areas.find(z => z.kind === 'downtown' && z.town === st.name);
   let j = hashText(`${h.seed}|neighborhoods|${st.name}`) % AREA_NAMES.length;
   for (let J = Math.floor(st.y - R); J <= Math.ceil(st.y + R); J++) for (let I = Math.floor(st.x - R); I <= Math.ceil(st.x + R); I++) {
     const cx = I + 0.5, cy = J + 0.5;
-    if (Math.hypot(cx - st.x, cy - st.y) > R || h.isWater(cx, cy)) continue;
+    if (h.builtShare(st, I, J) < 0.4 || h.isWater(cx, cy)) continue;
     if (downtown && cx > downtown.box[0] && cx < downtown.box[2] && cy > downtown.box[1] && cy < downtown.box[3]) continue;
     const inset = AT_1000(0.02), poly = rect(I + inset, J + inset, I + 1 - inset, J + 1 - inset);
     if (h.campuses.some(c => polysNear(poly, c.area, 0) && (bboxOf(c.area)[2] - bboxOf(c.area)[0]) * (bboxOf(c.area)[3] - bboxOf(c.area)[1]) > 0.25)) continue;

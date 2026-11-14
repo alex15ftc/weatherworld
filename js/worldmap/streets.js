@@ -41,6 +41,7 @@ import { makeRandom, hashText } from './noise.js';
 import { interchangeRamps, tee } from './interchanges.js';
 import { pointInPoly, distToSeg } from './airfields.js';
 import { AT_1000, STUDS } from './scale.js';
+import { townMile as townMileOf } from './townShapes.js';
 
 // Scale (scale.js): everything here built at character scale (road widths, cul-de-sacs, gaps
 // and pads, blocks, frontage roads, the reach of interchanges) keeps its size in studs (AT_1000,
@@ -187,14 +188,22 @@ export function planStreets(map, options = {}) {
   const cellAt = (x, y) => Math.min(n - 1, Math.max(0, Math.floor(y / cellMiles))) * n + Math.min(n - 1, Math.max(0, Math.floor(x / cellMiles)));
   const URBAN = coverKeys.indexOf('urban'), SUBURBAN = coverKeys.indexOf('suburban'), WATER = coverKeys.indexOf('water');
   const coverAt = (x, y) => cover[cellAt(x, y)];
-  const town = (x, y) => { const c = coverAt(x, y); return c === URBAN || c === SUBURBAN; };
+  // In town: on a place's footprint (townShapes.js: map.built, in cells of an eighth of a mile)
+  // or the reserve along its axis. (A point on a cell line, as every mile line is, is in town when
+  // the ground on either side is.)
+  const built = map.built ?? ((x, y) => { const c = coverAt(x, y); return c === URBAN ? 2 : c === SUBURBAN ? 1 : 0; }), reserved = map.reserved ?? (() => 0);
+  const NEAR = [[-0.03, -0.03], [0.03, -0.03], [-0.03, 0.03], [0.03, 0.03]];
+  const town = (x, y) => NEAR.some(([dx, dy]) => built(x + dx, y + dy) || reserved(x + dx, y + dy));
+  // (A paved mile is an arterial where it runs through town: townShapes.js.)
+  const townMile = (I0, J0, I1, J1) => (map.built ? townMileOf(map, I0, J0, I1, J1) : town((I0 + I1) / 2, (J0 + J1) / 2));
   const planned = (x, y) => crossings.some(c => Math.abs(c.x - x) < 0.08 && Math.abs(c.y - y) < 0.08 && Math.hypot(c.x - x, c.y - y) < 0.08);
   const stats = { dropped: 0, pruned: 0, cuts: 0, culDeSacs: 0 };
 
   // Where an interstate in town has frontage roads beside it (not near its interchanges).
   const interchanges = crossings.filter(c => c.type === 'interchange');
   const nearInterchange = (x, y) => interchanges.some(c => { const r = c.kind === 'interstate' ? p.systemClearMi : p.frontageClearMi; return Math.abs(c.x - x) < r && Math.abs(c.y - y) < r && Math.hypot(c.x - x, c.y - y) < r; });
-  const frontAt = (x, y) => town(x, y) && !nearInterchange(x, y);
+  // (By the cover grid, half a mile at a time: a frontage road does not start and stop with every notch of a footprint.)
+  const frontAt = (x, y) => (coverAt(x, y) === URBAN || coverAt(x, y) === SUBURBAN) && !nearInterchange(x, y);
 
   // Whether a road of kind k may meet edge e at a crossing (sin: of the angle between them):
   // 'node' (at grade), 'over' (grade separated, no node), or a gap (miles) to stop short by,
@@ -588,11 +597,11 @@ export function planStreets(map, options = {}) {
     insert(I0, J0, I1, J1, kind, {}, null, undefined, p.junctionMi);
     for (const [I, J, q] of [[I0, J0, a], [I1, J1, b]]) if (q[0] !== I || q[1] !== J) insert(I, J, ...q, kind);
   };
-  for (const [cls, kindOf] of [[3, (x, y) => (town(x, y) ? 'arterial' : 'county')], [2, () => 'gravel'], [1, () => 'dirt']]) {
+  for (const [cls, kindOf] of [[3, (I0, J0, I1, J1) => (townMile(I0, J0, I1, J1) ? 'arterial' : 'county')], [2, () => 'gravel'], [1, () => 'dirt']]) {
     for (let J = 0; J < secSize; J++) for (let I = 0; I < secSize; I++) {
       const v = secRoads[J * secSize + I];
-      if ((v & 3) === cls && I + 1 < secSize) mile(I, J, I + 1, J, kindOf(I + 0.5, J));
-      if (((v >> 2) & 3) === cls && J + 1 < secSize) mile(I, J, I, J + 1, kindOf(I, J + 0.5));
+      if ((v & 3) === cls && I + 1 < secSize) mile(I, J, I + 1, J, kindOf(I, J, I + 1, J));
+      if (((v >> 2) & 3) === cls && J + 1 < secSize) mile(I, J, I, J + 1, kindOf(I, J, I, J + 1));
     }
   }
 
@@ -667,8 +676,9 @@ export function planStreets(map, options = {}) {
     }
     return false;
   };
-  // (A wide street keeps all of it clear by its greater width, and room for its larger cul-de-sac.)
-  const blockedFor = wide => (x, y, ux, uy) => !town(x, y) || coverAt(x, y) === WATER || inObstacle(x, y, null, wide ? WIDER : 0) || nearRiver(x, y, ux, uy, wide) || nearHighway(x, y, ux, uy, wide);
+  // (A wide street keeps all of it clear by its greater width, and room for its larger cul-de-sac.
+  // No street stands on ground that is not built, nor along the edge of a reserve.)
+  const blockedFor = wide => (x, y, ux, uy) => !built(x, y) || NEAR.some(([dx, dy]) => reserved(x + dx, y + dy)) || coverAt(x, y) === WATER || inObstacle(x, y, null, wide ? WIDER : 0) || nearRiver(x, y, ux, uy, wide) || nearHighway(x, y, ux, uy, wide);
   const streetBlocked = blockedFor(false), wideBlocked = blockedFor(true);
 
   // The mile squares of the places. Each square has its own street lines each way: in an urban
@@ -682,14 +692,15 @@ export function planStreets(map, options = {}) {
   const hoodCells = new Set(facilities.landUse.neighborhoods.map(nb => `${Math.floor(nb.poly[0][0])},${Math.floor(nb.poly[0][1])}`));
   const squares = new Set();
   for (const st of settlements) {
-    const R = st.extentMi;
-    for (let I = Math.floor(st.x - R); I <= Math.floor(st.x + R); I++) for (let J = Math.floor(st.y - R); J <= Math.floor(st.y + R); J++) squares.add(`${I},${J}`);
+    const R = st.extentMi, sh = st.shape, box = sh ? [sh.x0, sh.y0, sh.x0 + sh.w * sh.cellMi - 1e-6, sh.y0 + sh.h * sh.cellMi - 1e-6] : [st.x - R, st.y - R, st.x + R, st.y + R];
+    for (let I = Math.floor(box[0]); I <= Math.floor(box[2]); I++) for (let J = Math.floor(box[1]); J <= Math.floor(box[3]); J++) squares.add(`${I},${J}`);
   }
   const lines = [];   // [x0, y0, x1, y1, depth, wide]
   const urbanSquares = new Set();   // the squares with wide streets (I * 4096 + J)
   // A street piece is wide as its line was (every split, move and extension keeps the flag). One
   // made of a wide piece and a narrow one, or new between them, is wide where its middle lies in
-  // an urban square.
+  // an urban square (and, when all is laid, only where the ground under its middle is original
+  // plat or early additions: narrow()).
   const widen = e => { if (e?.kind !== 'street') return; if (urbanSquares.has(Math.floor((e.a.x + e.b.x) / 2) * 4096 + Math.floor((e.a.y + e.b.y) / 2))) e.wide = true; else delete e.wide; };
   const blockedShare = (x0, y0, x1, y1) => {
     const steps = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.02));
@@ -698,9 +709,10 @@ export function planStreets(map, options = {}) {
     return hit / (steps + 1);
   };
   const townShare = (x0, y0, x1, y1) => {
-    let urban = 0, any = 0;
-    for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) { const c = coverAt(x0 + (x1 - x0) * i / 4, y0 + (y1 - y0) * j / 4); if (c === URBAN) urban++; if (c === URBAN || c === SUBURBAN) any++; }
-    return { any: any / 25, urban: urban / 25 };
+    // (the footprint's cells under the piece: an eighth of a mile each)
+    let urban = 0, any = 0, all = 0;
+    for (let y = (Math.floor(y0 * 8 + 1e-6) + 0.5) / 8; y < y1; y += 0.125) for (let x = (Math.floor(x0 * 8 + 1e-6) + 0.5) / 8; x < x1; x += 0.125) { const v = built(x, y); all++; if (v === 2) urban++; if (v) any++; }
+    return { any: any / Math.max(1, all), urban: urban / Math.max(1, all) };
   };
   // Positions (offsets from lo) of the street lines across a span, spaced within [min, max], the
   // last gap no shorter than min; collectors (at a half-mile line inside the span) are kept clear.
@@ -749,7 +761,9 @@ export function planStreets(map, options = {}) {
     if (share.any === 0) continue;
     const rng = makeRandom(hashText(`${seed}|streets|${I},${J}`));
     const hood = hoodCells.has(sq), avoid = hood ? [0.5] : [];
-    const urban = share.urban >= share.any / 2, sizes = urban ? p.blocks.urban : p.blocks.suburban;
+    // (A square with any original plat in it is laid as a grid, its lines spaced for wide streets;
+    // which pieces are wide is the footprint's to say.)
+    const urban = share.urban > 0, sizes = urban ? p.blocks.urban : p.blocks.suburban;
     const longX = rng() < 0.5;   // suburban blocks run long east-west (else north-south)
     const xSpan = urban ? sizes.short : longX ? sizes.long : sizes.short, ySpan = urban ? sizes.short : longX ? sizes.short : sizes.long;
     // Street lines, each moved to miss lots along the whole square.
@@ -1156,7 +1170,7 @@ export function planStreets(map, options = {}) {
       if (e === own) continue;
       if (distToSeg(node.x, node.y, g.seg(e)) < r + halfOf(e)) return false;
     }
-    if (bulbs.some(b => Math.hypot(b.x - node.x, b.y - node.y) < r + b.r)) return false;
+    if (bulbs.some(b => (b.x !== node.x || b.y !== node.y) && Math.hypot(b.x - node.x, b.y - node.y) < r + b.r)) return false;
     for (let k = 0; k < 8; k++) if (inObstacle(node.x + r * Math.cos(k * Math.PI / 4), node.y + r * Math.sin(k * Math.PI / 4))) return false;
     if (inObstacle(node.x, node.y)) return false;
     for (const sg of riverCells.get(Math.floor(node.x / RCELL) * 4096 + Math.floor(node.y / RCELL)) ?? []) if (distToSeg(node.x, node.y, sg) < sg.half + p.bankMi + r) return false;
@@ -1222,7 +1236,7 @@ export function planStreets(map, options = {}) {
       const l = Math.hypot(x - p0.x, y - p0.y), steps = Math.ceil(l / p.sampleMi);
       for (let i = 1; i < steps; i++) {
         const qx = p0.x + (x - p0.x) * i / steps, qy = p0.y + (y - p0.y) * i / steps;
-        if (coverAt(qx, qy) === WATER || nearRiver(qx, qy, (x - p0.x) / l, (y - p0.y) / l) || (k !== 'local' && inObstacle(qx, qy, k === 'street' ? null : HALF_MI[k], WIDER))) return false;
+        if (coverAt(qx, qy) === WATER || (k === 'street' && reserved(qx, qy)) || nearRiver(qx, qy, (x - p0.x) / l, (y - p0.y) / l) || (k !== 'local' && inObstacle(qx, qy, k === 'street' ? null : HALF_MI[k], WIDER))) return false;
         if (bulbs.some(b => Math.hypot(b.x - qx, b.y - qy) < b.r + (k === 'street' ? WIDE_STREET_HALF_MI : HALF_MI[k]) && Math.hypot(b.x - p0.x, b.y - p0.y) > 1e-6)) return false;
       }
       return true;
@@ -1303,6 +1317,23 @@ export function planStreets(map, options = {}) {
     }
   }
   weld();
+  // A street end that a merged junction has pulled across a corner of a reserve is taken out.
+  for (const e of [...g.edges]) {
+    if (!e.alive || e.kind !== 'street' || (e.a.edges.length !== 1 && e.b.edges.length !== 1)) continue;
+    const steps = Math.max(2, Math.ceil(Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y) / STUDS(5)));
+    for (let i = 1; i < steps; i++) if (reserved(e.a.x + (e.b.x - e.a.x) * i / steps, e.a.y + (e.b.y - e.a.y) * i / steps)) { g.removeEdge(e); break; }
+  }
+  // A wide street is wide only on original plat and early additions (the footprint's 2).
+  for (const e of g.edges) if (e.alive && e.wide && built((e.a.x + e.b.x) / 2, (e.a.y + e.b.y) / 2) !== 2) delete e.wide;
+  // (Nor at a cul-de-sac its wide bulb has no room for: a piece may have become wide, joined to
+  // others, after its end was fitted.)
+  // (Nor a wide street passing a cul-de-sac nearer than its width leaves room for.)
+  for (const node of g.nodes) {
+    if (node.edges.length !== 1 || node.edges[0].kind !== 'street' || fits(node)) continue;
+    const own = node.edges[0];
+    delete own.wide;
+    for (const e of g.edgesNear(node.x - 0.2, node.y - 0.2, node.x + 0.2, node.y + 0.2)) if (e !== own && e.kind === 'street' && e.wide && distToSeg(node.x, node.y, g.seg(e)) < p.bulbMi + halfOf(e)) delete e.wide;
+  }
 
   // Ends and controls.
   for (const node of g.nodes) {

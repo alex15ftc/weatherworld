@@ -24,6 +24,7 @@ import { planAirfields, fitSectionRoads } from './airfields.js';
 import { planWarningAreas } from './warningAreas.js';
 import { planFacilities } from './facilities.js';
 import { planStreets } from './streets.js';
+import { planTownShapes } from './townShapes.js';
 
 const METRES_PER_MILE = 1609.344;
 
@@ -331,8 +332,16 @@ export function generateWorldMap(options = {}) {
     rivers, creeks, inflows: inflowCells, trunkU
   };
   const { settlements, roads } = planSettlements(map, p.settlements);
-  paintTowns(map, settlements);
+  // The cover before any town is painted on it is kept (coverBase). The airfields are sited
+  // against the places' discs (their core and extent), as they were before the places had
+  // footprints; then each place takes its footprint (townShapes.js: it keeps off the airfields)
+  // and the built land is painted from that.
+  map.coverBase = Uint8Array.from(cover);
+  paintDiscs(map, settlements);
   const { airfields, radars } = planAirfields({ ...map, settlements, roads }, p.airfields);
+  cover.set(map.coverBase);
+  Object.assign(map, planTownShapes({ ...map, settlements, roads, airfields }, p.shapes));
+  paintTowns(map, settlements);
   const sections = planSectionRoads({ ...map, settlements, roads }, p.sections);
   fitSectionRoads(sections, airfields);
   const crossings = planCrossings({ ...map, roads, sections }, p.crossings);
@@ -421,9 +430,26 @@ function splitAtLakes(rivers, lake, n, cellMiles) {
   return out;
 }
 
-// Built-up land: the core of each place is urban, the rest of its extent suburban (towns are
-// only a few blocks across at this scale; Roblox lays out their streets).
+// Built-up land, from the places' footprints (map.built, in cells of an eighth of a mile): a
+// cover cell is urban when at least a quarter of its fine cells are original plat or early
+// additions (2), else suburban when at least an eighth of them are built.
 function paintTowns(map, settlements) {
+  const { size: n, cellMiles, cover } = map;
+  for (const s of settlements) {
+    const sh = s.shape, fine = sh.cellMi, per = Math.round(cellMiles / fine);
+    for (let j = Math.max(0, Math.floor(sh.y0 / cellMiles)); j <= Math.min(n - 1, Math.floor((sh.y0 + sh.h * fine) / cellMiles)); j++) for (let i = Math.max(0, Math.floor(sh.x0 / cellMiles)); i <= Math.min(n - 1, Math.floor((sh.x0 + sh.w * fine) / cellMiles)); i++) {
+      const k = j * n + i;
+      if (cover[k] === C.water || cover[k] === C.urban) continue;
+      let old = 0, any = 0;
+      for (let b = 0; b < per; b++) for (let a = 0; a < per; a++) { const v = map.built(i * cellMiles + (a + 0.5) * fine, j * cellMiles + (b + 0.5) * fine); if (v) any++; if (v === 2) old++; }
+      if (old >= per * per / 4) cover[k] = C.urban;
+      else if (any >= per * per / 8) cover[k] = C.suburban;
+    }
+  }
+}
+
+// The places as discs (urban core, suburban out to the extent): what the airfields are sited against.
+function paintDiscs(map, settlements) {
   const { size: n, cellMiles, cover } = map;
   for (const s of settlements) {
     const reach = Math.ceil(s.extentMi / cellMiles);

@@ -123,7 +123,7 @@ local function groundStudsAt(cx: number, cy: number, x: number, y: number): numb
 	if mx < 0 or my < 0 or mx > Config.MAP_MILES or my > Config.MAP_MILES then
 		return 0
 	end
-	local sx, sz = WorldMap.studsAt(mx, my)
+	local sx, sz = WorldMap.worldStudsAt(mx, my)
 	local ok, h = pcall(ChunkGen.groundStudsAt, sx, sz)
 	return if ok then h else 0
 end
@@ -254,7 +254,7 @@ local function playersKm(): (number?, number?)
 		local ch = p.Character
 		local root = ch and ch:FindFirstChild("HumanoidRootPart")
 		if root then
-			local mx, my = WorldMap.milesAt(root.Position.X, root.Position.Z)
+			local mx, my = WorldMap.worldMilesAt(root.Position.X, root.Position.Z)
 			sx += mx * Config.KM_PER_MILE
 			sy += my * Config.KM_PER_MILE
 			n += 1

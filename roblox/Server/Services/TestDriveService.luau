@@ -14,7 +14,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.World.Config)
 local Trove = require(Shared.Trove)
-local Heightfield = require(ServerStorage.World.Heightfield)
+local ChunkGen = require(ServerStorage.World.ChunkGen)
 local TestVehicle = require(ServerStorage.Modules.TestVehicle)
 local ChunkService = require(script.Parent.ChunkService)
 
@@ -22,7 +22,7 @@ local TestDriveService = {}
 
 local LOG_SECONDS = 5
 local NEAR_STUDS = 1024
-local ROOT_HEIGHT = 4 -- HumanoidRootPart centre above the ground for a standing character
+local ROOT_HEIGHT = 4 * Config.WORLD_SCALE -- HumanoidRootPart centre above the ground for a standing character
 local SETTLE_SECONDS = 3
 local SAMPLE_SECONDS = 5
 
@@ -56,7 +56,7 @@ local function measureJitter(character: Model, root: BasePart, x: number, z: num
 	block.Name = "JitterProbe"
 	block.Size = Vector3.new(4, 4, 4)
 	block.CustomPhysicalProperties = PhysicalProperties.new(2, 2, 0, 100, 1)
-	block.Position = Vector3.new(x + 12, Heightfield.studsAt(x + 12, z) + 6, z)
+	block.Position = Vector3.new(x + 12, ChunkGen.groundStudsAt(x + 12, z) + 6, z)
 	block.Parent = workspace
 	root.Anchored = false
 
@@ -92,7 +92,7 @@ local function sweep(character: Model, root: BasePart)
 	local rows = {}
 	for _, x in SWEEP_X do
 		root.Anchored = true
-		local position = Vector3.new(x, Heightfield.studsAt(x, z) + ROOT_HEIGHT, z)
+		local position = Vector3.new(x, ChunkGen.groundStudsAt(x, z) + ROOT_HEIGHT, z)
 		character:PivotTo(CFrame.lookAt(position, position + Vector3.xAxis))
 		while ChunkService.missingWithin(position, 512) > 0 do
 			task.wait(0.1)
@@ -122,7 +122,7 @@ local function run(character: Model)
 	local x = originX
 
 	local function place(atX: number)
-		local position = Vector3.new(atX, Heightfield.studsAt(atX, z) + ROOT_HEIGHT, z)
+		local position = Vector3.new(atX, ChunkGen.groundStudsAt(atX, z) + ROOT_HEIGHT, z)
 		character:PivotTo(CFrame.lookAt(position, position + Vector3.xAxis))
 	end
 
