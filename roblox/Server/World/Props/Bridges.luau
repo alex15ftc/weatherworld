@@ -36,6 +36,9 @@ export type Ctx = {
 	props: Builder.Props,
 	gradeTop: (x: number, z: number) -> number,
 	ground: (x: number, z: number) -> number,
+	-- false: no ramp slabs or embankments (the road climbs to the deck on its own raised grade,
+	-- on the ground: ChunkGen's approachLift); the footprint still gives the ramps' lengths.
+	ramps: boolean?,
 }
 
 local function along(c: Crossing, s: number, side: number, y: number): Vector3
@@ -134,7 +137,7 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 	for i, e in { { -1, gA }, { 1, gB } } do
 		local dir, grade = e[1], e[2]
 		local length = ramp[i]
-		if length > 0 then
+		if length > 0 and ctx.ramps ~= false then
 			local farXZ = along(c, dir * (halfSpan + length), 0, 0)
 			local near, far = along(c, dir * halfSpan, 0, deck), along(c, dir * (halfSpan + length), 0, ctx.gradeTop(farXZ.X, farXZ.Z))
 			-- The ramp's road: as thick as the road it meets, with the same paint.

@@ -597,7 +597,7 @@ for _, placeAt in places do
 												else
 													buriedGrade += 1
 												end
-												note(if onBridge then "terrainOverRamp" else "terrainOverRoad", string.format("%s: the terrain's columns reach %.1f studs %s a %s's surface, %d studs from its centre line at %s", placeAt.name, math.abs(clear), if clear < 0 then "above" else "below (too little)", g.spec.key, lane, miles(x, z)))
+												note(if clear < 0 then "terrainAboveRoad" elseif onBridge then "terrainOverRamp" else "terrainOverRoad", string.format("%s: the terrain's columns reach %.1f studs %s a %s's surface, %d studs from its centre line at %s", placeAt.name, math.abs(clear), if clear < 0 then "above" else "below (too little)", g.spec.key, lane, miles(x, z)))
 											end
 										end
 									end
@@ -676,7 +676,7 @@ for _, placeAt in places do
 										end
 										if least > STEP then
 											surfaceSteps += 1
-											note("step", string.format("%s: a %s's surface steps %.1f studs at %s (on a bridge or ramp: %s)", placeAt.name, g.spec.key, least, miles(x, z), tostring(onBridge)))
+											note("step", string.format("%s: a %s's surface steps %.1f studs at %s (on a bridge or ramp: %s; grade here %.1f, 4 studs back %.1f, ground %.1f; heading %.2f,%.2f; piece %.0f long; carried here %s, 8 back %s, 8 on %s; any bridge here %s, 8 back %s)", placeAt.name, g.spec.key, least, miles(x, z), tostring(onBridge), rc.gradeTop(x, z), rc.gradeTop(x - g.ux * 4, z - g.uz * 4), rc.ground(x, z), g.ux, g.uz, g.length, tostring(rc.bridged(x, z, g)), tostring(rc.bridged(x - g.ux * 8, z - g.uz * 8, g)), tostring(rc.bridged(x + g.ux * 8, z + g.uz * 8, g)), tostring(rc.bridged(x, z)), tostring(rc.bridged(x - g.ux * 8, z - g.uz * 8))))
 										end
 									end
 								end

@@ -430,7 +430,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		if over and under then
 			local sin = Interchanges.sin(rec)
 			plan({
-				x = rec.x, z = rec.z, ux = over.ux, uz = over.uz, riverHalf = under.spec.total / sin + 4,
+				x = rec.x, z = rec.z, ux = over.ux, uz = over.uz, riverHalf = (under.spec.total + 12) / sin,
 				water = baseTop(rec.x, rec.z), roadHalf = over.spec.total, kind = kindOf(over.spec),
 				surface = "asphalt", priority = over.spec.priority, overpass = true, clearance = 17,
 				belowDivided = under.spec.median > 0, chain = over.chain,
@@ -462,7 +462,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 						local sin = math.abs(g.ux * m.uz - g.uz * m.ux)
 						if sin > 0.2 and not listed(x, z) then
 							plan({
-								x = x, z = z, ux = g.ux, uz = g.uz, riverHalf = m.spec.total / sin + 4,
+								x = x, z = z, ux = g.ux, uz = g.uz, riverHalf = (m.spec.total + 12) / sin,
 								water = baseTop(x, z), roadHalf = g.spec.total, kind = kindOf(g.spec),
 								surface = g.spec.surface, priority = g.spec.priority, overpass = true, clearance = 17,
 								belowDivided = m.spec.median > 0, chain = g.chain,
@@ -557,7 +557,9 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 				-- deck itself is under it; out past the deck's edge it is laid as ever.)
 				local c = b.crossing
 				local reach = if g == nil or c.chain == nil or g.chain == c.chain then f.half + margin else c.roadHalf + 2
-				if d < reach and (g == nil or (along > 4 and along < length - 4)) then
+				-- (the deck only: its approaches are the road itself, climbing on its own grade, see
+					-- approachLift; the road runs a few studs in under each end of the deck)
+					if d < reach and along > f.rampA + (if g then 4 else -8) and along < length - f.rampB - (if g then 4 else -8) then
 					return true
 				end
 			end
@@ -580,22 +582,31 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 				local d, t = toSegment(x, z, f.ax, f.az, f.bx, f.bz)
 				local along = t * length
 				local farX, farZ, share
-				if along < f.rampA and b.joinedA then
-					farX, farZ, share = f.ax, f.az, along / f.rampA
-				elseif along > length - f.rampB and b.joinedB then
-					farX, farZ, share = f.bx, f.bz, (length - along) / f.rampB
+				local joins = false
+				-- (the approach, and the first studs of the deck, where the road runs in under it)
+				if along < f.rampA + 8 and f.rampA > 0 then
+					farX, farZ, share, joins = f.ax, f.az, math.min(1, along / f.rampA), b.joinedA
+				elseif along > length - f.rampB - 8 and f.rampB > 0 then
+					farX, farZ, share, joins = f.bx, f.bz, math.min(1, (length - along) / f.rampB), b.joinedB
 				end
 				if share and share > 0 and d < f.half + APPROACH_RUN * 60 then
 					local farTop = baseTop(farX, farZ)
 					local rise = farTop + (f.deck - farTop) * share - baseTop(f.ax + (f.bx - f.ax) * t, f.az + (f.bz - f.az) * t)
 					if rise > 0 then
-						local w = math.clamp((d - f.half) / math.max(40, rise * APPROACH_RUN), 0, 1)
+						-- (to the side: gently where a road joins the approach and has to climb to it,
+						-- shortly where none does, so a road that only passes by stays on the land)
+						local w = math.clamp((d - f.half) / (if joins then math.max(40, rise * APPROACH_RUN) else math.max(12, rise * 3)), 0, 1)
 						local share = 1 - w * w * (3 - 2 * w)
 						if b.underX then
+							-- (Beside the road the bridge crosses the rise comes in only with distance from
+							-- that road's edge, so a ramp running down beside an interstate is at its level
+							-- where the two lie together; but in full on the approach itself and near it,
+							-- where the road it carries climbs to the deck and others join it.)
 							local c = b.crossing
 							local off = math.abs((x - c.x) * (b.underZ :: number) - (z - c.z) * b.underX)
 							local u = math.clamp((off - c.riverHalf) / math.max(20, rise * APPROACH_RUN / 2), 0, 1)
-							share *= u * u * (3 - 2 * u)
+							local n = math.clamp((d - f.half) / math.max(40, rise * APPROACH_RUN / 2), 0, 1)
+							share *= math.max(u * u * (3 - 2 * u), 1 - n * n * (3 - 2 * n))
 						end
 						lift = math.max(lift, rise * share)
 					end
@@ -872,7 +883,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 
 	for _, b in planned do
 		if inside(b.crossing.x, b.crossing.z) then
-			Bridges.build({ props = props, gradeTop = baseTop, ground = Heightfield.studsAt }, b.crossing)
+			Bridges.build({ props = props, gradeTop = baseTop, ground = Heightfield.studsAt, ramps = false }, b.crossing)
 		end
 	end
 	local function onBridge(x: number, z: number, margin: number): boolean

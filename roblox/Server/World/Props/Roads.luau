@@ -130,8 +130,22 @@ end
 type Fit = { s: { number }, h: { number } }
 
 local function fitGrade(ctx: Ctx, g: RoadNet.Segment, t0: number, t1: number): Fit
+	-- (Where the road is carried on a bridge it is not laid and the grade under the deck is the
+	-- land's or the water's: the fit holds the height the road has where it meets the deck,
+	-- the nearer end's, so the last piece before a bridge is not bent down towards the gap.)
 	local function top(t: number): number
-		return ctx.gradeTop(g.ax + g.ux * t, g.az + g.uz * t)
+		local x, z = g.ax + g.ux * t, g.az + g.uz * t
+		if ctx.bridged(x, z, g) then
+			for reach = FIT_STEP, 600, FIT_STEP do
+				for _, to in { t - reach, t + reach } do
+					local px, pz = g.ax + g.ux * to, g.az + g.uz * to
+					if not ctx.bridged(px, pz, g) then
+						return ctx.gradeTop(px, pz)
+					end
+				end
+			end
+		end
+		return ctx.gradeTop(x, z)
 	end
 	-- Fixed breakpoints: the chunk's edges (so pieces meet the next chunk's) and the crossings.
 	local fixed = { t0, t1 }
