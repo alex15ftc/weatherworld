@@ -18,6 +18,17 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Engine-sim cars (2026-11-14, branch `roblox/engine-sim-cars`): the pickup and Crown Vic from EngineSimRoblox
+  replace the old CarTemplate car (`roblox/README.md`, Cars), scaled to the half-size world. Every player gets the
+  pickup, a 1996 C1500 on the new `VortecL31` preset (dynos ~450 N m at 2,500-3,000 rpm, ~250 hp at 4,500, as
+  published); F4 swaps it for the Crown Vic (5,600 rpm limit) or the GMC 2500 (new `DuramaxL5P` preset from the engine-sim
+  script DMAX V8 (L5P).mr, dynos ~1,230 N m at 2,000 rpm and ~447 hp at 3,000; Allison 10-speed). Both trucks have
+  part-time 4WD (2H / 4H / 4L; L or L3). Automatic drives through a torque converter (stall,
+  creep, lockup in 3rd/4th; `tools/enginesim/launch.luau`); Sequential and Manual keep the clutch. A rolled car
+  that comes to rest is set back on its wheels. The car camera is Roblox's default (EngineSim's lived in its custom
+  CharacterController, not brought over). Driven in Studio at full size before the half-size merge; not yet driven
+  at half size (the GMC and 4WD are checked offline only). The place's Workspace still holds a "2020 GMC 2500"
+  model, which VehicleService rigs where it stands: remove it now that the GMC is a template. Known: the automatic's light-throttle shift points (from EngineSim) keep it in 3rd at highway speed.
 - One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `019a278` (first from `32b57de`), the world carried over;
   place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
   not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
