@@ -24,7 +24,7 @@ const seed = num('seed'), SPM = num('studsPerMile'), miles = num('miles');
 const gm = /graph = \{ tileMiles = (\d+), tiles = (\d+), unit = ([\d.]+), kinds = \{ ([^}]*) \}, parts = \{ ([^}]*) \} \}/.exec(metaText);
 if (!gm) { console.log('FAIL  Meta.luau has no graph field'); process.exit(1); }
 const tileMiles = Number(gm[1]), GT = Number(gm[2]), UNIT = Number(gm[3]), kinds = gm[4].split(', ').map(s => JSON.parse(s)), parts = gm[5].split(', ').map(Number);
-check('Meta graph field', tileMiles === 25 && GT * tileMiles === miles && UNIT === 0.5 && kinds.length === 12 && parts.length === GT * GT && parts.every(p => p >= 1), `${GT} x ${GT} tiles of ${tileMiles} mi, unit ${UNIT}, ${kinds.length} kinds, ${parts.reduce((a, b) => a + b, 0)} modules`);
+check('Meta graph field', tileMiles === 25 && GT * tileMiles === miles && UNIT === 0.5 && kinds.length === 13 && parts.length === GT * GT && parts.every(p => p >= 1), `${GT} x ${GT} tiles of ${tileMiles} mi, unit ${UNIT}, ${kinds.length} kinds, ${parts.reduce((a, b) => a + b, 0)} modules`);
 
 // Read every module back.
 const EDGE = 11, BLOCK = 12, MAX_STUDS = 1200, half = miles / 2;
@@ -69,8 +69,9 @@ const flags = node => (node.end ?? 0) | ((node.control ?? 0) << 2) | (Math.min(n
 const want = new Map(), graphMiles = {};
 for (const e of map.streets.graph.edges) {
   if (!e.alive) continue;
-  graphMiles[e.kind] = (graphMiles[e.kind] ?? 0) + Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
-  const kind = kinds.indexOf(e.kind), ax = q(e.a.x), az = q(e.a.y), bx = q(e.b.x), bz = q(e.b.y);
+  const kindName = e.kind === 'street' && e.wide ? 'avenue' : e.kind;   // (the export's name for the graph's wide streets)
+  graphMiles[kindName] = (graphMiles[kindName] ?? 0) + Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+  const kind = kinds.indexOf(kindName), ax = q(e.a.x), az = q(e.a.y), bx = q(e.b.x), bz = q(e.b.y);
   const studs = Math.hypot(bx - ax, bz - az) * UNIT, pieces = studs > MAX_STUDS ? Math.ceil(studs / (MAX_STUDS - 1)) : 1;
   const pts = [[ax, az, flags(e.a)]];
   for (let s = 1; s < pieces; s++) pts.push([Math.round(ax + (bx - ax) * s / pieces), Math.round(az + (bz - az) * s / pieces), 32]);

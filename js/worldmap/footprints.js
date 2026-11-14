@@ -2,7 +2,8 @@
 // map's studs a mile, scale.js), and where those footprints overlap: the check that roads, cul-de-sacs, rivers, lots and
 // areas each have ground of their own.
 //   roads        each edge of the road graph (streets.js) as a strip its cross-section wide
-//                (HALF_MI), each cul-de-sac as a circle of bulbMi;
+//                (HALF_MI; a wide street's, halfOf), each cul-de-sac as a circle of bulbMi
+//                (wideBulbMi at a wide street's end);
 //   rivers       the channel as drawn in Roblox (0.18 studs a metre of width, 12 to 220 studs) with
 //                its banks, and a corridor round it (the valley sides) that lots keep out of;
 //   lots         gas stations, schools, campuses, the land-use superblocks (malls, community
@@ -15,12 +16,13 @@
 //   lot          a road strip reaches into a lot;
 //   river        a road runs along a river inside its channel, or crosses one at a slant (longer,
 //                skewed bridges than a road should need); a lot reaches into a river's corridor.
-import { HALF_MI } from './streets.js';
+import { HALF_MI, halfOf } from './streets.js';
 import { pointInPoly } from './airfields.js';
 import { AT_1000, STUDS } from './scale.js';
 
 export const FOOTPRINT_DEFAULTS = Object.freeze({
   bulbMi: STUDS(35),      // a cul-de-sac's radius (RoadNet.bulbSpec; streets.js bulbMi)
+  wideBulbMi: STUDS(36),  // and a wide street's (streets.js wideBulbMi)
   bankMi: STUDS(18),      // the banks a bridge spans beyond the water (Bridges.BANK_EXTRA)
   valleyMi: AT_1000(0.03), // lots keep this much further from a river's banks
   skewSin: 0.5,           // a road crossing a river at a slant flatter than this is a conflict
@@ -72,10 +74,10 @@ export function findConflicts(map, options = {}) {
     for (let X = Math.floor(x0 / C); X <= Math.floor(x1 / C); X++) for (let Y = Math.floor(y0 / C); Y <= Math.floor(y1 / C); Y++) for (const it of cells.get(X * 8192 + Y) ?? []) found.add(it);
     return found;
   };
-  const roads = edges.map(e => ({ kind: 'road', e, a: [e.a.x, e.a.y], b: [e.b.x, e.b.y], half: HALF_MI[e.kind] }));
+  const roads = edges.map(e => ({ kind: 'road', e, a: [e.a.x, e.a.y], b: [e.b.x, e.b.y], half: halfOf(e) }));
   for (const r of roads) index(r, Math.min(r.a[0], r.b[0]) - r.half, Math.min(r.a[1], r.b[1]) - r.half, Math.max(r.a[0], r.b[0]) + r.half, Math.max(r.a[1], r.b[1]) + r.half);
-  const bulbs = graph.nodes.filter(n => n.edges.length === 1 && n.end === 1).map(n => ({ kind: 'bulb', n, x: n.x, y: n.y }));
-  for (const b of bulbs) index(b, b.x - p.bulbMi, b.y - p.bulbMi, b.x + p.bulbMi, b.y + p.bulbMi);
+  const bulbs = graph.nodes.filter(n => n.edges.length === 1 && n.end === 1).map(n => ({ kind: 'bulb', n, x: n.x, y: n.y, r: n.edges[0].wide ? p.wideBulbMi : p.bulbMi }));
+  for (const b of bulbs) index(b, b.x - b.r, b.y - b.r, b.x + b.r, b.y + b.r);
   const rivers = [];
   for (const river of map.rivers) for (let k = 2; k < river.points.length; k += 2) {
     const half = riverHalf(river.widthsM[k / 2]);
@@ -187,9 +189,9 @@ export function findConflicts(map, options = {}) {
   }
   // Cul-de-sacs.
   for (const b of bulbs) {
-    const own = b.n.edges[0], r0 = p.bulbMi;
+    const own = b.n.edges[0], r0 = b.r;
     for (const o of near(b.x - r0 - LOOK, b.y - r0 - LOOK, b.x + r0 + LOOK, b.y + r0 + LOOK)) {
-      if (o.kind === 'bulb') { if (o.n.id > b.n.id && Math.hypot(o.x - b.x, o.y - b.y) < 2 * r0) report('culDeSac', 'two cul-de-sacs', (b.x + o.x) / 2, (b.y + o.y) / 2); }
+      if (o.kind === 'bulb') { if (o.n.id > b.n.id && Math.hypot(o.x - b.x, o.y - b.y) < r0 + o.r) report('culDeSac', 'two cul-de-sacs', (b.x + o.x) / 2, (b.y + o.y) / 2); }
       else if (o.kind === 'road') {
         if (o.e === own || o.e.a === own.a || o.e.a === own.b || o.e.b === own.a || o.e.b === own.b) continue;
         if (segmentDistance([b.x, b.y], [b.x, b.y], o.a, o.b) < r0 + o.half) report('culDeSac', `cul-de-sac on a ${o.e.kind}`, b.x, b.y);

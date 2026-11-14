@@ -215,7 +215,9 @@ return {
 }
 
 // The road graph and the street blocks (Graph/G<ti>_<tj>_<k>.luau; see the top of the file).
-const graphMeta = { tileMiles: 25, tiles: Math.round(map.params.miles / 25), unit: 0.5, kinds: [...ROAD_KINDS], parts: [] };
+// (kinds: the graph's road kinds, then "avenue": a street the graph marks wide, in a town or city centre.)
+const GRAPH_KINDS = [...ROAD_KINDS, 'avenue'], kindOfEdge = e => (e.kind === 'street' && e.wide ? 'avenue' : e.kind);
+const graphMeta = { tileMiles: 25, tiles: Math.round(map.params.miles / 25), unit: 0.5, kinds: GRAPH_KINDS, parts: [] };
 const graphTotals = { edges: 0, blocks: 0, modules: 0, largest: 0, bytes: 0 };
 {
   const GT = graphMeta.tiles, UNIT = graphMeta.unit, MAX_STUDS = 1200, MAX_SOURCE = 150000, EDGE = 11, BLOCK = 12;
@@ -233,7 +235,7 @@ const graphTotals = { edges: 0, blocks: 0, modules: 0, largest: 0, bytes: 0 };
   const flags = node => (node.end ?? 0) | ((node.control ?? 0) << 2) | (Math.min(node.edges.length, 15) << 4);
   for (const e of map.streets.graph.edges) {
     if (!e.alive) continue;
-    const kind = ROAD_KINDS.indexOf(e.kind), ax = q(e.a.x), az = q(e.a.y), bx = q(e.b.x), bz = q(e.b.y);
+    const kind = GRAPH_KINDS.indexOf(kindOfEdge(e)), ax = q(e.a.x), az = q(e.a.y), bx = q(e.b.x), bz = q(e.b.y);
     if (kind < 0) throw new Error(`graph export: unknown road kind ${e.kind}`);
     // Equal pieces, a stud under the limit so that rounding the points between cannot take a piece over it.
     const studs = Math.hypot(bx - ax, bz - az) * UNIT, pieces = studs > MAX_STUDS ? Math.ceil(studs / (MAX_STUDS - 1)) : 1;
@@ -247,7 +249,7 @@ const graphTotals = { edges: 0, blocks: 0, modules: 0, largest: 0, bytes: 0 };
   for (const b of planBlocks(map)) {
     const x0 = q(b.x0), z0 = q(b.y0), x1 = q(b.x1), z1 = q(b.y1);
     if (x0 >= x1 || z0 >= z1) continue;
-    share(tileBlocks, [x0, z0, x1, z1, ...b.sides.map(k => (k === null ? 0 : ROAD_KINDS.indexOf(k) + 1))], x0, z0, x1, z1);
+    share(tileBlocks, [x0, z0, x1, z1, ...b.sides.map(k => (k === null ? 0 : GRAPH_KINDS.indexOf(k) + 1))], x0, z0, x1, z1);
     graphTotals.blocks++;
   }
   const pack = buf => (buf.length ? zstdCompressSync(buf).toString('base64') : '');

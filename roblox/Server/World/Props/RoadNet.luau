@@ -17,6 +17,8 @@
 --                half-mile roads through city neighbourhoods);
 --   county       one 11-stud lane each way, 2-stud shoulders (paved section lines; frontage
 --                roads and the airfields' and campuses' own roads take it too);
+--   avenue       one 11-stud lane each way, an 8-stud parking lane each side, sidewalks (the
+--                streets of town and city centres: the graph's wide streets);
 --   street       one 10-stud lane each way, a grass strip and a sidewalk each side (town streets);
 --   gravel 20 studs wide, dirt 13.
 -- Town roads with sidewalks have a CURB-stud curb at the pavement's edge; the sidewalk lies at
@@ -58,6 +60,7 @@ RoadNet.SPECS = {
 	highway = spec({ key = "highway", priority = 7, pavement = 18, lane = 12, lanesEach = 1 }),
 	arterial = spec({ key = "arterial", priority = 6, pavement = 22, total = 29, lane = 11, lanesEach = 2, sidewalk = 7, town = true }),
 	county = spec({ key = "county", priority = 5, pavement = 13, lane = 11, lanesEach = 1 }),
+	urban = spec({ key = "urban", priority = 4, pavement = 19, total = 26, lane = 11, lanesEach = 1, sidewalk = 7, town = true }),
 	collector = spec({ key = "collector", priority = 4.2, pavement = 15, total = 22, lane = 11, lanesEach = 1, sidewalk = 6, town = true }),
 	suburban = spec({ key = "suburban", priority = 3, pavement = 10, total = 18, lane = 10, lanesEach = 1, sidewalk = 5, town = true }),
 	-- An interchange ramp: one 12-stud lane, shoulders either side.
@@ -70,7 +73,7 @@ local S = RoadNet.SPECS
 RoadNet.KINDS = {
 	interstate = S.interstate, expressway = S.expressway, highway = S.highway, ramp = S.ramp,
 	arterial = S.arterial, county = S.county, collector = S.collector, ["local"] = S.county,
-	street = S.suburban, gravel = S.gravel, dirt = S.dirt, frontage = S.county,
+	street = S.suburban, avenue = S.urban, gravel = S.gravel, dirt = S.dirt, frontage = S.county,
 } :: { [string]: Spec }
 local MAIN = { interstate = true, expressway = true, highway = true, ramp = true }
 RoadNet.MAX_TOTAL = S.interstate.total

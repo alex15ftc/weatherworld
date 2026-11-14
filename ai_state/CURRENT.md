@@ -219,7 +219,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   chooses again; the M map still draws section roads from `sections.u8`, which differs from the graph in
   places, and has no streets.
 
-- Map follow-up (2026-11-14, branch `map/open-items`, not committed, not published, not deployed): towns did
+- Map follow-up (2026-11-14, branch `map/open-items`): towns did
   not move. Roads: highway curves turn at most 12 degrees a joint, sharp corners rounded, close junction pairs
   182 to 19, footprint conflicts 28 road / 13 lot / 3 river to 4 / 0 / 2, section roads thinned where the land
   is grass or woods (gravel miles down 21%; raise `density` in `sectionRoads.js` to bring them back).
@@ -228,7 +228,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   stands in water. Each chunk first plans the lots just beyond its edge (`NEIGHBOUR_LOTS` in `ChunkGen`);
   buildings stand at most 5 studs above the lowest ground under them on a foundation, and are not built where
   the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
-  lists (patched place 9.61 MiB). Live place 497 and the engine still have the map of `9e927f8`: publishing
+  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Live place 497 and the engine still have the map of `9e927f8`: publishing
   and deploying this branch changes roads (not towns, counties or radars).
 
 ## Next

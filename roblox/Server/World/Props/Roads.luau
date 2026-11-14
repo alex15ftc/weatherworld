@@ -107,7 +107,7 @@ local function linesFor(s: RoadNet.Spec): { Line }
 	elseif key == "ramp" then
 		add(-(s.lane / 2 + 0.25), YELLOW, false)
 		add(s.lane / 2 + 0.25, WHITE, false)
-	elseif key == "collector" then
+	elseif key == "collector" or key == "urban" then
 		add(-0.45, YELLOW, false)
 		add(0.45, YELLOW, false)
 		add(-s.lane, WHITE, false)

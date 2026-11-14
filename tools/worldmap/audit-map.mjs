@@ -90,10 +90,12 @@ const sb = readFileSync(path.join(dir, 'streets.bin'));
 const N = sj.nodes, E = sj.edges;
 let off = 0; const take = (Type, count) => { const bytes = Type.BYTES_PER_ELEMENT * count; const a = new Type(sb.buffer.slice(sb.byteOffset + off, sb.byteOffset + off + bytes)); off += bytes; return a; };
 const xy = take(Float32Array, 2 * N), control = take(Uint8Array, N), end = take(Uint8Array, N), pairs = take(Uint32Array, 2 * E), kinds = take(Uint8Array, E), roadOf = take(Int32Array, E);
+// (Last, since the wide streets: one byte an edge, 1 for a wide street. Older files have none.)
+const wide = off < sb.length ? take(Uint8Array, E) : new Uint8Array(E);
 if (off !== sb.length) console.log(`!! streets.bin layout: read ${off} of ${sb.length} bytes`);
 const KIND = sj.kinds, ki = Object.fromEntries(KIND.map((k, i) => [k, i]));
 const HALF = { interstate: 51, expressway: 39, highway: 18, ramp: 11, arterial: 29, county: 13, collector: 22, local: 13, street: 18, gravel: 10, dirt: 6.5, frontage: 13 };
-const half = KIND.map(k => HALF[k] / SPM);
+const WIDE_STREET = 26, studsOf = e => (wide[e] ? WIDE_STREET : HALF[KIND[kinds[e]]]), halfOf = e => studsOf(e) / SPM;
 const nodeEdges = Array.from({ length: N }, () => []);
 for (let e = 0; e < E; e++) { nodeEdges[pairs[2 * e]].push(e); nodeEdges[pairs[2 * e + 1]].push(e); }
 const ex0 = e => xy[2 * pairs[2 * e]], ey0 = e => xy[2 * pairs[2 * e] + 1], ex1 = e => xy[2 * pairs[2 * e + 1]], ey1 = e => xy[2 * pairs[2 * e + 1] + 1];
@@ -126,7 +128,7 @@ const crossFlat = tally(), crossOver = tally();
 // (A ramp beside the road it merges onto or leaves is expected: counted apart.)
 const along = tally(), merging = tally(), joins = new Set([ki.interstate, ki.expressway, ki.highway]);
 for (let e = 0; e < E; e++) {
-  const pad = half[kinds[e]] + 51 / SPM;
+  const pad = halfOf(e) + 51 / SPM;
   for (const f of nearEdges(Math.min(ex0(e), ex1(e)) - pad, Math.min(ey0(e), ey1(e)) - pad, Math.max(ex0(e), ex1(e)) + pad, Math.max(ey0(e), ey1(e)) + pad)) {
     if (f <= e || shares(e, f)) continue;
     const hit = segInter(e, f);
@@ -137,7 +139,7 @@ for (let e = 0; e < E; e++) {
     // Overlap: midpoint of the shorter lies within the widths of the other.
     const [s, o] = le < lf ? [e, f] : [f, e];
     const mx = (ex0(s) + ex1(s)) / 2, my = (ey0(s) + ey1(s)) / 2, d = distPtSeg(mx, my, o);
-    if (d < half[kinds[e]] + half[kinds[f]] && Math.min(le, lf) > 20 / SPM) {
+    if (d < halfOf(e) + halfOf(f) && Math.min(le, lf) > 20 / SPM) {
       if (roadOf[e] >= 0 && roadOf[e] === roadOf[f]) continue;
       ((kinds[e] === ki.ramp && joins.has(kinds[f])) || (kinds[f] === ki.ramp && joins.has(kinds[e])) ? merging : along).add(pair(kinds[e], kinds[f]), [mx, my]);
     }
@@ -189,14 +191,14 @@ for (let v = 0; v < N; v++) {
     const d = distPtSeg(x, y, f);
     if (!best || d < best.d) best = { d, f };
   }
-  if (best && best.d < half[kinds[best.f]] + 25 / SPM) nearMiss.add(`${KIND[kinds[e]]} (${ENDS[end[v]]}) stops ${best.d < half[kinds[best.f]] ? 'inside' : 'just short of'} a ${KIND[kinds[best.f]]}`, [x, y]);
+  if (best && best.d < halfOf(best.f) + 25 / SPM) nearMiss.add(`${KIND[kinds[e]]} (${ENDS[end[v]]}) stops ${best.d < halfOf(best.f) ? 'inside' : 'just short of'} a ${KIND[kinds[best.f]]}`, [x, y]);
 }
 result.dead = show('road ends', deadBy.t, 20);
 result.nearMiss = show('ends that stop at another road without joining it (within its width + 25 studs)', nearMiss.t, 20);
 
 // 5. Short edges and stubs (a piece of a curve, with a plain bend at each end, counted apart).
 const short = tally();
-for (let e = 0; e < E; e++) { const l = len(e) * SPM; if (l < 2 * HALF[KIND[kinds[e]]]) { const a = pairs[2 * e], b = pairs[2 * e + 1], bend = v => nodeEdges[v].length === 2 && nodeEdges[v].every(o => kinds[o] === kinds[e]); short.add(`${KIND[kinds[e]]}${nodeEdges[a].length === 1 || nodeEdges[b].length === 1 ? ' stub (dead end)' : bend(a) && bend(b) ? ' curve piece' : ''} shorter than its own width`, [ex0(e), ey0(e)]); } }
+for (let e = 0; e < E; e++) { const l = len(e) * SPM; if (l < 2 * studsOf(e)) { const a = pairs[2 * e], b = pairs[2 * e + 1], bend = v => nodeEdges[v].length === 2 && nodeEdges[v].every(o => kinds[o] === kinds[e]); short.add(`${KIND[kinds[e]]}${nodeEdges[a].length === 1 || nodeEdges[b].length === 1 ? ' stub (dead end)' : bend(a) && bend(b) ? ' curve piece' : ''} shorter than its own width`, [ex0(e), ey0(e)]); } }
 result.short = show('very short pieces', short.t);
 
 // 6. Roads and water.

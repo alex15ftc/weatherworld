@@ -17,7 +17,8 @@
 //   - kept are the blocks on urban or suburban land (at their centre) that are at least minSideMi
 //     both ways and have a road on at least one side.
 // Roads that run at a slant or curve are not walls: a block may lie across one.
-export const BLOCK_RANK = Object.freeze(['interstate', 'expressway', 'highway', 'ramp', 'arterial', 'collector', 'county', 'frontage', 'local', 'street', 'gravel', 'dirt']);
+// ('avenue': a street the graph marks wide, in a town or city centre; streets.js.)
+export const BLOCK_RANK = Object.freeze(['interstate', 'expressway', 'highway', 'ramp', 'arterial', 'collector', 'county', 'frontage', 'local', 'avenue', 'street', 'gravel', 'dirt']);
 const RANK = Object.fromEntries(BLOCK_RANK.map((k, i) => [k, i]));
 
 export const BLOCK_DEFAULTS = Object.freeze({
@@ -45,7 +46,7 @@ export function planBlocks(map, options = {}) {
     const vertical = Math.abs(ax - bx) < tol, horizontal = Math.abs(ay - by) < tol;
     if (vertical === horizontal) continue;
     const c = vertical ? (ax + bx) / 2 : (ay + by) / 2, s0 = vertical ? Math.min(ay, by) : Math.min(ax, bx), s1 = vertical ? Math.max(ay, by) : Math.max(ax, bx);
-    const item = { vertical, c, s0, s1, rank: RANK[e.kind] };
+    const item = { vertical, c, s0, s1, rank: RANK[e.kind === 'street' && e.wide ? 'avenue' : e.kind] };
     for (let C = Math.floor(c - tol); C <= Math.floor(c + tol); C++) for (let Q = Math.floor(s0); Q <= Math.floor(s1); Q++) {
       if (!inMap(C) || !inMap(Q)) continue;
       const k = vertical ? key(C, Q) : key(Q, C);

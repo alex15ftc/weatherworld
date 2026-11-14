@@ -51,10 +51,11 @@ writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
 writeAirfieldFile(map, out);
 writeFileSync(path.join(out, 'facilities.json'), JSON.stringify(map.facilities));
 // The road graph: streets.bin holds, in order, node x, y (Float32), node control and end (Uint8
-// each), edge node pairs (Uint32), edge kinds (Uint8) and map road indices (Int32); streets.json
+// each), edge node pairs (Uint32), edge kinds (Uint8), map road indices (Int32) and, last, whether
+// each edge is a wide street (Uint8); streets.json
 // the counts and names.
 const packed = packStreets(streets), streetSummary = describeStreets(packed);
-const parts = ['xy', 'control', 'end', 'pairs', 'kinds', 'road'].map(k => Buffer.from(packed[k].buffer, packed[k].byteOffset, packed[k].byteLength));
+const parts = ['xy', 'control', 'end', 'pairs', 'kinds', 'road', 'wide'].map(k => Buffer.from(packed[k].buffer, packed[k].byteOffset, packed[k].byteLength));
 writeFileSync(path.join(out, 'streets.bin'), Buffer.concat(parts));
 const conflicts = findConflicts(map);
 writeFileSync(path.join(out, 'conflicts.json'), JSON.stringify(conflicts));
