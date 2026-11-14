@@ -230,6 +230,16 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
   lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
 
+- Map, third round (2026-11-14;
+  towns and airfields unmoved): creek beds (the generator's `creeks`, 1,479 streams of 25 to 1,000 mi2 of
+  drainage, in the tiles as point runs; `ChunkGen` cuts a dry bed along each); town streets on the M map
+  (`MapVector.streets`, drawn by `MapBase` from 60 px a mile; `tools/worldmap/check-map-streets.mjs`); tile
+  elevations stored as differences (patched place 9.39 MiB); road leftovers (no road or lot conflicts, no
+  expressway joint over 12 degrees, about 15 overpasses a second-pass rule had removed are back, close junction
+  pairs 15). `patch-place.luau` now also carries the products screen's changed modules (the restyle and zoom-to-warning, unpublished until now; `diff-place.luau` lists what differs between a place and a build). The game server reaches the
+  engine with its key (a live chaser dot showed 2026-11-14). Checked as before: map test, both export checks,
+  audit, 300-chunk harness with no building conflicts.
+
 ## Next
 
 0. Map (published as 498, unseen): join the place or play it in Studio and look at roads (interchanges, overpass ramps with a

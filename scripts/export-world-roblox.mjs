@@ -8,12 +8,19 @@
 //           order of their numbers), parts (how many Graph modules each graph tile has, row by
 //           row: tile ti, tj is at tj * tiles + ti, counted from 0) }.
 // Tiles/T<i>_<j>.luau, one per 50 x 50 miles (i east, j south): returns
-//   data    base64 of the zstd-compressed: elevation u16 LE (decimetres above baseM), cover u8, cover region u8,
+//   data    base64 of the zstd-compressed (the elevations first turned into differences, each
+//           from the cell before it in row order, modulo 65536, which packs far smaller; WorldMap
+//           adds them back up): elevation u16 LE (decimetres above baseM), cover u8, cover region u8,
 //           lake id u8, each (100 + 2 * border)^2 cells of 0.5 mi with a border of cells from the
 //           neighbouring tiles (clamped at the map's edge), row by row from the north-west; then
 //           the section-road corners u8, 51 x 51 (see js/worldmap/sectionRoads.js).
 //   rivers  flat list, 8 numbers per segment: x0, y0, x1, y1 (miles from the NW corner),
 //           width0, width1 (m, as drawn on the map), level0, level1 (water surface, m).
+//   creeks  base64 of the zstd-compressed creek beds near the tile (the generator's creeks): runs
+//           of points, each run a u16 LE count then 5 bytes a point: x, z i16 LE (studs from the
+//           tile's centre) and the bed's half-width there u8 (quarter studs, from its drainage:
+//           narrower than the least river). A creek is cut into the runs that lie within a mile
+//           of the tile. Roblox rounds the corners (WorldMap).
 //           (Roads are not in the tiles: Roblox lays them from the road graph, below.)
 //   crossings  flat list, 11 numbers per interstate crossing (js/worldmap/crossings.js): type
 //           (1 interchange, 2 overpass), crossing road (1 interstate, 2 expressway, 3 highway,
@@ -94,6 +101,12 @@ for (const river of map.rivers) {
     riverSegments.push([river.points[s - 2], river.points[s - 1], river.points[s], river.points[s + 1], river.widthsM[s / 2 - 1], river.widthsM[s / 2], levels[s / 2 - 1], levels[s / 2]]);
   }
 }
+// Creek beds: each creek's points in studs from the map's centre, with the bed's half-width there.
+const creekLines = map.creeks.map(creek => {
+  const studs = v => (v - map.params.miles / 2) * STUDS_PER_MILE, points = [];
+  for (let i = 0; i < creek.points.length; i += 2) points.push([studs(creek.points[i]), studs(creek.points[i + 1]), Math.round(4 * Math.min(5.5, Math.max(2, 1 + 0.16 * Math.sqrt(creek.drainageMi2[i / 2]))))]);
+  return points;
+});
 const CROSS_TYPE = { interchange: 1, overpass: 2 };
 const CROSS_ROAD = { interstate: 1, expressway: 2, us: 3, state: 3, highway: 3, paved: 4, gravel: 5 };
 const fac = map.facilities;
@@ -157,6 +170,25 @@ for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
   const x0 = ti * TILE_MI - 1, x1 = (ti + 1) * TILE_MI + 1, y0 = tj * TILE_MI - 1, y1 = (tj + 1) * TILE_MI + 1;
   const near = (ax, ay, bx, by) => Math.max(ax, bx) >= x0 && Math.min(ax, bx) <= x1 && Math.max(ay, by) >= y0 && Math.min(ay, by) <= y1;
   const rivers = riverSegments.filter(s => near(s[0], s[1], s[2], s[3])).flatMap(s => [r(s[0]), r(s[1]), r(s[2]), r(s[3]), Math.round(s[4]), Math.round(s[5]), r(s[6], 1), r(s[7], 1)]);
+  const cx = ((ti + 0.5) * TILE_MI - map.params.miles / 2) * STUDS_PER_MILE, cz = ((tj + 0.5) * TILE_MI - map.params.miles / 2) * STUDS_PER_MILE, reachStuds = (TILE_MI / 2 + 1) * STUDS_PER_MILE;
+  const creekParts = [];
+  for (const line of creekLines) {
+    const near = line.map(q => Math.abs(q[0] - cx) <= reachStuds && Math.abs(q[1] - cz) <= reachStuds);
+    for (let i = 0; i < line.length; i++) {
+      // A run: the points near the tile, and the point either side of them.
+      if (!near[i] && !near[i + 1] && !near[i - 1]) continue;
+      let j = i;
+      while (j + 1 < line.length && (near[j + 1] || near[j] || near[j + 2])) j++;
+      if (j > i) {
+        const part = Buffer.alloc(2 + 5 * (j - i + 1));
+        part.writeUInt16LE(j - i + 1, 0);
+        for (let q = i; q <= j; q++) { part.writeInt16LE(Math.round(line[q][0] - cx), 2 + 5 * (q - i)); part.writeInt16LE(Math.round(line[q][1] - cz), 4 + 5 * (q - i)); part[6 + 5 * (q - i)] = line[q][2]; }
+        creekParts.push(part);
+      }
+      i = j;
+    }
+  }
+  const creekBuf = Buffer.concat(creekParts);
   const crossings = map.crossings.filter(c => c.x >= x0 - 0.5 && c.x <= x1 + 0.5 && c.y >= y0 - 0.5 && c.y <= y1 + 0.5)
     .flatMap(c => [CROSS_TYPE[c.type], CROSS_ROAD[c.kind], r(c.x, 4), r(c.y, 4), r(c.ux, 5), r(c.uy, 5), r(c.vx, 5), r(c.vy, 5), c.exit, c.uEnd, c.vEnd]);
   const boxNear = b => b[2] >= x0 && b[0] <= x1 && b[3] >= y0 && b[1] <= y1;
@@ -164,7 +196,8 @@ for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
     const here = list.filter(s => boxNear(s.box)).map(s => s.value);
     return `${key} = ${POINT_SITES.has(key) ? `{ ${here.flat().join(', ')} }` : lua(here)}`;
   });
-  const text = `-- Generated by scripts/export-world-roblox.mjs (seed ${seed}); do not edit.\nreturn {\n\tdata = "${zstdCompressSync(buf).toString('base64')}",\n\trivers = { ${rivers.join(', ')} },\n\tcrossings = { ${crossings.join(', ')} },\n\tsites = {\n\t\t${tileSites.join(',\n\t\t')},\n\t},\n}\n`;
+  for (let o = S * S - 1; o > 0; o--) buf.writeUInt16LE((buf.readUInt16LE(o * 2) - buf.readUInt16LE(o * 2 - 2)) & 65535, o * 2);
+  const text = `-- Generated by scripts/export-world-roblox.mjs (seed ${seed}); do not edit.\nreturn {\n\tdata = "${zstdCompressSync(buf).toString('base64')}",\n\trivers = { ${rivers.join(', ')} },\n\tcreeks = "${creekBuf.length ? zstdCompressSync(creekBuf).toString('base64') : ''}",\n\tcrossings = { ${crossings.join(', ')} },\n\tsites = {\n\t\t${tileSites.join(',\n\t\t')},\n\t},\n}\n`;
   writeFileSync(path.join(out, 'Tiles', `T${ti}_${tj}.luau`), text);
   bytes += text.length;
 }
@@ -173,6 +206,22 @@ for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
 // map's own resolution (zstd, base64), the paved and gravel section roads (zstd, base64), and the
 // rivers, main roads, lakes and every settlement as lines and points, so the client can draw any
 // part of the map sharply at any zoom.
+//   streets  base64 of the zstd-compressed town streets and other small paved roads (the road
+//           graph's alive street, collector, local and frontage edges; see mapStreets below), as
+//           straight segments sorted into cells of a mile square (i east, j south), each segment
+//           cut at the cell lines so it lies within its cell:
+//             header    u16 LE size (cells a side), u16 unit (steps to a mile: 255), u32 cells N,
+//                       u32 segments M;
+//             rows      (size + 1) x u32: the index in the cell list of the first cell of each row
+//                       j (row j's cells are rows[j] to rows[j + 1] - 1; only cells with segments
+//                       are listed, in order of i);
+//             cells     (N + 1) x 6 bytes: i u16, the index of its first segment u32 (its segments
+//                       run to the next cell's first); the last is a closing entry (i 65535, M);
+//             segments  M x 5 bytes: class u8 (0 street, 1 wide street, 2 collector, 3 local or
+//                       frontage), ax, ay, bx, by u8 (steps east and south of the cell's
+//                       north-west corner, 0 to 255: a point on a cell line is the same from
+//                       both sides).
+const mapTotals = {};
 {
   const cells = n * n, land = Buffer.alloc(cells * 2), cellM = map.cellMiles * 1609.344;
   // The map shades the hills as steep as the game draws them: a mile is squeezed into STUDS_PER_MILE studs, a stud of height is 0.28 m.
@@ -195,6 +244,10 @@ for (let tj = 0; tj < tiles; tj++) for (let ti = 0; ti < tiles; ti++) {
   const roadLines = map.roads.map(rd => `{ kind = "${rd.kind}", name = ${JSON.stringify(rd.name.replace(/ .*–.*/, '').replace(/ bypass$/, ''))}, points = { ${rd.points.flatMap(([x, y]) => [r(x, 2), r(y, 2)]).join(', ')} } }`);
   const towns = map.settlements.map(st => `{ name = ${JSON.stringify(st.name)}, kind = "${st.kind}", x = ${r(st.x)}, y = ${r(st.y)}, population = ${st.population} }`);
   const lakes = map.lakes.map(l => `{ x = ${r(l.damX)}, y = ${r(l.damY)}, areaMi2 = ${Math.round(l.areaMi2)} }`);
+  // (The place file is near its upload limit: the streets may take 300,000 characters of it.)
+  const streets = mapStreets(), streetsText = pack(streets.bytes);
+  if (streetsText.length > 300000) throw new Error(`map export: the streets take ${streetsText.length} characters (over 300,000)`);
+  mapTotals.streets = `${streets.edges} street edges as ${streets.segments} segments in ${streets.cells} cells (${streetsText.length} characters)`;
   const dir = path.join('roblox', 'Shared', 'MapData');
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, 'MapVector.luau'), `-- Generated by scripts/export-world-roblox.mjs (seed ${seed}); do not edit.
@@ -205,6 +258,7 @@ return {
 \tland = "${pack(land)}",
 \tsectionSize = ${map.sections.size},
 \tsections = "${pack(Buffer.from(graphSections()))}",
+\tstreets = "${streetsText}",
 \trivers = { ${riverLines.join(',\n\t\t')} },
 \troads = { ${roadLines.join(',\n\t\t')} },
 \tsettlements = { ${towns.join(',\n\t\t')} },
@@ -300,7 +354,7 @@ const meta = {
   graph: graphMeta
 };
 writeFileSync(path.join(out, 'Meta.luau'), `-- Generated by scripts/export-world-roblox.mjs (seed ${seed}); do not edit.\nreturn ${lua(meta)}\n`);
-console.log(`seed ${seed}: ${tiles * tiles} tiles (${(bytes / 1e6).toFixed(1)} MB) and Meta.luau -> ${out}; start at ${meta.start.name} (${meta.start.x}, ${meta.start.y} mi); graph: ${graphTotals.edges} edges, ${graphTotals.blocks} blocks in ${graphTotals.modules} modules (largest ${graphTotals.largest} characters, ${(graphTotals.bytes / 1e6).toFixed(1)} MB)`);
+console.log(`seed ${seed}: ${tiles * tiles} tiles (${(bytes / 1e6).toFixed(1)} MB) and Meta.luau -> ${out}; start at ${meta.start.name} (${meta.start.x}, ${meta.start.y} mi); graph: ${graphTotals.edges} edges, ${graphTotals.blocks} blocks in ${graphTotals.modules} modules (largest ${graphTotals.largest} characters, ${(graphTotals.bytes / 1e6).toFixed(1)} MB); map: ${mapTotals.streets}`);
 
 // A river's flat point list (x0, y0, x1, y1, ...) with the points that lie within tolerance
 // (miles) of the line through their neighbours dropped (Douglas–Peucker), rounded to 0.01 mi.
@@ -341,4 +395,100 @@ function graphSections() {
     }
   }
   return grid;
+}
+
+// The town streets and other small paved roads for the players' map (the layout is with the
+// MapVector block above): the road graph's alive street, collector, local and frontage edges
+// (the section-line roads are in the sections grid, the highways in roads). Edges end at every
+// junction, so those of one class that run on through a node (each the other's straightest way
+// on, within about 25 degrees) are joined into a line, and the line's points that lie within
+// STRAIGHT miles of the line through the points kept are dropped: a straight street is one
+// segment, a curving one a few. Each segment is then cut at the mile lines and rounded.
+function mapStreets() {
+  const size = Math.round(map.params.miles), UNIT = 255, STRAIGHT = 0.0015, ON = 0.9;
+  const classOf = e => (!e.alive ? -1 : e.kind === 'street' ? (e.wide ? 1 : 0) : e.kind === 'collector' ? 2 : e.kind === 'local' || e.kind === 'frontage' ? 3 : -1);
+  const other = (e, node) => (e.a === node ? e.b : e.a);
+  const length = e => Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y);
+  // The edge e runs on into past the node: of its class, the straightest, and e its straightest back.
+  const straightest = (e, node) => {
+    const from = other(e, node), len = length(e), cls = classOf(e);
+    let best = null, bestDot = ON;
+    for (const f of node.edges) {
+      if (f === e || classOf(f) !== cls || f.a === f.b) continue;
+      const to = other(f, node), l = length(f);
+      if (!(l > 0)) continue;
+      const dot = ((node.x - from.x) * (to.x - node.x) + (node.y - from.y) * (to.y - node.y)) / (len * l);
+      if (dot > bestDot) { best = f; bestDot = dot; }
+    }
+    return best;
+  };
+  const onward = (e, node) => { const f = straightest(e, node); return f && straightest(f, node) === e ? f : null; };
+  const chosen = map.streets.graph.edges.filter(e => classOf(e) >= 0 && e.a !== e.b && length(e) > 0);
+  const used = new Set(), lines = [];   // [class, x0, y0, x1, y1] in map miles
+  for (const first of chosen) {
+    if (used.has(first)) continue;
+    // Back to where the line starts (or once round, if it closes on itself), then along it.
+    let e = first, node = first.a;
+    for (let f = onward(e, node); f && f !== first; f = onward(e, node)) { node = other(f, node); e = f; }
+    const start = e, points = [node];
+    for (;;) {
+      used.add(e); node = other(e, node); points.push(node);
+      const f = onward(e, node);
+      if (!f || f === start || used.has(f)) break;
+      e = f;
+    }
+    // The points to keep (Douglas-Peucker).
+    const keep = new Uint8Array(points.length); keep[0] = keep[points.length - 1] = 1;
+    const stack = points.length > 2 ? [[0, points.length - 1]] : [];
+    while (stack.length) {
+      const [a, b] = stack.pop(), pa = points[a], pb = points[b], dx = pb.x - pa.x, dy = pb.y - pa.y, l2 = dx * dx + dy * dy;
+      let worst = 0, at = -1;
+      for (let i = a + 1; i < b; i++) {
+        const t = l2 > 0 ? Math.min(1, Math.max(0, ((points[i].x - pa.x) * dx + (points[i].y - pa.y) * dy) / l2)) : 0;
+        const d = Math.hypot(points[i].x - pa.x - t * dx, points[i].y - pa.y - t * dy);
+        if (d > worst) { worst = d; at = i; }
+      }
+      if (worst > STRAIGHT) { keep[at] = 1; stack.push([a, at], [at, b]); }
+    }
+    const kept = points.filter((_, i) => keep[i]), cls = classOf(first);
+    for (let i = 1; i < kept.length; i++) lines.push([cls, kept[i - 1].x, kept[i - 1].y, kept[i].x, kept[i].y]);
+  }
+  // Cut at the mile lines, each piece into the cell its middle is in.
+  const cellLists = new Map();
+  const clamp = v => Math.min(size - 1, Math.max(0, v));
+  const step = (v, c) => Math.min(UNIT, Math.max(0, Math.round((v - c) * UNIT)));
+  for (const [cls, x0, y0, x1, y1] of lines) {
+    const ts = [0, 1];
+    for (const [p, q] of [[x0, x1], [y0, y1]]) for (let k = Math.floor(Math.min(p, q)) + 1; k < Math.max(p, q); k++) ts.push((k - p) / (q - p));
+    ts.sort((a, b) => a - b);
+    for (let s = 1; s < ts.length; s++) {
+      const t0 = ts[s - 1], t1 = ts[s];
+      if (t1 - t0 < 1e-9) continue;
+      const ax = x0 + (x1 - x0) * t0, ay = y0 + (y1 - y0) * t0, bx = x0 + (x1 - x0) * t1, by = y0 + (y1 - y0) * t1;
+      const I = clamp(Math.floor((ax + bx) / 2)), J = clamp(Math.floor((ay + by) / 2));
+      let rec = [cls, step(ax, I), step(ay, J), step(bx, I), step(by, J)];
+      if (rec[1] === rec[3] && rec[2] === rec[4]) continue;
+      if (rec[1] > rec[3] || (rec[1] === rec[3] && rec[2] > rec[4])) rec = [cls, rec[3], rec[4], rec[1], rec[2]];
+      const key = J * size + I;
+      if (!cellLists.has(key)) cellLists.set(key, []);
+      cellLists.get(key).push(rec);
+    }
+  }
+  // In a fixed order (by row and column; in a cell by class, then place), which also packs well.
+  const keys = [...cellLists.keys()].sort((a, b) => a - b), N = keys.length;
+  let M = 0;
+  for (const list of cellLists.values()) M += list.length;
+  const HEAD = 12, ROWS = (size + 1) * 4, CELL = 6, SEG = 5;
+  const bytes = Buffer.alloc(HEAD + ROWS + (N + 1) * CELL + M * SEG), cellsAt = HEAD + ROWS, segsAt = cellsAt + (N + 1) * CELL;
+  bytes.writeUInt16LE(size, 0); bytes.writeUInt16LE(UNIT, 2); bytes.writeUInt32LE(N, 4); bytes.writeUInt32LE(M, 8);
+  let seg = 0, row = 0;
+  keys.forEach((key, c) => {
+    const J = Math.floor(key / size), I = key % size;
+    for (; row <= J; row++) bytes.writeUInt32LE(c, HEAD + row * 4);
+    bytes.writeUInt16LE(I, cellsAt + c * CELL); bytes.writeUInt32LE(seg, cellsAt + c * CELL + 2);
+    for (const rec of cellLists.get(key).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3] || a[4] - b[4])) { bytes.set(rec, segsAt + seg * SEG); seg++; }
+  });
+  for (; row <= size; row++) bytes.writeUInt32LE(N, HEAD + row * 4);
+  bytes.writeUInt16LE(65535, cellsAt + N * CELL); bytes.writeUInt32LE(M, cellsAt + N * CELL + 2);
+  return { bytes, edges: chosen.length, segments: M, cells: N };
 }

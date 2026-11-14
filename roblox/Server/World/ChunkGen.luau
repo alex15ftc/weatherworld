@@ -73,6 +73,12 @@ local STREET_BRIDGE_HALF = 30
 -- Bridges are planned from the roads this far beyond the network's pad: the longest reach of a
 -- bridge from its crossing (half the widest span, the longest ramp and a margin).
 local BRIDGE_REACH = 420
+-- Creeks (the streams too small for the map's rivers; WorldMap tiles' creeks): a dry bed cut
+-- CREEK_DEPTH_M (and a little more by its width) below the ground along its line, bare earth in
+-- the bed, its banks easing back to the land over CREEK_BANK studs. Roads cross them on their
+-- own grade (a culvert's fill); nothing is built in the bed.
+local CREEK_BANK = 22
+local CREEK_DEPTH_M = 0.55
 -- Buildings are planned this far beyond the chunk (see the two passes in build): further than
 -- half the largest footprint a lot or parcel takes.
 local NEIGHBOUR_LOTS = 130
@@ -216,7 +222,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 
 	-- Rivers and the map's roads near the chunk, in studs (far enough for bridges reaching in).
 	local reach = (RIVER_MAX + 2 * Bridges.BANK_EXTRA + 260) / MILE
-	local rivers, crossings = {}, {}
+	local rivers, crossings, creeks = {}, {}, {}
 	local seen = {}
 	for _, tile in WorldMap.tilesFor(mx0 - reach, my0 - reach, mx1 + reach, my1 + reach) do
 		local list = tile.rivers
@@ -233,6 +239,18 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 						h0 = math.clamp(list[i + 4] * RIVER_STUDS_PER_M, RIVER_MIN, RIVER_MAX) / 2,
 						h1 = math.clamp(list[i + 5] * RIVER_STUDS_PER_M, RIVER_MIN, RIVER_MAX) / 2,
 					})
+				end
+			end
+		end
+		local beds = tile.creeks
+		for i = 1, #beds, 5 do
+			local ax, az, bx, bz = beds[i], beds[i + 1], beds[i + 2], beds[i + 3]
+			local pad = beds[i + 4] + CREEK_BANK
+			if math.max(ax, bx) >= x0 - pad and math.min(ax, bx) <= x1 + pad and math.max(az, bz) >= z0 - pad and math.min(az, bz) <= z1 + pad then
+				local key = `k{ax},{az},{bx},{bz}`
+				if not seen[key] then
+					seen[key] = true
+					table.insert(creeks, { ax = ax, az = az, bx = bx, bz = bz, half = beds[i + 4] })
 				end
 			end
 		end
@@ -554,6 +572,25 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 						end
 						if d < half + 6 and material ~= M.Sand then
 							material = M.Ground
+						end
+					end
+				end
+			end
+
+			-- Creeks: a bed below the ground along the creek's line, banks easing back to the land.
+			if riverHalf == 0 and not lake and not (field and fieldDistance <= 0) then
+				for _, c in creeks do
+					local d, t = toSegment(x, z, c.ax, c.az, c.bx, c.bz)
+					if d < c.half + CREEK_BANK then
+						local pmx, pmy = WorldMap.milesAt(c.ax + (c.bx - c.ax) * t, c.az + (c.bz - c.az) * t)
+						local bed = WorldMap.elevationM(pmx, pmy) + Heightfield.detailM(pmx, pmy) - CREEK_DEPTH_M - c.half * 0.12 / VERTICAL
+						if d < c.half then
+							h = math.min(h, bed)
+							material = M.Ground
+							isBusy = true
+						else
+							local f = (d - c.half) / CREEK_BANK
+							h = math.min(h, bed + (h - bed) * f * f * (3 - 2 * f))
 						end
 					end
 				end

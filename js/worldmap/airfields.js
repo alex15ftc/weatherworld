@@ -571,10 +571,10 @@ export function planAirfields(map, options = {}) {
     // The spur joins the map's roads (an expressway: crossings.js gives it its exit, the section
     // roads meet it at signals or stop short of it), named for the airport and the interstate.
     if (freeway) {
-      // (Its corners rounded as the other expressways' are, curves.js; but for the turn out of the
-      // gate, at the end of the airport's own stub beside the office.)
-      const [gate, ...rest] = field.access.points;
-      const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: [gate, ...roundCorners(rest, CURVE_DEFAULTS.radiusMi.expressway, () => false, { maxStepDeg: CURVE_DEFAULTS.maxStepDeg.expressway })] };
+      // (Its corners rounded as the other expressways' are, curves.js; the turn out of the gate, at
+      // the end of the airport's own stub, on a tighter curve begun beyond the office: gateTurn.)
+      const turned = gateTurn(field.access.points, avoid);
+      const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: [...turned.slice(0, -1), ...roundCorners([turned.at(-1), ...field.access.points.slice(2)], CURVE_DEFAULTS.radiusMi.expressway, () => false, { maxStepDeg: CURVE_DEFAULTS.maxStepDeg.expressway })] };
       roads.push(road);
       for (let i = 1; i < road.points.length; i++) {
         const seg = { type: 'road', road, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: HALF_MI_EXPRESSWAY };
@@ -711,6 +711,47 @@ export function planAirfields(map, options = {}) {
 
 // The section-line roads where the airfields are: none inside a fence, and paved along any mile
 // line an access road follows. Changes sections.roads in place.
+// The first turn of an airport's expressway, at the end of the stub out of its gate: the gate,
+// the curve, and a point on the leg beyond the turn where the road is back on its line. The office
+// and radar stand beside the stub (avoid), on the inside of the turn, so the curve begins past
+// them, on GATE_RADIUS_MI (a slow road: joints of about 11 degrees, pieces long enough to build).
+// Where that leaves too little of the stub for the whole turn, the curve swings wide of the leg
+// beyond and comes back onto it at GATE_JOIN_DEG. A turn this cannot fit keeps its corner.
+const GATE_RADIUS_MI = STUDS(170), GATE_STEP_DEG = 11.5, GATE_JOIN_DEG = 10, GATE_PAST_MI = STUDS(30), GATE_CHORD_MI = STUDS(32);
+function gateTurn(points, avoid) {
+  const [g, c, n] = points;
+  const l0 = Math.hypot(c[0] - g[0], c[1] - g[1]), l1 = Math.hypot(n[0] - c[0], n[1] - c[1]);
+  const ux = (c[0] - g[0]) / l0, uy = (c[1] - g[1]) / l0, vx = (n[0] - c[0]) / l1, vy = (n[1] - c[1]) / l1;
+  const turn = Math.acos(Math.max(-1, Math.min(1, ux * vx + uy * vy))), side = Math.sign(ux * vy - uy * vx), rad = Math.PI / 180;
+  if (turn < 2 * rad || !side) return [g, c];
+  // How far along the stub the office and the radar reach.
+  const past = Math.max(0, ...avoid.flat().map(([x, y]) => (x - g[0]) * ux + (y - g[1]) * uy)) + GATE_PAST_MI;
+  // The arc from a point of the stub, through an angle: its points and where it ends heading.
+  // (One chord for a turn of up to two joints' worth; else chords of GATE_STEP_DEG, on a radius
+  // wide enough that none is shorter than GATE_CHORD_MI.)
+  const shape = angle => { const steps = angle <= 2 * GATE_STEP_DEG * rad ? 1 : Math.ceil(angle / (GATE_STEP_DEG * rad) - 1e-9); return { steps, r: steps === 1 ? GATE_RADIUS_MI : Math.max(GATE_RADIUS_MI, GATE_CHORD_MI / (2 * Math.sin(angle / (2 * steps)))) }; };
+  const arc = (from, angle) => {
+    const { steps, r } = shape(angle), ax = g[0] + ux * from, ay = g[1] + uy * from, cx = ax - uy * side * r, cy = ay + ux * side * r, a0 = Math.atan2(ay - cy, ax - cx), out = [];
+    for (let k = 0; k <= steps; k++) out.push([cx + r * Math.cos(a0 + side * angle * k / steps), cy + r * Math.sin(a0 + side * angle * k / steps)]);
+    return out;
+  };
+  const tangent = shape(turn).r * Math.tan(turn / 2);
+  if (turn <= GATE_STEP_DEG * rad) return [g, c];
+  if (l0 - tangent >= past && tangent < 0.45 * l1) {
+    const curve = arc(l0 - tangent, turn);
+    return [g, ...curve.slice(0, -1), [c[0] + vx * tangent, c[1] + vy * tangent]];
+  }
+  if (past >= l0 - 1e-6) return [g, c];
+  // Begun at past, the arc ends beyond the leg's line: turned a little more, it comes back to it.
+  const curve = arc(past, turn + GATE_JOIN_DEG * rad), [px, py] = curve.at(-1);
+  const hx = vx * Math.cos(side * GATE_JOIN_DEG * rad) - vy * Math.sin(side * GATE_JOIN_DEG * rad), hy = vx * Math.sin(side * GATE_JOIN_DEG * rad) + vy * Math.cos(side * GATE_JOIN_DEG * rad);
+  const den = hx * vy - hy * vx;
+  if (Math.abs(den) < 1e-9) return [g, c];
+  const t = ((c[0] - px) * vy - (c[1] - py) * vx) / den, u = ((c[0] - px) * hy - (c[1] - py) * hx) / den;
+  if (t <= 0 || u <= 0 || u > 0.6 * l1) return [g, c];
+  return [g, ...curve, [c[0] + vx * u, c[1] + vy * u]];
+}
+
 // A mile of mile line goes where it runs inside a fence or within GRAZE_MI of one (a road's
 // half-width and a little: an arterial there would clip the field).
 const GRAZE_MI = STUDS(36);

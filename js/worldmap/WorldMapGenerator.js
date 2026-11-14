@@ -63,6 +63,9 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   // A creek appears on the map where this much rain-weighted drainage area (mi2) has gathered;
   // its width (m) is riverWidthPerRootMi2 times the root of that area.
   riverAreaMi2: 1000, riverWidthPerRootMi2: 2,
+  // Smaller streams, from creekAreaMi2 of drainage up to a river's, are kept as creeks: lines for
+  // Roblox to cut a dry bed along (they are not on the map and take no part in its planning).
+  creekAreaMi2: 25,
   // Reservoirs: a dam on a river draining lakeDrainMi2, raised until the water behind it covers
   // lakeAreaMi2; built where the dam that takes is nearest lakeDamM (a deep lake in a confined
   // valley, not a shallow spread over a flat) and no lower than its least.
@@ -319,12 +322,13 @@ export function generateWorldMap(options = {}) {
 
   const { lake, lakes } = placeLakes(n, p, height, area, receiver, cellMi2, noise('lake-site'));
   const rivers = nameRivers(splitAtLakes(traceRivers(n, p, cellMi2, area, receiver), lake, n, p.cellMiles));
+  const creeks = traceCreeks(n, p, cellMi2, area, receiver, lake);
   const cover = landCover(n, p, height, coverRegion, cellM, rivers, patch, patch2, area, cellMi2);
   for (let k = 0; k < cells; k++) if (lake[k]) cover[k] = C.water;
   const map = {
     params: p, size: n, cellMiles: p.cellMiles, regionKeys: REGIONS.map(r => r.key), coverKeys: COVER,
     elevation: Float32Array.from(height), region, coverRegion, cover, lake, lakes, drainageMi2: Float32Array.from(area, a => a * cellMi2),
-    rivers, inflows: inflowCells, trunkU
+    rivers, creeks, inflows: inflowCells, trunkU
   };
   const { settlements, roads } = planSettlements(map, p.settlements);
   paintTowns(map, settlements);
@@ -458,6 +462,28 @@ function traceRivers(n, p, cellMi2, area, receiver) {
     if (points.length >= 4) rivers.push({ points, widthsM, mouthDrainageMi2: area[last] * cellMi2 });
   }
   return rivers;
+}
+
+// Creeks: chains of cells draining at least creekAreaMi2 but less than a river does, each from
+// its head down to the river, lake or creek it runs into (that point included, so they join).
+// Each has its points (cell centres, miles) and the drainage (mi2) at each.
+function traceCreeks(n, p, cellMi2, area, receiver, lake) {
+  const cells = n * n, least = p.creekAreaMi2 / cellMi2, most = p.riverAreaMi2 / cellMi2;
+  const creek = k => area[k] >= least && area[k] < most && !lake[k];
+  const fed = new Uint8Array(cells), taken = new Uint8Array(cells), creeks = [];
+  for (let k = 0; k < cells; k++) if (creek(k) && receiver[k] >= 0) fed[receiver[k]] = 1;
+  for (let start = 0; start < cells; start++) {
+    if (!creek(start) || fed[start]) continue;
+    const points = [], drainageMi2 = [];
+    for (let k = start; k >= 0; k = receiver[k]) {
+      points.push((k % n + 0.5) * p.cellMiles, (((k / n) | 0) + 0.5) * p.cellMiles);
+      drainageMi2.push(Math.min(area[k] * cellMi2, p.riverAreaMi2));
+      if (!creek(k) || taken[k]) break;
+      taken[k] = 1;
+    }
+    if (points.length >= 4) creeks.push({ points, drainageMi2 });
+  }
+  return creeks;
 }
 
 function landCover(n, p, height, region, cellM, rivers, patch, patch2, area, cellMi2) {

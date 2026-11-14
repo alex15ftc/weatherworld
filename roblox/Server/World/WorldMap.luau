@@ -62,7 +62,8 @@ for _, lake in Meta.lakes do
 	lakeSurface[lake.id] = lake.surfaceM
 end
 
-export type Tile = { data: buffer, rivers: { number }, crossings: { number }, sites: any, ti: number, tj: number }
+-- (creeks: the creek beds near the tile as straight pieces in studs, flat: ax, az, bx, bz, half-width.)
+export type Tile = { data: buffer, rivers: { number }, creeks: { number }, crossings: { number }, sites: any, ti: number, tj: number }
 
 -- A record string of the export: base64 of zstd-compressed bytes.
 local function unpack(text: string): buffer
@@ -99,6 +100,46 @@ local function evict()
 	end
 end
 
+-- A tile's creek beds from its packed runs of points (see the export): each run's corners are
+-- cut once (a point a quarter of the way in from each end of every piece), so a creek bends
+-- rather than turning on the map's half-mile cells; then straight pieces in studs.
+local function creekPieces(data: buffer, ti: number, tj: number): { number }
+	local cx, cz = ((ti + 0.5) * TILE_MI - HALF) * MILE, ((tj + 0.5) * TILE_MI - HALF) * MILE
+	local pieces = {}
+	local at, size = 0, buffer.len(data)
+	while at + 2 <= size do
+		local count = buffer.readu16(data, at)
+		at += 2
+		local xs, zs, halves = table.create(count), table.create(count), table.create(count)
+		for i = 1, count do
+			xs[i], zs[i], halves[i] = buffer.readi16(data, at) + cx, buffer.readi16(data, at + 2) + cz, buffer.readu8(data, at + 4) / 4
+			at += 5
+		end
+		local px, pz = xs[1], zs[1]
+		local function to(x: number, z: number, half: number)
+			table.insert(pieces, px)
+			table.insert(pieces, pz)
+			table.insert(pieces, x)
+			table.insert(pieces, z)
+			table.insert(pieces, half)
+			px, pz = x, z
+		end
+		for i = 1, count - 1 do
+			local ax, az, bx, bz = xs[i], zs[i], xs[i + 1], zs[i + 1]
+			local half = (halves[i] + halves[i + 1]) / 2
+			if i > 1 then
+				to(ax * 0.75 + bx * 0.25, az * 0.75 + bz * 0.25, halves[i])
+			end
+			if i < count - 1 then
+				to(ax * 0.25 + bx * 0.75, az * 0.25 + bz * 0.75, half)
+			else
+				to(bx, bz, half)
+			end
+		end
+	end
+	return pieces
+end
+
 function WorldMap.tile(ti: number, tj: number): Tile
 	ti = math.clamp(ti, 0, TILES - 1)
 	tj = math.clamp(tj, 0, TILES - 1)
@@ -116,10 +157,17 @@ function WorldMap.tile(ti: number, tj: number): Tile
 		end)
 		if not ok then
 			warn(`[WeatherWorld] map tile T{ti}_{tj} read outside the prepared area`)
-			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
+			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, creeks = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
 		end
 		evict()
-		tile = { data = unpack(source.data), rivers = source.rivers, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
+		-- (The elevations are stored as differences from the cell before: add them back up.)
+		local data = unpack(source.data)
+		local running = 0
+		for o = 0, S * S - 1 do
+			running = (running + buffer.readu16(data, o * 2)) % 65536
+			buffer.writeu16(data, o * 2, running)
+		end
+		tile = { data = data, rivers = source.rivers, creeks = creekPieces(unpack(source.creeks or ""), ti, tj), crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
 		tiles[key] = tile
 		tileCount += 1
 		lastUse[key] = useClock

@@ -3,7 +3,10 @@
 -- not, so a Rojo build is never uploaded itself).
 --   lune run tools/worldmap/patch-place.luau <published.rbxl> <rojo build.rbxl> <out.rbxl>
 -- Replaced, each by the build's copy: ServerStorage.World (the generator), ServerStorage.WorldData
--- (the map's tiles and road graph) and ReplicatedStorage.Shared.MapData (the players' map).
+-- (the map's tiles and road graph), ReplicatedStorage.Shared.MapData (the players' map) and the
+-- products screen's modules that the repo has changed since the place was last published
+-- (tools/worldmap/diff-place.luau lists what differs: check it before a publish, and add here
+-- whatever else the repo has changed that should go out).
 -- Prints the instance counts before and after and what changed, for checking before an upload.
 local fs = require("@lune/fs")
 local process = require("@lune/process")
@@ -27,6 +30,13 @@ local TARGETS = {
 	{ "ServerStorage", "World" },
 	{ "ServerStorage", "WorldData" },
 	{ "ReplicatedStorage", "Shared", "MapData" },
+	{ "ReplicatedFirst", "Controllers", "ProductsController" },
+	{ "ReplicatedFirst", "Modules", "Products", "Geo" },
+	{ "ReplicatedFirst", "Modules", "Products", "Layer" },
+	{ "ReplicatedFirst", "Modules", "Products", "Layers", "Areas" },
+	{ "ReplicatedFirst", "Modules", "Products", "MapBase" },
+	{ "ReplicatedFirst", "Modules", "Products", "MapCanvas" },
+	{ "ReplicatedFirst", "Modules", "Products", "Ui" },
 }
 
 local before = #place:GetDescendants()
