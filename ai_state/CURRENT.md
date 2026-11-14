@@ -18,8 +18,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- One storm wind and radar realism (2026-11-14, branch `engine/one-storm-wind`, NOT merged, NOT deployed, not seen in
-  Studio): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
+- One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `32b57de`, the world carried over;
+  place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
+  not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
   frames, the radar's velocity, the rain's fall-out, the debris and the trees' wind (`FoliageWind.luau` no longer
   adds a second tornado); the cold pool's outflow is one rule (`ColdPool.js` outflowShare). The rain field
   (`PrecipitationField.js`) sheds precipitation by the wind at its own height, keeps the inflow's wind in the
@@ -294,8 +295,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 0. Map (published as 501; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
-0a. `engine/one-storm-wind`: look at storms in Studio (wall cloud lowering, near-storm and tree winds, frame rain and
-   hail all moved, and the new radar colours) before merging to `main`, publishing the place and deploying the engine (`main` is merged into it as of 2026-11-14).
+0a. Storm wind and radar (live since 2026-11-14, engine `32b57de`, place 502): look at storms in the game or Studio (wall
+   cloud lowering, near-storm and tree winds, frame rain and hail all moved) and at the radar's new colours on the M map.
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
    check the server boots from `ServerStorage.main`, storms and products arrive (the ready handshakes), and the
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).
