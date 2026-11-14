@@ -227,3 +227,34 @@ export function lowLevelShearGrid(into, width, height, resKm, site, scan, topKm 
   }
   return into;
 }
+
+// A tornadic debris signature at a place on a scan (km on the map): debris lofted by a tornado is
+// of every shape and tumbles, so the correlation coefficient falls far below rain's or hail's where
+// the echo is still strong, at the velocity couplet (Ryzhkov et al. 2005, JAM 44, 557-570; the
+// Warning Decision Training Division's criteria: CC below 0.8 with 30 dBZ or more, on the couplet).
+// Found here as at least `gates` such gates within radiusKm of the place. It is read from the scan
+// alone, so a weak tornado, or one far from the radar with the beam above its debris, shows none
+// (measured 2026-11-13 on a made supercell: 7 gates for a 165 mph tornado at 59 km and 2 for a
+// 120 mph one; none for a 90 mph one, for a mesocyclone with 2.5 inch hail and no tornado, or for
+// the 165 mph one at 106 km).
+export const TDS = { radiusKm: 2.5, leastDbz: 30, cc: 0.8, gates: 2 };
+export function debrisSignature(scan, site, xKm, yKm) {
+  const ref = scan.products.reflectivity, cc = scan.products.correlationCoefficient;
+  if (!ref || !cc) return false;
+  const gateKm = scan.gateKm ?? RADAR_GATE_KM, gateCount = ref.length / RADAR_RADIALS;
+  const away = Math.hypot(xKm - site.xKm, yKm - site.yKm), g0 = Math.max(0, Math.floor((away - TDS.radiusKm) / gateKm)), g1 = Math.min(gateCount - 1, Math.ceil((away + TDS.radiusKm) / gateKm));
+  // (the radials that can reach the circle: all of them when the radar is inside it)
+  const span = away > TDS.radiusKm ? Math.ceil(Math.asin(TDS.radiusKm / away) / DEG / AZ_STEP) + 1 : RADAR_RADIALS / 2;
+  const centre = Math.floor(((Math.atan2(xKm - site.xKm, -(yKm - site.yKm)) / DEG + 360) % 360) / AZ_STEP);
+  let found = 0;
+  for (let k = -span; k <= span && k < RADAR_RADIALS - span; k++) {
+    const r = (centre + k + RADAR_RADIALS) % RADAR_RADIALS, az = (r + 0.5) * AZ_STEP * DEG;
+    for (let g = g0; g <= g1; g++) {
+      const ground = groundRangeKm((g + 0.5) * gateKm, scan.tiltDeg);
+      if (Math.hypot(site.xKm + ground * Math.sin(az) - xKm, site.yKm - ground * Math.cos(az) - yKm) > TDS.radiusKm) continue;
+      const i = r * gateCount + g, dbz = decodeRadarValue('reflectivity', ref[i]), rho = decodeRadarValue('correlationCoefficient', cc[i]);
+      if (dbz != null && rho != null && dbz >= TDS.leastDbz && rho < TDS.cc && ++found >= TDS.gates) return true;
+    }
+  }
+  return false;
+}
