@@ -39,6 +39,11 @@ export const CURVE_DEFAULTS = Object.freeze({
   keepMi: 0.15,        // corners this near a point of another road stay sharp
   onLineMi: 0.05,      // and those this near the line of one running through
   clearMi: AT_1000(0.35), // curves of other roads keep this far from an interstate
+  // Roads and rivers (clearOfRivers): a road within its half-width and the river's (and
+  // riverPadMi) of a river it runs along or meets at a slant (the sine of the angle under
+  // riverSkewSin, footprints.js skewSin) is moved: a river is crossed squarely, on a dog-leg
+  // reaching legMi either side of it.
+  roadHalfMi: { expressway: STUDS(39), highway: STUDS(18) }, riverPadMi: STUDS(8), riverSkewSin: 0.5, legMi: 0.5,
   systemReachMi: STUDS(500) // an interstate's own curves are small this near where it meets another (the ramps' reach along it)
 });
 
@@ -157,4 +162,100 @@ export function curveRoads(roads, options = {}) {
     const points = roundCorners(road.points, radius, keep, { ...p, maxStepDeg: p.maxStepDeg[road.kind], mustRadiusMi: p.mustRadiusMi[road.kind] ?? 0 }, room, corners);
     return { ...road, points, corners };
   });
+}
+
+// Distance between two segments (0 where they cross).
+function segGap(a, b, c, d) {
+  const side = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const d1 = side(a, b, c), d2 = side(a, b, d), d3 = side(c, d, a), d4 = side(c, d, b);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0;
+  return Math.min(distToLine(a[0], a[1], c, d), distToLine(b[0], b[1], c, d), distToLine(c[0], c[1], a, b), distToLine(d[0], d[1], a, b));
+}
+
+// Takes the highways and expressways off the rivers they run along or cross at a slant (the
+// routes are laid corner to corner of the mile grid, and a river's line between cell centres can
+// fall right under a diagonal of one). Done once everything sited against the routes as laid is
+// in place (the airfields: airfields.js), and before what is planned against the roads as built.
+//   beside a river, not crossing it: the road's points there are moved clear of it, a little;
+//   on a river, or across it at a slant: the stretch is laid again, from the point before it to
+//   the point after, by a straight leg square across one of the river's reaches nearby (the one
+//   that turns the road least), with the corners rounded as the route's others are.
+// The roads are changed in place; returns what was done.
+export function clearOfRivers(roads, rivers, options = {}) {
+  const p = { ...CURVE_DEFAULTS, ...options }, done = { moved: 0, relaid: 0, left: 0 };
+  const reaches = [], cells = new Map();
+  rivers.forEach((river, r) => { for (let k = 2; k < river.points.length; k += 2) {
+    const s = { a: [river.points[k - 2], river.points[k - 1]], b: [river.points[k], river.points[k + 1]], half: STUDS(Math.min(220, Math.max(12, river.widthsM[k / 2] * 0.18))) / 2, r };
+    reaches.push(s);
+    for (let X = Math.floor(Math.min(s.a[0], s.b[0])) - 1; X <= Math.floor(Math.max(s.a[0], s.b[0])) + 1; X++) for (let Y = Math.floor(Math.min(s.a[1], s.b[1])) - 1; Y <= Math.floor(Math.max(s.a[1], s.b[1])) + 1; Y++) { const key = X * 8192 + Y; if (!cells.has(key)) cells.set(key, []); cells.get(key).push(s); }
+  } });
+  const near = (a, b) => { const found = new Set(); for (let X = Math.floor(Math.min(a[0], b[0])); X <= Math.floor(Math.max(a[0], b[0])); X++) for (let Y = Math.floor(Math.min(a[1], b[1])); Y <= Math.floor(Math.max(a[1], b[1])); Y++) for (const s of cells.get(X * 8192 + Y) ?? []) found.add(s); return found; };
+  const sinOf = (a, b, s) => Math.abs((b[0] - a[0]) * (s.b[1] - s.a[1]) - (b[1] - a[1]) * (s.b[0] - s.a[0])) / ((Math.hypot(b[0] - a[0], b[1] - a[1]) * Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1])) || 1);
+  // The river reach a piece of road is in trouble with, and how far off it is (0: across it).
+  const clash = (a, b, half) => { for (const s of near(a, b)) { const gap = segGap(a, b, s.a, s.b); if (gap < half + s.half + p.riverPadMi && sinOf(a, b, s) < p.riverSkewSin) return { s, gap }; } return null; };
+  const length = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+  for (const road of roads) {
+    const half = p.roadHalfMi[road.kind];
+    if (!half) continue;
+    for (let pass = 0; pass < 6; pass++) {
+      const pts = road.points;
+      let i0 = -1;
+      for (let i = 0; i + 1 < pts.length && i0 < 0; i++) if (clash(pts[i], pts[i + 1], half)) i0 = i;
+      if (i0 < 0) break;
+      let i1 = i0, across = clash(pts[i0], pts[i0 + 1], half).gap === 0;
+      while (i1 + 2 < pts.length) { const c = clash(pts[i1 + 1], pts[i1 + 2], half); if (!c) break; i1++; across ||= c.gap === 0; }
+      if (!across) {
+        // Beside it: each point of the stretch too near the reach moves straight away from it.
+        for (let i = i0; i <= i1; i++) {
+          const c = clash(pts[i], pts[i + 1], half);
+          if (!c) continue;
+          for (const v of [pts[i], pts[i + 1]]) {
+            const dx = c.s.b[0] - c.s.a[0], dy = c.s.b[1] - c.s.a[1], t = Math.max(0, Math.min(1, ((v[0] - c.s.a[0]) * dx + (v[1] - c.s.a[1]) * dy) / (dx * dx + dy * dy)));
+            const qx = c.s.a[0] + dx * t, qy = c.s.a[1] + dy * t, far = Math.hypot(v[0] - qx, v[1] - qy), want = half + c.s.half + 2 * p.riverPadMi;
+            if (far > 1e-9 && far < want) { v[0] += (v[0] - qx) / far * (want - far); v[1] += (v[1] - qy) / far * (want - far); }
+          }
+        }
+        done.moved++;
+        continue;
+      }
+      // Across it: from the point before the stretch (back past any short pieces, a curve's) to
+      // the point after it.
+      let ia = i0, ib = i1 + 1;
+      while (ia > 0 && length(pts[ia - 1], pts[ia]) < 0.3) ia--;
+      while (ib < pts.length - 1 && length(pts[ib], pts[ib + 1]) < 0.3) ib++;
+      const A = pts[ia], B = pts[ib], river = clash(pts[i0], pts[i0 + 1], half).s.r, mid = [(pts[i0][0] + pts[i1 + 1][0]) / 2, (pts[i0][1] + pts[i1 + 1][1]) / 2];
+      const turnAt = (a, q, c) => { const u = [q[0] - a[0], q[1] - a[1]], v = [c[0] - q[0], c[1] - q[1]]; return Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1]) / ((Math.hypot(...u) * Math.hypot(...v)) || 1)))); };
+      let best = null;
+      for (const s of reaches) {
+        if (s.r !== river || length(s.a, s.b) < 0.3) continue;
+        const M = [(s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2];
+        if (length(M, mid) > 2.5) continue;
+        const l = length(s.a, s.b);
+        let nx = -(s.b[1] - s.a[1]) / l, ny = (s.b[0] - s.a[0]) / l;
+        if (nx * (B[0] - A[0]) + ny * (B[1] - A[1]) < 0) { nx = -nx; ny = -ny; }
+        const P1 = [M[0] - nx * p.legMi, M[1] - ny * p.legMi], P2 = [M[0] + nx * p.legMi, M[1] + ny * p.legMi], path = [A, P1, P2, B];
+        if (length(A, P1) < p.legMi || length(P2, B) < p.legMi) continue;
+        // One crossing of the river, and no leg in trouble with it.
+        let crossings = 0, bad = false;
+        for (let i = 1; i < path.length && !bad; i++) { bad = !!clash(path[i - 1], path[i], half); for (const o of near(path[i - 1], path[i])) if (o.r === river && segGap(path[i - 1], path[i], o.a, o.b) === 0) crossings++; }
+        const turns = [turnAt(A, P1, P2), turnAt(P1, P2, B), ...(ib + 1 < pts.length ? [turnAt(P2, B, pts[ib + 1])] : []), ...(ia > 0 ? [turnAt(pts[ia - 1], A, P1)] : [])];
+        if (bad || crossings !== 1 || turns.slice(0, 3).some(t => t > 100 * Math.PI / 180)) continue;
+        // (A leg nearly along a mile line, but not on it, would run beside the road on that line.)
+        const skew = (q, w) => { const t = Math.atan2(Math.abs(w[1] - q[1]), Math.abs(w[0] - q[0])), off = Math.min(t, Math.PI / 2 - t); return off > 0.03 && off < 0.44 ? 3 : 0; };
+        const score = turns.reduce((sum, t) => sum + t, 0) + skew(A, P1) + skew(P2, B);
+        if (!best || score < best.score) best = { score, P1, P2 };
+      }
+      if (!best) { done.left++; break; }
+      // The corner before the stretch stays as it was where it was a corner (a junction's);
+      // the rest are rounded.
+      const kept = ia > 0 && ia + 1 < pts.length && turnAt(pts[ia - 1], A, pts[ia + 1]) > p.maxStepDeg[road.kind] * Math.PI / 180 + 1e-6;
+      const line = [...(ia > 0 ? [pts[ia - 1]] : []), A, best.P1, best.P2, B, ...(ib + 1 < pts.length ? [pts[ib + 1]] : [])];
+      const corners = [], rounded = roundCorners(line, p.radiusMi[road.kind], (x, y) => kept && x === A[0] && y === A[1], { ...p, maxStepDeg: p.maxStepDeg[road.kind], mustRadiusMi: 0 }, () => Infinity, corners);
+      road.points = [...pts.slice(0, Math.max(0, ia - 1)), ...rounded, ...pts.slice(ib + 2)];
+      // The corners recorded for the roads that came to them: those of the stretch laid again go.
+      road.corners = [...(road.corners ?? []).filter(([, , mx, my]) => road.points.some((q, i) => i > 0 && distToLine(mx, my, road.points[i - 1], q) < 1e-6)), ...corners];
+      done.relaid++;
+    }
+  }
+  return done;
 }

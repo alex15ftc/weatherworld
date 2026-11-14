@@ -216,6 +216,8 @@ local function note(kind: string, text: string)
 	end
 end
 local falls: { number }, buried: { number } = {}, {}
+local roadGaps: { number } = {}
+local roadSamples, roadPokes, roadFloats = 0, 0, 0
 local function miles(x: number, z: number): string
 	return string.format("(%.3f, %.3f) mi", x / MILE + HALF, z / MILE + HALF)
 end
@@ -242,6 +244,50 @@ for _, placeAt in places do
 				continue
 			end
 			group.props += #result.props
+			-- Roads against the ground under them: a road's slab is BED studs thick with its top
+			-- on the grade along its centre line, and the ground is cut to just inside it. Sampled
+			-- along every road piece in the chunk, at its middle and near both edges: ground above
+			-- the road's top shows through it; ground below the slab's underside leaves it in the air.
+			local rc = seenRoads
+			if rc then
+				for _, g in rc.net.segments do
+					if not g.bulb and g.length > 1 then
+						for t = 4, g.length - 4, 8 do
+							local cx1, cz1 = g.ax + g.ux * t, g.az + g.uz * t
+							if rc.inside(cx1, cz1) and not rc.bridged(cx1, cz1, g) then
+								local top = rc.gradeTop(cx1, cz1)
+								-- (a divided road is sampled in its carriageways: its middle is the grass median)
+								for _, across in (if g.spec.median > 0 then { -0.6, -0.85, 0.6, 0.85 } else { 0, -0.85, 0.85 }) do
+									local x, z = cx1 - g.uz * across * g.spec.pavement, cz1 + g.ux * across * g.spec.pavement
+									if rc.inside(x, z) and not rc.bridged(x, z, g) then
+										-- (Where a higher road covers the point, that road's slab is the one laid.)
+										local covered = false
+										for _, o in rc.net.segments do
+											if o ~= g and not o.bulb and o.spec.priority > g.spec.priority and RoadNet.toSegment(o, x, z) < o.spec.pavement then
+												covered = true
+												break
+											end
+										end
+										if not covered then
+											local gap = top - rc.ground(x, z)
+											roadSamples += 1
+											table.insert(roadGaps, gap)
+											if gap < 0.3 then
+												roadPokes += 1
+												note("groundThroughRoad", string.format("%s: the ground stands %.1f studs above a %s's top at %s", placeAt.name, 0.3 - gap + 0.0, g.spec.key, miles(x, z)))
+											elseif gap > 5.5 then
+												roadFloats += 1
+												local nearest, nd = rc.net:near(x, z, 64)
+												note("roadInTheAir", string.format("%s: a %s's top is %.1f studs above the ground at %s (nearest road there: %s at %.0f studs; a bridge or ramp stands there: %s; natural grade there would put the top at %.1f)", placeAt.name, g.spec.key, gap, miles(x, z), if nearest then nearest.spec.key else "none", nd, tostring(rc.bridged(x, z)), rc.ground(x, z) + 3.5 - top))
+											end
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
 			local ctx = seenBuildings
 			if not ctx then
 				continue
@@ -344,6 +390,11 @@ if #falls > 0 then
 		over8 += if v > 8 then 1 else 0
 	end
 	print(string.format("ground under footprints falls (studs): median %.1f, 90%% %.1f, 99%% %.1f, most %.1f; %d over 4 studs, %d over 8", at(0.5), at(0.9), at(0.99), falls[#falls], over4, over8))
+end
+table.sort(roadGaps)
+if #roadGaps > 0 then
+	print(string.format("roads against the ground: %d samples; road top above the ground (studs) 1%% %.1f, median %.1f, 99%% %.1f; ground through the road at %d (%.2f%%), road in the air at %d (%.2f%%)",
+		roadSamples, roadGaps[math.max(1, math.floor(0.01 * #roadGaps))], roadGaps[math.ceil(0.5 * #roadGaps)], roadGaps[math.ceil(0.99 * #roadGaps)], roadPokes, 100 * roadPokes / roadSamples, roadFloats, 100 * roadFloats / roadSamples))
 end
 table.sort(buried)
 if #buried > 0 then

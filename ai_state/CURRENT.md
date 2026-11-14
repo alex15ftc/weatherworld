@@ -240,6 +240,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   engine with its key (a live chaser dot showed 2026-11-14). Checked as before: map test, both export checks,
   audit, 300-chunk harness with no building conflicts.
 
+- Map, fourth round (2026-11-14; towns and airfields unmoved): the road graph has no footprint conflicts and no junction pairs within
+  40 studs on seed 1 (a final weld of close junctions; US-40 re-laid square across the river in the metro, which
+  moved 158 of the metro's 689 school lots and 3 campuses). `run-chunks.luau` now also checks every road
+  against the ground under it: on place 499, over 300 chunks, the ground came through a road at 27 samples and
+  a road hung in the air at 28 of 46,000; now 4 and 18. Causes fixed: ground beside a bridge's ramp was not
+  graded for other roads there (`RoadNet.near` skips a carried road), and where roads overlap the ground now
+  takes the grade of the road whose surface is laid there. Ramps beside an interstate stay at its level near an
+  overpass. Houses now line slanted town roads (`slantRows` in `Buildings`). The 18 left are near bridges in
+  river towns and at the two system interchanges; not traced. Server logs of 498 and 499 show no world errors;
+  they do show every foliage model failing to load ("User is not authorized to access Asset"): no trees in
+  the live game until the experience may use those assets (owner).
+
 ## Next
 
 0. Map (published as 499, unseen): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a

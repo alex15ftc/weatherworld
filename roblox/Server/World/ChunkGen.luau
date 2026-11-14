@@ -447,7 +447,10 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	-- How far (studs) the grade stands above the land's beside a bridge's ramps: on a ramp's line
 	-- the ramp's own height, falling away to nothing to either side over APPROACH_RUN studs a stud
 	-- of rise, so a road that crosses or ends on the ramp climbs to meet it and the ground under
-	-- that road rises with it. Nothing under the span itself (the road or river beneath).
+	-- that road rises with it. Nothing under the span itself (the road or river beneath), and
+	-- beside the road an overpass crosses the rise comes in only with distance from that road's
+	-- edge (over APPROACH_RUN / 2 studs a stud of rise), so a ramp running down beside an
+	-- interstate is at the interstate's level where the two lie together.
 	local function approachLift(x: number, z: number): number
 		local lift = 0
 		for _, b in planned do
@@ -467,7 +470,14 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 					local rise = farTop + (f.deck - farTop) * share - baseTop(f.ax + (f.bx - f.ax) * t, f.az + (f.bz - f.az) * t)
 					if rise > 0 then
 						local w = math.clamp((d - f.half) / math.max(40, rise * APPROACH_RUN), 0, 1)
-						lift = math.max(lift, rise * (1 - w * w * (3 - 2 * w)))
+						local share = 1 - w * w * (3 - 2 * w)
+						if b.underX then
+							local c = b.crossing
+							local off = math.abs((x - c.x) * (b.underZ :: number) - (z - c.z) * b.underX)
+							local u = math.clamp((off - c.riverHalf) / math.max(20, rise * APPROACH_RUN / 2), 0, 1)
+							share *= u * u * (3 - 2 * u)
+						end
+						lift = math.max(lift, rise * share)
 					end
 				end
 			end
@@ -597,8 +607,12 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 			end
 
 			-- Roads: flattened to their grade under the road and its sidewalks, blended beyond.
-			local g, d, along = net:near(x, z, SHOULDER_MAX)
-			if g and riverHalf == 0 and not nearBridge and not lake and not carried(g, x, z, 0) then
+			-- (The nearest road that is laid here: one carried over on a bridge or its ramp at this
+			-- point is passed over, so a road beside or under it still has its ground graded.)
+			local g, d, along = net:near(x, z, SHOULDER_MAX, function(o: RoadNet.Segment): boolean
+				return carried(o, x, z, 0)
+			end)
+			if g and riverHalf == 0 and not nearBridge and not lake then
 				local px, pz = g.ax + g.ux * along, g.az + g.uz * along
 				local grade = gradeAtM(px, pz) + ROAD_RAISE_M
 				local spec = g.spec

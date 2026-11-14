@@ -837,6 +837,45 @@ local function houseRow(ctx: Ctx, block: Rect, side: string, seedX: number, seed
 	end
 end
 
+-- Houses along a town road that runs at a slant to the grid (the map's blocks are rectangles
+-- between the roads on the grid's lines, so a slanted road cuts through them and the rows above
+-- only keep clear of it): lots down both sides of the road, each house square to the road and
+-- facing it, as far back from its sidewalk as a row's. Laid before the blocks' rows, so the
+-- slanted road keeps its frontage and the rows fill in behind.
+local function slantRows(ctx: Ctx, g: RoadNet.Segment)
+	local props = ctx.props
+	local seedX, seedZ = math.round(g.ax * 2 + g.bx), math.round(g.az * 2 + g.bz)
+	for sideIndex, side in { -1, 1 } do
+		local nx, nz = -g.uz * side, g.ux * side -- away from the road on this side
+		local yaw = math.atan2(nx, nz) -- the house's front (-z in its frame) towards the road
+		local layout = stream(seedX, seedZ * 4 + sideIndex, 409)
+		local p, i = 8, 0
+		while p < g.length - 30 do
+			i += 1
+			local lot = math.min(g.length - p, 38 + 22 * layout())
+			local empty = layout() < 0.08
+			local set = 12 + 14 * layout()
+			local mid = p + lot / 2
+			p += lot
+			local out = g.spec.total + 1 + set + 12
+			local x, z = g.ax + g.ux * mid + nx * out, g.az + g.uz * mid + nz * out
+			if not empty and ctx.inside(x, z) and not ctx.busy(x, z) and not otherUse(ctx, x, z) then
+				local s = nearest(ctx, x, z)
+				local key = ctx.coverKey(x, z)
+				if s and (key == "urban" or key == "suburban") and zoneAt(ctx, s, x, z) == "houses" then
+					local w = math.min(lot - 4, 56)
+					local frame = seat(ctx, x, z, yaw, math.min(lot - 4, 50), 28)
+					if ctx.net:clearBox(frame, w, 32, 0) and dry(ctx, frame, w, 32) and unoccupied(ctx, frame, w, 32) and not steep(ctx, frame, w, 32) then
+						table.insert(ctx.occupied, { cf = frame, hx = w / 2, hz = 16 })
+						footing(ctx, frame, w - 2, 30)
+						house(props, frame, stream(seedX * 64 + i, seedZ * 4 + sideIndex, 410), set, ctx.ground)
+					end
+				end
+			end
+		end
+	end
+end
+
 -- Parcel sizes by use: smallest parcel and most splits.
 local SPLITS = { downtown = { 46, 2 }, core = { 40, 3 }, apartments = { 50, 2 }, commercial = { 50, 2 }, industrial = { 70, 2 }, park = { 1e9, 0 } }
 
@@ -858,6 +897,11 @@ function Buildings.build(ctx: Ctx)
 	-- block takes the use of the land at its middle; houses fill the residential ones, in rows
 	-- along the sides that have a road, with whatever other use reaches into the block built
 	-- parcel by parcel. A block is seeded by its corner, so every chunk it lies in builds it alike.
+	for _, g in ctx.net.segments do
+		if g.mapLocal and not g.bulb and g.length >= 60 and g.spec.surface == "asphalt" then
+			slantRows(ctx, g)
+		end
+	end
 	local function drawnIn(kind: string?): number
 		local spec = if kind then RoadNet.KINDS[kind] else nil
 		return if spec then spec.total + 1 else 2

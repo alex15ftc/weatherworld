@@ -45,7 +45,7 @@
 import { makeRandom, hashText, clamp } from './noise.js';
 import { interchangeRamps } from './interchanges.js';
 import { AT_1000, STUDS } from './scale.js';
-import { roundCorners, CURVE_DEFAULTS } from './curves.js';
+import { roundCorners, clearOfRivers, CURVE_DEFAULTS } from './curves.js';
 
 const FT = AT_1000(1 / 5280);   // a layout foot in map miles
 const HALF_MI_EXPRESSWAY = AT_1000(0.04);   // an airport expressway's half-width and a little (streets.js HALF_MI.expressway)
@@ -706,6 +706,10 @@ export function planAirfields(map, options = {}) {
 
   // Each radar once (an office may use the air base's).
   const radars = airfields.filter(a => a.radar && !a.sharedRadar).map(a => ({ ...a.radar, airfield: a.code, kind: a.kind }));
+  // With every airfield sited against the routes as they were laid, the routes come off the
+  // rivers they run along or cross at a slant (curves.js): what is planned from here on (section
+  // roads, crossings, land use, streets) sees them where they will be built.
+  clearOfRivers(roads, rivers);
   return { airfields, radars };
 }
 

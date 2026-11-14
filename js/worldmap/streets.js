@@ -50,6 +50,7 @@ export const STREET_DEFAULTS = Object.freeze({
   snapMi: STUDS(25),        // a road's end joins a node, or a road, this near (two junctions nearer than this are one)
   routeSnapMi: 0.05,        // a highway's end joins the highway it meets within this
   junctionMi: STUDS(40),    // a road crossing another this near one of its junctions (and within their two half-widths) goes through that junction
+  pairMi: STUDS(42),        // no two junctions are left nearer than this: they are drawn as one, so they are one
   crowdMi: STUDS(60),       // two junctions of one road nearer than this are made one (the side road of one moved to the other, or left out)
   kneeMi: STUDS(60),        // a road taken to a junction off its line leaves the line this far before it (or six times as far as it is off: a bend under 10 degrees)
   weldMi: STUDS(4),         // nodes left this near each other are made one
@@ -1224,6 +1225,53 @@ export function planStreets(map, options = {}) {
         for (const node of piece.nodes) for (const e of [...node.edges]) g.removeEdge(e);
         stats.islandsDropped = (stats.islandsDropped ?? 0) + 1;
       } else stats.islandsLeft = (stats.islandsLeft ?? 0) + 1;
+    }
+  }
+  // Last, no two junctions (three roads or more) stay within pairMi of each other: built, they
+  // would be one wide junction, so they are one node. The node kept is the one on a highway,
+  // expressway or ramp (those never move), else the one more roads meet at. A junction of lesser
+  // roads only is merged into it whole; from one that is itself on a main road, the lesser roads
+  // are taken across one by one. A road that may not meet the roads at the kept node, or would
+  // cross another on its way there, stays; but a collector, frontage or local road's last piece
+  // there is then left out (it stops short, as at a ramp).
+  {
+    const MAIN = new Set(['interstate', 'expressway', 'highway', 'ramp']), SHORT = new Set(['collector', 'frontage', 'local']);
+    const main = n => n.edges.some(e => MAIN.has(e.kind));
+    const crossing = (p0, q, skip) => {
+      for (const e of g.edgesNear(Math.min(p0.x, q.x), Math.min(p0.y, q.y), Math.max(p0.x, q.x), Math.max(p0.y, q.y))) {
+        if (e.a === p0 || e.b === p0 || e.a === q || e.b === q || e.a === skip || e.b === skip) continue;
+        const rx = q.x - p0.x, ry = q.y - p0.y, sx = e.b.x - e.a.x, sy = e.b.y - e.a.y, den = rx * sy - ry * sx;
+        if (Math.abs(den) < 1e-12) continue;
+        const t = ((e.a.x - p0.x) * sy - (e.a.y - p0.y) * sx) / den, u = ((e.a.x - p0.x) * ry - (e.a.y - p0.y) * rx) / den;
+        if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6 && e.kind !== 'interstate' && e.kind !== 'ramp') return true;
+      }
+      return false;
+    };
+    const cells = new Map(), key = n => Math.floor(n.x / p.pairMi) * 1048576 + Math.floor(n.y / p.pairMi);
+    for (const n of g.nodes) if (n.edges.length >= 3) { const k = key(n); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(n); }
+    for (const a of g.nodes) {
+      if (a.edges.length < 3) continue;
+      const X = Math.floor(a.x / p.pairMi), Y = Math.floor(a.y / p.pairMi);
+      for (let cx = X - 1; cx <= X + 1; cx++) for (let cy = Y - 1; cy <= Y + 1; cy++) for (const b of cells.get(cx * 1048576 + cy) ?? []) {
+        if (b.id <= a.id || a.edges.length < 3 || b.edges.length < 3 || Math.hypot(a.x - b.x, a.y - b.y) >= p.pairMi) continue;
+        let [keep, give] = main(a) !== main(b) ? (main(a) ? [a, b] : [b, a]) : a.edges.length >= b.edges.length ? [a, b] : [b, a];
+        const far = e => (e.a === give ? e.b : e.a);
+        // (Clear of the lots, too: a street by its pad, another road by its width.)
+        const clear = (e, to) => e.kind === 'local' || (() => { const l = Math.hypot(to.x - keep.x, to.y - keep.y), steps = Math.ceil(l / p.sampleMi); for (let i = 1; i < steps; i++) if (inObstacle(keep.x + (to.x - keep.x) * i / steps, keep.y + (to.y - keep.y) * i / steps, e.kind === 'street' ? null : HALF_MI[e.kind], e.wide ? WIDER : 0)) return false; return true; })();
+        const fits = e => far(e) === keep || (meets(e.kind, keep) && !crossing(keep, far(e), give) && clear(e, far(e)));
+        // (Of two junctions of lesser roads, either may be the one kept.)
+        if (!main(keep) && !give.edges.every(fits)) { [keep, give] = [give, keep]; if (!give.edges.every(fits)) [keep, give] = [give, keep]; }
+        if (!main(give) && give.edges.every(fits)) { g.merge(keep, give); stats.paired = (stats.paired ?? 0) + 1; continue; }
+        for (const e of [...give.edges]) {
+          if (MAIN.has(e.kind) || far(e) === keep) continue;
+          const { a: ea, b: eb, kind, alive, id, ...extra } = e, to = far(e);
+          void ea; void eb; void alive; void id;
+          if (fits(e)) { g.removeEdge(e); g.addEdge(keep, to, kind, extra); } else if (SHORT.has(kind)) g.removeEdge(e); else continue;
+          stats.paired = (stats.paired ?? 0) + 1;
+        }
+        // What is left between the two is a scrap where the one given up is now its dead end.
+        if (give.edges.length === 1 && far(give.edges[0]) === keep && !MAIN.has(give.edges[0].kind)) g.removeEdge(give.edges[0]);
+      }
     }
   }
   weld();

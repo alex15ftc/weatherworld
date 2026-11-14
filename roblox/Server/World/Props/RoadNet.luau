@@ -113,7 +113,7 @@ export type Segment = {
 export type Net = {
 	segments: { Segment }, -- the roads within the pad of the chunk
 	all: { Segment }, -- every road handed in (further out: for planning bridges that reach in)
-	near: (self: Net, x: number, z: number, pad: number) -> (Segment?, number, number),
+	near: (self: Net, x: number, z: number, pad: number, skip: ((Segment) -> boolean)?) -> (Segment?, number, number),
 	clear: (self: Net, x: number, z: number, margin: number) -> boolean,
 	clearBox: (self: Net, frame: CFrame, sx: number, sz: number, margin: number) -> boolean,
 	covering: (self: Net, x: number, z: number, except: Segment?, pad: number) -> Segment?,
@@ -140,16 +140,29 @@ local toSegment = RoadNet.toSegment
 local NetMethods = {}
 NetMethods.__index = NetMethods
 
--- The segment whose footprint (total half-width plus pad) reaches furthest over the point:
--- the segment, the distance from its centre line, and how far along it.
-function NetMethods.near(self: Net, x: number, z: number, pad: number): (Segment?, number, number)
+-- The road whose grade the ground takes at a point: the segment, the distance from its centre
+-- line, and how far along it. Where roads' pavements cover the point, the one whose surface is
+-- laid there (the highest in priority, as Roads lays them; of equals the one whose centre line is
+-- nearer); otherwise the one whose footprint (total half-width plus pad) reaches furthest over
+-- it. Segments that skip answers true for are left out (a road not laid at the point: carried on
+-- a bridge there).
+function NetMethods.near(self: Net, x: number, z: number, pad: number, skip: ((Segment) -> boolean)?): (Segment?, number, number)
 	local best, bestEdge, bestD, bestS = nil, math.huge, 0, 0
+	local over, overD, overS = nil, 0, 0
 	for _, g in self.segments do
 		local d, s = toSegment(g, x, z)
 		local edge = d - g.spec.total
-		if edge < pad and (edge < bestEdge or (edge == bestEdge and best and g.spec.priority > best.spec.priority)) then
-			best, bestEdge, bestD, bestS = g, edge, d, s
+		if edge < pad and not (skip and skip(g)) then
+			if d < g.spec.pavement and (not over or g.spec.priority > over.spec.priority or (g.spec.priority == over.spec.priority and d < overD)) then
+				over, overD, overS = g, d, s
+			end
+			if edge < bestEdge or (edge == bestEdge and best and g.spec.priority > best.spec.priority) then
+				best, bestEdge, bestD, bestS = g, edge, d, s
+			end
 		end
+	end
+	if over then
+		return over, overD, overS
 	end
 	return best, bestD, bestS
 end
