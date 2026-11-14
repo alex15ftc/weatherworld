@@ -26,7 +26,7 @@
   cyclone.
 - Rationale: six separate vortex rules disagreed by up to 7x in circulation (frame 12 m/s across 1.6 km, radar
   38 m/s across 3.4 km on one storm), and trees felt a tornado twice.
-- Follow-up: the engine's own fall-out (`StormFallout.js`) still has its own mesocyclone; move it in an engine batch.
+- Follow-up: None (the engine's own fall-out, `StormFallout.js`, reads it too since 2026-11-14).
 
 ### 2026-11-13 — The long range model is a storm-free copy with one timing error; severe-weather charts are the map's own
 

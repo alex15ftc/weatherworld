@@ -80,7 +80,10 @@ const velocityErrorMs = sigma => Math.sqrt(DOPPLER.wavelengthM * sigma / (8 * Ma
 // more than Vn - a mesocyclone, a tornado's couplet - is unfolded with its neighbours. Where a
 // couplet is tighter than the gates round it, it can still be unfolded wrongly, as real ones are.
 // (alongKm: how far along the beam the neighbours reach, 2 gates of 500 m)
-const DEALIAS = { passes: 2, radials: 1, alongKm: 1, least: 4 };
+// passes: at most this many, stopping when one changes nothing. A folded patch is unfolded from its rim inward, a
+// gate or so a pass, so it takes as many passes as the patch is gates across (2 until 2026-11-14: a strong
+// tornado's outbound side, 8 gates of it past Vn, stayed folded on every scan - a hole of inbound in the couplet).
+const DEALIAS = { passes: 8, radials: 1, alongKm: 1, least: 4 };
 // Fall speed (m/s) of what reflects Z (mm6/m3) at a height (m above the ground) with the freezing
 // level there: rain by Vt = 2.6 Z^0.107 (Joss and Waldvogel 1970), snow and graupel aloft about 1 m/s
 // (Locatelli and Hobbs 1974), faster in the thinner air aloft by (rho0 / rho)^0.4 (Foote and du Toit
@@ -101,7 +104,12 @@ const TURBULENCE_MS = { precipitation: 2, clearAir: 1 };
 // (reachFades: how far it is followed. At 3 it ends in a hard edge 24 km out; followed to 6, under what a radar
 // can see, it carried the mesocyclone's couplet 48 km down the radial and the MDA found a mesocyclone there
 // (2026-11-13) - it wants the speckle a real spike has before it can run that far.)
-const THREE_BODY = { lossDb: 48, fadeKm: 8, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
+// lossDb: how far under the hail's own echo its spike begins, for hail of fullDbz. The echo is scattered by the
+// hail twice (hail, ground, hail again), so its power goes as the square of the hail's reflectivity (Zrnic 1987):
+// 48 dB under a 70 dBZ core (22 dBZ), 58 dB under 60 dBZ (2 dBZ), and nothing a radar can see from 50 dBZ hail - a
+// spike is a narrow thing behind the most intense part of a core, 5-15 dBZ (docs/storm-reference/radar/16). Until
+// 2026-11-14 the loss was 48 dB for any hail of 50 dBZ: a wedge 20 km wide at 20-25 dBZ behind the whole core.
+const THREE_BODY = { lossDb: 48, fullDbz: 70, fadeKm: 8, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
 // (the velocity's own error: velocityErrorMs)
 const NOISE = { dbz: 0.8, correlation: 0.008, zdrDb: 0.18 };
 // A tornado's wind is as deep as the tornado is strong: a weak one is seen only in the lowest
@@ -396,7 +404,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
   const beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const cosTilt = Math.cos(tiltDeg * DEG);
   const siteHeightM = site.elevationM + RADAR_ANTENNA_HEIGHT_M;
-  const leastHail = 10 ** (THREE_BODY.leastHailDbz / 10), threeBodyShare = 10 ** (-THREE_BODY.lossDb / 10), threeBodyZv = 10 ** (THREE_BODY.zdrDb / 10);
+  const leastHail = 10 ** (THREE_BODY.leastHailDbz / 10), threeBodyShare = 10 ** (-(THREE_BODY.lossDb + THREE_BODY.fullDbz) / 10), threeBodyZv = 10 ** (THREE_BODY.zdrDb / 10);
   const sw = products.spectrumWidth, foldGates = Math.round(DOPPLER.unambiguousKm / GATE_KM), phaseCoded = tiltDeg <= DOPPLER.phaseCodedUpToDeg;
   // How far down the air near the ground bends the beam at this radar (effective earth radius, km).
   const dNdh = envSample(scene.env, scene.env.refractivityGradient, site.xKm, site.yKm);
@@ -472,7 +480,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
         // speckle: velocityErrorMs is the narrow-spectrum form, and giving it the wide-spectrum breakdown
         // made the TDA find rotation in the speckle - tried and taken out the same day. Beyond a hook's
         // hail in a strong mesocyclone the spike is a streak of that hail's outbound motion.)
-        const offsetKm = centerAgl / 1000, source = hail * threeBodyShare, motion = envRadial[index] + stormRadial / zh, fallMs = fall / zh;
+        const offsetKm = centerAgl / 1000, source = hail * hail * threeBodyShare, motion = envRadial[index] + stormRadial / zh, fallMs = fall / zh;
         const sideways2 = (wind.u + stormWind.u) ** 2 + (wind.v + stormWind.v) ** 2;
         const first = Math.ceil(g + offsetKm / GATE_KM), last = Math.min(GATES - 1, Math.floor(g + (offsetKm + THREE_BODY.reachFades * THREE_BODY.fadeKm) / GATE_KM));
         for (let k = first; k <= last; k++) {
@@ -587,7 +595,7 @@ function dealias(measured, guess, raw, dealiased, GATES = RADAR_GATES, gateKm = 
     const f = v - twoVn * Math.round(v / twoVn);
     raw[i] = f; dealiased[i] = f + twoVn * Math.round((guess[i] - f) / twoVn);
   }
-  for (let pass = 0; pass < DEALIAS.passes; pass++) for (let r = 0; r < RADAR_RADIALS; r++) for (let g = 0; g < GATES; g++) {
+  for (let pass = 0, changed = 1; pass < DEALIAS.passes && changed; pass++) { changed = 0; for (let r = 0; r < RADAR_RADIALS; r++) for (let g = 0; g < GATES; g++) {
     const i = r * GATES + g, f = raw[i];
     if (Number.isNaN(f)) continue;
     // (Where every neighbour lies within Vn of this gate, so does their median, and the gate stays
@@ -609,8 +617,9 @@ function dealias(measured, guess, raw, dealiased, GATES = RADAR_GATES, gateKm = 
     // (in order, for the median)
     for (let a = 1; a < n; a++) { const v = NEIGHBOURS[a]; let k = a; while (k > 0 && NEIGHBOURS[k - 1] > v) { NEIGHBOURS[k] = NEIGHBOURS[k - 1]; k--; } NEIGHBOURS[k] = v; }
     const median = n % 2 ? NEIGHBOURS[(n - 1) / 2] : 0.5 * (NEIGHBOURS[n / 2 - 1] + NEIGHBOURS[n / 2]);
-    dealiased[i] = f + twoVn * Math.round((median - f) / twoVn);
-  }
+    const to = f + twoVn * Math.round((median - f) / twoVn);
+    if (to !== now) { dealiased[i] = to; changed++; }
+  } }
 }
 
 // Network mosaic of reflectivity on a Cartesian grid. Composite: the strongest echo any tilt of

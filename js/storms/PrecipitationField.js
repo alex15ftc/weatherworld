@@ -58,8 +58,7 @@ export const PHYSICS = {
   // real downdraughts reach about half of it), fastest downdraughtPeakM up and stopping at the ground. It is
   // what brings a hook's rain down: the updraught alone, a round column that takes in the tornado's place
   // too, held the rain that wraps round the rotation at 1.5 km up and let none of it land beside the tornado
-  // (2026-11-14, seed 7's S0226: an echo-free tornado, half its couplet with no echo to show it). On the
-  // fields the radar and the frames show; the engine's own fall-out (StormFallout.js) has none yet.
+  // (2026-11-14, seed 7's S0226: an echo-free tornado, half its couplet with no echo to show it).
   // It undercuts the updraught's rear side: the updraught gives way to it up to downdraughtUnderM[0] and
   // overhangs it above downdraughtUnderM[1] (the overhang and vault), so hail hovering in the flank
   // aloft stays up. (With no top to it the hail fell in the hook again.)
@@ -78,9 +77,7 @@ export const PHYSICS = {
   // That holds while the air's motion keeps its direction: for about spreadMemoryS. After it the eddies
   // that carry a patch have turned over, and it spreads as the square root of the time (Taylor 1921: a
   // spread of v' sqrt(2 T t) once t is well past T), so both the widening and the drift ease off as
-  // sqrt(T / (2 t)). On the fields the radar and the frames show (those with the storm's vortices); the
-  // engine's own fall-out (StormFallout.js) keeps the straight-line spread until an engine batch moves
-  // it. Until 2026-11-14 every patch widened at one speed for its whole life - 16 km in the 2.5 hours
+  // sqrt(T / (2 t)). Until 2026-11-14 every patch widened at one speed for its whole life - 16 km in the 2.5 hours
   // the fall-out is followed - and a supercell's forward flank, 8 km wide where it leaves the storm, was
   // an echo 80 km across (seed 7's S0226; with no spread at all it is a band of cores 60 km long).
   spreadMemoryS: 600,
@@ -107,7 +104,6 @@ export const PHYSICS = {
   // core of 2-2.6 inch hail on seed 2112 reached 65 dBZ, where real ones reach 65-75.)
   hailRadarMm: 25
 };
-export const MESOCYCLONE_LEAN_M = 3500;
 // The front-to-rear current's share of its full speed with height: none below 2 km or at the top, most midway.
 export const FRONT_TO_REAR_BASE_M = 2000;
 export const frontToRearShare = (zM, topM) => Math.sin(Math.PI * clamp((zM - FRONT_TO_REAR_BASE_M) / (topM - FRONT_TO_REAR_BASE_M), 0, 1)) ** 2;
@@ -185,9 +181,7 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   model.dryAloft = clamp((Number(environment.dcape) || 600) / 1200, 0.1, 1.2) * (1 - 0.6 * asLine);
   model.frontToRear = PHYSICS.frontToRearMs * asLine * clamp(model.coldPool / PHYSICS.frontToRearColdPool, 0, 1) * ramp(storm.ageHours, PHYSICS.frontToRearHours[0], PHYSICS.frontToRearHours[1]);
   model.sources = updraughts(storm, structure, geometry, model, asLine, toMap);
-  model.downdraughts = (structure.features ?? []).filter(f => f.type === 'rearFlank' && f.downdraft > 0).map(f => ({
-    ...toMap(f.centerXKm, f.centerYKm), R: Math.max(0.8, f.radiusXKm),
-    w: PHYSICS.downdraughtShare * Math.sqrt(2 * Math.max(0, Number(environment.dcape) || 600)) * clamp(f.downdraft, 0, 1) }));
+  model.downdraughts = downdraughtsOf(structure, toMap, environment);
   // The strongest few updraughts, for what a radar sees of the updraught itself.
   model.cores = [...model.sources].sort((a, b) => b.w - a.w).slice(0, 6).map(({ x, y, R, w }) => ({ x, y, R, w }));
 
@@ -195,7 +189,6 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   const inflowLevels = Math.round(PHYSICS.inflowM / WIND_PROFILE_STEP_M);
   model.inflowU = 0; model.inflowV = 0;
   for (let k = 0; k <= inflowLevels; k++) { model.inflowU += column.su[k] / (inflowLevels + 1); model.inflowV += column.sv[k] / (inflowLevels + 1); }
-  model.mesoDepth = Float32Array.from({ length: WIND_PROFILE_LEVELS }, (_, k) => (0.55 + 0.45 * Math.exp(-(((k * WIND_PROFILE_STEP_M - 4500) / 2600) ** 2))) * (k * WIND_PROFILE_STEP_M > column.topM ? 0.2 : 1));
 
   stride = Math.max(1, Math.round(stride));
   const reach = follow(model, null, null, Math.max(8, 2 * stride));
@@ -223,6 +216,13 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
     // Extent on the map, from the storm's centre (km).
     ...(grid?.extent ?? { minX: -1, minY: -1, maxX: 1, maxY: 1 })
   };
+}
+
+// The storm's rear-flank downdraughts (PHYSICS.downdraughtShare): where its structure puts them, on the map.
+export function downdraughtsOf(structure, toMap, environment) {
+  return (structure?.features ?? []).filter(f => f.type === 'rearFlank' && f.downdraft > 0).map(f => ({
+    ...toMap(f.centerXKm, f.centerYKm), R: Math.max(0.8, f.radiusXKm),
+    w: PHYSICS.downdraughtShare * Math.sqrt(2 * Math.max(0, Number(environment?.dcape) || 600)) * clamp(f.downdraft, 0, 1) }));
 }
 
 // The storm's updraughts: the one at its centre, and the cells along its leading line. Each
@@ -326,13 +326,12 @@ const scaleFor = (widthKm, perKm) => { const cells = widthKm * perKm; return cel
 // { kinds(isHail, mm) -> sums, skip(class) } adds where each particle reached the ground, and how much of it, to
 // those sums, leaving out the classes skip says to (StormFallout.js).
 export function follow(model, grid, inner, stride, landed = null) {
-  const { su, sv, topM, freezingM: fz, baseM, ageS, mesocyclone: meso, spin, inflowU, inflowV, mesoDepth, vortices } = model;
+  const { su, sv, topM, freezingM: fz, baseM, ageS, inflowU, inflowV, vortices } = model;
   const swirl = { u: 0, v: 0 }, inflowTop = PHYSICS.coreInflowDepths * PHYSICS.inflowM, downdraughts = model.downdraughts?.length ? model.downdraughts : null;
   // The line's front-to-rear current, east and north (m/s), at its strongest.
   const rearU = -model.mx * model.frontToRear, rearV = model.my * model.frontToRear;
   if (!(ageS > 0)) return null;
   const P = PHYSICS, stepM = (grid ? grid.res : 1) * 800, innerStepM = INNER.resKm * 1000, top = topM * 1.05;
-  const mesoR = meso.radiusKm, mesoV = meso.vmaxMs * spin, mesoReach2 = (mesoR * 12) ** 2;
   const evaporation = model.dryBelow / P.evaporationS, sublimation = model.dryAloft / P.sublimationS;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
   const highest = PRECIP_LEVELS_M[LEVELS - 1] - 1, formationTop = fz + P.formationShare * Math.max(0, topM - fz);
@@ -395,20 +394,11 @@ export function follow(model, grid, inner, stride, landed = null) {
               if (g > 0) rising = rising * (1 - g) - d.w * g * h * Math.exp(1 - h);
             }
           }
-          // The mesocyclone: strongest at mid levels, present down to the ground. (The storm's own,
-          // StormVortices.js, on the fields the radar and frames show; the engine's fall-out,
-          // StormFallout.js, gives its own until an engine batch moves it onto the same.)
-          if (vortices) { swirl.u = 0; swirl.v = 0; addMesoWind(vortices, x, y, z, swirl); u += swirl.u; v += swirl.v; }
-          const lean = z >= MESOCYCLONE_LEAN_M ? 1 : z <= 0 ? 0 : z / MESOCYCLONE_LEAN_M;
-          const mdx = x - meso.x - (meso.aloftX - meso.x) * lean, mdy = y - meso.y - (meso.aloftY - meso.y) * lean, mr2 = mdx * mdx + mdy * mdy;
-          if (!vortices && mr2 > 1e-6 && mr2 < mesoReach2) {
-            // Solid rotation inside its core; outside, the wind falls away with distance.
-            const mr = Math.sqrt(mr2), ratio = mesoR / mr, around = mesoV * mesoDepth[zi] * (mr < mesoR ? 1 / ratio : ratio) / (mr * (1 + 1 / (27 * ratio * ratio * ratio)));
-            u += around * mdy; v += around * mdx;
-          }
+          // The mesocyclone: strongest at mid levels, present down to the ground (the storm's own, StormVortices.js).
+          swirl.u = 0; swirl.v = 0; addMesoWind(vortices, x, y, z, swirl); u += swirl.u; v += swirl.v;
           if (inLine && z > FRONT_TO_REAR_BASE_M && z < top) { const current = rearShare[(100 * z / top) | 0] * (1 - inside); u += rearU * current; v += rearV * current; }
           // (how much of its early spreading speed the patch still has: see PHYSICS.spreadMemoryS)
-          const eddy = vortices && age > 0.5 * P.spreadMemoryS ? Math.sqrt(0.5 * P.spreadMemoryS / age) : 1;
+          const eddy = age > 0.5 * P.spreadMemoryS ? Math.sqrt(0.5 * P.spreadMemoryS / age) : 1;
           u += driftU * eddy; v += driftV * eddy;
           const frozen = z > fz, vertical = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm));
           const inInner = nearInner && x > -INNER.halfKm && x < INNER.halfKm && y > -INNER.halfKm && y < INNER.halfKm;

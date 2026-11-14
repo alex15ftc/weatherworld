@@ -65,6 +65,18 @@ export const VORTICES = Object.freeze({
   tornadoMph: 90, tornadoYards: 300   // (an engine tornado without its wind or width)
 });
 
+// A mesocyclone's description: at the ground at `ground`, under the updraught at `aloft` (km from the
+// storm's centre), its radius (km), and the engine's strength and low-level strength for it.
+export function mesoOf(ground, aloft, radiusKm, strength, lowStrength) {
+  const C = VORTICES;
+  return {
+    x: ground.x, y: ground.y, aloftX: aloft.x, aloftY: aloft.y,
+    R: clamp(Number(radiusKm) || 4, C.mesoRadiusKm[0], C.mesoRadiusKm[1]),
+    V: C.mesoV[0] + C.mesoV[1] * clamp(Number(strength) || 0, C.mesoStrength[0], C.mesoStrength[1]),
+    low: clamp(Number(lowStrength) || 0, 0, 1)
+  };
+}
+
 // The storm's vortices (plain data: the radar's threads take it as it is), or null without structure.
 // topM: the storm's top above the ground (m).
 export function stormVortices(storm, topM) {
@@ -92,12 +104,7 @@ export function stormVortices(storm, topM) {
   const ground = tornado ?? at;
   const d = {
     spin: storm.leftMover ? -1 : 1, topM: Number(topM) || 12000,
-    meso: {
-      x: ground.x, y: ground.y, aloftX: aloft.x, aloftY: aloft.y,
-      R: clamp(Number(meso.radiusKm) || 4, C.mesoRadiusKm[0], C.mesoRadiusKm[1]),
-      V: C.mesoV[0] + C.mesoV[1] * clamp(Number(meso.strength) || 0, C.mesoStrength[0], C.mesoStrength[1]),
-      low: clamp(Number(meso.lowStrength) || 0, 0, 1)
-    },
+    meso: mesoOf(ground, aloft, meso.radiusKm, meso.strength, meso.lowStrength),
     tornado
   };
   if (tornado) {

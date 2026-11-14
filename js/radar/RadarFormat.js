@@ -29,16 +29,23 @@ export function groundRangeKm(slantRangeKm, elevationDeg) {
 export const RADAR_PRODUCTS = {
   reflectivity: {
     label: 'Base reflectivity', short: 'REF', units: 'dBZ', min: -32, step: 0.5, decimals: 1, band: 5,
-    stops: [[-12, 70, 70, 90, 0], [-5, 90, 90, 110, 70], [5, 4, 233, 231, 255], [10, 1, 159, 244, 255], [15, 3, 0, 244, 255],
-      [20, 2, 253, 2, 255], [25, 1, 197, 1, 255], [30, 0, 142, 0, 255], [35, 253, 248, 2, 255], [40, 229, 188, 0, 255],
-      [45, 253, 149, 0, 255], [50, 253, 0, 0, 255], [55, 212, 0, 0, 255], [60, 188, 0, 0, 255], [65, 248, 0, 253, 255],
+    // The classic NWS colours at their 5 dBZ marks, ramping within a family (blues 5-20, greens 20-35, yellow
+    // to orange 35-50, reds 50-65, magenta to white from 65) and jumping between families, as the unstepped
+    // displays do (docs/storm-reference/radar 01, 02, 07). Until 2026-11-14 it blended across the families too:
+    // olive between 30 and 35 dBZ and teal between 15 and 20, which no real display shows.
+    stops: [[-12, 70, 70, 90, 0], [-5, 90, 90, 110, 70], [5, 4, 233, 231, 255], [10, 1, 159, 244, 255], [15, 3, 0, 244, 255], [19.75, 2, 0, 190, 255],
+      [20, 2, 253, 2, 255], [25, 1, 197, 1, 255], [30, 0, 142, 0, 255], [34.75, 0, 112, 0, 255], [35, 253, 248, 2, 255], [40, 229, 188, 0, 255],
+      [45, 253, 149, 0, 255], [49.75, 253, 110, 0, 255], [50, 253, 0, 0, 255], [55, 212, 0, 0, 255], [60, 188, 0, 0, 255], [64.75, 160, 0, 0, 255], [65, 248, 0, 253, 255],
       [70, 152, 84, 198, 255], [75, 253, 253, 253, 255], [95, 255, 255, 255, 255]],
     legend: [5, 20, 35, 50, 65, 75]
   },
   velocity: {
     label: 'Base velocity', short: 'VEL', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5, doppler: true,
-    stops: [[-63.5, 120, 255, 255, 255], [-40, 0, 255, 90, 255], [-25, 0, 200, 40, 255], [-10, 0, 120, 20, 255], [-1, 40, 75, 45, 255],
-      [0, 115, 110, 110, 255], [1, 80, 35, 40, 255], [10, 140, 0, 15, 255], [25, 215, 0, 25, 255], [40, 255, 70, 70, 255], [63.5, 255, 210, 170, 255]],
+    // Greens toward the radar and reds away, brightening to 30 m/s and changing hue beyond it (cyan then blue in,
+    // orange then yellow out), with a grey-pink zero, as real velocity displays read (docs/storm-reference/radar
+    // 03, 05, 06). Until 2026-11-14 1-10 m/s was near black-green and 25 m/s still plain green or red.
+    stops: [[-63.5, 60, 110, 255, 255], [-45, 0, 215, 255, 255], [-30, 0, 255, 110, 255], [-15, 0, 185, 45, 255], [-5, 25, 120, 45, 255], [-1, 70, 100, 75, 255],
+      [0, 150, 130, 135, 255], [1, 110, 60, 65, 255], [5, 140, 20, 28, 255], [15, 205, 0, 22, 255], [30, 255, 45, 45, 255], [45, 255, 155, 40, 255], [63.5, 255, 240, 120, 255]],
     legend: [-50, -25, 0, 25, 50]
   },
   // What the radar measures before dealiasing: motion faster than the Nyquist speed folds over.
@@ -55,7 +62,9 @@ export const RADAR_PRODUCTS = {
   correlationCoefficient: {
     label: 'Correlation coefficient', short: 'CC', units: 'ρhv', min: 0.2, step: 0.0035, decimals: 3, band: 0.05,
     stops: [[0.2, 20, 20, 95, 255], [0.45, 60, 80, 200, 255], [0.65, 100, 190, 240, 255], [0.75, 90, 220, 100, 255], [0.85, 240, 230, 60, 255],
-      [0.9, 250, 150, 30, 255], [0.95, 230, 40, 40, 255], [0.97, 175, 20, 95, 255], [1.0, 240, 170, 230, 255], [1.09, 255, 255, 255, 255]],
+      // (ordinary rain, 0.97-1.02, is dark and nearly one colour, so what is not rain stands out: as the NWS
+      // table reads, docs/storm-reference/radar 10. Until 2026-11-14 rain ran from magenta to pale pink.)
+      [0.9, 250, 150, 30, 255], [0.95, 230, 40, 40, 255], [0.97, 150, 20, 60, 255], [1.0, 110, 12, 48, 255], [1.02, 110, 12, 48, 255], [1.05, 240, 170, 230, 255], [1.09, 255, 255, 255, 255]],
     legend: [0.2, 0.6, 0.8, 0.9, 0.97, 1.0]
   },
   spectrumWidth: {
