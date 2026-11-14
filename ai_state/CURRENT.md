@@ -18,6 +18,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- One storm wind and radar realism (2026-11-14, branch `engine/one-storm-wind`, NOT merged, NOT deployed, not seen in
+  Studio): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
+  frames, the radar's velocity, the rain's fall-out, the debris and the trees' wind (`FoliageWind.luau` no longer
+  adds a second tornado); the cold pool's outflow is one rule (`ColdPool.js` outflowShare). The rain field
+  (`PrecipitationField.js`) sheds precipitation by the wind at its own height, keeps the inflow's wind in the
+  updraught only through the inflow layer (an engine change: hail falls left-forward of the updraught, not in the
+  hook; regression scorecard identical to its baseline), spreads fall-out as the square root of time and has the
+  structure's rear-flank downdraught (those two on the radar's and frames' fields only: the engine's own fall-out,
+  `StormFallout.js`, still lacks them and the shared mesocyclone). The radar's TDA flags 13 of 58 engine tornadoes
+  (12 seeds x a day, no false alarms; 8 before; real TDA about 40-50%), EF0s almost never. Loops and stills:
+  `tmp/one-storm-wind/` (untracked). Open: the echo is still about 70 km across, the hook does not evolve, the hail
+  spike is a clean streak, no debris ball or ZDR arc.
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
 - Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files
@@ -196,6 +208,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+0. `engine/one-storm-wind`: look at storms in Studio (wall cloud lowering, near-storm and tree winds, frame rain and
+   hail all moved) before merging; then move the engine's fall-out onto the shared mesocyclone, spread and
+   downdraught as one engine batch with the regression suite.
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
    check the server boots from `ServerStorage.main`, storms and products arrive (the ready handshakes), and the
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).

@@ -4,7 +4,7 @@
 // and the time of day. Output is a deterministic function of world state, site and tilt.
 import {
   buildStormPrecipitation, samplePrecipitation, hasPrecipitation, sampleDebris, sampleHeaviness, heavinessGradient,
-  RAIN_REFLECTIVITY, HAIL_REFLECTIVITY, DEBRIS_REFLECTIVITY, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, MESOCYCLONE_LEAN_M, FRONT_TO_REAR_BASE_M, frontToRearShare
+  RAIN_REFLECTIVITY, HAIL_REFLECTIVITY, DEBRIS_REFLECTIVITY, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, FRONT_TO_REAR_BASE_M, frontToRearShare
 } from '../storms/PrecipitationField.js';
 import {
   RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, RADAR_BEAMWIDTH_DEG, RADAR_ANTENNA_HEIGHT_M,
@@ -12,7 +12,8 @@ import {
 } from './RadarFormat.js';
 import { buildSounding } from '../sounding.js';
 import { updraughtProfile, STRUCTURE as FRAME } from '../storms/StormStructure.js';
-import { coldPoolSpeedMs, coldPoolDepthM } from '../storms/ColdPool.js';
+import { coldPoolSpeedMs, coldPoolDepthM, outflowShare } from '../storms/ColdPool.js';
+import { addMesoWind, addTornadoWind } from '../storms/StormVortices.js';
 
 const KT_TO_MS = 0.514444;
 const STORM_BIN_KM = 10;
@@ -47,7 +48,7 @@ const BEAM_OFFSETS = { k: [-1, 0, 1], w: [0.25, 0.5, 0.25] }, BEAM_CENTRE = { k:
 const ACROSS_SHARE = 0.35 * RADAR_BEAMWIDTH_DEG / (360 / RADAR_RADIALS);
 const NEIGHBOUR_WEIGHT = BEAM_OFFSETS.w[0] * Math.min(1, ACROSS_SHARE), OWN_WEIGHT = 1 - 2 * NEIGHBOUR_WEIGHT;
 // Per-gate sums of one scan before blending and noise (reused between scans).
-const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, stormRadial2: null, envRadial: null, hail: null, spike: null, spikeRadial: null, clutter: null, fall: null, rise: null, measured: null, guess: null, raw: null, dealiased: null };
+const gateSums = { zh: null, zv: null, cc: null, stormRadial: null, stormRadial2: null, envRadial: null, hail: null, spike: null, spikeRadial: null, spikeRadial2: null, clutter: null, fall: null, rise: null, measured: null, guess: null, raw: null, dealiased: null };
 // Ground clutter left after the radar's clutter filter: buildings, trees and power lines the
 // lowest part of the beam grazes. Echo this strong (dBZ, varying by this much from one target to
 // the next) where the beam's lower edge reaches the ground, fading as it rises over this height
@@ -97,6 +98,9 @@ const TURBULENCE_MS = { precipitation: 2, clearAir: 1 };
 // farther out, starting as far beyond the core as the hail is above the ground. What returns is
 // this much weaker than the hail's own echo (dB), fades over this distance (km), and has the
 // hail's motion; a spray off the ground, it has high ZDR (dB) and low ρhv.
+// (reachFades: how far it is followed. At 3 it ends in a hard edge 24 km out; followed to 6, under what a radar
+// can see, it carried the mesocyclone's couplet 48 km down the radial and the MDA found a mesocyclone there
+// (2026-11-13) - it wants the speckle a real spike has before it can run that far.)
 const THREE_BODY = { lossDb: 48, fadeKm: 8, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
 // (the velocity's own error: velocityErrorMs)
 const NOISE = { dbz: 0.8, correlation: 0.008, zdrDb: 0.18 };
@@ -206,8 +210,9 @@ function riseOf(world, storm) {
 // sigma L / 2, L the distance the pool's speed carries it in coldPoolTauS, at most 0.7 of the
 // engine's coldPoolRadiusKm - and left behind by half that time's motion; its edge eased from
 // 0.15 to 0.45 of the most. out: 0 outside the pool, 1 well inside; its edge is the gust front.
-// edgeKm: how wide the edge is where it is sharpest (1 / the steepest change), so the outflow
-// there is the pool's own speed. Null without a cold pool.
+// Its depth, which its outflow runs down (ColdPool.js outflowShare), is the rain rate's own footprint
+// spread the same way, as a share of its deepest; steepestDepth: that depth's steepest slope (per km).
+// Null without a cold pool.
 const poolSample = {};
 // One storm's (input: an entry of radarSceneInputs(world).storms; echo: its field). A thread that
 // works out a field works this out with it and keeps it on the field as radarColdPool, so that
@@ -223,11 +228,12 @@ function coldPoolOf(echo, motion, poolRadiusKm) {
   const margin = reach + Math.ceil(Math.abs(shiftX) + Math.abs(shiftY));
   const x0 = echo.minX - margin * res, y0 = echo.minY - margin * res;
   const nx = Math.ceil((echo.maxX - echo.minX) / res) + 1 + 2 * margin, ny = Math.ceil((echo.maxY - echo.minY) / res) + 1 + 2 * margin;
-  const mask = new Float32Array(nx * ny);
+  const mask = new Float32Array(nx * ny), rate = new Float32Array(nx * ny);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     if (!samplePrecipitation(echo, x0 + i * res, y0 + j * res, 0, poolSample)) continue;
     const mmh = (RAIN_REFLECTIVITY * poolSample.rain / 200) ** (1 / 1.6);
     mask[j * nx + i] = clamp(Math.log10(1 + mmh) / 2, 0, 1);
+    rate[j * nx + i] = mmh;
   }
   // (the Gaussian as three running box sums each way, Wells 1986: the same spread, at a cost that does
   // not grow with it; shifted back along the motion as it goes)
@@ -236,22 +242,29 @@ function coldPoolOf(echo, motion, poolRadiusKm) {
   for (let k = 0; k < blurred.length; k++) if (blurred[k] > most) most = blurred[k];
   if (!(most > 0)) return null;
   const share = Float32Array.from(blurred, b => b / most), out = Float32Array.from(share, b => smoothstep(POOL_EDGE[0], POOL_EDGE[1], b));
-  let steepest = 0;
+  // (the pool's depth: the rain rate's footprint, spread the same way, as a share of its deepest - ColdPool.js outflowShare)
+  const deep = boxBlur3(rate, nx, ny, sigma, Math.round(shiftX), Math.round(shiftY));
+  let deepest = 0;
+  for (let k = 0; k < deep.length; k++) if (deep[k] > deepest) deepest = deep[k];
+  if (deepest > 0) for (let k = 0; k < deep.length; k++) deep[k] /= deepest;
+  let steepest = 0, steepestDepth = 0;
   for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
     const k = j * nx + i, g = Math.hypot(out[k + 1] - out[k - 1], out[k + nx] - out[k - nx]) / (2 * res);
     if (g > steepest) steepest = g;
+    const gd = Math.hypot(deep[k + 1] - deep[k - 1], deep[k + nx] - deep[k - nx]) / (2 * res);
+    if (gd > steepestDepth) steepestDepth = gd;
   }
   if (!(steepest > 0)) return null;
   // Each cell as the scan reads it, once: the footprint's share, how fast it changes (per km, east
-  // and south) and how fast the pool's eased edge does - five values side by side.
+  // and south) and how fast the pool's depth does - five values side by side.
   const cells = new Float32Array(5 * nx * ny), slope = (field, k, i, n, step) =>
     (field[i < n - 1 ? k + step : k] - field[i > 0 ? k - step : k]) / ((i > 0 && i < n - 1 ? 2 : 1) * res);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const k = j * nx + i, c = 5 * k;
     cells[c] = share[k]; cells[c + 1] = slope(share, k, i, nx, 1); cells[c + 2] = slope(share, k, j, ny, nx);
-    cells[c + 3] = slope(out, k, i, nx, 1); cells[c + 4] = slope(out, k, j, ny, nx);
+    cells[c + 3] = slope(deep, k, i, nx, 1); cells[c + 4] = slope(deep, k, j, ny, nx);
   }
-  return { strength, x0, y0, res, nx, ny, cells, edgeKm: 1 / steepest };
+  return { strength, x0, y0, res, nx, ny, cells, steepestDepth };
 }
 // A Gaussian blur of sigma (cells) as three box blurs of width sqrt(4 sigma^2 + 1) each way (three
 // boxes of width w have the variance 3 (w^2 - 1) / 12), the field moved by shift cells (x, y).
@@ -277,9 +290,9 @@ function boxBlur3(field, nx, ny, sigma, shiftX, shiftY) {
 }
 
 // The pool at a place (lx, ly km from the storm), bilinear, into POOL_AT: share (the spread
-// footprint as a share of its most), shareX / shareY (its change per km east and south) and edgeX /
-// edgeY (the eased edge's). False off its grid.
-const POOL_AT = { share: 0, shareX: 0, shareY: 0, edgeX: 0, edgeY: 0 };
+// footprint as a share of its most), shareX / shareY (its change per km east and south) and depthX /
+// depthY (the change of its depth, the rain rate.s footprint as a share of its deepest). False off its grid.
+const POOL_AT = { share: 0, shareX: 0, shareY: 0, depthX: 0, depthY: 0 };
 function poolAt(p, lx, ly) {
   const fx = (lx - p.x0) / p.res, fy = (ly - p.y0) / p.res;
   if (!(fx >= 0 && fy >= 0 && fx <= p.nx - 1 && fy <= p.ny - 1)) return false;
@@ -289,8 +302,8 @@ function poolAt(p, lx, ly) {
   POOL_AT.share = c[a] * wa + c[b] * wb + c[d] * wd + c[e] * we;
   POOL_AT.shareX = c[a + 1] * wa + c[b + 1] * wb + c[d + 1] * wd + c[e + 1] * we;
   POOL_AT.shareY = c[a + 2] * wa + c[b + 2] * wb + c[d + 2] * wd + c[e + 2] * we;
-  POOL_AT.edgeX = c[a + 3] * wa + c[b + 3] * wb + c[d + 3] * wd + c[e + 3] * we;
-  POOL_AT.edgeY = c[a + 4] * wa + c[b + 4] * wb + c[d + 4] * wd + c[e + 4] * we;
+  POOL_AT.depthX = c[a + 3] * wa + c[b + 3] * wb + c[d + 3] * wd + c[e + 3] * we;
+  POOL_AT.depthY = c[a + 4] * wa + c[b + 4] * wb + c[d + 4] * wd + c[e + 4] * we;
   return true;
 }
 
@@ -402,7 +415,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
 
   for (const key of Object.keys(gateSums)) { if (gateSums[key]?.length !== total) gateSums[key] = new Float32Array(total); gateSums[key].fill(0); }
   const sumZh = gateSums.zh, sumZv = gateSums.zv, sumCc = gateSums.cc, sumStorm = gateSums.stormRadial, envRadial = gateSums.envRadial;
-  const sumHail = gateSums.hail, spike = gateSums.spike, spikeRadial = gateSums.spikeRadial, clutter = gateSums.clutter, sumStorm2 = gateSums.stormRadial2;
+  const sumHail = gateSums.hail, spike = gateSums.spike, spikeRadial = gateSums.spikeRadial, spikeRadial2 = gateSums.spikeRadial2, clutter = gateSums.clutter, sumStorm2 = gateSums.stormRadial2;
   const sumFall = gateSums.fall, sumRise = gateSums.rise, measured = gateSums.measured, guess = gateSums.guess;
   measured.fill(NaN);
 
@@ -448,12 +461,24 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
       envWindAt(scene.env, x, y, centerAgl, wind);
       envRadial[index] = wind.u * sinAz + wind.v * cosAz;
       if (hail >= leastHail) {
-        // Three-body scattering from this gate's hail, spread over the gates beyond it (with the hail's motion).
-        const offsetKm = centerAgl / 1000, source = hail * threeBodyShare, motion = envRadial[index] + stormRadial / zh;
+        // Three-body scattering from this gate's hail, spread over the gates beyond it. The echo d km
+        // beyond the hail came by way of the ground at the angle whose cosine is h / d from straight below
+        // it (h the hail's height): its path shortens with the hail's own radial motion and with its fall
+        // by that cosine, so the spike reads the hail's motion less its fall speed just beyond the core,
+        // easing to the hail's motion far along it (Zrnic 1987); and the ground there is a ring round the
+        // hail, each part of which sees the hail's sideways motion differently, so its spectrum is wide
+        // (half the hail's horizontal speed squared x sin^2 of that angle). (Until 2026-11-13 it had the
+        // hail's motion alone and no width. Its velocities are still far cleaner than a real spike's
+        // speckle: velocityErrorMs is the narrow-spectrum form, and giving it the wide-spectrum breakdown
+        // made the TDA find rotation in the speckle - tried and taken out the same day. Beyond a hook's
+        // hail in a strong mesocyclone the spike is a streak of that hail's outbound motion.)
+        const offsetKm = centerAgl / 1000, source = hail * threeBodyShare, motion = envRadial[index] + stormRadial / zh, fallMs = fall / zh;
+        const sideways2 = (wind.u + stormWind.u) ** 2 + (wind.v + stormWind.v) ** 2;
         const first = Math.ceil(g + offsetKm / GATE_KM), last = Math.min(GATES - 1, Math.floor(g + (offsetKm + THREE_BODY.reachFades * THREE_BODY.fadeKm) / GATE_KM));
         for (let k = first; k <= last; k++) {
-          const z = source * Math.exp(-((k - g) * GATE_KM - offsetKm) / THREE_BODY.fadeKm), at = r * GATES + k;
-          spike[at] += z; spikeRadial[at] += z * motion;
+          const beyondKm = (k - g) * GATE_KM, z = source * Math.exp(-(beyondKm - offsetKm) / THREE_BODY.fadeKm), at = r * GATES + k;
+          const cosine = beyondKm > offsetKm ? offsetKm / beyondKm : 1, v = motion - fallMs * cosine;
+          spike[at] += z; spikeRadial[at] += z * v; spikeRadial2[at] += z * (v * v + 0.5 * sideways2 * (1 - cosine * cosine));
         }
       }
     }
@@ -495,8 +520,10 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
       if (scattered > 0) {
         // The scattered part moves with the hail it came from (stormRadial is relative to the air's wind).
         zv += scattered / threeBodyZv; ccw += scattered * THREE_BODY.rho;
-        const moving = OWN_WEIGHT * spikeRadial[index] + NEIGHBOUR_WEIGHT * (spikeRadial[l] + spikeRadial[n]), relative = moving / scattered - air;
-        stormRadial += moving - scattered * air; stormRadial2 += scattered * relative * relative;
+        const moving = OWN_WEIGHT * spikeRadial[index] + NEIGHBOUR_WEIGHT * (spikeRadial[l] + spikeRadial[n]);
+        const moving2 = OWN_WEIGHT * spikeRadial2[index] + NEIGHBOUR_WEIGHT * (spikeRadial2[l] + spikeRadial2[n]);
+        // (its second moment about the air's wind: its own spread with its mean's)
+        stormRadial += moving - scattered * air; stormRadial2 += Math.max(0, moving2 - 2 * air * moving + scattered * air * air);
       }
       if (ground > 0) {
         // Clutter stands still, with no one shape (ZDR anywhere from -4 to 4 dB) and poorly correlated.
@@ -924,38 +951,35 @@ function updraughtAt(bin, x, y, z) {
   return w;
 }
 
-// What storms add to the environmental wind: mesocyclone and tornado vortices, outflow away
-// from the heavy rain near the ground, the rear-inflow jet and the anvil's outflow near the top.
-// The low-level circulation under a mesocyclone: below fullBelowM it is narrower by up to tighten of the
-// mesocyclone's radius and its wind faster by up to spinUp, in proportion to the storm's near-ground
-// rotation, fading to the mesocyclone's own by depthM.
-const LOW_MESO = { fullBelowM: 1000, depthM: 3000, tighten: 0.55, spinUp: 0.4 };
+// What storms add to the environmental wind: mesocyclone and tornado vortices (StormVortices.js:
+// the storm's own, as the frames and the rain draw them), outflow away from the heavy rain near the
+// ground, the rear-inflow jet and the anvil's outflow near the top. (The tornado is sampled at the
+// gate like every other wind: its core aloft, the tornado cyclone, is wider than a gate.)
 const gradient = {};
 // bin: binAt(scene.stormBins, x, y).
 function stormWindAt(bin, x, y, z, out) {
   out.u = 0; out.v = 0;
   if (!bin) return;
-  // Mesocyclone: strongest at mid levels, present down to the ground in mature supercells.
-  let mesoDepth = -1;
   for (const s of bin) {
     const lx = x - s.x, ly = y - s.y, e = s.echo;
     if (s.pool && z < s.gustDepthM) {
-      // Rain-cooled air spreads out from under the storm, fastest at the gust front: the pool's
-      // speed where its edge is sharpest, less where the edge is gentler, none well inside it.
+      // Rain-cooled air runs down the pool's slope, from under the storm out to the gust front
+      // (ColdPool.js outflowShare: through the whole pool, none ahead of the front).
       if (poolAt(s.pool, lx, ly)) {
-        const k = s.gustSpeedMs * s.pool.edgeKm * (1 - z / s.gustDepthM);
-        out.u += -k * POOL_AT.edgeX; out.v += k * POOL_AT.edgeY;
+        const g = Math.hypot(POOL_AT.depthX, POOL_AT.depthY);   // (the depth's slope)
+        if (g > 0) {
+          const k = s.gustSpeedMs * outflowShare(smoothstep(POOL_EDGE[0], POOL_EDGE[1], POOL_AT.share), g, s.pool.steepestDepth) * (1 - z / s.gustDepthM) / g;
+          out.u += -k * POOL_AT.depthX; out.v += k * POOL_AT.depthY;
+        }
       }
     }
     if (lx < e.minX || ly < e.minY || lx > e.maxX || ly > e.maxY) continue;
-    if (mesoDepth < 0) mesoDepth = 0.55 + 0.45 * Math.exp(-(((z - 4500) / 2600) ** 2));
-    const lean = clamp(z / MESOCYCLONE_LEAN_M, 0, 1), meso = e.mesocyclone;
-    // Near the ground a strengthening low-level circulation is tighter and spins faster than the
-    // mesocyclone above it (2026-10-21: one radius at all heights, so the couplet at the lowest tilt
-    // was the mid-level one, its peaks 4-5 miles apart).
-    const tight = (meso.low ?? 0) * clamp((LOW_MESO.depthM - z) / (LOW_MESO.depthM - LOW_MESO.fullBelowM), 0, 1);
-    addVortex(out, lx - meso.x - (meso.aloftX - meso.x) * lean, ly - meso.y - (meso.aloftY - meso.y) * lean, meso.radiusKm * (1 - LOW_MESO.tighten * tight), e.spin * e.mesocyclone.vmaxMs * mesoDepth * (1 + LOW_MESO.spinUp * tight) * (z > s.top ? 0.2 : 1), true);
-    if (e.tornado && z < s.tornadoDepthM) addVortex(out, lx - e.tornado.x, ly - e.tornado.y, e.tornado.radiusKm, e.spin * e.tornado.vmaxMs * (1 - z / s.tornadoDepthM * 0.6));
+    // (the mesocyclone strongest at mid levels, present down to the ground, tighter and faster near
+    // it as the low-level rotation strengthens; the tornado as deep as it is strong)
+    if (e.vortices) {
+      addMesoWind(e.vortices, lx, ly, z, out);
+      addTornadoWind(e.vortices, lx, ly, out, 1, 0, z);
+    }
     if (z > 0.7 * s.top) {
       heavinessGradient(e, 'aloft', lx, ly, gradient);
       const k = STORM_WINDS.anvil * clamp((z - 0.7 * s.top) / (0.3 * s.top), 0, 1);
@@ -972,21 +996,6 @@ function stormWindAt(bin, x, y, z, out) {
       out.u += STORM_WINDS.rearInflowMs * jet * e.mx; out.v += -STORM_WINDS.rearInflowMs * jet * e.my;
     }
   }
-}
-
-// Rankine-like vortex, cyclonic for a positive speed; dx, dy in the screen frame (km). A
-// mesocyclone's wind fades beyond about three of its radii (it is one storm's rotation, not the air's).
-function addVortex(out, dx, dy, radiusKm, vmax, fades = false) {
-  if (!vmax) return;
-  // (far beyond it: no square root needed to tell)
-  const reach = radiusKm * 12 * (1 + 1e-9);
-  if (dx * dx + dy * dy > reach * reach) return;
-  const rho = Math.hypot(dx, dy);
-  if (rho < 1e-3 || rho > radiusKm * 12) return;
-  const vt = vmax * (rho < radiusKm ? rho / radiusKm : (radiusKm / rho) ** 0.8) / (fades ? 1 + (rho / (3 * radiusKm)) ** 3 : 1);
-  // Counter-clockwise on a north-up map: east component dy/ρ, north component dx/ρ.
-  out.u += vt * dy / rho;
-  out.v += vt * dx / rho;
 }
 
 // ---------------------------------------------------------------------------

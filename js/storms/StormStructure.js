@@ -10,9 +10,10 @@
 //               overshoot top, and where it makes precipitation
 //   updraught   that profile across a Gaussian core on the engine's updraught, leaning from the
 //               mesocyclone (the storm's position) at the ground to the updraught's place by 5 km
-//   spin        the inflow's streamwise vorticity (SRH over depth x storm-relative wind), tilted and
-//               stretched as far as the engine's mesocyclone and low-level rotation say: a Rankine
-//               low-level mesocyclone on the storm's position and a mid-level one on the updraught
+//   spin        the storm's mesocyclone and tornado (StormVortices.js: the rain field's, which the
+//               radar's velocity shows and the trees' wind takes): as strong as the engine's
+//               mesocyclone strength and low-level rotation say, round the tornado while one is down,
+//               leaning to the updraught aloft
 //   rain, hail  the storm's rain field (StormRainFields.js, PrecipitationField.js): the one the radar
 //               scans, so the rain on the ground is the rain on the radar. Its reflectivity at the
 //               ground as a rate (Z = 200 R^1.6, what a radar reading of it gives; hail as melted
@@ -27,15 +28,17 @@
 //               mesocyclone and the tornado, drop / (rho g), air expanding into the low condensing
 //               lower. The tornado's funnel is that same surface where its own drop takes it toward
 //               the ground, so it widens smoothly into the wall cloud above it.
-//   tornado     the engine's tornado (wind, width, place): a Rankine core (as FrameView draws),
+//   tornado     the engine's tornado (wind, width, place; StormVortices.js): at the ground a Rankine
+//               core (as FrameView draws) whose 1/r tail gives the engine's damage width,
 //               upright near the ground and curving into the mesocyclone at the wall cloud
 //
 // buildStormFrame(world, storm, { seq, rainField }) -> { bytes (Uint8Array, full frame), info (numbers for checks) }.
 // rainField: the storm's field if already in hand (null: none; left out: StormRainFields.js's).
 import { inflowCell, soundingProfile, liftParcel as liftParcelAt, qsat, dewFromQ, lclM, G, CP, LV, RV, RD } from './UpdraughtParcel.js';
-import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK } from './ColdPool.js';
+import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK, outflowShare } from './ColdPool.js';
 import { clamp, smoothstep } from '../scenarios/math.js';
-import { coreMeanW, spinBudget } from './SpinBudget.js';
+import { spinBudget } from './SpinBudget.js';
+import { stormVortices, mesoLevel, addMesoWind, addTornadoWind, rankineDrop, rankineDropRadius } from './StormVortices.js';
 import { VERSION, BOX_FIELDS, NEST_FIELDS, HEADER, TORNADO, UPDRAUGHT } from '../cloudmodel/FrameCodec.js';
 import { samplePrecipitation, hailFallSpeedMs, RAIN_REFLECTIVITY, HAIL_REFLECTIVITY } from './PrecipitationField.js';
 import { rainFieldOf } from './StormRainFields.js';
@@ -63,9 +66,6 @@ export const STRUCTURE = Object.freeze({
 });
 
 const wetBulb = (tc, q, p) => { let tw = tc; for (let n = 0; n < 20; n++) { const qs = qsat(tw, p); tw -= (tw - tc + LV / CP * (qs - q)) / (1 + LV / CP * qs * 17.67 * 243.5 / (tw + 243.5) ** 2); } return Math.min(tc, tw); };
-// Rankine vortex: the pressure drop at r (Pa; rho V^2 at the centre, cyclostrophic) and the swirl.
-const rankineDrop = (r, R, V, rho) => R <= 0 || V <= 0 ? 0 : r < R ? rho * V * V * (1 - 0.5 * (r / R) ** 2) : 0.5 * rho * V * V * (R / r) ** 2;
-const rankineV = (r, R, V) => R <= 0 ? 0 : r < R ? V * r / R : V * R / r;
 
 // The inflow sounding: AGL heights, and helpers at a height.
 const profileOf = (world, storm) => soundingProfile(inflowCell(world, storm));
@@ -153,8 +153,6 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
 
   // Storm-relative winds (m/s): the mean over a layer, and the streamwise vorticity there.
   const srAt = z => { const e = sd.at(z); return [e.u - um, e.v - vm]; };
-  const layerMean = (a, b) => { let su = 0, sv = 0, n = 0; for (let z = a; z <= b; z += 100) { const w = srAt(z); su += w[0]; sv += w[1]; n++; } return [su / n, sv / n]; };
-  const sr01 = layerMean(0, 1000), sr03 = layerMean(0, 3000);
   // The box round the storm: its anvil and forward-flank rain go downwind along the storm-relative
   // wind at the equilibrium level, so the storm sits upwind in the box - by boxLean of the box at a
   // 10 m/s wind or more, less in lighter winds (centred in none) - leaving most of the box where its
@@ -163,44 +161,30 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     anchorX = (Math.floor((0.5 - lean * (es > 0 ? e[0] / es : 0)) * nx) - 0.5) * dx;
     anchorY = (Math.floor((0.5 - lean * (es > 0 ? e[1] / es : 0)) * ny) - 0.5) * dx; }
   const env = storm.environment ?? {};
-  const omega01 = Math.abs(env.srh ?? 0) / (Math.max(3, Math.hypot(...sr01)) * 1000);
-  const omega03 = Math.abs(env.srh03 ?? env.srh ?? 0) / (Math.max(3, Math.hypot(...sr03)) * 3000);
-  const spinSign = storm.leftMover ? -1 : 1;
-  // (the low-level rotation the storm has under it, occluding or not: an occluding mesocyclone still
-  // spins, it is only being cut off from its inflow)
-  const zetaLow = Math.min(S.zetaMax, clamp(Math.max(storm.lowRotation ?? 0, storm.lowRotationFree ?? 0), 0, 1.2) * S.stretch * omega01);
-  // The mid-level mesocyclone's swirl at the core's radius: SpinBudget's (the inflow's streamwise spin
-  // tilted by the core's mean rise over the mesocyclone's heights - Beltrami flow - and never holding
-  // more energy than that rise), as organised as the engine says the mesocyclone is. Until 2026-11-07
-  // it was the inflow's spin x min(2, peak w / Vsr): 69 m/s on seed 2's 21Z tornadic storm against
-  // radar Vrot medians of 18-38 m/s for EF0-4+ (docs/storm-reference/mesocyclone-rotation-2026-11-06.md),
-  // which swept its falling rain ~20 km round to the storm's rear.
-  const wProfile = { w: pr.levels.map(l => (l.z > top ? 0 : l.w * wScale)), dz: S.dz, coreM };
-  const organised = clamp(storm.mesocycloneStrength ?? 0, 0, 1);
-  const sb = spinBudget(storm, env, wProfile);
-  const Vmid = sb ? organised * sb.vMidMs
-    : 0.5 * Math.min(S.zetaMax, organised * omega03 * Math.min(2, coreMeanW(wProfile) / Math.max(3, Math.hypot(...sr03)))) * coreM;
-  const zetaMid = 2 * Vmid / coreM;
-  const Rm = clamp(500 * (g.wallCloud?.radiusKm ?? 2), 500, 2500), Vm = zetaLow * Rm / 2;
-  // the low-level mesocyclone fades into the mid-level one between 1 and 3 km
-  const lowShare = z => 1 - smoothstep(1000, 3000, z);
+  // The storm's mesocyclone and tornado (StormVortices.js): the rain field's, the ones the radar's
+  // velocity shows and the rain is carried round by, so the frame's winds, the wall cloud's lowering
+  // and the funnel (both from the vortices' pressure drop) are the radar's couplet. Until 2026-11-13
+  // the frame made its own from the inflow's spin (SpinBudget, now only measured: info.spinBudgetMidV):
+  // 12 m/s across 1.6 km on the radar test's EF3 supercell, where the radar drew 38 m/s across 3.4 km.
+  const field = rainField === undefined ? rainFieldOf(world, storm) : rainField;
+  const VX = field?.vortices ?? stormVortices(storm, top);
+  const spinSign = VX?.spin ?? 1;
+  // (the mesocyclone at a height in the box's metres, y north)
+  const mesoAt = z => { const l = VX ? mesoLevel(VX, z) : null; return l ? { x: l.x * 1000, y: -l.y * 1000, R: l.R * 1000, V: l.V } : { x: 0, y: 0, R: 1000, V: 0 }; };
+  const M0 = mesoAt(0), M1 = mesoAt(1000), M5 = mesoAt(S.leanTopM);
+  const Rm = M0.R, Vm = M0.V, zetaLow = 2 * Vm / Rm, Vmid = M5.V, zetaMid = 2 * Vmid / M5.R;
+  const sb = spinBudget(storm, env, { w: pr.levels.map(l => (l.z > top ? 0 : l.w * wScale)), dz: S.dz, coreM });
 
-  // The tornado (engine's, while down).
-  const tor = storm.tornado?.onGround ? storm.tornado : null;
-  let T = null;
-  if (tor) {
-    const V = (tor.windSpeedMph ?? 0) * 0.44704, W = (tor.widthYards ?? 0) * 0.9144;
-    const swirl = Math.max(0, V - Math.hypot(um, vm));
-    const R = V > 0 && W > 0 ? Math.max(10, Math.min(W / 2, (W / 2) * S.ef0Mph * 0.44704 / V)) : 0;
-    const p = tor.positionKm ? [(tor.positionKm.x - pos.x) * 1000, -(tor.positionKm.y - pos.y) * 1000] : [0, 0];
-    T = { x: p[0], y: p[1], R, V: swirl, Vg: V, drop: rho0 * swirl * swirl };
-  }
+  // The tornado (the engine's, while down): swirl V (its ground wind less the storm's motion), core R.
+  const tvx = VX?.tornado;
+  // (drop: at its centre, rho V^2; the funnel and the drop the views draw are the ground's Rankine
+  // vortex - the views rebuild it as one, VisualAtmosphere.luau - while the wind aloft is the
+  // tornado cyclone's, StormVortices.js)
+  const T = tvx ? { x: tvx.x * 1000, y: -tvx.y * 1000, R: tvx.R * 1000, V: tvx.V, Vg: tvx.Vg, drop: rankineDrop(0, tvx.R * 1000, tvx.V, rho0) } : null;
   const torDrop = (x, y) => T ? rankineDrop(Math.hypot(x - T.x, y - T.y), T.R, T.V, rho0) : 0;
-  // The low-level mesocyclone's centre: the storm's position, or the tornado while one is down - a
-  // tornado forms inside its parent circulation, so the circulation (and the wall cloud its drop
-  // lowers) is drawn round it. (Until 2026-11-07 it stayed on the storm's position: a tornado the
-  // engine had moved 3 km off it - occlusion - leant 3 km sideways over its 700 m to the base.)
-  const MC = T ? [T.x, T.y] : [0, 0];
+  // The low-level mesocyclone's centre: the tornado while one is down (a tornado forms inside its
+  // parent circulation, so the circulation and the wall cloud its drop lowers are drawn round it).
+  const MC = [M0.x, M0.y];
   const mesoR = (x, y) => Math.hypot(x - MC[0], y - MC[1]);
   const mesoDrop = (x, y) => rankineDrop(mesoR(x, y), Rm, Vm, rho0);
 
@@ -221,14 +205,8 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   const anvilAt = anvilOf({ storm, sd, pr, U, coreM, wPeak, wScale, um, vm, freezeZ });
   const ageS = Math.max(600, (storm.ageHours ?? 1) * 3600);
 
-  // The wind round the two mesocyclones (the low one fading into the mid-level one with height).
-  const swirlAt = (x, y, z) => {
-    let u = 0, v = 0;
-    const ls = lowShare(z);
-    if (ls > 0 && Vm > 0) { const ex = x - MC[0], ey = y - MC[1], r = Math.hypot(ex, ey) || 1, s = spinSign * ls * rankineV(r, Rm, Vm) / r; u -= s * ey; v += s * ex; }
-    if (Vmid > 0) { const c = centreAt(z), ex = x - c[0], ey = y - c[1], r = Math.hypot(ex, ey) || 1, s = spinSign * (1 - ls) * rankineV(r, coreM, Vmid) / r; u -= s * ey; v += s * ex; }
-    return [u, v];
-  };
+  // The mesocyclone's wind (east, north m/s) at a point of the box and a height.
+  const swirlAt = (x, y, z) => { if (!VX) return [0, 0]; const o = { u: 0, v: 0 }; addMesoWind(VX, x / 1000, -y / 1000, z, o); return [o.u, o.v]; };
 
   // Ground rain and hail (mm/h): the storm's rain field at the ground (in its frame: km from the
   // storm's centre, y south), each cell the mean reflectivity of 2 x 2 points across it. Rain is
@@ -236,7 +214,6 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   // carries the hail's kinetic energy flux, 5e-6 x 10^(0.084 dBZ) W/m2 (Waldvogel; Witt et al. 1998,
   // as the radar's severe hail index takes it: from 40 dBZ, fully by 50, no more past 75), at the
   // storm's hail fall speed: mass flux = 2 E / v^2.
-  const field = rainField === undefined ? rainFieldOf(world, storm) : rainField;
   const rainZ = new Float64Array(N), hailZ = new Float64Array(N), got = {}, hailVms = hailFallSpeedMs(storm);
   if (field) for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) {
     let zr = 0, zh = 0;
@@ -270,6 +247,16 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   const out = new Float64Array(N);
   for (let k = 0; k < N; k++) out[k] = cpS > 0 && bMax > 0 ? smoothstep(0.15, 0.45, blurred[k] / bMax) : 0;
   const outAt = (x, y) => { const i = clamp(Math.round((x + anchorX) / dx + 0.5), 1, nx), j = clamp(Math.round((y + anchorY) / dx + 0.5), 1, ny); return out[col(i, j)]; };
+  // The pool's depth, which its outflow runs down (ColdPool.js outflowShare): the rain rate's own
+  // footprint, spread the same way, as a share of its deepest; its slope (per m) and its steepest.
+  const deep = new Float64Array(N);
+  for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const ii = i + q - shI; if (ii >= 1 && ii <= nx) s += rain[col(ii, j)] * ker[q + rad]; } tmp[col(i, j)] = s / ks; }
+  for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const jj = j + q - shJ; if (jj >= 1 && jj <= ny) s += tmp[col(i, jj)] * ker[q + rad]; } deep[col(i, j)] = s / ks; }
+  let dMax = 0; for (let k = 0; k < N; k++) dMax = Math.max(dMax, deep[k]);
+  if (dMax > 0) for (let k = 0; k < N; k++) deep[k] /= dMax;
+  const gradShare = (i, j) => [(deep[col(Math.min(nx, i + 1), j)] - deep[col(Math.max(1, i - 1), j)]) / (2 * dx), (deep[col(i, Math.min(ny, j + 1))] - deep[col(i, Math.max(1, j - 1))]) / (2 * dx)];
+  let steepestShare = 0;
+  for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { const g = gradShare(i, j); steepestShare = Math.max(steepestShare, Math.hypot(g[0], g[1])); }
   const gradOut = (i, j) => [(out[col(Math.min(nx, i + 1), j)] - out[col(Math.max(1, i - 1), j)]) / (2 * dx), (out[col(i, Math.min(ny, j + 1))] - out[col(i, Math.max(1, j - 1))]) / (2 * dx)];
 
   // THE base: the LCL of the air rising there, lowered by the pressure drop (see the header).
@@ -286,7 +273,7 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   const box = new Uint8Array(N * BOX_FIELDS);
   const u8 = x => Math.min(255, Math.max(0, Math.floor(x + 0.5))), i8 = x => Math.min(127, Math.max(-127, Math.floor(x + 0.5)));
   const logRate = mmh => u8(40 * Math.log10(1 + Math.max(0, mmh)));
-  const sfc = sd.at(0), z1 = 1000;
+  const sfc = sd.at(0);
   let towerCols = 0, shelfCols = 0, anvilCols = 0, deckCols = 0, lowestBase = Infinity;
   const colRuns = new Array(N);
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) {
@@ -317,12 +304,12 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     box[o + 4] = logRate(rain[k]); box[o + 5] = logRate(hail[k]);
     box[o + 6] = i8(-deficit * out[k] * 10);
     // ground wind: the environment's, the outflow pushing out of the pool, the low-level mesocyclone
-    const gr = gradOut(i, j), gm = Math.hypot(gr[0], gr[1]) || 1, push = cpSpeed * (0.5 * out[k] + 2 * out[k] * (1 - out[k]));
+    const gr = gradShare(i, j), gm = Math.hypot(gr[0], gr[1]) || 1, push = cpSpeed * outflowShare(out[k], Math.hypot(gr[0], gr[1]), steepestShare);
     const sw = swirlAt(x, y, 0);
     box[o + 7] = i8((sfc.u - gr[0] / gm * push * (gm > 1e-9 ? 1 : 0) + 0.5 * sw[0]) * 2);
     box[o + 8] = i8((sfc.v - gr[1] / gm * push * (gm > 1e-9 ? 1 : 0) + 0.5 * sw[1]) * 2);
     box[o + 9] = i8(wAt(x, y, 5000) * 2);
-    const r1 = mesoR(x, y), zeta1 = spinSign * (r1 < Rm ? 2 * Vm / Rm : 0) * lowShare(z1) + (Math.hypot(x - centreAt(z1)[0], y - centreAt(z1)[1]) < coreM ? spinSign * 2 * Vmid / coreM * (1 - lowShare(z1)) : 0);
+    const zeta1 = spinSign * (Math.hypot(x - M1.x, y - M1.y) < M1.R ? 2 * M1.V / M1.R : 0);
     box[o + 10] = i8(zeta1 * 1000);
     box[o + 11] = an ? u8(an.iwp / 0.05) : 0;
   }
@@ -400,9 +387,8 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     const sw = swirlAt(x, y, 0);
     let tu = 0, tv = 0, tz = 0;
     if (T) {
-      const ex = x - T.x, ey = y - T.y, r = Math.hypot(ex, ey) || 1, s = spinSign * rankineV(r, T.R, T.V) / r;
-      tu = -s * ey; tv = s * ex;
-      if (Math.abs(ex) <= ndx / 2 && Math.abs(ey) <= ndx / 2) tz = spinSign * torCirc / (ndx * ndx);
+      const o = { u: 0, v: 0 }; addTornadoWind(VX, x / 1000, -y / 1000, o); tu = o.u; tv = o.v;
+      if (Math.abs(x - T.x) <= ndx / 2 && Math.abs(y - T.y) <= ndx / 2) tz = spinSign * torCirc / (ndx * ndx);
     }
     const zl = spinSign * (mesoR(x, y) < Rm ? 2 * Vm / Rm : 0) + tz;
     nest[no] = cloudy && zb < 3000 ? Math.max(1, u8(zb / 25)) : 0;
@@ -435,10 +421,7 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
       if (z >= Bt) return S.funnelCapM;
       const cap = Math.min(S.funnelCapM, S.coreAirR * T.R);
       if (z >= Bc) return cap;
-      const need = rhoG * (Bc - z), P = T.drop;
-      if (need >= P) return 0;
-      const r = need >= P / 2 ? T.R * Math.sqrt(2 * (1 - need / P)) : T.R * Math.sqrt(P / (2 * need));
-      return Math.min(cap, r);
+      return Math.min(cap, rankineDropRadius(rhoG * (Bc - z), T.R, T.V, rho0));
     };
     // upright at the ground, curving into the mesocyclone (the storm's position) at the base
     // (half the levels below the funnel's tip, for the lean; half in the condensed funnel, for its shape)
@@ -488,7 +471,7 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     bytes: outBytes,
     info: {
       ms: +(performance.now() - t0).toFixed(1), rainField: Boolean(field), lclM: Math.round(lclIn), elM: Math.round(el), topM: Math.round(top), wPeakParcel: +wPeak.toFixed(1), wScale: +wScale.toFixed(2),
-      zetaLow: +zetaLow.toFixed(4), zetaMid: +zetaMid.toFixed(4), mesoR: Math.round(Rm), mesoV: +Vm.toFixed(1), midV: +Vmid.toFixed(1), mesoDropHpa: +(rho0 * Vm * Vm / 100).toFixed(1),
+      zetaLow: +zetaLow.toFixed(4), zetaMid: +zetaMid.toFixed(4), mesoR: Math.round(Rm), mesoV: +Vm.toFixed(1), midV: +Vmid.toFixed(1), mesoDropHpa: +(rho0 * Vm * Vm / 100).toFixed(1), spinBudgetMidV: sb ? +sb.vMidMs.toFixed(1) : null,
       wallLclM: Math.round(lclMix(S.mixOutflow[0] + S.mixOutflow[1])), lowestBaseM: Math.round(lowestBase), deepestLoweringM: Math.round(deepest),
       rainMax: Math.round(rainMax), hailMax: Math.round(hailMax), coldPoolK: +deficit.toFixed(1), towerCols, shelfCols, anvilCols, deckCols, nestCloud,
       tornado: torInfo

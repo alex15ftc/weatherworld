@@ -16,6 +16,23 @@ export const COLD_POOL_SHAPE = Object.freeze({ speedMs: 38, depthM: [500, 1900],
 const G = 9.81;
 const share = strength => clamp(Number(strength) || 0, 0, 1);
 
+// The outflow's speed as a share of the pool's speed (coldPoolSpeedMs), for everything that shows the
+// wind in a pool (the radar's velocity, RadarSimulator.js; the frames' ground wind, StormStructure.js).
+// A density current's air runs down the pool's slope, from the rain that makes it out to its gust
+// front: fastest where the pool's depth (as a share of its deepest) falls away most steeply, calm at
+// its middle where it is flat, and none ahead of the front (present: the pool's eased edge, 0 outside
+// it and 1 well inside). The depth here is the rain RATE's footprint, spread as the pool's is: the
+// pool is as deep as the rain that evaporated into it, so it is deep under the heavy core and the
+// hook and shallow under the forward flank's light rain, and the outflow is strong near the core and
+// weak far along the flank. (Where the pool is - its extent, edge and coolness - stays the footprint
+// of the rain's logarithm, which counts light rain nearly as much as heavy.) slope and steepest per
+// the same length. Until 2026-11-13 the wind was only in the eased edge's strip, as fast under the
+// forward flank's drizzle as beside the core: on radar a straight 4 km ribbon of outbound wind 35 km
+// long with still air inside the pool. flat: the slope, as a share of the steepest, at
+// which the air runs at half the speed it has at the steepest.
+export const OUTFLOW = Object.freeze({ flat: 0.25 });
+export const outflowShare = (present, slope, steepest) => (steepest > 0 && slope > 0 ? present * (1 + OUTFLOW.flat) * slope / (slope + OUTFLOW.flat * steepest) : 0);
+
 export const coldPoolSpeedMs = strength => COLD_POOL_SHAPE.speedMs * Math.sqrt(share(strength));
 export const coldPoolDepthM = strength => clamp(COLD_POOL_SHAPE.depthM[0] + COLD_POOL_SHAPE.depthM[1] * share(strength), COLD_POOL_SHAPE.depthRangeM[0], COLD_POOL_SHAPE.depthRangeM[1]);
 export const coldPoolDeficitK = strength => Math.max(COLD_POOL_SHAPE.minDeficitK, coldPoolSpeedMs(strength) ** 2 * COLD_POOL_SHAPE.thetaK / (2 * G * coldPoolDepthM(strength)));
