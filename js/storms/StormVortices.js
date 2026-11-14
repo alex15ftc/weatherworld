@@ -123,7 +123,13 @@ export function stormVortices(storm, topM) {
     tornado.Valoft = Math.min(tornado.V, momentum / tornado.Raloft);
     const Rc = C.cycloneShare * parent.R;
     const own = Rc > tornado.Raloft ? rankineV(Rc, tornado.Raloft, tornado.Valoft, C.tailAloft) : Infinity;
-    tornado.cyclone = { R: Rc, V: clamp(C.vrotShare * tornado.Vg - own, 0, momentum / Rc) };
+    // (The cyclone is as deep as the mesocyclone it is the middle of: up to the mesocyclone's strongest level,
+    // by the engine's strength for it - tornadic vortex signatures commonly reach 3-6 km whatever the tornado's
+    // strength, Trapp et al. 1999. The tornado's own vortex keeps the depth its wind gives it. Until 2026-11-14
+    // both had that depth, and the radar's TDA, which wants shear on 3 tilts, lost tornadoes beyond 70 km where
+    // only one or two beams were under 2 km: 17 of 58, an EF3 at 94 km among them.)
+    const strength = clamp((d.meso.V - C.mesoV[0]) / C.mesoV[1], 0, 1);
+    tornado.cyclone = { R: Rc, V: clamp(C.vrotShare * tornado.Vg - own, 0, momentum / Rc), depthM: Math.max(tornado.depthM, C.depthPeakM * strength) };
     tornado.depthM = Math.max(tornado.depthM, C.lowFullM + (C.lowDepthM - C.lowFullM) * d.meso.low);
   }
   return d;
@@ -192,14 +198,14 @@ export const tornadoSwirlMs = (t, z) => t.V + ((t.Valoft ?? t.V) - t.V) * aloftS
 export function addTornadoWind(d, x, y, out, share = 1, seenKm = 0, z = 0) {
   const t = d.tornado;
   if (!t) return;
-  if (z >= t.depthM) return;
-  // (full strength up to the last fadeShare of its depth, then fading out smoothly to the top)
-  const f = clamp((t.depthM - z) / (VORTICES.depthFadeShare * t.depthM), 0, 1);
-  share *= f * f * (3 - 2 * f);
-  const tail = tornadoTail(z), Rc = tornadoCoreKm(t, z), R = seenKm > 0 ? Math.hypot(Rc, seenKm) : Rc;
+  // (each at full strength up to the last fadeShare of its depth, then fading out smoothly to its top)
+  const within = depthM => { const f = clamp((depthM - z) / (VORTICES.depthFadeShare * depthM), 0, 1); return f * f * (3 - 2 * f); };
   const parent = d.meso.R * (1 - VORTICES.lowTighten * d.meso.low);
-  addRankine(out, x - t.x, y - t.y, R, d.spin * share * rankineV(R, Rc, tornadoSwirlMs(t, z), tail), Math.max(4 * R, parent), tail);
+  if (z < t.depthM) {
+    const tail = tornadoTail(z), Rc = tornadoCoreKm(t, z), R = seenKm > 0 ? Math.hypot(Rc, seenKm) : Rc;
+    addRankine(out, x - t.x, y - t.y, R, d.spin * share * within(t.depthM) * rankineV(R, Rc, tornadoSwirlMs(t, z), tail), Math.max(4 * R, parent), tail);
+  }
   // (the tornado cyclone round it, aloft)
   const c = t.cyclone, up = aloftShare(z);
-  if (c && c.V > 0 && up > 0) addRankine(out, x - t.x, y - t.y, c.R, d.spin * share * up * c.V, Math.max(VORTICES.fadeRadii * c.R, parent), VORTICES.mesoTail);
+  if (c && c.V > 0 && up > 0 && z < (c.depthM ?? t.depthM)) addRankine(out, x - t.x, y - t.y, c.R, d.spin * share * up * within(c.depthM ?? t.depthM) * c.V, Math.max(VORTICES.fadeRadii * c.R, parent), VORTICES.mesoTail);
 }

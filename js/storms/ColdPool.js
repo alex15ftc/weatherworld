@@ -19,19 +19,29 @@ const share = strength => clamp(Number(strength) || 0, 0, 1);
 // The outflow's speed as a share of the pool's speed (coldPoolSpeedMs), for everything that shows the
 // wind in a pool (the radar's velocity, RadarSimulator.js; the frames' ground wind, StormStructure.js).
 // A density current's air runs down the pool's slope, from the rain that makes it out to its gust
-// front: fastest where the pool's depth (as a share of its deepest) falls away most steeply, calm at
-// its middle where it is flat, and none ahead of the front (present: the pool's eased edge, 0 outside
-// it and 1 well inside). The depth here is the rain RATE's footprint, spread as the pool's is: the
-// pool is as deep as the rain that evaporated into it, so it is deep under the heavy core and the
-// hook and shallow under the forward flank's light rain, and the outflow is strong near the core and
-// weak far along the flank. (Where the pool is - its extent, edge and coolness - stays the footprint
-// of the rain's logarithm, which counts light rain nearly as much as heavy.) slope and steepest per
-// the same length. Until 2026-11-13 the wind was only in the eased edge's strip, as fast under the
-// forward flank's drizzle as beside the core: on radar a straight 4 km ribbon of outbound wind 35 km
-// long with still air inside the pool. flat: the slope, as a share of the steepest, at
-// which the air runs at half the speed it has at the steepest.
-export const OUTFLOW = Object.freeze({ flat: 0.25 });
-export const outflowShare = (present, slope, steepest) => (steepest > 0 && slope > 0 ? present * (1 + OUTFLOW.flat) * slope / (slope + OUTFLOW.flat * steepest) : 0);
+// front. The pool's depth here is the rain RATE's footprint spread as the pool is, as a share of its
+// deepest (the pool is as deep as the rain that evaporated into it: deep under the heavy core and the
+// hook, shallow under the forward flank's light rain). A current runs as the square root of its depth
+// (C^2 = 2 g' h), and as fast as that only where the depth falls away within the pool's own spreading
+// length (slope x spread of 1 or more): so it is fastest just outside the downdraught, about 0.8 of the
+// pool's speed, a fifth of it two spreading lengths out, and near calm at the middle of the pool and
+// across a broad, level one. None ahead of the front (present: the pool's eased edge, 0 outside it and
+// 1 well inside; where the pool is - its extent and coolness - stays the footprint of the rain's
+// logarithm). Until 2026-11-13 the wind was only in the eased edge's strip, as fast under the forward
+// flank's drizzle as beside the core. From then to 2026-11-14 it was measured against the steepest
+// slope anywhere in the pool, which gave half the pool's speed and more wherever the depth sloped at
+// all: over a cluster's pool, 30 m/s across tens of kilometres, swamping the wind the radar should show.
+export const outflowShare = (present, depth, slope, spread) => (depth > 0 && slope > 0 ? present * Math.sqrt(depth) * Math.min(1, slope * spread) : 0);
+
+// How far a pool's edge is carried by the air it spreads through: a gravity current's front moves at its own
+// speed plus HEAD_WIND of the wind along its way (Simpson and Britter 1980), so it runs out fast downwind and
+// hardly at all into a wind as fast as itself. The wind here is the storm-relative wind of the lowest kilometre
+// (the inflow's), and the pool is moved by HEAD_WIND x that wind x the time it has been spreading - its oldest
+// air sets where its edge is. So a supercell's gust front stays beside its hook and forward flank on the side
+// its inflow comes from, and runs out behind. Until 2026-11-14 the pool was only left behind by the storm's
+// motion (half the spreading time of it): the fine line of an isolated tornadic supercell with 20 m/s of
+// inflow stood 20-25 km out into that inflow (seed 23's S0221), where it would have cut the storm off.
+export const HEAD_WIND = 0.62;
 
 export const coldPoolSpeedMs = strength => COLD_POOL_SHAPE.speedMs * Math.sqrt(share(strength));
 export const coldPoolDepthM = strength => clamp(COLD_POOL_SHAPE.depthM[0] + COLD_POOL_SHAPE.depthM[1] * share(strength), COLD_POOL_SHAPE.depthRangeM[0], COLD_POOL_SHAPE.depthRangeM[1]);

@@ -21,7 +21,7 @@
 //   anvil       ice spread at the equilibrium level by the storm-relative wind there and the top's
 //               outflow, thinning as it falls out and sublimates, no longer than the storm's age
 //   cold pool   the ground rain's footprint spread by the density current (ColdPool.js speed),
-//               left behind by the storm's motion; its edge facing the inflow lifts a shelf cloud
+//               carried by the inflow layer's storm-relative wind; its edge facing the inflow lifts a shelf cloud
 //   one base    every low cloud's base is ONE surface: the lifting condensation level of the air
 //               rising there (inflow mixed with the cool, moist outflow it ingests: the wall cloud
 //               where the updraught meets the outflow) lowered by the pressure drop of the
@@ -35,7 +35,7 @@
 // buildStormFrame(world, storm, { seq, rainField }) -> { bytes (Uint8Array, full frame), info (numbers for checks) }.
 // rainField: the storm's field if already in hand (null: none; left out: StormRainFields.js's).
 import { inflowCell, soundingProfile, liftParcel as liftParcelAt, qsat, dewFromQ, lclM, G, CP, LV, RV, RD } from './UpdraughtParcel.js';
-import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK, outflowShare } from './ColdPool.js';
+import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK, outflowShare, HEAD_WIND } from './ColdPool.js';
 import { clamp, smoothstep } from '../scenarios/math.js';
 import { spinBudget } from './SpinBudget.js';
 import { stormVortices, mesoLevel, addMesoWind, addTornadoWind, rankineDrop, rankineDropRadius } from './StormVortices.js';
@@ -230,16 +230,18 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     return 2 * energy / (hailVms * hailVms) * 3600; // kg/m2/s of water = mm/s
   });
 
-  // The cold pool: the rain's footprint spread by the density current, left behind by the motion.
+  // The cold pool: the rain's footprint spread by the density current, carried by the inflow layer's wind.
   const cpSpeed = cpS > 0 ? coldPoolSpeedMs(cpS) : 0, cpDepth = cpS > 0 ? coldPoolDepthM(cpS) : 0;
   const L = Math.max(1500, Math.min(cpSpeed * S.coldPoolTauS, 0.7 * 1000 * Math.max(2, storm.coldPoolRadiusKm ?? 10)));
   const mask = new Float64Array(N);
   for (let k = 0; k < N; k++) mask[k] = clamp(Math.log10(1 + rain[k]) / 2, 0, 1);
-  // Gaussian blur, sigma L/2, separable; shifted back along the storm's motion by half the spread time
+  // Gaussian blur, sigma L/2, separable; moved with the storm-relative inflow wind (HEAD_WIND of it x the spread time)
   const sigma = L / 2 / dx, rad = Math.ceil(2.5 * sigma), ker = [];
   for (let q = -rad; q <= rad; q++) ker.push(Math.exp(-0.5 * (q / sigma) ** 2));
   const ks = ker.reduce((a, b) => a + b, 0);
-  const shI = Math.round(-um * S.coldPoolTauS / 2 / dx), shJ = Math.round(-vm * S.coldPoolTauS / 2 / dx);
+  // (carried by the inflow layer's storm-relative wind, as the radar's pool is: ColdPool.js HEAD_WIND)
+  const carried = field?.inflow ?? (() => { let u = 0, v = 0, n = 0; for (let z = 0; z <= 1000; z += 250) { const w = srAt(z); u += w[0]; v += w[1]; n++; } return { u: u / n, v: v / n }; })();
+  const shI = Math.round(HEAD_WIND * carried.u * S.coldPoolTauS / dx), shJ = Math.round(HEAD_WIND * carried.v * S.coldPoolTauS / dx);
   const tmp = new Float64Array(N), blurred = new Float64Array(N);
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const ii = i + q - shI; if (ii >= 1 && ii <= nx) s += mask[col(ii, j)] * ker[q + rad]; } tmp[col(i, j)] = s / ks; }
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const jj = j + q - shJ; if (jj >= 1 && jj <= ny) s += tmp[col(i, jj)] * ker[q + rad]; } blurred[col(i, j)] = s / ks; }
@@ -248,15 +250,13 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   for (let k = 0; k < N; k++) out[k] = cpS > 0 && bMax > 0 ? smoothstep(0.15, 0.45, blurred[k] / bMax) : 0;
   const outAt = (x, y) => { const i = clamp(Math.round((x + anchorX) / dx + 0.5), 1, nx), j = clamp(Math.round((y + anchorY) / dx + 0.5), 1, ny); return out[col(i, j)]; };
   // The pool's depth, which its outflow runs down (ColdPool.js outflowShare): the rain rate's own
-  // footprint, spread the same way, as a share of its deepest; its slope (per m) and its steepest.
+  // footprint, spread the same way, as a share of its deepest, and its slope (per m; L its spreading length, m).
   const deep = new Float64Array(N);
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const ii = i + q - shI; if (ii >= 1 && ii <= nx) s += rain[col(ii, j)] * ker[q + rad]; } tmp[col(i, j)] = s / ks; }
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { let s = 0; for (let q = -rad; q <= rad; q++) { const jj = j + q - shJ; if (jj >= 1 && jj <= ny) s += tmp[col(i, jj)] * ker[q + rad]; } deep[col(i, j)] = s / ks; }
   let dMax = 0; for (let k = 0; k < N; k++) dMax = Math.max(dMax, deep[k]);
   if (dMax > 0) for (let k = 0; k < N; k++) deep[k] /= dMax;
   const gradShare = (i, j) => [(deep[col(Math.min(nx, i + 1), j)] - deep[col(Math.max(1, i - 1), j)]) / (2 * dx), (deep[col(i, Math.min(ny, j + 1))] - deep[col(i, Math.max(1, j - 1))]) / (2 * dx)];
-  let steepestShare = 0;
-  for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) { const g = gradShare(i, j); steepestShare = Math.max(steepestShare, Math.hypot(g[0], g[1])); }
   const gradOut = (i, j) => [(out[col(Math.min(nx, i + 1), j)] - out[col(Math.max(1, i - 1), j)]) / (2 * dx), (out[col(i, Math.min(ny, j + 1))] - out[col(i, Math.max(1, j - 1))]) / (2 * dx)];
 
   // THE base: the LCL of the air rising there, lowered by the pressure drop (see the header).
@@ -304,7 +304,7 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     box[o + 4] = logRate(rain[k]); box[o + 5] = logRate(hail[k]);
     box[o + 6] = i8(-deficit * out[k] * 10);
     // ground wind: the environment's, the outflow pushing out of the pool, the low-level mesocyclone
-    const gr = gradShare(i, j), gm = Math.hypot(gr[0], gr[1]) || 1, push = cpSpeed * outflowShare(out[k], Math.hypot(gr[0], gr[1]), steepestShare);
+    const gr = gradShare(i, j), gm = Math.hypot(gr[0], gr[1]) || 1, push = cpSpeed * outflowShare(out[k], deep[k], Math.hypot(gr[0], gr[1]), L);
     const sw = swirlAt(x, y, 0);
     box[o + 7] = i8((sfc.u - gr[0] / gm * push * (gm > 1e-9 ? 1 : 0) + 0.5 * sw[0]) * 2);
     box[o + 8] = i8((sfc.v - gr[1] / gm * push * (gm > 1e-9 ? 1 : 0) + 0.5 * sw[1]) * 2);

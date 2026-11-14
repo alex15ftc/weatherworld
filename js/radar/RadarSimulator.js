@@ -12,7 +12,7 @@ import {
 } from './RadarFormat.js';
 import { buildSounding } from '../sounding.js';
 import { updraughtProfile, STRUCTURE as FRAME } from '../storms/StormStructure.js';
-import { coldPoolSpeedMs, coldPoolDepthM, outflowShare } from '../storms/ColdPool.js';
+import { coldPoolSpeedMs, coldPoolDepthM, outflowShare, HEAD_WIND } from '../storms/ColdPool.js';
 import { addMesoWind, addTornadoWind } from '../storms/StormVortices.js';
 
 const KT_TO_MS = 0.514444;
@@ -109,7 +109,9 @@ const TURBULENCE_MS = { precipitation: 2, clearAir: 1 };
 // 48 dB under a 70 dBZ core (22 dBZ), 58 dB under 60 dBZ (2 dBZ), and nothing a radar can see from 50 dBZ hail - a
 // spike is a narrow thing behind the most intense part of a core, 5-15 dBZ (docs/storm-reference/radar/16). Until
 // 2026-11-14 the loss was 48 dB for any hail of 50 dBZ: a wedge 20 km wide at 20-25 dBZ behind the whole core.
-const THREE_BODY = { lossDb: 48, fullDbz: 70, fadeKm: 8, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
+// fadeKm: 4 since 2026-11-14 (a real spike falls from about 15 dBZ into the noise in some 12 km: reference 16;
+// at 8 it ran 24 km as a wedge of 10-15 dBZ across the whole inflow sector).
+const THREE_BODY = { lossDb: 48, fullDbz: 70, fadeKm: 4, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
 // (the velocity's own error: velocityErrorMs)
 // (each the reach of an even spread, a standard deviation of 1 / sqrt 3 of it: 1 dB of reflectivity and 0.2 dB
 // of ZDR, the WSR-88D's specified estimate errors. Until 2026-11-14 0.8 and 0.18: half that, and an echo
@@ -220,10 +222,10 @@ function riseOf(world, storm) {
 // The storm's cold pool as the in-world frame draws it (StormStructure.buildStormFrame): the rain's
 // footprint at the ground (log10(1 + mm/h) / 2), spread by the density current - a Gaussian of
 // sigma L / 2, L the distance the pool's speed carries it in coldPoolTauS, at most 0.7 of the
-// engine's coldPoolRadiusKm - and left behind by half that time's motion; its edge eased from
+// engine's coldPoolRadiusKm - and carried by the inflow layer's storm-relative wind (ColdPool.js HEAD_WIND); its edge eased from
 // 0.15 to 0.45 of the most. out: 0 outside the pool, 1 well inside; its edge is the gust front.
 // Its depth, which its outflow runs down (ColdPool.js outflowShare), is the rain rate's own footprint
-// spread the same way, as a share of its deepest; steepestDepth: that depth's steepest slope (per km).
+// spread the same way, as a share of its deepest; spreadKm: its spreading length.
 // Null without a cold pool.
 const poolSample = {};
 // One storm's (input: an entry of radarSceneInputs(world).storms; echo: its field). A thread that
@@ -236,7 +238,9 @@ function coldPoolOf(echo, motion, poolRadiusKm) {
   const tau = FRAME.coldPoolTauS, spreadKm = Math.max(1.5, Math.min(coldPoolSpeedMs(strength) * tau, 0.7 * 1000 * Math.max(2, poolRadiusKm))) / 1000;
   // (cells a quarter of the spread wide at most: the pool is smooth on that scale)
   const res = Math.max(1, echo.grid.res, spreadKm / 2 / 4), sigma = spreadKm / 2 / res, reach = Math.ceil(2.5 * sigma);
-  const shiftX = -motion.u * tau / 2 / 1000 / res, shiftY = motion.v * tau / 2 / 1000 / res;   // (cells; y runs south)
+  // (carried by the inflow layer's storm-relative wind, ColdPool.js HEAD_WIND; cells, y runs south)
+  const drift = echo.inflow ?? { u: -motion.u, v: -motion.v };
+  const shiftX = HEAD_WIND * drift.u * tau / 1000 / res, shiftY = -HEAD_WIND * drift.v * tau / 1000 / res;
   const margin = reach + Math.ceil(Math.abs(shiftX) + Math.abs(shiftY));
   const x0 = echo.minX - margin * res, y0 = echo.minY - margin * res;
   const nx = Math.ceil((echo.maxX - echo.minX) / res) + 1 + 2 * margin, ny = Math.ceil((echo.maxY - echo.minY) / res) + 1 + 2 * margin;
@@ -259,24 +263,22 @@ function coldPoolOf(echo, motion, poolRadiusKm) {
   let deepest = 0;
   for (let k = 0; k < deep.length; k++) if (deep[k] > deepest) deepest = deep[k];
   if (deepest > 0) for (let k = 0; k < deep.length; k++) deep[k] /= deepest;
-  let steepest = 0, steepestDepth = 0;
+  let steepest = 0;
   for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
     const k = j * nx + i, g = Math.hypot(out[k + 1] - out[k - 1], out[k + nx] - out[k - nx]) / (2 * res);
     if (g > steepest) steepest = g;
-    const gd = Math.hypot(deep[k + 1] - deep[k - 1], deep[k + nx] - deep[k - nx]) / (2 * res);
-    if (gd > steepestDepth) steepestDepth = gd;
   }
   if (!(steepest > 0)) return null;
   // Each cell as the scan reads it, once: the footprint's share, how fast it changes (per km, east
-  // and south) and how fast the pool's depth does - five values side by side.
-  const cells = new Float32Array(5 * nx * ny), slope = (field, k, i, n, step) =>
+  // and south) how fast the pool's depth does, and that depth - six values side by side.
+  const cells = new Float32Array(6 * nx * ny), slope = (field, k, i, n, step) =>
     (field[i < n - 1 ? k + step : k] - field[i > 0 ? k - step : k]) / ((i > 0 && i < n - 1 ? 2 : 1) * res);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const k = j * nx + i, c = 5 * k;
+    const k = j * nx + i, c = 6 * k;
     cells[c] = share[k]; cells[c + 1] = slope(share, k, i, nx, 1); cells[c + 2] = slope(share, k, j, ny, nx);
-    cells[c + 3] = slope(deep, k, i, nx, 1); cells[c + 4] = slope(deep, k, j, ny, nx);
+    cells[c + 3] = slope(deep, k, i, nx, 1); cells[c + 4] = slope(deep, k, j, ny, nx); cells[c + 5] = deep[k];
   }
-  return { strength, x0, y0, res, nx, ny, cells, steepestDepth };
+  return { strength, x0, y0, res, nx, ny, cells, spreadKm };
 }
 // A Gaussian blur of sigma (cells) as three box blurs of width sqrt(4 sigma^2 + 1) each way (three
 // boxes of width w have the variance 3 (w^2 - 1) / 12), the field moved by shift cells (x, y).
@@ -304,18 +306,19 @@ function boxBlur3(field, nx, ny, sigma, shiftX, shiftY) {
 // The pool at a place (lx, ly km from the storm), bilinear, into POOL_AT: share (the spread
 // footprint as a share of its most), shareX / shareY (its change per km east and south) and depthX /
 // depthY (the change of its depth, the rain rate.s footprint as a share of its deepest). False off its grid.
-const POOL_AT = { share: 0, shareX: 0, shareY: 0, depthX: 0, depthY: 0 };
+const POOL_AT = { share: 0, shareX: 0, shareY: 0, depthX: 0, depthY: 0, depth: 0 };
 function poolAt(p, lx, ly) {
   const fx = (lx - p.x0) / p.res, fy = (ly - p.y0) / p.res;
   if (!(fx >= 0 && fy >= 0 && fx <= p.nx - 1 && fy <= p.ny - 1)) return false;
   const i = Math.min(p.nx - 2, fx | 0), j = Math.min(p.ny - 2, fy | 0), tx = fx - i, ty = fy - j, c = p.cells;
-  const a = 5 * (j * p.nx + i), b = a + 5, d = a + 5 * p.nx, e = d + 5;
+  const a = 6 * (j * p.nx + i), b = a + 6, d = a + 6 * p.nx, e = d + 6;
   const wa = (1 - tx) * (1 - ty), wb = tx * (1 - ty), wd = (1 - tx) * ty, we = tx * ty;
   POOL_AT.share = c[a] * wa + c[b] * wb + c[d] * wd + c[e] * we;
   POOL_AT.shareX = c[a + 1] * wa + c[b + 1] * wb + c[d + 1] * wd + c[e + 1] * we;
   POOL_AT.shareY = c[a + 2] * wa + c[b + 2] * wb + c[d + 2] * wd + c[e + 2] * we;
   POOL_AT.depthX = c[a + 3] * wa + c[b + 3] * wb + c[d + 3] * wd + c[e + 3] * we;
   POOL_AT.depthY = c[a + 4] * wa + c[b + 4] * wb + c[d + 4] * wd + c[e + 4] * we;
+  POOL_AT.depth = c[a + 5] * wa + c[b + 5] * wb + c[d + 5] * wd + c[e + 5] * we;
   return true;
 }
 
@@ -553,7 +556,9 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
       // turbulence; the estimate strays more the wider it is (velocityErrorMs), and where the echo is weak.
       const mean = stormRadial / zh, spread = Math.max(0, stormRadial2 / zh - mean * mean);
       const turbulence = echo > 0 && sumStorm2[index] > 0 ? TURBULENCE_MS.precipitation : TURBULENCE_MS.clearAir;
-      const width = Math.sqrt(spread * cosTilt * cosTilt + turbulence * turbulence);
+      // (no wider than a spectrum spread evenly over the whole of +-Vn reads: Vn / sqrt 3. A hail spike's, from
+      // echo that came by way of the ground all round the hail, is about that; until 2026-11-14 it read 25 m/s and more.)
+      const width = Math.min(NYQUIST_MS / Math.sqrt(3), Math.sqrt(spread * cosTilt * cosTilt + turbulence * turbulence));
       // (the noise is even over -1..1, a standard deviation of 1 / sqrt 3 of its reach)
       const radial = (air + stormRadial / zh) * cosTilt + (rise - falling) / zh * sinTilt + velocityNoise * (Math.sqrt(3) * velocityErrorMs(width) + 1.2 * lowSnr);
       // (encoded below, folded and dealiased)
@@ -993,11 +998,11 @@ function stormWindAt(bin, x, y, z, out) {
     const lx = x - s.x, ly = y - s.y, e = s.echo;
     if (s.pool && z < s.gustDepthM) {
       // Rain-cooled air runs down the pool's slope, from under the storm out to the gust front
-      // (ColdPool.js outflowShare: through the whole pool, none ahead of the front).
+      // (ColdPool.js outflowShare: fastest just outside the downdraught, none ahead of the front).
       if (poolAt(s.pool, lx, ly)) {
         const g = Math.hypot(POOL_AT.depthX, POOL_AT.depthY);   // (the depth's slope)
         if (g > 0) {
-          const k = s.gustSpeedMs * outflowShare(smoothstep(POOL_EDGE[0], POOL_EDGE[1], POOL_AT.share), g, s.pool.steepestDepth) * (1 - z / s.gustDepthM) / g;
+          const k = s.gustSpeedMs * outflowShare(smoothstep(POOL_EDGE[0], POOL_EDGE[1], POOL_AT.share), POOL_AT.depth, g, s.pool.spreadKm) * (1 - z / s.gustDepthM) / g;
           out.u += -k * POOL_AT.depthX; out.v += k * POOL_AT.depthY;
         }
       }

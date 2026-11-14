@@ -31,11 +31,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   colour tables read as real displays do (`RadarFormat.js`, exported to `Palettes.luau`: needs a place publish).
   Graupel and hail drawn back into the updraught rise at 0.4 of the air's net rise (`PHYSICS.relofted`, set on one
   storm: its 40 dBZ forward flank is 47 x 17 km, real ones 30-60 x 15-25), rain's ZDR follows Brandes 2004, hail's
-  CC goes with stone size, and estimate noise is the WSR-88D's specified 1 dB / 0.2 dB. The TDA flags 10 of 58
-  engine tornadoes (12 seeds x a day, no false alarms; 8 at the start, 14 at best; real TDA about 40-50%), EF0s
-  never. Loops and stills: `tmp/one-storm-wind/` (untracked). Open: the hook does not evolve (the engine's
-  rotation barely changes for hours: needs the owner's word, it touches tornado lives), spectrum width is a
-  bright wedge down-range of hail, no ZDR arc, weak tornadoes undetected.
+  CC goes with stone size, and estimate noise is the WSR-88D's specified 1 dB / 0.2 dB. The tornado cyclone is as
+  deep as its mesocyclone; the hail spike fades in 4 km and no spectrum width reads past Vn / sqrt 3. The cold
+  pool's outflow goes as the square root of its local depth within its own spreading length (the first rule blew
+  30 m/s across a cluster's whole pool) and the pool is carried by 0.62 of the inflow layer's storm-relative wind.
+  The TDA flags 12 of 58 engine tornadoes (12 seeds x a day, no false alarms; 8 at the start; real TDA about
+  40-50%): 8 of 10 at 140 mph and more, none under 115 mph. Loops and stills: `tmp/one-storm-wind/` (untracked).
+  Open: the hook does not evolve (the engine's rotation barely changes for hours: needs the owner's word, it
+  touches tornado lives); a storm's gust-front fine line stands about 17 km out on its inflow side because the
+  engine's pools are as cold and fast on tornadic storms as on any (median 6.5 K, 22 m/s against 22 m/s of
+  inflow: an engine question, left by the owner 2026-11-14); the ZDR arc is weak and broad (no drops over
+  5.5 mm); weak tornadoes undetected. Audits of tornadoes near radars must step like the server
+  (`advanceLikeServer`): a 30-minute-step search found a storm whose tornado did not happen under 5-minute ticks.
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
 - Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files

@@ -220,6 +220,8 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   else if (debris && grid) { const e = grid.extent; e.minX = Math.min(e.minX, debris.x - debris.halfKm); e.minY = Math.min(e.minY, debris.y - debris.halfKm); e.maxX = Math.max(e.maxX, debris.x + debris.halfKm); e.maxY = Math.max(e.maxY, debris.y + debris.halfKm); }
   return {
     grid, inner, debris, cores: model.cores, mx, my, rx, ry,
+    // (the storm-relative wind of the inflow layer, east and north m/s: what carries the cold pool, ColdPool.js HEAD_WIND)
+    inflow: { u: model.inflowU, v: model.inflowV },
     hailMm: (Number(storm.currentHailSizeInches) || 0) * 25.4,
     vortices: model.vortices, mesocyclone: model.mesocyclone, tornado: model.tornado, spin: model.spin, coldPool: model.coldPool, rearInflow: model.rearInflow, frontToRear: model.frontToRear,
     // Extent on the map, from the storm's centre (km).
