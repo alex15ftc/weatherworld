@@ -6,7 +6,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-const { avoidBackgroundThrottling } = await import('file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/js/runtime/processPriority.node.js');
+const { avoidBackgroundThrottling } = await import(new URL('../../js/runtime/processPriority.node.js', import.meta.url).href);
 avoidBackgroundThrottling();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
