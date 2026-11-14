@@ -228,12 +228,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   stands in water. Each chunk first plans the lots just beyond its edge (`NEIGHBOUR_LOTS` in `ChunkGen`);
   buildings stand at most 5 studs above the lowest ground under them on a foundation, and are not built where
   the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
-  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Live place 497 and the engine still have the map of `9e927f8`: publishing
-  and deploying this branch changes roads (not towns, counties or radars).
+  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
 
 ## Next
 
-0. Map branch (published as 497, unseen): join the place or play it in Studio and look at roads (interchanges, overpass ramps with a
+0. Map (published as 498, unseen): join the place or play it in Studio and look at roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
