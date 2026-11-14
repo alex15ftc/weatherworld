@@ -19,8 +19,9 @@ two weeks; a saved day is kept for good. A day with tornadoes also has "Tornado 
 
 For 16 world days (two real days) after a day, its page also has replays: the mesoanalysis and the large-scale
 charts hour by hour, the warnings on a time slider, and each tornado's radar loop. Each has "Save as GIF" and
-"Save as MP4" buttons that make the loop in the browser (the MP4 needs a browser with an H.264 encoder:
-Chrome, Edge or Safari). The recording below is still the way to keep a day's loops longer than that.
+"Save as MP4" buttons that make the loop in the browser (the MP4 is H.264, so it needs a browser with an H.264 encoder: Chrome, Edge or Safari. For a signed-in admin
+it is AV1 for now, where the browser can encode it: a constant quantizer of 18 for a picture taller than 1080
+lines, else a constant 8000 kbit/s). The recording below is still the way to keep a day's loops longer than that.
 
 ## What each step does
 
@@ -37,11 +38,14 @@ Chrome, Edge or Safari). The recording below is still the way to keep a day's lo
   moves through the weather; no drift arrow either way),
   then joins them with ffmpeg. `--charts vort,wind500,jet,llj,surface,moisture`,
   `--zoom 1.7`, `--fps 5`, `--size 1600x900` (use `1080x1350` for a 4:5 picture).
+  The MP4 is AV1 (SVT-AV1 in ffmpeg): a constant quantizer of 18 for a picture taller than 1080 lines, else a
+  constant 8000 kbit/s. `--codec h264` makes it H.264 instead.
 
 Needs Chrome or Edge (`CHROME=path` to choose) and ffmpeg (`FFMPEG=path` if it is not found).
 
 ## Posting notes
 
+- The MP4s are AV1. If a site or a player will not take one, make the loop again with `--codec h264`.
 - Post the MP4: X, Bluesky and Reddit turn GIFs into video anyway, and the MP4 is smaller and sharper. The
   GIF (800 px wide) is for Discord and forums.
 - Every picture carries its title, time and "simulated weather, not a real forecast" in the frame, so it

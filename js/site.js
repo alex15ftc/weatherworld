@@ -32,7 +32,8 @@ menu?.addEventListener('click', () => { const open = nav.classList.toggle('open'
 // with the new role.
 const ADMIN_KEY = 'wwAdminKey';
 export const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage here */ } } };
-const roleNow = async () => { try { const key = adminKey.get(); return (await (await fetch('/api/chasers/role', { cache: 'no-store', headers: key ? { 'x-admin-key': key } : {} })).json()).role; } catch { return 'public'; } };
+// (the role the server gives this tab now: 'admin' or 'public')
+export const roleNow = async () => { try { const key = adminKey.get(); return (await (await fetch('/api/chasers/role', { cache: 'no-store', headers: key ? { 'x-admin-key': key } : {} })).json()).role; } catch { return 'public'; } };
 const adminButton = $('#siteAdmin');
 if (adminButton) {
   roleNow().then(role => {
