@@ -176,8 +176,11 @@ assert.ok(townOffices.length >= 1 && townOffices.every(a => a.nws && a.radar && 
 assert.ok(map.offices.every(o => o.areaMi2 <= 32000), `office areas ${map.offices.map(o => o.areaMi2).join(', ')} mi2`);
 for (const a of townOffices.filter(t => t.sharedRadar)) assert.equal(a.radar.id, base.radar.id, `${a.name} uses the air base's radar`);
 assert.equal(new Set(map.radars.map(r => r.id)).size, map.radars.length, 'each radar has its own identifier');
-// The metro's and the city's airports are international, reached by a spur from their own exit.
-for (const a of airports.filter(f => ['metro', 'city'].includes(cities.find(c => c.name === f.city).kind))) {
+// The metro's and the city's airports are international, reached by a spur from their own exit
+// (but for at most one whose interstates have no room for another exit: it takes an ordinary road).
+const big = airports.filter(f => ['metro', 'city'].includes(cities.find(c => c.name === f.city).kind));
+assert.ok(big.filter(a => !a.access.freeway).length <= 1, `international airports without a spur: ${big.filter(a => !a.access.freeway).map(a => a.name).join(', ')}`);
+for (const a of big.filter(f => f.access.freeway)) {
   const [x, y] = a.access.points.at(-1), exit = map.crossings.find(c => c.type === 'interchange' && Math.hypot(c.x - x, c.y - y) < 0.1);
   assert.ok(a.name.includes('International') && a.access.freeway && exit && exit.vEnd, `${a.name} has its own interstate exit (${exit ? `${exit.interstate} exit ${exit.exit}` : 'none'})`);
 }

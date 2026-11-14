@@ -7,6 +7,7 @@
 // channel), every other colour taking the nearest of them. Charts are flat colours and lines, so this is close
 // to exact; a photograph would need more.
 import { mp4Recorder } from '/js/mp4.js';
+import { roleNow } from '/js/site.js';
 
 function paletteOf(frames) {
   const counts = new Uint32Array(32768);
@@ -76,12 +77,13 @@ export function download(bytes, name, type = 'image/gif') {
 // Steps through a loop and saves it. show(k): make the page show frame k (may be async). draw(g, k): draw the
 // picture of what is shown onto the canvas context g (width x height).
 // format 'mp4' saves the same loop as an MP4 video instead (js/mp4.js; the name's .gif becomes .mp4): the same
-// frames and times, the last one held, in full colour. It throws where the browser has no H.264 encoder.
+// frames and times, the last one held, in full colour. It is H.264; for an admin (for now) it is AV1 where the
+// browser can encode it. It throws where the browser has no encoder for it.
 export async function saveLoop({ count, show, draw, width, height, delayMs = 400, name = 'loop.gif', format = 'gif', holdMs = 1500, onProgress = () => {} }) {
   const mp4 = format === 'mp4';
-  // (H.264 wants an even width and height)
+  // (H.264 wants an even width and height, and the AV1 file keeps to the same)
   if (mp4) { width += width % 2; height += height % 2; }
-  const video = mp4 ? await mp4Recorder(width, height, delayMs) : null;
+  const video = mp4 ? await mp4Recorder(width, height, delayMs, { codec: await roleNow() === 'admin' ? 'av1' : 'h264' }) : null;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   const g = canvas.getContext('2d', { willReadFrequently: true }), frames = [];
   for (let k = 0; k < count; k++) {

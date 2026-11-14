@@ -51,10 +51,11 @@ writeFileSync(path.join(out, 'meta.json'), JSON.stringify({
 writeAirfieldFile(map, out);
 writeFileSync(path.join(out, 'facilities.json'), JSON.stringify(map.facilities));
 // The road graph: streets.bin holds, in order, node x, y (Float32), node control and end (Uint8
-// each), edge node pairs (Uint32), edge kinds (Uint8) and map road indices (Int32); streets.json
+// each), edge node pairs (Uint32), edge kinds (Uint8), map road indices (Int32) and, last, whether
+// each edge is a wide street (Uint8); streets.json
 // the counts and names.
 const packed = packStreets(streets), streetSummary = describeStreets(packed);
-const parts = ['xy', 'control', 'end', 'pairs', 'kinds', 'road'].map(k => Buffer.from(packed[k].buffer, packed[k].byteOffset, packed[k].byteLength));
+const parts = ['xy', 'control', 'end', 'pairs', 'kinds', 'road', 'wide'].map(k => Buffer.from(packed[k].buffer, packed[k].byteOffset, packed[k].byteLength));
 writeFileSync(path.join(out, 'streets.bin'), Buffer.concat(parts));
 const conflicts = findConflicts(map);
 writeFileSync(path.join(out, 'conflicts.json'), JSON.stringify(conflicts));
@@ -90,7 +91,7 @@ console.log(`land use: ${Object.entries(uses).map(([k, v]) => `${v} ${k}`).join(
 console.log(`facilities: ${fac.gasStations.length} gas stations (${fac.gasStations.filter(g => g.size === 'truck stop').length} truck stops), ${fac.schools.length} schools, ${fac.campuses.length} campuses, ${e.windFarms.length} wind farms (${e.windFarms.reduce((a, f) => a + f.turbines.length, 0)} turbines), ${e.windmills.length} windmills, ${e.wells.length} wells, ${e.tanks.length} tank batteries`);
 if (fac.missing.gas.length || fac.missing.schools.length) console.log(`  not placed: gas ${fac.missing.gas.join(', ') || '-'}; schools ${fac.missing.schools.join(', ') || '-'}`);
 for (const l of map.lakes) console.log(`lake ${l.id}: ${l.areaMi2.toFixed(0)} mi2 at ${l.damX.toFixed(0)}, ${l.damY.toFixed(0)} mi, surface ${l.surfaceM.toFixed(0)} m, dam ${l.damHeightM.toFixed(0)} m, on a river draining ${l.inflowMi2.toFixed(0)} mi2`);
-console.log(`road graph: ${streetSummary.nodes} nodes, ${streetSummary.edges} edges; street miles ${streetSummary.miles.street}, ${streetSummary.controls.signal} signals, ${streetSummary.ends.culDeSac} cul-de-sacs`);
+console.log(`road graph: ${streetSummary.nodes} nodes, ${streetSummary.edges} edges; street miles ${streetSummary.miles.street} (${streetSummary.streets?.wideMiles ?? 0} wide), ${streetSummary.controls.signal} signals, ${streetSummary.ends.culDeSac} cul-de-sacs`);
 console.log(`footprint conflicts: ${Object.entries(conflicts.counts).map(([k, v]) => `${v} ${k}`).join(', ') || 'none'}; most: ${Object.entries(describeConflicts(conflicts)).slice(0, 4).map(([k, v]) => `${k} ${v}`).join('; ')}`);
 console.log(`section roads (mi): ${Object.entries(sectionMiles).map(([k, v]) => `${k} ${v}`).join(', ')}`);
 for (const r of summary.regions) console.log(`  ${r.name.padEnd(18)} ${(r.share * 100).toFixed(1).padStart(5)}%  mean ${r.meanM?.toFixed(0) ?? '-'} m, relief (5-95%) ${r.reliefM?.toFixed(0) ?? '-'} m`);

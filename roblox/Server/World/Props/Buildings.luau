@@ -51,6 +51,7 @@ end
 
 export type Settlement = { kind: string, x: number, z: number, core: number, extent: number, population: number, name: string }
 
+type Block = { x0: number, z0: number, x1: number, z1: number, north: string?, south: string?, west: string?, east: string? }
 export type Ctx = {
 	x0: number, z0: number, x1: number, z1: number,
 	props: Builder.Props,
@@ -63,6 +64,7 @@ export type Ctx = {
 	settlements: { Settlement },
 	occupied: { { cf: CFrame, hx: number, hz: number } }, -- footprints placed (trees keep out)
 	sites: Sites.Set,
+	blocks: { Block }, -- the map's town blocks touching the chunk (WorldMap.blocks)
 	pavedTop: (levelM: number) -> number, -- top of paving laid at a level (m)
 }
 
@@ -432,18 +434,47 @@ local function parking(props: Builder.Props, frame: CFrame, w: number, d: number
 	end
 end
 
--- A frame at (x, z) turned by yaw, standing on the lowest ground under a footprint of sx by sz
--- (so on a slope the uphill side sinks into the ground rather than the downhill side floating).
-local function seat(ctx: Ctx, x: number, z: number, yaw: number, sx: number, sz: number): CFrame
-	local base = CFrame.new(x, 0, z) * CFrame.Angles(0, yaw, 0)
-	local y = math.huge
+-- Buildings on sloping ground. The land has real hills and valley sides, and lots do not level
+-- it, so a building is fitted to the slope it stands on:
+--   it stands no more than STEP studs above the lowest ground under its footprint (on a gentle
+--   slope: on the highest, with nothing buried);
+--   a foundation carries it down to that lowest ground (footing), so no side floats;
+--   where the ground falls more than STEEP studs across the footprint nothing is built.
+local STEP, STEEP = 5, 14
+local FOUNDATION = rgb(150, 146, 138)
+
+-- The lowest and highest ground under a footprint of sx by sz at a frame.
+local function groundUnder(ctx: Ctx, frame: CFrame, sx: number, sz: number): (number, number)
+	local lo, hi = math.huge, -math.huge
 	for _, fx in { -0.5, 0, 0.5 } do
 		for _, fz in { -0.5, 0, 0.5 } do
-			local p = base * Vector3.new(fx * sx, 0, fz * sz)
-			y = math.min(y, ctx.ground(p.X, p.Z))
+			local p = frame * Vector3.new(fx * sx, 0, fz * sz)
+			local y = ctx.ground(p.X, p.Z)
+			lo, hi = math.min(lo, y), math.max(hi, y)
 		end
 	end
-	return CFrame.new(x, y, z) * CFrame.Angles(0, yaw, 0)
+	return lo, hi
+end
+
+-- A frame at (x, z) turned by yaw, standing on the ground under a footprint of sx by sz.
+local function seat(ctx: Ctx, x: number, z: number, yaw: number, sx: number, sz: number): CFrame
+	local lo, hi = groundUnder(ctx, CFrame.new(x, 0, z) * CFrame.Angles(0, yaw, 0), sx, sz)
+	return CFrame.new(x, math.min(hi, lo + STEP), z) * CFrame.Angles(0, yaw, 0)
+end
+
+-- Whether the ground under a footprint is too steep to build on.
+local function steep(ctx: Ctx, frame: CFrame, sx: number, sz: number): boolean
+	local lo, hi = groundUnder(ctx, frame, sx, sz)
+	return hi - lo > STEEP
+end
+
+-- The foundation under a footprint whose frame stands above the lowest ground there.
+local function footing(ctx: Ctx, frame: CFrame, sx: number, sz: number)
+	local lo = groundUnder(ctx, frame, sx, sz)
+	local drop = frame.Y - lo
+	if drop > 0.4 then
+		Builder.block(ctx.props, CFrame.new(frame.X, frame.Y - (drop + 1) / 2, frame.Z) * frame.Rotation, sx, drop + 1, sz, FOUNDATION, M.Concrete)
+	end
 end
 
 local function farmstead(props: Builder.Props, ctx: Ctx, x: number, z: number, rnd: () -> number)
@@ -583,8 +614,9 @@ end
 
 local function fits(ctx: Ctx, frame: CFrame, sx: number, sz: number): number?
 	for _, scale in { 1, 0.85, 0.7 } do
-		if ctx.net:clearBox(frame, sx * scale, sz * scale, 2) and dry(ctx, frame, sx * scale, sz * scale) and unoccupied(ctx, frame, sx * scale, sz * scale) then
+		if ctx.net:clearBox(frame, sx * scale, sz * scale, 2) and dry(ctx, frame, sx * scale, sz * scale) and unoccupied(ctx, frame, sx * scale, sz * scale) and not steep(ctx, frame, sx * scale, sz * scale) then
 			table.insert(ctx.occupied, { cf = frame, hx = sx * scale / 2, hz = sz * scale / 2 })
+			footing(ctx, frame, sx * scale, sz * scale)
 			return scale
 		end
 	end
@@ -780,8 +812,10 @@ local function houseRow(ctx: Ctx, block: Rect, side: string, seedX: number, seed
 		if not empty and ctx.inside(x, z) and not ctx.busy(x, z) and not otherUse(ctx, x, z) then
 			local rnd = stream(seedX * 64 + i, seedZ * 4 + sideIndex, 405)
 			local frame = seat(ctx, x, z, yaw, math.min(lot - 4, 50), 28)
-			if ctx.net:clearBox(frame, math.min(lot - 4, 56), 26, 2) and dry(ctx, frame, math.min(lot - 4, 56), 30) and unoccupied(ctx, frame, math.min(lot - 4, 56), 30) then
+			-- (the whole footprint the house claims is tested, so none of it is on a road or in water)
+			if ctx.net:clearBox(frame, math.min(lot - 4, 56), 32, 0) and dry(ctx, frame, math.min(lot - 4, 56), 32) and unoccupied(ctx, frame, math.min(lot - 4, 56), 32) and not steep(ctx, frame, math.min(lot - 4, 56), 32) then
 				table.insert(ctx.occupied, { cf = frame, hx = math.min(lot - 4, 56) / 2, hz = 16 })
+				footing(ctx, frame, math.min(lot - 4, 56) - 2, 30)
 				house(props, frame, rnd, set, ctx.ground)
 				-- A back fence along the rear of the lot, now and then.
 				local back = (if alongX then (block.z1 - block.z0) else (block.x1 - block.x0)) / 2 - (set + 12)
@@ -796,6 +830,45 @@ local function houseRow(ctx: Ctx, block: Rect, side: string, seedX: number, seed
 					local tf = frame * CFrame.new((rnd() - 0.5) * (lot - 8), 0, if rnd() < 0.6 then 24 + 14 * rnd() else -set + 4)
 					if ctx.net:clear(tf.X, tf.Z, 4) then
 						Trees.add(props, "yard", tf.X, ctx.ground(tf.X, tf.Z), tf.Z, rnd())
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Houses along a town road that runs at a slant to the grid (the map's blocks are rectangles
+-- between the roads on the grid's lines, so a slanted road cuts through them and the rows above
+-- only keep clear of it): lots down both sides of the road, each house square to the road and
+-- facing it, as far back from its sidewalk as a row's. Laid before the blocks' rows, so the
+-- slanted road keeps its frontage and the rows fill in behind.
+local function slantRows(ctx: Ctx, g: RoadNet.Segment)
+	local props = ctx.props
+	local seedX, seedZ = math.round(g.ax * 2 + g.bx), math.round(g.az * 2 + g.bz)
+	for sideIndex, side in { -1, 1 } do
+		local nx, nz = -g.uz * side, g.ux * side -- away from the road on this side
+		local yaw = math.atan2(nx, nz) -- the house's front (-z in its frame) towards the road
+		local layout = stream(seedX, seedZ * 4 + sideIndex, 409)
+		local p, i = 8, 0
+		while p < g.length - 30 do
+			i += 1
+			local lot = math.min(g.length - p, 38 + 22 * layout())
+			local empty = layout() < 0.08
+			local set = 12 + 14 * layout()
+			local mid = p + lot / 2
+			p += lot
+			local out = g.spec.total + 1 + set + 12
+			local x, z = g.ax + g.ux * mid + nx * out, g.az + g.uz * mid + nz * out
+			if not empty and ctx.inside(x, z) and not ctx.busy(x, z) and not otherUse(ctx, x, z) then
+				local s = nearest(ctx, x, z)
+				local key = ctx.coverKey(x, z)
+				if s and (key == "urban" or key == "suburban") and zoneAt(ctx, s, x, z) == "houses" then
+					local w = math.min(lot - 4, 56)
+					local frame = seat(ctx, x, z, yaw, math.min(lot - 4, 50), 28)
+					if ctx.net:clearBox(frame, w, 32, 0) and dry(ctx, frame, w, 32) and unoccupied(ctx, frame, w, 32) and not steep(ctx, frame, w, 32) then
+						table.insert(ctx.occupied, { cf = frame, hx = w / 2, hz = 16 })
+						footing(ctx, frame, w - 2, 30)
+						house(props, frame, stream(seedX * 64 + i, seedZ * 4 + sideIndex, 410), set, ctx.ground)
 					end
 				end
 			end
@@ -819,94 +892,112 @@ function Buildings.build(ctx: Ctx)
 	-- What the map plans goes down first; the town fabric fills in round it.
 	Facilities.build(ctx, KIT)
 
-	-- Town blocks (200-stud grid where the land is town) and suburban blocks (300-stud grid):
-	-- each block takes the use of the land at its middle; houses fill the residential ones, with
-	-- whatever other use reaches into the block built parcel by parcel.
-	for _, grid in { { RoadNet.URBAN_GRID, "urban", 27, 101 }, { RoadNet.SUBURB_GRID, "suburban", 20, 202 } } do
-		local GRID, want, inset, salt = grid[1], grid[2], grid[3], grid[4]
+	-- Town blocks: the map's own (js/worldmap/blocks.js: the land between its streets, whatever
+	-- their spacing), each drawn in from the roads round it to the backs of their sidewalks. Each
+	-- block takes the use of the land at its middle; houses fill the residential ones, in rows
+	-- along the sides that have a road, with whatever other use reaches into the block built
+	-- parcel by parcel. A block is seeded by its corner, so every chunk it lies in builds it alike.
+	for _, g in ctx.net.segments do
+		if g.mapLocal and not g.bulb and g.length >= 60 and g.spec.surface == "asphalt" then
+			slantRows(ctx, g)
+		end
+	end
+	local function drawnIn(kind: string?): number
+		local spec = if kind then RoadNet.KINDS[kind] else nil
+		return if spec then spec.total + 1 else 2
+	end
+	for _, b in ctx.blocks do
+		local cx, cz = (b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2
+		local want = ctx.coverKey(cx, cz)
+		if (want ~= "urban" and want ~= "suburban") or Sites.superblock(ctx.sites, cx, cz) then
+			continue
+		end
 		local suburb = want == "suburban"
-		for bx = math.floor(ctx.x0 / GRID) - 1, math.floor((ctx.x1 - 0.001) / GRID) do
-			for bz = math.floor(ctx.z0 / GRID) - 1, math.floor((ctx.z1 - 0.001) / GRID) do
-				local cx, cz = bx * GRID + GRID / 2, bz * GRID + GRID / 2
-				if ctx.coverKey(cx, cz) ~= want or Sites.superblock(ctx.sites, cx, cz) then
-					continue
-				end
-				local s = nearest(ctx, cx, cz)
-				if not s then
-					continue
-				end
-				local rnd = stream(bx, bz, salt)
-				local block: Rect = { x0 = bx * GRID + inset, z0 = bz * GRID + inset, x1 = (bx + 1) * GRID - inset, z1 = (bz + 1) * GRID - inset }
-				local zone = zoneAt(ctx, s, cx, cz)
-				local seedX = if suburb then bx + 100000 else bx
-				-- Town landmarks on set blocks round the centre: a church and the water tower.
-				if not suburb and s.kind ~= "metro" and s.kind ~= "city" and (zone == "houses" or zone == "main") then
-					local cbx, cbz = math.floor(s.x / GRID), math.floor(s.z / GRID)
-					local ox, oz = bx - cbx, bz - cbz
-					local landmark = if ox == -2 and oz == 0 then "church" elseif ox == 1 and oz == -2 then "waterTower" else nil
-					if landmark then
-						local x, z = cx + (rnd() - 0.5) * 30, cz + (rnd() - 0.5) * 30
-						if ctx.inside(x, z) and not ctx.busy(x, z) then
-							local frame = CFrame.new(x, ctx.ground(x, z), z) * CFrame.Angles(0, math.floor(rnd() * 4) * math.pi / 2, 0)
-							if landmark == "church" and fits(ctx, frame, 40, 70) then
-								church(props, frame, rnd)
-							elseif landmark == "waterTower" and ctx.net:clear(x, z, 16) then
-								waterTower(props, x, ctx.ground(x, z), z, rnd)
-								table.insert(ctx.occupied, { cf = CFrame.new(x, 0, z), hx = 14, hz = 14 })
-							end
-						end
-						continue
+		local s = nearest(ctx, cx, cz)
+		if not s then
+			continue
+		end
+		local bx, bz = math.round(b.x0), math.round(b.z0)
+		local rnd = stream(bx, bz, if suburb then 202 else 101)
+		local block: Rect = { x0 = b.x0 + drawnIn(b.west), z0 = b.z0 + drawnIn(b.north), x1 = b.x1 - drawnIn(b.east), z1 = b.z1 - drawnIn(b.south) }
+		if block.x1 - block.x0 < 30 or block.z1 - block.z0 < 30 then
+			continue
+		end
+		local zone = zoneAt(ctx, s, cx, cz)
+		local seedX = if suburb then bx + 100000 else bx
+		-- Town landmarks on set blocks round the centre: a church and the water tower.
+		if not suburb and s.kind ~= "metro" and s.kind ~= "city" and (zone == "houses" or zone == "main") then
+			-- (the block holding a set point off the centre)
+			local function holds(dx: number, dz: number): boolean
+				return b.x0 <= s.x + dx and s.x + dx < b.x1 and b.z0 <= s.z + dz and s.z + dz < b.z1
+			end
+			local landmark = if holds(-300, 100) then "church" elseif holds(300, -300) then "waterTower" else nil
+			if landmark then
+				local x, z = cx + (rnd() - 0.5) * 30, cz + (rnd() - 0.5) * 30
+				if ctx.inside(x, z) and not ctx.busy(x, z) then
+					local frame = CFrame.new(x, ctx.ground(x, z), z) * CFrame.Angles(0, math.floor(rnd() * 4) * math.pi / 2, 0)
+					if landmark == "church" and fits(ctx, frame, 40, 70) then
+						church(props, frame, rnd)
+					elseif landmark == "waterTower" and ctx.net:clear(x, z, 16) then
+						waterTower(props, x, ctx.ground(x, z), z, rnd)
+						table.insert(ctx.occupied, { cf = CFrame.new(x, 0, z), hx = 14, hz = 14 })
 					end
 				end
-				if zone == "houses" then
-					if suburb and rnd() > 0.975 then
-						-- Now and then a church in place of houses.
-						local x, z = cx + (rnd() - 0.5) * 40, cz + (rnd() - 0.5) * 40
-						if ctx.inside(x, z) and not ctx.busy(x, z) then
-							local frame = CFrame.new(x, ctx.ground(x, z), z) * CFrame.Angles(0, math.floor(rnd() * 4) * math.pi / 2, 0)
-							if fits(ctx, frame, 40, 70) then
-								church(props, frame, rnd)
-							end
-						end
-					else
-						for _, side in { "north", "south" } do
-							houseRow(ctx, block, side, seedX, bz)
-						end
+				continue
+			end
+		end
+		if zone == "houses" then
+			if suburb and rnd() > 0.975 then
+				-- Now and then a church in place of houses.
+				local x, z = cx + (rnd() - 0.5) * 40, cz + (rnd() - 0.5) * 40
+				if ctx.inside(x, z) and not ctx.busy(x, z) then
+					local frame = CFrame.new(x, ctx.ground(x, z), z) * CFrame.Angles(0, math.floor(rnd() * 4) * math.pi / 2, 0)
+					if fits(ctx, frame, 40, 70) then
+						church(props, frame, rnd)
 					end
-					-- Other uses reaching into the block.
-					for _, r in parcels(block, rnd, 45, 3) do
-						local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
-						local use = zoneAt(ctx, s, mx, mz)
-						if ctx.inside(mx, mz) and use ~= "houses" and use ~= "apartments" then
-							parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), rnd, use)
-						end
+				end
+			else
+				-- The longer sides first: where rows meet at a corner, the lot already taken stays.
+				local sides: { string } = if block.x1 - block.x0 >= block.z1 - block.z0 then { "north", "south", "west", "east" } else { "west", "east", "north", "south" }
+				for _, side in sides do
+					if (b :: any)[side] then
+						houseRow(ctx, block, side, seedX, bz)
 					end
-				elseif zone == "main" then
-					-- Storefronts along the north and south frontages, cut into narrow lots.
-					for sideIndex, side in { "north", "south" } do
-						local layout = stream(seedX, bz * 2 + sideIndex, 406)
-						local p, i = block.x0, 0
-						while p < block.x1 - 14 do
-							i += 1
-							local lot = math.min(block.x1 - p, 18 + 20 * layout())
-							local half = (block.z1 - block.z0) / 2
-							local r: Rect = if side == "north" then { x0 = p, z0 = block.z0, x1 = p + lot, z1 = block.z0 + half } else { x0 = p, z0 = block.z1 - half, x1 = p + lot, z1 = block.z1 }
-							p += lot
-							local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
-							if ctx.inside(mx, mz) and zoneAt(ctx, s, mx, mz) == "main" then
-								parcel(ctx, r, block, s, 0, stream(seedX * 64 + i, bz * 2 + sideIndex, 407), "main")
-							end
-						end
+				end
+			end
+			-- Other uses reaching into the block.
+			for _, r in parcels(block, rnd, 45, 3) do
+				local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
+				local use = zoneAt(ctx, s, mx, mz)
+				if ctx.inside(mx, mz) and use ~= "houses" and use ~= "apartments" then
+					-- (a stream of the parcel's own, so it is built alike whichever chunk builds it)
+					parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), stream(math.round(mx), math.round(mz), 408), use)
+				end
+			end
+		elseif zone == "main" then
+			-- Storefronts along the north and south frontages, cut into narrow lots.
+			for sideIndex, side in { "north", "south" } do
+				local layout = stream(seedX, bz * 2 + sideIndex, 406)
+				local p, i = block.x0, 0
+				while p < block.x1 - 14 do
+					i += 1
+					local lot = math.min(block.x1 - p, 18 + 20 * layout())
+					local half = (block.z1 - block.z0) / 2
+					local r: Rect = if side == "north" then { x0 = p, z0 = block.z0, x1 = p + lot, z1 = block.z0 + half } else { x0 = p, z0 = block.z1 - half, x1 = p + lot, z1 = block.z1 }
+					p += lot
+					local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
+					if ctx.inside(mx, mz) and zoneAt(ctx, s, mx, mz) == "main" then
+						parcel(ctx, r, block, s, 0, stream(seedX * 64 + i, bz * 2 + sideIndex, 407), "main")
 					end
-				else
-					local split = SPLITS[zone] or SPLITS.commercial
-					for _, r in parcels(block, rnd, split[1], split[2]) do
-						local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
-						local use = zoneAt(ctx, s, mx, mz)
-						if ctx.inside(mx, mz) and use ~= "houses" and use ~= "main" then
-							parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), rnd, use)
-						end
-					end
+				end
+			end
+		else
+			local split = SPLITS[zone] or SPLITS.commercial
+			for _, r in parcels(block, rnd, split[1], split[2]) do
+				local mx, mz = (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2
+				local use = zoneAt(ctx, s, mx, mz)
+				if ctx.inside(mx, mz) and use ~= "houses" and use ~= "main" then
+					parcel(ctx, r, block, s, math.sqrt((s.x - mx) ^ 2 + (s.z - mz) ^ 2), stream(math.round(mx), math.round(mz), 408), use)
 				end
 			end
 		end

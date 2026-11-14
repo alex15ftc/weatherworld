@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-11
+Updated: 2026-11-14
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -62,6 +62,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
   warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
   warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
+- Storm sentences in discussions about a watch (2026-11-13, in the working tree, not committed or deployed): at
+  each look ahead `MesoscaleRuntime.radarLooks` has the nearest radar (2 radars at most) look at the rotating
+  storms under the watches in effect, and a discussion about a watch then speaks of its leading storm
+  (`describeStorm` in `js/forecast/MesoscaleDiscussion.js`): the radar's low-level rotational velocity, a tornadic
+  vortex signature, a debris signature (`debrisSignature` in `js/radar/RotationDetection.js`), the significant
+  tornado parameter around it and its motion. Measured on this machine: a radar's 9-tilt volume is about 3.5 s
+  of one radar thread and the detection 0.1 s. Checked by `tests/mesoscale-discussion.mjs`,
+  `tests/radar-simulator.mjs` and real scans of a made supercell; not yet seen on a running engine. This is the
+  first step toward SPC-style storm-scale ("meso-gamma") discussions; the full product (its own discussion for
+  an ongoing strong tornado, with a wind estimate from rotational velocity and the tornado parameter fitted on
+  our own world) is proposed, not scoped. For it: over 4 saved days EF3+ tornadoes lasted a median 74 world
+  minutes (9 real minutes) and EF2+ 25, so it suits EF3-class storms with about a 60-minute valid time.
 - World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,
   +30 min / +1 day, seek, pause clock) needs the `WEATHER_ADMIN_KEY` (`server/ChaserArchive.js` isAdmin; with no
   key set only the local machine). The mesoanalysis World card has an Admin sign-in; the key is kept per tab
@@ -152,7 +164,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
     which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
     page has the two post pictures (PNG made in the browser, or opened alone), the numbers, and the tornado tracks alone on a time slider (GIF or PNG, from the summary, so any
-    saved day has it; one solid line a tornado, deployed from `ef59400`). Every loop the site saves as a GIF can also be saved as an MP4 (`js/mp4.js`: the browser's H.264 encoder and a small MP4 writer; deployed from `ed58a63`). Days before this was deployed have no outlook kept.
+    saved day has it; one solid line a tornado, deployed from `ef59400`). Every loop the site saves as a GIF can also be saved as an MP4 (`js/mp4.js`: the browser's encoder and a small MP4 writer; deployed from `ed58a63` as H.264. Since `9bbe951` (deployed): AV1 for an admin only (everyone else still gets H.264), at a constant quantizer of 18 above 1080 lines, else a constant 8000 kbit/s, H.264 where the browser has no AV1 encoder; `tools/social/make-loop.mjs` the same through ffmpeg, `--codec h264` to go back). Days before this was deployed have no outlook kept.
   - Day replays (2026-11-12, `server/ReplayArchive.js`, `tests/replay-archive.mjs`): each world day's hourly
     mesoanalysis and large-scale frames and every warning are kept in `replays/<world>-<day>.bin.gz` beside the
     world's state (about 13 MB a day) for 16 world days. A day's page links to `/day/<id>/analysis` and
@@ -219,10 +231,71 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `main` at the start of 2026-11-12 (owner's decision that day): the storm environment batch and the removal of
     live storm reports are on the branch `engine/storm-relative-separation` only, not merged.
 
+- World map terrain and roads (2026-11-13, branch `map/terrain-and-roads`, pushed; place published as version 497 from `a92556d` with `tools/worldmap/patch-place.luau` (the published place with the new `ServerStorage.World`, `WorldData` and `Shared.MapData`, 9.86 MiB of the 10 MiB limit; the version before is `roblox/build/published-before-map-09a4e5a.rbxl`, not in git); merged to `main` and the engine deployed from `9e927f8` the same day (the world resumed at hour 585; it serves the new map's 332 counties and 12 radars; watches, discussions and day summaries kept from before name the old map's counties and towns); not seen
+  in Studio): the map has real relief (hill regions 22 to 34 m per 5 miles, every stream in a valley, a
+  meandering big river, wandering region borders; `WorldMapGenerator.js`), so towns, roads, counties and radars
+  all moved. The road graph is one connected network with no stacked edges and ramps joined at both ends
+  (`streets.js`, `curves.js`, `sectionRoads.js`). Roblox lays every road from that graph and builds houses on
+  the map's blocks (`WorldData/Graph`, `WorldMap.roadEdges` / `blocks`, `RoadNet.build`); bridges are planned
+  from roads 420 studs beyond the network's pad, roads meeting an overpass ramp climb to it, and interstate
+  bends keep their median. Checked: `tests/world-map.mjs` passes, `tools/worldmap/check-graph-export.mjs` 11 of
+  11, `tools/worldmap/audit-map.mjs`, selene, luau-lsp (fewer errors than `main`), `rojo build`. Open: seed 1's
+  hand-removed radar list is empty (those radars no longer exist; the map has 12 radars) until the owner
+  chooses again; the M map still draws section roads from `sections.u8`, which differs from the graph in
+  places, and has no streets.
+
+- Map follow-up (2026-11-14, branch `map/open-items`): towns did
+  not move. Roads: highway curves turn at most 12 degrees a joint, sharp corners rounded, close junction pairs
+  182 to 19, footprint conflicts 28 road / 13 lot / 3 river to 4 / 0 / 2, section roads thinned where the land
+  is grass or woods (gravel miles down 21%; raise `density` in `sectionRoads.js` to bring them back).
+  Buildings: `tools/worldmap/run-chunks.luau` runs the place's own chunk generator under Lune and checks
+  footprints; over 300 chunks none reaches a road, overlaps another (in a chunk or across chunk edges) or
+  stands in water. Each chunk first plans the lots just beyond its edge (`NEIGHBOUR_LOTS` in `ChunkGen`);
+  buildings stand at most 5 studs above the lowest ground under them on a foundation, and are not built where
+  the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
+  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
+
+- Map, third round (2026-11-14; merged to `main`, place published as version 499 and engine deployed from `72fdf47`, the world resumed at hour 606; the products-screen restyle went out with it; none of it seen in game yet;
+  towns and airfields unmoved): creek beds (the generator's `creeks`, 1,479 streams of 25 to 1,000 mi2 of
+  drainage, in the tiles as point runs; `ChunkGen` cuts a dry bed along each); town streets on the M map
+  (`MapVector.streets`, drawn by `MapBase` from 60 px a mile; `tools/worldmap/check-map-streets.mjs`); tile
+  elevations stored as differences (patched place 9.39 MiB); road leftovers (no road or lot conflicts, no
+  expressway joint over 12 degrees, about 15 overpasses a second-pass rule had removed are back, close junction
+  pairs 15). `patch-place.luau` now also carries the products screen's changed modules (the restyle and zoom-to-warning, unpublished until now; `diff-place.luau` lists what differs between a place and a build). The game server reaches the
+  engine with its key (a live chaser dot showed 2026-11-14). Checked as before: map test, both export checks,
+  audit, 300-chunk harness with no building conflicts.
+
+- Map, fourth round (2026-11-14; merged to `main`, place published as version 500 and engine deployed from `6d9b9d8`, the world resumed at hour 617; towns and airfields unmoved): the road graph has no footprint conflicts and no junction pairs within
+  40 studs on seed 1 (a final weld of close junctions; US-40 re-laid square across the river in the metro, which
+  moved 158 of the metro's 689 school lots and 3 campuses). `run-chunks.luau` now also checks every road
+  against the ground under it: on place 499, over 300 chunks, the ground came through a road at 27 samples and
+  a road hung in the air at 28 of 46,000; now 4 and 18. Causes fixed: ground beside a bridge's ramp was not
+  graded for other roads there (`RoadNet.near` skips a carried road), and where roads overlap the ground now
+  takes the grade of the road whose surface is laid there. Ramps beside an interstate stay at its level near an
+  overpass. Houses now line slanted town roads (`slantRows` in `Buildings`). The 18 left are near bridges in
+  river towns and at the two system interchanges; not traced. Server logs of 498 and 499 show no world errors;
+  they do show every foliage model failing to load ("User is not authorized to access Asset"): no trees in
+  the live game until the experience may use those assets (owner).
+
+- Map, fifth round (2026-11-14; merged to `main`, place published as version 501 and engine deployed from `fad4298`, the world resumed at hour 685; towns
+  and airfields unmoved). The owner reported, from 498/499: ground through roads, gaps or floating roads, kinks
+  at bends, wrong connections; and asked for the method of a Studio plugin a friend sent (TerrainPaths: hand-drawn
+  spline paths pressed into terrain; it cannot run in the game and its code is not used) to be applied: he chose
+  spline-smoothed curves. Done: `RoadNet.build` draws each road (a chain of edges through plain bends) as a
+  Catmull-Rom curve in pieces turning about 3 degrees (`CURVE_STEP`, `CURVE_PIECES`); pieces of one road are
+  known by `chain`, so paint and sidewalks are no longer cut at curve joints; a lower road's surface runs on
+  under a higher one until all its width is covered (no wedge of bare ground at slanted junctions). Dead ends
+  (seed 1): interstates and expressways 10 to 0, paved county and arterial 823 to 16, gravel 12,991 to 1,557,
+  dirt spurs 62% of dirt miles to 7%; I-135 carried on to Russell Center's bypass; the audit prints the table.
+  Harness over 300 chunks: no building conflicts, ground through a road at 4 samples, road in the air at 10.
+
 ## Next
 
-0. `engine/one-storm-wind`: look at storms in Studio (wall cloud lowering, near-storm and tree winds, frame rain and
-   hail all moved, and the new radar colours) before merging and publishing the place.
+0. Map (published as 501; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
+   side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
+   commit, and plan the engine deploy (it moves radars and counties under the live world).
+0a. `engine/one-storm-wind`: look at storms in Studio (wall cloud lowering, near-storm and tree winds, frame rain and
+   hail all moved, and the new radar colours) before merging to `main`, publishing the place and deploying the engine (`main` is merged into it as of 2026-11-14).
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
    check the server boots from `ServerStorage.main`, storms and products arrive (the ready handshakes), and the
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).

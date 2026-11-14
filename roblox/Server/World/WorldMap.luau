@@ -7,16 +7,23 @@
 -- at most KEEP_TILES a Lua VM, the least recently ensured dropped when another loads. Loading one
 -- requires (a copy of) its module, which is not allowed in a parallel phase: call WorldMap.ensure
 -- in serial for the area about to be read first.
+--
+-- The road graph (WorldData.Graph, js/worldmap/streets.js): every road on the map as straight
+-- edges between nodes, and the town blocks between them (js/worldmap/blocks.js), in tiles of
+-- their own (Meta.graph), loaded and kept the same way. Roblox lays its roads from these alone.
 
 local ServerStorage = game:GetService("ServerStorage")
+local EncodingService = game:GetService("EncodingService")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
-local Base64 = require(script.Parent.Base64)
 
 local Data = ServerStorage:WaitForChild("WorldData", 10)
 	or error("[WeatherWorld] ServerStorage.WorldData is missing: run `node scripts/export-world-roblox.mjs`, then reconnect Rojo")
 local Meta = require(Data:WaitForChild("Meta")) :: any
 local TileModules = Data:WaitForChild("Tiles")
+local GraphMeta = Meta.graph
+	or error("[WeatherWorld] the world map has no road graph (Meta.graph): re-run `node scripts/export-world-roblox.mjs`, then reconnect Rojo")
+local GraphModules = Data:WaitForChild("Graph")
 
 local WorldMap = {}
 WorldMap.meta = Meta
@@ -55,9 +62,16 @@ for _, lake in Meta.lakes do
 	lakeSurface[lake.id] = lake.surfaceM
 end
 
-export type Tile = { data: buffer, rivers: { number }, roads: { number }, crossings: { number }, sites: any, ti: number, tj: number }
+-- (creeks: the creek beds near the tile as straight pieces in studs, flat: ax, az, bx, bz, half-width.)
+export type Tile = { data: buffer, rivers: { number }, creeks: { number }, crossings: { number }, sites: any, ti: number, tj: number }
 
-local decode = Base64.decode
+-- A record string of the export: base64 of zstd-compressed bytes.
+local function unpack(text: string): buffer
+	if text == "" then
+		return buffer.create(0)
+	end
+	return EncodingService:DecompressBuffer(EncodingService:Base64Decode(buffer.fromstring(text)), Enum.CompressionAlgorithm.Zstd)
+end
 
 local tiles: { [number]: Tile } = {}
 -- Tiles kept decoded a VM (a chunk's reads reach at most 4 of the 50-mile tiles; a few more
@@ -86,6 +100,46 @@ local function evict()
 	end
 end
 
+-- A tile's creek beds from its packed runs of points (see the export): each run's corners are
+-- cut once (a point a quarter of the way in from each end of every piece), so a creek bends
+-- rather than turning on the map's half-mile cells; then straight pieces in studs.
+local function creekPieces(data: buffer, ti: number, tj: number): { number }
+	local cx, cz = ((ti + 0.5) * TILE_MI - HALF) * MILE, ((tj + 0.5) * TILE_MI - HALF) * MILE
+	local pieces = {}
+	local at, size = 0, buffer.len(data)
+	while at + 2 <= size do
+		local count = buffer.readu16(data, at)
+		at += 2
+		local xs, zs, halves = table.create(count), table.create(count), table.create(count)
+		for i = 1, count do
+			xs[i], zs[i], halves[i] = buffer.readi16(data, at) + cx, buffer.readi16(data, at + 2) + cz, buffer.readu8(data, at + 4) / 4
+			at += 5
+		end
+		local px, pz = xs[1], zs[1]
+		local function to(x: number, z: number, half: number)
+			table.insert(pieces, px)
+			table.insert(pieces, pz)
+			table.insert(pieces, x)
+			table.insert(pieces, z)
+			table.insert(pieces, half)
+			px, pz = x, z
+		end
+		for i = 1, count - 1 do
+			local ax, az, bx, bz = xs[i], zs[i], xs[i + 1], zs[i + 1]
+			local half = (halves[i] + halves[i + 1]) / 2
+			if i > 1 then
+				to(ax * 0.75 + bx * 0.25, az * 0.75 + bz * 0.25, halves[i])
+			end
+			if i < count - 1 then
+				to(ax * 0.25 + bx * 0.75, az * 0.25 + bz * 0.75, half)
+			else
+				to(bx, bz, half)
+			end
+		end
+	end
+	return pieces
+end
+
 function WorldMap.tile(ti: number, tj: number): Tile
 	ti = math.clamp(ti, 0, TILES - 1)
 	tj = math.clamp(tj, 0, TILES - 1)
@@ -103,10 +157,17 @@ function WorldMap.tile(ti: number, tj: number): Tile
 		end)
 		if not ok then
 			warn(`[WeatherWorld] map tile T{ti}_{tj} read outside the prepared area`)
-			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, roads = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
+			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, creeks = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
 		end
 		evict()
-		tile = { data = decode(source.data), rivers = source.rivers, roads = source.roads, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
+		-- (The elevations are stored as differences from the cell before: add them back up.)
+		local data = unpack(source.data)
+		local running = 0
+		for o = 0, S * S - 1 do
+			running = (running + buffer.readu16(data, o * 2)) % 65536
+			buffer.writeu16(data, o * 2, running)
+		end
+		tile = { data = data, rivers = source.rivers, creeks = creekPieces(unpack(source.creeks or ""), ti, tj), crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
 		tiles[key] = tile
 		tileCount += 1
 		lastUse[key] = useClock
@@ -203,6 +264,151 @@ function WorldMap.tilesFor(mx0: number, my0: number, mx1: number, my1: number): 
 	return list
 end
 
+-- The road graph.
+local G_TILE_MI = GraphMeta.tileMiles :: number
+local G_TILES = GraphMeta.tiles :: number
+local G_UNIT = GraphMeta.unit :: number
+local EDGE_BYTES, BLOCK_BYTES = 11, 12
+-- A graph tile's records, and its centre in the graph's units (records hold offsets from it).
+export type GraphTile = { edges: buffer, blocks: buffer, ox: number, oz: number }
+-- A road edge in studs: its kind (Meta.graph.kinds) and, for the node at each end, how the road
+-- ends there (0 no end, 1 cul-de-sac, 2 dead end, 3 barrier), its control (0 none, 1 stop,
+-- 2 signal) and how many roads meet there.
+export type Edge = { kind: string, ax: number, az: number, bx: number, bz: number, endA: number, endB: number, controlA: number, controlB: number, degreeA: number, degreeB: number }
+-- A town block in studs between road centre lines (or open land), and the road kind on its
+-- north (z0), south, west (x0) and east sides (nil where there is none).
+export type Block = { x0: number, z0: number, x1: number, z1: number, north: string?, south: string?, west: string?, east: string? }
+
+local graphTiles: { [number]: GraphTile } = {}
+local KEEP_GRAPH = 16
+local graphCount = 0
+local graphUse: { [number]: number } = {}
+
+local function joined(parts: { buffer }): buffer
+	local total = 0
+	for _, b in parts do
+		total += buffer.len(b)
+	end
+	local out, at = buffer.create(total), 0
+	for _, b in parts do
+		buffer.copy(out, at, b)
+		at += buffer.len(b)
+	end
+	return out
+end
+
+local function graphTile(gi: number, gj: number): GraphTile
+	local key = gj * G_TILES + gi
+	local tile = graphTiles[key]
+	if not tile then
+		local ox = math.round(((gi + 0.5) * G_TILE_MI - HALF) * MILE / G_UNIT)
+		local oz = math.round(((gj + 0.5) * G_TILE_MI - HALF) * MILE / G_UNIT)
+		local edges, blocks = {}, {}
+		-- (Copies are required, as for the map tiles; not allowed in a parallel phase.)
+		local ok = pcall(function()
+			for k = 1, GraphMeta.parts[key + 1] do
+				local module = GraphModules:FindFirstChild(`G{gi}_{gj}_{k}`)
+				assert(module, `road graph tile G{gi}_{gj}_{k} is missing`)
+				local source = require(module:Clone()) :: any
+				table.insert(edges, unpack(source.edges))
+				table.insert(blocks, unpack(source.blocks))
+			end
+		end)
+		if not ok then
+			warn(`[WeatherWorld] road graph tile G{gi}_{gj} read outside the prepared area`)
+			return { edges = buffer.create(0), blocks = buffer.create(0), ox = ox, oz = oz }
+		end
+		while graphCount >= KEEP_GRAPH do
+			local oldest, oldestUse = nil, useClock
+			for k, use in graphUse do
+				if use < oldestUse then
+					oldest, oldestUse = k, use
+				end
+			end
+			if oldest == nil then
+				break
+			end
+			graphTiles[oldest] = nil
+			graphUse[oldest] = nil
+			graphCount -= 1
+		end
+		tile = { edges = joined(edges), blocks = joined(blocks), ox = ox, oz = oz }
+		graphTiles[key] = tile
+		graphCount += 1
+		graphUse[key] = useClock
+	end
+	return tile
+end
+
+-- The graph tiles a box (studs) touches.
+local function graphTilesFor(x0: number, z0: number, x1: number, z1: number, mark: boolean?): { GraphTile }
+	local mx0, my0 = WorldMap.milesAt(x0, z0)
+	local mx1, my1 = WorldMap.milesAt(x1, z1)
+	local list = {}
+	for gj = math.clamp(math.floor(my0 / G_TILE_MI), 0, G_TILES - 1), math.clamp(math.floor(my1 / G_TILE_MI), 0, G_TILES - 1) do
+		for gi = math.clamp(math.floor(mx0 / G_TILE_MI), 0, G_TILES - 1), math.clamp(math.floor(mx1 / G_TILE_MI), 0, G_TILES - 1) do
+			if mark and graphTiles[gj * G_TILES + gi] then
+				graphUse[gj * G_TILES + gi] = useClock
+			end
+			table.insert(list, graphTile(gi, gj))
+		end
+	end
+	return list
+end
+
+-- Every road edge with a part inside a box (studs), each once.
+function WorldMap.roadEdges(x0: number, z0: number, x1: number, z1: number): { Edge }
+	local kinds = GraphMeta.kinds
+	local list: { Edge } = {}
+	local seen: { [string]: boolean } = {}
+	for _, tile in graphTilesFor(x0, z0, x1, z1) do
+		local data, ox, oz = tile.edges, tile.ox, tile.oz
+		for o = 0, buffer.len(data) - EDGE_BYTES, EDGE_BYTES do
+			local ax, az = (buffer.readi16(data, o + 3) + ox) * G_UNIT, (buffer.readi16(data, o + 5) + oz) * G_UNIT
+			local bx, bz = (buffer.readi16(data, o + 7) + ox) * G_UNIT, (buffer.readi16(data, o + 9) + oz) * G_UNIT
+			if math.max(ax, bx) >= x0 and math.min(ax, bx) <= x1 and math.max(az, bz) >= z0 and math.min(az, bz) <= z1 then
+				local kind = buffer.readu8(data, o)
+				local key = `{kind},{ax},{az},{bx},{bz}`
+				if not seen[key] then
+					seen[key] = true
+					local fa, fb = buffer.readu8(data, o + 1), buffer.readu8(data, o + 2)
+					table.insert(list, {
+						kind = kinds[kind + 1], ax = ax, az = az, bx = bx, bz = bz,
+						endA = fa % 4, endB = fb % 4, controlA = (fa // 4) % 4, controlB = (fb // 4) % 4, degreeA = fa // 16, degreeB = fb // 16,
+					})
+				end
+			end
+		end
+	end
+	return list
+end
+
+-- Every town block touching a box (studs), each once.
+function WorldMap.blocks(x0: number, z0: number, x1: number, z1: number): { Block }
+	local kinds = GraphMeta.kinds
+	local list: { Block } = {}
+	local seen: { [string]: boolean } = {}
+	for _, tile in graphTilesFor(x0, z0, x1, z1) do
+		local data, ox, oz = tile.blocks, tile.ox, tile.oz
+		for o = 0, buffer.len(data) - BLOCK_BYTES, BLOCK_BYTES do
+			local bx0, bz0 = (buffer.readi16(data, o) + ox) * G_UNIT, (buffer.readi16(data, o + 2) + oz) * G_UNIT
+			local bx1, bz1 = (buffer.readi16(data, o + 4) + ox) * G_UNIT, (buffer.readi16(data, o + 6) + oz) * G_UNIT
+			if bx1 >= x0 and bx0 <= x1 and bz1 >= z0 and bz0 <= z1 then
+				local key = `{bx0},{bz0},{bx1},{bz1}`
+				if not seen[key] then
+					seen[key] = true
+					local function side(at: number): string?
+						local v = buffer.readu8(data, o + at)
+						return if v > 0 then kinds[v] else nil
+					end
+					table.insert(list, { x0 = bx0, z0 = bz0, x1 = bx1, z1 = bz1, north = side(8), south = side(9), west = side(10), east = side(11) })
+				end
+			end
+		end
+	end
+	return list
+end
+
 -- Loads every tile within a mile and a half of a box (miles), so reads there can run in parallel
 -- (and marks them used: they are the last a VM drops).
 function WorldMap.ensure(mx0: number, my0: number, mx1: number, my1: number)
@@ -218,6 +424,9 @@ function WorldMap.ensure(mx0: number, my0: number, mx1: number, my1: number)
 		end
 	end
 	WorldMap.tilesFor(mx0, my0, mx1, my1)
+	local x0, z0 = WorldMap.studsAt(mx0, my0)
+	local x1, z1 = WorldMap.studsAt(mx1, my1)
+	graphTilesFor(x0, z0, x1, z1, true)
 end
 
 -- The nearest settlement to a point (miles) and its distance.

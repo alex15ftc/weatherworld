@@ -1,7 +1,7 @@
 --!strict
 -- The map every product screen draws on (it was the world map, client/MapView), drawn from the
 -- map's data (ReplicatedStorage Shared.MapData.MapVector, MapBase.luau): land cover with
--- hill-shading, the section-line roads once zoomed in, rivers and main roads as lines, and
+-- hill-shading, the town streets and section-line roads once zoomed in, rivers and main roads as lines, and
 -- labels for cities, towns (more of them the closer in), rivers and highways. Every player is
 -- marked. Scroll to zoom about the cursor, drag to pan, C to centre on yourself.
 --
@@ -144,6 +144,7 @@ local function loadData()
 	base = {
 		miles = data.miles, cells = data.cells, cellMiles = data.miles / data.cells,
 		land = unpack(data.land), sections = unpack(data.sections), sectionSize = data.sectionSize,
+		streets = if data.streets then unpack(data.streets) else nil, -- (a map exported before it had them)
 		coverKeys = coverKeys, coverRGB = coverRGB, rivers = data.rivers, roads = data.roads, rampLines = rampLines, studsPerMile = MILE,
 	}
 end

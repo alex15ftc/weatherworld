@@ -1,8 +1,8 @@
 --!strict
 --!native
 -- The world map itself, drawn into one piece of an image (a tile of the map screen,
--- MapCanvas.luau): land cover with hill-shading, the section-line roads once zoomed in,
--- rivers, interchange ramps and the main roads. Pure Luau with no Roblox services (the data
+-- MapCanvas.luau): land cover with hill-shading, the town streets and the section-line roads
+-- once zoomed in, rivers, interchange ramps and the main roads. Pure Luau with no Roblox services (the data
 -- comes in already unpacked), so it can be tried outside Studio (luau.exe) and run in a
 -- parallel worker.
 --
@@ -25,6 +25,9 @@ export type Data = {
 	land: buffer, -- cover index per cell, then hill-shade (200 = flat) per cell
 	sections: buffer, -- section-line road classes: east (bits 0-1) and south (bits 2-3)
 	sectionSize: number,
+	-- Town streets and other small paved roads, in mile cells (the layout is in
+	-- scripts/export-world-roblox.mjs, MapVector's streets); nil: a map exported without them.
+	streets: buffer?,
 	coverKeys: { [number]: string }, -- cover index -> its key (WorldMap.meta.cover)
 	coverRGB: { [number]: { number } }, -- cover index -> colour
 	rivers: { any }, -- { width, points }
@@ -50,6 +53,18 @@ local RAMP = { 235, 150, 90 }
 local SECTION_COLOURS = { [1] = { 170, 135, 95 }, [2] = { 226, 212, 176 }, [3] = { 250, 250, 246 } }
 -- Full width in studs of the dirt, gravel and county roads (RoadNet.SPECS pavement x 2).
 local SECTION_STUDS = { [1] = 13, [2] = 20, [3] = 26 }
+-- Town streets by class (0 street, 1 wide street, 2 collector, 3 local or frontage road): paved,
+-- so near the paved section roads' colour but quieter, the collectors and wide streets a touch
+-- heavier. Drawn from STREET_PIXELS screen pixels a mile (a town's blocks are 1/14 to 1/10 mile:
+-- 4 to 6 pixels there; closer than the dirt section roads' 40), at most MAX_STREETS segments a
+-- piece (seed 1 has at most 32 in a square mile, so about 800 in a tile at that zoom).
+local STREET_PIXELS = 60
+local MAX_STREETS = 4000
+local STREET_COLOURS = { [0] = { 214, 212, 205 }, [1] = { 230, 229, 222 }, [2] = { 230, 229, 222 }, [3] = { 214, 212, 205 } }
+-- Full width in studs (RoadNet.SPECS pavement x 2: suburban, urban, collector, county), and the
+-- least width in screen pixels.
+local STREET_STUDS = { [0] = 20, [1] = 38, [2] = 30, [3] = 26 }
+local STREET_LEAST = { [0] = 1, [1] = 1.4, [2] = 1.4, [3] = 1 }
 
 -- Each cover's surfaces in map colours: the terrain's colour of each, times the cover's map
 -- colour over the average terrain colour of the cover (sampled over its surfaces' patterns),
@@ -225,6 +240,51 @@ function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: num
 		end
 	end
 	local right, bottom = left + pw * step, top + ph * step
+	-- Town streets once zoomed in far enough to tell them apart, under every other road: only the
+	-- cells this piece reaches (with room for a line's width), the lighter classes first.
+	local streets = d.streets
+	if streets and m < 1 / STREET_PIXELS then
+		local size, unit, cells = buffer.readu16(streets, 0), buffer.readu16(streets, 2), buffer.readu32(streets, 4)
+		local rowsAt = 12
+		local cellsAt = rowsAt + (size + 1) * 4
+		local segmentsAt = cellsAt + (cells + 1) * 6
+		local reach = 0.04 + 2 * m
+		local I0, I1 = math.max(0, math.floor(left - reach)), math.min(size - 1, math.floor(right + reach))
+		local J0, J1 = math.max(0, math.floor(top - reach)), math.min(size - 1, math.floor(bottom + reach))
+		local widths: { [number]: number } = {}
+		for class = 0, 3 do
+			widths[class] = math.max(STREET_LEAST[class], STREET_STUDS[class] / d.studsPerMile / m)
+		end
+		local room = MAX_STREETS
+		for pass = 0, 1 do
+			for J = J0, J1 do
+				for c = buffer.readu32(streets, rowsAt + J * 4), buffer.readu32(streets, rowsAt + J * 4 + 4) - 1 do
+					local I = buffer.readu16(streets, cellsAt + c * 6)
+					if I > I1 then
+						break
+					end
+					if I >= I0 then
+						for s = buffer.readu32(streets, cellsAt + c * 6 + 2), buffer.readu32(streets, cellsAt + c * 6 + 8) - 1 do
+							local o = segmentsAt + s * 5
+							local class = buffer.readu8(streets, o)
+							local heavy = if class == 1 or class == 2 then 1 else 0
+							if heavy == pass and class <= 3 and room > 0 then
+								room -= 1
+								line(
+									I + buffer.readu8(streets, o + 1) / unit,
+									J + buffer.readu8(streets, o + 2) / unit,
+									I + buffer.readu8(streets, o + 3) / unit,
+									J + buffer.readu8(streets, o + 4) / unit,
+									widths[class],
+									STREET_COLOURS[class]
+								)
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 	-- Section-line roads once zoomed in (paved from 5 pixels a mile, gravel from 14, dirt from
 	-- 40), as wide as the world's road once that is wider than the least width, so a player on a
 	-- road is seen on it (2026-10-28: they were 1 pixel and read as fields).

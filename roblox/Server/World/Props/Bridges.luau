@@ -28,8 +28,9 @@ Bridges.BANK_EXTRA = 18 -- the bridge reaches this far past each side of the wat
 -- A crossing of a river, or (overpass) of a road the bridge's road passes over: riverHalf is then
 -- that road's half-width along the bridge, water its surface, clearance the headroom over it.
 export type Crossing = { x: number, z: number, ux: number, uz: number, riverHalf: number, water: number, roadHalf: number, kind: number, surface: string?, priority: number?, overpass: boolean?, clearance: number?, belowDivided: boolean? }
--- What a bridge occupies, ramps included: a centre line and a half-width.
-export type Footprint = { ax: number, az: number, bx: number, bz: number, half: number }
+-- What a bridge occupies, ramps included: a centre line and a half-width; the deck's height and
+-- the length of the ramp at each end (0 where the road meets the deck level).
+export type Footprint = { ax: number, az: number, bx: number, bz: number, half: number, deck: number, rampA: number, rampB: number }
 
 export type Ctx = {
 	props: Builder.Props,
@@ -87,7 +88,7 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 	local footprint: Footprint = {
 		ax = along(c, -halfSpan - ramp[1], 0, 0).X, az = along(c, -halfSpan - ramp[1], 0, 0).Z,
 		bx = along(c, halfSpan + ramp[2], 0, 0).X, bz = along(c, halfSpan + ramp[2], 0, 0).Z,
-		half = half + 4,
+		half = half + 4, deck = deck, rampA = ramp[1], rampB = ramp[2],
 	}
 	if dryRun then
 		return footprint
