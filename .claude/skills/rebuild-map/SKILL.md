@@ -20,5 +20,5 @@ The export writes `Meta.studsPerMile`; WorldMap.luau warns on a mismatch.
 
 ## Check
 - `node scripts/run-tests.mjs world-map`
-- Radar codes come from town names: if towns changed, check `AIRFIELD_DEFAULTS.removedRadars` for seed 1 still names the right sites (the user removed KPLM, KDGL, KWAP, KGRG; 11 radars remain).
+- Radar codes come from town names: if towns changed, check `AIRFIELD_DEFAULTS.removedRadars` for seed 1 still names the right sites (the user removed KPLM, KDGL, KWAP, KGRG, then KSTG, KRUC and KMRR; 10 radars remain).
 - Open in Studio and look at a town, an interchange and a suburb from the ground.

@@ -9,7 +9,7 @@ Written 2026-11-07. Research only; no code changed. Sources are cited inline.
 
 ### Radar (engine, `js/radar/`)
 The engine already runs a real per-site volume-scan simulator:
-- **Sites:** 11 radars from the world map (seed 1); fallback 7. Each has 230 km range,
+- **Sites:** 10 radars from the world map (seed 1); fallback 7. Each has 230 km range,
   0.5 km gates, 720 radials (0.5°), 14 tilts 0.5–19.5° (VCP-12-like), 0.95° beam and a
   4/3-earth beam path. See `js/radar/RadarFormat.js:4-25`.
 - **Products scanned:** REF, VEL, SRV, SW, CC, ZDR.
