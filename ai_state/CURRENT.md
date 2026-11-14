@@ -240,7 +240,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   engine with its key (a live chaser dot showed 2026-11-14). Checked as before: map test, both export checks,
   audit, 300-chunk harness with no building conflicts.
 
-- Map, fourth round (2026-11-14; towns and airfields unmoved): the road graph has no footprint conflicts and no junction pairs within
+- Map, fourth round (2026-11-14; merged to `main`, place published as version 500 and engine deployed from `6d9b9d8`, the world resumed at hour 617; towns and airfields unmoved): the road graph has no footprint conflicts and no junction pairs within
   40 studs on seed 1 (a final weld of close junctions; US-40 re-laid square across the river in the metro, which
   moved 158 of the metro's 689 school lots and 3 campuses). `run-chunks.luau` now also checks every road
   against the ground under it: on place 499, over 300 chunks, the ground came through a road at 27 samples and
@@ -254,7 +254,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-0. Map (published as 499, unseen): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
+0. Map (published as 500; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
