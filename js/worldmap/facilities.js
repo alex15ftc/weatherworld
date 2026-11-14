@@ -493,13 +493,21 @@ export function planFacilities(map, options = {}) {
         if (airfields.some(a => Math.hypot(a.x - x, a.y - y) < wp.airfieldClearMi) || radars.some(r => Math.hypot(r.x - x, r.y - y) < wp.radarClearMi)) continue;
         row.push([r4(x), r4(y)]);
       }
-      // A gravel string road along the row, joined to the nearest section line at its west end.
+      // A gravel string road along the row. It must reach a road: where it crosses no mile line
+      // with a road on it, it is carried on, from its west end or its east, to the nearest mile
+      // line that has one (up to three miles on; a string no road comes near has none).
       let run = [];
       const flush = () => {
         if (run.length) {
-          const [x0] = run[0], line = Math.round(x0) <= x0 ? Math.floor(x0) : Math.ceil(x0);
-          const path = [[line, run[0][1]], ...run];
-          if (pathClearOfRoads(path)) roadsOut.push(path);
+          const west = Math.floor(run[0][0]), east = Math.ceil(run.at(-1)[0]);
+          let path = null;
+          for (let line = west + 1; line < east && !path; line++) if (sectionClass(line, J, false) && run.length > 1) path = run;
+          for (let k = 0; k < 3 && !path; k++) for (const [line, atWest] of [[west - k, true], [east + k, false]]) {
+            if (!sectionClass(line, J, false)) continue;
+            path = atWest ? [[line, y], ...run] : [...run, [line, y]];
+            break;
+          }
+          if (path && pathClearOfRoads(path)) roadsOut.push(path);
         }
         run = [];
       };
@@ -536,9 +544,12 @@ export function planFacilities(map, options = {}) {
     const gas = op.gasRegions.includes(region), well = [r4(x), r4(y), gas ? 1 : 0];
     const wr = AT_1000(0.01);
     wells.push(well); take([x - wr, y - wr, x + wr, y + wr]);
-    // The lease road: straight to the nearest mile line.
-    const dx = x - Math.round(x), dy = y - Math.round(y), to = Math.abs(dx) < Math.abs(dy) ? [Math.round(x), y] : [x, Math.round(y)];
-    if (pathClearOfRoads([[x, y], to])) leaseRoads.push([[r4(x), r4(y)], [r4(to[0]), r4(to[1])]]);
+    // The lease road: straight to the nearer of the two nearest mile lines that has a road on it
+    // (a well with a road on neither has none: nothing would reach it).
+    const dx = x - Math.round(x), dy = y - Math.round(y);
+    const sides = [[Math.abs(dx), [Math.round(x), y], sectionClass(Math.round(x), Math.floor(y), false)], [Math.abs(dy), [x, Math.round(y)], sectionClass(Math.floor(x), Math.round(y), true)]];
+    const lease = sides.filter(side => side[2]).sort((a, b) => a[0] - b[0])[0];
+    if (lease && pathClearOfRoads([[x, y], lease[1]])) leaseRoads.push([[r4(x), r4(y)], [r4(lease[1][0]), r4(lease[1][1])]]);
     if (!gas && ++oilCount % op.tankEvery === 0) {
       const off = AT_1000(0.035), tx = x + (Math.abs(dx) < Math.abs(dy) ? 0 : off), ty = y + (Math.abs(dx) < Math.abs(dy) ? off : 0);
       if (pointClear(tx, ty, 0.04, 0.03)) { tanks.push([r4(tx), r4(ty)]); take([tx - wr, ty - wr, tx + wr, ty + wr]); }

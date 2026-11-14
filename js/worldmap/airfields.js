@@ -53,7 +53,7 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   minPopulation: 40000,
   distanceMi: { metro: [12, 17], city: [5, 9], smallCity: [3, 5.5] },
   headingDeg: [150, 210],   // main runway heading (degrees true), drawn per airport
-  flatM: 18,                // most relief inside an airfield fence (m)
+  flatM: 60,                // most relief inside an airfield fence (m): a cap only, flatter sites score better and Roblox levels the field
   accessMi: 8,              // longest public access road from an airport gate
   // International airports (these kinds of place) are reached by a freeway spur from their own
   // interstate exit, up to freewayMi long, meeting the interstate square for its last stemMi.
@@ -67,9 +67,10 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   // Radar sites taken out by hand, per seed (codes come from town names, so they differ by seed):
   // the radar and the forecast office beside it go, after the gap offices are placed (so none is
   // put back in its place); the airport stays and the neighbouring offices take its counties.
-  // Seed 1, 2026-10-28 (the user's choice): KPLM (50 mi from KLOR), KDGL (67 from KSPB), KWAP (90
-  // from KSMF), KGRG (41 from the air base's KHLL).
-  removedRadars: { 1: ['KPLM', 'KDGL', 'KWAP', 'KGRG'] }
+  // Seed 1 had four taken out on 2026-10-28 (the user's choice: KPLM, KDGL, KWAP, KGRG); the
+  // terrain change of 2026-11-13 moved the towns, so those radars no longer exist and the list is
+  // empty until the owner chooses again on the new map.
+  removedRadars: { 1: [] }
 });
 
 const BASE_NAMES = ['Tolliver', 'Calloway', 'Prewitt', 'Brackett', 'Dunmore', 'Garrity', 'Hollister', 'Wendell', 'Ashby', 'Corwin'];
@@ -509,18 +510,20 @@ export function planAirfields(map, options = {}) {
       }
     }
     candidates.sort((a, b) => a.score - b.score);
-    for (const c of candidates.slice(0, 60)) {
-      const field = finish(c, city);
-      if (field) { airfields.push(field); break; }
+    // The best sites first. Where none can be given a freeway spur (a city ringed by exits has
+    // no room on its interstates for another), the airport takes an ordinary road instead.
+    place: for (const plain of [false, true]) for (const c of candidates.slice(0, 60)) {
+      const field = finish(c, city, null, plain);
+      if (field) { airfields.push(field); break place; }
     }
   }
 
   // Lays out one airfield at a candidate site, with its office, radar and access road; null if
   // these do not fit.
-  function finish({ f, layout, fence }, city, base = null) {
+  function finish({ f, layout, fence }, city, base = null, plain = false) {
     const g = layout.gate, gateA = g.da ? fence[g.da > 0 ? 2 : 0] : g.a, gateB = g.db ? fence[g.db > 0 ? 3 : 1] : g.b;
     const stub = base ? p.airBase.stubFt : p.stubFt;
-    const freeway = !base && p.international.includes(city.kind);
+    const freeway = !base && !plain && p.international.includes(city.kind);
     // Beside an expressway stub the office stands clear of its width (the airport road's half-width is 0.03 mi at 1000 studs a mile).
     const office = base ? null : officeAndRadar(f, gateA, gateB, g.da, g.db, freeway ? (HALF_MI_EXPRESSWAY - AT_1000(0.03)) / FT : 0);
     if (!base && !office) return null;

@@ -27,6 +27,7 @@
 import { interchangeRamps, overpassLine, INTERCHANGE } from './interchanges.js';
 import { AT_1000, STUDS } from './scale.js';
 import { HALF_MI } from './streets.js';
+import { connectSectionRoads } from './sectionRoads.js';
 
 // Scale (scale.js): spacings from road practice (exits a mile or three apart, overpasses, how far
 // apart crossings fall) are the map's own, in map miles; what follows from an interchange's size
@@ -314,6 +315,9 @@ export function planCrossings(map, options = {}) {
       }
     }
   }
+  // Pieces of the grid the ramps (or the airfields before them) cut off from the rest are left
+  // out, as are paved roads' ends between an interstate with no bridge for them and nothing else.
+  sections.cutOff = connectSectionRoads(sections, map, undefined, { link: false, crossings: kept });
   kept.stats = { downgraded, dropped };
   return kept;
 }

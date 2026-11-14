@@ -444,12 +444,21 @@ function planRoads(map, p, settlements, grid) {
     // mile lines, not where a section road or arterial meets them, and away from their bends.
     let points = ringPoints(s, radius, from, to);
     if (kind === 'interstate') {
-      let best = -1;
-      // Centred on the place, or on the interstates' own alignment beside it.
-      for (const centre of [s, { x: s.x + offX, y: s.y + offY }]) for (let k = 0; k <= 100; k++) {
-        const r = radius + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.02, pts = ringPoints(centre, r, from, to);
+      let best = -1, chosen = radius;
+      const tryRing = (centre, r) => {
+        const pts = ringPoints(centre, r, from, to);
         const clearance = Math.min(1, ...interstateCrossings(pts).map(q => (q.bend < 0.7 ? -1 : offLines([q.x, q.y]))));
-        if (clearance > best + 1e-9) { best = clearance; points = pts; }
+        if (clearance > best + 1e-9) { best = clearance; points = pts; chosen = r; }
+      };
+      // Centred on the place, or on the interstates' own alignment beside it.
+      const centres = [s, { x: s.x + offX, y: s.y + offY }];
+      for (const centre of centres) for (let k = 0; k <= 100; k++) tryRing(centre, radius + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.02);
+      // Where two crossings pull against each other at every radius (one comes off a mile line
+      // as the other comes onto one), the ring is moved a quarter mile instead, at about the
+      // radius found.
+      if (best < p.lineClearMi) {
+        const about = chosen;
+        for (const [dx, dy] of [[0.25, 0], [-0.25, 0], [0, 0.25], [0, -0.25]]) for (const centre of centres) for (let k = -15; k <= 15; k++) tryRing({ x: centre.x + dx, y: centre.y + dy }, about + k * 0.02);
       }
     }
     roads.push({ kind, name, points });
@@ -610,7 +619,13 @@ function planRoads(map, p, settlements, grid) {
     // Already served: the way there runs almost all on highways laid before.
     if (reusedShare <= 0.8) roads.push({ kind: 'highway', name: `K-${(i + 1) * 2 + 2}`, points });
   });
-  return roads;
+  // A bypass no other road meets (nothing left the town its way) is not built.
+  const meet = (a, b, c, d) => {
+    const side = (q, w, e) => (w[0] - q[0]) * (e[1] - q[1]) - (w[1] - q[1]) * (e[0] - q[0]);
+    return (side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0) || distToSegment(a[0], a[1], c, d) < 0.05 || distToSegment(b[0], b[1], c, d) < 0.05 || distToSegment(c[0], c[1], a, b) < 0.05 || distToSegment(d[0], d[1], a, b) < 0.05;
+  };
+  const met = road => roads.some(o => o !== road && o.kind !== 'interstate' && road.points.some((q, i) => i > 0 && o.points.some((w, k) => k > 0 && meet(road.points[i - 1], q, o.points[k - 1], w))));
+  return roads.filter(road => !road.name.endsWith(' bypass') || met(road));
 }
 
 function distToSegment(x, y, [ax, ay], [bx, by]) {

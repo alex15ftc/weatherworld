@@ -12,6 +12,11 @@
 // or less, with long stretches missing. Lakes stop them all; only paved roads bridge large
 // rivers.
 //
+// No road is left cut off: a piece of the grid that cannot be reached from the highways (a lone
+// mile, a few miles of field road meeting nothing, a town's streets off every highway) is joined
+// to the rest by the shortest run of missing miles, or, where it is small and nothing is near,
+// left out (connectSectionRoads). Dead ends stay; islands do not.
+//
 // In towns, cities and suburbs every mile line is a paved arterial. The streets between them are
 // not on this map: Roblox lays them per chunk inside each settlement's extent, at the
 // settlement's streetBlockMi (a dense grid in town and city cores, curving residential streets
@@ -49,7 +54,17 @@ export const SECTION_DEFAULTS = Object.freeze({
   gravelSlope: 0.025,    // m/m: steeper than this, a road is dirt (unless it is paved)
   pavedMaxSlope: 0.08,   // m/m: steeper than this not even a paved road keeps to the mile line
   bridgeMi2: 1500,       // only paved roads cross rivers draining more than this (mi2)
-  gapMi: 5               // size of the stretches of mile line left without a road
+  gapMi: 5,              // size of the stretches of mile line left without a road
+  // Cut-off pieces: one of up to linkSmallMi miles is joined by at most one missing mile, a
+  // larger one by up to half its own length (at least linkMi, at most linkFarMi; a paved one, a
+  // town's, by up to linkPavedMi); pieces of up to dropMi miles that nothing reaches are left
+  // out (paved ones only where an interstate, an airfield or an interchange's ramps cut them off).
+  // (A pocket the interstates shut in with no bridge goes up to cutOffDropMi.)
+  linkSmallMi: 2, linkMi: 3, linkFarMi: 8, linkPavedMi: 10, dropMi: 8, cutOffDropMi: 16,
+  // How near a corner a road must pass to be met there: a two-lane highway (its curve's middle),
+  // an expressway (paved roads only), and how near an interstate or expressway stops the gravel
+  // and dirt roads short of the corner (their gap, from its centre line).
+  highwayAtMi: 0.1, expresswayAtMi: 0.16, barrierMi: STUDS(51) + AT_1000(0.04)
 });
 
 export function planSectionRoads(map, options = {}) {
@@ -177,7 +192,141 @@ export function planSectionRoads(map, options = {}) {
       }
     }
   }
-  return { size, miles: 1, roads };
+  const sections = { size, miles: 1, roads };
+  sections.joined = connectSectionRoads(sections, map, p);
+  return sections;
+}
+
+// Leaves no piece of the grid cut off from the highways (see the top). Works on the grid as
+// the road rules will build it (streets.js, roadNetwork.js): gravel and dirt roads meet two-lane
+// highways and each other, and stop short of interstates and expressways; paved roads meet the
+// expressways too and stop only at an interstate (unless carried over it: crossings, once
+// they are planned). link: false only leaves out (after the airfields and ramps have taken their
+// miles, when a new mile could run through one; then a small paved piece goes too).
+export function connectSectionRoads(sections, map, options = {}, { link = true, crossings = null } = {}) {
+  const p = { ...SECTION_DEFAULTS, ...options };
+  const { size, roads } = sections, miles = size - 1;
+  const { size: n, cellMiles, cover, coverKeys, rivers, roads: mapRoads = [] } = map;
+  const per = Math.round(1 / cellMiles), water = coverKeys.indexOf('water');
+  const river = new Uint8Array(n * n);
+  for (const r of rivers) for (let k = 0; k < r.points.length; k += 2) river[Math.min(n - 1, Math.floor(r.points[k + 1] / cellMiles)) * n + Math.min(n - 1, Math.floor(r.points[k] / cellMiles))] = 1;
+  const wet = riverCorners(rivers, size);
+  // The map's roads by mile square.
+  const segs = new Map();
+  for (const r of mapRoads) for (let i = 1; i < r.points.length; i++) {
+    const [ax, ay] = r.points[i - 1], [bx, by] = r.points[i], seg = { ax, ay, bx, by, kind: r.kind };
+    for (let X = Math.floor(Math.min(ax, bx)) - 1; X <= Math.floor(Math.max(ax, bx)) + 1; X++) for (let Y = Math.floor(Math.min(ay, by)) - 1; Y <= Math.floor(Math.max(ay, by)) + 1; Y++) {
+      const k = X * 8192 + Y; if (!segs.has(k)) segs.set(k, []); segs.get(k).push(seg);
+    }
+  }
+  const near = (x, y, sg) => { const dx = sg.bx - sg.ax, dy = sg.by - sg.ay, l2 = dx * dx + dy * dy, t = l2 ? clamp(((x - sg.ax) * dx + (y - sg.ay) * dy) / l2, 0, 1) : 0; return Math.hypot(sg.ax + dx * t - x, sg.ay + dy * t - y); };
+  const crossAt = (x0, y0, x1, y1, sg) => {
+    const rx = x1 - x0, ry = y1 - y0, sx = sg.bx - sg.ax, sy = sg.by - sg.ay, den = rx * sy - ry * sx;
+    if (Math.abs(den) < 1e-12) return null;
+    const t = ((sg.ax - x0) * sy - (sg.ay - y0) * sx) / den, u = ((sg.ax - x0) * ry - (sg.ay - y0) * rx) / den;
+    return t > 0 && t < 1 && u >= 0 && u <= 1 ? [x0 + rx * t, y0 + ry * t] : null;
+  };
+  const carried = ([x, y]) => (crossings ?? []).some(c => Math.hypot(c.x - x, c.y - y) < 0.08);
+  // One mile of mile line (east or south from corner I, J) as a road of a class: whether the
+  // rules cut it between its corners (cut) or short of either corner (a, b), and whether it
+  // meets a road of the map's at either corner or between them (metA, metB, met). Where a
+  // highway shares an expressway's road, the expressway's rules hold. A new mile (fresh) crosses
+  // no interstate, whatever its class: no bridge is planned for it.
+  const look = (east, I, J, cls, fresh = false) => {
+    const x1 = east ? I + 1 : I, y1 = east ? J : J + 1, out = { cut: false, a: false, b: false, metA: false, metB: false, met: false };
+    for (const sg of segs.get(I * 8192 + J) ?? []) {
+      const barrier = sg.kind === 'interstate' || (sg.kind === 'expressway' && cls < 3);
+      if (barrier) {
+        if (cls === 3) { const at = crossAt(I, J, x1, y1, sg); if (at && (fresh || (crossings && !carried(at)))) out.cut = true; continue; }
+        if (crossAt(I, J, x1, y1, sg)) out.cut = true;
+        if (near(I, J, sg) < p.barrierMi) out.a = true;
+        if (near(x1, y1, sg) < p.barrierMi) out.b = true;
+      } else {
+        const at = sg.kind === 'expressway' ? p.expresswayAtMi : p.highwayAtMi;
+        if (crossAt(I, J, x1, y1, sg)) out.met = true;
+        if (near(I, J, sg) < at) out.metA = true;
+        if (near(x1, y1, sg) < at) out.metB = true;
+      }
+    }
+    if (out.a) out.metA = false;
+    if (out.b) out.metB = false;
+    if (out.cut) out.met = false;
+    return out;
+  };
+  // Whether a new mile may run there: dry, off the rivers and their corners, inside the map.
+  const open = (east, I, J) => {
+    if (east ? J < 1 || J >= miles || I < 0 || I >= miles : I < 1 || I >= miles || J < 0 || J >= miles) return false;
+    if (wet[J * size + I] || wet[(east ? J : J + 1) * size + (east ? I + 1 : I)]) return false;
+    for (let t = 0; t < per; t++) for (const side of [-1, 0]) {
+      const i = east ? I * per + t : I * per + side, j = east ? J * per + side : J * per + t;
+      if (i < 0 || j < 0 || i >= n || j >= n || cover[j * n + i] === water || river[j * n + i]) return false;
+    }
+    return true;
+  };
+
+  const MAIN = size * size, parent = new Int32Array(MAIN + 1).map((_, i) => i);
+  const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const join = (a, b) => { parent[find(a)] = find(b); };
+  const classAt = (east, K) => (east ? roads[K] & 3 : (roads[K] >> 2) & 3);
+  const clear = (east, K) => { roads[K] &= east ? ~3 : ~12; };
+  // Each mile hangs on the corners it reaches: both (joining them), one (a dead end, cut short of
+  // the other or between them), or none.
+  const hangs = [];   // [east, K, corners it hangs on]
+  const stats = { joined: 0, linkMiles: 0, dropped: 0, dropMiles: 0, left: 0 };
+  for (let J = 0; J < size; J++) for (let I = 0; I < size; I++) for (const east of [true, false]) {
+    const K = J * size + I, cls = classAt(east, K);
+    if (!cls) continue;
+    const K1 = east ? K + 1 : K + size, at = look(east, I, J, cls);
+    const on = at.cut ? [at.a ? -1 : K, at.b ? -1 : K1].filter(c => c >= 0) : at.a && at.b ? [] : at.a ? [K1] : at.b ? [K] : [K, K1];
+    if (!on.length) { clear(east, K); stats.dropMiles++; continue; }
+    if (!at.cut && on.length === 2) join(K, K1);
+    for (const c of on) if (at.met || (c === K ? at.metA : at.metB) || (!at.cut && on.length === 2 && (at.metA || at.metB))) join(c, MAIN);
+    hangs.push([east, K, on, at.cut]);
+  }
+  // The pieces not joined to the highways, largest first.
+  const pieces = new Map();
+  for (const h of hangs) for (const c of h[2]) {
+    const root = find(c);
+    if (root === find(MAIN)) continue;
+    if (!pieces.has(root)) pieces.set(root, { corners: new Set(), miles: [], paved: false });
+    const piece = pieces.get(root);
+    piece.corners.add(c); piece.miles.push(h); if (classAt(h[0], h[1]) === 3) piece.paved = true;
+  }
+  for (const piece of [...pieces.values()].sort((a, b) => b.miles.length - a.miles.length)) {
+    piece.miles = [...new Set(piece.miles)];
+    if (find([...piece.corners][0]) === find(MAIN)) continue;   // joined through an earlier piece's link
+    // (A mile cut short of a corner, or between its corners, counts as half.)
+    const size0 = piece.miles.reduce((sum, h) => sum + (h[3] || h[2].length < 2 ? 0.5 : 1), 0);
+    const reach = !link ? 0 : piece.paved ? p.linkPavedMi : size0 <= p.linkSmallMi ? 1 : clamp(Math.ceil(size0 / 2), p.linkMi, p.linkFarMi);
+    // The shortest run of missing miles to a corner on the network (breadth first).
+    const from = new Map([...piece.corners].map(c => [c, null]));
+    let front = [...piece.corners], goal = -1;
+    for (let depth = 0; depth < reach && goal < 0 && front.length; depth++) {
+      const next = [];
+      for (const c of front) {
+        const I = c % size, J = (c / size) | 0;
+        for (const [east, KI, KJ, oI, oJ] of [[true, I, J, I + 1, J], [true, I - 1, J, I - 1, J], [false, I, J, I, J + 1], [false, I, J - 1, I, J - 1]]) {
+          if (oI < 0 || oJ < 0 || oI >= size || oJ >= size || goal >= 0) continue;
+          const K = KJ * size + KI, o = oJ * size + oI;
+          if (from.has(o) || classAt(east, K) || !open(east, KI, KJ)) continue;
+          const at = look(east, KI, KJ, piece.paved ? 3 : 2, true);
+          if (at.cut || at.a || at.b) continue;
+          from.set(o, [c, east, K]);
+          if (find(o) === find(MAIN) || at.met || at.metA || at.metB) goal = o; else next.push(o);
+        }
+      }
+      front = next;
+    }
+    if (goal >= 0) {
+      const cls = Math.max(...piece.miles.map(h => classAt(h[0], h[1])));
+      for (let c = goal; from.get(c); c = from.get(c)[0]) { const [, east, K] = from.get(c); roads[K] |= east ? cls : cls << 2; stats.linkMiles++; }
+      join([...piece.corners][0], MAIN); stats.joined++;
+    } else if (link ? !piece.paved && size0 <= p.dropMi : size0 <= p.cutOffDropMi) {
+      for (const [east, K] of piece.miles) if (classAt(east, K)) { clear(east, K); stats.dropMiles++; }
+      stats.dropped++;
+    } else stats.left++;
+  }
+  return stats;
 }
 
 // The corners of the 1-mile grid (size by size) that lie in a river, as wide as it is built

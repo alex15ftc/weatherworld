@@ -113,6 +113,16 @@
   only happens near players (loaded chunks); tornado tracks where nobody was could come from the engine's damage
   surveys.
 
+### 2026-11-13 — Roblox lays its roads from the map's road graph, not by its own rules
+
+- Status: active
+- Decision: the Node generator's road graph (`js/worldmap/streets.js`) and its town blocks (`blocks.js`) are
+  exported (`WorldData/Graph`) and are the only source of where roads run, end and meet in Roblox;
+  `RoadNet.build` maps edges to cross-sections and makes no road decisions. Road rules change in the generator.
+- Rationale: Roblox rebuilt roads per chunk by rules that differed from the generator's, so the generator's
+  conflict check ran on roads the game never drew and the M map and the world disagreed.
+- Follow-up: the M map still draws section roads from `sections.u8`; move it to the graph.
+
 ### 2026-11-11 — The world's clock is locked to real UTC time; products name days "11/11/26 Day 3"
 
 - Status: active

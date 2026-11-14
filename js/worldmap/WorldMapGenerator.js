@@ -31,20 +31,33 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   seed: 1,
   miles: 500,
   cellMiles: 0.5,
-  boundaryWarp: 0.09,       // how far region boundaries wander, as a share of the map
+  // How far region boundaries wander, as a share of the map: in sweeps of a few hundred miles,
+  // bends of about 70 and ragged edges of about 25, so no region is a rectangle.
+  boundaryWarp: 0.22,
   // Land cover near a border is drawn from the region at a point up to coverBlendMi away, in
   // patches of about coverBlendScaleMi, so one region's farms and pasture give way to the next.
   coverBlendMi: 25, coverBlendScaleMi: 3,
   reliefBlend: 4,           // each region's relief is weighted by its claim to this power (higher: sharper edges)
+  // Within a region the hills are higher in some districts than others: their height is scaled
+  // by 1 +- reliefPatch in patches of about reliefPatchMi (uplands and quieter basins).
+  reliefPatch: 0.5, reliefPatchMi: 45,
   // Low hummocks everywhere (m, miles), so water on the flat plains wanders as it does in life.
   detailM: 6, detailWavelengthMi: 3,
   // The big river (Missouri-like) runs north to south in the east; its valley and the
   // southward tilt of the eastern plains that lead water to it.
-  trunkAt: 0.8, trunkValleyM: 60, trunkValleyWidth: 0.03, eastTiltM: 25,
-  trunkBends: 1.5,          // how much the big river's valley swings, in bends of 10 to 70 miles
+  trunkAt: 0.8, trunkValleyM: 35, trunkValleyWidth: 0.015, eastTiltM: 25,
+  // How far the big river's valley swings: its long sweep (share of the map), and its bends of
+  // 10 to 70 miles.
+  trunkSweep: 0.12, trunkBends: 3.5,
   // Stream-power erosion: dh = -K A^m S per step (A rain-weighted drainage area in cells),
   // solved implicitly; then hillslope diffusion.
   erosionSteps: 24, erosionK: 0.5, erosionM: 0.5, diffusion: 0.04, refillEvery: 4,
+  // Valleys. Every stream, from a draw draining valleyHeadMi2 to the big river, sits in a valley
+  // cut below the ground it crosses: valleyM deep where 1000 mi2 drain to it in ground of
+  // erodibility 1, deeper or shallower as the drainage area to valleyPower. Its sides rise at
+  // valleySide (rise over run; gentler and steeper by reach, so some reaches have bluffs), and
+  // rivers draining valleyFloorMi2 have a flat bottom a cell, then two, to each side.
+  valleyM: 14, valleyPower: 0.25, valleyHeadMi2: 1.5, valleySide: 0.01, valleySmooth: 4, valleyFloorMi2: [3000, 15000],
   // Rainfall weight from the dry west to the wet east (shares of the eastern rain).
   rainWest: 0.4, rainEast: 1,
   // A creek appears on the map where this much rain-weighted drainage area (mi2) has gathered;
@@ -63,19 +76,25 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   ]
 });
 
-// reliefM: height of the region's own hills either side of the engine's slope; wavelengthMi:
-// their size; terrace: 0 smooth to 1 flat-topped buttes and mesas; ridged: dune-like crests;
-// liftM: the region stands this much above the slope (a plateau for erosion to cut into);
-// erodibility: how easily its ground is cut (sand soaks rain up, Ozark streams cut deep).
+// reliefM: how far the region's own hills stand above and below the engine's slope (most of
+// them: the noise is scaled by RELIEF_SPAN so 9 in 10 lie within it) where its relief is usual
+// (reliefPatch); wavelengthMi: their size; terrace: 0 smooth to 1 flat-topped buttes and mesas;
+// ridged: dune-like crests; liftM: the region stands this much above the slope (a plateau for
+// erosion to cut into); erodibility: how easily its ground is cut (sand soaks rain up, Ozark
+// streams cut deep), which also sets how deep its valleys are (valleyM).
+// Heights are the real ones and the Roblox map squeezes distance about 9.6 times, so a slope
+// here is 9.6 times as steep in the game: these give hills of 5 to 15% there.
 export const REGIONS = Object.freeze([
-  { key: 'highPlains', name: 'High Plains', reliefM: 12, wavelengthMi: 20, terrace: 0, ridged: false, liftM: 0, erodibility: 0.7 },
-  { key: 'smokyHills', name: 'Smoky Hills', reliefM: 35, wavelengthMi: 8, terrace: 0.5, ridged: false, liftM: 0, erodibility: 1 },
-  { key: 'sandhills', name: 'Sandhills', reliefM: 30, wavelengthMi: 3, terrace: 0, ridged: true, liftM: 10, erodibility: 0.25 },
-  { key: 'redHills', name: 'Red Hills', reliefM: 45, wavelengthMi: 5, terrace: 0.7, ridged: false, liftM: 10, erodibility: 1.3 },
-  { key: 'flintHills', name: 'Flint Hills', reliefM: 45, wavelengthMi: 6, terrace: 0.4, ridged: false, liftM: 30, erodibility: 1 },
-  { key: 'midwest', name: 'Midwest farmland', reliefM: 25, wavelengthMi: 6, terrace: 0, ridged: false, liftM: 0, erodibility: 1.2 },
-  { key: 'ozarkEdge', name: 'Ozark edge', reliefM: 60, wavelengthMi: 4, terrace: 0, ridged: false, liftM: 120, erodibility: 1.6 }
+  { key: 'highPlains', name: 'High Plains', reliefM: 5, wavelengthMi: 20, terrace: 0, ridged: false, liftM: 0, erodibility: 0.7 },
+  { key: 'smokyHills', name: 'Smoky Hills', reliefM: 18, wavelengthMi: 8, terrace: 0.5, ridged: false, liftM: 0, erodibility: 1 },
+  { key: 'sandhills', name: 'Sandhills', reliefM: 22, wavelengthMi: 3, terrace: 0, ridged: true, liftM: 10, erodibility: 0.25 },
+  { key: 'redHills', name: 'Red Hills', reliefM: 26, wavelengthMi: 5, terrace: 0.7, ridged: false, liftM: 10, erodibility: 1.3 },
+  { key: 'flintHills', name: 'Flint Hills', reliefM: 24, wavelengthMi: 6, terrace: 0.4, ridged: false, liftM: 30, erodibility: 1 },
+  { key: 'midwest', name: 'Midwest farmland', reliefM: 10, wavelengthMi: 6, terrace: 0, ridged: false, liftM: 0, erodibility: 1.2 },
+  { key: 'ozarkEdge', name: 'Ozark edge', reliefM: 34, wavelengthMi: 4, terrace: 0, ridged: false, liftM: 70, erodibility: 1.6 }
 ]);
+// The 95th percentile of fbm (noise.js): its sums seldom reach beyond +-0.3.
+const RELIEF_SPAN = 0.3;
 
 export const COVER = Object.freeze(['water', 'cropland', 'irrigated', 'grassland', 'sandhillGrass', 'forest', 'riparian', 'breaks', 'redRange', 'tallgrass', 'urban', 'suburban']);
 const C = Object.fromEntries(COVER.map((key, i) => [key, i]));
@@ -131,16 +150,16 @@ export function generateWorldMap(options = {}) {
   const p = { ...WORLD_MAP_DEFAULTS, ...options };
   const n = Math.round(p.miles / p.cellMiles), cells = n * n, cellM = p.cellMiles * METRES_PER_MILE, cellMi2 = p.cellMiles ** 2;
   const noise = name => makeNoise(p.seed, name);
-  const warpX = noise('warp-x'), warpY = noise('warp-y'), relief = noise('relief'), trunkWobble = noise('trunk'), patch = noise('patch'), patch2 = noise('patch-2'), blend = noise('blend');
+  const warpX = noise('warp-x'), warpY = noise('warp-y'), relief = noise('relief'), reliefPatch = noise('relief-patch'), valleySide = noise('valley-side'), trunkWobble = noise('trunk'), patch = noise('patch'), patch2 = noise('patch-2'), blend = noise('blend');
 
-  const trunkU = v => p.trunkAt + 0.05 * fbm(trunkWobble, v * 2.5, 0.5, 2) + p.trunkBends * (0.035 * fbm(trunkWobble, v * 7, 1.7, 2) + 0.02 * fbm(trunkWobble, v * 18, 3.5, 2) + 0.01 * fbm(trunkWobble, v * 45, 8.1, 1));
+  const trunkU = v => p.trunkAt + p.trunkSweep * fbm(trunkWobble, v * 2.5, 0.5, 2) + p.trunkBends * (0.035 * fbm(trunkWobble, v * 7, 1.7, 2) + 0.02 * fbm(trunkWobble, v * 18, 3.5, 2) + 0.01 * fbm(trunkWobble, v * 45, 8.1, 1));
   const height = new Float64Array(cells), region = new Uint8Array(cells), coverRegion = new Uint8Array(cells), rain = new Float64Array(cells), erodibility = new Float64Array(cells);
   const claims = new Float64Array(REGIONS.length), coverClaims = new Float64Array(REGIONS.length), weights = new Float64Array(REGIONS.length);
 
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const k = j * n + i, u = (i + 0.5) / n, v = (j + 0.5) / n, xMi = u * p.miles, yMi = v * p.miles;
-      const wu = u + p.boundaryWarp * (fbm(warpX, u * 2, v * 2, 2) + 0.6 * fbm(warpX, u * 7 + 5.3, v * 7, 3)), wv = v + p.boundaryWarp * (fbm(warpY, u * 2, v * 2, 2) + 0.6 * fbm(warpY, u * 7, v * 7 + 5.3, 3));
+      const wu = u + p.boundaryWarp * (fbm(warpX, u * 2, v * 2, 2) + fbm(warpX, u * 7 + 5.3, v * 7, 3) + 0.4 * fbm(warpX, u * 20 - 3.1, v * 20, 3)), wv = v + p.boundaryWarp * (fbm(warpY, u * 2, v * 2, 2) + fbm(warpY, u * 7, v * 7 + 5.3, 3) + 0.4 * fbm(warpY, u * 20, v * 20 - 3.1, 3));
       regionClaims(wu, wv, claims);
       let best = 0, total = 0;
       for (let r = 0; r < REGIONS.length; r++) { if (claims[r] > claims[best]) best = r; weights[r] = claims[r] ** p.reliefBlend; total += weights[r]; }
@@ -153,14 +172,15 @@ export function generateWorldMap(options = {}) {
       for (let r = 1; r < REGIONS.length; r++) if (coverClaims[r] > coverClaims[coverRegion[k]]) coverRegion[k] = r;
 
       let h = engineTerrainM(xMi) + p.detailM * fbm(relief, xMi / p.detailWavelengthMi - 91.3, yMi / p.detailWavelengthMi + 47.1, 3), erode = 0;
+      const hilly = 1 + p.reliefPatch * clamp(fbm(reliefPatch, xMi / p.reliefPatchMi, yMi / p.reliefPatchMi, 2) / RELIEF_SPAN, -1, 1);
       for (let r = 0; r < REGIONS.length; r++) {
         const w = total > 0 ? weights[r] / total : 0;
         if (w < 0.01) continue;
         const def = REGIONS[r];
-        let shape = fbm(relief, xMi / def.wavelengthMi + r * 31.7, yMi / def.wavelengthMi - r * 17.3, 5);
+        let shape = fbm(relief, xMi / def.wavelengthMi + r * 31.7, yMi / def.wavelengthMi - r * 17.3, 5) / RELIEF_SPAN;
         if (def.ridged) shape = 1 - 2 * Math.abs(shape);
         if (def.terrace > 0) { const t = shape * 4, floor = Math.floor(t), stepped = (floor + smoothstep(0.35, 0.65, t - floor)) / 4; shape += (stepped - shape) * def.terrace; }
-        h += w * (def.reliefM * shape + def.liftM);
+        h += w * (def.reliefM * hilly * shape + def.liftM);
         erode += w * def.erodibility;
       }
       const east = smoothstep(0.55, 0.75, u);
@@ -246,6 +266,56 @@ export function generateWorldMap(options = {}) {
   }
   route();
   accumulate();
+
+  // Valleys (see valleyM). Each stream's bed is lowered by its depth; a flat bottom is opened
+  // beside the larger rivers; then no ground stands higher above a bed than the valley's side
+  // slope allows (the cone of each bed, swept over the map), and the shoulders are rounded.
+  {
+    const bed = new Float64Array(cells).fill(Infinity);
+    for (let k = 0; k < cells; k++) {
+      const mi2 = area[k] * cellMi2;
+      if (mi2 <= p.valleyHeadMi2) continue;
+      bed[k] = height[k] - p.valleyM * erodibility[k] * (mi2 / 1000) ** p.valleyPower * smoothstep(p.valleyHeadMi2, 4 * p.valleyHeadMi2, mi2);
+    }
+    for (let k = 0; k < cells; k++) {
+      const mi2 = area[k] * cellMi2, reach = mi2 >= p.valleyFloorMi2[1] ? 2 : mi2 >= p.valleyFloorMi2[0] ? 1 : 0;
+      if (!reach) continue;
+      const ci = k % n, cj = (k / n) | 0;
+      for (let dj = -reach; dj <= reach; dj++) for (let di = -reach; di <= reach; di++) {
+        const ni = ci + di, nj = cj + dj;
+        if (ni < 1 || nj < 1 || ni >= n - 1 || nj >= n - 1 || di * di + dj * dj > reach * reach + 1) continue;
+        const m = nj * n + ni;
+        if (bed[k] + 0.3 < bed[m] && area[m] < area[k]) bed[m] = bed[k] + 0.3;
+      }
+    }
+    const side = new Float64Array(cells);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) side[j * n + i] = p.valleySide * (1 + 0.6 * clamp(fbm(valleySide, (i + 0.5) * p.cellMiles / 9, (j + 0.5) * p.cellMiles / 9, 2) / RELIEF_SPAN, -1, 1)) * cellM;
+    const relax = (k, m, far) => { const v = bed[m] + side[k] * far; if (v < bed[k]) bed[k] = v; };
+    for (let pass = 0; pass < 2; pass++) {
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        const k = j * n + i;
+        if (i > 0) relax(k, k - 1, 1);
+        if (j > 0) { relax(k, k - n, 1); if (i > 0) relax(k, k - n - 1, Math.SQRT2); if (i < n - 1) relax(k, k - n + 1, Math.SQRT2); }
+      }
+      for (let j = n - 1; j >= 0; j--) for (let i = n - 1; i >= 0; i--) {
+        const k = j * n + i;
+        if (i < n - 1) relax(k, k + 1, 1);
+        if (j < n - 1) { relax(k, k + n, 1); if (i < n - 1) relax(k, k + n + 1, Math.SQRT2); if (i > 0) relax(k, k + n - 1, Math.SQRT2); }
+      }
+    }
+    for (let k = 0; k < cells; k++) if (bed[k] < height[k]) height[k] = bed[k];
+    for (let step = 0; step < p.valleySmooth; step++) {
+      smoothed.set(height);
+      for (let j = 1; j < n - 1; j++) for (let i = 1; i < n - 1; i++) {
+        const k = j * n + i;
+        if (area[k] * cellMi2 > p.valleyHeadMi2) continue;   // the beds keep their depth
+        smoothed[k] = height[k] + 2 * p.diffusion * (height[k - 1] + height[k + 1] + height[k - n] + height[k + n] - 4 * height[k]);
+      }
+      height.set(smoothed);
+    }
+    route();
+    accumulate();
+  }
 
   const { lake, lakes } = placeLakes(n, p, height, area, receiver, cellMi2, noise('lake-site'));
   const rivers = nameRivers(splitAtLakes(traceRivers(n, p, cellMi2, area, receiver), lake, n, p.cellMiles));

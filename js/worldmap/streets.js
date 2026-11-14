@@ -38,7 +38,7 @@
 // at grade, at ramp ends, and where arterials and collectors cross in town; stop signs on the
 // lesser approaches elsewhere on paved roads; none where only gravel and dirt roads meet.
 import { makeRandom, hashText } from './noise.js';
-import { interchangeRamps } from './interchanges.js';
+import { interchangeRamps, tee } from './interchanges.js';
 import { pointInPoly, distToSeg } from './airfields.js';
 import { AT_1000, STUDS } from './scale.js';
 
@@ -47,8 +47,15 @@ import { AT_1000, STUDS } from './scale.js';
 // STUDS); the map's own distances (the mile squares, the half-mile collectors, highway routes)
 // stay in map miles.
 export const STREET_DEFAULTS = Object.freeze({
-  snapMi: AT_1000(0.01),
+  snapMi: STUDS(25),        // a road's end joins a node, or a road, this near (two junctions nearer than this are one)
   routeSnapMi: 0.05,        // a highway's end joins the highway it meets within this
+  junctionMi: STUDS(40),    // a road crossing another this near one of its junctions (and within their two half-widths) goes through that junction
+  kneeMi: STUDS(60),        // a road taken to a junction off its line leaves the line this far before it (or four times as far as it is off)
+  weldMi: STUDS(4),         // nodes left this near each other are made one
+  mergeMi: STUDS(120),      // a ramp merges onto its road over this length
+  alignMi: STUDS(60),       // street lines meeting a road from either side this near each other are put on one line
+  islandLinkMi: 0.3,        // a cut-off piece of lesser roads is joined to a road it may meet within this
+  islandDropMi: 1.5,        // or, with none, left out if it is no more than this much road
   // Block sizes (miles, at character scale): the shorter side and the longer side, by built-up land.
   blocks: { urban: { short: [AT_1000(0.12), AT_1000(0.18)], long: [AT_1000(0.18), AT_1000(0.3)] }, suburban: { short: [AT_1000(0.13), AT_1000(0.22)], long: [AT_1000(0.28), AT_1000(0.5)] } },
   splitRatio: [0.35, 0.65],
@@ -83,6 +90,7 @@ const RANK = { interstate: 0, expressway: 1, highway: 1, ramp: 1, arterial: 2, c
 const HIGHWAYS = new Set(['interstate', 'expressway', 'highway', 'ramp']);
 const MAP_ROADS = new Set(['interstate', 'expressway', 'highway']);
 const PAVED_MINOR = new Set(['arterial', 'county', 'collector', 'local', 'frontage']);
+const RAMP_MEETS = new Set(['highway', 'expressway', 'arterial', 'county']);   // what a ramp's end may join (besides the interstates)
 export const CONTROLS = Object.freeze(['none', 'stop', 'signal']);
 export const ENDS = Object.freeze(['none', 'culDeSac', 'deadEnd', 'barrier']);
 
@@ -97,13 +105,16 @@ function makeGraph() {
   };
   const push = (map, k, v) => { let list = map.get(k); if (!list) map.set(k, list = []); list.push(v); };
   const addNode = (x, y) => { const n = { id: nodes.length, x, y, edges: [], end: 0 }; nodes.push(n); push(nodeCells, key(Math.floor(x / CELL), Math.floor(y / CELL)), n); return n; };
-  const nodeNear = (x, y, r) => {
+  const nodeNear = (x, y, r, ok = null) => {
     let best = null, bd = r;
-    for (const k of cells(x - r, y - r, x + r, y + r)) for (const n of nodeCells.get(k) ?? []) { const d = Math.hypot(n.x - x, n.y - y); if (d <= bd) { best = n; bd = d; } }
+    for (const k of cells(x - r, y - r, x + r, y + r)) for (const n of nodeCells.get(k) ?? []) { const d = Math.hypot(n.x - x, n.y - y); if (d <= bd && (!ok || ok(n))) { best = n; bd = d; } }
     return best;
   };
   const addEdge = (a, b, kind, extra = {}) => {
     if (a === b) return null;
+    // One edge between two nodes: a road laid over another is the higher of the two.
+    const twin = a.edges.find(o => o.a === b || o.b === b);
+    if (twin) { if (RANK[kind] < RANK[twin.kind]) Object.assign(twin, extra, { kind }); return twin; }
     const e = { id: edges.length, a, b, kind, alive: true, ...extra };
     edges.push(e); a.edges.push(e); b.edges.push(e);
     for (const k of cells(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y))) push(edgeCells, k, e);
@@ -127,19 +138,28 @@ function makeGraph() {
   };
   // The node for a point: one within snap, else a point on an edge within snap (split there),
   // else a new node.
-  const attach = (x, y, snap, onEdges = () => true) => {
-    const n = nodeNear(x, y, snap);
+  const attach = (x, y, snap, onEdges = () => true, okNode = null) => {
+    const n = nodeNear(x, y, snap, okNode);
     if (n) return n;
     for (const e of edgesNear(x - snap, y - snap, x + snap, y + snap)) {
       if (!onEdges(e) || distToSeg(x, y, seg(e)) >= snap) continue;
       const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, t = ((x - e.a.x) * dx + (y - e.a.y) * dy) / (dx * dx + dy * dy);
-      if (t <= 0) return e.a;
-      if (t >= 1) return e.b;
+      if (t <= 0 || t >= 1) { const q = t <= 0 ? e.a : e.b; if (!okNode || okNode(q)) return q; continue; }
       return split(e, e.a.x + dx * t, e.a.y + dy * t);
     }
     return addNode(x, y);
   };
-  return { nodes, edges, addNode, addEdge, removeEdge, edgesNear, nodeNear, attach, split, seg };
+  // Node b becomes node a: its roads now come to a.
+  const merge = (a, b) => {
+    for (const e of [...b.edges]) {
+      const other = e.a === b ? e.b : e.a, { a: ea, b: eb, kind, alive, id, ...extra } = e;
+      void ea; void eb; void alive; void id;
+      removeEdge(e);
+      if (other !== a) addEdge(a, other, kind, extra);
+    }
+    a.end = a.end || b.end;
+  };
+  return { nodes, edges, addNode, addEdge, removeEdge, edgesNear, nodeNear, attach, split, merge, seg };
 }
 
 export function planStreets(map, options = {}) {
@@ -189,6 +209,17 @@ export function planStreets(map, options = {}) {
     return 'node';
   };
 
+  // Whether a road of kind k may come to a node: it must be able to meet every road there at
+  // grade. Interstates take only ramps; a ramp's end on a road (not a point along a ramp) takes
+  // highways, arterials and county roads.
+  const meets = (k, node) => node.edges.every(o => {
+    if (o.kind === k) return true;
+    if (o.kind === 'interstate' || k === 'interstate') return o.kind === 'ramp' || k === 'ramp';
+    if (k === 'ramp') return RAMP_MEETS.has(o.kind);
+    if (o.kind === 'ramp') return RAMP_MEETS.has(k) && node.edges.some(q => q.kind !== 'ramp' && q.kind !== 'interstate');
+    return rule(k, o, node.x, node.y, 1) === 'node';
+  });
+
   // A road along a higher-ranked one on (nearly) the same line is left out there.
   // A highway along another (a concurrency: two routes on one road) is left out too. Only a
   // point alongside the other road counts, not one beyond its end (where a road carries on
@@ -214,7 +245,7 @@ export function planStreets(map, options = {}) {
       const along = ((x - e.a.x) * ex + (y - e.a.y) * ey) / el, across = Math.abs((x - e.a.x) * ey - (y - e.a.y) * ex) / el;
       // Alongside where their widths touch (a road leaving another's line on a curve drops
       // out until it is clear of it).
-      if (along > STUDS(2) && along < el - STUDS(2) && across < reach) return true;
+      if (along >= 0 && along <= el && across < reach) return true;
     }
     return false;
   };
@@ -274,45 +305,108 @@ export function planStreets(map, options = {}) {
       if (c1 > from) { from = c1; endFrom = e1; }
     }
     if (from < len) runs.push([from, len, endFrom, 0]);
-    // Whether a new edge p-q would cross a road away from its ends (a snap gone too far).
-    const crosses = (p0, q) => {
+    // Whether a new edge p-q (of this road's kind, or another) would cross a road at grade away
+    // from its ends (a snap gone too far).
+    const crosses = (p0, q, kind = k) => {
       for (const e of g.edgesNear(Math.min(p0.x, q.x), Math.min(p0.y, q.y), Math.max(p0.x, q.x), Math.max(p0.y, q.y))) {
         if (e.a === p0 || e.b === p0 || e.a === q || e.b === q) continue;
         const rx = q.x - p0.x, ry = q.y - p0.y, sx = e.b.x - e.a.x, sy = e.b.y - e.a.y, den = rx * sy - ry * sx;
         if (Math.abs(den) < 1e-12) continue;
         const t = ((e.a.x - p0.x) * sy - (e.a.y - p0.y) * sx) / den, u = ((e.a.x - p0.x) * ry - (e.a.y - p0.y) * rx) / den;
-        if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6) return true;
+        if (t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6 && rule(kind, e, p0.x + rx * t, p0.y + ry * t, 1) !== 'over') return true;
       }
       return false;
+    };
+    // A highway's run joins the highway it meets or leaves (a route's end, or where it leaves
+    // another it shared a road with) within routeSnapMi; other roads join what they may meet
+    // within snapMi.
+    const route = MAP_ROADS.has(k), snap = route ? p.routeSnapMi : p.snapMi;
+    const onEdges = route ? e => MAP_ROADS.has(e.kind) && (e.kind === 'interstate') === (k === 'interstate') : e => rule(k, e, e.a.x, e.a.y, 1) === 'node';
+    const okNode = node => meets(k, node);
+    // The piece of a crossed edge under its crossing (the edge may have been split since).
+    const under = h => (h.e.alive ? h.e : [...g.edgesNear(h.x - 0.001, h.y - 0.001, h.x + 0.001, h.y + 0.001)].find(o => o.kind === h.e.kind && distToSeg(h.x, h.y, g.seg(o)) < 1e-6));
+    // How near a junction of the crossed road a crossing is taken through that junction.
+    const reachOf = e => Math.min(HALF_MI[e.kind] + HALF_MI[k], p.junctionMi);
+    // The node for a crossing: an end of the edge crossed, if that is near enough to be the same
+    // junction (and takes this road, and the way there crosses nothing), or a node already right
+    // at the crossing (the edge is split at it, so the two roads share it), or a new node.
+    const hitNode = (h, cur) => {
+      const e = under(h);
+      if (!e) return null;
+      const reach = reachOf(e), d = q => Math.hypot(q.x - h.x, q.y - h.y);
+      const near = [e.a, e.b].filter(q => d(q) < reach).sort((q, w) => d(q) - d(w)).find(q => q === cur || (meets(k, q) && !(cur && (crosses(cur, q) || (offLine(q) && !clearWay(cur, q))))));
+      // (Where that end is the dead end of a stub from a junction as near, the junction: the stub goes.)
+      const far = near && near !== cur && near.edges.length === 1 ? (e.a === near ? e.b : e.a) : null;
+      if (far && far.edges.length > 1 && d(far) < reach && (far === cur || (meets(k, far) && !(cur && (crosses(cur, far) || (offLine(far) && !clearWay(cur, far))))))) { g.removeEdge(e); return far; }
+      if (near) return near;
+      const there = g.nodeNear(h.x, h.y, 0.002, okNode);
+      return there ? g.split(e, there.x, there.y, there) : g.split(e, h.x, h.y);
+    };
+    // The road crossed is taken through a node of this (higher) road instead: its end, just
+    // beyond the crossing.
+    const bendTo = (h, node) => {
+      const e = under(h);
+      if (!e || e.a === node || e.b === node) return;
+      if (meets(e.kind, node) && !crosses(e.a, node, e.kind) && !crosses(node, e.b, e.kind)) { g.split(e, node.x, node.y, node); return; }
+      link(node, hitNode(h, node));
+    };
+    const higher = h => RANK[k] < RANK[h.e.kind];
+    // Whether the way from p0 to a node off this road's line keeps out of what the road keeps
+    // out of (lots, and what blocked() holds).
+    const clearWay = (p0, q) => {
+      const l = Math.hypot(q.x - p0.x, q.y - p0.y), steps = Math.ceil(l / p.sampleMi);
+      for (let i = 1; i < steps; i++) {
+        const x = p0.x + (q.x - p0.x) * i / steps, y = p0.y + (q.y - p0.y) * i / steps;
+        if (blocked ? blocked(x, y, (q.x - p0.x) / l, (q.y - p0.y) / l) : inObstacle(x, y, HALF_MI[k])) return false;
+      }
+      return true;
+    };
+    const offLine = q => Math.abs((q.x - ax) * uy - (q.y - ay) * ux) > 0.002;
+    // The road from one node to the next. A node off the road's line (a junction it was taken
+    // to) is reached by a bend near it, where there is room, so the rest keeps to the line
+    // (where the roads and lots planned along it expect it).
+    const link = (from, to) => {
+      if (!from || !to || from === to) return;
+      const t0 = (from.x - ax) * ux + (from.y - ay) * uy, t1 = (to.x - ax) * ux + (to.y - ay) * uy, dir = Math.sign(t1 - t0) || 1;
+      const knee = q => (offLine(q) ? Math.max(4 * Math.abs((q.x - ax) * uy - (q.y - ay) * ux), p.kneeMi) : 0), k0 = knee(from), k1 = knee(to);
+      if (k0 + k1 > 0 && Math.abs(t1 - t0) >= k0 + k1 + p.kneeMi) {
+        for (const [t, near, first] of [[t0 + dir * k0, from, true], [t1 - dir * k1, to, false]]) {
+          if (!(first ? k0 : k1)) continue;
+          const bend = g.addNode(ax + ux * t, ay + uy * t);
+          g.addEdge(near, bend, k, extra);
+          if (first) from = bend; else to = bend;
+        }
+      }
+      g.addEdge(from, to, k, extra);
     };
     for (const [r0, r1, end0, end1] of runs) {
       if (r1 - r0 < minRun) { stats.dropped++; continue; }
       const at = t => [ax + ux * t, ay + uy * t];
       const inRun = hits.filter(h => h.t > r0 + 1e-6 && h.t < r1 - 1e-6).sort((q, w) => q.t - w.t);
-      // A highway's run joins the highway it meets or leaves (a route's end, or where it leaves
-      // another it shared a road with) within routeSnapMi.
-      const snap = MAP_ROADS.has(k) ? p.routeSnapMi : p.snapMi, onRoutes = MAP_ROADS.has(k) ? e => MAP_ROADS.has(e.kind) : undefined;
-      let cur = g.attach(...at(r0), snap, onRoutes);
-      const first = inRun.length ? { x: inRun[0].x, y: inRun[0].y } : { x: at(r1)[0], y: at(r1)[1] };
-      if (crosses(cur, first)) cur = g.addNode(...at(r0));
-      if (end0 && cur.edges.length === 0) cur.end = end0;
-      for (const h of inRun) {
-        // The edge crossed may have been split since: find the piece under the crossing.
-        let e = h.e;
-        if (!e.alive) e = [...g.edgesNear(h.x - 0.001, h.y - 0.001, h.x + 0.001, h.y + 0.001)].find(o => o.kind === h.e.kind && distToSeg(h.x, h.y, g.seg(o)) < 1e-6);
-        if (!e) continue;
-        // An end of the edge there, or a node already at the crossing (the edge is split at it,
-        // so the two roads share it), or a new node.
-        // (Only a node right at the crossing: snapping further would bend the road across another.)
-        const near = [e.a, e.b].find(q => Math.hypot(q.x - h.x, q.y - h.y) < 0.002);
-        const there = near ? null : g.nodeNear(h.x, h.y, 0.002);
-        const node = near ?? (there ? g.split(e, there.x, there.y, there) : g.split(e, h.x, h.y));
-        if (node !== cur) { g.addEdge(cur, node, k, extra); cur = node; }
-      }
-      let last = g.attach(...at(r1), snap, onRoutes);
-      if (last !== cur && crosses(cur, last)) last = g.addNode(...at(r1));
+      // Crossings right by an end of the run are one junction with it: at the end, where this
+      // is the higher road and the end is the road's own (the lower road is taken through it);
+      // else at the crossing (the run ends there).
+      let i0 = 0, i1 = inRun.length;
+      while (i0 < i1 && inRun[i0].t - r0 < reachOf(inRun[i0].e)) i0++;
+      while (i1 > i0 && r1 - inRun[i1 - 1].t < reachOf(inRun[i1 - 1].e)) i1--;
+      const atStart = inRun.slice(0, i0), atEnd = inRun.slice(i1);
+      const ownStart = !atStart.length || (r0 < 1e-9 && atStart.every(higher)), ownEnd = !atEnd.length || (r1 > len - 1e-9 && atEnd.every(higher));
+      const step = (h, cur) => { const node = hitNode(h, cur); if (node && node !== cur) { link(cur, node); return node; } return cur; };
+      let cur = null;
+      if (ownStart) {
+        cur = g.attach(...at(r0), snap, onEdges, okNode);
+        const first = inRun.length > i0 ? { x: inRun[i0].x, y: inRun[i0].y } : { x: at(r1)[0], y: at(r1)[1] };
+        if (crosses(cur, first) || (offLine(cur) && !clearWay(first, cur))) cur = g.addNode(...at(r0));
+        if (end0 && cur.edges.length === 0) cur.end = end0;
+        for (const h of atStart) bendTo(h, cur);
+      } else for (const h of atStart) cur = step(h, cur);
+      for (const h of inRun.slice(i0, i1)) cur = step(h, cur);
+      if (!ownEnd) { for (const h of atEnd) cur = step(h, cur); continue; }
+      let last = g.attach(...at(r1), snap, onEdges, okNode);
+      if (cur && last !== cur && (crosses(cur, last) || (offLine(last) && !clearWay(cur, last)))) last = g.addNode(...at(r1));
       if (end1 && last.edges.length === 0) last.end = end1;
-      if (last !== cur) g.addEdge(cur, last, k, extra);
+      for (const h of atEnd) bendTo(h, last);
+      link(cur, last);
     }
   };
   const insertLine = (points, k, extra) => { for (let i = 1; i < points.length; i++) insert(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1], k, extra); };
@@ -338,11 +432,129 @@ export function planStreets(map, options = {}) {
     return false;
   };
 
+  // The lots and areas roads keep out of (streets by a pad more).
+  const obstacles = [], OCELL = 0.25, obstacleCells = new Map();
+  const box = poly => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return [x0, y0, x1, y1]; };
+  const addObstacle = (poly, pad) => {
+    const b = box(poly), o = { poly, pad, box: b };
+    obstacles.push(o);
+    const far = Math.max(pad, HALF_MI.interstate);
+    for (let X = Math.floor((b[0] - far) / OCELL); X <= Math.floor((b[2] + far) / OCELL); X++) for (let Y = Math.floor((b[1] - far) / OCELL); Y <= Math.floor((b[3] + far) / OCELL); Y++) {
+      const k = X * 4096 + Y; if (!obstacleCells.has(k)) obstacleCells.set(k, []); obstacleCells.get(k).push(o);
+    }
+  };
+  // In a lot or area, or within its pad (the pad streets keep; or a given one: a road's half-width).
+  const inObstacle = (x, y, own = null) => {
+    for (const o of obstacleCells.get(Math.floor(x / OCELL) * 4096 + Math.floor(y / OCELL)) ?? []) {
+      const b = o.box, pad = own ?? o.pad;
+      if (x < b[0] - pad || x > b[2] + pad || y < b[1] - pad || y > b[3] + pad) continue;
+      if (pointInPoly(x, y, o.poly)) return true;
+      for (let i = 0; i < o.poly.length; i++) {
+        const [px, py] = o.poly[i], [qx, qy] = o.poly[(i + 1) % o.poly.length];
+        if (distToSeg(x, y, { ax: px, ay: py, bx: qx, by: qy }) < pad) return true;
+      }
+    }
+    return false;
+  };
+  for (const z of facilities.landUse.areas) {
+    const b = box(z.poly), small = Math.min(b[2] - b[0], b[3] - b[1]);
+    if (z.kind === 'mall' || z.kind === 'travel' || z.tier === 'community' || z.kind === 'industrial' || (z.kind === 'park' && small > AT_1000(0.15))) addObstacle(z.poly, p.areaPadMi);
+  }
+  for (const c of facilities.campuses) addObstacle(c.area, p.areaPadMi);
+  for (const s of facilities.schools) addObstacle(s.lot, p.lotPadMi);
+  for (const s of facilities.gasStations) addObstacle(s.lot, p.lotPadMi);
+  for (const a of airfields) {
+    addObstacle(a.fence, p.fencePadMi);
+    for (const poly of [a.nws?.building, a.nws?.parking, a.radar?.compound]) if (poly) addObstacle(poly, p.lotPadMi);
+  }
+
   // 1. The map's roads and the interchange ramps.
   for (const kind of ['interstate', 'expressway', 'highway']) roads.forEach((road, index) => { if (road.kind === kind) insertLine(road.points, kind, { road: index }); });
-  for (const c of crossings) for (const ramp of interchangeRamps(c)) insertLine(ramp, 'ramp');
+  // The ramps: each one chain of its own, passing over or under what it crosses, joined at each
+  // end to its road. An end on a road's centre line (a diamond's terminal on the crossing road,
+  // a T's split on the road ending there) is a node on that road; an end on a road's shoulder
+  // (merging) is carried on, as a taper mergeMi long, to a node on the centre line further from
+  // the crossing. At a T the road ending there stops at the split: its ramps carry it on.
+  const nearestOf = (x, y, kinds, reach) => {
+    let best = null;
+    for (const e of g.edgesNear(x - reach, y - reach, x + reach, y + reach)) {
+      if (!kinds.has(e.kind)) continue;
+      const d = distToSeg(x, y, g.seg(e));
+      if (d < reach && (!best || d < best.d)) best = { e, d };
+    }
+    if (!best) return null;
+    const { e } = best, dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, l = Math.hypot(dx, dy), t = Math.max(0, Math.min(1, ((x - e.a.x) * dx + (y - e.a.y) * dy) / (l * l)));
+    return { e, x: e.a.x + dx * t, y: e.a.y + dy * t, ux: dx / l, uy: dy / l };
+  };
+  const RAMP_REACH = STUDS(110), INTERSTATE = new Set(['interstate']), CROSS_ROADS = new Set(['expressway', 'highway']);
+  // The node where a ramp's end joins a road of the given kinds (merging: by a taper from the end).
+  const rampEnd = (x, y, kinds, merging, c) => {
+    let on = nearestOf(x, y, kinds, RAMP_REACH);
+    if (on && merging) {
+      const away = Math.sign((x - c.x) * on.ux + (y - c.y) * on.uy) || 1;
+      on = nearestOf(on.x + on.ux * away * p.mergeMi, on.y + on.uy * away * p.mergeMi, kinds, RAMP_REACH) ?? on;
+    }
+    if (!on) { stats.rampsLoose = (stats.rampsLoose ?? 0) + 1; return null; }
+    const own = q => q.edges.every(o => kinds.has(o.kind) || o.kind === 'ramp');
+    const end = [on.e.a, on.e.b].find(q => Math.hypot(q.x - on.x, q.y - on.y) < STUDS(20) && own(q));
+    return end ?? g.split(on.e, on.x, on.y);
+  };
+  for (const c of crossings) {
+    if (c.type !== 'interchange') continue;
+    const T = tee(c), crossKinds = c.kind === 'interstate' ? INTERSTATE : CROSS_ROADS;
+    // [kinds, merging] for each ramp's first and last point (interchanges.js).
+    const ends = T ? [[c.vEnd ? crossKinds : INTERSTATE, false], [c.vEnd ? INTERSTATE : crossKinds, true]]
+      : c.kind === 'interstate' ? [[INTERSTATE, true], [INTERSTATE, true]] : [[INTERSTATE, true], [crossKinds, false]];
+    let stem = null;
+    for (const ramp of interchangeRamps(c)) {
+      const first = rampEnd(...ramp[0], ...ends[0], c), last = rampEnd(...ramp.at(-1), ...ends[1], c);
+      if (T) stem = first;
+      // Merging ends keep their point on the shoulder, before the taper.
+      const chain = [first, ...ramp.slice(ends[0][1] ? 0 : 1, ends[1][1] ? ramp.length : -1).map(([x, y]) => g.addNode(x, y)), last].filter(Boolean);
+      for (let i = 1; i < chain.length; i++) g.addEdge(chain[i - 1], chain[i], 'ramp');
+    }
+    // The road ending at a T, beyond its split.
+    if (stem) {
+      const reach = Math.hypot(stem.x - c.x, stem.y - c.y) + STUDS(5), road = stem.edges.find(e => e.kind !== 'ramp')?.road;
+      const queue = [stem];
+      while (queue.length) {
+        const at = queue.pop();
+        for (const e of [...at.edges]) {
+          const o = e.a === at ? e.b : e.a;
+          if (e.kind === 'ramp' || e.road !== road || Math.hypot(o.x - c.x, o.y - c.y) > reach) continue;
+          g.removeEdge(e); queue.push(o);
+        }
+      }
+    }
+  }
 
-  // Frontage roads beside the interstates through towns, both sides.
+  // 2. Section roads, paved first, each mile of each line as the section grid has it (the rules
+  // here cut them where they meet highways).
+  // Where a highway turns at a section corner on a curve (curves.js), the roads that came to the
+  // corner meet it at the middle of the curve instead: one junction, on the highway.
+  const { size: secSize, roads: secRoads } = map.sections;
+  const curveAt = new Map();
+  for (const road of roads) if (road.kind !== 'interstate') for (const [x, y, mx, my] of road.corners ?? []) if (Number.isInteger(x) && Number.isInteger(y)) curveAt.set(y * secSize + x, [mx, my]);
+  // (Where bending the mile would take it into a lot beside its line, it runs straight to the
+  // corner and a short link joins the corner to the curve.)
+  const corner = (I, J) => curveAt.get(J * secSize + I) ?? [I, J];
+  const lotOn = (x0, y0, x1, y1, half) => { const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / p.sampleMi); for (let i = 0; i <= steps; i++) if (inObstacle(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps, half)) return true; return false; };
+  const mile = (I0, J0, I1, J1, kind) => {
+    const a = corner(I0, J0), b = corner(I1, J1);
+    if ((a[0] === I0 && a[1] === J0 && b[0] === I1 && b[1] === J1) || !lotOn(...a, ...b, HALF_MI[kind]) || lotOn(I0, J0, I1, J1, HALF_MI[kind])) { insert(...a, ...b, kind); return; }
+    insert(I0, J0, I1, J1, kind);
+    for (const [I, J, q] of [[I0, J0, a], [I1, J1, b]]) if (q[0] !== I || q[1] !== J) insert(I, J, ...q, kind);
+  };
+  for (const [cls, kindOf] of [[3, (x, y) => (town(x, y) ? 'arterial' : 'county')], [2, () => 'gravel'], [1, () => 'dirt']]) {
+    for (let J = 0; J < secSize; J++) for (let I = 0; I < secSize; I++) {
+      const v = secRoads[J * secSize + I];
+      if ((v & 3) === cls && I + 1 < secSize) mile(I, J, I + 1, J, kindOf(I + 0.5, J));
+      if (((v >> 2) & 3) === cls && J + 1 < secSize) mile(I, J, I, J + 1, kindOf(I, J + 0.5));
+    }
+  }
+
+  // Frontage roads beside the interstates through towns, both sides (after the section roads:
+  // where an arterial runs beside the interstate, it is the frontage road there).
   const wideRiverAt = (x, y) => (riverCells.get(Math.floor(x / RCELL) * 4096 + Math.floor(y / RCELL)) ?? []).some(sg => distToSeg(x, y, sg) < sg.half + p.bankMi + HALF_MI.frontage);
   const frontageBlocked = (x, y) => !frontAt(x, y) || coverAt(x, y) === WATER || wideRiverAt(x, y);
   for (const road of roads) {
@@ -362,17 +574,6 @@ export function planStreets(map, options = {}) {
     }
   }
 
-  // 2. Section roads, paved first, each mile of each line as the section grid has it (the rules
-  // here cut them where they meet highways).
-  const { size: secSize, roads: secRoads } = map.sections;
-  for (const [cls, kindOf] of [[3, (x, y) => (town(x, y) ? 'arterial' : 'county')], [2, () => 'gravel'], [1, () => 'dirt']]) {
-    for (let J = 0; J < secSize; J++) for (let I = 0; I < secSize; I++) {
-      const v = secRoads[J * secSize + I];
-      if ((v & 3) === cls && I + 1 < secSize) insert(I, J, I + 1, J, kindOf(I + 0.5, J));
-      if (((v >> 2) & 3) === cls && J + 1 < secSize) insert(I, J, I, J + 1, kindOf(I, J + 0.5));
-    }
-  }
-
   // 3. Local roads.
   for (const a of airfields) {
     for (const road of a.roads) insertLine(road.points, 'local');
@@ -384,7 +585,7 @@ export function planStreets(map, options = {}) {
   for (const farm of facilities.energy.windFarms) for (const road of farm.roads) insertLine(road, 'gravel');
 
   // 4. Collectors.
-  // Collectors keep their width outside airfield fences.
+  // Collectors keep their width outside airfield fences, and out of the lots and areas.
   const inAirfield = (x, y) => airfields.some(a => pointInPoly(x, y, a.fence) || a.fence.some(([fx, fy], i) => { const [gx, gy] = a.fence[(i + 1) % a.fence.length]; return distToSeg(x, y, { ax: fx, ay: fy, bx: gx, by: gy }) < HALF_MI.collector + STUDS(4); }));
   // Collectors, like streets, cross rivers only nearly square, and never run along one.
   const alongRiver = (x, y, ux, uy, half) => (riverCells.get(Math.floor(x / RCELL) * 4096 + Math.floor(y / RCELL)) ?? []).some(sg => {
@@ -399,42 +600,13 @@ export function planStreets(map, options = {}) {
     const ex = e.b.x - e.a.x, ey = e.b.y - e.a.y, sin = Math.abs(ux * ey - uy * ex) / Math.hypot(ex, ey);
     return sin < 0.9 && distToSeg(x, y, g.seg(e)) < FRONT_REACH;
   });
-  for (const nb of facilities.landUse.neighborhoods) for (const c of nb.collectors) insert(c[0][0], c[0][1], c[1][0], c[1][1], 'collector', {}, (x, y, ux, uy) => inAirfield(x, y) || alongRiver(x, y, ux, uy, HALF_MI.collector) || slantFrontage(x, y, ux, uy), AT_1000(0.03));
+  // Nor do they pass over or under a ramp: they stop short of an interchange.
+  const RAMP_CLEAR = HALF_MI.ramp + HALF_MI.collector + STUDS(4);
+  const byRamp = (x, y) => [...g.edgesNear(x - RAMP_CLEAR, y - RAMP_CLEAR, x + RAMP_CLEAR, y + RAMP_CLEAR)].some(e => e.kind === 'ramp' && distToSeg(x, y, g.seg(e)) < RAMP_CLEAR);
+  for (const nb of facilities.landUse.neighborhoods) for (const c of nb.collectors) insert(c[0][0], c[0][1], c[1][0], c[1][1], 'collector', {}, (x, y, ux, uy) => inAirfield(x, y) || inObstacle(x, y, HALF_MI.collector) || alongRiver(x, y, ux, uy, HALF_MI.collector) || slantFrontage(x, y, ux, uy) || byRamp(x, y), AT_1000(0.03));
 
-  // 5. Town streets. What a street keeps clear of: lots, superblocks, airfields, wide rivers,
-  // water, the highways (far enough for a cul-de-sac), and land that is not built up.
-  const obstacles = [], OCELL = 0.25, obstacleCells = new Map();
-  const box = poly => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return [x0, y0, x1, y1]; };
-  const addObstacle = (poly, pad) => {
-    const b = box(poly), o = { poly, pad, box: b };
-    obstacles.push(o);
-    for (let X = Math.floor((b[0] - pad) / OCELL); X <= Math.floor((b[2] + pad) / OCELL); X++) for (let Y = Math.floor((b[1] - pad) / OCELL); Y <= Math.floor((b[3] + pad) / OCELL); Y++) {
-      const k = X * 4096 + Y; if (!obstacleCells.has(k)) obstacleCells.set(k, []); obstacleCells.get(k).push(o);
-    }
-  };
-  const inObstacle = (x, y) => {
-    for (const o of obstacleCells.get(Math.floor(x / OCELL) * 4096 + Math.floor(y / OCELL)) ?? []) {
-      const b = o.box;
-      if (x < b[0] - o.pad || x > b[2] + o.pad || y < b[1] - o.pad || y > b[3] + o.pad) continue;
-      if (pointInPoly(x, y, o.poly)) return true;
-      for (let i = 0; i < o.poly.length; i++) {
-        const [px, py] = o.poly[i], [qx, qy] = o.poly[(i + 1) % o.poly.length];
-        if (distToSeg(x, y, { ax: px, ay: py, bx: qx, by: qy }) < o.pad) return true;
-      }
-    }
-    return false;
-  };
-  for (const z of facilities.landUse.areas) {
-    const b = box(z.poly), small = Math.min(b[2] - b[0], b[3] - b[1]);
-    if (z.kind === 'mall' || z.kind === 'travel' || z.tier === 'community' || z.kind === 'industrial' || (z.kind === 'park' && small > AT_1000(0.15))) addObstacle(z.poly, p.areaPadMi);
-  }
-  for (const c of facilities.campuses) addObstacle(c.area, p.areaPadMi);
-  for (const s of facilities.schools) addObstacle(s.lot, p.lotPadMi);
-  for (const s of facilities.gasStations) addObstacle(s.lot, p.lotPadMi);
-  for (const a of airfields) {
-    addObstacle(a.fence, p.fencePadMi);
-    for (const poly of [a.nws?.building, a.nws?.parking, a.radar?.compound]) if (poly) addObstacle(poly, p.lotPadMi);
-  }
+  // 5. Town streets. What a street keeps clear of: lots, superblocks, airfields (above), wide
+  // rivers, water, the highways (far enough for a cul-de-sac), and land that is not built up.
   const reach = HALF_MI.interstate + p.bulbMi + p.clearMi;
   // Near a highway (far enough for a cul-de-sac). In town, a two-lane highway only keeps away
   // streets running alongside it; those crossing it are left to the crossing rules.
@@ -541,28 +713,61 @@ export function planStreets(map, options = {}) {
     }
   }
   lines.sort((a, b) => a[4] - b[4]);
+  // Street lines that would meet a road (or another street) from either side within alignMi of
+  // each other are put on one line, so they meet it at one junction, not two a few studs apart:
+  // each line in turn takes the place of an earlier line beside it whose span touches or
+  // overlaps its own (unless that would put it on a lot or along a river), and the lines that
+  // ended on it follow it.
+  {
+    const cellsOf = new Map(), cellKey = l => Math.floor((l[0] + l[2]) / 2) * 4096 + Math.floor((l[1] + l[3]) / 2), EPS = 1e-6;
+    for (const l of lines) { const k = cellKey(l); if (!cellsOf.has(k)) cellsOf.set(k, []); cellsOf.get(k).push(l); }
+    const done = new Set();
+    for (const l of lines) {
+      const v = l[0] === l[2], c = v ? 0 : 1, s0 = v ? 1 : 0, at = l[c], X = Math.floor((l[0] + l[2]) / 2), Y = Math.floor((l[1] + l[3]) / 2);
+      let best = null;
+      for (let cx = X - 1; cx <= X + 1; cx++) for (let cy = Y - 1; cy <= Y + 1; cy++) for (const m of cellsOf.get(cx * 4096 + cy) ?? []) {
+        if (!done.has(m) || (m[0] === m[2]) !== v) continue;
+        const d = Math.abs(m[c] - at);
+        if (d < EPS || d >= p.alignMi || m[s0] > l[s0 + 2] + EPS || l[s0] > m[s0 + 2] + EPS) continue;
+        if (!best || d < Math.abs(best[c] - at)) best = m;
+      }
+      done.add(l);
+      if (!best) continue;
+      // Not onto a lot or beside a river the line was clear of.
+      const inWay = pos => { let hit = 0; for (let t = l[s0]; t <= l[s0 + 2]; t += 0.02) if (inObstacle(v ? pos : t, v ? t : pos) || nearRiver(v ? pos : t, v ? t : pos, 1, 0) || nearRiver(v ? pos : t, v ? t : pos, 0, 1)) hit++; return hit; };
+      if (inWay(best[c]) > inWay(at)) continue;
+      for (const m of cellsOf.get(cellKey(l)) ?? []) {
+        if ((m[0] === m[2]) === v || m[s0] < l[s0] - EPS || m[s0] > l[s0 + 2] + EPS) continue;
+        for (const end of [c, c + 2]) if (Math.abs(m[end] - at) < EPS) m[end] = best[c];
+      }
+      l[c] = l[c + 2] = best[c];
+      stats.aligned = (stats.aligned ?? 0) + 1;
+    }
+  }
   for (const [x0, y0, x1, y1] of lines) insert(x0, y0, x1, y1, 'street', {}, streetBlocked, AT_1000(0.02));
   stats.cuts = lines.length;
+
+  // Welding: nodes within weldMi of each other become one node (the one on the higher road
+  // stays where it is), wherever all their roads may meet; the edge between them, and any edge
+  // doubled by it, goes (g.merge). A safety net: the rules above should leave none.
+  const weld = () => {
+    const tol = p.weldMi, cells = new Map(), rank = node => Math.min(...node.edges.map(e => RANK[e.kind]));
+    for (const n of g.nodes) {
+      if (!n.edges.length) continue;
+      const X = Math.floor(n.x / tol), Y = Math.floor(n.y / tol);
+      for (let cx = X - 1; cx <= X + 1 && n.edges.length; cx++) for (let cy = Y - 1; cy <= Y + 1 && n.edges.length; cy++) for (const m of cells.get(cx * 1048576 + cy) ?? []) {
+        if (!m.edges.length || Math.hypot(m.x - n.x, m.y - n.y) >= tol || !n.edges.every(e => meets(e.kind, m)) || !m.edges.every(e => meets(e.kind, n))) continue;
+        stats.merged = (stats.merged ?? 0) + 1;
+        if (rank(n) < rank(m)) g.merge(n, m); else { g.merge(m, n); break; }
+      }
+      if (n.edges.length) { const k = X * 1048576 + Y; if (!cells.has(k)) cells.set(k, []); cells.get(k).push(n); }
+    }
+  };
 
   // Tidying: nodes at the same spot are merged, and an edge running through a node is split at
   // it, so every meeting of roads is one shared node.
   {
-    const live = g.nodes.filter(n => n.edges.length);
-    const cellsOfNodes = new Map();
-    for (const n of live) { const k = `${Math.round(n.x * 2000)},${Math.round(n.y * 2000)}`; if (!cellsOfNodes.has(k)) cellsOfNodes.set(k, []); cellsOfNodes.get(k).push(n); }
-    for (const group of cellsOfNodes.values()) {
-      const keep = group[0];
-      for (const dup of group.slice(1)) {
-        for (const e of [...dup.edges]) {
-          const other = e.a === dup ? e.b : e.a, { a, b, kind, alive, id, ...extra } = e;
-          void a; void b; void alive; void id;
-          g.removeEdge(e);
-          if (other !== keep && !keep.edges.some(f => (f.a === other || f.b === other) && f.kind === kind)) g.addEdge(keep, other, kind, extra);
-        }
-        keep.end = keep.end || dup.end;
-        stats.merged = (stats.merged ?? 0) + 1;
-      }
-    }
+    weld();
     // A junction of lesser roads lying inside a highway's width (a corner the highway used to
     // turn at, before its curve) goes onto the highway, where all its roads may meet it.
     for (const n of g.nodes) {
@@ -590,12 +795,8 @@ export function planStreets(map, options = {}) {
         if (t <= 0 || t >= 1) {
           // Nearest a point of the highway: the roads move onto that node.
           const target = t <= 0 ? e.a : e.b;
-          for (const f of [...n.edges]) {
-            const other = f.a === n ? f.b : f.a, { a, b, kind, alive, id, ...extra } = f;
-            void a; void b; void alive; void id;
-            g.removeEdge(f);
-            if (other !== target) g.addEdge(target, other, kind, extra);
-          }
+          if (!n.edges.every(f => meets(f.kind, target))) continue;
+          g.merge(target, n);
         } else {
           n.x = e.a.x + ex * t; n.y = e.a.y + ey * t;
           g.split(e, n.x, n.y, n);
@@ -608,7 +809,7 @@ export function planStreets(map, options = {}) {
       if (!n.edges.length) continue;
       for (const e of g.edgesNear(n.x - 1e-4, n.y - 1e-4, n.x + 1e-4, n.y + 1e-4)) {
         if (e.a === n || e.b === n || distToSeg(n.x, n.y, g.seg(e)) > 1e-4) continue;
-        if (HIGHWAYS.has(e.kind) && !n.edges.some(f => HIGHWAYS.has(f.kind))) continue;   // passing over or under
+        if (!meets(e.kind, n) || !n.edges.every(f => meets(f.kind, { edges: [e], x: n.x, y: n.y }))) continue;   // passing over or under
         g.split(e, n.x, n.y, n);
         stats.throughSplit = (stats.throughSplit ?? 0) + 1;
       }
@@ -744,6 +945,81 @@ export function planStreets(map, options = {}) {
     seen.add(node);
     bulbs.push({ x: node.x, y: node.y });
   }
+
+  // Nothing is left cut off. A piece of lesser roads joined to nothing (a campus loop with no
+  // way in, streets a highway's clearance cut off on every side) is joined to the nearest road
+  // it may meet by a straight link, clear of lots, water and the other roads; or, where it is a
+  // scrap with nothing near, it goes. (Section roads are kept joined up in sectionRoads.js, and
+  // the map's own roads are left as they are.)
+  {
+    const pieceOf = new Map(), pieces = [];
+    for (const start of g.nodes) {
+      if (!start.edges.length || pieceOf.has(start)) continue;
+      const piece = { nodes: [], kinds: new Set(), miles: 0 }, stack = [start];
+      pieceOf.set(start, piece);
+      while (stack.length) {
+        const node = stack.pop();
+        piece.nodes.push(node);
+        for (const e of node.edges) {
+          piece.kinds.add(e.kind); piece.miles += Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y) / 2;
+          const o = e.a === node ? e.b : e.a;
+          if (!pieceOf.has(o)) { pieceOf.set(o, piece); stack.push(o); }
+        }
+      }
+      pieces.push(piece);
+    }
+    const main = pieces.reduce((a, b) => (b.nodes.length > a.nodes.length ? b : a));
+    const LESSER = new Set(['street', 'collector', 'local', 'frontage', 'gravel', 'dirt', 'county', 'arterial']), SCRAPS = new Set(['street', 'collector', 'local', 'frontage']);
+    const lesser = node => node.edges.reduce((k, e) => (RANK[e.kind] > RANK[k] ? e.kind : k), node.edges[0].kind);
+    const crossing = (p0, x, y, k) => {
+      for (const e of g.edgesNear(Math.min(p0.x, x), Math.min(p0.y, y), Math.max(p0.x, x), Math.max(p0.y, y))) {
+        if (e.a === p0 || e.b === p0) continue;
+        const rx = x - p0.x, ry = y - p0.y, sx = e.b.x - e.a.x, sy = e.b.y - e.a.y, den = rx * sy - ry * sx;
+        if (Math.abs(den) < 1e-12) continue;
+        const t = ((e.a.x - p0.x) * sy - (e.a.y - p0.y) * sx) / den, u = ((e.a.x - p0.x) * ry - (e.a.y - p0.y) * rx) / den;
+        if (t > 1e-6 && t < 1 - 1e-4 && u > -1e-6 && u < 1 + 1e-6) return true;
+        if (HIGHWAYS.has(e.kind) && k === 'street' && distToSeg(x, y, g.seg(e)) < HALF_MI[e.kind] + p.bulbMi) return true;
+      }
+      return false;
+    };
+    const open = (p0, x, y, k) => {
+      const l = Math.hypot(x - p0.x, y - p0.y), steps = Math.ceil(l / p.sampleMi);
+      for (let i = 1; i < steps; i++) {
+        const qx = p0.x + (x - p0.x) * i / steps, qy = p0.y + (y - p0.y) * i / steps;
+        if (coverAt(qx, qy) === WATER || nearRiver(qx, qy, (x - p0.x) / l, (y - p0.y) / l) || (k !== 'local' && inObstacle(qx, qy, k === 'street' ? null : HALF_MI[k]))) return false;
+        if (bulbs.some(b => Math.hypot(b.x - qx, b.y - qy) < p.bulbMi + HALF_MI[k] && Math.hypot(b.x - p0.x, b.y - p0.y) > 1e-6)) return false;
+      }
+      return true;
+    };
+    for (const piece of pieces.sort((a, b) => b.nodes.length - a.nodes.length)) {
+      if (piece === main || ![...piece.kinds].every(k => LESSER.has(k))) continue;
+      const reach = p.islandLinkMi;
+      let best = null;
+      for (const node of piece.nodes) {
+        const k = lesser(node);
+        for (const e of g.edgesNear(node.x - reach, node.y - reach, node.x + reach, node.y + reach)) {
+          if (pieceOf.get(e.a) !== main || rule(k, e, node.x, node.y, 1) !== 'node') continue;
+          const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y, t = Math.max(0, Math.min(1, ((node.x - e.a.x) * dx + (node.y - e.a.y) * dy) / (dx * dx + dy * dy)));
+          const x = e.a.x + dx * t, y = e.a.y + dy * t, d = Math.hypot(x - node.x, y - node.y);
+          if (d < 1e-6 || d >= (best?.d ?? reach)) continue;
+          const end = t * Math.hypot(dx, dy) < p.snapMi ? e.a : (1 - t) * Math.hypot(dx, dy) < p.snapMi ? e.b : null;
+          if ((end && !meets(k, end)) || crossing(node, end?.x ?? x, end?.y ?? y, k) || !open(node, end?.x ?? x, end?.y ?? y, k)) continue;
+          best = { d, node, e, x, y, end, k };
+        }
+      }
+      if (best) {
+        g.addEdge(best.node, best.end ?? g.split(best.e, best.x, best.y), best.k);
+        for (const node of piece.nodes) pieceOf.set(node, main);
+        const bulb = bulbs.findIndex(b => Math.hypot(b.x - best.node.x, b.y - best.node.y) < 1e-6);
+        if (bulb >= 0) bulbs.splice(bulb, 1);
+        stats.islandsJoined = (stats.islandsJoined ?? 0) + 1;
+      } else if ([...piece.kinds].every(k => SCRAPS.has(k)) && piece.miles <= p.islandDropMi) {
+        for (const node of piece.nodes) for (const e of [...node.edges]) g.removeEdge(e);
+        stats.islandsDropped = (stats.islandsDropped ?? 0) + 1;
+      } else stats.islandsLeft = (stats.islandsLeft ?? 0) + 1;
+    }
+  }
+  weld();
 
   // Ends and controls.
   for (const node of g.nodes) {

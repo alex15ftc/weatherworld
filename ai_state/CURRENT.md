@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-11
+Updated: 2026-11-13
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -194,8 +194,25 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `main` at the start of 2026-11-12 (owner's decision that day): the storm environment batch and the removal of
     live storm reports are on the branch `engine/storm-relative-separation` only, not merged.
 
+- World map terrain and roads (2026-11-13, branch `map/terrain-and-roads`, engine not deployed, not seen
+  in Studio): the map has real relief (hill regions 22 to 34 m per 5 miles, every stream in a valley, a
+  meandering big river, wandering region borders; `WorldMapGenerator.js`), so towns, roads, counties and radars
+  all moved. The road graph is one connected network with no stacked edges and ramps joined at both ends
+  (`streets.js`, `curves.js`, `sectionRoads.js`). Roblox lays every road from that graph and builds houses on
+  the map's blocks (`WorldData/Graph`, `WorldMap.roadEdges` / `blocks`, `RoadNet.build`); bridges are planned
+  from roads 420 studs beyond the network's pad, roads meeting an overpass ramp climb to it, and interstate
+  bends keep their median. Checked: `tests/world-map.mjs` passes, `tools/worldmap/check-graph-export.mjs` 11 of
+  11, `tools/worldmap/audit-map.mjs`, selene, luau-lsp (fewer errors than `main`), `rojo build`. Open: seed 1's
+  hand-removed radar list is empty (those radars no longer exist; the map has 12 radars) until the owner
+  chooses again; the engine's Docker image rebuilds the map, so deploying this branch changes the live world's
+  radars and counties; the M map still draws section roads from `sections.u8`, which differs from the graph in
+  places, and has no streets.
+
 ## Next
 
+0. Map branch: play the place in Studio on the new export and look at roads (interchanges, overpass ramps with a
+   side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
+   commit, and plan the engine deploy (it moves radars and counties under the live world).
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
    check the server boots from `ServerStorage.main`, storms and products arrive (the ready handshakes), and the
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).

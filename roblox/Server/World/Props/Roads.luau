@@ -107,7 +107,7 @@ local function linesFor(s: RoadNet.Spec): { Line }
 	elseif key == "ramp" then
 		add(-(s.lane / 2 + 0.25), YELLOW, false)
 		add(s.lane / 2 + 0.25, WHITE, false)
-	elseif key == "urban" then
+	elseif key == "collector" then
 		add(-0.45, YELLOW, false)
 		add(0.45, YELLOW, false)
 		add(-s.lane, WHITE, false)
@@ -540,7 +540,8 @@ end
 
 -- Crossings of grid roads (section lines and town streets): an intersection patch where equal
 -- roads cross; stop signs and stop bars, or signals and crosswalks.
-type Arm = { g: RoadNet.Segment, dx: number, dz: number }
+-- (control: the graph's control at the node, 0 none, 1 stop signs, 2 signals)
+type Arm = { g: RoadNet.Segment, dx: number, dz: number, control: number }
 
 local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 	local props = ctx.props
@@ -578,19 +579,15 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 		end
 		return h
 	end
-	-- Two arterials, an arterial and a street in town, or any downtown corner: signals.
-	local signals = false
-	if town then
-		local arterials, streets = 0, 0
-		for _, arm in arms do
-			if arm.g.spec.key == "arterial" or arm.g.spec.key == "highway" then
-				arterials += 1
-			elseif arm.g.spec.key == "urban" then
-				streets += 1
-			end
-		end
-		signals = arterials >= 3 or (arterials >= 2 and streets >= 1) or (ctx.downtown(x, z) and (arterials + streets) >= 3)
+	-- The node's control as the map's road graph has it (streets.js): signals where arterials and
+	-- collectors cross in town and where a highway meets a road; stop signs on the lesser
+	-- approaches elsewhere on paved roads; none where only gravel and dirt roads meet. A downtown
+	-- corner with signs gets signals.
+	local control = 0
+	for _, arm in arms do
+		control = math.max(control, arm.control)
 	end
+	local signals = control == 2 or (control == 1 and town and ctx.downtown(x, z) and #arms >= 3)
 	for _, arm in arms do
 		local s = arm.g.spec
 		local hx, hz = -arm.dx, -arm.dz -- heading of traffic arriving along this arm
@@ -604,7 +601,7 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 			-- Stop the lesser road; equal paved roads stop the north-south arms; equal gravel and
 			-- dirt roads cross uncontrolled.
 			local stop = s.priority < best.priority or (s.priority == best.priority and s.surface == "asphalt" and arm.dx == 0)
-			if stop then
+			if stop and control > 0 then
 				stopArm(ctx, x, z, top, arm.dx, arm.dz, s, cross, crossTotal)
 			end
 		end
@@ -739,20 +736,35 @@ function Roads.build(ctx: Ctx)
 		end
 	end
 
-	-- Bends in the map's roads: a disc of road surface at each joint of their segments fills the
-	-- wedge left between two straight pieces meeting at an angle.
-	local joints = {}
+	-- Bends in the roads off the grid's lines: where two pieces of one road meet at an angle, a
+	-- disc of road surface at the joint fills the wedge left between them. A divided road gets a
+	-- disc on each carriageway (at the middle of each, along the bend's bisector), so its median
+	-- stays grass; where the road only carries straight on, nothing is needed.
+	local joints: { [string]: { g: RoadNet.Segment, ux: number, uz: number } } = {}
 	for _, g in net.segments do
-		if g.main or g.mapLocal then
+		if (g.main or g.mapLocal) and not g.bulb then
 			local s = g.spec
-			for _, e in { { g.ax, g.az }, { g.bx, g.bz } } do
-				local x, z = e[1], e[2]
-				local key = `{math.round(x * 10)},{math.round(z * 10)}`
-				if ctx.inside(x, z) and not joints[key] and not ctx.bridged(x, z, g) then
-					joints[key] = true
+			for _, e in { { g.ax, g.az, g.ux, g.uz }, { g.bx, g.bz, -g.ux, -g.uz } } do
+				local x, z, ux, uz = e[1], e[2], e[3], e[4]
+				local key = `{s.key},{math.round(x * 10)},{math.round(z * 10)}`
+				local first = joints[key]
+				if not first then
+					joints[key] = { g = g, ux = ux, uz = uz }
+				elseif first.g ~= g and math.abs(first.ux * uz - first.uz * ux) > 0.004 and ctx.inside(x, z) and not ctx.bridged(x, z, g) then
 					local top = ctx.gradeTop(x, z) + 0.004 * s.priority - 0.003
 					local surface = SURFACE[s.surface]
-					Builder.add(props, "Cylinder", CFrame.new(x, top - Roads.BED / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * s.pavement, 2 * s.pavement), surface.colour, surface.material)
+					if s.median > 0 then
+						-- Across the road at the joint: the bisector of the two pieces' normals.
+						local nx, nz = -(uz - first.uz), ux - first.ux
+						local l = math.sqrt(nx * nx + nz * nz)
+						local centre, half = (s.median + s.pavement) / 2, (s.pavement - s.median) / 2
+						for _, side in { -1, 1 } do
+							local cx, cz = x + nx / l * centre * side, z + nz / l * centre * side
+							Builder.add(props, "Cylinder", CFrame.new(cx, top - Roads.BED / 2, cz) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * half, 2 * half), surface.colour, surface.material)
+						end
+					else
+						Builder.add(props, "Cylinder", CFrame.new(x, top - Roads.BED / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * s.pavement, 2 * s.pavement), surface.colour, surface.material)
+					end
 				end
 			end
 		end
@@ -775,10 +787,10 @@ function Roads.build(ctx: Ctx)
 	end
 	for _, g in net.segments do
 		if g.axis then
-			for _, e in { { g.ax, g.az, g.ux, g.uz }, { g.bx, g.bz, -g.ux, -g.uz } } do
+			for _, e in { { g.ax, g.az, g.ux, g.uz, g.controlA }, { g.bx, g.bz, -g.ux, -g.uz, g.controlB } } do
 				local n = node(e[1], e[2])
 				if n then
-					table.insert(n.arms, { g = g, dx = e[3], dz = e[4] })
+					table.insert(n.arms, { g = g, dx = e[3], dz = e[4], control = e[5] })
 				end
 			end
 		end
