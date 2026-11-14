@@ -18,6 +18,32 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `32b57de`, the world carried over;
+  place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
+  not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
+  frames, the radar's velocity, the rain's fall-out, the debris and the trees' wind (`FoliageWind.luau` no longer
+  adds a second tornado); the cold pool's outflow is one rule (`ColdPool.js` outflowShare). The rain field
+  (`PrecipitationField.js`) sheds precipitation by the wind at its own height, keeps the inflow's wind in the
+  updraught only through the inflow layer (an engine change: hail falls left-forward of the updraught, not in the
+  hook), spreads fall-out as the square root of time and has the structure's rear-flank downdraught; the engine's
+  own fall-out (`StormFallout.js`) uses the same mesocyclone, spread and downdraught (regression scorecards
+  identical to their baselines: the suite does not measure where cores fall). Radar: the hail spike's power goes
+  as the hail's reflectivity squared, dealiasing repeats until settled, and the reflectivity, velocity and CC
+  colour tables read as real displays do (`RadarFormat.js`, exported to `Palettes.luau`: needs a place publish).
+  Graupel and hail drawn back into the updraught rise at 0.4 of the air's net rise (`PHYSICS.relofted`, set on one
+  storm: its 40 dBZ forward flank is 47 x 17 km, real ones 30-60 x 15-25), rain's ZDR follows Brandes 2004, hail's
+  CC goes with stone size, and estimate noise is the WSR-88D's specified 1 dB / 0.2 dB. The tornado cyclone is as
+  deep as its mesocyclone; the hail spike fades in 4 km and no spectrum width reads past Vn / sqrt 3. The cold
+  pool's outflow goes as the square root of its local depth within its own spreading length (the first rule blew
+  30 m/s across a cluster's whole pool) and the pool is carried by 0.62 of the inflow layer's storm-relative wind.
+  The TDA flags 12 of 58 engine tornadoes (12 seeds x a day, no false alarms; 8 at the start; real TDA about
+  40-50%): 8 of 10 at 140 mph and more, none under 115 mph. Loops and stills: `tmp/one-storm-wind/` (untracked).
+  Open: the hook does not evolve (the engine's rotation barely changes for hours: needs the owner's word, it
+  touches tornado lives); a storm's gust-front fine line stands about 17 km out on its inflow side because the
+  engine's pools are as cold and fast on tornadic storms as on any (median 6.5 K, 22 m/s against 22 m/s of
+  inflow: an engine question, left by the owner 2026-11-14); the ZDR arc is weak and broad (no drops over
+  5.5 mm); weak tornadoes undetected. Audits of tornadoes near radars must step like the server
+  (`advanceLikeServer`): a 30-minute-step search found a storm whose tornado did not happen under 5-minute ticks.
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
 - Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files
@@ -291,6 +317,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 0. Map (published as 501; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
+0a. Storm wind and radar (live since 2026-11-14, engine `32b57de`, place 502): look at storms in the game or Studio (wall
+   cloud lowering, near-storm and tree winds, frame rain and hail all moved) and at the radar's new colours on the M map.
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
    check the server boots from `ServerStorage.main`, storms and products arrive (the ready handshakes), and the
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).

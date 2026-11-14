@@ -174,7 +174,12 @@ const where = f => ({ xKm: +f.x.toFixed(2), yKm: +f.y.toFixed(2), tiltDeg: f.til
 // 2500 m at that range, never fewer than 3, so it widens past ~95 km as the real one does past
 // ~72 km, and the shear it finds there is weaker. Cyclonic shear is positive (velocity rising
 // clockwise). NaN where the centre gate has no velocity or fewer than 3 gates in the kernel have.
-export const AZ_SHEAR = { widthKm: 2.5, leastGates: 3 };
+// leastDbz: velocities in echo weaker than this are left out, as the operational rotation tracks leave
+// them out (MRMS: Miller et al. 2013, WAF 28, 570-585, 20 dBZ) - at the ragged edge of a storm's
+// lightest echo the velocity is mostly its own noise, and a kernel of three such gates reads as shear
+// (2026-11-14: 0.020 /s in one cell of 3.5 dBZ echo 86 km from the radar test's storm, half its tornado's).
+export const AZ_SHEAR = { widthKm: 2.5, leastGates: 3, leastDbz: 20 };
+const SHEAR_ECHOES = Uint8Array.from({ length: 256 }, (_, b) => { const dbz = decodeRadarValue('reflectivity', b); return dbz != null && dbz >= AZ_SHEAR.leastDbz ? 1 : 0; });
 // (gates: work out only the first this many. Along each ring the kernel's sums are carried from
 // one radial to the next, adding the radial entering it and taking off the one leaving.)
 export function azimuthalShear(scan, gates = RADAR_GATES) {
@@ -182,7 +187,7 @@ export function azimuthalShear(scan, gates = RADAR_GATES) {
   const ring = new Float64Array(RADAR_RADIALS);
   for (let g = 0; g < Math.min(gates, RADAR_GATES); g++) {
     let any = false;
-    for (let r = 0; r < RADAR_RADIALS; r++) { const i = r * RADAR_GATES + g; ring[r] = ECHOES[ref[i]] ? VELOCITY[vel[i]] : NaN; if (!any && ring[r] === ring[r]) any = true; }
+    for (let r = 0; r < RADAR_RADIALS; r++) { const i = r * RADAR_GATES + g; ring[r] = SHEAR_ECHOES[ref[i]] ? VELOCITY[vel[i]] : NaN; if (!any && ring[r] === ring[r]) any = true; }
     if (!any) continue;
     const range = (g + 0.5) * RADAR_GATE_KM, perRadialM = range * AZ_STEP * DEG * 1000;
     const half = Math.min((RADAR_RADIALS >> 1) - 1, Math.max(1, Math.round(AZ_SHEAR.widthKm * 500 / perRadialM)));

@@ -16,6 +16,18 @@
 
 ## Decisions
 
+### 2026-11-14 — A storm's winds are one description, read by everything that shows them
+
+- Status: active (branch `engine/one-storm-wind`, not merged)
+- Decision: a storm's mesocyclone and tornado are worked out once (`js/storms/StormVortices.js`, from the engine's
+  mesocyclone strength, low-level rotation and tornado) and its cold pool's outflow by one rule (`ColdPool.js`);
+  the frames, the radar's velocity, the rain's fall-out, the debris and the trees' wind read those, never their
+  own copies. The tornado's core at the ground keeps the engine's damage width; aloft it widens into a tornado
+  cyclone.
+- Rationale: six separate vortex rules disagreed by up to 7x in circulation (frame 12 m/s across 1.6 km, radar
+  38 m/s across 3.4 km on one storm), and trees felt a tornado twice.
+- Follow-up: None (the engine's own fall-out, `StormFallout.js`, reads it too since 2026-11-14).
+
 ### 2026-11-13 — The long range model is a storm-free copy with one timing error; severe-weather charts are the map's own
 
 - Status: `active`
