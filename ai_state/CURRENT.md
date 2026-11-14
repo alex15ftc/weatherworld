@@ -252,7 +252,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   they do show every foliage model failing to load ("User is not authorized to access Asset"): no trees in
   the live game until the experience may use those assets (owner).
 
-- Map, fifth round (2026-11-14; towns
+- Map, fifth round (2026-11-14; merged to `main`, place published as version 501 and engine deployed from `fad4298`, the world resumed at hour 685; towns
   and airfields unmoved). The owner reported, from 498/499: ground through roads, gaps or floating roads, kinks
   at bends, wrong connections; and asked for the method of a Studio plugin a friend sent (TerrainPaths: hand-drawn
   spline paths pressed into terrain; it cannot run in the game and its code is not used) to be applied: he chose
@@ -266,7 +266,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-0. Map (published as 500; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
+0. Map (published as 501; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
