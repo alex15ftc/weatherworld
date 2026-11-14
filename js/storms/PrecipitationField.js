@@ -52,6 +52,14 @@ export const PHYSICS = {
   // beside the vault (Browning and Foote 1976). Now it leaves on the side the wind at its own height
   // carries it to, and that storm's hail core lies north-west of its updraught.
   coreInflowDepths: 3,
+  // Graupel and hail leave the updraught where it can no longer hold them. Drawn back into it, they are
+  // lifted again - but a stone being lifted through cloud goes on growing, and falls faster for it, so it
+  // rises at only this share of the speed the air's rise less its own launch-size fall speed gives. Set
+  // by what it makes of a supercell's echo at the ground (seed 7's S0226, updraught 58 m/s): at 0.4 the
+  // forward flank's 40 dBZ is 47 km long and 17 wide (real ones 30-60 by 15-25); at 1 (until 2026-11-14,
+  // when a 5 mm graupel went up to the anvil's outflow like the air and was thrown 25 km out) 30 dBZ was
+  // 43 km wide with 4-5 mm drops at its far edge; at 0 there is no forward flank at all. Snow rises with the air.
+  relofted: 0.4,
   // The rear-flank downdraught (the storm's structure says where: StormStructureEngine's rearFlank, behind
   // the rotation and a little to its left, as strong as the cold pool): there the air sinks instead of
   // rising, at up to downdraughtShare of what the environment's downdraught energy allows (sqrt(2 DCAPE);
@@ -212,6 +220,7 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   else if (debris && grid) { const e = grid.extent; e.minX = Math.min(e.minX, debris.x - debris.halfKm); e.minY = Math.min(e.minY, debris.y - debris.halfKm); e.maxX = Math.max(e.maxX, debris.x + debris.halfKm); e.maxY = Math.max(e.maxY, debris.y + debris.halfKm); }
   return {
     grid, inner, debris, cores: model.cores, mx, my, rx, ry,
+    hailMm: (Number(storm.currentHailSizeInches) || 0) * 25.4,
     vortices: model.vortices, mesocyclone: model.mesocyclone, tornado: model.tornado, spin: model.spin, coldPool: model.coldPool, rearInflow: model.rearInflow, frontToRear: model.frontToRear,
     // Extent on the map, from the storm's centre (km).
     ...(grid?.extent ?? { minX: -1, minY: -1, maxX: 1, maxY: 1 })
@@ -400,7 +409,7 @@ export function follow(model, grid, inner, stride, landed = null) {
           // (how much of its early spreading speed the patch still has: see PHYSICS.spreadMemoryS)
           const eddy = age > 0.5 * P.spreadMemoryS ? Math.sqrt(0.5 * P.spreadMemoryS / age) : 1;
           u += driftU * eddy; v += driftV * eddy;
-          const frozen = z > fz, vertical = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm));
+          const frozen = z > fz, sinking = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm)), vertical = sinking > 0 && !isSnow ? sinking * P.relofted : sinking;
           const inInner = nearInner && x > -INNER.halfKm && x < INNER.halfKm && y > -INNER.halfKm && y < INNER.halfKm;
           const speed = Math.sqrt(u * u + v * v), climb = vertical < 0 ? -vertical : vertical;
           // A step is no longer than a grid cell, or half the width of the patch the particle stands for.

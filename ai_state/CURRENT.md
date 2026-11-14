@@ -29,10 +29,13 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   identical to their baselines: the suite does not measure where cores fall). Radar: the hail spike's power goes
   as the hail's reflectivity squared, dealiasing repeats until settled, and the reflectivity, velocity and CC
   colour tables read as real displays do (`RadarFormat.js`, exported to `Palettes.luau`: needs a place publish).
-  The TDA flags 12 of 58 engine tornadoes (12 seeds x a day, no false alarms; 8 before; real TDA about 40-50%),
-  EF0s never. Loops and stills: `tmp/one-storm-wind/` (untracked). Open: the echo is still about 55-70 km across
-  (heavy graupel reaches the anvil's outflow), the hook does not evolve, no echo texture, no debris ball or ZDR
-  arc, CC too low over the whole core.
+  Graupel and hail drawn back into the updraught rise at 0.4 of the air's net rise (`PHYSICS.relofted`, set on one
+  storm: its 40 dBZ forward flank is 47 x 17 km, real ones 30-60 x 15-25), rain's ZDR follows Brandes 2004, hail's
+  CC goes with stone size, and estimate noise is the WSR-88D's specified 1 dB / 0.2 dB. The TDA flags 10 of 58
+  engine tornadoes (12 seeds x a day, no false alarms; 8 at the start, 14 at best; real TDA about 40-50%), EF0s
+  never. Loops and stills: `tmp/one-storm-wind/` (untracked). Open: the hook does not evolve (the engine's
+  rotation barely changes for hours: needs the owner's word, it touches tornado lives), spectrum width is a
+  bright wedge down-range of hail, no ZDR arc, weak tornadoes undetected.
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
 - Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files

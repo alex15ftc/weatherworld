@@ -111,7 +111,10 @@ const TURBULENCE_MS = { precipitation: 2, clearAir: 1 };
 // 2026-11-14 the loss was 48 dB for any hail of 50 dBZ: a wedge 20 km wide at 20-25 dBZ behind the whole core.
 const THREE_BODY = { lossDb: 48, fullDbz: 70, fadeKm: 8, reachFades: 3, leastHailDbz: 50, zdrDb: 5, rho: 0.6 };
 // (the velocity's own error: velocityErrorMs)
-const NOISE = { dbz: 0.8, correlation: 0.008, zdrDb: 0.18 };
+// (each the reach of an even spread, a standard deviation of 1 / sqrt 3 of it: 1 dB of reflectivity and 0.2 dB
+// of ZDR, the WSR-88D's specified estimate errors. Until 2026-11-14 0.8 and 0.18: half that, and an echo
+// with none of a real display's gate-to-gate grain.)
+const NOISE = { dbz: 1.7, correlation: 0.008, zdrDb: 0.35 };
 // A tornado's wind is as deep as the tornado is strong: a weak one is seen only in the lowest
 // kilometre; a violent one reaches several kilometres.
 const tornadoDepthM = windMs => clamp(800 + 36 * (windMs - 30), 700, 3500);
@@ -121,7 +124,8 @@ const STORM_WINDS = { anvil: 90, rearInflowMs: 24 };
 // Flow into a boundary (m/s) that doubles the insects along it, how much (dB) they vary along it,
 // and the depth of the denser air pushing under the other (m).
 // FINE_LINE_KM: how wide the insects gather along the line (a Gaussian's e-folding half-width).
-const FINE_LINE_INFLOW_MS = 0.4, FINE_LINE_PATCHY_DB = 4, DENSITY_CURRENT_DEPTH_M = 1000, FINE_LINE_KM = 1.2;
+// (0.6 since 2026-11-14: a real fine line is a gate or two across, docs/storm-reference/radar 08; at 1.2 it was a band 2-3 km wide)
+const FINE_LINE_INFLOW_MS = 0.4, FINE_LINE_PATCHY_DB = 4, DENSITY_CURRENT_DEPTH_M = 1000, FINE_LINE_KM = 0.6;
 // Where a storm's gust front is: the pool's lower edge as the frame eases it (StormStructure: from
 // 0.15 to 0.45 of the most of its spread footprint), its leading edge at the first.
 const POOL_EDGE = [0.15, 0.45];
@@ -864,6 +868,21 @@ function addEchoRatio(out, zh, zdrRatio, rho) {
   out.zv += zh / zdrRatio; out.cc += zh * rho;
 }
 const ZDR_4_5_DB = 10 ** (4.5 / 10), ZDR_5_5_DB = 10 ** (5.5 / 10);
+// Rain's differential reflectivity (dB) from its reflectivity-weighted drop size (mm). The published relation
+// is with the median volume diameter D0 (Brandes, Zhang and Vivekanandan 2004: D0 = 0.171 Zdr^3 - 0.725 Zdr^2 +
+// 1.479 Zdr + 0.717, here turned round), and the reflectivity-weighted size of an exponential drop spectrum is
+// 1.9 D0. Until 2026-11-14 it was 0.8 x that size - 0.5: about 1 dB high (2.7 dB at 4 mm, where this gives 1.9).
+const ZDR_OF_D0 = [[0.717, 0], [1.04, 0.25], [1.3, 0.5], [1.64, 1], [1.88, 1.5], [2.14, 2], [2.6, 2.5], [3.25, 3], [4.2, 3.5]];
+const rainZdrDb = sizeMm => {
+  const d0 = sizeMm / 1.9, T = ZDR_OF_D0;
+  if (d0 <= T[0][0]) return 0.15;
+  for (let k = 1; k < T.length; k++) if (d0 <= T[k][0]) return Math.max(0.15, T[k - 1][1] + (T[k][1] - T[k - 1][1]) * (d0 - T[k - 1][0]) / (T[k][0] - T[k - 1][0]));
+  return T[T.length - 1][1];
+};
+// Wet hail's correlation coefficient: 0.97 for small stones, falling as they grow past the size that resonates
+// at S band (about 2 cm) to 0.85 for giant ones (Balakrishnan and Zrnic 1990; a hail core stays at 0.93-0.97
+// unless its stones are very large). Until 2026-11-14 any hail near the ground read 0.86.
+const HAIL_CC = { small: 0.97, giant: 0.85, mm: [19, 76] };
 
 // A storm's precipitation at one place, as a radar sees it: rain below the freezing level, ice
 // above (which reflects a fifth as well), a bright band where snow melts, hail, and debris.
@@ -891,14 +910,15 @@ export function precipitationEcho(e, fz, lx, ly, z, out) {
       const melting = tmp.snow !== 0 && frozen < 1 ? tmp.snow * Math.exp(-(((z - fz + 150) / 350) ** 2)) : 0;
       // Rain carried above the freezing level in a strong updraught: large drops among the ice.
       const column = frozen > 0 ? liquidAloft(e, lx, ly, z - fz) : 0;
-      if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), clamp(0.8 * tmp.sizeMm - 0.5, 0.15, 4.5) + melting, 0.992 - 0.06 * melting);
+      if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), rainZdrDb(tmp.sizeMm) + melting, 0.992 - 0.06 * melting);
       if (frozen > 0) addEcho(out, zh * frozen * 0.2 * (1 + 2 * column), 0.3 + 2.8 * column, 0.985 - 0.02 * column);
       snow = tmp.snow * frozen;
     }
     if (tmp.hail > 0) {
       const wet = 1 - frozen;
       const hailZ = HAIL_REFLECTIVITY * tmp.hail * (0.35 + 0.65 * wet);
-      addEcho(out, hailZ, 0.1 + 0.5 * wet, 0.92 - 0.06 * wet);
+      const big = clamp(((e.hailMm ?? 40) - HAIL_CC.mm[0]) / (HAIL_CC.mm[1] - HAIL_CC.mm[0]), 0, 1);
+      addEcho(out, hailZ, 0.1 + 0.5 * wet, HAIL_CC.small - (HAIL_CC.small - HAIL_CC.giant) * big * (0.5 + 0.5 * wet));
       out.hail += hailZ;
     }
   }
