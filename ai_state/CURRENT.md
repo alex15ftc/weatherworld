@@ -295,7 +295,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   dirt spurs 62% of dirt miles to 7%; I-135 carried on to Russell Center's bypass; the audit prints the table.
   Harness over 300 chunks: no building conflicts, ground through a road at 4 samples, road in the air at 10.
 
-- Map, sixth round (2026-11-14; settlements and airfields unmoved):
+- Map, sixth round (2026-11-14; merged with the storm-wind and radar work of the same day, `main` at `30eb9aa`; place published as version 503 on top of 502 and engine deployed from `30eb9aa`, the world resumed at hour 698; none of it seen in game; settlements and airfields unmoved):
   - Towns have footprints by form, not discs (`js/worldmap/townShapes.js`; forms after Hudson's railroad-town
     plats, Schmiedeler on county seats, the Encyclopedia of the Great Plains): T-town, symmetric, orthogonal,
     parallel, courthouse square, linear, river town, hamlet, regional city. Each settlement has `shape` (cells of
@@ -319,7 +319,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-0. Map (published as 501; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
+0. Map (published as 503, half size: look first at the character, the car and its camera, a town, the M map; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
 0a. Storm wind and radar (live since 2026-11-14, engine `32b57de`, place 502): look at storms in the game or Studio (wall
