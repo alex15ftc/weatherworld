@@ -16,7 +16,6 @@ local ServerStorage = game:GetService("ServerStorage")
 local EncodingService = game:GetService("EncodingService")
 
 local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
-local Base64 = require(script.Parent.Base64)
 
 local Data = ServerStorage:WaitForChild("WorldData", 10)
 	or error("[WeatherWorld] ServerStorage.WorldData is missing: run `node scripts/export-world-roblox.mjs`, then reconnect Rojo")
@@ -65,7 +64,13 @@ end
 
 export type Tile = { data: buffer, rivers: { number }, roads: { number }, crossings: { number }, sites: any, ti: number, tj: number }
 
-local decode = Base64.decode
+-- A record string of the export: base64 of zstd-compressed bytes.
+local function unpack(text: string): buffer
+	if text == "" then
+		return buffer.create(0)
+	end
+	return EncodingService:DecompressBuffer(EncodingService:Base64Decode(buffer.fromstring(text)), Enum.CompressionAlgorithm.Zstd)
+end
 
 local tiles: { [number]: Tile } = {}
 -- Tiles kept decoded a VM (a chunk's reads reach at most 4 of the 50-mile tiles; a few more
@@ -114,7 +119,7 @@ function WorldMap.tile(ti: number, tj: number): Tile
 			return { data = buffer.create(S * S * 5 + CORNERS * CORNERS), rivers = {}, roads = {}, crossings = {}, sites = nil, ti = ti, tj = tj }
 		end
 		evict()
-		tile = { data = decode(source.data), rivers = source.rivers, roads = source.roads, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
+		tile = { data = unpack(source.data), rivers = source.rivers, roads = source.roads, crossings = source.crossings or {}, sites = source.sites, ti = ti, tj = tj }
 		tiles[key] = tile
 		tileCount += 1
 		lastUse[key] = useClock
@@ -230,13 +235,6 @@ local graphTiles: { [number]: GraphTile } = {}
 local KEEP_GRAPH = 16
 local graphCount = 0
 local graphUse: { [number]: number } = {}
-
-local function unpack(text: string): buffer
-	if text == "" then
-		return buffer.create(0)
-	end
-	return EncodingService:DecompressBuffer(EncodingService:Base64Decode(buffer.fromstring(text)), Enum.CompressionAlgorithm.Zstd)
-end
 
 local function joined(parts: { buffer }): buffer
 	local total = 0
