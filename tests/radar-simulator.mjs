@@ -9,7 +9,7 @@ import { Storm } from '../js/storms/Storm.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
 import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, decodeRadarValue, radarColorTable } from '../js/radar/RadarFormat.js';
-import { detectRotation, lowLevelShearGrid } from '../js/radar/RotationDetection.js';
+import { detectRotation, lowLevelShearGrid, debrisSignature } from '../js/radar/RotationDetection.js';
 
 const previewIndex = process.argv.indexOf('--preview');
 const previewDir = previewIndex > 0 ? process.argv[previewIndex + 1] : null;
@@ -88,6 +88,10 @@ const tdsCc = minNear(scScan, site, 'correlationCoefficient', torX, torY, 2);
 assert.ok(tdsCc <= 0.85, `tornado debris signature should drop CC to <=0.85, got ${tdsCc}`);
 const ffdCc = valueAt(scScan, site, 'correlationCoefficient', warm.x + echo.mx * 12, warm.y + echo.my * 12);
 assert.ok(ffdCc === null || ffdCc >= 0.9, `forward-flank rain should have CC >=0.9, got ${ffdCc}`);
+// ...read as a debris signature at the tornado, and nowhere else in the storm (debrisSignature).
+assert.equal(debrisSignature(scScan, site, torX, torY), true, 'a debris signature at the tornado');
+assert.equal(debrisSignature(scScan, site, warm.x + echo.mx * 12, warm.y + echo.my * 12), false, 'none in the forward flank');
+assert.equal(debrisSignature(scScan, site, warm.x + echo.mx * 4, warm.y + echo.my * 4), false, 'none in the hail core');
 
 // The volume scan's rotation detections (RotationDetection.js): a TVS on the tornado and a
 // mesocyclone round it, from the scanned velocity alone.
