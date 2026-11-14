@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `32b57de`, the world carried over;
+- One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `019a278` (first from `32b57de`), the world carried over;
   place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
   not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
   frames, the radar's velocity, the rain's fall-out, the debris and the trees' wind (`FoliageWind.luau` no longer
