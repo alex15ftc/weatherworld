@@ -11,7 +11,8 @@ import { MESOSCALE, STORM_RADAR, describeNow, radarLook, publicMesoscaleDiscussi
 import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, publicWatch } from '../js/forecast/Watch.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
 import { countiesFor } from './CountyLayer.js';
-import { discussionRadar } from './DiscussionRadar.js';
+import { discussionRadar, discussionSatellite, discussionEnvironment, fieldFor } from './DiscussionRadar.js';
+import { MESOANALYSIS_PARAMETERS, buildParameterField } from './mesoanalysisParameters.js';
 
 export class MesoscaleRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). pool: the
@@ -98,6 +99,12 @@ export class MesoscaleRuntime {
     const looked = this.radarLooks(now).catch(error => console.warn('[mesoscale] no radar look:', error.message));
     // ...and the reflectivity of the same moment, for the discussions' maps (DiscussionRadar.js).
     const mosaic = this.runtime.radarMosaic ? Promise.resolve(this.runtime.radarMosaic('composite')).catch(error => { console.warn('[mesoscale] no radar picture:', error.message); return null; }) : Promise.resolve(null);
+    // ...the satellite under it, and the air of the same moment (the fields and the boundaries, read now, before the
+    // world moves on).
+    const satellite = this.runtime.satellite ? Promise.resolve(this.runtime.satellite()).catch(error => { console.warn('[mesoscale] no satellite picture:', error.message); return null; }) : Promise.resolve(null);
+    const fields = new Map(), fieldOf = key => { if (!fields.has(key)) { const p = MESOANALYSIS_PARAMETERS.find(q => q.key === key); fields.set(key, p ? buildParameterField(engine.world, p) : null); } return fields.get(key); };
+    const boundaries = (engine.boundaries ?? []).map(({ type, pointsKm, symbolSide }) => ({ type, pointsKm, symbolSide }));
+    for (const key of ['stp', 'mlcape']) { try { fieldOf(key); } catch (error) { console.warn(`[mesoscale] no ${key} field:`, error.message); fields.set(key, null); } }
     this.running = { hourUtc: now.hourUtc, startedAt: started };
     try {
       const members = await run;
@@ -106,7 +113,12 @@ export class MesoscaleRuntime {
       const found = lookAhead(members, now, { discussions: this.discussions, watches: this.watches, nextDiscussion: this.next, nextWatch: this.nextWatch, seed: engine.seed });
       // Each new discussion's radar picture, before the discussion is listed (the archive keeps it from its first look).
       const radar = await mosaic;
-      for (const md of found.discussions) { const picture = await discussionRadar(radar, md.cells, now).catch(() => null); if (picture) this.pictures.set(md.number, picture); }
+      const sky = await satellite;
+      for (const md of found.discussions) {
+        const picture = await discussionRadar(radar, md.cells, now).catch(() => null);
+        const under = await discussionSatellite(sky, md.cells, now).catch(() => null), air = discussionEnvironment(fields.get(fieldFor(md)), boundaries, md.cells, now);
+        if (picture || under || air) this.pictures.set(md.number, { ...(picture ?? {}), satellite: under, environment: air });
+      }
       this.next += found.discussions.length; this.nextWatch += found.watches.length;
       this.discussions = [...found.discussions.reverse(), ...this.discussions].slice(0, MESOSCALE.kept);
       for (const number of this.pictures.keys()) if (!this.discussions.some(md => md.number === number)) this.pictures.delete(number);

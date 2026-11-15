@@ -2,10 +2,10 @@
 // storm's arrow (leadArrow), the sentence in the summary, the game product's miles, the radar picture of the moment
 // (DiscussionRadar.js), the map's layers (AreaMap.js) and the archive that keeps the picture (ProductArchive.js).
 import assert from 'node:assert/strict';
-import { MESOSCALE, buildMesoscaleDiscussions, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
+import { MESOSCALE, buildMesoscaleDiscussions, publicMesoscaleDiscussion, stormCircles } from '../js/forecast/MesoscaleDiscussion.js';
 import { insideRings } from '../js/forecast/contourShapes.js';
 import { gameMesoscale } from '../server/GameProducts.js';
-import { discussionRadar, pictureView, reflectivityKey } from '../server/DiscussionRadar.js';
+import { discussionRadar, pictureView, reflectivityKey, discussionSatellite, discussionEnvironment, fieldFor } from '../server/DiscussionRadar.js';
 import { areaSvg } from '../server/AreaMap.js';
 import { ProductArchive, focusOnMap } from '../server/ProductArchive.js';
 
@@ -64,6 +64,26 @@ const two = buildMesoscaleDiscussions(four(), now([storm(x0 + 2, y0 + 9, { mesoc
 assert.equal(two.arrow.x0, arrow.x0, 'the storm heading into the focus, not the strongest'); assert.equal(two.focus.mask, undefined, 'the mask is not kept');
 assert.equal(buildMesoscaleDiscussions(four(), now([storm(x0 + 5, y0 + 5, { eastKph: -40, northKph: -30 })]))[0].arrow, null, 'heading away from the focus: no arrow');
 
+// --- A storm most runs give a strong tornado within the hour: its circle of uncertainty (round everywhere those runs
+// take it in the hour) in place of the focus.
+const sx = (x0 + 5.5) * 16, sy = (y0 + 5.5) * 16, km = 800;
+// Run k takes the storm east 40 km and north 30 km in the hour, turned a little each way from run to run.
+const trackOf = k => Array.from({ length: 5 }, (_, j) => { const t = j / 4, turn = (k - 1.5) * 0.12; return [sx + t * (40 * Math.cos(turn) - 30 * Math.sin(turn)), sy - t * (30 * Math.cos(turn) + 40 * Math.sin(turn))]; });
+const withStrong = (count, mph = 150, id = 's1') => four().map((m, k) => ({ ...m, strongSoon: k < count ? [{ id, mph, track: trackOf(k) }] : [] }));
+const lead = storm(x0 + 5, y0 + 5, { id: 's1' });
+const circled = buildMesoscaleDiscussions(withStrong(3), now([lead]))[0];
+assert.equal(circled.circles.length, 1, '3 runs of 4: a circle'); assert.equal(circled.circles[0].share, 0.75); assert.equal(circled.circles[0].mph, 150);
+assert.equal(circled.focus, null, 'the circle in place of the focus'); assert.doesNotMatch(circled.text, /greatest short-term/);
+const ring = circled.circles[0].rings;
+assert.ok(insideRings(ring, sx / km, sy / km), 'round the storm now');
+for (let k = 0; k < 3; k++) assert.ok(insideRings(ring, trackOf(k)[4][0] / km, trackOf(k)[4][1] / km), `and where run ${k} takes it`);
+assert.ok(!insideRings(ring, (sx - 50) / km, (sy + 40) / km), 'not behind it');
+assert.ok(circled.arrow && circled.arrow.x0 === Math.round(sx / km * 1e5) / 1e5 && circled.arrow.x1 > circled.arrow.x0 && circled.arrow.y1 < circled.arrow.y0, 'its arrow, to the runs\' middle an hour on');
+assert.deepEqual(buildMesoscaleDiscussions(withStrong(2), now([lead]))[0].circles, [], '2 runs of 4: not confident enough');
+assert.ok(buildMesoscaleDiscussions(withStrong(2), now([lead]))[0].focus, 'the focus as before');
+assert.deepEqual(buildMesoscaleDiscussions(withStrong(4, 150, 'other'), now([lead]))[0].circles, [], 'only storms there now');
+assert.deepEqual(stormCircles(withStrong(4), { ...now([{ ...lead, xKm: 6, cell: at(0, y0 + 5) }]), storms: [{ ...lead, xKm: 6, yKm: sy }] }, new Uint8Array(n).fill(1)), [], 'running off the map: none');
+
 // --- The game product: the focus and the arrow in map miles.
 const game = gameMesoscale({ enabled: true, width, cellMiles: 10, nowHourUtc: 44, watches: [], discussions: [{ ...publicMesoscaleDiscussion(md), valid: true }] }).discussions[0];
 assert.equal(game.focus.hazard, 'tornado'); assert.ok(game.focus.rings.length && game.focus.rings[0].every(v => v >= 0 && v <= 500));
@@ -98,6 +118,41 @@ assert.equal(focusOnMap(square(200, 0, 30), square(200, 0, 120), 500), false, 't
 assert.equal(focusOnMap(square(470, 300, 30), square(400, 280, 100), 500), false, 'to the right of the world');
 assert.equal(focusOnMap(square(10, 10, 20), square(300, 300, 60), 500), false, 'beyond the view drawn');
 
+// --- The storm's circle on the map: filled and outlined in tornado red, labelled with the runs' strength.
+const tvsGame = { ...publicMesoscaleDiscussion(circled), number: 3, valid: true };
+const tvsProducts = { product: id => (id === 'mesoscale' ? { version: 1, text: JSON.stringify(gameMesoscale({ enabled: true, width, cellMiles: 10, nowHourUtc: 44, watches: [], discussions: [tvsGame] })) } : null) };
+const tvsMap = new ProductArchive({ runtime: { worldId: 'w', engine: { world: { validHourUtc: 44 } } }, products: tvsProducts, layer: () => null }).discussionSvg(3);
+// (in the outlooks' words: the runs' middle strongest, 150 mph, is EF3, an intense tornado)
+assert.ok(tvsMap.includes('>An intense tornado (EF3 or stronger) is likely</text>') && !tvsMap.includes('Greatest short-term'), 'its label');
+assert.ok(!tvsMap.includes('width="34" height="26"') && tvsMap.includes('>Most probable peak intensity</text>'), 'under the map only the peak intensities');
+
+// --- The air on the map (2026-11-15): the satellite under the radar, a field's contours, the boundaries.
+const sky = sun => ({ width: 800, height: 800, resKm: 1, validHourUtc: 43.95, sun: { elevationDeg: sun }, ir: new Uint8Array(800 * 800).fill(100), visible: new Uint8Array(800 * 800).fill(180) });
+assert.equal((await discussionSatellite(sky(40), md.cells, now())).kind, 'visible', 'by day, the visible');
+assert.equal((await discussionSatellite(sky(-10), md.cells, now())).kind, 'ir', 'by night, the IR');
+assert.equal(await discussionSatellite(null, md.cells, now()), null);
+// A field rising to 6 in the middle of the area, a speck of 9 elsewhere (too small to draw), and a cold front.
+const stp = { key: 'stp', label: 'Significant tornado parameter', unit: '', values: Array.from({ length: n }, (_, i) => { const x = i % width, y = (i - x) / width; return 6 * Math.exp(-((x - (x0 + 6)) ** 2 + (y - (y0 + 6)) ** 2) / 40) + (x === 5 && y === 45 ? 9 : 0); }) };
+const front = { type: 'cold', symbolSide: 1, pointsKm: [{ x: x0 * 16, y: (y0 + 6) * 16 }, { x: (x0 + 12) * 16, y: (y0 + 6) * 16 }] };
+const air = discussionEnvironment(stp, [front, { type: 'outflow', pointsKm: [{ x: 5, y: 790 }, { x: 30, y: 795 }] }], md.cells, { width, height, cellMiles: 10, cellKm: 16 });
+assert.deepEqual(air.field.lines.map(l => l.value), [1, 2, 4], 'the levels the field reaches (8 not reached once smoothed)');
+assert.ok(air.field.lines.every(l => l.rings.length === 1), 'no specks');
+assert.deepEqual(air.boundaries.map(b => b.type), ['cold'], 'the front by the area, not the boundary far away');
+assert.equal(fieldFor({ peakText: { tornado: '111-135 MPH' } }), 'stp'); assert.equal(fieldFor({ peakText: {}, watchType: 'severe' }), 'mlcape');
+// Drawn: the satellite first, then the radar over it, then the contours and the front; named in the key.
+const airGame = { ...publicMesoscaleDiscussion(md), number: 4, valid: true };
+const airProducts = { product: id => (id === 'mesoscale' ? { version: 1, text: JSON.stringify(gameMesoscale({ enabled: true, width, cellMiles: 10, nowHourUtc: 44, watches: [], discussions: [airGame] })) } : null) };
+const satellitePicture = await discussionSatellite(sky(40), md.cells, now());
+const airMap = new ProductArchive({ runtime: { worldId: 'w', engine: { world: { validHourUtc: 44 } } }, products: airProducts, layer: () => null, pictures: () => ({ ...picture, satellite: satellitePicture, environment: air }) }).discussionSvg(4);
+const images = [...airMap.matchAll(/<image href="data:image\/png;base64,([A-Za-z0-9+/]{12})/g)].map(m => m.index);
+assert.equal(images.length, 2, 'satellite and radar');
+assert.ok(airMap.indexOf('opacity="0.75"') < images[1] && airMap.indexOf('opacity="0.75"') > images[0], 'the satellite (dimmed) first, the radar over it');
+assert.ok(airMap.indexOf('fill="#3d8bff"') > images[1] && airMap.indexOf('stroke="#b91c1c"') > images[1], 'the front and the contours over the radar');
+// The cold front's triangles, as the surface analysis draws them, on the side its symbols face (north, up the map).
+const triangle = airMap.match(/<path d="M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)Z" fill="#3d8bff"/);
+assert.ok(triangle && Number(triangle[4]) < Number(triangle[2]) - 5, 'triangles pointing north');
+assert.ok(airMap.includes('dominant-baseline="middle">4</text>') && !airMap.includes('>Cold front</text>') && !airMap.includes('Radar: composite'), 'contours labelled; nothing under the map but the peaks');
+
 // --- The archive: the picture kept with the discussion from the first look it is there, never in its JSON.
 const runtime = { worldId: 'w', engine: { world: { validHourUtc: 44 } } };
 let version = 1, given = null;
@@ -116,6 +171,6 @@ assert.ok(map.includes(`>${md.peakText.hail.replace(' IN', ' in')}</text>`), 'th
 const stray = { ...publicMesoscaleDiscussion(md), number: 2, arrow: { x0: 0.1, y0: 0.9, x1: 0.12, y1: 0.85, hours: 1 }, valid: true };
 const strayProducts = { product: id => (id === 'mesoscale' ? { version: 1, text: JSON.stringify(gameMesoscale({ enabled: true, width, cellMiles: 10, nowHourUtc: 44, watches: [], discussions: [stray] })) } : null) };
 assert.ok(!new ProductArchive({ runtime, products: strayProducts, layer: () => null }).discussionSvg(2).includes('>1 h</text>'), 'no arrow away from the focus');
-assert.ok(map.includes('data:image/png;base64,') && map.includes('Greatest short-term tornado potential') && map.includes('Radar: composite reflectivity'), 'its map draws it all');
+assert.ok(map.includes('data:image/png;base64,') && map.includes('Greatest short-term tornado potential') && map.includes('>Most probable peak intensity</text>'), 'its map draws it all');
 assert.ok(JSON.stringify(archive.discussion(1)).length < 20000, 'the page gets no picture');
 console.log(`discussion graphics passed (focus ${md.focus.cells} of ${md.areaCells} cells; picture ${picture.png.length} bytes; map ${(map.length / 1024).toFixed(0)} KB)`);

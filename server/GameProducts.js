@@ -191,6 +191,9 @@ export function gameMesoscale(list) {
       // The greatest short-term potential (hazard, outline, where it is centred) and the leading storm's next
       // hour (from x0, y0 to x1, y1), in map miles; null where the discussion has none (MesoscaleDiscussion.js).
       focus: md.focus ? { hazard: md.focus.hazard, near: md.focus.near ?? null, rings: contourMiles(md.focus.rings, mapMiles) } : null,
+      // Circles round the storms most runs give a strong tornado within the hour (MesoscaleDiscussion.stormCircles):
+      // the share of the runs, their middle strongest tornado (mph) and the circle in map miles.
+      circles: (md.circles ?? []).map(c => ({ share: c.share, mph: c.mph, rings: contourMiles(c.rings, mapMiles) })),
       arrow: md.arrow ? { x0: +(md.arrow.x0 * mapMiles).toFixed(2), y0: +(md.arrow.y0 * mapMiles).toFixed(2), x1: +(md.arrow.x1 * mapMiles).toFixed(2), y1: +(md.arrow.y1 * mapMiles).toFixed(2), hours: md.arrow.hours } : null
     }))
   };

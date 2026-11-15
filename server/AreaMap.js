@@ -18,6 +18,36 @@ export function viewOf(rings, { pad = 0.35, minMiles = 60, mapMiles = 500 } = {}
   return { x: inside((x0 + x1) / 2 - size / 2), y: inside((y0 + y1) / 2 - size / 2), size };
 }
 
+// A front, dryline or outflow boundary in pixels, as the surface analysis draws it (js/pages/surfaceAnalysisPage.js
+// drawBoundaries, its colours and symbols at this map's size): a dark edge under the line; triangles on a cold front
+// and half-circles on a warm front, on the side it moves toward; both, on opposite sides, on a stationary front (the
+// triangles facing the warm air); open scallops on the moist side of a dryline; an outflow boundary dashed.
+export const BOUNDARY_COLOURS = { cold: '#3d8bff', warm: '#ff4d5e', stationary: '#b06cff', dryline: '#d98a2b', outflow: '#e8d44d' };
+export const BOUNDARY_NAMES = { cold: 'Cold front', warm: 'Warm front', stationary: 'Stationary front', dryline: 'Dryline', outflow: 'Outflow boundary' };
+function boundarySvg(points, type, side) {
+  const colour = BOUNDARY_COLOURS[type]; if (!colour || points.length < 2) return '';
+  const outflow = type === 'outflow', d = points.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(''), f = v => v.toFixed(1);
+  const out = [`<path d="${d}" fill="none" stroke="rgba(0,0,0,.7)" stroke-width="${outflow ? 6 : 8}" stroke-linejoin="round" stroke-linecap="round"/>`, `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${outflow ? 3 : 4}" stroke-linejoin="round" stroke-linecap="round"${outflow ? ' stroke-dasharray="10 7"' : ''}/>`];
+  if (outflow) return out.join('');
+  const dry = type === 'dryline', spacing = dry ? 28 : 46, size = dry ? 7 : 10;
+  let carried = spacing / 2, n = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i], length = Math.hypot(b[0] - a[0], b[1] - a[1]); if (length < 1e-6) continue;
+    const tx = (b[0] - a[0]) / length, ty = (b[1] - a[1]) / length;
+    for (let s = carried; s < length; s += spacing, n++) {
+      const x = a[0] + tx * s, y = a[1] + ty * s, kind = type === 'stationary' ? (n % 2 ? 'warm' : 'cold') : type, flip = type === 'stationary' && n % 2 ? -side : side, nx = ty * flip, ny = -tx * flip;
+      if (kind === 'cold') out.push(`<path d="M${f(x - tx * size)} ${f(y - ty * size)}L${f(x + nx * size * 1.5)} ${f(y + ny * size * 1.5)}L${f(x + tx * size)} ${f(y + ty * size)}Z" fill="${BOUNDARY_COLOURS.cold}" stroke="rgba(0,0,0,.6)" stroke-width="1"/>`);
+      else {
+        // (the half of a circle on the side the normal points to: from one end of its diameter along the line to the other)
+        const sweep = flip > 0 ? 1 : 0, arc = `M${f(x - tx * size)} ${f(y - ty * size)}A${size} ${size} 0 0 ${sweep} ${f(x + tx * size)} ${f(y + ty * size)}`;
+        out.push(kind === 'warm' ? `<path d="${arc}Z" fill="${BOUNDARY_COLOURS.warm}" stroke="rgba(0,0,0,.6)" stroke-width="1"/>` : `<path d="${arc}" fill="none" stroke="rgba(0,0,0,.6)" stroke-width="4.5"/><path d="${arc}" fill="none" stroke="${colour}" stroke-width="2.5"/>`);
+      }
+    }
+    carried = (carried - length) % spacing; if (carried < 0) carried += spacing;
+  }
+  return out.join('');
+}
+
 // shapes: [{ rings, fill, fillOpacity, stroke, width, dash, label, hatch }] (hatch: a colour for diagonal lines
 // over the shape, as the centre marks a part of an area); focus: the rings to frame (all shapes' rings when left
 // out); key: [{ colour, text }]; footer: a line under the key (bold part first: [bold, rest]). For a mesoscale
@@ -25,8 +55,11 @@ export function viewOf(rings, { pad = 0.35, minMiles = 60, mapMiles = 500 } = {}
 // radar, DiscussionRadar.js); arrows: [{ x0, y0, x1, y1, colour, label }] in map miles; callout: { text, colour },
 // a boxed statement at the top of the map, as the centre's graphics have; colourBar: { title, stops: [[value,
 // colour]] }, a row of the underlay's colours under the key; facts: { title, items: [{ label, value, colour }] }, a
-// row of boxes under the key (a discussion's most probable peak intensities, as the centre's graphics list them).
-export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, minMiles = 60, underlay = null, arrows = [], callout = null, colourBar = null, facts = null }) {
+// row of boxes under the key (a discussion's most probable peak intensities, as the centre's graphics list them);
+// base: a picture under everything (the satellite, { png, x, y, size } in map miles); contours: [{ rings, colour,
+// label }] (a mesoanalysis field's lines, each labelled with its value); lines: [{ points (flat map miles), type,
+// side }] (fronts, drylines, outflow boundaries, drawn with the surface analysis's symbols and colours).
+export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, minMiles = 60, underlay = null, arrows = [], callout = null, colourBar = null, facts = null, base = null, contours = [], lines = [] }) {
   const mapMiles = layer?.miles ?? 500, view = viewOf(focus ?? shapes.flatMap(s => s.rings), { minMiles, mapMiles }), scale = W / view.size;
   const X = x => ((x - view.x) * scale).toFixed(1), Y = y => ((y - view.y) * scale).toFixed(1);
   const flatPath = rings => rings.map(flat => { let d = `M${X(flat[0])} ${Y(flat[1])}`; for (let k = 2; k < flat.length; k += 2) d += `L${X(flat[k])} ${Y(flat[k + 1])}`; return `${d}Z`; }).join('');
@@ -48,11 +81,25 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
   out.push(`<defs><clipPath id="map"><rect width="${W}" height="${W}"/></clipPath>${patterns}</defs><rect width="${W}" height="${height}" fill="#ffffff"/>`);
   out.push(`<g clip-path="url(#map)"><rect width="${W}" height="${W}" fill="#dfe3e8"/>`);
   out.push(`<rect x="${X(0)}" y="${Y(0)}" width="${(mapMiles * scale).toFixed(1)}" height="${(mapMiles * scale).toFixed(1)}" fill="#f4f1e8"/>`);
+  // The satellite under it all, as the centre's graphics lay their mosaic over GOES.
+  if (base?.png) out.push(`<image href="data:image/png;base64,${Buffer.from(base.png).toString('base64')}" x="${X(base.x)}" y="${Y(base.y)}" width="${(base.size * scale).toFixed(1)}" height="${(base.size * scale).toFixed(1)}" preserveAspectRatio="none" opacity="0.75"/>`);
   for (const s of shapes) if (s.rings.length && s.fill) out.push(`<path d="${flatPath(s.rings)}" fill="${s.fill}" fill-opacity="${s.fillOpacity ?? 0.35}" fill-rule="evenodd"/>`);
   // The radar over the fills and under the lines, as the centre's graphics lay the mosaic.
   if (underlay?.png) out.push(`<image href="data:image/png;base64,${Buffer.from(underlay.png).toString('base64')}" x="${X(underlay.x)}" y="${Y(underlay.y)}" width="${(underlay.size * scale).toFixed(1)}" height="${(underlay.size * scale).toFixed(1)}" preserveAspectRatio="none" opacity="0.9"/>`);
   const counties = layer?.counties ?? [];
   if (counties.length) out.push(`<path d="${counties.map(c => nestedPath(c.rings)).join('')}" fill="none" stroke="#6f6a5f" stroke-opacity="0.55" stroke-width="${view.size < 150 ? 1.2 : 0.8}"/>`);
+  // The air: a field's contours, each labelled with its value,
+  // and the boundaries, on a white edge so they read over the satellite and the radar.
+  for (const c of contours) {
+    out.push(`<path d="${flatPath(c.rings)}" fill="none" stroke="#fff" stroke-opacity="0.6" stroke-width="4.5"/><path d="${flatPath(c.rings)}" fill="none" stroke="${c.colour}" stroke-width="2.2"${c.dash ? ` stroke-dasharray="${c.dash}"` : ''}/>`);
+    for (const flat of c.rings) {
+      // (at its point nearest the middle of the map, so the label sits by what the map is about, clear of its edges)
+      let k = flat.length, best = Infinity;
+      for (let j = 0; j + 1 < flat.length; j += 2) { const px = Number(X(flat[j])), py = Number(Y(flat[j + 1])); if (px > 40 && px < W - 40 && py > 40 && py < W - 40) { const d = Math.hypot(px - W / 2, py - W / 2); if (d < best) { best = d; k = j; } } }
+      if (k < flat.length && c.label) out.push(`<text x="${X(flat[k])}" y="${Y(flat[k + 1])}" font-size="14" font-weight="700" fill="${c.colour}" stroke="#fff" stroke-width="3.5" paint-order="stroke" text-anchor="middle" dominant-baseline="middle">${escapeXml(c.label)}</text>`);
+    }
+  }
+  for (const l of lines) out.push(boundarySvg(l.points.reduce((pts, v, k) => (k % 2 ? pts : [...pts, [Number(X(v)), Number(Y(l.points[k + 1]))]]), []), l.type, l.side ?? 1));
   for (const s of shapes) if (s.rings.length && s.hatch) out.push(`<path d="${flatPath(s.rings)}" fill="url(#${hatchId(s.hatch)})" fill-rule="evenodd"/>`);
   for (const s of shapes) if (s.rings.length) out.push(`<path d="${flatPath(s.rings)}" fill="none" stroke="${s.stroke ?? s.fill ?? '#000'}" stroke-width="${s.width ?? 4}" stroke-linejoin="round"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}/>`);
   // Close in, the counties' names (the middle of their first ring), as the warning graphics have them.
