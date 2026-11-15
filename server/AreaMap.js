@@ -3,7 +3,7 @@
 // (flat lists x1, y1, x2, y2 ..., 0-500 east and south from the north-west corner), as the game
 // products carry them (GameProducts.js); layer: the county layer (CountyLayer.js countiesFor).
 const FONT = 'DejaVu Sans, Segoe UI, Arial, Helvetica, sans-serif';
-const W = 1000, FOOTER = 40;
+const W = 1000, FOOTER = 40, BAR = 48;
 
 const escapeXml = text => String(text).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
 
@@ -18,10 +18,14 @@ function viewOf(rings, { pad = 0.35, minMiles = 60, mapMiles = 500 } = {}) {
   return { x: inside((x0 + x1) / 2 - size / 2), y: inside((y0 + y1) / 2 - size / 2), size };
 }
 
-// shapes: [{ rings, fill, fillOpacity, stroke, width, dash, label }]; focus: the rings to frame
-// (all shapes' rings when left out); key: [{ colour, text }]; footer: a line under the key (bold
-// part first: [bold, rest]).
-export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, minMiles = 60 }) {
+// shapes: [{ rings, fill, fillOpacity, stroke, width, dash, label, hatch }] (hatch: a colour for diagonal lines
+// over the shape, as the centre marks a part of an area); focus: the rings to frame (all shapes' rings when left
+// out); key: [{ colour, text }]; footer: a line under the key (bold part first: [bold, rest]). For a mesoscale
+// discussion's map (2026-11-14): underlay, a picture under the outlines ({ png, x, y, size } in map miles: the
+// radar, DiscussionRadar.js); arrows: [{ x0, y0, x1, y1, colour, label }] in map miles; callout: { text, colour },
+// a boxed statement at the top of the map, as the centre's graphics have; colourBar: { title, stops: [[value,
+// colour]] }, a row of the underlay's colours under the key.
+export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, minMiles = 60, underlay = null, arrows = [], callout = null, colourBar = null }) {
   const mapMiles = layer?.miles ?? 500, view = viewOf(focus ?? shapes.flatMap(s => s.rings), { minMiles, mapMiles }), scale = W / view.size;
   const X = x => ((x - view.x) * scale).toFixed(1), Y = y => ((y - view.y) * scale).toFixed(1);
   const flatPath = rings => rings.map(flat => { let d = `M${X(flat[0])} ${Y(flat[1])}`; for (let k = 2; k < flat.length; k += 2) d += `L${X(flat[k])} ${Y(flat[k + 1])}`; return `${d}Z`; }).join('');
@@ -35,14 +39,20 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
     keySpots.push({ ...k, x: kx, y: W + 18 + row * 36 });
     kx += width + 28;
   }
-  const keyHeight = key.length ? 64 + row * 36 : 0, height = W + keyHeight + (footer ? FOOTER : 0);
+  const keyHeight = key.length ? 64 + row * 36 : 0, barHeight = colourBar ? BAR : 0, height = W + keyHeight + barHeight + (footer ? FOOTER : 0);
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}" font-family="${FONT}">`];
-  out.push(`<defs><clipPath id="map"><rect width="${W}" height="${W}"/></clipPath></defs><rect width="${W}" height="${height}" fill="#ffffff"/>`);
+  const hatches = [...new Set(shapes.filter(sh => sh.hatch && sh.rings.length).map(sh => sh.hatch))];
+  const hatchId = colour => `hatch${hatches.indexOf(colour)}`;
+  const patterns = hatches.map(c => `<pattern id="${hatchId(c)}" patternUnits="userSpaceOnUse" width="16" height="16" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="16" stroke="${c}" stroke-width="3.5" stroke-opacity="0.6"/></pattern>`).join('');
+  out.push(`<defs><clipPath id="map"><rect width="${W}" height="${W}"/></clipPath>${patterns}</defs><rect width="${W}" height="${height}" fill="#ffffff"/>`);
   out.push(`<g clip-path="url(#map)"><rect width="${W}" height="${W}" fill="#dfe3e8"/>`);
   out.push(`<rect x="${X(0)}" y="${Y(0)}" width="${(mapMiles * scale).toFixed(1)}" height="${(mapMiles * scale).toFixed(1)}" fill="#f4f1e8"/>`);
   for (const s of shapes) if (s.rings.length && s.fill) out.push(`<path d="${flatPath(s.rings)}" fill="${s.fill}" fill-opacity="${s.fillOpacity ?? 0.35}" fill-rule="evenodd"/>`);
+  // The radar over the fills and under the lines, as the centre's graphics lay the mosaic.
+  if (underlay?.png) out.push(`<image href="data:image/png;base64,${Buffer.from(underlay.png).toString('base64')}" x="${X(underlay.x)}" y="${Y(underlay.y)}" width="${(underlay.size * scale).toFixed(1)}" height="${(underlay.size * scale).toFixed(1)}" preserveAspectRatio="none" opacity="0.9"/>`);
   const counties = layer?.counties ?? [];
   if (counties.length) out.push(`<path d="${counties.map(c => nestedPath(c.rings)).join('')}" fill="none" stroke="#6f6a5f" stroke-opacity="0.55" stroke-width="${view.size < 150 ? 1.2 : 0.8}"/>`);
+  for (const s of shapes) if (s.rings.length && s.hatch) out.push(`<path d="${flatPath(s.rings)}" fill="url(#${hatchId(s.hatch)})" fill-rule="evenodd"/>`);
   for (const s of shapes) if (s.rings.length) out.push(`<path d="${flatPath(s.rings)}" fill="none" stroke="${s.stroke ?? s.fill ?? '#000'}" stroke-width="${s.width ?? 4}" stroke-linejoin="round"${s.dash ? ` stroke-dasharray="${s.dash}"` : ''}/>`);
   // Close in, the counties' names (the middle of their first ring), as the warning graphics have them.
   if (view.size <= 140) {
@@ -66,19 +76,50 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
     out.push(`<circle cx="${X(t.x)}" cy="${Y(t.y)}" r="${big ? 5.5 : 4}" fill="#222" stroke="#fff" stroke-width="1.5"/>`);
     out.push(`<text x="${(Number(X(t.x)) + 9).toFixed(1)}" y="${(Number(Y(t.y)) + 5).toFixed(1)}" font-size="${big ? 18 : 15}" font-weight="${big ? 700 : 400}" fill="#111" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">${escapeXml(t.name)}</text>`);
   }
+  // Arrows: a shaft and a head, on a white halo so they read over the radar.
+  for (const a of arrows) {
+    const x0 = Number(X(a.x0)), y0 = Number(Y(a.y0)), x1 = Number(X(a.x1)), y1 = Number(Y(a.y1)), len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 12) continue;
+    const ux = (x1 - x0) / len, uy = (y1 - y0) / len, head = Math.min(30, len * 0.45), bx = x1 - ux * head, by = y1 - uy * head, colour = a.colour ?? '#111';
+    const tip = `${x1.toFixed(1)},${y1.toFixed(1)} ${(bx - uy * head * 0.5).toFixed(1)},${(by + ux * head * 0.5).toFixed(1)} ${(bx + uy * head * 0.5).toFixed(1)},${(by - ux * head * 0.5).toFixed(1)}`;
+    out.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="#fff" stroke-width="11" stroke-linecap="round"/><polygon points="${tip}" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>`);
+    out.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="${colour}" stroke-width="5" stroke-linecap="round"/><polygon points="${tip}" fill="${colour}"/><circle cx="${x0.toFixed(1)}" cy="${y0.toFixed(1)}" r="6" fill="${colour}" stroke="#fff" stroke-width="2"/>`);
+    if (a.label) out.push(`<text x="${(x1 + ux * 10 + 6).toFixed(1)}" y="${(y1 + uy * 10 + 6).toFixed(1)}" font-size="16" font-weight="700" fill="${colour}" stroke="#fff" stroke-width="4" paint-order="stroke">${escapeXml(a.label)}</text>`);
+  }
   for (const s of shapes) {
     if (!s.label || !s.rings.length) continue;
     const flat = s.rings[0]; let top = 0;
     for (let k = 3; k < flat.length; k += 2) if (flat[k] < flat[top + 1]) top = k - 1;
     out.push(`<text x="${X(flat[top])}" y="${(Number(Y(flat[top + 1])) - 10).toFixed(1)}" font-size="20" font-weight="700" fill="${s.stroke ?? '#000'}" stroke="#fff" stroke-width="4" paint-order="stroke" text-anchor="middle">${escapeXml(s.label)}</text>`);
   }
+  if (callout?.text) {
+    // Wrapped at about 46 characters a line, in a white box with the colour's border.
+    const words = callout.text.split(' '), lines = [''];
+    for (const w of words) { if ((lines.at(-1) + ' ' + w).trim().length > 46) lines.push(w); else lines[lines.length - 1] = (lines.at(-1) + ' ' + w).trim(); }
+    const widest = Math.max(...lines.map(l => l.length)), bw = Math.min(W - 40, 40 + widest * 12.6), bh = 22 + lines.length * 28, colour = callout.colour ?? '#dc2626';
+    // With callout.at (map miles), a little below it (above where the map has no room), with a line to it; else at
+    // the top in the middle.
+    const ax = callout.at ? Number(X(callout.at.x)) : null, ay = callout.at ? Number(Y(callout.at.y)) : null, gap = 110;
+    const top = ay != null && ay + gap + bh > W - 20, by = ay == null ? 20 : top ? Math.max(20, ay - gap - bh) : ay + gap, bx = ax == null ? (W - bw) / 2 : Math.min(Math.max(ax - bw / 2, 20), W - 20 - bw);
+    if (ax != null) out.push(`<line x1="${Math.min(Math.max(ax, bx + 12), bx + bw - 12).toFixed(1)}" y1="${(top ? by + bh : by).toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="${colour}" stroke-width="2.5" stroke-dasharray="7 5"/>`);
+    out.push(`<rect x="${bx.toFixed(1)}" y="${by}" width="${bw.toFixed(1)}" height="${bh}" rx="4" fill="#fff" fill-opacity="0.95" stroke="${colour}" stroke-width="3"/>`);
+    lines.forEach((l, k) => out.push(`<text x="${(bx + bw / 2).toFixed(1)}" y="${by + 28 + k * 28}" font-size="22" font-weight="700" fill="${colour}" text-anchor="middle">${escapeXml(l)}</text>`));
+  }
   out.push('</g>', `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${W - 1.5}" fill="none" stroke="#333" stroke-width="1.5"/>`);
   for (const k of keySpots) {
     out.push(`<rect x="${k.x}" y="${k.y}" width="34" height="26" rx="3" fill="${k.colour}" fill-opacity="0.45" stroke="${k.colour}" stroke-width="3"/>`);
     out.push(`<text x="${k.x + 44}" y="${k.y + 19}" font-size="15" fill="#222">${escapeXml(k.text)}</text>`);
   }
+  if (colourBar) {
+    const y = W + keyHeight, stops = colourBar.stops ?? [], titleWidth = 24 + colourBar.title.length * 8.2, cell = Math.min(44, (W - titleWidth - 40) / Math.max(1, stops.length));
+    out.push(`<text x="24" y="${y + 29}" font-size="15" fill="#222">${escapeXml(colourBar.title)}</text>`);
+    stops.forEach(([value, colour], k) => {
+      const x = titleWidth + 16 + k * cell;
+      out.push(`<rect x="${x.toFixed(1)}" y="${y + 8}" width="${cell.toFixed(1)}" height="18" fill="${colour}"/><text x="${(x + cell / 2).toFixed(1)}" y="${y + 42}" font-size="12" fill="#444" text-anchor="middle">${value}</text>`);
+    });
+  }
   if (footer) {
-    const y = W + keyHeight;
+    const y = W + keyHeight + barHeight;
     out.push(`<rect x="0" y="${y}" width="${W}" height="${FOOTER}" fill="#f1f3f6"/><line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#d5d9e0"/>`);
     out.push(`<text x="24" y="${y + 26}" font-size="15" fill="#222"><tspan font-weight="700">${escapeXml(footer[0])}</tspan>${footer[1] ? ` · ${escapeXml(footer[1])}` : ''}</text>`);
   }

@@ -187,7 +187,11 @@ export function gameMesoscale(list) {
     discussions: list.discussions.filter(md => md.valid).map(md => ({
       number: md.number, concerning: md.concerning ?? '', where: md.where ?? '', watchPercent: md.watchPercent ?? null, watchNumber: md.watchNumber ?? null,
       colourKey: discussionColourKey(md), issuedHourUtc: md.issuedHourUtc, validToHourUtc: md.validToHourUtc,
-      rings: contourMiles(md.rings, mapMiles), text: md.text ?? ''
+      rings: contourMiles(md.rings, mapMiles), text: md.text ?? '',
+      // The greatest short-term potential (hazard, outline, where it is centred) and the leading storm's next
+      // hour (from x0, y0 to x1, y1), in map miles; null where the discussion has none (MesoscaleDiscussion.js).
+      focus: md.focus ? { hazard: md.focus.hazard, near: md.focus.near ?? null, rings: contourMiles(md.focus.rings, mapMiles) } : null,
+      arrow: md.arrow ? { x0: +(md.arrow.x0 * mapMiles).toFixed(2), y0: +(md.arrow.y0 * mapMiles).toFixed(2), x1: +(md.arrow.x1 * mapMiles).toFixed(2), y1: +(md.arrow.y1 * mapMiles).toFixed(2), hours: md.arrow.hours } : null
     }))
   };
 }
