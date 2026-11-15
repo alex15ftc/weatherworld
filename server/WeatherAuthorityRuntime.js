@@ -645,13 +645,14 @@ export class WeatherAuthorityRuntime {
   }
 
   // One tilt of one site; all products are simulated together and cached per revision. fine: with
-  // the 250 m gates of a close look (RADAR_FINE_GATE_KM) rather than the usual.
-  async radarScan(siteId, tiltDeg, { fine = false } = {}) {
+  // the 250 m gates of a close look (RADAR_FINE_GATE_KM) rather than the usual. prewarm: false for a
+  // one-off look (the mesoscale discussions'), which is not worked out again at the next scans.
+  async radarScan(siteId, tiltDeg, { fine = false, prewarm = true } = {}) {
     const site = this.radarCatalog().sites.find(s => s.id === siteId);
     if (!site) return null;
     const tilt = RADAR_TILTS_DEG.reduce((a, b) => (Math.abs(b - tiltDeg) < Math.abs(a - tiltDeg) ? b : a));
     const gateKm = fine ? RADAR_FINE_GATE_KM : RADAR_GATE_KM, tag = fine ? '|fine' : '';
-    this.radarWanted.set(`${site.id}|${tilt}${tag}`, Date.now());
+    if (prewarm) this.radarWanted.set(`${site.id}|${tilt}${tag}`, Date.now());
     const revision = this.revision;
     return this.cachedAsync(`radar:scan:${site.id}:${tilt}${tag}`, async () => {
       const scene = await this.radarScene();
@@ -661,13 +662,14 @@ export class WeatherAuthorityRuntime {
 
   // The rotation one radar's volume scan shows (js/radar/RotationDetection.js): its lowest tilts
   // scanned and the detections worked out from them (on the radar pool's threads when there is one).
-  radarRotation(siteId) {
+  // prewarm: as radarScan's.
+  radarRotation(siteId, { prewarm = true } = {}) {
     const site = this.radarCatalog().sites.find(s => s.id === siteId);
     if (!site) return Promise.resolve(null);
-    this.radarWanted.set(`rotation|${site.id}`, Date.now());
+    if (prewarm) this.radarWanted.set(`rotation|${site.id}`, Date.now());
     const revision = this.revision, tilts = RADAR_TILTS_DEG.slice(0, RADAR_ROTATION_TILTS);
     return this.cachedAsync(`radar:rotation:${site.id}`, async () => {
-      const scans = (await Promise.all(tilts.map(tilt => this.radarScan(site.id, tilt)))).filter(Boolean);
+      const scans = (await Promise.all(tilts.map(tilt => this.radarScan(site.id, tilt, { prewarm })))).filter(Boolean);
       if (!scans.length) return null;
       return { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...(this.radarPool ? await this.radarPool.rotation(site, scans) : detectRotation(site, scans)), revision };
     });

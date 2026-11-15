@@ -42,7 +42,7 @@ local PIECE = 480 -- runways, taxiways and fences are laid in pieces no longer t
 export type Kit = {
 	at: (Builder.Props, CFrame, number, number, number, number, number, number, Color3, Enum.Material?, boolean?) -> Builder.Prop,
 	seat: (any, number, number, number, number, number) -> CFrame,
-	fits: (any, CFrame, number, number) -> number?,
+	fits: (any, CFrame, number, number, boolean?) -> number?,
 	stream: (number, number, number) -> () -> number,
 	pick: (list: { any }, r: number) -> any,
 	parking: (Builder.Props, CFrame, number, number, ((number, number) -> number)?) -> (),
@@ -241,7 +241,7 @@ local function buildCampus(ctx: any, kit: Kit, campus: any)
 	for i, b in campus.buildings do
 		local cx, cz, yaw, sx, sz = Sites.rect(b)
 		local frame = kit.seat(ctx, cx, cz, yaw, sx, sz)
-		local scale = kit.fits(ctx, frame, sx, sz)
+		local scale = kit.fits(ctx, frame, sx, sz, true)
 		if scale then
 			local floors = math.max(2, math.floor((tall * (0.5 + 0.5 * rnd())) / 12))
 			if rnd() < 0.6 then
@@ -328,7 +328,7 @@ local function buildArea(ctx: any, kit: Kit, area: Sites.Area)
 	local function placeAt(x: number, z: number, sx: number, sz: number): (CFrame?, number?)
 		local p = base * Vector3.new(x, 0, z)
 		local frame = kit.seat(ctx, p.X, p.Z, select(2, base:ToEulerAnglesYXZ()), sx, sz)
-		return frame, kit.fits(ctx, frame, sx, sz)
+		return frame, kit.fits(ctx, frame, sx, sz, true)
 	end
 	local ground = ctx.ground
 	if area.kind == "mall" then
@@ -359,7 +359,8 @@ local function buildArea(ctx: any, kit: Kit, area: Sites.Area)
 			if frame and scale then
 				if area.kind == "travel" and k == 1 then
 					kit.midrise(props, frame, w * scale, math.min(bd, 40) * scale, 2, kit.stream(area.id, k, 616))
-				elseif area.kind == "travel" then
+				elseif area.kind == "travel" and scale == 1 and w >= 64 and bd >= 56 then
+					-- (a restaurant is built at its own size: only where its ground took all of it)
 					kit.fastFood(props, frame, kit.stream(area.id, k, 616))
 				else
 					kit.warehouse(props, frame, w * scale, bd * scale, kit.stream(area.id, k, 616))

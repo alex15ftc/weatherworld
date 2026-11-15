@@ -68,14 +68,19 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
   warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
   warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
-- Storm sentences in discussions about a watch (2026-11-13, in the working tree, not committed or deployed): at
+- Storm sentences in discussions about a watch (2026-11-13; on `main` and deployed to the engine from `e72faca` on 2026-11-14): at
   each look ahead `MesoscaleRuntime.radarLooks` has the nearest radar (2 radars at most) look at the rotating
   storms under the watches in effect, and a discussion about a watch then speaks of its leading storm
   (`describeStorm` in `js/forecast/MesoscaleDiscussion.js`): the radar's low-level rotational velocity, a tornadic
   vortex signature, a debris signature (`debrisSignature` in `js/radar/RotationDetection.js`), the significant
   tornado parameter around it and its motion. Measured on this machine: a radar's 9-tilt volume is about 3.5 s
   of one radar thread and the detection 0.1 s. Checked by `tests/mesoscale-discussion.mjs`,
-  `tests/radar-simulator.mjs` and real scans of a made supercell; not yet seen on a running engine. This is the
+  `tests/radar-simulator.mjs` and real scans of a made supercell; not yet seen in a live discussion (the engine came up clean after the deploy). Re-checked
+  2026-11-14 on top of `origin/main`'s new radar (patch applies cleanly; both tests pass; no false debris
+  signature with 2.5 to 5 inch hail). On that radar the rotational velocity no longer grows with the tornado's
+  wind (62 kt for a made 165 mph tornado, 63 kt for a 120 mph one), so the wind estimate below cannot rest
+  on it alone. The look does not keep its scans warm (`radarRotation`/`radarScan` take `prewarm: false`), and
+  a tornado or debris in the area keeps a watch's threat "continuing", never "waning". This is the
   first step toward SPC-style storm-scale ("meso-gamma") discussions; the full product (its own discussion for
   an ongoing strong tornado, with a wind estimate from rotational velocity and the tornado parameter fitted on
   our own world) is proposed, not scoped. For it: over 4 saved days EF3+ tornadoes lasted a median 74 world
@@ -259,7 +264,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   stands in water. Each chunk first plans the lots just beyond its edge (`NEIGHBOUR_LOTS` in `ChunkGen`);
   buildings stand at most 5 studs above the lowest ground under them on a foundation, and are not built where
   the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
-  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed (11 radars, 10 offices); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
+  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed, then KMRR with its Morriston office (10 radars, 9 offices; map rebuilt and exported, not yet published); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
 
 - Map, third round (2026-11-14; merged to `main`, place published as version 499 and engine deployed from `72fdf47`, the world resumed at hour 606; the products-screen restyle went out with it; none of it seen in game yet;
   towns and airfields unmoved): creek beds (the generator's `creeks`, 1,479 streams of 25 to 1,000 mi2 of
@@ -319,7 +324,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-0. Map (published as 503, half size: look first at the character, the car and its camera, a town, the M map; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
+0. Map (published as 505 and engine deployed from `c5aa758`, 2026-11-14, the world resumed at hour 732. 505: a bridge is its deck only, each road climbs to it on its own raised grade with the ground graded up under it (no ramp slabs or wedges; unseen in game, look at two or three overpasses and a river bridge first). Offline: 0 holes and 0 steps at 90 crossings; 10 holes in 20 places, 6 of them at Smith Falls with an 8-stud ramp step. Owner asked for sharper terrain features (grid farms): options put to them are custom terrain textures on unused materials, field-margin strips as parts, smaller fields; none built, they need Studio. 504, same day, with the KMRR-less map export; 504 fixes what the owner saw on 503: roads under the terrain (road cut, slab and ditch back at their size in the place's studs), ramps buried at their foot (ground cut under bridges), the pit down the middle of divided roads (median is a part now), gaps where a road carries on from a bigger one's end, ramps and riverside roads missing at rivers, building parts on roads, grass at half length; none of it seen in game. Still wrong: the Smith Falls interchange at map mile 391.0, 128.6 (two interstates on a wide river: gaps and an 8-stud step on a ramp); next there: interchanges kept off wide rivers (generator, map rebuild). Also open: collectors dead-end at wide rivers (76 crossings), steep main-road grades, kinks on metro-centre streets. `tools/worldmap/run-chunks.luau` now drives every road for holes and steps (modes `crossings`, `at:x,z`). Half size: look first at the character, the car and its camera, a town, the M map; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
 0a. Storm wind and radar (live since 2026-11-14, engine `32b57de`, place 502): look at storms in the game or Studio (wall

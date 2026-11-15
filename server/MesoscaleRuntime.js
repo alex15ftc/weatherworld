@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
-import { MESOSCALE, describeNow, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
+import { MESOSCALE, STORM_RADAR, describeNow, radarLook, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
 import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, publicWatch } from '../js/forecast/Watch.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
 import { countiesFor } from './CountyLayer.js';
@@ -92,9 +92,12 @@ export class MesoscaleRuntime {
     const state = shareState(engine.saveState({ forecast: true })), now = describeNow(engine, { counties: countiesFor(engine.world) });
     // Ahead of any outlook runs waiting: these are short, and a watch should not wait.
     const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('mesoscale', state, member, MESOSCALE.hoursAhead, { priority: 1 })));
+    // ...and the radars' look at the rotating storms under the watches in effect, of the same moment.
+    const looked = this.radarLooks(now).catch(error => console.warn('[mesoscale] no radar look:', error.message));
     this.running = { hourUtc: now.hourUtc, startedAt: started };
     try {
       const members = await run;
+      await looked;
       if (this.runtime.engine !== engine) return { discussions: [], watches: [], pending: [] };
       const found = lookAhead(members, now, { discussions: this.discussions, watches: this.watches, nextDiscussion: this.next, nextWatch: this.nextWatch, seed: engine.seed });
       this.next += found.discussions.length; this.nextWatch += found.watches.length;
@@ -111,6 +114,31 @@ export class MesoscaleRuntime {
     } finally {
       this.running = null;
     }
+  }
+
+  // What the radars show of the rotating storms under the watches in effect (radarLook), put on now's
+  // storms as `radar`: a discussion about a watch speaks of its leading storm from it. Each storm is
+  // looked at by its nearest radar; the radars of the strongest storms, STORM_RADAR.sites at most (a
+  // volume scan each, on the radar's threads, kept for the radar pages of the same scan but not worked out
+  // again at the next scans, as what the pages look at is). Nothing
+  // without a watch in effect over a rotating storm, or where the runtime has no radar.
+  async radarLooks(now) {
+    const runtime = this.runtime;
+    if (!runtime.radarRotation || !runtime.radarScan || !runtime.radarCatalog) return;
+    const watched = this.watches.filter(watch => watch.validToHourUtc > now.hourUtc + 1e-6);
+    const storms = now.storms.filter(s => (s.rotating || s.tornado) && watched.some(watch => watch.cells[s.cell])).sort((a, b) => (b.tornado - a.tornado) || (b.mesocyclone - a.mesocyclone));
+    if (!storms.length) return;
+    const sites = runtime.radarCatalog().sites, bySite = new Map();
+    if (!sites?.length) return;
+    for (const storm of storms) {
+      const site = sites.reduce((a, b) => (Math.hypot(b.xKm - storm.xKm, b.yKm - storm.yKm) < Math.hypot(a.xKm - storm.xKm, a.yKm - storm.yKm) ? b : a));
+      if (!bySite.has(site)) { if (bySite.size >= STORM_RADAR.sites) continue; bySite.set(site, []); }
+      bySite.get(site).push(storm);
+    }
+    await Promise.all([...bySite].map(async ([site, theirs]) => {
+      const [found, lowest] = await Promise.all([runtime.radarRotation(site.id, { prewarm: false }), runtime.radarScan(site.id, 0, { prewarm: false })]);
+      if (found) for (const storm of theirs) storm.radar = radarLook(storm, site, found, lowest);
+    }));
   }
 
   // What the page asks for: the watches and the discussions, newest first, each marked valid or lapsed.

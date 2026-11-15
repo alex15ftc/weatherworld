@@ -55,11 +55,19 @@ local SHOULDER, SHOULDER_MAX, SHOULDER_PER_STUD = 18, 64, 2.5
 -- sized in studs to fit the props (Roads.BED is 4 studs), so they are written as studs / VERTICAL
 -- metres and keep their size whatever the ground's vertical scale.
 local VERTICAL = Config.DESIGN_STUDS_PER_METRE
-local ROAD_RAISE_M = 0.3 / VERTICAL -- graded road top above the ground under its centre line
+-- (These fit how Roblox draws smooth terrain: its surface stands a stud or two above the height
+-- written, in the place's studs whatever the world's scale. So they are sizes in the place's
+-- studs, hence the / WORLD: at half size a cut of 3.2 design studs was 1.6 in the place, less
+-- than the terrain's overshoot, and the ground covered the roads, 2026-11-14.)
+local ROAD_RAISE_M = 0.3 / VERTICAL / WORLD -- graded road top above the ground under its centre line
 -- The ground is cut this far (m) below a road's grade under the road and its sidewalks (hidden by
 -- the road slabs), and lies this far below it at the road's edge (a ditch in the country), rising
 -- to the natural ground over the shoulder.
-local ROAD_CUT_M, DITCH_M, TOWN_DITCH_M, MEDIAN_M = 3.2 / VERTICAL, 1.6 / VERTICAL, 0.7 / VERTICAL, 1.6 / VERTICAL
+local ROAD_CUT_M, DITCH_M, TOWN_DITCH_M = 3.2 / VERTICAL / WORLD, 1.6 / VERTICAL / WORLD, 0.7 / VERTICAL / WORLD
+-- The ground is cut under a road out to this far beyond its footprint (design studs): the terrain's
+-- columns are VOXEL apart, and one whose middle lies just outside the road would stand uncut
+-- against the road's edge (nothing at the 4-stud voxels the roads were sized for).
+local ROAD_EDGE = (VOXEL - 4) / 2
 
 -- River channel: map width (m, as drawn) to studs; the water sits a bank's height below the
 -- smoothed ground along the centre line; the channel is at least two voxels deep so it holds water.
@@ -371,6 +379,8 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		local footprint = Bridges.build({ props = {}, gradeTop = baseTop, ground = Heightfield.studsAt }, crossing, true)
 		for _, other in planned do
 			if footprintsMeet(footprint, other.footprint) then
+				-- (a bridge that would run into one already placed is not built; a road due a
+				-- bridge is then laid straight over on its own grade, see riverStops)
 				return false
 			end
 		end
@@ -420,10 +430,10 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		if over and under then
 			local sin = Interchanges.sin(rec)
 			plan({
-				x = rec.x, z = rec.z, ux = over.ux, uz = over.uz, riverHalf = under.spec.total / sin + 4,
+				x = rec.x, z = rec.z, ux = over.ux, uz = over.uz, riverHalf = (under.spec.total + 12) / sin,
 				water = baseTop(rec.x, rec.z), roadHalf = over.spec.total, kind = kindOf(over.spec),
 				surface = "asphalt", priority = over.spec.priority, overpass = true, clearance = 17,
-				belowDivided = under.spec.median > 0,
+				belowDivided = under.spec.median > 0, chain = over.chain,
 			}, rec.ux, rec.uz)
 		end
 	end
@@ -452,10 +462,10 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 						local sin = math.abs(g.ux * m.uz - g.uz * m.ux)
 						if sin > 0.2 and not listed(x, z) then
 							plan({
-								x = x, z = z, ux = g.ux, uz = g.uz, riverHalf = m.spec.total / sin + 4,
+								x = x, z = z, ux = g.ux, uz = g.uz, riverHalf = (m.spec.total + 12) / sin,
 								water = baseTop(x, z), roadHalf = g.spec.total, kind = kindOf(g.spec),
 								surface = g.spec.surface, priority = g.spec.priority, overpass = true, clearance = 17,
-								belowDivided = m.spec.median > 0,
+								belowDivided = m.spec.median > 0, chain = g.chain,
 							}, m.ux, m.uz)
 						end
 					end
@@ -464,13 +474,17 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		end
 	end
 	local riverCrossings = {}
+	-- (fords: every place a road's line crosses a river's, bridged or not)
+	local fords: { { x: number, z: number, ux: number, uz: number, chain: any, bridged: boolean } } = {}
 	for _, g in net.all do
 		local spec = g.spec
 		for _, r in rivers do
 			local t, u = Bridges.intersect(g.ax, g.az, g.bx, g.bz, r.ax, r.az, r.bx, r.bz)
 			if t and u then
 				local half = r.h0 + (r.h1 - r.h0) * u
-				if spec.priority >= 5 or half < STREET_BRIDGE_HALF then
+				table.insert(fords, { x = g.ax + (g.bx - g.ax) * t, z = g.az + (g.bz - g.az) * t, ux = g.ux, uz = g.uz, chain = g.chain, bridged = false })
+				-- (ramps too: an interchange by a river has ramps over it)
+				if spec.priority >= 5 or spec.key == "ramp" or half < STREET_BRIDGE_HALF then
 					local x, z = g.ax + (g.bx - g.ax) * t, g.az + (g.bz - g.az) * t
 					-- Headroom over the water by the road's rank and the span.
 					local clearance = (if spec.priority >= 9 then 14 elseif spec.priority >= 7 then 10 elseif spec.priority >= 5 then 7 else 4) + (if half > 70 then 8 else 0)
@@ -478,6 +492,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 						x = x, z = z, ux = g.ux, uz = g.uz, riverHalf = half,
 						water = toStuds(riverLevelM(x, z, half)), roadHalf = spec.total,
 						kind = kindOf(spec), surface = spec.surface, priority = spec.priority, clearance = clearance,
+						ford = fords[#fords], chain = g.chain,
 					})
 				end
 			end
@@ -490,7 +505,38 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		return a.x + a.z * 1e-3 < b.x + b.z * 1e-3
 	end)
 	for _, c in riverCrossings do
+		local ford = c.ford
+		c.ford = nil
+		-- (a road due a bridge never stops at the bank: where its bridge cannot stand, because
+		-- another is in its way, the road is laid straight over on its own grade)
 		plan(c)
+		ford.bridged = true
+	end
+	-- Whether road g stops for a river at a point: within the river's banks, where g crosses the
+	-- river near by (its bridge spans there, or it ends at the bank). A road that is in the banks
+	-- without crossing (it runs along the river, or joins another road over the water, as a
+	-- ramp meeting an interstate on its bridge does) is laid like any other: left off, it was
+	-- a gap in the road. (With no g: whether the point is within a river's banks at all.)
+	local function riverStops(x: number, z: number, g: RoadNet.Segment?): boolean
+		for _, r in rivers do
+			local d, t = toSegment(x, z, r.ax, r.az, r.bx, r.bz)
+			local band = r.h0 + (r.h1 - r.h0) * t + Bridges.BANK_EXTRA
+			if d < band then
+				if not g then
+					return true
+				end
+				local reach = band * 1.6 + 30
+				for _, f in fords do
+					-- (its own crossing, and one without a bridge: a bridge and its ramps say
+					-- for themselves where they carry the road, see carried; past them the
+					-- road is laid again, even over water where it runs along the river)
+					if f.chain == g.chain and not f.bridged and (f.x - x) ^ 2 + (f.z - z) ^ 2 < reach * reach then
+						return true
+					end
+				end
+			end
+		end
+		return false
 	end
 	-- Whether a point of road g lies on one of the bridges (or its ramps) carrying g over, where g
 	-- itself is not laid: g runs along the bridge. The road an overpass passes over is laid, and so
@@ -507,7 +553,13 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 			if alongBridge and not passesUnder then
 				local d, t = toSegment(x, z, f.ax, f.az, f.bx, f.bz)
 				local along = t * length
-				if d < f.half + margin and (g == nil or (along > 4 and along < length - 4)) then
+				-- (A road running beside a bridge that carries another is on it only where the
+				-- deck itself is under it; out past the deck's edge it is laid as ever.)
+				local c = b.crossing
+				local reach = if g == nil or c.chain == nil or g.chain == c.chain then f.half + margin else c.roadHalf + 2
+				-- (the deck only: its approaches are the road itself, climbing on its own grade, see
+					-- approachLift; the road runs a few studs in under each end of the deck)
+					if d < reach and along > f.rampA + (if g then 4 else -8) and along < length - f.rampB - (if g then 4 else -8) then
 					return true
 				end
 			end
@@ -530,22 +582,31 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 				local d, t = toSegment(x, z, f.ax, f.az, f.bx, f.bz)
 				local along = t * length
 				local farX, farZ, share
-				if along < f.rampA and b.joinedA then
-					farX, farZ, share = f.ax, f.az, along / f.rampA
-				elseif along > length - f.rampB and b.joinedB then
-					farX, farZ, share = f.bx, f.bz, (length - along) / f.rampB
+				local joins = false
+				-- (the approach, and the first studs of the deck, where the road runs in under it)
+				if along < f.rampA + 8 and f.rampA > 0 then
+					farX, farZ, share, joins = f.ax, f.az, math.min(1, along / f.rampA), b.joinedA
+				elseif along > length - f.rampB - 8 and f.rampB > 0 then
+					farX, farZ, share, joins = f.bx, f.bz, math.min(1, (length - along) / f.rampB), b.joinedB
 				end
 				if share and share > 0 and d < f.half + APPROACH_RUN * 60 then
 					local farTop = baseTop(farX, farZ)
 					local rise = farTop + (f.deck - farTop) * share - baseTop(f.ax + (f.bx - f.ax) * t, f.az + (f.bz - f.az) * t)
 					if rise > 0 then
-						local w = math.clamp((d - f.half) / math.max(40, rise * APPROACH_RUN), 0, 1)
+						-- (to the side: gently where a road joins the approach and has to climb to it,
+						-- shortly where none does, so a road that only passes by stays on the land)
+						local w = math.clamp((d - f.half) / (if joins then math.max(40, rise * APPROACH_RUN) else math.max(12, rise * 3)), 0, 1)
 						local share = 1 - w * w * (3 - 2 * w)
 						if b.underX then
+							-- (Beside the road the bridge crosses the rise comes in only with distance from
+							-- that road's edge, so a ramp running down beside an interstate is at its level
+							-- where the two lie together; but in full on the approach itself and near it,
+							-- where the road it carries climbs to the deck and others join it.)
 							local c = b.crossing
 							local off = math.abs((x - c.x) * (b.underZ :: number) - (z - c.z) * b.underX)
 							local u = math.clamp((off - c.riverHalf) / math.max(20, rise * APPROACH_RUN / 2), 0, 1)
-							share *= u * u * (3 - 2 * u)
+							local n = math.clamp((d - f.half) / math.max(40, rise * APPROACH_RUN / 2), 0, 1)
+							share *= math.max(u * u * (3 - 2 * u), 1 - n * n * (3 - 2 * n))
 						end
 						lift = math.max(lift, rise * share)
 					end
@@ -682,30 +743,52 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 			local g, d, along = net:near(x, z, SHOULDER_MAX, function(o: RoadNet.Segment): boolean
 				return carried(o, x, z, 0)
 			end)
-			if g and riverHalf == 0 and not nearBridge and not lake then
+			if g and riverHalf == 0 and not lake and (not nearBridge or not riverStops(x, z, g)) then
 				local px, pz = g.ax + g.ux * along, g.az + g.uz * along
 				local grade = gradeAtM(px, pz) + ROAD_RAISE_M
 				local spec = g.spec
-				if d <= spec.total then
-					if spec.median > 0 and d < spec.median - 2 then
-						h = grade - MEDIAN_M
-						material = M.Grass
-					else
-						h = grade - ROAD_CUT_M
-						material = M.Ground
-						isBusy = true
-					end
+				if d <= spec.total + ROAD_EDGE then
+					-- (a divided road's median too: Roads lays a part over it)
+					h = grade - ROAD_CUT_M
+					material = M.Ground
+					isBusy = true
 					water = -math.huge
 				else
 					local edge = grade - (if spec.town then TOWN_DITCH_M else DITCH_M)
 					local shoulder = math.clamp(math.abs(h - edge) * VERTICAL * SHOULDER_PER_STUD, SHOULDER, SHOULDER_MAX)
-					local f = math.clamp((d - spec.total) / shoulder, 0, 1)
+					local f = math.clamp((d - spec.total - ROAD_EDGE) / shoulder, 0, 1)
 					h = edge + (h - edge) * f * f * (3 - 2 * f)
 				end
 			end
 
 			local k = (ix - 1) * N + iz
 			local hs = toStuds(h)
+			-- Under a bridge and its ramps the ground is kept below the road they carry, as it
+			-- is under a road on the ground: the ramp runs straight from the road's grade up to
+			-- the deck, and land left at its natural height (a rise between the two, or just the
+			-- terrain's own overshoot at the ramp's foot) would stand through the ramp and hide
+			-- where it meets its road. Only ever lowered: the embankment fills the space below.
+			for _, b in planned do
+				local f = b.footprint
+				local d, t = toSegment(x, z, f.ax, f.az, f.bx, f.bz)
+				if t > 0 and t < 1 and d < f.half + ROAD_EDGE + SHOULDER then
+					local length = math.sqrt((f.bx - f.ax) ^ 2 + (f.bz - f.az) ^ 2)
+					local along = t * length
+					local top = f.deck
+					if along < f.rampA then
+						local far = baseTop(f.ax, f.az)
+						top = far + (f.deck - far) * along / f.rampA
+					elseif along > length - f.rampB then
+						local far = baseTop(f.bx, f.bz)
+						top = far + (f.deck - far) * (length - along) / f.rampB
+					end
+					local limit = top - ROAD_CUT_M * VERTICAL
+					if hs > limit then
+						local w = math.clamp((d - f.half - ROAD_EDGE) / SHOULDER, 0, 1)
+						hs = limit + (hs - limit) * w * w * (3 - 2 * w)
+					end
+				end
+			end
 			heights[k] = hs
 			waterTop[k] = if water > -math.huge then toStuds(water) else -math.huge
 			surface[k] = material
@@ -790,13 +873,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	-- Road g (or any road, when nil) is not laid here: a river's banks, or under a bridge or its
 	-- ramps that carries the road over.
 	local function bridged(x: number, z: number, g: RoadNet.Segment?): boolean
-		for _, r in rivers do
-			local d, t = toSegment(x, z, r.ax, r.az, r.bx, r.bz)
-			if d < r.h0 + (r.h1 - r.h0) * t + Bridges.BANK_EXTRA then
-				return true
-			end
-		end
-		return carried(g, x, z, 0)
+		return riverStops(x, z, g) or carried(g, x, z, 0)
 	end
 
 	Roads.build({
@@ -806,7 +883,7 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 
 	for _, b in planned do
 		if inside(b.crossing.x, b.crossing.z) then
-			Bridges.build({ props = props, gradeTop = baseTop, ground = Heightfield.studsAt }, b.crossing)
+			Bridges.build({ props = props, gradeTop = baseTop, ground = Heightfield.studsAt, ramps = false }, b.crossing)
 		end
 	end
 	local function onBridge(x: number, z: number, margin: number): boolean
@@ -881,6 +958,10 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 		region = Region3.new(Vector3.new(x0, yMin, z0) * WORLD, Vector3.new(x1, yMax, z1) * WORLD),
 		materials = materials,
 		occupancy = occupancy,
+		-- (each column's ground height, design studs, [(ix - 1) * N + iz]: for the offline checks)
+		columns = heights,
+		-- (the bridges this chunk reckoned with, its own and its neighbours': for the offline checks)
+		bridges = planned,
 		yMin = yMin * WORLD,
 		yMax = yMax * WORLD,
 		props = props,

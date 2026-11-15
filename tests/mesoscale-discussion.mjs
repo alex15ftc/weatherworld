@@ -5,7 +5,7 @@ import v8 from 'node:v8';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { stateFromBytes } from '../js/forecast/DayOneOutlook.js';
 import { insideRings, connectedPieces, regionRings, enclosedHoles, solidRegion } from '../js/forecast/contourShapes.js';
-import { MESOSCALE, peakRange, watchStep, concerningLine, areaOutcome, runMesoscaleMember, describeNow, buildMesoscaleDiscussions, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
+import { MESOSCALE, STORM_RADAR, peakRange, watchStep, concerningLine, areaOutcome, runMesoscaleMember, describeNow, radarLook, describeStorm, buildMesoscaleDiscussions, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
 import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, probabilityText, publicWatch } from '../js/forecast/Watch.js';
 import { MesoscaleRuntime } from '../server/MesoscaleRuntime.js';
 import { ForecastPool } from '../server/ForecastPool.js';
@@ -208,6 +208,26 @@ const about = status.discussions[0];
 assert.equal(about.number, 9); assert.equal(about.watchNumber, 12); assert.equal(about.watchPercent, null); assert.equal(about.concerning, 'TORNADO WATCH 12');
 assert.match(about.text, /\nConcerning\.\.\.TORNADO WATCH 12\n\nValid 022300Z - 030100Z\n\nThe severe weather threat for Tornado Watch 12 continues\.\n\nSUMMARY\.\.\.Severe thunderstorms are ongoing over this part of the watch/); assert.doesNotMatch(about.text, /Probability of Watch Issuance/);
 assert.ok(about.cells.every((v, i) => !v || watch.cells[i]), 'it covers the part of the watch under threat');
+// Its leading storm as the radar shows it (2026-11-13; the server has the radars look: MesoscaleRuntime.radarLooks).
+assert.doesNotMatch(about.text, /radar shows/, 'no radar has looked: nothing is said of one storm'); assert.equal(about.here.strongest, null);
+const radar = { id: 'KAAA', xKm: 440, yKm: 150 }, rotation = { meso: [{ xKm: 503, yKm: 152, lowVrotKt: 41 }, { xKm: 498, yKm: 147, lowVrotKt: 63 }, { xKm: 560, yKm: 150, lowVrotKt: 80 }], tvs: [{ kind: 'ETVS', xKm: 500, yKm: 150 }, { kind: 'TVS', xKm: 502, yKm: 151 }] };
+const leading = stormAt(31, 9, { hail: 1.5, tornado: true, confirmed: true, place: '4 miles southwest of Elm City', stp: 4.2, eastKph: 50, northKph: 50, xKm: 500, yKm: 150 });
+assert.deepEqual(radarLook(leading, radar, rotation), { siteId: 'KAAA', rangeMiles: 37, vrotKt: 63, tvs: true, debris: false }, 'the strongest mesocyclone detected within reach of the storm, and a TVS on it');
+assert.deepEqual(radarLook({ xKm: 100, yKm: 400 }, radar, rotation), { siteId: 'KAAA', rangeMiles: 262, vrotKt: null, tvs: false, debris: false }, 'no detection near it: nothing measured');
+leading.radar = radarLook(leading, radar, rotation);
+const second = stormAt(33, 11, { xKm: 560, yKm: 150, stp: 2 }); second.radar = radarLook(second, radar, rotation);
+const unseen = stormAt(30, 8, { xKm: 480, yKm: 130 });
+const led = lookAhead(four(tornadic), now(44 + MESOSCALE.statusHours, [second, unseen, leading]), { watches: [watch], nextDiscussion: 9 }).discussions[0];
+assert.equal(led.watchNumber, 12); assert.equal(led.here.strongest.vrotKt, 63, 'the storm with the tornado, not the one with the most rotation'); assert.equal(led.here.strongest.others, 1);
+assert.match(led.text, /DISCUSSION\.\.\.3 storms are in the area[^\n]* The KAAA radar shows a low-level rotational velocity near 65 kt with the storm 4 miles southwest of Elm City, along with a tornadic vortex signature\. A tornado is ongoing with this storm\. The significant tornado parameter around it is near 4\. It is moving northeast at 45 mph\. One other storm in the area also shows rotation on radar\.\n/);
+assert.equal(publicMesoscaleDiscussion(led).environment.strongest.siteId, 'KAAA', 'the pages get it too');
+assert.equal(describeStorm(null), ''); assert.match(describeStorm({ place: null, siteId: 'KBBB', vrotKt: 38, tvs: false, debris: true, confirmed: false, stp: 0.4, eastKph: 2, northKph: 0, others: 2 }), /^The KBBB radar shows a low-level rotational velocity near 40 kt with the strongest storm in the area, along with a tornadic debris signature\. A tornado is likely ongoing with this storm\. The significant tornado parameter around it is below 1\. It is nearly stationary\. 2 other storms in the area also show rotation on radar\.$/);
+assert.match(describeStorm({ place: 'near Elm City', siteId: 'KBBB', vrotKt: null, tvs: false, debris: false, confirmed: true, stp: 2.6, eastKph: 0, northKph: -40, others: 0 }), /^A tornado is ongoing with the storm near Elm City\. The significant tornado parameter around it is near 3\. It is moving south at 25 mph\.$/);
+// A tornado on the ground there: the threat is not said to be waning (the runs see little more to come).
+const fading = lookAhead(four({ reports: 5, size: 12 }), now(46, [{ ...leading, radar: leading.radar }]), { watches: [watch] }).discussions[0];
+assert.match(fading.text, /The severe weather threat for Tornado Watch 12 continues\.[\s\S]*A tornado is ongoing with this storm\./); assert.doesNotMatch(fading.text, /waning/);
+// Ground under no watch: the discussion is of the area, not of one storm.
+assert.doesNotMatch(buildMesoscaleDiscussions(four({ reports: 12 }), now(44, [leading]))[0].text, /radar shows/);
 assert.equal(lookAhead(four(tornadic), now(44.5 + MESOSCALE.statusHours, [stormAt(31, 9)]), { watches: [watch], discussions: [about] }).discussions.length, 0, 'not again while that one is valid');
 assert.match(lookAhead(four({ reports: 5, size: 12 }), now(46, [stormAt(31, 9)]), { watches: [watch] }).discussions[0].text, /The severe weather threat for Tornado Watch 12 is waning/);
 // The last look before it expires, severe weather still going: a new watch is made ready for
@@ -283,6 +303,19 @@ assert.equal(meso.maybeIssue(), false); assert.equal(meso.watches.length, count 
 if (firingNow) { assert.equal(meso.watches[0].issuedHourUtc, before); assert.equal(meso.list().watches[0].number, meso.nextWatch - 1); }
 runtime.engine = new AtmosphereWorld({ seed: 4, spinUpDays: 4, storms: false });
 assert.equal(meso.list().discussions.length, 0, 'a new world starts its own series'); assert.equal(meso.list().watches.length, 0);
+// The radars' look at the rotating storms under the watches in effect: each by its nearest radar, the strongest storms' radars only.
+const asked = [], quiet = [], radars = [{ id: 'KAAA', xKm: 100, yKm: 100 }, { id: 'KBBB', xKm: 500, yKm: 100 }, { id: 'KCCC', xKm: 900, yKm: 100 }];
+const withRadar = new MesoscaleRuntime({ pool, runtime: { engine: null, radarCatalog: () => ({ sites: radars }), radarScan: async (...args) => { const options = args[2]; quiet.push(options?.prewarm); return null; },
+  radarRotation: async (id, options) => { asked.push(id); quiet.push(options?.prewarm); return { meso: [{ xKm: radars.find(r => r.id === id).xKm + 22, yKm: 101, lowVrotKt: 50 }], tvs: [] }; } } });
+const spin = (k, xKm, more = {}) => ({ cell: k, xKm, yKm: 100, rotating: true, tornado: false, mesocyclone: 0.5, ...more });
+const looking = { hourUtc: 44, storms: [spin(0, 120), spin(1, 520, { mesocyclone: 0.9 }), spin(2, 920, { tornado: true }), spin(3, 925), spin(4, 130, { rotating: false }), spin(5, 525)] };
+await withRadar.radarLooks(looking); assert.deepEqual(asked, [], 'no watch in effect: no radar is asked');
+withRadar.watches = [{ validToHourUtc: 50, cells: Uint8Array.from([1, 1, 1, 1, 1, 0]) }];
+await withRadar.radarLooks(looking);
+assert.equal(STORM_RADAR.sites, 2); assert.deepEqual(asked, ['KCCC', 'KBBB'], 'the radars of the tornadic storm and the strongest mesocyclone');
+assert.equal(looking.storms[2].radar.vrotKt, 50); assert.equal(looking.storms[3].radar.siteId, 'KCCC'); assert.equal(looking.storms[1].radar.rangeMiles, 12);
+assert.deepEqual(quiet, [false, false, false, false], 'a one-off look: not worked out again at the next scans');
+assert.equal(looking.storms[0].radar, undefined, 'a third radar is not asked'); assert.equal(looking.storms[4].radar, undefined); assert.equal(looking.storms[5].radar, undefined, 'a storm under no watch is not looked at');
 await meso.stop();
 assert.equal(pool.status().threads, 0, 'the threads are ended');
 console.log(`mesoscale discussions and watches passed (made-up ${md.concerning.toLowerCase()}; the server issued ${listed.discussions.length} discussions and ${listed.watches.length} watches in ${(meso.lastRunMs / 1000).toFixed(0)} s)`);
