@@ -87,7 +87,7 @@ const reports = new ReportsRuntime({ runtime });
 // The products as the Roblox place draws them (GameProducts.js).
 const gameProducts = new GameProducts({ runtime, outlooks, mesoscale, warnings, reports });
 // Every watch, discussion and warning issued, for the public pages and the Discord posts (ProductArchive.js).
-const archive = new ProductArchive({ runtime, products: gameProducts, layer: () => countiesFor(runtime.engine?.world), file: statePath ? path.join(path.dirname(statePath), 'products.bin') : null });
+const archive = new ProductArchive({ runtime, products: gameProducts, layer: () => countiesFor(runtime.engine?.world), pictures: number => mesoscale?.picture(number) ?? null, file: statePath ? path.join(path.dirname(statePath), 'products.bin') : null });
 // The chaser network (ChaserArchive.js): every server's players, live and through each world day.
 // The world hour now: on the locked clock from real time (8 world hours a real hour), else the world's own.
 const worldHourNow = () => (runtime.clockLock && runtime.clockOffset != null ? runtime.clockOffset + Date.now() * 8 / 3600000 : Number(runtime.engine?.world?.validHourUtc));

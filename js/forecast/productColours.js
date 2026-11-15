@@ -15,6 +15,8 @@ export const CHANCE_COLOURS = {
 export const WATCH_COLOURS = { tornado: '#ef4444', severe: '#3b82f6' };
 // Mesoscale discussions: about a watch, the watch's colour; otherwise grey, amber and orange as a
 // watch goes from unlikely to likely.
+// A discussion's greatest short-term potential, by hazard (as the centre draws it: red for tornadoes, orange for wind).
+export const FOCUS_COLOURS = { tornado: '#dc2626', wind: '#ea580c', hail: '#16a34a' };
 export const DISCUSSION_COLOURS = { watchTornado: '#ef4444', watchSevere: '#3b82f6', likely: '#f97316', possible: '#f59e0b', unlikely: '#94a3b8' };
 export const discussionColourKey = md => (md.watchNumber ? (md.watchType === 'tornado' ? 'watchTornado' : 'watchSevere') : md.watchPercent >= 80 ? 'likely' : md.watchPercent >= 40 ? 'possible' : 'unlikely');
 // Warnings (NWS): red for a tornado warning, yellow for a severe thunderstorm warning; magenta for

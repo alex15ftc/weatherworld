@@ -13,7 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
-import { WATCH_COLOURS, DISCUSSION_COLOURS, WARNING_COLOURS } from '../js/forecast/productColours.js';
+import { WATCH_COLOURS, DISCUSSION_COLOURS, WARNING_COLOURS, FOCUS_COLOURS } from '../js/forecast/productColours.js';
+import { reflectivityKey } from './DiscussionRadar.js';
 import { areaSvg } from './AreaMap.js';
 import { utcStamp, localStamp } from './OutlookPublic.js';
 
@@ -24,7 +25,10 @@ const FEED_HOURS = { watches: 24, discussions: 24, warnings: 3 };
 export const warningKey = w => `${w.id}-${Math.round(w.issuedHourUtc * 60)}`;
 // "Tornado Warning", "PDS Tornado Warning", "Tornado Emergency", "Severe Thunderstorm Warning (destructive)".
 // A stored watch or discussion with its issue and end times written out, for the pages.
-const withTimes = x => (x ? { ...x, issuedText: `${utcStamp(x.issuedHourUtc)} (${localStamp(x.issuedHourUtc)})`, untilText: `${utcStamp(x.validToHourUtc)} (${localStamp(x.validToHourUtc)})` } : null);
+// The middle of a set of rings (flat lists of map miles: x, y, x, y...), by their bounds.
+const centreOf = rings => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const r of rings) for (let k = 0; k + 1 < r.length; k += 2) { x0 = Math.min(x0, r[k]); x1 = Math.max(x1, r[k]); y0 = Math.min(y0, r[k + 1]); y1 = Math.max(y1, r[k + 1]); } return Number.isFinite(x0) ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; };
+// (A discussion's radar picture is drawn on its map; the JSON says only when it was taken.)
+const withTimes = x => (x ? { ...x, ...(x.radar ? { radar: { validHourUtc: x.radar.validHourUtc ?? null } } : {}), issuedText: `${utcStamp(x.issuedHourUtc)} (${localStamp(x.issuedHourUtc)})`, untilText: `${utcStamp(x.validToHourUtc)} (${localStamp(x.validToHourUtc)})` } : null);
 export function warningName(w) {
   if (w.type === 'tornado') return w.emergency ? 'Tornado Emergency' : `${w.pds ? 'PDS ' : ''}Tornado Warning`;
   const tag = w.label?.match(/\(([^)]+)\)/)?.[1];
@@ -55,8 +59,9 @@ function warningLines(w) {
 export class ProductArchive {
   // runtime: the weather authority (its worldId). products: GameProducts (the mesoscale and warnings
   // products). layer(): the county layer for the maps. file: where the watches and discussions are saved.
-  constructor({ runtime, products, layer, file = null }) {
-    this.runtime = runtime; this.products = products; this.layer = layer; this.file = file;
+  // pictures(number): a discussion's radar picture (MesoscaleRuntime.picture), kept with it from the first look.
+  constructor({ runtime, products, layer, file = null, pictures = null }) {
+    this.runtime = runtime; this.products = products; this.layer = layer; this.file = file; this.pictures = pictures;
     this.reset(); this.restore();
   }
 
@@ -91,7 +96,7 @@ export class ProductArchive {
     const mesoscale = this.read('mesoscale'), warnings = this.read('warnings');
     if (mesoscale) {
       for (const w of mesoscale.watches ?? []) this.keep(this.watches, w.number, w, KEPT.watches);
-      for (const md of mesoscale.discussions ?? []) this.keep(this.discussions, md.number, md, KEPT.discussions);
+      for (const md of mesoscale.discussions ?? []) { const radar = this.discussions.get(md.number)?.radar ?? this.pictures?.(md.number) ?? null; this.keep(this.discussions, md.number, radar ? { ...md, radar } : md, KEPT.discussions); }
     }
     if (warnings) {
       for (const w of warnings.warnings ?? []) {
@@ -115,7 +120,7 @@ export class ProductArchive {
 
   keep(map, number, item, limit) {
     const was = map.get(number);
-    if (was && was.text === item.text && was.validToHourUtc === item.validToHourUtc) return;
+    if (was && was.text === item.text && was.validToHourUtc === item.validToHourUtc && (was.radar || !item.radar)) return;
     map.set(number, { ...item, issuedHourUtc: was?.issuedHourUtc ?? item.issuedHourUtc });
     this.forget(`${map === this.watches ? 'watch' : 'md'}:${number}:`);
     while (map.size > limit) map.delete(Math.min(...map.keys()));
@@ -163,15 +168,22 @@ export class ProductArchive {
   }
 
   discussionSvg(number, { times = false } = {}) {
-    const md = this.discussion(number); if (!md) return null;
+    this.sync(); const md = withTimes(this.discussions.get(Number(number))), radar = this.discussions.get(Number(number))?.radar ?? null; if (!md) return null;
     const colour = DISCUSSION_COLOURS[md.colourKey] ?? DISCUSSION_COLOURS.unlikely, label = `MD ${String(md.number).padStart(4, '0')}`;
     // The watches in effect around it, as the real graphics show them.
     const watches = [...this.watches.values()].filter(w => w.issuedHourUtc <= md.issuedHourUtc + 1e-6 && w.validToHourUtc > md.issuedHourUtc)
       .map(w => ({ rings: w.rings, fill: WATCH_COLOURS[w.type === 'tornado' ? 'tornado' : 'severe'], fillOpacity: 0.12, stroke: WATCH_COLOURS[w.type === 'tornado' ? 'tornado' : 'severe'], width: 2, dash: '10 6', label: `WW ${w.number}` }));
+    // The greatest short-term potential, hatched and outlined in its hazard's colour with the centre's words over the
+    // map; the leading storm's next hour as an arrow; the radar of the moment it was issued under it all.
+    const focusColour = md.focus ? FOCUS_COLOURS[md.focus.hazard] ?? FOCUS_COLOURS.tornado : null, focusWords = { tornado: 'tornado', wind: 'damaging wind', hail: 'large hail' }[md.focus?.hazard] ?? 'severe';
+    const focus = md.focus?.rings?.length ? [{ rings: md.focus.rings, hatch: focusColour, stroke: focusColour, width: 6 }] : [];
     return this.cached(`md:${number}:${times}`, () => areaSvg({
       layer: this.layer(), minMiles: 120, focus: md.rings,
-      shapes: [...watches, { rings: md.rings, fill: colour, fillOpacity: 0.2, stroke: colour, width: 5, label }],
-      key: [{ colour, text: `Mesoscale Discussion ${String(md.number).padStart(4, '0')}` }, ...(watches.length ? [{ colour: watches[0].stroke, text: 'Watch in effect' }] : [])],
+      shapes: [...watches, { rings: md.rings, fill: colour, fillOpacity: 0.2, stroke: colour, width: 5, label }, ...focus],
+      underlay: radar, colourBar: radar ? { title: `Radar: composite reflectivity (dBZ), ${utcStamp(radar.validHourUtc ?? md.issuedHourUtc)}`, stops: reflectivityKey() } : null,
+      arrows: md.arrow ? [{ ...md.arrow, colour: '#111827', label: `${md.arrow.hours ?? 1} h` }] : [],
+      callout: focus.length ? { text: `Greatest short-term ${focusWords} potential${md.focus.near ? ` centred ${md.focus.near}` : ''}`, colour: focusColour, at: centreOf(md.focus.rings) } : null,
+      key: [{ colour, text: `Mesoscale Discussion ${String(md.number).padStart(4, '0')}` }, ...(focus.length ? [{ colour: focusColour, text: `Greatest short-term ${focusWords} potential` }] : []), ...(watches.length ? [{ colour: watches[0].stroke, text: 'Watch in effect' }] : [])],
       footer: times ? [label, `Issued ${utcStamp(md.issuedHourUtc)} (${localStamp(md.issuedHourUtc)}) · Valid until ${utcStamp(md.validToHourUtc)}`] : null
     }));
   }
