@@ -143,6 +143,12 @@ export const OUTLOOK = Object.freeze({
   // Day 3's issued skill -17 -> -6. highRun changed nothing; guard made most of the difference, agreement only Day 3's.
   // Watch High's false alarms (forecast on 27% of days, verified on 17%) on the live scoreboard.
   gates: { agreement: false, guard: false, highRun: false },
+  // Caution at longer leads: each day's calibrated chance times this (2026-11-14, the owner's wish that Day 2 and Day 3 lean
+  // low, as the Storm Prediction Center's do, rather than be right on average). The maps and the categories both read lower.
+  // On 80/60/40 unseen days (seeds 41-60): Day 1 x0.9 took High from 15% to 7.5% of days (verified 10%) and the day right from
+  // 69% to 73%; Day 2 x0.75 (with its tornado hatch at 2 of 4 runs) misses low 40% and high 14% of days, High 3% (verified 7%);
+  // Day 3 x0.65 is Slight on 30% of days and Enhanced 70%, too high 10%, and its Brier skill rose 9 -> 13.
+  caution: { day1: 0.9, day2: 0.75, day3: 0.65 },
   // How the issued areas are tidied before they are drawn (contourShapes.js tidyRanks; 2026-11-14, the user's request: no small
   // islands, no two risk borders touching). A contour level's or category's piece smaller than minSqMi goes, and a hole that
   // small is filled; each category from Marginal up is ringed by at least gapCells of the one below (Marginal by general
@@ -515,7 +521,7 @@ function describeLines(atmosphere) {
 // maxCategory: the highest category this issue may give (see OUTLOOK.leadCaps; the runtime adds
 // the one-step limit from the last issue). regions: names the map's regions an area covers (the
 // counties' place names), or null for compass parts.
-export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issuedHourUtc, validToHourUtc, seed = null, day = 'day1', agreement: explicitAgreement = null, groupAgreement = OUTLOOK.groupAgreement, calibration = CALIBRATION, maxCategory = null, regions = null, previous = null, continuity = 0, cigCalibration = CIG_SHARE, cigEnvironment = CIG_ENVIRONMENT, ensemble = OUTLOOK.ensemble, categoryCutoffs = OUTLOOK.categoryCutoffs, gates = OUTLOOK.gates } = {}) {
+export function combineOutlook(members, { caution = OUTLOOK.caution, issuedHourUtc, validFromHourUtc = issuedHourUtc, validToHourUtc, seed = null, day = 'day1', agreement: explicitAgreement = null, groupAgreement = OUTLOOK.groupAgreement, calibration = CALIBRATION, maxCategory = null, regions = null, previous = null, continuity = 0, cigCalibration = CIG_SHARE, cigEnvironment = CIG_ENVIRONMENT, ensemble = OUTLOOK.ensemble, categoryCutoffs = OUTLOOK.categoryCutoffs, gates = OUTLOOK.gates } = {}) {
   if (!members.length) throw new Error('an outlook needs at least one member');
   // The chance as the category reads it (OUTLOOK.categoryCutoffs): the highest contour level whose cutoff it reaches.
   const cutoffs = categoryCutoffs?.[day] ?? null;
@@ -590,7 +596,8 @@ export function combineOutlook(members, { issuedHourUtc, validFromHourUtc = issu
   // one: its runs start with storms going and cover less of the day, and the 12Z table left the 18Z
   // update a category too high on 23% of days (2026-10-23, scripts/outlook-updates-verify.mjs).
   const into = ((((issuedHourUtc ?? 0) - OUTLOOK.dayStartUtc) % 24) + 24) % 24, table = day === 'day1' && into >= OUTLOOK.updateAfterHours && calibration.day1update ? 'day1update' : day;
-  const chance = Object.fromEntries(hazards.map(hazard => [hazard, rawChance[hazard].map(raw => calibrateChance(table, hazard, raw, calibration, { guard: gates.guard !== false }))]));
+  const lean = caution?.[day] ?? 1;
+  const chance = Object.fromEntries(hazards.map(hazard => [hazard, rawChance[hazard].map(raw => lean * calibrateChance(table, hazard, raw, calibration, { guard: gates.guard !== false }))]));
   // A higher level only where enough runs agree (OUTLOOK.agreement): the share of runs with the
   // hazard nearby, spread out as the chances are.
   const agreed = Object.fromEntries(hazards.map(hazard => {

@@ -110,10 +110,11 @@ export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.2],[2.7,3],[
 // (Kept 2026-10-29: the refit on fit-2026-10-29 asked 3/8 runs for Day 1 tornado CIG2/CIG3 and cut Day 1 Moderate+High from 25% to 18% of days, 24% verified.)
 // (2026-11-07: Day 3 any severe hatched where all its runs reach CIG1, judged with OUTLOOK.ingredientCigBounds; fit-new seeds 1-20:
 // Day 3 right 48 -> 52%, too high 10%. Day 2 kept: the fitted hail 0.375 / tornado CIG2 0.375 lowered Day 2 to 51%.)
+// (2026-11-14: Day 2 tornado CIG2 needs 2 of its 4 runs (was 1): Day 2 High 9% -> 3% of days with OUTLOOK.caution.)
 // (2026-11-14: Day 1 tornado CIG2/CIG3 need 3/8 runs, with the gates off. On 80 unseen mornings (seeds 41-60) every forecast High
 // that verified lower was a tornado High (30-60% with the EF2+/EF3+ hatch); 3/8 cut Day 1 High from 21% to 15% of days
 // (verified 10%) and raised the day right from 65% to 69%; 4/8 matched the count but kept Highs in the wrong places.)
-export const CIG_SHARE = Object.freeze({"day1":{"wind":[1.01,1.01,1.01],"hail":[0.5,0.875],"tornado":[0.25,0.375,0.375]},"day2":{"wind":[0.625,0.75,0.875],"hail":[1.01,1.01],"tornado":[0.25,0.25,0.75]},"day3":{"severe":[1.0]}});
+export const CIG_SHARE = Object.freeze({"day1":{"wind":[1.01,1.01,1.01],"hail":[0.5,0.875],"tornado":[0.25,0.375,0.375]},"day2":{"wind":[0.625,0.75,0.875],"hail":[1.01,1.01],"tornado":[0.25,0.5,0.75]},"day3":{"severe":[1.0]}});
 
 // The intensity groups of hail and wind weighed with the environment (2026-11-08; DayOneOutlook.js significantHailParameter and
 // derechoCompositeParameter): for each day, hazard and group, [a, b, c, field] of a logistic fit of whether the group verified
