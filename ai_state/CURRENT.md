@@ -340,7 +340,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    scoreboard (High false alarms; Day 3 too low). Day 3 with storm runs waits for the owner on branch
    `forecast/day3-storm-runs` (skill -5 -> +10, area CSI .11 -> .47, but highest right 40% -> 10%: never Moderate). A refit is not worth it now: on 30 mornings (current engine) a sharper method (nmep 32/48 or 64/80) gains
    3-6 points of probability skill but drops Day 1 right 67% -> 43-50%; category cutoffs, fitted either way, did not help.
-   Next refit: Day 3 alone (its Moderate setting) once there are more Day 3 mornings. Then
+   Day 3 re-checked on 30 more mornings (seeds 51-60, archive in the session tmp): storm runs issued skill +9 (and +10 on
+   41-50, against -5 from the ingredients), right 38% pooled (ingredients 40%), within one 90%+; a Day 3 refit lost on held-out
+   seeds, and Moderate stays out of reach (significant areas verify 5-33%). Merge waits for the owner. Then
    Day 1 updates from the short-range model.
 
 ## Blockers

@@ -42,6 +42,8 @@ const GATES = process.env.OUTLOOK_GATES ? JSON.parse(process.env.OUTLOOK_GATES) 
 const REPP = process.env.REPP === '1';
 // OUTLOOK_STORMS='{"day3":0.5}': the share of members that run each day with their storms (OUTLOOK.stormShare), for runs made here.
 const STORMS = process.env.OUTLOOK_STORMS ? JSON.parse(process.env.OUTLOOK_STORMS) : null;
+// OUTLOOK_CIG=file: the intensity groups' table (fit-cig-calibration.mjs's output, its CIG_SHARE line) in place of the one installed.
+const CIG_FILE = process.env.OUTLOOK_CIG ? (text => { const key = 'export const CIG_SHARE = Object.freeze(', a = text.indexOf(key) + key.length; return JSON.parse(text.slice(a, text.indexOf(');', a))); })(fs.readFileSync(process.env.OUTLOOK_CIG, 'utf8')) : null;
 const ENSEMBLE = process.env.OUTLOOK_ENSEMBLE ? JSON.parse(process.env.OUTLOOK_ENSEMBLE) : null;
 // OUTLOOK_CALIBRATION=file: the chances' table from that file (fit-outlook-calibration.mjs's output, its CALIBRATION line) in
 // place of the one installed, to score a fit on other mornings without installing it.
@@ -101,7 +103,7 @@ async function worker(seed) {
     if (!kept) { const bytes = v8.serialize(atmosphere.saveState()); for (let m = 0; m < memberCount; m++) runs.push(runOutlookMemberSet(stateFromBytes(bytes), m, 24 * OUTLOOK.days.slice(0, OUTLOOKS).filter(name => m < membersFor(name, memberCount)).length, { placesFor, stormDays: stormDaysFor(m, memberCount), cheapRuns: CHEAP, ...(OLD ? { mesoscale: 0 } : {}) })); }
     // (only the days the runs reach: an archive saved with --outlooks 2 has no Day 3)
     const made = Math.min(OUTLOOKS, Math.max(...runs.map(run => (Array.isArray(run) ? run : run.days).length)));
-    issued[day] = OUTLOOK.days.slice(0, made).map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).flatMap(run => (Array.isArray(run) ? [run[index]] : [run.days[index], ...run.cheap.map(days => days[index]).filter(Boolean)])), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : CALIBRATION_FILE ? { calibration: CALIBRATION_FILE } : {}), ...(ENSEMBLE ? { ensemble: ENSEMBLE } : {}), ...(GATES ? { gates: { ...OUTLOOK.gates, ...GATES } } : {}), ...(CUTOFFS ? { categoryCutoffs: CUTOFFS } : {}), ...(LEAD_CAPS ? { maxCategory: OUTLOOK.leadCaps[name] ?? null } : {}) }));
+    issued[day] = OUTLOOK.days.slice(0, made).map((name, index) => combineOutlook(runs.slice(0, membersFor(name, memberCount)).flatMap(run => (Array.isArray(run) ? [run[index]] : [run.days[index], ...run.cheap.map(days => days[index]).filter(Boolean)])), { day: name, issuedHourUtc: now, validFromHourUtc: now + 24 * index, validToHourUtc: now + 24 * (index + 1), seed, ...(OLD ? { agreement: [0, 0], groupAgreement: [0, 0] } : {}), ...(NOCAL ? { calibration: {} } : CALIBRATION_FILE ? { calibration: CALIBRATION_FILE } : {}), ...(ENSEMBLE ? { ensemble: ENSEMBLE } : {}), ...(CIG_FILE ? { cigCalibration: CIG_FILE } : {}), ...(GATES ? { gates: { ...OUTLOOK.gates, ...GATES } } : {}), ...(CUTOFFS ? { categoryCutoffs: CUTOFFS } : {}), ...(LEAD_CAPS ? { maxCategory: OUTLOOK.leadCaps[name] ?? null } : {}) }));
     // What then happened.
     let truth, happened, truthTornadoes;
     if (kept) ({ truth, happened, truthTornadoes = happened } = kept);
