@@ -81,11 +81,14 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
   out.push(`<defs><clipPath id="map"><rect width="${W}" height="${W}"/></clipPath>${patterns}</defs><rect width="${W}" height="${height}" fill="#ffffff"/>`);
   out.push(`<g clip-path="url(#map)"><rect width="${W}" height="${W}" fill="#dfe3e8"/>`);
   out.push(`<rect x="${X(0)}" y="${Y(0)}" width="${(mapMiles * scale).toFixed(1)}" height="${(mapMiles * scale).toFixed(1)}" fill="#f4f1e8"/>`);
-  // The satellite under it all, as the centre's graphics lay their mosaic over GOES.
-  if (base?.png) out.push(`<image href="data:image/png;base64,${Buffer.from(base.png).toString('base64')}" x="${X(base.x)}" y="${Y(base.y)}" width="${(base.size * scale).toFixed(1)}" height="${(base.size * scale).toFixed(1)}" preserveAspectRatio="none" opacity="0.75"/>`);
+  // The satellite under it all, as the centre's graphics lay their mosaic over GOES, dimmed by a veil of the land's
+  // colour over it. (No opacity on an image: resvg, which turns these maps into the Discord bot's PNGs, cuts off an
+  // image with an opacity in the clipped map where it runs past the map's edge: half the satellite missing, 2026-11-15.)
+  if (base?.png) out.push(`<image href="data:image/png;base64,${Buffer.from(base.png).toString('base64')}" x="${X(base.x)}" y="${Y(base.y)}" width="${(base.size * scale).toFixed(1)}" height="${(base.size * scale).toFixed(1)}" preserveAspectRatio="none"/>`, `<rect x="${X(base.x)}" y="${Y(base.y)}" width="${(base.size * scale).toFixed(1)}" height="${(base.size * scale).toFixed(1)}" fill="#f4f1e8" fill-opacity="0.25"/>`);
   for (const s of shapes) if (s.rings.length && s.fill) out.push(`<path d="${flatPath(s.rings)}" fill="${s.fill}" fill-opacity="${s.fillOpacity ?? 0.35}" fill-rule="evenodd"/>`);
-  // The radar over the fills and under the lines, as the centre's graphics lay the mosaic.
-  if (underlay?.png) out.push(`<image href="data:image/png;base64,${Buffer.from(underlay.png).toString('base64')}" x="${X(underlay.x)}" y="${Y(underlay.y)}" width="${(underlay.size * scale).toFixed(1)}" height="${(underlay.size * scale).toFixed(1)}" preserveAspectRatio="none" opacity="0.9"/>`);
+  // The radar over the fills and under the lines, as the centre's graphics lay the mosaic (its see-through made in the
+  // picture, DiscussionRadar.js, not by an opacity: see the satellite above).
+  if (underlay?.png) out.push(`<image href="data:image/png;base64,${Buffer.from(underlay.png).toString('base64')}" x="${X(underlay.x)}" y="${Y(underlay.y)}" width="${(underlay.size * scale).toFixed(1)}" height="${(underlay.size * scale).toFixed(1)}" preserveAspectRatio="none"/>`);
   const counties = layer?.counties ?? [];
   if (counties.length) out.push(`<path d="${counties.map(c => nestedPath(c.rings)).join('')}" fill="none" stroke="#6f6a5f" stroke-opacity="0.55" stroke-width="${view.size < 150 ? 1.2 : 0.8}"/>`);
   // The air: a field's contours, each labelled with its value,

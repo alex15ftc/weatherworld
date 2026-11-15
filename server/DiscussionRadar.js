@@ -13,6 +13,9 @@ import { contourRings } from '../js/forecast/contourShapes.js';
 // ringMiles: the smallest field contour drawn (across). visibleSunDeg: the sun's height above which the satellite under the radar is the visible image, not the IR.
 export const DISCUSSION_RADAR = { pad: 0.35, minMiles: 120, margin: 0.1, visibleSunDeg: 8, ringMiles: 25 };
 const LUT = radarColorTable('reflectivity');
+// The radar drawn a little see-through over the satellite (its alpha at 0.9 in the picture itself: AreaMap.js draws
+// images without an opacity).
+const SEE_THROUGH = (() => { const lut = Uint8Array.from(LUT); for (let k = 3; k < lut.length; k += 4) lut[k] = Math.round(lut[k] * 0.9); return lut; })();
 
 // The square of map miles a discussion's picture covers: md.cells (0/1 over the weather grid), grid: describeNow's
 // width, height, cellMiles.
@@ -32,7 +35,7 @@ export function pictureView(cells, { width, height, cellMiles }) {
 export async function discussionRadar(mosaic, cells, grid) {
   if (!mosaic?.bytes || !grid.cellKm) return null;
   const view = pictureView(cells, grid);
-  return view ? { ...await cropImage(mosaic, mosaic.bytes, LUT, view, grid), validHourUtc: mosaic.validHourUtc ?? null } : null;
+  return view ? { ...await cropImage(mosaic, mosaic.bytes, SEE_THROUGH, view, grid), validHourUtc: mosaic.validHourUtc ?? null } : null;
 }
 
 // A whole-map image ({ width, height, resKm }, its bytes coloured by lut) cut to a view (map miles): { png, x, y, size }

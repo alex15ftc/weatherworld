@@ -146,7 +146,9 @@ const satellitePicture = await discussionSatellite(sky(40), md.cells, now());
 const airMap = new ProductArchive({ runtime: { worldId: 'w', engine: { world: { validHourUtc: 44 } } }, products: airProducts, layer: () => null, pictures: () => ({ ...picture, satellite: satellitePicture, environment: air }) }).discussionSvg(4);
 const images = [...airMap.matchAll(/<image href="data:image\/png;base64,([A-Za-z0-9+/]{12})/g)].map(m => m.index);
 assert.equal(images.length, 2, 'satellite and radar');
-assert.ok(airMap.indexOf('opacity="0.75"') < images[1] && airMap.indexOf('opacity="0.75"') > images[0], 'the satellite (dimmed) first, the radar over it');
+assert.ok(airMap.indexOf('fill-opacity="0.25"') < images[1] && airMap.indexOf('fill-opacity="0.25"') > images[0], 'the satellite (dimmed by a veil) first, the radar over it');
+// No opacity on an image: resvg (the Discord bot's PNGs) cuts off such an image in the clipped map where it runs past the edge.
+assert.ok(![...airMap.matchAll(/<image [^>]*>/g)].some(m => / opacity=/.test(m[0].replace(/base64,[^"]*/, ''))), 'no image with an opacity');
 assert.ok(airMap.indexOf('fill="#3d8bff"') > images[1] && airMap.indexOf('stroke="#b91c1c"') > images[1], 'the front and the contours over the radar');
 // The cold front's triangles, as the surface analysis draws them, on the side its symbols face (north, up the map).
 const triangle = airMap.match(/<path d="M([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)L([\d.]+) ([\d.]+)Z" fill="#3d8bff"/);
