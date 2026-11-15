@@ -25,8 +25,15 @@ const FEED_HOURS = { watches: 24, discussions: 24, warnings: 3 };
 export const warningKey = w => `${w.id}-${Math.round(w.issuedHourUtc * 60)}`;
 // "Tornado Warning", "PDS Tornado Warning", "Tornado Emergency", "Severe Thunderstorm Warning (destructive)".
 // A stored watch or discussion with its issue and end times written out, for the pages.
-// The middle of a set of rings (flat lists of map miles: x, y, x, y...), by their bounds.
-const centreOf = rings => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const r of rings) for (let k = 0; k + 1 < r.length; k += 2) { x0 = Math.min(x0, r[k]); x1 = Math.max(x1, r[k]); y0 = Math.min(y0, r[k + 1]); y1 = Math.max(y1, r[k + 1]); } return Number.isFinite(x0) ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; };
+// Whether an arrow (map miles) runs into a set of rings (flat lists of map miles), checked at 13 points along it.
+const reachesRings = (a, rings) => {
+  for (let k = 0; k <= 12; k++) {
+    const x = a.x0 + (a.x1 - a.x0) * k / 12, y = a.y0 + (a.y1 - a.y0) * k / 12; let inside = false;
+    for (const r of rings) for (let p = 0, q = r.length - 2; p < r.length; q = p, p += 2) if ((r[p + 1] > y) !== (r[q + 1] > y) && x < r[p] + (r[q] - r[p]) * (y - r[p + 1]) / (r[q + 1] - r[p + 1])) inside = !inside;
+    if (inside) return true;
+  }
+  return false;
+};
 // (A discussion's radar picture is drawn on its map; the JSON says only when it was taken.)
 const withTimes = x => (x ? { ...x, ...(x.radar ? { radar: { validHourUtc: x.radar.validHourUtc ?? null } } : {}), issuedText: `${utcStamp(x.issuedHourUtc)} (${localStamp(x.issuedHourUtc)})`, untilText: `${utcStamp(x.validToHourUtc)} (${localStamp(x.validToHourUtc)})` } : null);
 export function warningName(w) {
@@ -181,8 +188,10 @@ export class ProductArchive {
       layer: this.layer(), minMiles: 120, focus: md.rings,
       shapes: [...watches, { rings: md.rings, fill: colour, fillOpacity: 0.2, stroke: colour, width: 5, label }, ...focus],
       underlay: radar, colourBar: radar ? { title: `Radar: composite reflectivity (dBZ), ${utcStamp(radar.validHourUtc ?? md.issuedHourUtc)}`, stops: reflectivityKey() } : null,
-      arrows: md.arrow ? [{ ...md.arrow, colour: '#111827', label: `${md.arrow.hours ?? 1} h` }] : [],
-      callout: focus.length ? { text: `Greatest short-term ${focusWords} potential${md.focus.near ? ` centred ${md.focus.near}` : ''}`, colour: focusColour, at: centreOf(md.focus.rings) } : null,
+      // (the storm arrow in the colour of the words it goes with: the focus's, else the discussion's; with a focus,
+      // only one that runs into it, as discussions issued before 2026-11-14's fix may carry another)
+      arrows: md.arrow && (!focus.length || reachesRings(md.arrow, md.focus.rings)) ? [{ ...md.arrow, colour: focusColour ?? colour, label: `${md.arrow.hours ?? 1} h` }] : [],
+      callout: focus.length ? { text: `Greatest short-term ${focusWords} potential${md.focus.near ? ` centred ${md.focus.near}` : ''}`, colour: focusColour, rings: md.focus.rings } : null,
       key: [{ colour, text: `Mesoscale Discussion ${String(md.number).padStart(4, '0')}` }, ...(focus.length ? [{ colour: focusColour, text: `Greatest short-term ${focusWords} potential` }] : []), ...(watches.length ? [{ colour: watches[0].stroke, text: 'Watch in effect' }] : [])],
       footer: times ? [label, `Issued ${utcStamp(md.issuedHourUtc)} (${localStamp(md.issuedHourUtc)}) · Valid until ${utcStamp(md.validToHourUtc)}`] : null
     }));

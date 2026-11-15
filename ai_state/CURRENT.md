@@ -90,7 +90,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   kept in the archive's `products.bin`, never in the game's products), a hatched "greatest short-term <hazard>
   potential" area with a label box (where the runs put the most tornadoes, or wind or hail, in their first 2 hours:
   `shortTermFocus`; drawn only when it is at most 60% of the area) and the leading storm's next hour as an arrow
-  (`leadArrow`); the summary gains "The greatest short-term ... potential is centred ...". Focus and arrow also go to
+  (`leadArrow`: with a focus, the storm whose next hour runs into it, in the label's colour; the label points at
+  the focus's outline with an arrow of its colour); the summary gains "The greatest short-term ... potential is centred ...". Focus and arrow also go to
   the game's discussions in map miles. Checked by `tests/discussion-graphics.mjs` and a real engine day (focus and
   arrow on the tornado-watch-likely discussion); the radar layer not yet seen with the engine's real radar (discussions issued after the deploy carry it).
 - World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,

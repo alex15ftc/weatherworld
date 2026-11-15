@@ -76,16 +76,18 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
     out.push(`<circle cx="${X(t.x)}" cy="${Y(t.y)}" r="${big ? 5.5 : 4}" fill="#222" stroke="#fff" stroke-width="1.5"/>`);
     out.push(`<text x="${(Number(X(t.x)) + 9).toFixed(1)}" y="${(Number(Y(t.y)) + 5).toFixed(1)}" font-size="${big ? 18 : 15}" font-weight="${big ? 700 : 400}" fill="#111" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">${escapeXml(t.name)}</text>`);
   }
-  // Arrows: a shaft and a head, on a white halo so they read over the radar.
-  for (const a of arrows) {
-    const x0 = Number(X(a.x0)), y0 = Number(Y(a.y0)), x1 = Number(X(a.x1)), y1 = Number(Y(a.y1)), len = Math.hypot(x1 - x0, y1 - y0);
-    if (len < 12) continue;
-    const ux = (x1 - x0) / len, uy = (y1 - y0) / len, head = Math.min(30, len * 0.45), bx = x1 - ux * head, by = y1 - uy * head, colour = a.colour ?? '#111';
+  // Arrows: a shaft and a head, on a white halo so they read over the radar (in pixels; dot: a dot where it starts).
+  const drawArrow = (x0, y0, x1, y1, colour, { dot = true, label = null, width = 5 } = {}) => {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    if (len < 12) return;
+    const ux = (x1 - x0) / len, uy = (y1 - y0) / len, head = Math.min(6 * width, len * 0.45), bx = x1 - ux * head, by = y1 - uy * head;
     const tip = `${x1.toFixed(1)},${y1.toFixed(1)} ${(bx - uy * head * 0.5).toFixed(1)},${(by + ux * head * 0.5).toFixed(1)} ${(bx + uy * head * 0.5).toFixed(1)},${(by - ux * head * 0.5).toFixed(1)}`;
-    out.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="#fff" stroke-width="11" stroke-linecap="round"/><polygon points="${tip}" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>`);
-    out.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="${colour}" stroke-width="5" stroke-linecap="round"/><polygon points="${tip}" fill="${colour}"/><circle cx="${x0.toFixed(1)}" cy="${y0.toFixed(1)}" r="6" fill="${colour}" stroke="#fff" stroke-width="2"/>`);
-    if (a.label) out.push(`<text x="${(x1 + ux * 10 + 6).toFixed(1)}" y="${(y1 + uy * 10 + 6).toFixed(1)}" font-size="16" font-weight="700" fill="${colour}" stroke="#fff" stroke-width="4" paint-order="stroke">${escapeXml(a.label)}</text>`);
-  }
+    out.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="#fff" stroke-width="${width + 6}" stroke-linecap="round"/><polygon points="${tip}" fill="#fff" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>`);
+    out.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="${colour}" stroke-width="${width}" stroke-linecap="round"/><polygon points="${tip}" fill="${colour}"/>${dot ? `<circle cx="${x0.toFixed(1)}" cy="${y0.toFixed(1)}" r="6" fill="${colour}" stroke="#fff" stroke-width="2"/>` : ''}`);
+    if (label) out.push(`<text x="${(x1 + ux * 10 + 6).toFixed(1)}" y="${(y1 + uy * 10 + 6).toFixed(1)}" font-size="16" font-weight="700" fill="${colour}" stroke="#fff" stroke-width="4" paint-order="stroke">${escapeXml(label)}</text>`);
+  };
+  const arrowPx = arrows.map(a => ({ ...a, px: [Number(X(a.x0)), Number(Y(a.y0)), Number(X(a.x1)), Number(Y(a.y1))] }));
+  for (const a of arrowPx) drawArrow(...a.px, a.colour ?? '#111', { label: a.label });
   for (const s of shapes) {
     if (!s.label || !s.rings.length) continue;
     const flat = s.rings[0]; let top = 0;
@@ -97,13 +99,36 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
     const words = callout.text.split(' '), lines = [''];
     for (const w of words) { if ((lines.at(-1) + ' ' + w).trim().length > 46) lines.push(w); else lines[lines.length - 1] = (lines.at(-1) + ' ' + w).trim(); }
     const widest = Math.max(...lines.map(l => l.length)), bw = Math.min(W - 40, 40 + widest * 12.6), bh = 22 + lines.length * 28, colour = callout.colour ?? '#dc2626';
-    // With callout.at (map miles), a little below it (above where the map has no room), with a line to it; else at
-    // the top in the middle.
-    const ax = callout.at ? Number(X(callout.at.x)) : null, ay = callout.at ? Number(Y(callout.at.y)) : null, gap = 110;
-    const top = ay != null && ay + gap + bh > W - 20, by = ay == null ? 20 : top ? Math.max(20, ay - gap - bh) : ay + gap, bx = ax == null ? (W - bw) / 2 : Math.min(Math.max(ax - bw / 2, 20), W - 20 - bw);
-    if (ax != null) out.push(`<line x1="${Math.min(Math.max(ax, bx + 12), bx + bw - 12).toFixed(1)}" y1="${(top ? by + bh : by).toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="${colour}" stroke-width="2.5" stroke-dasharray="7 5"/>`);
-    out.push(`<rect x="${bx.toFixed(1)}" y="${by}" width="${bw.toFixed(1)}" height="${bh}" rx="4" fill="#fff" fill-opacity="0.95" stroke="${colour}" stroke-width="3"/>`);
-    lines.forEach((l, k) => out.push(`<text x="${(bx + bw / 2).toFixed(1)}" y="${by + 28 + k * 28}" font-size="22" font-weight="700" fill="${colour}" text-anchor="middle">${escapeXml(l)}</text>`));
+    // With callout.rings (the area it speaks of, flat lists of map miles): beside that area on whichever side
+    // leaves it and the arrows clear (and the nearer, on a tie), with an arrow in its colour from the box to the
+    // area's outline, as the centre's labels point at their area. Else at the top in the middle.
+    const pts = []; for (const r of callout.rings ?? []) for (let k = 0; k + 1 < r.length; k += 2) pts.push([Number(X(r[k])), Number(Y(r[k + 1]))]);
+    let bx = (W - bw) / 2, by = 20, pointer = null;
+    if (pts.length) {
+      const f = [Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1])), Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))], cx = (f[0] + f[2]) / 2, cy = (f[1] + f[3]) / 2, gap = 70;
+      const clamp = (x, y) => [Math.min(Math.max(x, 20), W - 20 - bw), Math.min(Math.max(y, 20), W - 20 - bh)];
+      const overlap = (b, o) => Math.max(0, Math.min(b[2], o[2]) - Math.max(b[0], o[0])) * Math.max(0, Math.min(b[3], o[3]) - Math.max(b[1], o[1]));
+      const avoid = [{ box: f, weight: 4 }, ...arrowPx.map(a => ({ box: [Math.min(a.px[0], a.px[2]) - 15, Math.min(a.px[1], a.px[3]) - 15, Math.max(a.px[0], a.px[2]) + 15, Math.max(a.px[1], a.px[3]) + 15], weight: 2 }))];
+      const spots = [clamp(cx - bw / 2, f[3] + gap), clamp(cx - bw / 2, f[1] - gap - bh), clamp(f[2] + gap, cy - bh / 2), clamp(f[0] - gap - bw, cy - bh / 2)];
+      const cost = ([x, y]) => avoid.reduce((sum, o) => sum + o.weight * overlap([x, y, x + bw, y + bh], o.box), 0) + Math.hypot(x + bw / 2 - cx, y + bh / 2 - cy);
+      [bx, by] = spots.reduce((best, s) => (cost(s) < cost(best) ? s : best));
+      // From the box's edge toward the area's middle, ending where that line first meets the outline.
+      const mx = bx + bw / 2, my = by + bh / 2, dx = cx - mx, dy = cy - my;
+      const leave = Math.min(dx ? (bw / 2 + 4) / Math.abs(dx) : Infinity, dy ? (bh / 2 + 4) / Math.abs(dy) : Infinity);
+      if (leave < 1) {
+        const sx = mx + dx * leave, sy = my + dy * leave; let hit = 1;
+        for (const r of callout.rings) for (let k = 0; k + 3 < r.length + 2; k += 2) {
+          const ax = Number(X(r[k])), ay = Number(Y(r[k + 1])), bx2 = Number(X(r[(k + 2) % r.length])), by2 = Number(Y(r[(k + 3) % r.length]));
+          const ex = cx - sx, ey = cy - sy, gx = bx2 - ax, gy = by2 - ay, d = ex * gy - ey * gx; if (!d) continue;
+          const t = ((ax - sx) * gy - (ay - sy) * gx) / d, u = ((ax - sx) * ey - (ay - sy) * ex) / d;
+          if (t > 0 && t < hit && u >= 0 && u <= 1) hit = t;
+        }
+        pointer = [sx, sy, sx + (cx - sx) * hit, sy + (cy - sy) * hit];
+      }
+    }
+    out.push(`<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="4" fill="#fff" fill-opacity="0.95" stroke="${colour}" stroke-width="3"/>`);
+    lines.forEach((l, k) => out.push(`<text x="${(bx + bw / 2).toFixed(1)}" y="${(by + 28 + k * 28).toFixed(1)}" font-size="22" font-weight="700" fill="${colour}" text-anchor="middle">${escapeXml(l)}</text>`));
+    if (pointer) drawArrow(...pointer, colour, { dot: false, width: 4 });
   }
   out.push('</g>', `<rect x="0.75" y="0.75" width="${W - 1.5}" height="${W - 1.5}" fill="none" stroke="#333" stroke-width="1.5"/>`);
   for (const k of keySpots) {
