@@ -214,7 +214,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `/api/performance` (`tornadoRadar`, `host`) show the cost, the waiting count and the container's CPU limit.
     The hosted container reports a limit of 32 vCPU and 30 GB (`host` in `/api/performance`); the hosted radar
     threads were about 1% busy. Not measured: live radar response while the list drains.
-    Warnings replay radar (2026-11-15): the whole map's composite reflectivity (the live 1 km mosaic) is kept every
+    Warnings replay radar (2026-11-15, deployed from 2eb3fe7; host recorded its first frames, ~37 KB each, none
+    failed): the whole map's composite reflectivity (the live 1 km mosaic) is kept every
     10 minutes (`ReplayArchive.radarFrame`, `/api/day/<id>/replay/radar`, sent deflated, inflated in the browser;
     `WEATHER_REPLAY_RADAR=off` leaves it out) and drawn under the warnings; tornadoes on the ground are marked and
     open their panel (the 250 m tornado radar). ~10-20 KB a frame on a local engine. Checked on a local engine at
