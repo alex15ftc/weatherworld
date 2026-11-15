@@ -372,8 +372,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    now (sharper nmep chances and category cutoffs re-checked; a Day 3 refit lost on held-out seeds). Hatches re-fitted
    2026-11-14: wind, hail 3.5 in and EF3+/EF4+ hatches verify under half the time where the runs flag them, so none
    added; the top tornado 45% / wind 75% areas left (they make the correct Highs). Host CPU fine with Day 3 storm runs
-   (clock kept pace through a 06Z issue). Test archives: data/outlook-archive/2026-11-14-* (README there). Next: Day 1
-   updates from the short-range model (plan: scripts/outlook-updates-verify.mjs to match the server, then a paired test).
+   (clock kept pace through a 06Z issue). Test archives: data/outlook-archive/2026-11-14-* (README there). Day 1 update
+   table refitted 2026-11-15 (deployed from `404b848`; decision in TECH_DECISIONS.md); the short-range model's way of making
+   updates scored the same as the perturbed runs at an eighth of the cost (not adopted yet). Watch the live scoreboard for
+   false Moderates on the 01Z updates (too high 17% -> 28% on held-out seeds).
 
 ## Blockers
 

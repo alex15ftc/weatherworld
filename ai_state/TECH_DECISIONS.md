@@ -16,6 +16,20 @@
 
 ## Decisions
 
+### 2026-11-15 — Day 1 update table refitted; updates stay on the perturbed runs
+
+- Status: `active`
+- Decision: the Day 1 updates' table (`CALIBRATION.day1update`, used from 3 h into the day: the 16:30Z, 20Z and 01Z issues)
+  is refitted from the server's own updates (8 runs + 24 cheap). Updates keep coming from the perturbed runs; making them the
+  short-range model's way (one run of the live air without forecast errors carrying 7 cheap runs, none of the live world's
+  storm dice shared) is kept as an option for cost.
+- Rationale: `scripts/outlook-updates-verify.mjs` now makes the server's issues and scores them as the live scoreboard does.
+  Seeds 41-46 x 3 days: the short-range way and the perturbed runs had the same Brier skill at every update (within a point);
+  both fell a category low from 16:30Z (too low 50-67%) because the 2026-10-24 table pulled middle chances down about
+  threefold. The refit (fitted on 41-46) on held-out seeds 47-52: Brier skill up or level at every update (wind +3 to +5);
+  20Z highest category right 39% -> 61%, too low 56% -> 28%; 16:30Z right 44% -> 50%; 01Z right 39% -> 33%, too high 17% -> 28%.
+- Follow-up: false Moderates on the 01Z updates (live scoreboard); a short-range-way table if updates are moved to it for cost.
+
 ### 2026-11-14 — Outlooks lean low at longer leads; stricter tornado and hail hatches
 
 - Status: `active`
