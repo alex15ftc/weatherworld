@@ -3,12 +3,12 @@
 // (flat lists x1, y1, x2, y2 ..., 0-500 east and south from the north-west corner), as the game
 // products carry them (GameProducts.js); layer: the county layer (CountyLayer.js countiesFor).
 const FONT = 'DejaVu Sans, Segoe UI, Arial, Helvetica, sans-serif';
-const W = 1000, FOOTER = 40, BAR = 48;
+const W = 1000, FOOTER = 40, BAR = 48, FACTS = 78;
 
 const escapeXml = text => String(text).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
 
 // The square of map miles to show: the shapes' bounds with room around them, at least minMiles across.
-function viewOf(rings, { pad = 0.35, minMiles = 60, mapMiles = 500 } = {}) {
+export function viewOf(rings, { pad = 0.35, minMiles = 60, mapMiles = 500 } = {}) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const flat of rings) for (let k = 0; k < flat.length; k += 2) { x0 = Math.min(x0, flat[k]); x1 = Math.max(x1, flat[k]); y0 = Math.min(y0, flat[k + 1]); y1 = Math.max(y1, flat[k + 1]); }
   if (!Number.isFinite(x0)) return { x: 0, y: 0, size: mapMiles };
@@ -24,8 +24,9 @@ function viewOf(rings, { pad = 0.35, minMiles = 60, mapMiles = 500 } = {}) {
 // discussion's map (2026-11-14): underlay, a picture under the outlines ({ png, x, y, size } in map miles: the
 // radar, DiscussionRadar.js); arrows: [{ x0, y0, x1, y1, colour, label }] in map miles; callout: { text, colour },
 // a boxed statement at the top of the map, as the centre's graphics have; colourBar: { title, stops: [[value,
-// colour]] }, a row of the underlay's colours under the key.
-export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, minMiles = 60, underlay = null, arrows = [], callout = null, colourBar = null }) {
+// colour]] }, a row of the underlay's colours under the key; facts: { title, items: [{ label, value, colour }] }, a
+// row of boxes under the key (a discussion's most probable peak intensities, as the centre's graphics list them).
+export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, minMiles = 60, underlay = null, arrows = [], callout = null, colourBar = null, facts = null }) {
   const mapMiles = layer?.miles ?? 500, view = viewOf(focus ?? shapes.flatMap(s => s.rings), { minMiles, mapMiles }), scale = W / view.size;
   const X = x => ((x - view.x) * scale).toFixed(1), Y = y => ((y - view.y) * scale).toFixed(1);
   const flatPath = rings => rings.map(flat => { let d = `M${X(flat[0])} ${Y(flat[1])}`; for (let k = 2; k < flat.length; k += 2) d += `L${X(flat[k])} ${Y(flat[k + 1])}`; return `${d}Z`; }).join('');
@@ -39,7 +40,7 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
     keySpots.push({ ...k, x: kx, y: W + 18 + row * 36 });
     kx += width + 28;
   }
-  const keyHeight = key.length ? 64 + row * 36 : 0, barHeight = colourBar ? BAR : 0, height = W + keyHeight + barHeight + (footer ? FOOTER : 0);
+  const keyHeight = key.length ? 64 + row * 36 : 0, factsHeight = facts?.items?.length ? FACTS : 0, barHeight = colourBar ? BAR : 0, height = W + keyHeight + factsHeight + barHeight + (footer ? FOOTER : 0);
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${height}" viewBox="0 0 ${W} ${height}" font-family="${FONT}">`];
   const hatches = [...new Set(shapes.filter(sh => sh.hatch && sh.rings.length).map(sh => sh.hatch))];
   const hatchId = colour => `hatch${hatches.indexOf(colour)}`;
@@ -135,8 +136,18 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
     out.push(`<rect x="${k.x}" y="${k.y}" width="34" height="26" rx="3" fill="${k.colour}" fill-opacity="0.45" stroke="${k.colour}" stroke-width="3"/>`);
     out.push(`<text x="${k.x + 44}" y="${k.y + 19}" font-size="15" fill="#222">${escapeXml(k.text)}</text>`);
   }
+  if (factsHeight) {
+    // The title, then one box for each item: a bar of its colour, its label small and its value bold.
+    const y = W + keyHeight, items = facts.items, x0 = 24, gap = 12, boxW = (W - 2 * x0 - gap * (items.length - 1)) / items.length;
+    out.push(`<text x="${x0}" y="${y + 14}" font-size="14" font-weight="700" fill="#222">${escapeXml(facts.title ?? '')}</text>`);
+    items.forEach((it, k) => {
+      const x = x0 + k * (boxW + gap);
+      out.push(`<rect x="${x.toFixed(1)}" y="${y + 22}" width="${boxW.toFixed(1)}" height="48" rx="4" fill="#fff" stroke="#d5d9e0"/><rect x="${x.toFixed(1)}" y="${y + 22}" width="7" height="48" rx="2" fill="${it.colour ?? '#444'}"/>`);
+      out.push(`<text x="${(x + 18).toFixed(1)}" y="${y + 40}" font-size="13" fill="#555">${escapeXml(it.label)}</text><text x="${(x + 18).toFixed(1)}" y="${y + 61}" font-size="18" font-weight="700" fill="#111">${escapeXml(it.value)}</text>`);
+    });
+  }
   if (colourBar) {
-    const y = W + keyHeight, stops = colourBar.stops ?? [], titleWidth = 24 + colourBar.title.length * 8.2, cell = Math.min(44, (W - titleWidth - 40) / Math.max(1, stops.length));
+    const y = W + keyHeight + factsHeight, stops = colourBar.stops ?? [], titleWidth = 24 + colourBar.title.length * 8.2, cell = Math.min(44, (W - titleWidth - 40) / Math.max(1, stops.length));
     out.push(`<text x="24" y="${y + 29}" font-size="15" fill="#222">${escapeXml(colourBar.title)}</text>`);
     stops.forEach(([value, colour], k) => {
       const x = titleWidth + 16 + k * cell;
@@ -144,7 +155,7 @@ export function areaSvg({ layer, shapes, focus = null, key = [], footer = null, 
     });
   }
   if (footer) {
-    const y = W + keyHeight + barHeight;
+    const y = W + keyHeight + factsHeight + barHeight;
     out.push(`<rect x="0" y="${y}" width="${W}" height="${FOOTER}" fill="#f1f3f6"/><line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#d5d9e0"/>`);
     out.push(`<text x="24" y="${y + 26}" font-size="15" fill="#222"><tspan font-weight="700">${escapeXml(footer[0])}</tspan>${footer[1] ? ` · ${escapeXml(footer[1])}` : ''}</text>`);
   }

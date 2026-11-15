@@ -404,6 +404,8 @@ export function shortTermFocus(members, now, a) {
   cx /= cells.length; cy /= cells.length;
   const layer = now.counties, kmAcross = width * (now.cellKm ?? 1);
   const near = layer?.named && now.cellKm ? placeOf(cx * now.cellKm, cy * now.cellKm, { layer, milesPerKm: layer.miles / kmAcross }) : null;
+  // Not where its outline would reach the edge of the map: the area would run off it (2026-11-15).
+  for (let i = 0; i < n; i++) if (grid01[i]) { const x = i % width, y = (i - x) / width; if (x === 0 || y === 0 || x === width - 1 || y === height - 1) return null; }
   // (mask: the outlined cells, for leadArrow; not kept on the discussion)
   return { hazard, rings: regionRings(solidRegion(grid01, width, height), width, height), near, cells: cells.length, mask: grid01 };
 }

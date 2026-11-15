@@ -91,7 +91,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   potential" area with a label box (where the runs put the most tornadoes, or wind or hail, in their first 2 hours:
   `shortTermFocus`; drawn only when it is at most 60% of the area) and the leading storm's next hour as an arrow
   (`leadArrow`: with a focus, the storm whose next hour runs into it, in the label's colour; the label points at
-  the focus's outline with an arrow of its colour); the summary gains "The greatest short-term ... potential is centred ...". Focus and arrow also go to
+  the focus's outline with an arrow of its colour); the summary gains "The greatest short-term ... potential is centred ...". The map also lists the most probable peak
+  intensities (read from the text); an area of interest that would run off the map's edge is left off (engine: its
+  outline reaching the world's edge; drawing: past the view or the edge, for discussions already issued). Focus and arrow also go to
   the game's discussions in map miles. Checked by `tests/discussion-graphics.mjs` and a real engine day (focus and
   arrow on the tornado-watch-likely discussion); radar seen live on MD 341 (real radar, drawn well).
 - World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,

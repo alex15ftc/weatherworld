@@ -13,9 +13,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
-import { WATCH_COLOURS, DISCUSSION_COLOURS, WARNING_COLOURS, FOCUS_COLOURS } from '../js/forecast/productColours.js';
+import { WATCH_COLOURS, DISCUSSION_COLOURS, WARNING_COLOURS, FOCUS_COLOURS, REPORT_COLOURS } from '../js/forecast/productColours.js';
 import { reflectivityKey } from './DiscussionRadar.js';
-import { areaSvg } from './AreaMap.js';
+import { areaSvg, viewOf } from './AreaMap.js';
 import { utcStamp, localStamp } from './OutlookPublic.js';
 
 const KEPT = { watches: 300, discussions: 300, warnings: 400 };
@@ -25,6 +25,28 @@ const FEED_HOURS = { watches: 24, discussions: 24, warnings: 3 };
 export const warningKey = w => `${w.id}-${Math.round(w.issuedHourUtc * 60)}`;
 // "Tornado Warning", "PDS Tornado Warning", "Tornado Emergency", "Severe Thunderstorm Warning (destructive)".
 // A stored watch or discussion with its issue and end times written out, for the pages.
+// A discussion's most probable peak intensities, from its text (every kept discussion has it, those from before the
+// map showed them too): [{ label, value, colour }] in the text's order, tornado first where it has one.
+const PEAKS = [['TORNADO INTENSITY', 'Tornado intensity', 'tornado'], ['WIND GUST', 'Wind gust', 'wind'], ['HAIL SIZE', 'Hail size', 'hail']];
+export function peaksOf(text = '') {
+  return PEAKS.flatMap(([key, label, hazard]) => {
+    const line = text.split('\n').find(l => l.startsWith(`MOST PROBABLE PEAK ${key}...`));
+    const value = line?.slice(`MOST PROBABLE PEAK ${key}...`.length).trim().replace(/ IN$/, ' in').replace(/ MPH$/, ' mph');
+    return value ? [{ label, value, colour: REPORT_COLOURS[hazard] }] : [];
+  });
+}
+
+// Whether a discussion's area of interest lies wholly on its map: inside the view drawn round the discussion (as
+// areaSvg frames it) and clear of the world's edge (a mile in), so none of it runs off the map (2026-11-15).
+export function focusOnMap(rings, areaRings, mapMiles = 500) {
+  const view = viewOf(areaRings, { minMiles: 120, mapMiles });
+  for (const r of rings) for (let k = 0; k + 1 < r.length; k += 2) {
+    const x = r[k], y = r[k + 1];
+    if (x < view.x || y < view.y || x > view.x + view.size || y > view.y + view.size || x < 1 || y < 1 || x > mapMiles - 1 || y > mapMiles - 1) return false;
+  }
+  return true;
+}
+
 // Whether an arrow (map miles) runs into a set of rings (flat lists of map miles), checked at 13 points along it.
 const reachesRings = (a, rings) => {
   for (let k = 0; k <= 12; k++) {
@@ -182,16 +204,19 @@ export class ProductArchive {
       .map(w => ({ rings: w.rings, fill: WATCH_COLOURS[w.type === 'tornado' ? 'tornado' : 'severe'], fillOpacity: 0.12, stroke: WATCH_COLOURS[w.type === 'tornado' ? 'tornado' : 'severe'], width: 2, dash: '10 6', label: `WW ${w.number}` }));
     // The greatest short-term potential, hatched and outlined in its hazard's colour with the centre's words over the
     // map; the leading storm's next hour as an arrow; the radar of the moment it was issued under it all.
-    const focusColour = md.focus ? FOCUS_COLOURS[md.focus.hazard] ?? FOCUS_COLOURS.tornado : null, focusWords = { tornado: 'tornado', wind: 'damaging wind', hail: 'large hail' }[md.focus?.hazard] ?? 'severe';
-    const focus = md.focus?.rings?.length ? [{ rings: md.focus.rings, hatch: focusColour, stroke: focusColour, width: 6 }] : [];
+    // (none where it would run off the map)
+    const shown = md.focus?.rings?.length && focusOnMap(md.focus.rings, md.rings, this.layer()?.miles ?? 500) ? md.focus : null;
+    const focusColour = shown ? FOCUS_COLOURS[shown.hazard] ?? FOCUS_COLOURS.tornado : null, focusWords = { tornado: 'tornado', wind: 'damaging wind', hail: 'large hail' }[shown?.hazard] ?? 'severe';
+    const focus = shown ? [{ rings: shown.rings, hatch: focusColour, stroke: focusColour, width: 6 }] : [];
     return this.cached(`md:${number}:${times}`, () => areaSvg({
       layer: this.layer(), minMiles: 120, focus: md.rings,
       shapes: [...watches, { rings: md.rings, fill: colour, fillOpacity: 0.2, stroke: colour, width: 5, label }, ...focus],
+      facts: { title: 'Most probable peak intensity', items: peaksOf(md.text) },
       underlay: radar, colourBar: radar ? { title: `Radar: composite reflectivity (dBZ), ${utcStamp(radar.validHourUtc ?? md.issuedHourUtc)}`, stops: reflectivityKey() } : null,
       // (the storm arrow in the colour of the words it goes with: the focus's, else the discussion's; with a focus,
       // only one that runs into it, as discussions issued before 2026-11-14's fix may carry another)
-      arrows: md.arrow && (!focus.length || reachesRings(md.arrow, md.focus.rings)) ? [{ ...md.arrow, colour: focusColour ?? colour, label: `${md.arrow.hours ?? 1} h` }] : [],
-      callout: focus.length ? { text: `Greatest short-term ${focusWords} potential${md.focus.near ? ` centred ${md.focus.near}` : ''}`, colour: focusColour, rings: md.focus.rings } : null,
+      arrows: md.arrow && (!focus.length || reachesRings(md.arrow, shown.rings)) ? [{ ...md.arrow, colour: focusColour ?? colour, label: `${md.arrow.hours ?? 1} h` }] : [],
+      callout: focus.length ? { text: `Greatest short-term ${focusWords} potential${shown.near ? ` centred ${shown.near}` : ''}`, colour: focusColour, rings: shown.rings } : null,
       key: [{ colour, text: `Mesoscale Discussion ${String(md.number).padStart(4, '0')}` }, ...(focus.length ? [{ colour: focusColour, text: `Greatest short-term ${focusWords} potential` }] : []), ...(watches.length ? [{ colour: watches[0].stroke, text: 'Watch in effect' }] : [])],
       footer: times ? [label, `Issued ${utcStamp(md.issuedHourUtc)} (${localStamp(md.issuedHourUtc)}) · Valid until ${utcStamp(md.validToHourUtc)}`] : null
     }));

@@ -7,13 +7,14 @@ import { insideRings } from '../js/forecast/contourShapes.js';
 import { gameMesoscale } from '../server/GameProducts.js';
 import { discussionRadar, pictureView, reflectivityKey } from '../server/DiscussionRadar.js';
 import { areaSvg } from '../server/AreaMap.js';
-import { ProductArchive } from '../server/ProductArchive.js';
+import { ProductArchive, focusOnMap } from '../server/ProductArchive.js';
 
 // --- Made-up runs (as tests/mesoscale-discussion.mjs): severe weather over a 12-cell square, with what each run
 // does in its first soonHours put on a 3 x 3 block (or spread evenly over the square).
 const width = 50, height = 50, n = width * height, at = (x, y) => y * width + x;
 const x0 = 20, y0 = 10, size = 12;
-function run(k, { tornadoes = 2, tornadoMph = 125, soon = 'tornado', block = 0.3, spread = 0 } = {}) {
+function run(k, { tornadoes = 2, tornadoMph = 125, soon = 'tornado', block = 0.3, spread = 0, top = y0, blockRow = 2 } = {}) {
+  const y0 = top;
   const grid = () => new Uint8Array(n), far = () => new Float32Array(n).fill(Infinity), f32 = () => new Float32Array(n);
   const m = { member: k, width, height, cellMiles: 10, hours: 5, near: grid(), reports: grid(), windReports: grid(), hailReports: grid(), windSignificant: grid(), significant: grid(), hail: f32(), gust: f32(), tornadoMph: f32(), firstHour: far(), stormHour: far(), tornadoes: [], tornadoPeaks: [], soonTornado: f32(), soonWind: f32(), soonHail: f32() };
   for (let y = y0; y < y0 + size; y++) for (let x = x0; x < x0 + size; x++) m.near[at(x, y)] = 1;
@@ -22,7 +23,7 @@ function run(k, { tornadoes = 2, tornadoMph = 125, soon = 'tornado', block = 0.3
   for (let t = 0; t < tornadoes; t++) { m.tornadoes.push(at(x0 + 2 + t, y0 + 4)); m.tornadoPeaks.push(tornadoMph); m.tornadoMph[at(x0 + 2 + t, y0 + 4)] = tornadoMph; }
   const key = { tornado: 'soonTornado', wind: 'soonWind', hail: 'soonHail' }[soon];
   if (spread) for (let y = y0; y < y0 + size; y++) for (let x = x0; x < x0 + size; x++) m[key][at(x, y)] = spread;
-  else for (let y = y0 + 2; y <= y0 + 4; y++) for (let x = x0 + 8; x <= x0 + 10; x++) m[key][at(x, y)] = block;
+  else for (let y = y0 + blockRow; y <= y0 + blockRow + 2; y++) for (let x = x0 + 8; x <= x0 + 10; x++) m[key][at(x, y)] = block;
   return m;
 }
 const four = settings => [0, 1, 2, 3].map(k => run(k, settings));
@@ -43,6 +44,11 @@ assert.doesNotMatch(buildMesoscaleDiscussions(four({ block: 0.02 }), now())[0].t
 // Without a tornado peak, the hazard the runs put more of: wind here.
 const windy = buildMesoscaleDiscussions(four({ tornadoes: 0, soon: 'wind', block: 2 }), now())[0];
 assert.equal(windy.focus.hazard, 'wind'); assert.match(windy.text, /The greatest short-term damaging wind potential is/);
+// Where its outline would reach the map's edge (an area at the top of the map, its early tornadoes in its top
+// rows): none, as it would run off the map (2026-11-15), and no sentence.
+const edge = buildMesoscaleDiscussions(four({ top: 0, blockRow: 0 }), now())[0];
+assert.equal(edge.focus, null, 'running off the map: none'); assert.doesNotMatch(edge.text, /greatest short-term/);
+assert.ok(buildMesoscaleDiscussions(four({ top: 0, blockRow: 3 }), now())[0].focus, 'the same a little in from the edge: drawn');
 // Runs without early grids (from before 2026-11-14): no focus, and nothing breaks.
 assert.equal(buildMesoscaleDiscussions(four().map(m => ({ ...m, soonTornado: undefined })), now())[0].focus, null);
 
@@ -85,6 +91,13 @@ const afterBox = svg.slice(svg.lastIndexOf('<rect x=', svg.indexOf('>Greatest sh
 assert.ok(afterBox.includes('fill="#dc2626"/>') && afterBox.includes('<polygon'), 'an arrow in the label colour');
 assert.ok(!areaSvg({ layer: null, shapes: [{ rings: game.rings, fill: '#ef4444' }] }).includes('<image'), 'other maps are as they were');
 
+// --- On the map: inside the view drawn round the area and clear of the world's edge (already-issued discussions).
+const square = (x, y, d) => [[x, y, x + d, y, x + d, y + d, x, y + d]];
+assert.equal(focusOnMap(square(210, 110, 30), square(200, 100, 120), 500), true, 'inside');
+assert.equal(focusOnMap(square(200, 0, 30), square(200, 0, 120), 500), false, 'to the top of the world');
+assert.equal(focusOnMap(square(470, 300, 30), square(400, 280, 100), 500), false, 'to the right of the world');
+assert.equal(focusOnMap(square(10, 10, 20), square(300, 300, 60), 500), false, 'beyond the view drawn');
+
 // --- The archive: the picture kept with the discussion from the first look it is there, never in its JSON.
 const runtime = { worldId: 'w', engine: { world: { validHourUtc: 44 } } };
 let version = 1, given = null;
@@ -96,6 +109,9 @@ assert.deepEqual(archive.discussion(1).radar, { validHourUtc: 43.95 }, 'taken in
 given = null; version++;
 const map = archive.discussionSvg(1);
 assert.ok(map.includes('fill="#dc2626"/><circle'), 'the storm arrow in the focus colour');
+// The most probable peak intensities, from the text, under the key.
+for (const part of ['>Most probable peak intensity</text>', '>Tornado intensity</text>', '>Wind gust</text>', '>Hail size</text>']) assert.ok(map.includes(part), `the map has ${part}`);
+assert.ok(map.includes(`>${md.peakText.hail.replace(' IN', ' in')}</text>`), 'the hail size as the text gives it');
 // A saved arrow that misses the focus (issued before the fix) is left off.
 const stray = { ...publicMesoscaleDiscussion(md), number: 2, arrow: { x0: 0.1, y0: 0.9, x1: 0.12, y1: 0.85, hours: 1 }, valid: true };
 const strayProducts = { product: id => (id === 'mesoscale' ? { version: 1, text: JSON.stringify(gameMesoscale({ enabled: true, width, cellMiles: 10, nowHourUtc: 44, watches: [], discussions: [stray] })) } : null) };
