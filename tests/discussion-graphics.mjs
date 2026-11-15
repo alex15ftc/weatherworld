@@ -52,6 +52,11 @@ assert.deepEqual([arrow.x0, arrow.y0], [Math.round((x0 + 5.5) * 16 / 800 * 1e4) 
 assert.ok(Math.abs(arrow.x1 - arrow.x0 - 40 / 800) < 1e-3 && Math.abs(arrow.y1 - arrow.y0 + 30 / 800) < 1e-3, 'east 40 km and north 30 km in the hour'); assert.equal(arrow.hours, MESOSCALE.arrowHours);
 assert.equal(buildMesoscaleDiscussions(four(), now([storm(x0 + 5, y0 + 5, { eastKph: 1, northKph: 2 })]))[0].arrow, null, 'a storm nearly still: no arrow');
 assert.equal(buildMesoscaleDiscussions(four(), now([storm(5, 40)]))[0].arrow, null, 'a storm outside the area: no arrow');
+// With a focus, the arrow is the storm's that runs into it, though a stronger one elsewhere leads the area; none when
+// no storm's does (MD 341, 2026-11-14: the leading tornadic storm's arrow ran away from the hail focus).
+const two = buildMesoscaleDiscussions(four(), now([storm(x0 + 2, y0 + 9, { mesocyclone: 0.9 }), storm(x0 + 5, y0 + 5)]))[0];
+assert.equal(two.arrow.x0, arrow.x0, 'the storm heading into the focus, not the strongest'); assert.equal(two.focus.mask, undefined, 'the mask is not kept');
+assert.equal(buildMesoscaleDiscussions(four(), now([storm(x0 + 5, y0 + 5, { eastKph: -40, northKph: -30 })]))[0].arrow, null, 'heading away from the focus: no arrow');
 
 // --- The game product: the focus and the arrow in map miles.
 const game = gameMesoscale({ enabled: true, width, cellMiles: 10, nowHourUtc: 44, watches: [], discussions: [{ ...publicMesoscaleDiscussion(md), valid: true }] }).discussions[0];
@@ -72,9 +77,12 @@ assert.equal(await discussionRadar(null, md.cells, now()), null); assert.equal(r
 
 // --- The map's layers.
 const svg = areaSvg({ layer: null, shapes: [{ rings: game.rings, fill: '#ef4444', stroke: '#ef4444' }, { rings: game.focus.rings, hatch: '#dc2626', stroke: '#dc2626', width: 6 }], focus: game.rings,
-  underlay: picture, arrows: [{ ...game.arrow, label: '1 h' }], callout: { text: 'Greatest short-term tornado potential', colour: '#dc2626' }, colourBar: { title: 'Radar', stops: reflectivityKey() } });
+  underlay: picture, arrows: [{ ...game.arrow, label: '1 h' }], callout: { text: 'Greatest short-term tornado potential', colour: '#dc2626', rings: game.focus.rings }, colourBar: { title: 'Radar', stops: reflectivityKey() } });
 for (const part of ['<image href="data:image/png;base64,', '<pattern id="hatch0"', 'fill="url(#hatch0)"', '<polygon', '>1 h</text>', '>Greatest short-term tornado potential</text>', '>75</text>']) assert.ok(svg.includes(part), `the map has ${part}`);
 assert.ok(svg.indexOf('<image') < svg.indexOf('url(#hatch0)'), 'the radar under the hatching');
+// The label points at its area: an arrow in its colour after the box, ending on the area's outline.
+const afterBox = svg.slice(svg.lastIndexOf('<rect x=', svg.indexOf('>Greatest short-term tornado potential</text>')));
+assert.ok(afterBox.includes('fill="#dc2626"/>') && afterBox.includes('<polygon'), 'an arrow in the label colour');
 assert.ok(!areaSvg({ layer: null, shapes: [{ rings: game.rings, fill: '#ef4444' }] }).includes('<image'), 'other maps are as they were');
 
 // --- The archive: the picture kept with the discussion from the first look it is there, never in its JSON.
@@ -87,6 +95,11 @@ given = picture; version++;
 assert.deepEqual(archive.discussion(1).radar, { validHourUtc: 43.95 }, 'taken in when it comes, and only its time in the JSON');
 given = null; version++;
 const map = archive.discussionSvg(1);
+assert.ok(map.includes('fill="#dc2626"/><circle'), 'the storm arrow in the focus colour');
+// A saved arrow that misses the focus (issued before the fix) is left off.
+const stray = { ...publicMesoscaleDiscussion(md), number: 2, arrow: { x0: 0.1, y0: 0.9, x1: 0.12, y1: 0.85, hours: 1 }, valid: true };
+const strayProducts = { product: id => (id === 'mesoscale' ? { version: 1, text: JSON.stringify(gameMesoscale({ enabled: true, width, cellMiles: 10, nowHourUtc: 44, watches: [], discussions: [stray] })) } : null) };
+assert.ok(!new ProductArchive({ runtime, products: strayProducts, layer: () => null }).discussionSvg(2).includes('>1 h</text>'), 'no arrow away from the focus');
 assert.ok(map.includes('data:image/png;base64,') && map.includes('Greatest short-term tornado potential') && map.includes('Radar: composite reflectivity'), 'its map draws it all');
 assert.ok(JSON.stringify(archive.discussion(1)).length < 20000, 'the page gets no picture');
 console.log(`discussion graphics passed (focus ${md.focus.cells} of ${md.areaCells} cells; picture ${picture.png.length} bytes; map ${(map.length / 1024).toFixed(0)} KB)`);

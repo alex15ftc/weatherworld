@@ -85,14 +85,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   an ongoing strong tornado, with a wind estimate from rotational velocity and the tornado parameter fitted on
   our own world) is proposed, not scoped. For it: over 4 saved days EF3+ tornadoes lasted a median 74 world
   minutes (9 real minutes) and EF2+ 25, so it suits EF3-class storms with about a 60-minute valid time.
-- Discussion graphics (2026-11-14; on `main` and deployed to the engine from `d0df05f`): each discussion's map (`/api/md/N.svg`) carries the
+- Discussion graphics (2026-11-14; on `main` and deployed to the engine from `d0df05f`; arrows fixed and deployed from `4e227bb`): each discussion's map (`/api/md/N.svg`) carries the
   composite reflectivity of the moment it was issued (`server/DiscussionRadar.js`, made in `MesoscaleRuntime.issue`,
   kept in the archive's `products.bin`, never in the game's products), a hatched "greatest short-term <hazard>
   potential" area with a label box (where the runs put the most tornadoes, or wind or hail, in their first 2 hours:
   `shortTermFocus`; drawn only when it is at most 60% of the area) and the leading storm's next hour as an arrow
-  (`leadArrow`); the summary gains "The greatest short-term ... potential is centred ...". Focus and arrow also go to
+  (`leadArrow`: with a focus, the storm whose next hour runs into it, in the label's colour; the label points at
+  the focus's outline with an arrow of its colour); the summary gains "The greatest short-term ... potential is centred ...". Focus and arrow also go to
   the game's discussions in map miles. Checked by `tests/discussion-graphics.mjs` and a real engine day (focus and
-  arrow on the tornado-watch-likely discussion); the radar layer not yet seen with the engine's real radar (discussions issued after the deploy carry it).
+  arrow on the tornado-watch-likely discussion); radar seen live on MD 341 (real radar, drawn well).
 - World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,
   +30 min / +1 day, seek, pause clock) needs the `WEATHER_ADMIN_KEY` (`server/ChaserArchive.js` isAdmin; with no
   key set only the local machine). The mesoanalysis World card has an Admin sign-in; the key is kept per tab

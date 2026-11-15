@@ -267,7 +267,8 @@ export function assessArea(members, now, cells) {
   // When the runs bring severe weather to each cell (the median run's hours ahead; never: after the look's end).
   const firstAt = new Float32Array(inside.length).fill(Infinity);
   for (const i of cells) { const hours = members.map(m => (Number.isFinite(m.firstHour?.[i]) ? m.firstHour[i] : MESOSCALE.hoursAhead + 1)).sort((a, b) => a - b); firstAt[i] = hours[Math.floor((hours.length - 1) / 2)]; }
-  const focus = shortTermFocus(members, now, { inside, cells, peakText }), arrow = leadArrow(now, inside, here);
+  const found = shortTermFocus(members, now, { inside, cells, peakText }), { mask, ...focusOnly } = found ?? {};
+  const focus = found ? focusOnly : null, arrow = leadArrow(now, inside, here, mask);
   return {
     cells, inside, perMember, members: count, percent, tornadoWatch, peak, peakText, here, firstAt, focus, arrow,
     stormsInHours: here.storms ? 0 : (firstStorm.length ? median(firstStorm) : null), startsInHours: here.severeNow ? 0 : (firstSevere.length ? median(firstSevere) : null)
@@ -403,17 +404,32 @@ export function shortTermFocus(members, now, a) {
   cx /= cells.length; cy /= cells.length;
   const layer = now.counties, kmAcross = width * (now.cellKm ?? 1);
   const near = layer?.named && now.cellKm ? placeOf(cx * now.cellKm, cy * now.cellKm, { layer, milesPerKm: layer.miles / kmAcross }) : null;
-  return { hazard, rings: regionRings(solidRegion(grid01, width, height), width, height), near, cells: cells.length };
+  // (mask: the outlined cells, for leadArrow; not kept on the discussion)
+  return { hazard, rings: regionRings(solidRegion(grid01, width, height), width, height), near, cells: cells.length, mask: grid01 };
 }
 
 // The leading storm's next arrowHours (MESOSCALE.arrowHours): from the storm the radar shows most of, or else the
 // strongest storm in the area, to where its motion takes it; in shares of the map (x east, y south, both of the
 // map's width, as the rings are). null with no storm there, one nearly stationary, or no cell size known.
-export function leadArrow(now, inside, here) {
+// With a focus (mask: its outlined cells, from shortTermFocus), the arrow is the storm's whose next hour runs into or
+// through the focus (the strongest of those), so that it points at what the discussion marks; none when no storm's
+// does (2026-11-14: MD 341's arrow, from the leading tornadic storm, ran away from its hail focus).
+const moving = st => Number.isFinite(st?.xKm) && Math.hypot(st.eastKph ?? 0, st.northKph ?? 0) * 0.621371 >= 5;
+export function leadArrow(now, inside, here, mask = null) {
   if (!now.cellKm) return null;
-  const lead = here?.strongest ?? (now.storms ?? []).filter(st => inside[st.cell] && st.intensity >= 0.22 && Number.isFinite(st.xKm)).sort((p, q) => (q.mesocyclone ?? 0) - (p.mesocyclone ?? 0) || q.intensity - p.intensity)[0];
-  if (!lead || !Number.isFinite(lead.xKm) || Math.hypot(lead.eastKph ?? 0, lead.northKph ?? 0) * 0.621371 < 5) return null;
-  const across = now.width * now.cellKm, hours = MESOSCALE.arrowHours, r = v => Math.round(v * 10000) / 10000;
+  const hours = MESOSCALE.arrowHours, strongest = (p, q) => (q.mesocyclone ?? 0) - (p.mesocyclone ?? 0) || q.intensity - p.intensity;
+  const reaches = st => {
+    for (let k = 0; k <= 12; k++) {
+      const t = hours * k / 12, x = Math.floor((st.xKm + st.eastKph * t) / now.cellKm), y = Math.floor((st.yKm - st.northKph * t) / now.cellKm);
+      if (x >= 0 && y >= 0 && x < now.width && y < now.height && mask[y * now.width + x]) return true;
+    }
+    return false;
+  };
+  const lead = mask
+    ? (now.storms ?? []).filter(st => st.intensity >= 0.22 && moving(st) && reaches(st)).sort(strongest)[0]
+    : here?.strongest ?? (now.storms ?? []).filter(st => inside[st.cell] && st.intensity >= 0.22 && Number.isFinite(st.xKm)).sort(strongest)[0];
+  if (!moving(lead)) return null;
+  const across = now.width * now.cellKm, r = v => Math.round(v * 10000) / 10000;
   return { x0: r(lead.xKm / across), y0: r(lead.yKm / across), x1: r((lead.xKm + lead.eastKph * hours) / across), y1: r((lead.yKm - lead.northKph * hours) / across), hours };
 }
 
