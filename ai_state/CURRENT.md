@@ -349,8 +349,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    place. Open choices: a `/day/N` page that keeps each day's outlook and tornado tracks on the engine, so the daily
    "forecast, then what happened" pair needs no recording. (The charts stay dark: owner, 2026-11-12.)
 5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
-6. Outlooks (2026-11-14, deployed from `c8c8c42`; decisions in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas, discussion
-   text fixes, live scoring (`/api/outlook/scores`, the performance page), and Day 3 from the Day 2 storm runs carried on.
+6. Outlooks (2026-11-14, deployed from `207bb6e`; decisions in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas, discussion
+   text fixes, live scoring (`/api/outlook/scores`, the performance page), Day 3 from the Day 2 storm runs carried on, and
+   caution at longer leads with stricter tornado and hail hatches (Day 1 High 7.5%, Day 2/3 lean low).
    After a few live days read the scoreboard (High false alarms; Day 3 Moderate never issued). A refit is not worth it
    now (sharper nmep chances and category cutoffs re-checked; a Day 3 refit lost on held-out seeds). Next: Day 1 updates
    from the short-range model.
