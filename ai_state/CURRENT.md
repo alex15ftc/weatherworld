@@ -214,6 +214,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `/api/performance` (`tornadoRadar`, `host`) show the cost, the waiting count and the container's CPU limit.
     The hosted container reports a limit of 32 vCPU and 30 GB (`host` in `/api/performance`); the hosted radar
     threads were about 1% busy. Not measured: live radar response while the list drains.
+    Warnings replay radar (2026-11-15): the whole map's composite reflectivity (the live 1 km mosaic) is kept every
+    10 minutes (`ReplayArchive.radarFrame`, `/api/day/<id>/replay/radar`, sent deflated, inflated in the browser;
+    `WEATHER_REPLAY_RADAR=off` leaves it out) and drawn under the warnings; tornadoes on the ground are marked and
+    open their panel (the 250 m tornado radar). ~10-20 KB a frame on a local engine. Checked on a local engine at
+    live pace and in a browser (GIF too). Not measured on the host: the extra mosaic's load on a busy day.
   - Long range model (2026-11-13; `js/forecast/LongRangeModel.js`,
     `server/LongRangeRuntime.js`, `tests/long-range-model.mjs`): a 7-day run at each 06Z (and one at the first
     whole hour after a start), no storms, with one timing error drawn per run (`ensemblePerturbation.js`, 1.2 m/s

@@ -125,4 +125,43 @@ assert.equal(again.contents(2, runtime.worldId).available, true, 'a day inside t
 // A new world: the old world's replays are not this world's.
 runtime.worldId = 'world-two-uvwxyz'; step(again, 12.5);
 assert.deepEqual(again.contents(2, 'world-one-abcdef'), { available: false });
+
+// The radar map: the whole map's composite every 10 minutes, taken on the first storm tick of each slot, asked for as
+// the radar page asks without marking it looked at, kept deflated in the day's file and sent still deflated.
+{
+  const mapWorld = { validHourUtc: 12 }, storms = { validHourUtc: 12 }, asked = [];
+  const mapRuntime = { worldId: 'world-map-abcdef', engine: { world: mapWorld }, atmosphere: { stormEngine: storms }, radarPool: {}, radarWanted: new Map(),
+    radarMosaic(kind) { this.radarWanted.set('mosaic|' + kind, 1); asked.push(storms.validHourUtc); return Promise.resolve({ width: 4, height: 3, resKm: 1, validHourUtc: storms.validHourUtc, bytes: Uint8Array.from({ length: 12 }, (_, k) => k * 10) }); } };
+  const mapDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ww-replays-map-'));
+  const maps = new ReplayArchive({ runtime: mapRuntime, surface: { frames: [] }, synoptic: { frames: [] }, archive: { warnings: new Map() }, dir: mapDir });
+  // Storm ticks every 5 minutes for an hour (with a float's drift): six frames, one a slot.
+  for (let k = 0; k <= 12; k++) { storms.validHourUtc = 12 + k / 12 + (k % 3 === 1 ? -1e-9 : 1e-9); mapWorld.validHourUtc = storms.validHourUtc; maps.capture(); }
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(asked.length, 7, 'one mosaic a 10-minute slot (12:00 to 13:00)');
+  assert.equal(mapRuntime.radarWanted.size, 0, "the replay does not keep the radar page's mosaic being made");
+  mapRuntime.radarWanted.set('mosaic|composite', 5); storms.validHourUtc = 13.17; maps.capture();
+  assert.equal(mapRuntime.radarWanted.get('mosaic|composite'), 5, "a page's own look is left as it was");
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(maps.contents(1, mapRuntime.worldId).radarFrames, 8);
+  const mapMeta = maps.radarMap(1, mapRuntime.worldId);
+  assert.deepEqual([mapMeta.width, mapMeta.height, mapMeta.resKm, mapMeta.product, mapMeta.frames.length], [4, 3, 1, 'reflectivity', 8]);
+  const one = maps.radarMap(1, mapRuntime.worldId, '2');
+  assert.deepEqual([...zlib.inflateRawSync(Buffer.from(one.deflated, 'base64'))], Array.from({ length: 12 }, (_, k) => k * 10), 'a frame comes back as it was kept');
+  assert.equal(maps.radarMap(1, mapRuntime.worldId, '40'), null);
+  // Kept in the day's file.
+  mapWorld.validHourUtc = 14; maps.capture(); await settle(maps);
+  assert.equal(new ReplayArchive({ runtime: mapRuntime, surface: { frames: [] }, synoptic: { frames: [] }, archive: { warnings: new Map() }, dir: mapDir }).radarMap(1, mapRuntime.worldId).frames.length, 8);
+  // Off, or without radar threads, nothing is asked for.
+  const before = asked.length;
+  new ReplayArchive({ runtime: mapRuntime, surface: { frames: [] }, synoptic: { frames: [] }, archive: { warnings: new Map() }, dir: null, radarMap: false }).capture();
+  new ReplayArchive({ runtime: { ...mapRuntime, radarPool: null }, surface: { frames: [] }, synoptic: { frames: [] }, archive: { warnings: new Map() }, dir: null }).capture();
+  assert.equal(asked.length, before);
+  assert.equal(maps.radarCost().map.frames, 8);
+  // A cache not yet moved on hands back the last tick's mosaic: it is not kept twice.
+  const stale = mapRuntime.radarMosaic;
+  mapRuntime.radarMosaic = () => Promise.resolve({ width: 4, height: 3, resKm: 1, validHourUtc: 13.17, bytes: new Uint8Array(12) });
+  storms.validHourUtc = 13.34; mapWorld.validHourUtc = 13.34; maps.capture(); await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(maps.radarMap(1, mapRuntime.worldId).frames.length, 8);
+  mapRuntime.radarMosaic = stale;
+}
 console.log('Replay archive checks passed');

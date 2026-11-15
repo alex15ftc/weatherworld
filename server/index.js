@@ -267,7 +267,7 @@ async function serveApi(url, req, res) {
       if (!found) return sendJson(req, res, 404, { error: 'No such day' }, { cacheable: false, trace });
       const value = what === 'surface' ? replays.surface(found.day, found.worldId, q('frame')) : what === 'parameter' ? replays.parameter(found.day, found.worldId, q('key'), q('frame'))
         : what === 'synoptic/frame' ? forRole(req, replays.synopticFrame(synoptic, found.day, found.worldId, q('frame'))) : what === 'synoptic/field' ? replays.synopticField(synoptic, found.day, found.worldId, q('frame'), q('key'))
-        : what === 'warnings' ? replays.warningList(found.day, found.worldId) : what.startsWith('tornado/') ? replays.tornadoRadar(found.day, found.worldId, what.slice(8), q('frame')) : null;
+        : what === 'warnings' ? replays.warningList(found.day, found.worldId) : what === 'radar' ? replays.radarMap(found.day, found.worldId, q('frame')) : what.startsWith('tornado/') ? replays.tornadoRadar(found.day, found.worldId, what.slice(8), q('frame')) : null;
       return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No replay of that' }, { cacheable: Boolean(value) && found.ended, trace });
     }
     // One tornado's survey (its damage points and swath), for its map on the day page.

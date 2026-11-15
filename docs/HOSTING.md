@@ -43,6 +43,7 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
 | `WEATHER_STATE_PATH`, `WEATHER_SPINUP_CACHE`, `WEATHER_DAY_REVIEW_DIR` | under `/data` |
 | `WEATHER_WIDE_REFRESH_DAYS` | unset (0.25). How soon the wide window's air (the large-scale pages' severe-weather charts around the map, `js/world/WideRegion.js`) is drawn to entering-air values; display only |
 | `WEATHER_LONG_RANGE` | unset (on). `off` stops the 7-day long range runs (one at each 06Z, a few minutes on a forecast thread, about 45 MB each, 4 kept) |
+| `WEATHER_REPLAY_RADAR` | unset (on). `off` leaves the whole-map radar (composite reflectivity every 10 minutes, ~2-5 MB a day) out of the day replays |
 | `WEATHER_TORNADO_RADAR` | unset (on). `off` leaves the tornado radar out of the day replays; it is scanned as low-priority work on the radar threads |
 | `WEATHER_RADAR_WORKERS`, `WEATHER_FORECAST_WORKERS`, `WEATHER_STORM_WORKERS` | 2 each (the container sees the host's CPU count, which would start up to 8 threads per pool) |
 
