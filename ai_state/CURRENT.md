@@ -49,7 +49,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   a kelvin at tornado start. Audits of tornadoes near radars must step like the server (`advanceLikeServer`).
   The regression suite ran the MAIN checkout from any worktree until 2026-11-14 (`1ae25d6`): a scorecard
   identical to its baseline after an engine change is a failed run, not a pass.
-- Anvil snow sublimates by the air it falls through (2026-11-14, branch `engine/anvil-sublimation`): the rate goes
+- Anvil snow sublimates by the air it falls through (2026-11-14, on `main`; engine deployed from `2c7bebb`, the world
+  carried over; no place publish needed): the rate goes
   with the cells' 500 hPa subsaturation over ice (`iceSubsaturation`, carried on the column by `StormColumn.js` and
   the radar's `stormMoisture`), life 1300 s for 1 mm in dry air (was DCAPE / 1200 and 2500 s). Snow had drifted
   45-96 km ahead of supercells 3 h and older and melted into a wide 20-30 dBZ forward flank; on seed 1 at 35 h
