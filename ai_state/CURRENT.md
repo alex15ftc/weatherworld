@@ -49,6 +49,13 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   a kelvin at tornado start. Audits of tornadoes near radars must step like the server (`advanceLikeServer`).
   The regression suite ran the MAIN checkout from any worktree until 2026-11-14 (`1ae25d6`): a scorecard
   identical to its baseline after an engine change is a failed run, not a pass.
+- Anvil snow sublimates by the air it falls through (2026-11-14, branch `engine/anvil-sublimation`): the rate goes
+  with the cells' 500 hPa subsaturation over ice (`iceSubsaturation`, carried on the column by `StormColumn.js` and
+  the radar's `stormMoisture`), life 1300 s for 1 mm in dry air (was DCAPE / 1200 and 2500 s). Snow had drifted
+  45-96 km ahead of supercells 3 h and older and melted into a wide 20-30 dBZ forward flank; on seed 1 at 35 h
+  their 20 dBZ area is 16-45% smaller, 40 dBZ cores and hour-old cells unchanged. Regression: none (scorecard
+  identical; the fingerprint differs from frame 3, so the run had the change: the suite does not measure fall-out).
+  Echoes 50-70 km wide across the track are clusters and lines (their convective line's length), not fall-out.
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
 - Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files
