@@ -16,6 +16,17 @@
 
 ## Decisions
 
+### 2026-11-14 — Day 3 outlooks from storm runs again
+
+- Status: `active` (supersedes the 2026-10-24 choice of Day 3 from the ingredients)
+- Decision: the four Day 2 storm runs keep their storms through Day 3 (`OUTLOOK.stormShare.day3: 0.5`), with the
+  installed Day 3 chance table and intensity-group share.
+- Rationale: 40 unseen Day 3s (seeds 41-60, current engine): issued Brier skill +9 / +10 against -5 from the
+  ingredients, Enhanced-or-more CSI .47 against .11; highest category right 38% against 40%, within one 90%+ against
+  80%. A Day 3 refit fitted on 51-60 lost on 41-50; significant areas verified 5-33%, so Day 3 Moderate (60% with the
+  hatch) stays out of reach, as at the SPC. About 6 s more an issue, twice a game day.
+- Follow-up: check the engine's CPU after deploy; Day 3 Moderate is never issued.
+
 ### 2026-11-14 — Outlooks: gates off, truth corrected at the map edge, areas tidied, scored live
 
 - Status: `active`

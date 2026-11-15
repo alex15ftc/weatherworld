@@ -340,15 +340,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    place. Open choices: a `/day/N` page that keeps each day's outlook and tornado tracks on the engine, so the daily
    "forecast, then what happened" pair needs no recording. (The charts stay dark: owner, 2026-11-12.)
 5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
-6. Outlooks (2026-11-14, deployed from `8ca782e`; decision in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas,
-   discussion text fixes, live scoring (`/api/outlook/scores`, the performance page). After a few live days read the
-   scoreboard (High false alarms; Day 3 too low). Day 3 with storm runs waits for the owner on branch
-   `forecast/day3-storm-runs` (skill -5 -> +10, area CSI .11 -> .47, but highest right 40% -> 10%: never Moderate). A refit is not worth it now: on 30 mornings (current engine) a sharper method (nmep 32/48 or 64/80) gains
-   3-6 points of probability skill but drops Day 1 right 67% -> 43-50%; category cutoffs, fitted either way, did not help.
-   Day 3 re-checked on 30 more mornings (seeds 51-60, archive in the session tmp): storm runs issued skill +9 (and +10 on
-   41-50, against -5 from the ingredients), right 38% pooled (ingredients 40%), within one 90%+; a Day 3 refit lost on held-out
-   seeds, and Moderate stays out of reach (significant areas verify 5-33%). Merge waits for the owner. Then
-   Day 1 updates from the short-range model.
+6. Outlooks (2026-11-14; decisions in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas, discussion
+   text fixes, live scoring (`/api/outlook/scores`, the performance page), and Day 3 from the Day 2 storm runs carried on.
+   After a few live days read the scoreboard (High false alarms; Day 3 Moderate never issued). A refit is not worth it
+   now (sharper nmep chances and category cutoffs re-checked; a Day 3 refit lost on held-out seeds). Next: Day 1 updates
+   from the short-range model.
 
 ## Blockers
 

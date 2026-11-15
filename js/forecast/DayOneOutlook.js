@@ -70,7 +70,7 @@ export const OUTLOOK = Object.freeze({
   // right on 33-50% of days. A day of atmosphere alone takes about 8 s against 14 s with storms, so four
   // such runs cost about what the two did.)
   memberShare: { day1: 1, day2: 0.5, day3: 0.5 },
-  // 2026-11-14 (branch forecast/day3-storm-runs, the owner to decide): the Day 2 storm runs keep their storms through Day 3.
+  // 2026-11-14 (the owner's choice; TECH_DECISIONS.md): the Day 2 storm runs keep their storms through Day 3 again.
   // On 30 unseen mornings (seeds 41-50) Day 3's issued Brier skill went -5 -> +10 and its Enhanced-or-more CSI .11 -> .47, but
   // its highest category was right on 10% of days (40% from the ingredients): Enhanced nearly every day, Moderate never
   // (CIG_SHARE.day3 was fitted to the ingredients). 21% more run time.
