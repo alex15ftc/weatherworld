@@ -107,7 +107,8 @@ export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.2],[2.7,3],[
 // the first fit with the cheap runs (Day 1 8 full + 24 cheap, Day 2 4 + 12; OUTLOOK.cheapPerMember) and with the
 // truth stepped as the server steps the live world. On those 100 mornings Day 1 went from right on 48% of days
 // (37% too high) to 61% (23% too high). day1update was refitted 2026-11-15 (scripts/outlook-updates-verify.mjs --calibration-data, seeds 41-46 x 3 days, the
-// server's 16:30Z, 20Z and 01Z updates from 8 runs + 24 cheap): the 2026-10-24 table pulled middle chances down about threefold
+// server's 16:30Z, 20Z and 01Z updates, raw chances of the short-range model's way: 1 run of the live air + 7 cheap; checked on
+// the perturbed runs the server uses, 8 + 24 cheap): the 2026-10-24 table pulled middle chances down about threefold
 // (wind 22% raw to 9%), so updates fell a category low; on held-out seeds 47-52 the refit took the 20Z issue's highest
 // category right 39% -> 61% (too low 56% -> 28%) and raised Brier skill at every update.)
 // (Kept 2026-10-29: the refit on fit-2026-10-29 asked 3/8 runs for Day 1 tornado CIG2/CIG3 and cut Day 1 Moderate+High from 25% to 18% of days, 24% verified.)

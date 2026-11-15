@@ -20,7 +20,8 @@
 
 - Status: `active`
 - Decision: the Day 1 updates' table (`CALIBRATION.day1update`, used from 3 h into the day: the 16:30Z, 20Z and 01Z issues)
-  is refitted from the server's own updates (8 runs + 24 cheap). Updates keep coming from the perturbed runs; making them the
+  is refitted from the raw chances of updates made the short-range model's way (seeds 41-46; the script takes the last
+  source's data) and checked on the perturbed runs the server uses (held-out seeds 47-52). Updates keep coming from the perturbed runs; making them the
   short-range model's way (one run of the live air without forecast errors carrying 7 cheap runs, none of the live world's
   storm dice shared) is kept as an option for cost.
 - Rationale: `scripts/outlook-updates-verify.mjs` now makes the server's issues and scores them as the live scoreboard does.
