@@ -49,6 +49,14 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   a kelvin at tornado start. Audits of tornadoes near radars must step like the server (`advanceLikeServer`).
   The regression suite ran the MAIN checkout from any worktree until 2026-11-14 (`1ae25d6`): a scorecard
   identical to its baseline after an engine change is a failed run, not a pass.
+- Anvil snow sublimates by the air it falls through (2026-11-14, on `main`; engine deployed from `2c7bebb`, the world
+  carried over; no place publish needed): the rate goes
+  with the cells' 500 hPa subsaturation over ice (`iceSubsaturation`, carried on the column by `StormColumn.js` and
+  the radar's `stormMoisture`), life 1300 s for 1 mm in dry air (was DCAPE / 1200 and 2500 s). Snow had drifted
+  45-96 km ahead of supercells 3 h and older and melted into a wide 20-30 dBZ forward flank; on seed 1 at 35 h
+  their 20 dBZ area is 16-45% smaller, 40 dBZ cores and hour-old cells unchanged. Regression: none (scorecard
+  identical; the fingerprint differs from frame 3, so the run had the change: the suite does not measure fall-out).
+  Echoes 50-70 km wide across the track are clusters and lines (their convective line's length), not fall-out.
 - The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
 - Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files
@@ -85,13 +93,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   an ongoing strong tornado, with a wind estimate from rotational velocity and the tornado parameter fitted on
   our own world) is proposed, not scoped. For it: over 4 saved days EF3+ tornadoes lasted a median 74 world
   minutes (9 real minutes) and EF2+ 25, so it suits EF3-class storms with about a 60-minute valid time.
-- Discussion graphics (2026-11-14; on `main` and deployed to the engine from `d0df05f`; arrows fixed and deployed from `4e227bb`): each discussion's map (`/api/md/N.svg`) carries the
+- Discussion graphics (2026-11-14; on `main` and deployed to the engine from `d0df05f`; arrows fixed and deployed from `4e227bb`; peaks and the map-edge rule deployed from `dd5dfb1`; 2026-11-15 strong-tornado circles from run agreement, satellite under the radar, STP/MLCAPE contours and fronts with analysis symbols, only the peaks under the map, deployed from `adacda6`; no map image drawn with an opacity (resvg cut them off in the Discord PNGs), deployed from `3ae124c`): each discussion's map (`/api/md/N.svg`) carries the
   composite reflectivity of the moment it was issued (`server/DiscussionRadar.js`, made in `MesoscaleRuntime.issue`,
   kept in the archive's `products.bin`, never in the game's products), a hatched "greatest short-term <hazard>
   potential" area with a label box (where the runs put the most tornadoes, or wind or hail, in their first 2 hours:
   `shortTermFocus`; drawn only when it is at most 60% of the area) and the leading storm's next hour as an arrow
   (`leadArrow`: with a focus, the storm whose next hour runs into it, in the label's colour; the label points at
-  the focus's outline with an arrow of its colour); the summary gains "The greatest short-term ... potential is centred ...". Focus and arrow also go to
+  the focus's outline with an arrow of its colour); the summary gains "The greatest short-term ... potential is centred ...". The map also lists the most probable peak
+  intensities (read from the text); an area of interest that would run off the map's edge is left off (engine: its
+  outline reaching the world's edge; drawing: past the view or the edge, for discussions already issued). Focus and arrow also go to
   the game's discussions in map miles. Checked by `tests/discussion-graphics.mjs` and a real engine day (focus and
   arrow on the tornado-watch-likely discussion); radar seen live on MD 341 (real radar, drawn well).
 - World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,
@@ -204,6 +214,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     `/api/performance` (`tornadoRadar`, `host`) show the cost, the waiting count and the container's CPU limit.
     The hosted container reports a limit of 32 vCPU and 30 GB (`host` in `/api/performance`); the hosted radar
     threads were about 1% busy. Not measured: live radar response while the list drains.
+    Warnings replay radar (2026-11-15): the whole map's composite reflectivity (the live 1 km mosaic) is kept every
+    10 minutes (`ReplayArchive.radarFrame`, `/api/day/<id>/replay/radar`, sent deflated, inflated in the browser;
+    `WEATHER_REPLAY_RADAR=off` leaves it out) and drawn under the warnings; tornadoes on the ground are marked and
+    open their panel (the 250 m tornado radar). ~10-20 KB a frame on a local engine. Checked on a local engine at
+    live pace and in a browser (GIF too). Not measured on the host: the extra mosaic's load on a busy day.
   - Long range model (2026-11-13; `js/forecast/LongRangeModel.js`,
     `server/LongRangeRuntime.js`, `tests/long-range-model.mjs`): a 7-day run at each 06Z (and one at the first
     whole hour after a start), no storms, with one timing error drawn per run (`ensemblePerturbation.js`, 1.2 m/s

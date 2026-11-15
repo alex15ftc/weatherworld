@@ -13,7 +13,9 @@
        A day with tornadoes also has "Tornado tracks": its tracks alone, without the forecast areas, growing on a
        time slider, saved as a GIF, MP4 or PNG. It is drawn from the summary, so it needs no replay.
        For 16 world days after a day its page also has replays (server/ReplayArchive.js): links to the mesoanalysis
-       and large-scale pages on the day's hours, and the warnings on a time slider. Selecting a tornado's track on
+       and large-scale pages on the day's hours, and the warnings on a time slider over the whole map's composite
+       reflectivity every 10 minutes (/api/day/<id>/replay/radar, 1 km, sent deflated), with the tornadoes on the
+       ground marked: selecting one opens its panel. Selecting a tornado's track on
        the "What happened" picture opens its panel: a map zoomed to its path with the survey's swath and damage
        points as diamonds (/api/day/<id>/tornado/<tid>), its damage indicators, and its radar loop
        (/api/day/<id>/replay/tornado/<tid>, scanned after the event; kept with the replay). A day has no page until it
@@ -193,7 +195,7 @@
         <ul class="replay-links">
           <li><a id="replayMeso">Mesoanalysis replay</a><span>The surface analysis and every overlay field, hour by hour. Its page has "Save loop as GIF" and "Save loop as MP4".</span></li>
           <li><a id="replaySynoptic">Large-scale replay</a><span>The jet, 500 mb charts, surface and moisture across the whole large-scale model, hour by hour, with "Save loop as GIF" and "Save loop as MP4".</span></li>
-          <li><b>Tornado radar</b><span>Select a tornado's track on the "What happened" picture: its radar scans from before touchdown until after it lifted, with its damage survey.</span></li>
+          <li><b>Tornado radar</b><span>Select a tornado's track on the "What happened" picture, or a tornado on the warnings map: its close radar (250 m) from before touchdown until after it lifted, in reflectivity, velocity and CC, with its damage survey.</span></li>
         </ul>
         <div>
           <h3>Warnings through the day</h3>
@@ -205,6 +207,7 @@
                 <input type="range" id="warnSlider" min="0" max="144" value="0" aria-label="Time of day" />
                 <span class="time" id="warnTime"></span>
               </div>
+              <div class="bar day-tools"><label id="warnRadarBox" hidden><input type="checkbox" id="warnRadar" checked /> Radar (composite reflectivity)</label></div>
               <div class="bar day-tools"><button id="warnGif">Save as GIF</button><button id="warnMp4">Save as MP4</button><span class="muted" id="warnNote" style="font-size:14.5px"></span></div>
             </div>
           </div>
@@ -379,15 +382,20 @@ async function showReplays(day) {
   if (!replay.mesoHours.length) $('#replayMeso').closest('li').hidden = true;
   if (!replay.synopticHours.length) $('#replaySynoptic').closest('li').hidden = true;
   try { warnings = (await ask(`/api/day/${id}/replay/warnings`)).warnings; } catch { warnings = []; }
-  drawWarnings();
+  if (replay.radarFrames) { try { radarMap.meta = await ask(`/api/day/${id}/replay/radar`); } catch { radarMap.meta = null; } }
+  $('#warnRadarBox').hidden = !radarMap.meta;
+  await showWarnings();
+  fetchRadarMap();
 }
 $('#tornadoPick').addEventListener('change', event => showTornado(event.target.value, false));
 
 // The county lines and biggest towns on a square canvas showing a box of the map (miles): the ground both
 // replays are drawn on.
-function drawGround(g, size, box) {
+// (under: drawn on the bare ground, below the lines and towns)
+function drawGround(g, size, box, under = null) {
   const k = size / box.size, X = x => (x - box.x) * k, Y = y => (y - box.y) * k;
   g.fillStyle = '#10161d'; g.fillRect(0, 0, size, size);
+  under?.({ X, Y, k });
   if (!counties) return { X, Y, k };
   g.strokeStyle = 'rgba(150,165,183,.28)'; g.lineWidth = 1; g.beginPath();
   for (const c of counties.counties) for (const ring of c.rings) { ring.forEach(([x, y], n) => (n ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.closePath(); }
@@ -401,11 +409,78 @@ function drawGround(g, size, box) {
   return { X, Y, k };
 }
 
-// ---- The day's warnings on a time slider (every 10 minutes of the day).
-let warnings = [], warnTimer = null;
+// ---- The day's warnings on a time slider (every 10 minutes of the day), over the whole map's radar (composite
+// reflectivity, 1 km, every 10 minutes: ReplayArchive.radarFrame), with the tornadoes on the ground marked.
+let warnings = [], warnTimer = null, warnMarks = [];
 const warnHour = () => theDay.startHourUtc + Number($('#warnSlider').value) / 6;
+// The radar map: its scan times and grid, each frame's bytes as they are read, and each frame drawn in colour once.
+const radarMap = { meta: null, bytes: new Map(), pictures: new Map(), table: null, fetching: null };
+const inflate = async text => new Uint8Array(await new Response(new Blob([bytesOf(text)]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+// The frame to show at an hour: the latest at or before it, up to 15 minutes old.
+function radarMapFrame(hour) {
+  const frames = radarMap.meta?.frames ?? [];
+  let k = -1;
+  for (let n = 0; n < frames.length && frames[n] <= hour + 1e-6; n++) k = n;
+  return k >= 0 && hour - frames[k] <= 0.25 + 1e-6 ? k : -1;
+}
+// A frame's bytes (a promise, marked with them once read, so drawWarnings can stay synchronous for the GIF).
+function radarMapBytes(k) {
+  if (!radarMap.bytes.has(k)) {
+    const promise = ask(`/api/day/${id}/replay/radar?frame=${k}`).then(got => inflate(got.deflated))
+      .then(bytes => { promise.bytes = bytes; return bytes; }, error => { radarMap.bytes.delete(k); throw error; });
+    radarMap.bytes.set(k, promise);
+  }
+  return radarMap.bytes.get(k);
+}
+// The rest of the day's frames, read in the background (a few at a time) so the loop plays smoothly.
+function fetchRadarMap() {
+  if (!radarMap.meta || radarMap.fetching) return;
+  const todo = radarMap.meta.frames.map((_, k) => k);
+  radarMap.fetching = Promise.all(Array.from({ length: 4 }, async () => { while (todo.length) await radarMapBytes(todo.shift()).catch(() => {}); }));
+}
+function radarMapPicture(k, bytes) {
+  if (radarMap.pictures.has(k)) return radarMap.pictures.get(k);
+  const { width, height } = radarMap.meta, table = radarMap.table ??= radarColorTable('reflectivity');
+  const picture = document.createElement('canvas'); picture.width = width; picture.height = height;
+  const image = picture.getContext('2d').createImageData(width, height);
+  for (let p = 0; p < width * height; p++) { const b = bytes[p] * 4, o = p * 4; image.data[o] = table[b]; image.data[o + 1] = table[b + 1]; image.data[o + 2] = table[b + 2]; image.data[o + 3] = table[b + 3]; }
+  picture.getContext('2d').putImageData(image, 0, 0);
+  radarMap.pictures.set(k, picture);
+  return picture;
+}
+// Where a tornado was at an hour (miles), along its track by length, or null when it was not on the ground in the
+// 10 minutes up to it (one slider step: a short tornado still shows, where it lifted).
+function tornadoAt(t, hour, within = 1 / 6) {
+  if (t.startHourUtc == null || !t.track?.length) return null;
+  const hours = Math.max(1 / 60, (t.minutes ?? 0) / 60);
+  if (hour < t.startHourUtc - 1e-6 || hour - within > t.startHourUtc + hours + 1e-6) return null;
+  const part = Math.min(1, (hour - t.startHourUtc) / hours);
+  let total = 0;
+  for (let n = 1; n < t.track.length; n++) total += Math.hypot(t.track[n][0] - t.track[n - 1][0], t.track[n][1] - t.track[n - 1][1]);
+  let left = total * part;
+  for (let n = 1; n < t.track.length; n++) {
+    const a = t.track[n - 1], b = t.track[n], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (left <= d) { const f = d > 0 ? left / d : 0; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+    left -= d;
+  }
+  return t.track.at(-1);
+}
+// Reads the radar frame the slider's hour shows (if it is not in hand), then draws.
+async function showWarnings() {
+  const k = $('#warnRadar').checked ? radarMapFrame(warnHour()) : -1;
+  if (k >= 0) await radarMapBytes(k).catch(() => {});
+  return drawWarnings();
+}
 function drawWarnings() {
-  const canvas = $('#warnCanvas'), g = canvas.getContext('2d'), hour = warnHour(), { X, Y } = drawGround(g, canvas.width, { x: 0, y: 0, size: counties?.miles ?? 500 });
+  const canvas = $('#warnCanvas'), g = canvas.getContext('2d'), hour = warnHour();
+  const k = $('#warnRadar').checked ? radarMapFrame(hour) : -1, bytes = k >= 0 ? radarMap.bytes.get(k)?.bytes : null;
+  const radarHour = bytes ? radarMap.meta.frames[k] : null;
+  const { X, Y } = drawGround(g, canvas.width, { x: 0, y: 0, size: counties?.miles ?? 500 }, bytes && (({ X, Y, k: scale }) => {
+    const { width, height, resKm } = radarMap.meta, miles = resKm / 1.609344;
+    g.imageSmoothingEnabled = false; g.globalAlpha = 0.9;
+    g.drawImage(radarMapPicture(k, bytes), X(0), Y(0), width * miles * scale, height * miles * scale);
+    g.globalAlpha = 1;
+  }));
   const live = warnings.filter(w => w.issuedHourUtc <= hour + 1e-6 && w.validToHourUtc > hour);
   for (const w of [...live].sort((a, b) => (a.type === 'tornado') - (b.type === 'tornado'))) {
     const colour = WARNING_COLOURS[w.colourKey] ?? '#f5c518';
@@ -413,16 +488,35 @@ function drawWarnings() {
     for (const flat of w.rings) { for (let n = 0; n < flat.length; n += 2) (n ? g.lineTo(X(flat[n]), Y(flat[n + 1])) : g.moveTo(X(flat[n]), Y(flat[n + 1]))); g.closePath(); }
     g.fillStyle = `${colour}44`; g.fill(); g.strokeStyle = colour; g.lineWidth = 2; g.stroke();
   }
+  // The tornadoes on the ground: a triangle in their EF colour (select one for its panel and close radar).
+  warnMarks = [];
+  for (const t of theDay.tornadoes) {
+    const at = tornadoAt(t, hour);
+    if (!at) continue;
+    const x = X(at[0]), y = Y(at[1]);
+    g.beginPath(); g.moveTo(x - 8, y - 7); g.lineTo(x + 8, y - 7); g.lineTo(x, y + 8); g.closePath();
+    g.fillStyle = efColour(t.ef); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+    warnMarks.push({ id: t.id, x, y });
+  }
   const tornado = live.filter(w => w.type === 'tornado').length;
-  $('#warnTime').textContent = `${utcText(hour)} · ${tornado} tornado, ${live.length - tornado} severe`;
+  $('#warnTime').textContent = `${utcText(hour)} · ${tornado} tornado, ${live.length - tornado} severe${radarHour != null ? ` · radar ${utcText(radarHour).replace(/ UTC.*/, 'Z')}` : ''}`;
   return { hour, tornado, other: live.length - tornado };
 }
-$('#warnSlider').addEventListener('input', () => { stopWarn(); drawWarnings(); });
+$('#warnSlider').addEventListener('input', () => { stopWarn(); showWarnings(); });
+$('#warnRadar').addEventListener('change', () => showWarnings());
+// A tornado marked on the map opens its panel (its survey and close radar).
+const markAt = event => {
+  const box = event.currentTarget.getBoundingClientRect(), scale = event.currentTarget.width / box.width;
+  const x = (event.clientX - box.left) * scale, y = (event.clientY - box.top) * scale;
+  return warnMarks.map(m => ({ ...m, d: Math.hypot(m.x - x, m.y - y) })).filter(m => m.d <= 16).sort((a, b) => a.d - b.d)[0] ?? null;
+};
+$('#warnCanvas').addEventListener('click', event => { const mark = markAt(event); if (mark) { stopWarn(); showTornado(mark.id, true); } });
+$('#warnCanvas').addEventListener('mousemove', event => { event.currentTarget.style.cursor = markAt(event) ? 'pointer' : ''; });
 function stopWarn() { clearInterval(warnTimer); warnTimer = null; $('#warnPlay').textContent = 'Play'; }
 $('#warnPlay').addEventListener('click', () => {
   if (warnTimer) return stopWarn();
   $('#warnPlay').textContent = 'Stop';
-  warnTimer = setInterval(() => { const slider = $('#warnSlider'); slider.value = (Number(slider.value) + 1) % 145; drawWarnings(); }, 160);
+  warnTimer = setInterval(() => { const slider = $('#warnSlider'); slider.value = (Number(slider.value) + 1) % 145; showWarnings(); }, 160);
 });
 // (each loop below is saved as a GIF or as an MP4 by the same steps: js/gif.js)
 for (const format of ['gif', 'mp4']) $(format === 'mp4' ? '#warnMp4' : '#warnGif').addEventListener('click', async event => {
@@ -431,10 +525,10 @@ for (const format of ['gif', 'mp4']) $(format === 'mp4' ? '#warnMp4' : '#warnGif
   button.disabled = true;
   // (every 20 minutes: 73 pictures of the day)
   await saveLoop({ count: 73, width: 560, height: 626, delayMs: 180, name: `highrisk-${id}-warnings.gif`, format,
-    show: k => { slider.value = k * 2; drawWarnings(); },
+    show: async k => { slider.value = k * 2; await showWarnings(); },
     draw: g => { const now = drawWarnings(); drawChartFrame(g, canvas, { title: `Warnings · ${now.tornado} tornado, ${now.other} severe`, time: utcText(now.hour) }); },
     onProgress: text => { $('#warnNote').textContent = text; } }).catch(error => { $('#warnNote').textContent = `The ${format === 'mp4' ? 'MP4' : 'GIF'} could not be made (${error.message}).`; });
-  button.disabled = false; slider.value = was; drawWarnings();
+  button.disabled = false; slider.value = was; showWarnings();
 });
 
 // ---- The day's tornado tracks alone (no forecast areas), on a time slider: each track grows while its tornado

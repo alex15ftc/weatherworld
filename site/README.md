@@ -78,7 +78,9 @@ engine with no key treats this machine as admin). The server decides the role on
 
 A day's replay (`server/ReplayArchive.js`) is kept for 16 world days (two real days) after the day: the hourly
 mesoanalysis and large-scale frames and every warning. The day page (`/day/<id>`) links to the two replay
-pages and plays the warnings on a time slider. Selecting a tornado's track on the "What happened" picture opens
+pages and plays the warnings on a time slider, over the whole map's composite reflectivity (the radar page's 1 km
+mosaic, kept every 10 minutes from 2026-11-15; a tick box turns it off) with the tornadoes on the ground marked:
+selecting one opens its panel. Selecting a tornado's track on the "What happened" picture opens
 its panel: a map zoomed to its path with the survey's swath and damage points as diamonds coloured by rating
 (select one for what was damaged), its damage indicators (kept with the saved summary, for good), and its radar
 loop: reflectivity, storm-relative velocity and correlation coefficient from before touchdown until after it lifted

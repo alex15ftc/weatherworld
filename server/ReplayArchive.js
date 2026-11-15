@@ -3,6 +3,8 @@
 //   mesoanalysis   the surface analysis and every overlay field, each whole hour (SurfaceAnalysisRuntime.js)
 //   synoptic       the whole large-scale model, each whole hour (SynopticRuntime.js)
 //   warnings       every warning issued, with its polygon and bulletin (ProductArchive.js keeps only 3 hours)
+//   radar map      the whole map's composite reflectivity (the radar page's 1 km mosaic) every 10 minutes, for
+//                  the warnings replay: taken on the storm tick that begins each 10 minutes, kept deflated
 //   tornado radar  for each tornado, the nearest radar's lowest scan at its finest gates, cut to a box around
 //                  the storm, every storm tick from a few ticks before touchdown to a few after it lifts
 // A day is a file (replays/<world>-<day>.bin.gz beside the world's state), written each world hour and when the
@@ -20,6 +22,12 @@
 //             nothing live is waiting and another thread stays free. A tornado's loop is therefore ready some
 //             minutes after it lifts, later on a busy day; the day's summary says how many scans are still to come.
 // WEATHER_TORNADO_RADAR=off leaves the tornado radar out; so does running without radar threads.
+//
+// The radar map costs one composite mosaic every 10 world minutes (about 75 real seconds at the 8x clock): ~1-1.5 s
+// on the radar threads, nothing when the radar page has already asked for that scan time. Each frame is the 648 KB
+// grid deflated (4-70 KB); it is sent still deflated and the page inflates it. A frame missed (the engine catching
+// up several ticks at once) is a gap; the page shows the last frame up to 15 minutes old.
+// WEATHER_REPLAY_RADAR=off leaves it out; so does running without radar threads (a mosaic on this thread takes seconds).
 import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
@@ -44,6 +52,7 @@ export const REPLAY = Object.freeze({
 });
 const SIZE = Math.round(REPLAY.boxKm / REPLAY.cellKm);
 const dayStart = day => 12 + 24 * (day - 1);
+const deflateRaw = bytes => new Promise((resolve, reject) => zlib.deflateRaw(bytes, { level: 6 }, (error, out) => (error ? reject(error) : resolve(out))));
 const gzip = bytes => new Promise((resolve, reject) => zlib.gzip(bytes, { level: 6 }, (error, out) => (error ? reject(error) : resolve(out))));
 const round3 = v => Math.round(v * 1000) / 1000;
 
@@ -54,9 +63,11 @@ const unpackField = field => ({ ...field, values: Array.from(field.values, round
 export class ReplayArchive {
   // runtime: the weather authority (worldId, atmosphere, radarPool). surface, synoptic: the runtimes whose
   // frames are kept. archive: ProductArchive (the warnings). dir: where the days' files go (null: memory only).
-  constructor({ runtime, surface, synoptic, archive, dir = null, tornadoRadar = process.env.WEATHER_TORNADO_RADAR !== 'off' }) {
-    // (named apart from the methods the pages' answers come from: surface(), tornadoRadar())
-    Object.assign(this, { runtime, surfaceRuntime: surface, synopticRuntime: synoptic, archive, dir, radarOn: tornadoRadar });
+  constructor({ runtime, surface, synoptic, archive, dir = null, tornadoRadar = process.env.WEATHER_TORNADO_RADAR !== 'off', radarMap = process.env.WEATHER_REPLAY_RADAR !== 'off' }) {
+    // (named apart from the methods the pages' answers come from: surface(), tornadoRadar(), radarMap())
+    Object.assign(this, { runtime, surfaceRuntime: surface, synopticRuntime: synoptic, archive, dir, radarOn: tornadoRadar, mapOn: radarMap });
+    // The radar map: the 10-minute slot last asked for, and what it has cost (frames kept, failed, bytes kept).
+    this.mapSlot = null; this.mapCost = { frames: 0, failed: 0, bytes: 0 };
     this.worldId = runtime.worldId; this.current = null; this.loaded = new Map(); this.writing = Promise.resolve(); this.lastFlushHour = null;
     // The tornado radar: the storm tick last read, each storm's last ticks (pending) and state (track), the days
     // that have ended with scans still waiting (finishing), whether the waiting list is being worked through, and
@@ -66,7 +77,7 @@ export class ReplayArchive {
   }
 
   fileOf(day) { return this.dir ? path.join(this.dir, `${String(this.worldId).slice(0, 12)}-${day}.bin.gz`) : null; }
-  blank(day) { return { day, startHourUtc: dayStart(day), meso: [], synoptic: [], warnings: new Map(), tornadoes: {}, queue: [] }; }
+  blank(day) { return { day, startHourUtc: dayStart(day), meso: [], synoptic: [], warnings: new Map(), tornadoes: {}, queue: [], radar: [] }; }
 
   // The day now being gathered (started, or read back after a restart, when the world enters it).
   today() {
@@ -97,6 +108,7 @@ export class ReplayArchive {
       if (large && !day.synoptic.some(f => f.hour === hour)) day.synoptic.push(large);
     }
     this.warnings();
+    this.radarFrame(day);
     if (this.lastFlushHour !== Math.floor(hour)) { this.lastFlushHour = Math.floor(hour); this.flush(day); }
   }
 
@@ -105,6 +117,34 @@ export class ReplayArchive {
     for (const w of this.archive?.warnings?.values() ?? []) {
       if (this.current?.day === convectiveDay(w.issuedHourUtc)) this.current.warnings.set(w.key, w);
     }
+  }
+
+  // The whole map's composite reflectivity, once each 10 minutes: on the first storm tick of the slot, after the world
+  // has stepped (the radar's cache is then of this tick). It is asked for as the radar page asks, so a scan time the
+  // page has already made costs nothing; it is not marked as looked at, so the radar is not made again each tick for it.
+  radarFrame(day) {
+    const runtime = this.runtime, hour = runtime.atmosphere?.stormEngine?.validHourUtc;
+    if (!this.mapOn || !runtime.radarPool || typeof runtime.radarMosaic !== 'function' || !Number.isFinite(hour)) return;
+    const slot = Math.floor(hour * 6 + 1e-6);
+    if (slot === this.mapSlot || day.radar.some(frame => frame.slot === slot)) return;
+    this.mapSlot = slot;
+    const wanted = runtime.radarWanted, looked = wanted?.get('mosaic|composite');
+    const asked = runtime.radarMosaic('composite');
+    if (wanted) { if (looked === undefined) wanted.delete('mosaic|composite'); else wanted.set('mosaic|composite', looked); }
+    Promise.resolve(asked)
+      .then(async mosaic => {
+        // (filed by its own scan time: a cache not yet moved on can hand back an earlier tick's mosaic)
+        const at = Math.floor(mosaic?.validHourUtc * 6 + 1e-6);
+        if (!mosaic?.bytes || !Number.isFinite(at) || day.radar.some(frame => frame.slot === at)) return;
+        const deflated = await deflateRaw(mosaic.bytes);
+        if (day.radar.some(frame => frame.slot === at)) return;
+        day.radar.push({ slot: at, hourUtc: mosaic.validHourUtc, width: mosaic.width, height: mosaic.height, resKm: mosaic.resKm, deflated });
+        day.radar.sort((a, b) => a.slot - b.slot);
+        this.mapCost.frames++; this.mapCost.bytes += deflated.length;
+        // (a frame that comes in after its day has ended goes into that day's file)
+        if (day !== this.current) this.flush(day);
+      })
+      .catch(error => { this.mapCost.failed++; console.warn('[replays] radar map:', error.message); });
   }
 
   // Call on each storm tick. Nothing is scanned here: a storm that has a tornado, or may produce one, has what its
@@ -193,6 +233,7 @@ export class ReplayArchive {
   radarCost() {
     const c = this.cost, r = v => Math.round(v * 10) / 10;
     return { on: Boolean(this.radarOn && this.runtime.radarPool), scans: c.scans, failed: c.failed, waiting: [...this.finishing.values(), this.current].reduce((n, day) => n + (day?.queue.length ?? 0), 0),
+      map: { on: Boolean(this.mapOn && this.runtime.radarPool), ...this.mapCost },
       meanScanMs: c.scans ? Math.round(c.scanMs / c.scans) : 0, maxScanMs: Math.round(c.scanMaxMs), mainThreadMsPerScan: c.scans ? r(c.mainMs / c.scans) : 0,
       ticks: c.ticks, meanTickMs: c.ticks ? r(c.tickMs / c.ticks) : 0, maxTickMs: r(c.tickMaxMs), stormsWatched: this.track.size };
   }
@@ -217,7 +258,7 @@ export class ReplayArchive {
     try {
       const kept = v8.deserialize(zlib.gunzipSync(fs.readFileSync(file)));
       if (kept.version !== 1 || kept.worldId !== this.worldId) return null;
-      return { ...kept, warnings: new Map(kept.warnings), tornadoes: kept.tornadoes ?? {}, queue: kept.queue ?? [] };
+      return { ...kept, warnings: new Map(kept.warnings), tornadoes: kept.tornadoes ?? {}, queue: kept.queue ?? [], radar: kept.radar ?? [] };
     } catch (error) { console.warn(`[replays] day ${day} unreadable:`, error.message); return null; }
   }
 
@@ -258,7 +299,7 @@ export class ReplayArchive {
     // (tornadoRadar: the scans ready for each tornado; radarWaiting: those still to be worked out)
     const waiting = {};
     for (const job of d.queue) waiting[job.tornado] = (waiting[job.tornado] ?? 0) + 1;
-    return { available: true, day: d.day, expiresHourUtc: dayStart(d.day + REPLAY.keepDays), mesoHours: d.meso.map(f => f.hour), synopticHours: d.synoptic.map(f => f.hour), warnings: d.warnings.size,
+    return { available: true, day: d.day, expiresHourUtc: dayStart(d.day + REPLAY.keepDays), mesoHours: d.meso.map(f => f.hour), synopticHours: d.synoptic.map(f => f.hour), warnings: d.warnings.size, radarFrames: d.radar.length,
       tornadoRadar: Object.fromEntries(Object.entries(d.tornadoes).map(([id, t]) => [id, t.frames.length])), radarWaiting: waiting };
   }
 
@@ -289,6 +330,18 @@ export class ReplayArchive {
     if (!d) return null;
     return { startHourUtc: d.startHourUtc, endHourUtc: d.startHourUtc + 24, warnings: [...d.warnings.values()].sort((a, b) => a.issuedHourUtc - b.issuedHourUtc)
       .map(w => ({ key: w.key, id: w.id, type: w.type, title: w.title, label: w.label, pds: Boolean(w.pds), emergency: Boolean(w.emergency), colourKey: w.colourKey, where: w.where, issuedHourUtc: w.issuedHourUtc, validToHourUtc: w.validToHourUtc, rings: w.rings })) };
+  }
+
+  // The radar map: its scan times and grid, and (frame given) one frame's bytes, still deflated (raw), as base64.
+  radarMap(day, worldId, frame = null) {
+    const d = this.dayOf(day, worldId);
+    if (!d?.radar.length) return null;
+    if (frame === null || frame === undefined || frame === '') {
+      const { width, height, resKm } = d.radar.at(-1);
+      return { product: 'reflectivity', kind: 'composite', width, height, resKm, frames: d.radar.map(f => f.hourUtc) };
+    }
+    const one = d.radar[Number(frame)];
+    return one ? { frame: Number(frame), hourUtc: one.hourUtc, width: one.width, height: one.height, resKm: one.resKm, deflated: Buffer.from(one.deflated).toString('base64') } : null;
   }
 
   // One tornado's radar scans: what each shows and where, and (frame given) one scan's products as base64 bytes.

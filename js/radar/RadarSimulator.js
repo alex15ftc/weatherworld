@@ -3,7 +3,7 @@
 // updraughts and the wind through its depth), the environmental grid, analysed boundaries
 // and the time of day. Output is a deterministic function of world state, site and tilt.
 import {
-  buildStormPrecipitation, samplePrecipitation, hasPrecipitation, sampleDebris, sampleHeaviness, heavinessGradient,
+  buildStormPrecipitation, iceSubsaturation, samplePrecipitation, hasPrecipitation, sampleDebris, sampleHeaviness, heavinessGradient,
   RAIN_REFLECTIVITY, HAIL_REFLECTIVITY, DEBRIS_REFLECTIVITY, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, FRONT_TO_REAR_BASE_M, frontToRearShare
 } from '../storms/PrecipitationField.js';
 import {
@@ -156,8 +156,8 @@ export function buildRadarScene(world) {
 
 // One storm's precipitation (PrecipitationField.js). shared: in memory other threads can read;
 // the other options (stride, leastResKm, fine) give a coarser field for a quick look.
-export function buildStormEcho({ storm, top, freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh }, options = {}) {
-  return buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh }, options);
+export function buildStormEcho({ storm, top, freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh, subsaturationAloft }, options = {}) {
+  return buildStormPrecipitation(storm, { topM: top, freezingM: freezing, su, sv, inflowVapourGm3, precipitableWaterIn, midLevelRh, subsaturationAloft }, options);
 }
 
 // reuseEnv: the env of an earlier call on the same cells (it depends on the cells alone).
@@ -1077,7 +1077,9 @@ function stormMoisture(world, x, y) {
   return {
     inflowVapourGm3: low.reduce((sum, r) => sum + vapour(r), 0) / low.length,
     precipitableWaterIn: Number(sounding.params?.precipWater),
-    midLevelRh: mid.length ? mid.reduce((sum, r) => sum + r.rh, 0) / mid.length : undefined
+    midLevelRh: mid.length ? mid.reduce((sum, r) => sum + r.rh, 0) / mid.length : undefined,
+    // (as StormColumn: the 500 hPa air's subsaturation over ice, which the anvil's snow falls through)
+    subsaturationAloft: iceSubsaturation(Number(cell.levels?.[500]?.temperature), Number(cell.levels?.[500]?.dewpoint))
   };
 }
 
