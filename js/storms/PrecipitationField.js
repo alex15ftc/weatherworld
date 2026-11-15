@@ -106,7 +106,16 @@ export const PHYSICS = {
   // strong cold pool (this strength or more) once the line is this many hours old.
   frontToRearMs: 22, frontToRearColdPool: 0.6, frontToRearHours: [0.5, 2.5],
   evaporationS: 700,           // life of a 1 mm drop below cloud in the driest air (longer as the square of its size)
-  sublimationS: 2500,          // the same for snow falling from the anvil through dry air
+  // Ice falling from the anvil sublimates at a rate set by how far the air below the anvil is from
+  // saturation over ice (1 - RHice, the cells' 500 hPa air: the middle of the layer the snow falls
+  // through, from 0.6 of the storm's top to the freezing level): this is the e-folding life (s) of a
+  // 1 mm particle in air with no vapour at all, longer as the square of its size. (A lone 1 mm
+  // aggregate in that air lasts ~3 min: capacitance growth, Pruppacher & Klett ch. 13; a shaft of
+  // falling snow moistens its own air, so the whole fallout wastes away several times slower: 1300 s
+  // left an old supercell's ≥20 dBZ shield 16-45% smaller, the cores and hour-old cells as they were (seed 1 at 35 h).)
+  // Until 2026-11-14 the dryness was DCAPE / 1200 with a 2500 s life: snow lived ~80 min, drifted
+  // 70-100 km ahead of an old supercell on the anvil wind and melted into a 20-30 dBZ shield there.
+  sublimationS: 1300,
   // An updraught's output varies over about this time, by up to this share, separately on
   // each of its sides (a steady, organised storm varies less).
   pulseS: 720, pulse: 0.75, sides: 6,
@@ -146,6 +155,16 @@ for (let k = 0; k < 102; k++) {
 }
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// How far air at tC with dewpoint tdC is from saturation over ice (0 saturated, 1 no vapour; NaN at or
+// above freezing, where there is no ice to waste away).
+export function iceSubsaturation(tC, tdC) {
+  if (!Number.isFinite(tC) || !Number.isFinite(tdC) || tC >= 0) return NaN;
+  const e = 6.112 * Math.exp(17.67 * tdC / (tdC + 243.5)), ei = 6.112 * Math.exp(22.46 * tC / (272.62 + tC));
+  return clamp(1 - e / ei, 0, 1);
+}
+// The anvil fallout's subsaturation from a column (subsaturationAloft), or the engine's usual 500 hPa
+// air (RegionalAtmosphere: about 40% RH over water at -15 C) where the column has none.
+export const subsaturationAloftOf = column => (Number.isFinite(column?.subsaturationAloft) ? column.subsaturationAloft : 0.55);
 const ramp = (v, a, b) => clamp(((Number(v) || 0) - a) / (b - a), 0, 1);
 // Fall speeds (m/s): rain by drop size, snow, graupel, hail.
 const rainFallMs = mm => 9.65 - 10.3 * Math.exp(-0.6 * mm);
@@ -198,7 +217,7 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   // downdraughts) and aloft beneath the anvil (less so in a line, which moistens its own air).
   const asLine = ramp(lineShare(storm), 0.25, 0.7);
   model.dryBelow = clamp(0.5 * (model.baseM - 400) / 1600 + 0.5 * (Number(environment.dcape) || 600) / 1200, 0.05, 1.2);
-  model.dryAloft = clamp((Number(environment.dcape) || 600) / 1200, 0.1, 1.2) * (1 - 0.6 * asLine);
+  model.dryAloft = subsaturationAloftOf(column) * (1 - 0.6 * asLine);
   model.frontToRear = PHYSICS.frontToRearMs * asLine * clamp(model.coldPool / PHYSICS.frontToRearColdPool, 0, 1) * ramp(storm.ageHours, PHYSICS.frontToRearHours[0], PHYSICS.frontToRearHours[1]);
   model.sources = updraughts(storm, structure, geometry, model, asLine, toMap);
   model.downdraughts = downdraughtsOf(structure, toMap, environment);

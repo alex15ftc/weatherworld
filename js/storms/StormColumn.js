@@ -10,7 +10,7 @@
 // The column is kept beside the storm, never on it: the storm's own state (snapshots, the game feed,
 // the fingerprints) is what it was. A storm without one (a forecast run's, which draws no storm
 // pictures, or one copied from elsewhere) is placed by StormGeometry's older rule.
-import { WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS } from './PrecipitationField.js';
+import { WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, iceSubsaturation } from './PrecipitationField.js';
 
 const DEG = Math.PI / 180, KT_TO_MS = 0.514444;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -41,6 +41,8 @@ export function updateStormColumn(world, storm) {
   // The echo's top as the radar takes it: the equilibrium level, reached in vigorous storms.
   const updraft = clamp(Math.max(Number(storm.updraftStrength) || 0, (Number(storm.intensity) || 0) * 1.3), 0, 1);
   const column = { topM: at(c => c.top) * (0.6 + 0.48 * updraft), freezingM: at(c => c.freezing), su, sv };
+  // How dry the air below the anvil is over ice (PrecipitationField PHYSICS.sublimationS), where every corner knows.
+  if (corners.every(([c]) => Number.isFinite(c.subsaturation))) column.subsaturationAloft = at(c => c.subsaturation);
   columns.set(storm, column);
   return column;
 }
@@ -78,6 +80,7 @@ function levelsOf(world, i, j) {
   if (!found && Number.isFinite(levels[0].t) && levels[0].t < 0) c.freezing = 0;
   const elAgl = Number(cell.derived?.sounding?.elM) - elev;
   c.top = Number.isFinite(elAgl) && elAgl > 0 ? clamp(elAgl, 3000, 16500) : 11000;
+  c.subsaturation = iceSubsaturation(Number(cell.levels[500]?.temperature), Number(cell.levels[500]?.dewpoint));
   kept.byCell.set(index, c);
   return c;
 }
