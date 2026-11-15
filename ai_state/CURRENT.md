@@ -93,7 +93,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   an ongoing strong tornado, with a wind estimate from rotational velocity and the tornado parameter fitted on
   our own world) is proposed, not scoped. For it: over 4 saved days EF3+ tornadoes lasted a median 74 world
   minutes (9 real minutes) and EF2+ 25, so it suits EF3-class storms with about a 60-minute valid time.
-- Discussion graphics (2026-11-14; on `main` and deployed to the engine from `d0df05f`; arrows fixed and deployed from `4e227bb`; peaks and the map-edge rule deployed from `dd5dfb1`): each discussion's map (`/api/md/N.svg`) carries the
+- Discussion graphics (2026-11-14; on `main` and deployed to the engine from `d0df05f`; arrows fixed and deployed from `4e227bb`; peaks and the map-edge rule deployed from `dd5dfb1`; 2026-11-15 strong-tornado circles from run agreement, satellite under the radar, STP/MLCAPE contours and fronts with analysis symbols, only the peaks under the map, deployed from `adacda6`): each discussion's map (`/api/md/N.svg`) carries the
   composite reflectivity of the moment it was issued (`server/DiscussionRadar.js`, made in `MesoscaleRuntime.issue`,
   kept in the archive's `products.bin`, never in the game's products), a hatched "greatest short-term <hazard>
   potential" area with a label box (where the runs put the most tornadoes, or wind or hail, in their first 2 hours:
