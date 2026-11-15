@@ -360,8 +360,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    text fixes, live scoring (`/api/outlook/scores`, the performance page), Day 3 from the Day 2 storm runs carried on, and
    caution at longer leads with stricter tornado and hail hatches (Day 1 High 7.5%, Day 2/3 lean low).
    After a few live days read the scoreboard (High false alarms; Day 3 Moderate never issued). A refit is not worth it
-   now (sharper nmep chances and category cutoffs re-checked; a Day 3 refit lost on held-out seeds). Next: Day 1 updates
-   from the short-range model.
+   now (sharper nmep chances and category cutoffs re-checked; a Day 3 refit lost on held-out seeds). Hatches re-fitted
+   2026-11-14: wind, hail 3.5 in and EF3+/EF4+ hatches verify under half the time where the runs flag them, so none
+   added; the top tornado 45% / wind 75% areas left (they make the correct Highs). Host CPU fine with Day 3 storm runs
+   (clock kept pace through a 06Z issue). Test archives: data/outlook-archive/2026-11-14-* (README there). Next: Day 1
+   updates from the short-range model (plan: scripts/outlook-updates-verify.mjs to match the server, then a paired test).
 
 ## Blockers
 
