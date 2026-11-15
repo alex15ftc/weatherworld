@@ -16,6 +16,19 @@
 
 ## Decisions
 
+### 2026-11-14 — Outlooks lean low at longer leads; stricter tornado and hail hatches
+
+- Status: `active`
+- Decision: each day's calibrated chance is scaled by `OUTLOOK.caution` (Day 1 0.9, Day 2 0.75, Day 3 0.65), so Day 2
+  and Day 3 lean low as the SPC's do (the owner's wish), maps and categories alike. Hatches (`CIG_SHARE`): Day 1 tornado
+  EF2+/EF3+ need 3 of 8 runs (was 2), Day 1 hail 2 in needs 6 of 8 (was 4; the owner wants Enhanced a little more
+  common than Moderate), Day 2 tornado EF3+ needs 2 of 4 (was 1).
+- Rationale: 80/60/40 unseen days (seeds 41-60). Every false High was a tornado High. Day 1 mix TSTM 4 / MRGN 3 /
+  SLGT 21 / ENH 37 / MDT 28 / HIGH 7.5% (verified 3 / 5 / 19 / 35 / 29 / 10), right 70%, too high 11%, too low 19%.
+  Day 2 too low 40% / too high 14%, High 3% (verified 7%). Day 3 Slight 30% / Enhanced 70%, too high 10%, Brier skill
+  9 -> 13. Rejected: the tornado curve fitted to the smoothed truth (High gone, tornado skill 16 -> 11).
+- Follow-up: values chosen on the same test days; check the live mix on the scoreboard after a week or two.
+
 ### 2026-11-14 — Day 3 outlooks from storm runs again
 
 - Status: `active` (supersedes the 2026-10-24 choice of Day 3 from the ingredients)
