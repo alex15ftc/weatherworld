@@ -18,6 +18,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Tornado floor (2026-11-15, `fe6f295` on `main`; place published as version 506 with only `WeatherController` and
+  `DebugPageController` patched into the live place, version before saved as `roblox/build/published-live-before-fe6f295.rbxl`;
+  not seen in game): the game lists a lab vortex as a tornado only while its peak ground wind reaches EF0 (65 mph,
+  `Vortex.efOf` >= 0); below it the storm shows "funnel aloft" and no rating ("EF-1" was printed before). The StormLab
+  panel says "below EF0" instead of clamping to EF0. Engine and surveys already rated nothing under 65 mph (EFU).
 - One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `019a278` (first from `32b57de`), the world carried over;
   place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
   not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
