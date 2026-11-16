@@ -16,6 +16,20 @@
 
 ## Decisions
 
+### 2026-11-16 — Soundings keep the mixed layer's vapour; drying share refitted to the 850 mb dewpoint
+
+- Status: `active`
+- Decision: `buildAnchors` (js/sounding.js) adds a point at the mixed layer's top carrying the atmosphere's
+  `mixedTopMixingRatioGkg`, and blends 780 mb into the layer where the layer reaches it. Lift raises `moistTop` by its
+  height above the ground over the 500 mb height (`ascentMidLevelMslM` 5600). `mixedTopDryingShare` 0.2 -> 0.42.
+- Rationale: the sounding dried straight after 850 mb inside a layer the atmosphere holds well mixed. Fixing only that
+  (780 mb alone) moved daily MLCAPE peaks onto the high ground (8 -> 65% of days, p90 3,687 -> 4,599) because full-rate
+  lift had deepened thin high-ground moist layers; the lift profile brought that to 13%. With the sounding now honest,
+  the warm sector's 850 mb dewpoint ran 14.8 C against the real 13.0; 0.35 gave 13.7, 0.5 12.2, 0.42 13.1. Rejected:
+  capping CAPE or the moist top (painting). Suite: no regressions; forecast check seeds 41-50: no refit needed.
+- Follow-up: warm-sector surface dewpoints ~1 C moist and too uniform (the remaining MLCAPE excess, SBCAPE peaks);
+  Day 1 High false alarms (forecast check 77% FAR on few cases).
+
 ### 2026-11-15 — Day 1 update table refitted; updates stay on the perturbed runs
 
 - Status: `active`

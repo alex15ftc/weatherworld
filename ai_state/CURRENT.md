@@ -33,10 +33,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   ground twice. Left as is (owner's call): a waiting watch the next look no longer calls for is dropped with no word.
 - Dusk mixed layer (2026-11-16, `9a3b7d6` on `main`, engine deployed from it, the world carried over): after sunset the
   surface mixing depth shrinks from the evening's depth toward 150 m (`duskCollapseHours` 0.75 h, slower in wind) instead
-  of switching in one step; the 00:30Z jump in dewpoint and SBCAPE is gone. Regression: none. Open: daily SBCAPE peaks of
-  5,000-6,500 J/kg come from the lid's dry air at a fixed 780 mb inside deep high-ground mixed layers (`js/sounding.js`
-  buildAnchors); fixing that alone lifts MLCAPE peaks to 4,300-4,500 because the high ground holds 67-69 F dewpoints
-  through a moist layer lifted to ~2,200 m MSL (`moistTop`). CAPE audit sampler: untracked `tmp/cape-days/run.mjs`.
+  of switching in one step; the 00:30Z jump in dewpoint and SBCAPE is gone. Regression: none.
+- Mixed-layer soundings (2026-11-16, `3520f86`, merged `8298c3a` on `main`, engine deployed from it, the world carried
+  over): the sounding keeps the afternoon mixed layer's vapour to its top (a point at the top, 780 mb blended where the
+  layer reaches it), lift raises the moist top by its height over the ground, `mixedTopDryingShare` 0.2 -> 0.42. Warm
+  sector at 7 pm: 850 mb Td 13.1 C (real 13.0), LCL 1,387 m (1,377), MLCAPE median 1,843 (1,370), MLCIN -73 (-50).
+  Regression: none (tornadoes a day 18.2 -> 16.4, MDT+HIGH 36 -> 26%). Forecast check, no refit: Day 1 50/100, Day 2
+  40/95, Day 3 50/80 right/within one. Watch: Day 1 High false alarms on the scoreboard. Open: surface dewpoints in the
+  warm sector run ~1 C moist and too uniform (p10 17.5 C vs 16.4), the rest of the MLCAPE excess and the daily SBCAPE
+  peaks of ~5,100 J/kg (surface air, not the sounding). Audit tools (untracked): `tmp/cape-days/run.mjs`, `warm00z.mjs`.
 - Site clock and admin key (2026-11-15, `227a3b7` on `main`, engine deployed from it, the world carried over): `/api/health` carries `clockHourUtc`, the world hour at this moment (`WeatherAuthorityRuntime.clockHourUtc`), and the
   header clock (`js/site.js`) reads it; it had reset to the last half-hour step on each minute's read. The admin key
   (`wwAdminKey`) is kept in `localStorage`, so it lasts through deploys and new tabs.
