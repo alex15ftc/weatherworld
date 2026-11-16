@@ -18,6 +18,12 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Dusk mixed layer (2026-11-16, `9a3b7d6` on `main`, engine deployed from it, the world carried over): after sunset the
+  surface mixing depth shrinks from the evening's depth toward 150 m (`duskCollapseHours` 0.75 h, slower in wind) instead
+  of switching in one step; the 00:30Z jump in dewpoint and SBCAPE is gone. Regression: none. Open: daily SBCAPE peaks of
+  5,000-6,500 J/kg come from the lid's dry air at a fixed 780 mb inside deep high-ground mixed layers (`js/sounding.js`
+  buildAnchors); fixing that alone lifts MLCAPE peaks to 4,300-4,500 because the high ground holds 67-69 F dewpoints
+  through a moist layer lifted to ~2,200 m MSL (`moistTop`). CAPE audit sampler: untracked `tmp/cape-days/run.mjs`.
 - Site clock and admin key (2026-11-15, `227a3b7` on `main`, engine deployed from it, the world carried over): `/api/health` carries `clockHourUtc`, the world hour at this moment (`WeatherAuthorityRuntime.clockHourUtc`), and the
   header clock (`js/site.js`) reads it; it had reset to the last half-hour step on each minute's read. The admin key
   (`wwAdminKey`) is kept in `localStorage`, so it lasts through deploys and new tabs.
