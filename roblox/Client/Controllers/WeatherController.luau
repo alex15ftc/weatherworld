@@ -507,10 +507,19 @@ function Weather.storms(): { any }
 	local function km(x: number, y: number): (number, number)
 		return f.cx + x / 1000, f.cy - y / 1000
 	end
-	local torByParent = {}
+	-- A vortex is a tornado only while its peak ground wind reaches EF0 (65 mph, 29 m/s; Vortex.efOf
+	-- gives -1 below it): the EF scale's floor, the least wind a survey can rate. Spinning up or
+	-- roping out below it, the sim's vortex still draws, but it is listed as a funnel, not a tornado
+	-- (2026-11-15: vortices down to ~20 mph were listed as tornadoes, labelled "EF-1").
+	local torByParent, funnelByParent = {}, {}
+	local function isTornado(t: any): boolean
+		return not t.ended and (t.ef or -1) >= 0
+	end
 	for _, t in ctx.cw.tornadoes do
-		if not t.ended then
+		if isTornado(t) then
 			torByParent[t.parentId] = t
+		elseif not t.ended then
+			funnelByParent[t.parentId] = true
 		end
 	end
 	local function tornadoOf(t: any, base: number?): any
@@ -529,7 +538,7 @@ function Weather.storms(): { any }
 				groundStuds = f.datum(s.x, s.y),
 				updraft = { xKm = xk, yKm = yk, baseM = s.base or 1000, radiusKm = (s.Ru or 3000) / 1000 },
 				wallCloud = { xKm = lx, yKm = ly, strength = math.clamp((s.lowering or 0) / 300, 0, 1) },
-				tornado = if t then tornadoOf(t, s.base) else nil, funnelAloft = false,
+				tornado = if t then tornadoOf(t, s.base) else nil, funnelAloft = not t and funnelByParent[s.id] == true,
 			}
 			stormRows[s.id] = row
 			table.insert(out, row)
@@ -538,7 +547,7 @@ function Weather.storms(): { any }
 	-- Every live tornado as a row of its own (id "tor:<id>"), centred and moving with the tornado,
 	-- so the page can teleport to and follow it even when its storm has two or has died.
 	for _, t in ctx.cw.tornadoes do
-		if not t.ended then
+		if isTornado(t) then
 			local parent = stormRows[t.parentId]
 			local tor = tornadoOf(t, if parent then parent.updraft.baseM else nil)
 			table.insert(out, {

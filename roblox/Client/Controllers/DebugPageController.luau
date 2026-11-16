@@ -258,7 +258,8 @@ local function describe(s: any, from: Vector3): string
 	local lines = { `<b>{kind}</b>` }
 	if s.tornado then
 		local t = s.tornado
-		local ef = if t.ef ~= nil then `EF{t.ef}` else "tornado"
+		-- (-1: below EF0, no rating; Weather.storms lists none, but a frame may still carry one)
+		local ef = if t.ef ~= nil and t.ef >= 0 then `EF{t.ef}` else "unrated"
 		table.insert(lines, `<font color="#ff6b6b"><b>TORNADO</b> {ef}, {t.windMph} mph, {t.widthYards} yd, {t.shape or ""}</font>`)
 	elseif s.funnelAloft then
 		table.insert(lines, `<font color="#f5c26b">funnel aloft</font>`)
