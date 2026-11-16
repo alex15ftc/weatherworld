@@ -595,7 +595,11 @@ export function combineOutlook(members, { caution = OUTLOOK.caution, issuedHourU
   // A Day 1 issued after the day is under way (updateAfterHours into it) has its own table where there is
   // one: its runs start with storms going and cover less of the day, and the 12Z table left the 18Z
   // update a category too high on 23% of days (2026-10-23, scripts/outlook-updates-verify.mjs).
-  const into = ((((issuedHourUtc ?? 0) - OUTLOOK.dayStartUtc) % 24) + 24) % 24, table = day === 'day1' && into >= OUTLOOK.updateAfterHours && calibration.day1update ? 'day1update' : day;
+  // Hours into the outlook's own day (12Z to 12Z): an issue made before the day starts (the server's 06Z) is
+  // negative and takes the morning table, as outlook-updates-verify.mjs scores and fits it. (Until 2026-11-16 the
+  // hour was taken modulo 24, so the 06Z issue counted as 18 h into its day and was read through day1update.)
+  const into = Number.isFinite(validToHourUtc) ? (issuedHourUtc ?? 0) - (validToHourUtc - 24) : ((((issuedHourUtc ?? 0) - OUTLOOK.dayStartUtc) % 24) + 24) % 24;
+  const table = day === 'day1' && into >= OUTLOOK.updateAfterHours && calibration.day1update ? 'day1update' : day;
   const lean = caution?.[day] ?? 1;
   const chance = Object.fromEntries(hazards.map(hazard => [hazard, rawChance[hazard].map(raw => lean * calibrateChance(table, hazard, raw, calibration, { guard: gates.guard !== false }))]));
   // A higher level only where enough runs agree (OUTLOOK.agreement): the share of runs with the
