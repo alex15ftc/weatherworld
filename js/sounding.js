@@ -351,9 +351,39 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
   const t780=linear+Math.max(0,base-linear)*eml;
   const w850=uvFromDirSpeed(cell.levels[850].windDirection,cell.levels[850].windSpeed), w700=uvFromDirSpeed(cell.levels[700].windDirection,cell.levels[700].windSpeed);
   const u=w850.u+(w700.u-w850.u)*f, v=w850.v+(w700.v-w850.v)*f;
-  anchors.push({p:780,t:t780,td:Math.min(td850,t780-(6+14*eml)),dir:(Math.atan2(-u,-v)*180/Math.PI+360)%360,spd:Math.hypot(u,v)});
+  // Where 780 mb is still inside the afternoon mixed layer (over the high ground the lid's own source), it carries the layer's
+  // vapour, thinning toward the drier top, not the lid's: blended over the same 300 m zone as 850 mb in RegionalAtmosphere.
+  // (2026-11-16: the lid's dry air at 780 mb inside a 1,100-1,300 m mixed layer gave surface parcels of 15.5 g/kg over a
+  // layer drying to 6.8 g/kg, and SBCAPE 2,000+ J/kg above MLCAPE; daily domain peaks of SBCAPE 5,000-6,500 J/kg.)
+  let td780=Math.min(td850,t780-(6+14*eml));
+  const depthM=Number(cell.features?.mixedLayerDepthM), qTop=Number(cell.features?.mixedTopMixingRatioGkg)/1000;
+  if(Number.isFinite(depthM)&&Number.isFinite(qTop)){
+   const z780=RD*(surfaceT+273.15)/G*Math.log(surfaceP/780), inMixed=clamp((depthM-z780+150)/300,0,1);
+   if(inMixed>0){
+    const qs=mixingRatioFromDewpoint(surfaceTd,surfaceP), q=qs+(qTop-qs)*clamp(z780/Math.max(1,depthM),0,1);
+    const tdMixed=Math.min(t780,dewpointFromVaporPressure(q*780/(EPS+q)));
+    td780+=inMixed*Math.max(0,tdMixed-td780);
+   }
+  }
+  anchors.push({p:780,t:t780,td:td780,dir:(Math.atan2(-u,-v)*180/Math.PI+360)%360,spd:Math.hypot(u,v)});
  }
- return anchors.filter(a=>a.isSurface||a.p<surfaceP).sort((a,b)=>b.p-a.p);
+ const out=anchors.filter(a=>a.isSurface||a.p<surfaceP).sort((a,b)=>b.p-a.p);
+ // The mixed layer's top: up to it the layer holds its own vapour (the atmosphere's mixedTopMixingRatioGkg), so the drying
+ // toward the air above starts there, not straight after 850 mb. The point keeps the profile's temperature and wind and only
+ // moistens; it comes in over the 25 mb above 850 mb, where 850 mb itself is already blended into the layer. (2026-11-16: a
+ // 960 m layer topped near 800 mb was drawn drying from 13.5 g/kg at 850 mb to 10.2 at 825 mb, inside the layer, and the
+ // mixed-layer parcel ran 1,800 J/kg under the surface one at the day's SBCAPE peaks.)
+ const depthM=Number(cell.features?.mixedLayerDepthM), qTop=Number(cell.features?.mixedTopMixingRatioGkg)/1000;
+ if(Number.isFinite(depthM)&&depthM>0&&Number.isFinite(qTop)&&qTop>0){
+  const pTop=surfaceP*Math.exp(-depthM*G/(RD*(surfaceT+273.15))), share=clamp((850-pTop)/25,0,1), i=out.findIndex(a=>a.p<pTop);
+  if(share>0&&i>0&&out[i-1].p-pTop>1&&pTop-out[i].p>1){
+   const a=out[i-1],b=out[i],f=Math.log(a.p/pTop)/Math.log(a.p/b.p),lerp=(x,y)=>x+(y-x)*f;
+   const wa=uvFromDirSpeed(a.dir,a.spd),wb=uvFromDirSpeed(b.dir,b.spd),u=lerp(wa.u,wb.u),v=lerp(wa.v,wb.v);
+   const t=lerp(a.t,b.t),td=Math.min(t,lerp(a.td,b.td)),tdTop=Math.min(t,dewpointFromVaporPressure(qTop*pTop/(EPS+qTop)));
+   out.splice(i,0,{p:pTop,t,td:td+share*Math.max(0,tdTop-td),dir:(Math.atan2(-u,-v)*180/Math.PI+360)%360,spd:Math.hypot(u,v)});
+  }
+ }
+ return out;
 }
 
 function parcelDiagnosticsForSource(profile,index,elevation,envTv,work){

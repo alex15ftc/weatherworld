@@ -33,7 +33,10 @@ const COLUMNS = [
   [c => (c.features?.warmSector ? 1 : 0), (c, v) => { c.features.warmSector = v > 0.5; }],
   [c => c.mesoscaleFields?.ascent, (c, v) => { if (Number.isFinite(v)) c.mesoscaleFields.ascent = v; }],
   [c => c.mesoscaleFields?.moisturePooling, (c, v) => { if (Number.isFinite(v)) c.mesoscaleFields.moisturePooling = v; }],
-  [c => c.mesoscaleFields?.capErosion, (c, v) => { if (Number.isFinite(v)) c.mesoscaleFields.capErosion = v; }]
+  [c => c.mesoscaleFields?.capErosion, (c, v) => { if (Number.isFinite(v)) c.mesoscaleFields.capErosion = v; }],
+  // The afternoon mixed layer: its depth and the vapour at its top, which carry the layer's moisture up to its top.
+  [c => c.features?.mixedLayerDepthM, (c, v) => { if (Number.isFinite(v)) c.features.mixedLayerDepthM = v; }],
+  [c => c.features?.mixedTopMixingRatioGkg, (c, v) => { if (Number.isFinite(v)) c.features.mixedTopMixingRatioGkg = v; }]
 ];
 export const COLUMN_COUNT = COLUMNS.length;
 

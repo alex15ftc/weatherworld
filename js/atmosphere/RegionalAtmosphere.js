@@ -321,7 +321,10 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // at the top by mixedTopDryingShare of the difference from the dry air above. (2026-10-26: one mixing ratio through the
   // layer gave 850 mb dewpoints of 15.3 C at 7 pm in the warm sector against 13.0 C in 412 real May Plains soundings, with
   // the surface right at 19.1 against 19.0; the mixed-layer parcel, and MLCAPE, ran moist and high.)
-  mixedTopDryingShare: 0.2,
+  // (0.2 to 0.42 on 2026-11-16: with 0.2 the warm sector's 850 mb dewpoint at 7 pm had drifted to 14.8 C against the real
+  // 13.0 and cloud bases to 1,268 m against 1,377, MLCAPE median 2,019 against 1,370; 0.35 gave 13.7 C, 0.5 12.2 C. Once the
+  // sounding carried the layer's own vapour to its top, the excess counted in full.)
+  mixedTopDryingShare: 0.42,
   midDryAllowanceGkg: 2, rh500Share: 0.55, midRh: 0.55, midRhPerGkg: 0.15, midRhRange: [0.05, 0.97], emlMidDrying: 0.3,
   emlBaseMslM: 1200, capBlendM: 200, jetNoseM: 500,
   lidMaxThetaK: 319.5,
@@ -339,6 +342,8 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // moistLayerTopM over moistTopDays. Gulf air coming back soon after a front has scoured the
   // Gulf arrives only moistReturnShallowM deep.
   ascentCoolingPerMetre: 0.0033, moistTopDays: 2, moistReturnShallowM: 1300,
+  // Height (m above sea level) of the mid-level ascent the outer model gives: 500 mb in the standard atmosphere.
+  ascentMidLevelMslM: 5600,
   // Ground wetted by storms' rain heats the air less and gives it moisture instead, until the
   // sun has dried it (wetGroundDryingDays of sunshine): wetGroundHeatingCut of the heating goes
   // into evaporation, adding up to wetGroundMoisteningGkgH g/kg an hour at full sun.
@@ -962,7 +967,12 @@ export class RegionalAtmosphere {
         if (this.coldPool[k] < p.coldPoolLeastK) this.coldPool[k] = 0;
         const mesoLift = Math.min(p.mesoLiftMaxMs, Math.max(0, Number(cell.features?.isentropicLiftMs) || 0) + Math.max(0, Number(cell.features?.jetConvergenceLiftMs) || 0));
         this.capLift[k] = this.capLift[k] * Math.exp(-dt / (p.capLiftHours * 3600)) + (p.capLiftRatio - 1) * outer.ascentKh * dt / 3600 + p.mesoCapLiftShare * mesoLift * p.capLapseGapKPerM * dt;
-        const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre;
+        // The outer model's ascent is the mid troposphere's (about 500 mb, ascentMidLevelMslM); the vertical motion grows from
+        // nothing at the ground up to it, so the moist layer's top moves at the share of it its height above the ground gives.
+        // (2026-11-16: the full mid-level rate everywhere lifted a 700 m moist layer on 1,000 m ground to 1,200 m like a deep one
+        // on the low plains: 67-69 F dewpoints through deep afternoon mixed layers under the lid's source, MLCAPE peaks of
+        // 4,300-4,900 J/kg on the high ground once the sounding kept the mixed layer's moisture.)
+        const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre * clamp((this.moistTop[k] - terrain) / Math.max(1, p.ascentMidLevelMslM - terrain), 0, 1);
         this.moistTop[k] = clamp(this.moistTop[k] + liftMs * dt + (p.moistLayerTopM - this.moistTop[k]) * clamp(dt / (p.moistTopDays * DAY), 0, 1), 600, 3500);
       }
       const leePressureHpa = this.leeHpa[k], leeU = this.leeU[k], leeV = this.leeV[k];
@@ -1244,6 +1254,9 @@ export class RegionalAtmosphere {
       // done to the capping layer so far (K of cooling).
       cell.features.ascentCoolingKh = outer.ascentKh; cell.features.capLiftK = this.capLift[k];
       cell.features.emlInfluence = Math.min(1, this.eml[k] / p.lidFullShare); cell.features.lidThetaK = this.lidTheta[k]; cell.features.mixedLayerDepthM = depth;
+      // The vapour at the mixed layer's top (g/kg), dried from above by mixedTopDryingShare: the sounding carries the layer's
+      // moisture up to it instead of starting the lid's dry air at a fixed pressure inside a deep afternoon layer.
+      cell.features.mixedTopMixingRatioGkg = mixingRatio - p.mixedTopDryingShare * Math.max(0, mixingRatio - p.dryMixingRatio);
       // The cap air is well mixed from its base to 700 mb, so its base is warmer than 700 mb by
       // the dry-adiabatic difference between the two pressures.
       cell.features.emlBaseExcessC = (t700 + 273.15) * ((780 / 700) ** KAPPA - 1) * 0.9;
