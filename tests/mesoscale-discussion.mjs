@@ -134,6 +134,10 @@ const watch = issued.watches[0];
 assert.equal(watch.number, 12); assert.equal(watch.type, 'tornado'); assert.equal(watch.pds, false); assert.equal(watch.issuedHourUtc, 44); assert.equal(watch.validToHourUtc, 50);
 assert.ok(watch.areaCells >= WATCH.leastCells && watch.areaCells > 144, 'drawn a little wider than the area of concern'); assert.ok(watch.cells[at(30, 10)] && !watch.cells[at(5, 40)]);
 assert.ok(insideRings(watch.rings, 0.66, 0.22) && !insideRings(watch.rings, 0.2, 0.8));
+// A small area that calls for a watch still gets one (2026-11-16: a 95% discussion over 65 cells
+// drew a 99-cell watch, under the old 120-cell least, and none came).
+const smallArea = withDiscussion(four({ ...tornadic, size: 7 }), firing);
+assert.equal(smallArea.watches.length, 1, 'a small area called likely gets its watch'); assert.ok(smallArea.watches[0].areaCells < 120 && smallArea.watches[0].areaCells >= WATCH.leastCells);
 // (Hail and wind events as Poisson counts about each run's: runs with 14 reports between them give
 // a fair chance of 10 of one kind; 2026-10-20.)
 assert.deepEqual(watch.probabilities, { tornadoes2: 95, strongTornado: 95, wind10: 20, wind75: 5, hail10: 20, hail2: 5, combined6: 95 });

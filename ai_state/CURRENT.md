@@ -18,6 +18,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Small watches (2026-11-16, on `main`): a watch's least ground (`WATCH.leastCells`) is 40 cells, as an area of
+  concern's, not 120. Live MD 0372 (95%, tornado watch likely, 65 cells) drew a 99-cell watch that was dropped with
+  no word, and no watch came. Watches cut from very big areas keep their old floor (`WATCH.leastKeptCells` 60).
+  Open: `MesoscaleRuntime.issue()` replaces the waiting watches at each look and sets them only after the
+  discussions' pictures are made, while `issuePending` can fire meanwhile (looked into, not yet fixed).
 - Dusk mixed layer (2026-11-16, `9a3b7d6` on `main`, engine deployed from it, the world carried over): after sunset the
   surface mixing depth shrinks from the evening's depth toward 150 m (`duskCollapseHours` 0.75 h, slower in wind) instead
   of switching in one step; the 00:30Z jump in dewpoint and SBCAPE is gone. Regression: none. Open: daily SBCAPE peaks of
