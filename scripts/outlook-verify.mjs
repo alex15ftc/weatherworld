@@ -32,6 +32,8 @@ const SAVE = flag('--save'), FROM = flag('--from');
 // --outlooks N: make only the first N of Day 1, 2 and 3 (the runs stop with the last; to save time when Day 3 is not wanted).
 const OUTLOOKS = Number(flag('--outlooks') ?? 3);
 // --jobs N: at most N seeds' workers at once (default 6; each is a process).
+// --start N: the world is run N days more (as the server steps it) before the first morning, and the mornings saved are numbered
+// from N, so one long stretch of a world can be split into pieces run at once (each piece --start 0, 10, 20, ... --save one dir).
 const JOBS = Math.max(1, Number(flag('--jobs') ?? 6));
 // OUTLOOK_ENSEMBLE='{"expected":true,"method":"nmep","sigmaKm":{"day1":40,"day2":60}}': combine the runs another way than
 // OUTLOOK.ensemble (DayOneOutlook.js), to compare from one archive (--from) without changing the code.
@@ -57,7 +59,8 @@ const CUTOFFS = process.env.OUTLOOK_CUTOFFS ? JSON.parse(fs.existsSync(process.e
 const CATEGORY_DATA = args.includes('--category-data');
 // --lead-caps: hold Days 2 and 3 to OUTLOOK.leadCaps as the server does (server/OutlookRuntime.js; without it they are scored uncapped).
 const LEAD_CAPS = args.includes('--lead-caps');
-const saved = (dir, seed, day) => path.join(dir, `seed-${seed}-day-${day}.bin.gz`);
+const START = Math.max(0, Number(flag('--start') ?? 0));
+const saved = (dir, seed, day) => path.join(dir, `seed-${seed}-day-${day + START}.bin.gz`);
 // OLD=1: the outlooks as before agenda step 11 (no errors in the air over the map, no agreement rule), to compare.
 const OLD = process.env.OLD === '1';
 // NOCAL=1: without the calibration of the chances. --calibration-data: print, as JSON, the runs'
@@ -93,6 +96,7 @@ async function worker(seed) {
   const atmosphere = FROM ? null : new AtmosphereWorld({ seed }), world = atmosphere?.world, out = [], issued = [];
   let n = world ? world.width * world.height : 0;
   atmosphere?.advanceLikeServer(24);   // a day for the storms to get going (stepped as the server steps, as the day itself is)
+  if (START) atmosphere?.advanceLikeServer(24 * START);
   if (SAVE) fs.mkdirSync(SAVE, { recursive: true });
   for (let day = 0; day < days; day++) {
     // A saved morning, when scoring again.
@@ -238,7 +242,7 @@ function printSkill(all, hazards) {
 async function main() {
   const seeds = (flag('--seeds') ?? '1,2,3,4,5,6').split(',').map(Number), started = Date.now();
   const runSeed = seed => new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount), ...(CAL_DATA ? ['--calibration-data'] : []), ...(CIG_DATA ? ['--cig-data'] : []), ...(CATEGORY_DATA ? ['--category-data'] : []), ...(LEAD_CAPS ? ['--lead-caps'] : []), ...(CHEAP_FLAG !== null ? ['--cheap', CHEAP_FLAG] : []), '--outlooks', String(OUTLOOKS), ...(SAVE ? ['--save', SAVE] : []), ...(FROM ? ['--from', FROM] : [])]);
+    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--members', String(memberCount), ...(CAL_DATA ? ['--calibration-data'] : []), ...(CIG_DATA ? ['--cig-data'] : []), ...(CATEGORY_DATA ? ['--category-data'] : []), ...(LEAD_CAPS ? ['--lead-caps'] : []), ...(CHEAP_FLAG !== null ? ['--cheap', CHEAP_FLAG] : []), '--outlooks', String(OUTLOOKS), ...(SAVE ? ['--save', SAVE] : []), ...(FROM ? ['--from', FROM] : []), ...(START ? ['--start', String(START)] : [])]);
     // (resolved when the process has exited, so that no more than JOBS are ever alive)
     let got = null; child.once('message', m => { got = m; }); child.once('error', reject); child.once('exit', code => (code ? reject(new Error(`seed ${seed} exited with ${code}`)) : resolve(got)));
   });
