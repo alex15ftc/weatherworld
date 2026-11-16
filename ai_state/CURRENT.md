@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Small watches (2026-11-16, on `main`): a watch's least ground (`WATCH.leastCells`) is 40 cells, as an area of
+- Small watches (2026-11-16, `8261e02` and `d6468d5` on `main`, engine deployed from `d6468d5`, the world carried over): a watch's least ground (`WATCH.leastCells`) is 40 cells, as an area of
   concern's, not 120. Live MD 0372 (95%, tornado watch likely, 65 cells) drew a 99-cell watch that was dropped with
   no word, and no watch came. Watches cut from very big areas keep their old floor (`WATCH.leastKeptCells` 60).
   `MesoscaleRuntime.issue()` now takes a look's watches, waiting watches and numbers at once, before the
