@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Day 1 06Z table (2026-11-16, on `main`; not yet deployed): `combineOutlook` counts hours into the outlook's own day
+- Day 1 06Z table (2026-11-16, `e9b2499` on `main`; engine deployed from `9980e11`, the world carried over): `combineOutlook` counts hours into the outlook's own day
   (from `validToHourUtc` - 24), so the server's 06Z Day 1 (6 h before its day) reads the morning `day1` table as every
   verification script scores it; it took 18 h modulo 24 and read `day1update` (live 06Z too low on 57% of days). Open,
   needs the owner and the outlook session: on seeds 53-56 (perturbed runs, as the server's) the `day1` table fit the
