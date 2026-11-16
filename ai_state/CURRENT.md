@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; not yet deployed): `RegionSteering` judges a
+- Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
   warm-sector day's slide also by the best the next day can reach (`lookAheadDays` 1) and gives up 0.15 support a
   1000 km the slide leaves the map from its home latitude, where the jet's core is (`homePull`). Why: the live world
   sat ~1350 km north of home on the jet's flank (16-34 kt at 500 mb) through the 11/15 lull. Regression 8 seeds x
