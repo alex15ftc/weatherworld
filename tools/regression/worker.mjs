@@ -27,7 +27,8 @@ const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 1
 const NEAR_KM = 64;
 const started = Date.now();
 
-const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, n = world.width * world.height;
+// REG_STEERING: JSON settings for RegionSteering (a test of steering options; unset, the defaults).
+const atmosphere = new AtmosphereWorld({ seed, steering: JSON.parse(process.env.REG_STEERING || "{}") }), world = atmosphere.world, n = world.width * world.height;
 const regional = atmosphere.regional, cellKm = world.cellSizeKm;
 const places = placesFor(world);
 const startHour = world.stormEngine?.validHourUtc ?? world.validHourUtc;
