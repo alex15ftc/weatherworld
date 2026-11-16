@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-14
+Updated: 2026-11-15
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -18,6 +18,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Site clock and admin key (2026-11-15, `227a3b7` on `main`, engine deployed from it, the world carried over): `/api/health` carries `clockHourUtc`, the world hour at this moment (`WeatherAuthorityRuntime.clockHourUtc`), and the
+  header clock (`js/site.js`) reads it; it had reset to the last half-hour step on each minute's read. The admin key
+  (`wwAdminKey`) is kept in `localStorage`, so it lasts through deploys and new tabs.
 - Tornado floor (2026-11-15, `fe6f295` on `main`; place published as version 506 with only `WeatherController` and
   `DebugPageController` patched into the live place, version before saved as `roblox/build/published-live-before-fe6f295.rbxl`;
   not seen in game): the game lists a lab vortex as a tornado only while its peak ground wind reaches EF0 (65 mph,
