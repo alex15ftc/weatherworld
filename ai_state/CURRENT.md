@@ -49,7 +49,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   40/95, Day 3 50/80 right/within one. Watch: Day 1 High false alarms on the scoreboard. Open: surface dewpoints in the
   warm sector run ~1 C moist and too uniform (p10 17.5 C vs 16.4), the rest of the MLCAPE excess and the daily SBCAPE
   peaks of ~5,100 J/kg (surface air, not the sounding). Audit tools (untracked): `tmp/cape-days/run.mjs`, `warm00z.mjs`.
-- Satellite low cloud and night fog (2026-11-16, working tree on `main`, not committed, deployed or seen in game):
+- Satellite low cloud and night fog (2026-11-16, `f88ca72` on `main`; engine deployed from it, the world carried over; place
+  published as version 507 with only `Satellite.luau` and `Palettes.luau` patched into the live place, version before saved as
+  `roblox/build/published-live-before-f88ca72.rbxl`; not seen in game):
   the satellite draws the low cloud as a stratus sheet (ragged-edged deck, thin where the moist layer is shallow)
   and cumulus (fine cells in streets along the 850 mb wind) from the new `cloudStratus` / `cloudCumulus` features
   (`cloudLow` unchanged; engine feed frames identical, seed 2, 6 h), and makes a third image, `satellite.fog`
@@ -63,7 +65,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   moist east's afternoons are cooler under morning stratus: 10.6 F). Forecast check (seeds 41-50 x 3, --lead-caps, against
   HEAD run the same way): Day 1 right 67 to 60%, within one 100 to 97%; Day 2 50 to 45%, 80 to 95%; Day 3 30 to 20%, 70
   to 80%; Brier skill equal or better for every hazard. Inside the refit rule: no refit. See
-  `docs/research/RADAR-AND-SATELLITE.md` S3 item 6.
+  `docs/research/RADAR-AND-SATELLITE.md` S3 item 6. Suite again on the merge with the mixed-layer soundings (against
+  `5f84e47`): no regressions. The deck draws between its own base and top in the satellite (`deckBaseM`, `deckTopM`).
 - Site clock and admin key (2026-11-15, `227a3b7` on `main`, engine deployed from it, the world carried over): `/api/health` carries `clockHourUtc`, the world hour at this moment (`WeatherAuthorityRuntime.clockHourUtc`), and the
   header clock (`js/site.js`) reads it; it had reset to the last half-hour step on each minute's read. The admin key
   (`wwAdminKey`) is kept in `localStorage`, so it lasts through deploys and new tabs.
@@ -403,8 +406,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-00. Satellite and night stratus (uncommitted on `main`, checked): commit on a task branch, deploy the engine and patch
-   `Satellite.luau` and `Palettes.luau` into the place; look at the fog image on the M map before dawn.
+00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite
+   before dawn (Night fog button: the stratus deck bright) and in the morning (visible: the deck breaking up by noon).
 0. Map (published as 505 and engine deployed from `c5aa758`, 2026-11-14, the world resumed at hour 732. 505: a bridge is its deck only, each road climbs to it on its own raised grade with the ground graded up under it (no ramp slabs or wedges; unseen in game, look at two or three overpasses and a river bridge first). Offline: 0 holes and 0 steps at 90 crossings; 10 holes in 20 places, 6 of them at Smith Falls with an 8-stud ramp step. Owner asked for sharper terrain features (grid farms): options put to them are custom terrain textures on unused materials, field-margin strips as parts, smaller fields; none built, they need Studio. 504, same day, with the KMRR-less map export; 504 fixes what the owner saw on 503: roads under the terrain (road cut, slab and ditch back at their size in the place's studs), ramps buried at their foot (ground cut under bridges), the pit down the middle of divided roads (median is a part now), gaps where a road carries on from a bigger one's end, ramps and riverside roads missing at rivers, building parts on roads, grass at half length; none of it seen in game. Still wrong: the Smith Falls interchange at map mile 391.0, 128.6 (two interstates on a wide river: gaps and an 8-stud step on a ramp); next there: interchanges kept off wide rivers (generator, map rebuild). Also open: collectors dead-end at wide rivers (76 crossings), steep main-road grades, kinks on metro-centre streets. `tools/worldmap/run-chunks.luau` now drives every road for holes and steps (modes `crossings`, `at:x,z`). Half size: look first at the character, the car and its camera, a town, the M map; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
    side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
    commit, and plan the engine deploy (it moves radars and counties under the live world).
