@@ -51,7 +51,7 @@ Change the menu or footer here, once. A new page needs a row in `server/SitePage
 ## Public and admin views
 
 Some pages show more to an admin. The sign-in is in the top bar of every page and nowhere else (`js/site.js`:
-the `WEATHER_ADMIN_KEY`, kept for the tab; signing in or out loads the page again with the new role; a local
+the `WEATHER_ADMIN_KEY`, kept in the browser's localStorage so it lasts through deploys and new tabs; signing in or out loads the page again with the new role; a local
 engine with no key treats this machine as admin). The server decides the role on every request.
 
 - Large-scale charts (`/synoptic`, `/models/large-scale`): the chart follows the game map east-west, so the

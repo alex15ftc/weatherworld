@@ -294,11 +294,19 @@ export class WeatherAuthorityRuntime {
     return true;
   }
 
+  // The world hour at this moment: the atmosphere steps every half hour, but the clock runs on between steps
+  // (the site's clock shows this; validHourUtc alone set it back to the last half hour on every read).
+  clockHourUtc() {
+    const hour = this.atmosphere.validHourUtc;
+    if (!this.autoAdvance) return this.atmosphere.stormEngine?.validHourUtc ?? hour;
+    return hour + Math.max(0, Date.now() - this.lastAdvancedAt) / 3600000 * SIM_HOURS_PER_REAL_HOUR;
+  }
+
   metadata() {
     return {
       ok: true, version: '2.28.14.1', revision: this.revision, seed: this.seed, systemNumber: this.systemNumber,
       flowRegime: this.config?.flowRegime ?? null, authorityInstance: this.authorityInstance, tileStyleRevision: TILE_STYLE_REVISION,
-      validHourUtc: this.atmosphere.validHourUtc, width: this.atmosphere.width, height: this.atmosphere.height,
+      validHourUtc: this.atmosphere.validHourUtc, clockHourUtc: this.clockHourUtc(), width: this.atmosphere.width, height: this.atmosphere.height,
       cellSizeMiles: this.atmosphere.cellSizeMiles, cellSizeKm: this.atmosphere.cellSizeKm,
       domainWidthMiles: this.atmosphere.domainWidthMiles, domainHeightMiles: this.atmosphere.domainHeightMiles,
       domainWidthKm: this.atmosphere.domainWidthKm, domainHeightKm: this.atmosphere.domainHeightKm,

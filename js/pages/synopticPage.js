@@ -112,7 +112,7 @@ if (query.get('follow') === '0') { view.follow = false; view.held = query.get('c
 
 // Who is looking. The admin key is the one the site's top bar keeps for this tab (js/site.js); the server answers with the role it gives the request, and leaves the map's drift out for the public.
 const ADMIN_KEY = 'wwAdminKey', FORCE_PUBLIC = SHARE || query.get('view') === 'public';
-const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage: the key lasts until the page is left */ } } };
+const adminKey = { get() { try { return localStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? localStorage.setItem(ADMIN_KEY, v) : localStorage.removeItem(ADMIN_KEY); } catch { /* no storage: the key lasts until the page is left */ } } };
 let admin = false;
 function setRole(role) {
   admin = role === 'admin' && !FORCE_PUBLIC;

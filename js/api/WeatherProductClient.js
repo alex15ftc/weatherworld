@@ -2,7 +2,7 @@ import { profiler } from '../performance/PerformanceProfiler.js';
 const DEFAULT_TIMEOUT_MS = 8000;
 
 // The admin key the pages keep for this tab (chasers.html, the surface page): the world controls need it.
-function adminHeader() { try { const key = sessionStorage.getItem('wwAdminKey'); return key ? { 'x-admin-key': key } : {}; } catch { return {}; } }
+function adminHeader() { try { const key = localStorage.getItem('wwAdminKey'); return key ? { 'x-admin-key': key } : {}; } catch { return {}; } }
 
 export class WeatherProductClient {
   constructor({ baseUrl = '', timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {

@@ -26,12 +26,12 @@ for (const link of document.querySelectorAll('.site-sub a')) if (new URL(link.hr
 const menu = $('.site-menu'), nav = $('.site-nav');
 menu?.addEventListener('click', () => { const open = nav.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });
 
-// Admin sign-in: the one place for it. The key is kept for this tab (wwAdminKey); the pages that show more to
+// Admin sign-in: the one place for it. The key is kept in this browser (wwAdminKey, localStorage: it lasts through deploys and new tabs); the pages that show more to
 // an admin (chasers, the world controls, the large-scale charts, past days) send it with their requests and the
 // server decides the role each time. Signing in or out loads the page again, so everything on it is asked for
 // with the new role.
 const ADMIN_KEY = 'wwAdminKey';
-export const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage here */ } } };
+export const adminKey = { get() { try { return localStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? localStorage.setItem(ADMIN_KEY, v) : localStorage.removeItem(ADMIN_KEY); } catch { /* no storage here */ } } };
 // (the role the server gives this tab now: 'admin' or 'public')
 export const roleNow = async () => { try { const key = adminKey.get(); return (await (await fetch('/api/chasers/role', { cache: 'no-store', headers: key ? { 'x-admin-key': key } : {} })).json()).role; } catch { return 'public'; } };
 const adminButton = $('#siteAdmin');
@@ -58,7 +58,7 @@ let clockAt = null;
 async function readClock() {
   try {
     const [calendar, health] = await Promise.all([loadCalendar(), getJson('/api/health')]);
-    clockAt = { hour: health.validHourUtc, read: Date.now(), speed: health.autoAdvance ? (calendar?.simHoursPerRealHour ?? 8) : 0 };
+    clockAt = { hour: health.clockHourUtc ?? health.validHourUtc, read: Date.now(), speed: health.autoAdvance ? (calendar?.simHoursPerRealHour ?? 8) : 0 };
     const engine = $('#siteEngine');
     if (engine) engine.textContent = `High Risk engine ${health.version} · world ${health.seed} · ${health.stormCount} storms, ${health.activeTornadoes} tornado${health.activeTornadoes === 1 ? '' : 'es'} on the ground`;
   } catch { clockAt = null; }

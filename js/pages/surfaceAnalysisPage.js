@@ -27,7 +27,7 @@ const fieldCache = new Map();  // `${key}:${frameHour}` -> field (a frame's fiel
 
 // --- Loading.
 // (the admin's key, when this tab is signed in, js/site.js: a day that is not saved yet answers only an admin)
-function signedIn() { try { const key = sessionStorage.getItem('wwAdminKey'); return key ? { 'x-admin-key': key } : {}; } catch { return {}; } }
+function signedIn() { try { const key = localStorage.getItem('wwAdminKey'); return key ? { 'x-admin-key': key } : {}; } catch { return {}; } }
 async function getJson(url) { const response = await fetch(url, { cache: 'no-store', headers: signedIn() }); if (!response.ok) throw new Error(String(response.status)); return response.json(); }
 
 // The map's county lines and larger cities (map miles), asked for once.
@@ -398,7 +398,7 @@ $('soundingClose').addEventListener('click', () => { selected = null; document.b
 // --- The world: move it on, stop its clock, or start another one. Admin only: the admin key is kept for
 // this tab under the same name as on the chasers page (a local engine with no key set lets this machine in).
 const ADMIN_KEY = 'wwAdminKey';
-const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch {} } };
+const adminKey = { get() { try { return localStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? localStorage.setItem(ADMIN_KEY, v) : localStorage.removeItem(ADMIN_KEY); } catch {} } };
 const keyHeader = () => { const key = adminKey.get(); return key ? { 'x-admin-key': key } : {}; };
 const WORLD_BUTTONS = ['worldAdvance', 'worldAdvanceDay', 'worldClock', 'worldNew'];
 let worldAdmin = false;
