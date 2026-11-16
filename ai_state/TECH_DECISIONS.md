@@ -16,6 +16,14 @@
 
 ## Decisions
 
+### 2026-11-16 — Night stratus from the stirred layer under the jet; night cooling stopped, not undone, by cloud
+
+- Status: active
+- Decision: stratus forms at night where the layer under the jet's nose (`jetNoseM` times the share not decoupled) reaches the ground air's LCL within the moist layer (overcast `stratusDeckM` past it), as well as from the near-saturated ground air; the night's cooling is let through step by step by each step's cloud (`nightShape`); the deck keeps the night's top and base (`deckTop`, `deckLcl`) through the morning until the day's mixed layer grows through it. The satellite draws the low cloud as stratus and cumulus apart (`cloudStratus`, `cloudCumulus`) and has a night fog image.
+- Rationale: windy warm-sector nights are held 2 K short of saturation at screen height (`nightSpreadK`), so no seed had stratus under open sky at dawn and overnight moisture return could not be seen. A deck forming late used to warm the ground back at once (the cooling so far was scaled by the cloud of the moment). Rejected: drawing stratus in the satellite only (the engine's cloud also sets heating and cooling: one truth).
+- Forecast check (seeds 41-50 x 3 against HEAD): Day 1 right 67 to 60%, Day 2 within one 80 to 95%, Day 3 one day of ten lower; Brier skill equal or better: no refit.
+- Follow-up: the deck now breaks about noon on seed 2, the late end of real Gulf stratus (it holds back the morning sun).
+
 ### 2026-11-16 — Soundings keep the mixed layer's vapour; drying share refitted to the 850 mb dewpoint
 
 - Status: `active`

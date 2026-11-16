@@ -39,7 +39,7 @@ export const WIDE = Object.freeze({
 // wetted go with it (the window has no storms of its own, but under the map it is the map's air as it is: left
 // out, the map had no CAPE after a night of storms where the window just outside it had 1,000 J/kg, a line along
 // the box's edge; the owner, 2026-11-13). Beyond the map that air drifts and fades by the layer's own rules.
-const CARRIED = ['coldPool', 'wetGround', 'anvil', 'theta', 'moisture', 'eml', 'lidTheta', 'moistTop', 'heat', 'residualHeat', 'eveningTheta', 'nightTheta', 'mixedDepth', 'mixedTheta', 'eveningExcess', 'eveningDepth', 'surfaceMixingRatio', 'ageoU', 'ageoV', 'noseU', 'noseV', 'capLift'];
+const CARRIED = ['coldPool', 'wetGround', 'anvil', 'theta', 'moisture', 'eml', 'lidTheta', 'moistTop', 'heat', 'residualHeat', 'eveningTheta', 'nightTheta', 'nightShape', 'deckTop', 'deckLcl', 'mixedDepth', 'mixedTheta', 'eveningExcess', 'eveningDepth', 'surfaceMixingRatio', 'ageoU', 'ageoV', 'noseU', 'noseV', 'capLift'];
 
 // Gives the window's cells under the map the map's air: each takes the mean of the map's cells it covers (the
 // window is centred on the map and its cells are a whole number of the map's across, so they line up).

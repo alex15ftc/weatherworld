@@ -37,7 +37,7 @@ parentPort?.on('message', message => {
     const result = TASKS[message.kind](message);
     // Scan and mosaic bytes are this thread's own: handed over, not copied.
     const transfer = message.kind === 'scan' ? Object.values(result.products).map(a => a.buffer) : message.kind === 'mosaic' ? [result.bytes.buffer] : message.kind === 'mosaics' ? Object.values(result.bytes).map(a => a.buffer)
-      : message.kind === 'shearGrid' ? [result.buffer] : message.kind === 'satellite' ? [result.ir.buffer, result.visible.buffer] : [];
+      : message.kind === 'shearGrid' ? [result.buffer] : message.kind === 'satellite' ? [result.ir.buffer, result.visible.buffer, result.fog.buffer] : [];
     parentPort.postMessage({ ok: true, result, sceneId }, transfer);
   } catch (error) {
     parentPort.postMessage({ ok: false, error: String(error?.stack ?? error) });

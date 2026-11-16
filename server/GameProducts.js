@@ -251,7 +251,7 @@ export function gameMosaic(mosaic) {
   };
 }
 
-// The satellite's image of one kind (ir, visible): a grid of cellMiles squares from the map's
+// The satellite's image of one kind (ir, visible, fog): a grid of cellMiles squares from the map's
 // north-west corner, row by row; sun: its height and bearing (degrees) and the local hour.
 export function gameSatellite(sat, kind) {
   return {

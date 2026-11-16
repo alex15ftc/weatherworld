@@ -1,7 +1,8 @@
 --!strict
 -- The satellite (server/GameProducts.js satellite.<kind>, js/satellite/Satellite.js): the whole
 -- map as a geostationary satellite sees it, clean IR (cloud-top temperature, the enhanced colours
--- forecasters read storm tops on) or visible (sunlight off the clouds: dark at night), on the
+-- forecasters read storm tops on), visible (sunlight off the clouds: dark at night) or night fog
+-- (10.3 minus 3.9 um: low water cloud bright, the moisture coming back overnight), on the
 -- weather server's 2 km grid. The bytes and colours are the server's (Palettes.SATELLITE); this
 -- shows them under the radar (as a grid the GPU scales, MapCanvas.Grid), reads a value back under the cursor, and plays the images the server
 -- holds as a loop. Made when first asked for and kept current while on show.
@@ -22,7 +23,7 @@ Satellite.__index = Satellite
 
 local KEEPALIVE_SECONDS = 30
 local ALPHA = 0.94
-local KINDS = { "ir", "visible" }
+local KINDS = { "ir", "visible", "fog" }
 local LOOP_STEP_SECONDS, LOOP_HOLD_SECONDS = 0.45, 1.5
 
 type Frame = { id: string, validHourUtc: number, product: any, bytes: buffer }
@@ -56,7 +57,7 @@ local function bytesOf(product: any): buffer?
 	return bytes
 end
 
--- A byte as what it reads (IR: degrees C; visible: reflectance in %), nil for no data.
+-- A byte as what it reads (IR: degrees C; visible: reflectance in %; fog: K), nil for no data.
 local function valueOf(spec: any, byte: number): number?
 	if byte == 0 then
 		return nil

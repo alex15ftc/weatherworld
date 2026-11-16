@@ -44,7 +44,10 @@ assert.ok(within(coolest.hour, 9, 14), `coolest near sunrise (${coolest.hour}Z)`
 // (Floor 12 to 11 F on 2026-10-23: with the map carrying only its departure from the large-scale air
 // this seed's afternoons came out 1.8 F cooler, 13.8 to 11.8 F; on six full-world seeds the humid
 // afternoons were not cooler, 81.5 and 82.0 F.)
-assert.ok(warmest.value - coolest.value > 11 && warmest.value - coolest.value < 32, `day-night range ${(warmest.value - coolest.value).toFixed(1)} F`);
+// (Floor 11 to 10 F on 2026-11-16: night stratus under the jet now forms in the moist east and lasts
+// into late morning, so its nights are warmer and its afternoons cooler: 11.95 F without the deck,
+// 11.17 with it gone by 7 am, 10.56 with it lasting until the day's mixed layer reaches it.)
+assert.ok(warmest.value - coolest.value > 10 &&warmest.value - coolest.value < 32, `day-night range ${(warmest.value - coolest.value).toFixed(1)} F`);
 // The sun wears the cap down through the day. (Not the single weakest hour: with the high
 // ground on the map its afternoon mixed layer renews the lid nearby, and the cap stays about as
 // weak from late morning to evening.)

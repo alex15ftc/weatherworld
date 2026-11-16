@@ -77,6 +77,10 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // (midAscentKh), less where the dry lid is. High: cirrus with stronger ascent (highAscentKh)
   // and storms' anvils, carried by the 250 mb wind and thinning over anvilHours. Heating is cut by
   // heatingCloudCut of each layer's share, the night's cooling by coolingCloudCut.
+  // Night stratus: overcast once the stirred night layer reaches stratusDeckM past its LCL (a
+  // mixed layer saturated over its top ~150 m holds a continuous deck; added 2026-11-16, when no
+  // seed had stratus under open sky at dawn, as windy-night air stays nightSpreadK short at the ground).
+  stratusDeckM: 150,
   stratusSpreadK: [1.5, 0.3], cumulusShare: 0.3, cloudRh: 0.8, midAscentKh: [0.03, 0.2], highAscentKh: [0.05, 0.3], anvilHours: 3,
   // (Cuts as for a sky that share covered on average, broken cumulus letting much of the sun
   // through: 0.65/0.4/0.15 and 0.75/0.45/0.2 at first left the moist air's day-night range at 10 F.)
@@ -403,6 +407,8 @@ export class RegionalAtmosphere {
     // Boundary layer: heat put in since sunrise (K m), evening temperature, departure of the
     // low-level wind from balance (m/s).
     this.heat = new Float64Array(n); this.eveningTheta = new Float64Array(n); this.mixedDepth = new Float64Array(n);
+    this.nightShape = new Float64Array(n).fill(NaN);   // the share of a night's cooling let through so far (see nightDrop)
+    this.deckTop = new Float64Array(n); this.deckLcl = new Float64Array(n);   // the night stratus deck's top and base (m above the ground; see stratusDeckM)
     this.nightTheta = new Float64Array(n);   // the night's surface potential temperature, which the sun must first make up (K)
     this.ageoU = new Float64Array(n); this.ageoV = new Float64Array(n); this.noseU = new Float64Array(n); this.noseV = new Float64Array(n); this.surfaceMixingRatio = new Float64Array(n);
     // Low-level pressure (hPa) and balanced wind (m/s) owed to the temperature of the air near
@@ -1056,7 +1062,15 @@ export class RegionalAtmosphere {
       // perhaps a third as much. (2026-10-19: until then every place cooled 11-21 K whatever
       // the wind, so the moist air was saturated by midnight and dry air fell into the 20s F.)
       const windShare = p.nightWindFloor + (1 - p.nightWindFloor) / (1 + (stir / p.nightWindMs) ** 2);
-      const nightDrop = p.nightCoolingK * (p.nightMoistShare + (1 - p.nightMoistShare) * dryness) * windShare * clearNight * (1 - Math.exp(-nightHours / p.nightCoolingHours));
+      // (How much of the night's cooling has been let through so far: each step's part of it by
+      // that step's cloud, so cloud coming in stops the cooling but does not undo what is done.
+      // 2026-11-16: it was all of it by the cloud of the moment, so stratus forming at 3 am warmed
+      // the ground back at once. A world that starts at night starts from the curve so far.)
+      const shape = h => 1 - Math.exp(-Math.max(0, h) / p.nightCoolingHours);
+      if (daytime) this.nightShape[k] = 0;
+      else if (Number.isNaN(this.nightShape[k])) this.nightShape[k] = shape(nightHours) * clearNight;
+      else if (dt > 0) this.nightShape[k] += (shape(nightHours) - shape(nightHours - dt / 3600)) * clearNight;
+      const nightDrop = p.nightCoolingK * (p.nightMoistShare + (1 - p.nightMoistShare) * dryness) * windShare * this.nightShape[k];
       const surfaceTheta = daytime ? this.surfaceTheta(k, airTheta, column) : Math.max(airTheta - p.nightCoolingK, this.eveningTheta[k] - nightDrop);
       // After sunset the day's mixed layer does not vanish at once: the layer the ground's air is
       // mixed through shrinks from the evening's depth toward the night's 150 m as the air near the
@@ -1269,7 +1283,20 @@ export class RegionalAtmosphere {
       // from the large-scale ascent, high also from storms' anvils.
       {
         const spreadK = temperatureK - dewpointK, lclM = 125 * spreadK;
-        const stratus = ramp(spreadK, p.stratusSpreadK[0], p.stratusSpreadK[1]);
+        // Night stratus (stratusDeckM): under the night-time jet the air below its nose is stirred
+        // by the shear, all of it but the decoupled share, and so mixed to one vapour and one
+        // potential temperature; where that layer (within the moist layer) reaches up past the
+        // ground air's LCL, its top is saturated: the Gulf stratus that spreads north under the jet
+        // overnight. The deck is the night's air: its top (deckTop) and base (deckLcl, the night
+        // air's LCL) are kept from the night through the morning, when the sun first warms only a
+        // shallow layer at the ground under it. The day's mixed layer then grows into it from below:
+        // the cloud's base is the higher of the night's and, where the mixed layer has reached its
+        // own LCL, that LCL (the deck lifts and thins), and it is gone once the mixed layer has grown
+        // through its top. (2026-11-16: with the base at the ground air's LCL of the moment, every
+        // deck was gone half an hour after sunrise; real Gulf stratus often lasts until 9-11 am.)
+        if (!daytime) { this.deckTop[k] = Math.min(p.jetNoseM * (1 - decoupled), moistDepth); this.deckLcl[k] = lclM; }
+        const deckBase = daytime ? Math.max(this.deckLcl[k], Math.min(this.mixedDepth[k], lclM)) : lclM;
+        const deck = ramp(this.deckTop[k] - deckBase, 0, p.stratusDeckM), stratus = Math.max(ramp(spreadK, p.stratusSpreadK[0], p.stratusSpreadK[1]), deck);
         const cumulus = daytime ? p.cumulusShare * ramp(this.mixedDepth[k] - lclM, 0, 400) : 0;
         const t850c = cell.levels[850].temperature, d850c = cell.levels[850].dewpoint;
         const rh850 = Math.exp(17.67 * d850c / (d850c + 243.5) - 17.67 * t850c / (t850c + 243.5));
@@ -1279,6 +1306,13 @@ export class RegionalAtmosphere {
         this.cloudMid[k] = ramp(ascent, p.midAscentKh[0], p.midAscentKh[1]) * (1 - 0.5 * this.eml[k]);
         this.cloudHigh[k] = Math.max(this.anvil[k], 0.8 * ramp(ascent, p.highAscentKh[0], p.highAscentKh[1]));
         cell.features.cloudLow = this.cloudLow[k]; cell.features.cloudMid = this.cloudMid[k]; cell.features.cloudHigh = this.cloudHigh[k];
+        // (the low cloud's two kinds, for the satellite to draw apart: the sheet - stratus from the
+        // near-saturated air at the ground, stratocumulus where 850 mb is humid - and the day's
+        // cumulus; cloudLow is the larger of them)
+        cell.features.cloudStratus = Math.max(stratus, humid850); cell.features.cloudCumulus = cumulus;
+        // (and the night deck's own share, base and top, m above sea level, for the satellite to draw it
+        // where it is: a few hundred metres up, not through the whole moist layer)
+        cell.features.cloudDeck = deck; cell.features.deckBaseM = terrain + deckBase; cell.features.deckTopM = terrain + this.deckTop[k];
         cell.features.cloudTotal = 1 - (1 - this.cloudLow[k]) * (1 - this.cloudMid[k]) * (1 - this.cloudHigh[k]);
       }
       if (p.diagnostics) updateCellDiagnostics(cell);
