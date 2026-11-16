@@ -305,6 +305,18 @@ meso.pending = [{ ...waiting.pending[0], afterHourUtc: null, cells: everywhere }
 const firingNow = stormsFiring(atmosphere.world, everywhere);
 assert.equal(meso.maybeIssue(), false); assert.equal(meso.watches.length, count + (firingNow ? 1 : 0)); assert.equal(meso.pending.length, firingNow ? 0 : 1);
 if (firingNow) { assert.equal(meso.watches[0].issuedHourUtc, before); assert.equal(meso.list().watches[0].number, meso.nextWatch - 1); }
+// A look's watches, waiting watches and numbers are taken at once, not after the discussions' pictures: the
+// watches waiting go out every few seconds meanwhile (2026-11-16: one sent from the old list while the pictures
+// were made could take a number the look had given, or have its ground drafted again).
+let release; const held = new Promise(resolve => { release = resolve; });
+const old = [{ ...waiting.pending[0], cells: everywhere, afterHourUtc: before + 99, readyAtHourUtc: null }];
+meso.pending = old; runtime.radarMosaic = () => held;
+const looking2 = meso.issue();
+for (let waited = 0; meso.pending === old && waited < 600; waited++) await new Promise(resolve => setTimeout(resolve, 200));
+assert.notEqual(meso.pending, old, 'the look\'s waiting watches are in place while its pictures are still being made');
+meso.issuePending();
+release(null); await looking2; delete runtime.radarMosaic; assert.equal(meso.lastError, null);
+assert.equal(new Set(meso.watches.map(w => w.number)).size, meso.watches.length, 'no two watches share a number');
 runtime.engine = new AtmosphereWorld({ seed: 4, spinUpDays: 4, storms: false });
 assert.equal(meso.list().discussions.length, 0, 'a new world starts its own series'); assert.equal(meso.list().watches.length, 0);
 // The radars' look at the rotating storms under the watches in effect: each by its nearest radar, the strongest storms' radars only.
