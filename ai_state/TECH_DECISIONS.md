@@ -32,7 +32,10 @@
 
 ### 2026-11-15 — Day 1 update table refitted; updates stay on the perturbed runs
 
-- Status: `active`
+- Status: `active`, its tornado row superseded 2026-11-16: `day1update.tornado` is `day1.tornado` (the owner's choice). On
+  seeds 53-56 (perturbed runs, 8 days an issue) the fit read raw tornado chances about half as high as they verified (raw 6%
+  verified 7.8%: fit 2.9%, day1 8.6%; RMS 2.16 -> 1.08), being made from short-range runs; its wind and hail rows agree with a
+  perturbed-run fit there and stay. Seeds 53-56 had 16:30Z and 20Z updates too low on 63% and 75% of days with the fit.
 - Decision: the Day 1 updates' table (`CALIBRATION.day1update`, used from 3 h into the day: the 16:30Z, 20Z and 01Z issues)
   is refitted from the raw chances of updates made the short-range model's way (seeds 41-46; the script takes the last
   source's data) and checked on the perturbed runs the server uses (held-out seeds 47-52). Updates keep coming from the perturbed runs; making them the

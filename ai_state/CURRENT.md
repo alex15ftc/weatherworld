@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Day 1 06Z table (2026-11-16, `e9b2499` on `main`; engine deployed from `9980e11`, the world carried over): `combineOutlook` counts hours into the outlook's own day
+- Day 1 06Z table (2026-11-16, `e9b2499` on `main`; engine deployed from `7860dd8` with the update table's tornado row, the world carried over): `combineOutlook` counts hours into the outlook's own day
   (from `validToHourUtc` - 24), so the server's 06Z Day 1 (6 h before its day) reads the morning `day1` table as every
   verification script scores it; it took 18 h modulo 24 and read `day1update` (live 06Z too low on 57% of days). Open,
   needs the owner and the outlook session: on seeds 53-56 (perturbed runs, as the server's) the `day1` table fit the
@@ -413,8 +413,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    added; the top tornado 45% / wind 75% areas left (they make the correct Highs). Host CPU fine with Day 3 storm runs
    (clock kept pace through a 06Z issue). Test archives: data/outlook-archive/2026-11-14-* (README there). Day 1 update
    table refitted 2026-11-15 (deployed from `404b848`; decision in TECH_DECISIONS.md); the short-range model's way of making
-   updates scored the same as the perturbed runs at an eighth of the cost (not adopted yet). Watch the live scoreboard for
-   false Moderates on the 01Z updates (too high 17% -> 28% on held-out seeds).
+   updates scored the same as the perturbed runs at an eighth of the cost (not adopted yet). 2026-11-16 (owner): the update
+   table's tornado row is the morning table's (that fit read the perturbed runs' tornado chances half as high as they
+   verified on seeds 53-56); deployed from `7860dd8`. Watch the live scoreboard for the updates' too-low share and false
+   Moderates on the 01Z updates. Open (paused): Day 1 outlooks issued on old worlds (`outlook-verify --start`); the 40-day
+   risk-climate sweep (seeds 61-66) found no drift with world age, and the live world's last week was quieter than any of it.
 
 ## Blockers
 
