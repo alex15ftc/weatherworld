@@ -2554,3 +2554,24 @@ Forecast check (seeds 41-50, 3 mornings, lead caps, same outlook code; each chec
 
 Refitting in sample would gain 1-4 points of skill on either, so the calibration still fits; one outlook is
 3/5/10 points. No refit (owner, 2026-11-16). Day 3 Enhanced+ CSI 0.42 to 0.19 (10 outlooks): watch it.
+
+## Day 1 issues and their tables (2026-11-16)
+
+The server's 06Z Day 1 read `day1update`: `combineOutlook` took hours into the day as (issued - 12Z) modulo 24, 18 h for
+an issue made 6 h before its day. Every verification script scores that issue as the 12Z morning one (`day1` table).
+Now hours count from the outlook's own day start (tests/day-one-outlook.mjs checks 06Z = 12Z table, 16:30Z = update).
+
+`scripts/outlook-updates-verify.mjs 2 --seeds 53,54,55,56 --source perturbed --calibration-data` (8 days an issue, 44 min):
+
+| issue | table | right | too low | MDT+ CSI | Brier skill tornado/wind/hail |
+|---|---|---|---|---|---|
+| 12Z | day1 | 50% | 38% | 0.21 | 5/26/34 |
+| 13Z | day1 | 50% | 38% | 0.26 | 4/26/35 |
+| 16:30Z | day1update | 38% | 63% | 0.00 | 2/19/30 |
+| 20Z | day1update | 25% | 75% | 0.00 | 2/18/29 |
+| 01Z | day1update | 50% | 38% | - | 3/13/20 |
+
+The updates' raw chances (pooled) against what verified, as each table would issue them: RMS error `day1` 1.08 /
+2.92 / 4.08 (tornado / wind / hail), `day1update` 2.16 / 4.56 / 4.86. `day1update` (fitted 2026-11-15 on the short-range
+way's runs) reads the perturbed runs low in the middle: raw 6% tornado verified 7.8%, day1 8.6%, day1update 2.9%. The
+2026-11-15 check on seeds 47-52 went the other way (20Z right 39 to 61%); both samples are small. Undecided.

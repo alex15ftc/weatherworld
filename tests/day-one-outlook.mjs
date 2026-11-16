@@ -223,4 +223,10 @@ console.log(`day one outlook passed (made-up day ${o.highest}; real members ${fi
   assert.equal(issued.rawChance.tornado[centre], plain.chance.tornado[centre], 'the raw chance is the chance the runs give');
   // (somewhere in the field: past the fitted data, outlookCalibration.js keeps the raw chance, 2026-11-05)
   assert.ok(issued.chance.tornado.some((v, i) => v !== plain.chance.tornado[i]), 'the issued chance is calibrated');
+  // The table goes by hours into the outlook's own day: a Day 1 issued at 06Z, before its day starts, takes the
+  // morning table as the 12Z one does (it took day1update until 2026-11-16), and one at 16:30Z the update table.
+  const at = hour => combineOutlook(runs, { issuedHourUtc: hour, validToHourUtc: 60 }).chance.tornado;
+  const morning = at(36), early = at(30), update = at(40.5);
+  assert.ok(early.every((v, i) => v === morning[i]), 'the 06Z issue reads the morning table');
+  assert.ok(update.some((v, i) => v !== morning[i]), 'the 16:30Z issue reads the update table');
 }
