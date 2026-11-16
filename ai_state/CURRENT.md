@@ -18,6 +18,19 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
+  warm-sector day's slide also by the best the next day can reach (`lookAheadDays` 1) and gives up 0.15 support a
+  1000 km the slide leaves the map from its home latitude, where the jet's core is (`homePull`). Why: the live world
+  sat ~1350 km north of home on the jet's flank (16-34 kt at 500 mb) through the 11/15 lull. Regression 8 seeds x
+  80 days (`docs/STATUS.md`): none; days in runs of 2+ below Slight 2.66 to 1.25%. Forecast check (seeds 41-50):
+  category right fell on Days 1-3 (67/50/30% to 53/35/10%), Brier skill about level; the owner chose no refit.
+  Watch Day 3 placement (Enhanced+ CSI 0.42 to 0.19 on 10 outlooks). Rejected: dropping weak low-aimed days.
+- Small watches (2026-11-16, `8261e02` and `d6468d5` on `main`, engine deployed from `d6468d5`, the world carried over): a watch's least ground (`WATCH.leastCells`) is 40 cells, as an area of
+  concern's, not 120. Live MD 0372 (95%, tornado watch likely, 65 cells) drew a 99-cell watch that was dropped with
+  no word, and no watch came. Watches cut from very big areas keep their old floor (`WATCH.leastKeptCells` 60).
+  `MesoscaleRuntime.issue()` now takes a look's watches, waiting watches and numbers at once, before the
+  discussions' pictures: `issuePending` firing while they were made could reuse a watch number or draft its
+  ground twice. Left as is (owner's call): a waiting watch the next look no longer calls for is dropped with no word.
 - Dusk mixed layer (2026-11-16, `9a3b7d6` on `main`, engine deployed from it, the world carried over): after sunset the
   surface mixing depth shrinks from the evening's depth toward 150 m (`duskCollapseHours` 0.75 h, slower in wind) instead
   of switching in one step; the 00:30Z jump in dewpoint and SBCAPE is gone. Regression: none. Open: daily SBCAPE peaks of

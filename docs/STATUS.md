@@ -2509,3 +2509,48 @@ window's ring, CAPE at 00Z):
 
 (With 2 days the south ring read 0 against 1,653 at 108 h on seed 7, and with half a day 37.) The west stays dry:
 the window carries the high ground's air east, where the map's western edge is given moister entering air.
+
+## Steering look-ahead and home pull (2026-11-16, `c9c5474`)
+
+Why: on the live world (seed 1000) 11/14 Day 5 to 11/16 Day 1 had three big days (68, 24, 36 tornadoes) and a
+lull: 11/15 Days 2-6 and 8 had 0-12 tornadoes, mostly Marginal or less. The replays put the map ~1350 km north of
+home on 11/15 Days 3-6 (two warm-sector plans in a row slid it north, +29 and +22 km/h), on the jet's flank: 16-34 kt
+at 500 mb while the channel's jet ran 157-164 kt. The map keeps its home climate; only its winds come from where it
+slides. Big days had falling heights (-5 to -17 dam/12 h), CIN under 30 and dewpoints of 70-72 F; 0-1 km helicity
+did not tell them apart.
+
+Screen (outer model + the real planner on a stand-in regional layer, 4 seeds x 60 days, judged by wind aloft x
+southerly flow x moisture where the map is): home pull 0.3 alone kept the map near home (median 144 km against 533)
+without more support; keeping a low-aimed day only while it reached 25-70% of the best warm-sector slide's support
+nearly ended weak runs but made 230+ of 244 days warm-sector days. The judge is the warm-sector support itself, so
+it favours them.
+
+Regression suite, 8 seeds x 10 days, against the base of the look-ahead test (job 5a560e81): home pull 0.15 + keep
+40%: EF0 share, EF1 share and tornado CIG1+ days regressed (supercell time 53 to 66%): rejected. Look-ahead 1 +
+home pull 0.15: none. The 10-day runs had no run of 2+ days below Slight at all, so lulls need long runs:
+
+| 8 seeds x 80 days | old settings | look-ahead 1 + home pull 0.15 | target |
+|---|---|---|---|
+| Days in runs of 2+ below Slight % | 2.66 | 1.25 | |
+| Longest run below Slight, mean (max) of seeds | 1.75 (3) | 1.38 (2) | |
+| Longest run of days with 2 or fewer tornadoes (max) | 4 | 3 | |
+| Below Slight days % | 9.2 | 8.4 | 5 |
+| Days with a tornado % | 93.8 | 95.3 | 83 |
+| Tornadoes a day | 18.4 | 20.2 | 7.5 |
+| Days with 30+ % | 21.4 | 26.3 | 5 |
+| MDT+HIGH % | 31.7 | 33.0 | 25 |
+| Supercell time % (track) | 51.8 | 55.6 | |
+
+Old settings by world age (days 1-20 / 21-40 / 41-80): below Slight 5.6 / 12.5 / 9.4%; longest run of days with 2
+or fewer tornadoes 2 / 2 / 4. Each run took ~8.7 h with 16 workers (a sim day ~6.5 min late in a world).
+
+Forecast check (seeds 41-50, 3 mornings, lead caps, same outlook code; each check scores its own weather):
+
+| | old: right / within one | new: right / within one | Brier skill calibrated, tornado/wind/hail |
+|---|---|---|---|
+| Day 1 | 67 / 100% | 53 / 100% | 18/37/45 to 17/33/43 |
+| Day 2 | 50 / 80% | 35 / 85% | 10/18/28 to 10/19/32 |
+| Day 3 | 30 / 70% | 10 / 70% | severe 12 to 10 |
+
+Refitting in sample would gain 1-4 points of skill on either, so the calibration still fits; one outlook is
+3/5/10 points. No refit (owner, 2026-11-16). Day 3 Enhanced+ CSI 0.42 to 0.19 (10 outlooks): watch it.

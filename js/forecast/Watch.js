@@ -56,7 +56,11 @@ export const WATCH = Object.freeze({
   // 65,000 sq mi; the centre's are mostly 40-75 miles either side, 20,000-30,000 sq mi. A watch now
   // goes out once the runs bring severe weather within issueLeadHours, not only once storms fire:
   // the centre's go out an hour or two ahead of the first storms.)
-  leastPercent: 80, hours: 6, leastCells: 120, marginCells: 1, mostCells: 220, issueLeadHours: 2, waningHoursLeft: 2,
+  // (2026-11-16: leastCells 120 to 40, an area of concern's own least (MESOSCALE.leastCells): a
+  // discussion at 95% over a 65-cell area drew a 99-cell watch, which was dropped with no word, so
+  // the discussion said "likely" and none came. A watch cut out of a very big area still keeps at
+  // least leastKeptCells of the ground where severe weather comes first, as before.)
+  leastPercent: 80, hours: 6, leastCells: 40, leastKeptCells: 60, marginCells: 1, mostCells: 220, issueLeadHours: 2, waningHoursLeft: 2,
   // A county is in the watch when at least this share of it is in the area drawn.
   countyShare: 0.5,
   // The towns the approximate line is given from (people), as the centre gives it from places
@@ -117,8 +121,8 @@ export function draftWatch(assessed, now, { seed = null, covered = null } = {}) 
   let keep = Math.min(inside.length, WATCH.mostCells), drawn = null;
   for (let attempt = 0; attempt < 4; attempt++) {
     drawn = drawWatchGround(inside.slice(0, keep), now, covered, layer);
-    if (drawn.areaCells <= WATCH.mostCells * 1.15 || keep <= WATCH.leastCells / 2) break;
-    keep = Math.max(Math.round(WATCH.leastCells / 2), Math.floor(keep * WATCH.mostCells / drawn.areaCells));
+    if (drawn.areaCells <= WATCH.mostCells * 1.15 || keep <= WATCH.leastKeptCells) break;
+    keep = Math.max(WATCH.leastKeptCells, Math.floor(keep * WATCH.mostCells / drawn.areaCells));
   }
   const { cells, counties, areaCells } = drawn, regions = describeRegions(layer, counties);
   return {

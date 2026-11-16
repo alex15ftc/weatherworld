@@ -14,7 +14,7 @@ const args = process.argv.slice(2), flag = f => (args.includes(f) ? args[args.in
 const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
 const [name, baseline] = positional;
 if (!name) { console.error('usage: node run.mjs <name> [baseline]'); process.exit(1); }
-const seeds = (flag('--seeds') ?? '1,2,3,4,5,6,7,8').split(',').map(Number), days = Number(flag('--days') ?? 10), JOBS = 6;
+const seeds = (flag('--seeds') ?? '1,2,3,4,5,6,7,8').split(',').map(Number), days = Number(flag("--days") ?? 10), JOBS = Number(process.env.REG_JOBS) || 6;   // REG_JOBS: workers at once (default 6)
 // results go to REG_OUT (a scratch folder; default: beside this script)
 const ROOT = process.env.REG_OUT || here;
 const out = path.join(ROOT, name); fs.mkdirSync(out, { recursive: true });

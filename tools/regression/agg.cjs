@@ -49,6 +49,10 @@ add('categories', 'high', '  HIGH days % (info; judged in MDT+HIGH)', s => pct(s
 add('categories', 'enh', 'ENH days %', s => pct(s.days, d => cat(d) === 4), 40, 4, 'TARGETS (real central 35.5)');
 add('categories', 'slgt', 'SLGT days %', s => pct(s.days, d => cat(d) === 3), 30, 4, 'TARGETS');
 add('categories', 'below', 'Below SLGT days %', s => pct(s.days, d => cat(d) < 3), 5, 4, 'TARGETS (real central 15.1)');
+// Lulls (2026-11-16): runs of consecutive days below SLGT within each seed's days.
+const lowRuns = days => { const out = []; let n = 0; for (const d of days) { if (cat(d) < 3) n++; else { if (n) out.push(n); n = 0; } } if (n) out.push(n); return out; };
+add('categories', 'lull_max', 'Longest run of days below SLGT (mean of seeds)', s => mean(s.seedDays.map(days => Math.max(0, ...lowRuns(days)))), null, 0.5);
+add('categories', 'lull_days', 'Days in a run of 2+ below SLGT %', s => 100 * s.seedDays.reduce((a, days) => a + lowRuns(days).filter(n => n >= 2).reduce((x, y) => x + y, 0), 0) / s.days.length, null, 2);
 // Intensity groups (days)
 for (const [hz, tiers] of [['tornado', [[1, 20], [2, 5], [3, 1.5]]], ['wind', [[1, 30], [2, 10], [3, 3]]], ['hail', [[1, 35], [2, 10]]]])
   for (const [c, t] of tiers) add('groups', `cig_${hz}${c}`, `${hz} CIG${c}+ days %`, s => pct(s.days, d => d.cig[hz] >= c), t, c === 1 ? 4 : 2, 'TARGETS');
@@ -107,7 +111,7 @@ add('tornado source', 'tor_night', 'Tornadoes 8 pm-7 am CDT %', s => pct(s.torna
 add('tornado source', 'tor_3to9', 'Tornadoes 3-9 pm CDT %', s => pct(s.tornadoes, t => { const h = local(t.start); return h >= 15 && h < 21; }), null, 4, 'lock-in baseline 48%');
 
 // ---- compute
-const setOf = list => ({ days: list.flatMap(r => r.daily), reportDays: list.flatMap(r => r.reportDays), storms: list.flatMap(r => r.storms), tornadoes: list.flatMap(r => r.daily.flatMap(d => d.tornadoList)), rows: list.flatMap(r => rows[r.seed]) });
+const setOf = list => ({ seedDays: list.map(r => r.daily), days: list.flatMap(r => r.daily), reportDays: list.flatMap(r => r.reportDays), storms: list.flatMap(r => r.storms), tornadoes: list.flatMap(r => r.daily.flatMap(d => d.tornadoList)), rows: list.flatMap(r => rows[r.seed]) });
 const all = setOf(runs), halfA = setOf(runs.filter(r => r.seed <= 4)), halfB = setOf(runs.filter(r => r.seed > 4));
 const per = runs.map(r => setOf([r]));
 const sd = a => { const v = a.filter(Number.isFinite), m = mean(v); return v.length > 1 ? Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1)) : NaN; };
