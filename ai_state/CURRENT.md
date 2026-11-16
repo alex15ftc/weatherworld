@@ -20,11 +20,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 - Day 1 06Z table (2026-11-16, `e9b2499` on `main`; engine deployed from `7860dd8` with the update table's tornado row, the world carried over): `combineOutlook` counts hours into the outlook's own day
   (from `validToHourUtc` - 24), so the server's 06Z Day 1 (6 h before its day) reads the morning `day1` table as every
-  verification script scores it; it took 18 h modulo 24 and read `day1update` (live 06Z too low on 57% of days). Open,
-  needs the owner and the outlook session: on seeds 53-56 (perturbed runs, as the server's) the `day1` table fit the
-  16:30/20/01Z updates' raw chances better than `day1update` (RMS tornado 1.1 against 2.2, wind 2.9 / 4.6, hail 4.1 / 4.9;
-  20Z too low on 75% of 8 days), while the 2026-11-15 check on seeds 47-52 favoured `day1update`. Caution stays 0.9 /
-  0.75 / 0.65 (the owner's lean-low wish of 2026-11-14) until the owner says otherwise.
+  verification script scores it; it took 18 h modulo 24 and read `day1update` (live 06Z too low on 57% of days). The
+  updates now read tornado chances through the `day1` row (it fit seeds 53-56 better); wind and hail keep `day1update`.
+- Day 2 and Day 3 caution 0.9 (2026-11-16, owner; was 0.75 / 0.65; TECH_DECISIONS): on 30 mornings Day 3 right 30 -> 50%
+  and Enhanced+ 8 -> 15% of the map (21% verified); Day 2 right 35 -> 50%, Enhanced+ 14 -> 19% (20%). Watch live Day 2
+  High and Day 3 too-high days; 8 members to Day 3 gained nothing (not done).
 - Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
   warm-sector day's slide also by the best the next day can reach (`lookAheadDays` 1) and gives up 0.15 support a
   1000 km the slide leaves the map from its home latitude, where the jet's core is (`homePull`). Why: the live world

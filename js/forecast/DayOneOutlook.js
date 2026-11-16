@@ -148,7 +148,11 @@ export const OUTLOOK = Object.freeze({
   // On 80/60/40 unseen days (seeds 41-60): Day 1 x0.9 took High from 15% to 7.5% of days (verified 10%) and the day right from
   // 69% to 73%; Day 2 x0.75 (with its tornado hatch at 2 of 4 runs) misses low 40% and high 14% of days, High 3% (verified 7%);
   // Day 3 x0.65 is Slight on 30% of days and Enhanced 70%, too high 10%, and its Brier skill rose 9 -> 13.
-  caution: { day1: 0.9, day2: 0.75, day3: 0.65 },
+  // 2026-11-16 (owner): Day 2 and Day 3 raised to 0.9. On 30 mornings (seeds 41-50, rescored from saved runs) Day 3 at
+  // 0.65 drew Enhanced+ over 8% of the map against 21% verified and was too low on 60% of days; at 0.9 15%, the day right
+  // 30 -> 50%, Enhanced+ CSI 0.25 -> 0.34 (1.0 matched the area but left the calibrated chances no skill). Day 2 at 0.9:
+  // Enhanced+ 14 -> 19% (20% verified), right 35 -> 50%, too high 5% either way, CSI 0.54 -> 0.60.
+  caution: { day1: 0.9, day2: 0.9, day3: 0.9 },
   // How the issued areas are tidied before they are drawn (contourShapes.js tidyRanks; 2026-11-14, the user's request: no small
   // islands, no two risk borders touching). A contour level's or category's piece smaller than minSqMi goes, and a hole that
   // small is filled; each category from Marginal up is ringed by at least gapCells of the one below (Marginal by general

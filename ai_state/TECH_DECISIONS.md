@@ -56,6 +56,17 @@
   20Z highest category right 39% -> 61%, too low 56% -> 28%; 16:30Z right 44% -> 50%; 01Z right 39% -> 33%, too high 17% -> 28%.
 - Follow-up: false Moderates on the 01Z updates (live scoreboard); a short-range-way table if updates are moved to it for cost.
 
+### 2026-11-16 — Day 2 and Day 3 caution raised to 0.9
+
+- Status: `active` (supersedes the caution part of 2026-11-14 below; its hatches stand)
+- Decision: `OUTLOOK.caution` is Day 1 0.9, Day 2 0.9, Day 3 0.9 (was 0.75 and 0.65). The owner chose 0.9 over 1.0 to
+  keep a slight lean low.
+- Rationale: 30 mornings (seeds 41-50, rescored from saved runs at each level). Day 3 at 0.65 drew Enhanced+ over 8% of
+  the map against 21% verified, too low on 60% of days; at 0.9 15%, day right 30 -> 50%, Enhanced+ CSI 0.25 -> 0.34; at
+  1.0 17% but the calibrated chance had no Brier skill. Day 2 at 0.9: Enhanced+ 14 -> 19% (20% verified), right 35 ->
+  50%, too high 5% either way, Enhanced+ CSI 0.54 -> 0.60. Running 8 members to Day 3 instead of 4 gained nothing
+  (Enhanced+ CSI 0.25 -> 0.13).
+
 ### 2026-11-14 — Outlooks lean low at longer leads; stricter tornado and hail hatches
 
 - Status: `active`

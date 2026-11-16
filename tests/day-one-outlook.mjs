@@ -14,7 +14,7 @@ const rank = c => WORLD_RISK_ORDER.indexOf(c);
 // The rules themselves, without the fitted chance and intensity-group calibrations.
 const combine = (members, options) => combineOutlook(members, { calibration: {}, cigCalibration: null, caution: {}, ...options });
 // Caution at longer leads (OUTLOOK.caution): each day's chance times its factor.
-assert.ok(OUTLOOK.caution.day3 < OUTLOOK.caution.day2 && OUTLOOK.caution.day2 < OUTLOOK.caution.day1 && OUTLOOK.caution.day1 <= 1, 'the further out, the more cautious');
+assert.ok(OUTLOOK.caution.day3 <= OUTLOOK.caution.day2 && OUTLOOK.caution.day2 <= OUTLOOK.caution.day1 && OUTLOOK.caution.day1 <= 1, 'never bolder further out');
 
 // --- The outlook day runs 12Z to 12Z.
 assert.equal(hoursToDayEnd(12), 24); assert.equal(hoursToDayEnd(36), 24); assert.equal(hoursToDayEnd(18), 18); assert.equal(hoursToDayEnd(11.5), 0.5); assert.equal(hoursToDayEnd(60.5), 23.5);
