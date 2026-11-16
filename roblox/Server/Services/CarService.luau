@@ -4,73 +4,57 @@
 -- seat (user 2026-11-08: not put in the driver's seat on spawn). One car a player; the old one
 -- goes when a new one is made or the player leaves.
 --
--- The car is the place's ServerStorage.CarTemplate (Roblox's endorsed car template; its scripts
--- unsandboxed 2026-10-28). A Workspace.Car instead is copied there at start. Its top speed is its MaxSpeed attribute in mph
--- (CAR_MAX_MPH). Its Chassis module is wrapped by Modules/CarChassis so that MaxSpeed is the top
--- speed: on its own it sets the wheels' spin to MaxSpeed in studs/s as rad/s (1.5x too fast on
--- this car's 1.5-stud wheels).
+-- The cars are the engine-sim cars from EngineSimRoblox (user 2026-11-14): VehicleService rigs
+-- the ServerStorage.Vehicles templates and the owner's client simulates them (engine, drivetrain,
+-- tires: Client/Modules/EngineSim and Vehicle). Everyone gets the pickup (a 1996 Chevy C1500);
+-- the F4 menu swaps it for the Crown Victoria (VehicleNet.Choose), which is set down beside them
+-- in its place and kept for their next spawn.
 
 local Players = game:GetService("Players")
-local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
+local VehicleConfigs = require(ReplicatedStorage.Shared.VehicleConfigs)
+local VehicleNet = require(ReplicatedStorage.Shared.Net.VehicleNet)
+local VehicleService = require(script.Parent.VehicleService)
+local WorldConfig = require(ReplicatedStorage.Shared.World.Config)
 
 local CarService = {}
 
-local CAR_MAX_MPH = 100
-local CAR_SIDE = 14 * Config.WORLD_SCALE -- (studs from the character to the car's middle: clear of its body)
+local DEFAULT_CAR = "Pickup"
+-- (studs from the character to the car's middle: clear of its body, at the world's scale)
+local CAR_SIDE = 14 * WorldConfig.WORLD_SCALE
+local CHOOSE_COOLDOWN = 2 -- s between car swaps
 
-local template: Model? = nil
-local pivotAboveBottom = 0 -- studs from the car's lowest point up to its pivot
 local cars: { [Player]: Model } = {}
+local chosen: { [Player]: string } = {}
+local lastChoose: { [Player]: number } = {}
 
--- Takes the template out of the world (Init: before players arrive and before any Start).
 function CarService.Init()
-	local stored = ServerStorage:FindFirstChild("CarTemplate")
-	local live = workspace:FindFirstChild("Car")
-	if stored and stored:IsA("Model") then
-		template = stored
-		if live then
-			live:Destroy()
-		end
-	elseif live and live:IsA("Model") then
-		local copy = live:Clone()
-		live:Destroy()
-		copy.Name = "CarTemplate"
-		copy.Parent = ServerStorage
-		template = copy
-	else
-		warn("[CarService] no Workspace.Car to copy: players spawn on foot")
-		return
-	end
-	local t = template :: Model
-	-- The template in the place was built full size: to the world's scale (Config.WORLD_SCALE).
-	if math.abs(t:GetScale() - Config.WORLD_SCALE) > 1e-3 then
-		t:ScaleTo(Config.WORLD_SCALE)
-	end
-	-- (the template turns its MaxSpeed into studs a second as if a stud were 0.28 m: scaled, so the
-	-- top speed is CAR_MAX_MPH on the map at the world's scale)
-	t:SetAttribute("MaxSpeed", CAR_MAX_MPH * Config.WORLD_SCALE)
-	-- (the speed fix: Modules/CarChassis wraps the template's own Chassis module)
-	local scripts = t:FindFirstChild("Scripts")
-	local base = scripts and scripts:FindFirstChild("Chassis")
-	if scripts and base and not scripts:FindFirstChild("ChassisBase") then
-		base.Name = "ChassisBase"
-		local fix = ServerStorage.Modules.CarChassis:Clone()
-		fix.Name = "Chassis"
-		-- (the car's scripts may run sandboxed; a sandboxed script can only require a module
-		-- sandboxed the same way)
-		local fixAny: any, baseAny: any = fix, base
-		pcall(function()
-			fixAny.Capabilities = baseAny.Capabilities
-			fixAny.Sandboxed = baseAny.Sandboxed
-		end)
-		fix.Parent = scripts
-	end
-	local box, size = t:GetBoundingBox()
-	pivotAboveBottom = t:GetPivot().Position.Y - (box.Position.Y - size.Y / 2)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		CarService.remove(player)
+		chosen[player] = nil
+		lastChoose[player] = nil
+	end)
+end
+
+function CarService.Start()
+	VehicleNet.Choose:Server():On(function(player: Player, key: string)
+		local now = os.clock()
+		if now - (lastChoose[player] or -math.huge) < CHOOSE_COOLDOWN then
+			return
+		end
+		if not VehicleConfigs.ByKey[key] or not VehicleService.has(key) then
+			return
+		end
+		lastChoose[player] = now
+		chosen[player] = key
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if character and humanoid and humanoid.Health > 0 then
+			-- (out of the old one first, or the character goes with it)
+			humanoid.Sit = false
+			CarService.give(player, character)
+		end
 	end)
 end
 
@@ -84,8 +68,11 @@ end
 
 -- A new car on the ground beside the character, facing the way they face (CAR_SIDE studs to their right).
 function CarService.give(player: Player, character: Model)
-	local t = template
-	if not t or character.Parent == nil then
+	if character.Parent == nil then
+		return
+	end
+	local key = chosen[player] or DEFAULT_CAR
+	if not VehicleService.has(key) then
 		return
 	end
 	CarService.remove(player)
@@ -99,15 +86,18 @@ function CarService.give(player: Player, character: Model)
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
 	local hit = workspace:Raycast(p + Vector3.new(0, 40, 0), Vector3.new(0, -200, 0), params)
-	local groundY = if hit then hit.Position.Y else p.Y - 3 * Config.WORLD_SCALE
-	local car = t:Clone()
-	car.Name = "Car_" .. player.UserId
+	local groundY = if hit then hit.Position.Y else p.Y - 3 * WorldConfig.WORLD_SCALE
 	local look = root.CFrame.LookVector
-	local yaw = math.atan2(-look.X, -look.Z)
-	car:PivotTo(CFrame.new(p.X, groundY + pivotAboveBottom + 0.5 * Config.WORLD_SCALE, p.Z) * CFrame.Angles(0, yaw, 0) * t:GetPivot().Rotation)
-	-- (kept streamed in for its driver wherever they go: its client scripts need all of it)
+	local flat = Vector3.new(look.X, 0, look.Z)
+	flat = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.zAxis
+	local at = CFrame.lookAlong(Vector3.new(p.X, groundY + VehicleService.pivotHeight(key) + 0.5 * WorldConfig.WORLD_SCALE, p.Z), flat, Vector3.yAxis)
+	local car = VehicleService.spawn(key, at)
+	if not car then
+		return
+	end
+	car.Name = "Car_" .. player.UserId
+	-- (kept streamed in for its driver wherever they go: their client simulates it)
 	car.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
-	car.Parent = workspace
 	car:AddPersistentPlayer(player)
 	cars[player] = car
 end
