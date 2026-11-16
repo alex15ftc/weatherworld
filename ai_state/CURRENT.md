@@ -22,7 +22,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   (from `validToHourUtc` - 24), so the server's 06Z Day 1 (6 h before its day) reads the morning `day1` table as every
   verification script scores it; it took 18 h modulo 24 and read `day1update` (live 06Z too low on 57% of days). The
   updates now read tornado chances through the `day1` row (it fit seeds 53-56 better); wind and hail keep `day1update`.
-- Day 2 and Day 3 caution 0.9 (2026-11-16, owner; was 0.75 / 0.65; TECH_DECISIONS): on 30 mornings Day 3 right 30 -> 50%
+- Day 2 and Day 3 caution 0.9 (2026-11-16, owner; was 0.75 / 0.65; engine deployed from `2187d43`; TECH_DECISIONS): on 30 mornings Day 3 right 30 -> 50%
   and Enhanced+ 8 -> 15% of the map (21% verified); Day 2 right 35 -> 50%, Enhanced+ 14 -> 19% (20%). Watch live Day 2
   High and Day 3 too-high days; 8 members to Day 3 gained nothing (not done).
 - Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
