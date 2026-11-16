@@ -206,6 +206,9 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // the ground comes in the first hours after sunset, and with 4 the surface parcel's inhibition was
   // still low at 9-11 pm, when 32% of tornadoes came; 24% with 2.5.)
   nightCoolingK: 14, nightCoolingHours: 2.5, nightMoistShare: 0.85, nightWindMs: 10, nightWindFloor: 0.6,
+  // e-folding time (h, on a calm night) of the mixed layer's collapse after sunset: with it the evening dewpoint rise takes
+  // the 1-2 hours it takes in real Plains evenings.
+  duskCollapseHours: 0.75,
   nightSpreadK: [0.2, 2], nightSpreadWindMs: [3, 12],
   // By day the boundary layer is mixed, so it has one wind through its depth: the mean
   // balanced wind of the layer, less this share lost to friction at the ground. The wind at
@@ -1045,7 +1048,13 @@ export class RegionalAtmosphere {
       const windShare = p.nightWindFloor + (1 - p.nightWindFloor) / (1 + (stir / p.nightWindMs) ** 2);
       const nightDrop = p.nightCoolingK * (p.nightMoistShare + (1 - p.nightMoistShare) * dryness) * windShare * clearNight * (1 - Math.exp(-nightHours / p.nightCoolingHours));
       const surfaceTheta = daytime ? this.surfaceTheta(k, airTheta, column) : Math.max(airTheta - p.nightCoolingK, this.eveningTheta[k] - nightDrop);
-      const depth = daytime ? this.mixedDepth[k] : 150;
+      // After sunset the day's mixed layer does not vanish at once: the layer the ground's air is
+      // mixed through shrinks from the evening's depth toward the night's 150 m as the air near the
+      // ground decouples, sooner on a calm night than under a stirring wind (windShare). (2026-11-16:
+      // a switch at sunset handed the ground the moist layer's undiluted vapour in one half-hour:
+      // domain-mean dewpoint +1.3 F and SBCAPE 1,891 to 2,189 J/kg at 00:30Z, where real evening
+      // dewpoint rises take 1-2 hours.)
+      const depth = daytime ? this.mixedDepth[k] : 150 + Math.max(0, this.eveningDepth[k] - 150) * Math.exp(-nightHours * windShare / p.duskCollapseHours);
       if (daytime) {
         // Over the high ground the day's deepest, hottest mixed layer is the lid's air (what is
         // left of it aloft after sunset is the elevated mixed layer): the lid takes on its

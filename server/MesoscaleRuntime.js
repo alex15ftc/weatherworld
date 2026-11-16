@@ -111,6 +111,13 @@ export class MesoscaleRuntime {
       await looked;
       if (this.runtime.engine !== engine) return { discussions: [], watches: [], pending: [] };
       const found = lookAhead(members, now, { discussions: this.discussions, watches: this.watches, nextDiscussion: this.next, nextWatch: this.nextWatch, seed: engine.seed });
+      // The look's watches, the watches waiting and the numbers taken at once, with nothing awaited between: the
+      // watches waiting go out every few seconds (issuePending), and one sent out from the old list while the
+      // pictures below are made took a number the look had given, and its ground could be drafted again.
+      this.nextWatch += found.watches.length;
+      this.watches = [...found.watches.reverse(), ...this.watches].slice(0, WATCH.kept);
+      this.pending = found.pending;
+      this.nextLookHourUtc = nextLookHourUtc(found, now.hourUtc, this.watches);
       // Each new discussion's radar picture, before the discussion is listed (the archive keeps it from its first look).
       const radar = await mosaic;
       const sky = await satellite;
@@ -119,12 +126,9 @@ export class MesoscaleRuntime {
         const under = await discussionSatellite(sky, md.cells, now).catch(() => null), air = discussionEnvironment(fields.get(fieldFor(md)), boundaries, md.cells, now);
         if (picture || under || air) this.pictures.set(md.number, { ...(picture ?? {}), satellite: under, environment: air });
       }
-      this.next += found.discussions.length; this.nextWatch += found.watches.length;
+      this.next += found.discussions.length;
       this.discussions = [...found.discussions.reverse(), ...this.discussions].slice(0, MESOSCALE.kept);
       for (const number of this.pictures.keys()) if (!this.discussions.some(md => md.number === number)) this.pictures.delete(number);
-      this.watches = [...found.watches.reverse(), ...this.watches].slice(0, WATCH.kept);
-      this.pending = found.pending;
-      this.nextLookHourUtc = nextLookHourUtc(found, now.hourUtc, this.watches);
       this.lastError = null; this.lastRunMs = Date.now() - started;
       this.save();
       return found;
