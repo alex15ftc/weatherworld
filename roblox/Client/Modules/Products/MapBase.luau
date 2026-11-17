@@ -107,8 +107,19 @@ end
 -- Draws the map piece whose top-left pixel corner is at (left, top) map miles, step miles an
 -- image pixel, pw x ph pixels, into pixels (RGBA, every pixel written opaque). density: image
 -- pixels to a screen pixel (a high-DPI screen's scale), so lines keep their width on screen.
-function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: number, top: number, step: number, density: number?)
+-- pause, if given, is called every PAUSE_ROWS rows of ground and every PAUSE_LINES lines (the
+-- map screen yields there, to spread one piece over frames: a piece zoomed in is ~100 ms of
+-- interpreted Luau).
+local PAUSE_ROWS, PAUSE_LINES = 24, 150
+function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: number, top: number, step: number, density: number?, pause: (() -> ())?)
 	local scale = density or 1
+	local lines = 0
+	local function counted()
+		lines += 1
+		if pause and lines % PAUSE_LINES == 0 then
+			pause()
+		end
+	end
 	local m = step * scale -- miles a screen pixel: what the detail and the line widths follow
 	local raster = Raster.new(pixels, pw, ph, function(mx: number, my: number)
 		return (mx - left) / m, (my - top) / m
@@ -149,6 +160,9 @@ function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: num
 	end
 	local waterRGB = coverRGB[WATER] or { 70, 120, 190 }
 	for py = 0, ph - 1 do
+		if pause and py > 0 and py % PAUSE_ROWS == 0 then
+			pause()
+		end
 		local my = top + (py + 0.5) * step
 		local row = py * pw
 		if my < 0 or my >= miles then
@@ -278,6 +292,7 @@ function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: num
 									widths[class],
 									STREET_COLOURS[class]
 								)
+								counted()
 							end
 						end
 					end
@@ -303,9 +318,11 @@ function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: num
 				local east, south = v % 4, (v // 4) % 4
 				if east >= minClass then
 					line(I, J, I + 1, J, width(east), SECTION_COLOURS[east])
+					counted()
 				end
 				if south >= minClass then
 					line(I, J, I, J + 1, width(south), SECTION_COLOURS[south])
+					counted()
 				end
 			end
 		end
@@ -329,6 +346,9 @@ function MapBase.draw(d: Data, pixels: buffer, pw: number, ph: number, left: num
 		return false
 	end
 	local mile = d.studsPerMile
+	if pause then
+		pause()
+	end
 	for _, r in d.rivers do
 		if near(r.points) then
 			local studs = math.clamp(r.width * 0.18, 12, 220)

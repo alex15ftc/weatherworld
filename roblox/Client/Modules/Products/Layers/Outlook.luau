@@ -157,8 +157,14 @@ function Outlook.draw(self: any, draw: MapCanvas.Draw)
 	local areas, groups = self:areas()
 	-- Fainter under the radar, so the echoes read.
 	local alpha = if self.ctx.isOn("radar") then 0.45 else 0.78
+	-- The nested areas are filled in one sweep (far cheaper than one at a time), then outlined: an
+	-- outline that runs inside a higher area is drawn over its fill, not under it.
+	local list = {}
 	for _, area in areas do
-		draw.fill(area.rings, area.colour, alpha)
+		table.insert(list, { rings = area.rings, colour = area.colour, alpha = alpha })
+	end
+	draw.fills(list)
+	for _, area in areas do
 		draw.stroke(area.rings, 1.6, darker(area.colour, 0.45))
 	end
 	-- Each intensity group is hatched only where the next group up does not cover it.

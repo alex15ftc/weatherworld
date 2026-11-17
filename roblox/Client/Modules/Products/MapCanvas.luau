@@ -55,15 +55,24 @@ export type Grid = {
 	alpha: number,
 	smooth: boolean?,
 }
+-- One layer's shapes, drawn into its own set of tiles (sharp at every zoom), so a change to one
+-- layer draws only that layer's tiles again, and its other tiles stay as they are.
+export type Shapes = {
+	-- Names its tiles (the layer's key).
+	key: string,
+	-- What it draws now: its tiles are drawn again when this changes.
+	version: string,
+	-- Under the raster products (the outlook's fill, so radar shows over it), else over them.
+	under: boolean?,
+	draw: (Draw) -> (),
+}
 export type Overlay = {
 	muted: boolean?,
 	-- Byte grids (at most MAX_RES cells a side), bottom first, under the raster image: drawn
 	-- once each and only moved and scaled with the view.
 	grids: (() -> { Grid })?,
-	-- Shapes, drawn into the product tiles (sharp at every zoom), over the raster products.
-	draw: ((Draw) -> ())?,
-	-- Shapes drawn under the raster products (the outlook's fill, so radar shows over it).
-	drawUnder: ((Draw) -> ())?,
+	-- The layers' shapes, bottom first (those under the raster products below the rest).
+	shapes: { Shapes }?,
 	-- Raster products (radar), drawn into one image of the view.
 	drawRaster: ((Draw) -> ())?,
 	labels: ((Labels) -> ())?,
@@ -161,6 +170,7 @@ local marksImage: ImageLabel -- the marks over them (lightning, rotation): a chi
 local underLayer: Frame -- the product's tiles under the raster products
 local overLayer: Frame -- the product's tiles over them
 local labelLayer: Frame
+local markerLayer: Frame -- the players' marks (placed every frame, so not moved with the labels)
 local gridLayer: Frame -- the byte grids (satellite, radar mosaics), under the raster image
 local readout: TextLabel? = nil
 local hoverAt: Vector2? = nil -- the map point (miles) under the cursor
@@ -184,6 +194,12 @@ local rasterDue = false
 local clickHandler: ((mx: number, my: number) -> ())? = nil
 local lastChange = 0
 local lastLabels = 0
+-- The view the labels were placed for: while the view is only dragged (the same zoom), the labels
+-- are moved with it as one and placed again once it settles (LABEL_SETTLE).
+local labelsAt = { x = 0, y = 0, mpp = 0 }
+local LABEL_SETTLE = 0.15
+local lastReadout = 0
+local READOUT_EVERY = 0.1 -- seconds between updates of the readout line (the nearest town, the value under the cursor)
 -- While a layer's tiles are drawn, the zoom they are drawn at (MapCanvas.milesPerPixel).
 local drawingMpp: number? = nil
 
@@ -218,16 +234,21 @@ type Tile = {
 	j: number,
 	image: ImageLabel,
 	editable: any?,
-	version: number, -- what it shows (-1: nothing yet)
+	version: string?, -- what it shows (nil: nothing yet)
 	seen: number, -- when it was last in view
 }
-type Layer = { tiles: { [string]: Tile }, count: number, parent: Frame }
+-- A set of tiles: the map's, or one layer's shapes. The layers' sets share one budget of tiles
+-- (shared): a set whose layer is turned off is let go.
+type Layer = { tiles: { [string]: Tile }, count: number, parent: Instance, shared: boolean }
 type Want = { i: number, j: number, d: number }
+-- One layer's tiles: its frame (stacked in the overlay's order) and what it draws now.
+type ShapeSet = { layer: Layer, frame: Frame, spec: Shapes, version: string }
 
 local baseTiles: Layer
-local underTiles: Layer
-local overTiles: Layer
-local overlayVersion = 0
+local shapeSets: { [string]: ShapeSet } = {}
+local shapeOrder: { ShapeSet } = {} -- bottom first
+-- Bumped by MapCanvas.redraw, to draw every layer's tiles again though their versions are the same.
+local redrawEpoch = 0
 local level = 0
 -- Image pixels to a screen pixel. Roblox does not say a screen's display scaling, but its GUI
 -- units are physical pixels divided by it, so a view 989.33 units wide on a 150% screen gives
@@ -236,6 +257,9 @@ local level = 0
 local density = 1
 local tilePx = TILE
 local maxTiles = 110
+-- The layers' sets together keep at most this many tiles (what the two product layers kept
+-- before each layer had its own: a screen of tiles is about 20).
+local SHAPE_TILES_PER_LAYER = 2
 local scratch = buffer.create(TILE * TILE * 4)
 
 local function pixelDensity(): number
@@ -271,8 +295,8 @@ local function keyOf(k: number, i: number, j: number): string
 	return `{k}/{i}/{j}`
 end
 
-local function newLayer(parent: Frame): Layer
-	return { tiles = {}, count = 0, parent = parent }
+local function newLayer(parent: Instance, shared: boolean): Layer
+	return { tiles = {}, count = 0, parent = parent, shared = shared }
 end
 
 local function dropTile(layer: Layer, key: string)
@@ -288,24 +312,50 @@ local function dropTile(layer: Layer, key: string)
 	layer.count -= 1
 end
 
--- Lets go of the tiles longest out of view while there are more than maxTiles (or `extra`
--- more than the room left, when an image could not be made). Tiles in view are kept.
+local function dropAll(layer: Layer)
+	local keys = {}
+	for key in layer.tiles do
+		table.insert(keys, key)
+	end
+	for _, key in keys do
+		dropTile(layer, key)
+	end
+end
+
+-- Lets go of the tiles longest out of view while the layers hold more than they may (or `extra`
+-- more than the room left, when an image could not be made). Tiles in view are kept. The
+-- layers' sets are counted together.
 local function evict(layer: Layer, extra: number?)
-	local over = layer.count - maxTiles + (extra or 0)
+	local layers: { Layer } = { layer }
+	local cap = maxTiles
+	if layer.shared then
+		layers = {}
+		for _, set in shapeOrder do
+			table.insert(layers, set.layer)
+		end
+		cap = maxTiles * SHAPE_TILES_PER_LAYER
+	end
+	local count = 0
+	for _, l in layers do
+		count += l.count
+	end
+	local over = count - cap + (extra or 0)
 	if over <= 0 then
 		return
 	end
 	local old = {}
-	for key, tile in layer.tiles do
-		if not tile.image.Visible and not wantedKeys[key] then
-			table.insert(old, { key = key, seen = tile.seen })
+	for _, l in layers do
+		for key, tile in l.tiles do
+			if not tile.image.Visible and not wantedKeys[key] then
+				table.insert(old, { layer = l, key = key, seen = tile.seen })
+			end
 		end
 	end
 	table.sort(old, function(a, b)
 		return a.seen < b.seen
 	end)
 	for n = 1, math.min(over, #old) do
-		dropTile(layer, old[n].key)
+		dropTile(old[n].layer, old[n].key)
 	end
 end
 
@@ -319,7 +369,7 @@ local function tileOf(layer: Layer, k: number, i: number, j: number): Tile
 	image.BackgroundTransparency = 1
 	image.Visible = false
 	image.Parent = layer.parent
-	local made: Tile = { k = k, i = i, j = j, image = image, editable = nil, version = -1, seen = os.clock() }
+	local made: Tile = { k = k, i = i, j = j, image = image, editable = nil, version = nil, seen = os.clock() }
 	layer.tiles[key] = made
 	layer.count += 1
 	return made
@@ -332,9 +382,9 @@ local function newImage(): any
 	return if ok then made else nil
 end
 
--- Writes the scratch buffer into a tile's image (made when first needed). False if no image
--- could be made (the device's image memory is full even after letting old tiles go).
-local function show(layer: Layer, tile: Tile): boolean
+-- Writes the scratch buffer (or from) into a tile's image (made when first needed). False if no
+-- image could be made (the device's image memory is full even after letting old tiles go).
+local function show(layer: Layer, tile: Tile, from: buffer?): boolean
 	if not tile.editable then
 		local made = newImage()
 		if not made then
@@ -347,37 +397,70 @@ local function show(layer: Layer, tile: Tile): boolean
 		tile.editable = made
 		tile.image.ImageContent = Content.fromObject(made)
 	end
-	tile.editable:WritePixelsBuffer(Vector2.zero, Vector2.new(tilePx, tilePx), scratch)
+	tile.editable:WritePixelsBuffer(Vector2.zero, Vector2.new(tilePx, tilePx), from or scratch)
 	return true
 end
 
-local function drawBaseTile(tile: Tile)
-	local t = levelMpp(tile.k)
-	MapBase.draw(base, scratch, tilePx, tilePx, tile.i * TILE * t, tile.j * TILE * t, t / density, density)
-	if show(baseTiles, tile) then
-		tile.version = 0
+-- The map tile being drawn, a band of rows (or some lines) a step, into its own buffer: one
+-- tile is up to ~100 ms of interpreted Luau zoomed in (live clients do not run --!native), so it
+-- is spread over frames. Let go when the view moves on to other tiles before it is done.
+local baseJob: { tile: Tile, thread: thread }? = nil
+local baseScratch = buffer.create(TILE * TILE * 4)
+
+-- Draws on the tile's job until the deadline (at least one step). True once the tile is done.
+local function stepBaseTile(tile: Tile, deadline: number): boolean
+	local job = baseJob
+	if not job or job.tile ~= tile then
+		local t = levelMpp(tile.k)
+		local left, top = tile.i * TILE * t, tile.j * TILE * t
+		local into, px, d = baseScratch, tilePx, density
+		job = {
+			tile = tile,
+			thread = coroutine.create(function()
+				MapBase.draw(base, into, px, px, left, top, t / d, d, coroutine.yield)
+			end),
+		}
+		baseJob = job
+	end
+	local running = (job :: any).thread :: thread
+	while true do
+		local ok, problem = coroutine.resume(running)
+		if not ok then
+			warn(`[MapCanvas] map tile failed: {problem}`)
+			baseJob = nil
+			tile.version = "base" -- (not tried again every frame)
+			return true
+		end
+		if coroutine.status(running) == "dead" then
+			baseJob = nil
+			-- (a tile let go while it was drawn is not shown)
+			if baseTiles.tiles[keyOf(tile.k, tile.i, tile.j)] == tile and show(baseTiles, tile, baseScratch) then
+				tile.version = "base"
+			end
+			return true
+		end
+		if os.clock() > deadline then
+			return false
+		end
 	end
 end
 
--- One product tile of a layer (under or over the raster products), drawn by the overlay's
--- function for it.
-local function drawShapeTile(layer: Layer, tile: Tile, drawFn: ((Draw) -> ())?)
+-- One layer's tile, drawn by the layer's function for it.
+local function drawShapeTile(set: ShapeSet, tile: Tile)
 	local t = levelMpp(tile.k)
 	local left, top = tile.i * TILE * t, tile.j * TILE * t
 	buffer.fill(scratch, 0, 0)
 	local raster = Raster.new(scratch, tilePx, tilePx, function(mx: number, my: number)
 		return (mx - left) / t, (my - top) / t
 	end, density, tile.i * tilePx, tile.j * tilePx, Config.MAP_MILES)
-	if drawFn then
-		drawingMpp = t
-		local ok, problem = pcall(drawFn, raster)
-		drawingMpp = nil
-		if not ok then
-			warn(`[MapCanvas] product drawing failed: {problem}`)
-		end
+	drawingMpp = t
+	local ok, problem = pcall(set.spec.draw, raster)
+	drawingMpp = nil
+	if not ok then
+		warn(`[MapCanvas] {set.spec.key} drawing failed: {problem}`)
 	end
 	if raster.drawn() then
-		if not show(layer, tile) then
+		if not show(set.layer, tile) then
 			return
 		end
 	elseif tile.editable then
@@ -386,7 +469,7 @@ local function drawShapeTile(layer: Layer, tile: Tile, drawFn: ((Draw) -> ())?)
 		tile.editable = nil
 		tile.image.ImageContent = Content.none
 	end
-	tile.version = overlayVersion
+	tile.version = set.version
 end
 
 -- The current level's tiles in view, nearest the middle first.
@@ -411,49 +494,47 @@ local function findWanted()
 	end)
 end
 
--- Puts every kept tile where the view has it. The current level's finished tiles go on top; a
--- tile of another level is shown under them only while the current level still has gaps. (A
--- product tile with nothing drawn has no image and is never shown.)
+-- Puts every kept tile of a set where the view has it. The current level's drawn tiles go on
+-- top; a tile of another level is shown under them only while the current level still has
+-- gaps, and (a layer's tile) only if it shows the layer as it is now. (A layer's tile with
+-- nothing drawn has no image and is never shown.)
+local function placeLayer(layer: Layer, version: string?, size: Vector2, now: number)
+	local complete = true
+	for _, w in wanted do
+		local tile = layer.tiles[keyOf(level, w.i, w.j)]
+		if not tile or tile.version == nil then
+			complete = false
+			break
+		end
+	end
+	for _, tile in layer.tiles do
+		local t = levelMpp(tile.k)
+		local x0 = math.floor((tile.i * TILE * t - centreX) / mpp + size.X / 2)
+		local x1 = math.floor(((tile.i + 1) * TILE * t - centreX) / mpp + size.X / 2)
+		local y0 = math.floor((tile.j * TILE * t - centreY) / mpp + size.Y / 2)
+		local y1 = math.floor(((tile.j + 1) * TILE * t - centreY) / mpp + size.Y / 2)
+		local inView = x1 > 0 and y1 > 0 and x0 < size.X and y0 < size.Y
+		local current = tile.k == level
+		local on = inView and tile.version ~= nil and tile.editable ~= nil and (current or (not complete and (version == nil or tile.version == version)))
+		tile.image.Visible = on
+		if inView and current then
+			tile.seen = now
+		end
+		if on then
+			tile.seen = now
+			tile.image.Position = UDim2.fromOffset(x0, y0)
+			tile.image.Size = UDim2.fromOffset(x1 - x0, y1 - y0)
+			tile.image.ZIndex = if current then 2 else 1
+		end
+	end
+end
+
 local function placeTiles()
 	local size = viewport.AbsoluteSize
 	local now = os.clock()
-	for _, layer in { baseTiles, underTiles, overTiles } do
-		local complete = true
-		for _, w in wanted do
-			local tile = layer.tiles[keyOf(level, w.i, w.j)]
-			if not tile or tile.version < 0 then
-				complete = false
-				break
-			end
-		end
-		for _, tile in layer.tiles do
-			local t = levelMpp(tile.k)
-			local x0 = math.floor((tile.i * TILE * t - centreX) / mpp + size.X / 2)
-			local x1 = math.floor(((tile.i + 1) * TILE * t - centreX) / mpp + size.X / 2)
-			local y0 = math.floor((tile.j * TILE * t - centreY) / mpp + size.Y / 2)
-			local y1 = math.floor(((tile.j + 1) * TILE * t - centreY) / mpp + size.Y / 2)
-			local inView = x1 > 0 and y1 > 0 and x0 < size.X and y0 < size.Y
-			local current = tile.k == level
-			local on = inView and tile.version >= 0 and tile.editable ~= nil and (current or not complete)
-			-- Another level's product tile stands in only if it shows the product as it is now
-			-- (not a layer just turned off).
-			if layer ~= baseTiles and (not overlay or (not current and tile.version ~= overlayVersion)) then
-				on = false
-			end
-			if layer == underTiles and not (overlay and overlay.drawUnder) then
-				on = false
-			end
-			tile.image.Visible = on
-			if inView and current then
-				tile.seen = now
-			end
-			if on then
-				tile.seen = now
-				tile.image.Position = UDim2.fromOffset(x0, y0)
-				tile.image.Size = UDim2.fromOffset(x1 - x0, y1 - y0)
-				tile.image.ZIndex = if current then 2 else 1
-			end
-		end
+	placeLayer(baseTiles, nil, size, now)
+	for _, set in shapeOrder do
+		placeLayer(set.layer, set.version, size, now)
 	end
 end
 
@@ -464,51 +545,65 @@ local function applyDensity()
 	if d == density and tilePx == math.round(TILE * d) then
 		return
 	end
-	for _, layer in { baseTiles, underTiles, overTiles } do
-		for key in layer.tiles do
-			dropTile(layer, key)
-		end
+	dropAll(baseTiles)
+	for _, set in shapeOrder do
+		dropAll(set.layer)
 	end
 	density = d
 	tilePx = math.round(TILE * d)
 	maxTiles = math.max(24, math.floor(MAX_TILE_PIXELS / (tilePx * tilePx))) -- (a screen of tiles plus a ring)
 	scratch = buffer.create(tilePx * tilePx * 4)
+	baseScratch = buffer.create(tilePx * tilePx * 4)
+	baseJob = nil
 end
 
--- Draws tiles for up to FRAME_BUDGET (at least one), nearest the middle first, each place's
--- map and product together. True if any was drawn.
+-- Draws tiles for up to FRAME_BUDGET (at least one step), nearest the middle first, each place's
+-- map and layers together; the time is checked after every layer's tile and every step of a
+-- map tile. True if any was drawn (or a map tile moved on).
 local function drawTiles(): boolean
 	local deadline = os.clock() + FRAME_BUDGET
 	local any = false
+	-- A map tile part drawn is finished first while it is still in view (else a drag that keeps
+	-- changing which tile is nearest the middle would start tiles and finish none).
+	local job = baseJob
+	if job then
+		local key = keyOf(job.tile.k, job.tile.i, job.tile.j)
+		if job.tile.k == level and wantedKeys[key] and baseTiles.tiles[key] == job.tile then
+			any = true
+			if not stepBaseTile(job.tile, deadline) or os.clock() > deadline then
+				return true
+			end
+		end
+	end
 	for _, w in wanted do
 		local tile = tileOf(baseTiles, level, w.i, w.j)
-		if tile.version < 0 then
-			drawBaseTile(tile)
+		if tile.version == nil then
 			any = true
+			if not stepBaseTile(tile, deadline) or os.clock() > deadline then
+				break
+			end
 		end
-		local current = overlay
-		if current then
-			if current.drawUnder then
-				local under = tileOf(underTiles, level, w.i, w.j)
-				if under.version ~= overlayVersion then
-					drawShapeTile(underTiles, under, current.drawUnder)
-					any = true
+		local spent = false
+		for _, set in shapeOrder do
+			local mine = tileOf(set.layer, level, w.i, w.j)
+			if mine.version ~= set.version then
+				drawShapeTile(set, mine)
+				any = true
+				if os.clock() > deadline then
+					spent = true
+					break
 				end
 			end
-			local over = tileOf(overTiles, level, w.i, w.j)
-			if over.version ~= overlayVersion then
-				drawShapeTile(overTiles, over, current.draw)
-				any = true
-			end
 		end
-		if any and os.clock() > deadline then
+		if spent then
 			break
 		end
 	end
 	if any then
 		evict(baseTiles)
-		evict(underTiles)
-		evict(overTiles)
+		if shapeOrder[1] then
+			evict(shapeOrder[1].layer)
+		end
 	end
 	return any
 end
@@ -583,8 +678,14 @@ local function placeRaster()
 	rasterImage.Size = UDim2.fromOffset((rasterView.right - rasterView.left) / mpp, (rasterView.bottom - rasterView.top) / mpp)
 end
 
-local function drawRaster()
-	rasterDue = false
+-- The image is drawn as a job, RASTER_ROWS rows at a time and RASTER_BUDGET seconds a frame,
+-- so a radar scan's image of a new view costs a few frames a little each rather than one frame a
+-- lot; the image drawn before stays on show, moved with the view, until the new one is done.
+local RASTER_ROWS = 32
+local RASTER_BUDGET = 0.006
+local rasterJob: thread? = nil
+
+local function rasterWork()
 	local current = overlay
 	if not current or not (current.drawRaster or current.drawMarks) then
 		rasterImage.Visible = false
@@ -600,16 +701,37 @@ local function drawRaster()
 		lruClear(rasterCache.images)
 		marksHeld = nil
 	end
+	-- Draws into a new image a band of rows at a time (each band its own Raster over the same
+	-- view, moved up by the rows above it), yielding after each.
 	local function paint(drawFn: (Draw) -> (), what: string): Drawn
 		local pixels = buffer.create(pw * ph * 4)
-		local raster = Raster.new(pixels, pw, ph, function(mx: number, my: number)
-			return (mx - cx) / m + size.X / 2, (my - cy) / m + size.Y / 2
-		end, scale, 0, 0, Config.MAP_MILES)
-		local ok, problem = pcall(drawFn, raster)
-		if not ok then
-			warn(`[MapCanvas] {what} drawing failed: {problem}`)
+		local drawn = false
+		local band = buffer.create(pw * math.min(RASTER_ROWS, ph) * 4)
+		local top = 0
+		while top < ph do
+			local rows = math.min(RASTER_ROWS, ph - top)
+			if rows < RASTER_ROWS then
+				band = buffer.create(pw * rows * 4)
+			else
+				buffer.fill(band, 0, 0)
+			end
+			local shift = top / scale
+			local raster = Raster.new(band, pw, rows, function(mx: number, my: number)
+				return (mx - cx) / m + size.X / 2, (my - cy) / m + size.Y / 2 - shift
+			end, scale, 0, top, Config.MAP_MILES)
+			drawingMpp = m
+			local ok, problem = pcall(drawFn, raster)
+			drawingMpp = nil
+			if not ok then
+				warn(`[MapCanvas] {what} drawing failed: {problem}`)
+				break
+			end
+			drawn = drawn or raster.drawn()
+			buffer.copy(pixels, top * pw * 4, band, 0, pw * rows * 4)
+			top += rows
+			coroutine.yield()
 		end
-		return { pixels = pixels, drawn = raster.drawn() }
+		return { pixels = pixels, drawn = drawn }
 	end
 	local scan: Drawn? = nil
 	if current.drawRaster then
@@ -680,6 +802,33 @@ local function drawRaster()
 	rasterView = { left = cx - size.X / 2 * m, top = cy - size.Y / 2 * m, right = cx + size.X / 2 * m, bottom = cy + size.Y / 2 * m }
 	rasterImage.Visible = true
 	placeRaster()
+end
+
+-- Starts drawing the image for the view as it is now (a job already under way is dropped).
+local function drawRaster()
+	rasterDue = false
+	rasterJob = coroutine.create(rasterWork)
+end
+
+-- Carries the image's job on for up to RASTER_BUDGET (at least one band; only one if short).
+local function stepRaster(short: boolean)
+	local job = rasterJob
+	if not job then
+		return
+	end
+	local deadline = os.clock() + (if short then 0 else RASTER_BUDGET)
+	repeat
+		local ok, problem = coroutine.resume(job)
+		if not ok then
+			warn(`[MapCanvas] raster image failed: {problem}`)
+		end
+		if not ok or coroutine.status(job) == "dead" then
+			if rasterJob == job then
+				rasterJob = nil
+			end
+			return
+		end
+	until os.clock() > deadline
 end
 
 -- Backdrop ------------------------------------------------------------------------------------
@@ -1083,7 +1232,7 @@ local function marker(p: Player): Marker
 	name.ZIndex = 3
 	name.Visible = false
 	name.Parent = holder
-	holder.Parent = labelLayer
+	holder.Parent = markerLayer
 	local made: Marker = { holder = holder, dot = dot, name = name }
 	markers[p] = made
 	return made
@@ -1134,6 +1283,11 @@ local function updateMarkers()
 			markers[p] = nil
 		end
 	end
+	local now = os.clock()
+	if now - lastReadout < READOUT_EVERY then
+		return
+	end
+	lastReadout = now
 	local mx, my = myMiles()
 	local out = readout
 	if out and mx and my then
@@ -1214,9 +1368,8 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	overLayer = layerFrame("Product", 6)
 	gridLayer = layerFrame("Grids", 4)
 	labelLayer = layerFrame("Labels", 8)
-	baseTiles = newLayer(baseLayer)
-	underTiles = newLayer(underLayer)
-	overTiles = newLayer(overLayer)
+	markerLayer = layerFrame("Markers", 9)
+	baseTiles = newLayer(baseLayer, false)
 
 	viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(changed)
 
@@ -1273,12 +1426,49 @@ function MapCanvas.mount(parent: Frame, readoutLabel: TextLabel?)
 	end)
 end
 
--- What is drawn over the map (nil: the plain world map). The product's tiles are drawn again,
--- a few a frame, and the old ones shown until then; the map itself is not drawn again.
+-- Takes the overlay's layers: each keeps its own set of tiles, made the first time it is seen
+-- and let go when it is no longer in the list, and stacked in the list's order. A layer whose
+-- version changed has its tiles drawn again, a few a frame, the old ones shown until then.
+local function useShapes(list: { Shapes })
+	local keep: { [string]: boolean } = {}
+	table.clear(shapeOrder)
+	for n, spec in list do
+		keep[spec.key] = true
+		local set = shapeSets[spec.key]
+		local parent = if spec.under then underLayer else overLayer
+		if not set then
+			local frame = Instance.new("Frame")
+			frame.Name = spec.key
+			frame.Size = UDim2.fromScale(1, 1)
+			frame.BackgroundTransparency = 1
+			frame.Parent = parent
+			set = { layer = newLayer(frame, true), frame = frame, spec = spec, version = "" }
+			shapeSets[spec.key] = set
+		end
+		local s = set :: ShapeSet
+		s.spec = spec
+		s.version = `{spec.version}#{redrawEpoch}`
+		s.frame.ZIndex = n
+		if s.frame.Parent ~= parent then
+			s.frame.Parent = parent
+		end
+		table.insert(shapeOrder, s)
+	end
+	for key, set in shapeSets do
+		if not keep[key] then
+			dropAll(set.layer)
+			set.frame:Destroy()
+			shapeSets[key] = nil
+		end
+	end
+end
+
+-- What is drawn over the map (nil: the plain world map). Only the layers whose shapes changed
+-- (Shapes.version) have their tiles drawn again; the map itself is not drawn again.
 -- quick: kept for the callers that only change a raster product (it is drawn at once).
 function MapCanvas.setOverlay(value: Overlay?, _quick: boolean?)
 	overlay = value
-	overlayVersion += 1
+	useShapes(if value and value.shapes then value.shapes else {})
 	gridsDue = true
 	veil.Visible = value ~= nil and value.muted == true
 	rasterDue = true
@@ -1286,8 +1476,9 @@ function MapCanvas.setOverlay(value: Overlay?, _quick: boolean?)
 	lastChange = 0 -- the raster image is drawn without waiting for the view to settle
 end
 
--- Draw the product again (its data changed).
+-- Draw every layer's tiles again (their data changed, though they did not say so).
 function MapCanvas.redraw()
+	redrawEpoch += 1
 	MapCanvas.setOverlay(overlay)
 end
 
@@ -1329,14 +1520,10 @@ function MapCanvas.setVisible(on: boolean)
 		changed()
 	elseif baseTiles then
 		-- closed: give every tile's image memory back (they are redrawn when it opens again)
-		for _, layer in { baseTiles, underTiles, overTiles } do
-			local keys = {}
-			for key in layer.tiles do
-				table.insert(keys, key)
-			end
-			for _, key in keys do
-				dropTile(layer, key)
-			end
+		baseJob = nil
+		dropAll(baseTiles)
+		for _, set in shapeOrder do
+			dropAll(set.layer)
 		end
 		for _, slot in gridSlots do
 			if slot.editable then
@@ -1366,6 +1553,7 @@ function MapCanvas.setVisible(on: boolean)
 			marksImage.Visible = false
 		end
 		marksWritten = nil
+		rasterJob = nil
 		-- and the plain-memory images drawn for the view (a loop's frames, the grids' colours)
 		rasterCache.view = nil
 		lruClear(rasterCache.images)
@@ -1440,13 +1628,26 @@ function MapCanvas.step()
 	if gridsDue then
 		updateGrids()
 	end
-	if labelsDue and now - lastLabels > 0.07 then
-		labelsDue = false
-		lastLabels = now
-		placeLabels()
+	if labelsDue then
+		-- Dragged at the same zoom: the labels move with the map as one, and are placed again once
+		-- it settles; otherwise (a zoom, a new product) placed at most every 70 ms.
+		local dragging = mpp == labelsAt.mpp and now - lastChange < LABEL_SETTLE
+		if dragging then
+			labelLayer.Position = UDim2.fromOffset((labelsAt.x - centreX) / mpp, (labelsAt.y - centreY) / mpp)
+		elseif now - lastLabels > 0.07 then
+			labelsDue = false
+			lastLabels = now
+			labelLayer.Position = UDim2.new()
+			labelsAt = { x = centreX, y = centreY, mpp = mpp }
+			placeLabels()
+		end
 	end
 	if rasterDue and now - lastChange > SETTLE_SECONDS then
 		drawRaster()
+	end
+	if rasterJob then
+		-- (one band when tiles were drawn this frame: they had the frame's time)
+		stepRaster(drew)
 	end
 	updateMarkers()
 end
