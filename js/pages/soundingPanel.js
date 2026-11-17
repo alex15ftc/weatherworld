@@ -6,6 +6,10 @@ import { drawSounding, drawHodograph } from '../sounding.js';
 // The tables beside a sounding, laid out as on a SHARPpy-style sounding: parcels, winds by layer, moisture and
 // lapse rates, the composite indices and the possible hazard type.
 const HAZARD_COLOURS = { 'PDS TOR': '#ff4dff', TOR: '#ff4d4d', 'MRGL TOR': '#ff8a8a', SVR: '#facc15', 'MRGL SVR': '#38bdf8', NONE: '#94a3b8' };
+// The violent tornado parameter's two low-level terms (js/sounding.js diagnoseViolentTornadoParameter): 3CAPE / 50 J/kg, capped
+// at 2, and the 0-3 km lapse rate / 6.5 C/km.
+const vtpTerms = (p, d) => { const cape = Number(p.cape03 ?? d.cape03), lapse = Number(p.lapseRate03km); return Number.isFinite(cape) && Number.isFinite(lapse) ? `${Math.min(2, Math.max(0, cape) / 50).toFixed(2)} × ${(Math.max(0, lapse) / 6.5).toFixed(2)}` : '—'; };
+
 export function soundingTables(sounding) {
   const p = sounding.params, d = sounding.display ?? {}, motion = sounding.engineMotion ?? { right: p.stormMotion.right, left: p.stormMotion.left, ordinary: p.meanWind };
   const n = (v, digits = 0) => (Number.isFinite(Number(v)) ? Number(v).toFixed(digits) : '—');
@@ -21,7 +25,7 @@ export function soundingTables(sounding) {
       <tr><td>SFC-6 km</td><td></td><td>${n(p.shear06)}</td></tr><tr><td>SFC-8 km</td><td></td><td>${n(d.shear08)}</td></tr></table>
       ${list([['Storm motion, right', `${from(motion.right)} kt`], ['Storm motion, left', `${from(motion.left)} kt`], ['Mean wind', `${from(motion.ordinary)} kt`], ['4-6 km storm-rel. wind', `${n(d.srw46)} kt`], ['Critical angle', `${n(p.criticalAngle)}°`]])}</section>
     <section>${list([['PW', `${n(p.precipWater, 2)} in`], ['3CAPE', `${n(d.cape03)} J/kg`], ['DCAPE', `${n(p.dcape)} J/kg`], ['Lapse 0-3 km', `${n(p.lapseRate03km, 1)} C/km`], ['Lapse 3-6 km', `${n(d.lapse36, 1)} C/km`], ['Lapse 850-500', `${n(p.lapseRate850500, 1)} C/km`], ['Lapse 700-500', `${n(p.lapseRate700500, 1)} C/km`], ['Freezing level', `${n(d.freezingAglM)} m`], ['Wet-bulb zero', `${n(d.wetBulbZeroAglM)} m`], ['Mean RH low / mid', `${n(d.lowRh)} / ${n(d.midRh)} %`]])}</section>
-    <section class="wide">${list([['Supercell composite', n(p.scp, 1)], ['Sig. tornado', n(p.stp, 1)], ['Sig. hail', n(d.ship, 1)], ['Wind damage', n(d.windDamage, 1)]])}
+    <section class="wide">${list([['Supercell composite', n(p.scp, 1)], ['Sig. tornado', n(p.stp, 1)], ['Violent tornado', n(p.vtp, 1)], ['VTP = STP ×', vtpTerms(p, d)], ['Sig. hail', n(d.ship, 1)], ['Wind damage', n(d.windDamage, 1)]])}
       <div class="snd-hazard"><small>Psbl haz. type</small><b style="color:${HAZARD_COLOURS[hazard] ?? HAZARD_COLOURS.NONE}">${hazard}</b></div></section>`;
 }
 

@@ -26,7 +26,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   0-3 km lapse rate/6.5; Hampshire et al. 2018 JOM), replacing an invented 0-5 blend; display only (no storm code reads it).
   Mesoanalysis and /models gain VTP and 0-3 km CAPE fields (seed 2, Day 2 21Z, STP>=1 cells: STP p50 3.0, VTP 4.0, 3CAPE 59).
   Ensemble track points carry the tornado's rated mph (was 1); the /models ensemble has EF2+ and EF4+ chances within
-  25 mi, every run's tornado tracks by EF, and a per-run strongest-tornado readout. Not seen in a browser yet.
+  25 mi, every run's tornado tracks by EF, and a per-run strongest-tornado readout. Page-only additions (same day, seen in a
+  browser on live data): /models short range "VTP + UH > 75 tracks, 1 h" and a low-level instability field (3CAPE x 0-3 km
+  lapse rate, made in the page from two run fields); EF2+ 10% hatching on the ensemble tornado chance; VTP and its two terms
+  in the sounding panel; short-range tornado tracks drawn in their EF colours (they all drew black: the rating is 'EF2' text).
+  VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5).
 - Outlooks and model frames go out as they are ready (2026-11-17, owner's request, `92ba267` on `main`; engine deployed from it, the world carried over; live 19Z short range run seen streaming): forecast threads
   stream parts back (`ForecastPool.run` `onProgress`). Each outlook of an issue is put out once its members have run
   its day (`OutlookRuntime.publish`); with few threads (the host has one for outlooks) the Day-1-only members run
@@ -478,6 +482,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+00a. VTP and tornado strength (owner's order, 2026-11-17; step 1, the page-only products, is done): step 2, ensemble VTP
+   chances from a per-member running-max VTP grid (~2.5 KB a member; first check the cheap members compute VTP at all).
+   Then, before step 3, check why VTP runs high (about 9 live; is it the moist warm-sector bias, STP's own range, or the
+   3CAPE term?). Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
+   tornadoes (ask first: long run). Step 4, PDS wording and EF2+ hatching in the Day 1 outlook, only after step 3.
 00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite
    before dawn (Night fog button: the stratus deck bright) and in the morning (visible: the deck breaking up by noon).
 0. Map (published as 505 and engine deployed from `c5aa758`, 2026-11-14, the world resumed at hour 732. 505: a bridge is its deck only, each road climbs to it on its own raised grade with the ground graded up under it (no ramp slabs or wedges; unseen in game, look at two or three overpasses and a river bridge first). Offline: 0 holes and 0 steps at 90 crossings; 10 holes in 20 places, 6 of them at Smith Falls with an 8-stud ramp step. Owner asked for sharper terrain features (grid farms): options put to them are custom terrain textures on unused materials, field-margin strips as parts, smaller fields; none built, they need Studio. 504, same day, with the KMRR-less map export; 504 fixes what the owner saw on 503: roads under the terrain (road cut, slab and ditch back at their size in the place's studs), ramps buried at their foot (ground cut under bridges), the pit down the middle of divided roads (median is a part now), gaps where a road carries on from a bigger one's end, ramps and riverside roads missing at rivers, building parts on roads, grass at half length; none of it seen in game. Still wrong: the Smith Falls interchange at map mile 391.0, 128.6 (two interstates on a wide river: gaps and an 8-stud step on a ramp); next there: interchanges kept off wide rivers (generator, map rebuild). Also open: collectors dead-end at wide rivers (76 crossings), steep main-road grades, kinks on metro-centre streets. `tools/worldmap/run-chunks.luau` now drives every road for holes and steps (modes `crossings`, `at:x,z`). Half size: look first at the character, the car and its camera, a town, the M map; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
