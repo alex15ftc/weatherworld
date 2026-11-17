@@ -788,7 +788,11 @@ function Chassis.apply(self: Chassis, dt: number)
 			local speed = vPatch.Magnitude
 			local maxStop = 0.6 * cornerMass * speed / dt
 			local along = if speed > 1e-4 then tire:Dot(vPatch / speed) else 0
-			if along < -maxStop then
+			-- (only friction overshoot is clamped: a wheel whose surface turns against the patch's
+			-- motion is driven, and its force may reverse that motion, as pulling away from a
+			-- backward creep on a slope; clamped, the drive force went to nothing as the creep did)
+			local driven = speed > 1e-4 and w.omega * w.Radius * fwd:Dot(vPatch / speed) < 0
+			if along < -maxStop and not driven then
 				tire += (vPatch / speed) * (-maxStop - along)
 			end
 			if speed < 0.5 then

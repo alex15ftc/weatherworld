@@ -158,6 +158,19 @@ local function buildGraph(): Graph?
 
     folder.Parent = SoundService
 
+    -- A writer can be created yet refuse to work ("AudioStreamWriter is not enabled"):
+    -- then there is no audio, and the engine must step on its own (VehicleController's
+    -- no-audio path) instead of erroring inside sim:update every frame.
+    local usable, why = pcall(function()
+        return exhaust:Space()
+    end)
+    if not usable then
+        State.Status = "AudioStreamWriter not enabled; engine runs without sound"
+        warn("[EngineSim] AudioStreamWriter unusable, running without engine audio:", why)
+        folder:Destroy()
+        return nil
+    end
+
     State.Audio = { Exhaust = exhaustBus, Intake = intakeBus, Bench = bench }
 
     return {

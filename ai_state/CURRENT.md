@@ -88,6 +88,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   CharacterController, not brought over). Driven in Studio at full size before the half-size merge; not yet driven
   at half size (the GMC and 4WD are checked offline only). The place's Workspace still holds a "2020 GMC 2500"
   model, which VehicleService rigs where it stands: remove it now that the GMC is a template. Known: the automatic's light-throttle shift points (from EngineSim) keep it in 3rd at highway speed.
+  2026-11-16: driven at half size in Studio after two fixes: the engine never stepped
+  when AudioStreamWriter is unusable (both audio controllers now probe and run silent), and `Chassis.apply`'s
+  low-speed stabiliser cancelled a driven wheel's force while the car crept backward (driven wheels now exempt).
+  The pickup can't climb the ~10-degree grass spawn hill in 2H (rear-tyre grip; 4L does). Car configs are
+  0.476 m/stud vs the world's 0.56 (cars ~18% large).
 - One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `019a278` (first from `32b57de`), the world carried over;
   place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
   not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
