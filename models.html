@@ -32,6 +32,9 @@
     .bench #hourStrip button { min-width: 36px; padding: 2px 4px; font: 400 12.5px var(--mono); color: var(--ink-2); }
     .bench #hourStrip button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
     .bench #hourStrip button.shared { border-bottom: 2px solid #2e9e55; }
+    /* hours a run still being worked out has not made yet: grey, not to be chosen */
+    .bench #hourStrip button:disabled { opacity: .35; cursor: not-allowed; background: transparent; }
+    #timeSlider.partial { background: linear-gradient(to right, transparent var(--ready), color-mix(in srgb, var(--ink-2) 22%, transparent) var(--ready)); border-radius: 4px; }
     @media (max-width: 900px) {
       .mdl-main { height: auto; min-height: 0; grid-template-rows: auto auto auto auto; }
       .mdl-main .chart { aspect-ratio: 1; }

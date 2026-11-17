@@ -180,8 +180,14 @@ const pool = new ForecastPool({ size: 2 }), runtime = { engine: atmosphere }, ou
 assert.equal(outlooks.dayOne().status, 'pending');
 assert.equal(outlooks.maybeIssue(), true, 'a world with no outlook gets one'); assert.equal(outlooks.maybeIssue(), false, 'not twice at once');
 assert.equal(outlooks.dayOne().status, 'running'); assert.equal(outlooks.status().running, true);
-while (outlooks.running) await new Promise(resolve => setTimeout(resolve, 250));
+// Each outlook goes out as soon as the members it takes have run its day, not when the last run ends
+// (2026-11-16). Here, as on the host, one thread does the outlook runs (the other is kept for urgent ones), so
+// member 1 (Day 1 alone) goes first, and Day 1 is out once member 0 has run its Day 1, before its Day 2.
+let early = null;
+while (outlooks.running) { const done = ['day1', 'day2'].filter(day => outlooks.current(day)); if (done.length === 1 && !early) early = { day: done[0], issuedFlag: outlooks.day(done[0]).running, otherRunning: outlooks.day(done[0] === 'day1' ? 'day2' : 'day1').running }; await new Promise(resolve => setTimeout(resolve, 50)); }
 assert.equal(outlooks.lastError, null, `the outlook ran (${outlooks.lastError})`);
+assert.equal(early?.day, 'day1', 'Day 1 was issued first, while the runs for Day 2 went on');
+assert.deepEqual([early.issuedFlag, early.otherRunning], [false, true], `the issued one (${early.day}) no longer shows as running, the other does`);
 const issued = outlooks.dayOne();
 // (each full run carries OUTLOOK.cheapPerMember cheap runs on its storm days: 2 full + 6 cheap)
 assert.equal(issued.status, 'issued'); assert.equal(issued.members, 2 * (1 + OUTLOOK.cheapPerMember)); assert.equal(issued.issuedHourUtc, before); assert.equal(issued.validToHourUtc, before + hoursToDayEnd(before));

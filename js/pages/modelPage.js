@@ -11,7 +11,7 @@ import { openSounding } from './soundingPanel.js';
 //                run's tracks.
 const $ = id => document.getElementById(id);
 const canvas = $('modelCanvas'), ctx = canvas.getContext('2d'), tip = $('modelTip');
-const REFRESH_MS = 20000, PLAY_MS = 450, MILE_KM = 1.609344;
+const REFRESH_MS = 20000, PARTIAL_REFRESH_MS = 4000, PLAY_MS = 450, MILE_KM = 1.609344;
 const NEAR_KM = 25 * MILE_KM;          // "within 25 miles", as the outlooks' neighbourhood
 const UH_TRACK = 75;                   // updraft helicity that marks a rotating storm's track (m²/s²)
 const UH_LEASTS = [100, 200, 300, 400, 500]; // thresholds offered for the reflectivity + UH tracks product
@@ -44,10 +44,10 @@ const ENSEMBLE_PRODUCTS = [
 
 // --- State.
 let domain = null, localOffset = -6, base = null, view = null;
-let modelKind = 'short', productKey = 'refl', t = 0, playing = null;
+let modelKind = 'short', productKey = 'refl', t = 0, wantT = 0, playing = null;
 const S = { runs: [], init: null, meta: null, tracks: null, byStorm: null };
 const E = { issues: [], issued: null, data: null, byRun: null };
-const cache = new Map();               // url -> promise of JSON (a run's frames never change)
+const cache = new Map();               // url -> promise of JSON (a run's frames never change; one not made yet is asked again)
 const rasters = new Map();             // drawn reflectivity and probability images
 let shown = { field: null, storms: null };
 let token = 0;
@@ -55,7 +55,7 @@ let token = 0;
 async function getJson(url, { keep = true } = {}) {
   if (keep && cache.has(url)) return cache.get(url);
   const promise = fetch(url, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-  if (keep) { cache.set(url, promise); if (cache.size > 900) cache.delete(cache.keys().next().value); }
+  if (keep) { cache.set(url, promise); promise.then(v => { if (v === null && cache.get(url) === promise) cache.delete(url); }); if (cache.size > 900) cache.delete(cache.keys().next().value); }
   return promise;
 }
 
@@ -63,6 +63,8 @@ const product = () => (modelKind === 'short' ? [...STORM_PRODUCTS, ...(S.meta?.p
 const isField = () => modelKind === 'short' && !STORM_PRODUCTS.some(p => p.key === productKey);
 const stepMinutes = () => (isField() ? 60 : product()?.step ?? 15);
 const maxMinutes = () => (modelKind === 'short' ? (S.meta?.hours ?? 0) * 60 : Math.round((E.data?.hours ?? 0) * 60));
+// A run still being worked out shows its hours as they are made (2026-11-16): the minutes ready so far.
+const readyMinutes = () => (modelKind === 'short' && S.meta?.partial ? Math.max(-1, S.meta.readyHours ?? -1) * 60 : maxMinutes());
 const startHour = () => (modelKind === 'short' ? S.meta?.initHourUtc : E.data?.issuedHourUtc) ?? 0;
 
 // Dates: the real date a world hour falls on (js/pageCalendar.js), never the world's day number.
@@ -92,11 +94,14 @@ async function loadRuns() {
   if (modelKind === 'short') {
     const list = await getJson('/api/models/short-range/runs', { keep: false });
     S.runs = (list?.runs ?? []).filter(r => !r.failed);
-    const note = list?.running ? `Run ${runName(list.running.initHourUtc)} (${list.running.hours} h) is being worked out.` : S.runs.length ? '' : 'The first run is being worked out.';
+    const going = S.runs.find(r => r.partial);
+    const note = going ? `Run ${runName(going.initHourUtc)}: ${going.readyHours === null ? 'starting' : `ready to ${fLabel(going.readyHours * 60)} of ${going.hours} h`}; the greyed hours are still being worked out.` : list?.running ? `Run ${runName(list.running.initHourUtc)} (${list.running.hours} h) is being worked out.` : S.runs.length ? '' : 'The first run is being worked out.';
     $('runNote').textContent = note || `${S.runs.length} runs kept. Hours shared with the live world are underlined green.`;
-    fillRunSelect(S.runs.map(r => [r.initHourUtc, `${runName(r.initHourUtc)} · ${r.hours} h`]), S.init);
+    fillRunSelect(S.runs.map(r => [r.initHourUtc, `${runName(r.initHourUtc)} · ${r.partial ? `${Math.max(0, r.readyHours ?? 0)} of ${r.hours} h` : `${r.hours} h`}`]), S.init);
     const want = $('followLatest').checked || S.init === null ? S.runs.at(-1)?.initHourUtc ?? null : S.init;
     if (want !== null && want !== S.init) await openShortRun(want);
+    // (the run on show is still being made: its new hours)
+    else if (want !== null && S.meta?.partial) await openShortRun(want, true);
   } else {
     const list = await getJson('/api/models/ensemble/runs', { keep: false });
     E.issues = list?.issues ?? [];
@@ -113,15 +118,20 @@ function fillRunSelect(options, current) {
   if (current !== null) select.value = String(current);
 }
 
-async function openShortRun(init) {
+// again: the run on show, asked again for the hours made since (a run still being worked out).
+async function openShortRun(init, again = false) {
   const meta = await getJson(`/api/models/short-range/run?init=${init}`, { keep: false });
   if (!meta) return;
-  const tracks = await getJson(`/api/models/short-range/tracks?init=${init}`);
+  if (again && meta.readyHours === S.meta?.readyHours && meta.partial === S.meta?.partial) return;
+  // (the tracks of a run still being made grow: asked afresh each time)
+  const tracks = await getJson(`/api/models/short-range/tracks?init=${init}`, { keep: !meta.partial });
+  if (again && init !== S.init) return;
   S.init = init; S.meta = meta; S.tracks = tracks?.tracks ?? [];
   S.byStorm = new Map();
   for (const p of S.tracks) { if (!S.byStorm.has(p.id)) S.byStorm.set(p.id, []); S.byStorm.get(p.id).push(p); }
   for (const list of S.byStorm.values()) list.sort((a, b) => a.minute - b.minute);
   $('runSelect').value = String(init);
+  if (again) { setTimeRange(); if (!playing) render(); return; }
   fillProducts(); setTimeRange(); render();
 }
 
@@ -158,26 +168,37 @@ function fillProducts() {
 function setTimeRange() {
   const slider = $('timeSlider'), step = stepMinutes(), max = maxMinutes();
   slider.max = String(max); slider.step = String(step);
-  t = Math.min(max, Math.round(t / step) * step); slider.value = String(t);
-  const strip = $('hourStrip'), hours = Math.floor(max / 60), shared = modelKind === 'short' ? (S.meta?.shareHours ?? 0) : 0;
-  const every = hours > 24 ? 3 : 1, html = [];
-  for (let h = 0; h <= hours; h += every) html.push(`<button data-hour="${h}" class="${h < shared ? 'shared' : ''}">${String(h).padStart(2, '0')}</button>`);
-  strip.innerHTML = html.join('');
+  // (the time asked for, as far as the run is made: it moves on to it as the hours come)
+  t = Math.max(0, Math.min(max, readyMinutes(), Math.round(wantT / step) * step)); slider.value = String(t);
+  // A button for every hour of the run beside the slider (2026-11-16, the owner's choice); ◀ ▶ step within the hour.
+  const strip = $('hourStrip'), hours = Math.floor(max / 60), shared = modelKind === 'short' ? (S.meta?.shareHours ?? 0) : 0, html = [];
+  for (let h = 0; h <= hours; h++) html.push(`<button data-hour="${h}" class="${h < shared ? 'shared' : ''}">${String(h).padStart(2, '0')}</button>`);
+  const key = html.join('');
+  if (strip.dataset.key !== key) { strip.innerHTML = key; strip.dataset.key = key; }
+  // (how much of the slider's span is made: the rest is drawn grey)
+  const ready = Math.max(0, Math.min(1, max > 0 ? readyMinutes() / max : 1));
+  slider.style.setProperty('--ready', `${(ready * 100).toFixed(2)}%`); slider.classList.toggle('partial', ready < 1);
   markTime();
 }
 
 function markTime() {
   $('timeSlider').value = String(t); $('timeLabel').textContent = fLabel(t);
-  for (const b of $('hourStrip').children) b.classList.toggle('on', Number(b.dataset.hour) === Math.floor(t / 60));
+  const ready = readyMinutes();
+  for (const b of $('hourStrip').children) {
+    b.classList.toggle('on', Number(b.dataset.hour) === Math.floor(t / 60));
+    // An hour the run has not made yet: grey and not to be chosen.
+    const pending = Number(b.dataset.hour) * 60 > ready;
+    b.disabled = pending; b.title = pending ? 'Not ready yet: this hour is still being worked out' : '';
+  }
 }
 
-function setTime(minutes) { const step = stepMinutes(); t = Math.max(0, Math.min(maxMinutes(), Math.round(minutes / step) * step)); markTime(); render(); }
+function setTime(minutes) { const step = stepMinutes(); wantT = Math.max(0, Math.min(maxMinutes(), Math.round(minutes / step) * step)); t = Math.max(0, Math.min(wantT, readyMinutes())); markTime(); render(); }
 
 $('modelShort').onclick = () => switchModel('short');
 $('modelEnsemble').onclick = () => switchModel('ensemble');
 async function switchModel(kind) {
   if (kind === modelKind) return;
-  stopPlay(); modelKind = kind; productKey = kind === 'short' ? 'refl' : 'paint'; t = 0;
+  stopPlay(); modelKind = kind; productKey = kind === 'short' ? 'refl' : 'paint'; t = wantT = 0;
   $('modelShort').classList.toggle('on', kind === 'short'); $('modelEnsemble').classList.toggle('on', kind === 'ensemble');
   $('runSelect').dataset.html = '';
   fillProducts(); setTimeRange(); render();
@@ -185,8 +206,9 @@ async function switchModel(kind) {
 }
 $('runSelect').onchange = event => { const v = Number(event.target.value); $('followLatest').checked = false; stopPlay(); (modelKind === 'short' ? openShortRun : openEnsemble)(v); };
 $('productList').onclick = event => { const key = event.target.dataset?.key; if (!key) return; productKey = key; for (const b of $('productList').querySelectorAll('button')) b.classList.toggle('on', b.dataset.key === key); setTimeRange(); render(); };
+// (a time past what the run has made goes to the last time made: setTime)
 $('timeSlider').oninput = event => { stopPlay(); setTime(Number(event.target.value)); };
-$('hourStrip').onclick = event => { const h = event.target.dataset?.hour; if (h !== undefined) { stopPlay(); setTime(Number(h) * 60); } };
+$('hourStrip').onclick =event => { const h = event.target.dataset?.hour; if (h !== undefined) { stopPlay(); setTime(Number(h) * 60); } };
 $('stepBack').onclick = () => { stopPlay(); setTime(t - stepMinutes()); };
 $('stepNext').onclick = () => { stopPlay(); setTime(t + stepMinutes()); };
 $('play').onclick = () => (playing ? stopPlay() : startPlay());
@@ -202,7 +224,7 @@ window.addEventListener('keydown', event => {
 function startPlay() {
   $('play').classList.add('on'); $('play').textContent = 'Stop';
   let busy = false;
-  playing = setInterval(async () => { if (busy) return; busy = true; const next = t + stepMinutes(); t = next > maxMinutes() ? 0 : next; markTime(); await render(); busy = false; }, PLAY_MS);
+  playing = setInterval(async () => { if (busy) return; busy = true; const next = t + stepMinutes(); t = wantT = next > Math.min(maxMinutes(), readyMinutes()) ? 0 : next; markTime(); await render(); busy = false; }, PLAY_MS);
 }
 function stopPlay() { if (playing) { clearInterval(playing); playing = null; } $('play').classList.remove('on'); $('play').textContent = 'Play'; }
 
@@ -210,7 +232,8 @@ function stopPlay() { if (playing) { clearInterval(playing); playing = null; } $
 async function render() {
   const mine = ++token;
   shown = { field: null, storms: null };
-  if (modelKind === 'short' && S.meta) {
+  // (nothing is asked for an hour the run has not made yet)
+  if (modelKind === 'short' && S.meta && t <= readyMinutes()) {
     const hour = Math.floor(t / 60);
     const [field, storms] = await Promise.all([
       isField() ? getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${productKey}`) : null,
@@ -220,7 +243,7 @@ async function render() {
     shown = { field: field ? { ...field, meta: product() } : null, storms: storms?.storms ?? null };
     // Have the next frames ready for playing.
     const ahead = t + stepMinutes();
-    if (ahead <= maxMinutes()) {
+    if (ahead <= Math.min(maxMinutes(), readyMinutes())) {
       if (isField()) getJson(`/api/models/short-range/field?init=${S.init}&hour=${Math.floor(ahead / 60)}&key=${productKey}`);
       else getJson(`/api/models/short-range/storms?init=${S.init}&minute=${ahead}`);
     }
@@ -588,4 +611,6 @@ fillProducts(); setTimeRange();
   if (ask.get('t')) setTime(Number(ask.get('t'))); else render();
   draw();
   setInterval(async () => { await loadRuns(); if (!base || !domain) await loadBase(); }, REFRESH_MS);
+  // (a run on show still being worked out is asked again often, for its new hours)
+  setInterval(() => { if (modelKind === 'short' && S.meta?.partial) loadRuns(); }, PARTIAL_REFRESH_MS);
 })();

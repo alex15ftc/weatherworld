@@ -18,6 +18,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Outlooks and model frames go out as they are ready (2026-11-17, owner's request, on `main`): forecast threads
+  stream parts back (`ForecastPool.run` `onProgress`). Each outlook of an issue is put out once its members have run
+  its day (`OutlookRuntime.publish`); with few threads (the host has one for outlooks) the Day-1-only members run
+  first, so Day 1 goes out first (local, 2 threads: Day 1 at 234 s, Day 2 249 s, Day 3 261 s). Short and long range runs
+  are listed from their start as `partial` with `readyHours`. The model pages keep their slider and have a button for
+  every step of the run (every hour on /models, every frame on /models/long-range and /models/large-scale); steps not
+  made yet are greyed and locked, and the slider stops at the last one made. Not changed: on the host the 06Z
+  short/long range runs wait behind the outlook members for the one thread (`WEATHER_FORECAST_WORKERS` 2).
+
 - Tornado icons on the mesoanalysis page (2026-11-17, on `main`, engine deployed with it): a storm with a tornado on
   the ground draws as an inverted triangle coloured by the EF rating of its wind now (`efColourOfMph` in
   `js/forecast/productColours.js`, the engine's thresholds and the damage tracks' colours; grey below EF0).

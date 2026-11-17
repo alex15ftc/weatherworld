@@ -19,6 +19,8 @@ import { sharedForecastPool, shareState } from './ForecastPool.js';
 // an issue less than OUTLOOK.leadHours before 12Z is for the day that starts then; and each issue
 // may raise the category for its day by at most one step from the last, within the caps for Days
 // 2 and 3, until the day is under way. The header above describes the earlier schedule.)
+// (2026-11-16: each outlook of an issue goes out as soon as its members have run its day, not when the
+// longest run ends: the members send their days as they close them, ForecastPool.run onProgress.)
 
 // Outlook issues whose runs are kept for the model page's ensemble products.
 const ENSEMBLES_KEPT = 4;
@@ -43,7 +45,8 @@ export class OutlookRuntime {
     for (const day of this.days) { const product = this.current(day, engine); if (product) products[day] = { slot: product.slot, outlook: product.outlook, public: product.public }; }
     const ensembles = this.ensembles.filter(e => e.engine === engine).map(({ engine: _, ...e }) => e);
     const bytes = v8.serialize({ version: 1, worldId: this.runtime.worldId, seed: engine.seed, products, history: [...this.history], ensembles });
-    fs.promises.mkdir(path.dirname(this.file), { recursive: true })
+    // (one write at a time: an issue saves after each outlook it puts out, and two writes of the .tmp must not cross)
+    this.saving = (this.saving ?? Promise.resolve()).then(() => fs.promises.mkdir(path.dirname(this.file), { recursive: true }))
       .then(() => fs.promises.writeFile(`${this.file}.tmp`, bytes))
       .then(() => fs.promises.rename(`${this.file}.tmp`, this.file))
       .catch(error => console.warn('[outlooks] not saved:', error.message));
@@ -90,7 +93,7 @@ export class OutlookRuntime {
     this.issue(due).catch(() => {});
     return true;
   }
-  key(engine, due) { return `${engine.seed}|${due.map(day => `${day}:${this.slot(day, engine.world.validHourUtc)}`).join(',')}`; }
+  key(engine, due, hourUtc = engine.world.validHourUtc) { return `${engine.seed}|${due.map(day => `${day}:${this.slot(day, hourUtc)}`).join(',')}`; }
 
   async issue(due = this.due()) {
     const engine = this.runtime.engine, key = this.key(engine, due), started = Date.now();
@@ -103,31 +106,31 @@ export class OutlookRuntime {
     const hours = hoursFor(0);
     // The copy is taken now, in one go, so every member starts from the same moment.
     const state = shareState(engine.saveState({ forecast: true }));
-    // Member 0 runs furthest and is asked for first, so the long runs are not left to the end.
-    const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('outlook', state, member, hoursFor(member), { options: { stormDays: stormDaysFor(member, this.members, lead), cheapRuns: this.cheapPerMember } })));
-    this.running = { key, due, issuedHourUtc, hours, startedAt: started };
+    // Each outlook is issued as soon as every member it takes has sent its day (2026-11-16, the owner's request:
+    // until then all of them waited for the longest run), so Day 1 goes out before Day 2 and Day 3 at an issue
+    // that has them all. got[m]: member m's days so far, and its cheap runs' ({ days, cheap: [days, ...] }).
+    const got = Array.from({ length: this.members }, () => ({ days: [], cheap: [] })), left = new Set(due);
+    const take = (m, { index, day, cheap }) => {
+      got[m].days[index] = day;
+      cheap.forEach((d, j) => { (got[m].cheap[j] ??= [])[index] = d ?? undefined; });
+      for (const outlookDay of [...left]) if (got.slice(0, count(outlookDay)).every(g => g.days[indexOf(outlookDay)])) { left.delete(outlookDay); this.publish(outlookDay, got, { engine, issuedHourUtc, dayEnd, index: indexOf(outlookDay), count: count(outlookDay) }); }
+    };
+    // (a run that did not stream, as a test's pool, sends its days at the end)
+    const whole = (m, member) => { if (!member || member.streamed) return; member.days.forEach((day, index) => take(m, { index, day, cheap: member.cheap.map(days => days[index] ?? null) })); };
+    // With threads for most of the members, member 0 runs furthest and is asked for first, so the long runs are
+    // not left to the end. With few (the host has one for outlooks: HOSTING.md), the members that run Day 1 alone
+    // go first, so Day 1 is out once the long members have run their Day 1 and Day 2 and 3 follow; long first
+    // there put Day 1 out last. (Which member runs when does not change what it finds: each has its own seed.)
+    const slots = Math.max(1, (this.pool.size ?? this.members) - (this.pool.reserve ?? 0)), order = Array.from({ length: this.members }, (_, member) => member);
+    if (slots * 2 <= this.members) order.sort((a, b) => hoursFor(a) - hoursFor(b) || b - a);
+    const run = Promise.all(order.map(member => this.pool.run('outlook', state, member, hoursFor(member), { options: { stormDays: stormDaysFor(member, this.members, lead), cheapRuns: this.cheapPerMember }, onProgress: part => take(member, part) }).then(result => whole(member, result))));
+    this.running = { key, due: [...due], issuedHourUtc, hours, startedAt: started };
     try {
-      const members = await run;
+      await run;
       // A world that was reset or replaced meanwhile makes these outlooks stale.
       if (this.runtime.engine === engine) {
-        const layer = countiesFor(engine.world), regions = layer ? inside => describeRegions(layer, countiesIn(layer, inside, { least: 0.5 })) : null;
-        for (const day of due) {
-          const index = indexOf(day), validFromHourUtc = index ? dayEnd + 24 * (index - 1) : issuedHourUtc, validToHourUtc = dayEnd + 24 * index;
-          // The caps: the lead's, and one step above the last issue for this day until the day is under way.
-          const lastOutlook = this.history.get(validToHourUtc) ?? null, last = lastOutlook?.highest, underWay = issuedHourUtc >= validToHourUtc - 24 + OUTLOOK.nowcastAfterHours;
-          const caps = [OUTLOOK.leadCaps[day], !underWay && last ? WORLD_RISK_ORDER[Math.min(WORLD_RISK_ORDER.length - 1, Math.max(WORLD_RISK_ORDER.indexOf('SLGT'), WORLD_RISK_ORDER.indexOf(last) + 1))] : null].filter(Boolean);
-          const maxCategory = caps.length ? caps.reduce((a, b) => (WORLD_RISK_ORDER.indexOf(a) <= WORLD_RISK_ORDER.indexOf(b) ? a : b)) : null;
-          // Each full run's day, and its cheap runs' days where they ran (the days with storms).
-          const runs = members.slice(0, count(day)).flatMap(member => [member.days[index], ...member.cheap.map(days => days[index]).filter(Boolean)]);
-          const outlook = combineOutlook(runs, { day, issuedHourUtc, validFromHourUtc, validToHourUtc, seed: engine.seed, maxCategory, regions, previous: lastOutlook, continuity: lastOutlook ? OUTLOOK.continuity[underWay ? 'underWay' : 'before'] : 0 });
-          this.history.set(validToHourUtc, outlook);
-          // (the live record of how the outlooks verify, OutlookScoreboard.js; it only reads the outlook)
-          try { this.onIssued?.(outlook); } catch (error) { console.warn('[outlooks] onIssued:', error.message); }
-          for (const ended of [...this.history.keys()]) if (ended <= issuedHourUtc) this.history.delete(ended);
-          this.products[day] = { slot: this.slot(day, issuedHourUtc), engine, outlook, public: publicOutlook(outlook) };
-        }
         // Every run's storm tracks, for the model page's ensemble products (the last ENSEMBLES_KEPT issues).
-        const sets = members.flatMap((member, m) => [{ member: m, cheap: null, days: member.days }, ...member.cheap.map((days, j) => ({ member: m, cheap: j, days }))]);
+        const sets = got.flatMap((member, m) => [{ member: m, cheap: null, days: member.days }, ...member.cheap.map((days, j) => ({ member: m, cheap: j, days }))]);
         this.ensembles = this.ensembles.filter(e => e.engine === engine && e.issuedHourUtc !== issuedHourUtc);
         this.ensembles.push({ engine, issuedHourUtc, hours, runs: sets.map(({ member, cheap, days }) => ({ member, cheap, track: days.filter(Boolean).flatMap(d => d.stormTrack ?? []) })) });
         while (this.ensembles.length > ENSEMBLES_KEPT) this.ensembles.shift();
@@ -137,11 +140,34 @@ export class OutlookRuntime {
       this.lastRunMs = Date.now() - started;
       return due.map(day => this.current(day, engine)?.outlook ?? null);
     } catch (error) {
-      this.lastError = String(error?.message ?? error); this.failedKey = key;
+      // (the outlooks already issued from this run stay; the key is of those that were not)
+      this.lastError = String(error?.message ?? error); this.failedKey = this.key(engine, due.filter(day => left.has(day)), issuedHourUtc);
       throw error;
     } finally {
       this.running = null;
     }
+  }
+
+  // One outlook of an issue, from the members' days for it (got: as issue() collects them).
+  publish(day, got, { engine, issuedHourUtc, dayEnd, index, count }) {
+    if (this.runtime.engine !== engine) return;
+    const layer = countiesFor(engine.world), regions = layer ? inside => describeRegions(layer, countiesIn(layer, inside, { least: 0.5 })) : null;
+    const validFromHourUtc = index ? dayEnd + 24 * (index - 1) : issuedHourUtc, validToHourUtc = dayEnd + 24 * index;
+    // The caps: the lead's, and one step above the last issue for this day until the day is under way.
+    const lastOutlook = this.history.get(validToHourUtc) ?? null, last = lastOutlook?.highest, underWay = issuedHourUtc >= validToHourUtc - 24 + OUTLOOK.nowcastAfterHours;
+    const caps = [OUTLOOK.leadCaps[day], !underWay && last ? WORLD_RISK_ORDER[Math.min(WORLD_RISK_ORDER.length - 1, Math.max(WORLD_RISK_ORDER.indexOf('SLGT'), WORLD_RISK_ORDER.indexOf(last) + 1))] : null].filter(Boolean);
+    const maxCategory = caps.length ? caps.reduce((a, b) => (WORLD_RISK_ORDER.indexOf(a) <= WORLD_RISK_ORDER.indexOf(b) ? a : b)) : null;
+    // Each full run's day, and its cheap runs' days where they ran (the days with storms).
+    const runs = got.slice(0, count).flatMap(member => [member.days[index], ...member.cheap.map(days => days?.[index]).filter(Boolean)]);
+    const outlook = combineOutlook(runs, { day, issuedHourUtc, validFromHourUtc, validToHourUtc, seed: engine.seed, maxCategory, regions, previous: lastOutlook, continuity: lastOutlook ? OUTLOOK.continuity[underWay ? 'underWay' : 'before'] : 0 });
+    this.history.set(validToHourUtc, outlook);
+    // (the live record of how the outlooks verify, OutlookScoreboard.js; it only reads the outlook)
+    try { this.onIssued?.(outlook); } catch (error) { console.warn('[outlooks] onIssued:', error.message); }
+    for (const ended of [...this.history.keys()]) if (ended <= issuedHourUtc) this.history.delete(ended);
+    this.products[day] = { slot: this.slot(day, issuedHourUtc), engine, outlook, public: publicOutlook(outlook) };
+    // (no longer running: the pages and the game show it as issued)
+    if (this.running) this.running.due = this.running.due.filter(d => d !== day);
+    this.save();
   }
 
   // The outlook runs as the model page's ensemble: the issues kept, and one issue's runs and their storms.

@@ -286,7 +286,11 @@ export function runOutlookMemberDays(state, member, hours, options = {}) { retur
 // with storms, and none after. (2026-10-28: tmp/ens tests, 8 seeds: 8 full runs + 24 cheap scored
 // like 32 full runs for severe weather and tornadoes, at about 15% more than the 8 alone; cheap runs
 // on air without the host's storms scored worse, so the host keeps its storms and its outflow.)
-export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity, cheapRuns = 0 } = {}) {
+// onProgress({ index, day, cheap }): when given, each outlook day is sent as soon as this member and its cheap
+// runs have closed it (cheap: each cheap run's day, or null past its storm days), so an outlook can be issued
+// once every member has its day, not when the longest run ends (2026-11-16, the owner's request); the set then
+// returns { days: [], cheap: [], streamed: true }.
+export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity, cheapRuns = 0, onProgress = null } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
   const places = placesFor?.(atmosphere.world) ?? null;
@@ -372,8 +376,11 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     };
   };
   const days = [];
-  let day = null;
+  let day = null, sent = 0;
+  // (the days closed since the last part, each with its cheap runs' days)
+  const send = () => { if (onProgress) for (; sent < days.length; sent++) onProgress({ index: sent, day: days[sent], cheap: layers.map(layer => layer.days[sent] ?? null) }); };
   for (let hour = 0; hour < hours - 1e-9; hour += OUTLOOK.stepHours) {
+    send();
     day ??= open();
     // The storms move as the live server moves them: in 5-minute ticks up to each atmosphere step, then the air takes
     // the step with the host's storms in it (AtmosphereWorld.advanceLikeServer; until 2026-11-05 advance(), which moved
@@ -425,6 +432,8 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       Object.assign(world, host);
     }
   }
+  send();
+  if (onProgress) return { days: [], cheap: [], streamed: true };
   return { days, cheap: layers.map(layer => layer.days) };
 
   // One step's storms (those in the world now) into a day's record.
