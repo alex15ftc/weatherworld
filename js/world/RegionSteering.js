@@ -27,7 +27,17 @@ export const STEERING_DEFAULTS = Object.freeze({
   // ...less where the outer model's air near the ground is drier than usual: none where it is
   // dryGkg below the mean (2026-10-16). Southerly flow under strong wind aloft right behind a
   // front has not yet brought the moisture back, and aiming there made dry, quiet days.
+  // (dryGkg is used only when moistRangeGkg is null.)
   dryGkg: 4,
+  // Moisture ramp (2026-11-17): the support scales with the outer model's moisture over the map about its mean,
+  // from none at moistRangeGkg[0] to all of it at [1], in place of the dry cut, which gave average and very moist
+  // air the same support. Over 80 days of the regression suite the map's moisture tracked tornado counts (rank
+  // 0.50) where the support did not (0.13), and lull days sat on the jet's cold, dry flank, which the dry cut
+  // scored well. With [-2, 4]: below Slight 13.8 to 6.3%, Enhanced 27.5 to 38.8%, Moderate 22.5 to 20%, High 3.8
+  // to 6.3%, runs of 2+ below Slight 5 to 0%; wind and hail report counts rose past tolerance (wind 90th 213 to
+  // 320, hail median 120 to 190; the owner accepted). warmRangeK does the same with warmth (null: off; with
+  // [-6, 6] as well, lulls a little fewer but the category mix no better).
+  moistRangeGkg: [-2, 4], warmRangeK: null,
   // The support wanted on a day is drawn evenly between these (the same for a given seed and day).
   // (0.35-0.8 until 2026-10-16. With the outer model's systems slowed and weakened, the support
   // reached is seldom above 0.35, so steering just took the most it could every day and the
@@ -145,18 +155,29 @@ export class RegionSteering {
   supportByColumn(model, northM = 0) {
     const regional = this.regional, p = this.params, { nx, d } = model;
     const span = Math.max(1, Math.round(regional.nx * regional.dx / d)), j0 = Math.floor((regional.origin.y + northM) / d);
-    const mid = new Float64Array(nx), south = new Float64Array(nx), wet = new Float64Array(nx);
-    // The mean moisture falls northward: a slide north is a move into drier air.
+    const mid = new Float64Array(nx), south = new Float64Array(nx), wet = new Float64Array(nx), warm = new Float64Array(nx);
+    // The mean moisture and warmth fall northward: a slide north is a move into drier, cooler air.
     const meanWet = -(model.params.surfaceMoistureGradientGkgPer1000Km ?? 0) * northM / 1e6;
+    const meanWarm = -(model.params.surfaceGradientKPer1000Km ?? 0) * northM / 1e6;
+    const ramp = (v, range) => clamp((v - range[0]) / (range[1] - range[0]), 0, 1);
     for (let i = 0; i < nx; i++) {
-      for (let dj = 0; dj < span; dj++) { const f = model.fieldsAt(i, j0 + dj); mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span; wet[i] += ((f.surfaceMoistureGkg ?? 0) + meanWet) / span; }
+      for (let dj = 0; dj < span; dj++) {
+        const f = model.fieldsAt(i, j0 + dj);
+        mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span;
+        wet[i] += ((f.surfaceMoistureGkg ?? 0) + meanWet) / span; warm[i] += ((f.surfaceThetaK ?? 0) + meanWarm) / span;
+      }
     }
     const support = new Float64Array(nx);
     for (let i = 0; i < nx; i++) {
-      let m = 0, s = 0, q = 0;
-      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; q += wet[(i + di) % nx] / span; }
+      let m = 0, s = 0, q = 0, t = 0;
+      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; q += wet[(i + di) % nx] / span; t += warm[(i + di) % nx] / span; }
       support[i] = Math.min(m, p.windCapKt) / p.windCapKt * clamp(s, -p.southerlyCapKt, p.southerlyCapKt) / p.southerlyCapKt;
-      if (support[i] > 0) support[i] *= clamp(1 + q / p.dryGkg, 0, 1);
+      if (support[i] > 0) {
+        // With moistRangeGkg, the air's moisture about its mean rises smoothly from none at the range's low end to all
+        // the support at its high end (in place of the dry cut); with warmRangeK, its warmth the same way.
+        support[i] *= p.moistRangeGkg ? ramp(q, p.moistRangeGkg) : clamp(1 + q / p.dryGkg, 0, 1);
+        if (p.warmRangeK) support[i] *= ramp(t, p.warmRangeK);
+      }
     }
     return support;
   }

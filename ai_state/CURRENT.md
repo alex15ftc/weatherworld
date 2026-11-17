@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-15
+Updated: 2026-11-17
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -49,6 +49,17 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   twice the verified area; at 0.65 its contours verify at their values. Day 1 right 62.5%, High 6% forecast and verified,
   Moderate 11% against 22.5% (hail-hatch Moderates). Archive for re-scoring: `data/outlook-archive/2026-11-16-40ce207`.
   Open, owner: raise the hail 2 in hatch bar 0.35 -> 0.50 (verified Moderate 23% -> ~14%), then refit the forecast hatches.
+- Steering moisture ramp (2026-11-17, owner's choice, on `main`): `RegionSteering.supportByColumn` scales the
+  warm-sector support by the outer model's moisture over the map about its mean, from none at -2 g/kg to all of it at
+  +4 (`moistRangeGkg`), in place of the dry cut (`dryGkg`, full support at average air or wetter). Why: the map's
+  moisture tracked tornado counts (rank 0.50 over 80 suite days) where the support did not (0.13); lull days sat on
+  the jet's cold, dry flank, which the dry cut scored well. Suite (8 seeds x 10 days): below Slight 13.8 to 6.3%,
+  Enhanced 27.5 to 38.8%, Moderate 22.5 to 20%, High 3.8 to 6.3%, runs of 2+ below Slight 5 to 0%; tornadoes a day
+  15.3 to 17.8. Regressions accepted by the owner: wind reports a day 90th 213 to 320, hail median 120 to 190.
+  Forecast check (seeds 41-50): Day 1 right 60 to 43% (within one 97 to 100%), Day 2 40 to 35%, Day 3 20 to 40%;
+  calibrated Brier skill tornado up (Day 1 19 to 22), in-sample recalibration gains 0-1 point: no refit made (the
+  Day 1 drop is past the 15-point rule; the owner's call). Next: screen and suite `moistRangeGkg` [-3, 3].
+  Rejected: `lookAheadDays` 2 (lull runs 3.1 to 6.3% in a 160-day screen); `warmRangeK` (no gain over moisture alone).
 - Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
   warm-sector day's slide also by the best the next day can reach (`lookAheadDays` 1) and gives up 0.15 support a
   1000 km the slide leaves the map from its home latitude, where the jet's core is (`homePull`). Why: the live world
