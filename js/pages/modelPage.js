@@ -57,6 +57,10 @@ const ENSEMBLE_PRODUCTS = [
   { key: 'torProb', group: 'Ensemble', label: 'Chance of a tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
   { key: 'sigTorProb', group: 'Ensemble', label: 'Chance of an EF2+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
   { key: 'violentTorProb', group: 'Ensemble', label: 'Chance of an EF4+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
+  // Each full run's highest violent tornado parameter over the storm day shown (12Z to 12Z; the cheap runs share their
+  // host's air), within 25 miles. (2026-11-17)
+  { key: 'vtpProb2', group: 'Ensemble', label: 'Chance of VTP 2+ within 25 mi, storm day shown', step: 30, table: PROB, unit: '%', vtpLeast: 2 },
+  { key: 'vtpProb4', group: 'Ensemble', label: 'Chance of VTP 4+ within 25 mi, storm day shown', step: 30, table: PROB, unit: '%', vtpLeast: 4 },
   { key: 'spaghetti', group: 'Ensemble', label: `Every run's UH ${UH_TRACK}+ tracks, run total`, step: 30 },
   { key: 'torSpaghetti', group: 'Ensemble', label: "Every run's tornado tracks by rating, run total", step: 30, unit: 'EF' }
 ];
@@ -168,7 +172,9 @@ async function openEnsemble(issued) {
     const storms = new Map();
     for (const [h, id, x, y, dbz, uh, tor] of run.track) { if (!storms.has(id)) storms.set(id, []); storms.get(id).push({ h, x, y, dbz, uh, tor }); }
     for (const list of storms.values()) list.sort((a, b) => a.h - b.h);
-    return { full: run.cheap === null, storms };
+    // (a full run's storm days' highest VTP: base64 bytes of VTP x vtpScale per cell, row by row)
+    const vtp = run.vtp?.map(d => ({ from: d.fromHourUtc, to: d.toHourUtc, max: Uint8Array.from(atob(d.max), c => c.charCodeAt(0)) })) ?? null;
+    return { full: run.cheap === null, storms, vtp };
   });
   $('runSelect').value = String(issued);
   fillProducts(); setTimeRange(); render();
@@ -176,7 +182,7 @@ async function openEnsemble(issued) {
 
 // --- Controls.
 function fillProducts() {
-  const list = modelKind === 'short' ? shortProducts() : ENSEMBLE_PRODUCTS;
+  const list = modelKind === 'short' ? shortProducts() : ENSEMBLE_PRODUCTS.filter(q => !q.vtpLeast || E.byRun?.some(run => run.vtp));
   if (!list.some(p => p.key === productKey)) productKey = list[0].key;
   let html = '', group = null;
   for (const p of list) {
@@ -541,11 +547,22 @@ function drawEnsemble() {
     ctx.restore();
   } else {
     const span = productKey === 'uhProb4' ? [hourNow - 4, hourNow] : [E.data.issuedHourUtc - 1, hourNow];
+    const vtpLeast = product()?.vtpLeast;
+    if (vtpLeast) { drawRaster(vtpProbRaster(`${E.issued}:${productKey}:${t}`, hourNow, vtpLeast), 0.85); drawTowns(); return; }
     const test = TOR_TESTS[productKey] ?? (p => p.uh >= UH_TRACK);
     drawRaster(probRaster(`${E.issued}:${productKey}:${t}`, span, test), 0.85);
     if (productKey === 'torProb') drawRaster(hatchRaster(`${E.issued}:${t}`, probRaster(`${E.issued}:sigTorProb:${t}`, span, TOR_TESTS.sigTorProb), SIG_HATCH));
   }
   drawTowns();
+}
+
+// The share of full runs whose highest VTP over the storm day holding hourUtc reaches `least` within 25 miles.
+function vtpProbRaster(id, hourUtc, least) {
+  const runs = E.byRun.filter(run => run.vtp), { columns, cellKm } = domain, at = Math.round(least * (E.data.vtpScale ?? 10));
+  return probRaster(id, [0, 0], null, { runs, marksOf: (run, mark) => {
+    const day = run.vtp.find(d => hourUtc > d.from && hourUtc <= d.to) ?? (hourUtc <= run.vtp[0].from ? run.vtp[0] : null);
+    if (day) for (let k = 0; k < day.max.length; k++) if (day.max[k] >= at) mark((k % columns + 0.5) * cellKm, (Math.floor(k / columns) + 0.5) * cellKm);
+  } });
 }
 
 // Black hatching where a chance raster's share reaches `least` (%), read smoothly between its cells as the shading is.
@@ -569,13 +586,14 @@ function hatchRaster(id, prob, least) {
 
 // The share of runs with the event within 25 miles of each place, on a grid of about 8 km, softened a little.
 const PROB_CELLS = 100;
-function probRaster(id, [from, to], test) {
+function probRaster(id, [from, to], test, { runs = E.byRun, marksOf = null } = {}) {
   const key = `prob:${id}`;
   if (rasters.has(key)) return rasters.get(key);
   const n = PROB_CELLS, cellKm = domain.widthKm / n, reach = Math.ceil(NEAR_KM / cellKm), sum = new Float32Array(n * n), hit = new Uint8Array(n * n);
   const mark = (x, y) => { const ci = Math.floor(x / cellKm), cj = Math.floor(y / cellKm); for (let j = Math.max(0, cj - reach); j <= Math.min(n - 1, cj + reach); j++) for (let i = Math.max(0, ci - reach); i <= Math.min(n - 1, ci + reach); i++) if (Math.hypot((i + 0.5) * cellKm - x, (j + 0.5) * cellKm - y) <= NEAR_KM) hit[j * n + i] = 1; };
-  for (const run of E.byRun) {
+  for (const run of runs) {
     hit.fill(0);
+    if (marksOf) { marksOf(run, mark); for (let i = 0; i < hit.length; i++) sum[i] += hit[i]; continue; }
     for (const points of run.storms.values()) for (let i = 0; i < points.length; i++) {
       const b = points[i];
       if (b.h <= from || b.h > to || !test(b)) continue;
@@ -586,7 +604,7 @@ function probRaster(id, [from, to], test) {
     for (let i = 0; i < hit.length; i++) sum[i] += hit[i];
   }
   const share = new Float32Array(n * n);
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { let s = 0, w = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= n || ii >= n) continue; const k = di || dj ? 1 : 2; s += sum[jj * n + ii] * k; w += k; } share[j * n + i] = 100 * s / w / E.byRun.length; }
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { let s = 0, w = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= n || ii >= n) continue; const k = di || dj ? 1 : 2; s += sum[jj * n + ii] * k; w += k; } share[j * n + i] = 100 * s / w / Math.max(1, runs.length); }
   // Drawn four times finer, each pixel read smoothly between the cell centres, so the bands have no steps.
   const up = 4, m = n * up, image = document.createElement('canvas'); image.width = image.height = m;
   const g = image.getContext('2d'), data = g.createImageData(m, m), lut = PROB.map(([at, c]) => [at, rgb(c)]);
@@ -596,7 +614,7 @@ function probRaster(id, [from, to], test) {
     let c = null; for (const [at, col] of lut) if (v >= at) c = col;
     if (c) data.data.set([c[0], c[1], c[2], 205], (py * m + qx) * 4);
   }
-  g.putImageData(data, 0, 0); image.share = share; image.n = n; image.cellKm = cellKm;
+  g.putImageData(data, 0, 0); image.share = share; image.n = n; image.cellKm = cellKm; image.runs = runs.length;
   keepRaster(key, image);
   return image;
 }
@@ -643,7 +661,7 @@ canvas.addEventListener('mousemove', event => {
     if (near) lines.push(`<b>${near.id}</b> · ${near.mode ?? 'storm'} · ${near.dbz} dBZ · UH ${near.uh}${near.hailIn >= 0.75 ? ` · hail ${near.hailIn.toFixed(2)} in` : ''}${near.tornado ? ` · <b style="color:#ff6b6b">tornado</b> ${near.tornado.mph} mph` : ''}`);
   } else if (!['paint', 'spaghetti', 'torSpaghetti'].includes(productKey)) {
     const image = rasters.get(`prob:${E.issued}:${productKey}:${t}`);
-    if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${E.byRun.length} runs`);
+    if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${image.runs ?? E.byRun.length}${product()?.vtpLeast ? ' full' : ''} runs`);
   }
   if (modelKind !== 'short' && (productKey in TOR_TESTS || productKey === 'torSpaghetti')) {
     const split = strongestNear(x, y);

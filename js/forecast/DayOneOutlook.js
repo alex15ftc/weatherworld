@@ -318,6 +318,9 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     expected: ingredients ? null : (grids => { addOngoingTornadoes(world, grids); return grids; })(expectedTornadoGrids(n)),
     // (a storm day's highest significant hail and wind composites at each cell; cheap runs share their host's air and take none)
     environment: ingredients || cheap !== null ? null : { hail: new Float32Array(n), wind: new Float32Array(n) },
+    // (and its highest violent tornado parameter at each cell, x10 in a byte, for the model page's ensemble VTP chances;
+    // 2026-11-17. Display only: no outlook reads it.)
+    vtp: ingredients || cheap !== null ? null : new Uint8Array(n),
     frames: [], seen: new Set(), initiations: [], startHour: world.validHourUtc, before: total(),
     // (supercell, line, other: the storm steps of each mode at each hour, for the discussion's storm mode; 2026-11-14)
     byHour: { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0), supercell: new Array(24).fill(0), line: new Array(24).fill(0), other: new Array(24).fill(0) }, steps: 0, stormy: new Uint8Array(n),
@@ -366,6 +369,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       // The category the run's own day reached, judged as a day is verified.
       dayCategory: truth.worldRisk.reduce((best, c) => (rank(c) > rank(best) ? c : best), 'NONE'),
       ...(day.environment ? { environmentSignal: day.environment } : {}),
+      ...(day.vtp ? { vtpMax: day.vtp } : {}),
       chance, reports, thunder: truth.storm, storms: day.seen.size,
       // The tornadoes the run's storms were expected to put down, per cell, and their sum (I2, 2026-11-05).
       expected: day.expected, expectedTornadoes: day.expected.tornado.reduce((a, v) => a + v, 0),
@@ -398,7 +402,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       Object.assign(world, host);
     }
     atmosphere.advanceLikeServer(OUTLOOK.stepHours, { onTick: hours => addExpectedTornadoes(world, day.expected, hours) });
-    if (day.environment) { const { hail, wind } = day.environment; world.forEachCell((cell, x, y) => { const k = y * world.width + x; hail[k] = Math.max(hail[k], significantHailParameter(cell)); wind[k] = Math.max(wind[k], derechoCompositeParameter(cell)); }); }
+    if (day.environment) { const { hail, wind } = day.environment, vtp = day.vtp; world.forEachCell((cell, x, y) => { const k = y * world.width + x; hail[k] = Math.max(hail[k], significantHailParameter(cell)); wind[k] = Math.max(wind[k], derechoCompositeParameter(cell)); if (vtp) vtp[k] = Math.max(vtp[k], Math.min(255, Math.round(10 * (cell.derived?.vtp ?? 0)))); }); }
     if (day.ingredients) {
       const dt = OUTLOOK.stepHours, { starts, severe, significant, intense } = day.ingredients, utcNow = Math.floor(((world.validHourUtc % 24) + 24) % 24);
       world.forEachCell((cell, x, y) => {

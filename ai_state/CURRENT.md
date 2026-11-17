@@ -30,7 +30,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   browser on live data): /models short range "VTP + UH > 75 tracks, 1 h" and a low-level instability field (3CAPE x 0-3 km
   lapse rate, made in the page from two run fields); EF2+ 10% hatching on the ensemble tornado chance; VTP and its two terms
   in the sounding panel; short-range tornado tracks drawn in their EF colours (they all drew black: the rating is 'EF2' text).
-  VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5).
+  VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5). Ensemble VTP chances (step 2, same day): each
+  full outlook member keeps its storm day's highest VTP per cell (DayOneOutlook vtpMax, x10 in a byte; ~60 KB an issue saved),
+  shown on /models as "Chance of VTP 2+ / 4+ within 25 mi, storm day shown" from the 8 full runs (test: tests/ensemble-vtp.mjs).
 - Outlooks and model frames go out as they are ready (2026-11-17, owner's request, `92ba267` on `main`; engine deployed from it, the world carried over; live 19Z short range run seen streaming): forecast threads
   stream parts back (`ForecastPool.run` `onProgress`). Each outlook of an issue is put out once its members have run
   its day (`OutlookRuntime.publish`); with few threads (the host has one for outlooks) the Day-1-only members run
@@ -482,9 +484,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-00a. VTP and tornado strength (owner's order, 2026-11-17; step 1, the page-only products, is done): step 2, ensemble VTP
-   chances from a per-member running-max VTP grid (~2.5 KB a member; first check the cheap members compute VTP at all).
-   Then, before step 3, check why VTP runs high (about 9 live; is it the moist warm-sector bias, STP's own range, or the
+00a. VTP and tornado strength (owner's order, 2026-11-17; steps 1 and 2, page products and ensemble VTP chances, done).
+   Now, before step 3, check why VTP runs high (about 9 live; is it the moist warm-sector bias, STP's own range, or the
    3CAPE term?). Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
    tornadoes (ask first: long run). Step 4, PDS wording and EF2+ hatching in the Day 1 outlook, only after step 3.
 00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite
