@@ -18,7 +18,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Public 06Z upper-air soundings (2026-11-16, on `main`): 11 of the surface
+- Public 06Z upper-air soundings (2026-11-17, `68e1f2e` on `main`, engine deployed from it, the world carried over;
+  no release yet at deploy, the live world was at 11Z): 11 of the surface
   stations, at least 200 km apart (`UPPER_AIR` in `server/UpperAirRuntime.js`; real sites are 300-500 km apart, which
   would leave 5), take a sounding on the first atmosphere step at or after 06Z. The runtime calls a new
   `afterAtmosphereStep` hook after every step, so a catch-up turn of several steps does not miss it. The newest two
