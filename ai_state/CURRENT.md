@@ -18,6 +18,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- /chasers fixes (2026-11-17, owner's request): the page now reads the admin key from the top bar's sign-in
+  (`js/site.js` `adminKey`, localStorage; it read sessionStorage, so signed-in admins saw the public view), and the
+  day loop draws a track only for the selected chaser (click a dot, or a row in the admin list). Seen in the local
+  site preview; the admin view with the real key not seen yet.
 - VTP and tornado strength in the ensemble (2026-11-17, owner's request; `6c87669` on `main`, engine deployed from it, the world carried over): VTP is now SPC's (STP x 3CAPE/50 capped at 2 x
   0-3 km lapse rate/6.5; Hampshire et al. 2018 JOM), replacing an invented 0-5 blend; display only (no storm code reads it).
   Mesoanalysis and /models gain VTP and 0-3 km CAPE fields (seed 2, Day 2 21Z, STP>=1 cells: STP p50 3.0, VTP 4.0, 3CAPE 59).
