@@ -30,7 +30,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   browser on live data): /models short range "VTP + UH > 75 tracks, 1 h" and a low-level instability field (3CAPE x 0-3 km
   lapse rate, made in the page from two run fields); EF2+ 10% hatching on the ensemble tornado chance; VTP and its two terms
   in the sounding panel; short-range tornado tracks drawn in their EF colours (they all drew black: the rating is 'EF2' text).
-  VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5). Ensemble VTP chances (step 2, same day): each
+  VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5). Ensemble VTP chances (step 2, same day; `54ce88f`, engine deployed from it): each
   full outlook member keeps its storm day's highest VTP per cell (DayOneOutlook vtpMax, x10 in a byte; ~60 KB an issue saved),
   shown on /models as "Chance of VTP 2+ / 4+ within 25 mi, storm day shown" from the 8 full runs (test: tests/ensemble-vtp.mjs).
 - Outlooks and model frames go out as they are ready (2026-11-17, owner's request, `92ba267` on `main`; engine deployed from it, the world carried over; live 19Z short range run seen streaming): forecast threads
