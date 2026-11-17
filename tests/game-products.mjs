@@ -232,7 +232,7 @@ assert.equal(JSON.parse(withAll.product('mesoscale').text).watches[0].number, 7)
   if (surveyMap(Number(process.env.WORLD_MAP_SEED ?? 1))) {
     assert.ok(['EF2', 'EF3'].includes(survey.rating) && survey.ef === Number(survey.rating.slice(2)), `rated EF2-EF3 (got ${survey.rating})`);
     assert.ok(survey.contours.length >= 3 && survey.contours.every(c => c.rings.every(ring => ring.length >= 6 && ring.every(Number.isFinite))));
-    assert.ok(survey.points.length > 20 && survey.points.every(p => p.length === 7 && typeof p[2] === 'string'), 'damage points as [x, y, di, dod, mph, ef, hour]');
+    assert.ok(survey.points.length > 20 && survey.points.every(p => p.length === 8 && typeof p[2] === 'string' && (p[7] === 0 || p[7] === 1)), 'damage points as [x, y, di, dod, mph, ef, hour, real]');
     assert.ok(survey.track.length >= 4 && /Rating:\s+EF/.test(survey.text));
   } else console.log('game-products: world map not built (node scripts/build-world-map.mjs): the survey\'s damage checks skipped');
   day = JSON.parse(games.product('reports.day.1').text);

@@ -968,6 +968,21 @@ function ChunkGen.build(cx: number, cz: number): Chunk
 	}
 end
 
+-- The buildings of a chunk's props (Buildings.take, once: the props hand them over), numbered as
+-- the chunk's models are (n), with their damage indicator, frame at their base and size (width,
+-- height, depth) in the place's studs, and the run of props they are made of.
+export type Structure = { n: number, di: string, frame: CFrame, size: Vector3, first: number, last: number }
+function ChunkGen.structures(props: Builder.Props): { Structure }
+	local out = {}
+	for n, s in Buildings.take(props) do
+		table.insert(out, {
+			n = n, di = s.di, frame = s.frame.Rotation + s.frame.Position * WORLD, size = Vector3.new(s.w, s.h, s.d) * WORLD,
+			first = s.first, last = s.last,
+		})
+	end
+	return out
+end
+
 local CLASSES = { Block = "Part", Ball = "Part", Cylinder = "Part", Wedge = "WedgePart", CornerWedge = "CornerWedgePart" }
 
 -- Creates a chunk's props (serial phase only) in a model under parent. With budgetMs, the parts
@@ -984,6 +999,25 @@ function ChunkGen.place(props: Builder.Props, parent: Instance, name: string, bu
 	local budget = if budgetMs then budgetMs / 1000 else math.huge
 	local sliceStart = os.clock()
 	local spent = 0
+	-- The chunk's buildings (ChunkGen.structures), each a model "B<n>" of its own parts (attribute
+	-- Role on each), with its damage indicator ("DI"), frame ("Frame", at its base) and size
+	-- ("Size": width, height, depth), for the tornado damage (BuildingDamageService).
+	local owner: { [number]: Model } = {}
+	local structures: { Model } = {}
+	for _, s in ChunkGen.structures(props) do
+		local m = Instance.new("Model")
+		m.Name = "B" .. s.n
+		m:SetAttribute("DI", s.di)
+		m:SetAttribute("Frame", s.frame)
+		m:SetAttribute("Size", s.size)
+		m.WorldPivot = s.frame
+		for k = s.first, s.last do
+			if props[k] and props[k].role then
+				owner[k] = m
+			end
+		end
+		structures[s.n] = m
+	end
 	for i, p in props do
 		if i % 32 == 0 and os.clock() - sliceStart > budget then
 			spent += os.clock() - sliceStart
@@ -1020,7 +1054,16 @@ function ChunkGen.place(props: Builder.Props, parent: Instance, name: string, bu
 			mesh.MeshType = Enum.MeshType.Sphere
 			mesh.Parent = part
 		end
-		part.Parent = model
+		local building = owner[i]
+		if building then
+			part:SetAttribute("Role", p.role)
+			part.Parent = building
+		else
+			part.Parent = model
+		end
+	end
+	for _, m in structures do
+		m.Parent = model
 	end
 	-- the chunk's trees, for the skinned trees (Shared/Foliage/Records)
 	local trees = Trees.take(props)

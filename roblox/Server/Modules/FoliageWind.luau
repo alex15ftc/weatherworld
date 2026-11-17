@@ -127,6 +127,36 @@ local function frameWind(s: any, kx: number, ky: number): (number?, number?, num
 	return u, v, 0, 0
 end
 
+-- Where tornadoes are (studs) and how far their damaging winds can reach (studs): the places
+-- the damage services (FoliageService, BuildingDamageService) look closely at.
+function FoliageWind.hotspots(): { { x: number, z: number, reach: number } }
+	local out = {}
+	local st = host and host.state
+	local c = st and st.centreKm
+	local function add(kx: number, ky: number, reachM: number)
+		local sx, sz = WorldMap.worldStudsAt(kx / Config.KM_PER_MILE, ky / Config.KM_PER_MILE)
+		local studsPerM = Config.STUDS_PER_MILE / (Config.KM_PER_MILE * 1000)
+		table.insert(out, { x = sx, z = sz, reach = reachM * studsPerM + Config.CHUNK_WORLD_STUDS })
+	end
+	if st and st.world and c then
+		for _, t in st.world.tornadoes or {} do
+			if not t.ended and t.x and t.y then
+				add(c.x + t.x / 1000, c.y - t.y / 1000, 3000)
+			end
+		end
+	end
+	if live then
+		for _, s in live.stormsNow() do
+			local t = s.frame.tornado
+			if t and t.mph > 0 then
+				local f = s.frame
+				add(s.xKm + (t.x - f.anchorX) / 1000, s.yKm - (t.y - f.anchorY) / 1000, math.max(12 * t.R, 1500))
+			end
+		end
+	end
+	return out
+end
+
 function FoliageWind.gustAt(xStuds: number, zStuds: number): (number, number, number)
 	local lx, ly, kx, ky = toLab(xStuds, zStuds)
 	local u, v = 0, 0 -- the 3-s gust, east and north

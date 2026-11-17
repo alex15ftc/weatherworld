@@ -347,7 +347,8 @@ export function gameReportDay(entry, surveys, { world = null, final = false } = 
 }
 
 // One tornado's damage survey: the EF contours of its swath (rings in map miles), its damage
-// points [x, y, indicator, degree of damage, estimated mph, EF, hour] (survey.indicators words
+// points [x, y, indicator, degree of damage, estimated mph, EF, hour, real] (real 1: a building in
+// the game, as it was left; 0: an estimate where no server had loaded the ground) (survey.indicators words
 // them), and its summary.
 export function gameSurvey(s, { world = null } = {}) {
   const { decimals, toleranceMiles } = GAME_PRODUCTS.survey;
@@ -357,7 +358,9 @@ export function gameSurvey(s, { world = null } = {}) {
     startHourUtc: s.startHourUtc, endHourUtc: s.endHourUtc,
     track: flatLine(s.centreline, toleranceMiles, decimals),
     contours: s.contours.map(c => ({ ef: c.ef, rings: flatRings(c.polygons, 1, { decimals, toleranceMiles }) })).filter(c => c.rings.length),
-    points: s.points.map(p => [round(p.x, decimals), round(p.y, decimals), p.di, p.dod, p.estimatedMph, p.ef, round(p.hourUtc, 3)]),
+    points: s.points.map(p => [round(p.x, decimals), round(p.y, decimals), p.di, p.dod, p.estimatedMph, p.ef, round(p.hourUtc, 3), p.real ? 1 : 0]),
+    // (how much of the swath the game's own buildings stand for: damageSurvey real)
+    real: s.real ?? { points: 0, coveredShare: 0 },
     title: surveyTitle(s), text: surveySummary(s)
   };
 }

@@ -18,6 +18,32 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Building tornado damage (2026-11-17, owner's request; branch `building-damage`, merged to `main`; not deployed, place not published): houses
+  and farm buildings are recorded by the generator (`Buildings.take`; `ChunkGen.place` groups each into a model `B<n>`
+  with `DI`, `Frame`, `Size` and a `Role` on each part). `BuildingDamageService` loads those near a tornado with the
+  shared gust (`FoliageWind.gustAt`, `FoliageWind.hotspots`) through the lab's EF components (`Sim/Damage`, seeded per
+  building, game-second steps at the 8x clock) and shows each failed degree (`Modules/StructureDamage`: parts of its
+  group changed, seeded debris downwind, flown in when seen live). Records `(building, degree, wind byte)` are kept
+  like the trees': DataStore `BuildingDamage1` by region, union merge (worst damage stands), MessagingService.
+  Commercial buildings too: the EF tables' DIs 5-18, 21, 22 and 26 (TTU 2006 Appendix A, same rows in `Sim/Damage`
+  and `js/reports/damageIndicators.js`, checked by `tests/building-damage-survey.mjs`): storefronts SRB/LRB, strip
+  malls SM, malls LSM, big boxes LIRB, offices LRB/MRB/HRB, apartments ACT/MAM, motels M, schools ES/JHSH, campuses
+  IB, canopies SSC, warehouses and hangars MBS, the NWS office SPB, with group looks (curtain wall, panels, deform,
+  drop...). Surveys from real buildings: servers with LiveStorms on POST what broke and the chunks they looked at
+  near a tornado (`/api/game/v1/damage/report`, `server/BuildingDamage.js`, saved as `building-damage.json` beside
+  the world); `surveyTornado(..., real)` uses the game's buildings where covered and draws only elsewhere
+  (`survey.real`: points and covered share). Unseen ground: a lifted tornado is leased as a job
+  (`/api/game/v1/damage/jobs`) to one server, which plans those chunks' buildings without building them
+  (`ChunkService.plan`, worker message "Plan", `ChunkGen.structures`), runs the survey's wind profile past each
+  (`Modules/SurveyReplay`, same seeds and EF components), reports and keeps the damage. Records to other servers
+  go through one queue (`Modules/DamageMessages.pack`: one message of at most 900 bytes every 2 s, many chunks a
+  message); records another server saw happen live fly their debris in, stored and surveyed ones just appear.
+  The survey product's points carry a real flag (8th field); the M map's damage layer rings real buildings in
+  white and says "estimated" for the rest. Offline checks: `lune run tools/worldmap/test-building-damage.luau
+  <rojo build>` (every indicator met and walked through its degrees, the replay, the message packing) and `node
+  tests/building-damage-survey.mjs` (both pass; the Lune test also checks every building has a roof left for its
+  roof-structure degree: warehouses and big boxes have a roof part of their own, the penthouse look takes only
+  what stands on the roof).
 - /chasers fixes (2026-11-17, owner's request; `3c91512` on `main`, engine deployed from it): the page now reads the admin key from the top bar's sign-in
   (`js/site.js` `adminKey`, localStorage; it read sessionStorage, so signed-in admins saw the public view), and the
   day loop draws a track only for the selected chaser (click a dot, or a row in the admin list). Seen in the local
@@ -488,6 +514,13 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+000. Building damage (on `main`, not deployed or published). Seen in Studio 2026-11-17: in a play test the live server builds chunks with
+   their `B<n>` building models (DI, Frame, Size); in edit mode every indicator's degrees were laid out side by
+   side from real generated buildings and look right from several angles (fixed there: a stepped tower's upper
+   tiers vanished at the window degree, leaving floor plates in the air: a glass volume two floors and more is
+   now a curtain wall). Not yet seen: a live tornado over a town (none can be forced; the play test's lab window
+   answered 401 in Studio), the debris flight, two servers sharing damage, a survey job; and the server cost (Profiler "BuildingDamage"); with the engine deployed, a lifted tornado's survey job running on
+   a server (warnings "[BuildingDamage]") and its survey's real points (ReportsRuntime.survey `real`; the game's `survey.<id>` product).
 000. Railway usage (2026-11-17, merged, NOT deployed yet): the engine averaged 0.52 vCPU and 1.5 GB (memory the larger
    cost). Railway variable `WEATHER_FORECAST_WARM=0` is staged (skip-deploys) and goes live with the next deploy of any
    commit; the long range model keeps only its newest run; the replays' tornado radar scans only the box's radials

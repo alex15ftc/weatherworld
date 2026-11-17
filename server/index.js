@@ -21,6 +21,7 @@ import { GameProducts } from './GameProducts.js';
 import { OUTLOOK_DAYS, OUTLOOK_HAZARDS, outlookSvg, outlookIndex } from './OutlookPublic.js';
 import { ProductArchive } from './ProductArchive.js';
 import { ChaserArchive, roleOf, isAdmin } from './ChaserArchive.js';
+import { BuildingDamageArchive } from './BuildingDamage.js';
 import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
 import { sitePage, renderPage, NOT_FOUND_PAGE, CONTENT_TYPES } from './SitePages.js';
@@ -100,6 +101,12 @@ const archive = new ProductArchive({ runtime, products: gameProducts, layer: () 
 const worldHourNow = () => (runtime.clockLock && runtime.clockOffset != null ? runtime.clockOffset + Date.now() * 8 / 3600000 : Number(runtime.engine?.world?.validHourUtc));
 const chasers = new ChaserArchive({ runtime, hourNow: worldHourNow, milesPerKm: () => (runtime.engine?.world ? placesFor(runtime.engine.world).milesPerKm : 0.621371), file: statePath ? path.join(path.dirname(statePath), 'chasers.bin') : null });
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => chasers.save(true));
+// The game's real building damage (BuildingDamage.js), for the damage surveys: what broke and the
+// ground the game looked at; jobs for the ground nobody had loaded.
+const buildingDamage = new BuildingDamageArchive({ hourNow: worldHourNow, worldId: () => runtime.worldId ?? null, file: statePath ? path.join(path.dirname(statePath), 'building-damage.json') : null });
+reports.buildingDamage = buildingDamage;
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => buildingDamage.save(true));
+const surveyMilesPerKm = () => (runtime.engine?.world ? placesFor(runtime.engine.world).milesPerKm : 0.621371);
 // Both share the forecast pool's threads (WEATHER_FORECAST_WORKERS). The mesoscale look is
 // asked for first: its runs are short and go ahead of an outlook's.
 // Each day's replay: its mesoanalysis, large-scale charts, warnings and tornado radar (ReplayArchive.js), let go
@@ -208,6 +215,9 @@ async function serveApi(url, req, res) {
   // are (POST { server, players: [[xKm, yKm], ...] }, map km, y south) and fetches the frames newer
   // than it holds (?have=id:seq,... &parts=full,near,far: a binary bundle).
   if (url.pathname === '/api/game/v1/storm/players' && req.method === 'POST') { const body = await readJsonBody(req); try { chasers.report(body.server, body.players); } catch (error) { console.warn('[chasers]', error.message); } return sendJson(req, res, 200, runtime.stormWorkers?.reportPlayers(body.server, body.players) ?? { detailed: [], off: true }, { cacheable: false, trace }); }
+  // The game's real building damage (BuildingDamage.js): what broke, and the jobs for unseen ground.
+  if (url.pathname === '/api/game/v1/damage/report' && req.method === 'POST') { const body = await readJsonBody(req); let taken = { events: 0, covered: 0 }; try { taken = buildingDamage.report(body.server, body); } catch (error) { console.warn('[building-damage]', error.message); } return sendJson(req, res, 200, taken, { cacheable: false, trace }); }
+  if (url.pathname === '/api/game/v1/damage/jobs') return sendJson(req, res, 200, { job: buildingDamage.job(url.searchParams.get('server'), reports.surveyCandidates(), surveyMilesPerKm()) }, { cacheable: false, trace });
   if (url.pathname === '/api/game/v1/storm/frames') { const parts = (url.searchParams.get('parts') ?? 'full,near,far').split(','); const bundle = runtime.stormWorkers?.frames(url.searchParams.get('have'), parts, { paused: !runtime.autoAdvance }) ?? EMPTY_FRAMES; finishRequest(trace, { status: 200, rawBytes: bundle.length, sentBytes: bundle.length }); res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': bundle.length, 'cache-control': 'no-store' }); return res.end(bundle); }
   if (url.pathname === '/api/game/v1/storm/workers') return sendJson(req, res, 200, runtime.stormWorkers?.status() ?? { off: true }, { cacheable: false, trace });
   if (url.pathname === '/api/game/v1/manifest') return sendJson(req, res, 200, gameProducts.manifest(), { cacheable: false, trace });
