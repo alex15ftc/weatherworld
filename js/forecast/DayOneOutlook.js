@@ -57,6 +57,17 @@ export const OUTLOOK = Object.freeze({
   // (Day 2 'MDT' and Day 3 'ENH' until 2026-11-07, the user's choice: the centre has issued High on Day 2 a few times, and its Day 3
   // does issue Moderate, from 60% any severe with hatching.)
   leadCaps: { day2: 'HIGH', day3: 'MDT' }, nowcastAfterHours: 4, updateAfterHours: 3,
+  // How long an issue takes to reach the players, in world hours: an outlook issued inside its own day (the Day 1
+  // updates) is valid from its issue time plus this, and its runs do not count the storms of those first hours (they
+  // still run them), so it is not made from weather that is over before anyone can read it (2026-11-17, the owner's
+  // request: a late update caught the back end of a waning threat and called it more potent). Measured on the live
+  // server, as world hours of delay per hour the runs cover: the 06Z issue (Day 1 runs of 30 h) went out 1.57 h after
+  // its start on 2026-11-17, about 0.05; so 01Z (11 h) waits ~0.6 h, 13Z (23 h) ~1.2 h. Outlooks for a day still to
+  // come start at the day's start, after the delay anyway.
+  publishDelayPerHour: 0.05,
+  // ...and an issue made before its day (the 06Z, its Day 1 from 12Z) leaves out its first 1.5 h, as long as it took
+  // on the live server (the owner's choice, 2026-11-17). Its outlooks start at 12Z, so they read the same hours.
+  beforeDaySkipHours: 1.5,
   // Continuity: the share of the last issue for the same day that each new one keeps, in the
   // runs' average chances, before the day is under way and after (forecasters weigh their last
   // outlook against new guidance and follow the weather once it is happening). (2026-10-20: each
@@ -290,7 +301,16 @@ export function runOutlookMemberDays(state, member, hours, options = {}) { retur
 // runs have closed it (cheap: each cheap run's day, or null past its storm days), so an outlook can be issued
 // once every member has its day, not when the longest run ends (2026-11-16, the owner's request); the set then
 // returns { days: [], cheap: [], streamed: true }.
-export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity, cheapRuns = 0, onProgress = null } = {}) {
+// The world hours an issue inside its day leaves out before it is valid (OUTLOOK.publishDelayPerHour), in whole
+// OUTLOOK.stepHours, never reaching its day's end.
+export function publishDelayHours(hoursToEnd) {
+  const step = OUTLOOK.stepHours, most = hoursToEnd - step;
+  return Math.max(0, Math.min(most, Math.round(((OUTLOOK.publishDelayPerHour ?? 0) * hoursToEnd) / step) * step));
+}
+
+// skipHours: the first hours run but not counted (OUTLOOK.publishDelayHours for an issue inside its day): the first
+// day starts after them. A whole number of OUTLOOK.stepHours, less than the hours to the first day's end.
+export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity, cheapRuns = 0, onProgress = null, skipHours = 0 } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
   const places = placesFor?.(atmosphere.world) ?? null;
@@ -381,6 +401,16 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
   const send = () => { if (onProgress) for (; sent < days.length; sent++) onProgress({ index: sent, day: days[sent], cheap: layers.map(layer => layer.days[sent] ?? null) }); };
   for (let hour = 0; hour < hours - 1e-9; hour += OUTLOOK.stepHours) {
     send();
+    // The hours before the outlook is out: the storms (the cheap runs' too) and the air go on, nothing is counted.
+    if (hour + OUTLOOK.stepHours <= skipHours + 1e-9 && !days.length) {
+      if (layers.some(layer => layer.open)) {
+        const host = Object.fromEntries(LAYER.map(key => [key, world[key]])), target = world.validHourUtc + OUTLOOK.stepHours;
+        for (const layer of layers) { if (!layer.open) continue; Object.assign(world, layer.state); atmosphere.stormTicksTo(target); for (const key of LAYER) layer.state[key] = world[key]; }
+        Object.assign(world, host);
+      }
+      atmosphere.advanceLikeServer(OUTLOOK.stepHours);
+      continue;
+    }
     day ??= open();
     // The storms move as the live server moves them: in 5-minute ticks up to each atmosphere step, then the air takes
     // the step with the host's storms in it (AtmosphereWorld.advanceLikeServer; until 2026-11-05 advance(), which moved

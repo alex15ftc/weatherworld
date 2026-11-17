@@ -31,7 +31,10 @@ const ISSUES = [0, 1, 4.5, 8, 13];   // hours after 12Z: the morning issue, then
 // days at no extra cost. --rows <file>: each seed's rows are written there as it finishes (JSON lines); --summarize <file>
 // prints the report from such a file (all seeds finished so far) without running anything.
 const TABLE_FILE = flag('--table'), ROWS_FILE = flag('--rows'), SUMMARIZE = flag('--summarize');
-const SOURCE = flag('--source') ?? 'perturbed', SOURCES = [...(SOURCE === 'both' ? ['perturbed', 'srm'] : [SOURCE]), ...(TABLE_FILE ? ['table'] : [])];
+// --own: the updates are also issued from the same perturbed runs with no blend once the day is under way (continuity
+// underWay 0: each update on its own runs, as the centre's later outlooks follow the weather), as source 'own'.
+const OWN = args.includes('--own');
+const SOURCE = flag('--source') ?? 'perturbed', SOURCES = [...(SOURCE === 'both' ? ['perturbed', 'srm'] : [SOURCE]), ...(TABLE_FILE ? ['table'] : []), ...(OWN ? ['own'] : [])];
 const SRM_CHEAP = Number(flag('--srm-cheap') ?? 7);
 const CAL_DATA = args.includes('--calibration-data');
 const CAL_BINS = [0, 1, 2, 3.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 40, 50, 60, 75, 101];   // as outlook-verify.mjs
@@ -45,7 +48,7 @@ async function main() {
   const seeds = String(flag('--seeds') ?? '1,2,3,4,5,6').split(',').map(Number), started = Date.now(), all = [];
   if (ROWS_FILE) fs.writeFileSync(ROWS_FILE, '');
   await Promise.all(seeds.map(seed => new Promise((resolve, reject) => {
-    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--source', SOURCE, '--srm-cheap', String(SRM_CHEAP), ...(TABLE_FILE ? ['--table', TABLE_FILE] : []), ...(CAL_DATA ? ['--calibration-data'] : [])], { serialization: 'advanced' });
+    const child = fork(fileURLToPath(import.meta.url), [String(days), '--worker', String(seed), '--source', SOURCE, '--srm-cheap', String(SRM_CHEAP), ...(TABLE_FILE ? ['--table', TABLE_FILE] : []), ...(OWN ? ['--own'] : []), ...(CAL_DATA ? ['--calibration-data'] : [])], { serialization: 'advanced' });
     child.on('message', rows => { all.push(...rows); if (ROWS_FILE) fs.appendFileSync(ROWS_FILE, rows.map(row => JSON.stringify(row) + '\n').join('')); });
     child.on('exit', code => (code === 0 ? resolve() : reject(new Error(`seed ${seed} failed (${code})`))));
   })));
@@ -80,7 +83,7 @@ async function report(all, seeds, started, sources) {
 async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
   const { captureTruth, aggregateTruth } = await import('../js/verification/truth.js');
-  const { OUTLOOK, runOutlookMemberSet, combineOutlook, stateFromBytes } = await import('../js/forecast/DayOneOutlook.js');
+  const { OUTLOOK, runOutlookMemberSet, combineOutlook, stateFromBytes, publishDelayHours } = await import('../js/forecast/DayOneOutlook.js');
   const { WORLD_RISK_ORDER } = await import('../js/forecast/worldRiskCategories.js');
   const { scoreOutlook } = await import('../js/verification/outlookScore.js');
   const { placesFor } = await import('../server/CountyLayer.js');
@@ -93,9 +96,10 @@ async function worker(seed) {
   const tableOf = text => { const key = 'export const CALIBRATION = Object.freeze(', a = text.indexOf(key) + key.length; return JSON.parse(text.slice(a, text.indexOf(');', a))); };
   const TABLE = TABLE_FILE ? { ...CALIBRATION, day1update: tableOf(fs.readFileSync(TABLE_FILE, 'utf8')).day1update } : null;
   const flat = set => [set.days[0], ...set.cheap.map(days => days[0])].filter(Boolean);
-  const membersOf = (source, bytes, hours) => (source === 'srm'
-    ? flat(runOutlookMemberSet(stateFromBytes(bytes), 0, hours, { placesFor, timingSpreadMs: 0, upstreamShare: 0, mesoscale: 0, cheapRuns: SRM_CHEAP }))
-    : Array.from({ length: OUTLOOK.members }, (_, m) => flat(runOutlookMemberSet(stateFromBytes(bytes), m, hours, { placesFor, cheapRuns: OUTLOOK.cheapPerMember }))).flat());
+  // skipHours: an update's first hours, before it is out (publishDelayHours, as OutlookRuntime): run, not counted.
+  const membersOf = (source, bytes, hours, skipHours = 0) => (source === 'srm'
+    ? flat(runOutlookMemberSet(stateFromBytes(bytes), 0, hours, { placesFor, timingSpreadMs: 0, upstreamShare: 0, mesoscale: 0, cheapRuns: SRM_CHEAP, skipHours }))
+    : Array.from({ length: OUTLOOK.members }, (_, m) => flat(runOutlookMemberSet(stateFromBytes(bytes), m, hours, { placesFor, cheapRuns: OUTLOOK.cheapPerMember, skipHours }))).flat());
   for (let day = 0; day < days; day++) {
     const dayEnd = world.validHourUtc + 24, frames = [], seen = new Set(), initiations = [], issued = [];
     const last = {};
@@ -108,16 +112,19 @@ async function worker(seed) {
         const underWay = now >= dayEnd - 24 + OUTLOOK.nowcastAfterHours;
         // Each kind of runs made once an issue ('table' reads the perturbed runs again); each chain blends with its own last
         // issue, or the morning one for its first update, never with another chain's issue of the same moment (fixed 2026-11-15).
+        // (the morning issue stands for the server's 06Z, made before the day: no delay inside it)
+        const skip = after === 0 ? 0 : publishDelayHours(dayEnd - now);
         const made = {}, before = { ...last };
         for (const source of after === 0 ? ['perturbed'] : SOURCES) {
-          const runsFrom = source === 'table' ? 'perturbed' : source;
-          const members = (made[runsFrom] ??= membersOf(runsFrom, bytes, dayEnd - now));
+          const runsFrom = source === 'table' || source === 'own' ? 'perturbed' : source;
+          const members = (made[runsFrom] ??= membersOf(runsFrom, bytes, dayEnd - now, skip));
           const previous = before[source] ?? before.perturbed ?? null;
           const caps = [OUTLOOK.leadCaps?.day1, !underWay && previous ? WORLD_RISK_ORDER[Math.min(WORLD_RISK_ORDER.length - 1, Math.max(WORLD_RISK_ORDER.indexOf('SLGT'), WORLD_RISK_ORDER.indexOf(previous.highest) + 1))] : null].filter(Boolean);
           const maxCategory = caps.length ? caps.reduce((a, b) => (WORLD_RISK_ORDER.indexOf(a) <= WORLD_RISK_ORDER.indexOf(b) ? a : b)) : null;
-          const outlook = combineOutlook(members, { ...(source === 'table' ? { calibration: TABLE } : {}), day: 'day1', issuedHourUtc: now, validFromHourUtc: now, validToHourUtc: dayEnd, seed, maxCategory, previous, continuity: previous ? OUTLOOK.continuity[underWay ? 'underWay' : 'before'] : 0 });
+          const outlook = combineOutlook(members, { ...(source === 'table' ? { calibration: TABLE } : {}), day: 'day1', issuedHourUtc: now, validFromHourUtc: now + skip, validToHourUtc: dayEnd, seed, maxCategory, previous, continuity: previous ? (source === 'own' && underWay ? 0 : OUTLOOK.continuity[underWay ? 'underWay' : 'before']) : 0 });
           last[source] = outlook;
-          issued.push({ after, source, outlook, from: frames.length });
+          // (scored against what happened once it is out)
+          issued.push({ after, source, outlook, from: frames.length + Math.round(skip / 0.5) });
         }
       }
       atmosphere.advanceLikeServer(0.5);   // (5-minute storm ticks, as the live world; until 2026-11-05 30-minute jumps)
