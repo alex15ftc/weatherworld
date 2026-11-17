@@ -58,7 +58,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   twice the verified area; at 0.65 its contours verify at their values. Day 1 right 62.5%, High 6% forecast and verified,
   Moderate 11% against 22.5% (hail-hatch Moderates). Archive for re-scoring: `data/outlook-archive/2026-11-16-40ce207`.
   Open, owner: raise the hail 2 in hatch bar 0.35 -> 0.50 (verified Moderate 23% -> ~14%), then refit the forecast hatches.
-- Steering moisture ramp (2026-11-17, owner's choice, on `main`): `RegionSteering.supportByColumn` scales the
+- Steering moisture ramp (2026-11-17, owner's choice, `3e0530e` on `main`; engine deployed from `a0dffa1`, the world carried over; it takes effect at the next 06Z plan): `RegionSteering.supportByColumn` scales the
   warm-sector support by the outer model's moisture over the map about its mean, from none at -2 g/kg to all of it at
   +4 (`moistRangeGkg`), in place of the dry cut (`dryGkg`, full support at average air or wetter). Why: the map's
   moisture tracked tornado counts (rank 0.50 over 80 suite days) where the support did not (0.13); lull days sat on
