@@ -32,8 +32,24 @@ const STORM_PRODUCTS = [
   { key: 'reflUh', group: 'Storms', get label() { return `Composite reflectivity + UH > ${reflUhLeast} tracks`; }, step: 15, table: REFL, unit: 'dBZ' },
   { key: 'uh1', group: 'Storms', label: 'Updraft helicity, 1 h max (2-5 km)', step: 15, table: UH, unit: 'm²/s²' },
   { key: 'uhTotal', group: 'Storms', label: 'Updraft helicity tracks, run total', step: 15, table: UH, unit: 'm²/s²' },
-  { key: 'torTracks', group: 'Storms', label: 'Tornado tracks, run total', step: 15, unit: 'EF' }
+  { key: 'torTracks', group: 'Storms', label: 'Tornado tracks, run total', step: 15, unit: 'EF' },
+  // The run's violent tornado parameter under the last hour's rotating-storm tracks: where rotating storms meet air that
+  // favours strong tornadoes (2026-11-17). Offered for runs that carry the VTP field.
+  { key: 'vtpUh', group: 'Storms', label: `Violent tornado parameter + UH > ${UH_TRACK} tracks, 1 h`, step: 15, field: 'vtp' }
 ];
+// Fields made on this page from two of the run's fields (no extra data kept or sent): Hampshire et al.'s low-level
+// instability, 3CAPE x the 0-3 km lapse rate (their means on NARR proximity soundings: 557 for EF1-3 tornadoes, 808 for EF4-5).
+const COMBINED = [
+  { key: 'lli', after: 'vtp', group: 'Composites', label: 'Low-level instability (3CAPE × 0-3 km lapse rate)', unit: '', decimals: 0, levels: [200, 400, 600, 800, 1000, 1400],
+    shade: [[100, 255, 235, 150, 0], [300, 255, 225, 120, 0.45], [600, 255, 160, 60, 0.6], [900, 235, 60, 50, 0.68], [1400, 200, 40, 200, 0.75]], from: ['cape03', 'lapse03'], combine: (a, b) => a * Math.max(0, b) }
+];
+// The short range products a run offers: the storm products (one drawn over a field only when the run has that field),
+// then its fields, each made field after the one it is listed with.
+function shortProducts() {
+  const params = S.meta?.parameters ?? [], has = key => params.some(q => q.key === key), list = [];
+  for (const q of params) { list.push(q); for (const c of COMBINED) if (c.after === q.key && c.from.every(has)) list.push(c); }
+  return [...STORM_PRODUCTS.filter(q => !q.field || has(q.field)), ...list];
+}
 const ENSEMBLE_PRODUCTS = [
   { key: 'paint', group: 'Ensemble', label: 'Paintball: storms 40+ dBZ', step: 30 },
   { key: 'uhProb4', group: 'Ensemble', label: `Chance of a UH ${UH_TRACK}+ track within 25 mi, 4 h`, step: 30, table: PROB, unit: '%' },
@@ -41,6 +57,10 @@ const ENSEMBLE_PRODUCTS = [
   { key: 'torProb', group: 'Ensemble', label: 'Chance of a tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
   { key: 'sigTorProb', group: 'Ensemble', label: 'Chance of an EF2+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
   { key: 'violentTorProb', group: 'Ensemble', label: 'Chance of an EF4+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
+  // Each full run's highest violent tornado parameter over the storm day shown (12Z to 12Z; the cheap runs share their
+  // host's air), within 25 miles. (2026-11-17)
+  { key: 'vtpProb2', group: 'Ensemble', label: 'Chance of VTP 2+ within 25 mi, storm day shown', step: 30, table: PROB, unit: '%', vtpLeast: 2 },
+  { key: 'vtpProb4', group: 'Ensemble', label: 'Chance of VTP 4+ within 25 mi, storm day shown', step: 30, table: PROB, unit: '%', vtpLeast: 4 },
   { key: 'spaghetti', group: 'Ensemble', label: `Every run's UH ${UH_TRACK}+ tracks, run total`, step: 30 },
   { key: 'torSpaghetti', group: 'Ensemble', label: "Every run's tornado tracks by rating, run total", step: 30, unit: 'EF' }
 ];
@@ -67,7 +87,7 @@ async function getJson(url, { keep = true } = {}) {
   return promise;
 }
 
-const product = () => (modelKind === 'short' ? [...STORM_PRODUCTS, ...(S.meta?.parameters ?? [])] : ENSEMBLE_PRODUCTS).find(p => p.key === productKey);
+const product = () => (modelKind === 'short' ? shortProducts() : ENSEMBLE_PRODUCTS).find(p => p.key === productKey);
 const isField = () => modelKind === 'short' && !STORM_PRODUCTS.some(p => p.key === productKey);
 const stepMinutes = () => (isField() ? 60 : product()?.step ?? 15);
 const maxMinutes = () => (modelKind === 'short' ? (S.meta?.hours ?? 0) * 60 : Math.round((E.data?.hours ?? 0) * 60));
@@ -152,7 +172,9 @@ async function openEnsemble(issued) {
     const storms = new Map();
     for (const [h, id, x, y, dbz, uh, tor] of run.track) { if (!storms.has(id)) storms.set(id, []); storms.get(id).push({ h, x, y, dbz, uh, tor }); }
     for (const list of storms.values()) list.sort((a, b) => a.h - b.h);
-    return { full: run.cheap === null, storms };
+    // (a full run's storm days' highest VTP: base64 bytes of VTP x vtpScale per cell, row by row)
+    const vtp = run.vtp?.map(d => ({ from: d.fromHourUtc, to: d.toHourUtc, max: Uint8Array.from(atob(d.max), c => c.charCodeAt(0)) })) ?? null;
+    return { full: run.cheap === null, storms, vtp };
   });
   $('runSelect').value = String(issued);
   fillProducts(); setTimeRange(); render();
@@ -160,7 +182,7 @@ async function openEnsemble(issued) {
 
 // --- Controls.
 function fillProducts() {
-  const list = modelKind === 'short' ? [...STORM_PRODUCTS, ...(S.meta?.parameters ?? [])] : ENSEMBLE_PRODUCTS;
+  const list = modelKind === 'short' ? shortProducts() : ENSEMBLE_PRODUCTS.filter(q => !q.vtpLeast || E.byRun?.some(run => run.vtp));
   if (!list.some(p => p.key === productKey)) productKey = list[0].key;
   let html = '', group = null;
   for (const p of list) {
@@ -242,21 +264,31 @@ async function render() {
   shown = { field: null, storms: null };
   // (nothing is asked for an hour the run has not made yet)
   if (modelKind === 'short' && S.meta && t <= readyMinutes()) {
-    const hour = Math.floor(t / 60);
+    const hour = Math.floor(t / 60), p = product(), fieldKey = isField() ? productKey : p?.field ?? null;
     const [field, storms] = await Promise.all([
-      isField() ? getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${productKey}`) : null,
+      fieldKey ? shortField(hour, fieldKey) : null,
       isField() ? null : getJson(`/api/models/short-range/storms?init=${S.init}&minute=${t}`)
     ]);
     if (mine !== token) return;
-    shown = { field: field ? { ...field, meta: product() } : null, storms: storms?.storms ?? null };
+    const meta = isField() ? p : (S.meta.parameters ?? []).find(q => q.key === fieldKey);
+    shown = { field: field && meta ? { ...field, meta } : null, storms: storms?.storms ?? null };
     // Have the next frames ready for playing.
     const ahead = t + stepMinutes();
     if (ahead <= Math.min(maxMinutes(), readyMinutes())) {
-      if (isField()) getJson(`/api/models/short-range/field?init=${S.init}&hour=${Math.floor(ahead / 60)}&key=${productKey}`);
-      else getJson(`/api/models/short-range/storms?init=${S.init}&minute=${ahead}`);
+      if (isField()) shortField(Math.floor(ahead / 60), productKey);
+      else { getJson(`/api/models/short-range/storms?init=${S.init}&minute=${ahead}`); if (product()?.field) shortField(Math.floor(ahead / 60), product().field); }
     }
   }
   draw();
+}
+
+// One of the run's fields at an hour, or a field made here from two of them.
+async function shortField(hour, key) {
+  const made = COMBINED.find(c => c.key === key);
+  if (!made) return getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${key}`);
+  const [a, b] = await Promise.all(made.from.map(k => getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${k}`)));
+  if (!a || !b) return null;
+  return { hour: a.hour ?? hour, key, values: Float32Array.from(a.values, (v, i) => made.combine(v, b.values[i])) };
 }
 
 // --- Drawing.
@@ -323,6 +355,7 @@ function drawShort() {
   if (productKey === 'uh1') drawUhTracks(t - 60, t);
   if (productKey === 'uhTotal') drawUhTracks(-1, t);
   if (productKey === 'torTracks') { drawUhTracks(-1, t, { alpha: 0.35 }); drawTornadoTracks(t); }
+  if (productKey === 'vtpUh') drawUhTracks(t - 60, t, { least: UH_TRACK, colour: 'rgba(226,232,240,.7)', width: 5 });
   drawTowns();
   if (!isField() && shown.storms) for (const s of shown.storms) if (s.tornado) { const [x, y] = px(s.tornado.x, s.tornado.y); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke(); }
 }
@@ -465,6 +498,7 @@ function drawUhTracks(from, to, { alpha = 1, least = UH[0][0], colour = null, wi
   else for (const [a, b, uh] of segments) { ctx.strokeStyle = stepColour(UH, uh); ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke(); }
   ctx.restore();
 }
+const efNumber = tor => { const m = /\d/.exec(String(tor?.ef ?? '')); return m ? Number(m[0]) : efOf(tor?.mph ?? 0); };
 function drawTornadoTracks(to) {
   ctx.save(); ctx.lineCap = 'round';
   for (const points of S.byStorm?.values() ?? []) {
@@ -472,7 +506,8 @@ function drawTornadoTracks(to) {
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1], b = path[i];
       if (b.minute - a.minute > 6) continue;
-      const ef = Math.max(a.tornado.ef ?? 0, b.tornado.ef ?? 0);
+      // (the run keeps the rating as 'EF2'; until 2026-11-17 it was read as a number, so every track drew black)
+      const ef = Math.max(0, efNumber(a.tornado), efNumber(b.tornado));
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(...px(a.tornado.x, a.tornado.y)); ctx.lineTo(...px(b.tornado.x, b.tornado.y)); ctx.stroke();
       ctx.strokeStyle = EF[Math.min(5, ef)]; ctx.lineWidth = 3; ctx.stroke();
     }
@@ -512,21 +547,53 @@ function drawEnsemble() {
     ctx.restore();
   } else {
     const span = productKey === 'uhProb4' ? [hourNow - 4, hourNow] : [E.data.issuedHourUtc - 1, hourNow];
+    const vtpLeast = product()?.vtpLeast;
+    if (vtpLeast) { drawRaster(vtpProbRaster(`${E.issued}:${productKey}:${t}`, hourNow, vtpLeast), 0.85); drawTowns(); return; }
     const test = TOR_TESTS[productKey] ?? (p => p.uh >= UH_TRACK);
     drawRaster(probRaster(`${E.issued}:${productKey}:${t}`, span, test), 0.85);
+    if (productKey === 'torProb') drawRaster(hatchRaster(`${E.issued}:${t}`, probRaster(`${E.issued}:sigTorProb:${t}`, span, TOR_TESTS.sigTorProb), SIG_HATCH));
   }
   drawTowns();
 }
 
+// The share of full runs whose highest VTP over the storm day holding hourUtc reaches `least` within 25 miles.
+function vtpProbRaster(id, hourUtc, least) {
+  const runs = E.byRun.filter(run => run.vtp), { columns, cellKm } = domain, at = Math.round(least * (E.data.vtpScale ?? 10));
+  return probRaster(id, [0, 0], null, { runs, marksOf: (run, mark) => {
+    const day = run.vtp.find(d => hourUtc > d.from && hourUtc <= d.to) ?? (hourUtc <= run.vtp[0].from ? run.vtp[0] : null);
+    if (day) for (let k = 0; k < day.max.length; k++) if (day.max[k] >= at) mark((k % columns + 0.5) * cellKm, (Math.floor(k / columns) + 0.5) * cellKm);
+  } });
+}
+
+// Black hatching where a chance raster's share reaches `least` (%), read smoothly between its cells as the shading is.
+const SIG_HATCH = 10;
+function hatchRaster(id, prob, least) {
+  const key = `hatch:${least}:${id}`;
+  if (rasters.has(key)) return rasters.get(key);
+  const n = prob.n, up = 8, m = n * up, image = document.createElement('canvas'); image.width = image.height = m;
+  const g = image.getContext('2d'), data = g.createImageData(m, m), share = prob.share;
+  for (let py = 0; py < m; py++) for (let qx = 0; qx < m; qx++) {
+    // Diagonal lines every 7 pixels, 2 wide.
+    if ((qx + py) % 7 >= 2) continue;
+    const fx = Math.max(0, Math.min(n - 1.001, (qx + 0.5) / up - 0.5)), fy = Math.max(0, Math.min(n - 1.001, (py + 0.5) / up - 0.5)), i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j;
+    const v = share[j * n + i] * (1 - a) * (1 - b) + share[j * n + i + 1] * a * (1 - b) + share[(j + 1) * n + i] * (1 - a) * b + share[(j + 1) * n + i + 1] * a * b;
+    if (v >= least) data.data.set([10, 10, 12, 230], (py * m + qx) * 4);
+  }
+  g.putImageData(data, 0, 0);
+  keepRaster(key, image);
+  return image;
+}
+
 // The share of runs with the event within 25 miles of each place, on a grid of about 8 km, softened a little.
 const PROB_CELLS = 100;
-function probRaster(id, [from, to], test) {
+function probRaster(id, [from, to], test, { runs = E.byRun, marksOf = null } = {}) {
   const key = `prob:${id}`;
   if (rasters.has(key)) return rasters.get(key);
   const n = PROB_CELLS, cellKm = domain.widthKm / n, reach = Math.ceil(NEAR_KM / cellKm), sum = new Float32Array(n * n), hit = new Uint8Array(n * n);
   const mark = (x, y) => { const ci = Math.floor(x / cellKm), cj = Math.floor(y / cellKm); for (let j = Math.max(0, cj - reach); j <= Math.min(n - 1, cj + reach); j++) for (let i = Math.max(0, ci - reach); i <= Math.min(n - 1, ci + reach); i++) if (Math.hypot((i + 0.5) * cellKm - x, (j + 0.5) * cellKm - y) <= NEAR_KM) hit[j * n + i] = 1; };
-  for (const run of E.byRun) {
+  for (const run of runs) {
     hit.fill(0);
+    if (marksOf) { marksOf(run, mark); for (let i = 0; i < hit.length; i++) sum[i] += hit[i]; continue; }
     for (const points of run.storms.values()) for (let i = 0; i < points.length; i++) {
       const b = points[i];
       if (b.h <= from || b.h > to || !test(b)) continue;
@@ -537,7 +604,7 @@ function probRaster(id, [from, to], test) {
     for (let i = 0; i < hit.length; i++) sum[i] += hit[i];
   }
   const share = new Float32Array(n * n);
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { let s = 0, w = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= n || ii >= n) continue; const k = di || dj ? 1 : 2; s += sum[jj * n + ii] * k; w += k; } share[j * n + i] = 100 * s / w / E.byRun.length; }
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { let s = 0, w = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= n || ii >= n) continue; const k = di || dj ? 1 : 2; s += sum[jj * n + ii] * k; w += k; } share[j * n + i] = 100 * s / w / Math.max(1, runs.length); }
   // Drawn four times finer, each pixel read smoothly between the cell centres, so the bands have no steps.
   const up = 4, m = n * up, image = document.createElement('canvas'); image.width = image.height = m;
   const g = image.getContext('2d'), data = g.createImageData(m, m), lut = PROB.map(([at, c]) => [at, rgb(c)]);
@@ -547,7 +614,7 @@ function probRaster(id, [from, to], test) {
     let c = null; for (const [at, col] of lut) if (v >= at) c = col;
     if (c) data.data.set([c[0], c[1], c[2], 205], (py * m + qx) * 4);
   }
-  g.putImageData(data, 0, 0); image.share = share; image.n = n; image.cellKm = cellKm;
+  g.putImageData(data, 0, 0); image.share = share; image.n = n; image.cellKm = cellKm; image.runs = runs.length;
   keepRaster(key, image);
   return image;
 }
@@ -558,19 +625,19 @@ function drawLegend() {
   g.clearRect(0, 0, bar.width, bar.height); ticks.innerHTML = ''; note.textContent = '';
   const tick = (text, at) => { const s = document.createElement('span'); s.textContent = text; s.style.left = `${at * 100}%`; ticks.append(s); };
   if (!p) return;
-  if (isField() && shown.field) {
+  if (shown.field) {
     const meta = shown.field.meta, from = meta.shade[0][0], to = meta.shade.at(-1)[0];
     g.fillStyle = '#121a23'; g.fillRect(0, 0, bar.width, bar.height);
     for (let x = 0; x < bar.width; x++) { const [r, gr, b, a] = colourAt(meta, from + (to - from) * x / (bar.width - 1)); g.fillStyle = `rgba(${r | 0},${gr | 0},${b | 0},${Math.max(0.12, a)})`; g.fillRect(x, 0, 1, bar.height); }
     for (const f of [0, 0.25, 0.5, 0.75, 1]) tick(Number((from + (to - from) * f).toFixed(meta.decimals)).toLocaleString(), f);
-    note.textContent = `${meta.label}${meta.unit ? ` (${meta.unit})` : ''}${meta.second ? ` · dashed: ${meta.second.label} (${meta.second.unit})` : ''}`;
+    note.textContent = `${meta.label}${meta.unit ? ` (${meta.unit})` : ''}${meta.second ? ` · dashed: ${meta.second.label} (${meta.second.unit})` : ''}${productKey === 'vtpUh' ? ` · light: UH > ${UH_TRACK} m²/s² tracks, last hour` : ''}`;
     return;
   }
   const efKey = p.key === 'torTracks' || p.key === 'torSpaghetti', table = p.table ?? (efKey ? EF.map((c, i) => [i, c]) : null);
   if (table) {
     const w = bar.width / table.length;
     table.forEach(([at, c], i) => { g.fillStyle = c; g.fillRect(i * w, 0, w + 1, bar.height); tick(efKey ? `EF${at}` : String(at), (i + 0.5) / table.length); });
-    note.textContent = `${p.label}${p.unit && !efKey ? ` (${p.unit})` : ''}${efKey ? ' · faint: updraft helicity tracks' : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
+    note.textContent = `${p.label}${p.unit && !efKey ? ` (${p.unit})` : ''}${efKey ? ' · faint: updraft helicity tracks' : ''}${p.key === 'torProb' ? ` · hatched: ${SIG_HATCH}%+ chance of an EF2+ tornado` : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
   } else if (p.key === 'paint' || p.key === 'spaghetti') {
     const runs = E.byRun?.length ?? 0, w = bar.width / Math.max(1, runs);
     for (let r = 0; r < runs; r++) { g.fillStyle = runColour(r); g.fillRect(r * w, 0, w + 1, bar.height); }
@@ -594,7 +661,7 @@ canvas.addEventListener('mousemove', event => {
     if (near) lines.push(`<b>${near.id}</b> · ${near.mode ?? 'storm'} · ${near.dbz} dBZ · UH ${near.uh}${near.hailIn >= 0.75 ? ` · hail ${near.hailIn.toFixed(2)} in` : ''}${near.tornado ? ` · <b style="color:#ff6b6b">tornado</b> ${near.tornado.mph} mph` : ''}`);
   } else if (!['paint', 'spaghetti', 'torSpaghetti'].includes(productKey)) {
     const image = rasters.get(`prob:${E.issued}:${productKey}:${t}`);
-    if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${E.byRun.length} runs`);
+    if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${image.runs ?? E.byRun.length}${product()?.vtpLeast ? ' full' : ''} runs`);
   }
   if (modelKind !== 'short' && (productKey in TOR_TESTS || productKey === 'torSpaghetti')) {
     const split = strongestNear(x, y);

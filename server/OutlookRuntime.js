@@ -24,6 +24,13 @@ import { sharedForecastPool, shareState } from './ForecastPool.js';
 
 // Outlook issues whose runs are kept for the model page's ensemble products.
 const ENSEMBLES_KEPT = 4;
+// A full run's storm days' highest violent tornado parameter (DayOneOutlook vtpMax: VTP x10 per cell in a byte), kept with
+// the ensemble for the model page's VTP chances (2026-11-17); cheap runs share their host's air and carry none.
+export const vtpDays = days => {
+  const kept = days.filter(d => d?.vtpMax).map(d => ({ fromHourUtc: d.fromHourUtc, toHourUtc: d.toHourUtc, max: d.vtpMax instanceof Uint8Array ? d.vtpMax : Uint8Array.from(Object.values(d.vtpMax)) }));
+  return kept.length ? { vtp: kept } : {};
+};
+
 export class OutlookRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). days: which
   // outlooks to issue (a prefix of OUTLOOK.days). pool: the threads that do the runs.
@@ -136,7 +143,7 @@ export class OutlookRuntime {
         // Every run's storm tracks, for the model page's ensemble products (the last ENSEMBLES_KEPT issues).
         const sets = got.flatMap((member, m) => [{ member: m, cheap: null, days: member.days }, ...member.cheap.map((days, j) => ({ member: m, cheap: j, days }))]);
         this.ensembles = this.ensembles.filter(e => e.engine === engine && e.issuedHourUtc !== issuedHourUtc);
-        this.ensembles.push({ engine, issuedHourUtc, hours, runs: sets.map(({ member, cheap, days }) => ({ member, cheap, track: days.filter(Boolean).flatMap(d => d.stormTrack ?? []) })) });
+        this.ensembles.push({ engine, issuedHourUtc, hours, runs: sets.map(({ member, cheap, days }) => ({ member, cheap, track: days.filter(Boolean).flatMap(d => d.stormTrack ?? []), ...vtpDays(days) })) });
         while (this.ensembles.length > ENSEMBLES_KEPT) this.ensembles.shift();
         this.lastError = null; this.failedKey = null;
         this.save();
@@ -181,7 +188,9 @@ export class OutlookRuntime {
   ensembleList(engine = this.runtime.engine) { return { model: 'outlook ensemble', running: this.running ? { issuedHourUtc: this.running.issuedHourUtc, hours: this.running.hours } : null, issues: this.ensembles.filter(e => e.engine === engine).map(e => ({ issuedHourUtc: e.issuedHourUtc, hours: e.hours, runs: e.runs.length, full: e.runs.filter(r => r.cheap === null).length })) }; }
   ensembleTracks(issued, engine = this.runtime.engine) {
     const kept = this.ensembles.filter(e => e.engine === engine), e = issued === undefined || issued === null || issued === '' ? kept.at(-1) : kept.find(k => k.issuedHourUtc === Number(issued));
-    return e ? { issuedHourUtc: e.issuedHourUtc, hours: e.hours, columns: ['hourUtc', 'storm', 'xKm', 'yKm', 'dbz', 'uh', 'tornado'], runs: e.runs } : null;
+    // (each full run's daily highest VTP goes as base64 bytes, VTP x10 per cell, row by row: ~3.3 KB a day)
+    const runs = e?.runs.map(run => (run.vtp ? { ...run, vtp: run.vtp.map(d => ({ ...d, max: Buffer.from(d.max.buffer, d.max.byteOffset, d.max.byteLength).toString('base64') })) } : run));
+    return e ? { issuedHourUtc: e.issuedHourUtc, hours: e.hours, columns: ['hourUtc', 'storm', 'xKm', 'yKm', 'dbz', 'uh', 'tornado'], vtpScale: 10, runs } : null;
   }
 
   // When an outlook is next issued afresh (hour UTC of the world).
