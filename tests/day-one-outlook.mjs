@@ -191,6 +191,8 @@ assert.deepEqual([early.issuedFlag, early.otherRunning], [false, true], `the iss
 const issued = outlooks.dayOne();
 // (each full run carries OUTLOOK.cheapPerMember cheap runs on its storm days: 2 full + 6 cheap)
 assert.equal(issued.status, 'issued'); assert.equal(issued.members, 2 * (1 + OUTLOOK.cheapPerMember)); assert.equal(issued.issuedHourUtc, before); assert.equal(issued.validToHourUtc, before + hoursToDayEnd(before));
+// (issued inside its day: valid, and made from the runs' weather, only from when it is out; 2026-11-17)
+assert.ok(OUTLOOK.publishDelayPerHour > 0); assert.equal(issued.validFromHourUtc, before + outlooks.publishDelay(before, issued.validToHourUtc)); assert.ok(issued.validFromHourUtc > before);
 assert.ok(issued.discussion.length > 200 && issued.category.length === atmosphere.world.width * atmosphere.world.height);
 assert.equal(outlooks.maybeIssue(), false, 'nothing is issued again before its next update');
 const second = outlooks.day('day2');

@@ -13,7 +13,7 @@ import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
 import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
-import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, MOSAIC_KINDS, MOSAIC_RES_KM, STACKED_MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
+import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, radialsAround, MOSAIC_KINDS, MOSAIC_RES_KM, STACKED_MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
 import { buildSatellite, satelliteInputs } from '../js/satellite/Satellite.js';
 import { AnvilField } from '../js/satellite/AnvilField.js';
 import { rainFieldInputs, rainFieldOf } from '../js/storms/StormRainFields.js';
@@ -46,6 +46,8 @@ const RADAR_PREWARM_MS = 60_000;
 // The tilts a radar's rotation detections look through: its lowest nine, 0.5-6.4 deg (from 1 to 6 km
 // up a storm at 50 km, enough for the TDA's 1.5 km and the MDA's 3 km depths at most ranges).
 const RADAR_ROTATION_TILTS = 9;
+// The mesoscale discussions' look at storms scans a disc this wide round each (radarLookAround; 2026-11-17).
+const RADAR_LOOK_KM = 40;
 // Rotation tracks: the greatest low-level shear of the scans of the last hour (sim time), as the
 // MRMS rotation tracks (60 min). Made from the scans of while they were asked for.
 const ROTATION_TRACK_HOURS = 1;
@@ -88,6 +90,8 @@ export class WeatherAuthorityRuntime {
     this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision = 0;
     this.productCache = new Map();
+    // (the mesoscale looks made from sector scans, and those that fell back to full ones: radarLookAround)
+    this.radarLookStats = { looks: 0, fallbacks: 0 };
     this.performance = { cacheHits: 0, cacheMisses: 0, productBuilds: {} };
     this.autoAdvance = true;
     this.systemNumber = 1;
@@ -691,6 +695,33 @@ export class WeatherAuthorityRuntime {
       if (!scans.length) return null;
       return { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...(this.radarPool ? await this.radarPool.rotation(site, scans) : detectRotation(site, scans)), revision };
     });
+  }
+
+  // The mesoscale discussions' look at storms (places: [{ xKm, yKm }]) from one radar: { found, lowest }, the
+  // detections and the lowest scan as radarRotation and radarScan (prewarm false) give them, for what is
+  // read of them about the places (radarLook). Worked out from scans of the radials over RADAR_LOOK_KM round
+  // the places only (about half the work) when detectRotation finds those detections sure to be a full
+  // volume scan's (its `exact`); else, and when this scan time's full volume scan is already made or the
+  // places are near the radar, from the full scans. (The sector's scans are not kept: the radar pages and
+  // the game's products still have full ones.)
+  async radarLookAround(siteId, places) {
+    const site = this.radarCatalog().sites.find(s => s.id === siteId);
+    const full = async () => { const [found, lowest] = await Promise.all([this.radarRotation(siteId, { prewarm: false }), this.radarScan(siteId, 0, { prewarm: false })]); return { found, lowest }; };
+    if (!site || this.productCache.has(`${this.revision}:radar:rotation:${site.id}`)) return full();
+    const radials = radialsAround(site, places, RADAR_LOOK_KM);
+    if (radials.length >= RADAR_RADIALS) return full();
+    const revision = this.revision, tilts = RADAR_TILTS_DEG.slice(0, RADAR_ROTATION_TILTS);
+    const near = places.map(p => ({ xKm: p.xKm, yKm: p.yKm }));
+    const look = await this.cachedAsync(`radar:look:${site.id}:${near.map(p => `${p.xKm.toFixed(3)},${p.yKm.toFixed(3)}`).join(';')}`, async () => {
+      const scene = await this.radarScene();
+      const scans = await Promise.all(tilts.map(tilt => (this.radarPool ? this.radarPool.scan(scene, site, tilt, undefined, false, radials) : scanRadarTilt(scene, site, tilt, { radials }))));
+      const within = new Uint8Array(RADAR_RADIALS);
+      for (const r of radials) within[r] = 1;
+      const { exact, ...found } = this.radarPool ? await this.radarPool.rotation(site, scans, { within, near }) : detectRotation(site, scans, { within, near });
+      this.radarLookStats.looks++; if (!exact) this.radarLookStats.fallbacks++;
+      return exact ? { found: { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...found, revision }, lowest: { ...scans[0], revision } } : null;
+    });
+    return look ?? full();
   }
 
   // After a new scan time: works out again, on the radar pool's threads, what has been looked at

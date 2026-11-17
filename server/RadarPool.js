@@ -71,7 +71,8 @@ export class RadarPool {
 
   // The rotation one radar's scans show (detectRotation), worked out on a thread. Only the
   // velocity and reflectivity of each scan are sent.
-  rotation(site, scans) { return this.run({ kind: 'rotation', site, scans: scans.map(rotationInputs) }); }
+  // (options: detectRotation's, for a sector's scans)
+  rotation(site, scans, options = undefined) { return this.run({ kind: 'rotation', site, scans: scans.map(rotationInputs), options }); }
 
   // The radars' lowest scans' low-level shear laid on the mosaic grid (lowLevelShearGrid for each):
   // a Float32Array of width * height.
@@ -97,8 +98,8 @@ export class RadarPool {
       .then(grids => new Map(inputs.map((input, k) => [input.storm.id, grids[k]])));
   }
 
-  // (gateKm: the gates' length, RADAR_GATE_KM unless a close look asks for finer)
-  scan(scene, site, tiltDeg, gateKm = undefined, low = false) { return this.run({ kind: 'scan', site, tiltDeg, gateKm }, scene, low); }
+  // (gateKm: the gates' length, RADAR_GATE_KM unless a close look asks for finer; radials: only those, see scanRadarTilt)
+  scan(scene, site, tiltDeg, gateKm = undefined, low = false, radials = null) { return this.run({ kind: 'scan', site, tiltDeg, gateKm, radials }, scene, low); }
 
   // The satellite's images from satelliteInputs (js/satellite/Satellite.js), on a thread: the same
   // bytes renderSatellite gives here.

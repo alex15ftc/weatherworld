@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import v8 from 'node:v8';
-import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd, membersFor, stormDaysFor } from '../js/forecast/DayOneOutlook.js';
+import { OUTLOOK, combineOutlook, publicOutlook, hoursToDayEnd, membersFor, stormDaysFor, publishDelayHours } from '../js/forecast/DayOneOutlook.js';
 import { WORLD_RISK_ORDER } from '../js/forecast/worldRiskCategories.js';
 import { countiesIn, describeRegions } from '../js/forecast/counties.js';
 import { countiesFor } from './CountyLayer.js';
@@ -120,7 +120,7 @@ export class OutlookRuntime {
     const take = (m, { index, day, cheap }) => {
       got[m].days[index] = day;
       cheap.forEach((d, j) => { (got[m].cheap[j] ??= [])[index] = d ?? undefined; });
-      for (const outlookDay of [...left]) if (got.slice(0, count(outlookDay)).every(g => g.days[indexOf(outlookDay)])) { left.delete(outlookDay); this.publish(outlookDay, got, { engine, issuedHourUtc, dayEnd, index: indexOf(outlookDay), count: count(outlookDay) }); }
+      for (const outlookDay of [...left]) if (got.slice(0, count(outlookDay)).every(g => g.days[indexOf(outlookDay)])) { left.delete(outlookDay); this.publish(outlookDay, got, { engine, issuedHourUtc, dayEnd, index: indexOf(outlookDay), count: count(outlookDay), skipHours }); }
     };
     // (a run that did not stream, as a test's pool, sends its days at the end)
     const whole = (m, member) => { if (!member || member.streamed) return; member.days.forEach((day, index) => take(m, { index, day, cheap: member.cheap.map(days => days[index] ?? null) })); };
@@ -130,7 +130,11 @@ export class OutlookRuntime {
     // there put Day 1 out last. (Which member runs when does not change what it finds: each has its own seed.)
     const slots = Math.max(1, (this.pool.size ?? this.members) - (this.pool.reserve ?? 0)), order = Array.from({ length: this.members }, (_, member) => member);
     if (slots * 2 <= this.members) order.sort((a, b) => hoursFor(a) - hoursFor(b) || b - a);
-    const run = Promise.all(order.map(member => this.pool.run('outlook', state, member, hoursFor(member), { options: { stormDays: stormDaysFor(member, this.members, lead), cheapRuns: this.cheapPerMember }, onProgress: part => take(member, part) }).then(result => whole(member, result))));
+    // An issue inside its day (lead 0: the Day 1 updates) is valid from when it is out (OUTLOOK.publishDelayPerHour): its runs
+    // do not count the hours before (skipHours). (Only Day 1's period starts at the issue; Day 2 and 3 start at a 12Z.)
+    // One made before its day (the 06Z) leaves out OUTLOOK.beforeDaySkipHours, short of 12Z.
+    const skipHours = lead ? Math.max(0, Math.min(dayEnd - issuedHourUtc - OUTLOOK.stepHours, OUTLOOK.beforeDaySkipHours ?? 0)) : this.publishDelay(issuedHourUtc, dayEnd);
+    const run = Promise.all(order.map(member => this.pool.run('outlook', state, member, hoursFor(member), { options: { stormDays: stormDaysFor(member, this.members, lead), cheapRuns: this.cheapPerMember, skipHours }, onProgress: part => take(member, part) }).then(result => whole(member, result))));
     this.running = { key, due: [...due], issuedHourUtc, hours, startedAt: started };
     try {
       await run;
@@ -155,11 +159,14 @@ export class OutlookRuntime {
     }
   }
 
+  // The hours an issue inside its day leaves out (DayOneOutlook.js publishDelayHours).
+  publishDelay(issuedHourUtc, dayEnd) { return publishDelayHours(dayEnd - issuedHourUtc); }
+
   // One outlook of an issue, from the members' days for it (got: as issue() collects them).
-  publish(day, got, { engine, issuedHourUtc, dayEnd, index, count }) {
+  publish(day, got, { engine, issuedHourUtc, dayEnd, index, count, skipHours = 0 }) {
     if (this.runtime.engine !== engine) return;
     const layer = countiesFor(engine.world), regions = layer ? inside => describeRegions(layer, countiesIn(layer, inside, { least: 0.5 })) : null;
-    const validFromHourUtc = index ? dayEnd + 24 * (index - 1) : issuedHourUtc, validToHourUtc = dayEnd + 24 * index;
+    const validFromHourUtc = index ? dayEnd + 24 * (index - 1) : issuedHourUtc + skipHours, validToHourUtc = dayEnd + 24 * index;
     // The caps: the lead's, and one step above the last issue for this day until the day is under way.
     const lastOutlook = this.history.get(validToHourUtc) ?? null, last = lastOutlook?.highest, underWay = issuedHourUtc >= validToHourUtc - 24 + OUTLOOK.nowcastAfterHours;
     const caps = [OUTLOOK.leadCaps[day], !underWay && last ? WORLD_RISK_ORDER[Math.min(WORLD_RISK_ORDER.length - 1, Math.max(WORLD_RISK_ORDER.indexOf('SLGT'), WORLD_RISK_ORDER.indexOf(last) + 1))] : null].filter(Boolean);

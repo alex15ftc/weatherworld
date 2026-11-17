@@ -222,7 +222,8 @@ export class ReplayArchive {
     const scene = assembleRadarScene({ ...snap.base, storms }, fields);
     Object.defineProperty(scene, 'poolId', { value: ++pool.sceneCount });
     this.cost.mainMs += performance.now() - started;
-    const scan = await pool.scan(scene, near.site, REPLAY.tiltDeg, RADAR_FINE_GATE_KM, true);
+    // (only the radials the box takes, and a margin: a fifth of the work or less; the box is the same)
+    const scan = await pool.scan(scene, near.site, REPLAY.tiltDeg, RADAR_FINE_GATE_KM, true, boxRadials(near.site, snap.at));
     started = performance.now();
     const tornado = day.tornadoes[job.tornado] ??= { stormId: job.stormId, site: near.site.id, siteName: near.site.name ?? near.site.id, frames: [] };
     tornado.frames.push({ hourUtc: snap.hour, onGround: snap.onGround, windMph: snap.windMph, xKm: Math.round(snap.at.x * 100) / 100, yKm: Math.round(snap.at.y * 100) / 100, site: near.site.id, packed: pack(boxOf(scan, near.site, snap.at)) });
@@ -363,15 +364,25 @@ const pack = products => zlib.deflateSync(Buffer.concat(REPLAY.products.map(key 
 function unpack(packed) { const all = zlib.inflateSync(packed), n = SIZE * SIZE; return Object.fromEntries(REPLAY.products.map((key, k) => [key, all.subarray(k * n, (k + 1) * n)])); }
 
 // The box around a point (km, y south) cut from a scan: each cell takes the gate its centre falls in.
-function boxOf(scan, site, at) {
-  const gates = scan.gates, gateKm = scan.gateKm, half = REPLAY.boxKm / 2, out = Object.fromEntries(REPLAY.products.map(key => [key, new Uint8Array(SIZE * SIZE)]));
+export function boxOf(scan, site, at) {
+  const gates = scan.gates, half = REPLAY.boxKm / 2, out = Object.fromEntries(REPLAY.products.map(key => [key, new Uint8Array(SIZE * SIZE)]));
+  boxCells(site, at, scan.gateKm, (cell, r, g) => { if (g < gates) for (const key of REPLAY.products) out[key][cell] = scan.products[key][r * gates + g]; });
+  return out;
+}
+// The radials the box's cells fall in (the 0.5 degree scan's fine gates reach the whole range).
+export function boxRadials(site, at) {
+  const wanted = new Set();
+  boxCells(site, at, RADAR_FINE_GATE_KM, (cell, r) => wanted.add(r));
+  return [...wanted];
+}
+// Each cell of the box: its index, and the radial and gate (gateKm long) its centre falls in.
+function boxCells(site, at, gateKm, each) {
+  const half = REPLAY.boxKm / 2;
   for (let j = 0; j < SIZE; j++) for (let i = 0; i < SIZE; i++) {
     const dx = at.x - half + (i + 0.5) * REPLAY.cellKm - site.xKm, dy = at.y - half + (j + 0.5) * REPLAY.cellKm - site.yKm;
     const g = Math.floor(Math.hypot(dx, dy) / gateKm);
-    if (g >= gates) continue;
     // (a gate is at x = site + range sin(az), y = site - range cos(az): north is up the map, y grows south)
     const az = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360, r = Math.min(RADAR_RADIALS - 1, Math.floor(az / (360 / RADAR_RADIALS)));
-    for (const key of REPLAY.products) out[key][j * SIZE + i] = scan.products[key][r * gates + g];
+    each(j * SIZE + i, r, g);
   }
-  return out;
 }

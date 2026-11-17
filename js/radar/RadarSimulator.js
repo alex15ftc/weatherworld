@@ -91,6 +91,8 @@ const DEALIAS = { passes: 8, radials: 1, alongKm: 1, least: 4 };
 // radar, Vt sin(tilt).
 const fallSpeedMs = (z, agl, freezingM) => {
   const frozen = smoothstep(freezingM - 300, freezingM + 700, agl);
+  // (all ice: the rain's part is 0 x a finite power, so the power is not worked out - the same value)
+  if (frozen === 1) return Math.exp(0.4 * agl / 8500);
   return ((1 - frozen) * 2.6 * z ** 0.107 + frozen) * Math.exp(0.4 * agl / 8500);
 };
 // Spread of motion within a beam volume besides what the echoes' own winds give (m/s): the
@@ -399,8 +401,33 @@ export function assembleRadarScene(inputs, echoes) {
 
 // gateKm: the length of the gates (GATE_KM, or the finer gates a close look asks for, as the
 // WSR-88D's 250 m); the scan reaches RADAR_RANGE_KM either way, so it has RADAR_RANGE_KM / gateKm gates.
-export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } = {}) {
+// radials: when given (a list of radial numbers), only those radials are worked out right - with
+// SECTOR_MARGIN radials either side worked out too, for the beam's width and the dealiasing that reach
+// across radials - and the rest are left empty (the replays' tornado radar, which keeps a box; 2026-11-17).
+export const SECTOR_MARGIN = 16;
+// The radials over discs of radius km round places ([{ xKm, yKm }]) as one radar sees them (all of
+// them when a disc reaches the radar), for a scan of those parts only.
+export function radialsAround(site, places, km) {
+  const wanted = new Uint8Array(RADAR_RADIALS), step = 360 / RADAR_RADIALS;
+  for (const p of places) {
+    const away = Math.hypot(p.xKm - site.xKm, p.yKm - site.yKm);
+    if (away <= km + 1) return Array.from({ length: RADAR_RADIALS }, (_, r) => r);
+    const centre = Math.floor(((Math.atan2(p.xKm - site.xKm, -(p.yKm - site.yKm)) / DEG + 360) % 360) / step), span = Math.ceil(Math.asin(km / away) / DEG / step) + 1;
+    for (let k = -span; k <= span; k++) wanted[((centre + k) % RADAR_RADIALS + RADAR_RADIALS) % RADAR_RADIALS] = 1;
+  }
+  return [...wanted.keys()].filter(r => wanted[r]);
+}
+export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, radials = null } = {}) {
   const GATE_KM = gateKm, GATES = Math.round(RADAR_RANGE_KM / gateKm);
+  // (inner: the radials whose products are made and dealiased; outer: those whose beam sums they read)
+  let inner = null, outer = null;
+  if (radials) {
+    inner = new Uint8Array(RADAR_RADIALS); outer = new Uint8Array(RADAR_RADIALS);
+    for (const r of radials) for (let d = -SECTOR_MARGIN - 1; d <= SECTOR_MARGIN + 1; d++) {
+      const k = ((r + d) % RADAR_RADIALS + RADAR_RADIALS) % RADAR_RADIALS;
+      outer[k] = 1; if (Math.abs(d) <= SECTOR_MARGIN) inner[k] = 1;
+    }
+  }
   const started = globalThis.performance?.now?.() ?? Date.now();
   const total = RADAR_RADIALS * GATES;
   const products = Object.fromEntries(RADAR_PRODUCT_KEYS.map(key => [key, new Uint8Array(total)]));
@@ -437,15 +464,17 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
   // 1. Each radial on its own: the beam's depth (three samples up through it), and what the
   // echoes in it are doing. Velocity is weighted by how strongly each part reflects.
   for (let r = 0; r < RADAR_RADIALS; r++) {
+    if (outer && !outer[r]) continue;
     const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, sinAz = Math.sin(az), cosAz = Math.cos(az);
     for (let g = 0; g < GATES; g++) {
       const geo = gateGeometry[g];
       const x = site.xKm + geo.ground * sinAz, y = site.yKm - geo.ground * cosAz;
       if (x < 0 || y < 0 || x >= scene.domainWidthKm || y >= scene.domainHeightKm) continue;
-      const terrain = envSample(scene.env, scene.env.terrain, x, y);
+      envPlace(scene.env, x, y);
+      const terrain = envRead(scene.env.terrain);
       const centerAgl = siteHeightM + geo.heightM - terrain;
       if (centerAgl < 0) continue; // terrain blockage
-      clearAir.bl = envSample(scene.env, scene.env.blDepth, x, y);
+      clearAir.bl = envRead(scene.env.blDepth);
       clearAir.bioZ = centerAgl - geo.spreadM < clearAir.bl * 1.3
         ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
       const index = r * GATES + g;
@@ -455,7 +484,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
         const spot = gateNoise(Math.floor(x * 2) * 7919 + Math.floor(y * 2), 0.5);
         if (spot < CLUTTER.targets) clutter[index] = clutterZ * 10 ** (CLUTTER.varyDb * (2 * spot / CLUTTER.targets - 1) / 10) * Math.exp(-Math.max(0, edgeAgl) / CLUTTER.fadeM);
       }
-      const bin = binAt(scene.stormBins, x, y), inStorm = bin !== null, freezingM = inStorm ? envSample(scene.env, scene.env.freezing, x, y) : 0;
+      const bin = binAt(scene.stormBins, x, y), inStorm = bin !== null, freezingM = inStorm ? envRead(scene.env.freezing) : 0;
       let zh = 0, zv = 0, ccw = 0, stormRadial = 0, stormRadial2 = 0, hail = 0, fall = 0, rising = 0;
       const boundaryBin = binAt(scene.boundaryBins, x, y);
       for (let o = 0; o < 3; o++) {
@@ -503,8 +532,9 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM } =
   // strip of the storm the farther out it is. Then range folding, and the measurement's own noise.
   const power = new Float32Array(GATES);
   for (let r = 0; r < RADAR_RADIALS; r++) {
+    if (inner && !inner[r]) continue;
     const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, sinAz = Math.sin(az), cosAz = Math.cos(az);
-    const left = ((r + RADAR_RADIALS - 1) % RADAR_RADIALS) * GATES, right = ((r + 1) % RADAR_RADIALS) * GATES;
+    const left =((r + RADAR_RADIALS - 1) % RADAR_RADIALS) * GATES, right = ((r + 1) % RADAR_RADIALS) * GATES;
     // Every gate's echo first: the Doppler products need the one a Doppler range farther out.
     for (let g = 0; g < GATES; g++) {
       const index = r * GATES + g, l = left + g, n = right + g;
@@ -1042,13 +1072,27 @@ function envSample(env, array, x, y) {
   return (array[i] * (1 - tx) + array[i + 1] * tx) * (1 - ty) + (array[i + env.w] * (1 - tx) + array[i + env.w + 1] * tx) * ty;
 }
 
+// envSample for several fields at one place: envPlace works out the place's weights once (into ENV_AT),
+// and envRead gives each field there, the same sums as envSample (bit for bit; 2026-11-17).
+const ENV_AT = { i: 0, tx: 0, ty: 0, w: 0 };
+function envPlace(env, x, y) {
+  const gx = clamp(x / env.cs - 0.5, 0, env.w - 1), gy = clamp(y / env.cs - 0.5, 0, env.h - 1);
+  const x0 = Math.min(env.w - 2, Math.floor(gx)), y0 = Math.min(env.h - 2, Math.floor(gy));
+  ENV_AT.tx = gx - x0; ENV_AT.ty = gy - y0; ENV_AT.i = y0 * env.w + x0; ENV_AT.w = env.w;
+}
+function envRead(array) {
+  const { i, tx, ty, w } = ENV_AT;
+  return (array[i] * (1 - tx) + array[i + 1] * tx) * (1 - ty) + (array[i + w] * (1 - tx) + array[i + w + 1] * tx) * ty;
+}
+
 function envWindAt(env, x, y, z, out) {
+  envPlace(env, x, y);
   let k = 0;
-  while (k < 3 && z > envSample(env, env.levelHeight[k + 1], x, y)) k++;
-  const h0 = envSample(env, env.levelHeight[k], x, y), h1 = envSample(env, env.levelHeight[k + 1], x, y);
+  while (k < 3 && z > envRead(env.levelHeight[k + 1])) k++;
+  const h0 = envRead(env.levelHeight[k]), h1 = envRead(env.levelHeight[k + 1]);
   const t = clamp((z - h0) / Math.max(1, h1 - h0), 0, 1);
-  out.u = lerp(envSample(env, env.levelU[k], x, y), envSample(env, env.levelU[k + 1], x, y), t);
-  out.v = lerp(envSample(env, env.levelV[k], x, y), envSample(env, env.levelV[k + 1], x, y), t);
+  out.u = lerp(envRead(env.levelU[k]), envRead(env.levelU[k + 1]), t);
+  out.v = lerp(envRead(env.levelV[k]), envRead(env.levelV[k + 1]), t);
 }
 
 // The motion of the storms within reach of a place, the stronger counting for more.

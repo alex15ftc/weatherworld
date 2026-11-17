@@ -35,13 +35,29 @@ const VELOCITY = Float32Array.from({ length: 256 }, (_, b) => decodeRadarValue('
 const ECHOES = Uint8Array.from({ length: 256 }, (_, b) => { const dbz = decodeRadarValue('reflectivity', b); return dbz != null && dbz >= TDA.leastDbz ? 1 : 0; });
 const MS_TO_KT = 1 / 0.514444, DEG = Math.PI / 180, AZ_STEP = 360 / RADAR_RADIALS;
 
-export function detectRotation(site, scans) {
-  const tilts = [...scans].sort((a, b) => a.tiltDeg - b.tiltDeg).map(scan => tiltFeatures(site, scan));
-  return { tvs: tvsDetections(tilts), meso: mesoDetections(tilts) };
+// Scans of a sector only (within: a mask of RADAR_RADIALS, the radials whose products are a full scan's, as
+// scanRadarTilt's `radials` gives them) also say whether the detections about the places near ([{ xKm, yKm }])
+// are sure to be those of full scans (`exact`, sectorExact), for the mesoscale discussions' look (2026-11-17).
+export function detectRotation(site, scans, { within = null, near = null } = {}) {
+  const tilts = [...scans].sort((a, b) => a.tiltDeg - b.tiltDeg).map(scan => tiltFeatures(site, scan, within));
+  const tdaColumns = columns(tilts, t => t.tda, () => TDA.linkKm), mdaColumns = columns(tilts, t => t.mda, MDA_REACH);
+  const found = { tvs: tvsDetections(tilts, tdaColumns), meso: mesoDetections(mdaColumns) };
+  if (within) found.exact = sectorExact(site, tilts, within, near ?? [], tdaColumns, mdaColumns);
+  return found;
 }
 
-// One tilt's 2-D features of both kinds.
-export function tiltFeatures(site, scan) {
+// Whether any radial from a to b (radial numbers, any integers, a <= b) is outside the mask.
+function outsideOf(within) {
+  const N = RADAR_RADIALS, gaps = new Int32Array(2 * N + 1);
+  for (let k = 0; k < 2 * N; k++) gaps[k + 1] = gaps[k] + (within[k % N] ? 0 : 1);
+  return (a, b) => { if (b - a + 1 >= N) return gaps[N] > 0; const s = ((a % N) + N) % N; return gaps[s + b - a + 1] - gaps[s] > 0; };
+}
+// The longest run of radials an MDA shear segment is followed over on ring g (as tiltFeatures has it).
+const mostRadials = g => Math.max(1, Math.floor(MDA.longestKm / ((g + 0.5) * RADAR_GATE_KM * AZ_STEP * DEG)));
+
+// One tilt's 2-D features of both kinds. within (a sector's scan): the groups, of any size, that the
+// sector's edge could have changed are listed too (uncertain: each a list of { x, y, halfKm } places).
+export function tiltFeatures(site, scan, within = null) {
   const tilt = scan.tiltDeg, vel = scan.products.velocity, ref = scan.products.reflectivity;
   const v = new Float32Array(RADAR_RADIALS * RADAR_GATES);
   for (let i = 0; i < v.length; i++) v[i] = ECHOES[ref[i]] ? VELOCITY[vel[i]] : NaN;
@@ -57,7 +73,8 @@ export function tiltFeatures(site, scan) {
     const dv = at(r + 1, g) - at(r, g);
     if (dv >= TDA.vectorMs) vectors.set(r * RADAR_GATES + g, dv);
   }
-  const tda = groups(vectors, key => { const r = Math.floor(key / RADAR_GATES), g = key % RADAR_GATES; return [[r - 1, g], [r + 1, g], [r, g - 1], [r, g + 1], [r - 1, g - 1], [r + 1, g + 1], [r - 1, g + 1], [r + 1, g - 1]]; })
+  const tdaGroups = groups(vectors, key => { const r = Math.floor(key / RADAR_GATES), g = key % RADAR_GATES; return [[r - 1, g], [r + 1, g], [r, g - 1], [r, g + 1], [r - 1, g - 1], [r + 1, g + 1], [r - 1, g + 1], [r + 1, g - 1]]; });
+  const tda = tdaGroups
     .filter(members => members.length >= TDA.vectors)
     .map(members => {
       let best = members[0];
@@ -88,17 +105,55 @@ export function tiltFeatures(site, scan) {
   // (segments touch when they are on neighbouring rings and overlap in azimuth)
   const byRing = new Map();
   for (const [key, s] of segments) { if (!byRing.has(s.g)) byRing.set(s.g, []); byRing.get(s.g).push(key); }
-  const mda = groups(segments, key => {
+  const mdaGroups = groups(segments, key => {
     const s = segments.get(key), out = [];
     for (const g of [s.g - 1, s.g + 1]) for (const k of byRing.get(g) ?? []) { const t = segments.get(k); if (t.r <= s.r + s.n && s.r <= t.r + t.n) out.push(k); }
     return out;
-  }, true).filter(members => members.length >= MDA.segments).map(members => {
+  }, true);
+  const mda = mdaGroups.filter(members => members.length >= MDA.segments).map(members => {
     let best = segments.get(members[0]);
     for (const m of members) if (segments.get(m).dv > best.dv) best = segments.get(m);
     const p = place(best.r + best.n / 2, best.g), range = (best.g + 0.5) * RADAR_GATE_KM;
     return { ...p, vrotMs: best.dv / 2, diameterKm: range * best.n * AZ_STEP * DEG, tiltDeg: tilt };
   });
-  return { tilt, tda, mda };
+  if (!within) return { tilt, tda, mda };
+  // A group is uncertain when one of its parts was worked out from velocities the sector's edge could
+  // have changed: a pattern vector's two radials and their neighbours; a shear segment's radials, the one
+  // before it, and room for a whole segment either side (where a segment starts follows from where the one
+  // before it on the ring reached).
+  const outside = outsideOf(within), uncertain = [];
+  for (const members of tdaGroups) if (members.some(key => { const r = Math.floor(key / RADAR_GATES); return outside(r - 1, r + 2); }))
+    uncertain.push(members.map(key => { const p = place(Math.floor(key / RADAR_GATES) + 0.5, key % RADAR_GATES); return { x: p.x, y: p.y, halfKm: 0 }; }));
+  for (const members of mdaGroups) if (members.some(key => { const s = segments.get(key), most = mostRadials(s.g); return outside(s.r - 1 - 2 * (most + 1), s.r + s.n + 2 * (most + 1)); }))
+    uncertain.push(members.map(key => { const s = segments.get(key), p = place(s.r + s.n / 2, s.g); return { x: p.x, y: p.y, halfKm: (s.g + 0.5) * RADAR_GATE_KM * s.n * AZ_STEP * DEG / 2 }; }));
+  return { tilt, tda, mda, uncertain };
+}
+
+// Whether the detections about the places near are sure to be those a full volume scan gives, from a
+// sector's scans (detectRotation's within). A detection is about a place when its column's base is within
+// SECTOR_CHECK.nearKm of it. They are sure when, with reachKm more than any column reaches between tilts:
+// every place's disc of nearKm + reachKm is inside the sector (so the features that could be a base there
+// are all in it); every feature of the columns about the places is reachKm or more inside it (so no feature
+// it lacks could have joined or contested those columns); and no uncertain group comes within reachKm of any
+// of those features, or within nearKm + reachKm of a place.
+export const SECTOR_CHECK = { nearKm: 10, reachKm: 7 };
+function sectorExact(site, tilts, within, near, tdaColumns, mdaColumns) {
+  const outside = outsideOf(within), { nearKm, reachKm } = SECTOR_CHECK;
+  const discInside = (x, y, km) => {
+    const away = Math.hypot(x - site.xKm, y - site.yKm);
+    if (away <= km) return !outside(0, RADAR_RADIALS - 1);
+    const centre = Math.floor(((Math.atan2(x - site.xKm, -(y - site.yKm)) / DEG + 360) % 360) / AZ_STEP), span = Math.ceil(Math.asin(km / away) / DEG / AZ_STEP) + 1;
+    return !outside(centre - span, centre + span);
+  };
+  if (!near.every(p => discInside(p.xKm, p.yKm, nearKm + reachKm))) return false;
+  const about = c => near.some(p => Math.hypot(c[0].x - p.xKm, c[0].y - p.yKm) <= nearKm);
+  const features = [...tdaColumns, ...mdaColumns].filter(about).flat();
+  if (!features.every(f => discInside(f.x, f.y, reachKm))) return false;
+  for (const t of tilts) for (const group of t.uncertain) for (const item of group) {
+    if (near.some(p => Math.hypot(item.x - p.xKm, item.y - p.yKm) - item.halfKm <= nearKm + reachKm)) return false;
+    if (features.some(f => Math.hypot(item.x - f.x, item.y - f.y) - item.halfKm <= reachKm)) return false;
+  }
+  return true;
 }
 
 // Connected groups of keys; near(key) gives [r, g] pairs (or keys, with direct).
@@ -140,9 +195,9 @@ function columns(tilts, pick, reach) {
   return done.concat(open);
 }
 
-function tvsDetections(tilts) {
+function tvsDetections(tilts, tdaColumns) {
   const lowest = tilts[0]?.tilt;
-  return columns(tilts, t => t.tda, () => TDA.linkKm)
+  return tdaColumns
     .filter(c => c.length >= TDA.features)
     .map(c => {
       const base = c[0], max = Math.max(...c.map(f => f.dvMs)), depthKm = depthOf(c);
@@ -152,8 +207,9 @@ function tvsDetections(tilts) {
     .map(d => ({ kind: d.elevated ? 'ETVS' : 'TVS', ...where(d.base), lowDvKt: kt(d.lowMs), maxDvKt: kt(d.maxMs), baseKft: kft(d.base.heightKm), topKft: kft(d.c[d.c.length - 1].heightKm), features: d.c.length }));
 }
 
-function mesoDetections(tilts) {
-  return columns(tilts, t => t.mda, (f, top) => Math.max(1.5, Math.max(f.diameterKm, top.diameterKm) / 2))
+const MDA_REACH = (f, top) => Math.max(1.5, Math.max(f.diameterKm, top.diameterKm) / 2);
+function mesoDetections(mdaColumns) {
+  return mdaColumns
     .filter(c => c.length >= MDA.features && depthOf(c) >= MDA.depthKm)
     .map(c => {
       const base = c[0], strongest = c.reduce((a, b) => (b.vrotMs > a.vrotMs ? b : a));
