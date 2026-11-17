@@ -163,6 +163,7 @@ export class WeatherAuthorityRuntime {
       this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep });
       this.dayReview?.afterStep();
       try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
+      this.afterAtmosphereStep?.();
     }
     this.startClocks();
     this.gameFeed.restart(world);
@@ -275,6 +276,7 @@ export class WeatherAuthorityRuntime {
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
         this.dayReview?.afterStep();
         try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
+        this.afterAtmosphereStep?.();
         if (step < steps - 1) yield;
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.
@@ -452,58 +454,66 @@ export class WeatherAuthorityRuntime {
 
   cellSummary(row, column, day = 'day1') {
     const r = Number(row), c = Number(column);
-    return this.cached(`cell:${day}:${r}:${c}`, () => {
-      const cell = this.atmosphere.cells?.[r]?.[c];
-      if (!cell) return null;
-      const surface = cell.surface ?? {}, wind = surface.wind ?? {};
-      const derived = cell.derived ?? {}, dynamics = cell.dynamics ?? {}, meso = cell.mesoscaleFields ?? {};
-      const outlook = cell.predictiveOutlook?.[day] ?? null;
-      return {
-        row: r, column: c, revision: this.revision, validHourUtc: this.atmosphere.validHourUtc,
-        centerKm: { x: (c + 0.5) * this.atmosphere.cellSizeKm, y: (r + 0.5) * this.atmosphere.cellSizeKm },
-        surface: {
-          temperatureF: surface.temperatureF ?? surface.temperature ?? null,
-          dewpointF: surface.dewpointF ?? surface.dewpoint ?? null,
-          pressureMb: surface.seaLevelPressure ?? surface.pressure ?? null,
-          windDirectionDeg: surface.windDirectionDeg ?? wind.direction ?? null,
-          windSpeedKt: surface.windSpeedKt ?? wind.speed ?? null
-        },
-        instability: { cape: derived.cape ?? null, cin: derived.cin ?? null, lclM: derived.lcl ?? null, stp: derived.stp ?? null, vtp: derived.vtp ?? null, scp: derived.scp ?? null },
-        shear: { srh01: derived.srh ?? null, bulkShear06Kt: derived.bulkShear ?? null },
-        forcing: {
-          forcingScore: dynamics.forcingScore ?? null,
-          verticalVelocityMs: dynamics.verticalVelocityMs ?? null,
-          convectiveReadiness: dynamics.convectiveReadiness ?? null,
-          triggerStrength: dynamics.triggerStrength ?? null,
-          initiationPotential: dynamics.initiationPotential ?? meso.initiationFocus ?? null
-        },
-        terrain: { elevationM: cell.terrain?.elevationM ?? null, region: cell.region?.name ?? cell.region?.id ?? cell.features?.regionId ?? null },
-        features: { airMass: cell.features?.airMass ?? null, front: cell.features?.front ?? null, dryline: Boolean(cell.features?.dryline) },
-        outlook
-      };
-    });
+    return this.cached(`cell:${day}:${r}:${c}`, () => this.cellSummaryNow(r, c, day));
+  }
+
+  cellSummaryNow(row, column, day = 'day1') {
+    const r = Number(row), c = Number(column);
+    const cell = this.atmosphere.cells?.[r]?.[c];
+    if (!cell) return null;
+    const surface = cell.surface ?? {}, wind = surface.wind ?? {};
+    const derived = cell.derived ?? {}, dynamics = cell.dynamics ?? {}, meso = cell.mesoscaleFields ?? {};
+    const outlook = cell.predictiveOutlook?.[day] ?? null;
+    return {
+      row: r, column: c, revision: this.revision, validHourUtc: this.atmosphere.validHourUtc,
+      centerKm: { x: (c + 0.5) * this.atmosphere.cellSizeKm, y: (r + 0.5) * this.atmosphere.cellSizeKm },
+      surface: {
+        temperatureF: surface.temperatureF ?? surface.temperature ?? null,
+        dewpointF: surface.dewpointF ?? surface.dewpoint ?? null,
+        pressureMb: surface.seaLevelPressure ?? surface.pressure ?? null,
+        windDirectionDeg: surface.windDirectionDeg ?? wind.direction ?? null,
+        windSpeedKt: surface.windSpeedKt ?? wind.speed ?? null
+      },
+      instability: { cape: derived.cape ?? null, cin: derived.cin ?? null, lclM: derived.lcl ?? null, stp: derived.stp ?? null, vtp: derived.vtp ?? null, scp: derived.scp ?? null },
+      shear: { srh01: derived.srh ?? null, bulkShear06Kt: derived.bulkShear ?? null },
+      forcing: {
+        forcingScore: dynamics.forcingScore ?? null,
+        verticalVelocityMs: dynamics.verticalVelocityMs ?? null,
+        convectiveReadiness: dynamics.convectiveReadiness ?? null,
+        triggerStrength: dynamics.triggerStrength ?? null,
+        initiationPotential: dynamics.initiationPotential ?? meso.initiationFocus ?? null
+      },
+      terrain: { elevationM: cell.terrain?.elevationM ?? null, region: cell.region?.name ?? cell.region?.id ?? cell.features?.regionId ?? null },
+      features: { airMass: cell.features?.airMass ?? null, front: cell.features?.front ?? null, dryline: Boolean(cell.features?.dryline) },
+      outlook
+    };
   }
 
   sounding(row, column, day = 'day1') {
     const r=Number(row), c=Number(column);
-    return this.cached(`sounding:${day}:${r}:${c}`,()=>{
-      const cell=this.atmosphere.cells?.[r]?.[c];
-      if (!cell) return null;
-      const sounding=buildSounding(cell);
-      return {
-        ...sounding,
-        // The table values and possible hazard type a forecaster reads off the profile, and the
-        // storm motion the storm engine would give a storm here (for the hodograph).
-        display: diagnoseSoundingDisplay(sounding, cell.terrain.elevationM),
-        engineMotion: diagnoseEngineMotion(this.atmosphere, c, r),
-        row:r,
-        column:c,
-        revision:this.revision,
-        validHourUtc:this.atmosphere.validHourUtc,
-        context:this.cellSummary(r,c,day)
-      };
-    });
+    return this.cached(`sounding:${day}:${r}:${c}`,()=>this.soundingNow(r,c,day));
   }
+
+  // The sounding of a cell as the atmosphere stands now, not cached (the upper-air releases are taken between the
+  // steps of an advance, before the revision moves on).
+  soundingNow(row, column, day = 'day1') {
+    const r=Number(row), c=Number(column), cell=this.atmosphere.cells?.[r]?.[c];
+    if (!cell) return null;
+    const sounding=buildSounding(cell);
+    return {
+      ...sounding,
+      // The table values and possible hazard type a forecaster reads off the profile, and the
+      // storm motion the storm engine would give a storm here (for the hodograph).
+      display: diagnoseSoundingDisplay(sounding, cell.terrain.elevationM),
+      engineMotion: diagnoseEngineMotion(this.atmosphere, c, r),
+      row:r,
+      column:c,
+      revision:this.revision,
+      validHourUtc:this.atmosphere.validHourUtc,
+      context:this.cellSummaryNow(r,c,day)
+    };
+  }
+
   // Product header without the per-cell grid; fields and tiles carry the map data.
   outlook(day) {
     const product = this.atmosphere.outlookCycle?.products?.[day];

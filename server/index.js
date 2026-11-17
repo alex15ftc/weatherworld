@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WeatherAuthorityRuntime, SIM_HOURS_PER_REAL_MINUTE } from './WeatherAuthorityRuntime.js';
 import { SurfaceAnalysisRuntime } from './SurfaceAnalysisRuntime.js';
+import { UpperAirRuntime } from './UpperAirRuntime.js';
 import { SynopticRuntime } from './SynopticRuntime.js';
 import { OutlookRuntime } from './OutlookRuntime.js';
 import { OutlookScoreboard } from './OutlookScoreboard.js';
@@ -59,6 +60,12 @@ if (process.env.WEATHER_STORM_WORKERS !== '0') {
   for (const signal of ['exit', 'SIGINT', 'SIGTERM']) process.once(signal, () => { runtime.stormWorkers?.close(); if (signal !== 'exit') process.exit(0); });
 }
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine, simHoursPerRealMinute: SIM_HOURS_PER_REAL_MINUTE });
+// The 06Z upper-air soundings anyone can read on the mesoanalysis page (UpperAirRuntime.js), kept beside the world.
+const upperAir = new UpperAirRuntime({ surface, soundingAt: (row, column) => runtime.soundingNow(row, column), worldId: () => runtime.worldId, file: statePath ? path.join(path.dirname(statePath), 'upper-air.json') : null });
+const keepUpperAir = () => { try { if (surface.atmosphere !== runtime.engine) surface.attach(runtime.engine); upperAir.capture(); } catch (error) { console.warn('[upper-air]', error.message); } };
+keepUpperAir();
+// (after every atmosphere step: a catch-up turn runs several before the clock's callback below)
+runtime.afterAtmosphereStep = keepUpperAir;
 // The whole large-scale model with the map's place in it, for the synoptic page (SynopticRuntime.js).
 const synoptic = new SynopticRuntime({ atmosphere: runtime.engine });
 // The Day 1-3 outlooks: issued when the world is ready, then every 6, 12 and 24 hours (WEATHER_OUTLOOK=off turns them off;
@@ -157,6 +164,9 @@ async function serveApi(url, req, res) {
     return sendJson(req, res, 404, { error: 'Unknown API endpoint' }, { cacheable: false, trace });
   }
   if (url.pathname === '/api/atmosphere/surface') return sendJson(req, res, 200, { ...surface.analysis(url.searchParams.get('frame')), clockRunning: runtime.autoAdvance }, { cacheable: false, trace });
+  // The upper-air network's soundings (public): the sites and releases kept; one site's sounding (?site, ?release hour).
+  if (url.pathname === '/api/atmosphere/upper-air') return sendJson(req, res, 200, upperAir.summary(), { cacheable: false, trace });
+  if (url.pathname === '/api/atmosphere/upper-air/sounding') { const value = upperAir.sounding(url.searchParams.get('site'), url.searchParams.get('release')); return sendJson(req, res, value ? 200 : 404, value ?? { error: 'No sounding from that site yet' }, { cacheable: false, trace }); }
   if (url.pathname === '/api/atmosphere/parameter') { const field = surface.parameter(url.searchParams.get('key'), url.searchParams.get('frame')); return sendJson(req, res, field ? 200 : 404, field ?? { error: 'Unknown parameter' }, { cacheable: Boolean(field), trace }); }
   // The short range model's runs (ShortRangeRuntime.js): the list; a run's description (?init=, the newest
   // without); one hour's field (?init&hour&key); the storms at a minute (?init&minute); the tracks (?init).
