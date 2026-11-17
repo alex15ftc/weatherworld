@@ -67,7 +67,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   15.3 to 17.8. Regressions accepted by the owner: wind reports a day 90th 213 to 320, hail median 120 to 190.
   Forecast check (seeds 41-50): Day 1 right 60 to 43% (within one 97 to 100%), Day 2 40 to 35%, Day 3 20 to 40%;
   calibrated Brier skill tornado up (Day 1 19 to 22), in-sample recalibration gains 0-1 point: no refit made (the
-  Day 1 drop is past the 15-point rule; the owner's call). Next: screen and suite `moistRangeGkg` [-3, 3].
+  Day 1 drop is past the 15-point rule; the owner's call). `moistRangeGkg` [-3, 3] tried after: no regressions (reports
+  within tolerance) but below Slight 11.3% and lull runs back near the old settings; the owner kept [-2, 4].
   Rejected: `lookAheadDays` 2 (lull runs 3.1 to 6.3% in a 160-day screen); `warmRangeK` (no gain over moisture alone).
 - Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
   warm-sector day's slide also by the best the next day can reach (`lookAheadDays` 1) and gives up 0.15 support a

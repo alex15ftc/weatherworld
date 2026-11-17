@@ -22,7 +22,8 @@
 - Decision: the warm-sector support in `RegionSteering` is multiplied by a ramp of the outer model's moisture over the map about its mean, none at -2 g/kg and all at +4 (`moistRangeGkg`), in place of the dry cut (`dryGkg`, which gave average and very moist air the same support).
 - Rationale: over 80 regression days the map's large-scale moisture and warmth tracked tornado counts (rank 0.50 / 0.49) and the support did not (0.13); below-Slight days sat on the jet's cold, dry flank. Suite: below Slight 13.8 to 6.3%, Enhanced 27.5 to 38.8%, High 3.8 to 6.3%; wind and hail report counts rose past tolerance and the owner accepted that. Rejected: `lookAheadDays` 2 (more lull runs), a warmth ramp as well (no gain), a ramp ending at +1 (saturates on half the days).
 - Forecast check (seeds 41-50): Day 1 right 60 to 43%, within one 97 to 100%; Brier skill level or better for tornado; in-sample recalibration gains 0-1 point: no refit.
-- Follow-up: try `moistRangeGkg` [-3, 3] (owner, 2026-11-17); about a third of lull-like days are caps in the regional layer, which steering cannot see.
+- Also rejected (owner kept [-2, 4], 2026-11-17): [-3, 3], inside every tolerance (wind 90th 239, hail median 141) but below Slight 11.3% against 6.3%, and lull runs in a 160-day screen 5.6% against 1.3%.
+- Follow-up: about a third of lull-like days are caps in the regional layer, which steering cannot see.
 
 ### 2026-11-16 — Night stratus from the stirred layer under the jet; night cooling stopped, not undone, by cloud
 

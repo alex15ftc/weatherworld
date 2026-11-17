@@ -2627,3 +2627,8 @@ Forecast check (seeds 41-50, 3 mornings, lead caps; both on origin/main 35fb85a,
 
 In-sample recalibration gains 0-1 point at Day 1, so the calibration fits; Day 1's category drop (5 of 30
 outlooks) is past the 15-point rule. No refit made (owner's call).
+
+Follow-up, `moistRangeGkg` [-3, 3] (the same day): suite against the old settings, no regressions: below Slight
+11.3%, Slight 27.5, Enhanced 36.3, Moderate 22.5, High 2.5; tornadoes a day 16.3; wind reports 90th 239, hail median
+141 (both within tolerance). Screen (160 days): lull-like 16.3%, in lull runs 2+ 5.6% (current 16.9 / 3.1, [-2, 4]
+13.1 / 1.3). The owner kept [-2, 4].
