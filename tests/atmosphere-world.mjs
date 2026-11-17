@@ -64,17 +64,22 @@ atmosphere.stormsEnabled = false;
 atmosphere.regional.coldPool.fill(0);
 atmosphere.advance(0.5);
 // The pool goes where the air is one air mass: the strip from it to the cell it is compared with
-// (12 cells east), and 100 km round that, with the least spread of surface temperature. Dropped on
-// a front, the warm air the wind brings over it and a comparison cell across the front would be
-// what is measured, not the pool (2026-11-17: the steering's look-ahead, c9c5474, moved a front
+// (12 cells east), and 100 km round that, with the least spread of surface temperature and dewpoint.
+// Dropped on a front, the warm air the wind brings over it and a comparison cell across the front
+// would be what is measured, not the pool; beside a dryline, the dryline is the line analysed there
+// (2026-11-17: the steering's look-ahead, c9c5474, moved a front
 // under the fixed spot this test used, 520 km x 400 km).
 const spot = (() => {
   const r = Math.ceil(100 / world.cellSizeKm);
   let best = null;
   for (let y = r; y < world.height - r; y++) for (let x = r; x < world.width - 12 - r; x++) {
-    let lo = Infinity, hi = -Infinity;
-    for (let yy = y - r; yy <= y + r; yy++) for (let xx = x - r; xx <= x + 12 + r; xx++) { const t = world.cells[yy][xx].surface.temperature; lo = Math.min(lo, t); hi = Math.max(hi, t); }
-    if (!best || hi - lo < best.spread) best = { xKm: (x + 0.5) * world.cellSizeKm, yKm: (y + 0.5) * world.cellSizeKm, spread: hi - lo };
+    let lo = Infinity, hi = -Infinity, dlo = Infinity, dhi = -Infinity;
+    for (let yy = y - r; yy <= y + r; yy++) for (let xx = x - r; xx <= x + 12 + r; xx++) {
+      const { temperature: t, dewpoint: d } = world.cells[yy][xx].surface;
+      lo = Math.min(lo, t); hi = Math.max(hi, t); dlo = Math.min(dlo, d); dhi = Math.max(dhi, d);
+    }
+    const spread = hi - lo + dhi - dlo;
+    if (!best || spread < best.spread) best = { xKm: (x + 0.5) * world.cellSizeKm, yKm: (y + 0.5) * world.cellSizeKm, spread };
   }
   return best;
 })();
@@ -87,7 +92,7 @@ atmosphere.advance(0.5);
 // (Within 130 km of where it was put: storms that form meanwhile make pools of their own.)
 const pool = atmosphere.regional.coldPool, near = k => Math.hypot((k % world.width + 0.5) * world.cellSizeKm - spot.xKm, (Math.floor(k / world.width) + 0.5) * world.cellSizeKm - spot.yKm) <= 130;
 const at = pool.reduce((best, value, k) => (near(k) && value > pool[best] ? k : best), Math.floor(spot.yKm / world.cellSizeKm) * world.width + Math.floor(spot.xKm / world.cellSizeKm)), away = at + (at % world.width < world.width - 14 ? 12 : -12);
-console.log(`cold pool put at ${spot.xKm.toFixed(0)}, ${spot.yKm.toFixed(0)} km (surface temperature spread ${spot.spread.toFixed(1)} F round it)`);
+console.log(`cold pool put at ${spot.xKm.toFixed(0)}, ${spot.yKm.toFixed(0)} km (temperature and dewpoint spread ${spot.spread.toFixed(1)} F round it)`);
 assert.ok(pool[at] > 3, `the pool is still there half an hour on (${pool[at].toFixed(1)} K)`);
 const colder = (cell(at).surface.temperature - before.t[at]) - (cell(away).surface.temperature - before.t[away]);
 assert.ok(colder < -5, `the air in the pool is colder (${colder.toFixed(1)} F against the air clear of it)`);
