@@ -328,8 +328,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   - Checked: `tests/site-pages.mjs`, `tests/short-range-synoptic.mjs` (the frames change nothing in a run), the
     static page and game-products tests, and each page at desktop and phone width against the hosted engine
     (`node scripts/site-preview.mjs`) and a local one (warnings, model large-scale view, hover menus in a browser).
-    `tests/short-range-model.mjs` fails on `main` with or without these changes ("the same storms in the same
-    places at +45 min while the dice are shared"; it failed on `3dea3bb` too): open. The `Dockerfile` copies the
+    (`tests/short-range-model.mjs`, which failed then, passes on `main` again as of 19e44e7, 2026-11-17.) The `Dockerfile` copies the
     new pages, `site/` and `fonts/`.
   - The engine itself (`js/storms`, `js/world`, `js/atmosphere`, `js/mesoscale`, `js/sounding.js`) is as it was on
     `main` at the start of 2026-11-12 (owner's decision that day): the storm environment batch and the removal of

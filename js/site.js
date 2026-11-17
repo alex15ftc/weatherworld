@@ -1,6 +1,6 @@
 // The shared header's behaviour on every page (site/header.html): marks the current section, opens the
 // menu on a phone, and shows the world's clock. Also the small helpers the document pages share.
-import { loadCalendar, dateText } from '/js/pageCalendar.js';
+import { loadCalendar, dateText } from './pageCalendar.js';
 
 export const $ = selector => document.querySelector(selector);
 export const escapeHtml = text => String(text ?? '').replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c]);

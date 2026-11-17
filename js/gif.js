@@ -6,8 +6,8 @@
 // One palette of up to 255 colours serves the whole loop: the commonest colours of all the frames (at 5 bits a
 // channel), every other colour taking the nearest of them. Charts are flat colours and lines, so this is close
 // to exact; a photograph would need more.
-import { mp4Recorder } from '/js/mp4.js';
-import { roleNow } from '/js/site.js';
+import { mp4Recorder } from './mp4.js';
+import { roleNow } from './site.js';
 
 function paletteOf(frames) {
   const counts = new Uint32Array(32768);
