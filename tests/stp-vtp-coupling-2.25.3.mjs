@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import { diagnoseViolentTornadoParameter } from '../js/sounding.js';
+import { diagnoseViolentTornadoParameter as vtp } from '../js/sounding.js';
 
-const zero=diagnoseViolentTornadoParameter({stp:0,rawStp:0,synopticSupport:1,cape:3000,srh:350,shear:55,lcl:800,cin:25,criticalAngle:90});
-assert.equal(zero,0,'Synoptic support must not manufacture VTP in zero-STP air');
-const strongLocalWeakSynoptic=diagnoseViolentTornadoParameter({stp:4.2,rawStp:6.1,synopticSupport:.15,cape:2800,srh:340,shear:55,lcl:850,cin:35,criticalAngle:85});
-const weakLocalStrongSynoptic=diagnoseViolentTornadoParameter({stp:.15,rawStp:.2,synopticSupport:.95,cape:900,srh:95,shear:32,lcl:1450,cin:100,criticalAngle:40});
-assert.ok(strongLocalWeakSynoptic>weakLocalStrongSynoptic*4,'Strong local tornado ingredients should dominate broad synoptic support');
-assert.ok(strongLocalWeakSynoptic>.35);
+// The violent tornado parameter is STP times 3CAPE/50 (capped at 2) times the 0-3 km lapse rate/6.5 (Hampshire et al.
+// 2018; SPC mesoanalysis), so it is zero wherever STP is, whatever the low-level instability.
+assert.equal(vtp({ stp: 0, cape03: 250, lapseRate03km: 9 }), 0, 'no STP, no VTP');
+assert.equal(vtp({ stp: 2, cape03: 50, lapseRate03km: 6.5 }), 2, 'at both breakpoints VTP equals STP');
+assert.equal(vtp({ stp: 2, cape03: 100, lapseRate03km: 6.5 }), 4, '3CAPE term reaches 2 at 100 J/kg');
+assert.equal(vtp({ stp: 2, cape03: 400, lapseRate03km: 6.5 }), 4, '3CAPE term capped at 2');
+assert.ok(Math.abs(vtp({ stp: 2, cape03: 25, lapseRate03km: 8.125 }) - 1.25) < 1e-9, 'terms scale continuously');
+assert.equal(vtp({ stp: 3, cape03: 0, lapseRate03km: 9 }), 0, 'no low-level CAPE, no VTP');
+assert.equal(vtp({ stp: 3, cape03: 80, lapseRate03km: -2 }), 0, 'an inversion does not make VTP negative');
 console.log('STP/VTP coupling regression: ok');

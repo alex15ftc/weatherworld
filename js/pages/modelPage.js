@@ -39,8 +39,16 @@ const ENSEMBLE_PRODUCTS = [
   { key: 'uhProb4', group: 'Ensemble', label: `Chance of a UH ${UH_TRACK}+ track within 25 mi, 4 h`, step: 30, table: PROB, unit: '%' },
   { key: 'uhProbTotal', group: 'Ensemble', label: `Chance of a UH ${UH_TRACK}+ track within 25 mi, run total`, step: 30, table: PROB, unit: '%' },
   { key: 'torProb', group: 'Ensemble', label: 'Chance of a tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
-  { key: 'spaghetti', group: 'Ensemble', label: `Every run's UH ${UH_TRACK}+ tracks, run total`, step: 30 }
+  { key: 'sigTorProb', group: 'Ensemble', label: 'Chance of an EF2+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
+  { key: 'violentTorProb', group: 'Ensemble', label: 'Chance of an EF4+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
+  { key: 'spaghetti', group: 'Ensemble', label: `Every run's UH ${UH_TRACK}+ tracks, run total`, step: 30 },
+  { key: 'torSpaghetti', group: 'Ensemble', label: "Every run's tornado tracks by rating, run total", step: 30, unit: 'EF' }
 ];
+// The ensemble's tornado products (2026-11-17): each track point carries its tornado's rated wind so far (mph; 1 until it
+// has one; ensembles from before 2026-11-17 carry 1 for any tornado, so they show no EF2+ or EF4+ chances).
+const EF_LEAST_MPH = [65, 86, 111, 136, 166, 200];   // TornadoEngine efRating
+const efOf = mph => EF_LEAST_MPH.filter(at => mph >= at).length - 1;
+const TOR_TESTS = { torProb: p => p.tor > 0, sigTorProb: p => p.tor >= EF_LEAST_MPH[2], violentTorProb: p => p.tor >= EF_LEAST_MPH[4] };
 
 // --- State.
 let domain = null, localOffset = -6, base = null, view = null;
@@ -488,9 +496,23 @@ function drawEnsemble() {
       for (const points of run.storms.values()) for (let i = 1; i < points.length; i++) { const a = points[i - 1], b = points[i]; if (b.h > hourNow || b.h - a.h > 0.51 || Math.min(a.uh, b.uh) < UH_TRACK) continue; ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke(); }
     });
     ctx.restore();
+  } else if (productKey === 'torSpaghetti') {
+    // Faint: every run's rotating-storm tracks; strong: its tornado tracks, each piece in the rating its tornado has reached.
+    ctx.save(); ctx.lineCap = 'round';
+    E.byRun.forEach(run => {
+      for (const points of run.storms.values()) for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        if (b.h > hourNow || b.h - a.h > 0.51) continue;
+        if (a.tor > 0 && b.tor > 0) { ctx.strokeStyle = EF[Math.max(0, efOf(b.tor))]; ctx.lineWidth = (run.full ? 3.2 : 2.2) + 0.5 * Math.max(0, efOf(b.tor)); }
+        else if (Math.min(a.uh, b.uh) >= UH_TRACK) { ctx.strokeStyle = 'rgba(200, 210, 225, 0.16)'; ctx.lineWidth = 1.2; }
+        else continue;
+        ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke();
+      }
+    });
+    ctx.restore();
   } else {
     const span = productKey === 'uhProb4' ? [hourNow - 4, hourNow] : [E.data.issuedHourUtc - 1, hourNow];
-    const test = productKey === 'torProb' ? p => p.tor : p => p.uh >= UH_TRACK;
+    const test = TOR_TESTS[productKey] ?? (p => p.uh >= UH_TRACK);
     drawRaster(probRaster(`${E.issued}:${productKey}:${t}`, span, test), 0.85);
   }
   drawTowns();
@@ -544,11 +566,11 @@ function drawLegend() {
     note.textContent = `${meta.label}${meta.unit ? ` (${meta.unit})` : ''}${meta.second ? ` · dashed: ${meta.second.label} (${meta.second.unit})` : ''}`;
     return;
   }
-  const table = p.table ?? (p.key === 'torTracks' ? EF.map((c, i) => [i, c]) : null);
+  const efKey = p.key === 'torTracks' || p.key === 'torSpaghetti', table = p.table ?? (efKey ? EF.map((c, i) => [i, c]) : null);
   if (table) {
     const w = bar.width / table.length;
-    table.forEach(([at, c], i) => { g.fillStyle = c; g.fillRect(i * w, 0, w + 1, bar.height); tick(p.key === 'torTracks' ? `EF${at}` : String(at), (i + 0.5) / table.length); });
-    note.textContent = `${p.label}${p.unit && p.key !== 'torTracks' ? ` (${p.unit})` : ''}${p.key === 'torTracks' ? ' · faint: updraft helicity tracks' : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
+    table.forEach(([at, c], i) => { g.fillStyle = c; g.fillRect(i * w, 0, w + 1, bar.height); tick(efKey ? `EF${at}` : String(at), (i + 0.5) / table.length); });
+    note.textContent = `${p.label}${p.unit && !efKey ? ` (${p.unit})` : ''}${efKey ? ' · faint: updraft helicity tracks' : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
   } else if (p.key === 'paint' || p.key === 'spaghetti') {
     const runs = E.byRun?.length ?? 0, w = bar.width / Math.max(1, runs);
     for (let r = 0; r < runs; r++) { g.fillStyle = runColour(r); g.fillRect(r * w, 0, w + 1, bar.height); }
@@ -570,15 +592,30 @@ canvas.addEventListener('mousemove', event => {
     if (image && showsRefl()) { const v = image.dbz[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0; if (v >= 15) lines.push(`Reflectivity: <b>${Math.round(v)}</b> dBZ`); }
     const near = (shown.storms ?? []).map(s => [s, Math.hypot(s.x - x, s.y - y)]).filter(([, d]) => d < 15).sort((a, b) => a[1] - b[1])[0]?.[0];
     if (near) lines.push(`<b>${near.id}</b> · ${near.mode ?? 'storm'} · ${near.dbz} dBZ · UH ${near.uh}${near.hailIn >= 0.75 ? ` · hail ${near.hailIn.toFixed(2)} in` : ''}${near.tornado ? ` · <b style="color:#ff6b6b">tornado</b> ${near.tornado.mph} mph` : ''}`);
-  } else if (!['paint', 'spaghetti'].includes(productKey)) {
+  } else if (!['paint', 'spaghetti', 'torSpaghetti'].includes(productKey)) {
     const image = rasters.get(`prob:${E.issued}:${productKey}:${t}`);
     if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${E.byRun.length} runs`);
+  }
+  if (modelKind !== 'short' && (productKey in TOR_TESTS || productKey === 'torSpaghetti')) {
+    const split = strongestNear(x, y);
+    if (split) lines.push(`Strongest tornado within 25 mi: none in <b>${split.none}</b> · EF0-1 <b>${split.weak}</b> · EF2-3 <b>${split.strong}</b> · EF4+ <b>${split.violent}</b> of ${E.byRun.length} runs`);
   }
   lines.push(`<span class="muted">${Math.round(x / MILE_KM)} mi east, ${Math.round(y / MILE_KM)} mi south of the north-west corner</span>`);
   tip.innerHTML = lines.join('<br>'); tip.style.display = 'block';
   tip.style.left = `${Math.min(mx + 14, rect.width - tip.offsetWidth - 4)}px`; tip.style.top = `${Math.min(my + 14, rect.height - tip.offsetHeight - 4)}px`;
 });
 canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+// How the runs split by the strongest tornado each brings within 25 miles of a place, by the time on show.
+function strongestNear(x, y) {
+  if (!E.byRun) return null;
+  const hourNow = E.data.issuedHourUtc + t / 60, split = { none: 0, weak: 0, strong: 0, violent: 0 };
+  for (const run of E.byRun) {
+    let mph = 0;
+    for (const points of run.storms.values()) for (const q of points) if (q.tor > mph && q.h <= hourNow && Math.hypot(q.x - x, q.y - y) <= NEAR_KM) mph = q.tor;
+    if (!mph) split.none++; else if (mph >= EF_LEAST_MPH[4]) split.violent++; else if (mph >= EF_LEAST_MPH[2]) split.strong++; else split.weak++;
+  }
+  return split;
+}
 // A point of the map: the short range run's sounding there at the forecast hour on show.
 canvas.addEventListener('click', event => {
   if (!view || modelKind !== 'short' || !S.meta) return;

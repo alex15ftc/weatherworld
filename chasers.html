@@ -96,9 +96,9 @@
   </div>
 </main>
 <script type="module">
+// The admin key is the top bar's sign-in (js/site.js: localStorage), shared by every page.
+import { adminKey as store } from '/js/site.js';
 const $ = id => document.getElementById(id);
-const KEY = 'wwAdminKey';
-const store = { get() { try { return sessionStorage.getItem(KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(KEY, v) : sessionStorage.removeItem(KEY); } catch {} } };
 let role = 'public', mode = 'live', base = null, live = null, day = null, selected = null;
 const view = { x: 0, y: 0, size: 500 };          // map miles shown (square)
 const loop = { t: 0, playing: false, last: 0 };
@@ -128,7 +128,19 @@ canvas.addEventListener('wheel', e => { e.preventDefault(); const r = canvas.get
 let drag = null;
 canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false }; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener('pointermove', e => { if (!drag) return; const r = canvas.getBoundingClientRect(), k = view.size / r.width; if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) drag.moved = true; view.x = drag.vx - (e.clientX - drag.x) * k; view.y = drag.vy - (e.clientY - drag.y) * k; draw(); });
-canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('pointerup', e => { const click = drag && !drag.moved; drag = null; if (click) pick(e); });
+// A click on a dot selects that chaser (their track shows); a click away from every dot clears it.
+function pick(e) {
+  const r = canvas.getBoundingClientRect(), mx = view.x + (e.clientX - r.left) / r.width * view.size, my = view.y + (e.clientY - r.top) / r.height * view.size;
+  const reach = 10 / r.width * view.size, cands = [];
+  if (mode === 'live' && live?.role === 'admin') for (const p of live.players) cands.push({ key: p.userId ?? p.name, x: p.x, y: p.y });
+  if (mode === 'day' && day) for (const t of day.tracks) { let head = null; for (const p of t.pts) { if (p.t > loop.t) break; head = p; } if (head && loop.t - head.t <= 15) cands.push({ key: t.key, x: head.x, y: head.y }); }
+  let best = null, bestD = reach;
+  for (const c of cands) { const d = Math.hypot(c.x - mx, c.y - my); if (d < bestD) { best = c; bestD = d; } }
+  selected = best ? (best.key === selected ? null : best.key) : null;
+  if (mode === 'live') listLive(); else listDay();
+  draw();
+}
 new ResizeObserver(fit).observe($('mapbox'));
 
 const PALETTE = ['#f59e0b', '#38bdf8', '#a78bfa', '#f472b6', '#34d399', '#fb7185', '#facc15', '#60a5fa', '#c084fc', '#2dd4bf'];
@@ -228,12 +240,13 @@ function drawDay() {
     const solo = selected && t.key !== selected;
     let head = null;
     ctx.lineCap = 'round';
-    for (let k = 1; k < t.pts.length; k++) {
+    // Only the selected chaser's track is drawn; the others are their dots alone.
+    if (t.key === selected) for (let k = 1; k < t.pts.length; k++) {
       const p = t.pts[k], q = t.pts[k - 1];
       if (p.t > now) break;
       if (p.t < from || p.cut) continue;
       const age = (now - p.t) / Math.max(1, now - from);
-      ctx.globalAlpha = (solo ? 0.15 : 1) * (0.15 + 0.85 * (1 - age));
+      ctx.globalAlpha = 0.15 + 0.85 * (1 - age);
       ctx.strokeStyle = p.mph > lim ? '#ef4444' : (admin ? t.colour : '#fbbf24'); ctx.lineWidth = (p.mph > lim ? 3.5 : 2) * d;
       ctx.beginPath(); ctx.moveTo(sx(q.x), sy(q.y)); ctx.lineTo(sx(p.x), sy(p.y)); ctx.stroke();
     }
@@ -250,7 +263,7 @@ function listDay() {
   if (!day) { $('list').textContent = 'No days recorded yet.'; return; }
   const admin = day.role === 'admin';
   $('sideTitle').textContent = `${day.label} · ${day.tracks.length} chaser${day.tracks.length === 1 ? '' : 's'}`;
-  if (!admin) { $('list').innerHTML = `<p>Where every chaser drove on ${esc(day.label)}, with the day's storm reports. Press play, or drag the time bar.</p>`; return; }
+  if (!admin) { $('list').innerHTML = `<p>Where every chaser drove on ${esc(day.label)}, with the day's storm reports. Press play, or drag the time bar. Click a chaser's dot to see their track.</p>`; return; }
   countFlags();
   $('list').innerHTML = '';
   for (const t of [...day.tracks].sort((a, b) => b.flags - a.flags || b.maxMph - a.maxMph)) {

@@ -445,9 +445,10 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     // storms and tornadoes on the ground at each step; and the storms going at the start.
     byHour.tornado[utc] += frame.tornadoes;
     // Where this run's storms are, for the model page's ensemble products (2026-10-29): [hour UTC, storm
-    // number, x km, y km, reflectivity dBZ, updraft helicity, tornado 0/1] for each storm at each step.
+    // number, x km, y km, reflectivity dBZ, updraft helicity, tornado] for each storm at each step. The tornado column is 0 with
+    // none on the ground, else its rated wind so far in mph (TornadoEngine ratedWindMph; 1 until it has one; was 1 until 2026-11-17).
     const at = Math.round((world.stormEngine?.validHourUtc ?? world.validHourUtc) * 100) / 100;
-    for (const storm of world.storms) if (storm.active && (storm.intensity ?? 0) >= 0.15) result.stormTrack.push([at, Number(String(storm.id).replace(/\D/g, '')) || 0, Math.round(storm.positionKm.x * 10) / 10, Math.round(storm.positionKm.y * 10) / 10, Math.round(storm.radar?.maxReflectivityDbz ?? 0), updraftHelicity(storm), storm.tornado?.onGround ? 1 : 0]);
+    for (const storm of world.storms) if (storm.active && (storm.intensity ?? 0) >= 0.15) result.stormTrack.push([at, Number(String(storm.id).replace(/\D/g, '')) || 0, Math.round(storm.positionKm.x * 10) / 10, Math.round(storm.positionKm.y * 10) / 10, Math.round(storm.radar?.maxReflectivityDbz ?? 0), updraftHelicity(storm), storm.tornado?.onGround ? Math.max(1, Math.round(storm.tornado.ratedWindMph || storm.tornado.windSpeedMph || 1)) : 0]);
     for (let i = 0; i < n; i++) if (frame.storm[i]) day.stormy[i] = 1;
     // Storm mode (the engine's own, StormModeEngine describeStormMode): rotating storms on their own or in clusters, lines
     // (QLCS, MCS, segments; a line with supercells in it counts as a line), and the rest (multicells, pulse, elevated).

@@ -18,6 +18,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- /chasers fixes (2026-11-17, owner's request; `3c91512` on `main`, engine deployed from it): the page now reads the admin key from the top bar's sign-in
+  (`js/site.js` `adminKey`, localStorage; it read sessionStorage, so signed-in admins saw the public view), and the
+  day loop draws a track only for the selected chaser (click a dot, or a row in the admin list). Seen in the local
+  site preview; the admin view with the real key not seen yet.
+- VTP and tornado strength in the ensemble (2026-11-17, owner's request; `6c87669` on `main`, engine deployed from it, the world carried over): VTP is now SPC's (STP x 3CAPE/50 capped at 2 x
+  0-3 km lapse rate/6.5; Hampshire et al. 2018 JOM), replacing an invented 0-5 blend; display only (no storm code reads it).
+  Mesoanalysis and /models gain VTP and 0-3 km CAPE fields (seed 2, Day 2 21Z, STP>=1 cells: STP p50 3.0, VTP 4.0, 3CAPE 59).
+  Ensemble track points carry the tornado's rated mph (was 1); the /models ensemble has EF2+ and EF4+ chances within
+  25 mi, every run's tornado tracks by EF, and a per-run strongest-tornado readout. Not seen in a browser yet.
 - Outlooks and model frames go out as they are ready (2026-11-17, owner's request, `92ba267` on `main`; engine deployed from it, the world carried over; live 19Z short range run seen streaming): forecast threads
   stream parts back (`ForecastPool.run` `onProgress`). Each outlook of an issue is put out once its members have run
   its day (`OutlookRuntime.publish`); with few threads (the host has one for outlooks) the Day-1-only members run
