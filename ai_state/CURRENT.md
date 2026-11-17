@@ -93,6 +93,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   low-speed stabiliser cancelled a driven wheel's force while the car crept backward (driven wheels now exempt).
   The pickup can't climb the ~10-degree grass spawn hill in 2H (rear-tyre grip; 4L does). Car configs are
   0.476 m/stud vs the world's 0.56 (cars ~18% large).
+- Home city (2026-11-16, not yet published): first join shows a city picker
+  (`SpawnPickerController`; the metro, city and small cities, `Server/Modules/HomeCity`, spawn in the right-hand
+  lane of the ordinary road nearest a mile past each city's east edge, facing along it, 45 studs or more from a
+  junction; the start point before picking snaps to a road the same way); dying respawns there; the car
+  (`CarService.give`) is set down in front of the player now, facing their way, not beside them; rejoining returns to the last spot (PlayerData `Spawn`, saved every 5 s
+  by `ExploreService`, floor under the saved height so indoors stays indoors). Seen in Studio: picker, move to
+  Smith Falls, rejoin at the same spot, the road spawn with the car ahead. PlayerData's key is literally
+  `Player$<userId>` (store `PlayerData_Studio` in Studio playtests). Not yet seen: respawn after death (romcp could not kill the character).
+  The choice is once only; no way to change city yet.
 - One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `019a278` (first from `32b57de`), the world carried over;
   place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
   not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the

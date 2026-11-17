@@ -1,13 +1,13 @@
 --!strict
 -- Every player has a car: when Explore puts a character on the ground (spawn, respawn, a debug
--- teleport), a car of their own is set down beside them; they start on foot and get in at its
+-- teleport), a car of their own is set down in front of them, facing the way they face; they start on foot and get in at its
 -- seat (user 2026-11-08: not put in the driver's seat on spawn). One car a player; the old one
 -- goes when a new one is made or the player leaves.
 --
 -- The cars are the engine-sim cars from EngineSimRoblox (user 2026-11-14): VehicleService rigs
 -- the ServerStorage.Vehicles templates and the owner's client simulates them (engine, drivetrain,
 -- tires: Client/Modules/EngineSim and Vehicle). Everyone gets the pickup (a 1996 Chevy C1500);
--- the F4 menu swaps it for the Crown Victoria (VehicleNet.Choose), which is set down beside them
+-- the F4 menu swaps it for the Crown Victoria (VehicleNet.Choose), which is set down in front of them
 -- in its place and kept for their next spawn.
 
 local Players = game:GetService("Players")
@@ -22,7 +22,8 @@ local CarService = {}
 
 local DEFAULT_CAR = "Pickup"
 -- (studs from the character to the car's middle: clear of its body, at the world's scale)
-local CAR_SIDE = 14 * WorldConfig.WORLD_SCALE
+-- (studs from the character to the car's middle: half a car and a step)
+local CAR_AHEAD = 17 * WorldConfig.WORLD_SCALE
 local CHOOSE_COOLDOWN = 2 -- s between car swaps
 
 local cars: { [Player]: Model } = {}
@@ -66,7 +67,8 @@ function CarService.remove(player: Player)
 	end
 end
 
--- A new car on the ground beside the character, facing the way they face (CAR_SIDE studs to their right).
+-- A new car on the ground in front of the character, facing the way they face (its middle
+-- CAR_AHEAD studs ahead): on a road spawn, in their lane, pointing down the road.
 function CarService.give(player: Player, character: Model)
 	if character.Parent == nil then
 		return
@@ -81,15 +83,14 @@ function CarService.give(player: Player, character: Model)
 	if not root or not humanoid then
 		return
 	end
-	local right = root.CFrame.RightVector
-	local p = root.Position + Vector3.new(right.X, 0, right.Z).Unit * CAR_SIDE
+	local look = root.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	flat = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.zAxis
+	local p = root.Position + flat * CAR_AHEAD
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
 	local hit = workspace:Raycast(p + Vector3.new(0, 40, 0), Vector3.new(0, -200, 0), params)
 	local groundY = if hit then hit.Position.Y else p.Y - 3 * WorldConfig.WORLD_SCALE
-	local look = root.CFrame.LookVector
-	local flat = Vector3.new(look.X, 0, look.Z)
-	flat = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.zAxis
 	local at = CFrame.lookAlong(Vector3.new(p.X, groundY + VehicleService.pivotHeight(key) + 0.5 * WorldConfig.WORLD_SCALE, p.Z), flat, Vector3.yAxis)
 	local car = VehicleService.spawn(key, at)
 	if not car then
