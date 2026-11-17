@@ -152,7 +152,12 @@ export const OUTLOOK = Object.freeze({
   // 0.65 drew Enhanced+ over 8% of the map against 21% verified and was too low on 60% of days; at 0.9 15%, the day right
   // 30 -> 50%, Enhanced+ CSI 0.25 -> 0.34 (1.0 matched the area but left the calibrated chances no skill). Day 2 at 0.9:
   // Enhanced+ 14 -> 19% (20% verified), right 35 -> 50%, too high 5% either way, CSI 0.54 -> 0.60.
-  caution: { day1: 0.9, day2: 0.9, day3: 0.9 },
+  // 2026-11-16 later (owner): Day 3 back to 0.65, Day 2 kept at 0.9. Those numbers were the 11-14 weather; on new runs of the
+  // engine at 40ce207 (quieter: 13.8 tornadoes a day against 19.3 on the same seeds; 40 Day 3s, seeds 41-60,
+  // data/outlook-archive/2026-11-16-40ce207) Day 3 at 0.9 drew Enhanced+ over 37% of the map against 17.5% verified, its 30%
+  // and 45% areas verified 20% and 32%; at 0.65 23% of the map, 32% and 45.5%, right 37.5 -> 40%, too high 30 -> 22.5%, Brier
+  // skill 4 -> 9.5. Day 2 at 0.9 held: its 45% areas verified 44-45% (53-54% at 0.75).
+  caution: { day1: 0.9, day2: 0.9, day3: 0.65 },
   // How the issued areas are tidied before they are drawn (contourShapes.js tidyRanks; 2026-11-14, the user's request: no small
   // islands, no two risk borders touching). A contour level's or category's piece smaller than minSqMi goes, and a hole that
   // small is filled; each category from Marginal up is ringed by at least gapCells of the one below (Marginal by general
