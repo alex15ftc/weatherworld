@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { avoidBackgroundThrottling } from '../js/runtime/processPriority.node.js';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { runShortRange, shortRangeHours, SHORT_RANGE } from '../js/forecast/ShortRangeModel.js';
+import { streamRun } from '../server/ShortRangeRuntime.js';
 import { MESOANALYSIS_PARAMETERS, buildParameterField } from '../server/mesoanalysisParameters.js';
 avoidBackgroundThrottling();
 
@@ -12,6 +13,12 @@ const live = new AtmosphereWorld({ seed: 4 }); live.advance(4);   // 16Z, storms
 const state = live.saveState({ forecast: true });
 const fieldsOf = world => Object.fromEntries(MESOANALYSIS_PARAMETERS.filter(p => ['mlcape', 'stp', 'dewpoint'].includes(p.key)).map(p => [p.key, buildParameterField(world, p)]));
 const run = runShortRange(structuredClone(state), { hours: 5, fieldsOf });
+// Streamed (the server's way, 2026-11-16): each whole hour is sent as it is kept, and the parts add up to the run.
+const parts = [], streamed = runShortRange(structuredClone(state), { hours: 5, fieldsOf, onProgress: part => parts.push(part) }), built = {};
+for (const part of parts) streamRun(built, part);
+assert.equal(streamed.streamed, true); assert.equal(streamed.fields, undefined, 'what was streamed is not sent again');
+assert.deepEqual(parts.map(p => p.readyHours), [0, 1, 2, 3, 4, 5], 'a part at every whole hour, from the start');
+for (const key of ['parameters', 'fields', 'soundings', 'storms', 'tracks']) assert.deepEqual(built[key], run[key], `streamed ${key} match the run`);
 
 // The live world, as the server steps it, with a storm record every 15 minutes.
 const world = live.world, init = world.validHourUtc, positions = new Map();

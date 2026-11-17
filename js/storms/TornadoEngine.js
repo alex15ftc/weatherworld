@@ -1,5 +1,6 @@
 import { rotatingShare } from './StormModeEngine.js';
 import { clamp } from '../scenarios/math.js';
+import { wallCloudRadiusKm } from './StormGeometry.js';
 
 const MPH_PER_KPH = 0.621371;
 
@@ -80,7 +81,84 @@ export const tornadoRatePerHour = imminence => TORNADO.fullRatePerHour * Math.po
 // Scale (mph above 65) of the wind spread for a tornado under this low-level rotation, and the
 // share of tornadoes from that spread whose wind reaches a given speed.
 export const tornadoWindScaleMph = (lowRotation, stp = 0) => INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2) + INTENSITY.stpScaleMph * clamp(stp / INTENSITY.stpFull, 0, 1.2) ** INTENSITY.stpPower;
-export const tornadoShareReaching = (scaleMph, mph) => Math.exp(-Math.pow(Math.max(0, mph - 65) / scaleMph, 1 / INTENSITY.tail));
+// LEAN (2026-11-17, the owner's request): a tornado's strength leans on its inflow's low-level instability. Its wind is still
+// its draw's place in the spread its storm allows (strengthUniform, INTENSITY), but the draw leans toward the top where the
+// inflow is more unstable in its lowest 3 km than is usual for tornadoes under that spread, and toward the bottom where it
+// is less (Hampshire et al. 2018, NWA JOM: 0-3 km CAPE and lapse rate set EF4-5 environments apart from EF2-3 ones; the
+// stretching of low-level vorticity by a stronger low-level updraught, Markowski and Richardson 2010). The lean is a
+// Gaussian copula: u' = Phi(sqrt(1 - rho^2) Phi^-1(u) + rho z), with z the inflow's standard score: where its instability
+// stands among the engine's own tornadoes with the same spread (quantiles below, measured on seeds 11-18 x 8 days before the
+// lean, by spread terciles; ties within a quantile split by a draw of their own). z is then standard normal over the
+// engine's tornadoes, so u' stays uniform and the winds, ratings, lives and tracks keep their spread: only which storms get
+// the strong ones changes. rho: how far the draw follows z. Re-measure the quantiles when the low levels change (the
+// warm-sector moisture, the 0-3 km CAPE or lapse rate); the table is in tornado-lean order, not painted values.
+const LEAN = { rho: 0.35, scaleMph: [31.5,49.1,75.5], quantiles: [
+  [16,55,84,123,176,220,264,334,418,527,640,780,934,1029,1203,1349,1572,1763,1990,2357,3172],
+  [17,103,153,198,265,312,393,452,534,612,709,847,935,1101,1224,1335,1564,1686,1870,2153,3160],
+  [36,157,224,276,329,387,464,541,647,729,831,975,1129,1261,1400,1491,1689,1820,2058,2365,4202]
+] };
+const normCdf = x => { const t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989422804014327 * Math.exp(-x * x / 2), p = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429)))); return x >= 0 ? 1 - p : p; };
+// (Acklam's inverse of the normal distribution)
+function normInv(p) {
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239], b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572], c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783], d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  if (p < 0.02425) { const q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  if (p > 1 - 0.02425) { const q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  const q = p - 0.5, r = q * q; return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+}
+// The share of a quantile row (instability at P = 0, 1/n, ..., 1) below v (inclusive: at or below), read linearly between.
+function rowShare(row, v, inclusive) {
+  const n = row.length - 1;
+  if (inclusive) { if (v < row[0]) return 0; if (v >= row[n]) return 1; for (let i = n - 1; i >= 0; i--) if (row[i] <= v) return (i + (v - row[i]) / (row[i + 1] - row[i])) / n; return 0; }
+  if (v <= row[0]) return 0; if (v > row[n]) return 1; for (let i = 1; i <= n; i++) if (row[i] >= v) return (i - 1 + (v - row[i - 1]) / (row[i] - row[i - 1])) / n; return 1;
+}
+// A tornado's standard score: where its inflow's instability stands among the engine's tornadoes under the same spread
+// (read between the spread terciles' rows), a tie split by tieDraw (0-1; 0.5 for the middle of it).
+export function leanScore(scaleMph, instability, tieDraw = 0.5) {
+  if (instability === null || !Number.isFinite(instability)) return null;
+  const at = row => { const below = rowShare(row, instability, false), atOrBelow = rowShare(row, instability, true); return below + tieDraw * (atOrBelow - below); };
+  const c = LEAN.scaleMph, k = scaleMph <= c[0] ? 0 : scaleMph >= c[c.length - 1] ? c.length - 2 : c.findIndex((v, i) => scaleMph >= v && scaleMph < c[i + 1]);
+  const f = Math.min(1, Math.max(0, (scaleMph - c[k]) / (c[k + 1] - c[k])));
+  const share = at(LEAN.quantiles[k]) * (1 - f) + at(LEAN.quantiles[k + 1]) * f;
+  return normInv(Math.min(1 - 1e-4, Math.max(1e-4, share)));
+}
+// A draw (0-1) leaned by a standard score z.
+export const leanedDraw = (u, z) => normCdf(Math.sqrt(1 - LEAN.rho * LEAN.rho) * normInv(Math.min(1 - 1e-6, Math.max(1e-6, u))) + LEAN.rho * z);
+
+// Low-level instability of a storm's inflow (Hampshire et al. 2018): 0-3 km mixed-layer CAPE (J/kg) times the 0-3 km lapse
+// rate (C/km), uncapped.
+// (null when the inflow carries no 0-3 km CAPE, as a hand-made environment may not: then nothing leans)
+export const lowLevelInstability = environment => Number.isFinite(environment?.cape03) ? Math.max(0, environment.cape03) * Math.max(0, environment?.lapseRate03 ?? 6.5) : null;
+// SPEED_LIMIT (2026-11-17, the owner's request; was a flat 235 mph cap on the ceiling): how fast a tornado can turn is
+// bounded by the pressure its parent updraught can pull down, the thermodynamic speed limit sqrt(2 CAPE), which the
+// low-level inflow of a vortex can beat by a factor up to about 1.8 (Fiedler and Rotunno 1986, JAS 43; the end-wall
+// vortex). The ceiling the draw gives (65 mph plus its excess) bends to that limit through a soft minimum of the two
+// excesses (sharpness: how close to the limit the bend begins); a ceiling well under it is left as it was.
+const SPEED_LIMIT = { vortexFactor: 1.8, sharpness: 6, mphPerMs: 2.23694 };
+const PATH_WIDTH = { sharpness: 6, ydPerKm: 1093.61 };
+// The smaller of a and b, smoothly (p: how sharp the bend; a value far under the other is left as it was).
+const softMinimum = (a, b, p) => a <= 0 ? 0 : Math.pow(Math.pow(a, -p) + Math.pow(b, -p), -1 / p);
+export const tornadoSpeedLimitMph = cape => SPEED_LIMIT.vortexFactor * Math.sqrt(2 * Math.max(0, Number(cape) || 0)) * SPEED_LIMIT.mphPerMs;
+// A tornado's wind ceiling (mph) from the excess over 65 mph its draw gives and its inflow's CAPE (J/kg; none: no limit).
+export function tornadoCeilingMph(excessMph, cape = null) {
+  const excess = Math.max(0, excessMph);
+  if (cape === null || cape === undefined || !Number.isFinite(Number(cape))) return 65 + excess;
+  const room = Math.max(1e-3, tornadoSpeedLimitMph(cape) - 65), p = SPEED_LIMIT.sharpness;
+  return 65 + softMinimum(excess, room, p);
+}
+// The excess a draw must give for the ceiling to reach mph under the inflow's limit (Infinity: out of reach).
+function excessNeeded(mph, cape) {
+  const e = Math.max(0, mph - 65);
+  if (cape === null || cape === undefined || !Number.isFinite(Number(cape)) || e === 0) return e;
+  const room = Math.max(1e-3, tornadoSpeedLimitMph(cape) - 65), p = SPEED_LIMIT.sharpness;
+  return e >= room ? Infinity : Math.pow(Math.pow(e, -p) - Math.pow(room, -p), -1 / p);
+}
+// With z (leanScore) the share among tornadoes whose inflow has that score; without, among all (the lean's average).
+// With cape, under the inflow's speed limit (SPEED_LIMIT).
+export const tornadoShareReaching = (scaleMph, mph, z = null, cape = null) => {
+  const share = Math.exp(-Math.pow(excessNeeded(mph, cape) / scaleMph, 1 / INTENSITY.tail));
+  if (z === null || !Number.isFinite(z) || share >= 1 || share <= 0) return share;
+  return 1 - normCdf((normInv(1 - share) - LEAN.rho * z) / Math.sqrt(1 - LEAN.rho * LEAN.rho));
+};
 
 export function updateTornadoState(world, storm, environment, dtHours) {
   const tornado = storm.tornado ?? initializeTornadoState(storm);
@@ -104,7 +182,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
       // (a world saved while the cloud model's hints were in use may carry these: 2026-11-06)
       delete tornado.armed; delete tornado.timing; delete tornado.atModel;
       beginTornado(world, storm, tornado);
-      drawTornadoCharacter(world, storm, tornado);
+      drawTornadoCharacter(world, storm, tornado, environment);
       // It is counted on the ground for the whole of this step, and the storm has already
       // moved through it, so it touched down where the wall cloud was at the step's start: its
       // track (and path) starts there, and it is now under the mesocyclone with the storm.
@@ -152,9 +230,10 @@ export function updateTornadoState(world, storm, environment, dtHours) {
 
   // Wind: this tornado's draw is its quantile in a spread whose scale the storm's underlying
   // low-level rotation sets; the wind builds over its first minutes and falls as it occludes.
-  const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 0.999);
+  // (its ceiling bends to the inflow's speed limit, SPEED_LIMIT: no draw is too high)
+  const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 1);
   const scaleMph = tornadoWindScaleMph(storm.lowRotationFree ?? low, ingredients);
-  const ceilingMph = Math.min(235, 65 + scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail));
+  const ceilingMph = tornadoCeilingMph(scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail), environment.cape);
   // Its life, from the wind it can reach when it first comes down (LIFE).
   if (tornado.lifeMinutes == null) {
     const mean = LIFE.meanMinutes[0] + (LIFE.meanMinutes[1] - LIFE.meanMinutes[0]) * Math.pow(clamp((ceilingMph - 65) / (LIFE.ceilingMph - 65), 0, 1.3), LIFE.power);
@@ -180,7 +259,11 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // EF1 125, EF2 300, EF3 600, EF4 900, EF5 1,600). (2026-10-25: 30 + 1.3 x (wind - 65)^1.25 gave about 195 yd at EF2
   // winds, 290 at EF3 and 460 at EF4, half the record's, and the narrow paths showed too little damage: of 18
   // tornadoes with EF3 winds none was rated EF3.)
-  const targetWidth = clamp(30 + 0.66 * Math.max(0, tornado.windSpeedMph - 65) ** 1.5, 25, 1600);
+  // (2026-11-17, the owner's request; was held to 25-1600 yd) The widest damage paths are as wide as the low-level
+  // mesocyclone the tornado sits in, not more: the circulation that feeds it bounds it (Wurman and Kosiba 2013, MWR; the
+  // El Reno tornado of 31 May 2013, 2.6 mi wide, filled its wall cloud). The width the wind gives bends to the wall cloud's
+  // radius through a soft minimum (PATH_WIDTH.sharpness), as the wind ceiling bends to its speed limit.
+  const targetWidth = 30 + softMinimum(0.66 * Math.max(0, tornado.windSpeedMph - 65) ** 1.5, Math.max(1, wallCloudRadiusKm(storm.lowRotationFree ?? low) * PATH_WIDTH.ydPerKm - 30), PATH_WIDTH.sharpness);
   tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 8, 0, 1);
   tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.windSpeedMph);
   tornado.peakWidthYards = Math.max(tornado.peakWidthYards, tornado.widthYards);
@@ -224,13 +307,18 @@ export function updateTornadoState(world, storm, environment, dtHours) {
 
 // What cannot be resolved at this scale, drawn once per tornado: where it falls within the
 // spread of winds its storm's rotation allows, and how much there was in its path to damage.
-function drawTornadoCharacter(world, storm, tornado) {
+function drawTornadoCharacter(world, storm, tornado, environment = storm.environment ?? {}) {
   const seed = `${world.evolution?.config?.seed ?? 1}|${storm.id}|cycle${tornado.cycleCount}`;
   tornado.strengthUniform = deterministicUnit(seed + '|strength');
   tornado.damageDraw = deterministicUnit(seed + '|damage');
   tornado.lifeDraw = deterministicUnit(seed + '|life'); tornado.lifeMinutes = null;
   tornado.steadyDraw = deterministicUnit(seed + '|steady'); tornado.steady = false; tornado.occlusionShare = 1;
   tornado.ratedWindMph = 0;
+  // What its strength leans on (LEAN): the spread its storm allows at touchdown and the inflow's low-level instability.
+  tornado.lowLevel = { scaleMph: tornadoWindScaleMph(storm.lowRotationFree ?? clamp(storm.lowRotation ?? 0, 0, 1.2), tornadoIngredients(environment)), instability: lowLevelInstability(environment) };
+  tornado.lowLevel.z = leanScore(tornado.lowLevel.scaleMph, tornado.lowLevel.instability, deterministicUnit(seed + '|lean'));
+  tornado.strengthDrawn = tornado.strengthUniform;
+  if (tornado.lowLevel.z !== null) tornado.strengthUniform = leanedDraw(tornado.strengthUniform, tornado.lowLevel.z);
 }
 
 function beginTornado(world, storm, tornado) {

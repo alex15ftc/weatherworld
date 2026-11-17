@@ -18,17 +18,19 @@ const fieldsOf = world => Object.fromEntries(MESOANALYSIS_PARAMETERS.map(paramet
 const synopticOf = atmosphere => new SynopticRuntime({ atmosphere }).frame();
 
 // (outlook: a member and its cheap runs, { days, cheap }; shortRange, longRange: one run of that model)
-const RUNS = { outlook: runOutlookMemberSet, mesoscale: runMesoscaleMember, shortRange: (state, member, hours) => runShortRange(state, { hours, fieldsOf, synopticOf }),
-  longRange: (state, member, hours) => runLongRange(state, { hours, synopticOf }) };
+const RUNS = { outlook: runOutlookMemberSet, mesoscale: runMesoscaleMember, shortRange: (state, member, hours, { onProgress } = {}) => runShortRange(state, { hours, fieldsOf, synopticOf, onProgress }),
+  longRange: (state, member, hours, { onProgress } = {}) => runLongRange(state, { hours, synopticOf, onProgress }) };
 
 // (A run's world is garbage once it is sent back: collected after a pause, idleCollect.js. Runs of
 // one issue come back to back; the hourly ones 7.5 minutes apart.)
 const idle = collectWhenIdle((Number(process.env.WEATHER_FORECAST_GC_SECONDS) || 30) * 1000);
 
-parentPort?.on('message', ({ kind, state, member, hours, options }) => {
+parentPort?.on('message', ({ kind, state, member, hours, options, stream }) => {
   try {
+    // (a run asked to stream sends its parts as it goes: ForecastPool.run's onProgress)
+    const onProgress = stream ? part => parentPort.postMessage({ progress: part }) : null;
     // The bytes are shared with the other threads; stateFromBytes reads this run's own world out of them.
-    parentPort.postMessage({ ok: true, result: RUNS[kind](stateFromBytes(state), member, hours, { ...options, placesFor }) });
+    parentPort.postMessage({ ok: true, result: RUNS[kind](stateFromBytes(state), member, hours, { ...options, placesFor, onProgress }) });
   } catch (error) {
     parentPort.postMessage({ ok: false, error: String(error?.stack ?? error) });
   }

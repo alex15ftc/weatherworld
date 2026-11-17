@@ -32,6 +32,7 @@ export const MESOANALYSIS_PARAMETERS = [
   { key: 'mlcape', group: 'Instability', label: 'CAPE, mixed layer', unit: 'J/kg', decimals: 0, levels: [250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000], shade: ramp(WARM, 250, 5000), read: c => c.derived.sounding.mlcape },
   { key: 'sbcape', group: 'Instability', label: 'CAPE, surface based', unit: 'J/kg', decimals: 0, levels: [250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000], shade: ramp(WARM, 250, 5000), read: c => c.derived.sounding.sbcape },
   { key: 'mucape', group: 'Instability', label: 'CAPE, most unstable', unit: 'J/kg', decimals: 0, levels: [250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000], shade: ramp(WARM, 250, 5000), read: c => c.derived.sounding.mucape },
+  { key: 'cape03', group: 'Instability', label: 'CAPE, lowest 3 km (mixed layer)', unit: 'J/kg', decimals: 0, levels: [25, 50, 75, 100, 150, 200, 300], shade: ramp(WARM, 20, 300), read: c => c.derived.sounding.cape03 ?? 0 },
   { key: 'mlcin', group: 'Instability', label: 'Inhibition, mixed layer', unit: 'J/kg', decimals: 0, levels: [25, 50, 100, 200, 300], shade: ramp(COOL, 10, 300), read: c => Math.min(500, Math.abs(c.derived.sounding.mlcin)) },
   { key: 'lcl', group: 'Instability', label: 'Cloud base above ground', unit: 'm', decimals: 0, levels: [500, 750, 1000, 1250, 1500, 2000, 3000], read: c => c.derived.lclAgl,
     shade: [[0, 30, 150, 110, 0.7], [750, 60, 180, 120, 0.55], [1250, 150, 210, 140, 0.35], [1750, 200, 220, 170, 0.0]], shadeBelowFirst: true },
@@ -45,6 +46,7 @@ export const MESOANALYSIS_PARAMETERS = [
   { key: 'srh03', group: 'Wind shear', label: 'Helicity, lowest 3 km', unit: 'm²/s²', decimals: 0, levels: [100, 150, 200, 300, 400, 500, 600], shade: ramp(GREEN, 100, 600), read: c => c.derived.sounding.srh03 },
 
   { key: 'stp', group: 'Composites', label: 'Significant tornado parameter', unit: '', decimals: 1, levels: [0.5, 1, 2, 3, 4, 6, 8, 10], shade: ramp(WARM, 0.25, 9), read: c => c.derived.stp ?? 0 },
+  { key: 'vtp', group: 'Composites', label: 'Violent tornado parameter', unit: '', decimals: 1, levels: [0.5, 1, 2, 3, 4, 6, 8, 10], shade: ramp(WARM, 0.25, 9), read: c => c.derived.vtp ?? 0 },
   { key: 'scp', group: 'Composites', label: 'Supercell composite', unit: '', decimals: 1, levels: [1, 2, 4, 8, 12, 16, 20, 30], shade: ramp(WARM, 0.5, 28), read: c => c.derived.scp ?? 0 },
 
   { key: 'convergence', group: 'Forcing', label: 'Surface wind convergence', unit: '×10⁻⁵ /s', decimals: 1, levels: [2, 5, 10, 15, 20], shade: ramp(WARM, 1.5, 20), read: c => (c.dynamics.surfaceConvergenceS1 ?? 0) * 1e5 },

@@ -120,7 +120,10 @@ export function sampleStormEnvironment(world, xKm, yKm) {
     stp: mean(cell => cell.derived.stp ?? 0), rawStp: mean(cell => cell.derived.rawStp ?? cell.derived.stp ?? 0),
     vtp: mean(cell => cell.derived.vtp ?? 0), synopticTornadoSupport: mean(cell => cell.derived.synopticTornadoSupport ?? 0), scp: mean(cell => cell.derived.scp ?? 0),
     bulkShear, lcl,
-    lapseRate700500: mean(cell => cell.derived?.lapseRate700500 ?? 6.5), lapseRate03: mean(cell => cell.derived?.lapseRate03km ?? 6.5), lapseRate01: mean(cell => cell.derived?.lapseRate01km ?? 8),
+    lapseRate700500: mean(cell => cell.derived?.lapseRate700500 ?? 6.5), lapseRate03: mean(cell => cell.derived?.lapseRate03km ?? 6.5),
+    // CAPE of the mixed-layer parcel in the lowest 3 km (J/kg): with lapseRate03, the low-level instability a tornado's
+    // strength leans on (TornadoEngine LEAN).
+    cape03: mean(cell => cell.derived?.sounding?.cape03 ?? 0), lapseRate01: mean(cell => cell.derived?.lapseRate01km ?? 8),
     // Energy available to downdraughts (J/kg): rain evaporating into dry air aloft and below cloud.
     dcape: mean(cell => cell.derived?.dcape ?? 600),
     readiness: mean(cell => cell.dynamics?.convectiveReadiness ?? 0), trigger: mean(cell => cell.dynamics?.triggerStrength ?? 0),

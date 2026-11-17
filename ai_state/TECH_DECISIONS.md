@@ -16,6 +16,15 @@
 
 ## Decisions
 
+### 2026-11-17 — Steering support scaled by moisture (ramp), not cut when dry
+
+- Status: active
+- Decision: the warm-sector support in `RegionSteering` is multiplied by a ramp of the outer model's moisture over the map about its mean, none at -2 g/kg and all at +4 (`moistRangeGkg`), in place of the dry cut (`dryGkg`, which gave average and very moist air the same support).
+- Rationale: over 80 regression days the map's large-scale moisture and warmth tracked tornado counts (rank 0.50 / 0.49) and the support did not (0.13); below-Slight days sat on the jet's cold, dry flank. Suite: below Slight 13.8 to 6.3%, Enhanced 27.5 to 38.8%, High 3.8 to 6.3%; wind and hail report counts rose past tolerance and the owner accepted that. Rejected: `lookAheadDays` 2 (more lull runs), a warmth ramp as well (no gain), a ramp ending at +1 (saturates on half the days).
+- Forecast check (seeds 41-50): Day 1 right 60 to 43%, within one 97 to 100%; Brier skill level or better for tornado; in-sample recalibration gains 0-1 point: no refit.
+- Also rejected (owner kept [-2, 4], 2026-11-17): [-3, 3], inside every tolerance (wind 90th 239, hail median 141) but below Slight 11.3% against 6.3%, and lull runs in a 160-day screen 5.6% against 1.3%.
+- Follow-up: about a third of lull-like days are caps in the regional layer, which steering cannot see.
+
 ### 2026-11-16 — Night stratus from the stirred layer under the jet; night cooling stopped, not undone, by cloud
 
 - Status: active
@@ -56,9 +65,25 @@
   20Z highest category right 39% -> 61%, too low 56% -> 28%; 16:30Z right 44% -> 50%; 01Z right 39% -> 33%, too high 17% -> 28%.
 - Follow-up: false Moderates on the 01Z updates (live scoreboard); a short-range-way table if updates are moved to it for cost.
 
+### 2026-11-16 — Day 3 caution back to 0.65 on the quieter engine; Day 2 stays 0.9
+
+- Status: `active` (supersedes the Day 3 part of "caution raised to 0.9" below)
+- Decision: `OUTLOOK.caution` is Day 1 0.9, Day 2 0.9, Day 3 0.65 (the owner's choice after a full outlook review).
+- Rationale: the 0.9 numbers were measured on 11-14 weather. New runs of the engine at `40ce207` (steering look-ahead,
+  mixed layer at dusk; 13.8 tornadoes a day against 19.3 on the same seeds), 80/60/40 mornings of seeds 41-60, saved as
+  `data/outlook-archive/2026-11-16-40ce207`: Day 3 at 0.9 drew Enhanced+ over 37% of the map against 17.5% verified, its
+  30% and 45% areas verified 20% and 32%; at 0.65 23%, 32% and 45.5%, day right 37.5 -> 40%, too high 30 -> 22.5%,
+  issued Brier skill 4 -> 9.5 (0.75 between). Seeds 41-50 alone (10 Day 3s) lean to 0.9, 51-60 (30) strongly to 0.65.
+  Day 2 at 0.9 held: 45% areas verified 44-45% (53-54% at 0.75), right 42% at 0.75-0.9. Day 1 chances still verify at
+  their values (tornado 30% -> 29-31%, wind and hail 45% -> 41-48%), High 6% forecast and verified, but Moderate 11% against
+  22.5% verified, mostly hail-hatch Moderates (hail 2 in hatch verifies on ~30% of days, drawn on 0-4%).
+- Follow-up: chosen and checked on the same mornings; watch live Day 3. The verified mix on 40ce207 (TSTM 1 / MRGN 8 /
+  SLGT 26 / ENH 36 / MDT 23 / HIGH 6%) has Moderate over the owner's 15% aim; raising the hail 2 in hatch bar
+  (`CIG_BOUNDS.hail[0]`) 0.35 -> 0.50 gives Moderate about 14%, then the forecast hatches need refitting (owner to decide).
+
 ### 2026-11-16 — Day 2 and Day 3 caution raised to 0.9
 
-- Status: `active` (supersedes the caution part of 2026-11-14 below; its hatches stand)
+- Status: Day 2 `active`; Day 3 superseded by "Day 3 caution back to 0.65" above (supersedes the caution part of 2026-11-14 below; its hatches stand)
 - Decision: `OUTLOOK.caution` is Day 1 0.9, Day 2 0.9, Day 3 0.9 (was 0.75 and 0.65). The owner chose 0.9 over 1.0 to
   keep a slight lean low.
 - Rationale: 30 mornings (seeds 41-50, rescored from saved runs at each level). Day 3 at 0.65 drew Enhanced+ over 8% of

@@ -12,7 +12,7 @@ import { hailSizeInches, gustMph, stormFuel } from './StormHazards.js';
 import { stepStormRotation } from './StormRotation.js';
 import { describeStormMode, rotatingShare, lineShare, lineOrganizationTarget } from './StormModeEngine.js';
 import { updateCoupledStormMotion, updateStormColdPool } from './StormEnvironmentCoupling.js';
-import { tornadoIngredients, tornadoImminence, tornadoRatePerHour, tornadoWindScaleMph, tornadoShareReaching } from './TornadoEngine.js';
+import { tornadoIngredients, tornadoImminence, tornadoRatePerHour, tornadoWindScaleMph, tornadoShareReaching, leanScore, lowLevelInstability } from './TornadoEngine.js';
 
 const STEP_HOURS = 1 / 12, RUN_HOURS = 4, KPH_PER_KT = 1.852, MPH_PER_KPH = 0.621371;
 // A storm that never reaches this updraught (m/s), or dies sooner than this (h), did not last.
@@ -94,8 +94,8 @@ export function runLoneStorm(world, environment) {
     tornado: {
       chance: lasting ? 1 - noTornado : 0, ingredients, lowRotation: peak.lowRotation,
       // Of the tornadoes such a storm produces, the share with EF2+ and with EF4+ winds.
-      strongShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 111),
-      violentShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 166)
+      strongShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 111, leanScore(tornadoWindScaleMph(peak.lowRotation, ingredients), lowLevelInstability(environment)), environment.cape),
+      violentShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 166, leanScore(tornadoWindScaleMph(peak.lowRotation, ingredients), lowLevelInstability(environment)), environment.cape)
     }
   };
 }

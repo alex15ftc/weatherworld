@@ -18,6 +18,8 @@ export type Raster = {
 	polyline: (points: { number }, width: number, c: Colour) -> (),
 	-- Fill the area of the rings with a colour, blended over what is there (alpha 0-1).
 	fill: (rings: Rings, colour: Colour, alpha: number) -> (),
+	-- Several areas filled in turn, bottom first: as fill one after another, but in one sweep.
+	fills: (list: { { rings: Rings, colour: Colour, alpha: number } }) -> (),
 	-- Hatch the area: "dashLeft" broken lines falling to the lower left, "right" solid lines
 	-- falling to the lower right, "cross" both solid.
 	hatch: (rings: Rings, kind: string, colour: Colour) -> (),
@@ -64,8 +66,38 @@ local function extentOf(points: { number }): { number }
 	extents[points] = e
 	return e
 end
--- The gate under each pixel of the last radar drawn polar, for the view it was drawn in.
-local polarCache: { key: string?, index: buffer? } = { key = nil, index = nil }
+-- The gate under each pixel of the radars drawn polar, for the images they were drawn in (an
+-- image of the view is drawn in bands, each its own Raster, so a view is several): let go all
+-- at once when more than POLAR_CACHE are held.
+local POLAR_CACHE = 64
+local polarCache: { [string]: buffer } = {}
+local polarCount = 0
+
+-- What a byte of a colour table at an alpha lays on a clear pixel, as a little-endian word
+-- (words[byte + 1]; -1: nothing), as over() lays it: kept for each table and alpha.
+local lutCache: { [{ number }]: { [number]: { number } } } = setmetatable({}, { __mode = "k" }) :: any
+local function lutWords(lut: { number }, alpha: number): { number }
+	local byAlpha = lutCache[lut]
+	if not byAlpha then
+		byAlpha = {}
+		lutCache[lut] = byAlpha
+	end
+	local held = byAlpha[alpha]
+	if held then
+		return held
+	end
+	local words = table.create(256, -1)
+	for byte = 1, 255 do
+		local k = byte * 4
+		local a = lut[k + 4] / 255 * alpha
+		if a > 0 then
+			local r, g, b = math.floor(lut[k + 1]), math.floor(lut[k + 2]), math.floor(lut[k + 3])
+			words[byte + 1] = r + g * 256 + b * 65536 + math.floor(a * 255 + 0.5) * 16777216
+		end
+	end
+	byAlpha[alpha] = words
+	return words
+end
 
 -- pixels: pw x ph RGBA; toScreen: map miles to screen pixels; scale: image pixels per screen
 -- pixel; originX, originY: where this image's top-left pixel is in a larger picture made of
@@ -216,18 +248,18 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 		end
 	end
 
-	-- How much of each pixel the rings cover (even-odd), for each row they touch:
-	-- each(py, x0, x1, cover) with cover[x] in 0-1 for x0..x1. Each pixel row is sampled on SUB
-	-- lines, each crossing counted exactly across the row, so edges come out smooth. An edge
-	-- only visits the rows it crosses, so the cost goes with the outlines and the area's width.
+	-- How much of each pixel the rings cover (even-odd), kept only where it changes along a row:
+	-- for each pixel row the rings touch, the pixels with an edge in them (xs, sorted), what of
+	-- each is covered by spans ending in it (frac[x]) and how much the whole-pixel coverage steps
+	-- by from it on (step[x]); between them it holds. Each pixel row is sampled on SUB lines,
+	-- each crossing counted exactly across the row, so edges come out smooth. The cost goes with
+	-- the outlines, not the area: an area's inside is handed out as runs (sweep).
 	local SUB = 4
-	local cover: { number } = table.create(pw + 2, 0)
-	-- (the whole pixels inside each span, added once a row as a running sum: run[x] is how much
-	-- the coverage steps up at pixel x - 1)
-	local run: { number } = table.create(pw + 2, 0)
-	local function coverage(rings: Rings, each: (py: number, x0: number, x1: number, cover: { number }) -> ())
-		local rows: { [number]: { number } } = {}
-		local lines = ph * SUB
+	local SHARE = 1 / SUB
+	type Row = { xs: { number }, frac: { [number]: number }, step: { [number]: number } }
+	local function rowsOf(rings: Rings): { [number]: Row }
+		local lines: { [number]: { number } } = {}
+		local count = ph * SUB
 		for _, ring in rings do
 			local n = if reaches(ring, 1) then #ring else 0
 			for i = 1, n - 1, 2 do
@@ -239,85 +271,226 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 				if ay ~= by then
 					-- Sample lines whose centre lies in [min y, max y).
 					local r0 = math.max(0, math.ceil(math.min(ay, by) - 0.5))
-					local r1 = math.min(lines - 1, math.ceil(math.max(ay, by) - 0.5) - 1)
+					local r1 = math.min(count - 1, math.ceil(math.max(ay, by) - 0.5) - 1)
 					local slope = (bx - ax) / (by - ay)
 					for k = r0, r1 do
-						local row = rows[k]
-						if not row then
-							row = {}
-							rows[k] = row
+						local line = lines[k]
+						if not line then
+							line = {}
+							lines[k] = line
 						end
-						table.insert(row, ax + (k + 0.5 - ay) * slope)
+						table.insert(line, ax + (k + 0.5 - ay) * slope)
 					end
 				end
 			end
 		end
 		local pixelRows: { [number]: boolean } = {}
-		for k in rows do
+		for k in lines do
 			pixelRows[k // SUB] = true
 		end
-		local share = 1 / SUB
+		local out: { [number]: Row } = {}
 		for py in pixelRows do
-			local lo, hi = math.huge, -math.huge
+			local xsOut: { number } = {}
+			local frac: { [number]: number } = {}
+			local step: { [number]: number } = {}
+			local function mark(x: number)
+				if frac[x] == nil and step[x] == nil then
+					table.insert(xsOut, x)
+				end
+			end
 			for s = 0, SUB - 1 do
-				local xs = rows[py * SUB + s]
+				local xs = lines[py * SUB + s]
 				if xs then
 					table.sort(xs)
 					for k = 1, #xs - 1, 2 do
 						local a, b = math.max(0, xs[k]), math.min(pw, xs[k + 1])
 						if b > a then
 							local fa, fb = math.floor(a), math.min(pw - 1, math.ceil(b) - 1)
-							lo, hi = math.min(lo, fa), math.max(hi, fb)
+							mark(fa)
 							if fa == fb then
-								cover[fa + 1] += (b - a) * share
+								frac[fa] = (frac[fa] or 0) + (b - a) * SHARE
 							else
-								cover[fa + 1] += (fa + 1 - a) * share
+								frac[fa] = (frac[fa] or 0) + (fa + 1 - a) * SHARE
 								if fb > fa + 1 then
-									run[fa + 2] += share
-									run[fb + 1] -= share
+									mark(fa + 1)
+									step[fa + 1] = (step[fa + 1] or 0) + SHARE
+									mark(fb)
+									step[fb] = (step[fb] or 0) - SHARE
 								end
-								cover[fb + 1] += (b - fb) * share
+								mark(fb)
+								frac[fb] = (frac[fb] or 0) + (b - fb) * SHARE
 							end
 						end
 					end
 				end
 			end
-			if lo <= hi then
-				local inside = 0
-				for x = lo, hi do
-					inside += run[x + 1]
-					run[x + 1] = 0
-					cover[x + 1] += inside
-				end
-				each(py, lo, hi, cover)
-				for x = lo, hi do
-					cover[x + 1] = 0
-				end
+			if #xsOut > 0 then
+				table.sort(xsOut)
+				out[py] = { xs = xsOut, frac = frac, step = step }
 			end
+		end
+		return out
+	end
+
+	-- A row's coverage as runs of pixels x0..x1 covered by a (only those with a > 0.001): each
+	-- pixel with an edge in it on its own, and the stretches between them whole.
+	local function sweep(row: Row, emit: (x0: number, x1: number, a: number) -> ())
+		local frac, step = row.frac, row.step
+		local inside = 0
+		local prev = -1
+		for _, x in row.xs do
+			if x > prev + 1 and inside > 0.001 then
+				emit(prev + 1, x - 1, inside)
+			end
+			inside += step[x] or 0
+			local a = (frac[x] or 0) + inside
+			if a > 0.001 then
+				emit(x, x, a)
+			end
+			prev = x
+		end
+	end
+
+	-- A whole pixel of colour c at alpha a laid over a clear one, as one little-endian word.
+	local function solidWord(c: Colour, a: number): number
+		local r, g, b = math.floor(c[1]), math.floor(c[2]), math.floor(c[3])
+		return r + g * 256 + b * 65536 + math.floor(a * 255 + 0.5) * 16777216
+	end
+
+	-- Copies the pixel at o over the n - 1 after it (in doubling blocks, so a long run is a few
+	-- copies rather than a write a pixel).
+	local function spread(o: number, n: number)
+		local done = 1
+		while done < n do
+			local more = math.min(done, n - done)
+			buffer.copy(pixels, o + done * 4, pixels, o, more * 4)
+			done += more
 		end
 	end
 
 	local function fill(rings: Rings, c: Colour, alpha: number)
 		local r, g, b = c[1], c[2], c[3]
-		coverage(rings, function(py, x0, x1, cov)
-			local o = (py * pw + x0) * 4
-			for x = x0, x1 do
-				local a = cov[x + 1]
-				if a > 0.001 then
-					touched = true
-					if a >= 1 and buffer.readu8(pixels, o + 3) == 0 then
-						-- (a whole pixel over a clear one, as over() would lay it)
-						buffer.writeu8(pixels, o, r)
-						buffer.writeu8(pixels, o + 1, g)
-						buffer.writeu8(pixels, o + 2, b)
-						buffer.writeu8(pixels, o + 3, alpha * 255 + 0.5)
-					else
-						over(o, r, g, b, alpha * math.min(1, a))
+		local solid = solidWord(c, alpha)
+		-- Inside an area every whole pixel starts from one of a few colours (the clear image, the
+		-- fills under it) and ends the same way from each: the last such pixel's result is kept and
+		-- written again while the pixels under it match, so the inside costs a read and a write.
+		local fromWord, toWord = -1, 0
+		for py, row in rowsOf(rings) do
+			local rowStart = py * pw
+			sweep(row, function(x0: number, x1: number, a: number)
+				touched = true
+				local o = (rowStart + x0) * 4
+				if a >= 1 then
+					for _ = x0, x1 do
+						local was = buffer.readu32(pixels, o)
+						if was == fromWord then
+							buffer.writeu32(pixels, o, toWord)
+						elseif was < 16777216 then
+							-- (a whole pixel over a clear one, as over() would lay it)
+							buffer.writeu32(pixels, o, solid)
+						else
+							over(o, r, g, b, alpha)
+							fromWord, toWord = was, buffer.readu32(pixels, o)
+						end
+						o += 4
+					end
+				else
+					for _ = x0, x1 do
+						over(o, r, g, b, alpha * a)
+						o += 4
 					end
 				end
-				o += 4
+			end)
+		end
+	end
+
+	-- Several areas filled in turn, as fill one after another (the outlook's nested areas), in one
+	-- sweep over a clear image: between edges a row holds one colour, laid on its first pixel and
+	-- copied along. Over an image already drawn on, they are filled one at a time.
+	local function fills(list: { { rings: Rings, colour: Colour, alpha: number } })
+		if touched then
+			for _, f in list do
+				fill(f.rings, f.colour, f.alpha)
 			end
-		end)
+			return
+		end
+		local n = #list
+		local rowsK: { { [number]: Row } } = {}
+		local solids: { number } = table.create(n, 0)
+		local allRows: { [number]: boolean } = {}
+		for k, f in list do
+			rowsK[k] = rowsOf(f.rings)
+			solids[k] = solidWord(f.colour, f.alpha)
+			for py in rowsK[k] do
+				allRows[py] = true
+			end
+		end
+		local inside: { number } = table.create(n, 0)
+		local at: { number } = table.create(n, 0)
+		-- Lays each area's share on the pixel at o (covers: each area's coverage of it), as fill would.
+		local function lay(o: number, covers: { number }): boolean
+			local any = false
+			for k = 1, n do
+				local a = covers[k]
+				if a >= 1 then
+					any = true
+					if buffer.readu32(pixels, o) < 16777216 then
+						buffer.writeu32(pixels, o, solids[k])
+					else
+						local c = list[k].colour
+						over(o, c[1], c[2], c[3], list[k].alpha)
+					end
+				elseif a > 0.001 then
+					any = true
+					local c = list[k].colour
+					over(o, c[1], c[2], c[3], list[k].alpha * a)
+				end
+			end
+			return any
+		end
+		for py in allRows do
+			local rows: { [number]: Row? } = {}
+			local xs: { number } = {}
+			local seen: { [number]: boolean } = {}
+			for k = 1, n do
+				local row = rowsK[k][py]
+				rows[k] = row
+				inside[k] = 0
+				if row then
+					for _, x in row.xs do
+						if not seen[x] then
+							seen[x] = true
+							table.insert(xs, x)
+						end
+					end
+				end
+			end
+			table.sort(xs)
+			local rowStart = py * pw
+			local prev = -1
+			for _, x in xs do
+				if x > prev + 1 then
+					local o = (rowStart + prev + 1) * 4
+					if lay(o, inside) then
+						touched = true
+						spread(o, x - prev - 1)
+					end
+				end
+				for k = 1, n do
+					local row = rows[k]
+					if row then
+						inside[k] += row.step[x] or 0
+						at[k] = (row.frac[x] or 0) + inside[k]
+					else
+						at[k] = 0
+					end
+				end
+				if lay((rowStart + x) * 4, at) then
+					touched = true
+				end
+				prev = x
+			end
+		end
 	end
 
 	local function hatch(rings: Rings, kind: string, c: Colour)
@@ -331,33 +504,41 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 			end
 			return math.max(0, math.floor((period - 1e-6 - q) / inv))
 		end
-		coverage(rings, function(py, x0, x1, cov)
+		-- (a whole pixel of the stripe is the colour itself, whatever is under it)
+		local solid = solidWord(c, 1)
+		for py, row in rowsOf(rings) do
 			local sy = (py + oy + 0.5) * inv
-			local px = x0
-			while px <= x1 do
-				local skip = 0
-				local a = cov[px + 1]
-				local sx = (px + ox + 0.5) * inv
-				local on
-				local down, up = (sx - sy) % SPACING, (sx + sy) % SPACING
-				if kind == "dashLeft" then
-					local dash = (sx - sy) % (DASH + GAP)
-					on = up < WIDTH and dash < DASH
-					skip = math.max(offFor(up, WIDTH, SPACING), offFor(dash, DASH, DASH + GAP))
-				elseif kind == "right" then
-					on = down < WIDTH
-					skip = offFor(down, WIDTH, SPACING)
-				else
-					on = down < WIDTH or up < WIDTH
-					skip = math.min(offFor(down, WIDTH, SPACING), offFor(up, WIDTH, SPACING))
+			local rowStart = py * pw
+			sweep(row, function(x0: number, x1: number, a: number)
+				local px = x0
+				while px <= x1 do
+					local skip = 0
+					local sx = (px + ox + 0.5) * inv
+					local on
+					local down, up = (sx - sy) % SPACING, (sx + sy) % SPACING
+					if kind == "dashLeft" then
+						local dash = (sx - sy) % (DASH + GAP)
+						on = up < WIDTH and dash < DASH
+						skip = math.max(offFor(up, WIDTH, SPACING), offFor(dash, DASH, DASH + GAP))
+					elseif kind == "right" then
+						on = down < WIDTH
+						skip = offFor(down, WIDTH, SPACING)
+					else
+						on = down < WIDTH or up < WIDTH
+						skip = math.min(offFor(down, WIDTH, SPACING), offFor(up, WIDTH, SPACING))
+					end
+					if on then
+						touched = true
+						if a >= 1 then
+							buffer.writeu32(pixels, (rowStart + px) * 4, solid)
+						else
+							over((rowStart + px) * 4, c[1], c[2], c[3], a)
+						end
+					end
+					px += 1 + skip
 				end
-				if on and a > 0.001 then
-					touched = true
-					over((py * pw + px) * 4, c[1], c[2], c[3], math.min(1, a))
-				end
-				px += 1 + skip
-			end
-		end)
+			end)
+		end
 	end
 
 	-- Whether the side from (ax, ay) to (bx, by) runs along one edge of the map (rings are
@@ -409,10 +590,26 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 		over(o, lut[k + 1], lut[k + 2], lut[k + 3], a)
 	end
 
+	-- A byte's pixel over a clear one is the same every time: putLut's word for each byte (index
+	-- byte + 1; -1 where it draws nothing), worked out once a colour table and alpha.
+	local function putWord(o: number, words: { number }, lut: { number }, byte: number, alpha: number)
+		local word = words[byte + 1]
+		if word < 0 then
+			return
+		end
+		touched = true
+		if buffer.readu32(pixels, o) < 16777216 then
+			buffer.writeu32(pixels, o, word)
+		else
+			putLut(o, lut, byte, alpha)
+		end
+	end
+
 	local function grid(bytes: buffer, width: number, height: number, cellMiles: number, lut: { number }, alpha: number)
 		local x0, x1 = pixelRange(0, width * cellMiles, mppx, offX, pw)
 		local y0, y1 = pixelRange(0, height * cellMiles, mppy, offY, ph)
 		local perCellX = mppx / cellMiles
+		local words = lutWords(lut, alpha)
 		for py = y0, y1 do
 			local j = math.floor(((py + 0.5) * mppy + offY) / cellMiles)
 			if j >= 0 and j < height then
@@ -424,7 +621,7 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 					if i >= 0 and i < width then
 						local byte = buffer.readu8(bytes, rowStart + i)
 						if byte ~= 0 then
-							putLut(o, lut, byte, alpha)
+							putWord(o, words, lut, byte, alpha)
 						end
 					end
 					gx += perCellX
@@ -446,8 +643,9 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 		end
 		local bw = x1 - x0 + 1
 		local key = string.format("%d %d %d %d %d %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %d %d", pw, ph, x0, x1, y0, y1, mppx, mppy, offX, offY, cx, cy, gateMiles, radials, gates)
-		if polarCache.key ~= key then
-			local index = buffer.create(bw * (y1 - y0 + 1) * 4)
+		local index = polarCache[key]
+		if not index then
+			local made = buffer.create(bw * (y1 - y0 + 1) * 4)
 			local perRadial = radials / TAU
 			local k = 0
 			for py = y0, y1 do
@@ -463,22 +661,29 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 						end
 						at = (math.floor(az * perRadial) % radials) * gates + gate
 					end
-					buffer.writei32(index, k, at)
+					buffer.writei32(made, k, at)
 					k += 4
 				end
 			end
-			polarCache.key, polarCache.index = key, index
+			if polarCount >= POLAR_CACHE then
+				table.clear(polarCache)
+				polarCount = 0
+			end
+			polarCache[key] = made
+			index = made
+			polarCount += 1
 		end
-		local index = polarCache.index :: buffer
+		local words = lutWords(lut, alpha)
+		local gatesAt = index :: buffer
 		local k = 0
 		for py = y0, y1 do
 			local o = (py * pw + x0) * 4
 			for _ = x0, x1 do
-				local at = buffer.readi32(index, k)
+				local at = buffer.readi32(gatesAt, k)
 				if at >= 0 then
 					local byte = buffer.readu8(bytes, at)
 					if byte ~= 0 then
-						putLut(o, lut, byte, alpha)
+						putWord(o, words, lut, byte, alpha)
 					end
 				end
 				k += 4
@@ -491,7 +696,7 @@ function Raster.new(pixels: buffer, pw: number, ph: number, toScreen: (number, n
 		return touched
 	end
 
-	return { line = line, dot = dot, polyline = polyline, fill = fill, hatch = hatch, stroke = stroke, grid = grid, polar = polar, drawn = drawn }
+	return { line = line, dot = dot, polyline = polyline, fill = fill, fills = fills, hatch = hatch, stroke = stroke, grid = grid, polar = polar, drawn = drawn }
 end
 
 -- A byte grid's n cells as RGBA pixels, one cell a pixel (MapCanvas's grids): each byte's packed

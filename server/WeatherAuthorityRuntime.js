@@ -13,7 +13,7 @@ import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
 import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
-import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, MOSAIC_KINDS, MOSAIC_RES_KM, STACKED_MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
+import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, radialsAround, MOSAIC_KINDS, MOSAIC_RES_KM, STACKED_MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
 import { buildSatellite, satelliteInputs } from '../js/satellite/Satellite.js';
 import { AnvilField } from '../js/satellite/AnvilField.js';
 import { rainFieldInputs, rainFieldOf } from '../js/storms/StormRainFields.js';
@@ -46,6 +46,8 @@ const RADAR_PREWARM_MS = 60_000;
 // The tilts a radar's rotation detections look through: its lowest nine, 0.5-6.4 deg (from 1 to 6 km
 // up a storm at 50 km, enough for the TDA's 1.5 km and the MDA's 3 km depths at most ranges).
 const RADAR_ROTATION_TILTS = 9;
+// The mesoscale discussions' look at storms scans a disc this wide round each (radarLookAround; 2026-11-17).
+const RADAR_LOOK_KM = 40;
 // Rotation tracks: the greatest low-level shear of the scans of the last hour (sim time), as the
 // MRMS rotation tracks (60 min). Made from the scans of while they were asked for.
 const ROTATION_TRACK_HOURS = 1;
@@ -88,6 +90,8 @@ export class WeatherAuthorityRuntime {
     this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision = 0;
     this.productCache = new Map();
+    // (the mesoscale looks made from sector scans, and those that fell back to full ones: radarLookAround)
+    this.radarLookStats = { looks: 0, fallbacks: 0 };
     this.performance = { cacheHits: 0, cacheMisses: 0, productBuilds: {} };
     this.autoAdvance = true;
     this.systemNumber = 1;
@@ -163,6 +167,7 @@ export class WeatherAuthorityRuntime {
       this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep });
       this.dayReview?.afterStep();
       try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
+      this.afterAtmosphereStep?.();
     }
     this.startClocks();
     this.gameFeed.restart(world);
@@ -275,6 +280,7 @@ export class WeatherAuthorityRuntime {
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
         this.dayReview?.afterStep();
         try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
+        this.afterAtmosphereStep?.();
         if (step < steps - 1) yield;
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.
@@ -452,58 +458,66 @@ export class WeatherAuthorityRuntime {
 
   cellSummary(row, column, day = 'day1') {
     const r = Number(row), c = Number(column);
-    return this.cached(`cell:${day}:${r}:${c}`, () => {
-      const cell = this.atmosphere.cells?.[r]?.[c];
-      if (!cell) return null;
-      const surface = cell.surface ?? {}, wind = surface.wind ?? {};
-      const derived = cell.derived ?? {}, dynamics = cell.dynamics ?? {}, meso = cell.mesoscaleFields ?? {};
-      const outlook = cell.predictiveOutlook?.[day] ?? null;
-      return {
-        row: r, column: c, revision: this.revision, validHourUtc: this.atmosphere.validHourUtc,
-        centerKm: { x: (c + 0.5) * this.atmosphere.cellSizeKm, y: (r + 0.5) * this.atmosphere.cellSizeKm },
-        surface: {
-          temperatureF: surface.temperatureF ?? surface.temperature ?? null,
-          dewpointF: surface.dewpointF ?? surface.dewpoint ?? null,
-          pressureMb: surface.seaLevelPressure ?? surface.pressure ?? null,
-          windDirectionDeg: surface.windDirectionDeg ?? wind.direction ?? null,
-          windSpeedKt: surface.windSpeedKt ?? wind.speed ?? null
-        },
-        instability: { cape: derived.cape ?? null, cin: derived.cin ?? null, lclM: derived.lcl ?? null, stp: derived.stp ?? null, vtp: derived.vtp ?? null, scp: derived.scp ?? null },
-        shear: { srh01: derived.srh ?? null, bulkShear06Kt: derived.bulkShear ?? null },
-        forcing: {
-          forcingScore: dynamics.forcingScore ?? null,
-          verticalVelocityMs: dynamics.verticalVelocityMs ?? null,
-          convectiveReadiness: dynamics.convectiveReadiness ?? null,
-          triggerStrength: dynamics.triggerStrength ?? null,
-          initiationPotential: dynamics.initiationPotential ?? meso.initiationFocus ?? null
-        },
-        terrain: { elevationM: cell.terrain?.elevationM ?? null, region: cell.region?.name ?? cell.region?.id ?? cell.features?.regionId ?? null },
-        features: { airMass: cell.features?.airMass ?? null, front: cell.features?.front ?? null, dryline: Boolean(cell.features?.dryline) },
-        outlook
-      };
-    });
+    return this.cached(`cell:${day}:${r}:${c}`, () => this.cellSummaryNow(r, c, day));
+  }
+
+  cellSummaryNow(row, column, day = 'day1') {
+    const r = Number(row), c = Number(column);
+    const cell = this.atmosphere.cells?.[r]?.[c];
+    if (!cell) return null;
+    const surface = cell.surface ?? {}, wind = surface.wind ?? {};
+    const derived = cell.derived ?? {}, dynamics = cell.dynamics ?? {}, meso = cell.mesoscaleFields ?? {};
+    const outlook = cell.predictiveOutlook?.[day] ?? null;
+    return {
+      row: r, column: c, revision: this.revision, validHourUtc: this.atmosphere.validHourUtc,
+      centerKm: { x: (c + 0.5) * this.atmosphere.cellSizeKm, y: (r + 0.5) * this.atmosphere.cellSizeKm },
+      surface: {
+        temperatureF: surface.temperatureF ?? surface.temperature ?? null,
+        dewpointF: surface.dewpointF ?? surface.dewpoint ?? null,
+        pressureMb: surface.seaLevelPressure ?? surface.pressure ?? null,
+        windDirectionDeg: surface.windDirectionDeg ?? wind.direction ?? null,
+        windSpeedKt: surface.windSpeedKt ?? wind.speed ?? null
+      },
+      instability: { cape: derived.cape ?? null, cin: derived.cin ?? null, lclM: derived.lcl ?? null, stp: derived.stp ?? null, vtp: derived.vtp ?? null, scp: derived.scp ?? null },
+      shear: { srh01: derived.srh ?? null, bulkShear06Kt: derived.bulkShear ?? null },
+      forcing: {
+        forcingScore: dynamics.forcingScore ?? null,
+        verticalVelocityMs: dynamics.verticalVelocityMs ?? null,
+        convectiveReadiness: dynamics.convectiveReadiness ?? null,
+        triggerStrength: dynamics.triggerStrength ?? null,
+        initiationPotential: dynamics.initiationPotential ?? meso.initiationFocus ?? null
+      },
+      terrain: { elevationM: cell.terrain?.elevationM ?? null, region: cell.region?.name ?? cell.region?.id ?? cell.features?.regionId ?? null },
+      features: { airMass: cell.features?.airMass ?? null, front: cell.features?.front ?? null, dryline: Boolean(cell.features?.dryline) },
+      outlook
+    };
   }
 
   sounding(row, column, day = 'day1') {
     const r=Number(row), c=Number(column);
-    return this.cached(`sounding:${day}:${r}:${c}`,()=>{
-      const cell=this.atmosphere.cells?.[r]?.[c];
-      if (!cell) return null;
-      const sounding=buildSounding(cell);
-      return {
-        ...sounding,
-        // The table values and possible hazard type a forecaster reads off the profile, and the
-        // storm motion the storm engine would give a storm here (for the hodograph).
-        display: diagnoseSoundingDisplay(sounding, cell.terrain.elevationM),
-        engineMotion: diagnoseEngineMotion(this.atmosphere, c, r),
-        row:r,
-        column:c,
-        revision:this.revision,
-        validHourUtc:this.atmosphere.validHourUtc,
-        context:this.cellSummary(r,c,day)
-      };
-    });
+    return this.cached(`sounding:${day}:${r}:${c}`,()=>this.soundingNow(r,c,day));
   }
+
+  // The sounding of a cell as the atmosphere stands now, not cached (the upper-air releases are taken between the
+  // steps of an advance, before the revision moves on).
+  soundingNow(row, column, day = 'day1') {
+    const r=Number(row), c=Number(column), cell=this.atmosphere.cells?.[r]?.[c];
+    if (!cell) return null;
+    const sounding=buildSounding(cell);
+    return {
+      ...sounding,
+      // The table values and possible hazard type a forecaster reads off the profile, and the
+      // storm motion the storm engine would give a storm here (for the hodograph).
+      display: diagnoseSoundingDisplay(sounding, cell.terrain.elevationM),
+      engineMotion: diagnoseEngineMotion(this.atmosphere, c, r),
+      row:r,
+      column:c,
+      revision:this.revision,
+      validHourUtc:this.atmosphere.validHourUtc,
+      context:this.cellSummaryNow(r,c,day)
+    };
+  }
+
   // Product header without the per-cell grid; fields and tiles carry the map data.
   outlook(day) {
     const product = this.atmosphere.outlookCycle?.products?.[day];
@@ -681,6 +695,33 @@ export class WeatherAuthorityRuntime {
       if (!scans.length) return null;
       return { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...(this.radarPool ? await this.radarPool.rotation(site, scans) : detectRotation(site, scans)), revision };
     });
+  }
+
+  // The mesoscale discussions' look at storms (places: [{ xKm, yKm }]) from one radar: { found, lowest }, the
+  // detections and the lowest scan as radarRotation and radarScan (prewarm false) give them, for what is
+  // read of them about the places (radarLook). Worked out from scans of the radials over RADAR_LOOK_KM round
+  // the places only (about half the work) when detectRotation finds those detections sure to be a full
+  // volume scan's (its `exact`); else, and when this scan time's full volume scan is already made or the
+  // places are near the radar, from the full scans. (The sector's scans are not kept: the radar pages and
+  // the game's products still have full ones.)
+  async radarLookAround(siteId, places) {
+    const site = this.radarCatalog().sites.find(s => s.id === siteId);
+    const full = async () => { const [found, lowest] = await Promise.all([this.radarRotation(siteId, { prewarm: false }), this.radarScan(siteId, 0, { prewarm: false })]); return { found, lowest }; };
+    if (!site || this.productCache.has(`${this.revision}:radar:rotation:${site.id}`)) return full();
+    const radials = radialsAround(site, places, RADAR_LOOK_KM);
+    if (radials.length >= RADAR_RADIALS) return full();
+    const revision = this.revision, tilts = RADAR_TILTS_DEG.slice(0, RADAR_ROTATION_TILTS);
+    const near = places.map(p => ({ xKm: p.xKm, yKm: p.yKm }));
+    const look = await this.cachedAsync(`radar:look:${site.id}:${near.map(p => `${p.xKm.toFixed(3)},${p.yKm.toFixed(3)}`).join(';')}`, async () => {
+      const scene = await this.radarScene();
+      const scans = await Promise.all(tilts.map(tilt => (this.radarPool ? this.radarPool.scan(scene, site, tilt, undefined, false, radials) : scanRadarTilt(scene, site, tilt, { radials }))));
+      const within = new Uint8Array(RADAR_RADIALS);
+      for (const r of radials) within[r] = 1;
+      const { exact, ...found } = this.radarPool ? await this.radarPool.rotation(site, scans, { within, near }) : detectRotation(site, scans, { within, near });
+      this.radarLookStats.looks++; if (!exact) this.radarLookStats.fallbacks++;
+      return exact ? { found: { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...found, revision }, lowest: { ...scans[0], revision } } : null;
+    });
+    return look ?? full();
   }
 
   // After a new scan time: works out again, on the radar pool's threads, what has been looked at

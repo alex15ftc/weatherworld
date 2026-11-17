@@ -1,16 +1,18 @@
 // Surface observations and mesoanalysis page. The base is a conventional surface map from the
 // server's analysis: stations plotted where they stand, isobars, fronts, the dryline, outflow
 // boundaries and storms. Over it goes one diagnosed field at a time, as shading, labelled
-// contours or both. Nothing is drawn as grid cells. A click gives the sounding at that spot;
-// the time controls step back through the analyses the server has kept.
+// contours or both. Nothing is drawn as grid cells. The upper-air sites' soundings (taken every 6 hours, kept until the
+// next release: server/UpperAirRuntime.js) open for anyone; an admin's click gives the sounding at any spot now.
+// The time controls step back through the analyses the server has kept.
 // The page also replays a past day (/day/<id>/analysis: the hours server/ReplayArchive.js kept; no soundings or world
 // controls there), and "Save loop as GIF" and "Save loop as MP4" saves the frames on the slider as one picture (js/gif.js).
 import { drawSounding, drawHodograph } from '../sounding.js';
 import { saveLoop, drawChartFrame } from '/js/gif.js';
+import { EF_COLOURS, EFU_COLOUR, efOfMph, efColourOfMph } from '/js/forecast/productColours.js';
 
 const canvas = document.getElementById('surfaceCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('surfaceTip');
 const $ = id => document.getElementById(id);
-const controls = { stations: $('showStations'), isobars: $('showIsobars'), fronts: $('showFronts'), storms: $('showStorms'), counties: $('showCounties'), parameter: $('parameter') };
+const controls = { stations: $('showStations'), isobars: $('showIsobars'), fronts: $('showFronts'), storms: $('showStorms'), counties: $('showCounties'), upperAir: $('showUpperAir'), parameter: $('parameter') };
 const COLOURS = { cold: '#3d8bff', warm: '#ff4d5e', stationary: '#b06cff', dryline: '#d98a2b', outflow: '#e8d44d' };
 const NAMES = { cold: 'Cold front', warm: 'Warm front', stationary: 'Stationary front', dryline: 'Dryline', outflow: 'Outflow boundary' };
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
@@ -20,6 +22,7 @@ const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/analysis/)?.[1] ??
 const API = REPLAY ? { surface: `/api/day/${DAY}/replay/surface`, parameter: `/api/day/${DAY}/replay/parameter` } : { surface: '/api/atmosphere/surface', parameter: '/api/atmosphere/parameter' };
 if (REPLAY) { document.body.dataset.source = 'replay'; document.title = 'Mesoanalysis replay · Past days · High Risk'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
 let data = null, field = null, view = null, style = 'both', selected = null;
+let upper = null;              // the upper-air sites and the releases the server keeps (not in a replay)
 let frameHour = null;          // null follows the current time
 let looping = null;
 const shade = { canvas: null, key: '' };
@@ -32,7 +35,7 @@ async function getJson(url) { const response = await fetch(url, { cache: 'no-sto
 
 // The map's county lines and larger cities (map miles), asked for once.
 let base = null;
-getJson('/api/map/counties').then(c => { base = { miles: c.miles, counties: c.counties, towns: c.towns.filter(t => t.kind !== 'town' || t.population >= 20000).sort((a, b) => b.population - a.population).slice(0, 14) }; draw(); }).catch(() => {});
+getJson('/api/map/counties').then(c => { base = { miles: c.miles, counties: c.counties, allTowns: c.towns, towns: c.towns.filter(t => t.kind !== 'town' || t.population >= 20000).sort((a, b) => b.population - a.population).slice(0, 14) }; draw(); }).catch(() => {});
 
 async function load() {
   try {
@@ -45,7 +48,9 @@ async function load() {
       field = fieldCache.get(id);
     }
   } catch (error) { data = { status: 'offline', missing: error.message === '404', locked: error.message === '401' }; field = null; }
+  if (!REPLAY) upper = await getJson('/api/atmosphere/upper-air').catch(() => upper);
   describe();
+  describeUpperAir();
   draw();
 }
 async function refresh() { if (!looping) await load(); setTimeout(refresh, data?.status === 'ready' ? REFRESH_MS : 2500); }
@@ -75,7 +80,7 @@ function describe() {
     lines.append(item);
   }
   const severe = data.storms.filter(s => s.hailInches >= 1 || s.gustMph >= 58 || s.tornado), tornadoes = data.storms.filter(s => s.tornado);
-  $('surfaceStorms').innerHTML = data.storms.length ? `${data.storms.length} on the map · ${severe.length} severe · ${tornadoes.length} with a tornado<br><span style="color:#7cd67c">●</span> weak <span style="color:#ffb300">●</span> strong <span style="color:#ff5252">●</span> severe <span style="color:#e040fb">●</span> significant <span style="color:#ff1744">▼</span> tornado` : 'None right now.';
+  $('surfaceStorms').innerHTML = data.storms.length ? `${data.storms.length} on the map · ${severe.length} severe · ${tornadoes.length} with a tornado<br><span style="color:#7cd67c">●</span> weak <span style="color:#ffb300">●</span> strong <span style="color:#ff5252">●</span> severe <span style="color:#e040fb">●</span> significant<br>tornado on the ground, by its wind now: ${EF_COLOURS.map((colour, ef) => `<span style="white-space:nowrap"><span style="color:${colour}">▼</span> EF${ef}</span>`).join(' ')} <span style="white-space:nowrap"><span style="color:${EFU_COLOUR}">▼</span> below EF0</span>` : 'None right now.';
   drawLegend();
 }
 
@@ -139,6 +144,7 @@ function draw() {
   if (controls.fronts.checked) drawBoundaries(px);
   if (controls.isobars.checked) drawCentres(px);
   if (controls.stations.checked) drawStations(px);
+  if (upper && controls.upperAir.checked) drawUpperAir(px);
   if (controls.storms.checked) drawStorms(px);
   if (base && controls.counties.checked) drawCities(px);
   if (selected) { const [x, y] = px(selected.xKm, selected.yKm); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y); ctx.moveTo(x, y - 9); ctx.lineTo(x, y + 9); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke(); }
@@ -268,6 +274,20 @@ function drawCities(px) {
   ctx.restore();
 }
 
+// The upper-air sites: a diamond over the station, filled once the site has a sounding to show.
+function drawUpperAir(px) {
+  const have = new Set(upper.releases[0]?.sites ?? []);
+  ctx.save(); ctx.setLineDash([]);
+  for (const site of upper.sites) {
+    const [x, y] = px(site.xKm, site.yKm), r = 7;
+    ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+    ctx.strokeStyle = '#0b1118'; ctx.lineWidth = 4; ctx.stroke();
+    ctx.strokeStyle = '#5ee0ff'; ctx.lineWidth = 2; ctx.stroke();
+    if (have.has(site.id)) { ctx.fillStyle = 'rgba(94,224,255,.35)'; ctx.fill(); }
+  }
+  ctx.restore();
+}
+
 function drawStations(px) {
   ctx.textBaseline = 'middle'; ctx.lineCap = 'round';
   // Fewer stations are plotted when the map is small, so the numbers never overlap.
@@ -299,16 +319,24 @@ function drawBarb(x, y, speed, fromDeg, colour, station) {
   if (knots >= 5) { if (at === staff) at -= 4; ctx.beginPath(); ctx.moveTo(x + sx * at, y + sy * at); ctx.lineTo(x + sx * at + fx * 5, y + sy * at + fy * 5); ctx.stroke(); }
 }
 
-// Storms: a disc that grows with strength and is coloured by what it is producing, a tick
-// showing where it is heading, and a red inverted triangle while a tornado is on the ground.
+// Storms: a disc that grows with strength and is coloured by what it is producing, and a tick showing where it is
+// heading. While a tornado is on the ground the disc becomes an inverted triangle, coloured by the EF rating of the
+// tornado's wind now (the damage tracks' colours, js/forecast/productColours.js; grey below EF0).
 function stormColour(storm) { return storm.hailInches >= 2 || storm.gustMph >= 75 ? '#e040fb' : storm.hailInches >= 1 || storm.gustMph >= 58 ? '#ff5252' : storm.strength >= 0.45 ? '#ffb300' : '#7cd67c'; }
 function drawStorms(px) {
   for (const storm of data.storms) {
     const [x, y] = px(storm.xKm, storm.yKm), radius = 3 + 9 * storm.strength, heading = storm.towardDeg * Math.PI / 180, reach = radius + Math.min(22, storm.speedMph * 0.4);
     ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,.75)';
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.sin(heading) * reach, y - Math.cos(heading) * reach); ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fillStyle = stormColour(storm); ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
-    if (storm.tornado) { ctx.beginPath(); ctx.moveTo(x - 7, y - radius - 12); ctx.lineTo(x + 7, y - radius - 12); ctx.lineTo(x, y - radius); ctx.closePath(); ctx.fillStyle = '#ff1744'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (storm.tornado) {
+      // (the triangle's centre on the storm, a little larger than its disc so it reads at any strength)
+      const half = Math.max(8, radius * 1.25);
+      ctx.beginPath(); ctx.moveTo(x - half, y - half * 0.7); ctx.lineTo(x + half, y - half * 0.7); ctx.lineTo(x, y + half * 1.05); ctx.closePath();
+      ctx.fillStyle = efColourOfMph(storm.tornado.windMph); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fillStyle = stormColour(storm); ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+    }
   }
 }
 
@@ -332,10 +360,14 @@ canvas.addEventListener('mousemove', event => {
   if (!at) { tip.style.display = 'none'; return; }
   const near = list => list.map(s => ({ s, d: Math.hypot(s.xKm - at.xKm, s.yKm - at.yKm) * view.kmToPx })).sort((a, b) => a.d - b.d)[0];
   const storm = controls.storms.checked ? near(data.storms) : null, station = controls.stations.checked ? near(data.stations) : null;
+  const site = siteNear(at);
   let html;
-  if (storm && storm.d < 14) {
+  if (site) {
+    const release = upper.releases[0];
+    html = `<b>Upper-air site ${siteName(site)}</b><br>${release?.sites.includes(site.id) ? `Sounding from ${clock(release.hourUtc)} UTC: select to open it` : `No sounding yet: ${nextBalloon()}`}`;
+  } else if (storm && storm.d < 14) {
     const s = storm.s;
-    html = `<b>Storm ${s.id}</b> · ${s.character}<br>moving ${COMPASS[Math.round(s.towardDeg / 22.5) % 16]} at ${s.speedMph} mph<br>hail ${s.hailInches.toFixed(2)} in · gusts ${s.gustMph} mph${s.tornado ? `<br><b style="color:#ff5252">Tornado on the ground</b> · ${s.tornado.windMph} mph` : ''}`;
+    html = `<b>Storm ${s.id}</b> · ${s.character}<br>moving ${COMPASS[Math.round(s.towardDeg / 22.5) % 16]} at ${s.speedMph} mph<br>hail ${s.hailInches.toFixed(2)} in · gusts ${s.gustMph} mph${s.tornado ? `<br><b style="color:${efColourOfMph(s.tornado.windMph)}">Tornado on the ground</b> · ${s.tornado.windMph} mph (${efOfMph(s.tornado.windMph) < 0 ? 'below EF0' : `EF${efOfMph(s.tornado.windMph)}`} winds)` : ''}`;
   } else if (station && station.d < 24) {
     const s = station.s;
     html = `<b>Station ${s.id}</b> · ${Math.round(s.elevationM * 3.281).toLocaleString()} ft<br>${s.temperatureF}°F / ${s.dewpointF}°F · ${s.windKt < 3 ? 'calm' : `${COMPASS[Math.round(s.windFromDeg / 22.5) % 16]} ${s.windKt} kt`}<br>${s.pressureHpa.toFixed(1)} hPa`;
@@ -355,20 +387,91 @@ async function showSounding(at) {
   // soundings are an admin's only: the server refuses anyone else)
   if (REPLAY || !worldAdmin) return;
   selected = at;
-  document.body.classList.add('with-sounding');
-  $('soundingTitle').textContent = 'Loading…';
-  resize();
-  // (on a phone the sounding sits under the map: bring it into view)
-  if (window.matchMedia('(max-width: 900px)').matches) $('soundingTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  openPanel();
   try {
     const sounding = await getJson(`/api/live/sounding?row=${at.row}&column=${at.column}`);
     if (selected !== at) return;
-    drawSounding($('skewTCanvas'), sounding); drawHodograph($('hodoCanvas'), sounding);
-    const p = sounding.params, surface = sounding.context?.surface ?? {}, round = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—');
-    $('soundingTitle').textContent = `${Math.round(at.xKm / 1.609)} mi east, ${Math.round(at.yKm / 1.609)} mi south`;
-    $('soundingNote').textContent = `${round(surface.temperatureF)}°F / ${round(surface.dewpointF)}°F at the ground · valid ${clock(sounding.validHourUtc)} UTC${data.latest ? '' : ' (soundings are always for the current time, not the frame shown)'}`;
-    showSoundingTables(sounding);
+    showSoundingIn(sounding, `${Math.round(at.xKm / 1.609)} mi east, ${Math.round(at.yKm / 1.609)} mi south`, `valid ${clock(sounding.validHourUtc)} UTC${data.latest ? '' : ' (soundings are always for the current time, not the frame shown)'}`);
   } catch { $('soundingTitle').textContent = 'Sounding not available'; }
+}
+
+// An upper-air site's sounding of the newest release: anyone can open it.
+async function showSiteSounding(site) {
+  if (REPLAY || !upper) return;
+  const at = { xKm: site.xKm, yKm: site.yKm, site: site.id }, release = upper.releases[0];
+  selected = at;
+  openPanel();
+  try {
+    const sounding = await getJson(`/api/atmosphere/upper-air/sounding?site=${encodeURIComponent(site.id)}`);
+    if (selected !== at) return;
+    showSoundingIn(sounding, `${siteName(site)} upper-air sounding`, `balloon released ${clock(release?.hourUtc ?? sounding.validHourUtc)} UTC · ${nextBalloon()}`);
+  } catch {
+    if (selected !== at) return;
+    clearSounding();
+    $('soundingTitle').textContent = `${siteName(site)}: no sounding yet`; $('soundingNote').textContent = `${nextBalloon()[0].toUpperCase()}${nextBalloon().slice(1)}.`;
+  }
+}
+
+function openPanel() {
+  document.body.classList.add('with-sounding');
+  $('soundingTitle').textContent = 'Loading…'; $('soundingNote').textContent = '';
+  resize();
+  // (on a phone the sounding sits under the map: bring it into view)
+  if (window.matchMedia('(max-width: 900px)').matches) $('soundingTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function clearSounding() {
+  for (const id of ['skewTCanvas', 'hodoCanvas']) { const c = $(id); c.getContext('2d').clearRect(0, 0, c.width, c.height); }
+  $('soundingTables').innerHTML = '';
+}
+function showSoundingIn(sounding, title, when) {
+  drawSounding($('skewTCanvas'), sounding); drawHodograph($('hodoCanvas'), sounding);
+  const surface = sounding.context?.surface ?? {}, round = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—');
+  $('soundingTitle').textContent = title;
+  $('soundingNote').textContent = `${round(surface.temperatureF)}°F / ${round(surface.dewpointF)}°F at the ground · ${when}`;
+  showSoundingTables(sounding);
+}
+
+// --- Upper-air sites: named after the nearest sizeable town, listed in the side panel, picked on the map.
+// When the next balloons go up, from the world hour the server last gave.
+function nextBalloon() {
+  const hours = Math.max(0, upper.nextReleaseHourUtc - (upper.hourUtc ?? upper.nextReleaseHourUtc));
+  return `the next balloons go up at ${clock(upper.nextReleaseHourUtc)} UTC${hours >= 1 ? `, in ${Math.round(hours)} h` : ''}`;
+}
+function siteNear(at) {
+  if (!upper || !controls.upperAir.checked || !view) return null;
+  let best = null, bestD = 12;
+  for (const site of upper.sites) { const d = Math.hypot(site.xKm - at.xKm, site.yKm - at.yKm) * view.kmToPx; if (d < bestD) { best = site; bestD = d; } }
+  return best;
+}
+function siteName(site) {
+  if (!base?.allTowns?.length || !data?.domain) return site.id;
+  const k = data.domain.widthKm / base.miles;
+  let best = null, bestD = Infinity;
+  // (a bigger town a little further off names the site before a hamlet beside it)
+  for (const t of base.allTowns) { const d = Math.hypot(t.x * k - site.xKm, t.y * k - site.yKm) - Math.log10(Math.max(10, t.population ?? 10)) * 6; if (d < bestD) { best = t; bestD = d; } }
+  return best ? `${best.name} (${site.id})` : site.id;
+}
+const listed = words => (words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0] ?? '');
+let upperListed = '';
+function describeUpperAir() {
+  const group = $('upperAirGroup');
+  group.hidden = REPLAY || !upper;
+  if (group.hidden) return;
+  const release = upper.releases[0], hours = listed(upper.releaseHoursUtc.map(h => `${String(h).padStart(2, '0')}Z`));
+  $('upperAirNote').textContent = release
+    ? `Weather balloons go up from ${upper.sites.length} stations at ${hours} each day. Showing the ${clock(release.hourUtc)} UTC release; ${nextBalloon()}.`
+    : `Weather balloons go up from ${upper.sites.length} stations at ${hours} each day. None has gone up yet in this world: ${nextBalloon()}.`;
+  const key = `${release?.hourUtc}:${upper.sites.map(s => s.id).join()}:${Boolean(base)}`;
+  if (key === upperListed) return;
+  upperListed = key;
+  const list = $('upperAirSites'), have = new Set(release?.sites ?? []);
+  list.innerHTML = '';
+  for (const site of [...upper.sites].sort((a, b) => siteName(a).localeCompare(siteName(b)))) {
+    const item = document.createElement('li'), button = document.createElement('button');
+    button.type = 'button'; button.textContent = siteName(site); button.disabled = !have.has(site.id);
+    button.addEventListener('click', () => showSiteSounding(site));
+    item.append(button); list.append(item);
+  }
 }
 // The tables beside a sounding, laid out as on a SHARPpy-style sounding: parcels, winds by
 // layer, moisture and lapse rates, the composite indices and the possible hazard type.
@@ -392,7 +495,7 @@ function showSoundingTables(sounding) {
       <div class="snd-hazard"><small>Psbl haz. type</small><b style="color:${HAZARD_COLOURS[hazard] ?? HAZARD_COLOURS.NONE}">${hazard}</b></div></section>`;
 }
 
-canvas.addEventListener('click', event => { const at = pointer(event); if (at) showSounding(at); });
+canvas.addEventListener('click', event => { const at = pointer(event); if (!at) return; const site = siteNear(at); if (site) showSiteSounding(site); else showSounding(at); });
 $('soundingClose').addEventListener('click', () => { selected = null; document.body.classList.remove('with-sounding'); resize(); });
 
 // --- The world: move it on, stop its clock, or start another one. Admin only: the admin key is kept for
@@ -405,7 +508,7 @@ let worldAdmin = false;
 function setWorldAdmin(admin) {
   worldAdmin = admin;
   for (const note of document.querySelectorAll('[data-admin-sounding]')) note.hidden = !admin;
-  if (!admin) { selected = null; document.body.classList.remove('with-sounding'); }
+  if (!admin && selected && !selected.site) { selected = null; document.body.classList.remove('with-sounding'); }
   for (const id of WORLD_BUTTONS) $(id).disabled = !admin;
 }
 async function checkWorldAdmin() {
@@ -440,7 +543,7 @@ $('worldNew').addEventListener('click', async () => {
 });
 
 // --- Controls.
-for (const control of [controls.stations, controls.isobars, controls.fronts, controls.storms, controls.counties]) control.addEventListener('change', draw);
+for (const control of [controls.stations, controls.isobars, controls.fronts, controls.storms, controls.counties, controls.upperAir]) control.addEventListener('change', draw);
 controls.parameter.addEventListener('change', load);
 for (const button of document.querySelectorAll('[data-style]')) button.addEventListener('click', () => { style = button.dataset.style; for (const other of document.querySelectorAll('[data-style]')) other.classList.toggle('on', other === button); draw(); });
 

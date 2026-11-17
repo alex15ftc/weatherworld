@@ -57,6 +57,17 @@ export const OUTLOOK = Object.freeze({
   // (Day 2 'MDT' and Day 3 'ENH' until 2026-11-07, the user's choice: the centre has issued High on Day 2 a few times, and its Day 3
   // does issue Moderate, from 60% any severe with hatching.)
   leadCaps: { day2: 'HIGH', day3: 'MDT' }, nowcastAfterHours: 4, updateAfterHours: 3,
+  // How long an issue takes to reach the players, in world hours: an outlook issued inside its own day (the Day 1
+  // updates) is valid from its issue time plus this, and its runs do not count the storms of those first hours (they
+  // still run them), so it is not made from weather that is over before anyone can read it (2026-11-17, the owner's
+  // request: a late update caught the back end of a waning threat and called it more potent). Measured on the live
+  // server, as world hours of delay per hour the runs cover: the 06Z issue (Day 1 runs of 30 h) went out 1.57 h after
+  // its start on 2026-11-17, about 0.05; so 01Z (11 h) waits ~0.6 h, 13Z (23 h) ~1.2 h. Outlooks for a day still to
+  // come start at the day's start, after the delay anyway.
+  publishDelayPerHour: 0.05,
+  // ...and an issue made before its day (the 06Z, its Day 1 from 12Z) leaves out its first 1.5 h, as long as it took
+  // on the live server (the owner's choice, 2026-11-17). Its outlooks start at 12Z, so they read the same hours.
+  beforeDaySkipHours: 1.5,
   // Continuity: the share of the last issue for the same day that each new one keeps, in the
   // runs' average chances, before the day is under way and after (forecasters weigh their last
   // outlook against new guidance and follow the weather once it is happening). (2026-10-20: each
@@ -152,7 +163,12 @@ export const OUTLOOK = Object.freeze({
   // 0.65 drew Enhanced+ over 8% of the map against 21% verified and was too low on 60% of days; at 0.9 15%, the day right
   // 30 -> 50%, Enhanced+ CSI 0.25 -> 0.34 (1.0 matched the area but left the calibrated chances no skill). Day 2 at 0.9:
   // Enhanced+ 14 -> 19% (20% verified), right 35 -> 50%, too high 5% either way, CSI 0.54 -> 0.60.
-  caution: { day1: 0.9, day2: 0.9, day3: 0.9 },
+  // 2026-11-16 later (owner): Day 3 back to 0.65, Day 2 kept at 0.9. Those numbers were the 11-14 weather; on new runs of the
+  // engine at 40ce207 (quieter: 13.8 tornadoes a day against 19.3 on the same seeds; 40 Day 3s, seeds 41-60,
+  // data/outlook-archive/2026-11-16-40ce207) Day 3 at 0.9 drew Enhanced+ over 37% of the map against 17.5% verified, its 30%
+  // and 45% areas verified 20% and 32%; at 0.65 23% of the map, 32% and 45.5%, right 37.5 -> 40%, too high 30 -> 22.5%, Brier
+  // skill 4 -> 9.5. Day 2 at 0.9 held: its 45% areas verified 44-45% (53-54% at 0.75).
+  caution: { day1: 0.9, day2: 0.9, day3: 0.65 },
   // How the issued areas are tidied before they are drawn (contourShapes.js tidyRanks; 2026-11-14, the user's request: no small
   // islands, no two risk borders touching). A contour level's or category's piece smaller than minSqMi goes, and a hole that
   // small is filled; each category from Marginal up is ringed by at least gapCells of the one below (Marginal by general
@@ -281,7 +297,20 @@ export function runOutlookMemberDays(state, member, hours, options = {}) { retur
 // with storms, and none after. (2026-10-28: tmp/ens tests, 8 seeds: 8 full runs + 24 cheap scored
 // like 32 full runs for severe weather and tornadoes, at about 15% more than the 8 alone; cheap runs
 // on air without the host's storms scored worse, so the host keeps its storms and its outflow.)
-export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity, cheapRuns = 0 } = {}) {
+// onProgress({ index, day, cheap }): when given, each outlook day is sent as soon as this member and its cheap
+// runs have closed it (cheap: each cheap run's day, or null past its storm days), so an outlook can be issued
+// once every member has its day, not when the longest run ends (2026-11-16, the owner's request); the set then
+// returns { days: [], cheap: [], streamed: true }.
+// The world hours an issue inside its day leaves out before it is valid (OUTLOOK.publishDelayPerHour), in whole
+// OUTLOOK.stepHours, never reaching its day's end.
+export function publishDelayHours(hoursToEnd) {
+  const step = OUTLOOK.stepHours, most = hoursToEnd - step;
+  return Math.max(0, Math.min(most, Math.round(((OUTLOOK.publishDelayPerHour ?? 0) * hoursToEnd) / step) * step));
+}
+
+// skipHours: the first hours run but not counted (OUTLOOK.publishDelayHours for an issue inside its day): the first
+// day starts after them. A whole number of OUTLOOK.stepHours, less than the hours to the first day's end.
+export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upstreamShare, mesoscale, placesFor, stormDays = Infinity, cheapRuns = 0, onProgress = null, skipHours = 0 } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
   const places = placesFor?.(atmosphere.world) ?? null;
@@ -309,6 +338,9 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     expected: ingredients ? null : (grids => { addOngoingTornadoes(world, grids); return grids; })(expectedTornadoGrids(n)),
     // (a storm day's highest significant hail and wind composites at each cell; cheap runs share their host's air and take none)
     environment: ingredients || cheap !== null ? null : { hail: new Float32Array(n), wind: new Float32Array(n) },
+    // (and its highest violent tornado parameter at each cell, x10 in a byte, for the model page's ensemble VTP chances;
+    // 2026-11-17. Display only: no outlook reads it.)
+    vtp: ingredients || cheap !== null ? null : new Uint8Array(n),
     frames: [], seen: new Set(), initiations: [], startHour: world.validHourUtc, before: total(),
     // (supercell, line, other: the storm steps of each mode at each hour, for the discussion's storm mode; 2026-11-14)
     byHour: { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0), supercell: new Array(24).fill(0), line: new Array(24).fill(0), other: new Array(24).fill(0) }, steps: 0, stormy: new Uint8Array(n),
@@ -357,6 +389,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       // The category the run's own day reached, judged as a day is verified.
       dayCategory: truth.worldRisk.reduce((best, c) => (rank(c) > rank(best) ? c : best), 'NONE'),
       ...(day.environment ? { environmentSignal: day.environment } : {}),
+      ...(day.vtp ? { vtpMax: day.vtp } : {}),
       chance, reports, thunder: truth.storm, storms: day.seen.size,
       // The tornadoes the run's storms were expected to put down, per cell, and their sum (I2, 2026-11-05).
       expected: day.expected, expectedTornadoes: day.expected.tornado.reduce((a, v) => a + v, 0),
@@ -367,8 +400,21 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     };
   };
   const days = [];
-  let day = null;
+  let day = null, sent = 0;
+  // (the days closed since the last part, each with its cheap runs' days)
+  const send = () => { if (onProgress) for (; sent < days.length; sent++) onProgress({ index: sent, day: days[sent], cheap: layers.map(layer => layer.days[sent] ?? null) }); };
   for (let hour = 0; hour < hours - 1e-9; hour += OUTLOOK.stepHours) {
+    send();
+    // The hours before the outlook is out: the storms (the cheap runs' too) and the air go on, nothing is counted.
+    if (hour + OUTLOOK.stepHours <= skipHours + 1e-9 && !days.length) {
+      if (layers.some(layer => layer.open)) {
+        const host = Object.fromEntries(LAYER.map(key => [key, world[key]])), target = world.validHourUtc + OUTLOOK.stepHours;
+        for (const layer of layers) { if (!layer.open) continue; Object.assign(world, layer.state); atmosphere.stormTicksTo(target); for (const key of LAYER) layer.state[key] = world[key]; }
+        Object.assign(world, host);
+      }
+      atmosphere.advanceLikeServer(OUTLOOK.stepHours);
+      continue;
+    }
     day ??= open();
     // The storms move as the live server moves them: in 5-minute ticks up to each atmosphere step, then the air takes
     // the step with the host's storms in it (AtmosphereWorld.advanceLikeServer; until 2026-11-05 advance(), which moved
@@ -386,7 +432,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       Object.assign(world, host);
     }
     atmosphere.advanceLikeServer(OUTLOOK.stepHours, { onTick: hours => addExpectedTornadoes(world, day.expected, hours) });
-    if (day.environment) { const { hail, wind } = day.environment; world.forEachCell((cell, x, y) => { const k = y * world.width + x; hail[k] = Math.max(hail[k], significantHailParameter(cell)); wind[k] = Math.max(wind[k], derechoCompositeParameter(cell)); }); }
+    if (day.environment) { const { hail, wind } = day.environment, vtp = day.vtp; world.forEachCell((cell, x, y) => { const k = y * world.width + x; hail[k] = Math.max(hail[k], significantHailParameter(cell)); wind[k] = Math.max(wind[k], derechoCompositeParameter(cell)); if (vtp) vtp[k] = Math.max(vtp[k], Math.min(255, Math.round(10 * (cell.derived?.vtp ?? 0)))); }); }
     if (day.ingredients) {
       const dt = OUTLOOK.stepHours, { starts, severe, significant, intense } = day.ingredients, utcNow = Math.floor(((world.validHourUtc % 24) + 24) % 24);
       world.forEachCell((cell, x, y) => {
@@ -420,6 +466,8 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       Object.assign(world, host);
     }
   }
+  send();
+  if (onProgress) return { days: [], cheap: [], streamed: true };
   return { days, cheap: layers.map(layer => layer.days) };
 
   // One step's storms (those in the world now) into a day's record.
@@ -431,9 +479,10 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     // storms and tornadoes on the ground at each step; and the storms going at the start.
     byHour.tornado[utc] += frame.tornadoes;
     // Where this run's storms are, for the model page's ensemble products (2026-10-29): [hour UTC, storm
-    // number, x km, y km, reflectivity dBZ, updraft helicity, tornado 0/1] for each storm at each step.
+    // number, x km, y km, reflectivity dBZ, updraft helicity, tornado] for each storm at each step. The tornado column is 0 with
+    // none on the ground, else its rated wind so far in mph (TornadoEngine ratedWindMph; 1 until it has one; was 1 until 2026-11-17).
     const at = Math.round((world.stormEngine?.validHourUtc ?? world.validHourUtc) * 100) / 100;
-    for (const storm of world.storms) if (storm.active && (storm.intensity ?? 0) >= 0.15) result.stormTrack.push([at, Number(String(storm.id).replace(/\D/g, '')) || 0, Math.round(storm.positionKm.x * 10) / 10, Math.round(storm.positionKm.y * 10) / 10, Math.round(storm.radar?.maxReflectivityDbz ?? 0), updraftHelicity(storm), storm.tornado?.onGround ? 1 : 0]);
+    for (const storm of world.storms) if (storm.active && (storm.intensity ?? 0) >= 0.15) result.stormTrack.push([at, Number(String(storm.id).replace(/\D/g, '')) || 0, Math.round(storm.positionKm.x * 10) / 10, Math.round(storm.positionKm.y * 10) / 10, Math.round(storm.radar?.maxReflectivityDbz ?? 0), updraftHelicity(storm), storm.tornado?.onGround ? Math.max(1, Math.round(storm.tornado.ratedWindMph || storm.tornado.windSpeedMph || 1)) : 0]);
     for (let i = 0; i < n; i++) if (frame.storm[i]) day.stormy[i] = 1;
     // Storm mode (the engine's own, StormModeEngine describeStormMode): rotating storms on their own or in clusters, lines
     // (QLCS, MCS, segments; a line with supercells in it counts as a line), and the rest (multicells, pulse, elevated).

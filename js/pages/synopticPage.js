@@ -159,7 +159,11 @@ async function load() {
   describe();
   draw();
 }
-async function refresh() { if (!looping) await load(); setTimeout(refresh, data?.status === 'ready' ? REFRESH_MS : 2500); }
+// (a model run still being worked out is asked again often, for its new frames)
+async function refresh() { if (!looping) await load(); setTimeout(refresh, data?.status !== 'ready' ? 2500 : data.run?.partial ? 4000 : REFRESH_MS); }
+// The times the slider spans: a model run's every frame, those not made yet too (greyed and not to be chosen;
+// 2026-11-16), else the frames there are.
+const timeline = () => (MODEL && data?.run?.planned?.length ? data.run.planned : data?.frames ?? []);
 
 // --- Side panel.
 const clock = hours => { const h = ((hours % 24) + 24) % 24; return `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`; };
@@ -193,7 +197,13 @@ function describe() {
   if (MODEL) describeRun();
   const behind = data.frames.at(-1) - data.frameHour;
   status.textContent = REPLAY ? `replay, hour ${data.frames.indexOf(data.frameHour) + 1} of ${data.frames.length}` : MODEL ? (LONG ? `day ${Math.floor(data.run.forecastHour / 24) + 1}, forecast hour ${data.run.forecastHour} of the 7-day run · less sure with each day` : `forecast hour ${data.run.forecastHour} of the ${clock(data.run.initHourUtc).slice(0, 2)}Z short range run`) : `${clock(data.hourUtc + data.localOffsetHours)} local · ${data.latest ? 'current analysis' : `${behind} h ago`}`;
-  const slider = $('frameSlider'); slider.max = data.frames.length - 1; slider.value = data.frames.indexOf(data.frameHour);
+  // The slider spans a model run's every frame (those not made yet drawn grey); a model run also has a button for
+  // each frame (2026-11-16, the owner's choice), those not made yet greyed and not to be chosen.
+  const slider = $('frameSlider'), times = timeline(); slider.max = times.length - 1; slider.value = times.indexOf(data.frameHour);
+  const readyAt = times.indexOf(data.frames.at(-1)), ready = times.length > 1 ? Math.max(0, readyAt) / (times.length - 1) : 1;
+  slider.style.setProperty('--ready', `${(ready * 100).toFixed(2)}%`); slider.classList.toggle('partial', ready < 1);
+  if (MODEL) describeFrameStrip();
+  if (MODEL && data.run.partial) status.textContent += ` · ready to F${String(data.run.readyHours ?? 0).padStart(3, '0')} of F${String(data.run.hours).padStart(3, '0')}; the greyed hours are still being worked out`;
   $('frameLatest').classList.toggle('on', frameHour === null && !looping);
   $('framePlay').classList.toggle('on', Boolean(looping)); $('framePlay').textContent = looping ? 'Stop' : 'Loop';
   const mi = km => Math.round(km * 0.621371);
@@ -212,14 +222,25 @@ function describe() {
   for (const button of document.querySelectorAll('#presets button')) button.classList.toggle('on', button.dataset.preset === now?.key);
 }
 
+// The model run's frame buttons: one for each frame the run will have, named by its forecast hour.
+function describeFrameStrip() {
+  const strip = $('frameStrip'), times = timeline(), init = data.run.initHourUtc, html = times.map(hour => `<button data-hour="${hour}">${String(Math.round(hour - init)).padStart(3, '0')}</button>`).join('');
+  if (strip.dataset.key !== html) { strip.innerHTML = html; strip.dataset.key = html; }
+  for (const b of strip.children) {
+    const hour = Number(b.dataset.hour), pending = !data.frames.includes(hour);
+    b.classList.toggle('on', hour === data.frameHour);
+    b.disabled = pending; b.title = pending ? 'Not ready yet: this hour is still being worked out' : `Forecast hour ${b.textContent}`;
+  }
+}
+
 // The model run's list (large-scale view of the models): the runs the server holds, the newest first.
 function describeRun() {
-  const select = $('runSelect'), runs = [...data.run.runs].reverse(), key = runs.map(r => r.initHourUtc).join(',');
+  const select = $('runSelect'), runs = [...data.run.runs].reverse(), key = runs.map(r => `${r.initHourUtc}:${r.partial ? r.readyHours : ''}`).join(',');
   if (select.dataset.key !== key) {
     select.dataset.key = key;
     // (the long range runs are a day apart, all from the same hour: each is named by how old it is)
     const age = r => { const days = Math.round((runs[0].initHourUtc - r.initHourUtc) / 24); return r === runs[0] ? ' (newest)' : LONG ? ` · ${days} day${days === 1 ? '' : 's'} older` : ''; };
-    select.innerHTML = runs.map(r => `<option value="${r.initHourUtc}">${clock(r.initHourUtc).slice(0, 2)}Z run · ${LONG ? `${Math.round(r.hours / 24)} days` : `${r.hours} h`}${age(r)}</option>`).join('');
+    select.innerHTML = runs.map(r => `<option value="${r.initHourUtc}">${clock(r.initHourUtc).slice(0, 2)}Z run · ${LONG ? `${Math.round(r.hours / 24)} days` : `${r.hours} h`}${r.partial ? ` (ready to F${String(r.readyHours ?? 0).padStart(3, '0')})` : ''}${age(r)}</option>`).join('');
   }
   select.value = String(data.run.initHourUtc);
 }
@@ -592,7 +613,10 @@ for (const id of ['showMap', 'showCentres', 'showGrid']) $(id).addEventListener(
 function stopLoop() { if (looping) { clearInterval(looping); looping = null; } }
 // (the analysis follows the newest frame when the last one is chosen; a model run's frames are all named)
 function showFrame(index) { if (!data?.frames) return null; const i = Math.max(0, Math.min(data.frames.length - 1, index)); frameHour = !STEPPED && i === data.frames.length - 1 ? null : data.frames[i]; return load(); }
-$('frameSlider').addEventListener('input', event => { stopLoop(); showFrame(Number(event.target.value)); });
+// (a time on the slider the run has not made yet goes to the last one made)
+$('frameSlider').addEventListener('input', event => { stopLoop(); const k = data?.frames?.indexOf(timeline()[Number(event.target.value)]) ?? -1; showFrame(k >= 0 ? k : (data?.frames?.length ?? 1) - 1); });
+// (a model run's frame buttons; one not made yet is disabled, so it gives no click)
+$('frameStrip').addEventListener('click', event => { const hour = event.target.dataset?.hour; if (hour === undefined || !data?.frames) return; const k = data.frames.indexOf(Number(hour)); if (k >= 0) { stopLoop(); showFrame(k); } });
 $('framePrev').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) - 1); });
 $('frameNext').addEventListener('click', () => { stopLoop(); showFrame(data.frames.indexOf(data.frameHour) + 1); });
 $('frameLatest').addEventListener('click', () => { stopLoop(); frameHour = null; load(); });

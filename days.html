@@ -227,9 +227,9 @@ import { CATEGORY_COLOURS, EF_COLOURS, WARNING_COLOURS } from '/js/forecast/prod
 import { saveLoop, drawChartFrame } from '/js/gif.js';
 import { RADAR_PRODUCTS, radarColorTable } from '/js/radar/RadarFormat.js';
 
-// The admin key is kept for this tab under the same name as on the other pages.
+// The admin key is kept in this browser (localStorage) under the same name as on the other pages and the top bar (js/site.js).
 const ADMIN_KEY = 'wwAdminKey';
-const adminKey = { get() { try { return sessionStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? sessionStorage.setItem(ADMIN_KEY, v) : sessionStorage.removeItem(ADMIN_KEY); } catch { /* no storage */ } } };
+const adminKey = { get() { try { return localStorage.getItem(ADMIN_KEY); } catch { return null; } }, set(v) { try { v ? localStorage.setItem(ADMIN_KEY, v) : localStorage.removeItem(ADMIN_KEY); } catch { /* no storage */ } } };
 const headers = () => { const key = adminKey.get(); return key ? { 'x-admin-key': key } : {}; };
 async function ask(url, options = {}) {
   const response = await fetch(url, { cache: 'no-store', ...options, headers: { ...headers(), ...(options.headers ?? {}) } });

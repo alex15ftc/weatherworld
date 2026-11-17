@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-15
+Updated: 2026-11-17
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -18,13 +18,69 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- /chasers fixes (2026-11-17, owner's request; `3c91512` on `main`, engine deployed from it): the page now reads the admin key from the top bar's sign-in
+  (`js/site.js` `adminKey`, localStorage; it read sessionStorage, so signed-in admins saw the public view), and the
+  day loop draws a track only for the selected chaser (click a dot, or a row in the admin list). Seen in the local
+  site preview; the admin view with the real key not seen yet.
+- VTP and tornado strength in the ensemble (2026-11-17, owner's request; `6c87669` on `main`, engine deployed from it, the world carried over): VTP is now SPC's (STP x 3CAPE/50 capped at 2 x
+  0-3 km lapse rate/6.5; Hampshire et al. 2018 JOM), replacing an invented 0-5 blend; display only (no storm code reads it).
+  Mesoanalysis and /models gain VTP and 0-3 km CAPE fields (seed 2, Day 2 21Z, STP>=1 cells: STP p50 3.0, VTP 4.0, 3CAPE 59).
+  Ensemble track points carry the tornado's rated mph (was 1); the /models ensemble has EF2+ and EF4+ chances within
+  25 mi, every run's tornado tracks by EF, and a per-run strongest-tornado readout. Page-only additions (same day, `789d3d6`, engine deployed from it; seen in a
+  browser on live data): /models short range "VTP + UH > 75 tracks, 1 h" and a low-level instability field (3CAPE x 0-3 km
+  lapse rate, made in the page from two run fields); EF2+ 10% hatching on the ensemble tornado chance; VTP and its two terms
+  in the sounding panel; short-range tornado tracks drawn in their EF colours (they all drew black: the rating is 'EF2' text).
+  VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5). Ensemble VTP chances (step 2, same day; `54ce88f`, engine deployed from it): each
+  full outlook member keeps its storm day's highest VTP per cell (DayOneOutlook vtpMax, x10 in a byte; ~60 KB an issue saved),
+  shown on /models as "Chance of VTP 2+ / 4+ within 25 mi, storm day shown" from the 8 full runs (test: tests/ensemble-vtp.mjs).
+- Outlook updates count only the weather after they are out (2026-11-17, owner's request; `c003ae6`): a Day 1
+  update inside its day is valid from issue + `publishDelayHours` (0.05 world h per hour run, half-hour steps: 1 h at
+  13Z/16:30Z/20Z, 0.5 h at 01Z; live 06Z Day 1 took 1.57 h), and its runs do not count the hours before; the 06Z
+  issue skips 1.5 h (`beforeDaySkipHours`; Day 1 still 12Z-12Z). Not forecast-checked (owner shipped without it).
+  The continuity blend stays (65/35, 80/20 under way): a no-blend test (seeds 47-52) did worse at 01Z.
+- Outlooks and model frames go out as they are ready (2026-11-17, owner's request, `92ba267` on `main`; engine deployed from it, the world carried over; live 19Z short range run seen streaming): forecast threads
+  stream parts back (`ForecastPool.run` `onProgress`). Each outlook of an issue is put out once its members have run
+  its day (`OutlookRuntime.publish`); with few threads (the host has one for outlooks) the Day-1-only members run
+  first, so Day 1 goes out first (local, 2 threads: Day 1 at 234 s, Day 2 249 s, Day 3 261 s). Short and long range runs
+  are listed from their start as `partial` with `readyHours`. The model pages keep their slider and have a button for
+  every step of the run (every hour on /models, every frame on /models/long-range and /models/large-scale); steps not
+  made yet are greyed and locked, and the slider stops at the last one made. Not changed: on the host the 06Z
+  short/long range runs wait behind the outlook members for the one thread (`WEATHER_FORECAST_WORKERS` 2).
+
+- Tornado icons on the mesoanalysis page (2026-11-17, on `main`, engine deployed with it): a storm with a tornado on
+  the ground draws as an inverted triangle coloured by the EF rating of its wind now (`efColourOfMph` in
+  `js/forecast/productColours.js`, the engine's thresholds and the damage tracks' colours; grey below EF0).
+- Public 6-hourly upper-air soundings (2026-11-17, `68e1f2e` on `main`, engine deployed from it, the world carried over;
+  no release yet at deploy, the live world was at 11Z): 11 of the surface
+  stations, at least 200 km apart (`UPPER_AIR` in `server/UpperAirRuntime.js`; real sites are 300-500 km apart, which
+  would leave 5), take a sounding on the first atmosphere step at or after 00Z, 06Z, 12Z and 18Z (owner, 2026-11-17; was 06Z only). The runtime calls a new
+  `afterAtmosphereStep` hook after every step, so a catch-up turn of several steps does not miss it. The last day's
+  releases (4) are kept in `upper-air.json` beside the world state. The data is served to anyone at `/api/atmosphere/upper-air` and
+  `/api/atmosphere/upper-air/sounding?site=`, without the cell's outlook. On the mesoanalysis page they show as cyan
+  diamonds plus a "Soundings" list named after nearby towns. An admin can still get any point at the current time.
+  A release missed by more than an hour (the server down at a release hour) is skipped. Test: `tests/upper-air-runtime.mjs`.
+
 - Day 1 06Z table (2026-11-16, `e9b2499` on `main`; engine deployed from `7860dd8` with the update table's tornado row, the world carried over): `combineOutlook` counts hours into the outlook's own day
   (from `validToHourUtc` - 24), so the server's 06Z Day 1 (6 h before its day) reads the morning `day1` table as every
   verification script scores it; it took 18 h modulo 24 and read `day1update` (live 06Z too low on 57% of days). The
   updates now read tornado chances through the `day1` row (it fit seeds 53-56 better); wind and hail keep `day1update`.
-- Day 2 and Day 3 caution 0.9 (2026-11-16, owner; was 0.75 / 0.65; engine deployed from `2187d43`; TECH_DECISIONS): on 30 mornings Day 3 right 30 -> 50%
-  and Enhanced+ 8 -> 15% of the map (21% verified); Day 2 right 35 -> 50%, Enhanced+ 14 -> 19% (20%). Watch live Day 2
-  High and Day 3 too-high days; 8 members to Day 3 gained nothing (not done).
+- Outlook caution Day 1 0.9 / Day 2 0.9 / Day 3 0.65 (2026-11-16, owner; Day 3 was 0.9 from `2187d43`; `5a2f921` on
+  `main`, engine deployed from `3a933c0`, the world carried over; TECH_DECISIONS): on the engine at `40ce207` Day 3 at 0.9 drew Enhanced+ over
+  twice the verified area; at 0.65 its contours verify at their values. Day 1 right 62.5%, High 6% forecast and verified,
+  Moderate 11% against 22.5% (hail-hatch Moderates). Archive for re-scoring: `data/outlook-archive/2026-11-16-40ce207`.
+  Open, owner: raise the hail 2 in hatch bar 0.35 -> 0.50 (verified Moderate 23% -> ~14%), then refit the forecast hatches.
+- Steering moisture ramp (2026-11-17, owner's choice, `3e0530e` on `main`; engine deployed from `a0dffa1`, the world carried over; it takes effect at the next 06Z plan): `RegionSteering.supportByColumn` scales the
+  warm-sector support by the outer model's moisture over the map about its mean, from none at -2 g/kg to all of it at
+  +4 (`moistRangeGkg`), in place of the dry cut (`dryGkg`, full support at average air or wetter). Why: the map's
+  moisture tracked tornado counts (rank 0.50 over 80 suite days) where the support did not (0.13); lull days sat on
+  the jet's cold, dry flank, which the dry cut scored well. Suite (8 seeds x 10 days): below Slight 13.8 to 6.3%,
+  Enhanced 27.5 to 38.8%, Moderate 22.5 to 20%, High 3.8 to 6.3%, runs of 2+ below Slight 5 to 0%; tornadoes a day
+  15.3 to 17.8. Regressions accepted by the owner: wind reports a day 90th 213 to 320, hail median 120 to 190.
+  Forecast check (seeds 41-50): Day 1 right 60 to 43% (within one 97 to 100%), Day 2 40 to 35%, Day 3 20 to 40%;
+  calibrated Brier skill tornado up (Day 1 19 to 22), in-sample recalibration gains 0-1 point: no refit made (the
+  Day 1 drop is past the 15-point rule; the owner's call). `moistRangeGkg` [-3, 3] tried after: no regressions (reports
+  within tolerance) but below Slight 11.3% and lull runs back near the old settings; the owner kept [-2, 4].
+  Rejected: `lookAheadDays` 2 (lull runs 3.1 to 6.3% in a 160-day screen); `warmRangeK` (no gain over moisture alone).
 - Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
   warm-sector day's slide also by the best the next day can reach (`lookAheadDays` 1) and gives up 0.15 support a
   1000 km the slide leaves the map from its home latitude, where the jet's core is (`homePull`). Why: the live world
@@ -86,6 +142,20 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   CharacterController, not brought over). Driven in Studio at full size before the half-size merge; not yet driven
   at half size (the GMC and 4WD are checked offline only). The place's Workspace still holds a "2020 GMC 2500"
   model, which VehicleService rigs where it stands: remove it now that the GMC is a template. Known: the automatic's light-throttle shift points (from EngineSim) keep it in 3rd at highway speed.
+  2026-11-16: driven at half size in Studio after two fixes: the engine never stepped
+  when AudioStreamWriter is unusable (both audio controllers now probe and run silent), and `Chassis.apply`'s
+  low-speed stabiliser cancelled a driven wheel's force while the car crept backward (driven wheels now exempt).
+  The pickup can't climb the ~10-degree grass spawn hill in 2H (rear-tyre grip; 4L does). Car configs are
+  0.476 m/stud vs the world's 0.56 (cars ~18% large).
+- Home city (2026-11-16, `4d85c8e`, merged `de1c264` on `main`; live: the place published from Studio at 2026-11-17 02:58 UTC holds these scripts exactly, file sha256 224cd19c…): first join shows a city picker
+  (`SpawnPickerController`; the metro, city and small cities, `Server/Modules/HomeCity`, spawn in the right-hand
+  lane of the ordinary road nearest a mile past each city's east edge, facing along it, 45 studs or more from a
+  junction; the start point before picking snaps to a road the same way); dying respawns there; the car
+  (`CarService.give`) is set down in front of the player now, facing their way, not beside them; rejoining returns to the last spot (PlayerData `Spawn`, saved every 5 s
+  by `ExploreService`, floor under the saved height so indoors stays indoors). Seen in Studio: picker, move to
+  Smith Falls, rejoin at the same spot, the road spawn with the car ahead. PlayerData's key is literally
+  `Player$<userId>` (store `PlayerData_Studio` in Studio playtests). Not yet seen: respawn after death (romcp could not kill the character).
+  The choice is once only; no way to change city yet.
 - One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `019a278` (first from `32b57de`), the world carried over;
   place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
   not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
@@ -314,6 +384,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     frame's large-scale columns are asked for. Engine fingerprint identical to HEAD (seed 1000, 8 h).
   - Fixed (same date): the mesoanalysis replay of a day not yet saved did not send the admin key, so it stayed
     empty for a signed-in admin.
+  - Fixed (2026-11-16, deployed from 5c8e7c4): the days page read the admin key from sessionStorage while the top
+    bar keeps it in localStorage, so a signed-in admin saw no recent days and no Save button.
   - Soundings (2026-11-13): the live world's are admin only (`/api/live/sounding` answers 401 without the key; the
     mesoanalysis page opens none for the public). The public's come from the models: each short range run (every
     hour) and long range run (every 3 h) keeps what a sounding is made from for every cell
@@ -416,6 +488,30 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+000. Railway usage (2026-11-17, merged, NOT deployed yet): the engine averaged 0.52 vCPU and 1.5 GB (memory the larger
+   cost). Railway variable `WEATHER_FORECAST_WARM=0` is staged (skip-deploys) and goes live with the next deploy of any
+   commit; the long range model keeps only its newest run; the replays' tornado radar scans only the box's radials
+   (~21% of the work) and the mesoscale discussions' radar look only ~40 km round its storms (~half), with a guard
+   (`detectRotation`'s `exact`) that falls back to full scans; scans ~10% faster. Outputs byte-identical in offline
+   checks (416 radar hashes, 31 replay boxes, 156 looks). After the deploy: compare `railway metrics -s engine --since
+   12h --memory --cpu` with 1.5 GB / 0.52 vCPU, and read `radarLooks` (looks, fallbacks) on `/api/performance`.
+   `tests/radar-simulator.mjs` fails ("a debris signature at the tornado") on main before this too: look into it.
+00a. VTP and tornado strength (owner's order, 2026-11-17; steps 1 and 2, page products and ensemble VTP chances, done).
+   High-VTP check done (4 seeds x 3 days): VTP runs high from the 3CAPE term (at its cap of 2 in 46% of STP>=1 cells;
+   about a third of it the warm-sector moist bias: 1 C drier gives VTP x0.64) on top of the tuned-high STP; a moisture
+   fix is still the owner's call. Tornado strength now leans on low-level instability (branch
+   `engine/tornado-low-level-lean`, uncommitted, 2026-11-17): TornadoEngine LEAN, a copula on the strength draw by the
+   inflow's 3CAPE x 0-3 km lapse rate ranked among tornadoes with the same spread (table from seeds 11-18 x 8 days, rho
+   0.35). Regression check against a fresh baseline: no regressions (EF2+ a day 2.85 -> 2.59, EF4+ share 1.21 -> 0.92,
+   all within tolerance); z sd 0.98 and the leaned draws stay uniform; VTP now beats STP at EF2+ vs EF0-1 (0.73 vs 0.70,
+   was 0.64 each). Forecast check (seeds 41-50, lead caps, vs 489143a): Day 1 right 43 -> 53%, Day 2 35 -> 45%, Day 3 40 -> 30% (one
+   outlook of 10), within one 100/95/90%; hazard Brier skill unchanged; no refit. Same batch: the flat 235 mph ceiling cap is gone; the ceiling bends
+   to a speed limit from the inflow CAPE, 1.8 x sqrt(2 CAPE) (TornadoEngine SPEED_LIMIT; 172 / 233 / 284 mph at p10/50/90 of
+   tornado inflows): regression none, EF4+ share 1.21 -> 0.64% (target 0.5), max ceiling 263 mph on seeds 11-18. Path width:
+   the flat 25-1600 yd hold is gone; the width bends to the wall cloud radius (StormGeometry wallCloudRadiusKm, 2,100-5,000 yd;
+   TornadoEngine PATH_WIDTH), unchanged below ~240 mph winds (regression identical to the limit run). Forecast check not
+   re-run for the limit or width. game-products and radar-simulator tests fail on main before this batch (not ours). Re-measure the table if the low levels change. Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
+   tornadoes (ask first: long run). Step 4, PDS wording and EF2+ hatching in the Day 1 outlook, only after step 3.
 00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite
    before dawn (Night fog button: the stratus deck bright) and in the morning (visible: the deck breaking up by noon).
 0. Map (published as 505 and engine deployed from `c5aa758`, 2026-11-14, the world resumed at hour 732. 505: a bridge is its deck only, each road climbs to it on its own raised grade with the ground graded up under it (no ramp slabs or wedges; unseen in game, look at two or three overpasses and a river bridge first). Offline: 0 holes and 0 steps at 90 crossings; 10 holes in 20 places, 6 of them at Smith Falls with an 8-stud ramp step. Owner asked for sharper terrain features (grid farms): options put to them are custom terrain textures on unused materials, field-margin strips as parts, smaller fields; none built, they need Studio. 504, same day, with the KMRR-less map export; 504 fixes what the owner saw on 503: roads under the terrain (road cut, slab and ditch back at their size in the place's studs), ramps buried at their foot (ground cut under bridges), the pit down the middle of divided roads (median is a part now), gaps where a road carries on from a bigger one's end, ramps and riverside roads missing at rivers, building parts on roads, grass at half length; none of it seen in game. Still wrong: the Smith Falls interchange at map mile 391.0, 128.6 (two interstates on a wide river: gaps and an 8-stud step on a ramp); next there: interchanges kept off wide rivers (generator, map rebuild). Also open: collectors dead-end at wide rivers (76 crossings), steep main-road grades, kinks on metro-centre streets. `tools/worldmap/run-chunks.luau` now drives every road for holes and steps (modes `crossings`, `at:x,z`). Half size: look first at the character, the car and its camera, a town, the M map; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a

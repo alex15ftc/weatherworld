@@ -27,7 +27,8 @@ export const LONG_RANGE = Object.freeze({
   // How much a run's systems differ in speed from the world's (m/s, standard deviation): the outlook runs' own.
   timingSpreadMs: TIMING.spreadMs,
   // Runs the server keeps (about 45 MB each: the large-scale frames and the map's columns for soundings).
-  keepRuns: 4
+  // Only the newest (2026-11-17, to save memory on Railway): a new run replaces the last as it starts and fills in.
+  keepRuns: 1
 });
 
 // Whether a run starts at this hour (UTC).
@@ -36,7 +37,9 @@ export const longRangeDue = hourUtc => (((Math.round(hourUtc) % 24) + 24) % 24) 
 // One run. state: the live world's forecast copy (saveState({ forecast: true })), this run's own.
 // synopticOf(atmosphere): the large-scale model's frame; it only reads the run's world.
 // timingMs: the run's timing error, when it is not to be drawn (a test's, or 0 for an exact run).
-export function runLongRange(state, { hours = LONG_RANGE.hours, synopticOf = null, timingMs = null } = {}) {
+// onProgress(part): when given, each kept frame is sent as soon as it is made, as { head, readyHours, synoptic,
+// soundings } (the new ones), and the run returns the rest without them ({ ..., streamed: true }; 2026-11-16).
+export function runLongRange(state, { hours = LONG_RANGE.hours, synopticOf = null, timingMs = null, onProgress = null } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
   const world = atmosphere.world, started = performance.now(), initHourUtc = world.validHourUtc;
@@ -46,8 +49,12 @@ export function runLongRange(state, { hours = LONG_RANGE.hours, synopticOf = nul
   const error = timingMs ?? timingErrorMs(`${state.seed}|long-range|${initHourUtc}`, LONG_RANGE.timingSpreadMs);
   atmosphere.regional.timingErrorMs = error;
 
-  const synoptic = [], soundings = [];
-  const keep = () => { soundings.push({ hour: Math.round((world.validHourUtc - initHourUtc) * 100) / 100, ...packColumns(world) }); if (synopticOf) synoptic.push({ forecastHour: Math.round((world.validHourUtc - initHourUtc) * 100) / 100, ...synopticOf(atmosphere) }); };
+  const synoptic = [], soundings = [], head = { seed: state.seed, initHourUtc, hours, synopticEvery: LONG_RANGE.synopticEvery };
+  const keep = () => {
+    const forecastHour = Math.round((world.validHourUtc - initHourUtc) * 100) / 100, sounding = { hour: forecastHour, ...packColumns(world) }, frame = synopticOf ? { forecastHour, ...synopticOf(atmosphere) } : null;
+    soundings.push(sounding); if (frame) synoptic.push(frame);
+    onProgress?.({ head, readyHours: forecastHour, soundings: [sounding], synoptic: frame ? [frame] : [] });
+  };
   keep();
   const steps = Math.round(hours / LONG_RANGE.atmosphereStepHours);
   for (let step = 0; step < steps; step++) {
@@ -55,7 +62,7 @@ export function runLongRange(state, { hours = LONG_RANGE.hours, synopticOf = nul
     if (Math.abs((world.validHourUtc - initHourUtc) % LONG_RANGE.synopticEvery) < 1e-6) keep();
   }
   return {
-    seed: state.seed, initHourUtc, hours, timingErrorMs: Math.round(error * 1000) / 1000, synoptic, soundings,
+    ...head, timingErrorMs: Math.round(error * 1000) / 1000, ...(onProgress ? { streamed: true } : { synoptic, soundings }),
     // (where the run ends with the map, for checks: metres along and across the large-scale model)
     endOrigin: { x: atmosphere.regional.origin.x, y: atmosphere.regional.origin.y },
     ms: Math.round(performance.now() - started)

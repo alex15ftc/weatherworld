@@ -5,12 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mesoanalysis · High Risk</title>
   <!-- The mesoanalysis page (/analysis, js/pages/surfaceAnalysisPage.js): surface observations, an overlay
-       field, the analysed fronts and storms, and a sounding for any point. Laid out as the site's other map
+       field, the analysed fronts and storms, the 6-hourly upper-air soundings (anyone; server/UpperAirRuntime.js) and,
+       for an admin, a sounding for any point. Laid out as the site's other map
        tools are (css/site.css, "The map tools"). -->
   <!--site:head-->
   <style>
     body.with-sounding .bench { grid-template-columns: 300px minmax(0, 1fr) minmax(420px, 560px); }
     .meso-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+    .meso-sites { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 6px 0; }
+    .meso-sites button { width: 100%; text-align: left; font-size: 13px; padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .meso-list i { display: inline-block; width: 20px; height: 3px; margin-right: 8px; vertical-align: middle; }
     #surfaceCanvas { cursor: crosshair; }
     .meso-key { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13.5px; color: var(--ink-2); }
@@ -99,6 +102,13 @@
         <label><input type="checkbox" id="showFronts" checked /> Fronts, dryline, outflow boundaries</label>
         <label><input type="checkbox" id="showStorms" checked /> Storms</label>
         <label><input type="checkbox" id="showCounties" checked /> County lines and cities</label>
+        <label data-live><input type="checkbox" id="showUpperAir" checked /> Upper-air sites (soundings every 6 h)</label>
+      </section>
+      <section class="group" id="upperAirGroup" data-live hidden>
+        <h2>Soundings</h2>
+        <small id="upperAirNote"></small>
+        <ul class="meso-list meso-sites" id="upperAirSites"></ul>
+        <small class="muted">Or select a <b style="color:#5ee0ff">&#9670;</b> on the map.</small>
       </section>
       <section class="group">
         <h2>Analysed lines</h2>

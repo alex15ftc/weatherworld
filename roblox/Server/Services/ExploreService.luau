@@ -1,8 +1,14 @@
 --!strict
 -- Looking round the generated world: terrain colours for the Plains, a light haze so the edge of
--- the loaded ground fades out, and each character placed at the start point (the edge of the
--- mid-size city, or the Workspace attribute StartMiles = "x,y" in map miles from the NW corner),
--- held there until the ground under it has loaded. Not used while a streaming test runs.
+-- the loaded ground fades out, and each character placed where it comes back, held there until the
+-- ground under it has loaded:
+--   * on joining, the spot the player was at when they left (PlayerData Spawn, saved every few
+--     seconds while they are alive);
+--   * after dying, or with no spot saved, their home city (HomeCity: chosen on the first join in
+--     SpawnPickerController, through SpawnNet);
+--   * with no home city yet, the start point (the edge of the mid-size city, or the Workspace
+--     attribute StartMiles = "x,y" in map miles from the NW corner), where the picker is shown.
+-- Not used while a streaming test runs.
 
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
@@ -14,6 +20,9 @@ local Config = require(Shared.World.Config)
 local LandSurface = require(Shared.World.LandSurface)
 local Trove = require(Shared.Trove)
 local DebugNet = require(Shared.Net.DebugNet)
+local SpawnNet = require(Shared.Net.SpawnNet)
+local PlayerData = require(Shared.PlayerData)
+local HomeCity = require(ServerStorage.Modules.HomeCity)
 local ChunkGen = require(ServerStorage.World.ChunkGen)
 local WorldMap = require(ServerStorage.World.WorldMap)
 local ChunkService = require(script.Parent.ChunkService)
@@ -84,29 +93,142 @@ local function size(player: Player, character: Model)
 	frame(player)
 end
 
--- Puts a character on the ground at (x, z) studs, held in the air until the ground has loaded.
-local function placeAt(character: Model, x: number, z: number)
+-- Puts a character on the ground at (x, z) studs, held in the air until the ground has loaded,
+-- facing yaw (radians about the vertical). With y (where the root was), on the floor under that
+-- height, so a player who left indoors comes back indoors rather than on the roof; otherwise, or
+-- when nothing is under it any more, on the top surface.
+local function placeAt(character: Model, x: number, z: number, y: number?, yaw: number?)
 	local root = character:WaitForChild("HumanoidRootPart") :: BasePart
 	root.Anchored = true
-	character:PivotTo(CFrame.new(x, ChunkGen.groundStudsAt(x, z) + 60 * Config.WORLD_SCALE, z))
+	local facing = CFrame.Angles(0, yaw or 0, 0)
+	character:PivotTo(CFrame.new(x, ChunkGen.groundStudsAt(x, z) + 60 * Config.WORLD_SCALE, z) * facing)
 	local position = Vector3.new(x, 0, z)
 	while ChunkService.missingWithin(position, 600 * Config.WORLD_SCALE) > 0 do
 		task.wait(0.2)
 	end
 	local params = RaycastParams.new()
 	params.FilterDescendantsInstances = { character }
-	local hit = workspace:Raycast(Vector3.new(x, Config.RAY_TOP_STUDS, z), Vector3.new(0, -2 * Config.RAY_TOP_STUDS, 0), params)
-	local y = if hit then hit.Position.Y else ChunkGen.groundStudsAt(x, z)
-	character:PivotTo(CFrame.new(x, y + 5 * Config.WORLD_SCALE, z))
+	local floor: number?, lift = nil, 5 * Config.WORLD_SCALE
+	if y then
+		local under = workspace:Raycast(Vector3.new(x, y, z), Vector3.new(0, -12 * Config.WORLD_SCALE, 0), params)
+		if under then
+			floor, lift = under.Position.Y, 3 * Config.WORLD_SCALE
+		end
+	end
+	if not floor then
+		local hit = workspace:Raycast(Vector3.new(x, Config.RAY_TOP_STUDS, z), Vector3.new(0, -2 * Config.RAY_TOP_STUDS, 0), params)
+		floor = if hit then hit.Position.Y else ChunkGen.groundStudsAt(x, z)
+	end
+	character:PivotTo(CFrame.new(x, (floor :: number) + lift, z) * facing)
 	root.Anchored = false
 end
 
-local function place(character: Model)
-	local x, z = startPoint()
-	placeAt(character, x, z)
-	local player = Players:GetPlayerFromCharacter(character)
-	if player then
-		CarService.give(player, character)
+-- The player's saved data once it has loaded (PlayerData loads it on joining), or nil after a
+-- while (Studio without API access still loads session-only data).
+local DATA_WAIT = 30
+local function dataOf(player: Player): PlayerData.Class?
+	local data = PlayerData.Get(player.UserId)
+	local deadline = os.clock() + DATA_WAIT
+	while not data.IsLoaded and player.Parent and os.clock() < deadline do
+		task.wait(0.1)
+	end
+	return if data.IsLoaded then data else nil
+end
+
+local EDGE = Config.MAP_STUDS / 2 - 600 * Config.WORLD_SCALE
+
+-- The start point on its nearest road (found once), facing along it.
+local startSpot: { number }? = nil
+local function startOnRoad(): (number, number, number)
+	if not startSpot then
+		local x, z = startPoint()
+		local rx, rz, yaw = HomeCity.roadSpotNear(x, z)
+		startSpot = if rx and rz and yaw then { rx, rz, yaw } else { x, z, 0 }
+	end
+	local s = startSpot :: { number }
+	return s[1], s[2], s[3]
+end
+
+-- Where a player comes back after dying: on a road at their home city, or at the start point
+-- until they have one; the way to face is along the road.
+local function homeSpot(player: Player): (number, number, number)
+	local data = PlayerData.Read(player.UserId)
+	local city = if data then data.Spawn.City else ""
+	local x, z, yaw = HomeCity.spawnStuds(city)
+	if x and z and yaw then
+		return x, z, yaw
+	end
+	return startOnRoad()
+end
+
+-- (a yaw for CFrame.Angles(0, yaw, 0) from a look direction)
+local function yawOf(look: Vector3): number
+	return math.atan2(-look.X, -look.Z)
+end
+
+local joined: { [Player]: boolean } = {} -- placed once this session: later characters are respawns
+local placing: { [Player]: boolean } = {} -- being placed: its position is not saved meanwhile
+
+local function place(player: Player, character: Model)
+	placing[player] = true
+	local x: number, z: number, y: number?, yaw: number? = 0, 0, nil, nil
+	local data = dataOf(player)
+	local spawn = if data then data.CurrentData.Spawn else nil
+	if not joined[player] and spawn and spawn.Saved then
+		x, z, y, yaw = math.clamp(spawn.X, -EDGE, EDGE), math.clamp(spawn.Z, -EDGE, EDGE), spawn.Y, spawn.Yaw
+	else
+		x, z, yaw = homeSpot(player)
+	end
+	joined[player] = true
+	-- (a death clears the saved spot, so a player who leaves while dead comes back home)
+	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
+	if humanoid then
+		humanoid.Died:Once(function()
+			if data and data:IsActive() then
+				data:Patch(function(edit)
+					edit.Spawn.Saved = false
+				end)
+			end
+		end)
+	end
+	local ok, err = pcall(placeAt, character, x, z, y, yaw)
+	placing[player] = nil
+	if not ok then
+		warn("[Explore] placing", player.Name, "failed:", err)
+	end
+	CarService.give(player, character)
+end
+
+-- Every few seconds, the spot each living player is at, so they rejoin there (written to the
+-- player's data; PlayerData saves it with the rest, and when they leave).
+local SAVE_EVERY = 5
+local function rememberSpots()
+	while true do
+		task.wait(SAVE_EVERY)
+		for _, player in Players:GetPlayers() do
+			if placing[player] or not joined[player] then
+				continue
+			end
+			local data = PlayerData.Get(player.UserId)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if not (data.IsLoaded and root and humanoid) or humanoid.Health <= 0 or root.Anchored then
+				continue
+			end
+			local p, yaw = root.Position, yawOf(root.CFrame.LookVector)
+			local spawn = data.CurrentData.Spawn
+			if spawn.Saved and (p - Vector3.new(spawn.X, spawn.Y, spawn.Z)).Magnitude < 1 and math.abs(yaw - spawn.Yaw) < 0.2 then
+				continue
+			end
+			data:Patch(function(edit)
+				edit.Spawn.Saved = true
+				edit.Spawn.X = math.round(p.X * 100) / 100
+				edit.Spawn.Y = math.round(p.Y * 100) / 100
+				edit.Spawn.Z = math.round(p.Z * 100) / 100
+				edit.Spawn.Yaw = math.round(yaw * 1000) / 1000
+			end)
+		end
 	end
 end
 
@@ -147,6 +269,55 @@ local function listenForTeleports()
 	end)
 end
 
+-- The home city: the picker asks whether the player has one (and for the list), and sends their
+-- choice, which is taken once (the first join) and moves them there.
+local function listenForHomeCity()
+	SpawnNet.State:Server():OnInvoke(function(player: Player)
+		local data = dataOf(player)
+		-- (no data: no picker, as a choice could not be kept)
+		return {
+			city = if data then data.CurrentData.Spawn.City else nil,
+			cities = HomeCity.list(),
+		}
+	end)
+	SpawnNet.Choose:Server():OnInvoke(function(player: Player, name: string): boolean
+		if busy[player] or not HomeCity.has(name) then
+			return false
+		end
+		local data = dataOf(player)
+		if not data or data.CurrentData.Spawn.City ~= "" then
+			return false
+		end
+		busy[player] = true
+		data:Patch(function(edit)
+			edit.Spawn.City = name
+			edit.Spawn.Saved = false
+		end)
+		-- (after the first placement, so the two don't fight over the character)
+		while placing[player] and player.Parent do
+			task.wait(0.2)
+		end
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if character and humanoid and humanoid.Health > 0 then
+			placing[player] = true
+			-- (out of the car first, or the character goes with it)
+			humanoid.Sit = false
+			task.wait()
+			CarService.remove(player)
+			local x, z, yaw = HomeCity.spawnStuds(name)
+			local ok, err = pcall(placeAt, character, x :: number, z :: number, nil, yaw)
+			if not ok then
+				warn("[Explore] moving", player.Name, "home failed:", err)
+			end
+			placing[player] = nil
+			pcall(CarService.give, player, character)
+		end
+		busy[player] = nil
+		return true
+	end)
+end
+
 function ExploreService.Init()
 	if workspace:GetAttribute("TestDrive") == true then
 		return
@@ -166,6 +337,7 @@ function ExploreService.Init()
 		atmosphere.Parent = Lighting
 	end
 	listenForTeleports()
+	listenForHomeCity()
 end
 
 function ExploreService.Start()
@@ -177,17 +349,19 @@ function ExploreService.Start()
 		troves[player] = trove
 		trove:Connect(player.CharacterAdded, function(character: Model)
 			task.spawn(size, player, character)
-			place(character)
+			place(player, character)
 		end)
 		if player.Character then
 			task.spawn(size, player, player.Character)
-			task.spawn(place, player.Character)
+			task.spawn(place, player, player.Character)
 		end
 	end
 	Players.PlayerAdded:Connect(added)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		busy[player] = nil
 		framed[player] = nil
+		joined[player] = nil
+		placing[player] = nil
 		local trove = troves[player]
 		troves[player] = nil
 		if trove then
@@ -197,6 +371,7 @@ function ExploreService.Start()
 	for _, player in Players:GetPlayers() do
 		added(player)
 	end
+	task.spawn(rememberSpots)
 	local sx, sz = startPoint()
 	print(`[WeatherWorld] start at {WorldMap.meta.start.name} ({math.round(sx)}, {math.round(sz)} studs); fly with F, Shift for speed, Q/E down/up`)
 end

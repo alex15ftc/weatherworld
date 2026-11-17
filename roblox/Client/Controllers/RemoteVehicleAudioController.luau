@@ -29,7 +29,10 @@ local function destroy(model: Model)
     end
 end
 
+local writersUnusable = false
+
 local function create(model: Model, presetName: string): any?
+    if writersUnusable then return nil end
     local preset = nil
     for _, candidate in EngineSim.Presets do
         if candidate.Name == presetName then preset = candidate; break end
@@ -53,6 +56,12 @@ local function create(model: Model, presetName: string): any?
         wire.SourceInstance, wire.TargetInstance, wire.Parent = pair[1], pair[2], pair[2]
     end
     folder.Parent = SoundService
+    -- (a writer can exist yet refuse to work, "AudioStreamWriter is not enabled": no voice then)
+    if not pcall(function() return exhaust:Space() end) then
+        folder:Destroy()
+        writersUnusable = true
+        return nil
+    end
     local sim = EngineSim.EngineAudioSimulator.new(preset)
     local voice = {
         folder = folder, sim = sim, preset = presetName, impulse = "", gain = gain,

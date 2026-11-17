@@ -1,9 +1,21 @@
 // The short range model's runs for the live world (js/forecast/ShortRangeModel.js): one at each whole
 // simulated hour, 18 hours ahead (48 at 00, 06, 12 and 18Z), done on the forecast pool's threads from a
 // copy of the world taken at that hour; the last SHORT_RANGE.keepRuns are kept for the model page.
+// A run is listed from its start and shows each forecast hour as soon as the thread has made it (`partial`
+// with `readyHours`, the last hour ready); the model pages grey out the hours still to come (2026-11-16).
 import { SHORT_RANGE, shortRangeHours } from '../js/forecast/ShortRangeModel.js';
 import { cellOf, soundingAnswer } from '../js/forecast/soundingColumns.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
+
+// A part a run sent while it went (runShortRange / runLongRange onProgress) into the run kept here.
+export function streamRun(run, part) {
+  Object.assign(run, part.head);
+  if (part.parameters) run.parameters = part.parameters;
+  for (const key of ['fields', 'soundings', 'storms', 'tracks', 'synoptic']) { const list = part[key]; if (!list?.length) continue; run[key] ??= []; for (const item of list) run[key].push(item); }
+  run.readyHours = part.readyHours;
+}
+// How much of a run is made: a run still going is `partial`, ready to forecast hour `readyHours`.
+const readiness = run => ({ partial: Boolean(run.partial), readyHours: run.partial ? run.readyHours : run.failed ? null : run.hours });
 
 export class ShortRangeRuntime {
   constructor({ runtime, pool = sharedForecastPool() } = {}) {
@@ -22,27 +34,37 @@ export class ShortRangeRuntime {
     return true;
   }
 
-  async start(engine, init) {
-    const hours = shortRangeHours(init), startedAt = Date.now();
+  async start(engine, init) { return this.startRun(engine, init, 'shortRange', shortRangeHours(init), SHORT_RANGE.keepRuns); }
+
+  // One run on the pool, listed at once as a partial run that fills hour by hour (streamRun), then completed.
+  async startRun(engine, init, kind, hours, keepRuns) {
+    const startedAt = Date.now(), run = { initHourUtc: init, hours, partial: true, readyHours: null, parameters: [], fields: [], storms: [], tracks: [], synoptic: [], soundings: [] };
     this.running = { initHourUtc: init, hours, startedAt };
+    this.keep(run, keepRuns);
     try {
       const state = shareState(engine.saveState({ forecast: true }));
-      const run = await this.pool.run('shortRange', state, 0, hours);
+      const result = await this.pool.run(kind, state, 0, hours, { onProgress: part => { if (this.runtime.engine === engine) streamRun(run, part); } });
       if (this.runtime.engine !== engine) return null;
-      run.realMs = Date.now() - startedAt;
-      this.runs.push(run);
-      this.runs.sort((a, b) => a.initHourUtc - b.initHourUtc);
-      while (this.runs.length > SHORT_RANGE.keepRuns) this.runs.shift();
+      // (a run that streamed sends back its head; one that did not, everything)
+      const { streamed: _, ...rest } = result ?? {};
+      Object.assign(run, rest, { readyHours: hours, realMs: Date.now() - startedAt });
+      delete run.partial;
       this.lastError = null;
       return run;
     } catch (error) {
       this.lastError = String(error?.message ?? error);
-      // (no retry for this hour: the next whole hour starts afresh)
-      this.runs.push({ initHourUtc: init, hours, failed: this.lastError });
+      // (no retry for this hour: the next whole hour starts afresh; the hours it made are let go)
+      const at = this.runs.indexOf(run);
+      if (at >= 0) this.runs[at] = { initHourUtc: init, hours, failed: this.lastError };
       throw error;
     } finally {
       this.running = null;
     }
+  }
+  keep(run, keepRuns) {
+    this.runs.push(run);
+    this.runs.sort((a, b) => a.initHourUtc - b.initHourUtc);
+    while (this.runs.length > keepRuns) this.runs.shift();
   }
 
   run(init) { return this.runs.find(run => run.initHourUtc === Number(init) && !run.failed) ?? null; }
@@ -52,13 +74,14 @@ export class ShortRangeRuntime {
   list() {
     return {
       model: 'short range', running: this.running, error: this.lastError, nowHourUtc: this.runtime.engine?.world?.validHourUtc ?? null,
-      runs: this.runs.map(run => ({ initHourUtc: run.initHourUtc, hours: run.hours, failed: run.failed ?? null, ms: run.ms ?? null }))
+      runs: this.runs.map(run => ({ initHourUtc: run.initHourUtc, hours: run.hours, failed: run.failed ?? null, ms: run.ms ?? null, ...readiness(run) }))
     };
   }
   meta(init) {
     const run = init === undefined || init === null || init === '' ? this.latest() : this.run(init);
-    if (!run) return null;
+    if (!run || !run.parameters) return null;
     return {
+      ...readiness(run),
       initHourUtc: run.initHourUtc, hours: run.hours, shareHours: run.shareHours, seed: run.seed, width: run.width, height: run.height, cellKm: run.cellKm,
       parameters: run.parameters, fieldHours: run.fields.map(f => f.hour), stormMinutes: run.storms.map(f => f.minute), ms: run.ms
     };
@@ -95,7 +118,9 @@ export class ShortRangeRuntime {
   synopticFrame(synoptic, init, hour) {
     const run = this.synopticRun(init); if (!run) return null;
     const frame = run.synoptic.find(f => f.hour === Number(hour)) ?? run.synoptic[0];
-    return { ...synoptic.describe(frame, run.synoptic.map(f => f.hour), false), run: { initHourUtc: run.initHourUtc, hours: run.hours, forecastHour: frame.forecastHour, runs: this.synopticRuns().map(r => ({ initHourUtc: r.initHourUtc, hours: r.hours })) } };
+    // (planned: every frame the run will have, the hours not made yet too, for the page to grey out)
+    const every = run.synopticEvery ?? 3, planned = Array.from({ length: Math.floor(run.hours / every) + 1 }, (_, k) => run.initHourUtc + k * every);
+    return { ...synoptic.describe(frame, run.synoptic.map(f => f.hour), false), run: { initHourUtc: run.initHourUtc, hours: run.hours, forecastHour: frame.forecastHour, ...readiness(run), planned, runs: this.synopticRuns().map(r => ({ initHourUtc: r.initHourUtc, hours: r.hours, ...readiness(r) })) } };
   }
   synopticField(synoptic, init, hour, key) {
     const run = this.synopticRun(init); if (!run) return null;
