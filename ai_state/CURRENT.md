@@ -33,6 +33,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5). Ensemble VTP chances (step 2, same day; `54ce88f`, engine deployed from it): each
   full outlook member keeps its storm day's highest VTP per cell (DayOneOutlook vtpMax, x10 in a byte; ~60 KB an issue saved),
   shown on /models as "Chance of VTP 2+ / 4+ within 25 mi, storm day shown" from the 8 full runs (test: tests/ensemble-vtp.mjs).
+- Outlook updates count only the weather after they are out (2026-11-17, owner's request; `c003ae6`): a Day 1
+  update inside its day is valid from issue + `publishDelayHours` (0.05 world h per hour run, half-hour steps: 1 h at
+  13Z/16:30Z/20Z, 0.5 h at 01Z; live 06Z Day 1 took 1.57 h), and its runs do not count the hours before; the 06Z
+  issue skips 1.5 h (`beforeDaySkipHours`; Day 1 still 12Z-12Z). Not forecast-checked (owner shipped without it).
+  The continuity blend stays (65/35, 80/20 under way): a no-blend test (seeds 47-52) did worse at 01Z.
 - Outlooks and model frames go out as they are ready (2026-11-17, owner's request, `92ba267` on `main`; engine deployed from it, the world carried over; live 19Z short range run seen streaming): forecast threads
   stream parts back (`ForecastPool.run` `onProgress`). Each outlook of an issue is put out once its members have run
   its day (`OutlookRuntime.publish`); with few threads (the host has one for outlooks) the Day-1-only members run
