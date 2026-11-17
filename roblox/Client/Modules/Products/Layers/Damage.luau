@@ -113,6 +113,8 @@ function Damage.pointDetail(self: any, t: any, k: number, p: { any }): Layer.Det
 	table.insert(lines, `Rating:          EF{ef}`)
 	table.insert(lines, `Time:            {Geo.clock(hour)}`)
 	table.insert(lines, string.format("Location:        %.2f mi E, %.2f mi S", x, y))
+	table.insert(lines, if p[8] == 1 then "Source:          a building in the game, as the tornado left it"
+		else "Source:          estimated (no one had been there to see)")
 	table.insert(lines, "")
 	table.insert(lines, `Part of the survey of the {t.title}.`)
 	return { title = `EF{ef} damage point`, subtitle = t.title, body = table.concat(lines, "\n"), colour = colourOf(ef), layer = self.key, item = `{t.id}#{k}` }
@@ -194,6 +196,10 @@ function Damage.draw(self: any, draw: MapCanvas.Draw)
 			if item == `{open.id}#{k}` then
 				draw.dot(p[1], p[2], 6, WHITE)
 			end
+			-- (a building in the game ringed in white; an estimate for unloaded ground in dark)
+			if p[8] == 1 then
+				draw.dot(p[1], p[2], 4.5, WHITE)
+			end
 			draw.dot(p[1], p[2], 3.5, DARK)
 			draw.dot(p[1], p[2], 2.5, colourOf(p[6]))
 		end
@@ -265,6 +271,7 @@ function Damage.legend(_self: any, parent: Instance)
 		Ui.legendRow(parent, Ui.rgb(Palettes.EF[ef + 1]), `EF{ef}`, meaning[ef + 1])
 	end
 	Ui.legendRow(parent, Ui.rgb(Palettes.EFU), "EFU", "nothing rated was hit")
+	Ui.legendRow(parent, Ui.rgb(WHITE), "Ringed", "a building in the game; others estimated")
 end
 
 return Damage

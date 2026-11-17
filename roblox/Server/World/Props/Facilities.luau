@@ -47,10 +47,14 @@ export type Kit = {
 	pick: (list: { any }, r: number) -> any,
 	parking: (Builder.Props, CFrame, number, number, ((number, number) -> number)?) -> (),
 	park: (Builder.Props, CFrame, number, number, (number, number) -> number, () -> number) -> (),
-	warehouse: (Builder.Props, CFrame, number, number, () -> number) -> (),
+	warehouse: (Builder.Props, CFrame, number, number, () -> number, string?) -> (),
 	stripMall: (Builder.Props, CFrame, number, () -> number) -> (),
 	fastFood: (Builder.Props, CFrame, () -> number) -> (),
-	midrise: (Builder.Props, CFrame, number, number, number, () -> number) -> (),
+	midrise: (Builder.Props, CFrame, number, number, number, () -> number, string?) -> (),
+	-- a building of the props added since first, as damage indicator di (Buildings: roles by shape
+	-- where none is given; role "site" for a part that is the lot's)
+	structure: (Builder.Props, string, number, CFrame) -> (),
+	role: (Builder.Prop?, string) -> Builder.Prop?,
 	grainElevator: (Builder.Props, CFrame, () -> number) -> (),
 	BRICK: { Color3 },
 	STONE: { Color3 },
@@ -94,24 +98,30 @@ local function gasStation(kit: Kit, props: Builder.Props, frame: CFrame, islands
 	local span = islands * 18 + 16
 	local width = math.max(70, span + 20)
 	at(props, frame, 0, -0.7, 0, width, 1, 62, CONCRETE, M.Concrete)
+	-- (the canopy over the pumps: a service station canopy, its columns its walls; the pumps the lot's)
+	local role = kit.role
+	local canopy = #props + 1
 	for k = 1, islands do
 		local px = (k - (islands + 1) / 2) * 18
 		for _, pz in { -16, -6 } do
-			at(props, frame, px, 0, pz, 1.4, 16, 1.4, rgb(220, 220, 220), M.Metal)
+			role(at(props, frame, px, 0, pz, 1.4, 16, 1.4, rgb(220, 220, 220), M.Metal), "wall")
 		end
 		for _, pz in { -13.5, -8.5 } do
-			at(props, frame, px, 0, pz, 2.2, 5, 3, rgb(230, 230, 230))
-			at(props, frame, px, 5, pz, 2.4, 0.8, 3.2, brand[1], M.SmoothPlastic, false)
+			role(at(props, frame, px, 0, pz, 2.2, 5, 3, rgb(230, 230, 230)), "site")
+			role(at(props, frame, px, 5, pz, 2.4, 0.8, 3.2, brand[1], M.SmoothPlastic, false), "site")
 		end
-		at(props, frame, px, 0, -11, 3, 0.6, 10, CONCRETE, M.Concrete, false)
+		role(at(props, frame, px, 0, -11, 3, 0.6, 10, CONCRETE, M.Concrete, false), "site")
 	end
-	at(props, frame, 0, 16, -11, span, 1.2, 26, rgb(240, 240, 240), M.SmoothPlastic, false)
-	at(props, frame, 0, 17.2, -11, span + 0.4, 2, 26.4, brand[1], M.SmoothPlastic, false)
+	role(at(props, frame, 0, 16, -11, span, 1.2, 26, rgb(240, 240, 240), M.SmoothPlastic, false), "roof")
+	role(at(props, frame, 0, 17.2, -11, span + 0.4, 2, 26.4, brand[1], M.SmoothPlastic, false), "trim")
+	kit.structure(props, "SSC", canopy, frame * CFrame.new(0, 0, -11))
 	local shopW = 30 + 6 * islands + 10 * rnd()
+	local shop = #props + 1
 	at(props, frame, (rnd() - 0.5) * 10, -2, 18, shopW, 15, 22, kit.pick({ rgb(222, 216, 204), rgb(200, 186, 170), rgb(180, 180, 184) }, rnd()), if rnd() < 0.5 then M.Brick else M.SmoothPlastic)
 	at(props, frame, 0, 0.5, 6.85, shopW - 6, 8, 0.3, GLASS, M.Glass, false)
 	at(props, frame, -shopW / 4, 0, 6.75, 5, 8, 0.3, DARK_GLASS, M.Glass, false)
 	at(props, frame, 0, 13, 6.8, shopW, 2.4, 0.4, brand[1], M.SmoothPlastic, false)
+	kit.structure(props, "SRB", shop, frame * CFrame.new(0, 0, 18))
 	local signX = width / 2 - 6
 	at(props, frame, signX, 0, -25, 1.2, 24, 1.2, rgb(120, 124, 128), M.Metal)
 	at(props, frame, signX, 24, -25, 9, 6, 1.2, brand[1], M.SmoothPlastic, false)
@@ -120,13 +130,15 @@ local function gasStation(kit: Kit, props: Builder.Props, frame: CFrame, islands
 		-- Diesel lanes under a high canopy to one side, truck parking behind.
 		local dx = width / 2 + 40
 		at(props, frame, dx, -0.7, 0, 70, 1, 62, CONCRETE, M.Concrete)
+		local diesel = #props + 1
 		for k = 0, 3 do
-			at(props, frame, dx - 24 + 16 * k, 0, -8, 2.4, 5, 10, rgb(230, 230, 230))
+			role(at(props, frame, dx - 24 + 16 * k, 0, -8, 2.4, 5, 10, rgb(230, 230, 230)), "site")
 		end
-		at(props, frame, dx, 22, -8, 70, 1.6, 34, brand[1], M.SmoothPlastic, false)
+		role(at(props, frame, dx, 22, -8, 70, 1.6, 34, brand[1], M.SmoothPlastic, false), "roof")
 		for _, c in { { -32, -22 }, { 32, -22 }, { -32, 6 }, { 32, 6 } } do
-			at(props, frame, dx + c[1], 0, c[2], 1.6, 22, 1.6, rgb(220, 220, 220), M.Metal)
+			role(at(props, frame, dx + c[1], 0, c[2], 1.6, 22, 1.6, rgb(220, 220, 220), M.Metal), "wall")
 		end
+		kit.structure(props, "SSC", diesel, frame * CFrame.new(dx, 0, -8))
 		kit.parking(props, frame * CFrame.new(width / 4, 0, 72), width + 60, 70)
 	end
 end
@@ -158,6 +170,7 @@ local function schoolBuilding(kit: Kit, props: Builder.Props, frame: CFrame, lev
 	local at = kit.at
 	local s = SCHOOL[level] or SCHOOL.elementary
 	local brick = kit.pick(kit.BRICK, rnd())
+	local first = #props + 1
 	local w = s.w + 20 * rnd()
 	local h = 4 + 12 * s.floors
 	at(props, frame, 0, -3, 0, w, h + 3, 34, brick, M.Brick)
@@ -179,6 +192,7 @@ local function schoolBuilding(kit: Kit, props: Builder.Props, frame: CFrame, lev
 	at(props, frame, 10, 11, -21, 18, 0.8, 8, CONCRETE, M.Concrete, false)
 	at(props, frame, w / 2 - 6, 0, -28, 0.6, 30, 0.6, rgb(200, 200, 200), M.Metal)
 	at(props, frame, w / 2 - 3.5, 25, -28, 5, 3, 0.2, rgb(40, 60, 140), M.Fabric, false)
+	kit.structure(props, if level == "elementary" then "ES" else "JHSH", first, frame)
 end
 
 -- A running track round a turf field (or a plain field), centred on frame.
@@ -245,13 +259,15 @@ local function buildCampus(ctx: any, kit: Kit, campus: any)
 		if scale then
 			local floors = math.max(2, math.floor((tall * (0.5 + 0.5 * rnd())) / 12))
 			if rnd() < 0.6 then
-				kit.midrise(props, frame, sx * scale, sz * scale, floors, kit.stream(campus.id, i, 614))
+				kit.midrise(props, frame, sx * scale, sz * scale, floors, kit.stream(campus.id, i, 614), "institution")
 			else
+				local first = #props + 1
 				local brick = kit.pick(kit.BRICK, rnd())
 				kit.at(props, frame, 0, -3, 0, sx * scale, floors * 12 + 7, sz * scale, brick, M.Brick)
 				local top = frame * CFrame.new(0, floors * 12 + 4, 0)
 				Builder.gable(props, top.X, top.Y, top.Z, sx * scale, sz * scale, 10, rgb(70, 74, 80), yaw)
 				kit.at(props, frame, 0, 6, -sz * scale / 2 - 0.2, sx * scale - 6, 5, 0.3, GLASS, M.Glass, false)
+				kit.structure(props, "IB", first, frame)
 			end
 		end
 	end
@@ -338,6 +354,7 @@ local function buildArea(ctx: any, kit: Kit, area: Sites.Area)
 		local w, d = across * 0.55, deep * 0.4
 		local frame, scale = placeAt(0, deep * 0.08, w, d)
 		if frame and scale then
+			local first = #props + 1
 			local wall = kit.pick({ rgb(214, 200, 176), rgb(196, 190, 180), rgb(200, 184, 160) }, rnd())
 			kit.at(props, frame, 0, -3, 0, w * scale, 31, d * scale, wall, M.Concrete)
 			for _, side in { -1, 1 } do
@@ -346,6 +363,7 @@ local function buildArea(ctx: any, kit: Kit, area: Sites.Area)
 			end
 			kit.at(props, frame, 0, 0, -d * scale / 2 - 0.2, 24, 14, 0.4, DARK_GLASS, M.Glass, false)
 			kit.at(props, frame, 0, 28, 0, 30, 8, 30, GLASS, M.Glass, false)
+			kit.structure(props, "LSM", first, frame)
 		end
 	elseif area.kind == "shopping" or area.kind == "travel" then
 		-- Big boxes (or a travel centre's motel and restaurant) across the back, parking in front.
@@ -358,12 +376,12 @@ local function buildArea(ctx: any, kit: Kit, area: Sites.Area)
 			local frame, scale = placeAt(x, deep / 2 - bd / 2 - 4, w, bd)
 			if frame and scale then
 				if area.kind == "travel" and k == 1 then
-					kit.midrise(props, frame, w * scale, math.min(bd, 40) * scale, 2, kit.stream(area.id, k, 616))
+					kit.midrise(props, frame, w * scale, math.min(bd, 40) * scale, 2, kit.stream(area.id, k, 616), "motel")
 				elseif area.kind == "travel" and scale == 1 and w >= 64 and bd >= 56 then
 					-- (a restaurant is built at its own size: only where its ground took all of it)
 					kit.fastFood(props, frame, kit.stream(area.id, k, 616))
 				else
-					kit.warehouse(props, frame, w * scale, bd * scale, kit.stream(area.id, k, 616))
+					kit.warehouse(props, frame, w * scale, bd * scale, kit.stream(area.id, k, 616), "LIRB")
 					kit.at(props, frame, 0, 24, -bd * scale * 0.15 - 0.6, math.min(40, w * 0.5), 5, 0.4, kit.pick(kit.BRANDS, rnd())[1], M.SmoothPlastic, false)
 				end
 			end
@@ -489,15 +507,19 @@ local function buildAirfield(ctx: any, kit: Kit, f: any)
 				Builder.add(props, "Cylinder", frame * CFrame.new(0, -2, 0) * CFrame.Angles(0, math.pi / 2, 0), Vector3.new(sz, math.min(sx, 30), math.min(sx, 30)), rgb(110, 130, 80), M.Grass)
 				kit.at(props, frame, 0, 0, -sz / 2 - 0.2, sx * 0.5, 9, 0.4, rgb(120, 124, 120), M.Metal, false)
 			elseif b.kind == "hangar" then
+				local first = #props + 1
 				kit.at(props, frame, 0, -3, 0, sx, h * 0.6 + 3, sz, rgb(200, 204, 208), M.CorrodedMetal)
 				local roof = frame * CFrame.new(0, h * 0.6, 0)
 				Builder.gable(props, roof.X, roof.Y, roof.Z, sx, sz, h * 0.4, rgb(186, 190, 196), yaw, 1)
-				kit.at(props, frame, 0, 0, -sz / 2 - 0.2, sx * 0.8, h * 0.55, 0.4, rgb(120, 126, 132), M.Metal, false)
+				kit.role(kit.at(props, frame, 0, 0, -sz / 2 - 0.2, sx * 0.8, h * 0.55, 0.4, rgb(120, 126, 132), M.Metal, false), "door")
+				kit.structure(props, "MBS", first, frame)
 			else
+				local first = #props + 1
 				local glassy = b.kind == "terminal" or b.kind == "concourse" or b.kind == "visitor center"
 				kit.at(props, frame, 0, -3, 0, sx, h + 3, sz, if glassy then rgb(200, 200, 196) else kit.pick(kit.STONE, rnd()), M.Concrete)
 				kit.at(props, frame, 0, h * 0.25, 0, sx + 0.3, h * 0.45, sz + 0.3, if glassy then GLASS else DARK_GLASS, M.Glass, false)
 				kit.at(props, frame, 0, h, 0, sx + 1, 2, sz + 1, rgb(90, 92, 96), M.Metal, false)
+				kit.structure(props, "LRB", first, frame)
 			end
 		end
 	end
@@ -537,8 +559,10 @@ local function buildAirfield(ctx: any, kit: Kit, f: any)
 		local cx, cz, yaw, sx, sz = Sites.rect(f.nws.building)
 		if owns(cx, cz) then
 			local frame = kit.seat(ctx, cx, cz, yaw, sx, sz)
+			local first = #props + 1
 			kit.at(props, frame, 0, -3, 0, sx, 21, sz, rgb(200, 196, 186), M.Concrete)
 			kit.at(props, frame, 0, 5, 0, sx + 0.3, 7, sz + 0.3, GLASS, M.Glass, false)
+			kit.structure(props, "SPB", first, frame)
 			kit.at(props, frame, sx / 2 - 6, 18, 0, 1, 18, 1, rgb(200, 200, 200), M.Metal)
 		end
 		local px, pz, pyaw, psx, psz = Sites.rect(f.nws.parking)

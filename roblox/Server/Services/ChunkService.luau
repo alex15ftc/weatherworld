@@ -167,6 +167,13 @@ local function unloadSome()
 	end
 end
 
+-- Chunks whose buildings are wanted without building them (ChunkService.plan: the damage survey's
+-- unseen ground), each with the thread waiting for it; workers take them only when no chunk is
+-- waiting to be built.
+type Plan = { cx: number, cz: number, thread: thread }
+local plans: { Plan } = {}
+local planning: { [Actor]: Plan } = {}
+
 local function dispatchParallel()
 	while #idleActors > 0 and #pending > 0 do
 		local want = table.remove(pending) :: Want
@@ -174,6 +181,25 @@ local function dispatchParallel()
 		inFlight[ChunkGen.key(want.cx, want.cz)] = true
 		actor:SendMessage("Build", want.cx, want.cz)
 	end
+	while #idleActors > 0 and #plans > 0 and #pending == 0 do
+		local plan = table.remove(plans, 1) :: Plan
+		local actor = table.remove(idleActors) :: Actor
+		planning[actor] = plan
+		actor:SendMessage("Plan", plan.cx, plan.cz)
+	end
+end
+
+-- A chunk's buildings as the generator makes them, without building the chunk (ChunkGen.structures:
+-- { n, di, frame, size } in the place's studs). Yields until a worker has planned it.
+function ChunkService.plan(cx: number, cz: number): { any }
+	if Config.WORKERS <= 0 then
+		ChunkGen.prepare(cx, cz)
+		local list = ChunkGen.structures(ChunkGen.build(cx, cz).props)
+		task.wait()
+		return list
+	end
+	table.insert(plans, { cx = cx, cz = cz, thread = coroutine.running() })
+	return coroutine.yield()
 end
 
 local function buildSerial()
@@ -197,7 +223,19 @@ local function startWorkers(template: Actor)
 	local done = Instance.new("BindableEvent")
 	done.Name = "ChunkDone"
 	done.Parent = folder
+	local planned = Instance.new("BindableEvent")
+	planned.Name = "ChunkPlanned"
+	planned.Parent = folder
 	folder.Parent = ServerScriptService
+
+	planned.Event:Connect(function(actor: Actor, list: { any })
+		local plan = planning[actor]
+		planning[actor] = nil
+		table.insert(idleActors, actor)
+		if plan then
+			task.spawn(plan.thread, list)
+		end
+	end)
 
 	done.Event:Connect(function(actor: Actor, cx: number, cz: number, yMin: number, yMax: number, buildMs: number, writeMs: number, model: Instance?)
 		record(buildMs, writeMs)

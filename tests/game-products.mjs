@@ -227,7 +227,7 @@ assert.equal(JSON.parse(withAll.product('mesoscale').text).watches[0].number, 7)
   const survey = JSON.parse(games.product('survey.S0001-T1').text);
   assert.equal(survey.kind, 'survey'); assert.equal(survey.world, day.world); assert.ok(['EF2', 'EF3'].includes(survey.rating) && survey.ef === Number(survey.rating.slice(2)));
   assert.ok(survey.contours.length >= 3 && survey.contours.every(c => c.rings.every(ring => ring.length >= 6 && ring.every(Number.isFinite))));
-  assert.ok(survey.points.length > 20 && survey.points.every(p => p.length === 7 && typeof p[2] === 'string'), 'damage points as [x, y, di, dod, mph, ef, hour]');
+  assert.ok(survey.points.length > 20 && survey.points.every(p => p.length === 8 && typeof p[2] === 'string' && (p[7] === 0 || p[7] === 1)), 'damage points as [x, y, di, dod, mph, ef, hour, real]');
   assert.ok(survey.track.length >= 4 && /Rating:\s+EF/.test(survey.text));
   day = JSON.parse(games.product('reports.day.1').text);
   assert.equal(day.tornadoes.length, 1); assert.equal(day.tornadoes[0].rating, survey.rating); assert.equal(day.final, false, 'day 1 is not over yet');

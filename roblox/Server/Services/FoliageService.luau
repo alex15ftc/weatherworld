@@ -30,7 +30,6 @@ local Mechanics = require(Shared.Foliage.Mechanics)
 local Records = require(Shared.Foliage.Records)
 local Assets = require(Shared.Foliage.Assets)
 local Noise = require(Shared.StormLab.Sim.Noise)
-local WorldMap = require(ServerStorage.World.WorldMap)
 local FoliageWind = require(ServerStorage.Modules.FoliageWind)
 
 local FoliageService = {}
@@ -238,40 +237,9 @@ local function broke(c: Chunk, list: { Records.Damage })
 	end)
 end
 
--- where tornadoes are (studs) and how far their damaging winds can reach (studs)
-local function hotspots(): { { x: number, z: number, reach: number } }
-	local out = {}
-	local host = FoliageService.host
-	local st = host and host.state
-	local c = st and st.centreKm
-	local function add(kx: number, ky: number, reachM: number)
-		local sx, sz = WorldMap.worldStudsAt(kx / Config.KM_PER_MILE, ky / Config.KM_PER_MILE)
-		local studsPerM = Config.STUDS_PER_MILE / (Config.KM_PER_MILE * 1000)
-		table.insert(out, { x = sx, z = sz, reach = reachM * studsPerM + Config.CHUNK_WORLD_STUDS })
-	end
-	if st and st.world and c then
-		for _, t in st.world.tornadoes or {} do
-			if not t.ended and t.x and t.y then
-				add(c.x + t.x / 1000, c.y - t.y / 1000, 3000)
-			end
-		end
-	end
-	local live = FoliageService.live
-	if live then
-		for _, s in live.stormsNow() do
-			local t = s.frame.tornado
-			if t and t.mph > 0 then
-				local f = s.frame
-				add(s.xKm + (t.x - f.anchorX) / 1000, s.yKm - (t.y - f.anchorY) / 1000, math.max(12 * t.R, 1500))
-			end
-		end
-	end
-	return out
-end
-
 local function tick()
 	local now = workspace:GetServerTimeNow()
-	local spots = hotspots()
+	local spots = FoliageWind.hotspots()
 	local budget = BUDGET_TREES
 	local hot = 0
 	for _, c in chunks do

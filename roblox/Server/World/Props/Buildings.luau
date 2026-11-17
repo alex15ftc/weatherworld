@@ -49,6 +49,128 @@ local function pick<T>(list: { T }, r: number): T
 	return list[1 + math.floor(r * #list) % #list]
 end
 
+-- Structures (2026-11-17): each house and farm building is also recorded (Buildings.take) for the
+-- tornado damage (BuildingDamageService): what the EF scale calls it (a damage indicator of
+-- Shared/StormLab/Sim/Damage), its frame and size, and the run of props it is made of, each part
+-- given its role (wall, roof, glass, door, trim, chimney, porch, porchRoof, shed). Props in the
+-- run with no role (drives, walks, the mailbox) are the lot's, not the building's.
+export type Structure = { di: string, first: number, last: number, frame: CFrame, w: number, d: number, h: number }
+-- (weak: a chunk's list goes when the chunk is done, as Trees.take's)
+local structures: { [any]: { Structure } } = setmetatable({}, { __mode = "k" }) :: any
+
+local function record(props: Builder.Props, di: string, first: number, frame: CFrame, w: number, d: number, h: number)
+	if #props < first then
+		return
+	end
+	local list = structures[props]
+	if not list then
+		list = {}
+		structures[props] = list
+	end
+	table.insert(list, { di = di, first = first, last = #props, frame = frame, w = w, d = d, h = h })
+end
+
+-- the role of a part (nil: none to give)
+local function role(p: Builder.Prop?, name: string): Builder.Prop?
+	if p then
+		p.role = name
+	end
+	return p
+end
+
+-- the role of every part added since index from
+local function roles(props: Builder.Props, from: number, name: string)
+	for i = from, #props do
+		props[i].role = props[i].role or name
+	end
+end
+
+-- The half height a part's box reaches up and down (its frame turned).
+local function halfHeight(p: Builder.Prop): number
+	local cf, s = p.cf, p.size
+	return (math.abs(cf.RightVector.Y) * s.X + math.abs(cf.UpVector.Y) * s.Y + math.abs(cf.LookVector.Y) * s.Z) / 2
+end
+
+-- A building made of the props added since index first (any building's: shops, offices, schools,
+-- canopies...), recorded as damage indicator di, its roles given by the parts' shapes where its
+-- builder gave none:
+--   glass: glass (a tall glass body: "curtain", the curtain wall that stays standing);
+--   roof: wedges, parts standing on the top 30% of it, flat parts reaching its top;
+--   none (the lot's): flat parts on the ground (paving, lines, pads);
+--   wall: parts at least half its height, and the big blocks;
+--   trim: the rest (signs, awnings, bands, posts, pumps).
+-- Its height is the top of its biggest part (its body), its size the box of its parts in frame
+-- (posts and poles left out), its frame at that box's middle on the ground.
+local function structure(props: Builder.Props, di: string, first: number, frame: CFrame)
+	local last = #props
+	if last < first then
+		return
+	end
+	local base = frame.Y
+	local biggest, h = 0, 0
+	for i = first, last do
+		local p = props[i]
+		local s = p.size
+		local v = s.X * s.Y * s.Z
+		if p.material ~= M.Glass and p.role ~= "site" and v > biggest and halfHeight(p) * 2 > 2.5 then
+			biggest = v
+			h = p.cf.Y + halfHeight(p) - base
+		end
+	end
+	if biggest == 0 then
+		for i = first, last do
+			h = math.max(h, props[i].cf.Y + halfHeight(props[i]) - base)
+		end
+	end
+	h = math.max(h, 4)
+	local x0, x1, z0, z1 = math.huge, -math.huge, math.huge, -math.huge
+	for i = first, last do
+		local p = props[i]
+		local hy = halfHeight(p)
+		local bottom, top = p.cf.Y - hy - base, p.cf.Y + hy - base
+		local s = p.size
+		local flat = hy * 2 <= 2.5
+		local ground = flat and bottom < 1.5 and p.material ~= M.Glass
+		if p.role == "site" then
+			p.role = nil
+		elseif not p.role and not ground then
+			if p.material == M.Glass then
+				-- (a curtain wall: glass as tall as half the building, or a glass volume two floors
+				-- and more - a tower's tier - rather than a pane)
+				local volume = math.min(s.X, s.Z) > 4 and hy * 2 >= 24
+				p.role = if s.X * s.Z > 100 and (hy * 2 >= 0.5 * h or volume) then "curtain" else "glass"
+			elseif p.shape == "Wedge" or p.shape == "CornerWedge" or bottom >= 0.7 * h or (flat and top >= 0.8 * h) then
+				p.role = "roof"
+			elseif hy * 2 >= 0.5 * h or s.X * s.Y * s.Z >= 0.15 * biggest then
+				p.role = "wall"
+			else
+				p.role = "trim"
+			end
+		end
+		if p.role and math.max(s.X, s.Z) >= 2 then
+			-- (along the building's own axes: the part's box turned into its frame)
+			local rel = frame:ToObjectSpace(p.cf)
+			local c = rel.Position
+			local ex = (math.abs(rel.RightVector.X) * s.X + math.abs(rel.UpVector.X) * s.Y + math.abs(rel.LookVector.X) * s.Z) / 2
+			local ez = (math.abs(rel.RightVector.Z) * s.X + math.abs(rel.UpVector.Z) * s.Y + math.abs(rel.LookVector.Z) * s.Z) / 2
+			x0, x1 = math.min(x0, c.X - ex), math.max(x1, c.X + ex)
+			z0, z1 = math.min(z0, c.Z - ez), math.max(z1, c.Z + ez)
+		end
+	end
+	if x1 < x0 then
+		return
+	end
+	local mid = frame * CFrame.new((x0 + x1) / 2, 0, (z0 + z1) / 2)
+	record(props, di, first, mid, x1 - x0, z1 - z0, h)
+end
+
+-- The structures recorded while props was built (and forgotten here).
+function Buildings.take(props: Builder.Props): { Structure }
+	local list = structures[props] or {}
+	structures[props] = nil
+	return list
+end
+
 export type Settlement = { kind: string, x: number, z: number, core: number, extent: number, population: number, name: string }
 
 type Block = { x0: number, z0: number, x1: number, z1: number, north: string?, south: string?, west: string?, east: string? }
@@ -150,50 +272,55 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 			garage = clear(side)
 		end
 	end
-	at(props, frame, 0, -3, 0, w, wall + 3, d, siding)
+	local first = #props + 1
+	role(at(props, frame, 0, -3, 0, w, wall + 3, d, siding), "wall")
 	local top = frame * CFrame.new(0, wall, 0)
+	local n = #props + 1
 	Builder.gable(props, top.X, top.Y, top.Z, w, d, rise, roof, yawOf(frame))
+	roles(props, n, "roof")
 	if style >= 0.5 and style < 0.62 then
-		at(props, frame, 0, wall + 2, -d / 2 + 2, 7, 6, 5, siding)
-		at(props, frame, 0, wall + 3.5, -d / 2 - 0.55, 4, 3.5, 0.3, GLASS, M.Glass, false)
+		role(at(props, frame, 0, wall + 2, -d / 2 + 2, 7, 6, 5, siding), "roof")
+		role(at(props, frame, 0, wall + 3.5, -d / 2 - 0.55, 4, 3.5, 0.3, GLASS, M.Glass, false), "glass")
 	end
 	if style >= 0.62 and style < 0.78 and not (garage and side > 0) and (not across or shift + w / 2 + 18 <= across / 2) then -- split-level: a raised wing
 		local wx = w / 2 + 9
-		at(props, frame, wx, -3, 2, 18, wall + 8, d - 4, siding)
+		role(at(props, frame, wx, -3, 2, 18, wall + 8, d - 4, siding), "wall")
 		local wt = frame * CFrame.new(wx, wall + 5, 2)
+		local m = #props + 1
 		Builder.gable(props, wt.X, wt.Y, wt.Z, 18, d - 4, rise - 1, roof, yawOf(frame))
-		at(props, frame, wx, 8, -d / 2 + 1.85, 5, 4, 0.3, GLASS, M.Glass, false)
+		roles(props, m, "roof")
+		role(at(props, frame, wx, 8, -d / 2 + 1.85, 5, 4, 0.3, GLASS, M.Glass, false), "glass")
 	end
 	-- Door (and a porch on bungalows), windows.
 	local doorX = (rnd() - 0.5) * w * 0.5
-	at(props, frame, doorX, 0, -d / 2 - 0.15, 4, 8, 0.4, pick(DOOR, rnd()), M.Wood, false)
+	role(at(props, frame, doorX, 0, -d / 2 - 0.15, 4, 8, 0.4, pick(DOOR, rnd()), M.Wood, false), "door")
 	if style >= 0.78 then
-		at(props, frame, 0, -0.5, -d / 2 - 4, w * 0.8, 1, 8, rgb(150, 140, 130), M.WoodPlanks)
+		role(at(props, frame, 0, -0.5, -d / 2 - 4, w * 0.8, 1, 8, rgb(150, 140, 130), M.WoodPlanks), "porch")
 		for _, px in { -w * 0.38, w * 0.38 } do
-			at(props, frame, px, 0, -d / 2 - 7.5, 0.8, 9, 0.8, trim)
+			role(at(props, frame, px, 0, -d / 2 - 7.5, 0.8, 9, 0.8, trim), "trim")
 		end
-		at(props, frame, 0, 9, -d / 2 - 4, w * 0.84, 0.8, 8.6, roof, M.Slate, false)
+		role(at(props, frame, 0, 9, -d / 2 - 4, w * 0.84, 0.8, 8.6, roof, M.Slate, false), "porchRoof")
 	end
 	local windows = if w > 34 then { -0.36, -0.12, 0.2, 0.38 } else { -0.32, 0.3 }
 	for _, f in windows do
 		local wx = f * w
 		if math.abs(wx - doorX) > 4.5 then
-			at(props, frame, wx, 4, -d / 2 - 0.1, 5, 4.5, 0.3, GLASS, M.Glass, false)
-			at(props, frame, wx, 3.6, -d / 2 - 0.2, 5.8, 0.4, 0.4, trim, M.SmoothPlastic, false)
+			role(at(props, frame, wx, 4, -d / 2 - 0.1, 5, 4.5, 0.3, GLASS, M.Glass, false), "glass")
+			role(at(props, frame, wx, 3.6, -d / 2 - 0.2, 5.8, 0.4, 0.4, trim, M.SmoothPlastic, false), "trim")
 			if wall > 15 then
-				at(props, frame, wx, 14, -d / 2 - 0.1, 5, 4.5, 0.3, GLASS, M.Glass, false)
+				role(at(props, frame, wx, 14, -d / 2 - 0.1, 5, 4.5, 0.3, GLASS, M.Glass, false), "glass")
 			end
 		end
 	end
 	if rnd() < 0.35 then
-		at(props, frame, w * (rnd() - 0.5) * 0.6, wall + 1, d * 0.2, 2.5, rise + 3, 2.5, pick(BRICK, rnd()), M.Brick)
+		role(at(props, frame, w * (rnd() - 0.5) * 0.6, wall + 1, d * 0.2, 2.5, rise + 3, 2.5, pick(BRICK, rnd()), M.Brick), "chimney")
 	end
 	-- The garage and a drive to the street.
 	if garage then
 		local gx = side * (w / 2 + 7.5)
-		at(props, frame, gx, -3, 1, 15, 13, d - 2, siding)
-		at(props, frame, gx, 10, 1, 16, 0.8, d - 1, roof, M.Slate, false)
-		at(props, frame, gx, 0, -d / 2 + 0.85, 11, 8, 0.3, trim, M.SmoothPlastic, false)
+		role(at(props, frame, gx, -3, 1, 15, 13, d - 2, siding), "wall")
+		role(at(props, frame, gx, 10, 1, 16, 0.8, d - 1, roof, M.Slate, false), "porchRoof")
+		role(at(props, frame, gx, 0, -d / 2 + 0.85, 11, 8, 0.3, trim, M.SmoothPlastic, false), "door")
 		-- Drive from the garage to the street, a walk from the door to the drive.
 		path(props, ground, frame, gx, -d / 2, gx, -d / 2 - depthAvailable - 3, 11, CONCRETE, M.Concrete)
 		path(props, ground, frame, doorX, -d / 2 - 1, doorX, -d / 2 - 5, 4, CONCRETE, M.Concrete)
@@ -219,14 +346,17 @@ local function house(props: Builder.Props, frame: CFrame, rnd: () -> number, set
 		local sx = (rnd() - 0.5) * w
 		local shedColour = pick(SIDING, rnd())
 		if not free or free(frame * CFrame.new(sx, 0, d / 2 + 14), 10, 10) then
-			at(props, frame, sx, -1, d / 2 + 14, 8, 8, 8, shedColour, M.WoodPlanks)
+			role(at(props, frame, sx, -1, d / 2 + 14, 8, 8, 8, shedColour, M.WoodPlanks), "shed")
 		end
 	end
+	-- (the house with its garage, as wide as both; its height to the ridge)
+	record(props, "house", first, frame, w + (if garage then 30 else 0), d, wall + rise)
 end
 
 -- Commercial -----------------------------------------------------------------------------
 
 local function storefront(props: Builder.Props, frame: CFrame, w: number, d: number, rnd: () -> number)
+	local first = #props + 1
 	local brick = pick(BRICK, rnd())
 	local floors = 1 + math.floor(rnd() * 2.6)
 	local h = 4 + floors * 10
@@ -246,9 +376,12 @@ local function storefront(props: Builder.Props, frame: CFrame, w: number, d: num
 		end
 	end
 	at(props, frame, 0, h, 0, w + 0.6, 1.4 + rnd(), d + 0.6, pick(STONE, rnd()), M.Concrete, false)
+	-- (one storey: a small retail building; with floors over the shop: a low-rise building)
+	structure(props, if floors == 1 then "SRB" else "LRB", first, frame)
 end
 
 local function stripMall(props: Builder.Props, frame: CFrame, w: number, rnd: () -> number)
+	local first = #props + 1
 	at(props, frame, 0, -0.7, -10, w, 1, 40, ASPHALT, M.Asphalt)
 	for i = 0, math.floor(w / 10) - 1 do
 		at(props, frame, -w / 2 + 5 + i * 10, -0.15, -18, 0.4, 0.06, 14, rgb(236, 236, 230), M.SmoothPlastic, false)
@@ -261,9 +394,11 @@ local function stripMall(props: Builder.Props, frame: CFrame, w: number, rnd: ()
 	for i = 0, shops - 1 do
 		at(props, frame, -w / 2 + w * (i + 0.5) / shops, 12, 8.8, w / shops - 6, 2.6, 0.4, pick(BRANDS, rnd())[1], M.SmoothPlastic, false)
 	end
+	structure(props, "SM", first, frame)
 end
 
 local function fastFood(props: Builder.Props, frame: CFrame, rnd: () -> number)
+	local first = #props + 1
 	local brand = pick(BRANDS, rnd())
 	at(props, frame, 0, -0.7, 0, 64, 1, 56, ASPHALT, M.Asphalt)
 	local w = 26 + 8 * rnd()
@@ -275,23 +410,41 @@ local function fastFood(props: Builder.Props, frame: CFrame, rnd: () -> number)
 		at(props, frame, 0, 12, 8, w + 1, 3, 25, brand[1], M.SmoothPlastic, false)
 	end
 	at(props, frame, 0, 0.5, -4.15, w - 6, 7, 0.3, GLASS, M.Glass, false)
+	structure(props, "SRB", first, frame)
 	at(props, frame, -26, 0, -22, 1, 20, 1, rgb(120, 124, 128), M.Metal)
 	at(props, frame, -26, 20, -22, 8, 8, 1.2, brand[1], M.SmoothPlastic, false)
 end
 
-local function warehouse(props: Builder.Props, frame: CFrame, w: number, d: number, rnd: () -> number)
+-- (di: what the EF scale calls it - by default a metal building system, its sheet-metal walls;
+-- a big-box store LIRB)
+local function warehouse(props: Builder.Props, frame: CFrame, w: number, d: number, rnd: () -> number, di: string?)
+	local first = #props + 1
 	at(props, frame, 0, -0.7, 0, w, 1, d, ASPHALT, M.Asphalt)
 	local bw, bd = w - 12, d * 0.65
-	at(props, frame, 0, -2, d / 2 - bd / 2 - 4, bw, 20 + 12 * rnd(), bd, pick({ rgb(196, 198, 200), rgb(176, 182, 186), rgb(206, 196, 176), rgb(150, 160, 150) }, rnd()), M.CorrodedMetal)
+	-- (the walls, and the flat roof on them a part of its own: the roof the tornado lifts first)
+	local tall = 20 + 12 * rnd()
+	local wall = pick({ rgb(196, 198, 200), rgb(176, 182, 186), rgb(206, 196, 176), rgb(150, 160, 150) }, rnd())
+	at(props, frame, 0, -2, d / 2 - bd / 2 - 4, bw, tall - 1.2, bd, wall, M.CorrodedMetal)
+	role(at(props, frame, 0, tall - 3.2, d / 2 - bd / 2 - 4, bw + 0.8, 1.2, bd + 0.8, wall:Lerp(rgb(70, 74, 78), 0.35), M.Metal), "roof")
 	local doors = math.max(2, math.floor(bw / 22))
 	for i = 1, doors do
 		at(props, frame, -bw / 2 + bw * (i - 0.5) / doors, 0, d / 2 - bd - 4.15, 11, 13, 0.3, rgb(90, 96, 104), M.Metal, false)
 	end
 	at(props, frame, bw / 2 - 8, 0.5, d / 2 - bd - 4.15, 10, 7, 0.3, GLASS, M.Glass, false)
+	-- (its overhead doors: doors to the damage)
+	for i = first, #props do
+		if props[i].material == M.Metal and props[i].size.Y > 10 and props[i].size.Z < 1 then
+			props[i].role = "door"
+		end
+	end
+	structure(props, di or "MBS", first, frame)
 end
 
 -- Mid-rise: brick or stone, ribbon windows or rows of tall windows, a cornice.
-local function midrise(props: Builder.Props, frame: CFrame, w: number, d: number, floors: number, rnd: () -> number)
+-- (use: "homes" - apartments, up to three floors ACT, taller masonry MAM; "motel" M;
+-- "institution" IB (a campus); else offices - up to four floors a low-rise LRB, taller a mid-rise MRB)
+local function midrise(props: Builder.Props, frame: CFrame, w: number, d: number, floors: number, rnd: () -> number, use: string?)
+	local first = #props + 1
 	local brick = rnd() < 0.55
 	local wall = if brick then pick(BRICK, rnd()) else pick(STONE, rnd())
 	local floor = 11 + 2 * rnd()
@@ -319,11 +472,18 @@ local function midrise(props: Builder.Props, frame: CFrame, w: number, d: number
 	if rnd() < 0.5 then
 		at(props, frame, (rnd() - 0.5) * w * 0.4, height + 1, (rnd() - 0.5) * d * 0.4, 10 + 8 * rnd(), 6, 8 + 6 * rnd(), pick(STONE, rnd()), M.Concrete, false)
 	end
+	local di = if use == "homes" then (if floors <= 3 then "ACT" else "MAM")
+		elseif use == "motel" then "M"
+		elseif use == "institution" then "IB"
+		elseif floors <= 4 then "LRB"
+		else "MRB"
+	structure(props, di, first, frame)
 end
 
 -- Tower: glass curtain wall with floor bands, a stone frame with tall glass, a stepped tower, or
 -- a slab; a lobby with doors and a canopy; a roof with plant, a crown or a mast.
 local function tower(props: Builder.Props, frame: CFrame, w: number, d: number, height: number, rnd: () -> number)
+	local first = #props + 1
 	local style = rnd()
 	local glass = pick(GLASSES, rnd())
 	local trim = pick(STONE, rnd())
@@ -390,11 +550,15 @@ local function tower(props: Builder.Props, frame: CFrame, w: number, d: number, 
 	if height > 170 and rnd() < 0.6 then
 		Builder.rod(props, (frame * CFrame.new(0, roofY + 6, 0)).Position, (frame * CFrame.new(0, roofY + 30 + 30 * rnd(), 0)).Position, 1, rgb(200, 200, 200), M.Metal, false)
 	end
+	-- (12 studs a floor: over 20 floors a high-rise)
+	structure(props, if height / 12 > 20 then "HRB" else "MRB", first, frame)
 end
 
 -- Landmarks ------------------------------------------------------------------------------
 
+-- (the EF scale has no church: surveys rate one as a low-rise building)
 local function church(props: Builder.Props, frame: CFrame, rnd: () -> number)
+	local first = #props + 1
 	local white = rnd() < 0.5
 	local wall = if white then rgb(238, 236, 228) else pick(BRICK, rnd())
 	local length = 40 + 12 * rnd()
@@ -414,6 +578,7 @@ local function church(props: Builder.Props, frame: CFrame, rnd: () -> number)
 			at(props, frame, side * 13.1, 4, z, 0.3, 10, 3.5, rgb(170, 140, 200), M.Glass, false)
 		end
 	end
+	structure(props, "LRB", first, frame)
 end
 
 local function waterTower(props: Builder.Props, x: number, y: number, z: number, rnd: () -> number)
@@ -527,16 +692,22 @@ local function farmstead(props: Builder.Props, ctx: Ctx, x: number, z: number, r
 	local barnColour = pick({ rgb(150, 44, 36), rgb(150, 44, 36), rgb(220, 220, 214), rgb(120, 120, 124) }, rnd())
 	local bw, bd = 26 + 10 * rnd(), 40 + 16 * rnd()
 	local barn = seat(ctx, bx, bz, barnYaw, bw, bd)
-	at(props, barn, 0, -3, 0, bw, 25, bd, barnColour, M.WoodPlanks)
+	local first = #props + 1
+	role(at(props, barn, 0, -3, 0, bw, 25, bd, barnColour, M.WoodPlanks), "wall")
 	local top = barn * CFrame.new(0, 22, 0)
-	Builder.gable(props, top.X, top.Y, top.Z, bd, bw, 14 + 4 * rnd(), rgb(80, 80, 86), yawOf(barn) + math.pi / 2, 1)
-	at(props, barn, 0, 0, -bd / 2 - 0.2, 14, 16, 0.4, rgb(236, 232, 222), M.WoodPlanks, false)
+	local barnRise = 14 + 4 * rnd()
+	Builder.gable(props, top.X, top.Y, top.Z, bd, bw, barnRise, rgb(80, 80, 86), yawOf(barn) + math.pi / 2, 1)
+	roles(props, first + 1, "roof")
+	role(at(props, barn, 0, 0, -bd / 2 - 0.2, 14, 16, 0.4, rgb(236, 232, 222), M.WoodPlanks, false), "door")
+	record(props, "barn", first, barn, bw, bd, 22 + barnRise)
 	-- A machine shed, grain bins, maybe a silo.
 	if rnd() < 0.6 then
 		local sx, sz = x - 10 + 40 * rnd(), z + 50 + 15 * rnd()
 		local shed = seat(ctx, sx, sz, yaw, 50, 30)
-		at(props, shed, 0, -2, 0, 50, 20, 30, rgb(190, 194, 198), M.CorrodedMetal)
-		at(props, shed, 0, 0, -15.2, 16, 14, 0.3, rgb(100, 106, 112), M.Metal, false)
+		local shedFirst = #props + 1
+		role(at(props, shed, 0, -2, 0, 50, 20, 30, rgb(190, 194, 198), M.CorrodedMetal), "wall")
+		role(at(props, shed, 0, 0, -15.2, 16, 14, 0.3, rgb(100, 106, 112), M.Metal, false), "door")
+		record(props, "barn", shedFirst, shed, 50, 30, 18)
 	end
 	local bins = math.floor(rnd() * 4)
 	local binX, binZ = x + 70 + 30 * rnd(), z - 30 + 20 * rnd()
@@ -792,7 +963,7 @@ local function parcel(ctx: Ctx, r: Rect, block: Rect, s: Settlement, distance: n
 			local bf = frame * CFrame.new(0, 0, lot / 2)
 			local scale = fits(ctx, bf, across - 8, deep - 8 - lot, true)
 			if scale then
-				midrise(props, bf, (across - 8) * scale, (deep - 8 - lot) * scale, 2 + math.floor(4 * rnd()), rnd)
+				midrise(props, bf, (across - 8) * scale, (deep - 8 - lot) * scale, 2 + math.floor(4 * rnd()), rnd, "homes")
 				parking(props, frame * CFrame.new(0, 0, -deep / 2 + lot / 2 + 3), across - 10, lot - 4, ctx.ground)
 			end
 		end
@@ -935,6 +1106,7 @@ local KIT: Facilities.Kit = {
 	at = at, seat = seat, fits = fits, stream = stream, pick = pick, parking = parking, park = park,
 	warehouse = warehouse, stripMall = stripMall, fastFood = fastFood, midrise = midrise,
 	grainElevator = grainElevator, BRICK = BRICK, STONE = STONE, BRANDS = BRANDS,
+	structure = structure, role = role,
 }
 
 function Buildings.build(ctx: Ctx)
