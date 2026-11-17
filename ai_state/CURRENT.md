@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- VTP and tornado strength in the ensemble (2026-11-17, owner's request): VTP is now SPC's (STP x 3CAPE/50 capped at 2 x
+- VTP and tornado strength in the ensemble (2026-11-17, owner's request; `6c87669` on `main`, engine deployed from it, the world carried over): VTP is now SPC's (STP x 3CAPE/50 capped at 2 x
   0-3 km lapse rate/6.5; Hampshire et al. 2018 JOM), replacing an invented 0-5 blend; display only (no storm code reads it).
   Mesoanalysis and /models gain VTP and 0-3 km CAPE fields (seed 2, Day 2 21Z, STP>=1 cells: STP p50 3.0, VTP 4.0, 3CAPE 59).
   Ensemble track points carry the tornado's rated mph (was 1); the /models ensemble has EF2+ and EF4+ chances within
