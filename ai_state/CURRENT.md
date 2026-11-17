@@ -330,6 +330,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     frame's large-scale columns are asked for. Engine fingerprint identical to HEAD (seed 1000, 8 h).
   - Fixed (same date): the mesoanalysis replay of a day not yet saved did not send the admin key, so it stayed
     empty for a signed-in admin.
+  - Fixed (2026-11-16, deployed from 5c8e7c4): the days page read the admin key from sessionStorage while the top
+    bar keeps it in localStorage, so a signed-in admin saw no recent days and no Save button.
   - Soundings (2026-11-13): the live world's are admin only (`/api/live/sounding` answers 401 without the key; the
     mesoanalysis page opens none for the public). The public's come from the models: each short range run (every
     hour) and long range run (every 3 h) keeps what a sounding is made from for every cell
