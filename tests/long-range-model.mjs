@@ -41,5 +41,5 @@ world.validHourUtc = 31.5; assert.equal(longRange.maybeRun(), false);
 world.validHourUtc = 40; assert.equal(longRange.maybeRun(), false, 'not at other hours');
 for (const hour of [54, 78, 102, 126]) { world.validHourUtc = hour; assert.equal(longRange.maybeRun(), true, '06Z'); await new Promise(resolve => setTimeout(resolve, 20)); assert.equal(longRange.maybeRun(), false, 'once'); }
 assert.deepEqual(asked.at(-1), ['longRange', 168]);
-assert.deepEqual(longRange.list().runs.map(r => r.initHourUtc), [54, 78, 102, 126], `the last ${LONG_RANGE.keepRuns} are kept`);
+assert.deepEqual(longRange.list().runs.map(r => r.initHourUtc), [54, 78, 102, 126].slice(-LONG_RANGE.keepRuns), `the last ${LONG_RANGE.keepRuns} are kept`);
 console.log(`long range model passed (timing error ${run.timingErrorMs} m/s: ${Math.round(off / 1000)} km off after ${HOURS} h; ${run.ms} ms for ${HOURS} h)`);

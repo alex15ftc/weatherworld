@@ -489,6 +489,14 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+000. Railway usage (2026-11-17, merged, NOT deployed yet): the engine averaged 0.52 vCPU and 1.5 GB (memory the larger
+   cost). Railway variable `WEATHER_FORECAST_WARM=0` is staged (skip-deploys) and goes live with the next deploy of any
+   commit; the long range model keeps only its newest run; the replays' tornado radar scans only the box's radials
+   (~21% of the work) and the mesoscale discussions' radar look only ~40 km round its storms (~half), with a guard
+   (`detectRotation`'s `exact`) that falls back to full scans; scans ~10% faster. Outputs byte-identical in offline
+   checks (416 radar hashes, 31 replay boxes, 156 looks). After the deploy: compare `railway metrics -s engine --since
+   12h --memory --cpu` with 1.5 GB / 0.52 vCPU, and read `radarLooks` (looks, fallbacks) on `/api/performance`.
+   `tests/radar-simulator.mjs` fails ("a debris signature at the tornado") on main before this too: look into it.
 00a. VTP and tornado strength (owner's order, 2026-11-17; steps 1 and 2, page products and ensemble VTP chances, done).
    Now, before step 3, check why VTP runs high (about 9 live; is it the moist warm-sector bias, STP's own range, or the
    3CAPE term?). Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest

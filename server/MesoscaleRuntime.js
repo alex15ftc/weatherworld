@@ -160,7 +160,9 @@ export class MesoscaleRuntime {
       bySite.get(site).push(storm);
     }
     await Promise.all([...bySite].map(async ([site, theirs]) => {
-      const [found, lowest] = await Promise.all([runtime.radarRotation(site.id, { prewarm: false }), runtime.radarScan(site.id, 0, { prewarm: false })]);
+      // (the authority's look scans only the storms' part of the sky when that is sure to find what a full scan does)
+      const [found, lowest] = runtime.radarLookAround ? await runtime.radarLookAround(site.id, theirs).then(look => [look.found, look.lowest])
+        : await Promise.all([runtime.radarRotation(site.id, { prewarm: false }), runtime.radarScan(site.id, 0, { prewarm: false })]);
       if (found) for (const storm of theirs) storm.radar = radarLook(storm, site, found, lowest);
     }));
   }

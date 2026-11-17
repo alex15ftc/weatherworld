@@ -42,10 +42,11 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
 | `WEATHER_CLOCK_LOCK` | (unset: on) the world's clock follows real UTC, 8 world days a real day, so products name days "11/11/26 Day 3" (`js/forecast/calendar.js`); after a restart the world races to catch up (under a world day); `off`: the free-running clock |
 | `WEATHER_STATE_PATH`, `WEATHER_SPINUP_CACHE`, `WEATHER_DAY_REVIEW_DIR` | under `/data` |
 | `WEATHER_WIDE_REFRESH_DAYS` | unset (0.25). How soon the wide window's air (the large-scale pages' severe-weather charts around the map, `js/world/WideRegion.js`) is drawn to entering-air values; display only |
-| `WEATHER_LONG_RANGE` | unset (on). `off` stops the 7-day long range runs (one at each 06Z, a few minutes on a forecast thread, about 45 MB each, 4 kept) |
+| `WEATHER_LONG_RANGE` | unset (on). `off` stops the 7-day long range runs (one at each 06Z, a few minutes on a forecast thread, about 45 MB each; only the newest kept since 2026-11-17, a new run replacing it as it starts) |
 | `WEATHER_REPLAY_RADAR` | unset (on). `off` leaves the whole-map radar (composite reflectivity every 10 minutes, ~2-5 MB a day) out of the day replays |
 | `WEATHER_TORNADO_RADAR` | unset (on). `off` leaves the tornado radar out of the day replays; it is scanned as low-priority work on the radar threads |
 | `WEATHER_RADAR_WORKERS`, `WEATHER_FORECAST_WORKERS`, `WEATHER_STORM_WORKERS` | 2 each (the container sees the host's CPU count, which would start up to 8 threads per pool) |
+| `WEATHER_FORECAST_WARM` | `0` (since 2026-11-17; code default 5): forecast threads are let go 30 s after their run instead of kept warm 9 minutes, so idle threads do not hold memory between the hourly runs |
 
 Read the keys with `railway variables --kv`. They are never kept in the repo.
 

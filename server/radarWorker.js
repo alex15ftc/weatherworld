@@ -21,8 +21,8 @@ const TASKS = {
   mosaics: ({ sites, rows, kinds }) => buildRadarMosaics(scene, sites, { rows, kinds }),
   // (one storm's rain grid for the game feed, server/GameFeed.js)
   precipGrid: ({ input }) => stormPrecipGrid(input),
-  scan: ({ site, tiltDeg, gateKm }) => scanRadarTilt(scene, site, tiltDeg, { gateKm }),
-  rotation: ({ site, scans }) => detectRotation(site, scans),
+  scan: ({ site, tiltDeg, gateKm, radials }) => scanRadarTilt(scene, site, tiltDeg, { gateKm, radials }),
+  rotation: ({ site, scans, options }) => detectRotation(site, scans, options),
   shearGrid: ({ width, height, sites, scans }) => {
     const shear = new Float32Array(width * height);
     sites.forEach((site, k) => { if (scans[k]) lowLevelShearGrid(shear, width, height, MOSAIC_RES_KM, site, scans[k]); });

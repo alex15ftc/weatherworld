@@ -27,7 +27,8 @@ export const LONG_RANGE = Object.freeze({
   // How much a run's systems differ in speed from the world's (m/s, standard deviation): the outlook runs' own.
   timingSpreadMs: TIMING.spreadMs,
   // Runs the server keeps (about 45 MB each: the large-scale frames and the map's columns for soundings).
-  keepRuns: 4
+  // Only the newest (2026-11-17, to save memory on Railway): a new run replaces the last as it starts and fills in.
+  keepRuns: 1
 });
 
 // Whether a run starts at this hour (UTC).
