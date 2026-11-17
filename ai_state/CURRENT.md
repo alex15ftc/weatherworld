@@ -18,6 +18,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Tornado icons on the mesoanalysis page (2026-11-17, on `main`, engine deployed with it): a storm with a tornado on
+  the ground draws as an inverted triangle coloured by the EF rating of its wind now (`efColourOfMph` in
+  `js/forecast/productColours.js`, the engine's thresholds and the damage tracks' colours; grey below EF0).
 - Public 06Z upper-air soundings (2026-11-17, `68e1f2e` on `main`, engine deployed from it, the world carried over;
   no release yet at deploy, the live world was at 11Z): 11 of the surface
   stations, at least 200 km apart (`UPPER_AIR` in `server/UpperAirRuntime.js`; real sites are 300-500 km apart, which

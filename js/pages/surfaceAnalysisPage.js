@@ -8,6 +8,7 @@
 // controls there), and "Save loop as GIF" and "Save loop as MP4" saves the frames on the slider as one picture (js/gif.js).
 import { drawSounding, drawHodograph } from '../sounding.js';
 import { saveLoop, drawChartFrame } from '/js/gif.js';
+import { EF_COLOURS, EFU_COLOUR, efOfMph, efColourOfMph } from '/js/forecast/productColours.js';
 
 const canvas = document.getElementById('surfaceCanvas'), ctx = canvas.getContext('2d'), tip = document.getElementById('surfaceTip');
 const $ = id => document.getElementById(id);
@@ -79,7 +80,7 @@ function describe() {
     lines.append(item);
   }
   const severe = data.storms.filter(s => s.hailInches >= 1 || s.gustMph >= 58 || s.tornado), tornadoes = data.storms.filter(s => s.tornado);
-  $('surfaceStorms').innerHTML = data.storms.length ? `${data.storms.length} on the map · ${severe.length} severe · ${tornadoes.length} with a tornado<br><span style="color:#7cd67c">●</span> weak <span style="color:#ffb300">●</span> strong <span style="color:#ff5252">●</span> severe <span style="color:#e040fb">●</span> significant <span style="color:#ff1744">▼</span> tornado` : 'None right now.';
+  $('surfaceStorms').innerHTML = data.storms.length ? `${data.storms.length} on the map · ${severe.length} severe · ${tornadoes.length} with a tornado<br><span style="color:#7cd67c">●</span> weak <span style="color:#ffb300">●</span> strong <span style="color:#ff5252">●</span> severe <span style="color:#e040fb">●</span> significant<br>tornado on the ground, by its wind now: ${EF_COLOURS.map((colour, ef) => `<span style="white-space:nowrap"><span style="color:${colour}">▼</span> EF${ef}</span>`).join(' ')} <span style="white-space:nowrap"><span style="color:${EFU_COLOUR}">▼</span> below EF0</span>` : 'None right now.';
   drawLegend();
 }
 
@@ -318,16 +319,24 @@ function drawBarb(x, y, speed, fromDeg, colour, station) {
   if (knots >= 5) { if (at === staff) at -= 4; ctx.beginPath(); ctx.moveTo(x + sx * at, y + sy * at); ctx.lineTo(x + sx * at + fx * 5, y + sy * at + fy * 5); ctx.stroke(); }
 }
 
-// Storms: a disc that grows with strength and is coloured by what it is producing, a tick
-// showing where it is heading, and a red inverted triangle while a tornado is on the ground.
+// Storms: a disc that grows with strength and is coloured by what it is producing, and a tick showing where it is
+// heading. While a tornado is on the ground the disc becomes an inverted triangle, coloured by the EF rating of the
+// tornado's wind now (the damage tracks' colours, js/forecast/productColours.js; grey below EF0).
 function stormColour(storm) { return storm.hailInches >= 2 || storm.gustMph >= 75 ? '#e040fb' : storm.hailInches >= 1 || storm.gustMph >= 58 ? '#ff5252' : storm.strength >= 0.45 ? '#ffb300' : '#7cd67c'; }
 function drawStorms(px) {
   for (const storm of data.storms) {
     const [x, y] = px(storm.xKm, storm.yKm), radius = 3 + 9 * storm.strength, heading = storm.towardDeg * Math.PI / 180, reach = radius + Math.min(22, storm.speedMph * 0.4);
     ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,.75)';
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.sin(heading) * reach, y - Math.cos(heading) * reach); ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fillStyle = stormColour(storm); ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
-    if (storm.tornado) { ctx.beginPath(); ctx.moveTo(x - 7, y - radius - 12); ctx.lineTo(x + 7, y - radius - 12); ctx.lineTo(x, y - radius); ctx.closePath(); ctx.fillStyle = '#ff1744'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (storm.tornado) {
+      // (the triangle's centre on the storm, a little larger than its disc so it reads at any strength)
+      const half = Math.max(8, radius * 1.25);
+      ctx.beginPath(); ctx.moveTo(x - half, y - half * 0.7); ctx.lineTo(x + half, y - half * 0.7); ctx.lineTo(x, y + half * 1.05); ctx.closePath();
+      ctx.fillStyle = efColourOfMph(storm.tornado.windMph); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fillStyle = stormColour(storm); ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+    }
   }
 }
 
@@ -358,7 +367,7 @@ canvas.addEventListener('mousemove', event => {
     html = `<b>Upper-air site ${siteName(site)}</b><br>${release?.sites.includes(site.id) ? `Sounding from ${clock(release.hourUtc)} UTC: select to open it` : `No sounding yet: ${nextBalloon()}`}`;
   } else if (storm && storm.d < 14) {
     const s = storm.s;
-    html = `<b>Storm ${s.id}</b> · ${s.character}<br>moving ${COMPASS[Math.round(s.towardDeg / 22.5) % 16]} at ${s.speedMph} mph<br>hail ${s.hailInches.toFixed(2)} in · gusts ${s.gustMph} mph${s.tornado ? `<br><b style="color:#ff5252">Tornado on the ground</b> · ${s.tornado.windMph} mph` : ''}`;
+    html = `<b>Storm ${s.id}</b> · ${s.character}<br>moving ${COMPASS[Math.round(s.towardDeg / 22.5) % 16]} at ${s.speedMph} mph<br>hail ${s.hailInches.toFixed(2)} in · gusts ${s.gustMph} mph${s.tornado ? `<br><b style="color:${efColourOfMph(s.tornado.windMph)}">Tornado on the ground</b> · ${s.tornado.windMph} mph (${efOfMph(s.tornado.windMph) < 0 ? 'below EF0' : `EF${efOfMph(s.tornado.windMph)}`} winds)` : ''}`;
   } else if (station && station.d < 24) {
     const s = station.s;
     html = `<b>Station ${s.id}</b> · ${Math.round(s.elevationM * 3.281).toLocaleString()} ft<br>${s.temperatureF}°F / ${s.dewpointF}°F · ${s.windKt < 3 ? 'calm' : `${COMPASS[Math.round(s.windFromDeg / 22.5) % 16]} ${s.windKt} kt`}<br>${s.pressureHpa.toFixed(1)} hPa`;

@@ -29,5 +29,9 @@ export const warningColourKey = w => (w.type === 'tornado' ? (w.emergency ? 'tor
 export const REPORT_COLOURS = { tornado: '#ef4444', hail: '#22c55e', wind: '#3b82f6' };
 export const EF_COLOURS = ['#60a5fa', '#4ade80', '#facc15', '#fb923c', '#ef4444', '#e879f9'];
 export const EFU_COLOUR = '#9ca3af';
+// The EF rating (0-5) of a wind speed in mph, -1 below EF0: the thresholds js/storms/TornadoEngine.js rates by.
+export const EF_LOWEST_MPH = [65, 86, 111, 136, 166, 200];
+export const efOfMph = mph => EF_LOWEST_MPH.findLastIndex(lowest => mph >= lowest);
+export const efColourOfMph = mph => { const ef = efOfMph(mph); return ef < 0 ? EFU_COLOUR : EF_COLOURS[ef]; };
 // The most urgent first.
 export const warningRank = w => (w.type === 'tornado' ? (w.emergency ? 6 : w.pds ? 5 : w.tags?.tornado === 'OBSERVED' ? 4 : 3) : w.tags?.damage === 'DESTRUCTIVE' ? 2 : w.tags?.damage === 'CONSIDERABLE' ? 1 : 0);
