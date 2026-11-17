@@ -93,7 +93,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   low-speed stabiliser cancelled a driven wheel's force while the car crept backward (driven wheels now exempt).
   The pickup can't climb the ~10-degree grass spawn hill in 2H (rear-tyre grip; 4L does). Car configs are
   0.476 m/stud vs the world's 0.56 (cars ~18% large).
-- Home city (2026-11-16, not yet published): first join shows a city picker
+- Home city (2026-11-16, `4d85c8e`, merged `de1c264` on `main`; live: the place published from Studio at 2026-11-17 02:58 UTC holds these scripts exactly, file sha256 224cd19c…): first join shows a city picker
   (`SpawnPickerController`; the metro, city and small cities, `Server/Modules/HomeCity`, spawn in the right-hand
   lane of the ordinary road nearest a mile past each city's east edge, facing along it, 45 studs or more from a
   junction; the start point before picking snaps to a road the same way); dying respawns there; the car
