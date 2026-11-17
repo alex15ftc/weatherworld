@@ -26,7 +26,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   0-3 km lapse rate/6.5; Hampshire et al. 2018 JOM), replacing an invented 0-5 blend; display only (no storm code reads it).
   Mesoanalysis and /models gain VTP and 0-3 km CAPE fields (seed 2, Day 2 21Z, STP>=1 cells: STP p50 3.0, VTP 4.0, 3CAPE 59).
   Ensemble track points carry the tornado's rated mph (was 1); the /models ensemble has EF2+ and EF4+ chances within
-  25 mi, every run's tornado tracks by EF, and a per-run strongest-tornado readout. Page-only additions (same day, seen in a
+  25 mi, every run's tornado tracks by EF, and a per-run strongest-tornado readout. Page-only additions (same day, `789d3d6`, engine deployed from it; seen in a
   browser on live data): /models short range "VTP + UH > 75 tracks, 1 h" and a low-level instability field (3CAPE x 0-3 km
   lapse rate, made in the page from two run fields); EF2+ 10% hatching on the ensemble tornado chance; VTP and its two terms
   in the sounding panel; short-range tornado tracks drawn in their EF colours (they all drew black: the rating is 'EF2' text).
