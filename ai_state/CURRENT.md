@@ -21,15 +21,15 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 - Tornado icons on the mesoanalysis page (2026-11-17, on `main`, engine deployed with it): a storm with a tornado on
   the ground draws as an inverted triangle coloured by the EF rating of its wind now (`efColourOfMph` in
   `js/forecast/productColours.js`, the engine's thresholds and the damage tracks' colours; grey below EF0).
-- Public 06Z upper-air soundings (2026-11-17, `68e1f2e` on `main`, engine deployed from it, the world carried over;
+- Public 6-hourly upper-air soundings (2026-11-17, `68e1f2e` on `main`, engine deployed from it, the world carried over;
   no release yet at deploy, the live world was at 11Z): 11 of the surface
   stations, at least 200 km apart (`UPPER_AIR` in `server/UpperAirRuntime.js`; real sites are 300-500 km apart, which
-  would leave 5), take a sounding on the first atmosphere step at or after 06Z. The runtime calls a new
-  `afterAtmosphereStep` hook after every step, so a catch-up turn of several steps does not miss it. The newest two
-  releases are kept in `upper-air.json` beside the world state. The data is served to anyone at `/api/atmosphere/upper-air` and
+  would leave 5), take a sounding on the first atmosphere step at or after 00Z, 06Z, 12Z and 18Z (owner, 2026-11-17; was 06Z only). The runtime calls a new
+  `afterAtmosphereStep` hook after every step, so a catch-up turn of several steps does not miss it. The last day's
+  releases (4) are kept in `upper-air.json` beside the world state. The data is served to anyone at `/api/atmosphere/upper-air` and
   `/api/atmosphere/upper-air/sounding?site=`, without the cell's outlook. On the mesoanalysis page they show as cyan
   diamonds plus a "Soundings" list named after nearby towns. An admin can still get any point at the current time.
-  A release missed by more than an hour (the server down at 06Z) is skipped. Test: `tests/upper-air-runtime.mjs`.
+  A release missed by more than an hour (the server down at a release hour) is skipped. Test: `tests/upper-air-runtime.mjs`.
 
 - Day 1 06Z table (2026-11-16, `e9b2499` on `main`; engine deployed from `7860dd8` with the update table's tornado row, the world carried over): `combineOutlook` counts hours into the outlook's own day
   (from `validToHourUtc` - 24), so the server's 06Z Day 1 (6 h before its day) reads the morning `day1` table as every

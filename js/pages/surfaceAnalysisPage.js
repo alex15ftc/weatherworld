@@ -1,7 +1,7 @@
 // Surface observations and mesoanalysis page. The base is a conventional surface map from the
 // server's analysis: stations plotted where they stand, isobars, fronts, the dryline, outflow
 // boundaries and storms. Over it goes one diagnosed field at a time, as shading, labelled
-// contours or both. Nothing is drawn as grid cells. The upper-air sites' soundings (taken at 06Z, kept until the
+// contours or both. Nothing is drawn as grid cells. The upper-air sites' soundings (taken every 6 hours, kept until the
 // next release: server/UpperAirRuntime.js) open for anyone; an admin's click gives the sounding at any spot now.
 // The time controls step back through the analyses the server has kept.
 // The page also replays a past day (/day/<id>/analysis: the hours server/ReplayArchive.js kept; no soundings or world
@@ -451,12 +451,13 @@ function siteName(site) {
   for (const t of base.allTowns) { const d = Math.hypot(t.x * k - site.xKm, t.y * k - site.yKm) - Math.log10(Math.max(10, t.population ?? 10)) * 6; if (d < bestD) { best = t; bestD = d; } }
   return best ? `${best.name} (${site.id})` : site.id;
 }
+const listed = words => (words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0] ?? '');
 let upperListed = '';
 function describeUpperAir() {
   const group = $('upperAirGroup');
   group.hidden = REPLAY || !upper;
   if (group.hidden) return;
-  const release = upper.releases[0], hours = upper.releaseHoursUtc.map(h => `${String(h).padStart(2, '0')}Z`).join(' and ');
+  const release = upper.releases[0], hours = listed(upper.releaseHoursUtc.map(h => `${String(h).padStart(2, '0')}Z`));
   $('upperAirNote').textContent = release
     ? `Weather balloons go up from ${upper.sites.length} stations at ${hours} each day. Showing the ${clock(release.hourUtc)} UTC release; ${nextBalloon()}.`
     : `Weather balloons go up from ${upper.sites.length} stations at ${hours} each day. None has gone up yet in this world: ${nextBalloon()}.`;

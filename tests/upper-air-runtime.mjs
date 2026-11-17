@@ -7,8 +7,8 @@ import { buildSounding } from '../js/sounding.js';
 import { SurfaceAnalysisRuntime } from '../server/SurfaceAnalysisRuntime.js';
 import { UpperAirRuntime, UPPER_AIR } from '../server/UpperAirRuntime.js';
 
-// The 06Z upper-air soundings (server/UpperAirRuntime.js): a sparse network of the surface stations, a release
-// taken once on the first step at or after 06Z, kept (also on disk) until the next.
+// The 6-hourly upper-air soundings (server/UpperAirRuntime.js): a sparse network of the surface stations, a release
+// taken once on the first step at or after 00Z, 06Z, 12Z and 18Z, the last day's kept (also on disk).
 const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 3 });
 const surface = new SurfaceAnalysisRuntime({ atmosphere });
 const cells = () => atmosphere.regional.world;
@@ -25,23 +25,29 @@ for (let i = 0; i < sites.length; i++) for (let j = i + 1; j < sites.length; j++
 
 // --- Release times.
 assert.equal(UpperAirRuntime.releaseBefore(30), 30);
-assert.equal(UpperAirRuntime.releaseBefore(29.5), 6);
-assert.equal(UpperAirRuntime.releaseBefore(5), -18);
+assert.equal(UpperAirRuntime.releaseBefore(29.5), 24);
+assert.equal(UpperAirRuntime.releaseBefore(5), 0);
+assert.equal(UpperAirRuntime.releaseBefore(23.5), 18);
+assert.equal(UpperAirRuntime.releaseBefore(-0.5), -6);
 
-// --- Nothing before 06Z; one release on the first step at or after it, with every site; none again that day.
-const start = atmosphere.regional.hourUtc, toRelease = ((6 - (start % 24)) + 24) % 24;
-assert.equal(upper.capture(), toRelease === 0, 'a release only at its hour');
-let taken = 0;
-for (let step = 0; step < Math.round(toRelease / 0.5) + 4; step++) {
+// --- One release at each 6-hourly time the world steps past (at it, or the first step after it), with every site,
+// none in between; at most a day's kept.
+const start = atmosphere.regional.hourUtc, hoursRun = 13;
+let taken = upper.capture() ? 1 : 0;
+for (let step = 0; step < hoursRun / 0.5; step++) {
   atmosphere.advance(0.5);
   if (upper.capture()) taken++;
 }
-assert.equal(taken + (toRelease === 0 ? 1 : 0), 1, 'one release a day');
+const expected = Math.floor((start + hoursRun) / 6) - Math.ceil(start / 6) + 1;
+assert.equal(taken, expected, `${taken} releases in ${hoursRun} h from ${start}Z`);
 const summary = upper.summary();
-assert.equal(summary.releases.length, 1);
-assert.equal(summary.releases[0].hourUtc % 24, 6);
-assert.equal(summary.releases[0].sites.length, sites.length, 'every site has a sounding');
-assert.equal(summary.nextReleaseHourUtc - summary.releases[0].hourUtc, 24);
+assert.equal(summary.releases.length, Math.min(expected, UPPER_AIR.kept));
+for (const release of summary.releases) {
+  assert.equal(release.hourUtc % 6, 0, 'a release at 00Z, 06Z, 12Z or 18Z');
+  assert.equal(release.sites.length, sites.length, 'every site has a sounding');
+}
+for (let i = 1; i < summary.releases.length; i++) assert.equal(summary.releases[i - 1].hourUtc - summary.releases[i].hourUtc, 6, '6 hours apart, newest first');
+assert.equal(summary.nextReleaseHourUtc - summary.releases[0].hourUtc, 6);
 const one = upper.sounding(sites[0].id);
 assert.ok(one?.levels?.length || one?.params, 'a sounding with its profile');
 assert.equal(one.site, sites[0].id);
@@ -50,7 +56,7 @@ assert.equal(upper.sounding('nowhere'), null);
 assert.ok(JSON.stringify(one).length < 200_000, `a sounding is ${JSON.stringify(one).length} bytes`);
 
 // --- Kept on disk: a restart answers the same release.
-await new Promise(resolve => setTimeout(resolve, 300));
+await upper.saved();
 const again = new UpperAirRuntime({ surface, soundingAt, worldId: () => world, file });
 assert.equal(again.summary().releases[0].hourUtc, summary.releases[0].hourUtc);
 assert.equal(again.capture(), false, 'a restart does not take the release again');
@@ -62,4 +68,4 @@ again.capture();
 assert.equal(again.summary().releases.length, 0);
 
 fs.rmSync(dir, { recursive: true, force: true });
-console.log(`upper-air runtime ok: ${sites.length} sites, release at ${summary.releases[0].hourUtc % 24}Z, ${JSON.stringify(one).length} bytes a sounding`);
+console.log(`upper-air runtime ok: ${sites.length} sites, releases at ${summary.releases.map(r => `${r.hourUtc % 24}Z`).join(' ')}, ${JSON.stringify(one).length} bytes a sounding`);

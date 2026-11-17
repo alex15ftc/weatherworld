@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mesoanalysis · High Risk</title>
   <!-- The mesoanalysis page (/analysis, js/pages/surfaceAnalysisPage.js): surface observations, an overlay
-       field, the analysed fronts and storms, the 06Z upper-air soundings (anyone; server/UpperAirRuntime.js) and,
+       field, the analysed fronts and storms, the 6-hourly upper-air soundings (anyone; server/UpperAirRuntime.js) and,
        for an admin, a sounding for any point. Laid out as the site's other map
        tools are (css/site.css, "The map tools"). -->
   <!--site:head-->
@@ -102,7 +102,7 @@
         <label><input type="checkbox" id="showFronts" checked /> Fronts, dryline, outflow boundaries</label>
         <label><input type="checkbox" id="showStorms" checked /> Storms</label>
         <label><input type="checkbox" id="showCounties" checked /> County lines and cities</label>
-        <label data-live><input type="checkbox" id="showUpperAir" checked /> Upper-air sites (06Z soundings)</label>
+        <label data-live><input type="checkbox" id="showUpperAir" checked /> Upper-air sites (soundings every 6 h)</label>
       </section>
       <section class="group" id="upperAirGroup" data-live hidden>
         <h2>Soundings</h2>

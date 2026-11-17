@@ -1,21 +1,21 @@
 // Upper-air soundings for the public: a sparse network of the surface stations (SurfaceAnalysisRuntime.js) also
-// sends up a weather balloon at each release hour (06Z), as a real upper-air network does twice a day. The
+// sends up a weather balloon every 6 hours (00Z, 06Z, 12Z, 18Z), as a real upper-air network does twice a day. The
 // sounding each site measured is kept until the next release and anyone can read it on the mesoanalysis page;
 // a sounding at any point and at any time stays an admin's (/api/live/sounding).
 //
 // A release is taken on the first atmosphere step at or after its hour (the steps are half an hour), from the
 // column of the cell the site stands in, and is never taken late: a world moved past a release by more than an
-// hour (a restart, an admin's +1 day) skips it and the page keeps the one before. The newest and the one before
-// it are kept, in a small file beside the world's state, so a deploy does not lose the morning's soundings.
+// hour (a restart, an admin's +1 day) skips it and the page keeps the one before. The last day's releases are
+// kept, in a small file beside the world's state, so a deploy does not lose them.
 import fs from 'node:fs';
 import path from 'node:path';
 
 export const UPPER_AIR = {
-  releaseHoursUtc: [6],   // the hours balloons go up (UTC); [0, 12] would be the real network's
+  releaseHoursUtc: [0, 6, 12, 18],   // the hours balloons go up (UTC); [0, 12] would be the real network's
   siteSpacingKm: 200,     // the least distance between two sites: about a dozen on the 805 km map (real sites are
                           // 300-500 km apart, which would leave five)
   lateHours: 1,           // a release is taken this long after its hour at most
-  kept: 2                 // releases kept: the newest and the one before it
+  kept: 4                 // releases kept: the last day's
 };
 
 export class UpperAirRuntime {
@@ -23,7 +23,7 @@ export class UpperAirRuntime {
   // the live sounding endpoint answers. worldId(): the world's identity. file: where releases are kept (null: memory).
   constructor({ surface, soundingAt, worldId = () => surface.seed, file = null }) {
     this.surface = surface; this.soundingAt = soundingAt; this.worldId = worldId; this.file = file;
-    this.world = null; this.releases = [];
+    this.world = null; this.releases = []; this.writing = Promise.resolve();
     this.load();
   }
 
@@ -85,11 +85,13 @@ export class UpperAirRuntime {
     try { const saved = JSON.parse(fs.readFileSync(this.file, 'utf8')); this.world = saved.world; this.releases = saved.releases ?? []; } catch (error) { console.warn('[upper-air]', error.message); }
   }
 
+  // Written one at a time (a catch-up can take releases back to back); `saved()` settles when the last is down.
   save() {
     if (!this.file) return;
     const text = JSON.stringify({ world: this.world, releases: this.releases }), file = this.file;
-    fs.promises.mkdir(path.dirname(file), { recursive: true }).then(() => fs.promises.writeFile(`${file}.tmp`, text)).then(() => fs.promises.rename(`${file}.tmp`, file)).catch(error => console.warn('[upper-air]', error.message));
+    this.writing = this.writing.then(() => fs.promises.mkdir(path.dirname(file), { recursive: true })).then(() => fs.promises.writeFile(`${file}.tmp`, text)).then(() => fs.promises.rename(`${file}.tmp`, file)).catch(error => console.warn('[upper-air]', error.message));
   }
+  saved() { return this.writing; }
 }
 
 // Hours from the newest release before `hours` to the one after it.

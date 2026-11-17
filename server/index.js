@@ -60,7 +60,7 @@ if (process.env.WEATHER_STORM_WORKERS !== '0') {
   for (const signal of ['exit', 'SIGINT', 'SIGTERM']) process.once(signal, () => { runtime.stormWorkers?.close(); if (signal !== 'exit') process.exit(0); });
 }
 const surface = new SurfaceAnalysisRuntime({ atmosphere: runtime.engine, simHoursPerRealMinute: SIM_HOURS_PER_REAL_MINUTE });
-// The 06Z upper-air soundings anyone can read on the mesoanalysis page (UpperAirRuntime.js), kept beside the world.
+// The 6-hourly upper-air soundings (00Z, 06Z, 12Z, 18Z) anyone can read on the mesoanalysis page (UpperAirRuntime.js), kept beside the world.
 const upperAir = new UpperAirRuntime({ surface, soundingAt: (row, column) => runtime.soundingNow(row, column), worldId: () => runtime.worldId, file: statePath ? path.join(path.dirname(statePath), 'upper-air.json') : null });
 const keepUpperAir = () => { try { if (surface.atmosphere !== runtime.engine) surface.attach(runtime.engine); upperAir.capture(); } catch (error) { console.warn('[upper-air]', error.message); } };
 keepUpperAir();
