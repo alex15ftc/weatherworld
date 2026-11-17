@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- /chasers fixes (2026-11-17, owner's request): the page now reads the admin key from the top bar's sign-in
+- /chasers fixes (2026-11-17, owner's request; `3c91512` on `main`, engine deployed from it): the page now reads the admin key from the top bar's sign-in
   (`js/site.js` `adminKey`, localStorage; it read sessionStorage, so signed-in admins saw the public view), and the
   day loop draws a track only for the selected chaser (click a dot, or a row in the admin list). Seen in the local
   site preview; the admin view with the real key not seen yet.
