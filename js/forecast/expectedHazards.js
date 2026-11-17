@@ -10,7 +10,7 @@
 // Hail and wind are left as the runs' reports: the engine draws no rate for them (a storm's hail
 // and gusts follow from its state; only the report log's who-reports draws are chance, and the
 // truth has the same ones).
-import { tornadoImminence, tornadoRatePerHour, tornadoWindScaleMph, tornadoShareReaching } from '../storms/TornadoEngine.js';
+import { tornadoImminence, tornadoRatePerHour, tornadoWindScaleMph, tornadoShareReaching, leanScore, lowLevelInstability } from '../storms/TornadoEngine.js';
 
 // The wind each tier of the outlooks' tornado fields begins at: EF2, EF3 and EF4 (the EF scale).
 export const TORNADO_TIER_MPH = Object.freeze({ tornadoSig: 111, tornadoExtreme: 136, tornadoViolent: 166 });
@@ -23,7 +23,9 @@ function add(world, grids, storm, amount) {
   const i = cellOf(world, storm.tornado?.positionKm ?? storm.positionKm);
   grids.tornado[i] += amount;
   const scale = tornadoWindScaleMph(storm.lowRotationFree ?? storm.lowRotation ?? 0, storm.tornado?.rawStp ?? 0);
-  for (const [field, mph] of Object.entries(TORNADO_TIER_MPH)) if (grids[field]) grids[field][i] += amount * tornadoShareReaching(scale, mph);
+  // (leaned by the inflow's low-level instability, as the engine leans each tornado's draw: TornadoEngine LEAN)
+  const z = storm.environment ? leanScore(scale, lowLevelInstability(storm.environment)) : null;
+  for (const [field, mph] of Object.entries(TORNADO_TIER_MPH)) if (grids[field]) grids[field][i] += amount * tornadoShareReaching(scale, mph, z, storm.environment?.cape ?? null);
 }
 
 // After a storm tick of `hours`: each storm not under a tornado adds its rate for the next tick.

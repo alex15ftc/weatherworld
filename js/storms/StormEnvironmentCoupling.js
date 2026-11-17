@@ -21,7 +21,7 @@ export function sampleEffectiveInflowEnvironment(world, storm) {
     northKt: samples.reduce((sum, env, i) => sum + (env[key]?.northKt ?? 0) * weights[i], 0)
   });
   const base = { ...samples[0] };
-  for (const key of ['lapseRate01','lapseRate03','cape','cin','srh','stp','rawStp','vtp','synopticTornadoSupport','scp','bulkShear','lcl','readiness','trigger','initiation','forcing','stormCoverage','discreteFraction','linearFraction','warmSector','openWarmSectorSupport','prefrontalSupercellSupport','tornadicEnvironmentSupport','synopticAscent','synopticCoherence','moisturePooling','capErosion','boundaryInfluence','processedAir','outflowConvergence']) base[key] = blend(key);
+  for (const key of ['lapseRate01','lapseRate03','cape03','cape','cin','srh','stp','rawStp','vtp','synopticTornadoSupport','scp','bulkShear','lcl','readiness','trigger','initiation','forcing','stormCoverage','discreteFraction','linearFraction','warmSector','openWarmSectorSupport','prefrontalSupercellSupport','tornadicEnvironmentSupport','synopticAscent','synopticCoherence','moisturePooling','capErosion','boundaryInfluence','processedAir','outflowConvergence']) base[key] = blend(key);
   // An outflow boundary lying in the inflow, beyond the storm's own rain-cooled air.
   base.outflowContrastK = Math.max(samples[1].outflowContrastK ?? 0, samples[2].outflowContrastK ?? 0);
   // A front in the inflow or under the storm.

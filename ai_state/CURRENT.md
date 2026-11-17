@@ -485,8 +485,20 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 ## Next
 
 00a. VTP and tornado strength (owner's order, 2026-11-17; steps 1 and 2, page products and ensemble VTP chances, done).
-   Now, before step 3, check why VTP runs high (about 9 live; is it the moist warm-sector bias, STP's own range, or the
-   3CAPE term?). Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
+   High-VTP check done (4 seeds x 3 days): VTP runs high from the 3CAPE term (at its cap of 2 in 46% of STP>=1 cells;
+   about a third of it the warm-sector moist bias: 1 C drier gives VTP x0.64) on top of the tuned-high STP; a moisture
+   fix is still the owner's call. Tornado strength now leans on low-level instability (branch
+   `engine/tornado-low-level-lean`, uncommitted, 2026-11-17): TornadoEngine LEAN, a copula on the strength draw by the
+   inflow's 3CAPE x 0-3 km lapse rate ranked among tornadoes with the same spread (table from seeds 11-18 x 8 days, rho
+   0.35). Regression check against a fresh baseline: no regressions (EF2+ a day 2.85 -> 2.59, EF4+ share 1.21 -> 0.92,
+   all within tolerance); z sd 0.98 and the leaned draws stay uniform; VTP now beats STP at EF2+ vs EF0-1 (0.73 vs 0.70,
+   was 0.64 each). Forecast check (seeds 41-50, lead caps, vs 489143a): Day 1 right 43 -> 53%, Day 2 35 -> 45%, Day 3 40 -> 30% (one
+   outlook of 10), within one 100/95/90%; hazard Brier skill unchanged; no refit. Same batch: the flat 235 mph ceiling cap is gone; the ceiling bends
+   to a speed limit from the inflow CAPE, 1.8 x sqrt(2 CAPE) (TornadoEngine SPEED_LIMIT; 172 / 233 / 284 mph at p10/50/90 of
+   tornado inflows): regression none, EF4+ share 1.21 -> 0.64% (target 0.5), max ceiling 263 mph on seeds 11-18. Path width:
+   the flat 25-1600 yd hold is gone; the width bends to the wall cloud radius (StormGeometry wallCloudRadiusKm, 2,100-5,000 yd;
+   TornadoEngine PATH_WIDTH), unchanged below ~240 mph winds (regression identical to the limit run). Forecast check not
+   re-run for the limit or width. game-products and radar-simulator tests fail on main before this batch (not ours). Re-measure the table if the low levels change. Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
    tornadoes (ask first: long run). Step 4, PDS wording and EF2+ hatching in the Day 1 outlook, only after step 3.
 00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite
    before dawn (Night fog button: the stratus deck bright) and in the morning (visible: the deck breaking up by noon).
