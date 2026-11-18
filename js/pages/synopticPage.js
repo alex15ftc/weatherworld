@@ -15,8 +15,9 @@
 // day's aim, in the facts beside the chart.
 // The long range model's tornado chances (2026-11-18, the owner's request; an admin's only): the chance of a tornado
 // within 25 miles on the game map for each of the run's 7 days, from its ingredients for storms (js/forecast/
-// DayOneOutlook.js tornadoGuide), drawn in the map's box on the frame at the 06Z before the day as the ensemble's
-// tornado chance is drawn (EF2+/EF3+/EF4+ hatching). A button for each day.
+// DayOneOutlook.js tornadoGuide), drawn in the map's box as the ensemble's tornado chance is drawn (EF2+/EF3+/EF4+
+// hatching), built up frame by frame through each day (12Z to 12Z) as the ensemble's run totals are, or the last 3 hours
+// alone. A button for each day goes to its first frame.
 // ?share=1: only the chart, with its title, time, key and the site's name in the frame (tools/social/make-loop.mjs).
 // ?frame=<hour>, ?zoom=<n>, ?chart=<key>; ?follow=0&cx=<x>&cy=<y> holds the view on a place (grid units) so the
 // map's box moves; ?view=public shows an admin what the public is told.
@@ -549,53 +550,59 @@ function drawScale(bottom) {
 
 // --- The tornado chances (long range model, admin only), drawn as the ensemble's on /models (js/pages/modelPage.js):
 // the chance of a tornado within 25 miles in its colour steps, hatched where the chance of an EF2+ (broken), EF3+
-// (solid) or EF4+ (cross) tornado reaches 10%, each only where the next one up does not.
+// (solid) or EF4+ (cross) tornado reaches 10%, each only where the next one up does not. Like the ensemble's run
+// totals they build up as the frames are stepped through: every frame inside an outlook day (12Z to 12Z) shows the
+// day so far, or (the "last 3 h" choice) only what the hours since the frame before it added.
 const PROB = [[5, '#a8d4f5'], [10, '#4a9ff0'], [20, '#2bb673'], [30, '#e8d21b'], [40, '#f29a1b'], [50, '#e8401c'], [60, '#b81414'], [70, '#d6337f'], [80, '#9440c9'], [90, '#f2f2f2']];
 const TOR_HATCH = [['tornadoSig', 'broken', 'EF2+'], ['tornadoExtreme', 'solid', 'EF3+'], ['tornadoViolent', 'cross', 'EF4+']], HATCH_LEAST = 10;
-const guide = { on: false, data: null, key: '', image: { canvas: null, key: '' }, masks: { key: '', list: [] } };
-try { guide.on = sessionStorage.getItem('wwTornadoGuide') === '1'; } catch { /* no storage */ }
+const guide = { on: false, mode: 'total', days: null, daysKey: '', frames: new Map(), shown: null, image: { canvas: null, key: '' }, masks: [] };
+try { guide.on = sessionStorage.getItem('wwTornadoGuide') === '1'; guide.mode = sessionStorage.getItem('wwTornadoGuideMode') === 'recent' ? 'recent' : 'total'; } catch { /* no storage */ }
 $('guideOn').checked = guide.on;
 const guideOn = () => LONG && admin && guide.on;
-// The run's chances: asked again while the run is still being made (its days come as they are done).
+// The run's days (asked again while the run is still being made: its frames come as they are done), and the frame
+// on show's chances when it is inside a day.
 async function loadGuide() {
+  guide.shown = null;
   if (!guideOn() || !data.run) return;
-  const key = `${data.run.initHourUtc}:${data.run.partial ? data.run.readyHours : 'done'}`;
-  if (guide.key === key) return;
-  guide.data = await getJson(`${MODEL_API}/tornadoes?init=${data.run.initHourUtc}`).catch(() => null); guide.key = key;
+  const init = data.run.initHourUtc, key = `${init}:${data.run.partial ? data.run.readyHours : 'done'}`;
+  if (guide.daysKey !== key) { guide.days = await getJson(`${MODEL_API}/tornadoes?init=${init}`).catch(() => null); guide.daysKey = key; }
+  const fh = data.run.forecastHour, day = guide.days?.initHourUtc === init ? guide.days.days.find(d => d.frameHours.includes(fh)) : null;
+  if (!day) return;
+  const id = `${init}:${fh}`;
+  if (!guide.frames.has(id)) { guide.frames.set(id, await getJson(`${MODEL_API}/tornadoes?init=${init}&frame=${fh}`).catch(() => null)); if (guide.frames.size > 80) guide.frames.delete(guide.frames.keys().next().value); }
+  guide.shown = guide.frames.get(id);
 }
-// The day drawn on this frame: the one whose 06Z frame it is.
-// (a day's frame as the frames are listed: by valid hour)
-const guideFrame = d => data.run.initHourUtc + d.frameHour;
-const guideDay = () => (guideOn() && guide.data?.initHourUtc === data?.run?.initHourUtc ? guide.data.days.find(d => d.frameHour === data.run.forecastHour) ?? null : null);
-// A day's field read smoothly between its cells' middles (x east, y south, in cells).
-function guideSample(day, values, x, y) {
-  const nx = day.width, ny = day.height, X = Math.max(0, Math.min(nx - 1, x)), Y = Math.max(0, Math.min(ny - 1, y)), i0 = Math.min(nx - 2, Math.floor(X)), j0 = Math.min(ny - 2, Math.floor(Y)), tx = X - i0, ty = Y - j0, v = (i, j) => values[j * nx + i];
+// (a forecast hour as the frames are listed: by valid hour)
+const validOf = fh => data.run.initHourUtc + fh;
+const guideValues = () => guide.shown?.[guide.mode] ?? null;
+// A field read smoothly between its cells' middles (x east, y south, in cells).
+function guideSample(f, values, x, y) {
+  const nx = f.width, ny = f.height, X = Math.max(0, Math.min(nx - 1, x)), Y = Math.max(0, Math.min(ny - 1, y)), i0 = Math.min(nx - 2, Math.floor(X)), j0 = Math.min(ny - 2, Math.floor(Y)), tx = X - i0, ty = Y - j0, v = (i, j) => values[j * nx + i];
   return (v(i0, j0) * (1 - tx) + v(i0 + 1, j0) * tx) * (1 - ty) + (v(i0, j0 + 1) * (1 - tx) + v(i0 + 1, j0 + 1) * tx) * ty;
 }
 const probColour = v => { let c = null; for (const [at, colour] of PROB) if (v >= at) c = colour; return c; };
 function drawGuide() {
-  const day = guideDay();
-  if (!day) return;
-  const fine = 8, w = day.width * fine, h = day.height * fine, id = `${guide.key}:${day.day}`;
+  const f = guide.shown, values = guideValues();
+  if (!f || !values) return;
+  const fine = 8, w = f.width * fine, h = f.height * fine, id = `${f.initHourUtc}:${f.forecastHour}:${guide.mode}`;
   if (guide.image.key !== id) {
     const c = guide.image.canvas ??= document.createElement('canvas'); c.width = w; c.height = h;
     const g = c.getContext('2d'), image = g.createImageData(w, h);
     for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
-      const colour = probColour(guideSample(day, day.chance.tornado, (px + 0.5) / fine - 0.5, (py + 0.5) / fine - 0.5));
+      const colour = probColour(guideSample(f, values.tornado, (px + 0.5) / fine - 0.5, (py + 0.5) / fine - 0.5));
       if (!colour) continue;
       const o = (py * w + px) * 4, [r, gr, b] = hex(colour);
       image.data[o] = r; image.data[o + 1] = gr; image.data[o + 2] = b; image.data[o + 3] = 215;
     }
     g.putImageData(image, 0, 0); guide.image.key = id;
     // (the hatching's masks: where each tier reaches 10% and the next one up does not)
-    guide.masks.key = id;
-    guide.masks.list = TOR_HATCH.map(([field, kind], tier) => {
+    guide.masks = TOR_HATCH.map(([field, kind], tier) => {
       const mask = document.createElement('canvas'); mask.width = w; mask.height = h;
       const mg = mask.getContext('2d'), md = mg.createImageData(w, h), up = TOR_HATCH[tier + 1]?.[0];
       let any = false;
       for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
         const x = (px + 0.5) / fine - 0.5, y = (py + 0.5) / fine - 0.5;
-        if (guideSample(day, day.chance[field], x, y) < HATCH_LEAST || (up && guideSample(day, day.chance[up], x, y) >= HATCH_LEAST)) continue;
+        if (guideSample(f, values[field], x, y) < HATCH_LEAST || (up && guideSample(f, values[up], x, y) >= HATCH_LEAST)) continue;
         md.data[(py * w + px) * 4 + 3] = 255; any = true;
       }
       mg.putImageData(md, 0, 0);
@@ -610,7 +617,7 @@ function drawGuide() {
     ctx.drawImage(guide.image.canvas, x0, y0, x1 - x0, y1 - y0);
     // The hatching: lines a fixed size on the screen, kept where the mask is.
     const bw = Math.ceil(x1 - x0), bh = Math.ceil(y1 - y0);
-    for (const { mask, kind, any } of guide.masks.list) {
+    for (const { mask, kind, any } of guide.masks) {
       if (!any || bw < 2 || bh < 2) continue;
       const piece = document.createElement('canvas'); piece.width = bw; piece.height = bh;
       const p = piece.getContext('2d'), size = Math.max(bw, bh), SPACING = 9;
@@ -628,42 +635,50 @@ function drawGuide() {
     }
   }
 }
-// The day buttons, the key and a line on what is drawn.
+// The day buttons, the mode, the key and a line on what is drawn.
 function describeGuide() {
   if (!LONG) return;
-  const days = guide.data?.initHourUtc === data.run?.initHourUtc ? guide.data.days : [], shown = guideDay(), z = h => `${clock(h).slice(0, 2)}Z`;
+  const days = guide.days?.initHourUtc === data.run?.initHourUtc ? guide.days.days : [], f = guide.shown, values = guideValues(), z = h => `${clock(h).slice(0, 2)}Z`;
   const html = Array.from({ length: 7 }, (_, k) => `<button data-day="${k + 1}">Day ${k + 1}</button>`).join('');
   if ($('guideDays').dataset.key !== html) { $('guideDays').innerHTML = html; $('guideDays').dataset.key = html; }
   for (const b of $('guideDays').children) {
-    const d = days.find(x => x.day === Number(b.dataset.day));
-    b.disabled = !guide.on || !d || !data.frames.includes(guideFrame(d)); b.classList.toggle('on', Boolean(shown && d && shown.day === d.day));
-    b.title = !d ? 'Not ready yet: the run has not reached this day' : `F${String(d.frameHour).padStart(3, '0')}, the 06Z frame before the day`;
+    const d = days.find(x => x.day === Number(b.dataset.day)), first = d?.frameHours.find(fh => data.frames.includes(validOf(fh)));
+    b.disabled = !guide.on || first === undefined; b.classList.toggle('on', Boolean(f && d && f.day === d.day));
+    b.title = !d ? 'Not ready yet: the run has not reached this day' : `${z(d.validFromHourUtc)} to ${z(d.validToHourUtc)}: F${String(d.frameHours[0]).padStart(3, '0')} to F${String(d.frameHours.at(-1)).padStart(3, '0')}${d.done ? `, highest ${d.peak.tornado}%` : ', still being worked out'}`;
   }
+  for (const b of $('guideMode').children) { b.classList.toggle('on', b.dataset.mode === guide.mode); b.disabled = !guide.on; }
   const hatch = { broken: 'repeating-linear-gradient(45deg,#000 0 1.5px,transparent 1.5px 6px)', solid: 'repeating-linear-gradient(-45deg,#000 0 1.5px,transparent 1.5px 6px)', cross: 'repeating-linear-gradient(45deg,#000 0 1.5px,transparent 1.5px 6px),repeating-linear-gradient(-45deg,#000 0 1.5px,transparent 1.5px 6px)' };
-  $('guideKey').innerHTML = shown ? PROB.map(([at, colour]) => `<span><i style="background:${colour}"></i>${at}</span>`).join('') + TOR_HATCH.map(([, kind, name]) => `<span><i style="background:${hatch[kind]}"></i>${name} ${HATCH_LEAST}%+</span>`).join('') : '';
-  const highest = shown ? Math.max(0, ...shown.chance.tornado) : 0;
-  $('guideNote').textContent = !guide.on ? 'The chance of a tornado within 25 miles on the game map for each day, drawn on its 06Z frame, as the ensemble draws it.'
-    : !guide.data ? 'No tornado chances for this run yet.'
-    : !shown ? 'The chances are drawn on each day\'s 06Z frame: pick a day.'
-    : `Day ${shown.day} (${z(shown.validFromHourUtc)} to ${z(shown.validToHourUtc)}): chance of a tornado within 25 mi (%), highest ${highest}%; hatched where an EF2+ (broken), EF3+ (solid) or EF4+ (cross) one reaches ${HATCH_LEAST}%. From the run's ingredients for storms (it runs no storms), not fitted${shown.countedToHourUtc < shown.validToHourUtc - 1e-6 ? `; counted only to ${z(shown.countedToHourUtc)}, where the run ends` : ''}. Less sure with each day.`;
+  $('guideKey').innerHTML = values ? PROB.map(([at, colour]) => `<span><i style="background:${colour}"></i>${at}</span>`).join('') + TOR_HATCH.map(([, kind, name]) => `<span><i style="background:${hatch[kind]}"></i>${name} ${HATCH_LEAST}%+</span>`).join('') : '';
+  const day = f && days.find(d => d.day === f.day), since = f ? (guide.mode === 'recent' ? (f.fromForecastHour === null ? z(f.validFromHourUtc) : z(validOf(f.fromForecastHour))) : z(f.validFromHourUtc)) : '';
+  $('guideNote').textContent = !guide.on ? 'The chance of a tornado within 25 miles on the game map for each day (12Z to 12Z), built up frame by frame as the ensemble\'s run totals are.'
+    : !guide.days ? 'No tornado chances for this run yet.'
+    : !f ? 'This frame is not inside an outlook day the run has made: pick a day, then step through it.'
+    : `Day ${f.day}, ${since} to ${z(validOf(f.forecastHour))}${guide.mode === 'recent' ? ' only' : ` (the day runs to ${z(f.validToHourUtc)})`}: chance of a tornado within 25 mi (%), highest ${Math.max(0, ...values.tornado)}%${day?.done && guide.mode === 'total' ? ` (${day.peak.tornado}% by the day's end)` : ''}; hatched where an EF2+ (broken), EF3+ (solid) or EF4+ (cross) one reaches ${HATCH_LEAST}%. From the run's ingredients for storms (it runs no storms), not fitted. Less sure with each day.`;
 }
 // The chances at a place, for the pointer's note.
 function guideAt(at) {
-  const day = guideDay(), here = day && inMap(at);
+  const f = guide.shown, c = guideValues(), here = c && inMap(at);
   if (!here) return null;
-  const i = Math.min(day.height - 1, Math.floor(here.fy * day.height)) * day.width + Math.min(day.width - 1, Math.floor(here.fx * day.width)), c = day.chance;
-  return `Day ${day.day} tornado within 25 mi: <b>${c.tornado[i]}%</b> · EF2+ ${c.tornadoSig[i]}% · EF3+ ${c.tornadoExtreme[i]}% · EF4+ ${c.tornadoViolent[i]}%`;
+  const i = Math.min(f.height - 1, Math.floor(here.fy * f.height)) * f.width + Math.min(f.width - 1, Math.floor(here.fx * f.width));
+  return `Day ${f.day} tornado within 25 mi${guide.mode === 'recent' ? ', last 3 h' : ', day so far'}: <b>${c.tornado[i]}%</b> · EF2+ ${c.tornadoSig[i]}% · EF3+ ${c.tornadoExtreme[i]}% · EF4+ ${c.tornadoViolent[i]}%`;
+}
+// A day's first frame, to step through it from.
+function showGuideDay(d) {
+  const first = d?.frameHours.find(fh => data?.frames?.includes(validOf(fh)));
+  if (first === undefined) return;
+  stopLoop(); showFrame(data.frames.indexOf(validOf(first)));
 }
 $('guideOn').addEventListener('change', event => {
   guide.on = event.target.checked; try { sessionStorage.setItem('wwTornadoGuide', guide.on ? '1' : '0'); } catch { /* no storage */ }
-  // (turned on at a frame with no day: to the first day's frame)
-  load().then(() => { if (!guide.on || guideDay() || !data?.frames) return; const first = guide.data?.days.find(d => data.frames.includes(guideFrame(d))); if (first) { stopLoop(); showFrame(data.frames.indexOf(guideFrame(first))); } });
+  // (turned on at a frame outside the days: to the first day)
+  load().then(() => { if (guide.on && !guide.shown) showGuideDay(guide.days?.days[0]); });
 });
-$('guideDays').addEventListener('click', event => {
-  const d = guide.data?.days.find(x => x.day === Number(event.target.dataset?.day));
-  if (!d || !data?.frames?.includes(guideFrame(d))) return;
-  stopLoop(); showFrame(data.frames.indexOf(guideFrame(d)));
+$('guideMode').addEventListener('click', event => {
+  const mode = event.target.dataset?.mode; if (!mode) return;
+  guide.mode = mode; try { sessionStorage.setItem('wwTornadoGuideMode', mode); } catch { /* no storage */ }
+  describe(); draw();
 });
+$('guideDays').addEventListener('click', event => showGuideDay(guide.days?.days.find(x => x.day === Number(event.target.dataset?.day))));
 
 // --- Pointer: values under it; the wheel zooms; an admin can drag the view.
 function sample(values, at) {

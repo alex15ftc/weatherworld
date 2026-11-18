@@ -30,14 +30,31 @@ assert.deepEqual([again.timingErrorMs, again.endOrigin], [run.timingErrorMs, run
 // What it keeps: a frame at the start and every LONG_RANGE.synopticEvery hours.
 assert.deepEqual(run.synoptic.map(f => f.forecastHour), Array.from({ length: HOURS / LONG_RANGE.synopticEvery + 1 }, (_, k) => k * LONG_RANGE.synopticEvery));
 assert.equal(run.synoptic.at(-1).hour, run.initHourUtc + HOURS);
-// The tornado chances: 30 hours from 06Z hold one outlook day (12Z to 12Z), shown on the run's first frame (06Z), a
-// chance (percent) on every cell of the map for any tornado and each rated tier, each tier no higher than the one below.
-assert.deepEqual(run.tornadoDays.map(o => [o.day, o.frameHour, o.validFromHourUtc - run.initHourUtc, o.validToHourUtc - run.initHourUtc]), [[1, 0, 6, 30]], 'one outlook day, on the 06Z frame');
-const guide = run.tornadoDays[0], cells = guide.width * guide.height, tiers = ['tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent'];
-for (const tier of tiers) assert.equal(guide.chance[tier].length, cells, tier);
-for (let i = 0; i < cells; i++) for (let t = 1; t < tiers.length; t++) assert.ok(guide.chance[tiers[t]][i] <= guide.chance[tiers[t - 1]][i] && guide.chance.tornado[i] <= 100, `${tiers[t]} no higher than ${tiers[t - 1]}`);
-assert.deepEqual(Array.from(again.tornadoDays[0].chance.tornado), Array.from(guide.chance.tornado), 'the same chances every time');
-console.log(`tornado chances day 1: highest ${tiers.map(t => `${t} ${Math.max(...guide.chance[t])}%`).join(', ')}`);
+// The tornado chances: 30 hours from 06Z hold one outlook day (12Z to 12Z), kept on every frame inside it (15Z to the
+// next 12Z) as the expected tornadoes so far, which only grow through the day, each tier no more than the one below;
+// the day's last frame makes its highest chances.
+const tiers = ['tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent'];
+assert.deepEqual(run.tornadoDays.map(o => [o.day, o.validFromHourUtc - run.initHourUtc, o.validToHourUtc - run.initHourUtc, o.frameHours.join()]), [[1, 6, 30, '9,12,15,18,21,24,27,30']], 'one outlook day, on its frames');
+assert.deepEqual(run.tornadoFrames.map(f => [f.day, f.forecastHour]), run.tornadoDays[0].frameHours.map(h => [1, h]));
+const cells = run.tornadoFrames[0].width * run.tornadoFrames[0].height;
+run.tornadoFrames.forEach((f, k) => { for (const tier of tiers) { assert.equal(f.near[tier].length, cells, tier); for (let i = 0; i < cells; i++) { if (k) assert.ok(f.near[tier][i] >= run.tornadoFrames[k - 1].near[tier][i] - 1e-6, `${tier} grows through the day`); if (tier !== 'tornado') assert.ok(f.near[tier][i] <= f.near[tiers[tiers.indexOf(tier) - 1]][i] + 1e-6, `${tier} within the tier below`); } } });
+const last = run.tornadoFrames.at(-1), peak = Object.fromEntries(tiers.map(t => [t, Math.max(...Array.from(last.near[t], v => Math.round(100 * (1 - Math.exp(-v)))))]));
+assert.deepEqual(run.tornadoDays[0].peak, peak, 'the day\'s highest chances are its last frame\'s');
+assert.deepEqual(Array.from(again.tornadoFrames.at(-1).near.tornado), Array.from(last.near.tornado), 'the same chances every time');
+console.log(`tornado chances day 1: highest ${tiers.map(t => `${t} ${peak[t]}%`).join(', ')}`);
+// The runtime's answers: the days with their frames, and a frame's day so far and its last 3 hours (the day so far less
+// the frame before's; the day's first frame has nothing before it).
+{
+  const runtime = new LongRangeRuntime({ runtime: { engine: null }, pool: { run: async () => ({}) } });
+  runtime.runs = [{ initHourUtc: run.initHourUtc, hours: HOURS, tornadoDays: run.tornadoDays, tornadoFrames: run.tornadoFrames }];
+  assert.deepEqual(runtime.tornadoes('').days.map(d => [d.day, d.done, d.frameHours.length]), [[1, true, 8]]);
+  const at = runtime.tornadoes(run.initHourUtc, 30), first = runtime.tornadoes(run.initHourUtc, 9);
+  assert.deepEqual(at.total.tornado, Array.from(last.near.tornado, v => Math.round(100 * (1 - Math.exp(-v)))));
+  assert.equal(at.fromForecastHour, 27); assert.equal(first.fromForecastHour, null);
+  assert.deepEqual(first.recent.tornado, first.total.tornado, 'the first frame\'s last 3 hours are its day so far');
+  for (let i = 0; i < cells; i++) assert.ok(at.recent.tornado[i] <= at.total.tornado[i], 'the last 3 hours within the day so far');
+  assert.equal(runtime.tornadoes(run.initHourUtc, 3), null, 'no chances on a frame outside the days');
+}
 
 // The runtime: a run at 06Z, none at other hours once there is one; a server with none yet makes one at once.
 const world = { validHourUtc: 31 }, engine = { world, saveState: () => ({}) }, asked = [];

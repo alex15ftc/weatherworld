@@ -191,7 +191,7 @@ async function serveApi(url, req, res) {
     if (!longRange) return sendJson(req, res, 404, { error: 'The long range model is off' }, { cacheable: false, trace });
     // (the run's tornado chances are an admin's: ChaserArchive.js isAdmin)
     if (part === 'tornadoes' && !isAdmin(req)) return sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
-    const value = part === 'runs' ? longRange.list() : part === 'tornadoes' ? longRange.tornadoes(q('init')) : part === 'sounding' ? longRange.sounding(q('init'), q('hour'), q('row'), q('column')) : part === 'synoptic/frame' ? forRole(req, longRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? longRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
+    const value = part === 'runs' ? longRange.list() : part === 'tornadoes' ? longRange.tornadoes(q('init'), q('frame')) : part === 'sounding' ? longRange.sounding(q('init'), q('hour'), q('row'), q('column')) : part === 'synoptic/frame' ? forRole(req, longRange.synopticFrame(synoptic, q('init'), q('frame'))) : part === 'synoptic/field' ? longRange.synopticField(synoptic, q('init'), q('frame'), q('key')) : undefined;
     return sendJson(req, res, value ? 200 : 404, value ?? { error: 'Not found' }, { cacheable: false, trace });
   }
   // The outlook runs as an ensemble (OutlookRuntime.js): the issues kept, and one issue's storm tracks (?issued=).

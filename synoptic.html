@@ -32,7 +32,7 @@
     body:not([data-role="admin"]) [data-role-only="admin"], body[data-role="admin"] [data-role-only="public"] { display: none !important; }
     body:not([data-source="analysis"]) [data-mode="analysis"], body:not([data-source="model"]) [data-mode="model"], body:not([data-source="replay"]) [data-mode="replay"] { display: none !important; }
     body:not([data-long]) [data-long-only] { display: none !important; }
-    /* The long range model's tornado chances (an admin's): a button for each day. */
+    /* The long range model's tornado chances (an admin's): the day so far or the last 3 hours, a button for each day. */
     .guide-days { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
     .guide-days button { width: auto; min-width: 50px; padding: 3px 7px; font: 400 12.5px var(--mono); }
     .guide-days button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
@@ -117,9 +117,10 @@
       <section class="group" data-role-only="admin" data-long-only>
         <h2>Tornado chances</h2>
         <label><input type="checkbox" id="guideOn" /> Chance of a tornado within 25 mi, hatched EF2+ / EF3+ / EF4+</label>
+        <div class="guide-days" id="guideMode" aria-label="What the chances cover"><button data-mode="total">Day so far</button><button data-mode="recent">Last 3 h</button></div>
         <div class="guide-days" id="guideDays" aria-label="Outlook day"></div>
         <div class="guide-key" id="guideKey"></div>
-        <small id="guideNote">The chance of a tornado within 25 miles on the game map for each day, drawn on its 06Z frame as the ensemble draws it. Admin only.</small>
+        <small id="guideNote">The chance of a tornado within 25 miles on the game map for each day (12Z to 12Z), built up frame by frame as the ensemble's run totals are. Admin only.</small>
       </section>
       <section class="group">
         <h2>Charts</h2>

@@ -15,13 +15,14 @@
 // and what a sounding is made from for every cell of the map (soundingColumns.js).
 // The tornado guide (2026-11-18, the owner's request; admin only, on the model page): for each outlook day the run
 // covers (12Z to 12Z), the ingredients for storms gathered every step as Day 3's are, and from them the chance of a
-// tornado (and an EF2+, EF3+, EF4+ one) within 25 miles, as the ensemble's (DayOneOutlook.js tornadoGuide), shown on the
-// frame at the 06Z before the day.
+// tornado (and an EF2+, EF3+, EF4+ one) within 25 miles, as the ensemble's (DayOneOutlook.js tornadoGuide). Each kept
+// frame inside a day keeps the day's expected tornadoes so far (tornadoFrames), so the page can step through the day as
+// the ensemble's run totals build up, or show only the last few hours'.
 // Day 7 of a 06Z run ends at the run's end, 06Z: its last six hours (the early morning) are not counted.
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { timingErrorMs, TIMING } from './ensemblePerturbation.js';
 import { packColumns } from './soundingColumns.js';
-import { freshIngredients, addIngredients, tornadoGuide, hoursToDayEnd, OUTLOOK } from './DayOneOutlook.js';
+import { freshIngredients, addIngredients, tornadoGuide, tornadoNearSums, hoursToDayEnd } from './DayOneOutlook.js';
 
 export const LONG_RANGE = Object.freeze({
   hours: 168,
@@ -55,38 +56,46 @@ export function runLongRange(state, { hours = LONG_RANGE.hours, synopticOf = nul
   const error = timingMs ?? timingErrorMs(`${state.seed}|long-range|${initHourUtc}`, LONG_RANGE.timingSpreadMs);
   atmosphere.regional.timingErrorMs = error;
 
-  const synoptic = [], soundings = [], tornadoDays = [], head = { seed: state.seed, initHourUtc, hours, synopticEvery: LONG_RANGE.synopticEvery };
+  const synoptic = [], soundings = [], tornadoDays = [], tornadoFrames = [], head = { seed: state.seed, initHourUtc, hours, synopticEvery: LONG_RANGE.synopticEvery };
+  const sent = { days: 0, frames: 0 };
   const keep = () => {
     const forecastHour = Math.round((world.validHourUtc - initHourUtc) * 100) / 100, sounding = { hour: forecastHour, ...packColumns(world) }, frame = synopticOf ? { forecastHour, ...synopticOf(atmosphere) } : null;
     soundings.push(sounding); if (frame) synoptic.push(frame);
-    onProgress?.({ head, readyHours: forecastHour, soundings: [sounding], synoptic: frame ? [frame] : [], tornadoDays: closed.splice(0) });
+    onProgress?.({ head, readyHours: forecastHour, soundings: [sounding], synoptic: frame ? [frame] : [], tornadoDays: tornadoDays.slice(sent.days), tornadoFrames: tornadoFrames.slice(sent.frames) });
+    sent.days = tornadoDays.length; sent.frames = tornadoFrames.length;
   };
   // The outlook days: the first starts at the first 12Z (or at the start, when that is more than 6 hours off).
-  const n = world.width * world.height, dt = LONG_RANGE.atmosphereStepHours, firstFrom = hoursToDayEnd(initHourUtc) <= 6 + 1e-6 ? initHourUtc + hoursToDayEnd(initHourUtc) : initHourUtc;
-  const closed = [];
+  const n = world.width * world.height, dt = LONG_RANGE.atmosphereStepHours, firstFrom = hoursToDayEnd(initHourUtc) <= 6 + 1e-6 ? initHourUtc + hoursToDayEnd(initHourUtc) : initHourUtc, firstTo = firstFrom + hoursToDayEnd(firstFrom);
   let day = null;
+  const open = fromHourUtc => { const validToHourUtc = fromHourUtc + hoursToDayEnd(fromHourUtc); return { number: 1 + Math.round((validToHourUtc - firstTo) / 24), fromHourUtc, validToHourUtc, frames: [], ingredients: freshIngredients(n, { tornado: true }) }; };
+  // Each kept frame inside a day: the expected tornadoes within 25 miles so far in the day (DayOneOutlook.js
+  // tornadoNearSums), from which the page's chances are made, the day so far or the last few hours.
+  const snapshot = () => {
+    const forecastHour = Math.round((world.validHourUtc - initHourUtc) * 100) / 100;
+    tornadoFrames.push({ forecastHour, day: day.number, validToHourUtc: day.validToHourUtc, width: world.width, height: world.height, near: tornadoNearSums(world, day.ingredients) }); day.frames.push(forecastHour);
+  };
+  // A day done: its span, its frames, and its highest chances over the whole day.
   const close = () => {
-    const validToHourUtc = day.fromHourUtc + hoursToDayEnd(day.fromHourUtc), number = 1 + Math.round((validToHourUtc - (firstFrom + hoursToDayEnd(firstFrom))) / 24);
-    // (the frame at the 06Z before the day, or the nearest kept one before it)
-    const sixZ = validToHourUtc - 24 - (OUTLOOK.dayStartUtc - LONG_RANGE.atUtc), frameHour = Math.max(0, Math.floor((sixZ - initHourUtc) / LONG_RANGE.synopticEvery + 1e-6) * LONG_RANGE.synopticEvery);
-    const guide = tornadoGuide(world, day.ingredients);
-    const entry = { day: number, frameHour, validFromHourUtc: validToHourUtc - 24, validToHourUtc, countedFromHourUtc: day.fromHourUtc, countedToHourUtc: world.validHourUtc, ...guide };
-    tornadoDays.push(entry); closed.push(entry); day = null;
+    const { chance } = tornadoGuide(world, day.ingredients);
+    tornadoDays.push({ day: day.number, validFromHourUtc: day.validToHourUtc - 24, validToHourUtc: day.validToHourUtc, countedFromHourUtc: day.fromHourUtc, countedToHourUtc: world.validHourUtc, width: world.width, height: world.height, frameHours: day.frames, peak: Object.fromEntries(Object.entries(chance).map(([field, values]) => [field, values.reduce((a, v) => Math.max(a, v), 0)])) });
+    day = null;
   };
   keep();
   const steps = Math.round(hours / dt);
   for (let step = 0; step < steps; step++) {
     const before = world.validHourUtc;
     atmosphere.advance(dt);
+    const isFrame = Math.abs((world.validHourUtc - initHourUtc) % LONG_RANGE.synopticEvery) < 1e-6;
     if (before + 1e-6 >= firstFrom) {
-      day ??= { fromHourUtc: before, ingredients: freshIngredients(n, { tornado: true }) };
+      day ??= open(before);
       addIngredients(world, day.ingredients, dt);
+      if (isFrame) snapshot();
       if (hoursToDayEnd(world.validHourUtc) > 24 - 1e-6 || step === steps - 1) close();
     }
-    if (Math.abs((world.validHourUtc - initHourUtc) % LONG_RANGE.synopticEvery) < 1e-6 || (step === steps - 1 && closed.length)) keep();
+    if (isFrame || step === steps - 1) keep();
   }
   return {
-    ...head, timingErrorMs: Math.round(error * 1000) / 1000, ...(onProgress ? { streamed: true } : { synoptic, soundings, tornadoDays }),
+    ...head, timingErrorMs: Math.round(error * 1000) / 1000, ...(onProgress ? { streamed: true } : { synoptic, soundings, tornadoDays, tornadoFrames }),
     // (where the run ends with the map, for checks: metres along and across the large-scale model)
     endOrigin: { x: atmosphere.regional.origin.x, y: atmosphere.regional.origin.y },
     ms: Math.round(performance.now() - started)

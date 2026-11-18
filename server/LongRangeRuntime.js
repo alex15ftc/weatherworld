@@ -5,6 +5,7 @@
 // empty until the next 06Z.
 // It answers the large-scale page the way the short range model's runs do (ShortRangeRuntime.js).
 import { LONG_RANGE, longRangeDue } from '../js/forecast/LongRangeModel.js';
+import { chanceOfCount } from '../js/forecast/DayOneOutlook.js';
 import { sharedForecastPool } from './ForecastPool.js';
 import { ShortRangeRuntime } from './ShortRangeRuntime.js';
 
@@ -28,13 +29,26 @@ export class LongRangeRuntime extends ShortRangeRuntime {
   async start(engine, init) { return this.startRun(engine, init, 'longRange', LONG_RANGE.hours, LONG_RANGE.keepRuns); }
 
   // The tornado chances of a run (the newest when none is named), for an admin on the model page (2026-11-18, the
-  // owner's request): for each outlook day the chance (percent) of a tornado within 25 miles, and of an EF2+, EF3+
-  // and EF4+ one, on the map's cells (row 0 the map's northern edge), and the frame it goes with (the 06Z before it).
-  tornadoes(init) {
+  // owner's request), stepped through as the ensemble's run totals are. Without a frame: the outlook days, each with
+  // its frames (forecast hours) and, once done, its highest chances. With frame (a forecast hour): that frame's chance
+  // (percent) of a tornado within 25 miles, and of an EF2+, EF3+ and EF4+ one, on the map's cells (row 0 the map's
+  // northern edge): `total` over its day so far (from 12Z), `recent` over the hours since the frame before it.
+  tornadoes(init, frame = null) {
     const run = init === undefined || init === null || init === '' ? this.latest() : this.run(init);
-    if (!run?.tornadoDays) return null;
-    const days = run.tornadoDays.map(o => ({ day: o.day, frameHour: o.frameHour, validFromHourUtc: o.validFromHourUtc, validToHourUtc: o.validToHourUtc, countedToHourUtc: o.countedToHourUtc, width: o.width, height: o.height, chance: Object.fromEntries(Object.entries(o.chance).map(([k, v]) => [k, list(v)])) }));
-    return { initHourUtc: run.initHourUtc, hours: run.hours, partial: Boolean(run.partial), days };
+    if (!run?.tornadoFrames) return null;
+    const frames = run.tornadoFrames, base = { initHourUtc: run.initHourUtc, hours: run.hours, partial: Boolean(run.partial) };
+    if (frame === null || frame === undefined || frame === '') {
+      const days = new Map();
+      for (const f of frames) { if (!days.has(f.day)) days.set(f.day, { day: f.day, validFromHourUtc: f.validToHourUtc - 24, validToHourUtc: f.validToHourUtc, frameHours: [], done: false }); days.get(f.day).frameHours.push(f.forecastHour); }
+      for (const d of run.tornadoDays ?? []) if (days.has(d.day)) Object.assign(days.get(d.day), { done: true, countedToHourUtc: d.countedToHourUtc, peak: d.peak });
+      return { ...base, days: [...days.values()] };
+    }
+    const at = frames.findIndex(f => f.forecastHour === Number(frame));
+    if (at < 0) return null;
+    const f = frames[at], before = frames[at - 1]?.day === f.day ? frames[at - 1] : null;
+    const chances = sums => Object.fromEntries(Object.entries(sums).map(([field, values]) => [field, list(values).map(chanceOfCount)]));
+    const recent = Object.fromEntries(Object.entries(f.near).map(([field, values]) => [field, Float32Array.from(values, (v, i) => v - (before?.near[field][i] ?? 0))]));
+    return { ...base, forecastHour: f.forecastHour, day: f.day, fromForecastHour: before?.forecastHour ?? null, validFromHourUtc: f.validToHourUtc - 24, validToHourUtc: f.validToHourUtc, width: f.width, height: f.height, total: chances(f.near), recent: chances(recent) };
   }
 
   list() {

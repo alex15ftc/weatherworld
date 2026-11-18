@@ -301,10 +301,17 @@ export function ingredientDay(world, ingredients) {
 // and of an EF2+, EF3+ and EF4+ one, from the day's expected tornadoes (TORNADO_GUIDE) summed within 25 miles:
 // 1 - exp(-their sum). Raw, as the run has them: no outlook's calibration.
 export const TORNADO_GUIDE_MILES = 25;
+export { TORNADO_GUIDE_FIELDS };
+// The expected tornadoes (each tier) within 25 miles of each cell, so far in the day: what the chances are made of
+// (the model page steps through them, as the ensemble's run totals; 2026-11-18).
+export function tornadoNearSums(world, ingredients) {
+  return Object.fromEntries(TORNADO_GUIDE_FIELDS.map(field => [field, Float32Array.from(sumsWithin(world, ingredients[field], TORNADO_GUIDE_MILES))]));
+}
+// A chance (percent, whole numbers) from expected counts: 1 - exp(-count).
+export const chanceOfCount = count => Math.round(100 * (1 - Math.exp(-Math.max(0, count))));
 export function tornadoGuide(world, ingredients) {
-  const n = world.width * world.height, out = {};
-  for (const field of TORNADO_GUIDE_FIELDS) { const near = sumsWithin(world, ingredients[field], TORNADO_GUIDE_MILES), chance = new Uint8Array(n); for (let i = 0; i < n; i++) chance[i] = Math.round(100 * (1 - Math.exp(-near[i]))); out[field] = chance; }
-  return { width: world.width, height: world.height, chance: out };
+  const near = tornadoNearSums(world, ingredients);
+  return { width: world.width, height: world.height, chance: Object.fromEntries(Object.entries(near).map(([field, sums]) => [field, Uint8Array.from(sums, chanceOfCount)])) };
 }
 
 // How far a day's chances are spread out (km): see OUTLOOK.spreadKm.

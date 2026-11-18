@@ -11,7 +11,7 @@ import { sharedForecastPool, shareState } from './ForecastPool.js';
 export function streamRun(run, part) {
   Object.assign(run, part.head);
   if (part.parameters) run.parameters = part.parameters;
-  for (const key of ['fields', 'soundings', 'storms', 'tracks', 'synoptic', 'tornadoDays']) { const list = part[key]; if (!list?.length) continue; run[key] ??= []; for (const item of list) run[key].push(item); }
+  for (const key of ['fields', 'soundings', 'storms', 'tracks', 'synoptic', 'tornadoDays', 'tornadoFrames']) { const list = part[key]; if (!list?.length) continue; run[key] ??= []; for (const item of list) run[key].push(item); }
   run.readyHours = part.readyHours;
 }
 // How much of a run is made: a run still going is `partial`, ready to forecast hour `readyHours`.
