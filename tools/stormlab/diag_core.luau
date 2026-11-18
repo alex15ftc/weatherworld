@@ -55,7 +55,9 @@ for _, name in { "SquallLine", "Supercell" } do
 	end
 	print(string.format("%s: peak ground wind / parent vlow at that time: median %.2f (target ~2, Vrot-EF relation)", name, median(ratios)))
 	print(string.format("%s: below EF0 %d | EF0 %d EF1 %d EF2 %d EF3 %d EF4 %d EF5 %d", name, ef[-1], ef[0], ef[1], ef[2], ef[3], ef[4], ef[5]))
-	print(string.format("%s: %d tornadoes (%d engine-led) | median rc over all samples %.0f m | median of per-tornado medians %.0f m", name, #list, eng, median(all), median(meds)))
+	-- (A vortex whose peak ground wind stayed below EF0 is no tornado: counted apart, 2026-11-18.)
+	local nTor = #list - ef[-1]
+	print(string.format("%s: %d tornadoes, %d vortices below EF0 not counted (%d engine-led in all) | median rc over all samples %.0f m | median of per-tornado medians %.0f m", name, nTor, ef[-1], eng, median(all), median(meds)))
 	for i, r in list do
 		if i <= 12 then
 			print(string.format("  %s %-5s %s life-median rc %4.0f m, peak %4.0f m (swirl %.2f), peak vc %4.1f m/s, peak ground wind %4.1f m/s (vlow %4.1f)", r.id, r.kind, r.eng and "eng" or "own", median(table.clone(r.rcs)), r.peak, r.sw, r.vc, r.pw, r.vl or 0))

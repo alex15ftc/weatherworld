@@ -36,7 +36,8 @@ const LIMITS = {
   qg: { jetMs: [0, 30], jetShearMs: [-10, 30], upperWindMs: [0, 30], lowerWindMs: [-5, 15], jetWidthKm: [400, WIDEST_JET_KM] },
   steering: {
     windCapKt: [20, 140], southerlyCapKt: [5, 60], wantedLow: [0, 1], wantedHigh: [0, 1], systemSpeedMs: [0, 30], northSpeedMs: [0, 20],
-    homeReachKm: [0, 3000], homePull: [0, 1], lookAheadDays: [0, 2], maxMissKm: [0, 2000], moistRangeGkg: [-8, 10], kinds: [0, 1]
+    homeReachKm: [0, 3000], homePull: [0, 1], lookAheadDays: [0, 2], maxMissKm: [0, 2000], moistRangeGkg: [-8, 10], kinds: [0, 1],
+    liftShare: [0, 1], liftRangeKh: [-0.3, 0.6]
   }
 };
 const pick = (object, keys) => Object.fromEntries(keys.map(key => [key, object?.[key] ?? null]));
@@ -73,7 +74,7 @@ function clean({ qg = {}, steering = {} } = {}) {
   for (const key of STEERING_KEYS) {
     if (!(key in steering)) continue;
     const value = steering[key], range = LIMITS.steering[key];
-    if (key === 'moistRangeGkg') { if (Array.isArray(value) && value.length === 2) { const [a, b] = value.map(v => clampTo(v, range)); if (a !== null && b !== null && b > a) outSteering[key] = [a, b]; } continue; }
+    if (key === 'moistRangeGkg' || key === 'liftRangeKh') { if (Array.isArray(value) && value.length === 2) { const [a, b] = value.map(v => clampTo(v, range)); if (a !== null && b !== null && b > a) outSteering[key] = [a, b]; } continue; }
     if (key === 'kinds') { if (value && typeof value === 'object') { const k = {}; for (const name of ['warmSector', 'nearLow', 'upperLow']) { const v = clampTo(value[name], range); if (v !== null) k[name] = v; } if (Object.values(k).some(v => v > 0)) outSteering[key] = k; } continue; }
     const v = clampTo(value, range); if (v !== null) outSteering[key] = key === 'lookAheadDays' ? Math.round(v) : v;
   }

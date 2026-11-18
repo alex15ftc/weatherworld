@@ -89,7 +89,18 @@ export const STEERING_DEFAULTS = Object.freeze({
   // (Not done, 2026-11-16: keeping a low-aimed day only while its slide reached 25-70% of the best
   // warm-sector slide's support. Low-aimed slides seldom reach a quarter of it, so nearly every day became a
   // warm-sector day, and the regression suite's EF0/EF1 shares and tornado CIG1+ days regressed.)
-  homePull: 0.15
+  homePull: 0.15,
+  // Lift (2026-11-18): the share of a warm-sector place's support that rests on the outer model's large-scale
+  // ascent there (its omega: vorticity advection, warm advection and friction), averaged over the liftHours before
+  // each time the plan is judged on. That share rises smoothly from none at liftRangeKh[0] (K/h of cooling by
+  // rising air) to all of it at [1]. Wind aloft over moist southerly flow scores a trough's whole downstream side
+  // alike; the lift picks out where the trough is actually lifting the air (the jet's exit region, the
+  // vorticity advection ahead of the wave). 0: off. Under strongly supported places the 6-hour ascent runs about
+  // 0.09 K/h (median) to 0.21 (top tenth). Regression suite, 8 seeds x 10 days against 0: with 0.5 no regressions,
+  // MDT+HIGH 22.5 to 28.8% (target 25), below Slight 6.25 to 5%, tornado CIG3+ days 2.5 to 5%; with 1, EF4+ share
+  // (0.64 to 1.37%) and tornado CIG3+ days (8.75%) regressed. 1 since 2026-11-18 (the owner accepted those regressions):
+  // all of the support comes with the lift; MDT+HIGH-heavy days with more violent tornadoes.
+  liftShare: 1, liftRangeKh: [0, 0.2], liftHours: 6
 });
 
 const KT = 1.943844;
@@ -145,7 +156,15 @@ export class RegionSteering {
     copy.time = live.time; copy.history = live.history;   // the model replaces these arrays, never writes into them
     copy.fastTransforms = live.fastTransforms;
     let advanced = 0;
-    hoursList.forEach((hours, i) => { copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours; visit(copy, i); });
+    // The last liftHours before each time are an advance of their own, so the copy's ascent is theirs (the steps
+    // taken are the same either way: the hours are whole and the model's step divides an hour).
+    const liftHours = Math.max(0, Math.round(this.params.liftHours ?? 0));
+    hoursList.forEach((hours, i) => {
+      const last = Math.min(liftHours, hours - advanced);
+      if (hours - advanced - last > 0) copy.advance((hours - advanced - last) * 3600 * regional.params.tempo);
+      if (last > 0) copy.advance(last * 3600 * regional.params.tempo);
+      advanced = hours; visit(copy, i);
+    });
     return copy;
   }
 
@@ -155,7 +174,7 @@ export class RegionSteering {
   supportByColumn(model, northM = 0) {
     const regional = this.regional, p = this.params, { nx, d } = model;
     const span = Math.max(1, Math.round(regional.nx * regional.dx / d)), j0 = Math.floor((regional.origin.y + northM) / d);
-    const mid = new Float64Array(nx), south = new Float64Array(nx), wet = new Float64Array(nx), warm = new Float64Array(nx);
+    const mid = new Float64Array(nx), south = new Float64Array(nx), wet = new Float64Array(nx), warm = new Float64Array(nx), lift = new Float64Array(nx);
     // The mean moisture and warmth fall northward: a slide north is a move into drier, cooler air.
     const meanWet = -(model.params.surfaceMoistureGradientGkgPer1000Km ?? 0) * northM / 1e6;
     const meanWarm = -(model.params.surfaceGradientKPer1000Km ?? 0) * northM / 1e6;
@@ -165,18 +184,21 @@ export class RegionSteering {
         const f = model.fieldsAt(i, j0 + dj);
         mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span;
         wet[i] += ((f.surfaceMoistureGkg ?? 0) + meanWet) / span; warm[i] += ((f.surfaceThetaK ?? 0) + meanWarm) / span;
+        lift[i] += (f.ascentCoolingKh ?? 0) / span;
       }
     }
-    const support = new Float64Array(nx);
+    const support = new Float64Array(nx), liftShare = clamp(p.liftShare ?? 0, 0, 1);
     for (let i = 0; i < nx; i++) {
-      let m = 0, s = 0, q = 0, t = 0;
-      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; q += wet[(i + di) % nx] / span; t += warm[(i + di) % nx] / span; }
+      let m = 0, s = 0, q = 0, t = 0, a = 0;
+      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; q += wet[(i + di) % nx] / span; t += warm[(i + di) % nx] / span; a += lift[(i + di) % nx] / span; }
       support[i] = Math.min(m, p.windCapKt) / p.windCapKt * clamp(s, -p.southerlyCapKt, p.southerlyCapKt) / p.southerlyCapKt;
       if (support[i] > 0) {
         // With moistRangeGkg, the air's moisture about its mean rises smoothly from none at the range's low end to all
         // the support at its high end (in place of the dry cut); with warmRangeK, its warmth the same way.
         support[i] *= p.moistRangeGkg ? ramp(q, p.moistRangeGkg) : clamp(1 + q / p.dryGkg, 0, 1);
         if (p.warmRangeK) support[i] *= ramp(t, p.warmRangeK);
+        // With liftShare, that share of the support comes only with the large-scale ascent (see liftShare).
+        if (liftShare > 0) support[i] *= 1 - liftShare + liftShare * ramp(a, p.liftRangeKh);
       }
     }
     return support;

@@ -78,7 +78,7 @@ if (flag('--worker') !== null) await worker(Number(flag('--worker'))); else awai
 
 async function worker(seed) {
   const { AtmosphereWorld } = await import('../js/world/AtmosphereWorld.js');
-  const { captureTruth, aggregateTruth, practicallyPerfectChance, smoothTruth } = await import('../js/verification/truth.js');
+  const { captureTruth, aggregateTruth, practicallyPerfectChance, smoothTruth, countTornadoes } = await import('../js/verification/truth.js');
   // (REPP: a run's day smoothed again from its reports, as close() in DayOneOutlook.js smooths it)
   const resmooth = run => {
     if (!run || run.fromIngredients || !run.reports) return run;
@@ -122,7 +122,7 @@ async function worker(seed) {
       truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
       happened = world.stormEngine.totalTornadoes - before;
       // Every tornado on the ground in the day, those already down at 12Z too, as a run counts its own (I7 counts).
-      truthTornadoes = new Set(frames.flatMap(frame => (frame.tornadoTrackPoints ?? []).map(point => point.tornado))).size;
+      truthTornadoes = countTornadoes(frames);
       if (SAVE) fs.writeFileSync(saved(SAVE, seed, day), zlib.gzipSync(v8.serialize({ now, runs, truth, happened, truthTornadoes, map })));
     }
     // The same day as a Day 3 outlook would give it: one chance, of any severe weather.

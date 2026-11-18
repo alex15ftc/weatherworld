@@ -32,5 +32,13 @@ for f = 1, 60 * 60 do -- 60 s of frames at 60 fps
 	local ms = (os.clock() - t0) * 1000
 	worst = math.max(worst, ms); total += ms; frames += 1
 end
+-- Tornadoes: vortices whose peak ground wind reached EF0 (below it there is no tornado, 2026-11-18).
+local function tornadoCount(list: { any }): number
+	local n = 0
+	for _, t in list do
+		if (t.peakEf or -1) >= 0 then n += 1 end
+	end
+	return n
+end
 print(string.format("time scale %dx: %.0f sim s in 60 s of frames; mean %.2f ms/frame, worst %.1f ms; %d slow steps (mean %.1f sim s each); tornadoes %d; storms %d; parcels %d",
-	timeScale, world.time, total / frames, worst, slowCalls, world.time / slowCalls, #world.tornadoes, #world.storms, world.precip.n))
+	timeScale, world.time, total / frames, worst, slowCalls, world.time / slowCalls, tornadoCount(world.tornadoes), #world.storms, world.precip.n))
