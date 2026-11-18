@@ -40,13 +40,18 @@ export const RADAR_PRODUCTS = {
     legend: [5, 20, 35, 50, 65, 75]
   },
   velocity: {
-    label: 'Base velocity', short: 'VEL', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5, doppler: true,
+    // (knee, outerStep, zeroByte: since 2026-11-18 not one step over the byte's range but 0.5 m/s steps to +-knee and
+    // outerStep beyond, to +-86 m/s (192 mph): radarByteScale. Until then 0.5 m/s steps to +-63.5, the WSR-88D's
+    // fine mode, which a violent tornado's couplet reached from 25 km out and stopped at, clipped.)
+    label: 'Base velocity', short: 'VEL', units: 'm/s', min: -86, step: 0.5, knee: 40, outerStep: 1, zeroByte: 128, decimals: 1, band: 2.5, doppler: true,
     // Greens toward the radar and reds away, brightening to 30 m/s and changing hue beyond it (cyan then blue in,
     // orange then yellow out), with a grey-pink zero, as real velocity displays read (docs/storm-reference/radar
-    // 03, 05, 06). Until 2026-11-14 1-10 m/s was near black-green and 25 m/s still plain green or red.
-    stops: [[-63.5, 60, 110, 255, 255], [-45, 0, 215, 255, 255], [-30, 0, 255, 110, 255], [-15, 0, 185, 45, 255], [-5, 25, 120, 45, 255], [-1, 70, 100, 75, 255],
-      [0, 150, 130, 135, 255], [1, 110, 60, 65, 255], [5, 140, 20, 28, 255], [15, 205, 0, 22, 255], [30, 255, 45, 45, 255], [45, 255, 155, 40, 255], [63.5, 255, 240, 120, 255]],
-    legend: [-50, -25, 0, 25, 50]
+    // 03, 05, 06). Until 2026-11-14 1-10 m/s was near black-green and 25 m/s still plain green or red. Beyond 63.5
+    // m/s (2026-11-18, the wider scale) inbound pales from blue to ice white and outbound from yellow to white: not
+    // purple, which is range folded, nor black, which reads as no echo.
+    stops: [[-86, 225, 235, 255, 255], [-75, 150, 180, 255, 255], [-63.5, 60, 110, 255, 255], [-45, 0, 215, 255, 255], [-30, 0, 255, 110, 255], [-15, 0, 185, 45, 255], [-5, 25, 120, 45, 255], [-1, 70, 100, 75, 255],
+      [0, 150, 130, 135, 255], [1, 110, 60, 65, 255], [5, 140, 20, 28, 255], [15, 205, 0, 22, 255], [30, 255, 45, 45, 255], [45, 255, 155, 40, 255], [63.5, 255, 240, 120, 255], [75, 255, 250, 200, 255], [86, 255, 255, 255, 255]],
+    legend: [-75, -50, -25, 0, 25, 50, 75]
   },
   // What the radar measures before dealiasing: motion faster than the Nyquist speed folds over.
   rawVelocity: {
@@ -55,9 +60,9 @@ export const RADAR_PRODUCTS = {
     legend: [-30, -15, 0, 15, 30]
   },
   stormRelativeVelocity: {
-    label: 'Storm-relative velocity', short: 'SRV', units: 'm/s', min: -63.5, step: 0.5, decimals: 1, band: 2.5, doppler: true,
+    label: 'Storm-relative velocity', short: 'SRV', units: 'm/s', min: -86, step: 0.5, knee: 40, outerStep: 1, zeroByte: 128, decimals: 1, band: 2.5, doppler: true,
     stops: null, // shares the velocity table
-    legend: [-50, -25, 0, 25, 50]
+    legend: [-75, -50, -25, 0, 25, 50, 75]
   },
   correlationCoefficient: {
     label: 'Correlation coefficient', short: 'CC', units: 'ρhv', min: 0.2, step: 0.0035, decimals: 3, band: 0.05,
@@ -121,14 +126,28 @@ export const RADAR_PRODUCT_KEYS = Object.keys(RADAR_PRODUCTS).filter(key => !RAD
 export const RANGE_FOLDED = 1;
 export const isRangeFolded = (product, byte) => byte === RANGE_FOLDED && Boolean(RADAR_PRODUCTS[product]?.doppler);
 
+// A product's bytes are value = min + (byte - 1) x step; or, for one with a knee (velocity), byte zeroByte is 0 and
+// each byte from it is a step up to +-knee and an outerStep beyond, the same each way (byte 2 the lowest, 2 zeroByte - 2
+// the highest). The game reads them the same way (roblox/Client/Modules/Products/Layers/Radar.luau, from the
+// scripts/export-palettes.mjs tables).
 export function encodeRadarValue(product, value) {
   const spec = RADAR_PRODUCTS[product];
+  if (spec.knee) {
+    const a = Math.abs(value), inner = spec.knee / spec.step;
+    const d = a <= spec.knee ? Math.round(a / spec.step) : inner + Math.round((a - spec.knee) / spec.outerStep);
+    return Math.max(2, Math.min(2 * spec.zeroByte - 2, spec.zeroByte + Math.sign(value) * d));
+  }
   return Math.max(spec.doppler ? 2 : 1, Math.min(255, 1 + Math.round((value - spec.min) / spec.step)));
 }
 
 export function decodeRadarValue(product, byte) {
   if (!byte || isRangeFolded(product, byte)) return null;
   const spec = RADAR_PRODUCTS[product];
+  if (spec.knee) {
+    if (byte > 2 * spec.zeroByte - 2) return null;
+    const d = byte - spec.zeroByte, a = Math.abs(d), inner = spec.knee / spec.step;
+    return Math.sign(d) * (a <= inner ? a * spec.step : spec.knee + (a - inner) * spec.outerStep);
+  }
   return spec.min + (byte - 1) * spec.step;
 }
 
@@ -138,7 +157,9 @@ export function radarColorTable(product, stepped = false) {
   const { stops, band } = RADAR_PRODUCTS[product];
   const lut = new Uint8Array(256 * 4);
   for (let b = 1; b < 256; b++) {
-    const value = decodeRadarValue(product, b), v = stepped ? Math.floor(value / band + 1e-6) * band : value;
+    const value = decodeRadarValue(product, b);
+    if (value === null) continue;   // (a byte the product does not use: clear)
+    const v = stepped ? Math.floor(value / band + 1e-6) * band : value;
     let j = 0;
     while (j < stops.length - 2 && v > stops[j + 1][0]) j++;
     const a = stops[j], c = stops[j + 1];

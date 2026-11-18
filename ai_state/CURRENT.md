@@ -541,8 +541,23 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    17/29/38, Day 2 16/19/30 -> 9/13/18, Day 3 severe 5 -> 15; in-sample recalibration gains 0-1 (the weather is less
    predictable, not miscalibrated). Off: tornado CIG3 drawn 10% / verified 27% (Day 1), CIG1 47 / 23%; Days 2-3
    Moderate forecast 10 / 0% against verified 35 / 50%. Owner held the refit (intensity groups and category cutoffs:
-   fit archive seeds 1-30, then check on the saved 41-50 archive). Next: warm rain in the game's Luau sim (StormLab
-   Storm.luau rain release); the refit when the owner wants it.
+   fit archive seeds 1-30, then check on the saved 41-50 archive). Next: the refit when the owner wants it.
+00. Warm rain in the game's sim and radar velocity (2026-11-18, on main; NOT deployed or published yet).
+   Warm rain: StormLab Storm.luau `Storm.WARM_RAIN`/`warmRainOf` (the engine's rule; s.inflowVapour, the lowest km's
+   vapour, in Storm.environment), released from 300 m above the base to the freezing level. Lab scenes
+   (tools/stormlab/diag_warmrain.luau): SupercellB (15.1 g/m3, 3.5 km warm cloud) share 0.29, rain within 5 km of the
+   low meso 31.8 -> 34.4%, peak 58 -> 87 mm/h; Supercell, SupercellLife, Wedge9 (10-12 g/m3) 0-0.03, unchanged.
+   Radar (RadarSimulator.js): the closer-in weakness was mostly sampling: a 200 mph tornado's core is ~100 m in radius
+   near the ground (320 m above 600 m) against 500 m gates, read at one point. PULSE_VOLUME averages the wind over 5 x 3
+   points in gates near a tornado (little change alone: an honest pulse volume of a 100 m core reads a third of its
+   swirl). DEALIAS.method 'leastSquares' (distance-weighted, differences capped at Vn; RADAR_DEALIAS=median for the
+   old): 500 m gates 7-14 km dV 74-84 -> 78-92 with no gate wrong (= measured), 250 m gates 10-18 km 83-91 -> 96-108,
+   6-8 km still 2-5 gates wrong (gate-to-gate shear over 2 Vn); 17-110 km unchanged. Scan time as main. Velocity bytes
+   (RadarFormat knee): 0.5 m/s to +-40, 1 m/s to +-86 (was +-63.5, clipped); game decodes the same (Radar.luau
+   byteOf/valueOf, Palettes.luau regenerated; 1012 bytes checked). Colours past 63.5: outbound to white (owner's),
+   inbound blue to ice white (owner confirmed; purple is range folded, black reads as no echo). Next: deploy the
+   engine and publish the place together (an old place misreads the new velocity bytes). Suite 74/74; Luau
+   test_scenes as main (same tornadoes, rain at them a few mm/h either way); test_client fails on main too (World.luau:312).
 
 00. Admin tool (2026-11-18; merged and deployed from 91eb5c8, the live world carried on; the tool itself is local only).
    `npm run admin` -> http://localhost:3920 (tools/admin/: server.mjs, admin.html, SeverePreview.js,
@@ -573,11 +588,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
      layer winds, so any backing reaches the anvil. PW only scales rain amount (0.4-1x, ~3 dB from 0.8 to 2.4 in),
      not where it falls. StormAppearance's `spectrum` (a second LP-HP formula for the visual rain-wrap) reads nearly
      every supercell as HP. Engine changes: need the engine-batch suite and a meteorologist check of 250 mb winds.
-   - Radar velocity weaker close in than at 40-65 km (200 mph: dV 89 at 6-14 km, 114 at 55-65): `dealias` unfolds
-     toward the median of 1 radial x 2 gates either side, along-beam gates outvoting the 70 m-wide radials beside a
-     one-gate-long couplet. A distance-weighted median (tried, reverted) gained close in (89 -> 102) but lost at
-     95-110 km (107 -> 91.5). Needs a least-squares (2D-VDA-like) unfold and pulse-volume averaging. Velocity is
-     stored to +-63.5 m/s (WSR-88D's 0.5 m/s mode; 200 mph tornadoes reach it at 40-65 km).
+   - Radar velocity weaker close in: done 2026-11-18 (item 00, warm rain and radar velocity above).
 000. Building damage (on `main`, not deployed or published). Seen in Studio 2026-11-17: in a play test the live server builds chunks with
    their `B<n>` building models (DI, Frame, Size); in edit mode every indicator's degrees were laid out side by
    side from real generated buildings and look right from several angles (fixed there: a stepped tower's upper

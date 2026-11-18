@@ -83,7 +83,15 @@ const velocityErrorMs = sigma => Math.sqrt(DOPPLER.wavelengthM * sigma / (8 * Ma
 // passes: at most this many, stopping when one changes nothing. A folded patch is unfolded from its rim inward, a
 // gate or so a pass, so it takes as many passes as the patch is gates across (2 until 2026-11-14: a strong
 // tornado's outbound side, 8 gates of it past Vn, stayed folded on every scan - a hole of inbound in the couplet).
-const DEALIAS = { passes: 8, radials: 1, alongKm: 1, least: 4 };
+// method (2026-11-18): 'leastSquares', as the WSR-88D's 2D-VDA in outline (Jing and Wiener 1993: the unfolding that
+// makes the differences between neighbouring gates least in the sum of their squares): of the unfoldings nearest the
+// present one, the one that differs least from the neighbours, each weighted by the inverse of how far off it is and its
+// difference counted only up to Vn (one beyond that is across a shear the radar cannot follow, and says nothing of
+// which unfolding is right). 'median', before: the median of the neighbours, every one counted alike. Close to the
+// radar the radials beside a gate are 35-70 m off and the gates along the beam 250-500 m: the far along-beam gates
+// outvoted the near ones across, and a tornado's couplet, tighter than the gates round it, was unfolded onto its own
+// other side (a violent tornado at 7 km on 250 m gates: dV 113 m/s measured, 81 shown).
+const DEALIAS = { passes: 8, radials: 1, alongKm: 1, least: 4, method: process.env.RADAR_DEALIAS || 'leastSquares' };
 // Fall speed (m/s) of what reflects Z (mm6/m3) at a height (m above the ground) with the freezing
 // level there: rain by Vt = 2.6 Z^0.107 (Joss and Waldvogel 1970), snow and graupel aloft about 1 m/s
 // (Locatelli and Hobbs 1974), faster in the thinner air aloft by (rho0 / rho)^0.4 (Foote and du Toit
@@ -444,6 +452,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
   const dNdh = envSample(scene.env, scene.env.refractivityGradient, site.xKm, site.yKm);
   const lowEarthKm = CLUTTER.earthKm / Math.max(0.02, 1 + CLUTTER.earthKm * Math.max(dNdh, CLUTTER.ductingDnDh) * 1e-6), sinTilt = Math.sin(tiltDeg * DEG);
   const clutterZ = 10 ** (CLUTTER.residualDbz / 10);
+  const tornadoes = tornadoReaches(scene, GATE_KM);
   // Storm-relative velocity takes off the motion of the storms this radar can see.
   const stormMotion = meanStormMotion(scene.storms, scene.env, site.xKm, site.yKm, RADAR_RANGE_KM), su = stormMotion.u, sv = stormMotion.v;
   // Noise differs from scan to scan and from product to product.
@@ -486,16 +495,29 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
       }
       const bin = binAt(scene.stormBins, x, y), inStorm = bin !== null, freezingM = inStorm ? envRead(scene.env.freezing) : 0;
       let zh = 0, zv = 0, ccw = 0, stormRadial = 0, stormRadial2 = 0, hail = 0, fall = 0, rising = 0;
-      const boundaryBin = binAt(scene.boundaryBins, x, y);
+      const boundaryBin = binAt(scene.boundaryBins, x, y), pulse = inStorm && tornadoes.length > 0 && nearTornado(tornadoes, x, y);
       for (let o = 0; o < 3; o++) {
         const agl = centerAgl + BEAM_OFFSETS.k[o] * geo.spreadM, wgt = BEAM_OFFSETS.w[o];
         if (agl < 0) continue;
         sampleVolume(scene, bin, boundaryBin, x, y, agl, sample, clearAir);
         zh += sample.zh * wgt; zv += sample.zv * wgt; ccw += sample.cc * wgt; hail += sample.hail * wgt;
         if (inStorm && sample.zh > 0) {
-          stormWindAt(bin, x, y, agl, stormWind);
-          const along = stormWind.u * sinAz + stormWind.v * cosAz;
-          stormRadial += sample.zh * wgt * along; stormRadial2 += sample.zh * wgt * along * along;
+          let along, along2;
+          if (pulse) {
+            // The gate's whole pulse volume (PULSE_VOLUME): beside a tornado the wind changes within it.
+            along = 0; along2 = 0;
+            const lengthKm = GATE_KM * cosTilt, stripKm = geo.range * (360 / RADAR_RADIALS) * DEG;
+            for (let a = 0; a < PULSE_VOLUME.along; a++) for (let c = 0; c < 3; c++) {
+              const da = ((a + 0.5) / PULSE_VOLUME.along - 0.5) * lengthKm, dc = ((c + 0.5) / 3 - 0.5) * stripKm, w = 1 / (3 * PULSE_VOLUME.along);
+              stormWindAt(bin, x + da * sinAz + dc * cosAz, y - da * cosAz + dc * sinAz, agl, stormWind);
+              const v = stormWind.u * sinAz + stormWind.v * cosAz;
+              along += w * v; along2 += w * v * v;
+            }
+          } else {
+            stormWindAt(bin, x, y, agl, stormWind);
+            along = stormWind.u * sinAz + stormWind.v * cosAz; along2 = along * along;
+          }
+          stormRadial += sample.zh * wgt * along; stormRadial2 += sample.zh * wgt * along2;
           fall += sample.zh * wgt * fallSpeedMs(sample.zh, agl, freezingM);
           rising += sample.zh * wgt * updraughtAt(bin, x, y, agl);
         }
@@ -624,7 +646,9 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
 // raw (folded into +-Vn) and dealiased (see DEALIAS).
 const DEALIAS_MARGIN_MS = 1e-6;
 // (room for the neighbours of the finest gates, 125 m)
-const NEIGHBOURS = new Float64Array((2 * DEALIAS.radials + 1) * (2 * Math.round(DEALIAS.alongKm / 0.125) + 1));
+const NEIGHBOURS = new Float64Array((2 * DEALIAS.radials + 1) * (2 * Math.round(DEALIAS.alongKm / 0.125) + 1)), NEIGHBOUR_W = new Float64Array(NEIGHBOURS.length);
+const NEIGHBOUR_DG = new Int8Array(NEIGHBOURS.length), NEIGHBOUR_DR = new Int8Array(NEIGHBOURS.length);
+const RADIAL_RAD = 2 * Math.PI / RADAR_RADIALS;
 function dealias(measured, guess, raw, dealiased, GATES = RADAR_GATES, gateKm = RADAR_GATE_KM) {
   const along = Math.max(1, Math.round(DEALIAS.alongKm / gateKm));
   const twoVn = 2 * NYQUIST_MS, total = measured.length;
@@ -635,7 +659,7 @@ function dealias(measured, guess, raw, dealiased, GATES = RADAR_GATES, gateKm = 
     raw[i] = f; dealiased[i] = f + twoVn * Math.round((guess[i] - f) / twoVn);
   }
   for (let pass = 0, changed = 1; pass < DEALIAS.passes && changed; pass++) { changed = 0; for (let r = 0; r < RADAR_RADIALS; r++) for (let g = 0; g < GATES; g++) {
-    const i = r * GATES + g, f = raw[i];
+    const i = r * GATES + g, f = raw[i], rangeKm = (g + 0.5) * gateKm;
     if (Number.isNaN(f)) continue;
     // (Where every neighbour lies within Vn of this gate, so does their median, and the gate stays
     // as it is: the median is then not worked out. The margin keeps clear of rounding at Vn itself.)
@@ -648,15 +672,31 @@ function dealias(measured, guess, raw, dealiased, GATES = RADAR_GATES, gateKm = 
         if ((dr === 0 && dg === 0) || gg < 0 || gg >= GATES) continue;
         const v = dealiased[row + gg];
         if (Number.isNaN(v)) continue;
-        NEIGHBOURS[n++] = v;
+        NEIGHBOUR_DG[n] = dg; NEIGHBOUR_DR[n] = dr; NEIGHBOURS[n++] = v;
         if (v <= low || v >= high) near = false;
       }
     }
     if (n < DEALIAS.least || near) continue;
-    // (in order, for the median)
-    for (let a = 1; a < n; a++) { const v = NEIGHBOURS[a]; let k = a; while (k > 0 && NEIGHBOURS[k - 1] > v) { NEIGHBOURS[k] = NEIGHBOURS[k - 1]; k--; } NEIGHBOURS[k] = v; }
-    const median = n % 2 ? NEIGHBOURS[(n - 1) / 2] : 0.5 * (NEIGHBOURS[n / 2 - 1] + NEIGHBOURS[n / 2]);
-    const to = f + twoVn * Math.round((median - f) / twoVn);
+    let to;
+    if (DEALIAS.method === 'median') {
+      // (in order, for the median)
+      for (let a = 1; a < n; a++) { const v = NEIGHBOURS[a]; let k = a; while (k > 0 && NEIGHBOURS[k - 1] > v) { NEIGHBOURS[k] = NEIGHBOURS[k - 1]; k--; } NEIGHBOURS[k] = v; }
+      const median = n % 2 ? NEIGHBOURS[(n - 1) / 2] : 0.5 * (NEIGHBOURS[n / 2 - 1] + NEIGHBOURS[n / 2]);
+      to = f + twoVn * Math.round((median - f) / twoVn);
+    } else {
+      // The unfolding of the three nearest the present one that differs least from the neighbours, each
+      // weighted by how near it is and its difference counted to Vn at most (see DEALIAS).
+      let best = Infinity;
+      const across = rangeKm * RADIAL_RAD;
+      for (let a = 0; a < n; a++) NEIGHBOUR_W[a] = 1 / Math.hypot(NEIGHBOUR_DG[a] * gateKm, NEIGHBOUR_DR[a] * across);
+      for (let k = -1; k <= 1; k++) {
+        const v = now + k * twoVn;
+        let cost = 0;
+        for (let a = 0; a < n; a++) { const d = Math.min(Math.abs(v - NEIGHBOURS[a]), NYQUIST_MS); cost += NEIGHBOUR_W[a] * d * d; }
+        // (the present one wins a tie)
+        if (cost < best - 1e-9 || (k === 0 && cost <= best + 1e-9)) { best = cost; to = v; }
+      }
+    }
     if (to !== now) { dealiased[i] = to; changed++; }
   } }
 }
@@ -1023,6 +1063,31 @@ function updraughtAt(bin, x, y, z) {
 // ground, the rear-inflow jet and the anvil's outflow near the top. (The tornado is sampled at the
 // gate like every other wind: its core aloft, the tornado cyclone, is wider than a gate.)
 const gradient = {};
+// A gate's pulse volume (2026-11-18): what it reports is the motion of everything in it, a gate long
+// (along the beam) and the beam's width across. Elsewhere the wind hardly changes across that and the
+// gate's centre stands for it; beside a tornado, whose core near the ground is 100 m or so in radius
+// against 500 m gates, a single point along the gate missed the core: a gate centred 250 m from it
+// along the beam read a ninth of its swirl, so close to the radar, where the beam is low and the core
+// narrowest, a violent tornado read weaker (dV 62 m/s at 8 km) than far off (105 at 45 km), the
+// reverse of a real radar's. Within a tornado's reach the wind is averaged over `along` points along
+// the gate and three across its radial's own strip (the beam's spread beyond that is the neighbouring
+// radials' share, step 2 of scanRadarTilt); the spread of the motion within the volume widens the
+// spectrum, as at a real tornado (a TVS's high width). (The echo is taken as even within the gate.)
+const PULSE_VOLUME = { along: 5, reachCores: 6 };
+// The scene's tornadoes (map km) and how far round each the pulse volume is worked out: a gate's length (km) and
+// PULSE_VOLUME.reachCores core radii.
+function tornadoReaches(scene, gateKm) {
+  const out = [];
+  for (const s of scene.storms) {
+    const t = s.echo?.vortices?.tornado;
+    if (t) out.push({ x: s.x + t.x, y: s.y + t.y, reach: gateKm + PULSE_VOLUME.reachCores * Math.max(t.R, t.Raloft ?? t.R, t.cyclone?.V > 0 ? t.cyclone.R : 0) });
+  }
+  return out;
+}
+function nearTornado(tornadoes, x, y) {
+  for (const t of tornadoes) { const dx = x - t.x, dy = y - t.y; if (dx * dx + dy * dy < t.reach * t.reach) return true; }
+  return false;
+}
 // bin: binAt(scene.stormBins, x, y).
 function stormWindAt(bin, x, y, z, out) {
   out.u = 0; out.v = 0;
