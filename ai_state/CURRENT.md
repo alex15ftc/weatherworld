@@ -514,9 +514,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-000. Radar debris signature (2026-11-17, branch `radar/vortex-centrifuge`, radar only): a meteorologist review found
+000. Radar debris signature (2026-11-17, radar only): a meteorologist review found
    rain and hail in a tornado's core outweighing its debris (CC 0.8-0.88 at 57-66 dBZ in moist, rain-cooled air).
-   Done on the branch (not merged): the swirl of the tornado and its tornado cyclone flings rain and hail out
+   Merged and deployed 2026-11-17 from 762da59: the swirl of the tornado and its tornado cyclone flings rain and hail out
    (StormVortices.js `vortexClearing`, radar `precipitationEcho`); debris lofted by the swept path, its echo falling
    off with height, `DEBRIS_REFLECTIVITY` 22500 (`loftDebris`). Made supercell at every cell 35-60 km from KCPL (seed
    1, 35 h): TDS 165 mph 700 yd 12 -> 28 of 28, 200 mph 28/28, 120 mph 400 yd 3/28, 90 mph and no tornado none, no
