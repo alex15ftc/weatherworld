@@ -516,12 +516,25 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 000. Radar debris signature (2026-11-17, branch `radar/vortex-centrifuge`, radar only): a meteorologist review found
    rain and hail in a tornado's core outweighing its debris (CC 0.8-0.88 at 57-66 dBZ in moist, rain-cooled air).
-   Step 1 done: the swirl of the tornado and its tornado cyclone flings them out (StormVortices.js `vortexClearing`,
-   used by the radar's `precipitationEcho`). Made 165 mph supercell at every cell 35-60 km from KCPL (seed 1, 35 h):
-   TDS at 12 -> 19 of 28; 120 mph 0 -> 6; 90 mph, no tornado: none; no false alarms. Short of the review's >=90% for
-   165 mph. Step 2 (open): debris from the swept area (width x speed x wind past damage), not the clamped square in
-   `loftDebris`, then `DEBRIS_REFLECTIVITY` retuned to 55-62 dBZ; step 3: hook/RFD reflectivity 60+ dBZ against 45-55
-   observed. Also open: at 100-112 km the 165 mph tornado shows a TDS at 10 of 28 (the review expects few or none).
+   Done on the branch (not merged): the swirl of the tornado and its tornado cyclone flings rain and hail out
+   (StormVortices.js `vortexClearing`, radar `precipitationEcho`); debris lofted by the swept path, its echo falling
+   off with height, `DEBRIS_REFLECTIVITY` 22500 (`loftDebris`). Made supercell at every cell 35-60 km from KCPL (seed
+   1, 35 h): TDS 165 mph 700 yd 12 -> 28 of 28, 200 mph 28/28, 120 mph 400 yd 3/28, 90 mph and no tornado none, no
+   false alarms; at 100-112 km 12/28 (the review expected few; literature says violent TDSs reach 3-5 km: ask).
+   Open, found 2026-11-17 (scripts in the session's job tmp, not kept):
+   - No debris ball and a cluttered hook: rain and hail 67.5 dBZ 1.5-2.5 km round the tornado. Cause is the
+     environment's wind, not the radar: storm-relative 9-10 km wind under 18 m/s for 67% of supercells (median 15.6),
+     so fallout stays by the updraught (HP); and veer-back (backing 3-7 km) in 15% of supercell inflow soundings, a
+     third in some regimes (seeds 5-6), which swings the rain into the rear flank (hook 55 vs 46 dBZ, forward flank
+     17 vs 44). RegionalAtmosphere.windAt (~496) puts 700/500/250 mb on one straight line between the QG model's two
+     layer winds, so any backing reaches the anvil. PW only scales rain amount (0.4-1x, ~3 dB from 0.8 to 2.4 in),
+     not where it falls. StormAppearance's `spectrum` (a second LP-HP formula for the visual rain-wrap) reads nearly
+     every supercell as HP. Engine changes: need the engine-batch suite and a meteorologist check of 250 mb winds.
+   - Radar velocity weaker close in than at 40-65 km (200 mph: dV 89 at 6-14 km, 114 at 55-65): `dealias` unfolds
+     toward the median of 1 radial x 2 gates either side, along-beam gates outvoting the 70 m-wide radials beside a
+     one-gate-long couplet. A distance-weighted median (tried, reverted) gained close in (89 -> 102) but lost at
+     95-110 km (107 -> 91.5). Needs a least-squares (2D-VDA-like) unfold and pulse-volume averaging. Velocity is
+     stored to +-63.5 m/s (WSR-88D's 0.5 m/s mode; 200 mph tornadoes reach it at 40-65 km).
 000. Building damage (on `main`, not deployed or published). Seen in Studio 2026-11-17: in a play test the live server builds chunks with
    their `B<n>` building models (DI, Frame, Size); in edit mode every indicator's degrees were laid out side by
    side from real generated buildings and look right from several angles (fixed there: a stepped tower's upper
