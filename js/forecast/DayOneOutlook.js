@@ -237,6 +237,76 @@ function severeComposite(cell) {
 }
 const ramp01 = (value, low, high) => Math.max(0, Math.min(1, ((Number(value) || 0) - low) / (high - low)));
 
+// A day's record of the ingredients for storms on n cells. tornado: also the tornadoes among the severe storms and
+// their strength tiers (the long range model's tornado guide; see TORNADO_GUIDE); the outlooks keep only the four sums.
+export function freshIngredients(n, { tornado = false } = {}) {
+  const grids = { starts: new Float64Array(n), severe: new Float64Array(n), significant: new Float64Array(n), intense: new Float64Array(n) };
+  if (tornado) for (const field of TORNADO_GUIDE_FIELDS) grids[field] = new Float64Array(n);
+  return grids;
+}
+// The long range model's tornado guide (2026-11-18, the owner's request; an admin's guide on the model page, not an
+// issued outlook, and not fitted: no outlook or storm reads it). The tornadoes among a place's severe storms are the
+// share the significant tornado parameter (STP) gives, as forecasters read it: none without a tornado environment,
+// never more than half; and of those tornadoes, the share reaching each strength tier (EF2+, EF3+, EF4+, the
+// verification's tornadoSig, tornadoExtreme, tornadoViolent) grows with STP too, more slowly for each tier. Each
+// is top x (1 - exp(-STP / scale)).
+export const TORNADO_GUIDE = Object.freeze({ tornado: { top: 0.5, scale: 2 }, tornadoSig: { top: 0.5, scale: 4 }, tornadoExtreme: { top: 0.5, scale: 8 }, tornadoViolent: { top: 0.15, scale: 12 } });
+const TORNADO_GUIDE_FIELDS = Object.keys(TORNADO_GUIDE);
+const guideShare = (field, stp) => TORNADO_GUIDE[field].top * (1 - Math.exp(-Math.max(0, stp) / TORNADO_GUIDE[field].scale));
+
+// One step (dt hours) of the ingredients for storms (see INGREDIENTS) added at every cell of the world.
+export function addIngredients(world, ingredients, dt) {
+  const { starts, severe, significant, intense } = ingredients, { significant: sg, intense: ix } = INGREDIENTS, tornado = Boolean(ingredients.tornado);
+  world.forEachCell((cell, x, y) => {
+    const start = diagnoseInitiation(cell), rate = start?.canStart ? start.ratePerHour * dt : 0;
+    if (!(rate > 0)) return;
+    const k = y * world.width + x, sounding = cell.derived?.sounding ?? {};
+    const severity = ramp01(sounding.mlcape, INGREDIENTS.capeJkg[0], INGREDIENTS.capeJkg[1]) * (INGREDIENTS.severeShareWeakShear + (1 - INGREDIENTS.severeShareWeakShear) * ramp01(sounding.shear06, INGREDIENTS.shearKt[0], INGREDIENTS.shearKt[1]));
+    starts[k] += rate; severe[k] += rate * severity;
+    const index = severeComposite(cell);
+    significant[k] += rate * severity * sg.share * (1 - Math.exp(-index / sg.scale)); intense[k] += rate * severity * ix.share * (1 - Math.exp(-index / ix.scale));
+    if (tornado && severity > 0) {
+      const stp = Math.max(0, Number(cell.derived?.stp) || 0), tornadoes = rate * severity * guideShare('tornado', stp);
+      ingredients.tornado[k] += tornadoes;
+      for (const field of TORNADO_GUIDE_FIELDS.slice(1)) ingredients[field][k] += tornadoes * guideShare(field, stp);
+    }
+  });
+}
+
+// The sum of a field over the cells within so many miles of each cell (RISK_RADIUS_MILES unless given).
+function sumsWithin(world, field, miles = RISK_RADIUS_MILES) {
+  const { width, height } = world, reach = miles / world.cellSizeMiles, r = Math.ceil(reach), out = new Float64Array(width * height);
+  for (let i = 0; i < out.length; i++) {
+    const x = i % width, y = Math.floor(i / width); let sum = 0;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (dx * dx + dy * dy > reach * reach) continue; const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < width && yy < height) sum += field[yy * width + xx]; }
+    out[i] = sum;
+  }
+  return out;
+}
+// A day without storms as an outlook member: its chances from the ingredients summed within RISK_RADIUS_MILES.
+export function ingredientDay(world, ingredients) {
+  const n = world.width * world.height, near = Object.fromEntries(['starts', 'severe', 'significant', 'intense'].map(key => [key, sumsWithin(world, ingredients[key])]));
+  const chance = Object.fromEntries(CHANCE_FIELDS.map(field => [field, new Float32Array(n)])), reports = Object.fromEntries([...CHANCE_FIELDS, 'severe', 'severeSig', 'severeExtreme'].map(field => [field, new Uint8Array(n)])), thunder = new Uint8Array(n);
+  chance.severe = new Float32Array(n); chance.severeSig = new Float32Array(n); chance.severeExtreme = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    chance.severe[i] = 100 * (1 - Math.exp(-near.severe[i]));
+    chance.severeSig[i] = 100 * (1 - Math.exp(-near.significant[i])); chance.severeExtreme[i] = 100 * (1 - Math.exp(-near.intense[i]));
+    thunder[i] = 1 - Math.exp(-near.starts[i]) >= INGREDIENTS.thunderShare ? 1 : 0;
+  }
+  return { width: world.width, height: world.height, cellMiles: world.cellSizeMiles, chance, reports, thunder, fromIngredients: true };
+}
+
+// The long range model's tornado chances for one storm day (2026-11-18, the owner's request; admin only, drawn as
+// the ensemble's on the model page): the chance (percent, whole numbers) of a tornado within 25 miles of each cell,
+// and of an EF2+, EF3+ and EF4+ one, from the day's expected tornadoes (TORNADO_GUIDE) summed within 25 miles:
+// 1 - exp(-their sum). Raw, as the run has them: no outlook's calibration.
+export const TORNADO_GUIDE_MILES = 25;
+export function tornadoGuide(world, ingredients) {
+  const n = world.width * world.height, out = {};
+  for (const field of TORNADO_GUIDE_FIELDS) { const near = sumsWithin(world, ingredients[field], TORNADO_GUIDE_MILES), chance = new Uint8Array(n); for (let i = 0; i < n; i++) chance[i] = Math.round(100 * (1 - Math.exp(-near[i]))); out[field] = chance; }
+  return { width: world.width, height: world.height, chance: out };
+}
+
 // How far a day's chances are spread out (km): see OUTLOOK.spreadKm.
 export function spreadFor(day) { return OUTLOOK.spreadKm * Math.sqrt(1 / OUTLOOK.memberShare[day] - 1); }
 
@@ -334,7 +404,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
   // A day's record. With storms it also adds up the tornadoes the run's storms are expected to put down (expectedHazards.js),
   // starting with any already on the ground.
   const fresh = (ingredients, cheap = null) => ({
-    ingredients: ingredients ? { starts: new Float64Array(n), severe: new Float64Array(n), significant: new Float64Array(n), intense: new Float64Array(n) } : null,
+    ingredients: ingredients ? freshIngredients(n) : null,
     expected: ingredients ? null : (grids => { addOngoingTornadoes(world, grids); return grids; })(expectedTornadoGrids(n)),
     // (a storm day's highest significant hail and wind composites at each cell; cheap runs share their host's air and take none)
     environment: ingredients || cheap !== null ? null : { hail: new Float32Array(n), wind: new Float32Array(n) },
@@ -360,21 +430,7 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     state: { ...structuredClone({ storms: world.storms ?? [], stormEngine: world.stormEngine, reportLog: world.reportLog ?? null }), stormArchive: [], stormHistory: [], evolution: { ...world.evolution, config: { ...world.evolution.config, seed: `${state.seed}|outlook|${member}|cheap${j}` } } }
   }));
   // A day without storms: its chances from the ingredients summed within RISK_RADIUS_MILES.
-  const fromIngredients = day => {
-    const { width, height } = world, reach = RISK_RADIUS_MILES / world.cellSizeMiles, r = Math.ceil(reach), near = (field, i) => {
-      const x = i % width, y = Math.floor(i / width); let sum = 0;
-      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (dx * dx + dy * dy > reach * reach) continue; const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < width && yy < height) sum += field[yy * width + xx]; }
-      return sum;
-    };
-    const chance = Object.fromEntries(CHANCE_FIELDS.map(field => [field, new Float32Array(n)])), reports = Object.fromEntries([...CHANCE_FIELDS, 'severe', 'severeSig', 'severeExtreme'].map(field => [field, new Uint8Array(n)])), thunder = new Uint8Array(n);
-    chance.severe = new Float32Array(n); chance.severeSig = new Float32Array(n); chance.severeExtreme = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      chance.severe[i] = 100 * (1 - Math.exp(-near(day.ingredients.severe, i)));
-      chance.severeSig[i] = 100 * (1 - Math.exp(-near(day.ingredients.significant, i))); chance.severeExtreme[i] = 100 * (1 - Math.exp(-near(day.ingredients.intense, i)));
-      thunder[i] = 1 - Math.exp(-near(day.ingredients.starts, i)) >= INGREDIENTS.thunderShare ? 1 : 0;
-    }
-    return { ...day.result, width: world.width, height: world.height, cellMiles: world.cellSizeMiles, fromHourUtc: day.startHour, toHourUtc: world.validHourUtc, chance, reports, thunder, storms: 0, tornadoes: 0, byHour: day.byHour, fromIngredients: true };
-  };
+  const fromIngredients = day => ({ ...day.result, ...ingredientDay(world, day.ingredients), fromHourUtc: day.startHour, toHourUtc: world.validHourUtc, storms: 0, tornadoes: 0, byHour: day.byHour });
   const close = day => {
     if (day.ingredients) return fromIngredients(day);
     const truth = aggregateTruth(day.frames, day.initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
@@ -434,16 +490,8 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
     atmosphere.advanceLikeServer(OUTLOOK.stepHours, { onTick: hours => addExpectedTornadoes(world, day.expected, hours) });
     if (day.environment) { const { hail, wind } = day.environment, vtp = day.vtp; world.forEachCell((cell, x, y) => { const k = y * world.width + x; hail[k] = Math.max(hail[k], significantHailParameter(cell)); wind[k] = Math.max(wind[k], derechoCompositeParameter(cell)); if (vtp) vtp[k] = Math.max(vtp[k], Math.min(255, Math.round(10 * (cell.derived?.vtp ?? 0)))); }); }
     if (day.ingredients) {
-      const dt = OUTLOOK.stepHours, { starts, severe, significant, intense } = day.ingredients, utcNow = Math.floor(((world.validHourUtc % 24) + 24) % 24);
-      world.forEachCell((cell, x, y) => {
-        const start = diagnoseInitiation(cell), rate = start?.canStart ? start.ratePerHour * dt : 0;
-        if (!(rate > 0)) return;
-        const k = y * world.width + x, sounding = cell.derived?.sounding ?? {};
-        const severity = ramp01(sounding.mlcape, INGREDIENTS.capeJkg[0], INGREDIENTS.capeJkg[1]) * (INGREDIENTS.severeShareWeakShear + (1 - INGREDIENTS.severeShareWeakShear) * ramp01(sounding.shear06, INGREDIENTS.shearKt[0], INGREDIENTS.shearKt[1]));
-        starts[k] += rate; severe[k] += rate * severity;
-        const index = severeComposite(cell), { significant: sg, intense: ix } = INGREDIENTS;
-        significant[k] += rate * severity * sg.share * (1 - Math.exp(-index / sg.scale)); intense[k] += rate * severity * ix.share * (1 - Math.exp(-index / ix.scale));
-      });
+      const utcNow = Math.floor(((world.validHourUtc % 24) + 24) % 24);
+      addIngredients(world, day.ingredients, OUTLOOK.stepHours);
       if (!day.result.environment && (utcNow === 22 || hour + OUTLOOK.stepHours >= hours - 1e-9 || hoursToDayEnd(world.validHourUtc) > 24 - 1e-6)) { day.result.environment = { ...describeEnvironment(world, null), hourUtc: utcNow }; day.result.lines = describeLines(atmosphere); }
       if (hour + OUTLOOK.stepHours >= hours - 1e-9 || hoursToDayEnd(world.validHourUtc) > 24 - 1e-6) { days.push(close(day)); day = null; }
       // (the cheap runs stop with the host's storms)

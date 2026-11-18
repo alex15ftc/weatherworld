@@ -18,6 +18,14 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Long range tornado chances (2026-11-18, owner's request; on `main`, engine not deployed with it yet): /models/long-range has
+  an admin-only "Tornado chances" panel (checkbox and Day 1-7 buttons) that draws, on each day's 06Z frame, the chance
+  of a tornado within 25 mi on the game map in the ensemble's colour steps, hatched where the EF2+ (broken), EF3+ (solid)
+  or EF4+ (cross) chance reaches 10%, as the /models ensemble draws it. The run gathers Day 3's ingredients for storms each
+  12Z-12Z day (`DayOneOutlook.js` `addIngredients`, now shared with the outlooks, which are unchanged: checked equal to
+  HEAD) and turns them into tornado and tier chances by STP shares (`TORNADO_GUIDE`, not fitted; `tornadoGuide`);
+  admin endpoint `/api/models/long-range/tornadoes`. Day 7 of a 06Z run is counted only to its 06Z end. Seen in a local
+  browser on a fresh world (Days 2-3 peaked at 56-60%, EF2+ 20-23%; may read high, unverified).
 - Building tornado damage (2026-11-17, owner's request; branch `building-damage`, merged to `main`; not deployed, place not published): houses
   and farm buildings are recorded by the generator (`Buildings.take`; `ChunkGen.place` groups each into a model `B<n>`
   with `DI`, `Frame`, `Size` and a `Role` on each part). `BuildingDamageService` loads those near a tornado with the

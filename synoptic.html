@@ -31,6 +31,14 @@
     /* What only an admin sees: how fast the map moves and what it is aiming for. */
     body:not([data-role="admin"]) [data-role-only="admin"], body[data-role="admin"] [data-role-only="public"] { display: none !important; }
     body:not([data-source="analysis"]) [data-mode="analysis"], body:not([data-source="model"]) [data-mode="model"], body:not([data-source="replay"]) [data-mode="replay"] { display: none !important; }
+    body:not([data-long]) [data-long-only] { display: none !important; }
+    /* The long range model's tornado chances (an admin's): a button for each day. */
+    .guide-days { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+    .guide-days button { width: auto; min-width: 50px; padding: 3px 7px; font: 400 12.5px var(--mono); }
+    .guide-days button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .guide-days button:disabled { opacity: .35; cursor: not-allowed; background: transparent; }
+    .guide-key { display: flex; flex-wrap: wrap; gap: 3px 8px; font-size: 12.5px; margin-top: 6px; }
+    .guide-key i { display: inline-block; width: 13px; height: 11px; margin-right: 4px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.35); }
     body:not([data-source="analysis"]) #frameLatest { display: none; }
     body:not([data-source="analysis"]) #frameRow { grid-template-columns: repeat(3, 1fr); }
     /* a model run: the slider and a button for each frame; frames not made yet are grey and locked */
@@ -105,6 +113,13 @@
         <button id="saveGif" title="Save every time on show as one animated picture">Save loop as GIF</button>
         <button id="saveMp4" title="Save every time on show as one video">Save loop as MP4</button>
         <small id="gifNote"></small>
+      </section>
+      <section class="group" data-role-only="admin" data-long-only>
+        <h2>Tornado chances</h2>
+        <label><input type="checkbox" id="guideOn" /> Chance of a tornado within 25 mi, hatched EF2+ / EF3+ / EF4+</label>
+        <div class="guide-days" id="guideDays" aria-label="Outlook day"></div>
+        <div class="guide-key" id="guideKey"></div>
+        <small id="guideNote">The chance of a tornado within 25 miles on the game map for each day, drawn on its 06Z frame as the ensemble draws it. Admin only.</small>
       </section>
       <section class="group">
         <h2>Charts</h2>

@@ -30,6 +30,14 @@ assert.deepEqual([again.timingErrorMs, again.endOrigin], [run.timingErrorMs, run
 // What it keeps: a frame at the start and every LONG_RANGE.synopticEvery hours.
 assert.deepEqual(run.synoptic.map(f => f.forecastHour), Array.from({ length: HOURS / LONG_RANGE.synopticEvery + 1 }, (_, k) => k * LONG_RANGE.synopticEvery));
 assert.equal(run.synoptic.at(-1).hour, run.initHourUtc + HOURS);
+// The tornado chances: 30 hours from 06Z hold one outlook day (12Z to 12Z), shown on the run's first frame (06Z), a
+// chance (percent) on every cell of the map for any tornado and each rated tier, each tier no higher than the one below.
+assert.deepEqual(run.tornadoDays.map(o => [o.day, o.frameHour, o.validFromHourUtc - run.initHourUtc, o.validToHourUtc - run.initHourUtc]), [[1, 0, 6, 30]], 'one outlook day, on the 06Z frame');
+const guide = run.tornadoDays[0], cells = guide.width * guide.height, tiers = ['tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent'];
+for (const tier of tiers) assert.equal(guide.chance[tier].length, cells, tier);
+for (let i = 0; i < cells; i++) for (let t = 1; t < tiers.length; t++) assert.ok(guide.chance[tiers[t]][i] <= guide.chance[tiers[t - 1]][i] && guide.chance.tornado[i] <= 100, `${tiers[t]} no higher than ${tiers[t - 1]}`);
+assert.deepEqual(Array.from(again.tornadoDays[0].chance.tornado), Array.from(guide.chance.tornado), 'the same chances every time');
+console.log(`tornado chances day 1: highest ${tiers.map(t => `${t} ${Math.max(...guide.chance[t])}%`).join(', ')}`);
 
 // The runtime: a run at 06Z, none at other hours once there is one; a server with none yet makes one at once.
 const world = { validHourUtc: 31 }, engine = { world, saveState: () => ({}) }, asked = [];

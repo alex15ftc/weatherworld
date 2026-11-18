@@ -13,6 +13,10 @@
 // moves freely through the frames ("Map" and "Whole model" take hold of it again). No page draws an arrow for
 // the map's drift. An admin (the server sends the role with each frame) is also told the drift's speed and the
 // day's aim, in the facts beside the chart.
+// The long range model's tornado chances (2026-11-18, the owner's request; an admin's only): the chance of a tornado
+// within 25 miles on the game map for each of the run's 7 days, from its ingredients for storms (js/forecast/
+// DayOneOutlook.js tornadoGuide), drawn in the map's box on the frame at the 06Z before the day as the ensemble's
+// tornado chance is drawn (EF2+/EF3+/EF4+ hatching). A button for each day.
 // ?share=1: only the chart, with its title, time, key and the site's name in the frame (tools/social/make-loop.mjs).
 // ?frame=<hour>, ?zoom=<n>, ?chart=<key>; ?follow=0&cx=<x>&cy=<y> holds the view on a place (grid units) so the
 // map's box moves; ?view=public shows an admin what the public is told.
@@ -127,6 +131,7 @@ const DAY = location.pathname.match(/^\/day\/([A-Za-z0-9-]+)\/synoptic/)?.[1] ??
 let runInit = MODEL && query.get('run') !== null && Number.isFinite(Number(query.get('run'))) ? Number(query.get('run')) : null;
 document.body.dataset.source = REPLAY ? 'replay' : MODEL ? 'model' : 'analysis';
 if (MODEL) { $('synHeading').textContent = LONG ? 'Long range model' : 'Large-scale view'; document.title = `${LONG ? 'Long range model' : 'Large-scale view'} · Models · High Risk`; }
+if (LONG) document.body.dataset.long = '1';
 if (LONG) { $('crumbModel').textContent = 'Long range'; $('tabLargeScale').removeAttribute('aria-current'); $('tabLongRange').setAttribute('aria-current', 'page'); $('runNote').textContent = 'Select a point inside the game map\'s box for the run\'s sounding there. The long range model: a 7-day run from each 0600 UTC, every 3 forecast hours, without storms. Like a real forecast it has a timing error: systems reach the map a little early or late, more so with each day ahead.'; }
 if (REPLAY) { $('synHeading').textContent = 'Large-scale charts: replay'; document.title = 'Large-scale replay · Past days · High Risk'; for (const link of document.querySelectorAll('[data-day-link]')) link.href = `/day/${DAY}`; }
 const api = REPLAY
@@ -155,6 +160,7 @@ async function load() {
     if (!$('shadeField').dataset.filled) fillSelects();
     const [shade, contour, wind] = await Promise.all([getField($('shadeField').value), getField($('contourField').value), getField($('windField').value ? `wind:${$('windField').value}` : '')]);
     layers = { shade, contour, wind };
+    await loadGuide();
   } catch (error) { data = { status: 'offline', missing: error.message === '404' }; layers = { shade: null, contour: null, wind: null }; }
   describe();
   draw();
@@ -217,6 +223,7 @@ function describe() {
   }
   $('synFacts').innerHTML = facts.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
   drawLegend();
+  describeGuide();
   if (SHARE) describeShare();
   const now = presetNow();
   for (const button of document.querySelectorAll('#presets button')) button.classList.toggle('on', button.dataset.preset === now?.key);
@@ -343,6 +350,7 @@ function draw() {
   if ($('showGrid').checked) drawGrid();
   if (layers.contour) drawContours(layers.contour);
   if (layers.wind) drawBarbs(layers.wind);
+  drawGuide();
   if ($('showCentres').checked) drawCentres();
   if ($('showMap').checked) drawMapBox();
   ctx.restore();
@@ -539,6 +547,124 @@ function drawScale(bottom) {
   ctx.restore();
 }
 
+// --- The tornado chances (long range model, admin only), drawn as the ensemble's on /models (js/pages/modelPage.js):
+// the chance of a tornado within 25 miles in its colour steps, hatched where the chance of an EF2+ (broken), EF3+
+// (solid) or EF4+ (cross) tornado reaches 10%, each only where the next one up does not.
+const PROB = [[5, '#a8d4f5'], [10, '#4a9ff0'], [20, '#2bb673'], [30, '#e8d21b'], [40, '#f29a1b'], [50, '#e8401c'], [60, '#b81414'], [70, '#d6337f'], [80, '#9440c9'], [90, '#f2f2f2']];
+const TOR_HATCH = [['tornadoSig', 'broken', 'EF2+'], ['tornadoExtreme', 'solid', 'EF3+'], ['tornadoViolent', 'cross', 'EF4+']], HATCH_LEAST = 10;
+const guide = { on: false, data: null, key: '', image: { canvas: null, key: '' }, masks: { key: '', list: [] } };
+try { guide.on = sessionStorage.getItem('wwTornadoGuide') === '1'; } catch { /* no storage */ }
+$('guideOn').checked = guide.on;
+const guideOn = () => LONG && admin && guide.on;
+// The run's chances: asked again while the run is still being made (its days come as they are done).
+async function loadGuide() {
+  if (!guideOn() || !data.run) return;
+  const key = `${data.run.initHourUtc}:${data.run.partial ? data.run.readyHours : 'done'}`;
+  if (guide.key === key) return;
+  guide.data = await getJson(`${MODEL_API}/tornadoes?init=${data.run.initHourUtc}`).catch(() => null); guide.key = key;
+}
+// The day drawn on this frame: the one whose 06Z frame it is.
+// (a day's frame as the frames are listed: by valid hour)
+const guideFrame = d => data.run.initHourUtc + d.frameHour;
+const guideDay = () => (guideOn() && guide.data?.initHourUtc === data?.run?.initHourUtc ? guide.data.days.find(d => d.frameHour === data.run.forecastHour) ?? null : null);
+// A day's field read smoothly between its cells' middles (x east, y south, in cells).
+function guideSample(day, values, x, y) {
+  const nx = day.width, ny = day.height, X = Math.max(0, Math.min(nx - 1, x)), Y = Math.max(0, Math.min(ny - 1, y)), i0 = Math.min(nx - 2, Math.floor(X)), j0 = Math.min(ny - 2, Math.floor(Y)), tx = X - i0, ty = Y - j0, v = (i, j) => values[j * nx + i];
+  return (v(i0, j0) * (1 - tx) + v(i0 + 1, j0) * tx) * (1 - ty) + (v(i0, j0 + 1) * (1 - tx) + v(i0 + 1, j0 + 1) * tx) * ty;
+}
+const probColour = v => { let c = null; for (const [at, colour] of PROB) if (v >= at) c = colour; return c; };
+function drawGuide() {
+  const day = guideDay();
+  if (!day) return;
+  const fine = 8, w = day.width * fine, h = day.height * fine, id = `${guide.key}:${day.day}`;
+  if (guide.image.key !== id) {
+    const c = guide.image.canvas ??= document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'), image = g.createImageData(w, h);
+    for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+      const colour = probColour(guideSample(day, day.chance.tornado, (px + 0.5) / fine - 0.5, (py + 0.5) / fine - 0.5));
+      if (!colour) continue;
+      const o = (py * w + px) * 4, [r, gr, b] = hex(colour);
+      image.data[o] = r; image.data[o + 1] = gr; image.data[o + 2] = b; image.data[o + 3] = 215;
+    }
+    g.putImageData(image, 0, 0); guide.image.key = id;
+    // (the hatching's masks: where each tier reaches 10% and the next one up does not)
+    guide.masks.key = id;
+    guide.masks.list = TOR_HATCH.map(([field, kind], tier) => {
+      const mask = document.createElement('canvas'); mask.width = w; mask.height = h;
+      const mg = mask.getContext('2d'), md = mg.createImageData(w, h), up = TOR_HATCH[tier + 1]?.[0];
+      let any = false;
+      for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+        const x = (px + 0.5) / fine - 0.5, y = (py + 0.5) / fine - 0.5;
+        if (guideSample(day, day.chance[field], x, y) < HATCH_LEAST || (up && guideSample(day, day.chance[up], x, y) >= HATCH_LEAST)) continue;
+        md.data[(py * w + px) * 4 + 3] = 255; any = true;
+      }
+      mg.putImageData(md, 0, 0);
+      return { mask, kind, any };
+    });
+  }
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const m = data.map;
+  for (const offset of copies(m.width)) {
+    const [x0, y0] = toScreen(m.x + offset, m.y + m.height), [x1, y1] = toScreen(m.x + m.width + offset, m.y);
+    if (x1 < 0 || x0 > view.width) continue;
+    ctx.drawImage(guide.image.canvas, x0, y0, x1 - x0, y1 - y0);
+    // The hatching: lines a fixed size on the screen, kept where the mask is.
+    const bw = Math.ceil(x1 - x0), bh = Math.ceil(y1 - y0);
+    for (const { mask, kind, any } of guide.masks.list) {
+      if (!any || bw < 2 || bh < 2) continue;
+      const piece = document.createElement('canvas'); piece.width = bw; piece.height = bh;
+      const p = piece.getContext('2d'), size = Math.max(bw, bh), SPACING = 9;
+      p.strokeStyle = 'rgba(0, 0, 0, 0.85)'; p.lineWidth = 1.5;
+      if (kind === 'broken') p.setLineDash([6, 4]);
+      p.beginPath();
+      for (let c = 0; c <= 2 * size; c += SPACING) {
+        if (kind !== 'solid') { p.moveTo(c - size, size); p.lineTo(c, 0); }
+        if (kind !== 'broken') { p.moveTo(c - size, 0); p.lineTo(c, size); }
+      }
+      p.stroke();
+      p.globalCompositeOperation = 'destination-in'; p.imageSmoothingEnabled = true; p.imageSmoothingQuality = 'high';
+      p.drawImage(mask, 0, 0, bw, bh);
+      ctx.drawImage(piece, x0, y0);
+    }
+  }
+}
+// The day buttons, the key and a line on what is drawn.
+function describeGuide() {
+  if (!LONG) return;
+  const days = guide.data?.initHourUtc === data.run?.initHourUtc ? guide.data.days : [], shown = guideDay(), z = h => `${clock(h).slice(0, 2)}Z`;
+  const html = Array.from({ length: 7 }, (_, k) => `<button data-day="${k + 1}">Day ${k + 1}</button>`).join('');
+  if ($('guideDays').dataset.key !== html) { $('guideDays').innerHTML = html; $('guideDays').dataset.key = html; }
+  for (const b of $('guideDays').children) {
+    const d = days.find(x => x.day === Number(b.dataset.day));
+    b.disabled = !guide.on || !d || !data.frames.includes(guideFrame(d)); b.classList.toggle('on', Boolean(shown && d && shown.day === d.day));
+    b.title = !d ? 'Not ready yet: the run has not reached this day' : `F${String(d.frameHour).padStart(3, '0')}, the 06Z frame before the day`;
+  }
+  const hatch = { broken: 'repeating-linear-gradient(45deg,#000 0 1.5px,transparent 1.5px 6px)', solid: 'repeating-linear-gradient(-45deg,#000 0 1.5px,transparent 1.5px 6px)', cross: 'repeating-linear-gradient(45deg,#000 0 1.5px,transparent 1.5px 6px),repeating-linear-gradient(-45deg,#000 0 1.5px,transparent 1.5px 6px)' };
+  $('guideKey').innerHTML = shown ? PROB.map(([at, colour]) => `<span><i style="background:${colour}"></i>${at}</span>`).join('') + TOR_HATCH.map(([, kind, name]) => `<span><i style="background:${hatch[kind]}"></i>${name} ${HATCH_LEAST}%+</span>`).join('') : '';
+  const highest = shown ? Math.max(0, ...shown.chance.tornado) : 0;
+  $('guideNote').textContent = !guide.on ? 'The chance of a tornado within 25 miles on the game map for each day, drawn on its 06Z frame, as the ensemble draws it.'
+    : !guide.data ? 'No tornado chances for this run yet.'
+    : !shown ? 'The chances are drawn on each day\'s 06Z frame: pick a day.'
+    : `Day ${shown.day} (${z(shown.validFromHourUtc)} to ${z(shown.validToHourUtc)}): chance of a tornado within 25 mi (%), highest ${highest}%; hatched where an EF2+ (broken), EF3+ (solid) or EF4+ (cross) one reaches ${HATCH_LEAST}%. From the run's ingredients for storms (it runs no storms), not fitted${shown.countedToHourUtc < shown.validToHourUtc - 1e-6 ? `; counted only to ${z(shown.countedToHourUtc)}, where the run ends` : ''}. Less sure with each day.`;
+}
+// The chances at a place, for the pointer's note.
+function guideAt(at) {
+  const day = guideDay(), here = day && inMap(at);
+  if (!here) return null;
+  const i = Math.min(day.height - 1, Math.floor(here.fy * day.height)) * day.width + Math.min(day.width - 1, Math.floor(here.fx * day.width)), c = day.chance;
+  return `Day ${day.day} tornado within 25 mi: <b>${c.tornado[i]}%</b> · EF2+ ${c.tornadoSig[i]}% · EF3+ ${c.tornadoExtreme[i]}% · EF4+ ${c.tornadoViolent[i]}%`;
+}
+$('guideOn').addEventListener('change', event => {
+  guide.on = event.target.checked; try { sessionStorage.setItem('wwTornadoGuide', guide.on ? '1' : '0'); } catch { /* no storage */ }
+  // (turned on at a frame with no day: to the first day's frame)
+  load().then(() => { if (!guide.on || guideDay() || !data?.frames) return; const first = guide.data?.days.find(d => data.frames.includes(guideFrame(d))); if (first) { stopLoop(); showFrame(data.frames.indexOf(guideFrame(first))); } });
+});
+$('guideDays').addEventListener('click', event => {
+  const d = guide.data?.days.find(x => x.day === Number(event.target.dataset?.day));
+  if (!d || !data?.frames?.includes(guideFrame(d))) return;
+  stopLoop(); showFrame(data.frames.indexOf(guideFrame(d)));
+});
+
 // --- Pointer: values under it; the wheel zooms; an admin can drag the view.
 function sample(values, at) {
   const { nx, ny } = data.grid, y = Math.max(0, Math.min(ny - 1.0001, at.y)), x = ((at.x % nx) + nx) % nx;
@@ -554,6 +680,7 @@ function showTip(event) {
   if (layers.shade) lines.push(fmt(layers.shade, here ? sampleMap(layers.shade, here.fx, here.fy) : sample(layers.shade.values, at)));
   if (layers.contour && layers.contour.key !== layers.shade?.key) lines.push(fmt(layers.contour, sample(layers.contour.values, at)));
   if (layers.wind) { const u = sample(layers.wind.u, at), v = sample(layers.wind.v, at); lines.push(`Wind: <b>${Math.round((Math.atan2(-u, -v) * 180 / Math.PI + 360) % 360)}° ${Math.round(Math.hypot(u, v))} kt</b>`); }
+  const said = guideAt(at); if (said) lines.push(said);
   const centre = mapCentre(), km = distanceKm(centre, at);
   lines.push(`<span style="color:#9ba1a6">${Math.round(km * 0.621371).toLocaleString()} mi ${compass(bearing(centre, at))} of the map's centre</span>`);
   tip.innerHTML = lines.join('<br>');

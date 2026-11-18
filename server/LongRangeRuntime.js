@@ -8,6 +8,8 @@ import { LONG_RANGE, longRangeDue } from '../js/forecast/LongRangeModel.js';
 import { sharedForecastPool } from './ForecastPool.js';
 import { ShortRangeRuntime } from './ShortRangeRuntime.js';
 
+const list = values => Array.from(values ?? []);
+
 export class LongRangeRuntime extends ShortRangeRuntime {
   constructor({ runtime, pool = sharedForecastPool() } = {}) { super({ runtime, pool }); }
 
@@ -24,6 +26,16 @@ export class LongRangeRuntime extends ShortRangeRuntime {
   }
 
   async start(engine, init) { return this.startRun(engine, init, 'longRange', LONG_RANGE.hours, LONG_RANGE.keepRuns); }
+
+  // The tornado chances of a run (the newest when none is named), for an admin on the model page (2026-11-18, the
+  // owner's request): for each outlook day the chance (percent) of a tornado within 25 miles, and of an EF2+, EF3+
+  // and EF4+ one, on the map's cells (row 0 the map's northern edge), and the frame it goes with (the 06Z before it).
+  tornadoes(init) {
+    const run = init === undefined || init === null || init === '' ? this.latest() : this.run(init);
+    if (!run?.tornadoDays) return null;
+    const days = run.tornadoDays.map(o => ({ day: o.day, frameHour: o.frameHour, validFromHourUtc: o.validFromHourUtc, validToHourUtc: o.validToHourUtc, countedToHourUtc: o.countedToHourUtc, width: o.width, height: o.height, chance: Object.fromEntries(Object.entries(o.chance).map(([k, v]) => [k, list(v)])) }));
+    return { initHourUtc: run.initHourUtc, hours: run.hours, partial: Boolean(run.partial), days };
+  }
 
   list() {
     return {
