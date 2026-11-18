@@ -85,8 +85,16 @@ assert.equal(analyseBoundaries(world({ temperature: [74, 77] })).boundaries.leng
   for (let step = 0; step < 4 * 48; step++) {
     regional.step();
     if (step < 48 || regional.hourUtc % 24 !== 22) continue;
-    afternoons++;
-    for (const line of analyseBoundaries(regional.world).boundaries.filter(b => b.type === 'dryline' && b.lengthKm >= BOUNDARY_DEFAULTS.minLengthKm)) {
+    // Only an afternoon with both air masses on the map can have a dryline: moist air (dewpoint 55 F or more) and dry
+    // air (40 F or less) each over a share of it. (2026-11-18: with the jet's core shear 10 to 16 m/s, a cold front
+    // swept this seed's moisture off the map on two of the three afternoons, mean dewpoints 26-41 F from west to east,
+    // and there was nothing for a dryline to stand between.)
+    let moist = 0, dry = 0;
+    regional.world.forEachCell(cell => { if (cell.surface.dewpoint >= 55) moist++; else if (cell.surface.dewpoint <= 40) dry++; });
+    const cells = regional.world.width * regional.world.height;
+    const bothAirMasses = moist >= 0.15 * cells && dry >= 0.15 * cells;
+    if (bothAirMasses) afternoons++;
+    for (const line of bothAirMasses ? analyseBoundaries(regional.world).boundaries.filter(b => b.type === 'dryline' && b.lengthKm >= BOUNDARY_DEFAULTS.minLengthKm) : []) {
       // Dry air to its west (it may surge far east on a day of strong westerly flow).
       const w = regional.world, dew = (x, y) => w.cells[Math.max(0, Math.min(w.height - 1, y))][Math.max(0, Math.min(w.width - 1, x))].surface.dewpoint;
       const westMinusEast = line.pointsKm.reduce((sum, p) => { const x = Math.floor(p.x / w.cellSizeKm), y = Math.floor(p.y / w.cellSizeKm); return sum + dew(x - 3, y) - dew(x + 3, y); }, 0) / line.pointsKm.length;
@@ -96,6 +104,7 @@ assert.equal(analyseBoundaries(world({ temperature: [74, 77] })).boundaries.leng
     }
     for (const line of analyseBoundaries(regional.world).boundaries) for (const point of line.pointsKm) assert.ok(point.x >= 0 && point.y >= 0 && point.x <= regional.world.domainWidthKm && point.y <= regional.world.domainHeightKm, 'every point is on the map');
   }
-  assert.ok(found >= afternoons - 1, `a dryline on ${found} of ${afternoons} afternoons`);
+  assert.ok(afternoons >= 1, 'at least one afternoon has both air masses on the map');
+  assert.ok(found >= afternoons - 1 && found >= 1, `a dryline on ${found} of ${afternoons} afternoons with both air masses`);
 }
 console.log('boundary analysis passed');

@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · High Risk</title>
+  <!-- The admin tool (2026-11-17, the owner's request): npm run admin, then http://localhost:3920 (tools/admin/server.mjs).
+       A local tool only: it is not part of the site and is never deployed.
+         Long range model   the live engine's long range run, 250 mb wind and 500 mb height, on a slider through its hours.
+         Settings           sliders for the large-scale model's jet (strength in each layer, extra shear at the core, the
+                            mean west winds, width) and the region's steering, starting from the world's own settings.
+                            Export saves them as a JSON file (with the lines for the code's defaults); Load reads one back.
+         Week preview       the world run ahead with its storms for the coming 7 convective days under the sliders'
+                            settings (tools/admin/SeverePreview.js): per day the category a perfect outlook would have
+                            drawn, tornadoes and their ratings, hail and wind reports, and the day's 250 mb jet.
+       Nothing here changes the game. -->
+  <!--site:head-->
+  <style>
+    .admin-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 26px; align-items: start; }
+    @media (max-width: 900px) { .admin-grid { grid-template-columns: minmax(0, 1fr); } }
+    canvas.chart { display: block; width: 100%; height: auto; background: #0a0f15; border: 1px solid var(--rule); }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; }
+    .bar input[type=range] { flex: 1 1 200px; accent-color: var(--brand); }
+    .bar .time { font: 400 14px var(--mono); color: var(--ink-2); }
+    fieldset { border: 1px solid var(--rule); padding: 12px 16px 6px; margin: 0 0 18px; min-width: 0; }
+    legend { font-weight: 700; padding: 0 6px; }
+    .slider { display: grid; grid-template-columns: minmax(0, 1fr) 7.5em; gap: 2px 12px; padding: 6px 0 10px; border-bottom: 1px solid var(--rule-soft); }
+    .slider:last-child { border-bottom: 0; }
+    .slider label { font-weight: 600; font-size: 15px; }
+    .slider output { font: 600 14px var(--mono); text-align: right; }
+    .slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--brand); }
+    .slider .help { grid-column: 1 / -1; font-size: 13.5px; color: var(--ink-2); }
+    .slider .game { font: 400 12.5px var(--mono); color: var(--ink-2); }
+    .slider.changed label::after { content: " (changed)"; color: var(--alert); font-weight: 600; font-size: 13px; }
+    .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 14px; }
+    .tools button { appearance: none; background: var(--page); color: var(--ink); border: 1px solid var(--rule); border-radius: 2px; padding: 6px 12px; font: 600 14.5px var(--sans); cursor: pointer; }
+    .tools button:hover { border-color: var(--ink); }
+    .tools button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .tools button:disabled { opacity: .55; cursor: default; }
+    .readout { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 10px 0 0; }
+    .readout div { border: 1px solid var(--rule-soft); padding: 6px 10px; }
+    .readout b { display: block; font: 700 18px var(--mono); }
+    .readout span { font-size: 13px; color: var(--ink-2); }
+    .table-wrap { overflow-x: auto; }
+    table.days { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+    table.days th, table.days td { border-bottom: 1px solid var(--rule-soft); padding: 6px 8px; text-align: right; white-space: nowrap; }
+    table.days th:first-child, table.days td:first-child, table.days td.date { text-align: left; }
+    table.days tbody tr { cursor: pointer; }
+    table.days tbody tr:hover, table.days tbody tr.sel { background: var(--band); }
+    .cat { display: inline-block; min-width: 3.4em; text-align: center; padding: 1px 6px; border: 1px solid rgba(0,0,0,.25); font: 700 13px var(--mono); color: #111; }
+    .ef { font: 400 13px var(--mono); color: var(--ink-2); }
+    #note, #previewNote { font-size: 15px; color: var(--ink-2); }
+    .key { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+    .key i { display: inline-block; width: 14px; height: 10px; margin-right: 5px; vertical-align: -1px; }
+    .warn { color: var(--alert); font-weight: 600; }
+  </style>
+</head>
+<body class="doc">
+<main id="content" class="wrap">
+  <header class="page-head">
+    <h1>High Risk admin: jet, steering and week preview</h1>
+    <p id="note">Loading…</p>
+  </header>
+
+  <div id="adminBody" hidden>
+    <section class="section">
+      <h2>Long range model (live)</h2>
+      <p class="help">The live engine's long range run (<span id="lrFrom"></span>): 250 mb wind (shaded) and 500 mb height (lines every 6 dam) across the whole large-scale model. The white box is the map.</p>
+      <canvas id="lrCanvas" class="chart" width="768" height="384"></canvas>
+      <div class="bar"><input id="lrSlider" type="range" min="0" max="0" value="0" aria-label="Long range forecast hour" /><span class="time" id="lrTime">…</span></div>
+      <div class="key" id="lrKey"></div>
+    </section>
+
+    <section class="section">
+      <h2>Settings</h2>
+      <p class="help">Every slider starts at the world's own settings. Moving them changes nothing in the game; a week preview runs with them. Export saves the picked settings as a JSON file, with the lines to put in the code's defaults; Load reads an exported file back.</p>
+      <div class="tools"><button id="resetGame">Reset to the world's settings</button><button id="resetCode">Reset to the code's defaults</button><button id="exportSettings">Export settings</button><button id="copyCode">Copy code lines</button><button id="loadSettings">Load settings…</button><input id="loadFile" type="file" accept=".json,application/json" hidden /><span id="settingsNote"></span></div>
+      <div class="admin-grid">
+        <div>
+          <fieldset id="qgBox"><legend>Jet stream (large-scale model)</legend></fieldset>
+          <canvas id="jetChart" class="chart" width="640" height="300"></canvas>
+          <div class="key"><span><i style="background:#ff9f43"></i>250 mb, these settings</span><span><i style="background:#54a0ff"></i>500 mb</span><span><i style="background:#1dd1a1"></i>750 mb</span><span><i style="background:#8395a7"></i>dashed: the game's</span></div>
+          <div class="readout" id="jetReadout"></div>
+        </div>
+        <div>
+          <fieldset id="steerBox"><legend>Steering (where the map is taken each day)</legend></fieldset>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Week preview</h2>
+      <p class="help">A copy of the world (<span id="worldFrom"></span>) run ahead with its storms for the coming 7 convective days (12Z to 12Z; the first is the rest of today) under the settings above. With the game's settings it is the world's own week to come, players aside. Takes several minutes; days appear as they finish. The category is what a perfect outlook would have drawn from what happened.</p>
+      <div class="tools"><button id="runPreview" class="primary">Run preview with these settings</button><span id="previewNote"></span></div>
+      <div class="table-wrap">
+        <table class="days">
+          <thead><tr><th>Day</th><th>Date</th><th>Max risk</th><th>Tornadoes</th><th>EF0-5</th><th>Strongest</th><th>Longest mi</th><th>Hail (2 in+)</th><th>Wind (75+)</th><th>Max hail</th><th>Max gust</th><th>Supercells</th><th>Storm mph</th><th>CIG T/W/H</th></tr></thead>
+          <tbody id="dayRows"><tr><td colspan="14">No preview yet.</td></tr></tbody>
+          <tfoot id="dayTotals"></tfoot>
+        </table>
+      </div>
+      <h3 style="margin-top:20px">Each day's jet (00Z)</h3>
+      <canvas id="pvCanvas" class="chart" width="768" height="384"></canvas>
+      <div class="bar"><input id="pvSlider" type="range" min="0" max="0" value="0" aria-label="Preview day" /><span class="time" id="pvTime">…</span></div>
+    </section>
+  </div>
+</main>
+<script type="module">
+import { jetKappaFor } from '/js/atmosphere/QuasiGeostrophicModel.js';
+
+const $ = id => document.getElementById(id);
+const KT = 1.943844;
+const headers = () => ({});
+const getJson = async (path, options = {}) => { const res = await fetch(path, { cache: 'no-store', ...options, headers: { ...headers(), ...(options.headers ?? {}) } }); if (!res.ok) throw Object.assign(new Error(`${res.status}`), { status: res.status, body: await res.json().catch(() => null) }); return res.json(); };
+
+// ---- The sliders ----
+const QG_SLIDERS = [
+  { key: 'jetMs', label: 'Jet strength (both layers, at the core)', unit: 'm/s', step: 0.5, help: 'Added to both layers at the jet core: faster flow and faster-moving systems and storms, the same shear.' },
+  { key: 'jetShearMs', label: 'Jet shear (extra upper wind at the core)', unit: 'm/s', step: 0.5, help: 'Half added aloft and half taken from below at the core: more upper wind and deep shear, stronger systems. Too much and they never settle.' },
+  { key: 'upperWindMs', label: 'Upper mean wind (250 mb, on the flanks)', unit: 'm/s', step: 0.5, help: 'The upper layer\'s west wind away from the core. Raising it alone adds shear everywhere.' },
+  { key: 'lowerWindMs', label: 'Lower mean wind (750 mb, on the flanks)', unit: 'm/s', step: 0.5, help: 'The lower layer\'s west wind away from the core. Storm motion follows the lower and middle winds.' },
+  { key: 'jetWidthKm', label: 'Jet width (half-strength)', unit: 'km', step: 10, help: 'Distance between the latitudes where the jet has half its core strength. All the way right is the widest (the game\'s single cosine jet).' }
+];
+const STEER_SLIDERS = [
+  { key: 'windCapKt', label: 'Wind aloft that counts in full', unit: 'kt', step: 1, help: 'Support grows with the 500 mb wind up to this, then stops: lower favours any flow, higher chases the strongest jets.' },
+  { key: 'southerlyCapKt', label: 'Southerly flow that counts in full', unit: 'kt', step: 1, help: 'Support grows with low-level flow from the south up to this.' },
+  { key: 'moistRangeGkg.0', label: 'Moisture: no support below', unit: 'g/kg', step: 0.5, help: 'Moisture about its mean where support starts.' },
+  { key: 'moistRangeGkg.1', label: 'Moisture: full support from', unit: 'g/kg', step: 0.5, help: 'Moisture about its mean where support is full.' },
+  { key: 'kinds.warmSector', label: 'Days aimed at the warm sector', unit: 'share', step: 0.05, help: 'Share of days the map goes to the strongest support (southerly flow under wind aloft).' },
+  { key: 'kinds.nearLow', label: 'Days aimed near a surface low', unit: 'share', step: 0.05, help: 'Low near the map\'s north-west corner: warm front and dryline across the map.' },
+  { key: 'kinds.upperLow', label: 'Days aimed under an upper low', unit: 'share', step: 0.05, help: 'Cold-core days under an upper trough or low.' },
+  { key: 'wantedLow', label: 'Support wanted: lowest', unit: '0-1', step: 0.05, help: 'Each day wants a support drawn between these; 1 and 1 always take the strongest.' },
+  { key: 'wantedHigh', label: 'Support wanted: highest', unit: '0-1', step: 0.05, help: '' },
+  { key: 'systemSpeedMs', label: 'Fastest east-west slide', unit: 'm/s', step: 0.5, help: 'How fast the map may slide along the wave train to meet or follow a system.' },
+  { key: 'northSpeedMs', label: 'Fastest north-south slide', unit: 'm/s', step: 0.5, help: 'How fast the map may move toward or away from the jet.' },
+  { key: 'homeReachKm', label: 'Farthest from home latitude', unit: 'km', step: 50, help: 'Home is the jet core\'s latitude.' },
+  { key: 'homePull', label: 'Pull back toward home', unit: 'per 1000 km', step: 0.01, help: 'Support given up for each 1,000 km from home: keeps the map near the jet.' },
+  { key: 'lookAheadDays', label: 'Days looked ahead', unit: 'days', step: 1, help: 'Plan today\'s slide with the following days\' best slides in view.' },
+  { key: 'maxMissKm', label: 'Farthest miss when aiming at a low', unit: 'km', step: 25, help: 'Beyond this the day aims at the warm sector instead.' }
+];
+
+let info = null, settings = null;
+const getPath = (object, path) => path.split('.').reduce((o, k) => (o == null ? o : Array.isArray(o) ? o[Number(k)] : o[k]), object);
+const setPath = (object, path, value) => { const keys = path.split('.'); let o = object; for (let i = 0; i < keys.length - 1; i++) o = o[keys[i]]; o[Array.isArray(o) ? Number(keys.at(-1)) : keys.at(-1)] = value; };
+const rangeOf = (group, key) => {
+  const base = key.split('.')[0], [lo, hi] = info.limits[group][base] ?? [0, 1];
+  if (group === 'qg' && key === 'jetWidthKm') return [lo, info.domain.widestJetKm];
+  return [lo, hi];
+};
+const shown = (group, key, v) => (group === 'qg' && key === 'jetWidthKm' && (v === null || v >= info.domain.widestJetKm - 1)) ? `${info.domain.widestJetKm} (widest)` : (Math.round(v * 100) / 100).toString();
+
+function buildSliders(box, group, list) {
+  for (const s of list) {
+    const [lo, hi] = rangeOf(group, s.key), row = document.createElement('div');
+    row.className = 'slider'; row.dataset.group = group; row.dataset.key = s.key;
+    row.innerHTML = `<label for="s-${group}-${s.key}">${s.label}</label><output id="o-${group}-${s.key}"></output><input id="s-${group}-${s.key}" type="range" min="${lo}" max="${hi}" step="${s.step}" /><span class="game" id="g-${group}-${s.key}"></span>${s.help ? `<span class="help">${s.help}</span>` : ''}`;
+    box.append(row);
+    row.querySelector('input').addEventListener('input', event => {
+      let v = Number(event.target.value);
+      if (group === 'qg' && s.key === 'jetWidthKm' && v >= info.domain.widestJetKm - 1) v = null;
+      setPath(settings[group], s.key, v); refresh();
+    });
+  }
+}
+function refresh() {
+  for (const row of document.querySelectorAll('.slider')) {
+    const { group, key } = row.dataset, v = getPath(settings[group], key), game = getPath(info.game[group], key);
+    const input = row.querySelector('input');
+    input.value = v === null ? info.domain.widestJetKm : v;
+    $(`o-${group}-${key}`).textContent = `${shown(group, key, v)} ${QG_SLIDERS.concat(STEER_SLIDERS).find(s => s.key === key)?.unit ?? ''}`;
+    $(`g-${group}-${key}`).textContent = `game: ${shown(group, key, game)}`;
+    row.classList.toggle('changed', JSON.stringify(v ?? null) !== JSON.stringify(game ?? null));
+  }
+  drawJetChart();
+}
+
+// ---- The jet chart: each layer's mean west wind by latitude (the engine's own shape, js/atmosphere/QuasiGeostrophicModel.js) ----
+const LOGP_500 = (750 - 500) / 500;   // 500 mb's place between the layers (RegionalAtmosphere.windAt: linear in pressure)
+function profile(q) {
+  const L = info.domain.northSouthKm, k = jetKappaFor(q.jetWidthKm, L), N = 2048;
+  let mean = 0; if (k) { for (let i = 0; i < N; i++) mean += Math.exp(k * (Math.cos(2 * Math.PI * (i + 0.5) / N) - 1)); mean /= N; }
+  const shape = t => (k ? (Math.exp(k * (Math.cos(t) - 1)) - mean) / (1 - mean) : Math.cos(t));
+  const a1 = q.jetMs + q.jetShearMs / 2, a2 = q.jetMs - q.jetShearMs / 2, out = [];
+  for (let i = 0; i <= 200; i++) {
+    const y = -L / 2 + L * i / 200, c = shape(2 * Math.PI * y / L), up = q.upperWindMs + a1 * c, low = q.lowerWindMs + a2 * c;
+    out.push({ y, up: up * KT, mid: (low + LOGP_500 * (up - low)) * KT, low: low * KT });
+  }
+  return out;
+}
+function drawJetChart() {
+  const canvas = $('jetChart'), g = canvas.getContext('2d'), W = canvas.width, H = canvas.height, pad = { l: 44, r: 12, t: 12, b: 30 };
+  const now = profile(settings.qg), game = profile(info.game.qg), L = info.domain.northSouthKm;
+  const top = Math.max(60, ...now.map(p => p.up), ...game.map(p => p.up)) * 1.1;
+  const X = y => pad.l + (y + L / 2) / L * (W - pad.l - pad.r), Y = v => H - pad.b - v / top * (H - pad.t - pad.b);
+  g.fillStyle = '#0a0f15'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#26323f'; g.fillStyle = '#8395a7'; g.font = '12px IBM Plex Mono, monospace'; g.lineWidth = 1;
+  for (let v = 0; v <= top; v += 20) { g.beginPath(); g.moveTo(pad.l, Y(v)); g.lineTo(W - pad.r, Y(v)); g.stroke(); g.fillText(`${v}`, 6, Y(v) + 4); }
+  for (let y = -2000; y <= 2000; y += 1000) { g.beginPath(); g.moveTo(X(y), pad.t); g.lineTo(X(y), H - pad.b); g.stroke(); g.fillText(y === 0 ? 'core' : `${y > 0 ? '+' : ''}${y} km`, X(y) - 24, H - 10); }
+  const line = (pts, key, colour, dash) => { g.strokeStyle = colour; g.setLineDash(dash ? [6, 5] : []); g.lineWidth = dash ? 1.5 : 2.5; g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(X(p.y), Y(p[key])) : g.moveTo(X(p.y), Y(p[key])))); g.stroke(); };
+  for (const [key, colour] of [['up', '#ff9f43'], ['mid', '#54a0ff'], ['low', '#1dd1a1']]) { line(game, key, '#8395a7', true); line(now, key, colour, false); }
+  g.setLineDash([]); g.fillStyle = '#8395a7'; g.fillText('kt', 6, pad.t + 4);
+  const core = now[100], flank = now[50], gcore = game[100];
+  $('jetReadout').innerHTML = [
+    ['250 mb at the core', `${core.up.toFixed(0)} kt`, gcore.up], ['500 mb at the core', `${core.mid.toFixed(0)} kt`, gcore.mid], ['750 mb at the core', `${core.low.toFixed(0)} kt`, gcore.low],
+    ['250 / 500 ratio', (core.up / Math.max(1, core.mid)).toFixed(2), gcore.up / Math.max(1, gcore.mid)], ['250 mb 1,280 km off the core', `${flank.up.toFixed(0)} kt`, game[50].up],
+    ['Core shear 750-250', `${(core.up - core.low).toFixed(0)} kt`, gcore.up - gcore.low]
+  ].map(([label, value, was]) => `<div><b>${value}</b><span>${label} (game ${typeof was === 'number' ? (was < 5 ? was.toFixed(2) : was.toFixed(0)) : was})</span></div>`).join('');
+}
+
+// ---- The jet pictures: 250 mb wind shaded, 500 mb height every 6 dam, the map's box ----
+const WIND_STOPS = [[0, [10, 15, 21]], [50, [24, 44, 66]], [70, [40, 110, 170]], [90, [90, 80, 200]], [110, [190, 60, 190]], [130, [235, 70, 90]], [150, [255, 200, 120]], [180, [255, 255, 255]]];
+const windColour = v => { for (let i = 1; i < WIND_STOPS.length; i++) { const [a, ca] = WIND_STOPS[i - 1], [b, cb] = WIND_STOPS[i]; if (v <= b) { const f = Math.max(0, (v - a) / (b - a)); return ca.map((c, k) => c + f * (cb[k] - c)); } } return WIND_STOPS.at(-1)[1]; };
+$('lrKey').innerHTML = $('lrKey').innerHTML || WIND_STOPS.slice(1).map(([v, c]) => `<span><i style="background:rgb(${c.join(',')})"></i>${v} kt</span>`).join('');
+function drawJet(canvas, { nx, ny, wind, height, box }) {
+  const g = canvas.getContext('2d'), W = canvas.width, H = canvas.height, img = g.createImageData(W, H);
+  const at = (a, fx, fy) => { const x0 = Math.floor(fx), y0 = Math.max(0, Math.min(ny - 2, Math.floor(fy))), tx = fx - x0, ty = Math.max(0, Math.min(1, fy - y0)), i0 = ((x0 % nx) + nx) % nx, i1 = (i0 + 1) % nx;
+    return (a[y0 * nx + i0] * (1 - tx) + a[y0 * nx + i1] * tx) * (1 - ty) + (a[(y0 + 1) * nx + i0] * (1 - tx) + a[(y0 + 1) * nx + i1] * tx) * ty; };
+  const band = new Int32Array(W * H);
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const fx = px / W * nx - 0.5, fy = (H - 1 - py) / H * ny - 0.5, k = py * W + px, c = windColour(at(wind, fx, fy));
+    band[k] = Math.floor(at(height, fx, fy) / 6);
+    img.data[4 * k] = c[0]; img.data[4 * k + 1] = c[1]; img.data[4 * k + 2] = c[2]; img.data[4 * k + 3] = 255;
+  }
+  for (let py = 0; py < H - 1; py++) for (let px = 0; px < W - 1; px++) { const k = py * W + px; if (band[k] !== band[k + 1] || band[k] !== band[k + W]) for (let c = 0; c < 3; c++) img.data[4 * k + c] = 235; }
+  g.putImageData(img, 0, 0);
+  if (box) { g.strokeStyle = '#fff'; g.lineWidth = 2; for (const shift of [0, -nx, nx]) g.strokeRect((box.x + shift) / nx * W, H - (box.y + box.height) / ny * H, box.width / nx * W, box.height / ny * H); }
+}
+
+// ---- The live long range run ----
+let lr = null;
+async function loadLongRange() {
+  try {
+    const first = await getJson('/api/long-range/frame');
+    const hours = (first.frames ?? []).slice().sort((a, b) => a - b);
+    if (!hours.length) { $('lrTime').textContent = 'No long range run yet.'; return; }
+    lr = { init: first.run?.initHourUtc, hours };
+    $('lrSlider').max = hours.length - 1; $('lrSlider').value = 0; await showLongRange(0);
+  } catch (error) { $('lrTime').textContent = `The long range model is not available (${error.message}).`; }
+}
+async function showLongRange(index) {
+  const hour = lr.hours[index], q = `init=${lr.init}&frame=${hour}`;
+  const [frame, wind, height] = await Promise.all([getJson(`/api/long-range/frame?${q}`), getJson(`/api/long-range/field?${q}&key=wspd250`), getJson(`/api/long-range/field?${q}&key=z500`)]);
+  if (Number($('lrSlider').value) !== index) return;
+  drawJet($('lrCanvas'), { nx: wind.nx, ny: wind.ny, wind: wind.values, height: height.values, box: frame.map });
+  $('lrTime').textContent = `+${Math.round(hour - lr.init)} h · ${frame.date ?? ''} ${String(Math.round(frame.hourUtc ?? 0)).padStart(2, '0')}Z · 250 mb max ${Math.round(wind.max)} kt`;
+}
+$('lrSlider').addEventListener('input', event => { if (lr) showLongRange(Number(event.target.value)).catch(() => {}); });
+
+// ---- The preview ----
+const CAT_COLOURS = { NONE: '#ffffff', TSTM: '#c1e9c1', MRGN: '#66a366', SLGT: '#f6f67b', ENH: '#e6c27f', MDT: '#e67f7f', HIGH: '#ff66ff' };
+let preview = { days: [] }, selectedDay = 0, polling = null;
+function showPreview(status) {
+  const run = status.running, last = status.last, days = run ? run.days : last?.days ?? [];
+  preview.days = days;
+  $('runPreview').disabled = Boolean(run);
+  if (run) $('previewNote').textContent = `Running: ${run.hoursDone.toFixed(0)} hours of about ${info.days * 24} simulated, ${Math.round((Date.now() - run.startedAt) / 60000)} min so far.`;
+  else if (last?.error) $('previewNote').innerHTML = `<span class="warn">The last preview failed: ${last.error}</span>`;
+  else if (last) {
+    const changed = [...Object.keys(last.applied?.qg ?? {}), ...Object.keys(last.applied?.steering ?? {})];
+    $('previewNote').textContent = `Made in ${(last.realMs / 60000).toFixed(1)} min. ${changed.length ? `Changed from the game: ${changed.join(', ')}.` : 'With the game\'s own settings: the world\'s own week to come.'}`;
+  } else $('previewNote').textContent = '';
+  const rows = days.map((d, i) => `<tr data-i="${i}" class="${i === selectedDay ? 'sel' : ''}"><td>${d.day}${d.partial ? ' (part)' : ''}</td><td class="date">${d.date ?? `day ${d.convectiveDay}`}</td>
+    <td><span class="cat" style="background:${CAT_COLOURS[d.category] ?? '#fff'}">${d.category}</span></td><td>${d.tornadoes}</td><td class="ef">${d.ratings.join(' ')}</td><td>${d.strongestEf === null ? '-' : `EF${d.strongestEf}`}</td><td>${d.longestTrackMi}</td>
+    <td>${d.hailReports} (${d.hail2in})</td><td>${d.windReports} (${d.wind75})</td><td>${d.maxHailIn.toFixed(2)} in</td><td>${d.maxGustMph} mph</td><td>${d.supercells}</td><td>${d.stormMphMedian ?? '-'}</td><td>${d.cig.tornado}/${d.cig.wind}/${d.cig.hail}</td></tr>`);
+  $('dayRows').innerHTML = rows.length ? rows.join('') : `<tr><td colspan="14">${run ? 'The first day appears when it ends…' : 'No preview yet.'}</td></tr>`;
+  if (days.length) {
+    const sum = key => days.reduce((s, d) => s + d[key], 0), ratings = [0, 1, 2, 3, 4, 5].map(k => days.reduce((s, d) => s + d.ratings[k], 0));
+    $('dayTotals').innerHTML = `<tr><th>Total</th><td></td><td></td><td>${sum('tornadoes')}</td><td class="ef">${ratings.join(' ')}</td><td></td><td></td><td>${sum('hailReports')} (${sum('hail2in')})</td><td>${sum('windReports')} (${sum('wind75')})</td><td></td><td></td><td>${sum('supercells')}</td><td></td><td></td></tr>`;
+  } else $('dayTotals').innerHTML = '';
+  $('pvSlider').max = Math.max(0, days.length - 1);
+  if (selectedDay >= days.length) selectedDay = Math.max(0, days.length - 1);
+  $('pvSlider').value = selectedDay; drawPreviewDay();
+}
+function drawPreviewDay() {
+  const d = preview.days[selectedDay];
+  if (!d) { $('pvTime').textContent = 'No day yet.'; return; }
+  const p = d.picture;
+  drawJet($('pvCanvas'), { nx: p.nx, ny: p.ny, wind: p.wind250Kt, height: p.z500TenthDam.map(v => v / 10), box: p.box });
+  $('pvTime').textContent = `Day ${d.day} · ${d.date ?? ''} · ${d.category} · ${d.tornadoes} tornadoes · 250 mb max ${Math.max(...p.wind250Kt)} kt`;
+  for (const tr of document.querySelectorAll('#dayRows tr')) tr.classList.toggle('sel', Number(tr.dataset.i) === selectedDay);
+}
+$('pvSlider').addEventListener('input', event => { selectedDay = Number(event.target.value); drawPreviewDay(); });
+$('dayRows').addEventListener('click', event => { const tr = event.target.closest('tr[data-i]'); if (tr) { selectedDay = Number(tr.dataset.i); $('pvSlider').value = selectedDay; drawPreviewDay(); } });
+async function poll() {
+  try { const status = await getJson('/api/preview'); showPreview(status); if (!status.running) { clearInterval(polling); polling = null; } } catch { /* try again next time */ }
+}
+$('runPreview').addEventListener('click', async () => {
+  $('runPreview').disabled = true;
+  try { const status = await getJson('/api/preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(settings) }); selectedDay = 0; showPreview(status); }
+  catch (error) { $('previewNote').innerHTML = `<span class="warn">${error.status === 409 ? 'A preview is running already.' : `Could not start: ${error.message}`}</span>`; }
+  polling ??= setInterval(poll, 4000);
+});
+
+$('resetGame').addEventListener('click', () => { settings = structuredClone(info.game); refresh(); });
+$('resetCode').addEventListener('click', () => { settings = structuredClone({ qg: { ...info.game.qg, ...info.defaults.qg }, steering: { ...info.game.steering, ...info.defaults.steering } }); refresh(); });
+
+// ---- Export and load ----
+const changedFrom = (base, now) => Object.fromEntries(Object.entries(now).filter(([key, value]) => JSON.stringify(value ?? null) !== JSON.stringify(base[key] ?? null)));
+const literal = value => JSON.stringify(value).replace(/"(\w+)":/g, '$1: ').replace(/,/g, ', ');
+// The lines to put in the code's defaults for the settings that differ from them.
+function codeLines() {
+  const qg = changedFrom(info.defaults.qg, settings.qg), steering = changedFrom(info.defaults.steering, settings.steering), lines = [];
+  if (Object.keys(qg).length) lines.push('// js/atmosphere/QuasiGeostrophicModel.js, QG_DEFAULTS', ...Object.entries(qg).map(([k, v]) => `  ${k}: ${literal(v)},`));
+  if (Object.keys(steering).length) lines.push('// js/world/RegionSteering.js, STEERING_DEFAULTS', ...Object.entries(steering).map(([k, v]) => `  ${k}: ${literal(v)},`));
+  return lines.length ? lines.join('\n') : "// the same as the code's defaults";
+}
+function exported() {
+  return {
+    kind: 'high-risk-admin-settings', version: 1, exportedAt: new Date().toISOString(),
+    world: info.source, qg: settings.qg, steering: settings.steering,
+    changedFromWorld: { qg: changedFrom(info.game.qg, settings.qg), steering: changedFrom(info.game.steering, settings.steering) },
+    changedFromCode: { qg: changedFrom(info.defaults.qg, settings.qg), steering: changedFrom(info.defaults.steering, settings.steering) },
+    codeLines: codeLines().split('\n')
+  };
+}
+$('exportSettings').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(exported(), null, 2)], { type: 'application/json' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `high-risk-settings-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  $('settingsNote').textContent = 'Exported.';
+});
+$('copyCode').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(codeLines()); $('settingsNote').textContent = 'Code lines copied.'; }
+  catch { $('settingsNote').textContent = codeLines(); }
+});
+$('loadSettings').addEventListener('click', () => $('loadFile').click());
+$('loadFile').addEventListener('change', async event => {
+  const file = event.target.files?.[0]; event.target.value = '';
+  if (!file) return;
+  try {
+    const loaded = JSON.parse(await file.text());
+    if (!loaded?.qg || !loaded?.steering) throw new Error('not an exported settings file');
+    // (only the settings this page has, so a file from an older tool still loads)
+    for (const group of ['qg', 'steering']) for (const key of Object.keys(settings[group])) if (key in loaded[group]) settings[group][key] = structuredClone(loaded[group][key]);
+    refresh(); $('settingsNote').textContent = `Loaded ${file.name}.`;
+  } catch (error) { $('settingsNote').innerHTML = `<span class="warn">Could not load ${file.name}: ${error.message}</span>`; }
+});
+
+// ---- Start ----
+try {
+  const [answer, status] = await Promise.all([getJson('/api/settings'), getJson('/api/preview')]);
+  info = answer;
+  {
+    settings = structuredClone(info.game);
+    const from = info.source, world = from.kind === 'saved' ? `the local engine's saved world, seed ${from.seed}, saved ${new Date(from.savedAt).toLocaleString()}` : `a new world for seed ${from.seed}`;
+    $('note').textContent = `Previews run on ${world}.${from.problem ? ` (${from.problem})` : ''} Settings start at that world's own.`;
+    $('worldFrom').textContent = world; $('lrFrom').textContent = info.live.url;
+    $('adminBody').hidden = false;
+    buildSliders($('qgBox'), 'qg', QG_SLIDERS); buildSliders($('steerBox'), 'steering', STEER_SLIDERS);
+    refresh(); showPreview(status); loadLongRange();
+    if (status.running) polling = setInterval(poll, 4000);
+  }
+} catch (error) {
+  $('note').textContent = `Could not reach the admin tool's server (${error.message}).`;
+}
+</script>
+</body>
+</html>

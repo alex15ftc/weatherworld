@@ -57,12 +57,13 @@ export class AtmosphereWorld {
   // the map. (2026-10-28: without it a new world's first day began from the outer model's air alone,
   // far from the system aimed at, and went without a tornado on half the seeds.) Not for a restored world
   // or one without steering.
+  // qg: settings for the large-scale model (QuasiGeostrophicModel), over its defaults (a test of them).
   // prepare: false leaves the fields the storm engine reads unworked (restore: the restored world
   // replaces this one, and brings its own).
-  constructor({ seed = 1, spinUpDays = 45, model = null, regional = {}, storms = true, steering = {}, plan = true, warmUpHours = 24, prepare = true } = {}) {
+  constructor({ seed = 1, spinUpDays = 45, model = null, qg = {}, regional = {}, storms = true, steering = {}, plan = true, warmUpHours = 24, prepare = true } = {}) {
     this.seed = seed;
     // (A spin-up already run for this seed is read back from disk: spinUpCache.node.js.)
-    this.model = model ?? spunUpModel({ seed }, spinUpDays * 86400);
+    this.model = model ?? spunUpModel({ ...qg, seed }, spinUpDays * 86400);
     // Soundings are computed here, after the storms' own cooling has been put back in.
     const warmUp = plan && steering ? Math.max(0, warmUpHours) : 0;
     this.regional = new RegionalAtmosphere(this.model, { ...regional, diagnostics: false, ...(warmUp ? { startHourUtc: 12 - warmUp } : {}) });

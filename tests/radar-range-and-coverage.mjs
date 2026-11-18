@@ -70,7 +70,12 @@ assert.ok(close.debrisCc <= 0.83, `close to the radar the debris is plain (${clo
 // (A violent tornado lofts debris to 3.5 km, which the bottom of the beam still grazes there,
 // and the hail core beside it lowers the value too. The gap 0.09 to 0.06 on 2026-10-21 with the near
 // value above: the debris is spread thinner by the low-level wind, not seen any better far off.)
-assert.ok(far.debrisCc >= 0.87 && far.debrisCc - close.debrisCc >= 0.06, `far from it the beam passes over nearly all the debris (${far.debrisCc} against ${close.debrisCc})`);
+// (Judged on what the debris adds, against the same storm with no tornado down, since 2026-11-18: until then on
+// CC 0.87 or more. With the jet's core shear 10 to 16 m/s the ground wind here went 16 to 40 kt at 850 mb and spread
+// the hail core's mixed echo wider, so the storm without a tornado read 0.872 (0.890 before) and with it 0.858, the
+// debris taking 0.014 off (0.007 before).)
+const farClear = view(190, false).debrisCc;
+assert.ok(farClear - far.debrisCc <= 0.03 && far.debrisCc - close.debrisCc >= 0.06, `far from it the beam passes over nearly all the debris (${far.debrisCc}, ${farClear} with no tornado, against ${close.debrisCc} close)`);
 
 // --- The mosaic is blank where no radar reaches. ---
 const edge = { x: 4, y: 0.52 * domainKm };

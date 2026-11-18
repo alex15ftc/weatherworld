@@ -514,6 +514,19 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+00. Admin tool (2026-11-18, on main; branch `engine/steer-jet-overlap`, worktree `.claude/worktrees/vortex-centrifuge`).
+   `npm run admin` -> http://localhost:3920 (tools/admin/: server.mjs, admin.html, SeverePreview.js,
+   preview-worker.mjs); local only, tools/ is never in the engine's image. Live long range jet maps (proxied from the
+   hosted engine), jet and steering sliders from the world's own settings, export/load of the picked settings as JSON
+   (with the lines for the code's defaults), and a 7-day storm preview on its own thread (a few minutes) on the local
+   engine's saved world (ADMIN_STATE) or a new world for ADMIN_SEED. Days are numbered, not dated (no calendar there).
+   Engine: the model and steering are as on main (owner, 2026-11-18: the log-pressure wind, overlap steering and
+   jetShearMs 16 were tried and reverted); kept only what the tool needs, which changes nothing by default (QG
+   jetWidthKm null = the old cosine and retune(); AtmosphereWorld `qg` option; regression REG_QG). Fingerprint
+   identical to main (seed 2, 24 h). Three scenario tests now judge the process rather than the day's weather (cap
+   in moist air; drylines on afternoons with both air masses; far debris against the same storm without a tornado);
+   pass on both jets, suite 74/74. Next: the outlook check and retune the owner asked for.
+
 000. Radar debris signature (2026-11-17, radar only): a meteorologist review found
    rain and hail in a tornado's core outweighing its debris (CC 0.8-0.88 at 57-66 dBZ in moist, rain-cooled air).
    Merged and deployed 2026-11-17 from 762da59: the swirl of the tornado and its tornado cyclone flings rain and hail out

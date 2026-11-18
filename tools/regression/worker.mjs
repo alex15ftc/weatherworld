@@ -28,7 +28,8 @@ const NEAR_KM = 64;
 const started = Date.now();
 
 // REG_STEERING: JSON settings for RegionSteering (a test of steering options; unset, the defaults).
-const atmosphere = new AtmosphereWorld({ seed, steering: JSON.parse(process.env.REG_STEERING || "{}") }), world = atmosphere.world, n = world.width * world.height;
+// REG_QG: JSON settings for the large-scale model (QuasiGeostrophicModel; unset, the defaults).
+const atmosphere = new AtmosphereWorld({ seed, steering: JSON.parse(process.env.REG_STEERING || "{}"), qg: JSON.parse(process.env.REG_QG || "{}") }), world = atmosphere.world, n = world.width * world.height;
 const regional = atmosphere.regional, cellKm = world.cellSizeKm;
 const places = placesFor(world);
 const startHour = world.stormEngine?.validHourUtc ?? world.validHourUtc;

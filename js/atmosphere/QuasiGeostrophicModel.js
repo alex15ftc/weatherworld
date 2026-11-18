@@ -75,6 +75,11 @@ export const QG_DEFAULTS = Object.freeze({
   // 1,900, and the winds over the region about as before (500 mb about 19 m/s at the core).
   // Negative tilt was no more common with any jet tried (docs/FIX-PLAN-2026-10-22.md).
   jetMs: 10, jetShearMs: 10,
+  // How wide the jet is (km between the latitudes where it has half its strength at the core; 2026-11-17, for the
+  // admin tool's previews (tools/admin)). null: the cosine across the whole domain (its half-strength width is a third of the
+  // domain's north-south length, 1,707 km), the widest a single jet can be. Narrower, the shape is exp(k (cos - 1))
+  // about its mean, k set by the width; the mean state's curvature term and streamfunction follow it.
+  jetWidthKm: null,
   // Radiation pulls the temperature disturbances back toward the mean state; drag slows the
   // lower layer. Together they set how strong the systems get.
   // Surface friction grows with the wind (drag force ~ speed squared): dragDays is the spin-down
@@ -108,6 +113,31 @@ export const QG_DEFAULTS = Object.freeze({
   timeStepSeconds: 300
 });
 
+// The settings retune may change on a running model.
+export const RETUNABLE = Object.freeze(['jetMs', 'jetShearMs', 'jetWidthKm', 'upperWindMs', 'lowerWindMs']);
+
+// The narrow jet's shape g = exp(k (cos t - 1)) (1 at the core; t the turn of the domain north-south from the middle
+// latitude): k for a width (km between the latitudes where the shape about its mean, (g - mean) / (1 - mean), is one
+// half), g's mean over the domain, and the integral over t of the shape about its mean from the core (a table over one
+// turn; it ends where it started, as the shape's mean is 0).
+const JET_TABLE = 2048;
+function meanOfJetG(k) { let sum = 0; for (let i = 0; i < JET_TABLE; i++) sum += Math.exp(k * (Math.cos(2 * Math.PI * (i + 0.5) / JET_TABLE) - 1)); return sum / JET_TABLE; }
+function jetIntegralTable(k, mean) {
+  const table = new Float64Array(JET_TABLE + 1), dt = 2 * Math.PI / JET_TABLE, c = t => (Math.exp(k * (Math.cos(t) - 1)) - mean) / (1 - mean);
+  for (let i = 0; i < JET_TABLE; i++) table[i + 1] = table[i] + dt * (c(i * dt) + c((i + 1) * dt)) / 2;
+  const end = table[JET_TABLE];
+  for (let i = 0; i <= JET_TABLE; i++) table[i] -= end * i / JET_TABLE;   // (rounding: close the loop)
+  return table;
+}
+export function jetKappaFor(widthKm, lengthKm) {
+  if (!(widthKm > 0) || widthKm >= lengthKm / 3 - 1e-6) return 0;
+  const halfAngle = Math.PI * widthKm / lengthKm;
+  const above = k => { const m = meanOfJetG(k); return (Math.exp(k * (Math.cos(halfAngle) - 1)) - m) / (1 - m) > 0.5; };
+  let lo = 1e-4, hi = 400;   // (narrower: larger k)
+  for (let i = 0; i < 50; i++) { const mid = Math.sqrt(lo * hi); if (above(mid)) lo = mid; else hi = mid; }
+  return Math.sqrt(lo * hi);
+}
+
 export class QuasiGeostrophicModel {
   constructor(options = {}) {
     const p = this.params = { ...QG_DEFAULTS, ...options };
@@ -128,15 +158,40 @@ export class QuasiGeostrophicModel {
     // shear's thermal gradient.
     this.upperMean = new Float64Array(this.ny); this.lowerMean = new Float64Array(this.ny);
     this.gradient1 = new Float64Array(this.ny); this.gradient2 = new Float64Array(this.ny);
-    for (let j = 0; j < this.ny; j++) {
-      const y = this.y(j), c = this.jetShape(y), [a1, a2] = this.jetAmplitudes(), K = 2 * Math.PI / this.lengthY;
-      this.upperMean[j] = p.upperWindMs + a1 * c; this.lowerMean[j] = p.lowerWindMs + a2 * c;
-      const shear = this.upperMean[j] - this.lowerMean[j];
-      this.gradient1[j] = p.beta + K * K * a1 * c + this.F * shear;
-      this.gradient2[j] = p.beta + K * K * a2 * c - this.F * shear;
-    }
+    this.buildMeanState();
     this.buildTransforms();
     this.reset(options.seed ?? 1);
+  }
+
+  // The mean state row by row: each layer's west wind (m/s) and the north-south gradient of its potential vorticity
+  // (beta, less the wind's curvature, and the shear's share). From the jet's settings; again by retune.
+  buildMeanState() {
+    const p = this.params, [a1, a2] = this.jetAmplitudes(), K = 2 * Math.PI / this.lengthY;
+    this.jetKappa = jetKappaFor(p.jetWidthKm, this.lengthY / 1000);
+    this.jetMeanG = this.jetKappa ? meanOfJetG(this.jetKappa) : 0;
+    this.jetIntegralTable = this.jetKappa ? jetIntegralTable(this.jetKappa, this.jetMeanG) : null;
+    for (let j = 0; j < this.ny; j++) {
+      const y = this.y(j), c = this.jetShape(y);
+      this.upperMean[j] = p.upperWindMs + a1 * c; this.lowerMean[j] = p.lowerWindMs + a2 * c;
+      const shear = this.upperMean[j] - this.lowerMean[j];
+      if (!this.jetKappa) {
+        // (the cosine: minus its curvature is K^2 a c, written as before so the default model is unchanged to the bit)
+        this.gradient1[j] = p.beta + K * K * a1 * c + this.F * shear;
+        this.gradient2[j] = p.beta + K * K * a2 * c - this.F * shear;
+      } else {
+        const bend = this.jetCurvature(y);
+        this.gradient1[j] = p.beta - a1 * bend + this.F * shear;
+        this.gradient2[j] = p.beta - a2 * bend - this.F * shear;
+      }
+    }
+  }
+
+  // New settings for the jet and the mean west winds (jetMs, jetShearMs, jetWidthKm, upperWindMs, lowerWindMs) on a
+  // model already running: its weather systems are kept and travel on in the new mean flow (the admin page's
+  // previews, 2026-11-17).
+  retune(changes = {}) {
+    for (const key of RETUNABLE) if (key in changes) this.params[key] = changes[key] === null ? null : Number(changes[key]);
+    this.buildMeanState();
   }
 
   // Distance north of the southern edge (m) of row j.
@@ -144,12 +199,29 @@ export class QuasiGeostrophicModel {
 
   // The jet's shape at a distance north (1 at its core in the middle latitude, -1 at the domain's
   // northern and southern edges, which meet), and its strength in each layer (m/s).
-  jetShape(northM) { return Math.cos(2 * Math.PI * (northM - this.lengthY / 2) / this.lengthY); }
+  jetShape(northM) {
+    const t = 2 * Math.PI * (northM - this.lengthY / 2) / this.lengthY;
+    if (!this.jetKappa) return Math.cos(t);
+    return (Math.exp(this.jetKappa * (Math.cos(t) - 1)) - this.jetMeanG) / (1 - this.jetMeanG);
+  }
+  // The narrow shape's second derivative northward (per m^2).
+  jetCurvature(northM) {
+    const K = 2 * Math.PI / this.lengthY, t = K * (northM - this.lengthY / 2), k = this.jetKappa;
+    return K * K * (k * k * Math.sin(t) ** 2 - k * Math.cos(t)) * Math.exp(k * (Math.cos(t) - 1)) / (1 - this.jetMeanG);
+  }
+  // The narrow shape's integral northward from the middle latitude (m).
+  jetIntegral(northM) {
+    const K = 2 * Math.PI / this.lengthY, t = K * (northM - this.lengthY / 2), table = this.jetIntegralTable, n = table.length - 1;
+    const u = ((((t / (2 * Math.PI)) % 1) + 1) % 1) * n, i = Math.min(n - 1, Math.floor(u)), f = u - i;
+    return (table[i] + f * (table[i + 1] - table[i])) / K;
+  }
   jetAmplitudes() { const p = this.params, jet = p.jetMs ?? 0, shear = p.jetShearMs ?? 0; return [jet + shear / 2, jet - shear / 2]; }
   // The mean state's streamfunction of each layer at a distance north (its west wind is minus its
   // northward derivative): U0 y and the jet's share.
   meanStreamfunction(northM) {
-    const p = this.params, K = 2 * Math.PI / this.lengthY, s = Math.sin(K * (northM - this.lengthY / 2)), [a1, a2] = this.jetAmplitudes();
+    const p = this.params, K = 2 * Math.PI / this.lengthY, [a1, a2] = this.jetAmplitudes();
+    if (this.jetKappa) { const s = this.jetIntegral(northM); return [-p.upperWindMs * northM - a1 * s, -p.lowerWindMs * northM - a2 * s]; }
+    const s = Math.sin(K * (northM - this.lengthY / 2));
     return [-p.upperWindMs * northM - a1 / K * s, -p.lowerWindMs * northM - a2 / K * s];
   }
   // Each layer's mean west wind at a distance north (m/s).

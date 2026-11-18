@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
+    "admin": "node tools/admin/server.mjs",
     "test": "node scripts/run-tests.mjs",
     "inspect:outer": "node scripts/qg-prototype.mjs",
     "inspect:atmosphere": "node scripts/regional-prototype.mjs",

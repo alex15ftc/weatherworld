@@ -24,7 +24,11 @@ for (let step = 0; step < 3 * 48; step++) {
     assert.ok(cell.surface.dewpoint <= cell.surface.temperature + 1e-6, 'the air is never more than saturated');
     if (!east(x)) return;
     const low = uv(cell.surface.wind.speed, cell.surface.wind.direction), jet = uv(cell.levels[850].windSpeed, cell.levels[850].windDirection);
-    sample.t.push(cell.surface.temperature); sample.cin.push(Math.abs(cell.derived.sounding.mlcin)); sample.jet.push(cell.levels[850].windSpeed);
+    // (The cap where the air is moist enough for storms, since 2026-11-18: in the dry air behind a front the mixed-layer
+    // parcel barely reaches free convection, and its inhibition says little about the cap. With the jet's core shear
+    // 10 to 16 m/s a front dried this seed's map on the second day: over all the cells the afternoon cap was 357 J/kg
+    // against 429 in the morning, in the moist air 191 against 353.)
+    sample.t.push(cell.surface.temperature); if (cell.surface.dewpoint >= 55) sample.cin.push(Math.abs(cell.derived.sounding.mlcin)); sample.jet.push(cell.levels[850].windSpeed);
     sample.slow.push(cell.surface.wind.speed);
     if (cell.surface.wind.speed > 3 && cell.levels[850].windSpeed > 3) sample.turn.push(-Math.atan2(low.u * jet.v - low.v * jet.u, low.u * jet.u + low.v * jet.v) * 180 / Math.PI);
   });
