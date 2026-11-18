@@ -46,6 +46,7 @@ for m = 1, minutes do
 		end
 		local r = seen[k]
 		r.peak = math.max(r.peak, t.vc or 0)
+		r.peakEf = math.max(r.peakEf or -1, t.peakEf or -1)
 		if t.ended and not r.died then
 			r.died = m
 			print(string.format("  m %3d  TORNADO end    storm %s life %d min peak vc %.0f  (parent occl %.2f)", m, tostring(t.parentId), m - r.born, r.peak, r.occlAtEnd or -1))
@@ -69,7 +70,13 @@ for m = 1, minutes do
 		end
 	end
 end
-local nc, nt, life, ended = 0, #tors, 0, 0
+-- (Only vortices that reached EF0 are tornadoes: one whose peak stayed below it is not counted, 2026-11-18.)
+local nc, nt, life, ended = 0, 0, 0, 0
 for _, c in cycles do nc += c end
-for _, r in tors do if r.died then ended += 1; life += r.died - r.born end end
+for _, r in tors do
+	if (r.peakEf or -1) >= 0 then
+		nt += 1
+		if r.died then ended += 1; life += r.died - r.born end
+	end
+end
 print(string.format("SUMMARY %d min: %d rotating storms, %d occlusion cycles, %d tornadoes (%d ended, mean life %.1f min)", minutes, (function() local n = 0; for _ in cycles do n += 1 end; return n end)(), nc, nt, ended, if ended > 0 then life / ended else 0))

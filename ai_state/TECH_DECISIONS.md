@@ -16,6 +16,19 @@
 
 ## Decisions
 
+### 2026-11-18 — Nothing below EF0 is a tornado
+
+- Status: active
+- Decision: a vortex or damage swath counts as a tornado only at EF0 (65 mph) or above, in every count, list,
+  check and product. Damage survey points estimated below 65 mph are left out, so no survey or tornado is rated
+  "EF-1" (a survey with no EF0+ point stays EFU); outlook truth (`truth.js`, `countTornadoes`), the regression
+  worker, the activity report and day reviews drop sub-EF0 tornadoes; the lab scripts count vortices whose
+  `peakEf` reached 0; the game lists only EF0+ vortices as tornadoes (`WeatherController`, 2026-11-15).
+- Rationale: the owner's rule (2026-11-18): sub-EF0 vortices were counted and surveys rated tornadoes "EF-1".
+  The engine's own tornadoes always rate 75 mph or more (start wind 75, `damageRatingWind` floor), so
+  `stormEngine.totalTornadoes` needs no filter; `tests/storm-reports.mjs` checks that floor.
+- Follow-up: None.
+
 ### 2026-11-17 — Steering support scaled by moisture (ramp), not cut when dry
 
 - Status: active

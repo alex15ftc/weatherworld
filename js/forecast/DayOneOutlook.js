@@ -24,7 +24,7 @@ import v8 from 'node:v8';
 import { RISK_RADIUS_MILES } from './spcOutlookRules.js';
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { isCompactCells, decodeCells } from '../world/compactCells.js';
-import { captureTruth, aggregateTruth, practicallyPerfectChance, practicallyPerfectExpected, diskOffsets, CHANCE_FIELDS } from '../verification/truth.js';
+import { captureTruth, aggregateTruth, practicallyPerfectChance, practicallyPerfectExpected, diskOffsets, CHANCE_FIELDS, countTornadoes } from '../verification/truth.js';
 import { expectedTornadoGrids, addExpectedTornadoes, addOngoingTornadoes, chanceWithin } from './expectedHazards.js';
 import { contourRings, softenArea, tidyRanks, dropSlivers } from './contourShapes.js';
 import { timingErrorMs, perturbUpstream, perturbMesoscale, mesoscaleShare, flowDisagreement, flowSpreadFactor, FLOW, TIMING, UPSTREAM } from './ensemblePerturbation.js';
@@ -459,7 +459,8 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
       // Every tornado on the ground in the period, those already down at its start too (2026-10-24: only
       // those that began in it were counted, and an outlook drew a 2% tornado area from a tornado still
       // down at 12Z while its text said none of the 8 runs had one).
-      tornadoes: new Set(day.frames.flatMap(frame => (frame.tornadoTrackPoints ?? []).map(point => point.tornado))).size, byHour: day.byHour
+      // (Rated EF0 or above only: countTornadoes.)
+      tornadoes: countTornadoes(day.frames), byHour: day.byHour
     };
   };
   const days = [];

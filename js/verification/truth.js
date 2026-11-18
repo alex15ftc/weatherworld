@@ -37,7 +37,9 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
     // weak one after a strong one, and the weak one's track is not the strong one's.
     for (const point of collectTornadoTruthPoints(storm, previousHourUtc, world.validHourUtc)) {
       const t = cellOf(point.x, point.y), ef = point.ef;
-      frame.tornado[t] = 1;
+      // (A track is a tornado's only where its rating reaches EF0: below it there is no tornado. A
+      // point laid before its tornado's first rating is marked once that rating comes, in aggregateTruth.)
+      if (ef >= 0) frame.tornado[t] = 1;
       if (ef >= 2) frame.tornadoSig[t] = 1;
       if (ef >= 3) frame.tornadoExtreme[t] = 1;
       if (ef >= 4) frame.tornadoViolent[t] = 1;
@@ -62,7 +64,7 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
       if (local >= 96) frame.windViolent[index] = 1;
     }
     frame.activeStorms++;
-    if (storm.tornado?.onGround) frame.tornadoes++;
+    if (storm.tornado?.onGround && efNumber(storm.tornado.estimatedEf ?? storm.tornado.efRating) >= 0) frame.tornadoes++;
     if (!seenStormIds.has(storm.id)) {
       seenStormIds.add(storm.id);
       initiations.push({ stormId: storm.id, hourUtc: storm.createdHourUtc, x: idx % world.width, y: Math.floor(idx / world.width), mode: storm.mode });
@@ -162,6 +164,16 @@ export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc
   return points;
 }
 
+// The tornadoes the frames' track points belong to, each counted once, and only those rated EF0 or
+// above (by the strongest rating each reached): below EF0 there is no tornado (2026-11-18, the owner's rule).
+export function countTornadoes(frames) {
+  const strongest = new Map();
+  for (const frame of frames) for (const p of frame.tornadoTrackPoints ?? []) if (p.tornado) strongest.set(p.tornado, Math.max(strongest.get(p.tornado) ?? -1, p.ef ?? -1));
+  let n = 0;
+  for (const ef of strongest.values()) if (ef >= 0) n++;
+  return n;
+}
+
 // Combines frames over a valid period: exact report cells, the 25-mi neighbourhoods, SPC
 // "practically perfect" observed probabilities and the observed category.
 export function aggregateTruth(frames, initiations, width, height, radius, cellMiles) {
@@ -176,6 +188,7 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
   for (const frame of frames) for (const p of frame.tornadoTrackPoints ?? []) {
     const ef = strongest.get(p.tornado) ?? p.ef ?? -1;
     if (p.cell === undefined) continue;
+    if (ef >= 0 && frame.tornado) frame.tornado[p.cell] = 1;
     if (ef >= 2 && frame.tornadoSig) frame.tornadoSig[p.cell] = 1;
     if (ef >= 3 && frame.tornadoExtreme) frame.tornadoExtreme[p.cell] = 1;
     if (ef >= 4 && frame.tornadoViolent) frame.tornadoViolent[p.cell] = 1;

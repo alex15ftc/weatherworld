@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { logStormTick, logDays, convectiveDay, LOG } from '../js/reports/stormLog.js';
 import { surveyTornado } from '../js/reports/damageSurvey.js';
 import { damageAt, efFromWind } from '../js/reports/damageIndicators.js';
+import { damageRatingWind } from '../js/storms/TornadoEngine.js';
 
 // Degrees of damage: no damage below the first degree's bounds; a house's slab swept clean
 // only near 200 mph; the estimate stays within the degree's bounds.
@@ -57,6 +58,15 @@ assert.ok(survey.towns.includes('Testville'));
 // Open country with nothing on it: EF-Unknown.
 const empty = surveyTornado(entry, { groundAt: () => null, schoolAt: () => false, industrialAt: () => false }, places, 7);
 assert.equal(empty.rating, 'EFU'); assert.equal(empty.points.length, 0);
+// Nothing below EF0 is a tornado's (2026-11-18, the owner's rule): no damage point is rated below EF0, so no
+// tornado is rated "EF-1". A house at its first degree, poorly built, estimates 55 mph: it is left out.
+assert.ok(survey.points.every(p => p.ef >= 0 && p.estimatedMph >= 65), 'no point below EF0');
+const weak = surveyTornado(entry, null, places, 7, { buildings: [{ di: 'FR12', x: 50, y: 50, dod: 1, quality: 0, hourUtc: 20.5 }], covered: () => true });
+assert.equal(weak.points.length, 0); assert.equal(weak.rating, 'EFU');
+// The engine's own rating of a tornado never comes out below EF0, whatever its path and draw: every tornado it
+// counts (stormEngine.totalTornadoes) is one.
+for (const peak of [65, 75, 90, 120, 150, 180, 220]) for (const width of [20, 100, 600]) for (const km of [0, 0.5, 5, 40]) for (const draw of [0, 0.3, 0.7, 0.999])
+  assert.ok(damageRatingWind(peak, width, km, draw) >= 65, `rated ${damageRatingWind(peak, width, km, draw)} mph at ${peak} mph`);
 
 // A new day lets the old storms go, and the log keeps LOG.keepDays days.
 world.stormEngine.validHourUtc = 36.1; world.storms = [];

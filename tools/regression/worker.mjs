@@ -23,7 +23,9 @@ const { convectiveDay } = await import(REPO + 'js/reports/stormLog.js');
 
 const seed = Number(process.argv[2]), days = Number(process.argv[3] ?? 10), outDir = process.argv[4];
 const ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
-const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : 0);
+// (-1 below EF0: no tornado, left out of the counts and the list. Until 2026-11-18 it gave 0, so one rated below
+// EF0 counted as an EF0; the engine's tornadoes are rated 75 mph or more, so none has been yet.)
+const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : mph >= 65 ? 0 : -1);
 const NEAR_KM = 64;
 const started = Date.now();
 
@@ -94,7 +96,7 @@ for (let day = 0; day < days; day++) {
         let look = looks.get(key);
         if (!look) {
           const pos = s.tornado.positionKm ?? s.positionKm;
-          look = { start: h, ef: 0, source: s.tornado.source ?? 'mesocyclone', nearOutflow: nearLine(pos, 'outflow'), nearFront: ['cold', 'warm', 'stationary'].some(t => nearLine(pos, t)), nearDryline: nearLine(pos, 'dryline'),
+          look = { start: h, ef: -1, source: s.tornado.source ?? 'mesocyclone', nearOutflow: nearLine(pos, 'outflow'), nearFront: ['cold', 'warm', 'stationary'].some(t => nearLine(pos, t)), nearDryline: nearLine(pos, 'dryline'),
             mode: s.mode ?? describeStormMode(s), cps: s.coldPoolStrength ?? 0, defF: s.coldPoolTemperatureDeficitF ?? 0, contrastK: s.environment?.outflowContrastK ?? 0 };
           looks.set(key, look); rec.tornadoKeys.push(key);
         }
@@ -132,14 +134,15 @@ for (let day = 0; day < days; day++) {
   }
   const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
   const any = field => truth[`${field}Exact`].some(Boolean);
+  const rated = rec.tornadoKeys.filter(k => looks.get(k).ef >= 0), belowEf0 = rec.tornadoKeys.length - rated.length;
   daily.push({
-    seed, day: day + 1, storms: seen.size, peak: rec.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore,
+    seed, day: day + 1, storms: seen.size, peak: rec.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore - belowEf0, belowEf0,
     hailStorms: rec.hailStorms.size, windStorms: rec.windStorms.size, maxHail: rec.maxHail, maxGust: rec.maxGust,
     severe: any('hail') || any('wind') || any('tornado'), tornado: any('tornado'), sigTornado: any('tornadoSig'), sigHail: any('hailSig'), sigWind: any('windSig'),
     category: ORDER[Math.max(...truth.risk.map(r => ORDER.indexOf(r)))], worldCategory: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))],
     supercells: rec.supercellIds.size, groundSupercells: rec.groundSupercellIds.size,
     cig: Object.fromEntries(['tornado', 'wind', 'hail'].map(hz => [hz, Math.max(0, ...truth.observedCig[hz])])),
-    tornadoList: rec.tornadoKeys.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.start, ef: l.ef, km: Math.round(l.km ?? 0), minutes: Math.round(l.min ?? 0), source: l.source, nearOutflow: l.nearOutflow, nearFront: l.nearFront, nearDryline: l.nearDryline, mode: l.mode, cps: l.cps, defF: l.defF, contrastK: l.contrastK }; }),
+    tornadoList: rated.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.start, ef: l.ef, km: Math.round(l.km ?? 0), minutes: Math.round(l.min ?? 0), source: l.source, nearOutflow: l.nearOutflow, nearFront: l.nearFront, nearDryline: l.nearDryline, mode: l.mode, cps: l.cps, defF: l.defF, contrastK: l.contrastK }; }),
     stormMph: rec.speeds.length ? rec.speeds.sort((a, b) => a - b)[Math.floor(rec.speeds.length / 2)] : null,
     modeCount: rec.modeCount, stormSamples: rec.stormSamples,
     outflowLinesPerAnalysis: rec.outflowLines / rec.analyses, outflowKmPerAnalysis: rec.outflowKm / rec.analyses, poolShare: rec.poolShare / rec.analyses, poolMax: rec.poolMax,

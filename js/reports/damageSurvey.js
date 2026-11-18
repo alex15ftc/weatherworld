@@ -153,7 +153,10 @@ function contourPolygons(samples, mph) {
 
 // The damage points: every spot of ground the swath crossed (winds of 65 mph or more) that
 // holds a structure or trees, with the damage the wind there did to it; where the game looked
-// (real.covered), its own buildings instead.
+// (real.covered), its own buildings instead. Damage estimated below EF0 (65 mph) is not tornado
+// damage the scale rates and is left out: no point, and so no tornado, is rated below EF0
+// (2026-11-18, the owner's rule; such points rated "EF-1" and a survey whose strongest point
+// was one rated its tornado EF-1).
 function damagePoints(samples, map, seed, real) {
   const g = PROFILE.gridMi, spots = new Map();
   for (const s of samples) {
@@ -174,7 +177,7 @@ function damagePoints(samples, map, seed, real) {
       if (real?.covered?.(x + di.dx, y + di.dy)) continue;
       const quality = deterministicUnit(`${seed}|dat|${key}|${di.slot}|q`);
       const damage = damageAt(di.di, wind, quality);
-      if (damage) points.push({ di: di.di, x: round(x + di.dx), y: round(y + di.dy), hourUtc: round(hourUtc, 3), ...damage, windMph: Math.round(wind) });
+      if (damage && damage.ef >= 0) points.push({ di: di.di, x: round(x + di.dx), y: round(y + di.dy), hourUtc: round(hourUtc, 3), ...damage, windMph: Math.round(wind) });
     }
   }
   // The game's buildings that the swath crossed (within its 65 mph edge, a spot either side).
@@ -182,7 +185,7 @@ function damagePoints(samples, map, seed, real) {
   for (const b of real?.buildings ?? []) {
     const near = samples.some(s => Math.hypot(b.x - s.x, b.y - s.y) <= halfWidthAt(s, 65) + g);
     const rated = near ? ratePoint(b.di, b.dod, b.quality) : null;
-    if (rated) { points.push({ di: b.di, x: round(b.x), y: round(b.y), hourUtc: round(b.hourUtc, 3), ...rated, windMph: rated.estimatedMph, real: true }); realPoints++; }
+    if (rated && rated.ef >= 0) { points.push({ di: b.di, x: round(b.x), y: round(b.y), hourUtc: round(b.hourUtc, 3), ...rated, windMph: rated.estimatedMph, real: true }); realPoints++; }
   }
   const done = list => ({ points: list, spots: spots.size, coveredSpots, realPoints });
   // The strongest damage is always kept; the rest thinned to PROFILE.maxPoints (trees first),

@@ -58,7 +58,15 @@ end
 table.sort(storms, function(a, b)
 	return a.W > b.W
 end)
-print(string.format("%s day, %d min: %d strong rotating storms, %d tornadoes", day, minutes, #storms, #world.tornadoes))
+-- Tornadoes: vortices whose peak ground wind reached EF0 (below it there is no tornado, 2026-11-18).
+local function tornadoCount(list: { any }): number
+	local n = 0
+	for _, t in list do
+		if (t.peakEf or -1) >= 0 then n += 1 end
+	end
+	return n
+end
+print(string.format("%s day, %d min: %d strong rotating storms, %d tornadoes", day, minutes, #storms, tornadoCount(world.tornadoes)))
 
 for si = 1, min(#storms, 3) do
 	local s = storms[si]

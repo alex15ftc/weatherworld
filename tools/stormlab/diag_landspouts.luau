@@ -46,7 +46,7 @@ while t <= T do
 		end
 		if tt.ended and not seen[tt.id .. "e"] then
 			seen[tt.id .. "e"] = true
-			print(string.format("  tornado %s ended at %.0f s, peak EF%d, path %.1f km, parent kind %s", tt.id, t, tt.peakEf or -1, (tt.pathLength or 0) / 1000, tostring(tt.parentKind)))
+			print(string.format("  tornado %s ended at %.0f s, peak %s, path %.1f km, parent kind %s", tt.id, t, if (tt.peakEf or -1) >= 0 then `EF{tt.peakEf}` else "below EF0 (no tornado)", (tt.pathLength or 0) / 1000, tostring(tt.parentKind)))
 		end
 	end
 end
