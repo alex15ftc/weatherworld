@@ -525,7 +525,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-00. Upper winds and warm rain (2026-11-18, branch `engine/upper-wind`).
+00. Upper winds and warm rain (2026-11-18; on main b1be3a9, deployed from it: the live world took up the new jet).
    In the code: QG upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14 (owner accepted the regressions),
    and warm rain (PrecipitationField PHYSICS.warmRainShare, warmRainOf; StormFallout too: up to half the rain forms
    below the freezing level, by warm cloud depth and inflow vapour, and falls out near the updraught). Anvil-level
