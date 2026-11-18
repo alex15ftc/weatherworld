@@ -514,6 +514,14 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+000. Radar debris signature (2026-11-17, branch `radar/vortex-centrifuge`, radar only): a meteorologist review found
+   rain and hail in a tornado's core outweighing its debris (CC 0.8-0.88 at 57-66 dBZ in moist, rain-cooled air).
+   Step 1 done: the swirl of the tornado and its tornado cyclone flings them out (StormVortices.js `vortexClearing`,
+   used by the radar's `precipitationEcho`). Made 165 mph supercell at every cell 35-60 km from KCPL (seed 1, 35 h):
+   TDS at 12 -> 19 of 28; 120 mph 0 -> 6; 90 mph, no tornado: none; no false alarms. Short of the review's >=90% for
+   165 mph. Step 2 (open): debris from the swept area (width x speed x wind past damage), not the clamped square in
+   `loftDebris`, then `DEBRIS_REFLECTIVITY` retuned to 55-62 dBZ; step 3: hook/RFD reflectivity 60+ dBZ against 45-55
+   observed. Also open: at 100-112 km the 165 mph tornado shows a TDS at 10 of 28 (the review expects few or none).
 000. Building damage (on `main`, not deployed or published). Seen in Studio 2026-11-17: in a play test the live server builds chunks with
    their `B<n>` building models (DI, Frame, Size); in edit mode every indicator's degrees were laid out side by
    side from real generated buildings and look right from several angles (fixed there: a stepped tower's upper

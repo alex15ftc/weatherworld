@@ -13,7 +13,7 @@ import {
 import { buildSounding } from '../sounding.js';
 import { updraughtProfile, STRUCTURE as FRAME } from '../storms/StormStructure.js';
 import { coldPoolSpeedMs, coldPoolDepthM, outflowShare, poolDriftMs } from '../storms/ColdPool.js';
-import { addMesoWind, addTornadoWind } from '../storms/StormVortices.js';
+import { addMesoWind, addTornadoWind, vortexClearing } from '../storms/StormVortices.js';
 
 const KT_TO_MS = 0.514444;
 const STORM_BIN_KM = 10;
@@ -937,6 +937,9 @@ function stormHydrometeors(s, lx, ly, z, out) {
 export function precipitationEcho(e, fz, lx, ly, z, out) {
   let snow = 0;
   if (samplePrecipitation(e, lx, ly, z, tmp)) {
+    // (the tornado's swirl flings its rain and hail out of its core: StormVortices.js vortexClearing)
+    const kept = e.vortices ? vortexClearing(e.vortices, lx, ly, z) : 1;
+    if (kept < 1) { tmp.rain *= kept; tmp.hail *= kept; }
     const frozen = smoothstep(fz - 300, fz + 700, z);
     if (tmp.rain > 0) {
       const zh = RAIN_REFLECTIVITY * tmp.rain;

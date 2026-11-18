@@ -209,3 +209,40 @@ export function addTornadoWind(d, x, y, out, share = 1, seenKm = 0, z = 0) {
   const c = t.cyclone, up = aloftShare(z);
   if (c && c.V > 0 && up > 0 && z < (c.depthM ?? t.depthM)) addRankine(out, x - t.x, y - t.y, c.R, d.spin * share * up * within(c.depthM ?? t.depthM) * c.V, Math.max(VORTICES.fadeRadii * c.R, parent), VORTICES.mesoTail);
 }
+
+// The share of the rain and hail still at (x, y) km, height z (m), inside a tornado's vortices (0-1;
+// 1 outside them): the swirl flings them out. A drop or stone falling at vt through a swirl V(r)
+// drifts outward at about vt V^2 / (g r) (its drag holds it to the air within a second or so,
+// against a turn of half a minute and more); followed down, that drift spreads what falls apart at
+// (1 / (g r)) d(V^2)/dr for each metre it falls, whatever its fall speed (a fast stone drifts faster
+// but is in the vortex for less time). What is left at z is exp(-that summed over the fall from the
+// top of the vortices). The swirl is the tornado's own and its tornado cyclone's at each height, as
+// addTornadoWind gives them, each drawn as a Burgers-Rott vortex of the same core radius and peak
+// wind (smooth, so the spreading falls to nothing at the cores' edges, where the wind peaks; beyond
+// them what was flung out gathers in a ring, which is not added). Real tornadoes' low-level cores are
+// debris with little rain or hail: a weak-echo eye inside a ring of hydrometeors (Dowell et al.
+// 2005, JAS 62; Bluestein et al. 2007, MWR 135). (2026-11-17: until then the rain fell through the
+// vortex as everywhere else and outweighed a violent tornado's debris on the radar in moist air.)
+const BURGERS = { alpha: 1.2564, steps: 16 }, GRAVITY_MS2 = 9.81;
+const burgersV = (r, R, V) => (r <= 0 || R <= 0 || V <= 0 ? 0 : (1 + 0.5 / BURGERS.alpha) * V * (R / r) * (1 - Math.exp(-BURGERS.alpha * (r / R) ** 2)));
+export function vortexClearing(d, x, y, z) {
+  const t = d?.tornado;
+  if (!t) return 1;
+  const c = t.cyclone?.V > 0 ? t.cyclone : null, cycloneTop = c ? (c.depthM ?? t.depthM) : 0, top = Math.max(t.depthM, cycloneTop);
+  const r = Math.hypot(x - t.x, y - t.y);
+  if (z >= top || r >= Math.max(t.R, t.Raloft ?? t.R, c?.R ?? 0)) return 1;
+  const within = (depthM, zz) => { const f = clamp((depthM - zz) / (VORTICES.depthFadeShare * depthM), 0, 1); return f * f * (3 - 2 * f); };
+  const dz = (top - z) / BURGERS.steps;
+  let spread = 0;
+  for (let k = 0; k < BURGERS.steps; k++) {
+    const zz = z + (k + 0.5) * dz;
+    const Rt = tornadoCoreKm(t, zz), Vt = zz < t.depthM ? within(t.depthM, zz) * tornadoSwirlMs(t, zz) : 0;
+    const up = c && zz < cycloneTop ? aloftShare(zz) * within(cycloneTop, zz) : 0;
+    const swirl = rr => burgersV(rr, Rt, Vt) + (up > 0 ? burgersV(rr, c.R, up * c.V) : 0);
+    // (d(V^2)/dr by a difference across a twentieth of the narrower core; km to m)
+    const h = 0.05 * Math.min(Rt, c?.R ?? Rt), rr = Math.max(r, h);
+    const rate = (swirl(rr + h) ** 2 - swirl(rr - h) ** 2) / (2 * h * 1000) / (GRAVITY_MS2 * rr * 1000);
+    if (rate > 0) spread += rate * dz;
+  }
+  return Math.exp(-spread);
+}
