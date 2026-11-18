@@ -514,7 +514,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-00. Admin tool (2026-11-18, on main; branch `engine/steer-jet-overlap`, worktree `.claude/worktrees/vortex-centrifuge`).
+00. Admin tool (2026-11-18; merged and deployed from 91eb5c8, the live world carried on; the tool itself is local only).
    `npm run admin` -> http://localhost:3920 (tools/admin/: server.mjs, admin.html, SeverePreview.js,
    preview-worker.mjs); local only, tools/ is never in the engine's image. Live long range jet maps (proxied from the
    hosted engine), jet and steering sliders from the world's own settings, export/load of the picked settings as JSON
