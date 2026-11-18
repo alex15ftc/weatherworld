@@ -65,13 +65,18 @@ export function runPreviewOn(atmosphere, { days = PREVIEW.days, qg = {}, steerin
     atmosphere.steering.makePlan();
   }
 
+  // The days are kept on the storm clock, to the tick. (A saved world's storms can be a few ticks ahead of its
+  // atmosphere's half-hour steps, the server saving between them: until 2026-11-18 a day closed only at 12Z on an
+  // atmosphere step, and on such a world never did, the whole week coming out as one day.)
+  const tick = PREVIEW.stormTickHours;
+  const clock = () => Math.round((world.stormEngine?.validHourUtc ?? world.validHourUtc) / tick) * tick;
   // (days convective days: the rest of today's, to its 12Z, and the days - 1 after it)
-  const startHour = world.validHourUtc, endHour = 12 + 24 * (convectiveDay(startHour + 1e-6) - 1) + 24 * days, results = [];
+  const startHour = clock(), endHour = 12 + 24 * (convectiveDay(startHour + 1e-6) - 1) + 24 * days, results = [];
   const looks = new Map();
   let day = null;
   const open = () => {
-    const key = convectiveDay(world.validHourUtc + 1e-6);
-    day = { key, fromHourUtc: world.validHourUtc, frames: [], seen: new Set(), initiations: [], tornadoKeys: [], supercells: new Set(), speeds: [], maxHail: 0, maxGust: 0, picture: null };
+    const hour = clock();
+    day = { key: convectiveDay(hour + 1e-6), fromHourUtc: hour, frames: [], seen: new Set(), initiations: [], tornadoKeys: [], supercells: new Set(), speeds: [], maxHail: 0, maxGust: 0, picture: null };
   };
   const close = () => {
     const truth = aggregateTruth(day.frames, day.initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
@@ -83,8 +88,8 @@ export function runPreviewOn(atmosphere, { days = PREVIEW.days, qg = {}, steerin
     for (const t of tornadoes) ratings[t.ef]++;
     const speeds = day.speeds.sort((a, b) => a - b);
     const record = {
-      day: results.length + 1, convectiveDay: day.key, fromHourUtc: day.fromHourUtc, toHourUtc: world.validHourUtc,
-      partial: world.validHourUtc - day.fromHourUtc < 24 - 1e-6,
+      day: results.length + 1, convectiveDay: day.key, fromHourUtc: day.fromHourUtc, toHourUtc: clock(),
+      partial: clock() - day.fromHourUtc < 24 - 1e-6,
       category: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))],
       cig: Object.fromEntries(['tornado', 'wind', 'hail'].map(hz => [hz, Math.max(0, ...truth.observedCig[hz])])),
       tornadoes: tornadoes.length, ratings, strongestEf: tornadoes.length ? Math.max(...tornadoes.map(t => t.ef)) : null,
@@ -100,10 +105,10 @@ export function runPreviewOn(atmosphere, { days = PREVIEW.days, qg = {}, steerin
 
   open();
   const stepsPerAtmosphere = Math.round(PREVIEW.atmosphereStepHours / PREVIEW.stormTickHours);
-  for (let step = 1; world.validHourUtc < endHour - 1e-6; step++) {
+  for (let step = 1; clock() < endHour - 1e-6; step++) {
     atmosphere.advanceStormLayer(PREVIEW.stormTickHours);
     if (step % stepsPerAtmosphere === 0) atmosphere.advance(PREVIEW.atmosphereStepHours, { advanceStorms: false });
-    const hour = world.stormEngine?.validHourUtc ?? world.validHourUtc;
+    const hour = clock();
     captureTruth(world, day.frames, day.seen, day.initiations, places);
     for (const s of world.storms ?? []) {
       if (!s.active) continue;
@@ -118,13 +123,12 @@ export function runPreviewOn(atmosphere, { days = PREVIEW.days, qg = {}, steerin
         look.km = Math.max(look.km, s.tornado.pathLengthKm ?? 0);
       }
     }
-    // The day's picture at 00Z (the afternoon's storms), and a day closed at 12Z or at the end.
-    // (the hour to the storm tick: hours added up from 1/12-hour ticks miss a whole hour by a rounding)
-    const utc = (((Math.round(hour / PREVIEW.stormTickHours) * PREVIEW.stormTickHours) % 24) + 24) % 24;
-    if (!day.picture && Math.abs(utc) < 1e-3 && step % stepsPerAtmosphere === 0) day.picture = jetPicture(atmosphere);
-    if (step % 12 === 0) onProgress?.({ hoursDone: Math.round((world.validHourUtc - startHour) * 10) / 10 });
-    if (Math.abs(utc - 12) < 1e-3 && step % stepsPerAtmosphere === 0 && world.validHourUtc - day.fromHourUtc > 1) { close(); if (world.validHourUtc < endHour - 1e-6) open(); else day = null; }
+    // The day's picture at 00Z (the afternoon's storms), and a day closed when the storm clock reaches 12Z.
+    const utc = ((hour % 24) + 24) % 24;
+    if (!day.picture && Math.abs(utc) < 1e-3) day.picture = jetPicture(atmosphere);
+    if (step % 12 === 0) onProgress?.({ hoursDone: Math.round((hour - startHour) * 10) / 10 });
+    if (convectiveDay(hour + 1e-6) !== day.key) { close(); if (hour < endHour - 1e-6) open(); else day = null; }
   }
-  if (day && world.validHourUtc - day.fromHourUtc > 1) close();
+  if (day && clock() - day.fromHourUtc > 1) close();
   return { startHourUtc: startHour, hours: endHour - startHour, applied: { qg: qgChanges, steering: steeringChanges }, game, days: onProgress ? null : results, ms: Math.round(performance.now() - started) };
 }
