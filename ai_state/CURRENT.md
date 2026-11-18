@@ -550,7 +550,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    predictable, not miscalibrated). Off: tornado CIG3 drawn 10% / verified 27% (Day 1), CIG1 47 / 23%; Days 2-3
    Moderate forecast 10 / 0% against verified 35 / 50%. Owner held the refit (intensity groups and category cutoffs:
    fit archive seeds 1-30, then check on the saved 41-50 archive). Next: the refit when the owner wants it.
-00. Warm rain in the game's sim and radar velocity (2026-11-18, on main; NOT deployed or published yet).
+00. Warm rain in the game's sim and radar velocity (2026-11-18; engine deployed from 7bded6c; place NOT published yet).
    Warm rain: StormLab Storm.luau `Storm.WARM_RAIN`/`warmRainOf` (the engine's rule; s.inflowVapour, the lowest km's
    vapour, in Storm.environment), released from 300 m above the base to the freezing level. Lab scenes
    (tools/stormlab/diag_warmrain.luau): SupercellB (15.1 g/m3, 3.5 km warm cloud) share 0.29, rain within 5 km of the
@@ -563,8 +563,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    6-8 km still 2-5 gates wrong (gate-to-gate shear over 2 Vn); 17-110 km unchanged. Scan time as main. Velocity bytes
    (RadarFormat knee): 0.5 m/s to +-40, 1 m/s to +-86 (was +-63.5, clipped); game decodes the same (Radar.luau
    byteOf/valueOf, Palettes.luau regenerated; 1012 bytes checked). Colours past 63.5: outbound to white (owner's),
-   inbound blue to ice white (owner confirmed; purple is range folded, black reads as no echo). Next: deploy the
-   engine and publish the place together (an old place misreads the new velocity bytes). Suite 74/74; Luau
+   inbound blue to ice white (owner confirmed; purple is range folded, black reads as no echo). Next: publish the
+   place soon (until then the live place misreads the new velocity bytes, colours and readout). Suite 74/74; Luau
    test_scenes as main (same tornadoes, rain at them a few mm/h either way); test_client fails on main too (World.luau:312).
 
 00. Admin tool (2026-11-18; merged and deployed from 91eb5c8, the live world carried on; the tool itself is local only).
