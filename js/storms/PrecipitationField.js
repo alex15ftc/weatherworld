@@ -210,7 +210,9 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
     const d = model.vortices = stormVortices(storm, column.topM), m = d.meso, t = d.tornado;
     model.mesocyclone = { x: m.x, y: m.y, aloftX: m.aloftX, aloftY: m.aloftY, radiusKm: m.R, vmaxMs: m.V, low: m.low };
     // (windMs: the engine's ground wind, which says how deep it reaches and how much it lofts)
-    model.tornado = t ? { x: t.x, y: t.y, radiusKm: t.R, vmaxMs: t.V, windMs: t.Vg } : null;
+    // (widthKm: its damage path's width, which it sweeps at motionMs, the storm's speed: what it lofts)
+    model.tornado = t ? { x: t.x, y: t.y, radiusKm: t.R, vmaxMs: t.V, windMs: t.Vg, widthKm: 2 * (t.Raloft ?? t.R),
+      motionMs: Math.hypot(Number(storm.velocityKph?.east) || 0, Number(storm.velocityKph?.north) || 0) / 3.6 } : null;
   }
   const environment = storm.environment ?? {};
   // How dry the air the rain falls through is: below cloud (a high cloud base, energetic
@@ -553,11 +555,24 @@ function finish(grid, winds, alloc = plainAlloc) {
 // What a tornado throws up: debris lifted in the vortex as high as the tornado is strong, thrown
 // outward, carried round the mesocyclone and downwind as it falls.
 const DEBRIS = { halfKm: 8, resKm: 0.25, levelsM: [0, 300, 700, 1200, 2000, 3200, 5000, 7500] };
+// The tornado that lofts one unit of debris (a 700 yd path at 14 m/s, m2/s, and a 165 mph wind, m/s), the
+// wind that starts damage (EF0, 65 mph) and the least sweep speed (m/s; see loftDebris); and how its
+// echo falls off with height (an e-fold each sizeFallShare of its lofting height: 8.7 dB to the top).
+const DEBRIS_SUPPLY = { sweep: 640 * Math.hypot(14, 5), windMs: 73.8, damageMs: 29, sweepFloorMs: 5, sizeFallShare: 0.5 };
 function loftDebris(model, alloc = plainAlloc) {
   const { su, sv, tornado, vortices } = model, D = DEBRIS, swirl = { u: 0, v: 0 }, n = Math.round(2 * D.halfKm / D.resKm) + 1, levels = D.levelsM.length;
   const field = alloc(Float32Array, n * n * levels), wind = tornado.windMs;
   // A weak tornado lofts little, and only to the cloud base; a violent one to several kilometres.
-  const topM = clamp(900 + 60 * (wind - 30), 800, 6000), amount = clamp((wind - 29) / 54, 0.15, 1.3) ** 2;
+  // How much: what it picks up each second, the ground it sweeps (its path's width at its speed; the
+  // loose debris already strewn in the path is lofted again, so a slow tornado still lofts, sweepFloorMs)
+  // by the square of its wind past what starts damage (the EF0 wind: the force on what it tears loose
+  // goes as the wind squared), against a 700 yd, 165 mph tornado moving at 14 m/s. (Bodine et al.
+  // 2013, JAMC 52: debris signatures' reflectivity and height grow with the tornado's rating; Van Den
+  // Broeke and Jauernic 2014. Until 2026-11-17 it was the square of the wind past 29 m/s over 54,
+  // held to 0.15-1.3: the same for a 100 yd tornado as a mile-wide one.)
+  const sweep = (tornado.widthKm ?? 2 * tornado.radiusKm) * 1000 * Math.hypot(tornado.motionMs ?? 0, DEBRIS_SUPPLY.sweepFloorMs);
+  const topM = clamp(900 + 60 * (wind - 30), 800, 6000);
+  const amount = sweep / DEBRIS_SUPPLY.sweep * (Math.max(0, wind - DEBRIS_SUPPLY.damageMs) / (DEBRIS_SUPPLY.windMs - DEBRIS_SUPPLY.damageMs)) ** 2;
   const depth = D.levelsM.map((z, k) => (D.levelsM[Math.min(levels - 1, k + 1)] - D.levelsM[Math.max(0, k - 1)]) / 2000);
   for (let p = 0; p < FOLLOWED.debris; p++) {
     const random = mulberry32(hash3(model.seed, 77, p));
@@ -581,7 +596,12 @@ function loftDebris(model, alloc = plainAlloc) {
       if (i < 0 || j < 0 || i >= n || j >= n) break;
       let k = 0; while (k < levels - 2 && D.levelsM[k + 1] <= z) k++;
       const t = clamp((z - D.levelsM[k]) / (D.levelsM[k + 1] - D.levelsM[k]), 0, 1), at = (k * n + j) * n + i;
-      field[at] += dt * (1 - t) / depth[k]; field[at + n * n] += dt * t / depth[k + 1];
+      // (as reflectivity: the large pieces stay low and only light ones are carried high, so what echoes
+      // falls off with height, sizeFallShare of the way to the top for each e-fold: debris signatures'
+      // reflectivity drops several dB from the lowest scan to their top, Bodine et al. 2014, JAMC 53.
+      // Until 2026-11-17 a piece at the top echoed as one at the ground.)
+      const echoes = dt * Math.exp(-z / (DEBRIS_SUPPLY.sizeFallShare * topM));
+      field[at] += echoes * (1 - t) / depth[k]; field[at + n * n] += echoes * t / depth[k + 1];
       x += u * dt / 1000; y -= v * dt / 1000; z += vertical * dt; age += dt;
       if (rising && z >= reachM) rising = false;
       if (z <= 0 && !rising) break;
@@ -597,8 +617,12 @@ function loftDebris(model, alloc = plainAlloc) {
 // Debris lofted by a tornado echoes far more strongly than rain (55-60 dBZ in violent tornadoes),
 // which is why its signature stands out in heavy rain (1600 to 8000 on 2026-10-17, once storms had
 // their full depth: the equilibrium level had been read under the cap, the storms were shallow and
-// carried little rain about the tornado).
-export const RAIN_REFLECTIVITY = 1600, HAIL_REFLECTIVITY = 1600, DEBRIS_REFLECTIVITY = 8000;
+// carried little rain about the tornado). 22500 since 2026-11-17, with the debris lofted by the swept
+// path (loftDebris; its echo falling off with height): the debris alone peaks near 58.5 dBZ at the 0.5 deg
+// beam 35-60 km from the radar for a 700 yd, 165 mph tornado, 50.5 for a 400 yd, 120 mph one, 39.5 for a
+// 200 yd, 90 mph one and 63 for a 1200 yd, 200 mph one (Bodine et al. 2013: debris signatures' reflectivity grows with the rating, the
+// violent ones' 60 dBZ and more).
+export const RAIN_REFLECTIVITY = 1600, HAIL_REFLECTIVITY = 1600, DEBRIS_REFLECTIVITY = 22500;
 const THINNEST_DBZ_UNITS = 10 ** -0.5;
 
 // The amounts at one place: rain (as reflectivity of the liquid), its reflectivity-weighted
