@@ -18,7 +18,7 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Long range tornado chances (2026-11-18, owner's request; on `main`, engine not deployed with it yet): /models/long-range has
+- Long range tornado chances (2026-11-18, owner's request; `1a4ed52` on `main`, engine deployed from it, the world carried over): /models/long-range has
   an admin-only "Tornado chances" panel (checkbox and Day 1-7 buttons) that draws, on each day's 06Z frame, the chance
   of a tornado within 25 mi on the game map in the ensemble's colour steps, hatched where the EF2+ (broken), EF3+ (solid)
   or EF4+ (cross) chance reaches 10%, as the /models ensemble draws it. The run gathers Day 3's ingredients for storms each
