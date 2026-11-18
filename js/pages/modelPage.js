@@ -1,5 +1,6 @@
 import { loadCalendar, dateText } from '../pageCalendar.js';
 import { openSounding } from './soundingPanel.js';
+import { roleNow } from '../site.js';
 // The model page (2026-10-29), laid out like Pivotal Weather's model pages. Two models:
 //   Short range  one run from the live world at each simulated hour (server/ShortRangeRuntime.js): a
 //                simulated composite reflectivity (3 km grid, as the HRRR's) drawn from its storms every
@@ -55,8 +56,10 @@ const ENSEMBLE_PRODUCTS = [
   { key: 'uhProb4', group: 'Ensemble', label: `Chance of a UH ${UH_TRACK}+ track within 25 mi, 4 h`, step: 30, table: PROB, unit: '%' },
   { key: 'uhProbTotal', group: 'Ensemble', label: `Chance of a UH ${UH_TRACK}+ track within 25 mi, run total`, step: 30, table: PROB, unit: '%' },
   { key: 'torProb', group: 'Ensemble', label: 'Chance of a tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
-  { key: 'sigTorProb', group: 'Ensemble', label: 'Chance of an EF2+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
-  { key: 'violentTorProb', group: 'Ensemble', label: 'Chance of an EF4+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
+  // (the rated chances on their own are for admins (2026-11-18); everyone sees them hatched over the tornado chance)
+  { key: 'sigTorProb', group: 'Ensemble', label: 'Chance of an EF2+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%', admin: true },
+  { key: 'strongTorProb', group: 'Ensemble', label: 'Chance of an EF3+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%', admin: true },
+  { key: 'violentTorProb', group: 'Ensemble', label: 'Chance of an EF4+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%', admin: true },
   // Each full run's highest violent tornado parameter over the storm day shown (12Z to 12Z; the cheap runs share their
   // host's air), within 25 miles. (2026-11-17)
   { key: 'vtpProb2', group: 'Ensemble', label: 'Chance of VTP 2+ within 25 mi, storm day shown', step: 30, table: PROB, unit: '%', vtpLeast: 2 },
@@ -68,7 +71,14 @@ const ENSEMBLE_PRODUCTS = [
 // has one; ensembles from before 2026-11-17 carry 1 for any tornado, so they show no EF2+ or EF4+ chances).
 const EF_LEAST_MPH = [65, 86, 111, 136, 166, 200];   // TornadoEngine efRating
 const efOf = mph => EF_LEAST_MPH.filter(at => mph >= at).length - 1;
-const TOR_TESTS = { torProb: p => p.tor > 0, sigTorProb: p => p.tor >= EF_LEAST_MPH[2], violentTorProb: p => p.tor >= EF_LEAST_MPH[4] };
+const TOR_TESTS = { torProb: p => p.tor > 0, sigTorProb: p => p.tor >= EF_LEAST_MPH[2], strongTorProb: p => p.tor >= EF_LEAST_MPH[3], violentTorProb: p => p.tor >= EF_LEAST_MPH[4] };
+// Hatched over the tornado chance, as the outlooks hatch their intensity groups (2026-11-18): where a run-total
+// chance of an EF2+ (broken hatching), EF3+ (hatching) or EF4+ (cross-hatching) tornado reaches 10%, each drawn
+// only where the next one up does not cover it.
+const TOR_HATCH = [['sigTorProb', 'broken'], ['strongTorProb', 'solid'], ['violentTorProb', 'cross']];
+const HATCH_LEAST = 10;
+let isAdmin = false;
+const ensembleProducts = () => ENSEMBLE_PRODUCTS.filter(p => isAdmin || !p.admin);
 
 // --- State.
 let domain = null, localOffset = -6, base = null, view = null;
@@ -87,7 +97,7 @@ async function getJson(url, { keep = true } = {}) {
   return promise;
 }
 
-const product = () => (modelKind === 'short' ? shortProducts() : ENSEMBLE_PRODUCTS).find(p => p.key === productKey);
+const product = () => (modelKind === 'short' ? shortProducts() : ensembleProducts()).find(p => p.key === productKey);
 const isField = () => modelKind === 'short' && !STORM_PRODUCTS.some(p => p.key === productKey);
 const stepMinutes = () => (isField() ? 60 : product()?.step ?? 15);
 const maxMinutes = () => (modelKind === 'short' ? (S.meta?.hours ?? 0) * 60 : Math.round((E.data?.hours ?? 0) * 60));
@@ -182,7 +192,7 @@ async function openEnsemble(issued) {
 
 // --- Controls.
 function fillProducts() {
-  const list = modelKind === 'short' ? shortProducts() : ENSEMBLE_PRODUCTS.filter(q => !q.vtpLeast || E.byRun?.some(run => run.vtp));
+  const list = modelKind === 'short' ? shortProducts() : ensembleProducts().filter(q => !q.vtpLeast || E.byRun?.some(run => run.vtp));
   if (!list.some(p => p.key === productKey)) productKey = list[0].key;
   let html = '', group = null;
   for (const p of list) {
@@ -551,7 +561,7 @@ function drawEnsemble() {
     if (vtpLeast) { drawRaster(vtpProbRaster(`${E.issued}:${productKey}:${t}`, hourNow, vtpLeast), 0.85); drawTowns(); return; }
     const test = TOR_TESTS[productKey] ?? (p => p.uh >= UH_TRACK);
     drawRaster(probRaster(`${E.issued}:${productKey}:${t}`, span, test), 0.85);
-    if (productKey === 'torProb') drawRaster(hatchRaster(`${E.issued}:${t}`, probRaster(`${E.issued}:sigTorProb:${t}`, span, TOR_TESTS.sigTorProb), SIG_HATCH));
+    if (productKey === 'torProb') drawTornadoHatch(span);
   }
   drawTowns();
 }
@@ -565,23 +575,46 @@ function vtpProbRaster(id, hourUtc, least) {
   } });
 }
 
-// Black hatching where a chance raster's share reaches `least` (%), read smoothly between its cells as the shading is.
-const SIG_HATCH = 10;
-function hatchRaster(id, prob, least) {
-  const key = `hatch:${least}:${id}`;
-  if (rasters.has(key)) return rasters.get(key);
-  const n = prob.n, up = 8, m = n * up, image = document.createElement('canvas'); image.width = image.height = m;
-  const g = image.getContext('2d'), data = g.createImageData(m, m), share = prob.share;
-  for (let py = 0; py < m; py++) for (let qx = 0; qx < m; qx++) {
-    // Diagonal lines every 7 pixels, 2 wide.
-    if ((qx + py) % 7 >= 2) continue;
+// The rated tornado chances hatched over the tornado chance: a mask for each where it reaches 10% (read smoothly
+// between the cells, as the shading), less the next one up, filled with lines a fixed size on the screen.
+function drawTornadoHatch(span) {
+  const shares = TOR_HATCH.map(([key]) => probRaster(`${E.issued}:${key}:${t}`, span, TOR_TESTS[key]).share);
+  const n = PROB_CELLS, up = 4, m = n * up, at = (share, qx, py) => {
     const fx = Math.max(0, Math.min(n - 1.001, (qx + 0.5) / up - 0.5)), fy = Math.max(0, Math.min(n - 1.001, (py + 0.5) / up - 0.5)), i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j;
-    const v = share[j * n + i] * (1 - a) * (1 - b) + share[j * n + i + 1] * a * (1 - b) + share[(j + 1) * n + i] * (1 - a) * b + share[(j + 1) * n + i + 1] * a * b;
-    if (v >= least) data.data.set([10, 10, 12, 230], (py * m + qx) * 4);
-  }
-  g.putImageData(data, 0, 0);
-  keepRaster(key, image);
-  return image;
+    return share[j * n + i] * (1 - a) * (1 - b) + share[j * n + i + 1] * a * (1 - b) + share[(j + 1) * n + i] * (1 - a) * b + share[(j + 1) * n + i + 1] * a * b;
+  };
+  const size = Math.ceil(view.size), layer = document.createElement('canvas'); layer.width = layer.height = size;
+  const g = layer.getContext('2d');
+  TOR_HATCH.forEach(([key, kind], tier) => {
+    const id = `hatch:${E.issued}:${key}:${t}`;
+    let mask = rasters.get(id);
+    if (!mask) {
+      mask = document.createElement('canvas'); mask.width = mask.height = m;
+      const mg = mask.getContext('2d'), data = mg.createImageData(m, m);
+      let any = false;
+      for (let py = 0; py < m; py++) for (let qx = 0; qx < m; qx++) {
+        if (at(shares[tier], qx, py) < HATCH_LEAST || (tier + 1 < shares.length && at(shares[tier + 1], qx, py) >= HATCH_LEAST)) continue;
+        data.data[(py * m + qx) * 4 + 3] = 255; any = true;
+      }
+      mg.putImageData(data, 0, 0); mask.any = any; keepRaster(id, mask);
+    }
+    if (!mask.any) return;
+    const piece = document.createElement('canvas'); piece.width = piece.height = size;
+    const h = piece.getContext('2d'), SPACING = 9;
+    h.strokeStyle = 'rgba(0, 0, 0, 0.85)'; h.lineWidth = 1.5;
+    if (kind === 'broken') h.setLineDash([6, 4]);
+    h.beginPath();
+    for (let c = 0; c <= 2 * size; c += SPACING) {
+      // (broken and cross: lines up to the right; solid and cross: lines down to the right, as the outlooks)
+      if (kind !== 'solid') { h.moveTo(c - size, size); h.lineTo(c, 0); }
+      if (kind !== 'broken') { h.moveTo(c - size, 0); h.lineTo(c, size); }
+    }
+    h.stroke();
+    h.globalCompositeOperation = 'destination-in'; h.imageSmoothingEnabled = true; h.imageSmoothingQuality = 'high';
+    h.drawImage(mask, 0, 0, size, size);
+    g.drawImage(piece, 0, 0);
+  });
+  ctx.drawImage(layer, view.left, view.top);
 }
 
 // The share of runs with the event within 25 miles of each place, on a grid of about 8 km, softened a little.
@@ -637,7 +670,7 @@ function drawLegend() {
   if (table) {
     const w = bar.width / table.length;
     table.forEach(([at, c], i) => { g.fillStyle = c; g.fillRect(i * w, 0, w + 1, bar.height); tick(efKey ? `EF${at}` : String(at), (i + 0.5) / table.length); });
-    note.textContent = `${p.label}${p.unit && !efKey ? ` (${p.unit})` : ''}${efKey ? ' · faint: updraft helicity tracks' : ''}${p.key === 'torProb' ? ` · hatched: ${SIG_HATCH}%+ chance of an EF2+ tornado` : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
+    note.textContent = `${p.label}${p.unit && !efKey ? ` (${p.unit})` : ''}${efKey ? ' · faint: updraft helicity tracks' : ''}${p.key === 'torProb' ? ` · hatched where the chance of a rated tornado is ${HATCH_LEAST}%+: broken EF2+, solid EF3+, cross EF4+` : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
   } else if (p.key === 'paint' || p.key === 'spaghetti') {
     const runs = E.byRun?.length ?? 0, w = bar.width / Math.max(1, runs);
     for (let r = 0; r < runs; r++) { g.fillStyle = runColour(r); g.fillRect(r * w, 0, w + 1, bar.height); }
@@ -665,7 +698,7 @@ canvas.addEventListener('mousemove', event => {
   }
   if (modelKind !== 'short' && (productKey in TOR_TESTS || productKey === 'torSpaghetti')) {
     const split = strongestNear(x, y);
-    if (split) lines.push(`Strongest tornado within 25 mi: none in <b>${split.none}</b> · EF0-1 <b>${split.weak}</b> · EF2-3 <b>${split.strong}</b> · EF4+ <b>${split.violent}</b> of ${E.byRun.length} runs`);
+    if (split) lines.push(`Strongest tornado within 25 mi: none in <b>${split.none}</b> · EF0-1 <b>${split.weak}</b> · EF2 <b>${split.sig}</b> · EF3 <b>${split.strong}</b> · EF4+ <b>${split.violent}</b> of ${E.byRun.length} runs`);
   }
   lines.push(`<span class="muted">${Math.round(x / MILE_KM)} mi east, ${Math.round(y / MILE_KM)} mi south of the north-west corner</span>`);
   tip.innerHTML = lines.join('<br>'); tip.style.display = 'block';
@@ -675,11 +708,11 @@ canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
 // How the runs split by the strongest tornado each brings within 25 miles of a place, by the time on show.
 function strongestNear(x, y) {
   if (!E.byRun) return null;
-  const hourNow = E.data.issuedHourUtc + t / 60, split = { none: 0, weak: 0, strong: 0, violent: 0 };
+  const hourNow = E.data.issuedHourUtc + t / 60, split = { none: 0, weak: 0, sig: 0, strong: 0, violent: 0 };
   for (const run of E.byRun) {
     let mph = 0;
     for (const points of run.storms.values()) for (const q of points) if (q.tor > mph && q.h <= hourNow && Math.hypot(q.x - x, q.y - y) <= NEAR_KM) mph = q.tor;
-    if (!mph) split.none++; else if (mph >= EF_LEAST_MPH[4]) split.violent++; else if (mph >= EF_LEAST_MPH[2]) split.strong++; else split.weak++;
+    if (!mph) split.none++; else if (mph >= EF_LEAST_MPH[4]) split.violent++; else if (mph >= EF_LEAST_MPH[3]) split.strong++; else if (mph >= EF_LEAST_MPH[2]) split.sig++; else split.weak++;
   }
   return split;
 }
@@ -708,7 +741,8 @@ fillProducts(); setTimeRange();
 (async function start() {
   // ?model=ensemble&product=<key>&t=<minutes> opens the page there.
   const ask = new URLSearchParams(location.search);
-  await loadBase();
+  // (the rated tornado chance tabs are for admins: js/site.js roleNow)
+  [isAdmin] = await Promise.all([roleNow().then(r => r === 'admin'), loadBase()]);
   if (ask.get('model') === 'ensemble') await switchModel('ensemble'); else await loadRuns();
   if (UH_LEASTS.includes(Number(ask.get('uh')))) { reflUhLeast = Number(ask.get('uh')); $('uhLeast').value = String(reflUhLeast); }
   if (ask.get('product')) { productKey = ask.get('product'); fillProducts(); setTimeRange(); }
