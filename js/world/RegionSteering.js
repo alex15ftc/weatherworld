@@ -98,8 +98,9 @@ export const STEERING_DEFAULTS = Object.freeze({
   // vorticity advection ahead of the wave). 0: off. Under strongly supported places the 6-hour ascent runs about
   // 0.09 K/h (median) to 0.21 (top tenth). Regression suite, 8 seeds x 10 days against 0: with 0.5 no regressions,
   // MDT+HIGH 22.5 to 28.8% (target 25), below Slight 6.25 to 5%, tornado CIG3+ days 2.5 to 5%; with 1, EF4+ share
-  // (0.64 to 1.37%) and tornado CIG3+ days (8.75%) regressed.
-  liftShare: 0.5, liftRangeKh: [0, 0.2], liftHours: 6
+  // (0.64 to 1.37%) and tornado CIG3+ days (8.75%) regressed. 1 since 2026-11-18 (the owner accepted those regressions):
+  // all of the support comes with the lift; MDT+HIGH-heavy days with more violent tornadoes.
+  liftShare: 1, liftRangeKh: [0, 0.2], liftHours: 6
 });
 
 const KT = 1.943844;

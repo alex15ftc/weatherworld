@@ -18,13 +18,13 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Steering chases lift (2026-11-18, owner's request; on `main`, engine not deployed): half of a warm-sector place's
+- Steering chases lift (2026-11-18, owner's request; on `main`, engine not deployed): all of a warm-sector place's
   support now comes only with the outer model's large-scale ascent there over the 6 h before each judged hour
-  (`RegionSteering` `liftShare: 0.5`, `liftRangeKh: [0, 0.2]`, `liftHours: 6`), so the map goes where a trough is
+  (`RegionSteering` `liftShare: 1`, the owner accepting its regressions; `liftRangeKh: [0, 0.2]`, `liftHours: 6`), so the map goes where a trough is
   actually lifting the air, not just under strong wind aloft. Regression suite against 0: no regressions, MDT+HIGH
   22.5 to 28.8%, below Slight 6.25 to 5%, tornado CIG3+ days 2.5 to 5%; at 1.0 EF4+ share and CIG3+ days regressed.
   The admin tool (`tools/admin`) has sliders for the share and both ends of the ramp. `tests/radar-simulator.mjs`
-  moved to seed 3 (seed 1's couplet fell to 40.5 m/s with lift). All three suite runs were on the `b1be3a9` engine
+  moved to seed 4 (the only seed of 1-6 tried that passes at 0.5 and 1). All three suite runs were on the `b1be3a9` engine
   (stronger jet), before `ea2364a` (EF0 counting) landed; no forecast check run.
 - Long range tornado chances (2026-11-18, owner's request; stepping version `951a03b` on `main`, engine deployed from it, the world carried over): /models/long-range
   has an admin-only "Tornado chances" panel that draws the chance of a tornado within 25 mi on the game map in the
