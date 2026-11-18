@@ -19,7 +19,7 @@ const ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
 const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : 0);
 const KT = 1.943844, GRAVITY = 9.81;
 // The steering settings a preview may change (plain numbers, or [low, high] pairs, or the kinds' shares).
-export const STEERING_KEYS = Object.freeze(['windCapKt', 'southerlyCapKt', 'moistRangeGkg', 'wantedLow', 'wantedHigh', 'kinds', 'systemSpeedMs', 'northSpeedMs', 'homeReachKm', 'homePull', 'lookAheadDays', 'maxMissKm']);
+export const STEERING_KEYS = Object.freeze(['windCapKt', 'southerlyCapKt', 'moistRangeGkg', 'wantedLow', 'wantedHigh', 'kinds', 'systemSpeedMs', 'northSpeedMs', 'homeReachKm', 'homePull', 'lookAheadDays', 'maxMissKm', 'liftShare', 'liftRangeKh']);
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const pick = (object, keys) => Object.fromEntries(keys.filter(key => key in (object ?? {})).map(key => [key, object[key]]));

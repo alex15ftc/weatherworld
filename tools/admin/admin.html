@@ -136,6 +136,9 @@ const STEER_SLIDERS = [
   { key: 'homeReachKm', label: 'Farthest from home latitude', unit: 'km', step: 50, help: 'Home is the jet core\'s latitude.' },
   { key: 'homePull', label: 'Pull back toward home', unit: 'per 1000 km', step: 0.01, help: 'Support given up for each 1,000 km from home: keeps the map near the jet.' },
   { key: 'lookAheadDays', label: 'Days looked ahead', unit: 'days', step: 1, help: 'Plan today\'s slide with the following days\' best slides in view.' },
+  { key: 'liftShare', label: 'Support that needs rising air', unit: 'share', step: 0.05, help: 'Share of the warm-sector support given only where the large-scale model lifts the air (the trough's exit region, vorticity advection ahead of it). 0: steering ignores lift.' },
+  { key: 'liftRangeKh.0', label: 'Lift: none counted below', unit: 'K/h', step: 0.01, help: 'Cooling by rising air (6 h before each judged hour) where lift starts to count.' },
+  { key: 'liftRangeKh.1', label: 'Lift: counts in full from', unit: 'K/h', step: 0.01, help: 'Where it counts in full. Strong-support places run about 0.1 (median) to 0.2 (top tenth).' },
   { key: 'maxMissKm', label: 'Farthest miss when aiming at a low', unit: 'km', step: 25, help: 'Beyond this the day aims at the warm sector instead.' }
 ];
 

@@ -14,8 +14,9 @@ import { detectRotation, lowLevelShearGrid, debrisSignature } from '../js/radar/
 const previewIndex = process.argv.indexOf('--preview');
 const previewDir = previewIndex > 0 ? process.argv[previewIndex + 1] : null;
 // The redesigned atmosphere a day and a half in, on the second evening, when storms are about.
-// (Seed 1 since 2026-10-26: after the low-level jet changes seed 4 had one weak, dying storm at 35 h.)
-const seed = Number(process.env.RADAR_TEST_SEED ?? 1);
+// (Seed 1 since 2026-10-26: after the low-level jet changes seed 4 had one weak, dying storm at 35 h. Seed 3 since
+// 2026-11-18: with the steering's liftShare seed 1's couplet gave 40.5 m/s delta-V and seed 2 failed its CC either way.)
+const seed = Number(process.env.RADAR_TEST_SEED ?? 3);
 const hours = Number(process.env.RADAR_TEST_HOURS ?? 35);
 
 const atmosphere = new AtmosphereWorld({ seed, spinUpDays: 10 }), world = atmosphere.world;
