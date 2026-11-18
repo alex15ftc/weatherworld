@@ -525,6 +525,25 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+00. Upper winds and warm rain (2026-11-18, branch `engine/upper-wind`).
+   In the code: QG upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14 (owner accepted the regressions),
+   and warm rain (PrecipitationField PHYSICS.warmRainShare, warmRainOf; StormFallout too: up to half the rain forms
+   below the freezing level, by warm cloud depth and inflow vapour, and falls out near the updraught). Anvil-level
+   storm-relative wind median 15.8 -> 22.4 m/s, under 18 m/s 67 -> 35%, storms 40 -> 42 mph. Regression (jetwarm vs
+   base): EF4+ 0.64 -> 1.49%, EF0 48.9 -> 42.8%, tornado CIG1/2/3+ days 37.5/8.8/2.5 -> 56/22.5/10%, hail 2 in+ 16 ->
+   21% (accepted); better: 30+ tornado days 25 -> 15%, wind and hail CIG, 75+ mph gusts. Warm rain alone: no
+   regressions; made supercell in moist air hook/forward flank 1.54 -> 2.5-3.0. Fixed with it: the wide window's
+   restore wrote into the saved state and refilled it (WideRegion createWide), so a copy drifted. Tests judging the
+   process: radar test storm moves as a supercell there does (and far debris: no TDS, at most a tenth of close in);
+   cold pool against a twin world without it. Suite 74/74. A world saved by other code takes up the code's jet
+   (WeatherAuthorityRuntime takeUpCodeJet, retune). Outlook check (seeds 41-50, 3 mornings, main 84f45e3 -> this):
+   highest category right Day 1/2/3 53/45/30 -> 57/50/40%; calibrated Brier skill Day 1 tornado/wind/hail 22/34/43 ->
+   17/29/38, Day 2 16/19/30 -> 9/13/18, Day 3 severe 5 -> 15; in-sample recalibration gains 0-1 (the weather is less
+   predictable, not miscalibrated). Off: tornado CIG3 drawn 10% / verified 27% (Day 1), CIG1 47 / 23%; Days 2-3
+   Moderate forecast 10 / 0% against verified 35 / 50%. Owner held the refit (intensity groups and category cutoffs:
+   fit archive seeds 1-30, then check on the saved 41-50 archive). Next: warm rain in the game's Luau sim (StormLab
+   Storm.luau rain release); the refit when the owner wants it.
+
 00. Admin tool (2026-11-18; merged and deployed from 91eb5c8, the live world carried on; the tool itself is local only).
    `npm run admin` -> http://localhost:3920 (tools/admin/: server.mjs, admin.html, SeverePreview.js,
    preview-worker.mjs); local only, tools/ is never in the engine's image. Live long range jet maps (proxied from the

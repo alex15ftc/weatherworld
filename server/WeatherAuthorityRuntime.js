@@ -9,6 +9,7 @@ import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import v8 from 'node:v8';
 import { fileURLToPath } from 'node:url';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
+import { QG_DEFAULTS, RETUNABLE } from '../js/atmosphere/QuasiGeostrophicModel.js';
 import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
 import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
@@ -829,6 +830,7 @@ export class WeatherAuthorityRuntime {
       }
       const engine = AtmosphereWorld.restore(state.engine);
       if (!engine) return false;
+      if (otherCode) takeUpCodeJet(engine);
       this.revision = state.revision;
       // (saves from before 2026-11-11 have no id: the seed stands in, and is saved from then on)
       this.worldId = state.worldId ?? `seed-${state.engine?.seed ?? this.seed}`;
@@ -944,12 +946,23 @@ function levelWind(cell, pressure) {
   return{direction:(Math.atan2(u,v)*180/Math.PI+360)%360,speed:Math.hypot(u,v)};
 }
 
+// A world saved by other code carries on under the code's jet and mean west winds (QuasiGeostrophicModel QG_DEFAULTS'
+// RETUNABLE settings; a restored model keeps the settings it was saved with): its weather systems are kept and travel
+// on in the new mean flow (retune). (2026-11-18: upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14.)
+function takeUpCodeJet(engine) {
+  const params = engine.model.params, changes = Object.fromEntries(RETUNABLE.filter(key => (params[key] ?? null) !== (QG_DEFAULTS[key] ?? null)).map(key => [key, QG_DEFAULTS[key] ?? null]));
+  if (!Object.keys(changes).length) return;
+  engine.model.retune(changes);
+  console.log(`[authority] the world takes up the code's jet settings: ${JSON.stringify(changes)}`);
+}
+
 // Why a saved world from other code would not carry on, or null: a copy restored and stepped
 // half an hour must not throw, and its large-scale and regional fields must stay numbers.
 function carryOverProblem(engineState) {
   try {
     const probe = AtmosphereWorld.restore(engineState);
     if (!probe) return 'old layout';
+    takeUpCodeJet(probe);
     probe.advance(0.5);
     const finite = values => { for (let i = 0; i < values.length; i++) if (!Number.isFinite(values[i])) return false; return true; };
     for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) if (probe.model[key] && !finite(probe.model[key])) return `model ${key} not finite`;

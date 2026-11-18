@@ -86,7 +86,8 @@ export function createWide(map, saved = null) {
     airMassRelaxationDays: WIDE.refreshDays, moistTopDays: WIDE.refreshDays
   });
   if (saved) {
-    for (const [key, values] of Object.entries(saved.arrays)) wide[key] = values;
+    // (copies: the saved state stays as it was, for the arrays put back below and for any other copy made from it)
+    for (const [key, values] of Object.entries(saved.arrays)) wide[key] = values.slice();
     wide.sunsetHour = saved.sunsetHour; wide.midReference = saved.midReference; wide.gulfSupply = saved.gulfSupply;
     // (so that place sets the ground again under the restored air)
     wide.geographyOffset = NaN;
@@ -96,6 +97,10 @@ export function createWide(map, saved = null) {
   wide.ageHours = saved?.ageHours ?? 0;
   if (!saved) feed(wide, map);
   wide.fill(0);
+  // (A saved window's arrays are what its last fill left; filling them again moves a few cells' mixed layer, which
+  // the fill finds from what it was given: 2-13 cells' mixed depth by up to 23 m and their lid by 4e-5, and the copy
+  // then drifted from the window it was saved from. They are put back as saved, so the copy goes on as it does.)
+  if (saved) for (const [key, values] of Object.entries(saved.arrays)) wide[key].set(values);
   return wide;
 }
 

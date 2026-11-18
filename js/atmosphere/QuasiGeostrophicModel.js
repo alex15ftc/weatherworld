@@ -62,8 +62,8 @@ export const QG_DEFAULTS = Object.freeze({
   // m/s: spread 7 hPa, lows -17 to -19, about 1,280 km a day.)
   // These are the winds at the jet stream's flanks less the jet (below): the mean wind of each
   // layer at a latitude is upperWindMs or lowerWindMs plus the jet's share there.
-  // (23.5/13.5 until 2026-10-23, with no jet.)
-  upperWindMs: 13.5, lowerWindMs: 3.5,
+  // (23.5/13.5 until 2026-10-23, with no jet; upper 13.5 until 2026-11-18, below.)
+  upperWindMs: 15.5, lowerWindMs: 3.5,
   // The jet stream (2026-10-23): the mean west wind is strongest at the domain's middle latitude
   // (where the region sits) and slack north and south of it, U(y) = U0 + A cos(2 pi (y - Ly/2) / Ly),
   // with A = jetMs + jetShearMs / 2 aloft and jetMs - jetShearMs / 2 below: jetMs stronger in both
@@ -74,7 +74,12 @@ export const QG_DEFAULTS = Object.freeze({
   // up for what the jet's shear across the flow takes), moving about 1,280 km a day instead of
   // 1,900, and the winds over the region about as before (500 mb about 19 m/s at the core).
   // Negative tilt was no more common with any jet tried (docs/FIX-PLAN-2026-10-22.md).
-  jetMs: 10, jetShearMs: 10,
+  // (2026-11-18, upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14: supercells' storm-relative wind at anvil level
+  // (9-10 km), which carries their rain off the updraught, was the HP range's: median 15.8 m/s, 67% under 18 (real
+  // supercells about 20-25). Now 22.4 and 35%, 250 mb at storms 63 -> 84 kt, storms 40 -> 42 mph. Owner accepted the
+  // regressions it brings (stronger tornadoes: EF4+ 0.64 -> 1.49%, tornado CIG1/2/3+ days 37.5/8.8/2.5 -> 56/22.5/10%,
+  // hail 2 in+ 16 -> 21%). The sliders can only add wind aloft with more 0-6 km shear; tools/admin previews others.)
+  jetMs: 10, jetShearMs: 14,
   // How wide the jet is (km between the latitudes where it has half its strength at the core; 2026-11-17, for the
   // admin tool's previews (tools/admin)). null: the cosine across the whole domain (its half-strength width is a third of the
   // domain's north-south length, 1,707 km), the widest a single jet can be. Narrower, the shape is exp(k (cos - 1))

@@ -83,20 +83,25 @@ const spot = (() => {
   }
   return best;
 })();
+// What the pool does is measured against a twin of this world without it, stepped alongside (since 2026-11-18:
+// until then against a cell 12 cells east, which the weather passing over moves too. With the jet's upper wind 13.5
+// to 15.5 and core shear 10 to 14 m/s a pressure surge was crossing: both cells rose 2.4-2.8 hPa in the half hour,
+// and the pool's share, the difference, read 0.46.)
+const twin = AtmosphereWorld.restore(structuredClone(atmosphere.saveState({ forecast: true })));
+twin.world.storms = []; twin.stormsEnabled = false;
 atmosphere.regional.addColdPool(spot.xKm, spot.yKm, 45, 6);
 // The wind carries the pool along, so it is looked for where it has got to: the cell that is
-// coldest against its air mass half an hour later, compared with a cell well clear of it.
-const cell = k => world.cells[Math.floor(k / world.width)][k % world.width];
-const before = { t: [], p: [] }; world.forEachCell(c => { before.t.push(c.surface.temperature); before.p.push(c.surface.seaLevelPressure); });
-atmosphere.advance(0.5);
+// coldest against its air mass half an hour later, compared with the same cell of the twin.
+const cell = k => world.cells[Math.floor(k / world.width)][k % world.width], twinCell = k => twin.world.cells[Math.floor(k / world.width)][k % world.width];
+atmosphere.advance(0.5); twin.advance(0.5);
 // (Within 130 km of where it was put: storms that form meanwhile make pools of their own.)
 const pool = atmosphere.regional.coldPool, near = k => Math.hypot((k % world.width + 0.5) * world.cellSizeKm - spot.xKm, (Math.floor(k / world.width) + 0.5) * world.cellSizeKm - spot.yKm) <= 130;
-const at = pool.reduce((best, value, k) => (near(k) && value > pool[best] ? k : best), Math.floor(spot.yKm / world.cellSizeKm) * world.width + Math.floor(spot.xKm / world.cellSizeKm)), away = at + (at % world.width < world.width - 14 ? 12 : -12);
+const at = pool.reduce((best, value, k) => (near(k) && value > pool[best] ? k : best), Math.floor(spot.yKm / world.cellSizeKm) * world.width + Math.floor(spot.xKm / world.cellSizeKm));
 console.log(`cold pool put at ${spot.xKm.toFixed(0)}, ${spot.yKm.toFixed(0)} km (temperature and dewpoint spread ${spot.spread.toFixed(1)} F round it)`);
 assert.ok(pool[at] > 3, `the pool is still there half an hour on (${pool[at].toFixed(1)} K)`);
-const colder = (cell(at).surface.temperature - before.t[at]) - (cell(away).surface.temperature - before.t[away]);
-assert.ok(colder < -5, `the air in the pool is colder (${colder.toFixed(1)} F against the air clear of it)`);
-const higher = (cell(at).surface.seaLevelPressure - before.p[at]) - (cell(away).surface.seaLevelPressure - before.p[away]);
+const colder = cell(at).surface.temperature - twinCell(at).surface.temperature;
+assert.ok(colder < -5, `the air in the pool is colder (${colder.toFixed(1)} F against the same air without it)`);
+const higher = cell(at).surface.seaLevelPressure - twinCell(at).surface.seaLevelPressure;
 assert.ok(higher > 0.5, `and the pressure under it higher (${higher.toFixed(2)} hPa)`);
 assert.ok(atmosphere.boundaries.some(line => line.type === 'outflow'), `its edge is an outflow boundary (found: ${atmosphere.boundaries.map(b => b.type).join(', ')})`);
 const strongest = () => Math.max(...atmosphere.regional.coldPool);

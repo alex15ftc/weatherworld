@@ -39,6 +39,13 @@ export const PHYSICS = {
   // Precipitation leaves an updraught on its flanks (where it rises at 8% to 70% of its full
   // speed), from a kilometre below the freezing level to this share of the way to the top.
   flank: [0.08, 0.7], formationBelowM: 1000, formationShare: 0.45,
+  // Warm rain (2026-11-18): in a deep, moist cloud below the freezing level drops grow by colliding and
+  // coalescing and fall out low, before reaching the ice. Up to warmRainShare of the rain does so, growing
+  // with the warm cloud's depth (freezing level less cloud base; deep warm clouds of 3-4 km are the efficient
+  // rain-makers of flash floods, Davis 2001, and High Plains bases under 1 km of warm cloud make almost none)
+  // and with the vapour drawn in. Released low it falls near the updraught through the weak low-level flow
+  // and wraps it (HP); high, dry-based storms keep their rain to the ice aloft, which the anvil wind carries off.
+  warmRainShare: 0.5, warmRainDepthM: [1000, 3500], warmRainVapourGm3: [11, 18],
   // It leaves on the side the air through the updraught is going: fully so when that air
   // moves this fast (m/s) relative to the storm, and anywhere round a still updraught.
   throughFlowMs: 4,
@@ -179,6 +186,14 @@ const hailFallMs = mm => 11.45 * Math.sqrt(mm / 10);
 // follow one particle in `stride` (each standing for that many; and fewer to find the fallout's
 // reach), on cells no finer than leastResKm, without the fine inner grid and, with debris false,
 // without a tornado's debris. The amounts are the same on average; the detail is less.
+// The share of the rain made by warm rain (PHYSICS.warmRainShare): by the warm cloud's depth (the freezing level
+// less the cloud base, m) and the vapour drawn in (the column's, or from the dewpoint where it has none).
+export function warmRainOf(column, baseM, environment = {}) {
+  const dewpointC = ((Number(environment.dewpoint) || 60) - 32) * 5 / 9;
+  const vapour = Number.isFinite(column?.inflowVapourGm3) ? column.inflowVapourGm3 : 216.7 * 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5)) / (dewpointC + 273.15);
+  return PHYSICS.warmRainShare * ramp((Number(column?.freezingM) || 4000) - baseM, ...PHYSICS.warmRainDepthM) * ramp(vapour, ...PHYSICS.warmRainVapourGm3);
+}
+
 export function buildStormPrecipitation(storm, column, { shared = false, stride = 1, leastResKm = RESOLUTION_KM[0], fine = true, debris: withDebris = true } = {}) {
   const alloc = shared ? sharedAlloc : plainAlloc;
   const structure = storm.structure;
@@ -220,6 +235,7 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   const asLine = ramp(lineShare(storm), 0.25, 0.7);
   model.dryBelow = clamp(0.5 * (model.baseM - 400) / 1600 + 0.5 * (Number(environment.dcape) || 600) / 1200, 0.05, 1.2);
   model.dryAloft = subsaturationAloftOf(column) * (1 - 0.6 * asLine);
+  model.warmRain = warmRainOf(column, model.baseM, environment);
   model.frontToRear = PHYSICS.frontToRearMs * asLine * clamp(model.coldPool / PHYSICS.frontToRearColdPool, 0, 1) * ramp(storm.ageHours, PHYSICS.frontToRearHours[0], PHYSICS.frontToRearHours[1]);
   model.sources = updraughts(storm, structure, geometry, model, asLine, toMap);
   model.downdraughts = downdraughtsOf(structure, toMap, environment);
@@ -377,6 +393,7 @@ export function follow(model, grid, inner, stride, landed = null) {
   // The line's front-to-rear current, east and north (m/s), at its strongest.
   const rearU = -model.mx * model.frontToRear, rearV = model.my * model.frontToRear;
   if (!(ageS > 0)) return null;
+  const warmRain = Number(model.warmRain) || 0;
   const P = PHYSICS, stepM = (grid ? grid.res : 1) * 800, innerStepM = INNER.resKm * 1000, top = topM * 1.05;
   const evaporation = model.dryBelow / P.evaporationS, sublimation = model.dryAloft / P.sublimationS;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
@@ -396,6 +413,9 @@ export function follow(model, grid, inner, stride, landed = null) {
       for (let p = 0; p < cls.count; p += stride) {
         const random = mulberry32(hash3(source.seed, c, p));
         let z = Math.max(1200, fz + (isHail ? P.hailAboveM : -P.formationBelowM) + random() ** 1.5 * (formationTop - fz + (isHail ? -P.hailAboveM : P.formationBelowM)));
+        // Warm rain forms in the cloud below the freezing level, from 300 m above the base up (PHYSICS.warmRainShare).
+        // (no draw at all where there is none: storms without warm rain fall exactly as before)
+        if (!isHail && !isSnow && warmRain > 0 && random() < warmRain) z = baseM + 300 + random() * Math.max(0, fz - baseM - 300);
         // Snow is carried up from anywhere on the flank. Graupel and hail have grown too heavy
         // for the air they are in: they leave where the updraught can no longer hold them.
         const held = cls.fallMs / Math.max(1e-3, wMax * RISE[(100 * z / top) | 0]);

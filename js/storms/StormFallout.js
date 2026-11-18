@@ -13,7 +13,7 @@
 // wind, put it 7 km away and to the right, missing the radar's by 7 km. The low-level inflow carries
 // rain back toward the updraught; the fall-out from 8-12 km, carried by the winds up to 250 hPa, takes
 // it out. About 1 ms a supercell, once a storm tick.
-import { PHYSICS, WIND_PROFILE_STEP_M, updraughts, follow, hashString, downdraughtsOf, subsaturationAloftOf } from './PrecipitationField.js';
+import { PHYSICS, WIND_PROFILE_STEP_M, updraughts, follow, hashString, downdraughtsOf, subsaturationAloftOf, warmRainOf } from './PrecipitationField.js';
 import { mesoOf } from './StormVortices.js';
 import { stormColumnOf } from './StormColumn.js';
 
@@ -63,6 +63,7 @@ export function falloutMoments(storm, updraught, column) {
   model.downdraughts = downdraughtsOf(storm.structure, toMap, environment);
   model.dryBelow = clamp(0.5 * (model.baseM - 400) / 1600 + 0.5 * (Number(environment.dcape) || 600) / 1200, 0.05, 1.2);
   model.dryAloft = subsaturationAloftOf(column);
+  model.warmRain = warmRainOf(column, model.baseM, environment);   // (the warm rain released low, as the radar's field has it)
   // (the central updraught alone, whatever share of a line the storm is: StormGeometry blends a line's older placing in)
   model.sources = updraughts(storm, { features: [] }, { updraught }, model, 0, toMap);
   if (!model.sources.length) return null;
