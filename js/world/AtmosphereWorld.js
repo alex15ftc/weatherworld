@@ -16,6 +16,7 @@ import { snapshotWorld, hydrateWorld } from './worldSnapshot.js';
 import { clamp } from '../scenarios/math.js';
 import { RegionSteering } from './RegionSteering.js';
 import { createWide, stepWide, saveWide } from './WideRegion.js';
+import { engineGroundReliefM } from '../worldmap/engineGround.js';
 
 const ramp = (value, low, high) => clamp((value - low) / (high - low), 0, 1);
 
@@ -66,7 +67,12 @@ export class AtmosphereWorld {
     this.model = model ?? spunUpModel({ ...qg, seed }, spinUpDays * 86400);
     // Soundings are computed here, after the storms' own cooling has been put back in.
     const warmUp = plan && steering ? Math.max(0, warmUpHours) : 0;
-    this.regional = new RegionalAtmosphere(this.model, { ...regional, diagnostics: false, ...(warmUp ? { startHourUtc: 12 - warmUp } : {}) });
+    // The game map's ground (its hills and the divide; engineGround.js) unless regional says otherwise (null: the slope alone).
+    // A map roaming along the geography (steering roamLow and roamHigh; a test of weather placement, never the game's)
+    // is not the fixed Roblox ground, so it has the geography's slope alone.
+    const roams = steering && (steering.roamLow ?? null) !== null && (steering.roamHigh ?? null) !== null;
+    const groundReliefM = 'groundReliefM' in regional ? regional.groundReliefM : roams ? null : engineGroundReliefM(regional);
+    this.regional = new RegionalAtmosphere(this.model, { ...regional, groundReliefM, diagnostics: false, ...(warmUp ? { startHourUtc: 12 - warmUp } : {}) });
     const world = this.world = this.regional.world, n = world.width * world.height;
     world.evolution = { config: { seed } };
     world.runtime = { profile: { name: 'atmosphere-world', stormSubstepsPerHour: 12, verification: false } };

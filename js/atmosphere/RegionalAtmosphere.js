@@ -374,7 +374,12 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   stepSeconds: 1800,
   // Map edges: how far beyond the edge (cells) air entering keeps the edge's departure from the
   // outer model (see advect).
-  edgeMemoryCells: 6
+  edgeMemoryCells: 6,
+  // The ground's departure from the slope (terrainAt) at each cell (m, rows from the north; 2026-11-18): the world
+  // map's own hills and the divide (js/worldmap/engineGround.js), so the weather is made over the ground players see.
+  // Null: the slope alone. Given by AtmosphereWorld for the game map; the hills stay with the map if it moves along the
+  // geography (roaming, off by default).
+  groundReliefM: null
 });
 
 // Temperature (K) at p1 (hPa) of saturated air lifted (or lowered) from tempK at p0 along the moist
@@ -445,7 +450,7 @@ export class RegionalAtmosphere {
     // Reference: the outer model's tropospheric temperature at the map centre, time-mean.
     this.referenceLayerK = model.params.f0 * model.meanThickness(centreY) / (RD * Math.log(3));
     this.world.forEachCell((cell, x, y) => {
-      cell.terrain.elevationM = this.terrainAt(x);
+      cell.terrain.elevationM = this.groundAt(x, y);
       const k = y * this.nx + x, outer = this.outerAt(x, y);
       this.theta[k] = this.airMassTheta(outer, cell.terrain.elevationM);
       this.moisture[k] = this.inflowMoisture(x, y);
@@ -758,6 +763,8 @@ export class RegionalAtmosphere {
 
   // How far east a column is across the geography (0 at its western edge, 1 at its eastern, and 1 beyond).
   eastShare(x) { const p = this.params; return clamp((x + this.geographyOffset) / ((p.geographyColumns ?? this.nx) - 1), 0, 1); }
+  // The ground at a cell (m): the slope with the map's hills on it (groundReliefM).
+  groundAt(x, y) { const relief = this.params.groundReliefM; return this.terrainAt(x) + (relief ? relief[y * this.nx + x] ?? 0 : 0); }
   terrainAt(x) { const p = this.params; return p.terrainEastM + (p.terrainWestM - p.terrainEastM) * (1 - this.eastShare(x)) ** p.terrainShape; }
   // Moves the map along the geography toward its target, at most geographyRate cells per hour.
   // The air, the storms and their cold pools stay where they are on the map; the ground under
@@ -767,7 +774,7 @@ export class RegionalAtmosphere {
     if (!gap || !(this.geographyRate > 0)) return;
     const move = Math.min(Math.abs(gap), this.geographyRate * dt / 3600);
     this.geographyOffset += Math.sign(gap) * move;
-    this.world.forEachCell((cell, x) => { cell.terrain.elevationM = this.terrainAt(x); });
+    this.world.forEachCell((cell, x, y) => { cell.terrain.elevationM = this.groundAt(x, y); });
     this.geographyVersion++;
   }
 
@@ -798,7 +805,7 @@ export class RegionalAtmosphere {
     // Continental air holds the moisture its temperature allows (continentalHumidity of
     // saturation, at most continentalMixingRatio): air from the cold north is dry because it is
     // cold, which is the dryness behind a cold front.
-    const continental = Math.min(p.continentalMixingRatio, this.continentalMoisture(outer, this.terrainAt(x)));
+    const continental = Math.min(p.continentalMixingRatio, this.continentalMoisture(outer, this.groundAt(x, y)));
     return p.dryMixingRatio + (continental - p.dryMixingRatio) * ramp(east, 0.05, 0.3) + (Math.max(continental, this.gulfAir(outer)) - continental) * gulf;
   }
 

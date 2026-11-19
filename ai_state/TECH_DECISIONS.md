@@ -16,6 +16,19 @@
 
 ## Decisions
 
+### 2026-11-18 — The engine stands on the game map's ground; a divide ridge in the western High Plains
+
+- Status: active (trial on branch `terrain-divide`; the map itself not yet rebuilt with the ridge)
+- Decision: the regional layer's cells take the world map's mean height over each 10-mile cell (`groundReliefM`,
+  from `js/worldmap/engineGround.js`, stored in `engineGroundData.js`) instead of the bare east-west slope, and the
+  world map gains a Palmer Divide-like ridge (`DIVIDE`: 350 m, west edge to 30% east, about a third of the way
+  south) so that north and south winds have ground to climb. A map roaming along the geography keeps the slope alone.
+- Rationale: the bare slope (at most ~1.7 m/km, no north-south relief) could not give upslope storms; the owner
+  asked for the terrain change. Rejected: a higher, steeper west edge (shifts the whole map's climate), a SW mesa.
+  Regression suite: no regressions; upslope-led storms 49 to 76 per 1,800 (probe, seeds 1-4 x 4 days).
+- Follow-up: rebuild the map with the ridge (move `divide` into `WORLD_MAP_DEFAULTS`, re-plan roads and airports),
+  then check it in Studio. Rebuild `engineGroundData.js` after any change to the map's ground.
+
 ### 2026-11-18 — Nothing below EF0 is a tornado
 
 - Status: active

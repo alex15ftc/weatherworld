@@ -18,6 +18,19 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- The divide, an engine trial (2026-11-18, owner's request; branch `terrain-divide`, uncommitted, not deployed): the
+  engine now stands on the game map's own ground instead of the bare east-west slope: each 10-mile cell takes the
+  world map's mean height (its regions' hills, river valleys; `js/worldmap/engineGround.js`, stored in
+  `engineGroundData.js`, rebuilt by `scripts/build-engine-ground.mjs`, checked by `tests/engine-ground.mjs`), plus a
+  Palmer Divide-like ridge across the western High Plains (`DIVIDE` in `WorldMapGenerator.js`: 350 m at the west
+  edge, about a third of the way south, gone by 30% east). The map itself does not have the ridge yet
+  (`WORLD_MAP_DEFAULTS.divide: null`; `ENGINE_MAP_OPTIONS` puts it under the engine only): with it, the map's roads and
+  airports re-plan and `world-map.mjs` failed (I-35 airport expressway into Liberty Grove's airport). Regression suite
+  against `daca4bc` (8 x 10): no regressions, nothing moved past tolerance (EF4+ share 1.55 to 1.05%, tornado CIG3+
+  days 17.5 to 10%). Upslope probe (seeds 1-4 x 4 days, against `daca4bc`): storms led by upslope 49 to 76 (of
+  ~1,800), those with a mesocyclone 26 to 43, tornadoes from them 8 to 11; storms in the ridge zone get a median 1.0
+  cm/s of upslope (was 0.6); its tornadoes unchanged (8 to 7). Upslope is still a weak trigger: the lift threshold
+  (`KF_THRESHOLD_MS` 2 cm/s at a 2 km cloud base) is about what the ridge's slope gives.
 - Steering chases lift (2026-11-18, owner's request; on `main`, engine not deployed): all of a warm-sector place's
   support now comes only with the outer model's large-scale ascent there over the 6 h before each judged hour
   (`RegionSteering` `liftShare: 1`, the owner accepting its regressions; `liftRangeKh: [0, 0.2]`, `liftHours: 6`), so the map goes where a trough is
@@ -533,6 +546,12 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+000. The divide (branch `terrain-divide`, worktree `../weatherworld-divide`): owner to decide whether to keep it and
+   whether to rebuild the map with it. If kept: commit, then the `rebuild-map` skill with `divide: DIVIDE` moved into
+   `WORLD_MAP_DEFAULTS` (and `ENGINE_MAP_OPTIONS` emptied, `node scripts/build-engine-ground.mjs`), fix the road and
+   airport planning `world-map.mjs` then flags, export and look at the ridge in Studio (6% grades in the game's
+   squeezed distance). For stronger upslope: a taller ridge (the Palmer Divide stands up to 600 m) or a look at the
+   lift threshold (affects every storm start; regression suite).
 00. Upper winds and warm rain (2026-11-18; on main b1be3a9, deployed from it: the live world took up the new jet).
    In the code: QG upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14 (owner accepted the regressions),
    and warm rain (PrecipitationField PHYSICS.warmRainShare, warmRainOf; StormFallout too: up to half the rain forms
