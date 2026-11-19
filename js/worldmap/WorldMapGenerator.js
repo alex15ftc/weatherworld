@@ -27,6 +27,8 @@ import { planStreets } from './streets.js';
 import { planTownShapes } from './townShapes.js';
 
 const METRES_PER_MILE = 1609.344;
+// The divide's settings (see divideM below).
+export const DIVIDE = Object.freeze({ crestM: 350, crestV: 0.32, taperU: 0.06, endU: 0.3, halfWidthMi: 22, wobbleMi: 8, wobbleWavelengthMi: 60 });
 
 export const WORLD_MAP_DEFAULTS = Object.freeze({
   seed: 1,
@@ -38,9 +40,8 @@ export const WORLD_MAP_DEFAULTS = Object.freeze({
   // Land cover near a border is drawn from the region at a point up to coverBlendMi away, in
   // patches of about coverBlendScaleMi, so one region's farms and pasture give way to the next.
   coverBlendMi: 25, coverBlendScaleMi: 3,
-  // The divide (DIVIDE below; null: none). Off on the map for now (2026-11-18): the weather engine stands on it as a
-  // trial (engineGround.js ENGINE_MAP_OPTIONS) until the map is rebuilt with it (its roads and airports re-planned).
-  divide: null,
+  // The divide (DIVIDE; null: none; 2026-11-19 on the map, after a day under the engine alone).
+  divide: DIVIDE,
   reliefBlend: 4,           // each region's relief is weighted by its claim to this power (higher: sharper edges)
   // Within a region the hills are higher in some districts than others: their height is scaled
   // by 1 +- reliefPatch in patches of about reliefPatchMi (uplands and quieter basins).
@@ -112,7 +113,7 @@ const RELIEF_SPAN = 0.3;
 // wanders by up to wobbleMi in bends of about wobbleWavelengthMi. Well clear of the rivers entering from the west
 // (Platte-like at 0.16, Smoky Hill-like at 0.47). The Palmer Divide stands 300-600 m above Denver and Colorado
 // Springs; this one is the low end, as it runs out east onto the plains.
-export const DIVIDE = Object.freeze({ crestM: 350, crestV: 0.32, taperU: 0.06, endU: 0.3, halfWidthMi: 22, wobbleMi: 8, wobbleWavelengthMi: 60 });
+// (DIVIDE, its settings, is declared above WORLD_MAP_DEFAULTS, which takes it.)
 
 // The divide's height (m) above the plains' slope at (xMi east, yMi south), with wobble a noise field (makeNoise).
 export function divideM(xMi, yMi, wobble, params = WORLD_MAP_DEFAULTS, d = DIVIDE) {
@@ -197,7 +198,7 @@ export function generateWorldMap(options = {}) {
       coverRegion[k] = 0;
       for (let r = 1; r < REGIONS.length; r++) if (coverClaims[r] > coverClaims[coverRegion[k]]) coverRegion[k] = r;
 
-      let h = engineTerrainM(xMi) + divideM(xMi, yMi, divideWobble, p, p.divide) + p.detailM * fbm(relief, xMi / p.detailWavelengthMi - 91.3, yMi / p.detailWavelengthMi + 47.1, 3), erode = 0;
+      let h = engineTerrainM(xMi) + p.detailM * fbm(relief, xMi / p.detailWavelengthMi - 91.3, yMi / p.detailWavelengthMi + 47.1, 3), erode = 0;
       const hilly = 1 + p.reliefPatch * clamp(fbm(reliefPatch, xMi / p.reliefPatchMi, yMi / p.reliefPatchMi, 2) / RELIEF_SPAN, -1, 1);
       for (let r = 0; r < REGIONS.length; r++) {
         const w = total > 0 ? weights[r] / total : 0;
@@ -342,12 +343,16 @@ export function generateWorldMap(options = {}) {
     route();
     accumulate();
   }
-  // groundOnly: the ground alone (the weather engine's terrain), without lakes, rivers, towns or roads.
-  if (p.groundOnly) return { params: p, size: n, cellMiles: p.cellMiles, elevation: Float32Array.from(height) };
 
   const { lake, lakes } = placeLakes(n, p, height, area, receiver, cellMi2, noise('lake-site'));
   const rivers = nameRivers(splitAtLakes(traceRivers(n, p, cellMi2, area, receiver), lake, n, p.cellMiles));
   const creeks = traceCreeks(n, p, cellMi2, area, receiver, lake);
+  // The divide is laid on the finished ground (2026-11-19, the owner's choice): the rivers, creeks, towns, roads and
+  // everything else are planned on the ground without it, as they were before it, and it replaces the map's ground at
+  // the end (water gaps cut through it where streams cross; see layDivide).
+  const ridged = layDivide(n, p, height, rivers, creeks, divideWobble);
+  // groundOnly: the ground alone (the weather engine's terrain), without towns or roads.
+  if (p.groundOnly) return { params: p, size: n, cellMiles: p.cellMiles, elevation: Float32Array.from(ridged ?? height) };
   const cover = landCover(n, p, height, coverRegion, cellM, rivers, patch, patch2, area, cellMi2);
   for (let k = 0; k < cells; k++) if (lake[k]) cover[k] = C.water;
   const map = {
@@ -374,7 +379,57 @@ export function generateWorldMap(options = {}) {
   const streets = p.streets === false ? null : planStreets({ ...map, settlements, roads, sections, crossings, airfields, facilities }, p.streets);
   const counties = planCounties({ ...map, settlements }, p.counties);
   const offices = planWarningAreas(counties, airfields);
+  // The ground with the divide on it, and the airfields' elevations read from it.
+  if (ridged) {
+    map.elevation = Float32Array.from(ridged);
+    const at = (x, y) => clamp(Math.floor(y / p.cellMiles), 0, n - 1) * n + clamp(Math.floor(x / p.cellMiles), 0, n - 1);
+    for (const a of airfields) if (Number.isFinite(a.elevationM) && Number.isFinite(a.x) && Number.isFinite(a.y)) a.elevationM = Math.round(map.elevation[at(a.x, a.y)]);
+  }
   return { ...map, settlements, roads, airfields, radars, sections, crossings, facilities, streets, counties, offices };
+}
+
+// The divide laid on the finished ground (null where there is none). Each river and creek keeps its bed falling
+// downstream: where the ridge would lift a bed above the bed upstream of it, a water gap is cut through the ridge to the
+// upstream bed's height, its sides rising at gapSide (rise over run: 3%, a steep valley side; ~29% in the game), so the
+// stream runs through the ridge as rivers do through real ones. The ground is never cut below where it was without the
+// ridge. Returns the new heights (m).
+function layDivide(n, p, height, rivers, creeks, wobble, gapSide = 0.03) {
+  if (!p.divide || !(p.divide.crestM > 0)) return null;
+  const cells = n * n, cellM = p.cellMiles * METRES_PER_MILE, lift = new Float64Array(cells);
+  let any = false;
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const v = divideM((i + 0.5) * p.cellMiles, (j + 0.5) * p.cellMiles, wobble, p, p.divide);
+    if (v > 0.01) { lift[j * n + i] = v; any = true; }
+  }
+  if (!any) return null;
+  const raised = Float64Array.from(height, (h, k) => h + lift[k]);
+  // Each stream's bed through the ridge: run from its source (its higher end on the ground without the ridge) to its
+  // mouth, the bed never higher than upstream of it.
+  const bed = new Float64Array(cells).fill(Infinity);
+  for (const line of [...rivers, ...creeks]) {
+    const pts = line.points ?? [], ks = [];
+    for (let i = 0; i + 1 < pts.length; i += 2) ks.push(clamp(Math.floor(pts[i + 1] / p.cellMiles), 0, n - 1) * n + clamp(Math.floor(pts[i] / p.cellMiles), 0, n - 1));
+    if (ks.length < 2 || !ks.some(k => lift[k] > 0.01)) continue;
+    if (height[ks[0]] < height[ks[ks.length - 1]]) ks.reverse();
+    let b = Infinity;
+    for (const k of ks) { b = Math.min(b, raised[k]); if (b < raised[k] - 1e-6 && b < bed[k]) bed[k] = Math.max(b, height[k]); }
+  }
+  // The gaps' sides: no ground stands higher above a cut bed than gapSide allows (two sweeps, as the valleys').
+  const side = gapSide * cellM, relax = (k, m, far) => { const v = bed[m] + side * far; if (v < bed[k]) bed[k] = v; };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      if (i > 0) relax(k, k - 1, 1);
+      if (j > 0) { relax(k, k - n, 1); if (i > 0) relax(k, k - n - 1, Math.SQRT2); if (i < n - 1) relax(k, k - n + 1, Math.SQRT2); }
+    }
+    for (let j = n - 1; j >= 0; j--) for (let i = n - 1; i >= 0; i--) {
+      const k = j * n + i;
+      if (i < n - 1) relax(k, k + 1, 1);
+      if (j < n - 1) { relax(k, k + n, 1); if (i < n - 1) relax(k, k + n + 1, Math.SQRT2); if (i > 0) relax(k, k + n - 1, Math.SQRT2); }
+    }
+  }
+  for (let k = 0; k < cells; k++) raised[k] = Math.max(height[k], Math.min(raised[k], bed[k]));
+  return raised;
 }
 
 // Reservoirs. For a candidate dam (a river cell of the right size away from the edges), the

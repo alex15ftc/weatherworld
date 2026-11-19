@@ -8,13 +8,13 @@
 // about 6 s, so for the default grid it is read from engineGroundData.js (scripts/build-engine-ground.mjs writes it;
 // tests/engine-ground.mjs checks it against the generator); any other map is made here, once a process.
 import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
-import { generateWorldMap, engineTerrainM, WORLD_MAP_DEFAULTS, DIVIDE } from './WorldMapGenerator.js';
+import { generateWorldMap, engineTerrainM, WORLD_MAP_DEFAULTS } from './WorldMapGenerator.js';
 import { ENGINE_GROUND } from './engineGroundData.js';
 
 export const WORLD_MAP_SEED = 1;
-// The world map's options the engine's ground is made with, over its defaults: the divide, a trial on the engine
-// before the map itself is rebuilt with it (2026-11-18; then it moves into WORLD_MAP_DEFAULTS and this is empty).
-export const ENGINE_MAP_OPTIONS = Object.freeze({ divide: DIVIDE });
+// The world map's options the engine's ground is made with, over its defaults (none: the map's own ground. 2026-11-18
+// to 19 the divide was here alone, a trial on the engine before the map was rebuilt with it).
+export const ENGINE_MAP_OPTIONS = Object.freeze({});
 const cache = new Map();
 
 // Whether the regional layer's grid lies on the map: the same width, cells and place along the geography.

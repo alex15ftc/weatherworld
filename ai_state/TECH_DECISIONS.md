@@ -18,7 +18,7 @@
 
 ### 2026-11-18 — The engine stands on the game map's ground; a divide ridge in the western High Plains
 
-- Status: active (trial on branch `terrain-divide`; the map itself not yet rebuilt with the ridge)
+- Status: active (the map has the ridge since 2026-11-19, laid on its finished ground: see below)
 - Decision: the regional layer's cells take the world map's mean height over each 10-mile cell (`groundReliefM`,
   from `js/worldmap/engineGround.js`, stored in `engineGroundData.js`) instead of the bare east-west slope, and the
   world map gains a Palmer Divide-like ridge (`DIVIDE`: 350 m, west edge to 30% east, about a third of the way
@@ -26,8 +26,12 @@
 - Rationale: the bare slope (at most ~1.7 m/km, no north-south relief) could not give upslope storms; the owner
   asked for the terrain change. Rejected: a higher, steeper west edge (shifts the whole map's climate), a SW mesa.
   Regression suite: no regressions; upslope-led storms 49 to 76 per 1,800 (probe, seeds 1-4 x 4 days).
-- Follow-up: rebuild the map with the ridge (move `divide` into `WORLD_MAP_DEFAULTS`, re-plan roads and airports),
-  then check it in Studio. Rebuild `engineGroundData.js` after any change to the map's ground.
+- 2026-11-19: the ridge is laid on the map's finished ground (`layDivide`), not built in before erosion and
+  planning: built in, it moved 220 of 452 towns, renamed 226 and changed radars, offices, counties and roads across
+  the whole map (the owner chose to keep the published towns). Streams crossing it get water gaps; everything
+  planned stays identical to the map without the ridge.
+- Follow-up: publish the place and deploy the engine together. Rebuild `engineGroundData.js` after any change to
+  the map's ground.
 
 ### 2026-11-18 — Nothing below EF0 is a tornado
 
