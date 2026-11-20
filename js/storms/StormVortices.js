@@ -36,6 +36,7 @@
 // there is more circulation aloft than at the ground. With the ground's vortex at all heights the
 // radar test's EF3 showed no TVS, and a tornado 40 km from a radar added 9 m/s to the couplet
 // where it had added 28 (2026-11-13). Map frame: km from the storm's centre, x east and y south; winds east and north (m/s).
+import { TORNADO_STAGES } from './TornadoStages.js';
 import { clamp } from '../scenarios/math.js';
 import { buildStormGeometry } from './StormGeometry.js';
 
@@ -95,11 +96,14 @@ export function stormVortices(storm, topM) {
     const Vg = (Number(tor.windSpeedMph) || C.tornadoMph) * MPH, W = (Number(tor.widthYards) || C.tornadoYards) * 0.9144;
     const motion = Math.hypot(Number(storm.velocityKph?.east) || 0, Number(storm.velocityKph?.north) || 0) / 3.6;
     // (the core whose wind at the ground falls to the EF0 wind at half the damage width)
-    const R = Math.max(C.tornadoMinRM, Math.min(W / 2, (W / 2) * (C.ef0Mph * MPH / Vg) ** (1 / C.tailGround)));
+    // (the engine's core through the tornado's life stages, TornadoEngine TORNADO_LIFE; without it, as at maturity)
+    const R = Number(tor.coreRadiusM) > 0 ? Number(tor.coreRadiusM) : Math.max(C.tornadoMinRM, Math.min(W / 2, (W / 2) * (C.ef0Mph * MPH / Vg) ** (1 / C.tailGround)));
     const gt = geometry.tornado, t = tor.positionKm ? { x: tor.positionKm.x - pos.x, y: tor.positionKm.y - pos.y }
       : Number.isFinite(gt?.xKm) ? { x: gt.xKm - pos.x, y: gt.yKm - pos.y } : at;
     const depthM = clamp(C.depth[0] + C.depth[1] * (Vg - C.depth[2]), C.depth[3], C.depth[4]);
-    tornado = { x: t.x, y: t.y, R: R / 1000, Raloft: Math.max(R, W / 2) / 1000, V: Math.max(0, Vg - motion), Vg, depthM };
+    // (its own swirl: the ground wind less the share of the storm's motion counted at the core, TornadoStages motionShare -
+    // 2026-11-19, the owner's choice; until then the whole motion)
+    tornado = { x: t.x, y: t.y, R: R / 1000, Raloft: Math.max(R, W / 2) / 1000, V: Math.max(0, Vg - TORNADO_STAGES.motionShare * motion), Vg, depthM };
   }
   const ground = tornado ?? at;
   const d = {
@@ -225,6 +229,27 @@ export function addTornadoWind(d, x, y, out, share = 1, seenKm = 0, z = 0) {
 // vortex as everywhere else and outweighed a violent tornado's debris on the radar in moist air.)
 const BURGERS = { alpha: 1.2564, steps: 16 }, GRAVITY_MS2 = 9.81;
 const burgersV = (r, R, V) => (r <= 0 || R <= 0 || V <= 0 ? 0 : (1 + 0.5 / BURGERS.alpha) * V * (R / r) * (1 - Math.exp(-BURGERS.alpha * (r / R) ** 2)));
+// Its pressure drop at r (Pa; cyclostrophic, the integral of rho v^2 / r out from r): with u = alpha (r/R)^2 and C its
+// swirl scale (1 + 0.5/alpha) V, rho C^2 alpha/2 [(1 - e^-u)^2 / u + 2 (E1(u) - E1(2u))] - at the centre rho C^2 alpha ln 2,
+// 1.70 rho V^2 for the peak wind V (2026-11-19, the tornado lab: the funnel took a Rankine vortex's rho V^2 and stopped
+// ~40% short of where the tornado's own wind field puts it). (E1(u) - E1(2u) is the integral over w in [0, ln 2] of
+// exp(-u e^w): smooth, so a 12-step Simpson is exact to ~1e-7.)
+const e1Gap = u => { const n = 12, h = Math.LN2 / n; let sum = 0; for (let k = 0; k <= n; k++) sum += (k === 0 || k === n ? 1 : k % 2 ? 4 : 2) * Math.exp(-u * Math.exp(k * h)); return sum * h / 3; };
+export function burgersDrop(r, R, V, rho) {
+  if (!(R > 0) || !(V > 0)) return 0;
+  const a = BURGERS.alpha, C = (1 + 0.5 / a) * V, u = a * (r / R) ** 2;
+  const lead = u < 1e-6 ? u - u * u : (1 - Math.exp(-u)) ** 2 / u;
+  return rho * C * C * a / 2 * (lead + 2 * e1Gap(u));
+}
+// Where that drop is need (Pa): the radius (0 if the centre's drop is less; Infinity if none is needed). It falls with r.
+export function burgersDropRadius(need, R, V, rho) {
+  if (!(R > 0) || !(V > 0) || need >= burgersDrop(0, R, V, rho)) return 0;
+  if (need <= 0) return Infinity;
+  let lo = 0, hi = R;
+  while (burgersDrop(hi, R, V, rho) > need) hi *= 2;
+  for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (burgersDrop(mid, R, V, rho) > need) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
+}
 export function vortexClearing(d, x, y, z) {
   const t = d?.tornado;
   if (!t) return 1;

@@ -112,6 +112,9 @@ export function sampleStormEnvironment(world, xKm, yKm) {
     mostUnstableCin: mean(cell => Math.abs(cell.derived?.sounding?.mucin ?? cell.derived.cin ?? 0)),
     surfaceBasedCape: mean(cell => cell.derived?.sounding?.sbcape ?? cell.derived.cape),
     dewpoint: mean(cell => cell.surface.dewpoint),
+    // (the surface temperature, F, as the dewpoint: the storm's surface air, for the funnel the engine's look
+    // hangs from it - StormAppearance funnelHeights; read only)
+    temperature: mean(cell => cell.surface.temperature),
     // The shear and helicity above the lowest km too: what a storm fed from above the ground takes in.
     srh03: mean(cell => cell.derived?.sounding?.srh03 ?? cell.derived.srh), shear01: mean(cell => cell.derived?.sounding?.shear01 ?? 0), shear03: mean(cell => cell.derived?.sounding?.shear03 ?? 0),
     // Height of the wet-bulb zero above the ground (m): how far hail falls through melting air.

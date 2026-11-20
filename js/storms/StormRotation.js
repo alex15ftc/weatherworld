@@ -12,6 +12,7 @@
 // form, and it falls away as the storm occludes.
 import { clamp } from '../scenarios/math.js';
 import { lineShare, coldPoolBalance } from './StormModeEngine.js';
+import { RFD_SURGE } from './TornadoEngine.js';
 
 export const ROTATION = Object.freeze({
   // helicity: the inflow's helicity over which the mesocyclone's turning grows to its full share
@@ -168,9 +169,23 @@ export function stepStormRotation(storm, environment, dtHours) {
 
   const balance = coldPoolBalance(storm, environment);
   const hold = R.weakShare + (1 - R.weakShare) * ramp(storm.lowRotationFree ?? 0, R.holdRotation[0], R.holdRotation[1]);
+  // The occlusion's balance: the outflow against the measured 0-3 km shear, its range (set on half the
+  // 0-6 km) scaled by MEASURED_SHARE, as the outflow term below. (Until 2026-11-19 on half the 0-6 km
+  // shear: it read at or past the fastest end (1.4) for 83% of tornadoes over 8 seeds x 72 h, and worst
+  // where the low-level shear is strongest - fast storms at 80+ km/h, 0-3 km shear 52 kt against a half
+  // 0-6 km of 27 kt, measured balance 0.81 read as 1.54 - so tornadoes under strong low-level shear were
+  // wrapped in their outflow within 15 min. Meteorologist review 2026-11-19.)
+  const occlusionScale = Number(environment.shear03) > 0 ? MEASURED_SHARE : 1;
+  const occlusionBalance = coldPoolBalance(storm, environment, true);
+  // A rear-flank surge (TornadoEngine RFD_SURGE): one wrapping round the tornado speeds the occlusion; one pushing from
+  // the rear once it is under way restores the inflow and undoes it toward reloadTo (a failed occlusion), short of
+  // irreversible.
+  const sg = storm.tornado?.onGround ? storm.tornado.surge : null, SG = RFD_SURGE;
   storm.occlusion = clamp((storm.occlusion ?? 0) + (storm.tornado?.onGround
-    ? (storm.tornado.occlusionShare ?? 1) * dtHours / (hold * (R.occlusionHours[0] + (R.occlusionHours[1] - R.occlusionHours[0]) * ramp(balance, R.occlusionBalance[0], R.occlusionBalance[1])))
+    ? (sg?.kind === 'wrap' ? SG.wrapRate : 1) * (storm.tornado.occlusionShare ?? 1) * dtHours / (hold * (R.occlusionHours[0] + (R.occlusionHours[1] - R.occlusionHours[0]) * ramp(occlusionBalance, occlusionScale * R.occlusionBalance[0], occlusionScale * R.occlusionBalance[1])))
     : -dtHours / R.recoveryHours), 0, 1);
+  if (sg?.kind === 'push' && sg.occlusion >= SG.occludedFrom && sg.occlusion < SG.irreversible && storm.occlusion > SG.reloadTo)
+    storm.occlusion += (SG.reloadTo - storm.occlusion) * (1 - Math.exp(-dtHours / SG.reloadHours));
   const zone = Math.max(ramp(environment.outflowContrastK, R.boundaryContrastK[0], R.boundaryContrastK[1]), ramp(environment.airMassContrastK, R.airMassContrastK[0], R.airMassContrastK[1]));
   storm.boundaryBoost = toward(storm.boundaryBoost ?? 0, zone * (1 - ramp(environment.srh, R.boundaryAmbientSrh[0], R.boundaryAmbientSrh[1])), dtHours, R.boundaryExposureHours[0], R.boundaryExposureHours[1]);
   const nearGround = R.helicityFloor + (1 - R.helicityFloor) * ramp((Number(environment.srh) || 0) + R.boundaryHelicity * storm.boundaryBoost, R.lowHelicity[0], R.lowHelicity[1]);

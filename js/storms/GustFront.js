@@ -21,6 +21,26 @@ const KT = 0.514444, TICK_HOURS = 1 / 12, FROUDE = 0.9, G = 9.81;
 const softMax = (a, b, w) => (a + b + Math.sqrt((a - b) ** 2 + w * w)) / 2;
 const softMin = (a, b, w) => (a + b - Math.sqrt((a - b) ** 2 + w * w)) / 2;
 
+// The gust front's advance now, by the terms stepGustFront steps it with (read only; for the game's
+// scene, js/game/TornadoScene.js): the density current's speed through the air ahead (front, m/s), its
+// slowing as it spreads at the present lead (front x (r0 / L)^(1/3)), the low-level wind's drift
+// along the storm's motion (m/s), and so its speed relative to the storm along that motion and over
+// the ground. pinned: the lead is held at the pool's edge or the downdraught (within half the
+// updraught's radius of either), where stepGustFront's soft limits keep it with the storm.
+export function gustFrontAdvance(storm, environment) {
+  const s = clamp(Number(storm.coldPoolStrength) || 0, 0, 1);
+  const front = s > 0 ? FROUDE * Math.sqrt(G * coldPoolDeficitK(s) / COLD_POOL_SHAPE.thetaK * coldPoolDepthM(s)) : 0;
+  const vE = (storm.velocityKph?.east ?? 0) / 3.6, vN = (storm.velocityKph?.north ?? 0) / 3.6, speed = Math.hypot(vE, vN);
+  const sw = environment?.surfaceWind ?? {}, w8 = environment?.wind850 ?? {};
+  const uE = 0.5 * ((sw.eastKt ?? 0) + (w8.eastKt ?? 0)) * KT, uN = 0.5 * ((sw.northKt ?? 0) + (w8.northKt ?? 0)) * KT;
+  const drift = speed > 0.1 ? ((uE - vE) * vE + (uN - vN) * vN) / speed : 0;
+  const inner = Math.max(1, Number(storm.geometry?.updraught?.radiusKm) || 4), outer = Math.max(inner, Number(storm.coldPoolRadiusKm) || inner);
+  const lead = Number.isFinite(Number(storm.gustFrontLeadKm)) ? Number(storm.gustFrontLeadKm) : inner;
+  const spreading = front * Math.cbrt(inner / Math.max(inner, lead)), relative = spreading + drift;
+  const pinned = (relative > 0 && lead >= outer - 0.5 * inner) || (relative < 0 && lead <= inner + 0.5 * inner);
+  return { leadKm: lead, densityCurrentMs: front, spreadingMs: spreading, driftMs: drift, relativeMs: pinned ? 0 : relative, groundMs: speed + (pinned ? 0 : relative), headingDeg: (Math.atan2(vE, vN) * 180 / Math.PI + 360) % 360, pinned };
+}
+
 export function stepGustFront(storm, environment, dtHours) {
   if (!(dtHours > 0)) return;
   const s = clamp(Number(storm.coldPoolStrength) || 0, 0, 1);

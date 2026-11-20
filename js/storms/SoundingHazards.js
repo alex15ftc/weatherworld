@@ -72,7 +72,7 @@ export function runLoneStorm(world, environment) {
     const speedKph = Math.hypot(storm.velocityKph.east, storm.velocityKph.north);
     // A tornado comes from the storm's rotation near the ground; none is put down here, so the
     // storm never occludes and this is the chance of its first one.
-    noTornado *= Math.exp(-tornadoRatePerHour(tornadoImminence(storm)) * STEP_HOURS);
+    noTornado *= Math.exp(-tornadoRatePerHour(tornadoImminence(storm), environment?.lcl ?? null) * STEP_HOURS);
     peak.lowRotation = Math.max(peak.lowRotation, storm.lowRotationFree ?? 0);
     if (storm.updraughtMs > peak.updraughtMs) peak = { ...peak, updraughtMs: storm.updraughtMs, mode: describeStormMode(storm, environment), separation: budget.separation, undercut: budget.undercut };
     peak.rotating = Math.max(peak.rotating, rotatingShare(storm));
@@ -94,8 +94,8 @@ export function runLoneStorm(world, environment) {
     tornado: {
       chance: lasting ? 1 - noTornado : 0, ingredients, lowRotation: peak.lowRotation,
       // Of the tornadoes such a storm produces, the share with EF2+ and with EF4+ winds.
-      strongShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 111, leanScore(tornadoWindScaleMph(peak.lowRotation, ingredients), lowLevelInstability(environment)), environment.cape),
-      violentShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients), 166, leanScore(tornadoWindScaleMph(peak.lowRotation, ingredients), lowLevelInstability(environment)), environment.cape)
+      strongShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients, environment?.lcl ?? null), 111, leanScore(tornadoWindScaleMph(peak.lowRotation, ingredients, environment?.lcl ?? null), lowLevelInstability(environment)), environment.cape),
+      violentShare: tornadoShareReaching(tornadoWindScaleMph(peak.lowRotation, ingredients, environment?.lcl ?? null), 166, leanScore(tornadoWindScaleMph(peak.lowRotation, ingredients, environment?.lcl ?? null), lowLevelInstability(environment)), environment.cape)
     }
   };
 }

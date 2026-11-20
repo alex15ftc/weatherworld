@@ -383,7 +383,7 @@ export class WeatherAuthorityRuntime {
     return {
       width: a.width, height: a.height, validHourUtc: a.validHourUtc, cells: a.cells,
       evolution: a.evolution, analysis: a.analysis,
-      storms: (a.storms ?? []).map(persistentStormSnapshot),
+      storms: (a.storms ?? []).map(persistentStormSnapshot), offstageStorms: (a.offstageStorms ?? []).map(persistentStormSnapshot),
       stormArchive: (a.stormArchive ?? []).slice(-120),
       stormEngine: a.stormEngine, mesoscale: a.mesoscale, radarNetwork: a.radarNetwork,
       config: this.config

@@ -29,7 +29,10 @@ import { labStorm } from './LabWindow.js';
 import { clientFrame } from '../cloudmodel/FrameCodec.js';
 import { buildStormFrame } from '../storms/StormStructure.js';
 import { rainFieldKey } from '../storms/StormRainFields.js';
-import { flashRatePerMin, buildStormAppearance } from '../storms/StormAppearance.js';
+import { flashRatePerMin, buildStormAppearance, LIFE } from '../storms/StormAppearance.js';
+import { MERGE_GLIDE_KPH } from '../storms/StormEngine.js';
+import { tornadoEndOutlook } from '../storms/TornadoEngine.js';
+import { tornadoSceneOf, stormSun } from './TornadoScene.js';
 import { chargeOf } from '../storms/Lightning.js';
 
 export const STORM_WORKERS = Object.freeze({
@@ -73,16 +76,110 @@ export function drawnAt(s) {
 // (LabWindow labStorm, Storm.fromEngine / setEngine), so every game server's clients draw the
 // same storm from them. Map km, y south.
 export const LOOK_FIELDS = 14;
-export function lookOf(s) {
+// The bundle's version 6 sends LOOK_EXTRA after those (lookOf's `extra`, in this order): the
+// storm's life (StormAppearance stormLife), its type, and its tornado. Everything is a number, so
+// a client can blend it between engine moments like the rest of the look; the named ones are an
+// index into LOOK_CODES (-1: none or unknown). `values` stays the version 5 record (the StormLab
+// lifecycle tool sends it as is).
+//   phase           LOOK_CODES.phase: the engine's lifecycle label (storm.lifecycle.phase)
+//   growth          0-1, how far the updraught is to its peak
+//   trend           -1..1, the updraught's trend
+//   decay           0-1, collapse once it is falling well below its peak
+//   coldPool        0-1, cold pool strength
+//   towering        0-1, the growing cumulus tower before it spreads out
+//   organization    0-1
+//   fade            0-1, how far a remnant's anvil has thinned (0 while the storm lives)
+//   mode            LOOK_CODES.mode (StormModeEngine describeStormMode)
+//   supercellType   LOOK_CODES.supercellType
+//   rotating, linear  0-1 shares; spectrum -1 (LP) .. 1 (HP)
+//   tornadoYards, tornadoPeakMph, tornadoEf (LOOK_CODES.ef), tornadoGroundMin: the tornado on the
+//                   ground (0 / -1 with none)
+//   tornadoLifeShare  0-1, its time on the ground over the life drawn for it at touchdown
+//   tornadoDecay    0-1, its wind falling from its peak (StormAppearance tornadoAppearance)
+//   tornadoCondensed  0-1, the share of the way from the cloud base to the ground the funnel is cloud
+//   tornadoDebris   0-1, its debris cloud's strength
+//   tornadoVortices count (1 single, more multi-vortex)
+//   funnelAloft     0-1, a funnel lowered from the wall cloud before touchdown (its length share)
+//   tornadoEndedBy  LOOK_CODES.endedBy: why its last tornado ended, for LIFE.eventHours after
+//   tornadoCycle    the storm's tornado count (TornadoEngine cycleCount; 0 none yet): with the storm id,
+//                   which tornado this is - it goes up by one at each touchdown and stays after the end
+//   tornadoEndInMin minutes until the tornado on the ground ends if things go on as they are
+//                   (TornadoEngine tornadoEndOutlook: its drawn life running out, or its rotation at its
+//                   present trend falling below what holds it); -1 none in sight or no tornado
+//   tornadoEndLikely LOOK_CODES.endedBy: how that end would come (-1 none)
+export const LOOK_EXTRA = Object.freeze(['phase', 'growth', 'trend', 'decay', 'coldPool', 'towering', 'organization', 'fade',
+  'mode', 'supercellType', 'rotating', 'linear', 'spectrum',
+  'tornadoYards', 'tornadoPeakMph', 'tornadoEf', 'tornadoGroundMin', 'tornadoLifeShare', 'tornadoDecay', 'tornadoCondensed',
+  'tornadoDebris', 'tornadoVortices', 'funnelAloft', 'tornadoEndedBy', 'tornadoCycle', 'tornadoEndInMin', 'tornadoEndLikely']);
+export const LOOK_FIELDS_V6 = LOOK_FIELDS + LOOK_EXTRA.length;
+export const LOOK_CODES = Object.freeze({
+  phase: Object.freeze(['tower', 'developing', 'organizing', 'mature', 'cyclic', 'weakening', 'dissipating']),
+  mode: Object.freeze(['pulse storm', 'multicell', 'isolated supercell', 'discrete supercell', 'semi-discrete supercell',
+    'discrete supercell cluster', 'mixed supercell cluster', 'left-moving supercell', 'broken line', 'linear segment', 'QLCS',
+    'QLCS with embedded supercells', 'MCS', 'elevated convection']),
+  supercellType: Object.freeze(['LP', 'classic', 'HP']),
+  ef: Object.freeze(['EF0', 'EF1', 'EF2', 'EF3', 'EF4', 'EF5']),
+  endedBy: Object.freeze(['storm ended', 'vortex spent', 'not rotating', 'left behind', 'occluded', 'rotation faded'])
+});
+const codeOf = (list, v) => list.indexOf(v);
+const ramp = (v, a, b) => Math.max(0, Math.min(1, (v - a) / (b - a)));
+
+// hourUtc: the storm tick's hour (for how recently its last tornado ended; without it, none is told).
+// frameTornado: its engine frame's tornado record this tick, when built (the funnel hangs from its heights).
+export function lookOf(s, hourUtc = null, frameTornado = null) {
   let a = null;
-  try { a = buildStormAppearance(s); } catch { a = null; }
+  try { a = buildStormAppearance(s, undefined, { frameTornado }); } catch { a = null; }
+  const t = s.tornado, on = !!t?.onGround, at = a?.tornado ?? null, life = a?.life ?? {};
+  const last = !on && Number.isFinite(hourUtc) ? (s.tornadoHistory ?? []).at(-1) : null;
+  const outlook = tornadoEndOutlook(s), endIn = outlook && Number.isFinite(outlook.minutes) ? outlook.minutes : -1;
+  const endedBy = last && hourUtc - (last.endedHourUtc ?? -Infinity) <= LIFE.eventHours + 1e-6 ? codeOf(LOOK_CODES.endedBy, last.endedBy) : -1;
   return {
     values: [s.positionKm.x, s.positionKm.y, s.updraughtMs ?? 0, s.mesocycloneStrength ?? 0, s.lowRotation ?? 0, s.occlusion ?? 0,
       (s.ageHours ?? 0) * 60, a?.updraft?.radiusKm ?? 0, a?.anvil?.lengthKm ?? 0, a?.anvil?.bearingDeg ?? 0, s.intensity ?? 0,
-      s.tornado?.onGround ? Number(s.tornado.windSpeedMph) || 0 : 0,
+      on ? Number(t.windSpeedMph) || 0 : 0,
       a?.updraft?.baseM ?? 0, a?.wallCloud?.loweringM ?? 0],
+    extra: [codeOf(LOOK_CODES.phase, s.lifecycle?.phase ?? s.lifecycleState), life.growth ?? 0, life.trend ?? 0, life.decay ?? 0,
+      life.coldPool ?? 0, life.towering ?? 0, life.organization ?? 0, life.fade ?? 0,
+      codeOf(LOOK_CODES.mode, a?.mode), codeOf(LOOK_CODES.supercellType, a?.supercellType), a?.rotating ?? 0, a?.linear ?? 0, a?.spectrum ?? 0,
+      on ? Number(t.widthYards) || 0 : 0, on ? Number(t.peakWindSpeedMph) || 0 : 0, on ? codeOf(LOOK_CODES.ef, t.estimatedEf) : -1,
+      on ? Number(t.groundTimeMinutes) || 0 : 0, on && t.lifeMinutes > 0 ? Math.min(1, (t.groundTimeMinutes ?? 0) / t.lifeMinutes) : 0,
+      at?.decay ?? 0, at?.condensedShare ?? 0, at?.debris?.strength ?? 0, at?.vortices ?? 0, a?.funnelAloft?.lengthShare ?? 0, endedBy,
+      Number(t?.cycleCount) || 0, endIn, endIn >= 0 ? codeOf(LOOK_CODES.endedBy, outlook.by) : -1],
+    // (storm ids, raw engine ids without "~engine": life.mergedFrom / splitFrom for LIFE.eventHours;
+    // mergeInto only on a remnant, below)
+    events: { mergedFrom: life.mergedFrom ?? null, splitFrom: life.splitFrom ?? null, mergeInto: null },
     leftMover: !!s.leftMover,
   };
+}
+
+// A storm that has gone, as the bundle's version 6 shows it a while (StormAppearance
+// buildStormFeedList's remnants, from the engine look it last had): one that died leaves its
+// anvil, drifting with the 500 hPa wind and thinning (fade 0 to 1) over LIFE.remnantHours (the
+// longer the larger the anvil); one merged into another glides into it over LIFE.eventHours
+// (carried with it, closing at MERGE_GLIDE_KPH). No frames; everything that needs a living
+// updraught is 0. Returns false once it has gone.
+function stepRemnant(e, hourUtc, storms) {
+  const r = e.remnant, hours = Math.max(0, hourUtc - r.fromHour);
+  if (hours > r.lifeHours + 1e-6) return false;
+  let dx = r.aloftKph.east * hours, dy = -r.aloftKph.north * hours, vel = r.aloftKph;
+  const keeper = r.mergeInto != null ? [...storms.values()].find(s => String(s.id) === r.mergeInto) : null;
+  if (r.mergeInto != null && !keeper) return false;
+  if (keeper) {
+    const v = keeper.velocityKph ?? { east: 0, north: 0 }, carryX = v.east * hours, carryY = -v.north * hours;
+    const gx = keeper.positionKm.x - carryX - r.look.values[0], gy = keeper.positionKm.y - carryY - r.look.values[1];
+    const share = Math.min(1, MERGE_GLIDE_KPH * hours / Math.max(Math.hypot(gx, gy), 1e-6));
+    dx = carryX + gx * share; dy = carryY + gy * share; vel = v;
+  }
+  const values = [...r.look.values], extra = [...r.look.extra], X = name => LOOK_EXTRA.indexOf(name);
+  values[0] += dx; values[1] += dy; values[6] += hours * 60;
+  for (const k of [2, 3, 4, 5, 10, 11, 13]) values[k] = 0; // updraught, rotation, occlusion, intensity, tornado, lowering
+  extra[X('phase')] = LOOK_CODES.phase.indexOf('dissipating');
+  Object.assign(extra, { [X('growth')]: 0, [X('trend')]: -1, [X('decay')]: 1, [X('coldPool')]: 0, [X('towering')]: 0, [X('rotating')]: 0, [X('fade')]: Math.min(1, hours / r.lifeHours), [X('funnelAloft')]: 0 });
+  for (const name of ['tornadoYards', 'tornadoPeakMph', 'tornadoGroundMin', 'tornadoLifeShare', 'tornadoDecay', 'tornadoCondensed', 'tornadoDebris', 'tornadoVortices']) extra[X(name)] = 0;
+  extra[X('tornadoEf')] = -1; extra[X('tornadoEndInMin')] = -1; extra[X('tornadoEndLikely')] = -1;
+  e.look = { values, extra, events: { mergedFrom: null, splitFrom: null, mergeInto: r.mergeInto }, leftMover: r.look.leftMover };
+  e.posKm = [r.posKm[0] + dx, r.posKm[1] + dy]; e.motion = [vel.east / 3.6, vel.north / 3.6]; e.lightning = [0, 0, 0];
+  return true;
 }
 
 // The record EngineRun steers by (js/cloudmodel/EngineRun.js reads motion, intensity, coldPoolK,
@@ -137,7 +234,7 @@ export class StormWorkers {
   reportPlayers(server, players) {
     const list = (Array.isArray(players) ? players : []).filter(p => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])).slice(0, 200);
     this.players.set(String(server ?? 'default'), { at: Date.now(), list });
-    return { detailed: [...this.workers.values(), ...(this.engineMode === 'only' ? this.engine.values() : [])].filter(w => !w.stopping).map(w => ({ id: w.id, nest: w.nest, seq: w.seq, warming: w.status?.warming === true, modelMinutes: w.status?.time != null ? +(w.status.time / 60).toFixed(1) : null })) };
+    return { detailed: [...this.workers.values(), ...(this.engineMode === 'only' ? this.engine.values() : [])].filter(w => !w.stopping && !w.remnant).map(w => ({ id: w.id, nest: w.nest, seq: w.seq, warming: w.status?.warming === true, modelMinutes: w.status?.time != null ? +(w.status.time / 60).toFixed(1) : null })) };
   }
 
   livePlayers(now = Date.now()) {
@@ -161,7 +258,7 @@ export class StormWorkers {
     this.tickAtMs = now;
     for (const w of this.workers.values()) {
       const s = storms.get(w.id);
-      if (s) { w.posKm = drawnAt(s); w.motion = [(s.velocityKph?.east ?? 0) / 3.6, (s.velocityKph?.north ?? 0) / 3.6]; w.look = lookOf(s); }
+      if (s) { w.posKm = drawnAt(s); w.motion = [(s.velocityKph?.east ?? 0) / 3.6, (s.velocityKph?.north ?? 0) / 3.6]; w.look = lookOf(s, simHourUtc); }
     }
     const nearest = s => { let d = Infinity; for (const [x, y] of players) d = Math.min(d, Math.hypot(s.positionKm.x - x, s.positionKm.y - y)); return d; };
 
@@ -197,7 +294,7 @@ export class StormWorkers {
           this.stop(spare);
         }
         w = this.start(workerRecord(world, s, simHourUtc), d <= p.nestKm, Math.min(p.warmMaxS, Math.max(0, (s.ageHours ?? 0) * 3600)), this.usableSave(s, simHourUtc));
-        w.posKm = drawnAt(s); w.motion = [(s.velocityKph?.east ?? 0) / 3.6, (s.velocityKph?.north ?? 0) / 3.6]; w.look = lookOf(s);
+        w.posKm = drawnAt(s); w.motion = [(s.velocityKph?.east ?? 0) / 3.6, (s.velocityKph?.north ?? 0) / 3.6]; w.look = lookOf(s, simHourUtc);
         continue;
       }
       const record = workerRecord(world, s, simHourUtc);
@@ -221,24 +318,41 @@ export class StormWorkers {
   }
 
   // fields: Map storm id -> rain field (null: each worked out here).
+  // A storm shown that has since ended stays a while as a remnant (stepRemnant; only the bundle's
+  // version 6 sends it): its anvil, or its glide into the storm that took it in.
   engineFrames(world, ids, storms, fields) {
-    const keep = new Set();
+    const keep = new Set(), hourUtc = Number(world.stormEngine?.validHourUtc ?? world.validHourUtc);
     for (const id of ids) {
       const s = storms.get(id);
       if (!s) continue;
       const key = `${id}~engine`;
       keep.add(key);
       try {
-        const { bytes, info } = buildStormFrame(world, s, { seq: ++this.engineSeq, rainField: fields?.get(id) });
+        const { bytes, info } = buildStormFrame(world, s, { seq: ++this.engineSeq, rainField: fields?.get(id), sun: stormSun(world, s.tornado?.onGround && s.tornado.positionKm ? s.tornado.positionKm : s.positionKm, hourUtc) });
         const level = this.params.zstdLevel;
-        this.engine.set(key, { id: key, seq: this.engineSeq, nest: true, ended: false, status: { warming: false }, info,
-          posKm: [s.positionKm.x, s.positionKm.y], motion: [(s.velocityKph?.east ?? 0) / 3.6, (s.velocityKph?.north ?? 0) / 3.6], look: lookOf(s),
+        const aloft = s.environment?.wind500 ?? { eastKt: 0, northKt: 0 };
+        this.engine.set(key, { id: key, stormId: s.id, builtHour: hourUtc, aloftKph: { east: (aloft.eastKt ?? 0) * 1.852, north: (aloft.northKt ?? 0) * 1.852 },
+          seq: this.engineSeq, nest: true, ended: false, status: { warming: false }, info,
+          posKm: [s.positionKm.x, s.positionKm.y], motion: [(s.velocityKph?.east ?? 0) / 3.6, (s.velocityKph?.north ?? 0) / 3.6], look: lookOf(s, hourUtc, info?.tornado),
           // (its lightning, for the game server to place in the frame: js/storms/Lightning.js's rate and charge)
           lightning: (() => { const c = chargeOf(s); return [flashRatePerMin(Number(s.geometry?.updraught?.speedMs ?? s.updraughtMs) || 0), c.groundShare, c.positiveShare]; })(),
           full: zstd(bytes, level), near: zstd(clientFrame(bytes), level), far: zstd(clientFrame(bytes, { far: true }), level) });
       } catch (e) { console.warn('[storm-structure]', id, e?.message ?? e); }
     }
-    for (const key of [...this.engine.keys()]) if (!keep.has(key)) this.engine.delete(key);
+    for (const [key, e] of [...this.engine]) {
+      if (keep.has(key)) continue;
+      if (!e.remnant) {
+        // (still alive but no longer wanted, gone from the world, or never built: dropped)
+        const record = !storms.has(e.stormId) && (world.stormArchive ?? []).find(r => String(r.id) === String(e.stormId));
+        const reason = String(record?.dissipationReason ?? '');
+        if (!record || reason === 'left-domain' || !e.look?.extra || !Number.isFinite(e.builtHour)) { this.engine.delete(key); continue; }
+        const mergeInto = reason.startsWith('merged-into-') ? reason.slice('merged-into-'.length) : null;
+        const lifeHours = mergeInto ? LIFE.eventHours : LIFE.remnantHours[0] + (LIFE.remnantHours[1] - LIFE.remnantHours[0]) * ramp(e.look.values[8], LIFE.remnantAnvilKm[0], LIFE.remnantAnvilKm[1]);
+        e.remnant = { fromHour: e.builtHour, lifeHours, mergeInto, aloftKph: e.aloftKph, look: e.look, posKm: e.posKm };
+        e.ended = true; e.full = e.near = e.far = null; e.seq += 1;
+      }
+      if (!stepRemnant(e, hourUtc, storms)) this.engine.delete(key);
+    }
   }
 
   // A model save's file, and its meta if it can be read.
@@ -351,7 +465,15 @@ export class StormWorkers {
   // updraught radius (km), anvil length (km) and bearing (deg), intensity, tornado mph (0 none)
   // (lookOf); version 5 adds the cloud base (m, the inflow's LCL) and the wall cloud's lowering (m). The bundle then ends with f64 the tick's wall-clock time (Unix ms) after the paused
   // byte: every game server moves its storms on from the same moment (not from when it polled).
-  frames(have = '', parts = ['full', 'near', 'far'], { paused = false } = {}) {
+  // Version 6 (asked for with version: 6, ?v=6; 5 stays the default until the Roblox reader takes
+  // 6): as 5, and the look flags also say bit 2 mergedFrom, bit 3 splitFrom, bit 4 mergeInto
+  // (each followed, after the look's numbers, by u8 length + the storm's id, in that order) and
+  // bit 5 a remnant (stepRemnant: a storm that has gone, with no frames); the look's LOOK_FIELDS
+  // f32 are followed by u8 the count of extra numbers and that many f32, LOOK_EXTRA in order
+  // (lookOf's extra; a reader takes those it knows and skips the rest, so more can be added at the
+  // end without a new version). Remnants are left out of version 5.
+  frames(have = '', parts = ['full', 'near', 'far'], { paused = false, version = 5 } = {}) {
+    const v6 = Number(version) === 6;
     const held = new Map();
     for (const item of String(have ?? '').split(',')) { const k = item.lastIndexOf(':'); if (k > 0) held.set(item.slice(0, k), Number(item.slice(k + 1)) || 0); }
     const want = new Set(parts), chunks = [], live = [];
@@ -361,10 +483,16 @@ export class StormWorkers {
     let nLive = 0;
     const idBytes = id => { const b = Buffer.from(String(id), 'utf8').subarray(0, 255); return [u8(b.length), b]; };
     for (const w of [...this.workers.values(), ...this.engine.values()]) {
-      if (w.stopping) continue;
+      if (w.stopping || (w.remnant && !v6)) continue;
       live.push(...idBytes(w.id), u8(w.status?.warming ? 1 : 0), f32s(w.posKm?.[0], w.posKm?.[1], w.motion?.[0], w.motion?.[1], ...(w.lightning ?? [0, 0, 0])));
-      live.push(u8((w.look ? 1 : 0) | (w.look?.leftMover ? 2 : 0)));
-      if (w.look) live.push(f32s(...w.look.values));
+      const ev = v6 ? w.look?.events ?? {} : {};
+      live.push(u8((w.look ? 1 : 0) | (w.look?.leftMover ? 2 : 0) | (ev.mergedFrom != null ? 4 : 0) | (ev.splitFrom != null ? 8 : 0) | (ev.mergeInto != null ? 16 : 0) | (v6 && w.remnant ? 32 : 0)));
+      if (w.look) live.push(f32s(...w.look.values.slice(0, LOOK_FIELDS)));
+      if (w.look && v6) {
+        const extra = w.look.extra ?? [];
+        live.push(u8(LOOK_EXTRA.length), f32s(...LOOK_EXTRA.map((_, k) => extra[k] ?? 0)));
+        for (const k of ['mergedFrom', 'splitFrom', 'mergeInto']) if (ev[k] != null) live.push(...idBytes(ev[k]));
+      }
       nLive++;
       if (!w.full || w.seq <= (held.get(String(w.id)) ?? 0)) continue;
       count++;
@@ -373,13 +501,40 @@ export class StormWorkers {
     }
     const tail = new Uint8Array(17), td = new DataView(tail.buffer);
     td.setFloat64(0, Number(this.tickHour) || 0, true); tail[8] = paused ? 1 : 0; td.setFloat64(9, Number(this.tickAtMs) || 0, true);
-    return Buffer.concat([u8(5), u16(count), ...chunks, u16(nLive), ...live, tail]);
+    return Buffer.concat([u8(v6 ? 6 : 5), u16(count), ...chunks, u16(nLive), ...live, tail]);
+  }
+
+  // The scene round each shown storm (js/game/TornadoScene.js: its clouds, rain, air, sounding-derived
+  // levels, sun, vortices in m and m/s, tornado look, near-ground air, gust front and ground cover), for
+  // the game's tornado views and the tornado-windfield lab: GET /api/game/v1/storm/scene. Built when
+  // asked, from the world and the storm's engine frame of this tick (its info), and kept until the next
+  // frame (seq): a game server polls it once a tick. ids: storm ids (default: every live storm the
+  // bundle carries). Remnants have none.
+  scenes(world, ids = null, { paused = false, mapSeed = 1 } = {}) {
+    const want = ids?.length ? new Set(ids) : null, storms = new Map((world?.storms ?? []).filter(s => s.active !== false).map(s => [s.id, s]));
+    this.sceneCache ??= new Map();
+    const out = {};
+    for (const e of this.engine.values()) {
+      if (e.remnant || (want && !want.has(e.stormId))) continue;
+      const s = storms.get(e.stormId);
+      if (!s) continue;
+      let c = this.sceneCache.get(e.stormId);
+      if (c?.seq !== e.seq) {
+        let scene = null;
+        try { scene = tornadoSceneOf(world, s, e.builtHour, { frameInfo: e.info, mapSeed }); } catch (err) { console.warn('[storm-scene]', e.stormId, err?.message ?? err); }
+        c = { seq: e.seq, builtHour: e.builtHour, scene };
+        this.sceneCache.set(e.stormId, c);
+      }
+      if (c.scene) out[e.stormId] = { seq: c.seq, builtHour: c.builtHour, scene: c.scene };
+    }
+    for (const id of [...this.sceneCache.keys()]) if (![...this.engine.values()].some(e => e.stormId === id && !e.remnant)) this.sceneCache.delete(id);
+    return { tickHour: Number(this.tickHour) || 0, tickAtMs: Number(this.tickAtMs) || 0, paused, storms: out };
   }
 
   status() {
     return {
       max: this.max, players: this.livePlayers().length,
-      engine: [...this.engine.values()].map(e => ({ id: e.id, seq: e.seq, info: e.info, bytes: { full: e.full.length, near: e.near.length, far: e.far.length } })),
+      engine: [...this.engine.values()].map(e => ({ id: e.id, seq: e.seq, info: e.info, remnant: e.remnant ? { mergeInto: e.remnant.mergeInto, fade: e.look?.extra?.[LOOK_EXTRA.indexOf('fade')] ?? null } : null, bytes: { full: e.full?.length ?? 0, near: e.near?.length ?? 0, far: e.far?.length ?? 0 } })),
       workers: [...this.workers.values()].map(w => ({ id: w.id, port: w.port, nest: w.nest, seq: w.seq, ended: w.ended, stopping: w.stopping, warming: w.status?.warming ?? null, restored: w.status?.restored ?? null, frames: w.status?.frames ?? 0, behindS: w.status?.behind ?? null, stepMs: w.status?.stepMs ?? null, modelMinutes: w.status?.time != null ? +(w.status.time / 60).toFixed(1) : null, bytes: { full: w.full?.length ?? 0, near: w.near?.length ?? 0, far: w.far?.length ?? 0 } }))
     };
   }

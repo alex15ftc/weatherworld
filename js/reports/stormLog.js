@@ -85,7 +85,7 @@ export function logStormTick(world, places = null) {
   const solar = ((hourUtc - 6) % 24 + 24) % 24, daylight = solar >= 6 && solar <= 19.5;
   const seen = new Set(), touched = new Set(), moved = {};
   log.passes ??= {};
-  for (const storm of world.storms ?? []) {
+  for (const storm of [...(world.storms ?? []), ...(world.offstageStorms ?? [])]) { // (with those stepped past the edge while their tornado ends: StormEngine OFFSTAGE)
     if (!storm.active) continue;
     const t = storm.tornado;
     if (t?.onGround) {
@@ -163,7 +163,7 @@ export function logStormTick(world, places = null) {
     if (seen.has(key)) continue;
     const ref = log.open[key], entry = log.days[ref.day]?.tornadoes[ref.index];
     if (entry) {
-      const owner = (world.storms ?? []).find(s => s.id === entry.stormId) ?? (world.stormArchive ?? []).find(s => s.id === entry.stormId);
+      const owner = [...(world.storms ?? []), ...(world.offstageStorms ?? [])].find(s => s.id === entry.stormId) ?? (world.stormArchive ?? []).find(s => s.id === entry.stormId);
       const record = (owner?.tornadoHistory ?? []).find(h => h.cycle === entry.cycle);
       // (A track the engine cut back to the tornado's life loses what the log took past that end.)
       const recordEnd = record?.trackPoints?.at(-1)?.hourUtc;
@@ -178,7 +178,7 @@ export function logStormTick(world, places = null) {
   // Any tornado the engine recorded that the log never saw on the ground (one that came and went
   // within a long step) is taken from that record.
   const known = new Set(Object.values(log.days).flatMap(d => d.tornadoes.map(t => t.id)));
-  for (const owner of [...(world.storms ?? []), ...(world.stormArchive ?? [])]) for (const h of owner.tornadoHistory ?? []) {
+  for (const owner of [...(world.storms ?? []), ...(world.offstageStorms ?? []), ...(world.stormArchive ?? [])]) for (const h of owner.tornadoHistory ?? []) {
     const id = `${owner.id}-T${h.cycle}`;
     if (known.has(id) || !h.trackPoints?.length || convectiveDay(h.startedHourUtc ?? hourUtc) <= day - LOG.keepDays) continue;
     known.add(id);

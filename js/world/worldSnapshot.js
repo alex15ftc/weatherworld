@@ -19,7 +19,7 @@ export function snapshotWorld(world, { clone = false, full = false } = {}) {
   for (const [key, value] of Object.entries(world)) {
     if (typeof value === 'function' || key === 'runtime' || (!full && SKIP_WORLD.has(key))) continue;
     if (key === 'cells' && !full) state[key] = value.map(row => row.map(stripCell));
-    else if (key === 'storms' && !full) state[key] = value.map(storm => ({ ...storm, internalField: null }));
+    else if ((key === 'storms' || key === 'offstageStorms') && !full) state[key] = value.map(storm => ({ ...storm, internalField: null }));
     // Queued issuances carry their own world snapshots; they are re-issued, not saved.
     else if (key === 'outlookCycle') state[key] = { ...value, pending: [], memberLog: undefined };
     else state[key] = value;

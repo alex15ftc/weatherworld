@@ -1,6 +1,8 @@
-import { rotatingShare } from './StormModeEngine.js';
+import { rotatingShare, coldPoolBalance } from './StormModeEngine.js';
+import { stormVortices, mesoLevel } from './StormVortices.js';
 import { clamp } from '../scenarios/math.js';
 import { wallCloudRadiusKm } from './StormGeometry.js';
+import { tornadoStage, tornadoStageShares, TORNADO_STAGES } from './TornadoStages.js';
 
 const MPH_PER_KPH = 0.621371;
 
@@ -64,7 +66,9 @@ export function initializeTornadoState(storm) {
 // 7.7 on 80 days.)
 // (fullRatePerHour 0.28 to 0.2 on 2026-10-26, after the low-level jet and helicity corrections: 22% of supercells made a
 // tornado and 11-12 a day came; now 18%, within the record's 15-26% (Trapp et al. 2005; Thompson et al. 2017), and 8 a day.)
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.23, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// (fullRatePerHour 0.23 to 0.27 on 2026-11-19 with the cloud base's term on genesis, CLOUD_BASE: it took 17.3 tornadoes a
+// day to 14.8 over 8 seeds x 10 days; the count back where it was, with fewer under high bases and more under low ones.)
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.27, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -77,10 +81,39 @@ export function tornadoIngredients(environment) {
 }
 // How close the storm's low-level rotation is to producing a tornado (0-1), and the rate that gives.
 export const tornadoImminence = storm => ramp(clamp(storm.lowRotation ?? 0, 0, 1.2), TORNADO.onsetRotation[0], TORNADO.onsetRotation[1]);
-export const tornadoRatePerHour = imminence => TORNADO.fullRatePerHour * Math.pow(imminence, TORNADO.power);
+// How soon a tornado on the ground ends if things go on as they are (read only; for the game,
+// js/game/StormWorkers.js lookOf): the end updateTornadoState will find first of its two clocks -
+// the life drawn for it running out ('vortex spent'), or the storm's low-level rotation, falling
+// at its present rate (in log space) below TORNADO.sustainRotation ('occluded' while the storm's own rotation
+// would still hold it, else 'rotation faded'). { minutes, by }, minutes Infinity when neither is
+// in sight; null with no tornado down. (A storm that dies, or a tornado left behind by its
+// rotation, ends without notice.)
+export function tornadoEndOutlook(storm) {
+  const t = storm.tornado;
+  if (!t?.onGround) return null;
+  const lifeLeft = Number.isFinite(t.lifeMinutes) ? Math.max(0, t.lifeMinutes - (t.groundTimeMinutes ?? 0)) : Infinity;
+  const low = clamp(storm.lowRotation ?? 0, 0, 1.2), trend = Number(storm.lowRotationTrend) || 0;
+  // (in log space: the rotation falls away roughly exponentially as the outflow wraps round, so its
+  // logarithm falls at a near steady rate, trend / low. Straight-line, the countdown ran short: on
+  // seed 2's first EF1, 14 min at a tick 28 min before its end, 6.5 at one 8 min before)
+  const rotationLeft = low < TORNADO.sustainRotation ? 0 : trend < 0 ? Math.log(TORNADO.sustainRotation / low) / (trend / low) * 60 : Infinity;
+  if (lifeLeft <= rotationLeft) return { minutes: lifeLeft, by: lifeLeft < Infinity ? 'vortex spent' : null };
+  return { minutes: rotationLeft, by: (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded' };
+}
+
+// CLOUD_BASE (2026-11-19, the owner's ruling through the tornado lab): under a high cloud base tornadoes are rarer and
+// weaker. Significant tornadoes come mostly with LCLs under ~1 km (Rasmussen and Blanchard 1998; Thompson et al. 2003);
+// a high base's rear-flank downdraught is colder and less buoyant, and the tornadoes it allows fewer and weaker
+// (Markowski et al. 2002). The rate of genesis and the spread of the winds the storm allows both take STP's LCL term
+// (Thompson et al. 2003): 1 at or under fullM, falling linearly to 0 at noneM. (Before it the engine already had fewer per
+// supercell under a high base, 0.050 under 800 m to 0.010 at 1.5-2 km, 4 seeds x 48 h; now the term on top.) An inflow
+// with no LCL leaves it at 1.
+export const CLOUD_BASE = Object.freeze({ fullM: 1000, noneM: 2000 });
+export const cloudBaseTerm = lclM => Number.isFinite(Number(lclM)) && lclM !== null ? clamp((CLOUD_BASE.noneM - Number(lclM)) / (CLOUD_BASE.noneM - CLOUD_BASE.fullM), 0, 1) : 1;
+export const tornadoRatePerHour = (imminence, lclM = null) => TORNADO.fullRatePerHour * Math.pow(imminence, TORNADO.power) * cloudBaseTerm(lclM);
 // Scale (mph above 65) of the wind spread for a tornado under this low-level rotation, and the
 // share of tornadoes from that spread whose wind reaches a given speed.
-export const tornadoWindScaleMph = (lowRotation, stp = 0) => INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2) + INTENSITY.stpScaleMph * clamp(stp / INTENSITY.stpFull, 0, 1.2) ** INTENSITY.stpPower;
+export const tornadoWindScaleMph = (lowRotation, stp = 0, lclM = null) => (INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2) + INTENSITY.stpScaleMph * clamp(stp / INTENSITY.stpFull, 0, 1.2) ** INTENSITY.stpPower) * cloudBaseTerm(lclM);
 // LEAN (2026-11-17, the owner's request): a tornado's strength leans on its inflow's low-level instability. Its wind is still
 // its draw's place in the spread its storm allows (strengthUniform, INTENSITY), but the draw leans toward the top where the
 // inflow is more unstable in its lowest 3 km than is usual for tornadoes under that spread, and toward the bottom where it
@@ -160,16 +193,39 @@ export const tornadoShareReaching = (scaleMph, mph, z = null, cape = null) => {
   return 1 - normCdf((normInv(1 - share) - LEAN.rho * z) / Math.sqrt(1 - LEAN.rho * LEAN.rho));
 };
 
+// A tornado's life in stages: the tornado lab's six (TornadoStages.js, 2026-11-19; the lab's earlier request, the
+// same day, had three - organizing, mature, decay): over its drawn life (LIFE), so its length is unchanged, it
+// touches down as a broad, weak vortex at the EF0 wind and spins up as its core contracts (organizing), holds the
+// vortex's wind (mature), eases and thins as the outflow cuts it off (shrinking: the base drifts, DECAY_DRIFT) and
+// ropes out, thin and contorted, its wind falling through EF0 by the end (rope). Its rating, width and occlusion
+// orbit follow the vortex's intensity (intensityMph). A tornado whose storm is losing the low-level rotation that
+// holds it (faded, or cut off by its occlusion) goes into its decay ahead of the loss: rotationLossFall, from the
+// minutes the rotation's trend leaves until it falls below sustainRotation, over min(DECAY_DRIFT.windowMinutes,
+// windowShare of its life); if the rotation recovers, so does the tornado.
+const smooth01 = x => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
+// The core (m) whose wind at the ground falls to the EF0 wind at half the damage width (r^-1 outside it).
+// How far ahead of the loss of the rotation holding it a tornado is in its decay (0-1): the rotation's minutes left
+// at its trend before it falls below sustainRotation, over min(DECAY_DRIFT.windowMinutes, windowShare of its life).
+export function rotationLossFall(storm, tornado) {
+  const low = clamp(storm.lowRotation ?? 0, 0, 1.2), trend = Number(storm.lowRotationTrend) || 0, life = Number(tornado?.lifeMinutes) || 0;
+  if (!(trend < 0) || !(life > 0)) return 0;
+  const left = Math.max(0, low - TORNADO.sustainRotation) / -trend * 60, window = Math.min(DECAY_DRIFT.windowMinutes, DECAY_DRIFT.windowShare * life);
+  return smooth01(1 - left / Math.max(1e-3, window));
+}
+export const matureCoreM = (widthYards, windMph) => Math.max(TORNADO_STAGES.minCoreM, Math.min(widthYards * 0.9144 / 2, widthYards * 0.9144 / 2 * 65 / Math.max(65, Number(windMph) || 65)));
+
 export function updateTornadoState(world, storm, environment, dtHours) {
   const tornado = storm.tornado ?? initializeTornadoState(storm);
   const dtMinutes = dtHours * 60;
   const rotating = rotatingShare(storm), low = clamp(storm.lowRotation ?? 0, 0, 1.2);
   const ingredients = tornadoIngredients(environment);
   const imminence = tornadoImminence(storm);
-  const ratePerHour = tornadoRatePerHour(imminence);
+  const ratePerHour = tornadoRatePerHour(imminence, environment?.lcl ?? null);
   // The chance of one in the next half hour, for the pages; imminence is the cue itself.
   const chance = 1 - Math.exp(-ratePerHour * TORNADO.outlookHours);
   tornado.genesisPotential = imminence;
+  // (minutes since the last one ended, for its dissipated stage: TornadoStages dissipatedStage)
+  { const now = world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0; tornado.minutesSinceEnd = !tornado.onGround && Number.isFinite(tornado.endedHourUtc) ? Math.max(0, (now - tornado.endedHourUtc) * 60) : null; }
   tornado.probability = chance;
   tornado.rawStp = ingredients;
 
@@ -178,7 +234,8 @@ export function updateTornadoState(world, storm, environment, dtHours) {
     const now = world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0;
     const tick = Math.round((now + storm.ageHours) * 12);
     const draw = deterministicUnit(`${world.evolution?.config?.seed ?? 1}|${storm.id}|tor|${tick}`);
-    if (draw < 1 - Math.exp(-ratePerHour * dtHours)) {
+    // (none touches down off the map: a storm stepped offstage is there only to let its tornado finish, StormEngine OFFSTAGE)
+    if (!storm.offstage && draw < 1 - Math.exp(-ratePerHour * dtHours)) {
       // (a world saved while the cloud model's hints were in use may carry these: 2026-11-06)
       delete tornado.armed; delete tornado.timing; delete tornado.atModel;
       beginTornado(world, storm, tornado);
@@ -204,16 +261,40 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // degrees with rear-flank surges, and more as a tornado dissipates; it does not run back over
   // its own path). The tornado moves at the storm's velocity turned left by up to
   // OCCLUSION_TRACK.turnDeg and slowed by up to slowShare as the storm occludes; what that takes
-  // it from the wall cloud is kept (to capRadii updraught radii), and it is carried by it as
+  // it from the wall cloud is kept (to the occlusion's share of the wall cloud's radius), and it is carried by it as
   // well as by the storm's motion, so it is no more "left behind" for it than before.
   const before = (wasDown && tornado.occlusionOffsetKm) || { x: 0, y: 0 };
-  const offset = wasDown ? occlusionStep(storm, before, dtHours) : { x: 0, y: 0 };
-  const held = tornadoPosition(storm), wall = { x: held.x + offset.x, y: held.y + offset.y };
-  tornado.occlusionOffsetKm = offset;
+  const orbitPath = [], offset = wasDown ? occlusionStep(storm, before, dtHours, orbitPath) : { x: 0, y: 0 };
+  // ...and a rear-flank surge's push, mid-life (RFD_SURGE)
+  const surgeBefore = (wasDown && tornado.surgeOffsetKm) || { x: 0, y: 0 }, surgeOffset = wasDown ? surgeStep(world, storm, tornado, environment, surgeBefore, dtHours) : { x: 0, y: 0 };
+  // ...and in its last minutes, cut off from the inflow, it is carried by the low-level air round it (DECAY_DRIFT)
+  const driftBefore = (wasDown && tornado.decayDriftBeforeKm) || { x: 0, y: 0 }, drift = wasDown ? decayDrift(storm, tornado, environment, dtHours) : { x: 0, y: 0 };
+  const held = tornadoPosition(storm), wall = { x: held.x + offset.x + drift.x + surgeOffset.x, y: held.y + offset.y + drift.y + surgeOffset.y };
+  tornado.occlusionOffsetKm = offset; tornado.decayDriftBeforeKm = drift; tornado.surgeOffsetKm = surgeOffset;
   if (wasDown) {
-    const carried = { x: tornado.positionKm.x + (storm.velocityKph?.east ?? 0) * dtHours + offset.x - before.x, y: tornado.positionKm.y - (storm.velocityKph?.north ?? 0) * dtHours + offset.y - before.y };
-    const gap = Math.hypot(wall.x - carried.x, wall.y - carried.y), share = gap > 0 ? Math.min(1, TORNADO.driftKph * dtHours / gap) : 0;
-    tornado.positionKm = { x: carried.x + (wall.x - carried.x) * share, y: carried.y + (wall.y - carried.y) * share };
+    const carried = { x: tornado.positionKm.x + (storm.velocityKph?.east ?? 0) * dtHours + offset.x - before.x + drift.x - driftBefore.x + surgeOffset.x - surgeBefore.x, y: tornado.positionKm.y - (storm.velocityKph?.north ?? 0) * dtHours + offset.y - before.y + drift.y - driftBefore.y + surgeOffset.y - surgeBefore.y };
+    if (tornado.orbitRadPerS && orbitPath.length > 1) {
+      // Revolving round the mesocyclone: stepped through the orbit's substeps, so a loop or cusp within the 5-minute
+      // step is in its track (and its path's length) - the offset's revolution, the storm's motion, the drift and
+      // the surge each a share of the step, and the pull toward where it is held each substep.
+      const n = orbitPath.length, ve = (storm.velocityKph?.east ?? 0) * dtHours / n, vn = (storm.velocityKph?.north ?? 0) * dtHours / n, pull = TORNADO.driftKph * dtHours / n;
+      const dx = (drift.x - driftBefore.x + surgeOffset.x - surgeBefore.x) / n, dy = (drift.y - driftBefore.y + surgeOffset.y - surgeBefore.y) / n;
+      let p = { ...tornado.positionKm }, last = before; tornado.subTrack = [];
+      for (let i = 0; i < n; i++) {
+        const o = orbitPath[i], f = (i + 1) / n;
+        p = { x: p.x + ve + o.x - last.x + dx, y: p.y - vn + o.y - last.y + dy }; last = o;
+        const at = { x: held.x - (storm.velocityKph?.east ?? 0) * dtHours * (1 - f) + o.x + driftBefore.x + (drift.x - driftBefore.x) * f + surgeBefore.x + (surgeOffset.x - surgeBefore.x) * f,
+          y: held.y + (storm.velocityKph?.north ?? 0) * dtHours * (1 - f) + o.y + driftBefore.y + (drift.y - driftBefore.y) * f + surgeBefore.y + (surgeOffset.y - surgeBefore.y) * f };
+        const gap = Math.hypot(at.x - p.x, at.y - p.y), share = gap > 0 ? Math.min(1, pull / gap) : 0;
+        p = { x: p.x + (at.x - p.x) * share, y: p.y + (at.y - p.y) * share };
+        if (i < n - 1) tornado.subTrack.push({ ...p, f });
+      }
+      tornado.positionKm = p;
+    } else {
+      tornado.subTrack = null;
+      const gap = Math.hypot(wall.x - carried.x, wall.y - carried.y), share = gap > 0 ? Math.min(1, TORNADO.driftKph * dtHours / gap) : 0;
+      tornado.positionKm = { x: carried.x + (wall.x - carried.x) * share, y: carried.y + (wall.y - carried.y) * share };
+    }
   } else tornado.positionKm = wall;
   const reachKm = storm.geometry?.updraught?.radiusKm ?? Infinity;
   const leftBehind = Math.hypot(wall.x - tornado.positionKm.x, wall.y - tornado.positionKm.y) > reachKm;
@@ -223,16 +304,21 @@ export function updateTornadoState(world, storm, environment, dtHours) {
 
   tornado.ageMinutes += dtMinutes;
   tornado.groundTimeMinutes += dtMinutes;
-  tornado.pathLengthKm += Math.hypot(tornado.positionKm.x - tornado.previousPositionKm.x, tornado.positionKm.y - tornado.previousPositionKm.y);
   tornado.trackPoints ??= [];
+  { const nowH = world.stormEngine?.validHourUtc ?? world.validHourUtc, via = tornado.subTrack ?? [];
+    let q = tornado.previousPositionKm;
+    for (const p of via) { tornado.pathLengthKm += Math.hypot(p.x - q.x, p.y - q.y); q = p; tornado.trackPoints.push({ x: p.x, y: p.y, hourUtc: nowH - dtHours * (1 - p.f) }); }
+    tornado.pathLengthKm += Math.hypot(tornado.positionKm.x - q.x, tornado.positionKm.y - q.y);
+    tornado.subTrack = null; }
   tornado.trackPoints.push({ x: tornado.positionKm.x, y: tornado.positionKm.y, hourUtc: world.stormEngine?.validHourUtc ?? world.validHourUtc });
-  if (tornado.trackPoints.length > 96) tornado.trackPoints.shift();
+  // (TRACK_POINTS: a revolving tornado adds its substeps' points)
+  while (tornado.trackPoints.length > TRACK_POINTS) tornado.trackPoints.shift();
 
   // Wind: this tornado's draw is its quantile in a spread whose scale the storm's underlying
   // low-level rotation sets; the wind builds over its first minutes and falls as it occludes.
   // (its ceiling bends to the inflow's speed limit, SPEED_LIMIT: no draw is too high)
   const quantile = clamp(Number.isFinite(tornado.strengthUniform) ? tornado.strengthUniform : 0.5, 0, 1);
-  const scaleMph = tornadoWindScaleMph(storm.lowRotationFree ?? low, ingredients);
+  const scaleMph = tornadoWindScaleMph(storm.lowRotationFree ?? low, ingredients, environment?.lcl ?? null);
   const ceilingMph = tornadoCeilingMph(scaleMph * Math.pow(-Math.log(1 - quantile), INTENSITY.tail), environment.cape);
   // Its life, from the wind it can reach when it first comes down (LIFE).
   if (tornado.lifeMinutes == null) {
@@ -253,7 +339,41 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // A brief vortex reaches its wind sooner than a long-lived one builds to its own.
   const matureMinutes = Math.min(INTENSITY.matureMinutes, Math.max(1, 0.4 * tornado.lifeMinutes));
   const targetWind = 65 + (ceilingMph - 65) * clamp(tornado.groundTimeMinutes / matureMinutes, 0.25, 1) * (1 - INTENSITY.occlusionLoss * clamp(storm.occlusion ?? 0, 0, 1));
-  tornado.windSpeedMph += (targetWind - tornado.windSpeedMph) * clamp(dtHours * 6, 0, 1);
+  // (intensityMph: the vortex the storm supports, which its width, rating and orbit follow; the wind it shows is
+  // that through its life's stages, TornadoStages.js, below)
+  tornado.intensityMph = Number.isFinite(tornado.intensityMph) ? tornado.intensityMph : (tornado.windSpeedMph > 0 ? tornado.windSpeedMph : 75); // (one down in a world saved before 2026-11-19)
+  // (its time constant, 1 / INTENSITY.spinUpPerHour, sets how long its organizing stage lasts: TornadoStages organizingMinutes)
+  tornado.intensityMph += (targetWind - tornado.intensityMph) * clamp(dtHours * INTENSITY.spinUpPerHour, 0, 1);
+  const matureWind = 65 + (ceilingMph - 65) * (1 - INTENSITY.occlusionLoss * clamp(storm.occlusion ?? 0, 0, 1));
+  // (and once its rotation is lost, the rope-out it is playing out instead, ROPE_OUT below: begun in the step the rotation
+  // crosses sustainRotation, from the fall it had reached - rotationLossFall is 1 by then - at the rope's own pace)
+  if (!tornado.ropeOut && low < TORNADO.sustainRotation && tornado.ageMinutes > dtMinutes + 1e-6) {
+    const sh = tornadoStageShares(tornado.lifeMinutes), ropeMinutes = sh.rope * tornado.lifeMinutes, ropeSpan = 1 - sh.shrinking / Math.max(1e-3, 1 - sh.matureEnds);
+    const prevLow = low - (storm.lowRotationTrend ?? 0) * dtHours, crossed = prevLow > low ? clamp((prevLow - TORNADO.sustainRotation) / (prevLow - low), 0, 1) : 1;
+    const fromMinutes = tornado.groundTimeMinutes - dtMinutes * (1 - crossed), fall = clamp(tornado.lifeFall ?? 0, 0, 1);
+    tornado.ropeOut = { fromMinutes, fall, endMinutes: fromMinutes + (1 - fall) * ropeMinutes / Math.max(1e-3, ropeSpan), endedBy: (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded' };
+  }
+  const ro = tornado.ropeOut, roFall = ro ? ro.fall + (1 - ro.fall) * clamp((tornado.groundTimeMinutes - ro.fromMinutes) / Math.max(1e-3, ro.endMinutes - ro.fromMinutes), 0, 1) : 0;
+  tornado.lossFall = ro ? roFall : tornado.source && tornado.source !== 'mesocyclone' ? 0 : rotationLossFall(storm, tornado);
+  // (its stage: the tornado lab's six, TornadoStages.js, 2026-11-19 - organizing, mature, shrinking, rope on the ground)
+  // (the stages shape the vortex's own spin, the swirl over the storm's motion; its fall from its peak is part of its decay)
+  const motionMph = Math.hypot(storm.velocityKph?.east ?? 0, storm.velocityKph?.north ?? 0) / 1.609344;
+  const stage = tornadoStage(tornado.groundTimeMinutes, tornado.lifeMinutes, tornado.intensityMph, matureWind, tornado.lossFall, tornado.ropeFall ?? 0, { motionMph, peakMph: Math.max(tornado.peakWindSpeedMph ?? 0, tornado.intensityMph) });
+  if (stage.fall > 0) tornado.ropeFall = Math.max(tornado.ropeFall ?? 0, stage.fall);   // (the decay's ratchet: TornadoStages fallFloor)
+  // (in its rope, however it got there, it ropes out at the rope's own pace, committed - ROPE_OUT: one taken into its rope
+  // by the forecast loss of its rotation had sat there 35-40 min when the rotation never quite crossed sustainRotation)
+  if (stage.name === 'rope' && !tornado.ropeOut) {
+    const sh = tornadoStageShares(tornado.lifeMinutes), ropeMinutes = sh.rope * tornado.lifeMinutes, ropeSpan = 1 - sh.shrinking / Math.max(1e-3, 1 - sh.matureEnds);
+    tornado.ropeOut = { fromMinutes: tornado.groundTimeMinutes, fall: stage.fall, endMinutes: tornado.groundTimeMinutes + (1 - stage.fall) * ropeMinutes / Math.max(1e-3, ropeSpan),
+      endedBy: stage.by === 'time' ? 'vortex spent' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded' };
+  }
+  tornado.lifeFall = stage.fall;
+  // (in its decay the wind it shows and its core keep to their running minimum: a shrinking vortex does not regrow - the
+  // lab, 2026-11-19 - though the vortex the storm supports, intensityMph, the rating's, still can)
+  const decaying = stage.fall > 0, wasHeld = tornado.decayHeld;
+  tornado.decayHeld = decaying ? { windMph: Math.min(wasHeld?.windMph ?? Infinity, stage.windMph), coreShare: Math.min(wasHeld?.coreShare ?? Infinity, stage.coreShare) } : null;
+  tornado.windSpeedMph = decaying ? tornado.decayHeld.windMph : stage.windMph; tornado.lifeStage = stage.name; tornado.lifeShare = stage.share;
+  tornado.stageProgress = stage.progress; tornado.contortion = stage.contortion; tornado.driftShare = stage.drift;
   tornado.environmentWindCeilingMph = ceilingMph;
   // Stronger tornadoes are wider: fitted to the record's median widths by rating (SPC database 2008-2022: EF0 50 yd,
   // EF1 125, EF2 300, EF3 600, EF4 900, EF5 1,600). (2026-10-25: 30 + 1.3 x (wind - 65)^1.25 gave about 195 yd at EF2
@@ -263,9 +383,19 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // mesocyclone the tornado sits in, not more: the circulation that feeds it bounds it (Wurman and Kosiba 2013, MWR; the
   // El Reno tornado of 31 May 2013, 2.6 mi wide, filled its wall cloud). The width the wind gives bends to the wall cloud's
   // radius through a soft minimum (PATH_WIDTH.sharpness), as the wind ceiling bends to its speed limit.
-  const targetWidth = 30 + softMinimum(0.66 * Math.max(0, tornado.windSpeedMph - 65) ** 1.5, Math.max(1, wallCloudRadiusKm(storm.lowRotationFree ?? low) * PATH_WIDTH.ydPerKm - 30), PATH_WIDTH.sharpness);
+  const widthCap = Math.max(1, wallCloudRadiusKm(storm.lowRotationFree ?? low) * PATH_WIDTH.ydPerKm - 30), widthFor = mph => 30 + softMinimum(0.66 * Math.max(0, mph - 65) ** 1.5, widthCap, PATH_WIDTH.sharpness);
+  const targetWidth = widthFor(tornado.intensityMph);
   tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 8, 0, 1);
-  tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.windSpeedMph);
+  // (its peak is the vortex's: every life has a mature stage, between the 5-minute ticks for a brief one, where the
+  // wind it shows is the vortex's - so the rating is as before the stages; 2026-11-19, the peak of the ticks' winds
+  // lost a brief tornado's second tick to its decay and moved 14% of tornadoes from EF1 to EF0)
+  tornado.peakWindSpeedMph = Math.max(tornado.peakWindSpeedMph, tornado.intensityMph);
+  // Its core (m): the mature core is the one whose wind falls to the EF0 wind at half the damage width the
+  // vortex is heading for; the stage scales it (TornadoStages.js).
+  // (the mature core: of the vortex's mature wind and the width it heads for, so it does not grow while the core
+  // contracts; held through the decay, which thins it to the rope)
+  if (!(stage.fall > 0) || !(tornado.matureCoreM > 0)) { const w = Math.max(tornado.intensityMph, matureWind); tornado.matureCoreM = matureCoreM(widthFor(w), w); }
+  tornado.coreRadiusM = Math.max(TORNADO_STAGES.minCoreM, tornado.matureCoreM * (tornado.decayHeld?.coreShare ?? stage.coreShare));
   tornado.peakWidthYards = Math.max(tornado.peakWidthYards, tornado.widthYards);
   // What a damage survey would make of it so far (a rating never goes back down).
   const ratedNow = damageRatingWind(tornado.peakWindSpeedMph, tornado.peakWidthYards, tornado.pathLengthKm, Number.isFinite(tornado.damageDraw) ? tornado.damageDraw : 0.5);
@@ -274,7 +404,7 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   tornado.windEf = efRating(tornado.peakWindSpeedMph);
   storm.hazardExtremes ??= { tornado: { maxWindMph: 0, maxEfRating: null, maxWidthYards: 0, maxPathLengthKm: 0, cycles: 0 }, wind: { maxSustainedMph: 0, maxGustMph: 0 }, hail: { maxSizeInches: 0 } };
   const extreme = storm.hazardExtremes.tornado;
-  extreme.maxWindMph = Math.max(extreme.maxWindMph ?? 0, tornado.windSpeedMph);
+  extreme.maxWindMph = Math.max(extreme.maxWindMph ?? 0, tornado.peakWindSpeedMph);
   extreme.maxWidthYards = Math.max(extreme.maxWidthYards ?? 0, tornado.widthYards);
   extreme.maxPathLengthKm = Math.max(extreme.maxPathLengthKm ?? 0, tornado.pathLengthKm);
   extreme.maxRatedWindMph = Math.max(extreme.maxRatedWindMph ?? 0, tornado.ratedWindMph);
@@ -289,16 +419,25 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // It ends when the storm no longer holds the low-level rotation for it, or falls apart. It
   // stays down through the step it formed in, so everything that looks at storms between
   // steps sees it.
-  if (tornado.ageMinutes > dtMinutes + 1e-6 && (low < TORNADO.sustainRotation || !spinning || storm.active === false || leftBehind || (tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6))) {
+  // ROPE_OUT (2026-11-19, the tornado lab): losing the rotation that holds it (faded, or cut off by its occlusion) no longer
+  // ends it at once - the loss of its parent circulation is what ropes it out, and the rope takes minutes to play out. From
+  // the step the rotation falls below sustainRotation its fall runs on to 1 at the rope's own pace (the rope's share of its
+  // life over the rope's span of the fall), committed, and it ends at the EF0 wind when it gets there. (Before: it ended in
+  // the step it crossed, mid-rope - the lab's tornadoTimeline at 72 mph, contortion 0.72; its EF3 at 91 mph.)
+  const lost = low < TORNADO.sustainRotation, spent = tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6; // (its rope-out began above)
+  const roped = tornado.ropeOut && tornado.groundTimeMinutes >= tornado.ropeOut.endMinutes - 1e-6;
+  if (tornado.ageMinutes > dtMinutes + 1e-6 && (!spinning || storm.active === false || leftBehind || spent || roped || (lost && !tornado.ropeOut))) {
     // Why it ended, for the reports: the storm died or stopped rotating, its rotation moved off
     // (a merger), the outflow cut it off (the storm would still hold the rotation were it not
     // occluding), or the rotation faded.
-    const endedBy = storm.active === false ? 'storm ended' : tornado.groundTimeMinutes >= tornado.lifeMinutes - 1e-6 && low >= TORNADO.sustainRotation && !leftBehind && spinning ? 'vortex spent' : !spinning ? 'not rotating' : leftBehind ? 'left behind' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
+    // (a rope-out ends at its own end, or the life's if that comes first)
+    const ropeEnds = roped && !(spent && tornado.ropeOut.endMinutes > tornado.lifeMinutes);
+    const endedBy = storm.active === false ? 'storm ended' : !spinning ? 'not rotating' : leftBehind ? 'left behind' : ropeEnds ? tornado.ropeOut.endedBy : spent && (low >= TORNADO.sustainRotation || tornado.ropeOut) ? 'vortex spent' : (storm.lowRotationFree ?? 0) >= TORNADO.sustainRotation ? 'occluded' : 'rotation faded';
     // One whose rotation fell below what holds it (faded, or cut off by the outflow) ended when it crossed sustainRotation
     // within the last step, not at the tick that saw it (2026-10-25: those ended on ticks, 16-39% of them at exactly 10 min).
     const prevLow = low - (storm.lowRotationTrend ?? 0) * dtHours, crossed = low < TORNADO.sustainRotation && prevLow > low ? clamp((prevLow - TORNADO.sustainRotation) / (prevLow - low), 0, 1) : null;
     const fadedLife = crossed !== null && tornado.trackPoints?.length >= 2 ? (tornado.trackPoints.at(-1).hourUtc - dtHours * (1 - crossed) - tornado.trackPoints[0].hourUtc) * 60 : null;
-    const cut = endedBy === 'vortex spent' ? cutToLife(tornado) : (endedBy === 'rotation faded' || endedBy === 'occluded') && fadedLife !== null ? cutToLife(tornado, fadedLife) : null;
+    const cut = endedBy === 'vortex spent' ? cutToLife(tornado) : ropeEnds ? cutToLife(tornado, tornado.ropeOut.endMinutes) : (endedBy === 'rotation faded' || endedBy === 'occluded') && fadedLife !== null ? cutToLife(tornado, fadedLife) : null;
     endTornado(world, storm, tornado, { endedBy, endOcclusion: storm.occlusion ?? 0, endLowRotationFree: storm.lowRotationFree ?? 0, ...(cut ? { endedHourUtc: cut } : {}) });
     if (endedBy === 'vortex spent') storm.lowRotation = (storm.lowRotation ?? 0) * LIFE.rotationLeft;
   } else tornado.state = 'on-ground';
@@ -315,7 +454,7 @@ function drawTornadoCharacter(world, storm, tornado, environment = storm.environ
   tornado.steadyDraw = deterministicUnit(seed + '|steady'); tornado.steady = false; tornado.occlusionShare = 1;
   tornado.ratedWindMph = 0;
   // What its strength leans on (LEAN): the spread its storm allows at touchdown and the inflow's low-level instability.
-  tornado.lowLevel = { scaleMph: tornadoWindScaleMph(storm.lowRotationFree ?? clamp(storm.lowRotation ?? 0, 0, 1.2), tornadoIngredients(environment)), instability: lowLevelInstability(environment) };
+  tornado.lowLevel = { scaleMph: tornadoWindScaleMph(storm.lowRotationFree ?? clamp(storm.lowRotation ?? 0, 0, 1.2), tornadoIngredients(environment), environment?.lcl ?? null), instability: lowLevelInstability(environment) };
   tornado.lowLevel.z = leanScore(tornado.lowLevel.scaleMph, tornado.lowLevel.instability, deterministicUnit(seed + '|lean'));
   tornado.strengthDrawn = tornado.strengthUniform;
   if (tornado.lowLevel.z !== null) tornado.strengthUniform = leanedDraw(tornado.strengthUniform, tornado.lowLevel.z);
@@ -324,8 +463,8 @@ function drawTornadoCharacter(world, storm, tornado, environment = storm.environ
 function beginTornado(world, storm, tornado) {
   tornado.state = 'on-ground'; tornado.onGround = true; tornado.ageMinutes = 0;
   tornado.groundTimeMinutes = 0; tornado.pathLengthKm = 0; tornado.widthYards = 35;
-  tornado.windSpeedMph = 75; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
-  tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.loopTurnRad = 0; tornado.orbitRadPerS = 0; tornado.positionKm = tornadoPosition(storm);
+  tornado.windSpeedMph = 65; tornado.intensityMph = 75; tornado.coreRadiusM = null; tornado.matureCoreM = null; tornado.lifeStage = 'organizing'; tornado.lifeShare = 0; tornado.stageProgress = 0; tornado.contortion = 0; tornado.driftShare = 0; tornado.minutesSinceEnd = null; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
+  tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.decayDriftBeforeKm = null; tornado.lossFall = 0; tornado.decayHeld = null; tornado.ropeOut = null; tornado.ropeFall = 0; tornado.lifeFall = 0; tornado.surge = null; tornado.surges = 0; tornado.surgeOffsetKm = null; tornado.occlusionPeak = 0; tornado.failedOcclusions = 0; tornado.loopTurnRad = 0; tornado.orbitRadPerS = 0; tornado.positionKm = tornadoPosition(storm);
   tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   // What made the rotation it came from: a mesocyclone, a line's mesovortex or a boundary (a landspout).
   tornado.source = storm.lowRotationSource ?? 'mesocyclone';
@@ -361,12 +500,12 @@ function endTornado(world, storm, tornado, end = {}) {
       peakWindSpeedMph: tornado.peakWindSpeedMph, peakWidthYards: tornado.peakWidthYards,
       // estimatedEf is the damage rating; windEf is what its peak wind would be rated on wind alone.
       ratedWindMph: tornado.ratedWindMph ?? tornado.peakWindSpeedMph, estimatedEf: efRating(tornado.ratedWindMph ?? tornado.peakWindSpeedMph), windEf: efRating(tornado.peakWindSpeedMph),
-      trackPoints: (tornado.trackPoints ?? []).slice(-96), loops: Math.floor((tornado.loopTurnRad ?? 0) / (2 * Math.PI) + 0.25), lifeMinutes: tornado.lifeMinutes ?? null, steady: Boolean(tornado.steady), damageDraw: tornado.damageDraw ?? null, ...end
+      trackPoints: (tornado.trackPoints ?? []).slice(-TRACK_POINTS), loops: trackLoops(tornado.trackPoints ?? []), lifeMinutes: tornado.lifeMinutes ?? null, steady: Boolean(tornado.steady), damageDraw: tornado.damageDraw ?? null, surges: tornado.surges ?? 0, failedOcclusions: tornado.failedOcclusions ?? 0, occlusionPeak: tornado.occlusionPeak ?? null, ...end
     });
     if (storm.tornadoHistory.length > 8) storm.tornadoHistory.shift();
   }
   tornado.state = 'ended'; tornado.onGround = false; tornado.endedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
-  tornado.windSpeedMph = 0; tornado.widthYards = 0; tornado.startedHourUtc = null; tornado.occlusionShare = 1;
+  tornado.windSpeedMph = 0; tornado.intensityMph = 0; tornado.coreRadiusM = null; tornado.matureCoreM = null; tornado.lifeStage = null; tornado.stageProgress = null; tornado.contortion = null; tornado.driftShare = null; tornado.minutesSinceEnd = 0; tornado.widthYards = 0; tornado.startedHourUtc = null; tornado.occlusionShare = 1;
 }
 
 // Under the storm's wall cloud (StormGeometry.js); at the storm's centre until its shape is first worked out.
@@ -374,30 +513,133 @@ function tornadoPosition(storm) {
   const wall = storm.geometry?.wallCloud;
   return wall ? { x: wall.xKm, y: wall.yKm } : { ...storm.positionKm };
 }
-// capRadii: how far an occluding tornado drifts from the mesocyclone it formed under, in updraught
-// radii (0.4: up to ~3 km for the largest storms), toward the updraught's left-rear; the storm's
-// next mesocyclone forms back at the origin.
-// (2026-10-29: was 1.8, and tornadoes wandered 8-14 km from their storm.)
-const OCCLUSION_TRACK = { turnDeg: 60, slowShare: 0.5, capRadii: 0.4 };
-// The occlusion orbit (2026-10-29): an occluding tornado is wrapped by the rear-flank outflow and
-// revolves cyclonically round the mesocyclone it formed under (counterclockwise seen from above;
-// clockwise under a left-mover), as a vortex inside its larger tornado cyclone does (Kellerville:
-// a trochoidal track; Lee & Finley: rear-flank surges turn tornadoes left and about double their
-// speed). The ground track is the storm's motion plus that revolution: a hook when the revolution
-// is slower than the storm, a LOOP when it is faster - a strong tornado under a slow storm
-// (Bennington KS 2013, a slow EF4 that crossed its own path). ORBIT.share of the tornado's wind
-// above fromMph is how fast it revolves (km/h) at full occlusion: about 34 km/h for an EF3, 48 for
-// an EF4, 62 for an EF5, against storms moving a median 55 km/h, so loops come only from intense
-// to violent tornadoes, and mostly under slower storms. minRadiusKm keeps the turn rate finite
-// close in; substeps resolve a fast revolution within the 5-minute step.
-const ORBIT = { share: 0.25, fromMph: 65, minRadiusKm: 1, substeps: 10 };
+// How far an occluding tornado drifts from the mesocyclone it formed under, toward the updraught's
+// left-rear: the occlusion's share of its low-level circulation's radius (the wall cloud's,
+// StormGeometry wallCloudRadiusKm), so it is displaced as the storm occludes, at the occlusion's own
+// rate (StormRotation: the cold pool's balance against the shear, and the low-level rotation), however
+// fast the storm moves; the storm's next mesocyclone forms back at the origin. Observed: mature
+// tornadoes tilt <=10-35 deg in the lowest 1-2 km (Mahre et al. 2018; Griffin et al. 2019), ~0.25-0.6
+// km displaced, rising to ~1-1.5 km (55 deg) through dissipation (Griffin et al.).
+// (2026-10-29: 1.8 updraught radii, and tornadoes wandered 8-14 km from their storm; then 0.4 updraught
+// radii, ~3 km, which the turned and slowed motion of a fast storm reached in one 5-min tick - seed 2's
+// first EF1, in a 25 m/s storm, was 2.96 km from its wall cloud 5 min after touchdown and stayed so
+// 40 min: separation ~10 m/s, where observed separation is a few m/s. Meteorologist review 2026-11-19.)
+const OCCLUSION_TRACK = { turnDeg: 60, slowShare: 0.5 };
+// The occlusion orbit (2026-10-29; its rate re-based 2026-11-19): an occluding tornado is wrapped by the rear-flank
+// outflow and revolves cyclonically round the mesocyclone it formed under (counterclockwise seen from above; clockwise
+// under a left-mover) at the low-level mesocyclone's solid-body rate, V/R, so at its distance r it goes round at the
+// mesocyclone's own wind there (Wood 2016, 28th SLS: R 1.5 km, omega 0.01 /s, 15 m/s, a ~10 min period; Agee et al.
+// 1976: tornado families on curtate cycloids round the tornado cyclone), times the occlusion. The ground track is the
+// storm's motion plus that revolution: a wave when the revolution is slower than the tornado's ground speed, a cusp
+// when equal, a LOOP when faster - which comes as an occlusion slows it (Moore 2013, El Reno 2013: loops below ~5 m/s;
+// Bennington KS 2013, a slow storm's tornado looping within 2.5 km for half an hour). (Until 2026-11-19: 0.25 x the
+// tornado's wind over 65 mph, km/h - the right size for violent tornadoes, but tied to the tornado's wind, not to the
+// circulation it revolves in.) substeps resolve a fast revolution within the 5-minute step.
+const ORBIT = { substeps: 10 };
+// The low-level mesocyclone at the ground ({ V m/s, R km }; StormVortices), or null.
+function lowMeso(storm) {
+  try { const d = stormVortices(storm); return d ? mesoLevel(d, 0) : null; } catch { return null; }
+}
+// RFD_SURGE (2026-11-19, owner's request; research: Kurdzo et al. 2015 (Moore 2013: eight rear-flank surges in 39 min;
+// an occluding surge turned the tornado N then NW and slowed it under 5 m/s, a surge from the S/SE 1-2 min later
+// restored the inflow - a failed occlusion - the tornado looped and lived 12 min more at EF3-4); Lee and Finley 2022
+// (Quinter, El Reno, Halstad: mid-life surges turned tornadoes 30-55 deg left and about doubled their speed, which then
+// lived >= 21 min more); Marquis et al. 2012, Skinner et al. 2014 (several internal surges per low-level mesocyclone)).
+// While a tornado is down, surges of the storm's rear-flank outflow come at up to perMinute (with the cold pool's
+// strength), each lasting minutes. A surge wraps round the vortex (the occlusion runs wrapRate x faster, StormRotation)
+// or pushes it from the rear: the odds of wrapping rise with the outflow against the low-level shear (the occlusion's
+// balance, wrapOdds over balance). A push before the occlusion is under way (below occludedFrom) turns the tornado
+// turnDeg left and speeds it speedFactor x, and the mesocyclone with it - an offset that fades over relaxHours after;
+// once it is under way, a push restores the inflow and undoes the occlusion toward reloadTo (StormRotation), unless it
+// is past irreversible - a failed occlusion: its offset shrinks back under the updraught (the occlusion's cap), its
+// wind and rotation recover, and it lives at least extendMinutes more. No numbers for how often occlusions fail were
+// found; perMinute and wrapOdds are set so about a fifth of the occlusions under way fail (2026-11-19: 1 / 6.5 and
+// 0.4-0.9 failed 2 of 50 - 4% - of those reaching 0.3 over seeds 1, 2, 5 x 48 h; 1 / 5 and 0.25-0.75, 6 of 50; now 9 of 50).
+export const RFD_SURGE = Object.freeze({ perMinute: 1 / 5, strength: [0.1, 0.6], minutes: [3, 8], wrapOdds: [0.15, 0.6], balance: [0.36, 1.0],
+  occludedFrom: 0.3, turnDeg: [30, 55], speedFactor: [1.5, 2], relaxHours: 0.25, wrapRate: 2.5, reloadTo: 0.2, reloadHours: 0.05, irreversible: 0.85, extendMinutes: [10, 20] });
+const rampTo = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
+function surgeStep(world, storm, tornado, environment, before, dtHours) {
+  const S = RFD_SURGE, seed = `${world.evolution?.config?.seed ?? 1}|${storm.id}|cycle${tornado.cycleCount}|surge`;
+  const ground = tornado.groundTimeMinutes ?? 0, dtMin = dtHours * 60, occ = clamp(storm.occlusion ?? 0, 0, 1);
+  // (this step runs from ground to ground + dtMin: the surge ending, or a new one starting in it)
+  if (tornado.surge && ground >= tornado.surge.until) tornado.surge = null;
+  if (!tornado.surge) {
+    const k = Math.round(ground / Math.max(1e-6, dtMin)), rate = S.perMinute * rampTo(storm.coldPoolStrength ?? 0, S.strength[0], S.strength[1]);
+    if (rate > 0 && deterministicUnit(`${seed}|${k}`) < 1 - Math.exp(-rate * dtMin)) {
+      const odds = S.wrapOdds[0] + (S.wrapOdds[1] - S.wrapOdds[0]) * rampTo(coldPoolBalance(storm, environment, true), S.balance[0], S.balance[1]);
+      const lerp = (r, q) => r[0] + (r[1] - r[0]) * deterministicUnit(`${seed}|${k}|${q}`);
+      const from = ground + dtMin * deterministicUnit(`${seed}|${k}|at`);
+      tornado.surge = { kind: deterministicUnit(`${seed}|${k}|kind`) < odds ? 'wrap' : 'push', from, until: from + lerp(S.minutes, 'min'), turnDeg: lerp(S.turnDeg, 'turn'), speed: lerp(S.speedFactor, 'speed'), occlusion: occ };
+      tornado.surges = (tornado.surges ?? 0) + 1;
+    }
+  }
+  tornado.occlusionPeak = Math.max(tornado.occlusionPeak ?? 0, occ);
+  const sg = tornado.surge;
+  // a failed occlusion: a push once the occlusion is under way, short of irreversible
+  if (sg?.kind === 'push' && sg.occlusion >= S.occludedFrom && sg.occlusion < S.irreversible && !sg.counted) {
+    sg.counted = true; tornado.failedOcclusions = (tornado.failedOcclusions ?? 0) + 1;
+    // (not a rope's: once in its rope, or roping out, the storm's revived rotation goes to its next tornado, under the wall
+    // cloud - the occlusion is still undone, StormRotation - not to this one; the lab, 2026-11-19: a rope fattening back
+    // into a mature vortex is not seen. A shrinking one can re-strengthen, as observed.)
+    const more = tornado.lifeStage === 'rope' || tornado.ropeOut ? 0 : S.extendMinutes[0] + (S.extendMinutes[1] - S.extendMinutes[0]) * deterministicUnit(`${seed}|${Math.round(sg.from * 10)}|more`);
+    if (Number.isFinite(tornado.lifeMinutes)) tornado.lifeMinutes = Math.max(tornado.lifeMinutes, ground + more);
+  }
+  // a push before the occlusion: turned left (right under a left-mover) and sped, for the part of the step it lasts
+  let x = before.x * Math.exp(-dtHours / S.relaxHours), y = before.y * Math.exp(-dtHours / S.relaxHours);
+  if (sg?.kind === 'push' && sg.occlusion < S.occludedFrom) {
+    const share = clamp((Math.min(sg.until, ground + dtMin) - Math.max(sg.from, ground)) / dtMin, 0, 1);
+    const v = storm.velocityKph ?? {}, east = v.east ?? 0, north = v.north ?? 0, a = (storm.leftMover ? -1 : 1) * sg.turnDeg * Math.PI / 180;
+    const te = sg.speed * (east * Math.cos(a) - north * Math.sin(a)), tn = sg.speed * (east * Math.sin(a) + north * Math.cos(a));
+    x += (te - east) * dtHours * share; y -= (tn - north) * dtHours * share;
+  }
+  return { x, y };
+}
 const KPH_PER_MPH = 1.609344;
 // The occlusion's offset of the tornado from the wall cloud (km, east and south) after a step:
 // the difference between the tornado's turned, slowed motion and the storm's, added up, plus its
 // revolution round the mesocyclone. Sets tornado.orbitRadPerS (the revolution's rate now, for the
 // game) and adds to tornado.loopTurnRad the turning done while revolving faster than the storm
 // moves (each 2 pi of it is one loop on the ground).
-function occlusionStep(storm, before, dtHours) {
+// DECAY_DRIFT (2026-11-19, owner's go after the occlusion research): a dissipating tornado is cut off from the
+// storm's inflow by the rear-flank outflow wrapped round it and is carried more and more by the low-level air
+// round it than by its storm - rearward of the updraught, and for the usual veering hodograph to its left: the
+// tornado slows and turns left, the terminal hook (radar: storm-relative motion small and in no set direction
+// until the last ~10 min, then growing and mostly rearward, left in storms with cyclic tornadoes, the tornado
+// 3.5 km from the updraught three volumes before it dies and >6 km at its last; French and Kingfield 2019, JAMC;
+// inflow- against outflow-dominated, Dowell and Bluestein 2002). Through its shrinking stage (TornadoStages
+// drift: 0 -> 1 over shrinking, 1 through the rope; or ahead of the loss of its rotation, rotationLossFall) its
+// motion blends from the storm's toward the 0-500 m wind (lowShare of the way from the surface wind to the 850 mb
+// one: 250 m of the ~1.5 km), up to weight. (Until the six stages, 2026-11-19: over the last windowMinutes of its
+// life, at most windowShare of a brief one; windowMinutes / windowShare now set only rotationLossFall's window.) The direction is the hodograph's, not set: under storm-relative low-level wind from its right it goes
+// left, from its left it goes right. What that moves it from the wall cloud is part of where it is held, as the
+// occlusion's offset is, so it is not "left behind" for it; the next tornado forms back under the wall cloud.
+export const DECAY_DRIFT = Object.freeze({ windowMinutes: 15, windowShare: 0.4, weight: 0.7, lowShare: 0.17 });
+function decayDrift(storm, tornado, environment = storm.environment ?? {}, dtHours) {
+  const before = tornado.decayDriftBeforeKm ?? { x: 0, y: 0 }, life = Number(tornado.lifeMinutes);
+  if (!(life > 0)) return before;
+  const D = DECAY_DRIFT, sfc = environment.surfaceWind, w850 = environment.wind850;
+  if (!sfc || !w850) return before;
+  const v = storm.velocityKph ?? {}, east = v.east ?? 0, north = v.north ?? 0, KT = 1.852;
+  const lowE = (sfc.eastKt + D.lowShare * (w850.eastKt - sfc.eastKt)) * KT, lowN = (sfc.northKt + D.lowShare * (w850.northKt - sfc.northKt)) * KT;
+  // (the weight at the middle of the step: its minutes on the ground then)
+  const mid = (tornado.groundTimeMinutes ?? 0) + dtHours * 30, w = D.weight * Math.max(tornadoStage(mid, life, tornado.intensityMph ?? 75).drift, clamp(Number(tornado.lossFall) || 0, 0, 1));
+  if (!(w > 0)) return before;
+  // (east and south, as the offset)
+  return { x: before.x + w * (lowE - east) * dtHours, y: before.y - w * (lowN - north) * dtHours };
+}
+// The loops in a track: the times it crosses itself (a tornado revolving round its mesocyclone faster than it is
+// carried on). (Until 2026-11-19 the revolution of its offset, counted where the revolution beat the storm's speed: 5
+// "loops" on a track that crossed itself once - the tornado follows the revolving offset no faster than driftKph.)
+export function trackLoops(points) {
+  let n = 0;
+  const cross = (p, q, r, t) => { const d = (q.x - p.x) * (t.y - r.y) - (q.y - p.y) * (t.x - r.x); if (!d) return false;
+    const a = ((r.x - p.x) * (t.y - r.y) - (r.y - p.y) * (t.x - r.x)) / d, b = ((r.x - p.x) * (q.y - p.y) - (r.y - p.y) * (q.x - p.x)) / d; return a > 0 && a < 1 && b > 0 && b < 1; };
+  for (let i = 0; i < points.length - 1; i++) for (let j = i + 2; j < points.length - 1; j++) if (cross(points[i], points[i + 1], points[j], points[j + 1])) n++;
+  return n;
+}
+// path (optional): filled with the offset after each substep while it revolves.
+const TRACK_POINTS = 480;
+function occlusionStep(storm, before, dtHours, path = null) {
   const tornado = storm.tornado;
   if (tornado) tornado.orbitRadPerS = 0;
   const occlusion = clamp(storm.occlusion ?? 0, 0, 1), v = storm.velocityKph ?? {}, east = v.east ?? 0, north = v.north ?? 0;
@@ -406,8 +648,9 @@ function occlusionStep(storm, before, dtHours) {
   const turn = OCCLUSION_TRACK.turnDeg * occlusion * Math.PI / 180, keep = 1 - OCCLUSION_TRACK.slowShare * occlusion;
   // Turned left (counterclockwise seen from above), in east and north; the offset is east and south.
   const te = keep * (east * Math.cos(turn) - north * Math.sin(turn)), tn = keep * (east * Math.sin(turn) + north * Math.cos(turn));
-  const cap = OCCLUSION_TRACK.capRadii * (storm.geometry?.updraught?.radiusKm ?? 5);
-  const orbitKph = ORBIT.share * Math.max(0, ((tornado?.windSpeedMph ?? 0) - ORBIT.fromMph) * KPH_PER_MPH) * occlusion;
+  const cap = occlusion * (storm.geometry?.wallCloud?.radiusKm ?? wallCloudRadiusKm(storm.lowRotationFree ?? storm.lowRotation));
+  // (the revolution: the low-level mesocyclone's solid-body rate, V/R at the ground, times the occlusion)
+  const parent = tornado ? lowMeso(storm) : null, omegaPerH = parent && parent.R > 0 ? parent.V / (parent.R * 1000) * 3600 * occlusion : 0;
   const spin = storm.leftMover ? -1 : 1, h = dtHours / ORBIT.substeps;
   let x = before.x, y = before.y, rate = 0;
   for (let i = 0; i < ORBIT.substeps; i++) {
@@ -415,13 +658,14 @@ function occlusionStep(storm, before, dtHours) {
     const size = Math.hypot(x, y);
     if (size > cap) { x *= cap / size; y *= cap / size; }
     // the revolution: rad/h, at the tornado's distance from the mesocyclone
-    rate = spin * orbitKph / Math.max(Math.hypot(x, y), ORBIT.minRadiusKm);
+    rate = spin * omegaPerH;
     const a = rate * h, c = Math.cos(a), s = Math.sin(a);
     // (counterclockwise seen from above, with y south)
     const nx = x * c + y * s, ny = -x * s + y * c;
     x = nx; y = ny;
     // a loop on the ground: the revolution's speed there beats the storm's
     if (tornado && Math.abs(rate) * Math.max(Math.hypot(x, y), 1e-6) > speedKph) tornado.loopTurnRad = (tornado.loopTurnRad ?? 0) + Math.abs(a);
+    if (path) path.push({ x, y });
   }
   if (tornado) tornado.orbitRadPerS = rate / 3600;
   return { x, y };
@@ -475,7 +719,7 @@ function motionDirection(v = {}) { return (Math.atan2(v.east ?? 0, v.north ?? 0)
 // (Later on 2026-10-26, after the low-level jet fix: baseScaleMph 20 to 22, stpScaleMph 45 to 25, tail 0.8 to 0.7. With realistic
 // helicity, tornado-time STP reached the record's range (90th percentile 3.6) and STP 3-6 gave 47% EF2+; now 35%, and EF0-4
 // 53.6 / 32.8 / 9.6 / 3.1 / 0.6% against the US record's 52 / 35 / 9 / 2.4 / 0.45.)
-const INTENSITY = { baseScaleMph: 22, rotationScaleMph: 65, tail: 0.7, stpScaleMph: 25, stpPower: 1.5, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6 };
+const INTENSITY = { baseScaleMph: 22, rotationScaleMph: 65, tail: 0.7, stpScaleMph: 25, stpPower: 1.5, stpFull: 6, matureMinutes: 6, occlusionLoss: 0.6, spinUpPerHour: 6 };
 // An EF rating is assigned from the damage a tornado leaves, not from its wind. Most of a
 // tornado's path crosses nothing that can show its full strength, so the rating usually falls
 // short of the wind, more so for a short track. The rated wind is the wind above 65 mph times

@@ -27,6 +27,7 @@ import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
 import { WARNING } from '../forecast/Warning.js';
 import { makeNoise, fbm } from '../worldmap/noise.js';
 import { encodeSatelliteValue } from './SatelliteFormat.js';
+import { CLOUD_OPTICS } from '../storms/CloudOptics.js';
 
 export const SATELLITE = Object.freeze({
   resKm: 2,                     // the ABI's IR pixel at the sub-point
@@ -36,8 +37,8 @@ export const SATELLITE = Object.freeze({
   kLiquid: 0.13, kIce: 0.08,
   // Visible optical depth: liquid 1.5 LWP / r_e (r_e 10 um); ice IWP (-6.656e-3 + 3.686 / D_ge)
   // (Fu 1996, D_ge 50 um), so about 0.067 a g/m2.
-  reUm: 10, dgeUm: 50,
-  g: 0.85,                      // asymmetry of cloud scattering
+  reUm: CLOUD_OPTICS.reUm, dgeUm: CLOUD_OPTICS.dgeUm,   // (js/storms/CloudOptics.js, shared with the light under a storm)
+  g: CLOUD_OPTICS.g,            // asymmetry of cloud scattering
   groundAlbedo: 0.08,           // green spring grassland and crops in the red band, 0.05-0.10
   // Cloud water: a low cloud holds what an adiabatic ascent condenses, 2 g/m3 more each km above
   // its base (so LWP = 0.5 x 2e-3 g/m4 x depth^2); a mid-level layer about 0.02 g/m3 (altostratus

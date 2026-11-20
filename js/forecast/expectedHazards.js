@@ -22,7 +22,7 @@ const cellOf = (world, at) => Math.min(world.height - 1, Math.max(0, Math.floor(
 function add(world, grids, storm, amount) {
   const i = cellOf(world, storm.tornado?.positionKm ?? storm.positionKm);
   grids.tornado[i] += amount;
-  const scale = tornadoWindScaleMph(storm.lowRotationFree ?? storm.lowRotation ?? 0, storm.tornado?.rawStp ?? 0);
+  const scale = tornadoWindScaleMph(storm.lowRotationFree ?? storm.lowRotation ?? 0, storm.tornado?.rawStp ?? 0, storm.environment?.lcl ?? null);
   // (leaned by the inflow's low-level instability, as the engine leans each tornado's draw: TornadoEngine LEAN)
   const z = storm.environment ? leanScore(scale, lowLevelInstability(storm.environment)) : null;
   for (const [field, mph] of Object.entries(TORNADO_TIER_MPH)) if (grids[field]) grids[field][i] += amount * tornadoShareReaching(scale, mph, z, storm.environment?.cape ?? null);
@@ -33,7 +33,7 @@ export function addExpectedTornadoes(world, grids, hours) {
   if (!grids) return;
   for (const storm of world.storms ?? []) {
     if (!storm.active || storm.tornado?.onGround) continue;
-    const rate = tornadoRatePerHour(tornadoImminence(storm));
+    const rate = tornadoRatePerHour(tornadoImminence(storm), storm.environment?.lcl ?? null);
     if (rate > 0) add(world, grids, storm, rate * hours);
   }
 }

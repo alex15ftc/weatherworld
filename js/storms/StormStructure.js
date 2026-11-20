@@ -39,10 +39,13 @@ import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK, outflowShare, poolDr
 import { stormUndercut } from './StormBudgets.js';
 import { clamp, smoothstep } from '../scenarios/math.js';
 import { spinBudget } from './SpinBudget.js';
-import { stormVortices, mesoLevel, addMesoWind, addTornadoWind, rankineDrop, rankineDropRadius } from './StormVortices.js';
+import { stormVortices, mesoLevel, addMesoWind, addTornadoWind, rankineDrop, rankineDropRadius, burgersDrop } from './StormVortices.js';
 import { VERSION, BOX_FIELDS, NEST_FIELDS, HEADER, TORNADO, UPDRAUGHT } from '../cloudmodel/FrameCodec.js';
 import { samplePrecipitation, hailFallSpeedMs, RAIN_REFLECTIVITY, HAIL_REFLECTIVITY } from './PrecipitationField.js';
 import { rainFieldOf } from './StormRainFields.js';
+import { outflowMixLcl, coreOutflowShare, tornadoFunnel, tornadoTilt } from './TornadoFunnel.js';
+import { stormLight } from './StormLight.js';
+import { CLOUD_OPTICS, TAU_LIQUID_PER_GM2, TAU_ICE_PER_GM2, rainExtinctionPerKm } from './CloudOptics.js';
 
 const KT = 0.514444;
 export const STRUCTURE = Object.freeze({
@@ -62,11 +65,10 @@ export const STRUCTURE = Object.freeze({
   coldPoolTauS: 900,                   // how long the outflow spreads before it is the storm's
   mixOutflow: [0.3, 0.5],              // outflow share of the air rising: everywhere it lies, plus in the updraught
   levels: [0.04, 0.12, 0.25, 0.4, 0.55, 0.7, 0.85, 1], // (tornado levels, shares of the wall cloud's base, with the funnel's tip at the ground)
-  funnelCapM: 500, ef0Mph: 65,
-  coreAirR: 3,                         // how far out (core radii) the core draws its surface air in: the corner flow's condensed annulus (as stormlab Render/TornadoCards caps it)
+  ef0Mph: 65,
+  // (the funnel's cap and how far out the core draws its air: TornadoFunnel.js TORNADO_FUNNEL, which
+  // stormlab Render/TornadoCards matches)
 });
-
-const wetBulb = (tc, q, p) => { let tw = tc; for (let n = 0; n < 20; n++) { const qs = qsat(tw, p); tw -= (tw - tc + LV / CP * (qs - q)) / (1 + LV / CP * qs * 17.67 * 243.5 / (tw + 243.5) ** 2); } return Math.min(tc, tw); };
 
 // The inflow sounding: AGL heights, and helpers at a height.
 const profileOf = (world, storm) => soundingProfile(inflowCell(world, storm));
@@ -133,7 +135,9 @@ export function stormCloudTop(world, storm) {
   return { top: pr.top, el: Math.min(pr.el, pr.top), coreM, U, sd, pr, wScale, ...detrainment(pr, wScale, coreM) };
 }
 
-export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
+// sun: { elevationDeg, azimuthDeg } now, for the light round the tornado (info.light, StormLight.js); without
+// it the light's direct sun is left out.
+export function buildStormFrame(world, storm, { seq = 1, rainField, sun = null } = {}) {
   const t0 = performance.now();
   const S = STRUCTURE, nx = S.nx, ny = S.ny, dx = S.dx;
   let anchorX = 0, anchorY = 0; // (where the storm is in the box: set from its winds below)
@@ -181,8 +185,9 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   // (drop: at its centre, rho V^2; the funnel and the drop the views draw are the ground's Rankine
   // vortex - the views rebuild it as one, VisualAtmosphere.luau - while the wind aloft is the
   // tornado cyclone's, StormVortices.js)
-  const T = tvx ? { x: tvx.x * 1000, y: -tvx.y * 1000, R: tvx.R * 1000, V: tvx.V, Vg: tvx.Vg, drop: rankineDrop(0, tvx.R * 1000, tvx.V, rho0) } : null;
-  const torDrop = (x, y) => T ? rankineDrop(Math.hypot(x - T.x, y - T.y), T.R, T.V, rho0) : 0;
+  const T = tvx ? { x: tvx.x * 1000, y: -tvx.y * 1000, R: tvx.R * 1000, V: tvx.V, Vg: tvx.Vg, drop: burgersDrop(0, tvx.R * 1000, tvx.V, rho0) } : null;
+  // (the tornado's drop is its own Burgers-Rott vortex's, 1.70 rho V^2 at the centre - 2026-11-19; the mesocyclone's stays Rankine)
+  const torDrop = (x, y) => T ? burgersDrop(Math.hypot(x - T.x, y - T.y), T.R, T.V, rho0) : 0;
   // The low-level mesocyclone's centre: the tornado while one is down (a tornado forms inside its
   // parent circulation, so the circulation and the wall cloud its drop lowers are drawn round it).
   const MC = [M0.x, M0.y];
@@ -191,16 +196,18 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
 
   // Outflow air: cooled toward its wet bulb by the evaporation that made the cold pool, so moister.
   const cpS = clamp(storm.coldPoolStrength ?? 0, 0, 1), deficit = cpS > 0 ? coldPoolDeficitK(cpS) : 0;
-  const tw = wetBulb(pr.t0, pr.q0sfc, pr.p0), cool = Math.min(deficit, pr.t0 - tw);
-  const tOut = pr.t0 - cool, qOut = pr.q0sfc + CP * cool / LV;
-  const spreadIn = pr.t0 - dewFromQ(pr.q0sfc, pr.p0);
-  // The LCL of air with share f of outflow (its spread from the parcel's own LCL), unlowered.
-  const lclMix = f => { const t = pr.t0 + f * (tOut - pr.t0), q = pr.q0sfc + f * (qOut - pr.q0sfc); return Math.max(0, lclIn - 125 * (spreadIn - (t - dewFromQ(q, pr.p0)))); };
+  // The LCL of air with share f of outflow (its spread from the parcel's own LCL), unlowered (TornadoFunnel.js).
+  const lclMix = outflowMixLcl({ t0: pr.t0, q0: pr.q0sfc, p0: pr.p0, lclIn, deficitK: deficit });
 
   // Box coordinates of cell (i, j), storm-relative metres (x east, y north).
   const cx = i => (i - 0.5) * dx - anchorX, cy = j => (j - 0.5) * dx - anchorY;
   const N = nx * ny, col = (i, j) => (j - 1) * nx + (i - 1);
   const freezeZ = (() => { for (const l of sd.P) if (l.t <= S.meltC) return l.z; return 4000; })();
+  // The parcel's cloud water summed from the ground (g/m2: liquid below the freezing level, ice above),
+  // for each cloud run's visible optical depth (CloudOptics.js) - the light under the storm (StormLight.js).
+  const lvDz = (pr.levels[1]?.z ?? S.dz) - (pr.levels[0]?.z ?? 0) || S.dz, wpL = [0], wpI = [0];
+  for (const l of pr.levels) { const e = sd.at(l.z), w = Math.max(0, l.qc || 0) * e.p * 100 / (RD * (e.t + 273.15)) * lvDz * 1000; wpL.push(wpL.at(-1) + (l.z < freezeZ ? w : 0)); wpI.push(wpI.at(-1) + (l.z < freezeZ ? 0 : w)); }
+  const pathTau = (b, t) => { const q = z => clamp(Math.round(z / lvDz), 0, wpL.length - 1), i0 = q(b), i1 = q(t); return (wpL[i1] - wpL[i0]) * TAU_LIQUID_PER_GM2 + (wpI[i1] - wpI[i0]) * TAU_ICE_PER_GM2; };
 
   // The anvil (anvilOf).
   const anvilAt = anvilOf({ storm, sd, pr, U, coreM, wPeak, wScale, um, vm, freezeZ });
@@ -250,7 +257,12 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   let bMax = 0; for (let k = 0; k < N; k++) bMax = Math.max(bMax, blurred[k]);
   const out = new Float64Array(N);
   for (let k = 0; k < N; k++) out[k] = cpS > 0 && bMax > 0 ? smoothstep(0.15, 0.45, blurred[k] / bMax) : 0;
-  const outAt = (x, y) => { const i = clamp(Math.round((x + anchorX) / dx + 0.5), 1, nx), j = clamp(Math.round((y + anchorY) / dx + 0.5), 1, ny); return out[col(i, j)]; };
+  // (read between the cells, so a tornado moving across the pool's edge sees its share change smoothly, 2026-11-19, the
+  // tornado lab: the nearest cell's moved its funnel 59 -> 95 -> 100 -> 67% down tick to tick)
+  const outAt = (x, y) => {
+    const fi = clamp((x + anchorX) / dx + 0.5, 1, nx), fj = clamp((y + anchorY) / dx + 0.5, 1, ny), i0 = Math.min(nx - 1, Math.floor(fi)), j0 = Math.min(ny - 1, Math.floor(fj)), a = fi - i0, b = fj - j0;
+    return out[col(i0, j0)] * (1 - a) * (1 - b) + out[col(i0 + 1, j0)] * a * (1 - b) + out[col(i0, j0 + 1)] * (1 - a) * b + out[col(i0 + 1, j0 + 1)] * a * b;
+  };
   // The pool's depth, which its outflow runs down (ColdPool.js outflowShare): the rain rate's own
   // footprint, spread the same way, as a share of its deepest, and its slope (per m; L its spreading length, m).
   const deep = new Float64Array(N);
@@ -278,13 +290,14 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   const sfc = sd.at(0);
   let towerCols = 0, shelfCols = 0, anvilCols = 0, deckCols = 0, lowestBase = Infinity;
   const colRuns = new Array(N);
+  const lightRuns = new Array(N);
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) {
-    const x = cx(i), y = cy(j), k = col(i, j), runs = [];
+    const x = cx(i), y = cy(j), k = col(i, j), runs = [], lit = [];
     const b = baseAt(x, y);
     // the updraught's cloud: where the rising air is at least wEdge, from the base up
     let zt = -1;
     for (let z = Math.max(b, 100); z <= top; z += 250) if (wAt(x, y, z) >= S.wEdge) zt = z;
-    if (zt > b && wAt(x, y, Math.max(b, 100)) >= S.wEdge * 0.5) { runs.push([b, zt + 250]); towerCols++; }
+    if (zt > b && wAt(x, y, Math.max(b, 100)) >= S.wEdge * 0.5) { runs.push([b, zt + 250]); lit.push([b, zt + 250, pathTau(b, zt + 250)]); towerCols++; }
     // (precipitation aloft is not cloud: outside the updraught it falls through descending, unsaturated
     // air, and the views draw it as rain falling from the cloud over it - RainView. Until 2026-11-07 it
     // was a cloud run from the base to its highest particle, which joined the anvil into one solid
@@ -295,13 +308,16 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
       if (gm > 0) {
         const n = [-gr[0] / gm, -gr[1] / gm], sr = srAt(250), into = -(sr[0] * n[0] + sr[1] * n[1]);
         const o = out[k], lift = 4 * o * (1 - o) * clamp(into / 5, 0, 1);
-        if (lift > 0.5) { runs.push([b, Math.max(b + 300, 1.4 * cpDepth)]); shelfCols++; }
+        if (lift > 0.5) { runs.push([b, Math.max(b + 300, 1.4 * cpDepth)]); lit.push([b, Math.max(b + 300, 1.4 * cpDepth), pathTau(b, Math.max(b + 300, 1.4 * cpDepth))]); shelfCols++; }
       }
     }
     // the anvil
     const an = anvilAt(x, y);
-    if (an) { runs.push([an.base, an.top]); anvilCols++; }
+    if (an) { runs.push([an.base, an.top]); lit.push([an.base, an.top, an.iwp * 1000 * TAU_ICE_PER_GM2]); anvilCols++; }
     colRuns[k] = runs; // (written once the stratiform deck is in: below)
+    // (the rain under the cloud, for the light only: its optical depth up to the base or the freezing level)
+    if (rain[k] > 0.1) { const hR = Math.min(b > 0 ? b : freezeZ, freezeZ); lit.push([0, hR, rainExtinctionPerKm(rain[k]) * hR / 1000]); }
+    lightRuns[k] = lit;
     const o = k * BOX_FIELDS;
     box[o + 4] = logRate(rain[k]); box[o + 5] = logRate(hail[k]);
     box[o + 6] = i8(-deficit * out[k] * 10);
@@ -333,6 +349,9 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
   const fallOf = mmh => 9.65 - 10.3 * Math.exp(-0.6 * 0.9 * Math.max(0.1, mmh) ** 0.21); // (Atlas et al. 1973 for the median drop)
   const colAt = (x, y) => { const i = Math.floor((x + anchorX) / dx) + 1, j = Math.floor((y + anchorY) / dx) + 1; return i < 1 || j < 1 || i > nx || j > ny ? -1 : col(i, j); };
   const deckRun = [freezeZ, Math.max(freezeZ + 500, el)];
+  // (the deck's ice, for the light: what the rain it sheds falls from - at the melting level the rain's
+  // flux over the snow's fall speed, thinning to none at its top - from the mean rain it gave)
+  const deckLight = [deckRun[0], deckRun[1], 0], deckRain = [];
   const deckAt = new Uint8Array(N);
   for (let j = 1; j <= ny; j++) for (let i = 1; i <= nx; i++) {
     const k = col(i, j);
@@ -347,8 +366,10 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     }
     // (every such column marks its own source: the deck is where all that rain came from, not just
     // enough of it to be crossed on the way down)
-    if (!found && src >= 0 && !deckAt[src]) { deckAt[src] = 1; colRuns[src].push(deckRun); deckCols++; }
+    if (!found && src >= 0) deckRain.push(rain[k]);
+    if (!found && src >= 0 && !deckAt[src]) { deckAt[src] = 1; colRuns[src].push(deckRun); lightRuns[src].push(deckLight); deckCols++; }
   }
+  if (deckRain.length) { const r = deckRain.reduce((a, c) => a + c, 0) / deckRain.length, iwcGm3 = r / 3600 / CLOUD_OPTICS.snowFallMs * 1000; deckLight[2] = 0.5 * iwcGm3 * (deckLight[1] - deckLight[0]) * TAU_ICE_PER_GM2; }
   // The columns' cloud: the two lowest runs, overlapping ones joined.
   for (let k = 0; k < N; k++) {
     const runs = colRuns[k].sort((a, c) => a[0] - c[0]), merged = [];
@@ -413,22 +434,18 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     // far lower (lclMix), so the funnel reaches down to the ground in a moist hook while the wall
     // cloud stays up. (Until 2026-11-08 the core condensed at the wall cloud's base: a 130 mph
     // tornado under a 650 m base hung a funnel only to ~430 m - Vc^2 >= g H needs ~80 m/s there.)
-    const coreOut = 1 - (1 - outAt(T.x, T.y)) * (1 - clamp(storm.occlusion ?? 0, 0, 1));
+    // (the funnel itself, its tip and radius: TornadoFunnel.js, which the engine's appearance shares)
+    const coreOut = coreOutflowShare(outAt(T.x, T.y), storm.occlusion);
     const Bc = Math.min(Bt, Math.max(0, lclMix(coreOut) - dm / rhoG));
-    const tip = Math.max(0, Bc - T.drop / rhoG);
-    // (between the core's level and the wall cloud's, the core's air is past its condensation level:
-    // condensed as far out as the core draws it in, coreAirR core radii)
-    const funnel = z => {
-      if (T.R <= 0) return 0;
-      if (z >= Bt) return S.funnelCapM;
-      const cap = Math.min(S.funnelCapM, S.coreAirR * T.R);
-      if (z >= Bc) return cap;
-      return Math.min(cap, rankineDropRadius(rhoG * (Bc - z), T.R, T.V, rho0));
-    };
-    // upright at the ground, curving into the mesocyclone (the storm's position) at the base
+    const tf = tornadoFunnel({ R: T.R, V: T.V, rho: rho0, wallBaseM: Bt, coreBaseM: Bc });
+    const tip = tf.tipM, funnel = tf.radiusAt;
+    // upright at the ground, leaning toward its parent mesocyclone as it occludes and to the right of its
+    // track as it decays (TornadoFunnel.js tornadoTilt, the appearance's rule; until 2026-11-19 toward
+    // the low-level mesocyclone at the ground - the tornado itself - so upright through its whole life)
     // (half the levels below the funnel's tip, for the lean; half in the condensed funnel, for its shape)
     const zs = tip > 20 ? [0.15, 0.45, 0.8, 1].map(q => q * tip).concat([0.3, 0.6, 0.85, 1].map(q => tip + q * (Bt - tip))) : S.levels.map(q => q * Bt);
-    const levels = zs.map(z0 => { const z = Math.max(10, z0), q = Bt > 0 ? Math.min(1, z / Bt) : 1, s = q * q * (3 - 2 * q); return { z, dx: (MC[0] - T.x) * s, dy: (MC[1] - T.y) * s, funnel: funnel(z < Bt ? z : Bt - 0.05 * Math.max(10, Bt - tip)) }; });
+    const tilt = tornadoTilt(storm, { depthM: tvx.depthM, baseM: Bt });
+    const levels = zs.map(z0 => { const z = Math.max(10, z0), L = tilt.at(z); return { z, dx: L.east, dy: L.north, funnel: funnel(z < Bt ? z : Bt - 0.05 * Math.max(10, Bt - tip)) }; });
     // (the top level, at the base itself, takes the funnel's width just under it: at the base the
     // funnel IS the base, drawn by the cloud and the nest, so it widens into it rather than ending in a lid)
     const efM = String(storm.tornado.estimatedEf ?? storm.tornado.ef ?? '').replace(/[^0-9]/g, ''), ef = efM === '' ? null : Number(efM);
@@ -458,6 +475,12 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
     uv.setUint8(0, UPDRAUGHT);
     [wT, wAtZ(lclIn), c1[0] + anchorX, c1[1] + anchorY, c5[0] + anchorX, c5[1] + anchorY, coreM].forEach((v, q) => uv.setFloat32(1 + 4 * q, v, true)); }
 
+  // The light round the tornado (or the wall cloud without one): StormLight.js, from the columns' cloud
+  // runs with their optical depths, their low cloud and the ground rain. Not in the bytes; the scene's.
+  const wcL = storm.geometry?.wallCloud, posL = storm.positionKm ?? { x: 0, y: 0 };
+  const lightAt = T ? { x: T.x, y: T.y } : wcL ? { x: (wcL.xKm - posL.x) * 1000, y: -(wcL.yKm - posL.y) * 1000 } : { x: 0, y: 0 };
+  const light = stormLight({ nx, ny, dx, anchorX, anchorY, runs: lightRuns, low: lowCloud, rain }, lightAt, { baseM: baseAt(lightAt.x, lightAt.y), sun });
+
   // The full frame.
   const outBytes = new Uint8Array(HEADER + box.length + nest.length + (torBytes?.length ?? 0) + driftBytes.length + upBytes.length);
   const h = new DataView(outBytes.buffer);
@@ -476,7 +499,10 @@ export function buildStormFrame(world, storm, { seq = 1, rainField } = {}) {
       zetaLow: +zetaLow.toFixed(4), zetaMid: +zetaMid.toFixed(4), mesoR: Math.round(Rm), mesoV: +Vm.toFixed(1), midV: +Vmid.toFixed(1), mesoDropHpa: +(rho0 * Vm * Vm / 100).toFixed(1), spinBudgetMidV: sb ? +sb.vMidMs.toFixed(1) : null,
       wallLclM: Math.round(lclMix(S.mixOutflow[0] + S.mixOutflow[1])), lowestBaseM: Math.round(lowestBase), deepestLoweringM: Math.round(deepest),
       rainMax: Math.round(rainMax), hailMax: Math.round(hailMax), coldPoolK: +deficit.toFixed(1), towerCols, shelfCols, anvilCols, deckCols, nestCloud,
-      tornado: torInfo
+      // the wall cloud: the base over the low-level mesocyclone, lowered by its drop - with a tornado down or not (the lab:
+      // its lowering before touchdown and its lifting after the end)
+      wallCloud: (() => { const lm = baseUnlowered(MC[0], MC[1]), dm = mesoDrop(MC[0], MC[1]); return { baseM: Math.round(Math.max(0, lm - dm / rhoG)), unloweredM: Math.round(lm), loweringM: Math.round(Math.min(lm, dm / rhoG)) }; })(),
+      tornado: torInfo, light
     }
   };
 }
