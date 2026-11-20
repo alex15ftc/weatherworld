@@ -68,7 +68,9 @@ export function initializeTornadoState(storm) {
 // tornado and 11-12 a day came; now 18%, within the record's 15-26% (Trapp et al. 2005; Thompson et al. 2017), and 8 a day.)
 // (fullRatePerHour 0.23 to 0.27 on 2026-11-19 with the cloud base's term on genesis, CLOUD_BASE: it took 17.3 tornadoes a
 // day to 14.8 over 8 seeds x 10 days; the count back where it was, with fewer under high bases and more under low ones.)
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.27, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// (fullRatePerHour 0.27 to 0.20 on 2026-11-20 with cyclic tornadogenesis, RENEWAL: a storm's repeat tornadoes come sooner and
+// more often, so its first one is drawn less often to keep the count.)
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.20, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.
@@ -111,6 +113,34 @@ export function tornadoEndOutlook(storm) {
 export const CLOUD_BASE = Object.freeze({ fullM: 1000, noneM: 2000 });
 export const cloudBaseTerm = lclM => Number.isFinite(Number(lclM)) && lclM !== null ? clamp((CLOUD_BASE.noneM - Number(lclM)) / (CLOUD_BASE.noneM - CLOUD_BASE.fullM), 0, 1) : 1;
 export const tornadoRatePerHour = (imminence, lclM = null) => TORNADO.fullRatePerHour * Math.pow(imminence, TORNADO.power) * cloudBaseTerm(lclM);
+// RENEWAL (2026-11-20): cyclic tornadogenesis. While a tornado is down the rear-flank downdraught wraps round it (the
+// storm's occlusion, StormRotation.js) and its gust front makes vorticity near the ground, baroclinically, along the
+// outflow's edge (Markowski and Richardson 2014; Dahl et al. 2014). When the old vortex is cut off, a new low-level
+// mesocyclone organises from that vorticity at the new occlusion point, under the same mid-level updraught, 5-15 km
+// east or south-east of the old one (Lemon and Doswell 1979; Burgess et al. 1982): mesocyclone cycles of ~40-45 min,
+// 15-90 min in range; occluding cyclic mesocyclogenesis with 15-60 min periods (Adlerman and Droegemeier 2002, 2005;
+// docs/stormlab/RESEARCH-SUPERCELL-LIFECYCLE.md). Modelled as two states on the tornado: its charge, the most the
+// occlusion reached while the tornado was down (0-1), which fades over decayHours once it lifts, and the new meso's
+// renewal, which organises toward the charge over buildHours. Together they make a pulse that peaks
+// buildHours * decayHours / (decayHours - buildHours) * ln(decayHours / buildHours) after the lift (~18 min) at
+// (buildHours / decayHours) ^ (buildHours / (decayHours - buildHours)) of the charge (~0.54). The genesis rate is
+// multiplied by 1 + gain * renewal, so a renewed meso still needs the storm's low-level rotation and a low cloud base
+// to put a tornado down; with a vortex spent the storm's rotation is still rebuilding (LIFE.rotationLeft), which sets
+// the earliest repeat at 20-25 min. (Before it, a storm's second tornado came from the same flat hourly rate as its
+// first: 0.09 an hour after a lift, 20% of tornadic storms with two or more, 85 min apart (median, start to start), on
+// base-2026-11-19c, against real families 15-60 min apart. Calibrated on seeds 1-4 x 4 days with fullRatePerHour
+// trimmed to keep the count: gain 6-12 over 0.25/0.75 h gave 22-28% repeats 55-60 min apart; gain 30 over 0.2/0.5 h
+// gives 35%, 50 min apart (p10 20, p90 110).)
+const RENEWAL = Object.freeze({ gain: 30, buildHours: 0.2, decayHours: 0.5 });
+// The storm's genesis rate per hour now: its rotation's rate (tornadoRatePerHour) with the renewed meso's lift.
+export const stormTornadoRatePerHour = storm => tornadoRatePerHour(tornadoImminence(storm), storm.environment?.lcl ?? null) * (1 + RENEWAL.gain * clamp(storm.tornado?.renewal ?? 0, 0, 1));
+function stepRenewal(storm, tornado, dtHours) {
+  if (tornado.onGround) { tornado.renewalCharge = Math.max(tornado.renewalCharge ?? 0, clamp(storm.occlusion ?? 0, 0, 1)); tornado.renewal = 0; return; }
+  const charge = tornado.renewalCharge ?? 0;
+  if (!(charge > 1e-4) && !((tornado.renewal ?? 0) > 1e-4)) { tornado.renewalCharge = 0; tornado.renewal = 0; return; }
+  tornado.renewalCharge = charge * Math.exp(-dtHours / RENEWAL.decayHours);
+  tornado.renewal = (tornado.renewal ?? 0) + (tornado.renewalCharge - (tornado.renewal ?? 0)) * (1 - Math.exp(-dtHours / RENEWAL.buildHours));
+}
 // Scale (mph above 65) of the wind spread for a tornado under this low-level rotation, and the
 // share of tornadoes from that spread whose wind reaches a given speed.
 export const tornadoWindScaleMph = (lowRotation, stp = 0, lclM = null) => (INTENSITY.baseScaleMph + INTENSITY.rotationScaleMph * clamp(lowRotation, 0, 1.2) + INTENSITY.stpScaleMph * clamp(stp / INTENSITY.stpFull, 0, 1.2) ** INTENSITY.stpPower) * cloudBaseTerm(lclM);
@@ -220,7 +250,8 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   const rotating = rotatingShare(storm), low = clamp(storm.lowRotation ?? 0, 0, 1.2);
   const ingredients = tornadoIngredients(environment);
   const imminence = tornadoImminence(storm);
-  const ratePerHour = tornadoRatePerHour(imminence, environment?.lcl ?? null);
+  stepRenewal(storm, tornado, dtHours);
+  const ratePerHour = tornadoRatePerHour(imminence, environment?.lcl ?? null) * (1 + RENEWAL.gain * clamp(tornado.renewal ?? 0, 0, 1));
   // The chance of one in the next half hour, for the pages; imminence is the cue itself.
   const chance = 1 - Math.exp(-ratePerHour * TORNADO.outlookHours);
   tornado.genesisPotential = imminence;
@@ -466,6 +497,8 @@ function beginTornado(world, storm, tornado) {
   tornado.windSpeedMph = 65; tornado.intensityMph = 75; tornado.coreRadiusM = null; tornado.matureCoreM = null; tornado.lifeStage = 'organizing'; tornado.lifeShare = 0; tornado.stageProgress = 0; tornado.contortion = 0; tornado.driftShare = 0; tornado.minutesSinceEnd = null; tornado.startedHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
   tornado.endedHourUtc = null; tornado.cycleCount += 1; tornado.trackPoints = []; tornado.occlusionOffsetKm = null; tornado.decayDriftBeforeKm = null; tornado.lossFall = 0; tornado.decayHeld = null; tornado.ropeOut = null; tornado.ropeFall = 0; tornado.lifeFall = 0; tornado.surge = null; tornado.surges = 0; tornado.surgeOffsetKm = null; tornado.occlusionPeak = 0; tornado.failedOcclusions = 0; tornado.loopTurnRad = 0; tornado.orbitRadPerS = 0; tornado.positionKm = tornadoPosition(storm);
   tornado.lastGenesisHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc;
+  // (its own occlusion charges the next renewal: RENEWAL)
+  tornado.renewalCharge = 0; tornado.renewal = 0;
   // What made the rotation it came from: a mesocyclone, a line's mesovortex or a boundary (a landspout).
   tornado.source = storm.lowRotationSource ?? 'mesocyclone';
 }

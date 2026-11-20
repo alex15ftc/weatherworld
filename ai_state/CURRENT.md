@@ -18,6 +18,18 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Cyclic tornadogenesis (2026-11-20, owner's request; on `main`, engine not deployed): a storm's
+  repeat tornadoes now come from a renewed low-level mesocyclone (`TornadoEngine.js` `RENEWAL`: the occlusion while a
+  tornado is down charges a pulse that peaks ~18 min after it lifts and multiplies the genesis rate by 1 + 30 x renewal;
+  `fullRatePerHour` 0.27 to 0.20 to keep the count; `expectedHazards.js` reads the same rate through
+  `stormTornadoRatePerHour`). Before it the second tornado came from the same flat hourly rate as the first.
+  Regression suite against the same tree without it: no regressions; tornadic storms with 2+ tornadoes 21 to 38%,
+  start-to-start gap median 80 to 50 min (p90 220 to 120), tornadoes a day 17.3 to 17.9, EF2+ a day 3.0 to 3.75, HIGH
+  days 7.5 to 12.5%, MDT+HIGH 31% both. New baseline `base-2026-11-20` (weatherworld-regression). Forecast check on
+  seeds 1-20 x 5 mornings, before vs after, same tables: Day 1 right 66 to 65%, Day 2 44 to 41%, Day 3 32 to 33%;
+  tornado Brier skill Day 1 18 to 22%, Day 2 9 to 12%. (Seeds 41-50 x 3 had shown Day 2 60 to 40%: 4 of 20
+  outlooks, noise.) A chances-only refit from `data/outlook-archive/2026-11-20-cycling` was tried and not installed:
+  it lowered every table, wind and hail too (drift since the 11-07 fit), and cut Day 3 on seeds 41-50 from 50 to 10%.
 - The divide (2026-11-18/19, owner's request; engine part on `main` `c9d36b3`, map part on branch `map-divide`;
   neither deployed nor published): the engine stands on the game map's own ground instead of the bare east-west
   slope: each 10-mile cell takes the world map's mean height (`js/worldmap/engineGround.js`, stored in

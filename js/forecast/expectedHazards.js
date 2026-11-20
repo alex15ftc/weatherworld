@@ -10,7 +10,7 @@
 // Hail and wind are left as the runs' reports: the engine draws no rate for them (a storm's hail
 // and gusts follow from its state; only the report log's who-reports draws are chance, and the
 // truth has the same ones).
-import { tornadoImminence, tornadoRatePerHour, tornadoWindScaleMph, tornadoShareReaching, leanScore, lowLevelInstability } from '../storms/TornadoEngine.js';
+import { stormTornadoRatePerHour, tornadoWindScaleMph, tornadoShareReaching, leanScore, lowLevelInstability } from '../storms/TornadoEngine.js';
 
 // The wind each tier of the outlooks' tornado fields begins at: EF2, EF3 and EF4 (the EF scale).
 export const TORNADO_TIER_MPH = Object.freeze({ tornadoSig: 111, tornadoExtreme: 136, tornadoViolent: 166 });
@@ -33,7 +33,8 @@ export function addExpectedTornadoes(world, grids, hours) {
   if (!grids) return;
   for (const storm of world.storms ?? []) {
     if (!storm.active || storm.tornado?.onGround) continue;
-    const rate = tornadoRatePerHour(tornadoImminence(storm), storm.environment?.lcl ?? null);
+    // (with a renewed mesocyclone's lift after an occlusion, as the engine draws: TornadoEngine RENEWAL)
+    const rate = stormTornadoRatePerHour(storm);
     if (rate > 0) add(world, grids, storm, rate * hours);
   }
 }
