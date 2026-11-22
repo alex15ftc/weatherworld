@@ -21,22 +21,39 @@ Config.SEED = 1
 -- 0.28 m), and whatever it makes is brought into the place at WORLD_SCALE (ChunkGen: parts,
 -- terrain, tree records; WorldMap's world* functions for positions). Everything else works in
 -- the place's own studs: STUDS_PER_MILE and STUDS_PER_METRE below are the real ones.
+--
+-- 2026-11-17, the quarter-size world (the owner: 1/4 of Roblox's default scale, after trying 1/8):
+-- the same again at WORLD_SCALE 0.25, so one stud is 1.12 m and a mile 150 studs, with gravity
+-- 9.81 m/s^2 at that scale. Distances the half-size world kept in the place's studs (the chunk
+-- load radius, the clients' streaming radius, foliage and far-ground distances, flying speeds) are
+-- written as design studs x WORLD_SCALE so they cover the same ground at any scale; a saved spot
+-- from an older scale is rescaled when it is read (ExploreService, PlayerData Spawn.Scale).
+--
+-- 2026-11-19, back to the half-size world (the owner): WORLD_SCALE 0.5, one stud 0.56 m and a mile
+-- 300 studs. The scale-free distances and the saved spots' Scale above are kept, so spots saved at
+-- the quarter size come back to the same place.
 Config.WORLD_SCALE = 0.5 -- the place's studs to a design stud
 Config.DESIGN_STUDS_PER_MILE = 600 -- the generator's (keep equal to js/worldmap/scale.js STUDS_PER_MILE)
 Config.DESIGN_STUDS_PER_METRE = 1 / 0.28
 Config.STUDS_PER_MILE = Config.DESIGN_STUDS_PER_MILE * Config.WORLD_SCALE -- 300
 Config.MAP_MILES = 500
-Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 300,000
+Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 150,000
 Config.REGION_MILES = 50
 
 -- Roblox's standard scale (2026-10-27): 1 stud = 0.28 m, as the storm lab (stormlab LabConfig.SCALE).
 -- Everything people see up close is at this scale: houses, roads, trees and cars (built at
--- character scale all along), the ground's height, and gravity (Workspace.Gravity 9.81 m/s^2 =
--- 35 studs/s^2, default.project.json). Only map distance is squashed (STUDS_PER_MILE above, about
--- 9.6 times shorter than true): at true scale the map would be 2.9 million studs across, past
--- float precision, and no car could keep up with a storm on the game's clock.
+-- character scale all along), the ground's height and gravity (below). Only map distance is
+-- squashed (STUDS_PER_MILE above, about 9.6 times shorter than true): at true scale the map would
+-- be 2.9 million studs across, past float precision, and no car could keep up with a storm on the
+-- game's clock.
 Config.STUDS_PER_METRE = Config.DESIGN_STUDS_PER_METRE * Config.WORLD_SCALE -- 1 / 0.56
-Config.GRAVITY = 9.81 * Config.STUDS_PER_METRE
+-- Gravity: twice 9.81 m/s^2 at the place's scale (35.04 studs/s^2 at half size), set on Workspace by
+-- ExploreService and in default.project.json. (1/8 tried Roblox's default 196.2, 2026-11-17: the
+-- cars then needed a correction force 37 times their weight to fall at their own scale; Chassis
+-- still makes up any small difference between the place's gravity and the car model's.)
+-- (2026-11-17, the owner: doubled, 19.62 m/s^2 at the place's scale, so falls and jumps are
+-- snappier; the cars still fall at 9.81 through Chassis's correction.)
+Config.GRAVITY = 2 * 9.81 * Config.STUDS_PER_METRE
 
 -- Vertical: the ground's height at the standard scale, so a 5 m rise is 18 studs against an
 -- 11-stud storey. Squashing the map steepens its slopes (at 600 studs a mile, 99.9% under 14%,
@@ -531,12 +548,15 @@ Config.CHUNK_WORLD_STUDS = Config.CHUNK_STUDS * Config.WORLD_SCALE
 -- 1024) on purpose: chunk props are StreamingMesh models (ChunkGen.place), which clients draw as
 -- low-detail imposters beyond their streamed area only while the model exists on the server.
 -- (1280, the streamed radius plus a chunk, would build ~40% of the area, without the far props.)
-Config.LOAD_RADIUS_STUDS = 2048
+-- (2048 at half size: the same ground, 4096 design studs, about 6.8 miles, at any scale.)
+Config.LOAD_RADIUS_STUDS = 4096 * Config.WORLD_SCALE
 Config.UNLOAD_MARGIN_STUDS = Config.CHUNK_WORLD_STUDS -- one chunk of hysteresis
 -- Unloading (clearing terrain, destroying props) is queued and done within this budget a frame
 -- (at least one chunk a frame), so leaving an area does not stall the server for a frame.
 Config.UNLOAD_BUDGET_MS = 3
-Config.FILL_DEPTH_STUDS = 12 -- solid ground kept below the lowest column of each chunk (design studs)
+-- solid ground kept below the lowest column of each chunk (design studs): a voxel and a half,
+-- as at half size
+Config.FILL_DEPTH_STUDS = 1.5 * Config.DESIGN_VOXEL_STUDS
 
 -- Chunk building: WORKERS parallel actors; 0 builds in serial within SERIAL_BUDGET_MS per frame.
 Config.WORKERS = 4

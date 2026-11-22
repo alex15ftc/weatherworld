@@ -17,7 +17,7 @@ local FlightController = {}
 local player = assert(Players.LocalPlayer)
 local flying = false
 -- (the speed settings, kept current from their change signals rather than read every frame)
-local speed, boostSpeed = 75, 450
+local speed, boostSpeed = 150 * Config.WORLD_SCALE, 900 * Config.WORLD_SCALE
 
 function FlightController.isFlying(): boolean
 	return flying

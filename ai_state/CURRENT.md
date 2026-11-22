@@ -552,7 +552,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
     template and its top speed, flying speeds, sky distances and far-land rings are scaled. Not seen in game:
     the car's suspension and camera are in the place, terrain is half as fine, materials keep their texture
     size, and the unchanged load radius holds about four times the props. Tree damage uses a new store
-    (`FoliageDamage2`).
+    (`FoliageDamage2`). 2026-11-22: after a quarter-size trial (2026-11-17) the world is back at 0.5 with
+    gravity doubled (owner: `Config.GRAVITY` 2 x 9.81 m/s^2, 35.04 studs/s^2, also in `default.project.json`;
+    cars still fall at 9.81 through Chassis). Place-stud distances (load radius, streaming ring, foliage,
+    far ground, flying speeds, haze) are now design studs x `WORLD_SCALE`, the same numbers at 0.5; saved
+    spots carry `Spawn.Scale` and are rescaled when read.
   - Roads: junctions are level (`JUNCTION_EASE`), the grade beside a bridge's ramp rises only where a road
     joins the ramp, curve pieces go down to 2.5 studs. `patch-place.luau` now syncs every script the build
     has. Harness over 300 chunks at half size: no building conflicts; ground through a road at 14 samples and

@@ -10,6 +10,8 @@
 -- runtime (FoliageController) reads it, falling back to these defaults.
 local Profiles = {}
 
+local S = require(script.Parent.Parent.World.Config).WORLD_SCALE
+
 export type Profile = {
 	bend: number, -- x the physical bend
 	speed: number, -- x each bone's natural frequency
@@ -40,18 +42,20 @@ Profiles.SETTINGS = {
 	source = "weather", -- "weather" (the engine's wind) or "manual" (the attributes below)
 	manualWind = 8,
 	manualDirection = 90,
-	animDistance = 450, -- studs: trees farther hold still (faded out before)
-	fadeDistance = 120, -- studs over which the sway fades to nothing toward animDistance
-	meshDistance = 900, -- studs: beyond, a tree is its impostor (billboard)
-	impostorDistance = 2000, -- studs: beyond, nothing (chunks load to Config.LOAD_RADIUS_STUDS, 2048)
-	lodLimbs = 220, -- studs: beyond, only the trunk and limbs sway (tiers 0-1)
-	lodTrunk = 340, -- studs: beyond, only the trunk
+	-- (distances in the place's studs, set at the world's scale (World Config.WORLD_SCALE) so they
+	-- reach as far over the ground at any scale: the numbers are design studs)
+	animDistance = 900 * S, -- studs: trees farther hold still (faded out before)
+	fadeDistance = 240 * S, -- studs over which the sway fades to nothing toward animDistance
+	meshDistance = 1800 * S, -- studs: beyond, a tree is its impostor (billboard)
+	impostorDistance = 4000 * S, -- studs: beyond, nothing (chunks load to Config.LOAD_RADIUS_STUDS)
+	lodLimbs = 440 * S, -- studs: beyond, only the trunk and limbs sway (tiers 0-1)
+	lodTrunk = 680 * S, -- studs: beyond, only the trunk
 	budgetMs = 0.8, -- ms a frame the sway may take (the batch grows and shrinks to fit)
 	batch = 24, -- trees a frame to start from (adaptive batching changes it)
 	adaptive = true,
 	frustum = true, -- trees out of the camera's view are not animated
-	frustumMargin = 25, -- studs: a tree this close to the view's edge still counts as in it
-	cell = 96, -- studs: the spatial hash's cell (wind sampled once a cell)
+	frustumMargin = 50 * S, -- studs: a tree this close to the view's edge still counts as in it
+	cell = 192 * S, -- studs: the spatial hash's cell (wind sampled once a cell)
 }
 
 -- A profile from a Configuration's attributes, over a base.

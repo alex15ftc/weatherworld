@@ -128,7 +128,13 @@ function Ground.new(ctx: any): any
 	local okR, radiusS = pcall(function()
 		return Workspace.StreamingTargetRadius
 	end)
-	local INNER = math.max(600, 0.8 * (if okR and type(radiusS) == "number" then radiusS else 1024))
+	-- (600 and 1024 studs at half size: scaled with the world, World Config.WORLD_SCALE)
+	-- (the labs may have no World Config: their world is at half size's numbers)
+	local worldConfig = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+	worldConfig = worldConfig and worldConfig:FindFirstChild("World")
+	worldConfig = worldConfig and worldConfig:FindFirstChild("Config")
+	local worldScale = if worldConfig then (require(worldConfig :: ModuleScript) :: any).WORLD_SCALE else 0.5
+	local INNER = math.max(1200 * worldScale, 0.8 * (if okR and type(radiusS) == "number" then radiusS else 2048 * worldScale))
 	-- The field's colour as Roblox draws a tile at the camera (2026-11-02): the tiles are lit by
 	-- Roblox (OutdoorAmbient, and the sun by Brightness - both set by Render/Sky from the camera's
 	-- sky), the far cards are not (LightInfluence 0), so they take the same light in linear terms:

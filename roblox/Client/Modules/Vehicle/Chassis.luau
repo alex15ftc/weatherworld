@@ -261,11 +261,13 @@ function Chassis.new(model: Model, config: any): Chassis
 	emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
 	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 200, 90), Color3.fromRGB(255, 90, 20))
 	emitter.LightEmission = 1
-	emitter.Size = NumberSequence.new(0.15, 0)
+	-- (size, speed and fall in metres at the car's own scale (mps), as its gravity correction:
+	-- Workspace.Gravity is Roblox's default, not the car's 9.81 m/s^2)
+	emitter.Size = NumberSequence.new(0.07 / mps, 0)
 	emitter.Lifetime = NumberRange.new(0.15, 0.45)
-	emitter.Speed = NumberRange.new(12, 30)
+	emitter.Speed = NumberRange.new(5.7 / mps, 14.3 / mps)
 	emitter.SpreadAngle = Vector2.new(60, 60)
-	emitter.Acceleration = Vector3.new(0, -Workspace.Gravity * 0.5, 0)
+	emitter.Acceleration = Vector3.new(0, -G / mps * 0.5, 0)
 	emitter.Drag = 3
 	emitter.Parent = sparks
 	sparks.Parent = Workspace.Terrain

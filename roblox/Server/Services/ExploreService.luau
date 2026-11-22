@@ -175,7 +175,9 @@ local function place(player: Player, character: Model)
 	local data = dataOf(player)
 	local spawn = if data then data.CurrentData.Spawn else nil
 	if not joined[player] and spawn and spawn.Saved then
-		x, z, y, yaw = math.clamp(spawn.X, -EDGE, EDGE), math.clamp(spawn.Z, -EDGE, EDGE), spawn.Y, spawn.Yaw
+		-- (a spot saved at another world scale, in that scale's studs: the same place on the map)
+		local k = if spawn.Scale > 0 then Config.WORLD_SCALE / spawn.Scale else 1
+		x, z, y, yaw = math.clamp(spawn.X * k, -EDGE, EDGE), math.clamp(spawn.Z * k, -EDGE, EDGE), spawn.Y * k, spawn.Yaw
 	else
 		x, z, yaw = homeSpot(player)
 	end
@@ -218,7 +220,7 @@ local function rememberSpots()
 			end
 			local p, yaw = root.Position, yawOf(root.CFrame.LookVector)
 			local spawn = data.CurrentData.Spawn
-			if spawn.Saved and (p - Vector3.new(spawn.X, spawn.Y, spawn.Z)).Magnitude < 1 and math.abs(yaw - spawn.Yaw) < 0.2 then
+			if spawn.Saved and spawn.Scale == Config.WORLD_SCALE and (p - Vector3.new(spawn.X, spawn.Y, spawn.Z)).Magnitude < Config.WORLD_SCALE * 2 and math.abs(yaw - spawn.Yaw) < 0.2 then
 				continue
 			end
 			data:Patch(function(edit)
@@ -227,6 +229,7 @@ local function rememberSpots()
 				edit.Spawn.Y = math.round(p.Y * 100) / 100
 				edit.Spawn.Z = math.round(p.Z * 100) / 100
 				edit.Spawn.Yaw = math.round(yaw * 1000) / 1000
+				edit.Spawn.Scale = Config.WORLD_SCALE
 			end)
 		end
 	end
@@ -330,7 +333,9 @@ function ExploreService.Init()
 	workspace.Terrain.WaterColor = Color3.fromRGB(62, 92, 96)
 	if not Lighting:FindFirstChildOfClass("Atmosphere") then
 		local atmosphere = Instance.new("Atmosphere")
-		atmosphere.Density = 0.32
+		-- (0.32 at half size: the same haze over the same ground, so its extinction a stud grows
+		-- as the world shrinks; Roblox's extinction a stud is about 0.188 x Density^4.15, measured)
+		atmosphere.Density = math.clamp((0.32 ^ 4.15 * 0.5 / Config.WORLD_SCALE) ^ (1 / 4.15), 0, 0.9)
 		atmosphere.Haze = 1.2
 		atmosphere.Color = Color3.fromRGB(200, 210, 222)
 		atmosphere.Decay = Color3.fromRGB(150, 160, 175)
