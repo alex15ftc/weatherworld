@@ -211,10 +211,12 @@ export function describeNow(atmosphere, { counties = null } = {}) {
     dewpoint: field(c => c.surface.dewpoint), temperature: field(c => c.surface.temperature), cape: field(c => c.derived.sounding?.mlcape ?? c.derived.cape), cin: field(c => Math.abs(c.derived.sounding?.mlcin ?? c.derived.cin ?? 0)),
     shear: field(c => c.derived.bulkShear), helicity: field(c => c.derived.srh), cloudBaseM: field(c => c.derived.lclAgl), lapse: field(c => c.derived.sounding?.lapseRate700500 ?? c.derived.lapseRate700500 ?? 6.5),
     // (xKm, yKm: where its rotation is, for the radar's look at it (radarLook): the tornado, or the wall cloud.)
-    storms: (world.storms ?? []).filter(s => s.active).map(s => {
+    // (with those still in the margin round the map, InitiationEngine INFLOW, at cell -1: on no ground of the map, so they
+    // count only as storms moving into an area, leadArrow)
+    storms: [...(world.storms ?? []), ...(world.offstageStorms ?? []).filter(s => s.inbound)].filter(s => s.active).map(s => {
       const tornado = Boolean(s.tornado?.onGround), spot = (tornado && s.tornado.positionKm) || (Number.isFinite(s.geometry?.wallCloud?.xKm) ? { x: s.geometry.wallCloud.xKm, y: s.geometry.wallCloud.yKm } : s.positionKm);
       return {
-        cell: cellOf(s.positionKm), hail: s.currentHailSizeInches ?? 0, gust: s.surfaceWind?.gustMph ?? 0, tornado, rotating: (s.mesocycloneStrength ?? 0) >= 0.35, line: (s.lineOrganization ?? 0) >= 0.5, intensity: s.intensity ?? 0,
+        cell: s.inbound ? -1 : cellOf(s.positionKm), hail: s.currentHailSizeInches ?? 0, gust: s.surfaceWind?.gustMph ?? 0, tornado, rotating: (s.mesocycloneStrength ?? 0) >= 0.35, line: (s.lineOrganization ?? 0) >= 0.5, intensity: s.intensity ?? 0,
         id: s.id, xKm: spot.x, yKm: spot.y, eastKph: s.velocityKph?.east ?? 0, northKph: s.velocityKph?.north ?? 0, mesocyclone: s.mesocycloneStrength ?? 0, stp: s.environment?.stp ?? 0,
         confirmed: tornado && (s.tornado.groundTimeMinutes ?? 0) >= WARNING.confirmMinutes - 1e-6,
         place: counties?.named ? placeOf(spot.x, spot.y, { layer: counties, milesPerKm: counties.miles / (world.width * world.cellSizeKm) }) : null

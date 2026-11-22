@@ -18,6 +18,12 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Storm inflow margin (2026-11-22, owner's request; on branch `storm-inflow-margin`, not merged or deployed): storms
+  also start in an 11-cell margin round the map and drift on when their motion brings them in (`InitiationEngine.js`
+  `INFLOW`; TECH_DECISIONS 2026-11-22); `fullRatePerHour` 0.20 to 0.16. Products may use incoming storms for ground on
+  the map only. Also fixed: the Day 1 outlook's cheap runs shared the host's offstage storms. Regression suite: no
+  regressions; tornadoes 1,524 to 1,412; south half of the map 28 to 36% of them, west half ~23 to 20%.
+
 - Cyclic tornadogenesis (2026-11-20, owner's request; on `main`, engine not deployed): a storm's
   repeat tornadoes now come from a renewed low-level mesocyclone (`TornadoEngine.js` `RENEWAL`: the occlusion while a
   tornado is down charges a pulse that peaks ~18 min after it lifts and multiplies the genesis rate by 1 + 30 x renewal;

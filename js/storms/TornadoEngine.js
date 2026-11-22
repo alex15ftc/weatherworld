@@ -70,7 +70,9 @@ export function initializeTornadoState(storm) {
 // day to 14.8 over 8 seeds x 10 days; the count back where it was, with fewer under high bases and more under low ones.)
 // (fullRatePerHour 0.27 to 0.20 on 2026-11-20 with cyclic tornadogenesis, RENEWAL: a storm's repeat tornadoes come sooner and
 // more often, so its first one is drawn less often to keep the count.)
-const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.20, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
+// (fullRatePerHour 0.20 to 0.16 on 2026-11-22 with the storms that come in from the margin round the map, InitiationEngine
+// INFLOW: 1,900 tornadoes on 8 seeds x 10 days with 0.20, 1,412 with 0.16, against 1,524 without the margin.)
+const TORNADO = { onsetRotation: [0, 0.5], fullRatePerHour: 0.16, power: 1, sustainRotation: 0.055, outlookHours: 0.5, driftKph: 30 };
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 
 // The significant tornado parameter of the storm's inflow, kept for the maps and reports.

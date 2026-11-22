@@ -16,6 +16,23 @@
 
 ## Decisions
 
+### 2026-11-22 — Storms come in from a margin round the map (INFLOW)
+
+- Status: `active`
+- Decision: storms also start in an 11-cell (~110 mi) margin round the map, in the air of the nearest cell inside it (a
+  zero-gradient lateral boundary), only where their first motion brings them onto the map within 3 h
+  (`InitiationEngine.js` `INFLOW`). They step offstage with no tornado and no reports until they cross; one that never
+  does leaves no record. Warnings, watches and discussions may use them only for ground on the map
+  (`Warning.js` issueWarnings, `Watch.js` stormsFiring, `MesoscaleDiscussion.js` describeNow cell -1).
+  `fullRatePerHour` 0.20 to 0.16 keeps the tornado count.
+- Rationale: storms drift a median ~110 mi (mostly north) between forming and their first tornado, and nothing came in
+  across the edges, so the upwind (south and west) side had only its own storms: 6% of tornadoes in the south-west
+  quadrant, 56% in the north-east. With the margin, the south half 28 to 36%; regression suite: no regressions,
+  1,412 tornadoes against 1,524. Rejected (no measurable change, 4 seeds x 7 days): faster storm organization, aiming the
+  steering upstream of the drift, a steeper genesis rate.
+- Follow-up: the west half stays at ~20% (north-west lost what the south gained): the plateau needs its own work
+  (moisture carried up the slope by the low-level wind). Deploy with the owner's go-ahead.
+
 ### 2026-11-18 — The engine stands on the game map's ground; a divide ridge in the western High Plains
 
 - Status: active (the map has the ridge since 2026-11-19, laid on its finished ground: see below)

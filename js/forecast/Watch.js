@@ -203,6 +203,16 @@ export function stormsFiring(world, cells) {
     const x = Math.min(world.width - 1, Math.max(0, Math.floor(storm.positionKm.x / world.cellSizeKm))), y = Math.min(world.height - 1, Math.max(0, Math.floor(storm.positionKm.y / world.cellSizeKm)));
     if (cells[y * world.width + x]) count++;
   }
+  // ...and a storm still in the margin round the map (InitiationEngine INFLOW) that its motion brings onto that ground
+  // within the hour: on the map's own ground, never the edge it is clamped to.
+  for (const storm of world.offstageStorms ?? []) {
+    if (!storm.active || !storm.inbound) continue;
+    for (let k = 1; k <= 12; k++) {
+      const t = k / 12, xKm = storm.positionKm.x + (storm.velocityKph?.east ?? 0) * t, yKm = storm.positionKm.y - (storm.velocityKph?.north ?? 0) * t;
+      const x = Math.floor(xKm / world.cellSizeKm), y = Math.floor(yKm / world.cellSizeKm);
+      if (x >= 0 && y >= 0 && x < world.width && y < world.height && cells[y * world.width + x]) { count++; break; }
+    }
+  }
   return count;
 }
 

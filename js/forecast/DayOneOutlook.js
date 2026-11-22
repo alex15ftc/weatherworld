@@ -431,10 +431,12 @@ export function runOutlookMemberSet(state, member, hours, { timingSpreadMs, upst
   // The cheap runs' storm layers, each from a copy of the storms at the start, with its own chances.
   // Each has its own report log (2026-11-05: until then the host's, which every run's captures wrote to and read back,
   // so each run's hail and wind were the reports of all of them: with two cheap runs a host's 77 hail cells read 281).
-  const LAYER = ['storms', 'stormEngine', 'stormArchive', 'stormHistory', 'evolution', 'reportLog'];
+  // (offstageStorms since 2026-11-22: until then every cheap run shared the host's, so a storm stepped past the map's edge
+  // while its tornado ends - and the storms in the margin, InitiationEngine INFLOW - were stepped by every run in turn.)
+  const LAYER = ['storms', 'offstageStorms', 'stormEngine', 'stormArchive', 'stormHistory', 'evolution', 'reportLog'];
   const layers = Array.from({ length: Math.max(0, cheapRuns | 0) }, (_, j) => ({
     j, days: [], day: null, open: true,
-    state: { ...structuredClone({ storms: world.storms ?? [], stormEngine: world.stormEngine, reportLog: world.reportLog ?? null }), stormArchive: [], stormHistory: [], evolution: { ...world.evolution, config: { ...world.evolution.config, seed: `${state.seed}|outlook|${member}|cheap${j}` } } }
+    state: { ...structuredClone({ storms: world.storms ?? [], offstageStorms: world.offstageStorms ?? [], stormEngine: world.stormEngine, reportLog: world.reportLog ?? null }), stormArchive: [], stormHistory: [], evolution: { ...world.evolution, config: { ...world.evolution.config, seed: `${state.seed}|outlook|${member}|cheap${j}` } } }
   }));
   // A day without storms: its chances from the ingredients summed within RISK_RADIUS_MILES.
   const fromIngredients = day => ({ ...day.result, ...ingredientDay(world, day.ingredients), fromHourUtc: day.startHour, toHourUtc: world.validHourUtc, storms: 0, tornadoes: 0, byHour: day.byHour });

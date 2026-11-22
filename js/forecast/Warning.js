@@ -236,7 +236,10 @@ export function updateWarnings(state, world, radarSites = []) {
   if (state.lastHourUtc !== null && hour <= state.lastHourUtc + 1e-6) return out;
   const stepMinutes = state.lastHourUtc === null ? 5 : Math.min(5, (hour - state.lastHourUtc) * 60);
   state.lastHourUtc = hour;
-  const looks = (world.storms ?? []).filter(storm => storm.active && storm.positionKm).map(storm => withTrend(observeStorm(storm), state.seen?.[storm.id], hour)).sort((a, b) => threat(b) - threat(a));
+  // (with the storms still in the margin round the map, InitiationEngine INFLOW, as radar beyond the map would see them:
+  // they are warned only for the counties on the map they are due in, issueWarnings)
+  const inbound = (world.offstageStorms ?? []).filter(storm => storm.inbound);
+  const looks = [...(world.storms ?? []), ...inbound].filter(storm => storm.active && storm.positionKm).map(storm => ({ ...withTrend(observeStorm(storm), state.seen?.[storm.id], hour), ...(storm.inbound ? { inbound: true } : {}) })).sort((a, b) => threat(b) - threat(a));
 
   for (const warning of state.warnings) {
     if (warning.status !== 'in effect') continue;
@@ -427,6 +430,12 @@ export function issueWarnings(state, type, look, hour, sites = []) {
   // new warning downstream). (2026-10-20: every piece the path touched was warned at once, and
   // those pieces were all false alarms, 14 of 80 tornado warnings on two seeds.)
   const ahead = WARNING.downstreamMinutes / 60, soonX = look.x + look.east * ahead, soonY = look.y - look.north * ahead;
+  // A storm not yet on the map (InitiationEngine INFLOW) is warned only where it is due on it: the pieces of the counties
+  // on the map it reaches within downstreamMinutes, and nothing where there are none.
+  if (look.inbound) {
+    const due = (officePieces(path, look, sites) ?? []).filter(p => insidePolygon(p.polygon, soonX, soonY));
+    return due.map(({ office, polygon }) => issuePiece(state, type, look, hour, sites, office, polygon, path));
+  }
   const all = officePieces(path, look, sites), pieces = all ? all.filter(p => p.holds || insidePolygon(p.polygon, soonX, soonY)) : [{ office: nearestOffice(look, sites), polygon: path }];
   if (!pieces.length) pieces.push(all[0]);
   return pieces.map(({ office, polygon }) => issuePiece(state, type, look, hour, sites, office, polygon, path));

@@ -86,7 +86,7 @@ export function logStormTick(world, places = null) {
   const seen = new Set(), touched = new Set(), moved = {};
   log.passes ??= {};
   for (const storm of [...(world.storms ?? []), ...(world.offstageStorms ?? [])]) { // (with those stepped past the edge while their tornado ends: StormEngine OFFSTAGE)
-    if (!storm.active) continue;
+    if (!storm.active || storm.inbound) continue;   // (InitiationEngine INFLOW: not yet on the map)
     const t = storm.tornado;
     if (t?.onGround) {
       const key = `${storm.id}-${t.cycleCount}`;
