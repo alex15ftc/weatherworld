@@ -18,7 +18,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- Storm inflow margin (2026-11-22, owner's request; on branch `storm-inflow-margin`, not merged or deployed): storms
+- Storm inflow margin (2026-11-22, owner's request; on main c144463, deployed from it 2026-11-22, the live world
+  carried over at hour 2156): storms
   also start in an 11-cell margin round the map and drift on when their motion brings them in (`InitiationEngine.js`
   `INFLOW`; TECH_DECISIONS 2026-11-22); `fullRatePerHour` 0.20 to 0.16. Products may use incoming storms for ground on
   the map only. Also fixed: the Day 1 outlook's cheap runs shared the host's offstage storms. Regression suite: no
