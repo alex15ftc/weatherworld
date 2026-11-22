@@ -197,7 +197,22 @@ export const lowLevelInstability = environment => Number.isFinite(environment?.c
 // vortex). The ceiling the draw gives (65 mph plus its excess) bends to that limit through a soft minimum of the two
 // excesses (sharpness: how close to the limit the bend begins); a ceiling well under it is left as it was.
 const SPEED_LIMIT = { vortexFactor: 1.8, sharpness: 6, mphPerMs: 2.23694 };
-const PATH_WIDTH = { sharpness: 6, ydPerKm: 1093.61 };
+const PATH_WIDTH = { sharpness: 6, ydPerKm: 1093.61, floorYd: 20, ydPerMph: 6.7, windPower: 0.85, refWallCloudKm: 2.1, sizePower: 1.5,
+  inflowKt: 30, inflowPower: 0.5, srh: 300, srhPower: 0.5, cape: 1500, capePower: 0.3 };
+// The environment's part in a tornado's width (a factor about 1): the low-level storm-relative inflow, which sets the
+// updraught's width by mass continuity (Peters et al. 2019, 2020, JAS: R ~ 2 V_sr H / w, r 0.76-0.9 in simulations); the
+// 0-1 km SRH, near-surface streamwise vorticity, which sets the low-level mesocyclone's radius (Peters et al. 2023, JAS 80:
+// r 0.77; they found the tornado's size unrelated to the updraught's); and the CAPE, the widest tornadoes' environments
+// having about twice the median MLCAPE (Garner et al. 2021, WAF 36). Observed, no environmental quantity explains more
+// than about 14% of the variance in damage width (Garner: r <= 0.38), so the powers are kept below 1. The references
+// are near the medians of real tornadic environments.
+export const pathWidthEnvironmentFactor = (environment, velocityKph) => {
+  const e = environment ?? {}, kt = 1 / 1.852, ve = (Number(velocityKph?.east) || 0) * kt, vn = (Number(velocityKph?.north) || 0) * kt;
+  const lowE = ((Number(e.surfaceWind?.eastKt) || 0) + (Number(e.wind850?.eastKt) || 0)) / 2, lowN = ((Number(e.surfaceWind?.northKt) || 0) + (Number(e.wind850?.northKt) || 0)) / 2;
+  const inflow = Math.max(5, Math.hypot(lowE - ve, lowN - vn)), srh = Math.max(50, Number(e.srh) || 0), cape = Math.max(100, Number(e.cape) || 0);
+  const P = PATH_WIDTH;
+  return (inflow / P.inflowKt) ** P.inflowPower * (srh / P.srh) ** P.srhPower * (cape / P.cape) ** P.capePower;
+};
 // The smaller of a and b, smoothly (p: how sharp the bend; a value far under the other is left as it was).
 const softMinimum = (a, b, p) => a <= 0 ? 0 : Math.pow(Math.pow(a, -p) + Math.pow(b, -p), -1 / p);
 export const tornadoSpeedLimitMph = cape => SPEED_LIMIT.vortexFactor * Math.sqrt(2 * Math.max(0, Number(cape) || 0)) * SPEED_LIMIT.mphPerMs;
@@ -414,7 +429,21 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // mesocyclone the tornado sits in, not more: the circulation that feeds it bounds it (Wurman and Kosiba 2013, MWR; the
   // El Reno tornado of 31 May 2013, 2.6 mi wide, filled its wall cloud). The width the wind gives bends to the wall cloud's
   // radius through a soft minimum (PATH_WIDTH.sharpness), as the wind ceiling bends to its speed limit.
-  const widthCap = Math.max(1, wallCloudRadiusKm(storm.lowRotationFree ?? low) * PATH_WIDTH.ydPerKm - 30), widthFor = mph => 30 + softMinimum(0.66 * Math.max(0, mph - 65) ** 1.5, widthCap, PATH_WIDTH.sharpness);
+  // (2026-11-21, the owner's request) The width also scales with the size of that circulation, not only the wind: path
+  // widths spread widely within each rating and overlap between them (Brooks 2004, Wea. Forecasting 19), and the widest
+  // come from broad low-level mesocyclones. Width = ydPerMph (wind - 65)^windPower (wall cloud / refWallCloudKm)^sizePower,
+  // refWallCloudKm the median under the engine's tornadoes. (Was 0.66 (wind - 65)^1.5, wind alone: no path passed
+  // ~1,450 yd on base-2026-11-21, 1,579 tornadoes. The exponent is lower because a bigger wall cloud comes with a
+  // stronger tornado (r 0.53): fitted on that run to keep the EF0-EF3 medians within 3%, while EF3+ widths spread to
+  // ~2,000 yd in the broadest circulations and wide EF0-1 wedges appear.)
+  // (2026-11-21, second step) ...and with the environment (pathWidthEnvironmentFactor): against the SPC record 2008-2022
+  // the spread of ln width within a rating was 0.36-0.65 against 0.65-0.91; the floor 30 to 20 yd for the narrow EF0s
+  // (the record's EF0 p10 is 20 yd). Fitted offline on width-env (1,579 tornadoes) to hold the medians. sizePower 2 to 1.5
+  // with it: the wall cloud grows with the tornado's strength, and at 2 the strongest overshot (EF4 median 1,295 yd, 0.63%
+  // of all paths over 2,000 yd against the record's 900 yd and 0.21%).
+  const wallKm = wallCloudRadiusKm(storm.lowRotationFree ?? low), widthCap = Math.max(1, wallKm * PATH_WIDTH.ydPerKm - PATH_WIDTH.floorYd);
+  const envWidth = pathWidthEnvironmentFactor(environment, storm.velocityKph);
+  const widthFor = mph => PATH_WIDTH.floorYd + softMinimum(PATH_WIDTH.ydPerMph * Math.max(0, mph - 65) ** PATH_WIDTH.windPower * (wallKm / PATH_WIDTH.refWallCloudKm) ** PATH_WIDTH.sizePower * envWidth, widthCap, PATH_WIDTH.sharpness);
   const targetWidth = widthFor(tornado.intensityMph);
   tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 8, 0, 1);
   // (its peak is the vortex's: every life has a mature stage, between the 5-minute ticks for a brief one, where the

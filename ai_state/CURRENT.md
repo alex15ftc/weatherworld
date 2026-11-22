@@ -657,7 +657,14 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    tornado inflows): regression none, EF4+ share 1.21 -> 0.64% (target 0.5), max ceiling 263 mph on seeds 11-18. Path width:
    the flat 25-1600 yd hold is gone; the width bends to the wall cloud radius (StormGeometry wallCloudRadiusKm, 2,100-5,000 yd;
    TornadoEngine PATH_WIDTH), unchanged below ~240 mph winds (regression identical to the limit run). Forecast check not
-   re-run for the limit or width. game-products and radar-simulator tests fail on main before this batch (not ours). Re-measure the table if the low levels change. Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
+   re-run for the limit or width. 2026-11-22 (owner's request): width = 20 + 6.7 (wind-65)^0.85 (wallcloud/2.1 km)^1.5
+   x pathWidthEnvironmentFactor = (low-level SR inflow/30 kt)^0.5 (SRH/300)^0.5 (CAPE/1500)^0.3, under the same cap (was
+   30 + 0.66 (wind-65)^1.5: nothing past ~1,450 yd). Research: Peters et al. 2019/2020/2023, Garner et al. 2021
+   (environment explains <=14% of width variance). Baseline base-2026-11-22 (this commit) vs SPC 2008-22
+   (weatherworld-regression/width-vs-spc-base-2026-11-22.txt, spccompare.cjs): EF0-3 medians 50/121/278/702 vs
+   50/125/300/600, paths >1,500 yd 0.72 vs 0.69%, >2,000 yd 0.13 vs 0.21%, sd ln width in rating 0.45-0.81 vs 0.65-0.91.
+   No regressions vs base-2026-11-21; EF4+ share 1.38% (target 0.5, tol 1.36: watch it). Forecast check not run.
+   tools/regression/worker.mjs records yd/mph/wcAtYd/wcMax/env per tornado. game-products and radar-simulator tests fail on main before this batch (not ours). Re-measure the table if the low levels change. Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
    tornadoes (ask first: long run). Step 4, PDS wording and EF2+ hatching in the Day 1 outlook, only after step 3.
 00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite
    before dawn (Night fog button: the stratus deck bright) and in the morning (visible: the deck breaking up by noon).
