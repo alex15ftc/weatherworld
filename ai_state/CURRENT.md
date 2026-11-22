@@ -664,6 +664,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    (weatherworld-regression/width-vs-spc-base-2026-11-22.txt, spccompare.cjs): EF0-3 medians 50/121/278/702 vs
    50/125/300/600, paths >1,500 yd 0.72 vs 0.69%, >2,000 yd 0.13 vs 0.21%, sd ln width in rating 0.45-0.81 vs 0.65-0.91.
    No regressions vs base-2026-11-21; EF4+ share 1.38% (target 0.5, tol 1.36: watch it). Forecast check not run.
+   Then (owner's request: more wide paths, EF0-2 medians kept): width x (1 + (wind-150)/100)^0.75 above 150 mph
+   (PATH_WIDTH.violent*). Baseline base-2026-11-22b (width-knee, this commit): no regressions; EF0-2 medians unchanged,
+   EF3/4/5 medians 731/1,291/2,339 yd; paths >1,500 yd 1.05% (SPC 0.69), >2,000 yd 0.52% (SPC 0.21), wider than the
+   record by the owner's choice. EF4+ share 1.44% vs target 0.5: the engine's surplus of violent tornadoes is the next
+   thing to look at.
    tools/regression/worker.mjs records yd/mph/wcAtYd/wcMax/env per tornado. game-products and radar-simulator tests fail on main before this batch (not ours). Re-measure the table if the low levels change. Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
    tornadoes (ask first: long run). Step 4, PDS wording and EF2+ hatching in the Day 1 outlook, only after step 3.
 00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite

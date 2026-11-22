@@ -198,7 +198,8 @@ export const lowLevelInstability = environment => Number.isFinite(environment?.c
 // excesses (sharpness: how close to the limit the bend begins); a ceiling well under it is left as it was.
 const SPEED_LIMIT = { vortexFactor: 1.8, sharpness: 6, mphPerMs: 2.23694 };
 const PATH_WIDTH = { sharpness: 6, ydPerKm: 1093.61, floorYd: 20, ydPerMph: 6.7, windPower: 0.85, refWallCloudKm: 2.1, sizePower: 1.5,
-  inflowKt: 30, inflowPower: 0.5, srh: 300, srhPower: 0.5, cape: 1500, capePower: 0.3 };
+  inflowKt: 30, inflowPower: 0.5, srh: 300, srhPower: 0.5, cape: 1500, capePower: 0.3,
+  violentKneeMph: 150, violentSpanMph: 100, violentPower: 0.75 };
 // The environment's part in a tornado's width (a factor about 1): the low-level storm-relative inflow, which sets the
 // updraught's width by mass continuity (Peters et al. 2019, 2020, JAS: R ~ 2 V_sr H / w, r 0.76-0.9 in simulations); the
 // 0-1 km SRH, near-surface streamwise vorticity, which sets the low-level mesocyclone's radius (Peters et al. 2023, JAS 80:
@@ -443,7 +444,13 @@ export function updateTornadoState(world, storm, environment, dtHours) {
   // of all paths over 2,000 yd against the record's 900 yd and 0.21%).
   const wallKm = wallCloudRadiusKm(storm.lowRotationFree ?? low), widthCap = Math.max(1, wallKm * PATH_WIDTH.ydPerKm - PATH_WIDTH.floorYd);
   const envWidth = pathWidthEnvironmentFactor(environment, storm.velocityKph);
-  const widthFor = mph => PATH_WIDTH.floorYd + softMinimum(PATH_WIDTH.ydPerMph * Math.max(0, mph - 65) ** PATH_WIDTH.windPower * (wallKm / PATH_WIDTH.refWallCloudKm) ** PATH_WIDTH.sizePower * envWidth, widthCap, PATH_WIDTH.sharpness);
+  // (2026-11-22, the owner's request) Above EF2 winds the width grows faster with the wind: the record's medians climb
+  // steeply at the top (EF3 600 yd, EF4 900, EF5 1,760), and the engine's paths past 1,500 and 2,000 yd were at or under
+  // the record's share (0.72%, 0.13% on base-2026-11-22). (1 + (wind - violentKneeMph)/violentSpanMph)^violentPower above
+  // the knee, 1 below it, so EF0-EF2 are as they were; x1.36 at 200 mph. Fitted offline on base-2026-11-22: paths past
+  // 1,500 yd 1.05%, past 2,000 yd 0.59% (the owner wanted them above the record's), EF3+ median 824 to 893 yd.
+  const violent = mph => (1 + Math.max(0, mph - PATH_WIDTH.violentKneeMph) / PATH_WIDTH.violentSpanMph) ** PATH_WIDTH.violentPower;
+  const widthFor = mph => PATH_WIDTH.floorYd + softMinimum(PATH_WIDTH.ydPerMph * Math.max(0, mph - 65) ** PATH_WIDTH.windPower * violent(mph) * (wallKm / PATH_WIDTH.refWallCloudKm) ** PATH_WIDTH.sizePower * envWidth, widthCap, PATH_WIDTH.sharpness);
   const targetWidth = widthFor(tornado.intensityMph);
   tornado.widthYards += (targetWidth - tornado.widthYards) * clamp(dtHours * 8, 0, 1);
   // (its peak is the vortex's: every life has a mature stage, between the 5-minute ticks for a brief one, where the
