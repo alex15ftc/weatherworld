@@ -16,6 +16,22 @@
 
 ## Decisions
 
+### 2026-11-23 — The west's lower tornado share is kept: its high cloud base is real High Plains air
+
+- Status: `active`
+- Decision: no engine change for the west half's ~20% of tornadoes; the moist-air geography (`inflowMoisture`'s Gulf
+  ramp) stays where it is (owner's call). Re-check the live quadrant split now and then; reopen only on new evidence.
+- Rationale (4-8 seeds x 7-10 days, measured 2026-11-22/23 on `71d73fd`): west-born storms (x < 150 mi) have the CAPE
+  and shear but a mixed-layer LCL ~1,340-1,700 m against ~1,000-1,250 m mid-map, from hotter surface air (afternoon
+  spread ~10 C against ~7 C; surface Td already ~66 F), so low-level rotation and genesis (both scaled by cloud base,
+  `StormRotation.js` cloudBase, `TornadoEngine.js` cloudBaseTerm) run at ~0.4 of mid-map's: 7% of west-born storms
+  tornadic against 17%. The surface-to-lowest-100 hPa moisture ratio is the same everywhere (0.84 against 0.87), so
+  it is not a sounding artifact. The real High Plains is less tornadic than the central Plains for this reason.
+  Rejected: carrying the moist layer as a depth above the ground (plateau Td +2-3 F, MLCAPE +160-270, but the west's
+  share unchanged and tornadoes 1,412 to 1,259 in the regression suite); starting supercells' rightward (Bunkers)
+  turn earlier (they already turn within the first hour, rotating share 0.84 at 0.5-1 h; full deviation from birth
+  would cut the northward drift only ~15%); moving the dryline / moist-air geography west (a whole-map climate shift).
+
 ### 2026-11-22 — Storms come in from a margin round the map (INFLOW)
 
 - Status: `active`
@@ -30,8 +46,8 @@
   quadrant, 56% in the north-east. With the margin, the south half 28 to 36%; regression suite: no regressions,
   1,412 tornadoes against 1,524. Rejected (no measurable change, 4 seeds x 7 days): faster storm organization, aiming the
   steering upstream of the drift, a steeper genesis rate.
-- Follow-up: the west half stays at ~20% (north-west lost what the south gained): the plateau needs its own work
-  (moisture carried up the slope by the low-level wind). Deploy with the owner's go-ahead.
+- Follow-up: the west half stays at ~20% (north-west lost what the south gained). Looked into 2026-11-23 and kept:
+  see "The west's lower tornado share is kept" above. Deployed 2026-11-22 from `c144463`.
 
 ### 2026-11-18 — The engine stands on the game map's ground; a divide ridge in the western High Plains
 

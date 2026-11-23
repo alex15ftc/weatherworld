@@ -571,10 +571,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
-000. The divide: publish the place with the ridge (download the published place, `rojo build`, then
-   `tools/worldmap/patch-place.luau`, upload; owner's go-ahead first) and deploy the engine from the same commit so
-   the weather's ground and the players' match. For stronger upslope: a taller ridge (the Palmer Divide stands up to
-   600 m) or a look at the lift threshold (affects every storm start; regression suite).
+000. The divide: done. The place has the ridge (owner, 2026-11-23) and the engine runs on it (deployed from
+   `c144463`, 2026-11-22). Left open, owner's call: a taller ridge (the Palmer Divide stands up to 600 m). The west's
+   lower tornado share is kept as realistic (TECH_DECISIONS 2026-11-23); `atmosphere-world` and `radar-simulator`
+   tests fail on main since before c144463 ("reading '29'"; "too few inflow-air cells"), to be fixed.
 00. Upper winds and warm rain (2026-11-18; on main b1be3a9, deployed from it: the live world took up the new jet).
    In the code: QG upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14 (owner accepted the regressions),
    and warm rain (PrecipitationField PHYSICS.warmRainShare, warmRainOf; StormFallout too: up to half the rain forms
