@@ -18,6 +18,13 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
+- Tornado sound (2026-11-24, owner's request; branch `audio/tornado-sound`, its own PR): `Client/Modules/
+  TornadoAudio` turns each drawn tornado's fields (vc, rc, debris loft, sub-vortices) and the camera's distance in
+  its drawing frame into layered sound: rumble, Strouhal roar and hiss, churn, Poisson debris, air absorption.
+  `TornadoAudioController` gives the 2 loudest a voice. In Studio the synth plays through AudioStreamWriter (a
+  Studio-only API); live servers play nothing until the loops from `tools/tornadoaudio/render.luau` are uploaded
+  and their ids put in `TornadoAudio/Assets`. Offline test passes (`lune run tools/tornadoaudio/
+  test_tornado_audio.luau`); not yet heard in Studio.
 - Storm inflow margin (2026-11-22, owner's request; on main c144463, deployed from it 2026-11-22, the live world
   carried over at hour 2156): storms
   also start in an 11-cell margin round the map and drift on when their motion brings them in (`InitiationEngine.js`
@@ -571,6 +578,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+00000. Tornado sound: listen in a Studio play test (F2 debug tornado: Wedge, Rope) and tune the layer mix; then,
+   with the owner's go-ahead, upload loop_noise/loop_brown/loop_debris through Studio's MCP and record the ids
+   in `Client/Modules/TornadoAudio/Assets.luau` so live servers hear tornadoes.
 0000. Railway memory (2026-11-24, owner's request): memory is the biggest Railway cost. Live RSS 2.17 GB vs 0.4-0.55 GB
    for a fresh local engine; main-thread heap ~50 MB, so most is outside the JS heaps (likely freed thread memory
    glibc keeps). `/api/performance` `.memory` now breaks it down (`server/memoryStats.js`; deployed from 71f0637 2026-11-24, container 831 MB just after restart). Next: after ~a day of

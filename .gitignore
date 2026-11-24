@@ -123,5 +123,8 @@ ai_state/artifacts/**/*.pdf
 roblox/assets/foliage/**
 !roblox/assets/foliage/manifest.json
 
+# Rendered tornado sound (tools/tornadoaudio/render.luau)
+tools/tornadoaudio/out/
+
 # Recorded days and post pictures of the social kit (tools/social)
 data/social/
