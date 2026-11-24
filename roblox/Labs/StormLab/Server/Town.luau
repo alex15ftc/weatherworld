@@ -1,7 +1,10 @@
 --!nonstrict
 -- The lab's test town (guide section 5): houses, mobile homes, farm buildings, trees and power
 -- poles, each built from parts tagged by the EF damage component they belong to
--- (Damage.DI tables). The server loads every structure with the simulated wind (a 3-s mean at
+-- (Damage.DI tables). Mobile homes are built piece by piece (the skinned mesh's pieces,
+-- Structures/MobileHomePieces) and broken and moved by Sim/MobileHome: each piece fails on its
+-- own load and flies as its own debris, the unit slides, rolls or lofts by force balance.
+-- The server loads every structure with the simulated wind (a 3-s mean at
 -- mid-height; roof parts add the updraft), lets Damage decide which components fail, and shows the
 -- staged result: failed parts disappear, buildings shift or roll, trees fall or snap, and each
 -- failed component releases its debris (ServerDebris) into the same wind.
@@ -12,10 +15,13 @@ local lab = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("StormLab")
 local Sim = lab:WaitForChild("Sim")
 local LabConfig = require(lab:WaitForChild("LabConfig"))
 local Damage = require(Sim:WaitForChild("Damage"))
+local MobileHome = require(Sim:WaitForChild("MobileHome"))
 local Noise = require(Sim:WaitForChild("Noise"))
 
 local Town = {}
 Town.__index = Town
+
+local updateHome -- (below)
 
 -- The town is laid out in METRES: builders compose CFrames in "metre space" (Roblox axes, 1 unit =
 -- 1 m; mspace below) and part / wedge scale sizes and positions to studs (LabConfig.SCALE).
@@ -136,18 +142,33 @@ local function buildHouse(model: Model, origin: CFrame, rng: any)
 	return 0.3 + H + rise
 end
 
-local function buildMobileHome(model: Model, origin: CFrame, rng: any)
-	local L, Wd, H = 20, 4.3, 3
-	local c = ({ rgb(226, 226, 214), rgb(200, 214, 220), rgb(232, 222, 200) })[rng:int(1, 3)]
-	part(model, Vector3.new(L, 0.6, Wd), origin * CFrame.new(0, 0.6, 0), rgb(90, 90, 90), Enum.Material.Metal, "allWalls")
-	part(model, Vector3.new(L, H, 0.15), origin * CFrame.new(0, 0.9 + H / 2, Wd / 2), c, Enum.Material.CorrodedMetal, "extWalls")
-	part(model, Vector3.new(L, H, 0.15), origin * CFrame.new(0, 0.9 + H / 2, -Wd / 2), c, Enum.Material.CorrodedMetal, "extWalls")
-	part(model, Vector3.new(0.15, H, Wd), origin * CFrame.new(L / 2, 0.9 + H / 2, 0), c, Enum.Material.CorrodedMetal, "extWalls")
-	part(model, Vector3.new(0.15, H, Wd), origin * CFrame.new(-L / 2, 0.9 + H / 2, 0), c, Enum.Material.CorrodedMetal, "allWalls")
-	part(model, Vector3.new(L + 0.3, 0.2, Wd + 0.3), origin * CFrame.new(0, 0.9 + H + 0.1, 0), rgb(200, 200, 196), Enum.Material.Metal, "roofFrame")
-	part(model, Vector3.new(L + 0.4, 0.05, Wd + 0.4), origin * CFrame.new(0, 0.9 + H + 0.23, 0), rgb(214, 214, 210), Enum.Material.Metal, "roofCover")
-	part(model, Vector3.new(L, 0.8, 0.05), origin * CFrame.new(0, 0.4, Wd / 2 + 0.05), rgb(180, 176, 166), Enum.Material.Metal, "trim")
-	return 0.9 + H
+-- A single-wide built from the skinned mesh's own pieces (one part per piece, the same boxes
+-- the damage model loads): the unit's parts in model.Unit (moved as one when it slides or
+-- rolls), the free-standing porch, deck, steps and piers in model.Apart. Its variant and its
+-- capacities come from MobileHome.new (s.home, set by add below).
+local MH_LOOK = {}
+for name, look in MobileHome.LOOK do
+	MH_LOOK[name] = { Color3.fromRGB(look[1][1], look[1][2], look[1][3]), Enum.Material[look[2]] }
+end
+local function buildMobileHome(model: Model, origin: CFrame, _rng: any, home: any)
+	local unit = Instance.new("Model")
+	unit.Name = "Unit"
+	unit.Parent = model
+	local apart = Instance.new("Model")
+	apart.Name = "Apart"
+	apart.Parent = model
+	local parts = {}
+	for name, p in home.pieces do
+		local b = p.base
+		local a1, a2, a3 = b.axes[1], b.axes[2], b.axes[3]
+		local cf = CFrame.new(b.pos[1], b.pos[2], b.pos[3], a1[1], a2[1], a3[1], a1[2], a2[2], a3[2], a1[3], a2[3], a3[3])
+		local look = MH_LOOK[p.cat.look]
+		local pt = part(if MobileHome.isUnit(name) then unit else apart, Vector3.new(b.size[1], b.size[2], b.size[3]), origin * cf, look[1], look[2])
+		pt.Name = name
+		parts[name] = pt
+	end
+	unit.WorldPivot = toStuds(origin)
+	return 14.3 * 0.3048, parts, unit
 end
 
 local function buildBarn(model: Model, origin: CFrame, rng: any)
@@ -255,10 +276,19 @@ function Town.new(cx: number, cy: number, bearing: number?, seed: number?): any
 		m.Name = string.format("%s_%d", di, #self.structures + 1)
 		local sgz = LabConfig.groundAt(x, y)
 		local origin = CFrame.new(mspace(x, y, sgz)) * CFrame.Angles(0, yaw + rot, 0) -- (metre space)
-		local h = BUILDERS[di](m, origin, rng)
+		local seed = self.seed * 1000 + #self.structures
+		local home, parts, unit
+		if di == "mobileHome" then
+			-- anchoring varies through a park: none, loose or rusted ties, new ones to code
+			home = MobileHome.new({ x = x, y = y, heading = yaw + rot, ground = sgz, seed = seed, quality = quality, anchors = rng:range(0, 1) })
+		end
+		local h
+		h, parts, unit = BUILDERS[di](m, origin, rng, home)
 		m.WorldPivot = toStuds(origin) -- (shifts, rolls and falls turn about the base)
 		m.Parent = self.model
-		local s = Damage.newStructure(m.Name, di, x, y, h, self.seed * 1000 + #self.structures, quality)
+		local s = if home
+			then { id = m.Name, di = di, x = x, y = y, height = h, roofZ = h, stage = 0, stageText = "intact", home = home, parts = parts, unit = unit }
+			else Damage.newStructure(m.Name, di, x, y, h, seed, quality)
 		s.model = m
 		s.origin = toStuds(origin) -- (studs)
 		s.gz = sgz -- ground height under it (m above the datum)
@@ -352,6 +382,68 @@ local function fail(s: any, group: string, dirX: number, dirY: number)
 	end
 end
 
+-- A mobile home through dt: its pieces load on the wind sampled where they are (memoised on a
+-- 4 m x 1.5 m grid for the step: the field is smooth at that scale), with the same 3-s treatment
+-- as the other structures (gusts above the 3-s mean count partly, from the home's centre); the
+-- failed pieces hide and fly as debris (a torn covering as its units), the unit moves as one.
+local MH_STEP = 0.1
+updateHome = function(s: any, world: any, dt: number, k3: number, releases: { any }, reports: { any })
+	local home = s.home
+	if MobileHome.finished(home) then
+		return
+	end
+	local cu, cv = world:windAt(s.x, s.y, 2)
+	local speed = math.sqrt(cu * cu + cv * cv)
+	s.wind3 += (speed - s.wind3) * k3
+	local g = if speed > 0.5 then math.max(s.wind3, 0.8 * speed) / speed else 1
+	local memo = {}
+	local function wind(x: number, y: number, z: number): (number, number, number)
+		local i, j, k = math.floor(x / 4 + 0.5), math.floor(y / 4 + 0.5), math.floor(z / 1.5 + 0.5)
+		local key = (i * 7919 + j) * 64 + k
+		local w = memo[key]
+		if not w then
+			local u, v, ww = world:windAt(i * 4, j * 4, math.max(0.5, k * 1.5))
+			w = { u * g, v * g, ww }
+			memo[key] = w
+		end
+		return w[1], w[2], w[3]
+	end
+	local n = math.clamp(math.ceil(dt / MH_STEP), 1, 10)
+	local moved = false
+	for _ = 1, n do
+		local failed, events = MobileHome.step(home, dt / n, wind)
+		for _, f in failed do
+			local pt = s.parts[f.name]
+			if pt then
+				pt.Transparency = 1
+				pt.CanCollide = false
+				pt.CanQuery = false
+				pt.CastShadow = false
+			end
+			-- release where the piece was: fragments spread over its longest side
+			local b = f.piece
+			local a1 = b.axes[1]
+			local len = b.size[1]
+			for k = 1, f.count do
+				local t = if f.count > 1 then (k - 0.5) / f.count - 0.5 else 0
+				local ox, oz = a1[1] * len * t, a1[3] * len * t
+				-- (local x along, z across -> sim)
+				local dx, dy = ox * home.ch + oz * home.sh, ox * home.sh - oz * home.ch
+				table.insert(releases, { f.class, f.x + dx, f.y + dy, (s.gz or 0) + f.z, f.u, f.v, f.w })
+			end
+		end
+		for _, e in events do
+			table.insert(reports, { id = s.id, di = s.di, degree = e.degree, text = e.text, wind = e.wind, x = s.x, y = s.y })
+		end
+		moved = true
+	end
+	s.stage, s.stageText = home.stage, home.stageText
+	if moved then
+		local along, ty, tz, angle = MobileHome.pose(home)
+		s.unit:PivotTo(s.origin * (CFrame.new(along * K, ty * K, tz * K) * CFrame.Angles(angle, 0, 0)))
+	end
+end
+
 -- Load every structure near a tornado or a strong outflow with the simulated wind. dt: sim
 -- seconds. Returns the debris to release: { { class, x, y, z, u, v, w } } (metres; z above the
 -- datum, i.e. the ground under the structure plus the release height). The wind is sampled at
@@ -376,7 +468,9 @@ function Town.update(self: any, world: any, dt: number): ({ any }, { any })
 	end
 	local k3 = 1 - math.exp(-dt / 3)
 	for _, s in self.structures do
-		if s.stage < #Damage.DI[s.di] then
+		if s.home then
+			updateHome(s, world, dt, k3, releases, reports)
+		elseif s.stage < #Damage.DI[s.di] then
 			local zMid = math.max(2, s.height * 0.5)
 			local u, v = world:windAt(s.x, s.y, zMid)
 			local ru, rv, rw = world:windAt(s.x, s.y, s.roofZ)

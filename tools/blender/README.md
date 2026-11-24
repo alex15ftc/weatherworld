@@ -86,3 +86,20 @@ triangles. The binaries stay out of git (`manifest.json` holds their hashes). Af
 mechanics tests (`lune run tools/foliage/test_mechanics.luau`: the trees against the EF scale's
 hardwood-tree indicator), then upload the FBX files as Models and the PNGs as images and record the
 ids in `roblox/Shared/Foliage/Assets.luau`.
+
+## Mobile home (`mobile_home.py`)
+
+A 14 x 56 ft single-wide (EF DI 3) as one skinned mesh: 128 rigid pieces, each its own bone under
+`Root` (shingles, sheathing, trusses, ceiling, siding, walls, windows, doors, shutters, vents,
+floor, chassis, piers, skirting, porch or deck, cross gable), 7.5k triangles, one 2048² atlas.
+Each piece also lists the pieces that must be gone before it can go (the load path). Built in feet,
+with Blender **5.1** (`--factory-startup` is fine).
+
+| Command | Makes | Time |
+|---|---|---|
+| `blender -b --factory-startup -P tools/blender/mobile_home.py -- <out> --data roblox/Shared/StormLab/Structures/MobileHomePieces.luau` | In `<out>`: `MobileTrailer.fbx`, `.blend`, `trailer_atlas.png`, three previews and a ree/ror test mesh; and the piece data the damage model reads (`--data`) | ~1 min |
+
+Keep the FBX, atlas and previews in `roblox/assets/structures/mobile_home/` (git-ignored; its
+`manifest.json` holds their hashes). After a change, run `lune run tools/stormlab/test_mobile_home.luau`
+(the pieces against DI 3, `docs/tornado-physics/MOBILE-HOME.md`). The mesh is not uploaded yet: the
+StormLab town builds the same pieces as parts.

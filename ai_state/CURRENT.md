@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-11
+Updated: 2026-11-24
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -43,6 +43,12 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   frame). The billboard Decals log "No asset content representation found" though the images preload as
   Success: look at them in game. The engine still answers this Studio server with HTTP 401: add the Studio local
   secret `weather_feed_key` (docs/HOSTING.md) for real weather and storm damage.
+- Mobile homes break piece by piece (2026-11-24, branch `feat/mobile-home-damage`): the destructible-trailer kit's
+  128-piece single-wide (`tools/blender/mobile_home.py`, pieces in `Shared/StormLab/Structures`) is loaded by
+  `Sim/MobileHome` (DI 3 capacities per piece, pressure coefficients, load path, breach; the unit slides, rolls or
+  lofts by force balance with anchors) and its pieces fly as their own debris; the StormLab town's park is built
+  from the pieces as parts. `tools/stormlab/test_mobile_home.luau` passes, both Rojo projects build; not yet run
+  in Studio, and the skinned mesh is not uploaded (`docs/tornado-physics/MOBILE-HOME.md`).
 
 ## Next
 
@@ -51,7 +57,9 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).
 2. Foliage: after step 1 brings real chunks in, look at the billboards (view order) and a storm's breaks; after
    any generator change, re-upload through Studio's MCP and update `Foliage/Assets.luau`.
-3. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
+3. StormLab: watch the mobile-home park in a tornado (`stormlab` project); then upload
+   `roblox/assets/structures/mobile_home/mobile_home.fbx` through Studio's MCP and draw its bones from the pieces.
+4. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
 
 ## Blockers
 

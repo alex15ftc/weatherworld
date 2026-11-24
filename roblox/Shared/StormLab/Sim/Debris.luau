@@ -11,6 +11,16 @@
 --   Debris.CLASSES[name]       physical profile (mass kg, area m2, Cd, Cl, length m, tumble)
 --   Debris.new(class, x, y, z, u, v, w, seed)
 --   Debris.step(piece, dt, wind)   wind(x, y, z) -> u, v, w
+-- Structures broken piece by piece add their own classes, made from each piece's geometry and
+-- material: the mobile home's are "mh:<piece>" (Sim/MobileHome), so server and clients fly the
+-- same piece from its name alone.
+local function dep(name: string): any
+	if script then
+		return require((script :: any).Parent:FindFirstChild(name))
+	end
+	return (require :: any)("./" .. name)
+end
+
 local Debris = {}
 
 local RHO = 1.15
@@ -50,6 +60,10 @@ Debris.CLASSES = {
 	pickup = { name = "pickup", group = "heavy", mass = 2300, area = 5.0, cd = 0.55, cl = 0.3, length = 5.5, tumble = 0.1, restitution = 0.15, friction = 0.7, size = { 5.5, 1.85, 2 }, color = { 40, 60, 110 }, material = "Metal" },
 	beam = { name = "beam", group = "heavy", mass = 120, area = 1.2, cd = 1.0, cl = 0.1, length = 6, tumble = 0.15, restitution = 0.2, friction = 0.6, size = { 6, 0.3, 0.2 }, color = { 120, 96, 70 }, material = "Wood" },
 }
+
+for name, c in dep("MobileHome").debrisClasses() do
+	Debris.CLASSES[name] = c
+end
 
 export type Piece = {
 	class: Class,

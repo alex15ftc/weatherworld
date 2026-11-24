@@ -120,3 +120,7 @@ ai_state/artifacts/**/*.pdf
 # manifest of their hashes is committed
 roblox/assets/foliage/**
 !roblox/assets/foliage/manifest.json
+
+roblox/assets/structures/**
+!roblox/assets/structures/*/
+!roblox/assets/structures/*/manifest.json

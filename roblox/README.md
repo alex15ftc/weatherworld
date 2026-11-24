@@ -81,3 +81,5 @@ The tornado lab's old storm mode (key N) still needs the long-removed `GameClien
 
 The pure simulation modules (`Shared/StormLab/Sim`, `Shared/CloudModel`) also run under Lune:
 `lune run tools/stormlab/test_frames.luau` and the rest of `tools/stormlab`, `tools/cloudlab`.
+The StormLab town's mobile homes break piece by piece (`Shared/StormLab/Sim/MobileHome`, its pieces in
+`Shared/StormLab/Structures`; `docs/tornado-physics/MOBILE-HOME.md`): `lune run tools/stormlab/test_mobile_home.luau`.

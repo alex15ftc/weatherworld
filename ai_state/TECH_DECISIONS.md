@@ -16,6 +16,25 @@
 
 ## Decisions
 
+### 2026-11-24 — Structures break piece by piece: DOD capacities per piece, the unit moved by force balance
+
+- Status: active
+- Decision: A structure built from rigid pieces (first the DI 3 single-wide, `Sim/MobileHome`) gives every piece
+  a failure speed drawn from the EF degree of damage it belongs to, loads it with the wind sampled at the piece
+  (q times a net pressure coefficient from its face, the wind angle and whether the envelope is breached; the
+  capacity scaled to the piece's height by the ASCE 7 gust profile), and lets it go only once the pieces covering
+  it are gone. Damage that is the whole unit's (sliding, rolling, lofting: DOD 3, 5, 7) is not drawn: it comes from
+  integrating drag, uplift, friction and anchor strength on whatever is still attached. Every piece flies as its
+  own Sim/Debris class (`mh:<piece>`, mass and area from its geometry and material); coverings tear into their
+  units (shingle tabs, 4 x 8 sheets, panels).
+- Rationale: the destructible-trailer kit this came from keyed thresholds on a 0-5 intensity and moved debris
+  toward painted swirl/lift targets (AGENTS.md: no painting). Per-piece DOD capacities keep the EF tables as the
+  calibration while the order, the breach and the unit's motion follow from the fields; the force balance
+  reproduces DI 3's DOD 3-5 span as the span of anchoring quality (`docs/tornado-physics/MOBILE-HOME.md`).
+- Follow-up: upload the skinned mesh and draw bones instead of parts; bring houses, barns and the main game's
+  buildings onto the same scheme; TornadoLab's `WindPhysics.CLASSES.mobileHome` (18 t) disagrees with the pieces
+  (6.9 t).
+
 ### 2026-11-11 — Trees are chunk records drawn by clients; their breaking is the server's and permanent
 
 - Status: active
