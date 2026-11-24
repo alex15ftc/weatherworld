@@ -118,3 +118,5 @@ export class ForecastPool {
 // The pool the server's products share.
 let shared = null;
 export function sharedForecastPool() { return (shared ??= new ForecastPool()); }
+// The shared pool if anything has started it (for the memory report; does not start one).
+export function startedForecastPool() { return shared; }

@@ -571,6 +571,10 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## Next
 
+0000. Railway memory (2026-11-24, owner's request): memory is the biggest Railway cost. Live RSS 2.17 GB vs 0.4-0.55 GB
+   for a fresh local engine; main-thread heap ~50 MB, so most is outside the JS heaps (likely freed thread memory
+   glibc keeps). `/api/performance` `.memory` now breaks it down (`server/memoryStats.js`). Next: after ~a day of
+   uptime read it, then set Railway `MALLOC_ARENA_MAX=2`, restart, compare a day. No database: none of it is stored data.
 000. The divide: done. The place has the ridge (owner, 2026-11-23) and the engine runs on it (deployed from
    `c144463`, 2026-11-22). Left open, owner's call: a taller ridge (the Palmer Divide stands up to 600 m). The west's
    lower tornado share is kept as realistic (TECH_DECISIONS 2026-11-23); `atmosphere-world` and `radar-simulator`

@@ -65,6 +65,8 @@ Read the keys with `railway variables --kv`. They are never kept in the repo.
   launch it, so run the real binary from PowerShell:
   `$exe="$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"; $env:_=$exe; & $exe config plan`
 - Check: `curl https://highrisk.up.railway.app/api/health`
+- Memory (Railway bills it): `curl -s .../api/performance | jq .memory`: the main thread's heap and buffers, each
+  radar and forecast thread's heap, each storm worker process, and the container's own count (`server/memoryStats.js`).
 
 ## Roblox side
 - Game settings > Security: Allow HTTP Requests on.

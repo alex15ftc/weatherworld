@@ -24,6 +24,8 @@ import { ChaserArchive, roleOf, isAdmin } from './ChaserArchive.js';
 import { BuildingDamageArchive } from './BuildingDamage.js';
 import { setCalendar, calendarFor } from '../js/forecast/calendar.js';
 import { RadarPool } from './RadarPool.js';
+import { startedForecastPool } from './ForecastPool.js';
+import { memoryReport } from './memoryStats.js';
 import { sitePage, renderPage, NOT_FOUND_PAGE, CONTENT_TYPES } from './SitePages.js';
 import { DayArchive } from './DayArchive.js';
 import { ReplayArchive } from './ReplayArchive.js';
@@ -134,7 +136,8 @@ function hostLimits() {
   return { coresSeen: os.availableParallelism(), cpuLimit: Number(quota) > 0 && Number(period) > 0 ? Math.round(Number(quota) / Number(period) * 100) / 100 : null,
     memoryLimitMb: Number.isFinite(memory) && memory > 0 ? Math.round(memory / 1048576) : null, rssMb: Math.round(process.memoryUsage().rss / 1048576), load: os.loadavg().map(v => Math.round(v * 100) / 100) };
 }
-function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null,host:hostLimits(),tornadoRadar:replays.radarCost(),radarLooks:runtime.radarLookStats}; }
+// (memory: where the memory goes, memoryStats.js; the main thread, each thread and storm worker, and the container's own count)
+async function performanceSnapshot(){ const endpoints=Object.fromEntries(Object.entries(perf.endpoints).map(([k,v])=>[k,{count:v.count,averageMs:v.totalMs/v.count,maxMs:v.maxMs}])); return {version:'2.23.2',uptimeSeconds:Math.round((Date.now()-perf.startedAt)/1000),totals:{requests:perf.totals.requests,cacheHits:runtime.performance.cacheHits,cacheMisses:runtime.performance.cacheMisses},endpoints,recent:perf.recent,productBuilds:runtime.performance.productBuilds,radarPool:radarPool?.status()??null,host:hostLimits(),tornadoRadar:replays.radarCost(),radarLooks:runtime.radarLookStats,memory:await memoryReport({radarPool,forecastPool:startedForecastPool(),stormWorkers:runtime.stormWorkers})}; }
 // (In turns: requests are answered between the storm ticks and atmosphere steps of a catch-up.)
 setInterval(async () => {
   try { if (await runtime.advanceOnTimerInTurns()) { surface.capture(); synoptic.capture(); keepReplays(); warnings?.update(); runtime.prewarmRadar(); } }
@@ -314,7 +317,7 @@ async function serveApi(url, req, res) {
   // on 2026-10-22: those products are drawn in Roblox from /api/game/v1/* (GameProducts.js).
   // What the tornado radar of the day replays is costing and how much is waiting.
   if (url.pathname === '/api/replays/status') return isAdmin(req) ? sendJson(req, res, 200, { radar: replays.radarCost(), radarPool: radarPool?.status() ?? null, host: hostLimits(), today: replays.current ? replays.contents(replays.current.day, replays.worldId) : null }, { cacheable: false, trace }) : sendJson(req, res, 401, { error: 'Admin key needed' }, { cacheable: false, trace });
-  if (url.pathname === '/api/performance') return sendJson(req,res,200,performanceSnapshot(),{cacheable:false,trace});
+  if (url.pathname === '/api/performance') return sendJson(req,res,200,await performanceSnapshot(),{cacheable:false,trace});
   if (url.pathname === '/api/map/manifest') return sendJson(req,res,200,runtime.mapManifest({scope:url.searchParams.get('scope')??'live',product:url.searchParams.get('product')??'temperature',day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'}),{cacheable:false,trace});
   const tile=url.pathname.match(/^\/api\/tiles\/(live|outlook)\/(\d+)\/(\d+)\/(\d+)\.png$/);
   if(tile){const body=await runtime.productTile({scope:tile[1],z:tile[2],x:tile[3],y:tile[4],product:url.searchParams.get('product')??(tile[1]==='radar'?'reflectivity':'temperature'),day:url.searchParams.get('day')??'day1',station:url.searchParams.get('station')??'composite'});return body?sendBinary(req,res,200,body,'image/png',{trace}):sendJson(req,res,404,{error:'Tile outside pyramid'},{cacheable:false,trace});}
