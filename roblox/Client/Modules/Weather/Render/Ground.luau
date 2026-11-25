@@ -115,10 +115,12 @@ function Ground.new(ctx: any): any
 	local SceneLight = ctx.Tornado and ctx.Tornado.SceneLight
 	local FAR = G.far or { rings = { 2400, 3200, 4300, 5800, 8000, 11000, 15000 }, cards = 96, sectors = 16, kA = 0.25, kS = 0.2 }
 	if inGame then
-		-- (metres of map: 1,500 to 18,000 studs, from about the streamed terrain's edge to as far
-		-- as storms are drawn)
+		-- (metres of map: 1,500 to 18,600 studs at 300 studs a mile, from about the streamed
+		-- terrain's edge outward. Twice the metres they were before the world was halved
+		-- (2026-11-14, World Config.WORLD_SCALE): the streamed edge is a distance in studs, so
+		-- it is twice as far on the map.)
 		FAR = table.clone(FAR)
-		FAR.rings = { 4000, 5500, 7500, 10000, 13500, 18000, 24000, 32000, 42000, 50000 }
+		FAR.rings = { 8000, 11000, 15000, 20000, 27000, 36000, 48000, 64000, 84000, 100000 }
 	end
 	-- (in the game: how far the terrain is reliably drawn, studs - a ring's card reaches down to
 	-- the ground line there)
@@ -126,7 +128,13 @@ function Ground.new(ctx: any): any
 	local okR, radiusS = pcall(function()
 		return Workspace.StreamingTargetRadius
 	end)
-	local INNER = math.max(600, 0.8 * (if okR and type(radiusS) == "number" then radiusS else 1024))
+	-- (600 and 1024 studs at half size: scaled with the world, World Config.WORLD_SCALE)
+	-- (the labs may have no World Config: their world is at half size's numbers)
+	local worldConfig = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+	worldConfig = worldConfig and worldConfig:FindFirstChild("World")
+	worldConfig = worldConfig and worldConfig:FindFirstChild("Config")
+	local worldScale = if worldConfig then (require(worldConfig :: ModuleScript) :: any).WORLD_SCALE else 0.5
+	local INNER = math.max(1200 * worldScale, 0.8 * (if okR and type(radiusS) == "number" then radiusS else 2048 * worldScale))
 	-- The field's colour as Roblox draws a tile at the camera (2026-11-02): the tiles are lit by
 	-- Roblox (OutdoorAmbient, and the sun by Brightness - both set by Render/Sky from the camera's
 	-- sky), the far cards are not (LightInfluence 0), so they take the same light in linear terms:

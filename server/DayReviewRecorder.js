@@ -262,8 +262,9 @@ export function createDayRecorder({ engine, seed = engine.seed, outDir, places, 
   function writeDay(D, dir) {
     const log = world.reportLog?.days?.[D.day] ?? { reports: [], tornadoes: [] };
     const end = D.startHour + 24, k = places.milesPerKm;
-    const efOf = mph => (mph < 65 ? 'EF0-' : mph <= 85 ? 'EF0' : mph <= 110 ? 'EF1' : mph <= 135 ? 'EF2' : mph <= 165 ? 'EF3' : mph <= 200 ? 'EF4' : 'EF5');
-    const tornadoes = log.tornadoes.filter(t => t.points.length).map(t => {
+    const efOf = mph => (mph <= 85 ? 'EF0' : mph <= 110 ? 'EF1' : mph <= 135 ? 'EF2' : mph <= 165 ? 'EF3' : mph <= 200 ? 'EF4' : 'EF5');
+    // (One whose wind never reached EF0, 65 mph, is no tornado and is left out; until 2026-11-18 it was listed as 'EF0-'.)
+    const tornadoes = log.tornadoes.filter(t => t.points.length && Math.max(...t.points.map(p => p[3])) >= 65).map(t => {
       const peak = Math.max(...t.points.map(p => p[3])), len = t.points.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - t.points[i][0], p[1] - t.points[i][1]), 0) * k;
       return { id: t.id, start: stamp(t.points[0][2]), minutes: Math.round((t.points.at(-1)[2] - t.points[0][2]) * 60), ef: efOf(peak), peak, miles: len.toFixed(1), widthYd: Math.max(...t.points.map(p => p[4])), x: t.points[0][0], y: t.points[0][1] };
     });

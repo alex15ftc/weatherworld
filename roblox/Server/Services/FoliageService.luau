@@ -30,7 +30,6 @@ local Mechanics = require(Shared.Foliage.Mechanics)
 local Records = require(Shared.Foliage.Records)
 local Assets = require(Shared.Foliage.Assets)
 local Noise = require(Shared.StormLab.Sim.Noise)
-local WorldMap = require(ServerStorage.World.WorldMap)
 local FoliageWind = require(ServerStorage.Modules.FoliageWind)
 
 local FoliageService = {}
@@ -40,8 +39,9 @@ local HOT_MS = 17 -- m/s (38 mph) 3-s gust at a chunk's middle: below this no tr
 local BUDGET_TREES = 2500
 local REGION = 16 -- chunks a side
 local FLUSH = 30 -- s
-local STORE = "FoliageDamage1"
-local TOPIC = "FoliageDamage1"
+-- (2: the half-size world of 2026-11-14 changed which trees a chunk has, and so their numbers)
+local STORE = "FoliageDamage2"
+local TOPIC = "FoliageDamage2"
 
 type Chunk = {
 	model: Model,
@@ -237,47 +237,16 @@ local function broke(c: Chunk, list: { Records.Damage })
 	end)
 end
 
--- where tornadoes are (studs) and how far their damaging winds can reach (studs)
-local function hotspots(): { { x: number, z: number, reach: number } }
-	local out = {}
-	local host = FoliageService.host
-	local st = host and host.state
-	local c = st and st.centreKm
-	local function add(kx: number, ky: number, reachM: number)
-		local sx, sz = WorldMap.studsAt(kx / Config.KM_PER_MILE, ky / Config.KM_PER_MILE)
-		local studsPerM = Config.STUDS_PER_MILE / (Config.KM_PER_MILE * 1000)
-		table.insert(out, { x = sx, z = sz, reach = reachM * studsPerM + Config.CHUNK_STUDS })
-	end
-	if st and st.world and c then
-		for _, t in st.world.tornadoes or {} do
-			if not t.ended and t.x and t.y then
-				add(c.x + t.x / 1000, c.y - t.y / 1000, 3000)
-			end
-		end
-	end
-	local live = FoliageService.live
-	if live then
-		for _, s in live.stormsNow() do
-			local t = s.frame.tornado
-			if t and t.mph > 0 then
-				local f = s.frame
-				add(s.xKm + (t.x - f.anchorX) / 1000, s.yKm - (t.y - f.anchorY) / 1000, math.max(12 * t.R, 1500))
-			end
-		end
-	end
-	return out
-end
-
 local function tick()
 	local now = workspace:GetServerTimeNow()
-	local spots = hotspots()
+	local spots = FoliageWind.hotspots()
 	local budget = BUDGET_TREES
 	local hot = 0
 	for _, c in chunks do
 		if not c.model.Parent then
 			continue
 		end
-		local mx, mz = (c.cx + 0.5) * Config.CHUNK_STUDS, (c.cz + 0.5) * Config.CHUNK_STUDS
+		local mx, mz = (c.cx + 0.5) * Config.CHUNK_WORLD_STUDS, (c.cz + 0.5) * Config.CHUNK_WORLD_STUDS
 		local near = false
 		for _, s in spots do
 			if (s.x - mx) ^ 2 + (s.z - mz) ^ 2 < s.reach * s.reach then

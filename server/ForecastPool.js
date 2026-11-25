@@ -49,9 +49,12 @@ export class ForecastPool {
   }
 
   // One run. kind: 'outlook' or 'mesoscale'; state: shareState's bytes; priority: higher goes first.
-  run(kind, state, member, hours, { priority = 0, options = {} } = {}) {
+  // onProgress(part): called with each part the run sends while it goes (an outlook member's finished days, a
+  // model run's kept hours), so a product can be shown before the run ends; the run then sends back only what
+  // it did not send already (2026-11-16, the owner's request).
+  run(kind, state, member, hours, { priority = 0, options = {}, onProgress = null } = {}) {
     return new Promise((resolve, reject) => {
-      this.queue.push({ message: { kind, state, member, hours, options }, priority, order: this.order++, queuedAt: Date.now(), resolve, reject });
+      this.queue.push({ message: { kind, state, member, hours, options, stream: Boolean(onProgress) }, priority, order: this.order++, queuedAt: Date.now(), resolve, reject, onProgress });
       this.queue.sort((a, b) => b.priority - a.priority || a.order - b.order);
       this.pump();
     });
@@ -77,6 +80,8 @@ export class ForecastPool {
     this.workers.add(worker);
     const settle = (fn, value) => { const task = worker.task; worker.task = null; if (task) { this.stats.runs++; this.stats.busyMs += Date.now() - task.startedAt; task[fn](value); } };
     worker.on('message', message => {
+      // (a part sent while the run goes: the run is not over)
+      if (message && 'progress' in message) { try { worker.task?.onProgress?.(message.progress); } catch (error) { console.warn('[forecast] progress:', error.message); } return; }
       settle(message?.ok ? 'resolve' : 'reject', message?.ok ? message.result : new Error(message?.error ?? 'forecast run failed'));
       worker.unref(); this.idle.push(worker); worker.idleSince = Date.now();
       worker.idleTimer = setTimeout(() => this.retire(worker), this.idleMs); worker.idleTimer.unref();
@@ -113,3 +118,5 @@ export class ForecastPool {
 // The pool the server's products share.
 let shared = null;
 export function sharedForecastPool() { return (shared ??= new ForecastPool()); }
+// The shared pool if anything has started it (for the memory report; does not start one).
+export function startedForecastPool() { return shared; }

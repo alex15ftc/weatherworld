@@ -7,7 +7,10 @@
 // boundaries, tornado source and report counts.
 import fs from 'node:fs';
 import path from 'node:path';
-const REPO = 'file:///C:/Users/alex1/Documents/VSCodeProjects/weatherworld/';
+// (the checkout this script is in: run from a worktree, it measures that worktree's engine. Until 2026-11-14 it
+// named the main checkout, so a run from a worktree measured the main checkout's code and its scorecard
+// came out identical to the baseline whatever the worktree had changed.)
+const REPO = new URL('../../', import.meta.url).href;
 const { avoidBackgroundThrottling } = await import(REPO + 'js/runtime/processPriority.node.js');
 avoidBackgroundThrottling();
 const { AtmosphereWorld } = await import(REPO + 'js/world/AtmosphereWorld.js');
@@ -17,14 +20,19 @@ const { RISK_RADIUS_MILES } = await import(REPO + 'js/forecast/spcOutlookRules.j
 const { worldCategoryFromHazard, PROBABILITY_LEVELS } = await import(REPO + 'js/forecast/worldRiskCategories.js');
 const { lineShare, rotatingShare, describeStormMode } = await import(REPO + 'js/storms/StormModeEngine.js');
 const { convectiveDay } = await import(REPO + 'js/reports/stormLog.js');
+const { wallCloudRadiusKm } = await import(REPO + 'js/storms/StormGeometry.js');
 
 const seed = Number(process.argv[2]), days = Number(process.argv[3] ?? 10), outDir = process.argv[4];
 const ORDER = ['NONE', 'TSTM', 'MRGN', 'SLGT', 'ENH', 'MDT', 'HIGH'];
-const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : 0);
+// (-1 below EF0: no tornado, left out of the counts and the list. Until 2026-11-18 it gave 0, so one rated below
+// EF0 counted as an EF0; the engine's tornadoes are rated 75 mph or more, so none has been yet.)
+const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : mph >= 65 ? 0 : -1);
 const NEAR_KM = 64;
 const started = Date.now();
 
-const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, n = world.width * world.height;
+// REG_STEERING: JSON settings for RegionSteering (a test of steering options; unset, the defaults).
+// REG_QG: JSON settings for the large-scale model (QuasiGeostrophicModel; unset, the defaults).
+const atmosphere = new AtmosphereWorld({ seed, steering: JSON.parse(process.env.REG_STEERING || "{}"), qg: JSON.parse(process.env.REG_QG || "{}") }), world = atmosphere.world, n = world.width * world.height;
 const regional = atmosphere.regional, cellKm = world.cellSizeKm;
 const places = placesFor(world);
 const startHour = world.stormEngine?.validHourUtc ?? world.validHourUtc;
@@ -89,12 +97,22 @@ for (let day = 0; day < days; day++) {
         let look = looks.get(key);
         if (!look) {
           const pos = s.tornado.positionKm ?? s.positionKm;
-          look = { start: h, ef: 0, source: s.tornado.source ?? 'mesocyclone', nearOutflow: nearLine(pos, 'outflow'), nearFront: ['cold', 'warm', 'stationary'].some(t => nearLine(pos, t)), nearDryline: nearLine(pos, 'dryline'),
+          look = { start: h, ef: -1, source: s.tornado.source ?? 'mesocyclone', nearOutflow: nearLine(pos, 'outflow'), nearFront: ['cold', 'warm', 'stationary'].some(t => nearLine(pos, t)), nearDryline: nearLine(pos, 'dryline'),
             mode: s.mode ?? describeStormMode(s), cps: s.coldPoolStrength ?? 0, defF: s.coldPoolTemperatureDeficitF ?? 0, contrastK: s.environment?.outflowContrastK ?? 0 };
           looks.set(key, look); rec.tornadoKeys.push(key);
         }
         look.ef = Math.max(look.ef, efOf(s.tornado.ratedWindMph ?? s.tornado.peakWindSpeedMph ?? wind));
         look.km = Math.max(look.km ?? 0, s.tornado.pathLengthKm ?? 0); look.min = Math.max(look.min ?? 0, s.tornado.groundTimeMinutes ?? 0);
+        // (width study: the peak width, the wall cloud radius when it was reached, the peak intensity and the widest wall cloud)
+        const wcKm = wallCloudRadiusKm(s.lowRotationFree ?? s.lowRotation ?? 0), yd = s.tornado.widthYards ?? 0;
+        if (yd >= (look.yd ?? -1)) {
+          look.yd = yd; look.wcAtYd = wcKm;
+          // (candidate size predictors at peak width: low-level storm-relative inflow, kt, from the surface and 850 hPa winds)
+          const e = s.environment ?? {}, kt = 1 / 1.852, ve = (s.velocityKph?.east ?? 0) * kt, vn = (s.velocityKph?.north ?? 0) * kt;
+          const lowE = ((e.surfaceWind?.eastKt ?? 0) + (e.wind850?.eastKt ?? 0)) / 2, lowN = ((e.surfaceWind?.northKt ?? 0) + (e.wind850?.northKt ?? 0)) / 2;
+          look.env = { srKt: Math.hypot(lowE - ve, lowN - vn), sr850Kt: Math.hypot((e.wind850?.eastKt ?? 0) - ve, (e.wind850?.northKt ?? 0) - vn), lcl: e.lcl ?? null, srh: e.srh ?? null, srh03: e.srh03 ?? null, cape: e.cape ?? null, cape03: e.cape03 ?? null, inflow: e.effectiveInflow ?? null, shear: e.bulkShear ?? null, updraughtMs: s.updraughtMs ?? null, lowRot: s.lowRotationFree ?? s.lowRotation ?? null };
+        }
+        look.mph = Math.max(look.mph ?? 0, s.tornado.intensityMph ?? wind); look.wcMax = Math.max(look.wcMax ?? 0, wcKm);
       }
       if (half) {
         const mode = s.mode ?? describeStormMode(s), ls = lineShare(s), rot = rotatingShare(s), env = s.environment ?? {};
@@ -127,14 +145,15 @@ for (let day = 0; day < days; day++) {
   }
   const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
   const any = field => truth[`${field}Exact`].some(Boolean);
+  const rated = rec.tornadoKeys.filter(k => looks.get(k).ef >= 0), belowEf0 = rec.tornadoKeys.length - rated.length;
   daily.push({
-    seed, day: day + 1, storms: seen.size, peak: rec.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore,
+    seed, day: day + 1, storms: seen.size, peak: rec.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore - belowEf0, belowEf0,
     hailStorms: rec.hailStorms.size, windStorms: rec.windStorms.size, maxHail: rec.maxHail, maxGust: rec.maxGust,
     severe: any('hail') || any('wind') || any('tornado'), tornado: any('tornado'), sigTornado: any('tornadoSig'), sigHail: any('hailSig'), sigWind: any('windSig'),
     category: ORDER[Math.max(...truth.risk.map(r => ORDER.indexOf(r)))], worldCategory: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))],
     supercells: rec.supercellIds.size, groundSupercells: rec.groundSupercellIds.size,
     cig: Object.fromEntries(['tornado', 'wind', 'hail'].map(hz => [hz, Math.max(0, ...truth.observedCig[hz])])),
-    tornadoList: rec.tornadoKeys.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.start, ef: l.ef, km: Math.round(l.km ?? 0), minutes: Math.round(l.min ?? 0), source: l.source, nearOutflow: l.nearOutflow, nearFront: l.nearFront, nearDryline: l.nearDryline, mode: l.mode, cps: l.cps, defF: l.defF, contrastK: l.contrastK }; }),
+    tornadoList: rated.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.start, ef: l.ef, km: Math.round(l.km ?? 0), minutes: Math.round(l.min ?? 0), source: l.source, nearOutflow: l.nearOutflow, nearFront: l.nearFront, nearDryline: l.nearDryline, mode: l.mode, cps: l.cps, defF: l.defF, contrastK: l.contrastK, yd: Math.round(l.yd ?? 0), mph: Math.round(l.mph ?? 0), wcAtYd: +(l.wcAtYd ?? 0).toFixed(2), wcMax: +(l.wcMax ?? 0).toFixed(2), env: l.env ?? null }; }),
     stormMph: rec.speeds.length ? rec.speeds.sort((a, b) => a - b)[Math.floor(rec.speeds.length / 2)] : null,
     modeCount: rec.modeCount, stormSamples: rec.stormSamples,
     outflowLinesPerAnalysis: rec.outflowLines / rec.analyses, outflowKmPerAnalysis: rec.outflowKm / rec.analyses, poolShare: rec.poolShare / rec.analyses, poolMax: rec.poolMax,

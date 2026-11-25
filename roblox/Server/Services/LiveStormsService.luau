@@ -89,7 +89,7 @@ end
 local function playerKm(p: Player): (number?, number?)
 	local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then return nil, nil end
-	local mx, my = WorldMap.milesAt(root.Position.X, root.Position.Z)
+	local mx, my = WorldMap.worldMilesAt(root.Position.X, root.Position.Z)
 	return mx * Config.KM_PER_MILE, my * Config.KM_PER_MILE
 end
 
@@ -268,7 +268,8 @@ local function poll()
 	local list = {}
 	for _, p in Players:GetPlayers() do
 		local x, y = playerKm(p)
-		if x and y then table.insert(list, { x, y }) end
+		-- (who it is, for the chaser network: server/ChaserArchive.js; the public view drops it)
+		if x and y then table.insert(list, { x, y, tostring(p.UserId), p.DisplayName, p.Name }) end
 	end
 	request("POST", "/api/game/v1/storm/players", HttpService:JSONEncode({ server = if game.JobId ~= "" then game.JobId else "studio", players = list }))
 	local seqs = {}
@@ -343,7 +344,7 @@ end
 
 function LiveStormsService.Start()
 	if workspace:GetAttribute("LiveStorms") ~= true then return end
-	url = string.gsub((workspace:GetAttribute("WeatherFeedUrl") :: string?) or Config.WEATHER_FEED_URL, "/+$", "")
+	url = Config.feedUrl()
 	if url == "" then
 		status("off: no engine (WeatherFeedUrl)")
 		return

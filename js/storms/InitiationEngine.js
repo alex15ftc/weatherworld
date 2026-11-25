@@ -69,21 +69,41 @@ const WIDE_LIFT_J_KG = [10, 50], SHEAR_LOSS_KT = [30, 60], SHEAR_LOSS = 0.6;
 // cells' mean convergence of 0.5-3e-5 /s gave 3-22 J/kg of lift against MLCIN of 60-150, and a 3,000 J/kg, 50-65 kt
 // dryline afternoon had no storms; docs/METEOROLOGIST-REVIEW-2026-10-25-evening.md.)
 const BOUNDARY_MOISTURE = [4, 10], BOUNDARY_DENSITY = [3, 6], BOUNDARY_CONCENTRATION = 10;
-const MAX_ACTIVE_STORMS = 70;     // computational limit, not a meteorological one
+const MAX_ACTIVE_STORMS = 70;     // computational limit, not a meteorological one (storms on the map)
+// INFLOW (2026-11-22; 0 = off): storms also start in a margin marginCells wide round the map, in the air of
+// the nearest cell inside it (the zero-gradient lateral boundary of a limited-area model; environmentSampling clamps a
+// storm's inflow to the map's edge the same way). They step offstage, out of the game's and the radar's sight, with no
+// tornado, until they cross onto the map (StormEngine INFLOW) or leave the margin. Without it nothing comes in across
+// the edges: storms drift a median ~110 mi (mostly north) between forming and their first tornado, so the map's
+// upwind side had only its own storms. 4 seeds x 7 days: 7% of tornadoes in the south-west quadrant, 58% in the
+// north-east; every south-west tornado came from a storm born there, while the north-east drew on all four quadrants.
+// A storm starts in the margin only where its motion brings it onto the map within reachHours (StormEngine): the
+// margin is upwind of the map whatever way the storms move, and storms that would never come in are not made at all.
+// marginCells 11 (~110 mi, the median drift): 8 seeds x 10 days, with fullRatePerHour 0.2 to 0.16 (TornadoEngine), no
+// regressions, 1,412 tornadoes against 1,524; 4 seeds x 7 days, the map's south half 28 to 36% of them, south-west 6 to 9%.
+export const INFLOW = Object.freeze({ marginCells: 11, reachHours: 3 });
 
-export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours = 0.5) {
+export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours = 0.5, { marginCells = INFLOW.marginCells } = {}) {
   const active = existingStorms.filter(storm => storm.active !== false);
-  if (active.length >= MAX_ACTIVE_STORMS) return [];
+  if (active.filter(storm => !storm.inbound).length >= MAX_ACTIVE_STORMS) return [];
   const seed = world.evolution?.config?.seed ?? 'seed';
   // A forecast run's own error in the lift that starts storms (ensemblePerturbation.js); 1 in
   // the live world.
   const liftScale = Number(world.forecastLiftScale) || 1;
   const candidates = [];
+  const margin = Math.max(0, Math.round(Number(marginCells) || 0)), edgeStarts = new Map();
+  const inner = (v, n) => Math.max(1, Math.min(n - 2, v));
 
-  for (let y = 1; y < world.height - 1; y++) {
-    for (let x = 1; x < world.width - 1; x++) {
-      const cell = world.getCell(x, y);
-      const start = diagnoseInitiation(cell, liftScale);
+  for (let y = 1 - margin; y < world.height - 1 + margin; y++) {
+    for (let x = 1 - margin; x < world.width - 1 + margin; x++) {
+      const outside = x < 0 || y < 0 || x >= world.width || y >= world.height;
+      if (!outside && (x < 1 || y < 1 || x >= world.width - 1 || y >= world.height - 1)) continue;   // (the edge rows, as before)
+      let start;
+      if (outside) {
+        const key = `${inner(x, world.width)},${inner(y, world.height)}`;
+        if (!edgeStarts.has(key)) edgeStarts.set(key, diagnoseInitiation(world.getCell(inner(x, world.width), inner(y, world.height)), liftScale));
+        start = edgeStarts.get(key);
+      } else start = diagnoseInitiation(world.getCell(x, y), liftScale);
       if (!start?.canStart) continue;
       const { synoptic, boundary, terrain, thermals, surfaceLift, elevatedLift, mlCape, mlCin, muCape, muCin, elevated } = start;
       const xKm = (x + nextUnit(seed, hourUtc, x, y, 'x')) * world.cellSizeKm;
@@ -100,7 +120,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
       const primary = Object.entries(sources).sort((a, b) => b[1] - a[1])[0][0];
       const boundaryType = null, boundaryId = null;
       candidates.push({
-        x, y, xKm, yKm, probability, elevated, spacingKm,
+        x, y, xKm, yKm, probability, elevated, spacingKm, ...(outside ? { inbound: true } : {}),
         cin: elevated ? muCin : mlCin, cape: elevated ? muCape : mlCape,
         liftEnergy: elevated ? elevatedLift : surfaceLift,
         boundaryType, corridorId: boundaryId ? `boundary:${boundaryId}` : `${primary}:${Math.floor(x / 5)}:${Math.floor(y / 5)}`,
@@ -113,7 +133,7 @@ export function findInitiationCandidates(world, existingStorms, hourUtc, dtHours
   candidates.sort((a, b) => nextUnit(seed, hourUtc, a.x, a.y, 'order') - nextUnit(seed, hourUtc, b.x, b.y, 'order'));
   const accepted = [];
   for (const candidate of candidates) {
-    if (active.length + accepted.length >= MAX_ACTIVE_STORMS) break;
+    if (!candidate.inbound && active.filter(storm => !storm.inbound).length + accepted.filter(c => !c.inbound).length >= MAX_ACTIVE_STORMS) continue;
     const suppression = stormSuppression(accepted.map(c => ({ positionKm: { x: c.xKm, y: c.yKm } })), candidate.xKm, candidate.yKm, candidate.spacingKm);
     if (nextUnit(seed, hourUtc, candidate.x, candidate.y, 'accept') < suppression) continue;
     accepted.push(candidate);

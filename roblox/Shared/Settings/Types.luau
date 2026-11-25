@@ -17,6 +17,8 @@ export type NumberName =
     -- Flight
     | "FlySpeed"
     | "FlyBoostSpeed"
+    -- Audio
+    | "TornadoVolume"
 
 export type StringName =
     | "__UNIMPLEMENTED (DO NOT USE YET)__"

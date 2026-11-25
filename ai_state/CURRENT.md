@@ -18,8 +18,350 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
 
 ## True Now
 
-- The engine runs on Railway at https://weatherworld.up.railway.app and keeps its world across deploys
+- Tornado sound (2026-11-24, owner's request; branch `audio/tornado-sound`, its own PR): `Client/Modules/
+  TornadoAudio` turns each drawn tornado's fields (vc, rc, debris loft, sub-vortices) and the camera's distance in
+  its drawing frame into layered sound: rumble, Strouhal roar and hiss, churn, Poisson debris, air absorption.
+  `TornadoAudioController` gives the 2 loudest a voice. In Studio the synth plays through AudioStreamWriter (a
+  Studio-only API); live servers play nothing until the loops from `tools/tornadoaudio/render.luau` are uploaded
+  and their ids put in `TornadoAudio/Assets`. Offline test passes (`lune run tools/tornadoaudio/
+  test_tornado_audio.luau`); not yet heard in Studio.
+- Storm inflow margin (2026-11-22, owner's request; on main c144463, deployed from it 2026-11-22, the live world
+  carried over at hour 2156): storms
+  also start in an 11-cell margin round the map and drift on when their motion brings them in (`InitiationEngine.js`
+  `INFLOW`; TECH_DECISIONS 2026-11-22); `fullRatePerHour` 0.20 to 0.16. Products may use incoming storms for ground on
+  the map only. Also fixed: the Day 1 outlook's cheap runs shared the host's offstage storms. Regression suite: no
+  regressions; tornadoes 1,524 to 1,412; south half of the map 28 to 36% of them, west half ~23 to 20%.
+
+- Cyclic tornadogenesis (2026-11-20, owner's request; on `main`, engine not deployed): a storm's
+  repeat tornadoes now come from a renewed low-level mesocyclone (`TornadoEngine.js` `RENEWAL`: the occlusion while a
+  tornado is down charges a pulse that peaks ~18 min after it lifts and multiplies the genesis rate by 1 + 30 x renewal;
+  `fullRatePerHour` 0.27 to 0.20 to keep the count; `expectedHazards.js` reads the same rate through
+  `stormTornadoRatePerHour`). Before it the second tornado came from the same flat hourly rate as the first.
+  Regression suite against the same tree without it: no regressions; tornadic storms with 2+ tornadoes 21 to 38%,
+  start-to-start gap median 80 to 50 min (p90 220 to 120), tornadoes a day 17.3 to 17.9, EF2+ a day 3.0 to 3.75, HIGH
+  days 7.5 to 12.5%, MDT+HIGH 31% both. New baseline `base-2026-11-20` (weatherworld-regression). Forecast check on
+  seeds 1-20 x 5 mornings, before vs after, same tables: Day 1 right 66 to 65%, Day 2 44 to 41%, Day 3 32 to 33%;
+  tornado Brier skill Day 1 18 to 22%, Day 2 9 to 12%. (Seeds 41-50 x 3 had shown Day 2 60 to 40%: 4 of 20
+  outlooks, noise.) A chances-only refit from `data/outlook-archive/2026-11-20-cycling` was tried and not installed:
+  it lowered every table, wind and hail too (drift since the 11-07 fit), and cut Day 3 on seeds 41-50 from 50 to 10%.
+- The divide (2026-11-18/19, owner's request; engine part on `main` `c9d36b3`, map part on branch `map-divide`;
+  neither deployed nor published): the engine stands on the game map's own ground instead of the bare east-west
+  slope: each 10-mile cell takes the world map's mean height (`js/worldmap/engineGround.js`, stored in
+  `engineGroundData.js`, rebuilt by `scripts/build-engine-ground.mjs`, checked by `tests/engine-ground.mjs`). The map
+  has a Palmer Divide-like ridge across the western High Plains (`DIVIDE` in `WorldMapGenerator.js`: 350 m at the
+  west edge, about a third of the way south, gone by 30% east), laid on the finished ground (`layDivide`, the owner's
+  choice): every town, road, river, creek, county and radar is planned without it and stays as published (built
+  into the ground before planning, it moved 220 of 452 towns and renamed 226). Streams crossing it keep falling
+  through water gaps (3% sides); only 9 half-mile cells are cut 20 m+. Chunk harness at the five ridge towns: 0
+  holes, 0 steps, no footprint conflicts; ground under a highway's edge 19 notes (16 without the ridge). Engine trial
+  regression suite against `daca4bc` (8 x 10): no regressions, nothing moved past tolerance (EF4+ share 1.55 to 1.05%,
+  tornado CIG3+ days 17.5 to 10%). Upslope probe (seeds 1-4 x 4 days, against `daca4bc`): storms led by upslope 49 to 76 (of
+  ~1,800), those with a mesocyclone 26 to 43, tornadoes from them 8 to 11; storms in the ridge zone get a median 1.0
+  cm/s of upslope (was 0.6); its tornadoes unchanged (8 to 7). Upslope is still a weak trigger: the lift threshold
+  (`KF_THRESHOLD_MS` 2 cm/s at a 2 km cloud base) is about what the ridge's slope gives.
+- Steering chases lift (2026-11-18, owner's request; on `main`, engine not deployed): all of a warm-sector place's
+  support now comes only with the outer model's large-scale ascent there over the 6 h before each judged hour
+  (`RegionSteering` `liftShare: 1`, the owner accepting its regressions; `liftRangeKh: [0, 0.2]`, `liftHours: 6`), so the map goes where a trough is
+  actually lifting the air, not just under strong wind aloft. Regression suite against 0: no regressions, MDT+HIGH
+  22.5 to 28.8%, below Slight 6.25 to 5%, tornado CIG3+ days 2.5 to 5%; at 1.0 EF4+ share and CIG3+ days regressed.
+  The admin tool (`tools/admin`) has sliders for the share and both ends of the ramp. `tests/radar-simulator.mjs`
+  moved to seed 4 (the only seed of 1-6 tried that passes at 0.5 and 1). All three suite runs were on the `b1be3a9` engine
+  (stronger jet), before `ea2364a` (EF0 counting) landed; no forecast check run.
+- Long range tornado chances (2026-11-18, owner's request; stepping version `951a03b` on `main`, engine deployed from it, the world carried over): /models/long-range
+  has an admin-only "Tornado chances" panel that draws the chance of a tornado within 25 mi on the game map in the
+  ensemble's colour steps, hatched where the EF2+ (broken), EF3+ (solid) or EF4+ (cross) chance reaches 10%, as the
+  /models ensemble draws it. Like the ensemble's run totals it builds up frame by frame through each outlook day (12Z to
+  12Z): every 3-hourly frame inside a day shows the day so far, or ("Last 3 h") only what the hours since the frame
+  before added; Day 1-7 buttons go to a day's first frame. The run gathers Day 3's ingredients for storms each step
+  (`DayOneOutlook.js` `addIngredients`, shared with the outlooks, which are unchanged: checked equal to HEAD), turns them
+  into expected tornadoes by STP shares (`TORNADO_GUIDE`, not fitted) and keeps their 25-mi sums on each frame
+  (`tornadoFrames`, about 2 MB a run); admin endpoint `/api/models/long-range/tornadoes` (?frame=<forecast hour>).
+  A run started off 06Z (after a restart) has no 12Z frame, so a day's last frame stops short of its end. Seen in a
+  local browser on a fresh world (Day 3 built 11% at 13Z to 83% by 07Z; may read high, unverified).
+- Building tornado damage (2026-11-17, owner's request; branch `building-damage`, merged to `main`; not deployed, place not published): houses
+  and farm buildings are recorded by the generator (`Buildings.take`; `ChunkGen.place` groups each into a model `B<n>`
+  with `DI`, `Frame`, `Size` and a `Role` on each part). `BuildingDamageService` loads those near a tornado with the
+  shared gust (`FoliageWind.gustAt`, `FoliageWind.hotspots`) through the lab's EF components (`Sim/Damage`, seeded per
+  building, game-second steps at the 8x clock) and shows each failed degree (`Modules/StructureDamage`: parts of its
+  group changed, seeded debris downwind, flown in when seen live). Records `(building, degree, wind byte)` are kept
+  like the trees': DataStore `BuildingDamage1` by region, union merge (worst damage stands), MessagingService.
+  Commercial buildings too: the EF tables' DIs 5-18, 21, 22 and 26 (TTU 2006 Appendix A, same rows in `Sim/Damage`
+  and `js/reports/damageIndicators.js`, checked by `tests/building-damage-survey.mjs`): storefronts SRB/LRB, strip
+  malls SM, malls LSM, big boxes LIRB, offices LRB/MRB/HRB, apartments ACT/MAM, motels M, schools ES/JHSH, campuses
+  IB, canopies SSC, warehouses and hangars MBS, the NWS office SPB, with group looks (curtain wall, panels, deform,
+  drop...). Surveys from real buildings: servers with LiveStorms on POST what broke and the chunks they looked at
+  near a tornado (`/api/game/v1/damage/report`, `server/BuildingDamage.js`, saved as `building-damage.json` beside
+  the world); `surveyTornado(..., real)` uses the game's buildings where covered and draws only elsewhere
+  (`survey.real`: points and covered share). Unseen ground: a lifted tornado is leased as a job
+  (`/api/game/v1/damage/jobs`) to one server, which plans those chunks' buildings without building them
+  (`ChunkService.plan`, worker message "Plan", `ChunkGen.structures`), runs the survey's wind profile past each
+  (`Modules/SurveyReplay`, same seeds and EF components), reports and keeps the damage. Records to other servers
+  go through one queue (`Modules/DamageMessages.pack`: one message of at most 900 bytes every 2 s, many chunks a
+  message); records another server saw happen live fly their debris in, stored and surveyed ones just appear.
+  The survey product's points carry a real flag (8th field); the M map's damage layer rings real buildings in
+  white and says "estimated" for the rest. Offline checks: `lune run tools/worldmap/test-building-damage.luau
+  <rojo build>` (every indicator met and walked through its degrees, the replay, the message packing) and `node
+  tests/building-damage-survey.mjs` (both pass; the Lune test also checks every building has a roof left for its
+  roof-structure degree: warehouses and big boxes have a roof part of their own, the penthouse look takes only
+  what stands on the roof).
+- /chasers fixes (2026-11-17, owner's request; `3c91512` on `main`, engine deployed from it): the page now reads the admin key from the top bar's sign-in
+  (`js/site.js` `adminKey`, localStorage; it read sessionStorage, so signed-in admins saw the public view), and the
+  day loop draws a track only for the selected chaser (click a dot, or a row in the admin list). Seen in the local
+  site preview; the admin view with the real key not seen yet.
+- VTP and tornado strength in the ensemble (2026-11-17, owner's request; `6c87669` on `main`, engine deployed from it, the world carried over): VTP is now SPC's (STP x 3CAPE/50 capped at 2 x
+  0-3 km lapse rate/6.5; Hampshire et al. 2018 JOM), replacing an invented 0-5 blend; display only (no storm code reads it).
+  Mesoanalysis and /models gain VTP and 0-3 km CAPE fields (seed 2, Day 2 21Z, STP>=1 cells: STP p50 3.0, VTP 4.0, 3CAPE 59).
+  Ensemble track points carry the tornado's rated mph (was 1); the /models ensemble has EF2+ and EF4+ chances within
+  25 mi, every run's tornado tracks by EF, and a per-run strongest-tornado readout. Page-only additions (same day, `789d3d6`, engine deployed from it; seen in a
+  browser on live data): /models short range "VTP + UH > 75 tracks, 1 h" and a low-level instability field (3CAPE x 0-3 km
+  lapse rate, made in the page from two run fields); EF2+ 10% hatching on the ensemble tornado chance; VTP and its two terms
+  in the sounding panel; short-range tornado tracks drawn in their EF colours (they all drew black: the rating is 'EF2' text).
+  VTP runs high: about 9 on a live 21Z map (Hampshire's EF4-5 median 3.5). Ensemble VTP chances (step 2, same day; `54ce88f`, engine deployed from it): each
+  full outlook member keeps its storm day's highest VTP per cell (DayOneOutlook vtpMax, x10 in a byte; ~60 KB an issue saved),
+  shown on /models as "Chance of VTP 2+ / 4+ within 25 mi, storm day shown" from the 8 full runs (test: tests/ensemble-vtp.mjs).
+- Outlook updates count only the weather after they are out (2026-11-17, owner's request; `c003ae6`): a Day 1
+  update inside its day is valid from issue + `publishDelayHours` (0.05 world h per hour run, half-hour steps: 1 h at
+  13Z/16:30Z/20Z, 0.5 h at 01Z; live 06Z Day 1 took 1.57 h), and its runs do not count the hours before; the 06Z
+  issue skips 1.5 h (`beforeDaySkipHours`; Day 1 still 12Z-12Z). Not forecast-checked (owner shipped without it).
+  The continuity blend stays (65/35, 80/20 under way): a no-blend test (seeds 47-52) did worse at 01Z.
+- Outlooks and model frames go out as they are ready (2026-11-17, owner's request, `92ba267` on `main`; engine deployed from it, the world carried over; live 19Z short range run seen streaming): forecast threads
+  stream parts back (`ForecastPool.run` `onProgress`). Each outlook of an issue is put out once its members have run
+  its day (`OutlookRuntime.publish`); with few threads (the host has one for outlooks) the Day-1-only members run
+  first, so Day 1 goes out first (local, 2 threads: Day 1 at 234 s, Day 2 249 s, Day 3 261 s). Short and long range runs
+  are listed from their start as `partial` with `readyHours`. The model pages keep their slider and have a button for
+  every step of the run (every hour on /models, every frame on /models/long-range and /models/large-scale); steps not
+  made yet are greyed and locked, and the slider stops at the last one made. Not changed: on the host the 06Z
+  short/long range runs wait behind the outlook members for the one thread (`WEATHER_FORECAST_WORKERS` 2).
+
+- Tornado icons on the mesoanalysis page (2026-11-17, on `main`, engine deployed with it): a storm with a tornado on
+  the ground draws as an inverted triangle coloured by the EF rating of its wind now (`efColourOfMph` in
+  `js/forecast/productColours.js`, the engine's thresholds and the damage tracks' colours; grey below EF0).
+- Public 6-hourly upper-air soundings (2026-11-17, `68e1f2e` on `main`, engine deployed from it, the world carried over;
+  no release yet at deploy, the live world was at 11Z): 11 of the surface
+  stations, at least 200 km apart (`UPPER_AIR` in `server/UpperAirRuntime.js`; real sites are 300-500 km apart, which
+  would leave 5), take a sounding on the first atmosphere step at or after 00Z, 06Z, 12Z and 18Z (owner, 2026-11-17; was 06Z only). The runtime calls a new
+  `afterAtmosphereStep` hook after every step, so a catch-up turn of several steps does not miss it. The last day's
+  releases (4) are kept in `upper-air.json` beside the world state. The data is served to anyone at `/api/atmosphere/upper-air` and
+  `/api/atmosphere/upper-air/sounding?site=`, without the cell's outlook. On the mesoanalysis page they show as cyan
+  diamonds plus a "Soundings" list named after nearby towns. An admin can still get any point at the current time.
+  A release missed by more than an hour (the server down at a release hour) is skipped. Test: `tests/upper-air-runtime.mjs`.
+
+- Day 1 06Z table (2026-11-16, `e9b2499` on `main`; engine deployed from `7860dd8` with the update table's tornado row, the world carried over): `combineOutlook` counts hours into the outlook's own day
+  (from `validToHourUtc` - 24), so the server's 06Z Day 1 (6 h before its day) reads the morning `day1` table as every
+  verification script scores it; it took 18 h modulo 24 and read `day1update` (live 06Z too low on 57% of days). The
+  updates now read tornado chances through the `day1` row (it fit seeds 53-56 better); wind and hail keep `day1update`.
+- Outlook caution Day 1 0.9 / Day 2 0.9 / Day 3 0.65 (2026-11-16, owner; Day 3 was 0.9 from `2187d43`; `5a2f921` on
+  `main`, engine deployed from `3a933c0`, the world carried over; TECH_DECISIONS): on the engine at `40ce207` Day 3 at 0.9 drew Enhanced+ over
+  twice the verified area; at 0.65 its contours verify at their values. Day 1 right 62.5%, High 6% forecast and verified,
+  Moderate 11% against 22.5% (hail-hatch Moderates). Archive for re-scoring: `data/outlook-archive/2026-11-16-40ce207`.
+  Open, owner: raise the hail 2 in hatch bar 0.35 -> 0.50 (verified Moderate 23% -> ~14%), then refit the forecast hatches.
+- Steering moisture ramp (2026-11-17, owner's choice, `3e0530e` on `main`; engine deployed from `a0dffa1`, the world carried over; it takes effect at the next 06Z plan): `RegionSteering.supportByColumn` scales the
+  warm-sector support by the outer model's moisture over the map about its mean, from none at -2 g/kg to all of it at
+  +4 (`moistRangeGkg`), in place of the dry cut (`dryGkg`, full support at average air or wetter). Why: the map's
+  moisture tracked tornado counts (rank 0.50 over 80 suite days) where the support did not (0.13); lull days sat on
+  the jet's cold, dry flank, which the dry cut scored well. Suite (8 seeds x 10 days): below Slight 13.8 to 6.3%,
+  Enhanced 27.5 to 38.8%, Moderate 22.5 to 20%, High 3.8 to 6.3%, runs of 2+ below Slight 5 to 0%; tornadoes a day
+  15.3 to 17.8. Regressions accepted by the owner: wind reports a day 90th 213 to 320, hail median 120 to 190.
+  Forecast check (seeds 41-50): Day 1 right 60 to 43% (within one 97 to 100%), Day 2 40 to 35%, Day 3 20 to 40%;
+  calibrated Brier skill tornado up (Day 1 19 to 22), in-sample recalibration gains 0-1 point: no refit made (the
+  Day 1 drop is past the 15-point rule; the owner's call). `moistRangeGkg` [-3, 3] tried after: no regressions (reports
+  within tolerance) but below Slight 11.3% and lull runs back near the old settings; the owner kept [-2, 4].
+  Rejected: `lookAheadDays` 2 (lull runs 3.1 to 6.3% in a 160-day screen); `warmRangeK` (no gain over moisture alone).
+- Steering look-ahead and home pull (2026-11-16, `c9c5474` on `main`; engine deployed from `54b3d6d`, the world carried over): `RegionSteering` judges a
+  warm-sector day's slide also by the best the next day can reach (`lookAheadDays` 1) and gives up 0.15 support a
+  1000 km the slide leaves the map from its home latitude, where the jet's core is (`homePull`). Why: the live world
+  sat ~1350 km north of home on the jet's flank (16-34 kt at 500 mb) through the 11/15 lull. Regression 8 seeds x
+  80 days (`docs/STATUS.md`): none; days in runs of 2+ below Slight 2.66 to 1.25%. Forecast check (seeds 41-50):
+  category right fell on Days 1-3 (67/50/30% to 53/35/10%), Brier skill about level; the owner chose no refit.
+  Watch Day 3 placement (Enhanced+ CSI 0.42 to 0.19 on 10 outlooks). Rejected: dropping weak low-aimed days.
+- Small watches (2026-11-16, `8261e02` and `d6468d5` on `main`, engine deployed from `d6468d5`, the world carried over): a watch's least ground (`WATCH.leastCells`) is 40 cells, as an area of
+  concern's, not 120. Live MD 0372 (95%, tornado watch likely, 65 cells) drew a 99-cell watch that was dropped with
+  no word, and no watch came. Watches cut from very big areas keep their old floor (`WATCH.leastKeptCells` 60).
+  `MesoscaleRuntime.issue()` now takes a look's watches, waiting watches and numbers at once, before the
+  discussions' pictures: `issuePending` firing while they were made could reuse a watch number or draft its
+  ground twice. Left as is (owner's call): a waiting watch the next look no longer calls for is dropped with no word.
+- Dusk mixed layer (2026-11-16, `9a3b7d6` on `main`, engine deployed from it, the world carried over): after sunset the
+  surface mixing depth shrinks from the evening's depth toward 150 m (`duskCollapseHours` 0.75 h, slower in wind) instead
+  of switching in one step; the 00:30Z jump in dewpoint and SBCAPE is gone. Regression: none.
+- Mixed-layer soundings (2026-11-16, `3520f86`, merged `8298c3a` on `main`, engine deployed from it, the world carried
+  over): the sounding keeps the afternoon mixed layer's vapour to its top (a point at the top, 780 mb blended where the
+  layer reaches it), lift raises the moist top by its height over the ground, `mixedTopDryingShare` 0.2 -> 0.42. Warm
+  sector at 7 pm: 850 mb Td 13.1 C (real 13.0), LCL 1,387 m (1,377), MLCAPE median 1,843 (1,370), MLCIN -73 (-50).
+  Regression: none (tornadoes a day 18.2 -> 16.4, MDT+HIGH 36 -> 26%). Forecast check, no refit: Day 1 50/100, Day 2
+  40/95, Day 3 50/80 right/within one. Watch: Day 1 High false alarms on the scoreboard. Open: surface dewpoints in the
+  warm sector run ~1 C moist and too uniform (p10 17.5 C vs 16.4), the rest of the MLCAPE excess and the daily SBCAPE
+  peaks of ~5,100 J/kg (surface air, not the sounding). Audit tools (untracked): `tmp/cape-days/run.mjs`, `warm00z.mjs`.
+- Satellite low cloud and night fog (2026-11-16, `f88ca72` on `main`; engine deployed from it, the world carried over; place
+  published as version 507 with only `Satellite.luau` and `Palettes.luau` patched into the live place, version before saved as
+  `roblox/build/published-live-before-f88ca72.rbxl`; not seen in game):
+  the satellite draws the low cloud as a stratus sheet (ragged-edged deck, thin where the moist layer is shallow)
+  and cumulus (fine cells in streets along the 850 mb wind) from the new `cloudStratus` / `cloudCumulus` features
+  (`cloudLow` unchanged; engine feed frames identical, seed 2, 6 h), and makes a third image, `satellite.fog`
+  (BT 10.3 - 3.9 um), with an M-map toggle. Engine (same day, same tree): night stratus forms where the layer stirred under
+  the jet's nose reaches its LCL (`stratusDeckM`), so Gulf stratus spreads north overnight and shows bright in the fog image;
+  the night's cooling is now let through step by step by each step's cloud (`nightShape`); the deck keeps the night's top
+  and base through the morning until the day's mixed layer grows through it (`deckTop`, `deckLcl`; broken by about
+  noon on seed 2). All three arrays are carried by `WideRegion`. Regression suite (8 seeds, fresh baseline): no
+  regressions; tornadoes a day 18.1 to 17.9, 8 pm-7 am tornadoes 33 to 37%, MDT+HIGH 37.5 to 31.3%, tornado CIG2+
+  days 26 to 18%, hail CIG1+ days 29 to 21%. `tests/regional-atmosphere.mjs` day-night range floor 11 to 10 F (the
+  moist east's afternoons are cooler under morning stratus: 10.6 F). Forecast check (seeds 41-50 x 3, --lead-caps, against
+  HEAD run the same way): Day 1 right 67 to 60%, within one 100 to 97%; Day 2 50 to 45%, 80 to 95%; Day 3 30 to 20%, 70
+  to 80%; Brier skill equal or better for every hazard. Inside the refit rule: no refit. See
+  `docs/research/RADAR-AND-SATELLITE.md` S3 item 6. Suite again on the merge with the mixed-layer soundings (against
+  `5f84e47`): no regressions. The deck draws between its own base and top in the satellite (`deckBaseM`, `deckTopM`).
+- Site clock and admin key (2026-11-15, `227a3b7` on `main`, engine deployed from it, the world carried over): `/api/health` carries `clockHourUtc`, the world hour at this moment (`WeatherAuthorityRuntime.clockHourUtc`), and the
+  header clock (`js/site.js`) reads it; it had reset to the last half-hour step on each minute's read. The admin key
+  (`wwAdminKey`) is kept in `localStorage`, so it lasts through deploys and new tabs.
+- Tornado floor (2026-11-15, `fe6f295` on `main`; place published as version 506 with only `WeatherController` and
+  `DebugPageController` patched into the live place, version before saved as `roblox/build/published-live-before-fe6f295.rbxl`;
+  not seen in game): the game lists a lab vortex as a tornado only while its peak ground wind reaches EF0 (65 mph,
+  `Vortex.efOf` >= 0); below it the storm shows "funnel aloft" and no rating ("EF-1" was printed before). The StormLab
+  panel says "below EF0" instead of clamping to EF0. Engine and surveys already rated nothing under 65 mph (EFU).
+- Engine-sim cars (2026-11-14, on `main` from PR #2; not yet published to the live place): the pickup and Crown Vic from EngineSimRoblox
+  replace the old CarTemplate car (`roblox/README.md`, Cars), scaled to the half-size world. Every player gets the
+  pickup, a 1996 C1500 on the new `VortecL31` preset (dynos ~450 N m at 2,500-3,000 rpm, ~250 hp at 4,500, as
+  published); F4 swaps it for the Crown Vic (5,600 rpm limit) or the GMC 2500 (new `DuramaxL5P` preset from the engine-sim
+  script DMAX V8 (L5P).mr, dynos ~1,230 N m at 2,000 rpm and ~447 hp at 3,000; Allison 10-speed). Both trucks have
+  part-time 4WD (2H / 4H / 4L; L or L3). Automatic drives through a torque converter (stall,
+  creep, lockup in 3rd/4th; `tools/enginesim/launch.luau`); Sequential and Manual keep the clutch. A rolled car
+  that comes to rest is set back on its wheels. The car camera is Roblox's default (EngineSim's lived in its custom
+  CharacterController, not brought over). Driven in Studio at full size before the half-size merge; not yet driven
+  at half size (the GMC and 4WD are checked offline only). The place's Workspace still holds a "2020 GMC 2500"
+  model, which VehicleService rigs where it stands: remove it now that the GMC is a template. Known: the automatic's light-throttle shift points (from EngineSim) keep it in 3rd at highway speed.
+  2026-11-16: driven at half size in Studio after two fixes: the engine never stepped
+  when AudioStreamWriter is unusable (both audio controllers now probe and run silent), and `Chassis.apply`'s
+  low-speed stabiliser cancelled a driven wheel's force while the car crept backward (driven wheels now exempt).
+  The pickup can't climb the ~10-degree grass spawn hill in 2H (rear-tyre grip; 4L does). Car configs are
+  0.476 m/stud vs the world's 0.56 (cars ~18% large).
+- Home city (2026-11-16, `4d85c8e`, merged `de1c264` on `main`; live: the place published from Studio at 2026-11-17 02:58 UTC holds these scripts exactly, file sha256 224cd19c…): first join shows a city picker
+  (`SpawnPickerController`; the metro, city and small cities, `Server/Modules/HomeCity`, spawn in the right-hand
+  lane of the ordinary road nearest a mile past each city's east edge, facing along it, 45 studs or more from a
+  junction; the start point before picking snaps to a road the same way); dying respawns there; the car
+  (`CarService.give`) is set down in front of the player now, facing their way, not beside them; rejoining returns to the last spot (PlayerData `Spawn`, saved every 5 s
+  by `ExploreService`, floor under the saved height so indoors stays indoors). Seen in Studio: picker, move to
+  Smith Falls, rejoin at the same spot, the road spawn with the car ahead. PlayerData's key is literally
+  `Player$<userId>` (store `PlayerData_Studio` in Studio playtests). Not yet seen: respawn after death (romcp could not kill the character).
+  The choice is once only; no way to change city yet.
+- One storm wind and radar realism (2026-11-14, on `main`; engine deployed from `019a278` (first from `32b57de`), the world carried over;
+  place published as version 502 with the two changed scripts, `FoliageWind` and `Palettes`, patched into version 501;
+  not seen in Studio or in the live game): each storm's mesocyclone and tornado are one description (`js/storms/StormVortices.js`) read by the
+  frames, the radar's velocity, the rain's fall-out, the debris and the trees' wind (`FoliageWind.luau` no longer
+  adds a second tornado); the cold pool's outflow is one rule (`ColdPool.js` outflowShare). The rain field
+  (`PrecipitationField.js`) sheds precipitation by the wind at its own height, keeps the inflow's wind in the
+  updraught only through the inflow layer (an engine change: hail falls left-forward of the updraught, not in the
+  hook), spreads fall-out as the square root of time and has the structure's rear-flank downdraught; the engine's
+  own fall-out (`StormFallout.js`) uses the same mesocyclone, spread and downdraught (regression scorecards
+  identical to their baselines: the suite does not measure where cores fall). Radar: the hail spike's power goes
+  as the hail's reflectivity squared, dealiasing repeats until settled, and the reflectivity, velocity and CC
+  colour tables read as real displays do (`RadarFormat.js`, exported to `Palettes.luau`: needs a place publish).
+  Graupel and hail drawn back into the updraught rise at 0.4 of the air's net rise (`PHYSICS.relofted`, set on one
+  storm: its 40 dBZ forward flank is 47 x 17 km, real ones 30-60 x 15-25), rain's ZDR follows Brandes 2004, hail's
+  CC goes with stone size, and estimate noise is the WSR-88D's specified 1 dB / 0.2 dB. The tornado cyclone is as
+  deep as its mesocyclone; the hail spike fades in 4 km and no spectrum width reads past Vn / sqrt 3. The cold
+  pool's outflow goes as the square root of its local depth within its own spreading length (the first rule blew
+  30 m/s across a cluster's whole pool) and the pool is carried by 0.62 of the inflow layer's storm-relative wind.
+  Where the engine has a storm holding its inflow (`StormBudgets.js` stormUndercut) its gust front stands at the
+  storm (`ColdPool.js` poolDriftMs; it stood 17-24 km out). Heavy particles spread less than light ones
+  (`PHYSICS.crossingMs`) and there is a 7 mm drop class: no 20 km fringe of giant drops, a 2-3.5 dB ZDR band
+  5-8 km wide on the inflow side (a real arc is 1-3 km and up to 5 dB), and a forward flank of cells; both move
+  the engine's cores (valid regression run: none; hail CIG1+ days 17.5 to 18.8%). The TDA flags 11 of 58 engine
+  tornadoes (12 seeds x a day, no false alarms; 8 at the start; real TDA about 40-50%): 8 of 10 at 140 mph and
+  more, none under 115 mph. Loops and stills: `tmp/one-storm-wind/` (untracked).
+  Open: the hook does not evolve (the engine's rotation barely changes for hours: needs the owner's word, it
+  touches tornado lives); weak tornadoes undetected. Not to do: warming the engine's pools in moist air
+  (`COLD_POOL` base 0.25 to 0.08, dryness 0.45 to 0.62) made 17% more tornadoes over 8 seeds x 10 days for half
+  a kelvin at tornado start. Audits of tornadoes near radars must step like the server (`advanceLikeServer`).
+  The regression suite ran the MAIN checkout from any worktree until 2026-11-14 (`1ae25d6`): a scorecard
+  identical to its baseline after an engine change is a failed run, not a pass.
+- Anvil snow sublimates by the air it falls through (2026-11-14, on `main`; engine deployed from `2c7bebb`, the world
+  carried over; no place publish needed): the rate goes
+  with the cells' 500 hPa subsaturation over ice (`iceSubsaturation`, carried on the column by `StormColumn.js` and
+  the radar's `stormMoisture`), life 1300 s for 1 mm in dry air (was DCAPE / 1200 and 2500 s). Snow had drifted
+  45-96 km ahead of supercells 3 h and older and melted into a wide 20-30 dBZ forward flank; on seed 1 at 35 h
+  their 20 dBZ area is 16-45% smaller, 40 dBZ cores and hour-old cells unchanged. Regression: none (scorecard
+  identical; the fingerprint differs from frame 3, so the run had the change: the suite does not measure fall-out).
+  Echoes 50-70 km wide across the track are clusters and lines (their convective line's length), not fall-out.
+- The engine runs on Railway at https://highrisk.up.railway.app and keeps its world across deploys
   (`docs/HOSTING.md`); one engine feeds every Roblox server.
+- Public name is "High Risk" (2026-11-13, deployed from `fb36ab4`; the address was renamed from weatherworld.up.railway.app the same day): the site's pages, saved pictures and GIFs (files
+  `highrisk-...`), watch text and the social kit say High Risk. The repo, engine internals, service names and
+  the Roblox place still say WeatherWorld.
+- Public outlook pages (2026-11-11, deployed to the engine from `5da98f7`): `/outlook/day1` .. `day3`
+  (`outlook.html`) show each outlook's categorical and tornado/wind/hail maps (SVG from
+  `server/OutlookPublic.js`) and discussion; `/api/outlook/index` lists the issues. The Discord bot
+  (`weatherworldbot` service on Railway, code outside this repo) posts each new issue to the High Risk
+  server's `#📋outlooks`. The issued outlooks and their ensemble runs (the models page, since `344a505`) are saved beside the world (`outlooks.bin`, matched by the
+  runtime's `worldId`) and put back after a restart, so a deploy no longer blanks the pages for the ~15-minute
+  re-run; only a new world starts with none.
+- Watch, mesoscale discussion and warning posts (2026-11-11, deployed to the engine from `c3a86a4`, bot posting
+  live): `server/ProductArchive.js` keeps every watch and
+  discussion of the world (saved in `products.bin`; the mesoscale runtime in `mesoscale.bin`) and the last 3 hours
+  of warnings, and serves `/api/products/feed`, maps (`server/AreaMap.js`) and the pages `/watch/N`, `/md/N`
+  (`product.html`). The bot posts them to `#⚠️watches`, `#📝discussions` and `#🚨warnings` (tornado and destructive
+  warnings one post each, the rest in a roundup each minute). Warning numbers still restart with the engine (the
+  warning runtime is not saved); the bot tells warnings apart by number plus issue minute.
+- Storm sentences in discussions about a watch (2026-11-13; on `main` and deployed to the engine from `e72faca` on 2026-11-14): at
+  each look ahead `MesoscaleRuntime.radarLooks` has the nearest radar (2 radars at most) look at the rotating
+  storms under the watches in effect, and a discussion about a watch then speaks of its leading storm
+  (`describeStorm` in `js/forecast/MesoscaleDiscussion.js`): the radar's low-level rotational velocity, a tornadic
+  vortex signature, a debris signature (`debrisSignature` in `js/radar/RotationDetection.js`), the significant
+  tornado parameter around it and its motion. Measured on this machine: a radar's 9-tilt volume is about 3.5 s
+  of one radar thread and the detection 0.1 s. Checked by `tests/mesoscale-discussion.mjs`,
+  `tests/radar-simulator.mjs` and real scans of a made supercell; not yet seen in a live discussion (the engine came up clean after the deploy). Re-checked
+  2026-11-14 on top of `origin/main`'s new radar (patch applies cleanly; both tests pass; no false debris
+  signature with 2.5 to 5 inch hail). On that radar the rotational velocity no longer grows with the tornado's
+  wind (62 kt for a made 165 mph tornado, 63 kt for a 120 mph one), so the wind estimate below cannot rest
+  on it alone. The look does not keep its scans warm (`radarRotation`/`radarScan` take `prewarm: false`), and
+  a tornado or debris in the area keeps a watch's threat "continuing", never "waning". This is the
+  first step toward SPC-style storm-scale ("meso-gamma") discussions; the full product (its own discussion for
+  an ongoing strong tornado, with a wind estimate from rotational velocity and the tornado parameter fitted on
+  our own world) is proposed, not scoped. For it: over 4 saved days EF3+ tornadoes lasted a median 74 world
+  minutes (9 real minutes) and EF2+ 25, so it suits EF3-class storms with about a 60-minute valid time.
+- Discussion graphics (2026-11-14; on `main` and deployed to the engine from `d0df05f`; arrows fixed and deployed from `4e227bb`; peaks and the map-edge rule deployed from `dd5dfb1`; 2026-11-15 strong-tornado circles from run agreement, satellite under the radar, STP/MLCAPE contours and fronts with analysis symbols, only the peaks under the map, deployed from `adacda6`; no map image drawn with an opacity (resvg cut them off in the Discord PNGs), deployed from `3ae124c`): each discussion's map (`/api/md/N.svg`) carries the
+  composite reflectivity of the moment it was issued (`server/DiscussionRadar.js`, made in `MesoscaleRuntime.issue`,
+  kept in the archive's `products.bin`, never in the game's products), a hatched "greatest short-term <hazard>
+  potential" area with a label box (where the runs put the most tornadoes, or wind or hail, in their first 2 hours:
+  `shortTermFocus`; drawn only when it is at most 60% of the area) and the leading storm's next hour as an arrow
+  (`leadArrow`: with a focus, the storm whose next hour runs into it, in the label's colour; the label points at
+  the focus's outline with an arrow of its colour); the summary gains "The greatest short-term ... potential is centred ...". The map also lists the most probable peak
+  intensities (read from the text); an area of interest that would run off the map's edge is left off (engine: its
+  outline reaching the world's edge; drawing: past the view or the edge, for discussions already issued). Focus and arrow also go to
+  the game's discussions in map miles. Checked by `tests/discussion-graphics.mjs` and a real engine day (focus and
+  arrow on the tornado-watch-likely discussion); radar seen live on MD 341 (real radar, drawn well).
+- World controls admin only (2026-11-12, deployed from `d933a58`): every `/api/authority/*` write (new world,
+  +30 min / +1 day, seek, pause clock) needs the `WEATHER_ADMIN_KEY` (`server/ChaserArchive.js` isAdmin; with no
+  key set only the local machine). The mesoanalysis World card has an Admin sign-in; the key is kept per tab
+  (`wwAdminKey`, shared with `/chasers`). Checked on the hosted engine: no key gives 401, the key gives 200.
+- Chaser network (2026-11-12, on `main`, engine deployed; place "plains" published as version 493): one page `/chasers`
+  (`chasers.html`) whose view comes from the viewer's role (`server/ChaserArchive.js` roleOf): public sees dots and
+  unnamed day tracks; admin (the `WEATHER_ADMIN_KEY`, entered on the page) sees names, user ids, servers and a speed
+  check that flags legs above a set mph (teleports). Live dots plus a loop of each world day with that day's storm
+  reports; tracks saved in `chasers.bin`, 24 world days kept. The game servers now add UserId, DisplayName and
+  Name to their player reports (`LiveStormsService`). Checked with `tests/chaser-archive.mjs` and a local engine fed
+  by two fake servers (both roles, phone width). An in-game per-server layer on the M map (names, this server
+  only: `ChaserNetService`, `Layers/Chasers.luau`) is not yet seen running. Version 493 is also the first publish of the
+  boilerplate place: the live place plus the Rojo build and a fresh map export, old scripts removed (merged with
+  Lune; the version before is saved in `roblox/build/published-before-chasers.rbxl`, not in git). Publishing through
+  romcp fails with 409 while Studio has the place open (Team Create): close Studio first. A build for publishing needs
+  both git-ignored export folders, `Server/WorldData` and `Shared/MapData` (version 494 lacked MapData: the M map
+  waited on it forever; fixed in 495), plus `Packages`.
+- Live servers take the hosted engine (2026-11-12): the place carried a `WeatherFeedUrl` attribute pointing at a dead
+  Cloudflare tunnel, which overrode `Config.WEATHER_FEED_URL`. `Config.feedUrl()` now honours that attribute in Studio
+  only, and the attribute is cleared in the published place. The engine wants the experience secret
+  `weather_feed_key` (= Railway's `WEATHER_GAME_KEY`; 401 without it); whether it is set in Creator Hub is not
+  checked (no API for secrets). A version 494 server reached the engine and got 401 on every request: the secret
+  is missing or wrong in Creator Hub (owner action), so the live game has no weather until it is set.
+- Synoptic page (2026-11-12, deployed to the engine from `85c9a9b`): `/synoptic` (`synoptic.html`, `js/pages/synopticPage.js`, linked from every
+  page's menu) shows the whole large-scale model (the 10,240 x 5,120 km QG channel, wrapping east-west) with the game
+  map's box and drift, H/L centres and chart presets (250 mb jet, 500 mb vorticity, 850 mb jet, surface, dewpoint,
+  moisture transport and advection, temperature advection, large-scale lift and rain, deep shear), looping the last
+  18 h. `server/SynopticRuntime.js` reads every grid point through the regional layer's `outer()` and conversions, so
+  near the map it matches the map (`tests/synoptic-runtime.mjs`); API `/api/synoptic/frame` and `/api/synoptic/field`.
+  These are the large-scale fields only (no daytime heating, lee trough, cold pools or storms).
+- World clock locked to real UTC (2026-11-11, deployed from `75ad4ac`; the live world came up in step): 8 world days
+  to each real day, and every public label names the day "11/11/26 Day 3" instead of the world's own count
+  (`js/forecast/calendar.js`; decision in `TECH_DECISIONS.md`). Day 3 outlooks had no High
+  risk in the key. The Roblox report-day names need the place synced and published to show.
 - Branch `roblox/boilerplate` (committed and merged to `main` 2026-11-11) moves `roblox/src` onto the Roblox Boilerplate: Services and
   Controllers, all remotes replaced by `Shared/Net` Network events and `Network.Request`, Trove, Signal,
   Profiler, Settings (`roblox/README.md`).
@@ -50,16 +392,350 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   from the pieces as parts. `tools/stormlab/test_mobile_home.luau` passes, both Rojo projects build; not yet run
   in Studio, and the skinned mesh is not uploaded (`docs/tornado-physics/MOBILE-HOME.md`).
 
+- Site redesign and social post kit (2026-11-12, deployed to the engine from `e9e1d15`; the world carried over): the engine's pages
+  are one website (`site/README.md`): a front page at `/`, `/outlooks`, `/watches`, `/discussions`, `/warnings`,
+  `/about`, a real 404, and the map tools as document pages in the same look: `/analysis` (mesoanalysis;
+  `/index.html` still works), `/synoptic`, `/models` and `/models/large-scale`. Every page takes its header (hover
+  menus for Outlooks, Mesoanalysis and Models; the world's clock in a strip above) and footer from `site/*.html`
+  (filled in by `server/SitePages.js`); the look is `css/site.css` (light document pages, charts drawn dark,
+  self-hosted Public Sans and IBM Plex Mono in `fonts/`).
+  - `/warnings` (`warnings.html`): a map and list from the new `/api/warnings/active` (polygons and bulletins);
+    choosing a warning zooms to it and shows its details.
+  - `/models/large-scale`: each short range run now keeps a frame of the whole large-scale model every 3 forecast
+    hours (`SHORT_RANGE.synopticEvery`, about 0.5 MB a frame, taken in the forecast worker by `SynopticRuntime`);
+    the synoptic page draws them from `/api/models/short-range/synoptic/frame|field`. `/synoptic?share=1` (and the
+    model view's) is a picture view with title, time, key and "simulated weather" in the frame.
+  - Day 3 outlooks now send their one chance of any severe weather (`GameProducts.gameOutlook` no longer drops
+    it): the page and the Roblox Outlook layer show Categorical and Severe for Day 3 (owner's request 2026-11-12,
+    replacing "categorical only").
+  - Roblox products screen (not yet seen in Studio; no Studio was connected): the site's look in `Ui.luau`
+    (charcoal, square corners, brand band with a gold line), details with a hazard tag, named lines and the
+    bulletin on a block, and the map goes to a chosen warning, watch or discussion (`MapCanvas.frame`, "Zoom to
+    it"). Checked only by `luau-compile`, selene and a Rojo build. Not published.
+  - Large-scale charts redrawn as model charts (2026-11-12, owner's request): filled colour bands, labelled
+    contours and barbs on the charts' dark ground, the charts listed by level (250 mb wind, 500 mb wind, 500 mb
+    vorticity, 500 mb temperature, 850 mb charts, surface, lift, shear) in `js/pages/synopticPage.js`. The
+    view (everyone, since 2026-11-12 late): as it first was: the chart follows the game map east-west (the box moves
+    north-south); dragged or wheel-zoomed, the view holds still and the map's box moves freely. No page
+    draws a drift arrow. The drift's speed and the day's aim are still admin only (`forRole` in
+    `server/index.js` leaves them out of a public frame). Admin sign-in is in the site's top
+    bar only (`js/site.js`, kept for the tab); no page has its own sign-in button.
+  - Day summaries (`/days`, `/day/<id>`, `server/DayArchive.js`, `tests/day-archive.mjs`): each day's
+    highest-risk Day 1 outlook is kept as the issues come out; an admin sees the recent days and saves one,
+    which keeps a full copy for good in `days.bin` beside the world's state (saved days are public). The day
+    page has the two post pictures (PNG made in the browser, or opened alone), the numbers, and the tornado tracks alone on a time slider (GIF or PNG, from the summary, so any
+    saved day has it; one solid line a tornado, deployed from `ef59400`). Every loop the site saves as a GIF can also be saved as an MP4 (`js/mp4.js`: the browser's encoder and a small MP4 writer; deployed from `ed58a63` as H.264. Since `9bbe951` (deployed): AV1 for an admin only (everyone else still gets H.264), at a constant quantizer of 18 above 1080 lines, else a constant 8000 kbit/s, H.264 where the browser has no AV1 encoder; `tools/social/make-loop.mjs` the same through ffmpeg, `--codec h264` to go back). Days before this was deployed have no outlook kept.
+  - Day replays (2026-11-12, `server/ReplayArchive.js`, `tests/replay-archive.mjs`): each world day's hourly
+    mesoanalysis and large-scale frames and every warning are kept in `replays/<world>-<day>.bin.gz` beside the
+    world's state (about 13 MB a day) for 16 world days. A day's page links to `/day/<id>/analysis` and
+    `/day/<id>/synoptic` (the live pages on the kept hours), plays the warnings on a slider, and opens a tornado's
+    panel (path, damage indicators) when its track is selected. "Save loop as GIF" (`js/gif.js`, made in the
+    browser) is on the two replay pages, the warnings replay and the live pages. Seen working on a local engine
+    (two days run; pages and GIFs checked in a browser).
+    A day has no report (list, page, save) until it has ended. A tornado's panel has a map zoomed to its track
+    with the survey's swath and damage points as diamonds (`/api/day/<id>/tornado/<tid>`; the points are kept
+    with the day's summary). The mesoanalysis map draws county lines and the larger cities (a tick box).
+    Tornado radar (2026-11-12 late): each tornado's radar loop is back, off the
+    live path. A storm tick only records what the radar picture is made from (1.8 to 2.7 ms on the main thread);
+    the scans wait on the day's list (kept in its file) and are worked out one at a time in the radar pool's low
+    lane (`RadarPool.run(..., low)`: only when nothing live waits and another thread stays free). Measured on a
+    local engine with 2 radar threads: 27 scans, 2.3 s of radar thread and 15 to 19 ms of main thread each, none
+    failed; a day that ended with scans waiting finished them afterwards. `/api/replays/status` (admin) and
+    `/api/performance` (`tornadoRadar`, `host`) show the cost, the waiting count and the container's CPU limit.
+    The hosted container reports a limit of 32 vCPU and 30 GB (`host` in `/api/performance`); the hosted radar
+    threads were about 1% busy. Not measured: live radar response while the list drains.
+    Warnings replay radar (2026-11-15, deployed from 2eb3fe7; host recorded its first frames, ~37 KB each, none
+    failed): the whole map's composite reflectivity (the live 1 km mosaic) is kept every
+    10 minutes (`ReplayArchive.radarFrame`, `/api/day/<id>/replay/radar`, sent deflated, inflated in the browser;
+    `WEATHER_REPLAY_RADAR=off` leaves it out) and drawn under the warnings; tornadoes on the ground are marked and
+    open their panel (the 250 m tornado radar). ~10-20 KB a frame on a local engine. Checked on a local engine at
+    live pace and in a browser (GIF too). Not measured on the host: the extra mosaic's load on a busy day.
+  - Long range model (2026-11-13; `js/forecast/LongRangeModel.js`,
+    `server/LongRangeRuntime.js`, `tests/long-range-model.mjs`): a 7-day run at each 06Z (and one at the first
+    whole hour after a start), no storms, with one timing error drawn per run (`ensemblePerturbation.js`, 1.2 m/s
+    sd: about 100 km a day). Shown at `/models/long-range` (the large-scale page), 57 frames every 3 h, 4 runs
+    kept. About 100 s a run on this machine. `WEATHER_LONG_RANGE=off` turns it off. Checked first: a storm-free
+    copy follows the world's steering and large-scale model exactly (5 days, zero difference), so without the
+    error the run would be exact.
+  - Severe-weather charts on every large-scale page (same date): CAPE, CIN,
+    supercell composite and significant tornado parameter across the whole large-scale model, joined from three
+    sources in `server/SynopticRuntime.js` (`severe()`): the game map's own cells in its box (`mapFields`); the
+    wide window around it (`js/world/WideRegion.js`, `tests/wide-region.mjs`: the regional layer again at 80 km
+    over 3,200 km, display only, stepped after the map, saved with the world, shown once 24 h old; each step its
+    cells under the map take the map's own air, and its air is drawn to the entering-air values in a quarter of a
+    day, as the map's effectively is from its edges); and beyond
+    that the large-scale model's own columns through the sounding code (CAPE sound, composites low: no backed
+    low-level winds or cap). Measured over a week on seeds 1000 and 7: the ring of window cells round the box follows the
+    map's edge strips on the south, east and north (CAPE mostly within a quarter); to the west the window is dry
+    (the dryline at the foot of the high ground) where the map's western columns are sometimes still moist, so a
+    step can show on the box's west edge. 2026-11-13 later (the owner: a square block of no CAPE south-west of
+    the box): the window is faded out by distance from the map's middle
+    in a rounded shape, all of it to half its half-width and none at its edge, reaching only half as far west
+    (`WIDE_FADE` in `SynopticRuntime.js`), and the map's feed now carries the storms' cold pools, wet ground and
+    anvils, so the box's edge is a gradient across a window cell. Cost: about 35 ms a step for the window, about 80 ms for its soundings a frame, about 0.2 s the first time a
+    frame's large-scale columns are asked for. Engine fingerprint identical to HEAD (seed 1000, 8 h).
+  - Fixed (same date): the mesoanalysis replay of a day not yet saved did not send the admin key, so it stayed
+    empty for a signed-in admin.
+  - Fixed (2026-11-16, deployed from 5c8e7c4): the days page read the admin key from sessionStorage while the top
+    bar keeps it in localStorage, so a signed-in admin saw no recent days and no Save button.
+  - Soundings (2026-11-13): the live world's are admin only (`/api/live/sounding` answers 401 without the key; the
+    mesoanalysis page opens none for the public). The public's come from the models: each short range run (every
+    hour) and long range run (every 3 h) keeps what a sounding is made from for every cell
+    (`js/forecast/soundingColumns.js`, 33 numbers a cell, 322 KB a frame; `tests/sounding-columns.mjs`: the
+    figures are the cell's own). `/api/models/{short-range,long-range}/sounding?init&hour&row&column`; a point
+    selected on the Models map, or inside the map's box on the long range page, opens it
+    (`js/pages/soundingPanel.js`). About 6 to 16 MB more a short range run and 18 MB a long range run; 0.08 ms
+    an answer.
+  - `tools/social/` records a live day from the public routes and makes the outlook card, the tornado-track card
+    and synoptic loops (`tools/social/README.md`); the High Risk day of 11/12/26 Day 7-8 is in
+    `data/social/high-risk-2026-11-12/` (not in git).
+  - Checked: `tests/site-pages.mjs`, `tests/short-range-synoptic.mjs` (the frames change nothing in a run), the
+    static page and game-products tests, and each page at desktop and phone width against the hosted engine
+    (`node scripts/site-preview.mjs`) and a local one (warnings, model large-scale view, hover menus in a browser).
+    (`tests/short-range-model.mjs`, which failed then, passes on `main` again as of 19e44e7, 2026-11-17.) The `Dockerfile` copies the
+    new pages, `site/` and `fonts/`.
+  - The engine itself (`js/storms`, `js/world`, `js/atmosphere`, `js/mesoscale`, `js/sounding.js`) is as it was on
+    `main` at the start of 2026-11-12 (owner's decision that day): the storm environment batch and the removal of
+    live storm reports are on the branch `engine/storm-relative-separation` only, not merged.
+
+- World map terrain and roads (2026-11-13, branch `map/terrain-and-roads`, pushed; place published as version 497 from `a92556d` with `tools/worldmap/patch-place.luau` (the published place with the new `ServerStorage.World`, `WorldData` and `Shared.MapData`, 9.86 MiB of the 10 MiB limit; the version before is `roblox/build/published-before-map-09a4e5a.rbxl`, not in git); merged to `main` and the engine deployed from `9e927f8` the same day (the world resumed at hour 585; it serves the new map's 332 counties and 12 radars; watches, discussions and day summaries kept from before name the old map's counties and towns); not seen
+  in Studio): the map has real relief (hill regions 22 to 34 m per 5 miles, every stream in a valley, a
+  meandering big river, wandering region borders; `WorldMapGenerator.js`), so towns, roads, counties and radars
+  all moved. The road graph is one connected network with no stacked edges and ramps joined at both ends
+  (`streets.js`, `curves.js`, `sectionRoads.js`). Roblox lays every road from that graph and builds houses on
+  the map's blocks (`WorldData/Graph`, `WorldMap.roadEdges` / `blocks`, `RoadNet.build`); bridges are planned
+  from roads 420 studs beyond the network's pad, roads meeting an overpass ramp climb to it, and interstate
+  bends keep their median. Checked: `tests/world-map.mjs` passes, `tools/worldmap/check-graph-export.mjs` 11 of
+  11, `tools/worldmap/audit-map.mjs`, selene, luau-lsp (fewer errors than `main`), `rojo build`. Open: seed 1's
+  hand-removed radar list is empty (those radars no longer exist; the map has 12 radars) until the owner
+  chooses again; the M map still draws section roads from `sections.u8`, which differs from the graph in
+  places, and has no streets.
+
+- Map follow-up (2026-11-14, branch `map/open-items`): towns did
+  not move. Roads: highway curves turn at most 12 degrees a joint, sharp corners rounded, close junction pairs
+  182 to 19, footprint conflicts 28 road / 13 lot / 3 river to 4 / 0 / 2, section roads thinned where the land
+  is grass or woods (gravel miles down 21%; raise `density` in `sectionRoads.js` to bring them back).
+  Buildings: `tools/worldmap/run-chunks.luau` runs the place's own chunk generator under Lune and checks
+  footprints; over 300 chunks none reaches a road, overlaps another (in a chunk or across chunk edges) or
+  stands in water. Each chunk first plans the lots just beyond its edge (`NEIGHBOUR_LOTS` in `ChunkGen`);
+  buildings stand at most 5 studs above the lowest ground under them on a foundation, and are not built where
+  the ground falls over 14 studs. The M map's section roads come from the graph; tiles no longer carry road
+  lists (patched place 9.61 MiB). Also (owner, 2026-11-14): radars KSTG and KRUC removed, then KMRR with its Morriston office (10 radars, 9 offices; map rebuilt and exported, not yet published); the airport fallback stays; town-centre streets are wide again (the graph marks them `wide`, exported as kind "avenue", drawn with `RoadNet.SPECS.urban`; urban blocks 130 to 190 studs). Merged to `main`; place published as version 498 and the engine deployed from `a5d2c20` (the world resumed at hour 601; the place file was run through `run-chunks.luau` before upload; the version before is `roblox/build/published-497-before-a5d2c20.rbxl`). Still not seen in Studio or in game.
+
+- Map, third round (2026-11-14; merged to `main`, place published as version 499 and engine deployed from `72fdf47`, the world resumed at hour 606; the products-screen restyle went out with it; none of it seen in game yet;
+  towns and airfields unmoved): creek beds (the generator's `creeks`, 1,479 streams of 25 to 1,000 mi2 of
+  drainage, in the tiles as point runs; `ChunkGen` cuts a dry bed along each); town streets on the M map
+  (`MapVector.streets`, drawn by `MapBase` from 60 px a mile; `tools/worldmap/check-map-streets.mjs`); tile
+  elevations stored as differences (patched place 9.39 MiB); road leftovers (no road or lot conflicts, no
+  expressway joint over 12 degrees, about 15 overpasses a second-pass rule had removed are back, close junction
+  pairs 15). `patch-place.luau` now also carries the products screen's changed modules (the restyle and zoom-to-warning, unpublished until now; `diff-place.luau` lists what differs between a place and a build). The game server reaches the
+  engine with its key (a live chaser dot showed 2026-11-14). Checked as before: map test, both export checks,
+  audit, 300-chunk harness with no building conflicts.
+
+- Map, fourth round (2026-11-14; merged to `main`, place published as version 500 and engine deployed from `6d9b9d8`, the world resumed at hour 617; towns and airfields unmoved): the road graph has no footprint conflicts and no junction pairs within
+  40 studs on seed 1 (a final weld of close junctions; US-40 re-laid square across the river in the metro, which
+  moved 158 of the metro's 689 school lots and 3 campuses). `run-chunks.luau` now also checks every road
+  against the ground under it: on place 499, over 300 chunks, the ground came through a road at 27 samples and
+  a road hung in the air at 28 of 46,000; now 4 and 18. Causes fixed: ground beside a bridge's ramp was not
+  graded for other roads there (`RoadNet.near` skips a carried road), and where roads overlap the ground now
+  takes the grade of the road whose surface is laid there. Ramps beside an interstate stay at its level near an
+  overpass. Houses now line slanted town roads (`slantRows` in `Buildings`). The 18 left are near bridges in
+  river towns and at the two system interchanges; not traced. Server logs of 498 and 499 show no world errors;
+  they do show every foliage model failing to load ("User is not authorized to access Asset"): no trees in
+  the live game until the experience may use those assets (owner).
+
+- Map, fifth round (2026-11-14; merged to `main`, place published as version 501 and engine deployed from `fad4298`, the world resumed at hour 685; towns
+  and airfields unmoved). The owner reported, from 498/499: ground through roads, gaps or floating roads, kinks
+  at bends, wrong connections; and asked for the method of a Studio plugin a friend sent (TerrainPaths: hand-drawn
+  spline paths pressed into terrain; it cannot run in the game and its code is not used) to be applied: he chose
+  spline-smoothed curves. Done: `RoadNet.build` draws each road (a chain of edges through plain bends) as a
+  Catmull-Rom curve in pieces turning about 3 degrees (`CURVE_STEP`, `CURVE_PIECES`); pieces of one road are
+  known by `chain`, so paint and sidewalks are no longer cut at curve joints; a lower road's surface runs on
+  under a higher one until all its width is covered (no wedge of bare ground at slanted junctions). Dead ends
+  (seed 1): interstates and expressways 10 to 0, paved county and arterial 823 to 16, gravel 12,991 to 1,557,
+  dirt spurs 62% of dirt miles to 7%; I-135 carried on to Russell Center's bypass; the audit prints the table.
+  Harness over 300 chunks: no building conflicts, ground through a road at 4 samples, road in the air at 10.
+
+- Map, sixth round (2026-11-14; merged with the storm-wind and radar work of the same day, `main` at `30eb9aa`; place published as version 503 on top of 502 and engine deployed from `30eb9aa`, the world resumed at hour 698; none of it seen in game; settlements and airfields unmoved):
+  - Towns have footprints by form, not discs (`js/worldmap/townShapes.js`; forms after Hudson's railroad-town
+    plats, Schmiedeler on county seats, the Encyclopedia of the Great Plains): T-town, symmetric, orthogonal,
+    parallel, courthouse square, linear, river town, hamlet, regional city. Each settlement has `shape` (cells of
+    0.125 mi: 0 none, 1 newer, 2 old plat), `form`, `axis` and `reserve` (a clear strip along the founding
+    line, for the railway the owner wants next); `map.built`, `map.reserved`, `map.coverBase`. Streets, land
+    use, facilities and section roads use the footprint. No two footprints alike; the metro still reads as a
+    round blob. The export writes `WorldData/Built` and the cover before towns; `WorldMap.cellAt` reads urban
+    or suburban from the footprint.
+  - Half-size world (owner, 2026-11-14): `Config.WORLD_SCALE = 0.5`; 300 studs a mile, 0.56 m a stud. The
+    generator still works in design studs (`DESIGN_*`, voxel 8) and what it makes enters the place scaled
+    (`ChunkGen` region, parts, tree records; `WorldMap.worldMilesAt` / `worldStudsAt` for positions outside
+    it). Characters, walk speed, jump, the camera's start distance, gravity (set in `ExploreService`), the car
+    template and its top speed, flying speeds, sky distances and far-land rings are scaled. Not seen in game:
+    the car's suspension and camera are in the place, terrain is half as fine, materials keep their texture
+    size, and the unchanged load radius holds about four times the props. Tree damage uses a new store
+    (`FoliageDamage2`). 2026-11-22: after a quarter-size trial (2026-11-17) the world is back at 0.5 with
+    gravity doubled (owner: `Config.GRAVITY` 2 x 9.81 m/s^2, 35.04 studs/s^2, also in `default.project.json`;
+    cars still fall at 9.81 through Chassis). Place-stud distances (load radius, streaming ring, foliage,
+    far ground, flying speeds, haze) are now design studs x `WORLD_SCALE`, the same numbers at 0.5; saved
+    spots carry `Spawn.Scale` and are rescaled when read.
+  - Roads: junctions are level (`JUNCTION_EASE`), the grade beside a bridge's ramp rises only where a road
+    joins the ramp, curve pieces go down to 2.5 studs. `patch-place.luau` now syncs every script the build
+    has. Harness over 300 chunks at half size: no building conflicts; ground through a road at 14 samples and
+    road in the air at 11 of 42,000 (the coarser terrain).
+
 ## Next
 
+00000. Tornado sound: listen in a Studio play test (F2 debug tornado: Wedge, Rope) and tune the layer mix; then,
+   with the owner's go-ahead, upload loop_noise/loop_brown/loop_debris through Studio's MCP and record the ids
+   in `Client/Modules/TornadoAudio/Assets.luau` so live servers hear tornadoes.
+0000. Railway memory (2026-11-24, owner's request): memory is the biggest Railway cost. Live RSS 2.17 GB vs 0.4-0.55 GB
+   for a fresh local engine; main-thread heap ~50 MB, so most is outside the JS heaps (likely freed thread memory
+   glibc keeps). `/api/performance` `.memory` now breaks it down (`server/memoryStats.js`; deployed from 71f0637 2026-11-24, container 831 MB just after restart). Next: after ~a day of
+   uptime read it, then set Railway `MALLOC_ARENA_MAX=2`, restart, compare a day. No database: none of it is stored data.
+000. The divide: done. The place has the ridge (owner, 2026-11-23) and the engine runs on it (deployed from
+   `c144463`, 2026-11-22). Left open, owner's call: a taller ridge (the Palmer Divide stands up to 600 m). The west's
+   lower tornado share is kept as realistic (TECH_DECISIONS 2026-11-23); `atmosphere-world` and `radar-simulator`
+   tests fail on main since before c144463 ("reading '29'"; "too few inflow-air cells"), to be fixed.
+00. Upper winds and warm rain (2026-11-18; on main b1be3a9, deployed from it: the live world took up the new jet).
+   In the code: QG upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14 (owner accepted the regressions),
+   and warm rain (PrecipitationField PHYSICS.warmRainShare, warmRainOf; StormFallout too: up to half the rain forms
+   below the freezing level, by warm cloud depth and inflow vapour, and falls out near the updraught). Anvil-level
+   storm-relative wind median 15.8 -> 22.4 m/s, under 18 m/s 67 -> 35%, storms 40 -> 42 mph. Regression (jetwarm vs
+   base): EF4+ 0.64 -> 1.49%, EF0 48.9 -> 42.8%, tornado CIG1/2/3+ days 37.5/8.8/2.5 -> 56/22.5/10%, hail 2 in+ 16 ->
+   21% (accepted); better: 30+ tornado days 25 -> 15%, wind and hail CIG, 75+ mph gusts. Warm rain alone: no
+   regressions; made supercell in moist air hook/forward flank 1.54 -> 2.5-3.0. Fixed with it: the wide window's
+   restore wrote into the saved state and refilled it (WideRegion createWide), so a copy drifted. Tests judging the
+   process: radar test storm moves as a supercell there does (and far debris: no TDS, at most a tenth of close in);
+   cold pool against a twin world without it. Suite 74/74. A world saved by other code takes up the code's jet
+   (WeatherAuthorityRuntime takeUpCodeJet, retune). Outlook check (seeds 41-50, 3 mornings, main 84f45e3 -> this):
+   highest category right Day 1/2/3 53/45/30 -> 57/50/40%; calibrated Brier skill Day 1 tornado/wind/hail 22/34/43 ->
+   17/29/38, Day 2 16/19/30 -> 9/13/18, Day 3 severe 5 -> 15; in-sample recalibration gains 0-1 (the weather is less
+   predictable, not miscalibrated). Off: tornado CIG3 drawn 10% / verified 27% (Day 1), CIG1 47 / 23%; Days 2-3
+   Moderate forecast 10 / 0% against verified 35 / 50%. Owner held the refit (intensity groups and category cutoffs:
+   fit archive seeds 1-30, then check on the saved 41-50 archive). Next: the refit when the owner wants it.
+00. Warm rain in the game's sim and radar velocity (2026-11-18; engine deployed from 7bded6c; place NOT published yet).
+   Warm rain: StormLab Storm.luau `Storm.WARM_RAIN`/`warmRainOf` (the engine's rule; s.inflowVapour, the lowest km's
+   vapour, in Storm.environment), released from 300 m above the base to the freezing level. Lab scenes
+   (tools/stormlab/diag_warmrain.luau): SupercellB (15.1 g/m3, 3.5 km warm cloud) share 0.29, rain within 5 km of the
+   low meso 31.8 -> 34.4%, peak 58 -> 87 mm/h; Supercell, SupercellLife, Wedge9 (10-12 g/m3) 0-0.03, unchanged.
+   Radar (RadarSimulator.js): the closer-in weakness was mostly sampling: a 200 mph tornado's core is ~100 m in radius
+   near the ground (320 m above 600 m) against 500 m gates, read at one point. PULSE_VOLUME averages the wind over 5 x 3
+   points in gates near a tornado (little change alone: an honest pulse volume of a 100 m core reads a third of its
+   swirl). DEALIAS.method 'leastSquares' (distance-weighted, differences capped at Vn; RADAR_DEALIAS=median for the
+   old): 500 m gates 7-14 km dV 74-84 -> 78-92 with no gate wrong (= measured), 250 m gates 10-18 km 83-91 -> 96-108,
+   6-8 km still 2-5 gates wrong (gate-to-gate shear over 2 Vn); 17-110 km unchanged. Scan time as main. Velocity bytes
+   (RadarFormat knee): 0.5 m/s to +-40, 1 m/s to +-86 (was +-63.5, clipped); game decodes the same (Radar.luau
+   byteOf/valueOf, Palettes.luau regenerated; 1012 bytes checked). Colours past 63.5: outbound to white (owner's),
+   inbound blue to ice white (owner confirmed; purple is range folded, black reads as no echo). Next: publish the
+   place soon (until then the live place misreads the new velocity bytes, colours and readout). Suite 74/74; Luau
+   test_scenes as main (same tornadoes, rain at them a few mm/h either way); test_client fails on main too (World.luau:312).
+
+00. Admin tool (2026-11-18; merged and deployed from 91eb5c8, the live world carried on; the tool itself is local only).
+   `npm run admin` -> http://localhost:3920 (tools/admin/: server.mjs, admin.html, SeverePreview.js,
+   preview-worker.mjs); local only, tools/ is never in the engine's image. Live long range jet maps (proxied from the
+   hosted engine), jet and steering sliders from the world's own settings, export/load of the picked settings as JSON
+   (with the lines for the code's defaults), and a 7-day storm preview on its own thread (a few minutes) on the local
+   engine's saved world (ADMIN_STATE) or a new world for ADMIN_SEED. Days are numbered, not dated (no calendar there).
+   Engine: the model and steering are as on main (owner, 2026-11-18: the log-pressure wind, overlap steering and
+   jetShearMs 16 were tried and reverted); kept only what the tool needs, which changes nothing by default (QG
+   jetWidthKm null = the old cosine and retune(); AtmosphereWorld `qg` option; regression REG_QG). Fingerprint
+   identical to main (seed 2, 24 h). Three scenario tests now judge the process rather than the day's weather (cap
+   in moist air; drylines on afternoons with both air masses; far debris against the same storm without a tornado);
+   pass on both jets, suite 74/74. Next: the outlook check and retune the owner asked for.
+
+000. Radar debris signature (2026-11-17, radar only): a meteorologist review found
+   rain and hail in a tornado's core outweighing its debris (CC 0.8-0.88 at 57-66 dBZ in moist, rain-cooled air).
+   Merged and deployed 2026-11-17 from 762da59: the swirl of the tornado and its tornado cyclone flings rain and hail out
+   (StormVortices.js `vortexClearing`, radar `precipitationEcho`); debris lofted by the swept path, its echo falling
+   off with height, `DEBRIS_REFLECTIVITY` 22500 (`loftDebris`). Made supercell at every cell 35-60 km from KCPL (seed
+   1, 35 h): TDS 165 mph 700 yd 12 -> 28 of 28, 200 mph 28/28, 120 mph 400 yd 3/28, 90 mph and no tornado none, no
+   false alarms; at 100-112 km 12/28 (the review expected few; literature says violent TDSs reach 3-5 km: ask).
+   Open, found 2026-11-17 (scripts in the session's job tmp, not kept):
+   - No debris ball and a cluttered hook: rain and hail 67.5 dBZ 1.5-2.5 km round the tornado. Cause is the
+     environment's wind, not the radar: storm-relative 9-10 km wind under 18 m/s for 67% of supercells (median 15.6),
+     so fallout stays by the updraught (HP); and veer-back (backing 3-7 km) in 15% of supercell inflow soundings, a
+     third in some regimes (seeds 5-6), which swings the rain into the rear flank (hook 55 vs 46 dBZ, forward flank
+     17 vs 44). RegionalAtmosphere.windAt (~496) puts 700/500/250 mb on one straight line between the QG model's two
+     layer winds, so any backing reaches the anvil. PW only scales rain amount (0.4-1x, ~3 dB from 0.8 to 2.4 in),
+     not where it falls. StormAppearance's `spectrum` (a second LP-HP formula for the visual rain-wrap) reads nearly
+     every supercell as HP. Engine changes: need the engine-batch suite and a meteorologist check of 250 mb winds.
+   - Radar velocity weaker close in: done 2026-11-18 (item 00, warm rain and radar velocity above).
+000. Building damage (on `main`, not deployed or published). Seen in Studio 2026-11-17: in a play test the live server builds chunks with
+   their `B<n>` building models (DI, Frame, Size); in edit mode every indicator's degrees were laid out side by
+   side from real generated buildings and look right from several angles (fixed there: a stepped tower's upper
+   tiers vanished at the window degree, leaving floor plates in the air: a glass volume two floors and more is
+   now a curtain wall). Not yet seen: a live tornado over a town (none can be forced; the play test's lab window
+   answered 401 in Studio), the debris flight, two servers sharing damage, a survey job; and the server cost (Profiler "BuildingDamage"); with the engine deployed, a lifted tornado's survey job running on
+   a server (warnings "[BuildingDamage]") and its survey's real points (ReportsRuntime.survey `real`; the game's `survey.<id>` product).
+000. Railway usage (2026-11-17, merged, NOT deployed yet): the engine averaged 0.52 vCPU and 1.5 GB (memory the larger
+   cost). Railway variable `WEATHER_FORECAST_WARM=0` is staged (skip-deploys) and goes live with the next deploy of any
+   commit; the long range model keeps only its newest run; the replays' tornado radar scans only the box's radials
+   (~21% of the work) and the mesoscale discussions' radar look only ~40 km round its storms (~half), with a guard
+   (`detectRotation`'s `exact`) that falls back to full scans; scans ~10% faster. Outputs byte-identical in offline
+   checks (416 radar hashes, 31 replay boxes, 156 looks). After the deploy: compare `railway metrics -s engine --since
+   12h --memory --cpu` with 1.5 GB / 0.52 vCPU, and read `radarLooks` (looks, fallbacks) on `/api/performance`.
+   `tests/radar-simulator.mjs` fails ("a debris signature at the tornado") on main before this too: look into it.
+00a. VTP and tornado strength (owner's order, 2026-11-17; steps 1 and 2, page products and ensemble VTP chances, done).
+   High-VTP check done (4 seeds x 3 days): VTP runs high from the 3CAPE term (at its cap of 2 in 46% of STP>=1 cells;
+   about a third of it the warm-sector moist bias: 1 C drier gives VTP x0.64) on top of the tuned-high STP; a moisture
+   fix is still the owner's call. Tornado strength now leans on low-level instability (branch
+   `engine/tornado-low-level-lean`, uncommitted, 2026-11-17): TornadoEngine LEAN, a copula on the strength draw by the
+   inflow's 3CAPE x 0-3 km lapse rate ranked among tornadoes with the same spread (table from seeds 11-18 x 8 days, rho
+   0.35). Regression check against a fresh baseline: no regressions (EF2+ a day 2.85 -> 2.59, EF4+ share 1.21 -> 0.92,
+   all within tolerance); z sd 0.98 and the leaned draws stay uniform; VTP now beats STP at EF2+ vs EF0-1 (0.73 vs 0.70,
+   was 0.64 each). Forecast check (seeds 41-50, lead caps, vs 489143a): Day 1 right 43 -> 53%, Day 2 35 -> 45%, Day 3 40 -> 30% (one
+   outlook of 10), within one 100/95/90%; hazard Brier skill unchanged; no refit. Same batch: the flat 235 mph ceiling cap is gone; the ceiling bends
+   to a speed limit from the inflow CAPE, 1.8 x sqrt(2 CAPE) (TornadoEngine SPEED_LIMIT; 172 / 233 / 284 mph at p10/50/90 of
+   tornado inflows): regression none, EF4+ share 1.21 -> 0.64% (target 0.5), max ceiling 263 mph on seeds 11-18. Path width:
+   the flat 25-1600 yd hold is gone; the width bends to the wall cloud radius (StormGeometry wallCloudRadiusKm, 2,100-5,000 yd;
+   TornadoEngine PATH_WIDTH), unchanged below ~240 mph winds (regression identical to the limit run). Forecast check not
+   re-run for the limit or width. 2026-11-22 (owner's request): width = 20 + 6.7 (wind-65)^0.85 (wallcloud/2.1 km)^1.5
+   x pathWidthEnvironmentFactor = (low-level SR inflow/30 kt)^0.5 (SRH/300)^0.5 (CAPE/1500)^0.3, under the same cap (was
+   30 + 0.66 (wind-65)^1.5: nothing past ~1,450 yd). Research: Peters et al. 2019/2020/2023, Garner et al. 2021
+   (environment explains <=14% of width variance). Baseline base-2026-11-22 (this commit) vs SPC 2008-22
+   (weatherworld-regression/width-vs-spc-base-2026-11-22.txt, spccompare.cjs): EF0-3 medians 50/121/278/702 vs
+   50/125/300/600, paths >1,500 yd 0.72 vs 0.69%, >2,000 yd 0.13 vs 0.21%, sd ln width in rating 0.45-0.81 vs 0.65-0.91.
+   No regressions vs base-2026-11-21; EF4+ share 1.38% (target 0.5, tol 1.36: watch it). Forecast check not run.
+   Then (owner's request: more wide paths, EF0-2 medians kept): width x (1 + (wind-150)/100)^0.75 above 150 mph
+   (PATH_WIDTH.violent*). Baseline base-2026-11-22b (width-knee, this commit): no regressions; EF0-2 medians unchanged,
+   EF3/4/5 medians 731/1,291/2,339 yd; paths >1,500 yd 1.05% (SPC 0.69), >2,000 yd 0.52% (SPC 0.21), wider than the
+   record by the owner's choice. EF4+ share 1.44% vs target 0.5: the engine's surplus of violent tornadoes is the next
+   thing to look at.
+   tools/regression/worker.mjs records yd/mph/wcAtYd/wcMax/env per tornado. game-products and radar-simulator tests fail on main before this batch (not ours). Re-measure the table if the low levels change. Step 3, an offline check of VTP and the ensemble's EF4+ chances against the engine's strongest
+   tornadoes (ask first: long run). Step 4, PDS wording and EF2+ hatching in the Day 1 outlook, only after step 3.
+00. Satellite and night stratus (live since 2026-11-16, engine `f88ca72`, place 507): look at the M map's satellite
+   before dawn (Night fog button: the stratus deck bright) and in the morning (visible: the deck breaking up by noon).
+0. Map (published as 505 and engine deployed from `c5aa758`, 2026-11-14, the world resumed at hour 732. 505: a bridge is its deck only, each road climbs to it on its own raised grade with the ground graded up under it (no ramp slabs or wedges; unseen in game, look at two or three overpasses and a river bridge first). Offline: 0 holes and 0 steps at 90 crossings; 10 holes in 20 places, 6 of them at Smith Falls with an 8-stud ramp step. Owner asked for sharper terrain features (grid farms): options put to them are custom terrain textures on unused materials, field-margin strips as parts, smaller fields; none built, they need Studio. 504, same day, with the KMRR-less map export; 504 fixes what the owner saw on 503: roads under the terrain (road cut, slab and ditch back at their size in the place's studs), ramps buried at their foot (ground cut under bridges), the pit down the middle of divided roads (median is a part now), gaps where a road carries on from a bigger one's end, ramps and riverside roads missing at rivers, building parts on roads, grass at half length; none of it seen in game. Still wrong: the Smith Falls interchange at map mile 391.0, 128.6 (two interstates on a wide river: gaps and an 8-stud step on a ramp); next there: interchanges kept off wide rivers (generator, map rebuild). Also open: collectors dead-end at wide rivers (76 crossings), steep main-road grades, kinks on metro-centre streets. `tools/worldmap/run-chunks.luau` now drives every road for holes and steps (modes `crossings`, `at:x,z`). Half size: look first at the character, the car and its camera, a town, the M map; the owner reported the M map "still the old one" on 498/499 though the place holds the new map: find out what looked old): join the place or play it in Studio and look at the products screen, the M map's streets, creek beds, roads (interchanges, overpass ramps with a
+   side road, a town's streets and houses, a cul-de-sac) and the hills and valleys; then decide the radar list,
+   commit, and plan the engine deploy (it moves radars and counties under the live world).
+0a. Storm wind and radar (live since 2026-11-14, engine `32b57de`, place 502): look at storms in the game or Studio (wall
+   cloud lowering, near-storm and tree winds, frame rain and hail all moved) and at the radar's new colours on the M map.
 1. Run `roblox/setup.ps1`, `node scripts/export-world-roblox.mjs`, then `rojo serve` and play the place in Studio:
    check the server boots from `ServerStorage.main`, storms and products arrive (the ready handshakes), and the
    debug page teleport works; then the three labs (`stormlab`, `cloudlab`, `tornadolab` projects).
 2. Foliage: after step 1 brings real chunks in, look at the billboards (view order) and a storm's breaks; after
    any generator change, re-upload through Studio's MCP and update `Foliage/Assets.luau`.
-3. StormLab: watch the mobile-home park in a tornado (`stormlab` project); then upload
+3. Chaser network: open `/chasers` on the hosted engine as public and admin; join "plains" (version 493, the first
+   boilerplate publish) and check it boots and storms arrive; then turn on the M map's Chasers layer and check dots, names and trails (`ChaserNet.Ready` handshake).
+4. Site: look at the Roblox products screen in Studio (restyle and zoom-to-warning are unseen), then publish the
+   place. Open choices: a `/day/N` page that keeps each day's outlook and tornado tracks on the engine, so the daily
+   "forecast, then what happened" pair needs no recording. (The charts stay dark: owner, 2026-11-12.)
+5. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
+6. Outlooks (2026-11-14, deployed from `207bb6e`; decisions in `TECH_DECISIONS.md`): gates off, edge-corrected truth, tidied areas, discussion
+   text fixes, live scoring (`/api/outlook/scores`, the performance page), Day 3 from the Day 2 storm runs carried on, and
+   caution at longer leads with stricter tornado and hail hatches (Day 1 High 7.5%, Day 2/3 lean low).
+   After a few live days read the scoreboard (High false alarms; Day 3 Moderate never issued). A refit is not worth it
+   now (sharper nmep chances and category cutoffs re-checked; a Day 3 refit lost on held-out seeds). Hatches re-fitted
+   2026-11-14: wind, hail 3.5 in and EF3+/EF4+ hatches verify under half the time where the runs flag them, so none
+   added; the top tornado 45% / wind 75% areas left (they make the correct Highs). Host CPU fine with Day 3 storm runs
+   (clock kept pace through a 06Z issue). Test archives: data/outlook-archive/2026-11-14-* (README there). Day 1 update
+   table refitted 2026-11-15 (deployed from `404b848`; decision in TECH_DECISIONS.md); the short-range model's way of making
+   updates scored the same as the perturbed runs at an eighth of the cost (not adopted yet). 2026-11-16 (owner): the update
+   table's tornado row is the morning table's (that fit read the perturbed runs' tornado chances half as high as they
+   verified on seeds 53-56); deployed from `7860dd8`. Watch the live scoreboard for the updates' too-low share and false
+   Moderates on the 01Z updates. Open (paused): Day 1 outlooks issued on old worlds (`outlook-verify --start`); the 40-day
+   risk-climate sweep (seeds 61-66) found no drift with world age, and the live world's last week was quieter than any of it.
+7. StormLab: watch the mobile-home park in a tornado (`stormlab` project); then upload
    `roblox/assets/structures/mobile_home/mobile_home.fbx` through Studio's MCP and draw its bones from the pieces.
-4. With the owner, start `docs/spec/` (ideation into `IDEATION.md` and `FEATURES.md`, then `PRODUCT.md`).
 
 ## Blockers
 

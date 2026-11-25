@@ -4,6 +4,7 @@
 // does not advance anything: the authority does. It keeps the analyses of the last hours so
 // the page can step back through them and loop them.
 import { buildAnalysisOverlays } from './analysisOverlays.js';
+import { calendarOn, dateText } from '../js/forecast/calendar.js';
 import { MESOANALYSIS_PARAMETERS, buildParameterField } from './mesoanalysisParameters.js';
 
 const HISTORY_FRAMES = 36;   // 18 simulated hours at one frame per atmosphere step
@@ -63,7 +64,8 @@ export class SurfaceAnalysisRuntime {
     const field = read => { const out = new Array(world.width * world.height); world.forEachCell((cell, x, y) => { out[y * world.width + x] = Math.round(read(cell)); }); return out; };
     return {
       status: 'ready', seed: this.seed, revision: this.steps,
-      day: Math.floor(hours / 24) + 1, hourUtc: ((hours % 24) + 24) % 24, localOffsetHours: regional.params.utcOffsetHours,
+      // date: the real date (js/forecast/calendar.js); the page shows it instead of the world's day number.
+      date: calendarOn() ? dateText(hours) : null, hourUtc: ((hours % 24) + 24) % 24, localOffsetHours: regional.params.utcOffsetHours,
       simHoursPerRealMinute: this.simHoursPerRealMinute,
       domain: { widthKm: world.domainWidthKm, heightKm: world.domainHeightKm, cellKm: world.cellSizeKm, columns: world.width, rows: world.height },
       stations: this.stations.map(station => observe(world, station)),

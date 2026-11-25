@@ -45,6 +45,7 @@
 import { makeRandom, hashText, clamp } from './noise.js';
 import { interchangeRamps } from './interchanges.js';
 import { AT_1000, STUDS } from './scale.js';
+import { roundCorners, clearOfRivers, finishRoutes, CURVE_DEFAULTS } from './curves.js';
 
 const FT = AT_1000(1 / 5280);   // a layout foot in map miles
 const HALF_MI_EXPRESSWAY = AT_1000(0.04);   // an airport expressway's half-width and a little (streets.js HALF_MI.expressway)
@@ -53,7 +54,7 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   minPopulation: 40000,
   distanceMi: { metro: [12, 17], city: [5, 9], smallCity: [3, 5.5] },
   headingDeg: [150, 210],   // main runway heading (degrees true), drawn per airport
-  flatM: 18,                // most relief inside an airfield fence (m)
+  flatM: 60,                // most relief inside an airfield fence (m): a cap only, flatter sites score better and Roblox levels the field
   accessMi: 8,              // longest public access road from an airport gate
   // International airports (these kinds of place) are reached by a freeway spur from their own
   // interstate exit, up to freewayMi long, meeting the interstate square for its last stemMi.
@@ -67,9 +68,11 @@ export const AIRFIELD_DEFAULTS = Object.freeze({
   // Radar sites taken out by hand, per seed (codes come from town names, so they differ by seed):
   // the radar and the forecast office beside it go, after the gap offices are placed (so none is
   // put back in its place); the airport stays and the neighbouring offices take its counties.
-  // Seed 1, 2026-10-28 (the user's choice): KPLM (50 mi from KLOR), KDGL (67 from KSPB), KWAP (90
-  // from KSMF), KGRG (41 from the air base's KHLL).
-  removedRadars: { 1: ['KPLM', 'KDGL', 'KWAP', 'KGRG'] }
+  // Seed 1, 2026-11-14 (the user's choice, on the map as the terrain change of 2026-11-13 left
+  // it): KSTG (22 mi from the air base's KCRW) and KRUC (67 from the metro's KSMF), then KMRR
+  // (the Morriston office), leaving 10.
+  // (The four taken out on 2026-10-28, KPLM, KDGL, KWAP and KGRG, were on the map before that.)
+  removedRadars: { 1: ['KSTG', 'KRUC', 'KMRR'] }
 });
 
 const BASE_NAMES = ['Tolliver', 'Calloway', 'Prewitt', 'Brackett', 'Dunmore', 'Garrity', 'Hollister', 'Wendell', 'Ashby', 'Corwin'];
@@ -509,18 +512,20 @@ export function planAirfields(map, options = {}) {
       }
     }
     candidates.sort((a, b) => a.score - b.score);
-    for (const c of candidates.slice(0, 60)) {
-      const field = finish(c, city);
-      if (field) { airfields.push(field); break; }
+    // The best sites first. Where none can be given a freeway spur (a city ringed by exits has
+    // no room on its interstates for another), the airport takes an ordinary road instead.
+    place: for (const plain of [false, true]) for (const c of candidates.slice(0, 60)) {
+      const field = finish(c, city, null, plain);
+      if (field) { airfields.push(field); break place; }
     }
   }
 
   // Lays out one airfield at a candidate site, with its office, radar and access road; null if
   // these do not fit.
-  function finish({ f, layout, fence }, city, base = null) {
+  function finish({ f, layout, fence }, city, base = null, plain = false) {
     const g = layout.gate, gateA = g.da ? fence[g.da > 0 ? 2 : 0] : g.a, gateB = g.db ? fence[g.db > 0 ? 3 : 1] : g.b;
     const stub = base ? p.airBase.stubFt : p.stubFt;
-    const freeway = !base && p.international.includes(city.kind);
+    const freeway = !base && !plain && p.international.includes(city.kind);
     // Beside an expressway stub the office stands clear of its width (the airport road's half-width is 0.03 mi at 1000 studs a mile).
     const office = base ? null : officeAndRadar(f, gateA, gateB, g.da, g.db, freeway ? (HALF_MI_EXPRESSWAY - AT_1000(0.03)) / FT : 0);
     if (!base && !office) return null;
@@ -567,7 +572,10 @@ export function planAirfields(map, options = {}) {
     // The spur joins the map's roads (an expressway: crossings.js gives it its exit, the section
     // roads meet it at signals or stop short of it), named for the airport and the interstate.
     if (freeway) {
-      const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: field.access.points };
+      // (Its corners rounded as the other expressways' are, curves.js; the turn out of the gate, at
+      // the end of the airport's own stub, on a tighter curve begun beyond the office: gateTurn.)
+      const turned = gateTurn(field.access.points, avoid);
+      const road = { kind: 'expressway', name: `${code} Airport Expressway – ${access.road.name}`, airport: code, points: [...turned.slice(0, -1), ...roundCorners([turned.at(-1), ...field.access.points.slice(2)], CURVE_DEFAULTS.radiusMi.expressway, () => false, { maxStepDeg: CURVE_DEFAULTS.maxStepDeg.expressway })] };
       roads.push(road);
       for (let i = 1; i < road.points.length; i++) {
         const seg = { type: 'road', road, ax: road.points[i - 1][0], ay: road.points[i - 1][1], bx: road.points[i][0], by: road.points[i][1], half: HALF_MI_EXPRESSWAY };
@@ -699,11 +707,62 @@ export function planAirfields(map, options = {}) {
 
   // Each radar once (an office may use the air base's).
   const radars = airfields.filter(a => a.radar && !a.sharedRadar).map(a => ({ ...a.radar, airfield: a.code, kind: a.kind }));
+  // With every airfield sited against the routes as they were laid, the routes come off the
+  // rivers they run along or cross at a slant (curves.js): what is planned from here on (section
+  // roads, crossings, land use, streets) sees them where they will be built.
+  // (First the routes that stop in a field are finished: an interstate at the map's edge or on
+  // a highway, a bypass on a road.)
+  finishRoutes(roads, miles);
+  clearOfRivers(roads, rivers);
   return { airfields, radars };
 }
 
 // The section-line roads where the airfields are: none inside a fence, and paved along any mile
 // line an access road follows. Changes sections.roads in place.
+// The first turn of an airport's expressway, at the end of the stub out of its gate: the gate,
+// the curve, and a point on the leg beyond the turn where the road is back on its line. The office
+// and radar stand beside the stub (avoid), on the inside of the turn, so the curve begins past
+// them, on GATE_RADIUS_MI (a slow road: joints of about 11 degrees, pieces long enough to build).
+// Where that leaves too little of the stub for the whole turn, the curve swings wide of the leg
+// beyond and comes back onto it at GATE_JOIN_DEG. A turn this cannot fit keeps its corner.
+const GATE_RADIUS_MI = STUDS(170), GATE_STEP_DEG = 11.5, GATE_JOIN_DEG = 10, GATE_PAST_MI = STUDS(30), GATE_CHORD_MI = STUDS(32);
+function gateTurn(points, avoid) {
+  const [g, c, n] = points;
+  const l0 = Math.hypot(c[0] - g[0], c[1] - g[1]), l1 = Math.hypot(n[0] - c[0], n[1] - c[1]);
+  const ux = (c[0] - g[0]) / l0, uy = (c[1] - g[1]) / l0, vx = (n[0] - c[0]) / l1, vy = (n[1] - c[1]) / l1;
+  const turn = Math.acos(Math.max(-1, Math.min(1, ux * vx + uy * vy))), side = Math.sign(ux * vy - uy * vx), rad = Math.PI / 180;
+  if (turn < 2 * rad || !side) return [g, c];
+  // How far along the stub the office and the radar reach.
+  const past = Math.max(0, ...avoid.flat().map(([x, y]) => (x - g[0]) * ux + (y - g[1]) * uy)) + GATE_PAST_MI;
+  // The arc from a point of the stub, through an angle: its points and where it ends heading.
+  // (One chord for a turn of up to two joints' worth; else chords of GATE_STEP_DEG, on a radius
+  // wide enough that none is shorter than GATE_CHORD_MI.)
+  const shape = angle => { const steps = angle <= 2 * GATE_STEP_DEG * rad ? 1 : Math.ceil(angle / (GATE_STEP_DEG * rad) - 1e-9); return { steps, r: steps === 1 ? GATE_RADIUS_MI : Math.max(GATE_RADIUS_MI, GATE_CHORD_MI / (2 * Math.sin(angle / (2 * steps)))) }; };
+  const arc = (from, angle) => {
+    const { steps, r } = shape(angle), ax = g[0] + ux * from, ay = g[1] + uy * from, cx = ax - uy * side * r, cy = ay + ux * side * r, a0 = Math.atan2(ay - cy, ax - cx), out = [];
+    for (let k = 0; k <= steps; k++) out.push([cx + r * Math.cos(a0 + side * angle * k / steps), cy + r * Math.sin(a0 + side * angle * k / steps)]);
+    return out;
+  };
+  const tangent = shape(turn).r * Math.tan(turn / 2);
+  if (turn <= GATE_STEP_DEG * rad) return [g, c];
+  if (l0 - tangent >= past && tangent < 0.45 * l1) {
+    const curve = arc(l0 - tangent, turn);
+    return [g, ...curve.slice(0, -1), [c[0] + vx * tangent, c[1] + vy * tangent]];
+  }
+  if (past >= l0 - 1e-6) return [g, c];
+  // Begun at past, the arc ends beyond the leg's line: turned a little more, it comes back to it.
+  const curve = arc(past, turn + GATE_JOIN_DEG * rad), [px, py] = curve.at(-1);
+  const hx = vx * Math.cos(side * GATE_JOIN_DEG * rad) - vy * Math.sin(side * GATE_JOIN_DEG * rad), hy = vx * Math.sin(side * GATE_JOIN_DEG * rad) + vy * Math.cos(side * GATE_JOIN_DEG * rad);
+  const den = hx * vy - hy * vx;
+  if (Math.abs(den) < 1e-9) return [g, c];
+  const t = ((c[0] - px) * vy - (c[1] - py) * vx) / den, u = ((c[0] - px) * hy - (c[1] - py) * hx) / den;
+  if (t <= 0 || u <= 0 || u > 0.6 * l1) return [g, c];
+  return [g, ...curve, [c[0] + vx * u, c[1] + vy * u]];
+}
+
+// A mile of mile line goes where it runs inside a fence or within GRAZE_MI of one (a road's
+// half-width and a little: an arterial there would clip the field).
+const GRAZE_MI = STUDS(36);
 export function fitSectionRoads(sections, airfields) {
   const { size, roads } = sections;
   // Paved first (a mile the access road runs part of is paved whole), then cut at the fences.
@@ -711,12 +770,16 @@ export function fitSectionRoads(sections, airfields) {
     const [K, shift] = miles;
     roads[K] = (roads[K] & ~(3 << shift)) | (3 << shift);
   }
-  const inside = (x, y) => airfields.some(a => pointInPoly(x, y, a.fence));
-  for (let J = 0; J < size; J++) for (let I = 0; I < size; I++) {
+  // (Inside one, or within a road's half-width of its fence.)
+  const fences = airfields.map(a => ({ poly: a.fence, x0: Math.min(...a.fence.map(q => q[0])) - 1, y0: Math.min(...a.fence.map(q => q[1])) - 1, x1: Math.max(...a.fence.map(q => q[0])) + 1, y1: Math.max(...a.fence.map(q => q[1])) + 1 }));
+  const inside = (x, y) => fences.some(f => x > f.x0 && x < f.x1 && y > f.y0 && y < f.y1 && (pointInPoly(x, y, f.poly) || f.poly.some(([ax, ay], k) => { const [bx, by] = f.poly[(k + 1) % f.poly.length]; return distToSeg(x, y, { ax, ay, bx, by }) < GRAZE_MI; })));
+  // (Each such mile is recorded in sections.closed, as corner index * 4 + bit shift: no road is
+  // put back there, sectionRoads.js.)
+  sections.closed ??= new Set();
+  for (const f of fences) for (let J = Math.max(0, Math.floor(f.y0)); J <= Math.min(size - 1, Math.ceil(f.y1)); J++) for (let I = Math.max(0, Math.floor(f.x0)); I <= Math.min(size - 1, Math.ceil(f.x1)); I++) {
     const K = J * size + I;
     for (const [shift, dx, dy] of [[0, 1, 0], [2, 0, 1]]) {
-      if (!((roads[K] >> shift) & 3)) continue;
-      for (let t = 0; t <= 1; t += 0.125) if (inside(I + dx * t, J + dy * t)) { roads[K] &= ~(3 << shift); break; }
+      for (let t = 0; t <= 1; t += 0.03125) if (inside(I + dx * t, J + dy * t)) { roads[K] &= ~(3 << shift); sections.closed.add(K * 4 + shift); break; }
     }
   }
 }

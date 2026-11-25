@@ -1,7 +1,8 @@
 // How the satellite images (js/satellite/Satellite.js) are stored and coloured: one byte a pixel,
 // 0 for no data. Clean IR (GOES ABI band 13, 10.3 um) as brightness temperature in degrees C;
 // visible (band 2, 0.64 um) as reflectance, stored as its square root, the usual stretch for
-// display (the eye reads it that way: thin cloud and the ground stay apart from bright tops).
+// display (the eye reads it that way: thin cloud and the ground stay apart from bright tops);
+// night fog (band 13 minus band 7) as a brightness-temperature difference in kelvin.
 
 export const SATELLITE_PRODUCTS = Object.freeze({
   // The enhanced IR scale forecasters read storm tops on: greys for anything warmer than -20 C
@@ -17,6 +18,14 @@ export const SATELLITE_PRODUCTS = Object.freeze({
     label: 'Visible (0.64 µm)', short: 'VIS', units: '%', sqrt: true, decimals: 0,
     stops: [[0, 0, 0, 0], [1, 255, 255, 255]],
     legend: [5, 20, 40, 60, 80, 100]
+  },
+  // Night fog: BT 10.3 - BT 3.9 um (K). Low water cloud (stratus, fog, the moisture coming back
+  // overnight) bright, +2 to +6; clear ground mid grey, about +1; cirrus dark, below 0. By day
+  // the sunlight at 3.9 um makes everything dark: read at night.
+  fog: {
+    label: 'Night fog (10.3 − 3.9 µm)', short: 'FOG', units: 'K', min: -40, step: 0.25, decimals: 1,
+    stops: [[-40, 0, 0, 0], [-10, 40, 40, 40], [0, 95, 95, 95], [1.5, 120, 120, 120], [3, 190, 190, 190], [6, 255, 255, 255], [23.5, 255, 250, 205]],
+    legend: [-10, -5, 0, 2, 4, 6, 8]
   }
 });
 export const SATELLITE_KINDS = Object.keys(SATELLITE_PRODUCTS);

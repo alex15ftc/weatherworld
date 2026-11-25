@@ -56,7 +56,11 @@ export const WATCH = Object.freeze({
   // 65,000 sq mi; the centre's are mostly 40-75 miles either side, 20,000-30,000 sq mi. A watch now
   // goes out once the runs bring severe weather within issueLeadHours, not only once storms fire:
   // the centre's go out an hour or two ahead of the first storms.)
-  leastPercent: 80, hours: 6, leastCells: 120, marginCells: 1, mostCells: 220, issueLeadHours: 2, waningHoursLeft: 2,
+  // (2026-11-16: leastCells 120 to 40, an area of concern's own least (MESOSCALE.leastCells): a
+  // discussion at 95% over a 65-cell area drew a 99-cell watch, which was dropped with no word, so
+  // the discussion said "likely" and none came. A watch cut out of a very big area still keeps at
+  // least leastKeptCells of the ground where severe weather comes first, as before.)
+  leastPercent: 80, hours: 6, leastCells: 40, leastKeptCells: 60, marginCells: 1, mostCells: 220, issueLeadHours: 2, waningHoursLeft: 2,
   // A county is in the watch when at least this share of it is in the area drawn.
   countyShare: 0.5,
   // The towns the approximate line is given from (people), as the centre gives it from places
@@ -117,8 +121,8 @@ export function draftWatch(assessed, now, { seed = null, covered = null } = {}) 
   let keep = Math.min(inside.length, WATCH.mostCells), drawn = null;
   for (let attempt = 0; attempt < 4; attempt++) {
     drawn = drawWatchGround(inside.slice(0, keep), now, covered, layer);
-    if (drawn.areaCells <= WATCH.mostCells * 1.15 || keep <= WATCH.leastCells / 2) break;
-    keep = Math.max(Math.round(WATCH.leastCells / 2), Math.floor(keep * WATCH.mostCells / drawn.areaCells));
+    if (drawn.areaCells <= WATCH.mostCells * 1.15 || keep <= WATCH.leastKeptCells) break;
+    keep = Math.max(WATCH.leastKeptCells, Math.floor(keep * WATCH.mostCells / drawn.areaCells));
   }
   const { cells, counties, areaCells } = drawn, regions = describeRegions(layer, counties);
   return {
@@ -198,6 +202,16 @@ export function stormsFiring(world, cells) {
     if (!storm.active) continue;
     const x = Math.min(world.width - 1, Math.max(0, Math.floor(storm.positionKm.x / world.cellSizeKm))), y = Math.min(world.height - 1, Math.max(0, Math.floor(storm.positionKm.y / world.cellSizeKm)));
     if (cells[y * world.width + x]) count++;
+  }
+  // ...and a storm still in the margin round the map (InitiationEngine INFLOW) that its motion brings onto that ground
+  // within the hour: on the map's own ground, never the edge it is clamped to.
+  for (const storm of world.offstageStorms ?? []) {
+    if (!storm.active || !storm.inbound) continue;
+    for (let k = 1; k <= 12; k++) {
+      const t = k / 12, xKm = storm.positionKm.x + (storm.velocityKph?.east ?? 0) * t, yKm = storm.positionKm.y - (storm.velocityKph?.north ?? 0) * t;
+      const x = Math.floor(xKm / world.cellSizeKm), y = Math.floor(yKm / world.cellSizeKm);
+      if (x >= 0 && y >= 0 && x < world.width && y < world.height && cells[y * world.width + x]) { count++; break; }
+    }
   }
   return count;
 }
@@ -345,7 +359,7 @@ export function writeWatch(watch) {
   const name = title(watch), kind = name.toLowerCase().replace(' watch', ''), e = watch.here, main = threats(watch);
   const hazards = [watch.type === 'tornado' ? (watch.peak.tornadoMph >= 136 ? 'tornadoes, some of them intense' : 'tornadoes, some of them strong') : null, watch.peak.gustMph >= 58 ? 'damaging winds' : null, watch.peak.hailInches >= 1 ? 'large hail' : null].filter(Boolean);
   const lines = [
-    'URGENT - IMMEDIATE BROADCAST REQUESTED', `${name} Number ${watch.number}`, 'NWS Storm Prediction Center WeatherWorld', '',
+    'URGENT - IMMEDIATE BROADCAST REQUESTED', `${name} Number ${watch.number}`, 'NWS Storm Prediction Center High Risk', '',
     `A ${kind} watch is in effect for ${watch.where ?? 'part of the region'}`, `from ${stamp(watch.issuedHourUtc)} until ${stamp(watch.validToHourUtc)}.`, ''
   ];
   if (watch.pds) lines.push('...THIS IS A PARTICULARLY DANGEROUS SITUATION...', '');

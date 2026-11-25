@@ -58,6 +58,7 @@ import { DAMAGE_INDICATORS } from '../js/reports/damageIndicators.js';
 import { logDays } from '../js/reports/stormLog.js';
 import { LIGHTNING, STRIKE_KIND } from '../js/storms/Lightning.js';
 import { reportTitle, reportText, significantReport, surveyTitle, surveySummary } from '../js/reports/reportText.js';
+import { calendarFor } from '../js/forecast/calendar.js';
 
 const KM_PER_MILE = 1.609344;
 
@@ -148,8 +149,11 @@ export function gameOutlook(day, published, { nextUpdateHourUtc = null } = {}) {
   const head = { v: GAME_PRODUCTS.version, id: `outlook.${day}`, kind: 'outlook', day: Number(day.slice(3)) };
   if (!published || published.status !== 'issued') return { ...head, status: published?.status ?? 'off', error: published?.error ?? null };
   const o = published, mapMiles = o.width * o.cellMiles, miles = rings => contourMiles(rings, mapMiles);
+  // Day 3 carries one chance, of any severe weather (its hazards are ['severe'], DayOneOutlook.js), beside the
+  // categorical map, as the real Day 3 does; its key has no High risk (none is ever issued that far out).
+  const day3 = head.day === 3, hazardOrder = o.hazards, categories = day3 ? o.categories.filter(key => key !== "HIGH") : o.categories;
   const hazards = {};
-  for (const hazard of o.hazards) {
+  for (const hazard of hazardOrder) {
     const shapes = o.shapes[hazard];
     hazards[hazard] = {
       levels: shapes.levels.map(entry => ({ level: entry.level, rings: miles(entry.rings) })),
@@ -161,10 +165,10 @@ export function gameOutlook(day, published, { nextUpdateHourUtc = null } = {}) {
     ...head, status: 'issued', seed: o.seed, mapMiles,
     issuedHourUtc: o.issuedHourUtc, validFromHourUtc: o.validFromHourUtc, validToHourUtc: o.validToHourUtc, nextUpdateHourUtc,
     updating: Boolean(o.running), // an update to this day is being prepared now
-    highest: o.highest, headline: o.labels[o.highest], categories: o.categories, labels: o.labels,
+    highest: o.highest, headline: o.labels[o.highest], categories, labels: o.labels,
     thunderLevel: o.thunderLevel, radiusMiles: o.radiusMiles ?? RISK_RADIUS_MILES,
     category: o.shapes.category.map(entry => ({ key: entry.key, rings: miles(entry.rings) })),
-    hazardOrder: o.hazards, hazards, discussion: o.discussion
+    hazardOrder, hazards, discussion: o.discussion
   };
 }
 
@@ -183,7 +187,14 @@ export function gameMesoscale(list) {
     discussions: list.discussions.filter(md => md.valid).map(md => ({
       number: md.number, concerning: md.concerning ?? '', where: md.where ?? '', watchPercent: md.watchPercent ?? null, watchNumber: md.watchNumber ?? null,
       colourKey: discussionColourKey(md), issuedHourUtc: md.issuedHourUtc, validToHourUtc: md.validToHourUtc,
-      rings: contourMiles(md.rings, mapMiles), text: md.text ?? ''
+      rings: contourMiles(md.rings, mapMiles), text: md.text ?? '',
+      // The greatest short-term potential (hazard, outline, where it is centred) and the leading storm's next
+      // hour (from x0, y0 to x1, y1), in map miles; null where the discussion has none (MesoscaleDiscussion.js).
+      focus: md.focus ? { hazard: md.focus.hazard, near: md.focus.near ?? null, rings: contourMiles(md.focus.rings, mapMiles) } : null,
+      // Circles round the storms most runs give a strong tornado within the hour (MesoscaleDiscussion.stormCircles):
+      // the share of the runs, their middle strongest tornado (mph) and the circle in map miles.
+      circles: (md.circles ?? []).map(c => ({ share: c.share, mph: c.mph, rings: contourMiles(c.rings, mapMiles) })),
+      arrow: md.arrow ? { x0: +(md.arrow.x0 * mapMiles).toFixed(2), y0: +(md.arrow.y0 * mapMiles).toFixed(2), x1: +(md.arrow.x1 * mapMiles).toFixed(2), y1: +(md.arrow.y1 * mapMiles).toFixed(2), hours: md.arrow.hours } : null
     }))
   };
 }
@@ -240,7 +251,7 @@ export function gameMosaic(mosaic) {
   };
 }
 
-// The satellite's image of one kind (ir, visible): a grid of cellMiles squares from the map's
+// The satellite's image of one kind (ir, visible, fog): a grid of cellMiles squares from the map's
 // north-west corner, row by row; sun: its height and bearing (degrees) and the local hour.
 export function gameSatellite(sat, kind) {
   return {
@@ -306,9 +317,10 @@ export function gameLightning(log, mapMiles = 500) {
   return { ...head, nowHourUtc: +now.toFixed(4), count: kept.length, ground, data: kept.length ? pack(bytes) : '' };
 }
 
-// The days of storm reports the log holds, newest first, from ReportsRuntime.days().
+// The days of storm reports the log holds, newest first, from ReportsRuntime.days(). calendar: the locked
+// clock's offset, so the game names each day by its start hour, "11/11/26 Day 3" (js/forecast/calendar.js).
 export function gameReportDays(log) {
-  return { v: GAME_PRODUCTS.version, id: 'reports.days', kind: 'report-days', world: log?.worldId ?? null, currentDay: log?.day ?? null, days: logDays(log) };
+  return { v: GAME_PRODUCTS.version, id: 'reports.days', kind: 'report-days', world: log?.worldId ?? null, currentDay: log?.day ?? null, calendar: calendarFor(), days: logDays(log) };
 }
 
 const efOf = rating => (rating === 'EFU' ? -1 : Number(rating.slice(2)));
@@ -335,7 +347,8 @@ export function gameReportDay(entry, surveys, { world = null, final = false } = 
 }
 
 // One tornado's damage survey: the EF contours of its swath (rings in map miles), its damage
-// points [x, y, indicator, degree of damage, estimated mph, EF, hour] (survey.indicators words
+// points [x, y, indicator, degree of damage, estimated mph, EF, hour, real] (real 1: a building in
+// the game, as it was left; 0: an estimate where no server had loaded the ground) (survey.indicators words
 // them), and its summary.
 export function gameSurvey(s, { world = null } = {}) {
   const { decimals, toleranceMiles } = GAME_PRODUCTS.survey;
@@ -345,7 +358,9 @@ export function gameSurvey(s, { world = null } = {}) {
     startHourUtc: s.startHourUtc, endHourUtc: s.endHourUtc,
     track: flatLine(s.centreline, toleranceMiles, decimals),
     contours: s.contours.map(c => ({ ef: c.ef, rings: flatRings(c.polygons, 1, { decimals, toleranceMiles }) })).filter(c => c.rings.length),
-    points: s.points.map(p => [round(p.x, decimals), round(p.y, decimals), p.di, p.dod, p.estimatedMph, p.ef, round(p.hourUtc, 3)]),
+    points: s.points.map(p => [round(p.x, decimals), round(p.y, decimals), p.di, p.dod, p.estimatedMph, p.ef, round(p.hourUtc, 3), p.real ? 1 : 0]),
+    // (how much of the swath the game's own buildings stand for: damageSurvey real)
+    real: s.real ?? { points: 0, coveredShare: 0 },
     title: surveyTitle(s), text: surveySummary(s)
   };
 }

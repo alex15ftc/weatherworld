@@ -24,6 +24,9 @@ description: Run an engine change batch safely in WeatherWorld - regression base
   - A regression = a measure further from its target than baseline by more than its tolerance. Judge MDT+HIGH together. Category shares move 2-4 points from chaos alone.
   - Revert or adjust any fix that regresses.
 - Run only the tests the change touches: `node scripts/run-tests.mjs <filter>`.
+- Any behaviour change under js/world or js/atmosphere (steering included) also runs the scenario tests that
+  build a whole world: `node scripts/run-tests.mjs atmosphere-world radar-simulator region-steering` (~3 min).
+  The regression suite does not run them (2026-11-17: c9c5474 passed the suite and broke two of them).
 - Forecast check (~25 min) only after a real engine batch; refit (~80 min) only if a day's score drops clearly. Ask before either.
 
 ## 4. Report

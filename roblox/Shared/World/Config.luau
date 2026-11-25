@@ -13,19 +13,47 @@ Config.SEED = 1
 -- (CarService, 100 mph top) outruns one on any paved road. Keep equal to
 -- js/worldmap/scale.js STUDS_PER_MILE: the map generator sizes roads, lots, buildings and
 -- airfields in studs at that scale (WorldMap warns if the exported map says otherwise).
-Config.STUDS_PER_MILE = 600
+--
+-- 2026-11-14, the half-size world: everything in the place is half the size it was (the owner:
+-- characters, the map, roads, buildings, vehicles, storms and tornadoes), so twice as far is in
+-- view at the same streaming radius. One stud is now 0.56 m. The world generator (Server/World)
+-- was written at the old size and still works in it: its units are "design studs" (600 a mile,
+-- 0.28 m), and whatever it makes is brought into the place at WORLD_SCALE (ChunkGen: parts,
+-- terrain, tree records; WorldMap's world* functions for positions). Everything else works in
+-- the place's own studs: STUDS_PER_MILE and STUDS_PER_METRE below are the real ones.
+--
+-- 2026-11-17, the quarter-size world (the owner: 1/4 of Roblox's default scale, after trying 1/8):
+-- the same again at WORLD_SCALE 0.25, so one stud is 1.12 m and a mile 150 studs, with gravity
+-- 9.81 m/s^2 at that scale. Distances the half-size world kept in the place's studs (the chunk
+-- load radius, the clients' streaming radius, foliage and far-ground distances, flying speeds) are
+-- written as design studs x WORLD_SCALE so they cover the same ground at any scale; a saved spot
+-- from an older scale is rescaled when it is read (ExploreService, PlayerData Spawn.Scale).
+--
+-- 2026-11-19, back to the half-size world (the owner): WORLD_SCALE 0.5, one stud 0.56 m and a mile
+-- 300 studs. The scale-free distances and the saved spots' Scale above are kept, so spots saved at
+-- the quarter size come back to the same place.
+Config.WORLD_SCALE = 0.5 -- the place's studs to a design stud
+Config.DESIGN_STUDS_PER_MILE = 600 -- the generator's (keep equal to js/worldmap/scale.js STUDS_PER_MILE)
+Config.DESIGN_STUDS_PER_METRE = 1 / 0.28
+Config.STUDS_PER_MILE = Config.DESIGN_STUDS_PER_MILE * Config.WORLD_SCALE -- 300
 Config.MAP_MILES = 500
-Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 300,000
+Config.MAP_STUDS = Config.MAP_MILES * Config.STUDS_PER_MILE -- 150,000
 Config.REGION_MILES = 50
 
 -- Roblox's standard scale (2026-10-27): 1 stud = 0.28 m, as the storm lab (stormlab LabConfig.SCALE).
 -- Everything people see up close is at this scale: houses, roads, trees and cars (built at
--- character scale all along), the ground's height, and gravity (Workspace.Gravity 9.81 m/s^2 =
--- 35 studs/s^2, default.project.json). Only map distance is squashed (STUDS_PER_MILE above, about
--- 9.6 times shorter than true): at true scale the map would be 2.9 million studs across, past
--- float precision, and no car could keep up with a storm on the game's clock.
-Config.STUDS_PER_METRE = 1 / 0.28
-Config.GRAVITY = 9.81 * Config.STUDS_PER_METRE
+-- character scale all along), the ground's height and gravity (below). Only map distance is
+-- squashed (STUDS_PER_MILE above, about 9.6 times shorter than true): at true scale the map would
+-- be 2.9 million studs across, past float precision, and no car could keep up with a storm on the
+-- game's clock.
+Config.STUDS_PER_METRE = Config.DESIGN_STUDS_PER_METRE * Config.WORLD_SCALE -- 1 / 0.56
+-- Gravity: twice 9.81 m/s^2 at the place's scale (35.04 studs/s^2 at half size), set on Workspace by
+-- ExploreService and in default.project.json. (1/8 tried Roblox's default 196.2, 2026-11-17: the
+-- cars then needed a correction force 37 times their weight to fall at their own scale; Chassis
+-- still makes up any small difference between the place's gravity and the car model's.)
+-- (2026-11-17, the owner: doubled, 19.62 m/s^2 at the place's scale, so falls and jumps are
+-- snappier; the cars still fall at 9.81 through Chassis's correction.)
+Config.GRAVITY = 2 * 9.81 * Config.STUDS_PER_METRE
 
 -- Vertical: the ground's height at the standard scale, so a 5 m rise is 18 studs against an
 -- 11-stud storey. Squashing the map steepens its slopes (at 600 studs a mile, 99.9% under 14%,
@@ -54,9 +82,11 @@ Config.RAY_TOP_STUDS = 6000
 -- storm only 2,000 studs off, its base over the houses streamed round you, toward the far scale.
 Config.KM_PER_MILE = 1.609344
 Config.SKY_STUDS_PER_METRE = Config.STUDS_PER_METRE_VERTICAL -- near
-Config.SKY_FAR_STUDS_PER_METRE = 1
-Config.SKY_NEAR_STUDS = 3000
-Config.SKY_FAR_STUDS = 15000
+-- (These three were 1, 3000 and 15000 at the old size: scaled with the world, so a far storm stands
+-- at the angle it did and a near one eases at the same distance on the map.)
+Config.SKY_FAR_STUDS_PER_METRE = 1 * Config.WORLD_SCALE
+Config.SKY_NEAR_STUDS = 3000 * Config.WORLD_SCALE
+Config.SKY_FAR_STUDS = 15000 * Config.WORLD_SCALE
 -- A tornado's widths against its storm's heights (1: the same scale, so a funnel keeps its shape).
 Config.TORNADO_SHARE_OF_SKY = 1
 Config.TORNADO_STUDS_PER_METRE = Config.SKY_STUDS_PER_METRE * Config.TORNADO_SHARE_OF_SKY -- near
@@ -486,8 +516,14 @@ Config.TORNADO_ART = {
 -- is needed), or a recorded replay (Workspace attribute StormSource = "replay";
 -- scripts/export-storm-replay.mjs). The key, if the server wants one, is the experience secret
 -- "weather_feed_key".
--- The hosted engine (Railway, docs/HOSTING.md); a Workspace WeatherFeedUrl attribute still overrides it.
-Config.WEATHER_FEED_URL = "https://weatherworld.up.railway.app"
+-- The hosted engine (Railway, docs/HOSTING.md). A Workspace WeatherFeedUrl attribute overrides it in
+-- Studio only: a live server always takes the hosted engine, so a URL left in the place (an old
+-- tunnel) cannot cut the live game off its weather.
+Config.WEATHER_FEED_URL = "https://highrisk.up.railway.app"
+function Config.feedUrl(): string
+	local override = if game:GetService("RunService"):IsStudio() then workspace:GetAttribute("WeatherFeedUrl") :: string? else nil
+	return (string.gsub(override or Config.WEATHER_FEED_URL, "/+$", ""))
+end
 Config.WEATHER_POLL_SECONDS = 5
 -- The products (outlooks, and later radar, warnings...): the manifest is polled this often, on
 -- the same URL and key (ProductFeedService). Workspace attribute ProductSource = "snapshot"
@@ -500,18 +536,27 @@ Config.REPORT_ARCHIVE_STORE = "StormReports"
 Config.REPORT_ARCHIVE_DAYS = 365
 
 -- Chunks (Minecraft-style): generated around players, unloaded beyond the radius plus a margin.
+-- Terrain is written 4 studs a voxel (the only size Roblox takes), so the generator's voxel is
+-- 4 / WORLD_SCALE design studs: at half size the ground is half as fine against the roads and
+-- houses as it was. A chunk is CHUNK_STUDS design studs a side (its name and key are its design
+-- indices, as before), CHUNK_WORLD_STUDS in the place.
 Config.VOXEL_STUDS = 4
+Config.DESIGN_VOXEL_STUDS = Config.VOXEL_STUDS / Config.WORLD_SCALE
 Config.CHUNK_STUDS = 256
+Config.CHUNK_WORLD_STUDS = Config.CHUNK_STUDS * Config.WORLD_SCALE
 -- The radius is twice the clients' streaming radius (default.project.json: StreamingTargetRadius
 -- 1024) on purpose: chunk props are StreamingMesh models (ChunkGen.place), which clients draw as
 -- low-detail imposters beyond their streamed area only while the model exists on the server.
 -- (1280, the streamed radius plus a chunk, would build ~40% of the area, without the far props.)
-Config.LOAD_RADIUS_STUDS = 2048
-Config.UNLOAD_MARGIN_STUDS = 256 -- one chunk of hysteresis
+-- (2048 at half size: the same ground, 4096 design studs, about 6.8 miles, at any scale.)
+Config.LOAD_RADIUS_STUDS = 4096 * Config.WORLD_SCALE
+Config.UNLOAD_MARGIN_STUDS = Config.CHUNK_WORLD_STUDS -- one chunk of hysteresis
 -- Unloading (clearing terrain, destroying props) is queued and done within this budget a frame
 -- (at least one chunk a frame), so leaving an area does not stall the server for a frame.
 Config.UNLOAD_BUDGET_MS = 3
-Config.FILL_DEPTH_STUDS = 12 -- solid ground kept below the lowest column of each chunk
+-- solid ground kept below the lowest column of each chunk (design studs): a voxel and a half,
+-- as at half size
+Config.FILL_DEPTH_STUDS = 1.5 * Config.DESIGN_VOXEL_STUDS
 
 -- Chunk building: WORKERS parallel actors; 0 builds in serial within SERIAL_BUDGET_MS per frame.
 Config.WORKERS = 4
@@ -524,9 +569,9 @@ Config.PLACE_BUDGET_MS = 8
 -- Workspace attributes TestOriginX, TestSpeed and TestSeconds override these defaults.
 -- (160 studs/s: 100 mph, the player's car's top speed (CarService) at 1 stud = 0.28 m;
 -- the fastest the world has to stream in. 170 before, chase speed at 1000 studs a mile.)
-Config.TEST_SPEED_STUDS = 160
+Config.TEST_SPEED_STUDS = 160 * Config.WORLD_SCALE
 Config.TEST_SECONDS = 60
-Config.TEST_ORIGIN_X = 8000 -- clear of the Baseplate and SpawnLocation at the origin
-Config.TEST_VEHICLE_X = { 8000, 150000, 480000 } -- near the centre, the map edge, beyond it
+Config.TEST_ORIGIN_X = 8000 * Config.WORLD_SCALE -- clear of the Baseplate and SpawnLocation at the origin
+Config.TEST_VEHICLE_X = { 8000 * Config.WORLD_SCALE, 150000 * Config.WORLD_SCALE, 480000 * Config.WORLD_SCALE } -- near the centre, the map edge, beyond it
 
 return table.freeze(Config)

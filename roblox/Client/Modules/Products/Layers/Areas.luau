@@ -30,6 +30,7 @@ export type Kind = {
 	title: (item: any) -> string,
 	subtitle: (item: any) -> string,
 	short: ((item: any) -> string)?, -- a label on the map
+	tag: ((item: any) -> string)?, -- a line under the title of its details (its kind)
 }
 
 local SELECTED = { 255, 255, 255 }
@@ -53,6 +54,9 @@ Areas.WATCHES = {
 	short = function(w: any): string
 		return `{if w.pds then "PDS " else ""}{if w.type == "tornado" then "TOR" else "SVR"} {w.number}`
 	end,
+	tag = function(w: any): string
+		return (if w.pds then "PARTICULARLY DANGEROUS SITUATION · " else "") .. (if w.type == "tornado" then "TORNADO WATCH" else "SEVERE THUNDERSTORM WATCH")
+	end,
 } :: Kind
 
 Areas.DISCUSSIONS = {
@@ -70,6 +74,9 @@ Areas.DISCUSSIONS = {
 	short = function(md: any): string
 		return string.format("MD %04d", md.number)
 	end,
+	tag = function(md: any): string
+		return string.upper(tostring(md.concerning or "Mesoscale discussion"))
+	end,
 } :: Kind
 
 Areas.WARNINGS = {
@@ -85,6 +92,9 @@ Areas.WARNINGS = {
 		return `{w.label} · {untilText(w)} · {w.where}`
 	end,
 	short = nil,
+	tag = function(w: any): string
+		return string.upper((if w.emergency then "Tornado emergency" elseif w.pds then "PDS " .. w.label else w.label) .. " warning")
+	end,
 } :: Kind
 
 function Areas.new(kind: Kind, ctx: Layer.Context, optionsParent: Instance, enabled: boolean)
@@ -110,7 +120,17 @@ end
 
 function Areas.detail(self: any, item: any): Layer.Detail
 	local kind = self.kind
-	return { title = kind.title(item), subtitle = kind.subtitle(item), body = item.text or "", colour = kind.palette[item.colourKey], layer = self.key, item = kind.id(item) }
+	local facts = {}
+	if item.where and item.where ~= "" then
+		table.insert(facts, { "Area", item.where })
+	end
+	if item.issuedHourUtc and item.validToHourUtc then
+		table.insert(facts, { "In effect", `{Geo.clock(item.issuedHourUtc)} until {Geo.clock(item.validToHourUtc)}` })
+	end
+	return {
+		title = kind.title(item), tag = if kind.tag then kind.tag(item) else nil, facts = facts, body = item.text or "",
+		colour = kind.palette[item.colourKey], layer = self.key, item = kind.id(item), bounds = Geo.bounds(item.rings),
+	}
 end
 
 function Areas.renderOptions(self: any)

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>High Risk</title>
+  <!-- One watch (/watch/<n>) or mesoscale discussion (/md/<n>), from server/ProductArchive.js. -->
+  <!--site:head-->
+</head>
+<body class="doc">
+<!--site:header-->
+<main id="content" class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span><a id="crumbList" href="/watches">Watches</a></span><span id="crumb"></span></nav>
+  <header class="page-head">
+    <h1 id="title">Loading…</h1>
+    <p id="badge"></p>
+    <p class="stamp" id="times"></p>
+  </header>
+  <div class="split split--map">
+    <figure class="map">
+      <a id="mapLink"><img id="map" alt="Map of the area" width="1000" height="1064" /></a>
+      <figcaption>Select the map to open it on its own, ready to share.</figcaption>
+    </figure>
+    <div>
+      <dl class="facts" id="facts"></dl>
+      <section class="section">
+        <h2 id="textTitle">Bulletin</h2>
+        <pre class="bulletin" id="text"></pre>
+      </section>
+      <nav class="pager" id="pager"></nav>
+    </div>
+  </div>
+</main>
+<!--site:footer-->
+<script type="module">
+import { $, getJson, escapeHtml } from '/js/site.js';
+const [, kind, number] = location.pathname.match(/^\/(watch|md)\/(\d+)/) ?? [], n = Number(number);
+const watch = kind === 'watch', listName = watch ? 'Watches' : 'Discussions', listHref = watch ? '/watches' : '/discussions';
+$('#crumbList').textContent = listName; $('#crumbList').href = listHref;
+$('#pager').innerHTML = `${n > 1 ? `<a href="/${kind}/${n - 1}">‹ ${watch ? 'Watch' : 'Discussion'} ${n - 1}</a>` : '<span></span>'}<a href="${listHref}">All ${listName.toLowerCase()}</a><a href="/${kind}/${n + 1}">${watch ? 'Watch' : 'Discussion'} ${n + 1} ›</a>`;
+async function load() {
+  let p;
+  try { p = await getJson(`/api/${kind}/${number}`); }
+  catch { $('#title').textContent = watch ? `Watch ${number} has not been issued` : `Mesoscale Discussion ${number} has not been issued`; $('#crumb').textContent = number; return; }
+  const title = watch ? p.title : `Mesoscale Discussion ${String(p.number).padStart(4, '0')}`;
+  document.title = `${title} · High Risk`;
+  $('#title').textContent = title; $('#crumb').textContent = watch ? `Watch ${p.number}` : `Discussion ${p.number}`;
+  $('#times').innerHTML = `<b>Issued</b> ${escapeHtml(p.issuedText)}<br><b>${watch ? 'In effect until' : 'Valid until'}</b> ${escapeHtml(p.untilText)}`;
+  const tags = [];
+  if (watch) { tags.push(`<span class="tag tag--${p.type === 'tornado' ? 'tornado' : 'severe'}">${p.type === 'tornado' ? 'Tornado watch' : 'Severe thunderstorm watch'}</span>`); if (p.pds) tags.push('<span class="tag tag--pds">Particularly dangerous situation</span>'); }
+  else tags.push(`<span class="tag tag--md">${escapeHtml(p.concerning || (p.watchPercent != null ? `Watch chance ${p.watchPercent}%` : 'Mesoscale discussion'))}</span>`);
+  $('#badge').innerHTML = tags.join(' ');
+  const facts = [['Area', p.where]];
+  if (!watch && p.watchPercent != null) facts.push(['Chance of a watch', `${p.watchPercent}%`]);
+  if (!watch && p.watchNumber != null) facts.push(['Watch', `<a href="/watch/${p.watchNumber}">Watch ${p.watchNumber}</a>`]);
+  $('#facts').innerHTML = facts.filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${k === 'Watch' ? v : escapeHtml(v)}</dd>`).join('');
+  $('#text').textContent = p.text ?? '';
+  const v = encodeURIComponent(p.validToHourUtc + ':' + (p.text ?? '').length);
+  $('#map').src = `/api/${kind}/${number}.svg?v=${v}`; $('#mapLink').href = `/api/${kind}/${number}.svg?times=1`;
+}
+load();
+setInterval(load, 120_000);
+</script>
+</body>
+</html>

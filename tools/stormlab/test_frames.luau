@@ -92,5 +92,13 @@ if bad.storms[1] then
 	bad.storms[1].dead = nil
 	check(#Frames.check("state", { bad }) > 0, "a storm without vmid is reported")
 end
-print(string.format("frames: %d storms, %d tornadoes, precip %d bytes · %s", #world.storms, #world.tornadoes,
+-- Tornadoes: vortices whose peak ground wind reached EF0 (below it there is no tornado, 2026-11-18).
+local function tornadoCount(list: { any }): number
+	local n = 0
+	for _, t in list do
+		if (t.peakEf or -1) >= 0 then n += 1 end
+	end
+	return n
+end
+print(string.format("frames: %d storms, %d tornadoes, precip %d bytes · %s", #world.storms, tornadoCount(world.tornadoes),
 	buffer.len(world.precip:pack()), if fails == 0 then "all passed" else fails .. " failed"))

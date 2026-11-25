@@ -29,7 +29,12 @@ async function worker(seed) {
   const atmosphere = new AtmosphereWorld({ seed }), world = atmosphere.world, n = world.width * world.height, daily = [];
   for (let day = 0; day < days; day++) {
     const frames = [], seen = new Set(), initiations = [], before = world.stormEngine.totalTornadoes;
-    for (let step = 0; step < 48; step++) { atmosphere.advance(0.5); captureTruth(world, frames, seen, initiations); }
+    // (Stepped as the server steps, 5-minute storm ticks, since 2026-11-15; before, advance(0.5) moved storms in 30-minute jumps.)
+    for (let step = 0; step < 48; step++) { atmosphere.advanceLikeServer(0.5); captureTruth(world, frames, seen, initiations); }
+    // The large scale at the day's end, to see whether it drifts as the world ages: the steering's plan for the day and the
+    // outer model's wave strength (RMS streamfunction, 1e6 m2/s, each layer) and moisture disturbance (RMS g/kg).
+    const model = atmosphere.model, rms = a => Math.sqrt(a.reduce((sum, v) => sum + v * v, 0) / a.length), plan = atmosphere.steering?.plan ?? null;
+    const large = { psi1: rms(model.psi1) / 1e6, psi2: rms(model.psi2) / 1e6, moisture: rms(model.moisture), surfaceMoisture: rms(model.surfaceMoisture), kind: plan?.kind ?? null, support: plan?.support ?? null, missKm: plan?.missKm ?? null };
     const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
     // For each hazard and contour level: the highest intensity group found inside it (-1: the level was not reached).
     const reached = Object.fromEntries(WORLD_HAZARDS.map(h => [h, PROBABILITY_LEVELS[h].map(() => -1)]));
@@ -38,7 +43,7 @@ async function worker(seed) {
     const TIERS = { tornado: ['tornadoSig', 'tornadoExtreme', 'tornadoViolent'], wind: ['windSig', 'windExtreme', 'windViolent'], hail: ['hailSig', 'hailExtreme'] };
     const tierPeak = Object.fromEntries(WORLD_HAZARDS.map(h => [h, PROBABILITY_LEVELS[h].map(() => TIERS[h].map(() => 0))]));
     for (let i = 0; i < n; i++) for (const h of WORLD_HAZARDS) { const k = PROBABILITY_LEVELS[h].indexOf(truth.observedProbability[h][i]); if (k >= 0) TIERS[h].forEach((field, t) => { tierPeak[h][k][t] = Math.max(tierPeak[h][k][t], truth.chance[field][i]); }); }
-    daily.push({ seed, day, storms: seen.size, tornadoes: world.stormEngine.totalTornadoes - before, thunder: truth.storm.some(Boolean), reached, tierPeak, real: truth.risk.reduce((best, r) => Math.max(best, rank(r)), 0) });
+    daily.push({ seed, day, large, storms: seen.size, tornadoes: world.stormEngine.totalTornadoes - before, thunder: truth.storm.some(Boolean), reached, tierPeak, real: truth.risk.reduce((best, r) => Math.max(best, rank(r)), 0) });
   }
   process.send(daily);
 }

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
 import { Storm } from '../js/storms/Storm.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
+import { sampleStormEnvironment, diagnoseStormMotion } from '../js/storms/environmentSampling.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
 import { RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, beamHeightKm, decodeRadarValue } from '../js/radar/RadarFormat.js';
 
@@ -29,11 +30,16 @@ assert.ok(low / total > 0.12, `the country near the radars is still well covered
 // --- One violent tornadic supercell, the same at every range. ---
 function view(rangeKm, tornadoDown = true) {
   const x = site.xKm + rangeKm * Math.cos(0.3), y = site.yKm + rangeKm * Math.sin(0.3);
-  const storm = new Storm({ id: 'TEST-SC', xKm: x, yKm: y, velocityEastKph: 45, velocityNorthKph: 25, sourceCell: { x: 0, y: 0 }, createdHourUtc: world.validHourUtc });
+  // (moving as a supercell there does, since 2026-11-18: until then 45 km/h east and 25 north wherever it stood.
+  // With the jet's upper wind 13.5 to 15.5 and its core shear 10 to 14 m/s, 850 mb here went 16 to 47 kt, and a
+  // storm held to that motion had storm-relative winds that blew its rain off the vortex: CC 0.79 with no tornado
+  // down at 190 km and 0.24 with one, the debris alone in the beam.)
+  const motion = diagnoseStormMotion(sampleStormEnvironment(world, x, y), { rotating: 1, linear: 0 });
+  const storm = new Storm({ id: 'TEST-SC', xKm: x, yKm: y, velocityEastKph: motion.east, velocityNorthKph: motion.north, sourceCell: { x: 0, y: 0 }, createdHourUtc: world.validHourUtc });
   Object.assign(storm, {
     mode: 'discrete supercell', ageHours: 2.5, intensity: 0.85, organization: 0.9, updraftStrength: 0.9, updraughtMs: 45, precipitation: 0.9,
     lowRotation: 0.6, lowRotationFree: 0.7, occlusion: 0.2, currentHailSizeInches: 2.5, mesocycloneStrength: 1.05, rotationStrength: 1, coldPoolStrength: 0.35,
-    orientationDeg: Math.atan2(45, -25) * 180 / Math.PI, tornado: { onGround: tornadoDown, widthYards: 700, windSpeedMph: 165 }
+    orientationDeg: Math.atan2(motion.east, -motion.north) * 180 / Math.PI, tornado: { onGround: tornadoDown, widthYards: 700, windSpeedMph: 165 }
   });
   evolveStormStructure(storm, { cape: 3200, bulkShear: 55, lapseRate700500: 7.8, dewpoint: 68 }, 0, 'TEST-SC');
   const synthetic = Object.create(Object.getPrototypeOf(world));
@@ -70,7 +76,13 @@ assert.ok(close.debrisCc <= 0.83, `close to the radar the debris is plain (${clo
 // (A violent tornado lofts debris to 3.5 km, which the bottom of the beam still grazes there,
 // and the hail core beside it lowers the value too. The gap 0.09 to 0.06 on 2026-10-21 with the near
 // value above: the debris is spread thinner by the low-level wind, not seen any better far off.)
-assert.ok(far.debrisCc >= 0.87 && far.debrisCc - close.debrisCc >= 0.06, `far from it the beam passes over nearly all the debris (${far.debrisCc} against ${close.debrisCc})`);
+// (Judged on what the debris adds, against the same storm with no tornado down, since 2026-11-18: until then on
+// CC 0.87 or more, which the hail core's mixed echo alone moves with the environment's wind. Far off the debris
+// makes no debris signature (CC under 0.8, RotationDetection's warning-training criterion) and takes at most a
+// tenth of what it takes close in. Jet upper wind 15.5 and core shear 14 m/s: 0.844 against 0.879 with no tornado,
+// 0.354 against 0.879 close.)
+const farClear = view(190, false).debrisCc, closeClear = view(40, false).debrisCc;
+assert.ok(far.debrisCc >= 0.8 && farClear - far.debrisCc <= 0.1 * (closeClear - close.debrisCc), `far from it the beam passes over nearly all the debris (${far.debrisCc}, ${farClear} with no tornado; close ${close.debrisCc}, ${closeClear})`);
 
 // --- The mosaic is blank where no radar reaches. ---
 const edge = { x: 4, y: 0.52 * domainKm };

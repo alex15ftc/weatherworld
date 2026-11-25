@@ -8,7 +8,7 @@
 //     equilibrium level up to where it stops rising (its overshoot), its water the lifted parcel's
 //     condensate;
 //   - the large-scale layers of the 16 km cells (RegionalAtmosphere: low, mid and high shares of
-//     the sky), each covering that share of the pixels it lies over (a seeded texture moving with
+//     the sky, the low drawn as its two kinds, the stratus sheet and cumulus), each covering that share of the pixels it lies over (a seeded texture moving with
 //     the layer's wind decides which), with water from the layer's depth.
 // Cloud tops are as warm as the air at their height (the cell's or the storm's sounding), except
 // above a storm's equilibrium level, where the overshooting air has cooled dry-adiabatically and is
@@ -16,6 +16,8 @@
 // IR: radiance at 10.3 um summed top down, each cloud emitting B(T) by its emissivity
 // 1 - exp(-k W) and passing (1 - emissivity) of what is under it, the ground last (Planck, mixed as
 // radiance, so thin edges read warm), then back to a temperature.
+// Night fog: the same sum at 3.9 um, where water cloud emits less (and reflects the sun by day),
+// as BT 10.3 - BT 3.9.
 // Visible: each cloud's reflectance for the sun's height (two-stream, Eddington) as a share of the
 // pixel it covers, the layers added (non-absorbing), the ground under them; lit by the sun at the
 // slope of the storms' tops (Lambert), and shaded where a storm top between it and the sun stands
@@ -25,6 +27,7 @@ import { REGIONAL_DEFAULTS } from '../atmosphere/RegionalAtmosphere.js';
 import { WARNING } from '../forecast/Warning.js';
 import { makeNoise, fbm } from '../worldmap/noise.js';
 import { encodeSatelliteValue } from './SatelliteFormat.js';
+import { CLOUD_OPTICS } from '../storms/CloudOptics.js';
 
 export const SATELLITE = Object.freeze({
   resKm: 2,                     // the ABI's IR pixel at the sub-point
@@ -34,8 +37,8 @@ export const SATELLITE = Object.freeze({
   kLiquid: 0.13, kIce: 0.08,
   // Visible optical depth: liquid 1.5 LWP / r_e (r_e 10 um); ice IWP (-6.656e-3 + 3.686 / D_ge)
   // (Fu 1996, D_ge 50 um), so about 0.067 a g/m2.
-  reUm: 10, dgeUm: 50,
-  g: 0.85,                      // asymmetry of cloud scattering
+  reUm: CLOUD_OPTICS.reUm, dgeUm: CLOUD_OPTICS.dgeUm,   // (js/storms/CloudOptics.js, shared with the light under a storm)
+  g: CLOUD_OPTICS.g,            // asymmetry of cloud scattering
   groundAlbedo: 0.08,           // green spring grassland and crops in the red band, 0.05-0.10
   // Cloud water: a low cloud holds what an adiabatic ascent condenses, 2 g/m3 more each km above
   // its base (so LWP = 0.5 x 2e-3 g/m4 x depth^2); a mid-level layer about 0.02 g/m3 (altostratus
@@ -46,9 +49,27 @@ export const SATELLITE = Object.freeze({
   dryLapseKPerM: 9.8e-3,
   // Heights of the pressure levels the cells keep (m above sea level; 500 hPa is the cell's own).
   levelZ: { 850: 1457, 700: 3012, 250: 10363 }, top: { z: 16180, t: -56 }, // (100 hPa, the soundings' top anchor)
-  texture: { low: 14, mid: 30, high: 45 }, // km across a cloud of each layer's texture
-  edge: 0.6,                    // how soft a layer's edge is, as a share of its cover (a 2 km pixel
-                                // holds part cloud, part clear: mottled grey, not cloud or none)
+  // km across a cloud of each layer's texture: the low sheet (stratus, stratocumulus) in wide
+  // decks, cumulus in cells of a few km (at 2 km pixels a mottled field, not single clouds)
+  texture: { sheet: 40, cumulus: 5, mid: 30, high: 45 },
+  // How soft a layer's edge is, as a share of its cover (a 2 km pixel holds part cloud, part
+  // clear: mottled grey, not cloud or none). A stratus deck under its inversion ends sharply.
+  edge: { sheet: 0.25, cumulus: 0.5, mid: 0.6, high: 0.6 },
+  // Cumulus line up in streets along the mixed layer's wind, longer the stronger it blows: cells
+  // stretched 1 + speed / streetWindMs along it (to at most 1 + streetMost).
+  streetWindMs: 10, streetMost: 2,
+  // The lifting condensation level of the air at the ground, m a kelvin of dewpoint spread (the
+  // engine's own reading of stratus: RegionalAtmosphere stratusSpreadK).
+  lclMPerK: 125,
+  // Shortwave IR (ABI band 7, 3.9 um), for the night fog image (BT 10.3 - BT 3.9). Water drops
+  // absorb less there than at 10.3 um and scatter more: a thick water cloud emits ~0.8 of a black
+  // body and reflects the rest (Hunt 1973), ice ~0.95; a thin one less of both, by its water
+  // (absorption ~0.05 m2/g). So stratus and fog read colder at 3.9 um than at 10.3 at night
+  // (a positive difference), thin cirrus warmer (the Planck curve is steeper at 3.9 um, so the
+  // warm ground under it counts for more: a negative one). Ground emissivity ~0.95 (vegetation).
+  // By day the sunlight reflected at 3.9 um (~10 W m-2 um-1 at the top of the atmosphere) makes it
+  // far warmer, the difference strongly negative: the image is read at night.
+  band7: { lambdaM: 3.9e-6, kLiquid: 0.05, kIce: 0.06, emitLiquid: 0.8, emitIce: 0.95, groundEmissivity: 0.95, solarWm2PerUm: 10 },
   // A storm's cloud as the satellite sees it is the frame's, its edges stirred by the turbulence of
   // the spreading outflow (the place it is looked up at moved up to stirKm, over stirScaleKm),
   // smoothed over smoothKm (the pixel's footprint and the anvil's own spread), and its top heaving
@@ -88,7 +109,8 @@ function cellClouds(world, regional = null) {
   const S = SATELLITE, nx = world.width, ny = world.height, n = nx * ny;
   const out = {
     nx, ny, cs: world.cellSizeKm, ground: new Float32Array(n), tSurf: new Float32Array(n),
-    low: new Float32Array(n), lowTop: new Float32Array(n), lowT: new Float32Array(n), lowW: new Float32Array(n),
+    sheet: new Float32Array(n), sheetTop: new Float32Array(n), sheetT: new Float32Array(n), sheetW: new Float32Array(n),
+    cumulus: new Float32Array(n), cumulusTop: new Float32Array(n), cumulusT: new Float32Array(n), cumulusW: new Float32Array(n),
     mid: new Float32Array(n), midTop: new Float32Array(n), midT: new Float32Array(n), midW: new Float32Array(n),
     high: new Float32Array(n), highTop: new Float32Array(n), highT: new Float32Array(n), highW: new Float32Array(n)
   };
@@ -104,11 +126,26 @@ function cellClouds(world, regional = null) {
       return anchors[anchors.length - 1][1];
     };
     out.ground[k] = ground; out.tSurf[k] = tSurf + 273.15;
-    // Low: from the LCL to the moist layer's top (the cumulus and stratus of the share).
-    const base = Math.max(ground, c.derived?.lcl ?? ground + 1000);
-    const depth = clamp((f.moistLayerTopM ?? base + 500) - base, S.lowDepthM[0], S.lowDepthM[1]);
-    out.low[k] = clamp(f.cloudLow ?? 0, 0, 1); out.lowTop[k] = base + depth; out.lowT[k] = tAt(base + depth) + 273.15;
-    out.lowW[k] = 0.5 * S.adiabaticLwcPerM * depth * depth;
+    // Low, its two kinds (a world without them: all of its low cloud the sheet). Both reach up to
+    // the moist layer's top and hold what an adiabatic ascent condenses from their base.
+    //  - The sheet (stratus, stratocumulus) from the cloud base of the air at the ground: thin
+    //    where the moist layer is shallow (Gulf air coming back after a front) or the ground air
+    //    drier, so those parts of a deck go grey and break first as the day heats.
+    //  - Cumulus from the mixed layer's LCL, drawn in the sheet's gaps (cloudLow is the larger of
+    //    the two, not their sum).
+    const moistTop = f.moistLayerTopM, sfc = c.surface ?? {};
+    const spreadK = Math.max(0, ((sfc.temperature ?? 70) - (sfc.dewpoint ?? 50)) / 1.8);
+    const sheet = clamp(f.cloudStratus ?? f.cloudLow ?? 0, 0, 1), cumulus = clamp(f.cloudCumulus ?? 0, 0, 1) * (1 - sheet);
+    //  - Where the sheet is the engine's night stratus deck (cloudDeck of it), it lies between the
+    //    deck's own base and top (deckBaseM, deckTopM: a few hundred metres up, warm and thin).
+    const deckShare = sheet > 0 && Number.isFinite(f.deckTopM) ? clamp((f.cloudDeck ?? 0) / sheet, 0, 1) : 0;
+    for (const [name, share, base0] of [['sheet', sheet, ground + S.lclMPerK * spreadK], ['cumulus', cumulus, Math.max(ground, c.derived?.lcl ?? ground + 1000)]]) {
+      const top0 = moistTop ?? base0 + 500, d = name === 'sheet' ? deckShare : 0;
+      const base = base0 + d * ((f.deckBaseM ?? base0) - base0), top = top0 + d * ((f.deckTopM ?? top0) - top0);
+      const depth = clamp(top - base, S.lowDepthM[0], S.lowDepthM[1]);
+      out[name][k] = share; out[name + 'Top'][k] = base + depth; out[name + 'T'][k] = tAt(base + depth) + 273.15;
+      out[name + 'W'][k] = 0.5 * S.adiabaticLwcPerM * depth * depth;
+    }
     // Mid: the ascent's layer from 700 hPa up, deeper the more of the sky it covers.
     const z700 = S.levelZ[700], z500 = 10 * (L[500].heightDm ?? 570), mid = clamp(f.cloudMid ?? 0, 0, 1), midDepth = Math.max(200, mid * (z500 - z700));
     out.mid[k] = mid; out.midTop[k] = z700 + midDepth; out.midT[k] = tAt(z700 + midDepth) + 273.15; out.midW[k] = S.midWaterGm3 * midDepth;
@@ -271,46 +308,65 @@ export function satelliteInputs(world, { seed = world.seed ?? 1, kinds = ['ir', 
 export function renderSatellite({ seed, kinds, width, height, res, hourUtc, localHour, sun, cc, winds, rings, dome }) {
   const S = SATELLITE, N = width * height;
   const storms = stormClouds(rings, dome, width, height, res, seed);
-  const noise = { low: makeNoise(seed, 'sat-low'), mid: makeNoise(seed, 'sat-mid'), high: makeNoise(seed, 'sat-high') };
+  const noise = { sheet: makeNoise(seed, 'sat-low'), cumulus: makeNoise(seed, 'sat-cumulus'), mid: makeNoise(seed, 'sat-mid'), high: makeNoise(seed, 'sat-high') };
   const mu0 = Math.sin(Math.max(0, sun.elevationDeg) * Math.PI / 180), lit = sun.elevationDeg > 0;
   const lambda = S.lambdaM, tauIce = 3.686 / S.dgeUm - 6.656e-3, tauLiquid = 1.5 / S.reUm;
+  const B7 = S.band7, sun7 = lit ? B7.solarWm2PerUm * 1e6 * mu0 / Math.PI : 0; // (the sunlight at 3.9 um, as radiance off a white surface)
+  // Cumulus streets: the cells stretched along the mixed layer's (850 mb) wind.
+  const lowWind = winds.low, lowSpeed = Math.hypot(lowWind.u, lowWind.v);
+  const street = 1 + Math.min(S.streetMost, lowSpeed / 3.6 / S.streetWindMs), alongX = lowSpeed > 0 ? lowWind.u / lowSpeed : 1, alongY = lowSpeed > 0 ? -lowWind.v / lowSpeed : 0;
 
-  const ir = new Uint8Array(N), visible = new Uint8Array(N), surfaceTop = new Float32Array(N), stormTau = new Float32Array(N), refl = new Float32Array(N);
-  const layer = { z: new Float64Array(8), t: new Float64Array(8), eps: new Float64Array(8), r: new Float64Array(8) };
+  const ir = new Uint8Array(N), visible = new Uint8Array(N), fog = new Uint8Array(N), surfaceTop = new Float32Array(N), stormTau = new Float32Array(N), refl = new Float32Array(N);
+  const layer = { z: new Float64Array(8), t: new Float64Array(8), eps: new Float64Array(8), r: new Float64Array(8), e7: new Float64Array(8), r7: new Float64Array(8) };
+  const FIELDS = Object.keys(layer);
   for (let j = 0; j < height; j++) for (let i = 0; i < width; i++) {
     const x = (i + 0.5) * res, y = (j + 0.5) * res, k = j * width + i;
     let n = 0;
-    const add = (z, tK, eps, r) => { // (kept highest first)
+    // A cloud (kept highest first): its top, temperature, emissivity and reflectance (10.3 um and
+    // visible), and how much of a black body it emits and how much it reflects at 3.9 um.
+    const add = (z, tK, eps, r, e7, r7) => {
       let p = n++;
-      while (p > 0 && layer.z[p - 1] < z) { layer.z[p] = layer.z[p - 1]; layer.t[p] = layer.t[p - 1]; layer.eps[p] = layer.eps[p - 1]; layer.r[p] = layer.r[p - 1]; p--; }
-      layer.z[p] = z; layer.t[p] = tK; layer.eps[p] = eps; layer.r[p] = r;
+      while (p > 0 && layer.z[p - 1] < z) { for (const f of FIELDS) layer[f][p] = layer[f][p - 1]; p--; }
+      layer.z[p] = z; layer.t[p] = tK; layer.eps[p] = eps; layer.r[p] = r; layer.e7[p] = e7; layer.r7[p] = r7;
     };
     // The storms' cloud covers its pixels.
     for (const L of storms.layers) if (L.ice[k] > 0) {
-      const tau = tauIce * L.ice[k];
+      const tau = tauIce * L.ice[k], x7 = 1 - Math.exp(-B7.kIce * L.ice[k]);
       stormTau[k] += tau;
-      add(L.top[k], L.temp[k], 1 - Math.exp(-S.kIce * L.ice[k]), reflectance(tau, mu0));
+      add(L.top[k], L.temp[k], 1 - Math.exp(-S.kIce * L.ice[k]), reflectance(tau, mu0), x7 * B7.emitIce, x7 * (1 - B7.emitIce));
     }
     // Each large-scale layer covers its share of the pixels (texture moved by its wind).
-    for (const [name, ice] of [['high', true], ['mid', false], ['low', false]]) {
+    for (const [name, ice] of [['high', true], ['mid', false], ['sheet', false], ['cumulus', false]]) {
       const share = cellAt(cc, cc[name], x, y);
       if (!(share > 0.005)) continue;
-      const wind = winds[name], scale = S.texture[name];
-      const tex = 0.5 + 0.5 * fbm(noise[name], (x - wind.u * hourUtc) / scale, (y + wind.v * hourUtc) / scale, name === 'low' ? 1 : 2);
-      const cover = clamp((share - tex) / S.edge + 0.5, 0, 1) * Math.min(1, share / S.edge);
+      const wind = winds[name === 'sheet' || name === 'cumulus' ? 'low' : name], scale = S.texture[name], edge = S.edge[name];
+      const px = x - wind.u * hourUtc, py = y + wind.v * hourUtc;
+      const tex = 0.5 + 0.5 * (name === 'cumulus'
+        ? fbm(noise.cumulus, (px * alongX + py * alongY) / (scale * street), (py * alongX - px * alongY) / scale, 2)
+        : fbm(noise[name], px / scale, py / scale, name === 'sheet' ? 3 : 2)); // (a deck's edge ragged, not round)
+      const cover = clamp((share - tex) / edge + 0.5, 0, 1) * Math.min(1, share / edge);
       if (!(cover > 0)) continue;
       // (thicker deeper inside the texture's cloud, thinner at its edges: the layer's water as a mean)
-      const w = cellAt(cc, cc[name + 'W'], x, y) * 2 * clamp((share - tex) / Math.max(S.edge, share) + 0.5, 0.1, 1), tK = cellAt(cc, cc[name + 'T'], x, y), z = cellAt(cc, cc[name + 'Top'], x, y);
+      const w = cellAt(cc, cc[name + 'W'], x, y) * 2 * clamp((share - tex) / Math.max(edge, share) + 0.5, 0.1, 1), tK = cellAt(cc, cc[name + 'T'], x, y), z = cellAt(cc, cc[name + 'Top'], x, y);
       // (a mid layer is ice where colder than -20 C, water where warmer than 0, mixed between)
       const iceShare = ice ? 1 : name === 'mid' ? clamp((273.15 - tK) / 20, 0, 1) : 0;
       const kAbs = iceShare * S.kIce + (1 - iceShare) * S.kLiquid, tau = (iceShare * tauIce + (1 - iceShare) * tauLiquid) * w;
-      add(z, tK, cover * (1 - Math.exp(-kAbs * w)), cover * reflectance(tau, mu0));
+      const x7 = cover * (1 - Math.exp(-(iceShare * B7.kIce + (1 - iceShare) * B7.kLiquid) * w)), emit7 = iceShare * B7.emitIce + (1 - iceShare) * B7.emitLiquid;
+      add(z, tK, cover * (1 - Math.exp(-kAbs * w)), cover * reflectance(tau, mu0), x7 * emit7, x7 * (1 - emit7));
     }
-    // IR: top down.
-    let L = 0, pass = 1;
-    for (let q = 0; q < n; q++) { L += pass * layer.eps[q] * planck(layer.t[q], lambda); pass *= 1 - layer.eps[q]; }
-    L += pass * planck(cellAt(cc, cc.tSurf, x, y), lambda);
-    ir[k] = encodeSatelliteValue('ir', planckInverse(L, lambda) - 273.15);
+    // IR: top down, at 10.3 um and at 3.9 um (there the sunlight each cloud and the ground reflect
+    // too, through what is above it both ways).
+    const tGround = cellAt(cc, cc.tSurf, x, y);
+    let L = 0, pass = 1, L7 = 0, pass7 = 1;
+    for (let q = 0; q < n; q++) {
+      L += pass * layer.eps[q] * planck(layer.t[q], lambda); pass *= 1 - layer.eps[q];
+      L7 += pass7 * layer.e7[q] * planck(layer.t[q], B7.lambdaM) + pass7 * pass7 * layer.r7[q] * sun7; pass7 *= 1 - layer.e7[q] - layer.r7[q];
+    }
+    L += pass * planck(tGround, lambda);
+    L7 += pass7 * B7.groundEmissivity * planck(tGround, B7.lambdaM) + pass7 * pass7 * (1 - B7.groundEmissivity) * sun7;
+    const bt13 = planckInverse(L, lambda);
+    ir[k] = encodeSatelliteValue('ir', bt13 - 273.15);
+    fog[k] = encodeSatelliteValue('fog', bt13 - planckInverse(L7, B7.lambdaM));
     // Visible: the layers added (R12 = R1 + T1^2 R2 / (1 - R1 R2), T = 1 - R), the ground last.
     let R = 0;
     for (let q = 0; q < n; q++) { const r = layer.r[q], t = 1 - R; R = R + t * t * r / Math.max(1e-6, 1 - R * r); }
@@ -347,5 +403,5 @@ export function renderSatellite({ seed, kinds, width, height, res, hourUtc, loca
       visible[k] = encodeSatelliteValue('visible', refl[k] * light * through);
     }
   }
-  return { width, height, resKm: res, validHourUtc: hourUtc, sun: { ...sun, localHour }, ir, visible };
+  return { width, height, resKm: res, validHourUtc: hourUtc, sun: { ...sun, localHour }, ir, visible, fog };
 }

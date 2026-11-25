@@ -1,5 +1,5 @@
 import { Storm } from './Storm.js';
-import { findInitiationCandidates } from './InitiationEngine.js';
+import { findInitiationCandidates, INFLOW } from './InitiationEngine.js';
 import { diagnoseStormMotion, sampleStormEnvironment } from './environmentSampling.js';
 import { describeStormMode, shouldSplitStorm, leftSplitShare, rotatingShare, lineShare, lineOrganizationTarget } from './StormModeEngine.js';
 import { BUDGET, setUpdraught, startStormBudgets, stepStormBudgets, stormIsOver } from './StormBudgets.js';
@@ -17,7 +17,7 @@ import { sampleEffectiveInflowEnvironment, updateCoupledStormMotion, updateStorm
 import { diagnoseStormRealizationPhysics } from './StormRealizationPhysics.js';
 
 export function initializeStormEngine(world) {
-  world.storms = [];
+  world.storms = []; world.offstageStorms = [];
   world.stormEngine = { schemaVersion: 5, cadenceMinutes: 5, validHourUtc: world.validHourUtc, revision: 0, nextId: 1, totalCreated: 0, totalSplits: 0, totalMergers: 0, totalTornadoes: 0, activeTornadoes: 0, lastInitiationHourUtc: null, archiveRetentionHours: 3, maxArchiveEntries: 120, calibrationVersion: '2.66.0-convective-organization', dailyInitiations: {} };
   world.stormArchive = [];
   world.stormHistory = [];
@@ -33,11 +33,14 @@ export function advanceStormEngine(world, dtHours = 1, { initiate = true, applyF
     const spatialIndex = buildStormSpatialIndex(world.storms);
     updateInteractionSuppression(world, spatialIndex);
     for (const storm of world.storms) updateStorm(world, storm, substepHours);
+    for (const storm of world.offstageStorms ?? []) updateStorm(world, storm, substepHours);
     handleSplits(world);
     handleMergersAndOrganization(world, buildStormSpatialIndex(world.storms));
   }
   archiveEndedStorms(world);
-  world.storms = world.storms.filter(storm => storm.active);
+  // (a storm past the edge with a tornado down goes on offstage - OFFSTAGE - out of everything that reads world.storms)
+  const living = [...world.storms, ...(world.offstageStorms ?? [])].filter(storm => storm.active);
+  world.storms = living.filter(storm => !storm.offstage); world.offstageStorms = living.filter(storm => storm.offstage);
   if (initiate) initiateStorms(world);
   if (applyFeedback) applyStormFeedback(world, dtHours);
   world.stormEngine.activeTornadoes = world.storms.filter(storm => storm.tornado?.onGround).length;
@@ -87,10 +90,31 @@ function initiateStorms(world) {
   const initiationSlot = Math.floor(stormHour * 2) / 2;
   if (world.stormEngine.lastInitiationHourUtc === initiationSlot) return;
   world.stormEngine.lastInitiationHourUtc = initiationSlot;
-  for (const candidate of findInitiationCandidates(world, world.storms, initiationSlot, 0.5)) {
+  for (const candidate of findInitiationCandidates(world, [...world.storms, ...(world.offstageStorms ?? []).filter(storm => storm.inbound)], initiationSlot, 0.5)) {
     const environment = sampleStormEnvironment(world, candidate.xKm, candidate.yKm);
-    createStorm(world, candidate, environment, candidate.elevated ? 'elevated convection' : null);
+    if (candidate.inbound) {
+      // (INFLOW: only one its first motion brings onto the map within reachHours)
+      const motion = diagnoseStormMotion(environment, { rotating: 0, linear: lineOrganizationTarget({ coldPoolStrength: 0 }, environment) * INITIAL_LINE_SHARE });
+      if (hoursToMap(world, candidate.xKm, candidate.yKm, motion.east, -motion.north) > INFLOW.reachHours) continue;
+    }
+    const storm = createStorm(world, candidate, environment, candidate.elevated ? 'elevated convection' : null);
+    // INFLOW: one started in the margin round the map is offstage until it crosses onto it, and counted then.
+    if (candidate.inbound) {
+      storm.inbound = true; storm.offstage = true; world.stormEngine.totalCreated -= 1;
+      world.storms.splice(world.storms.indexOf(storm), 1); (world.offstageStorms ??= []).push(storm);
+    }
   }
+}
+
+// Hours until a point (km) moving at (vx east, vy down the map, km/h) is on the map; Infinity if it never is.
+export function hoursToMap(world, x, y, vx, vy) {
+  let enter = 0, leave = Infinity;
+  for (const [p, v, hi] of [[x, vx, world.domainWidthKm], [y, vy, world.domainHeightKm]]) {
+    if (Math.abs(v) < 1e-9) { if (p < 0 || p > hi) return Infinity; continue; }
+    const a = (0 - p) / v, b = (hi - p) / v;
+    enter = Math.max(enter, Math.min(a, b)); leave = Math.min(leave, Math.max(a, b));
+  }
+  return enter <= leave ? enter : Infinity;
 }
 
 function updateStorm(world, storm, dtHours) {
@@ -173,10 +197,29 @@ function updateStorm(world, storm, dtHours) {
   storm.peakRotationStrength = Math.max(storm.peakRotationStrength ?? 0, storm.rotationStrength ?? 0);
   storm.peakUpdraftStrength = Math.max(storm.peakUpdraftStrength ?? 0, storm.updraftStrength ?? 0);
 
+  // INFLOW (InitiationEngine): a storm started in the margin round the map steps offstage until it is on the map, and
+  // then is one of the map's storms like any other; one that leaves the margin first is let go unrecorded.
+  if (storm.inbound) {
+    const { x, y } = storm.positionKm, W = world.domainWidthKm, H = world.domainHeightKm;
+    const marginKm = INFLOW.marginCells * world.cellSizeKm + 10;
+    if (x >= 0 && y >= 0 && x <= W && y <= H) { storm.inbound = false; storm.offstage = false; storm.enteredHourUtc = world.stormEngine?.validHourUtc ?? world.validHourUtc; world.stormEngine.totalCreated += 1; }
+    else if (x < -marginKm || y < -marginKm || x > W + marginKm || y > H + marginKm || stormIsOver(storm)) { storm.active = false; storm.dissipationReason = 'never-entered'; }
+    return;
+  }
   const outside = storm.positionKm.x < -10 || storm.positionKm.y < -10 || storm.positionKm.x > world.domainWidthKm + 10 || storm.positionKm.y > world.domainHeightKm + 10;
-  if (outside) { storm.active = false; storm.dissipationReason = 'left-domain'; }
+  // OFFSTAGE (2026-11-19, the tornado lab): one past the edge with a tornado down goes on stepping, off the map (in the
+  // environment at its edge: environmentSampling clamps there) and out of the game's and the radar's sight, until its
+  // tornado ends on its own terms - shrinking, the rope, the end - or OFFSTAGE.maxMinutes pass; only then does it
+  // leave. (Until then a tornado reaching the edge ended there mid-life, at full strength, as 'storm ended': 8% of
+  // them in 4 seeds x 72 h, among them a 175-min, 323-km EF4.) No new tornado touches down offstage.
+  const held = outside && storm.tornado?.onGround && (storm.offstageMinutes ?? 0) < OFFSTAGE.maxMinutes;
+  storm.offstage = Boolean(held);
+  if (held) storm.offstageMinutes = (storm.offstageMinutes ?? 0) + dtHours * 60;
+  if (outside && !held) { storm.active = false; storm.dissipationReason = 'left-domain'; }
   else if (stormIsOver(storm)) { storm.active = false; storm.dissipationReason = 'environmental-decay'; }
 }
+
+export const OFFSTAGE = Object.freeze({ maxMinutes: 120 });
 
 function handleSplits(world) {
   for (const storm of [...world.storms]) {
@@ -473,9 +516,10 @@ function aheadKm(a,b){
 function archiveEndedStorms(world) {
   world.stormArchive ??= [];
   const now = world.stormEngine?.validHourUtc ?? world.validHourUtc ?? 0;
-  for (const storm of world.storms ?? []) {
+  for (const storm of [...(world.storms ?? []), ...(world.offstageStorms ?? [])]) {
     if (storm.active || storm.archived) continue;
     storm.archived = true;
+    if (storm.inbound) continue;   // (INFLOW: never reached the map)
     const archivedRecord = {
       id: storm.id, parentId: storm.parentId ?? null, children: [...(storm.children ?? [])],
       mergedStormIds: [...(storm.mergedStormIds ?? [])], mode: storm.mode,

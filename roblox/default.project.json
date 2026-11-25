@@ -24,12 +24,16 @@
     },
     "ServerStorage": {
       "$path": "Server",
-      "$ignoreUnknownInstances": true
+      "$ignoreUnknownInstances": true,
+      "Vehicles": {
+        "$path": "assets/vehicles"
+      }
     },
     "StarterPlayer": {
       "$properties": {
         "CharacterUseJumpPower": false,
-        "CharacterJumpHeight": 7.2
+        "CharacterJumpHeight": 3.6,
+        "CharacterWalkSpeed": 8
       }
     },
     "Players": {

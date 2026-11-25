@@ -27,7 +27,17 @@ export const STEERING_DEFAULTS = Object.freeze({
   // ...less where the outer model's air near the ground is drier than usual: none where it is
   // dryGkg below the mean (2026-10-16). Southerly flow under strong wind aloft right behind a
   // front has not yet brought the moisture back, and aiming there made dry, quiet days.
+  // (dryGkg is used only when moistRangeGkg is null.)
   dryGkg: 4,
+  // Moisture ramp (2026-11-17): the support scales with the outer model's moisture over the map about its mean,
+  // from none at moistRangeGkg[0] to all of it at [1], in place of the dry cut, which gave average and very moist
+  // air the same support. Over 80 days of the regression suite the map's moisture tracked tornado counts (rank
+  // 0.50) where the support did not (0.13), and lull days sat on the jet's cold, dry flank, which the dry cut
+  // scored well. With [-2, 4]: below Slight 13.8 to 6.3%, Enhanced 27.5 to 38.8%, Moderate 22.5 to 20%, High 3.8
+  // to 6.3%, runs of 2+ below Slight 5 to 0%; wind and hail report counts rose past tolerance (wind 90th 213 to
+  // 320, hail median 120 to 190; the owner accepted). warmRangeK does the same with warmth (null: off; with
+  // [-6, 6] as well, lulls a little fewer but the category mix no better).
+  moistRangeGkg: [-2, 4], warmRangeK: null,
   // The support wanted on a day is drawn evenly between these (the same for a given seed and day).
   // (0.35-0.8 until 2026-10-16. With the outer model's systems slowed and weakened, the support
   // reached is seldom above 0.35, so steering just took the most it could every day and the
@@ -63,7 +73,34 @@ export const STEERING_DEFAULTS = Object.freeze({
   // (2026-10-23; before, the least north-south slide was taken, and nothing brought the map back.)
   homeReachKm: 1500,
   // Hours between fresh aims on a day aimed at a low (see reaim).
-  reaimHours: 6
+  reaimHours: 6,
+  // Days beyond the coming one a warm-sector plan looks at (0: the coming afternoon and evening alone).
+  // With 1 or 2, today's slide is the one that, with the best slides open on the following days
+  // (east-west, at the latitude today's slide ends on), comes nearest the support wanted over all of
+  // them, each day counted alike: a weaker afternoon now may put the map in reach of the next system.
+  // (2026-11-15; 1 since 2026-11-16: with homePull, over 8 seeds x 80 days the days in runs of 2+ below
+  // Slight fell from 2.66 to 1.25%, with no regressions. The copy runs a day further each morning: ~0.8 s a plan.)
+  lookAheadDays: 1,
+  // Support given up for each 1000 km a warm-sector slide leaves the map from its home latitude (0: none).
+  // The map keeps its home climate wherever it slides, but the jet's core is at home: off it, the mean
+  // westerlies and shear are the flank's. (2026-11-16: the live world's warm-sector plans took the map
+  // ~1350 km north on 11/15 Days 2-3 by small gains in support, and it sat on the jet's flank with
+  // 16-34 kt at 500 mb through a four-day lull while the jet ran 157-164 kt.)
+  // (Not done, 2026-11-16: keeping a low-aimed day only while its slide reached 25-70% of the best
+  // warm-sector slide's support. Low-aimed slides seldom reach a quarter of it, so nearly every day became a
+  // warm-sector day, and the regression suite's EF0/EF1 shares and tornado CIG1+ days regressed.)
+  homePull: 0.15,
+  // Lift (2026-11-18): the share of a warm-sector place's support that rests on the outer model's large-scale
+  // ascent there (its omega: vorticity advection, warm advection and friction), averaged over the liftHours before
+  // each time the plan is judged on. That share rises smoothly from none at liftRangeKh[0] (K/h of cooling by
+  // rising air) to all of it at [1]. Wind aloft over moist southerly flow scores a trough's whole downstream side
+  // alike; the lift picks out where the trough is actually lifting the air (the jet's exit region, the
+  // vorticity advection ahead of the wave). 0: off. Under strongly supported places the 6-hour ascent runs about
+  // 0.09 K/h (median) to 0.21 (top tenth). Regression suite, 8 seeds x 10 days against 0: with 0.5 no regressions,
+  // MDT+HIGH 22.5 to 28.8% (target 25), below Slight 6.25 to 5%, tornado CIG3+ days 2.5 to 5%; with 1, EF4+ share
+  // (0.64 to 1.37%) and tornado CIG3+ days (8.75%) regressed. 1 since 2026-11-18 (the owner accepted those regressions):
+  // all of the support comes with the lift; MDT+HIGH-heavy days with more violent tornadoes.
+  liftShare: 1, liftRangeKh: [0, 0.2], liftHours: 6
 });
 
 const KT = 1.943844;
@@ -94,21 +131,41 @@ export class RegionSteering {
 
   // A copy of the outer model run ahead to each time the plan is judged on, with the support,
   // lows and upper lows there.
-  forecastFields() {
-    const regional = this.regional, live = regional.model, p = this.params, now = regional.hourUtc;
+  // With extraDays, the same times on each of the following days too (field.day 1, 2, ...); their
+  // support is read where today's slide leaves the map (north for its 24 hours, then staying there).
+  forecastFields(extraDays = 0) {
+    const p = this.params, now = this.regional.hourUtc;
+    const today = p.scoreHoursUtc.map(h => ((h - now) % 24 + 24) % 24 || 24).sort((a, b) => a - b), fields = [];
+    const ahead = [];
+    for (let day = 0; day <= extraDays; day++) for (const hours of today) ahead.push({ day, hours: hours + 24 * day });
+    const norths = [];
+    for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) if (this.withinReach(north)) norths.push(north);
+    const copy = this.runAhead(ahead.map(a => a.hours), (model, i) => {
+      const { day, hours } = ahead[i];
+      fields.push({ day, hours, supportByNorth: new Map(norths.map(north => [north, this.supportByColumn(model, north * Math.min(hours, 24) * 3600)])), lows: day ? [] : this.findLows(model, 'surface'), upperLows: day ? [] : this.findLows(model, 'upper') });
+    });
+    return { copy, fields: fields.filter(f => f.day === 0), later: fields.filter(f => f.day > 0), norths };
+  }
+
+  // A copy of the outer model run ahead through each of hoursList (ascending, hours from now), visit(model, i)
+  // at each. Returns the copy.
+  runAhead(hoursList, visit) {
+    const regional = this.regional, live = regional.model;
     const copy = this.scratch ??= new QuasiGeostrophicModel(live.params);
     for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) if (live[key]) copy[key].set(live[key]);
     copy.time = live.time; copy.history = live.history;   // the model replaces these arrays, never writes into them
     copy.fastTransforms = live.fastTransforms;
-    const ahead = p.scoreHoursUtc.map(h => ((h - now) % 24 + 24) % 24 || 24).sort((a, b) => a - b), fields = [];
     let advanced = 0;
-    const norths = [];
-    for (let north = -p.northSpeedMs; north <= p.northSpeedMs + 1e-9; north += p.northStepMs) if (this.withinReach(north)) norths.push(north);
-    for (const hours of ahead) {
-      copy.advance((hours - advanced) * 3600 * regional.params.tempo); advanced = hours;
-      fields.push({ hours, supportByNorth: new Map(norths.map(north => [north, this.supportByColumn(copy, north * hours * 3600)])), lows: this.findLows(copy, 'surface'), upperLows: this.findLows(copy, 'upper') });
-    }
-    return { copy, fields, norths };
+    // The last liftHours before each time are an advance of their own, so the copy's ascent is theirs (the steps
+    // taken are the same either way: the hours are whole and the model's step divides an hour).
+    const liftHours = Math.max(0, Math.round(this.params.liftHours ?? 0));
+    hoursList.forEach((hours, i) => {
+      const last = Math.min(liftHours, hours - advanced);
+      if (hours - advanced - last > 0) copy.advance((hours - advanced - last) * 3600 * regional.params.tempo);
+      if (last > 0) copy.advance(last * 3600 * regional.params.tempo);
+      advanced = hours; visit(copy, i);
+    });
+    return copy;
   }
 
   // Large-scale support along the belt at one time of the copy: for each column of the model,
@@ -117,18 +174,32 @@ export class RegionSteering {
   supportByColumn(model, northM = 0) {
     const regional = this.regional, p = this.params, { nx, d } = model;
     const span = Math.max(1, Math.round(regional.nx * regional.dx / d)), j0 = Math.floor((regional.origin.y + northM) / d);
-    const mid = new Float64Array(nx), south = new Float64Array(nx), wet = new Float64Array(nx);
-    // The mean moisture falls northward: a slide north is a move into drier air.
+    const mid = new Float64Array(nx), south = new Float64Array(nx), wet = new Float64Array(nx), warm = new Float64Array(nx), lift = new Float64Array(nx);
+    // The mean moisture and warmth fall northward: a slide north is a move into drier, cooler air.
     const meanWet = -(model.params.surfaceMoistureGradientGkgPer1000Km ?? 0) * northM / 1e6;
+    const meanWarm = -(model.params.surfaceGradientKPer1000Km ?? 0) * northM / 1e6;
+    const ramp = (v, range) => clamp((v - range[0]) / (range[1] - range[0]), 0, 1);
     for (let i = 0; i < nx; i++) {
-      for (let dj = 0; dj < span; dj++) { const f = model.fieldsAt(i, j0 + dj); mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span; wet[i] += ((f.surfaceMoistureGkg ?? 0) + meanWet) / span; }
+      for (let dj = 0; dj < span; dj++) {
+        const f = model.fieldsAt(i, j0 + dj);
+        mid[i] += Math.hypot(f.midWind.u, f.midWind.v) * KT / span; south[i] += f.lowerWind.v * KT / span;
+        wet[i] += ((f.surfaceMoistureGkg ?? 0) + meanWet) / span; warm[i] += ((f.surfaceThetaK ?? 0) + meanWarm) / span;
+        lift[i] += (f.ascentCoolingKh ?? 0) / span;
+      }
     }
-    const support = new Float64Array(nx);
+    const support = new Float64Array(nx), liftShare = clamp(p.liftShare ?? 0, 0, 1);
     for (let i = 0; i < nx; i++) {
-      let m = 0, s = 0, q = 0;
-      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; q += wet[(i + di) % nx] / span; }
+      let m = 0, s = 0, q = 0, t = 0, a = 0;
+      for (let di = 0; di < span; di++) { m += mid[(i + di) % nx] / span; s += south[(i + di) % nx] / span; q += wet[(i + di) % nx] / span; t += warm[(i + di) % nx] / span; a += lift[(i + di) % nx] / span; }
       support[i] = Math.min(m, p.windCapKt) / p.windCapKt * clamp(s, -p.southerlyCapKt, p.southerlyCapKt) / p.southerlyCapKt;
-      if (support[i] > 0) support[i] *= clamp(1 + q / p.dryGkg, 0, 1);
+      if (support[i] > 0) {
+        // With moistRangeGkg, the air's moisture about its mean rises smoothly from none at the range's low end to all
+        // the support at its high end (in place of the dry cut); with warmRangeK, its warmth the same way.
+        support[i] *= p.moistRangeGkg ? ramp(q, p.moistRangeGkg) : clamp(1 + q / p.dryGkg, 0, 1);
+        if (p.warmRangeK) support[i] *= ramp(t, p.warmRangeK);
+        // With liftShare, that share of the support comes only with the large-scale ascent (see liftShare).
+        if (liftShare > 0) support[i] *= 1 - liftShare + liftShare * ramp(a, p.liftRangeKh);
+      }
     }
     return support;
   }
@@ -136,13 +207,17 @@ export class RegionSteering {
   makePlan() {
     const regional = this.regional, p = this.params, now = regional.hourUtc;
     // The outer model run ahead to each time the plan is judged on, and the north-south slides tried (m/s).
-    const { copy, fields, norths } = this.forecastFields();
-    const day = Math.floor((now - p.planHourUtc) / 24), wanted = p.wantedLow + (p.wantedHigh - p.wantedLow) * unit(`${this.seed}|steer|${day}`);
+    const lookAhead = Math.max(0, Math.round(p.lookAheadDays ?? 0));
+    const { copy, fields, later, norths } = this.forecastFields(lookAhead);
+    const wantedOn = d => p.wantedLow + (p.wantedHigh - p.wantedLow) * unit(`${this.seed}|steer|${d}`);
+    const day = Math.floor((now - p.planHourUtc) / 24), wanted = wantedOn(day);
     // The kind of day aimed for.
     const draw = unit(`${this.seed}|kind|${day}`), shares = Object.entries(p.kinds), total = shares.reduce((s, [, v]) => s + v, 0);
     let kind = shares[0][0], acc = 0;
     for (const [name, share] of shares) { acc += share / total; if (draw < acc) { kind = name; break; } }
     const aimed = kind === 'warmSector' ? null : this.aimAtLow(copy, fields, kind === 'nearLow' ? 'lows' : 'upperLows', kind === 'nearLow' ? p.lowOffsetKm : p.upperLowOffsetKm);
+    const at = (support, xm) => { const g = ((xm / copy.d) % copy.nx + copy.nx) % copy.nx, i = Math.floor(g), t = g - i; return support[i] * (1 - t) + support[(i + 1) % copy.nx] * t; };
+    const start = regional.origin.x + (regional.timingLeadM ?? 0);
     if (aimed) {
       regional.slideMs = aimed.speed; regional.slideNorthMs = aimed.north;
       this.plan = { hourUtc: now, day, kind, missKm: Math.round(aimed.miss / 1000), slideMs: aimed.speed, slideNorthMs: aimed.north, geographyTarget: regional.geographyTarget };
@@ -150,16 +225,7 @@ export class RegionSteering {
     }
     regional.slideNorthMs = 0;
     if (kind !== 'warmSector') kind = `warmSector (no ${kind} in reach)`;
-    const at = (support, xm) => { const g = ((xm / copy.d) % copy.nx + copy.nx) % copy.nx, i = Math.floor(g), t = g - i; return support[i] * (1 - t) + support[(i + 1) % copy.nx] * t; };
-    // The slide, east-west and north-south, that brings the support nearest the day's wanted
-    // value (the least north-south slide among equals: only the weather overhead changes with it).
-    let best = null;
-    for (const north of norths) for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) {
-      let support = 0;
-      for (const field of fields) support += at(field.supportByNorth.get(north), regional.origin.x + (regional.timingLeadM ?? 0) + speed * field.hours * 3600) / fields.length;
-      const miss = Math.abs(support - wanted);
-      if (!best || miss < best.miss - 0.01 || (Math.abs(miss - best.miss) <= 0.01 && this.fromHome(north) < this.fromHome(best.north))) best = { speed, north, support, miss };
-    }
+    const best = this.warmSectorSlide({ fields, later, norths, lookAhead, wantedOn, day, wanted, at, start });
     regional.slideMs = best.speed; regional.slideNorthMs = best.north;
     if (Number.isFinite(p.roamLow) && Number.isFinite(p.roamHigh)) {
       // A day's move of roamStep cells one way or the other from where the map was heading,
@@ -173,6 +239,38 @@ export class RegionSteering {
     }
     this.plan = { hourUtc: now, day, kind, wanted, support: best.support, slideMs: best.speed, slideNorthMs: best.north, geographyTarget: regional.geographyTarget };
     return this.plan;
+  }
+
+  // The warm-sector slide: east-west and north-south, the one whose support comes nearest the day's wanted value,
+  // less homePull for each 1000 km the day's slide leaves the map from its home latitude (see homePull).
+  warmSectorSlide({ fields, later, norths, lookAhead, wantedOn, day, wanted, at, start }) {
+    const p = this.params;
+    // The slide, east-west and north-south, that brings the support nearest the day's wanted
+    // value (the least north-south slide among equals: only the weather overhead changes with it).
+    // With lookAheadDays, a slide is also judged by the best the following days can then reach
+    // (each day's miss added; see lookAheadDays).
+    const speeds = [];
+    for (let speed = -p.systemSpeedMs; speed <= p.systemSpeedMs + 1e-9; speed += p.speedStepMs) speeds.push(speed);
+    const laterByDay = Array.from({ length: lookAhead }, (_, i) => later.filter(f => f.day === i + 1));
+    const laterMiss = (d, north, x) => {
+      if (d > lookAhead) return 0;
+      const list = laterByDay[d - 1], want = wantedOn(day + d);
+      let least = Infinity;
+      for (const speed of speeds) {
+        let support = 0;
+        for (const field of list) support += at(field.supportByNorth.get(north), x + speed * (field.hours - 24 * d) * 3600) / list.length;
+        least = Math.min(least, Math.abs(support - want) + laterMiss(d + 1, north, x + speed * 86400));
+      }
+      return least;
+    };
+    let best = null;
+    for (const north of norths) for (const speed of speeds) {
+      let support = 0;
+      for (const field of fields) support += at(field.supportByNorth.get(north), start + speed * field.hours * 3600) / fields.length;
+      const miss = Math.abs(support - wanted) + (lookAhead ? laterMiss(1, north, start + speed * 86400) : 0) + (p.homePull ?? 0) * this.fromHome(north) / 1e6;
+      if (!best || miss < best.miss - 0.01 || (Math.abs(miss - best.miss) <= 0.01 && this.fromHome(north) < this.fromHome(best.north))) best = { speed, north, support, miss };
+    }
+    return best;
   }
 
   // Lows in the copy at one time: surface lows (the lower layer's pressure) or the middle of

@@ -37,7 +37,9 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
     // weak one after a strong one, and the weak one's track is not the strong one's.
     for (const point of collectTornadoTruthPoints(storm, previousHourUtc, world.validHourUtc)) {
       const t = cellOf(point.x, point.y), ef = point.ef;
-      frame.tornado[t] = 1;
+      // (A track is a tornado's only where its rating reaches EF0: below it there is no tornado. A
+      // point laid before its tornado's first rating is marked once that rating comes, in aggregateTruth.)
+      if (ef >= 0) frame.tornado[t] = 1;
       if (ef >= 2) frame.tornadoSig[t] = 1;
       if (ef >= 3) frame.tornadoExtreme[t] = 1;
       if (ef >= 4) frame.tornadoViolent[t] = 1;
@@ -62,7 +64,7 @@ export function captureTruth(world, frames, seenStormIds = new Set(), initiation
       if (local >= 96) frame.windViolent[index] = 1;
     }
     frame.activeStorms++;
-    if (storm.tornado?.onGround) frame.tornadoes++;
+    if (storm.tornado?.onGround && efNumber(storm.tornado.estimatedEf ?? storm.tornado.efRating) >= 0) frame.tornadoes++;
     if (!seenStormIds.has(storm.id)) {
       seenStormIds.add(storm.id);
       initiations.push({ stormId: storm.id, hourUtc: storm.createdHourUtc, x: idx % world.width, y: Math.floor(idx / world.width), mode: storm.mode });
@@ -162,6 +164,16 @@ export function collectTornadoTruthPoints(storm, previousHourUtc, currentHourUtc
   return points;
 }
 
+// The tornadoes the frames' track points belong to, each counted once, and only those rated EF0 or
+// above (by the strongest rating each reached): below EF0 there is no tornado (2026-11-18, the owner's rule).
+export function countTornadoes(frames) {
+  const strongest = new Map();
+  for (const frame of frames) for (const p of frame.tornadoTrackPoints ?? []) if (p.tornado) strongest.set(p.tornado, Math.max(strongest.get(p.tornado) ?? -1, p.ef ?? -1));
+  let n = 0;
+  for (const ef of strongest.values()) if (ef >= 0) n++;
+  return n;
+}
+
 // Combines frames over a valid period: exact report cells, the 25-mi neighbourhoods, SPC
 // "practically perfect" observed probabilities and the observed category.
 export function aggregateTruth(frames, initiations, width, height, radius, cellMiles) {
@@ -176,6 +188,7 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
   for (const frame of frames) for (const p of frame.tornadoTrackPoints ?? []) {
     const ef = strongest.get(p.tornado) ?? p.ef ?? -1;
     if (p.cell === undefined) continue;
+    if (ef >= 0 && frame.tornado) frame.tornado[p.cell] = 1;
     if (ef >= 2 && frame.tornadoSig) frame.tornadoSig[p.cell] = 1;
     if (ef >= 3 && frame.tornadoExtreme) frame.tornadoExtreme[p.cell] = 1;
     if (ef >= 4 && frame.tornadoViolent) frame.tornadoViolent[p.cell] = 1;
@@ -186,6 +199,15 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
     for (let i = 0; i < n; i++) if (src[i]) { exact[i] = 1; spread(near, i, width, height, offsets); }
   }
   for (const r of initiations) spread(result.initiation, clamp(Number(r.y) || 0, 0, height - 1) * width + clamp(Number(r.x) || 0, 0, width - 1), width, height, offsets);
+  return smoothTruth(result);
+}
+
+// The smoothed parts of a day's truth, from its reports (result[`${field}Exact`], result.storm): the practically perfect chances,
+// the intensity groups and the categories. Apart from aggregateTruth so that a saved day can be smoothed again with the code as it
+// is now (scripts/outlook-verify.mjs REPP=1).
+export function smoothTruth(result) {
+  const { width, height, cellMiles } = result, n = width * height;
+  result.risk = Array(n).fill('NONE');
   const cellKm = cellMiles * 1.609344;
   result.observedProbability = {
     tornado: practicallyPerfectProbability(result.tornadoExact, width, height, cellKm, [2, 5, 10, 15, 30, 45, 60]),
@@ -213,6 +235,14 @@ export function aggregateTruth(frames, initiations, width, height, radius, cellM
 // RISK_RADIUS_MILES (2026-10-28: 10 miles, a 32 km grid; reports in one 80 km box spread over several of them, and
 // each counts for a sixth as much, so scattered reports give a lower chance than before and only dense ones a high one).
 const PP_GRID_KM = 80 * RISK_RADIUS_MILES / 25, PP_SIGMA_KM = 120;
+// The share of a place's 120 km Gaussian that lies on the map (2026-11-14). The world has no reports beyond its edge, which
+// is not the same as no severe weather there: summed as if it were, every chance sagged toward the map's edges (to about
+// half at an edge and a quarter in a corner, over the outer 120 km), and the outlook's contours turned to run along the edge
+// a few cells in. Each sum is divided by this share, as a smoothing is corrected at a boundary, so a place near the edge is
+// judged by the map around it.
+const erf = x => { const t = 1 / (1 + 0.3275911 * Math.abs(x)), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; };
+const inside1d = (at, length) => 0.5 * (erf((length - at) / (Math.SQRT2 * PP_SIGMA_KM)) - erf(-at / (Math.SQRT2 * PP_SIGMA_KM)));
+export function onMapShare(px, py, widthKm, heightKm) { return Math.max(1e-3, inside1d(px, widthKm) * inside1d(py, heightKm)); }
 // The chance (percent, 0-100) of a report within radiusMiles of each cell, from one day's
 // reports: the share of the country round about (the practically perfect chance's own 120 km
 // Gaussian) that had a report within that radius. At 25 miles it is close to the practically
@@ -244,7 +274,7 @@ export function practicallyPerfectChance(exact, width, height, cellKm) {
     const px = (x + 0.5) * cellKm, py = (y + 0.5) * cellKm;
     let p = 0;
     for (const c of centers) p += weight * Math.exp(-((px - c.x) ** 2 + (py - c.y) ** 2) / (2 * PP_SIGMA_KM * PP_SIGMA_KM));
-    out[y * width + x] = 100 * Math.min(1, p);
+    out[y * width + x] = 100 * Math.min(1, p / onMapShare(px, py, width * cellKm, height * cellKm));
   }
   return out;
 }
@@ -265,7 +295,7 @@ export function practicallyPerfectExpected(expected, width, height, cellKm) {
     const px = (x + 0.5) * cellKm, py = (y + 0.5) * cellKm;
     let p = 0;
     for (const c of centers) p += weight * c.p * Math.exp(-((px - c.x) ** 2 + (py - c.y) ** 2) / (2 * PP_SIGMA_KM * PP_SIGMA_KM));
-    out[y * width + x] = 100 * Math.min(1, p);
+    out[y * width + x] = 100 * Math.min(1, p / onMapShare(px, py, width * cellKm, height * cellKm));
   }
   return out;
 }
@@ -285,7 +315,7 @@ export function practicallyPerfectProbability(exact, width, height, cellKm, leve
     const px = (x + 0.5) * cellKm, py = (y + 0.5) * cellKm;
     let p = 0;
     for (const c of centers) p += weight * Math.exp(-((px - c.x) ** 2 + (py - c.y) ** 2) / (2 * PP_SIGMA_KM * PP_SIGMA_KM));
-    const pct = 100 * Math.min(1, p);
+    const pct = 100 * Math.min(1, p / onMapShare(px, py, width * cellKm, height * cellKm));
     let level = 0;
     for (const value of levels) if (pct >= value) level = value;
     out[y * width + x] = level;

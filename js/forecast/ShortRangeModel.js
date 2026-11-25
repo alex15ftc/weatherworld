@@ -13,8 +13,11 @@
 //   storms   every STORM_EVERY hours: each storm, compact (position, motion, reflectivity, rain
 //            area, hail, updraft, rotation, updraft helicity, tornado)
 //   tracks   every storm tick: the points of storms with updraft helicity, and of tornadoes
+//   soundings each hour: what a sounding is made from, for every cell (soundingColumns.js), so the model page
+//            can show the run's sounding at any point (the public's soundings: the live world's are an admin's)
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { buildStormAppearance } from '../storms/StormAppearance.js';
+import { packColumns } from './soundingColumns.js';
 
 export const SHORT_RANGE = Object.freeze({
   hours: 18, longHours: 48, longAtUtc: [0, 6, 12, 18],
@@ -31,7 +34,10 @@ export const SHORT_RANGE = Object.freeze({
   // Track points are kept from this much updraft helicity.
   trackLeastUh: 25,
   // Runs the server keeps (4 since 2026-11-10, for memory: ~9 MB each).
-  keepRuns: 4
+  keepRuns: 4,
+  // A picture of the whole large-scale model every so many forecast hours (about 0.5 MB each), for the
+  // model page's large-scale view.
+  synopticEvery: 3
 });
 
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
@@ -52,7 +58,13 @@ function stormRecord(storm) {
 
 // One run. state: the live world's forecast copy (saveState({ forecast: true })), this run's own.
 // fieldsOf(world): { key: { values, ...meta } } for the hour's fields. Returns the run.
-export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = SHORT_RANGE.shareHours, fieldsOf = null } = {}) {
+// synopticOf(atmosphere): the large-scale model's frame (server/SynopticRuntime.js), kept every
+// SHORT_RANGE.synopticEvery hours; it only reads the run's world.
+// onProgress(part): when given, each whole forecast hour is sent as soon as it is kept (from hour 0), as
+// { head, readyHours, parameters, fields, soundings, storms, tracks, synoptic } with only what is new since
+// the last part, so the model pages can show a run's hours while the rest are worked out (2026-11-16, the
+// owner's request); the run then returns its head alone ({ ...head, ms, streamed: true }).
+export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = SHORT_RANGE.shareHours, fieldsOf = null, synopticOf = null, onProgress = null } = {}) {
   const atmosphere = AtmosphereWorld.restore(state);
   if (!atmosphere) throw new Error('the saved world is from another layout');
   const world = atmosphere.world, started = performance.now();
@@ -65,8 +77,10 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
   let shared = shareHours > 0;
   if (!shared) setSeed(ownSeed);
 
-  const parameters = [], fields = [], storms = [], tracks = [];
+  const parameters = [], fields = [], storms = [], tracks = [], synoptic = [], soundings = [];
+  const keepSynoptic = () => { if (synopticOf) synoptic.push({ forecastHour: r2(world.validHourUtc - initHourUtc), ...synopticOf(atmosphere) }); };
   const keepFields = () => {
+    soundings.push({ hour: r2(world.validHourUtc - initHourUtc), ...packColumns(world) });
     if (!fieldsOf) return;
     const all = fieldsOf(world), frame = {};
     for (const [key, field] of Object.entries(all)) {
@@ -86,7 +100,17 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
       if (uh >= SHORT_RANGE.trackLeastUh || t) tracks.push({ id: s.id, minute, x: r2(s.positionKm.x), y: r2(s.positionKm.y), uh, ...(t ? { tornado: { x: r2(t.positionKm.x), y: r2(t.positionKm.y), mph: Math.round(t.windSpeedMph ?? 0), ef: t.estimatedEf ?? null } } : {}) });
     }
   };
-  keepFields(); keepStorms();
+  const head = { seed: state.seed, initHourUtc, hours, shareHours, cellKm: world.cellSizeKm, width: world.width, height: world.height, synopticEvery: SHORT_RANGE.synopticEvery };
+  const kept = { fields, soundings, storms, tracks, synoptic }, sent = { fields: 0, soundings: 0, storms: 0, tracks: 0, synoptic: 0 };
+  let parametersSent = false;
+  const send = () => {
+    if (!onProgress) return;
+    const part = { head, readyHours: r2(world.validHourUtc - initHourUtc) };
+    if (!parametersSent && parameters.length) { part.parameters = parameters; parametersSent = true; }
+    for (const [key, list] of Object.entries(kept)) { part[key] = list.slice(sent[key]); sent[key] = list.length; }
+    onProgress(part);
+  };
+  keepFields(); keepStorms(); keepSynoptic(); send();
   let nextStorms = SHORT_RANGE.stormEvery;
   // After each storm tick (the tick itself is AtmosphereWorld.stormTicksTo's).
   const tick = () => {
@@ -100,10 +124,13 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
     // The storms up to the next atmosphere step, in ticks, then the air (as WeatherAuthorityRuntime steps the live world).
     atmosphere.advanceLikeServer(SHORT_RANGE.atmosphereStepHours, { tickHours: SHORT_RANGE.stormTickHours, onTick: tick });
     if (Math.abs((world.validHourUtc - initHourUtc) % 1) < 1e-6) keepFields();
+    if (Math.abs((world.validHourUtc - initHourUtc) % SHORT_RANGE.synopticEvery) < 1e-6) keepSynoptic();
+    if (Math.abs((world.validHourUtc - initHourUtc) % 1) < 1e-6) send();
   }
+  if (onProgress) return { ...head, ms: Math.round(performance.now() - started), streamed: true };
   return {
-    seed: state.seed, initHourUtc, hours, shareHours, cellKm: world.cellSizeKm, width: world.width, height: world.height,
-    parameters, fields, storms, tracks, ms: Math.round(performance.now() - started)
+    ...head,
+    parameters, fields, storms, tracks, synoptic, soundings, ms: Math.round(performance.now() - started)
   };
 }
 

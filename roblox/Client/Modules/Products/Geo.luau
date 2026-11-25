@@ -36,6 +36,21 @@ function Geo.middle(rings: { { number } }): (number, number)
 	return sx / n, sy / n
 end
 
+-- The box around the rings' points (west, north, east, south, in map miles), or nil when there are none.
+function Geo.bounds(rings: { { number } }): { number }?
+	local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+	for _, ring in rings do
+		for i = 1, #ring - 1, 2 do
+			x0, x1 = math.min(x0, ring[i]), math.max(x1, ring[i])
+			y0, y1 = math.min(y0, ring[i + 1]), math.max(y1, ring[i + 1])
+		end
+	end
+	if x0 > x1 then
+		return nil
+	end
+	return { x0, y0, x1, y1 }
+end
+
 -- How far a point is from a line (a flat list of points), in map miles.
 function Geo.lineDistance(points: { number }, x: number, y: number): number
 	local best = math.huge

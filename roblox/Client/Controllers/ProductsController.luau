@@ -2,7 +2,8 @@
 -- The weather screen, opened and closed with M (docs/ROBLOX-UI-PLAN.md): the world map with the
 -- products the weather server issues as layers over it, each turned on or off with its button
 -- in the side panel: the convective outlook, one radar, the watches, the mesoscale discussions
--- and the warnings; and the storm reports and damage surveys of a day. A click on the map opens
+-- and the warnings; the storm reports and damage surveys of a day; and the chaser network (every
+-- player in this server, named, with their trails). A click on the map opens
 -- the details of what is there (a report or a damage survey first, then a warning, a watch, a
 -- discussion, the outlook); a click on a radar's label picks that radar.
 -- Scroll or +/− to zoom, drag to pan, C to centre on yourself.
@@ -24,6 +25,7 @@ local Satellite = require(ProductModules.Layers.Satellite)
 local Areas = require(ProductModules.Layers.Areas)
 local Reports = require(ProductModules.Layers.Reports)
 local Damage = require(ProductModules.Layers.Damage)
+local Chasers = require(ProductModules.Layers.Chasers)
 
 local Products = {}
 
@@ -49,6 +51,9 @@ local function isOn(key: string): boolean
 	return false
 end
 
+-- (a layer that cannot say what its shapes or legend depend on gets a new value every time)
+local unknown = 0
+
 local function compose(): MapCanvas.Overlay?
 	local any = false
 	for _, layer in layers do
@@ -57,29 +62,32 @@ local function compose(): MapCanvas.Overlay?
 	if not any then
 		return nil -- the plain world map
 	end
+	-- Each layer on show draws into its own tiles, drawn again only when its own shapes change
+	-- (its shapeKey). The layers before radar's (the outlook) go under the radar image; radar's
+	-- own shapes and those after it go over it.
+	local shapes: { MapCanvas.Shapes } = {}
+	local over = false
+	for _, layer in drawOrder do
+		over = over or layer.drawRaster ~= nil
+		if layer.enabled then
+			local version = if layer.shapeKey then (layer.shapeKey :: any)(layer) else nil
+			if version == nil then
+				unknown += 1
+				version = `#{unknown}`
+			end
+			table.insert(shapes, {
+				key = layer.key,
+				version = version,
+				under = not over,
+				draw = function(draw: MapCanvas.Draw)
+					layer:draw(draw)
+				end,
+			})
+		end
+	end
 	return {
 		muted = true,
-		-- The layers drawn before radar's (the outlook) go under the radar image; radar's own
-		-- shapes and those after it go over it.
-		drawUnder = function(draw: MapCanvas.Draw)
-			for _, layer in drawOrder do
-				if layer.drawRaster then
-					break
-				end
-				if layer.enabled then
-					layer:draw(draw)
-				end
-			end
-		end,
-		draw = function(draw: MapCanvas.Draw)
-			local over = false
-			for _, layer in drawOrder do
-				over = over or layer.drawRaster ~= nil
-				if over and layer.enabled then
-					layer:draw(draw)
-				end
-			end
-		end,
+		shapes = shapes,
 		-- Byte grids (satellite, radar mosaics), scaled by the GPU, bottom first.
 		grids = function(): { MapCanvas.Grid }
 			local out = {}
@@ -171,7 +179,6 @@ end
 
 -- What the shapes (or legend) of the layers on show depend on: each layer's own key, or, for a
 -- layer that cannot say, a new value every time (so it is always drawn again).
-local unknown = 0
 local function keyOf(method: string): string
 	local parts = {}
 	for _, layer in drawOrder do
@@ -217,20 +224,36 @@ local function renderDetail()
 	if not open then
 		return
 	end
-	local title = Ui.text(detailBox, open.title, { size = 17, bold = true })
-	if open.colour then
+	Ui.rule(detailBox)
+	if open.tag then
+		Ui.tag(detailBox, open.tag, if open.colour then Ui.rgb(open.colour) else Ui.ACCENT)
+	end
+	local title = Ui.text(detailBox, open.title, { size = 18, bold = true })
+	if open.colour and not open.tag then
 		title.TextColor3 = Ui.rgb(open.colour)
 	end
 	if open.subtitle then
 		Ui.text(detailBox, open.subtitle, { size = 12, colour = Ui.MUTED })
 	end
+	for _, fact in open.facts or {} do
+		Ui.fact(detailBox, fact[1], fact[2])
+	end
 	local row = Ui.buttons(detailBox, 26)
+	local bounds = open.bounds
+	if bounds then
+		Ui.button(row, "Zoom to it", function()
+			MapCanvas.frame(bounds[1], bounds[2], bounds[3], bounds[4])
+		end)
+	end
 	Ui.button(row, "Close", function()
 		detail = nil
 		renderDetail()
 		redraw()
 	end)
-	Ui.longText(detailBox, open.body, { size = 13, mono = true })
+	if open.body ~= "" then
+		Ui.bulletin(detailBox, open.body)
+	end
+	Ui.rule(detailBox)
 end
 
 local context: Layer.Context = {
@@ -238,6 +261,12 @@ local context: Layer.Context = {
 		redraw()
 	end,
 	showDetail = function(d: Layer.Detail)
+		-- The map goes to a newly chosen area (not again when the same one is refreshed or clicked).
+		local was = detail
+		local bounds = d.bounds
+		if bounds and not (was and was.layer == d.layer and was.item == d.item) then
+			MapCanvas.frame(bounds[1], bounds[2], bounds[3], bounds[4])
+		end
 		detail = d
 		renderDetail()
 		redraw()
@@ -281,37 +310,49 @@ local function build(): ScreenGui
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.Size = UDim2.new(1, -24, 1, -16)
-	panel.BackgroundColor3 = Color3.fromRGB(20, 24, 30)
+	panel.BackgroundColor3 = Ui.PAGE
+	panel.BorderSizePixel = 0
 	panel.Parent = screen
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 12)
-	corner.Parent = panel
+	-- The title band, as the website's header: the brand colour over a gold line.
+	local band = Instance.new("Frame")
+	band.Size = UDim2.new(1, 0, 0, 40)
+	band.BackgroundColor3 = Ui.BRAND
+	band.BorderSizePixel = 0
+	band.Parent = panel
+	local line = Instance.new("Frame")
+	line.Position = UDim2.new(0, 0, 1, 0)
+	line.Size = UDim2.new(1, 0, 0, 3)
+	line.BackgroundColor3 = Ui.GOLD
+	line.BorderSizePixel = 0
+	line.Parent = band
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Position = UDim2.fromOffset(16, 8)
+	title.Position = UDim2.fromOffset(16, 6)
 	title.Size = UDim2.new(0.4, 0, 0, 28)
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 20
+	title.TextSize = 19
 	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.TextColor3 = Color3.fromRGB(236, 240, 245)
-	title.Text = "Weather"
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.RichText = true
+	title.Text = 'WeatherWorld  <font size="12" color="#b9d3e3">STORM PREDICTION CENTER</font>'
 	title.Parent = panel
 	local hint = title:Clone()
 	hint.AnchorPoint = Vector2.new(1, 0)
-	hint.Position = UDim2.new(1, -16, 0, 8)
+	hint.Position = UDim2.new(1, -16, 0, 6)
 	hint.Size = UDim2.new(0.6, -16, 0, 28)
 	hint.Font = Enum.Font.Gotham
-	hint.TextSize = 14
+	hint.TextSize = 13
+	hint.RichText = false
 	hint.TextXAlignment = Enum.TextXAlignment.Right
-	hint.TextColor3 = Color3.fromRGB(150, 160, 175)
+	hint.TextColor3 = Color3.fromRGB(185, 211, 227)
 	hint.Text = "M close  ·  click an area for details  ·  scroll or +/− zoom  ·  drag pan  ·  C centre on you"
 	hint.Parent = panel
 
 	local body = Instance.new("Frame")
 	body.BackgroundTransparency = 1
-	body.Position = UDim2.fromOffset(12, 44)
-	body.Size = UDim2.new(1, -24, 1, -84)
+	body.Position = UDim2.fromOffset(12, 53)
+	body.Size = UDim2.new(1, -24, 1, -93)
 	body.Parent = panel
 
 	local mapHolder = Instance.new("Frame")
@@ -364,15 +405,17 @@ local function build(): ScreenGui
 	local reports = Reports.new(context, column)
 	local damageHeading = heading("Damage surveys")
 	local damage = Damage.new(context, column)
+	local chasersHeading = heading("Chasers")
+	local chasers = Chasers.new(context, column)
 	legendBox = Ui.section(column)
 
-	layers = { outlook :: any, satellite :: any, radar :: any, watches :: any, discussions :: any, warnings :: any, reports :: any, damage :: any }
+	layers = { outlook :: any, satellite :: any, radar :: any, watches :: any, discussions :: any, warnings :: any, reports :: any, damage :: any, chasers :: any }
 	headings = {
 		outlook = outlookHeading, satellite = satelliteHeading, radar = radarHeading, warnings = warningsHeading, watches = watchesHeading, discussions = discussionsHeading,
-		reports = reportsHeading, damage = damageHeading,
+		reports = reportsHeading, damage = damageHeading, chasers = chasersHeading,
 	}
-	drawOrder = { outlook :: any, satellite :: any, radar :: any, discussions :: any, watches :: any, warnings :: any, damage :: any, reports :: any }
-	hitOrder = { radar :: any, reports :: any, damage :: any, warnings :: any, watches :: any, discussions :: any, outlook :: any }
+	drawOrder = { outlook :: any, satellite :: any, radar :: any, discussions :: any, watches :: any, warnings :: any, damage :: any, reports :: any, chasers :: any }
+	hitOrder = { chasers :: any, radar :: any, reports :: any, damage :: any, warnings :: any, watches :: any, discussions :: any, outlook :: any }
 
 	for _, layer in layers do
 		layerButtons[layer.key] = Ui.button(buttonRow, layer.name, function()

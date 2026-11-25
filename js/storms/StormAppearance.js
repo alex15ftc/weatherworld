@@ -35,16 +35,20 @@ import { clamp } from '../scenarios/math.js';
 import { rotatingShare, lineShare, outflowDominance, describeStormMode } from './StormModeEngine.js';
 import { BUDGET } from './StormBudgets.js';
 import { MERGE_GLIDE_KPH } from './StormEngine.js';
+import { stormVortices } from './StormVortices.js';
+import { outflowMixLcl, coreOutflowShare, tornadoFunnel, tornadoTilt } from './TornadoFunnel.js';
+import { qsat } from './UpdraughtParcel.js';
+import { coldPoolDeficitK } from './ColdPool.js';
 
-const G = 9.81, MS_PER_MPH = 0.44704, M_PER_YD = 0.9144, KPH_PER_KT = 1.852;
+const MS_PER_MPH = 0.44704, M_PER_YD = 0.9144, KPH_PER_KT = 1.852;
 // The wind at the edge of the damage path (EF0, 65 mph), which sets the core's radius from the
 // path's width: outside the core the wind falls as rc / r.
 const EDGE_WIND_MS = 65 * MS_PER_MPH;
-export const FUNNEL = Object.freeze({ deficitFactor: 2.6, levels: 9, minBaseM: 80, flareKm: 1.2 });
+// The funnel's radius is given at `levels` heights from the ground to the wall cloud's base, which is
+// at least minBaseM; the funnel itself is TornadoFunnel.js's, the frames'.
+export const FUNNEL = Object.freeze({ levels: 9, minBaseM: 80 });
 // Classic at a storm-relative 500 mb wind of windMs and a cloud base of baseM; a span either way to LP or HP.
 export const SPECTRUM = Object.freeze({ windMs: 15, windSpanMs: 5, baseM: 1000, baseSpanM: 600, windShare: 0.6 });
-// How far a fully decayed tornado's top sits from its ground point, in cloud-base heights.
-const ROPE_LEAN = 0.8;
 export const SWIRL = Object.freeze({ inflowDepthM: 120, breakdown: 0.45, multiple: 1.0, perVortex: 0.9, maxVortices: 6 });
 const ramp = (value, low, high) => clamp(((Number(value) || 0) - low) / (high - low), 0, 1);
 const bearing = (east, north) => (Math.atan2(east, north) * 180 / Math.PI + 360) % 360;
@@ -54,7 +58,9 @@ const r2 = v => Math.round(v * 100) / 100, r0 = v => Math.round(v);
 // that lofts the ice that charges a storm. js/storms/Lightning.js places them.
 export const flashRatePerMin = updraughtMs => 30 * ramp(updraughtMs, 8, 50) ** 2;
 
-export function buildStormAppearance(storm, environment = storm.environment ?? {}) {
+// frameTornado: the storm's engine frame's tornado record this tick (StormStructure buildStormFrame's
+// info.tornado), when one was built: the tornado's funnel is then hung from the frame's own heights.
+export function buildStormAppearance(storm, environment = storm.environment ?? {}, { frameTornado = null } = {}) {
   const g = storm.geometry, s = storm.structure;
   if (!g) return null;
   const rotating = rotatingShare(storm), linear = lineShare(storm), dominance = outflowDominance(storm, environment);
@@ -130,7 +136,17 @@ export function buildStormAppearance(storm, environment = storm.environment ?? {
     tornado: null, funnelAloft: null
   };
   const t = storm.tornado;
-  if (t?.onGround) appearance.tornado = tornadoAppearance(storm, appearance, environment);
+  if (t?.onGround) {
+    appearance.tornado = tornadoAppearance(storm, appearance, environment, frameTornado);
+    // The wall cloud over a tornado on the ground is the one it formed under, which occludes with it
+    // (StormVortices draws the low-level circulation, and the frames its lowering, round the tornado).
+    // newAtKm: the storm's own mesocyclone, where the geometry keeps the wall cloud (StormGeometry) - where
+    // a new one forms as the tornado falls behind it (TornadoEngine occlusionStep).
+    const wc = appearance.wallCloud;
+    wc.newAtKm = [wc.xKm, wc.yKm];
+    wc.xKm = r2(t.positionKm.x); wc.yKm = r2(t.positionKm.y);
+    wc.tailBearingDeg = r0(bearing(g.rain.xKm - t.positionKm.x, -(g.rain.yKm - t.positionKm.y)));
+  }
   else if ((t?.genesisPotential ?? 0) > 0.4) {
     // Low-level rotation close to putting a tornado down lowers a funnel from the wall cloud.
     const share = ramp(t.genesisPotential, 0.4, 1) ** 2;
@@ -252,28 +268,27 @@ export function buildStormFeedList(world, precip = new Map(), keep = () => true)
 }
 
 // The tornado's look while it is down.
-export function tornadoAppearance(storm, appearance, environment = storm.environment ?? {}) {
+export function tornadoAppearance(storm, appearance, environment = storm.environment ?? {}, frameTornado = null) {
   const t = storm.tornado, wall = appearance.wallCloud;
   const windMs = Math.max(EDGE_WIND_MS * 1.05, (t.windSpeedMph ?? 0) * MS_PER_MPH);
   const halfWidthM = Math.max(10, (t.widthYards ?? 0) * M_PER_YD / 2);
-  const coreM = Math.max(5, halfWidthM * EDGE_WIND_MS / windMs);
-  const baseM = Math.max(FUNNEL.minBaseM, appearance.updraft.baseM - wall.loweringM);
-  const funnel = funnelProfile(windMs, coreM, baseM, wall.radiusKm * 1000);
+  // (the engine's core through the tornado's life stages - spin-up, mature, rope - TornadoEngine TORNADO_LIFE)
+  const coreM = Number(t.coreRadiusM) > 0 ? Number(t.coreRadiusM) : Math.max(5, halfWidthM * EDGE_WIND_MS / windMs);
+  const vx = stormVortices(storm, appearance.updraft.topM);
+  const hung = funnelHeights(storm, appearance, environment, frameTornado);
+  const baseM = hung.wallBaseM;
+  // The funnel (TornadoFunnel.js, the frames' rule): the vortex's own swirl - its ground wind less the
+  // storm's motion (StormVortices) - and core, under the wall cloud's base and the core's condensation level.
+  const tf = tornadoFunnel({ R: (vx?.tornado?.R ?? coreM / 1000) * 1000, V: vx?.tornado?.V ?? 0, rho: hung.rho, wallBaseM: baseM, coreBaseM: hung.coreBaseM });
+  const funnel = { radii: Array.from({ length: FUNNEL.levels }, (_, i) => tf.radiusAt(baseM * i / (FUNNEL.levels - 1))), bottomM: tf.tipM };
   // Swirl, and the vortex structure it gives.
   const swirl = coreM * windMs / (SWIRL.inflowDepthM * Math.max(5, appearance.updraft.speedMs));
   const vortices = swirl < SWIRL.multiple ? 1 : Math.min(SWIRL.maxVortices, 2 + Math.floor((swirl - SWIRL.multiple) / SWIRL.perVortex));
   const twoCell = ramp(swirl, SWIRL.breakdown, SWIRL.multiple);
-  // Lean: the ground point lags the wall cloud as the storm moves on (TornadoEngine drift).
-  let tiltE = (wall.xKm - t.positionKm.x) * 1000, tiltN = -(wall.yKm - t.positionKm.y) * 1000;
-  // Decay: the wind falling away from its peak as the outflow wraps round (TornadoEngine ties the
-  // wind to the occlusion). The occluding outflow carries the lower vortex off to the left of
-  // the storm's track, under a parent rotation that goes on with the storm: the lean of a
-  // rope-out (the funnel's top sits to the right of its ground point).
-  const weakening = (t.peakWindSpeedMph ?? 0) > 0 ? clamp(1 - t.windSpeedMph / t.peakWindSpeedMph, 0, 1) : 0;
-  const decay = ramp(weakening, 0.12, 0.35);
-  const vel = storm.velocityKph ?? { east: 0, north: 0 }, speed = Math.hypot(vel.east, vel.north) || 1;
-  tiltE += vel.north / speed * decay * ROPE_LEAN * baseM; tiltN -= vel.east / speed * decay * ROPE_LEAN * baseM;
-  const lean = Math.hypot(tiltE, tiltN) / Math.max(1, baseM);
+  // Lean, and decay (TornadoFunnel.js tornadoTilt, the frames' rule): toward its parent mesocyclone as it
+  // occludes, joined at its circulation's top, and the rope-out's as it decays; at the base.
+  const tilt = tornadoTilt(storm, { depthM: vx?.tornado?.depthM, baseM }), top = tilt.at(baseM), decay = tilt.decay;
+  const tiltE = top.east, tiltN = top.north, lean = Math.hypot(tiltE, tiltN) / Math.max(1, baseM);
   // Debris lofted where the wind exceeds what lifts it; dust where the ground layer is dry.
   const debris = ramp(t.windSpeedMph, 65, 170);
   const shape = describeFunnel(funnel, baseM, lean, decay);
@@ -282,7 +297,7 @@ export function tornadoAppearance(storm, appearance, environment = storm.environ
     id: `${storm.id}#${t.cycleCount}`, type, shape: shape.name,
     xKm: r2(t.positionKm.x), yKm: r2(t.positionKm.y), windMph: r0(t.windSpeedMph), widthYards: r0(t.widthYards), ef: t.estimatedEf, windEf: t.windEf ?? null,
     groundMinutes: r0(t.groundTimeMinutes), forwardMph: r0(t.forwardSpeedMph), headingDeg: r0(t.motionDirectionDeg),
-    coreRadiusM: r0(coreM), baseM: r0(baseM),
+    coreRadiusM: r0(coreM), stage: t.lifeStage ?? null, lifeShare: Number.isFinite(t.lifeShare) ? r2(t.lifeShare) : null, baseM: r0(baseM),
     // Radius of the visible funnel (m) at heights evenly spaced from the ground to the base; 0 where uncondensed.
     funnelRadiusM: funnel.radii.map(r0), condensedM: r0(funnel.bottomM), condensedShare: r2(1 - funnel.bottomM / baseM),
     swirl: r2(swirl), vortices, twoCell: r2(twoCell), subvortexRadiusM: r0(vortices > 1 ? 0.2 * coreM : 0),
@@ -292,18 +307,26 @@ export function tornadoAppearance(storm, appearance, environment = storm.environ
   };
 }
 
-// Radius of the condensation funnel at FUNNEL.levels heights from the ground to the base.
-export function funnelProfile(windMs, coreM, baseM, flareM = FUNNEL.flareKm * 1000) {
-  const core = FUNNEL.deficitFactor * windMs * windMs, radii = [];
-  for (let i = 0; i < FUNNEL.levels; i++) {
-    const z = baseM * i / (FUNNEL.levels - 1), need = G * (baseM - z);
-    let r;
-    if (need >= core) r = 0;
-    else if (need >= core / 2) r = coreM * Math.sqrt(2 * (1 - need / core));
-    else r = need > 0 ? coreM * Math.sqrt(core / (2 * need)) : Infinity;
-    radii.push(Math.min(r, Math.max(flareM, coreM)));
-  }
-  return { radii, bottomM: Math.max(0, baseM - core / G) };
+// The two heights the funnel hangs from (TornadoFunnel.js): the wall cloud's base and the core's
+// condensation level. From the frame's tornado record when one was built this tick; otherwise the same
+// rule at the storm's scale: the wall cloud's base is the cloud base less the wall cloud's lowering, and
+// the core's air is the surface parcel (the inflow's surface temperature and dewpoint; the cloud base its
+// condensation level) with the outflow mixed in as the storm's occlusion wraps it round (the frame also
+// counts the cold pool lying at the tornado, from its rain field - absent here), lowered by the same
+// amount as the wall cloud. Without the surface temperature (a storm sampled before 2026-11-19) the core's
+// air is not known and it hangs from the wall cloud. rho: any - the funnel's heights are V^2/g against them.
+// (The spread is the surface air's, not the cloud base's / 125: the base is a deeper layer's condensation
+// level, and taking its spread let the outflow lower the core's to the ground where the frame's was 250-400 m.)
+export function funnelHeights(storm, appearance, environment = storm.environment ?? {}, frameTornado = null) {
+  if (frameTornado && Number.isFinite(frameTornado.wallBaseM) && Number.isFinite(frameTornado.coreBaseM))
+    return { wallBaseM: Math.max(FUNNEL.minBaseM, frameTornado.wallBaseM), coreBaseM: frameTornado.coreBaseM, rho: 1.2, from: 'frame' };
+  const wallBaseM = Math.max(FUNNEL.minBaseM, appearance.updraft.baseM - appearance.wallCloud.loweringM);
+  const tF = Number(environment.temperature), tdF = Number(environment.dewpoint);
+  if (!Number.isFinite(tF) || !Number.isFinite(tdF)) return { wallBaseM, coreBaseM: wallBaseM, rho: 1.2, from: 'wall' };
+  const t0 = (tF - 32) * 5 / 9, tdC = Math.min(t0, (tdF - 32) * 5 / 9), p0 = 1000, cpS = clamp(storm.coldPoolStrength ?? 0, 0, 1);
+  const lclMix = outflowMixLcl({ t0, q0: qsat(tdC, p0), p0, lclIn: appearance.updraft.baseM, deficitK: cpS > 0 ? coldPoolDeficitK(cpS) : 0 });
+  const coreBaseM = Math.min(wallBaseM, Math.max(0, lclMix(coreOutflowShare(0, storm.occlusion)) - appearance.wallCloud.loweringM));
+  return { wallBaseM, coreBaseM, rho: 1.2, from: 'storm' };
 }
 
 // A name for the funnel's shape: what a chaser would call it.
@@ -324,7 +347,9 @@ export function describeFunnel(funnel, baseM, lean = 0, decay = 0) {
   const bottom = at(0.15), mid = at(0.5), top = at(0.85);
   const thin = 2 * mid / height;
   if (thin < 0.15) return { name: decay > 0.3 || lean > 0.5 ? 'rope' : 'drillbit' };
-  if (thin >= 0.9) return { name: condensed < 0.85 ? 'partial wedge' : 'wedge' };
+  // (a wedge whatever its condensed share: a broad funnel over its debris cloud is still called one - the owner, 2026-11-19,
+  // dropped 'partial wedge')
+  if (thin >= 0.9) return { name: 'wedge' };
   if (top / Math.max(1, bottom) < 1.6) return { name: 'stovepipe' };
   return { name: lean > 0.6 ? 'elephant trunk' : 'cone' };
 }

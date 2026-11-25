@@ -4,23 +4,58 @@
 // (js/forecast/MesoscaleDiscussion.js); those that call for a watch get one as soon as storms
 // are firing in them (js/forecast/Watch.js), which is checked every time this is called, not
 // only at the hourly look. The live world keeps running meanwhile.
-import { MESOSCALE, describeNow, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import v8 from 'node:v8';
+import { MESOSCALE, STORM_RADAR, describeNow, radarLook, publicMesoscaleDiscussion } from '../js/forecast/MesoscaleDiscussion.js';
 import { WATCH, lookAhead, nextLookHourUtc, issueWatch, stormsFiring, readyHourUtc, publicWatch } from '../js/forecast/Watch.js';
 import { sharedForecastPool, shareState } from './ForecastPool.js';
 import { countiesFor } from './CountyLayer.js';
+import { discussionRadar, discussionSatellite, discussionEnvironment, fieldFor } from './DiscussionRadar.js';
+import { MESOANALYSIS_PARAMETERS, buildParameterField } from './mesoanalysisParameters.js';
 
 export class MesoscaleRuntime {
   // runtime: the weather authority (its `engine` is the live AtmosphereWorld). pool: the
-  // threads that do the runs.
-  constructor({ runtime, members = MESOSCALE.members, pool = sharedForecastPool() } = {}) {
-    this.runtime = runtime; this.members = members; this.pool = pool;
+  // threads that do the runs. file: where the series is saved (null: not saved); after a restart
+  // in the same world it carries on (its numbers, the watches and discussions in effect, the
+  // watches waiting), so a watch or discussion keeps its number and its page.
+  constructor({ runtime, members = MESOSCALE.members, pool = sharedForecastPool(), file = null } = {}) {
+    this.runtime = runtime; this.members = members; this.pool = pool; this.file = file;
     this.running = null; this.lastError = null; this.lastRunMs = null;
     this.adopt(null);
+    this.restore();
+  }
+
+  save() {
+    if (!this.file || !this.engine) return;
+    let bytes;
+    try {
+      bytes = v8.serialize({ version: 1, worldId: this.runtime.worldId, seed: this.engine.seed, discussions: this.discussions, pictures: [...this.pictures], watches: this.watches, pending: this.pending, next: this.next, nextWatch: this.nextWatch, lastSlot: this.lastSlot, nextLookHourUtc: this.nextLookHourUtc });
+    } catch (error) { console.warn('[mesoscale] not saved:', error.message); return; }
+    fs.promises.mkdir(path.dirname(this.file), { recursive: true })
+      .then(() => fs.promises.writeFile(`${this.file}.tmp`, bytes))
+      .then(() => fs.promises.rename(`${this.file}.tmp`, this.file))
+      .catch(error => console.warn('[mesoscale] not saved:', error.message));
+  }
+
+  restore() {
+    const engine = this.runtime.engine;
+    if (!this.file || !engine || !fs.existsSync(this.file)) return;
+    try {
+      const saved = v8.deserialize(fs.readFileSync(this.file));
+      if (saved.version !== 1 || saved.worldId !== this.runtime.worldId || saved.seed !== engine.seed) return;
+      this.adopt(engine);
+      this.pictures = new Map(saved.pictures ?? []);
+      Object.assign(this, { discussions: saved.discussions, watches: saved.watches, pending: saved.pending, next: saved.next, nextWatch: saved.nextWatch, lastSlot: saved.lastSlot, nextLookHourUtc: saved.nextLookHourUtc });
+      console.log(`[mesoscale] carried on from before the restart (next watch ${this.nextWatch}, next discussion ${this.next})`);
+    } catch (error) {
+      console.warn('[mesoscale] saved series unreadable:', error.message);
+    }
   }
 
   // A new world starts its own series.
   adopt(engine) {
-    this.engine = engine; this.discussions = []; this.watches = []; this.pending = [];
+    this.engine = engine; this.discussions = []; this.watches = []; this.pending = []; this.pictures = new Map();
     this.next = 1; this.nextWatch = 1; this.lastSlot = null; this.nextLookHourUtc = -Infinity;
   }
 
@@ -49,7 +84,7 @@ export class MesoscaleRuntime {
     if (!world || !this.pending.length) return [];
     const issued = [];
     this.pending = this.pending.filter(draft => { const hour = readyHourUtc(draft, world); if (hour !== null) issued.push(issueWatch(draft, this.nextWatch++, hour, stormsFiring(world, draft.cells) || draft.here.forming)); return hour === null; });
-    if (issued.length) this.watches = [...issued.reverse(), ...this.watches].slice(0, WATCH.kept);
+    if (issued.length) { this.watches = [...issued.reverse(), ...this.watches].slice(0, WATCH.kept); this.save(); }
     return issued;
   }
 
@@ -60,17 +95,42 @@ export class MesoscaleRuntime {
     const state = shareState(engine.saveState({ forecast: true })), now = describeNow(engine, { counties: countiesFor(engine.world) });
     // Ahead of any outlook runs waiting: these are short, and a watch should not wait.
     const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('mesoscale', state, member, MESOSCALE.hoursAhead, { priority: 1 })));
+    // ...and the radars' look at the rotating storms under the watches in effect, of the same moment.
+    const looked = this.radarLooks(now).catch(error => console.warn('[mesoscale] no radar look:', error.message));
+    // ...and the reflectivity of the same moment, for the discussions' maps (DiscussionRadar.js).
+    const mosaic = this.runtime.radarMosaic ? Promise.resolve(this.runtime.radarMosaic('composite')).catch(error => { console.warn('[mesoscale] no radar picture:', error.message); return null; }) : Promise.resolve(null);
+    // ...the satellite under it, and the air of the same moment (the fields and the boundaries, read now, before the
+    // world moves on).
+    const satellite = this.runtime.satellite ? Promise.resolve(this.runtime.satellite()).catch(error => { console.warn('[mesoscale] no satellite picture:', error.message); return null; }) : Promise.resolve(null);
+    const fields = new Map(), fieldOf = key => { if (!fields.has(key)) { const p = MESOANALYSIS_PARAMETERS.find(q => q.key === key); fields.set(key, p ? buildParameterField(engine.world, p) : null); } return fields.get(key); };
+    const boundaries = (engine.boundaries ?? []).map(({ type, pointsKm, symbolSide }) => ({ type, pointsKm, symbolSide }));
+    for (const key of ['stp', 'mlcape']) { try { fieldOf(key); } catch (error) { console.warn(`[mesoscale] no ${key} field:`, error.message); fields.set(key, null); } }
     this.running = { hourUtc: now.hourUtc, startedAt: started };
     try {
       const members = await run;
+      await looked;
       if (this.runtime.engine !== engine) return { discussions: [], watches: [], pending: [] };
       const found = lookAhead(members, now, { discussions: this.discussions, watches: this.watches, nextDiscussion: this.next, nextWatch: this.nextWatch, seed: engine.seed });
-      this.next += found.discussions.length; this.nextWatch += found.watches.length;
-      this.discussions = [...found.discussions.reverse(), ...this.discussions].slice(0, MESOSCALE.kept);
+      // The look's watches, the watches waiting and the numbers taken at once, with nothing awaited between: the
+      // watches waiting go out every few seconds (issuePending), and one sent out from the old list while the
+      // pictures below are made took a number the look had given, and its ground could be drafted again.
+      this.nextWatch += found.watches.length;
       this.watches = [...found.watches.reverse(), ...this.watches].slice(0, WATCH.kept);
       this.pending = found.pending;
       this.nextLookHourUtc = nextLookHourUtc(found, now.hourUtc, this.watches);
+      // Each new discussion's radar picture, before the discussion is listed (the archive keeps it from its first look).
+      const radar = await mosaic;
+      const sky = await satellite;
+      for (const md of found.discussions) {
+        const picture = await discussionRadar(radar, md.cells, now).catch(() => null);
+        const under = await discussionSatellite(sky, md.cells, now).catch(() => null), air = discussionEnvironment(fields.get(fieldFor(md)), boundaries, md.cells, now);
+        if (picture || under || air) this.pictures.set(md.number, { ...(picture ?? {}), satellite: under, environment: air });
+      }
+      this.next += found.discussions.length;
+      this.discussions = [...found.discussions.reverse(), ...this.discussions].slice(0, MESOSCALE.kept);
+      for (const number of this.pictures.keys()) if (!this.discussions.some(md => md.number === number)) this.pictures.delete(number);
       this.lastError = null; this.lastRunMs = Date.now() - started;
+      this.save();
       return found;
     } catch (error) {
       this.lastError = String(error?.message ?? error);
@@ -79,6 +139,36 @@ export class MesoscaleRuntime {
       this.running = null;
     }
   }
+
+  // What the radars show of the rotating storms under the watches in effect (radarLook), put on now's
+  // storms as `radar`: a discussion about a watch speaks of its leading storm from it. Each storm is
+  // looked at by its nearest radar; the radars of the strongest storms, STORM_RADAR.sites at most (a
+  // volume scan each, on the radar's threads, kept for the radar pages of the same scan but not worked out
+  // again at the next scans, as what the pages look at is). Nothing
+  // without a watch in effect over a rotating storm, or where the runtime has no radar.
+  async radarLooks(now) {
+    const runtime = this.runtime;
+    if (!runtime.radarRotation || !runtime.radarScan || !runtime.radarCatalog) return;
+    const watched = this.watches.filter(watch => watch.validToHourUtc > now.hourUtc + 1e-6);
+    const storms = now.storms.filter(s => (s.rotating || s.tornado) && watched.some(watch => watch.cells[s.cell])).sort((a, b) => (b.tornado - a.tornado) || (b.mesocyclone - a.mesocyclone));
+    if (!storms.length) return;
+    const sites = runtime.radarCatalog().sites, bySite = new Map();
+    if (!sites?.length) return;
+    for (const storm of storms) {
+      const site = sites.reduce((a, b) => (Math.hypot(b.xKm - storm.xKm, b.yKm - storm.yKm) < Math.hypot(a.xKm - storm.xKm, a.yKm - storm.yKm) ? b : a));
+      if (!bySite.has(site)) { if (bySite.size >= STORM_RADAR.sites) continue; bySite.set(site, []); }
+      bySite.get(site).push(storm);
+    }
+    await Promise.all([...bySite].map(async ([site, theirs]) => {
+      // (the authority's look scans only the storms' part of the sky when that is sure to find what a full scan does)
+      const [found, lowest] = runtime.radarLookAround ? await runtime.radarLookAround(site.id, theirs).then(look => [look.found, look.lowest])
+        : await Promise.all([runtime.radarRotation(site.id, { prewarm: false }), runtime.radarScan(site.id, 0, { prewarm: false })]);
+      if (found) for (const storm of theirs) storm.radar = radarLook(storm, site, found, lowest);
+    }));
+  }
+
+  // A discussion's radar picture (DiscussionRadar.js), while it is one of those kept: the archive takes it from here.
+  picture(number) { return this.pictures.get(Number(number)) ?? null; }
 
   // What the page asks for: the watches and the discussions, newest first, each marked valid or lapsed.
   list() {

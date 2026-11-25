@@ -54,7 +54,7 @@
 // (Refitted 2026-11-06 from C:/Users/alex1/.claude/jobs/f592f53b/tmp/i2i3/arch-all by scripts/refit-from-archive.mjs.)
 // (Refitted 2026-11-06 from C:/Users/alex1/.claude/jobs/f592f53b/tmp/refit2/arch by scripts/refit-from-archive.mjs.)
 // (Refitted 2026-11-07 from C:/Users/alex1/.claude/jobs/f592f53b/tmp/fc/fit-2026-11-07 by scripts/refit-from-archive.mjs.)
-export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.2],[2.7,3],[4.2,4.7],[6.1,8.6],[8.7,13.4],[11.2,19.4],[13.6,24.1],[17.2,29.4],[22.2,38.1],[27.3,50.3],[34.4,59.7],[44.6,70]],"wind":[[1.5,0.6],[2.7,1.3],[4.2,2.4],[6.2,3.7],[8.7,8.5],[11.2,12.2],[13.7,16],[17.4,23.9],[22.4,35.5],[27.4,44.8],[34.5,56.4],[44.4,70.9],[54.3,83.1],[65.7,90.4]],"hail":[[1.5,0.7],[2.7,1.6],[4.2,3.5],[6.2,5],[8.7,7.9],[11.2,10],[13.7,13.6],[17.4,19.5],[22.4,30.6],[27.4,42.4],[34.7,55],[44.6,70.1],[54.6,83],[66.2,92.1],[77.9,99.2]]},"day2":{"tornado":[[1.4,1.4],[2.7,3.5],[4.2,6.1],[6.1,10],[8.6,14.9],[11.1,17.2],[13.6,23.8],[17.2,30.2],[22.3,49.4],[27.3,51.8],[34.2,68.3]],"wind":[[1.5,1.4],[2.7,2.4],[4.2,4.6],[6.2,7.1],[8.7,9.5],[11.2,15.1],[13.7,19.8],[17.4,28.2],[22.4,38.1],[27.3,46.6],[33.9,55.8],[43.7,74.6],[53.6,86.4]],"hail":[[1.5,1.7],[2.7,3.3],[4.2,4.9],[6.2,6.2],[8.7,7.9],[11.2,11.6],[13.7,15.1],[17.4,23.2],[22.4,34.7],[27.4,43.2],[34.5,54.7],[44.3,68.6],[54.3,84.5],[65.2,93.6]]},"day3":{"severe":[[0.6,8.1],[1.5,10.3],[2.8,16],[4.2,16.9],[6.2,18.9],[8.7,26.9],[11.2,29.7],[13.7,35],[17.1,39.2],[22.3,41.9],[27.1,59.2],[33.6,72.6],[44.3,86.1]]},"day1update":{"tornado":[[1.4,0.8],[2.7,1],[4.2,2.2],[6.2,3.1],[8.7,5.2],[11.2,7.1],[13.7,8.5],[17.4,13.1],[22.4,22.7],[27.4,27.2],[34.5,32.9],[47,45.5],[63.3,65.7]],"wind":[[1.5,0],[2.7,0.2],[4.2,0.4],[6.2,0.9],[8.7,2.3],[11.2,4],[13.7,5.1],[17.4,7.5],[22.4,9.4],[27.5,16.5],[34.9,35.4],[45,65.3],[54.8,85.6],[67.3,95.1],[84.4,99.3]],"hail":[[1.5,0.1],[2.7,0.6],[4.2,1],[6.1,2.2],[8.7,4],[11.2,5.9],[13.7,6.6],[17.4,9.7],[22.5,16.9],[27.4,25.1],[34.8,38.5],[44.8,60.7],[54.8,79.5],[67.2,89.5],[84.5,97.4]]}});
+export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.2],[2.7,3],[4.2,4.7],[6.1,8.6],[8.7,13.4],[11.2,19.4],[13.6,24.1],[17.2,29.4],[22.2,38.1],[27.3,50.3],[34.4,59.7],[44.6,70]],"wind":[[1.5,0.6],[2.7,1.3],[4.2,2.4],[6.2,3.7],[8.7,8.5],[11.2,12.2],[13.7,16],[17.4,23.9],[22.4,35.5],[27.4,44.8],[34.5,56.4],[44.4,70.9],[54.3,83.1],[65.7,90.4]],"hail":[[1.5,0.7],[2.7,1.6],[4.2,3.5],[6.2,5],[8.7,7.9],[11.2,10],[13.7,13.6],[17.4,19.5],[22.4,30.6],[27.4,42.4],[34.7,55],[44.6,70.1],[54.6,83],[66.2,92.1],[77.9,99.2]]},"day2":{"tornado":[[1.4,1.4],[2.7,3.5],[4.2,6.1],[6.1,10],[8.6,14.9],[11.1,17.2],[13.6,23.8],[17.2,30.2],[22.3,49.4],[27.3,51.8],[34.2,68.3]],"wind":[[1.5,1.4],[2.7,2.4],[4.2,4.6],[6.2,7.1],[8.7,9.5],[11.2,15.1],[13.7,19.8],[17.4,28.2],[22.4,38.1],[27.3,46.6],[33.9,55.8],[43.7,74.6],[53.6,86.4]],"hail":[[1.5,1.7],[2.7,3.3],[4.2,4.9],[6.2,6.2],[8.7,7.9],[11.2,11.6],[13.7,15.1],[17.4,23.2],[22.4,34.7],[27.4,43.2],[34.5,54.7],[44.3,68.6],[54.3,84.5],[65.2,93.6]]},"day3":{"severe":[[0.6,8.1],[1.5,10.3],[2.8,16],[4.2,16.9],[6.2,18.9],[8.7,26.9],[11.2,29.7],[13.7,35],[17.1,39.2],[22.3,41.9],[27.1,59.2],[33.6,72.6],[44.3,86.1]]},"day1update":{"tornado":[[1.5,1.2],[2.7,3],[4.2,4.7],[6.1,8.6],[8.7,13.4],[11.2,19.4],[13.6,24.1],[17.2,29.4],[22.2,38.1],[27.3,50.3],[34.4,59.7],[44.6,70]],"wind":[[1.5,0.6],[2.7,0.9],[4.2,2.4],[6.2,3.1],[8.7,4.7],[11.2,8.1],[13.7,12.5],[17.3,18],[22.3,28.4],[27.5,33.7],[34.4,43.2],[44.8,58.7],[54.6,71.1],[66.3,83.9],[78.6,94.3]],"hail":[[1.5,0.7],[2.7,1.5],[4.2,1.8],[6.2,3.8],[8.7,7.2],[12.3,11.8],[17.4,14.1],[22.4,23.2],[27.4,34.4],[34.7,39],[44.8,53],[54.8,69.6],[67,86],[80,95.7]]}});
 
 // Intensity groups (2026-10-21): for each outlook day and hazard, the share of the runs whose own
 // reports in a contour area reach group g that a group needs to be drawn there, set where the group
@@ -106,11 +106,25 @@ export const CALIBRATION = Object.freeze({"day1":{"tornado":[[1.5,1.2],[2.7,3],[
 // (Refitted 2026-10-29 from data/outlook-archive/fit-2026-10-28-cheap by scripts/refit-from-archive.mjs, with the user's tornado-group rule:
 // the first fit with the cheap runs (Day 1 8 full + 24 cheap, Day 2 4 + 12; OUTLOOK.cheapPerMember) and with the
 // truth stepped as the server steps the live world. On those 100 mornings Day 1 went from right on 48% of days
-// (37% too high) to 61% (23% too high). day1update is still the 2026-10-24 fit, made from 8 runs.)
+// (37% too high) to 61% (23% too high). day1update was refitted 2026-11-15 (scripts/outlook-updates-verify.mjs --calibration-data, seeds 41-46 x 3 days, the
+// server's 16:30Z, 20Z and 01Z updates, raw chances of the short-range model's way: 1 run of the live air + 7 cheap; checked on
+// the perturbed runs the server uses, 8 + 24 cheap): the 2026-10-24 table pulled middle chances down about threefold
+// (wind 22% raw to 9%), so updates fell a category low; on held-out seeds 47-52 the refit took the 20Z issue's highest
+// category right 39% -> 61% (too low 56% -> 28%) and raised Brier skill at every update.)
+// (2026-11-16, the owner's choice: day1update's tornado row is day1's. The 2026-11-15 fit read the perturbed runs' tornado
+// chances about half as high as they verified, being made from short-range runs: raw 6% verified 7.8% on seeds 53-56, where
+// day1 gives 8.6% and that fit 2.9%; RMS against what happened 1.08 with day1, 2.16 with the fit. For wind and hail a
+// perturbed-run fit agrees with it (wind 22% raw -> 28.1 and 28.4, hail 16-17% -> 14.5 and 14.1), so those rows stay.)
 // (Kept 2026-10-29: the refit on fit-2026-10-29 asked 3/8 runs for Day 1 tornado CIG2/CIG3 and cut Day 1 Moderate+High from 25% to 18% of days, 24% verified.)
 // (2026-11-07: Day 3 any severe hatched where all its runs reach CIG1, judged with OUTLOOK.ingredientCigBounds; fit-new seeds 1-20:
 // Day 3 right 48 -> 52%, too high 10%. Day 2 kept: the fitted hail 0.375 / tornado CIG2 0.375 lowered Day 2 to 51%.)
-export const CIG_SHARE = Object.freeze({"day1":{"wind":[1.01,1.01,1.01],"hail":[0.5,0.875],"tornado":[0.25,0.25,0.25]},"day2":{"wind":[0.625,0.75,0.875],"hail":[1.01,1.01],"tornado":[0.25,0.25,0.75]},"day3":{"severe":[1.0]}});
+// (2026-11-14, the owner's wish that Enhanced be a little more common than Moderate: Day 1 hail CIG1 needs 6/8 runs (was 4/8);
+// Day 1 Enhanced 32% -> 37% of days, Moderate 34% -> 28% (verified 35 / 29%), right 73% -> 70%, misses lean low.)
+// (2026-11-14: Day 2 tornado CIG2 needs 2 of its 4 runs (was 1): Day 2 High 9% -> 3% of days with OUTLOOK.caution.)
+// (2026-11-14: Day 1 tornado CIG2/CIG3 need 3/8 runs, with the gates off. On 80 unseen mornings (seeds 41-60) every forecast High
+// that verified lower was a tornado High (30-60% with the EF2+/EF3+ hatch); 3/8 cut Day 1 High from 21% to 15% of days
+// (verified 10%) and raised the day right from 65% to 69%; 4/8 matched the count but kept Highs in the wrong places.)
+export const CIG_SHARE = Object.freeze({"day1":{"wind":[1.01,1.01,1.01],"hail":[0.75,0.875],"tornado":[0.25,0.375,0.375]},"day2":{"wind":[0.625,0.75,0.875],"hail":[1.01,1.01],"tornado":[0.25,0.5,0.75]},"day3":{"severe":[1.0]}});
 
 // The intensity groups of hail and wind weighed with the environment (2026-11-08; DayOneOutlook.js significantHailParameter and
 // derechoCompositeParameter): for each day, hazard and group, [a, b, c, field] of a logistic fit of whether the group verified
@@ -135,9 +149,10 @@ import { PROBABILITY_LEVELS } from './spcOutlookRules.js';
 // never draws, WORLD_MAX_CIG), so a guard at 45 kept every Day 3 below Enhanced (seeds 1-20: SLGT on 97% of mornings,
 // with places at the 43% the guard held them to verifying 51%).
 const GUARD_LEVEL = { tornado: 30, wind: 45, hail: 45, severe: 60 };
-export function calibrateChance(day, hazard, raw, table = CALIBRATION) {
+// guard: false lifts both limits (for scoring the outlooks without them, DayOneOutlook.js OUTLOOK.gates).
+export function calibrateChance(day, hazard, raw, table = CALIBRATION, { guard = true } = {}) {
   const calibrated = curve(day, hazard, raw, table), levels = PROBABILITY_LEVELS[hazard];
-  if (!(calibrated > raw) || !levels) return calibrated;
+  if (!(calibrated > raw) || !levels || !guard) return calibrated;
   const reached = levels.filter(level => raw >= level - 1e-9).length;   // contour levels the raw chance reaches
   let next = reached;   // the index of the next level up, which the chance may reach
   if (next < levels.length && levels[next] >= (GUARD_LEVEL[hazard] ?? Infinity)) next = reached - 1;   // stay within the level reached

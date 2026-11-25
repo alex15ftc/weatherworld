@@ -146,8 +146,24 @@ end
 
 local KIND_NAMES = { [0] = "In the cloud", [1] = "Cloud to ground, negative", [2] = "Cloud to ground, positive" }
 
+-- A value's byte and a byte's value, as js/radar/RadarFormat.js encodeRadarValue and decodeRadarValue: min + (byte - 1)
+-- x step, or with a knee (velocity) byte zeroByte is 0 and each byte from it a step up to +-knee and an outerStep beyond.
 local function byteOf(spec: any, value: number): number
+	if spec.knee then
+		local a, inner = math.abs(value), spec.knee / spec.step
+		local d = if a <= spec.knee then math.round(a / spec.step) else inner + math.round((a - spec.knee) / spec.outerStep)
+		return math.clamp(spec.zeroByte + math.sign(value) * d, 2, 2 * spec.zeroByte - 2)
+	end
 	return math.clamp(1 + math.round((value - spec.min) / spec.step), if spec.doppler then 2 else 1, 255)
+end
+
+local function valueOf(spec: any, byte: number): number
+	if spec.knee then
+		local d = byte - spec.zeroByte
+		local a, inner = math.abs(d), spec.knee / spec.step
+		return math.sign(d) * (if a <= inner then a * spec.step else spec.knee + (a - inner) * spec.outerStep)
+	end
+	return spec.min + (byte - 1) * spec.step
 end
 
 -- A button row of `columns` buttons across (Ui.buttons makes two).
@@ -168,7 +184,7 @@ local function valueText(spec: any, byte: number): string?
 	if spec.doppler and byte == 1 then
 		return `{spec.short} RF`
 	end
-	local value = spec.min + (byte - 1) * spec.step
+	local value = valueOf(spec, byte)
 	local text = `{spec.short} {string.format(`%.{spec.decimals}f`, value)} {spec.units}`
 	if spec.units == "m/s" and spec.short ~= "SW" then
 		text ..= string.format(" (%d kt)", math.round(value * KT_PER_MS))

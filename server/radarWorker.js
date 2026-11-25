@@ -21,8 +21,8 @@ const TASKS = {
   mosaics: ({ sites, rows, kinds }) => buildRadarMosaics(scene, sites, { rows, kinds }),
   // (one storm's rain grid for the game feed, server/GameFeed.js)
   precipGrid: ({ input }) => stormPrecipGrid(input),
-  scan: ({ site, tiltDeg, gateKm }) => scanRadarTilt(scene, site, tiltDeg, { gateKm }),
-  rotation: ({ site, scans }) => detectRotation(site, scans),
+  scan: ({ site, tiltDeg, gateKm, radials }) => scanRadarTilt(scene, site, tiltDeg, { gateKm, radials }),
+  rotation: ({ site, scans, options }) => detectRotation(site, scans, options),
   shearGrid: ({ width, height, sites, scans }) => {
     const shear = new Float32Array(width * height);
     sites.forEach((site, k) => { if (scans[k]) lowLevelShearGrid(shear, width, height, MOSAIC_RES_KM, site, scans[k]); });
@@ -37,7 +37,7 @@ parentPort?.on('message', message => {
     const result = TASKS[message.kind](message);
     // Scan and mosaic bytes are this thread's own: handed over, not copied.
     const transfer = message.kind === 'scan' ? Object.values(result.products).map(a => a.buffer) : message.kind === 'mosaic' ? [result.bytes.buffer] : message.kind === 'mosaics' ? Object.values(result.bytes).map(a => a.buffer)
-      : message.kind === 'shearGrid' ? [result.buffer] : message.kind === 'satellite' ? [result.ir.buffer, result.visible.buffer] : [];
+      : message.kind === 'shearGrid' ? [result.buffer] : message.kind === 'satellite' ? [result.ir.buffer, result.visible.buffer, result.fog.buffer] : [];
     parentPort.postMessage({ ok: true, result, sceneId }, transfer);
   } catch (error) {
     parentPort.postMessage({ ok: false, error: String(error?.stack ?? error) });

@@ -353,7 +353,7 @@ end
 
 function ProductFeedService.Start()
 	local source = workspace:GetAttribute("ProductSource")
-	local url = (workspace:GetAttribute("WeatherFeedUrl") :: string?) or Config.WEATHER_FEED_URL
+	local url = Config.feedUrl()
 	local http = source == "http" or (source == nil and url ~= "")
 	ReportArchive.start({
 		-- A recorded snapshot is not a live world: its days are not kept.

@@ -5,7 +5,27 @@
 // time, a poll gives only what the game lacks, and a game that has lost its place starts again;
 // each storm's rain and hail near the ground is a fixed-size grid from the radar's own field.
 import assert from 'node:assert/strict';
-import { funnelProfile, describeFunnel, FUNNEL, stormLife, buildStormFeedList } from '../js/storms/StormAppearance.js';
+import { describeFunnel, FUNNEL, stormLife, buildStormFeedList } from '../js/storms/StormAppearance.js';
+import { tornadoFunnel, TORNADO_FUNNEL, tornadoTilt, ROPE_LEAN } from '../js/storms/TornadoFunnel.js';
+import { burgersDrop } from '../js/storms/StormVortices.js';
+
+// The tilt (TornadoFunnel.js, the frames' and the appearance's one rule): upright under its parent, leaning
+// toward it as it falls behind (occludes), joined at its circulation's top; the rope-out's lean as it decays.
+{
+  const at = (wcEastKm, wcSouthKm, extra = {}) => ({ velocityKph: { east: 60, north: 0 }, geometry: { wallCloud: { xKm: 100 + wcEastKm, yKm: 100 + wcSouthKm } },
+    tornado: { positionKm: { x: 100, y: 100 }, windSpeedMph: 100, peakWindSpeedMph: 100, ...extra } });
+  const upright = tornadoTilt(at(0, 0), { depthM: 1500, baseM: 600 }).at(600);
+  assert.ok(Math.hypot(upright.east, upright.north) < 1e-9, 'a mature tornado under its parent stands upright');
+  const occluded = tornadoTilt(at(1, -0.5), { depthM: 1500, baseM: 600 });
+  const top = occluded.at(1500), base = occluded.at(600);
+  // (scaled by the soft bend toward LEAN_LIMIT, leanShare: here 33 deg at the base, near the mature 35)
+  const k = occluded.leanShare;
+  assert.ok(k > 0.9 && k <= 1 && Math.abs(top.east - 1000 * k) < 1e-6 && Math.abs(top.north - 500 * k) < 1e-6, 'joined to its parent at its circulation\'s top');
+  assert.ok(base.east > 0 && base.east < 1000 && Math.abs(occluded.at(0).east) < 1e-9, 'upright at the ground, leaning toward its parent above');
+  const rope = tornadoTilt(at(0, 0, { windSpeedMph: 50 }), { depthM: 1500, baseM: 600 });
+  assert.equal(rope.decay, 1);
+  assert.ok(Math.abs(rope.at(600).north + ROPE_LEAN * 600) < 0.01 * 600, 'decaying under an eastward storm: its top to the south, right of its track');
+}
 import { buildStormGeometry } from '../js/storms/StormGeometry.js';
 import { GameFeed, GAME_FEED } from '../server/GameFeed.js';
 import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
@@ -16,20 +36,36 @@ import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 
 const MPH = 0.44704, G = 9.81, r2t = v => Math.round(v * 100) / 100;
 
+// The funnel (TornadoFunnel.js, the frames' and the appearance's one rule) at the appearance's levels:
+// swirl V m/s (the vortex's own, its ground wind less the storm's motion), core R m, under the wall
+// cloud's base and the core's condensation level.
+const profile = ({ R, V, wallBaseM, coreBaseM = wallBaseM }) => {
+  const f = tornadoFunnel({ R, V, rho: 1.2, wallBaseM, coreBaseM });
+  return { radii: Array.from({ length: FUNNEL.levels }, (_, i) => f.radiusAt(wallBaseM * i / (FUNNEL.levels - 1))), bottomM: f.tipM };
+};
 // A strong vortex under a low base: condensed to the ground, narrowing all the way down.
-const strong = funnelProfile(90, 200, 400);
-assert.equal(strong.bottomM, 0, 'a 200 mph vortex under a 400 m base condenses to the ground');
+const strong = profile({ R: 200, V: 90, wallBaseM: 400 });
+assert.equal(strong.bottomM, 0, 'a 90 m/s vortex under a 400 m base condenses to the ground');
 for (let i = 1; i < strong.radii.length; i++) assert.ok(strong.radii[i] >= strong.radii[i - 1], 'the funnel widens toward the cloud base');
 assert.equal(describeFunnel(strong, 400).name, 'wedge', 'a wide strong vortex under a low base is a wedge');
 
-// A weak vortex under a high base: the cloud stops short, by the depth its deficit can lift.
-const weak = funnelProfile(70 * MPH, 20, 1400);
-assert.ok(Math.abs(weak.bottomM - (1400 - FUNNEL.deficitFactor * (70 * MPH) ** 2 / G)) < 1e-6, 'the funnel reaches down K v^2 / g from the base');
+// A weak vortex under a high base: the cloud stops short, by the depth its Burgers-Rott drop (1.70 rho V^2) lifts.
+const BR = burgersDrop(0, 1, 1, 1);
+assert.ok(Math.abs(BR - 1.70) < 0.005, `Burgers-Rott centre drop ${BR} rho V^2`);
+const weak = profile({ R: 20, V: 70 * MPH, wallBaseM: 1400 });
+assert.ok(Math.abs(weak.bottomM - (1400 - BR * (70 * MPH) ** 2 / G)) < 1e-6, 'the funnel reaches down 1.70 V^2 / g from the base');
 assert.equal(weak.radii[0], 0, 'nothing condenses at the ground');
 assert.equal(describeFunnel(weak, 1400).name, 'uncondensed');
 
+// The core's air (rain-cooled outflow) condensing below the wall cloud: the funnel hangs from there, and
+// between there and the base it is condensed out to where the core draws its air from.
+const moist = tornadoFunnel({ R: 40, V: 19, rho: 1.2, wallBaseM: 660, coreBaseM: 400 });
+assert.ok(Math.abs(moist.tipM - (400 - BR * 19 ** 2 / G)) < 1e-6, 'from the core\'s condensation level');
+assert.equal(moist.radiusAt(500), TORNADO_FUNNEL.coreAirR * 40, 'condensed out to coreAirR core radii above it');
+assert.equal(moist.radiusAt(100), 0, 'nothing below its tip');
+
 // A narrow vortex condensed most of the way: thin; leaning or decaying, a rope.
-const narrow = funnelProfile(45, 15, 500);
+const narrow = profile({ R: 8, V: 45, wallBaseM: 500, coreBaseM: 300 });
 assert.ok(['drillbit', 'rope'].includes(describeFunnel(narrow, 500).name));
 assert.equal(describeFunnel(narrow, 500, 0.8, 0.6).name, 'rope', 'leaning and decaying, a thin funnel is a rope');
 

@@ -207,6 +207,16 @@ function Storm.environment(s: Storm, world: any)
 		local tT = tB - Thermo.moistLapse(tB, pB) * dz
 		s.gammaL = math.max(0, Thermo.mixingRatio(tB, pB) - Thermo.mixingRatio(tT, pT)) / dz
 	end
+	-- the water vapour in the lowest kilometre, the air the updraft draws in (g/m3; as the engine's radar,
+	-- RadarSimulator stormMoisture), for warm rain (Storm.WARM_RAIN)
+	do
+		local sum = 0
+		for k = 0, 4 do
+			local z = k * 250
+			sum += 216.7 * Thermo.es(Thermo.at(prof, "td", z)) / (Thermo.at(prof, "t", z) + 273.15)
+		end
+		s.inflowVapour = sum / 5
+	end
 	local z5 = 5000
 	s.rhMid = Thermo.es(Thermo.at(prof, "td", z5)) / Thermo.es(Thermo.at(prof, "t", z5))
 	if s.pin and s.pin.rhMid then
@@ -1865,6 +1875,20 @@ function Storm.applyPin(s: Storm, dt: number)
 	end
 end
 
+-- Warm rain (2026-11-18, the engine's PrecipitationField PHYSICS.warmRainShare and warmRainOf): in a deep,
+-- moist cloud below the freezing level drops grow by colliding and coalescing and fall out low, before
+-- reaching the ice. Up to share of the rain does so, growing with the warm cloud's depth (the freezing level
+-- less the base, m; deep warm clouds of 3-4 km are the efficient rain-makers, Davis 2001) and the vapour in
+-- the lowest kilometre (g/m3). Released low it falls near the updraft through the weak low-level flow and
+-- wraps it (HP); high, dry-based storms keep their rain to the ice aloft, which the anvil wind carries off.
+Storm.WARM_RAIN = { share = 0.5, depth = { 1000, 3500 }, vapour = { 11, 18 } }
+function Storm.warmRainOf(s: Storm): number
+	local w = Storm.WARM_RAIN
+	return w.share
+		* ramp((s.freezing or 4000) - s.base, w.depth[1], w.depth[2])
+		* ramp(s.inflowVapour or 0, w.vapour[1], w.vapour[2])
+end
+
 -- Release this step's precipitation into the field (and anvil ice at the top).
 function Storm.emitPrecip(s: Storm, dt: number, world: any)
 	local precip = world.precip
@@ -2004,6 +2028,7 @@ function Storm.emitPrecip(s: Storm, dt: number, world: any)
 	else
 		s.lastPrecip = rate
 	end
+	local warmRain = if s.dead then 0 else Storm.warmRainOf(s)
 	local budget = rate * dt + (s.precipDebt or 0)
 	local n = math.floor(budget / m0)
 	s.precipDebt = budget - n * m0
@@ -2041,6 +2066,9 @@ function Storm.emitPrecip(s: Storm, dt: number, world: any)
 		local hook = not s.dead and rng:next() < (if s.pin and s.pin.rearShare then s.pin.rearShare + (0.15 * s.rot - s.pin.rearShare) * (s.pin.freeU or 0) else 0.15 * s.rot)
 		if hook then
 			z = rng:range(s.base + 300, math.max(s.base + 600, math.min(s.freezing - 200, s.base + 2000)))
+		elseif warmRain > 0 and rng:next() < warmRain then
+			-- warm rain (Storm.WARM_RAIN): formed in the cloud below the freezing level, 300 m above the base up
+			z = rng:range(s.base + 300, math.max(s.base + 300, s.freezing - 1))
 		end
 		local kind, size = 1, 0
 		if z > s.freezing then

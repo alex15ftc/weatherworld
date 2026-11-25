@@ -11,7 +11,8 @@
 // Frame: x east and y south in km from the storm's centre; heights in metres above the ground.
 import { rotatingShare, lineShare } from './StormModeEngine.js';
 import { buildStormGeometry } from './StormGeometry.js';
-import { BUDGET } from './StormBudgets.js';
+import { BUDGET, stormUndercut } from './StormBudgets.js';
+import { stormVortices, addMesoWind, addTornadoWind } from './StormVortices.js';
 
 export const PRECIP_LEVELS_M = [0, 700, 1500, 2500, 3700, 5200, 7000, 9200, 12000, 15500];
 // The storm-relative wind profile the fallout is carried by: one value every 250 m.
@@ -26,8 +27,11 @@ const LEVEL_DEPTH_KM = PRECIP_LEVELS_M.map((z, k) => ((PRECIP_LEVELS_M[Math.min(
 // Drop sizes carried (melted diameter, mm), the width of the size range each stands for, and
 // how many of each are followed from a single updraught and from one cell of a line. The two
 // smallest leave the updraught as snow; the rest as graupel.
-const DROP_MM = [0.5, 1.0, 1.8, 2.8, 4.0, 5.5], DROP_RANGE_MM = [0.5, 0.65, 0.9, 1.1, 1.35, 1.5], SNOW_SIZES = 2;
-const FOLLOWED = { updraught: [1100, 1100, 1000, 900, 750, 600], lineCell: [56, 56, 44, 36, 28, 20], hail: [350, 20], debris: 2600 };
+// (7 mm since 2026-11-14: the largest raindrops there are, from melted small hail and big graupel - few of
+// them by the size law, but where they fall alone a radar reads 3 dB and more of differential reflectivity,
+// a supercell's ZDR arc. With 5.5 mm the largest, nothing in the model could read over 2.6 dB.)
+const DROP_MM = [0.5, 1.0, 1.8, 2.8, 4.0, 5.5, 7.0], DROP_RANGE_MM = [0.5, 0.65, 0.9, 1.1, 1.35, 1.5, 1.5], SNOW_SIZES = 2;
+const FOLLOWED = { updraught: [1100, 1100, 1000, 900, 750, 600, 400], lineCell: [56, 56, 44, 36, 28, 20, 14], hail: [350, 20], debris: 2600 };
 // Hailstones as shares of the storm's largest stone, and the share of the hail's mass in each.
 const HAIL_SIZE_SHARE = [0.35, 0.6, 0.9], HAIL_MASS_SHARE = [0.5, 0.35, 0.15];
 
@@ -35,11 +39,57 @@ export const PHYSICS = {
   // Precipitation leaves an updraught on its flanks (where it rises at 8% to 70% of its full
   // speed), from a kilometre below the freezing level to this share of the way to the top.
   flank: [0.08, 0.7], formationBelowM: 1000, formationShare: 0.45,
+  // Warm rain (2026-11-18): in a deep, moist cloud below the freezing level drops grow by colliding and
+  // coalescing and fall out low, before reaching the ice. Up to warmRainShare of the rain does so, growing
+  // with the warm cloud's depth (freezing level less cloud base; deep warm clouds of 3-4 km are the efficient
+  // rain-makers of flash floods, Davis 2001, and High Plains bases under 1 km of warm cloud make almost none)
+  // and with the vapour drawn in. Released low it falls near the updraught through the weak low-level flow
+  // and wraps it (HP); high, dry-based storms keep their rain to the ice aloft, which the anvil wind carries off.
+  warmRainShare: 0.5, warmRainDepthM: [1000, 3500], warmRainVapourGm3: [11, 18],
   // It leaves on the side the air through the updraught is going: fully so when that air
   // moves this fast (m/s) relative to the storm, and anywhere round a still updraught.
   throughFlowMs: 4,
   hailAboveM: 1000,            // hail grows this far and more above the freezing level
   inflowM: 1000,               // an updraught carries the wind of the air it draws in: the lowest kilometre
+  // It carries it only while that air is still streaming in: as the air turns upward it gives up its
+  // sideways motion (seen from the storm, a steady updraught's core stands still - air that kept the
+  // inflow's 20 m/s would leave it in minutes), so the inflow's wind holds in the core at the ground and
+  // is gone by coreInflowDepths of the inflow layer. Until 2026-11-14 the core had the inflow's wind at
+  // every height, and precipitation left on the side a blend of it and the wind at that height pointed
+  // to: hail, which hovers in the flank for many minutes, rode a storm-relative easterly out to the
+  // updraught's rear-left and came down in the hook - the storm's heaviest echo there, 3-6 km west and
+  // south-west of the tornado (seed 7's S0226), where a supercell's hail falls on the left-forward side,
+  // beside the vault (Browning and Foote 1976). Now it leaves on the side the wind at its own height
+  // carries it to, and that storm's hail core lies north-west of its updraught.
+  coreInflowDepths: 3,
+  // Graupel and hail leave the updraught where it can no longer hold them. Drawn back into it, they are
+  // lifted again - but a stone being lifted through cloud goes on growing, and falls faster for it, so it
+  // rises at only this share of the speed the air's rise less its own launch-size fall speed gives. Set
+  // by what it makes of a supercell's echo at the ground (seed 7's S0226, updraught 58 m/s): at 0.4 the
+  // forward flank's 40 dBZ is 47 km long and 17 wide (real ones 30-60 by 15-25); at 1 (until 2026-11-14,
+  // when a 5 mm graupel went up to the anvil's outflow like the air and was thrown 25 km out) 30 dBZ was
+  // 43 km wide with 4-5 mm drops at its far edge; at 0 there is no forward flank at all. Snow rises with the air.
+  relofted: 0.4,
+  // Turbulence spreads what falls slowly far more than what falls fast: a heavy particle drops through
+  // each eddy before the eddy has carried it far (the crossing-trajectories effect, Csanady 1963), so its
+  // spread is 1 / sqrt(1 + (fall speed / turbulent speed)^2) of the air's. crossingMs is the turbulent
+  // speed round a storm, about 2.5 m/s: snow keeps 0.9 of the spread, 1.8 mm graupel 0.56, 5.5 mm 0.27 (hail
+  // has none). Until 2026-11-14 every size spread alike, and the largest graupel, hovering longest in the
+  // updraught's flank, was smeared into a fringe of 13-21 dBZ made of 5 mm drops 20 km wide on the
+  // storm's inflow side (seed 7's S0226), where a real storm has a ZDR arc a kilometre or two across;
+  // with it the forward flank is a streamer of cells rather than one smooth tongue.
+  crossingMs: 2.5,
+  // The rear-flank downdraught (the storm's structure says where: StormStructureEngine's rearFlank, behind
+  // the rotation and a little to its left, as strong as the cold pool): there the air sinks instead of
+  // rising, at up to downdraughtShare of what the environment's downdraught energy allows (sqrt(2 DCAPE);
+  // real downdraughts reach about half of it), fastest downdraughtPeakM up and stopping at the ground. It is
+  // what brings a hook's rain down: the updraught alone, a round column that takes in the tornado's place
+  // too, held the rain that wraps round the rotation at 1.5 km up and let none of it land beside the tornado
+  // (2026-11-14, seed 7's S0226: an echo-free tornado, half its couplet with no echo to show it).
+  // It undercuts the updraught's rear side: the updraught gives way to it up to downdraughtUnderM[0] and
+  // overhangs it above downdraughtUnderM[1] (the overhang and vault), so hail hovering in the flank
+  // aloft stays up. (With no top to it the hail fell in the hook again.)
+  downdraughtShare: 0.5, downdraughtPeakM: 2000, downdraughtUnderM: [3000, 6000],
   // Turbulence spreads the fallout as it goes: each followed particle stands for a patch that
   // widens at this speed (m/s, and more per m/s of updraught), half of it as the patch's own drift.
   // The air it is in stretches or squeezes it too (2026-11-07): a patch in air flowing together narrows at
@@ -51,12 +101,28 @@ export const PHYSICS = {
   // its age alone, and the rain spread from the hook and the hail core filled the notch: on 3 seeds x 2 days
   // only 3% of supercells had a hook beside a notch under 25 dBZ, 11% with this.)
   spreadMs: [1.2, 0.04],
+  // That holds while the air's motion keeps its direction: for about spreadMemoryS. After it the eddies
+  // that carry a patch have turned over, and it spreads as the square root of the time (Taylor 1921: a
+  // spread of v' sqrt(2 T t) once t is well past T), so both the widening and the drift ease off as
+  // sqrt(T / (2 t)). Until 2026-11-14 every patch widened at one speed for its whole life - 16 km in the 2.5 hours
+  // the fall-out is followed - and a supercell's forward flank, 8 km wide where it leaves the storm, was
+  // an echo 80 km across (seed 7's S0226; with no spread at all it is a band of cores 60 km long).
+  spreadMemoryS: 600,
   aggregationS: 1500, aggregateMm: 1.3,   // snow doubles its size in this time, up to this size
   // A mature line drives air from its front to its rear aloft: up to this fast (m/s) with a
   // strong cold pool (this strength or more) once the line is this many hours old.
   frontToRearMs: 22, frontToRearColdPool: 0.6, frontToRearHours: [0.5, 2.5],
   evaporationS: 700,           // life of a 1 mm drop below cloud in the driest air (longer as the square of its size)
-  sublimationS: 2500,          // the same for snow falling from the anvil through dry air
+  // Ice falling from the anvil sublimates at a rate set by how far the air below the anvil is from
+  // saturation over ice (1 - RHice, the cells' 500 hPa air: the middle of the layer the snow falls
+  // through, from 0.6 of the storm's top to the freezing level): this is the e-folding life (s) of a
+  // 1 mm particle in air with no vapour at all, longer as the square of its size. (A lone 1 mm
+  // aggregate in that air lasts ~3 min: capacitance growth, Pruppacher & Klett ch. 13; a shaft of
+  // falling snow moistens its own air, so the whole fallout wastes away several times slower: 1300 s
+  // left an old supercell's ≥20 dBZ shield 16-45% smaller, the cores and hour-old cells as they were (seed 1 at 35 h).)
+  // Until 2026-11-14 the dryness was DCAPE / 1200 with a 2500 s life: snow lived ~80 min, drifted
+  // 70-100 km ahead of an old supercell on the anvil wind and melted into a 20-30 dBZ shield there.
+  sublimationS: 1300,
   // An updraught's output varies over about this time, by up to this share, separately on
   // each of its sides (a steady, organised storm varies less).
   pulseS: 720, pulse: 0.75, sides: 6,
@@ -74,7 +140,6 @@ export const PHYSICS = {
   // core of 2-2.6 inch hail on seed 2112 reached 65 dBZ, where real ones reach 65-75.)
   hailRadarMm: 25
 };
-export const MESOCYCLONE_LEAN_M = 3500;
 // The front-to-rear current's share of its full speed with height: none below 2 km or at the top, most midway.
 export const FRONT_TO_REAR_BASE_M = 2000;
 export const frontToRearShare = (zM, topM) => Math.sin(Math.PI * clamp((zM - FRONT_TO_REAR_BASE_M) / (topM - FRONT_TO_REAR_BASE_M), 0, 1)) ** 2;
@@ -97,6 +162,16 @@ for (let k = 0; k < 102; k++) {
 }
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// How far air at tC with dewpoint tdC is from saturation over ice (0 saturated, 1 no vapour; NaN at or
+// above freezing, where there is no ice to waste away).
+export function iceSubsaturation(tC, tdC) {
+  if (!Number.isFinite(tC) || !Number.isFinite(tdC) || tC >= 0) return NaN;
+  const e = 6.112 * Math.exp(17.67 * tdC / (tdC + 243.5)), ei = 6.112 * Math.exp(22.46 * tC / (272.62 + tC));
+  return clamp(1 - e / ei, 0, 1);
+}
+// The anvil fallout's subsaturation from a column (subsaturationAloft), or the engine's usual 500 hPa
+// air (RegionalAtmosphere: about 40% RH over water at -15 C) where the column has none.
+export const subsaturationAloftOf = column => (Number.isFinite(column?.subsaturationAloft) ? column.subsaturationAloft : 0.55);
 const ramp = (v, a, b) => clamp(((Number(v) || 0) - a) / (b - a), 0, 1);
 // Fall speeds (m/s): rain by drop size, snow, graupel, hail.
 const rainFallMs = mm => 9.65 - 10.3 * Math.exp(-0.6 * mm);
@@ -111,6 +186,14 @@ const hailFallMs = mm => 11.45 * Math.sqrt(mm / 10);
 // follow one particle in `stride` (each standing for that many; and fewer to find the fallout's
 // reach), on cells no finer than leastResKm, without the fine inner grid and, with debris false,
 // without a tornado's debris. The amounts are the same on average; the detail is less.
+// The share of the rain made by warm rain (PHYSICS.warmRainShare): by the warm cloud's depth (the freezing level
+// less the cloud base, m) and the vapour drawn in (the column's, or from the dewpoint where it has none).
+export function warmRainOf(column, baseM, environment = {}) {
+  const dewpointC = ((Number(environment.dewpoint) || 60) - 32) * 5 / 9;
+  const vapour = Number.isFinite(column?.inflowVapourGm3) ? column.inflowVapourGm3 : 216.7 * 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5)) / (dewpointC + 273.15);
+  return PHYSICS.warmRainShare * ramp((Number(column?.freezingM) || 4000) - baseM, ...PHYSICS.warmRainDepthM) * ramp(vapour, ...PHYSICS.warmRainVapourGm3);
+}
+
 export function buildStormPrecipitation(storm, column, { shared = false, stride = 1, leastResKm = RESOLUTION_KM[0], fine = true, debris: withDebris = true } = {}) {
   const alloc = shared ? sharedAlloc : plainAlloc;
   const structure = storm.structure;
@@ -120,10 +203,6 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   // Motion unit vector m and right-of-motion vector r on the map.
   const mx = Math.sin(theta), my = Math.cos(theta), rx = -my, ry = mx;
   const toMap = (a, b) => ({ x: a * mx + b * rx, y: a * my + b * ry });
-  const meso = structure.mesocyclone ?? {}, mesoAt = toMap(Number(meso.offsetXKm) || 0, Number(meso.offsetYKm) || 0);
-  const tornado = storm.tornado, tornadoWindMs = (Number(tornado?.windSpeedMph) || 90) * 0.447;
-  // Where the engine put the tornado (it can lag behind the wall cloud), from the storm's centre.
-  const tornadoAt = geometry.tornado ? { x: geometry.tornado.xKm - storm.positionKm.x, y: geometry.tornado.yKm - storm.positionKm.y } : mesoAt;
   // The updraught's centre from the storm's position (its mesocyclone: the column leans downshear
   // from it, StormGeometry), on the map.
   const updraughtAt = { x: (Number(geometry.updraught.xKm) || storm.positionKm.x) - storm.positionKm.x, y: (Number(geometry.updraught.yKm) || storm.positionKm.y) - storm.positionKm.y };
@@ -135,21 +214,31 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
     seed: hashString(String(storm.id ?? 'storm')),
     // A left-moving storm turns the other way.
     spin: storm.leftMover ? -1 : 1,
-    // The rotation is under the wall cloud at the ground and leans to the updraught's centre by LEAN_M up.
-    mesocyclone: { x: mesoAt.x, y: mesoAt.y, aloftX: updraughtAt.x, aloftY: updraughtAt.y, radiusKm: clamp(Number(meso.radiusKm) || 4, 1.5, 8), vmaxMs: 6 + 30 * clamp(Number(meso.strength) || 0, 0, 1.25), low: clamp(Number(meso.lowStrength) || 0, 0, 1) },
-    // The radar sees 85% of the tornado's wind: the rest is in a core narrower than a gate.
-    tornado: tornado?.onGround ? { x: tornadoAt.x, y: tornadoAt.y, radiusKm: clamp((Number(tornado.widthYards) || 300) / 1094, 0.1, 2.5) / 2, vmaxMs: clamp(tornadoWindMs * 0.85, 25, 135), windMs: tornadoWindMs } : null,
+    // The storm's mesocyclone and tornado (StormVortices.js: the ones the frames, the radar's velocity
+    // and the trees' wind all take). The rotation is under the wall cloud (or round the tornado) at the
+    // ground and leans to the updraught's centre aloft.
+    vortices: null, mesocyclone: null, tornado: null,
     coldPool: clamp(Number(storm.coldPoolStrength) || 0, 0, 1.2), rearInflow: clamp(Number(storm.rearInflow) || 0, 0, 1),
     updraughtAt
   };
+  {
+    const d = model.vortices = stormVortices(storm, column.topM), m = d.meso, t = d.tornado;
+    model.mesocyclone = { x: m.x, y: m.y, aloftX: m.aloftX, aloftY: m.aloftY, radiusKm: m.R, vmaxMs: m.V, low: m.low };
+    // (windMs: the engine's ground wind, which says how deep it reaches and how much it lofts)
+    // (widthKm: its damage path's width, which it sweeps at motionMs, the storm's speed: what it lofts)
+    model.tornado = t ? { x: t.x, y: t.y, radiusKm: t.R, vmaxMs: t.V, windMs: t.Vg, widthKm: 2 * (t.Raloft ?? t.R),
+      motionMs: Math.hypot(Number(storm.velocityKph?.east) || 0, Number(storm.velocityKph?.north) || 0) / 3.6 } : null;
+  }
   const environment = storm.environment ?? {};
   // How dry the air the rain falls through is: below cloud (a high cloud base, energetic
   // downdraughts) and aloft beneath the anvil (less so in a line, which moistens its own air).
   const asLine = ramp(lineShare(storm), 0.25, 0.7);
   model.dryBelow = clamp(0.5 * (model.baseM - 400) / 1600 + 0.5 * (Number(environment.dcape) || 600) / 1200, 0.05, 1.2);
-  model.dryAloft = clamp((Number(environment.dcape) || 600) / 1200, 0.1, 1.2) * (1 - 0.6 * asLine);
+  model.dryAloft = subsaturationAloftOf(column) * (1 - 0.6 * asLine);
+  model.warmRain = warmRainOf(column, model.baseM, environment);
   model.frontToRear = PHYSICS.frontToRearMs * asLine * clamp(model.coldPool / PHYSICS.frontToRearColdPool, 0, 1) * ramp(storm.ageHours, PHYSICS.frontToRearHours[0], PHYSICS.frontToRearHours[1]);
   model.sources = updraughts(storm, structure, geometry, model, asLine, toMap);
+  model.downdraughts = downdraughtsOf(structure, toMap, environment);
   // The strongest few updraughts, for what a radar sees of the updraught itself.
   model.cores = [...model.sources].sort((a, b) => b.w - a.w).slice(0, 6).map(({ x, y, R, w }) => ({ x, y, R, w }));
 
@@ -157,7 +246,6 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   const inflowLevels = Math.round(PHYSICS.inflowM / WIND_PROFILE_STEP_M);
   model.inflowU = 0; model.inflowV = 0;
   for (let k = 0; k <= inflowLevels; k++) { model.inflowU += column.su[k] / (inflowLevels + 1); model.inflowV += column.sv[k] / (inflowLevels + 1); }
-  model.mesoDepth = Float32Array.from({ length: WIND_PROFILE_LEVELS }, (_, k) => (0.55 + 0.45 * Math.exp(-(((k * WIND_PROFILE_STEP_M - 4500) / 2600) ** 2))) * (k * WIND_PROFILE_STEP_M > column.topM ? 0.2 : 1));
 
   stride = Math.max(1, Math.round(stride));
   const reach = follow(model, null, null, Math.max(8, 2 * stride));
@@ -181,10 +269,22 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   else if (debris && grid) { const e = grid.extent; e.minX = Math.min(e.minX, debris.x - debris.halfKm); e.minY = Math.min(e.minY, debris.y - debris.halfKm); e.maxX = Math.max(e.maxX, debris.x + debris.halfKm); e.maxY = Math.max(e.maxY, debris.y + debris.halfKm); }
   return {
     grid, inner, debris, cores: model.cores, mx, my, rx, ry,
-    mesocyclone: model.mesocyclone, tornado: model.tornado, spin: model.spin, coldPool: model.coldPool, rearInflow: model.rearInflow, frontToRear: model.frontToRear,
+    // (the storm-relative wind of the inflow layer, east and north m/s: what carries the cold pool, ColdPool.js HEAD_WIND)
+    inflow: { u: model.inflowU, v: model.inflowV },
+    // (how far the engine has the storm's outflow ahead of its updraught, 0-1: StormBudgets.js stormUndercut)
+    undercut: (u => u.cell + u.line)(stormUndercut(storm, environment)),
+    hailMm: (Number(storm.currentHailSizeInches) || 0) * 25.4,
+    vortices: model.vortices, mesocyclone: model.mesocyclone, tornado: model.tornado, spin: model.spin, coldPool: model.coldPool, rearInflow: model.rearInflow, frontToRear: model.frontToRear,
     // Extent on the map, from the storm's centre (km).
     ...(grid?.extent ?? { minX: -1, minY: -1, maxX: 1, maxY: 1 })
   };
+}
+
+// The storm's rear-flank downdraughts (PHYSICS.downdraughtShare): where its structure puts them, on the map.
+export function downdraughtsOf(structure, toMap, environment) {
+  return (structure?.features ?? []).filter(f => f.type === 'rearFlank' && f.downdraft > 0).map(f => ({
+    ...toMap(f.centerXKm, f.centerYKm), R: Math.max(0.8, f.radiusXKm),
+    w: PHYSICS.downdraughtShare * Math.sqrt(2 * Math.max(0, Number(environment?.dcape) || 600)) * clamp(f.downdraft, 0, 1) }));
 }
 
 // The storm's updraughts: the one at its centre, and the cells along its leading line. Each
@@ -288,12 +388,13 @@ const scaleFor = (widthKm, perKm) => { const cells = widthKm * perKm; return cel
 // { kinds(isHail, mm) -> sums, skip(class) } adds where each particle reached the ground, and how much of it, to
 // those sums, leaving out the classes skip says to (StormFallout.js).
 export function follow(model, grid, inner, stride, landed = null) {
-  const { su, sv, topM, freezingM: fz, baseM, ageS, mesocyclone: meso, spin, inflowU, inflowV, mesoDepth } = model;
+  const { su, sv, topM, freezingM: fz, baseM, ageS, inflowU, inflowV, vortices } = model;
+  const swirl = { u: 0, v: 0 }, inflowTop = PHYSICS.coreInflowDepths * PHYSICS.inflowM, downdraughts = model.downdraughts?.length ? model.downdraughts : null;
   // The line's front-to-rear current, east and north (m/s), at its strongest.
   const rearU = -model.mx * model.frontToRear, rearV = model.my * model.frontToRear;
   if (!(ageS > 0)) return null;
+  const warmRain = Number(model.warmRain) || 0;
   const P = PHYSICS, stepM = (grid ? grid.res : 1) * 800, innerStepM = INNER.resKm * 1000, top = topM * 1.05;
-  const mesoR = meso.radiusKm, mesoV = meso.vmaxMs * spin, mesoReach2 = (mesoR * 12) ** 2;
   const evaporation = model.dryBelow / P.evaporationS, sublimation = model.dryAloft / P.sublimationS;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
   const highest = PRECIP_LEVELS_M[LEVELS - 1] - 1, formationTop = fz + P.formationShare * Math.max(0, topM - fz);
@@ -312,19 +413,23 @@ export function follow(model, grid, inner, stride, landed = null) {
       for (let p = 0; p < cls.count; p += stride) {
         const random = mulberry32(hash3(source.seed, c, p));
         let z = Math.max(1200, fz + (isHail ? P.hailAboveM : -P.formationBelowM) + random() ** 1.5 * (formationTop - fz + (isHail ? -P.hailAboveM : P.formationBelowM)));
+        // Warm rain forms in the cloud below the freezing level, from 300 m above the base up (PHYSICS.warmRainShare).
+        // (no draw at all where there is none: storms without warm rain fall exactly as before)
+        if (!isHail && !isSnow && warmRain > 0 && random() < warmRain) z = baseM + 300 + random() * Math.max(0, fz - baseM - 300);
         // Snow is carried up from anywhere on the flank. Graupel and hail have grown too heavy
         // for the air they are in: they leave where the updraught can no longer hold them.
         const held = cls.fallMs / Math.max(1e-3, wMax * RISE[(100 * z / top) | 0]);
         let share = P.flank[0] + (P.flank[1] - P.flank[0]) * random();
         if (!isSnow) share = Math.min(share, (0.5 + 0.5 * random()) * held);
-        // The air through the updraught at that height: its inflow's wind low down, the wind around it higher up.
+        // The wind round the updraught at that height: what carries off the precipitation its flank sheds.
         const zi0 = Math.min(WIND_PROFILE_LEVELS - 1, (z / WIND_PROFILE_STEP_M) | 0), h0 = Math.min(1, z / top);
-        const throughU = inflowU + (su[zi0] - inflowU) * h0, throughV = inflowV + (sv[zi0] - inflowV) * h0;
+        const throughU = su[zi0], throughV = sv[zi0];
         const oneSided = Math.min(1, Math.sqrt(throughU * throughU + throughV * throughV) / P.throughFlowMs);
         const startR = R * Math.sqrt(-Math.log(clamp(share, 0.02, 0.95))), startAngle = Math.atan2(-throughV, throughU) + Math.PI * (1 - 0.6 * oneSided) * (random() + random() - 1);
         let x = source.x + startR * Math.cos(startAngle), y = source.y + startR * Math.sin(startAngle);
         const side = ((((startAngle / (2 * Math.PI)) % 1) + 1) % 1 * PULSE_SIDES | 0) * PULSE_STEPS;
-        const driftU = (random() + random() + random() - 1.5) * 2 * spread, driftV = (random() + random() + random() - 1.5) * 2 * spread;
+        const crossing = 1 / Math.sqrt(1 + (cls.fallMs / P.crossingMs) ** 2);   // (PHYSICS.crossingMs)
+        const driftU = (random() + random() + random() - 1.5) * 2 * spread * crossing, driftV = (random() + random() + random() - 1.5) * 2 * spread * crossing;
         let along = (random() * 4294967296) >>> 0;
         let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0, patchKm = 0;
         for (let step = 0; step < MAX_STEPS; step++) {
@@ -339,24 +444,30 @@ export function follow(model, grid, inner, stride, landed = null) {
             const hi = z <= 0 ? 0 : (100 * z / top) | 0, slope = RISE_SLOPE[hi];
             rising = wMax * RISE[hi] * inside;
             spreading = -wMax * slope * inside / top;   // the air's spreading apart (1/s): -dw/dz in the updraught
-            u += (inflowU - u) * inside; v += (inflowV - v) * inside;
+            const holds = z < inflowTop ? 1 - z / inflowTop : 0;   // (PHYSICS.coreInflowDepths)
+            u += (inflowU * holds - u) * inside; v += (inflowV * holds - v) * inside;
             if (r2 > 1e-4) {
               // Air leaving (or entering) the column, from how the updraught changes with height.
               const outward = -outflow * slope * (1 - inside) / r2;
               u += outward * dx; v -= outward * dy;
             }
           }
-          // The mesocyclone: strongest at mid levels, present down to the ground.
-          const lean = z >= MESOCYCLONE_LEAN_M ? 1 : z <= 0 ? 0 : z / MESOCYCLONE_LEAN_M;
-          const mdx = x - meso.x - (meso.aloftX - meso.x) * lean, mdy = y - meso.y - (meso.aloftY - meso.y) * lean, mr2 = mdx * mdx + mdy * mdy;
-          if (mr2 > 1e-6 && mr2 < mesoReach2) {
-            // Solid rotation inside its core; outside, the wind falls away with distance.
-            const mr = Math.sqrt(mr2), ratio = mesoR / mr, around = mesoV * mesoDepth[zi] * (mr < mesoR ? 1 / ratio : ratio) / (mr * (1 + 1 / (27 * ratio * ratio * ratio)));
-            u += around * mdy; v += around * mdx;
+          // The rear-flank downdraught: sinking air where the updraught would otherwise hold the rain up (PHYSICS.downdraughtShare).
+          if (downdraughts) for (const d of downdraughts) {
+            const ex = x - d.x, ey = y - d.y, q = (ex * ex + ey * ey) / (d.R * d.R);
+            if (q < 9) {
+              const under = z <= P.downdraughtUnderM[0] ? 1 : z >= P.downdraughtUnderM[1] ? 0 : (P.downdraughtUnderM[1] - z) / (P.downdraughtUnderM[1] - P.downdraughtUnderM[0]);
+              const g = Math.exp(-q) * under, h = z > 0 ? z / P.downdraughtPeakM : 0;
+              if (g > 0) rising = rising * (1 - g) - d.w * g * h * Math.exp(1 - h);
+            }
           }
+          // The mesocyclone: strongest at mid levels, present down to the ground (the storm's own, StormVortices.js).
+          swirl.u = 0; swirl.v = 0; addMesoWind(vortices, x, y, z, swirl); u += swirl.u; v += swirl.v;
           if (inLine && z > FRONT_TO_REAR_BASE_M && z < top) { const current = rearShare[(100 * z / top) | 0] * (1 - inside); u += rearU * current; v += rearV * current; }
-          u += driftU; v += driftV;
-          const frozen = z > fz, vertical = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm));
+          // (how much of its early spreading speed the patch still has: see PHYSICS.spreadMemoryS)
+          const eddy = age > 0.5 * P.spreadMemoryS ? Math.sqrt(0.5 * P.spreadMemoryS / age) : 1;
+          u += driftU * eddy; v += driftV * eddy;
+          const frozen = z > fz, sinking = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm)), vertical = sinking > 0 && !isSnow ? sinking * P.relofted : sinking;
           const inInner = nearInner && x > -INNER.halfKm && x < INNER.halfKm && y > -INNER.halfKm && y < INNER.halfKm;
           const speed = Math.sqrt(u * u + v * v), climb = vertical < 0 ? -vertical : vertical;
           // A step is no longer than a grid cell, or half the width of the patch the particle stands for.
@@ -381,7 +492,7 @@ export function follow(model, grid, inner, stride, landed = null) {
           }
           x += u * dt / 1000; y -= v * dt / 1000; z += vertical * dt; age += dt;
           // the patch widens with the turbulence and is stretched or squeezed by the air (see PHYSICS.spreadMs)
-          patchKm = (spreading ? patchKm * Math.exp(spreading * dt) : patchKm) + spread * dt / 1000;
+          patchKm = (spreading ? patchKm * Math.exp(spreading * dt) : patchKm) + spread * crossing * eddy * dt / 1000;
           if (!isHail) {
             if (frozen) {
               if (inside < 0.3) {
@@ -464,11 +575,24 @@ function finish(grid, winds, alloc = plainAlloc) {
 // What a tornado throws up: debris lifted in the vortex as high as the tornado is strong, thrown
 // outward, carried round the mesocyclone and downwind as it falls.
 const DEBRIS = { halfKm: 8, resKm: 0.25, levelsM: [0, 300, 700, 1200, 2000, 3200, 5000, 7500] };
+// The tornado that lofts one unit of debris (a 700 yd path at 14 m/s, m2/s, and a 165 mph wind, m/s), the
+// wind that starts damage (EF0, 65 mph) and the least sweep speed (m/s; see loftDebris); and how its
+// echo falls off with height (an e-fold each sizeFallShare of its lofting height: 8.7 dB to the top).
+const DEBRIS_SUPPLY = { sweep: 640 * Math.hypot(14, 5), windMs: 73.8, damageMs: 29, sweepFloorMs: 5, sizeFallShare: 0.5 };
 function loftDebris(model, alloc = plainAlloc) {
-  const { su, sv, tornado, mesocyclone: meso, spin } = model, D = DEBRIS, n = Math.round(2 * D.halfKm / D.resKm) + 1, levels = D.levelsM.length;
+  const { su, sv, tornado, vortices } = model, D = DEBRIS, swirl = { u: 0, v: 0 }, n = Math.round(2 * D.halfKm / D.resKm) + 1, levels = D.levelsM.length;
   const field = alloc(Float32Array, n * n * levels), wind = tornado.windMs;
   // A weak tornado lofts little, and only to the cloud base; a violent one to several kilometres.
-  const topM = clamp(900 + 60 * (wind - 30), 800, 6000), amount = clamp((wind - 29) / 54, 0.15, 1.3) ** 2;
+  // How much: what it picks up each second, the ground it sweeps (its path's width at its speed; the
+  // loose debris already strewn in the path is lofted again, so a slow tornado still lofts, sweepFloorMs)
+  // by the square of its wind past what starts damage (the EF0 wind: the force on what it tears loose
+  // goes as the wind squared), against a 700 yd, 165 mph tornado moving at 14 m/s. (Bodine et al.
+  // 2013, JAMC 52: debris signatures' reflectivity and height grow with the tornado's rating; Van Den
+  // Broeke and Jauernic 2014. Until 2026-11-17 it was the square of the wind past 29 m/s over 54,
+  // held to 0.15-1.3: the same for a 100 yd tornado as a mile-wide one.)
+  const sweep = (tornado.widthKm ?? 2 * tornado.radiusKm) * 1000 * Math.hypot(tornado.motionMs ?? 0, DEBRIS_SUPPLY.sweepFloorMs);
+  const topM = clamp(900 + 60 * (wind - 30), 800, 6000);
+  const amount = sweep / DEBRIS_SUPPLY.sweep * (Math.max(0, wind - DEBRIS_SUPPLY.damageMs) / (DEBRIS_SUPPLY.windMs - DEBRIS_SUPPLY.damageMs)) ** 2;
   const depth = D.levelsM.map((z, k) => (D.levelsM[Math.min(levels - 1, k + 1)] - D.levelsM[Math.max(0, k - 1)]) / 2000);
   for (let p = 0; p < FOLLOWED.debris; p++) {
     const random = mulberry32(hash3(model.seed, 77, p));
@@ -482,18 +606,22 @@ function loftDebris(model, alloc = plainAlloc) {
       const zi = Math.min(WIND_PROFILE_LEVELS - 1, (z / WIND_PROFILE_STEP_M) | 0);
       let u = su[zi] + driftU, v = sv[zi] + driftV;
       const dx = x - tornado.x, dy = y - tornado.y, r = Math.hypot(dx, dy);
-      if (r > 1e-3) {
-        const around = tornado.vmaxMs * spin * (r < tornado.radiusKm ? r / tornado.radiusKm : (tornado.radiusKm / r) ** 0.8) * Math.max(0, 1 - z / (topM * 1.2)) * 0.5;
-        u += around * dy / r + outwardMs * dx / r; v += around * dx / r - outwardMs * dy / r;
-      }
-      const mdx = x - meso.x, mdy = y - meso.y, mr = Math.hypot(mdx, mdy);
-      if (mr > 1e-3) { const around = meso.vmaxMs * spin * 0.6 * (mr < meso.radiusKm ? mr / meso.radiusKm : (meso.radiusKm / mr) ** 0.8); u += around * mdy / mr; v += around * mdx / mr; }
+      if (r > 1e-3) { u += outwardMs * dx / r; v -= outwardMs * dy / r; }
+      swirl.u = 0; swirl.v = 0;
+      addTornadoWind(vortices, x, y, swirl, 0.5 * Math.max(0, 1 - z / (topM * 1.2)), 0, z);
+      addMesoWind(vortices, x, y, 0, swirl, 0.6);
+      u += swirl.u; v += swirl.v;
       const vertical = rising ? liftMs : -fallMs, dt = clamp(Math.min(0.8 * D.resKm * 1000 / Math.max(1, Math.hypot(u, v)), 150 / Math.abs(vertical)), 2, 30);
       const i = ((x - tornado.x + D.halfKm) / D.resKm + 0.5) | 0, j = ((y - tornado.y + D.halfKm) / D.resKm + 0.5) | 0;
       if (i < 0 || j < 0 || i >= n || j >= n) break;
       let k = 0; while (k < levels - 2 && D.levelsM[k + 1] <= z) k++;
       const t = clamp((z - D.levelsM[k]) / (D.levelsM[k + 1] - D.levelsM[k]), 0, 1), at = (k * n + j) * n + i;
-      field[at] += dt * (1 - t) / depth[k]; field[at + n * n] += dt * t / depth[k + 1];
+      // (as reflectivity: the large pieces stay low and only light ones are carried high, so what echoes
+      // falls off with height, sizeFallShare of the way to the top for each e-fold: debris signatures'
+      // reflectivity drops several dB from the lowest scan to their top, Bodine et al. 2014, JAMC 53.
+      // Until 2026-11-17 a piece at the top echoed as one at the ground.)
+      const echoes = dt * Math.exp(-z / (DEBRIS_SUPPLY.sizeFallShare * topM));
+      field[at] += echoes * (1 - t) / depth[k]; field[at + n * n] += echoes * t / depth[k + 1];
       x += u * dt / 1000; y -= v * dt / 1000; z += vertical * dt; age += dt;
       if (rising && z >= reachM) rising = false;
       if (z <= 0 && !rising) break;
@@ -509,8 +637,12 @@ function loftDebris(model, alloc = plainAlloc) {
 // Debris lofted by a tornado echoes far more strongly than rain (55-60 dBZ in violent tornadoes),
 // which is why its signature stands out in heavy rain (1600 to 8000 on 2026-10-17, once storms had
 // their full depth: the equilibrium level had been read under the cap, the storms were shallow and
-// carried little rain about the tornado).
-export const RAIN_REFLECTIVITY = 1600, HAIL_REFLECTIVITY = 1600, DEBRIS_REFLECTIVITY = 8000;
+// carried little rain about the tornado). 22500 since 2026-11-17, with the debris lofted by the swept
+// path (loftDebris; its echo falling off with height): the debris alone peaks near 58.5 dBZ at the 0.5 deg
+// beam 35-60 km from the radar for a 700 yd, 165 mph tornado, 50.5 for a 400 yd, 120 mph one, 39.5 for a
+// 200 yd, 90 mph one and 63 for a 1200 yd, 200 mph one (Bodine et al. 2013: debris signatures' reflectivity grows with the rating, the
+// violent ones' 60 dBZ and more).
+export const RAIN_REFLECTIVITY = 1600, HAIL_REFLECTIVITY = 1600, DEBRIS_REFLECTIVITY = 22500;
 const THINNEST_DBZ_UNITS = 10 ** -0.5;
 
 // The amounts at one place: rain (as reflectivity of the liquid), its reflectivity-weighted

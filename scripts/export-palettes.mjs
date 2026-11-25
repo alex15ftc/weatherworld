@@ -25,6 +25,7 @@ const radarEntry = key => {
   return [
     `\t${key} = {`,
     `\t\tlabel = "${spec.label}", short = "${spec.short}", units = "${spec.units}", min = ${spec.min}, step = ${spec.step}, decimals = ${spec.decimals},`,
+    ...(spec.knee ? [`\t\tknee = ${spec.knee}, outerStep = ${spec.outerStep}, zeroByte = ${spec.zeroByte},`] : []),
     `\t\tdoppler = ${Boolean(spec.doppler)}, legend = { ${spec.legend.join(', ')} },`,
     `\t\tlut = { ${Array.from(radarColorTable(key)).join(', ')} },`,
     '\t},'
@@ -69,8 +70,9 @@ Palettes.EF = { ${EF_COLOURS.map(rgb).join(', ')} }
 Palettes.EFU = ${rgb(EFU_COLOUR)}
 Palettes.WARNING = ${table(Object.entries(WARNING_COLOURS).map(([k, v]) => [k, rgb(v)]), k => k, '')}
 
--- Radar products: how a byte reads (value = min + (byte - 1) * step; 0 is no echo, and in the
--- Doppler products ${RANGE_FOLDED} is range folded) and its colour: lut[byte * 4 + 1 .. 4] = r, g, b, a.
+-- Radar products: how a byte reads (value = min + (byte - 1) * step; or, with a knee (velocity), byte zeroByte is 0 and
+-- each byte from it a step up to +-knee and an outerStep beyond, as RadarFormat.js decodeRadarValue; 0 is no echo, and in
+-- the Doppler products ${RANGE_FOLDED} is range folded) and its colour: lut[byte * 4 + 1 .. 4] = r, g, b, a.
 Palettes.RADAR = {
 ${RADAR_SHOWN.map(radarEntry).join('\n')}
 }

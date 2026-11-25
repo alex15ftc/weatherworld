@@ -13,7 +13,8 @@
 // wind, put it 7 km away and to the right, missing the radar's by 7 km. The low-level inflow carries
 // rain back toward the updraught; the fall-out from 8-12 km, carried by the winds up to 250 hPa, takes
 // it out. About 1 ms a supercell, once a storm tick.
-import { PHYSICS, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, updraughts, follow, hashString } from './PrecipitationField.js';
+import { PHYSICS, WIND_PROFILE_STEP_M, updraughts, follow, hashString, downdraughtsOf, subsaturationAloftOf, warmRainOf } from './PrecipitationField.js';
+import { mesoOf } from './StormVortices.js';
 import { stormColumnOf } from './StormColumn.js';
 
 const FALLOUT_STRIDE = 15, DEG = Math.PI / 180;
@@ -53,8 +54,16 @@ export function falloutMoments(storm, updraught, column) {
     mesocyclone: { x: 0, y: 0, aloftX: updraughtAt.x, aloftY: updraughtAt.y, radiusKm: clamp(0.4 * updraught.radiusKm, 1.5, 4), vmaxMs: 6 + 30 * Math.max(meso, low), low: clamp(low, 0, 1) },
     tornado: null, coldPool: clamp(Number(storm.coldPoolStrength) || 0, 0, 1.2), rearInflow: 0, updraughtAt, frontToRear: 0
   };
+  // The storm's mesocyclone as everything else has it (StormVortices.js: the radar's, the frames'), from what
+  // the structure makes it of - so the cores the engine places are where the radar's fall-out puts them. (No
+  // tornado here: it does not carry the rain's or the hail's core.) And the structure's rear-flank downdraught,
+  // as it was the tick before (the structure is made from this geometry).
+  const m = model.mesocyclone;
+  model.vortices = { spin: model.spin, topM: column.topM, meso: mesoOf(m, { x: m.aloftX, y: m.aloftY }, m.radiusKm, Math.max(meso, low), m.low), tornado: null };
+  model.downdraughts = downdraughtsOf(storm.structure, toMap, environment);
   model.dryBelow = clamp(0.5 * (model.baseM - 400) / 1600 + 0.5 * (Number(environment.dcape) || 600) / 1200, 0.05, 1.2);
-  model.dryAloft = clamp((Number(environment.dcape) || 600) / 1200, 0.1, 1.2);
+  model.dryAloft = subsaturationAloftOf(column);
+  model.warmRain = warmRainOf(column, model.baseM, environment);   // (the warm rain released low, as the radar's field has it)
   // (the central updraught alone, whatever share of a line the storm is: StormGeometry blends a line's older placing in)
   model.sources = updraughts(storm, { features: [] }, { updraught }, model, 0, toMap);
   if (!model.sources.length) return null;
@@ -62,7 +71,6 @@ export function falloutMoments(storm, updraught, column) {
   const inflowLevels = Math.round(PHYSICS.inflowM / WIND_PROFILE_STEP_M);
   model.inflowU = 0; model.inflowV = 0;
   for (let k = 0; k <= inflowLevels; k++) { model.inflowU += column.su[k] / (inflowLevels + 1); model.inflowV += column.sv[k] / (inflowLevels + 1); }
-  model.mesoDepth = Float32Array.from({ length: WIND_PROFILE_LEVELS }, (_, k) => (0.55 + 0.45 * Math.exp(-(((k * WIND_PROFILE_STEP_M - 4500) / 2600) ** 2))) * (k * WIND_PROFILE_STEP_M > column.topM ? 0.2 : 1));
   const sum = () => ({ n: 0, x: 0, y: 0, xx: 0, yy: 0, xy: 0 });
   const rain = sum(), large = sum(), none = [], onlyRain = [rain], both = [rain, large], onlyLarge = [large];
   // (the rain's core is the graupel's melted rain: the snow that leaves the updraught near its top drifts

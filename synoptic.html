@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Synoptic charts · High Risk</title>
+  <!-- The whole large-scale model with the game map's place in it (js/pages/synopticPage.js), at two addresses:
+       /synoptic               the analysis of the last 18 hours (server/SynopticRuntime.js)
+       /models/large-scale     the same charts from a short range model run, every 3 forecast hours
+       /models/long-range      the same from the long range model's 7-day runs (one at each 06Z, with a timing error)
+                               (server/ShortRangeRuntime.js synopticFrame)
+       ?share=1 shows only the chart, with its title, time, key and the site's name in the frame, for
+       pictures and loops (tools/social/make-loop.mjs).
+       The chart follows the game map east-west until it is dragged or zoomed, when the map's box moves freely. No arrow is drawn for the map's drift;
+       an admin (signed in at the top of the page) is told its speed and the day's aim. -->
+  <!--site:head-->
+  <style>
+    #presets h3 { font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-2); margin: 8px 0 4px; }
+    #presets h3:first-child { margin-top: 0; }
+    .syn-presets { display: flex; flex-direction: column; gap: 1px; }
+    .bench .syn-presets button { text-align: left; background: none; border: 0; border-left: 3px solid transparent; padding: 4px 8px; font-weight: 500; font-size: 14.5px; color: var(--ink); }
+    .bench .syn-presets button:hover { background: var(--band); }
+    .bench .syn-presets button.on { background: var(--band); border-left-color: var(--brand); color: var(--ink); font-weight: 700; }
+    @media (prefers-color-scheme: dark) { .bench .syn-presets button.on { border-left-color: var(--link); } }
+    .chart--light { background: #0a0f15; }
+    #legendBar { width: 100%; height: 34px; background: none; }
+    .syn-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 14px; }
+    .syn-facts span { color: var(--ink-2); } .syn-facts b { text-align: right; font-weight: 600; }
+    #synCanvas { cursor: grab; touch-action: none; }
+    #synCanvas.dragging { cursor: grabbing; }
+    /* What only an admin sees: how fast the map moves and what it is aiming for. */
+    body:not([data-role="admin"]) [data-role-only="admin"], body[data-role="admin"] [data-role-only="public"] { display: none !important; }
+    body:not([data-source="analysis"]) [data-mode="analysis"], body:not([data-source="model"]) [data-mode="model"], body:not([data-source="replay"]) [data-mode="replay"] { display: none !important; }
+    body:not([data-long]) [data-long-only] { display: none !important; }
+    /* The long range model's tornado chances (an admin's): the day so far or the last 3 hours, a button for each day. */
+    .guide-days { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+    .guide-days button { width: auto; min-width: 50px; padding: 3px 7px; font: 400 12.5px var(--mono); }
+    .guide-days button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .guide-days button:disabled { opacity: .35; cursor: not-allowed; background: transparent; }
+    .guide-key { display: flex; flex-wrap: wrap; gap: 3px 8px; font-size: 12.5px; margin-top: 6px; }
+    .guide-key i { display: inline-block; width: 13px; height: 11px; margin-right: 4px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.35); }
+    body:not([data-source="analysis"]) #frameLatest { display: none; }
+    body:not([data-source="analysis"]) #frameRow { grid-template-columns: repeat(3, 1fr); }
+    /* a model run: the slider and a button for each frame; frames not made yet are grey and locked */
+    #frameSlider.partial { background: linear-gradient(to right, transparent var(--ready), color-mix(in srgb, var(--ink-2) 22%, transparent) var(--ready)); border-radius: 4px; }
+    #frameStrip { display: flex; flex-wrap: wrap; gap: 3px; }
+    #frameStrip button { width: auto; min-width: 38px; padding: 2px 4px; font: 400 12.5px var(--mono); color: var(--ink-2); }
+    #frameStrip button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+    #frameStrip button:disabled { opacity: .35; cursor: not-allowed; background: transparent; }
+    @media (max-width: 900px) { #frameStrip button { min-width: 44px; padding: 6px 4px; } }
+    @media (max-width: 900px) { .chart { aspect-ratio: auto; height: 70vh; } }
+    /* Share view: only the chart, labelled in the frame. */
+    body.share { display: flex; flex-direction: column; height: 100vh; min-height: 0; padding: 0; background: #0a0f15; }
+    body.share .site-header, body.share .site-footer, body.share .skip, body.share .bench__side, body.share .crumbs, body.share .tool-head, body.share .tool-rule, body.share .chart__zoom, body.share #synTip { display: none !important; }
+    body.share main { flex: 1; min-height: 0; max-width: none; padding: 0; display: flex; flex-direction: column; }
+    body.share .bench { flex: 1; min-height: 0; display: flex; align-items: stretch; margin: 0; }
+    body.share .bench__main { flex: 1; min-height: 0; position: static; display: flex; flex-direction: column; }
+    body.share .chart { flex: 1; min-height: 0; height: auto; aspect-ratio: auto; max-height: none; border: 0; }
+    body.share #synCanvas { position: absolute; inset: 0; cursor: default; }
+    .share-strip { display: none; }
+    body.share .share-strip { display: flex; align-items: center; justify-content: space-between; gap: 3vh; padding: 1.6vh 2.4vh; background: #0b3a57; color: #fff; font: 600 3vh/1.2 "Public Sans", system-ui, sans-serif; }
+    body.share .share-strip.top { border-bottom: .45vh solid #f2b632; }
+    body.share .share-strip.top b { font-size: 3.7vh; font-weight: 750; }
+    body.share .share-strip .time { font: 600 3.1vh "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+    body.share .share-strip.bottom { background: #10161d; font-size: 2.4vh; font-weight: 500; color: #cfd6dc; padding-top: 1.2vh; padding-bottom: 1.2vh; }
+    body.share .share-key { display: flex; align-items: center; gap: 1.4vh; font: 400 2.1vh "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+    body.share .share-key canvas { width: 62vh; height: 5.2vh; display: block; }
+    body.share .share-mark { text-align: right; white-space: nowrap; }
+    body.share .share-mark b { color: #fff; }
+  </style>
+</head>
+<body class="doc" data-page="synoptic" data-source="analysis">
+<!--site:header-->
+<main id="content" class="wrap wrap--wide">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">Home</a>
+    <span data-mode="analysis"><a href="/analysis">Mesoanalysis</a></span><span data-mode="analysis">Synoptic charts</span>
+    <span data-mode="model"><a href="/models">Models</a></span><span data-mode="model" id="crumbModel">Large-scale view</span>
+    <span data-mode="replay"><a href="/days">Past days</a></span><span data-mode="replay"><a data-day-link href="/days">The day</a></span><span data-mode="replay">Large-scale replay</span>
+  </nav>
+  <div class="tool-head">
+    <div>
+      <h1 id="synHeading">Synoptic charts</h1>
+      <p class="stamp"><b id="synTime">—</b> · <span id="synStatus">Connecting…</span></p>
+    </div>
+    <nav class="tabs" aria-label="Mesoanalysis" data-mode="analysis">
+      <a href="/analysis">Surface analysis</a><a href="/synoptic" aria-current="page">Synoptic charts</a>
+    </nav>
+    <nav class="tabs" aria-label="Models" data-mode="model">
+      <a href="/models">Short range and ensemble</a><a href="/models/large-scale" id="tabLargeScale" aria-current="page">Large-scale view</a><a href="/models/long-range" id="tabLongRange">Long range</a>
+    </nav>
+  </div>
+  <hr class="tool-rule" />
+  <div class="bench">
+    <aside class="bench__side" aria-label="Controls">
+      <section class="group" data-mode="model">
+        <h2>Model run</h2>
+        <select id="runSelect" aria-label="Run"></select>
+        <small id="runNote">The short range model, shown across the whole large-scale model every 3 forecast hours.</small>
+      </section>
+      <section class="group">
+        <h2 data-mode="analysis">Analysis time</h2>
+        <h2 data-mode="model">Forecast time</h2>
+        <h2 data-mode="replay">Replay time</h2>
+        <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Chart time" />
+        <div id="frameStrip" data-mode="model" aria-label="Forecast hour"></div>
+        <div class="row-4" id="frameRow">
+          <button id="framePrev" title="Earlier">◀</button>
+          <button id="framePlay" title="Loop through the times">Loop</button>
+          <button id="frameNext" title="Later">▶</button>
+          <button id="frameLatest" title="Follow the current time" class="on">Now</button>
+        </div>
+        <button id="saveGif" title="Save every time on show as one animated picture">Save loop as GIF</button>
+        <button id="saveMp4" title="Save every time on show as one video">Save loop as MP4</button>
+        <small id="gifNote"></small>
+      </section>
+      <section class="group" data-role-only="admin" data-long-only>
+        <h2>Tornado chances</h2>
+        <label><input type="checkbox" id="guideOn" /> Chance of a tornado within 25 mi, hatched EF2+ / EF3+ / EF4+</label>
+        <div class="guide-days" id="guideMode" aria-label="What the chances cover"><button data-mode="total">Day so far</button><button data-mode="recent">Last 3 h</button></div>
+        <div class="guide-days" id="guideDays" aria-label="Outlook day"></div>
+        <div class="guide-key" id="guideKey"></div>
+        <small id="guideNote">The chance of a tornado within 25 miles on the game map for each day (12Z to 12Z), built up frame by frame as the ensemble's run totals are. Admin only.</small>
+      </section>
+      <section class="group">
+        <h2>Charts</h2>
+        <div id="presets"></div>
+      </section>
+      <section class="group">
+        <h2>Layers</h2>
+        <div class="pick">
+          <span>Shading</span><select id="shadeField" aria-label="Shaded field"></select>
+          <span>Contours</span><select id="contourField" aria-label="Contoured field"></select>
+          <span>Barbs</span><select id="windField" aria-label="Wind barbs"></select>
+        </div>
+        <canvas id="legendBar" width="560" height="68"></canvas>
+        <small id="legendNote"></small>
+      </section>
+      <section class="group">
+        <h2>Show</h2>
+        <label><input type="checkbox" id="showMap" checked /> The game map's box</label>
+        <label><input type="checkbox" id="showCentres" checked /> Highs and lows</label>
+        <label><input type="checkbox" id="showGrid" checked /> 1,000 km grid</label>
+      </section>
+      <section class="group">
+        <h2>The map in the model</h2>
+        <div class="syn-facts" id="synFacts"><span>Waiting…</span><b></b></div>
+        <small>The large-scale model is a channel 10,240 km around (it wraps east-west) and 5,120 km north-south, with the
+          jet stream's core along its middle. The game map is the box: the chart follows it east-west; drag or zoom the
+          chart and the box moves through the times ("Map" follows it again). These are the
+          large-scale fields: the map's own analysis adds daytime heating, the lee trough, cold pools and storms.</small>
+      </section>
+      <p class="note" data-role-only="admin" style="font-size:13.5px;color:var(--ink-2);margin:10px 0 0">Admin view: the map's speed and the day's aim are listed above. <a href="?view=public">See what the public is told</a></p>
+    </aside>
+    <div class="bench__main">
+      <div class="share-strip top"><b id="shareTitle"></b><span class="time" id="shareTime"></span></div>
+      <div class="chart chart--light">
+        <canvas id="synCanvas"></canvas>
+        <div id="synTip" class="chart__tip"></div>
+        <div class="chart__zoom">
+          <button id="zoomIn" title="Zoom in">+</button>
+          <button id="zoomOut" title="Zoom out">−</button>
+          <button id="zoomMap" title="Centre on the game map, zoomed in">Map</button>
+          <button id="zoomAll" title="The whole model, centred on the map">Whole model</button>
+        </div>
+      </div>
+      <div class="share-strip bottom"><span class="share-key"><canvas id="shareBar" width="930" height="78"></canvas><span id="shareUnit"></span></span><span class="share-mark"><b>High Risk</b> · simulated weather, not a real forecast</span></div>
+    </div>
+  </div>
+</main>
+<!--site:footer-->
+<script type="module" src="/js/pages/synopticPage.js"></script>
+</body>
+</html>

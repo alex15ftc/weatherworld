@@ -9,11 +9,12 @@ import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import v8 from 'node:v8';
 import { fileURLToPath } from 'node:url';
 import { AtmosphereWorld } from '../js/world/AtmosphereWorld.js';
+import { QG_DEFAULTS, RETUNABLE } from '../js/atmosphere/QuasiGeostrophicModel.js';
 import { buildSounding, diagnoseSoundingDisplay } from '../js/sounding.js';
 import { diagnoseEngineMotion } from '../js/storms/SoundingHazards.js';
 import { serializeStormInternalField } from '../js/storms/StormInternalField.js';
 import { renderTile, decodeF32Base64, TILE_PYRAMID, OUTLOOK_LEGENDS } from './tiles/ProductTileRenderer.js';
-import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, MOSAIC_KINDS, MOSAIC_RES_KM, STACKED_MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
+import { assembleRadarScene, scanRadarTilt, buildRadarMosaic, mosaicSize, radialsAround, MOSAIC_KINDS, MOSAIC_RES_KM, STACKED_MOSAIC_KINDS } from '../js/radar/RadarSimulator.js';
 import { buildSatellite, satelliteInputs } from '../js/satellite/Satellite.js';
 import { AnvilField } from '../js/satellite/AnvilField.js';
 import { rainFieldInputs, rainFieldOf } from '../js/storms/StormRainFields.js';
@@ -28,6 +29,7 @@ import { countiesFor, placesFor } from './CountyLayer.js';
 import { logStormTick } from '../js/reports/stormLog.js';
 import { createDayRecorder } from './DayReviewRecorder.js';
 import { LightningLog } from '../js/storms/Lightning.js';
+import { dateText } from '../js/forecast/calendar.js';
 import { RADAR_TILTS_DEG, RADAR_PRODUCT_KEYS, RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_FINE_GATE_KM, RADAR_BEAMWIDTH_DEG, encodeRadarValue } from '../js/radar/RadarFormat.js';
 
 const DEFAULT_SEED = 1000;
@@ -37,6 +39,7 @@ const START_HOUR_UTC = 12;
 // every five simulated minutes; the atmosphere steps every half hour and then takes account
 // of what the storms did meanwhile.
 export const SIM_HOURS_PER_REAL_MINUTE = 24 / 180;
+const SIM_HOURS_PER_REAL_HOUR = SIM_HOURS_PER_REAL_MINUTE * 60;
 const STORM_CADENCE_HOURS = 1 / 12, ATMOSPHERE_STEP_HOURS = 0.5;
 const REAL_MS_PER_STORM_TICK = (STORM_CADENCE_HOURS / SIM_HOURS_PER_REAL_MINUTE) * 60000;
 const MAX_STEPS_PER_TICK = 4;
@@ -44,6 +47,8 @@ const RADAR_PREWARM_MS = 60_000;
 // The tilts a radar's rotation detections look through: its lowest nine, 0.5-6.4 deg (from 1 to 6 km
 // up a storm at 50 km, enough for the TDA's 1.5 km and the MDA's 3 km depths at most ranges).
 const RADAR_ROTATION_TILTS = 9;
+// The mesoscale discussions' look at storms scans a disc this wide round each (radarLookAround; 2026-11-17).
+const RADAR_LOOK_KM = 40;
 // Rotation tracks: the greatest low-level shear of the scans of the last hour (sim time), as the
 // MRMS rotation tracks (60 min). Made from the scans of while they were asked for.
 const ROTATION_TRACK_HOURS = 1;
@@ -62,7 +67,11 @@ export class WeatherAuthorityRuntime {
   // regional: settings for the regional layer (RegionalAtmosphere's), for audits that try them.
   // dayReviews: { dir, png, keepDays } to write a review package for each finished day
   // (DayReviewRecorder.js), or null; dayReviewOutlook(from, to) gives it that day's Day 1 outlook.
-  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null, regional = {}, dayReviews = null } = {}) {
+  // clockLock: the world's clock follows real UTC time (startClocks; the hosted engine turns it on).
+  constructor({ seed, statePath = null, spinUpDays = 45, radarPool = null, regional = {}, dayReviews = null, clockLock = false } = {}) {
+    this.clockLock = clockLock;
+    // World hour = SIM_HOURS_PER_REAL_HOUR x real hours since 1970 + clockOffset (whole world days), when locked.
+    this.clockOffset = null;
     this.regionalSettings = regional;
     this.dayReviews = dayReviews;
     this.dayReviewOutlook = null;
@@ -82,6 +91,8 @@ export class WeatherAuthorityRuntime {
     this.lastStormAdvancedAt = this.lastAdvancedAt;
     this.revision = 0;
     this.productCache = new Map();
+    // (the mesoscale looks made from sector scans, and those that fell back to full ones: radarLookAround)
+    this.radarLookStats = { looks: 0, fallbacks: 0 };
     this.performance = { cacheHits: 0, cacheMisses: 0, productBuilds: {} };
     this.autoAdvance = true;
     this.systemNumber = 1;
@@ -94,6 +105,9 @@ export class WeatherAuthorityRuntime {
 
   build(seed) {
     const number = Number(seed), given = seed !== undefined && seed !== null && seed !== '' && Number.isFinite(number);
+    // A new world: things saved beside it (the outlooks, OutlookRuntime.js) are kept only for the world they came from.
+    this.worldId = crypto.randomUUID();
+    this.clockOffset = null;
     this.adoptEngine(new AtmosphereWorld({ seed: given ? Math.trunc(number) : DEFAULT_SEED, spinUpDays: this.spinUpDays, regional: this.regionalSettings ?? {} }));
   }
 
@@ -106,8 +120,8 @@ export class WeatherAuthorityRuntime {
     this.seed = engine.seed;
     this.assertSpatialIntegrity();
     // The clocks run from now, not from before the world took its time to build.
-    this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
-    this.gameFeed?.restart(world, this.lastStormAdvancedAt);
+    this.startClocks();
+    this.gameFeed?.restart(world, Date.now());
     // The day's storm reports and tornado tracks (js/reports/stormLog.js), after each storm tick.
     const places = placesFor(world);
     this.places = places;
@@ -123,6 +137,8 @@ export class WeatherAuthorityRuntime {
       // The cloud model workers (js/game/StormWorkers.js, set by server/index.js): they only read
       // the world, and a fault in them never stops it.
       try { this.stormWorkers?.stormTick(world); } catch (error) { console.error('[storm-workers]', error); }
+      // Whatever else follows each tick (set by server/index.js: the day replays' tornado radar); it only reads the world.
+      try { this.afterStormTick?.(world); } catch (error) { console.error('[storm-tick]', error); }
     };
   }
 
@@ -131,7 +147,7 @@ export class WeatherAuthorityRuntime {
     this.build(seed);
     this.radarHistory = Object.fromEntries(MOSAIC_KINDS.map(kind => [kind, []]));
     this.rotationScans = [];
-    this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.startClocks();
     this.revision += 1;
     this.invalidateProducts();
     this.saveState();
@@ -151,8 +167,10 @@ export class WeatherAuthorityRuntime {
       this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS);
       this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false, onStep });
       this.dayReview?.afterStep();
+      try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
+      this.afterAtmosphereStep?.();
     }
-    this.lastAdvancedAt = Date.now(); this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.startClocks();
     this.gameFeed.restart(world);
     this.revision += 1;
     this.invalidateProducts();
@@ -169,10 +187,26 @@ export class WeatherAuthorityRuntime {
   setAutoAdvance(enabled) {
     this.finishPieces();
     this.autoAdvance = Boolean(enabled);
-    this.lastAdvancedAt = Date.now();
-    this.lastStormAdvancedAt = this.lastAdvancedAt;
+    this.startClocks();
     return this.metadata();
   }
+
+  // Where the clocks start from. Unlocked: now. Locked (clockLock): from the real time the world's hour
+  // falls on, so each real UTC day holds exactly 8 world days, Day 1 from 00 UTC, Day 2 from 03 UTC ... Day 8
+  // from 21 UTC (js/forecast/calendar.js names them "11/11/26 Day 3"). The world is never ahead of that
+  // clock and less than a world day behind it, and catches up; when it would be further off (a new world,
+  // a long pause, a manual advance) a new offset is picked, a whole number of world days.
+  startClocks(now = Date.now()) {
+    const world = this.atmosphere;
+    if (!this.clockLock || !world) { this.lastAdvancedAt = now; this.lastStormAdvancedAt = now; return; }
+    const hour = world.validHourUtc, base = now / 3600000 * SIM_HOURS_PER_REAL_HOUR;
+    const behind = this.clockOffset === null ? -1 : base + this.clockOffset - hour;
+    if (!(behind >= 0 && behind < 24)) this.clockOffset = 24 * Math.ceil((hour - base) / 24 - 1e-9);
+    this.lastAdvancedAt = this.realMsOf(hour);
+    this.lastStormAdvancedAt = this.realMsOf(world.stormEngine?.validHourUtc ?? hour);
+  }
+  // The real time (ms) a world hour falls on, on the locked clock.
+  realMsOf(hour) { return (hour - this.clockOffset) / SIM_HOURS_PER_REAL_HOUR * 3600000; }
 
   invalidateProducts() { this.productCache.clear(); }
 
@@ -246,13 +280,17 @@ export class WeatherAuthorityRuntime {
         if (ahead < ATMOSPHERE_STEP_HOURS - 1e-6) { this.stormTicksTo(world.validHourUtc + ATMOSPHERE_STEP_HOURS); this.gameFeed.capture(world, now); }
         this.engine.advance(ATMOSPHERE_STEP_HOURS, { advanceStorms: false });
         this.dayReview?.afterStep();
+        try { this.outlookScores?.afterStep(world); } catch (error) { console.error('[outlook scores]', error); }
+        this.afterAtmosphereStep?.();
         if (step < steps - 1) yield;
       }
       // Caught up after a long pause: the storms jumped, and the game should not glide across it.
       if (steps === MAX_STEPS_PER_TICK) this.gameFeed.restart(world, now);
-      // After a long pause the clock restarts from now instead of racing to catch up.
-      this.lastAdvancedAt = steps === MAX_STEPS_PER_TICK ? now : this.lastAdvancedAt + steps * ATMOSPHERE_STEP_HOURS / SIM_HOURS_PER_REAL_MINUTE * 60000;
-      if (steps === MAX_STEPS_PER_TICK) this.lastStormAdvancedAt = now;
+      // After a long pause the clock restarts from now instead of racing to catch up; the locked clock
+      // catches up (less than a world day; startClocks), MAX_STEPS_PER_TICK steps a turn.
+      const restart = steps === MAX_STEPS_PER_TICK && !this.clockLock;
+      this.lastAdvancedAt = restart ? now : this.lastAdvancedAt + steps * ATMOSPHERE_STEP_HOURS / SIM_HOURS_PER_REAL_MINUTE * 60000;
+      if (restart) this.lastStormAdvancedAt = now;
       changed = true;
     }
     if (!changed) return false;
@@ -263,17 +301,27 @@ export class WeatherAuthorityRuntime {
     return true;
   }
 
+  // The world hour at this moment: the atmosphere steps every half hour, but the clock runs on between steps
+  // (the site's clock shows this; validHourUtc alone set it back to the last half hour on every read).
+  clockHourUtc() {
+    const hour = this.atmosphere.validHourUtc;
+    if (!this.autoAdvance) return this.atmosphere.stormEngine?.validHourUtc ?? hour;
+    return hour + Math.max(0, Date.now() - this.lastAdvancedAt) / 3600000 * SIM_HOURS_PER_REAL_HOUR;
+  }
+
   metadata() {
     return {
       ok: true, version: '2.28.14.1', revision: this.revision, seed: this.seed, systemNumber: this.systemNumber,
       flowRegime: this.config?.flowRegime ?? null, authorityInstance: this.authorityInstance, tileStyleRevision: TILE_STYLE_REVISION,
-      validHourUtc: this.atmosphere.validHourUtc, width: this.atmosphere.width, height: this.atmosphere.height,
+      validHourUtc: this.atmosphere.validHourUtc, clockHourUtc: this.clockHourUtc(), width: this.atmosphere.width, height: this.atmosphere.height,
       cellSizeMiles: this.atmosphere.cellSizeMiles, cellSizeKm: this.atmosphere.cellSizeKm,
       domainWidthMiles: this.atmosphere.domainWidthMiles, domainHeightMiles: this.atmosphere.domainHeightMiles,
       domainWidthKm: this.atmosphere.domainWidthKm, domainHeightKm: this.atmosphere.domainHeightKm,
       stormCount: this.atmosphere.storms?.length ?? 0, activeTornadoes: this.atmosphere.stormEngine?.activeTornadoes ?? 0, totalTornadoes: this.atmosphere.stormEngine?.totalTornadoes ?? 0,
       atmosphereValidHourUtc: this.atmosphere.validHourUtc, stormValidHourUtc: this.atmosphere.stormEngine?.validHourUtc ?? this.atmosphere.validHourUtc,
       stormCadenceMinutes: 5, atmosphereCadenceMinutes: 30, autoAdvance: this.autoAdvance,
+      // The world day now, by the locked clock ("11/11/26 Day 3", js/forecast/calendar.js).
+      worldDate: dateText(this.atmosphere.stormEngine?.validHourUtc ?? this.atmosphere.validHourUtc),
       spatialIntegrity: this.spatialIntegrity(),
       uptimeSeconds: Math.round((Date.now() - this.startedAt) / 1000), tilePyramid: TILE_PYRAMID,
       outlookStatus: this.outlookStatus(),
@@ -335,7 +383,7 @@ export class WeatherAuthorityRuntime {
     return {
       width: a.width, height: a.height, validHourUtc: a.validHourUtc, cells: a.cells,
       evolution: a.evolution, analysis: a.analysis,
-      storms: (a.storms ?? []).map(persistentStormSnapshot),
+      storms: (a.storms ?? []).map(persistentStormSnapshot), offstageStorms: (a.offstageStorms ?? []).map(persistentStormSnapshot),
       stormArchive: (a.stormArchive ?? []).slice(-120),
       stormEngine: a.stormEngine, mesoscale: a.mesoscale, radarNetwork: a.radarNetwork,
       config: this.config
@@ -411,58 +459,66 @@ export class WeatherAuthorityRuntime {
 
   cellSummary(row, column, day = 'day1') {
     const r = Number(row), c = Number(column);
-    return this.cached(`cell:${day}:${r}:${c}`, () => {
-      const cell = this.atmosphere.cells?.[r]?.[c];
-      if (!cell) return null;
-      const surface = cell.surface ?? {}, wind = surface.wind ?? {};
-      const derived = cell.derived ?? {}, dynamics = cell.dynamics ?? {}, meso = cell.mesoscaleFields ?? {};
-      const outlook = cell.predictiveOutlook?.[day] ?? null;
-      return {
-        row: r, column: c, revision: this.revision, validHourUtc: this.atmosphere.validHourUtc,
-        centerKm: { x: (c + 0.5) * this.atmosphere.cellSizeKm, y: (r + 0.5) * this.atmosphere.cellSizeKm },
-        surface: {
-          temperatureF: surface.temperatureF ?? surface.temperature ?? null,
-          dewpointF: surface.dewpointF ?? surface.dewpoint ?? null,
-          pressureMb: surface.seaLevelPressure ?? surface.pressure ?? null,
-          windDirectionDeg: surface.windDirectionDeg ?? wind.direction ?? null,
-          windSpeedKt: surface.windSpeedKt ?? wind.speed ?? null
-        },
-        instability: { cape: derived.cape ?? null, cin: derived.cin ?? null, lclM: derived.lcl ?? null, stp: derived.stp ?? null, vtp: derived.vtp ?? null, scp: derived.scp ?? null },
-        shear: { srh01: derived.srh ?? null, bulkShear06Kt: derived.bulkShear ?? null },
-        forcing: {
-          forcingScore: dynamics.forcingScore ?? null,
-          verticalVelocityMs: dynamics.verticalVelocityMs ?? null,
-          convectiveReadiness: dynamics.convectiveReadiness ?? null,
-          triggerStrength: dynamics.triggerStrength ?? null,
-          initiationPotential: dynamics.initiationPotential ?? meso.initiationFocus ?? null
-        },
-        terrain: { elevationM: cell.terrain?.elevationM ?? null, region: cell.region?.name ?? cell.region?.id ?? cell.features?.regionId ?? null },
-        features: { airMass: cell.features?.airMass ?? null, front: cell.features?.front ?? null, dryline: Boolean(cell.features?.dryline) },
-        outlook
-      };
-    });
+    return this.cached(`cell:${day}:${r}:${c}`, () => this.cellSummaryNow(r, c, day));
+  }
+
+  cellSummaryNow(row, column, day = 'day1') {
+    const r = Number(row), c = Number(column);
+    const cell = this.atmosphere.cells?.[r]?.[c];
+    if (!cell) return null;
+    const surface = cell.surface ?? {}, wind = surface.wind ?? {};
+    const derived = cell.derived ?? {}, dynamics = cell.dynamics ?? {}, meso = cell.mesoscaleFields ?? {};
+    const outlook = cell.predictiveOutlook?.[day] ?? null;
+    return {
+      row: r, column: c, revision: this.revision, validHourUtc: this.atmosphere.validHourUtc,
+      centerKm: { x: (c + 0.5) * this.atmosphere.cellSizeKm, y: (r + 0.5) * this.atmosphere.cellSizeKm },
+      surface: {
+        temperatureF: surface.temperatureF ?? surface.temperature ?? null,
+        dewpointF: surface.dewpointF ?? surface.dewpoint ?? null,
+        pressureMb: surface.seaLevelPressure ?? surface.pressure ?? null,
+        windDirectionDeg: surface.windDirectionDeg ?? wind.direction ?? null,
+        windSpeedKt: surface.windSpeedKt ?? wind.speed ?? null
+      },
+      instability: { cape: derived.cape ?? null, cin: derived.cin ?? null, lclM: derived.lcl ?? null, stp: derived.stp ?? null, vtp: derived.vtp ?? null, scp: derived.scp ?? null },
+      shear: { srh01: derived.srh ?? null, bulkShear06Kt: derived.bulkShear ?? null },
+      forcing: {
+        forcingScore: dynamics.forcingScore ?? null,
+        verticalVelocityMs: dynamics.verticalVelocityMs ?? null,
+        convectiveReadiness: dynamics.convectiveReadiness ?? null,
+        triggerStrength: dynamics.triggerStrength ?? null,
+        initiationPotential: dynamics.initiationPotential ?? meso.initiationFocus ?? null
+      },
+      terrain: { elevationM: cell.terrain?.elevationM ?? null, region: cell.region?.name ?? cell.region?.id ?? cell.features?.regionId ?? null },
+      features: { airMass: cell.features?.airMass ?? null, front: cell.features?.front ?? null, dryline: Boolean(cell.features?.dryline) },
+      outlook
+    };
   }
 
   sounding(row, column, day = 'day1') {
     const r=Number(row), c=Number(column);
-    return this.cached(`sounding:${day}:${r}:${c}`,()=>{
-      const cell=this.atmosphere.cells?.[r]?.[c];
-      if (!cell) return null;
-      const sounding=buildSounding(cell);
-      return {
-        ...sounding,
-        // The table values and possible hazard type a forecaster reads off the profile, and the
-        // storm motion the storm engine would give a storm here (for the hodograph).
-        display: diagnoseSoundingDisplay(sounding, cell.terrain.elevationM),
-        engineMotion: diagnoseEngineMotion(this.atmosphere, c, r),
-        row:r,
-        column:c,
-        revision:this.revision,
-        validHourUtc:this.atmosphere.validHourUtc,
-        context:this.cellSummary(r,c,day)
-      };
-    });
+    return this.cached(`sounding:${day}:${r}:${c}`,()=>this.soundingNow(r,c,day));
   }
+
+  // The sounding of a cell as the atmosphere stands now, not cached (the upper-air releases are taken between the
+  // steps of an advance, before the revision moves on).
+  soundingNow(row, column, day = 'day1') {
+    const r=Number(row), c=Number(column), cell=this.atmosphere.cells?.[r]?.[c];
+    if (!cell) return null;
+    const sounding=buildSounding(cell);
+    return {
+      ...sounding,
+      // The table values and possible hazard type a forecaster reads off the profile, and the
+      // storm motion the storm engine would give a storm here (for the hodograph).
+      display: diagnoseSoundingDisplay(sounding, cell.terrain.elevationM),
+      engineMotion: diagnoseEngineMotion(this.atmosphere, c, r),
+      row:r,
+      column:c,
+      revision:this.revision,
+      validHourUtc:this.atmosphere.validHourUtc,
+      context:this.cellSummaryNow(r,c,day)
+    };
+  }
+
   // Product header without the per-cell grid; fields and tiles carry the map data.
   outlook(day) {
     const product = this.atmosphere.outlookCycle?.products?.[day];
@@ -612,13 +668,14 @@ export class WeatherAuthorityRuntime {
   }
 
   // One tilt of one site; all products are simulated together and cached per revision. fine: with
-  // the 250 m gates of a close look (RADAR_FINE_GATE_KM) rather than the usual.
-  async radarScan(siteId, tiltDeg, { fine = false } = {}) {
+  // the 250 m gates of a close look (RADAR_FINE_GATE_KM) rather than the usual. prewarm: false for a
+  // one-off look (the mesoscale discussions'), which is not worked out again at the next scans.
+  async radarScan(siteId, tiltDeg, { fine = false, prewarm = true } = {}) {
     const site = this.radarCatalog().sites.find(s => s.id === siteId);
     if (!site) return null;
     const tilt = RADAR_TILTS_DEG.reduce((a, b) => (Math.abs(b - tiltDeg) < Math.abs(a - tiltDeg) ? b : a));
     const gateKm = fine ? RADAR_FINE_GATE_KM : RADAR_GATE_KM, tag = fine ? '|fine' : '';
-    this.radarWanted.set(`${site.id}|${tilt}${tag}`, Date.now());
+    if (prewarm) this.radarWanted.set(`${site.id}|${tilt}${tag}`, Date.now());
     const revision = this.revision;
     return this.cachedAsync(`radar:scan:${site.id}:${tilt}${tag}`, async () => {
       const scene = await this.radarScene();
@@ -628,16 +685,44 @@ export class WeatherAuthorityRuntime {
 
   // The rotation one radar's volume scan shows (js/radar/RotationDetection.js): its lowest tilts
   // scanned and the detections worked out from them (on the radar pool's threads when there is one).
-  radarRotation(siteId) {
+  // prewarm: as radarScan's.
+  radarRotation(siteId, { prewarm = true } = {}) {
     const site = this.radarCatalog().sites.find(s => s.id === siteId);
     if (!site) return Promise.resolve(null);
-    this.radarWanted.set(`rotation|${site.id}`, Date.now());
+    if (prewarm) this.radarWanted.set(`rotation|${site.id}`, Date.now());
     const revision = this.revision, tilts = RADAR_TILTS_DEG.slice(0, RADAR_ROTATION_TILTS);
     return this.cachedAsync(`radar:rotation:${site.id}`, async () => {
-      const scans = (await Promise.all(tilts.map(tilt => this.radarScan(site.id, tilt)))).filter(Boolean);
+      const scans = (await Promise.all(tilts.map(tilt => this.radarScan(site.id, tilt, { prewarm })))).filter(Boolean);
       if (!scans.length) return null;
       return { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...(this.radarPool ? await this.radarPool.rotation(site, scans) : detectRotation(site, scans)), revision };
     });
+  }
+
+  // The mesoscale discussions' look at storms (places: [{ xKm, yKm }]) from one radar: { found, lowest }, the
+  // detections and the lowest scan as radarRotation and radarScan (prewarm false) give them, for what is
+  // read of them about the places (radarLook). Worked out from scans of the radials over RADAR_LOOK_KM round
+  // the places only (about half the work) when detectRotation finds those detections sure to be a full
+  // volume scan's (its `exact`); else, and when this scan time's full volume scan is already made or the
+  // places are near the radar, from the full scans. (The sector's scans are not kept: the radar pages and
+  // the game's products still have full ones.)
+  async radarLookAround(siteId, places) {
+    const site = this.radarCatalog().sites.find(s => s.id === siteId);
+    const full = async () => { const [found, lowest] = await Promise.all([this.radarRotation(siteId, { prewarm: false }), this.radarScan(siteId, 0, { prewarm: false })]); return { found, lowest }; };
+    if (!site || this.productCache.has(`${this.revision}:radar:rotation:${site.id}`)) return full();
+    const radials = radialsAround(site, places, RADAR_LOOK_KM);
+    if (radials.length >= RADAR_RADIALS) return full();
+    const revision = this.revision, tilts = RADAR_TILTS_DEG.slice(0, RADAR_ROTATION_TILTS);
+    const near = places.map(p => ({ xKm: p.xKm, yKm: p.yKm }));
+    const look = await this.cachedAsync(`radar:look:${site.id}:${near.map(p => `${p.xKm.toFixed(3)},${p.yKm.toFixed(3)}`).join(';')}`, async () => {
+      const scene = await this.radarScene();
+      const scans = await Promise.all(tilts.map(tilt => (this.radarPool ? this.radarPool.scan(scene, site, tilt, undefined, false, radials) : scanRadarTilt(scene, site, tilt, { radials }))));
+      const within = new Uint8Array(RADAR_RADIALS);
+      for (const r of radials) within[r] = 1;
+      const { exact, ...found } = this.radarPool ? await this.radarPool.rotation(site, scans, { within, near }) : detectRotation(site, scans, { within, near });
+      this.radarLookStats.looks++; if (!exact) this.radarLookStats.fallbacks++;
+      return exact ? { found: { siteId: site.id, validHourUtc: scans[0].validHourUtc, tilts, ...found, revision }, lowest: { ...scans[0], revision } } : null;
+    });
+    return look ?? full();
   }
 
   // After a new scan time: works out again, on the radar pool's threads, what has been looked at
@@ -711,7 +796,7 @@ export class WeatherAuthorityRuntime {
     if (!this.statePath) return;
     this.lastSavedHour = Math.floor(this.atmosphere.validHourUtc);
     if (this.savingState) { this.saveQueued = true; return; }
-    const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, revision: this.revision, engine: this.engine.saveState() });
+    const bytes = v8.serialize({ version: STATE_VERSION, code: this.codeVersion, revision: this.revision, worldId: this.worldId, clockOffset: this.clockOffset, engine: this.engine.saveState() });
     // (the cloud model storms are saved with the world, so a restart resumes both from the same moment)
     this.savingState = this.writeFile(this.statePath, bytes)
       .then(() => this.stormWorkers?.saveModels?.())
@@ -745,7 +830,11 @@ export class WeatherAuthorityRuntime {
       }
       const engine = AtmosphereWorld.restore(state.engine);
       if (!engine) return false;
+      if (otherCode) takeUpCodeJet(engine);
       this.revision = state.revision;
+      // (saves from before 2026-11-11 have no id: the seed stands in, and is saved from then on)
+      this.worldId = state.worldId ?? `seed-${state.engine?.seed ?? this.seed}`;
+      this.clockOffset = state.clockOffset ?? null;
       this.adoptEngine(engine);
       console.log(`[authority] resumed seed ${this.seed} at hour ${this.atmosphere.validHourUtc}${otherCode ? ' (carried over from other code)' : ''}`);
       return true;
@@ -857,12 +946,23 @@ function levelWind(cell, pressure) {
   return{direction:(Math.atan2(u,v)*180/Math.PI+360)%360,speed:Math.hypot(u,v)};
 }
 
+// A world saved by other code carries on under the code's jet and mean west winds (QuasiGeostrophicModel QG_DEFAULTS'
+// RETUNABLE settings; a restored model keeps the settings it was saved with): its weather systems are kept and travel
+// on in the new mean flow (retune). (2026-11-18: upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14.)
+function takeUpCodeJet(engine) {
+  const params = engine.model.params, changes = Object.fromEntries(RETUNABLE.filter(key => (params[key] ?? null) !== (QG_DEFAULTS[key] ?? null)).map(key => [key, QG_DEFAULTS[key] ?? null]));
+  if (!Object.keys(changes).length) return;
+  engine.model.retune(changes);
+  console.log(`[authority] the world takes up the code's jet settings: ${JSON.stringify(changes)}`);
+}
+
 // Why a saved world from other code would not carry on, or null: a copy restored and stepped
 // half an hour must not throw, and its large-scale and regional fields must stay numbers.
 function carryOverProblem(engineState) {
   try {
     const probe = AtmosphereWorld.restore(engineState);
     if (!probe) return 'old layout';
+    takeUpCodeJet(probe);
     probe.advance(0.5);
     const finite = values => { for (let i = 0; i < values.length; i++) if (!Number.isFinite(values[i])) return false; return true; };
     for (const key of ['q1', 'q2', 'psi1', 'psi2', 'moisture', 'surfaceTheta', 'surfaceMoisture']) if (probe.model[key] && !finite(probe.model[key])) return `model ${key} not finite`;

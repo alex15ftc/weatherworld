@@ -55,14 +55,17 @@ export function buildSounding(cell) {
   // STP from the sounding alone: fixed-layer 0-1 km helicity and 0-6 km shear with the mixed-layer CAPE, cloud base and
   // CIN terms (a hybrid of SPC's fixed-layer and effective-layer versions; until 2026-10-26 it was labelled fixed-layer).
   const stp=rawStp, targetAirMassFactor=1, airMassFactor=1;
-  const vtp=diagnoseViolentTornadoParameter({stp,rawStp,synopticSupport,cape:mixedResult.thermo.cape,srh:Math.max(0,kinematics.srh01),shear:kinematics.shear06,lcl:mixedResult.thermo.lclM,cin:Math.abs(mixedResult.thermo.cin),criticalAngle:kinematics.criticalAngle});
+  // CAPE of the mixed-layer parcel in the lowest 3 km (3CAPE) and the 0-3 km lapse rate: the low-level instability the
+  // violent tornado parameter adds to STP.
+  const cape03=capeBelow(profile,mixedResult.parcel,cell.terrain.elevationM,3000);
+  const lapseRate03km=layerLapseRateByHeight(profile,cell.terrain.elevationM,0,3000);
+  const vtp=diagnoseViolentTornadoParameter({stp,cape03,lapseRate03km});
   // SPC's supercell composite: MUCAPE/1000 x helicity/50 x a shear term of 0 below 10 m/s, shear/20 m/s from there, 1 above
   // 20 m/s. With 0-3 km helicity and 0-6 km shear standing in for the effective-layer ones. (2026-10-26: was helicity/100 and
   // shear in kt/40, the Richardson-number shear's 40, which differed from SPC's by 30% either way.)
   const shear06Ms=kinematics.shear06*KNOT_TO_MS, scpShear=shear06Ms<10?0:Math.min(1,shear06Ms/20);
   const scp=clamp((muResult.thermo.cape/1000)*(Math.max(0,kinematics.srh03)/50)*scpShear,0,60);
   const lapseRate01km=layerLapseRateByHeight(profile,cell.terrain.elevationM,0,1000);
-  const lapseRate03km=layerLapseRateByHeight(profile,cell.terrain.elevationM,0,3000);
   const lapseRate700500=layerLapseRate(profile,700,500);
   const lapseRate850500=layerLapseRate(profile,850,500);
   const dcape=downdraughtCape(profile, surfaceP);
@@ -75,7 +78,7 @@ export function buildSounding(cell) {
     lclM:mixedResult.thermo.lclM, lclAglM:mixedLclAgl, lfcM:mixedResult.thermo.lfcM, elM:mixedResult.thermo.elM,
     freezingM:interpolateHeightForTemp(profile,0), wetBulbZeroM:interpolateHeightForWetBulb(profile,0),
     liftedIndex:temperatureAtPressure(profile,500)-parcelTemperatureAtPressure(mixedResult.parcel,500),
-    precipWater:pw, convectiveTempC:convectiveTemp, dcape, lapseRate01km, lapseRate03km, lapseRate700500, lapseRate850500,
+    precipWater:pw, convectiveTempC:convectiveTemp, dcape, cape03, lapseRate01km, lapseRate03km, lapseRate700500, lapseRate850500,
     shear01:kinematics.shear01, shear03:kinematics.shear03, shear06:kinematics.shear06,
     srh01:kinematics.srh01, srh03:kinematics.srh03,
     meanWind:kinematics.meanWind, criticalAngle:kinematics.criticalAngle,
@@ -123,7 +126,7 @@ export function updateCellDiagnostics(cell) {
   cell.derived.bulkShear=p.shear06; cell.derived.srh=Math.max(0,p.srh01);
   cell.derived.stp=p.stp; cell.derived.rawStp=p.rawStp; cell.derived.stpComponents={...p.stpComponents};
   cell.derived.vtp=p.vtp; cell.derived.synopticTornadoSupport=p.synopticSupport; cell.derived.scp=p.scp;
-  cell.derived.sounding={sbcape:p.sbcape,mlcape:p.mlcape,mucape:p.mucape,sbcin:p.sbcin,mlcin:p.mlcin,mucin:p.mucin,lclM:p.lclM,lclAglM:cell.derived.lclAgl,lfcM:p.lfcM,elM:p.elM,shear01:p.shear01,shear03:p.shear03,shear06:p.shear06,srh01:p.srh01,srh03:p.srh03,lapseRate01km:p.lapseRate01km,lapseRate03km:p.lapseRate03km,lapseRate700500:p.lapseRate700500,lapseRate850500:p.lapseRate850500,wetBulbZeroAglM:Number.isFinite(p.wetBulbZeroM)?p.wetBulbZeroM-(cell.terrain?.elevationM??0):null,stpComponents:{...p.stpComponents}};
+  cell.derived.sounding={sbcape:p.sbcape,mlcape:p.mlcape,mucape:p.mucape,cape03:p.cape03,sbcin:p.sbcin,mlcin:p.mlcin,mucin:p.mucin,lclM:p.lclM,lclAglM:cell.derived.lclAgl,lfcM:p.lfcM,elM:p.elM,shear01:p.shear01,shear03:p.shear03,shear06:p.shear06,srh01:p.srh01,srh03:p.srh03,lapseRate01km:p.lapseRate01km,lapseRate03km:p.lapseRate03km,lapseRate700500:p.lapseRate700500,lapseRate850500:p.lapseRate850500,wetBulbZeroAglM:Number.isFinite(p.wetBulbZeroM)?p.wetBulbZeroM-(cell.terrain?.elevationM??0):null,stpComponents:{...p.stpComponents}};
   return sounding;
 }
 
@@ -188,20 +191,17 @@ export function diagnoseSynopticTornadoSupport(cell) {
   return clamp(ascent*.30+coherence*.20+pooling*.18+erosion*.16+warmSector*.16,0,1);
 }
 
-export function diagnoseViolentTornadoParameter({stp=0,rawStp=stp,synopticSupport=0,cape=0,srh=0,shear=0,lcl=2000,cin=200,criticalAngle=0}={}) {
-  if (rawStp <= 0 || cape < 500 || srh < 75 || shear < 28) return 0;
-  const stpTerm=clamp(stp/6,0,1.5);
-  const srhTerm=clamp((srh-125)/325,0,1.2);
-  const shearTerm=clamp((shear-35)/35,0,1.1);
-  const capeTerm=clamp((cape-1000)/2500,0,1.1);
-  const lclTerm=clamp((1500-lcl)/800,0,1);
-  const cinTerm=clamp((150-Math.abs(cin))/125,0,1);
-  const angleTerm=clamp((criticalAngle-45)/75,0,1);
-  const violentOverlap=stpTerm*.32+srhTerm*.18+shearTerm*.14+capeTerm*.10+lclTerm*.10+cinTerm*.06+angleTerm*.04+synopticSupport*.06;
-  // Analysis-only 0–5 display scale. This value is never consumed by storm,
-  // tornado, hazard-probability, CIG, or categorical-outlook logic.
-  const raw=violentOverlap*(0.55+0.45*stpTerm)*(0.72+0.28*synopticSupport);
-  return clamp((raw/1.5)*5,0,5);
+// The violent tornado parameter (Hampshire et al. 2018, NWA JOM 6(1); SPC mesoanalysis): STP times two low-level
+// instability terms, 3CAPE / 50 J/kg (capped at 2) and the 0-3 km lapse rate / 6.5 C/km. On their proximity soundings
+// the median VTP was 0.63 for EF2-3 tornadoes and 3.46 for EF4-5 (STP 0.85 and 2.33). It takes this model's STP as it
+// is (fixed-layer helicity and shear with the mixed-layer terms, zero when not surface-rooted), so it is zero wherever
+// STP is. A display diagnostic: nothing in the storm or tornado model reads it.
+// (SPC's help page words the cap as "the lapse rate term is set to 2.0 when 3CAPE > 100 J/kg"; the paper caps the 3CAPE
+// term at 2, which is the same breakpoint, and is what is done here.)
+export function diagnoseViolentTornadoParameter({stp=0,cape03=0,lapseRate03km=0}={}) {
+  if (!(stp > 0)) return 0;
+  const capeTerm=clamp(cape03/50,0,2), lapseTerm=Math.max(0,lapseRate03km)/6.5;
+  return stp*capeTerm*lapseTerm;
 }
 
 const SKEW_C=60;
@@ -351,9 +351,39 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
   const t780=linear+Math.max(0,base-linear)*eml;
   const w850=uvFromDirSpeed(cell.levels[850].windDirection,cell.levels[850].windSpeed), w700=uvFromDirSpeed(cell.levels[700].windDirection,cell.levels[700].windSpeed);
   const u=w850.u+(w700.u-w850.u)*f, v=w850.v+(w700.v-w850.v)*f;
-  anchors.push({p:780,t:t780,td:Math.min(td850,t780-(6+14*eml)),dir:(Math.atan2(-u,-v)*180/Math.PI+360)%360,spd:Math.hypot(u,v)});
+  // Where 780 mb is still inside the afternoon mixed layer (over the high ground the lid's own source), it carries the layer's
+  // vapour, thinning toward the drier top, not the lid's: blended over the same 300 m zone as 850 mb in RegionalAtmosphere.
+  // (2026-11-16: the lid's dry air at 780 mb inside a 1,100-1,300 m mixed layer gave surface parcels of 15.5 g/kg over a
+  // layer drying to 6.8 g/kg, and SBCAPE 2,000+ J/kg above MLCAPE; daily domain peaks of SBCAPE 5,000-6,500 J/kg.)
+  let td780=Math.min(td850,t780-(6+14*eml));
+  const depthM=Number(cell.features?.mixedLayerDepthM), qTop=Number(cell.features?.mixedTopMixingRatioGkg)/1000;
+  if(Number.isFinite(depthM)&&Number.isFinite(qTop)){
+   const z780=RD*(surfaceT+273.15)/G*Math.log(surfaceP/780), inMixed=clamp((depthM-z780+150)/300,0,1);
+   if(inMixed>0){
+    const qs=mixingRatioFromDewpoint(surfaceTd,surfaceP), q=qs+(qTop-qs)*clamp(z780/Math.max(1,depthM),0,1);
+    const tdMixed=Math.min(t780,dewpointFromVaporPressure(q*780/(EPS+q)));
+    td780+=inMixed*Math.max(0,tdMixed-td780);
+   }
+  }
+  anchors.push({p:780,t:t780,td:td780,dir:(Math.atan2(-u,-v)*180/Math.PI+360)%360,spd:Math.hypot(u,v)});
  }
- return anchors.filter(a=>a.isSurface||a.p<surfaceP).sort((a,b)=>b.p-a.p);
+ const out=anchors.filter(a=>a.isSurface||a.p<surfaceP).sort((a,b)=>b.p-a.p);
+ // The mixed layer's top: up to it the layer holds its own vapour (the atmosphere's mixedTopMixingRatioGkg), so the drying
+ // toward the air above starts there, not straight after 850 mb. The point keeps the profile's temperature and wind and only
+ // moistens; it comes in over the 25 mb above 850 mb, where 850 mb itself is already blended into the layer. (2026-11-16: a
+ // 960 m layer topped near 800 mb was drawn drying from 13.5 g/kg at 850 mb to 10.2 at 825 mb, inside the layer, and the
+ // mixed-layer parcel ran 1,800 J/kg under the surface one at the day's SBCAPE peaks.)
+ const depthM=Number(cell.features?.mixedLayerDepthM), qTop=Number(cell.features?.mixedTopMixingRatioGkg)/1000;
+ if(Number.isFinite(depthM)&&depthM>0&&Number.isFinite(qTop)&&qTop>0){
+  const pTop=surfaceP*Math.exp(-depthM*G/(RD*(surfaceT+273.15))), share=clamp((850-pTop)/25,0,1), i=out.findIndex(a=>a.p<pTop);
+  if(share>0&&i>0&&out[i-1].p-pTop>1&&pTop-out[i].p>1){
+   const a=out[i-1],b=out[i],f=Math.log(a.p/pTop)/Math.log(a.p/b.p),lerp=(x,y)=>x+(y-x)*f;
+   const wa=uvFromDirSpeed(a.dir,a.spd),wb=uvFromDirSpeed(b.dir,b.spd),u=lerp(wa.u,wb.u),v=lerp(wa.v,wb.v);
+   const t=lerp(a.t,b.t),td=Math.min(t,lerp(a.td,b.td)),tdTop=Math.min(t,dewpointFromVaporPressure(qTop*pTop/(EPS+qTop)));
+   out.splice(i,0,{p:pTop,t,td:td+share*Math.max(0,tdTop-td),dir:(Math.atan2(-u,-v)*180/Math.PI+360)%360,spd:Math.hypot(u,v)});
+  }
+ }
+ return out;
 }
 
 function parcelDiagnosticsForSource(profile,index,elevation,envTv,work){

@@ -14,6 +14,7 @@ export type Prop = {
 	mesh: string?, -- "Sphere": an ellipsoid filling the part's box (crowns of trees)
 	transparency: number?,
 	reflectance: number?,
+	role: string?, -- a building's part: what it is to the tornado damage (Buildings.take)
 }
 
 export type Props = { Prop }

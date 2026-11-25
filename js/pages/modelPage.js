@@ -1,3 +1,6 @@
+import { loadCalendar, dateText } from '../pageCalendar.js';
+import { openSounding } from './soundingPanel.js';
+import { roleNow } from '../site.js';
 // The model page (2026-10-29), laid out like Pivotal Weather's model pages. Two models:
 //   Short range  one run from the live world at each simulated hour (server/ShortRangeRuntime.js): a
 //                simulated composite reflectivity (3 km grid, as the HRRR's) drawn from its storms every
@@ -9,7 +12,7 @@
 //                run's tracks.
 const $ = id => document.getElementById(id);
 const canvas = $('modelCanvas'), ctx = canvas.getContext('2d'), tip = $('modelTip');
-const REFRESH_MS = 20000, PLAY_MS = 450, MILE_KM = 1.609344;
+const REFRESH_MS = 20000, PARTIAL_REFRESH_MS = 4000, PLAY_MS = 450, MILE_KM = 1.609344;
 const NEAR_KM = 25 * MILE_KM;          // "within 25 miles", as the outlooks' neighbourhood
 const UH_TRACK = 75;                   // updraft helicity that marks a rotating storm's track (m²/s²)
 const UH_LEASTS = [100, 200, 300, 400, 500]; // thresholds offered for the reflectivity + UH tracks product
@@ -30,22 +33,59 @@ const STORM_PRODUCTS = [
   { key: 'reflUh', group: 'Storms', get label() { return `Composite reflectivity + UH > ${reflUhLeast} tracks`; }, step: 15, table: REFL, unit: 'dBZ' },
   { key: 'uh1', group: 'Storms', label: 'Updraft helicity, 1 h max (2-5 km)', step: 15, table: UH, unit: 'm²/s²' },
   { key: 'uhTotal', group: 'Storms', label: 'Updraft helicity tracks, run total', step: 15, table: UH, unit: 'm²/s²' },
-  { key: 'torTracks', group: 'Storms', label: 'Tornado tracks, run total', step: 15, unit: 'EF' }
+  { key: 'torTracks', group: 'Storms', label: 'Tornado tracks, run total', step: 15, unit: 'EF' },
+  // The run's violent tornado parameter under the last hour's rotating-storm tracks: where rotating storms meet air that
+  // favours strong tornadoes (2026-11-17). Offered for runs that carry the VTP field.
+  { key: 'vtpUh', group: 'Storms', label: `Violent tornado parameter + UH > ${UH_TRACK} tracks, 1 h`, step: 15, field: 'vtp' }
 ];
+// Fields made on this page from two of the run's fields (no extra data kept or sent): Hampshire et al.'s low-level
+// instability, 3CAPE x the 0-3 km lapse rate (their means on NARR proximity soundings: 557 for EF1-3 tornadoes, 808 for EF4-5).
+const COMBINED = [
+  { key: 'lli', after: 'vtp', group: 'Composites', label: 'Low-level instability (3CAPE × 0-3 km lapse rate)', unit: '', decimals: 0, levels: [200, 400, 600, 800, 1000, 1400],
+    shade: [[100, 255, 235, 150, 0], [300, 255, 225, 120, 0.45], [600, 255, 160, 60, 0.6], [900, 235, 60, 50, 0.68], [1400, 200, 40, 200, 0.75]], from: ['cape03', 'lapse03'], combine: (a, b) => a * Math.max(0, b) }
+];
+// The short range products a run offers: the storm products (one drawn over a field only when the run has that field),
+// then its fields, each made field after the one it is listed with.
+function shortProducts() {
+  const params = S.meta?.parameters ?? [], has = key => params.some(q => q.key === key), list = [];
+  for (const q of params) { list.push(q); for (const c of COMBINED) if (c.after === q.key && c.from.every(has)) list.push(c); }
+  return [...STORM_PRODUCTS.filter(q => !q.field || has(q.field)), ...list];
+}
 const ENSEMBLE_PRODUCTS = [
   { key: 'paint', group: 'Ensemble', label: 'Paintball: storms 40+ dBZ', step: 30 },
   { key: 'uhProb4', group: 'Ensemble', label: `Chance of a UH ${UH_TRACK}+ track within 25 mi, 4 h`, step: 30, table: PROB, unit: '%' },
   { key: 'uhProbTotal', group: 'Ensemble', label: `Chance of a UH ${UH_TRACK}+ track within 25 mi, run total`, step: 30, table: PROB, unit: '%' },
   { key: 'torProb', group: 'Ensemble', label: 'Chance of a tornado within 25 mi, run total', step: 30, table: PROB, unit: '%' },
-  { key: 'spaghetti', group: 'Ensemble', label: `Every run's UH ${UH_TRACK}+ tracks, run total`, step: 30 }
+  // (the rated chances on their own are for admins (2026-11-18); everyone sees them hatched over the tornado chance)
+  { key: 'sigTorProb', group: 'Ensemble', label: 'Chance of an EF2+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%', admin: true },
+  { key: 'strongTorProb', group: 'Ensemble', label: 'Chance of an EF3+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%', admin: true },
+  { key: 'violentTorProb', group: 'Ensemble', label: 'Chance of an EF4+ tornado within 25 mi, run total', step: 30, table: PROB, unit: '%', admin: true },
+  // Each full run's highest violent tornado parameter over the storm day shown (12Z to 12Z; the cheap runs share their
+  // host's air), within 25 miles. (2026-11-17)
+  { key: 'vtpProb2', group: 'Ensemble', label: 'Chance of VTP 2+ within 25 mi, storm day shown', step: 30, table: PROB, unit: '%', vtpLeast: 2 },
+  { key: 'vtpProb4', group: 'Ensemble', label: 'Chance of VTP 4+ within 25 mi, storm day shown', step: 30, table: PROB, unit: '%', vtpLeast: 4 },
+  { key: 'spaghetti', group: 'Ensemble', label: `Every run's UH ${UH_TRACK}+ tracks, run total`, step: 30 },
+  { key: 'torSpaghetti', group: 'Ensemble', label: "Every run's tornado tracks by rating, run total", step: 30, unit: 'EF' }
 ];
+// The ensemble's tornado products (2026-11-17): each track point carries its tornado's rated wind so far (mph; 1 until it
+// has one; ensembles from before 2026-11-17 carry 1 for any tornado, so they show no EF2+ or EF4+ chances).
+const EF_LEAST_MPH = [65, 86, 111, 136, 166, 200];   // TornadoEngine efRating
+const efOf = mph => EF_LEAST_MPH.filter(at => mph >= at).length - 1;
+const TOR_TESTS = { torProb: p => p.tor > 0, sigTorProb: p => p.tor >= EF_LEAST_MPH[2], strongTorProb: p => p.tor >= EF_LEAST_MPH[3], violentTorProb: p => p.tor >= EF_LEAST_MPH[4] };
+// Hatched over the tornado chance, as the outlooks hatch their intensity groups (2026-11-18): where a run-total
+// chance of an EF2+ (broken hatching), EF3+ (hatching) or EF4+ (cross-hatching) tornado reaches 10%, each drawn
+// only where the next one up does not cover it.
+const TOR_HATCH = [['sigTorProb', 'broken'], ['strongTorProb', 'solid'], ['violentTorProb', 'cross']];
+const HATCH_LEAST = 10;
+let isAdmin = false;
+const ensembleProducts = () => ENSEMBLE_PRODUCTS.filter(p => isAdmin || !p.admin);
 
 // --- State.
 let domain = null, localOffset = -6, base = null, view = null;
-let modelKind = 'short', productKey = 'refl', t = 0, playing = null;
+let modelKind = 'short', productKey = 'refl', t = 0, wantT = 0, playing = null;
 const S = { runs: [], init: null, meta: null, tracks: null, byStorm: null };
 const E = { issues: [], issued: null, data: null, byRun: null };
-const cache = new Map();               // url -> promise of JSON (a run's frames never change)
+const cache = new Map();               // url -> promise of JSON (a run's frames never change; one not made yet is asked again)
 const rasters = new Map();             // drawn reflectivity and probability images
 let shown = { field: null, storms: null };
 let token = 0;
@@ -53,24 +93,29 @@ let token = 0;
 async function getJson(url, { keep = true } = {}) {
   if (keep && cache.has(url)) return cache.get(url);
   const promise = fetch(url, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
-  if (keep) { cache.set(url, promise); if (cache.size > 900) cache.delete(cache.keys().next().value); }
+  if (keep) { cache.set(url, promise); promise.then(v => { if (v === null && cache.get(url) === promise) cache.delete(url); }); if (cache.size > 900) cache.delete(cache.keys().next().value); }
   return promise;
 }
 
-const product = () => (modelKind === 'short' ? [...STORM_PRODUCTS, ...(S.meta?.parameters ?? [])] : ENSEMBLE_PRODUCTS).find(p => p.key === productKey);
+const product = () => (modelKind === 'short' ? shortProducts() : ensembleProducts()).find(p => p.key === productKey);
 const isField = () => modelKind === 'short' && !STORM_PRODUCTS.some(p => p.key === productKey);
 const stepMinutes = () => (isField() ? 60 : product()?.step ?? 15);
 const maxMinutes = () => (modelKind === 'short' ? (S.meta?.hours ?? 0) * 60 : Math.round((E.data?.hours ?? 0) * 60));
+// A run still being worked out shows its hours as they are made (2026-11-16): the minutes ready so far.
+const readyMinutes = () => (modelKind === 'short' && S.meta?.partial ? Math.max(-1, S.meta.readyHours ?? -1) * 60 : maxMinutes());
 const startHour = () => (modelKind === 'short' ? S.meta?.initHourUtc : E.data?.issuedHourUtc) ?? 0;
+
+// Dates: the real date a world hour falls on (js/pageCalendar.js), never the world's day number.
+loadCalendar();
 
 // --- Time words.
 const pad = n => String(n).padStart(2, '0');
 function clock(hourUtc) {
-  const minutes = Math.round(hourUtc * 60), day = Math.floor(minutes / 1440) + 1, z = ((minutes % 1440) + 1440) % 1440;
+  const minutes = Math.round(hourUtc * 60), z = ((minutes % 1440) + 1440) % 1440;
   const local = (((z + localOffset * 60) % 1440) + 1440) % 1440, h12 = Math.floor(local / 60) % 12 || 12;
-  return `Day ${day} ${pad(Math.floor(z / 60))}:${pad(z % 60)}Z (${h12}:${pad(local % 60)} ${local < 720 ? 'AM' : 'PM'} local)`;
+  return `${dateText(hourUtc)} ${pad(Math.floor(z / 60))}:${pad(z % 60)}Z (${h12}:${pad(local % 60)} ${local < 720 ? 'AM' : 'PM'} local)`;
 }
-const runName = hourUtc => { const z = ((Math.round(hourUtc) % 24) + 24) % 24; return `Day ${Math.floor(Math.round(hourUtc) / 24) + 1} ${pad(z)}Z`; };
+const runName = hourUtc => { const z = ((Math.round(hourUtc) % 24) + 24) % 24; return `${dateText(hourUtc)} ${pad(z)}Z`.trim(); };
 const fLabel = minutes => `F${String(Math.floor(minutes / 60)).padStart(3, '0')}${minutes % 60 ? `:${pad(minutes % 60)}` : ''}`;
 
 // --- Loading.
@@ -87,11 +132,14 @@ async function loadRuns() {
   if (modelKind === 'short') {
     const list = await getJson('/api/models/short-range/runs', { keep: false });
     S.runs = (list?.runs ?? []).filter(r => !r.failed);
-    const note = list?.running ? `Run ${runName(list.running.initHourUtc)} (${list.running.hours} h) is being worked out.` : S.runs.length ? '' : 'The first run is being worked out.';
+    const going = S.runs.find(r => r.partial);
+    const note = going ? `Run ${runName(going.initHourUtc)}: ${going.readyHours === null ? 'starting' : `ready to ${fLabel(going.readyHours * 60)} of ${going.hours} h`}; the greyed hours are still being worked out.` : list?.running ? `Run ${runName(list.running.initHourUtc)} (${list.running.hours} h) is being worked out.` : S.runs.length ? '' : 'The first run is being worked out.';
     $('runNote').textContent = note || `${S.runs.length} runs kept. Hours shared with the live world are underlined green.`;
-    fillRunSelect(S.runs.map(r => [r.initHourUtc, `${runName(r.initHourUtc)} · ${r.hours} h`]), S.init);
+    fillRunSelect(S.runs.map(r => [r.initHourUtc, `${runName(r.initHourUtc)} · ${r.partial ? `${Math.max(0, r.readyHours ?? 0)} of ${r.hours} h` : `${r.hours} h`}`]), S.init);
     const want = $('followLatest').checked || S.init === null ? S.runs.at(-1)?.initHourUtc ?? null : S.init;
     if (want !== null && want !== S.init) await openShortRun(want);
+    // (the run on show is still being made: its new hours)
+    else if (want !== null && S.meta?.partial) await openShortRun(want, true);
   } else {
     const list = await getJson('/api/models/ensemble/runs', { keep: false });
     E.issues = list?.issues ?? [];
@@ -108,15 +156,20 @@ function fillRunSelect(options, current) {
   if (current !== null) select.value = String(current);
 }
 
-async function openShortRun(init) {
+// again: the run on show, asked again for the hours made since (a run still being worked out).
+async function openShortRun(init, again = false) {
   const meta = await getJson(`/api/models/short-range/run?init=${init}`, { keep: false });
   if (!meta) return;
-  const tracks = await getJson(`/api/models/short-range/tracks?init=${init}`);
+  if (again && meta.readyHours === S.meta?.readyHours && meta.partial === S.meta?.partial) return;
+  // (the tracks of a run still being made grow: asked afresh each time)
+  const tracks = await getJson(`/api/models/short-range/tracks?init=${init}`, { keep: !meta.partial });
+  if (again && init !== S.init) return;
   S.init = init; S.meta = meta; S.tracks = tracks?.tracks ?? [];
   S.byStorm = new Map();
   for (const p of S.tracks) { if (!S.byStorm.has(p.id)) S.byStorm.set(p.id, []); S.byStorm.get(p.id).push(p); }
   for (const list of S.byStorm.values()) list.sort((a, b) => a.minute - b.minute);
   $('runSelect').value = String(init);
+  if (again) { setTimeRange(); if (!playing) render(); return; }
   fillProducts(); setTimeRange(); render();
 }
 
@@ -129,7 +182,9 @@ async function openEnsemble(issued) {
     const storms = new Map();
     for (const [h, id, x, y, dbz, uh, tor] of run.track) { if (!storms.has(id)) storms.set(id, []); storms.get(id).push({ h, x, y, dbz, uh, tor }); }
     for (const list of storms.values()) list.sort((a, b) => a.h - b.h);
-    return { full: run.cheap === null, storms };
+    // (a full run's storm days' highest VTP: base64 bytes of VTP x vtpScale per cell, row by row)
+    const vtp = run.vtp?.map(d => ({ from: d.fromHourUtc, to: d.toHourUtc, max: Uint8Array.from(atob(d.max), c => c.charCodeAt(0)) })) ?? null;
+    return { full: run.cheap === null, storms, vtp };
   });
   $('runSelect').value = String(issued);
   fillProducts(); setTimeRange(); render();
@@ -137,7 +192,7 @@ async function openEnsemble(issued) {
 
 // --- Controls.
 function fillProducts() {
-  const list = modelKind === 'short' ? [...STORM_PRODUCTS, ...(S.meta?.parameters ?? [])] : ENSEMBLE_PRODUCTS;
+  const list = modelKind === 'short' ? shortProducts() : ensembleProducts().filter(q => !q.vtpLeast || E.byRun?.some(run => run.vtp));
   if (!list.some(p => p.key === productKey)) productKey = list[0].key;
   let html = '', group = null;
   for (const p of list) {
@@ -153,26 +208,37 @@ function fillProducts() {
 function setTimeRange() {
   const slider = $('timeSlider'), step = stepMinutes(), max = maxMinutes();
   slider.max = String(max); slider.step = String(step);
-  t = Math.min(max, Math.round(t / step) * step); slider.value = String(t);
-  const strip = $('hourStrip'), hours = Math.floor(max / 60), shared = modelKind === 'short' ? (S.meta?.shareHours ?? 0) : 0;
-  const every = hours > 24 ? 3 : 1, html = [];
-  for (let h = 0; h <= hours; h += every) html.push(`<button data-hour="${h}" class="${h < shared ? 'shared' : ''}">${String(h).padStart(2, '0')}</button>`);
-  strip.innerHTML = html.join('');
+  // (the time asked for, as far as the run is made: it moves on to it as the hours come)
+  t = Math.max(0, Math.min(max, readyMinutes(), Math.round(wantT / step) * step)); slider.value = String(t);
+  // A button for every hour of the run beside the slider (2026-11-16, the owner's choice); ◀ ▶ step within the hour.
+  const strip = $('hourStrip'), hours = Math.floor(max / 60), shared = modelKind === 'short' ? (S.meta?.shareHours ?? 0) : 0, html = [];
+  for (let h = 0; h <= hours; h++) html.push(`<button data-hour="${h}" class="${h < shared ? 'shared' : ''}">${String(h).padStart(2, '0')}</button>`);
+  const key = html.join('');
+  if (strip.dataset.key !== key) { strip.innerHTML = key; strip.dataset.key = key; }
+  // (how much of the slider's span is made: the rest is drawn grey)
+  const ready = Math.max(0, Math.min(1, max > 0 ? readyMinutes() / max : 1));
+  slider.style.setProperty('--ready', `${(ready * 100).toFixed(2)}%`); slider.classList.toggle('partial', ready < 1);
   markTime();
 }
 
 function markTime() {
   $('timeSlider').value = String(t); $('timeLabel').textContent = fLabel(t);
-  for (const b of $('hourStrip').children) b.classList.toggle('on', Number(b.dataset.hour) === Math.floor(t / 60));
+  const ready = readyMinutes();
+  for (const b of $('hourStrip').children) {
+    b.classList.toggle('on', Number(b.dataset.hour) === Math.floor(t / 60));
+    // An hour the run has not made yet: grey and not to be chosen.
+    const pending = Number(b.dataset.hour) * 60 > ready;
+    b.disabled = pending; b.title = pending ? 'Not ready yet: this hour is still being worked out' : '';
+  }
 }
 
-function setTime(minutes) { const step = stepMinutes(); t = Math.max(0, Math.min(maxMinutes(), Math.round(minutes / step) * step)); markTime(); render(); }
+function setTime(minutes) { const step = stepMinutes(); wantT = Math.max(0, Math.min(maxMinutes(), Math.round(minutes / step) * step)); t = Math.max(0, Math.min(wantT, readyMinutes())); markTime(); render(); }
 
 $('modelShort').onclick = () => switchModel('short');
 $('modelEnsemble').onclick = () => switchModel('ensemble');
 async function switchModel(kind) {
   if (kind === modelKind) return;
-  stopPlay(); modelKind = kind; productKey = kind === 'short' ? 'refl' : 'paint'; t = 0;
+  stopPlay(); modelKind = kind; productKey = kind === 'short' ? 'refl' : 'paint'; t = wantT = 0;
   $('modelShort').classList.toggle('on', kind === 'short'); $('modelEnsemble').classList.toggle('on', kind === 'ensemble');
   $('runSelect').dataset.html = '';
   fillProducts(); setTimeRange(); render();
@@ -180,8 +246,9 @@ async function switchModel(kind) {
 }
 $('runSelect').onchange = event => { const v = Number(event.target.value); $('followLatest').checked = false; stopPlay(); (modelKind === 'short' ? openShortRun : openEnsemble)(v); };
 $('productList').onclick = event => { const key = event.target.dataset?.key; if (!key) return; productKey = key; for (const b of $('productList').querySelectorAll('button')) b.classList.toggle('on', b.dataset.key === key); setTimeRange(); render(); };
+// (a time past what the run has made goes to the last time made: setTime)
 $('timeSlider').oninput = event => { stopPlay(); setTime(Number(event.target.value)); };
-$('hourStrip').onclick = event => { const h = event.target.dataset?.hour; if (h !== undefined) { stopPlay(); setTime(Number(h) * 60); } };
+$('hourStrip').onclick =event => { const h = event.target.dataset?.hour; if (h !== undefined) { stopPlay(); setTime(Number(h) * 60); } };
 $('stepBack').onclick = () => { stopPlay(); setTime(t - stepMinutes()); };
 $('stepNext').onclick = () => { stopPlay(); setTime(t + stepMinutes()); };
 $('play').onclick = () => (playing ? stopPlay() : startPlay());
@@ -197,7 +264,7 @@ window.addEventListener('keydown', event => {
 function startPlay() {
   $('play').classList.add('on'); $('play').textContent = 'Stop';
   let busy = false;
-  playing = setInterval(async () => { if (busy) return; busy = true; const next = t + stepMinutes(); t = next > maxMinutes() ? 0 : next; markTime(); await render(); busy = false; }, PLAY_MS);
+  playing = setInterval(async () => { if (busy) return; busy = true; const next = t + stepMinutes(); t = wantT = next > Math.min(maxMinutes(), readyMinutes()) ? 0 : next; markTime(); await render(); busy = false; }, PLAY_MS);
 }
 function stopPlay() { if (playing) { clearInterval(playing); playing = null; } $('play').classList.remove('on'); $('play').textContent = 'Play'; }
 
@@ -205,22 +272,33 @@ function stopPlay() { if (playing) { clearInterval(playing); playing = null; } $
 async function render() {
   const mine = ++token;
   shown = { field: null, storms: null };
-  if (modelKind === 'short' && S.meta) {
-    const hour = Math.floor(t / 60);
+  // (nothing is asked for an hour the run has not made yet)
+  if (modelKind === 'short' && S.meta && t <= readyMinutes()) {
+    const hour = Math.floor(t / 60), p = product(), fieldKey = isField() ? productKey : p?.field ?? null;
     const [field, storms] = await Promise.all([
-      isField() ? getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${productKey}`) : null,
+      fieldKey ? shortField(hour, fieldKey) : null,
       isField() ? null : getJson(`/api/models/short-range/storms?init=${S.init}&minute=${t}`)
     ]);
     if (mine !== token) return;
-    shown = { field: field ? { ...field, meta: product() } : null, storms: storms?.storms ?? null };
+    const meta = isField() ? p : (S.meta.parameters ?? []).find(q => q.key === fieldKey);
+    shown = { field: field && meta ? { ...field, meta } : null, storms: storms?.storms ?? null };
     // Have the next frames ready for playing.
     const ahead = t + stepMinutes();
-    if (ahead <= maxMinutes()) {
-      if (isField()) getJson(`/api/models/short-range/field?init=${S.init}&hour=${Math.floor(ahead / 60)}&key=${productKey}`);
-      else getJson(`/api/models/short-range/storms?init=${S.init}&minute=${ahead}`);
+    if (ahead <= Math.min(maxMinutes(), readyMinutes())) {
+      if (isField()) shortField(Math.floor(ahead / 60), productKey);
+      else { getJson(`/api/models/short-range/storms?init=${S.init}&minute=${ahead}`); if (product()?.field) shortField(Math.floor(ahead / 60), product().field); }
     }
   }
   draw();
+}
+
+// One of the run's fields at an hour, or a field made here from two of them.
+async function shortField(hour, key) {
+  const made = COMBINED.find(c => c.key === key);
+  if (!made) return getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${key}`);
+  const [a, b] = await Promise.all(made.from.map(k => getJson(`/api/models/short-range/field?init=${S.init}&hour=${hour}&key=${k}`)));
+  if (!a || !b) return null;
+  return { hour: a.hour ?? hour, key, values: Float32Array.from(a.values, (v, i) => made.combine(v, b.values[i])) };
 }
 
 // --- Drawing.
@@ -287,6 +365,7 @@ function drawShort() {
   if (productKey === 'uh1') drawUhTracks(t - 60, t);
   if (productKey === 'uhTotal') drawUhTracks(-1, t);
   if (productKey === 'torTracks') { drawUhTracks(-1, t, { alpha: 0.35 }); drawTornadoTracks(t); }
+  if (productKey === 'vtpUh') drawUhTracks(t - 60, t, { least: UH_TRACK, colour: 'rgba(226,232,240,.7)', width: 5 });
   drawTowns();
   if (!isField() && shown.storms) for (const s of shown.storms) if (s.tornado) { const [x, y] = px(s.tornado.x, s.tornado.y); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke(); }
 }
@@ -429,6 +508,7 @@ function drawUhTracks(from, to, { alpha = 1, least = UH[0][0], colour = null, wi
   else for (const [a, b, uh] of segments) { ctx.strokeStyle = stepColour(UH, uh); ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke(); }
   ctx.restore();
 }
+const efNumber = tor => { const m = /\d/.exec(String(tor?.ef ?? '')); return m ? Number(m[0]) : efOf(tor?.mph ?? 0); };
 function drawTornadoTracks(to) {
   ctx.save(); ctx.lineCap = 'round';
   for (const points of S.byStorm?.values() ?? []) {
@@ -436,7 +516,8 @@ function drawTornadoTracks(to) {
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1], b = path[i];
       if (b.minute - a.minute > 6) continue;
-      const ef = Math.max(a.tornado.ef ?? 0, b.tornado.ef ?? 0);
+      // (the run keeps the rating as 'EF2'; until 2026-11-17 it was read as a number, so every track drew black)
+      const ef = Math.max(0, efNumber(a.tornado), efNumber(b.tornado));
       ctx.strokeStyle = '#000'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(...px(a.tornado.x, a.tornado.y)); ctx.lineTo(...px(b.tornado.x, b.tornado.y)); ctx.stroke();
       ctx.strokeStyle = EF[Math.min(5, ef)]; ctx.lineWidth = 3; ctx.stroke();
     }
@@ -460,23 +541,92 @@ function drawEnsemble() {
       for (const points of run.storms.values()) for (let i = 1; i < points.length; i++) { const a = points[i - 1], b = points[i]; if (b.h > hourNow || b.h - a.h > 0.51 || Math.min(a.uh, b.uh) < UH_TRACK) continue; ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke(); }
     });
     ctx.restore();
+  } else if (productKey === 'torSpaghetti') {
+    // Faint: every run's rotating-storm tracks; strong: its tornado tracks, each piece in the rating its tornado has reached.
+    ctx.save(); ctx.lineCap = 'round';
+    E.byRun.forEach(run => {
+      for (const points of run.storms.values()) for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        if (b.h > hourNow || b.h - a.h > 0.51) continue;
+        if (a.tor > 0 && b.tor > 0) { ctx.strokeStyle = EF[Math.max(0, efOf(b.tor))]; ctx.lineWidth = (run.full ? 3.2 : 2.2) + 0.5 * Math.max(0, efOf(b.tor)); }
+        else if (Math.min(a.uh, b.uh) >= UH_TRACK) { ctx.strokeStyle = 'rgba(200, 210, 225, 0.16)'; ctx.lineWidth = 1.2; }
+        else continue;
+        ctx.beginPath(); ctx.moveTo(...px(a.x, a.y)); ctx.lineTo(...px(b.x, b.y)); ctx.stroke();
+      }
+    });
+    ctx.restore();
   } else {
     const span = productKey === 'uhProb4' ? [hourNow - 4, hourNow] : [E.data.issuedHourUtc - 1, hourNow];
-    const test = productKey === 'torProb' ? p => p.tor : p => p.uh >= UH_TRACK;
+    const vtpLeast = product()?.vtpLeast;
+    if (vtpLeast) { drawRaster(vtpProbRaster(`${E.issued}:${productKey}:${t}`, hourNow, vtpLeast), 0.85); drawTowns(); return; }
+    const test = TOR_TESTS[productKey] ?? (p => p.uh >= UH_TRACK);
     drawRaster(probRaster(`${E.issued}:${productKey}:${t}`, span, test), 0.85);
+    if (productKey === 'torProb') drawTornadoHatch(span);
   }
   drawTowns();
 }
 
+// The share of full runs whose highest VTP over the storm day holding hourUtc reaches `least` within 25 miles.
+function vtpProbRaster(id, hourUtc, least) {
+  const runs = E.byRun.filter(run => run.vtp), { columns, cellKm } = domain, at = Math.round(least * (E.data.vtpScale ?? 10));
+  return probRaster(id, [0, 0], null, { runs, marksOf: (run, mark) => {
+    const day = run.vtp.find(d => hourUtc > d.from && hourUtc <= d.to) ?? (hourUtc <= run.vtp[0].from ? run.vtp[0] : null);
+    if (day) for (let k = 0; k < day.max.length; k++) if (day.max[k] >= at) mark((k % columns + 0.5) * cellKm, (Math.floor(k / columns) + 0.5) * cellKm);
+  } });
+}
+
+// The rated tornado chances hatched over the tornado chance: a mask for each where it reaches 10% (read smoothly
+// between the cells, as the shading), less the next one up, filled with lines a fixed size on the screen.
+function drawTornadoHatch(span) {
+  const shares = TOR_HATCH.map(([key]) => probRaster(`${E.issued}:${key}:${t}`, span, TOR_TESTS[key]).share);
+  const n = PROB_CELLS, up = 4, m = n * up, at = (share, qx, py) => {
+    const fx = Math.max(0, Math.min(n - 1.001, (qx + 0.5) / up - 0.5)), fy = Math.max(0, Math.min(n - 1.001, (py + 0.5) / up - 0.5)), i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j;
+    return share[j * n + i] * (1 - a) * (1 - b) + share[j * n + i + 1] * a * (1 - b) + share[(j + 1) * n + i] * (1 - a) * b + share[(j + 1) * n + i + 1] * a * b;
+  };
+  const size = Math.ceil(view.size), layer = document.createElement('canvas'); layer.width = layer.height = size;
+  const g = layer.getContext('2d');
+  TOR_HATCH.forEach(([key, kind], tier) => {
+    const id = `hatch:${E.issued}:${key}:${t}`;
+    let mask = rasters.get(id);
+    if (!mask) {
+      mask = document.createElement('canvas'); mask.width = mask.height = m;
+      const mg = mask.getContext('2d'), data = mg.createImageData(m, m);
+      let any = false;
+      for (let py = 0; py < m; py++) for (let qx = 0; qx < m; qx++) {
+        if (at(shares[tier], qx, py) < HATCH_LEAST || (tier + 1 < shares.length && at(shares[tier + 1], qx, py) >= HATCH_LEAST)) continue;
+        data.data[(py * m + qx) * 4 + 3] = 255; any = true;
+      }
+      mg.putImageData(data, 0, 0); mask.any = any; keepRaster(id, mask);
+    }
+    if (!mask.any) return;
+    const piece = document.createElement('canvas'); piece.width = piece.height = size;
+    const h = piece.getContext('2d'), SPACING = 9;
+    h.strokeStyle = 'rgba(0, 0, 0, 0.85)'; h.lineWidth = 1.5;
+    if (kind === 'broken') h.setLineDash([6, 4]);
+    h.beginPath();
+    for (let c = 0; c <= 2 * size; c += SPACING) {
+      // (broken and cross: lines up to the right; solid and cross: lines down to the right, as the outlooks)
+      if (kind !== 'solid') { h.moveTo(c - size, size); h.lineTo(c, 0); }
+      if (kind !== 'broken') { h.moveTo(c - size, 0); h.lineTo(c, size); }
+    }
+    h.stroke();
+    h.globalCompositeOperation = 'destination-in'; h.imageSmoothingEnabled = true; h.imageSmoothingQuality = 'high';
+    h.drawImage(mask, 0, 0, size, size);
+    g.drawImage(piece, 0, 0);
+  });
+  ctx.drawImage(layer, view.left, view.top);
+}
+
 // The share of runs with the event within 25 miles of each place, on a grid of about 8 km, softened a little.
 const PROB_CELLS = 100;
-function probRaster(id, [from, to], test) {
+function probRaster(id, [from, to], test, { runs = E.byRun, marksOf = null } = {}) {
   const key = `prob:${id}`;
   if (rasters.has(key)) return rasters.get(key);
   const n = PROB_CELLS, cellKm = domain.widthKm / n, reach = Math.ceil(NEAR_KM / cellKm), sum = new Float32Array(n * n), hit = new Uint8Array(n * n);
   const mark = (x, y) => { const ci = Math.floor(x / cellKm), cj = Math.floor(y / cellKm); for (let j = Math.max(0, cj - reach); j <= Math.min(n - 1, cj + reach); j++) for (let i = Math.max(0, ci - reach); i <= Math.min(n - 1, ci + reach); i++) if (Math.hypot((i + 0.5) * cellKm - x, (j + 0.5) * cellKm - y) <= NEAR_KM) hit[j * n + i] = 1; };
-  for (const run of E.byRun) {
+  for (const run of runs) {
     hit.fill(0);
+    if (marksOf) { marksOf(run, mark); for (let i = 0; i < hit.length; i++) sum[i] += hit[i]; continue; }
     for (const points of run.storms.values()) for (let i = 0; i < points.length; i++) {
       const b = points[i];
       if (b.h <= from || b.h > to || !test(b)) continue;
@@ -487,7 +637,7 @@ function probRaster(id, [from, to], test) {
     for (let i = 0; i < hit.length; i++) sum[i] += hit[i];
   }
   const share = new Float32Array(n * n);
-  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { let s = 0, w = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= n || ii >= n) continue; const k = di || dj ? 1 : 2; s += sum[jj * n + ii] * k; w += k; } share[j * n + i] = 100 * s / w / E.byRun.length; }
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { let s = 0, w = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= n || ii >= n) continue; const k = di || dj ? 1 : 2; s += sum[jj * n + ii] * k; w += k; } share[j * n + i] = 100 * s / w / Math.max(1, runs.length); }
   // Drawn four times finer, each pixel read smoothly between the cell centres, so the bands have no steps.
   const up = 4, m = n * up, image = document.createElement('canvas'); image.width = image.height = m;
   const g = image.getContext('2d'), data = g.createImageData(m, m), lut = PROB.map(([at, c]) => [at, rgb(c)]);
@@ -497,7 +647,7 @@ function probRaster(id, [from, to], test) {
     let c = null; for (const [at, col] of lut) if (v >= at) c = col;
     if (c) data.data.set([c[0], c[1], c[2], 205], (py * m + qx) * 4);
   }
-  g.putImageData(data, 0, 0); image.share = share; image.n = n; image.cellKm = cellKm;
+  g.putImageData(data, 0, 0); image.share = share; image.n = n; image.cellKm = cellKm; image.runs = runs.length;
   keepRaster(key, image);
   return image;
 }
@@ -508,19 +658,19 @@ function drawLegend() {
   g.clearRect(0, 0, bar.width, bar.height); ticks.innerHTML = ''; note.textContent = '';
   const tick = (text, at) => { const s = document.createElement('span'); s.textContent = text; s.style.left = `${at * 100}%`; ticks.append(s); };
   if (!p) return;
-  if (isField() && shown.field) {
+  if (shown.field) {
     const meta = shown.field.meta, from = meta.shade[0][0], to = meta.shade.at(-1)[0];
     g.fillStyle = '#121a23'; g.fillRect(0, 0, bar.width, bar.height);
     for (let x = 0; x < bar.width; x++) { const [r, gr, b, a] = colourAt(meta, from + (to - from) * x / (bar.width - 1)); g.fillStyle = `rgba(${r | 0},${gr | 0},${b | 0},${Math.max(0.12, a)})`; g.fillRect(x, 0, 1, bar.height); }
     for (const f of [0, 0.25, 0.5, 0.75, 1]) tick(Number((from + (to - from) * f).toFixed(meta.decimals)).toLocaleString(), f);
-    note.textContent = `${meta.label}${meta.unit ? ` (${meta.unit})` : ''}${meta.second ? ` · dashed: ${meta.second.label} (${meta.second.unit})` : ''}`;
+    note.textContent = `${meta.label}${meta.unit ? ` (${meta.unit})` : ''}${meta.second ? ` · dashed: ${meta.second.label} (${meta.second.unit})` : ''}${productKey === 'vtpUh' ? ` · light: UH > ${UH_TRACK} m²/s² tracks, last hour` : ''}`;
     return;
   }
-  const table = p.table ?? (p.key === 'torTracks' ? EF.map((c, i) => [i, c]) : null);
+  const efKey = p.key === 'torTracks' || p.key === 'torSpaghetti', table = p.table ?? (efKey ? EF.map((c, i) => [i, c]) : null);
   if (table) {
     const w = bar.width / table.length;
-    table.forEach(([at, c], i) => { g.fillStyle = c; g.fillRect(i * w, 0, w + 1, bar.height); tick(p.key === 'torTracks' ? `EF${at}` : String(at), (i + 0.5) / table.length); });
-    note.textContent = `${p.label}${p.unit && p.key !== 'torTracks' ? ` (${p.unit})` : ''}${p.key === 'torTracks' ? ' · faint: updraft helicity tracks' : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
+    table.forEach(([at, c], i) => { g.fillStyle = c; g.fillRect(i * w, 0, w + 1, bar.height); tick(efKey ? `EF${at}` : String(at), (i + 0.5) / table.length); });
+    note.textContent = `${p.label}${p.unit && !efKey ? ` (${p.unit})` : ''}${efKey ? ' · faint: updraft helicity tracks' : ''}${p.key === 'torProb' ? ` · hatched where the chance of a rated tornado is ${HATCH_LEAST}%+: broken EF2+, solid EF3+, cross EF4+` : ''}${p.key === 'reflUh' ? ` · grey swaths: 2-5 km updraft helicity > ${reflUhLeast} m²/s², 1 h max` : ''}`;
   } else if (p.key === 'paint' || p.key === 'spaghetti') {
     const runs = E.byRun?.length ?? 0, w = bar.width / Math.max(1, runs);
     for (let r = 0; r < runs; r++) { g.fillStyle = runColour(r); g.fillRect(r * w, 0, w + 1, bar.height); }
@@ -542,15 +692,43 @@ canvas.addEventListener('mousemove', event => {
     if (image && showsRefl()) { const v = image.dbz[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0; if (v >= 15) lines.push(`Reflectivity: <b>${Math.round(v)}</b> dBZ`); }
     const near = (shown.storms ?? []).map(s => [s, Math.hypot(s.x - x, s.y - y)]).filter(([, d]) => d < 15).sort((a, b) => a[1] - b[1])[0]?.[0];
     if (near) lines.push(`<b>${near.id}</b> · ${near.mode ?? 'storm'} · ${near.dbz} dBZ · UH ${near.uh}${near.hailIn >= 0.75 ? ` · hail ${near.hailIn.toFixed(2)} in` : ''}${near.tornado ? ` · <b style="color:#ff6b6b">tornado</b> ${near.tornado.mph} mph` : ''}`);
-  } else if (!['paint', 'spaghetti'].includes(productKey)) {
+  } else if (!['paint', 'spaghetti', 'torSpaghetti'].includes(productKey)) {
     const image = rasters.get(`prob:${E.issued}:${productKey}:${t}`);
-    if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${E.byRun.length} runs`);
+    if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${image.runs ?? E.byRun.length}${product()?.vtpLeast ? ' full' : ''} runs`);
+  }
+  if (modelKind !== 'short' && (productKey in TOR_TESTS || productKey === 'torSpaghetti')) {
+    const split = strongestNear(x, y);
+    if (split) lines.push(`Strongest tornado within 25 mi: none in <b>${split.none}</b> · EF0-1 <b>${split.weak}</b> · EF2 <b>${split.sig}</b> · EF3 <b>${split.strong}</b> · EF4+ <b>${split.violent}</b> of ${E.byRun.length} runs`);
   }
   lines.push(`<span class="muted">${Math.round(x / MILE_KM)} mi east, ${Math.round(y / MILE_KM)} mi south of the north-west corner</span>`);
   tip.innerHTML = lines.join('<br>'); tip.style.display = 'block';
   tip.style.left = `${Math.min(mx + 14, rect.width - tip.offsetWidth - 4)}px`; tip.style.top = `${Math.min(my + 14, rect.height - tip.offsetHeight - 4)}px`;
 });
 canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+// How the runs split by the strongest tornado each brings within 25 miles of a place, by the time on show.
+function strongestNear(x, y) {
+  if (!E.byRun) return null;
+  const hourNow = E.data.issuedHourUtc + t / 60, split = { none: 0, weak: 0, sig: 0, strong: 0, violent: 0 };
+  for (const run of E.byRun) {
+    let mph = 0;
+    for (const points of run.storms.values()) for (const q of points) if (q.tor > mph && q.h <= hourNow && Math.hypot(q.x - x, q.y - y) <= NEAR_KM) mph = q.tor;
+    if (!mph) split.none++; else if (mph >= EF_LEAST_MPH[4]) split.violent++; else if (mph >= EF_LEAST_MPH[3]) split.strong++; else if (mph >= EF_LEAST_MPH[2]) split.sig++; else split.weak++;
+  }
+  return split;
+}
+// A point of the map: the short range run's sounding there at the forecast hour on show.
+canvas.addEventListener('click', event => {
+  if (!view || modelKind !== 'short' || !S.meta) return;
+  const rect = canvas.getBoundingClientRect(), x = (event.clientX - rect.left - view.left) / view.k, y = (event.clientY - rect.top - view.top) / view.k;
+  if (x < 0 || y < 0 || x >= domain.widthKm || y >= domain.heightKm) return;
+  const row = Math.floor(y / domain.cellKm), column = Math.floor(x / domain.cellKm), hour = Math.floor(t / 60), round = v => (Number.isFinite(Number(v)) ? Math.round(v) : '—');
+  stopPlay();
+  openSounding({
+    title: `${Math.round(x / MILE_KM)} mi east, ${Math.round(y / MILE_KM)} mi south`,
+    load: async () => { const sounding = await getJson(`/api/models/short-range/sounding?init=${S.init}&hour=${hour}&row=${row}&column=${column}`); if (!sounding) throw new Error('none'); return sounding; },
+    note: s => `${round(s.context?.surface?.temperatureF)}°F / ${round(s.context?.surface?.dewpointF)}°F at the ground · short range model, ${runName(s.initHourUtc)} run, ${fLabel(s.forecastHour * 60)} · valid ${clock(s.validHourUtc)}`
+  });
+});
 function fieldAt(values, x, y) {
   const { columns, rows, cellKm } = domain, fx = Math.max(0, Math.min(columns - 1.001, x / cellKm - 0.5)), fy = Math.max(0, Math.min(rows - 1.001, y / cellKm - 0.5));
   const i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j, v = (ii, jj) => values[jj * columns + ii];
@@ -563,11 +741,14 @@ fillProducts(); setTimeRange();
 (async function start() {
   // ?model=ensemble&product=<key>&t=<minutes> opens the page there.
   const ask = new URLSearchParams(location.search);
-  await loadBase();
+  // (the rated tornado chance tabs are for admins: js/site.js roleNow)
+  [isAdmin] = await Promise.all([roleNow().then(r => r === 'admin'), loadBase()]);
   if (ask.get('model') === 'ensemble') await switchModel('ensemble'); else await loadRuns();
   if (UH_LEASTS.includes(Number(ask.get('uh')))) { reflUhLeast = Number(ask.get('uh')); $('uhLeast').value = String(reflUhLeast); }
   if (ask.get('product')) { productKey = ask.get('product'); fillProducts(); setTimeRange(); }
   if (ask.get('t')) setTime(Number(ask.get('t'))); else render();
   draw();
   setInterval(async () => { await loadRuns(); if (!base || !domain) await loadBase(); }, REFRESH_MS);
+  // (a run on show still being worked out is asked again often, for its new hours)
+  setInterval(() => { if (modelKind === 'short' && S.meta?.partial) loadRuns(); }, PARTIAL_REFRESH_MS);
 })();

@@ -2470,3 +2470,165 @@ rotation, shear grid, cold pools, restored worlds) and the engine fingerprint is
   per storm time. Larger, same output: per-cell soundings on threads, a disk cache of the warmed-up
   world, the steering look-ahead cached by valid time.
 - `tests/short-range-model.mjs` fails at HEAD too (storms differ at +45 min), from before this work.
+
+## 2026-11-13 — Wide window against the map (severe-weather charts on the large-scale pages)
+
+The regional layer run again at 80 km over 3,200 km about the map (`js/world/WideRegion.js`), started cold with the
+world and compared under the map (mean of the map's 2,500 cells / mean of the window's middle 10 x 10 cells):
+
+| after | seed 1000: CAPE, SRH 0-1, SCP, STP | seed 7: CAPE, SRH 0-1, SCP, STP |
+|---|---|---|
+| 12 h | 1915/211, 101/87, 9.5/1.6, 0.25/0.09 | 2031/542, 91/73, 7.9/1.4, 0.44/0.13 |
+| 48 h | 469/103, 150/144, 4.7/1.7, 0.04/0 | 1009/104, 154/167, 5.6/1.8, 0.91/0.14 |
+| 60 h | 1717/1829, 64/70, 6.5/7.8, 0.71/0.98 | 1655/1791, 208/197, 13.8/14.3, 2.0/2.35 |
+| 84 h | 1594/1427, 185/156, 11.6/8.8, 1.68/1.36 | 1643/1302, 169/146, 11.9/7.0, 1.12/0.52 |
+| 108 h | 1766/1275, 167/159, 9.8/5.7, 0.88/0.55 | 1706/259, 247/256, 16.1/1.6, 0.52/0.03 |
+| 132 h | 1348/1047, 165/158, 7.4/5.1, 0.42/0.24 | 1643/602, 236/189, 14.3/4.9, 1.24/0.06 |
+| 156 h | 186/113, 109/69, 1.9/0.3, 0/0 | 1815/1412, 145/136, 8.6/6.9, 0.87/0.41 |
+
+The winds agree from the first step; the moist layer and cap take about 60 h to arrive from the window's edges, and
+on some later days lag the map's by a day. The large-scale model's own columns under the map at the same kind of
+hour: CAPE 2058 against 1863, SRH 0-1 4 against 118, SCP 1.5 against 10.5, STP 0.01 against 0.34.
+
+### The same day, later: the window fed by the map, and refreshed in a quarter of a day
+
+With the window's cells under the map given the map's air each step, the middle matches by construction but the ring
+of cells just outside the box did not: south of the box the window's air was the high ground's (3.7 g/kg, moist layer
+770 m, no CAPE) where the map's southern strip had 15.9 g/kg and 1,650 J/kg, though the entering-air value there was
+16.3. On the map, air crossing an edge is given that value and no place is far from an edge; the window's interior is
+days of wind from one. With the window's `airMassRelaxationDays` and `moistTopDays` at 0.25 (map's edge strip /
+window's ring, CAPE at 00Z):
+
+| after | seed 1000: W, E, N, S | seed 7: W, E, N, S |
+|---|---|---|
+| 36 h | 908/340, 1858/1839, 1683/1070, 1474/1229 | 702/4, 935/822, 1539/1450, 1643/1449 |
+| 60 h | 617/0, 1547/1449, 1501/1071, 1694/1886 | 706/0, 1031/1028, 1727/1795, 1553/1735 |
+| 84 h | 706/235, 1516/1658, 987/826, 1536/1595 | 1430/112, 845/716, 1574/1506, 1507/1622 |
+| 108 h | 1466/0, 1293/1467, 2037/2027, 1621/2094 | 280/1, 1447/1621, 1379/2360, 1653/1191 |
+| 132 h | 1091/75, 1113/531, 942/687, 1467/2058 | 643/6, 1460/1115, 1915/2041, 1658/1884 |
+
+(With 2 days the south ring read 0 against 1,653 at 108 h on seed 7, and with half a day 37.) The west stays dry:
+the window carries the high ground's air east, where the map's western edge is given moister entering air.
+
+## Steering look-ahead and home pull (2026-11-16, `c9c5474`)
+
+Why: on the live world (seed 1000) 11/14 Day 5 to 11/16 Day 1 had three big days (68, 24, 36 tornadoes) and a
+lull: 11/15 Days 2-6 and 8 had 0-12 tornadoes, mostly Marginal or less. The replays put the map ~1350 km north of
+home on 11/15 Days 3-6 (two warm-sector plans in a row slid it north, +29 and +22 km/h), on the jet's flank: 16-34 kt
+at 500 mb while the channel's jet ran 157-164 kt. The map keeps its home climate; only its winds come from where it
+slides. Big days had falling heights (-5 to -17 dam/12 h), CIN under 30 and dewpoints of 70-72 F; 0-1 km helicity
+did not tell them apart.
+
+Screen (outer model + the real planner on a stand-in regional layer, 4 seeds x 60 days, judged by wind aloft x
+southerly flow x moisture where the map is): home pull 0.3 alone kept the map near home (median 144 km against 533)
+without more support; keeping a low-aimed day only while it reached 25-70% of the best warm-sector slide's support
+nearly ended weak runs but made 230+ of 244 days warm-sector days. The judge is the warm-sector support itself, so
+it favours them.
+
+Regression suite, 8 seeds x 10 days, against the base of the look-ahead test (job 5a560e81): home pull 0.15 + keep
+40%: EF0 share, EF1 share and tornado CIG1+ days regressed (supercell time 53 to 66%): rejected. Look-ahead 1 +
+home pull 0.15: none. The 10-day runs had no run of 2+ days below Slight at all, so lulls need long runs:
+
+| 8 seeds x 80 days | old settings | look-ahead 1 + home pull 0.15 | target |
+|---|---|---|---|
+| Days in runs of 2+ below Slight % | 2.66 | 1.25 | |
+| Longest run below Slight, mean (max) of seeds | 1.75 (3) | 1.38 (2) | |
+| Longest run of days with 2 or fewer tornadoes (max) | 4 | 3 | |
+| Below Slight days % | 9.2 | 8.4 | 5 |
+| Days with a tornado % | 93.8 | 95.3 | 83 |
+| Tornadoes a day | 18.4 | 20.2 | 7.5 |
+| Days with 30+ % | 21.4 | 26.3 | 5 |
+| MDT+HIGH % | 31.7 | 33.0 | 25 |
+| Supercell time % (track) | 51.8 | 55.6 | |
+
+Old settings by world age (days 1-20 / 21-40 / 41-80): below Slight 5.6 / 12.5 / 9.4%; longest run of days with 2
+or fewer tornadoes 2 / 2 / 4. Each run took ~8.7 h with 16 workers (a sim day ~6.5 min late in a world).
+
+Forecast check (seeds 41-50, 3 mornings, lead caps, same outlook code; each check scores its own weather):
+
+| | old: right / within one | new: right / within one | Brier skill calibrated, tornado/wind/hail |
+|---|---|---|---|
+| Day 1 | 67 / 100% | 53 / 100% | 18/37/45 to 17/33/43 |
+| Day 2 | 50 / 80% | 35 / 85% | 10/18/28 to 10/19/32 |
+| Day 3 | 30 / 70% | 10 / 70% | severe 12 to 10 |
+
+Refitting in sample would gain 1-4 points of skill on either, so the calibration still fits; one outlook is
+3/5/10 points. No refit (owner, 2026-11-16). Day 3 Enhanced+ CSI 0.42 to 0.19 (10 outlooks): watch it.
+
+## Day 1 issues and their tables (2026-11-16)
+
+The server's 06Z Day 1 read `day1update`: `combineOutlook` took hours into the day as (issued - 12Z) modulo 24, 18 h for
+an issue made 6 h before its day. Every verification script scores that issue as the 12Z morning one (`day1` table).
+Now hours count from the outlook's own day start (tests/day-one-outlook.mjs checks 06Z = 12Z table, 16:30Z = update).
+
+`scripts/outlook-updates-verify.mjs 2 --seeds 53,54,55,56 --source perturbed --calibration-data` (8 days an issue, 44 min):
+
+| issue | table | right | too low | MDT+ CSI | Brier skill tornado/wind/hail |
+|---|---|---|---|---|---|
+| 12Z | day1 | 50% | 38% | 0.21 | 5/26/34 |
+| 13Z | day1 | 50% | 38% | 0.26 | 4/26/35 |
+| 16:30Z | day1update | 38% | 63% | 0.00 | 2/19/30 |
+| 20Z | day1update | 25% | 75% | 0.00 | 2/18/29 |
+| 01Z | day1update | 50% | 38% | - | 3/13/20 |
+
+The updates' raw chances (pooled) against what verified, as each table would issue them: RMS error `day1` 1.08 /
+2.92 / 4.08 (tornado / wind / hail), `day1update` 2.16 / 4.56 / 4.86. `day1update` (fitted 2026-11-15 on the short-range
+way's runs) reads the perturbed runs low in the middle: raw 6% tornado verified 7.8%, day1 8.6%, day1update 2.9%. The
+2026-11-15 check on seeds 47-52 went the other way (20Z right 39 to 61%); both samples are small. Undecided.
+
+## Steering moisture ramp (2026-11-17)
+
+Below-Slight days were looked at first: of 11 in 80 suite days (8 seeds x 10, current engine), 6 had 16 storms or
+fewer; shear was plentiful (top tenth of the map 33-81 kt), CAPE and moisture were not. The steering's warm-sector
+support at the map ranked the days' tornado counts at 0.13 (category 0.41); the outer model's moisture over the map
+0.50, its warmth 0.49, its ascent 0.40, wind aloft 0.10. Median at the map, below-Slight / Enhanced+ days: moisture
+-3.1 / +0.6 g/kg, warmth -11 / +2.4 K. The dry cut (`dryGkg` 4) gave all air at or above the mean full support.
+Days aimed at an upper low went below Slight 3 of 8 times (Enhanced+ 1 of 8); at a surface low 2 of 23 (15 Enhanced+).
+
+Screen: a storm-free AtmosphereWorld (storms never write to the outer model, so its steering path is the suite's),
+8 seeds x 20 days; a day is lull-like when the 90th percentile over the map of an ingredient overlap (ML CAPE/1500,
+0-1 km SRH/150, 0-6 km shear/40, LCL and CIN ramps, multiplied) is under 0.1 at 21Z and 00Z (it caught 6 of 11
+below-Slight days, plus 7 Slight and 1 Moderate). Its mean ranked tornado counts at 0.80.
+
+| 160 days | overlap mean | lull-like % | in lull runs 2+ % | map moisture / warmth (median) |
+|---|---|---|---|---|
+| current | 0.140 | 16.9 | 3.1 | +0.32 g/kg / +1.1 K |
+| lookAheadDays 2 | 0.145 | 18.8 | 6.3 | +0.30 / +1.1 |
+| moisture [-4, 1] + warmth [-12, 2] | 0.143 | 17.5 | 8.1 | +0.53 / +1.9 |
+| moisture [-2, 4] + warmth [-6, 6] | 0.161 | 10.6 | 1.3 | +2.20 / +7.5 |
+| moisture [-2, 4] | 0.162 | 13.1 | 1.3 | +1.54 / +5.3 |
+
+About 10 of the 27 lull-like days in the current run had the outer air fine and a cap (CIN 90-380) or no CAPE in
+the regional layer: out of the steering's reach.
+
+Suite, 8 seeds x 10 days, against the current settings:
+
+| | current | moisture + warmth | moisture [-2, 4] (kept) | target |
+|---|---|---|---|---|
+| Below Slight % | 13.8 | 8.75 | 6.25 | 5 |
+| Slight % | 32.5 | 23.8 | 28.8 | 30 |
+| Enhanced % | 27.5 | 37.5 | 38.8 | 40 |
+| Moderate % | 22.5 | 22.5 | 20.0 | 20 |
+| High % | 3.75 | 7.5 | 6.25 | 5 |
+| Days in runs of 2+ below Slight % | 5.0 | 0 | 0 | |
+| Tornadoes a day | 15.3 | 16.9 | 17.8 | 7.5 |
+| Days with 30+ % | 18.8 | 21.3 | 25.0 | 5 |
+
+Both regress wind reports a day 90th (213 to 320-329) and hail reports a day median (120 to 177-190), already far
+above their real values (73, 22); the owner accepted that for moisture [-2, 4]. EF shares all within tolerance.
+
+Forecast check (seeds 41-50, 3 mornings, lead caps; both on origin/main 35fb85a, with and without the ramp):
+
+| | right / within one, before | after | Brier skill calibrated (tornado/wind/hail) |
+|---|---|---|---|
+| Day 1 | 60 / 97% | 43 / 100% | 19/34/44 to 22/34/43 |
+| Day 2 | 40 / 80% | 35 / 90% | 14/24/33 to 16/19/30 |
+| Day 3 | 20 / 100% | 40 / 90% | severe 11 to 5 |
+
+In-sample recalibration gains 0-1 point at Day 1, so the calibration fits; Day 1's category drop (5 of 30
+outlooks) is past the 15-point rule. No refit made (owner's call).
+
+Follow-up, `moistRangeGkg` [-3, 3] (the same day): suite against the old settings, no regressions: below Slight
+11.3%, Slight 27.5, Enhanced 36.3, Moderate 22.5, High 2.5; tornadoes a day 16.3; wind reports 90th 239, hail median
+141 (both within tolerance). Screen (160 days): lull-like 16.3%, in lull runs 2+ 5.6% (current 16.9 / 3.1, [-2, 4]
+13.1 / 1.3). The owner kept [-2, 4].

@@ -9,7 +9,7 @@ Written 2026-11-07. Research only; no code changed. Sources are cited inline.
 
 ### Radar (engine, `js/radar/`)
 The engine already runs a real per-site volume-scan simulator:
-- **Sites:** 11 radars from the world map (seed 1); fallback 7. Each has 230 km range,
+- **Sites:** 10 radars from the world map (seed 1); fallback 7. Each has 230 km range,
   0.5 km gates, 720 radials (0.5°), 14 tilts 0.5–19.5° (VCP-12-like), 0.95° beam and a
   4/3-earth beam path. See `js/radar/RadarFormat.js:4-25`.
 - **Products scanned:** REF, VEL, SRV, SW, CC, ZDR.
@@ -364,6 +364,9 @@ Built in the engine as products like radar. Cheap to compute; no chase game has 
   - With `regional` given, a cell's high-cloud share is not drawn as cirrus where it is only the storms' coarse anvil, so anvils aren't drawn twice.
   - Anvil tops: air lifted dry-adiabatically half the overshoot above the EL. The updraught dome rises from the EL to the parcel's top and is colder still.
 - **Large-scale clouds:** the cells' low/mid/high shares, with a soft seeded texture moving with each layer's mean wind (part-cloudy pixels). Water: adiabatic low cloud, 0.02 g/m³ mid (τ 2-10), 0.01 g/m³ cirrus.
+- **Low cloud as two kinds (2026-11-16):** `RegionalAtmosphere` publishes `cloudStratus` (stratus from the ground air's spread, stratocumulus from a humid 850 mb) and `cloudCumulus` beside `cloudLow` (their larger, unchanged: engine feed frames identical, seed 2, 6 h).
+  - The sheet: a 40 km, three-octave texture with a sharp edge (0.25), from the ground air's LCL (125 m a K of spread) to the moist layer's top, so a shallow moist layer gives a thin, grey deck that breaks first.
+  - Cumulus: 5 km cells in the sheet's gaps, stretched along the 850 mb wind into streets (1 + speed / 10 m/s, at most 3).
 - **IR:** Planck radiance mixed top down.
 - **Visible:**
   - Eddington two-stream with the sun angle, layers combined by the adding method, ground albedo 0.08 (red band, green vegetation);
@@ -398,7 +401,13 @@ Built in the engine as products like radar. Cheap to compute; no chase game has 
      - Fitted for GOES VAS 6.7 µm, not ABI 6.2 µm. Retune the constant for the game's band.
      [source](https://www.ssec.wisc.edu/stennis/goes_vas_product_set/science_eval/cfh_uth/index.html)
 5. **Day Cloud Phase RGB:** shows glaciation during initiation.
-6. **Night fog:** BT13 − BT7.
+6. **Night fog:** BT13 − BT7. Done 2026-11-16 (`satellite.fog`): the same top-down sum at 3.9 µm, thick water cloud emitting 0.8 and reflecting 0.2, ice 0.95, ground 0.95, absorption ~0.05 m²/g, sunlight ~10 W m⁻² µm⁻¹ by day.
+   - Seed 2, 1 and 5 am: clear ground +1.0 to +1.3 K, under cirrus and anvils about −5 K (p10 −16). By day everything reads negative (clear −4, low cloud −22 to −27, high −32 to −36 K), as on the real product.
+   - **Night stratus (2026-11-16, engine):** before this, on seeds 1, 2, 5 and 1000 no cell held a stratus deck under open sky at 5 am. The engine keeps windy-night air at screen height 2 K short of saturation (`nightSpreadK`) and makes stratus only from that spread (below 1.5 K); 850 mb is capped 1 K under saturation (RH 0.80-0.90 in the moist sector, a 0.3 share). Gulf stratus under the jet forms at the top of the stirred layer (its LCL, ~250 m at a 2 K spread, under a ~1 km moist layer); the engine tested that only by day (cumulus). Now `RegionalAtmosphere` also makes stratus where the layer under the jet's nose (`jetNoseM` x (1 - decoupled)), within the moist layer, reaches past the ground air's LCL: overcast `stratusDeckM` (150 m) past it. The night's cooling is now let through step by step by each step's cloud (`nightShape`), so a deck stops the cooling without undoing it.
+     - Seed 2 at 5 am: 34,689 open-sky stratus pixels at +5.0 K (median) in the fog image, nearly invisible in the IR.
+     - Morning: the deck keeps the night's top and base (`deckTop`, `deckLcl`) until the day's mixed layer grows into it; its base then lifts with the mixed layer's LCL and it is gone once the mixed layer is through its top. Seed 2, the 550 open-sky stratus cells of 5 am: over half covered 98% at 8 am, 91% at 11, 58% at noon (first version, base at the ground air's LCL of the moment: 1% at 7 am). The deck holds back the sun, so the mixed layer reaches it about an hour later than it would under clear sky: the late end of real Gulf stratus.
+     - Regression suite (8 seeds, fresh baseline): no regressions. Forecast check (seeds 41-50 x 3, --lead-caps, HEAD run alongside): Day 1 right 67 to 60%, within one 100 to 97%; Day 2 50 to 45%, 80 to 95%; Day 3 30 to 20%, 70 to 80%; Brier skill equal or better for every hazard: no refit.
+     - The engine publishes the deck's share, base and top (`cloudDeck`, `deckBaseM`, `deckTopM`) and the satellite draws the deck's part of the sheet between them (before, through the whole moist layer, ~1.4 km). Seed 2 at 5 am: deck top 433 m above the ground (median), IR 2.1 C under the ground's temperature (p10 3.3), fog image +4.5 K. Engine feed frames identical (seed 2, 6 h).
 7. **Cloud-top cooling rate:** ΔBT over 15 game-min.
 
 ### Transport

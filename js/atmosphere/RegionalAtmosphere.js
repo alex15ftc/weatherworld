@@ -77,6 +77,10 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // (midAscentKh), less where the dry lid is. High: cirrus with stronger ascent (highAscentKh)
   // and storms' anvils, carried by the 250 mb wind and thinning over anvilHours. Heating is cut by
   // heatingCloudCut of each layer's share, the night's cooling by coolingCloudCut.
+  // Night stratus: overcast once the stirred night layer reaches stratusDeckM past its LCL (a
+  // mixed layer saturated over its top ~150 m holds a continuous deck; added 2026-11-16, when no
+  // seed had stratus under open sky at dawn, as windy-night air stays nightSpreadK short at the ground).
+  stratusDeckM: 150,
   stratusSpreadK: [1.5, 0.3], cumulusShare: 0.3, cloudRh: 0.8, midAscentKh: [0.03, 0.2], highAscentKh: [0.05, 0.3], anvilHours: 3,
   // (Cuts as for a sky that share covered on average, broken cumulus letting much of the sun
   // through: 0.65/0.4/0.15 and 0.75/0.45/0.2 at first left the moist air's day-night range at 10 F.)
@@ -206,6 +210,9 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // the ground comes in the first hours after sunset, and with 4 the surface parcel's inhibition was
   // still low at 9-11 pm, when 32% of tornadoes came; 24% with 2.5.)
   nightCoolingK: 14, nightCoolingHours: 2.5, nightMoistShare: 0.85, nightWindMs: 10, nightWindFloor: 0.6,
+  // e-folding time (h, on a calm night) of the mixed layer's collapse after sunset: with it the evening dewpoint rise takes
+  // the 1-2 hours it takes in real Plains evenings.
+  duskCollapseHours: 0.75,
   nightSpreadK: [0.2, 2], nightSpreadWindMs: [3, 12],
   // By day the boundary layer is mixed, so it has one wind through its depth: the mean
   // balanced wind of the layer, less this share lost to friction at the ground. The wind at
@@ -318,7 +325,10 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // at the top by mixedTopDryingShare of the difference from the dry air above. (2026-10-26: one mixing ratio through the
   // layer gave 850 mb dewpoints of 15.3 C at 7 pm in the warm sector against 13.0 C in 412 real May Plains soundings, with
   // the surface right at 19.1 against 19.0; the mixed-layer parcel, and MLCAPE, ran moist and high.)
-  mixedTopDryingShare: 0.2,
+  // (0.2 to 0.42 on 2026-11-16: with 0.2 the warm sector's 850 mb dewpoint at 7 pm had drifted to 14.8 C against the real
+  // 13.0 and cloud bases to 1,268 m against 1,377, MLCAPE median 2,019 against 1,370; 0.35 gave 13.7 C, 0.5 12.2 C. Once the
+  // sounding carried the layer's own vapour to its top, the excess counted in full.)
+  mixedTopDryingShare: 0.42,
   midDryAllowanceGkg: 2, rh500Share: 0.55, midRh: 0.55, midRhPerGkg: 0.15, midRhRange: [0.05, 0.97], emlMidDrying: 0.3,
   emlBaseMslM: 1200, capBlendM: 200, jetNoseM: 500,
   lidMaxThetaK: 319.5,
@@ -336,6 +346,8 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   // moistLayerTopM over moistTopDays. Gulf air coming back soon after a front has scoured the
   // Gulf arrives only moistReturnShallowM deep.
   ascentCoolingPerMetre: 0.0033, moistTopDays: 2, moistReturnShallowM: 1300,
+  // Height (m above sea level) of the mid-level ascent the outer model gives: 500 mb in the standard atmosphere.
+  ascentMidLevelMslM: 5600,
   // Ground wetted by storms' rain heats the air less and gives it moisture instead, until the
   // sun has dried it (wetGroundDryingDays of sunshine): wetGroundHeatingCut of the heating goes
   // into evaporation, adding up to wetGroundMoisteningGkgH g/kg an hour at full sun.
@@ -362,7 +374,12 @@ export const REGIONAL_DEFAULTS = Object.freeze({
   stepSeconds: 1800,
   // Map edges: how far beyond the edge (cells) air entering keeps the edge's departure from the
   // outer model (see advect).
-  edgeMemoryCells: 6
+  edgeMemoryCells: 6,
+  // The ground's departure from the slope (terrainAt) at each cell (m, rows from the north; 2026-11-18): the world
+  // map's own hills and the divide (js/worldmap/engineGround.js), so the weather is made over the ground players see.
+  // Null: the slope alone. Given by AtmosphereWorld for the game map; the hills stay with the map if it moves along the
+  // geography (roaming, off by default).
+  groundReliefM: null
 });
 
 // Temperature (K) at p1 (hPa) of saturated air lifted (or lowered) from tempK at p0 along the moist
@@ -395,6 +412,8 @@ export class RegionalAtmosphere {
     // Boundary layer: heat put in since sunrise (K m), evening temperature, departure of the
     // low-level wind from balance (m/s).
     this.heat = new Float64Array(n); this.eveningTheta = new Float64Array(n); this.mixedDepth = new Float64Array(n);
+    this.nightShape = new Float64Array(n).fill(NaN);   // the share of a night's cooling let through so far (see nightDrop)
+    this.deckTop = new Float64Array(n); this.deckLcl = new Float64Array(n);   // the night stratus deck's top and base (m above the ground; see stratusDeckM)
     this.nightTheta = new Float64Array(n);   // the night's surface potential temperature, which the sun must first make up (K)
     this.ageoU = new Float64Array(n); this.ageoV = new Float64Array(n); this.noseU = new Float64Array(n); this.noseV = new Float64Array(n); this.surfaceMixingRatio = new Float64Array(n);
     // Low-level pressure (hPa) and balanced wind (m/s) owed to the temperature of the air near
@@ -431,7 +450,7 @@ export class RegionalAtmosphere {
     // Reference: the outer model's tropospheric temperature at the map centre, time-mean.
     this.referenceLayerK = model.params.f0 * model.meanThickness(centreY) / (RD * Math.log(3));
     this.world.forEachCell((cell, x, y) => {
-      cell.terrain.elevationM = this.terrainAt(x);
+      cell.terrain.elevationM = this.groundAt(x, y);
       const k = y * this.nx + x, outer = this.outerAt(x, y);
       this.theta[k] = this.airMassTheta(outer, cell.terrain.elevationM);
       this.moisture[k] = this.inflowMoisture(x, y);
@@ -744,6 +763,8 @@ export class RegionalAtmosphere {
 
   // How far east a column is across the geography (0 at its western edge, 1 at its eastern, and 1 beyond).
   eastShare(x) { const p = this.params; return clamp((x + this.geographyOffset) / ((p.geographyColumns ?? this.nx) - 1), 0, 1); }
+  // The ground at a cell (m): the slope with the map's hills on it (groundReliefM).
+  groundAt(x, y) { const relief = this.params.groundReliefM; return this.terrainAt(x) + (relief ? relief[y * this.nx + x] ?? 0 : 0); }
   terrainAt(x) { const p = this.params; return p.terrainEastM + (p.terrainWestM - p.terrainEastM) * (1 - this.eastShare(x)) ** p.terrainShape; }
   // Moves the map along the geography toward its target, at most geographyRate cells per hour.
   // The air, the storms and their cold pools stay where they are on the map; the ground under
@@ -753,7 +774,7 @@ export class RegionalAtmosphere {
     if (!gap || !(this.geographyRate > 0)) return;
     const move = Math.min(Math.abs(gap), this.geographyRate * dt / 3600);
     this.geographyOffset += Math.sign(gap) * move;
-    this.world.forEachCell((cell, x) => { cell.terrain.elevationM = this.terrainAt(x); });
+    this.world.forEachCell((cell, x, y) => { cell.terrain.elevationM = this.groundAt(x, y); });
     this.geographyVersion++;
   }
 
@@ -784,7 +805,7 @@ export class RegionalAtmosphere {
     // Continental air holds the moisture its temperature allows (continentalHumidity of
     // saturation, at most continentalMixingRatio): air from the cold north is dry because it is
     // cold, which is the dryness behind a cold front.
-    const continental = Math.min(p.continentalMixingRatio, this.continentalMoisture(outer, this.terrainAt(x)));
+    const continental = Math.min(p.continentalMixingRatio, this.continentalMoisture(outer, this.groundAt(x, y)));
     return p.dryMixingRatio + (continental - p.dryMixingRatio) * ramp(east, 0.05, 0.3) + (Math.max(continental, this.gulfAir(outer)) - continental) * gulf;
   }
 
@@ -959,7 +980,12 @@ export class RegionalAtmosphere {
         if (this.coldPool[k] < p.coldPoolLeastK) this.coldPool[k] = 0;
         const mesoLift = Math.min(p.mesoLiftMaxMs, Math.max(0, Number(cell.features?.isentropicLiftMs) || 0) + Math.max(0, Number(cell.features?.jetConvergenceLiftMs) || 0));
         this.capLift[k] = this.capLift[k] * Math.exp(-dt / (p.capLiftHours * 3600)) + (p.capLiftRatio - 1) * outer.ascentKh * dt / 3600 + p.mesoCapLiftShare * mesoLift * p.capLapseGapKPerM * dt;
-        const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre;
+        // The outer model's ascent is the mid troposphere's (about 500 mb, ascentMidLevelMslM); the vertical motion grows from
+        // nothing at the ground up to it, so the moist layer's top moves at the share of it its height above the ground gives.
+        // (2026-11-16: the full mid-level rate everywhere lifted a 700 m moist layer on 1,000 m ground to 1,200 m like a deep one
+        // on the low plains: 67-69 F dewpoints through deep afternoon mixed layers under the lid's source, MLCAPE peaks of
+        // 4,300-4,900 J/kg on the high ground once the sounding kept the mixed layer's moisture.)
+        const liftMs = outer.ascentKh / 3600 / p.ascentCoolingPerMetre * clamp((this.moistTop[k] - terrain) / Math.max(1, p.ascentMidLevelMslM - terrain), 0, 1);
         this.moistTop[k] = clamp(this.moistTop[k] + liftMs * dt + (p.moistLayerTopM - this.moistTop[k]) * clamp(dt / (p.moistTopDays * DAY), 0, 1), 600, 3500);
       }
       const leePressureHpa = this.leeHpa[k], leeU = this.leeU[k], leeV = this.leeV[k];
@@ -1043,9 +1069,23 @@ export class RegionalAtmosphere {
       // perhaps a third as much. (2026-10-19: until then every place cooled 11-21 K whatever
       // the wind, so the moist air was saturated by midnight and dry air fell into the 20s F.)
       const windShare = p.nightWindFloor + (1 - p.nightWindFloor) / (1 + (stir / p.nightWindMs) ** 2);
-      const nightDrop = p.nightCoolingK * (p.nightMoistShare + (1 - p.nightMoistShare) * dryness) * windShare * clearNight * (1 - Math.exp(-nightHours / p.nightCoolingHours));
+      // (How much of the night's cooling has been let through so far: each step's part of it by
+      // that step's cloud, so cloud coming in stops the cooling but does not undo what is done.
+      // 2026-11-16: it was all of it by the cloud of the moment, so stratus forming at 3 am warmed
+      // the ground back at once. A world that starts at night starts from the curve so far.)
+      const shape = h => 1 - Math.exp(-Math.max(0, h) / p.nightCoolingHours);
+      if (daytime) this.nightShape[k] = 0;
+      else if (Number.isNaN(this.nightShape[k])) this.nightShape[k] = shape(nightHours) * clearNight;
+      else if (dt > 0) this.nightShape[k] += (shape(nightHours) - shape(nightHours - dt / 3600)) * clearNight;
+      const nightDrop = p.nightCoolingK * (p.nightMoistShare + (1 - p.nightMoistShare) * dryness) * windShare * this.nightShape[k];
       const surfaceTheta = daytime ? this.surfaceTheta(k, airTheta, column) : Math.max(airTheta - p.nightCoolingK, this.eveningTheta[k] - nightDrop);
-      const depth = daytime ? this.mixedDepth[k] : 150;
+      // After sunset the day's mixed layer does not vanish at once: the layer the ground's air is
+      // mixed through shrinks from the evening's depth toward the night's 150 m as the air near the
+      // ground decouples, sooner on a calm night than under a stirring wind (windShare). (2026-11-16:
+      // a switch at sunset handed the ground the moist layer's undiluted vapour in one half-hour:
+      // domain-mean dewpoint +1.3 F and SBCAPE 1,891 to 2,189 J/kg at 00:30Z, where real evening
+      // dewpoint rises take 1-2 hours.)
+      const depth = daytime ? this.mixedDepth[k] : 150 + Math.max(0, this.eveningDepth[k] - 150) * Math.exp(-nightHours * windShare / p.duskCollapseHours);
       if (daytime) {
         // Over the high ground the day's deepest, hottest mixed layer is the lid's air (what is
         // left of it aloft after sunset is the elevated mixed layer): the lid takes on its
@@ -1235,6 +1275,9 @@ export class RegionalAtmosphere {
       // done to the capping layer so far (K of cooling).
       cell.features.ascentCoolingKh = outer.ascentKh; cell.features.capLiftK = this.capLift[k];
       cell.features.emlInfluence = Math.min(1, this.eml[k] / p.lidFullShare); cell.features.lidThetaK = this.lidTheta[k]; cell.features.mixedLayerDepthM = depth;
+      // The vapour at the mixed layer's top (g/kg), dried from above by mixedTopDryingShare: the sounding carries the layer's
+      // moisture up to it instead of starting the lid's dry air at a fixed pressure inside a deep afternoon layer.
+      cell.features.mixedTopMixingRatioGkg = mixingRatio - p.mixedTopDryingShare * Math.max(0, mixingRatio - p.dryMixingRatio);
       // The cap air is well mixed from its base to 700 mb, so its base is warmer than 700 mb by
       // the dry-adiabatic difference between the two pressures.
       cell.features.emlBaseExcessC = (t700 + 273.15) * ((780 / 700) ** KAPPA - 1) * 0.9;
@@ -1247,7 +1290,20 @@ export class RegionalAtmosphere {
       // from the large-scale ascent, high also from storms' anvils.
       {
         const spreadK = temperatureK - dewpointK, lclM = 125 * spreadK;
-        const stratus = ramp(spreadK, p.stratusSpreadK[0], p.stratusSpreadK[1]);
+        // Night stratus (stratusDeckM): under the night-time jet the air below its nose is stirred
+        // by the shear, all of it but the decoupled share, and so mixed to one vapour and one
+        // potential temperature; where that layer (within the moist layer) reaches up past the
+        // ground air's LCL, its top is saturated: the Gulf stratus that spreads north under the jet
+        // overnight. The deck is the night's air: its top (deckTop) and base (deckLcl, the night
+        // air's LCL) are kept from the night through the morning, when the sun first warms only a
+        // shallow layer at the ground under it. The day's mixed layer then grows into it from below:
+        // the cloud's base is the higher of the night's and, where the mixed layer has reached its
+        // own LCL, that LCL (the deck lifts and thins), and it is gone once the mixed layer has grown
+        // through its top. (2026-11-16: with the base at the ground air's LCL of the moment, every
+        // deck was gone half an hour after sunrise; real Gulf stratus often lasts until 9-11 am.)
+        if (!daytime) { this.deckTop[k] = Math.min(p.jetNoseM * (1 - decoupled), moistDepth); this.deckLcl[k] = lclM; }
+        const deckBase = daytime ? Math.max(this.deckLcl[k], Math.min(this.mixedDepth[k], lclM)) : lclM;
+        const deck = ramp(this.deckTop[k] - deckBase, 0, p.stratusDeckM), stratus = Math.max(ramp(spreadK, p.stratusSpreadK[0], p.stratusSpreadK[1]), deck);
         const cumulus = daytime ? p.cumulusShare * ramp(this.mixedDepth[k] - lclM, 0, 400) : 0;
         const t850c = cell.levels[850].temperature, d850c = cell.levels[850].dewpoint;
         const rh850 = Math.exp(17.67 * d850c / (d850c + 243.5) - 17.67 * t850c / (t850c + 243.5));
@@ -1257,6 +1313,13 @@ export class RegionalAtmosphere {
         this.cloudMid[k] = ramp(ascent, p.midAscentKh[0], p.midAscentKh[1]) * (1 - 0.5 * this.eml[k]);
         this.cloudHigh[k] = Math.max(this.anvil[k], 0.8 * ramp(ascent, p.highAscentKh[0], p.highAscentKh[1]));
         cell.features.cloudLow = this.cloudLow[k]; cell.features.cloudMid = this.cloudMid[k]; cell.features.cloudHigh = this.cloudHigh[k];
+        // (the low cloud's two kinds, for the satellite to draw apart: the sheet - stratus from the
+        // near-saturated air at the ground, stratocumulus where 850 mb is humid - and the day's
+        // cumulus; cloudLow is the larger of them)
+        cell.features.cloudStratus = Math.max(stratus, humid850); cell.features.cloudCumulus = cumulus;
+        // (and the night deck's own share, base and top, m above sea level, for the satellite to draw it
+        // where it is: a few hundred metres up, not through the whole moist layer)
+        cell.features.cloudDeck = deck; cell.features.deckBaseM = terrain + deckBase; cell.features.deckTopM = terrain + this.deckTop[k];
         cell.features.cloudTotal = 1 - (1 - this.cloudLow[k]) * (1 - this.cloudMid[k]) * (1 - this.cloudHigh[k]);
       }
       if (p.diagnostics) updateCellDiagnostics(cell);

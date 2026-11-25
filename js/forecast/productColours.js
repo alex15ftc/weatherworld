@@ -15,6 +15,8 @@ export const CHANCE_COLOURS = {
 export const WATCH_COLOURS = { tornado: '#ef4444', severe: '#3b82f6' };
 // Mesoscale discussions: about a watch, the watch's colour; otherwise grey, amber and orange as a
 // watch goes from unlikely to likely.
+// A discussion's greatest short-term potential, by hazard (as the centre draws it: red for tornadoes, orange for wind).
+export const FOCUS_COLOURS = { tornado: '#dc2626', wind: '#ea580c', hail: '#16a34a' };
 export const DISCUSSION_COLOURS = { watchTornado: '#ef4444', watchSevere: '#3b82f6', likely: '#f97316', possible: '#f59e0b', unlikely: '#94a3b8' };
 export const discussionColourKey = md => (md.watchNumber ? (md.watchType === 'tornado' ? 'watchTornado' : 'watchSevere') : md.watchPercent >= 80 ? 'likely' : md.watchPercent >= 40 ? 'possible' : 'unlikely');
 // Warnings (NWS): red for a tornado warning, yellow for a severe thunderstorm warning; magenta for
@@ -27,5 +29,9 @@ export const warningColourKey = w => (w.type === 'tornado' ? (w.emergency ? 'tor
 export const REPORT_COLOURS = { tornado: '#ef4444', hail: '#22c55e', wind: '#3b82f6' };
 export const EF_COLOURS = ['#60a5fa', '#4ade80', '#facc15', '#fb923c', '#ef4444', '#e879f9'];
 export const EFU_COLOUR = '#9ca3af';
+// The EF rating (0-5) of a wind speed in mph, -1 below EF0: the thresholds js/storms/TornadoEngine.js rates by.
+export const EF_LOWEST_MPH = [65, 86, 111, 136, 166, 200];
+export const efOfMph = mph => EF_LOWEST_MPH.findLastIndex(lowest => mph >= lowest);
+export const efColourOfMph = mph => { const ef = efOfMph(mph); return ef < 0 ? EFU_COLOUR : EF_COLOURS[ef]; };
 // The most urgent first.
 export const warningRank = w => (w.type === 'tornado' ? (w.emergency ? 6 : w.pds ? 5 : w.tags?.tornado === 'OBSERVED' ? 4 : 3) : w.tags?.damage === 'DESTRUCTIVE' ? 2 : w.tags?.damage === 'CONSIDERABLE' ? 1 : 0);

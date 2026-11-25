@@ -27,14 +27,18 @@ Bridges.BANK_EXTRA = 18 -- the bridge reaches this far past each side of the wat
 
 -- A crossing of a river, or (overpass) of a road the bridge's road passes over: riverHalf is then
 -- that road's half-width along the bridge, water its surface, clearance the headroom over it.
-export type Crossing = { x: number, z: number, ux: number, uz: number, riverHalf: number, water: number, roadHalf: number, kind: number, surface: string?, priority: number?, overpass: boolean?, clearance: number?, belowDivided: boolean? }
--- What a bridge occupies, ramps included: a centre line and a half-width.
-export type Footprint = { ax: number, az: number, bx: number, bz: number, half: number }
+export type Crossing = { x: number, z: number, ux: number, uz: number, riverHalf: number, water: number, roadHalf: number, kind: number, surface: string?, priority: number?, overpass: boolean?, clearance: number?, belowDivided: boolean?, deck: number?, chain: any?, ford: any? }
+-- What a bridge occupies, ramps included: a centre line and a half-width; the deck's height and
+-- the length of the ramp at each end (0 where the road meets the deck level).
+export type Footprint = { ax: number, az: number, bx: number, bz: number, half: number, deck: number, rampA: number, rampB: number }
 
 export type Ctx = {
 	props: Builder.Props,
 	gradeTop: (x: number, z: number) -> number,
 	ground: (x: number, z: number) -> number,
+	-- false: no ramp slabs or embankments (the road climbs to the deck on its own raised grade,
+	-- on the ground: ChunkGen's approachLift); the footprint still gives the ramps' lengths.
+	ramps: boolean?,
 }
 
 local function along(c: Crossing, s: number, side: number, y: number): Vector3
@@ -73,7 +77,8 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 		local p = along(c, f * halfSpan, 0, 0)
 		banks = math.max(banks, ctx.ground(p.X, p.Z) + 1.5)
 	end
-	local deck = math.max(gA, gB, c.water + clear, banks)
+	-- (c.deck: at least this high, to stand level with a bridge beside it)
+	local deck = math.max(gA, gB, c.water + clear, banks, c.deck or -math.huge)
 	local bed = if c.overpass then c.water - 2 else c.water - 10
 	local r = hash(math.floor(c.x), math.floor(c.z), 91)
 	local timber = c.surface == "gravel" or c.surface == "dirt"
@@ -87,7 +92,7 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 	local footprint: Footprint = {
 		ax = along(c, -halfSpan - ramp[1], 0, 0).X, az = along(c, -halfSpan - ramp[1], 0, 0).Z,
 		bx = along(c, halfSpan + ramp[2], 0, 0).X, bz = along(c, halfSpan + ramp[2], 0, 0).Z,
-		half = half + 4,
+		half = half + 4, deck = deck, rampA = ramp[1], rampB = ramp[2],
 	}
 	if dryRun then
 		return footprint
@@ -132,7 +137,7 @@ function Bridges.build(ctx: Ctx, c: Crossing, dryRun: boolean?): Footprint
 	for i, e in { { -1, gA }, { 1, gB } } do
 		local dir, grade = e[1], e[2]
 		local length = ramp[i]
-		if length > 0 then
+		if length > 0 and ctx.ramps ~= false then
 			local farXZ = along(c, dir * (halfSpan + length), 0, 0)
 			local near, far = along(c, dir * halfSpan, 0, deck), along(c, dir * (halfSpan + length), 0, ctx.gradeTop(farXZ.X, farXZ.Z))
 			-- The ramp's road: as thick as the road it meets, with the same paint.

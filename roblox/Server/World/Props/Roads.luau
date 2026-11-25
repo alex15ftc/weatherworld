@@ -21,6 +21,7 @@
 
 local Builder = require(script.Parent.Builder)
 local RoadNet = require(script.Parent.RoadNet)
+local Config = require(game:GetService("ReplicatedStorage").Shared.World.Config)
 
 local Roads = {}
 
@@ -28,7 +29,9 @@ local M = Enum.Material
 local hash = Builder.hash
 local rgb = Color3.fromRGB
 
-Roads.LIFT = 0.25 -- road top above the graded terrain
+-- (LIFT and BED answer to how the terrain is drawn, in the place's studs: design studs / the
+-- world's scale, see ChunkGen's ROAD_CUT_M.)
+Roads.LIFT = 0.25 / Config.WORLD_SCALE -- road top above the graded terrain
 -- Road strips are laid in straight pieces between breakpoints worked out once a segment (and
 -- shared by its pavement, edges and paint, so their seams line up): each piece as long as the
 -- grade stays within FIT_TOL studs of the straight line (sampled every FIT_STEP studs), from
@@ -39,8 +42,14 @@ local FIT_TOL, FIT_STEP, FIT_MAX = 0.02, 8, 128
 -- Road slabs are this thick, their tops on the grade: smooth terrain draws its surface a stud or
 -- two above the height written, so the ground is cut well below the road (see ChunkGen) and the
 -- slab's sides close the gap.
-Roads.BED = 4
-local LINE_W, LINE_T = 0.5, 0.06
+Roads.BED = 4 / Config.WORLD_SCALE
+-- (A road's surfaces are stacked RAISE apart by priority so they do not flicker, and paint is LINE_T
+-- thick: both in the place's studs, so the half-size world does not halve them into shimmer.)
+local RAISE = 0.004 / Config.WORLD_SCALE
+-- A divided road's grass median: its top this far below the road's, and its colour.
+local MEDIAN_DROP = 0.3 / Config.WORLD_SCALE
+local MEDIAN_GREEN = Color3.fromRGB(96, 122, 62)
+local LINE_W, LINE_T = 0.5, 0.06 / Config.WORLD_SCALE
 local DASH, CYCLE = 9, 36
 
 local SURFACE = {
@@ -107,7 +116,7 @@ local function linesFor(s: RoadNet.Spec): { Line }
 	elseif key == "ramp" then
 		add(-(s.lane / 2 + 0.25), YELLOW, false)
 		add(s.lane / 2 + 0.25, WHITE, false)
-	elseif key == "urban" then
+	elseif key == "collector" or key == "urban" then
 		add(-0.45, YELLOW, false)
 		add(0.45, YELLOW, false)
 		add(-s.lane, WHITE, false)
@@ -121,8 +130,22 @@ end
 type Fit = { s: { number }, h: { number } }
 
 local function fitGrade(ctx: Ctx, g: RoadNet.Segment, t0: number, t1: number): Fit
+	-- (Where the road is carried on a bridge it is not laid and the grade under the deck is the
+	-- land's or the water's: the fit holds the height the road has where it meets the deck,
+	-- the nearer end's, so the last piece before a bridge is not bent down towards the gap.)
 	local function top(t: number): number
-		return ctx.gradeTop(g.ax + g.ux * t, g.az + g.uz * t)
+		local x, z = g.ax + g.ux * t, g.az + g.uz * t
+		if ctx.bridged(x, z, g) then
+			for reach = FIT_STEP, 600, FIT_STEP do
+				for _, to in { t - reach, t + reach } do
+					local px, pz = g.ax + g.ux * to, g.az + g.uz * to
+					if not ctx.bridged(px, pz, g) then
+						return ctx.gradeTop(px, pz)
+					end
+				end
+			end
+		end
+		return ctx.gradeTop(x, z)
 	end
 	-- Fixed breakpoints: the chunk's edges (so pieces meet the next chunk's) and the crossings.
 	local fixed = { t0, t1 }
@@ -337,7 +360,7 @@ end
 local function crossingRoad(ctx: Ctx, g: RoadNet.Segment, x: number, z: number, total: boolean, pad: number): RoadNet.Segment?
 	for _, o in ctx.net.segments do
 		if o ~= g and not o.bulb then
-			local sameLine = math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1
+			local sameLine = o.chain == g.chain or (math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1)
 			if not sameLine and RoadNet.toSegment(o, x, z) < (if total then o.spec.total else o.spec.pavement) + pad then
 				return o
 			end
@@ -359,7 +382,8 @@ local function edgeTaken(near: { RoadNet.Segment }, g: RoadNet.Segment, x: numbe
 					return true
 				end
 			else
-				local sameLine = math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1
+				-- (the same road: another piece of its chain, or one carrying on along its line)
+				local sameLine = o.chain == g.chain or (math.abs(o.ux * g.ux + o.uz * g.uz) > 0.995 and math.abs((o.ax - g.ax) * -g.uz + (o.az - g.az) * g.ux) < 1)
 				if not sameLine then
 					local along = (x - o.ax) * o.ux + (z - o.az) * o.uz
 					local across = math.abs((x - o.ax) * -o.uz + (z - o.az) * o.ux)
@@ -391,14 +415,19 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 	end
 	local s = g.spec
 	local surface = SURFACE[s.surface]
-	local raise = 0.004 * s.priority
+	local raise = RAISE * s.priority
 	local fit = fitGrade(ctx, g, t0, t1)
 	-- Not over bridges, and not where a higher road runs along the same line (map roads often
 	-- share a corridor for a stretch).
 	local function shadowed(x: number, z: number): boolean
 		for _, o in ctx.net.segments do
 			if o ~= g and o.spec.priority > s.priority and math.abs(o.ux * g.ux + o.uz * g.uz) > 0.9 and RoadNet.toSegment(o, x, z) < o.spec.pavement then
-				return true
+				-- (beside the higher road, not past its end: where a road ends and a lesser one
+				-- carries on along its line, the lesser one is laid from the very end)
+				local along = (x - o.ax) * o.ux + (z - o.az) * o.uz
+				if along >= 0 and along <= o.length then
+					return true
+				end
 			end
 		end
 		return false
@@ -408,8 +437,23 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 		if ctx.bridged(x, z, g) or shadowed(x, z) then
 			return false
 		end
-		local other = crossingRoad(ctx, g, x, z, false, -2.5)
-		return not (other and other.spec.priority > s.priority)
+		-- Where it meets a higher road its surface runs on under that road until its whole
+		-- width is inside the higher road's (at a slant its square end would leave a wedge
+		-- of bare ground beside the higher road otherwise), or to that road's middle.
+		for _, o in ctx.net.segments do
+			if o ~= g and not o.bulb and o.chain ~= g.chain and o.spec.priority > s.priority then
+				local cos = math.abs(o.ux * g.ux + o.uz * g.uz)
+				local sin = math.sqrt(math.max(0, 1 - cos * cos))
+				local inside = 2.5 + (if sin > 0.15 then s.pavement * cos / sin else 0)
+				-- (under the higher road itself, not in the round of its end: a road that
+				-- carries on from where a higher one ends starts at that end)
+				local along = (x - o.ax) * o.ux + (z - o.az) * o.uz
+				if along >= 0 and along <= o.length and RoadNet.toSegment(o, x, z) < o.spec.pavement - math.min(inside, o.spec.pavement - 1) then
+					return false
+				end
+			end
+		end
+		return true
 	end)
 	for _, run in open do
 		local a0, a1 = run[1], run[2]
@@ -417,6 +461,28 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 			local width = s.pavement - s.median
 			for _, side in { -1, 1 } do
 				strip(ctx, g, fit, a0, a1, side * (s.median + width / 2), width, Roads.BED, raise, surface.colour, surface.material, nil, 0.4)
+			end
+			-- The median between the carriageways is a part too, as thick as the road and just
+			-- below its top: grass, and the road's own surface where another road meets or
+			-- crosses this one on the ground, so that road runs on across the middle. (Left to
+			-- the terrain, the median was a pit the width of a voxel with the road bed's depth,
+			-- along the whole road and across every road that joins it.)
+			local function crossed(x: number, z: number): boolean
+				for _, o in ctx.net.segments do
+					if o.chain ~= g.chain and not o.bulb and math.abs(o.ux * g.ux + o.uz * g.uz) < 0.9
+						and RoadNet.toSegment(o, x, z) < o.spec.pavement + 2 and not ctx.bridged(x, z, o) then
+						return true
+					end
+				end
+				return false
+			end
+			for _, paved in runs(g, a0, a1, 2, crossed) do
+				strip(ctx, g, fit, paved[1], paved[2], 0, 2 * s.median, Roads.BED, raise - 0.5 * RAISE, surface.colour, surface.material, nil, 0.4)
+			end
+			for _, green in runs(g, a0, a1, 2, function(x: number, z: number): boolean
+				return not crossed(x, z)
+			end) do
+				strip(ctx, g, fit, green[1], green[2], 0, 2 * s.median, Roads.BED, raise - MEDIAN_DROP, MEDIAN_GREEN, M.Grass, nil, 0.4)
 			end
 		else
 			strip(ctx, g, fit, a0, a1, 0, 2 * s.pavement, Roads.BED, raise, surface.colour, surface.material, nil, 0.4)
@@ -488,13 +554,13 @@ local function layRoad(ctx: Ctx, g: RoadNet.Segment)
 				if a >= t0 and a < t1 then
 					local mid = (a + b) / 2
 					if free(g.ax + g.ux * mid, g.az + g.uz * mid) then
-						strip(ctx, g, fit, a, math.min(b, g.length), line.offset, LINE_W, LINE_T, raise + LINE_T - 0.01, line.colour, M.SmoothPlastic, false)
+						strip(ctx, g, fit, a, math.min(b, g.length), line.offset, LINE_W, LINE_T, raise + LINE_T - 2.5 * RAISE, line.colour, M.SmoothPlastic, false)
 					end
 				end
 			end
 		else
 			for _, run in clearRuns do
-				strip(ctx, g, fit, run[1], run[2], line.offset, LINE_W, LINE_T, raise + LINE_T - 0.01, line.colour, M.SmoothPlastic, false)
+				strip(ctx, g, fit, run[1], run[2], line.offset, LINE_W, LINE_T, raise + LINE_T - 2.5 * RAISE, line.colour, M.SmoothPlastic, false)
 			end
 		end
 	end
@@ -507,7 +573,7 @@ local function stopArm(ctx: Ctx, x: number, z: number, top: number, dx: number, 
 	local lanes = s.lane * s.lanesEach
 	if s.surface == "asphalt" then
 		local bx, bz = x + dx * (cross + 5) + rx * lanes / 2, z + dz * (cross + 5) + rz * lanes / 2
-		local by = ctx.gradeTop(bx - rx * lanes / 2, bz - rz * lanes / 2) + 0.004 * s.priority + LINE_T
+		local by = ctx.gradeTop(bx - rx * lanes / 2, bz - rz * lanes / 2) + RAISE * s.priority + LINE_T
 		Builder.block(ctx.props, CFrame.lookAt(Vector3.new(bx, by, bz), Vector3.new(bx + dx, by, bz + dz)), lanes, LINE_T, 1.5, WHITE, M.SmoothPlastic, false)
 	end
 	local px, pz = x + dx * (crossTotal + 6) + rx * (s.total + 3), z + dz * (crossTotal + 6) + rz * (s.total + 3)
@@ -523,7 +589,7 @@ local function signalArm(ctx: Ctx, x: number, z: number, dx: number, dz: number,
 	local props = ctx.props
 	local rx, rz = dz, -dx -- right of traffic heading (-dx, -dz)
 	local lanes = s.lane * s.lanesEach
-	local paint = 0.004 * s.priority + LINE_T
+	local paint = RAISE * s.priority + LINE_T
 	for _, d in { cross + 2, cross + 10 } do
 		local cx, cz = x + dx * d, z + dz * d
 		local y = ctx.gradeTop(cx, cz) + paint
@@ -540,7 +606,8 @@ end
 
 -- Crossings of grid roads (section lines and town streets): an intersection patch where equal
 -- roads cross; stop signs and stop bars, or signals and crosswalks.
-type Arm = { g: RoadNet.Segment, dx: number, dz: number }
+-- (control: the graph's control at the node, 0 none, 1 stop signs, 2 signals)
+type Arm = { g: RoadNet.Segment, dx: number, dz: number, control: number }
 
 local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 	local props = ctx.props
@@ -566,7 +633,7 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 	end
 	-- Patch over the crossing, a hair above both roads.
 	local surface = SURFACE[best.surface]
-	Builder.block(props, CFrame.new(x, top + 0.004 * best.priority + 0.006 - Roads.BED / 2, z), 2 * widest.x, Roads.BED, 2 * widest.z, surface.colour, surface.material)
+	Builder.block(props, CFrame.new(x, top + RAISE * best.priority + 1.5 * RAISE - Roads.BED / 2, z), 2 * widest.x, Roads.BED, 2 * widest.z, surface.colour, surface.material)
 
 	local town = best.town or ctx.coverKey(x, z) == "urban" or ctx.coverKey(x, z) == "suburban"
 	local function crossHalf(arm: Arm, total: boolean): number
@@ -578,19 +645,15 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 		end
 		return h
 	end
-	-- Two arterials, an arterial and a street in town, or any downtown corner: signals.
-	local signals = false
-	if town then
-		local arterials, streets = 0, 0
-		for _, arm in arms do
-			if arm.g.spec.key == "arterial" or arm.g.spec.key == "highway" then
-				arterials += 1
-			elseif arm.g.spec.key == "urban" then
-				streets += 1
-			end
-		end
-		signals = arterials >= 3 or (arterials >= 2 and streets >= 1) or (ctx.downtown(x, z) and (arterials + streets) >= 3)
+	-- The node's control as the map's road graph has it (streets.js): signals where arterials and
+	-- collectors cross in town and where a highway meets a road; stop signs on the lesser
+	-- approaches elsewhere on paved roads; none where only gravel and dirt roads meet. A downtown
+	-- corner with signs gets signals.
+	local control = 0
+	for _, arm in arms do
+		control = math.max(control, arm.control)
 	end
+	local signals = control == 2 or (control == 1 and town and ctx.downtown(x, z) and #arms >= 3)
 	for _, arm in arms do
 		local s = arm.g.spec
 		local hx, hz = -arm.dx, -arm.dz -- heading of traffic arriving along this arm
@@ -604,7 +667,7 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 			-- Stop the lesser road; equal paved roads stop the north-south arms; equal gravel and
 			-- dirt roads cross uncontrolled.
 			local stop = s.priority < best.priority or (s.priority == best.priority and s.surface == "asphalt" and arm.dx == 0)
-			if stop then
+			if stop and control > 0 then
 				stopArm(ctx, x, z, top, arm.dx, arm.dz, s, cross, crossTotal)
 			end
 		end
@@ -621,7 +684,7 @@ local function controlNode(ctx: Ctx, x: number, z: number, arms: { Arm })
 				local z0, z1 = a.pavement + CURB, a.total
 				local cx, cz = x + ax.dx * (x0 + x1) / 2, z + az.dz * (z0 + z1) / 2
 				if ctx.inside(cx, cz) then
-					local y = ctx.gradeTop(cx, cz) + 0.004 * math.max(a.priority, b.priority) + CURB_RISE
+					local y = ctx.gradeTop(cx, cz) + RAISE * math.max(a.priority, b.priority) + CURB_RISE
 					Builder.block(props, CFrame.new(cx, y - (Roads.BED + CURB_RISE) / 2, cz), x1 - x0, Roads.BED + CURB_RISE, z1 - z0, CONCRETE, M.Concrete)
 				end
 			end
@@ -638,7 +701,7 @@ local function layBulb(ctx: Ctx, b: RoadNet.Segment)
 	end
 	local s = b.spec
 	local props = ctx.props
-	local raise = 0.004 * s.priority
+	local raise = RAISE * s.priority
 	local top = ctx.gradeTop(x, z) + raise
 	local surface = SURFACE[s.surface]
 	Builder.add(props, "Cylinder", CFrame.new(x, top - Roads.BED / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * s.pavement, 2 * s.pavement), surface.colour, surface.material)
@@ -691,7 +754,7 @@ local function taper(ctx: Ctx, wide: RoadNet.Segment, x: number, z: number, ux: 
 		return
 	end
 	local surface = SURFACE[s.surface]
-	local top = ctx.gradeTop(mx, mz) + 0.004 * s.priority - 0.003
+	local top = ctx.gradeTop(mx, mz) + RAISE * s.priority - 0.75 * RAISE
 	local u = Vector3.new(ux, 0, uz)
 	for _, side in { -1, 1 } do
 		local r = Vector3.new(-uz, 0, ux) * side
@@ -739,20 +802,35 @@ function Roads.build(ctx: Ctx)
 		end
 	end
 
-	-- Bends in the map's roads: a disc of road surface at each joint of their segments fills the
-	-- wedge left between two straight pieces meeting at an angle.
-	local joints = {}
+	-- Bends in the roads off the grid's lines: where two pieces of one road meet at an angle, a
+	-- disc of road surface at the joint fills the wedge left between them. A divided road gets a
+	-- disc on each carriageway (at the middle of each, along the bend's bisector), so its median
+	-- stays grass; where the road only carries straight on, nothing is needed.
+	local joints: { [string]: { g: RoadNet.Segment, ux: number, uz: number } } = {}
 	for _, g in net.segments do
-		if g.main or g.mapLocal then
+		if (g.main or g.mapLocal) and not g.bulb then
 			local s = g.spec
-			for _, e in { { g.ax, g.az }, { g.bx, g.bz } } do
-				local x, z = e[1], e[2]
-				local key = `{math.round(x * 10)},{math.round(z * 10)}`
-				if ctx.inside(x, z) and not joints[key] and not ctx.bridged(x, z, g) then
-					joints[key] = true
-					local top = ctx.gradeTop(x, z) + 0.004 * s.priority - 0.003
+			for _, e in { { g.ax, g.az, g.ux, g.uz }, { g.bx, g.bz, -g.ux, -g.uz } } do
+				local x, z, ux, uz = e[1], e[2], e[3], e[4]
+				local key = `{s.key},{math.round(x * 10)},{math.round(z * 10)}`
+				local first = joints[key]
+				if not first then
+					joints[key] = { g = g, ux = ux, uz = uz }
+				elseif first.g ~= g and math.abs(first.ux * uz - first.uz * ux) > 0.02 and ctx.inside(x, z) and not ctx.bridged(x, z, g) then
+					local top = ctx.gradeTop(x, z) + RAISE * s.priority - 0.75 * RAISE
 					local surface = SURFACE[s.surface]
-					Builder.add(props, "Cylinder", CFrame.new(x, top - Roads.BED / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * s.pavement, 2 * s.pavement), surface.colour, surface.material)
+					if s.median > 0 then
+						-- Across the road at the joint: the bisector of the two pieces' normals.
+						local nx, nz = -(uz - first.uz), ux - first.ux
+						local l = math.sqrt(nx * nx + nz * nz)
+						local centre, half = (s.median + s.pavement) / 2, (s.pavement - s.median) / 2
+						for _, side in { -1, 1 } do
+							local cx, cz = x + nx / l * centre * side, z + nz / l * centre * side
+							Builder.add(props, "Cylinder", CFrame.new(cx, top - Roads.BED / 2, cz) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * half, 2 * half), surface.colour, surface.material)
+						end
+					else
+						Builder.add(props, "Cylinder", CFrame.new(x, top - Roads.BED / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * s.pavement, 2 * s.pavement), surface.colour, surface.material)
+					end
 				end
 			end
 		end
@@ -775,10 +853,10 @@ function Roads.build(ctx: Ctx)
 	end
 	for _, g in net.segments do
 		if g.axis then
-			for _, e in { { g.ax, g.az, g.ux, g.uz }, { g.bx, g.bz, -g.ux, -g.uz } } do
+			for _, e in { { g.ax, g.az, g.ux, g.uz, g.controlA }, { g.bx, g.bz, -g.ux, -g.uz, g.controlB } } do
 				local n = node(e[1], e[2])
 				if n then
-					table.insert(n.arms, { g = g, dx = e[3], dz = e[4] })
+					table.insert(n.arms, { g = g, dx = e[3], dz = e[4], control = e[5] })
 				end
 			end
 		end
@@ -816,7 +894,7 @@ function Roads.build(ctx: Ctx)
 							local sinT = math.abs(den)
 							if h.main then
 								-- Two highways of equal standing: a disc of surface over the crossing.
-								local top = ctx.gradeTop(x, z) + 0.004 * math.max(m.spec.priority, h.spec.priority) + 0.004
+								local top = ctx.gradeTop(x, z) + RAISE * math.max(m.spec.priority, h.spec.priority) + RAISE
 								local r = math.max(m.spec.pavement, h.spec.pavement) / sinT
 								Builder.add(props, "Cylinder", CFrame.new(x, top - Roads.BED / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Vector3.new(Roads.BED, 2 * r, 2 * r), SURFACE.asphalt.colour, SURFACE.asphalt.material)
 							end

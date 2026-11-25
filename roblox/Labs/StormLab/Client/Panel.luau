@@ -329,9 +329,10 @@ function Panel.new(ctx: any): any
 		end
 		if tt then
 			tornadoText.Text = string.format(
-				"<b>%s</b> %s · age %d:%02d\nvc %.0f m/s · core radius %.0f m · swirl %.2f\npeak 10 m wind %.0f m/s (%.0f mph) → <b>EF%d</b> (peak EF%d)\nmoving %.0f m/s · cloud base %.0f m (core air %.0f m) · funnel at ground %s\ndebris lofted %.2f to %.0f m · path %.1f km\norganised %.2f · decay %.2f · lean %.0f m",
+				"<b>%s</b> %s · age %d:%02d\nvc %.0f m/s · core radius %.0f m · swirl %.2f\npeak 10 m wind %.0f m/s (%.0f mph) → <b>%s</b> (peak %s)\nmoving %.0f m/s · cloud base %.0f m (core air %.0f m) · funnel at ground %s\ndebris lofted %.2f to %.0f m · path %.1f km\norganised %.2f · decay %.2f · lean %.0f m",
 				tt.id, tt.stage, math.floor(tt.age / 60), math.floor(tt.age % 60), tt.vc, tt.rc, tt.swirl, tt.peakWind or 0, (tt.peakWind or 0) * 2.237,
-				math.max(0, tt.ef or -1), math.max(0, tt.peakEf or -1), math.sqrt(tt.ut ^ 2 + tt.vt ^ 2), tt.cloudBase, tt.coreZb or tt.cloudBase * (1 - 0.7 * math.clamp(tt.coreWet or 0, 0, 1)),
+				-- (below EF0's 29 m/s it is no tornado yet: no rating, not EF0)
+				if (tt.ef or -1) >= 0 then `EF{tt.ef}` else "below EF0", if (tt.peakEf or -1) >= 0 then `EF{tt.peakEf}` else "below EF0", math.sqrt(tt.ut ^ 2 + tt.vt ^ 2), tt.cloudBase, tt.coreZb or tt.cloudBase * (1 - 0.7 * math.clamp(tt.coreWet or 0, 0, 1)),
 				if (tt.funnelGround or 0) > 0.5 then string.format("%.0f m", tt.funnelGround) else "no (dust whirl)", tt.debrisLoft or 0, tt.debrisTop or 0, (tt.pathLength or 0) / 1000,
 				tt.O or 0, tt.decay or 0, math.sqrt((tt.topX or 0) ^ 2 + (tt.topY or 0) ^ 2))
 				.. "\n" .. tostring(ctx.root:GetAttribute("TornadoRain") or "")

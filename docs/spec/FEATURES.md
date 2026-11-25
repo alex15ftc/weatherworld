@@ -56,13 +56,28 @@ Every feature, guarantee, and experience bar from ideation, one row each. This f
                      this.
 -->
 
-## [AREA] - [Area name]
+## MODE - Game modes
 
-[One sentence: what this area is for.]
+How players choose what kind of game they play: the shared sandbox and the modes beside it.
 
 | ID | Item | Kind | Scope | MVP form | Spec | State |
 |----|------|------|-------|----------|------|-------|
-| [AREA-01] | [One line in the owner's words] | [capability] | | | | |
+| MODE-01 | The current shared world is the sandbox mode | capability | | | | |
+| MODE-02 | Other modes parked for later (challenges, weekly High Risk Day, historic days, forecast desk, damage survey, sandbox roles and calendar) | capability | | | | |
+| MODE-03 | Modes other than the sandbox play busy days that are real engine runs, never painted storms | guarantee | | | | |
+
+## CAMP - Campaign
+
+A chaser's campaign, chapter by chapter, with the tutorial inside it.
+
+| ID | Item | Kind | Scope | MVP form | Spec | State |
+|----|------|------|-------|----------|------|-------|
+| CAMP-01 | A campaign with the tutorial mixed in | capability | | | | |
+| CAMP-02 | Difficulty from easy to hardcore; easier levels give more products | capability | | | | |
+| CAMP-03 | Each chapter is one day that teaches one skill: briefing, target, chase, debrief | capability | | | | |
+| CAMP-04 | The first act is the tutorial; experienced players can skip it | experience bar | | | | |
+| CAMP-05 | Difficulty sets the products shown and how forgiving the game is | capability | | | | |
+| CAMP-06 | Medals and career rewards unlock vehicles and instruments | capability | | | | |
 
 ## Scoping Notes
 

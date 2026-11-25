@@ -34,7 +34,8 @@ async function worker(seed) {
   const { worldCategoryFromHazard, PROBABILITY_LEVELS } = await import('../js/forecast/worldRiskCategories.js');
   // Each tornado (storm and cycle): its look at its peak wind and its rating (EF from the rated wind).
   const looks = new Map();
-  const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : 0);
+  // (-1 below EF0: no tornado, left out of the counts; until 2026-11-18 one counted as an EF0.)
+  const efOf = mph => (mph >= 201 ? 5 : mph >= 166 ? 4 : mph >= 136 ? 3 : mph >= 111 ? 2 : mph >= 86 ? 1 : mph >= 65 ? 0 : -1);
   const pairs = settings.map(a => { const [k, v] = a.split('='); return [k, Number(v)]; });
   const steer = Object.fromEntries(pairs.filter(([k]) => k.startsWith('steer.')).map(([k, v]) => [k.slice(6), v]));
   const regional = Object.fromEntries(pairs.filter(([k]) => !k.startsWith('qg.') && !k.startsWith('steer.'))), outer = Object.fromEntries(pairs.filter(([k]) => k.startsWith('qg.')).map(([k, v]) => [k.slice(3), v]));
@@ -72,9 +73,9 @@ async function worker(seed) {
         if (s.tornado?.onGround) {
           const key = `${s.id}#${s.tornado.cycleCount}`, wind = s.tornado.windSpeedMph ?? 0;
           let look = looks.get(key);
-          if (!look) { look = { startHourUtc: world.stormEngine.validHourUtc ?? world.validHourUtc, peak: -1, ef: 0 }; looks.set(key, look); record.tornadoKeys.push(key); }
+          if (!look) { look = { startHourUtc: world.stormEngine.validHourUtc ?? world.validHourUtc, peak: -1, ef: -1 }; looks.set(key, look); record.tornadoKeys.push(key); }
           look.ef = Math.max(look.ef, efOf(s.tornado.ratedWindMph ?? s.tornado.peakWindSpeedMph ?? wind));
-          look.windEf = Math.max(look.windEf ?? 0, efOf(s.tornado.peakWindSpeedMph ?? wind)); look.km = Math.max(look.km ?? 0, s.tornado.pathLengthKm ?? 0); look.min = Math.max(look.min ?? 0, s.tornado.groundTimeMinutes ?? 0);
+          look.windEf = Math.max(look.windEf ?? -1, efOf(s.tornado.peakWindSpeedMph ?? wind)); look.km = Math.max(look.km ?? 0, s.tornado.pathLengthKm ?? 0); look.min = Math.max(look.min ?? 0, s.tornado.groundTimeMinutes ?? 0);
           if (wind > look.peak) { const t = tornadoAppearance(s, buildStormAppearance(s)); if (t) { look.peak = wind; look.shape = t.shape; look.multi = t.vortices > 1; look.wrapped = (t.rainWrap ?? 0) >= 0.55; } }
         }
         if ((halfHour || step % 6 === 5) && (s.intensity ?? 0) >= 0.22) record.speeds.push(Math.hypot(s.velocityKph?.east ?? 0, s.velocityKph?.north ?? 0) * 0.621371);
@@ -90,12 +91,12 @@ async function worker(seed) {
     const truth = aggregateTruth(frames, initiations, world.width, world.height, RISK_RADIUS_MILES / world.cellSizeMiles, world.cellSizeMiles);
     const order = truth.risk.map(r => ORDER.indexOf(r)), share = level => order.filter(o => o >= ORDER.indexOf(level)).length / n, any = field => truth[`${field}Exact`].some(Boolean);
     daily.push({
-      seed, day: day + 1, support: plan?.support ?? null, wanted: plan?.wanted ?? null, slideMs: plan?.slideMs ?? null, storms: seen.size, peak: record.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore,
+      seed, day: day + 1, support: plan?.support ?? null, wanted: plan?.wanted ?? null, slideMs: plan?.slideMs ?? null, storms: seen.size, peak: record.peak, tornadoes: world.stormEngine.totalTornadoes - tornadoesBefore - record.tornadoKeys.filter(k => looks.get(k).ef < 0).length,
       hailStorms: record.hailStorms.size, windStorms: record.windStorms.size, maxHail: record.maxHail, maxGust: record.maxGust, maxWindEf: record.maxWindEf,
       severe: any('hail') || any('wind') || any('tornado'), tornado: any('tornado'), sigTornado: any('tornadoSig'), sigHail: any('hailSig'), sigWind: any('windSig'),
       category: ORDER[Math.max(...order)], worldCategory: ORDER[Math.max(...truth.worldRisk.map(r => ORDER.indexOf(r)))], worldSlightArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('SLGT')).length / n, worldEnhancedArea: truth.worldRisk.filter(r => ORDER.indexOf(r) >= ORDER.indexOf('ENH')).length / n, slightArea: share('SLGT'), enhancedArea: share('ENH'), cape: record.cape, shear: record.shear, wind500: record.wind500,
       supercell: record.supercell, groundSupercell: record.groundSupercell, supercells: record.supercellIds?.size ?? 0, groundSupercells: [...(record.groundSupercellIds ?? [])], afternoonSupercell: record.afternoonSupercell, supercellBands: [...(record.supercellBands ?? [])],
-      tornadoList: record.tornadoKeys.map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.startHourUtc, ef: l.ef, windEf: l.windEf ?? l.ef, km: Math.round(l.km ?? 0), minutes: Math.round(l.min ?? 0), shape: l.shape ?? 'unseen', multi: Boolean(l.multi), wrapped: Boolean(l.wrapped) }; }),
+      tornadoList: record.tornadoKeys.filter(k => looks.get(k).ef >= 0).map(k => { const l = looks.get(k); return { storm: k.slice(0, k.indexOf('#')), start: l.startHourUtc, ef: l.ef, windEf: l.windEf ?? l.ef, km: Math.round(l.km ?? 0), minutes: Math.round(l.min ?? 0), shape: l.shape ?? 'unseen', multi: Boolean(l.multi), wrapped: Boolean(l.wrapped) }; }),
       // What drives the day's category: the category each hazard alone reaches somewhere, and the
       // highest intensity group each verified with.
       // For each hazard and contour level, the highest intensity group inside it (-1: not reached), so other tables can be judged offline.

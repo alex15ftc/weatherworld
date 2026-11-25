@@ -3,7 +3,15 @@
 The weather engine (`server/index.js`) runs on Railway for the game. One instance serves every Roblox server.
 
 - Project `weatherworld`, service `engine`, environment `production` (workspace "alex15ftc's Projects").
-- URL: https://weatherworld.up.railway.app (set as `Config.WEATHER_FEED_URL` in
+- The same project also runs service `weatherworldbot`, the Discord bot (code in
+  `../DiscordBots/weatherworldbot`, outside this repo). It posts each new Day 1-3 outlook to the High Risk
+  server's `#📋outlooks` channel from the public `/api/outlook/index` and `/api/outlook/dayN.svg`
+  (`server/OutlookPublic.js`), linking to the public pages `/outlook/day1` .. `day3` (`outlook.html`), and
+  posts each new watch, mesoscale discussion and warning to `#⚠️watches`, `#📝discussions` and `#🚨warnings` from
+  `/api/products/feed`, `/api/watch/N.svg`, `/api/md/N.svg` and `/api/warnings.svg?keys=` (`server/ProductArchive.js`),
+  linking watches and discussions to `/watch/N` and `/md/N` (`product.html`), and reads `/api/health`,
+  `/api/live/storms` and `/api/map/counties`. Keep those routes when changing the server.
+- URL: https://highrisk.up.railway.app (set as `Config.WEATHER_FEED_URL` in
   `roblox/Shared/World/Config.luau`; a Workspace `WeatherFeedUrl` attribute still overrides it).
 - Build: `Dockerfile` (node:22-slim, no npm packages; builds world map seed 1 into the image).
   `.railwayignore` / `.dockerignore` keep the upload under 1 MB.
@@ -13,7 +21,9 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
   `railway config plan` and `railway config apply` (see Windows note below). Needs the `railway` dev package
   (`npm install`).
 - Volume `engine-volume` at `/data`: world state (`/data/atmosphere-state.bin`, saved every sim hour),
-  spin-up cache, storm models, day reviews (newest 14 days); the engine writes about 17 MB (Railway shows
+  spin-up cache, storm models, day reviews (newest 14 days), the issued outlooks (`/data/outlooks.bin`), the mesoscale
+  runtime (`/data/mesoscale.bin`), the watch/discussion archive (`/data/products.bin`) the day summaries (`/data/days.bin`: the recent days' outlooks and the days an admin saved) and the day replays (`/data/replays/`: one file a world day, 15 to 22 MB with the tornado radar, kept 16 world days, about 350 MB in all), each put back after a
+  restart in the same world, so the pages keep the last issue and the numbers carry on; the engine writes about 18 MB (Railway shows
   ~0.8 GB used, the disk's own overhead).
 - The world carries on through restarts and deploys, engine changes included (`WEATHER_KEEP_WORLD=on`): a
   copy of the saved world is first stepped half an hour under the new code, and if that throws or gives
@@ -27,26 +37,40 @@ The weather engine (`server/index.js`) runs on Railway for the game. One instanc
 | Variable | Value |
 |---|---|
 | `WEATHER_GAME_KEY` | key for `/api/game/v1/*` (header `x-api-key`); Roblox secret `weather_feed_key` |
-| `WEATHER_ADMIN_KEY` | key for `/api/authority/*` (header `x-admin-key`): reset, advance, seek, clock |
+| `WEATHER_ADMIN_KEY` | the admin key (header `x-admin-key`): needed for every `/api/authority/*` write (new world, +30 min / +1 day, seek, pause clock; the mesoanalysis page's World card has an Admin sign-in) and for the admin role on `/chasers` (names, servers). Unset, only this machine is admin |
 | `WEATHER_KEEP_WORLD` | `on`: carry the world over engine-code changes |
+| `WEATHER_CLOCK_LOCK` | (unset: on) the world's clock follows real UTC, 8 world days a real day, so products name days "11/11/26 Day 3" (`js/forecast/calendar.js`); after a restart the world races to catch up (under a world day); `off`: the free-running clock |
 | `WEATHER_STATE_PATH`, `WEATHER_SPINUP_CACHE`, `WEATHER_DAY_REVIEW_DIR` | under `/data` |
+| `WEATHER_WIDE_REFRESH_DAYS` | unset (0.25). How soon the wide window's air (the large-scale pages' severe-weather charts around the map, `js/world/WideRegion.js`) is drawn to entering-air values; display only |
+| `WEATHER_LONG_RANGE` | unset (on). `off` stops the 7-day long range runs (one at each 06Z, a few minutes on a forecast thread, about 45 MB each; only the newest kept since 2026-11-17, a new run replacing it as it starts) |
+| `WEATHER_REPLAY_RADAR` | unset (on). `off` leaves the whole-map radar (composite reflectivity every 10 minutes, ~2-5 MB a day) out of the day replays |
+| `WEATHER_TORNADO_RADAR` | unset (on). `off` leaves the tornado radar out of the day replays; it is scanned as low-priority work on the radar threads |
 | `WEATHER_RADAR_WORKERS`, `WEATHER_FORECAST_WORKERS`, `WEATHER_STORM_WORKERS` | 2 each (the container sees the host's CPU count, which would start up to 8 threads per pool) |
+| `WEATHER_FORECAST_WARM` | `0` (since 2026-11-17; code default 5): forecast threads are let go 30 s after their run instead of kept warm 9 minutes, so idle threads do not hold memory between the hourly runs |
 
 Read the keys with `railway variables --kv`. They are never kept in the repo.
 
 ## Commands (from the repo root, project already linked)
 - Deploy the working copy: `railway up --ci --service engine` (in Git Bash set `MSYS_NO_PATHCONV=1`,
-  or `/data/...` values get rewritten into Windows paths)
+  or `/data/...` values get rewritten into Windows paths). The link is kept for the repo root's path, so
+  run from a worktree (or any subfolder) it still uploads the root checkout, uncommitted edits and all.
+  To deploy a clean worktree of a commit, name it and the project: `railway up "$(pwd -W)" --path-as-root --ci
+  -p 627a129a-c6c3-4142-a0d3-078b5970e86e -e production -s engine` from inside it. (A worktree outside the repo
+  folder has no link, and without `-p` the CLI makes a new project named after the folder and deploys there:
+  2026-11-22, `deploy-c144463`.) After a deploy, check a changed file's hash against the commit
+  (`curl -s .../<file> | md5sum`): the engine serves the repo's files.
 - Logs: `railway logs --deployment` (plain `railway logs` streams and never returns)
 - Restart: `railway restart --yes`
 - Service settings (Windows): the `railway` command is an npm wrapper and the IaC version check cannot
   launch it, so run the real binary from PowerShell:
   `$exe="$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"; $env:_=$exe; & $exe config plan`
-- Check: `curl https://weatherworld.up.railway.app/api/health`
+- Check: `curl https://highrisk.up.railway.app/api/health`
+- Memory (Railway bills it): `curl -s .../api/performance | jq .memory`: the main thread's heap and buffers, each
+  radar and forecast thread's heap, each storm worker process, and the container's own count (`server/memoryStats.js`).
 
 ## Roblox side
 - Game settings > Security: Allow HTTP Requests on.
 - Creator Dashboard > the experience > Secrets: add `weather_feed_key` = the `WEATHER_GAME_KEY` value, domain
-  `weatherworld.up.railway.app`. For Studio, add the same secret under Game Settings > Security
+  `highrisk.up.railway.app`. For Studio, add the same secret under Game Settings > Security
   (local secrets).
 

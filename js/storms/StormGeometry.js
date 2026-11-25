@@ -29,6 +29,10 @@ import { stormFallout } from './StormFallout.js';
 import { spinBudget, SPIN } from './SpinBudget.js';
 import { coldPoolDepthM } from './ColdPool.js';
 
+// The wall cloud's radius (km): the low-level mesocyclone under the updraught, wider as its rotation (free of the storm's
+// own outflow, 0-1.2) grows. A tornado's path is bounded by it (TornadoEngine PATH_WIDTH).
+export const wallCloudRadiusKm = lowFree => 1 + 3 * clamp(Number(lowFree) || 0, 0, 1.2);
+
 const KPH_PER_KT = 1.852;
 const GEOMETRY = {
   fallHours: 0.3,                  // time the rain takes to fall, which sets how far downwind it lands
@@ -146,7 +150,7 @@ export function buildStormGeometry(storm, environment = storm.environment ?? {})
     // At the mesocyclone, the origin: on the updraught's rear (upshear) edge, where the inflow meets
     // the wrapping rear-flank outflow. A tornado forms here (TornadoEngine), and the radar's hook
     // and couplet curl round it.
-    wallCloud: { ...place(0, 0), strength: wallStrength, radiusKm: 1 + 3 * lowFree, loweringM: wallLoweringM(storm, environment, Number(environment.lcl) || 1200, wallStrength, updraughtMs), rotation: low },
+    wallCloud: { ...place(0, 0), strength: wallStrength, radiusKm: wallCloudRadiusKm(lowFree), loweringM: wallLoweringM(storm, environment, Number(environment.lcl) || 1200, wallStrength, updraughtMs), rotation: low },
     rain: { ...place(rainCentre.east, rainCentre.north), alongKm: 8 + 26 * rain + 10 * linear, acrossKm: 6 + 16 * rain, bearingDeg: bearing(downwind.east, downwind.north), intensity: rain },
     // (the hail: where the largest precipitation lands, hail and the biggest drops)
     hail: { ...place(hailCentre.east, hailCentre.north), radiusKm: hailInches > 0.25 ? 1.5 + 1.6 * hailInches : 0, sizeInches: hailInches },

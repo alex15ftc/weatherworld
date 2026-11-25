@@ -6,6 +6,7 @@ import zlib from 'node:zlib';
 import { GameProducts, gameOutlook, gameMesoscale, gameWarnings, ringsToMiles, GAME_PRODUCTS } from '../server/GameProducts.js';
 import { ReportsRuntime } from '../server/ReportsRuntime.js';
 import { logStormTick } from '../js/reports/stormLog.js';
+import { surveyMap } from '../js/reports/surveyMap.node.js';
 
 // A circle of 200 points, radius 0.2 of a 500-mile map: about 100 miles across.
 const circle = Array.from({ length: 200 }, (_, k) => [0.5 + 0.2 * Math.cos(k / 200 * 2 * Math.PI), 0.5 + 0.2 * Math.sin(k / 200 * 2 * Math.PI)]);
@@ -225,10 +226,15 @@ assert.equal(JSON.parse(withAll.product('mesoscale').text).watches[0].number, 7)
   listed = games.manifest().products;
   assert.ok(listed['survey.S0001-T1'], 'a lifted tornado is surveyed');
   const survey = JSON.parse(games.product('survey.S0001-T1').text);
-  assert.equal(survey.kind, 'survey'); assert.equal(survey.world, day.world); assert.ok(['EF2', 'EF3'].includes(survey.rating) && survey.ef === Number(survey.rating.slice(2)));
-  assert.ok(survey.contours.length >= 3 && survey.contours.every(c => c.rings.every(ring => ring.length >= 6 && ring.every(Number.isFinite))));
-  assert.ok(survey.points.length > 20 && survey.points.every(p => p.length === 7 && typeof p[2] === 'string'), 'damage points as [x, y, di, dod, mph, ef, hour]');
-  assert.ok(survey.track.length >= 4 && /Rating:\s+EF/.test(survey.text));
+  assert.equal(survey.kind, 'survey'); assert.equal(survey.world, day.world);
+  // What the survey finds comes from the built world map (data/worldmap, not in git): without it
+  // there are no damage points to rate, so those checks wait for the map.
+  if (surveyMap(Number(process.env.WORLD_MAP_SEED ?? 1))) {
+    assert.ok(['EF2', 'EF3'].includes(survey.rating) && survey.ef === Number(survey.rating.slice(2)), `rated EF2-EF3 (got ${survey.rating})`);
+    assert.ok(survey.contours.length >= 3 && survey.contours.every(c => c.rings.every(ring => ring.length >= 6 && ring.every(Number.isFinite))));
+    assert.ok(survey.points.length > 20 && survey.points.every(p => p.length === 8 && typeof p[2] === 'string' && (p[7] === 0 || p[7] === 1)), 'damage points as [x, y, di, dod, mph, ef, hour, real]');
+    assert.ok(survey.track.length >= 4 && /Rating:\s+EF/.test(survey.text));
+  } else console.log('game-products: world map not built (node scripts/build-world-map.mjs): the survey\'s damage checks skipped');
   day = JSON.parse(games.product('reports.day.1').text);
   assert.equal(day.tornadoes.length, 1); assert.equal(day.tornadoes[0].rating, survey.rating); assert.equal(day.final, false, 'day 1 is not over yet');
   world.stormEngine.validHourUtc = 36.5; world.storms = []; tick();

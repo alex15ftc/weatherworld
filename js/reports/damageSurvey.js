@@ -12,7 +12,13 @@
 // (forest, range, farmland), schools and industrial parks; each spot of ground on a 0.05-mile
 // grid holds a structure or not by its own fixed draw, so two tornadoes over the same town
 // meet the same houses.
-import { DAMAGE_INDICATORS, EF_THRESHOLDS, damageAt, efFromWind } from './damageIndicators.js';
+//
+// Real buildings (2026-11-17): where the game has looked at the ground under the swath (real.covered:
+// a Roblox server loaded those buildings with the tornado's wind, live or afterwards), the damage
+// points are the game's own buildings and the degree each reached (real.buildings, from
+// server/BuildingDamage.js), rated from their degree and build quality; the draws above are made
+// only where it has not.
+import { DAMAGE_INDICATORS, EF_THRESHOLDS, damageAt, efFromWind, ratePoint } from './damageIndicators.js';
 
 export const PROFILE = Object.freeze({ decay: 0.6, stepMi: 0.05, gridMi: 0.05, maxPoints: 400 });
 // Structures per 0.05-mile spot of ground (1.6 acres), and what they are.
@@ -33,14 +39,16 @@ const GROUND = Object.freeze({
 const MPH_PER_KPH = 0.621371;
 
 // entry: a tornado from the storm log; map: the survey's map (server/SurveyMap.js), or null;
-// places: { layer, milesPerKm } as the warnings use (the counties, for names).
-export function surveyTornado(entry, map, places, seed = 1) {
+// places: { layer, milesPerKm } as the warnings use (the counties, for names). real: the game's
+// buildings, or null: { buildings: [{ di, x, y (map miles), dod, quality (0-1), hourUtc }],
+// covered(x, y): whether the game looked at the ground there }.
+export function surveyTornado(entry, map, places, seed = 1, real = null) {
   const k = places?.milesPerKm ?? MPH_PER_KPH;
   const raw = lifeTrack(entry.points.map(([x, y, hourUtc, windMph, widthYards]) => ({ x: x * k, y: y * k, hourUtc, windMph: Math.max(65, windMph || 65), widthYards: Math.max(20, widthYards || 20) })), entry);
   const samples = densify(raw);
   const centreline = samples.map(s => [round(s.x), round(s.y)]);
   const contours = EF_THRESHOLDS.map((threshold, ef) => ({ ef, polygons: contourPolygons(samples, threshold) })).filter(c => c.polygons.length);
-  const points = map ? damagePoints(samples, map, seed) : [];
+  const { points, spots, coveredSpots, realPoints } = map || real ? damagePoints(samples, map, seed, real) : { points: [], spots: 0, coveredSpots: 0, realPoints: 0 };
   // The rating's damage point: the highest estimated wind, a building over a tree at the same wind
   // (a survey cites the damage that tells most).
   const isTree = p => p.di === 'TH' || p.di === 'TS';
@@ -60,7 +68,9 @@ export function surveyTornado(entry, map, places, seed = 1) {
     start: centreline[0] ?? null, end: centreline.at(-1) ?? null,
     startPlace: centreline.length ? placeName(places?.layer, ...centreline[0]) : null, endPlace: centreline.length ? placeName(places?.layer, ...centreline.at(-1)) : null,
     counties: counties.map(c => c.name).filter(Boolean), offices: [...new Set(counties.map(c => c.office).filter(Boolean))], towns,
-    centreline, contours, points, indicators: Object.values(byIndicator).sort((a, b) => b.count - a.count)
+    centreline, contours, points, indicators: Object.values(byIndicator).sort((a, b) => b.count - a.count),
+    // (how much of the swath the game's own buildings stand for, and how many points are theirs)
+    real: { points: realPoints, coveredShare: spots ? round(coveredSpots / spots, 3) : 0 }
   };
 }
 
@@ -142,8 +152,12 @@ function contourPolygons(samples, mph) {
 }
 
 // The damage points: every spot of ground the swath crossed (winds of 65 mph or more) that
-// holds a structure or trees, with the damage the wind there did to it.
-function damagePoints(samples, map, seed) {
+// holds a structure or trees, with the damage the wind there did to it; where the game looked
+// (real.covered), its own buildings instead. Damage estimated below EF0 (65 mph) is not tornado
+// damage the scale rates and is left out: no point, and so no tornado, is rated below EF0
+// (2026-11-18, the owner's rule; such points rated "EF-1" and a survey whose strongest point
+// was one rated its tornado EF-1).
+function damagePoints(samples, map, seed, real) {
   const g = PROFILE.gridMi, spots = new Map();
   for (const s of samples) {
     const h = halfWidthAt(s, 65);
@@ -154,23 +168,35 @@ function damagePoints(samples, map, seed) {
     }
   }
   const points = [];
+  let coveredSpots = 0;
   for (const { wind, hourUtc, key } of spots.values()) {
     const [i, j] = key.split(',').map(Number), x = (i + 0.5) * g, y = (j + 0.5) * g;
+    if (real?.covered?.(x, y)) { coveredSpots++; continue; }
+    if (!map) continue;
     for (const di of structuresAt(map, x, y, key, seed)) {
+      if (real?.covered?.(x + di.dx, y + di.dy)) continue;
       const quality = deterministicUnit(`${seed}|dat|${key}|${di.slot}|q`);
       const damage = damageAt(di.di, wind, quality);
-      if (damage) points.push({ di: di.di, x: round(x + di.dx), y: round(y + di.dy), hourUtc: round(hourUtc, 3), ...damage, windMph: Math.round(wind) });
+      if (damage && damage.ef >= 0) points.push({ di: di.di, x: round(x + di.dx), y: round(y + di.dy), hourUtc: round(hourUtc, 3), ...damage, windMph: Math.round(wind) });
     }
   }
+  // The game's buildings that the swath crossed (within its 65 mph edge, a spot either side).
+  let realPoints = 0;
+  for (const b of real?.buildings ?? []) {
+    const near = samples.some(s => Math.hypot(b.x - s.x, b.y - s.y) <= halfWidthAt(s, 65) + g);
+    const rated = near ? ratePoint(b.di, b.dod, b.quality) : null;
+    if (rated && rated.ef >= 0) { points.push({ di: b.di, x: round(b.x), y: round(b.y), hourUtc: round(b.hourUtc, 3), ...rated, windMph: rated.estimatedMph, real: true }); realPoints++; }
+  }
+  const done = list => ({ points: list, spots: spots.size, coveredSpots, realPoints });
   // The strongest damage is always kept; the rest thinned to PROFILE.maxPoints (trees first),
   // as a survey records the points that tell the story rather than every tree.
   points.sort((a, b) => b.estimatedMph - a.estimatedMph);
-  if (points.length <= PROFILE.maxPoints) return points;
+  if (points.length <= PROFILE.maxPoints) return done(points);
   const buildings = points.filter(p => p.di !== 'TH' && p.di !== 'TS'), trees = points.filter(p => p.di === 'TH' || p.di === 'TS');
   const keep = buildings.slice(0, PROFILE.maxPoints), room = PROFILE.maxPoints - keep.length;
   const step = trees.length / Math.max(1, room);
   for (let n = 0; n < room && n * step < trees.length; n++) keep.push(trees[Math.floor(n * step)]);
-  return keep.sort((a, b) => b.estimatedMph - a.estimatedMph);
+  return done(keep.sort((a, b) => b.estimatedMph - a.estimatedMph));
 }
 
 // What stands at one spot of ground (x, y miles), drawn once for the spot.

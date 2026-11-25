@@ -12,7 +12,9 @@ const rank = c => WORLD_RISK_ORDER.indexOf(c);
 // The combining of the runs, without the calibration of the chances (outlookCalibration.js),
 // which is checked at the end.
 // The rules themselves, without the fitted chance and intensity-group calibrations.
-const combine = (members, options) => combineOutlook(members, { calibration: {}, cigCalibration: null, ...options });
+const combine = (members, options) => combineOutlook(members, { calibration: {}, cigCalibration: null, caution: {}, ...options });
+// Caution at longer leads (OUTLOOK.caution): each day's chance times its factor.
+assert.ok(OUTLOOK.caution.day3 <= OUTLOOK.caution.day2 && OUTLOOK.caution.day2 <= OUTLOOK.caution.day1 && OUTLOOK.caution.day1 <= 1, 'never bolder further out');
 
 // --- The outlook day runs 12Z to 12Z.
 assert.equal(hoursToDayEnd(12), 24); assert.equal(hoursToDayEnd(36), 24); assert.equal(hoursToDayEnd(18), 18); assert.equal(hoursToDayEnd(11.5), 0.5); assert.equal(hoursToDayEnd(60.5), 23.5);
@@ -32,7 +34,7 @@ function member(k, { tornadoAt = null, strength = 1, storms = true } = {}) {
     if (storms && d < 14) thunder[i] = 1;
   }
   const byHour = { storms: new Array(24).fill(0), severe: new Array(24).fill(0), tornado: new Array(24).fill(0) };
-  if (tornadoAt) { byHour.storms[21] = 6; byHour.storms[22] = 4; byHour.severe[22] = 2; byHour.severe[23] = 2; byHour.severe[0] = 2; byHour.tornado[0] = 2; byHour.tornado[1] = 1; }
+  if (tornadoAt) { byHour.supercell = new Array(24).fill(0); byHour.line = new Array(24).fill(0); byHour.other = new Array(24).fill(0); byHour.supercell[21] = 5; byHour.supercell[22] = 5; byHour.line[1] = 6; byHour.line[2] = 4; byHour.storms[21] = 6; byHour.storms[22] = 4; byHour.severe[22] = 2; byHour.severe[23] = 2; byHour.severe[0] = 2; byHour.tornado[0] = 2; byHour.tornado[1] = 1; }
   return { member: k, width, height, cellMiles: 10, chance, thunder, storms: tornadoAt ? 30 + k : 0, tornadoes: tornadoAt ? Math.round(6 * strength) + k : 0, maxHailInches: tornadoAt ? 2.5 : 0, maxGustMph: tornadoAt ? 70 : 0, strongestTornadoMph: tornadoAt ? 150 : 0, byHour,
     environment: { moistShare: 0.6, cape: 3200, capeMedian: 2200, cin: 30, shear: 48, helicity: 220, dewpoint: 66, cloudBaseM: 1000, aloftKt: 55, aloftFromDeg: 240 }, lines: [{ type: 'dryline', x: 0.3, y: 0.5, lengthKm: 400, northSouth: true }] };
 }
@@ -54,13 +56,15 @@ assert.equal(o.category[corner], 'NONE');
 for (let k = 2; k < WORLD_RISK_ORDER.length; k++) assert.ok(o.areas[WORLD_RISK_ORDER[k]] <= o.areas[WORLD_RISK_ORDER[k - 1]] + 1e-9, 'a higher category covers no more of the map');
 // Half the members without the event: half the chance (45%), but a higher level only where the
 // runs agree (OUTLOOK.agreement): with half of them, the tornado contour stops at 15% (30% needs
-// over half), a lower category.
-const split = combine([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60 });
+// over half), a lower category. (The gates are off by default since 2026-11-14: then the 45% contour is drawn.)
+const gatesOn = { agreement: true, guard: true, highRun: true };
+assert.equal(combine([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60 }).level.tornado[centre], 45, 'with the gates off, half the runs give half the chance');
+const split = combine([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60, gates: gatesOn });
 assert.equal(split.level.tornado[centre], 15); assert.ok(split.agreementHeld.tornado > 0, 'the agreement rule held the chance down somewhere');
 assert.equal(o.agreementHeld.tornado, 0, 'where every run agrees nothing is held down'); assert.equal(split.cig.tornado[centre], 0, 'the intensity group needs the runs to agree too: with half of them, none (the first group needs five runs in eight since 2026-10-28)');
 // With an intensity-group calibration (CIG_SHARE), the share of runs it asks for is all: half the
 // runs reaching the third group draws it where the calibration says half is enough.
-const calibrated = combine([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60, cigCalibration: { day1: { tornado: [0.5, 0.5, 0.5] }, day2: { tornado: [0.5, 0.5, 0.5] } } });
+const calibrated = combine([member(0, { tornadoAt: spot }), member(1, { tornadoAt: spot }), member(2), member(3)], { issuedHourUtc: 36, validToHourUtc: 60, gates: gatesOn, cigCalibration: { day1: { tornado: [0.5, 0.5, 0.5] }, day2: { tornado: [0.5, 0.5, 0.5] } } });
 assert.equal(calibrated.cig.tornado[centre], 3, 'a calibrated group is drawn from the share of runs it was fitted to');
 assert.ok(rank(split.highest) <= rank(o.highest) && split.areas.SLGT < o.areas.SLGT, 'members that disagree give lower contours and smaller areas'); assert.equal(split.expected.membersWithTornado, 2);
 assert.equal(o.day, 'day1'); assert.deepEqual(o.hazards, WORLD_HAZARDS); assert.equal(o.validFromHourUtc, 36);
@@ -72,7 +76,7 @@ const three = combine([0, 1, 2, 3].map(k => member(k, { tornadoAt: spot })), { d
 assert.deepEqual(three.hazards, ['severe']); assert.ok(three.expected.tornadoes.high > three.expected.tornadoes.low, 'a few runs: the range is their least and their most'); assert.deepEqual(Object.keys(three.chance), ['severe']);
 assert.equal(three.level.severe[centre], 60); assert.equal(three.cig.severe[centre], 1); assert.equal(three.highest, 'MDT', 'a 60% area with CIG1 on Day 3 is Moderate');
 assert.ok(three.level.severe.every(v => v === 0 || PROBABILITY_LEVELS.severe.includes(v)));
-assert.ok(three.discussion.startsWith('Day 3 Convective Outlook')); assert.match(three.discussion, /SEVERE: Widespread severe thunderstorms are expected.*\(60% severe area, CIG1\)/); assert.doesNotMatch(three.discussion, /TORNADO:/);
+assert.ok(three.discussion.startsWith('Day 3 Convective Outlook')); assert.match(three.discussion, /SEVERE: Widespread severe thunderstorms are expected, some of it significant/); assert.doesNotMatch(three.discussion, /The main hazards/, 'Day 3 does not list its one hazard as the main hazards'); assert.match(three.discussion, /Widespread severe thunderstorms are expected on Day 3 over/); assert.doesNotMatch(three.discussion, /TORNADO:/);
 const pageThree = publicOutlook(three); assert.deepEqual(pageThree.hazards, ['severe']); assert.equal(pageThree.updateHours, 24); assert.ok(pageThree.shapes.severe.levels.length === 5 && pageThree.shapes.severe.groups.length === 1 && !pageThree.shapes.tornado);
 assert.deepEqual(OUTLOOK.updateHours, { day1: 6, day2: 12, day3: 24 });
 // A day made from fewer runs has its chances spread out: none for Day 1; Day 2 and Day 3 have four runs
@@ -88,8 +92,8 @@ assert.equal(spreadFor('day1'), 0); assert.equal(spreadFor('day2'), OUTLOOK.spre
   // two, and a place only one run of two had storms near stays below it.)
   assert.equal(raw[between], 0); assert.ok(smooth.chance.severe[between] > 5, 'the country between the storms of the two runs has a chance too');
   assert.ok(peak(smooth.chance.severe) < 0.8 * peak(raw), 'lower at the heart'); // (0.6 to 0.8 on 2026-10-24: Day 3 is spread 40 km since it has four runs, not 69.) // Spreading keeps the chance in all; the agreement rule (one run of two at each place) only takes
-// some off the peaks.
-  assert.ok(total(smooth.chance.severe) <= 1.02 * total(raw) && total(smooth.chance.severe) > 0.85 * total(raw), 'about the same chance in all, spread wider');
+// some off the peaks (it is off by default since 2026-11-14, and tidying fills small holes: up to 5% more).
+  assert.ok(total(smooth.chance.severe) <= 1.05 * total(raw) && total(smooth.chance.severe) > 0.85 * total(raw), 'about the same chance in all, spread wider');
   assert.equal(publicOutlook(smooth).shapes.severe.levels[0].rings.length, 1, 'one area, not one for each run');
   assert.equal(sharp.chance.tornado.length, n);
 }
@@ -100,13 +104,27 @@ assert.equal(calm.highest, 'TSTM'); assert.equal(calm.category[0], 'TSTM'); asse
 // --- The discussion says what the maps show, and gives chances only as contour levels.
 assert.match(o.discussion, new RegExp(`THERE IS (A|AN) [A-Z]+ RISK OF SEVERE THUNDERSTORMS OVER .*NORTHEASTERN`));
 assert.match(o.discussion, /\.\.\.SUMMARY\.\.\.[\s\S]*\.\.\.SYNOPSIS\.\.\.[\s\S]*TORNADO:[\s\S]*HAIL:[\s\S]*WIND:[\s\S]*\.\.\.UNCERTAINTY\.\.\./, 'summary, synopsis, each hazard and the uncertainty, in that order');
-assert.match(o.discussion, /\(60% tornado area, CIG3\)/); assert.match(o.discussion, /\(60% hail area, CIG1\)/); assert.match(o.discussion, /\(45% wind area\)/);
+// (No chance is quoted: the maps show the contour levels; 2026-11-14.) Each hazard is placed by the map's names, here the compass parts.
+assert.doesNotMatch(o.discussion, /% (tornado|hail|wind) area/); assert.match(o.discussion, /TORNADO: Numerous tornadoes are expected, with violent tornadoes \(EF4 or stronger\) possible, most likely over [a-z ,-]*northeastern/);
+assert.match(o.discussion, /Supercells are expected first, growing upscale into lines and clusters during the evening./, 'storm mode from the runs');
+assert.match(o.discussion, /By late afternoon, a strong west-southwesterly flow aloft/); assert.equal((o.discussion.match(/By late afternoon/g) ?? []).length, 1, 'the time of the air said once');
+assert.match(o.discussion, /expected today/);
 const percents = [...o.discussion.matchAll(/(\d+(?:\.\d+)?)%/g)].map(m => Number(m[1])), allowed = new Set([...PROBABILITY_LEVELS.tornado, ...PROBABILITY_LEVELS.wind, ...PROBABILITY_LEVELS.hail]);
-assert.ok(percents.length > 0 && percents.every(p => allowed.has(p)), `every percentage in the discussion is a contour level (${percents.join(', ')})`);
+assert.ok(percents.every(p => allowed.has(p)), `every percentage in the discussion is a contour level (${percents.join(', ')})`);
 assert.match(o.discussion, /with violent tornadoes \(EF4 or stronger\) possible/); assert.match(o.discussion, /southwesterly flow aloft \(55 kt at 500 mb\)/); assert.match(o.discussion, /a dryline over the western part/);
 assert.match(o.discussion, /develop from about 21Z \(4 pm CDT\)/);
 assert.match(calm.discussion, /NO SEVERE THUNDERSTORM AREAS FORECAST/); assert.doesNotMatch(calm.discussion, /TORNADO:/);
 assert.equal(writeDiscussion(o), o.discussion, 'the same outlook gives the same words');
+{
+  // An evening Day 1 (issued 01Z, 8 pm) is "tonight", and its air, read at the period's end, is the early morning's.
+  const evening = combine([0, 1, 2, 3].map(k => { const m = member(k, { tornadoAt: spot }); return { ...m, environment: { ...m.environment, hourUtc: 11 } }; }), { issuedHourUtc: 25, validToHourUtc: 36 });
+  assert.match(evening.discussion, /expected tonight/); assert.match(evening.discussion, /By early morning, a strong/); assert.doesNotMatch(evening.discussion, /late afternoon|today/);
+  // A Marginal day in air that would support supercells says why the risk stays low, not that storms form readily.
+  const weak = k => { const m = member(k, { tornadoAt: spot }); for (const f of Object.keys(m.chance)) m.chance[f] = m.chance[f].map(v => Math.min(v, 6)); for (const f of ['tornado', 'tornadoSig', 'tornadoExtreme', 'tornadoViolent', 'hailSig', 'windSig', 'severeSig', 'severeExtreme']) m.chance[f].fill(0); m.tornadoes = 0; m.environment = { ...m.environment, cape: 2000, shear: 50, cin: 10, heightChangeDm: 3 }; return m; };
+  const marginal = combine([0, 1, 2, 3].map(weak), { day: 'day2', issuedHourUtc: 18, validFromHourUtc: 36, validToHourUtc: 60 });
+  assert.equal(marginal.highest, 'MRGN'); assert.match(marginal.discussion, /would support organized storms, including supercells, but few storms in the forecast runs become severe, as heights rise aloft\./);
+  assert.doesNotMatch(marginal.discussion, /form readily|tornado threat/, 'no ready storms beside a Marginal, and no tornado talk without a tornado area');
+}
 assert.equal(describeArea(new Array(n).fill(true), width, height), 'most of the region');
 assert.equal(describeArea(new Array(n).fill(false), width, height), null);
 assert.match(describeArea(Array.from({ length: n }, (_, i) => i % width < 10 && Math.floor(i / width) >= 20), width, height), /southwestern/);
@@ -162,17 +180,25 @@ const pool = new ForecastPool({ size: 2 }), runtime = { engine: atmosphere }, ou
 assert.equal(outlooks.dayOne().status, 'pending');
 assert.equal(outlooks.maybeIssue(), true, 'a world with no outlook gets one'); assert.equal(outlooks.maybeIssue(), false, 'not twice at once');
 assert.equal(outlooks.dayOne().status, 'running'); assert.equal(outlooks.status().running, true);
-while (outlooks.running) await new Promise(resolve => setTimeout(resolve, 250));
+// Each outlook goes out as soon as the members it takes have run its day, not when the last run ends
+// (2026-11-16). Here, as on the host, one thread does the outlook runs (the other is kept for urgent ones), so
+// member 1 (Day 1 alone) goes first, and Day 1 is out once member 0 has run its Day 1, before its Day 2.
+let early = null;
+while (outlooks.running) { const done = ['day1', 'day2'].filter(day => outlooks.current(day)); if (done.length === 1 && !early) early = { day: done[0], issuedFlag: outlooks.day(done[0]).running, otherRunning: outlooks.day(done[0] === 'day1' ? 'day2' : 'day1').running }; await new Promise(resolve => setTimeout(resolve, 50)); }
 assert.equal(outlooks.lastError, null, `the outlook ran (${outlooks.lastError})`);
+assert.equal(early?.day, 'day1', 'Day 1 was issued first, while the runs for Day 2 went on');
+assert.deepEqual([early.issuedFlag, early.otherRunning], [false, true], `the issued one (${early.day}) no longer shows as running, the other does`);
 const issued = outlooks.dayOne();
 // (each full run carries OUTLOOK.cheapPerMember cheap runs on its storm days: 2 full + 6 cheap)
 assert.equal(issued.status, 'issued'); assert.equal(issued.members, 2 * (1 + OUTLOOK.cheapPerMember)); assert.equal(issued.issuedHourUtc, before); assert.equal(issued.validToHourUtc, before + hoursToDayEnd(before));
+// (issued inside its day: valid, and made from the runs' weather, only from when it is out; 2026-11-17)
+assert.ok(OUTLOOK.publishDelayPerHour > 0); assert.equal(issued.validFromHourUtc, before + outlooks.publishDelay(before, issued.validToHourUtc)); assert.ok(issued.validFromHourUtc > before);
 assert.ok(issued.discussion.length > 200 && issued.category.length === atmosphere.world.width * atmosphere.world.height);
 assert.equal(outlooks.maybeIssue(), false, 'nothing is issued again before its next update');
 const second = outlooks.day('day2');
 assert.equal(second.status, 'issued'); assert.equal(second.day, 'day2'); assert.equal(second.members, 1 + OUTLOOK.cheapPerMember, 'half the runs go on to Day 2, with their cheap runs');
 // (Day 3 from the ingredients of the four Day 2 runs since 2026-10-24: none of them with storms.)
-assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 4]); assert.equal(membersFor('day3', 2), 1); assert.deepEqual(['day1', 'day2', 'day3'].map(day => stormMembersFor(day)), [8, 4, 0]); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
+assert.deepEqual(['day1', 'day2', 'day3'].map(day => membersFor(day)), [8, 4, 4]); assert.equal(membersFor('day3', 2), 1); assert.deepEqual(['day1', 'day2', 'day3'].map(day => stormMembersFor(day)), [8, 4, 4]); assert.equal(second.issuedHourUtc, before); assert.equal(second.validFromHourUtc, 60); assert.equal(second.validToHourUtc, 84);
 assert.equal(issued.nextUpdateHourUtc, 44); assert.equal(second.nextUpdateHourUtc, 54); assert.equal(outlooks.day('day3').status, 'off');
 assert.deepEqual(Object.keys(outlooks.status().days), ['day1', 'day2']);
 // The schedule: the centre's times (Day 1 at 06, 13, 1630, 20 and 01Z; Day 2 at 06 and 1730Z), with Day 3
@@ -205,4 +231,13 @@ console.log(`day one outlook passed (made-up day ${o.highest}; real members ${fi
   assert.equal(issued.rawChance.tornado[centre], plain.chance.tornado[centre], 'the raw chance is the chance the runs give');
   // (somewhere in the field: past the fitted data, outlookCalibration.js keeps the raw chance, 2026-11-05)
   assert.ok(issued.chance.tornado.some((v, i) => v !== plain.chance.tornado[i]), 'the issued chance is calibrated');
+  // The table goes by hours into the outlook's own day: a Day 1 issued at 06Z, before its day starts, takes the
+  // morning table as the 12Z one does (it took day1update until 2026-11-16), and one at 16:30Z the update table.
+  // (A table whose update tornado row differs from the morning one: since 2026-11-16 the installed rows are the same.)
+  const { CALIBRATION } = await import('../js/forecast/outlookCalibration.js');
+  const calibration = { ...CALIBRATION, day1update: { ...CALIBRATION.day1update, tornado: CALIBRATION.day1.tornado.map(([raw, issued]) => [raw, issued / 2]) } };
+  const at = hour => combineOutlook(runs, { issuedHourUtc: hour, validToHourUtc: 60, calibration }).chance.tornado;
+  const morning = at(36), early = at(30), update = at(40.5);
+  assert.ok(early.every((v, i) => v === morning[i]), 'the 06Z issue reads the morning table');
+  assert.ok(update.some((v, i) => v !== morning[i]), 'the 16:30Z issue reads the update table');
 }

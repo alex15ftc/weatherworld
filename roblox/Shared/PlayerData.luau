@@ -81,6 +81,20 @@ export type SaveData = {
         Wins: number,
     },
 
+    -- Where the player comes back (ExploreService): the home city they chose on their first join
+    -- ("" until then), where they respawn after dying; and the spot they were last at (place
+    -- studs and facing; Saved is false after a death), where they rejoin. Scale is the world's
+    -- scale (World Config.WORLD_SCALE) the spot was saved at: 0.5 for spots saved before it was kept.
+    Spawn: {
+        City: string,
+        Saved: boolean,
+        X: number,
+        Y: number,
+        Z: number,
+        Yaw: number,
+        Scale: number,
+    },
+
     -- Written by the Settings module. Don't store anything else here.
     Settings: {
         [string]: any,
@@ -92,6 +106,16 @@ export type SaveData = {
 local Default: SaveData = CONST {
     Stats = CONST {
         Wins = 0,
+    },
+
+    Spawn = CONST {
+        City = "",
+        Saved = false,
+        X = 0,
+        Y = 0,
+        Z = 0,
+        Yaw = 0,
+        Scale = 0.5,
     },
 
     Settings = CONST {},
