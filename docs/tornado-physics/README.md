@@ -232,7 +232,7 @@ For the Roblox games (Twisted, Helicity, Severity), only changelogs are public, 
 
 - **Tables:** EF degree-of-damage tables are in `WindPhysics.DAMAGE`:
   - house: DI 2, 10 DODs
-  - mobile home: DI 3, 9 DODs
+  - mobile home: DI 3, 9 DODs (broken piece by piece, the unit moved by force balance: `MOBILE-HOME.md`)
   - tree: DI 27, 5 DODs
 - **Failure speed:** each part draws its own speed once, from a normal distribution around the expected speed with σ = (upper − lower)/4.
 - **Modifiers:** hip roof × 1.05, straps × 1.2, breached envelope × 0.87 for roof parts.
@@ -247,5 +247,6 @@ For the Roblox games (Twisted, Helicity, Severity), only changelogs are public, 
 - **Players:** apply `WindPhysics` to real characters. The client applies the force to its own character from the replicated field, and the server checks it.
 - **Engine link:** send the engine's `coreRadiusM` and `swirl` in the tornado state. `Vortex` already reads `state.coreRadius` and `state.swirl` when present.
 - **Buildings:** pre-split them into parts tagged with DI/DOD, swap in broken models, and spawn capped debris from failed parts.
+  Done for the single-wide mobile home (`MOBILE-HOME.md`); houses, barns and the main game's buildings still to do.
 - **Shelter checks:** a roof raycast plus a raycast toward the funnel, cached for 1 s.
 - **Vehicles:** wire the staged response (slide, roll, loft) into the game's vehicles (`TestVehicle.luau`).

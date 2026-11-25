@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-11-17
+Updated: 2026-11-24
 
 <!-- Rewrite in place when the objective, what is true now, next actions, or blockers
      change. Write plain sentences a reader with no context can act on. Respect each
@@ -385,6 +385,12 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
   frame). The billboard Decals log "No asset content representation found" though the images preload as
   Success: look at them in game. The engine still answers this Studio server with HTTP 401: add the Studio local
   secret `weather_feed_key` (docs/HOSTING.md) for real weather and storm damage.
+- Mobile homes break piece by piece (2026-11-24, branch `feat/mobile-home-damage`): the destructible-trailer kit's
+  128-piece single-wide (`tools/blender/mobile_home.py`, pieces in `Shared/StormLab/Structures`) is loaded by
+  `Sim/MobileHome` (DI 3 capacities per piece, pressure coefficients, load path, breach; the unit slides, rolls or
+  lofts by force balance with anchors) and its pieces fly as their own debris; the StormLab town's park is built
+  from the pieces as parts. `tools/stormlab/test_mobile_home.luau` passes, both Rojo projects build; not yet run
+  in Studio, and the skinned mesh is not uploaded (`docs/tornado-physics/MOBILE-HOME.md`).
 
 - Site redesign and social post kit (2026-11-12, deployed to the engine from `e9e1d15`; the world carried over): the engine's pages
   are one website (`site/README.md`): a front page at `/`, `/outlooks`, `/watches`, `/discussions`, `/warnings`,
@@ -728,6 +734,8 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    verified on seeds 53-56); deployed from `7860dd8`. Watch the live scoreboard for the updates' too-low share and false
    Moderates on the 01Z updates. Open (paused): Day 1 outlooks issued on old worlds (`outlook-verify --start`); the 40-day
    risk-climate sweep (seeds 61-66) found no drift with world age, and the live world's last week was quieter than any of it.
+7. StormLab: watch the mobile-home park in a tornado (`stormlab` project); then upload
+   `roblox/assets/structures/mobile_home/mobile_home.fbx` through Studio's MCP and draw its bones from the pieces.
 
 ## Blockers
 

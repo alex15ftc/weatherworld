@@ -123,6 +123,10 @@ ai_state/artifacts/**/*.pdf
 roblox/assets/foliage/**
 !roblox/assets/foliage/manifest.json
 
+roblox/assets/structures/**
+!roblox/assets/structures/*/
+!roblox/assets/structures/*/manifest.json
+
 # Rendered tornado sound (tools/tornadoaudio/render.luau)
 tools/tornadoaudio/out/
 

@@ -40,14 +40,19 @@ Damage.DI = {
 		{ 10, "slab swept clean", 200, 165, 220, "beam", 6, "slab" },
 	},
 	mobileHome = {
+		-- all nine DODs: 1-6 as published in mph (WSEC 2006), 7-9 from the Canadian EF-scale guide's km/h
+		-- table (ECCC 2013, same DOD list), converted. Sim/MobileHome loads the home piece by piece and
+		-- moves the unit (DOD 3, 5, 7) by force balance; this table gives each piece's capacity.
 		name = "single-wide mobile home (DI 3)",
-		{ 1, "loss of trim, skirting", 61, 51, 76, "sheetMetal", 3, "trim" },
-		{ 2, "loss of roof covering", 74, 61, 92, "sheetMetal", 6, "roofCover", roof = true },
-		{ 3, "unit slides off its blocks", 87, 72, 103, nil, 0, "anchors" },
-		{ 4, "complete uplift of roof; most walls stand", 89, 73, 112, "sheetMetal", 8, "roofFrame", roof = true },
-		{ 5, "unit rolls or vaults", 98, 84, 114, "plywood", 10, "roll" },
-		{ 6, "walls and roof destroyed", 105, 88, 122, "board", 16, "extWalls" },
-		{ 7, "frame separated from the floor", 115, 98, 132, "beam", 4, "allWalls" },
+		{ 1, "threshold of visible damage", 61, 51, 76, "sheetMetal", 3, "trim" },
+		{ 2, "loss of shingles or partial uplift of the roof covering", 74, 61, 92, "shingle", 6, "roofCover", roof = true },
+		{ 3, "unit slides off its block piers but stays upright", 87, 72, 103, nil, 0, "anchors" },
+		{ 4, "complete uplift of the roof; most walls stand", 89, 73, 112, "sheetMetal", 8, "roofFrame", roof = true },
+		{ 5, "unit rolls on its side or upside down, essentially intact", 98, 84, 114, "plywood", 10, "roll" },
+		{ 6, "roof and walls destroyed, floor and undercarriage left", 105, 88, 122, "board", 16, "extWalls" },
+		{ 7, "unit rolls or vaults; roof and walls separate from the floor", 109, 96, 127, "board", 12, "allWalls" },
+		{ 8, "undercarriage separates from the unit, rolls and is badly bent", 118, 103, 137, "beam", 4, "frame" },
+		{ 9, "complete destruction; debris blown away", 127, 109, 149, "beam", 4, "slab" },
 	},
 	barn = {
 		name = "farm outbuilding (DI 1)",
@@ -336,6 +341,18 @@ function Damage.newStructure(id: string, di: string, x: number, y: number, heigh
 	}
 end
 
+-- The load law every component follows: ratio = load / capacity (in dynamic pressure). Above 1
+-- damage builds, in ~1.5 s just above capacity and at once far beyond it (ratio > 1.4); below 1
+-- it heals slowly (a gust that nearly did it is forgotten in ~20 s). True once c.damage >= 1.
+function Damage.accumulate(c: any, ratio: number, dt: number): boolean
+	if ratio > 1 then
+		c.damage += (ratio - 1) * dt / 0.3 + (if ratio > 1.4 then 1 else 0)
+	else
+		c.damage = math.max(0, c.damage - dt * 0.05)
+	end
+	return c.damage >= 1
+end
+
 -- Load the structure with a wind sample over dt seconds. wind: horizontal speed at mid-height
 -- (3-s mean), roofWind: speed at the roof including the updraft. Returns the components that
 -- failed this step (each: { degree, debris, count, text }).
@@ -350,13 +367,7 @@ function Damage.apply(s: Structure, dt: number, wind: number, roofWind: number):
 			end
 			local v = if c.roof then roofWind else wind
 			-- load ratio in dynamic pressure: q / q_fail = (v / v_fail)^2
-			local ratio = (v / capacity) ^ 2
-			if ratio > 1 then
-				-- accumulates in ~1.5 s at just above capacity, instantly far beyond it
-				c.damage += (ratio - 1) * dt / 0.3 + (if ratio > 1.4 then 1 else 0)
-			else
-				c.damage = math.max(0, c.damage - dt * 0.05)
-			end
+			Damage.accumulate(c, (v / capacity) ^ 2, dt)
 			if c.damage >= 1 then
 				c.failed = true
 				if c.breach then
