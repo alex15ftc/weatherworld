@@ -498,6 +498,12 @@ function Weather.windAtStuds(x: number, z: number): (number, number, number)
 	return s, u / s, -v / s
 end
 
+-- The storm lab context, nil until Start has the frame: TornadoAudioController reads the
+-- tornadoes' smoothed state (ctx.tornadoAdapter.entries) and the drawing frame (ctx.Config).
+function Weather.context(): any
+	return ctx
+end
+
 function Weather.storms(): { any }
 	local out = {}
 	if not ctx or not frameInfo then

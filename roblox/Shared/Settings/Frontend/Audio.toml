@@ -1,0 +1,12 @@
+"$CategoryOrder" = 1
+
+[TornadoVolume]
+Order = 1
+Title = "Tornado volume"
+Description = """
+How loud tornadoes are, in percent.
+"""
+Default = 80
+Min = 0
+Max = 100
+Inc = 5

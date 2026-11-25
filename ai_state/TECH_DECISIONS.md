@@ -16,6 +16,20 @@
 
 ## Decisions
 
+### 2026-11-24 — Tornado sound: a synth from the vortex's fields, asset loops where the synth can't play
+
+- Status: `active`
+- Decision: the tornado's sound is computed, not sampled: `TornadoAudio/Acoustics` maps the drawn vortex's fields
+  and the listener's distance to layer levels and frequencies through continuous physical relations (U^3 pressure,
+  Strouhal tones 0.2 U / D, air absorption ~f^2, spreading), and `Synth` renders them at 48 kHz. Studio plays the
+  synth through AudioStreamWriter; live servers play rendered noise loops through AudioFilters driven by the same
+  parameters.
+- Rationale: AudioStreamWriter is Studio-only (Roblox docs, 2026-11-24), so live servers need assets; baking the
+  loops from the same synth keeps one model for both. Recorded tornado samples were rejected: they can't follow a
+  vortex's width, wind, debris and distance continuously.
+- Follow-up: upload the loops (owner approval) and record their ids in `TornadoAudio/Assets`; move live servers to
+  the synth if Roblox opens AudioStreamWriter to them.
+
 ### 2026-11-23 — The west's lower tornado share is kept: its high cloud base is real High Plains air
 
 - Status: `active`
