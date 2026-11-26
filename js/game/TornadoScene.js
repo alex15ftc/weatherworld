@@ -78,6 +78,7 @@ import { sunAt } from '../satellite/Satellite.js';
 import { worldDate } from '../forecast/calendar.js';
 import { inflowCell } from './LabWindow.js';
 import { groundCoverAt } from './groundCover.node.js';
+import { keptPeakDbz } from '../radar/StormPrecipGrid.js';
 
 const MS_PER_KT = 0.514444;
 const r0 = x => Math.round(Number(x) || 0), r1 = x => Math.round((Number(x) || 0) * 10) / 10, r2 = x => Math.round((Number(x) || 0) * 100) / 100;
@@ -160,7 +161,8 @@ export function tornadoSceneOf(world, storm, hourUtc = Number(world.stormEngine?
       rain: { at: rel(a.rain.xKm, a.rain.yKm), alongM: r0(a.rain.alongKm * 1000), acrossM: r0(a.rain.acrossKm * 1000), bearingDeg: a.rain.bearingDeg, intensity: a.rain.intensity, wrap: a.rain.wrap },
       hail: { at: rel(a.hail.xKm, a.hail.yKm), radiusM: r0(a.hail.radiusKm * 1000), sizeIn: a.hail.sizeInches },
       rearFlank: { wrap: a.rearFlank.wrap, strength: a.rearFlank.strength, clearSlot: a.rearFlank.clearSlot, downdraftMs: a.rearFlank.downdraftMs },
-      maxDbz: r0(storm.radar?.maxReflectivityDbz ?? 0), flashesPerMin: r1(flashRatePerMin(Number(storm.geometry?.updraught?.speedMs ?? storm.updraughtMs) || 0)),
+      // (the radar's own peak, from the storm's rain field: null while it has none this tick)
+      maxDbz: keptPeakDbz(world, storm), flashesPerMin: r1(flashRatePerMin(Number(storm.geometry?.updraught?.speedMs ?? storm.updraughtMs) || 0)),
       freezingM: agl(p.freezingM), wetBulbZeroM: agl(p.wetBulbZeroM), pwMm: r1((p.precipWater ?? 0) * 25.4)
     },
     air: {

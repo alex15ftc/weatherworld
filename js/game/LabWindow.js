@@ -48,6 +48,9 @@ export function labStorms(world, centre, half, feed = [], { withInflow = false }
   return (world.storms ?? []).filter(s => s.active && inside(s.positionKm)).map(s => labStorm(world, s, lab, feed, { withInflow }));
 }
 
+const feedOf = (feed, id) => feed.find(f => f.id === id) ?? null;
+const withoutPrecip = f => { if (!f) return null; const { precip, ...rest } = f; return rest; };
+
 // One storm in a lab frame (lab: map km -> [x east, y north] metres).
 export function labStorm(world, s, lab, feed = [], { withInflow = false } = {}) {
   return {
@@ -59,13 +62,14 @@ export function labStorm(world, s, lab, feed = [], { withInflow = false } = {}) 
     meso: r2(s.mesocycloneStrength ?? 0), lowRotation: r2(s.lowRotation ?? 0), occlusion: r2(s.occlusion ?? 0),
     rotating: r2(rotatingShare(s)), line: r2(lineShare(s)), lineHalfKm: r1(s.lineHalfLengthKm ?? 0), rearInflow: r2(s.rearInflow ?? 0),
     coldPool: r2(s.coldPoolStrength ?? 0), coldPoolKm: r1(s.coldPoolRadiusKm ?? 0), coldPoolK: r2((s.coldPoolTemperatureDeficitF ?? 0) / 1.8), coldPoolDepthM: Math.round(coldPoolDepthM(s.coldPoolStrength)), leftMover: !!s.leftMover,
-    maxDbz: Math.round(s.radar?.maxReflectivityDbz ?? 0), hailIn: r2(s.currentHailSizeInches ?? 0),
+    // (the radar's peak, from the game feed's rain grid for the storm, null without one; the grid itself is not sent)
+    maxDbz: feedOf(feed, s.id)?.precip?.maxDbz ?? null, hailIn: r2(s.currentHailSizeInches ?? 0),
     // (orbit: rad/s, counterclockwise seen from above, while an occluding tornado revolves round
     // its mesocyclone - the storm's position; TornadoEngine occlusionStep)
     tornado: s.tornado?.onGround ? { mph: Math.round(s.tornado.windSpeedMph), yards: Math.round(s.tornado.widthYards ?? 0), ef: s.tornado.estimatedEf ?? null, pos: lab(s.tornado.positionKm.x, s.tornado.positionKm.y), orbit: +((s.tornado.orbitRadPerS ?? 0).toFixed(5)) } : null,
     // (the chance of a tornado in the next half hour)
     tornadoChance: r2(s.tornado?.probability ?? 0),
-    feed: feed.find(f => f.id === s.id) ?? null,
+    feed: withoutPrecip(feedOf(feed, s.id)),
     // (maintenanceConvergence: the engine's maintenance lift as rising air, 1e-5 /s; StormMaintenance.js)
     ...(withInflow ? { inflow: inflowSounding(world, s), inflowConvergence: inflowConvergence(world, s), maintenanceConvergence: r2(maintenanceLift(world, s).convergence) } : {}),
   };

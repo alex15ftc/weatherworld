@@ -19,8 +19,8 @@ const TASKS = {
   echo: ({ input }) => { const field = buildStormEcho(input, { shared: true }); if (field) field.radarColdPool = stormColdPool(field, input); return field; },
   mosaic: ({ sites, rows, mosaicKind }) => buildRadarMosaic(scene, sites, { rows, kind: mosaicKind }),
   mosaics: ({ sites, rows, kinds }) => buildRadarMosaics(scene, sites, { rows, kinds }),
-  // (one storm's rain grid for the game feed, server/GameFeed.js)
-  precipGrid: ({ input }) => stormPrecipGrid(input),
+  // (one storm's rain grid for the game feed, server/GameFeed.js; echo: its full field, when one is made this tick)
+  precipGrid: ({ input, echo }) => stormPrecipGrid(input, undefined, echo ?? null),
   scan: ({ site, tiltDeg, gateKm, radials }) => scanRadarTilt(scene, site, tiltDeg, { gateKm, radials }),
   rotation: ({ site, scans, options }) => detectRotation(site, scans, options),
   shearGrid: ({ width, height, sites, scans }) => {

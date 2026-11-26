@@ -134,12 +134,27 @@ export const PHYSICS = {
   // water: two fifths as much where the precipitable water (in) and the relative humidity
   // 150-350 hPa above the ground (%) are both at the low ends of these ranges.
   efficiency: 0.45, efficiencyShearKt: [20, 60], efficiencyDryShare: 0.4, efficiencyPwatIn: [0.6, 2], efficiencyMidRh: [20, 80],
-  hailMass: [0.04, 0.1],       // share of the precipitation that is hail: least, and more with large stones
-  // stones larger than this reflect little more (they are no longer small beside the wavelength).
-  // (15 to 25 on 2026-10-21: wet stones keep gaining echo at S band well past 15 mm, and with 15 no
-  // core of 2-2.6 inch hail on seed 2112 reached 65 dBZ, where real ones reach 65-75.)
-  hailRadarMm: 25
+  hailMass: [0.02, 0.05]        // share of the precipitation that is hail: least, and more with large stones
 };
+// Hail's reflectivity per gram at S band, as a factor on that of liquid drops of its (ice) size in
+// the Rayleigh limit (RAIN_REFLECTIVITY x D^3): Mie theory for a dry stone (solid ice, density 0.9) and
+// a wet one (the ice inside the film of meltwater a melting stone holds before it sheds the rest,
+// Rasmussen and Heymsfield 1987; a coated sphere), each the mean over stones within 20% of the size
+// (tools/radar/hail_mie_table.py). Small dry stones are Rayleigh (|K_ice|^2 / |K_w|^2 / 0.9 = 0.21); wet
+// ones reflect as their water film does, resonating at 2.5-3 cm; past ~3.5 cm a gram of stones
+// reflects less the larger they are, as their cross-section stops growing as D^6. (Until 2026-11-25 it
+// was min(D, 25 mm)^2, the same for wet and dry bar a factor: 15-33 dB below this, so the radar's hail
+// size barely followed the stones.)
+const HAIL_MIE = [[5, 1.549, 0.2091], [10, 0.7274, 0.2048], [15, 0.3622, 0.1968], [20, 0.6286, 0.1834], [25, 1.509, 0.1617],
+  [30, 1.242, 0.1292], [35, 0.6335, 0.08732], [40, 0.272, 0.04536], [45, 0.1072, 0.01914], [50, 0.03963, 0.01375],
+  [60, 0.02775, 0.01248], [70, 0.02365, 0.009556], [80, 0.009962, 0.009804], [100, 0.003145, 0.008813]];
+// (log-linear in the factor between the table's sizes; beyond its ends, its end values)
+export function hailReflectivityShare(mm, dry = false) {
+  const T = HAIL_MIE, c = dry ? 2 : 1;
+  if (mm <= T[0][0]) return T[0][c];
+  for (let k = 1; k < T.length; k++) if (mm <= T[k][0]) { const t = (mm - T[k - 1][0]) / (T[k][0] - T[k - 1][0]); return Math.exp(Math.log(T[k - 1][c]) * (1 - t) + Math.log(T[k][c]) * t); }
+  return T[T.length - 1][c];
+}
 // The front-to-rear current's share of its full speed with height: none below 2 km or at the top, most midway.
 export const FRONT_TO_REAR_BASE_M = 2000;
 export const frontToRearShare = (zM, topM) => Math.sin(Math.PI * clamp((zM - FRONT_TO_REAR_BASE_M) / (topM - FRONT_TO_REAR_BASE_M), 0, 1)) ** 2;
@@ -340,7 +355,7 @@ const plainAlloc = (Type, n) => new Type(n);
 const sharedAlloc = (Type, n) => new Type(new SharedArrayBuffer(n * Type.BYTES_PER_ELEMENT));
 function createGrid(x0, y0, res, nx, ny, hail, alloc = plainAlloc, coarser = COARSER) {
   const n = nx * ny * LEVELS, F = Float32Array;
-  const grid = { x0, y0, res, nx, ny, plane: nx * ny, perKm: 1 / res, rain: alloc(F, n), size: alloc(F, n), snow: alloc(F, n), hail: hail ? alloc(F, n) : null, perVolume: LEVEL_DEPTH_KM.map(depth => 1 / (res * res * depth)), used: false };
+  const grid = { x0, y0, res, nx, ny, plane: nx * ny, perKm: 1 / res, rain: alloc(F, n), vert: alloc(F, n), snow: alloc(F, n), hail: hail ? alloc(F, n) : null, hailDry: hail ? alloc(F, n) : null, perVolume: LEVEL_DEPTH_KM.map(depth => 1 / (res * res * depth)), used: false };
   if (coarser > 0) {
     // (The coarser copies are merged into the grid and dropped: they are never shared.)
     grid.scales = [grid];
@@ -349,33 +364,51 @@ function createGrid(x0, y0, res, nx, ny, hail, alloc = plainAlloc, coarser = COA
   return grid;
 }
 
+// A drop's vertical reflectivity as a share of its horizontal (Zv / Zh = 10^(-ZDR/10)): falling drops
+// flatten as they grow, to an axis ratio r(D) (Brandes, Zhang and Vivekanandan 2002, JAM 41: r = 0.9951
+// + 0.0251 D - 0.03644 D^2 + 0.005303 D^3 - 0.0002492 D^4, D in mm), and a small oblate drop's Zh / Zv is
+// about r^(-7/3) (Rayleigh; Seliga and Bringi 1976): 0.1 dB at 1 mm, 0.65 at 2, 2.4 at 4, 4.3 at 6.
+// Summed drop by drop (the grid's vert channel), the gate's ZDR is that of whatever drops it holds,
+// so sorted big drops (a ZDR arc) read 3-5 dB. (Until 2026-11-25 it came from one mean size, assuming an
+// exponential spectrum, and stopped near 3 dB.)
+// (Below 1 mm drops are all but round: the fit, made on larger drops, is blended from a sphere at 0
+// to its own value at 1 mm, so the ratio falls steadily with size.)
+const axisRatio = d => 0.9951 + d * (0.0251 + d * (-0.03644 + d * (0.005303 - 0.0002492 * d)));
+const AXIS_AT_1MM = axisRatio(1);
+export function dropVerticalShare(mm) {
+  const d = Math.min(8, Math.max(0, mm)), r = d < 1 ? 1 - (1 - AXIS_AT_1MM) * d : axisRatio(d);
+  return r ** (7 / 3);
+}
+
 // Adds a particle's stay (its mass for a time, and how it reflects) to the grid cell it is in.
 function deposit(g, x, y, k, t, amount, mm, isSnow, isHail) {
   const fi = (x - g.x0) * g.perKm + 0.5, fj = (y - g.y0) * g.perKm + 0.5;
   if (fi < 0 || fj < 0 || fi >= g.nx || fj >= g.ny) return;
   const at = k * g.plane + (fj | 0) * g.nx + (fi | 0), lower = amount * (1 - t) * g.perVolume[k], upper = amount * t * g.perVolume[k + 1];
   if (isHail) {
-    const reflects = Math.min(mm, PHYSICS.hailRadarMm) ** 2;
-    g.hail[at] += lower * reflects; g.hail[at + g.plane] += upper * reflects;
+    const cube = mm * mm * mm, wet = cube * hailReflectivityShare(mm), dry = cube * hailReflectivityShare(mm, true);
+    g.hail[at] += lower * wet; g.hail[at + g.plane] += upper * wet;
+    g.hailDry[at] += lower * dry; g.hailDry[at + g.plane] += upper * dry;
     return;
   }
   const reflects = mm * mm * mm;
   g.used = true;
   g.rain[at] += lower * reflects; g.rain[at + g.plane] += upper * reflects;
-  g.size[at] += lower * reflects * mm; g.size[at + g.plane] += upper * reflects * mm;
+  const vert = reflects * dropVerticalShare(mm);
+  g.vert[at] += lower * vert; g.vert[at + g.plane] += upper * vert;
   if (isSnow) { g.snow[at] += lower * reflects; g.snow[at + g.plane] += upper * reflects; }
 }
 // The same for a patch wider than a cell, shared between the four cells around it.
 function depositWide(g, x, y, k, t, amount, mm, isSnow) {
   const fi = (x - g.x0) * g.perKm, fj = (y - g.y0) * g.perKm;
   if (fi < 0 || fj < 0 || fi >= g.nx - 1 || fj >= g.ny - 1) return;
-  const i = fi | 0, j = fj | 0, tx = fi - i, ty = fj - j, at = k * g.plane + j * g.nx + i, reflects = mm * mm * mm;
+  const i = fi | 0, j = fj | 0, tx = fi - i, ty = fj - j, at = k * g.plane + j * g.nx + i, reflects = mm * mm * mm, vertShare = dropVerticalShare(mm);
   const lower = amount * (1 - t) * g.perVolume[k] * reflects, upper = amount * t * g.perVolume[k + 1] * reflects;
   g.used = true;
   for (let corner = 0; corner < 4; corner++) {
     const share = (corner & 1 ? tx : 1 - tx) * (corner & 2 ? ty : 1 - ty), a = at + (corner & 1) + (corner & 2 ? g.nx : 0);
     g.rain[a] += lower * share; g.rain[a + g.plane] += upper * share;
-    g.size[a] += lower * share * mm; g.size[a + g.plane] += upper * share * mm;
+    g.vert[a] += lower * share * vertShare; g.vert[a + g.plane] += upper * share * vertShare;
     if (isSnow) { g.snow[a] += lower * share; g.snow[a + g.plane] += upper * share; }
   }
 }
@@ -520,7 +553,7 @@ function finish(grid, winds, alloc = plainAlloc) {
     if (!from.used) continue;
     to.used = true;
     const row = new Float32Array(from.plane);
-    for (const name of ['rain', 'size', 'snow']) {
+    for (const name of ['rain', 'vert', 'snow']) {
       const a = from[name], b = to[name];
       // Each copy is smoothed over its own cells first, so a wide patch trails off rather than ending at a cell's edge.
       // (Only the rows holding anything, and two either side, are worked on: the rest are zero
@@ -548,7 +581,7 @@ function finish(grid, winds, alloc = plainAlloc) {
   grid.scales = null;
   // Rain too thin for any radar to see is not kept (the widest patches trail off into it).
   const least = THINNEST_DBZ_UNITS / RAIN_REFLECTIVITY;
-  for (let at = 0; at < grid.rain.length; at++) if (grid.rain[at] < least && grid.rain[at] > 0) { grid.rain[at] = 0; grid.size[at] = 0; grid.snow[at] = 0; }
+  for (let at = 0; at < grid.rain.length; at++) if (grid.rain[at] < least && grid.rain[at] > 0) { grid.rain[at] = 0; grid.vert[at] = 0; grid.snow[at] = 0; }
   // Which columns hold anything (or stand beside one that does), so empty air is passed over quickly.
   const { nx, ny } = grid, plane = nx * ny, holds = new Uint8Array(plane), any = grid.any = alloc(Uint8Array, plane);
   for (const field of [grid.rain, grid.hail]) {
@@ -645,17 +678,18 @@ function loftDebris(model, alloc = plainAlloc) {
 export const RAIN_REFLECTIVITY = 1600, HAIL_REFLECTIVITY = 1600, DEBRIS_REFLECTIVITY = 22500;
 const THINNEST_DBZ_UNITS = 10 ** -0.5;
 
-// The amounts at one place: rain (as reflectivity of the liquid), its reflectivity-weighted
-// drop size (mm), the share of it that is snow or was, and hail. False where the storm has none.
+// The amounts at one place: rain (as reflectivity of the liquid), its drops' vertical share of it
+// (vertShare: Zv / Zh), the share of it that is snow or was, and hail (as reflectivity of wet stones,
+// and hailDry of dry ones). False where the storm has none.
 export function samplePrecipitation(echo, dx, dy, zM, out) {
-  out.rain = 0; out.sizeMm = 0; out.snow = 0; out.hail = 0;
+  out.rain = 0; out.vertShare = 0; out.snow = 0; out.hail = 0; out.hailDry = 0;
   if (!echo.grid || zM > PRECIP_LEVELS_M[LEVELS - 1] + 1500) return false;
   const zc = zM < 0 ? 0 : Math.min(zM, PRECIP_LEVELS_M[LEVELS - 1] - 1), k = LEVEL_BELOW[(zc / LEVEL_STEP_M) | 0], tz = (zc - PRECIP_LEVELS_M[k]) / (PRECIP_LEVELS_M[k + 1] - PRECIP_LEVELS_M[k]);
   // How far inside the finer inner grid this place is (0 outside it, 1 well inside).
   const within = echo.inner ? clamp((INNER.halfKm - INNER.edgeKm - Math.max(Math.abs(dx), Math.abs(dy))) / INNER.blendKm, 0, 1) : 0;
   if (within > 0) addSample(echo.inner, dx, dy, k, tz, within, out);
   if (within < 1) addSample(echo.grid, dx, dy, k, tz, 1 - within, out);
-  if (out.rain > 0) { out.sizeMm /= out.rain; out.snow = Math.min(1, out.snow / out.rain); }
+  if (out.rain > 0) { out.vertShare /= out.rain; out.snow = Math.min(1, out.snow / out.rain); }
   return out.rain > 0 || out.hail > 0;
 }
 function addSample(grid, dx, dy, k, tz, weight, out) {
@@ -669,11 +703,14 @@ function addSample(grid, dx, dy, k, tz, weight, out) {
   const rain = (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
   if (rain > 0) {
     out.rain += rain;
-    f = grid.size; out.sizeMm += (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
+    f = grid.vert; out.vertShare += (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
     f = grid.snow; out.snow += (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
   }
   f = grid.hail;
-  if (f) out.hail += (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
+  if (f) {
+    out.hail += (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
+    f = grid.hailDry; out.hailDry += (f[a] * w00 + f[a + 1] * w10 + f[a + nx] * w01 + f[a + nx + 1] * w11) * lower + (f[b] * w00 + f[b + 1] * w10 + f[b + nx] * w01 + f[b + nx + 1] * w11) * tz;
+  }
 }
 
 // How fast a storm's hail falls (m/s): the mean over the stones its updraughts make

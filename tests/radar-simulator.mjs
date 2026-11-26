@@ -56,15 +56,20 @@ for (const storm of storms.filter(s => (s.precipitation ?? 0) >= 0.05 && inRange
 }
 
 // --- 2. A synthetic mature tornadic supercell 60 km from a radar shows classic signatures. ---
-const site = sites.find(s => s.id === 'KCPL');
 // Within ~35-60 km, where the 0.5 deg beam samples the lowest 1 km (debris signatures are
 // mostly detected well inside 60 mi of a radar).
 // The storm is put in inflow air: the warmest, moistest cell there with no other storm's
 // rain-cooled air on it (2026-11-17: in air another storm had already cooled, the made storm's
 // heavier rain outweighs the debris at the tornado; the steering's look-ahead, c9c5474, moved
 // such air onto the spot this test then chose).
-const inflow = inflowCellsNear(world, site, 35, 60);
-assert.ok(inflow.length >= 3, `too few inflow-air cells 35-60 km from ${site.id} (${inflow.length}); pick another RADAR_TEST_SEED`);
+// The radar is the one with the most inflow air in that ring (RADAR_TEST_SITE picks one by id). It
+// was KCPL until 2026-11-25, when seed 4 had storms' cooled air on all of KCPL's ring; which site
+// has clear inflow air is the weather's choice, not the radar's, so the test no longer names one.
+const ringOf = radar => ({ radar, inflow: inflowCellsNear(world, radar, 35, 60) });
+const { radar: site, inflow } = process.env.RADAR_TEST_SITE
+  ? ringOf(sites.find(s => s.id === process.env.RADAR_TEST_SITE))
+  : sites.map(ringOf).reduce((a, b) => (b.inflow.length > a.inflow.length ? b : a));
+assert.ok(inflow.length >= 3, `too few inflow-air cells 35-60 km from any radar (${site.id}: ${inflow.length}); pick another RADAR_TEST_SEED`);
 const warm = inflow[0];
 const { supercell, scScene, scScan } = madeSupercell(warm);
 const scMax = maxNear(scScan, site, 'reflectivity', warm.x, warm.y, 40);
@@ -76,22 +81,54 @@ const inbound = minNear(scScan, site, 'stormRelativeVelocity', torX, torY, 3), o
 assert.ok(outbound - inbound >= 45, `tornadic couplet should show >=45 m/s gate-to-gate delta-V, got ${outbound - inbound}`);
 const tdsCc = minNear(scScan, site, 'correlationCoefficient', torX, torY, 2);
 assert.ok(tdsCc <= 0.85, `tornado debris signature should drop CC to <=0.85, got ${tdsCc}`);
-const ffdCc = valueAt(scScan, site, 'correlationCoefficient', warm.x + echo.mx * 12, warm.y + echo.my * 12);
-assert.ok(ffdCc === null || ffdCc >= 0.9, `forward-flank rain should have CC >=0.9, got ${ffdCc}`);
+// The hail core and the forward flank are found in the scan, not assumed along the storm's axis
+// (until 2026-11-25 they were points 4 and 12 km along it, which on this storm lie outside the echo,
+// so the checks on them passed on empty air): the strongest gate at least 4 km from the tornado,
+// and the strongest at least 10 km from it.
+const ffd = strongestGate(scScan, site, warm.x, warm.y, 30, torX, torY, 10);
+assert.ok(ffd.dbz >= 35, `the forward flank should hold rain (>=35 dBZ) 10+ km from the tornado, got ${ffd.dbz}`);
+// Its rain (35-50 dBZ: below the hail core's strength, as the strongest gate there may be rain and hail, CC 0.85-0.93 as on
+// real radars) reads as rain: CC 0.97-0.99 on the WSR-88D, so a median of at least 0.95.
+{
+  const rain = [];
+  for (let dy = -30; dy <= 30; dy += 0.5) for (let dx = -30; dx <= 30; dx += 0.5) {
+    const px = warm.x + dx, py = warm.y + dy;
+    if (dx * dx + dy * dy > 900 || Math.hypot(px - torX, py - torY) < 10) continue;
+    const z = valueAt(scScan, site, 'reflectivity', px, py);
+    if (z !== null && z >= 35 && z < 50) rain.push(valueAt(scScan, site, 'correlationCoefficient', px, py));
+  }
+  rain.sort((a, b) => a - b);
+  assert.ok(rain.length >= 20, `the forward flank should hold rain gates (35-50 dBZ), got ${rain.length}`);
+  assert.ok(rain[rain.length >> 1] >= 0.95, `forward-flank rain should have a median CC >=0.95, got ${rain[rain.length >> 1]} (${rain.length} gates)`);
+}
 // ...read as a debris signature at the tornado, and nowhere else in the storm (debrisSignature).
 // Debris's CC differs gate to gate, so whether two gates fall below 0.8 depends a little on where
 // the tornado lies on the radar's gates: the same storm is put on every inflow-air cell of the
 // ring, and the signature must show at two in three of them and never away from the tornado.
+// The hail core may lie as little as 4 km from the tornado, and debris carried downwind reaches ~4 km
+// out (loftDebris), into the finder's circle there: a few weak (~30 dBZ) debris gates may fall in it,
+// by the same gate placement. So hail itself is checked gate by gate (no gate of hail-core
+// strength, >=50 dBZ, reads as debris), and the finder there is held to a third of the places.
 {
-  let shown = 0;
+  let shown = 0, inHailCore = 0, hailGates = 0;
   for (const place of inflow) {
     const made = place === warm ? { scScene, scScan } : madeSupercell(place), e = made.scScene.storms[0].echo;
     if (debrisSignature(made.scScan, site, place.x + e.tornado.x, place.y + e.tornado.y)) shown++;
-    assert.equal(debrisSignature(made.scScan, site, place.x + e.mx * 12, place.y + e.my * 12), false, `none in the forward flank (storm at ${place.x.toFixed(0)}, ${place.y.toFixed(0)} km)`);
-    assert.equal(debrisSignature(made.scScan, site, place.x + e.mx * 4, place.y + e.my * 4), false, `none in the hail core (storm at ${place.x.toFixed(0)}, ${place.y.toFixed(0)} km)`);
+    const tx = place.x + e.tornado.x, ty = place.y + e.tornado.y;
+    const flank = strongestGate(made.scScan, site, place.x, place.y, 30, tx, ty, 10), core = strongestGate(made.scScan, site, place.x, place.y, 30, tx, ty, 4);
+    assert.equal(debrisSignature(made.scScan, site, flank.x, flank.y), false, `none in the forward flank (storm at ${place.x.toFixed(0)}, ${place.y.toFixed(0)} km)`);
+    const hx = core.x, hy = core.y;
+    if (debrisSignature(made.scScan, site, hx, hy)) inHailCore++;
+    for (const g of gatesNear(made.scScan, site, hx, hy, 2.5)) {
+      if (g.dbz === null || g.dbz < 50) continue;
+      hailGates++;
+      assert.ok(g.cc === null || g.cc >= 0.8, `hail read as debris: ${g.dbz} dBZ, CC ${g.cc} (storm at ${place.x.toFixed(0)}, ${place.y.toFixed(0)} km)`);
+    }
   }
+  assert.ok(hailGates > 0, 'the hail core should have gates of >=50 dBZ to check');
   assert.ok(shown >= Math.ceil(inflow.length * 2 / 3), `a debris signature at the tornado (at ${shown} of ${inflow.length} places in inflow air)`);
-  console.log(`debris signature at ${shown} of ${inflow.length} places in inflow air`);
+  assert.ok(inHailCore <= Math.floor(inflow.length / 3), `debris signatures in the hail core (at ${inHailCore} of ${inflow.length} places)`);
+  console.log(`debris signature at the tornado at ${shown} of ${inflow.length} places in inflow air, in the hail core at ${inHailCore}; ${hailGates} hail-core gates >=50 dBZ, none read as debris`);
 }
 
 // The volume scan's rotation detections (RotationDetection.js): a TVS on the tornado and a
@@ -181,6 +218,31 @@ function scanNear(scanResult, radar, product, x, y, radiusKm, pick) {
     if (v !== null && (best === null || pick(v, best))) best = v;
   }
   return best ?? NaN;
+}
+// The strongest-echo gate within radiusKm of (x, y) and at least minAwayKm from (ax, ay): where it is, its reflectivity and CC.
+function strongestGate(scanResult, radar, x, y, radiusKm, ax, ay, minAwayKm) {
+  let best = { dbz: -Infinity, cc: null, x: NaN, y: NaN };
+  for (let dy = -radiusKm; dy <= radiusKm; dy += 0.25) for (let dx = -radiusKm; dx <= radiusKm; dx += 0.25) {
+    const px = x + dx, py = y + dy;
+    if (dx * dx + dy * dy > radiusKm * radiusKm || Math.hypot(px - ax, py - ay) < minAwayKm) continue;
+    const v = valueAt(scanResult, radar, 'reflectivity', px, py);
+    if (v !== null && v > best.dbz) best = { dbz: v, cc: valueAt(scanResult, radar, 'correlationCoefficient', px, py), x: px, y: py };
+  }
+  return best;
+}
+// Every gate whose centre lies within radiusKm of (x, y): its reflectivity and CC.
+function gatesNear(scanResult, radar, x, y, radiusKm) {
+  const out = [], ref = scanResult.products.reflectivity, cc = scanResult.products.correlationCoefficient;
+  const away = Math.hypot(x - radar.xKm, y - radar.yKm), g0 = Math.max(0, Math.floor((away - radiusKm) / RADAR_GATE_KM)), g1 = Math.min(RADAR_GATES - 1, Math.ceil((away + radiusKm) / RADAR_GATE_KM));
+  for (let r = 0; r < RADAR_RADIALS; r++) {
+    const az = (r + 0.5) * (360 / RADAR_RADIALS) * Math.PI / 180;
+    for (let g = g0; g <= g1; g++) {
+      const d = (g + 0.5) * RADAR_GATE_KM;
+      if (Math.hypot(radar.xKm + d * Math.sin(az) - x, radar.yKm - d * Math.cos(az) - y) > radiusKm) continue;
+      out.push({ dbz: decodeRadarValue('reflectivity', ref[r * RADAR_GATES + g]), cc: decodeRadarValue('correlationCoefficient', cc[r * RADAR_GATES + g]) });
+    }
+  }
+  return out;
 }
 function maxNear(s, r, p, x, y, k) { return scanNear(s, r, p, x, y, k, (v, b) => v > b); }
 function minNear(s, r, p, x, y, k) { return scanNear(s, r, p, x, y, k, (v, b) => v < b); }

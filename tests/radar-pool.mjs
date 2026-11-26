@@ -6,6 +6,8 @@ import { Storm } from '../js/storms/Storm.js';
 import { evolveStormStructure } from '../js/storms/StormStructureEngine.js';
 import { buildRadarScene, createRadarSites, scanRadarTilt, buildRadarMosaic } from '../js/radar/RadarSimulator.js';
 import { RadarPool } from '../server/RadarPool.js';
+import { stormPrecipGrid } from '../js/radar/StormPrecipGrid.js';
+import { rainFieldInputs, keptRainField } from '../js/storms/StormRainFields.js';
 
 const atmosphere = new AtmosphereWorld({ seed: 2, spinUpDays: 6, storms: false, steering: false }), world = atmosphere.world;
 atmosphere.advance(9);
@@ -25,7 +27,21 @@ world.storms = [[40, 0.3, true, 0.85], [90, 1.4, false, 0.5]].map(([rangeKm, bea
 const scene = buildRadarScene(world);
 const pool = new RadarPool({ size: 3 });
 try {
+  // The game feed's rain grids: the coarser field's while no full field is made this tick...
+  const inputs = rainFieldInputs(world).storms;
+  assert.ok(inputs.every(input => keptRainField(world, input.storm) === undefined), 'no full field is kept before the radar asks');
+  const coarse = await pool.precipGrids(world);
+  for (const input of inputs) assert.deepEqual(coarse.get(input.storm.id), stormPrecipGrid(input), `${input.storm.id}'s coarse rain grid`);
   const pooled = await pool.buildScene(world);
+  // ...and, once the radar's full fields are made, read from them (the rain a player stands in is the radar's).
+  const full = await pool.precipGrids(world);
+  for (const input of inputs) {
+    const field = keptRainField(world, input.storm), grid = full.get(input.storm.id);
+    assert.ok(field && typeof field.then !== 'function', `${input.storm.id}'s full field is kept`);
+    assert.deepEqual(grid, stormPrecipGrid(input, undefined, field), `${input.storm.id}'s rain grid from its full field`);
+    assert.notDeepEqual(grid, coarse.get(input.storm.id), `${input.storm.id}'s full-field grid differs from the coarse one`);
+    console.log(`${input.storm.id}: rain grid peak ${coarse.get(input.storm.id)?.maxDbz} dBZ coarse -> ${grid?.maxDbz} full; MESH ${Math.max(...(coarse.get(input.storm.id)?.hailIn ?? [0]))} -> ${Math.max(...(grid?.hailIn ?? [0]))} in`);
+  }
   assert.equal(pooled.storms.length, scene.storms.length, 'every storm is in the pooled scene');
   const same = (a, b) => a.length === b.length && Buffer.compare(Buffer.from(a.buffer, a.byteOffset, a.byteLength), Buffer.from(b.buffer, b.byteOffset, b.byteLength)) === 0;
   pooled.storms.forEach((s, k) => assert.ok(same(s.echo.grid.rain, scene.storms[k].echo.grid.rain), `storm ${k}'s precipitation`));

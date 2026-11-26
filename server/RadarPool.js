@@ -13,7 +13,7 @@
 import os from 'node:os';
 import { Worker } from 'node:worker_threads';
 import { assembleRadarScene, mosaicSize, MOSAIC_RES_KM, MOSAIC_PRODUCT } from '../js/radar/RadarSimulator.js';
-import { rainFieldInputs, rainFieldsFor } from '../js/storms/StormRainFields.js';
+import { rainFieldInputs, rainFieldsFor, keptRainField } from '../js/storms/StormRainFields.js';
 
 const WORKER_SCRIPT = new URL('./radarWorker.js', import.meta.url);
 const defaultSize = () => Number(process.env.WEATHER_RADAR_WORKERS) || Math.max(2, Math.min(8, Math.floor(os.availableParallelism() / 3)));
@@ -90,12 +90,19 @@ export class RadarPool {
   // The game feed's rain grids (js/radar/StormPrecipGrid.js, buildStormPrecipGrids' Map) for the
   // storms as they are now, worked out on the threads: the world is read before this returns, and
   // the Promise gives the same grids buildStormPrecipGrids(world) would have then. (The storms'
-  // inputs are the ones the radar's fields are worked out from: rainFieldInputs.)
+  // inputs are the ones the radar's fields are worked out from: rainFieldInputs.) A storm whose full
+  // field is made this tick anyway (the storms players are near: js/game/StormWorkers.js asks for
+  // theirs first; every storm while the radar is looked at) has its grid read from that field, the
+  // radar's own; the rest from the coarser one, and from it too if the full one fails.
   precipGrids(world) {
     if (!(world.storms ?? []).some(storm => storm.active !== false && storm.structure)) return new Map();
     const inputs = rainFieldInputs(world).storms;
-    return Promise.all(inputs.map(input => this.run({ kind: 'precipGrid', input: { ...input, storm: stormToSend(input.storm) } })))
-      .then(grids => new Map(inputs.map((input, k) => [input.storm.id, grids[k]])));
+    const grid = (input, echo = null) => this.run({ kind: 'precipGrid', input: { ...input, storm: stormToSend(input.storm) }, ...(echo ? { echo } : {}) });
+    return Promise.all(inputs.map(input => {
+      const kept = keptRainField(world, input.storm);
+      if (kept === undefined) return grid(input);
+      return Promise.resolve(kept).then(field => (field ? grid(input, field) : null), () => grid(input));
+    })).then(grids => new Map(inputs.map((input, k) => [input.storm.id, grids[k]])));
   }
 
   // (gateKm: the gates' length, RADAR_GATE_KM unless a close look asks for finer; radials: only those, see scanRadarTilt)

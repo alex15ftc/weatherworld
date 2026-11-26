@@ -2,7 +2,10 @@
 // shafts from and sets the rain and hail at the player by (server/GameFeed.js puts it in each
 // storm's appearance as `precip`). Nothing here is drawn or decided from a storm's kind: the
 // grid is the radar's own field (PrecipitationField.js, read the way RadarSimulator.js reads it),
-// worked out a little coarser so it can be done for every storm each storm tick.
+// worked out a little coarser so it can be done for every storm each storm tick, or the full field
+// itself where one is made this storm tick anyway (the storms players are near, whose frames are
+// built from it, and every storm while the radar is looked at: js/storms/StormRainFields.js), so
+// the rain a player stands in near a storm is the radar's to the gate.
 //
 //   precip = {
 //     cellKm, cols, rows       fixed, so the game can blend one frame's grid into the next
@@ -20,6 +23,7 @@
 // A storm with no echo of leastDbz near the ground has precip = null.
 import { radarSceneInputs, buildStormEcho, precipitationEcho, meshInches } from './RadarSimulator.js';
 import { PRECIP_LEVELS_M } from '../storms/PrecipitationField.js';
+import { keptRainField, rainFieldInputs } from '../storms/StormRainFields.js';
 
 export const PRECIP_GRID = Object.freeze({
   cols: 20, rows: 20, cellKm: 2,
@@ -53,13 +57,27 @@ export function buildStormPrecipGrids(world, settings = PRECIP_GRID) {
   const version = world.cellsVersion, kept = Number.isFinite(version) ? envKept.get(world) : null;
   const inputs = radarSceneInputs(world, { reuseEnv: kept?.version === version ? kept.env : null });
   if (Number.isFinite(version)) envKept.set(world, { version, env: inputs.env });
-  for (const input of inputs.storms) out.set(input.storm.id, stormPrecipGrid(input, settings));
+  for (const input of inputs.storms) {
+    // (the full field where one is kept this storm tick, not one still being worked out on a thread)
+    const kept = keptRainField(world, input.storm), full = kept && typeof kept.then !== 'function' ? kept : null;
+    out.set(input.storm.id, kept === null ? null : stormPrecipGrid(input, settings, full));
+  }
   return out;
 }
 
-// One storm (an entry of radarSceneInputs(world).storms).
-export function stormPrecipGrid(input, settings = PRECIP_GRID) {
-  const echo = buildStormEcho(input, settings.echo);
+// A storm's strongest echo (dBZ, as the grid's maxDbz) from its full field when one is kept this
+// storm tick, else null: worked out, never guessed from the storm's strength.
+export function keptPeakDbz(world, storm) {
+  const kept = keptRainField(world, storm);
+  if (!kept || typeof kept.then === 'function') return null;
+  const input = rainFieldInputs(world).storms.find(i => i.storm.id === storm.id);
+  return input ? stormPrecipGrid(input, PRECIP_GRID, kept)?.maxDbz ?? null : null;
+}
+
+// One storm (an entry of radarSceneInputs(world).storms), from echo when given (the storm's full
+// field, StormRainFields.js), else from the coarser field worked out here.
+export function stormPrecipGrid(input, settings = PRECIP_GRID, echo = null) {
+  echo ??= buildStormEcho(input, settings.echo);
   if (!echo?.grid) return null;
   const { cols, rows, cellKm, lowM, leastDbz, columnDbz, perCell, edgeKm } = settings, fz = input.freezing;
   const sample = { zh: 0, zv: 0, cc: 0, hail: 0 };

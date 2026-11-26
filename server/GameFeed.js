@@ -35,6 +35,7 @@ export class GameFeed {
   constructor({ tickMs, regional = {}, precipGrids = null }) {
     this.regional = regional;
     this.precipGrids = precipGrids;
+    this.latestGrids = null;   // the last frame's rain grids (Map storm id -> precip), for the lab window's peaks
     this.tickMs = Math.round(tickMs);
     this.lagMs = this.tickMs + GAME_FEED.marginMs;
     this.frames = [];          // { seq, atMs, text }, oldest first (text null while its rain grids are being worked out)
@@ -57,7 +58,8 @@ export class GameFeed {
     // Living storms, and for a while the remnants of those that have gone (StormAppearance.js).
     // (Their rain grids are put in below when they are worked out elsewhere: each living storm's
     // precip is there already, null, so the text comes out the same.)
-    const storms = buildStormFeedList(world, later ? new Map() : grids ?? buildStormPrecipGrids(world));
+    if (!later) this.latestGrids = grids ??= buildStormPrecipGrids(world);
+    const storms = buildStormFeedList(world, later ? new Map() : grids);
     // Never before the frame already given: the game's frames only run forward.
     const atMs = Math.max(Math.round(dueMs + this.lagMs), (this.frames.at(-1)?.atMs ?? -Infinity) + 1000);
     const frame = { seq: ++this.seq, atMs, simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), storms, sky: buildSkyAppearance(world, this.regional) };
@@ -65,7 +67,7 @@ export class GameFeed {
     this.frames.push(kept);
     if (this.frames.length > GAME_FEED.keepFrames) this.frames.shift();
     if (!later) return null;
-    const write = byId => { for (const a of storms) if (byId?.has(a.id)) a.precip = byId.get(a.id); kept.text = JSON.stringify(frame); };
+    const write = byId => { if (byId) this.latestGrids = byId; for (const a of storms) if (byId?.has(a.id)) a.precip = byId.get(a.id); kept.text = JSON.stringify(frame); };
     return grids.then(write, error => { console.error('[game-feed] rain grids', error); write(null); });
   }
 

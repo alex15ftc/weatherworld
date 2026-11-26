@@ -45,6 +45,11 @@ export function rainFieldOf(world, storm) {
   return field;
 }
 
+// One storm's field if it is kept or being worked out this storm tick (a field, null, or a Promise
+// of one), without working it out: undefined when nothing has asked for it. (The game feed's rain
+// grid reads the full field where one is made anyway: StormPrecipGrid.js.)
+export function keptRainField(world, storm) { return entry(world).fields.get(storm?.id); }
+
 // The fields of these storms (entries of rainFieldInputs(world).storms), in order: kept ones as
 // they are, the rest from build(input) -> field or Promise (the radar's threads), kept as they come.
 export function rainFieldsFor(world, inputs, build) {

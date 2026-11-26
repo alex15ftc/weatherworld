@@ -586,7 +586,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
       if (!(echo > 0)) air = 0;
       if (scattered > 0) {
         // The scattered part moves with the hail it came from (stormRadial is relative to the air's wind).
-        zv += scattered / threeBodyZv; ccw += scattered * THREE_BODY.rho;
+        zv += scattered / threeBodyZv; ccw += scattered / Math.sqrt(threeBodyZv) * THREE_BODY.rho;
         const moving = OWN_WEIGHT * spikeRadial[index] + NEIGHBOUR_WEIGHT * (spikeRadial[l] + spikeRadial[n]);
         const moving2 = OWN_WEIGHT * spikeRadial2[index] + NEIGHBOUR_WEIGHT * (spikeRadial2[l] + spikeRadial2[n]);
         // (its second moment about the air's wind: its own spread with its mean's)
@@ -595,7 +595,8 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
       if (ground > 0) {
         // Clutter stands still, with no one shape (ZDR anywhere from -4 to 4 dB) and poorly correlated.
         const target = gateNoise(index, 0.9);
-        zv += ground / 10 ** ((8 * target - 4) / 10); ccw += ground * (0.35 + 0.5 * gateNoise(index, 0.95));
+        const groundZdr = 10 ** ((8 * target - 4) / 10);
+        zv += ground / groundZdr; ccw += ground / Math.sqrt(groundZdr) * (0.35 + 0.5 * gateNoise(index, 0.95));
         stormRadial -= ground * air; stormRadial2 += ground * air * air;
       }
       const lowSnr = Math.exp(-snr / 6);
@@ -615,7 +616,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
       const radial = (air + stormRadial / zh) * cosTilt + (rise - falling) / zh * sinTilt + velocityNoise * (Math.sqrt(3) * velocityErrorMs(width) + 1.2 * lowSnr);
       // (encoded below, folded and dealiased)
       if (!folded) { measured[index] = radial; guess[index] = air * cosTilt; }
-      cc[index] = encodeRadarValue('correlationCoefficient', ccw / zh - Math.abs(polarNoise) * (NOISE.correlation + 0.22 * lowSnr));
+      cc[index] = encodeRadarValue('correlationCoefficient', ccw / Math.sqrt(zh * zv) - Math.abs(polarNoise) * (NOISE.correlation + 0.22 * lowSnr));
       zdr[index] = encodeRadarValue('differentialReflectivity', 10 * Math.log10(zh / Math.max(1e-12, zv)) + polarNoise * (NOISE.zdrDb + 0.9 * lowSnr));
       if (folded) continue;
       sw[index] = encodeRadarValue('spectrumWidth', width + Math.abs(velocityNoise) * (0.4 + 2 * lowSnr));
@@ -933,27 +934,20 @@ function addEcho(out, zh, zdrDb, rho) {
   if (!(zh > 0)) return;
   out.zh += zh;
   if (out.zhOnly) return;
-  out.zv += zh / 10 ** (zdrDb / 10); out.cc += zh * rho;
+  const zv = zh / 10 ** (zdrDb / 10);
+  out.zv += zv; out.cc += Math.sqrt(zh * zv) * rho;
 }
 // The same with ZDR given as a linear ratio (for the fixed ZDR of clear-air echoes, worked out once).
 function addEchoRatio(out, zh, zdrRatio, rho) {
   if (!(zh > 0)) return;
   out.zh += zh;
   if (out.zhOnly) return;
-  out.zv += zh / zdrRatio; out.cc += zh * rho;
+  out.zv += zh / zdrRatio; out.cc += zh / Math.sqrt(zdrRatio) * rho;
 }
 const ZDR_4_5_DB = 10 ** (4.5 / 10), ZDR_5_5_DB = 10 ** (5.5 / 10);
-// Rain's differential reflectivity (dB) from its reflectivity-weighted drop size (mm). The published relation
-// is with the median volume diameter D0 (Brandes, Zhang and Vivekanandan 2004: D0 = 0.171 Zdr^3 - 0.725 Zdr^2 +
-// 1.479 Zdr + 0.717, here turned round), and the reflectivity-weighted size of an exponential drop spectrum is
-// 1.9 D0. Until 2026-11-14 it was 0.8 x that size - 0.5: about 1 dB high (2.7 dB at 4 mm, where this gives 1.9).
-const ZDR_OF_D0 = [[0.717, 0], [1.04, 0.25], [1.3, 0.5], [1.64, 1], [1.88, 1.5], [2.14, 2], [2.6, 2.5], [3.25, 3], [4.2, 3.5]];
-const rainZdrDb = sizeMm => {
-  const d0 = sizeMm / 1.9, T = ZDR_OF_D0;
-  if (d0 <= T[0][0]) return 0.15;
-  for (let k = 1; k < T.length; k++) if (d0 <= T[k][0]) return Math.max(0.15, T[k - 1][1] + (T[k][1] - T[k - 1][1]) * (d0 - T[k - 1][0]) / (T[k][0] - T[k - 1][0]));
-  return T[T.length - 1][1];
-};
+// Rain's differential reflectivity (dB) from its drops' vertical share (PrecipitationField.js
+// dropVerticalShare, summed over the drops the place holds).
+const rainZdrDb = vertShare => (vertShare > 0 ? -10 * Math.log10(Math.min(1, vertShare)) : 0);
 // Wet hail's correlation coefficient: 0.97 for small stones, falling as they grow past the size that resonates
 // at S band (about 2 cm) to 0.85 for giant ones (Balakrishnan and Zrnic 1990; a hail core stays at 0.93-0.97
 // unless its stones are very large). Until 2026-11-14 any hail near the ground read 0.86.
@@ -988,13 +982,14 @@ export function precipitationEcho(e, fz, lx, ly, z, out) {
       const melting = tmp.snow !== 0 && frozen < 1 ? tmp.snow * Math.exp(-(((z - fz + 150) / 350) ** 2)) : 0;
       // Rain carried above the freezing level in a strong updraught: large drops among the ice.
       const column = frozen > 0 ? liquidAloft(e, lx, ly, z - fz) : 0;
-      if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), rainZdrDb(tmp.sizeMm) + melting, 0.992 - 0.06 * melting);
+      if (frozen < 1) addEcho(out, zh * (1 - frozen) * (1 + 1.5 * melting), rainZdrDb(tmp.vertShare) + melting, 0.992 - 0.06 * melting);
       if (frozen > 0) addEcho(out, zh * frozen * 0.2 * (1 + 2 * column), 0.3 + 2.8 * column, 0.985 - 0.02 * column);
       snow = tmp.snow * frozen;
     }
     if (tmp.hail > 0) {
       const wet = 1 - frozen;
-      const hailZ = HAIL_REFLECTIVITY * tmp.hail * (0.35 + 0.65 * wet);
+      // (wet stones below the freezing level, dry ones above: HAIL_MIE)
+      const hailZ = HAIL_REFLECTIVITY * (wet * tmp.hail + (1 - wet) * tmp.hailDry);
       const big = clamp(((e.hailMm ?? 40) - HAIL_CC.mm[0]) / (HAIL_CC.mm[1] - HAIL_CC.mm[0]), 0, 1);
       addEcho(out, hailZ, 0.1 + 0.5 * wet, HAIL_CC.small - (HAIL_CC.small - HAIL_CC.giant) * big * (0.5 + 0.5 * wet));
       out.hail += hailZ;
