@@ -18,6 +18,17 @@ assert.equal(meta.outlookStatus.enabled, false, 'outlooks are not issued on this
 assert.equal(meta.spatialIntegrity.ok, true);
 runtime.advance(10);   // to 22Z
 assert.equal(world.validHourUtc, 22);
+
+// --- The game's sky: the cloud cover round a point (/api/game/v1/lab/sky), each value its cell's.
+{
+  const sky = runtime.labSkyAt(world.domainWidthKm / 2, world.domainHeightKm / 2, 7), cs = world.cellSizeKm;
+  assert.equal(sky.cols, 15); assert.equal(sky.rows, 15);
+  assert.equal(sky.low.length, 225); assert.equal(sky.simHourUtc, 22);
+  const x = Math.round(sky.x0Km / cs) + 3, y = Math.round(sky.y0Km / cs) + 5, f = world.getCell(x, y).features;
+  assert.equal(sky.mid[5 * 15 + 3], Math.round(100 * f.cloudMid));
+  assert.equal(sky.high[5 * 15 + 3], Math.round(100 * f.cloudHigh));
+  assert.ok(JSON.stringify(sky).length < 4000, 'small enough to poll from every game server');
+}
 assert.equal(world.stormEngine.validHourUtc, 22);
 for (const product of ['temperature', 'dewpoint', 'cape']) assert.equal(runtime.liveField(product).width, world.width, `${product} field`);
 assert.ok(Array.isArray(runtime.boundaries()), 'boundaries');

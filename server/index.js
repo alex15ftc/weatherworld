@@ -215,6 +215,7 @@ async function serveApi(url, req, res) {
   if (url.pathname === '/api/game/v1/frames') return sendText(req, res, 200, runtime.gameFeed.poll(url.searchParams.get('after')), trace);
   // The products the game draws (GameProducts.js): the manifest of versions, and each product's text.
   if (url.pathname === '/api/game/v1/lab/window') return sendJson(req, res, 200, runtime.labWindow(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half')), { cacheable: false, trace });
+  if (url.pathname === '/api/game/v1/lab/sky') return sendJson(req, res, 200, runtime.labSkyAt(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half')), { cacheable: false, trace });
   if (url.pathname === '/api/game/v1/lab/storms') return sendJson(req, res, 200, runtime.labStormsAt(url.searchParams.get('x'), url.searchParams.get('y'), url.searchParams.get('half'), url.searchParams.get('inflow') === '1'), { cacheable: false, trace });
   // The cloud model's storms (js/game/StormWorkers.js): a Roblox server reports where its players
   // are (POST { server, players: [[xKm, yKm], ...] }, map km, y south) and fetches the frames newer

@@ -593,8 +593,29 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    uptime read it, then set Railway `MALLOC_ARENA_MAX=2`, restart, compare a day. No database: none of it is stored data.
 000. The divide: done. The place has the ridge (owner, 2026-11-23) and the engine runs on it (deployed from
    `c144463`, 2026-11-22). Left open, owner's call: a taller ridge (the Palmer Divide stands up to 600 m). The west's
-   lower tornado share is kept as realistic (TECH_DECISIONS 2026-11-23); `atmosphere-world` and `radar-simulator`
-   tests fail on main since before c144463 ("reading '29'"; "too few inflow-air cells"), to be fixed.
+   lower tornado share is kept as realistic (TECH_DECISIONS 2026-11-23); the `atmosphere-world` test fails on main
+   since before c144463 ("reading '29'"), to be fixed. (`radar-simulator` fixed 2026-11-25 on branch
+   `fix/radar-test-and-dbz`: it takes the radar with the most inflow air, and finds the hail core and forward flank
+   in the scan; its signature checks had been skipped, and its old axis points lay outside the echo.)
+   Same branch: the game feed's rain grid reads the radar's full field for storms players are near (coarse field
+   elsewhere), and the tornado scene's and lab window's `maxDbz` are the radar's peak, not the
+   `storm.radar.maxReflectivityDbz` formula. Left on the formula: the outlook ensemble track and short-range model
+   `dbz`, which the models page paints reflectivity from (js/pages/modelPage.js stormDbz): owner's call.
+   Same branch, radar/satellite/sky batch (regression vs base-2026-11-25: radar-hail and clouds-only, no regressions):
+   dual-pol CC mixed per echo (Jameson), rain ZDR from per-drop axis ratios (Brandes), hail Z by S-band Mie with
+   wet stones as coated spheres (tools/radar/hail_mie_table.py; hailMass 0.02-0.05, peaks ~65-79 dBZ); frame
+   parcels lift from the engine's feed (elevated storms' most unstable layer); 700 mb humidity makes mid cloud
+   (Sundqvist); cumulus topped at the mixed layer; IR sees the ground's skin (skinExcessK); satellite uses a
+   tropopause (sounding.js tropopauseOf). Roblox sky reads the engine's cloud: engine `/api/game/v1/lab/sky`,
+   StormHostService polls it each 37.5 s and sends a "sky" event, Render/Sky dims sun/sky light by it - **needs an
+   engine deploy, then a Studio look from several angles**. The sounding has a tropopause fitted to 157 real warm-sector May soundings
+   (sounding.js tropopauseOf; MLCAPE +10%, all above 250 mb; regression trop-fit-2026-11-26: no regressions, a
+   little more aggressive, kept by the owner's wish for an aggressive pattern). Known and kept: the engine's MLCAPE
+   below 250 mb runs ~45% above real (mixed-layer theta-e 346 vs 340.5 K). Hail now grows from the updraught's speed in the
+   hail-growth zone (-10 to -30 C; StormHazards HAIL refitted 40.8 m/s, power 2.8) and the mesocyclone from its speed at
+   3-7 km (StormRotation; UpdraughtParcel UPDRAUGHT_LAYERS), not the peak the tropopause raised: regression
+   hail-fit-2026-11-26, no regressions, hail 2 in+ 16.3 % (real 14.1), 3.5 in+ 0.53 % (real 0.7), MDT+HIGH 30 %, EF4+ 0.98 %. Open: cloud from lift
+   (convergence/upslope), stratus deck depth, one anvil field instead of two.
 00. Upper winds and warm rain (2026-11-18; on main b1be3a9, deployed from it: the live world took up the new jet).
    In the code: QG upperWindMs 13.5 -> 15.5 and jetShearMs 10 -> 14 (owner accepted the regressions),
    and warm rain (PrecipitationField PHYSICS.warmRainShare, warmRainOf; StormFallout too: up to half the rain forms
@@ -673,7 +694,6 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    (`detectRotation`'s `exact`) that falls back to full scans; scans ~10% faster. Outputs byte-identical in offline
    checks (416 radar hashes, 31 replay boxes, 156 looks). After the deploy: compare `railway metrics -s engine --since
    12h --memory --cpu` with 1.5 GB / 0.52 vCPU, and read `radarLooks` (looks, fallbacks) on `/api/performance`.
-   `tests/radar-simulator.mjs` fails ("a debris signature at the tornado") on main before this too: look into it.
 00a. VTP and tornado strength (owner's order, 2026-11-17; steps 1 and 2, page products and ensemble VTP chances, done).
    High-VTP check done (4 seeds x 3 days): VTP runs high from the 3CAPE term (at its cap of 2 in 46% of STP>=1 cells;
    about a third of it the warm-sector moist bias: 1 C drier gives VTP x0.64) on top of the tuned-high STP; a moisture

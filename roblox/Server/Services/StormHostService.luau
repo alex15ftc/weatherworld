@@ -57,7 +57,7 @@ local GROUND_CELL = 1000 -- m, the ground grid clients get
 local GROUND_HALF = 60000 -- m each way from the window centre
 local RECENTRE = 35000 -- m: the players' centre this far from the window centre moves the window
 
-local state: any = { ready = false, world = nil, centreKm = nil, mode = nil, scenarioName = nil, dataJson = nil, dataJsonNext = nil, profileSeen = {} }
+local state: any = { ready = false, world = nil, centreKm = nil, mode = nil, scenarioName = nil, dataJson = nil, dataJsonNext = nil, sky = nil, profileSeen = {} }
 StormHostService.state = state
 local follower = EngineFollow.new() -- (the engine-following state: clock, stalls, missing storms)
 
@@ -179,7 +179,7 @@ local function helloRequest()
 	end
 	return {
 		scenario = state.scenarioName or "live", time = simTime(), settings = settings, source = state.mode,
-		frameVersion = Frames.VERSION, data = state.dataJson, centreKm = state.centreKm,
+		frameVersion = Frames.VERSION, data = state.dataJson, centreKm = state.centreKm, sky = state.sky,
 	}
 end
 local function onCommand(player: Player, cmd: { [string]: any })
@@ -299,9 +299,20 @@ local function runEngine(cx: number, cy: number)
 	end
 	state.ready = true
 	local since = 0
+	-- the cloud cover round the window (engine /lab/sky: low, mid, high per regional cell), to every
+	-- client as an "sky" event and in the hello: Render/Sky dims the sun and the sky light by it
+	local function pollSky()
+		local s = get(string.format("/api/game/v1/lab/sky?x=%.2f&y=%.2f&half=7", cx, cy))
+		if s and s.low then
+			state.sky = s
+			pub:send("event", { kind = "sky", sky = s })
+		end
+	end
+	pollSky()
 	while true do
 		task.wait(POLL)
 		since += POLL
+		pollSky()
 		local px, py = playersKm()
 		-- (measured from the point the window was asked for, not its centre: near the map's edge the
 		-- engine clamps the centre inward, and players by the edge were "far" from it forever - the

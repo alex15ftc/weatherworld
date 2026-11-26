@@ -245,6 +245,29 @@ function Weather.Start()
 	ctx.scenario = info.scenario
 	ctx.scenarioData = data -- (the sun's place and time zone: Render/Sky)
 	ctx.source = info.source
+	-- the engine's cloud cover round the window (StormHostService "sky": low, mid, high per cent per
+	-- regional cell, from the crop's north-west corner in map km, y south), at a place in sim metres
+	-- from the window's centre (x east, y north): low, mid, high (0-1), bilinear between cell
+	-- centres. Render/Sky dims the sun and the sky light by it.
+	local skyGrid = info.sky
+	ctx.skyCoverAt = function(x: number, y: number): (number, number, number)
+		local g = skyGrid
+		if not g or not frameInfo then
+			return 0, 0, 0
+		end
+		local fx = (frameInfo.cx + x / 1000 - g.x0Km) / g.cellKm - 0.5
+		local fy = (frameInfo.cy - y / 1000 - g.y0Km) / g.cellKm - 0.5
+		fx, fy = math.clamp(fx, 0, g.cols - 1), math.clamp(fy, 0, g.rows - 1)
+		local i0, j0 = math.floor(fx), math.floor(fy)
+		local i1, j1 = math.min(i0 + 1, g.cols - 1), math.min(j0 + 1, g.rows - 1)
+		local a, b = fx - i0, fy - j0
+		local function at(f: { number }): number
+			local v00, v10 = f[j0 * g.cols + i0 + 1], f[j0 * g.cols + i1 + 1]
+			local v01, v11 = f[j1 * g.cols + i0 + 1], f[j1 * g.cols + i1 + 1]
+			return ((v00 * (1 - a) + v10 * a) * (1 - b) + (v01 * (1 - a) + v11 * a) * b) / 100
+		end
+		return at(g.low), at(g.mid), at(g.high)
+	end
 	ctx.state.show.labels = false
 	-- the weather runs at the game's 8x clock (storms move and evolve with it), but local motion
 	-- - a tornado's spin, dust, debris, scud, cloud boiling, thunder's delay - at real speed
@@ -403,7 +426,9 @@ function Weather.Start()
 		end
 	end)
 	ctx.signals.event:Connect(function(e)
-		if e.kind == "scenario" then
+		if e.kind == "sky" then
+			skyGrid = e.sky
+		elseif e.kind == "scenario" then
 			-- (the window may have moved with the players: a new frame round its new centre)
 			local _, g = StormNet.Ground:Client():Await()
 			if g and g.centreKm and frameInfo and (g.centreKm.x ~= frameInfo.cx or g.centreKm.y ~= frameInfo.cy) then

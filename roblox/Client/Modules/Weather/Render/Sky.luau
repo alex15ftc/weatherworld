@@ -50,6 +50,17 @@ local CLEAR_VISIBILITY = 50000 -- m
 -- cumulonimbus lets ~2-10% through (0.35 was the old flat floor - photos taken from round a storm,
 -- not under it - and kept the ground under a base lit like a dull overcast day, 2026-11-02)
 local DIFFUSE_FLOOR = 0.12
+-- The engine's background cloud over the camera (ctx.skyCoverAt: the low, mid and high shares of the
+-- sky round the window, StormHostService "sky"): each layer's typical optical depth when it covers
+-- the sky - stratus / stratocumulus ~15, altostratus ~8, cirrus ~1.5 - and its asymmetry factor.
+-- A layer of cover c takes c (1 - exp(-(1 - g^2) tau / mu)) of the direct sun (mu: the sun's height,
+-- sin elev; delta-scaled, as the light a cloud scatters within a few degrees of forward still reads
+-- as the sun: it shines through cirrus, is a pale disc through altostratus and gone under stratus)
+-- and c (1 - t) of the sky light, t = 1 / (1 + 0.75 (1 - g) tau) the diffuse transmission of a thick
+-- cloud (two-stream). (Until 2026-11-25 the sky took only the storms' own cloud: an overcast day
+-- in the engine was lit as a clear one.)
+local LAYER_TAU = { 15, 8, 1.5 }
+local CLOUD_G = 0.85
 local OVERCAST_FILL = Color3.fromRGB(150, 153, 160)
 local SHADE_TINT = Color3.fromRGB(216, 226, 252)
 local COOL_TOP = Color3.fromRGB(150, 160, 182)
@@ -348,6 +359,10 @@ function Sky.new(ctx)
 	local function analyse()
 		local SL = ctx.Tornado.SceneLight -- (the storm base's footprint, shared with the scene light)
 		local cx, cy, cz = ctx.Config.fromWorld(ctx.camera.CFrame.Position) -- (metres)
+		local bgCover = { 0, 0, 0 }
+		if ctx.skyCoverAt then
+			bgCover[1], bgCover[2], bgCover[3] = ctx.skyCoverAt(cx, cy)
+		end
 		-- (the game draws each storm about its anchor at the sky's scale - ~3.7x the map's 8 km from
 		-- the tornado - so the cloud drawn over the camera is not the field's at its map place. 8 km
 		-- south of a tornado the field had no cloud within 2 km while the drawn base reached past
@@ -520,12 +535,26 @@ function Sky.new(ctx)
 		-- the base's edge; beside a storm the open dome keeps it light
 		local openI = 1 - (if wI > 0 then coverI / wI else 0)
 		local through = math.max(DIFFUSE_FLOOR, 1 - oc)
-		st.tD = math.clamp(openI + (1 - openI) * through, DIFFUSE_FLOOR, 1)
-		st.tOc = oc
+		-- the background cloud's share of the sun and the sky light, layer by layer (LAYER_TAU)
+		local bgDirect, bgDiffuse, bgOpen = 1, 1, 1
+		local mu = math.max(0.05, sz)
+		for i, c in bgCover do
+			local tau = LAYER_TAU[i]
+			bgDirect *= 1 - c * (1 - math.exp(-(1 - CLOUD_G * CLOUD_G) * tau / mu))
+			bgDiffuse *= 1 - c * (1 - 1 / (1 + 0.75 * (1 - CLOUD_G) * tau))
+			bgOpen *= 1 - c
+		end
+		local stormS = st.tS -- (the green below is the storm core's own)
+		if sunUp then
+			st.tS *= bgDirect
+		end
+		st.tCover = 1 - (1 - st.tCover) * bgOpen
+		st.tD = math.clamp((openI + (1 - openI) * through) * bgDiffuse, DIFFUSE_FLOOR, 1)
+		st.tOc = 1 - (1 - oc) * bgDiffuse
 		-- green: light from a low sun scattered through a deep, heavily precipitating core
 		local elev = math.deg(math.asin(math.clamp(sz, -1, 1)))
 		local lowSun = ramp(elev, -2, 3) * (1 - ramp(elev, 15, 35))
-		st.tGreen = 0.4 * lowSun * greenCore * (1 - st.tS)
+		st.tGreen = 0.4 * lowSun * greenCore * (1 - stormS)
 	end
 
 	local function restore()

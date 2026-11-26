@@ -24,7 +24,7 @@ import { buildAnalysisOverlays } from './analysisOverlays.js';
 import { GameFeed } from './GameFeed.js';
 import { buildLabWindow, labStorms } from '../js/game/LabWindow.js';
 import { buildStormFeedList } from '../js/storms/StormAppearance.js';
-import { buildSkyAppearance } from '../js/world/SkyAppearance.js';
+import { buildSkyAppearance, skyWindow } from '../js/world/SkyAppearance.js';
 import { countiesFor, placesFor } from './CountyLayer.js';
 import { logStormTick } from '../js/reports/stormLog.js';
 import { createDayRecorder } from './DayReviewRecorder.js';
@@ -437,7 +437,12 @@ export class WeatherAuthorityRuntime {
     const h = Math.max(2, Math.min(12, Math.round(Number(half) || 7)));
     const centreKm = { x: Number(xKm) || world.domainWidthKm / 2, y: Number(yKm) || world.domainHeightKm / 2 };
     const sky = buildSkyAppearance(world);
-    return buildLabWindow(world, { centreKm, half: h, boundaries: this.engine.boundaries ?? world.mesoscale?.boundaries ?? [], feed: buildStormFeedList(world, new Map()), meta: { name: 'live', seed: this.seed, sun: sky?.sun ?? null, revision: this.revision, paused: !this.autoAdvance } });
+    return buildLabWindow(world, { centreKm, half: h, boundaries: this.engine.boundaries ?? world.mesoscale?.boundaries ?? [], feed: buildStormFeedList(world, this.gameFeed?.latestGrids ?? new Map()), meta: { name: 'live', seed: this.seed, sun: sky?.sun ?? null, revision: this.revision, paused: !this.autoAdvance } });
+  }
+  // The cloud cover round a point, for the game's sky (cheap: polled by every game server).
+  labSkyAt(xKm, yKm, half = 7) {
+    const world = this.atmosphere;
+    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), ...skyWindow(world, { x: Number(xKm), y: Number(yKm) }, half) };
   }
   labStormsAt(xKm, yKm, half = 7, withInflow = false) {
     const world = this.atmosphere;
@@ -447,7 +452,7 @@ export class WeatherAuthorityRuntime {
     const cy = Math.min(world.height - 1 - h, Math.max(h, Math.floor((Number(yKm) || 0) / cellKm)));
     const centre = { x: (cx + 0.5) * cellKm, y: (cy + 0.5) * cellKm };
     // paused: the authority's clock is stopped (the game holds its storms still, Roblox StormHost)
-    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), paused: !this.autoAdvance, centreMapKm: centre, storms: labStorms(world, centre, (h + 0.5) * cellKm, buildStormFeedList(world, new Map()), { withInflow }) };
+    return { simHourUtc: +(world.stormEngine?.validHourUtc ?? world.validHourUtc).toFixed(4), paused: !this.autoAdvance, centreMapKm: centre, storms: labStorms(world, centre, (h + 0.5) * cellKm, buildStormFeedList(world, this.gameFeed?.latestGrids ?? new Map()), { withInflow }) };
   }
   storms() { return this.cached('storms', () => ({
     schemaVersion: 3,
