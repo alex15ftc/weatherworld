@@ -34,7 +34,7 @@
 //
 // buildStormFrame(world, storm, { seq, rainField }) -> { bytes (Uint8Array, full frame), info (numbers for checks) }.
 // rainField: the storm's field if already in hand (null: none; left out: StormRainFields.js's).
-import { inflowCell, soundingProfile, liftParcel as liftParcelAt, qsat, dewFromQ, lclM, G, CP, LV, RV, RD } from './UpdraughtParcel.js';
+import { inflowCell, soundingProfile, mostUnstableBase, liftParcel as liftParcelAt, qsat, dewFromQ, lclM, G, CP, LV, RV, RD } from './UpdraughtParcel.js';
 import { coldPoolSpeedMs, coldPoolDepthM, coldPoolDeficitK, outflowShare, poolDriftMs } from './ColdPool.js';
 import { stormUndercut } from './StormBudgets.js';
 import { clamp, smoothstep } from '../scenarios/math.js';
@@ -73,14 +73,17 @@ export const STRUCTURE = Object.freeze({
 // The inflow sounding: AGL heights, and helpers at a height.
 const profileOf = (world, storm) => soundingProfile(inflowCell(world, storm));
 // The entraining parcel (UpdraughtParcel.js), with the frame's step and mixing.
-const liftParcel = (sd, coreM) => liftParcelAt(sd, coreM, 0);
+// (from the layer the engine feeds the storm from: an elevated storm's most unstable layer, as
+// StormEngine's environmentParcel; until 2026-11-25 always the surface, whose parcel an elevated storm's
+// cold air holds below any free convection, so the frame carried it to the sounding's top, 16-17 km)
+const liftParcel = (sd, coreM, storm) => liftParcelAt(sd, coreM, storm?.elevatedFeed ? mostUnstableBase(sd) : 0);
 
 // The updraught the frame draws, for measuring (js/storms/SpinBudget.js): its core radius (m) and its
 // centre-line speed every dz from the ground (m/s, scaled to the engine's updraughtMs as below).
 export function updraughtProfile(world, storm) {
   const upd = storm.geometry?.updraught ?? {};
   const coreM = STRUCTURE.coreShare * 1000 * clamp(upd.radiusKm ?? 4, 1.5, 10);
-  const pr = liftParcel(profileOf(world, storm), coreM);
+  const pr = liftParcel(profileOf(world, storm), coreM, storm);
   const wPeak = Math.max(1, ...pr.levels.map(l => l.w));
   const wScale = clamp((storm.updraughtMs ?? wPeak) / wPeak, 0.2, 2);
   return { coreM, dz: STRUCTURE.dz, w: pr.levels.map(l => (l.z > pr.top ? 0 : l.w * wScale)), parcelPeakMs: wPeak, topM: pr.top, elM: pr.el, lclM: pr.lcl };
@@ -130,7 +133,7 @@ export function stormCloudTop(world, storm) {
   const S = STRUCTURE, g = storm.geometry ?? {}, pos = storm.positionKm, upd = g.updraught ?? {};
   const U = Number.isFinite(upd.xKm) ? [(upd.xKm - pos.x) * 1000, -(upd.yKm - pos.y) * 1000] : [0, 0];
   const sd = profileOf(world, storm), coreM = S.coreShare * 1000 * clamp(upd.radiusKm ?? 4, 1.5, 10);
-  const pr = liftParcel(sd, coreM), wPeak = Math.max(1, ...pr.levels.map(l => l.w));
+  const pr = liftParcel(sd, coreM, storm), wPeak = Math.max(1, ...pr.levels.map(l => l.w));
   const wScale = clamp((storm.updraughtMs ?? wPeak) / wPeak, 0.2, 2);
   return { top: pr.top, el: Math.min(pr.el, pr.top), coreM, U, sd, pr, wScale, ...detrainment(pr, wScale, coreM) };
 }
@@ -147,7 +150,7 @@ export function buildStormFrame(world, storm, { seq = 1, rainField, sun = null }
   const sd = profileOf(world, storm);
   const upd = g.updraught ?? {}, U = rel(upd);
   const coreM = S.coreShare * 1000 * clamp(upd.radiusKm ?? 4, 1.5, 10);
-  const pr = liftParcel(sd, coreM);
+  const pr = liftParcel(sd, coreM, storm);
   const wPeak = Math.max(1, ...pr.levels.map(l => l.w));
   const wScale = clamp((storm.updraughtMs ?? wPeak) / wPeak, 0.2, 2);
   const top = pr.top, el = Math.min(pr.el, top), lclIn = pr.lcl;

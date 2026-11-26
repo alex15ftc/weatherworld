@@ -3,6 +3,7 @@
 // runs the same functions on the air at a point, so the two cannot disagree.
 import { clamp } from '../scenarios/math.js';
 import { coldPoolSpeedMs } from './ColdPool.js';
+import { hailZoneSpeedMs } from './UpdraughtParcel.js';
 
 // Hail. The largest stone an updraught can hold up grows steeply with its speed, so size goes
 // as a power of the updraught speed the storm realises (parcel theory less entrainment,
@@ -39,7 +40,14 @@ import { coldPoolSpeedMs } from './ColdPool.js';
 // mid-level humidity came from the large-scale field instead of a painted dry layer; the melting was set against the low one.)
 // (scaleInches 3.0 to 3.7 on 2026-10-26, refitted to the SPC record after the sounding and mid-level moisture corrections:
 // hail reports 2 in or larger had fallen to 8.4% on seeds 1-8, against 14.1% for May Plains reports; now 13.5%.)
-export const HAIL = Object.freeze({ scaleInches: 3.15, referenceUpdraftMs: 60, power: 2.5, meltInches: 0.3, meltRefM: 3400, nonRotating: 0.65, fullRotation: 0.4, lapseRange: [7.2, 9.4], lapseGain: 0.45, coreGain: 1.2, largestInches: 5.5 });
+// (2026-11-26: grown from the updraught's speed in the hail-growth zone, -10 to -30 C (UpdraughtParcel hailZoneSpeedMs), not
+// its peak, which the tropopause raised by putting buoyancy near the equilibrium level where no hail grows. referenceUpdraftMs
+// 60 and power 2.5 on the peak became 40.8 and 2.8 on the hail zone's speed, fitted so that on the sounding before the
+// tropopause the storms' hail is as it was: storm-hours with 1 / 2 / 3.5 in hail 22.9 / 7.3 / 1.3 %, refitted 22.7 / 7.2 /
+// 1.3 (seeds 1-4, 60 hours, server stepping); with the tropopause the peak's formula gave 26.5 / 10.4 / 3.1, this 19.9 / 6.2
+// / 1.1. One reference share on the peak instead overgrew hail in moderate storms, whose speed peaks lower: hail reports
+// 117 -> 203 a day, regression hail-meso-b-2026-11-26.)
+export const HAIL = Object.freeze({ scaleInches: 3.15, referenceUpdraftMs: 40.8, power: 2.8, meltInches: 0.3, meltRefM: 3400, nonRotating: 0.65, fullRotation: 0.4, lapseRange: [7.2, 9.4], lapseGain: 0.45, coreGain: 1.2, largestInches: 5.5 });
 // Gusts. The downdraught's speed from the energy available to it (a share of sqrt(2 DCAPE),
 // more the more rain is falling), plus a share of the storm's own motion carried to the ground
 // (fast storms in strong flow are windier), plus the wind from the middle levels that a rear
@@ -105,7 +113,8 @@ export function hailSizeInches(storm, environment) {
   // hail parameter uses MUCAPE for this; SPC). (2026-10-26: from the fuel's CAPE alone, storms in SCP 11-31 and 8-8.8 C/km
   // lapse rates made 1.25 in hail at most, or none, on all four reviewed seeds.)
   const core = clamp(Math.sqrt(Math.max(1, (Number(environment.mostUnstableCape) || 0) / Math.max(150, Number(storm.fuelCape) || Number(environment.cape) || 150))), 1, HAIL.coreGain);
-  const updraughtMs = (storm.updraughtMs ?? storm.updraftStrength * 65) * core;
+  // (its speed in the hail-growth zone, -10 to -30 C: UpdraughtParcel hailZoneSpeedMs)
+  const updraughtMs = hailZoneSpeedMs(storm.updraughtMs ?? storm.updraftStrength * 65, storm.parcel) * core;
   const rotation = HAIL.nonRotating + (1 - HAIL.nonRotating) * clamp((storm.mesocycloneStrength ?? 0) / HAIL.fullRotation, 0, 1);
   const lapse = 1 + HAIL.lapseGain * (clamp((lapseRate - HAIL.lapseRange[0]) / (HAIL.lapseRange[1] - HAIL.lapseRange[0]), 0, 1) - 0.35);
   const grown = clamp(HAIL.scaleInches * (updraughtMs / HAIL.referenceUpdraftMs) ** HAIL.power * rotation * lapse, 0, HAIL.largestInches);

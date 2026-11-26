@@ -154,7 +154,7 @@ function updateStorm(world, storm, dtHours) {
   // engine's own CAPE; its top the parcel's overshoot, scaled by the updraught against this potential.
   const parcel = environmentParcel(world, storm, { elevated: elevatedFeed });
   const physics = diagnoseStormRealizationPhysics(feedEnvironment, storm, parcel);
-  storm.parcel = parcel ? { peakMs: physics.theoreticalUpdraftMs * parcel.dilution * physics.inhibitionEfficiency, topM: parcel.topM, elM: parcel.elM } : null;
+  storm.parcel = parcel ? { peakMs: physics.theoreticalUpdraftMs * parcel.dilution * physics.inhibitionEfficiency, topM: parcel.topM, elM: parcel.elM, hgzShare: parcel.hgzShare, midShare: parcel.midShare } : null;
   storm.physics = physics;
   // A rotating updraft draws its inflow from farther out and is less disturbed by worked-over
   // air and by its neighbours.

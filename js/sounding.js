@@ -315,6 +315,46 @@ export function drawHodograph(canvas, sounding){
  ctx.textAlign='left';ctx.fillStyle='#94a3b8';ctx.fillText(`Helicity 0-1 km ${Math.round(p.srh01)}  ·  0-3 km ${Math.round(p.srh03)} m²/s²  ·  critical angle ${Math.round(p.criticalAngle)}°  ·  rings every 10 kt`,frame.left,h-10);
 }
 
+// The tropopause and the stratosphere above 250 mb (the sounding's own, and the satellite's IR, Satellite.js):
+// the troposphere's lapse rate from 500 to 250 mb carries on up (T = T250 (p/250)^a, a from the two levels)
+// to the tropopause, colder the higher it stands, and above it the lower stratosphere keeps its temperature
+// to 100 mb. Fitted to 157 warm-sector May 00Z soundings (surface dewpoint 15.5 C+, AMA DDC FWD LBF OAX OUN
+// TOP, 2021-2023, Iowa Environmental Mesonet archive): lapse-rate tropopauses at 200 / 175 / 141 mb (p90 /
+// 50 / 10) at -57.9 / -62.3 / -69.7 C, so -58 C at 200 mb and 23 K colder for each halving of the
+// pressure. Engine warm sector now: 200 / 150 mb -55.5 / -63.6 C (real -57.5 / -61.3), tropopause 187 mb
+// at -60 C, equilibrium levels -59 C (were -46). (Until 2026-11-26 the sounding ran straight from 250 mb to
+// -56 C at 100 mb, 7-10 K too warm at 200-150 mb. The colder air adds the buoyancy real parcels have up
+// there: MLCAPE +10%, MUCAPE +19% at the median, all above 250 mb; regression trop-fit-2026-11-26 against
+// base-2026-11-25, no regressions: tornadoes a day 17.9 -> 19.3, MDT+HIGH days 33.8 -> 40 %, hail 2 in+
+// 20.2 -> 23.2 %, kept for the aggressive pattern. A lapse rate easing into the tropopause, tried
+// 2026-11-25, matched none of the real soundings.)
+export const TROPOPAUSE = Object.freeze({ tAt200C: -58, coolingPerHalvingK: 23, topP: 100 });
+// tropopauseOf(t500, t250): { p, t } the tropopause, and at(p) the temperature (C) at a pressure (hPa) at or above 250.
+export function tropopauseOf(t500, t250) {
+ const T = TROPOPAUSE, a = Math.log((t250 + 273.15) / (t500 + 273.15)) / Math.log(0.5);
+ const env = p => (t250 + 273.15) * (p / 250) ** a - 273.15, trop = p => T.tAt200C - T.coolingPerHalvingK * Math.log2(200 / p);
+ let p;
+ // (the column already as cold as the tropopause at 250 mb: the tropopause is there)
+ if (!(env(250) > trop(250))) p = 250;
+ else if (env(T.topP) > trop(T.topP)) p = T.topP;
+ else {
+  let lo = T.topP, hi = 250;
+  for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (env(mid) > trop(mid)) hi = mid; else lo = mid; }
+  p = (lo + hi) / 2;
+ }
+ const t = p === 250 ? t250 : env(p);
+ return { p, t, at: q => (q >= p ? (q >= 250 ? t250 : env(q)) : t) };
+}
+// The sounding above 250 mb: every LEVELS pressure to 100 mb on that curve, the wind turning and slowing
+// toward 100 mb as before, the air dry (28 K below at 250 mb to 20 K at 100 mb).
+function stratosphereAnchors(cell, t250) {
+ const u = tropopauseOf(cell.levels[500].temperature, t250), w = cell.levels[250];
+ return LEVELS.filter(p => p < 250).map(p => {
+  const f = Math.log(250 / p) / Math.log(2.5), t = u.at(p);
+  return { p, t, td: t - 28 + 8 * f, dir: (w.windDirection + 10 * f) % 360, spd: w.windSpeed + (Math.max(55, w.windSpeed * .75) - w.windSpeed) * f };
+ });
+}
+
 function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
  const moistureDepth = clamp((surfaceTd+5)/28,0,1);
  const t850=cell.levels[850].temperature;
@@ -330,7 +370,7 @@ function buildAnchors(cell,surfaceP,surfaceT,surfaceTd){
   {p:700,t:t700,td:td700,dir:cell.levels[700].windDirection,spd:cell.levels[700].windSpeed},
   {p:500,t:t500,td:Math.min(t500,Number.isFinite(cell.levels[500].dewpoint)?cell.levels[500].dewpoint:t500-18-8*(1-moistureDepth)),dir:cell.levels[500].windDirection,spd:cell.levels[500].windSpeed},
   {p:250,t:t250,td:Math.min(t250,t250-28),dir:cell.levels[250].windDirection,spd:cell.levels[250].windSpeed},
-  {p:100,t:-56,td:-76,dir:(cell.levels[250].windDirection+10)%360,spd:Math.max(55,cell.levels[250].windSpeed*.75)}
+  ...stratosphereAnchors(cell,t250)
  ];
  // The low-level jet's nose (RegionalAtmosphere's jetNose): a wind between the ground and 850 mb, its temperature and moisture
  // those the two give there. (2026-10-26: without it the lowest kilometre's winds were a straight line to 850 mb.)

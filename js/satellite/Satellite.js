@@ -28,6 +28,7 @@ import { WARNING } from '../forecast/Warning.js';
 import { makeNoise, fbm } from '../worldmap/noise.js';
 import { encodeSatelliteValue } from './SatelliteFormat.js';
 import { CLOUD_OPTICS } from '../storms/CloudOptics.js';
+import { tropopauseOf } from '../sounding.js';
 
 export const SATELLITE = Object.freeze({
   resKm: 2,                     // the ABI's IR pixel at the sub-point
@@ -45,7 +46,7 @@ export const SATELLITE = Object.freeze({
   // of optical depth 2-10 over its 1-3 km); cirrus about 0.01 g/m3 (mid-latitude cirrus 0.001-0.1,
   // Heymsfield & Platt 1984).
   adiabaticLwcPerM: 2e-3, midWaterGm3: 0.02, cirrusIceGm3: 0.01,
-  lowDepthM: [150, 2500],
+  lowDepthM: [150, 2500], cuEntrainShare: 0.2,
   dryLapseKPerM: 9.8e-3,
   // Heights of the pressure levels the cells keep (m above sea level; 500 hPa is the cell's own).
   levelZ: { 850: 1457, 700: 3012, 250: 10363 }, top: { z: 16180, t: -56 }, // (100 hPa, the soundings' top anchor)
@@ -117,15 +118,20 @@ function cellClouds(world, regional = null) {
   for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
     const c = world.getCell(x, y), k = y * nx + x, f = c.features ?? {}, L = c.levels;
     const ground = c.terrain?.elevationM ?? 0, tSurf = ((c.surface?.temperature ?? 70) - 32) / 1.8;
-    // The cell's temperature at a height (m above sea level), between its levels.
+    // The cell's temperature at a height (m above sea level), between its levels; above 250 hPa its
+    // tropopause (sounding.js tropopauseOf: the sounding's own, at the height the layer's mean
+    // temperature puts it above the cell's 250 hPa height), then the stratosphere at its temperature.
+    const z250 = 10 * (L[250].heightDm ?? S.levelZ[250] / 10), tp = tropopauseOf(L[500].temperature, L[250].temperature);
+    const zTrop = z250 + 287.05 / 9.81 * ((L[250].temperature + tp.t) / 2 + 273.15) * Math.log(250 / tp.p);
     const anchors = [[ground, tSurf], [S.levelZ[850], L[850].temperature], [S.levelZ[700], L[700].temperature],
-      [10 * (L[500].heightDm ?? 570), L[500].temperature], [S.levelZ[250], L[250].temperature], [S.top.z, S.top.t]].filter(([z], i) => i === 0 || z > ground);
+      [10 * (L[500].heightDm ?? 570), L[500].temperature], [z250, L[250].temperature], [zTrop + 1, tp.t], [Math.max(S.top.z, zTrop + 2), tp.t]].filter(([z], i) => i === 0 || z > ground);
     const tAt = z => {
       if (z <= anchors[0][0]) return anchors[0][1];
       for (let i = 1; i < anchors.length; i++) if (anchors[i][0] >= z) { const a = anchors[i - 1], b = anchors[i]; return a[1] + (b[1] - a[1]) * (z - a[0]) / (b[0] - a[0]); }
       return anchors[anchors.length - 1][1];
     };
-    out.ground[k] = ground; out.tSurf[k] = tSurf + 273.15;
+    // (the IR sees the ground's skin, not the air: dry ground in the sun is up to 15 K hotter, RegionalAtmosphere skinExcessK)
+    out.ground[k] = ground; out.tSurf[k] = tSurf + (Number(f.skinExcessK) || 0) + 273.15;
     // Low, its two kinds (a world without them: all of its low cloud the sheet). Both reach up to
     // the moist layer's top and hold what an adiabatic ascent condenses from their base.
     //  - The sheet (stratus, stratocumulus) from the cloud base of the air at the ground: thin
@@ -140,7 +146,10 @@ function cellClouds(world, regional = null) {
     //    deck's own base and top (deckBaseM, deckTopM: a few hundred metres up, warm and thin).
     const deckShare = sheet > 0 && Number.isFinite(f.deckTopM) ? clamp((f.cloudDeck ?? 0) / sheet, 0, 1) : 0;
     for (const [name, share, base0] of [['sheet', sheet, ground + S.lclMPerK * spreadK], ['cumulus', cumulus, Math.max(ground, c.derived?.lcl ?? ground + 1000)]]) {
-      const top0 = moistTop ?? base0 + 500, d = name === 'sheet' ? deckShare : 0;
+      // (cumulus reach the mixed layer's top and the entrainment zone over it, cuEntrainShare of its depth, where the inversion
+      // stops them, if the moist layer reaches so high; until 2026-11-25 all of them reached the moist layer's top)
+      const mixedTop = Number.isFinite(f.mixedLayerDepthM) ? ground + (1 + S.cuEntrainShare) * f.mixedLayerDepthM : Infinity;
+      const top0 = name === 'cumulus' ? Math.min(moistTop ?? base0 + 500, mixedTop) : moistTop ?? base0 + 500, d = name === 'sheet' ? deckShare : 0;
       const base = base0 + d * ((f.deckBaseM ?? base0) - base0), top = top0 + d * ((f.deckTopM ?? top0) - top0);
       const depth = clamp(top - base, S.lowDepthM[0], S.lowDepthM[1]);
       out[name][k] = share; out[name + 'Top'][k] = base + depth; out[name + 'T'][k] = tAt(base + depth) + 273.15;
@@ -151,8 +160,8 @@ function cellClouds(world, regional = null) {
     out.mid[k] = mid; out.midTop[k] = z700 + midDepth; out.midT[k] = tAt(z700 + midDepth) + 273.15; out.midW[k] = S.midWaterGm3 * midDepth;
     // High: cirrus topped at the jet's level, hanging lower the more of it there is.
     // (where the cell's high share is the storms' anvil, its own cirrus is not known, and the anvil is AnvilField's)
-    const high = regional?.anvil && regional.anvil[k] >= (f.cloudHigh ?? 0) - 1e-9 ? 0 : clamp(f.cloudHigh ?? 0, 0, 1), highDepth = Math.max(300, high * 0.5 * (S.levelZ[250] - z500));
-    out.high[k] = high; out.highTop[k] = S.levelZ[250]; out.highT[k] = tAt(S.levelZ[250]) + 273.15; out.highW[k] = S.cirrusIceGm3 * highDepth;
+    const high = regional?.anvil && regional.anvil[k] >= (f.cloudHigh ?? 0) - 1e-9 ? 0 : clamp(f.cloudHigh ?? 0, 0, 1), highDepth = Math.max(300, high * 0.5 * (z250 - z500));
+    out.high[k] = high; out.highTop[k] = z250; out.highT[k] = tAt(z250) + 273.15; out.highW[k] = S.cirrusIceGm3 * highDepth;
   }
   return out;
 }

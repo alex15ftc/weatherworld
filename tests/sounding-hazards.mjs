@@ -41,7 +41,8 @@ assert.ok(highBase.hail.maxInches > 0.5 * strong.hail.maxInches);
 assert.ok(runLoneStorm({}, air({ dcape: 1500 })).wind.maxGustMph > runLoneStorm({}, air({ dcape: 300 })).wind.maxGustMph);
 
 // The shared functions themselves, at known inputs.
-const storm = { updraughtMs: HAIL.referenceUpdraftMs, mesocycloneStrength: 0.4, precipitation: 1 };
+// (hail grows from the hail zone's speed: a parcel whose whole speed is there, hgzShare 1)
+const storm = { updraughtMs: HAIL.referenceUpdraftMs, parcel: { hgzShare: 1 }, mesocycloneStrength: 0.4, precipitation: 1 };
 const neutral = HAIL.lapseRange[0] + 0.35 * (HAIL.lapseRange[1] - HAIL.lapseRange[0]);
 assert.ok(Math.abs(hailSizeInches(storm, { lapseRate700500: neutral, wetBulbZeroAglM: 0 }) - HAIL.scaleInches) < 1e-9, 'reference updraught, full rotation, neutral lapse rate, no melting = the scale size');
 // Melting: a deeper warm layer takes more off, and a small stone loses a larger share of itself than a big one.

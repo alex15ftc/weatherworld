@@ -13,6 +13,7 @@
 import { clamp } from '../scenarios/math.js';
 import { lineShare, coldPoolBalance } from './StormModeEngine.js';
 import { RFD_SURGE } from './TornadoEngine.js';
+import { layerSpeedMs } from './UpdraughtParcel.js';
 
 export const ROTATION = Object.freeze({
   // helicity: the inflow's helicity over which the mesocyclone's turning grows to its full share
@@ -149,7 +150,9 @@ const toward = (value, target, dtHours, upHours, downHours) => value + (target -
 
 export function stepStormRotation(storm, environment, dtHours) {
   const R = ROTATION, linear = lineShare(storm);
-  const updraught = clamp((storm.updraughtMs ?? 0) / R.fullUpdraughtMs, 0, 1.2);
+  // (the updraught at the mesocyclone's heights, 3-7 km, that stretches it: UpdraughtParcel UPDRAUGHT_LAYERS; until 2026-11-26
+  // its peak, near the equilibrium level)
+  const updraught = clamp(layerSpeedMs(storm, 'mid') / R.fullUpdraughtMs, 0, 1.2);
   // How much of its inflow the storm takes from near the ground (the inhibition term of the
   // significant tornado parameter: all of it at 50 J/kg or less, none at 200; none for a storm fed
   // from aloft). The rest comes from above the lowest km, and brings only the shear and helicity

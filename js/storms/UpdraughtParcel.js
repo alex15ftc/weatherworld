@@ -61,7 +61,10 @@ export function soundingProfile(cell) {
       const a = P[k - 1], b = P[k], f = (z - a.z) / Math.max(1e-6, b.z - a.z);
       return { z, p: a.p + f * (b.p - a.p), t: a.t + f * (b.t - a.t), td: a.td + f * (b.td - a.td), u: a.u + f * (b.u - a.u), v: a.v + f * (b.v - a.v) };
     }
-    return P[P.length - 1];
+    // (above the sounding's top, 100 hPa, the lower stratosphere at the top's temperature, its pressure
+    // falling hydrostatically: an overshooting top stops in it rather than at the sounding's end)
+    const t = P[P.length - 1];
+    return { ...t, z, p: t.p * Math.exp(-9.81 * (z - t.z) / (287.05 * (t.t + 273.15))) };
   };
   return { P, at };
 }
@@ -90,10 +93,10 @@ export function liftParcel(sd, coreM, fromM = 0, epsIn = null) {
   const e0 = sd.at(fromM);
   let T = th * (e0.p / 1000) ** 0.286, qc = 0, lcl = null;
   const out = [];
-  const zMax = sd.P[sd.P.length - 1].z, z0 = Math.ceil(fromM / S.dz) * S.dz;
+  const zMax = Math.min(20000, sd.P[sd.P.length - 1].z), z0 = Math.ceil(fromM / S.dz) * S.dz;
   for (let z = 0; z < z0; z += S.dz) out.push({ z, w: 0, qc: 0, prod: 0, te: sd.at(z).t, B: 0 });
   // Pass 1: the parcel's buoyancy (entrainment is per metre, so it doesn't depend on its speed).
-  for (let z = z0; z <= Math.min(zMax, 20000); z += S.dz) {
+  for (let z = z0; z <= Math.max(zMax, 20000); z += S.dz) {
     const e = sd.at(z), Te = e.t + 273.15, qe = qsat(e.td, e.p);
     let prod = 0;
     if (z > z0) {
@@ -147,6 +150,32 @@ export function liftParcel(sd, coreM, fromM = 0, epsIn = null) {
 export const PETERS = Object.freeze({ sigma: 1.131, alpha: 0.8, k2: 0.18, mixLenM: 120, prandtl: 1 / 3, iters: 4, minRM: 500, maxRM: 10000 });
 const capeOf = p => p.levels.reduce((s, l) => s + (l.z >= p.lcl && l.B > 0 ? l.B * PARCEL.dz : 0), 0);
 const peakOf = p => Math.max(0, ...p.levels.map(x => x.w));
+// The parcel's mean speed over a layer (levels where keep(level) holds) as a share of its peak: 0 where it has none there.
+const layerShare = (p, keep) => { let s = 0, n = 0; for (const l of p.levels) if (keep(l)) { s += l.w; n++; } const peak = peakOf(p); return n && peak > 0 ? s / n / peak : 0; };
+// Where an updraught's speed does its work, not where it peaks (near the equilibrium level, raised by the air's buoyancy
+// near the tropopause): hail grows in the hail-growth zone, -10 to -30 C (Lin and Kumjian 2022, JAS 79, and the hail
+// literature since Browning 1977), and the mesocyclone is stretched at its own heights, 3-7 km (SpinBudget MID_M). Each as a
+// share of the entraining parcel's peak (hgzShare, midShare), read against its median share on the sounding before the
+// tropopause (UPDRAUGHT_LAYERS.ref: so on that sounding the hail and rotation are as before, storm to storm a little
+// different), among the storms each matters for. Measured 2026-11-26, stepped as the server does: hgz over storms making
+// 2 in hail (seeds 1-2, 48 hours) 0.568 / 0.628 / 0.735 (p10 / 50 / 90), 0.56 at the median with the tropopause, whose
+// strongest updraughts peak higher; mid over updraughts of 15 m/s or more (seeds 1-4, 60 hours) 0.136 / 0.512 / 0.726,
+// 0.487 with the tropopause. (hgz first against all storms' median, 0.709: hail at 2 in+ 12.6 %, at 3.5 in+ 0.11 %,
+// regression hail-hgz-2026-11-26: the big-hail storms, the tallest, have the least of their speed there.)
+// (The hail now grows from the hail zone's own speed, refitted in StormHazards HAIL; ref.hgz is only the share taken where
+// a storm's parcel gives none. The mesocyclone reads its layer against ref.mid.)
+// layerSpeedMs(storm, 'mid'): the storm's updraught (updraughtMs) carried to that layer, against the usual share there.
+// hailZoneSpeedMs(updraughtMs, parcel): its speed in the hail-growth zone itself (m/s; the share usual for hail storms where
+// the parcel has none to give), what StormHazards' hail grows from.
+export const hailZoneSpeedMs = (updraughtMs, parcel) => {
+  const share = Number(parcel?.hgzShare);
+  return (Number(updraughtMs) || 0) * (Number.isFinite(share) && share > 0 ? share : UPDRAUGHT_LAYERS.ref.hgz);
+};
+export const layerSpeedMs = (storm, layer) => {
+  const share = Number(storm?.parcel?.[layer + 'Share']), ref = UPDRAUGHT_LAYERS.ref[layer];
+  return (Number(storm?.updraughtMs) || 0) * (Number.isFinite(share) && share > 0 ? share / ref : 1);
+};
+export const UPDRAUGHT_LAYERS = Object.freeze({ hgzC: [-30, -10], midM: [3000, 7000], ref: { hgz: 0.628, mid: 0.512 } });
 export function environmentParcel(world, storm, { elevated = false } = {}) {
   const cell = inflowCell(world, storm), hour = world.validHourUtc;
   const sd = soundingProfile(cell);
@@ -172,7 +201,8 @@ export function environmentParcel(world, storm, { elevated = false } = {}) {
   // 4-59 % more
   const wPure = peakOf(pure), capePure = capeOf(pure);
   const result = mixed && capePure > 50
-    ? { dilution: clamp(Math.sqrt(Math.max(0, ecape) / capePure), 0, 1), kept: clamp(peakOf(mixed) / (Math.sqrt(1.5) * wPure), 0, 1), peakMs: peakOf(mixed), topM: mixed.top, elM: mixed.el, radiusM: R }
+    ? { dilution: clamp(Math.sqrt(Math.max(0, ecape) / capePure), 0, 1), kept: clamp(peakOf(mixed) / (Math.sqrt(1.5) * wPure), 0, 1), peakMs: peakOf(mixed), topM: mixed.top, elM: mixed.el, radiusM: R,
+      hgzShare: layerShare(mixed, l => l.te >= UPDRAUGHT_LAYERS.hgzC[0] && l.te <= UPDRAUGHT_LAYERS.hgzC[1]), midShare: layerShare(mixed, l => l.z >= UPDRAUGHT_LAYERS.midM[0] && l.z <= UPDRAUGHT_LAYERS.midM[1]) }
     : null;
   Object.defineProperty(storm, 'envParcelCache', { value: { cell, hour, elevated, vsr, result }, writable: true, configurable: true, enumerable: false });
   return result;

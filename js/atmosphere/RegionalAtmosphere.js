@@ -1286,6 +1286,8 @@ export class RegionalAtmosphere {
       // How hard the ground is heating the air now, against the most it does over dry ground (0-1).
       cell.features.surfaceHeating = daytime ? (p.heatingMoistWm2 + (p.heatingDryWm2 - p.heatingMoistWm2) * dryness) * (1 - p.wetGroundHeatingCut * this.wetGround[k]) * sunHere / p.heatingDryWm2 : 0;
       cell.features.moistLayerTopM = this.moistTop[k]; cell.features.wetGround = this.wetGround[k];
+      // How much hotter than the air the ground's skin is (K; the heating's own, drySkinExcessK above), for the satellite's IR.
+      cell.features.skinExcessK = daytime ? p.drySkinExcessK * dryness * (1 - this.wetGround[k]) * sunHere : 0;
       // Cloud (see stratusSpreadK): low from the air near the ground and at 850 mb, mid and high
       // from the large-scale ascent, high also from storms' anvils.
       {
@@ -1307,10 +1309,15 @@ export class RegionalAtmosphere {
         const cumulus = daytime ? p.cumulusShare * ramp(this.mixedDepth[k] - lclM, 0, 400) : 0;
         const t850c = cell.levels[850].temperature, d850c = cell.levels[850].dewpoint;
         const rh850 = Math.exp(17.67 * d850c / (d850c + 243.5) - 17.67 * t850c / (t850c + 243.5));
-        const humid850 = rh850 > p.cloudRh ? 1 - Math.sqrt(Math.max(0, 1 - rh850) / (1 - p.cloudRh)) : 0;
+        const sundqvist = rh => (rh > p.cloudRh ? 1 - Math.sqrt(Math.max(0, 1 - rh) / (1 - p.cloudRh)) : 0);
+        const humid850 = sundqvist(rh850);
+        // (mid cloud also where 700 mb is humid, by the same scheme: until 2026-11-25 it came from the
+        // ascent alone, and the 15% of cells with 700 mb over 80% at dawn had none)
+        const t700c = cell.levels[700].temperature, d700c = cell.levels[700].dewpoint;
+        const humid700 = sundqvist(Math.exp(17.67 * d700c / (d700c + 243.5) - 17.67 * t700c / (t700c + 243.5)));
         const ascent = outer.ascentKh ?? 0;
         this.cloudLow[k] = Math.max(stratus, cumulus, humid850);
-        this.cloudMid[k] = ramp(ascent, p.midAscentKh[0], p.midAscentKh[1]) * (1 - 0.5 * this.eml[k]);
+        this.cloudMid[k] = Math.max(ramp(ascent, p.midAscentKh[0], p.midAscentKh[1]) * (1 - 0.5 * this.eml[k]), humid700);
         this.cloudHigh[k] = Math.max(this.anvil[k], 0.8 * ramp(ascent, p.highAscentKh[0], p.highAscentKh[1]));
         cell.features.cloudLow = this.cloudLow[k]; cell.features.cloudMid = this.cloudMid[k]; cell.features.cloudHigh = this.cloudHigh[k];
         // (the low cloud's two kinds, for the satellite to draw apart: the sheet - stratus from the
