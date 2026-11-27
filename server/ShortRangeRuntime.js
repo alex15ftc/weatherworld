@@ -95,7 +95,7 @@ export class ShortRangeRuntime {
   }
   storms(init, minute) {
     const run = this.run(init), frame = run?.storms.find(f => f.minute === Number(minute));
-    return frame ? { minute: frame.minute, storms: frame.list } : null;
+    return frame ? { minute: frame.minute, storms: frame.list, ...(frame.refl ? { refl: frame.refl } : {}) } : null;
   }
   // The run's sounding at a cell of the map and a forecast hour (the newest run when none is named; the nearest
   // kept hour at or before the one asked for).

@@ -281,7 +281,11 @@ async function render() {
     ]);
     if (mine !== token) return;
     const meta = isField() ? p : (S.meta.parameters ?? []).find(q => q.key === fieldKey);
-    shown = { field: field && meta ? { ...field, meta } : null, storms: storms?.storms ?? null };
+    // (the whole hours either side, whose storm frames carry the simulated reflectivity)
+    const hours = isField() ? [] : [Math.floor(t / 60) * 60, Math.floor(t / 60) * 60 + 60].filter(m => m <= Math.min(maxMinutes(), readyMinutes()));
+    const reflFrames = (await Promise.all(hours.map(m => getJson(`/api/models/short-range/storms?init=${S.init}&minute=${m}`)))).filter(f => f?.refl);
+    if (mine !== token) return;
+    shown = { field: field && meta ? { ...field, meta } : null, storms: storms?.storms ?? null, reflFrames };
     // Have the next frames ready for playing.
     const ahead = t + stepMinutes();
     if (ahead <= Math.min(maxMinutes(), readyMinutes())) {
@@ -359,7 +363,7 @@ function drawShort() {
   drawBaseLines();
   if (field && $('showContours').checked) { drawContours(field.values, field.meta.levels ?? [], 'rgba(255,255,255,.75)', field.meta.decimals ?? 0); if (field.second) drawContours(field.second, field.meta.second?.levels ?? [], field.meta.second?.colour ?? '#ffd166', 0, [6, 4]); }
   if (field?.barbs) for (const b of field.barbs) { const [x, y] = px(b.xKm, b.yKm); drawBarb(x, y, b.windKt, b.windFromDeg); }
-  if (shown.storms && showsRefl()) drawRaster(reflRaster(shown.storms, `${S.init}:${t}`));
+  if (shown.storms && showsRefl() && shown.reflFrames?.length) drawRaster(reflRaster(shown.storms, shown.reflFrames, `${S.init}:${t}`));
   // As the HRRR's "reflectivity + UH > 75": the 1 h max swaths behind each storm, over the echoes (light grey: the map is dark).
   if (productKey === 'reflUh') drawUhTracks(t - 60, t, { least: reflUhLeast, colour: 'rgba(214,222,232,.5)', width: 5 });
   if (productKey === 'uh1') drawUhTracks(t - 60, t);
@@ -431,65 +435,48 @@ function drawBarb(x, y, speed, fromDeg) {
   ctx.restore();
 }
 
-// Simulated composite reflectivity: each storm's rain area as the radar would see it from above, its
-// core near the updraft, a hook where the rain wraps round a rotating storm, and a line's leading edge
-// with rain trailing behind. A small grain that moves with each storm keeps the edges from looking drawn.
-const REFL_KM = 3;
-function hash(i, j, s) { let h = Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(s, 2246822519); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
-function noise(x, y, s) { const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy); const a = hash(i, j, s), b = hash(i + 1, j, s), c = hash(i, j + 1, s), d = hash(i + 1, j + 1, s); return (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * 2 - 1; }
-function stormDbz(s, x, y, seed) {
-  const peak = Math.max(20, s.dbz), grain = 0.6 * noise((x - s.x) / 5, (y - s.y) / 5, seed) + 0.4 * noise((x - s.x) / 2, (y - s.y) / 2, seed + 7);
-  let dbz = 0;
-  const rain = s.rain;
-  if (rain) {
-    const b = rain.bearingDeg * Math.PI / 180, ax = Math.sin(b), ay = -Math.cos(b), dx = x - rain.xKm, dy = y - rain.yKm;
-    const along = (dx * ax + dy * ay) / (rain.alongKm / 2), across = (-dx * ay + dy * ax) / (rain.acrossKm / 2), r2 = (along * along + across * across) * (1 + 0.28 * grain);
-    if (r2 < 1) dbz = 16 + (peak - 24) * Math.pow(1 - r2, 0.75);
-    // Light rain round the edges, wider downwind.
-    else if (r2 < 2.4 + 0.8 * Math.max(0, along)) dbz = 15 + 9 * (1 - (r2 - 1) / (1.4 + 0.8 * Math.max(0, along))) + 2.5 * grain;
-    // The core: between the updraft and the middle of the rain.
-    const cx = s.x + (rain.xKm - s.x) * 0.35, cy = s.y + (rain.yKm - s.y) * 0.35, sigma = Math.max(2.5, rain.acrossKm * 0.17), d2 = (x - cx) ** 2 + (y - cy) ** 2;
-    if (r2 < 1.15) dbz = Math.max(dbz, 16 + (peak - 16) * Math.exp(-d2 / (2 * sigma * sigma)) * (1 + 0.06 * grain));
-    // The hook, on the right rear of the updraft as the storm moves.
-    if (s.hook > 0.12) {
-      const m = Math.hypot(s.east, s.north) || 1, mx = s.east / m, my = -s.north / m, hx = x - s.x, hy = y - s.y, d = Math.hypot(hx, hy);
-      const ahead = (hx * mx + hy * my) / (d || 1), right = (hx * -my + hy * mx) / (d || 1), R = 3 + 4 * s.hook;
-      if (Math.abs(d - R) < 1.6 && right > -0.2 && ahead < 0.55) dbz = Math.max(dbz, (30 + 22 * s.hook) * (1 - Math.abs(d - R) / 1.6 * 0.4) + 3 * grain);
-    }
-  } else {
-    const d = Math.hypot(x - s.x, y - s.y);
-    if (d < 7) dbz = 16 + (peak - 16) * (1 - d / 7);
-  }
-  // A line: a narrow leading edge along its axis, rain trailing behind it.
-  const line = s.line;
-  if (line && line.share > 0.35 && line.halfLengthKm > 3) {
-    const b = line.axisBearingDeg * Math.PI / 180, ux = Math.sin(b), uy = -Math.cos(b), ox = (rain?.xKm ?? s.x), oy = (rain?.yKm ?? s.y);
-    const m = Math.hypot(s.east, s.north) || 1, mx = s.east / m, my = -s.north / m;
-    const along = (x - ox) * ux + (y - oy) * uy, out = Math.abs(along) / line.halfLengthKm;
-    if (out < 1.1) {
-      const bow = (line.bow ?? 0) * 12 * (1 - (along / line.halfLengthKm) ** 2), front = (x - ox) * mx + (y - oy) * my - bow, width = 3 + 4 * line.share, taper = Math.max(0, 1 - out ** 4);
-      if (Math.abs(front) < width) dbz = Math.max(dbz, 20 + (peak - 22) * taper * (1 - Math.abs(front) / width) ** 0.6 + 3 * grain);
-      if (front < 0 && front > -width * 7) dbz = Math.max(dbz, (22 + 12 * line.share) * taper * (1 + front / (width * 9)) + 4 * grain);
-    }
-  }
-  return dbz;
+// Simulated composite reflectivity: the run's own, worked out on the model's thread from each storm's fall-out
+// on a 3 km grid (js/forecast/ModelReflectivity.js) on each whole hour. At the quarter hours between, each
+// storm's patch comes from the nearer of the two hours that has it, moved as far as its storm has moved
+// since (a storm with no patch in either hour has no echo yet). (Until 2026-11-27 it was drawn here from a
+// formula: an ellipse, a core, a hook and a line's edge.)
+const patchBytes = new WeakMap();
+function bytesOf(patch) {
+  let b = patchBytes.get(patch);
+  if (!b) { const text = atob(patch.data); b = new Uint8Array(text.length); for (let k = 0; k < text.length; k++) b[k] = text.charCodeAt(k); patchBytes.set(patch, b); }
+  return b;
 }
-function reflRaster(storms, id) {
+function reflRaster(storms, frames, id) {
   const key = `refl:${id}`;
   if (rasters.has(key)) return rasters.get(key);
-  const n = Math.ceil(domain.widthKm / REFL_KM), dbz = new Float32Array(n * n);
+  const cellKm = frames.find(f => f?.refl)?.refl.cellKm ?? 3, n = Math.ceil(domain.widthKm / cellKm), dbz = new Float32Array(n * n);
   for (const s of storms) {
-    const seed = Number(String(s.id).replace(/\D/g, '')) || 1;
-    const reach = Math.max(10, (s.rain ? Math.max(s.rain.alongKm, s.rain.acrossKm) * 1.1 + Math.hypot(s.rain.xKm - s.x, s.rain.yKm - s.y) : 8) + 8, s.line?.share > 0.35 ? s.line.halfLengthKm * 1.1 + 30 : 0);
-    const x0 = Math.max(0, Math.floor((s.x - reach) / REFL_KM)), x1 = Math.min(n - 1, Math.ceil((s.x + reach) / REFL_KM)), y0 = Math.max(0, Math.floor((s.y - reach) / REFL_KM)), y1 = Math.min(n - 1, Math.ceil((s.y + reach) / REFL_KM));
-    for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) { const v = stormDbz(s, (i + 0.5) * REFL_KM, (j + 0.5) * REFL_KM, seed); if (v > dbz[j * n + i]) dbz[j * n + i] = v; }
+    let best = null;
+    for (const f of frames) {
+      const patch = f?.refl?.patches.find(p => p.id === s.id), then = patch && f.storms.find(q => q.id === s.id);
+      if (patch && then && (!best || Math.abs(f.minute - t) < Math.abs(best.f.minute - t))) best = { f, patch, then };
+    }
+    if (!best) continue;
+    const { patch, then } = best, bytes = bytesOf(patch), di = Math.round((s.x - then.x) / cellKm), dj = Math.round((s.y - then.y) / cellKm);
+    for (let j = 0; j < patch.h; j++) {
+      const row = patch.j0 + j + dj; if (row < 0 || row >= n) continue;
+      for (let i = 0; i < patch.w; i++) {
+        const col = patch.i0 + i + di, v = bytes[j * patch.w + i] / 2;
+        if (v && col >= 0 && col < n && v > dbz[row * n + col]) dbz[row * n + col] = v;
+      }
+    }
   }
   const image = document.createElement('canvas'); image.width = image.height = n;
   const g = image.getContext('2d'), data = g.createImageData(n, n), lut = REFL.map(([at, c]) => [at, rgb(c)]);
   for (let i = 0; i < dbz.length; i++) { const v = dbz[i]; if (v < 15) continue; let c = lut[0][1]; for (const [at, col] of lut) if (v >= at) c = col; data.data.set([c[0], c[1], c[2], 235], i * 4); }
-  g.putImageData(data, 0, 0); image.dbz = dbz; image.n = n; image.cellKm = REFL_KM;
+  g.putImageData(data, 0, 0); image.dbz = dbz; image.n = n; image.cellKm = cellKm;
   keepRaster(key, image);
   return image;
+}
+// A storm's strongest simulated echo (dBZ) in the nearer hour that has its patch, else null.
+function stormPeak(id) {
+  const f = (shown.reflFrames ?? []).filter(q => q?.refl?.patches.some(p => p.id === id)).sort((a, b) => Math.abs(a.minute - t) - Math.abs(b.minute - t))[0];
+  return f ? f.refl.patches.find(p => p.id === id).peak : null;
 }
 
 // Updraft helicity swaths: each storm's 5-minute points joined, the strongest drawn last.
@@ -691,7 +678,7 @@ canvas.addEventListener('mousemove', event => {
     const image = rasters.get(`refl:${S.init}:${t}`);
     if (image && showsRefl()) { const v = image.dbz[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0; if (v >= 15) lines.push(`Reflectivity: <b>${Math.round(v)}</b> dBZ`); }
     const near = (shown.storms ?? []).map(s => [s, Math.hypot(s.x - x, s.y - y)]).filter(([, d]) => d < 15).sort((a, b) => a[1] - b[1])[0]?.[0];
-    if (near) lines.push(`<b>${near.id}</b> · ${near.mode ?? 'storm'} · ${near.dbz} dBZ · UH ${near.uh}${near.hailIn >= 0.75 ? ` · hail ${near.hailIn.toFixed(2)} in` : ''}${near.tornado ? ` · <b style="color:#ff6b6b">tornado</b> ${near.tornado.mph} mph` : ''}`);
+    if (near) lines.push(`<b>${near.id}</b> · ${near.mode ?? 'storm'}${stormPeak(near.id) !== null ? ` · ${stormPeak(near.id)} dBZ` : ''} · UH ${near.uh}${near.hailIn >= 0.75 ? ` · hail ${near.hailIn.toFixed(2)} in` : ''}${near.tornado ? ` · <b style="color:#ff6b6b">tornado</b> ${near.tornado.mph} mph` : ''}`);
   } else if (!['paint', 'spaghetti', 'torSpaghetti'].includes(productKey)) {
     const image = rasters.get(`prob:${E.issued}:${productKey}:${t}`);
     if (image) lines.push(`Chance: <b>${Math.round(image.share[Math.floor(y / image.cellKm) * image.n + Math.floor(x / image.cellKm)] ?? 0)}%</b> of ${image.runs ?? E.byRun.length}${product()?.vtpLeast ? ' full' : ''} runs`);

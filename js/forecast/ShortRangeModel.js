@@ -12,12 +12,14 @@
 //            (the worker passes the server's mesoanalysis parameters), as Float32Arrays
 //   storms   every STORM_EVERY hours: each storm, compact (position, motion, reflectivity, rain
 //            area, hail, updraft, rotation, updraft helicity, tornado)
+//            and, on each whole hour, the simulated reflectivity (ModelReflectivity.js: each storm's patch)
 //   tracks   every storm tick: the points of storms with updraft helicity, and of tornadoes
 //   soundings each hour: what a sounding is made from, for every cell (soundingColumns.js), so the model page
 //            can show the run's sounding at any point (the public's soundings: the live world's are an admin's)
 import { AtmosphereWorld } from '../world/AtmosphereWorld.js';
 import { buildStormAppearance } from '../storms/StormAppearance.js';
 import { packColumns } from './soundingColumns.js';
+import { modelReflectivity, MODEL_REFLECTIVITY } from './ModelReflectivity.js';
 
 export const SHORT_RANGE = Object.freeze({
   hours: 18, longHours: 48, longAtUtc: [0, 6, 12, 18],
@@ -91,7 +93,13 @@ export function runShortRange(state, { hours = SHORT_RANGE.hours, shareHours = S
     }
     fields.push({ hour: r2(world.validHourUtc - initHourUtc), values: frame });
   };
-  const keepStorms = () => storms.push({ minute: Math.round((stormHour() - initHourUtc) * 60), list: (world.storms ?? []).filter(s => s.active && (s.intensity ?? 0) >= 0.15).map(stormRecord) });
+  // (on each whole hour also the run's simulated reflectivity, ModelReflectivity.js: the page carries each storm's
+  // patch with its storm to the quarter hours between)
+  const keepStorms = () => {
+    const minute = Math.round((stormHour() - initHourUtc) * 60), frame = { minute, list: (world.storms ?? []).filter(s => s.active && (s.intensity ?? 0) >= 0.15).map(stormRecord) };
+    if (minute % 60 === 0) frame.refl = { cellKm: MODEL_REFLECTIVITY.cellKm, patches: modelReflectivity(world) };
+    storms.push(frame);
+  };
   const keepTracks = () => {
     const minute = Math.round((stormHour() - initHourUtc) * 60);
     for (const s of world.storms ?? []) {

@@ -615,7 +615,25 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    dries out above the base, in the air 150-350 hPa above the ground (PrecipitationField evaporationAloft; StormColumn
    midLevelRh so the engine's cores dry in the same air): 20 dBZ reach p90 78 -> 69 km; regression evap-aloft-2026-11-26
    vs base-2026-11-25: no regressions. Left as plausible: a 20-25 dBZ sheet 30-40 km ahead of supercells in very
-   humid air (85% mid-level RH); next lever if it still looks wrong in game: snow fall speed and size. The sounding has a tropopause fitted to 157 real warm-sector May soundings
+   humid air (85% mid-level RH); next lever if it still looks wrong in game: snow fall speed and size.
+   Radar open items (2026-11-27): hail falls in the Doppler velocity at its own speed (PrecipitationField
+   hailEchoFallMs: stones' fall weighted by their Mie echo, ~9 m/s for 10 mm to ~20 m/s for 50 mm; was ice 1 m/s above
+   the freezing level): a 2.5 in core at 6.4 deg reads 3 m/s more toward the radar. Beam blockage: each radial keeps
+   the share of a normal beam ground nearer the radar stopped (RadarSimulator normalBelow, shadow) and every gate
+   beyond loses it; on the engine's 16 km ground it blocks nothing on this map, on the map's 0.8 km ground
+   (data/worldmap elevation.f32) KNSH/KCHT/KANV would lose 0.5-3 dB on 13-51% of radials at 0.5 deg - wiring the fine
+   ground into the radar threads is an open option (the local elevation.f32 is stale, 350 m off the generator).
+   Already there, checked: range sensitivity (-32 + 20 log r dBZ), in-beam shear in spectrum width, 250 m close-look
+   gates when zoomed in (Radar.luau fine). Engine fingerprint identical; scans +2% time.
+   Model page reflectivity (2026-11-27, owner chose option C): the short range run keeps, on each whole hour, each
+   storm's simulated composite reflectivity patch (js/forecast/ModelReflectivity.js: the storm's coarse fall-out,
+   1 particle in 16, 3 km cells, column max at 1-8 km, 1-2-1 smoothed on a 3 km grid; 0.15-0.4 s an hour, 33-69 KB
+   JSON an hour, ~2.5 MB a 48 h run); /api/models/short-range/storms carries `refl` on whole hours; models page
+   (js/pages/modelPage.js reflRaster) moves each patch with its storm to the quarter hours. Replaced the drawn
+   ellipse/core/hook/line and the formula peak (StormEngine maxReflectivityDbz, still on the outlook ensemble
+   tracks). Checked on a local engine (2 runs of 18 h in 28-44 s, page shows lines and supercells, no console
+   errors). PrecipitationField now gives no field when all of a storm's fall-out lies beyond REACH_KM (a negative
+   grid size threw in the game feed's rain grids, 3 storms in 31 h on a local engine; cause not found offline). The sounding has a tropopause fitted to 157 real warm-sector May soundings
    (sounding.js tropopauseOf; MLCAPE +10%, all above 250 mb; regression trop-fit-2026-11-26: no regressions, a
    little more aggressive, kept by the owner's wish for an aggressive pattern). Known and kept: the engine's MLCAPE
    below 250 mb runs ~45% above real (mixed-layer theta-e 346 vs 340.5 K). Hail now grows from the updraught's speed in the
