@@ -607,8 +607,13 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    parcels lift from the engine's feed (elevated storms' most unstable layer); 700 mb humidity makes mid cloud
    (Sundqvist); cumulus topped at the mixed layer; IR sees the ground's skin (skinExcessK); satellite uses a
    tropopause (sounding.js tropopauseOf). Roblox sky reads the engine's cloud: engine `/api/game/v1/lab/sky`,
-   StormHostService polls it each 37.5 s and sends a "sky" event, Render/Sky dims sun/sky light by it - **needs an
-   engine deploy, then a Studio look from several angles**. The sounding has a tropopause fitted to 157 real warm-sector May soundings
+   StormHostService polls it each 37.5 s and sends a "sky" event, Render/Sky dims sun/sky light by it (engine
+   deployed from 241fd0f 2026-11-26, sky endpoint answers) - **needs a Studio look from several angles**. Rain ahead of
+   supercells (owner, 2026-11-26): melted snow now collapses to its drop size (PrecipitationField meltedShare, Brandes
+   2007 density): 20 dBZ reach ahead of the updraught median 30 -> 24 km, p90 93 -> 78 km (3 seeds, 210 supercell
+   samples); engine states identical (fingerprint), only radar and frame rain change. Next there: rain does not
+   evaporate between the freezing level and the updraught's base, so core fallout carried downstream reaches ~40 dBZ
+   40 km ahead in clusters. The sounding has a tropopause fitted to 157 real warm-sector May soundings
    (sounding.js tropopauseOf; MLCAPE +10%, all above 250 mb; regression trop-fit-2026-11-26: no regressions, a
    little more aggressive, kept by the owner's wish for an aggressive pattern). Known and kept: the engine's MLCAPE
    below 250 mb runs ~45% above real (mixed-layer theta-e 346 vs 340.5 K). Hail now grows from the updraught's speed in the

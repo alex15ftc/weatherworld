@@ -189,6 +189,12 @@ export function iceSubsaturation(tC, tdC) {
 export const subsaturationAloftOf = column => (Number.isFinite(column?.subsaturationAloft) ? column.subsaturationAloft : 0.55);
 const ramp = (v, a, b) => clamp(((Number(v) || 0) - a) / (b - a), 0, 1);
 // Fall speeds (m/s): rain by drop size, snow, graupel, hail.
+// The diameter of the drop a melted snowflake becomes, as a share of the flake's: the cube root of
+// its density (g/cm3; Brandes et al. 2007, 0.178 D^-0.922 for D in mm). A 1.3 mm aggregate melts into a
+// 0.6 mm drop, 9 dB less echo for its water: the bright band's contrast. (Until 2026-11-26 a melted flake
+// stayed its size, so anvil snow came down as a 20 dBZ shield 100 km ahead of a supercell, falling and
+// drying out as drops twice the size.)
+const meltedShare = mm => Math.cbrt(Math.min(0.92, 0.178 * mm ** -0.922));
 const rainFallMs = mm => 9.65 - 10.3 * Math.exp(-0.6 * mm);
 const iceFallMs = (mm, snow) => (snow ? 1 + 0.3 * mm : 1.2 + 1.4 * mm);
 const hailFallMs = mm => 11.45 * Math.sqrt(mm / 10);
@@ -464,7 +470,7 @@ export function follow(model, grid, inner, stride, landed = null) {
         const crossing = 1 / Math.sqrt(1 + (cls.fallMs / P.crossingMs) ** 2);   // (PHYSICS.crossingMs)
         const driftU = (random() + random() + random() - 1.5) * 2 * spread * crossing, driftV = (random() + random() + random() - 1.5) * 2 * spread * crossing;
         let along = (random() * 4294967296) >>> 0;
-        let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0, patchKm = 0;
+        let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0, patchKm = 0, melted = !isSnow;
         for (let step = 0; step < MAX_STEPS; step++) {
           // The wind relative to the storm at this height.
           const zi = z <= 0 ? 0 : Math.min(WIND_PROFILE_LEVELS - 1, (z / WIND_PROFILE_STEP_M) | 0);
@@ -500,7 +506,10 @@ export function follow(model, grid, inner, stride, landed = null) {
           // (how much of its early spreading speed the patch still has: see PHYSICS.spreadMemoryS)
           const eddy = age > 0.5 * P.spreadMemoryS ? Math.sqrt(0.5 * P.spreadMemoryS / age) : 1;
           u += driftU * eddy; v += driftV * eddy;
-          const frozen = z > fz, sinking = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm)), vertical = sinking > 0 && !isSnow ? sinking * P.relofted : sinking;
+          const frozen = z > fz;
+          // A snowflake that melts collapses into a drop of its own mass (meltedShare).
+          if (!melted && !frozen) { mm *= meltedShare(mm); melted = true; }
+          const sinking = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm)), vertical = sinking > 0 && !isSnow ? sinking * P.relofted : sinking;
           const inInner = nearInner && x > -INNER.halfKm && x < INNER.halfKm && y > -INNER.halfKm && y < INNER.halfKm;
           const speed = Math.sqrt(u * u + v * v), climb = vertical < 0 ? -vertical : vertical;
           // A step is no longer than a grid cell, or half the width of the patch the particle stands for.
