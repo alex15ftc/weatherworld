@@ -4,7 +4,8 @@
 // and the time of day. Output is a deterministic function of world state, site and tilt.
 import {
   buildStormPrecipitation, iceSubsaturation, samplePrecipitation, hasPrecipitation, sampleDebris, sampleHeaviness, heavinessGradient,
-  RAIN_REFLECTIVITY, HAIL_REFLECTIVITY, DEBRIS_REFLECTIVITY, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, FRONT_TO_REAR_BASE_M, frontToRearShare
+  RAIN_REFLECTIVITY, HAIL_REFLECTIVITY, DEBRIS_REFLECTIVITY, WIND_PROFILE_STEP_M, WIND_PROFILE_LEVELS, FRONT_TO_REAR_BASE_M, frontToRearShare,
+  hailEchoFallMs
 } from '../storms/PrecipitationField.js';
 import {
   RADAR_RADIALS, RADAR_GATES, RADAR_GATE_KM, RADAR_RANGE_KM, RADAR_TILTS_DEG, RADAR_BEAMWIDTH_DEG, RADAR_ANTENNA_HEIGHT_M,
@@ -97,6 +98,12 @@ const DEALIAS = { passes: 8, radials: 1, alongKm: 1, least: 4, method: process.e
 // (Locatelli and Hobbs 1974), faster in the thinner air aloft by (rho0 / rho)^0.4 (Foote and du Toit
 // 1969; density scale height 8.5 km). Along a beam raised by the tilt it shows as motion toward the
 // radar, Vt sin(tilt).
+// The share of a normal distribution below t standard deviations (Abramowitz and Stegun 7.1.26 for erf).
+function normalBelow(t) {
+  const x = Math.abs(t) / Math.SQRT2, k = 1 / (1 + 0.3275911 * x);
+  const erf = 1 - (((((1.061405429 * k - 1.453152027) * k) + 1.421413741) * k - 0.284496736) * k + 0.254829592) * k * Math.exp(-x * x);
+  return t >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
+}
 const fallSpeedMs = (z, agl, freezingM) => {
   const frozen = smoothstep(freezingM - 300, freezingM + 700, agl);
   // (all ice: the rain's part is 0 x a finite power, so the power is not worked out - the same value)
@@ -441,7 +448,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
   const products = Object.fromEntries(RADAR_PRODUCT_KEYS.map(key => [key, new Uint8Array(total)]));
   const ref = products.reflectivity, vel = products.velocity, srv = products.stormRelativeVelocity;
   const cc = products.correlationCoefficient, zdr = products.differentialReflectivity;
-  const sample = { zh: 0, zv: 0, cc: 0, hail: 0, zhOnly: false }, wind = { u: 0, v: 0 }, stormWind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
+  const sample = { zh: 0, zv: 0, cc: 0, hail: 0, hailFall: 0, zhOnly: false }, wind = { u: 0, v: 0 }, stormWind = { u: 0, v: 0 }, clearAir = { bl: 0, bioZ: 0 };
   const bioZ = 10 ** (biologicalDbz(scene.localHour) / 10);
   const beamHalfWidth = RADAR_BEAMWIDTH_DEG * DEG * 0.35;
   const cosTilt = Math.cos(tiltDeg * DEG);
@@ -475,6 +482,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
   for (let r = 0; r < RADAR_RADIALS; r++) {
     if (outer && !outer[r]) continue;
     const az = (r + 0.5) * (360 / RADAR_RADIALS) * DEG, sinAz = Math.sin(az), cosAz = Math.cos(az);
+    let shadow = 0;
     for (let g = 0; g < GATES; g++) {
       const geo = gateGeometry[g];
       const x = site.xKm + geo.ground * sinAz, y = site.yKm - geo.ground * cosAz;
@@ -482,7 +490,11 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
       envPlace(scene.env, x, y);
       const terrain = envRead(scene.env.terrain);
       const centerAgl = siteHeightM + geo.heightM - terrain;
-      if (centerAgl < 0) continue; // terrain blockage
+      // Beam blockage: the share of the beam's power that ground nearer the radar has already stopped
+      // (the beam's vertical profile a normal one, of standard deviation spreadM), lost from every gate beyond.
+      const keep = 1 - shadow;
+      shadow = Math.max(shadow, normalBelow(-centerAgl / geo.spreadM));
+      if (centerAgl < 0 || keep <= 0.001) continue;
       clearAir.bl = envRead(scene.env.blDepth);
       clearAir.bioZ = centerAgl - geo.spreadM < clearAir.bl * 1.3
         ? bioZ * (0.4 + 0.9 * (fbm(911, x / 4, y / 4, scene.validHourUtc) * 0.5 + 0.5)) : 0;
@@ -491,7 +503,7 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
       const edgeAgl = siteHeightM + geo.lowEdgeM - terrain;
       if (edgeAgl < 8 * CLUTTER.fadeM) {
         const spot = gateNoise(Math.floor(x * 2) * 7919 + Math.floor(y * 2), 0.5);
-        if (spot < CLUTTER.targets) clutter[index] = clutterZ * 10 ** (CLUTTER.varyDb * (2 * spot / CLUTTER.targets - 1) / 10) * Math.exp(-Math.max(0, edgeAgl) / CLUTTER.fadeM);
+        if (spot < CLUTTER.targets) clutter[index] = clutterZ * 10 ** (CLUTTER.varyDb * (2 * spot / CLUTTER.targets - 1) / 10) * Math.exp(-Math.max(0, edgeAgl) / CLUTTER.fadeM) * keep;
       }
       const bin = binAt(scene.stormBins, x, y), inStorm = bin !== null, freezingM = inStorm ? envRead(scene.env.freezing) : 0;
       let zh = 0, zv = 0, ccw = 0, stormRadial = 0, stormRadial2 = 0, hail = 0, fall = 0, rising = 0;
@@ -518,11 +530,14 @@ export function scanRadarTilt(scene, site, tiltDeg, { gateKm = RADAR_GATE_KM, ra
             along = stormWind.u * sinAz + stormWind.v * cosAz; along2 = along * along;
           }
           stormRadial += sample.zh * wgt * along; stormRadial2 += sample.zh * wgt * along2;
-          fall += sample.zh * wgt * fallSpeedMs(sample.zh, agl, freezingM);
+          // (hail by its own fall speed, the rest - rain, snow, debris - by fallSpeedMs; the air thinner aloft for both)
+          const other = sample.zh - sample.hail;
+          fall += wgt * ((other > 0 ? other * fallSpeedMs(other, agl, freezingM) : 0) + sample.hailFall * Math.exp(0.4 * agl / 8500));
           rising += sample.zh * wgt * updraughtAt(bin, x, y, agl);
         }
       }
       if (zh <= 0) continue;
+      if (keep < 1) { zh *= keep; zv *= keep; ccw *= keep; hail *= keep; stormRadial *= keep; stormRadial2 *= keep; fall *= keep; rising *= keep; }
       sumZh[index] = zh; sumZv[index] = zv; sumCc[index] = ccw; sumStorm[index] = stormRadial; sumStorm2[index] = stormRadial2; sumFall[index] = fall; sumRise[index] = rising;
       envWindAt(scene.env, x, y, centerAgl, wind);
       envRadial[index] = wind.u * sinAz + wind.v * cosAz;
@@ -925,7 +940,7 @@ export const meshInches = (heights, echoes, count, freezingM, minus20M) => struc
 const tmp = {};
 // stormBin, boundaryBin: binAt(scene.stormBins / scene.boundaryBins, x, y), looked up once by the caller.
 function sampleVolume(scene, stormBin, boundaryBin, x, y, agl, out, clearAir) {
-  out.zh = 0; out.zv = 0; out.cc = 0; out.hail = 0;
+  out.zh = 0; out.zv = 0; out.cc = 0; out.hail = 0; if (out.hailFall !== undefined) out.hailFall = 0;
   if (stormBin) for (const s of stormBin) stormHydrometeors(s, x - s.x, y - s.y, agl, out);
   clearAirEchoes(scene, stormBin, boundaryBin, x, y, agl, out, clearAir);
 }
@@ -990,6 +1005,8 @@ export function precipitationEcho(e, fz, lx, ly, z, out) {
       const wet = 1 - frozen;
       // (wet stones below the freezing level, dry ones above: HAIL_MIE)
       const hailZ = HAIL_REFLECTIVITY * (wet * tmp.hail + (1 - wet) * tmp.hailDry);
+      // (how fast it falls, for the Doppler velocity: by size, wet or dry, as it reflects)
+      if (out.hailFall !== undefined) out.hailFall += HAIL_REFLECTIVITY * (wet * tmp.hail * hailEchoFallMs(e.hailMm) + (1 - wet) * tmp.hailDry * hailEchoFallMs(e.hailMm, true));
       const big = clamp(((e.hailMm ?? 40) - HAIL_CC.mm[0]) / (HAIL_CC.mm[1] - HAIL_CC.mm[0]), 0, 1);
       addEcho(out, hailZ, 0.1 + 0.5 * wet, HAIL_CC.small - (HAIL_CC.small - HAIL_CC.giant) * big * (0.5 + 0.5 * wet));
       out.hail += hailZ;

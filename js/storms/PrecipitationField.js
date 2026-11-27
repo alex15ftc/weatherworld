@@ -271,7 +271,9 @@ export function buildStormPrecipitation(storm, column, { shared = false, stride 
   stride = Math.max(1, Math.round(stride));
   const reach = follow(model, null, null, Math.max(8, 2 * stride));
   let grid = null, inner = null;
-  if (reach) {
+  // (no field when all of the fall-out lies beyond REACH_KM of the storm, which the grid stops at: seen
+  // 2026-11-27 on a local engine, 3 storms in 31 hours, as a negative grid size; not reproduced offline)
+  if (reach && Math.max(reach.minX, reach.minY) < REACH_KM && Math.min(reach.maxX, reach.maxY) > -REACH_KM) {
     // Room beyond what was measured: only one particle in eight was followed, and old fallout is spread wide.
     const margin = 4 + 0.1 * Math.max(reach.maxX - reach.minX, reach.maxY - reach.minY) + 0.4 * (PHYSICS.spreadMs[0] + PHYSICS.spreadMs[1] * 40) * model.ageS / 1000;
     const x0 = Math.max(-REACH_KM, reach.minX - margin), y0 = Math.max(-REACH_KM, reach.minY - margin);
@@ -730,6 +732,20 @@ function addSample(grid, dx, dy, k, tz, weight, out) {
 
 // How fast a storm's hail falls (m/s): the mean over the stones its updraughts make
 // (HAIL_SIZE_SHARE of its largest stone, HAIL_MASS_SHARE of the mass each), by mass.
+// How fast the hail a radar sees falls (m/s, at the ground's air density): the stones' fall speeds weighted
+// by how much each size reflects (HAIL_SIZE_SHARE of the largest stone, HAIL_MASS_SHARE of the mass each,
+// hailReflectivityShare per gram), wet or dry. Kept per size of the largest stone, to the millimetre.
+const hailEchoFall = new Map();
+export function hailEchoFallMs(hailMm, dry = false) {
+  const key = Math.round(Math.max(0, Number(hailMm) || 0)) * 2 + (dry ? 1 : 0);
+  let v = hailEchoFall.get(key);
+  if (v === undefined) {
+    let z = 0, zv = 0;
+    HAIL_SIZE_SHARE.forEach((share, c) => { const mm = Math.max(6, share * (key >> 1)), w = HAIL_MASS_SHARE[c] * mm ** 3 * hailReflectivityShare(mm, dry); z += w; zv += w * hailFallMs(mm); });
+    hailEchoFall.set(key, v = zv / z);
+  }
+  return v;
+}
 export function hailFallSpeedMs(storm) {
   const hailMm = (Number(storm?.currentHailSizeInches) || 0) * 25.4;
   return HAIL_SIZE_SHARE.reduce((sum, share, c) => sum + HAIL_MASS_SHARE[c] * hailFallMs(Math.max(6, share * hailMm)), 0);
