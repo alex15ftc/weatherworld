@@ -47,7 +47,7 @@ export function falloutMoments(storm, updraught, column) {
   const low = clamp(Number(storm.lowRotationFree ?? storm.lowRotation) || 0, 0, 1.2), meso = clamp(Number(storm.mesocycloneStrength ?? storm.rotationStrength) || 0, 0, 1.25);
   const environment = storm.environment ?? {};
   const model = {
-    mx, my, rx, ry, topM: column.topM, freezingM: column.freezingM, su: column.su, sv: column.sv,
+    mx, my, rx, ry, topM: column.topM, freezingM: column.freezingM, su: column.su, sv: column.sv, midLevelRh: column.midLevelRh,
     baseM: clamp(Number(updraught.baseM) || 1200, 300, 4000),
     ageS: Math.min(PHYSICS.longestS, (Number(storm.ageHours) || 0) * 3600),
     seed: hashString(String(storm.id ?? 'storm')), spin: storm.leftMover ? -1 : 1,

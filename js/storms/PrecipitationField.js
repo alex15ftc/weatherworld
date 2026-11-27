@@ -435,6 +435,11 @@ export function follow(model, grid, inner, stride, landed = null) {
   const warmRain = Number(model.warmRain) || 0;
   const P = PHYSICS, stepM = (grid ? grid.res : 1) * 800, innerStepM = INNER.resKm * 1000, top = topM * 1.05;
   const evaporation = model.dryBelow / P.evaporationS, sublimation = model.dryAloft / P.sublimationS;
+  // Above the cloud's base, out of the cloud (where snow starts to sublimate), rain falls through the
+  // storm's environment: it dries out by that air's subsaturation, the humidity 150-350 hPa above the ground
+  // (until 2026-11-26 it dried out below the base alone, so rain thrown out of the core and carried
+  // downstream came down whole from the freezing level: ~40 dBZ 40 km ahead of a cluster).
+  const evaporationAloft = clamp(1 - (Number.isFinite(model.midLevelRh) ? model.midLevelRh : 45) / 100, 0, 1) / P.evaporationS;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
   const highest = PRECIP_LEVELS_M[LEVELS - 1] - 1, formationTop = fz + P.formationShare * Math.max(0, topM - fz);
   const pulse = new Float32Array(PULSE_STEPS * PULSE_SIDES);
@@ -543,6 +548,7 @@ export function follow(model, grid, inner, stride, landed = null) {
                 if (z < 0.6 * topM) mass *= 1 - Math.min(0.9, dt * sublimates);
               }
             } else if (z < baseM) mass *= 1 - Math.min(0.9, dt * evaporation / (mm * mm));
+            else if (inside < 0.3) mass *= 1 - Math.min(0.9, dt * evaporationAloft / (mm * mm));
           }
           if (z <= 0 || age > ageS || mass < least) break;
         }

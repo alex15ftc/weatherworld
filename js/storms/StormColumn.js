@@ -43,6 +43,8 @@ export function updateStormColumn(world, storm) {
   const column = { topM: at(c => c.top) * (0.6 + 0.48 * updraft), freezingM: at(c => c.freezing), su, sv };
   // How dry the air below the anvil is over ice (PrecipitationField PHYSICS.sublimationS), where every corner knows.
   if (corners.every(([c]) => Number.isFinite(c.subsaturation))) column.subsaturationAloft = at(c => c.subsaturation);
+  // How humid the air 150-350 hPa above the ground is (PrecipitationField: rain dries out in it above the cloud's base).
+  if (corners.every(([c]) => Number.isFinite(c.midRh))) column.midLevelRh = at(c => c.midRh);
   columns.set(storm, column);
   return column;
 }
@@ -81,6 +83,26 @@ function levelsOf(world, i, j) {
   const elAgl = Number(cell.derived?.sounding?.elM) - elev;
   c.top = Number.isFinite(elAgl) && elAgl > 0 ? clamp(elAgl, 3000, 16500) : 11000;
   c.subsaturation = iceSubsaturation(Number(cell.levels[500]?.temperature), Number(cell.levels[500]?.dewpoint));
+  c.midRh = midLevelRhOf(cell, elev);
   kept.byCell.set(index, c);
   return c;
+}
+
+// The mean relative humidity (%) 150-350 hPa above the ground, as the radar's column takes it from the
+// sounding (RadarSimulator sceneEnv midLevelRh): here from the surface, 850, 700 and 500 hPa, linear in pressure.
+const rhOf = (t, td) => 100 * Math.exp(17.625 * td / (td + 243.04) - 17.625 * t / (t + 243.04));
+function midLevelRhOf(cell, elev) {
+  const sfcT = (Number(cell.surface?.temperature) - 32) * 5 / 9, sfcTd = (Number(cell.surface?.dewpoint) - 32) * 5 / 9;
+  const ps = 1013.25 * Math.exp(-elev / 8400);
+  const points = [[ps, rhOf(sfcT, sfcTd)]];
+  for (const p of [850, 700, 500]) if (p < ps - 5) points.push([p, rhOf(Number(cell.levels[p]?.temperature), Number(cell.levels[p]?.dewpoint))]);
+  if (!points.every(([, rh]) => Number.isFinite(rh))) return NaN;
+  let sum = 0, n = 0;
+  for (let p = ps - 150; p >= ps - 350; p -= 25) {
+    let k = 0;
+    while (k < points.length - 2 && p < points[k + 1][0]) k++;
+    const [p0, r0] = points[k], [p1, r1] = points[k + 1], t = clamp((p0 - p) / (p0 - p1), 0, 1);
+    sum += Math.min(100, r0 + (r1 - r0) * t); n++;
+  }
+  return sum / n;
 }
