@@ -464,7 +464,9 @@ export function follow(model, grid, inner, stride, landed = null) {
         if (!isHail && !isSnow && warmRain > 0 && random() < warmRain) z = baseM + 300 + random() * Math.max(0, fz - baseM - 300);
         // Snow is carried up from anywhere on the flank. Graupel and hail have grown too heavy
         // for the air they are in: they leave where the updraught can no longer hold them.
-        const held = cls.fallMs / Math.max(1e-3, wMax * RISE[(100 * z / top) | 0]);
+        // (a shallow storm's hail can start above its top - the freezing level plus hailAboveM - where nothing holds
+        // it; until 2026-11-28 the table was read past its end there and the stone's start came out NaN)
+        const held = cls.fallMs / Math.max(1e-3, wMax * RISE[Math.min(101, (100 * z / top) | 0)]);
         let share = P.flank[0] + (P.flank[1] - P.flank[0]) * random();
         if (!isSnow) share = Math.min(share, (0.5 + 0.5 * random()) * held);
         // The wind round the updraught at that height: what carries off the precipitation its flank sheds.
