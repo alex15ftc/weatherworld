@@ -633,7 +633,13 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    ellipse/core/hook/line and the formula peak (StormEngine maxReflectivityDbz, still on the outlook ensemble
    tracks). Checked on a local engine (2 runs of 18 h in 28-44 s, page shows lines and supercells, no console
    errors). PrecipitationField now gives no field when all of a storm's fall-out lies beyond REACH_KM (a negative
-   grid size threw in the game feed's rain grids, 3 storms in 31 h on a local engine; cause not found offline). The sounding has a tropopause fitted to 157 real warm-sector May soundings
+   grid size threw in the game feed's rain grids, 3 storms in 31 h on a local engine; cause not found offline).
+   Forward tail (2026-11-27, owner): unmelted snow now deposits the echo of its melted-equivalent drop
+   (Smith 1984; was solid ice of the flake's size, 8.5 dB high): column-max 20 dBZ reach ahead of supercells median
+   78 -> 54 km (83 supercells, seeds 1-2). The rest of the moderate tail is precipitation re-ingested: graupel falls to
+   <1 km on the forward flank, the inflow carries it back into the updraught base, it rides to the anvil still 1.8 mm
+   and falls out 50-70 km ahead an hour later (traced); with re-ingestion off (diagnostic) 30 dBZ column-max reach
+   32/54/62 -> 26/32/40 km. Fix in progress: riming growth of particles lofted above the freezing level. The sounding has a tropopause fitted to 157 real warm-sector May soundings
    (sounding.js tropopauseOf; MLCAPE +10%, all above 250 mb; regression trop-fit-2026-11-26: no regressions, a
    little more aggressive, kept by the owner's wish for an aggressive pattern). Known and kept: the engine's MLCAPE
    below 250 mb runs ~45% above real (mixed-layer theta-e 346 vs 340.5 K). Hail now grows from the updraught's speed in the

@@ -533,8 +533,13 @@ export function follow(model, grid, inner, stride, landed = null) {
             const zc = pz < 0 ? 0 : pz > highest ? highest : pz, k = LEVEL_BELOW[(zc / LEVEL_STEP_M) | 0];
             const t = (zc - PRECIP_LEVELS_M[k]) / (PRECIP_LEVELS_M[k + 1] - PRECIP_LEVELS_M[k]), amount = mass * dt * pulse[side + ((age / 150) | 0)];
             const scale = scaleFor(widthKm, grid.perKm);
-            if (scale) depositWide(grid.scales[scale], px, py, k, t, amount, mm, isSnow); else deposit(grid, px, py, k, t, amount, mm, isSnow, isHail);
-            if (inInner) { const fine = scaleFor(widthKm, inner.perKm); if (fine) depositWide(inner.scales[fine], px, py, k, t, amount, mm, isSnow); else deposit(inner, px, py, k, t, amount, mm, isSnow, isHail); }
+            // A snowflake reflects as the drop it would melt into (with ice's dielectric factor, which the
+            // radar applies above the freezing level: Smith 1984), not as solid ice of its own size: a 1.3 mm
+            // aggregate of density 0.14 reflects 8.5 dB less than that. (Until 2026-11-27 it was its own size,
+            // so the anvil's snow read 20-30 dBZ aloft 80-130 km ahead of a supercell.)
+            const echoMm = melted ? mm : mm * meltedShare(mm);
+            if (scale) depositWide(grid.scales[scale], px, py, k, t, amount, echoMm, isSnow); else deposit(grid, px, py, k, t, amount, echoMm, isSnow, isHail);
+            if (inInner) { const fine = scaleFor(widthKm, inner.perKm); if (fine) depositWide(inner.scales[fine], px, py, k, t, amount, echoMm, isSnow); else deposit(inner, px, py, k, t, amount, echoMm, isSnow, isHail); }
           } else if (z < topM) {
             any = true;
             if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
