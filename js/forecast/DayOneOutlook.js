@@ -766,14 +766,25 @@ export function combineOutlook(members, { caution = OUTLOOK.caution, issuedHourU
       for (let i = 0; i < n; i++) if (support[i] < need - 1e-6 && intensity[hazard][i] > t) intensity[hazard][i] = t;
     });
   }
-  // The cap: where a hazard alone would give more than maxCategory, its intensity group and then
-  // its chance come down a step at a time until it does not.
+  // The cap: where a hazard alone would give more than maxCategory, its intensity group and its chance come down to the
+  // combination that gives the highest category within the cap, with the fewest contour levels taken off the chance and
+  // then the highest group. (Until 2026-11-28 the group came off first, then the chance: 60% with CIG1 (High) under a
+  // Moderate cap lost its group and fell to Enhanced, two steps, under hatching that still showed CIG1; now 45% CIG1.)
   let capped = 0;
-  if (maxCategory) for (const hazard of hazards) for (let i = 0; i < n; i++) {
-    let guard = 0;
-    while (rank(categoryAt(hazard, chance[hazard][i], intensity[hazard][i])) > rank(maxCategory) && guard++ < 20) {
-      if (intensity[hazard][i] > 0) intensity[hazard][i]--;
-      else { const levels = PROBABILITY_LEVELS[hazard], at = probabilityLevel(hazard, chance[hazard][i]), below = levels.filter(l => l < at).at(-1); chance[hazard][i] = below ? below : 0; }
+  if (maxCategory) for (const hazard of hazards) {
+    const levels = PROBABILITY_LEVELS[hazard], cap = rank(maxCategory);
+    for (let i = 0; i < n; i++) {
+      if (rank(categoryAt(hazard, chance[hazard][i], intensity[hazard][i])) <= cap) continue;
+      const at = levels.filter(l => chance[hazard][i] >= l - 1e-9);
+      let best = null;
+      for (let drop = 0; drop <= at.length; drop++) {
+        const percent = drop === 0 ? chance[hazard][i] : (at[at.length - 1 - drop] ?? 0);
+        for (let g = intensity[hazard][i]; g >= 0; g--) {
+          const r = rank(categoryAt(hazard, percent, g));
+          if (r <= cap && (!best || r > best.r)) best = { r, percent, g };
+        }
+      }
+      chance[hazard][i] = best.percent; intensity[hazard][i] = best.g;
       capped++;
     }
   }
@@ -1086,7 +1097,10 @@ export function outlookShapes(o) {
   const groupRings = (hazard, group) => {
     const all = o.cigAreas?.[hazard];
     if (!all) return area(Array.from(o.cig[hazard], v => v >= group));
-    const inGroup = a => Math.min(a.group, highestCigAt(hazard, a.level)) >= group, rings = [];
+    // An area is in the group only where the group is still forecast after the runs' agreement and the cap took it down
+    // (o.intensity), so the hatching never says more than the category it gave.
+    const held = o.intensity?.[hazard], stillHeld = a => !held || a.cells.some(i => held[i] >= group);
+    const inGroup = a => Math.min(a.group, highestCigAt(hazard, a.level)) >= group && stillHeld(a), rings = [];
     for (const a of all) {
       if (inGroup(a) === (a.parent >= 0 && inGroup(all[a.parent]))) continue;
       // This area's own outline: the other areas inside the same contour are put out of sight.
