@@ -123,19 +123,6 @@ export const PHYSICS = {
   // Until 2026-11-14 the dryness was DCAPE / 1200 with a 2500 s life: snow lived ~80 min, drifted
   // 70-100 km ahead of an old supercell on the anvil wind and melted into a 20-30 dBZ shield there.
   sublimationS: 1300,
-  // Graupel rimes: carried through the updraught's cloud above the freezing level it collects the supercooled
-  // cloud water it falls through, its diameter growing at E LWC Vt / (2 rho) (rimed graupel of density 0.5 g/cm3,
-  // collection efficiency 0.8; Pruppacher and Klett ch. 14), so a drop lofted into a strong updraught becomes
-  // graupel and small hail within minutes and falls back out near the core rather than riding to the anvil. The
-  // cloud water is this share of the vapour the updraught draws in, where the updraught is (1-4 g/m3 measured in
-  // supercell updraughts, Musil et al. 1986), kept to near -40 C and gone by then (homogeneous freezing, 6.5 K a
-  // km above the freezing level), falling off as the cube of the height through that layer (a straight fall-off
-  // halved it by mid-cloud and kept only half the effect on the forward tail). A particle keeps the mass it stands
-  // for (the cloud water it collects is part of the precipitation the efficiency already counts), so fewer, larger
-  // stones. Melted, it is a drop of its own mass (density 0.5), the largest drop class at most (larger ones break
-  // up). (Until 2026-11-27 nothing grew: a 1.8 mm graupel the inflow carried back into the updraught's base rode to
-  // the anvil and fell out 50-70 km ahead of a supercell an hour later.)
-  rime: { cloudWaterShare: 0.2, efficiency: 0.8, densityGcm3: 0.5, coldestC: -40, lapseKPerKm: 6.5 },
   // An updraught's output varies over about this time, by up to this share, separately on
   // each of its sides (a steady, organised storm varies less).
   pulseS: 720, pulse: 0.75, sides: 6,
@@ -450,9 +437,6 @@ export function follow(model, grid, inner, stride, landed = null) {
   const warmRain = Number(model.warmRain) || 0;
   const P = PHYSICS, stepM = (grid ? grid.res : 1) * 800, innerStepM = INNER.resKm * 1000, top = topM * 1.05;
   const evaporation = model.dryBelow / P.evaporationS, sublimation = model.dryAloft / P.sublimationS;
-  // (riming: the diameter's growth in mm a second per m/s of fall speed, at the updraught's centre and the freezing level)
-  const cloudWater = P.rime.cloudWaterShare * (Number.isFinite(model.inflowVapourGm3) ? model.inflowVapourGm3 : 14);
-  const rimeRate = 1000 * P.rime.efficiency * cloudWater / (2 * P.rime.densityGcm3 * 1e6), rimeTopM = fz + 1000 * -P.rime.coldestC / P.rime.lapseKPerKm, rimeMelt = Math.cbrt(P.rime.densityGcm3);
   // Above the cloud's base, out of the cloud (where snow starts to sublimate), rain falls through the
   // storm's environment: it dries out by that air's subsaturation, the humidity 150-350 hPa above the ground
   // (until 2026-11-26 it dried out below the base alone, so rain thrown out of the core and carried
@@ -493,8 +477,7 @@ export function follow(model, grid, inner, stride, landed = null) {
         const crossing = 1 / Math.sqrt(1 + (cls.fallMs / P.crossingMs) ** 2);   // (PHYSICS.crossingMs)
         const driftU = (random() + random() + random() - 1.5) * 2 * spread * crossing, driftV = (random() + random() + random() - 1.5) * 2 * spread * crossing;
         let along = (random() * 4294967296) >>> 0;
-        let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0, patchKm = 0, melted = !isSnow, rimed = false;
-        const rimes = !isSnow && !isHail;
+        let mass = cls.each * stride, mm = cls.mm, age = 0, iceAge = 0, patchKm = 0, melted = !isSnow;
         for (let step = 0; step < MAX_STEPS; step++) {
           // The wind relative to the storm at this height.
           const zi = z <= 0 ? 0 : Math.min(WIND_PROFILE_LEVELS - 1, (z / WIND_PROFILE_STEP_M) | 0);
@@ -533,9 +516,7 @@ export function follow(model, grid, inner, stride, landed = null) {
           const frozen = z > fz;
           // A snowflake that melts collapses into a drop of its own mass (meltedShare).
           if (!melted && !frozen) { mm *= meltedShare(mm); melted = true; }
-          // (rimed graupel melts into a drop of its own mass, no larger than the largest drop class)
-          if (rimed && !frozen) { mm = Math.min(DROP_MM[DROP_MM.length - 1], mm * rimeMelt); rimed = false; }
-          const sinking = rising - (isHail ? cls.fallMs : frozen ? (rimed ? iceFallMs(mm, false) : cls.fallMs) : rainFallMs(mm)), vertical = sinking > 0 && !isSnow ? sinking * P.relofted : sinking;
+          const sinking = rising - (isHail || frozen ? cls.fallMs : rainFallMs(mm)), vertical = sinking > 0 && !isSnow ? sinking * P.relofted : sinking;
           const inInner = nearInner && x > -INNER.halfKm && x < INNER.halfKm && y > -INNER.halfKm && y < INNER.halfKm;
           const speed = Math.sqrt(u * u + v * v), climb = vertical < 0 ? -vertical : vertical;
           // A step is no longer than a grid cell, or half the width of the patch the particle stands for.
@@ -556,7 +537,7 @@ export function follow(model, grid, inner, stride, landed = null) {
             // radar applies above the freezing level: Smith 1984), not as solid ice of its own size: a 1.3 mm
             // aggregate of density 0.14 reflects 8.5 dB less than that. (Until 2026-11-27 it was its own size,
             // so the anvil's snow read 20-30 dBZ aloft 80-130 km ahead of a supercell.)
-            const echoMm = rimed ? mm * rimeMelt : melted ? mm : mm * meltedShare(mm);   // (rimed graupel as its melted drop too)
+            const echoMm = melted ? mm : mm * meltedShare(mm);
             if (scale) depositWide(grid.scales[scale], px, py, k, t, amount, echoMm, isSnow); else deposit(grid, px, py, k, t, amount, echoMm, isSnow, isHail);
             if (inInner) { const fine = scaleFor(widthKm, inner.perKm); if (fine) depositWide(inner.scales[fine], px, py, k, t, amount, echoMm, isSnow); else deposit(inner, px, py, k, t, amount, echoMm, isSnow, isHail); }
           } else if (z < topM) {
@@ -564,8 +545,6 @@ export function follow(model, grid, inner, stride, landed = null) {
             if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
           }
           x += u * dt / 1000; y -= v * dt / 1000; z += vertical * dt; age += dt;
-          // (riming: PHYSICS.rime)
-          if (rimes && z > fz && z < rimeTopM && inside > 0) { mm += dt * rimeRate * inside * (1 - ((z - fz) / (rimeTopM - fz)) ** 3) * iceFallMs(mm, false); rimed = true; }
           // the patch widens with the turbulence and is stretched or squeezed by the air (see PHYSICS.spreadMs)
           patchKm = (spreading ? patchKm * Math.exp(spreading * dt) : patchKm) + spread * crossing * eddy * dt / 1000;
           if (!isHail) {
