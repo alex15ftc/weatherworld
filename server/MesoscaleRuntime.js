@@ -97,8 +97,10 @@ export class MesoscaleRuntime {
     const run = Promise.all(Array.from({ length: this.members }, (_, member) => this.pool.run('mesoscale', state, member, MESOSCALE.hoursAhead, { priority: 1 })));
     // ...and the radars' look at the rotating storms under the watches in effect, of the same moment.
     const looked = this.radarLooks(now).catch(error => console.warn('[mesoscale] no radar look:', error.message));
-    // ...and the reflectivity of the same moment, for the discussions' maps (DiscussionRadar.js).
-    const mosaic = this.runtime.radarMosaic ? Promise.resolve(this.runtime.radarMosaic('composite')).catch(error => { console.warn('[mesoscale] no radar picture:', error.message); return null; }) : Promise.resolve(null);
+    // ...and the reflectivity of the same moment, for the discussions' maps (DiscussionRadar.js): the base mosaic, the
+    // lowest tilt that clears the ground, where hooks and inflow notches show (until 2026-11-28 the composite, whose
+    // hail and overhang aloft stand over the updraught and fill them in).
+    const mosaic = this.runtime.radarMosaic ? Promise.resolve(this.runtime.radarMosaic('base')).catch(error => { console.warn('[mesoscale] no radar picture:', error.message); return null; }) : Promise.resolve(null);
     // ...the satellite under it, and the air of the same moment (the fields and the boundaries, read now, before the
     // world moves on).
     const satellite = this.runtime.satellite ? Promise.resolve(this.runtime.satellite()).catch(error => { console.warn('[mesoscale] no satellite picture:', error.message); return null; }) : Promise.resolve(null);

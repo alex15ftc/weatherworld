@@ -1,5 +1,5 @@
 // The radar under a mesoscale discussion's map, as the centre's graphics carry the reflectivity mosaic of the
-// moment it was issued (MRMS, "Fields plotted"): the composite mosaic (WeatherAuthorityRuntime.radarMosaic, 1 km)
+// moment it was issued (MRMS, "Fields plotted"): the base reflectivity mosaic (WeatherAuthorityRuntime.radarMosaic, 1 km)
 // cut to a square round the discussion's area, a little wider than its map shows (AreaMap.js viewOf), and
 // coloured as the radar pages colour reflectivity. It is made by MesoscaleRuntime when a discussion is
 // issued and kept with it in ProductArchive.js (never in the game's products: one is 5-40 KB).
@@ -30,7 +30,7 @@ export function pictureView(cells, { width, height, cellMiles }) {
 }
 
 // The picture: { png (Buffer), x, y, size (map miles), validHourUtc }, or null without a mosaic or an area.
-// mosaic: a composite mosaic ({ width, height, resKm, bytes, validHourUtc }); grid: describeNow's width, height,
+// mosaic: a reflectivity mosaic ({ width, height, resKm, bytes, validHourUtc }); grid: describeNow's width, height,
 // cellMiles, cellKm.
 export async function discussionRadar(mosaic, cells, grid) {
   if (!mosaic?.bytes || !grid.cellKm) return null;
