@@ -639,7 +639,11 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    78 -> 54 km (83 supercells, seeds 1-2). The rest of the moderate tail is precipitation re-ingested: graupel falls to
    <1 km on the forward flank, the inflow carries it back into the updraught base, it rides to the anvil still 1.8 mm
    and falls out 50-70 km ahead an hour later (traced); with re-ingestion off (diagnostic) 30 dBZ column-max reach
-   32/54/62 -> 26/32/40 km. Fix in progress: riming growth of particles lofted above the freezing level. The sounding has a tropopause fitted to 157 real warm-sector May soundings
+   32/54/62 -> 26/32/40 km. Riming (PHYSICS.rime, branch engine/riming): non-snow particles grow by collecting
+   cloud water in the updraught above the freezing level; 30 dBZ column-max reach 32/54/62 -> 28/44/50 km, 20 dBZ at
+   250 m 40/66/82 -> 38/54/74, peaks unchanged; regression rime3-2026-11-27 clean. About half of what removing
+   re-ingestion gives: lofted particles still reach ~12.6 km at ~4 mm in 50 m/s cores and fall 30-50 km ahead.
+   Open: the sub-cloud updraught (14 m/s at 750 m in traces) may draw in too much forward-flank rain. The sounding has a tropopause fitted to 157 real warm-sector May soundings
    (sounding.js tropopauseOf; MLCAPE +10%, all above 250 mb; regression trop-fit-2026-11-26: no regressions, a
    little more aggressive, kept by the owner's wish for an aggressive pattern). Known and kept: the engine's MLCAPE
    below 250 mb runs ~45% above real (mixed-layer theta-e 346 vs 340.5 K). Hail now grows from the updraught's speed in the
