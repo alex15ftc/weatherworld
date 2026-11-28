@@ -643,7 +643,25 @@ storms from the engine draw, products screen opens) with the engine on Railway, 
    metrics improved, but every lofted particle grew to 4-8 mm at constant mass (Z up as D^3) and fell all round the
    updraught: supercells became round 50-65 dBZ balls with concentric rings and no hooks (owner's MD images; seed 2
    h24 S0027). Any retry must grow mass with size, keep the release side, and be judged on plan-view pictures, not
-   reach percentiles alone. The sounding has a tropopause fitted to 157 real warm-sector May soundings
+   reach percentiles alone.
+   Hooks (2026-11-28, owner): weak since before this week. At 250 m the hail core (median peak 72 dBZ, 70+ dBZ over
+   6 km2, 31 km2 for >2.8 in storms) lands on the updraught's left-front edge and swamps a small curl; the rain alone
+   curls. The curl comes from the mesocyclone's swirl on falling precipitation at mid-levels: x0 none, x1 a small
+   curl, x2 classic hooks with a clear notch (but V is already 25-36 m/s, so x2 would be painting). Tried, no clean
+   win: low-level swirl floor 0.55 -> 1 (slight), RFD outflow by mass continuity (no visible change: the RFD sits
+   ~6 km behind the hook's rain), halving the low-level SR wind near the storm (none), potential-flow obstacle round
+   the updraught (sharper hook but a 5-20 dBZ sheet from the anvil levels; mid-levels only loses the hook). Hail
+   amount checked against Cheng and English 1983: fine to 2.7 in, ~4x high in giant-hail storms (from their total
+   precipitation, not the hail share). MD maps now use the base mosaic (hooks and notches show there).
+   Low-level swirl floor 1.0 (row 4) was REJECTED: it gives a 35-40 m/s mesocyclone at the ground with no tornado
+   (real low-level ones ~15-25 m/s) and the tornado's added couplet at 40 km fell 47.5 -> 25.5 m/s (0.8: 33.5),
+   failing radar-range-and-coverage. Supercell spectrum (2026-11-28): the engine's environments already sort LP /
+   classic / HP by the 9-10 km storm-relative wind (40 / 24 / 15 m/s medians, Rasmussen and Straka 1998), but the
+   radar ran backwards (LP heaviest, 75 dBZ / 300 km2 of 40 dBZ; HP 64 / 140). PHYSICS.anvilExport now cuts the
+   efficiency by up to 0.9 over anvil wind 18-30 m/s: LP ~65 dBZ, area about halved, HP unchanged. LP storms are still
+   broader and heavier than real ones (20-40 dBZ low-level) because their updraughts are the strongest and widest
+   (57 m/s, 9.7 km). Debris balls are there (60-67 dBZ at EF3 hook tips); violent tornadoes are rare (one >166 mph
+   on seeds 1-3). The sounding has a tropopause fitted to 157 real warm-sector May soundings
    (sounding.js tropopauseOf; MLCAPE +10%, all above 250 mb; regression trop-fit-2026-11-26: no regressions, a
    little more aggressive, kept by the owner's wish for an aggressive pattern). Known and kept: the engine's MLCAPE
    below 250 mb runs ~45% above real (mixed-layer theta-e 346 vs 340.5 K). Hail now grows from the updraught's speed in the

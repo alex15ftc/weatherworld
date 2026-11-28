@@ -134,6 +134,14 @@ export const PHYSICS = {
   // water: two fifths as much where the precipitable water (in) and the relative humidity
   // 150-350 hPa above the ground (%) are both at the low ends of these ranges.
   efficiency: 0.45, efficiencyShearKt: [20, 60], efficiencyDryShare: 0.4, efficiencyPwatIn: [0.6, 2], efficiencyMidRh: [20, 80],
+  // ...and less again where the storm-relative wind 9-10 km up carries off what the updraught brings to its top:
+  // up to anvilExport of it over anvilWindMs, nothing below. Supercells are high-precipitation storms below about
+  // 12 m/s there, low-precipitation ones above about 30 and either in between (Rasmussen and Straka 1998, their Fig.
+  // 10; the shear through the cloud is the same for all three types, which the shear term alone cannot tell apart:
+  // 56-85 kt for every supercell on seeds 1-3). Until 2026-11-28 the low-precipitation storms (anvil wind 40 m/s,
+  // updraughts 57 m/s, 9.7 km across) had the heaviest echo of all: 75 dBZ peaks and 300 km2 of 40 dBZ, against 64
+  // and 140 for the high-precipitation ones (anvil wind 15 m/s).
+  anvilExport: 0.9, anvilWindMs: [18, 30],
   hailMass: [0.02, 0.05]        // share of the precipitation that is hail: least, and more with large stones
 };
 // Hail's reflectivity per gram at S band, as a factor on that of liquid drops of its (ice) size in
@@ -313,6 +321,15 @@ export function downdraughtsOf(structure, toMap, environment) {
 // The storm's updraughts: the one at its centre, and the cells along its leading line. Each
 // gives rain in proportion to its area, the rain the storm holds and how fast it rises; a
 // stronger one makes larger drops.
+// The storm-relative wind 9-10 km up (m/s; 0 without a profile), where the anvil carries off what the updraught brings up.
+function anvilWindMs(model) {
+  const su = model.su, sv = model.sv;
+  if (!su?.length) return 0;
+  const k0 = Math.min(su.length - 1, Math.round(9000 / WIND_PROFILE_STEP_M)), k1 = Math.min(su.length - 1, Math.round(10000 / WIND_PROFILE_STEP_M));
+  let sum = 0;
+  for (let k = k0; k <= k1; k++) sum += Math.hypot(su[k], sv[k]);
+  return sum / (k1 - k0 + 1);
+}
 export function updraughts(storm, structure, geometry, model, asLine, toMap) {
   const speed = clamp(Number(storm.updraughtMs) || 6, 3, 70), rain = clamp(Number(storm.precipitation) || 0, 0, 1.3);
   const steady = clamp(Number(storm.organization) || 0, 0, 1), hailMm = (Number(storm.currentHailSizeInches) || 0) * 25.4;
@@ -323,7 +340,8 @@ export function updraughts(storm, structure, geometry, model, asLine, toMap) {
   const vapour = Number.isFinite(model.inflowVapourGm3) ? model.inflowVapourGm3 : 216.7 * 6.112 * Math.exp(17.67 * dewpointC / (dewpointC + 243.5)) / (dewpointC + 273.15);
   const moist = 0.5 * ramp(Number.isFinite(model.precipitableWaterIn) ? model.precipitableWaterIn : 1.2, ...PHYSICS.efficiencyPwatIn) + 0.5 * ramp(Number.isFinite(model.midLevelRh) ? model.midLevelRh : 45, ...PHYSICS.efficiencyMidRh);
   const efficiency = PHYSICS.efficiency * (1 - 2 / 3 * ramp(environment.bulkShear, PHYSICS.efficiencyShearKt[0], PHYSICS.efficiencyShearKt[1]))
-    * (PHYSICS.efficiencyDryShare + (1 - PHYSICS.efficiencyDryShare) * moist);
+    * (PHYSICS.efficiencyDryShare + (1 - PHYSICS.efficiencyDryShare) * moist)
+    * (1 - PHYSICS.anvilExport * ramp(anvilWindMs(model), PHYSICS.anvilWindMs[0], PHYSICS.anvilWindMs[1]));
   const sources = [];
   const add = (at, R, w, share, hailShare, kind, index) => {
     const vigour = clamp(0.5 * rain + 0.5 * w / 45, 0, 1.1), slope = 3.6 - 1.9 * vigour;   // drop-size slope (per mm): 3.6 drizzle to 1.5 downpour
